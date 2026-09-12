@@ -87,11 +87,30 @@ Campi dell'esito:
     oppure nessun avanzamento residuo;
   - `BLOCCATO_CRITICITA` — segnalazioni critical attive sul lotto
     (`E_PIPELINE_LOTTO_CRITICAL`): correggerle e ri-lanciare;
-  - `ERRORE` — errore su uno step (il lotto è marcato `ERRORE`);
+  - `ERRORE` — la catena si è fermata su un errore di dominio. Due famiglie:
+    il fallimento di uno **step** (il lotto è marcato `ERRORE`) e il **rifiuto
+    pre-volo**, quando il lotto non è dentro la propria catena
+    (`E_PIPELINE_STATO_LOTTO`, dal 2026-09-08 — vedi
+    [`pipeline/run/`](api_run_lotto_pipeline.md) §Regole);
   - `GUARD_MAX_ITER` — backstop anti-loop raggiunto (anomalo: indica step che non
     avanzano).
+- `errore` — l'errore di dominio che ha fermato la catena. Porta gli **stessi
+  nomi dell'envelope** — `code`, `message`, `detail`, `hint`, `fields`,
+  `targets` — così che a video il gesto lo disegni un consumatore solo.
+  ⚠️ **La chiave c'è sempre**, col valore a `null` quando la catena non si è
+  fermata per errore: va guardato il **valore**, non la presenza della chiave.
+  ⚠️ **È il canale su cui il fallimento arriva davvero all'operatore**: questi
+  endpoint rispondono `200` anche quando la catena si ferma, quindi il frontend
+  rende `errore.message` e non il messaggio dell'envelope (che qui non passa).
 - `400`: payload non valido o errore applicativo pipeline (`E_PIPELINE_VALIDATION`,
   `E_PIPELINE`, …).
+
+> ⛔ **Un `200` non è un successo: si guarda `motivo_stop`.** Il fallimento è un
+> campo del payload e non uno status, perché la catena può aver eseguito qualche
+> step prima di fermarsi e quel lavoro va raccontato. Difetto misurato in-app il
+> 2026-08-21: toast verde su un lotto che il database aveva rifiutato. Lato
+> frontend la lettura sta in `verdettoRunner` (`useLottoAzioni`), con i soli
+> `COMPLETATO` e `FERMATO_A_STATO` come esiti buoni.
 
 ## Regole
 
@@ -105,6 +124,18 @@ Campi dell'esito:
 - Stesse validazioni e risoluzione emittente di `pipeline/run/` (vedi quel manuale):
   validazione lookup `tipo_doc_fiscale_id`/`utility_id`, normalizzazione `0`→`null`,
   emittente come attributo del lotto.
+- ⛔ **Il lotto dev'essere dentro la propria catena** (2026-09-08): un lotto
+  esistente il cui stato fiscale non è uno degli step configurati fa **rifiutare
+  il giro** (`E_PIPELINE_STATO_LOTTO`), invece di girare a vuoto. Il driver lo
+  vede come `motivo_stop: ERRORE` con l'`errore` valorizzato — nessuno step
+  eseguito, stato del lotto **invariato**. Regola estesa e motivazioni in
+  [`pipeline/run/`](api_run_lotto_pipeline.md) §Regole.
+- ⭐ **`stato_lotto` nell'esito non è più «lavabile» da un giro vuoto**
+  (2026-09-08): la conclusione ricalcola sempre le segnalazioni prima di
+  scrivere lo stato job, quindi un giro che non esegue step non può restituire
+  `COMPLETATO` su un lotto le cui fatture sono ancora rotte. Chi leggeva
+  `stato_lotto` da questo esito per dire «è andata bene» ora legge un dato che
+  è stato **guadagnato**.
 - Guard anti-loop `_MAX_STEP_ITERATIONS` (backstop).
 - Endpoint write: `Idempotency-Key` obbligatoria, JWT richiesto.
 

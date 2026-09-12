@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # APPEND-ONLY NON VUOL DIRE «NON SI PUO' RITIRARE CIO' CHE E' SCADUTO»
 #   vendite.trgfn_event_log_append_only — revisione
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §3.4 · Decisione D-8/D-13
 #
 # ── 🔴 IL DIFETTO CHE QUESTO CHANGESET CHIUDE ───────────────────────

@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui cinque satelliti dei LOTTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.9
+#   Slice 20260910-14..17. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Non e' un'ipotesi:
+#   `acquisti.ddt`, `acquisti.ordini` e `shop.ricevute` sono esattamente in
+#   quello stato, e stanno nel registro del debito come `POLICY_INERTE`. Il
+#   pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza della
+#   policy.
+#
+# ── NO FORCE, a parita' con tutto il database ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come la testata e come
+#   tutte le altre tabelle in RLS: l'owner (`titodb`) resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── ⭐ IL GIRO DI FATTURAZIONE NON SI FERMA, e vale la pena dire perche' ─
+#   Le due strade con cui il lotto viene eseguito passano **entrambe**:
+#     * il batch notturno gira come `zeroerp_batch_fatturazione`, che ha
+#       `BYPASSRLS` — le policy non lo vedono nemmeno;
+#     * il giro lanciato dal cockpit gira `run_as = OPERATORE`, e il worker
+#       ripopola i cinque GUC dell'identita' catturata all'accodamento: le
+#       policy risolvono come nel web, cioe' sul perimetro di chi ha chiesto il
+#       lavoro. E' esattamente cio' che si vuole.
+#   ⚠️ Il punto in cui una divergenza si vedrebbe e' un terzo canale: uno script
+#   che scrivesse su queste tabelle come `zeroerp_app` **senza** GUC. Li' la
+#   `WITH CHECK` rifiuterebbe — ed e' fail-closed, cioe' il verso giusto.
+#
+# ── DOPO L'APPLICAZIONE: dove guardare ───────────────────────────────
+#   ⭐ Nessuna vista da sistemare, verificato il 2026-09-10: le TREDICI viste che
+#   leggono i cinque satelliti — fra cui `vw_lotti_gruppi_serviti`,
+#   `vw_dash_competenza_*`, `vw_lotti_fatture_incoerenti`,
+#   `vw_documenti_trattenuti_da_lotto` e `script.vw_giornale_entita` — hanno gia'
+#   TUTTE `security_invoker`.
+#
+#   Da sessione OPERATORE i conteggi devono restare quelli di prima. I punti in
+#   cui una divergenza si vedrebbe:
+#     - il cockpit fatturazione e il pannello «Esiti»;
+#     - la lista dei documenti presi in carico dal lotto (`/lotti/<id>/gruppi/`),
+#       che finora aveva come solo cancello il JOIN sulla testata: quella difesa
+#       applicativa **resta** e si somma, non viene sostituita;
+#     - le due lenti della dashboard di competenza.
+#
+#   ⭐ Nessun cambiamento per un utente del portale o dello shop:
+#   `vendite.fatturazione_lotti` non ha vesti cliente, quindi non ne hanno i
+#   suoi satelliti — compreso il legame lotto-fattura, per la decisione
+#   dichiarata in 20260910-15.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-lotti-satelliti.sql, che
+#   costruisce DUE aziende con `dbops.fn_pgtap_crea_emittente_operatore()` e
+#   verifica che l'una non veda le righe dell'altra, in lettura E in scrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260910-16-enable-rls-lotti-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-16-enable-rls-lotti-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui cinque satelliti di
+        vendite.fatturazione_lotti. Da qui le policy di 20260910-15 filtrano
+        davvero. Isolato apposta: si disarma con il rollback di questo solo
+        changeSet, e le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 5
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('fatturazione_lotti_esiti', 'fatturazione_lotti_fatture',
+                                   'fatturazione_lotti_gruppi', 'fatturazione_lotti_log',
+                                   'fatturazione_lotti_task_runs')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_esiti     ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_fatture   ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_gruppi    ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_log       ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_task_runs ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_task_runs DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_log       DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_gruppi    DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_fatture   DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti_esiti     DISABLE ROW LEVEL SECURITY;

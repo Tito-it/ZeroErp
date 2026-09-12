@@ -159,6 +159,15 @@ MOTIVO_NESSUNA_RIGA_CANDIDATA = "NESSUNA_RIGA_CANDIDATA"
 # l'esecuzione ad essere fallita. Distinzione che vale un'azione diversa — il
 # perimetro si corregge, un'esecuzione rotta si riprova.
 MOTIVO_ESECUZIONE_FALLITA = "ESECUZIONE_FALLITA"
+# ⭐ Il gruppo e' TRATTENUTO da un lotto ancora in gioco: nessuno ha sbagliato
+# niente e non c'e' niente da correggere — quel lavoro e' gia' in mano a un
+# altro giro, e si aspetta che quel giro finisca o lo rilasci.
+# 🔴 Prima del 2026-09-09 questo caso cadeva su `MOTIVO_NON_DETERMINATO`, e
+# l'operatore leggeva «verificare emittente e utility della commessa»: due cose
+# giuste da controllare, e nessuna parola sull'unica che contava. La lane aveva
+# smesso di offrire il documento (changeSet `20260909-25`) e la diagnostica
+# continuava a contarlo fra i pronti — lo specchio rotto, §9.2 del brief.
+MOTIVO_TRATTENUTO_DA_LOTTO = "TRATTENUTO_DA_LOTTO"
 MOTIVO_NON_DETERMINATO = "NON_DETERMINATO"
 
 # Quanti gruppi elencare per esteso nel messaggio all'operatore: oltre, il testo
@@ -210,6 +219,30 @@ def _concorda(n: int, singolare: str, plurale: str) -> str:
 #        `NON_DETERMINATO` non e' una resa: e' l'unico esito onesto quando la
 #        fotografia non spiega l'esclusione (es. commessa senza emittente). Meglio
 #        dichiarare che non lo sappiamo che inventare una causa plausibile.
+# Scopo: la coppia (motivo, frase) del gruppo trattenuto da un lotto in gioco.
+#        Vive qui perche' il ramo serve in DUE punti della classificazione —
+#        con e senza righe pronte — e ricopiarlo sarebbe la seconda sede di una
+#        frase che deve restare una.
+# ⚠️ La frase NOMINA il lotto: «trattenuto» senza dire DA COSA non e'
+#    azionabile, e l'operatore non saprebbe dove andare a guardare. Il codice
+#    arriva da `lotti_trattenenti`, che il DB consegna come array ordinato di
+#    {id, codice} (changeSet `20260909-63`).
+# ⚠️ Se i lotti fossero piu' d'uno si nomina il PRIMO e si dice che ce ne sono
+#    altri: un elenco dentro una frase di toast non si legge.
+def _motivo_trattenuto(d: dict[str, Any]) -> tuple[str, str]:
+    n = d.get("n_trattenute") or 0
+    lotti = d.get("lotti_trattenenti") or []
+    codice = (lotti[0] or {}).get("codice") if lotti else None
+    dove = f" dal lotto {codice}" if codice else ""
+    altri = f" e altri {len(lotti) - 1}" if len(lotti) > 1 else ""
+    return (
+        MOTIVO_TRATTENUTO_DA_LOTTO,
+        f"{n} attività {_concorda(n, 'è trattenuta', 'sono trattenute')}"
+        f"{dove}{altri}, ancora in lavorazione: si può attendere che quel giro "
+        "si chiuda, oppure togliere il documento da quel lotto",
+    )
+
+
 def classifica_gruppo_non_servito(
     d: dict[str, Any],
     *,
@@ -260,6 +293,13 @@ def classifica_gruppo_non_servito(
                 "giro: si può rilanciare l'emissione su questo gruppo (se "
                 "l'errore si ripete, verificare l'esito del giro)",
             )
+        # ⭐ PRIMA del ripiego e DOPO le due cause certe, e l'ordine e' la
+        #   regola: «trattenuto» e' una causa CERTA (si sa quale lotto), quindi
+        #   batte il generico; ma non batte una testata bloccata, che vale
+        #   comunque. ⚠️ Qui ci sono righe PRONTE *e* trattenute: il gruppo e'
+        #   stato servito a meta', e la parte che non e' passata e' quella.
+        if d.get("n_trattenute"):
+            return _motivo_trattenuto(d)
         return (
             MOTIVO_NON_DETERMINATO,
             f"{d['n_pronte']} attività "
@@ -267,6 +307,12 @@ def classifica_gruppo_non_servito(
             "ma il gruppo non è entrato in nessun lotto: verificare emittente e "
             "utility della commessa",
         )
+    # ⭐ Nessuna riga pronta e qualcuna trattenuta: e' LA causa, non un ripiego.
+    #   ⛔ Sta PRIMA di «non approvate» e «rifiutate» perche' quelle parlano di
+    #   righe che il giro non avrebbe preso comunque, mentre questa parla di
+    #   righe che il giro avrebbe preso e che un ALTRO giro sta tenendo.
+    if d.get("n_trattenute"):
+        return _motivo_trattenuto(d)
     if d.get("n_non_approvate"):
         return (
             MOTIVO_RIGHE_NON_APPROVATE,
@@ -328,11 +374,23 @@ def spiega_gruppi_non_serviti(
     esiti: list[dict[str, Any]] = []
     for d in diagnosi:
         motivo, testo = classifica_gruppo_non_servito(d, terne_fallite=terne_fallite)
+        # ⭐ Il LOTTO viaggia STRUTTURATO accanto alla frase, e non solo dentro
+        #   di essa: il frontend ci costruisce il gesto «vai al lotto» senza far
+        #   ricopiare un codice a chi legge.
+        # ⛔ NON passa dal canale `targets` dell'envelope: quello porta il
+        #   bersaglio di un ERRORE sollevato dal database, e qui non c'e' nessun
+        #   errore — c'e' un esito con un elenco che il frontend gia' riceve.
+        # ⚠️ `None` quando il motivo non e' il trattenuto: un id che c'e' sempre
+        #   inviterebbe a disegnare un pulsante che non ha senso.
+        lotti = d.get("lotti_trattenenti") or []
+        primo = (lotti[0] or {}) if motivo == MOTIVO_TRATTENUTO_DA_LOTTO else {}
         esiti.append({
             "gruppo_key": d.get("gruppo_key"),
             "commessa_codice": d.get("commessa_codice"),
             "motivo": motivo,
             "dettaglio": testo,
+            "lotto_id": primo.get("id"),
+            "lotto_codice": primo.get("codice"),
         })
     return esiti
 
@@ -441,3 +499,68 @@ def parse_lotti(raw: Any, *, error_code: str) -> tuple[int, ...] | None:
             context=contesto_terminale(),
         )
     return tuple(ids)
+
+
+# Scopo: LA CORSIA con cui un giro accodato dall'applicazione verra' eseguito.
+#        Una sede sola per una regola che serve in DUE momenti lontani fra loro:
+#        all'ACCODAMENTO (entra nella chiave di dedup) e all'ESECUZIONE (la usa
+#        l'handler). Se le due la calcolassero ognuna per conto suo, un giorno
+#        direbbero cose diverse — e il sintomo sarebbe un giro deduplicato
+#        contro un altro che fa un lavoro diverso.
+#
+# ⭐ La regola: una selezione esplicita di gruppi e' un perimetro piu' preciso
+#    dell'instradamento automatico, quindi vince sulla corsia. Senza gruppi il
+#    giro on-demand di massa e' «differita» — si ferma a EMESSA, gate fiscale I-7.
+# ⚠️ `None` per i lavori che una corsia non ce l'hanno: la numerazione di
+#    perimetro non e' un giro, e' un passo.
+# ⛔ I letterali delle corsie NON si riscrivono qui: si importano dal driver, che
+#    ne e' l'owner (`_MODALITA`). Import locale come nell'handler, per non
+#    caricare la catena driver al boot del modulo.
+def corsia_del_giro(job_type: str, *, gruppi=None) -> str | None:
+    if job_type != JOB_TYPE_FATTURAZIONE_GIRO:
+        return None
+    from apps.vendite.services.fatturazione_driver_service import (
+        MODALITA_MIRATA,
+        MODALITA_ONDEMAND,
+    )
+
+    return MODALITA_MIRATA if gruppi else MODALITA_ONDEMAND
+
+
+# Scopo: La CHIAVE DI BUSINESS con cui la coda deduplica i giri vivi. Una sede
+#        sola, perche' i produttori sono DUE: il verbo dell'applicazione e il
+#        batch notturno.
+#
+# ⛔ LA CORSIA E' NELLA CHIAVE, e prima non c'era (2026-09-05, decisione di Tid,
+#    opzione A). Le corsie fanno cose diverse — «immediata» va fino in fondo e
+#    NUMERA, «differita» si ferma a EMESSA — ma per la dedup erano lo stesso
+#    lavoro: stesso tipo, stesso mese, stesso perimetro. Finche' a produrre era
+#    solo l'applicazione il difetto restava LATENTE (una corsia sola in uso);
+#    col batch, che le produce entrambe per la stessa azienda e lo stesso mese,
+#    la seconda sarebbe stata scartata **in silenzio** — una corsia semplicemente
+#    non fatturava, senza nessun errore.
+# ⭐ Ed e' UNA regola, non due formati: `corsia=None` per i lavori che una corsia
+#    non ce l'hanno (la numerazione di perimetro). Due formati per lo stesso tipo
+#    di lavoro sarebbero la cosa che poi diverge — chi tocca uno non sa
+#    dell'altro.
+# ⚠️ Sul verbo dell'applicazione il valore e' determinato dal perimetro (mirata
+#    se ci sono gruppi, differita altrimenti), quindi la chiave cambia FORMA e
+#    non cambia COMPORTAMENTO: nessun giro che oggi si deduplica smette di farlo.
+# ⛔ Il digest del perimetro mirato resta in coda e resta condizionale: senza,
+#    due selezioni diverse sullo stesso mese sarebbero lo stesso job e la
+#    seconda verrebbe assorbita senza dirlo.
+def chiave_idempotenza_giro(
+    *,
+    job_type: str,
+    competenza: date,
+    scope_key: str,
+    corsia: str | None = None,
+    digest: str = "",
+) -> str:
+    parti = [job_type]
+    if corsia:
+        parti.append(corsia)
+    parti.extend([competenza.isoformat(), scope_key])
+    if digest:
+        parti.append(digest)
+    return ":".join(parti)

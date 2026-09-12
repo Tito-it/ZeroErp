@@ -131,6 +131,29 @@ i codici CIG restavano nascosti in creazione finché il DB non li ammetteva.
 inchioda ad `ANNUALE`. Va mostrata come **fatto**, non come campo — o non
 mostrata affatto.
 
+> 🔴 **La RAGIONE di questa riga è scaduta il 2026-09-01, lo stesso giorno in cui
+> è stata scritta.** Il changeSet `20260901-06` ha allargato
+> `chk_registri_fatturazione_reset` a **`ANNUALE` e `NESSUNA`**, e
+> `fn_get_next_progressivo` la legge davvero: sotto `NESSUNA` il secchio del
+> contatore è uno solo e la numerazione non riparte fra gli anni.
+> ⇒ La **conclusione** regge ancora — oggi non è un campo, perché il backend la
+> tiene fuori da entrambe le whitelist — ma non per il motivo scritto qui: non
+> c'è più nessun `CHECK` che la inchiodi. Il seguito, con le due mosse da
+> decidere, sta in
+> [brief-db-registri-numerazione-chiave-del-contatore](brief-db-registri-numerazione-chiave-del-contatore.md)
+> §7 e §11.5.
+>
+> ✅ **Superata il 2026-09-08**: Tid ha deciso che la scelta va in maschera, e
+> `reset_policy` è ora un **campo di creazione** — `ANNUALE` (il progressivo
+> riparte a ogni anno) o `NESSUNA` (un contatore solo, che non riparte mai).
+> ⛔ **In modifica no**, e non è prudenza: è un asse della chiave del contatore,
+> e cambiarla su un registro che ha già consegnato numeri fa ripartire il
+> progressivo da 1 su un secchio nuovo, contro numeri che esistono già.
+> ⚠️ E la riga qui sopra non era l'unica falsa: la stessa affermazione stava
+> anche nel messaggio con cui `registri_service.py` traduceva quel `CHECK` —
+> cioè in una frase **letta da una persona**, non in un commento. Dettaglio e
+> prove in §11.5-bis del brief collegato.
+
 ---
 
 ## 2-bis. 🔴 La forma del numero — tre campi che questo brief non aveva
@@ -726,7 +749,7 @@ documento**, il residuo non è uniforme:
   vincolo li rifiuta e il documento **non si numera più**.
 
 ⇒ È diventato un cantiere suo, con la sua analisi e il suo piano:
-[brief-db-registri-numerazione-chiave-del-contatore](../work-in-progress/brief-db-registri-numerazione-chiave-del-contatore.md).
+[brief-db-registri-numerazione-chiave-del-contatore](brief-db-registri-numerazione-chiave-del-contatore.md).
 ⭐ Lì la cura è **dare l'asse mancante ai documenti**, non vietare il campo sul
 registro — e la colonna `mese` del contatore, dormiente e senza nessun documento
 che la porti, **si toglie**.

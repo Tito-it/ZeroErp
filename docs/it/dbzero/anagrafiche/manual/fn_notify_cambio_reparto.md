@@ -5,7 +5,7 @@
 **Approfondimento tabelle:**
 >
 [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
+> [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — l'`auth_user_id` del payload arriva da qui via [`script.fn_get_auth_user_id_for_risorsa_umana`](/dbzero/script/funzioni/fn_get_auth_user_id_for_risorsa_umana) (dal 12-09-2026)
 > [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 >
 **Approfondimento funzioni:**

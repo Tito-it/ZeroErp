@@ -68,10 +68,57 @@ class AITool(abc.ABC):
     def preview(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         return {"summary": f"Eseguire {self.name} con i parametri forniti"}
 
-    # Scopo: Limite page_size per tool AI (max 50, default 10).
+    # Scopo: Il `page_size` che l'LLM ha chiesto, normalizzato e messo sotto al
+    #        tetto del tool (default 10, max 50).
+    #
+    # 🔴 PERCHE' NON E' PIU' UN `min()` SECCO (2026-09-10). Era
+    #    `min(params.get("page_size", 10), max_size)`, e su tre input plausibili
+    #    si rompeva o taceva:
+    #
+    #      · `"20"` — la forma in cui un LLM manda un intero — sollevava
+    #        `TypeError: '<' not supported between 'str' and 'int'`. Non e' un
+    #        500 (l'executor cattura e gira il testo al modello), ma quel testo
+    #        il modello non lo puo' usare per correggersi: il giro fallisce e
+    #        basta;
+    #      · `null` esplicito faceva lo stesso — `params.get(k, 10)` restituisce
+    #        `None` quando la chiave c'e' col valore nullo, non il default;
+    #      · `0` o un negativo PASSAVANO il tetto e morivano piu' giu', nel
+    #        service, con un errore che parla di un altro parametro.
+    #
+    # ⭐ IL CRITERIO E' QUELLO DEL PROGETTO, non uno nuovo: rigore sui tipi come
+    #    `PayloadValidator` (bool != int, float non intero rifiutato, stringhe
+    #    numeriche ammesse) e messaggio che NOMINA il dato e i valori ammessi —
+    #    qui chi legge e' un modello, e un errore azionabile lo corregge al giro
+    #    dopo, mentre uno criptico gli fa abbandonare lo strumento.
+    # ⚠️ Il tetto superiore resta un CLAMP silenzioso, ed e' voluto: «max 50» e'
+    #    scritto nella `description` di ogni tool, quindi chiedere 200 non e' un
+    #    errore del chiamante — e' una richiesta che il contratto riduce.
     @staticmethod
     def safe_page_size(params: dict[str, Any], max_size: int = 50) -> int:
-        return min(params.get("page_size", 10), max_size)
+        grezzo = params.get("page_size")
+        if grezzo is None:
+            return min(10, max_size)
+        # `bool` e' sottoclasse di `int`: senza questo, `True` diventerebbe 1.
+        if isinstance(grezzo, bool) or (
+            isinstance(grezzo, float) and not grezzo.is_integer()
+        ):
+            raise ValueError(
+                f"page_size deve essere un intero fra 1 e {max_size}: "
+                f"ricevuto {grezzo!r}.",
+            )
+        try:
+            valore = int(grezzo)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"page_size deve essere un intero fra 1 e {max_size}: "
+                f"ricevuto {grezzo!r}.",
+            ) from None
+        if valore < 1:
+            raise ValueError(
+                f"page_size deve essere almeno 1: ricevuto {valore}. "
+                f"Per meno risultati chiedine 1, non 0.",
+            )
+        return min(valore, max_size)
 
     # Scopo: Semplifica una lista di risultati estraendo solo i campi specificati.
     #        field_map: {nome_output: nome_input} o {nome: nome} se uguale.

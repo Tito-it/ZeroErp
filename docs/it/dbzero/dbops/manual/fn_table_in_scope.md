@@ -4,7 +4,7 @@
 >
 Guide:
 >
-[Automazioni – Overview del Modulo](/dbzero/dbops/manual/automazioni_overview)
+[Automazioni – Overview del Modulo](/guide/automazione-db)
 >
 Approfondimento tabelle:
 >

@@ -2825,3 +2825,262 @@ Nessuno di questi impedisce alla suite di fare il suo mestiere:
 > **Stato: ✅ CHIUSO.** L'obiettivo — far girare i pgTAP come l'applicazione — è
 > raggiunto e verificato. Quello che resta è debito misurato, non lavoro
 > pendente di questo cantiere.
+
+---
+
+## 32. ⭐ Il metro ha DUE assi, e il secondo era solo prosa (2026-09-09)
+
+> **Come è emerso**: `scripts/ci-local.sh --fresh` — senza `--ci-apply`, che è
+> un flag **separato** — e quattro finte regressioni scoperte dopo sette minuti
+> di corsa.
+
+Il §24 ha reso il **runner** un cancello: la corsa si ferma prima di partire se
+gira con un utente diverso da quello registrato in baseline. Restava fuori il
+secondo asse, scritto in intestazione a `pgtap-baseline.sh` come **prosa**:
+
+> *«E il database scratch va preparato come la CI, o il metro non è lo stesso:
+> `--ci-apply` (senza, mancano i trigger di audit/tx_id/storico)…»*
+
+### 32.1 Che cosa succede senza quella passata
+
+Il migrate costruisce lo **schema**; i trigger di audit, `tx_id`, storico,
+lock-columns e `require_attivo` li **genera** il framework nella seconda
+invocazione di Liquibase (`--contexts=ci_apply`). Uno scratch senza quella
+passata ha lo schema giusto e i presidi a metà.
+
+Misurato sui quattro `vendite/test-*-righe-componenti-v1.sql`, tutti sulla
+stessa asserzione:
+
+```text
+12b) guard require_attivo su tutti i padri attesi
+have: {catalogo.articoli, config.iva}
+want: {catalogo.articoli, catalogo.articoli_componenti, catalogo.unita_misura,
+       config.iva, vendite.preventivi_righe}
+```
+
+⇒ Tre guard su cinque mancanti su **ogni** `*_righe_componenti`. Su GitHub la
+passata si fa sempre ([ci-validate.yaml, passo *automazioni*](../../../.github/workflows/ci-validate.yaml)),
+quindi là erano verdi: **due metri diversi**, lo stesso difetto per cui
+esistono due baseline.
+
+⛔ **E sono rossi PLAUSIBILI**, che è la parte cattiva: non «tutto rosso», che
+si riconosce a colpo d'occhio, ma quattro file sparsi con un'asserzione che
+sembra parlare del codice.
+
+### 32.2 Il cancello, e come si misura
+
+`scripts/testpgtap.sh --check-automazioni` → `0` sì · `1` no · `3` non
+misurabile. `scripts/pgtap-baseline.sh` lo interroga **prima** di eseguire e
+esce `2` con il rimedio scritto.
+
+⭐ **La domanda sta in `testpgtap.sh`** perché è l'unico file che sa come si
+*raggiunge* il database bersaglio: catena dell'env file, mapping `DB_* → PG*`,
+scelta dell'utente. Una seconda copia di quella catena diverge — è la stessa
+ragione per cui il default del runner non è duplicato ma **chiesto**
+(`--print-runner`, §24).
+
+⭐ **E non si misura con un conteggio.** I changeSet sotto `90_end/ci_apply/`
+dichiarano `context: ci_apply`: Liquibase li esegue **solo** con quel contesto
+nell'invocazione. ⇒ La loro presenza nel `databasechangelog` **è** la passata,
+la loro assenza è la sua mancanza. Binario, e vero per costruzione.
+
+⛔ **Le due strade scartate, e perché** — sono l'esempio di una misura che
+sembra la risposta e non lo è:
+
+| Sonda | Perché no |
+| --- | --- |
+| contare i trigger generati e confrontare i due database | i nomi generati portano un **hash** e non coincidono. Contati per *funzione* i totali sono identici (389 `require_active_parent` su entrambi): la differenza è nella **distribuzione**, non nel totale — un conteggio direbbe «uguale» su un database rotto |
+| «tabelle con `tx_id` senza il trigger» | **2 su dbdev, 1 sullo scratch**: ci sono esclusioni legittime, quindi servirebbe una **soglia** — cioè una fotografia dentro un cancello |
+
+### 32.3 Due scelte di comportamento, dichiarate
+
+* **`1` (manca) blocca**, `2` come il cancello del runner. Il rimedio è una
+  riga: `scripts/ci-local.sh --ci-apply` — e la nota che `--fresh` **non** la
+  comprende, perché è esattamente l'assunzione che è costata l'indagine.
+* **`3` (non misurabile) NON blocca**, avvisa. Se il database non risponde, la
+  corsa lo dirà da sola al primo file e con un messaggio più preciso. ⚠️ Un
+  cancello che ferma tutto su *«non ho potuto chiedere»* nasce rosso e viene
+  spento — è la lezione già scritta in `guardrail_pgtap_preambolo.py`.
+
+⚠️ **Resta prosa la seconda metà** della riga di intestazione — i privilegi di
+`zeroerp_app` — e la differenza è nel sintomo: un ruolo senza diritti si
+riconosce dal **primo** rosso (sono tutti permessi), una passata di automazioni
+mancante no.
+
+### 32.4 Come è stato provato
+
+| Prova | Esito |
+| --- | --- |
+| i tre rami di `--check-automazioni` (`0`/`1`/`3`) | ✅ verificati uno per uno |
+| falso positivo su `dbdev` e su `zeroerp_ci` **sani** | ✅ nessuno: la corsa parte in silenzio |
+| il cancello **scatta** — schema di prova con un `databasechangelog` vuoto davanti nel `search_path` | ✅ `exit 2`, messaggio col rimedio, **prima** di eseguire (schema poi rimosso) |
+| `--print-runner` e `--help` invariati | ✅ |
+
+⚠️ **Un difetto introdotto e corretto scrivendo questo**: la prima stesura
+avvolgeva la chiamata in `set +e … set -e`. Ma `pgtap-baseline.sh` gira con
+`set -uo pipefail` e **non** con `-e`: quel `set -e` sarebbe rimasto acceso per
+tutto il resto del file. Sostituito con `cmd || AUTOMAZIONI=$?`.
+⭐ È lo stesso genere di svista del §31.1 — *si guarda cosa fa la riga, non in
+che ambiente atterra*.
+
+---
+
+## 33. ⭐ Il QUARTO asse: la passata `provision` POST, che in locale non c'era (2026-09-09)
+
+> **Come è emerso**: `maintenance/test-job-run-log-failure-out-of-tx.sql` rosso
+> sullo scratch e verde in CI. Il sospetto iniziale era contaminazione — il nome
+> dice *out-of-tx*, e quel file scrive fuori transazione. **Non era quello.**
+
+```text
+# Failed test 2: "2. l'owner della funzione e' un superuser: senza, dblink rifiuta"
+#         have: false   want: true
+```
+
+| | `dbdev` | `zeroerp_ci` |
+| --- | --- | --- |
+| owner di `maintenance.fn_job_run_log_failure` | `postgres` · superuser ✅ | **`zeroerp` · non superuser** ❌ |
+| `20251123-12-set-owner-fn-sync-functions-owner` | applicato (RERAN) | **assente** |
+| `20251123-04-run-sync-functions-owner` | applicato | applicato |
+
+⇒ La funzione che *allinea* gli owner girava; quella che le dà i **privilegi
+per farlo** no.
+
+### 33.1 Il meccanismo, per intero
+
+`dbops.sec_functions_owner` dichiara **sei** funzioni che devono appartenere a
+`postgres` — sono quelle che usano `dblink`, e a un non-superuser `dblink`
+rifiuta una connessione senza password. L'allineamento lo fa
+`dbops.fn_sync_functions_owner()`, ma per riassegnare a `postgres` deve
+**essere di `postgres`**: glielo dà `90_end/20251123-12`, che dichiara
+`context: provision`.
+
+⛔ **E `context: provision` significa che la passata principale non lo vede
+mai**: quella gira con `!provision`. Lo esegue solo una passata di
+provisioning, come superuser — e `ci-validate.yaml` ne fa **due**, pre e post:
+
+| # | passata | utente | ci-validate.yaml | ci-local.sh (prima) |
+| --- | --- | --- | --- | --- |
+| 1 | provision **PRE** | superuser | ✅ | ✅ |
+| 2 | principale | `zeroerp` | ✅ | ✅ |
+| 3 | provision **POST** | superuser | ✅ | ❌ **mancava** |
+| 4 | automazioni `ci_apply` | `zeroerp` | ✅ | ✅ (dietro `--ci-apply`) |
+
+⭐ **Il provision-post non è un doppione del pre**: contiene ciò che si può fare
+solo quando lo schema **esiste già**. È la stessa ragione per cui in CI quel
+passo sta dopo il migrate e non prima.
+
+### 33.2 ⛔ E il danno vero non è il test
+
+Il test 2 guarda un **presupposto**, ed è l'unica cosa che si possa guardare da
+lì: `fn_job_run_log_failure` è fatta per **non rompere un job che sta già
+fallendo**, quindi quando il canale non c'è emette un `WARNING` e tira dritto.
+⇒ Senza owner superuser, un job fallito **non lascia traccia** — che è
+esattamente il difetto per cui quel canale è nato (`apply_storicizza_weekly`
+morto ogni settimana per sei mesi con l'ultimo verdetto a «done»).
+
+⚠️ Un test che guardasse «la chiamata non esplode» sarebbe stato verde tutte e
+due le volte. Lo dice l'intestazione di quel file, e il 2026-09-09 lo ha
+dimostrato una terza volta.
+
+### 33.3 Il rimedio
+
+`scripts/ci-local.sh` esegue ora la passata **provision post**, incondizionata,
+fra la principale e le automazioni — stesso changelog, stesso utente e stessa
+posizione del passo gemello di `ci-validate.yaml`. I due changeSet sono
+`runOnChange`, quindi basta rilanciare lo script: non serve `--fresh`.
+
+⭐ **E l'intestazione ora elenca le quattro passate**, invece di lasciarle
+dedurre. ⚠️ Corretto anche l'aiuto: `-h` stampava un intervallo di righe
+**inchiodato** (`2,73`), e allungando l'intestazione troncava in silenzio la
+coda — i PREREQUISITI erano già spariti. Adesso l'intervallo si calcola.
+
+### 33.4 ⭐ Il conto: il metro ha quattro assi, non uno
+
+| asse | come si sbaglia | come si scopre oggi |
+| --- | --- | --- |
+| **runner** (owner/app) | si misura con un utente e si confronta con un altro | cancello in `pgtap-baseline.sh` (§24) |
+| **automazioni** (`ci_apply`) | `--fresh` non le comprende | cancello in `pgtap-baseline.sh` (§32) |
+| **provision post** | non c'era proprio | ora c'è; **nessun cancello** — vedi sotto |
+| **schema `django`** | copiato da `dbdev`, non migrato | dichiarato in intestazione, **nessun cancello** |
+
+⚠️ **Perché per gli ultimi due non ho messo un cancello.** Il terzo adesso è
+parte della sequenza: non è più una cosa che si può dimenticare, e un cancello
+sorveglierebbe un passo che lo script fa da sé. Il quarto è una divergenza
+**graduale** — la copia invecchia con le migration Django — e non ha una soglia
+binaria: sorvegliarlo vorrebbe dire confrontare due schemi, che è un altro
+mestiere. Resta dichiarato, ed è il candidato successivo se costerà un'altra
+indagine.
+
+---
+
+## 34. ⛔ Il rubinetto vero: era lo SCRIPT a suggerire l'aggiornamento sbagliato (2026-09-09)
+
+> **Come è emerso**: dodici finte regressioni sulla CI, tutte su
+> utenti/identità/profili. Non un difetto nuovo: dodici righe **sparite dal
+> registro**.
+
+Il commit che le ha tolte ha eseguito `--update` sulla baseline della CI
+**misurando lo scratch locale**:
+
+```text
+28 righe tolte · 16 rimesse col solo cambio di causa (ERRORE_FIXTURE → ASSERZIONE)
+= 12 davvero cadute  ⇒  esattamente le 12 che GitHub segnala
+```
+
+⚠️ **E non è stato un gesto arbitrario: lo script lo aveva chiesto.** Sulla riga
+dei RIENTRATI stampava
+
+```text
+✅ RIENTRATI — ora verdi, vanno tolti dalla baseline:
+   → PGTAP_ENV_FILE=… PGTAP_BASELINE=db/pgtap/baseline-rossi-ci.tsv … --update
+```
+
+*«ora verdi»* voleva dire **verdi QUI**. Il comando era anche corretto nel senso
+del §24-bis — porta il proprio contesto, quindi non finisce sul database
+sbagliato — ma la **coppia** che porta è essa stessa il difetto: la baseline
+della CI misurata su uno scratch. ⇒ *Un suggerimento è un'istruzione: se lo
+strumento lo stampa, prima o poi qualcuno lo esegue, ed è successo tre volte in
+un giorno.*
+
+### 34.1 Il cancello, e perché il discriminante è `GITHUB_ACTIONS`
+
+`--update` su `baseline-rossi-ci.tsv` fuori dalla CI **esce 2 prima di
+eseguire**, con la valvola dichiarata `PGTAP_BASELINE_CI_FORZA=1`.
+
+⭐ Il segnale è **diretto**: `GITHUB_ACTIONS` lo imposta il runner di GitHub e
+dice ciò che serve sapere — *«questa corsa È la CI»*.
+⛔ Non si indovina dal nome del database né dell'env file: sono convenzioni, e
+una convenzione la si rispetta finché non la si dimentica.
+⚠️ Scartata anche la sonda «`django.django_migrations` è vuota ⇒ schema
+copiato ⇒ non è la CI» (0 sullo scratch, 30 su `dbdev`): misura *una* delle
+differenze, non il fatto. Resta buona come **spiegazione** nel messaggio, non
+come cancello.
+
+### 34.2 E il suggerimento si adatta al bersaglio
+
+Sulla baseline della CI, fuori dalla CI, la riga dei RIENTRATI non consegna più
+un comando: dice che quei file sono verdi **qui** e che potrebbero essere rossi
+**là**. È la metà che mancava — un cancello che vieta e uno strumento che
+continua a suggerire la cosa vietata sono due messaggi contrari.
+
+### 34.3 ⭐ Perché proprio quei dodici
+
+`crea-auth-user`, `is-super-admin`, `profili-accesso`, `uo-id-for-user`,
+`emittenti-scope`, `setup-status`… tutti su **utenti, identità e profili**: è
+l'asse **schema `django`**, l'unico dei quattro rimasto senza cancello.
+
+| | `dbdev` | `zeroerp_ci` | CI |
+| --- | --- | --- | --- |
+| come nasce `django` | `manage.py migrate` | **`pg_dump` da `dbdev`** | `manage.py migrate` |
+| `django_migrations` | 30 | **0** | popolata |
+
+⇒ Resta dichiarato e senza cancello, ma da oggi **non serve più uno**: la
+baseline della CI non si può più scrivere da qui, che era l'unico modo in cui
+quella differenza faceva danno.
+
+### 34.4 Un difetto di contorno, corretto in due file
+
+`-h` stampava un intervallo di righe **inchiodato** (`2,81` qui, `2,73` in
+`ci-local.sh`): allungando l'intestazione l'aiuto troncava in silenzio la coda —
+ed entrambe le intestazioni sono cresciute oggi. Adesso l'ultima riga si
+calcola dal `set -uo pipefail`.

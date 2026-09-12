@@ -7,7 +7,7 @@ resolver a 3 stadi (PROMO → CONTRATTO → CATEGORIA) e i limiti L2 di
 variazione prezzo configurati per l'utente corrente.
 
 Riferimento concettuale:
-[sviluppo-listini-v5.md](/dev/work-in-progress/sviluppo-listini-v5) §7
+[sviluppo-listini-v5.md](/dev/work-done/sviluppo-listini-v5) §7
 (resolver) e §14.5 (Sprint D autorizzazioni L2).
 
 ## Contesto

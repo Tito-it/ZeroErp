@@ -28,7 +28,7 @@
 # NOW()-based sono improbabili ma non impossibili.
 #
 # Registrazione anti-regressione in dbops.automazione_overlap: 20260626-04.
-# Brief: docs/it/dev/work-in-progress/brief-db-sospensioni-anti-overlap-data-manuale_db.md
+# Brief: brief-db-sospensioni-anti-overlap-data-manuale_db.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

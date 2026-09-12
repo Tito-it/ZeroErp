@@ -30,6 +30,17 @@ export const TOAST_DURATION = {
   INFO: 3000,
   WARN: 4000,
   ERROR: 5000,
+  // ⭐ L'errore che porta anche la SOLUZIONE (2026-09-09): il `hint` che il team
+  // DB scrive a catalogo — «Numerare prima i documenti che questo rettifica,
+  // poi ripetere» — e che dal 2026-09-09 il toast rende sotto il messaggio.
+  // ⚠️ Dura di piu' perche' il TESTO E' IL DOPPIO, non perche' e' piu' grave:
+  // la durata di un toast si calibra su quanto c'e' da leggere, e qui le frasi
+  // sono due — cosa e' successo e cosa fare adesso.
+  // ⛔ E NON e' persistente come `AZIONI`: la soluzione e' a catalogo per ogni
+  // codice, quindi `life: 0` qui farebbe di OGNI errore di dominio un toast da
+  // chiudere a mano. Un gesto ha un pulsante da premere e puo' aspettare; una
+  // frase si legge e se ne va.
+  ERROR_CON_SOLUZIONE: 9000,
   SYSTEM_ERROR: 0,  // 0 = persistente, chiusura manuale
   // ⭐ L'errore che porta un GESTO: persistente per la stessa ragione tecnica
   // (0 = chiusura manuale) ma per un motivo diverso — non «e' grave», bensi'
@@ -406,6 +417,42 @@ export const MANAGE_ICONS = {
   // per di piu' l'unica azione a video ERA questa e veniva letta come il
   // cestino di eliminazione. Elimina toglie una riga; questo disfa un effetto.
   UNDO: 'pi pi-undo',
+  // ═══ I DUE SEGNI CHE SI CONFONDONO, e vanno tenuti separati ═══════════
+  //
+  // ⭐ ERRORE — «qualcosa è andato storto». Era già lo standard DI FATTO in una
+  //    ventina di punti (`ErroreRigaInfo`, la spia della lista lotti, le
+  //    conferme di `useConfirmAction`, la vista d'errore): qui prende un NOME,
+  //    perché un segno usato ovunque senza nome è un segno che il ventunesimo
+  //    consumatore copia dal vicino sbagliato.
+  ERRORE: 'pi pi-exclamation-triangle',
+  //
+  // ⛔ ANNULLA — si DISFA un atto che resta e viene dichiarato nullo: annulla
+  //    il lotto, annulla la riga manuale, annulla la pratica.
+  // 🔴 NON È UN ERRORE, ed è la confusione che questa coppia esiste per
+  //    togliere: sul cruscotto Competenza il conteggio degli ERRORI portava
+  //    proprio questo segno — cioè il gesto per cancellarli — e il triangolo
+  //    stava sul lavoro ancora da fare (rilievo di Tid, 2026-09-09).
+  // ⚠️ E non è nemmeno `CANCEL` (`pi-times`: chiudere senza salvare) né
+  //    `DELETE` (`pi-trash`: togliere la riga). Tre gesti vicini, tre segni.
+  ANNULLA: 'pi pi-times-circle',
+  //
+  // ⚠️ ATTESA — lavoro che deve ancora essere fatto: non è un errore e non è un
+  //    ritardo. ⛔ Serve perché il triangolo torna all'errore: senza, i due
+  //    conteggi del semaforo mese porterebbero lo STESSO glifo distinti dal
+  //    solo colore. ⛔ E non `pi-clock`, che in quella stessa schermata dice
+  //    già «in ritardo».
+  ATTESA: 'pi pi-hourglass',
+  //
+  // ⚠️ LOTTO — il giro di fatturazione, quando serve NOMINARLO in una riga
+  //    d'altro dominio: sul cruscotto Competenza dice chi sta trattenendo un
+  //    documento. ⛔ Ripete il valore di `NAV_ICONS.LOTTI` invece di importarlo,
+  //    come già fanno `SOGGETTO`, `FATTURE` e `FAMIGLIA_DOCUMENTO`: legare le
+  //    costanti alla navigazione per un glifo non vale la dipendenza.
+  // 🔴 Nasce da un difetto di segni: il documento trattenuto portava lo STESSO
+  //    lucchetto della testata non emittibile — due blocchi con due vie
+  //    d'uscita diverse e un solo simbolo, e su una riga che li ha entrambi
+  //    comparivano due icone identiche affiancate.
+  LOTTO: 'pi pi-server',
   KEBAB: 'pi pi-ellipsis-v',
   // Documenti PDF (lista/anteprima/scarica). Centralizzata 2026-05-30:
   // usata da GeneraPdfButton + EntityPdfButton (BB documenti) e dai
@@ -535,6 +582,21 @@ export const TAB_ENTITIES = {
   UNITA_MISURA: 'unita_misura',
   UTILITIES_TIPI_RUOLO: 'utilities_tipi_ruolo',
 }
+
+// Schede della vista «Code di lavoro» (Strumenti → Code di lavoro).
+//
+// ⚠️ Sono un CONTRATTO fra due file che non si vedono: il drawer rapido del
+//    badge in topbar (`CodeLavoroDrawer`, producer del deep-link `?tab=`) e la
+//    vista che lo consuma (`CodeLavoroView`). Scritte come literal, un refuso
+//    non fallisce: la vista aprirebbe la scheda di default e il click sulla
+//    sezione «Coda stampa» porterebbe in silenzio sui lavori.
+// ⛔ Stanno in `core/` e non in `strumenti/constants.js` perche' il producer e'
+//    un componente di `core/`: un modulo di core che importasse da un dominio
+//    invertirebbe gli anelli.
+export const CODE_TABS = Object.freeze({
+  LAVORI: 'lavori',
+  STAMPA: 'stampa',
+})
 
 // Keyboard shortcuts
 export const SHORTCUTS = {

@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritira le REGISTRAZIONI del ponte legacy utente↔risorsa umana: tre registri
+# che dichiaravano qualcosa su una tabella che non c'è più.
+#   Brief: brief-db-rls-storico-scope-congelato.md §10 (coda del 12-09,
+#   decisione Tid)
+#
+# La tabella `anagrafiche._legacy_risorse_umane_auth_user` e la sua shadow
+# vengono eliminate nella stessa corsa (`00_schema/storico/20260912-08`,
+# `90_end/20260912-10`). Quattro righe, in tre registri, continuerebbero a
+# parlarne:
+#
+#   · dbops.storico_scope_policy, riga 6 (modo NESSUNO): a madre eliminata
+#     uscirebbe come RIGA_SENZA_MADRE in dbops.vw_storico_scope_da_dichiarare
+#     (presidio ZERO, settimanale) e farebbe rosso il test 5 del pgTAP della
+#     mappa. Tolta anche dal CSV `80_data/sql/dbops/storico_scope_policy.csv`,
+#     perché il mirror `loadUpdateData` (20260911-23) non cancella e la
+#     reinserirebbe.
+#   · dbops.audit_sources, riga 5 (`risorse_umane_auth_user` →
+#     `storico.risorse_umane_auth_user`): già `attivo = f` dal 2026-09-02 come
+#     dichiarazione della dismissione; la tabella che nomina è stata eliminata
+#     dal 20260912-03 e la madre legacy se ne va ora — non dichiara più niente.
+#     Tolta anche dal CSV `80_data/sql/dbops/audit_sources.csv` (mirror
+#     20260429-08, stessa ragione). Il backend (`amm_software_repository`)
+#     costruisce le UNION da script.vw_audit_sources: con la riga via, la
+#     sorgente sparisce da sola; `permissions_audit_repository` ha ritirato il
+#     label il 12-09 (PR #1567).
+#   · config.storico_set_storicizza, due righe: `anagrafiche.risorse_umane_auth_user`
+#     (stantia dal cutover del 2026-04-19: oggi quel nome è una VISTA, e il job
+#     `proc_sync_storico_set_storicizza` non la toglie perché `to_regclass` la
+#     risolve) e `anagrafiche._legacy_risorse_umane_auth_user` (il job la
+#     toglierebbe da solo al prossimo giro, a tabella sparita). Entrambe
+#     `insert_manuale = false`. Questo registro NON ha un mirror CSV: è scritto
+#     dal job e da changeSet di registrazione, quindi il DELETE è la sua forma.
+#
+# ⚠️ Ordine nella corsa: 80_data gira PRIMA di 90_end, quindi fra questo
+#   changeSet e il DROP della madre la riga 6 manca mentre la madre col trigger
+#   esiste ancora (SENZA_RIGA nel digest per la durata del migrate). Nessun
+#   passo del migrate legge la mappa in quell'intervallo per quella tabella:
+#   fn_storico_arma_scope su una madre senza riga risponde «non armare», e la
+#   shadow è già stata eliminata (NO_SHADOW). I pgTAP girano a migrate finito.
+#
+# In CI: la tabella esiste fino a 90_end, le righe nel CSV non ci sono più,
+# quindi i tre DELETE trovano zero righe o la sola riga stantia della vista.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260912-09-delete-registrazioni-legacy-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260912-09-delete-registrazioni-legacy-risorse-umane-auth-user
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie le quattro registrazioni della tabella ponte legacy
+        anagrafiche._legacy_risorse_umane_auth_user, eliminata nella stessa
+        corsa: la riga 6 di dbops.storico_scope_policy (altrimenti
+        RIGA_SENZA_MADRE nel digest e test 5 della mappa rosso), la riga 5 di
+        dbops.audit_sources (gia' attivo = f, puntava a una tabella eliminata
+        dal 20260912-03) e le due righe di config.storico_set_storicizza (la
+        legacy e il nome vecchio, che oggi e' una vista). I due CSV sono
+        allineati nello stesso commit. Decisione Tid 12-09-2026,
+        brief-db-rls-storico-scope-congelato §10.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: dbops
+              tableName: storico_scope_policy
+          - tableExists:
+              schemaName: dbops
+              tableName: audit_sources
+          - tableExists:
+              schemaName: config
+              tableName: storico_set_storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.storico_scope_policy m
+               WHERE (m.id, m.schema_tabella, m.nome_tabella) IN (
+                         (6, 'anagrafiche', '_legacy_risorse_umane_auth_user'));
+
+              DELETE FROM dbops.audit_sources a
+               WHERE (a.id, a.code, a.storico_table) IN (
+                         (5, 'risorse_umane_auth_user', 'storico.risorse_umane_auth_user'));
+
+              DELETE FROM config.storico_set_storicizza s
+               WHERE s.table_name IN ('anagrafiche.risorse_umane_auth_user',
+                                      'anagrafiche._legacy_risorse_umane_auth_user');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le registrazioni descrivono una tabella che il rollback di
+              -- 90_end/20260912-10 non ricostruisce (forward-only): reinserirle
+              -- dichiarerebbe qualcosa su un oggetto che non esiste. Forward-only.
+              SELECT 1;

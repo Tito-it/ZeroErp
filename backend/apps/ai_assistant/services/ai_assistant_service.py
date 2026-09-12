@@ -227,7 +227,7 @@ def query(
         )
     except Exception as exc:
         error_code = getattr(exc, "code", "E_AI_PROVIDER_ERROR")
-        logger.error("Errore provider AI: %s", exc, exc_info=True)
+        logger.exception("Errore provider AI: %s", exc)
         response_text = "Mi dispiace, si e' verificato un errore nella comunicazione con l'assistente AI."
 
     # Salva risposta nella conversazione
@@ -364,7 +364,7 @@ def _run_tool_loop(
                     tool_result_content = json.dumps({
                         "error": f"Errore preparazione operazione: {exc}"
                     })
-                    logger.error("Errore preview tool %s: %s", tool_name, exc, exc_info=True)
+                    logger.exception("Errore preview tool %s: %s", tool_name, exc)
             else:
                 try:
                     result = tool_obj.execute(tool_input, request)
@@ -383,7 +383,7 @@ def _run_tool_loop(
                     tool_result_content = json.dumps({
                         "error": f"Errore esecuzione strumento: {exc}"
                     })
-                    logger.error("Errore esecuzione tool %s: %s", tool_name, exc, exc_info=True)
+                    logger.exception("Errore esecuzione tool %s: %s", tool_name, exc)
 
             tool_duration = int((time.monotonic() - tool_start) * 1000)
             tools_log.append({
@@ -521,7 +521,7 @@ def _execute_confirmation(
         )
     except Exception as exc:
         _delete_pending_confirmation(**scope)
-        logger.error("Errore esecuzione confermata %s: %s", pending["tool_name"], exc, exc_info=True)
+        logger.exception("Errore esecuzione confermata %s: %s", pending["tool_name"], exc)
         error_msg = getattr(exc, "message", str(exc))
         return AIQueryResult(
             conversation_id=conversation_id,

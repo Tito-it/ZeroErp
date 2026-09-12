@@ -1,0 +1,217 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AF-2 — Il guard sulla coerenza BA/utility smette di uscire subito.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.13
+#   Osservazione di Tid, 2026-09-10. Slice 20260910-25..26.
+#
+# ── 🔴 IL DIFETTO: un guard che non arriva mai a validare ────────────
+#   `vendite.trgfn_attivita_fatturabili_guard_ba_coerenza` (BEFORE INSERT OR
+#   UPDATE) apriva cosi':
+#
+#       IF NEW.commessa_attivita_id IS NOT NULL THEN RETURN NEW; END IF;
+#
+#   Ma `commessa_attivita_id` e' **NOT NULL** sulla tabella. ⇒ Il ramo che
+#   valida la coerenza si raggiunge **solo** su righe che il vincolo rifiutera'
+#   comunque un istante dopo — il `NOT NULL` si controlla dopo i BEFORE trigger.
+#   Su ogni riga che sopravvive, il guard usciva subito.
+#   ⚠️ Cioe': un guard che SEMBRA presidiare la coerenza BA/utility, e non la
+#   presidia. Nessun cancello se ne accorgeva, perche' la funzione esiste, e'
+#   montata e non solleva mai.
+#
+# ── ⚠️ E LA SCELTA ERA CONSAPEVOLE, quando fu fatta ──────────────────
+#   L'intestazione lo dice: *«Commessa-aware: quando commessa_attivita_id IS NOT
+#   NULL la coerenza BA/utility e' garantita a monte dal push
+#   (fn_get_or_create_commessa), skip validazione»*. Non e' una svista: e' una
+#   scelta scritta, invecchiata quando la colonna e' diventata obbligatoria.
+#   ⭐ E' la forma classica del cancello su uno stato che poi diventa
+#   PERMANENTE: la condizione che doveva distinguere due casi ne descrive uno
+#   solo, e da quel momento la porta e' sempre aperta.
+#
+# ── ⛔ E «garantita a monte» non e' una garanzia, e' una convenzione ──
+#   Il push la rispetta oggi. Un guard esiste per il giorno in cui qualcuno
+#   scrive da un'altra parte — ed e' esattamente cio' che un guard deve
+#   sopravvivere. *Un presidio che si fida di una convenzione non e' un
+#   presidio.*
+#
+# ── ⭐ COSA RESTA A VALIDARE, ed e' poco ma vero ─────────────────────
+#   Tolta l'uscita, il guard verifica due cose:
+#     1. il billing account esiste — ridondante con la FK, e si lascia: costa
+#        nulla e il messaggio e' migliore di quello del vincolo;
+#     2. `istanza_utility_id` della riga coincide con quella del suo BA.
+#   ⭐ La seconda e' l'invariante vero, e da oggi si applica a TUTTE le righe.
+#   ⚠️ Entrambe le colonne confrontate sono `NOT NULL`
+#   (`attivita_fatturabili.istanza_utility_id` e
+#   `billing_account.istanza_utility_id`, verificato 2026-09-10): niente
+#   confronto con NULL, niente `IS DISTINCT FROM` che si comporta a sorpresa.
+#
+# ── ⚠️ SI PUO' ACCENDERE SENZA ROMPERE? Misurato, ed e' il verso giusto ─
+#   2026-09-10: su 59 righe, **59 coerenti, 0 dissenzienti**. ⛔ Non e'
+#   l'argomento — un guard non si scrive perche' oggi passa — ma dice che
+#   accenderlo non rifiuta il pregresso.
+#   ⭐ E il pgTAP che lo collauda, `test-trigger-af-commessa-aware-v1.sql`, NON
+#   pinna lo skip: asserisce la presenza delle funzioni e il lavoro del
+#   normalizzatore. Verificato prima di toccare il guard, perche' un guard che
+#   rompe i test esistenti e' la trappola nota.
+#
+# ⚠️ Il corpo di partenza e' quello VIVO, estratto da `pg_proc`, non da uno YAML.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260910-26-update-trgfn-af-guard-ba-coerenza-non-esce-mctit.yaml
+
+  - changeSet:
+      id: 20260910-26-update-trgfn-af-guard-ba-coerenza-non-esce
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_attivita_fatturabili_guard_ba_coerenza smette di uscire
+        subito quando commessa_attivita_id e' valorizzato: quella colonna e' NOT
+        NULL, quindi l'uscita valeva per ogni riga e il guard non validava mai
+        niente. Da qui la coerenza istanza_utility/billing account e' presidiata
+        su tutte le righe.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'trgfn_attivita_fatturabili_guard_ba_coerenza'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_iu_id anagrafiche.billing_account.istanza_utility_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Validare coerenza tra billing_account e istanza_utility
+                --   sulle righe attivita_fatturabili.
+                --
+                -- Regole:
+                --   - se billing_account_id e` valorizzato, deve esistere
+                --   - istanza_utility_id deve coincidere con quella del BA
+                --   - variadic su fn_log_and_raise_error sempre testuali
+                --
+                -- 🔴 REV 2026-09-10 — TOLTA l'uscita anticipata.
+                --   Il corpo apriva con:
+                --       IF NEW.commessa_attivita_id IS NOT NULL THEN RETURN NEW;
+                --   motivata cosi': «righe da commessa: coerenza garantita a
+                --   monte dal push (fn_get_or_create_commessa)». Ma
+                --   `commessa_attivita_id` e` NOT NULL: quell'uscita valeva per
+                --   OGNI riga che sopravvive, e il guard non validava mai
+                --   niente. Un presidio che sembra esserci e non c'e`.
+                --   ⛔ E «garantita a monte» e` una convenzione, non una
+                --   garanzia: un guard esiste per il giorno in cui qualcuno
+                --   scrive da un'altra parte.
+                -- =========================================================
+
+                IF NEW.billing_account_id IS NOT NULL THEN
+                  SELECT b.istanza_utility_id
+                    INTO v_iu_id
+                    FROM anagrafiche.billing_account b
+                   WHERE b.id = NEW.billing_account_id;
+
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'attivita_fatturabili',
+                      'E_PARAMETRI_TABELLA',
+                      jsonb_build_object(
+                        'context','validazione billing_account_id',
+                        'billing_account_id', NEW.billing_account_id
+                      ),
+                      NULL::uuid,
+                      'billing_account', NEW.billing_account_id::text
+                    );
+                  END IF;
+
+                  IF NEW.istanza_utility_id IS DISTINCT FROM v_iu_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'attivita_fatturabili',
+                      'E_COERENZA_ID',
+                      jsonb_build_object(
+                        'context','validazione istanza_utility_id',
+                        'istanza_utility_id', NEW.istanza_utility_id,
+                        'billing_account_id', NEW.billing_account_id,
+                        'istanza_utility_attesa', v_iu_id
+                      ),
+                      NULL::uuid,
+                      'istanza_utility_id', COALESCE(NEW.istanza_utility_id::text, 'NULL'),
+                      'billing_account', NEW.billing_account_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza() IS
+                  'Guard BEFORE INSERT OR UPDATE su vendite.attivita_fatturabili: la riga e il suo billing account devono nominare la stessa istanza di utility. 🔴 Dal 2026-09-10 valida DAVVERO: prima usciva su commessa_attivita_id IS NOT NULL, che essendo la colonna NOT NULL valeva per ogni riga sopravvissuta — un presidio che sembrava esserci e non c''era. Brief: brief-db-perimetro-emittente-righe-documento.md §11.13.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback rimette l'uscita anticipata, cioe' RISPEGNE il
+              --   guard. Manovra di emergenza, non una configurazione.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_iu_id anagrafiche.billing_account.istanza_utility_id%TYPE;
+              BEGIN
+                IF NEW.commessa_attivita_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF NEW.billing_account_id IS NOT NULL THEN
+                  SELECT b.istanza_utility_id
+                    INTO v_iu_id
+                    FROM anagrafiche.billing_account b
+                   WHERE b.id = NEW.billing_account_id;
+
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'attivita_fatturabili', 'E_PARAMETRI_TABELLA',
+                      jsonb_build_object('context','validazione billing_account_id',
+                                         'billing_account_id', NEW.billing_account_id),
+                      NULL::uuid, 'billing_account', NEW.billing_account_id::text
+                    );
+                  END IF;
+
+                  IF NEW.istanza_utility_id IS DISTINCT FROM v_iu_id THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'attivita_fatturabili', 'E_COERENZA_ID',
+                      jsonb_build_object('context','validazione istanza_utility_id',
+                                         'istanza_utility_id', NEW.istanza_utility_id,
+                                         'billing_account_id', NEW.billing_account_id,
+                                         'istanza_utility_attesa', v_iu_id),
+                      NULL::uuid,
+                      'istanza_utility_id', COALESCE(NEW.istanza_utility_id::text, 'NULL'),
+                      'billing_account', NEW.billing_account_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;

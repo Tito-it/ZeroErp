@@ -44,10 +44,10 @@ const auth = useAuthStore()
 useReadonlyMode(READONLY_DOMAINS.CONFIG)
 
 const canManagePreset = computed(
-  () => auth.isAdmin || auth.isActionAllowed('ui_preset_manage'),
+  () => auth.isSuperAdmin || auth.isActionAllowed('ui_preset_manage'),
 )
 const canManagePermesso = computed(
-  () => auth.isAdmin || auth.isActionAllowed('ui_permesso_manage'),
+  () => auth.isSuperAdmin || auth.isActionAllowed('ui_permesso_manage'),
 )
 const canAccess = computed(
   () => canManagePreset.value || canManagePermesso.value,

@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # L'ULTIMO LOTTO — 26 codici, 28 funzioni: il registro del debito va a ZERO
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.17
+#   Brief: brief-db-codice-errore-strutturato.md §15.17
 #   Lotti precedenti: 20260805-19 (4), -20 (4), -25 (3), -26 (11)
 #   Sbloccato da: brief-be-rinomina-codici-known-markers.md (BE, chiuso 2026-08-05)
 #

@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: pagina lista reparti con DataTable.
 // Click riga -> apre RepartoProfiloEditor drawer.
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onActivated, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
 import { useTabEvents } from '../../core/composables/useTabEvents'
@@ -26,7 +26,11 @@ const cleanup = onDataChanged(e => {
 })
 onUnmounted(cleanup)
 
-onMounted(() => {
+// ⚠️ `onActivated` e non `onMounted`: la view vive sotto `<KeepAlive :max="10">`
+//    (AppLayout), quindi al rientro `onMounted` non riscatta e a video resterebbe
+//    l'elenco di prima. ⛔ Sostituisce, non si aggiunge: sotto KeepAlive al primo
+//    montaggio scattano ENTRAMBI, quindi tenerli tutti e due farebbe due fetch.
+onActivated(() => {
   store.fetchList()
 })
 

@@ -18,6 +18,8 @@
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_dati_societari_scope_ef | `CREATE INDEX ix_dati_societari_scope_ef ON storico.dati_societari USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_dati_societari | `CREATE UNIQUE INDEX pk_storico_dati_societari ON storico.dati_societari USING btree (id)` |
 
 ## 🚨 Trigger

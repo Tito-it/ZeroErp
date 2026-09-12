@@ -4,7 +4,7 @@
 >
 Approfondimento tabelle:
 >
-[maintenance.job\_definitions](/dbzero/maintenance/job_definitions) *(ipotetico riferimento a definizione job)*
+`maintenance.job_definitions` *(riferimento ipotetico: la tabella non esiste)*
 >
 Approfondimento funzioni/procedure:
 >
@@ -47,6 +47,32 @@ correlato via `run_uuid`).
   * `COMMAND` — lancio manuale di un command.
 * **`meta`** (`jsonb` NOT NULL, default `'{}'`): riepilogo **generico** del run (es. conteggi
   per esito). **Mai** dettaglio di dominio (resta nei domini, correlato via `run_uuid`).
+
+### ⭐ Rev 2026-09-04 — chi è che sta girando
+
+Il giornale registrava da sempre **che** qualcosa era girato. Non registrava
+**chi**: un run era una riga senza autore, e in un sistema multi-azienda questa
+è una domanda che prima o poi qualcuno fa.
+
+| colonna | Che cosa dice |
+| --- | --- |
+| `processo_codice` | quale processo di [dbops.processi](/dbzero/dbops/manual/processi) sta girando (**hard FK**: un codice inventato viene respinto) |
+| `auth_user_id` | l'utente tecnico con cui gira, quando ne ha uno |
+
+⚠️ **`auth_user_id` non è l'operatore per-item della coda.** Quello sta già in
+`coda_lavori.scope`, ed è un'altra cosa: qui c'è l'identità del **processo**,
+là c'è la persona che ha chiesto un singolo lavoro.
+
+⭐ **I dodici job notturni si sono dichiarati senza toccare lo scheduler.** Il
+codice del processo non viene passato come parametro: si **deriva dal nome del
+job**, perché per convenzione le due stringhe coincidono. Chi vuole essere
+esplicito passa comunque il parametro, che vince.
+
+⇒ Il presidio [dbops.vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore)
+conta chi non si è ancora dichiarato — guardando l'**ultima** corsa, non lo
+storico: le righe vecchie hanno l'autore vuoto per sempre e non sono sanabili.
+
+---
 
 ### Percorsi di scrittura
 

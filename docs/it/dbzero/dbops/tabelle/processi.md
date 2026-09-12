@@ -1,0 +1,57 @@
+{% include-markdown "it/dbzero/dbops/manual/processi.md" %}
+# 📚 Tabella `processi`
+
+> 📝 **Descrizione**
+>
+> Registro di CATALOGO dei processi automatici: quali esistono, di che classe e su quale canale. Il codice e' l'attore di un run (maintenance.job_run_log.processo_codice, hard FK). La classe e' una dichiarazione di chi progetta il processo, verificata dal DB in una direzione sola (DOMINIO senza percorso verso un emittente -&gt; dbops.vw_processi_dominio_senza_emittente). Il legame processo -&gt; utente tecnico e' dati di macchina e sta in dbops.processi_identita. Brief: brief-db-processi-automatici-identita-e-perimetro §2.2.
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | integer | NO |  |
+| codice | text | NO |  |
+| descrizione | text | NO |  |
+| classe | text | NO |  |
+| canale | text | NO |  |
+| attivo | boolean | NO | true |
+| obsoleto_dal | date | YES |  |
+| meta | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+| tx_id | uuid | YES |  |
+| jobname_pgagent | text | YES |  |
+| tolleranza_minuti | integer | YES |  |
+| segno_di_vita | text | NO | 'GIORNALE'::text |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_processi_canale |  |
+| CHECK | chk_processi_classe |  |
+| CHECK | chk_processi_contratto_solo_command |  |
+| CHECK | chk_processi_jobname_pgagent_non_vuoto |  |
+| CHECK | chk_processi_segno_di_vita |  |
+| CHECK | chk_processi_sessione_senza_tolleranza |  |
+| CHECK | chk_processi_tolleranza_positiva |  |
+| PRIMARY KEY | pk_processi | id |
+| UNIQUE | uq_processi_codice | codice |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_processi | `CREATE UNIQUE INDEX pk_processi ON dbops.processi USING btree (id)` |
+| uq_processi_codice | `CREATE UNIQUE INDEX uq_processi_codice ON dbops.processi USING btree (codice)` |
+| uq_processi_jobname_pgagent | `CREATE UNIQUE INDEX uq_processi_jobname_pgagent ON dbops.processi USING btree (jobname_pgagent) WHERE (jobname_pgagent IS NOT NULL)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_processi_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_processi_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_processi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_processi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
+---
+{% include-markdown "signature-core.md" %}

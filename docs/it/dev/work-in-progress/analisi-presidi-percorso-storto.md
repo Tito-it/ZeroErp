@@ -5,7 +5,10 @@
 > **Tipo:** analisi + catalogo di candidati. Non è un piano di cantiere: è
 > l'inventario di una leva che il progetto usa bene su metà del suo perimetro.
 >
-> **Stato:** WIP — inventario misurato il 2026-08-22, candidati da scegliere
+> **Stato:** WIP — inventario misurato il 2026-08-22, **rimisurato il 2026-09-05**
+> (§3-bis). Nessun candidato è stato scritto; due si sono chiusi o quasi **da
+> soli**, uno è peggiorato in silenzio. Le decisioni del §6 sono tutte ancora
+> aperte.
 >
 > **Origine:** discussione con Tid del 2026-08-22, nata da un'altra domanda
 > («l'osservabilità ci fa trovare i bug più in fretta?»). La risposta ha fatto
@@ -152,7 +155,7 @@ uno stato di fallimento deve mostrarlo, o dichiarare perché no» — di nuovo i
 registro delle esenzioni motivate, l'idioma che `test_perimetro_emittente_copertura`
 usa già.
 
-### C4 — Registri scritti e mai letti 🟡
+### C4 — Registri scritti e mai letti ✅ *(CHIUSO il 2026-09-05: `event_log` ha i suoi lettori — §3-bis)*
 
 `vendite.event_log` è scritto da due repository e non ha **nessun** endpoint di
 lettura. Il piano per chiuderlo è in
@@ -174,6 +177,44 @@ Lo elenco per onestà di metodo e per **escluderlo**: costruire un cancello che
 verifica i numeri scritti nei commenti costa più del difetto che previene. Si
 corregge e basta. Un presidio deve nascere da un difetto che **è costato**, non
 da una categoria di difetti possibili.
+
+---
+
+## 3-bis. ⏱️ Rimisurato il 2026-09-05 — e il documento dimostra la propria tesi
+
+> Quattordici giorni dopo. **Nessuno dei presidi candidati è stato scritto.** Le
+> cifre sotto sono rilette dalle stesse sorgenti (git, seed, catalogo), non dal
+> database.
+
+| Candidato | 2026-08-22 | 2026-09-05 | |
+| --- | --- | --- | --- |
+| **C1** stato di fallimento mai scritto | 🔴 | 🔴 **invariato** | nessun presidio, nessuna esenzione |
+| **C2** promessa all'interfaccia | 🔴 | 🔴 **più grande** | `.vue` che consumano `azioneUi`: **ancora 0**. Ma i codici a catalogo sono passati da 658 a **846**, gli override da 177 a **182**, `highlight_form_fields` da 126 a **131** |
+| **C3** liste che non sanno dire perché | 🟡 | 🟢 **quasi chiuso, da solo** | da **2 liste su 47** a **15 su 66** (6 con la lettura stretta «errore / stato di esecuzione», 15 includendo `motivo`): `dash_competenza_errori`, `fatture_stampa_coda`, `lotto_task_runs`, `dash_aperto_documenti`… |
+| **C4** registri scritti e mai letti | 🟡 | ✅ **CHIUSO** | `vendite.event_log` ha lettori: `script.vw_giornale_entita` più i due endpoint del giornale (fattura e lotto), consegnati col Passo A dell'osservabilità |
+| **C5** numero a mano | ⛔ escluso | ⛔ e **invecchiato di più** | il commento dice ancora **176**, le voci sono **182**: lo scarto è passato da 1 a 6 |
+
+### ⭐ Che cosa dice questa tabella, ed è il punto del documento
+
+**C3 e C4 sono migliorati senza che nessuno li presidiasse** — li ha sistemati il
+lavoro ordinario, perché stavano sul percorso di qualcosa che qualcuno voleva
+(le dashboard, il giornale del lotto).
+
+**C2 è l'unico che è peggiorato**, ed è l'unico che nessun lavoro attraversa: la
+`ui_action` si continua a produrre — 188 codici nuovi in due settimane, override
+compresi — e continua a non consumarla nessuno. ⭐ *Un filo staccato non si
+riattacca da solo, e ogni settimana che passa ne aggiunge del cavo.*
+
+E **C5 fa la sua parte**: il numero scritto a mano è invecchiato di altre cinque
+voci, esattamente come previsto. ⇒ Resta escluso, e si corregge quando si tocca
+il file.
+
+### ⚠️ L'inventario del §2 è cresciuto: sette presidi, oggi **dieci**
+
+Nuovi in `apps/core/tests/` dal 2026-08-22: `test_event_codes_declared_guardrail`,
+`test_naming_codice_interno_python`, `test_ordinamento_data_desc`.
+⚠️ Guardano tutti e tre il **percorso felice**, come i sette di prima:
+l'osservazione del §2 regge invariata.
 
 ---
 
@@ -237,7 +278,7 @@ Sono documentati, tutti e tre, da cose successe qui.
 | Documento | Rapporto |
 | --- | --- |
 | [analisi-osservabilita-log.md](analisi-osservabilita-log.md) | **La leva opposta** (§1). Là: capire in fretta un caso rotto. Qui: evitare che esca. Il suo «binario parallelo» sulle liste è il candidato **C3** di questo documento |
-| [fatturazione-roadmap.md](fatturazione-roadmap.md) | Da lì viene la frase del §5 punto 2 («un controllo che protegge per caso non è un presidio»). La roadmap resta il documento di dominio |
+| [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md) | Da lì viene la frase del §5 punto 2 («un controllo che protegge per caso non è un presidio»). La roadmap resta il documento di dominio |
 | [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) | Cita due presidi esistenti come precedenti per un check CI: stessa tecnica, altro scopo |
 | [api.md](../api.md) | La convenzione dei codici errore e dell'envelope — il terreno su cui si misura **C2** |
 

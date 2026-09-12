@@ -42,6 +42,7 @@ import {
   formatQtaMerce as qta,
   sintesiSituazioneMerce,
 } from './situazioneMerceSintesi'
+import { MANAGE_ICONS } from '../../../core/constants'
 
 const props = defineProps({
   sezioni: { type: Object, required: true },
@@ -197,7 +198,7 @@ function etichettaSeverity(riga) {
               v-if="data.sospetto_duplicato_ordine"
               severity="warn"
               class="app-merce-badge"
-              icon="pi pi-exclamation-triangle"
+              :icon="MANAGE_ICONS.ERRORE"
               :value="t('vendite.situazione_merce.sospetta')"
               v-tooltip.bottom="t('vendite.situazione_merce.sospetta_hint')"
             />

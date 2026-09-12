@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La competenza legge l'esito dalla sua casa nuova.
+#   La casa: changeSet 20260907-12. Chi la scrive: 20260907-13.
+#   Brief: brief-db-esito-gruppo-lotto 15.
+#
+# -- CHE COSA CAMBIA ------------------------------------------------
+#   Le cinque colonne mostrate sono le stesse e si chiamano allo stesso modo:
+#   per il frontend e per la lista non cambia niente. Cambia da dove arrivano.
+#   Prima venivano dalle colonne del PERIMETRO: sui giri che un perimetro non
+#   lo dichiarano non esistevano, quindi un documento fallito in un giro di
+#   massa restava senza segno. Ora la riga dell'esito c'e' comunque.
+#
+# -- E UNA CONDIZIONE IN MENO ---------------------------------------
+#   Spariva il filtro «stato non nullo»: sulla casa nuova lo stato e'
+#   obbligatorio, perche' la riga nasce quando qualcuno ha qualcosa da dire.
+#   Il non-detto si rappresenta con l'assenza della riga, non con un valore.
+#
+# -- `security_invoker` SI RIMETTE A MANO ---------------------------
+#   Un CREATE OR REPLACE VIEW lo azzera, e questa vista lo ha acceso. Il corpo
+#   qui sotto e' quello VIVO, ripreso dal database, con il solo blocco
+#   dell'ultimo tentativo riscritto.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260907-14-update-vw-dash-competenza-gruppi-casa-nuova-mctit.yaml
+
+  - changeSet:
+      id: 20260907-14-update-vw-dash-competenza-gruppi-casa-nuova
+      author: mctit
+      failOnError: true
+      comment: >
+        vw_dash_competenza_gruppi legge l'ultimo tentativo da
+        vendite.fatturazione_lotti_esiti invece che dalle colonne del perimetro.
+        Stesse colonne, stessi nomi: cambia solo la provenienza, e i giri di
+        massa smettono di restare senza segno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+            - viewExists:
+                { schemaName: vendite, viewName: vw_dash_competenza_gruppi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+                  WITH (security_invoker = true)
+              AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), 0::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(a.tipo_movimento::text = 'ONERE'::text) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min(a.registro_codice::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  cardinality(g.registri_ids)::smallint AS registri_n,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON s.area IS NOT NULL
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ba_riga.id = g.billing_account_id
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id)
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON sr_fatt.id = ba_fatt.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti sog ON sog.id = sr_fatt.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = g.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   -- ⭐ L'ULTIMO TENTATIVO, letto dalla casa dell'esito.
+                   --   Rev 2026-09-07: prima si leggeva dalle colonne del PERIMETRO, che sui
+                   --   giri senza perimetro non esistevano — quindi un documento fallito in
+                   --   un giro di massa restava senza segno. Ora la riga c'e' comunque.
+                   -- ⭐ Ed e' sparito il filtro «stato non nullo»: sulla casa nuova lo stato
+                   --   e' obbligatorio, perche' la riga nasce quando qualcuno ha qualcosa da
+                   --   dire. Il non-detto e' l'assenza della riga, non un valore.
+                   -- ⚠️ Il legame resta (documento, mese di competenza): senza il mese, il
+                   --   documento di settembre erediterebbe l'errore di agosto.
+                   -- ⚠️ L'ordinamento e' esplicito e con un secondo criterio: un LIMIT senza
+                   --   ORDER BY scommette.
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          l.codice AS lotto_codice
+                         FROM vendite.fatturazione_lotti_esiti le
+                           JOIN vendite.fatturazione_lotti l ON l.id = le.lotto_id
+                        WHERE le.gruppo_key = g.gruppo_key AND l.competenza_mese = g.competenza_mese
+                        ORDER BY (COALESCE(le.errore_quando, le.data_update)) DESC, le.id DESC
+                       LIMIT 1) esito ON true;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                  'I documenti da emettere di una competenza, un gruppo per riga, con '
+                  'l''esito dell''ULTIMO tentativo di fatturazione (ultimo_esito, '
+                  'ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, '
+                  'ultimo_lotto_codice). Rev 2026-09-07: l''esito si legge da '
+                  'vendite.fatturazione_lotti_esiti e non piu'' dalle colonne del '
+                  'perimetro — quelle non esistevano sui giri che un perimetro non lo '
+                  'dichiarano, quindi un documento fallito in un giro di massa restava '
+                  'senza segno. Il segno NON spegne stadio ne'' commessa_emittibile '
+                  '(decisione di Tid): dice che un tentativo e'' fallito, non che il '
+                  'documento non si possa fatturare. Il legame e'' (documento, mese di '
+                  'competenza): senza il mese, il documento di settembre erediterebbe '
+                  'l''errore di agosto. Brief: brief-db-esito-gruppo-lotto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback non ricostruisce la versione precedente: quella
+              -- leggeva colonne che il 20260907-16 toglie. Si rilancia il
+              -- 20260906-12 dopo aver ripristinato le colonne.
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi;

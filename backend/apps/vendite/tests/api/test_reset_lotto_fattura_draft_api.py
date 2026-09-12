@@ -17,7 +17,7 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client, SimpleTestCase, override_settings
+from django.test import Client, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 

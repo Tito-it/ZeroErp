@@ -2,41 +2,69 @@
 # ⚙️ Funzione `fn_run_and_log`
 
 ```sql
-CREATE FUNCTION fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint)
+CREATE FUNCTION fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint, p_processo_codice text, p_auth_user_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint DEFAULT NULL::bigint, p_processo_codice text DEFAULT NULL::text, p_auth_user_id integer DEFAULT NULL::integer)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
   DECLARE
-    v_id         bigint;
-    v_rows       bigint := 0;
+    v_id         maintenance.job_run_log.id%TYPE;
+    v_rows       maintenance.job_run_log.rows_affected%TYPE := 0;
     v_locked     boolean := false;
+    -- Attore risolto: passato dal chiamante, oppure derivato dal
+    -- jobname (vedi intestazione: qui la derivazione e' completa).
+    v_processo   maintenance.job_run_log.processo_codice%TYPE;
+
+    -- ⭐ Le coordinate della corsa, per poterla riscrivere FUORI
+    --   dalla transazione quando questa verra' annullata.
+    v_run_uuid   maintenance.job_run_log.run_uuid%TYPE;
+    v_started_at maintenance.job_run_log.started_at%TYPE;
+    v_origine    maintenance.job_run_log.origine%TYPE;
 
     -- diagnosi errori
-    v_errmsg     text;
+    v_errmsg     maintenance.job_run_log.message%TYPE;
     v_errdetail  text;
     v_errhint    text;
     v_errcontext text;
-    v_sqlstate   text;
+    v_sqlstate   maintenance.job_run_log.error_code%TYPE;
   BEGIN
+    -- Sotto-select scalare, non SELECT INTO: senza righe ritorna
+    -- NULL senza azzerare nulla di gia' calcolato.
+    v_processo := COALESCE(
+        p_processo_codice,
+        (SELECT pr.codice
+           FROM dbops.processi pr
+          WHERE pr.codice = p_jobname)
+    );
+
     -- lock opzionale per evitare overlap
+    -- ⚠️ Forma a UN argomento, invariata di proposito: e' uno
+    --   spazio di lock distinto da quello di
+    --   script.fn_job_run_start, e i due canali restano
+    --   indipendenti (vedi intestazione).
     IF p_lock_key IS NOT NULL THEN
       v_locked := pg_try_advisory_lock(p_lock_key);
       IF NOT v_locked THEN
-        INSERT INTO maintenance.job_run_log(jobname, stepname, ok, message)
-        VALUES (p_jobname, p_stepname, TRUE, 'skip: another run in progress');
+        -- L'attore va scritto anche sulla riga di skip: senza,
+        -- ogni sovrapposizione lascerebbe un run senza attore.
+        INSERT INTO maintenance.job_run_log
+            (jobname, stepname, ok, message, processo_codice, auth_user_id)
+        VALUES (p_jobname, p_stepname, TRUE, 'skip: another run in progress',
+                v_processo, p_auth_user_id);
         RETURN;
       END IF;
     END IF;
 
-    INSERT INTO maintenance.job_run_log(jobname, stepname)
-    VALUES (p_jobname, p_stepname)
-    RETURNING id INTO v_id;
+    INSERT INTO maintenance.job_run_log
+        (jobname, stepname, processo_codice, auth_user_id)
+    VALUES (p_jobname, p_stepname, v_processo, p_auth_user_id)
+    RETURNING id, run_uuid, started_at, origine
+         INTO v_id, v_run_uuid, v_started_at, v_origine;
 
     BEGIN
       EXECUTE p_sql;
@@ -62,6 +90,11 @@ AS $function$
         v_errcontext = PG_EXCEPTION_CONTEXT,
         v_sqlstate   = RETURNED_SQLSTATE;
 
+      -- ⚠️ Questa UPDATE muore col RAISE qui sotto, e resta
+      --   comunque: copre il caso in cui qualcuno chiami
+      --   fn_run_and_log dentro un blocco che cattura l'eccezione
+      --   senza propagarla. La' la transazione sopravvive, e
+      --   questa e' la riga giusta.
       UPDATE maintenance.job_run_log
         SET ended_at     = clock_timestamp(),
             ok           = FALSE,
@@ -72,14 +105,43 @@ AS $function$
                             CASE WHEN v_errcontext IS NOT NULL THEN E'\nCONTEXT: '||v_errcontext ELSE '' END
       WHERE id = v_id;
 
+      -- ⭐ E QUESTA E' LA RIGA CHE SOPRAVVIVE. Va su una
+      --   connessione separata, dove il rollback del RAISE non
+      --   arriva. ⛔ Senza, il verbale del fallimento veniva
+      --   scritto e distrutto nello stesso istante — ed e' il
+      --   motivo per cui in questo giornale non e' mai esistita
+      --   una riga rossa.
+      -- ⚠️ Non solleva mai: se il canale non c'e' emette un
+      --   WARNING e si torna al comportamento di prima. Non si fa
+      --   fallire due volte un lavoro gia' fallito.
+      PERFORM maintenance.fn_job_run_log_failure(
+          p_jobname         => p_jobname,
+          p_stepname        => p_stepname,
+          p_started_at      => v_started_at,
+          p_run_uuid        => v_run_uuid,
+          p_origine         => v_origine,
+          p_processo_codice => v_processo,
+          p_auth_user_id    => p_auth_user_id,
+          p_message         => v_errmsg,
+          p_error_code      => v_sqlstate,
+          p_error_detail    => coalesce(v_errdetail,'') ||
+                            CASE WHEN v_errhint IS NOT NULL THEN E'\nHINT: '||v_errhint ELSE '' END ||
+                            CASE WHEN v_errcontext IS NOT NULL THEN E'\nCONTEXT: '||v_errcontext ELSE '' END);
+
       IF v_locked THEN
         PERFORM pg_advisory_unlock(p_lock_key);
       END IF;
 
-      RAISE;  -- lascio propagare (togli se vuoi "ingoiare")
+      -- ⚠️ Si continua a propagare, ed e' voluto: smettere
+      --   farebbe risultare RIUSCITO a chi l'ha chiesto un lavoro
+      --   che non lo e'. Il lavoro si annulla, il verbale no.
+      RAISE;
     END;
   END;
-  $function$
+$function$
+
+COMMENT ON FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint, p_processo_codice text, p_auth_user_id integer)
+IS 'Registra una corsa di job in maintenance.job_run_log ed esegue il lavoro. ⭐ Rev 2026-09-05 (R-12): il verbale di un FALLIMENTO viene scritto anche FUORI transazione, con maintenance.fn_job_run_log_failure, prima del RAISE. ⛔ Prima il gestore d''eccezione scriveva la riga ok=false e poi rilanciava: il RAISE annulla la transazione, quindi anche quella riga — il verbale veniva redatto e distrutto nello stesso istante, e NESSUNO dei dodici job che passano di qui poteva lasciare una riga rossa. Cosi'' apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto agli atti a «done». ⚠️ L''UPDATE in transazione resta e non e'' un doppione: copre il caso in cui il chiamante catturi l''eccezione senza propagarla, dove la transazione sopravvive. Nel caso normale muore e resta solo la riga fuori transazione — o l''una o l''altra, mai due. ⚠️ Il RAISE non si toglie: smettere di propagare farebbe risultare riuscito un lavoro che non lo e''. Il lavoro si annulla, il verbale no. ⚠️ fn_job_run_log_failure non solleva mai: se il canale dblink non c''e'' emette un WARNING e si torna al comportamento precedente.';
 ```
 
 ---

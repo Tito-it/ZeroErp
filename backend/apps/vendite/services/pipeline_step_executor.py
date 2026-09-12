@@ -19,6 +19,14 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
+# Il vocabolario dell'esito di esecuzione dentro un lotto — specchio del CHECK
+# di tabella. Vive con le altre liste chiuse del dominio (`DASH_COMPETENZA_STADI`,
+# `TIPO_GRUPPO_ONERI`, …): una sede sola, e chi scrive e chi legge la usano
+# entrambi. ⛔ Riscrivere le stringhe qui sarebbe la seconda sede.
+from apps.vendite.db.vendite_repository import (
+    STATO_ESECUZIONE_COMPLETED,
+    STATO_ESECUZIONE_ERRORE,
+)
 from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 
@@ -52,14 +60,72 @@ class TaskEsitoParziale:
     meta: dict[str, Any] = field(default_factory=dict)
 
 
-# Scopo: Messaggio per-commessa del pull, con l'id davanti al tipo di errore.
-#        Sede unica: lo stesso testo va sui log di lotto (detail) e nel
-#        `context.errors` del raise all-fail — due copie che divergerebbero.
+# Scopo: Esito di un task RIUSCITO che ha comunque qualcosa da dichiarare nel
+#        diario. Il task_run si chiude in COMPLETATO come sempre: cambia solo
+#        che il `meta` porta i contatori del giro invece di restare muto.
+# ⭐ Serve perche' una promessa va verificata anche quando REGGE. Fino al
+#        2026-09-04 il pull scriveva `totale`/`ok`/`falliti` solo quando
+#        qualcuno falliva: un giro riuscito e un giro che non ha nemmeno
+#        provato producevano lo stesso diario vuoto, cioe' proprio il caso che
+#        il perimetro consegnato (D1+D2) rende possibile — marchio assente,
+#        zero righe, nessun errore. Con i contatori sempre scritti, «ok: 0 su
+#        3» si legge invece di doverlo dedurre.
+# ⚠️ Il `meta` viene FUSO con quello scritto all'avvio del run
+#        (`fn_set_runtime_task_run_esito` fa `meta || v_meta`), quindi non
+#        travolge `rollback`.
+@dataclass(frozen=True)
+class TaskEsitoOk:
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+# Scopo: Messaggio TECNICO per-commessa del pull, con l'id davanti al tipo di
+#        errore. Sede unica del formato: lo stesso testo va nel
+#        `context.dettaglio_tecnico` del log di lotto e nel `context.errors`
+#        del raise all-fail — due copie che divergerebbero.
 #        La normalizzazione dell'eccezione NON e' rifatta qui: e' quella del BB
-#        (`messaggio_eccezione` / `FanOutItemErrore.messaggio`), cosi' detail e
-#        meta del task_run restano la stessa stringa per costruzione.
+#        (`messaggio_eccezione` / `FanOutItemErrore.messaggio`).
+# ⚠️ DAL 2026-09-04 QUESTO NON E' PIU' IL `detail` DEL LOG, e la differenza e'
+#        voluta: `detail` porta il motivo di DOMINIO (`_motivo_dominio`), che e'
+#        cio' che l'operatore legge in `vw_dash_commesse_respinte`; questo resta
+#        la stringa per chi diagnostica. Le due superfici hanno lettori diversi,
+#        e prima erano la stessa cosa solo perche' la seconda non esisteva.
 def _messaggio_pull(commessa_id: Any, messaggio: str) -> str:
     return f"Errore emit commessa_id={commessa_id}: {messaggio}"
+
+
+# Scopo: IL MOTIVO DI DOMINIO, separato dal dump tecnico.
+#        `vendite.vw_dash_commesse_respinte` mostra a video `meta->>'detail'`
+#        di ogni riga respinta, e la promessa di Tid — «ognuna mostra il
+#        problema, per poter cercare di risolvere» — e' vera solo se li' dentro
+#        c'e' *«ROOT source mancante per commessa 34137»* e non un impasto di
+#        eccezione Python, DETAIL, HINT, CONTEXT e stack PL/pgSQL.
+# ⭐ La lettura NON e' fatta a mano: `diagnostica_db` e' la sede unica dei campi
+#        strutturati di un errore DB (`apps/core/services/db_error_fields`), la
+#        stessa che il resto della pipeline usa per il codice.
+# 🔴 L'ORDINE E' `messaggio` PRIMA DI `detail`, ed e' il contrario di quello che
+#        sembra. Misurato sul database vero il 2026-09-04, facendo fallire
+#        davvero il pull sulla commessa 34137:
+#
+#          message_primary -> «Indicare un valore per ROOT source mancante
+#                              per commessa 34137. Dato obbligatorio.»
+#          message_detail  -> «Non e' stato assegnato un valore
+#                              all'informazione richiesta.»
+#
+#        `fn_log_and_raise_error` compone il MESSAGGIO con il dettaglio di
+#        dominio che la funzione madre gli passa, mentre `DETAIL` e `HINT`
+#        portano il testo generico della POLICY dell'errore — identico per ogni
+#        `E_VALORE_MANCANTE` del sistema. Preferire `detail` metteva a video una
+#        frase vera e inutile al posto del motivo.
+# ⛔ La prima stesura lo faceva, e i test erano VERDI: il finto
+#        (`make_db_error(detail=...)`) metteva il motivo in DETAIL, cioe' in un
+#        posto in cui il sistema non lo mette. E' esattamente la trappola che
+#        `apps/core/tests/db_error_fakes` dichiara nel proprio docstring.
+# ⚠️ Il ripiego finale e' il messaggio normalizzato del BB: un errore nato in
+#        Python (non un `DatabaseError`) non ha nessun campo diag, e restare
+#        senza motivo sarebbe peggio di un motivo tecnico.
+def _motivo_dominio(exc: BaseException, *, ripiego: str) -> str:
+    diag = diagnostica_db(exc)
+    return (diag.messaggio or diag.detail or ripiego).strip()
 
 
 # Scopo: Diario per-commessa del pull da commessa — l'unica parte di DOMINIO del
@@ -74,21 +140,60 @@ class _PullCommesseRunLogger(FanOutRunLogger):
     task: str
     lotto_id: int
     stato_doc_fiscale_id: int
+    # ⚠️ Serve a chiedere di CHI e' il fallimento: la conversione commessa →
+    #    documenti vive a database (`script.fn_gruppi_di_commessa_nel_lotto`) e
+    #    non si riscrive qui.
+    repository: Any
 
     # Scopo: Registra sui log di lotto la commessa che non e' passata.
+    # ⭐ `detail` porta il MOTIVO DI DOMINIO e non piu' il dump: e' il campo che
+    #    `vw_dash_commesse_respinte` mostra a video come `dettaglio`, cioe' cio'
+    #    che l'operatore legge per capire su cosa agire. Il dump non si perde —
+    #    va nel `context` sotto `dettaglio_tecnico`, dove serve a chi diagnostica
+    #    e non a chi lavora.
     def item_failed(self, *, item: Any, indice: int, exc: Exception) -> None:
-        messaggio = _messaggio_pull(item, messaggio_eccezione(exc))
-        self.error_logger.log_error(
-            scope="LOTTO",
-            severity="C",
-            code="E_PULL_COMMESSA",
-            message=f"Errore emissione commessa {item}",
-            detail=messaggio,
-            lotto_id=self.lotto_id,
-            stato_doc_fiscale_id=self.stato_doc_fiscale_id,
-            context={"commessa_id": item, "task": self.task},
-            function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
-        )
+        tecnico = _messaggio_pull(item, messaggio_eccezione(exc))
+        motivo = _motivo_dominio(exc, ripiego=tecnico)
+        # ⭐ LA SEGNALAZIONE DICHIARA DI QUALE DOCUMENTO PARLA (§6.1 del brief
+        #    `brief-db-uscita-documento-dal-giro`, 2026-09-08).
+        #
+        # 🔴 IL DIFETTO CHE QUESTA RIGA CHIUDE, misurato sul lotto LTF-0010003:
+        #    la segnalazione nasceva senza proprietario, quindi valeva «e' del
+        #    giro» — e una segnalazione del giro ferma il giro per costruzione.
+        #    Risultato: si poteva togliere il documento rotto dal giro e il lotto
+        #    restava fermo lo stesso, perche' cio' che lo bloccava non era
+        #    attribuito a nessuno. Il verbo c'era e non sbloccava niente.
+        #
+        # ⛔ UNA RIGA PER DOCUMENTO, e non una sola con una chiave scelta fra le
+        #    tante: una commessa puo' alimentarne piu' d'uno. Dichiararne uno
+        #    lascerebbe gli altri a bloccare il lotto **per sempre** — non
+        #    sarebbero togliibili, perche' niente li nomina.
+        #
+        # ⚠️ `[]` E' UNA RISPOSTA e va letta: «questo fallimento non ha un
+        #    proprietario in questo lotto» ⇒ UNA riga senza `gruppo_key`, che
+        #    torna a valere «e' del giro» e ferma il giro. ⛔ Non zero righe: un
+        #    fallimento che non blocca niente e' un fallimento perso.
+        gruppi = self.repository.gruppi_di_commessa_nel_lotto(self.lotto_id, item)
+        for gruppo_key in gruppi or [None]:
+            self.error_logger.log_error(
+                scope="LOTTO",
+                severity="C",
+                code="E_PULL_COMMESSA",
+                message=f"Errore emissione commessa {item}",
+                detail=motivo,
+                lotto_id=self.lotto_id,
+                stato_doc_fiscale_id=self.stato_doc_fiscale_id,
+                context={
+                    "commessa_id": item,
+                    "task": self.task,
+                    "dettaglio_tecnico": tecnico,
+                },
+                function_name=(
+                    "vendite.pipeline_step_executor."
+                    "_handle_pull_attivita_da_commessa_task"
+                ),
+                gruppo_key=gruppo_key,
+            )
 
 
 class PipelineStepExecutor:
@@ -243,8 +348,33 @@ class PipelineStepExecutor:
         )
 
         # Esegue in ordine i task definiti nel JSON processi/rollback.
+        #
+        # ⭐ I TASK DI UNO STEP SONO UNA CATENA, e il rilancio la deve percorrere
+        #    da dove riparte (2026-09-12, LTF-0010973 / lotto 13338). Il resolver
+        #    DB (`fn_resolve_lotto_task_execution_mode`) decide PER TASK guardando
+        #    la sola ultima corsa di quel task: `COMPLETATO → SKIP`. Ma un task
+        #    che oggi viene RIESEGUITO cambia l'input di quelli che lo seguono:
+        #    al primo giro il pull era fallito, `select_attivita`,
+        #    `generate_fatture_righe` e `snapshot_indirizzi` erano girati A
+        #    VUOTO e chiusi COMPLETATO; al rilancio il pull ha ripreso le due
+        #    commesse (`totale 2 · ok 2`) e i tre a valle sono stati SALTATI
+        #    come «gia' fatti» — le attivita' emesse non sono mai diventate
+        #    fatture, e il lotto e' uscito COMPLETATO con zero documenti.
+        # ⇒ REGOLA: a valle di un task eseguito in QUESTO giro nessun task si
+        #    salta. Il `COMPLETATO` di un task a valle vale finche' tutto cio'
+        #    che lo precede e' stato saltato; il primo task eseguito lo rende
+        #    stantio. E' un fatto del giro in corso, che solo l'orchestratore
+        #    conosce: per questo la regola sta qui e non nel resolver, che
+        #    risponde su un task alla volta senza sapere dell'ordine.
+        # ⚠️ Rieseguire i task a valle e' SICURO perche' sono idempotenti per
+        #    costruzione: `fn_select_attivita_fatturabili` prende solo le AF non
+        #    ancora lockate, `generate_fatture_righe` solo le AF non ancora
+        #    fatturate con testate get-or-create, lo snapshot indirizzi salta le
+        #    fatture gia' servite. Un task a valle NON idempotente sarebbe un
+        #    difetto suo, non una ragione per saltarlo.
+        a_valle_di_task_eseguito = False
         for process in processi:
-            self._run_task(
+            eseguito = self._run_task(
                 lotto_id=lotto_id,
                 stato_doc_fiscale_id=stato_doc_fiscale_id,
                 process=process,
@@ -253,7 +383,9 @@ class PipelineStepExecutor:
                 dry_run=dry_run,
                 pipeline_id=pipeline_id,
                 correlation_id=correlation_id,
+                a_valle_di_task_eseguito=a_valle_di_task_eseguito,
             )
+            a_valle_di_task_eseguito = a_valle_di_task_eseguito or eseguito
 
     # Scopo: Verifica le dipendenze d'ordine di `_TASK_ORDER_DEPENDENCIES` sulla
     #        sequenza di task dello step, PRIMA che il primo task scriva.
@@ -303,7 +435,13 @@ class PipelineStepExecutor:
                         log_to_db=True,
                     )
 
-    # Scopo: Gestisce il task di step con logging fase, risoluzione handler via registry e gestione errori applicativi
+    # Scopo: Gestisce il task di step con logging fase, risoluzione handler via registry e gestione errori applicativi.
+    #        Ritorna `True` se il task e' stato ESEGUITO (handler invocato), `False`
+    #        se e' stato saltato o non ha un handler: e' il segnale con cui
+    #        `execute_step` sa che i task a valle non possono piu' essere saltati.
+    # ⚠️ `a_valle_di_task_eseguito`: se vero, uno `SKIP` del resolver NON si onora
+    #        — il `COMPLETATO` che lo motiva e' precedente a un task a monte
+    #        rieseguito in questo giro, quindi e' stantio (vedi `execute_step`).
     def _run_task(
         self,
         lotto_id: int,
@@ -314,7 +452,8 @@ class PipelineStepExecutor:
         dry_run: bool,
         pipeline_id: int | None = None,
         correlation_id: str | None = None,
-    ) -> None:
+        a_valle_di_task_eseguito: bool = False,
+    ) -> bool:
         task = str(process.get("task", "")).strip()
         fase = process.get("fase") or "Esecuzione step"
         params = process.get("params") or {}
@@ -336,7 +475,7 @@ class PipelineStepExecutor:
         )
 
         if task in TASK_SENZA_HANDLER:
-            return
+            return False
 
         handler_code = self.repository.get_task_handler_code(
             task_code=task,
@@ -344,7 +483,7 @@ class PipelineStepExecutor:
         )
 
         if dry_run:
-            return
+            return False
 
         task_handler = self.handler_registry.get(handler_code)
         if task_handler is None:
@@ -385,8 +524,12 @@ class PipelineStepExecutor:
             exec_mode = self.repository.resolve_lotto_task_execution_mode(
                 lotto_id, pipeline_id, stato_doc_fiscale_id, task
             )
-            if exec_mode.execution_mode == "SKIP":
-                return
+            # ⛔ Lo SKIP vale solo se NIENTE a monte e' stato eseguito in questo
+            #    giro: altrimenti il COMPLETATO che lo motiva e' stantio e il
+            #    task si rifa' (nuovo tentativo), come se il resolver avesse
+            #    detto RUN. Regola e motivo in `execute_step`.
+            if exec_mode.execution_mode == "SKIP" and not a_valle_di_task_eseguito:
+                return False
             if exec_mode.execution_mode == "RESET_REQUIRED":
                 self.error_logger.log_error(
                     scope="LOTTO",
@@ -496,8 +639,16 @@ class PipelineStepExecutor:
                     handler_result.error_message,
                     meta=handler_result.meta,
                 )
+            elif isinstance(handler_result, TaskEsitoOk):
+                # Giro riuscito CHE HA QUALCOSA DA DIRE: stesso esito
+                # COMPLETATO di sempre, ma il diario porta i contatori.
+                self.repository.complete_lotto_task_run(
+                    task_run_id, meta=handler_result.meta
+                )
             else:
                 self.repository.complete_lotto_task_run(task_run_id)
+        # Eseguito: da qui in poi, nello step, nessuno SKIP e' piu' onorabile.
+        return True
 
     # Scopo: Tenta di marcare il task run in errore senza mascherare l'eccezione originale.
     # ⚠️ Il codice si legge da DUE sorgenti, e la seconda non e' un di piu':
@@ -1065,10 +1216,11 @@ class PipelineStepExecutor:
     #            rilancio le SALTAVA per sempre, in silenzio. Era il difetto che
     #            questo handler condivideva coi due gemelli prima che loro lo
     #            correggessero.
-    #          - tutte fallite             → solleva `E_PULL_COMMESSA_ALL_FAILED`
-    #            e ferma lo step: proseguire costruirebbe un lotto VUOTO, e li'
-    #            fermarsi e' la cosa giusta (a differenza dei gemelli, dove il DB
-    #            applica D-Q da solo e il caso «tutte rotte» non esiste).
+    #          - tutte fallite             → `TaskEsitoParziale` come sopra, dal
+    #            2026-09-07 (P-5). ⛔ Prima SOLLEVAVA, e il rollback si portava
+    #            via i segni sui documenti caduti: il caso peggiore era l'unico
+    #            senza traccia. A fermare la catena non serve l'eccezione — ci
+    #            pensa il blocco per segnalazioni critiche al giro successivo.
     def _handle_pull_attivita_da_commessa_task(
         self,
         *,
@@ -1079,13 +1231,58 @@ class PipelineStepExecutor:
         context: LottoContext,
         params: dict[str, Any],
         dry_run: bool,
-    ) -> TaskEsitoParziale | None:
+    ) -> TaskEsitoParziale | TaskEsitoOk | None:
         self._validate_task_function_name(
             task=task,
             fn_name=fn_name,
             lotto_id=lotto_id,
             stato_doc_fiscale_id=stato_doc_fiscale_id,
         )
+
+        # ⛔ SENZA L'IDENTITA' DEL GIRO SI FERMA QUI, e non e' difensivo.
+        # L'identita' la consumano DUE cancelli, e per tutti e due il difetto
+        # e' lo stesso: silenzioso.
+        #   - la DISCOVERY (`fn_list_commesse_emittibili`, `20260912-15`): senza
+        #     identita' scarta i PROPRI documenti — al rilancio di un pull
+        #     fallito risultano `TRATTENUTA` dal lotto che sta riprovando — e
+        #     il giro visita zero commesse, chiude `COMPLETATO` e ritira le
+        #     proprie segnalazioni senza aver emesso niente (LTF-0010972,
+        #     2026-09-12, brief `brief-db-rilancio-step-non-rivede-le-proprie-
+        #     commesse`);
+        #   - l'EMIT: firmerebbe NULL, `fn_select_attivita_fatturabili`
+        #     filtrerebbe su un marchio che nessuna riga porta, e il lotto
+        #     nascerebbe VUOTO senza un errore.
+        # In entrambi i casi il risultato e' indistinguibile, a video, da un
+        # mese senza lavoro. Fra un giro che non parte e un giro che non emette
+        # niente in silenzio, il primo e' l'unico recuperabile.
+        # ⚠️ Il guard sta PRIMA della discovery e PRIMA del dry-run — fino al
+        # 2026-09-12 stava dopo entrambi. Con la discovery che legge l'identita'
+        # un guard a valle non fermerebbe niente: la discovery chiamata con NULL
+        # non fallisce, risponde a un'ALTRA domanda («cosa vedrebbe un chiamante
+        # fuori pipeline»), e un dry-run senza identita' conterebbe MENO
+        # commesse del giro vero.
+        # ℹ️ `lock_batch_id` e' NOT NULL sulla tabella: se qui e' None il
+        # contesto non e' stato caricato, che e' un difetto di programma e non
+        # un dato mancante. Codice riusato (`E_PIPELINE_SCOPE_INCOMPLETE`, gia'
+        # a policy DATO_ERRATO) invece di uno nuovo: dice esattamente questo.
+        if not context.lock_batch_id:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_SCOPE_INCOMPLETE",
+                message="Contesto lotto senza identita' del giro.",
+                detail=(
+                    "lock_batch_id assente sul lotto "
+                    f"{lotto_id}: la discovery scarterebbe i propri documenti, "
+                    "il pull non potrebbe firmare le righe e il giro "
+                    "emetterebbe zero fatture senza errore."
+                ),
+                context={"lotto_id": lotto_id, "task": task},
+                function_name=(
+                    "vendite.pipeline_step_executor."
+                    "_handle_pull_attivita_da_commessa_task"
+                ),
+                log_to_db=True,
+            )
+
         commessa_ids = self.commesse_repository.list_commesse_emittibili(
             competenza_mese=context.competenza_mese,
             utility_id=context.utility_id,
@@ -1098,6 +1295,12 @@ class PipelineStepExecutor:
             # uno dei gruppi richiesti (persistito sul lotto, non passato qui
             # dal chiamante — vedi LottoContext.gruppi).
             gruppi=context.gruppi,
+            # ⭐ LA STESSA IDENTITA' CHE RICEVE L'EMIT, qui sotto: UN dato a DUE
+            # funzioni (D1). Con l'identita' la discovery vede i PROPRI
+            # documenti trattenuti come `PRONTA` e visita la commessa; senza,
+            # l'auto-esclusione dell'emit restava corretta e irraggiungibile,
+            # perche' chi l'avrebbe chiamata non arrivava mai a farlo.
+            emit_batch_id=context.lock_batch_id,
         )
         if dry_run:
             # ⚠️ Il ritorno anticipato precede il giro: in dry-run non esiste
@@ -1118,29 +1321,86 @@ class PipelineStepExecutor:
                 # degli altri gruppi passerebbero a EMESSA pur non essendo
                 # state chieste (A2.3 del brief DB).
                 gruppi=context.gruppi,
+                # ⭐ IL PERIMETRO SI CONSEGNA (D1+D2): il pull firma con
+                # l'identita' di QUESTO giro le righe che accetta, e la select
+                # a valle fatturera' solo quelle. Senza questa riga il marchio
+                # resta NULL, `fn_select_attivita_fatturabili` non trova nulla,
+                # e il giro emette zero fatture SENZA errore — il caso che il
+                # presidio `dbops.vw_af_senza_giro` esiste per rendere visibile.
+                emit_batch_id=context.lock_batch_id,
             ),
             run_logger=_PullCommesseRunLogger(
                 error_logger=self.error_logger,
                 task=task,
                 lotto_id=lotto_id,
                 stato_doc_fiscale_id=stato_doc_fiscale_id,
+                repository=self.repository,
             ),
         )
 
-        if not esito.errori:
-            return None
+        # ⭐ L'ESITO SI APPENDE AI DOCUMENTI, e si fa QUI: prima dei rami, non
+        #    dentro ciascuno. Le uscite sono DUE — tutto riuscito e con errori —
+        #    e la marcatura serve in entrambe: scriverla nei rami vorrebbe dire
+        #    scriverla due volte e dimenticarla una.
+        # ⚠️ E il `dry_run` non arriva mai fin qui: esce molto prima con `None`.
+        #
+        # ✅ IL LIMITE DEL 2026-09-06 NON C'E' PIU', e sono cadute due cose
+        #    insieme. Allora le uscite erano TRE e la terza SOLLEVAVA: il
+        #    `transaction.atomic()` che `run_pipeline` tiene attorno al ciclo
+        #    degli step faceva rollback e si portava via i segni appena scritti
+        #    — misurato, non supposto. ⇒ Il ramo che sollevava e' stato tolto
+        #    (P-5), quindi non c'e' piu' niente che annulli questa scrittura.
+        # ⭐ E la casa dell'esito e' cambiata sotto (DB, 2026-09-07): la riga si
+        #    CREA in `vendite.fatturazione_lotti_esiti` invece di aggiornare una
+        #    colonna del perimetro. Percio' la stessa identica chiamata funziona
+        #    anche sui giri di massa, che un perimetro non lo dichiarano: prima
+        #    li' tornava `0` e il documento restava muto.
+        self._marca_esito_gruppi(lotto_id, commessa_ids, esito)
 
-        # Se tutte le commesse falliscono, il task e` fallito.
-        if esito.tutti_falliti:
-            errors = [_messaggio_pull(e.item, e.messaggio) for e in esito.errori]
-            ErrorManager.raise_error(
-                code="E_PULL_COMMESSA_ALL_FAILED",
-                message="Emissione commesse fallita per tutte le commesse.",
-                detail=f"Errori: {esito.falliti}/{esito.totale}",
-                context={"lotto_id": lotto_id, "errors": errors[:5]},
-                function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
-                log_to_db=True,
+        # ⭐ Giro riuscito: il diario porta comunque i contatori. La promessa
+        # del perimetro consegnato dev'essere verificabile anche quando regge —
+        # e «ok: 0 su 3» e' esattamente il segnale che un marchio non arrivato
+        # produrrebbe, che senza contatori resterebbe un COMPLETATO muto.
+        if not esito.errori:
+            return TaskEsitoOk(
+                meta={
+                    "task": task,
+                    "totale": esito.totale,
+                    "ok": esito.ok,
+                    "falliti": esito.falliti,
+                }
             )
+
+        # ⭐ UN RAMO SOLO PER TUTTI I FALLIMENTI (P-5, decisione di Tid
+        #    2026-09-06: «trattiamoli tutti come quando ne capita 2 su 3»).
+        #
+        # 🔴 QUI C'ERA UN `raise E_PULL_COMMESSA_ALL_FAILED` quando fallivano
+        #    TUTTE, e sollevare faceva rollback dell'intero step: si portava via
+        #    anche i segni appena scritti sui documenti caduti. Il caso PEGGIORE
+        #    era l'unico che non lasciava traccia — il paradosso classico:
+        #    funziona quando va male a meta' e tace quando va male del tutto.
+        #    ⚠️ Ed era gia' il difetto diagnosticato due righe sopra
+        #    `TaskEsitoParziale`, un ramo piu' in la'.
+        #
+        # ⭐ La differenza fra i due casi era UN NUMERO, e adesso non c'e' piu'
+        #    nessun ramo: il comportamento del «tutte fallite» non va dimostrato
+        #    a parte, perche' e' lo STESSO CODICE del parziale, che e' in
+        #    esercizio da agosto.
+        #
+        # ⛔ E LA CATENA SI FERMA LO STESSO — questa era la domanda vera, non il
+        #    rollback. Il passo scrive una segnalazione CRITICA per ogni commessa
+        #    caduta *prima* di arrivare qui (`_PullCommesseRunLogger.item_failed`,
+        #    `severity="C"`), quindi al giro successivo `evaluate_lotto_status`
+        #    risponde `blocks_next_step` e `run_pipeline` rifiuta di avanzare con
+        #    `E_PIPELINE_LOTTO_CRITICAL`; il driver esce con `BLOCCATO_CRITICITA`
+        #    e il lotto va in ERRORE. Fermarsi e strappare gli appunti erano due
+        #    cose che faceva lo stesso gesto: adesso si ferma TENENDO.
+        # ⚠️ Il rilancio dello STESSO step resta ammesso: e' la via d'uscita —
+        #    correggo la commessa, rieseguo, il task ritira le sue segnalazioni.
+        #
+        # 📌 `E_PULL_COMMESSA_ALL_FAILED` non lo solleva piu' nessuno: la
+        #    deprecazione a catalogo (`obsoleto_dal`) e' P-6, e tocca al DB.
+        #
         # Rifiuto PARZIALE: il giro e' finito, alcune commesse no.
         # Codice riusato e non sintetico: `E_PULL_COMMESSA` e' gia' il motivo
         # per-commessa scritto qui sopra sui log di lotto — e' il criterio dello
@@ -1162,6 +1422,80 @@ class PipelineStepExecutor:
                 "commesse_fallite": [e.item for e in esito.errori][:5],
             },
         )
+
+    # Scopo: Appende a ogni gruppo del lotto l'esito della sua commessa —
+    #        `ERRORE` col motivo per quelle fallite, `COMPLETED` per le altre.
+    #
+    # ⭐ PERCHE' ANCHE LE RIUSCITE. Senza, un gruppo andato bene resta a `NULL` e
+    #    non si distingue da uno mai lavorato: la colonna direbbe solo dove e'
+    #    andata male, e non si potrebbe MAI dire «il lotto e' a posto».
+    # ⚠️ Il valore di ritorno della funzione si GUARDA: `0` vuol dire che
+    #    l'esito non e' stato appeso a nessun documento — il lotto continuerebbe
+    #    a raccontare un errore su qualcosa che non mostra. Non solleva (sta
+    #    annotando un fallimento gia' avvenuto, e un errore su di se' coprirebbe
+    #    quello vero): lo si scrive nel log, che e' il solo posto in cui quel
+    #    silenzio si vede.
+    # ⛔ Nessun `UPDATE` diretto: quale riga marcare, avendo in mano una commessa
+    #    e non un gruppo, e' l'unica regola non banale del cantiere e sta nella
+    #    funzione DB. Rifarla qui sarebbe la seconda sede.
+    def _marca_esito_gruppi(self, lotto_id: int, commessa_ids, esito) -> None:
+        messaggi = {e.item: _messaggio_pull(e.item, e.messaggio) for e in esito.errori}
+        for commessa_id in commessa_ids:
+            fallita = commessa_id in messaggi
+            # ⛔ LO STATO SI DECIDE UNA VOLTA SOLA. La stessa ternaria era
+            #    scritta DUE volte — qui e nel log poco sotto — e una copia che
+            #    esiste solo per raccontare l'altra e' la forma in cui un
+            #    verbale finisce a dire una cosa diversa da quella accaduta.
+            # ⚠️ E i due valori vengono dallo SPECCHIO del CHECK di tabella
+            #    (`STATI_ESECUZIONE_LOTTO`), non da stringhe scritte a mano:
+            #    un typo qui non fallisce, fa scrivere un esito che il vincolo
+            #    rifiuta — dentro un gestore d'eccezione, cioe' proprio dove
+            #    l'errore vero verrebbe coperto.
+            stato = STATO_ESECUZIONE_ERRORE if fallita else STATO_ESECUZIONE_COMPLETED
+            esito_marcatura = self.repository.segna_esito_gruppo_lotto(
+                lotto_id,
+                stato,
+                commessa_id=commessa_id,
+                errore_codice="E_PULL_COMMESSA" if fallita else None,
+                errore_messaggio=messaggi.get(commessa_id),
+            )
+            # ⭐ LO ZERO DEL MARCATORE AVEVA TRE CAUSE E NE RACCONTAVA UNA, e
+            #    dal changeSet `20260909-20` le distingue. L'avviso vale per due
+            #    di esse, e la terza e' il caso NORMALE del verbo «togli dal
+            #    giro»:
+            #      · tutto a zero        → nessun documento appeso a questa
+            #        commessa: e' il difetto che l'avviso e' nato per dire;
+            #      · `fuori_perimetro>0` → i documenti ci sono ma non sono di
+            #        questo lotto — sospetto, e c'era gia' prima di questo giro;
+            #      · `usciti>0`          → sono stati tolti dal giro, apposta.
+            #
+            # 🔴 SENZA LA DISTINZIONE L'AVVISO DIVENTAVA RUMORE su un caso
+            #    legittimo — e un avviso che suona quando va tutto bene e' un
+            #    avviso che si smette di leggere, cioe' peggio di nessun avviso.
+            #    ⚠️ E' la ragione per cui i tre conteggi sono stati chiesti
+            #    NELLO STESSO giro del filtro, non dopo
+            #    (`brief-db-il-marcatore-scrive-su-un-documento-uscito` §4.1).
+            # ⚠️ I tre si NOMINANO invece di sommare `.values()`: quel dict e'
+            #    un `EsitoMarcaturaGruppi`, e il giorno che guadagna un campo
+            #    che conteggio non e' — una bandiera, un messaggio — `any()` lo
+            #    leggerebbe insieme agli altri e l'avviso cambierebbe
+            #    significato senza che niente fallisca.
+            muto = not (
+                esito_marcatura["marcati"]
+                or esito_marcatura["usciti"]
+                or esito_marcatura["fuori_perimetro"]
+            )
+            if muto or esito_marcatura["fuori_perimetro"]:
+                # ⚠️ `logging.getLogger(__name__)` in linea: e' l'idioma di
+                #    questo modulo, che non tiene un logger di modulo.
+                logging.getLogger(__name__).warning(
+                    "pull_commesse.esito_non_appeso lotto_id=%s commessa_id=%s "
+                    "stato=%s marcati=%s usciti=%s fuori_perimetro=%s — il "
+                    "lotto raccontera' un esito su un documento che non mostra",
+                    lotto_id, commessa_id, stato,
+                    esito_marcatura["marcati"], esito_marcatura["usciti"],
+                    esito_marcatura["fuori_perimetro"],
+                )
 
     # Scopo: Task `snapshot_indirizzi_lotto` (step DRAFT, piano DB satelliti
     #        Fase 2): congela i satelliti di intestazione delle fatture del

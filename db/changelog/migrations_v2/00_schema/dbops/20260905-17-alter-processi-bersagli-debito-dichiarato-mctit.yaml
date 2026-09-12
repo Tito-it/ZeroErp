@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-2 (pezzo 1 di 3) — UN DEBITO SI DICHIARA, NON SI RICONOSCE A OCCHIO.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, DB-2
+#
+# ⛔ LA CONTRADDIZIONE CHE CHIUDE, e il BE l'ha vista giusta. La descrizione di
+# `dbops.vw_processi_dominio_senza_emittente` dice «DEVE restare VUOTA»; il seed
+# di `dbops.processi_bersagli` dice, sulla riga di `config.email_outbox`, «riga
+# ATTESA in quella vista finche' il cantiere email non chiude». Le due frasi non
+# possono essere vere insieme.
+#   ⭐ E la conseguenza non e' formale: **un presidio sempre acceso viene
+#   ignorato**, e il giorno in cui comparira' una riga vera — un processo nuovo
+#   dichiarato di dominio e progettato senza percorso all'emittente — nessuno la
+#   distinguera' dal rumore di fondo.
+#
+# ── ⭐ PERCHE' UNA COLONNA E NON UN ELENCO NELLA VISTA ──────────────
+#   Il precedente citato dal BE, `dbops.vw_processi_che_bypassano`, porta il
+#   proprio debito dentro la vista, in un `ARRAY[...]` di nomi. Li' funziona
+#   perche' i ruoli con `BYPASSRLS` sono una manciata e cambiano quasi mai.
+#   ⚠️ Qui no: i bersagli crescono con i processi, e un elenco dentro una vista
+#   invecchia il giorno dopo — e per aggiornarlo servirebbe un changeSet, cioe'
+#   il contrario di un dato. ⇒ La dichiarazione sta accanto alla riga che
+#   descrive, e si cambia dal CSV come tutto il resto del catalogo.
+#
+# ── ⚠️ UN FLAG CHE RISPONDE A UNA DOMANDA SOLA ─────────────────────
+#   «Questa riga e' attesa?» — e basta. Il PERCHE' sta in `note`, che c'e' gia'.
+#   ⭐ E non e' ambiguo fra i due livelli del presidio, perche' una riga non puo'
+#   stare in entrambi: al livello 1 ci finisce chi NON ha il percorso, al
+#   livello 2 chi ce l'ha ma non ha la difesa. Sono mutuamente esclusivi.
+#
+# ── ⛔ IL DEFAULT E' `false`, ED E' LA PARTE CHE PROTEGGE ───────────
+#   Un bersaglio nuovo nasce NON dichiarato: se finisce in un presidio, e' un
+#   allarme. Dichiararlo e' un gesto che qualcuno deve fare apposta, e che resta
+#   scritto. Il default opposto avrebbe reso il silenzio l'impostazione di
+#   fabbrica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260905-17-alter-processi-bersagli-debito-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20260905-17-alter-processi-bersagli-debito-dichiarato
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.processi_bersagli.debito_dichiarato: dice se una riga che compare in
+        un presidio e' ATTESA. Chiude la contraddizione fra «la vista deve restare
+        vuota» e «questa riga e' attesa nella vista», che non possono essere vere
+        insieme — e che rende il presidio ignorabile.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_bersagli }
+            - not:
+                - columnExists:
+                    schemaName: dbops
+                    tableName: processi_bersagli
+                    columnName: debito_dichiarato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi_bersagli
+                  ADD COLUMN debito_dichiarato boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN dbops.processi_bersagli.debito_dichiarato IS
+                  'Dice se la comparsa di questa riga in un presidio e'' ATTESA. ⛔ Chiude '
+                  'una contraddizione: la descrizione delle viste diceva «DEVE restare '
+                  'vuota» mentre il seed diceva «riga attesa finche'' il cantiere non '
+                  'chiude» — e un presidio sempre acceso viene ignorato, quindi il giorno '
+                  'in cui compare una riga VERA nessuno la distingue dal rumore. '
+                  '⭐ Una colonna e non un elenco dentro la vista: i bersagli crescono coi '
+                  'processi, e un elenco in una vista invecchia il giorno dopo — e si '
+                  'aggiornerebbe con un changeSet invece che col CSV. ⚠️ Il PERCHE'' sta '
+                  'in `note`: questo flag risponde a una domanda sola. ⛔ Il default e'' '
+                  'false, ed e'' la parte che protegge: un bersaglio nuovo nasce NON '
+                  'dichiarato, quindi se finisce in un presidio e'' un allarme. Brief: '
+                  'brief-db-processi-automatici-residui-be, DB-2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.processi_bersagli
+                  DROP COLUMN IF EXISTS debito_dichiarato;

@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ARCHIVIARE UNA RIGA DI CODA SENZA TOCCARNE LO STATO — dbops.coda_lavori
+#   Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9 (voce 1)
+#
+# ── LA DOMANDA ──────────────────────────────────────────────────
+#   Togliere righe dall'elenco delle code SENZA cancellarle ne' annullarle,
+#   perche' i conteggi del pannello Esiti fatturazione devono restare fermi.
+#   `count_coda_stampa_per_stato` e' un GROUP BY sullo stato senza filtro di
+#   visibilita': qualunque cosa tocchi lo stato, o rimuova una riga, sposta i
+#   numeri che l'operatore sta leggendo. Serve una bandiera che legga SOLO la
+#   lista.
+#
+# ── ⛔ IL NOME: NON `disabilitato`, NON `attivo` ────────────────
+#   In `vendite` la stessa idea esiste gia' e si chiama `disabilitato`
+#   (fatturazione_lotti_log, fatture_log, attivita_fatturabili_log). Riusare
+#   quel nome sarebbe la scelta di default, e qui e' quella sbagliata: la'
+#   le righe sono SEGNALI PASSIVI e `disabilitato` significa «ritirato»; qui
+#   le righe sono LAVORO, e `disabilitato` su una riga di coda si legge
+#   «non eseguirlo» — l'opposto di cio' che deve fare. Stesso problema con
+#   `attivo`, che per giunta collide con la famiglia
+#   dbops.trgfn_prevent_deactivate_if_children.
+#   ⚠️ Il nome qui non e' cosmetica: e' l'unica cosa che impedisce al prossimo
+#   che legge la colonna di aggiungerla al WHERE del claim «per coerenza».
+#   Verificato il 2026-09-04: nessuna colonna `archiviat*` esiste nel database.
+#
+# ── ⭐ IL `CHECK`, E PERCHE' NON BASTA IL TRIGGER ───────────────
+#   «Una riga archiviata non e' viva» e' un INVARIANTE DI TABELLA, non una
+#   regola di transizione. Il guard (20260904-04) e' un BEFORE UPDATE: lascia
+#   scoperto l'INSERT, e una riga che NASCE `archiviato = true, stato =
+#   'PENDING'` e' esattamente la riga viva-e-invisibile che il guard esiste per
+#   impedire — nel conteggio del badge e fuori dall'elenco, senza nessun modo
+#   di arrivarci per rimetterla a posto.
+#   ⛔ Oggi nessuno la scrive (fn_accoda_lavoro elenca le colonne e non tocca
+#   la bandiera), e non e' un argomento: zero occorrenze non significa che il
+#   caso non esiste, significa che non c'e' ancora un controesempio.
+#   ⇒ Il CHECK e' la sede dell'invariante, il trigger e' la sede del MESSAGGIO:
+#   sul percorso dell'operatore il BEFORE ROW solleva prima che il CHECK sia
+#   valutato, quindi la persona legge E_CODA_ARCHIVIAZIONE_NON_AMMESSA e non un
+#   23514 nudo.
+#
+# ── ⭐ «NON VIVA», NON «TERMINALE» ──────────────────────────────
+#   Il predicato e' scritto in NEGATIVO — `stato NOT IN ('PENDING','IN_CORSO')`
+#   — e non come elenco dei terminali. «Vivo» ha gia' UNA definizione,
+#   dichiarata sede unica in useQueueCountsPolling.js (STATI_CODA_VIVI), ed e'
+#   la stessa cosa che il badge conta.
+#   ⛔ Le due forme non sono equivalenti nel tempo: in negativo la regola resta
+#   vera se nasce uno stato nuovo; l'elenco dei terminali lo escluderebbe in
+#   silenzio, e il badge non lo conterebbe — riga non archiviabile E non
+#   contata, cioe' un terzo caso che nessuno ha deciso.
+#   ⭐ E rende STRUTTURALE la simmetria con vendite.fatture_stampa_coda
+#   (20260904-02): i due CHECK degli stati NON hanno lo stesso elenco (qui c'e'
+#   ANNULLATO, la' no), ma la regola scritta in negativo e' la stessa parola.
+#
+# ── ⭐ `archiviato_il` E `archiviato_da` SONO DERIVATE ──────────
+#   Le scrive il trigger, non il backend. Se le scrivesse chi archivia
+#   potrebbero mentire — archiviare senza datare, o datare senza archiviare —
+#   e il database non se ne accorgerebbe. Il secondo CHECK impone che le tre
+#   colonne dicano tutte la stessa cosa, anche sull'INSERT.
+#   ⚠️ `data_update` NON e' un sostituto di `archiviato_il`, e sembra esserlo:
+#   e' l'istante dell'ULTIMO update qualunque esso sia. Ma la ragione vera non
+#   e' la coincidenza che oggi regge: e' che `data_update` risponde a «quando e'
+#   stata toccata» e `archiviato_il` a «quando e' stata messa via». Due domande.
+#   ⚠️ E `user_update` non e' un sostituto di `archiviato_da` per la STESSA
+#   ragione, simmetrica: l'argomento contro l'uno vale identico contro l'altro
+#   (decisione di Tid, 2026-09-04 — o entrambe le colonne o nessuna).
+#
+# ── ⚠️ NESSUN INDICE ────────────────────────────────────────────
+#   Le due liste filtrano gia' per stato e per intervallo di date, e
+#   l'archiviazione si somma a quelli. Un indice adesso sarebbe una previsione
+#   sui volumi, non una misura (linee-guida-sql 8.4).
+#
+# Dipendenze: nessuna. Il trigger che le governa arriva col 20260904-04.
+# Verifica: db/pgtap/dbops/test-coda-archiviazione.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260904-01-alter-coda-lavori-archiviazione-mctit.yaml
+
+  - changeSet:
+      id: 20260904-01-alter-coda-lavori-archiviazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.coda_lavori prende `archiviato`, `archiviato_il`, `archiviato_da`: la bandiera che toglie
+        una riga dall''elenco SENZA toccarne lo stato, perche'' i conteggi del pannello Esiti sono un
+        GROUP BY sullo stato senza filtro di visibilita''. ⛔ Il nome non e'' `disabilitato` (che qui si
+        leggerebbe «non eseguirlo») ne'' `attivo` (che collide con la famiglia
+        prevent_deactivate_if_children). ⭐ Il CHECK e'' la sede dell''invariante «una riga archiviata non
+        e'' viva» — il guard del 20260904-04 e'' un BEFORE UPDATE e lascia scoperto l''INSERT; il trigger
+        resta la sede del MESSAGGIO. ⭐ Il predicato e'' scritto in NEGATIVO («non viva») e non come
+        elenco dei terminali: e'' la stessa definizione che conta il badge, e rende strutturale la
+        simmetria con vendite.fatture_stampa_coda, i cui stati terminali sono un elenco diverso.
+        Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: coda_lavori
+            - not:
+                - columnExists:
+                    schemaName: dbops
+                    tableName: coda_lavori
+                    columnName: archiviato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.coda_lavori
+                  ADD COLUMN archiviato    BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN archiviato_il TIMESTAMPTZ,
+                  ADD COLUMN archiviato_da TEXT;
+
+              -- ⭐ L'INVARIANTE, in negativo e non come elenco dei terminali:
+              --    e' la stessa definizione di «vivo» che conta il badge in
+              --    topbar. Scritto cosi' non va aggiornato il giorno che il
+              --    CHECK degli stati cresce, e non puo' divergere dal gemello
+              --    sulla coda stampa (i cui terminali sono un elenco diverso).
+              -- ⛔ Serve ANCHE con il trigger: quello e' un BEFORE UPDATE, e
+              --    una riga che nasce archiviata-e-viva passerebbe da sotto.
+              ALTER TABLE dbops.coda_lavori
+                  ADD CONSTRAINT chk_coda_lavori_archiviato_non_vivo
+                  CHECK (NOT archiviato OR stato NOT IN ('PENDING', 'IN_CORSO'));
+
+              -- ⭐ Le tre colonne dicono la stessa cosa o nessuna: una riga
+              --    «non archiviata, archiviata il 3 settembre» e' un dato
+              --    composito spostato a meta'. Le due derivate le scrive il
+              --    trigger; questo CHECK e' cio' che resta quando la scrittura
+              --    non passa di li' (INSERT, o un UPDATE della sola data).
+              ALTER TABLE dbops.coda_lavori
+                  ADD CONSTRAINT chk_coda_lavori_archiviato_coerente
+                  CHECK ((archiviato_il IS NOT NULL) = archiviato
+                     AND (archiviato_da IS NOT NULL) = archiviato);
+
+              COMMENT ON COLUMN dbops.coda_lavori.archiviato IS
+              'La riga e'' stata MESSA VIA dall''elenco, non spenta. ⭐ Esiste perche'' l''operatore deve poter ripulire la lista delle code senza spostare i numeri che sta leggendo: i conteggi del pannello Esiti fatturazione sono un GROUP BY sullo stato SENZA filtro di visibilita'', quindi una cancellazione li fa calare e un annullamento sposta la ripartizione. ⛔ UN SOLO LETTORE: la lista. Se la leggessero anche claim, drainer o reaper, archiviare diventerebbe un annullamento silenzioso — cioe'' peggio della cancellazione che questa colonna esiste per evitare. ⛔ Non si chiama `disabilitato` (il nome della stessa idea su fatture_log e fatturazione_lotti_log): la'' le righe sono segnali passivi, qui sono LAVORO, e «disabilitato» su una riga di coda si legge «non eseguirlo». ⚠️ Solo una riga NON VIVA si archivia (chk_coda_lavori_archiviato_non_vivo + trg_coda_lavori_a10_archiviazione_upd): archiviarne una viva la lascerebbe nel conteggio del badge e fuori dall''elenco, senza nessun modo di arrivarci. E una riga che TORNA viva (requeue) riabbassa la bandiera da sola. Piano: brief-db-archiviazione-righe-code.';
+
+              COMMENT ON COLUMN dbops.coda_lavori.archiviato_il IS
+              'Quando la riga e'' stata messa via. ⭐ DERIVATA: la scrive dbops.trgfn_coda_archiviazione, non chi archivia — una colonna scritta a mano potrebbe dire una cosa che `archiviato` smentisce, e nessuno se ne accorgerebbe. ⛔ `data_update` non e'' un sostituto e sembra esserlo: oggi sulle righe terminali non scrive piu'' nessuno, quindi coinciderebbe, ma e'' una coincidenza che regge finche'' nessuno tocca il drainer. La ragione vera non e'' la coincidenza: `data_update` risponde a «quando e'' stata toccata», questa a «quando e'' stata messa via», e sono due domande. ⚠️ Torna NULL quando la bandiera si abbassa: chi alza la bandiera la abbassa, e la data viene dietro. Piano: brief-db-archiviazione-righe-code.';
+
+              COMMENT ON COLUMN dbops.coda_lavori.archiviato_da IS
+              'Chi ha messo via la riga: la GUC app.jwt_user (l''utente reale del token), con ripiego su CURRENT_USER fuori dal web — la stessa espressione di script.trgfn_audit_data_user_generic. ⭐ DERIVATA come archiviato_il, dallo stesso trigger. ⚠️ Esiste perche'' l''argomento contro `data_update` vale IDENTICO contro `user_update`: entrambe dicono «l''ultima scrittura, qualunque essa sia», e accettare la coincidenza per l''una rifiutandola per l''altra sarebbe la stessa premessa con due conclusioni diverse (decisione di Tid, 2026-09-04). ⚠️ L''archiviazione vale per TUTTI, non per operatore: questa colonna dice CHI, non A CHI — la riga sparisce dall''elenco di chiunque. Piano: brief-db-archiviazione-righe-code.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.coda_lavori
+                  DROP CONSTRAINT IF EXISTS chk_coda_lavori_archiviato_coerente,
+                  DROP CONSTRAINT IF EXISTS chk_coda_lavori_archiviato_non_vivo;
+              ALTER TABLE dbops.coda_lavori
+                  DROP COLUMN IF EXISTS archiviato_da,
+                  DROP COLUMN IF EXISTS archiviato_il,
+                  DROP COLUMN IF EXISTS archiviato;

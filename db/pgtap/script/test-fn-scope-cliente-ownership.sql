@@ -13,13 +13,18 @@
 --   - identita SHOP_CUSTOMER attiva su proprio SR   -> true
 --   - identita CLIENTE_PORTALE su SR di altro cliente -> false (leak)
 --
--- Setup: serve 3 SR cliente distinti per rispettare il vincolo
--- uq_identita_digitali_soggetto_ruolo_attivo (un'identita attiva per
--- SR). Se il DB ha meno di 3 clienti con SR distinti, i test dipendenti
--- sono skippati.
+-- Setup: servono 3 SR cliente distinti per rispettare il vincolo
+-- uq_identita_digitali_soggetto_ruolo_attivo (un'identita attiva per SR).
+-- ⛔ SI COSTRUISCONO, non si cercano (2026-09-12): fino a quel giorno il file
+--   pescava tre clienti «liberi» fra quelli ESISTENTI e, se non li trovava,
+--   SALTAVA i test — su un database ricostruito dai changelog era rosso al
+--   test 1 e saltato in tutto il resto. Tre soggetti persona giuridica con
+--   ruolo CL (`dbops.fn_pgtap_crea_soggetto_pg` + `fn_pgtap_crea_soggetto_ruolo`):
+--   alla funzione sotto test basta il soggetto_ruolo, non serve un BA.
+--   Niente piu' rami `skip`: i tre SR ci sono sempre.
 --
 -- Indice test (1..5):
---    1. Precondizione: 3 clienti con SR distinti
+--    1. Precondizione: 3 clienti con SR distinti (costruiti)
 --    2. Identita inesistente -> false
 --    3. Identita inattiva -> false
 --    4. CLIENTE_PORTALE attiva su proprio SR -> true
@@ -52,24 +57,17 @@ SELECT plan(6);
 -- 1) Precondizione: 3 clienti con SR distinti
 -- =========================================================
 CREATE TEMP TABLE _t_sr AS
-SELECT sr_id,
-       ROW_NUMBER() OVER (ORDER BY sr_id) AS rn
-  FROM (
-      SELECT DISTINCT c.soggetto_ruolo_id AS sr_id
-        FROM anagrafiche.clienti c
-       WHERE c.soggetto_ruolo_id IS NOT NULL
-         AND NOT EXISTS (
-             SELECT 1 FROM anagrafiche.identita_digitali id
-              WHERE id.soggetto_ruolo_id = c.soggetto_ruolo_id
-                AND id.attivo = true
-         )
-       ORDER BY c.soggetto_ruolo_id
-       LIMIT 3
-  ) s;
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(
+           dbops.fn_pgtap_crea_soggetto_pg('Cliente ownership pgTAP ' || g), 'CL'::character varying) AS sr_id,
+       g AS rn
+  FROM generate_series(1, 3) AS g;
 
 SELECT ok(
-    (SELECT count(*) FROM _t_sr) >= 2,
-    '1. Precondizione: almeno 2 clienti con SR distinti senza identita attiva'
+    (SELECT count(*) FROM _t_sr) = 3
+    AND (SELECT count(DISTINCT sr_id) FROM _t_sr) = 3
+    AND NOT EXISTS (SELECT 1 FROM anagrafiche.identita_digitali id
+                     WHERE id.soggetto_ruolo_id IN (SELECT sr_id FROM _t_sr)),
+    '1. Precondizione: 3 clienti con SR distinti, costruiti, senza identita'''
 );
 
 -- =========================================================
@@ -78,7 +76,7 @@ SELECT ok(
 SELECT ok(
     script.fn_scope_cliente_ownership(
         (SELECT COALESCE(MAX(id), 0) + 999999 FROM anagrafiche.identita_digitali),
-        COALESCE((SELECT sr_id FROM _t_sr WHERE rn = 1), 1::bigint)
+        (SELECT sr_id FROM _t_sr WHERE rn = 1)
     ) = false,
     '2. Identita inesistente -> false (fail-closed)'
 );
@@ -113,8 +111,6 @@ DECLARE v_sr bigint; v_au int; v_new bigint;
 BEGIN
     SELECT sr_id INTO v_sr FROM _t_sr WHERE rn = 1;
     SELECT auth_user_id INTO v_au FROM _t_au WHERE idx = 1;
-    IF v_sr IS NULL THEN RETURN; END IF;
-
     INSERT INTO anagrafiche.identita_digitali
         (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
     VALUES (v_sr, v_au, 'CLIENTE_PORTALE', true)
@@ -130,8 +126,6 @@ DECLARE v_sr bigint; v_au int; v_new bigint;
 BEGIN
     SELECT sr_id INTO v_sr FROM _t_sr WHERE rn = 2;
     SELECT auth_user_id INTO v_au FROM _t_au WHERE idx = 2;
-    IF v_sr IS NULL THEN RETURN; END IF;
-
     INSERT INTO anagrafiche.identita_digitali
         (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
     VALUES (v_sr, v_au, 'SHOP_CUSTOMER', true)
@@ -141,17 +135,13 @@ BEGIN
 END
 $$;
 
--- idx 3: CLIENTE_PORTALE inattiva su SR rn=3 (se disponibile, altrimenti
--- skip): serve uno stato "inattiva" senza collidere con altre identita
--- attive sullo stesso SR. Se ci sono solo 2 clienti liberi, skippiamo
--- test 3 (inattiva).
+-- idx 3: CLIENTE_PORTALE inattiva su SR rn=3: serve uno stato "inattiva"
+-- senza collidere con altre identita attive sullo stesso SR.
 DO $$
 DECLARE v_sr bigint; v_au int; v_new bigint;
 BEGIN
     SELECT sr_id INTO v_sr FROM _t_sr WHERE rn = 3;
     SELECT auth_user_id INTO v_au FROM _t_au WHERE idx = 3;
-    IF v_sr IS NULL THEN RETURN; END IF;
-
     INSERT INTO anagrafiche.identita_digitali
         (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
     VALUES (v_sr, v_au, 'CLIENTE_PORTALE', false)
@@ -164,62 +154,46 @@ $$;
 -- =========================================================
 -- 3) Identita inattiva -> false
 -- =========================================================
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_id WHERE idx = 3)
-    THEN ok(
-        script.fn_scope_cliente_ownership(
-            (SELECT identita_id FROM _t_id WHERE idx = 3),
-            (SELECT sr_id FROM _t_sr WHERE rn = 3)
-        ) = false,
-        '3. Identita inattiva -> false (fail-closed)'
-    )
-    ELSE skip('Meno di 3 clienti con SR liberi: test 3 skippato', 1)
-END;
+SELECT ok(
+    script.fn_scope_cliente_ownership(
+        (SELECT identita_id FROM _t_id WHERE idx = 3),
+        (SELECT sr_id FROM _t_sr WHERE rn = 3)
+    ) = false,
+    '3. Identita inattiva -> false (fail-closed)'
+);
 
 -- =========================================================
 -- 4) CLIENTE_PORTALE attiva su proprio SR -> true
 -- =========================================================
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_id WHERE idx = 1)
-    THEN ok(
-        script.fn_scope_cliente_ownership(
-            (SELECT identita_id FROM _t_id WHERE idx = 1),
-            (SELECT sr_id FROM _t_sr WHERE rn = 1)
-        ) = true,
-        '4. CLIENTE_PORTALE attiva su proprio SR -> true'
-    )
-    ELSE skip('Setup cliente rn=1 fallito: test 4 skippato', 1)
-END;
+SELECT ok(
+    script.fn_scope_cliente_ownership(
+        (SELECT identita_id FROM _t_id WHERE idx = 1),
+        (SELECT sr_id FROM _t_sr WHERE rn = 1)
+    ) = true,
+    '4. CLIENTE_PORTALE attiva su proprio SR -> true'
+);
 
 -- =========================================================
 -- 5) SHOP_CUSTOMER attiva su proprio SR -> true
 -- =========================================================
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_id WHERE idx = 2)
-    THEN ok(
-        script.fn_scope_cliente_ownership(
-            (SELECT identita_id FROM _t_id WHERE idx = 2),
-            (SELECT sr_id FROM _t_sr WHERE rn = 2)
-        ) = true,
-        '5. SHOP_CUSTOMER attiva su proprio SR -> true (ruolo CL condiviso)'
-    )
-    ELSE skip('Setup cliente rn=2 fallito: test 5 skippato', 1)
-END;
+SELECT ok(
+    script.fn_scope_cliente_ownership(
+        (SELECT identita_id FROM _t_id WHERE idx = 2),
+        (SELECT sr_id FROM _t_sr WHERE rn = 2)
+    ) = true,
+    '5. SHOP_CUSTOMER attiva su proprio SR -> true (ruolo CL condiviso)'
+);
 
 -- =========================================================
 -- 6) CLIENTE_PORTALE cliente 1 su SR cliente 2 -> false (leak)
 -- =========================================================
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_id WHERE idx = 1)
-     AND EXISTS (SELECT 1 FROM _t_sr WHERE rn = 2)
-    THEN ok(
-        script.fn_scope_cliente_ownership(
-            (SELECT identita_id FROM _t_id WHERE idx = 1),
-            (SELECT sr_id FROM _t_sr WHERE rn = 2)
-        ) = false,
-        '6. Identita cliente rn=1 su SR cliente rn=2 -> false (leak test)'
-    )
-    ELSE skip('Setup incompleto per leak test: test 6 skippato', 1)
-END;
+SELECT ok(
+    script.fn_scope_cliente_ownership(
+        (SELECT identita_id FROM _t_id WHERE idx = 1),
+        (SELECT sr_id FROM _t_sr WHERE rn = 2)
+    ) = false,
+    '6. Identita cliente rn=1 su SR cliente rn=2 -> false (leak test)'
+);
 
 SELECT * FROM finish();
+ROLLBACK;

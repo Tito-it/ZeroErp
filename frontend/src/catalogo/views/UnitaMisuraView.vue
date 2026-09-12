@@ -1,55 +1,68 @@
 <script setup>
-// Scopo: Vista principale gestione unita' di misura.
-//        Drawer UoM + sub-drawer conversioni apribile dalla lista.
-import { ref } from 'vue'
-import { useDrawerState } from '../../core/composables/useDrawerState'
-import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
-import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
-import { useUnitaMisuraStore } from '../stores/unitaMisura'
-import UnitaMisuraSearchTable from '../components/UnitaMisuraSearchTable.vue'
-import UnitaMisuraDrawer from '../components/UnitaMisuraDrawer.vue'
-import UomConversioniDrawer from '../components/UomConversioniDrawer.vue'
+// Scopo: Vista «Unita' di misura» — contenitore dei tre tab che governano
+//        l'impianto delle UdM: le unita', le conversioni fra unita' e le
+//        tipologie che le raggruppano.
+//
+// ⭐ Raggruppate il 2026-09-04 (richiesta di Tid). Erano tre voci di menu
+//    separate: le tre tabelle pero' sono UN soggetto solo — un tipo raggruppa
+//    le unita', una conversione ne lega due — e nessuna si legge da sola. Sul
+//    menu del dominio, inoltre, tre voci su quattro erano impianto delle UdM e
+//    l'articolo — il soggetto vero del catalogo — era una voce fra quattro.
+//    Precedente identico e gia' in servizio: `IndirizziView` (sette tabelle di
+//    configurazione geografica sotto una voce).
+//
+// ⛔ Questa vista NON dichiara il readonly: lo fa ogni scheda, a livello
+//    OGGETTO. Le tre non hanno lo stesso model (`UOM_TIPI` contro
+//    `UNITA_MISURA`), quindi un provider unico d'area qui appiattirebbe una
+//    granularita' che oggi c'e' — sarebbe una regressione del modello permessi
+//    travestita da semplificazione.
+//
+// ⚠️ NIENTE `app-tab-content` sul contenitore <Tabs> (§Pattern Tab-View): come
+//    figlia diretta di `.app-page` quella classe attiva `flex:1; overflow:hidden`
+//    ed e' pensata per il PANNELLO — sul contenitore i TabPanels schiacciano
+//    fuori vista la TabList appena la tabella si popola. Sintomo dipendente dai
+//    DATI: chi vede poche righe non se ne accorge.
+import { useI18n } from 'vue-i18n'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
+import { useTabDaQuery } from '../../core/composables/useTabDaQuery'
+import { UOM_TABS } from '../constants'
+import UnitaMisuraTab from '../components/UnitaMisuraTab.vue'
+import ConversioniUomTab from '../components/ConversioniUomTab.vue'
+import UomTipiTab from '../components/UomTipiTab.vue'
 
-const drawer = useDrawerState()
-const store = useUnitaMisuraStore()
-const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
-useReadonlyMode(READONLY_DOMAINS.CATALOGO, READONLY_MODELS.UNITA_MISURA)
-
-// Sub-drawer conversioni
-const convDrawerVisible = ref(false)
-const convUomId = ref(null)
-const convUomCodice = ref('')
-
-function onManageConversioni(data) {
-  convUomId.value = data.id
-  convUomCodice.value = data.codice || ''
-  convDrawerVisible.value = true
-}
+const { t } = useI18n()
+// La scheda attiva, pilotabile da fuori con `?tab=`: ci arrivano le due rotte
+// di compatibilita' (`/catalogo/conversioni-uom`, `/catalogo/uom-tipi`).
+const activeTab = useTabDaQuery({
+  nomeRotta: 'catalogo-unita-misura',
+  ammessi: UOM_TABS,
+  iniziale: UOM_TABS.UNITA,
+})
 </script>
 
 <template>
   <div class="app-page">
-    <UnitaMisuraSearchTable
-      @new="drawer.openCreate"
-      @row-click="(data) => drawer.editRow(data, 'id')"
-      @manage-conversioni="onManageConversioni"
-    />
-
-    <UnitaMisuraDrawer
-      :visible="drawer.state.visible"
-      @update:visible="v => drawer.state.visible = v"
-      :mode="drawer.state.mode"
-      :uom-id="drawer.state.itemId"
-      @saved="onDrawerSaved"
-      @cancelled="drawer.close"
-    />
-
-    <UomConversioniDrawer
-      :visible="convDrawerVisible"
-      @update:visible="v => convDrawerVisible = v"
-      :uom-id="convUomId"
-      :uom-codice="convUomCodice"
-    />
+    <Tabs v-model:value="activeTab" lazy>
+      <TabList>
+        <Tab :value="UOM_TABS.UNITA">{{ t('catalogo.tab_unita_misura') }}</Tab>
+        <Tab :value="UOM_TABS.CONVERSIONI">{{ t('catalogo.tab_conversioni_uom') }}</Tab>
+        <Tab :value="UOM_TABS.TIPI">{{ t('catalogo.tab_uom_tipi') }}</Tab>
+      </TabList>
+      <TabPanels>
+        <TabPanel :value="UOM_TABS.UNITA">
+          <UnitaMisuraTab />
+        </TabPanel>
+        <TabPanel :value="UOM_TABS.CONVERSIONI">
+          <ConversioniUomTab />
+        </TabPanel>
+        <TabPanel :value="UOM_TABS.TIPI">
+          <UomTipiTab />
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
   </div>
 </template>

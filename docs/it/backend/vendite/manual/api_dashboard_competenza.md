@@ -216,11 +216,16 @@ catalogo `vendite.dash_competenza_residui`. Hard cap 10.000 righe.
 #### `n_residui` / `valore_residui` — la quota che chiede un'azione (2026-08-27)
 
 ⭐ **La card dice DUE cose, e sono due perché hanno rimedi opposti.** Dentro
-`EMESSA_NON_FATTURATA` convivono **quattro** situazioni (dimensione
-`motivo_non_fatturata`, changeSet `20260826-54`): il **RESIDUO** — rimasto senza
-fattura, e nessun giro lo riprende da solo — chiede un'azione («Riporta da
-emettere»); le altre tre (`IN_ATTESA_LOTTO`, `GIRO_IN_CORSO`,
+`EMESSA_NON_FATTURATA` convivono **tre** situazioni (dimensione
+`motivo_non_fatturata`, changeSet `20260826-54`; tre valori dal `20260912-36`
+— il perché sta nel manuale della vista,
+[vw_dash_competenza_attivita](../../../dbzero/vendite/manual/vw_dash_competenza_attivita.md)):
+il **RESIDUO** — rimasto senza fattura, e nessun giro lo riprende da solo —
+chiede un'azione («Riporta da emettere»); le altre due (`GIRO_IN_CORSO`,
 `SENZA_ATTIVITA_FATTURABILE`) sono transito o anomalia, e non chiedono niente.
+⭐ Il patto con le etichette del frontend (`motivo_<codice>`, chiave costruita
+e quindi invisibile a `check_i18n_keys`) è presidiato nei due versi da
+`apps/vendite/tests/db/test_motivo_non_fatturata_locale.py`, su DB provvisto.
 Un numero solo per rimedi opposti **era il difetto**.
 
 - `n_residui` — le attività della cella con `motivo_non_fatturata = 'RESIDUO'`.
@@ -290,7 +295,40 @@ Ogni riga: `gruppo_key`, `tipo_gruppo` (`codice_interno` della sorgente, oppure
 documento, o la commessa per gli oneri), `documento_id`,
 `commessa_id/commessa_codice`, `cliente_display`, `stadio`, `n_attivita`,
 `valore`, `ha_oneri`, `data_attivita_min` / `data_attivita_max`, `registri_n`,
-`registro_codice`, `data_documento_prevista`.
+`registro_codice`, `data_documento_prevista`, `respinta_il`, `respinta_motivo`.
+
+#### ⭐ `respinta_il` / `respinta_motivo` — la bandiera della commessa respinta
+
+Dal **2026-09-04**. Un giro di fatturazione può aver **rifiutato** la commessa a
+cui il gruppo appartiene: il pull la salta, il task chiude in `ERRORE` con
+`E_PULL_COMMESSA`, e il lavoro resta lì. Fino a questa data la riga non lo
+diceva — mostrava lavoro «da emettere» del tutto ordinario — e il motivo viveva
+solo nel log del lotto, a due click da chi deve agire.
+
+- `respinta_il` (ISO 8601, `null` = nessun rifiuto noto): **l'ultimo** rifiuto
+  di quella commessa **in quel mese di competenza**;
+- `respinta_motivo` (`null` se `respinta_il` è `null`): il **motivo di dominio**,
+  per esempio *«ROOT source mancante per commessa 34137»*. Non è un dump
+  tecnico: è ciò che il pull scrive in `meta->>'detail'` sul log di lotto, e la
+  stessa stringa che serve `vendite.vw_dash_commesse_respinte`.
+
+⛔ **Le due colonne NON sono in `vw_dash_competenza_gruppi`**, e non è un
+dettaglio realizzativo che il client possa ignorare: non sono ordinabili né
+filtrabili, e non esistono nell'export della lista. Arrivano da una **seconda
+lettura** su `vendite.vw_dash_commesse_respinte`, ristretta alle commesse della
+**pagina** servita.
+
+ℹ️ Perché così e non con una `LATERAL` nella proiezione, che sarebbe stata la
+forma ovvia: `query_paged_view` materializza la CTE per contare il totale,
+quindi una LATERAL si sarebbe valutata su **tutto il perimetro del mese** e non
+sulla pagina. Misurato il 2026-09-04 su `2026-06` (48 gruppi): **27 ms senza,
+1073 ms con**, e in crescita con lo storico perché la chiave del join esce da un
+`jsonb` che nessun indice copre. Con la seconda lettura la stessa risposta costa
+**0,4 ms**.
+
+⚠️ Il filtro sul **mese** non è ridondante: senza, un rifiuto di agosto
+accenderebbe la bandiera su una riga di settembre — un allarme vero su un lavoro
+che non c'entra.
 
 #### ⭐ `riferimento` è NOT NULL, e `documento_id` esce dalla sua stessa riga
 
@@ -491,7 +529,8 @@ dove dichiara di che natura sono le righe che si stanno leggendo.
 Envelope paginato standard; ogni riga: `tipo_evento`
 (`TASK_ERRORE | FATTURA_CRITICA`), `competenza_mese`, `lotto_id/lotto_codice/
 stato_lotto`, `fattura_id/anno/serie/numero`, `task_code`, `error_code`,
-`messaggio`, `data_evento`. Ordinamento: `data_evento DESC NULLS LAST` di
+`messaggio`, `data_evento`, `commesse_fallite`, `n_commesse_fallite`.
+Ordinamento: `data_evento DESC NULLS LAST` di
 default, oppure la colonna scelta via `order_by` (vedi Input), sempre seguita
 dal tiebreaker deterministico su **chiavi naturali** — `tipo_evento, lotto_id,
 fattura_id, task_code` — perché la union **non ha una PK**.
@@ -501,6 +540,50 @@ a differenza delle altre liste (regola 2026-08-03): non è uno spareggio
 tecnico su una chiave univoca ma una catena di chiavi naturali. Lato FE la
 riga non ha un `id` su cui riconciliare, e `DashboardCompetenzaView` compone
 un `data-key` sintetico dalle stesse quattro colonne.
+
+#### ⭐ `commesse_fallite` / `n_commesse_fallite` — QUALI commesse, non quante volte
+
+Dal **2026-09-04** (changeSet DB `20260904-47`). Il messaggio di un
+`TASK_ERRORE` del pull dice *«1 commesse su 3 in errore»* e rimanda ai log di
+lotto: chi guarda il cruscotto sapeva che qualcosa era stato rifiutato, non
+**su cosa agire**.
+
+```json
+{
+  "tipo_evento": "TASK_ERRORE",
+  "task_code": "pull_attivita_da_commessa",
+  "error_code": "E_PULL_COMMESSA",
+  "n_commesse_fallite": 1,
+  "commesse_fallite": [
+    {
+      "commessa_id": 34137,
+      "commessa_codice": "CMM-PGTAPEF202-2026-000000004",
+      "error_code": "E_PULL_COMMESSA",
+      "messaggio": "Errore emissione commessa 34137",
+      "dettaglio": "ROOT source mancante per commessa 34137"
+    }
+  ]
+}
+```
+
+- `commesse_fallite`: array JSON, **`[]`** (mai `null`) sugli eventi
+  `FATTURA_CRITICA`, che commesse non ne hanno;
+- `n_commesse_fallite`: intero, `0` quando l'array è vuoto.
+
+⛔ **`n_commesse_fallite` NON va sommato al conteggio del calendario.** Il badge
+del mese conta gli **eventi** — «quante volte devo aprire un lotto» — e la lista
+somma già due unità diverse (`TASK_ERRORE` per (lotto × task) e
+`FATTURA_CRITICA` per fattura). Aggiungerne una terza farebbe di «4» la somma di
+task, fatture e commesse: un numero che non risponde a nessuna domanda.
+
+⭐ **La sorgente è il log di lotto, non `task_run.meta`.** Il backend scrive in
+`meta.commesse_fallite` solo le **prime cinque** — è dichiaratamente una traccia
+per il cockpit — mentre il log ha una riga per commessa. Con sei commesse
+respinte, la sesta ci sarebbe comunque.
+
+ℹ️ Il campo `dettaglio` di ogni voce è il **motivo di dominio** che il pull
+scrive sul log, non il dump dell'eccezione. Chi diagnostica trova la stringa
+tecnica in `meta.context.dettaglio_tecnico` della riga di log.
 
 ## Regole
 

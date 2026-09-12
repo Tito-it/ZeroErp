@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Select standard per filtro stato email log (Fase 5).
 // Sostituisce EMAIL_LOG_STATO + buildEmailLogStatoOptions hardcoded.
-// I 4 codici (SENT, PENDING, RETRY, FAILED) sono enum gestiti dal log writer
+// I 5 codici (SENT, PENDING, RETRY, FAILED, SIMULATA) sono enum gestiti dal log writer
 // EmailDispatchService. Single source of truth: BE
 // amm_software_service._EMAIL_LOG_STATI_VALIDI.
 //

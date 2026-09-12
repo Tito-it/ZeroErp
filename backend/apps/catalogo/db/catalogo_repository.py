@@ -13,7 +13,7 @@ from uuid import UUID
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import fetch_con_sonda, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
@@ -382,7 +382,7 @@ class CatalogoRepository:
         escludi_destinazione_tipi: list[str] | None = None,
         solo_oneri: bool = False,
         limit: int,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], bool]:
         safe_limit = max(1, min(int(limit), 50))
         conditions: list[str] = []
         params: list[Any] = []
@@ -447,30 +447,38 @@ class CatalogoRepository:
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    a.id,
-                    a.codice,
-                    a.descrizione,
-                    a.uom_codice,
-                    a.uom_descrizione,
-                    a.is_composito,
-                    a.attivo,
-                    a.iva_id,
-                    a.iva_codice,
-                    a.iva_descrizione,
-                    a.iva_aliquota_iva{extra_cols}
-                FROM catalogo.vw_articoli_dettaglio a
-                {join_clause}
-                {where_clause}
-                ORDER BY a.codice ASC
-                LIMIT %s
-                """,  # noqa: S608 — frammenti da letterali interni, valori parametrizzati
-                params + [safe_limit],
-            )
-            return rows_to_list(cursor)
+        # ⛔ Il TETTO lo conosce solo questo metodo, che clampa: la sonda si
+        #    chiama da qui e non dal service, o il limite finirebbe scritto in
+        #    due sedi che divergono al primo cambio. Il `+1`, il taglio e il
+        #    flag stanno insieme dentro `fetch_con_sonda` — sono una cosa sola.
+        #    Vedi migliorie-generali-BE-FE-da-test-valutazione.md §D6.
+        # ⚠️ La sonda regge perche' i tre JOIN qui sopra sono 1:1 (`art` sulla
+        #    PK, `nv` e `co` su una FK): un JOIN che moltiplicasse le righe le
+        #    farebbe contare due volte, e l'elenco direbbe «troncato» quando e'
+        #    intero. Chi aggiunge un JOIN a questa query deve guardare qui.
+        return fetch_con_sonda(
+            f"""
+            SELECT
+                a.id,
+                a.codice,
+                a.descrizione,
+                a.uom_codice,
+                a.uom_descrizione,
+                a.is_composito,
+                a.attivo,
+                a.iva_id,
+                a.iva_codice,
+                a.iva_descrizione,
+                a.iva_aliquota_iva{extra_cols}
+            FROM catalogo.vw_articoli_dettaglio a
+            {join_clause}
+            {where_clause}
+            ORDER BY a.codice ASC
+            LIMIT %s
+            """,  # noqa: S608 — frammenti da letterali interni, valori parametrizzati
+            params,
+            limite=safe_limit,
+        )
 
     # --- Sezione CRUD uom_tipi ---
 
@@ -805,40 +813,3 @@ class CatalogoRepository:
                 [uom_id],
             )
             return cursor.rowcount > 0
-
-    # Scopo: Restituisce lookup UoM attive per autocomplete e select.
-    def lookup_unita_misura(
-        self,
-        *,
-        search: str | None,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        safe_limit = max(1, min(int(limit), 200))
-        conditions = ["u.attivo = TRUE"]
-        params: list[Any] = []
-
-        _append_ilike_search(
-            conditions=conditions,
-            params=params,
-            left_column="u.codice",
-            right_column="u.descrizione",
-            search=search,
-        )
-
-        where_clause = "WHERE " + " AND ".join(conditions)
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    u.id,
-                    u.codice,
-                    u.descrizione
-                FROM catalogo.unita_misura u
-                {where_clause}
-                ORDER BY u.codice ASC
-                LIMIT %s
-                """,
-                params + [safe_limit],
-            )
-            return rows_to_list(cursor)

@@ -214,7 +214,7 @@ Superuser bypassa completamente il middleware.
 | --- | --- |
 | `config.token_monouso` | Tabella token con hash SHA-256, scadenza, consumo |
 | `config.fn_cleanup_token_scaduti(giorni)` | Job pulizia periodica |
-| `anagrafiche.risorse_umane_auth_user.deve_cambiare_password` | Flag cambio password |
+| `anagrafiche.identita_digitali.deve_cambiare_password` | Flag cambio password (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1)) |
 | `script.fn_get_user_profile()` | Include `deve_cambiare_password` nel JSONB profilo |
 
 ## File Python

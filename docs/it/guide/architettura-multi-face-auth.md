@@ -93,10 +93,11 @@ nell'account.
 
 ## 3. Il nuovo bridge: `identita_digitali`
 
-La tabella [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
-resta valida **come caso particolare** — il bridge del dipendente. Accanto a lei
-nasce `anagrafiche.identita_digitali`, il bridge generico che collega qualunque
-`soggetti_ruoli` a un `auth_user`.
+La ex tabella `anagrafiche.risorse_umane_auth_user` — il bridge del dipendente —
+e' stata assorbita da `anagrafiche.identita_digitali`, il bridge generico che
+collega qualunque `soggetti_ruoli` a un `auth_user`. ⛔ **Dal 12-09-2026 il nome
+vecchio non esiste piu'** (ne' tabella ne' vista: `90_end/20260912-10` e `-26`);
+il bridge del dipendente e' `identita_digitali` con `ruolo_applicativo = 'OPERATORE'`.
 
 ### 3.1 Struttura concettuale
 
@@ -155,12 +156,17 @@ Nel nuovo modello la regola diventa:
 Cosi' un cliente persona giuridica (S.r.l., S.p.A., Ente) puo' avere un account
 sul portale, senza rompere la regola originale.
 
-### 3.3 Rapporto con `risorse_umane_auth_user`
+### 3.3 Rapporto con `risorse_umane_auth_user` — chiuso il 12-09-2026
 
-Durante la migrazione i due bridge convivono. Poi `risorse_umane_auth_user`
-diventa una **vista letta** costruita sopra `identita_digitali` filtrando
-`ruolo_applicativo IN (OPERATORE)`. Cosi' il codice esistente non si accorge
-della differenza, ma la vera sorgente dati e' una sola.
+Durante la migrazione i due bridge sono conviventi; dal cutover (19-04-2026)
+`risorse_umane_auth_user` e' stata una **vista** sopra `identita_digitali`
+filtrata su `OPERATORE`, «cosi' il codice esistente non si accorge della
+differenza». ⛔ Quel «non accorgersi» e' durato cinque mesi con lettori che
+crescevano su tre strati, un filtro che il nome non diceva e quattro `%TYPE`
+fotografati su una proiezione di compatibilita': il 12-09-2026 la vista e'
+stata **ritirata** (`90_end/20260912-26`, decisione Tid «via il nome»), i
+lettori riscritti sulla madre e il guard RU↔identita' scritto a mano.
+Storia e censimento: `docs/it/dev/work-done/analisi-software-per-dati-morti.md` §2.1 e §6.
 
 ---
 
@@ -758,7 +764,7 @@ erDiagram
 | --- | --- | --- |
 | `auth_user` Django (un account per persona) | Ora supporta N identita attive | `identita_digitali` (bridge N:M user/ruolo) |
 | `soggetti`, `soggetti_ruoli` | SR puo' avere N identita attive (1 per ruolo) | ENUM `ruolo_applicativo`, ENUM `canale_origine` |
-| `risorse_umane_auth_user` | Vista compat su `identita_digitali` | — |
+| `risorse_umane_auth_user` | ~~Vista compat su `identita_digitali`~~ **ritirata il 12-09-2026** | `identita_digitali` (`OPERATORE`) |
 | Token monouso, sync is_active, middleware JWT | Sync is_active diventa OR su identita | 3 nuovi GUC (`current_identita_id`, `ruolo_applicativo`, `soggetto_ruolo_id`); JWT claim `identita_id` |
 | `user_emittenti_fiscali` | Caso particolare di `scope_policy` (EF_WHITELIST) | `scope_policy` + `identita_scope_bindings` |
 | `profili_reparto_aree/_azioni` | Sostituite da `profili_accesso_aree/_azioni` (cutover completato 2026-05-04, tabelle legacy droppate) | `profili_accesso_bindings` (tri-way: reparto / ruolo_applicativo / identita) |

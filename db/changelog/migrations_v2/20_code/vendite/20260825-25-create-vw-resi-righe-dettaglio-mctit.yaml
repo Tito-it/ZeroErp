@@ -58,7 +58,7 @@
 #          aggiunte: il join di perimetro e annullo_blocco_codice.
 # Dipendenze: 20260825-22 (fn_check_accredito_annullabile).
 # Verifica: db/pgtap/vendite/test-vw-resi-righe-dettaglio-v1.sql
-# Cantiere: docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §45
+# Cantiere: brief-design-note-credito-resi.md §45
 # ------------------------------------------------------------
 
 databaseChangeLog:

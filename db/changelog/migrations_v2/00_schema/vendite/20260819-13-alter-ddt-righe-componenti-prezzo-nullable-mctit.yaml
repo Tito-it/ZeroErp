@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Il componente di un kit puo' non avere prezzo — ma solo sul DDT.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice C,
 # punto C1 (decisione D-5 = K2, presa da Tid il 2026-08-19).
 #
 # PERCHE'. La merce si muove anche quando non si vende — conto visione,

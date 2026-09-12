@@ -310,56 +310,65 @@ SELECT ok(
 -- commessa del caso 8 (tmp_rc_commessa) con segment_key distinti.
 -- Helper inline: crea preventivo+riga servizio, ritorna id/uid/riga_id.
 -- ============================================================
-CREATE TEMP TABLE tmp_rc_nonemessa AS
-WITH p AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-RC-NONEMESSA', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_residuo_nonemessa'), r.emittente_fiscale_id
-    FROM tmp_rc_refs r RETURNING id, uid),
-rg AS (
-  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
-  SELECT p.id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true FROM p, tmp_rc_refs r
-  RETURNING id)
-SELECT (SELECT id FROM p) AS prev_id, (SELECT uid FROM p) AS prev_uid, (SELECT id FROM rg) AS riga_id;
+-- ⛔ TESTATA E RIGA IN DUE STATEMENT, e non e' uno stile.
+--   Fino al 2026-09-09 questi tre blocchi erano una CTE sola
+--   (`WITH p AS (INSERT INTO preventivi …), rg AS (INSERT INTO
+--   preventivi_righe …)`). Da quando `vendite.preventivi_righe` ha la sua
+--   policy (slice 20260909-27..30) quella forma NON PUO' funzionare: le CTE che
+--   scrivono condividono la stessa snapshot, quindi il preventivo appena
+--   inserito NON e' visibile al ramo che inserisce la riga. La policy della
+--   riga risolve il perimetro passando dalla testata
+--   (`fn_scope_ef_whitelist_via_preventivo`), non la trova, e il `WITH CHECK`
+--   nega — fail-closed, che e' il comportamento giusto.
+--   ⚠️ Il sintomo mente: l'errore parla della RIGA e sembra un problema di
+--   whitelist. E' visibilita' dentro lo statement. ⛔ Non si corregge la policy:
+--   nel percorso applicativo la testata nasce in uno step e le righe in quello
+--   dopo. ⭐ In `LANGUAGE sql` non c'e' modo di concatenare due scritture se non
+--   con una CTE: serve plpgsql con due INSERT e una variabile in mezzo.
+CREATE TEMP TABLE tmp_rc_nonemessa (prev_id bigint, prev_uid uuid, riga_id bigint);
+CREATE TEMP TABLE tmp_rc_bom       (prev_id bigint, prev_uid uuid, riga_id bigint);
+CREATE TEMP TABLE tmp_rc_annull    (prev_id bigint, prev_uid uuid, riga_id bigint);
 
-CREATE TEMP TABLE tmp_rc_bom AS
-WITH p AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-RC-BOM', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_residuo_bom'), r.emittente_fiscale_id
-    FROM tmp_rc_refs r RETURNING id, uid),
-rg AS (
-  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
-  SELECT p.id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true FROM p, tmp_rc_refs r
-  RETURNING id)
-SELECT (SELECT id FROM p) AS prev_id, (SELECT uid FROM p) AS prev_uid, (SELECT id FROM rg) AS riga_id;
+DO $servizio$
+DECLARE
+    r          record;
+    caso       record;
+    v_prev_id  vendite.preventivi.id%TYPE;
+    v_prev_uid vendite.preventivi.uid%TYPE;
+    v_riga_id  vendite.preventivi_righe.id%TYPE;
+BEGIN
+    SELECT * INTO r FROM tmp_rc_refs;
 
-CREATE TEMP TABLE tmp_rc_annull AS
-WITH p AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-RC-ANNULL', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_residuo_annull'), r.emittente_fiscale_id
-    FROM tmp_rc_refs r RETURNING id, uid),
-rg AS (
-  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
-  SELECT p.id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true FROM p, tmp_rc_refs r
-  RETURNING id)
-SELECT (SELECT id FROM p) AS prev_id, (SELECT uid FROM p) AS prev_uid, (SELECT id FROM rg) AS riga_id;
+    FOR caso IN
+        SELECT * FROM (VALUES
+            ('tmp_rc_nonemessa', 'PGTAP-RC-NONEMESSA', 'pgtap_residuo_nonemessa'),
+            ('tmp_rc_bom',       'PGTAP-RC-BOM',       'pgtap_residuo_bom'),
+            ('tmp_rc_annull',    'PGTAP-RC-ANNULL',    'pgtap_residuo_annull')
+        ) AS v(tabella, numero, scope)
+    LOOP
+        -- 1) La testata.
+        INSERT INTO vendite.preventivi (
+            numero, rev, billing_account_id, istanza_utility_id, utility_id,
+            validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+            fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+        VALUES (
+            caso.numero, 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
+            DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+            DATE '2080-01-01', false, false,
+            jsonb_build_object('test_scope', caso.scope), r.emittente_fiscale_id)
+        RETURNING id, uid INTO v_prev_id, v_prev_uid;
+
+        -- 2) La riga: statement SUO, cosi' la policy vede la testata.
+        INSERT INTO vendite.preventivi_righe
+            (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
+        VALUES (v_prev_id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true)
+        RETURNING id INTO v_riga_id;
+
+        EXECUTE format('INSERT INTO %I VALUES ($1, $2, $3)', caso.tabella)
+          USING v_prev_id, v_prev_uid, v_riga_id;
+    END LOOP;
+END
+$servizio$;
 
 -- Attivita NON_EMESSA con segment_key esatto (caso 10)
 INSERT INTO vendite.commesse_attivita (

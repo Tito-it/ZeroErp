@@ -33,13 +33,15 @@ from apps.core.services.system_context import connection_role_bypasses_rls
 
 logger = logging.getLogger(__name__)
 
-# Guard fail-open (RLS Path A): la connessione del percorso richiesta NON deve mai
-# essere un ruolo BYPASSRLS (sarebbe `zeroerp_app` misconfigurato sul ruolo batch, o
-# un misuse del gateway di sistema dentro il web → leak cross-tenant). Verifica UNA
-# volta per processo e memorizza: il ruolo della connessione web è COSTANTE perché il
-# gateway `system_process_context` (l'unico che ripunta il `default` a un ruolo
-# BYPASSRLS) è vietato nel codice web dal check statico
-# `test_system_context_usage_whitelist` — la cache è quindi corretta, non un'ipotesi.
+# Guard fail-open: la connessione del percorso richiesta NON deve mai essere un
+# ruolo BYPASSRLS — sarebbe un `DB_USER` misconfigurato su un ruolo batch, e il
+# risultato sarebbe un leak cross-tenant silenzioso. Verifica UNA volta per
+# processo e memorizza: il ruolo della connessione web è COSTANTE.
+# ⭐ Dal 2026-09-05 la cache è più solida di prima, non meno: il gateway che
+# poteva ripuntare il `default` a un ruolo BYPASSRLS (`system_process_context`)
+# è stato RITIRATO, e `test_system_context_usage_whitelist` presidia che non
+# torni — pretendendo zero occorrenze invece di una whitelist. Quindi non c'è
+# più nessun percorso applicativo che possa cambiare il ruolo sotto la cache.
 # Resta a `False` finché il check non passa: connessione BYPASSRLS → ogni richiesta
 # rifiutata (fail-closed), il deploy si rompe rumorosamente. NB: come il reset GUC,
 # il check agisce sulle connessioni RIUSATE (CONN_MAX_AGE>0, default del progetto);
@@ -177,10 +179,9 @@ class JwtAuditMiddleware(MiddlewareMixin):
             with connection.cursor() as cursor:
                 cursor.execute(JWT_GUC_RESET_SQL)
         except DatabaseError:
-            logger.error(
+            logger.exception(
                 "jwt_audit_middleware.guc_reset_at_start_failed path=%s",
                 request.path,
-                exc_info=True,
             )
             return _json_error(
                 "E_GUC_RESET_FAILED",
@@ -205,10 +206,9 @@ class JwtAuditMiddleware(MiddlewareMixin):
         try:
             bypasses = connection_role_bypasses_rls()
         except DatabaseError:
-            logger.error(
+            logger.exception(
                 "jwt_audit_middleware.bypassrls_check_failed path=%s",
                 request.path,
-                exc_info=True,
             )
             return _json_error(
                 "E_DB_ROLE_UNSAFE",

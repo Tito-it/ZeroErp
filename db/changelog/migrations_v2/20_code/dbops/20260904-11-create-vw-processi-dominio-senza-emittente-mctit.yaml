@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §8 — LIVELLO 1 del
+# presidio: un processo dichiarato DOMINIO che scrive dove non c'e' percorso
+# verso un emittente.
+#
+# ⭐ Perche' e' l'unico modo. Un meccanismo a runtime non puo' far rispettare
+# una distinzione che nei dati NON ESISTE: la RLS non filtra su una colonna che
+# non c'e'. Quel caso si prende PRIMA, confrontando la DICHIARAZIONE con la
+# struttura — e l'omissione di progetto diventa una riga rossa mentre si
+# progetta, non alle tre di notte.
+#
+# ⚠️ Il limite, come lo dichiara il precedente
+# dbops.vw_liste_multi_emittente_non_certificate: prova che la struttura c'e',
+# non che il codice la usi bene. E non prende il verso opposto («dovrebbe
+# essere DOMINIO ma e' dichiarato manutenzione»), che resta un errore umano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-11-create-vw-processi-dominio-senza-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260904-11-create-vw-processi-dominio-senza-emittente
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.vw_processi_dominio_senza_emittente: processi DOMINIO senza
+        bersagli dichiarati, o con bersagli senza percorso all'emittente, o con
+        un percorso dichiarato su tabella/colonna inesistente. DEVE restare
+        vuota.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi }
+            - tableExists:
+                { schemaName: dbops, tableName: processi_bersagli }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Confronta la CLASSE dichiarata con la struttura reale.
+              --   Quattro motivi, e il primo e' quello che si dimentica:
+              --     1. DOMINIO senza NESSUN bersaglio dichiarato;
+              --     2. bersaglio senza percorso all'emittente;
+              --     3. percorso dichiarato su una tabella che non esiste;
+              --     4. percorso dichiarato su una colonna che non esiste.
+              --
+              -- ⛔ pg_catalog, non information_schema: quest'ultimo e'
+              --   filtrato dai privilegi del ruolo connesso, quindi una
+              --   colonna esistente ma non visibile risulterebbe MANCANTE e
+              --   la vista si accenderebbe a caso.
+              --
+              -- I processi ritirati (obsoleto_dal) e disattivati non entrano:
+              --   non girano piu', e terrebbero la vista rossa per sempre.
+              -- =========================================================
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_emittente AS
+              WITH dominio AS (
+                  SELECT p.id, p.codice, p.canale
+                    FROM dbops.processi p
+                   WHERE p.classe = 'DOMINIO'
+                     AND p.attivo
+                     AND p.obsoleto_dal IS NULL
+              )
+              -- 1. Nessun bersaglio dichiarato: il presidio non avrebbe niente
+              --    da guardare, ed e' esattamente il modo in cui passerebbe a
+              --    vuoto (verde per sottrazione).
+              SELECT d.codice                    AS processo_codice,
+                     d.canale,
+                     NULL::text                  AS schema_tabella,
+                     NULL::text                  AS nome_tabella,
+                     NULL::text                  AS emittente_via,
+                     NULL::text                  AS emittente_colonna,
+                     'nessun bersaglio dichiarato'::text AS motivo
+                FROM dominio d
+               WHERE NOT EXISTS (SELECT 1
+                                   FROM dbops.processi_bersagli b
+                                  WHERE b.processo_id = d.id)
+              UNION ALL
+              -- 2..4. Bersagli dichiarati ma non verificabili.
+              SELECT d.codice,
+                     d.canale,
+                     b.schema_tabella,
+                     b.nome_tabella,
+                     b.emittente_via,
+                     b.emittente_colonna,
+                     CASE
+                         WHEN NOT EXISTS (
+                                  SELECT 1
+                                    FROM pg_catalog.pg_class c
+                                    JOIN pg_catalog.pg_namespace n
+                                      ON n.oid = c.relnamespace
+                                   WHERE n.nspname = b.schema_tabella
+                                     AND c.relname = b.nome_tabella
+                                     AND c.relkind IN ('r', 'p'))
+                             THEN 'tabella inesistente'
+                         WHEN b.emittente_via IS NULL
+                             THEN 'percorso verso l''emittente non dichiarato'
+                         ELSE 'colonna del percorso inesistente'
+                     END AS motivo
+                FROM dominio d
+                JOIN dbops.processi_bersagli b
+                  ON b.processo_id = d.id
+               WHERE NOT EXISTS (
+                         SELECT 1
+                           FROM pg_catalog.pg_class c
+                           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                          WHERE n.nspname = b.schema_tabella
+                            AND c.relname = b.nome_tabella
+                            AND c.relkind IN ('r', 'p'))
+                  OR b.emittente_via IS NULL
+                  OR NOT EXISTS (
+                         SELECT 1
+                           FROM pg_catalog.pg_attribute a
+                           JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                          WHERE n.nspname = b.schema_tabella
+                            AND c.relname = b.nome_tabella
+                            AND a.attname = b.emittente_colonna
+                            AND a.attnum > 0
+                            AND NOT a.attisdropped);
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_emittente IS
+                  'LIVELLO 1 del presidio sui processi: processi dichiarati DOMINIO che non possono rispettare un perimetro emittente — nessun bersaglio dichiarato, bersaglio senza percorso, o percorso dichiarato su tabella/colonna inesistente. DEVE restare VUOTA. ⭐ Prende l''omissione di progetto PRIMA che il processo giri: a runtime non e'' recuperabile, perche'' la RLS non puo'' filtrare su una colonna che non esiste. ⚠️ Come dbops.vw_liste_multi_emittente_non_certificate, prova che la struttura c''e'', non che il codice la usi bene; e non prende il verso opposto (dovrebbe essere DOMINIO ma e'' dichiarato manutenzione), che resta un errore umano. Brief: brief-db-processi-automatici-identita-e-perimetro §8.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_dominio_senza_emittente;

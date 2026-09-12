@@ -24,6 +24,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.email_outbox_service import EmailOutboxService
+from apps.core.services.email_service import CANALE_CONSOLE, CANALE_SMTP
 from apps.core.services.service_errors import ServiceError
 
 _REPO = "apps.core.services.email_outbox_service.EmailRepository"
@@ -75,11 +76,37 @@ class PrepareDraftTests(TestCase):
             codice_template="TEST",
             destinatario="dest@test.com",
             variabili={"nome": "Mario"},
+            # ⛔ `ambito` non ha piu' un default (2026-09-05): su quella colonna
+            #    il database decide chi puo' leggere, e un valore di ripiego non
+            #    puo' fare da cancello.
+            ambito="OPERATORE",
+            emittente_fiscale_id=7,
         )
 
         self.assertEqual(result["id"], 10)
         repo.create_outbox.assert_called_once()
         dispatch.resolve_and_render.assert_called_once()
+        # ⭐ L'azienda arriva fino all'INSERT. Senza, la riga non sarebbe di
+        #    nessuno: il CHECK del database la rifiuta, e la policy RLS non
+        #    avrebbe su cosa filtrare.
+        kwargs = repo.create_outbox.call_args.kwargs
+        self.assertEqual(kwargs["ambito"], "OPERATORE")
+        self.assertEqual(kwargs["emittente_fiscale_id"], 7)
+
+    # ⛔ Il contratto: chi crea una bozza DEVE dire di che cosa e'. Il test
+    #    guarda la FIRMA e non una chiamata, perche' e' li' che il default
+    #    tornerebbe — reintrodurlo non romperebbe nessuna chiamata esistente, e
+    #    passerebbe inosservato.
+    def test_ambito_non_ha_un_default(self):
+        import inspect
+
+        firma = inspect.signature(EmailOutboxService.prepare_draft)
+        self.assertIs(
+            firma.parameters["ambito"].default, inspect.Parameter.empty,
+            "`ambito` ha di nuovo un default: «non dichiarato» e «di sistema» "
+            "tornerebbero a essere lo stesso valore, e la policy di lettura "
+            "classificherebbe come segreta ogni bozza a cui manca un campo.",
+        )
 
     # Scopo: Verifica che template non trovato lanci ServiceError.
     @patch(_DISPATCH)
@@ -97,6 +124,7 @@ class PrepareDraftTests(TestCase):
                 codice_template="INESISTENTE",
                 destinatario="dest@test.com",
                 variabili={},
+                ambito="SISTEMA",
             )
 
 
@@ -144,6 +172,11 @@ class ConfirmAndSendTests(TestCase):
         repo.copy_allegati_to_log.return_value = 0
         # send_raw ritorna (log_id, success)
         dispatch.send_raw.return_value = (99, True)
+        # ⚠️ DICHIARATO e non lasciato al mock: dal 2026-09-11 l'esito della
+        #    bozza dipende dal CANALE, e con un `MagicMock` qualunque il
+        #    confronto con `CANALE_CONSOLE` e' falso **per caso** — cioe' questo
+        #    test resterebbe verde anche se il ramo si invertisse.
+        dispatch.canale_invio.return_value = CANALE_SMTP
 
         service = EmailOutboxService()
         service.confirm_and_send(10)
@@ -154,6 +187,30 @@ class ConfirmAndSendTests(TestCase):
         calls = repo.update_outbox_stato.call_args_list
         self.assertEqual(calls[0][0], (10, "READY"))
         self.assertEqual(calls[1][0][1], "SENT")
+
+    # Scopo: ⭐ In console mode la bozza NON e' «inviata».
+    # ⛔ `send_raw` torna `True` anche quando la mail e' stata solo stampata:
+    #    prendere quel booleano per una consegna scriveva `SENT` sull'outbox —
+    #    la stessa bugia dell'`email_log`, una tabella piu' in la', e le due
+    #    righe sono legate da `email_log_id` (brief §7.1).
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_in_console_mode_la_bozza_e_simulata(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        dispatch = MockDispatch.return_value
+        repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
+        repo.resolve_account.return_value = _MOCK_ACCOUNT
+        repo.update_outbox_stato.return_value = True
+        repo.copy_allegati_to_log.return_value = 0
+        dispatch.send_raw.return_value = (99, True)
+        dispatch.canale_invio.return_value = CANALE_CONSOLE
+
+        EmailOutboxService().confirm_and_send(10)
+
+        finale = repo.update_outbox_stato.call_args_list[1]
+        self.assertEqual(finale[0][1], "SIMULATA")
+        # ⛔ E nessuna data di consegna su una consegna che non c'e' stata.
+        self.assertNotIn("inviato_at", finale[1])
 
     # Scopo: Verifica che conferma di bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)

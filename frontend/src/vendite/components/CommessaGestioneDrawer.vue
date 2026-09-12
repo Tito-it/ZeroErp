@@ -40,7 +40,7 @@ import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
-import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
+import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
@@ -73,6 +73,7 @@ import {
   variazionePrezzoAttivita,
 } from '../api/commesse'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
+import { MANAGE_ICONS } from '../../core/constants'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -954,7 +955,7 @@ const drawerActions = computed(() => [
               />
               <i
                 v-if="data.prezzo_da_riallineare"
-                class="pi pi-exclamation-triangle app-dash-ritardo"
+                :class="[MANAGE_ICONS.ERRORE, 'app-dash-ritardo']"
                 v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
               />
             </span>

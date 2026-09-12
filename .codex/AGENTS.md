@@ -222,9 +222,17 @@ Dettaglio e motivazioni: `docs/it/dev/frontend/frontend-standards.md`
 - Codice frontend in `frontend/`
 - **Documento di riferimento obbligatorio**: `docs/it/dev/frontend/frontend-standards.md` — leggere PRIMA di qualsiasi intervento sul frontend
 - **Guida sviluppo frontend**: `docs/it/dev/work-in-progress/frontend/guida-sviluppo-frontend.md` — convenzioni componenti, composable, routing, CSS, pattern operativi
-- Stack: Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Axios
-- Runtime: Node.js 24 LTS (gestito via nvm)
-- Dipendenze: `frontend/package.json`
+- **Stack e versioni — fonte unica di verità: `frontend/package.json`**
+  (versione risolta in `package-lock.json`). Runtime Node: vincolo dichiarato in
+  `engines.node`, gestito via nvm.
+  ⛔ **I numeri non si ricopiano qui.** Fino al 2026-09-09 questa riga diceva
+  «Vite 7, Pinia 3, vue-i18n 10» mentre il lock era a **Vite 8, Pinia 4,
+  vue-i18n 11**: due salti di **major** non registrati, e lo stesso fatto
+  sbagliato in **tre** documenti diversi e in tre modi diversi.
+  ⭐ Vale la regola già in uso per Python (`.python-version`): *un numero scritto
+  in due posti ne ha sempre uno stantio, e quello senza presidio è sempre il
+  documento.*
+- Dipendenze: `frontend/package.json` (non aggiungerne senza conferma dell'utente)
 - Non aggiungere dipendenze npm senza conferma dell'utente
 - Filosofia: **zero logica business nel frontend** — solo presentazione, validazione UX e orchestrazione chiamate API
 - Struttura cartelle allineata ai domini DB (es. `src/vendite/`, `src/anagrafiche/`)
@@ -363,8 +371,11 @@ un database ricostruito da zero non esistono.
 Un seed di macchina si marca `context: dati_macchina`.
 🔴 **Ma provato il 2026-09-02: `--contexts="!provision"` NON lo filtra** — quel
 filtro esclude ciò che è `provision`, non ciò che ha un contesto qualsiasi. Serve
-esplicito, in `ci.yaml` e in produzione: `--contexts="!provision and !dati_macchina"`.
-Finché quella riga non c'è, il contesto è documentazione, non un cancello.
+esplicito: `--contexts="!provision and !dati_macchina"`.
+✅ **In CI c'è dal 2026-09-04** (`ci.yaml`, passata principale; `scripts/ci-local.sh`
+la ricalca): lì il contesto è un cancello. ⚠️ Dove quella riga manca — il comando
+di produzione va scritto così dal provisioning — resta un'etichetta, e un
+changeSet applicato prima della marcatura non si de-applica.
 ⭐ Per i **mirror CSV** c'è una via che non dipende dal contesto: **svuotare il
 file** (sola intestazione). Carica zero righe ovunque e non cancella niente dove
 quelle righe già esistono. Il contesto serve per i seed scritti in **SQL**.
@@ -392,6 +403,26 @@ oggetti che nascono dopo. Il rimedio è **togliere la riga**.
 sbagliata viene copiata — adiacenti e identiche tranne il nome del ruolo.
 ⛔ Se serve un privilegio *in più* del perimetro ampio, si aggiunge al
 provisioning e si rilancia.
+
+### ⛔ Un `REVOKE` a `zeroerp_app` in un changeSet normale NON tiene
+
+Regola estesa: [linee-guida-sql.md §11.8](../docs/it/linee-guida-sql.md).
+
+`90_end/ci_apply/20260205-41-apply-runtime-grants-ci` è `runOnChange` e a ogni
+passata `ci_apply` rifà `GRANT SELECT, INSERT, UPDATE, DELETE` all'app su
+**tutte** le tabelle di 14 schemi, più `EXECUTE` su tutte le funzioni. Un
+`REVOKE` scritto altrove sopravvive su dev fino al prossimo `db-ci-apply` e in
+CI muore **nello stesso build**. Trovato il 2026-08-17 (una colonna) e il
+2026-09-11 (`dbops.audit_log`, `dbops.error_log` — il brief diceva *«è una riga
+di REVOKE»*).
+
+⭐ Una postura **più stretta** si **dichiara nel loop**, negli elenchi in testa
+al blocco (`v_registri_append_only`, `v_fn_riservate`), **e** si applica subito
+con un changeSet `90_end` forward — su dev `ci_apply` non gira da solo. Per una
+singola **colonna** il privilegio non sa esprimere l'eccezione: lì è un trigger.
+⚠️ Sulle funzioni la revoca va `FROM PUBLIC, zeroerp_app`: hanno `=X` per
+default. Si asserisce con `has_*_privilege(ruolo, …)`, mai con
+`role_table_grants`, che è cieco fuori dal ruolo connesso.
 
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 
@@ -500,6 +531,47 @@ parla a **tre** interlocutori, e confonderli e' il difetto piu' facile da non ve
 | `context ->> 'campo'` | il **frontend** — quale campo accendere. Il nome della colonna, mai il valore |
 | `VARIADIC valori` | **l'operatore** — riempie i `%s`, cioe' **compone la frase che una persona legge** |
 
+
+### ⭐ Due funzioni per sollevare, e a scegliere non sei tu
+
+Dal 2026-09-08 i punti che sollevano il **codice del primo motivo** di una
+`script.fn_check_*` non compongono piu' la coda a mano: chiamano
+`script.fn_raise_primo_motivo_se_presente`. La domanda che decide e' **una**, e
+si vede nella riga che stai scrivendo:
+
+> **Il codice che sollevo lo sto LEGGENDO da un array di motivi, o lo sto
+> SCRIVENDO come letterale?**
+
+| Quello che scrivi | Cosa chiami |
+| --- | --- |
+| `'E_QUALCOSA'` — un letterale | `script.fn_log_and_raise_error` |
+| `v_motivi -> 0 ->> 'codice'` | `script.fn_raise_primo_motivo_se_presente` |
+
+⭐ **Sbagliare funzione non compila**: i tipi non legano (`42883` in un verso,
+`22P02` nell'altro). L'unico modo di sbagliare e' **non usarla** — ricopiare la
+coda — e quello e' silenzioso: lo presidia `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql`.
+
+⛔ **L'array non lo costruisci tu.** Se stai scrivendo
+`jsonb_build_array(jsonb_build_object('codice', 'E_X', ...))` per poter usare
+l'helper, stai usando l'attrezzo sbagliato: quel motivo lo conosci gia', e il
+`-> 0` non sceglie niente.
+
+⚠️ **E c'e' un caso in cui l'helper NON si usa anche se hai i motivi**: quando
+la `fn_check_*` **non emette `valori`**. Li' la frase la compone il chiamante
+dai propri dati, e delegare la spezzerebbe — uscirebbero i `%s` grezzi a video.
+Sono **sei** siti — erano tredici fino al 2026-09-09, quando nove check hanno
+imparato a emettere `valori` e sei madri sono passate all'helper. Restano
+dichiarati come debito nel presidio (`test-rubinetto-primo-motivo-v1.sql`,
+test 4), a soglia che **puo' solo calare**.
+
+⭐ **La domanda che viene PRIMA**, quando scrivi un guard nuovo, non e' quale
+funzione chiamare: e' **«questa regola deve anche accendere o spegnere un
+pulsante nel frontend?»**. Se si', il predicato va in una `fn_check_*` e il
+guard la CHIAMA (§12.5.2) — e allora ti ritrovi i motivi in mano. Se no,
+valuti li' e sollevi il codice diretto.
+
+Brief: `docs/it/dev/work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md`.
+
 ⛔ **Nel `VARIADIC` non entra mai il nome di un parametro PL/pgSQL o di una
 colonna.** Un codice registrato con dentro `'p_centro_riscossione_id (obbligatorio,
 > 0)'` passa **tutti** i cancelli — guardrail dei codici, rubinetto degli
@@ -579,13 +651,17 @@ Regola completa, esempi e criterio «riuso o conio un codice?»:
 
 ### ⚠️ Gli smoke: nessuno li lancia, e per un giorno erano rotti in sei
 
-`backend/scripts/tests/smoke-*.py` — undici script che parlano col database di
-sviluppo, ognuno in `transaction.atomic()` + `set_rollback(True)`, quindi
-**eseguibili senza lasciare niente**.
+`backend/scripts/tests/smoke-*.py` — **sedici** script (2026-09-09; erano undici
+il 2026-08-27) che parlano col database di sviluppo, ognuno in
+`transaction.atomic()` + `set_rollback(True)`, quindi **eseguibili senza lasciare
+niente**.
+
+⚠️ **Il numero cresce e il cancello no**, ed e' la parte che conta: ogni script
+nuovo allarga la superficie che nessun automatismo guarda.
 
 ⛔ **Non li raccoglie il runner Django** (stanno fuori da `apps/`, hanno il
 trattino nel nome e il pattern di scoperta e' `test*.py`) e **non li esegue la
-CI**. Il 2026-08-27 sei degli undici erano rossi **da un giorno** senza che
+CI**. Il 2026-08-27 sei degli undici di allora erano rossi **da un giorno** senza che
 nessuno se ne accorgesse: `vendite.attivita_fatturabili.fatturato` era diventata
 `GENERATED` e le fixture continuavano a scriverla. Il difetto veniva da un
 cantiere che quei file non li aveva nemmeno aperti.
@@ -670,7 +746,22 @@ Bonifica in corso: `docs/it/dev/work-done/brief-db-bonifica-pgtap-sorgente-polim
 
 I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un DB reale accessibile**:
 
-- **Usare `unittest.TestCase`** (o `django.test.SimpleTestCase`) per test unitari con mock. **Non** usare `django.test.TestCase` a meno che il test non necessiti realmente del database.
+- **Usare `django.test.SimpleTestCase`** per i test unitari con mock. **Non** usare `django.test.TestCase` a meno che il test non necessiti realmente del database.
+  ⛔ **`unittest.TestCase` e `SimpleTestCase` NON sono equivalenti, e fino al
+  2026-09-11 questa riga le offriva come alternative.** Solo `SimpleTestCase`
+  **impedisce** al codice sotto test di parlare col database
+  (`DatabaseOperationForbidden`); `unittest.TestCase` glielo *permette*
+  soltanto. ⇒ Un mock dimenticato sotto `unittest.TestCase` non fallisce:
+  **parla col DB di sviluppo**, e il test resta verde raccontando una cosa che
+  in CI non succede.
+  ⚠️ Misurato il 2026-09-11 in `backend/apps`: **506** classi non bloccano il
+  database (53 `unittest.TestCase` qualificate + 453 `(TestCase)` nude, tutte
+  da `from unittest import TestCase`) contro **202** `SimpleTestCase`. Il
+  rapporto è di due e mezzo a uno **a favore della forma che non presidia** —
+  il pregresso è un registro del debito, non un modello da imitare.
+  ⭐ `unittest.TestCase` resta legittimo dove il test non tocca Django affatto
+  (una funzione pura, un helper di formattazione): lì `SimpleTestCase` non
+  aggiunge niente. La regola è *scegliere sapendo*, non un divieto.
 - ⚠️ **Quella regola oggi regge una seconda cosa, non dichiarata: leggere prima di infrangerla.**
   Django crea il database di test usa-e-getta **solo se almeno un test dichiara di
   averne bisogno** (`django.test.TestCase`, `TransactionTestCase`, o `databases = [...]`).

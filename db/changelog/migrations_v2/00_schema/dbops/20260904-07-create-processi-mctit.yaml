@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §2.2 — registro dei
+# processi automatici. Oggi maintenance.job_run_log.jobname e' testo libero e
+# non esiste nessun posto in cui sia scritto QUALI processi esistono e di che
+# classe sono: senza, la classe resta una convenzione applicata a mano e nessuna
+# vista di presidio e' costruibile.
+#
+# `codice` E' l'attore (decisione D-8): l'attore di un run e' sempre il codice
+# del processo; l'utente tecnico c'e' in piu' solo per la classe DOMINIO.
+#
+# Tabella di CATALOGO: vale identica su ogni installazione, il codice la nomina
+# per `codice`. La parte di macchina (quale utente tecnico) sta in una tabella
+# separata (dbops.processi_identita), perche' valorizza una FK verso django.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260904-07-create-processi-mctit.yaml
+
+  - changeSet:
+      id: 20260904-07-create-processi
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.processi: registro di catalogo dei processi automatici
+        (codice = attore, classe MANUTENZIONE|AMMINISTRAZIONE|DOMINIO, canale
+        PGAGENT|COMMAND|CODA, deprecabilita' via obsoleto_dal). Passo 0 del
+        brief: prerequisito delle viste di presidio e del vincolo run_as.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: SELECT COUNT(*) FROM pg_namespace WHERE nspname = 'dbops';
+            - not:
+                - tableExists:
+                    { schemaName: dbops, tableName: processi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Elenco dichiarato dei processi automatici. Una riga per
+              --   processo, con la CLASSE che decide se serve un perimetro
+              --   emittente e il CANALE da cui parte.
+              --
+              -- La classe e' una DICHIARAZIONE di chi progetta il processo,
+              -- non una derivazione dalla presenza della RLS: una tabella che
+              -- dovrebbe avere la policy e non ce l'ha ancora risulterebbe
+              -- «non di dominio», e nel momento in cui la classe serve — il
+              -- progetto — la policy non esiste ancora. Il database verifica
+              -- la dichiarazione in UNA direzione sola (dichiarato DOMINIO ma
+              -- senza percorso verso un emittente -> vista di presidio).
+              --
+              -- Id assegnati a mano nel CSV di seed: e' catalogo, e i figli
+              -- (processi_bersagli) ci si agganciano per id. Niente IDENTITY,
+              -- che con id espliciti lascerebbe la sequenza indietro.
+              -- =========================================================
+              CREATE TABLE dbops.processi (
+                  id            int     NOT NULL
+                                  CONSTRAINT pk_processi PRIMARY KEY,
+                  codice        text    NOT NULL,
+                  descrizione   text    NOT NULL,
+                  classe        text    NOT NULL,
+                  canale        text    NOT NULL,
+                  attivo        boolean NOT NULL DEFAULT true,
+                  obsoleto_dal  date    NULL,
+                  meta          jsonb   NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert   timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert   text    NOT NULL DEFAULT CURRENT_USER,
+                  data_update   timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update   text    NOT NULL DEFAULT CURRENT_USER,
+                  tx_id         uuid    NULL,
+                  CONSTRAINT uq_processi_codice UNIQUE (codice),
+                  CONSTRAINT chk_processi_classe
+                      CHECK (classe IN ('MANUTENZIONE', 'AMMINISTRAZIONE', 'DOMINIO')),
+                  CONSTRAINT chk_processi_canale
+                      CHECK (canale IN ('PGAGENT', 'COMMAND', 'CODA'))
+              );
+
+              COMMENT ON TABLE dbops.processi IS
+                  'Registro di CATALOGO dei processi automatici: quali esistono, di che classe e su quale canale. Il codice e'' l''attore di un run (maintenance.job_run_log.processo_codice, hard FK). La classe e'' una dichiarazione di chi progetta il processo, verificata dal DB in una direzione sola (DOMINIO senza percorso verso un emittente -> dbops.vw_processi_dominio_senza_emittente). Il legame processo -> utente tecnico e'' dati di macchina e sta in dbops.processi_identita. Brief: brief-db-processi-automatici-identita-e-perimetro §2.2.';
+              COMMENT ON COLUMN dbops.processi.codice IS
+                  'Codice stabile del processo (UNIQUE). E'' l''ATTORE: maintenance.job_run_log.processo_codice lo referenzia in hard FK, cosi'' un processo non dichiarato non puo'' nemmeno registrare un run. Per i tipi della coda coincide con dbops.coda_lavori_tipi.codice.';
+              COMMENT ON COLUMN dbops.processi.classe IS
+                  'MANUTENZIONE (tiene in piedi il database: trigger, indici, storicizzazione; nessun perimetro) | AMMINISTRAZIONE (dati applicativi che non appartengono a un emittente) | DOMINIO (lavoro dell''azienda dentro il perimetro di un emittente: richiede utente tecnico e itera un emittente alla volta). Per un processo guidato da tabella di configurazione e'' la classe PIU'' STRETTA fra quelle dei suoi bersagli; la classe per bersaglio vive sulla riga di configurazione.';
+              COMMENT ON COLUMN dbops.processi.canale IS
+                  'Da dove parte il processo: PGAGENT (job SQL schedulato dentro il database) | COMMAND (management command headless) | CODA (tipo di dbops.coda_lavori_tipi lavorato dal drainer).';
+              COMMENT ON COLUMN dbops.processi.obsoleto_dal IS
+                  'Deprecabilita'' di catalogo: un processo ritirato si marca con la data, non si cancella — le righe storiche di job_run_log continuano a referenziarlo.';
+
+              -- Trigger audit (data_update/user_update) + tx_id: stesso wiring
+              -- delle altre tabelle dbops multi-writer.
+              CREATE TRIGGER trg_processi_audit_data_user_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.processi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+
+              CREATE TRIGGER trg_processi_gen_tx_id_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.processi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.processi;

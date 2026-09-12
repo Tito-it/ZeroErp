@@ -4,6 +4,7 @@
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import StatusPage from '../components/StatusPage.vue'
+import { MANAGE_ICONS } from '../constants'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -12,7 +13,7 @@ const route = useRoute()
 
 <template>
   <StatusPage
-    :icon="route.meta.errorIcon || 'pi pi-exclamation-triangle'"
+    :icon="route.meta.errorIcon || MANAGE_ICONS.ERRORE"
     :title="t(`errors.${route.meta.errorKey}_title`)"
     :message="t(`errors.${route.meta.errorKey}_message`)"
     :action-label="t('errors.back_home')"

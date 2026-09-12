@@ -10,7 +10,7 @@
 >
 > * [Guida Soggetti e Ruoli Anagrafici](/guide/soggetti-e-ruoli-anagrafici)
 > * [Mappa Concentrica](/mappa-concentrica)
-> * [Analisi Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job)
+> * [Analisi Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job)
 
 ---
 
@@ -562,7 +562,7 @@ Se il sopralluogo fosse stato completato il 25 marzo invece del 16:
 
 ## Generazione cross-pratica
 
-> Vedi anche: [Analisi Tracciamento Processi e Job](./Analisi-tracciamento-processi-e-job) per il monitoraggio dei job di generazione
+> Vedi anche: [Analisi Tracciamento Processi e Job](./analisi-tracciamento-processi-e-job) per il monitoraggio dei job di generazione
 
 Le [`regole_generazione`](/dbzero/pratiche/tabelle/regole_generazione) configurano la creazione automatica di nuove pratiche al completamento di un flusso:
 

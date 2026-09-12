@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Le 57 voci del registro dei codici fuori convenzione
 #   Tabella: 20260805-06 · Guardrail: scripts/sql/guardrail_codice_errore_strutturato.sql
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §7
+#   Brief: brief-db-codice-errore-strutturato.md §7
 #
 #   Sono i codici di config.messaggi_errore che non seguono `E_{MODULO}_{TIPO}`
 #   (api.md): PRATICHE_*, PREV_*, FLUSSI_*, DEFINIZIONE_*, TEMPLATE_FLUSSO_*,

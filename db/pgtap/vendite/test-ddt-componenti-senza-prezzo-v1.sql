@@ -4,7 +4,7 @@
 --
 -- Test: un KIT puo' viaggiare su un DDT che non vende, senza prezzi sui
 --   componenti — e continua a non poterlo fare su un DDT che vende.
---   Slice C del brief docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md
+--   Slice C del brief brief-ddt-righe-senza-prezzo.md
 --   (decisione D-5 = K2, Tid 2026-08-19), changeSet 20260819-12 → -18.
 --
 -- COSA PRESIDIA, in una riga: che l'allentamento sia arrivato SOLO dove doveva.

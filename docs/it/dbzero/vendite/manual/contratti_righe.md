@@ -6,7 +6,7 @@
 >
 • [vendite.contratti](/dbzero/vendite/tabelle/contratti)   
 > • [vendite.note_contratto](/dbzero/vendite/tabelle/note_contratto)  
-> • [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/regole_fatturazione_articolo)    
+> • [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/articolo_regole_fatturazione)    
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)   
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)   
 > • [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)     

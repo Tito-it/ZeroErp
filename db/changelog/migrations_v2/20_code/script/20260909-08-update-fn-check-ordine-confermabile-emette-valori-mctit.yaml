@@ -1,0 +1,231 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-1 — IL MOTIVO DELLA CONFERMA ORDINE PORTA I SUOI `valori`
+#
+# ── ⭐ PERCHE' LA CHECK DEVE EMETTERE `valori` ─────────────────────
+#   Nel pattern §12.5 la check sa QUALE codice ha scelto; la frase la componeva
+#   il CHIAMANTE, con un numero FISSO di valori presi dai propri dati. Le due
+#   cose non erano legate da niente: un motivo nuovo con un'altra forma di
+#   frase non fa fallire nulla, esce solo una frase sbagliata.
+#   ⇒ Chi sceglie il codice sceglie anche cosa ci va dentro. E' la stessa
+#   ragione di §12.5.2 per il predicato, applicata al messaggio.
+#
+# ── ⚠️ L'ORDINE DEI `valori` E' IL CONTRATTO DELLA FRASE ──────────
+#   Non si verifica contando i segnaposto: si verifica LEGGENDO la frase resa.
+#   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — arita'
+#   giusta, valori invertiti, «Registro X1» a video con la serie al posto della
+#   famiglia. Nessun cancello lo vide.
+#
+#
+# ── ⭐ `o.numero` sulla SELECT che c'era gia' ──────────────────────
+#   «Ordine %s: la riga %s ha un prezzo ma nessuna aliquota IVA.» La funzione
+#   gia' leggeva `o.uid`: si aggiunge una colonna, non una query. Ragione e
+#   caveat del trigger BEFORE: changeSet -05.
+#
+# ⛔ Nessun codice errore nuovo, nessun `reason` toccato, nessun motivo
+#   riordinato: si AGGIUNGE una chiave.
+# ⚠️ Questo changeSet da solo NON basta: fa entrare il suo sito nel perimetro
+#   del rubinetto (test 2 di test-rubinetto-primo-motivo-v1.sql), che pretende
+#   zero code scritte a mano. Va nella STESSA consegna dei changeSet C-2.
+#
+# ⭐ Il corpo e' quello VIVO (pg_get_functiondef), non ricostruito da uno YAML.
+# Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (C-1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-08-update-fn-check-ordine-confermabile-emette-valori-mctit.yaml
+
+  - changeSet:
+      id: 20260909-08-update-fn-check-ordine-confermabile-emette-valori
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_check_ordine_confermabile: il motivo emette `valori` (numero ordine e numero riga).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_ordine_confermabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ordine_confermabile(p_ordine_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono la CONFERMA di un
+              --   ordine. Funzione PURA (fn_check_*): non solleva, non scrive.
+              --   Consumatori: vendite.trgfn_ordini_guard_transizione (che
+              --   solleva il codice del primo motivo) e
+              --   script.fn_available_actions_ordine (che spegne il bottone ed
+              --   espone la reason). Gemella di fn_check_ordine_annullabile.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9 / §R-3.
+              -- Ritorna: [] se confermabile; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                  v_motivi  jsonb := '[]'::jsonb;
+                  v_uid     vendite.ordini.uid%TYPE;
+                  v_numero  vendite.ordini.numero%TYPE;
+                  v_riga_id vendite.ordini_righe.id%TYPE;
+                  v_riga_nr vendite.ordini_righe.riga_nr%TYPE;
+              BEGIN
+                  IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_ordine_confermabile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'ordine_id', 'valore', p_ordine_id),
+                          NULL::uuid, 'ordine_id obbligatorio (>0)');
+                  END IF;
+
+                  -- ⭐ `o.numero` sulla SELECT che c'era gia': serve a COMPORRE la frase
+                  --   («Ordine %s: la riga %s ...»), non a decidere. Nota sul trigger
+                  --   BEFORE: vedi fn_check_commessa_annullabile.
+                  SELECT o.uid, o.numero INTO v_uid, v_numero
+                    FROM vendite.ordini o
+                   WHERE o.id = p_ordine_id;
+
+                  IF v_uid IS NULL THEN
+                      RETURN v_motivi;   -- ordine inesistente: decide il chiamante
+                  END IF;
+
+                  -- MOTIVO 1 — VALORE DELLA RIGA: una riga che porta un PREZZO
+                  --   porta anche l'ALIQUOTA. Senza, la riga entra comunque in
+                  --   vendite.vw_ordini_righe_iva_base (che filtra solo attivo e
+                  --   quantita > 0) e vw_ordini_riepilogo_iva_dettaglio la somma
+                  --   con COALESCE(aliquota, 0): imponibile pieno, imposta zero,
+                  --   su un documento confermato e stampato.
+                  --
+                  -- ⚠️ `prezzo_unitario IS NOT NULL` e' oggi sempre vero — la
+                  --   colonna e' NOT NULL — quindi di fatto la regola vale su
+                  --   OGNI riga attiva. Si scrive comunque perche' e' la forma
+                  --   vera della regola, ed e' gia' successo che una colonna
+                  --   prezzo diventasse facoltativa (20260819-13 su
+                  --   vendite.ddt_righe_componenti).
+                  --
+                  -- ⚠️ ORDER BY prima del LIMIT: senza, quale riga esca dipende
+                  --   dal piano del planner e il messaggio nominerebbe una riga
+                  --   diversa a ogni corsa.
+                  --
+                  -- ⚠️ Nel dettaglio vanno l'id (per chi diagnostica) E il
+                  --   numero di riga (per la frase che legge una persona): sono
+                  --   due destinatari diversi.
+                  SELECT r.id, r.riga_nr
+                    INTO v_riga_id, v_riga_nr
+                    FROM vendite.ordini_righe r
+                   WHERE r.ordine_id = p_ordine_id
+                     AND r.attivo IS TRUE
+                     AND r.prezzo_unitario IS NOT NULL
+                     AND r.iva_id IS NULL
+                   ORDER BY r.riga_nr, r.id
+                   LIMIT 1;
+
+                  IF v_riga_id IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ORDINE_RIGA_IVA_MANCANTE',
+                          'reason',     'RIGA_SENZA_ALIQUOTA',
+                          'reason_key', 'vendite.ordini.azione_reason.iva_mancante',
+                          'dettaglio',  jsonb_build_object('riga_id', v_riga_id,
+                                                           'riga_nr', v_riga_nr),
+                          -- «Ordine %s: la riga %s ha un prezzo ma nessuna aliquota IVA.»
+                          'valori',     jsonb_build_array(COALESCE(v_numero, p_ordine_id::text),
+                                                          COALESCE(v_riga_nr::text, '?')));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ordine_confermabile(p_ordine_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono la CONFERMA di un
+              --   ordine. Funzione PURA (fn_check_*): non solleva, non scrive.
+              --   Consumatori: vendite.trgfn_ordini_guard_transizione (che
+              --   solleva il codice del primo motivo) e
+              --   script.fn_available_actions_ordine (che spegne il bottone ed
+              --   espone la reason). Gemella di fn_check_ordine_annullabile.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9 / §R-3.
+              -- Ritorna: [] se confermabile; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                  v_motivi  jsonb := '[]'::jsonb;
+                  v_uid     vendite.ordini.uid%TYPE;
+                  v_riga_id vendite.ordini_righe.id%TYPE;
+                  v_riga_nr vendite.ordini_righe.riga_nr%TYPE;
+              BEGIN
+                  IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_ordine_confermabile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'ordine_id', 'valore', p_ordine_id),
+                          NULL::uuid, 'ordine_id obbligatorio (>0)');
+                  END IF;
+
+                  SELECT o.uid INTO v_uid
+                    FROM vendite.ordini o
+                   WHERE o.id = p_ordine_id;
+
+                  IF v_uid IS NULL THEN
+                      RETURN v_motivi;   -- ordine inesistente: decide il chiamante
+                  END IF;
+
+                  -- MOTIVO 1 — VALORE DELLA RIGA: una riga che porta un PREZZO
+                  --   porta anche l'ALIQUOTA. Senza, la riga entra comunque in
+                  --   vendite.vw_ordini_righe_iva_base (che filtra solo attivo e
+                  --   quantita > 0) e vw_ordini_riepilogo_iva_dettaglio la somma
+                  --   con COALESCE(aliquota, 0): imponibile pieno, imposta zero,
+                  --   su un documento confermato e stampato.
+                  --
+                  -- ⚠️ `prezzo_unitario IS NOT NULL` e' oggi sempre vero — la
+                  --   colonna e' NOT NULL — quindi di fatto la regola vale su
+                  --   OGNI riga attiva. Si scrive comunque perche' e' la forma
+                  --   vera della regola, ed e' gia' successo che una colonna
+                  --   prezzo diventasse facoltativa (20260819-13 su
+                  --   vendite.ddt_righe_componenti).
+                  --
+                  -- ⚠️ ORDER BY prima del LIMIT: senza, quale riga esca dipende
+                  --   dal piano del planner e il messaggio nominerebbe una riga
+                  --   diversa a ogni corsa.
+                  --
+                  -- ⚠️ Nel dettaglio vanno l'id (per chi diagnostica) E il
+                  --   numero di riga (per la frase che legge una persona): sono
+                  --   due destinatari diversi.
+                  SELECT r.id, r.riga_nr
+                    INTO v_riga_id, v_riga_nr
+                    FROM vendite.ordini_righe r
+                   WHERE r.ordine_id = p_ordine_id
+                     AND r.attivo IS TRUE
+                     AND r.prezzo_unitario IS NOT NULL
+                     AND r.iva_id IS NULL
+                   ORDER BY r.riga_nr, r.id
+                   LIMIT 1;
+
+                  IF v_riga_id IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ORDINE_RIGA_IVA_MANCANTE',
+                          'reason',     'RIGA_SENZA_ALIQUOTA',
+                          'reason_key', 'vendite.ordini.azione_reason.iva_mancante',
+                          'dettaglio',  jsonb_build_object('riga_id', v_riga_id,
+                                                           'riga_nr', v_riga_nr));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$

@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Provisiona il lock di colonna su vendite.fatture_fondi_fattura_source.
+#
+# ── 🔴 IL DIFETTO, E NON E' UNA REGRESSIONE DI OGGI ────────────────
+#   `20260815-15` montava l'immutabilita' dell'atto con un **CREATE TRIGGER A
+#   MANO** che chiamava `script.trgfn_lock_columns(...)`, **senza** la riga
+#   corrispondente in `dbops.automation_lock_columns`.
+#   ⛔ E' esattamente la trappola gia' scritta nell'intestazione di
+#   `20260901-21`: *«un trigger identico ma fuori dall'automazione, che alla
+#   passata successiva ne trova uno con lo stesso nome e non tocca niente — un
+#   oggetto che SEMBRA governato e non lo e'»*.
+#   ⇒ Quando quel trigger e' sparito, **nessuno lo ha rimesso**: il framework
+#   non lo conosceva. Su `pg_trigger` la tabella oggi ha otto trigger e nessuno
+#   e' `trgfn_lock_columns` (verificato il 2026-09-05).
+#
+# ── ⚠️ CHI SE N'E' ACCORTO, E COME ─────────────────────────────────
+#   Nessun presidio: il pgTAP `vendite/test-fondi-fattura-governo` test 13, che
+#   pretende `P0001` su un `UPDATE` dell'importo e non riceveva piu' niente.
+#   ⭐ E' il caso che dice perche' quei test valgono: l'`UPDATE` passava, cioe'
+#   **l'importo di un fondo gia' compiuto era di nuovo modificabile**, e in
+#   nessun log sarebbe comparso niente.
+#
+# ── ⭐ SI REGISTRA, NON SI RIFA' A MANO ────────────────────────────
+#   Le quattro colonne (`importo`, `fattura_sorgente_id`,
+#   `tipo_fondo_fattura_id`, `origine`) sono ora nel CSV
+#   `80_data/sql/dbops/automation_lock_columns.csv`, che e' la **sede della
+#   regola** — il mirror e' `runOnChange` e la rilegge a ogni migrate.
+#   Qui si chiama solo il RUNNER, per non aspettare il `ci_apply` o il giro
+#   notturno: e' la stessa forma di `20260818-23`, `20260821-07` e
+#   `20260901-21`.
+#   ⛔ Rifare un `CREATE TRIGGER` a mano rimetterebbe il difetto dov'era.
+#
+# ── ⚠️ SOLO LO SCHEMA `vendite` ────────────────────────────────────
+#   Un runner a tappeto ri-provisionerebbe righe di altri schemi che con questo
+#   passo non c'entrano, e un loro eventuale fallimento verrebbe attribuito a
+#   noi. Stessa scelta dei tre changeSet gemelli.
+#
+# ── ⚠️ L'ORDINE ALFABETICO E' STATO GUARDATO ───────────────────────
+#   Il trigger generato si chiamera' `trg_..._a10_lock_columns_upd` e cade
+#   **dopo** `_a10_guard_importo_ins_upd` e `_a10_guard_transizione_ins_upd`.
+#   Va bene: quei due guardano l'importo NUOVO (segno, capienza, transizione),
+#   non la sua immutabilita'. Se un giorno uno dei due iniziasse a rifiutare lo
+#   stesso `UPDATE`, parlerebbe lui e il lock resterebbe muto — per questo
+#   l'asserzione del pgTAP e' stata portata da `throws_ok(P0001)` a
+#   `throws_like` sulla frase di `E_FONDO_ATTO_IMMUTABILE`.
+#
+# Verifica: db/pgtap/vendite/test-fondi-fattura-governo.sql (test 13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260905-40-provision-lock-fondi-fattura-source-mctit.yaml
+
+  - changeSet:
+      id: 20260905-40-provision-lock-fondi-fattura-source
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Provisiona il lock di colonna su vendite.fatture_fondi_fattura_source
+        (importo, fattura_sorgente_id, tipo_fondo_fattura_id, origine). Il
+        20260815-15 lo aveva montato con un CREATE TRIGGER a mano, fuori dal
+        registro delle automazioni: quando e' sparito nessuno lo ha rimesso, e
+        l'importo di un atto gia' compiuto e' tornato modificabile. Le righe
+        stanno ora nel CSV; qui si chiama solo il runner per non aspettare il
+        ci_apply.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # ⛔ La colonna esiste: se non ci fosse, il runner girerebbe senza
+            #    fare niente e il changeSet passerebbe verde a vuoto.
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+                columnName: importo
+            # ⛔ La regola LOCK_COLUMNS dev'essere accesa, per la stessa ragione.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM dbops.automation_rules_tbl r
+                   WHERE r.enabled
+                     AND upper(btrim(r.rule_type)) = 'LOCK_COLUMNS'
+                     AND upper(btrim(r.exec_mode)) IN ('AUTO', 'CI');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Solo lo schema `vendite`: un runner a tappeto ri-provisionerebbe
+              -- righe di altri schemi che con questo passo non c'entrano.
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['vendite'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger provisionato dall'automazione si toglie a mano: il
+              -- runner crea, non cancella. ⚠️ Le righe nel CSV RESTANO — la sede
+              -- della regola e' il seed, e toglierle di qui sarebbe la seconda
+              -- sorgente di verita'.
+              DROP TRIGGER IF EXISTS trg_fatture_fondi_fattura_source_a10_lock_columns_upd
+                ON vendite.fatture_fondi_fattura_source;

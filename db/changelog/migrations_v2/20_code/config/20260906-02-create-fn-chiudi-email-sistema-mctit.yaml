@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA METÀ MANCANTE: chi ha scritto la riga deve poterla CHIUDERE.
+#   Richiesta: brief-db-email-perimetro-e-invio-di-sistema.md §4.1
+#
+# `fn_accoda_email_sistema` scrive la riga, poi il backend **tenta l'invio** — la
+# decisione e' che una mail di sistema parta subito, non al giro dopo — e deve
+# scriverne l'esito. ⛔ Quell'`UPDATE` e' bloccato dalla stessa policy, per lo
+# stesso motivo: chi spedisce un reset password non ha una sessione.
+#
+# ⇒ Instradare solo l'`INSERT` avrebbe spostato la rottura di due righe piu' in
+#   la'. Le due funzioni sono una cosa sola e vanno usate insieme.
+#
+# ── ⛔ NON DEVE DIVENTARE UNA PORTA DI SERVIZIO ────────────────────
+#   Il pregio della gemella e' che sa scrivere **una cosa sola**. Questa segue la
+#   stessa regola, e in due modi:
+#     * tocca **solo** righe di ambito `SISTEMA` — sta nella `WHERE`, non in un
+#       controllo che qualcuno puo' dimenticare;
+#     * tocca **solo** i campi dell'esito: `stato`, `errore`, `inviato_at`,
+#       `tentativi`. Non il destinatario, non il corpo, non l'ambito.
+#   ⛔ Non prende l'`ambito` ne' l'emittente, come la gemella: cambiarli sarebbe
+#   il modo di spostare una riga di un'azienda dentro il canale di sistema.
+#
+# ── ⛔ `PENDING` NON E' UN ESITO ────────────────────────────────────
+#   Gli stati ammessi sono `SENT`, `FAILED`, `RETRY`. Lasciar tornare una riga a
+#   `PENDING` vorrebbe dire poter **resuscitare** una email gia' chiusa, e questa
+#   e' la funzione che chiude — non quella che rimette in coda.
+#
+# ── ⚠️ SE LA RIGA NON C'E', O NON E' DI SISTEMA, SI ALZA LA VOCE ────
+#   Un `UPDATE` che non trova niente e' silenzioso per natura: il chiamante crede
+#   di aver chiuso qualcosa. ⇒ Qui si distingue, e i due casi hanno due
+#   significati diversi:
+#     * la riga non esiste          -> un id sbagliato
+#     * la riga esiste ma non e' SISTEMA -> ⛔ qualcuno sta usando la porta di
+#       servizio per una email di un'azienda, ed e' il caso pericoloso
+#   ⭐ Dirli con la stessa frase avrebbe sprecato l'unico momento in cui il
+#   secondo si puo' notare.
+#
+# ── ⚠️ `tentativi + 1` LO FA LA FUNZIONE ───────────────────────────
+#   Perche' lo faceva `update_log_stato`, e instradare deve essere un cambio di
+#   indirizzo, non un cambio di comportamento. ⛔ Se il conteggio cambiasse qui,
+#   il backend scoprirebbe la differenza dai numeri, non da un errore.
+#
+# ⭐ `SECURITY DEFINER` del proprietario della tabella: la RLS e' `ENABLE` senza
+# `FORCE`, quindi l'owner non la subisce. Nessun privilegio speciale.
+# ⚠️ Il write-guard invece **morde anche l'owner** — ma sulle righe `SISTEMA`
+# l'emittente e' NULL e il guard esce subito, quindi non tocca questo percorso.
+#
+# Verifica: db/pgtap/config/test-fn-email-sistema.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260906-02-create-fn-chiudi-email-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20260906-02-create-fn-chiudi-email-sistema
+      author: mctit
+      failOnError: true
+      comment: >
+        config.fn_chiudi_email_sistema: scrive l'ESITO dell'invio su una riga di
+        ambito SISTEMA, dal percorso senza sessione. E' la meta' mancante di
+        fn_accoda_email_sistema — instradare solo l'INSERT sposterebbe la rottura
+        sull'UPDATE. Tocca solo righe SISTEMA e solo i campi dell'esito.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: email_log }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config'
+                     AND p.proname = 'fn_accoda_email_sistema'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_chiudi_email_sistema(
+                  p_email_log_id config.email_log.id%TYPE,
+                  p_stato        config.email_log.stato%TYPE,
+                  p_errore       config.email_log.errore%TYPE     DEFAULT NULL,
+                  p_inviato_at   config.email_log.inviato_at%TYPE DEFAULT NULL)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_ambito config.email_log.ambito%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere l'ESITO dell'invio di una email di SISTEMA, dal
+                  --   percorso che non ha un utente in sessione.
+                  --
+                  -- ⛔ Tocca SOLO righe di ambito SISTEMA e SOLO i campi
+                  --   dell'esito. Non e' una porta di servizio per aggiornare
+                  --   una email qualunque.
+                  -- =========================================================
+
+                  -- ⛔ `PENDING` non e' un esito: questa e' la funzione che
+                  --   CHIUDE, non quella che rimette in coda. Ammetterlo
+                  --   vorrebbe dire poter resuscitare una email gia' chiusa.
+                  IF p_stato IS NULL OR p_stato NOT IN ('SENT', 'FAILED', 'RETRY') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('stato', p_stato,
+                                             'email_log_id', p_email_log_id),
+                          NULL::uuid,
+                          'stato ammesso solo fra SENT, FAILED e RETRY');
+                  END IF;
+
+                  -- ⚠️ Si legge PRIMA di scrivere, per poter distinguere i due
+                  --   modi in cui la riga puo' non essere quella giusta. Un
+                  --   UPDATE che non trova niente e' muto, e il chiamante
+                  --   crederebbe di aver chiuso qualcosa.
+                  SELECT l.ambito INTO v_ambito
+                    FROM config.email_log l
+                   WHERE l.id = p_email_log_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('email_log_id', p_email_log_id),
+                          NULL::uuid,
+                          'nessuna email con questo identificativo');
+                  END IF;
+
+                  -- ⛔ IL CASO PERICOLOSO, e per questo ha parole sue: qualcuno
+                  --   sta usando la porta di sistema per una email che
+                  --   appartiene a un'azienda. Dirlo con la stessa frase del
+                  --   caso sopra avrebbe sprecato l'unico momento in cui si
+                  --   puo' notare.
+                  IF v_ambito <> 'SISTEMA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('email_log_id', p_email_log_id,
+                                             'ambito', v_ambito),
+                          NULL::uuid,
+                          'questa porta chiude solo le email di ambito SISTEMA: '
+                          'una email di un''azienda si chiude dalla sessione di '
+                          'chi ne ha il perimetro');
+                  END IF;
+
+                  -- ⚠️ `tentativi + 1` come faceva update_log_stato: instradare
+                  --   dev'essere un cambio di indirizzo, non di comportamento.
+                  UPDATE config.email_log l
+                     SET stato      = p_stato,
+                         errore     = p_errore,
+                         inviato_at = COALESCE(p_inviato_at, l.inviato_at),
+                         tentativi  = l.tentativi + 1
+                   WHERE l.id     = p_email_log_id
+                     AND l.ambito = 'SISTEMA';
+
+                  RETURN true;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_chiudi_email_sistema(bigint, varchar, text, timestamptz)
+              IS 'Scrive l''ESITO dell''invio (SENT / FAILED / RETRY, errore, inviato_at, tentativi+1) su una riga di ambito SISTEMA, dal percorso che NON ha un utente in sessione. ⭐ E'' la meta'' mancante di config.fn_accoda_email_sistema: la decisione e'' che una mail di sistema parta SUBITO, quindi dopo l''INSERT il backend tenta l''invio e deve scriverne l''esito — e quell''UPDATE e'' bloccato dalla stessa policy, per lo stesso motivo. Instradare solo l''INSERT avrebbe spostato la rottura di due righe piu'' in la''. ⛔ Non e'' una porta di servizio: tocca SOLO righe di ambito SISTEMA (sta nella WHERE, non in un controllo dimenticabile) e SOLO i campi dell''esito — non il destinatario, non il corpo, non l''ambito, non l''emittente. ⛔ PENDING non e'' un esito ammesso: questa chiude, non rimette in coda, e ammetterlo vorrebbe dire poter resuscitare una email gia'' chiusa. ⚠️ Se la riga non esiste, o esiste e NON e'' di sistema, solleva con parole diverse: il secondo caso e'' qualcuno che usa la porta di sistema per una email di un''azienda, ed e'' l''unico momento in cui lo si puo'' notare. ⚠️ tentativi+1 lo fa la funzione perche'' lo faceva update_log_stato: instradare dev''essere un cambio di indirizzo, non di comportamento.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION config.fn_chiudi_email_sistema(
+                          bigint, varchar, text, timestamptz)
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS config.fn_chiudi_email_sistema(
+                  bigint, varchar, text, timestamptz);

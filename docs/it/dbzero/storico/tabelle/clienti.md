@@ -18,6 +18,8 @@
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_clienti_scope_ef | `CREATE INDEX ix_clienti_scope_ef ON storico.clienti USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_clienti | `CREATE UNIQUE INDEX pk_storico_clienti ON storico.clienti USING btree (id)` |
 
 ## 🚨 Trigger

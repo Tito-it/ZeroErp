@@ -27,6 +27,7 @@
 | lunghezza_default | integer | NO | 7 |
 | colonna_serie | text | YES |  |
 | ammette_regole_fiscali | boolean | NO | false |
+| anno_nel_numero_default | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

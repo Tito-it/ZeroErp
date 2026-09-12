@@ -15,7 +15,7 @@ Approfondimento funzioni:
 > [dbops.fn_apply_chiusura_scadenze](/dbzero/dbops/funzioni/fn_apply_chiusura_scadenze)
 >
 WIP:
-> [Automazione chiusure per scadenza](/dev/work-in-progress/automazione-chiusure-scadenze)
+> [Automazione chiusure per scadenza](/dev/work-done/automazione-chiusure-scadenze)
 
 ### 🎯 Scopo Principale
 
@@ -56,6 +56,8 @@ validata).
 * **`fk_lookup_table`** *(text NULL)* – per `tipo_stato='FK'`: nome tabella di lookup (es. `stati_doc_contratti`).
 * **`fk_lookup_codice_col`** *(text NULL)* – colonna chiave logica per il match (tipicamente `codice_interno`). Va specificata esplicitamente per `tipo_stato='FK'`.
 * **`fk_lookup_id_col`** *(text NULL)* – colonna PK della tabella di lookup, usata come valore da scrivere nella `col_stato` target (tipicamente `id`). Va specificata esplicitamente per `tipo_stato='FK'`.
+* **`classe`** *(text NN, CHECK)* – ⭐ *(dal 2026-09-04)* la natura del
+  **bersaglio**: `MANUTENZIONE` | `AMMINISTRAZIONE` | `DOMINIO`. Vedi sotto.
 * **`attivo`** *(boolean NN, default true)* – abilita/disabilita la riga senza eliminarla.
 * **`descrizione`** *(text)* – documentazione inline sul caso d'uso.
 * **Audit** – `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`.
@@ -70,8 +72,36 @@ validata).
 | UNIQUE | `uq_automazione_chiusura_scadenze_target` | `(schema_tabella, nome_tabella)` — una sola riga per tabella |
 | CHECK | `chk_automazione_chiusura_scadenze_tipo_stato` | `tipo_stato IN ('VARCHAR','FK')` |
 | CHECK | `chk_automazione_chiusura_scadenze_fk_coerente` | per `tipo_stato='VARCHAR'` i campi `fk_lookup_*` devono essere NULL; per `tipo_stato='FK'` tutti valorizzati |
+| CHECK | `chk_automazione_chiusura_scadenze_classe` | `classe IN ('MANUTENZIONE','AMMINISTRAZIONE','DOMINIO')` |
 
 L'indice parziale `ix_automazione_chiusura_scadenze_attivo` su `(id) WHERE attivo IS TRUE` supporta la lettura tipica del job (filtra solo righe attive).
+
+---
+
+### ⭐ Rev 2026-09-04 — la classe sta sul BERSAGLIO, non sul job
+
+È il caso che non entrava nello schema generale, e va spiegato perché la
+soluzione è diversa da quella degli altri processi.
+
+`chiusura_scadenze_daily` è **un solo job** che chiude scadenze su **più
+tabelle**. Le tabelle però non sono tutte uguali: `vendite.contratti` e
+`vendite.listini_versioni` appartengono a un'azienda, un'eventuale tabella
+tecnica no.
+
+⛔ Mettere la classe sul **job** avrebbe costretto a scegliere una natura sola
+per tutte le tabelle: o si dichiara di dominio un lavoro che tocca anche cose di
+nessuno, o si dichiara di manutenzione un lavoro che tocca fatture.
+
+⇒ La classe sta su **ogni riga di configurazione**, cioè su ogni bersaglio.
+
+⚠️ **Il `NOT NULL` è il cancello della cosa**: una riga nuova nel CSV
+*deve* dichiarare che natura ha. Senza, arruolerebbe un'altra tabella nel giro
+notturno senza dire di chi sono le righe che tocca — che è esattamente il
+difetto per cui questa colonna esiste.
+
+⭐ **Oggi entrambi i bersagli sono `DOMINIO`**, ed è la ragione per cui il job
+non si spacca in due: portano entrambi l'emittente (`contratti` con la colonna
+diretta, `listini_versioni` attraverso il listino padre).
 
 ---
 

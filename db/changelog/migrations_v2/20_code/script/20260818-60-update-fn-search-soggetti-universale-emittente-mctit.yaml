@@ -50,7 +50,7 @@
 #    colonna si spezzerebbe in silenzio. Il CORPO invece viene dall'auto-gen,
 #    che riflette l'oggetto vivo.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# brief-db-perimetro-emittente-fase-e-e-ricerca.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

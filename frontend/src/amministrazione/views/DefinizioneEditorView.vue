@@ -9,7 +9,7 @@
 // stato ≠ BOZZA (solo le BOZZE per emittente sono strutturalmente editabili —
 // vincolo enforce dal DB). Il provide(READONLY_KEY) propaga il gate ai futuri
 // componenti di editing (FE-3.2+), rispettando la convenzione OR del composable.
-import { computed, onMounted, provide, ref, watch } from 'vue'
+import { computed, onActivated, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
@@ -241,7 +241,11 @@ function buildStepActions(step) {
   ]
 }
 
-onMounted(loadDettaglio)
+// ⚠️ `onActivated` e non `onMounted`: la view vive sotto `<KeepAlive :max="10">`
+//    (AppLayout), quindi al rientro `onMounted` non riscatta e a video resterebbe
+//    l'elenco di prima. ⛔ Sostituisce, non si aggiunge: sotto KeepAlive al primo
+//    montaggio scattano ENTRAMBI, quindi tenerli tutti e due farebbe due fetch.
+onActivated(loadDettaglio)
 watch(defId, loadDettaglio)
 </script>
 

@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LA COLONNA C'ERA, NESSUNO LA SCRIVEVA — lotto L5, prima meta'
 #   vendite.fn_start_lotto_task_run
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §5-bis (richiesta del backend, 2026-08-22) · Decisione D-7
 #
 # ── IL DIFETTO, MISURATO DAL BACKEND SU pg_proc ────────────────────

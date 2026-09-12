@@ -8,41 +8,53 @@
 
 from __future__ import annotations
 
-from django.db import connection
+from django.db import connection, transaction
+
+from apps.core.db._helpers import fetchone_scalar
 
 
 class AnagraficheRepository:
     """Accesso DB per lo schema anagrafiche."""
 
-    # Scopo: Recupera gli auth_user_id delle risorse con finestra temporale
-    # scaduta e auth_user ancora attivo. Stessa logica WHERE di
-    # anagrafiche.fn_sync_auth_user_expired(), usata per conoscere
-    # gli utenti coinvolti *prima* della sync (per invalidazione cache).
-    def list_expired_auth_user_ids(self) -> list[int]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT rau.auth_user_id
-                  FROM anagrafiche.risorse_umane ru
-                  JOIN anagrafiche.risorse_umane_auth_user rau
-                    ON rau.risorsa_umana_id = ru.id
-                  JOIN django.auth_user au
-                    ON au.id = rau.auth_user_id
-                 WHERE ru.valido_al IS NOT NULL
-                   AND ru.valido_al < CURRENT_DATE
-                   AND au.is_active = true
-                """
-            )
-            return [row[0] for row in cursor.fetchall()]
+    # Scopo: Esegue `anagrafiche.fn_sync_auth_user_expired()` — la disattivazione
+    #        batch degli utenti con finestra temporale scaduta — e dice CHI ha
+    #        toccato. Ritorna `(n_disattivati, auth_user_id modificati)`.
+    #
+    # ⭐ GLI ID SI RICAVANO DALL'EFFETTO, NON DA UNA COPIA DELLA REGOLA: si
+    #    fotografano gli `auth_user` attivi prima e dopo la funzione, dentro la
+    #    STESSA transazione, e la differenza e' chi ha cambiato stato. La regola
+    #    «chi e' scaduto» vive in una sede sola, la funzione DB.
+    # ⛔ Fino al 2026-09-12 qui c'era `list_expired_auth_user_ids`: la stessa
+    #    `WHERE` della funzione ricopiata in Python — e ricopiata a META', perche'
+    #    conosceva solo il ramo legacy (`risorse_umane` via la vista
+    #    `risorse_umane_auth_user`) e ignorava `identita_digitali`: la cache dei
+    #    permessi non veniva invalidata per le identita' portale/shop che la
+    #    funzione invece disattivava. E leggeva la vista col nome vecchio, che
+    #    il DB ritira (analisi-software-per-dati-morti §2.1, passo 1).
+    # ⚠️ E gli id sono quelli DAVVERO modificati, non i candidati: la funzione
+    #    puo' lasciare un candidato com'e' (`fn_sync_auth_user_is_active`
+    #    decide), e prima la cache veniva invalidata su un elenco piu' largo
+    #    del conteggio che si stampava accanto.
+    # ⚠️ La differenza e' SIMMETRICA: la funzione oggi spegne soltanto, ma se
+    #    un giorno riaccendesse, anche quell'utente ha una cache da buttare.
+    # `dry_run`: la stessa corsa, dentro una transazione ritirata — l'elenco
+    #    e' quello vero perche' lo produce la funzione vera, e non resta niente.
+    # ⚠️ Il `set_rollback` e' l'ULTIMA istruzione del blocco: dentro un atomic
+    #    marcato per rollback Django vieta altre query.
+    def sync_auth_user_expired(self, *, dry_run: bool = False) -> tuple[int, list[int]]:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                prima = self._auth_user_attivi(cursor)
+                cursor.execute("SELECT anagrafiche.fn_sync_auth_user_expired()")
+                disattivati = int(fetchone_scalar(cursor))
+                dopo = self._auth_user_attivi(cursor)
+            if dry_run:
+                transaction.set_rollback(True)
+        return disattivati, sorted(prima ^ dopo)
 
-    # Scopo: Chiama la funzione batch anagrafiche.fn_sync_auth_user_expired()
-    # che disattiva auth_user per risorse umane con finestra scaduta.
-    # Ritorna il numero di utenti effettivamente disattivati.
-    def call_sync_auth_user_expired(self) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT anagrafiche.fn_sync_auth_user_expired()"
-            )
-            row = cursor.fetchone()
-            assert row is not None
-        return int(row[0])
+    # Scopo: gli `auth_user` attivi in questo istante — un'osservazione, non
+    #        una regola: nessun `WHERE` di dominio.
+    @staticmethod
+    def _auth_user_attivi(cursor) -> set[int]:
+        cursor.execute("SELECT id FROM django.auth_user WHERE is_active = true")
+        return {int(row[0]) for row in cursor.fetchall()}

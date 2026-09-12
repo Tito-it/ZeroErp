@@ -29,11 +29,12 @@
 > * Un soggetto PG (cliente azienda, fornitore azienda) puo' avere
 >   un account di accesso ad un portale: il vincolo "persona fisica
 >   pura" si applica solo al ruolo applicativo OPERATORE.
-> * La ex tabella bridge `risorse_umane_auth_user` e' ora una **vista
->   read-only** di compatibilita' che legge da `identita_digitali`
->   filtrando `ruolo_applicativo = 'OPERATORE'` (cutover §13.3.2).
->   La tabella originale e' stata archiviata come
->   `_legacy_risorse_umane_auth_user`.
+> * La ex tabella bridge `risorse_umane_auth_user` **non esiste piu'**: la
+>   tabella (archiviata come `_legacy_…`) e' stata eliminata il 12-09-2026
+>   (`90_end/20260912-10`) e la vista che ne aveva preso il nome dal cutover
+>   §13.3.2 e' stata ritirata lo stesso giorno (`90_end/20260912-26`). Il
+>   ponte verso l'utente e' `identita_digitali`, per gli operatori con
+>   `ruolo_applicativo = 'OPERATORE'`.
 > * Nessuna modifica a `soggetti`, `soggetti_ruoli`, `tipi_ruoli` o
 >   alle tabelle specializzate (clienti, fornitori, ecc.).
 >
@@ -248,7 +249,7 @@ dedotto.
 
 | Entita' | Legame con l'emittente |
 | --- | --- |
-| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, piu' il ripiego sul gestore globale (che e' comunque uno) |
+| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, piu' la riserva per il BA non ancora collegato — in sessione l'emittente di chi agisce (dal 2026-09-13, D13), altrimenti il gestore globale (che e' comunque uno) |
 | **soggetto** | ❌ **nessuno.** Il legame esiste solo *transitivamente*, attraverso i billing account del soggetto |
 
 #### Cosa ne segue, in pratica

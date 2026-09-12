@@ -60,13 +60,25 @@ def invalidate_user(user_id: int) -> None:
 
 def invalidate_department(uo_id: int) -> None:
     """Scopo: Invalida la cache permessi per tutti gli utenti di un reparto.
-    Cerca gli utenti associati al reparto e invalida ciascuno."""
+    Cerca gli utenti associati al reparto e invalida ciascuno.
+
+    Il legame reparto → utente passa dalla MADRE: `risorse_umane` (che porta
+    l'UO) → `identita_digitali` per `soggetto_ruolo_id` → `auth_user_id`.
+    ⛔ Fino al 2026-09-12 leggeva il model della vista col nome vecchio del
+    ponte RU↔utente (`risorse_umane_auth_user` — analisi-software-per-dati-morti
+    §2.1, «strato 2»): model ritirato, il DB ritira la vista.
+    ⚠️ Nessun filtro su `attivo` o sulla veste, di proposito: la chiave di
+    cache e' per `auth_user`, e invalidare una riga in piu' e' innocuo mentre
+    una in meno e' il difetto (permessi stantii dopo un cambio di profilo).
+    """
     try:
-        from apps.anagrafiche.models import RisorseUmaneAuthUser
+        from apps.anagrafiche.models import IdentitaDigitale, RisorseUmane
 
         user_ids = list(
-            RisorseUmaneAuthUser.objects.filter(
-                risorsa_umana__unita_organizzativa_id=uo_id
+            IdentitaDigitale.objects.filter(
+                soggetto_ruolo_id__in=RisorseUmane.objects.filter(
+                    unita_organizzativa_id=uo_id
+                ).values("soggetto_ruolo_id")
             ).values_list("auth_user_id", flat=True)
         )
         if user_ids:

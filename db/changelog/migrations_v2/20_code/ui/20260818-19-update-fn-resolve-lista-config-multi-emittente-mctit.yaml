@@ -34,7 +34,7 @@
 #    `00_schema`. `changelog-autogen.yaml` mescola le due cartelle ordinando per
 #    numero: 19 > 16, quindi l'apply su un database ricostruito da zero regge.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

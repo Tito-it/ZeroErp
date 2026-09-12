@@ -18,7 +18,7 @@
 #   ui.tipo_dato           - tipo di dato esposto dalla colonna
 #   ui.allineamento_colonna - allineamento orizzontale colonna
 #
-# Ref: docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md
+# Ref: sviluppo-personalizzazioni-liste.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

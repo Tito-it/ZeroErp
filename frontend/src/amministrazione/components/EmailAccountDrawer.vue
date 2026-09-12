@@ -16,6 +16,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
@@ -24,11 +25,18 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { testEmailAccount } from '../api/amministrazione'
 
+
+
 const props = defineProps({
   visible: Boolean,
   mode: String,
   accountId: Number
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const { t } = useI18n()
@@ -165,6 +173,7 @@ async function handleTest() {
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -174,7 +183,7 @@ async function handleTest() {
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <div class="form-grid-2col">
           <div class="form-field">

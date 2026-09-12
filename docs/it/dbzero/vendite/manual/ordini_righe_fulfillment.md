@@ -9,7 +9,7 @@
 >
 **Approfondimento funzioni:**
 > 
-• [vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza](/dbzero/vendite/funzioni/trgfn_a10_ins_upd_ordini_ful_guard_consistenza)   
+• [vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza](/dbzero/vendite/funzioni/trgfn_ordini_ful_guard_consistenza)   
 
 ---
 ### 🎯 Scopo Principale

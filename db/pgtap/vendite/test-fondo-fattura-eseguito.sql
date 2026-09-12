@@ -29,7 +29,7 @@
 --    riga registrata, lo scorporo verrebbe a zero e il residuo risulterebbe
 --    piu' basso del vero.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.4 casi 9, 9-bis, 9-ter, 9-quater · lotto 3
 -- ------------------------------------------------------------
 

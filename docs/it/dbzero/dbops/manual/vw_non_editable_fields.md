@@ -7,7 +7,7 @@ Approfondimento tabelle:
 > [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
 >
 Approfondimento funzioni / trigger:
-> [dbops.fn_apply_lock_columns](/dbzero/dbops/funzioni/fn_apply_lock_columns)
+> [dbops.fn_apply_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
 >
 Sistema lock condizionali (estensione, 2026-05-22):
 > [dbops.lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional) — registro condizionale complementare

@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# H-3 — Il guard del cambio emittente diventa una riga sola
+#   anagrafiche.fn_guard_ba_cambio_emittente
+#   Piano: brief-db-coda-primo-motivo-in-un-posto-solo, sezione 6
+#
+# -- PERCHE' -------------------------------------------------
+#   ⭐ E' il sito che mostra meglio l'estrazione: `reason` lo PROMUOVE
+#   l'helper dal primo motivo, quindi qui non resta niente da comporre — ne'
+#   l'IF, ne' `v_primo`, ne' il contesto.
+#
+# -- COSA CAMBIA, E COSA NO ----------------------------------
+#   Cambia SOLO la coda che solleva il primo motivo della check. La TESTA —
+#   quale check chiamare, su quali colonne, con quale confronto di no-op —
+#   resta identica, ed e' il §3 del brief: due funzioni che finiscono uguali
+#   non sono due funzioni da unire, sono due funzioni che chiamano la stessa
+#   cosa.
+#   ⛔ Il corpo di partenza e' quello VIVO (pg_get_functiondef), non uno YAML:
+#   di questa funzione ci sono piu' revisioni e solo l'ultima conta.
+#
+# -- IL ROLLBACK --------------------------------------------
+#   Rimette il corpo esattamente com'era prima di questo changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260908-29-update-fn-guard-ba-cambio-emittente-usa-helper-mctit.yaml
+
+  - changeSet:
+      id: 20260908-29-update-fn-guard-ba-cambio-emittente-usa-helper
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard del cambio emittente diventa una riga sola. ⭐ E'' il sito che mostra meglio
+        l''estrazione: `reason` lo PROMUOVE l''helper dal primo motivo, quindi qui non resta niente da
+        comporre — ne'' l''IF, ne'' `v_primo`, ne'' il contesto. Piano: brief-db-coda-primo-motivo-in-
+        un-posto-solo, sezione 6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_raise_primo_motivo_se_presente';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'fn_guard_ba_cambio_emittente';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+                  --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
+                  v_motivi jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fail-fast: un billing account che ha gia' congelato il
+                  --   proprio emittente da qualche parte non lo cambia piu'.
+                  --   E' la forma «b» decisa in D-1 — libero finche' non c'e'
+                  --   storia, vietato dopo.
+                  --
+                  -- ⭐ IL PREDICATO NON STA PIU' QUI (§12.5.2): sta in
+                  --   script.fn_check_ba_cambio_emittente, che e' la STESSA
+                  --   funzione da cui la lista dei mapping prende il motivo per
+                  --   spegnere il cestino di riga. Non «coincidono»: sono la
+                  --   stessa riga di codice, e non possono divergere.
+                  --
+                  -- ⚠️ Si solleva il PRIMO motivo dell'array: l'ordine e' il
+                  --   contratto fra il tooltip e l'errore.
+                  -- =========================================================
+                  v_motivi := script.fn_check_ba_cambio_emittente(
+                                  p_billing_account_id, p_emittente_sr_prima, p_emittente_sr_dopo);
+
+                  -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+                  --   come si spacchettano i valori e come si compone il contesto li decide
+                  --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+                  -- ⚠️ Il `context` porta il dettaglio della check piu' il `reason`: il
+                  --   frontend che riceve il 409 e quello che legge la riga leggono la
+                  --   stessa parola. ⭐ Non si compone piu' qui — `reason` lo PROMUOVE
+                  --   l'helper dal primo motivo.
+                  -- ⛔ Nessuna chiave `campo`: la classe e' CONFLITTO_STATO, «non c'e' un
+                  --   campo da correggere, e' la situazione che non lo consente».
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'anagrafiche', 'fn_guard_ba_cambio_emittente',
+                      v_motivi);
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fail-fast: un billing account che ha gia' congelato il
+                  --   proprio emittente da qualche parte non lo cambia piu'.
+                  --   E' la forma «b» decisa in D-1 — libero finche' non c'e'
+                  --   storia, vietato dopo.
+                  --
+                  -- ⭐ IL PREDICATO NON STA PIU' QUI (§12.5.2): sta in
+                  --   script.fn_check_ba_cambio_emittente, che e' la STESSA
+                  --   funzione da cui la lista dei mapping prende il motivo per
+                  --   spegnere il cestino di riga. Non «coincidono»: sono la
+                  --   stessa riga di codice, e non possono divergere.
+                  --
+                  -- ⚠️ Si solleva il PRIMO motivo dell'array: l'ordine e' il
+                  --   contratto fra il tooltip e l'errore.
+                  -- =========================================================
+                  v_motivi := script.fn_check_ba_cambio_emittente(
+                                  p_billing_account_id, p_emittente_sr_prima, p_emittente_sr_dopo);
+
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  -- ⚠️ Il `context` porta il dettaglio della check piu' il
+                  --   `reason`: il frontend che riceve il 409 e quello che
+                  --   legge la riga leggono la stessa parola.
+                  --   ⛔ Nessuna chiave `campo`: la classe e' CONFLITTO_STATO —
+                  --   «non c'e' un campo da correggere, e' la situazione che
+                  --   non lo consente».
+                  PERFORM script.fn_log_and_raise_error(
+                      'anagrafiche',
+                      'fn_guard_ba_cambio_emittente',
+                      v_primo ->> 'codice',
+                      COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
+                          || jsonb_build_object('reason', v_primo ->> 'reason'),
+                      NULL::uuid,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+              END;
+              $function$;

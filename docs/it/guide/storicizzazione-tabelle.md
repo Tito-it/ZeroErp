@@ -1,6 +1,6 @@
 # Guida – Storicizzazione delle Tabelle
 
-> (latest review 05-03-26)
+> (latest review 06-09-2026)
 >
 > Destinatari: sviluppatori database e backend
 >
@@ -64,6 +64,7 @@ Il modello e completamente automatizzato: il framework di automazione DB crea si
 **Manutenzione:**
 
 * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) — sincronizzazione catalogo
+* [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — il registro dei lavori a orario, e perché uno di questi è rimasto rotto sei mesi
 * [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — applicazione default settimanale
 
 ---
@@ -124,6 +125,94 @@ Da un punto di vista tecnico:
 * `ix_<tabella>_snapshot_gin` — indice GIN su snapshot (opzionale, se `create_gin_index=true`)
 
 **FK non creata intenzionalmente:** la colonna `<entita>_id` non ha un vincolo FOREIGN KEY verso la tabella operativa. Questa scelta e deliberata per evitare che le operazioni di DELETE sulla tabella operativa vengano bloccate o richiedano CASCADE sulla tabella di storico.
+
+---
+
+## Di chi è una versione — lo scope congelato (dall'11-09-2026)
+
+> ⭐ **La storia di una riga protetta è la stessa informazione della riga.** Se
+> una fattura si può vedere solo da certi operatori, lo stesso vale per ogni sua
+> versione precedente. Oggi non è così: le tabelle di storico non hanno regole di
+> visibilità. Il cantiere che lo risolve è
+> `brief-db-rls-storico-scope-congelato` (§4b: disegno deciso l'11-09-2026).
+
+Il disegno, in breve:
+
+* ogni tabella di storico riceverà una colonna **`scope_emittente_fiscale_id`**,
+  scritta dal trigger **nel momento in cui fotografa la riga** e mai più
+  ricalcolata — *un archivio che cambia col presente non è un archivio*;
+* riceverà anche **`origine_schema`**: il nome della tabella di storico è il nome
+  nudo della tabella madre, e `acquisti.ddt` e `vendite.ddt` scrivono nella
+  stessa `storico.ddt` — senza lo schema le due storie si mescolano;
+* **da dove** si prende l'emittente lo dice una mappa, non il codice:
+  [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy) — una
+  riga per tabella storicizzata, con cinque modi (colonna in riga, soggetto-ruolo,
+  risalita al padre, billing account, nessuno). La legge
+  [dbops.fn_storico_risolvi_scope](/dbzero/dbops/manual/fn_storico_risolvi_scope);
+* una sola regola di lettura, per l'operatore, sulla colonna congelata;
+* se il padre di un satellite **non è più vivo** — succede in ogni `DELETE` a
+  cascata, dove il padre sparisce prima che il figlio scriva la sua versione
+  finale — l'emittente si legge dall'**ultima versione del padre nello
+  storico**: leggere l'archivio del padre è leggere il passato, non il presente.
+
+**Stato: APPLICATO l'11-09-2026** (pgTAP senza regressioni) — mappa e
+risoluzione (passo 2), colonne e regola di lettura generate
+([dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope),
+passo 3), trigger che congela (passo 4), backfill del pregresso
+([dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope),
+passo 5), controlli (passo 6), privilegi (passo 7: l'applicazione non cancella
+mai una versione).
+
+Sul database di sviluppo, dopo l'apply: 120 tabelle di storico, **37 armate**
+(RLS con tre policy generate), **65.751 versioni** attribuite dal backfill, zero
+senza origine; le tabelle nuove nascono già armate dal generatore.
+
+⚠️ **Un passaggio da superuser, dove serve.** Sul database di sviluppo 68 tabelle
+di storico su 121 appartenevano a `postgres` (le aveva create il job pgAgent): i
+changeSet non possono alterarle, e il trigger nuovo — che scrive le due colonne —
+si ferma finché una tabella ne è priva. `scripts/sql/provision_storico_scope.sql`
+le ha allineate e ne ha riassegnato la proprietà al migratore (fatto l'11-09);
+serve di nuovo su qualunque database dove il job abbia creato shadow come
+`postgres`. Dettagli in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
+
+Controlli: `db/pgtap/dbops/test-storico-scope-policy-v1.sql` (la mappa) e
+`db/pgtap/storico/test-storico-scope-congelato-v1.sql` (colonne, policy,
+congelamento, collisione fra omonime, cancellazione a cascata, lettura per
+operatore, privilegi, proprietario delle shadow).
+
+### Le tre chiusure del 12-09-2026
+
+* **La shadow è di chi possiede la madre.** Il generatore, creata e armata una
+  tabella di storico, la **cede al proprietario della madre**: così anche le
+  shadow che il job pgAgent crea come `postgres` restano del migratore, e la
+  convergenza da Liquibase non le salta più. Il passaggio da superuser del
+  riquadro sopra resta necessario **una volta**, sui database dove il job ha
+  creato shadow prima di questa regola. Dettagli in
+  [dbops.fn_ensure_storico_table](/dbzero/dbops/manual/fn_ensure_storico_table).
+* **Il debito della mappa si vede anche fuori dalla CI.**
+  [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare)
+  porta nel digest settimanale i tre motivi che il controllo asserisce in CI:
+  una madre col trigger senza riga di mappa, una madre in RLS dichiarata
+  `NESSUNO`, una riga di mappa senza più madre. Deve restare vuota.
+* **Nello schema `storico` non tutto è una shadow.** `comune_trasformazioni` e
+  `stradario_trasformazioni` sono i **registri delle fusioni** di comuni e vie
+  (scritti da `fn_admin_merge_*`, letti da `fn_get_vie_discendenti`): non hanno
+  una madre, non hanno il trigger, non entrano nella mappa. Le due shadow
+  davvero orfane — `fatturazione_lotti_attivita` (dominio ritirato) e
+  `risorse_umane_auth_user` (di prima della rinomina della madre) — sono state
+  **cancellate**, insieme al trigger stantio che, rimasto sul nome vecchio,
+  bloccava ogni scrittura sulla madre legacy.
+* **E poi la madre legacy stessa** (decisione Tid, 12-09, pomeriggio):
+  `anagrafiche._legacy_risorse_umane_auth_user` — la tabella ponte di prima
+  del cutover a `identita_digitali` — è stata **eliminata** con la sua shadow
+  (vuota) e le sue registrazioni (mappa dello scope, `audit_sources`,
+  `storico_set_storicizza`). Senza produzione, sei righe di test di una tabella
+  dismessa non rappresentano niente; e non era inerte: due FK `ON DELETE
+  RESTRICT` e la colonna `storicizza` che la faceva ri-armare a ogni
+  `ci_apply`. ⚠️ Il `DROP` sta in `90_end` (`20260912-10`), non in `00_schema`:
+  un changeSet di `90_end` del 29-04 la pretende esistente, e su un database
+  ricostruito da zero `90_end` gira dopo tutto `00_schema`. Presidio:
+  `db/pgtap/anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1.sql`.
 
 ---
 
@@ -349,6 +438,10 @@ Funzione idempotente che crea la tabella di storico con la struttura standard se
 * Crea indice su FK e opzionalmente indice GIN su snapshot
 * Se la tabella esiste gia: return immediato (idempotente)
 * Non crea FOREIGN KEY (scelta deliberata)
+* Dall'11-09-2026: **arma lo scope** (`origine_schema`, `scope_emittente_fiscale_id`,
+  RLS se la mappa dice che la madre è protetta) chiamando `fn_storico_arma_scope`
+* Dal 12-09-2026: **cede la shadow al proprietario della madre**, se chi la crea
+  può farlo; altrimenti `WARN` nell'audit e nessun errore
 
 ### Provisioning trigger: `fn_run_automations_storico`
 
@@ -398,13 +491,32 @@ validazione.
 
 Scansiona il catalogo PostgreSQL per rilevare automaticamente tutte le tabelle con colonna `storicizza` il cui DEFAULT e `true`, e le registra in `config.storico_set_storicizza` con `insert_manuale = false`.
 
-Usa `ON CONFLICT (table_name) DO NOTHING` per idempotenza.
+> ⭐ **Dal 06-09-2026 la sincronizzazione fa anche il contrario: POTA.**
+> Prima sapeva solo aggiungere. Quando una tabella veniva ritirata, la sua riga
+> restava — a puntare a niente, per sempre, finché qualcuno non la notava.
+>
+> ⛔ E non era un dettaglio: tre righe rimaste così hanno fatto fallire il lavoro
+> notturno **ogni sabato per sei mesi**, senza che nessuno lo sapesse.
+>
+> ⚠️ Si pota **solo** ciò che la scansione ha smesso di produrre. Le righe
+> inserite a mano (`insert_manuale = true`) non si toccano: quelle non sono un
+> risultato della derivazione, sono una decisione di qualcuno.
 
 **Job wrapper:** `proc_sync_storico_set_storicizza_job` — esecuzione schedulata con advisory lock e logging via `fn_run_and_log`.
 
 ### Applicazione default: `proc_apply_storicizza_defaults`
 
 Itera tutte le tabelle registrate in `config.storico_set_storicizza` e applica `ALTER TABLE ... ALTER COLUMN storicizza SET DEFAULT true`.
+
+> ⭐ **Dal 06-09-2026 una riga guasta non ferma più le altre.**
+> Prima bastava una riga che puntava a una tabella inesistente per interrompere
+> il giro per tutte le altre cento.
+>
+> ⚠️ E non è la conseguenza della potatura qui sopra: chi produce l'elenco e chi
+> lo consuma sono **due lavori distinti su due orari diversi**. Se l'applicazione
+> gira prima della sincronizzazione — e prima o poi capita — la riga vecchia c'è
+> ancora. Chi consuma un elenco costruito da altri non può morire perché una
+> riga non è ancora stata ripulita.
 
 **Scheduling:** ogni sabato alle 07:00 UTC tramite pgAgent job `apply_storicizza_weekly`.
 

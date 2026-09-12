@@ -34,7 +34,7 @@
 --  - e presidiare C-4 nei due versi (test 12 e 13): una correzione per
 --    documento, ma la catena delle correzioni non si spezza.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3-quater S6-4 · Decisione: Q-7 (24/08), C-1…C-4 (28/08) · lotto 10
 -- ------------------------------------------------------------
 

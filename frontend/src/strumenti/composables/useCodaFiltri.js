@@ -13,9 +13,16 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 
+// Azione di processo che governa le code. ⚠️ FONTE UNICA lato FE: la usano il
+// gate delle azioni di questi tab e `useCodaArchiviazione`, e un codename
+// scritto in due posti e' un cancello che smette di essere lo stesso al primo
+// rename — in silenzio, perche' un permesso che non esiste risponde `false` e
+// l'azione sparisce senza errore.
+export const AZIONE_CODE_MANAGE = 'code_manage'
+
 export function useCodaFiltri(statoMap) {
   const { t } = useI18n()
-  const { isAllowed: canManage } = useActionPermission('code_manage')
+  const { isAllowed: canManage } = useActionPermission(AZIONE_CODE_MANAGE)
 
   const statoOptions = computed(() =>
     Object.keys(statoMap).map((k) => ({ value: k, label: k })),

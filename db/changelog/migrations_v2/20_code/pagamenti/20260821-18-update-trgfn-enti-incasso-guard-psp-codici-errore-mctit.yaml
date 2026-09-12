@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # TRE E_GENERICO SUL GUARD PSP, E TRE RIMEDI DIVERSI — passo P-7 (5 di 6)
 #   pagamenti.trgfn_enti_incasso_guard_psp
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.0 P-7
 #
 # ── PERCHE' TRE CODICI E NON UNO ────────────────────────────────────────
 #   Il criterio del progetto e' che un codice nuovo nasce quando cambia il

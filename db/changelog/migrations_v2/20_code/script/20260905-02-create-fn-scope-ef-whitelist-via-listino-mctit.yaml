@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-4 (pezzo 1 di 5) — l'adapter di scope per le VERSIONI di listino.
+#   Richiesta: brief-db-processi-automatici-residui-be.md §DB-4 (R-8)
+#
+# ⭐ PERCHE' ESISTE. `vendite.listini_versioni` non porta l'emittente: lo porta
+# il listino padre (`listini.emittente_soggetto_ruolo_id`, NOT NULL). E' la
+# stessa forma gia' risolta per le tabelle figlie della fattura, e la si risolve
+# allo stesso modo: un adapter che fa un salto solo e poi DELEGA alla canonica.
+#
+# ⛔ Non si riscrive la regola di perimetro qui dentro. L'adapter risponde a
+# «quale emittente» e passa la palla a `fn_scope_ef_whitelist_via_sr`, che
+# risponde a «e questo utente ce l'ha in whitelist». Copiare la seconda meta'
+# avrebbe prodotto una SECONDA scrittura della stessa regola — e due scritture
+# prima o poi dissentono.
+#
+# ⚠️ `STABLE` e `LANGUAGE sql`, come le sorelle: e' inlineabile, e una policy
+# RLS la esegue una volta per riga. Una `plpgsql` qui costerebbe a ogni SELECT.
+#
+# ⚠️ `%TYPE` in FIRMA oltre che nel corpo — e va detto che cosa NON garantisce:
+# e' una **fotografia**, risolta al `CREATE`. La firma reale resta
+# `(integer, bigint)`, ed e' quella che il `GRANT` e la policy agganciano; se
+# domani `vendite.listini.id` cambiasse tipo, questa funzione non se ne
+# accorgerebbe da sola. Serve a dire DA DOVE viene il tipo, non a inseguirlo.
+#   ⛔ Niente `%TYPE` su `django.*`: l'utente si tipizza dalla colonna che lo
+#   referenzia dal lato nostro (`anagrafiche.risorse_umane_auth_user`), come fa
+#   gia' `script.trgfn_guard_emittente_scope`.
+#
+# ⚠️ Un listino inesistente risolve a SR `NULL`, e la canonica risponde `false`
+# quando la whitelist e' valorizzata: **fail-closed**. E' la stessa postura di
+# `fn_scope_ef_whitelist_via_fattura`, dichiarata nel suo commento.
+#
+# ⛔ NON e' SECURITY DEFINER, e non deve esserlo: `vendite.listini` sta per
+# ricevere la RLS (changeSet -04), ma questa funzione gira dentro una POLICY,
+# cioe' in lettura, dove la domanda «posso vederlo» e' esattamente quella a cui
+# si sta rispondendo. Il caso opposto — il guard di SCRITTURA che deve leggere
+# fuori dalla row security — e' coperto da `fn_resolve_emittente_fiscale_id`,
+# che e' SECURITY DEFINER apposta (changeSet -03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260905-02-create-fn-scope-ef-whitelist-via-listino-mctit.yaml
+
+  - changeSet:
+      id: 20260905-02-create-fn-scope-ef-whitelist-via-listino
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_scope_ef_whitelist_via_listino: adapter via-listino dello scope
+        EF_WHITELIST per le tabelle figlie del listino (vendite.listini_versioni),
+        che non hanno colonna emittente propria. Risolve il soggetto_ruolo
+        dell'emittente attraverso il listino padre e delega alla canonica.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: listini }
+            - columnExists:
+                schemaName: vendite
+                tableName: listini
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_sr'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino(
+                  -- ⚠️ %TYPE anche in FIRMA. Niente %TYPE su django.*: l'utente
+                  --   si tipizza dalla colonna che lo referenzia lato nostro.
+                  p_auth_user_id anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE,
+                  p_listino_id   vendite.listini.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Risolve listino -> emittente_soggetto_ruolo_id e delega
+                  -- all'adapter SR. Listino inesistente -> SR NULL -> false
+                  -- (fail-closed se whitelist valorizzata).
+                  SELECT script.fn_scope_ef_whitelist_via_sr(
+                      p_auth_user_id,
+                      (SELECT l.emittente_soggetto_ruolo_id
+                         FROM vendite.listini l
+                        WHERE l.id = p_listino_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_listino(integer, bigint)
+              IS 'Adapter via-listino dello scope EF_WHITELIST: risolve l''emittente attraverso vendite.listini e delega a fn_scope_ef_whitelist_via_sr (-> canonica). Per le tabelle figlie del listino senza colonna emittente propria (vendite.listini_versioni). Gemello di fn_scope_ef_whitelist_via_fattura. STABLE, inlineable. Brief: brief-db-processi-automatici-residui-be §DB-4.';
+
+              -- Le funzioni di scope sono eseguibili dal ruolo applicativo: le
+              -- chiama la policy, non il codice. ⚠️ Difensivo, cosi'
+              -- un'installazione senza ruolo applicativo non ferma la pipeline.
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION
+                          script.fn_scope_ef_whitelist_via_listino(integer, bigint)
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS
+                  script.fn_scope_ef_whitelist_via_listino(integer, bigint);

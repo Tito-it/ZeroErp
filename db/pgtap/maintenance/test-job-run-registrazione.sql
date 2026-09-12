@@ -3,7 +3,7 @@
 -- pgTAP — registrazione run job headless: colonne origine/meta + funzioni
 --         script.fn_job_run_start / fn_job_run_end (J1/J2/J3).
 --
--- Vedi: docs/it/dev/work-in-progress/brief-db-job-run-registrazione.md
+-- Vedi: brief-db-job-run-registrazione.md
 --
 -- Copre struttura + happy-path start/end + postura SECURITY DEFINER + REVOKE PUBLIC.
 -- NON copre l'anti-overlap reale: l'advisory lock di sessione e' re-entrant -> due
@@ -67,8 +67,18 @@ SELECT throws_ok(
 );
 
 -- ---- 8..11: fn_job_run_start happy-path (no lock) ----
+-- ⛔ 2026-09-05: `chk_job_run_log_processo_dichiarato` pretende che un run NUOVO
+--   dichiari il proprio processo (DB-5). Questa fixture ne apriva uno muto —
+--   collaudava la vecchia tolleranza, non la registrazione.
+--   ⇒ Si passa un processo VERO del catalogo, scelto in modo deterministico:
+--     cosi' il file continua a collaudare cio' che collaudava — l'apertura e la
+--     chiusura del run — invece di inciampare su un vincolo che non e' suo.
 CREATE TEMP TABLE _r ON COMMIT DROP AS
-    SELECT * FROM script.fn_job_run_start('test_job', 'CRON', NULL, NULL, NULL);
+    SELECT * FROM script.fn_job_run_start(
+        'test_job', 'CRON', NULL, NULL, NULL,
+        (SELECT codice FROM dbops.processi
+          WHERE classe = 'MANUTENZIONE' AND attivo
+          ORDER BY id LIMIT 1));
 
 SELECT ok((SELECT acquired FROM _r), 'start: acquired = true');
 SELECT ok((SELECT run_uuid IS NOT NULL FROM _r), 'start: run_uuid non null');
@@ -128,7 +138,15 @@ SELECT ok(
 -- ---- 20..21: REVOKE EXECUTE FROM PUBLIC ----
 SELECT ok(
     NOT has_function_privilege('public',
-        'script.fn_job_run_start(text,text,text,text,text)', 'EXECUTE'),
+        -- ⚠️ Funzione cercata per NOME, non per firma letterale: la firma
+        --   cambia quando si aggiungono parametri (2026-09-04: +attore), e
+        --   un test che la scrive a mano fallisce per il MOTIVO SBAGLIATO —
+        --   segnala la firma invece del privilegio che deve presidiare.
+        (SELECT p.oid
+           FROM pg_catalog.pg_proc p
+           JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'script' AND p.proname = 'fn_job_run_start'),
+        'EXECUTE'),
     'fn_job_run_start: PUBLIC senza EXECUTE'
 );
 SELECT ok(

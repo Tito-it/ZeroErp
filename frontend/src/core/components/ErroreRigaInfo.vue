@@ -32,6 +32,7 @@ import Popover from 'primevue/popover'
 import Tag from 'primevue/tag'
 import { displayTimestamp } from '../utils/date'
 import BersaglioAzioni from './BersaglioAzioni.vue'
+import { MANAGE_ICONS } from '../constants'
 
 const props = defineProps({
   // Il messaggio dell'errore. Assente/vuoto = niente icona: la riga non ha
@@ -79,7 +80,22 @@ const props = defineProps({
 const { t } = useI18n()
 const popover = ref(null)
 
-const haErrore = computed(() => Boolean(String(props.messaggio ?? '').trim()))
+// ⭐ L'ICONA COMPARE SE C'E' QUALCOSA DA RACCONTARE — una frase OPPURE un
+// codice. ⚠️ Fino al 2026-09-06 guardava il solo `messaggio`, e su una riga con
+// il codice ma senza frase non compariva niente: la riga si leggeva SANA mentre
+// un tentativo era fallito. È esattamente il difetto per cui esiste il cantiere
+// dell'esito di gruppo, ricreato un piano più su.
+// ⛔ E il modello lo AMMETTE, non è un caso di scuola: il CHECK
+// `chk_lotti_gruppi_errore_parlante` pretende «almeno uno dei due» — codice o
+// frase — quindi una riga in errore con la sola causa è una riga legittima.
+// Che oggi chi scrive li valorizzi entrambi non cambia la regola: un guard non
+// si restringe perché il ramo oggi è irraggiungibile.
+// ⚠️ Resta il caso in cui NON compare, ed è quello giusto: nessuno dei due. Lì
+// la riga non ha davvero niente da dire, e un'icona sarebbe un segnale muto.
+const haErrore = computed(
+  () => Boolean(String(props.messaggio ?? '').trim())
+    || Boolean(String(props.codice ?? '').trim()),
+)
 
 // La scala dei livelli del diario (`fatture_log.status`) tradotta nelle
 // severity PrimeVue: stesso vocabolario di `SelectButtonGravita` e dei Tag.
@@ -89,7 +105,7 @@ const severita = computed(() => SEVERITY_PER_LIVELLO[props.livello] || 'danger')
 // L'icona segue il livello: triangolo per critico e avviso (c'e' qualcosa che
 // non va), «i» per l'attenzione (c'e' qualcosa da sapere).
 const icona = computed(
-  () => (props.livello === 'I' ? 'pi pi-info-circle' : 'pi pi-exclamation-triangle'),
+  () => (props.livello === 'I' ? 'pi pi-info-circle' : MANAGE_ICONS.ERRORE),
 )
 
 function toggle(event) {
@@ -128,7 +144,10 @@ function chiudiPopover() {
     <!-- `white-space: pre-line`: i messaggi del database vanno a capo da soli
          (DETAIL e HINT su righe proprie), e schiacciarli in un paragrafo unico
          toglierebbe proprio la separazione fra «cos'è successo» e «cosa fare». -->
-    <p class="app-errore-riga-testo">{{ messaggio }}</p>
+    <!-- ⚠️ Il paragrafo si rende solo se la frase c'è: con il solo codice, il
+         Tag qui sopra è già tutto ciò che si sa, e un paragrafo vuoto
+         lascerebbe un buco che sembra un caricamento mancato. -->
+    <p v-if="messaggio" class="app-errore-riga-testo">{{ messaggio }}</p>
 
     <!-- Il GESTO, quando c'è dove andare. Sotto il messaggio e non accanto al
          titolo: prima si legge cosa è successo, poi si decide di muoversi. -->

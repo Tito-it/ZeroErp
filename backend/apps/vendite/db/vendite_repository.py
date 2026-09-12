@@ -19,6 +19,8 @@ from django.db import DatabaseError, connection, transaction
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
     call_jsonb_fn,
+    conta_con_perimetro,
+    fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
     query_paged_view,
@@ -28,6 +30,10 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.services.system_context import connection_role_bypasses_rls
+# ⚠️ Un repository di dominio che importa da `apps.ui`: e' la sede UNICA del
+#    tetto dell'export, e la dipendenza e' su una costante, non su un servizio.
+#    Il modulo importa solo stdlib e `apps.core` — nessun ciclo.
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
@@ -44,16 +50,14 @@ from apps.vendite.types import (
     DashCompetenzaResiduoRow,
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
-    DashCompetenzaGruppiRiepilogoRow,
-    DashCompetenzaGruppoRegistroRow,
     DashCompetenzaGruppoRow,
-    DashCompetenzaGruppoTipoRow,
     DashCompetenzaMensileRow,
     FondoFatturaDaDecidereRow,
     LineageNodoRow,
     LineagePassaggioRow,
     LineageSorgenteRow,
     LottoFattureRow,
+    LottoGruppoRow,
     LottoListRow,
 )
 
@@ -76,10 +80,24 @@ logger = logging.getLogger(__name__)
 # ⚠️ Il NUCLEO ordina sempre (regola delle liste standard): numero, data,
 # identificativo fiscale e stati. Prima ne erano ordinabili 3 su 11, cioe' la
 # lista sarebbe nata con cinque colonne di nucleo rotte.
-# Il tetto delle righe esportabili dei documenti di un lotto. Il tetto di
-# PAGINA (`LIST_MAX_LIMIT`, 200) resta dov'e': sono due limiti diversi per due
-# usi diversi, e confonderli significa o una pagina enorme o un file troncato.
-_LOTTO_FATTURE_EXPORT_MAX_ROWS = 10_000
+# Il tetto delle righe esportabili delle liste del DRAWER LOTTO (documenti del
+# lotto e documenti presi in carico). Il tetto di PAGINA (`LIST_MAX_LIMIT`, 200)
+# resta dov'e': sono due limiti diversi per due usi diversi, e confonderli
+# significa o una pagina enorme o un file troncato.
+#
+# ⛔ SI DERIVA, non si riscrive, ed e' una correzione del 2026-09-06: qui c'era
+#    un `10_000` scritto a mano, cioe' una SECONDA copia di
+#    `apps.ui.services.lista_export_service.EXPORT_MAX_ROWS` — lo stesso numero
+#    su cui il guard dell'export decide se il file e' completo.
+#    ⚠️ Il difetto che due copie producono e' MUTO: alzando il tetto in una sola
+#    sede, il guard lascerebbe passare un perimetro piu' grande mentre il
+#    repository continuerebbe a troncare — un file con 10.000 righe consegnato
+#    come completo. Nessun errore, nessun test rosso.
+# 📌 Restano DUE copie dello stesso numero, dichiarate e non mie:
+#    `_ATTIVITA_EXPORT_MAX_ROWS` (commesse_repository) e
+#    `_DRAWER_EXPORT_MAX_ROWS` (pipeline_repository). Vanno nella stessa
+#    direzione, ma toccano liste che questo cantiere non attraversa.
+_LOTTO_EXPORT_MAX_ROWS = EXPORT_MAX_ROWS
 
 # ⭐ Le colonne ordinabili del GIORNALE di un'entita', e sono due sole di
 # proposito: la gravita' (default) e il tempo. ⛔ Non e' una lista ridotta «per
@@ -123,6 +141,26 @@ LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "stato_esecuzione": "fllf.stato_esecuzione",
     "totale_doc": "f.totale_doc",
     "totale_a_pagare": "f.totale_a_pagare",
+}
+
+# Ordinamenti ammessi sui GRUPPI di un lotto — i documenti che il lotto ha
+# preso in carico, con l'esito di ciascuno (brief-db-esito-gruppo-lotto §6).
+#
+# ⚠️ Le chiavi sono i nomi di OUTPUT della SELECT, non le colonne fisiche: le
+# quattro di identita' escono da un'aggregazione (`ref`), e ordinare per
+# l'espressione riscritta invece che per l'alias e' il modo in cui una copia
+# diverge dall'originale (api.md §whitelist di ordinamento).
+# ⛔ `errore_messaggio` NON e' ordinabile, ed e' una scelta: mettere in ordine
+#    alfabetico delle frasi non risponde a nessuna domanda. La sua riga a
+#    catalogo e' `ordinabile = f`, e i due versi di
+#    `test_liste_configurabili_seed` tengono le due cose allineate.
+LOTTO_GRUPPI_SORT_COLUMNS: dict[str, str] = {
+    "riferimento": "riferimento",
+    "tipo_gruppo": "tipo_gruppo",
+    "stato_esecuzione": "stato_esecuzione",
+    "errore_codice": "errore_codice",
+    "errore_quando": "errore_quando",
+    "commessa_codice": "commessa_codice",
 }
 
 # Aree della famiglia dash fatturazione, nell'ordine del funnel (brief
@@ -192,6 +230,49 @@ TIPO_GRUPPO_ONERI = "ONERI_COMMESSA"
 # sola sede, mai un 3 scritto in due posti che poi divergono.
 SEARCH_MIN_LEN = 3
 
+# Vocabolario dell'esito di esecuzione dentro un lotto — specchio Python del
+# CHECK `chk_lotti_gruppi_stato_esecuzione` (e del gemello sulle fatture del
+# lotto: D-2 del brief-db-esito-gruppo-lotto li tiene IDENTICI, perche' due
+# colonne che rispondono alla stessa domanda a due livelli non possono parlare
+# due lingue).
+# ⚠️ `NULL` NON e' in questa tupla ed e' voluto: e' l'assenza di risposta —
+# «nessuno l'ha detto» — non un valore del vocabolario. Un filtro su «mai
+# tentati» sarebbe una domanda diversa, e la si porrebbe con un altro
+# parametro, non con una quinta voce qui dentro.
+# ⭐ I due valori che il codice NOMINA vivono in una costante ciascuno, e la
+#    tupla li riusa: cosi' «l'elenco ammesso» e «il valore che scrivo» non
+#    possono divergere. Gli altri due (`PENDING`, `RUNNING`) nessuno li scrive
+#    ne' li confronta — restano stringhe dell'elenco finche' non serviranno.
+STATO_ESECUZIONE_ERRORE = "ERRORE"
+STATO_ESECUZIONE_COMPLETED = "COMPLETED"
+# ⭐ Il surplus DICHIARATO del livello DOCUMENTO: l'operatore ha tolto questo
+#    documento dal giro (`vendite.fn_escludi_documento_da_giro`, 2026-09-08).
+#    Una FATTURA quello stato non lo puo' avere — quando un documento esce, la
+#    sua bozza viene cancellata e la riga di ponte sparisce: non esiste una
+#    fattura «esclusa ma ancora li'».
+STATO_ESECUZIONE_ESCLUSO = "ESCLUSO"
+# Il vocabolario COMUNE ai due livelli — documento preso in carico e fattura
+# prodotta rispondono alla stessa domanda, e la D-2 di
+# `brief-db-esito-gruppo-lotto` li vuole nella stessa lingua.
+STATI_ESECUZIONE_LOTTO: tuple[str, ...] = (
+    "PENDING",
+    "RUNNING",
+    STATO_ESECUZIONE_COMPLETED,
+    STATO_ESECUZIONE_ERRORE,
+)
+# ⛔ IL LIVELLO DOCUMENTO E' IL COMUNE PIU' IL SURPLUS, e si scrive cosi' —
+#    per SOMMA, non come una seconda lista — perche' il giorno che il
+#    vocabolario comune cresce, questo cresce con lui senza che nessuno se ne
+#    ricordi. Due elenchi scritti a mano divergono al primo valore nuovo.
+# ⚠️ E la divergenza fra i due livelli e' LEGITTIMA ma DICHIARATA: il cancello
+#    `test_esito_esecuzione_lotto_guardrail` non confronta piu' «identici» ma
+#    «identici a meno di questo surplus», che e' la stessa forma decisa dal
+#    team DB per il pgTAP gemello (brief-db-uscita-documento-dal-giro §7-bis).
+STATI_ESECUZIONE_DOCUMENTO: tuple[str, ...] = (
+    *STATI_ESECUZIONE_LOTTO,
+    STATO_ESECUZIONE_ESCLUSO,
+)
+
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
     DASH_STADIO_DA_APPROVARE,
@@ -200,9 +281,11 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
     "FATTURATA",
 )
 
-# ⭐ L'unico dei quattro valori di `motivo_non_fatturata` (vocabolario chiuso
-# della vista `vw_dash_competenza_attivita`, changeSet 20260826-54) che CHIEDE
-# un'azione: le altre tre situazioni — IN_ATTESA_LOTTO, GIRO_IN_CORSO,
+# ⭐ L'unico dei tre valori di `motivo_non_fatturata` (vocabolario chiuso
+# della vista `vw_dash_competenza_attivita`, changeSet 20260826-54; a TRE
+# valori dal 20260912-36: dentro EMESSA_NON_FATTURATA la riga e' EMESSA per
+# costruzione, quindi «in attesa del lotto» non esiste) che CHIEDE
+# un'azione: le altre due situazioni — GIRO_IN_CORSO,
 # SENZA_ATTIVITA_FATTURABILE — sono «niente da fare».
 # ⛔ Vive QUI, in una sede sola, e si passa come PARAMETRO SQL: il letterale
 # embedded e' la lezione gia' pagata sullo stadio (vedi
@@ -210,6 +293,9 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
 # riscriverla — due copie dello stesso valore, una in SQL e una in Python,
 # divergono senza che niente fallisca: la lista mostrerebbe un perimetro e la
 # card ne conterebbe un altro.
+# Presidio (DB provvisto): `tests/db/test_motivo_non_fatturata_locale` — il
+# valore e' fra quelli che la vista emette, e ogni valore emesso ha la sua
+# etichetta nei locales.
 MOTIVO_NON_FATTURATA_RESIDUO = "RESIDUO"
 
 # Codice stabile (codice_interno di config.tipi_indirizzi) dello slot letto
@@ -274,7 +360,52 @@ _ACCESSORI_COLONNE_AGGREGATI = (
     "g.ba_codice_fatturazione",
     "g.id_fiscale",
     "g.registri_ids",
+    # ⭐ `20260909-66`: il riepilogo ESCLUDE i gruppi trattenuti e li dichiara.
+    #    Serve agli aggregati, quindi sta qui.
+    "g.emissione_blocco_reason",
 )
+
+# I lotti ANNULLATI nel perimetro della lista (2026-09-12): fuori di default
+# (`esclusi`), dentro a richiesta (`inclusi`), e SOLO loro per contare quanti
+# ne restano fuori (`solo`). Il predicato e' il flag di catalogo
+# `config.stati_doc_fiscale.is_abortito`, letto dalla JOIN `sdf` che la lista
+# ha gia': ⛔ mai il `codice_interno`, che e' vocabolario del database.
+LOTTI_ANNULLATI_ESCLUSI = "esclusi"
+LOTTI_ANNULLATI_INCLUSI = "inclusi"
+LOTTI_ANNULLATI_SOLO = "solo"
+# `COALESCE`: un lotto senza stato fiscale (`stato_doc_fiscale_id` e' nullable)
+# non e' abortito — la `LEFT JOIN` lo lascerebbe a NULL, e `NULL IS FALSE` e'
+# falso: sparirebbe dalla lista senza che nessuno l'abbia annullato.
+_LOTTI_COND_NON_ABORTITO = "COALESCE(sdf.is_abortito, FALSE) IS FALSE"
+_LOTTI_COND_ABORTITO = "sdf.is_abortito IS TRUE"
+# La JOIN che porta `sdf` — una sola, composta dentro `_LOTTO_JOINS` e riusata
+# dal calendario, che ha un perimetro suo (l'anno) e non passa dalla lista.
+_LOTTI_JOIN_SDF = """
+            LEFT JOIN config.stati_doc_fiscale sdf
+                ON sdf.id = fl.stato_doc_fiscale_id"""
+# ⭐ LA SEDE UNICA di «quale condizione per quale valore»: chi compone un
+#    perimetro (la lista con `_lotti_conditions`, il calendario con l'anno)
+#    chiede qui e non nomina i frammenti. `None` = nessuna condizione.
+_LOTTI_COND_PER_ANNULLATI: dict[str, str | None] = {
+    LOTTI_ANNULLATI_ESCLUSI: _LOTTI_COND_NON_ABORTITO,
+    LOTTI_ANNULLATI_INCLUSI: None,
+    LOTTI_ANNULLATI_SOLO: _LOTTI_COND_ABORTITO,
+}
+
+
+# Scopo: la forma a due valori che vedono service e view (`includi_annullati`)
+#        tradotta nei tre del repository. Il terzo (`solo`) non e' un'opzione
+#        del chiamante: lo usa solo `count_lotti_annullati`.
+def _annullati_da_flag(includi_annullati: bool) -> str:
+    return LOTTI_ANNULLATI_INCLUSI if includi_annullati else LOTTI_ANNULLATI_ESCLUSI
+
+
+# Scopo: la condizione SQL sull'abortito per un valore dell'enum, o `None`.
+#        Un valore inventato e' un errore, non un elenco vuoto.
+def _condizione_annullati(annullati: str) -> str | None:
+    if annullati not in _LOTTI_COND_PER_ANNULLATI:
+        raise ValueError(f"annullati: valore non ammesso {annullati!r}")
+    return _LOTTI_COND_PER_ANNULLATI[annullati]
 
 
 class VenditeRepository:
@@ -324,7 +455,7 @@ class VenditeRepository:
     # Obiettivo: lista generica fatturazione_lotti con decodifiche config.
     # Proiezione + JOIN + mapping condivisi da list_lotti e get_lotto (la testata
     # del dettaglio è la stessa riga della lista: nessuna vista/colonna nuova).
-    _LOTTO_SELECT_COLS = """
+    _LOTTO_SELECT_COLS = f"""
                 fl.id,
                 fl.codice,
                 fl.competenza_mese,
@@ -410,14 +541,60 @@ class VenditeRepository:
                 -- testata. Qui si espone il valore DICHIARATO, non quello
                 -- calcolato: sono due cose diverse e mostrarle come una sola
                 -- direbbe che una scelta e' stata fatta quando non lo e'.
-                fl.data_documento
+                fl.data_documento,
+                -- ⭐ LA SOGLIA DI CONGELAMENTO, presa dal CATALOGO e non da
+                -- una lista di codici scritta a mano. Serve al gate dei verbi di
+                -- pipeline (`useLottoAzioni.verbiPipeline`), che finora leggeva
+                -- `stato_doc_fiscale_codice !== 'DRAFT'`: era l'ennesima copia
+                -- della soglia che `D33` ha portato a leggere
+                -- `config.stati_doc_fiscale.congela_fiscale`, e l'ultima copia
+                -- fuori dal database e' gia' stata tolta dallo stesso file Vue
+                -- il 2026-08-31 (F5), per lo stesso motivo: una copia in un
+                -- template il DB non la vede, e il giorno che il confine si
+                -- sposta non fallisce — propone un verbo che verra' rifiutato.
+                -- ⚠️ Il JOIN c'e' gia' (`sdf`): e' una colonna in piu' sulla
+                -- stessa riga, non un accesso nuovo.
+                -- ⚠️ In coda alla proiezione DI PROPOSITO: il mapper e'
+                -- posizionale e un indice sbagliato non fallisce, legge la
+                -- colonna accanto (difetto reale del 2026-08-25 su `riaperto`).
+                -- Inserirla in mezzo rinumererebbe 24 posizioni per ottenere una
+                -- lettura piu' bella.
+                sdf.congela_fiscale AS stato_congela_fiscale,
+                -- ⭐ QUANTI DOCUMENTI IL LOTTO HA PRESO IN CARICO E QUANTI SONO
+                -- ANDATI A BUON FINE (richiesta di Tid, 2026-09-12). Fino a
+                -- quel giorno la riga di lista diceva solo `n_fatture`, e i
+                -- presi in carico si vedevano SOLO nel drawer: un lotto in
+                -- `ERRORE` con zero fatture non diceva «zero su due».
+                -- ⛔ NON e' `n_fatture` diviso per i presi in carico, ed e' la
+                -- scelta che sembra ovvia: le fatture SPARISCONO con l'annullo
+                -- (il ponte viene cancellato, gli esiti restano) e possono
+                -- essere MENO dei presi in carico anche a giro riuscito —
+                -- `fn_build_fattura_key` fonde piu' gruppi in un documento.
+                -- Misurato sui lotti dal 07-09: 10 lotti con «fatture < presi»
+                -- e tutti gli esiti COMPLETED. Quel rapporto direbbe anomalia
+                -- su ogni lotto annullato e su ogni fusione.
+                -- ⇒ Si contano gli ESITI, che sono il fatto: `presi` = righe di
+                -- `fatturazione_lotti_esiti` non `ESCLUSO` (l'operatore ha
+                -- dichiarato che quel documento e' uscito dal giro — stesso
+                -- criterio di `documenti_presi_in_carico_count` nel riepilogo),
+                -- `completati` = esiti `COMPLETED`. Il client mostra il
+                -- rapporto SOLO quando differiscono.
+                -- ⚠️ Sotto-query come le due sorelle qui sopra, per la stessa
+                -- ragione: un JOIN sugli esiti moltiplicherebbe la riga.
+                -- ⚠️ In coda alla proiezione, come impone il mapper posizionale.
+                (SELECT count(*)
+                   FROM vendite.fatturazione_lotti_esiti e_p
+                  WHERE e_p.lotto_id = fl.id
+                    AND e_p.stato_esecuzione <> '{STATO_ESECUZIONE_ESCLUSO}') AS n_presi_in_carico,
+                (SELECT count(*)
+                   FROM vendite.fatturazione_lotti_esiti e_c
+                  WHERE e_c.lotto_id = fl.id
+                    AND e_c.stato_esecuzione = '{STATO_ESECUZIONE_COMPLETED}') AS n_esiti_completati
     """
 
-    _LOTTO_JOINS = """
+    _LOTTO_JOINS = f"""
             LEFT JOIN config.utilities u
-                ON u.id = fl.utility_id
-            LEFT JOIN config.stati_doc_fiscale sdf
-                ON sdf.id = fl.stato_doc_fiscale_id
+                ON u.id = fl.utility_id{_LOTTI_JOIN_SDF}
             LEFT JOIN config.tipi_doc_fiscale tdf
                 ON tdf.id = fl.tipo_doc_fiscale_id
             LEFT JOIN vendite.area_geografica_fatturazione agf
@@ -480,6 +657,15 @@ class VenditeRepository:
             #    step, e chiamarlo «Avanza step» dice una cosa falsa.
             "riaperto": bool(row[22]),
             "data_documento": row[23].isoformat() if row[23] is not None else None,
+            # ⚠️ `None` conservato e non appiattito a `False`: il JOIN sullo
+            # stato e' LEFT (un lotto senza stato resta una riga), e «non lo so»
+            # non e' «non congela». Il gate FE e' fail-closed su questo campo.
+            "stato_congela_fiscale": None if row[24] is None else bool(row[24]),
+            # I due conteggi degli ESITI (2026-09-12): quanti presi in carico e
+            # quanti andati a buon fine. Zero e zero su un lotto senza esiti
+            # (giri precedenti al 07-09): il client non mostra niente.
+            "n_presi_in_carico": int(row[25]),
+            "n_esiti_completati": int(row[26]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -540,9 +726,43 @@ class VenditeRepository:
         "emittente_ragione_sociale": "s_ef.ragione_sociale_completa",
     }
 
-    # Perimetro: solo lettura; nessun side-effect.
-    # Risultato: tuple (lista LottoListRow, conteggio totale).
-    def list_lotti(
+    # Scopo: Costruisce il `WHERE` (clausola + parametri) della lista lotti —
+    #        la SOLA sede del perimetro, condivisa da lista, conteggio totale e
+    #        breakdown per stato.
+    # Obiettivo: che le tre query non possano descrivere insiemi diversi.
+    # Perimetro: pura, nessun I/O.
+    # Risultato: tuple (clausola WHERE gia' composta o stringa vuota, params).
+    #
+    # ⛔ Estratta il 2026-09-03 e NON per togliere righe: api.md §«Il `count`
+    #    non si deriva mai dalle righe» chiede di **condividere** il frammento
+    #    `FROM`+`WHERE` fra la query dei dati e quella che conta, non di
+    #    riscriverlo. Con i chip per stato le query diventano tre, e tre copie
+    #    di un perimetro divergono al primo filtro aggiunto — in silenzio, con i
+    #    numeri dei chip che smettono di tornare con la lista sotto.
+    #
+    # ⭐ `includi_stato=False` serve ai chip, ed e' la ragione per cui il flag
+    #    esiste invece di un secondo costruttore: il breakdown deve contare il
+    #    perimetro SENZA il filtro che i chip stessi pilotano. Contandolo
+    #    dentro, scelto «BOZZA» gli altri stati andrebbero a 0, i loro chip
+    #    sparirebbero (si rendono solo sopra zero) e non ci sarebbe piu' modo di
+    #    tornare indietro con un click — lo stesso interruttore tolto dalle card
+    #    della Lente Competenza. Gli altri filtri (mese, recuperi, utility…)
+    #    restano: sono il contesto, non l'asse dei chip.
+    #
+    # ⭐ `annullati` (2026-09-12, decisione di Tid): un lotto il cui stato
+    #    fiscale e' ABORTITO (`config.stati_doc_fiscale.is_abortito`, oggi
+    #    `ANNULLATA`) e' un guscio — l'annullo e' un rollback che cancella le
+    #    fatture, rimette le attivita' «da emettere» e chiude i task run — e
+    #    NON e' lavoro: di default sta FUORI dal perimetro, come le archiviate
+    #    delle code. ⚠️ Ed e' peggio che rumore: i chip sono per `stato_lotto`
+    #    (operativo), che l'annullo di proposito non tocca (rev 2026-09-07), quindi
+    #    un lotto annullato restava sotto «Errore» o «Completato» — un chip «3
+    #    Errore» in cui uno e' un errore gia' disfatto. ⛔ Il criterio e' il FLAG
+    #    di catalogo, mai `codice_interno = 'ANNULLATA'`: il vocabolario e' del
+    #    database. Tre valori, perche' il conteggio di cio' che resta fuori
+    #    (`count_lotti_annullati`) vuole il perimetro ROVESCIATO sulla sola
+    #    condizione dell'abortito e identico su tutto il resto.
+    def _lotti_where(
         self,
         *,
         competenza_mese: date | None,
@@ -551,24 +771,48 @@ class VenditeRepository:
         area_geografica_id: int | None,
         tipo_doc_fiscale_id: int | None,
         emittente_soggetto_ruolo_id: int | None,
-        auth_user_id: int | None = None,
-        order_by: str | None = None,
-        order_dir: str | None = None,
-        limit: int,
-        offset: int,
-        max_limit: int = LIST_MAX_LIMIT,
-        solo_recuperi_mese: bool = False,
-    ) -> tuple[list[LottoListRow], int]:
-        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
-        # protegge la lista a video; l'export lo alza esplicitamente (fino a
-        # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
-        # invece di troncare in silenzio). Resta un cap passato dal chiamante:
-        # nessun percorso senza tetto.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
+        auth_user_id: int | None,
+        solo_recuperi_mese: bool,
+        includi_stato: bool = True,
+        annullati: str = LOTTI_ANNULLATI_ESCLUSI,
+    ) -> tuple[str, list[Any]]:
+        conditions, params = self._lotti_conditions(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=stato_lotto,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+            includi_stato=includi_stato,
+            annullati=annullati,
+        )
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        return where_clause, params
 
+    # Scopo: le condizioni del perimetro lotti, ancora SEPARATE: servono cosi'
+    #        a `conta_con_perimetro`, che le vuole a pezzi. `_lotti_where` e' il
+    #        suo involucro, e non esiste una terza sede.
+    def _lotti_conditions(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None,
+        stato_lotto: str | None,
+        area_geografica_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+        emittente_soggetto_ruolo_id: int | None,
+        auth_user_id: int | None,
+        solo_recuperi_mese: bool,
+        includi_stato: bool = True,
+        annullati: str = LOTTI_ANNULLATI_ESCLUSI,
+    ) -> tuple[list[str], list[Any]]:
         conditions: list[str] = []
         params: list[Any] = []
+        cond_annullati = _condizione_annullati(annullati)
+        if cond_annullati is not None:
+            conditions.append(cond_annullati)
 
         # Costruzione WHERE dinamica; ogni filtro è parametrizzato.
         # ⭐ LA SCHEDA «RECUPERI DEL MESE» E' QUESTA STESSA LISTA con UNA
@@ -605,7 +849,7 @@ class VenditeRepository:
         if utility_id is not None:
             conditions.append("fl.utility_id = %s")
             params.append(utility_id)
-        if stato_lotto is not None:
+        if includi_stato and stato_lotto is not None:
             conditions.append("fl.stato_lotto = %s")
             params.append(stato_lotto)
         if area_geografica_id is not None:
@@ -621,8 +865,146 @@ class VenditeRepository:
         self._add_scope_emittente(
             auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
         )
+        return conditions, params
 
-        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    # Scopo: QUANTI lotti annullati il perimetro della lista sta NASCONDENDO.
+    # Obiettivo: che «mese pulito» e «tre lotti annullati» non si leggano
+    #            uguali: il numero va accanto all'interruttore che li mostra.
+    # Perimetro: STESSO della lista — mese, recuperi, stato, utility, scope —
+    #            con la sola condizione dell'abortito rovesciata. Sola lettura.
+    # Risultato: int.
+    #
+    # ⛔ Non e' derivabile dalla lista: quelle righe il suo `WHERE` le ha gia'
+    #    escluse. E' il caso per cui esiste il BB `conta_con_perimetro`
+    #    (archiviate delle code, ritirate del giornale): una valutazione sua,
+    #    sul frammento `FROM` + condizioni che la lista possiede.
+    def count_lotti_annullati(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None = None,
+        stato_lotto: str | None = None,
+        area_geografica_id: int | None = None,
+        tipo_doc_fiscale_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+        auth_user_id: int | None = None,
+        solo_recuperi_mese: bool = False,
+    ) -> int:
+        conditions, params = self._lotti_conditions(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=stato_lotto,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+            annullati=LOTTI_ANNULLATI_SOLO,
+        )
+        return conta_con_perimetro(
+            f"FROM vendite.fatturazione_lotti fl {self._LOTTO_JOINS}",
+            conditions,
+            params,
+        )
+
+    # Scopo: Conteggio lotti RAGGRUPPATI PER STATO sul perimetro della lista —
+    #        alimenta i pulsanti-filtro «5 Bozza · 4 In esecuzione …» del
+    #        registro lotti (stesso pattern dei chip per area della Lente
+    #        Backlog).
+    # Obiettivo: dare all'operatore, prima di filtrare, la ripartizione di cio'
+    #            che sta guardando.
+    # Perimetro: sola lettura; STESSO `WHERE` della lista — mese e
+    #            `recuperi_mese` compresi, filtro stato escluso (vedi
+    #            `_lotti_where`). Scope emittente identico (RLS + whitelist).
+    # Risultato: dict {stato_lotto: n_lotti}, solo stati presenti.
+    #
+    # ⛔ Non e' derivabile a valle dalle righe consegnate: la lista e' PAGINATA,
+    #    quindi contare i `results` darebbe la ripartizione della pagina e non
+    #    del mese. E' la stessa forma che api.md vieta per il `count` — un
+    #    numero derivato dalle righe non dice niente sulle righe.
+    #
+    # ⚠️ Le JOIN restano anche se il `WHERE` non le usa: oggi sono tutte LEFT e
+    #    non possono togliere righe, ma il giorno in cui una diventasse INNER
+    #    per una decodifica la lista si accorcerebbe e i chip no — e la
+    #    differenza si vedrebbe solo come due numeri che non tornano. Il costo
+    #    e' cinque LEFT JOIN su FK indicizzate; la divergenza silenziosa no.
+    def count_lotti_per_stato(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None = None,
+        area_geografica_id: int | None = None,
+        tipo_doc_fiscale_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+        auth_user_id: int | None = None,
+        solo_recuperi_mese: bool = False,
+        includi_annullati: bool = False,
+    ) -> dict[str, int]:
+        where_clause, params = self._lotti_where(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=None,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+            includi_stato=False,
+            annullati=_annullati_da_flag(includi_annullati),
+        )
+        sql = f"""
+            SELECT fl.stato_lotto, COUNT(*)
+            FROM vendite.fatturazione_lotti fl
+            {self._LOTTO_JOINS}
+            {where_clause}
+            GROUP BY fl.stato_lotto
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+        # Uno stato NULL non e' uno stato: non ha una voce a catalogo e non
+        # sarebbe filtrabile, quindi non diventa un pulsante.
+        return {row[0]: int(row[1]) for row in rows if row[0] is not None}
+
+    # Perimetro: solo lettura; nessun side-effect.
+    # Risultato: tuple (lista LottoListRow, conteggio totale).
+    def list_lotti(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None,
+        stato_lotto: str | None,
+        area_geografica_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+        emittente_soggetto_ruolo_id: int | None,
+        auth_user_id: int | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+        max_limit: int = LIST_MAX_LIMIT,
+        solo_recuperi_mese: bool = False,
+        includi_annullati: bool = False,
+    ) -> tuple[list[LottoListRow], int]:
+        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
+        # protegge la lista a video; l'export lo alza esplicitamente (fino a
+        # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
+        # invece di troncare in silenzio). Resta un cap passato dal chiamante:
+        # nessun percorso senza tetto.
+        safe_limit = max(1, min(int(limit), max_limit))
+        safe_offset = max(0, int(offset))
+
+        where_clause, params = self._lotti_where(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=stato_lotto,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+            annullati=_annullati_da_flag(includi_annullati),
+        )
 
         joins = self._LOTTO_JOINS
 
@@ -676,18 +1058,30 @@ class VenditeRepository:
     #            alla lista (RLS + whitelist applicativa via _add_scope_emittente).
     # Perimetro: sola lettura, nessun side-effect. Righe con competenza_mese NULL
     #            escluse dal confronto sull'anno (non sono di alcun mese).
+    # ⭐ Gli ANNULLATI restano fuori come dalla lista (2026-09-12): un guscio
+    #    non e' un lotto «generato» che chieda lavoro nel mese. ⚠️ Non passa da
+    #    `_lotti_where` — il perimetro qui e' l'ANNO, non un mese — ma la
+    #    condizione la chiede alla STESSA sede della lista
+    #    (`_condizione_annullati`) e la `JOIN` su `sdf` e' la stessa costante:
+    #    questo metodo non nomina nessun frammento, quindi non puo' divergere
+    #    dalla lista al primo stato abortito nuovo (revisione 2026-09-12: prima
+    #    ricopiava frammento e JOIN, «dichiarati» ma pur sempre due copie).
     def count_lotti_per_mese(
         self, *, anno: int, auth_user_id: int | None = None,
+        includi_annullati: bool = False,
     ) -> dict[int, int]:
         conditions: list[str] = ["EXTRACT(YEAR FROM fl.competenza_mese) = %s"]
         params: list[Any] = [anno]
+        cond_annullati = _condizione_annullati(_annullati_da_flag(includi_annullati))
+        if cond_annullati is not None:
+            conditions.append(cond_annullati)
         self._add_scope_emittente(
             auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
         )
         where_clause = "WHERE " + " AND ".join(conditions)
         sql = f"""
             SELECT EXTRACT(MONTH FROM fl.competenza_mese)::int AS mese, COUNT(*)
-            FROM vendite.fatturazione_lotti fl
+            FROM vendite.fatturazione_lotti fl{_LOTTI_JOIN_SDF}
             {where_clause}
             GROUP BY 1
         """  # noqa: S608 — where da frammenti interni, valori parametrizzati
@@ -1006,7 +1400,18 @@ class VenditeRepository:
                 --    Serve alla card «Emesse non fatturate», che senza di lei
                 --    somma DUE cose con rimedi opposti: il RESIDUO, che chiede
                 --    un'azione, e il transito legittimo, su cui non si fa nulla.
-                m.motivo_non_fatturata
+                m.motivo_non_fatturata,
+                -- ⭐ Le due colonne del `20260909-67`, IN CODA come la
+                --    precedente e per la stessa ragione: qui si legge per
+                --    POSIZIONE.
+                -- ⛔ E vanno LETTE, non solo lasciate arrivare: da quel
+                --    changeSet `n_attivita` ESCLUDE le attivita' trattenute da
+                --    un lotto in gioco, e senza la dichiarazione il numero
+                --    cala in silenzio — che e' il difetto di partenza girato
+                --    di 180 gradi (la card diceva 4 dove la lista ne mostrava
+                --    3; adesso direbbe 3 senza spiegare il quarto).
+                m.n_attivita_trattenute,
+                m.valore_trattenuto
             FROM vendite.vw_dash_competenza_mensile m
             LEFT JOIN config.stati_doc_fiscale sdf
                 ON sdf.codice_interno = m.stato_fattura_codice_interno
@@ -1035,6 +1440,11 @@ class VenditeRepository:
                     "n_in_ritardo": int(row[8]),
                     "valore_in_ritardo": str(row[9]) if row[9] is not None else "0",
                     "motivo_non_fatturata": None if row[10] is None else str(row[10]),
+                    "n_attivita_trattenute": int(row[11]),
+                    # ⚠️ Stringa e non numero: e' denaro, e un `numeric` che
+                    #    passa da JSON diventa un float. Stessa regola di
+                    #    `valore` qui sopra.
+                    "valore_trattenuto": str(row[12]) if row[12] is not None else "0",
                 }
             )
         return result
@@ -1360,9 +1770,9 @@ class VenditeRepository:
         offset: int,
     ) -> tuple[list[DashCompetenzaResiduoRow], int]:
         # ⛔ IL PERIMETRO E' `motivo_non_fatturata = 'RESIDUO'`, e non e' un
-        #    filtro di comodo: lo stadio `EMESSA_NON_FATTURATA` contiene QUATTRO
+        #    filtro di comodo: lo stadio `EMESSA_NON_FATTURATA` contiene TRE
         #    situazioni con rimedi diversi, e solo questa chiede un'azione. Le
-        #    altre tre — `IN_ATTESA_LOTTO`, `GIRO_IN_CORSO`,
+        #    altre due — `GIRO_IN_CORSO`,
         #    `SENZA_ATTIVITA_FATTURABILE` — sono «niente da fare», e proporre il
         #    verbo su di loro significherebbe disfare emissioni corrette oppure
         #    (l'ultima) offrirlo su una riga la cui chiave e' NULL.
@@ -1636,6 +2046,24 @@ class VenditeRepository:
         # vicine.
         "registro_codice": "registro_codice",
         "data_documento_prevista": "data_documento_prevista",
+        # ═══ L'ESITO DELL'ULTIMO TENTATIVO (changeSet DB `20260906-12`,
+        #     brief-db-esito-gruppo-lotto R-3) ═════════════════════════════
+        # Stessa coppia inscindibile delle voci qui sopra: le righe 724/725/
+        # 727/728 del CSV `ui/lista_colonna.csv` sono `ordinabile = t`, e il
+        # presidio `test_liste_configurabili_seed` lega catalogo e whitelist
+        # nei DUE versi — una qui senza la sua riga a catalogo e' rossa quanto
+        # il contrario.
+        # ⭐ `ultimo_esito` e' l'ordinamento che serve davvero: mette in cima le
+        #    righe su cui un giro ha gia' provato e ha fallito, che sono le
+        #    uniche su cui l'operatore ha qualcosa da fare.
+        # ⛔ `ultimo_errore_messaggio` NON e' qui, ed e' una scelta: ordinare
+        #    alfabeticamente delle frasi non risponde a nessuna domanda. La sua
+        #    riga a catalogo e' `ordinabile = f`, e i due versi del presidio
+        #    la tengono fuori da entrambe le parti.
+        "ultimo_esito": "ultimo_esito",
+        "ultimo_errore_codice": "ultimo_errore_codice",
+        "ultimo_errore_quando": "ultimo_errore_quando",
+        "ultimo_lotto_codice": "ultimo_lotto_codice",
     }
 
     # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
@@ -1904,7 +2332,40 @@ class VenditeRepository:
                 g.emittente_ragione_sociale,
                 g.registri_n,
                 g.registro_codice,
-                g.data_documento_prevista
+                g.data_documento_prevista,
+                g.ultimo_esito,
+                g.ultimo_errore_codice,
+                g.ultimo_errore_messaggio,
+                g.ultimo_errore_quando,
+                g.ultimo_lotto_codice,
+                -- ⭐ IL VERDETTO «questo documento e' trattenuto da un lotto
+                --    VIVO» (`20260909-24`), non la materia per dedurlo.
+                -- ⛔ E il perche' e' una misura: `ultimo_esito` sembrava
+                --    bastare e rispondeva GIUSTO PER CASO. Su tre documenti in
+                --    `DA_EMETTERE` due avevano `COMPLETED` con il lotto
+                --    ANNULLATO — cioe' liberi — e sbarrare la riga da li'
+                --    avrebbe bloccato per sempre il contenuto di ogni lotto
+                --    annullato.
+                -- ⚠️ Colonne che nominano IL VERBO (§12.5.4): `emissione_*`, e
+                --    non un `blocco_` generico che domani risponde a due
+                --    domande diverse.
+                g.emissione_blocco_reason,
+                g.emissione_blocco_reason_key,
+                -- ⭐ Il lotto viaggia come BERSAGLIO e non come frase: chi
+                --    legge non deve ricopiare un codice per poi cercarlo.
+                g.emissione_blocco_lotto_id,
+                g.emissione_blocco_lotto_codice,
+                -- ⭐ V-1 (`20260909-66`): il lotto del TENTATIVO esce con il
+                --    suo STATO. Prima usciva il solo codice, e a video un
+                --    tentativo in un lotto ANNULLATO si leggeva come uno
+                --    ancora in corso — rilievo di Tid sul collaudo.
+                -- ⛔ Il dato non si toglie: e' l'unica traccia che spieghi
+                --    perche' il documento e' tornato disponibile. Si dice SE
+                --    conta ancora, e il frontend spegne il GESTO — testo si',
+                --    pulsante no.
+                g.ultimo_lotto_id,
+                g.ultimo_lotto_stato,
+                g.ultimo_lotto_pre_fiscale
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -1982,9 +2443,134 @@ class VenditeRepository:
                     "data_documento_prevista": (
                         row[22].isoformat() if row[22] is not None else None
                     ),
+                    # ═══ L'ESITO DELL'ULTIMO TENTATIVO DI FATTURAZIONE ═══════
+                    # (changeSet DB `20260906-12`, brief-db-esito-gruppo-lotto
+                    # R-3). ⭐ Nasce dal lotto LTF-0009578: tre ordini presi in
+                    # carico, due fatturati, e il terzo — caduto PRIMA di
+                    # diventare fattura — restava qui senza nessun segno,
+                    # quindi sembrava fatturabile.
+                    # ⛔ NON sono una LATERAL scritta qui: le calcola la VISTA,
+                    #    che lega l'esito al gruppo sul mese di competenza. Il
+                    #    mese e' parte del legame e non un di piu' — senza, il
+                    #    documento di settembre erediterebbe l'errore di agosto.
+                    # ⚠️ `ultimo_esito` NON spegne `stadio` ne'
+                    #    `commessa_emittibile` (decisione di Tid, 2026-09-06):
+                    #    dice «ci ho provato e non ci sono riuscito», non
+                    #    «questo documento non si puo' fatturare». Un gruppo in
+                    #    errore resta DA EMETTERE ed e' ancora selezionabile.
+                    # ⚠️ Tutte `None` finche' il giro non passa da
+                    #    `vendite.fn_segna_esito_gruppo_lotto`: `NULL` vuol dire
+                    #    «nessuno l'ha detto», che e' diverso da «e' andata
+                    #    bene». Le due cose il frontend deve tenerle distinte.
+                    "ultimo_esito": None if row[23] is None else str(row[23]),
+                    "ultimo_errore_codice": None if row[24] is None else str(row[24]),
+                    "ultimo_errore_messaggio": None if row[25] is None else str(row[25]),
+                    "ultimo_errore_quando": (
+                        row[26].isoformat() if row[26] is not None else None
+                    ),
+                    "ultimo_lotto_codice": None if row[27] is None else str(row[27]),
+                    # ═══ TRATTENUTO DA UN LOTTO VIVO (2026-09-09) ═══════════
+                    # ⚠️ `None` = la riga si puo' prendere. Il motivo e la
+                    # chiave i18n viaggiano insieme al BERSAGLIO del lotto: la
+                    # frase dice cosa fare, il bersaglio ci porta.
+                    "emissione_blocco_reason": (
+                        None if row[28] is None else str(row[28])
+                    ),
+                    "emissione_blocco_reason_key": (
+                        None if row[29] is None else str(row[29])
+                    ),
+                    "emissione_blocco_lotto_id": (
+                        None if row[30] is None else int(row[30])
+                    ),
+                    "emissione_blocco_lotto_codice": (
+                        None if row[31] is None else str(row[31])
+                    ),
+                    # ═══ V-1 · il lotto del TENTATIVO, col suo stato ═════════
+                    # ⚠️ `ultimo_lotto_pre_fiscale` e' il flag su cui il
+                    # frontend decide se offrire il gesto: un bersaglio verso
+                    # un lotto che non conta piu' e' un pulsante in un vicolo
+                    # cieco. `None` quando non c'e' nessun tentativo.
+                    "ultimo_lotto_id": None if row[32] is None else int(row[32]),
+                    "ultimo_lotto_stato": (
+                        None if row[33] is None else str(row[33])
+                    ),
+                    "ultimo_lotto_pre_fiscale": (
+                        None if row[34] is None else bool(row[34])
+                    ),
+                    # ═══ D3 · la bandiera della commessa respinta ════════════
+                    # Nascono vuote e le riempie `_applica_bandiera_respinta`
+                    # sulla SOLA pagina: vedi il commento del metodo per il
+                    # motivo per cui non sono una colonna di questo SELECT.
+                    "respinta_il": None,
+                    "respinta_motivo": None,
                 }
             )
+        self._applica_bandiera_respinta(result, competenza_mese=competenza_mese)
         return result, total_count
+
+    # Scopo: D3 · accende sulle righe della PAGINA la bandiera «questa commessa
+    #        e' stata respinta», con il motivo che il pull ha scritto sul log.
+    #        Fino al 2026-09-04 la riga non lo diceva: mostrava lavoro «da
+    #        emettere» del tutto ordinario mentre un giro l'aveva rifiutata, e
+    #        il motivo viveva solo nel log del lotto — a due click da chi deve
+    #        agire.
+    #
+    # ⛔ PERCHE' NON E' UNA LATERAL NEL SELECT, che sarebbe stata la forma
+    #    ovvia. `query_paged_view` materializza la CTE `righe` per contare il
+    #    totale, quindi una LATERAL nella proiezione si valuta su TUTTO il
+    #    perimetro del mese e non sulla pagina. Il costo non e' teorico:
+    #    misurato il 2026-09-04 su `2026-06` (48 gruppi), **27 ms senza e
+    #    1073 ms con** — quarantuno volte tanto, e cresce con lo storico
+    #    perche' la chiave del join esce da un jsonb
+    #    (`meta->'context'->>'commessa_id'`) e nessun indice la copre.
+    #    Qui la stessa risposta costa **2,8 ms**: una lettura sola, con gli id
+    #    della sola pagina.
+    #
+    # ⚠️ `DISTINCT ON` e non un `GROUP BY`: vale l'ULTIMO rifiuto — quello su
+    #    cui si agisce — e senza il collasso una commessa respinta due volte
+    #    porterebbe due righe, che nel dizionario diventerebbero una
+    #    sovrascrittura silenziosa dell'ordine di arrivo.
+    #
+    # ⚠️ Il filtro sul MESE non e' ridondante: senza, un rifiuto di agosto
+    #    accenderebbe la bandiera su una riga di settembre — un allarme vero
+    #    su un lavoro che non c'entra.
+    def _applica_bandiera_respinta(
+        self,
+        righe: list[DashCompetenzaGruppoRow],
+        *,
+        competenza_mese: date,
+    ) -> None:
+        commesse_ids = sorted({
+            r["commessa_id"] for r in righe if r["commessa_id"] is not None
+        })
+        if not commesse_ids:
+            return
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT ON (commessa_id)
+                       commessa_id, respinta_il, dettaglio
+                  FROM vendite.vw_dash_commesse_respinte
+                 WHERE competenza_mese = %s
+                   AND commessa_id = ANY(%s::bigint[])
+                 ORDER BY commessa_id, respinta_il DESC
+                """,
+                [competenza_mese, commesse_ids],
+            )
+            respinte = {
+                int(riga[0]): (riga[1], riga[2]) for riga in cursor.fetchall()
+            }
+
+        if not respinte:
+            return
+        for r in righe:
+            trovata = respinte.get(r["commessa_id"])
+            if trovata is None:
+                continue
+            quando, motivo = trovata
+            r["respinta_il"] = quando.isoformat() if quando is not None else None
+            r["respinta_motivo"] = None if motivo is None else str(motivo)
 
     # ═══════════════════════════════════════════════════════════════════════
     # IL CONTORNO DELLA LISTA GRUPPI, IN UNA SOLA LETTURA
@@ -2079,11 +2665,28 @@ class VenditeRepository:
                     {where_filtri}
                 ),
                 riepilogo AS (
-                    SELECT COUNT(*)::int                          AS n_gruppi,
-                           COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita,
-                           COALESCE(SUM(g.valore), 0)::text       AS valore,
-                           COUNT(*) FILTER (WHERE g.tipo_gruppo = %s)::int
-                                                                  AS n_gruppi_oneri
+                    -- ⭐ 2026-09-09: i tre totali ESCLUDONO i gruppi trattenuti
+                    --    da un lotto ancora in gioco — sono lavoro che
+                    --    l'operatore non puo' prendere, e un totale che li
+                    --    comprende e' la stessa promessa non mantenuta della
+                    --    card («4» sopra un elenco che ne mostrava 3).
+                    -- ⛔ `FILTER` e mai una `WHERE` sulla CTE: filtrando le
+                    --    righe fuori sparirebbero anche dalla LISTA, e la
+                    --    decisione D-1 del brief precedente e' che la riga
+                    --    RESTA visibile e spenta — sparire non spiega niente.
+                    -- ⭐ E `n_gruppi_trattenuti` non e' un di piu': senza, il
+                    --    numero cala e nessuno sa di quanto.
+                    SELECT COUNT(*) FILTER (WHERE g.emissione_blocco_reason IS NULL)::int
+                                                                  AS n_gruppi,
+                           COALESCE(SUM(g.n_attivita) FILTER (WHERE g.emissione_blocco_reason IS NULL), 0)::bigint
+                                                                  AS n_attivita,
+                           COALESCE(SUM(g.valore) FILTER (WHERE g.emissione_blocco_reason IS NULL), 0)::text
+                                                                  AS valore,
+                           COUNT(*) FILTER (WHERE g.tipo_gruppo = %s
+                                              AND g.emissione_blocco_reason IS NULL)::int
+                                                                  AS n_gruppi_oneri,
+                           COUNT(*) FILTER (WHERE g.emissione_blocco_reason IS NOT NULL)::int
+                                                                  AS n_gruppi_trattenuti
                       FROM filtrato g
                 ),
                 tipi AS (
@@ -2141,23 +2744,24 @@ class VenditeRepository:
             )
             row = cursor.fetchone()
         assert row is not None
-        # ⚠️ `json.loads` ESPLICITO: psycopg 3 in questa configurazione consegna
-        #    il `jsonb` come STRINGA, non come oggetto Python (verificato). Non
-        #    e' un dettaglio del driver da dare per scontato — se un domani lo
-        #    parsasse da se', `json.loads` su un dict alzerebbe subito, invece
-        #    di far viaggiare una stringa dove il FE aspetta una lista.
+        # ⚠️ DECODIFICA ESPLICITA: psycopg 3 in questa configurazione consegna
+        #    il `jsonb` come STRINGA, non come oggetto Python (riverificato con
+        #    uno smoke sul DB vero il 2026-09-04). Non e' un dettaglio del
+        #    driver da dare per scontato — senza, viaggia una stringa dove il FE
+        #    aspetta una lista, e non lo segnala nessuno.
         # ⛔ E qui si vede perche' `valore` doveva uscire come TESTO dalla
         #    query: dentro il JSON un `numeric` e' un numero, e `json.loads` lo
         #    trasformerebbe in un **float**. Il denaro sarebbe passato da un
         #    binario a virgola mobile senza che nessuno se ne accorgesse.
-        def _dati(valore: Any) -> Any:
-            return json.loads(valore) if isinstance(valore, str) else valore
-
+        # ⭐ `jsonb_out` e non una funzioncina locale: era una TERZA copia della
+        #    stessa decodifica (il BB sta in `apps/core/db/_helpers`, ed e' gia'
+        #    importato qui sopra). Stesso comportamento — stringa -> oggetto,
+        #    tutto il resto invariato — e una sede sola se il driver cambia idea.
         return {
-            "riepilogo": _dati(row[0]),
-            "tipi": _dati(row[1]),
-            "clienti": _dati(row[2]),
-            "registri": _dati(row[3]),
+            "riepilogo": jsonb_out(row[0]),
+            "tipi": jsonb_out(row[1]),
+            "clienti": jsonb_out(row[2]),
+            "registri": jsonb_out(row[3]),
             "n_gruppi_perimetro": int(row[4]),
         }
 
@@ -2230,7 +2834,21 @@ class VenditeRepository:
                 -- `emittente_ragione_sociale`: e' il `campo_sorgente`
                 -- del catalogo, e la lista ha `vista_sql = NULL` —
                 -- il campo lo porta questo SELECT o non arriva.
-                e.emittente_ragione_sociale
+                e.emittente_ragione_sociale,
+                -- ⭐ D3 (changeSet 20260904-47): QUALI commesse ha respinto il
+                -- giro, non solo quante volte c'e' stato un errore. Un array
+                -- jsonb con, per voce, commessa_id, commessa_codice,
+                -- error_code, messaggio e dettaglio; vuoto su FATTURA_CRITICA.
+                -- ⚠️ Niente parentesi graffe in questo commento: la stringa e'
+                --    una f-string, e verrebbero interpolate.
+                -- ⛔ La sorgente NON e' `task_run.meta->'commesse_fallite'`,
+                --    che il backend tronca a cinque: e' il log di lotto, che ha
+                --    una riga per commessa. Con sei respinte, la sesta c'e'.
+                -- ⚠️ IN CODA, e non e' estetica: la mappatura qui sotto e' per
+                --    INDICE, e infilarle in mezzo sposterebbe di una casella
+                --    tutto quello che segue — in silenzio.
+                e.commesse_fallite,
+                e.n_commesse_fallite
             FROM vendite.vw_dash_competenza_errori e
             {where_clause}
         """
@@ -2311,6 +2929,20 @@ class VenditeRepository:
                     # Emittente (P-4, Fase E): chiave = `campo_sorgente`
                     # del catalogo, o la colonna resta vuota a video.
                     "emittente_ragione_sociale": row[14],
+                    # D3: l'elenco delle commesse respinte dal giro, ognuna
+                    # col proprio motivo.
+                    # 🔴 `jsonb_out` E NON `row[15]` NUDO. Django/psycopg 3 in
+                    #    questa configurazione consegna il `jsonb` come
+                    #    STRINGA: senza decodifica il campo arriva al frontend
+                    #    come `"[{...}]"` invece che come array — nessun
+                    #    errore, una lista che non si puo' ciclare. Misurato
+                    #    con uno smoke sul DB vero il 2026-09-04, dopo che i
+                    #    test (che consegnano gia' una lista) erano verdi.
+                    # ⚠️ Il `or []` resta DOPO la decodifica: il COALESCE della
+                    #    vista garantisce `'[]'`, ma un NULL da una riga storica
+                    #    non deve far esplodere chi cicla.
+                    "commesse_fallite": jsonb_out(row[15]) or [],
+                    "n_commesse_fallite": 0 if row[16] is None else int(row[16]),
                 }
             )
         return result, total_count
@@ -2649,9 +3281,12 @@ class VenditeRepository:
     # applica la RLS di `vendite.fatture` con l'identita' dell'utente della
     # richiesta. Il filtro applicativo qui sotto e' DEFENSE-IN-DEPTH e si somma,
     # com'e' la convenzione del progetto. 🔴 Ne discende che questo metodo NON
-    # va chiamato da un canale di sistema (`system_process_context`, ruolo
-    # BYPASSRLS): li' la vista perderebbe il suo unico cancello e l'elenco
-    # mostrerebbe i fondi di tutti gli emittenti.
+    # va chiamato su una connessione con ruolo `BYPASSRLS`: li' la vista
+    # perderebbe il suo unico cancello e l'elenco mostrerebbe i fondi di tutti
+    # gli emittenti. ⚠️ Il gateway applicativo che apriva un canale simile e'
+    # stato ritirato il 2026-09-05, ma il guard resta: difende dalla
+    # CONFIGURAZIONE (un `DB_USER` puntato al ruolo sbagliato), non solo da un
+    # chiamante distratto.
     def list_fondi_fattura_da_decidere(
         self,
         *,
@@ -2665,10 +3300,9 @@ class VenditeRepository:
         # 🔴 Guard strutturale, non un commento: su un ruolo BYPASSRLS il
         # `security_invoker` della vista non filtra niente e il filtro
         # applicativo sotto no-opa con auth_user_id=None (che e' anche il
-        # valore legittimo del superuser: non discrimina). Un futuro consumer
-        # headless dentro `system_process_context` leggerebbe i fondi di TUTTI
-        # gli emittenti senza che nulla fallisca. Stesso presidio (inverso) di
-        # `_guard_canale_sistema` nel motore documentale.
+        # valore legittimo del superuser: non discrimina). Un consumer headless
+        # su un ruolo `BYPASSRLS` leggerebbe i fondi di TUTTI gli emittenti
+        # senza che nulla fallisca.
         self._require_canale_utente(
             gesto="Elenco fondi da decidere",
             oggetto="La vista vw_fondi_fattura_da_decidere e' security_invoker e",
@@ -2801,7 +3435,7 @@ class VenditeRepository:
         # dell'esportazione. Senza `max_rows` un file di 3.000 righe uscirebbe
         # troncato a 200 senza dirlo — e un export troncato in silenzio somiglia
         # in tutto a un export completo.
-        tetto = _LOTTO_FATTURE_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
         safe_limit = max(1, min(int(max_rows or limit), tetto))
         safe_offset = max(0, int(offset))
 
@@ -3059,6 +3693,350 @@ class VenditeRepository:
                     "can_reset_fattura": bool(row["can_reset_fattura"]),
                     "can_reset_fattura_reason": row["can_reset_fattura_reason"],
                     "can_reset_fattura_reason_key": row["can_reset_fattura_reason_key"],
+                }
+            )
+        return result, total_count
+
+    # Scopo: I DOCUMENTI CHE UN LOTTO HA PRESO IN CARICO, con l'esito di
+    #        ciascuno — compresi quelli che una fattura non sono mai diventati.
+    #
+    # ⭐ PERCHE' NON BASTA LA SCHEDA «DOCUMENTI» (brief-db-esito-gruppo-lotto).
+    #    Quella elenca `fatturazione_lotti_fatture`, che si aggancia a
+    #    `fattura_id`: un documento caduto PRIMA che una fattura esista non ha
+    #    niente a cui appendersi e sparisce dal racconto. Sul lotto LTF-0009578
+    #    si vedevano due documenti su tre, e il terzo era nominato solo da una
+    #    segnalazione — per giunta con l'identificativo della COMMESSA.
+    #    Il piano giusto e' un gradino piu' su, ed e' il GRUPPO.
+    #
+    # ⛔ IL CANCELLO E' LA TESTATA, e va tenuto: `fatturazione_lotti_gruppi` NON
+    #    ha RLS, `fatturazione_lotti` si'. Leggere la figlia da sola sarebbe
+    #    fail-open. Il `JOIN` sulla CTE `lotto` e' quel cancello, e vale anche
+    #    per il conteggio — un totale senza cancello direbbe «3 documenti»
+    #    mostrandone zero.
+    #
+    # ⭐ L'IDENTITA' DEL GRUPPO NON SI RICOSTRUISCE QUI. Una `gruppo_key` e'
+    #    `<sorgente>:<uid>` (oppure `MAN:<commessa>`): per scriverla a video ci
+    #    vuole la derivazione che `vendite.fn_build_gruppo_fatturabile_key` e
+    #    `vw_dash_competenza_gruppi` gia' fanno. Si legge da LI' invece di
+    #    spezzare la chiave in Python — che sarebbe la seconda sede della
+    #    regola, e il giorno in cui la chiave cambia forma le due dissentono in
+    #    silenzio. Il legame e' (gruppo, MESE del lotto), lo stesso della vista.
+    #
+    # ⚠️ L'ESITO si legge da `vendite.fatturazione_lotti_esiti`, non dalle
+    #    colonne `ultimo_*` della vista: quelle dicono com'e' andato l'ULTIMO
+    #    tentativo su quel documento, che puo' essere di un ALTRO lotto. Qui la
+    #    domanda e' «come e' andata in QUESTO lotto», e la risposta e' la riga
+    #    di questo lotto.
+    #
+    # ⚠️ `commessa_id` esce solo quando ce n'e' UNA. Il gruppo di un documento
+    #    non porta la commessa in chiave, quindi due commesse sullo stesso
+    #    documento sono ammesse per costruzione: offrirne una sarebbe una
+    #    scommessa travestita da regola — la stessa forma con cui questa lista
+    #    tratta gia' il sezionale (`registri_n`). `commesse_n` dice quante sono.
+    #
+    # Risultato: (righe, totale). ⭐ Zero righe ha UN significato solo, dal
+    #        2026-09-07: di questo lotto non risulta nessun documento — perche'
+    #        non ha ancora lavorato, o perche' e' anteriore al tracciamento.
+    #        ⛔ Prima ne aveva due, e serviva un flag (`perimetro_dichiarato`)
+    #        per distinguerli: era la conseguenza di leggere il solo perimetro,
+    #        che i giri di massa non scrivono. Con l'unione la distinzione non
+    #        esiste piu', e il flag e' stato tolto invece che tenuto «per
+    #        sicurezza» — un campo che non discrimina piu' niente e' un campo
+    #        che qualcuno leggera' credendo che discrimini.
+    def list_lotto_gruppi(
+        self,
+        *,
+        lotto_id: int,
+        auth_user_id: int | None = None,
+        stato_esecuzione: str | None = None,
+        sort_by: str | None = None,
+        sort_dir: str = "asc",
+        limit: int,
+        offset: int,
+        max_rows: int | None = None,
+    ) -> tuple[list[LottoGruppoRow], int]:
+        # Due tetti, come sulle fatture del lotto: la PAGINA si ferma a
+        # `LIST_MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al suo.
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
+        safe_limit = max(1, min(int(max_rows or limit), tetto))
+        safe_offset = max(0, int(offset))
+
+        lotto_conditions: list[str] = ["l.id = %s"]
+        params: list[Any] = [lotto_id]
+        # Scope emittente esplicito OLTRE alla RLS, come su `list_lotto_fatture`:
+        # il canale applicativo non e' l'unico che passa di qui.
+        self._add_scope_emittente(
+            auth_user_id, "l.emittente_soggetto_ruolo_id", lotto_conditions, params
+        )
+        lotto_where = " AND ".join(lotto_conditions)
+
+        gruppi_where = ""
+        if stato_esecuzione is not None:
+            # ⚠️ `IS NOT DISTINCT FROM` no: `NULL` non e' un valore del
+            #    vocabolario, e chiederlo come filtro vorrebbe dire un secondo
+            #    parametro. Chi vuole «mai tentati» non filtra.
+            gruppi_where = "AND esito.stato_esecuzione = %s"
+            params.append(stato_esecuzione)
+
+        # Ordinamento: solo valori dalla whitelist entrano nella query.
+        sort_col = LOTTO_GRUPPI_SORT_COLUMNS.get(sort_by or "")
+        safe_dir = "DESC" if str(sort_dir).lower() == "desc" else "ASC"
+        order_params: list[Any] = []
+        if sort_col is not None:
+            order_clause = f"ORDER BY {sort_col} {safe_dir} NULLS LAST, gruppo_key ASC"
+        else:
+            # ⭐ DEFAULT: i falliti in cima. Non e' l'ordine alfabetico dello
+            #    stato — che metterebbe `ERRORE` dopo `COMPLETED` — ma la
+            #    domanda con cui si apre questa scheda: «quale documento non e'
+            #    passato?». Il resto in ordine di riferimento, e `gruppo_key`
+            #    come tiebreak perche' `riferimento` puo' non risolversi.
+            # ⛔ Il valore viaggia come PARAMETRO e non come letterale nell'SQL:
+            #    e' la lezione gia' pagata sullo stadio della lista gruppi
+            #    (AGENTS.md §vocabolari). Una stringa scritta a mano dentro la
+            #    query e' una SECONDA sede del vocabolario, e il giorno in cui
+            #    il CHECK rinomina il valore l'ordinamento smette di funzionare
+            #    senza fallire: le righe rosse tornano in fondo, e nessuno se ne
+            #    accorge finche' non le cerca.
+            # 🔴 `NULLS LAST` NON E' UN DI PIU', ed e' un difetto misurato il
+            #    2026-09-07. In PostgreSQL `DESC` implica `NULLS FIRST`, e il
+            #    confronto `NULL = 'ERRORE'` vale NULL — cioe' i documenti MAI
+            #    TENTATI finivano SOPRA quelli falliti. L'ordinamento prometteva
+            #    «i falliti in cima» e metteva in cima i mai guardati: su un
+            #    lotto con quaranta documenti dichiarati, quello caduto
+            #    scompariva in fondo. ⛔ Nessun errore, solo la riga sbagliata
+            #    per prima — e con l'unione il caso e' la NORMA, perche' ogni
+            #    documento del perimetro non ancora tentato ha esito NULL.
+            order_clause = (
+                "ORDER BY (stato_esecuzione = %s) DESC NULLS LAST, "
+                "riferimento ASC NULLS LAST, gruppo_key ASC"
+            )
+            order_params.append(STATO_ESECUZIONE_ERRORE)
+
+        # ⭐ IL PERIMETRO DELLA LISTA VIVE IN UN POSTO SOLO, e le due query lo
+        #    CONDIVIDONO invece di riscriverlo.
+        # ⛔ Prima era copiato: la definizione dei documenti del lotto stava sia
+        #    nella query di pagina sia in quella di riserva del conteggio. Due
+        #    copie della stessa regola divergono al primo che ne tocca una, e
+        #    qui la divergenza sarebbe MUTA — il paginatore direbbe un totale
+        #    che non descrive le righe che consegna. E' la regola di api.md
+        #    §count: «si condivide il frammento FROM+WHERE, non lo si riscrive».
+        # ⚠️ `documenti` porta anche `lotto_id`: serve alla LEFT JOIN, e averlo
+        #    nella riga evita un `CROSS JOIN` sulla CTE del lotto — che
+        #    funzionava solo perche' quella CTE ha al massimo una riga, cioe'
+        #    era corretto per coincidenza e non per costruzione.
+        perimetro_sql = f"""
+            WITH lotto AS (
+                SELECT l.id, l.competenza_mese
+                FROM vendite.fatturazione_lotti l
+                WHERE {lotto_where}
+            ),
+            documenti AS (
+                -- ⭐ L'UNIONE DI DUE FATTI INDIPENDENTI, dal 2026-09-07.
+                --    Il PERIMETRO dice che cosa il lotto doveva lavorare, e lo
+                --    dichiarano i soli giri mirati; gli ESITI dicono che cosa
+                --    ha lavorato davvero, e ci sono su entrambi i tipi di giro.
+                --    Nessuno dei due da solo risponde alla domanda della
+                --    scheda: «quali documenti, e com'e' andata».
+                -- ⛔ Il solo perimetro lascerebbe muto ogni giro di massa — il
+                --    difetto appena chiuso dal database. I soli esiti
+                --    perderebbero i documenti di un lotto mirato che non e'
+                --    ancora arrivato al passo del pull: dichiarati, e non
+                --    ancora tentati.
+                SELECT lg.lotto_id, lg.gruppo_key
+                  FROM vendite.fatturazione_lotti_gruppi lg
+                  JOIN lotto ON lotto.id = lg.lotto_id
+                UNION
+                SELECT le.lotto_id, le.gruppo_key
+                  FROM vendite.fatturazione_lotti_esiti le
+                  JOIN lotto ON lotto.id = le.lotto_id
+            ),
+            gruppi AS (
+                SELECT d.gruppo_key,
+                       -- ⚠️ Serve alle due LATERAL della pagina: averlo qui
+                       --    evita un secondo segnaposto, e i parametri di
+                       --    questa query hanno gia' un ordine delicato
+                       --    (perimetro + ordinamento + paginazione).
+                       d.lotto_id,
+                       -- ⚠️ NULL = il documento e' nel perimetro ma nessuno ha
+                       --    ancora detto com'e' andata. Sulla tabella degli
+                       --    esiti `stato_esecuzione` e' NOT NULL apposta — la
+                       --    riga NASCE quando c'e' qualcosa da dire — quindi
+                       --    qui il non-detto e' l'ASSENZA della riga, non uno
+                       --    stato di mezzo.
+                       esito.stato_esecuzione,
+                       esito.errore_codice,
+                       esito.errore_messaggio,
+                       esito.errore_quando,
+                       -- ⭐ L'USCITA DAL GIRO (brief-db-uscita-documento-dal-giro):
+                       --    motivo scritto dall'operatore piu' il timbro, che
+                       --    lo mette il trigger dalla GUC.
+                       -- ⚠️ `uscita_quando`, non `uscita_il`: il nome vero e'
+                       --    quello, letto dalla doc auto-gen della tabella.
+                       esito.uscita_motivo,
+                       esito.uscita_quando,
+                       esito.uscita_da
+                -- ⚠️ Alias `esito` e non `le`: `le` e' gia' il ramo dell'UNION
+                --    qui sopra, e lo stesso nome per due cose nella stessa
+                --    istruzione si legge male anche quando compila.
+                FROM documenti d
+                LEFT JOIN vendite.fatturazione_lotti_esiti esito
+                       ON esito.lotto_id = d.lotto_id
+                      AND esito.gruppo_key = d.gruppo_key
+                WHERE TRUE {gruppi_where}
+            )
+        """  # noqa: S608
+
+        sql = f"""
+            {perimetro_sql},
+            ref AS (
+                -- Una riga per gruppo. ⚠️ La vista ha grana
+                -- (competenza, gruppo_key, …, stadio): senza il collasso lo
+                -- STESSO documento comparirebbe due volte quando parte del suo
+                -- lavoro e' gia' fatturato e parte no.
+                -- ⚠️ `min()` sulle colonne di IDENTITA' e' un collasso di valori
+                -- identici, non una scelta fra alternative: riferimento, tipo e
+                -- documento discendono dalla CHIAVE, che qui e' fissa. Resta
+                -- deterministico anche se un giorno smettessero di esserlo.
+                SELECT g.gruppo_key,
+                       min(g.riferimento)                  AS riferimento,
+                       min(g.tipo_gruppo)                  AS tipo_gruppo,
+                       min(g.area_documento)               AS area_documento,
+                       min(g.documento_id)                 AS documento_id,
+                       count(DISTINCT g.commessa_id)       AS commesse_n,
+                       CASE WHEN count(DISTINCT g.commessa_id) = 1
+                            THEN min(g.commessa_id) END    AS commessa_id,
+                       CASE WHEN count(DISTINCT g.commessa_id) = 1
+                            THEN min(g.commessa_codice) END AS commessa_codice
+                FROM vendite.vw_dash_competenza_gruppi g
+                JOIN lotto ON lotto.competenza_mese = g.competenza_mese
+                WHERE g.gruppo_key IN (SELECT gruppo_key FROM gruppi)
+                GROUP BY g.gruppo_key
+            )
+            SELECT gr.gruppo_key,
+                   gr.stato_esecuzione,
+                   gr.errore_codice,
+                   gr.errore_messaggio,
+                   gr.errore_quando,
+                   gr.uscita_motivo,
+                   gr.uscita_quando,
+                   gr.uscita_da,
+                   -- ⭐ IL MOTIVO DEL PULSANTE SPENTO, PER RIGA (§12.5 delle
+                   --    linee guida). Non e' ricalcolato qui: e' la STESSA
+                   --    funzione che la madre chiama per RIFIUTARE, quindi il
+                   --    tooltip e l'errore non possono dire due cose diverse.
+                   -- ⚠️ Il PRIMO motivo, perche' l'ordine dell'array e' il
+                   --    contratto: la madre solleva quello.
+                   -- ⛔ Colonne che nominano IL VERBO (§12.5.4): non si riusa
+                   --    la colonna di blocco di un altro atto.
+                   chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
+                   chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
+                   -- ⭐ QUANTI DOCUMENTI VIENE VIA INSIEME (D-2b): una bozza
+                   --    puo' coprirne piu' d'uno, e chiedere di togliere A
+                   --    porta via anche B. ⚠️ Va detto PRIMA, non scoperto
+                   --    dopo — e non e' un motivo che rifiuta: e' una
+                   --    conseguenza, e le conseguenze stanno nella conferma.
+                   -- ⚠️ Calcolato SOLO dove l'azione e' viva: su una riga
+                   --    bloccata la conferma non si apre mai, e la catena
+                   --    delle righe non e' gratis.
+                   CASE WHEN jsonb_array_length(chk.motivi) = 0
+                        THEN jsonb_array_length(
+                                 script.fn_gruppi_trascinati_da_uscita(
+                                     gr.lotto_id, gr.gruppo_key))
+                   END AS n_trascinati,
+                   ref.riferimento,
+                   ref.tipo_gruppo,
+                   ref.area_documento,
+                   ref.documento_id,
+                   ref.commessa_id,
+                   ref.commessa_codice,
+                   COALESCE(ref.commesse_n, 0) AS commesse_n,
+                   COUNT(*) OVER () AS total_count
+            FROM gruppi gr
+            LEFT JOIN ref ON ref.gruppo_key = gr.gruppo_key
+            CROSS JOIN LATERAL (
+                SELECT script.fn_check_documento_escludibile_da_giro(
+                           gr.lotto_id, gr.gruppo_key) AS motivi
+            ) chk
+            {order_clause}
+            LIMIT %s OFFSET %s
+        """  # noqa: S608
+
+        # ⚠️ IL FALLBACK NON E' DECORATIVO. `COUNT(*) OVER ()` non puo' dire il
+        #    totale quando la pagina richiesta non ha righe: su una pagina
+        #    STANTIA — l'elenco si e' accorciato sotto le mani di chi guarda —
+        #    il totale uscirebbe `0`, e la scheda direbbe «nessun documento
+        #    preso in carico» su un lotto che ne ha tre. ⛔ Qui non c'e' il
+        #    clamp dei cruscotti: `useListaDrawerPaginata` serve la pagina
+        #    CHIESTA e non adotta nessuna pagina effettiva, quindi il conteggio
+        #    e' l'unica cosa che puo' raccontare la verita'.
+        # ⭐ E conta le righe della STESSA CTE che la lista consegna: non e' un
+        #    perimetro «uguale», e' lo stesso.
+        count_sql = f"{perimetro_sql} SELECT COUNT(*) FROM gruppi"  # noqa: S608
+
+        rows, total_count = fetch_paged_with_total(
+            sql, params + order_params + [safe_limit, safe_offset],
+            fallback_count_sql=count_sql,
+            fallback_params=list(params),
+            offset=safe_offset,
+        )
+
+        result: list[LottoGruppoRow] = []
+        for row in rows:
+            result.append(
+                {
+                    # ⛔ Niente `id`: la riga non è più UNA riga di tabella, è
+                    #    l'unione di due fatti. L'identità di questa lista è il
+                    #    DOCUMENTO, e la sua chiave è `gruppo_key` — che è unica
+                    #    dentro il lotto per costruzione (lo dicono entrambi i
+                    #    vincoli `uq_*_lotto_key` e `uq_*_documento`).
+                    "gruppo_key": str(row["gruppo_key"]),
+                    # ⚠️ `None` = mai tentato in questo lotto, e non e' «andato
+                    # bene»: e' la verita' di ogni gruppo lavorato prima che il
+                    # backend chiamasse `fn_segna_esito_gruppo_lotto`.
+                    "stato_esecuzione": row["stato_esecuzione"],
+                    "errore_codice": row["errore_codice"],
+                    "errore_messaggio": row["errore_messaggio"],
+                    "errore_quando": (
+                        row["errore_quando"].isoformat()
+                        if row["errore_quando"] is not None else None
+                    ),
+                    # ⚠️ Tutte `None` quando il gruppo non si risolve piu': il
+                    # lavoro puo' essere stato preso da un altro giro o essere
+                    # uscito dal mese. Il gruppo resta in elenco col suo esito —
+                    # nasconderlo cancellerebbe proprio la riga per cui questa
+                    # scheda esiste. Il frontend ripiega sulla chiave.
+                    "riferimento": row["riferimento"],
+                    "tipo_gruppo": row["tipo_gruppo"],
+                    "area_documento": row["area_documento"],
+                    "documento_id": (
+                        None if row["documento_id"] is None else int(row["documento_id"])
+                    ),
+                    "commessa_id": (
+                        None if row["commessa_id"] is None else int(row["commessa_id"])
+                    ),
+                    "commessa_codice": row["commessa_codice"],
+                    # ⭐ L'uscita dal giro: `None` su tutte e tre finche' il
+                    #    documento e' dentro. Il motivo e' obbligatorio (D-5),
+                    #    quindi su una riga ESCLUSO c'e' sempre.
+                    "uscita_motivo": row["uscita_motivo"],
+                    "uscita_quando": (
+                        row["uscita_quando"].isoformat()
+                        if row["uscita_quando"] is not None else None
+                    ),
+                    "uscita_da": row["uscita_da"],
+                    # ⚠️ `None` = l'azione e' AMMESSA su questa riga. Il
+                    #    frontend spegne il pulsante quando c'e' un valore, e
+                    #    rende il testo dalla `reason_key`.
+                    "uscita_blocco_reason": row["uscita_blocco_reason"],
+                    "uscita_blocco_reason_key": row["uscita_blocco_reason_key"],
+                    # ⚠️ `None` quando l'azione e' bloccata: li' non e' «zero
+                    #    trascinati», e' «non e' stato chiesto». Zero e un vuoto
+                    #    dicono cose diverse e il frontend deve poterli
+                    #    distinguere.
+                    "n_trascinati": (
+                        None if row["n_trascinati"] is None else int(row["n_trascinati"])
+                    ),
+                    "commesse_n": int(row["commesse_n"] or 0),
                 }
             )
         return result, total_count

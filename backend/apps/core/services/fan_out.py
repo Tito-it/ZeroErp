@@ -17,7 +17,7 @@
 #        run e servono claim, ownership, backoff e ritentativi.
 #        Se stai per aggiungere qui un retry o un lock, l'astrazione giusta e'
 #        l'altra.
-#        Brief: docs/it/dev/work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md
+#        Brief: docs/it/dev/work-done/brief-be-fan-out-isolato-e-esito-parziale.md
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -98,10 +98,16 @@ class FanOutEsito:
     def parziale(self) -> bool:
         return self.esito == ESITO_PARZIALE
 
-    # Scopo: Nessun item e' passato (e ce n'era almeno uno da lavorare).
-    @property
-    def tutti_falliti(self) -> bool:
-        return self.esito == ESITO_ERRORE
+    # ⛔ `tutti_falliti` NON C'E' PIU' (2026-09-07), ed e' sparito col suo unico
+    #    lettore. Era `self.esito == ESITO_ERRORE`, e a leggerlo era il ramo del
+    #    pull commesse che sollevava quando fallivano TUTTE: quel ramo e' stato
+    #    tolto (brief-db-esito-gruppo-lotto P-5), perche' il `raise` faceva
+    #    rollback e si portava via le marcature dei documenti caduti.
+    # ⭐ Il FATTO resta e non si e' perso niente: `esito == ESITO_ERRORE` dice la
+    #    stessa cosa, e' cio' che i consumatori gia' leggono (`esito.esito`
+    #    viaggia nei payload di `resi_service` e della coda lavori) ed e'
+    #    presidiato dai test di questo file. Ciò che e' sparito e' un alias con
+    #    zero lettori — API di un BB condiviso che sembra in uso e non lo e'.
 
     # Scopo: I messaggi degli item falliti, per comporre detail/report senza
     #        che il chiamante ricicli la struttura interna.

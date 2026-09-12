@@ -10,8 +10,8 @@
 > * [vendite.listini](/dbzero/vendite/tabelle/listini)
 > * [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)
 > * [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
-> * [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)
-> * [vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino)
+> * `vendite.listini_associazioni` — ritirata (DROP TABLE `20260415-05`)
+> * [vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
 > * [API REST Listini](/backend/vendite/manual/api_listini)
 > * [Guida Fatturazione](/guide/fatturazione) — pipeline fatturazione a lotti
 > * [Guida Gestione Commesse](/guide/gestione-commesse) — integrazione prezzo in commessa
@@ -51,7 +51,7 @@ In pratica:
 * [vendite.listini](/dbzero/vendite/tabelle/listini) — la testata anagrafica del listino
 * [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) — il versionamento temporale
 * [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe) — i prezzi elementari per articolo/UoM
-* [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni) — chi puo usare questo listino
+* `vendite.listini_associazioni` — chi puo usare questo listino (tabella **ritirata**, DROP `20260415-05`)
 * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — gli articoli a catalogo
 * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — le unita di misura
 * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'account di fatturazione
@@ -401,7 +401,7 @@ INSERT/UPDATE listini_associazioni
 
 | Funzione | Scopo |
 | --- | --- |
-| [`vendite.fn_resolve_prezzo_listino`](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino) | Risoluzione deterministica prezzo per articolo + UoM + data + contesto |
+| [`vendite.fn_resolve_prezzo_listino`](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) | Risoluzione deterministica prezzo per articolo + UoM + data + contesto |
 
 ---
 

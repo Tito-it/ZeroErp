@@ -5,7 +5,7 @@
 # Imposta NOT NULL su vendite.listini.emittente_soggetto_ruolo_id
 # e crea l'indice di ricerca. Eseguibile solo dopo il backfill
 # 20260414-05 che garantisce zero residui NULL.
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 3.1.
 # ------------------------------------------------------------
 

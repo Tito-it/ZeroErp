@@ -14,7 +14,7 @@ Approfondimento funzioni:
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 >
 WIP:
-> [Automazione chiusure per scadenza](/dev/work-in-progress/automazione-chiusure-scadenze)
+> [Automazione chiusure per scadenza](/dev/work-done/automazione-chiusure-scadenze)
 
 ### 🎯 Scopo Principale
 
@@ -35,13 +35,30 @@ tabella + meta-info di esecuzione.
 ### Firma
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_apply_chiusura_scadenze()
-RETURNS jsonb
+CREATE OR REPLACE FUNCTION dbops.fn_apply_chiusura_scadenze(
+    p_classe text DEFAULT NULL     -- NULL = tutti i bersagli, come prima
+) RETURNS jsonb
 LANGUAGE plpgsql;
 ```
 
-Nessun parametro: la configurazione vive nella tabella
-`dbops.automazione_chiusura_scadenze`.
+La configurazione vive nella tabella
+[dbops.automazione_chiusura_scadenze](/dbzero/dbops/manual/automazione_chiusura_scadenze):
+una riga per tabella bersaglio.
+
+#### ⭐ `p_classe` *(dal 2026-09-04)* — lavora solo i bersagli di quella natura
+
+⚠️ **Il default `NULL` non è pigrizia, è un requisito**: il job pgAgent chiama
+la funzione **senza argomenti**, e la configurazione dello scheduler è una fase
+che in CI **non gira mai**. Cambiare la chiamata avrebbe voluto dire modificare
+qualcosa che nessun test esercita, e scoprire l'errore di notte.
+
+⇒ Chiamata senza argomenti: comportamento **identico a prima**. Con una classe:
+lavora solo quei bersagli.
+
+⭐ **A cosa serve davvero**: è ciò che permetterà ai bersagli di `DOMINIO` di
+migrare sulla coda — dove girano con l'identità di un operatore — **senza che
+pgAgent li lavori una seconda volta**. Il filtro esiste prima della migrazione,
+non dopo, così la migrazione non richiede di toccare il job.
 
 ---
 

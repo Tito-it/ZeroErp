@@ -21,7 +21,7 @@
 # ⚠️ Deve restare a ZERO righe. Una riga qui e' un operatore configurato a
 #    meta', cioe' una persona che apre l'applicazione e non trova niente.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

@@ -3,7 +3,7 @@
 -- pgTAP test — script.fn_log_and_raise_error: il canale del BERSAGLIO
 --   L'errore, oltre a DIRE cosa e' successo, dice SU QUALE COSA — in una
 --   casella strutturata dell'eccezione, non dentro la frase.
---   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §4.4, §6 L1
+--   Brief: brief-db-bersaglio-errore.md §4.4, §6 L1
 --
 -- ⭐ LA REGOLA CHE QUESTO FILE PRESIDIA:
 --     Il bersaglio e' un'OFFERTA. Se c'e' viaggia; se e' storto si perde;

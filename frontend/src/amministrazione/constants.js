@@ -63,14 +63,23 @@ export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 6 }
 // Single source of truth lato BE: amm_software_service._EMAIL_LOG_STATI_VALIDI.
 //
 // `getEmailLogStatoSeverity` resta lato FE (puro mapping CSS, presentation).
-// Mantiene i 4 codici hardcoded per resilience: se il BE ne aggiungesse uno
-// nuovo, la severity ricadrebbe sul default 'info'.
+// ⛔ IL RIPIEGO SU 'info' NON E' UNA RETE, ed e' costato una riga di lavoro nel
+//    2026-09-11: 'info' e' anche la severity di PENDING, quindi uno stato nuovo
+//    non «cade su un default neutro» — esce IDENTICO a «in lavorazione».
+//    Su `SIMULATA` sarebbe stato il colmo: il valore nasce apposta per non dire
+//    «consegnata», e a video avrebbe detto «in corso».
+// ⇒ Ogni stato TERMINALE vuole il suo ramo. Il ripiego resta per non rompersi
+//    su un codice ignoto, ma va letto per quello che e': l'ultima spiaggia.
 
 // Scopo: Restituisce la severity PrimeVue per uno stato email log (puro CSS).
 export function getEmailLogStatoSeverity(stato) {
   if (stato === 'SENT') return 'success'
   if (stato === 'FAILED') return 'danger'
   if (stato === 'RETRY') return 'warn'
+  // ⭐ SIMULATA: stampata a video, non spedita. Terminale e VOLUTA — quindi non
+  //    rossa (non e' un guasto) e non verde (non e' arrivata a nessuno).
+  //    Grigia, come la convenzione del progetto vuole per cio' che e' inerte.
+  if (stato === 'SIMULATA') return 'secondary'
   return 'info' // PENDING o codice non riconosciuto
 }
 
@@ -120,6 +129,19 @@ export function getAuditOpSeverity(tipo) {
 // ⭐ `OGGI` e' anche il NEUTRO che il CHECK pretende fuori da FATTURA.
 export const REGISTRO_POLITICA_DATA = ['OGGI', 'FINE_MESE_COMPETENZA']
 export const REGISTRO_POLITICA_DATA_NEUTRA = 'OGGI'
+
+// `chk_registri_fatturazione_reset`: due valori, e sono quelli che il CHECK
+// ammette dal changeSet `20260901-06` — prima ce n'era uno solo.
+// ⛔ `MENSILE` NON c'e' e non torna: nessun documento porta il mese, quindi un
+//    contatore che discriminasse per mese consegnerebbe numeri che il documento
+//    non e' in grado di ospitare (brief chiave-del-contatore §6).
+// ⭐ `NESSUNA` invece e' sicura per l'asimmetria del §1: usa MENO assi, non di
+//    piu'. Vuol dire numerazione continua fra gli anni, che i gestionali fanno
+//    davvero su DDT e ordini.
+// ⚠️ Si sceglie SOLO alla nascita del registro: e' un asse della chiave del
+//    contatore, e cambiarla dopo il primo numero sposta il secchio.
+export const REGISTRO_RESET_POLICY = ['ANNUALE', 'NESSUNA']
+export const REGISTRO_RESET_POLICY_DEFAULT = 'ANNUALE'
 
 // Limiti della UI per `lunghezza_numero`.
 // ⚠️ NON sono un vincolo del database — la colonna non ha `CHECK` — sono un

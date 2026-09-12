@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # QUATTRO E_GENERICO SUL GUARD DELLA TESTATA — passo P-7 (4 di 6)
 #   pagamenti.trgfn_vendite_contabili_guard_ente_centro
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.0 P-7
 #
 # ── I QUATTRO PUNTI, E I QUATTRO RIMEDI ─────────────────────────────────
 #   · ente inesistente o senza centro -> E_ENTE_INCASSO_SENZA_CENTRO (945)

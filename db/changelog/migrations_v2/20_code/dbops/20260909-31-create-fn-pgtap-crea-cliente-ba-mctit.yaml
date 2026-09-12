@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper di fixture pgTAP: un CLIENTE FATTURABILE — soggetto, ruolo CL, istanza
+#   utility e billing account — in una chiamata.
+#
+# ── ⭐ IL NUMERO CHE LO GIUSTIFICA, misurato il 2026-09-09 ────────────
+#   Sul database scratch di `scripts/ci-local.sh`, dei 185 file di
+#   `db/pgtap/vendite/` che muoiono nel fixture, **45** muoiono su
+#   «Parametro non valido: p_billing_account_id obbligatorio e > 0» o sul
+#   `NOT NULL` di `attivita_consumi.billing_account_id`. E' la seconda famiglia
+#   dopo quella dell'emittente (~102 file), gia' chiusa da
+#   `dbops.fn_pgtap_crea_emittente_operatore` (20260909-26).
+#
+# ── ⛔ E' UNA SAGA, e per questo non puo' stare in un test ────────────
+#   Non e' «due INSERT». La catena ha due guard DIFFERITI che si chiudono solo
+#   quando il mondo e' completo, e li si scopre uno alla volta sbattendoci:
+#
+#     1. `chk_istanza_fittizia_indirizzo` pretende O `fittizia = true` O un
+#        indirizzo di dettaglio. L'istanza fittizia e' la forma minima valida;
+#     2. `anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata`
+#        pretende che l'istanza abbia un SATELLITE (billing account, dato
+#        precontrattuale o cliente) — e lo verifica al COMMIT. Con i vincoli
+#        `IMMEDIATE`, cioe' com'e' ogni pgTAP per via del preambolo
+#        obbligatorio, scatta al primo INSERT: prima che il BA possa esistere.
+#
+#   ⇒ Serve la stessa finestra differita di `fn_pgtap_crea_soggetto_pg`: si apre
+#   prima della catena e si RICHIUDE a mondo finito. La richiusura non e'
+#   facoltativa — senza, il ROLLBACK del test porterebbe via i guard NON
+#   verificati, e il file sarebbe verde per sottrazione.
+#
+# ── ⚠️ `validita` NON si valorizza ────────────────────────────────────
+#   E' `GENERATED` (PG18): la calcola il database. Un INSERT che la nomina
+#   muore con «impossibile inserire un valore non DEFAULT nella colonna».
+#
+# ── ⭐ A COSA SERVE DAVVERO, oltre a far passare 45 file ──────────────
+#   Il guard `vendite.trgfn_preventivi_guard_utility_istanza_coerenza` chiede,
+#   via `script.fn_check_utility_istanza_coerenza`, che per la coppia
+#   (istanza, utility) esista un BA, un dato precontrattuale o un cliente.
+#   ⇒ Senza questo helper **non si puo' creare un preventivo** in una fixture, e
+#   quindi non si puo' collaudare la RLS dei suoi satelliti. E' il percorso
+#   reale: un preventivo si fa a qualcuno che e' fatturabile.
+#
+# Permessi: funzione di titodb, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner. Stessa forma di 20260818-76 e 20260909-26.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260909-31-create-fn-pgtap-crea-cliente-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260909-31-create-fn-pgtap-crea-cliente-ba
+      author: mctit
+      runOnChange: false
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_cliente_ba() crea un
+        cliente fatturabile completo — soggetto persona giuridica, ruolo CL,
+        istanza utility fittizia e billing account — dentro la finestra dei
+        guard differiti. Ritorna le chiavi che servono a costruire un documento.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_cliente_ba(
+                  p_etichetta  text    DEFAULT 'pgTAP',
+                  p_utility_id anagrafiche.billing_account.utility_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE (
+                  billing_account_id anagrafiche.billing_account.id%TYPE,
+                  istanza_utility_id anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  soggetto_ruolo_id  anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  soggetto_id        anagrafiche.soggetti.id%TYPE,
+                  utility_id         anagrafiche.billing_account.utility_id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un cliente FATTURABILE, cioe'
+              --   la catena minima che i documenti pretendono: soggetto ->
+              --   ruolo CL -> istanza utility -> billing account.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_cli AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('RLS preventivi');
+              DECLARE
+                  v_soggetto_id anagrafiche.soggetti.id%TYPE;
+                  v_sr_id       anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_ba_id       anagrafiche.billing_account.id%TYPE;
+                  v_utility_id  anagrafiche.billing_account.utility_id%TYPE;
+                  v_codice      text;
+              BEGIN
+                  v_utility_id := COALESCE(
+                      p_utility_id,
+                      (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1));
+
+                  IF v_utility_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_cliente_ba: nessuna utility a catalogo';
+                  END IF;
+
+                  -- Codice libero: `codice` e' UNIQUE e non filtra su nessuno
+                  -- stato, quindi una sigla fissa farebbe collidere la seconda
+                  -- chiamata con la prima — lo stesso motivo per cui esistono
+                  -- fn_pgtap_piva_libera e la sigla PGTRnnnn dell'emittente.
+                  SELECT 'PGTAPBA' || lpad((COALESCE(max(substring(b.codice from 8)::bigint), 0) + 1)::text, 5, '0')
+                    INTO v_codice
+                    FROM anagrafiche.billing_account b
+                   WHERE b.codice ~ '^PGTAPBA[0-9]{5}$';
+                  v_codice := COALESCE(v_codice, 'PGTAPBA00001');
+
+                  v_soggetto_id := dbops.fn_pgtap_crea_soggetto_pg(
+                                       'Cliente ' || p_etichetta || ' ' || v_codice);
+                  v_sr_id       := dbops.fn_pgtap_crea_soggetto_ruolo(
+                                       v_soggetto_id, 'CL'::character varying);
+
+                  -- ⛔ LA FINESTRA DIFFERITA. `trgfn_istanze_utilities_require_utility_dichiarata`
+                  --   verifica al COMMIT che l'istanza abbia un satellite
+                  --   (BA / dato precontrattuale / cliente). Con i vincoli
+                  --   IMMEDIATE — come li mette il preambolo obbligatorio dei
+                  --   pgTAP — scatterebbe sul primo INSERT, cioe' prima che il
+                  --   billing account possa esistere.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  -- ⚠️ `fittizia = true`: chk_istanza_fittizia_indirizzo vuole
+                  --   O il flag O un indirizzo di dettaglio, e a una fixture
+                  --   l'indirizzo non serve.
+                  INSERT INTO anagrafiche.istanze_utilities (codice, soggetto_id, fittizia)
+                  VALUES (v_codice, v_soggetto_id, TRUE)
+                  RETURNING id INTO v_ist_id;
+
+                  -- ⚠️ `validita` NON si nomina: e' GENERATED (PG18).
+                  -- ⚠️ `valuta_id` VALORIZZATA, e non e' pignoleria.
+                  --   La risoluzione della valuta di un documento e' una
+                  --   catena «BA -> emittente -> gestore»: su dbdev regge
+                  --   l'ultimo anello, perche' un gestore c'e'. Su un database
+                  --   ricostruito dai changelog non c'e' nessuno dei tre, e il
+                  --   primo documento muore con «Configurazione mancante:
+                  --   valuta non risolta (BA/emittente/gestore)».
+                  --   ⭐ Misurato il 2026-09-09: e' la causa di 11 dei 185 file
+                  --   di vendite che sullo scratch morivano nel fixture.
+                  --   Chiudendo l'anello piu' vicino al documento, la fixture
+                  --   non dipende piu' da com'e' configurata la macchina.
+                  INSERT INTO anagrafiche.billing_account
+                      (istanza_utility_id, soggetto_ruolo_id, utility_id,
+                       codice, categoria_cliente_id, valuta_id)
+                  VALUES (v_ist_id, v_sr_id, v_utility_id, v_codice,
+                          (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+                            ORDER BY cc.id LIMIT 1),
+                          (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1))
+                  RETURNING id INTO v_ba_id;
+
+                  -- Saga completa: i guard differiti scattano QUI, su un mondo
+                  -- finito. ⚠️ Senza la richiusura il ROLLBACK del test se li
+                  -- porterebbe via NON verificati.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_ba_id, v_ist_id, v_sr_id, v_soggetto_id, v_utility_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_cliente_ba(text, integer)
+              IS 'Helper di fixture pgTAP: crea un cliente FATTURABILE completo — soggetto persona giuridica, ruolo CL, istanza utility fittizia, billing account — e ritorna le chiavi che i documenti pretendono. ⛔ E'' una saga, non due INSERT: `trgfn_istanze_utilities_require_utility_dichiarata` verifica al COMMIT che l''istanza abbia un satellite, e con i vincoli IMMEDIATE (come li mette il preambolo obbligatorio dei pgTAP) scatterebbe prima che il BA esista. La funzione apre e RICHIUDE la finestra differita. ⚠️ `validita` e'' GENERATED (PG18) e non si valorizza. ⭐ Serve anche a creare un PREVENTIVO: il guard trgfn_preventivi_guard_utility_istanza_coerenza pretende che per la coppia (istanza, utility) esista un BA, un dato precontrattuale o un cliente. Misurato il 2026-09-09: 45 dei 185 file di vendite rossi nel fixture muoiono per mancanza di un billing account.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_cliente_ba(text, integer);

@@ -16,7 +16,6 @@
 # 6. test_confirmation_flow
 
 import unittest
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 from django.core.cache.backends.locmem import LocMemCache

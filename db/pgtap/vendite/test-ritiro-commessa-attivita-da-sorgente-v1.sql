@@ -41,7 +41,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: il test gira come gira l'applicazione (RLS attiva).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- ============================================================
 -- Fixture
@@ -128,6 +128,53 @@ SELECT is(
     (SELECT sorgente_uid     FROM tmp_cost_rit)) -> 0 ->> 'codice',
   'E_SORGENTE_CON_RIGHE_EMESSE',
   '2) il freno vede la riga EMESSA e nomina il suo codice'
+);
+
+-- ============================================================
+-- 2-bis) ⭐ P-1 — LA FRASE RESA, che nessun cancello statico vede
+-- ============================================================
+-- ⛔ Il difetto che questa riga presidia era VIVO fino al 2026-09-09, e non
+--   qui: questo motivo ha DUE chiamanti. vendite.trgfn_doc_guard_chiusura_-
+--   sorgente passava il `dettaglio` (il conteggio) ed era corretto; ma
+--   script.fn_check_ordine_annullabile lo COMPONE nei propri motivi, e la'
+--   vendite.trgfn_ordini_guard_transizione passava per primo NEW.numero —
+--   perche' il suo ALTRO codice comincia con «Ordine %s». Annullando un ordine
+--   con righe di commessa emesse e senza DDT usciva:
+--       «Il documento ha ORD-000123 righe di commessa gia' emesse»
+--   ⚠️ Arita' giusta (`format()` ignora i valori in piu'), nessun `W_`, nessun
+--   test rosso: i pgTAP di quel sito asseriscono `P0001`, non la frase.
+--
+-- ⭐ Da qui in avanti i `valori` li emette la check accanto al proprio codice
+--   (changeSet 20260909-04), quindi la frase e' la stessa da entrambi i
+--   chiamanti. Questo test lo prova RENDENDOLA: e' l'unica verifica che vede
+--   l'ORDINE dei valori, che nessun conteggio di segnaposto puo' vedere.
+-- ⚠️ Il CASE non e' pignoleria: senza, una check che smettesse di emettere
+--   `valori` farebbe alzare 22023 a format() e ABORTIREBBE il file, seppellendo
+--   le altre dieci asserzioni. Un presidio deve diventare rosso, non muto.
+SELECT matches(
+  (WITH v AS (
+     SELECT script.fn_check_sorgente_chiudibile(
+              (SELECT sorgente_tipo_id FROM tmp_cost_rit),
+              (SELECT sorgente_uid     FROM tmp_cost_rit)) -> 0 AS motivo)
+   SELECT CASE
+            -- ⚠️ `coalesce`, e non un `<>` nudo: con la chiave assente
+            --   jsonb_typeof() torna NULL, `NULL <> 'array'` vale NULL — cioe'
+            --   NON vero — e il ramo che doveva proteggere non scatta. Il
+            --   cancello scritto senza cadeva dritto nel format() che voleva
+            --   evitare, e abortiva il file.
+            WHEN coalesce(jsonb_typeof(v.motivo -> 'valori'), 'assente') <> 'array'
+              THEN '(la check non emette valori)'
+            WHEN jsonb_array_length(v.motivo -> 'valori') <> 1
+              THEN format('(la check emette %s valori, il messaggio ne chiede 1)',
+                          jsonb_array_length(v.motivo -> 'valori'))
+            ELSE format(
+                   (SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_SORGENTE_CON_RIGHE_EMESSE' AND m.lingua = 'it'),
+                   VARIADIC ARRAY(SELECT jsonb_array_elements_text(v.motivo -> 'valori')))
+          END
+     FROM v),
+  '^Il documento ha 1 righe di commessa',
+  '2-bis) la frase resa nomina il CONTEGGIO, non l''identificativo del documento'
 );
 
 -- ============================================================

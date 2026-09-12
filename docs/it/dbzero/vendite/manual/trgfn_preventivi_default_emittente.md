@@ -77,4 +77,4 @@ La colonna `vendite.preventivi.emittente_fiscale_id` e' protetta da `script.trgf
 * [`vendite.trgfn_preventivi_guard_utility_istanza_coerenza`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_utility_istanza_coerenza) — guard fase `a10` che fires DOPO questo
 * [`script.fn_resolve_emittente_for_user`](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — resolver operatore↔emittente (1-a-1)
 * [Tabella vendite.preventivi](/dbzero/vendite/tabelle/preventivi) — sezione "Modello istanza/BA/emittente"
-* Brief sessione 2026-05-01: `docs/it/dev/work-in-progress/risposta-db-brief-preventivi-rev2.md`
+* Brief sessione 2026-05-01: `docs/it/dev/work-done/risposta-db-brief-preventivi-rev2.md`

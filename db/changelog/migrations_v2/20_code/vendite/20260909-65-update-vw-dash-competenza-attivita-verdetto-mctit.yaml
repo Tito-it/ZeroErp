@@ -1,0 +1,296 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L4 — LA GRANA ATTIVITA' GUADAGNA IL VERDETTO
+#
+# ── 🔴 PERCHE': LA CARD NON FILTRA PERCHE' NON HA IL DATO ────────
+#   Collaudo del 2026-09-09: la card «Da emettere» diceva 4, l'elenco sotto ne
+#   mostrava 3 e sbarrava il quarto. Non e' che la card «si e' dimenticata di
+#   filtrare»: il verdetto vive su vw_dash_competenza_gruppi, che sta un piano
+#   SOPRA di lei — e un aggregato non puo' leggere una colonna che la sua
+#   sorgente non espone.
+#   ⇒ Il verdetto scende alla grana piu' bassa. La sede resta una, cambia da
+#   dove la si interroga.
+#
+# ── ⭐ SI LEGGE LA CLASSE, NON SI RISCRIVE IL PREDICATO ──────────
+#   Il join e' alla sede unica (changeSet -59), che porta con se' anche il
+#   LEGAME DI COMPETENZA del trattenuto: qui non si ricopia niente.
+#
+# ── ⭐ E IL VERDETTO SI ACCENDE SOLO DOVE SIGNIFICA QUALCOSA ─────
+#   §6.3 del brief chiedeva di limitarlo allo stadio DA_EMETTERE. Non serve un
+#   filtro: la classe TRATTENUTA vuole NON_EMESSA + APPROVATA, che E' quello
+#   stadio. Su FATTURATA non puo' accendersi — e' vero per costruzione, non per
+#   disciplina.
+#   ⛔ Il difetto che evita e' reale: un documento appena fatturato ha esito
+#   COMPLETED sul proprio lotto, che resta DRAFT fino a «Rendi definitive».
+#   Guardando l'ARRAY invece della CLASSE, quella riga risulterebbe
+#   «trattenuta» — e uscirebbe dai conteggi dei FATTURATI.
+#
+# ── ⚠️ COSTO, MISURATO ──────────────────────────────────────────
+#   Questa vista ne alimenta altre quattro, quindi il costo si paga su tutte.
+#   Misurato il 2026-09-09 sul database di sviluppo: 5,4 ms -> 5,7 ms su 106
+#   righe, e il conteggio NON cambia (106 prima, 106 dopo): il LEFT JOIN e' 1:1
+#   su `commessa_attivita_id` e non moltiplica.
+#
+# ⚠️ Colonne IN CODA: il backend legge questa famiglia di viste per POSIZIONE.
+# ⚠️ `security_invoker=on` ri-specificato: PostgreSQL lo azzera in silenzio.
+#
+# Verifica: db/pgtap/vendite/test-vw-dash-competenza-v1.sql
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L4, §5.1, §6.3)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-65-update-vw-dash-competenza-attivita-verdetto-mctit.yaml
+
+  - changeSet:
+      id: 20260909-65-update-vw-dash-competenza-attivita-verdetto
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_dash_competenza_attivita: +2 colonne in coda con il verdetto
+        «trattenuta da un lotto in gioco», letto dalla sede unica. Il verdetto si
+        accende solo su DA_EMETTERE, per costruzione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite' AND viewname = 'vw_lotti_fase'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname = 'vw_commesse_attivita_emittibilita'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN 'IN_ATTESA_LOTTO'::text
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  -- ⭐ IL VERDETTO, dalla SEDE UNICA (changeSet 20260909-59). Non si
+                  --   riscrive nessun predicato: si legge la CLASSE.
+                  -- ⚠️ Si guarda la CLASSE e non l'array: `trattenuta_da_lotti` e' valorizzato
+                  --   anche su una riga gia' EMESSA il cui documento e' in un lotto vivo, e
+                  --   mostrarla come «trattenuta» direbbe una cosa falsa.
+                  -- ⭐ E cosi' il verdetto si accende SOLO dove significa qualcosa: la classe
+                  --   TRATTENUTA vuole NON_EMESSA + APPROVATA, cioe' esattamente lo stadio
+                  --   DA_EMETTERE. Su FATTURATA o EMESSA_NON_FATTURATA non puo' accendersi —
+                  --   non serve nessun filtro sullo stadio, e' vero per costruzione.
+                  COALESCE(cae.classe_emittibilita = 'TRATTENUTA', false) AS emissione_trattenuta,
+                  -- ⚠️ I lotti SOLO quando il verdetto e' acceso: altrimenti una riga gia'
+                  --   fatturata porterebbe con se' un lotto «che la blocca».
+                  CASE WHEN cae.classe_emittibilita = 'TRATTENUTA'
+                       THEN cae.trattenuta_da_lotti END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = af.lock_batch_id)))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                   -- ⭐ LA SEDE UNICA DEL CRITERIO. LEFT JOIN 1:1 su commessa_attivita_id:
+                   --   non moltiplica righe (misurato il 2026-09-09: 106 prima, 106 dopo) e
+                   --   costa ~0,3 ms su questo perimetro. Il classificatore porta con se' il
+                   --   LEGAME DI COMPETENZA del trattenuto, che quindi non va ricopiato qui.
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON cae.commessa_attivita_id = ca.id)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN 'IN_ATTESA_LOTTO'::text
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione
+                 FROM ((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = af.lock_batch_id)))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));

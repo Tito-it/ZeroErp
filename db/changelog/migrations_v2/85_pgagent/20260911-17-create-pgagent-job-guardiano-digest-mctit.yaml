@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL JOB `guardiano_digest` — chi guarda il guardiano, dall'altra parte del muro.
+#   Brief: brief-db-quattro-processi-senza-presidio §6 · §10.2 · B6
+#   Decisione di Tid, 2026-09-11 (Q2).
+#
+# Ogni ora, al minuto 20: `CALL maintenance.proc_guardiano_digest_job()`, che
+# esegue `dbops.fn_guardiano_digest()` passando dal giornale. Se il digest dei
+# presidi e' MUTO, accoda UN lavoro al giorno su `dbops.coda_lavori`; il
+# drenatore lo esegue e spedisce col destinatario del backend.
+#
+# ── ⭐ PERCHE' pgAgent ──────────────────────────────────────────────
+#   Vive nel database, cioe' in un mondo che non muore insieme a systemd del
+#   backend. E' l'unico posto da cui la morte del digest si puo' vedere senza
+#   dipendere dal digest.
+#
+# ── ⚠️ IL DEBITO DI SEMPRE: `85_pgagent` in CI e' `MARK_RAN` ────────
+#   Questo changeSet e' segnato come eseguito senza essere eseguito. Su un
+#   ambiente ricostruito da zero il job NON esiste — e stavolta lo dice il
+#   panorama: `guardiano_digest` e' a catalogo come PGAGENT, quindi compare
+#   come JOB_ASSENTE in `vw_processi_programmazione_da_guardare`.
+#
+# ── ⚠️ Ogni ora, e non ogni minuto ─────────────────────────────────
+#   La tolleranza del digest e' di giorni (26 ore la giornaliera, 8 giorni la
+#   settimanale, e a catalogo vale la piu' larga): un controllo orario e' gia'
+#   piu' fitto del necessario, e la notifica e' comunque UNA al giorno per
+#   chiave. Al minuto 20 per non accavallarsi con le famiglie delle :00 e :10.
+#
+# ⚠️ `jobname` DEVE essere identico a `dbops.processi.codice` (e a
+#   `jobname_pgagent`): e' cosi' che fn_run_and_log risale all'attore e che il
+#   panorama lega il job al processo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/85_pgagent/20260911-17-create-pgagent-job-guardiano-digest-mctit.yaml
+
+  - changeSet:
+      id: 20260911-17-create-pgagent-job-guardiano-digest
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Job pgAgent guardiano_digest: ogni ora chiama
+        maintenance.proc_guardiano_digest_job(), che passa dal giornale ed
+        esegue dbops.fn_guardiano_digest(). Se il digest dei presidi e' MUTO
+        accoda un lavoro NOTIFICA_DIGEST_MUTO su dbops.coda_lavori: e' la
+        guardia reciproca — il digest guarda tutti, pgAgent guarda il digest.
+        MARK_RAN in CI come i fratelli; a catalogo e' PGAGENT, quindi in CI il
+        panorama lo nomina JOB_ASSENTE invece di tacere.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgagent'
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance'
+                     AND p.proname = 'proc_guardiano_digest_job'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+                 DECLARE
+                   v_classid INTEGER;
+                   v_jobid   INTEGER;
+                 BEGIN
+                   -- 1) Classe 'Routine Maintenance', come tutta la famiglia
+                   SELECT jclid INTO v_classid
+                     FROM pgagent.pga_jobclass
+                    WHERE jclname = 'Routine Maintenance'
+                    LIMIT 1;
+
+                   IF v_classid IS NULL THEN
+                     INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                     VALUES ('Routine Maintenance', 'Default job class')
+                     RETURNING jclid INTO v_classid;
+                   END IF;
+
+                   -- 2) Idempotenza: si rifa' da zero, come le sorelle.
+                   DELETE FROM pgagent.pga_job WHERE jobname = 'guardiano_digest';
+
+                   INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                   VALUES (v_classid,
+                           'guardiano_digest',
+                           'Chi guarda il guardiano: ogni ora legge lo stato di '
+                           'digest_presidi dal panorama e, se e'' MUTO, accoda un '
+                           'lavoro NOTIFICA_DIGEST_MUTO (uno al giorno) che il '
+                           'drenatore esegue spedendo col destinatario del backend. '
+                           'Vive in pgAgent perche'' non muore con systemd.',
+                           true)
+                   RETURNING jobid INTO v_jobid;
+
+                   -- 3) Ogni ora, al minuto 20.
+                   INSERT INTO pgagent.pga_schedule(
+                     jscjobid, jscname, jscenabled,
+                     jscminutes, jschours, jscweekdays,
+                     jscmonthdays, jscmonths, jscstart
+                   ) VALUES (
+                     v_jobid,
+                     'hourly_20',
+                     true,
+                     (SELECT array_agg((i = 20)::boolean) FROM generate_series(0,59) AS g(i)),
+                     array_fill(TRUE, ARRAY[24])::boolean[],
+                     array_fill(TRUE, ARRAY[7])::boolean[],
+                     array_fill(TRUE, ARRAY[32])::boolean[],
+                     array_fill(TRUE, ARRAY[12])::boolean[],
+                     now()
+                   );
+
+                   -- 4) Lo step passa dal giornale: e' cio' che rende il
+                   --    guardiano visibile al panorama.
+                   INSERT INTO pgagent.pga_jobstep(
+                     jstjobid, jstname, jstkind, jstcode, jstdbname
+                   ) VALUES (
+                     v_jobid,
+                     'guarda_il_digest',
+                     's',
+                     'CALL maintenance.proc_guardiano_digest_job();',
+                     current_database()
+                   );
+                 END;
+                 $$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM pgagent.pga_job WHERE jobname = 'guardiano_digest';
+
+  - changeSet:
+      id: 20260911-90-tag-pgagent-job-guardiano-digest
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260911-17-create-pgagent-job-guardiano-digest

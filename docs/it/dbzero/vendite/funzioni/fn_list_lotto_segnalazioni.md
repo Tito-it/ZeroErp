@@ -8,11 +8,15 @@ CREATE FUNCTION fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text DEFAULT NULL::text, p_livello character DEFAULT NULL::bpchar, p_solo_attive boolean DEFAULT true, p_solo_job_corrente boolean DEFAULT false, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'desc'::text)
- RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb)
+ RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb, gruppo_key text, riferimento text)
  LANGUAGE plpgsql
 AS $function$
+
 DECLARE
     v_order_col   text;
+    -- ⭐ Il verso dei NULL non e' piu' una costante: dipende da COSA vuol dire
+    --    il NULL su quella colonna. Vedi dove viene deciso, piu' sotto.
+    v_order_nulls text;
     v_order_dir   text;
     v_solo_attive boolean;
     v_solo_job    boolean;
@@ -110,6 +114,15 @@ BEGIN
         WHEN 'error_code'        THEN 'x.error_code'
         WHEN 'fase'              THEN 'x.fase'
         WHEN 'job_corrente'      THEN 'x.job_corrente'
+        -- ⭐ Si ordina sul RIFERIMENTO, non sulla chiave: e' l'etichetta che
+        --    l'operatore legge, e raggruppare le critiche per documento e'
+        --    come si legge questa scheda.
+        -- ⛔ `gruppo_key` NON entra in whitelist: dal 2026-09-08 la sua colonna
+        --    e' spenta a catalogo (la chiave viaggia in riga per il pulsante,
+        --    non per l'occhio), quindi non c'e' nessuna freccia da cliccare —
+        --    e una voce che il seed non offre e' una capacita' irraggiungibile
+        --    che il presidio di gen_seed_lista.py segnala.
+        WHEN 'riferimento'       THEN 'x.riferimento'
         ELSE NULL
     END;
 
@@ -122,6 +135,21 @@ BEGIN
 
     v_order_dir := CASE WHEN lower(btrim(COALESCE(p_order_dir, 'desc'))) = 'asc'
                         THEN 'ASC' ELSE 'DESC' END;
+
+    -- ⭐ DOVE VANNO LE CRITICHE DEL GIRO, e non e' un dettaglio estetico.
+    --    Il NULLS LAST di default e' scritto per le colonne dove il NULL vuol
+    --    dire «questo dato non c'e'» — l'importo su una riga di lotto, la fase
+    --    su una riga di fattura. Roba da mettere in fondo.
+    -- ⛔ Sul RIFERIMENTO il NULL non e' un dato mancante: e' la critica DEL
+    --    GIRO, quella che blocca e che l'operatore non puo' togliere in nessun
+    --    modo. In coda finirebbe sotto le altre — su una lista paginata,
+    --    magari a pagina due: l'operatore toglierebbe trenta documenti uno per
+    --    uno e il lotto non ripartirebbe lo stesso, per una riga che non ha
+    --    mai visto.
+    -- ⚠️ FIRST in ENTRAMBI i versi, come il LAST che sostituisce: la posizione
+    --    dice «questa e' di un'altra specie», non «e' la piu' piccola».
+    v_order_nulls := CASE WHEN v_order_col = 'x.riferimento'
+                          THEN 'NULLS FIRST' ELSE 'NULLS LAST' END;
 
     -- ⚠️ NULLS LAST in ENTRAMBI i versi: meta' delle colonne e' NULL
     --    su meta' delle righe PER COSTRUZIONE (documento e importo
@@ -172,7 +200,14 @@ BEGIN
                    --   avremmo creata una terza. Il disallineamento
                    --   `bersaglio`/`bersagli`/`target` si chiude a monte:
                    --   qui si dichiara, non si nasconde.
-                   fl.meta -> 'bersagli'                            AS target
+                   fl.meta -> 'bersagli'                            AS target,
+                   -- ⛔ NULL, e non e' un buco: una bozza puo' coprire PIU'
+                   --   documenti, quindi una segnalazione appesa alla FATTURA
+                   --   non ne nomina uno. Sceglierne uno sarebbe una scommessa.
+                   NULL::text                                       AS gruppo_key,
+                   -- Senza chiave non c'e' riferimento: e' lo stesso NULL di
+                   -- sopra, letto dall'altro lato.
+                   NULL::text                                       AS riferimento
               FROM vendite.fatturazione_lotti_fatture lf
               JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
               -- LEFT: il log esiste anche se la fattura non e'
@@ -212,7 +247,23 @@ BEGIN
                    --   da riempire adesso: nessuno lo scrive (misurato: 14
                    --   chiavi in `meta`, nessuna e' un bersaglio). Il patto
                    --   e' offerta, non promessa — li' nessun pulsante.
-                   NULL::jsonb
+                   NULL::jsonb,
+                   -- ⭐ Di CHI parla questa segnalazione. NULL = e' del GIRO
+                   --   (un emittente non risolto, una configurazione mancante):
+                   --   non ha un documento da togliere, e blocca.
+                   ll.gruppo_key,
+                   -- ⭐ L'ETICHETTA, accanto alla chiave. La chiave serve al
+                   --   PULSANTE (fn_escludi_documento_da_giro la vuole), il
+                   --   riferimento serve alla persona: 'ORD0036004' invece di
+                   --   'ORDINE_VENDITA:01a06ce4-35a6-721a-9cd8-9da48bf77626'.
+                   -- ⛔ La risoluzione NON e' scritta qui: vive in
+                   --   vendite.fn_riferimento_gruppo_fatturabile, che compone
+                   --   lo split della chiave e fn_get_sorgente_documento_ref.
+                   --   Riscriverla qui sarebbe la terza sede della stessa
+                   --   scala di ripiego.
+                   -- ⚠️ NULL entra e NULL esce: la segnalazione del GIRO non
+                   --   ha un documento da nominare.
+                   vendite.fn_riferimento_gruppo_fatturabile(ll.gruppo_key)
               FROM vendite.fatturazione_lotti_log ll
              WHERE ll.lotto_id = $1
         ), filtrata AS (
@@ -241,16 +292,21 @@ BEGIN
                --    sul job: e' l'unico posto da cui si vedono.
                (SELECT count(*) FROM filtrata y
                  WHERE y.job_corrente IS FALSE)::bigint             AS fuori_job_count,
-               x.target
+               x.target,
+               x.gruppo_key,
+               x.riferimento
           FROM filtrata x
          WHERE (NOT $6 OR x.job_corrente)
-         ORDER BY %s %s NULLS LAST, x.data_ora DESC, x.origine, x.id
+         ORDER BY %s %s %s, x.data_ora DESC, x.origine, x.id
          LIMIT $7 OFFSET $8
-    $q$, v_order_col, v_order_dir)
+    $q$, v_order_col, v_order_dir, v_order_nulls)
     USING p_lotto_id, v_ancora, p_origine, p_livello,
           v_solo_attive, v_solo_job, v_limit, v_offset;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_livello character, p_solo_attive boolean, p_solo_job_corrente boolean, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
+IS 'Le segnalazioni di un lotto, dai DUE registri (fatture_log e fatturazione_lotti_log) in una lista sola, paginata e ordinabile. ⭐ rev 2026-09-08: espone `riferimento` accanto a `gruppo_key` — la stessa cosa, leggibile: ORD0036004 invece di ORDINE_VENDITA:<uuid>. La CHIAVE resta in riga perche'' la vuole vendite.fn_escludi_documento_da_giro, cioe'' il pulsante «Togli dal giro»; il RIFERIMENTO e'' per la persona, ed e'' l''unico dei due che si vede (la colonna gruppo_fatturabile e'' spenta a catalogo dallo stesso giro). ⛔ La risoluzione non e'' scritta qui: la fa vendite.fn_riferimento_gruppo_fatturabile, che compone lo split della chiave e fn_get_sorgente_documento_ref — riscriverla sarebbe la terza sede della stessa scala di ripiego. ⭐ Si ordina sul RIFERIMENTO e non sulla chiave (decisione Tid 2026-09-08): e'' l''etichetta che l''operatore legge. ⛔ `gruppo_key` NON entra in whitelist — la sua colonna e'' spenta, quindi non c''e'' nessuna freccia da cliccare, e una voce che il seed non offre e'' una capacita'' irraggiungibile che il presidio di gen_seed_lista.py segnala. ⛔ Ordinando per riferimento i NULL vanno in TESTA e non in coda: li'' il NULL non e'' un dato mancante, e'' la critica DEL GIRO — quella che blocca e che non si puo'' togliere in nessun modo. In coda, su una lista paginata, l''operatore toglierebbe trenta documenti uno per uno e il lotto non ripartirebbe lo stesso. ⚠️ La colonna nuova e'' IN CODA: spostare le esistenti cambia significato a ogni lettore posizionale senza fallire. ⚠️ DROP + CREATE, perche'' CREATE OR REPLACE non cambia una RETURNS TABLE. Brief: brief-db-uscita-documento-dal-giro §6.2.';
 ```
 
 ---

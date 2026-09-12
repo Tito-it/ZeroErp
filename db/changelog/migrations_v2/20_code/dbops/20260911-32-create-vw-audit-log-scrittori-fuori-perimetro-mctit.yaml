@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL CANCELLO: `dbops.audit_log` è un registro TECNICO, e resta tale.
+#   Brief: brief-db-rls-storico-scope-congelato.md §8.3 (decisione: «No»)
+#
+# La domanda del §8.3 era «questo registro deve poter contenere dati di
+# dominio?». Risposta: **no** — è il registro delle automazioni e degli
+# strumenti DBA, lo legge l'amministrazione. Quindi il presidio giusto non è
+# una policy di perimetro sul registro (un filtro per riga su un log), ma un
+# CANCELLO che impedisce a una funzione di dominio di scriverci: il rischio
+# sparisce alla fonte.
+#
+# ── LA VISTA ──────────────────────────────────────────────────────────
+#   Elenca le funzioni che SCRIVONO nel registro — DML diretto su
+#   `dbops.audit_log` o chiamata a `fn_audit_log_once` / `fn_audit_begin` /
+#   `fn_audit_end` — e che stanno FUORI dal perimetro dichiarato:
+#   `dbops` e `maintenance`. Il perimetro è scritto qui, nella vista: è il
+#   contratto, e allargarlo è un changeSet che qualcuno deve firmare.
+#   ⚠️ Il sorgente si legge SENZA i commenti `--`: un presidio sul testo si
+#   accende sulla prosa che spiega il difetto (memoria di progetto).
+#   ⚠️ Le tre funzioni di audit sono escluse per nome: sono la porta, non chi
+#   la attraversa. Le letture (`SELECT … FROM dbops.audit_log`) non contano:
+#   il cancello è sulla scrittura.
+#
+# ── NATURA: CANCELLO ──────────────────────────────────────────────────
+#   Come `vw_bersagli_non_dichiarati`: non è un registro di debito, è una
+#   vista che DEVE essere vuota e la cui riga fa rosso il pgTAP
+#   `db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` (che gira in
+#   CI). A catalogo in `dbops.presidi` con `cadenza MAI`: non entra nel digest,
+#   ferma la build.
+#
+# ⚠️ `security_invoker=true` va ri-specificato a ogni CREATE OR REPLACE VIEW:
+#   PostgreSQL lo azzera. Legge solo pg_catalog: chiunque può.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260911-32-create-vw-audit-log-scrittori-fuori-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20260911-32-create-vw-audit-log-scrittori-fuori-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.vw_audit_log_scrittori_fuori_perimetro: le funzioni che
+        scrivono in dbops.audit_log (DML diretto o via fn_audit_log_once /
+        fn_audit_begin / fn_audit_end) e stanno fuori dal perimetro dichiarato
+        (dbops, maintenance). Deve restare vuota: è il cancello che tiene il
+        registro TECNICO, decisione §8.3 del brief
+        brief-db-rls-storico-scope-congelato. Natura CANCELLO nel catalogo
+        dbops.presidi, presidiata dal pgTAP test-audit-log-perimetro-scrittori-v1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_audit_log_scrittori_fuori_perimetro
+              WITH (security_invoker = true) AS
+              WITH perimetro AS (
+                  -- ⭐ Il CONTRATTO: chi può scrivere nel registro tecnico.
+                  SELECT unnest(ARRAY['dbops', 'maintenance']::name[]) AS nspname
+              ),
+              sorgenti AS (
+                  SELECT p.oid, n.nspname, p.proname,
+                         -- il sorgente senza i commenti di riga
+                         regexp_replace(p.prosrc, '--[^\n]*', '', 'g') AS corpo
+                    FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prokind IN ('f', 'p')
+              )
+              SELECT s.nspname::text || '.' || s.proname::text AS funzione,
+                     s.nspname::text                            AS schema_funzione,
+                     CASE
+                         WHEN s.corpo ~* '(insert\s+into|update|delete\s+from)\s+dbops\.audit_log\M' THEN 'DML_DIRETTO'
+                         ELSE 'VIA_FN_AUDIT'
+                     END AS come_scrive
+                FROM sorgenti s
+               WHERE (   s.corpo ~* '(insert\s+into|update|delete\s+from)\s+dbops\.audit_log\M'
+                      OR s.corpo ~  '\mfn_audit_(log_once|begin|end)\s*\(')
+                 AND NOT EXISTS (SELECT 1 FROM perimetro pe WHERE pe.nspname = s.nspname)
+                 AND NOT (s.nspname = 'dbops' AND s.proname IN ('fn_audit_log_once', 'fn_audit_begin', 'fn_audit_end'))
+               ORDER BY 1;
+
+              COMMENT ON VIEW dbops.vw_audit_log_scrittori_fuori_perimetro IS
+                  'CANCELLO — deve restare VUOTA. Le funzioni che scrivono in dbops.audit_log (DML diretto, o via fn_audit_log_once / fn_audit_begin / fn_audit_end) e che stanno FUORI dal perimetro dichiarato nella vista stessa: dbops e maintenance. dbops.audit_log è un registro TECNICO — le automazioni e gli strumenti DBA, letto dall''amministrazione — e non deve poter contenere dati di dominio (decisione §8.3, brief brief-db-rls-storico-scope-congelato, 2026-09-11): il presidio giusto non è una policy di perimetro sul log ma impedire alla fonte che una funzione di vendite, anagrafiche, pagamenti ci scriva. Una riga qui fa rosso db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql, che gira in CI. Allargare il perimetro è un changeSet su questa vista, firmato. Il sorgente si legge senza i commenti di riga; le letture del registro non contano; le tre funzioni di audit sono la porta e sono escluse per nome. security_invoker: legge solo il catalogo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_audit_log_scrittori_fuori_perimetro;

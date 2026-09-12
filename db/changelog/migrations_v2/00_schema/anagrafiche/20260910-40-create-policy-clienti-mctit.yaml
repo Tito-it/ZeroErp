@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CL-3 — Le TRE policy di anagrafiche.clienti. INERTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.17
+#   Slice 20260910-38..42. L'armamento e' 20260910-41.
+#
+# ── ⛔ IL DIFETTO, DETTO SUL MODELLO ──────────────────────────────────
+#   Un cliente e' una faccia del proprio billing account e ne eredita il
+#   perimetro. `anagrafiche.billing_account` e' protetta; `anagrafiche.clienti`
+#   no, e `zeroerp_app` ci ha SELECT, INSERT, UPDATE e DELETE.
+#   ⇒ Ragione sociale, stato, modalita' e termini di pagamento dei clienti di
+#   OGNI emittente sono leggibili da qualunque operatore.
+#
+# ── ⭐ TRE POLICY PER QUATTRO POLICY DI TESTATA, ed e' il punto ───────
+#   La regola del brief e' *«il satellite rispecchia tutte le VESTI della
+#   propria testata»* — le vesti, non le policy. La testata ne ha quattro, ma
+#   sono **tre vesti**: la quarta esiste per una ragione tecnica che qui non
+#   si presenta.
+#
+#   | Veste testata | Qui | Come |
+#   | --- | --- | --- |
+#   | OPERATORE `FOR ALL` | ✅ | `_via_efba(user, billing_account_id)` — la stessa canonica della testata |
+#   | CLIENTE_PORTALE `FOR SELECT` | ✅ | `fn_scope_ba_ownership(identita, billing_account_id)` — diretta |
+#   | SHOP_CUSTOMER `FOR SELECT` | ✅ | `fn_scope_shop_via_ba` (20260910-38) — porta le DUE condizioni |
+#   | OPERATORE `FOR INSERT` gate-only | ⛔ **NO**, e per una ragione | vedi sotto |
+#
+# ── ⛔ PERCHE' LA POLICY `INSERT` NON SI RISPECCHIA ───────────────────
+#   Su `billing_account` quella policy dice soltanto «il ruolo e' OPERATORE» e
+#   NON usa `_via_efba`. Il suo stesso commento spiega perche':
+#     *«il mapping efba e' creato da trigger AFTER INSERT (via_efba
+#      rifiuterebbe i BA nuovi)»*.
+#   ⇒ E' un rimedio a un problema di **ordine di esecuzione**: alla nascita di
+#   un billing account il legame con l'emittente non c'e' ancora, quindi la
+#   condizione di scope non e' ancora valutabile.
+#
+#   ⭐ Su `clienti` quel problema NON esiste: `billing_account_id` e' `NOT NULL`
+#   e punta a un billing account che **esiste gia'**, con il suo mapping. La
+#   `WITH CHECK` della policy `FOR ALL` e' quindi valutabile fin dall'INSERT.
+#   ⛔ Copiarla renderebbe `clienti` **piu' permissiva della propria testata**:
+#   un operatore potrebbe creare una scheda cliente su un billing account fuori
+#   dal proprio perimetro. *Rispecchiare le vesti non vuol dire ricopiare le
+#   policy: vuol dire ottenere lo stesso perimetro.*
+#
+# ── ⛔ LA VESTE SHOP E' L'UNICA CHE NON SI POTEVA COPIARE ─────────────
+#   La testata pretende `canale_origine = 'SHOP'`, e quella colonna sta **sul
+#   billing account**: `clienti` non ce l'ha. Ricopiare la sola proprieta'
+#   avrebbe aperto il satellite piu' del documento. ⇒ Si risale, e le due
+#   condizioni restano scritte in un posto solo (changeSet 20260910-38).
+#
+# ⚠️ `FOR ALL` con `WITH CHECK` sulla veste operatore, `FOR SELECT` sulle due
+#   vesti cliente: e' esattamente cio' che la testata concede a ciascuna. Un
+#   `FOR ALL` al portale gli darebbe la scrittura, che oggi non ha.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260910-40-create-policy-clienti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-40-create-policy-clienti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Tre policy su anagrafiche.clienti, una per veste di
+        anagrafiche.billing_account: OPERATORE FOR ALL via _via_efba,
+        CLIENTE_PORTALE FOR SELECT via fn_scope_ba_ownership, SHOP_CUSTOMER FOR
+        SELECT via fn_scope_shop_via_ba (che porta anche canale_origine=SHOP).
+        La quarta policy della testata, il gate-only FOR INSERT, NON si
+        rispecchia: esiste perche' il mapping efba nasce da un trigger AFTER
+        INSERT, e su clienti il billing account esiste gia'. INERTI:
+        l'armamento e' 20260910-41.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_efba',
+                                   'fn_scope_ba_ownership',
+                                   'fn_scope_shop_via_ba')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- veste OPERATORE: il perimetro dell'emittente ----------
+              -- ⭐ `_via_efba` e' la STESSA funzione che protegge la testata:
+              --   cliente e billing account non possono divergere.
+              CREATE POLICY rls_clienti_ef_whitelist
+                  ON anagrafiche.clienti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              billing_account_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              billing_account_id)
+                  );
+
+              -- ---------- veste CLIENTE_PORTALE: la proprieta' del BA ----------
+              -- ⚠️ `FOR SELECT`, come la testata: il portale legge, non scrive.
+              CREATE POLICY rls_clienti_self_ownership
+                  ON anagrafiche.clienti
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              billing_account_id)
+                  );
+
+              -- ---------- veste SHOP_CUSTOMER: proprieta' E canale ----------
+              -- ⛔ NON `fn_scope_ba_ownership` da sola: la testata pretende
+              --   anche `canale_origine = 'SHOP'`, e quella colonna sta sul
+              --   billing account. L'adattatore risale e porta tutte e due le
+              --   condizioni — cosi' questa policy non puo' essere piu'
+              --   permissiva di quella della testata.
+              CREATE POLICY rls_clienti_shop
+                  ON anagrafiche.clienti
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_shop_via_ba(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              billing_account_id)
+                  );
+
+              COMMENT ON POLICY rls_clienti_ef_whitelist ON anagrafiche.clienti IS
+                  'Perimetro emittente della scheda cliente: risale da billing_account_id (NOT NULL) con la STESSA funzione che protegge anagrafiche.billing_account, cosi'' le due non possono divergere. ⛔ La policy gate-only FOR INSERT della testata non e'' rispecchiata di proposito: esiste perche'' il mapping efba nasce da un trigger AFTER INSERT, e qui il billing account esiste gia'' — copiarla lascerebbe creare schede fuori perimetro. Slice 20260910-38..42.';
+              COMMENT ON POLICY rls_clienti_self_ownership ON anagrafiche.clienti IS
+                  'Veste CLIENTE_PORTALE sulla scheda cliente: rispecchia rls_billing_account_self_ownership sulla chiave billing_account_id. FOR SELECT come la testata — il portale legge e non scrive. Slice 20260910-38..42.';
+              COMMENT ON POLICY rls_clienti_shop ON anagrafiche.clienti IS
+                  'Veste SHOP_CUSTOMER sulla scheda cliente. ⛔ Usa fn_scope_shop_via_ba e non fn_scope_ba_ownership: la testata pretende ANCHE canale_origine = SHOP, e quella colonna sta sul billing account — con la sola proprieta'' questo satellite sarebbe piu'' permissivo del proprio documento. Slice 20260910-38..42.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_clienti_shop           ON anagrafiche.clienti;
+              DROP POLICY IF EXISTS rls_clienti_self_ownership ON anagrafiche.clienti;
+              DROP POLICY IF EXISTS rls_clienti_ef_whitelist   ON anagrafiche.clienti;

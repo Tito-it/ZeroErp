@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # «QUESTA RATA E' DI QUESTA FATTURA?» — la domanda che la RLS non lascia fare
 #   script.fn_check_scadenza_di_fattura — passo S2-3 (lotto 5)
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.2 S2-3 · Decisione: brief madre D14-b
 #
 # ── 🔴 PERCHE' NON PUO' FARLA IL GUARD DA SOLO ────────────────────────

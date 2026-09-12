@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_risorse_umane_risorse_umane_id_fk | `CREATE INDEX ix_risorse_umane_risorse_umane_id_fk ON storico.risorse_umane USING btree (risorse_umane_id)` |
+| ix_risorse_umane_scope_ef | `CREATE INDEX ix_risorse_umane_scope_ef ON storico.risorse_umane USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_risorse_umane | `CREATE UNIQUE INDEX pk_storico_risorse_umane ON storico.risorse_umane USING btree (id)` |
 
 ## 🚨 Trigger

@@ -132,60 +132,125 @@ if [ "$1" = "--print-runner" ]; then
   exit 0
 fi
 
+# --check-automazioni: risponde a «su QUESTO database e' stata eseguita la
+# passata delle AUTOMAZIONI (`--contexts=ci_apply`)?».
+#   exit 0 = si'  ·  exit 1 = no  ·  exit 3 = non misurabile (DB irraggiungibile)
+#
+# ⭐ PERCHE' LA DOMANDA STA QUI e non in scripts/pgtap-baseline.sh: questo file
+#   e' l'unico che sa come si RAGGIUNGE il database bersaglio — la catena
+#   dell'env file (PGTAP_ENV_FILE, db/internal.env, backend/…), il mapping
+#   DB_* -> PG* e la scelta dell'utente vivono tutti qui. Una seconda copia di
+#   quella catena diverge, ed e' lo stesso motivo per cui il default del runner
+#   non e' duplicato ma CHIESTO (--print-runner, qui sopra).
+#
+# ⭐ COME SI MISURA, e non e' un conteggio. I changeSet sotto
+#   `90_end/ci_apply/` dichiarano `context: ci_apply`: Liquibase li esegue
+#   SOLO quando quel contesto e' nell'invocazione. ⇒ La loro presenza nel
+#   `databasechangelog` E' la passata, e la loro assenza e' la sua mancanza.
+#   ⛔ Non si confrontano NUMERI di trigger fra due database: i nomi generati
+#   dal framework non coincidono (portano un hash), e un totale e' una
+#   fotografia — direbbe «diverso», non «mancante».
+# ⚠️ Un `if` e non `[ … ] && MODO_CHECK=1`: con `set -e` attivo la forma corta
+#   dipende da una clausola d'eccezione della shell, e qui non c'e' motivo di
+#   appoggiarcisi.
+MODO_CHECK=0
+if [ "$1" = "--check-automazioni" ]; then
+  MODO_CHECK=1
+fi
+
 TARGET="$1"
 
-# Normalizza prefissi superflui: pgtap/, db/pgtap/, backend/pgtap/
-case "$TARGET" in
-  db/pgtap/*)      TARGET="db/${TARGET#db/pgtap/}" ;;
-  backend/pgtap/*) TARGET="backend/${TARGET#backend/pgtap/}" ;;
-  pgtap/*)         TARGET="${TARGET#pgtap/}" ;;
-esac
+# ⚠️ In modalita' `--check-automazioni` non c'e' nessun file da risolvere:
+#   il percorso si salta invece di inventare un bersaglio finto che lo
+#   attraversi. L'env file, che serve a entrambe le modalita', si carica dopo.
+if [ "$MODO_CHECK" -eq 0 ]; then
+  # Normalizza prefissi superflui: pgtap/, db/pgtap/, backend/pgtap/
+  case "$TARGET" in
+    db/pgtap/*)      TARGET="db/${TARGET#db/pgtap/}" ;;
+    backend/pgtap/*) TARGET="backend/${TARGET#backend/pgtap/}" ;;
+    pgtap/*)         TARGET="${TARGET#pgtap/}" ;;
+  esac
 
-# Determina radice pgTAP e path relativo al suo interno
-case "$TARGET" in
-  backend/*)
-    PGTAP_ROOT="$BE_PGTAP_DIR"
-    REL_PATH="${TARGET#backend/}"
-    BASE_DIR="$ROOT_DIR/backend"
-    ;;
-  db/*)
-    PGTAP_ROOT="$DB_PGTAP_DIR"
-    REL_PATH="${TARGET#db/}"
-    BASE_DIR="$ROOT_DIR/db"
-    ;;
-  *)
-    # Auto-detect: prima db/pgtap, poi backend/pgtap
-    IN_DB=0
-    IN_BE=0
-    [ -f "$DB_PGTAP_DIR/$TARGET" ] && IN_DB=1
-    [ -f "$BE_PGTAP_DIR/$TARGET" ] && IN_BE=1
-
-    if [ "$IN_DB" -eq 1 ] && [ "$IN_BE" -eq 1 ]; then
-      echo "Errore: '$TARGET' presente sia in db/pgtap/ che in backend/pgtap/." >&2
-      echo "Usa il prefisso esplicito 'db/' o 'backend/' per disambiguare." >&2
-      exit 2
-    elif [ "$IN_DB" -eq 1 ]; then
-      PGTAP_ROOT="$DB_PGTAP_DIR"
-      BASE_DIR="$ROOT_DIR/db"
-    elif [ "$IN_BE" -eq 1 ]; then
+  # Determina radice pgTAP e path relativo al suo interno
+  case "$TARGET" in
+    backend/*)
       PGTAP_ROOT="$BE_PGTAP_DIR"
+      REL_PATH="${TARGET#backend/}"
       BASE_DIR="$ROOT_DIR/backend"
-    else
-      echo "Errore: '$TARGET' non trovato ne' in db/pgtap/ ne' in backend/pgtap/." >&2
-      exit 2
-    fi
-    REL_PATH="$TARGET"
-    ;;
-esac
+      ;;
+    db/*)
+      PGTAP_ROOT="$DB_PGTAP_DIR"
+      REL_PATH="${TARGET#db/}"
+      BASE_DIR="$ROOT_DIR/db"
+      ;;
+    *)
+      # Auto-detect: prima db/pgtap, poi backend/pgtap
+      IN_DB=0
+      IN_BE=0
+      [ -f "$DB_PGTAP_DIR/$TARGET" ] && IN_DB=1
+      [ -f "$BE_PGTAP_DIR/$TARGET" ] && IN_BE=1
+
+      if [ "$IN_DB" -eq 1 ] && [ "$IN_BE" -eq 1 ]; then
+        echo "Errore: '$TARGET' presente sia in db/pgtap/ che in backend/pgtap/." >&2
+        echo "Usa il prefisso esplicito 'db/' o 'backend/' per disambiguare." >&2
+        exit 2
+      elif [ "$IN_DB" -eq 1 ]; then
+        PGTAP_ROOT="$DB_PGTAP_DIR"
+        BASE_DIR="$ROOT_DIR/db"
+      elif [ "$IN_BE" -eq 1 ]; then
+        PGTAP_ROOT="$BE_PGTAP_DIR"
+        BASE_DIR="$ROOT_DIR/backend"
+      else
+        echo "Errore: '$TARGET' non trovato ne' in db/pgtap/ ne' in backend/pgtap/." >&2
+        exit 2
+      fi
+      REL_PATH="$TARGET"
+      ;;
+  esac
+fi
 
 # Carica le variabili PG* per pg_prove.
 # Priorita':
+#   0) PGTAP_ENV_FILE        (override esplicito — vedi sotto)
 #   1) db/internal.env       (server DB, fonte primaria)
 #   2) backend/internal.env  (server backend con env pgTAP dedicato)
 #   3) backend/.env          (server backend, usa DB_* -> mappa su PG*)
+#
+# ── ⛔ PERCHE' SERVE UN OVERRIDE DI FILE, E NON BASTA `PGDATABASE=...` ──────
+#   Il file viene caricato con `set -a; source`, quindi le sue righe
+#   SOVRASCRIVONO l'ambiente: `PGDATABASE=altro scripts/testpgtap.sh …` non
+#   sposta niente, e i test girano lo stesso sul database nominato nel file.
+#   ⚠️ E' un fallimento SILENZIOSO, ed e' il peggiore che potesse capitare qui:
+#   chi vuole misurare il database scratch della replica CI
+#   (`scripts/ci-local.sh`, `CI_DB=zeroerp_ci`) crede di misurare quello e
+#   misura SVILUPPO. Con `pgtap-baseline.sh --update` finirebbe per scrivere i
+#   rossi di sviluppo dentro la baseline della CI, cioe' un metro sbagliato
+#   dentro il file che esiste apposta per tenere il metro omogeneo.
+#   ⭐ Quindi la scelta si fa a livello di FILE — un env file per database —
+#   non variabile per variabile: cosi' host, porta, utente, password e database
+#   restano un insieme coerente e non se ne puo' spostare mezzo.
+#
+#   Uso:
+#     PGTAP_ENV_FILE=db/internal.ci.env scripts/pgtap-baseline.sh --update
 ENV_FILE=""
 ENV_STYLE=""   # "pg" = variabili PG* native, "django" = DB_* da mappare
-if [ -f "$ROOT_DIR/db/internal.env" ]; then
+if [ -n "${PGTAP_ENV_FILE:-}" ]; then
+  # Path relativo alla root del repo o assoluto, indifferentemente.
+  case "$PGTAP_ENV_FILE" in
+    /*) ENV_FILE="$PGTAP_ENV_FILE" ;;
+    *)  ENV_FILE="$ROOT_DIR/$PGTAP_ENV_FILE" ;;
+  esac
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "Errore: PGTAP_ENV_FILE='$PGTAP_ENV_FILE' non esiste (risolto in $ENV_FILE)." >&2
+    exit 3
+  fi
+  # Stile: "django" se il file parla DB_* invece che PG*.
+  if grep -qE '^[[:space:]]*DB_NAME=' "$ENV_FILE" && ! grep -qE '^[[:space:]]*PGDATABASE=' "$ENV_FILE"; then
+    ENV_STYLE="django"
+  else
+    ENV_STYLE="pg"
+  fi
+elif [ -f "$ROOT_DIR/db/internal.env" ]; then
   ENV_FILE="$ROOT_DIR/db/internal.env"
   ENV_STYLE="pg"
 elif [ -f "$ROOT_DIR/backend/internal.env" ]; then
@@ -216,6 +281,22 @@ if [ "$ENV_STYLE" = "django" ]; then
     echo "Errore: DB_HOST/DB_USER/DB_NAME non definite in $ENV_FILE." >&2
     exit 3
   fi
+fi
+
+# --- la risposta a `--check-automazioni` ------------------------------------
+# ⚠️ Si interroga con l'utente dell'ENV FILE (l'owner), non con quello del
+#   runner: `databasechangelog` e' il registro del migratore, e il ruolo
+#   applicativo puo' legittimamente non vederlo. Qui la domanda e' sul
+#   DATABASE, non su cosa vede l'applicazione.
+if [ "$MODO_CHECK" -eq 1 ]; then
+  n=$(psql --no-psqlrc -X -A -t -v ON_ERROR_STOP=1 \
+        -c "SELECT count(*) FROM databasechangelog
+             WHERE filename LIKE '%90_end/ci_apply/%'" 2>/dev/null) || exit 3
+  case "$n" in
+    ''|*[!0-9]*) exit 3 ;;
+    0)           exit 1 ;;
+    *)           exit 0 ;;
+  esac
 fi
 
 FULL_PATH="$PGTAP_ROOT/$REL_PATH"

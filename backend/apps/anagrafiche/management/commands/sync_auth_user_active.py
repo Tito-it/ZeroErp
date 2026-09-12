@@ -6,8 +6,24 @@
 #        con finestra temporale scaduta. Wrapper Django per
 #        anagrafiche.fn_sync_auth_user_expired() con invalidazione
 #        cache permessi per gli utenti coinvolti.
-# Note: Alternativa a pgAgent job sync_auth_user_expired_daily.
-#       Utilizzabile da cron/systemd.
+# Note: ⛔ ATTREZZO A MANO, non un processo programmato — e dal 2026-09-07 non
+#       si registra piu' sul giornale dei run.
+#       Il lavoro schedulato lo fa il job pgAgent `sync_auth_user_expired_daily`
+#       (`dbops.processi` id 11). La riga gemella id 23 (`sync_auth_user_active`,
+#       canale COMMAND) e' RITIRATA — `obsoleto_dal = 2026-09-07` — e con lei
+#       sono spariti l'unit systemd, la voce in `deploy/sveglie.json` e la
+#       costante `PROCESSO_*`: fino a quel giorno il modello ammetteva che
+#       girassero **entrambi**, cioe' la disattivazione due volte per notte.
+#       ⛔ E NON si registra sotto il codice superstite, che pure la FK
+#       accetterebbe: la LATERAL di `dbops.vw_processi_programmazione` legge il
+#       giornale con `processo_codice = codice OR jobname = codice` **senza
+#       filtrare `origine`**, quindi una corsa a mano sposterebbe avanti
+#       `giornale_ultima_corsa` e spegnerebbe il confronto GIRA_E_NON_REGISTRA
+#       su quel job — cioe' il rilevatore di R-12. Un attrezzo a mano non deve
+#       poter accecare il presidio del lavoro che imita.
+#       ⚠️ Ne discende che un lancio di qui NON lascia traccia: e' il prezzo
+#       dichiarato della scelta (Tid, 2026-09-07), non una dimenticanza.
+#       Brief: work-in-progress/brief-db-sveglia-dei-processi.md §8.5/§9.5.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -38,16 +54,36 @@ class Command(BaseCommand):
             help="Solo report: mostra gli utenti che sarebbero disattivati senza applicare modifiche.",
         )
 
-    # Scopo: Esegue la sync batch degli utenti scaduti.
-    # Flusso: raccoglie gli auth_user_id coinvolti, chiama la funzione SQL
-    # di sync, poi invalida la cache permessi per ciascun utente modificato.
+    # Scopo: Esegue la sync. ⛔ NESSUNA registrazione sul giornale dei run, e la
+    #        ragione sta nell'header: il processo di catalogo che questo command
+    #        nominava e' ritirato, e registrarsi sotto il gemello pgAgent
+    #        accecherebbe il presidio che sorveglia proprio quel job.
+    # ⚠️ Classe AMMINISTRAZIONE: tocca dati che non appartengono a un emittente
+    #    (`auth_user`, `risorse_umane`), quindi non ha un utente tecnico e non
+    #    itera per azienda.
+    # ⚠️ Il riepilogo di `_esegui` NON viene piu' consumato: era il `set_meta`
+    #    del run, e chi lo leggeva era il giornale. Resta un valore di ritorno
+    #    perche' e' l'esito della funzione — quello che l'operatore vede lo
+    #    scrive `_esegui` su stdout — ma qui non ha piu' un destinatario, ed e'
+    #    scritto per non farlo sembrare una dimenticanza.
     def handle(self, *args: Any, **options: Any) -> None:
+        self._esegui(options)
+
+    # Scopo: Esegue la sync batch degli utenti scaduti e ritorna il riepilogo.
+    # Flusso: UNA chiamata al repository, che esegue la funzione SQL e ritorna
+    #         gli auth_user_id che ha DAVVERO modificato; poi invalida la cache
+    #         permessi per ciascuno. In dry-run la corsa e' la stessa, ritirata.
+    # ⛔ Fino al 2026-09-12 c'era una «fase 1» che elencava i candidati con una
+    #    `WHERE` ricopiata in Python (e a meta': solo il ramo legacy, via la
+    #    vista `risorse_umane_auth_user` che il DB ritira). La regola «chi e'
+    #    scaduto» ora vive in una sede sola, la funzione DB, e il command legge
+    #    l'effetto (analisi-software-per-dati-morti §2.1, passo 1).
+    def _esegui(self, options: Any) -> dict:
         dry_run: bool = options["dry_run"]
         repository = AnagraficheRepository()
 
         try:
-            # Fase 1: individuazione utenti con finestra scaduta
-            affected_ids = repository.list_expired_auth_user_ids()
+            count, affected_ids = repository.sync_auth_user_expired(dry_run=dry_run)
 
             if not affected_ids:
                 self.stdout.write(
@@ -55,7 +91,7 @@ class Command(BaseCommand):
                         "Nessun utente con finestra temporale scaduta."
                     )
                 )
-                return
+                return {"disattivati": 0, "cache_invalidata": 0}
 
             if dry_run:
                 self.stdout.write(
@@ -64,12 +100,9 @@ class Command(BaseCommand):
                         f"auth_user_id = {affected_ids}"
                     )
                 )
-                return
+                return {"dry_run": True, "candidati": len(affected_ids)}
 
-            # Fase 2: esecuzione sync SQL
-            count = repository.call_sync_auth_user_expired()
-
-            # Fase 3: invalidazione cache permessi
+            # Invalidazione cache permessi: solo chi ha cambiato stato.
             invalidated = 0
             for user_id in affected_ids:
                 invalidate_user(user_id)
@@ -89,6 +122,7 @@ class Command(BaseCommand):
                 invalidated,
                 affected_ids,
             )
+            return {"disattivati": count, "cache_invalidata": invalidated}
 
         except Exception as exc:
             logger.exception("Errore in sync_auth_user_active")

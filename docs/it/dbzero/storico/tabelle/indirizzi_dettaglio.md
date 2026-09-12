@@ -18,6 +18,8 @@
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_indirizzi_dettaglio_scope_ef | `CREATE INDEX ix_indirizzi_dettaglio_scope_ef ON storico.indirizzi_dettaglio USING btree (scope_emittente_fiscale_id)` |
 | pk_indirizzi_dettaglio | `CREATE UNIQUE INDEX pk_indirizzi_dettaglio ON storico.indirizzi_dettaglio USING btree (id)` |
 
 ## 🚨 Trigger

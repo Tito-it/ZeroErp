@@ -6,7 +6,7 @@
 # Matrice categoria x utility x emittente x classe_utenza -> listino
 # con variazione opzionale (PERCENTUALE o VALORE_FISSO). E' la chiave
 # primaria di lookup dello STADIO 2 del resolver prezzi v5.
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 4.2.
 # ------------------------------------------------------------
 

@@ -339,11 +339,16 @@ FROM vendite.fn_list_commessa_attivita(
 | `p_utility_id` | no | Filtro perimetro |
 | `p_emittente_soggetto_ruolo_id` | no | Filtro emittente |
 | `p_limit` | no | Default 1000, max 10000 |
+| `p_gruppi` | no | Emissione mirata: solo le commesse con almeno una riga dei gruppi richiesti |
+| `p_emit_batch_id` | no (⛔ **sì** per il pull) | L'identità del giro (`fatturazione_lotti.lock_batch_id`), la stessa dell'emit. Con essa le righe trattenute **dal lotto stesso** contano come pronte: al rilancio di un pull fallito la commessa viene rivisitata. `NULL` = nessuna auto-esclusione (dal 2026-09-12) |
 
 **Criteri di inclusione**:
 
 1. `stati_commessa.emittibile = true`
-2. Almeno una riga `commesse_attivita` con `stato_emissione = NON_EMESSA`
+2. Almeno una riga `commesse_attivita` con classe `PRONTA`, `RIFIUTATA` o
+   `NON_APPROVATA` in `vw_commesse_attivita_emittibilita` — **vista dal giro**:
+   una riga `TRATTENUTA` soltanto dal lotto di `p_emit_batch_id` è `PRONTA`;
+   trattenuta da un **altro** lotto in gioco non conta (dal 2026-09-09/12)
 3. Se `p_competenza_mese` fornito, filtra su `commesse_attivita.competenza_mese`
 
 **Ritorna**: lista commesse con `total_non_emesse` per ciascuna.

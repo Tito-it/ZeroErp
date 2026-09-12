@@ -48,17 +48,20 @@ import {
   REGISTRO_CIFRE_MIN,
   REGISTRO_POLITICA_DATA,
   REGISTRO_POLITICA_DATA_NEUTRA,
+  REGISTRO_RESET_POLICY,
+  REGISTRO_RESET_POLICY_DEFAULT,
 } from '../constants'
 import { useRegistriNumerazioneStore } from '../stores/registriNumerazione'
 import { getRegistro, listRegistri } from '../api/registriNumerazione'
 import { lookupFamiglie } from '../api/famiglieDocumento'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Drawer from 'primevue/drawer'
-import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -72,6 +75,11 @@ const props = defineProps({
   registroId: { type: Number, default: null },
   emittenteRagioneSociale: { type: String, default: '' },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref(defaultForm())
@@ -145,9 +153,26 @@ const opzioniPolitica = computed(() => REGISTRO_POLITICA_DATA.map((v) => ({
   value: v,
   label: t(`amministrazione.registri_numerazione.politica_${v.toLowerCase()}`),
 })))
-// `contentReady` + `@after-show`: il contenuto si monta a pannello aperto, così
-// il drawer non "rimbalza" mentre carica (`feedback_content_ready_after_show`).
-const contentReady = ref(false)
+
+// ⭐ Stessa forma di `opzioniPolitica`: il letterale sta in `constants.js`,
+//    l'etichetta nei locales. Le due voci sono quelle del `CHECK`, non di piu'.
+const opzioniReset = computed(() => REGISTRO_RESET_POLICY.map((v) => ({
+  value: v,
+  label: t(`amministrazione.registri_numerazione.reset_${v.toLowerCase()}`),
+})))
+
+// ⭐ L'etichetta della politica corrente, per la sola lettura in modifica.
+//    ⛔ NON si ricostruisce la chiave i18n una seconda volta: il prefisso
+//    `reset_` sarebbe un letterale in due sedi, e chi rinomina le chiavi ne
+//    troverebbe una sola. Si cerca dentro le opzioni, che sono gia' l'elenco
+//    di cosa quei valori si chiamano a video.
+const resetLabel = computed(() => {
+  const scelta = opzioniReset.value.find((o) => o.value === form.value.reset_policy)
+  // Ripiego sul valore grezzo e non su una stringa vuota: se un giorno il
+  // database ammettesse un terzo valore, a video si vedrebbe QUELLO invece di
+  // un campo muto — che e' l'unico modo per accorgersene.
+  return scelta?.label || form.value.reset_policy || '—'
+})
 
 const isEdit = computed(() => props.registroId != null)
 
@@ -166,6 +191,14 @@ function defaultForm() {
     politica_data_documento: REGISTRO_POLITICA_DATA_NEUTRA,
     limite_emissione_giorni: null,
     limite_emissione_giorno_mese: null,
+    // ⭐ Lo stesso default della COLONNA, non una scelta della maschera: un
+    //    registro creato senza toccare il campo deve nascere come nasceva
+    //    prima che il campo esistesse.
+    reset_policy: REGISTRO_RESET_POLICY_DEFAULT,
+    // ⛔ NON si sceglie da qui: lo decide un risolutore a INSERT dal default
+    //    della famiglia. In creazione vale il default della colonna (false), e
+    //    dopo il salvataggio la rilettura porta il valore vero.
+    anno_nel_numero: false,
   }
 }
 
@@ -199,7 +232,16 @@ const anteprima = computed(() => {
     REGISTRO_CIFRE_MIN,
     Math.min(Number(form.value.lunghezza_numero) || REGISTRO_CIFRE_MIN, REGISTRO_CIFRE_MAX),
   )
-  return `${form.value.prefisso || ''}${'1'.padStart(cifre, '0')}${form.value.suffisso || ''}`
+  // ⭐ IL SEGMENTO DELL'ANNO, e non e' cosmesi: su un registro con
+  //    `anno_nel_numero` il database compone `prefisso || <anno>- || progressivo
+  //    || suffisso` (`fn_assegna_numero_documento`, passo 5). Senza questo pezzo
+  //    l'anteprima mostrerebbe una stringa che quel sezionale non produce —
+  //    cioe' un campo plausibile e falso, che e' peggio di un campo assente.
+  // ⚠️ L'anno e' quello CORRENTE perche' l'anteprima parla del prossimo numero;
+  //    il numero vero prende l'anno del DOCUMENTO, che puo' differire su un
+  //    documento retrodatato.
+  const anno = form.value.anno_nel_numero ? `${new Date().getFullYear()}-` : ''
+  return `${form.value.prefisso || ''}${anno}${'1'.padStart(cifre, '0')}${form.value.suffisso || ''}`
 })
 
 async function carica() {
@@ -231,12 +273,13 @@ async function carica() {
       dati.politica_data_documento ?? REGISTRO_POLITICA_DATA_NEUTRA,
     limite_emissione_giorni: dati.limite_emissione_giorni,
     limite_emissione_giorno_mese: dati.limite_emissione_giorno_mese,
+    reset_policy: dati.reset_policy ?? REGISTRO_RESET_POLICY_DEFAULT,
+    anno_nel_numero: dati.anno_nel_numero === true,
   }
 }
 
 watch(() => props.visible, async (aperto) => {
   if (!aperto) {
-    contentReady.value = false
     return
   }
   await Promise.all([caricaFamiglie(), carica(), caricaRegistriEsistenti()])
@@ -305,10 +348,15 @@ function payload() {
     p.suffisso = form.value.suffisso
     p.lunghezza_numero = form.value.lunghezza_numero
   }
+  // ⛔ `reset_policy` sta QUI e non fra i campi di modifica: è un asse della
+  //    chiave del contatore, e cambiarla su un registro che ha già consegnato
+  //    numeri farebbe ripartire il progressivo da 1 su un secchio nuovo. In
+  //    modifica il campo si legge e non si tocca, come `serie_default`.
   if (!isEdit.value) {
     p.famiglia_documento = form.value.famiglia_documento
     p.utility_id = form.value.utility_id
     p.serie_default = form.value.serie_default
+    p.reset_policy = form.value.reset_policy
   }
   return p
 }
@@ -348,13 +396,13 @@ const titolo = computed(() => {
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="contentReady = true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
     </template>
 
-    <div v-if="contentReady" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('vendite.registri_numerazione.col_codice') }} *</label>
@@ -415,6 +463,31 @@ const titolo = computed(() => {
             {{ t('amministrazione.registri_numerazione.serie_hint') }}
           </small>
         </div>
+
+        <!-- ⭐ IL RESET DEL CONTATORE, e sta accanto alla serie perché sono la
+             stessa cosa: due assi della CHIAVE su cui il progressivo riparte.
+             ⛔ Si sceglie SOLO in creazione — cambiarla su un registro che ha
+             già numerato sposta il secchio sotto il contatore, il progressivo
+             riparte da 1 e sbatte contro i numeri già scritti. In modifica si
+             legge, come `serie_default`.
+             ⚠️ E nessun trigger lo rifiuta: qui il campo assente È il presidio,
+             non una scelta di maschera. -->
+        <div class="form-field">
+          <label>{{ t('amministrazione.registri_numerazione.reset_policy') }}</label>
+          <Select
+            v-if="!isEdit"
+            v-model="form.reset_policy"
+            :options="opzioniReset"
+            option-label="label"
+            option-value="value"
+            :disabled="isReadonly"
+            class="w-full"
+          />
+          <span v-else>{{ resetLabel }}</span>
+          <small class="app-field-hint">
+            {{ t('amministrazione.registri_numerazione.reset_hint') }}
+          </small>
+        </div>
       </div>
 
       <!-- ── La forma del numero ───────────────────────────────────────── -->
@@ -455,6 +528,21 @@ const titolo = computed(() => {
             :disabled="isReadonly || formaBloccata"
             class="w-full"
           />
+        </div>
+        <!-- ⭐ L'ANNO NELLA STRINGA — in SOLA LETTURA, sempre, anche in
+             creazione: non è una scelta del sezionale ma una proprietà della
+             sua famiglia, e a scriverla è un risolutore a INSERT
+             (`trg_..._set_anno_nel_numero_ins`).
+             ⚠️ Si mostra perché cambia il numero che una PERSONA legge: un
+             registro che azzera ogni anno senza l'anno nella stringa consegna
+             la stessa stringa in anni diversi, e il database non se ne accorge
+             — la sua unicità porta l'anno in colonna. -->
+        <div class="form-field">
+          <label>{{ t('amministrazione.registri_numerazione.anno_nel_numero') }}</label>
+          <span>{{ form.anno_nel_numero ? t('common.yes') : t('common.no') }}</span>
+          <small class="app-field-hint">
+            {{ t('amministrazione.registri_numerazione.anno_nel_numero_hint') }}
+          </small>
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.registri_numerazione.anteprima') }}</label>
@@ -534,16 +622,23 @@ const titolo = computed(() => {
         </table>
       </template>
 
-      <div class="app-form-footer">
-        <Button :label="t('common.cancel')" :icon="MANAGE_ICONS.CANCEL" text @click="chiudi" />
-        <Button
-          v-if="!isReadonly"
-          :label="t('common.save')"
-          :loading="salvando"
-          @click="salva"
-        />
-      </div>
     </div>
+
+    <!-- ⭐ FOOTER STANDARD, e sta FUORI da `app-drawer-content` — è la forma
+         del BB (`ListaColonnaDrawer`, `PraticaDrawer`, e altri 80): fratello
+         del wrapper, figlio diretto del Drawer.
+         ⛔ Qui c'erano due `Button` a mano dentro il wrapper. Non era una
+         variante innocua: `FormFooter` porta Ctrl+S, i tooltip che tengono
+         leggibile il pulsante quando sotto 1024px il CSS nasconde il testo,
+         l'icona «torna indietro» invece di una X, la classe `app-escape` e la
+         gestione di `readonly` dall'inject. Riscriverli a mano significa
+         perderli tutti e cinque, in silenzio. -->
+    <FormFooter
+      v-if="contentReady"
+      :loading="salvando"
+      @save="salva"
+      @cancel="chiudi"
+    />
   </Drawer>
 </template>
 

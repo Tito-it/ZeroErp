@@ -32,7 +32,7 @@
 | Django | 6.01 | DRF 3.16, SimpleJWT, drf-spectacular |
 | PostgreSQL | 18 (CI) | PostGIS 3.6, pgTAP, pgAgent |
 | Liquibase | 5 Community | Migrazioni YAML in `db/changelog/migrations_v2/` |
-| Vue 3 | 3.5 | **Frontend sviluppato e in uso** (non più placeholder): Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Node 24 LTS. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
+| Frontend Vue | da `frontend/package.json` | **Fonte unica di verità per le versioni** (Vue, Vite, PrimeVue, Pinia, Vue Router, vue-i18n, Axios; Node in `engines.node`). ⛔ Non ricopiarle qui: il 2026-09-09 questa riga, `AGENTS.md` e `frontend-standards.md` dicevano tre cose diverse e tutte e tre sbagliate. **Frontend sviluppato e in uso**, non più placeholder. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
 
 ## Infrastruttura di Sviluppo
 
@@ -48,17 +48,24 @@
 ZeroErp/
 ├── backend/                  # Django project
 │   ├── zeroerp_backend/      # Config Django (settings, urls, wsgi)
-│   ├── apps/                 # App per dominio
+│   ├── apps/                 # App per dominio — 17, elenco COMPLETO (2026-09-09)
 │   │   ├── core/             # Utilities trasversali (error_manager, middleware, throttling)
-│   │   ├── acquisti/
+│   │   ├── ai_assistant/     # Assistente AI: 18 tool, provider pluggabile. Dietro AI_ENABLED
+│   │   ├── amm_software/     # Amministrazione software (AdminAPIView, SUPER_ADMIN)
 │   │   ├── anagrafiche/
 │   │   ├── catalogo/
 │   │   ├── config/
-│   │   ├── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro
-│   │   ├── magazzino/
+│   │   ├── documenti/        # Motore documentale parametrico + ristampa fedele
 │   │   ├── pagamenti/
-│   │   ├── storico/
-│   │   └── vendite/          # App più attiva — pipeline fatturazione
+│   │   ├── portale/          # Veste CLIENTE_PORTALE / FORNITORE_PORTALE (auth + attivazione)
+│   │   ├── pratiche/         # Motore di workflow versionato
+│   │   ├── shop/             # Veste SHOP_CUSTOMER (auth + attivazione)
+│   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
+│   │   ├── vendite/          # App più attiva — pipeline fatturazione
+│   │   ├── acquisti/         # 🔵 PROSSIMO CANTIERE (Tid, 2026-09-11) — modello a DB, comportamento da scrivere
+│   │   ├── magazzino/        # 🔵 PROSSIMO CANTIERE (idem) — modello a DB curato, 0 test
+│   │   ├── storico/          # ⚠️ scheletro (13 file, 26 righe, 0 test) — nessuna decisione presa
+│   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
 │   └── requirements.txt      # Generato da pip-compile (non editare)
 ├── db/
@@ -95,7 +102,7 @@ ZeroErp/
 | `dbops` | Strumenti DBA, registry task, FK policy |
 | `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
-| `public` | Oggetti pubblici. ⚠️ `version_info` è citata storicamente ma **non risulta in `migrations_v2`**: per la versione applicata usare `DATABASECHANGELOG` (ultimo changeset Liquibase) finché non si verifica se l'oggetto esiste ancora |
+| `public` | Oggetti pubblici. ⚠️ `version_info` **esiste** (verificato 2026-09-12): una riga, **zero lettori** in BE/FE/pgTAP — la nomina solo il resync delle sequence per escluderla. Per la versione applicata usare `DATABASECHANGELOG`. La decisione se ha un mestiere (allora un lettore e un manuale) o no (allora `DROP`) è di Tid: analisi-software-per-dati-morti §2.6 |
 
 ## Struttura App Django (pattern per ogni dominio)
 
@@ -178,15 +185,50 @@ def nome_metodo(self, ...):
 - **Migrazione daterange** (12-04-2026): 18 tabelle migrate a `daterange`/`tstzrange` nativo, `script.trgfn_set_validita()`, backend ottimizzato con `@>`, linee guida SQL §7b
 - **Pricing commesse** (12-04-2026): riallineamento prezzo, variazione eccezionale, sblocco — 3 endpoint API con lock FOR UPDATE e audit trail
 
+### 🔵 Il prossimo cantiere — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
+
+Le due app **non sono scheletri congelati: sono il prossimo cantiere**, e la
+decisione è stata presa il 2026-09-11 rispondendo alla voce D11 di
+[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md).
+
+Oggi hanno un **modello DB curato e zero comportamento applicativo**: 26 tabelle
+e 71 CHECK su `magazzino`, 9 tabelle e 42 FK su `acquisti`, 13 file Python e 0
+test per ciascuna.
+
+⭐ **Cosa comporta, ed è la ragione per cui sta scritto qui e non in un piano:**
+ogni decisione che si prende lavorando su `vendite` — envelope, capability di
+riga, scope emittente, ordinamento, export, drawer autonomi,
+`ListaConfigurabile` — è una decisione presa **anche per `acquisti`**. Finché
+erano dichiarati «scheletri», quel debito cresceva in silenzio; da adesso chi
+decide su `vendite` sa di star decidendo per due domini.
+⇒ Ne discende la regola operativa: quando un'asimmetria fra i due domini emerge,
+si chiude **subito**, non in una «fase due» — una simmetria rimandata è un debito
+che nessuno rilegge.
+
+⚠️ `storico` **resta senza decisione** e `contabilita` resta **fuori perimetro**
+(schema DB vuoto, verificato 01-09-2026): non sono la stessa cosa e non vanno
+letti insieme ai due sopra.
+
 ### Aperto — Media priorità
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
-- **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata
+- **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
+
+**Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
+`docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di
+ciascuna; qui solo la riga, perché un promemoria di stato lungo marcisce —
+lezione della §Nota di metodo di quel file):
+
+- **Esercizio fiscale come entità** (roadmap #3): zero occorrenze di `esercizio`/`anno_fiscale` in `migrations_v2` e nel backend; l'esercizio è l'anno solare derivato da `fatture.data`. Serve al primo **bilancio**, non al primo ciclo — la numerazione con reset annuale è coperta
+- **Vista push** (roadmap #5): `vendite.commesse_push_log` non ha una UI di lista/ultimo run per sorgente; i contatori `created/updated/skipped/errors` esistono nel payload e nessuno li rende — l'operatore riceve un `push_log_id` in un toast e non ha modo di aprirlo
+- **Alerting sui dati** (roadmap #6): la vitalità dei **processi** è coperta (sveglia, `dbops.processi`, digest); manca la query su `vendite.event_log` per severity/finestra con un canale d'uscita — casa: `work-in-progress/analisi-osservabilita-log.md`
+- **Diagrammi di stato** (roadmap #8): zero `stateDiagram-v2` nel repo per lotto e task_run; la sostanza è già in prosa in `guide/fatturazione.md` — è trasposizione, non analisi
+- **Preview di fatturazione del contratto** (roadmap #10): non esiste il punto in cui l'operatore veda *«su questa competenza fatturerà queste righe, per X»*; il dato lo produce `fn_list_contratti_da_pushare`. ⚠️ Non è `/contratti/<id>/righe-preview/`, che è la preview di **pricing**
 
 ### Note operative
 - `config.stati_doc_fiscale.chiude_lotto = true` → unico meccanismo di chiusura lotto (nessun hardcode)
 - Reset lotto MASSIVO: ammesso in DRAFT; la DEFINITIVA fa resume per fattura (non reset globale)
-- La procedura SQL `pr_run_lotto_pipeline` è deprecata e in fase di rimozione lato DB; l'orchestrazione è in Django (`run_lotto_pipeline`)
+- La procedura SQL `pr_run_lotto_pipeline` è stata **rimossa** (non in `pg_proc`, verificato 2026-09-12); l'orchestrazione è in Django (`run_lotto_pipeline`). Fino a quel giorno questa riga la dava «deprecata e in fase di rimozione»
 
 ## File Django Chiave (vendite)
 

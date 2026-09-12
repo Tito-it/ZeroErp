@@ -22,6 +22,8 @@ Indice test eseguiti:
 12) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_missing_handler
 13) PipelineStepExecutorUnitTests.test_execute_step_skips_close_lotto_task_when_flag_is_false
 14) PipelineStepExecutorUnitTests.test_execute_step_skips_task_when_execution_mode_is_skip
+14a) PipelineStepExecutorUnitTests.test_rilancio_riesegue_i_task_a_valle_di_uno_rieseguito (catena, lotto 13338)
+14b) PipelineStepExecutorUnitTests.test_skip_resta_valido_se_a_monte_niente_e_stato_eseguito (controprova del 14a)
 15) PipelineStepExecutorUnitTests.test_execute_step_raises_when_execution_mode_is_reset_required
 16) PipelineStepExecutorUnitTests.test_execute_step_traces_task_run_on_success
 17) PipelineStepExecutorUnitTests.test_execute_step_traces_fail_on_handler_error
@@ -35,6 +37,9 @@ Indice test eseguiti:
 23b) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_tutte_ok_completa_task_run
 23c) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_tutte_fallite_solleva
 23d) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_dry_run_non_produce_parziale
+23e) PipelineStepExecutorUnitTests.test_pull_consegna_al_db_l_identita_del_giro (D1: discovery E emit)
+23f) PipelineStepExecutorUnitTests.test_pull_si_ferma_se_il_giro_non_ha_identita (il guard precede la discovery)
+23g) PipelineStepExecutorUnitTests.test_pull_dry_run_senza_identita_si_ferma_lo_stesso
 24) PipelineStepExecutorUnitTests.test_execute_step_runs_stampa_documenti_lotto_task (C-2c)
 25) PipelineStepExecutorUnitTests.test_execute_step_stampa_documenti_lotto_dry_run_skips (C-2c)
 26) PipelineStepExecutorUnitTests.test_execute_step_runs_snapshot_indirizzi_lotto_task (Fase 2 satelliti)
@@ -55,6 +60,8 @@ Indice test eseguiti:
 41) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_dopo_numera_ok (ordine)
 42) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_prima_di_numera_rifiutato (ordine)
 43) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_agganciata_al_registry_reale
+44) PipelineStepExecutorUnitTests.test_pull_una_segnalazione_per_documento (§6.1)
+45) PipelineStepExecutorUnitTests.test_pull_senza_proprietario_scrive_una_riga_del_giro (§6.1)
 """
 
 from contextlib import nullcontext
@@ -65,6 +72,10 @@ from django.test import SimpleTestCase
 from apps.core.tests.db_error_fakes import make_db_error
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
+
+# Identita' del giro di fatturazione usata dai test del pull: e' il valore che
+# `fn_select_attivita_fatturabili` cerchera' poi come marchio sulle righe.
+_LOCK_BATCH_GIRO = "01a06d0c-e9e1-72a1-a4d1-54020186de27"
 
 
 class PipelineStepExecutorUnitTests(SimpleTestCase):
@@ -603,6 +614,94 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.start_lotto_task_run.assert_not_called()
         fatture_righe_service.generate_fatture_righe.assert_not_called()
 
+    # Scopo: 🔴 I TASK DI UNO STEP SONO UNA CATENA (2026-09-12, LTF-0010973): il
+    #        resolver dice SKIP a un task perche' la sua ultima corsa e'
+    #        COMPLETATO, ma se un task A MONTE e' stato rieseguito in QUESTO
+    #        giro quel COMPLETATO e' stantio — era girato a vuoto su un input
+    #        che ora e' cambiato. Nel caso vero il pull ha ripreso due commesse
+    #        e `select_attivita`/`generate_fatture_righe`/`snapshot` sono stati
+    #        saltati: le attivita' emesse non sono diventate fatture e il lotto
+    #        e' uscito COMPLETATO con zero documenti.
+    # ⭐ Si asserisce che il task a valle sia ESEGUITO (handler chiamato) e che
+    #        abbia un task_run suo (nuovo tentativo), non che il resolver sia
+    #        stato ignorato: la regola vive nell'orchestratore, il resolver
+    #        continua a rispondere per task.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_rilancio_riesegue_i_task_a_valle_di_uno_rieseguito(self, _mock_txn):
+        processi = [
+            {"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}},
+            {"task": "select_attivita", "fase": "Seleziona attivita", "params": {}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = lambda task_code, implementation_key: f"{task_code}_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        repo.task_policy_exists.return_value = True
+        repo.get_lotto_context.return_value.lock_batch_id = _LOCK_BATCH_GIRO
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: [f"COMMESSA:{commessa_id}"]
+        )
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = [10]
+        executor.commesse_repository = commesse_repo
+        task_run = MagicMock()
+        task_run.task_run_id = 900
+        repo.start_lotto_task_run.return_value = task_run
+
+        # Il resolver: il pull RIPARTE (ultima corsa in ERRORE), il select
+        # sarebbe da SALTARE (ultima corsa COMPLETATO — a vuoto).
+        def _modo(lotto_id, pipeline_id, stato_doc_fiscale_id, task_code):
+            m = MagicMock()
+            m.execution_mode = "RESUME" if task_code == "pull_attivita_da_commessa" else "SKIP"
+            return m
+        repo.resolve_lotto_task_execution_mode.side_effect = _modo
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        commesse_repo.emit_attivita_fatturabili.assert_called_once()
+        # ⭐ Il task a valle e' stato eseguito nonostante lo SKIP del resolver...
+        repo.run_select_attivita_task.assert_called_once()
+        # ...con un task_run suo: DUE aperture, una per task.
+        self.assertEqual(repo.start_lotto_task_run.call_count, 2)
+        task_codes = [c.kwargs["task_code"] for c in repo.start_lotto_task_run.call_args_list]
+        self.assertEqual(task_codes, ["pull_attivita_da_commessa", "select_attivita"])
+
+    # Scopo: la controprova — se a monte NIENTE e' stato eseguito, lo SKIP del
+    #        resolver resta valido: nessun task_run, nessun handler. Senza
+    #        questo test la regola potrebbe degenerare in «non saltare mai».
+    def test_skip_resta_valido_se_a_monte_niente_e_stato_eseguito(self):
+        processi = [
+            {"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}},
+            {"task": "select_attivita", "fase": "Seleziona attivita", "params": {}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = lambda task_code, implementation_key: f"{task_code}_default"
+        repo.task_policy_exists.return_value = True
+        commesse_repo = MagicMock()
+        executor.commesse_repository = commesse_repo
+        skip_mode = MagicMock()
+        skip_mode.execution_mode = "SKIP"
+        repo.resolve_lotto_task_execution_mode.return_value = skip_mode
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.start_lotto_task_run.assert_not_called()
+        commesse_repo.list_commesse_emittibili.assert_not_called()
+        repo.run_select_attivita_task.assert_not_called()
+
     # Scopo: Verifica che venga sollevato ServiceError quando la modalità è RESET_REQUIRED.
     def test_execute_step_raises_when_execution_mode_is_reset_required(self):
         processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
@@ -784,6 +883,194 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(call_args_list[0][0][0], 10)
         self.assertEqual(call_args_list[1][0][0], 20)
 
+    # ══════════════════════════════════════════════════════════════════
+    #  L'ESITO APPESO AI DOCUMENTI DEL LOTTO (brief-db-esito-gruppo-lotto §8)
+    # ══════════════════════════════════════════════════════════════════
+    #
+    # ⛔ IL DIFETTO CHE PRESIDIANO. Un lotto prende in carico tre documenti e ne
+    #    fattura due: il terzo falliva e SPARIVA dal racconto — non nel lotto
+    #    (non e' mai diventato fattura) e nella competenza ancora fra quelli da
+    #    emettere, senza un segno. Sembrava fatturabile.
+    # ⚠️ Le uscite dell'handler sono TRE, e la marcatura serve in tutte: il ramo
+    #    che SOLLEVA (tutte fallite) e' il caso peggiore ed e' il candidato
+    #    naturale a essere dimenticato.
+
+    # Scopo: fa fallire l'emit sulle commesse indicate, lasciando passare le altre.
+    @staticmethod
+    def _emit_che_fallisce_su(*commesse_ko):
+        def _emit(commessa_id, **_kw):
+            if commessa_id in commesse_ko:
+                raise RuntimeError(f"ROOT source mancante per commessa {commessa_id}")
+            return {"righe": 1}
+        return _emit
+
+    # Scopo: monta l'handler con un roster di commesse e un emit pilotabile.
+    def _executor_pull(self, commesse, *, ko=()):
+        processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "pull_attivita_da_commessa_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = list(commesse)
+        commesse_repo.emit_attivita_fatturabili.side_effect = self._emit_che_fallisce_su(*ko)
+        executor.commesse_repository = commesse_repo
+        # ⚠️ Il marcatore torna TRE conteggi dal changeSet `20260909-20`,
+        #    non piu' uno scalare: un `1` qui direbbe che il chiamante
+        #    legge un intero, e il chiamante non lo legge piu'.
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 1, "usciti": 0, "fuori_perimetro": 0,
+        }
+        return executor, repo
+
+    # Scopo: `{commessa_id: (stato, codice)}` da come il repository e' stato chiamato.
+    @staticmethod
+    def _esiti_marcati(repo):
+        return {
+            c.kwargs["commessa_id"]: (c.args[1], c.kwargs.get("errore_codice"))
+            for c in repo.segna_esito_gruppo_lotto.call_args_list
+        }
+
+    # 1. Una fallita su tre: una `ERRORE` col codice, due `COMPLETED`.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_marca_errore_sulla_fallita_e_completed_sulle_altre(self, _mock_txn):
+        executor, repo = self._executor_pull([10, 20, 30], ko=(20,))
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        esiti = self._esiti_marcati(repo)
+        self.assertEqual(esiti[20][0], "ERRORE")
+        self.assertEqual(esiti[20][1], "E_PULL_COMMESSA")
+        # ⭐ Anche le riuscite: senza, un gruppo andato bene resta a NULL e non
+        #    si distingue da uno mai lavorato.
+        self.assertEqual(esiti[10][0], "COMPLETED")
+        self.assertEqual(esiti[30][0], "COMPLETED")
+        self.assertIsNone(esiti[10][1])
+
+    # 2. ⭐ TUTTE fallite: si marca e NON si solleva piu' (P-5, decisione di Tid
+    #    2026-09-06 — «trattiamoli tutti come quando ne capita 2 su 3»).
+    # 🔴 Fino al 2026-09-07 questo ramo sollevava `E_PULL_COMMESSA_ALL_FAILED`,
+    #    e il rollback dello step si portava via i segni appena scritti: il caso
+    #    PEGGIORE era l'unico che non lasciava traccia.
+    # ⛔ E la catena si ferma lo stesso, ma per un'altra via: le segnalazioni
+    #    critiche scritte per ogni commessa caduta fanno rifiutare l'avanzamento
+    #    al giro successivo. Fermarsi e strappare gli appunti erano due cose che
+    #    faceva lo stesso gesto.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_tutte_fallite_marca_e_non_solleva(self, _mock_txn):
+        executor, repo = self._executor_pull([10, 20], ko=(10, 20))
+
+        # ⛔ Nessun `assertRaises`: l'assenza dell'eccezione E' il contratto.
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        esiti = self._esiti_marcati(repo)
+        self.assertEqual({c: s for c, (s, _) in esiti.items()},
+                         {10: "ERRORE", 20: "ERRORE"})
+
+    # 2-bis. ⛔ IL CODICE DEL FALLIMENTO TOTALE NON LO SOLLEVA PIU' NESSUNO, ed
+    #    e' la precondizione di P-6 (la deprecazione a catalogo, che tocca al
+    #    DB): finche' una riga di Python lo emette, `obsoleto_dal` sarebbe una
+    #    bugia.
+    # ⚠️ Si guarda il SORGENTE e non un comportamento, ed e' l'unico modo: il
+    #    ramo che lo sollevava non esiste piu', quindi non c'e' nessuna corsa
+    #    che possa produrlo — un test sul comportamento sarebbe verde per
+    #    sottrazione, cioe' verde anche se qualcuno lo rimettesse altrove.
+    # ⛔ Si cerca la forma `code="..."`, non la stringa: il nome compare ancora
+    #    nei commenti che raccontano perche' e' sparito, e devono poterci stare.
+    def test_il_codice_del_fallimento_totale_non_si_solleva_piu(self):
+        from pathlib import Path
+
+        from apps.vendite.services import pipeline_step_executor as modulo
+
+        sorgente = Path(modulo.__file__).read_text(encoding="utf-8")
+        self.assertNotIn('code="E_PULL_COMMESSA_ALL_FAILED"', sorgente)
+
+    # 3. Tutto riuscito: nessun campo d'errore valorizzato.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_marca_completed_quando_va_tutto_bene(self, _mock_txn):
+        executor, repo = self._executor_pull([10, 20])
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        for chiamata in repo.segna_esito_gruppo_lotto.call_args_list:
+            self.assertEqual(chiamata.args[1], "COMPLETED")
+            self.assertIsNone(chiamata.kwargs.get("errore_codice"))
+            self.assertIsNone(chiamata.kwargs.get("errore_messaggio"))
+
+    # 4. ⚠️ La funzione non solleva mai, quindi il suo consuntivo E' l'unico
+    #    segnale: va almeno scritto nel log, o il lotto racconta un errore su un
+    #    documento che non mostra.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_avvisa_quando_l_esito_non_viene_appeso(self, _mock_txn):
+        executor, repo = self._executor_pull([10], ko=(10,))
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 0, "usciti": 0, "fuori_perimetro": 0,
+        }
+
+        with self.assertLogs(
+            "apps.vendite.services.pipeline_step_executor", level="WARNING",
+        ) as log:
+            executor.execute_step(
+                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                rollback=False, dry_run=False,
+            )
+        self.assertTrue(
+            any("esito_non_appeso" in r for r in log.output),
+            "nessun avviso: un esito non appeso resterebbe invisibile",
+        )
+
+    # 4-bis. ⭐ ZERO MARCATI PERCHE' SONO USCITI DAL GIRO — e qui l'avviso NON
+    #    deve suonare. E' il caso NORMALE del verbo «togli dal giro»: il
+    #    documento e' stato tolto apposta, e il marcatore lo salta apposta
+    #    (changeSet `20260909-18`).
+    # 🔴 Senza questa distinzione l'avviso diventava rumore su un caso
+    #    legittimo, a ogni rilancio — e un avviso che suona quando va tutto bene
+    #    e' un avviso che si smette di leggere, cioe' peggio di nessun avviso.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_non_avvisa_se_i_documenti_sono_usciti_dal_giro(self, _mock_txn):
+        executor, repo = self._executor_pull([10], ko=(10,))
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 0, "usciti": 2, "fuori_perimetro": 0,
+        }
+
+        with self.assertNoLogs(
+            "apps.vendite.services.pipeline_step_executor", level="WARNING",
+        ):
+            executor.execute_step(
+                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                rollback=False, dry_run=False,
+            )
+
+    # 4-ter. ⚠️ E il terzo zero resta SOSPETTO: documenti che esistono ma non
+    #    sono di questo lotto. Non nasce dal cantiere dell'uscita — c'era gia',
+    #    nascosto nello stesso zero — e adesso che si distingue va detto anche
+    #    quando qualcosa e' stato marcato.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_avvisa_sui_documenti_fuori_perimetro(self, _mock_txn):
+        executor, repo = self._executor_pull([10], ko=(10,))
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 1, "usciti": 0, "fuori_perimetro": 1,
+        }
+
+        with self.assertLogs(
+            "apps.vendite.services.pipeline_step_executor", level="WARNING",
+        ) as log:
+            executor.execute_step(
+                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                rollback=False, dry_run=False,
+            )
+        self.assertTrue(any("fuori_perimetro=1" in r for r in log.output))
+
     # Scopo: Verifica il caso `test_pull_attivita_da_commessa_dry_run_skips_emit`.
     def test_pull_attivita_da_commessa_dry_run_skips_emit(self):
         processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
@@ -847,9 +1134,25 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         task_run = MagicMock()
         task_run.task_run_id = task_run_id
         repo.start_lotto_task_run.return_value = task_run
+        # Il giro ha un'IDENTITA', ed e' quella che il pull deve consegnare
+        # alle righe che accetta. Un MagicMock nudo passerebbe l'assert per
+        # identita' d'oggetto senza dire niente sul valore trasportato.
+        repo.get_lotto_context.return_value.lock_batch_id = _LOCK_BATCH_GIRO
         commesse_repo = MagicMock()
         commesse_repo.list_commesse_emittibili.return_value = list(commesse_ids)
         executor.commesse_repository = commesse_repo
+        # ⭐ DI CHI E' IL FALLIMENTO: la conversione commessa → documenti, che il
+        #    pull chiede al database per dichiarare il proprietario della
+        #    segnalazione (§6.1 di brief-db-uscita-documento-dal-giro).
+        # ⛔ VA MOCKATA ESPLICITAMENTE, e il perche' e' una trappola vera: un
+        #    `MagicMock` nudo si ITERA VUOTO, quindi il ciclo «una riga per
+        #    documento» non gira e non viene scritta NESSUNA segnalazione — senza
+        #    errori, senza fallimenti, con i test che vanno in rosso su
+        #    `call_args is None` invece che sul difetto. Un default esplicito
+        #    dice qual e' il caso normale: un documento per commessa.
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: [f"COMMESSA:{commessa_id}"]
+        )
         return executor, repo, commesse_repo, error_logger
 
     # Scopo: ⚠️ IL TEST CHE CONTA sul pull (D-Q p.3) — con 1 commessa su 3 in
@@ -890,6 +1193,10 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
     # Scopo: simmetrico — nessuna commessa fallita chiude il task_run in
     #        COMPLETATO. Serve a provare che il parziale non e' diventato la
     #        regola: un giro pulito deve restare pulito.
+    # ⭐ E il giro pulito DICHIARA i suoi contatori (2026-09-04): un COMPLETATO
+    #        muto non distingue «due commesse passate» da «non ho provato», e
+    #        col perimetro consegnato il secondo caso esiste davvero — marchio
+    #        assente, zero righe, nessun errore.
     @patch("apps.core.services.fan_out.transaction")
     def test_pull_attivita_da_commessa_tutte_ok_completa_task_run(self, _mock_txn):
         executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=556)
@@ -902,17 +1209,65 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             dry_run=False,
         )
 
-        repo.complete_lotto_task_run.assert_called_once_with(556)
+        repo.complete_lotto_task_run.assert_called_once_with(
+            556,
+            meta={
+                "task": "pull_attivita_da_commessa",
+                "totale": 2,
+                "ok": 2,
+                "falliti": 0,
+            },
+        )
         repo.fail_lotto_task_run.assert_not_called()
 
-    # Scopo: il caso «tutte fallite» resta un RAISE e non un parziale — con zero
-    #        commesse emesse proseguire costruirebbe un lotto VUOTO. E' la sola
-    #        differenza di policy rispetto ai gemelli snapshot/scadenze, dove il
-    #        caso non esiste perche' D-Q lo applica il DB.
+    # Scopo: 🔴 IL PERIMETRO SI CONSEGNA — il pull riceve l'identita' DEL GIRO
+    #        (`context.lock_batch_id`) e la porta a TUTTI E DUE i cancelli: la
+    #        discovery (quali commesse visitare) e l'emit (quali righe emettere).
+    # ⛔ Questo test non presidia una comodita': senza quel valore il pull firma
+    #        NULL, `fn_select_attivita_fatturabili` (changeSet 20260904-50)
+    #        filtra sul marchio e non trova NIENTE, e il giro emette ZERO
+    #        fatture SENZA sollevare. E' il difetto peggiore della famiglia:
+    #        non un errore, ma un lotto vuoto che sembra un mese senza lavoro.
+    #        Una regressione qui e' invisibile a ogni altro test del file, che
+    #        guardano gli esiti e non gli argomenti.
+    # ⭐ E dal 2026-09-12 la stessa identita' la vuole ANCHE LA DISCOVERY (D1,
+    #        changeSet `20260912-15`): al rilancio di un pull fallito i propri
+    #        documenti sono `TRATTENUTA` dal lotto che sta riprovando, e senza
+    #        identita' la discovery scarta la commessa — il giro visita zero
+    #        commesse e chiude COMPLETATO senza aver emesso niente
+    #        (LTF-0010972). Fino a quel giorno l'eccezione dell'emit era
+    #        corretta e IRRAGGIUNGIBILE: chi l'avrebbe chiamata non arrivava
+    #        mai a farlo. Consegnare l'identita' al solo emit e' il difetto.
     @patch("apps.core.services.fan_out.transaction")
-    def test_pull_attivita_da_commessa_tutte_fallite_solleva(self, _mock_txn):
-        executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=557)
-        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+    def test_pull_consegna_al_db_l_identita_del_giro(self, _mock_txn):
+        executor, _repo, commesse_repo, _ = self._build_executor_pull([10, 20])
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        # Primo cancello: la discovery riceve l'identita'.
+        commesse_repo.list_commesse_emittibili.assert_called_once()
+        self.assertEqual(
+            commesse_repo.list_commesse_emittibili.call_args.kwargs["emit_batch_id"],
+            _LOCK_BATCH_GIRO,
+        )
+        # Secondo cancello: l'emit riceve LA STESSA identita', per ogni commessa.
+        self.assertEqual(commesse_repo.emit_attivita_fatturabili.call_count, 2)
+        for chiamata in commesse_repo.emit_attivita_fatturabili.call_args_list:
+            self.assertEqual(chiamata.kwargs["emit_batch_id"], _LOCK_BATCH_GIRO)
+
+    # Scopo: ⛔ un giro SENZA identita' non parte, invece di emettere zero
+    #        fatture in silenzio. E' la scelta fra un errore che si vede e un
+    #        lotto vuoto indistinguibile da un mese senza lavoro.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_si_ferma_se_il_giro_non_ha_identita(self, _mock_txn):
+        executor, _repo, commesse_repo, _ = self._build_executor_pull([10, 20])
+        _repo.get_lotto_context.return_value.lock_batch_id = None
 
         with self.assertRaises(ServiceError) as ctx:
             executor.execute_step(
@@ -923,8 +1278,154 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
                 dry_run=False,
             )
 
-        self.assertEqual(ctx.exception.code, "E_PULL_COMMESSA_ALL_FAILED")
+        self.assertEqual(ctx.exception.code, "E_PIPELINE_SCOPE_INCOMPLETE")
+        # ⭐ E soprattutto: NESSUNA commessa e' stata toccata. Un pull partito a
+        #    meta' avrebbe firmato righe con marchio nullo, cioe' seminato il
+        #    difetto invece di fermarlo.
+        commesse_repo.emit_attivita_fatturabili.assert_not_called()
+        # ⛔ E NEMMENO LA DISCOVERY E' PARTITA — e' l'asserzione che distingue
+        #    l'ordine nuovo (guard PRIMA della discovery, 2026-09-12) da quello
+        #    vecchio (guard dopo). Con la discovery che legge l'identita' un
+        #    guard a valle non ferma niente: chiamata con NULL non fallisce,
+        #    risponde a un'altra domanda e scarta i propri documenti in
+        #    silenzio. Senza questa riga il test restava verde su entrambi gli
+        #    ordini, cioe' non decideva.
+        commesse_repo.list_commesse_emittibili.assert_not_called()
+
+    # Scopo: ⛔ DENTRO L'HANDLER, il guard sull'identita' precede ANCHE il ramo
+    #        dry-run. Prima del 2026-09-12 il `return None` del dry-run stava
+    #        fra la discovery e il guard: un dry-run senza identita' avrebbe
+    #        interrogato la discovery con NULL e contato MENO commesse del giro
+    #        vero — un'anteprima che risponde a un'altra domanda.
+    #        `lock_batch_id` e' NOT NULL a tabella: se manca, il contesto non e'
+    #        stato caricato, e un'anteprima su un contesto rotto non e'
+    #        un'anteprima.
+    # ⚠️ Si chiama l'HANDLER DIRETTAMENTE, e non `execute_step`: da li' il
+    #        dry-run esce in `_run_task` prima ancora di invocarlo (test 23d), e
+    #        il ramo dentro l'handler e' la «seconda cintura» dichiarata in quel
+    #        test — quella che resta corretta se un domani l'handler venisse
+    #        invocato fuori da `_run_task`. E' quella cintura che qui si prova.
+    def test_pull_dry_run_senza_identita_si_ferma_lo_stesso(self):
+        executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20])
+        context = repo.get_lotto_context.return_value
+        context.lock_batch_id = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            executor._handle_pull_attivita_da_commessa_task(
+                task="pull_attivita_da_commessa",
+                fn_name="vendite.fn_emit_attivita_fatturabili_da_commessa",
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                context=context,
+                params={},
+                dry_run=True,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PIPELINE_SCOPE_INCOMPLETE")
+        commesse_repo.list_commesse_emittibili.assert_not_called()
+        commesse_repo.emit_attivita_fatturabili.assert_not_called()
+
+    # Scopo: ⭐ IL MOTIVO DI DOMINIO, non il dump. `vw_dash_commesse_respinte`
+    #        mostra a video `meta->>'detail'`: se li' dentro finisce l'impasto
+    #        di eccezione Python + DETAIL + stack PL/pgSQL, la promessa «ognuna
+    #        mostra il problema» e' vera sulla carta e falsa a video.
+    # ⚠️ Il dump non si perde — resta nel `context` come `dettaglio_tecnico`:
+    #        serve a chi diagnostica, non a chi lavora. Il test presidia
+    #        entrambe le meta', perche' spostare il motivo buttando via il
+    #        tecnico sarebbe uno scambio, non una correzione.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_scrive_il_motivo_di_dominio_e_conserva_il_dump(self, _mock_txn):
+        executor, _repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        # ⛔ LA FORMA E' QUELLA VERA, misurata sul DB il 2026-09-04: il motivo
+        #    di dominio sta nel MESSAGGIO (`message_primary`), mentre `DETAIL`
+        #    porta il testo generico della policy — uguale per ogni
+        #    `E_VALORE_MANCANTE` del sistema. Un finto che invertisse i due
+        #    farebbe passare il test con l'ordine di lettura SBAGLIATO: e'
+        #    successo, ed e' il motivo per cui questo commento esiste.
+        commesse_repo.emit_attivita_fatturabili.side_effect = make_db_error(
+            "Indicare un valore per ROOT source mancante per commessa 10. "
+            "Dato obbligatorio.",
+            codice="E_VALORE_MANCANTE",
+            detail="Non e' stato assegnato un valore all'informazione richiesta.",
+        )
+
+        # ⚠️ Una commessa sola, e fallisce: e' il ramo «tutte fallite», che dal
+        #    2026-09-07 NON solleva piu' (P-5). Al diario per-commessa non
+        #    cambia niente — il run logger ha gia' scritto prima che l'esito
+        #    venisse aggregato, ed e' quello che questo test guarda.
+        executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        error_logger.log_error.assert_called_once()
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertIn("ROOT source mancante per commessa 10", kwargs["detail"])
+        # ⛔ E NON il testo generico della policy: quella frase e' vera per ogni
+        #    E_VALORE_MANCANTE del sistema e non dice su cosa agire.
+        self.assertNotIn("informazione richiesta", kwargs["detail"])
+        self.assertEqual(kwargs["context"]["commessa_id"], 10)
+        self.assertIn("dettaglio_tecnico", kwargs["context"])
+        self.assertIn("commessa_id=10", kwargs["context"]["dettaglio_tecnico"])
+
+    # Scopo: il ripiego quando il database non ha detto niente di leggibile —
+    #        un errore nato in Python non ha campi `diag`, e restare senza
+    #        motivo sarebbe peggio di un motivo tecnico.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_senza_campi_diag_ripiega_sul_messaggio_normalizzato(self, _mock_txn):
+        executor, _repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+
+        # ⚠️ Nessuna eccezione da attendere: dal 2026-09-07 il ramo «tutte
+        #    fallite» torna un esito (P-5). Il diario per-commessa e' scritto
+        #    prima dell'aggregazione, quindi il presidio non cambia.
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertIn("emit ko", kwargs["detail"])
+
+    # Scopo: ⭐ «TUTTE FALLITE» NON SOLLEVA PIU', e chiude il task_run in ERRORE
+    #        come il parziale (P-5, decisione di Tid 2026-09-06).
+    # 🔴 QUESTO TEST PRESIDIAVA IL CONTRARIO, e il contrario era il difetto:
+    #        sollevare faceva rollback dello step e si portava via i segni
+    #        appena scritti sui documenti caduti — il caso peggiore era l'unico
+    #        che non lasciava traccia.
+    # ⛔ Il timore che lo motivava («proseguire costruirebbe un lotto VUOTO») e'
+    #        coperto altrove e meglio: il passo scrive una segnalazione CRITICA
+    #        per ogni commessa caduta, quindi al giro dopo `blocks_next_step`
+    #        rifiuta l'avanzamento. Si ferma TENENDO, invece di fermarsi
+    #        strappando.
+    # ⚠️ `complete_lotto_task_run` NON deve essere chiamato: il giro e' finito,
+    #        ma male. Chiuderlo COMPLETATO farebbe dare SKIP al resolver al
+    #        rilancio — le commesse rimaste indietro non verrebbero piu'
+    #        ritentate, in silenzio. E' il difetto gia' corretto sul parziale il
+    #        2026-08-09, e qui non deve rientrare dalla finestra.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_attivita_da_commessa_tutte_fallite_non_solleva(self, _mock_txn):
+        executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=557)
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
         repo.complete_lotto_task_run.assert_not_called()
+        repo.fail_lotto_task_run.assert_called_once()
+        # Stesso codice del parziale: i due rami sono diventati lo stesso codice.
+        self.assertEqual(repo.fail_lotto_task_run.call_args.args[1], "E_PULL_COMMESSA")
 
     # Scopo: dry-run — nessun esito parziale puo' comparire, perche' non e'
     #        stato tentato nulla.
@@ -1125,7 +1626,8 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     # Scopo: ⚠️ D-Q p.3 sul gemello scadenze — `failed_rows > 0` chiude il
     #        task_run in ERRORE SENZA sollevare, cosi' il rilancio dello step
-    #        (policy RESUME_STEP) ripete davvero il task invece di saltarlo.
+    #        (policy RESUME_TASK — `RESUME_STEP` e' ritirato dal CHECK col
+    #        `20260912-32`) ripete davvero il task invece di saltarlo.
     #        Verifica anche che i due contatori di salto restino SEPARATI nel
     #        meta: «chiusa» e «rotta» non vanno sommate.
     def test_execute_step_genera_scadenze_failed_rows_chiude_task_run_errore(self):
@@ -1481,3 +1983,54 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             PipelineStepExecutor._TASK_ORDER_DEPENDENCIES["popola_fatture_rettifiche"],
             ("numera_fatture",),
         )
+
+    # 44) ⛔ UNA SEGNALAZIONE PER DOCUMENTO, non una sola con una chiave scelta
+    #     fra le tante (§6.1 di brief-db-uscita-documento-dal-giro).
+    #
+    # 🔴 Perche' conta: la segnalazione e' cio' che BLOCCA il lotto, e il verbo
+    #    «togli dal giro» la spegne togliendo il suo documento. Se una commessa
+    #    ne alimenta due e se ne dichiarasse uno solo, l'altro resterebbe a
+    #    bloccare il lotto **per sempre** — e non sarebbe togliibile, perche'
+    #    niente lo nomina.
+    #
+    # ⚠️ Il caso 1:N e' raro e per questo pericoloso: con un documento per
+    #    commessa — la norma — un difetto qui non si vedrebbe mai.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_una_segnalazione_per_documento(self, _mock_txn):
+        executor, repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: ["ORDINE_VENDITA:aaa", "ORDINE_VENDITA:bbb"]
+        )
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        chiavi = [c.kwargs["gruppo_key"] for c in error_logger.log_error.call_args_list]
+        self.assertEqual(chiavi, ["ORDINE_VENDITA:aaa", "ORDINE_VENDITA:bbb"])
+
+    # 45) ⚠️ `[]` E' UNA RISPOSTA, e va letta: «questo fallimento non ha un
+    #     proprietario in questo lotto» ⇒ UNA riga senza `gruppo_key`, che torna
+    #     a valere «e' del giro» e ferma il giro.
+    # ⛔ Non zero righe: un fallimento che non blocca niente e' un fallimento
+    #    perso — il lotto proseguirebbe come se non fosse successo nulla.
+    # ⚠️ E' anche il presidio della trappola del mock: un `MagicMock` nudo si
+    #    itera VUOTO, quindi il ciclo non girerebbe e questo test sarebbe l'unico
+    #    a dirlo.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_senza_proprietario_scrive_una_riga_del_giro(self, _mock_txn):
+        executor, repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: []
+        )
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        self.assertEqual(error_logger.log_error.call_count, 1)
+        self.assertIsNone(error_logger.log_error.call_args.kwargs["gruppo_key"])

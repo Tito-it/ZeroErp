@@ -7,7 +7,7 @@
 --       Il push e' consumatore del meccanismo generico (brief §3.4):
 --       advisory lock + fn_contratto_sovrapposto + routing + backstop.
 --
--- Riferimento: docs/it/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md §4
+-- Riferimento: brief-db-offerta-push-successione-contratto-overlap.md §4
 --
 -- Indice test (1..6):
 --   1)    push offerta A (ACCETTATA) -> contratto DRAFT creato (baseline incumbent)
@@ -44,7 +44,7 @@
 --
 --   ⛔ Il test era invisibile: il file vive in una sottocartella, e fino al
 --   2026-08-24 i presidi pgTAP guardavano un livello solo. Vedi
---   docs/it/dev/work-in-progress/brief-db-pgtap-rami-ciechi.md
+--   brief-db-pgtap-rami-ciechi.md
 -- ------------------------------------------------------------
 
 BEGIN;

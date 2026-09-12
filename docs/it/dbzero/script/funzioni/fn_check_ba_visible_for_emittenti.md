@@ -11,7 +11,7 @@ CREATE FUNCTION fn_check_ba_visible_for_emittenti(p_billing_account_id bigint, p
 CREATE OR REPLACE FUNCTION script.fn_check_ba_visible_for_emittenti(p_billing_account_id bigint, p_emittente_ids bigint[])
  RETURNS boolean
  LANGUAGE plpgsql
- STABLE PARALLEL SAFE
+ STABLE
 AS $function$
 DECLARE
     v_emittente_sr_id bigint;
@@ -42,7 +42,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ba_visible_for_emittenti(p_billing_account_id bigint, p_emittente_ids bigint[])
-IS 'Pure check (fn_check_*, boolean, no raise): un billing_account e'' visibile per un set di emittenti autorizzati? Rev 2026-08-18 (R-5, brief perimetro-emittente Fase E): la regola a due livelli — mapping specifico BA->emittente, altrimenti fallback sull''emittente is_default — NON e'' piu'' scritta qui. Vive in script.fn_get_ba_emittente_sr_id, e questa funzione si limita a chiedere «l''emittente risolto sta fra quelli autorizzati?». Risposta identica alla versione precedente: l''equivalenza e'' garantita dai due indici UNIVOCI (uq_emittenti_fiscali_ba, uq_emittenti_fiscali_ba_default), che rendono sia il mapping sia il default al massimo uno. ⭐ Il motivo dell''estrazione: R-5 deve MOSTRARE il nome dell''emittente nella riga di ricerca, non filtrarci sopra. Senza estrarre, la stessa regola sarebbe finita in due copie — il filtro e l''etichetta — che alla prima modifica avrebbero iniziato a raccontare cose diverse sullo stesso billing account, in silenzio. ⚠️ p_emittente_ids NULL o vuoto = «nessun emittente autorizzato» = false, e la risposta arriva prima di risolvere: e'' il ramo fail-closed. Usata da fn_search_soggetti_universale e fn_get_search_detail (ramo CL).';
+IS 'Pure check (fn_check_*, boolean, no raise): un billing_account e'' visibile per un set di emittenti autorizzati? Rev 2026-08-18 (R-5, brief perimetro-emittente Fase E): la regola «quale emittente fattura questo BA» NON e'' scritta qui. Vive in script.fn_get_ba_emittente_sr_id, e questa funzione si limita a chiedere «l''emittente risolto sta fra quelli autorizzati?». ⭐ Dal 20260913-01 (D13) quella regola ha TRE livelli — mapping specifico; altrimenti, in sessione, l''emittente dell''operatore che sta agendo; altrimenti il default — e questo check li eredita senza una riga di modifica: e'' il motivo per cui la regola sta in un posto solo. ⚠️ p_emittente_ids NULL o vuoto = «nessun emittente autorizzato» = false, e la risposta arriva prima di risolvere: e'' il ramo fail-closed. ⚠️ STABLE e NON PARALLEL SAFE dal 20260913-02: la delegata legge la GUC di sessione e chiama fn_resolve_emittente_for_user, che non e'' SAFE — la marcatura si dichiara onestamente, come gia'' il 18-08 sulla ricerca universale. Usata da fn_search_soggetti_universale e fn_get_search_detail (ramo CL) e dalla policy RLS via_efba del billing account. Brief: brief-db-ba-riserva-emittente-operatore-d13.';
 ```
 
 ---

@@ -180,7 +180,7 @@ class _RepoMock:
 
     # Scopo: Restituisce MAX(riga_nr) per lista di fattura_id.
     def get_max_riga_nrs(self, fattura_ids):
-        return {fid: 0 for fid in fattura_ids}
+        return dict.fromkeys(fattura_ids, 0)
 
     # Scopo: Gestisce `insert_fattura_riga` nel flusso applicativo del modulo.
     def insert_fattura_riga(self, **kwargs):

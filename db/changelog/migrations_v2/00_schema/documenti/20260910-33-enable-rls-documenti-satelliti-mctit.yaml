@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DG-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui satelliti documentali.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.16
+#   Slice 20260910-31..34. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica — e' il secondo criterio
+#   di `dbops.vw_rls_perimetro_scoperto`, che pesca tre tabelle proprio cosi'.
+#   Il pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza della
+#   policy.
+#
+# ── NO FORCE, a parita' con la testata ────────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come
+#   `documenti.documenti_generati`: l'owner (`titodb`) resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto. ⭐ E `zeroerp_batch_fatturazione` e'
+#   `BYPASSRLS`, quindi la generazione documentale in batch non cambia.
+#
+# ── ⭐ NESSUNA PORTA SI MUOVE, e qui e' una constatazione ─────────────
+#   La testata ha **una** veste (`OPERATORE`), e i due satelliti la
+#   rispecchiano: nessun ruolo perde un accesso che oggi ha per progetto —
+#   perde solo cio' che vedeva **fuori dal proprio perimetro**, che e' il buco.
+#   ⚠️ Diverso dal caso `attivita_consumi` (§11.15), dove una porta si chiudeva
+#   e la decisione andava dichiarata.
+#
+# ── DOPO L'APPLICAZIONE: dove guardare ───────────────────────────────
+#   ⭐ **Nessuna vista da sistemare, e la frase e' letterale: ZERO viste leggono
+#   i due satelliti** (verificato 2026-09-10). Non «ce l'hanno gia' tutte il
+#   security_invoker»: proprio non ce n'e' nessuna. E' la stessa condizione di
+#   `contratti` (§7) — la famiglia piu' isolata.
+#   ⇒ Una divergenza dopo l'armamento si vedrebbe **solo** dalle query dirette
+#   del backend, non da una lista che smette di popolarsi.
+#
+#   ⚠️ I punti da guardare a mano:
+#     - il download / la ristampa fedele di un documento generato: legge
+#       `documenti_generati_file` per arrivare allo `storage_key`. Se un file
+#       smettesse di risolversi, la domanda non e' «allargo la policy?» ma
+#       «quel documento e quell'operatore hanno davvero emittenti diversi?»;
+#     - il pannello degli eventi di generazione (chi ha generato cosa, quando,
+#       con quale esito);
+#     - la generazione in batch: gira come `zeroerp_batch_fatturazione`, che
+#       bypassa — se qualcosa si rompe li', non e' questa slice.
+#
+#   ⭐ **E non ci sono nipoti**: nessuna tabella ha una FK verso i due satelliti
+#   (verificato 2026-09-10), quindi armarli non fa entrare nessuno nel criterio
+#   al giro dopo — al contrario di `pratiche` (§11.7) e `commesse` (§11.15).
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-documenti-satelliti.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260910-33-enable-rls-documenti-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-33-enable-rls-documenti-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY su
+        documenti.documenti_generati_eventi e documenti.documenti_generati_file.
+        Da qui le policy di 20260910-32 filtrano davvero. Isolato apposta: si
+        disarma con il rollback di questo solo changeSet, e le policy restano
+        dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'documenti'
+                 AND tablename IN ('documenti_generati_eventi', 'documenti_generati_file')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati_eventi ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE documenti.documenti_generati_file   ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati_file   DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE documenti.documenti_generati_eventi DISABLE ROW LEVEL SECURITY;

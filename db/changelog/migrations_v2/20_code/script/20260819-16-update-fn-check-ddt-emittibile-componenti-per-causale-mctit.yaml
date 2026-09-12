@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Il gate all'emissione guarda i componenti solo se il documento vende.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice C,
 # punto C4 (decisione D-5 = K2).
 #
 # ⛔ NON E' UNA RIFINITURA: senza questo changeSet la slice si rompe da sola.

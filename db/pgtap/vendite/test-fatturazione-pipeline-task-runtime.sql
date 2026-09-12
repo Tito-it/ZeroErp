@@ -22,6 +22,8 @@
 -- 16) resolve mode su ERRORE (RESET_STEP) = RESET_REQUIRED
 -- 17) ultimo run RESET in stato ERRORE
 -- 18) il correlation_id del giro finisce sulla riga del tentativo
+-- 19) il vocabolario di resume_mode e' {RESET_STEP, RESUME_TASK}: RESUME_STEP
+--     e' ritirato (2026-09-12) e il CHECK lo respinge
 --
 -- ⚠️ Era 18: la vecchia 4 («check policy RESUME true») e' stata tolta il
 --   2026-08-18 perche' `vendite.fn_check_pipeline_task_policy` non esiste piu'.
@@ -52,7 +54,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- ============================================================
 -- 0) Costanti e riferimenti
@@ -434,6 +436,24 @@ SELECT is(
   ),
   '0198f000-0000-7000-8000-0000000000c1'::uuid,
   'correlation_id del giro scritto sul task run'
+);
+
+-- ============================================================
+-- 19) RESUME_STEP e' ritirato: il CHECK lo respinge
+-- ============================================================
+-- ⭐ Era una distinzione senza differenza: il resolver trattava RESUME_STEP
+--   come RESUME_TASK e il backend non lo leggeva (00_schema/20260912-32,
+--   brief-db-rilancio-step-non-rivede-le-proprie-commesse §10.3). Un valore
+--   dichiarato e morto rientra dalla finestra alla prima riga di CSV copiata
+--   da una vecchia: il CHECK e' il cancello, e questo test e' il suo presidio.
+--   ⚠️ Si prova sul VINCOLO (23514), non sull'assenza di righe: «nessuna riga
+--   oggi» e' una fotografia, «il vincolo lo respinge» e' il modello.
+SELECT throws_ok(
+  $$ UPDATE vendite.fatturazione_pipeline_task_policy
+        SET resume_mode = 'RESUME_STEP'
+      WHERE id = (SELECT min(id) FROM vendite.fatturazione_pipeline_task_policy) $$,
+  '23514', NULL,
+  'resume_mode = RESUME_STEP respinto dal CHECK: il valore e'' ritirato'
 );
 
 SELECT * FROM finish();

@@ -373,7 +373,14 @@ SELECT ok(
           FROM tmp_refs_rl
         )
         AND fl.stato_operativo = 'CHIUSO'
-        AND fl.stato_lotto = 'COMPLETATO'
+        -- ⛔ `stato_lotto` NON si asserisce piu' qui (rev 2026-09-07,
+        --   changeSet 20260907-08): l'annullo non lo scrive piu'. Scriveva
+        --   'COMPLETATO', e su un lotto interrotto o fallito era una bugia —
+        --   la macchina a stati vieta ERRORE -> COMPLETATO, e quell'UPDATE
+        --   diretto le passava dietro.
+        -- ⭐ Che l'annullo lasci quella colonna com'era lo presidia, sui due
+        --   versi, db/pgtap/vendite/test-annulla-lotto-non-riscrive-stato-v1.sql:
+        --   qui sarebbe un terzo posto in cui la stessa regola e' scritta.
       FROM vendite.fatturazione_lotti fl
       WHERE fl.id = (
           SELECT id

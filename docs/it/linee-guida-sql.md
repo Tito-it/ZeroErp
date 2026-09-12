@@ -163,6 +163,47 @@ diversi, e confonderli è il difetto più facile da non vedere:
 | `p_context -> 'bersaglio'` | il **frontend** (dove portare l'operatore) | ⭐ **dal 2026-08-23** — array di `{tipo, id}`, **sempre**, anche con un elemento solo |
 | `VARIADIC p_valori` | **l'operatore** (la frase che legge) | ⛔ mai un nome di parametro o di colonna: la cosa che una persona riconosce |
 
+
+### ⭐ Due funzioni per sollevare, e a scegliere non sei tu
+
+Dal 2026-09-08 i punti che sollevano il **codice del primo motivo** di una
+`script.fn_check_*` non compongono piu' la coda a mano: chiamano
+`script.fn_raise_primo_motivo_se_presente`. La domanda che decide e' **una**, e
+si vede nella riga che stai scrivendo:
+
+> **Il codice che sollevo lo sto LEGGENDO da un array di motivi, o lo sto
+> SCRIVENDO come letterale?**
+
+| Quello che scrivi | Cosa chiami |
+| --- | --- |
+| `'E_QUALCOSA'` — un letterale | `script.fn_log_and_raise_error` |
+| `v_motivi -> 0 ->> 'codice'` | `script.fn_raise_primo_motivo_se_presente` |
+
+⭐ **Sbagliare funzione non compila**: i tipi non legano (`42883` in un verso,
+`22P02` nell'altro). L'unico modo di sbagliare e' **non usarla** — ricopiare la
+coda — e quello e' silenzioso: lo presidia `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql`.
+
+⛔ **L'array non lo costruisci tu.** Se stai scrivendo
+`jsonb_build_array(jsonb_build_object('codice', 'E_X', ...))` per poter usare
+l'helper, stai usando l'attrezzo sbagliato: quel motivo lo conosci gia', e il
+`-> 0` non sceglie niente.
+
+⚠️ **E c'e' un caso in cui l'helper NON si usa anche se hai i motivi**: quando
+la `fn_check_*` **non emette `valori`**. Li' la frase la compone il chiamante
+dai propri dati, e delegare la spezzerebbe — uscirebbero i `%s` grezzi a video.
+Sono **sei** siti — erano tredici fino al 2026-09-09, quando nove check hanno
+imparato a emettere `valori` e sei madri sono passate all'helper. Restano
+dichiarati come debito nel presidio (`test-rubinetto-primo-motivo-v1.sql`,
+test 4), a soglia che **puo' solo calare**.
+
+⭐ **La domanda che viene PRIMA**, quando scrivi un guard nuovo, non e' quale
+funzione chiamare: e' **«questa regola deve anche accendere o spegnere un
+pulsante nel frontend?»**. Se si', il predicato va in una `fn_check_*` e il
+guard la CHIAMA (§12.5.2) — e allora ti ritrovi i motivi in mano. Se no,
+valuti li' e sollevi il codice diretto.
+
+Brief: `docs/it/dev/work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md`.
+
 #### Il bersaglio — *«su quale cosa»*, e perché non va nella frase
 
 Un errore che riguarda **una cosa identificabile** la nomina nel contesto, non
@@ -1087,7 +1128,14 @@ appartengono a piu' entita' distinte che non devono vedersi tra loro:
 **Non** abilitare RLS su:
 
 * Tabelle di configurazione lette da tutti (parametri, lookup, enum).
-* Tabelle di sola scrittura tecnica (`dbops.*`, log, storico gia' filtrato a monte).
+* Tabelle di sola scrittura tecnica (`dbops.*`, log). ⚠️ **Lo `storico` NON è più
+  un'eccezione** (dall'11-09-2026): la shadow di una madre protetta porta
+  l'emittente congelato alla scrittura (`scope_emittente_fiscale_id`) e una policy
+  `FOR SELECT` generata da `dbops.fn_storico_arma_scope` secondo la mappa
+  `dbops.storico_scope_policy` — *la storia di una riga protetta è la stessa
+  informazione della riga*. Non si scrive a mano: la genera il framework. Guida
+  [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle), sezione *Di chi è
+  una versione*.
 * Tabelle che non hanno una relazione diretta e verificabile con l'utente corrente.
 
 Se una tabella non ha uno scope evidente, probabilmente **non va messa in RLS**: aggiungere
@@ -1275,8 +1323,24 @@ Prima di attivare RLS su una tabella esistente:
 
 * Funzione `script.fn_scope_*` scritta e coperta da pgTAP
 * Backend popola tutti i GUC necessari in tutte le auth class
-* Benchmark `EXPLAIN` su query principali pre/post attivazione
-* Indici funzionali su colonne usate nella policy, se `EXPLAIN` lo richiede
+* La FK della colonna emittente ha una **decisione dichiarata** in
+  `dbops.fk_index_policy` — un seed CSV con `true` o `false` **e il perché**
+  (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: la
+  canonica `script.fn_check_user_emittente_scope` è plpgsql, quindi la policy
+  è una **chiamata di funzione per riga**, opaca al planner, non un confronto.
+  Un indice sull'emittente si decide sulla **query dell'applicazione che entra
+  da quella colonna** (una lista per emittente + data, come
+  `ix_fatture_emitt_data`), non sulla policy — è il criterio già scritto nei
+  seed `20260822-39`, `20260822-41` e `20260829-33`.
+  ⛔ E **mai un `CREATE INDEX` a mano** su una FK governata: con la riga a
+  `false` il loop di `90_end` lo rimuove al primo migrate. Successo su
+  `20260601-34` (RLS, Fase 5): quattro indici su sei creati apposta per la
+  RLS e cancellati dalla policy, senza che nessuno se ne accorgesse per tre
+  mesi.
+  ⚠️ Fino al 2026-09-11 queste due righe dicevano *«Benchmark `EXPLAIN`
+  pre/post attivazione»* e *«indici funzionali se `EXPLAIN` lo richiede»*: un
+  gate opzionale mai eseguito, appoggiato a una premessa falsa. Storia in
+  `dev/work-done/analisi-attivazione-rls-db.md` §12.
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
 * `FORCE ROW LEVEL SECURITY` se la tabella e' owned da `zeroerp_app`
 * Policy testata in staging con dati realistici prima del merge
@@ -1669,7 +1733,7 @@ che la CI gira `--contexts="!provision"`.
 > che ha un contesto qualsiasi.
 
 ⇒ Perché il contesto sia un **filtro** e non un'etichetta, va reso esplicito
-nell'invocazione, in `ci.yaml` e nel comando di produzione:
+nell'invocazione:
 
 ```text
 --contexts="!provision and !dati_macchina"
@@ -1678,12 +1742,17 @@ nell'invocazione, in `ci.yaml` e nel comando di produzione:
 | dove | invocazione | effetto |
 |---|---|---|
 | sviluppo | `liquibase update` (nessun `--contexts`) | **gira** — il DB di sviluppo resta com'è |
-| CI / produzione | `--contexts="!provision and !dati_macchina"` | filtrato |
-| CI / produzione | `--contexts="!provision"` (oggi) | ⛔ **NON** filtrato |
+| CI (`ci.yaml`, passata principale) e `scripts/ci-local.sh` | `--contexts="!provision and !dati_macchina"` — ✅ **dal 2026-09-04** | filtrato |
+| produzione | la stessa riga, da scrivere nel provisioning | filtrato solo se la riga c'è |
+| qualunque invocazione | `--contexts="!provision"` | ⛔ **NON** filtrato |
 
-⚠️ **Finché quella riga non c'è, `context: dati_macchina` è documentazione, non un
+⚠️ **Dove quella riga manca, `context: dati_macchina` è documentazione, non un
 cancello** — e va detto, perché un'etichetta che sembra proteggere e non protegge
-è peggio di nessuna etichetta.
+è peggio di nessuna etichetta. In CI la riga c'è dal 2026-09-04: fino ad allora
+era `--contexts="!provision"`, ed è così che il 2026-09-02 il changeSet marcato è
+passato. ⚠️ Fatto datato (2026-09-12): il cancello c'è, ma i seed **SQL** di
+macchina censiti qui sopra non portano ancora il contesto — un DB nuovo li
+esegue lo stesso.
 
 ⭐ **Per i mirror CSV c'è una via che non dipende dal contesto: svuotare il file.**
 Un `loadUpdateData` su un CSV di sola intestazione carica zero righe, ovunque, e
@@ -1729,6 +1798,62 @@ colonna non testuale, ma **nessuno è una mina** — in 19 la colonna non è
 dichiarata `STRING` (Liquibase la rende `NULL`), e nei 7 restanti è un
 `data_update` con `defaultValue: "NOW()"`, che la sostituisce prima di arrivare
 al database. Il difetto era nello **strumento**, non nei dati.
+
+---
+
+### 11.8 ⛔ Una postura più stretta per `zeroerp_app` si dichiara nel loop dei grant, non in un `REVOKE`
+
+**Il meccanismo.** `90_end/ci_apply/20260205-41-apply-runtime-grants-ci` è
+`runOnChange: true` in `ci_apply` — una *rete che converge*, legittima lì (§11.1)
+— e a ogni passata rifà `GRANT SELECT, INSERT, UPDATE, DELETE` a `zeroerp_app` su
+**tutte** le tabelle possedute dal migratore in 14 schemi, più `EXECUTE` su tutte
+le funzioni. Quindi un `REVOKE` all'applicazione scritto in un changeSet normale
+**non tiene**: su un database di sviluppo sopravvive fino al prossimo
+`make db-ci-apply` — e sembra funzionare, a lungo — in CI viene annullato **nello
+stesso build**, dalla passata `ci_apply` che segue quella che l'ha applicato.
+
+> Trovato due volte. Il 2026-08-17 su una **colonna**
+> (`ui.lista_definizione.multi_emittente`, brief perimetro-emittente-liste §11.5):
+> lì il rimedio è un trigger, perché il privilegio di tabella copre ogni colonna
+> e PostgreSQL non sa esprimere «UPDATE tranne una». Il 2026-09-11 su due
+> **tabelle intere**, `dbops.audit_log` e `dbops.error_log`: il brief diceva *«è
+> una riga di REVOKE»*, ed era una riga che il loop avrebbe cancellato.
+
+⭐ **Il rimedio, per una tabella intera, è dichiararla nel loop.** In testa al
+blocco ci sono due elenchi: `v_registri_append_only` (tabelle a cui l'app riceve
+solo `SELECT, INSERT`, e a cui `UPDATE, DELETE` vengono **revocati** a ogni
+passata) e `v_fn_riservate` (funzioni a cui l'`EXECUTE` è revocato **a PUBLIC e
+all'app**). Il presidio sta nell'unico posto che avrebbe potuto annullarlo, e
+si dichiara come dato — non come un secondo file che rincorre il primo.
+
+⚠️ **Servono comunque due file.** Su dev `ci_apply` non gira da solo: il
+changeSet `90_end` forward che revoca subito ci vuole, e il loop lo rende
+stabile. Uno senza l'altro è o un REVOKE che muore, o una postura che su dev
+arriva solo quando qualcuno digita `db-ci-apply`.
+
+⚠️ **Le funzioni hanno `=X`.** Per default PostgreSQL concede `EXECUTE` a
+PUBLIC su ogni funzione nuova, e un `CREATE OR REPLACE` lo conserva. Revocare
+al solo `zeroerp_app` non toglie niente: si revoca `FROM PUBLIC, zeroerp_app`
+insieme. Il proprietario esegue sempre; i grant espliciti (ruoli batch, dal
+provisioning) restano. ⚠️ Un `DROP` + `CREATE` riporterebbe `=X`: lo vede il
+pgTAP di postura, non il migrate.
+
+⭐ **La postura si asserisce con `has_table_privilege(ruolo, …)` e
+`has_function_privilege(ruolo, …)`**, mai con `information_schema.role_table_grants`,
+che mostra solo i grant del ruolo connesso ed è verde per sottrazione quando
+interroga un altro ruolo. E accanto al catalogo va il **comportamento**: come
+app, `UPDATE … WHERE false` deve rispondere `42501` — il permesso si controlla
+prima di guardare le righe. ⚠️ Con una colonna che **esiste** su quella tabella
+(`SET id = id`): il parser risolve i nomi prima del controllo dei permessi, e su
+una colonna assente risponderebbe `42703`, rosso per il motivo sbagliato.
+
+Precedente: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`; guida:
+[Audit Logging](/guide/messaggi-audit), sezione *Chi può scrivere*.
+
+✅ **Restano leciti** i `GRANT` in più (una vista nuova a `zeroerp_app`, come i
+`20260904-*`): il loop li rifà uguali, e un grant idempotente non ha niente da
+perdere. È solo il verso **restrittivo** che il loop non sa rispettare finché
+non è dichiarato.
 
 ---
 

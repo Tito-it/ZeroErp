@@ -7,7 +7,7 @@
 # fn_get_emittenti_scope_pk_ids (single source of truth, zero drift).
 #
 # Origine: brief preventivi rev2 §9 + analisi pattern SR vs PK 2026-05-02
-# (vedi docs/it/dev/work-in-progress/refactor-emittente-id-canonico.md §5.2).
+# (vedi refactor-emittente-id-canonico.md §5.2).
 # ------------------------------------------------------------
 
 databaseChangeLog:

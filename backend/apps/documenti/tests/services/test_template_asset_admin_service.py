@@ -161,7 +161,7 @@ class TemplateAssetAdminServiceUploadHappyPathTests(SimpleTestCase):
     """Upload: happy path admin globale + sequenza INSERT -> write -> commit."""
 
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_admin_globale_happy_path_storage_key_e_sequenza(
@@ -215,7 +215,7 @@ class TemplateAssetAdminServiceUploadScopeTests(SimpleTestCase):
 
     # 1. operatore con emittente nello scope -> create OK.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11, 22],
     )
     def test_upload_operator_emittente_in_scope_ok(self, _mock_scope) -> None:
@@ -237,7 +237,7 @@ class TemplateAssetAdminServiceUploadScopeTests(SimpleTestCase):
     # 2. operatore con emittente fuori scope -> E_DOCUMENTI_VALIDATION,
     #    no DB call, no storage write.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[1, 2],
     )
     def test_upload_operator_emittente_fuori_scope_raises_validation(
@@ -286,7 +286,7 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
 
     # 4. chiave extra in metadati -> validate_allowed_keys solleva.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_payload_extra_keys_raises(self, _mock_scope) -> None:
@@ -302,7 +302,7 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
 
     # 5. campo richiesto mancante -> require_string solleva.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_payload_missing_required_field_raises(
@@ -320,7 +320,7 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
 
     # 6. file_bytes vuoto -> E_DOCUMENTI_VALIDATION (pre-DB).
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_file_bytes_vuoto_raises(self, _mock_scope) -> None:
@@ -341,7 +341,7 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
 
     # 7. file oversize -> E_DOCUMENTI_VALIDATION con limite parlante dal param.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_file_oversize_raises_with_param_limit(
@@ -368,7 +368,7 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
 
     # 13. file_name vuoto -> E_DOCUMENTI_VALIDATION (sanitize fallisce).
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_file_name_vuoto_raises(self, _mock_scope) -> None:
@@ -388,7 +388,7 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
 
     # 15. _guard_date_range cross-field: valido_al < valido_dal -> rifiutato.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_guard_date_range_valido_al_prima_di_dal_raises(
@@ -414,7 +414,7 @@ class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
 
     # 8. tipo asset inesistente -> E_DOCUMENTI_VALIDATION.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_tipo_asset_inesistente_raises(self, _mock_scope) -> None:
@@ -434,7 +434,7 @@ class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
 
     # 9. tipo asset esistente ma non attivo -> E_DOCUMENTI_VALIDATION.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_tipo_asset_non_attivo_raises(self, _mock_scope) -> None:
@@ -454,7 +454,7 @@ class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
 
     # 10. ALTRO non e' in whitelist v1 -> upload rifiutato esplicitamente.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_tipo_asset_altro_non_ammesso(self, _mock_scope) -> None:
@@ -475,7 +475,7 @@ class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
 
     # 11. MIME fuori whitelist per tipo (PDF su LOGO) -> rifiutato.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_mime_fuori_whitelist_per_tipo_raises(
@@ -498,7 +498,7 @@ class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
 
     # 12. MIME ammesso per ciascun tipo whitelisted (LOGO/IMMAGINE/FIRMA/PDF/CSS).
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_mime_ammesso_per_ogni_tipo_whitelisted(
@@ -540,7 +540,7 @@ class TemplateAssetAdminServiceUploadIntegrityTests(SimpleTestCase):
 
     # 14. dedup naturale: IntegrityError sha256 -> mappata a messaggio parlante.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_dedup_sha256_integrity_error_mapped(
@@ -570,7 +570,7 @@ class TemplateAssetAdminServiceUploadIntegrityTests(SimpleTestCase):
 
     # 16. commit DB fallisce post-write -> cleanup STORAGE_ORPHAN best-effort.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     @patch(
@@ -599,7 +599,7 @@ class TemplateAssetAdminServiceUploadIntegrityTests(SimpleTestCase):
     # 17. storage.write fallisce -> atomic rollback, niente cleanup
     #     (need_cleanup ancora False, file mai esistito).
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_upload_storage_write_fail_no_cleanup_atomic_rollback(

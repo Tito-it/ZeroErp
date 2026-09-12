@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Quattro codici a seed che nessuno solleva piu': il registro del debito
 #   scende da 57 a 53 senza rinominare niente
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §7
+#   Brief: brief-db-codice-errore-strutturato.md §7
 #   Registro: dbops.messaggi_errore_codici_legacy (20260805-06/07)
 #
 # ── COME SONO USCITI ALLO SCOPERTO ──────────────────────────────────────

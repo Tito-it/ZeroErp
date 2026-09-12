@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # `obsoleto_dal` — ritirare un codice errore senza cancellarlo
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15
+#   Brief: brief-db-codice-errore-strutturato.md §15
 #   Decisione Tid 2026-08-05 (opzione B). Seed: 20260805-18. Presidio: 20260805-19.
 #   Pattern generale: docs/.../brief-db-deprecabilita-catalogo-vs-istanze.md §0
 #

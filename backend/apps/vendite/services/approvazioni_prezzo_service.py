@@ -704,12 +704,14 @@ def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) ->
             "sorgente": sorgente_raw,
         }
     riga_key = cfg["meta_key_riga"]
-    # dict.get + fallback legacy `riga_id` con check is not None esplicito:
-    # 0 e' un id invalido in PG (sequence parte da 1), ma volere "any not None"
-    # e' piu' corretto del falsy `or` (B3).
+    # Check `is not None` esplicito: 0 e' un id invalido in PG (sequence
+    # parte da 1), ma volere "any not None" e' piu' corretto del falsy `or`
+    # (B3). ⛔ Nessun ripiego sulla chiave `riga_id` dello sprint E iniziale:
+    # nessun writer la scrive piu' nel meta (le chiavi vive sono in
+    # `_approvazioni_prezzo_constants`), e un `if` che tiene «valida» una
+    # forma che il modello non produce e' software vivo per dati morti
+    # (analisi-software-per-dati-morti §2.2, tolto il 2026-09-12).
     riga_id = meta.get(riga_key)
-    if riga_id is None:
-        riga_id = meta.get("riga_id")  # legacy compat sprint E iniziale
     if riga_id is None:
         # Pratica APPROVAZIONE_PREZZO senza riga linkata: e' una pratica
         # creata male (bug applicativo o crash post-create_riga prima del
@@ -718,7 +720,7 @@ def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) ->
         # l'admin non saprebbe che esiste un dato corrotto da pulire.
         logger.warning(
             "approvazioni_prezzo.riga_non_linkata pratica_id=%s sorgente=%s — "
-            "meta privo di '%s' e fallback 'riga_id'. UI bottoni disabilitati.",
+            "meta privo di '%s'. UI bottoni disabilitati.",
             pratica.get("id"), sorgente_raw, riga_key,
         )
         return {
@@ -854,7 +856,17 @@ def _invia_email_richiesta_approvazione(
                 **meta,
             },
             pratica_id=pratica_id,
-            ambito="WORKFLOW_APPROVAZIONE_PREZZO",
+            # 🔴 QUI C'ERA `ambito="WORKFLOW_APPROVAZIONE_PREZZO"` (corretto il
+            #    2026-09-05). ⛔ Non e' nel vocabolario di `config.email_log`
+            #    (`chk_email_log_ambito`: SISTEMA / REPARTO / OPERATORE), quindi
+            #    l'accodamento violava il vincolo — e l'except best-effort qui
+            #    sotto ingoiava l'errore: la notifica all'approvatore NON e' mai
+            #    partita, e a dirlo c'era solo una riga di log.
+            # ⚠️ `ambito` classifica A CHI APPARTIENE l'email, non a che cosa
+            #    serve: lo scopo lo porta gia' il template. Questa non appartiene
+            #    a nessuna azienda — il destinatario e' l'indirizzo di un ruolo,
+            #    preso da un parametro — quindi e' `SISTEMA`.
+            ambito="SISTEMA",
         )
     except Exception as exc:  # noqa: BLE001 - best-effort, log + continue
         logger.warning(

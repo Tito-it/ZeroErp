@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL GUARD DI SCOPE SMETTE DI SPEGNERSI DA SOLO — passo S3-4 (lotto 6)
 #   script.trgfn_guard_emittente_scope
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3 S3-4
 #
 # ── 🔴 CHE COSA CAMBIA, IN UNA RIGA ───────────────────────────────────

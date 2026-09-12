@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# O-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui cinque satelliti di ORDINI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-33..35. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Non e' un'ipotesi: il
+#   2026-09-09 `acquisti.ddt`, `acquisti.ordini` e `shop.ricevute` erano
+#   esattamente in quello stato. Il pgTAP di questa slice asserisce
+#   `relrowsecurity`, non l'esistenza della policy.
+#
+# ── NO FORCE, a parita' con tutta la famiglia ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `ordini` e come i
+#   satelliti di `fatture` e `preventivi`: l'owner resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   ⭐ Nessuna vista da sistemare, verificato il 2026-09-09: tutte le viste che
+#   leggono i satelliti di `ordini` hanno gia' `security_invoker`. E' la
+#   differenza con la famiglia `preventivi`, che ne aveva due scoperte ed e' il
+#   motivo per cui e' stata fatta per prima.
+#
+#   Da sessione OPERATORE i conteggi devono restare quelli di prima. I punti in
+#   cui una divergenza si vedrebbe:
+#     - il drawer ordine e le sue righe;
+#     - lo smistamento preventivo -> ordine (`vw_preventivi_righe_smistabili_ordine`);
+#     - il fulfillment: `ordini_righe_fulfillment` e' il ponte fra ordine e DDT,
+#       ⚠️ ed e' l'unica tabella di questa slice che appartiene anche a un'altra
+#       famiglia. Se una riga sparisse da un giro di evasione, e' li' che si
+#       guarda per primo.
+#
+#   ⚠️ E le due vesti CLIENTE: `CLIENTE_PORTALE` e `SHOP_CUSTOMER` da oggi
+#   vedono i satelliti dei SOLI ordini che possiedono — prima li vedevano tutti,
+#   perche' non c'era nessuna policy. E' l'intento della slice, ma e' anche
+#   l'unico cambiamento che un utente finale puo' notare: se il portale mostrava
+#   righe che non doveva, da oggi non le mostra piu'.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-ordini-satelliti.sql, che
+#   costruisce DUE aziende con `dbops.fn_pgtap_crea_emittente_operatore()` e
+#   verifica che l'una non veda le righe dell'altra, in lettura E in scrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-35-enable-rls-ordini-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-35-enable-rls-ordini-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui cinque satelliti di
+        vendite.ordini. Da qui le quindici policy di 20260909-34 filtrano
+        davvero. Isolato apposta: si disarma con il rollback di questo solo
+        changeSet, e le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 15
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('ordini_righe', 'ordini_indirizzi', 'note_ordini',
+                                   'ordini_righe_componenti', 'ordini_righe_fulfillment')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe             ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini_indirizzi         ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_ordini              ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini_righe_componenti  ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini_righe_fulfillment ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe_fulfillment DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini_righe_componenti  DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_ordini              DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini_indirizzi         DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini_righe             DISABLE ROW LEVEL SECURITY;

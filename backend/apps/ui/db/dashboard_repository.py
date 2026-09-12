@@ -22,6 +22,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import jsonb_out
 from apps.ui.db.ui_repository import fetch_preset_base_snapshot
 
 
@@ -54,9 +55,10 @@ class DashboardRepository:
             # Caso difensivo: la fn solleva E_UI_DASHBOARD_NON_TROVATA via
             # fn_log_and_raise_error invece di tornare NULL.
             return {}
-        if isinstance(row[0], str):
-            return json.loads(row[0])
-        return dict(row[0])
+        # ⚠️ Come il gemello di `ui_repository`: la coercizione e' il BB
+        #    `jsonb_out`, e non `coerce_jsonb_dict` — un ripiego a `{}` qui
+        #    diventerebbe «dashboard non trovata» su una dashboard che c'e'.
+        return jsonb_out(row[0])
 
     # Scopo: Restituisce `dashboard_definizione.id` dato il codice. None se
     #        inesistente o non attiva. Usato dai service di scrittura per

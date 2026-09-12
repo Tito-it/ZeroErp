@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Il resolver dei prezzi impara a dire «non risolvo» senza sollevare.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice A
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice A
 # (decisione D-3, tabella chiusa il 2026-08-19).
 #
 # IL PROBLEMA. Il DDT deve poter caricare una riga senza prezzo: la merce si

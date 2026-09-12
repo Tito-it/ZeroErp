@@ -8,7 +8,7 @@ E' la fn da usare quando il filtro va su una colonna che contiene **PK reale** (
 
 E' la **single source of truth dei guard**: la gemella `script.fn_get_emittenti_scope_sr_ids` e' implementata come wrapper su questa.
 
-Aggiunta nel refactor 2026-05-02 a chiusura dell'analisi pattern SR vs PK ([refactor-emittente-id-canonico](/dev/work-in-progress/refactor-emittente-id-canonico)).
+Aggiunta nel refactor 2026-05-02 a chiusura dell'analisi pattern SR vs PK ([refactor-emittente-id-canonico](/dev/work-done/refactor-emittente-id-canonico)).
 
 ## Schema
 
@@ -85,4 +85,4 @@ cursor.execute(SQL, [auth_user_id, auth_user_id])
 * [`script.fn_get_emittenti_scope_sr_ids`](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gemella, wrapper su questa, per filtri su SR id
 * [`script.fn_resolve_emittente_for_user`](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — resolver 1-a-1 operatore↔EF (ritorna PK)
 * [Guida soggetti-e-ruoli §5b](/it/guide/soggetti-e-ruoli-anagrafici#5b-identificazione-canonica-di-un-ruolo-specializzato--pk-reale-vs-soggetto_ruolo_id) — pattern PK vs SR id
-* [Brief refactor-emittente-id-canonico](/dev/work-in-progress/refactor-emittente-id-canonico) — analisi e decisione
+* [Brief refactor-emittente-id-canonico](/dev/work-done/refactor-emittente-id-canonico) — analisi e decisione

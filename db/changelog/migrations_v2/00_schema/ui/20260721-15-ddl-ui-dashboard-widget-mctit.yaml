@@ -19,7 +19,7 @@
 # dashboard. dashboard_id e' leading -> la PK copre gia' l'accesso per
 # dashboard (nessun indice FK dedicato su dashboard_id).
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3a/§3.ter
+# Ref: brief-db-dashboard-home.md §3a/§3.ter
 # ------------------------------------------------------------
 
 databaseChangeLog:

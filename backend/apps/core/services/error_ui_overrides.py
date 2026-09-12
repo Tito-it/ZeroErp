@@ -316,6 +316,12 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_IVA_CONTO_ACQ_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_VEN_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_JWT_SENZA_IDENTITA": "redirect_login",  # classe NON_AUTENTICATO
+    # Stessa scelta del fratello, e per la stessa ragione: il token e'
+    # incompleto (manca `sid`) e l'unico rimedio e' un accesso nuovo — un
+    # banner lascerebbe l'operatore su una pagina che risponde 401 a ogni
+    # gesto. Sul 401 il default e' `show_error_banner` per scelta esplicita:
+    # buttare qualcuno fuori dall'applicazione si decide riga per riga.
+    "E_JWT_SENZA_SID": "redirect_login",  # classe NON_AUTENTICATO
     "E_LISTINO_TIPOLOGIA_UTILITY": "highlight_form_fields",  # classe DATO_ERRATO
     # config.trgfn_toponomastica_normalize: NEW.stato_id e' NULL e
     # nemmeno il default per parametro risolve. E' un errore di

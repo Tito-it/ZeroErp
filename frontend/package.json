@@ -8,8 +8,19 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "run-s lint:*",
-    "lint:oxlint": "oxlint . --fix",
-    "lint:eslint": "eslint . --fix --cache",
+    "lint:oxlint": "oxlint .",
+    "lint:eslint": "eslint . --cache",
+    "guards": "run-s guard:*",
+    "guard:liste": "node scripts/check-liste-configurabili.mjs",
+    "guard:pinia": "node scripts/check-pinia-user-scoped-reset.mjs",
+    "guard:drawer": "node scripts/check-drawer-width.mjs",
+    "guard:icone": "node scripts/check-primeicons-codepoints.mjs",
+    "guard:keepalive": "node scripts/check-keepalive-onactivated.mjs",
+    "guard:datatable": "node scripts/check-datatable-baseline.mjs",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "verify": "run-s lint guards test:run build",
+    "fix": "oxlint . --fix && eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
@@ -27,21 +38,22 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@vitejs/plugin-vue": "^6.0.8",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-oxlint": "~1.81.0",
-    "eslint-plugin-vue": "~10.10.0",
+    "eslint-plugin-oxlint": "~1.82.0",
+    "eslint-plugin-vue": "~10.11.0",
     "globals": "^17.12.0",
     "npm-run-all2": "^9.0.3",
-    "oxlint": "~1.81.0",
+    "oxlint": "~1.82.0",
     "prettier": "3.9.6",
-    "vite": "^8.2.2",
-    "vite-plugin-vue-devtools": "^8.2.1"
+    "vite": "^8.3.0",
+    "vite-plugin-vue-devtools": "^8.2.1",
+    "vitest": "^5.0.0"
   },
   "overrides": {
     "form-data": "^4.0.6"
   },
   "engines": {
-    "node": ">=24.0.0"
+    "node": "^24.0.0"
   }
 }

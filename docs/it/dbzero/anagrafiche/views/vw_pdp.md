@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_pdp.md" %}
 # 🔍 View `vw_pdp`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW anagrafiche.vw_pdp AS
+CREATE OR REPLACE VIEW anagrafiche.vw_pdp
+WITH (security_invoker=on) AS
 SELECT p.id AS pdp_id,
     p.pdp AS pdp_codice,
     p.utility_id,

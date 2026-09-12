@@ -57,9 +57,9 @@ class GuardUserAuthenticatedTests(SimpleTestCase):
 
 
 class ResolveEmittenteScopeTests(SimpleTestCase):
-    # 3. delega all'oggetto PermissionResolver.get_emittenti_ids.
+    # 3. delega all'oggetto PermissionResolver.get_emittenti_pk_ids.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
     )
     def test_resolve_emittente_scope_delega_a_permission_resolver(
         self, mock_resolver
@@ -91,7 +91,7 @@ class GuardEmittenteInScopeTests(SimpleTestCase):
 class GuardEmittenteInScopeForUserTests(SimpleTestCase):
     # 7. happy path: user autenticato + id in scope.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11, 22],
     )
     def test_guard_emittente_in_scope_for_user_happy_path(
@@ -102,7 +102,7 @@ class GuardEmittenteInScopeForUserTests(SimpleTestCase):
 
     # 8. user anon -> raise pre-resolver (mai chiamato).
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
     )
     def test_guard_emittente_in_scope_for_user_anon_raises(
         self, mock_resolver
@@ -114,7 +114,7 @@ class GuardEmittenteInScopeForUserTests(SimpleTestCase):
 
     # 9. user autenticato ma id fuori scope -> raise.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[1, 2],
     )
     def test_guard_emittente_in_scope_for_user_fuori_scope_raises(

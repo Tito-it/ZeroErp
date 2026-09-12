@@ -15,7 +15,7 @@ in quelle pagine non compaiono mai per esteso — ed e' il motivo per cui questa
 pagina esiste: **le rotte c'erano, cercabili no.**
 
 > Scritta il 2026-08-19 chiudendo il buco piu' grande dell'analisi di copertura
-> ([analisi-copertura-doc-api-vendite-core](../../../dev/work-in-progress/analisi-copertura-doc-api-vendite-core.md)):
+> ([analisi-copertura-doc-api-vendite-core](../../../dev/work-done/analisi-copertura-doc-api-vendite-core.md)):
 > 26 rotte su 6 domini, nessuna nominata da nessun `.md`.
 
 ## Contesto

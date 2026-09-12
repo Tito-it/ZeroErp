@@ -669,6 +669,86 @@ curl -X PUT -H "Authorization: Bearer <token>" \
 
 ---
 
+### 2.7 GET /api/v1/amm-software/operatori/{id}/permessi-ereditati/ -- Livelli ereditati dal profilo
+
+Restituisce i livelli che l'operatore **eredita dal profilo**, cioe' cosa avrebbe
+**senza nessun override individuale**. Sola lettura: non cambia niente e non
+tocca la semantica dei permessi.
+
+⭐ **A cosa serve.** Alimenta la colonna «ereditato» del pannello permessi. Un
+override che **ripete** il valore del profilo non e' rumore innocuo: **congela
+la riga**, perche' da quel momento quell'utente non segue piu' il reparto se il
+reparto cambia livello. Vedere l'ereditato accanto all'override e' cio' che
+evita di scriverlo.
+
+⛔ **Non e' `GET /reparti/{uo_id}/profilo/`, e la differenza non e' cosmetica.**
+Quello legge il **solo** binding `REPARTO` per `unita_organizzativa_id`. I
+bindings sono **tre** e i resolver prendono il primo per priorita':
+
+| Priorita' | Tipo | Legato a |
+| --- | --- | --- |
+| **1** | `AD_HOC` | l'identita' digitale dell'utente |
+| 2 | `PORTALE` | il ruolo applicativo dell'identita' |
+| 2 | `REPARTO` | l'unita' organizzativa |
+
+Per un utente con un binding `AD_HOC` la lettura per reparto darebbe un valore
+**plausibile e sbagliato**, su una schermata di sicurezza. Questo endpoint legge
+invece da `script.fn_get_profili_accesso_applicabili`, **la stessa funzione** che
+usano `fn_resolve_livello_area` e `fn_check_azione_processo`.
+
+**Parametri path:** `id` (int) -- auth_user_id dell'utente.
+
+**Risposta:**
+
+```json
+{
+  "data": {
+    "aree": [
+      {
+        "area_id": 2,
+        "area_codice": "vendite",
+        "area_descrizione": "Vendite",
+        "livello": "LETTURA",
+        "profilo_nome": "Profilo reparto Amministrazione",
+        "profilo_tipo": "REPARTO"
+      }
+    ],
+    "azioni": [
+      {
+        "azione_id": 3,
+        "permission_codename": "genera_fatture_lotti",
+        "azione_descrizione": "Genera fatture lotti",
+        "area_codice": "vendite",
+        "abilitata": true,
+        "profilo_nome": "Profilo reparto Amministrazione",
+        "profilo_tipo": "REPARTO"
+      }
+    ]
+  }
+}
+```
+
+⚠️ **Una voce ASSENTE e' un dato, non un buco**: significa che *nessun profilo*
+copre quell'area o quell'azione, quindi vale il **default** — `BLOCCATO` per le
+aree, azione **negata** per le azioni. Un utente senza profili applicabili
+riceve due liste vuote, e va rappresentato come «default», non come «vuoto».
+
+ℹ️ **Nessuna chiave `oggetti`**, ed e' voluto: `config.profili_accesso_oggetti`
+non esiste. La catena di un model e' *override oggetto -> override area ->
+profilo dell'**area** -> BLOCCATO*, quindi l'ereditato di un oggetto e' il
+livello della sua **area**, che il chiamante ha gia' nella chiave `aree`.
+Restituirlo anche qui sarebbe una seconda risposta alla stessa domanda, con due
+posti in cui sbagliarla.
+
+**Esempio curl:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://host/api/v1/amm-software/operatori/1/permessi-ereditati/"
+```
+
+---
+
 ## 3. Reparti
 
 ### 3.1 GET /api/v1/amm-software/reparti/ -- Lista reparti
@@ -1092,6 +1172,82 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
+## 6. Processi automatici — i presidi
+
+⚠️ **Di questa famiglia qui c'e' solo l'endpoint dei presidi.** Le altre cinque
+rotte (`GET processi/`, `GET processi/{codice}/`, `POST processi/{codice}/run/`,
+`GET|POST processi/{codice}/identita/`, `POST .../identita/riattiva/`) esistono e
+**non sono documentate**: e' un debito dichiarato, non un'omissione da leggere
+come «non ci sono». Contratto vivo: `/api/docs/`.
+
+### 6.1 GET /api/v1/amm-software/processi/presidi/
+
+Lo stato di **tutte** le viste-presidio del cantiere «nessun processo senza
+operatore», in **un round-trip**: per ognuna il conteggio, le prime righe e la
+descrizione.
+
+⭐ **La natura di ogni presidio la dichiara il DATABASE, non il backend.** È il
+`COMMENT` della vista a dire se *«deve restare VUOTA»* oppure se è *«un registro
+di DEBITO che deve CALARE»*, e il backend lo consegna in `descrizione` leggendolo
+con `obj_description`. ⛔ Un elenco di eccezioni scritto nel backend o nel
+frontend sarebbe la seconda sede della stessa decisione, e la seconda diverge.
+
+⛔ **Quante siano non è scritto da nessuna parte, ed è una scelta.** L'elenco è
+`PRESIDI_PROCESSI` in `apps/core/db/processi_repository.py`, qualificato collo
+schema (ci sono viste di `dbops` **e** di `maintenance`). Un numero copiato
+accanto a un elenco che cresce invecchia in silenzio: fino al 2026-09-07 il
+docstring della view diceva «i SEI presidi» e alla stessa data l'elenco ne
+contava dieci.
+
+**Response shape**: `presidi` è una lista; `con_righe` è il numero che si guarda
+per primo.
+
+```json
+{
+  "data": {
+    "presidi": [
+      {
+        "vista": "dbops.vw_processi_programmazione_da_guardare",
+        "descrizione": "PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa non tornano. DEVE restare VUOTA. …",
+        "conteggio": 1,
+        "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "…": "…" } ],
+        "troncato": false
+      }
+    ],
+    "con_righe": 4
+  }
+}
+```
+
+| Campo | Significato |
+|---|---|
+| `vista` | nome **qualificato collo schema**: due schemi possono avere viste omonime, e mezzo nome manderebbe a guardare quella sbagliata |
+| `descrizione` | il `COMMENT` della vista — è lì che sta la differenza fra «deve essere zero» e «deve calare» |
+| `conteggio` | `count(*)` **senza filtro e prima delle righe**: dice quanto sta fuori dalle prime consegnate |
+| `righe` | le prime N righe, con le colonne che la vista ha (forme diverse per vista) |
+| `troncato` | le righe mostrate non sono tutte — senza, venti su duecento si leggerebbero come «sono venti» |
+
+⚠️ **Le colonne di `righe` non sono un contratto fisso**: ogni presidio ha la sua
+forma e il client le rende leggendo le chiavi che trova
+(`PresidiProcessiPanel.vue`). Un elenco di colonne per vista sarebbe un terzo
+posto in cui quella forma è scritta, e si romperebbe alla prima colonna aggiunta.
+
+⚠️ **`conteggio > 0` non è sempre un errore**, e per questo la `descrizione` va
+resa insieme al numero: alcune viste sono registri di debito. ⭐ Al **2026-09-07**
+`dbops.vw_processi_programmazione_da_guardare` nasce con **una** riga
+(`apply_storicizza_weekly`, che dal febbraio 2026 gira senza lasciare traccia sul
+giornale): il suo stesso `COMMENT` lo dichiara e dice quando va tolto. Brief:
+`work-done/brief-db-sveglia-dei-processi.md` §8.1.
+
+**Esempio curl:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://host/api/v1/amm-software/processi/presidi/"
+```
+
+---
+
 ## Regole trasversali
 
 - **Autenticazione**: tutti gli endpoint richiedono JWT Bearer token con ruolo `ADMIN`
@@ -1132,10 +1288,9 @@ curl -H "Authorization: Bearer <token>" \
 | `fn_sync_auth_user_is_active(INTEGER)` | `anagrafiche` | Sincronizza `auth_user.is_active` con stato identita digitale + risorsa umana |
 | `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` | `config` | Trigger DB autorita' finale per anti-lockout: blocca DELETE/UPDATE binding SUPER_ADMIN se ultimo attivo. Solleva con marker `E_PROFILO_ULTIMO_SUPER_ADMIN` |
 | `auth_user` | Django | Tabella autenticazione utenti |
-| `identita_digitali` | `anagrafiche` | **Fase 1 multi-face**. Bridge `soggetti_ruoli ↔ auth_user` con `ruolo_applicativo`, `attivo`, `invito_inviato_at`, `deve_cambiare_password`. Sostituisce il legacy `risorse_umane_auth_user` (kept per retrocompat lettura) |
+| `identita_digitali` | `anagrafiche` | **Fase 1 multi-face**. Bridge `soggetti_ruoli ↔ auth_user` con `ruolo_applicativo`, `attivo`, `invito_inviato_at`, `deve_cambiare_password`. Sostituisce il ponte 1:1 `risorse_umane_auth_user`, che oggi e' una vista in ritiro non letta dal backend (analisi-software-per-dati-morti §2.1) |
 | `profili_accesso_bindings` | `config` | Binding profili accesso (incluso SUPER_ADMIN id 9100) sull'identita digitale |
 | `risorse_umane` | `anagrafiche` | Dati operatore (qualifica, UO, validita') |
-| `risorse_umane_auth_user` | `anagrafiche` | DEPRECATO post-cutover §4.6.H.2: vista read-only su `identita_digitali`. Retrocompat lettura `ruolo_sistema` |
 | `unita_organizzative` | `config` | Reparti / unita' organizzative |
 | `user_override_aree` | `config` | Override livello accesso aree per utente |
 | `user_override_azioni` | `config` | Override azioni processo per utente |

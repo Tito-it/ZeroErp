@@ -45,21 +45,30 @@ def _item(run_as, scope) -> QueueItem:
 
 class DispatchTests(SimpleTestCase):
 
-    # 1. SISTEMA → apre il canale di sistema (BYPASSRLS), handler con scope=None.
-    @patch(f"{_MOD}.system_process_context")
+    # 1. ⛔ SISTEMA → NESSUN canale di sistema (R-2, 2026-09-05). Il test e'
+    #    stato GIRATO, non tolto: prima verificava che il canale `BYPASSRLS`
+    #    venisse aperto, adesso che non esista piu' nulla da aprire.
+    #    ⭐ `SISTEMA` ha cambiato significato: voleva dire «col bypass», adesso
+    #    vuole dire «senza emittente». L'handler gira sul ruolo applicativo
+    #    normale con `scope=None`, quindi puo' toccare solo cio' che non ha un
+    #    perimetro.
     @patch(f"{_MOD}.get_handler")
-    def test_dispatch_sistema_apre_canale_sistema_scope_none(
-        self, get_handler_mock, sys_ctx,
+    def test_dispatch_sistema_senza_canale_scope_none(
+        self, get_handler_mock,
     ) -> None:
+        import apps.core.services.coda_lavori.drainer_service as modulo
+
         handler = MagicMock(return_value={"ok": 1})
         get_handler_mock.return_value = handler
 
         result = _dispatch_item(_item("SISTEMA", None))
 
         get_handler_mock.assert_called_once_with("h")
-        sys_ctx.assert_called_once()  # canale di sistema aperto
         handler.assert_called_once_with({"a": 1}, scope=None)
         self.assertEqual(result, {"ok": 1})
+        # ⭐ Si guarda il MODULO, non una chiamata: un gateway importato e non
+        #    ancora usato sarebbe il primo passo per rimetterlo.
+        self.assertFalse(hasattr(modulo, "system_process_context"))
 
     # 2. OPERATORE → apre il contesto operatore con l'identità COMPLETA
     #    (auth_user_id + username + identita_id) dallo scope catturato.
@@ -88,13 +97,32 @@ class DispatchTests(SimpleTestCase):
         self.assertEqual(result, {"ok": 2})
 
 
+# Scopo: toglie un handler dal registry globale. ⚠️ Il registry non espone un
+#        `unregister` — e non deve: in esercizio un handler non si ritira a
+#        runtime. Qui si tocca il dizionario interno di proposito, ed e' l'unico
+#        punto che lo fa.
+def _dimentica_handler(codice: str) -> None:
+    from apps.core.services.coda_lavori import handler_registry
+
+    handler_registry._REGISTRY.pop(codice, None)  # noqa: SLF001
+
+
 class RegistryTests(SimpleTestCase):
 
     # 3. register_handler + get_handler + registered_handlers.
+    #
+    # ⚠️ IL REGISTRY E' GLOBALE E VIVE OLTRE IL TEST, quindi si ripulisce. Non e'
+    #    igiene formale: il finto `test_handler_xyz` restava registrato per tutta
+    #    la corsa e faceva rosso il presidio degli handler orfani
+    #    (`apps/core/tests/db/test_coda_lavori_tipi_handler_guardrail.py`), che
+    #    cerca proprio gli handler che nessun tipo di coda nomina. Un test che
+    #    sporca uno stato condiviso rompe un ALTRO test, e il rosso compare dove
+    #    il difetto non e'.
     def test_registry_register_e_get(self) -> None:
         def _h(payload, *, scope):  # noqa: ARG001
             return {}
         register_handler("test_handler_xyz", _h)
+        self.addCleanup(_dimentica_handler, "test_handler_xyz")
         self.assertIn("test_handler_xyz", registered_handlers())
         self.assertIs(get_handler("test_handler_xyz"), _h)
 

@@ -27,7 +27,7 @@
 #        Confine v1 (allineato agli altri domini):
 #         - il builder NON applica scope/permessi: responsabilità del caller
 #           (view di dominio con permessi `vendite_*` nel path web; canale
-#           `system_process_context` BYPASSRLS nel path worker C-2b);
+#           l'identita' dell'utente tecnico nel path worker C-2b);
 #         - il builder NON conosce il template HTML: fornisce solo dati
 #           strutturati formattabili lato Jinja; nessun calcolo fiscale in
 #           Python (imponibile/imposta/totali sono già mantenuti dalla

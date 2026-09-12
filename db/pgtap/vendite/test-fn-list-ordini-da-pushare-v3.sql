@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ordini_da_pushare — fix «orfano da push»
 --       (decoupling fatturazione <-> spedizione, rev 20260710-01)
--- Piano: docs/it/dev/work-in-progress/piano-db-fix-orfano-push-ordine-confermato.md §4.2
+-- Piano: piano-db-fix-orfano-push-ordine-confermato.md §4.2
 -- Brief: brief-db-ddt-vendita-evasione-e-stati §16 (casi 7-10)
 -- ------------------------------------------------------------
 -- Indice test (1..10):

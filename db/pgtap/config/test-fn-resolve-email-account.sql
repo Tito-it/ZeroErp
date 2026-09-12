@@ -2,6 +2,16 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture CANCELLA le righe seedate di
+--   config.email_outbox / email_log per rendere l'account SISTEMA privo di
+--   figli (serve al test 7). Dal 2026-09-05 `config.email_outbox` ha la RLS
+--   attiva (changeSet 20260905-37) e le sue righe sono di ambito SISTEMA, che
+--   la policy riserva al super admin: come applicazione quel DELETE non tocca
+--   piu' niente. ⭐ Ed e' giusto cosi' — l'applicazione quelle righe non le
+--   cancella. E' una scrittura da owner, e si dichiara invece di indebolire la
+--   policy. Verificato leggendo la policy, non dedotto.
+--
 -- Test: config.fn_resolve_email_account
 --       Risoluzione account SMTP con fallback reparto -> SISTEMA.
 --
@@ -26,9 +36,13 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
+-- Contesto applicativo: la riga resta perche' il preambolo e' presidiato e
+-- perche' la funzione sotto test legge come legge l'applicazione.
+-- ⚠️ Ma dal 2026-09-05 il file gira come OWNER (marcatore in testa): la RLS su
+-- config.email_outbox e' attiva e la fixture deve cancellare righe che
+-- l'applicazione non cancella. ⛔ Quindi questo file NON esercita piu' la RLS,
+-- e va detto: chi cerca il collaudo della policy sulle email lo trova in
+-- db/pgtap/rls/test-rls-email-outbox-ambito.sql.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
@@ -53,6 +67,16 @@ LIMIT 1;
 --     (serve al test 7).
 -- Percio' rimuovo il SISTEMA seed + i suoi figli e ricreo un SISTEMA pulito
 -- (senza figli, disattivabile). Tutto in transazione: ROLLBACK ripristina.
+--
+-- ⛔ 2026-09-05 — E QUI IL FILE E' MORTO PER UN GIORNO, in un modo che vale
+--   ricordare. Acceso il changeSet `20260905-37` (RLS su config.email_outbox),
+--   il DELETE qui sotto ha smesso di cancellare: le righe sono di ambito
+--   SISTEMA, e la policy le riserva al super admin.
+--   ⚠️ **Un DELETE che non cancella niente non solleva niente.** Il file non e'
+--   caduto dove stava il problema: e' caduto due istruzioni piu' in la', sulla
+--   FK di `email_account`, nominando una tabella che non c'entrava.
+--   ⇒ Il rimedio non e' indebolire la policy ne' saltare la riga: e' dichiarare
+--   che questa fixture e' una scrittura da OWNER (marcatore in testa).
 DELETE FROM config.email_log
  WHERE email_account_id IN (SELECT id FROM config.email_account WHERE codice_interno = 'SISTEMA');
 DELETE FROM config.email_outbox

@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce DUE clienti fatturabili con il
+--   loro billing account. Come `zeroerp_app` l'INSERT del BA muore al
+--   RETURNING quando l'emittente di chi agisce non e' quello di default (la
+--   policy di lettura risolve il BA non ancora mappato sul default; il legame
+--   lo scrive un trigger AFTER). Il soggetto del test e'
+--   script.fn_scope_ba_ownership, che prende identita' e BA come parametri:
+--   il ruolo di connessione non cambia cio' che misura.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_scope_ba_ownership
@@ -11,7 +19,7 @@
 --   - BA appartiene a un altro soggetto_ruolo -> false (leak test)
 --
 -- Indice test (1..6):
---    1. Precondizione: due billing_account di clienti distinti
+--    1. Precondizione: due billing_account di clienti distinti (costruiti)
 --    2. Setup: identita CLIENTE_PORTALE attiva per cliente 1
 --              + identita CLIENTE_PORTALE inattiva per cliente 2
 --    3. Identita inesistente -> false
@@ -37,7 +45,31 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ I DUE CLIENTI SI COSTRUISCONO, non si cercano (2026-09-12): fino a quel
+--   giorno il file pescava due BA fra quelli ESISTENTI, e su un database
+--   ricostruito dai changelog non ce n'e' nessuno — il leak test (caso 6)
+--   restava collaudato solo su dbdev. Un'azienda con
+--   `dbops.fn_pgtap_crea_emittente_operatore()` per il contesto, due clienti
+--   con `dbops.fn_pgtap_crea_cliente_ba()` legati a lei — PRIMA del contesto,
+--   altrimenti il trigger z90 del BA scriverebbe un secondo legame.
+CREATE TEMP TABLE _t_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+CREATE TEMP TABLE _t_bas AS
+SELECT c.billing_account_id AS ba_id,
+       c.soggetto_ruolo_id  AS sr_id,
+       ROW_NUMBER() OVER (ORDER BY c.billing_account_id) AS rn
+  FROM (SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+                     'scope BA 1', NULL, (SELECT soggetto_ruolo_id FROM _t_mondo))
+        UNION ALL
+        SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+                     'scope BA 2', NULL, (SELECT soggetto_ruolo_id FROM _t_mondo))) c;
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _t_mondo));
+END $ctx$;
 
 SELECT plan(6);
 
@@ -45,29 +77,11 @@ SELECT plan(6);
 -- 1) Precondizione: 2 BA di clienti distinti
 -- =========================================================
 -- Un cliente puo' avere piu' BA; serve UN BA per cliente distinto,
--- altrimenti il leak test (caso 6) diventa banale. DISTINCT ON garantisce
--- che per ogni sr_id (cliente) venga selezionato un solo BA (il minimo).
-CREATE TEMP TABLE _t_bas AS
-WITH primi_ba_per_cliente AS (
-    SELECT DISTINCT ON (ba.soggetto_ruolo_id)
-           ba.id                AS ba_id,
-           ba.soggetto_ruolo_id AS sr_id
-      FROM anagrafiche.billing_account ba
-      JOIN anagrafiche.clienti c
-        ON c.soggetto_ruolo_id = ba.soggetto_ruolo_id
-     WHERE ba.soggetto_ruolo_id IS NOT NULL
-     ORDER BY ba.soggetto_ruolo_id, ba.id
-)
-SELECT ba_id,
-       sr_id,
-       ROW_NUMBER() OVER (ORDER BY sr_id) AS rn
-  FROM primi_ba_per_cliente
- LIMIT 2;
-
+-- altrimenti il leak test (caso 6) diventa banale.
 SELECT ok(
     (SELECT count(*) FROM _t_bas) = 2
     AND (SELECT count(DISTINCT sr_id) FROM _t_bas) = 2,
-    '1. Precondizione: 2 BA di clienti con soggetti_ruoli distinti'
+    '1. Precondizione: 2 BA di clienti con soggetti_ruoli distinti, costruiti'
 );
 
 -- =========================================================
@@ -168,3 +182,4 @@ SELECT ok(
 );
 
 SELECT * FROM finish();
+ROLLBACK;

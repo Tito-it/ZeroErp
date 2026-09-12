@@ -13,7 +13,7 @@
 >
 > * [Guida Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — error logging e dblink
 > * [Guida Framework di Automazione DB](/guide/automazione-db) — il principale utilizzatore dell'audit log
-> * [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job) — job scheduling e task runtime
+> * [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — job scheduling e task runtime
 
 ---
 
@@ -92,7 +92,7 @@ Da un punto di vista tecnico:
 | --- | --- | :---: | --- | --- |
 | `id` | BIGINT | no | PK | Chiave primaria |
 | `function_name` | TEXT | no | — | Nome della funzione/processo |
-| `executed_by` | TEXT | no | `CURRENT_USER` | Utente che ha eseguito l'operazione |
+| `executed_by` | TEXT | no | `current_user` | **Ruolo di database** che ha scritto la riga (non l'operatore: quello sta nelle GUC `app.*` e nel `tx_id`). ⛔ Fino al 2026-09-11 il default era la *stringa* `'CURRENT_USER'`: le righe storiche portano la parola |
 | `executed_at` | TIMESTAMPTZ | no | `now()` | Timestamp di inizio |
 | `status` | TEXT | no | — | Stato: `START`, `OK`, `ERROR`, `DRYRUN`, `SKIP_EXISTS`, `WARN` |
 | `message` | TEXT | si | — | Messaggio descrittivo |
@@ -133,7 +133,7 @@ Il sistema espone tre funzioni, ciascuna con un caso d'uso distinto. La scelta d
 
 Apre una sessione di audit per un processo che dura nel tempo. Inserisce un record con `status='START'` e restituisce l'`audit_id` da passare poi a `fn_audit_end` per chiudere la sessione.
 
-E la funzione da usare per processi batch, migrazioni, pipeline — qualsiasi operazione con una durata misurabile e un esito finale.
+E la funzione da usare per processi batch, migrazioni, pipeline — qualsiasi operazione con una durata misurabile e un esito finale. ⚠️ **Riservata a chi possiede la tabella** (migratore, job di manutenzione): l'applicazione non la può eseguire, perché la chiusura che le fa da coppia è un `UPDATE` del registro — vedi *Chi può scrivere*.
 
 Da un punto di vista tecnico:
 
@@ -196,6 +196,83 @@ Da un punto di vista tecnico:
 | `p_app_version` | TEXT | NULL | Versione applicazione |
 
 > Documentazione dettagliata: [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once)
+
+---
+
+## Chi può scrivere — la postura dei ruoli (dal 2026-09-11)
+
+> ⭐ **Un registro di audit modificabile da chi è auditato non è un registro.**
+
+Il registro racconta ciò che l'applicazione fa. Il ruolo con cui l'applicazione
+si collega al database (`zeroerp_app`) è quindi *il soggetto raccontato*, e sul
+registro può fare due cose sole: **leggere** e **aggiungere**. Non riscrivere, non
+cancellare, non svuotare. Lo stesso vale per il registro gemello degli errori,
+`dbops.error_log`.
+
+| Ruolo | `dbops.audit_log` | Perché |
+| --- | --- | --- |
+| `zeroerp_app` (l'applicazione) | `SELECT`, `INSERT` | legge il registro dall'area di amministrazione e vi aggiunge righe con `fn_audit_log_once` |
+| chi possiede la tabella (il migratore, i job di manutenzione) | tutto | è chi scrive le automazioni e chi, un giorno, farà la retention su `cleanup_at` |
+| `zeroerp_batch_*` | `SELECT` | i ruoli batch leggono; il loro perimetro sta nel provisioning |
+
+**La modalità sessione è riservata.** Chiudere una sessione (`fn_audit_end`) è un
+`UPDATE` del registro: per questo la coppia `fn_audit_begin` / `fn_audit_end` **non
+è eseguibile dall'applicazione**, e nemmeno da `PUBLIC`. Se l'applicazione non può
+chiudere una sessione non deve nemmeno poterla aprire, altrimenti lascerebbe righe
+`START` che nessuno chiude. L'applicazione scrive l'audit con la sola
+`fn_audit_log_once`, che registra l'evento intero in una volta.
+
+⚠️ **La postura non si difende con un `REVOKE` scritto una volta.** I privilegi
+dell'applicazione vengono riallineati a ogni passata `ci_apply` da un loop che li
+concede in blocco su tutte le tabelle: un `REVOKE` isolato sarebbe annullato alla
+passata successiva. La postura più stretta dei registri è **dichiarata dentro
+quel loop** (`90_end/ci_apply/20260205-41`), che concede a questi due solo
+`SELECT, INSERT` e revoca il resto. Chi aggiunge un registro append-only lo
+dichiara lì. Regola e motivazione: [linee-guida-sql](/linee-guida-sql), §11.8
+*«Una postura più stretta per `zeroerp_app` si dichiara nel loop dei grant»*.
+
+Presidio: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql` — verifica sia
+i privilegi a catalogo sia ciò che l'applicazione riesce a fare davvero.
+
+### Chi può scrivere — le funzioni: il perimetro (dal 2026-09-12)
+
+La postura dei ruoli dice **con quale ruolo** si scrive. C'è una seconda domanda,
+e viene prima: **quali funzioni** possono scrivere qui.
+
+`audit_log` è il **registro tecnico** delle automazioni e degli strumenti di
+amministrazione: lo scrivono le funzioni di `dbops` (e `maintenance`), lo legge
+l'area di amministrazione. **Non deve contenere dati di dominio** — i parametri di
+una fattura, l'esito di un'operazione su un cliente — perché quelle righe
+sarebbero leggibili da chiunque legga il registro, senza il perimetro che protegge
+la fattura o il cliente. La decisione (2026-09-11) è che il rimedio **non** è una
+regola di visibilità per riga sul log: è impedire **alla fonte** che una funzione di
+`vendite`, `anagrafiche`, `pagamenti` ci scriva.
+
+Il cancello è
+[dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/manual/vw_audit_log_scrittori_fuori_perimetro):
+elenca le funzioni che scrivono nel registro — con DML diretto o passando da
+`fn_audit_log_once` / `fn_audit_begin` / `fn_audit_end` — e stanno fuori dagli schemi
+ammessi, dichiarati nella vista stessa. **Deve restare vuota**; la presidia
+`db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` in CI. Se un giorno un altro
+schema dovesse scrivere l'audit, è un changeSet su quella vista, firmato — non una
+riga che passa in silenzio.
+
+⚠️ Corollario per chi scrive una funzione di dominio: se ha qualcosa da registrare,
+il posto è l'`error_log` per un errore, una tabella del proprio dominio per un fatto
+di dominio. `audit_log` no.
+
+### Chi ha eseguito: `executed_by`
+
+`executed_by` porta il **ruolo di database** che ha scritto la riga
+(`zeroerp_app` per ciò che passa da Django, il migratore per le automazioni, il
+ruolo del canale per le righe scritte via dblink). ⚠️ Non è l'operatore: quello
+viaggia nelle GUC `app.*` e nel `tx_id`.
+
+⛔ Fino al 2026-09-11 il default della colonna era la **stringa** `'CURRENT_USER'`
+— le virgolette fanno la differenza fra la funzione e la parola — e nessuna
+porta di scrittura la valorizzava: il registro portava la parola al posto del
+ruolo su ogni riga. Le righe storiche restano così, riconoscibili; nessun
+backfill, perché chi le scrisse non si può ricostruire.
 
 ---
 
@@ -333,8 +410,8 @@ LIMIT 10;
 
 ## Best practice
 
-* Usare `fn_audit_begin` / `fn_audit_end` per processi con durata misurabile — il calcolo automatico di `duration_ms` e utile per il monitoraggio
-* Usare `fn_audit_log_once` per operazioni atomiche o dry-run — evita la complessita della sessione
+* Usare `fn_audit_begin` / `fn_audit_end` per processi con durata misurabile — il calcolo automatico di `duration_ms` e utile per il monitoraggio. ⚠️ **Solo da chi possiede la tabella** (migratore, job di manutenzione): la chiusura è un `UPDATE` del registro e l'applicazione non la può eseguire — vedi *Chi può scrivere*
+* Usare `fn_audit_log_once` per operazioni atomiche o dry-run — evita la complessita della sessione. ⭐ **È l'unica porta dell'applicazione**
 * Popolare sempre `params` con dati strutturati (JSONB) che identifichino l'operazione — tabella, trigger, schemi coinvolti
 * Non usare l'audit log per tracciare errori di dominio — usare `dbops.error_log` e i log di dominio specifici (vedi guida errori)
 * Per processi critici, attivare il logging via dblink (`myapp.log_with_dblink='on'`) per garantire la persistenza
@@ -392,7 +469,7 @@ Questa guida copre il sistema di audit logging come componente autonomo. Per i c
 
 * [Guida Framework di Automazione DB](/guide/automazione-db) — il framework che produce la maggior parte dei record di audit
 * [Guida Messaggi di Errore](/guide/Messaggi-di-Errore-e-Generazione-Log) — il sistema di error logging (complementare)
-* [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job) — job scheduling e task tracking
+* [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — job scheduling e task tracking
 
 ---
 

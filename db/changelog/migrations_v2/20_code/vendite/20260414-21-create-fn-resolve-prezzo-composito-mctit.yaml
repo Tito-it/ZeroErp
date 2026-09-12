@@ -16,7 +16,7 @@
 #     composito stesso oppure, in mancanza, come Sigma(prezzo componente
 #     * coeff_qta) sui componenti obbligatori attivi.
 #
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 8.
 # ------------------------------------------------------------
 

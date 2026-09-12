@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# F-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sulle sette figlie scoperte di
+#   FATTURE. ⭐ Chiude il passo 7 del brief.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7 (passo 7)
+#   Slice 20260909-69..71. E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Restano tre tabelle cosi'
+#   in tutto il database (`acquisti.ddt`, `acquisti.ordini`, `shop.ricevute`).
+#   Il pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza della
+#   policy.
+#
+# ── NO FORCE, a parita' con tutta la famiglia ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `vendite.fatture` e
+#   come le cinque figlie protette prima. ⚠️ Il runtime applicativo e'
+#   `zeroerp_app`, che NON e' l'owner ed e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── ⚠️ DUE VESTI, quindi DUE cose che un utente finale puo' notare ────
+#   * un OPERATORE fuori perimetro smette di vedere log, esiti SDI, rettifiche,
+#     fondi, atti e note delle fatture di altre aziende — l'intento della slice;
+#   * un CLIENTE_PORTALE, che oggi vede quelle righe per TUTTE le fatture
+#     perche' non c'e' nessuna policy, da oggi vede solo quelle dei propri
+#     billing account. E' una restrizione, non una chiusura: se il portale non
+#     deve vedere affatto il log o lo stato SDI, quella e' una decisione di
+#     dominio e si prende togliendo la policy (vedi 20260909-70).
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   ⭐ Nessuna vista da sistemare: verificato il 2026-09-09, tutte le viste che
+#   leggono queste sette tabelle hanno gia' `security_invoker`.
+#
+#   I punti da guardare:
+#     - il cockpit fatturazione e il giornale `fatture_log` (il `critical`);
+#     - il giro SDI: `fatture_sdi` e i suoi eventi;
+#     - le note di credito e le rettifiche (`fatture_rettifiche`);
+#     - ⚠️ `fatture_atti`, che e' figlia anche di `contratti`: da oggi ENTRAMBE
+#       le strade sono filtrate, e devono dare la stessa risposta.
+#
+# ── ⛔ E IL BRIEF ANCORA NON E' FINITO ────────────────────────────────
+#   Resta il PASSO 8: il padre partizionato `vendite.note`. Finche' e' aperto,
+#   la policy su `note_fatture` che questa slice arma — come le altre sei —
+#   protegge il solo accesso diretto: da `SELECT FROM vendite.note` si leggono
+#   ancora le note di tutti. Vedi §6.4 del brief.
+#   Restano anche `attivita_fatturabili` (§6.1), i satelliti scoperti del mondo
+#   LOTTI (`fatturazione_lotti_*`) e lo `storico` (§9, fuori di proposito).
+#
+# ⭐ Collaudo: db/pgtap/rls/test-rls-fatture-residuo.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-71-enable-rls-fatture-residuo-mctit.yaml
+
+  - changeSet:
+      id: 20260909-71-enable-rls-fatture-residuo
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sulle sette figlie scoperte di
+        vendite.fatture. Da qui le quattordici policy di 20260909-70 filtrano
+        davvero. Chiude il passo 7 del brief; resta il passo 8, il padre
+        partizionato vendite.note.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 14
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('fatture_atti', 'fatture_fondi_fattura',
+                                   'fatture_log', 'fatture_rettifiche',
+                                   'fatture_sdi', 'note_fatture',
+                                   'fatture_sdi_eventi')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_atti          ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_fondi_fattura ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_log           ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_rettifiche    ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_sdi           ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_fatture          ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_sdi_eventi    ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_sdi_eventi    DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_fatture          DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_sdi           DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_rettifiche    DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_log           DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_fondi_fattura DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_atti          DISABLE ROW LEVEL SECURITY;

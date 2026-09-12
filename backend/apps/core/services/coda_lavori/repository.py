@@ -6,10 +6,14 @@
 #        `dbops.coda_lavori`. Implementa il protocollo `QueueBackend` (SQL
 #        tipizzato di claim/reaper/marca per QUESTA tabella) + enqueue (delega
 #        a `dbops.fn_accoda_lavoro`, atomico e idempotente sui job vivi) +
-#        operazioni amministrative (cancel/requeue) e di monitoraggio
-#        (count/get_stato). Le transizioni di stato seguono il design brief DB
-#        §3a. La tabella ha i trigger audit (`data_update`/`user_update`
-#        automatici) → gli UPDATE NON li settano a mano.
+#        operazioni amministrative (cancel/requeue/archiviazione) e di
+#        monitoraggio (count/get_stato). Le transizioni di stato seguono il
+#        design brief DB §3a. La tabella ha i trigger audit
+#        (`data_update`/`user_update` automatici) → gli UPDATE NON li settano a
+#        mano; dal 2026-09-04 ha anche `_a10_archiviazione_upd`, che governa
+#        `archiviato` e ne DERIVA i due timbri — stessa regola, con una ragione
+#        in più: scriverli da qui vorrebbe dire poter dire una cosa che la
+#        bandiera smentisce.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
+    conta_con_perimetro,
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
@@ -65,13 +70,33 @@ DEFAULT_EXTRA_TENTATIVI = 3
 # `stato` aggiunta il 2026-08-02: e' NUCLEO sempre ordinabile e mancava, mentre
 # la colonna e' a video da sempre. `proprietario` e' l'alias di
 # `scope->>'username'` proiettato dalla SELECT.
+#
+# `archiviato_il` aggiunta il 2026-09-04 (brief-db-archiviazione-righe-code):
+# la colonna e' a catalogo `ordinabile = t` su entrambe le code, e il seed e la
+# whitelist sono confrontati da `test_liste_configurabili_seed` — accenderla la'
+# senza metterla qui sarebbe una colonna che il frontend offre e il backend
+# rifiuta con un 400. NULLS LAST esplicito: la data e' NULL su tutte le righe
+# NON archiviate, che in DESC finirebbero in testa.
 ELENCA_SORT_SQL: dict[str, str] = {
     "id": "id",
     "job_type": "job_type",
     "stato": "stato",
     "proprietario": "proprietario {dir} NULLS LAST",
+    # ⭐ QUANDO IL LAVORO E' ENTRATO IN CODA, ed e' il default dal 2026-09-07.
+    #    ⛔ Niente NULLS LAST, e non e' una dimenticanza: `data_insert` e' NOT
+    #    NULL con default `now()`. E' l'unica colonna temporale della tabella
+    #    che un lavoro ha SEMPRE — le altre tre le scrive il worker.
+    "data_insert": "data_insert",
+    # ⚠️ Ordinare qui una colonna che il lavoro non ha ancora significa mandare
+    #    in fondo proprio lo stato che interessa: `started_at` lo scrive il
+    #    worker quando prende il lavoro, quindi un PENDING non ce l'ha e con
+    #    `NULLS LAST` finisce dopo OGNI lavoro mai avviato. Era il default fino
+    #    al 2026-09-07, e il difetto era muto — la lista non nascondeva niente,
+    #    seppelliva. Misurato quel giorno: le righe senza `started_at` in
+    #    posizione 112 e 113 su 113, cioe' in quinta pagina da 25.
     "started_at": "started_at {dir} NULLS LAST",
     "ended_at": "ended_at {dir} NULLS LAST",
+    "archiviato_il": "archiviato_il {dir} NULLS LAST",
 }
 
 
@@ -483,7 +508,7 @@ class CodaLavoriRepository:
     #        `caller_scope_key` serve SOLO a calcolare `is_mio` (resta la chiave del
     #        chiamante anche quando vede tutto). Filtri opzionali stato/job_type/
     #        intervallo `data_insert` (`data_a` bound ESCLUSIVO: il chiamante
-    #        passa già il giorno+1). Ritorna `{items, total}` via BB
+    #        passa già il giorno+1). Ritorna `{items, total, archiviate}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: le code si
     #        auto-svuotano sotto l'utente — mai «0 risultati» a offset alto).
     #
@@ -494,6 +519,19 @@ class CodaLavoriRepository:
     #        `id DESC` sempre, per un ordine stabile tra righe pari. È una
     #        lista di MONITORAGGIO, non la corsia del worker (che resta
     #        `priorita, id` nel claim).
+    #
+    #        ⭐ ARCHIVIAZIONE (2026-09-04, brief-db-archiviazione-righe-code).
+    #        Le righe archiviate sono NASCOSTE di default e
+    #        `includi_archiviate=True` le chiede. ⛔ La bandiera la legge SOLO
+    #        questa lista: claim, reaper, `mark_*` e `count_per_stato` non la
+    #        nominano, altrimenti archiviare diventerebbe un annullamento
+    #        silenzioso — cioè peggio della cancellazione che la bandiera esiste
+    #        per evitare (brief §3, il contratto del cantiere).
+    #        ⚠️ `archiviate` dice QUANTE ne restano fuori: senza quel numero
+    #        «coda pulita» e «tre righe messe via» si leggono uguali — stessa
+    #        lezione di `ritirate_count` sul giornale della fattura. È un
+    #        conteggio SUO, con lo stesso perimetro della lista meno la
+    #        bandiera: non si deriva mai dalle righe consegnate.
     def elenca(
         self,
         *,
@@ -503,28 +541,36 @@ class CodaLavoriRepository:
         job_type: str | None = None,
         data_da: Any = None,
         data_a: Any = None,
+        includi_archiviate: bool = False,
         limit: int = 50,
         offset: int = 0,
         sort_by: str = "started_at",
         sort_dir: str = "DESC",
     ) -> dict[str, Any]:
-        conditions: list[str] = []
-        where_params: list[Any] = []
+        # `base_*` = il perimetro della lista SENZA la bandiera: è il frammento
+        # condiviso fra le righe e il conteggio delle archiviate, che devono
+        # avere lo stesso perimetro (scritto due volte, divergerebbe).
+        base_conditions: list[str] = []
+        base_params: list[Any] = []
         if owner_scope_key is not None:
-            conditions.append("scope->>'scope_key' = %s")
-            where_params.append(str(owner_scope_key))
+            base_conditions.append("scope->>'scope_key' = %s")
+            base_params.append(str(owner_scope_key))
         if stati:
-            conditions.append("stato = ANY(%s)")
-            where_params.append(list(stati))
+            base_conditions.append("stato = ANY(%s)")
+            base_params.append(list(stati))
         if job_type is not None:
-            conditions.append("job_type = %s")
-            where_params.append(str(job_type))
+            base_conditions.append("job_type = %s")
+            base_params.append(str(job_type))
         if data_da is not None:
-            conditions.append("data_insert >= %s")
-            where_params.append(data_da)
+            base_conditions.append("data_insert >= %s")
+            base_params.append(data_da)
         if data_a is not None:
-            conditions.append("data_insert < %s")
-            where_params.append(data_a)
+            base_conditions.append("data_insert < %s")
+            base_params.append(data_a)
+        conditions = list(base_conditions)
+        where_params = list(base_params)
+        if not includi_archiviate:
+            conditions.append("NOT archiviato")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
@@ -541,7 +587,8 @@ class CodaLavoriRepository:
         data_sql = f"""
             SELECT id, job_type, stato, priorita, tentativi, max_tentativi,
                    ultimo_errore, run_after, claimed_at, started_at, ended_at,
-                   job_run_id, result,
+                   job_run_id, result, data_insert,
+                   archiviato, archiviato_il, archiviato_da,
                    scope->>'username' AS proprietario,
                    scope->>'scope_key' AS scope_key,
                    (scope->>'scope_key' = %s) AS is_mio,
@@ -560,6 +607,12 @@ class CodaLavoriRepository:
             fallback_params=list(where_params),
             offset=safe_offset,
         )
+        # Le nascoste, con lo STESSO perimetro della lista meno la bandiera.
+        # Zero quando sono incluse: lì non c'è niente di nascosto da dichiarare
+        # (stessa semantica di `ritirate_count` sul giornale della fattura).
+        archiviate = 0 if includi_archiviate else conta_con_perimetro(
+            "FROM dbops.coda_lavori", [*base_conditions, "archiviato"], base_params,
+        )
         items = [
             {
                 "id": int(r["id"]),
@@ -570,18 +623,58 @@ class CodaLavoriRepository:
                 "max_tentativi": int(r["max_tentativi"]),
                 "ultimo_errore": jsonb_out(r["ultimo_errore"]),
                 "run_after": iso_or_none(r["run_after"]),
+                # ⭐ QUANDO E' STATO IMMESSO A SISTEMA, ed e' un fatto diverso da
+                #    `started_at`: il primo lo scrive chi accoda, il secondo il
+                #    worker che prende. Su un lavoro in attesa c'e' solo questo.
+                #    ⚠️ NOT NULL a tabella, quindi `iso_or_none` non torna mai
+                #    None — si usa lo stesso helper delle altre per non avere due
+                #    formati di data nello stesso payload.
+                "data_insert": iso_or_none(r["data_insert"]),
                 "claimed_at": iso_or_none(r["claimed_at"]),
                 "started_at": iso_or_none(r["started_at"]),
                 "ended_at": iso_or_none(r["ended_at"]),
                 "job_run_id": None if r["job_run_id"] is None else int(r["job_run_id"]),
                 "result": jsonb_out(r["result"]),
+                "archiviato": bool(r["archiviato"]),
+                "archiviato_il": iso_or_none(r["archiviato_il"]),
+                "archiviato_da": r["archiviato_da"],
                 "proprietario": r["proprietario"],
                 "scope_key": r["scope_key"],
                 "is_mio": bool(r["is_mio"]),
             }
             for r in rows
         ]
-        return {"items": items, "total": int(total)}
+        return {"items": items, "total": int(total), "archiviate": archiviate}
+
+    # Scopo: alza o abbassa la bandiera `archiviato` di una riga di coda —
+    #        l'ARCHIVIAZIONE, che toglie la riga dall'ELENCO senza toccarne lo
+    #        stato (brief-db-archiviazione-righe-code). Ritorna True se la riga
+    #        esiste (0 righe = inesistente → 404 no-leak nel service).
+    #
+    #        ⛔ Qui NON si ricontrolla che la riga sia terminale, e non è una
+    #        dimenticanza: il criterio vive in UNA sede sola, il trigger
+    #        `trg_coda_lavori_a10_archiviazione_upd`, che su una riga viva
+    #        solleva `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (409). Una copia in
+    #        Python sarebbe un secondo elenco di stati destinato a sfilarsi dal
+    #        primo — e il `CHECK` chk_coda_lavori_archiviato_non_vivo resta
+    #        comunque sotto.
+    #        ⛔ `archiviato_il` e `archiviato_da` NON si scrivono: le deriva il
+    #        trigger dalla GUC `app.jwt_user`. Scriverle da qui vorrebbe dire
+    #        poter dire una cosa che la bandiera smentisce.
+    #        ⚠️ L'UPDATE non è condizionato al valore corrente: il verbo dichiara
+    #        uno STATO desiderato, quindi archiviare ciò che è già archiviato è
+    #        un successo che non fa niente — non un 409 da spiegare.
+    def imposta_archiviato(self, item_id: int, *, archiviato: bool) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE dbops.coda_lavori
+                   SET archiviato = %s
+                 WHERE id = %s
+                """,
+                [bool(archiviato), int(item_id)],
+            )
+            return cursor.rowcount > 0
 
     # Scopo: Dettaglio COMPLETO di un job per il drawer della UI code (BE-8):
     #        oltre ai campi del polling, payload, origine, priorita, timeline

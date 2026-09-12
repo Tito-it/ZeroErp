@@ -27,6 +27,7 @@
 - [fn_check_commessa_chiudibile](funzioni/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_famiglia_documento_disattivabile](funzioni/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](funzioni/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
@@ -52,11 +53,14 @@
 - [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_check_utility_istanza_coerenza](funzioni/fn_check_utility_istanza_coerenza.md)
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
+- [fn_crea_utente_tecnico](funzioni/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
 - [fn_current_identita_context](funzioni/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
+- [fn_get_auth_user_id_for_risorsa_umana](funzioni/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
+- [fn_get_auth_user_stato](funzioni/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
 - [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
 - [fn_get_billing_account_by_istanza](funzioni/fn_get_billing_account_by_istanza.md)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
@@ -98,8 +102,10 @@
 - [fn_get_user_emittenti_scope](funzioni/fn_get_user_emittenti_scope.md)
 - [fn_get_user_object_permissions_map](funzioni/fn_get_user_object_permissions_map.md)
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
-- [fn_get_user_profile](funzioni/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + risorse_umane_auth_user + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
+- [fn_get_user_profile](funzioni/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + identita_digitali + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md) — (rev 2026-08-21)
+- [fn_gruppi_di_commessa_nel_lotto](funzioni/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
+- [fn_gruppi_trascinati_da_uscita](funzioni/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_soggetto_pf_pura](funzioni/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
@@ -118,6 +124,7 @@
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
+- [fn_raise_primo_motivo_se_presente](funzioni/fn_raise_primo_motivo_se_presente.md)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
@@ -126,18 +133,50 @@
 - [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
+- [fn_riattiva_utente_tecnico](funzioni/fn_riattiva_utente_tecnico.md)
 - [fn_ricalcola_prezzo_padre_da_componenti](funzioni/fn_ricalcola_prezzo_padre_da_componenti.md)
 - [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
 - [fn_scope_ba_ownership_via_fattura](funzioni/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
+- [fn_scope_ba_ownership_via_fattura_sdi](funzioni/fn_scope_ba_ownership_via_fattura_sdi.md)
 - [fn_scope_cliente_ownership](funzioni/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
+- [fn_scope_cliente_ownership_via_ordine](funzioni/fn_scope_cliente_ownership_via_ordine.md)
+- [fn_scope_cliente_ownership_via_ordine_riga](funzioni/fn_scope_cliente_ownership_via_ordine_riga.md)
 - [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
+- [fn_scope_ef_whitelist_via_attivita_fatturabile](funzioni/fn_scope_ef_whitelist_via_attivita_fatturabile.md)
 - [fn_scope_ef_whitelist_via_commessa](funzioni/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)
+- [fn_scope_ef_whitelist_via_commessa_attivita](funzioni/fn_scope_ef_whitelist_via_commessa_attivita.md)
 - [fn_scope_ef_whitelist_via_contabile](funzioni/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22)
+- [fn_scope_ef_whitelist_via_contratto](funzioni/fn_scope_ef_whitelist_via_contratto.md)
+- [fn_scope_ef_whitelist_via_contratto_riga](funzioni/fn_scope_ef_whitelist_via_contratto_riga.md)
+- [fn_scope_ef_whitelist_via_ddt](funzioni/fn_scope_ef_whitelist_via_ddt.md)
+- [fn_scope_ef_whitelist_via_ddt_riga](funzioni/fn_scope_ef_whitelist_via_ddt_riga.md)
+- [fn_scope_ef_whitelist_via_documento_generato](funzioni/fn_scope_ef_whitelist_via_documento_generato.md)
 - [fn_scope_ef_whitelist_via_efba](funzioni/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
 - [fn_scope_ef_whitelist_via_ente_incasso](funzioni/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
 - [fn_scope_ef_whitelist_via_fattura](funzioni/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_fattura_sdi](funzioni/fn_scope_ef_whitelist_via_fattura_sdi.md)
+- [fn_scope_ef_whitelist_via_flusso](funzioni/fn_scope_ef_whitelist_via_flusso.md)
+- [fn_scope_ef_whitelist_via_listino](funzioni/fn_scope_ef_whitelist_via_listino.md) — (latest review 05-09-2026)
+- [fn_scope_ef_whitelist_via_listino_versione](funzioni/fn_scope_ef_whitelist_via_listino_versione.md)
+- [fn_scope_ef_whitelist_via_lotto](funzioni/fn_scope_ef_whitelist_via_lotto.md)
+- [fn_scope_ef_whitelist_via_offerta](funzioni/fn_scope_ef_whitelist_via_offerta.md)
+- [fn_scope_ef_whitelist_via_offerta_eccezione](funzioni/fn_scope_ef_whitelist_via_offerta_eccezione.md)
+- [fn_scope_ef_whitelist_via_ordine](funzioni/fn_scope_ef_whitelist_via_ordine.md)
+- [fn_scope_ef_whitelist_via_ordine_riga](funzioni/fn_scope_ef_whitelist_via_ordine_riga.md)
+- [fn_scope_ef_whitelist_via_pratica](funzioni/fn_scope_ef_whitelist_via_pratica.md)
+- [fn_scope_ef_whitelist_via_preventivo](funzioni/fn_scope_ef_whitelist_via_preventivo.md)
+- [fn_scope_ef_whitelist_via_preventivo_riga](funzioni/fn_scope_ef_whitelist_via_preventivo_riga.md)
+- [fn_scope_ef_whitelist_via_reso](funzioni/fn_scope_ef_whitelist_via_reso.md)
+- [fn_scope_ef_whitelist_via_reso_riga](funzioni/fn_scope_ef_whitelist_via_reso_riga.md)
 - [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
+- [fn_scope_identita_processo](funzioni/fn_scope_identita_processo.md) — (latest review 05-09-2026)
+- [fn_scope_note_cliente](funzioni/fn_scope_note_cliente.md)
+- [fn_scope_note_ef_whitelist](funzioni/fn_scope_note_ef_whitelist.md)
+- [fn_scope_note_shop](funzioni/fn_scope_note_shop.md)
+- [fn_scope_shop_via_ba](funzioni/fn_scope_shop_via_ba.md)
+- [fn_scope_shop_via_ordine](funzioni/fn_scope_shop_via_ordine.md)
+- [fn_scope_shop_via_ordine_riga](funzioni/fn_scope_shop_via_ordine_riga.md)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
@@ -159,7 +198,7 @@
 - [trgfn_componenti_ricalcola_padre](funzioni/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
-- [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-08-22 — la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open; aggiunte le modalità `ente_incasso` e `contabile`. Prima: rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
+- [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
 - [trgfn_guard_sorgente_polimorfa_tipizzata](funzioni/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
@@ -180,7 +219,8 @@
 - [vw_giornale_entita](views/vw_giornale_entita.md)
 - [vw_indirizzo_completo](views/vw_indirizzo_completo.md) — * **Denormalizzazione per letture rapide**: aggregare in un’unica view i dati di stradario, comune, provincia, codice postale e via, semplificando le query di selezione degli indirizzi. * **Pulizia e consistenza**: fornire campi già formattati e pronti per essere utilizzati nelle normalizzazioni e nelle funzionalità GIS. * **Riutilizzabilità**: rendere disponibile un’unica sorgente per join di indirizzi completi, evitando duplicazione di codice SQL.
 - [vw_ita_province_regioni](views/vw_ita_province_regioni.md) — La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tra province italiane, eventuali province accisa associate, regioni e stato di appartenenza, includendo i codici ISTAT e altre informazioni estratte dal campo JSON `extra_country`.
-- [vw_pratica_doc_sorgente](views/vw_pratica_doc_sorgente.md) — (latest review 2026-07-02) `script.vw_pratica_doc_sorgente` risolve, **per ogni pratica**, *quale documento* rappresenta lo stato vivo della pratica, e ne proietta il descrittore normalizzato (brief-db-proiezione-stato-dominio roll-out, deliverable D3b). Restituisce **una riga per `pratica_id`**: il documento **più vivo** tra tutti i link della pratica (ROOT + COLLEGATO) in `pratiche.pratiche_sorgenti`, con il descrittore letto da `script.vw_stato_sorgente`.
+- [vw_lotto_documento_righe](views/vw_lotto_documento_righe.md) — (latest review 2026-09-08)
+- [vw_pratica_doc_sorgente](views/vw_pratica_doc_sorgente.md) — (latest review 2026-09-07) `script.vw_pratica_doc_sorgente` risolve, **per ogni pratica**, *quale documento* rappresenta lo stato vivo della pratica, e ne proietta il descrittore normalizzato (brief-db-proiezione-stato-dominio roll-out, deliverable D3b). Restituisce **una riga per `pratica_id`**: il documento **più vivo** tra tutti i link della pratica (ROOT + COLLEGATO) in `pratiche.pratiche_sorgenti`, con il descrittore letto da `script.vw_stato_sorgente`.
 - [vw_stati_estesi](views/vw_stati_estesi.md) — La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
 - [vw_stato_sorgente](views/vw_stato_sorgente.md) — (latest review 01-07-2026) `script.vw_stato_sorgente` è la **union dei resolver di dominio** della proiezione stato (brief-db-proiezione-stato-dominio, deliverable D3): è l'**unica superficie di dispatch** — niente `resolver_key`, niente CASE statico. Un tipo sorgente senza ramo semplicemente **non ha righe** = non risolto: il wrapper `pratiche.fn_stato_sorgente` degrada a `UNKNOWN` e il milestone resta manuale come oggi.
 - [vw_stradario_esteso](views/vw_stradario_esteso.md) — * **Aggregazione logica**: unire in un’unica sorgente i dati di via, toponomastica e stato, evitando join ripetuti nei client e nelle applicazioni. * **Pulizia dati**: fornire alias chiari (`id_via`, `id_toponomastica`, `tipo_toponimo`, `sigla_stato`, `nome_strada`) per facilitare l’interpretazione dei risultati. * **Performance**: ridurre il carico di join runtime raggruppando più tabelle in un’unica view materializzata (se necessario).

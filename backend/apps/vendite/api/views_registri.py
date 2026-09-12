@@ -144,6 +144,14 @@ class ApiRegistriList(DomainAPIView):
             "suffisso": serializers.CharField(required=False, allow_null=True),
             "lunghezza_numero": serializers.IntegerField(required=False),
             "politica_data_documento": serializers.CharField(required=False),
+            "reset_policy": serializers.CharField(
+                required=False,
+                help_text=(
+                    "ANNUALE (il progressivo riparte a ogni anno) o NESSUNA "
+                    "(un contatore solo, che non riparte mai). Omesso: ANNUALE, "
+                    "dal default della colonna. Solo in creazione."
+                ),
+            ),
             "limite_emissione_giorni": serializers.IntegerField(
                 required=False, allow_null=True,
                 help_text="Solo famiglia FATTURA: il CHECK lo rifiuta altrove.",
@@ -240,9 +248,14 @@ class ApiRegistroDetail(DomainAPIView):
     #    registro che ha già consegnato un numero, e il client sa in anticipo
     #    quali righe sono bloccate da `forma_blocco_reason`.
     # ⛔ `serie_default`, `reset_policy`, `famiglia_documento`, `utility_id` e
-    #    l'emittente NON sono modificabili: le prime due non hanno un guard che
-    #    le presidi, le altre tre sposterebbero il registro di slot — che è una
-    #    creazione, non una modifica.
+    #    l'emittente NON sono modificabili, e le ragioni sono TRE, non una: le
+    #    prime due non hanno un guard che le presidi; `reset_policy` in più è un
+    #    asse della chiave del contatore, quindi cambiarla su un registro che ha
+    #    già numerato fa ripartire il progressivo da 1 su un secchio nuovo; le
+    #    altre tre sposterebbero il registro di slot — che è una creazione, non
+    #    una modifica.
+    # ⭐ `reset_policy` si SCEGLIE in creazione dal 2026-09-08: sta nel corpo
+    #    della POST, non qui. Vedi `_CAMPI_CREATE` in `registri_repository.py`.
     def patch(self, request: Request, registro_id: int) -> JsonResponse:
         result = RegistriService().update_registro(
             registro_id,

@@ -1,0 +1,284 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# O-2 — Le quindici policy sui cinque satelliti di ORDINI. INERTI: la RLS si
+#   accende in 20260909-35.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-33..35.
+#
+# ── ⭐ QUINDICI E NON CINQUE: tre vesti per tabella ───────────────────
+#   La testata `vendite.ordini` ha TRE policy — operatore, cliente del portale,
+#   cliente dello shop — e ogni satellite le rispecchia tutte. La ragione sta
+#   per esteso in 20260909-33: dare ai satelliti la sola veste operatore non
+#   sarebbe «piu' sicuro», sarebbe una modifica funzionale mascherata da
+#   cantiere di sicurezza. Oggi il portale le righe le vede (nessuna policy);
+#   con la sola veste operatore non ne vedrebbe piu' nessuna, nemmeno dei propri
+#   ordini.
+#
+# ── Le cinque tabelle, e da quale chiave risalgono ────────────────────
+#     vendite.ordini_righe              ordine_id       -> testata
+#     vendite.ordini_indirizzi          ordine_id       -> testata
+#     vendite.note_ordini               target_id       -> testata
+#     vendite.ordini_righe_componenti   riga_ordine_id  -> riga
+#     vendite.ordini_righe_fulfillment  ordine_riga_id  -> riga
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#
+# ── ⚠️ `ordini_righe_fulfillment` STA IN DUE FAMIGLIE ─────────────────
+#   Ha due FK `NOT NULL`: verso la riga d'ordine e verso la riga di DDT. Non e'
+#   ambigua — appartiene al mondo dell'ORDINE, che e' cio' che quella riga
+#   evade — e il perimetro si risolve di li'. La stessa riga sara' raggiungibile
+#   anche dal DDT quando arrivera' quella famiglia: le due strade devono dare la
+#   stessa risposta, e se potessero dissentire sarebbe un guard mancante fra
+#   ordine e DDT, non un problema di policy.
+#
+# ── ⛔ `FOR ALL` sull'operatore, `FOR SELECT` sulle due vesti cliente ──
+#   E' la forma della testata, tradotta: l'operatore scrive, i clienti leggono.
+#   Il `WITH CHECK` sulla prima non e' decorativo — e' cio' che impedisce di
+#   appendere una riga a un ordine di un'altra azienda, e senza di lui la policy
+#   difenderebbe solo la lettura.
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione.
+# Il collaudo funzionale e' in db/pgtap/rls/test-rls-ordini-satelliti.sql, che
+# gira dopo l'armamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-34-create-policy-ordini-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-34-create-policy-ordini-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Quindici policy sui cinque satelliti di vendite.ordini: per ogni tabella
+        le tre vesti della testata (operatore FOR ALL, cliente del portale e
+        cliente shop FOR SELECT). INERTI: l'armamento e' 20260909-35.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 6
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_ordine',
+                                   'fn_scope_ef_whitelist_via_ordine_riga',
+                                   'fn_scope_cliente_ownership_via_ordine',
+                                   'fn_scope_cliente_ownership_via_ordine_riga',
+                                   'fn_scope_shop_via_ordine',
+                                   'fn_scope_shop_via_ordine_riga')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.ordini_righe (chiave: ordine_id) ----------
+              CREATE POLICY rls_ordini_righe_ef_whitelist
+                  ON vendite.ordini_righe
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ordine_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ordine_id)
+                  );
+
+              CREATE POLICY rls_ordini_righe_cliente_ownership
+                  ON vendite.ordini_righe
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_cliente_ownership_via_ordine(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              ordine_id)
+                  );
+
+              CREATE POLICY rls_ordini_righe_shop
+                  ON vendite.ordini_righe
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_shop_via_ordine(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              ordine_id)
+                  );
+
+              -- ---------- vendite.ordini_indirizzi (chiave: ordine_id) ----------
+              CREATE POLICY rls_ordini_indirizzi_ef_whitelist
+                  ON vendite.ordini_indirizzi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ordine_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ordine_id)
+                  );
+
+              CREATE POLICY rls_ordini_indirizzi_cliente_ownership
+                  ON vendite.ordini_indirizzi
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_cliente_ownership_via_ordine(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              ordine_id)
+                  );
+
+              CREATE POLICY rls_ordini_indirizzi_shop
+                  ON vendite.ordini_indirizzi
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_shop_via_ordine(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              ordine_id)
+                  );
+
+              -- ---------- vendite.note_ordini (chiave: target_id) ----------
+              CREATE POLICY rls_note_ordini_ef_whitelist
+                  ON vendite.note_ordini
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  );
+
+              CREATE POLICY rls_note_ordini_cliente_ownership
+                  ON vendite.note_ordini
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_cliente_ownership_via_ordine(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              target_id)
+                  );
+
+              CREATE POLICY rls_note_ordini_shop
+                  ON vendite.note_ordini
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_shop_via_ordine(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              target_id)
+                  );
+
+              -- ---------- vendite.ordini_righe_componenti (chiave: riga_ordine_id) ----------
+              CREATE POLICY rls_ordini_righe_componenti_ef_whitelist
+                  ON vendite.ordini_righe_componenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_ordine_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_ordine_id)
+                  );
+
+              CREATE POLICY rls_ordini_righe_componenti_cliente_ownership
+                  ON vendite.ordini_righe_componenti
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_cliente_ownership_via_ordine_riga(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              riga_ordine_id)
+                  );
+
+              CREATE POLICY rls_ordini_righe_componenti_shop
+                  ON vendite.ordini_righe_componenti
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_shop_via_ordine_riga(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              riga_ordine_id)
+                  );
+
+              -- ---------- vendite.ordini_righe_fulfillment (chiave: ordine_riga_id) ----------
+              CREATE POLICY rls_ordini_righe_fulfillment_ef_whitelist
+                  ON vendite.ordini_righe_fulfillment
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ordine_riga_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ordine_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ordine_riga_id)
+                  );
+
+              CREATE POLICY rls_ordini_righe_fulfillment_cliente_ownership
+                  ON vendite.ordini_righe_fulfillment
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_cliente_ownership_via_ordine_riga(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              ordine_riga_id)
+                  );
+
+              CREATE POLICY rls_ordini_righe_fulfillment_shop
+                  ON vendite.ordini_righe_fulfillment
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_shop_via_ordine_riga(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              ordine_riga_id)
+                  );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_righe_fulfillment_shop ON vendite.ordini_righe_fulfillment;
+              DROP POLICY IF EXISTS rls_ordini_righe_fulfillment_cliente_ownership ON vendite.ordini_righe_fulfillment;
+              DROP POLICY IF EXISTS rls_ordini_righe_fulfillment_ef_whitelist ON vendite.ordini_righe_fulfillment;
+              DROP POLICY IF EXISTS rls_ordini_righe_componenti_shop ON vendite.ordini_righe_componenti;
+              DROP POLICY IF EXISTS rls_ordini_righe_componenti_cliente_ownership ON vendite.ordini_righe_componenti;
+              DROP POLICY IF EXISTS rls_ordini_righe_componenti_ef_whitelist ON vendite.ordini_righe_componenti;
+              DROP POLICY IF EXISTS rls_note_ordini_shop ON vendite.note_ordini;
+              DROP POLICY IF EXISTS rls_note_ordini_cliente_ownership ON vendite.note_ordini;
+              DROP POLICY IF EXISTS rls_note_ordini_ef_whitelist ON vendite.note_ordini;
+              DROP POLICY IF EXISTS rls_ordini_indirizzi_shop ON vendite.ordini_indirizzi;
+              DROP POLICY IF EXISTS rls_ordini_indirizzi_cliente_ownership ON vendite.ordini_indirizzi;
+              DROP POLICY IF EXISTS rls_ordini_indirizzi_ef_whitelist ON vendite.ordini_indirizzi;
+              DROP POLICY IF EXISTS rls_ordini_righe_shop ON vendite.ordini_righe;
+              DROP POLICY IF EXISTS rls_ordini_righe_cliente_ownership ON vendite.ordini_righe;
+              DROP POLICY IF EXISTS rls_ordini_righe_ef_whitelist ON vendite.ordini_righe;

@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_notify_cambio_reparto LEGGE DALLA MADRE (strato 2, D1).
+#   Analisi: analisi-software-per-dati-morti.md §6.2
+# Corpo dalla doc auto-gen (= pg_get_functiondef vivo, verificato il 12-09).
+# Due sole modifiche: il %TYPE di v_auth_user_id ancorato a
+# identita_digitali.auth_user_id (era una fotografia della vista) e il lookup
+# via script.fn_get_auth_user_id_for_risorsa_umana (20_code/-17). Il resto e'
+# identico: chi confronta con la revisione precedente deve vedere solo questo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260912-20-update-fn-notify-cambio-reparto-dalla-madre-mctit.yaml
+
+  - changeSet:
+      id: 20260912-20-update-fn-notify-cambio-reparto-dalla-madre
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_notify_cambio_reparto: %TYPE su identita_digitali e lookup
+        dell'auth_user via script.fn_get_auth_user_id_for_risorsa_umana, al posto della
+        vista risorse_umane_auth_user in ritiro. Comportamento invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_notify_cambio_reparto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_notify_cambio_reparto(
+                  p_risorsa_umana_id anagrafiche.risorse_umane.id%TYPE,
+                  p_old_uo_id        anagrafiche.risorse_umane.unita_organizzativa_id%TYPE,
+                  p_new_uo_id        anagrafiche.risorse_umane.unita_organizzativa_id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_payload      text;
+              BEGIN
+              -- ------------------------------------------------------------
+              -- Funzione: anagrafiche.fn_notify_cambio_reparto
+              --
+              -- Scopo:
+              --   Emette una notifica PostgreSQL sul canale 'cambio_reparto'
+              --   con un payload JSON contenente i dettagli del cambio
+              --   di unita' organizzativa. Pensata per essere intercettata
+              --   da un listener backend (LISTEN/NOTIFY) che invalida
+              --   la cache permessi dell'utente spostato.
+              --
+              -- Parametri:
+              --   p_risorsa_umana_id -> ID della risorsa umana (NOT NULL, > 0)
+              --   p_old_uo_id        -> vecchio unita_organizzativa_id (nullable)
+              --   p_new_uo_id        -> nuovo unita_organizzativa_id (nullable)
+              --
+              -- Ritorna: void
+              -- ------------------------------------------------------------
+
+                  ----------------------------------------------------------------
+                  -- 1) Guard: parametro non nullo e valido
+                  ----------------------------------------------------------------
+                  IF p_risorsa_umana_id IS NULL OR p_risorsa_umana_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.fn_notify_cambio_reparto',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'parametro', 'p_risorsa_umana_id',
+                              'valore', p_risorsa_umana_id
+                          ),
+                          NULL::uuid,
+                          'p_risorsa_umana_id deve essere NOT NULL e > 0'
+                      );
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 2) Lookup auth_user_id (potrebbe non esistere): dalla madre
+                  --    identita_digitali, via l'helper condiviso (12-09-2026: la
+                  --    vista risorse_umane_auth_user e' stata ritirata).
+                  ----------------------------------------------------------------
+                  v_auth_user_id := script.fn_get_auth_user_id_for_risorsa_umana(p_risorsa_umana_id);
+
+                  ----------------------------------------------------------------
+                  -- 3) Costruzione payload e NOTIFY
+                  ----------------------------------------------------------------
+                  v_payload := jsonb_build_object(
+                      'risorsa_umana_id', p_risorsa_umana_id,
+                      'old_uo_id',        p_old_uo_id,
+                      'new_uo_id',        p_new_uo_id,
+                      'auth_user_id',     v_auth_user_id
+                  )::text;
+
+                  PERFORM pg_notify('cambio_reparto', v_payload);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_notify_cambio_reparto(
+                  anagrafiche.risorse_umane.id%TYPE,
+                  anagrafiche.risorse_umane.unita_organizzativa_id%TYPE,
+                  anagrafiche.risorse_umane.unita_organizzativa_id%TYPE) IS
+              'Emette NOTIFY cambio_reparto con payload JSON (risorsa_umana_id, old_uo_id, new_uo_id, auth_user_id). Usata dal trigger z90 su risorse_umane per invalidazione cache permessi via LISTEN/NOTIFY. L''auth_user si risolve da identita_digitali con script.fn_get_auth_user_id_for_risorsa_umana (dal 12-09-2026: la vista risorse_umane_auth_user e'' stata ritirata).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' nella doc auto-gen alla revisione prima di
+              -- questa. Non si riscrive un corpo stantio.
+              SELECT 1;

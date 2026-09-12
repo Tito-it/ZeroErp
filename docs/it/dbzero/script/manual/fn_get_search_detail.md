@@ -154,8 +154,8 @@ Il filtro scope emittente si applica solo nel ramo CL. Per FO e ELSE il parametr
 > **Logica a 3 livelli (fix 2026-04-10)**: il filtro scope emittente e' delegato a [`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti) che opera con precedenza:
 >
 > 1. **Mapping specifico**: il BA del cliente ha una riga in `emittenti_fiscali_billing_account` collegata a uno degli emittenti autorizzati → il cliente e' visibile.
-> 2. **Fallback default**: un emittente autorizzato ha `is_default = true` (gestore globale) **E** il BA del cliente non ha alcun mapping specifico su nessun emittente → il cliente e' visibile (il gestore globale "copre" i BA non ancora mappati).
-> 3. Se ne' il mapping specifico ne' il fallback default matchano, il cliente e' escluso.
+> 2. **Riserva** per un BA senza mapping (dal 2026-09-13, D13): in sessione e' l'emittente dell'operatore che sta agendo, senza sessione e' l'emittente `is_default = true` (gestore globale) — e il cliente e' visibile se quell'emittente e' fra gli autorizzati. La regola vive nel lettore `script.fn_get_ba_emittente_sr_id`, che il check interroga.
+> 3. Se ne' il mapping specifico ne' la riserva cadono fra gli autorizzati, il cliente e' escluso.
 >
 > Allineamento a `clienti_repository.list_clienti` lato Python. Stessa funzione usata anche da `fn_search_soggetti_universale`.
 

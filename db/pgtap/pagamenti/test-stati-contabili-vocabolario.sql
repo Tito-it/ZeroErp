@@ -4,7 +4,7 @@
 -- Test: il vocabolario dei due cataloghi di stato contabili
 --
 -- Presidia i passi S1-1, S1-2 e S1-21 del lotto 2 del cantiere incassi
---   (docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.1).
+--   (brief-db-posting-e-abbinamento-rata.md §2.1).
 --
 -- Elenco test (plan 6):
 -- 1) STORNATA è RITIRATA con obsoleto_dal, e resta ATTIVA

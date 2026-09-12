@@ -58,16 +58,29 @@ WITH righe AS (
 punti AS (
     -- una riga che nomina un codice E_* ed e' preceduta (entro 6 righe) da una
     -- chiamata a fn_log_and_raise_error: e' un argomento, non una menzione.
+    --
+    -- ⭐ OPPURE la riga DICHIARA UN MOTIVO (linee-guida-sql §12.5.1), dal
+    --   2026-09-08. Nel pattern «la madre CHIAMA la check» il letterale E_*
+    --   sta DENTRO la fn_check_*, dove nessuna chiamata gli sta vicino: erano
+    --   35 codici su 50 codici-motivo, invisibili a questa lente esattamente
+    --   come lo erano a dbops.vw_codici_errore_forme_condizione.
+    --   ⚠️ Questa lente ha un sensore SUO, copiato da quella vista: allargare
+    --   solo la vista l'avrebbe lasciata cieca. Sono due copie dello stesso
+    --   fatto, ed e' il motivo per cui vanno toccate insieme.
+    --   ⚠️ Il marcatore e' per FORMA e non per nome di funzione: un motivo
+    --   dichiarato fuori da una fn_check_* entra lo stesso — un perimetro
+    --   scritto a elenco invecchia da solo.
     SELECT r.sch, r.fn, r.oid, r.n,
            (regexp_match(r.riga, '''(E_[A-Z0-9_]+)'''))[1] AS codice
       FROM righe r
      WHERE r.riga ~ '''E_[A-Z0-9_]+'''
        AND r.riga !~ '^\s*--'
-       AND EXISTS (
-             SELECT 1 FROM righe p2
-              WHERE p2.oid = r.oid
-                AND p2.n BETWEEN r.n - 6 AND r.n
-                AND p2.riga ~* 'fn_log_and_raise_error')
+       AND (EXISTS (
+                 SELECT 1 FROM righe p2
+                  WHERE p2.oid = r.oid
+                    AND p2.n BETWEEN r.n - 6 AND r.n
+                    AND p2.riga ~* 'fn_log_and_raise_error')
+            OR r.riga ~ '''codice''\s*,\s*''E_[A-Z0-9_]+''')
 ),
 con_guardia AS (
     -- la guardia e' la piu' vicina fra le righe precedenti che apre un ramo

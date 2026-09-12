@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# OF-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui cinque satelliti di
+#   OFFERTE_COMMERCIALI. ⭐ Chiude la SESTA e ultima famiglia di documento del
+#   brief.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7 (passo 6)
+#   Slice 20260909-47..49. E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Restano tre tabelle cosi'
+#   in tutto il database (`acquisti.ddt`, `acquisti.ordini`, `shop.ricevute`).
+#   Il pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza della
+#   policy.
+#
+# ── NO FORCE, a parita' con tutta la famiglia ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come la testata e come i
+#   satelliti gia' armati: l'owner (`titodb`) resta esente. ⚠️ Il runtime
+#   applicativo e' `zeroerp_app`, che NON e' l'owner ed e' `NOBYPASSRLS`:
+#   pienamente soggetto.
+#
+# ── ⛔ E QUI IL BRIEF NON E' FINITO, ed e' la cosa da non fraintendere ──
+#   Con questa slice le SEI famiglie di documento hanno i satelliti protetti.
+#   NON significa che il perimetro sia chiuso:
+#     * il PADRE partizionato `vendite.note` e' ancora aperto, e da li' si
+#       leggono TUTTE le note di TUTTI gli emittenti, comprese quelle appena
+#       protette qui (passo 8 del brief, §6.4);
+#     * la famiglia `fatture` ha sei figlie dirette scoperte — `fatture_atti`,
+#       `fatture_fondi_fattura`, `fatture_log`, `fatture_rettifiche`,
+#       `fatture_sdi`, `note_fatture` (passo 7, §2 correzione);
+#     * `attivita_fatturabili` resta il debito dichiarato del §6.1;
+#     * lo `storico` resta fuori di proposito (§9).
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   ⭐ Nessuna vista legge questi cinque satelliti (verificato 2026-09-09), come
+#   per `contratti`: una divergenza si vedrebbe solo dalle query dirette del BE.
+#     - il drawer offerta: eccezioni, utilities, indirizzi, note;
+#     - ⚠️ il push offerta -> contratto (`fn_push_offerta_a_contratto`), che
+#       legge le eccezioni dell'offerta e scrive testata e righe del contratto.
+#       E' il punto in cui DUE famiglie appena armate si toccano.
+#
+#   ⭐ Nessun cambiamento per portale o shop: la testata non ha vesti cliente.
+#
+# ⭐ Collaudo: db/pgtap/rls/test-rls-offerte-satelliti.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-49-enable-rls-offerte-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-49-enable-rls-offerte-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui cinque satelliti di
+        vendite.offerte_commerciali. Da qui le policy di 20260909-48 filtrano
+        davvero. Chiude la sesta e ultima famiglia di documento del brief;
+        restano il padre partizionato vendite.note (passo 8) e il resto della
+        famiglia fatture (passo 7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 5
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('offerte_commerciali_eccezioni',
+                                   'offerte_commerciali_indirizzi',
+                                   'offerte_commerciali_utilities',
+                                   'note_offerte_commerciali',
+                                   'offerte_commerciali_eccezioni_componenti')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni            ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali_indirizzi            ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali_utilities            ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_offerte_commerciali                 ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_offerte_commerciali                 DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali_utilities            DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali_indirizzi            DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni            DISABLE ROW LEVEL SECURITY;

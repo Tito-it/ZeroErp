@@ -19,26 +19,26 @@ AS $function$
 --   la tabella figlia viene toccata, quindi il guard sulle figlie
 --   non scatta. Chiama la stessa fn_check.
 DECLARE
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi jsonb;
-    v_primo  jsonb;
 BEGIN
     v_motivi := anagrafiche.fn_check_titolo_iva_ambito(NEW.id);
 
-    IF jsonb_array_length(v_motivi) = 0 THEN
-        RETURN NULL;
-    END IF;
-
-    v_primo := v_motivi -> 0;
-
-    PERFORM script.fn_log_and_raise_error(
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⚠️ `NEW.tx_id`: trigger `_z90_` **AFTER**, i BEFORE sono gia' passati.
+    -- ⚠️ Anche qui l'ordine di fusione si inverte e `campo` vince: nessuna
+    --   check del database mette `campo` dentro `dettaglio` (misurato
+    --   2026-09-08), quindi e' una regola che si unifica senza cambiare nulla.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
         'anagrafiche', 'trgfn_soggetti_titoli_iva_guard_ambito',
-        v_primo ->> 'codice',
-        jsonb_build_object('campo', 'valido_al')
-            || COALESCE(v_primo -> 'dettaglio', '{}'::jsonb),
-        NEW.tx_id,
-        VARIADIC ARRAY(SELECT jsonb_array_elements_text(
-                           COALESCE(v_primo -> 'valori', '[]'::jsonb))));
+        v_motivi,
+        'valido_al',
+        NEW.tx_id);
 
+    -- ⭐ Ora raggiungibile: l'helper tace se non c'e' nessun motivo.
     RETURN NULL;
 END;
 $function$

@@ -96,6 +96,19 @@ CREATE TEMP TABLE misura AS SELECT * FROM dbops.fn_check_funzioni_riferimenti_mo
 SELECT classe, count(*) AS righe, count(DISTINCT schema_nome||'.'||funzione) AS funzioni
   FROM misura GROUP BY classe ORDER BY 1;
 
+-- 1-bis) 🔴 LE FUNZIONI CHE NON SI SONO POTUTE CONTROLLARE.
+--    Da leggere PRIMA della (2): se qui c'e' qualcosa, plpgsql_check ha
+--    sollevato invece di rispondere, e di quelle funzioni non si sa niente —
+--    quindi la (2) e' incompleta e non lo dice.
+-- ⛔ Non sono difetti. Il 2026-09-10 questa classe non esisteva e quelle righe
+--    finivano in REALE: 779 su 780 funzioni, con un registro del debito di due
+--    voci. Se il conto qui e' grosso, il sospetto e' la VERSIONE di
+--    plpgsql_check contro quella di PostgreSQL, non il codice del progetto.
+--    Brief: brief-db-un-destinatario-per-i-presidi §9.3.
+SELECT schema_nome, funzione, argomenti, esito
+  FROM misura WHERE classe = 'NON_MISURATO'
+ ORDER BY schema_nome, funzione;
+
 -- 2) SOLO i difetti veri, che sono la lista di lavoro.
 SELECT schema_nome, funzione, argomenti, esito
   FROM misura WHERE classe IN ('REALE', 'ORFANA')

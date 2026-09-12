@@ -74,8 +74,25 @@ Il piano si basa su **3 building block trasversali** che le fasi successive cons
 **Fase sviluppo (attuale)**: backend console — le email vengono loggate nel
 terminale Django e nel `config.email_log` senza invio SMTP reale.
 Il `EmailDispatchService` rileva `settings.DEBUG = True` e account con
-`smtp_host` vuoto → stampa in console + stato `SENT` nel log.
+`smtp_host` vuoto → stampa in console + stato **`SIMULATA`** nel log.
 Zero dipendenze esterne, zero configurazione.
+
+> 🔴 **CORREZIONE 2026-09-11 — questa riga diceva `SENT`, ed era il difetto.**
+> Uno stato che afferma una consegna su una mail **stampata e mai spedita** è il
+> modo in cui un'assenza si traveste da esito: su un host di esercizio col
+> placeholder del seed, il giornale diceva «inviata» e la posta non arrivava.
+> ⇒ Oggi i canali sono **tre**, e le due situazioni che prima cadevano entrambe
+> in «console» sono separate:
+>
+> | Quando | Stato scritto |
+> | --- | --- |
+> | `DEBUG = True` — si stampa **di proposito** | **`SIMULATA`** (terminale, voluto) |
+> | placeholder/host vuoto **fuori** da `DEBUG` — configurazione che **manca** | **`FAILED`** col motivo e dove si rimedia |
+> | host reale | l'esito vero |
+>
+> ⛔ `inviato_at` resta **NULL** su `SIMULATA`: è l'unica colonna che data una
+> *consegna*. Storia e decisione del nome:
+> [brief-db-stato-email-console-non-e-inviata.md](brief-db-stato-email-console-non-e-inviata.md).
 
 **Fase test reali (successiva)**: configurare un account SMTP reale.
 Esempio con Gmail personale:
@@ -281,7 +298,9 @@ config.email_log
 ├── destinatario            VARCHAR(255) NOT NULL
 ├── oggetto                 TEXT NOT NULL
 ├── stato                   VARCHAR(20) NOT NULL DEFAULT 'PENDING'
-│                           ('PENDING', 'SENT', 'FAILED', 'RETRY')
+│                           ('PENDING','SENT','FAILED','RETRY','SIMULATA')
+│                           ⚠️ SIMULATA dall'11-09-2026 (vedi sopra); il
+│                           vocabolario vero è `chk_email_log_stato`
 ├── errore                  TEXT NULL
 ├── tentativi               INTEGER NOT NULL DEFAULT 0
 ├── max_tentativi           INTEGER NOT NULL DEFAULT 3

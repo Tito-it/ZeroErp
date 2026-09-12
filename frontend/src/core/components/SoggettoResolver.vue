@@ -13,6 +13,9 @@ import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import SoggettoMessageBanner from './SoggettoMessageBanner.vue'
 import Button from 'primevue/button'
+import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+
+
 
 const { t } = useI18n()
 
@@ -20,6 +23,11 @@ const props = defineProps({
   visible: Boolean,
   tipoRuoloCodice: { type: String, default: '' }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'soggetto-selezionato', 'soggetto-creato', 'annullato'])
 
@@ -169,6 +177,7 @@ async function onSoggettoCreatoDaDrawer(data) {
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @update:visible="val => emit('update:visible', val)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -178,7 +187,7 @@ async function onSoggettoCreatoDaDrawer(data) {
       />
     </template>
 
-    <div class="app-drawer-content">
+    <div v-if="contentReady" class="app-drawer-content">
       <div class="form-field mb-3">
         <label>{{ t('resolver.search_label') }}</label>
         <span class="p-input-icon-right resolver-search">
@@ -215,7 +224,7 @@ async function onSoggettoCreatoDaDrawer(data) {
               <span v-if="option.partita_iva" class="ml-2">P.IVA: {{ option.partita_iva }}</span>
             </div>
             <div v-if="option._ruoloDuplicato" class="resolver-warning">
-              <i class="pi pi-exclamation-triangle" />
+              <i :class="MANAGE_ICONS.ERRORE" />
               {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
             </div>
             <div v-else-if="option._naturaBloccata" class="resolver-warning">

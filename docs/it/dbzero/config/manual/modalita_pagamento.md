@@ -4,7 +4,7 @@
 >
 Approfondimenti tabelle:
 >
-[config.condizioni_pagamento](/dbzero/config/tabelle/condizioni_pagamento)
+[config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)
 > [vendite.fatture](/dbzero/vendite/tabelle/fatture)
 > [vendite.ddt](/dbzero/vendite/tabelle/ddt)
 >

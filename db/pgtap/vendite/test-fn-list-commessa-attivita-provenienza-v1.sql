@@ -29,7 +29,7 @@
 --  18) i sei nomi nuovi sono ammessi in ORDER BY
 --  19) un nome fuori whitelist resta fail-loud (P0001)
 --  20) vw_dash_competenza_mensile espone tipo_movimento
---  21) vw_dash_competenza_mensile ha ancora security_invoker=on
+--  (security_invoker: presidiato da rls/test-rls-viste-security-invoker.sql)
 --  22) vw_dash_competenza_mensile: nessuna riga mescola due tipo_movimento
 --  23) filtro p_tipo_movimento NULL: nessun filtro, la riga c'e'
 --  24) filtro sul movimento presente: la riga c'e'
@@ -58,7 +58,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(28);
+SELECT plan(27);
 
 -- ============================================================
 -- 1..3  Gli oggetti: c'e' la nuova, non c'e' piu' la vecchia
@@ -360,14 +360,18 @@ $$, 'P0001', NULL,
 SELECT has_column('vendite', 'vw_dash_competenza_mensile', 'tipo_movimento',
                   '20. vw_dash_competenza_mensile espone tipo_movimento');
 
--- ⚠️ La reloption non e' visibile in pg_get_viewdef: un REPLACE che la omette
---   la azzera in SILENZIO, e lo scope emittente smette di valere.
-SELECT ok(
-  (SELECT c.reloptions @> ARRAY['security_invoker=on']
-     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'vendite' AND c.relname = 'vw_dash_competenza_mensile'),
-  '21. vw_dash_competenza_mensile ha ancora security_invoker=on'
-);
+-- ⛔ QUI `security_invoker` NON SI PRESIDIA PIU' (rev 2026-09-07), e non e' una
+--   rinuncia: lo fa gia' db/pgtap/rls/test-rls-viste-security-invoker.sql, su
+--   TUTTE le viste che toccano dati in RLS — anche attraverso altre viste — e
+--   leggendo la PROPRIETA' invece della parola. Nessun elenco di nomi.
+--   ⚠️ Il doppione locale non aggiungeva copertura, e ne ha tolta: era scritto
+--   come confronto di GRAFIA (`security_invoker=on`) ed e' diventato ROSSO su
+--   una vista perfettamente sana, riscritta con `= true` — che significa la
+--   stessa identica cosa. Due falsi allarmi il 2026-09-07, e una bisezione fra
+--   due cantieri per scoprire che non era rotto niente.
+--   ⭐ Una seconda sede diverge sempre; questa e' divergiata verso il FALSO
+--   ALLARME, che e' il verso che fa spegnere i presidi.
+
 
 -- ⭐ La GRANA, non la sola presenza della colonna: la mensile deve avere
 --   esattamente una riga per ogni combinazione di DIMENSIONI del dettaglio.

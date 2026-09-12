@@ -1,0 +1,371 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-un-destinatario-per-i-presidi §13 — IL PRESIDIO DEI PRESIDI ERA
+# CIECO, E LO DICEVA COME SE FOSSE UN DATO.
+#
+# ── 🔴 IL DIFETTO, e non e' in questa funzione: e' nel COMPORSI di tre cose ──
+#   1. `dbops.fn_conta_presidio` e' SECURITY DEFINER con
+#      `search_path = pg_catalog, pg_temp` — la blindatura CORRETTA per una
+#      DEFINER: nessuno schema scrivibile da altri nel percorso dei nomi;
+#   2. questa funzione era SECURITY INVOKER SENZA un `search_path` suo, quindi
+#      DENTRO la DEFINER ereditava quello: `pg_catalog, pg_temp`;
+#   3. `plpgsql_check` vive in `public`, e la chiamata era NUDA.
+#
+#   ⇒ Dentro `fn_conta_presidio` il nome non si risolveva (42883). L'
+#   `EXCEPTION WHEN OTHERS` della scansione lo catturava, scriveva
+#   `error:CHECK-KO:` + SQLERRM, e il ramo introdotto dal 20260910-36 lo
+#   classificava `NON_MISURATO` — su OGNI funzione plpgsql del database.
+#
+# ── ⚠️ COSA SI VEDEVA, misurato il 2026-09-12 su dbdev ──────────────
+#   | chi chiede                       | risposta |
+#   | lettura diretta della vista      |        0 |
+#   | dbops.fn_conta_presidio(...)     |      784 |
+#   Due numeri opposti sulla stessa macchina, nello stesso minuto, dallo stesso
+#   proprietario. Il digest dei presidi legge dalla FUNZIONE, quindi ogni lunedi'
+#   riferiva 784 «riferimenti morti» che erano 784 «non ho potuto guardare».
+#   ⭐ Sweep su tutte le 37 righe di `dbops.presidi`: divergeva SOLO quella.
+#   ⚠️ I numeri sono fatti datati, non il motivo. Il motivo sta sul modello:
+#   *una funzione che dipende dal `search_path` di chi la chiama non ha UN
+#   comportamento, ne ha uno per chiamante.*
+#
+# ── ⛔ E QUALIFICARE LA CHIAMATA NON BASTA: SERVONO DUE LIVELLI ─────
+#   La prima stesura di questo changeSet qualificava soltanto
+#   `public.plpgsql_check_function`. Provata, portava i 784 a **4** — non a
+#   zero — e quei quattro erano funzioni SANE:
+#
+#     config.trgfn_stradario_generale_normalize  -> unaccent(text) non esiste
+#     dbops.fn_audit_end                         -> dblink_exec non esiste
+#     dbops.fn_get_or_create_session_tx_id       -> dblink non esiste
+#     script.fn_get_stradario                    -> il tipo geometry non esiste
+#
+#   ⭐ Cioe': il `search_path` non governa solo la MIA chiamata, governa anche la
+#   risoluzione dei riferimenti DENTRO LE FUNZIONI CHE SI COMPILANO — e quelle
+#   nominano `unaccent`, `dblink`, `geometry` senza schema, come e' normale e
+#   come funziona in esercizio. Senza `public` nel path, quattro funzioni sane
+#   escono `REALE`: quattro fantasmi al posto di 784.
+#   ⇒ Il `search_path` va PINNATO sulla funzione, e deve contenere `public`.
+#   ⚠️ E non e' una scelta arbitraria: `public` e' nel path reale
+#   dell'applicazione (`zeroerp_app`: `django, public, config, dbops, script,
+#   anagrafiche`). *Una misura di riferimenti morti e' fedele solo se compila
+#   nel contesto in cui quelle funzioni girano davvero.*
+#
+# ── ⭐ PERCHE' IL PIN STA NEL `CREATE OR REPLACE` E NON IN UN `ALTER` ──
+#   Un `ALTER FUNCTION ... SET search_path` avrebbe fatto lo stesso effetto con
+#   una riga. ⛔ Scartato per due ragioni: nei changeSet del progetto non c'e'
+#   NESSUN precedente di quella forma, e soprattutto un `CREATE OR REPLACE`
+#   successivo che si dimentica la clausola `SET` AZZERA il pin in silenzio
+#   (provato su una funzione usa-e-getta in pg_temp). E' la stessa trappola di
+#   `security_invoker` che si azzera su `CREATE OR REPLACE VIEW`, una forma che
+#   questo progetto ha gia' pagato.
+#   ⇒ Il pin sta nella DEFINIZIONE, dove la doc auto-gen lo riporta a chi
+#   copiera' da lei; e la qualificazione `public.` resta nel corpo come secondo
+#   strato, perche' dice a chi legge PERCHE' il pin c'e'.
+#   ⚠️ Il modo di fallire che resta — qualcuno rifa' la funzione perdendo il pin
+#   — non e' coperto da nessun cancello statico: lo prende il test 7 del pgTAP,
+#   che conta ATTRAVERSO `fn_conta_presidio`.
+#
+# ── ⛔ COSA QUESTO CHANGESET NON FA ─────────────────────────────────
+#   * non tocca le due viste, il catalogo `dbops.presidi`, il registro delle
+#     esenzioni, il backend (il contratto di `fn_conta_presidio` e' invariato);
+#   * non chiude la causa dei SEGFAULT (brief §10.4): erano due cose diverse che
+#     il numero 779 teneva insieme, e quella resta aperta;
+#   * non tocca `guardrail_riferimenti_morti.sql` ne' la lente
+#     `check_funzioni_riferimenti_morti.sql`: girano da una sessione normale,
+#     dove `public` e' nel path, quindi non hanno mai visto il difetto — ed e'
+#     anche la ragione per cui la CI era verde e lo sarebbe rimasta.
+#
+# ⚠️ Corpo preso dalla doc auto-gen (l'oggetto VIVO), non da un YAML
+#   precedente: di questa funzione esistono piu' revisioni e solo l'ultima
+#   conta. Le modifiche sono TRE e solo tre: la clausola `SET search_path`, i
+#   due siti di chiamata qualificati, e i commenti che dicono perche'. Le
+#   quattro regole FP con la loro storia v1..v4 e il ramo NON_MISURATO del -36
+#   sono invariati.
+# ⚠️ Firma invariata (`RETURNS TABLE` identico) ⇒ `CREATE OR REPLACE` basta,
+#   nessun DROP.
+#
+# ✅ PROVATO IN ESECUZIONE, e questa volta si puo': l'SQL ESTRATTO da questo
+#   changeSet e' stato eseguito intero su dbdev con ON_ERROR_STOP=1 dentro una
+#   transazione ANNULLATA. Dopo l'apply-di-prova `fn_conta_presidio` sulla vista
+#   rispondeva **0** e la classificazione era 16 FP_RAMO_ALTRA_TABELLA,
+#   5 FP_TRANSITION_TABLE, 1 ORFANA (coperta dal registro), 1 FP_SQL_DINAMICO —
+#   zero NON_MISURATO e zero REALE, identica dai due percorsi.
+#   ⚠️ La scansione gira in ~4s e non ha fatto cadere il cluster: la causa dei
+#   quattro segfault del 2026-09-10 resta pero' aperta e NON e' questa.
+#
+# 🔵 Il presidio che lo tiene: test 7 di
+#   db/pgtap/dbops/test-riferimenti-morti-v1.sql, che conta ATTRAVERSO
+#   `dbops.fn_conta_presidio`. Il test 1-bis misurava la scansione DIRETTA —
+#   cioe' il percorso sano — ed e' per questo che era verde su un difetto vivo.
+#   *Un presidio che misura il percorso sano non presidia quello in servizio.*
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260912-37-update-fn-check-riferimenti-morti-search-path-mctit.yaml
+
+  - changeSet:
+      id: 20260912-37-update-fn-check-riferimenti-morti-search-path
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.fn_check_funzioni_riferimenti_morti pinna il proprio search_path
+        (pg_catalog, public, pg_temp) e qualifica public.plpgsql_check_function.
+        Senza public nel path la scansione non risolve ne l estensione che usa ne
+        i riferimenti a unaccent, dblink e geometry dentro le funzioni che
+        compila: girando dentro dbops.fn_conta_presidio (SECURITY DEFINER con
+        search_path stretto) ogni funzione usciva NON_MISURATO e il digest
+        riferiva 784 riferimenti morti mentre la lettura diretta della stessa
+        vista rispondeva 0. Brief 13.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname = 'fn_check_funzioni_riferimenti_morti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
+               RETURNS TABLE(classe text, schema_nome text, funzione text, argomenti text, esito text)
+               LANGUAGE plpgsql
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                r          record;
+                rel        record;
+                m          text;
+                v_relazioni int;
+                v_tipi     text[];
+                v_chiamata text;
+                v_e_variadic boolean;
+              BEGIN
+                CREATE TEMP TABLE IF NOT EXISTS tmp_raw(
+                  nsp text, pro text, args text, relid oid, msg text
+                ) ON COMMIT DROP;
+                DELETE FROM tmp_raw;
+
+                FOR r IN
+                  SELECT p.oid                                     AS oid,
+                         n.nspname::text                           AS nsp,
+                         p.proname::text                           AS pro,
+                         pg_get_function_identity_arguments(p.oid) AS args,
+                         (p.prorettype = 'trigger'::regtype)       AS is_trg
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                    JOIN pg_language  l ON l.oid = p.prolang
+                   WHERE l.lanname = 'plpgsql'
+                     AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND n.nspname NOT LIKE 'pg\_%'
+                     -- fuori tutto cio' che appartiene a un'estensione: non e' codice
+                     -- che manteniamo noi (PostGIS, topology, pgagent).
+                     AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                                      WHERE d.objid = p.oid AND d.deptype = 'e')
+                   ORDER BY n.nspname, p.proname
+                LOOP
+                  IF r.is_trg THEN
+                    -- Trigger function: si valida contro OGNI tabella su cui e'
+                    -- agganciata. Zero tabelle = orfana, e non e' validabile.
+                    v_relazioni := 0;
+                    FOR rel IN
+                      SELECT DISTINCT tg.tgrelid
+                        FROM pg_trigger tg
+                       WHERE tg.tgfoid = r.oid AND NOT tg.tgisinternal
+                    LOOP
+                      v_relazioni := v_relazioni + 1;
+                      BEGIN
+                        -- ⛔ `public.` NON e' decorazione: togliendolo il presidio MENTE.
+                        --   Questa funzione gira anche DENTRO `dbops.fn_conta_presidio`, che
+                        --   e' SECURITY DEFINER con `search_path = pg_catalog, pg_temp`. Li'
+                        --   un nome non qualificato non si risolve — 42883, l'estensione sta
+                        --   in `public` — l'EXCEPTION qui sotto lo scrive come
+                        --   `error:CHECK-KO:` e OGNI funzione del database esce
+                        --   NON_MISURATO. Misurato il 2026-09-12: il digest riferiva 784
+                        --   «riferimenti morti» che erano 784 «non ho potuto guardare», e la
+                        --   lettura diretta della stessa vista rispondeva 0.
+                        --   Brief: brief-db-un-destinatario-per-i-presidi §13.2.
+                        FOR m IN SELECT c FROM public.plpgsql_check_function(
+                                   r.oid::regprocedure, relid => rel.tgrelid::regclass,
+                                   fatal_errors => false) AS c
+                        LOOP
+                          IF m LIKE 'error:%' THEN
+                            INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid, m);
+                          END IF;
+                        END LOOP;
+                      EXCEPTION WHEN OTHERS THEN
+                        INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid,
+                                                    'error:CHECK-KO:' || SQLERRM);
+                      END;
+                    END LOOP;
+
+                    IF v_relazioni = 0 THEN
+                      classe := 'ORFANA'; schema_nome := r.nsp; funzione := r.pro;
+                      argomenti := r.args;
+                      esito := 'trigger function senza alcun trigger agganciato: non validabile, e gia'' di per se'' un residuo';
+                      RETURN NEXT;
+                    END IF;
+
+                  ELSE
+                    BEGIN
+                      -- ⛔ Qualificato come il gemello qui sopra e per la stessa ragione: i
+                      --   due rami sono la stessa chiamata su due forme di funzione, quindi
+                      --   sanarne uno solo lascerebbe cieca meta' della scansione.
+                      FOR m IN SELECT c FROM public.plpgsql_check_function(
+                                 r.oid::regprocedure, fatal_errors => false) AS c
+                      LOOP
+                        IF m LIKE 'error:%' THEN
+                          INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL, m);
+                        END IF;
+                      END LOOP;
+                    EXCEPTION WHEN OTHERS THEN
+                      INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL,
+                                                  'error:CHECK-KO:' || SQLERRM);
+                    END;
+                  END IF;
+                END LOOP;
+
+                -- ── Classificazione ──────────────────────────────────────────────
+                FOR r IN
+                  SELECT t.nsp, t.pro, t.args, t.msg,
+                         count(*)                                   AS visto_su,
+                         (SELECT count(DISTINCT tg.tgrelid)
+                            FROM pg_trigger tg
+                            JOIN pg_proc p2 ON p2.oid = tg.tgfoid
+                            JOIN pg_namespace n2 ON n2.oid = p2.pronamespace
+                           WHERE n2.nspname = t.nsp AND p2.proname = t.pro
+                             AND NOT tg.tgisinternal)                AS tabelle_totali
+                    FROM tmp_raw t
+                   GROUP BY t.nsp, t.pro, t.args, t.msg
+                   ORDER BY t.nsp, t.pro, t.msg
+                LOOP
+                  schema_nome := r.nsp; funzione := r.pro; argomenti := r.args; esito := r.msg;
+
+                  -- (1) Errore visto solo su ALCUNE delle tabelle del trigger: e' il
+                  --     ramo dedicato a un'altra tabella, non un difetto.
+                  IF r.tabelle_totali > 1 AND r.visto_su < r.tabelle_totali THEN
+                    classe := 'FP_RAMO_ALTRA_TABELLA';
+
+                  -- (1-bis) «relazione X non esiste» dove X e' una TRANSITION TABLE
+                  --     dichiarata nel CREATE TRIGGER (`REFERENCING NEW TABLE AS ...`).
+                  --     Esiste solo durante lo scatto del trigger, plpgsql_check non la
+                  --     vede. Il nome non si indovina: si legge da pg_trigger, che lo
+                  --     conserva in tgnewtable/tgoldtable.
+                  ELSIF r.msg ~ '^error:42P01:' AND EXISTS (
+                          SELECT 1
+                            FROM pg_trigger tg
+                            JOIN pg_proc p3      ON p3.oid = tg.tgfoid
+                            JOIN pg_namespace n3 ON n3.oid = p3.pronamespace
+                           WHERE n3.nspname = r.nsp AND p3.proname = r.pro
+                             AND NOT tg.tgisinternal
+                             AND substring(r.msg from '"([^"]+)"')
+                                 IN (tg.tgnewtable::text, tg.tgoldtable::text))
+                  THEN
+                    classe := 'FP_TRANSITION_TABLE';
+
+                  -- (1-ter) Errore di SINTASSI dentro un EXECUTE: e' SQL costruito a
+                  --     runtime, con dentro segnaposto che non sono SQL valido finche'
+                  --     non vengono sostituiti. plpgsql_check prova a interpretarlo
+                  --     comunque.
+                  ELSIF r.msg ~ '^error:42601:' AND r.msg LIKE '%:EXECUTE:%' THEN
+                    classe := 'FP_SQL_DINAMICO';
+
+                  -- (2) «funzione non esiste» (SQLSTATE 42883): falso positivo SOLO se
+                  --     tutti i tipi passati sono testo-compatibili — allora e' la
+                  --     variadic che plpgsql_check non sa risolvere. Se c'e' un tipo
+                  --     non testuale, il cast non esiste e la chiamata fallisce davvero.
+                  --
+                  -- 🔴 v4 (2026-08-05) — LA PREMESSA DI v1 ERA FALSA. Solo
+                  --     `VARIADIC "any"` (quello di `format()`) ammette ZERO argomenti
+                  --     variadici; un `VARIADIC <tipo>[]` no. Verificato in SQL e in
+                  --     plpgsql: la chiamata a 5 argomenti NON si risolve davvero.
+                  --     Le due strette precedenti (v2 sui TIPI, v3 su provariadic <> 0)
+                  --     hanno ridotto il danno senza mai toccare l'assunto che lo
+                  --     causava. Segnalato dal team BE il 2026-08-05.
+                  --     ⚠️ Da noi nessuna funzione e' `VARIADIC "any"`: la classe resta
+                  --     strutturalmente vuota, ed e' il risultato giusto.
+                  --
+                  -- ⚠️ v3 (2026-08-04) — la regola era TROPPO LARGA e ha scusato un
+                  --     difetto vero. La chiamata
+                  --       dbops.fn_audit_log_once('…','SKIP_EXISTS','STORICO', jsonb, '…')
+                  --     ha il 3o e 4o argomento INVERTITI rispetto alla firma
+                  --     (p_params jsonb, p_message text). Ma `jsonb` e' nella lista dei
+                  --     testo-compatibili, quindi uno scambio fra un text e un jsonb
+                  --     produce esattamente la stessa firma di un variadico omesso, e
+                  --     usciva etichettato FP_VARIADIC.
+                  --     Rimedio: l'esenzione vale solo se la funzione chiamata **ha
+                  --     davvero** un parametro VARIADIC. Se non ce l'ha, il variadico
+                  --     non c'entra e l'errore e' reale.
+                  --     Delle 17 righe FP_VARIADIC del primo giro, questa era l'unica a
+                  --     non chiamare fn_log_and_raise_error / fn_log_error_only — ed era
+                  --     l'unica sbagliata.
+                  ELSIF r.msg ~ '^error:42883:' AND r.msg LIKE '%(%)%' THEN
+                    v_tipi := string_to_array(
+                                btrim(substring(r.msg from '\(([^)]*)\)')), ', ');
+                    -- Nome della funzione chiamata, come compare nel messaggio:
+                    -- «la funzione <schema>.<nome>(tipi) non esiste».
+                    v_chiamata := substring(r.msg from '([A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*)\s*\(');
+                    v_e_variadic := EXISTS (
+                      SELECT 1
+                        FROM pg_proc p4
+                        JOIN pg_namespace n4 ON n4.oid = p4.pronamespace
+                       WHERE n4.nspname || '.' || p4.proname = v_chiamata
+                         AND p4.provariadic = '"any"'::regtype   -- virgolette: `any` e' riservata
+                    );
+                    IF v_e_variadic AND NOT EXISTS (
+                         SELECT 1 FROM unnest(v_tipi) AS x(t)
+                          WHERE btrim(x.t) NOT IN ('unknown','text','name','jsonb','uuid',
+                                                   'character varying','"unknown"'))
+                    THEN
+                      classe := 'FP_VARIADIC';
+                    ELSE
+                      classe := 'REALE';
+                    END IF;
+
+                  -- (5) 🔴 LO STRUMENTO NON HA MISURATO, e non e' un difetto del codice.
+                  --     `error:CHECK-KO:` lo scrive il gestore EXCEPTION qui sopra quando
+                  --     `plpgsql_check_function` SOLLEVA invece di rispondere. Fino al
+                  --     2026-09-10 quella forma non aveva un ramo e cadeva nell'ELSE, cioe'
+                  --     usciva come REALE: una funzione che non si e' potuta controllare
+                  --     veniva riferita come «riferimento morto».
+                  --
+                  -- ⛔ NON e' un caso di bordo: il 2026-09-10 su dbdev plpgsql_check ha
+                  --     fallito su quasi ogni funzione e la vista di lavoro ha esposto 779
+                  --     righe su 780 funzioni plpgsql, mentre il registro del debito ne ha
+                  --     DUE e lo stesso controllo passava in CI. Un presidio che, quando il
+                  --     suo strumento si rompe, riferisce 779 difetti invece di dire «non ho
+                  --     misurato» e' peggio di un presidio assente: manda a cercare 779 cose
+                  --     che non ci sono, e nasconde l'unica che c'e'.
+                  --
+                  -- ⭐ La regola era gia' scritta, e in casa: `guardrail_riferimenti_morti.sql`
+                  --     tratta cosi' l'estensione ASSENTE — «NON si passa in silenzio: un
+                  --     guardrail che non misura e non lo dice e' peggio di uno assente».
+                  --     Qui l'estensione c'e' e si rompe: stesso principio, e fino a oggi due
+                  --     esiti opposti.
+                  --
+                  -- ⚠️ E NON si nasconde: chi consuma questa classe deve trattarla come un
+                  --     ROSSO, non come un'assenza di difetti. La vista di lavoro la include
+                  --     e il guardrail solleva con un messaggio suo.
+                  ELSIF r.msg LIKE 'error:CHECK-KO:%' THEN
+                    classe := 'NON_MISURATO';
+
+                  ELSE
+                    classe := 'REALE';
+                  END IF;
+
+                  RETURN NEXT;
+                END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
+              IS 'Compila con plpgsql_check ogni funzione plpgsql non-estensione e classifica i difetti (REALE, ORFANA, NON_MISURATO, FP_*). Fonte unica: la usano sia scripts/sql/check_funzioni_riferimenti_morti.sql sia il pgTAP db/pgtap/dbops/test-riferimenti-morti-v1.sql. Richiede l''estensione plpgsql_check. NON_MISURATO dal 2026-09-10: e'' la classe di chi NON SI E'' POTUTO CONTROLLARE - plpgsql_check ha sollevato invece di rispondere, e il gestore EXCEPTION ha scritto error:CHECK-KO:. Prima quella forma cadeva nell''ELSE e usciva come REALE, cioe'' una funzione non misurata veniva riferita come riferimento morto: il 2026-09-10 su dbdev sono uscite 779 righe su 780 funzioni, con un registro del debito di DUE voci e lo stesso controllo verde in CI. NON_MISURATO va trattato come un ROSSO da chi consuma, mai come assenza di difetti: e'' la stessa regola che questo presidio applica gia'' all''estensione ASSENTE. Il search_path e'' PINNATO dal 2026-09-12 (pg_catalog, public, pg_temp) e la chiamata a plpgsql_check_function e'' qualificata con public.: sono DUE strati della stessa cosa e servono entrambi. Questa funzione e'' SECURITY INVOKER e gira anche DENTRO dbops.fn_conta_presidio, che e'' SECURITY DEFINER con search_path = pg_catalog, pg_temp: senza il pin ereditava quello, plpgsql_check_function non si risolveva (42883, l''estensione sta in public) e OGNI funzione del database usciva NON_MISURATO - il digest riferiva 784 riferimenti morti mentre la lettura diretta della stessa vista rispondeva 0, e delle 37 righe di dbops.presidi divergeva solo quella. ⛔ Ma il search_path governa anche la risoluzione dei riferimenti DENTRO le funzioni che si compilano: con la sola chiamata qualificata restavano QUATTRO falsi REALE - unaccent in config.trgfn_stradario_generale_normalize, dblink in dbops.fn_audit_end e fn_get_or_create_session_tx_id, il tipo geometry in script.fn_get_stradario - cioe'' funzioni sane che nominano un''estensione senza schema, come e'' normale e come funziona in esercizio. public nel pin non e'' arbitrario: e'' nel path reale dell''applicazione, quindi la misura compila nel contesto in cui quelle funzioni girano davvero. ⚠️ Chi rifa'' questa funzione tenga il pin: un CREATE OR REPLACE che perde la clausola SET non fallisce - riporta il presidio a mentire, ed e'' la stessa trappola di security_invoker su CREATE OR REPLACE VIEW. Lo prende solo il test 7 del suo pgTAP, che conta attraverso fn_conta_presidio. Brief: brief-db-un-destinatario-per-i-presidi 13.2.';

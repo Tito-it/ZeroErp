@@ -1,6 +1,6 @@
 # Guida – Tracciamento Processi e Job
 
-> (latest review 04-03-26)
+> (latest review 06-09-2026)
 >
 > Destinatari: sviluppatori database, backend e analisti funzionali
 >
@@ -13,6 +13,7 @@
 > * [Guida Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — error logging e routing di dominio
 > * [Guida Framework di Automazione DB](/guide/automazione-db) — automazioni dichiarative e audit
 > * [Guida Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — job asincroni su richiesta; il worker che li drena si registra qui in `job_run_log`
+> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — **chi** compare nel giornale, e perché prima non ci compariva nessuno
 > * [PostgreSQL: pgAgent](/postgresql/pgAgent) — lo scheduler integrato
 
 ---
@@ -25,6 +26,8 @@ Il sistema di tracciamento e organizzato su **tre livelli**, ciascuno con un ruo
 
 * **Audit log** (`dbops.audit_log`) — traccia le operazioni generiche: automazioni, deploy, processi batch. E il livello trasversale, usato da qualsiasi componente
 * **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei **job schedulati**: pgAgent (lato DB) *e* job headless cron/command (management command Django, es. `run_fatturazione_batch`). Un record per ogni esecuzione con `origine`, esito, durata, dettaglio errori e `meta`
+    * ⭐ **Dal 06-09-2026 dice anche CHI**: quale lavoro (nome a registro) e con quale identità. Chi non lo dice finisce in [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore).
+    * ⛔ **E prima un fallimento non lasciava traccia.** La riga «è andata male» veniva scritta e poi annullata insieme all'errore: nessun job dell'orologio è mai riuscito a lasciarne una. Oggi il verbale viaggia su una linea separata e sopravvive. Il racconto: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).
 * **Task registry e task runs** (`dbops` + `vendite`) — traccia l'esecuzione dei task all'interno delle pipeline applicative, con stato, tentativi e policy di resume
 
 Questi tre livelli non si sostituiscono: si affiancano. Un job pgAgent puo produrre record sia in `job_run_log` (per il job schedulato) sia in `audit_log` (per le automazioni che esegue), e un errore grave viene catturato anche in `error_log`.
@@ -183,7 +186,7 @@ Da un punto di vista tecnico:
 | `pipeline_id` | BIGINT, FK | Riferimento a `fatturazione_pipeline` |
 | `task_code` | VARCHAR | Codice task |
 | `annullabile` | BOOLEAN | Se il task e cancellabile (default: true) |
-| `resume_mode` | VARCHAR | Strategia recovery: `RESET_STEP`, `RESUME_STEP`, `RESUME_TASK` |
+| `resume_mode` | VARCHAR | Strategia recovery: `RESET_STEP`, `RESUME_TASK` (`RESUME_STEP` ritirato il 2026-09-12: era trattato come `RESUME_TASK`; la ripresa a livello di step è dell'orchestratore) |
 | `attivo` | BOOLEAN | Policy attiva/inattiva |
 | `meta` | JSONB | Estensione |
 
@@ -226,7 +229,8 @@ Vincoli:
 
 ### 3. Job schedulati: pgAgent e job headless (cron/command)
 
-I job schedulati via pgAgent sono processi periodici gestiti dallo scheduler PostgreSQL: pulizia log, applicazione indici FK, storicizzazione, aggiornamento audit. Ogni job ha il proprio wrapper nel schema `maintenance` e registra le esecuzioni in `job_run_log`.
+I job schedulati via pgAgent sono processi periodici gestiti dallo scheduler PostgreSQL: pulizia log, applicazione indici FK, storicizzazione, aggiornamento audit.
+⚠️ **Questo elenco è oggi la sola natura ammessa dentro l'orologio**: manutenzione del sistema. Un lavoro che tocca i dati di un'azienda non viene più eseguito lì — l'orologio lo mette in coda ([perché](/guide/processi-automatici-classe-e-identita)). Ogni job ha il proprio wrapper nel schema `maintenance` e registra le esecuzioni in `job_run_log`.
 
 `job_run_log` è però **generica**: oltre a pgAgent accoglie anche i **job headless cron/command** (management command Django via systemd, es. `run_fatturazione_batch`). La colonna `origine` (`PGAGENT` / `CRON` / `COMMAND`) distingue la sorgente; la colonna `meta` (jsonb) porta un riepilogo *generico* del run. Il dettaglio di dominio resta nei rispettivi schemi (es. `vendite.*` per la fatturazione), correlato via `run_uuid`.
 

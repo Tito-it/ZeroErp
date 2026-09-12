@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il presidio legge la casa nuova dell'esito.
+#   La casa: changeSet 20260907-12. La versione precedente: 20260907-11.
+#
+# ── ⭐ E DIVENTA PIU' AMPIO DI PRIMA, senza cambiare una parola ─────
+#   La contraddizione sorvegliata e' la stessa — «un lotto chiuso COMPLETATO
+#   che contiene documenti dichiarati in ERRORE» — ma prima poteva vederla solo
+#   sui lotti con un perimetro, perche' l'esito viveva li'.
+#   ⇒ Ora la vede su TUTTI i lotti, compresi i giri di massa: e' proprio il
+#     buco che la separazione ha chiuso.
+#
+# ── ⚠️ NON GUARDA I DOCUMENTI SENZA ESITO ──────────────────────────
+#   Nella casa nuova un documento senza esito **non ha una riga**: il non-detto
+#   e' l'assenza, non un valore. Quindi la vista non ha piu' bisogno di
+#   escludere i NULL — non ci sono.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql (test 9 e 10).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260907-15-update-vw-lotti-chiusi-con-gruppi-in-errore-casa-nuova-mctit.yaml
+
+  - changeSet:
+      id: 20260907-15-update-vw-lotti-chiusi-con-gruppi-in-errore-casa-nuova
+      author: mctit
+      failOnError: true
+      comment: >
+        Il presidio vw_lotti_chiusi_con_gruppi_in_errore legge da
+        vendite.fatturazione_lotti_esiti invece che dalle colonne del perimetro.
+        Stessa contraddizione sorvegliata, ma ora la vede anche sui lotti senza
+        perimetro — cioe' sui giri di massa, che prima erano fuori portata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+            - viewExists:
+                { schemaName: vendite, viewName: vw_lotti_chiusi_con_gruppi_in_errore }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_chiusi_con_gruppi_in_errore
+                  WITH (security_invoker = true)
+              AS
+              SELECT l.id                       AS lotto_id,
+                     l.codice                   AS lotto_codice,
+                     l.stato_lotto,
+                     l.competenza_mese,
+                     l.emittente_soggetto_ruolo_id,
+                     count(*)                   AS gruppi_in_errore,
+                     min(e.errore_quando)       AS primo_errore,
+                     max(e.errore_quando)       AS ultimo_errore,
+                     -- ⭐ I codici distinti, non il primo che capita: se un
+                     --   lotto e' caduto per due motivi diversi, saperlo cambia
+                     --   dove si va a guardare.
+                     array_agg(DISTINCT e.errore_codice)
+                         FILTER (WHERE e.errore_codice IS NOT NULL) AS codici_errore
+                FROM vendite.fatturazione_lotti l
+                JOIN vendite.fatturazione_lotti_esiti e ON e.lotto_id = l.id
+               WHERE e.stato_esecuzione = 'ERRORE'
+                 -- ⚠️ La contraddizione e' con lo stato CHIUSO BENE, non con
+                 --   «non e' in errore»: un lotto ancora in esecuzione che ha
+                 --   gia' un documento fallito e' una fotografia legittima di un
+                 --   giro in corso, non un difetto.
+                 AND l.stato_lotto = 'COMPLETATO'
+               GROUP BY l.id, l.codice, l.stato_lotto, l.competenza_mese,
+                        l.emittente_soggetto_ruolo_id;
+
+              COMMENT ON VIEW vendite.vw_lotti_chiusi_con_gruppi_in_errore IS
+                  'PRESIDIO, e deve restare VUOTO. Elenca una contraddizione: un lotto '
+                  'chiuso COMPLETATO che contiene documenti dichiarati in ERRORE. Sono '
+                  'due affermazioni che non possono stare insieme — o il giro e'' andato '
+                  'bene, o quei documenti non erano suoi. ⭐ Nasce dalla decisione del '
+                  '2026-09-06 di non sollevare piu'' quando falliscono TUTTE le commesse '
+                  'di un giro: senza l''eccezione lo stato finale del lotto lo decide chi '
+                  'guarda fatture in errore e segnalazioni critiche, e con tutte le '
+                  'commesse fallite le fatture NON NASCONO — la salvezza dipende solo '
+                  'dalle segnalazioni critiche scritte da un altro pezzo, cioe'' e'' '
+                  'INDIRETTA. ⭐ Rev 2026-09-07: legge vendite.fatturazione_lotti_esiti, '
+                  'quindi vede anche i lotti SENZA perimetro (i giri di massa), che prima '
+                  'erano fuori portata perche'' l''esito viveva sulle righe del perimetro. '
+                  'Brief: brief-db-esito-gruppo-lotto §15.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON vendite.vw_lotti_chiusi_con_gruppi_in_errore
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback non ricostruisce la versione precedente: quella
+              --    leggeva colonne che il 20260907-16 toglie. Si rilancia il
+              --    20260907-11 dopo averle ripristinate.
+              DROP VIEW IF EXISTS vendite.vw_lotti_chiusi_con_gruppi_in_errore;

@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⚠️ COPIA STORICA — LA DEFINIZIONE VIVA E' `20260905-33`.
+#   Il ramo che qui da' lettura all'identita' tecnica di `send_pending_emails`
+#   e' stato RITIRATO il 2026-09-05: era sulla tabella sbagliata — quel processo
+#   legge `config.email_log` e questa non la apre mai. Il perche' sta tutto nel
+#   `-33`. ⛔ Da qui in poi questo file non si tocca: e' gia' EXECUTED, e chi
+#   deve cambiare la policy scrive il changeSet dopo.
+#
+# La policy sulle email — SCRITTA, e volutamente NON ACCESA.
+#   Decisione: brief-db-processi-automatici-identita-e-perimetro §12.15 (Tid)
+#   Debito: R-7 dello stesso brief, §12.3
+#
+# ── ✅ LA REGOLA, in una riga ───────────────────────────────────────
+#   Le email di ambito `SISTEMA` — reset password, alert — non appartengono a
+#   nessuna azienda e il loro contenuto vale quanto una credenziale: le legge
+#   **solo il super admin**, piu' **l'identita' tecnica del processo che le
+#   spedisce**. Tutte le altre seguono la regola di famiglia: l'emittente della
+#   riga dev'essere nella whitelist di chi guarda.
+#
+# ── ⚠️ IL RAMO SI SCEGLIE SU `ambito`, NON SULLA COLONNA NULLA ──────
+#   `chk_email_outbox_ambito_emittente` permette a una riga `SISTEMA` di AVERE
+#   un emittente (una mail di reset «marchiata»). Scegliendo il ramo su
+#   `emittente_fiscale_id IS NULL`, quella riga finirebbe nella whitelist
+#   dell'azienda — cioe' un operatore leggerebbe un link di reset password.
+#   ⇒ Si sceglie sull'ETICHETTA, che e' fail-closed.
+#   ⭐ E il verso opposto e' garantito dal CHECK: fuori da `SISTEMA` la colonna
+#   emittente e' NOT NULL, quindi il ramo whitelist non incontra mai un NULL.
+#
+# ── ⭐ PERCHE' LA POLICY NOMINA UN PROCESSO ─────────────────────────
+#   Nel database **portare e' leggere**: non esiste un modo di spedire una riga
+#   senza vederla. Senza questa autorizzazione la posta di sistema non
+#   partirebbe — e non lo direbbe a nessuno, perche' una coda vuota e' identica
+#   a «niente da fare».
+#   ⛔ L'altra strada e' chiusa dal database stesso: `fn_crea_utente_tecnico`
+#   rifiuta qualunque profilo non `AD_HOC` (`E_UTENTE_TECNICO_PROFILO_VIETATO`),
+#   quindi l'identita' del processo non puo' diventare super admin.
+#   ⇒ Si nomina il processo, ed e' una decisione di sicurezza dichiarata: chi
+#   spedisce un reset password lo puo' leggere.
+#   ⚠️ Si legge dal legame VIVO, non da un elenco di user id: un'identita'
+#   revocata smette di leggere lo stesso giorno.
+#   ⭐ E la domanda sta in `script.fn_scope_identita_processo` (`20260905-31`),
+#   non in un `EXISTS` copiato in `USING` e in `WITH CHECK`. Due blocchi di
+#   dieci righe possono divergere — e il giorno in cui divergono, lettura e
+#   scrittura rispondono in modo diverso alla stessa domanda senza che nessun
+#   errore lo dica. ⚠️ La funzione e' anche piu' STRETTA dell'`EXISTS` che
+#   sostituisce: guarda tutti e cinque i livelli dell'identita' (legame,
+#   processo, identita', ruolo, utente Django), non il solo legame.
+#
+# ── 🔴 E LA `ROW LEVEL SECURITY` RESTA SPENTA — non e' una dimenticanza ─
+#   Accenderla oggi **romperebbe le bozze in tutte e due le direzioni**, ed e'
+#   misurato sul codice che ci scrive:
+#     * `email_views.py:84` mette `ambito = 'SISTEMA'` **per default** quando il
+#       client non lo manda, e il frontend non lo manda ⇒ una bozza qualunque
+#       diventerebbe roba da super admin, invisibile a chi l'ha scritta;
+#     * `create_outbox` non valorizza `emittente_fiscale_id` ⇒ una bozza con un
+#       ambito vero violerebbe `chk_email_outbox_ambito_emittente`.
+#   ⛔ Il difetto vero, e vale oltre questo caso: oggi `SISTEMA` significa
+#   *«nessuno ha detto quale ambito»*, non *«email di sistema»*. **Un valore di
+#   DEFAULT non puo' fare da cancello di sicurezza.**
+#   ⇒ Prima dell'accensione, `ambito` deve diventare un'AFFERMAZIONE. E' del
+#   backend, ed e' scritto in §12.15.
+#
+# ── ⛔ E NON E' LA SCORCIATOIA CHE ERA STATA RIFIUTATA ───────────────
+#   Scrivere una policy senza accendere la RLS era stato scartato perche'
+#   lasciava la tabella aperta **con il presidio che diceva di no**: la vista
+#   chiedeva «esiste una policy?» invece di «questa tabella e' difesa?».
+#   ⭐ Dal changeSet `20260905-26` quella domanda e' cambiata: una policy conta
+#   solo se `relrowsecurity` e' vera, e il `manca` distingue i due casi.
+#   ⇒ Dopo questo changeSet il presidio NON va a zero: dira'
+#   *«la policy c'e' ma la ROW LEVEL SECURITY non e' attiva sulla tabella, e
+#   manca il write-guard»*. E' esattamente lo stato in cui siamo, detto ad alta
+#   voce.
+#
+# ── ⚠️ NIENTE WRITE-GUARD QUI, E VA DETTO PERCHE' ──────────────────
+#   Il presidio di livello 2 vuole anche `trgfn_guard_emittente_scope`. ⛔ Un
+#   guard e' un TRIGGER: morde **anche con la RLS spenta**, quindi montarlo oggi
+#   fermerebbe la creazione delle bozze subito, senza aspettare nessuno.
+#   ⇒ Guard e `ENABLE` sono lo stesso gesto, e vanno insieme dopo il backend.
+#
+# ── ✅ CHE COSA RESTA, ed e' una riga ciascuno ──────────────────────
+#     ALTER TABLE config.email_outbox ENABLE ROW LEVEL SECURITY;
+#     + il write-guard di famiglia
+#   Come si vede che e' chiuso: `dbops.vw_processi_dominio_senza_difesa` vuota.
+#
+# Dipendenze: script.fn_is_super_admin, script.fn_scope_ef_whitelist,
+#             dbops.processi_identita (tutte gia' in essere).
+# Verifica: db/pgtap/rls/test-rls-email-outbox-ambito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260905-32-create-policy-rls-email-outbox-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20260905-32-create-policy-rls-email-outbox-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Policy rls_email_outbox_ambito su config.email_outbox (FOR ALL): le righe
+        di ambito SISTEMA le legge il super admin piu' l'identita' tecnica di
+        send_pending_emails, le altre seguono la whitelist emittente
+        dell'operatore. ⛔ La ROW LEVEL SECURITY resta SPENTA: accenderla oggi
+        romperebbe le bozze, perche' l'API scrive ambito=SISTEMA per default e non
+        valorizza l'emittente. Il presidio lo dice invece di tacere.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: email_outbox
+                columnName: emittente_fiscale_id
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - sqlCheck:
+                expectedResult: 2
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_is_super_admin', 'fn_scope_ef_whitelist')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_outbox_ambito ON config.email_outbox;
+
+              CREATE POLICY rls_email_outbox_ambito ON config.email_outbox
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          -- ⚠️ Il ramo si sceglie sull'ETICHETTA, non sulla
+                          --   colonna nulla: una riga SISTEMA puo' avere un
+                          --   emittente, e sceglierlo sul NULL la darebbe in
+                          --   lettura all'azienda.
+                          -- ⭐ Due CHIAMATE, non due blocchi: USING e WITH CHECK
+                          --   devono dire la stessa cosa, e due chiamate
+                          --   identiche non possono divergere.
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  );
+
+              COMMENT ON POLICY rls_email_outbox_ambito ON config.email_outbox IS
+                  'RLS: le email di ambito SISTEMA — reset password, alert — le legge e '
+                  'le scrive solo il super admin, piu'' l''identita'' tecnica di '
+                  'send_pending_emails (nel database PORTARE E'' LEGGERE: senza, la posta '
+                  'di sistema non partirebbe, e una coda vuota e'' identica a «niente da '
+                  'fare»). Tutte le altre righe seguono la whitelist emittente '
+                  'dell''operatore, come la famiglia. Gate OPERATORE fail-closed. '
+                  '⚠️ Il ramo si sceglie su `ambito` e non su `emittente_fiscale_id IS '
+                  'NULL`: il CHECK permette a una riga SISTEMA di avere un emittente, e '
+                  'sceglierlo sulla colonna nulla la darebbe in lettura a quell''azienda. '
+                  '🔴 La ROW LEVEL SECURITY sulla tabella e'' SPENTA di proposito: oggi '
+                  'l''API scrive ambito=SISTEMA per DEFAULT quando il client non lo manda, '
+                  'quindi SISTEMA significa «nessuno ha detto» e non «email di sistema» — '
+                  'e un valore di default non puo'' fare da cancello di sicurezza. '
+                  'Accenderla prima che il backend affermi l''ambito e valorizzi '
+                  'l''emittente romperebbe le bozze in entrambe le direzioni. '
+                  'dbops.vw_processi_dominio_senza_difesa lo dichiara invece di tacere. '
+                  'Decisione: brief-db-processi-automatici-identita-e-perimetro §12.15. '
+                  'rev 2026-09-05.';
+
+              -- ⛔ NESSUN `ALTER TABLE … ENABLE ROW LEVEL SECURITY` qui, e nessun
+              --   write-guard: vedi l'intestazione. Sono lo stesso gesto e vanno
+              --   insieme, dopo che il backend ha reso `ambito` un'affermazione.
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_outbox_ambito ON config.email_outbox;

@@ -5,7 +5,10 @@
 # Scopo: Service della UI di gestione code (brief-be-fe-gestione-code-lavori-
 #        stampa, FASE BE): conteggi per il badge top bar (BE-4), liste
 #        coda lavori / coda stampa (BE-5/BE-6), azioni annulla/requeue con
-#        enforcement ownership (BE-7) e dettaglio job (BE-8). Regole portanti:
+#        enforcement ownership (BE-7), dettaglio job (BE-8) e — dal 2026-09-04
+#        (brief-db-archiviazione-righe-code) — l'ARCHIVIAZIONE delle righe di
+#        entrambe le code, che le toglie dall'ELENCO senza toccarne lo stato.
+#        Regole portanti:
 #         - scope OPERATORE = `scope_key` (coda lavori) / emittenti via JOIN
 #           fatture (coda stampa) — nessuna seconda logica di scope (I-1);
 #         - il salto a "tutti i job / job altrui" richiede SUPER_ADMIN o
@@ -19,10 +22,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, timedelta
 from typing import Any
 
+from apps.core.db.emittente_scope_helpers import fetch_emittenti_scope_ids
 from apps.core.db.maintenance_repository import MaintenanceRepository
+from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.coda_lavori.repository import (
     DEFAULT_EXTRA_TENTATIVI,
     ELENCA_SORT_SQL,
@@ -30,8 +36,15 @@ from apps.core.services.coda_lavori.repository import (
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.fan_out import run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
+from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.processi import (
+    PROCESSO_DRAINA_CODA_LAVORI,
+    PROCESSO_DRAINA_CODA_STAMPA,
+)
+from apps.core.services.service_errors import ServiceError
 
 # Azione di processo che sblocca la vista cross-utente e le azioni su job
 # altrui (D-A). Seed a carico del team DB (brief §6, area core); finché non è
@@ -40,12 +53,25 @@ AZIONE_CODE_MANAGE = "code_manage"
 
 # Jobname dei worker drainer in maintenance.job_run_log (owner: i rispettivi
 # management command). Base della liveness del badge (BE-4).
-JOBNAME_WORKER_CODA_LAVORI = "draina_coda_lavori"
-JOBNAME_WORKER_CODA_STAMPA = "draina_coda_stampa"
+# ⭐ NON sono letterali: sono le costanti dei processi. I due command si
+#    registrano sul giornale col PROPRIO codice, quindi qui `jobname` e
+#    `processo_codice` sono la stessa stringa — e scriverla due volte
+#    significherebbe che `_liveness_worker`, che cerca la tolleranza PER
+#    PROCESSO, smetterebbe di trovarla al primo rename senza che niente
+#    fallisca: cadrebbe sul ripiego, e il pallino resterebbe verde con un
+#    numero inventato.
+JOBNAME_WORKER_CODA_LAVORI = PROCESSO_DRAINA_CODA_LAVORI
+JOBNAME_WORKER_CODA_STAMPA = PROCESSO_DRAINA_CODA_STAMPA
 
-# Soglia di liveness: ultimo run del worker entro N minuti = "attivo". I timer
-# girano a 1-2 minuti: 10 minuti assorbe ritardi/riavvii senza falsi allarmi.
-WORKER_ATTIVO_SOGLIA_MINUTI = 10
+# Ripiego della soglia di liveness, per un worker che a catalogo non ha un
+# contratto (`dbops.processi.tolleranza_minuti` NULL, o codice non a catalogo).
+# ⚠️ NON è «il valore giusto»: è il valore che non fa danno. Un worker senza
+#    contratto è una riga di `processi.csv` incompleta, e il posto dove si
+#    corregge è quella — non questa riga.
+# ⛔ E non deve diventare la strada normale: `test_worker_del_badge_hanno_un_contratto`
+#    fallisce in CI se uno dei due drainer arriva qui senza tolleranza nel seed.
+#    Questo resta per il runtime, dove un badge che si spegne sarebbe peggio.
+_SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 
 # Stati "vivi" delle due code (vocabolario condiviso PENDING/IN_CORSO).
 _STATI_VIVI = ("PENDING", "IN_CORSO")
@@ -58,7 +84,7 @@ _STATI_VIVI = ("PENDING", "IN_CORSO")
 #        polling `run/<job_id>/` di vendite (stessa semantica, stessa fonte
 #        `scope_key_da_emittenti`).
 def _resolve_scope_keys(user: Any) -> tuple[str, str | None]:
-    emittente_ids = PermissionResolver.get_emittenti_ids(user)
+    emittente_ids = PermissionResolver.get_emittenti_pk_ids(user)
     caller_key = scope_key_da_emittenti(emittente_ids)
     owner_filter = None if emittente_ids is None else caller_key
     return caller_key, owner_filter
@@ -107,6 +133,57 @@ def _valida_ordinamento(
     return sort_by or default, sort_dir_norm or "DESC"
 
 
+# Scopo: liveness dei worker, con la soglia PRESA DAL CONTRATTO A CATALOGO
+#        (`dbops.processi.tolleranza_minuti`, via
+#        `ProcessiRepository.contratti_liveness`) invece che da una costante
+#        scritta qui.
+#
+# ⛔ PERCHE' NON E' PIU' UN NUMERO IN QUESTO FILE. Fino al 2026-09-06 c'era
+#    `WORKER_ATTIVO_SOGLIA_MINUTI = 10`, con il commento «i timer girano a 1-2
+#    minuti». Quel commento è la prova del difetto: per sapere se 10 fosse
+#    ancora giusto bisognava andare a leggere l'`OnCalendar` in un altro file,
+#    che nessuno rileggeva. Lo stesso fatto scritto in due posti — e il giorno
+#    in cui una cadenza fosse passata a 15 minuti, il pallino sarebbe diventato
+#    rosso su un worker sano, che è il modo più rapido di far smettere di
+#    guardare un presidio.
+# ⭐ E dal 2026-09-11 non sta nemmeno in `sveglie.json`: la tolleranza è il
+#    CONTRATTO del processo e la legge anche il database (il panorama dice
+#    `MUTO` con lo stesso numero). Qui e là si confronta lo stesso contratto
+#    con lo stesso giornale: se i due dissentissero, uno dei due avrebbe un
+#    orologio storto — ed è per questo che `job_liveness` confronta col clock
+#    del database, non con quello di Python.
+#
+# ⚠️ SI RAGGRUPPA PER SOGLIA, e non è generalità gratuita: `job_liveness`
+#    accetta UNA soglia per chiamata, e nulla nel modello dice che due worker
+#    debbano avere la stessa. Oggi le due coincidono e la chiamata resta una
+#    sola; il giorno in cui divergono questo codice fa la cosa giusta invece di
+#    applicarne una alle due.
+def _liveness_worker(jobnames: list[str]) -> dict[str, dict]:
+    # ⚠️ Il jobname dei drainer È il `processo_codice`: sono i command che si
+    #    registrano col proprio nome, e le costanti qui sopra vengono da
+    #    `processi.py` apposta. Dove i due non coincidessero (le corsie di
+    #    `run_fatturazione_batch`, che attaccano la corsia al jobname) la
+    #    liveness non si fa da qui. Una lettura sola per tutti i worker.
+    contratti = ProcessiRepository().contratti_liveness(jobnames)
+    per_soglia: dict[int, list[str]] = {}
+    for jobname in jobnames:
+        # ⛔ `is None` e NON `or`: sono due domande diverse. `or` direbbe
+        #    «ripiega» anche su uno zero, e soprattutto confonde «non a
+        #    catalogo» con «a catalogo senza contratto» — che nel modello sono
+        #    due cose diverse (`NULL` = «non si presidia»). Qui entrambe cadono
+        #    sul ripiego, e il test sul seed impedisce che ci arrivino i drainer.
+        contratto = contratti.get(jobname)
+        dichiarata = contratto["tolleranza_minuti"] if contratto else None
+        soglia = _SOGLIA_LIVENESS_RIPIEGO_MINUTI if dichiarata is None else dichiarata
+        per_soglia.setdefault(soglia, []).append(jobname)
+
+    repo = MaintenanceRepository()
+    esito: dict[str, dict] = {}
+    for soglia, gruppo in per_soglia.items():
+        esito.update(repo.job_liveness(gruppo, soglia_minuti=soglia))
+    return esito
+
+
 # Scopo: BE-4 — conteggi per il badge top bar + liveness worker. Ritorna
 #        `{coda_lavori: {pending, in_corso}, coda_stampa: {pending, in_corso},
 #        worker: {coda_lavori: {...}, coda_stampa: {...}}}`. I conteggi sono
@@ -126,9 +203,8 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
         auth_user_id=auth_user_id,
     )
 
-    liveness = MaintenanceRepository().job_liveness(
+    liveness = _liveness_worker(
         [JOBNAME_WORKER_CODA_LAVORI, JOBNAME_WORKER_CODA_STAMPA],
-        soglia_minuti=WORKER_ATTIVO_SOGLIA_MINUTI,
     )
     worker_giu = {"last_run_at": None, "attivo": False, "last_ok": None}
 
@@ -167,6 +243,7 @@ def elenca_coda_lavori(
     data_da: date | None = None,
     data_a: date | None = None,
     solo_vivi: bool = False,
+    includi_archiviate: bool = False,
     limit: int = 50,
     offset: int = 0,
     tutti: bool = False,
@@ -182,7 +259,21 @@ def elenca_coda_lavori(
     sort_by, sort_dir = _valida_ordinamento(
         sort_by, sort_dir,
         allowed=tuple(ELENCA_SORT_SQL),
-        default="started_at",
+        # ⭐ `data_insert`, non `started_at` (2026-09-07). Un lavoro in ATTESA
+        #    `started_at` non ce l'ha — lo scrive il worker — quindi col vecchio
+        #    default finiva in fondo alla lista, dopo ogni lavoro mai avviato:
+        #    non filtrato, SEPOLTO. `data_insert` e' NOT NULL, quindi ogni
+        #    lavoro ha una posizione dal momento in cui entra in coda.
+        # ⚠️ Questo default e' scritto in TRE sedi che devono concordare: qui,
+        #    `ordinamento_default` del preset in `ui.lista_preset`, e `orderBy`
+        #    dello store FE.
+        # ⛔ E NESSUN PRESIDIO LE TIENE INSIEME — verificato il 2026-09-08:
+        #    `test_liste_configurabili_seed` confronta le colonne ORDINABILI del
+        #    seed con questa whitelist, non i DEFAULT; e in `backend/apps` niente
+        #    legge `ordinamento_default`. ⇒ Una divergenza non fa rosso niente:
+        #    fa una lista che arriva ordinata in un modo e si riordina in un
+        #    altro appena l'operatore tocca una colonna. Si controlla a mano.
+        default="data_insert",
         function_name="core.gestione_code.elenca_coda_lavori",
     )
     esito = CodaLavoriRepository().elenca(
@@ -194,12 +285,20 @@ def elenca_coda_lavori(
         job_type=job_type,
         data_da=data_da,
         data_a=(data_a + timedelta(days=1)) if data_a else None,
+        includi_archiviate=includi_archiviate,
         limit=limit,
         offset=offset,
         sort_by=sort_by,
         sort_dir=sort_dir,
     )
-    return {"count": esito["total"], "results": esito["items"]}
+    return {
+        "count": esito["total"],
+        "results": esito["items"],
+        # Quante righe l'archiviazione lascia fuori dall'elenco. ⚠️ Non è un
+        # accessorio: senza, «coda pulita» e «tre righe messe via» si leggono
+        # uguali — stessa lezione di `ritirate_count` sul giornale della fattura.
+        "archiviate_count": esito["archiviate"],
+    }
 
 
 # Scopo: BE-6 — lista paginata della coda stampa (outbox PDF). Ambito
@@ -217,6 +316,7 @@ def elenca_coda_stampa(
     data_da: date | None = None,
     data_a: date | None = None,
     solo_vivi: bool = False,
+    includi_archiviate: bool = False,
     limit: int = 50,
     offset: int = 0,
     tutti: bool = False,
@@ -236,7 +336,10 @@ def elenca_coda_stampa(
     sort_by, sort_dir = _valida_ordinamento(
         sort_by, sort_dir,
         allowed=tuple(CODA_STAMPA_SORT_SQL),
-        default="data_update",
+        # ⭐ Allineata alla coda lavori il 2026-09-07: le due code hanno una
+        #    semantica sola per decisione (Tid, 2026-07-23), e due default
+        #    diversi erano una simmetria che reggeva per caso.
+        default="data_insert",
         function_name="core.gestione_code.elenca_coda_stampa",
     )
 
@@ -247,12 +350,17 @@ def elenca_coda_stampa(
         lotto_id=lotto_id,
         data_da=data_da,
         data_a=(data_a + timedelta(days=1)) if data_a else None,
+        includi_archiviate=includi_archiviate,
         limit=limit,
         offset=offset,
         sort_by=sort_by,
         sort_dir=sort_dir,
     )
-    return {"count": esito["total"], "results": esito["items"]}
+    return {
+        "count": esito["total"],
+        "results": esito["items"],
+        "archiviate_count": esito["archiviate"],
+    }
 
 
 # Scopo: BE-8 — dettaglio completo di un job per il drawer (payload, timeline,
@@ -352,3 +460,235 @@ def requeue_job(
         detail=f"job_id={job_id} stato={stato['stato'] if stato else None}",
     )
     return {"job_id": int(job_id), "stato": "PENDING"}
+
+
+# ══════════════════════════════════════════════════════════════
+#  ARCHIVIAZIONE — togliere una riga dall'ELENCO, non dal lavoro
+#  (brief-db-archiviazione-righe-code, 2026-09-04)
+# ══════════════════════════════════════════════════════════════
+#
+# ⛔ IL VERBO È GLOBALE, E QUINDI LO È IL PERMESSO. Annulla e requeue sono
+#    owner-scoped — un operatore agisce sui PROPRI job senza `code_manage`, che
+#    serve solo ad allargare agli altrui. L'archiviazione no: chi archivia
+#    toglie la riga dall'elenco ANCHE all'amministratore. Un verbo con effetto
+#    globale in un modello di permessi per-proprietario non compone: sarebbe un
+#    operatore che nasconde righe a chi deve vederle tutte.
+#    ⇒ Effetto globale, permesso globale: `code_manage` (decisione di Tid,
+#    2026-09-04, brief §7.2).
+#
+# ⛔ IL GATE STA QUI E NON IN `post_permission` SULLA VIEW, e la differenza NON
+#    è stilistica: `ZeroERPPermission` che trova un `<metodo>_permission`
+#    RITORNA l'esito dell'azione di processo e **salta il controllo di area**.
+#    Un operatore con `code_manage` e area `strumenti` in sola LETTURA
+#    passerebbe — mentre gli altri due verbi della stessa pagina, che quel
+#    permesso non lo dichiarano, cadono su `METHOD_REQUIRES['POST'] = 'add'` e
+#    quindi pretendono `TUTTO`. Due POST adiacenti nella stessa schermata con
+#    due contratti di area diversi sono la forma in cui un permesso «funziona»
+#    finché qualcuno non lo restringe e non capisce perché non ha effetto.
+#    ⇒ La view NON dichiara `post_permission`: l'area la verifica la catena
+#    standard, `code_manage` lo verifica questo service — esattamente come
+#    `_owner_filter_per_azione` fa per annulla/requeue. Un controllo per
+#    ciascuna delle due cose, nessuna delle due saltata.
+# ⛔ NESSUN controllo di stato in Python. «Solo una riga non viva si archivia»
+#    ha UNA sede — il trigger `_a10_archiviazione_upd` più il `CHECK` — e da lì
+#    arriva `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (CONFLITTO_STATO → 409) con la
+#    sua frase a catalogo. Ricopiare l'elenco degli stati qui creerebbe un
+#    secondo criterio destinato a sfilarsi dal primo.
+# ⛔ E la bandiera NON entra nel `WHERE` di claim, drainer, reaper, `mark_*` e
+#    `count_*`: è la cosa che distingue l'archiviazione da un annullamento
+#    silenzioso (brief §3, il contratto del cantiere).
+
+# Messaggio di ripiego dei due verbi: vale solo se il database non ha parlato
+# (un `DatabaseError` senza codice a catalogo). Quando parla — ed è il caso
+# normale del rifiuto sulla riga viva — vince il suo.
+_ARCHIVIAZIONE_FALLBACK = (
+    "Archiviazione della riga di coda non riuscita."
+)
+
+# Quante righe può portare una sola chiamata. ⚠️ Non è una soglia di
+# prestazione: è che oltre un certo punto «metti via N righe» smette di essere
+# un gesto che una persona ha guardato. Le liste code paginano a 200, ed è lo
+# stesso tetto — stessa scelta e stessa ragione di `MAX_ATTIVITA_RIPORTO`.
+MAX_RIGHE_ARCHIVIAZIONE = 200
+
+
+# Scopo: il cancello dei due verbi — `code_manage` (SUPER_ADMIN bypassa),
+#        stessa funzione che apre le azioni sui job altrui. ⚠️ Si somma al
+#        livello di area, che la catena dei permessi verifica per conto suo:
+#        vedi la nota qui sopra sul perché non è un `post_permission`.
+def _guard_archiviazione(user: Any) -> None:
+    ErrorManager.require(
+        puo_gestire_tutte_le_code(user),
+        code="E_PERMESSO_NEGATO",
+        message=(
+            "Per archiviare o ripristinare righe di coda serve la gestione "
+            "delle code: l'archiviazione toglie la riga dall'elenco di tutti, "
+            "non solo dal proprio."
+        ),
+        detail="azione richiesta: code_manage",
+    )
+
+
+# Scopo: valida l'elenco di righe di una chiamata di archiviazione: lista non
+#        vuota, interi positivi, sotto il tetto. Ritorna gli id DEDUPLICATI
+#        con l'ordine preservato.
+# ⚠️ Il dedup non è cosmetico: il database tratterebbe due volte lo stesso id
+#    come una riga sola, ma il conteggio che torna a video direbbe un numero
+#    diverso da quello che l'operatore ha spuntato.
+def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
+    ErrorManager.require(
+        isinstance(ids, list) and len(ids) > 0,
+        code="E_VALIDATION_INPUT",
+        message="Selezionare almeno una riga.",
+        detail="`ids` deve essere una lista non vuota.",
+        context={"field": "ids"},
+        function_name=function_name,
+    )
+    assert isinstance(ids, list)
+    ErrorManager.require(
+        all(isinstance(i, int) and not isinstance(i, bool) and i > 0 for i in ids),
+        code="E_VALIDATION_INPUT",
+        message="Elenco di righe non valido.",
+        detail="Ogni elemento di `ids` deve essere un intero positivo.",
+        context={"field": "ids"},
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        len(ids) <= MAX_RIGHE_ARCHIVIAZIONE,
+        code="E_VALIDATION_INPUT",
+        message=f"Troppe righe selezionate (massimo {MAX_RIGHE_ARCHIVIAZIONE}).",
+        detail=f"Ricevute {len(ids)} righe.",
+        context={"field": "ids"},
+        function_name=function_name,
+    )
+    visti: set[int] = set()
+    return [i for i in ids if not (i in visti or visti.add(i))]
+
+
+# Scopo: il giro di archiviazione su N righe, comune alle due code — l'unica
+#        cosa che cambia è `applica`, cioè quale repository tocca la bandiera.
+#        Ritorna `{esito, archiviato, richieste, riuscite, falliti[]}`.
+#
+# ⭐ ESITO PARZIALE, non tutto-o-niente. Il rifiuto è PER RIGA (una riga tornata
+#    al lavoro nel frattempo), quindi un'unica transazione farebbe fallire venti
+#    archiviazioni buone per una riga sola — e l'operatore non saprebbe quale.
+#    Il telaio è `run_fan_out`: un savepoint per riga, l'errore isolato,
+#    l'esito aggregato a tre stati. ⛔ È anche la ragione per cui NON si fa un
+#    solo `UPDATE ... WHERE id = ANY(...)` con il predicato di stato nella
+#    `WHERE`: quello sarebbe veloce, ma scriverebbe la SECONDA copia di «riga
+#    viva» — che ha una sede sola, il trigger, e che questo cantiere ha
+#    deliberatamente lasciato lì (brief §7.4).
+#
+# ⚠️ `motivi` è un dizionario Python popolato DENTRO il savepoint e letto DOPO
+#    il rollback, ed è voluto: un rollback annulla le righe di database, non un
+#    assegnamento in memoria. È l'unico modo di conservare il codice e la frase
+#    del rifiuto, che altrimenti resterebbero solo nella stringa normalizzata
+#    del BB — leggibile per un log, non per un operatore.
+def _esegui_archiviazione(
+    ids: object,
+    *,
+    archiviato: bool,
+    applica: Callable[[int], bool],
+    function_name: str,
+) -> dict[str, Any]:
+    righe = _valida_ids_archiviazione(ids, function_name=function_name)
+    motivi: dict[int, dict[str, Any]] = {}
+
+    # Scopo: la bandiera su UNA riga. Solleva su rifiuto: è così che il fan-out
+    #        distingue riuscite e fallite.
+    def _process(riga_id: int) -> int:
+        try:
+            with translate_db_errors(
+                context={"op": function_name, "riga_id": riga_id},
+                fallback_code="E_CODA_ARCHIVIAZIONE_NON_AMMESSA",
+                fallback_message=_ARCHIVIAZIONE_FALLBACK,
+            ):
+                trovata = applica(riga_id)
+            ErrorManager.require(
+                trovata,
+                code="E_JOB_NON_TROVATO",
+                message="Riga di coda non trovata.",
+                detail=f"riga_id={riga_id}",
+            )
+        except ServiceError as exc:
+            motivi[riga_id] = {"code": exc.code, "message": exc.message}
+            raise
+        return riga_id
+
+    esito = run_fan_out(righe, _process)
+    return {
+        "esito": esito.esito,
+        "archiviato": bool(archiviato),
+        "richieste": esito.totale,
+        "riuscite": esito.ok,
+        # ⛔ Il ripiego copre l'eccezione che NON è un `ServiceError` — cioè un
+        #    GUASTO — e lì NON si rimanda la stringa normalizzata del BB:
+        #    sarebbe un `TypeError: ...` letto da un operatore, che non è un
+        #    messaggio business-safe e non gli dice niente di azionabile. La
+        #    diagnostica vera sta nel log, che `run_fan_out` scrive con lo
+        #    stack e l'identità della riga. Il `code` resta `None`: inventarne
+        #    uno di dominio direbbe una cosa falsa.
+        "falliti": [
+            {
+                "id": e.item,
+                **(motivi.get(e.item)
+                   or {"code": None, "message": _ARCHIVIAZIONE_FALLBACK}),
+            }
+            for e in esito.errori
+        ],
+    }
+
+
+# Scopo: alza/abbassa la bandiera `archiviato` su N job di `dbops.coda_lavori`.
+#        `archiviato=True` = «Archivia» (togli dall'elenco), `False` =
+#        «Ripristina» (rimettile). Riga inesistente → conta come fallita
+#        (`E_JOB_NON_TROVATO`); riga ancora VIVA → il database la rifiuta con
+#        `E_CODA_ARCHIVIAZIONE_NON_AMMESSA`. Le altre passano lo stesso.
+#        ⚠️ Prende sempre un ELENCO, anche quando l'operatore agisce su una
+#        riga sola dal menu: un verbo di massa e uno singolo sarebbero due
+#        contratti da tenere allineati per lo stesso identico rifiuto.
+def imposta_archiviazione_job(
+    user: Any, ids: object, *, archiviato: bool,
+) -> dict[str, Any]:
+    _guard_archiviazione(user)
+    repo = CodaLavoriRepository()
+    return _esegui_archiviazione(
+        ids,
+        archiviato=archiviato,
+        applica=lambda riga_id: repo.imposta_archiviato(
+            riga_id, archiviato=bool(archiviato),
+        ),
+        function_name="core.gestione_code.imposta_archiviazione_job",
+    )
+
+# Scopo: gemello per `vendite.fatture_stampa_coda`. Stessa bandiera, stesso
+#        trigger, stesso codice errore — la simmetria fra le due code è del
+#        modello, non una promessa.
+#        ⚠️ È la PRIMA scrittura dell'operatore su quella tabella: oltre alla
+#        policy RLS armata il 2026-09-04, il repository applica anche il filtro
+#        applicativo di emittente (`auth_user_id`) — la RLS si SOMMA ai filtri,
+#        non li sostituisce. Fuori perimetro → 0 righe → la riga conta come
+#        non trovata, indistinguibile da inesistente (no leak).
+def imposta_archiviazione_stampa(
+    user: Any, ids: object, *, archiviato: bool, auth_user_id: int | None,
+) -> dict[str, Any]:
+    _guard_archiviazione(user)
+    # Import lazy: la coda stampa è satellite di vendite (vedi header).
+    from apps.vendite.db.pipeline_repository import VenditePipelineRepository
+
+    repo = VenditePipelineRepository()
+    # ⭐ Il perimetro emittente si risolve UNA volta per la richiesta, non per
+    #    riga: dentro una richiesta non cambia, e il giro puo' avere 200 righe.
+    #    `None` (superuser) resta `None` = nessuna restrizione.
+    emittenti_sr_ids = (
+        None if auth_user_id is None
+        else fetch_emittenti_scope_ids(auth_user_id, convention="sr")
+    )
+    return _esegui_archiviazione(
+        ids,
+        archiviato=archiviato,
+        applica=lambda riga_id: repo.imposta_archiviato_stampa(
+            riga_id, archiviato=bool(archiviato), emittenti_sr_ids=emittenti_sr_ids,
+        ),
+        function_name="core.gestione_code.imposta_archiviazione_stampa",
+    )

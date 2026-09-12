@@ -1,5 +1,37 @@
 name: CI-Validate
 
+# ── ⭐ CONCURRENCY: le PR si soppiantano, i push NON si accodano ─────────────
+#   Il principio resta quello:
+#   · su una **pull_request** la corsa nuova SOPPIANTA la vecchia — quel commit
+#     non e' piu' quello che verra' mergiato, e il suo verdetto non serve a
+#     nessuno. Si annulla, e si risparmia un runner.
+#   · su una **push a Tito-dev** ogni corsa e' il verdetto di uno STATO DI
+#     INTEGRAZIONE che e' esistito. Annullarla vuol dire che di quel merge non
+#     si sapra' mai niente — e li' gira la suite pgTAP, che non gira altrove.
+#
+#   ⛔ MA `cancel-in-progress: false` NON VUOL DIRE «gira comunque»: vuol dire
+#     **«mettiti in fila»**. E' la trappola in cui questo file e' caduto il
+#     2026-09-10, appena messo il gruppo: la corsa del merge #1555 e' rimasta
+#     ferma **4 minuti e 8 secondi** ad aspettare quella del #1554.
+#
+#       #1554  creata 15:38:16   job partito 15:38:19   finito 15:43:23
+#       #1555  creata 15:39:19   job partito 15:43:27 ← in coda   finito 15:50:04
+#
+#     Il job era diventato piu' VELOCE (7,6 -> 6,6 min, i sei cancelli da 53 s a
+#     4 s col parser YAML in C) e la CORSA piu' LENTA (7,6 -> 10,8 min). Il
+#     guadagno reale era nascosto da una coda che prima non c'era.
+#
+#   ⇒ Sui push il gruppo non porta NIENTE — non annulla, non risparmia un
+#     runner — e aggiunge latenza pura. Quindi ogni push ha un gruppo **suo**
+#     (`run_id`, unico per corsa) e non incontra mai nessuno; le PR restano
+#     raggruppate per `ref`, dove il soppiantamento serve davvero.
+#   ⚠️ Con un gruppo di uno solo, `cancel-in-progress: true` non ha niente da
+#     annullare: e' vero solo dove conta, ed e' piu' onesto di un booleano
+#     condizionale che sembrava dire un'altra cosa.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.run_id || 'pr' }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [Tito-dev]
@@ -86,8 +118,28 @@ jobs:
           source backend/.venv/bin/activate
           pip install -r backend/requirements.txt
 
-      - name: Install pre-commit
-        run: pip install pre-commit
+      - name: Strumenti dei cancelli (pre-commit + PyYAML)
+        # ── ⚠️ DUE COSE, E NESSUNA E' UN DETTAGLIO ──────────────────────────
+        #   1. PyYAML si nomina ESPLICITAMENTE. E' cio' con cui girano i sei
+        #      guardrail qui sotto — che partono con `python scripts/X.py`,
+        #      cioe' FUORI dal venv del backend — e oggi arriva soltanto perche'
+        #      e' una dipendenza di `pre-commit` (`pyyaml>=5.1`). Funziona, ma
+        #      per rimbalzo: il giorno in cui questo passo cambia, i cancelli
+        #      muoiono con un `ImportError` che non li riguarda.
+        #   2. Le versioni NON si scrivono qui. `-c` e' un file di VINCOLI, non
+        #      di requisiti: pip installa i due pacchetti nominati alle versioni
+        #      pinnate in `requirements.txt` e NON gli altri 42. La sede resta
+        #      una sola, e il peso e' identico a prima.
+        #
+        #   ⛔ Perche' serviva: `ci.yaml` installa `-r requirements.txt`
+        #     (pinnato), questo installava `pre-commit` a mano SENZA versione.
+        #     Due workflow, due toolchain che possono divergere.
+        #   ⚠️ Ed e' un difetto che ASPETTA, non uno in corso: provato in un venv
+        #     pulito il 2026-09-10, con e senza vincolo pip risolve gli stessi
+        #     `pre_commit==4.6.2` / `PyYAML==6.0.3`, perche' sono le ultime su
+        #     PyPI. La divergenza compare alla prima versione nuova, e nessuno
+        #     se ne accorgerebbe.
+        run: pip install -c requirements.txt pre-commit PyYAML
 
       - name: Cache pre-commit
         uses: actions/cache@v5
@@ -296,6 +348,29 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "CREATE ROLE zeroerp_app LOGIN PASSWORD 'secret-app';"
 
+          # ── Il ruolo del canale di log fuori transazione (dblink) ──────
+          # ⭐ STESSA RAGIONE del commento qui sopra, e vale la pena dirla due
+          # volte: `90_end/20260905-38` concede a `zeroerp_log` USAGE su
+          # `maintenance` e INSERT sul giornale dei job, ma e' scritto
+          # «skip se il ruolo manca» — e in CI mancava sempre. Quindi quel GRANT
+          # non e' mai stato applicato, e i test 3, 4 e 5 di
+          # `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql`
+          # facevano `skip()`: tre asserzioni che sembravano coperte e non lo
+          # erano. Creandolo QUI — prima di Liquibase — diventano verdi veri.
+          # ⛔ Il ruolo deve nascere PRIMA del migrate: i GRANT stanno in
+          # `90_end`, cioe' dentro la corsa di Liquibase.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "CREATE ROLE zeroerp_log LOGIN PASSWORD 'secret-log';"
+          # ⚠️ DSN ESPLICITO, non `service=zeroerp_log` come sul database di
+          # sviluppo: la forma `service=` si risolve da `pg_service.conf` sul
+          # SERVER, e nel container della CI quel file non esiste — il canale
+          # sembrerebbe configurato e non si aprirebbe.
+          # ⚠️ E l'utente del DSN e' `zeroerp_log`, non il migratore: e' l'unico
+          # con i privilegi minimi giusti (scrive il giornale, non lo legge).
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp     IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';
+             ALTER ROLE zeroerp_app IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';"
+
       - name: Installa plpgsql_check nel container Postgres
         # Serve al guardrail «riferimenti morti» in fondo a questo workflow.
         # Il changeSet che crea l'estensione (20260804-36) e' CONDIZIONALE su
@@ -363,7 +438,7 @@ jobs:
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
-            update --contexts="!provision"
+            update --contexts="!provision and !dati_macchina"
 
       - name: Liquibase admin (provision - post)
         run: |
@@ -375,6 +450,11 @@ jobs:
             update --contexts=provision
 
       - name: Liquibase CI apply (run automations)
+        # ⭐ L'`id` non e' decorativo: e' la condizione da cui dipende la suite
+        #   pgTAP piu' in basso. Da qui in avanti il database e' COMPLETO — i
+        #   due migratori hanno finito e le automazioni sono passate — quindi
+        #   «il pgTAP puo' girare?» e' esattamente «questo passo e' andato?».
+        id: ci_apply
         # Come lo step "standard, no provision": nessun bypass, la validazione
         # del tx_id resta attiva.
         run: |
@@ -399,6 +479,28 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
             -f scripts/sql/provision_db_roles.sql
+
+      # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
+      # -> provisioning come 'postgres' (non Liquibase), DOPO le migrazioni, con lo
+      # stesso script admin di dbdev/prod e di ci.yaml (DRY).
+      #
+      # ⭐ Aggiunto il 2026-09-12 perche' QUI gira la suite pgTAP, e
+      # db/pgtap/rls/test-role-batch-fatturazione-postura.sql collauda proprio la
+      # postura che questo script produce: senza il passo, in questo workflow il
+      # ruolo non esisteva e il file era rosso «noto» nella baseline della CI —
+      # cioe' la postura del batch non era misurata da nessuna parte fuori da
+      # dbdev. ⚠️ Lo scratch di scripts/ci-local.sh NON e' un metro per quel
+      # file: la' il ruolo riceve apposta il DML su tutto (vedi il commento nello
+      # script). Qui invece riceve il perimetro vero.
+      - name: Provision ruolo batch fatturazione (BYPASSRLS, superuser)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v batch_role=zeroerp_batch_fatturazione \
+            -v batch_password=secret \
+            -v migrator_role=zeroerp \
+            -f scripts/sql/provision_db_role_batch_fatturazione.sql
 
       - name: Guardrail naming codice_interno/codice (definizioni live)
         env:
@@ -579,6 +681,11 @@ jobs:
       #   - PR verso Tito-dev  -> mai (basta il cancello statico sul preambolo)
       - name: Il DB e' cambiato in questa push?
         id: db_cambiato
+        # ⚠️ `!cancelled()` e non `always()`: deve girare anche dopo un passo
+        #   rosso — altrimenti la suite pgTAP qui sotto resta senza la sua
+        #   risposta e viene saltata per il motivo sbagliato — ma NON deve
+        #   girare quando la corsa e' stata annullata a mano o soppiantata.
+        if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
           if [ "${{ github.event_name }}" != "push" ]; then
@@ -605,8 +712,43 @@ jobs:
         #   passerebbe (il passo sopra risponde 'si' per ogni non-push).
         #   Trovato provando la tabella dei quattro casi a tavolino, non
         #   leggendo la condizione.
-        if: github.base_ref == 'main' || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')
-        continue-on-error: true
+        #
+        # ── 🔴 `!cancelled()` + `ci_apply`, e non `success()` implicito ──────
+        #   Fino al 2026-09-10 questo passo ereditava il `success()` implicito
+        #   di GitHub Actions: bastava che UN QUALUNQUE passo precedente fosse
+        #   rosso perche' la suite venisse SALTATA. E il passo che precede e'
+        #   «Django tests».
+        #   ⛔ Successo davvero, quel giorno: un codice errore nuovo seminato da
+        #     un changeSet DB ha fatto arrossire due presidi del backend
+        #     (`test_error_codes_db_policy_guardrail`,
+        #     `test_error_policies_divergenza_db`) — debito legittimo e di
+        #     un'altra squadra — e la suite pgTAP non e' MAI PARTITA. Su una
+        #     push che toccava solo `db/`, del database non si e' saputo niente.
+        #   ⭐ *Un cancello non deve poter zittire un altro cancello*: sono due
+        #     domande indipendenti e vogliono due risposte.
+        #   ⚠️ Ma NON `always()`: il pgTAP ha senso solo su un database
+        #     COMPLETO. La condizione e' `steps.ci_apply.outcome == 'success'`,
+        #     cioe' «i due migratori hanno finito e le automazioni sono
+        #     passate». Se e' il migrate a fallire, saltare e' giusto: una
+        #     suite su un database a meta' non direbbe niente di vero, e
+        #     direbbe rosso per il motivo sbagliato.
+        #   ⚠️ E il job resta ROSSO lo stesso: qui non si perdona niente, si
+        #     smette solo di perdere una risposta. Non e' un `continue-on-error`
+        #     — quello e' vietato due paragrafi piu' sotto, e per un'altra
+        #     ragione ancora.
+        if: >-
+          ${{ !cancelled()
+              && steps.ci_apply.outcome == 'success'
+              && (github.base_ref == 'main'
+                  || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')) }}
+        # ⭐ ARMATO IL 2026-09-09, e fino a quel giorno non lo era: `continue-on-error`
+        #   piu' una baseline mai committata tenevano questo passo nel ramo del
+        #   bootstrap dal 2026-08-07. Per un mese la suite ha girato in CI e il
+        #   suo esito e' stato buttato via — 601 file e ~6.200 asserzioni che non
+        #   difendevano l'integrazione. Il sintomo non c'era: la corsa era verde.
+        #   ⛔ Non rimetterlo. Se un rosso nuovo ferma un merge, il rosso e' il
+        #   messaggio: o e' una regressione, o e' un file che va in baseline con
+        #   la sua ragione scritta.
         env:
           # ⚠️ Baseline SEPARATA da quella di sviluppo, e non e' pigrizia.
           #   Quella committata (db/pgtap/baseline-rossi.tsv) e' misurata sul DB
@@ -650,17 +792,27 @@ jobs:
           echo "runner risolto: $(scripts/testpgtap.sh --print-runner)"
 
           if [ ! -f "$PGTAP_BASELINE" ]; then
-            # ⚠️ PRIMA CORSA: la baseline della CI non esiste ancora, e non si
-            #   puo' indovinare — dipende da quali test reggono su un database
-            #   ricostruito da zero, che e' esattamente cio' che su dev non si
-            #   puo' misurare. Questa corsa la GENERA e la stampa: va copiata,
-            #   committata, e poi si toglie `continue-on-error` qui sopra.
-            echo "::warning::baseline CI assente: questa corsa la genera. Copiala e committala."
+            # ⛔ GENERA, STAMPA, E FALLISCE. Le tre cose insieme.
+            #   Fino al 2026-09-09 questo ramo usciva 0: era giusto per il primo
+            #   giro — la baseline non si puo' indovinare, dipende da quali test
+            #   reggono su un database ricostruito da zero — ed e' diventato una
+            #   mina il giorno dopo. Con il cancello armato bastava che il file
+            #   sparisse (un rebase sfortunato, una cancellazione per sbaglio)
+            #   perche' la CI tornasse in silenzio a non misurare niente: verde,
+            #   e cieca. E' esattamente lo stato in cui e' rimasta per un mese.
+            #   ⭐ La regola che il progetto si e' dato per i presidi e' «fai
+            #   fallire il controllo quando non puo' misurare». Il servizio utile
+            #   — stampare la baseline pronta da copiare — resta; a cambiare e'
+            #   che la corsa NON passa. Chi la rigenera di proposito
+            #   (`git rm db/pgtap/baseline-rossi-ci.tsv`) si aspetta un rosso e
+            #   sa cosa farne; chi l'ha persa se ne accorge subito.
+            echo "::error::baseline CI assente ($PGTAP_BASELINE): la suite non e' stata CONFRONTATA."
             scripts/pgtap-baseline.sh --update || true
             echo "----- 8< ----- db/pgtap/baseline-rossi-ci.tsv ----- 8< -----"
             cat "$PGTAP_BASELINE"
             echo "----- >8 ----------------------------------------- >8 -----"
-            exit 0
+            echo "Copia il blocco qui sopra nel file, committalo, e questa corsa tornera' verde."
+            exit 1
           fi
 
           scripts/pgtap-baseline.sh
@@ -698,3 +850,16 @@ jobs:
           bash backend/bin/install-timers.sh --render-only "$OUT"
           systemd-analyze verify "$OUT"/*.service "$OUT"/*.timer
           echo "Unit systemd dei worker validati."
+
+      - name: Prova il ramo che ACCENDE gli unit (systemctl finto)
+        run: |
+          # ⭐ L'ALTRA META', e finora mancava. Lo step qui sopra prova che gli
+          # unit sono VALIDI; questo prova che si accendono QUELLI GIUSTI —
+          # cioè il ramo che `--render-only` non attraversa.
+          # 🔴 Il 2026-09-06 `zeroerp-listen-cambio-reparto` veniva installato e
+          # mai avviato (slittamento di campi su un `oncalendar` vuoto), e la CI
+          # non poteva vederlo: il difetto viveva dove la prova non arrivava.
+          # Il test mette un `systemctl` finto in testa al PATH e sposta la
+          # destinazione con ZEROERP_SYSTEMD_DIR: le righe eseguite sono le
+          # STESSE della produzione, cambia solo dove atterrano.
+          bash backend/scripts/tests/test-install-timers.sh

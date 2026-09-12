@@ -1,0 +1,233 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §4 (fase 3b) — la fabbrica
+# dell'utente tecnico di un processo.
+#
+# ⭐ PERCHE' UNA FUNZIONE E NON UN SEED. Creare un utente tecnico corretto vuole
+# CINQUE scritture coordinate (soggetto, ruolo, identita', binding del profilo,
+# riga di registro) e porta con se' tre divieti che, sbagliati, non fanno
+# rumore:
+#   1. l'identita' DEVE essere OPERATORE — con qualunque altro ruolo applicativo
+#      il processo vedrebbe ZERO righe, in silenzio, perche' ogni policy
+#      rls_*_ef_whitelist lo pretende in AND;
+#   2. ⛔ MAI il profilo SUPER_ADMIN — bypassa lo scope PRIMA della whitelist;
+#   3. un utente per processo, non uno per emittente.
+# Scritti in un seed, questi tre vincoli sarebbero una raccomandazione. In una
+# funzione sono cancelli, e valgono anche per chi creera' il prossimo processo
+# fra sei mesi.
+#
+# ⛔ COSA LA FUNZIONE NON FA, DI PROPOSITO: non scrive
+# config.user_emittenti_fiscali. Il perimetro lo aggiunge una PERSONA
+# (decisione D-9), e dbops.vw_emittenti_non_serviti dice che cosa manca. Un
+# programma che si concede da solo il proprio perimetro e' esattamente cio' che
+# questo cantiere toglie di mezzo.
+#
+# ⚠️ SECURITY INVOKER (default) e REVOKE da PUBLIC: una fabbrica di utenti non
+# deve essere chiamabile da chiunque, ne' girare con privilegi altrui.
+# Il REVOKE sta QUI e non in un changeSet dopo — lezione di 20260904-21.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260904-26-create-fn-crea-utente-tecnico-mctit.yaml
+
+  - changeSet:
+      id: 20260904-26-create-fn-crea-utente-tecnico
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea script.fn_crea_utente_tecnico(processo, profilo): costruisce
+        soggetto + ruolo + identita' OPERATORE con flag tecnica + binding del
+        profilo + riga in dbops.processi_identita, con i guard su eleggibilita'
+        del processo, divieto SUPER_ADMIN e unicita'. Non tocca la whitelist
+        emittenti (D-9). REVOKE EXECUTE FROM PUBLIC nello stesso changeSet.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - columnExists:
+                { schemaName: anagrafiche, tableName: identita_digitali, columnName: tecnica }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_crea_utente_tecnico(
+                  p_processo_codice dbops.processi.codice%TYPE,
+                  p_profilo_codice  config.profili_accesso.codice%TYPE)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ Niente %TYPE su django.*: la regola vale per le funzioni
+                  --   che citano lo schema di Django.
+                  v_auth_user_id   integer;
+                  v_processo       dbops.processi%ROWTYPE;
+                  v_profilo        config.profili_accesso%ROWTYPE;
+                  v_tipo_ruolo_id  config.tipi_ruoli.id%TYPE;
+                  v_stato_id       anagrafiche.soggetti.stato_id%TYPE;
+                  v_soggetto_id    anagrafiche.soggetti.id%TYPE;
+                  v_sog_ruolo_id   anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_identita_id    anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =====================================================
+                  -- Guard 1: il processo vuole davvero un utente tecnico.
+                  --   Eleggibili i soli DOMINIO headless. ⛔ I processi su
+                  --   canale CODA NO: sono accodati da un operatore e girano
+                  --   con lo scope catturato all'enqueue — hanno gia' un
+                  --   nome, ed e' quello di una persona.
+                  -- =====================================================
+                  SELECT * INTO v_processo
+                    FROM dbops.processi
+                   WHERE codice = p_processo_codice;
+
+                  IF NOT FOUND
+                     OR NOT v_processo.attivo
+                     OR v_processo.obsoleto_dal IS NOT NULL
+                     OR v_processo.classe <> 'DOMINIO'
+                     OR v_processo.canale NOT IN ('PGAGENT', 'COMMAND') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_crea_utente_tecnico',
+                          'E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO',
+                          jsonb_build_object('processo_codice', p_processo_codice),
+                          NULL::uuid, p_processo_codice);
+                  END IF;
+
+                  -- =====================================================
+                  -- Guard 2: ⛔⛔ il profilo, e il divieto che conta.
+                  --   SUPER_ADMIN e' la scorciatoia ovvia per «deve servire
+                  --   tutti gli emittenti», e riaprirebbe la porta che questo
+                  --   cantiere chiude. Il perimetro si scrive riga per riga.
+                  -- =====================================================
+                  SELECT * INTO v_profilo
+                    FROM config.profili_accesso
+                   WHERE codice = p_profilo_codice;
+
+                  IF NOT FOUND
+                     OR NOT v_profilo.attivo
+                     OR v_profilo.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_crea_utente_tecnico',
+                          'E_UTENTE_TECNICO_PROFILO_VIETATO',
+                          jsonb_build_object('profilo_codice', p_profilo_codice),
+                          NULL::uuid, p_profilo_codice);
+                  END IF;
+
+                  -- =====================================================
+                  -- Guard 3: uno per processo. Ci si ferma prima dell'unique,
+                  --   perche' un 23505 nudo non direbbe QUALE regola e' stata
+                  --   infranta — e questa e' una regola di dominio.
+                  -- =====================================================
+                  IF EXISTS (SELECT 1 FROM dbops.processi_identita
+                              WHERE processo_id = v_processo.id AND attivo) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_crea_utente_tecnico',
+                          'E_UTENTE_TECNICO_GIA_ESISTE',
+                          jsonb_build_object('processo_codice', p_processo_codice),
+                          NULL::uuid, p_processo_codice);
+                  END IF;
+
+                  SELECT id INTO v_tipo_ruolo_id
+                    FROM config.tipi_ruoli
+                   WHERE codice_interno = 'PROC_AUTO';
+
+                  -- Lo stato e' un NOT NULL che va riempito, ma per un
+                  -- processo non significa niente: si usa quello
+                  -- dell'installazione. Non e' un dato del processo.
+                  SELECT id INTO v_stato_id
+                    FROM config.stati
+                   WHERE codice_iso2 = 'IT';
+
+                  -- =====================================================
+                  -- 1. L'utente Django, con password INUTILIZZABILE.
+                  --   Il prefisso '!' e' la convenzione Django per «questo
+                  --   utente non puo' autenticarsi»: un processo non fa login,
+                  --   e nessuno deve poterlo fare al posto suo.
+                  -- =====================================================
+                  INSERT INTO django.auth_user
+                      (password, is_superuser, username, first_name, last_name,
+                       email, is_staff, is_active, date_joined)
+                  VALUES ('!' || md5(random()::text || clock_timestamp()::text),
+                          false, p_processo_codice, '', '',
+                          '', false, true, now())
+                  RETURNING id INTO v_auth_user_id;
+
+                  -- =====================================================
+                  -- 2. Il soggetto: UNO PER PROCESSO.
+                  --   ⛔ Non un soggetto «sistema» condiviso:
+                  --   uq_soggetto_ruolo (soggetto_id, tipo_ruolo_id) ammette
+                  --   una riga sola per coppia, quindi N processi sullo stesso
+                  --   soggetto non stanno.
+                  --   `codice` resta NULL: lo genera trgfn_soggetti_gen_codice.
+                  --   `tipo_soggetto_dettaglio_id` resta NULL: il guard cf/piva
+                  --   in quel caso passa, e la matrice delle nature per questo
+                  --   tipo ruolo e' volutamente vuota (le nature PG imporrebbero
+                  --   partita IVA a una cosa che non e' un'azienda).
+                  -- =====================================================
+                  INSERT INTO anagrafiche.soggetti
+                      (ragione_sociale, stato_id)
+                  VALUES ('Processo automatico: ' || p_processo_codice, v_stato_id)
+                  RETURNING id INTO v_soggetto_id;
+
+                  -- Padre e figlio in ISTRUZIONI SEPARATE: una CTE unica
+                  -- condividerebbe la stessa snapshot e i guard che risolvono
+                  -- dal padre non lo troverebbero.
+                  INSERT INTO anagrafiche.soggetti_ruoli
+                      (soggetto_id, tipo_ruolo_id)
+                  VALUES (v_soggetto_id, v_tipo_ruolo_id)
+                  RETURNING id INTO v_sog_ruolo_id;
+
+                  -- =====================================================
+                  -- 3. L'identita': OPERATORE obbligatorio, flag tecnica.
+                  -- =====================================================
+                  INSERT INTO anagrafiche.identita_digitali
+                      (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, tecnica)
+                  VALUES (v_sog_ruolo_id, v_auth_user_id,
+                          'OPERATORE'::config.ruolo_applicativo, true)
+                  RETURNING id INTO v_identita_id;
+
+                  -- =====================================================
+                  -- 4. Il profilo si PUNTA, non si copia: quando cambia il
+                  --   profilo del reparto, il processo lo segue.
+                  -- =====================================================
+                  INSERT INTO config.profili_accesso_bindings
+                      (profilo_accesso_id, identita_digitale_id)
+                  VALUES (v_profilo.id, v_identita_id);
+
+                  -- 5. Il legame processo -> utente, meta' di macchina del
+                  --    registro.
+                  INSERT INTO dbops.processi_identita
+                      (processo_id, auth_user_id)
+                  VALUES (v_processo.id, v_auth_user_id);
+
+                  -- ⛔ NON si scrive config.user_emittenti_fiscali: il
+                  --   perimetro lo aggiunge una PERSONA (D-9), e
+                  --   dbops.vw_emittenti_non_serviti dice che cosa manca.
+                  RETURN v_auth_user_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_crea_utente_tecnico(text, character varying)
+              IS 'Crea l''utente tecnico di un processo automatico: utente Django con password inutilizzabile, soggetto dedicato (UNO per processo), soggetto_ruolo PROC_AUTO, identita'' OPERATORE con flag tecnica, binding al profilo indicato e riga in dbops.processi_identita. Ritorna l''auth_user_id. ⛔ Tre guard: il processo dev''essere DOMINIO headless (i processi di CODA girano con l''identita'' dell''operatore che accoda), il profilo non puo'' essere SUPER_ADMIN (bypasserebbe lo scope prima della whitelist), e un processo ha UN solo utente. ⛔ NON scrive config.user_emittenti_fiscali: il perimetro lo aggiunge una persona (decisione D-9) e dbops.vw_emittenti_non_serviti dice cosa manca. Brief: brief-db-processi-automatici-identita-e-perimetro §4.';
+
+              -- ⛔ Il REVOKE sta nello STESSO changeSet della CREATE: una
+              --   funzione nasce con EXECUTE a PUBLIC, e una fabbrica di
+              --   utenti aperta a chiunque e' un buco. Lezione di 20260904-21,
+              --   dove il REVOKE perso da un DROP+CREATE e' costato una
+              --   correttiva.
+              REVOKE EXECUTE ON FUNCTION
+                script.fn_crea_utente_tecnico(text, character varying)
+              FROM PUBLIC;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS
+                script.fn_crea_utente_tecnico(text, character varying);

@@ -4,7 +4,7 @@
 >
 **Approfondimento tabelle:**
 >
-• [`anagrafiche.pdp`](/dbzero/anagrafiche/tabelle/anagrafiche_pdp)  
+• [`anagrafiche.pdp`](/dbzero/anagrafiche/tabelle/pdp)  
 >
 **Approfondimento funzioni:**
 >

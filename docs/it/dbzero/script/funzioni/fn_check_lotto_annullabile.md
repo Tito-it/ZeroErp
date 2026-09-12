@@ -22,7 +22,7 @@ AS $function$
 --   {codice, reason, reason_key, dettaglio}.
 DECLARE
   v_motivi    jsonb := '[]'::jsonb;
-  v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
+  v_stato_cod vendite.vw_lotti_fase.stato_codice_interno%TYPE;
   v_trovato   boolean;
   v_numerate  integer;
 BEGIN
@@ -35,15 +35,17 @@ BEGIN
   END IF;
 
   -- Stato corrente per CODICE: il codice_interno e' la chiave
-  -- stabile, l'id no (lezione B-4). LEFT JOIN perche' un lotto
-  -- senza stato deve arrivare al confronto e fallirlo, non
-  -- sparire dalla riga.
-  SELECT true, sdf.codice_interno
+  -- stabile, l'id no (lezione B-4).
+  -- ⭐ rev 2026-09-09 — SI LEGGE DALLA SEDE UNICA, vendite.vw_lotti_fase.
+  --   La vista fa la stessa LEFT JOIN che stava qui: un lotto senza stato
+  --   risolvibile ha comunque la sua riga e arriva al confronto, quindi NON
+  --   cambia nessuna decisione — cambia da dove si legge il fatto. Erano
+  --   CINQUE letture uguali, e la quinta aveva scritto «vivo» come «non
+  --   annullato».
+  SELECT true, f.stato_codice_interno
     INTO v_trovato, v_stato_cod
-    FROM vendite.fatturazione_lotti fl
-    LEFT JOIN config.stati_doc_fiscale sdf
-      ON sdf.id = fl.stato_doc_fiscale_id
-   WHERE fl.id = p_lotto_id;
+    FROM vendite.vw_lotti_fase f
+   WHERE f.lotto_id = p_lotto_id;
 
   IF NOT COALESCE(v_trovato, false) THEN
     PERFORM script.fn_log_and_raise_error(
@@ -109,7 +111,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_lotto_annullabile(p_lotto_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di un lotto. Ritorna [] se annullabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto non in DRAFT (798) — ANNULLATA e'' terminale e non si riapre; da EMESSA la via d''uscita non distruttiva e'' fn_riporta_lotto_a_draft. Motivo 2: fatture oltre il pre-fiscale (799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3 (2026-08-18): fatture gia'' NUMERATE (801), deliberatamente ridondante rispetto al 2 e da NON semplificare via. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ meno probabile qui (questa porta vuole il DRAFT) ma piu'' grave, perche'' ANNULLATA e'' terminale e un annullamento passato per errore toglierebbe anche la via d''uscita. Il motivo 3 non lo copre: l''accredito si registra PRIMA della numerazione. Il tipo di lotto NON e'' un motivo: dal 2026-08-02 vale per MASSIVO e GIORNALIERO. rev 2026-08-22.';
+IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di un lotto. Ritorna [] se annullabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto non in DRAFT (798) — ANNULLATA e'' terminale e non si riapre; da EMESSA la via d''uscita non distruttiva e'' fn_riporta_lotto_a_draft. Motivo 2: fatture oltre il pre-fiscale (799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3 (2026-08-18): fatture gia'' NUMERATE (801), deliberatamente ridondante rispetto al 2 e da NON semplificare via. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ meno probabile qui (questa porta vuole il DRAFT) ma piu'' grave, perche'' ANNULLATA e'' terminale e un annullamento passato per errore toglierebbe anche la via d''uscita. Il motivo 3 non lo copre: l''accredito si registra PRIMA della numerazione. Il tipo di lotto NON e'' un motivo: dal 2026-08-02 vale per MASSIVO e GIORNALIERO. rev 2026-08-22. rev 2026-09-09: lo stato del lotto si legge da vendite.vw_lotti_fase (sede unica della fase di un lotto) invece che con un join proprio, e i parametri usano %TYPE — nessuna decisione cambia, e i pgTAP di questa funzione restano verdi senza essere toccati.';
 ```
 
 ---

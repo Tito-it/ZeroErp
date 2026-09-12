@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL RUBINETTO DEI CODICI EVENTO — ma da questo lato e' solo una spia
 #   dbops.vw_eventi_non_dichiarati
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.8
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.8
 #
 # ── ⚠️ PERCHE' NON E' IL GEMELLO DI vw_codici_errore_da_dichiarare ──
 #   Il piano prevedeva «una vista gemella di `dbops.vw_codici_errore_da_dichiarare`».

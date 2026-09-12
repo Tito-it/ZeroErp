@@ -13,7 +13,7 @@
 #     componente esposto vengono espansi in commesse_attivita alla
 #     creazione dell'attivita'.
 #
-# Riferimento: docs/it/dev/work-in-progress/sviluppo-listini-v5.md sezione 8.1.
+# Riferimento: sviluppo-listini-v5.md sezione 8.1.
 # ------------------------------------------------------------
 
 databaseChangeLog:

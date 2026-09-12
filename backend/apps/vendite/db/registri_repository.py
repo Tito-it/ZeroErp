@@ -63,9 +63,34 @@ _ORDER_DEFAULT = "codice"
 
 # Colonne scrivibili, per verbo.
 #
-# ⛔ FUORI DA ENTRAMBE: `id`, `uid`, `reset_policy` e `emittente_soggetto_ruolo_id`.
-#    `reset_policy` e' inchiodata ad ANNUALE dal CHECK `chk_registri_fatturazione_reset`
-#    (e' un FATTO, non un campo); l'emittente lo da' il contesto, non il form.
+# ⛔ FUORI DA ENTRAMBE: `id`, `uid` e `emittente_soggetto_ruolo_id`.
+#    L'emittente lo da' il contesto, non il form.
+#
+# ⭐ `reset_policy` E' IN CREATE E NON IN UPDATE, dal 2026-09-08.
+#    ⚠️ Qui c'era scritto che era «inchiodata ad ANNUALE dal CHECK
+#    `chk_registri_fatturazione_reset` (e' un FATTO, non un campo)», e quella
+#    frase e' SCADUTA IL GIORNO STESSO IN CUI E' STATA SCRITTA: il changeSet
+#    `20260901-06` ha allargato quel CHECK a ANNUALE **e** NESSUNA, e
+#    `fn_get_next_progressivo` ramifica davvero (sotto NESSUNA il secchio del
+#    contatore e' uno solo e vale 0). Restava un divieto APPLICATIVO motivato
+#    con un vincolo che non esisteva piu' — cioe' un parametro acceso nel
+#    database e irraggiungibile dall'applicazione, lo specchio esatto del
+#    difetto che il cantiere esiste per togliere: cio' che il documento afferma
+#    deve corrispondere a cio' che il database ammette.
+#    ⛔ IN UPDATE NO — ma ⚠️ ATTENZIONE ALLA RAGIONE, perche' quella di questa
+#    riga e' gia' cambiata una volta. Fino al 2026-09-08 qui c'era scritto che
+#    cambiarla «sposta il secchio, il progressivo riparte da 1 e sbatte contro i
+#    numeri gia' scritti». Era vero, e il team DB lo ha **riparato**: col
+#    changeSet `20260908-10` un secchio appena nato non parte piu' da zero, ma
+#    dal massimo di quelli con cui i suoi documenti possono collidere.
+#    ⭐ Decisione di Tid (brief chiave-del-contatore §11.7): *si ripara il
+#    MECCANISMO, non si vieta il cambio*. Il guasto non c'e' piu', quindi non e'
+#    piu' lui a tenere la politica fuori dall'update.
+#    ⇒ La ragione VERA, ed e' quella del §11.7: la politica si sceglie ALLA
+#    NASCITA (BE-R1), che e' l'unico momento in cui non c'e' nessun secchio da
+#    innescare. Il seme del `20260908-10` e' la RETE, non la strada principale.
+#    ⛔ E NON e' «la stessa famiglia di guasti di `serie_default`»: quella frase
+#    stava qui ed era sbagliata: la serie va nel verso innocuo (vedi sotto).
 #
 # ⭐ I TRE CAMPI DI FORMA SONO IN UPDATE, ed e' una decisione del 2026-09-01.
 #    Il brief li teneva fuori come «ripiego prudente in attesa che il criterio
@@ -76,10 +101,24 @@ _ORDER_DEFAULT = "codice"
 #    adesso sarebbe un divieto APPLICATIVO accanto a uno di DATABASE: il secondo
 #    elenco parallelo che tutto il cantiere esiste per non avere.
 #
-# ⛔ `serie_default` RESTA FUORI dall'update, e non e' una svista. Il guard non
-#    la copre (brief §8.1 Q1: entra nella chiave del contatore, e il mirror CSV
-#    la riscrive a ogni migrate), quindi un campo editabile su di lei sarebbe
-#    l'unico senza presidio. Si LEGGE — la maschera la mostra in sola lettura,
+# ⛔ `serie_default` RESTA FUORI dall'update — ⚠️ e la ragione che stava qui era
+#    SBAGLIATA. Diceva «il guard non la copre, quindi sarebbe l'unico campo
+#    senza presidio»: il BE l'aveva segnalata come lacuna, e il team DB ha
+#    risposto che il fatto era esatto e la conclusione no (§11.9, 2026-09-08).
+#    ⭐ NON MANCA UN PRESIDIO: NON SERVE. Cambiare la serie non crea due forme
+#    sullo stesso numero come farebbe la forma del numero — apre una SEQUENZA
+#    NUOVA, che riparte da 1 e non collide con niente, perche' la serie sta
+#    nella chiave di unicita' del documento
+#    (`uq_fatture_numero (registro_id, anno, COALESCE(serie,''), numero)`, e
+#    uguale su DDT e ordini). E' l'asimmetria dell'invariante nel verso INNOCUO:
+#    il documento porta l'asse.
+#    ⛔ Congelarla con un trigger vieterebbe un'operazione LEGITTIMA — spostare
+#    un sezionale su una serie nuova — ed e' il motivo per cui quel trigger non
+#    e' stato scritto.
+#    🔭 Resta quindi fuori dall'update come SCELTA DI PERIMETRO, non per
+#    mancanza di un guard: aprirla e' una decisione disponibile, non un rischio
+#    da evitare. (Su resi e commesse non si pone: il guard
+#    `trg_..._guard_serie_ammessa_ins_upd` vieta del tutto di avere una serie.) Si LEGGE — la maschera la mostra in sola lettura,
 #    perche' spiega da dove viene la serie dei numeri — ma non si scrive.
 _CAMPI_CREATE: tuple[str, ...] = (
     "codice",
@@ -93,6 +132,7 @@ _CAMPI_CREATE: tuple[str, ...] = (
     "prefisso",
     "suffisso",
     "lunghezza_numero",
+    "reset_policy",
 )
 _CAMPI_UPDATE: tuple[str, ...] = (
     "codice",
@@ -161,6 +201,13 @@ _PROIEZIONE = """
                    r.prefisso,
                    r.suffisso,
                    r.lunghezza_numero,
+                   -- ⭐ L'anno entra nella STRINGA del numero (2026-09-08). Non
+                   --    e' scrivibile da qui: lo decide un risolutore a INSERT
+                   --    (`trg_..._set_anno_nel_numero_ins`) dal default della
+                   --    famiglia. Si legge perche' cambia il numero che una
+                   --    persona vede — senza, l'anteprima in maschera mostra
+                   --    una stringa che il documento non avra' mai.
+                   r.anno_nel_numero,
                    r.attivo,
                    r.data_insert,
                    r.data_update,

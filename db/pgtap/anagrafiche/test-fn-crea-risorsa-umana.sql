@@ -6,16 +6,26 @@
 --   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP test per Zero ERP
 --
--- Test fn_crea_risorsa_umana (building block):
+-- Test anagrafiche.fn_crea_risorsa_umana_v2 (building block):
 --   1. Precondizione: esiste qualifica attiva e UO attiva
---   2. Setup: crea soggetto PF di supporto
---   3. Creazione risorsa umana senza bridge (senza auth_user)
---   4. Verifica risorse_umane creato con ruolo RIS_UMANA
---   5. Creazione risorsa umana con bridge auth_user
---   6. Verifica bridge risorse_umane_auth_user
---   7. Errore: soggetto_id NULL
---   8. Errore: qualifica_id NULL
---   9. Errore: UO inesistente
+--   2. Setup: soggetto PF 1 (senza utente)
+--   3. Setup: soggetto PF 2 (con utente)
+--   4. Creazione risorsa umana SENZA utente (nessuna identita' nasce)
+--   5. Verifica risorse_umane creato con ruolo RIS_UMANA
+--   6. Creazione risorsa umana CON utente (p_auth_user_id)
+--   7. Verifica: e' nata l'identita' digitale OPERATORE attiva, legata alla RU
+--   8. Errore: soggetto_id NULL   (E_ADMIN_VALIDAZIONE)
+--   9. Errore: UO inesistente     (E_ADMIN_UO_NON_TROVATA)
+--
+-- ⭐ Riscritto sulla v2 il 12-09-2026 (decisione Tid, analisi
+--   analisi-software-per-dati-morti §6.7). Fino a quel giorno chiamava
+--   fn_crea_risorsa_umana (v1) con `p_ruolo_sistema config.ruolo_sistema`:
+--   funzione ed enum RIMOSSI nella Fase 7 del multi-face (29-04-2026). Da allora
+--   il file si rompeva nella fixture — in baseline ERRORE_FIXTURE — cioe'
+--   eseguiva ZERO asserzioni. Col modello nuovo la v2 prende `p_is_super_admin`
+--   e `p_attivo`, e il «bridge» e' una riga di `identita_digitali` con
+--   `ruolo_applicativo = 'OPERATORE'` sullo stesso `soggetto_ruolo_id` della RU
+--   (il nome vecchio risorse_umane_auth_user e' stato ritirato il 12-09-2026).
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -134,7 +144,7 @@ SET auth_user_id = (
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
         p_soggetto_id := %L::uuid,
         p_qualifica_id := %s,
         p_unita_organizzativa_id := %s
@@ -143,7 +153,7 @@ SELECT lives_ok(
       (SELECT qualifica_id FROM tmp_ru_ctx),
       (SELECT uo_id FROM tmp_ru_ctx)
     ),
-    '4. fn_crea_risorsa_umana senza bridge eseguita'
+    '4. fn_crea_risorsa_umana_v2 senza utente eseguita'
   );
 
 -- =========================================================
@@ -167,35 +177,39 @@ SELECT ok(
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
         p_soggetto_id := %L::uuid,
         p_qualifica_id := %s,
         p_unita_organizzativa_id := %s,
         p_auth_user_id := %s,
-        p_ruolo_sistema := 'OPERATIVO'::config.ruolo_sistema
+        p_is_super_admin := false,
+        p_attivo := true
       ) $$,
       (SELECT soggetto_id_2 FROM tmp_ru_ctx),
       (SELECT qualifica_id FROM tmp_ru_ctx),
       (SELECT uo_id FROM tmp_ru_ctx),
       (SELECT auth_user_id FROM tmp_ru_ctx)
     ),
-    '6. fn_crea_risorsa_umana con bridge eseguita'
+    '6. fn_crea_risorsa_umana_v2 con utente eseguita'
   );
 
 -- =========================================================
--- 7) Verifica bridge risorse_umane_auth_user
+-- 7) Verifica: identita' digitale OPERATORE attiva, sullo stesso
+--    soggetto_ruolo della RU (era «bridge risorse_umane_auth_user» con
+--    ruolo_sistema = OPERATIVO: oggi e' OPERATORE + attivo + non super admin)
 -- =========================================================
 SELECT ok(
     EXISTS (
       SELECT 1
-      FROM anagrafiche.risorse_umane_auth_user rua
-        JOIN anagrafiche.risorse_umane ru ON ru.id = rua.risorsa_umana_id
-      WHERE rua.auth_user_id = (SELECT auth_user_id FROM tmp_ru_ctx)
+      FROM anagrafiche.identita_digitali i
+        JOIN anagrafiche.risorse_umane ru ON ru.soggetto_ruolo_id = i.soggetto_ruolo_id
+      WHERE i.auth_user_id = (SELECT auth_user_id FROM tmp_ru_ctx)
         AND ru.soggetto_id = (SELECT soggetto_id_2 FROM tmp_ru_ctx)
-        AND rua.ruolo_sistema = 'OPERATIVO'::config.ruolo_sistema
-        AND rua.attivo = true
+        AND i.ruolo_applicativo = 'OPERATORE'
+        AND i.attivo = true
+        AND NOT script.fn_is_super_admin((SELECT auth_user_id FROM tmp_ru_ctx))
     ),
-    '7. Bridge risorse_umane_auth_user creato correttamente'
+    '7. Identita'' digitale OPERATORE attiva creata e legata alla risorsa umana'
   );
 
 -- =========================================================
@@ -203,14 +217,14 @@ SELECT ok(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
         p_soggetto_id := NULL,
         p_qualifica_id := %s
       ) $$,
       (SELECT qualifica_id FROM tmp_ru_ctx)
     ),
     'Soggetto obbligatorio',
-    '8. Errore soggetto_id NULL'
+    '8. Errore soggetto_id NULL (E_ADMIN_VALIDAZIONE)'
   );
 
 -- =========================================================
@@ -218,7 +232,7 @@ SELECT throws_matching(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
         p_soggetto_id := %L::uuid,
         p_qualifica_id := %s,
         p_unita_organizzativa_id := -999
@@ -227,7 +241,7 @@ SELECT throws_matching(
       (SELECT qualifica_id FROM tmp_ru_ctx)
     ),
     'non trovata o non attiva',
-    '9. Errore UO inesistente'
+    '9. Errore UO inesistente (E_ADMIN_UO_NON_TROVATA)'
   );
 
 SELECT * FROM finish();

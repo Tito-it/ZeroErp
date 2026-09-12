@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # UPDATE script.fn_available_actions_offerta — azione speciale `genera_ordine`.
-# Brief: docs/it/dev/work-in-progress/brief-db-univocita-offerta-ordine.md §2.2
+# Brief: brief-db-univocita-offerta-ordine.md §2.2
 #
 # Aggiunge a available_actions[] l'azione speciale non-cambio-stato `genera_ordine`
 # (mirror di push_contratto), visibile SOLO in ACCETTATA quando nessun ordine e'

@@ -62,6 +62,21 @@
 #     funzioni-trigger montate dalle automazioni. Un'automazione nuova va
 #     aggiunta a `SUFFISSI_AUTOMAZIONE` e/o a `TRGFN_AUTOMAZIONE`, e finche' non
 #     la si aggiunge non e' guardata: sono gli elenchi a fare da perimetro;
+#
+#   * ⛔ `_audit_data_user_INS_upd` NON e' nell'elenco, E NON DEVE ENTRARCI.
+#     Chi conta i trigger nel database trova 301 `_audit_data_user_upd` e 12
+#     `_audit_data_user_ins_upd`, e la lettura ovvia — «l'elenco e' indietro di
+#     dodici» — e' sbagliata. Quei dodici non nascono da `ci_apply`: li scrive
+#     A MANO un changeSet, uno per tabella (dbops.processi, coda_lavori,
+#     rls_perimetro_debito, sei `vendite.*_componenti`, …), e fanno di piu' del
+#     template — INSERT+UPDATE invece del solo UPDATE. Il framework si fa da
+#     parte apposta (`exist_strat = BY_FUNCTION`: se un trigger su quella
+#     funzione c'e' gia', non ne monta un secondo), ed e' il motivo per cui
+#     nessuno dei dodici ha il gemello `_upd`. ⇒ Nascendo da un changeSet,
+#     su un database ricostruito da zero ESISTONO GIA' quando qualcuno
+#     potrebbe dropparli: il guasto che questo cancello presidia li' non
+#     esiste, e allargare l'elenco lo farebbe suonare su un caso legittimo —
+#     cioe' la strada per farlo spegnere. Verificato il 2026-09-10.
 #   * la faccia (B) segnala solo cio' che interroga `pg_trigger`. Una
 #     preCondition che chiedesse le stesse cose per un'altra via — poniamo
 #     `pg_get_triggerdef` su un oid gia' noto — le sfuggirebbe. ⛔ NON si e'
@@ -82,6 +97,13 @@ import sys
 from pathlib import Path
 
 import yaml
+
+# ⭐ Il parser YAML in C dove c'e', quello in puro Python dove non c'e'.
+#   Il 99% del costo di questo cancello e' il parsing (misurato il
+#   2026-09-10): ~14x. Stesso risultato, provato su tutti i changelog del
+#   repo — vedi scripts/_yaml_veloce.py.
+#   ⚠️ `yaml` resta importato: serve per `yaml.YAMLError` nei rami di errore.
+from _yaml_veloce import carica as carica_yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / "db" / "changelog" / "migrations_v2"
@@ -186,7 +208,7 @@ def trova_violazioni() -> list[tuple[str, str, str, str]]:
             if "TRIGGER" not in testo.upper():
                 continue
             try:
-                doc = yaml.safe_load(testo)
+                doc = carica_yaml(testo)
             except yaml.YAMLError as exc:
                 print(f"⚠️  YAML non parsabile, saltato: {p} ({exc})", file=sys.stderr)
                 continue

@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⚠️ IL PRESIDIO NON PUO' PIU' ARRIVARE A ZERO, E VA DETTO NEL SUO COMMENTO.
+#   Brief: brief-db-esito-gruppo-lotto §24 (la causa) e §25 (questa decisione).
+#
+# ── IL FATTO ──────────────────────────────────────────────────────
+#   Fino al `20260907-08` l'annullo di un lotto sovrascriveva `stato_lotto` con
+#   'COMPLETATO'. Undici lotti annullati PRIMA di quel fix portano quindi uno
+#   stato falso, e sei di loro hanno anche un gruppo marcato ERRORE — cioe'
+#   compaiono in questa vista.
+#   ⭐ La causa e' chiusa: dal 2026-09-07 19:09 l'annullo quella colonna non la
+#   tocca piu'. Verificato: ZERO righe di questa vista sono state aggiornate
+#   dopo quell'istante. **Il pregresso non puo' crescere.**
+#
+# ── ✅ DECISIONE DI TID (2026-09-07): il pregresso NON si corregge ──
+#   Sarebbe stato possibile — lo storico conserva, per tutti e undici, il valore
+#   che l'annullo ha sovrascritto — ma si e' scelto di lasciarlo com'e': e' un
+#   fatto storico, e rimetterlo a posto vorrebbe dire un UPDATE diretto, cioe'
+#   la stessa scorciatoia che il `20260907-08` ha appena tolto di mezzo.
+#
+# ── ⛔ E ALLORA L'INVARIANTE CAMBIA, ALTRIMENTI IL PRESIDIO E' SPENTO ──
+#   Una vista che dichiara «deve restare VUOTA» e non lo e' mai insegna a
+#   ignorarla: chi la apre vede sei righe, non sa perche', e la volta dopo non la
+#   apre. ⇒ L'invariante non e' piu' «vuoto» ma **«nessuna riga NON DICHIARATA»**
+#   — la stessa forma gia' usata da dbops.processi_bersagli.debito_dichiarato.
+#
+# ── ⚠️ SI DICHIARA IL CRITERIO, NON IL NUMERO ─────────────────────
+#   «Sei righe» invecchia: basta che qualcuno ne corregga una a mano e il
+#   commento dice il falso. Il criterio no: **lotti annullati prima del
+#   2026-09-07 19:09**. Il numero resta come fatto datato, non come regola.
+#
+# ⛔ E NON si filtrano via. Nasconderle renderebbe la vista verde su una
+#   falsificazione che c'e' davvero, e toglierebbe l'unico posto in cui quei
+#   sei lotti sono nominati. Si vedono, e si sa perche'.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql (test 11 e 12, che
+#           costruiscono i propri casi e non dipendono da questo pregresso).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260907-17-comment-vw-lotti-chiusi-pregresso-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20260907-17-comment-vw-lotti-chiusi-pregresso-dichiarato
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_chiusi_con_gruppi_in_errore: il commento dichiara il
+        pregresso. Undici lotti annullati prima del 20260907-08 portano uno
+        stato_lotto falsificato, sei dei quali compaiono qui. La causa e'
+        chiusa, il pregresso non puo' crescere, e per decisione di Tid non si
+        corregge: allora l'invariante non e' piu' «vuoto» ma «nessuna riga non
+        dichiarata».
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname = 'vw_lotti_chiusi_con_gruppi_in_errore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_lotti_chiusi_con_gruppi_in_errore IS
+                  'PRESIDIO. Elenca una contraddizione: un lotto chiuso COMPLETATO che '
+                  'contiene documenti dichiarati in ERRORE. Sono due affermazioni che non '
+                  'possono stare insieme — o il giro e'' andato bene, o quei documenti non '
+                  'erano suoi. ⭐ Nasce dalla decisione del 2026-09-06 di non sollevare '
+                  'piu'' quando falliscono TUTTE le commesse di un giro: senza l''eccezione '
+                  'lo stato finale del lotto lo decide chi guarda fatture in errore e '
+                  'segnalazioni critiche, e con tutte le commesse fallite le fatture NON '
+                  'NASCONO — la salvezza dipende solo dalle segnalazioni critiche scritte '
+                  'da un altro pezzo, cioe'' e'' INDIRETTA. ⭐ Rev 2026-09-07: legge '
+                  'vendite.fatturazione_lotti_esiti, quindi vede anche i lotti SENZA '
+                  'perimetro (i giri di massa), che prima erano fuori portata perche'' '
+                  'l''esito viveva sulle righe del perimetro. '
+                  '⛔ L''INVARIANTE NON E'' PIU'' «VUOTO», E'' «NESSUNA RIGA NON '
+                  'DICHIARATA» (rev 2026-09-07). Fino al changeSet 20260907-08 l''annullo '
+                  'di un lotto sovrascriveva stato_lotto con COMPLETATO: undici lotti '
+                  'annullati prima di quel fix portano uno stato falso, e sei di loro '
+                  'hanno anche un gruppo marcato ERRORE, quindi compaiono qui. '
+                  '⭐ IL CRITERIO PER RICONOSCERLI, che e'' quello che non invecchia: sono '
+                  'i lotti ANNULLATI PRIMA del 2026-09-07 19:09, l''istante in cui il fix '
+                  'e'' stato applicato. Il «sei» e'' un fatto datato, non una regola: se '
+                  'qualcuno ne correggesse uno a mano il numero cambierebbe e il criterio '
+                  'no. ⭐ E il pregresso NON PUO'' CRESCERE — verificato lo stesso giorno: '
+                  'zero righe di questa vista sono state aggiornate dopo quell''istante. '
+                  '⇒ Una riga su un lotto annullato DOPO quel momento e'' un allarme vero, '
+                  'e va guardata. '
+                  '✅ Decisione di Tid, 2026-09-07: il pregresso non si corregge. Lo '
+                  'storico conserva per tutti e undici il valore sovrascritto, quindi '
+                  'sarebbe stato possibile — ma rimetterlo a posto vorrebbe dire un UPDATE '
+                  'diretto, cioe'' la stessa scorciatoia che il 20260907-08 ha appena tolto '
+                  'di mezzo. ⛔ E non si filtrano via: nasconderle renderebbe la vista '
+                  'verde su una falsificazione che c''e'' davvero, e toglierebbe l''unico '
+                  'posto in cui quei sei lotti sono nominati. '
+                  '⚠️ QUESTA VISTA NON E'' IL PERIMETRO del difetto: vede sei degli undici '
+                  'lotti falsificati, perche'' gli altri cinque erano in ERRORE per le '
+                  'segnalazioni critiche senza avere nessun gruppo marcato. L''elenco '
+                  'completo si chiede allo storico. '
+                  'Brief: brief-db-esito-gruppo-lotto §15, §24, §25.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna al commento che dice «deve restare VUOTO» su una vista
+              --   che vuota non e': chi la apre vede sei righe e non sa perche'.
+              SELECT 1;

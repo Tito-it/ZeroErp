@@ -20,10 +20,19 @@
 #           vivi; il claim `FOR UPDATE SKIP LOCKED` regge più worker paralleli.
 #
 #        È il CORE unico (I-1): il management command `draina_coda_stampa` ne è
-#        un chiamante sottile (argparse + canale sistema + registered_job).
-#        Assume di girare DENTRO `system_process_context` (canale BYPASSRLS):
-#        `genera_documento` fallirebbe fail-loud (`_guard_canale_sistema`) se
-#        invocato fuori dal canale di sistema — difesa in profondità.
+#        un chiamante sottile (argparse + registered_job + console).
+#
+#        ⭐ DAL 2026-09-05 IL DRENATORE LAVORA UN EMITTENTE ALLA VOLTA, con
+#        l'identità dell'UTENTE TECNICO di quell'emittente — non più su un
+#        canale `BYPASSRLS` che attraversa tutte le aziende. Il giro completo
+#        (`draina_coda_stampa_per_roster`) itera il roster del processo e
+#        chiama questo core una volta per badge, dentro
+#        `operator_identity_context`: la RLS su `vendite.fatture_stampa_coda`
+#        seleziona da sé le righe giuste, e l'audit dice chi ha stampato.
+#        ⛔ Se un emittente non ha un utente tecnico il suo lavoro NON viene
+#        fatto, e il giro lo DICE (`emittenti_non_serviti` nell'esito): senza
+#        quella riga sarebbe un «FATTO, 0 elaborate» silenzioso, cioè il guasto
+#        che la D-9 esiste per rendere visibile.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -32,8 +41,11 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from apps.core.db.processi_repository import ProcessiRepository
+from apps.core.services.coda_lavori.context import operator_identity_context
 from apps.core.services.db_error_fields import bersagli_envelope, diagnostica_db
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.processi import PROCESSO_DRAINA_CODA_STAMPA
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
@@ -53,6 +65,10 @@ _LIMIT_DEFAULT = 500
 # PENDING. Soglia larga (≫ tempo di un render) per non toccare worker lenti.
 _STALE_MINUTI_DEFAULT = 30
 
+# I contatori che il giro completo somma emittente per emittente. Sede unica:
+# aggiungerne uno qui lo fa comparire nell'esito senza toccare il ciclo.
+_CHIAVI_AGGREGATE = ("recuperate", "claimate", "fatto", "errore", "riprovabili")
+
 
 # Scopo: Drena la coda stampa. Perimetro e risultato:
 #         1. (opz.) reaper delle righe IN_CORSO stantie → PENDING (o ERRORE
@@ -66,6 +82,7 @@ _STALE_MINUTI_DEFAULT = 30
 #        run va marcata fallita (job_run_log), non mascherata.
 def draina_coda_stampa(
     *,
+    emittente_fiscale_id: int,
     limit: int = _LIMIT_DEFAULT,
     soglia_tentativi: int = _SOGLIA_TENTATIVI_DEFAULT,
     stale_minuti: int = _STALE_MINUTI_DEFAULT,
@@ -95,6 +112,7 @@ def draina_coda_stampa(
     for item in items:
         esito = _lavora_item(
             repo, vendite_repo, doc_service, item, soglia_tentativi,
+            emittente_fiscale_id=emittente_fiscale_id,
         )
         if esito["esito"] == "fatto":
             fatto += 1
@@ -106,6 +124,7 @@ def draina_coda_stampa(
             on_item_esito(item, esito)
 
     return {
+        "emittente_fiscale_id": emittente_fiscale_id,
         "recuperate": recuperate,
         "claimate": len(items),
         "fatto": fatto,
@@ -113,6 +132,96 @@ def draina_coda_stampa(
         "riprovabili": riprovabili,
         "soglia_tentativi": soglia_tentativi,
         "limit": limit,
+    }
+
+
+# Scopo: IL GIRO COMPLETO — drena la coda stampa per OGNI emittente servito dal
+#        processo `draina_coda_stampa`, uno alla volta, con l'identità del
+#        rispettivo utente tecnico. Aggrega gli esiti per il run-log e la
+#        console.
+#
+# ⭐ Il perimetro lo decide il BADGE, non il lavoro: si iterano gli emittenti
+#    per cui esiste un utente tecnico. Un emittente senza badge non viene
+#    servito — ed è una decisione (D-9: la riga la scrive una persona), non una
+#    dimenticanza. Per questo l'esito porta `emittenti_non_serviti`: il numero
+#    che distingue «non c'era niente da stampare» da «non ho guardato».
+#
+# ⚠️ Un emittente che fallisce NON ferma gli altri. Il fallimento è di quel
+#    badge: gli altri hanno già fatto il loro lavoro, e buttarlo via perché il
+#    terzo è andato storto sarebbe peggio del difetto.
+#
+# ⛔ Nessun `system_process_context` qui dentro: è il punto del cantiere. Se un
+#    giorno ricomparisse, questo giro tornerebbe a vedere tutte le aziende
+#    insieme senza che niente lo segnali.
+def draina_coda_stampa_per_roster(
+    *,
+    limit: int = _LIMIT_DEFAULT,
+    soglia_tentativi: int = _SOGLIA_TENTATIVI_DEFAULT,
+    stale_minuti: int = _STALE_MINUTI_DEFAULT,
+    on_item_esito: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
+    on_emittente_esito: Callable[[dict[str, Any], dict[str, Any] | None, Exception | None], None] | None = None,
+    processi_repo: ProcessiRepository | None = None,
+) -> dict[str, Any]:
+    processi_repo = processi_repo or ProcessiRepository()
+    roster = processi_repo.roster_processo(PROCESSO_DRAINA_CODA_STAMPA)
+    scoperti = processi_repo.emittenti_non_serviti(PROCESSO_DRAINA_CODA_STAMPA)
+
+    per_emittente: list[dict[str, Any]] = []
+    falliti: list[dict[str, Any]] = []
+    # ⚠️ Le chiavi da sommare si dichiarano UNA volta: iterare il dizionario
+    #    che si sta modificando funziona, ma e' la forma che si rompe il giorno
+    #    in cui qualcuno ci aggiunge una chiave dentro il ciclo.
+    totali = dict.fromkeys(_CHIAVI_AGGREGATE, 0)
+
+    for badge in roster:
+        try:
+            with operator_identity_context(
+                badge["auth_user_id"],
+                username=badge["username"],
+                identita_id=badge["identita_id"],
+                # ⚠️ L'emittente ATTIVO congelato: e' l'unico che questo badge
+                #    ha, ma dichiararlo evita che il worker giri in modalita'
+                #    globale se un giorno l'utente ne avesse due.
+                emittente_attivo_id=badge["emittente_fiscale_id"],
+            ):
+                esito = draina_coda_stampa(
+                    emittente_fiscale_id=badge["emittente_fiscale_id"],
+                    limit=limit,
+                    soglia_tentativi=soglia_tentativi,
+                    stale_minuti=stale_minuti,
+                    on_item_esito=on_item_esito,
+                )
+        except Exception as exc:  # noqa: BLE001 — isolamento per emittente voluto
+            logger.warning(
+                "stampa_coda.emittente_fallito emittente=%s badge=%s errore=%s",
+                badge["emittente_codice"], badge["username"], exc, exc_info=True,
+            )
+            falliti.append({
+                "emittente_codice": badge["emittente_codice"],
+                "errore": str(exc),
+            })
+            if on_emittente_esito is not None:
+                on_emittente_esito(badge, None, exc)
+            continue
+
+        esito["emittente_codice"] = badge["emittente_codice"]
+        per_emittente.append(esito)
+        for chiave in _CHIAVI_AGGREGATE:
+            totali[chiave] += esito.get(chiave, 0)
+        if on_emittente_esito is not None:
+            on_emittente_esito(badge, esito, None)
+
+    return {
+        **totali,
+        "emittenti_serviti": len(per_emittente),
+        "emittenti_falliti": falliti,
+        # ⭐ Il numero che rompe il silenzio: emittenti attivi che nessun badge
+        #    copre. Zero e' la condizione normale; diverso da zero e' una
+        #    persona che deve creare un utente tecnico.
+        "emittenti_non_serviti": [e["emittente_codice"] for e in scoperti],
+        "soglia_tentativi": soglia_tentativi,
+        "limit": limit,
+        "per_emittente": per_emittente,
     }
 
 
@@ -127,6 +236,8 @@ def _lavora_item(
     doc_service: DocumentGenerationService,
     item: dict[str, Any],
     soglia_tentativi: int,
+    *,
+    emittente_fiscale_id: int,
 ) -> dict[str, Any]:
     coda_id = int(item["id"])
     fattura_id = int(item["sorgente_id"])
@@ -164,9 +275,16 @@ def _lavora_item(
         # C-2d: numerazione backstop PRIMA del render (idempotente).
         repo.numera_fattura_backstop(fattura_id)
 
-        # Render in contesto sistema (C-0): user=None + emittente_scope=None
-        # → nessuna derivazione scope, l'emittente è input autoritativo; gira
-        # sul canale BYPASSRLS (guard fail-loud lato service se non lo fosse).
+        # ⭐ Render DENTRO IL PERIMETRO dell'utente tecnico (2026-09-05): lo
+        # scope non e' piu' `None` («vedo tutto») ma la lista di UN emittente,
+        # quello per cui questo giro sta lavorando. ⇒ `guard_emittente_in_scope`
+        # verifica che la fattura appartenga davvero a quell'emittente: un
+        # controllo che prima NON esisteva — il worker generava il documento di
+        # chiunque.
+        # ⚠️ Difesa in profondita', non il filtro primario: le righe di coda le
+        # seleziona gia' la RLS (`rls_fatture_stampa_coda_ef_whitelist`), che
+        # sotto l'identita' tecnica mostra solo il proprio emittente. Qui si
+        # prende il caso in cui quella policy non ci fosse.
         documento = doc_service.genera_documento(
             None,
             emittente_fiscale_id=int(entity["emittente_fiscale_id"]),
@@ -174,7 +292,7 @@ def _lavora_item(
             sorgente_id=fattura_id,
             sorgente_uid=str(item["sorgente_uid"]),
             template_documento_id=item.get("template_documento_id"),
-            emittente_scope=None,
+            emittente_scope=[emittente_fiscale_id],
         )
         repo.marca_stampa_fatto(coda_id, int(documento["id"]))
         return {"esito": "fatto", "documento_id": int(documento["id"])}

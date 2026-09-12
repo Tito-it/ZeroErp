@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 IL COMMENTO PERSO — segnalato dal backend, ed e' un nostro difetto.
+#   Brief: brief-db-processi-automatici-residui-be.md, §1-sexies
+#
+# Il changeSet `20260905-19` ha rifatto la vista con `DROP` + `CREATE` per
+# aggiungere le colonne `stato` e `nota`. ⛔ Il `DROP` porta via anche il
+# `COMMENT ON VIEW`, e il changeSet **rimetteva il GRANT ma non il commento**.
+#
+# ── ⚠️ E NON E' COSMETICA ──────────────────────────────────────────
+#   Il pannello dei presidi del frontend legge `obj_description` per dire **che
+#   natura ha** ciascun presidio — deve restare vuoto, deve calare, e' un debito
+#   dichiarato. Con il commento assente, per questa riga il pannello non sa
+#   dirlo: e' l'unica delle otto viste senza descrizione.
+#   ⇒ Un presidio che non sa spiegarsi e' un presidio che qualcuno interpretera'
+#     a modo suo.
+#
+# ── ⭐ LA LEZIONE, che vale oltre questo file ───────────────────────
+#   `DROP VIEW` + `CREATE VIEW` porta via **tre** cose, non una: i GRANT, il
+#   `COMMENT`, e (dove c'e') `security_invoker`. Il changeSet `-19` ne ha
+#   ricordate due su tre — e la terza non l'ha detta nessun errore: la vista
+#   funzionava benissimo.
+#   ⚠️ Trovato dal backend perche' il suo pannello lo LEGGE, quel commento.
+#   Un commento che nessuno consuma sarebbe sparito senza testimoni.
+#
+# ⚠️ Il testo non e' quello di `20260904-11` copiato: quella versione descriveva
+# una vista SENZA `stato` e `nota`. Rimetterlo tale e quale avrebbe restituito
+# un commento **vero al 4 settembre** su una vista cambiata il 5.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-27-restore-comment-vw-processi-dominio-senza-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260905-27-restore-comment-vw-processi-dominio-senza-emittente
+      author: mctit
+      failOnError: true
+      comment: >
+        Rimette il COMMENT ON VIEW su dbops.vw_processi_dominio_senza_emittente,
+        portato via dal DROP+CREATE del changeSet 20260905-19 e mai ripristinato.
+        Il pannello dei presidi del frontend legge obj_description per dire che
+        natura ha ciascun presidio: era l'unica delle otto viste senza.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: dbops
+            viewName: vw_processi_dominio_senza_emittente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_emittente IS
+                  'LIVELLO 1 del presidio sui processi: processi dichiarati DOMINIO che non '
+                  'possono rispettare un perimetro emittente — nessun bersaglio dichiarato, '
+                  'bersaglio senza percorso, o percorso dichiarato su tabella/colonna '
+                  'inesistente. DEVE restare VUOTA. ⭐ Prende l''omissione di progetto PRIMA '
+                  'che il processo giri: a runtime non e'' recuperabile, perche'' la RLS non '
+                  'puo'' filtrare su una colonna che non esiste. ⚠️ Dal 2026-09-05 porta '
+                  '`stato` (DEBITO_DICHIARATO / NON_DICHIARATO, da '
+                  'dbops.processi_bersagli.debito_dichiarato) e `nota`, come la sorella di '
+                  'livello 2: il frontend le mostra in un pannello solo e deve poter leggere '
+                  'dal DATO se una riga era attesa, invece che da una tabella di eccezioni '
+                  'scritta a mano nel codice. ⛔ Dichiarare un debito non lo assolve: una '
+                  'riga DEBITO_DICHIARATO e'' un lavoro con un nome, una NON_DICHIARATO e'' '
+                  'un allarme — l''invariante verificabile e'' «nessuna riga NON_DICHIARATO». '
+                  '⚠️ Come dbops.vw_liste_multi_emittente_non_certificate, prova che la '
+                  'struttura c''e'', non che il codice la usi bene; e non prende il verso '
+                  'opposto (dovrebbe essere DOMINIO ma e'' dichiarato manutenzione), che '
+                  'resta un errore umano. Brief: '
+                  'brief-db-processi-automatici-identita-e-perimetro §8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna alla vista MUTA. Non e' una configurazione: e' lo stato
+              --   da cui questo changeSet e' partito.
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_emittente IS NULL;

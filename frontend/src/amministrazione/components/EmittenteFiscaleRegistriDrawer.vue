@@ -24,11 +24,14 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import EmittenteFiscaleRegistriTab from './EmittenteFiscaleRegistriTab.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
+
+
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -38,6 +41,11 @@ const props = defineProps({
   emittenteSoggettoRuoloId: { type: Number, default: null },
   emittenteRagioneSociale: { type: String, default: '' },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'close'])
 
 const titolo = computed(() => {
@@ -59,12 +67,13 @@ function chiudi() {
     position="right"
     :style="{ width: DRAWER_WIDTH.XLARGE }"
     @update:visible="(v) => emit('update:visible', v)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
     </template>
 
-    <div :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <EmittenteFiscaleRegistriTab
         v-if="emittenteSoggettoRuoloId"
         :emittente-soggetto-ruolo-id="emittenteSoggettoRuoloId"

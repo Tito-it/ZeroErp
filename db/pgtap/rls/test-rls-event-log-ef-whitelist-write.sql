@@ -1,21 +1,29 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce DUE aziende e una commessa, e
+--   una commessa pretende un billing account. Come `zeroerp_app` l'INSERT del
+--   BA muore al RETURNING quando l'emittente di chi agisce non e' quello di
+--   default (la policy di lettura risolve il BA non ancora mappato sul default;
+--   il legame lo scrive un trigger AFTER). Da owner la policy si esercita con
+--   `FORCE ROW LEVEL SECURITY` locale alla transazione, come nei gemelli
+--   `*-satelliti.sql`.
 -- pgTAP test FUNZIONALE lettura/scrittura RLS — vendite.event_log
 --   Policy: rls_event_log_ef_whitelist (FOR ALL, adapter SR
 --           script.fn_scope_ef_whitelist_via_sr, gate OPERATORE)
---   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.3
+--   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.3
 --
--- ⭐ PERCHE' QUESTO TEST NON FA DDL, a differenza dei gemelli in `rls/`.
---   Su commesse/resi/ddt il test deve accendere `ENABLE + FORCE` dentro la
---   transazione, perche' li' gira come **owner** e senza FORCE l'owner salta le
---   policy. Qui no: il runner gira come `zeroerp_app`, che NON e' owner
---   (l'owner e' `titodb`), non e' superuser e non ha BYPASSRLS. La policy morde
---   gia', e il test esercita **esattamente la configurazione di esercizio** —
---   niente ALTER, niente marcatore `pgtap-runner: owner`.
---
--- Fixture SENZA build: usa una commessa esistente dell'emittente dell'operatore
--- e un secondo operatore su un emittente diverso. Soft-skip se il secondo
--- operatore non esiste (il perimetro non e' verificabile con un emittente solo).
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file cercava una commessa ESISTENTE dell'emittente dell'operatore e un
+--   secondo operatore su un altro emittente, e quando non li trovava SALTAVA:
+--   su un database ricostruito dai changelog moriva nella fixture, e i due rami
+--   della policy (USING e WITH CHECK) restavano collaudati solo su dbdev.
+--   Ora: due aziende con `dbops.fn_pgtap_crea_emittente_operatore()`, un
+--   cliente della prima con `dbops.fn_pgtap_crea_cliente_ba(..., A)` e la sua
+--   commessa — l'emittente della commessa lo deriva dal BA il trigger
+--   `trgfn_commesse_default_emittente`, non si passa a mano. Niente piu' `skip`.
+--   ⚠️ Fino a quel giorno il file girava come `zeroerp_app` senza DDL ed era
+--   la sua ragione d'orgoglio: il costo del cambio e' scritto nel marcatore.
 --
 -- Indice test (1..5):
 --   1. l'operatore scrive un evento sulla PROPRIA commessa e lo rivede
@@ -28,34 +36,54 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(5);
 
 -- ============================================================
--- Fixture
+-- Fixture: il mondo, POI il contesto
 -- ============================================================
+CREATE TEMP TABLE _mondi AS
+SELECT 'IN'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'OUT' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- ⛔ Il BA va LEGATO al proprio emittente (terzo parametro): senza,
+--   `anagrafiche.fn_get_emittente_fiscale_id` ricade sull'emittente di DEFAULT
+--   dell'installazione, e la commessa nascerebbe di un'altra azienda.
+CREATE TEMP TABLE _cliente AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba(
+    'RLS event_log', NULL, (SELECT soggetto_ruolo_id FROM _mondi WHERE lato = 'IN')) c;
+
+CREATE TEMP TABLE _commessa AS
+WITH c AS (
+    INSERT INTO vendite.commesse
+        (codice, billing_account_id, utility_id, competenza_dal, competenza_al)
+    SELECT 'PGTAP-EV-' || cl.billing_account_id,
+           cl.billing_account_id, cl.utility_id,
+           date_trunc('month', CURRENT_DATE)::date,
+           (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date
+      FROM _cliente cl
+    RETURNING id, emittente_soggetto_ruolo_id
+)
+SELECT id AS commessa_id, emittente_soggetto_ruolo_id FROM c;
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'IN'));
+END $ctx$;
+
+-- Da owner la policy non morde: si accende per la durata della transazione.
+ALTER TABLE vendite.event_log FORCE ROW LEVEL SECURITY;
+
 -- ⚠️ Una sola scelta, proiettata da una temp table: due sotto-select
 --    indipendenti potrebbero pescare righe diverse.
 CREATE TEMP TABLE _rif AS
-SELECT
-    (SELECT current_setting('app.current_user_id', true)::integer)   AS op_in,
-    script.fn_pgtap_emittente_sr_operatore()                          AS sr_in,
-    (SELECT c.id
-       FROM vendite.commesse c
-      WHERE c.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore()
-      ORDER BY c.id
-      LIMIT 1)                                                        AS commessa_id,
-    -- Un operatore su un emittente DIVERSO. La whitelist e' la sede canonica.
-    (SELECT uef.auth_user_id
-       FROM config.user_emittenti_fiscali uef
-      WHERE uef.emittente_fiscale_id IS DISTINCT FROM (
-                SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-                 WHERE ef.soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore())
-      ORDER BY uef.auth_user_id
-      LIMIT 1)                                                        AS op_out;
+SELECT (SELECT m.auth_user_id      FROM _mondi m WHERE m.lato = 'IN')  AS op_in,
+       (SELECT m.soggetto_ruolo_id FROM _mondi m WHERE m.lato = 'IN')  AS sr_in,
+       (SELECT c.commessa_id       FROM _commessa c)                    AS commessa_id,
+       (SELECT m.auth_user_id      FROM _mondi m WHERE m.lato = 'OUT') AS op_out;
 
 -- ⚠️ Il verbo in un'ISTRUZIONE SEPARATA dall'asserzione: la snapshot di
 --    statement legge PRIMA delle scritture, e un'asserzione che scrive e
@@ -64,60 +92,46 @@ CREATE TEMP TABLE _ev AS
 SELECT vendite.fn_log_event(
            'COMMESSA', (SELECT commessa_id FROM _rif),
            'PGTAP_RLS_EVENT'
-       ) AS event_id
- WHERE (SELECT commessa_id FROM _rif) IS NOT NULL;
+       ) AS event_id;
 
 -- ============================================================
 -- Asserzioni
 -- ============================================================
 
 -- 1) In-scope: l'evento c'e' e si vede.
-SELECT CASE
-    WHEN (SELECT commessa_id FROM _rif) IS NULL
-      THEN skip('nessuna commessa dell''emittente dell''operatore: fixture non costruibile', 1)
-    ELSE is(
-        (SELECT count(*)::int FROM vendite.event_log el
-          WHERE el.id = (SELECT event_id FROM _ev)),
-        1,
-        'in-scope: l''operatore rivede l''evento che ha appena scritto'
-    )
-END;
+SELECT is(
+    (SELECT count(*)::int FROM vendite.event_log el
+      WHERE el.id = (SELECT event_id FROM _ev)),
+    1,
+    'in-scope: l''operatore rivede l''evento che ha appena scritto'
+);
 
 -- 2) Ramo USING: un altro emittente non lo vede.
 --    ⚠️ Il cambio di identita' NON invalida le temp table: l'id resta noto al
 --    test, e serve proprio a questo — chiedere una riga che si sa esistere.
 DO $sw$ BEGIN
-    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT op_out FROM _rif))
-      WHERE (SELECT op_out FROM _rif) IS NOT NULL;
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT op_out FROM _rif));
 END $sw$;
 
-SELECT CASE
-    WHEN (SELECT op_out FROM _rif) IS NULL OR (SELECT commessa_id FROM _rif) IS NULL
-      THEN skip('serve un secondo operatore su un emittente diverso', 1)
-    ELSE is(
-        (SELECT count(*)::int FROM vendite.event_log el
-          WHERE el.id = (SELECT event_id FROM _ev)),
-        0,
-        'USING: un operatore di un altro emittente non vede l''evento'
-    )
-END;
+SELECT is(
+    (SELECT count(*)::int FROM vendite.event_log el
+      WHERE el.id = (SELECT event_id FROM _ev)),
+    0,
+    'USING: un operatore di un altro emittente non vede l''evento'
+);
 
 -- 3) Ramo WITH CHECK: e non puo' nemmeno scriverlo.
 --    ⭐ La derivazione (SECURITY DEFINER) risolve comunque l'emittente della
 --    commessa altrui: e' la policy a negare, non l'invisibilita' del padre.
-SELECT CASE
-    WHEN (SELECT op_out FROM _rif) IS NULL OR (SELECT commessa_id FROM _rif) IS NULL
-      THEN skip('serve un secondo operatore su un emittente diverso', 1)
-    ELSE throws_ok(
-        format(
-            'SELECT vendite.fn_log_event(%L, %s, %L)',
-            'COMMESSA', (SELECT commessa_id FROM _rif), 'PGTAP_RLS_OFFSCOPE'
-        ),
-        '42501',
-        NULL,
-        'WITH CHECK: scrivere nel diario di un altro emittente e'' negato dalla policy'
-    )
-END;
+SELECT throws_ok(
+    format(
+        'SELECT vendite.fn_log_event(%L, %s, %L)',
+        'COMMESSA', (SELECT commessa_id FROM _rif), 'PGTAP_RLS_OFFSCOPE'
+    ),
+    '42501',
+    NULL,
+    'WITH CHECK: scrivere nel diario di un altro emittente e'' negato dalla policy'
+);
 
 -- 4) Il cancello: senza veste applicativa non si vede niente.
 DO $ctx2$ BEGIN
@@ -125,16 +139,12 @@ DO $ctx2$ BEGIN
     PERFORM set_config('app.ruolo_applicativo', '', true);
 END $ctx2$;
 
-SELECT CASE
-    WHEN (SELECT commessa_id FROM _rif) IS NULL
-      THEN skip('fixture non costruibile', 1)
-    ELSE is(
-        (SELECT count(*)::int FROM vendite.event_log el
-          WHERE el.id = (SELECT event_id FROM _ev)),
-        0,
-        'gate: senza app.ruolo_applicativo la policy e'' fail-closed'
-    )
-END;
+SELECT is(
+    (SELECT count(*)::int FROM vendite.event_log el
+      WHERE el.id = (SELECT event_id FROM _ev)),
+    0,
+    'gate: senza app.ruolo_applicativo la policy e'' fail-closed'
+);
 
 -- 5) ⚠️ E il cancello e' il RUOLO, non l'utente. Con la veste OPERATORE e
 --    `app.current_user_id` VUOTO la riga torna visibile: la regola 1 di
@@ -146,16 +156,14 @@ DO $ctx3$ BEGIN
     PERFORM set_config('app.current_user_id',   '',          true);
 END $ctx3$;
 
-SELECT CASE
-    WHEN (SELECT commessa_id FROM _rif) IS NULL
-      THEN skip('fixture non costruibile', 1)
-    ELSE is(
-        (SELECT count(*)::int FROM vendite.event_log el
-          WHERE el.id = (SELECT event_id FROM _ev)),
-        1,
-        'svuotare solo app.current_user_id NON e'' fail-closed: il cancello e'' il ruolo'
-    )
-END;
+SELECT is(
+    (SELECT count(*)::int FROM vendite.event_log el
+      WHERE el.id = (SELECT event_id FROM _ev)),
+    1,
+    'svuotare solo app.current_user_id NON e'' fail-closed: il cancello e'' il ruolo'
+);
+
+ALTER TABLE vendite.event_log NO FORCE ROW LEVEL SECURITY;
 
 SELECT * FROM finish();
 ROLLBACK;

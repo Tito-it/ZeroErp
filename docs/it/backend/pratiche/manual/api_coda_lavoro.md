@@ -6,7 +6,7 @@ Esporre via HTTP la coda di lavoro dell'operatore autenticato, organizzata su qu
 
 ## Contesto
 
-Endpoint di sola lettura che alimenta la sidebar della dashboard pratiche. Risolve automaticamente l'operatore dall'utente JWT autenticato tramite la tabella bridge `anagrafiche.risorse_umane_auth_user`, con cache per-request per evitare query ripetute. Delega alla funzione DB `pratiche.fn_coda_lavoro_operatore` che classifica i flussi in un singolo passaggio (CTE + CASE WHEN).
+Endpoint di sola lettura che alimenta la sidebar della dashboard pratiche. Risolve automaticamente l'operatore dall'utente JWT autenticato dalla madre del ponte — `anagrafiche.identita_digitali` (veste OPERATORE) → `risorse_umane` per `soggetto_ruolo_id`, lo stesso JOIN di `script.fn_get_user_profile` — con cache per-request per evitare query ripetute. Delega alla funzione DB `pratiche.fn_coda_lavoro_operatore` che classifica i flussi in un singolo passaggio (CTE + CASE WHEN).
 
 ## Input
 
@@ -94,7 +94,7 @@ alla vista `script.vw_stato_sorgente` vive nel wrapper SQL del repository).
 - `pratiche.competenze_flussi` — matrice competenze operatore
 - `pratiche.flussi` — flussi pendenti
 - `pratiche.pratiche` — testata pratica con display fields
-- `anagrafiche.risorse_umane_auth_user` — bridge utente → risorsa umana
+- `anagrafiche.identita_digitali` + `anagrafiche.risorse_umane` — utente → risorsa umana (`get_risorsa_umana_id`) (⚠️ fino al 2026-09-12 qui c'era la vista `anagrafiche.risorse_umane_auth_user`, il nome vecchio del ponte, in ritiro — analisi-software-per-dati-morti §2.1)
 
 ## Note di migrazione
 

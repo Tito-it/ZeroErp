@@ -46,7 +46,7 @@
 #    la marcatura della chiamante diventerebbe una dichiarazione falsa al
 #    planner. Legge solo tabelle, nessuna GUC: SAFE e' vero.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# brief-db-perimetro-emittente-fase-e-e-ricerca.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

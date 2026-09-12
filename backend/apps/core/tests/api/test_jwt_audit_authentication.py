@@ -20,6 +20,8 @@ Indice test eseguiti:
  8) test_identita_non_attiva_raise_401 — CTE count 0 → E_IDENTITA_NON_ATTIVA
  9) test_claim_emittente_attivo_propagato — claim → GUC + rivalidazione «attivo»
 10) test_token_senza_claim_emittente_non_solleva — token pre-cantiere restano validi
+11) test_jwt_senza_sid_claim_raise_401 — token senza `sid` → E_JWT_SENZA_SID
+12) test_jwt_sid_vuoto_raise_401 — `sid` stringa vuota = assente
 """
 
 from unittest import TestCase
@@ -31,6 +33,7 @@ from apps.core.api.jwt_audit_authentication import (
     IdentitaNonAttivaError,
     JwtAuditAuthentication,
     JwtSenzaIdentitaError,
+    JwtSenzaSidError,
 )
 
 _PARENT_AUTH = (
@@ -47,19 +50,27 @@ def _mock_user(user_id: int = 42, username: str = "mctit") -> MagicMock:
 
 
 def _mock_token_with_identita(
-    identita_id: int | None = 7, emittente_attivo_id: int | None = None,
+    identita_id: int | None = 7,
+    emittente_attivo_id: int | None = None,
+    sid: str | None = "sid-di-prova",
 ) -> MagicMock:
     """Token validato SimpleJWT: espone `.get(claim)`. Se identita_id
     e' None simula un token pre-§8.3.2 (senza claim).
     `emittente_attivo_id` None = modalita' «Tutti gli emittenti» (claim
     assente), che e' anche la forma dei token emessi prima
-    dell'impersonazione di scope."""
+    dell'impersonazione di scope.
+    ⭐ `sid` valorizzato di default dal 2026-09-04: e' il terzo claim
+    obbligatorio del JWT interno e l'autenticazione lo verifica. Passare
+    `sid=None` simula il token che lo perde (es. `RefreshToken.for_user`
+    usato fuori dal serializer di login)."""
     token = MagicMock()
     def _get(key, default=None):
         if key == "identita_id":
             return identita_id
         if key == "emittente_attivo_id":
             return emittente_attivo_id
+        if key == "sid":
+            return sid
         return default
     token.get = MagicMock(side_effect=_get)
     return token
@@ -239,6 +250,42 @@ class JwtAuditAuthenticationTests(TestCase):
         self.assertEqual(ctx.exception.status_code, 401)
         self.assertEqual(ctx.exception.default_code, "E_JWT_SENZA_IDENTITA")
         # La CTE non deve essere stata eseguita (fail prima).
+        mock_conn.cursor.assert_not_called()
+
+    # Scopo: Token con `identita_id` ma SENZA `sid` → JwtSenzaSidError (401).
+    # ⭐ E' il caso reale di `RefreshToken.for_user`, che non passa dal
+    #    serializer di login e non mette il claim: prima del 2026-09-04 quel
+    #    token arrivava alle view delle sessioni, dove il sid vuoto scavalcava
+    #    sia il «non puoi revocare la sessione corrente» sia l'esclusione della
+    #    propria sessione dalla revoca di massa.
+    @patch(_CONN)
+    @patch(_PARENT_AUTH)
+    def test_jwt_senza_sid_claim_raise_401(self, mock_parent, mock_conn):
+        mock_parent.return_value = (
+            _mock_user(),
+            _mock_token_with_identita(sid=None),
+        )
+        with self.assertRaises(JwtSenzaSidError) as ctx:
+            self.auth.authenticate(_mock_request())
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.default_code, "E_JWT_SENZA_SID")
+        # Fail PRIMA della CTE: un token incompleto non popola nessuna GUC.
+        mock_conn.cursor.assert_not_called()
+
+    # Scopo: `sid` stringa vuota vale come ASSENTE.
+    # ⚠️ Non e' pedanteria: le view leggono `str(auth.get("sid", ""))`, quindi
+    #    un claim vuoto e uno mancante producono a valle lo stesso identico
+    #    danno — e un guard che accettasse `""` lascerebbe passare proprio la
+    #    forma che il codice a valle non distingue.
+    @patch(_CONN)
+    @patch(_PARENT_AUTH)
+    def test_jwt_sid_vuoto_raise_401(self, mock_parent, mock_conn):
+        mock_parent.return_value = (
+            _mock_user(),
+            _mock_token_with_identita(sid=""),
+        )
+        with self.assertRaises(JwtSenzaSidError):
+            self.auth.authenticate(_mock_request())
         mock_conn.cursor.assert_not_called()
 
     # Scopo: Claim presente ma la coppia (user, identita) non e' attiva

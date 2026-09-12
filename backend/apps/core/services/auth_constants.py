@@ -35,26 +35,16 @@ RUOLO_APPLICATIVO: tuple[str, ...] = (
     RUOLO_APPLICATIVO_DISABILITATO,
 )
 
-# Attore d'audit dei processi di sistema HEADLESS (es. batch fatturazione cron).
-# Path A (brief work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md):
-# la RLS è bypassata dal RUOLO DB del canale (`zeroerp_batch_fatturazione`), NON da un
-# sentinel applicativo. Questo valore è SOLO l'identità d'audit settata in `app.jwt_user`
-# dal gateway del canale di sistema (apps.core.services.system_context) per rendere
-# riconoscibili le righe scritte dal batch nel giornale. (Ritirato
-# `RUOLO_APPLICATIVO_SISTEMA`/Opzione B: non era una veste.)
-AUDIT_ACTOR_BATCH_FATTURAZIONE = "BATCH_FATTURAZIONE"
-
-# Attore d'audit del worker DRAINER della coda stampa documentale (Fase C
-# C-2b): gira sullo stesso canale di sistema del batch fatturazione (ruolo
-# BYPASSRLS), identità d'audit distinta per riconoscere nel giornale le stampe
-# prodotte dal worker rispetto ai giri di fatturazione.
-AUDIT_ACTOR_WORKER_STAMPA = "WORKER_STAMPA_DOCUMENTI"
-
-# Attore d'audit del worker DRAINER della coda lavori generica
-# (`dbops.coda_lavori`): identità dei job `run_as=SISTEMA` eseguiti sul canale
-# di sistema. I job `run_as=OPERATORE` girano invece con `app.jwt_user` =
-# l'operatore che li ha accodati (scope catturato), non con questo attore.
-AUDIT_ACTOR_WORKER_CODA_LAVORI = "WORKER_CODA_LAVORI"
+# ⛔ I TRE ATTORI D'AUDIT DEL CANALE DI SISTEMA SONO STATI RITIRATI (2026-09-05,
+# R-2): `AUDIT_ACTOR_BATCH_FATTURAZIONE`, `AUDIT_ACTOR_WORKER_STAMPA`,
+# `AUDIT_ACTOR_WORKER_CODA_LAVORI`. Erano nomi generici scritti in
+# `app.jwt_user` dal gateway `BYPASSRLS` per rendere riconoscibili nel giornale
+# le righe di un processo che non aveva un'identita' propria.
+# ⭐ Adesso ce l'ha: i processi scrivono con l'USERNAME del proprio utente
+# tecnico (`run_fatturazione_batch@ACME`), che dice anche PER QUALE AZIENDA —
+# cosa che un attore unico non poteva dire. Tenerli sarebbe stato lasciare in
+# giro tre costanti che nessuno chiama e che al primo processo nuovo sembrano
+# la strada da seguire.
 
 # Scopo: Ruoli che accedono ai namespace portale (`/api/portale/*`).
 RUOLI_PORTALE: frozenset[str] = frozenset({
@@ -100,6 +90,15 @@ SUPER_ADMIN_PROFILO_CODICE = "SUPER_ADMIN"
 # Centralizzare i nomi qui evita typo cross-file (producer/consumer).
 JWT_CLAIM_IDENTITA_ID = "identita_id"
 JWT_CLAIM_RUOLO_APPLICATIVO = "ruolo_applicativo"
+# ⭐ `sid` — identificativo STABILE della sessione: sopravvive alla rotazione del
+#    refresh (che cambia `jti` a ogni giro) ed e' quindi l'unica cosa con cui si
+#    puo' dire «questa sessione» invece di «questo token». Lo mette
+#    `SidTokenObtainPairSerializer` al login e SimpleJWT lo copia sull'access.
+#    Con gli altri due e' un claim OBBLIGATORIO del JWT interno
+#    (`api_multi_veste_token.md`): senza, la revoca delle altre sessioni non sa
+#    quale risparmiare e il diario non sa a quale riga attribuire logout e
+#    refresh — verificato in autenticazione, non nelle singole view.
+JWT_CLAIM_SID = "sid"
 
 # Scopo: Emittente fiscale ATTIVO della sessione (impersonazione di scope,
 # brief-db-impersonazione-scope-emittente). Porta la PK reale

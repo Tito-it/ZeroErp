@@ -135,7 +135,11 @@ with transaction.atomic():
 
     # ── 2-3. Il read-side ─────────────────────────────────────────────────
     print("\n=== 2-3. La vista: colonne dell'annullo e pulsante acceso ===")
-    righe = {int(r["id"]): r for r in repo.list_movimenti(titolo_id)}
+    # ⚠️ `list_movimenti` ritorna `(righe, totale)` dal 2026-09-02 (paginazione
+    #   su `fetch_paged_with_total`): iterare il metodo direttamente scorre la
+    #   TUPLA, non le righe.
+    movimenti, _ = repo.list_movimenti(titolo_id)
+    righe = {int(r["id"]): r for r in movimenti}
     check("la vista risponde", forzatura_id in righe, f"{len(righe)} righe")
     r = righe[forzatura_id]
     for col in ("is_annullo", "is_annullato", "annullo_blocco_codice",
@@ -159,7 +163,8 @@ with transaction.atomic():
     check("il contro-movimento e' una RIGA NUOVA", annullo_id != forzatura_id,
           f"annullo={annullo_id} forzatura={forzatura_id}")
 
-    righe = {int(x["id"]): x for x in repo.list_movimenti(titolo_id)}
+    movimenti, _ = repo.list_movimenti(titolo_id)
+    righe = {int(x["id"]): x for x in movimenti}
     check("la forzatura risulta annullata", righe[forzatura_id]["is_annullato"] is True)
     check("il contro-movimento si dichiara annullo", righe[annullo_id]["is_annullo"] is True)
     check("e punta alla riga che annulla",

@@ -33,12 +33,11 @@ from apps.catalogo.db.catalogo_uom_repository import (
     UOM_OPERATIVA_WRITE_COLUMNS,
     CatalogoUomRepository,
 )
-from apps.core.api.payload_validators import paginated_envelope
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
@@ -170,9 +169,28 @@ def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[
     )
 
 
-# Scopo: Restituisce envelope uniforme count/results per lookup e liste figlie.
-def _build_results_response(results: list[dict[str, object]]) -> dict[str, object]:
-    return {"count": len(results), "results": results}
+# Scopo: Envelope di un LOOKUP, cioe' di una collezione che un `LIMIT` puo'
+#        aver tagliato. Porta `troncato`, che e' l'informazione che `count` da
+#        solo non puo' dare.
+#
+# 🔴 PERCHE' ESISTE, e non e' una raffinatezza (2026-09-10). Fino a oggi lookup e
+#    collezioni figlie passavano dallo STESSO helper, che faceva
+#    `{"count": len(results)}`. Su una collezione intera e' giusto; su un lookup
+#    con `limit=20` significa rispondere `count: 20` su venti righe **quando i
+#    risultati erano cento**. ⇒ Il conteggio non rivelava il troncamento: lo
+#    CONFERMAVA. E la forma sbagliata era indistinguibile da quella giusta,
+#    perche' era la stessa riga di codice.
+#    ⚠️ `api.md` lo scrive dal 2026-09-02: *«`len(results)` non e' un conteggio: e'
+#    un'eco. Un numero derivato dalle righe non puo' dire niente SULLE righe»*.
+#    Il caso vivo era `fn_lookup_articoli`, l'autocomplete piu' usato dell'app.
+#
+# ⚠️ `count` resta ed e' il numero di righe consegnate — cambia che adesso c'e'
+#    accanto la sola cosa che lo rende leggibile. Aggiungere un campo non rompe
+#    nessun client; toglierne uno si'.
+def _lookup_response(
+    results: list[dict[str, object]], *, troncato: bool
+) -> dict[str, object]:
+    return {"count": len(results), "results": results, "troncato": troncato}
 
 
 # Scopo: Blocca chiavi non supportate per evitare typo silenziosi lato client.
@@ -1506,7 +1524,7 @@ def fn_lookup_articoli(
         function_name="catalogo.catalogo_service.fn_lookup_articoli",
     )
     repository = CatalogoRepository()
-    results = repository.lookup_articoli(
+    results, troncato = repository.lookup_articoli(
         search=search,
         attivo=attivo,
         is_composito=is_composito,
@@ -1515,23 +1533,7 @@ def fn_lookup_articoli(
         solo_oneri=solo_oneri,
         limit=limit,
     )
-    return _build_results_response(results)
-
-
-# Scopo: Restituisce lookup UoM attive limitato per autocomplete e select.
-def fn_lookup_unita_misura(
-    *,
-    search: str | None = None,
-    limit: int = 200,
-) -> dict[str, object]:
-    _validate_lookup_limit(
-        limit,
-        max_limit=200,
-        function_name="catalogo.catalogo_service.fn_lookup_unita_misura",
-    )
-    repository = CatalogoRepository()
-    results = repository.lookup_unita_misura(search=search, limit=limit)
-    return _build_results_response(results)
+    return _lookup_response(results, troncato=troncato)
 
 
 # Scopo: Lista statica dei modi di arrotondamento UoM operativa (lookup dedicato).
@@ -1554,7 +1556,7 @@ def fn_list_uom_rounding_modes() -> list[dict[str, object]]:
 def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, object]:
     _get_articolo_base(articolo_id)
     repository = CatalogoUomRepository()
-    response = _build_results_response(repository.list_uom_operative(articolo_id))
+    response = collezione_completa(repository.list_uom_operative(articolo_id))
     response["non_editable_fields"] = _compute_non_editable_fields(
         "catalogo", "articoli_uom_operativa",
     )
@@ -1646,7 +1648,7 @@ def fn_delete_uom_operativa(articolo_id: UUID | str, uom_operativa_id: int) -> d
 def fn_list_componenti(articolo_id: UUID | str) -> dict[str, object]:
     _get_articolo_base(articolo_id)
     repository = CatalogoBomRepository()
-    return _build_results_response(repository.list_componenti(articolo_id))
+    return collezione_completa(repository.list_componenti(articolo_id))
 
 
 # Scopo: Crea un componente BoM per l'articolo e restituisce la riga arricchita.
@@ -1736,7 +1738,7 @@ def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str)
 def fn_list_note_articolo(articolo_id: UUID | str) -> dict[str, object]:
     _get_articolo_base(articolo_id)
     repository = CatalogoBomRepository()
-    return _build_results_response(repository.list_note_articolo(articolo_id))
+    return collezione_completa(repository.list_note_articolo(articolo_id))
 
 
 # Scopo: Crea una nota articolo e restituisce il dettaglio arricchito della nota.
@@ -1758,7 +1760,7 @@ def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) ->
 # Scopo: Lista le note di un componente articolo.
 def fn_list_note_componente(componente_id: UUID | str) -> dict[str, object]:
     repository = CatalogoBomRepository()
-    return _build_results_response(repository.list_note_componente(componente_id))
+    return collezione_completa(repository.list_note_componente(componente_id))
 
 
 # Scopo: Crea una nota per un componente articolo.

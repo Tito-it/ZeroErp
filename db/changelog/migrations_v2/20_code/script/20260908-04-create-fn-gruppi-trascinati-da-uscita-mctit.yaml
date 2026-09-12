@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Quale riga di fattura viene da quale DOCUMENTO — e chi viene via insieme.
+#   brief-db-uscita-documento-dal-giro §5.4-bis (D-2b, Tid 2026-09-08).
+#
+# ── ⭐ PERCHE' UNA VISTA E NON DUE QUERY ──────────────────────────
+#   Togliere un documento dal giro cancella la sua BOZZA, e una bozza puo'
+#   coprire PIU' documenti. Servono DUE letture della STESSA relazione:
+#     * documento -> quali bozze tocca   (la madre, per cancellarle);
+#     * bozza     -> quali documenti contiene (chi viene trascinato).
+#   Sono i due versi di un legame solo. Scritti separatamente sono due catene da
+#   tenere allineate a mano — e questa catena l'ho gia' sbagliata una volta
+#   (vedi sotto), quindi due copie sarebbero due occasioni di risbagliarla.
+#
+# ── 🔴 LA CATENA, E LA TRAPPOLA ──────────────────────────────────
+#   La chiave di gruppo NON si calcola su `attivita_fatturabili`: li'
+#   `sorgente_tipo_id` vale COMMESSA (l'attivita' nasce DALLA commessa) e
+#   `sorgente_uid` e' un HASH del `segment_key`. Calcolarla li' produce chiavi
+#   `COMMESSA:<hash>` che non combaciano con NESSUNA riga di perimetro —
+#   misurato il 2026-09-08: zero corrispondenze su quattro documenti noti.
+#   ⭐ Il legame giusto e' DIRETTO e non va indovinato:
+#   `attivita_fatturabili.commessa_attivita_id` -> `vendite.commesse_attivita`,
+#   che porta la sorgente del DOCUMENTO. Controprova: quattro chiavi su quattro
+#   combaciano col perimetro del lotto.
+#
+# ── ⚠️ `security_invoker` E IL PERIMETRO ─────────────────────────
+#   `commesse_attivita` ha la RLS, `attivita_fatturabili` no. Il JOIN alla
+#   commessa E' il perimetro: chi legge vede le righe dei propri emittenti.
+#   ⛔ Va dichiarato nella STESSA istruzione: `security_invoker` si azzera a
+#   ogni `CREATE OR REPLACE VIEW`, e una vista che lo perde smette di filtrare
+#   senza dire niente.
+#
+# ── ⚠️ SI GUARDA SOLO DENTRO UN LOTTO ────────────────────────────
+#   Le fatture arrivano da `fatturazione_lotti_fatture`: una fattura di un
+#   ALTRO lotto che contenesse lo stesso documento non viene toccata
+#   dall'uscita, e nominarla prometterebbe un effetto che non c'e'.
+#
+# Verifica: db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260908-04-create-fn-gruppi-trascinati-da-uscita-mctit.yaml
+
+  - changeSet:
+      id: 20260908-04-create-fn-gruppi-trascinati-da-uscita
+      author: mctit
+      failOnError: true
+      comment: >
+        script.vw_lotto_documento_righe (quale bozza di un lotto contiene righe
+        di quale documento) e script.fn_gruppi_trascinati_da_uscita (gli altri
+        documenti che tornerebbero da emettere se questo uscisse). La catena
+        af -> commessa_attivita -> chiave di gruppo vive qui e in nessun altro
+        posto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+            - columnExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+                columnName: commessa_attivita_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_lotto_documento_righe
+              WITH (security_invoker = true) AS
+              SELECT DISTINCT
+                     lf.lotto_id,
+                     fr.fattura_id,
+                     vendite.fn_build_gruppo_fatturabile_key(
+                         ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                     ) AS gruppo_key
+                FROM vendite.fatturazione_lotti_fatture lf
+                JOIN vendite.fatture_righe        fr ON fr.fattura_id = lf.fattura_id
+                JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                -- ⛔ IL LEGAME E' QUESTO, diretto. Vedi la testata: calcolare la
+                --   chiave su attivita_fatturabili da' `COMMESSA:<hash>`, che non
+                --   combacia con nessun perimetro.
+                JOIN vendite.commesse_attivita    ca ON ca.id = af.commessa_attivita_id;
+
+              -- ⚠️ Dopo un migrate manuale una vista nasce senza permessi, e con
+              --   security_invoker chi legge deve comunque avere i propri sulle
+              --   tabelle sottostanti: questo GRANT apre la porta, non il perimetro.
+              GRANT SELECT ON script.vw_lotto_documento_righe TO PUBLIC;
+
+              COMMENT ON VIEW script.vw_lotto_documento_righe IS
+                  'Quale BOZZA di un lotto contiene righe di quale DOCUMENTO: la terna '
+                  '(lotto, fattura, gruppo_key), distinta. ⭐ Esiste perche'' la stessa '
+                  'relazione si legge nei DUE versi — la madre chiede «quali bozze tocca '
+                  'questo documento» per cancellarle, il conteggio chiede «quali '
+                  'documenti contiene questa bozza» per dire chi viene trascinato — e '
+                  'scritti separatamente sarebbero due catene da tenere allineate a '
+                  'mano. 🔴 La chiave si calcola su vendite.commesse_attivita, raggiunta '
+                  'da attivita_fatturabili.commessa_attivita_id: su attivita_fatturabili '
+                  'darebbe COMMESSA:<hash del segment_key>, che non combacia con nessuna '
+                  'riga di perimetro (misurato il 2026-09-08: zero corrispondenze). '
+                  '⚠️ security_invoker: commesse_attivita ha la RLS e '
+                  'attivita_fatturabili no — il JOIN alla commessa E'' il perimetro. '
+                  'Brief: brief-db-uscita-documento-dal-giro §5.4-bis.';
+
+              CREATE OR REPLACE FUNCTION script.fn_gruppi_trascinati_da_uscita(
+                  p_lotto_id   bigint,
+                  p_gruppo_key text)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: gli ALTRI documenti del lotto che condividono una bozza
+              --        con p_gruppo_key, e che quindi tornerebbero «da emettere»
+              --        se quel documento uscisse dal giro.
+              -- Ritorna: array ORDINATO di gruppo_key, [] se non trascina nessuno.
+              -- ⚠️ Funzione PURA: nessuna scrittura, nessun raise di dominio.
+              DECLARE
+                  v_out jsonb;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_gruppi_trascinati_da_uscita', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio (> 0)');
+                  END IF;
+
+                  IF COALESCE(btrim(p_gruppo_key), '') = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_gruppi_trascinati_da_uscita', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_gruppo_key', 'valore', p_gruppo_key),
+                          NULL::uuid, 'p_gruppo_key obbligatorio');
+                  END IF;
+
+                  SELECT COALESCE(jsonb_agg(DISTINCT altri.gruppo_key
+                                            ORDER BY altri.gruppo_key), '[]'::jsonb)
+                    INTO v_out
+                    FROM script.vw_lotto_documento_righe mio
+                    JOIN script.vw_lotto_documento_righe altri
+                      ON  altri.lotto_id   = mio.lotto_id
+                      AND altri.fattura_id = mio.fattura_id
+                   WHERE mio.lotto_id     = p_lotto_id
+                     AND mio.gruppo_key   = p_gruppo_key
+                     AND altri.gruppo_key <> p_gruppo_key;
+
+                  RETURN COALESCE(v_out, '[]'::jsonb);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_gruppi_trascinati_da_uscita(bigint, text)
+              IS 'Gli ALTRI documenti del lotto che condividono una bozza con quello '
+                 'indicato: se lui esce dal giro la bozza viene cancellata, e loro '
+                 'tornano «da emettere» con l''esito riportato a PENDING. Ritorna [] '
+                 'quando l''uscita non trascina nessuno — ed e'' il caso del documento '
+                 'caduto al PULL, che una bozza non l''ha mai avuta. ⭐ SEDE UNICA di tre '
+                 'consumatori: il conteggio sulla riga a video, la frase di conferma, e '
+                 'il reset che fa vendite.fn_escludi_documento_da_giro. Scritta tre '
+                 'volte, il giorno che una cambia l''operatore vede un numero e ne '
+                 'subisce un altro. ⛔ La bozza condivisa NON e'' un motivo di rifiuto '
+                 '(D-2b): rifiutare li'' lascerebbe bloccati anche i documenti di '
+                 'un''ALTRA bozza — il sequestro di partenza in forma piu'' stretta. '
+                 'Legge script.vw_lotto_documento_righe, dove vive la catena. '
+                 'Brief: brief-db-uscita-documento-dal-giro §5.4-bis.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_gruppi_trascinati_da_uscita(bigint, text);
+              DROP VIEW IF EXISTS script.vw_lotto_documento_righe;

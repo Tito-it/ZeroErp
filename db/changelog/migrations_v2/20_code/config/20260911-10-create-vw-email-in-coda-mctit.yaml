@@ -1,0 +1,146 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ «QUESTA EMAIL E' ANCORA IN CODA?» — scritto UNA volta, nel database.
+#   Brief: brief-db-quattro-processi-senza-presidio §10.1 (D3) · A2
+#
+# Il brief chiedeva un presidio sulle email `PENDING` e `RETRY` troppo vecchie.
+# Ma non e' quello che `send_pending_emails` ripesca: ripesca anche i **FAILED
+# con `tentativi < max_tentativi`**, e li ripesca APPOSTA — e' il recupero (se
+# l'SMTP viene configurato entro i tentativi, la mail parte da sola). L'ha
+# scoperto il backend stesso, il 2026-09-11, fidandosi di un commento che
+# nominava «PENDING o RETRY» e ometteva i FAILED.
+#
+# ── ⛔ E COPIARE LA `WHERE` DEL CRON NEL PRESIDIO SAREBBE LA SECONDA SEDE ──
+#   Lo stesso predicato in Python e in SQL: alla prima modifica divergono, e
+#   il presidio guarda una coda che il cron non svuota piu' (o viceversa).
+#   E' esattamente il guasto appena pagato — commento ≠ SELECT.
+#   ⇒ La definizione di «in coda» vive QUI, e la leggono in due: il presidio
+#     (`dbops.vw_email_da_guardare`) e — dal giorno in cui il backend la
+#     adotta — il cron al posto della sua SELECT. Una sede sola.
+#
+# ── ⭐ `dovuta_dal`: DA QUANDO la coda la deve a qualcuno ────────────
+#   `PENDING`         → `data_insert` (nessuno l'ha mai presa in mano);
+#   `RETRY`/`FAILED`  → `COALESCE(prossimo_tentativo, data_insert)`: il backoff
+#                       e' legittimo, e una riga col prossimo tentativo fra
+#                       dieci minuti NON e' in ritardo. Si misura da quando era
+#                       DOVUTA, non da quando e' nata.
+#   ⚠️ `config.email_log` non ha `data_update`: non c'e' una colonna migliore.
+#
+# ── ⚠️ NON E' UN PRESIDIO, ed e' per questo che sta in `config` ──────
+#   E' una vista di dominio: la coda delle email, senza soglie. Il presidio e'
+#   `dbops.vw_email_da_guardare` (changeSet -11), che la proietta con la
+#   soglia. ⛔ I presidi stanno in `dbops` per una ragione precisa: il test 2 di
+#   `test-catalogo-presidi-v1` legge il perimetro dagli schemi che compaiono nel
+#   catalogo, e una riga `config.vw_…` porterebbe dentro TUTTE le viste di
+#   `config`.
+#
+# ── ⚠️ `security_invoker = true`, NEL `CREATE VIEW` ─────────────────
+#   `config.email_log` ha la row level security. Chi legge questa vista la legge
+#   col PROPRIO perimetro: il cron con l'identita' tecnica del processo, una
+#   persona con la sua veste, `fn_conta_presidio` da proprietario. ⛔ Un
+#   `CREATE OR REPLACE VIEW` successivo SENZA la clausola la azzera in silenzio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260911-10-create-vw-email-in-coda-mctit.yaml
+
+  - changeSet:
+      id: 20260911-10-create-vw-email-in-coda
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.vw_email_in_coda: la definizione UNICA di «email ancora in coda
+        per send_pending_emails» — PENDING, e RETRY/FAILED con tentativi <
+        max_tentativi e prossimo tentativo gia' dovuto — con la colonna
+        dovuta_dal. Non e' un presidio: e' la vista di dominio su cui il presidio
+        dbops.vw_email_da_guardare mette la soglia, e che il cron leggera' al
+        posto della propria SELECT, cosi' che il predicato abbia una sede sola.
+        security_invoker: si legge col perimetro di chi legge.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: email_log }
+            - columnExists:
+                schemaName: config
+                tableName: email_log
+                columnName: prossimo_tentativo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW config.vw_email_in_coda
+              WITH (security_invoker = true) AS
+              SELECT l.id,
+                     l.destinatario,
+                     l.oggetto,
+                     l.stato,
+                     l.tentativi,
+                     l.max_tentativi,
+                     l.email_account_id,
+                     -- ⚠️ Serve al cron per scegliere la PORTA con cui scrive
+                     --   l'esito: una riga SISTEMA passa da
+                     --   fn_chiudi_email_sistema, non da un UPDATE diretto.
+                     l.ambito,
+                     l.emittente_fiscale_id,
+                     l.prossimo_tentativo,
+                     l.data_insert,
+                     -- ⭐ Da quando la coda la DEVE a qualcuno: e' la colonna su
+                     --   cui si misura il ritardo, e tiene conto del backoff.
+                     CASE
+                         WHEN l.stato = 'PENDING' THEN l.data_insert
+                         ELSE COALESCE(l.prossimo_tentativo, l.data_insert)
+                     END AS dovuta_dal
+                FROM config.email_log l
+               WHERE l.stato = 'PENDING'
+                  -- ⭐ FAILED e' in coda finche' ha tentativi: e' il recupero,
+                  --   non un errore. Lo dice il ripescaggio del cron, e questa
+                  --   vista e' la sua definizione scritta una volta sola.
+                  OR (l.stato IN ('FAILED', 'RETRY')
+                      AND l.tentativi < l.max_tentativi
+                      AND (l.prossimo_tentativo IS NULL
+                           OR l.prossimo_tentativo <= now()));
+
+              COMMENT ON VIEW config.vw_email_in_coda IS
+                  'Le email che send_pending_emails DEVE ancora prendere in mano: PENDING, '
+                  'oppure RETRY/FAILED con tentativi < max_tentativi e prossimo tentativo '
+                  'gia'' dovuto (o mai fissato). ⭐ E'' la definizione UNICA di «in coda», '
+                  'scritta nel database perche'' la leggano in due — il presidio '
+                  'dbops.vw_email_da_guardare e il cron stesso — invece di tenerla in una '
+                  'SELECT Python e in una vista SQL che divergono alla prima modifica. ⛔ Il '
+                  'brief chiedeva PENDING e RETRY: mancavano i FAILED ripescabili, che il '
+                  'cron riprende APPOSTA (e'' il recupero quando l''SMTP viene configurato '
+                  'dopo). Il backend l''ha scoperto il 2026-09-11 fidandosi di un commento '
+                  'che li ometteva. ⭐ dovuta_dal = da quando la coda la deve a qualcuno: '
+                  'data_insert per PENDING, COALESCE(prossimo_tentativo, data_insert) per '
+                  'gli altri — il backoff e'' legittimo, e una riga col prossimo tentativo '
+                  'fra dieci minuti NON e'' in ritardo. ⚠️ NON e'' un presidio (nessuna '
+                  'soglia, e sta in config per non portare tutte le viste di config nel '
+                  'perimetro del catalogo dei presidi). security_invoker: ognuno la legge '
+                  'col proprio perimetro. SIMULATA, SENT e i FAILED terminali NON sono in '
+                  'coda. Brief: brief-db-quattro-processi-senza-presidio §10.1.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON config.vw_email_in_coda TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS config.vw_email_in_coda;

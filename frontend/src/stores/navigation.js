@@ -201,21 +201,15 @@ export const useNavigationStore = defineStore('navigation', () => {
     return result
   }
 
-  // Scopo: rimuove eventuali residui sulla chiave base globale (legacy
-  // pre-fix). Idempotente. Chiamata da clearUserState/syncUserFavorites
-  // per garantire che la "porta di servizio" globale non venga mai usata
-  // come fonte di lettura accidentale per il prossimo utente.
-  function purgeLegacyBaseKeys() {
-    for (const domain of DOMAINS) {
-      local.remove(domainFavoriteKey(domain.key))
-    }
-  }
-
   // Sincronizza preferiti personali dopo login/restore profilo.
-  // Pulisce le chiavi globali legacy per evitare che un utente futuro le
-  // erediti — meccanismo difensivo, idempotente.
+  // ⛔ Fino al 2026-09-12 qui (e in `clearUserState`) girava a OGNI login un
+  //    `purgeLegacyBaseKeys()` che cancellava dal localStorage le chiavi
+  //    globali di prima del fix user-scoped: un meccanismo «difensivo» che
+  //    serviva dati che questo codice non scrive piu' da mesi
+  //    (analisi-software-per-dati-morti §2.4). Tolto: chi ha un browser
+  //    pre-fix con residui globali non li vede — erano il difetto, non un
+  //    dato — perche' `loadFavorites` legge SOLO le chiavi user-scoped.
   function syncUserFavorites(userId) {
-    purgeLegacyBaseKeys()
     currentUserId.value = userId ?? null
     favorites.value = loadFavorites(currentUserId.value)
   }
@@ -232,14 +226,11 @@ export const useNavigationStore = defineStore('navigation', () => {
 
   // Reset al logout: azzera lo stato in memoria preservando i preferiti
   // user-scoped in localStorage (verranno ricaricati al login successivo
-  // dello stesso utente). Pulisce inoltre la chiave globale legacy come
-  // misura difensiva: nessun residuo potra' essere ereditato dal prossimo
-  // utente sullo stesso browser.
+  // dello stesso utente).
   function clearUserState() {
     currentDomain.value = null
     favorites.value = {}
     currentUserId.value = null
-    purgeLegacyBaseKeys()
   }
 
   return {

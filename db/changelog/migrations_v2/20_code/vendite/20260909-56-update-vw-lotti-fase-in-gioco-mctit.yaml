@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L2 — vw_lotti_fase GUADAGNA IL SECONDO DERIVATO: `in_gioco`
+#
+# ── ⭐ PERCHE' I DERIVATI SONO DUE, E NON E' UN DOPPIONE ─────────
+#   Stesso asse (`congela_fiscale`), stessa formula, MA FAIL-CLOSED IN
+#   DIREZIONE OPPOSTA. Differiscono in UN SOLO caso — lo stato non
+#   risolvibile — ed e' esattamente la ragione per cui sono due.
+#
+#     pre_fiscale = COALESCE(NOT congela_fiscale, false)
+#     in_gioco    = COALESCE(NOT congela_fiscale, true)
+#
+#   ⭐ Le due domande vogliono la risposta PRUDENTE opposta:
+#     · «si puo' ancora USCIRE dal giro?»  -> ignoto = NO  (non si tocca)
+#       lo chiedono i quattro script.fn_check_*
+#     · «il lotto TRATTIENE ancora?»       -> ignoto = SI' (non ci si mette
+#       le mani) — lo chiede vendite.vw_documenti_trattenuti_da_lotto
+#
+#   ⛔ Con il solo `pre_fiscale` un lotto senza stato risolvibile risulterebbe
+#   LIBERO: un secondo giro se lo prende, e dal primo non lo si puo' togliere.
+#   Il peggio dei due. Ed e' un fail-OPEN silenzioso, che nessun errore segnala.
+#
+# ── ⚠️ SUI SEI STATI A CATALOGO I DUE FLAG COINCIDONO ────────────
+#   DRAFT/EMESSA -> entrambi TRUE; DEFINITIVA, INVIATA, REGISTRATA e
+#   ANNULLATA -> entrambi FALSE. La differenza vive SOLO sul settimo caso, che
+#   il modello ammette (la colonna e' nullable) anche quando i dati di oggi non
+#   lo contengono. ⛔ «Oggi non capita mai» non e' un motivo per non gestirlo.
+#
+# ── 🔴 PERCHE' QUESTO CHANGESET ESISTE, detto per intero ─────────
+#   Il `20260909-51` esponeva un solo derivato. La prima stesura ne aveva due,
+#   ma il secondo si chiamava `in_gioco` ed era definito su `chiude_lotto` —
+#   sbagliato, perche' quel flag marca la TRANSIZIONE che chiude e non la
+#   proprieta' di essere chiuso (DEFINITIVA -> INVIATA e' ammessa, e INVIATA
+#   non lo porta). Correggendo la formula ho tolto anche il flag, e quella
+#   seconda mossa era di troppo: la formula era sbagliata, l'esistenza no.
+#   ⇒ Torna, con la formula giusta.
+#
+# ⚠️ Colonna IN CODA e `security_invoker` ri-specificato: la reloption non e'
+#   visibile in `pg_get_viewdef` e PostgreSQL la azzera in silenzio.
+#
+# Verifica: db/pgtap/vendite/test-vw-lotti-fase-v1.sql (plan 8)
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L2, §8.2.1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-56-update-vw-lotti-fase-in-gioco-mctit.yaml
+
+  - changeSet:
+      id: 20260909-56-update-vw-lotti-fase-in-gioco
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_fase: secondo derivato `in_gioco`, stesso asse di
+        pre_fiscale ma fail-closed nella direzione opposta. Differiscono solo
+        sullo stato non risolvibile, ed e' la ragione per cui sono due.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite' AND viewname = 'vw_lotti_fase'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_fase
+              WITH (security_invoker=true) AS
+              SELECT l.id               AS lotto_id,
+                     l.codice           AS lotto_codice,
+                     l.competenza_mese  AS lotto_competenza_mese,
+                     -- I TRE ASSI GREZZI, nullabili: sono il fatto, e il fatto
+                     -- puo' essere ignoto. La difesa sta nei derivati.
+                     sdf.codice_interno AS stato_codice_interno,
+                     sdf.is_abortito,
+                     sdf.congela_fiscale,
+                     sdf.chiude_lotto,
+                     -- ⭐ «SI PUO' ANCORA AGIRE SUL DOCUMENTO?» — il confine
+                     --    pre-fiscale. TRUE su DRAFT ed EMESSA.
+                     -- ⚠️ Fail-closed su FALSE: stato ignoto => non si tocca.
+                     COALESCE(NOT sdf.congela_fiscale, false) AS pre_fiscale,
+                     -- ⭐ «IL LOTTO TRATTIENE ANCORA I SUOI DOCUMENTI?» — stesso
+                     --    asse, stessa formula, MA fail-closed nella direzione
+                     --    OPPOSTA: stato ignoto => TRUE, perche' non sapere in
+                     --    che stato e' il giro non e' un buon motivo per
+                     --    lasciarci mettere le mani.
+                     -- ⛔ NON e' un doppione di pre_fiscale: sui sei stati a
+                     --    catalogo i due coincidono, e differiscono SOLO sul
+                     --    settimo caso — che e' precisamente il motivo per cui
+                     --    sono due. Le due domande vogliono la risposta
+                     --    prudente opposta.
+                     -- ⛔ E NON si deriva da `chiude_lotto`: quel flag marca la
+                     --    TRANSIZIONE che chiude (solo DEFINITIVA), non la
+                     --    proprieta' di essere chiuso — INVIATA e REGISTRATA
+                     --    vengono dopo e non lo portano.
+                     COALESCE(NOT sdf.congela_fiscale, true)  AS in_gioco
+                FROM vendite.fatturazione_lotti l
+                -- LEFT JOIN e non INNER: un lotto senza stato risolvibile deve
+                -- ARRIVARE al confronto e prendersi la risposta chiusa, non
+                -- sparire dal risultato.
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = l.stato_doc_fiscale_id;
+
+              COMMENT ON VIEW vendite.vw_lotti_fase IS
+              'SEDE UNICA della domanda «in che fase e'' questo lotto?». Una riga per lotto: i tre assi grezzi di config.stati_doc_fiscale (is_abortito, congela_fiscale, chiude_lotto) piu'' i DUE derivati che li interpretano. Consumatori: script.fn_check_lotto_annullabile, script.fn_check_lotto_riportabile_a_draft, script.fn_check_fattura_eliminabile_da_lotto, script.fn_check_documento_escludibile_da_giro (pre_fiscale) e vendite.vw_documenti_trattenuti_da_lotto (in_gioco).
+              ⭐ I DUE DERIVATI SONO LO STESSO ASSE CON IL FAIL-CLOSED IN DIREZIONE OPPOSTA, e differiscono in UN SOLO caso — lo stato non risolvibile. `pre_fiscale` = COALESCE(NOT congela_fiscale, false) risponde a «si puo'' ancora agire sul documento?» e sull''ignoto dice NO (non si tocca). `in_gioco` = COALESCE(NOT congela_fiscale, true) risponde a «il lotto trattiene ancora i suoi documenti?» e sull''ignoto dice SI'' (non ci si mette le mani). ⛔ Non sono un doppione: le due domande vogliono la risposta prudente OPPOSTA, e con un flag solo un lotto senza stato risolvibile risulterebbe libero per il secondo giro E non estraibile dal primo — il peggio dei due, in silenzio.
+              ⚠️ SUI SEI STATI A CATALOGO COINCIDONO: DRAFT ed EMESSA veri, DEFINITIVA, INVIATA, REGISTRATA e ANNULLATA falsi. La differenza vive sul settimo caso, che il modello ammette perche'' la colonna e'' nullable.
+              ⭐ E `pre_fiscale` E'' ANCHE LA PORTA D''USCITA: fn_check_documento_escludibile_da_giro ammette di togliere un documento dal giro solo da un lotto pre-fiscale. Sui sei stati veri vale quindi «trattenuto ⇔ si puo'' ancora uscire»; sull''ignoto le due prudenze divergono, ed e'' voluto.
+              ⛔ NESSUNO DEI DUE si deriva da `chiude_lotto`: quel flag marca la TRANSIZIONE che chiude (solo DEFINITIVA), non la proprieta'' di essere chiuso — il catalogo ammette DEFINITIVA -> INVIATA -> REGISTRATA, e quei due stati non lo portano, quindi un lotto chiuso risulterebbe di nuovo aperto.
+              ⚠️ I TRE ASSI GREZZI SONO NULLABILI e i derivati no: il grezzo e'' il fatto (che puo'' essere ignoto), il derivato e'' la decisione (che non puo'' esserlo). COALESCE-are anche i grezzi metterebbe nella stessa colonna il fatto e la difesa.
+              ⚠️ L''ASSENZA DI RIGA e'' un''altra cosa ancora: significa lotto inesistente o fuori perimetro RLS. I quattro fn_check_* la trattano come errore (E_LOTTO_NON_TROVATO) e continuano a farlo.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L1, L2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare indietro TOGLIE una colonna, e CREATE OR REPLACE VIEW
+              --   non sa farlo: serve il DROP. Nessun oggetto dipende ancora da
+              --   questa vista in modo da impedirlo — i quattro fn_check_* la
+              --   leggono da PL/pgSQL, che non crea dipendenza di catalogo.
+              DROP VIEW IF EXISTS vendite.vw_lotti_fase;
+
+              CREATE OR REPLACE VIEW vendite.vw_lotti_fase
+              WITH (security_invoker=true) AS
+              SELECT l.id               AS lotto_id,
+                     l.codice           AS lotto_codice,
+                     l.competenza_mese  AS lotto_competenza_mese,
+                     sdf.codice_interno AS stato_codice_interno,
+                     sdf.is_abortito,
+                     sdf.congela_fiscale,
+                     sdf.chiude_lotto,
+                     COALESCE(NOT sdf.congela_fiscale, false) AS pre_fiscale
+                FROM vendite.fatturazione_lotti l
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = l.stato_doc_fiscale_id;

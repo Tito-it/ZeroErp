@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Un documento puo' USCIRE dal giro, e l'esito lo dice.
+#   Decisione di Tid, 2026-09-08 — brief-db-uscita-documento-dal-giro D-1/D-3/D-5.
+#
+# ── ⭐ IL PROBLEMA, SUL MODELLO ────────────────────────────────────
+#   Un giro prende in carico N documenti. Uno e' rotto, il lotto va in errore e
+#   si ferma: gli altri N-1, che hanno gia' le loro bozze, non vengono emessi.
+#   L'unica azione che il database offre su un lotto in errore e' «annulla» —
+#   cioe' buttare via il giro intero, bozze dei documenti sani comprese.
+#
+#   ⇒ Serve che l'operatore possa dichiarare che QUEL documento esce dal giro.
+#
+# ── ⭐ IL POSTO C'E' GIA', E NON E' UN CASO ────────────────────────
+#   `fatturazione_lotti_esiti` e' nata ieri come *(lotto, documento, com'e'
+#   andato)*. «Uscito dal giro» e' esattamente un valore di «com'e' andato»:
+#   non serve una tabella nuova, serve allargare un vocabolario.
+#
+# ── ⚠️ `ESCLUSO` E' TERMINALE (D-3) ────────────────────────────────
+#   Il documento uscito NON rientra. Se si vuole tutto in un lotto solo si
+#   annulla il lotto e si rigenera dopo aver corretto i documenti — una via che
+#   esiste gia' ed e' gia' presidiata.
+#   ⭐ La decisione toglie di mezzo una macchina a stati con ritorno, che avrebbe
+#   dovuto stabilire che cosa succede alle bozze gia' emesse degli ALTRI: un
+#   secondo progetto dentro questo.
+#   ⛔ Il divieto di tornare indietro NON sta qui: un CHECK vede una riga, non
+#   una transizione. Sta nel guard `20260908-04`.
+#
+# ── ⛔ IL MOTIVO E' OBBLIGATORIO (D-5) ─────────────────────────────
+#   Un documento che esce senza motivo e' una riga che fra un mese nessuno sa
+#   spiegare. ⚠️ E il CHECK guarda la stringa VUOTA, non solo il NULL: `''`
+#   passerebbe un `IS NOT NULL` e non direbbe niente lo stesso.
+#
+# ── ⭐ PERCHE' NON `data_update` / `user_update` ───────────────────
+#   Quelle due le riscrive QUALUNQUE aggiornamento successivo della riga: il
+#   momento dell'uscita andrebbe perso in silenzio, e senza errore. Il timbro
+#   dell'uscita vuole colonne sue — stesso ragionamento di
+#   `dbops.coda_lavori.archiviato_il`/`archiviato_da`.
+#   ⚠️ Le tre colonne seguono il naming che la tabella usa GIA' per l'errore
+#   (`errore_codice`/`errore_messaggio`/`errore_quando`): `uscita_motivo`,
+#   `uscita_quando`, `uscita_da`. Due famiglie di colonne sulla stessa tabella
+#   che si nominano in due modi diversi sono due modi di sbagliare a leggerle.
+#
+#   ⛔ Il timbro NON lo scrive il chiamante: lo deriva il trigger dalla GUC
+#   (`20260908-03`). Qui si fa solo il posto.
+#
+# Verifica: db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260908-01-alter-fatturazione-lotti-esiti-uscita-dal-giro-mctit.yaml
+
+  - changeSet:
+      id: 20260908-01-alter-fatturazione-lotti-esiti-uscita-dal-giro
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fatturazione_lotti_esiti ammette lo stato ESCLUSO — il documento
+        che l'operatore ha tolto dal giro perche' era rotto e teneva fermo il
+        lotto. Tre colonne per il timbro dell'uscita (motivo obbligatorio, quando,
+        chi) e un CHECK che pretende il motivo. Il divieto di rientro sta nel
+        guard di transizione, non qui.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_esiti
+                columnName: stato_esecuzione
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatturazione_lotti_esiti
+                    columnName: uscita_motivo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1. Il vocabolario si allarga ────────────────────────────
+              -- ⚠️ DROP + ADD e non un ALTER: un CHECK non si modifica in
+              --   luogo. Il nome resta lo stesso perche' e' lo stesso vincolo
+              --   con un valore in piu' — cambiarlo obbligherebbe chi lo cerca
+              --   a sapere in che anno e' nato.
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  DROP CONSTRAINT chk_fatturazione_lotti_esiti_stato;
+
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  ADD CONSTRAINT chk_fatturazione_lotti_esiti_stato
+                  CHECK (stato_esecuzione IN ('PENDING', 'RUNNING', 'COMPLETED',
+                                              'ERRORE', 'ESCLUSO'));
+
+              -- ── 2. Il timbro dell'uscita ────────────────────────────────
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  ADD COLUMN uscita_motivo  text        NULL,
+                  ADD COLUMN uscita_quando  timestamptz NULL,
+                  ADD COLUMN uscita_da      text        NULL;
+
+              -- ── 3. Un'uscita muta non serve a nessuno ───────────────────
+              -- ⚠️ `btrim` e non il solo IS NOT NULL: una stringa vuota
+              --   passerebbe il vincolo e non direbbe niente lo stesso, che e'
+              --   il modo in cui un obbligo diventa una formalita'.
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  ADD CONSTRAINT chk_fatturazione_lotti_esiti_uscita_parlante
+                  CHECK (stato_esecuzione <> 'ESCLUSO'
+                         OR COALESCE(btrim(uscita_motivo), '') <> '');
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_esiti.uscita_motivo IS
+                  'Perche'' l''operatore ha tolto questo documento dal giro. '
+                  'OBBLIGATORIO quando stato_esecuzione = ESCLUSO, e il CHECK '
+                  'rifiuta anche la stringa vuota: un documento che esce senza '
+                  'motivo e'' una riga che fra un mese nessuno sa spiegare. '
+                  'Lo scrive il chiamante — a differenza di uscita_quando e '
+                  'uscita_da, che li deriva il trigger.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_esiti.uscita_quando IS
+                  'Quando il documento e'' uscito dal giro. ⛔ NON si usa '
+                  'data_update: quella la riscrive qualunque aggiornamento '
+                  'successivo della riga, e il momento dell''uscita si '
+                  'perderebbe in silenzio. Derivata dal trigger, non dal '
+                  'chiamante — stesso patto di dbops.coda_lavori.archiviato_il.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_esiti.uscita_da IS
+                  'Chi ha tolto il documento dal giro, dalla GUC di sessione. '
+                  '⛔ NON si usa user_update, per la stessa ragione di '
+                  'uscita_quando. Derivata dal trigger.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  DROP CONSTRAINT IF EXISTS chk_fatturazione_lotti_esiti_uscita_parlante;
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  DROP COLUMN IF EXISTS uscita_da,
+                  DROP COLUMN IF EXISTS uscita_quando,
+                  DROP COLUMN IF EXISTS uscita_motivo;
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  DROP CONSTRAINT IF EXISTS chk_fatturazione_lotti_esiti_stato;
+              ALTER TABLE vendite.fatturazione_lotti_esiti
+                  ADD CONSTRAINT chk_fatturazione_lotti_esiti_stato
+                  CHECK (stato_esecuzione IN ('PENDING', 'RUNNING', 'COMPLETED', 'ERRORE'));

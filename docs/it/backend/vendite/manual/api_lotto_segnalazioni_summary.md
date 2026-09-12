@@ -44,7 +44,11 @@ View in `apps/vendite/api/views.py`:
       "lotto_critical_count": 0,
       "lotto_warning_count": 0,
       "lotto_info_count": 1,
-      "fatture_stato_esecuzione_errore_count": 0
+      "fatture_stato_esecuzione_errore_count": 0,
+      "documenti_bloccanti_count": 0,
+      "documenti_presi_in_carico_count": 2,
+      "critiche_giro_count": 0,
+      "esiti_stato_esecuzione_errore_count": 0
     },
     "livello": "C",
     "segnalazioni": [
@@ -114,9 +118,35 @@ niente. Sulle segnalazioni di LOTTO sono `null` e il consumer mostra `fase`.
 - `critical_count` = somma `fatture_critical_count` + `lotto_critical_count`.
 - `warning_count` = somma `fatture_warning_count` + `lotto_warning_count`.
 - `attention_count` = `lotto_info_count` (livello "I" — info operativa).
-- `is_error = true` se `critical_count > 0` oppure se `fatture_stato_esecuzione_errore_count > 0`.
+- `is_error = true` se **uno** dei tre addendi è > 0: `critical_count`,
+  `summary.fatture_stato_esecuzione_errore_count`,
+  `summary.esiti_stato_esecuzione_errore_count` (il terzo dal 2026-09-12, D2 —
+  vedi sotto).
 - `blocks_next_step = true` se `is_error = true` (nessun avanzamento pipeline ammesso).
+  ⚠️ Il **rilancio dello stesso step** resta ammesso: è la via d'uscita, e per
+  il terzo addendo è l'unica (il pull rivede il documento e scrive l'esito nuovo).
 - `summary.fatture_stato_esecuzione_errore_count` — conteggio fatture del lotto con `stato_esecuzione = 'ERRORE'`; restituito direttamente da `fn_get_lotto_segnalazioni_summary` (6ª colonna).
+- `summary.documenti_bloccanti_count` · `documenti_presi_in_carico_count` ·
+  `critiche_giro_count` — i tre numeri del **banner** (2026-09-08): contano
+  **gesti**, non allarmi, e **non** entrano nel verdetto.
+- `summary.esiti_stato_esecuzione_errore_count` — ⭐ **il decimo numero, e
+  questo entra nel verdetto** (2026-09-12, changeSet `20260912-16`, brief
+  `brief-db-rilancio-step-non-rivede-le-proprie-commesse` D2): i documenti
+  presi in carico il cui **ultimo** esito in `fatturazione_lotti_esiti` è
+  `ERRORE`. `ESCLUSO` non conta — è la via d'uscita, l'operatore ha dichiarato
+  che quel documento esce dal giro.
+  ⚠️ **Può essere > 0 con `critical_count = 0`**: il runner ritira le proprie
+  bandiere all'avvio di ogni rerun, e se il giro non rivede un documento
+  nessuno le rialza — prima di D2 quel lotto usciva `COMPLETATO` per
+  sottrazione. ⇒ Il client legge il verdetto da `blocks_next_step`, **non** lo
+  ricalcola da `critical_count`: `LottoDrawer` lo fa dal 2026-09-12 (gate di
+  «Numera»/«Avanza» e banner), e la frase del banner ha un ramo dedicato che
+  manda l'operatore sulla scheda **«Presi in carico»** (la lista degli esiti:
+  se il pull è fallito una fattura non è mai nata, quindi su «Documenti» quella
+  riga non c'è), dove la riga in `ERRORE` porta `ErroreRigaInfo` e il verbo
+  «Togli dal giro».
+  ⚠️ Si **sovrappone** ai tre del banner (un documento con critica viva ha anche
+  l'esito `ERRORE`): non si somma a `documenti_bloccanti_count`.
 - Endpoint di sola lettura: nessun `Idempotency-Key` richiesto.
 - Endpoint v1 richiede JWT.
 

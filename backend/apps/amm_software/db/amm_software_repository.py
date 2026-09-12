@@ -8,19 +8,36 @@
 
 from __future__ import annotations
 
-import json
 import re
 from functools import lru_cache
 from typing import Any, ClassVar
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction, sql_tiebreak_direction
+from apps.core.db._helpers import rows_to_list, sql_order_direction, sql_tiebreak_direction
 
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
+
+# ⛔ GLI UTENTI TECNICI NON SONO OPERATORI, e le liste di questo modulo
+# parlano di PERSONE. Dal 2026-09-04 il database crea un utente per ogni
+# coppia (processo automatico, emittente) — `run_fatturazione_batch@ACME` e
+# compagni: hanno un `auth_user`, un'identita' `OPERATORE` e un perimetro, ma
+# non un rapporto di lavoro, non un reparto e nessuno a cui telefonare.
+# Le due query di questo file partono `FROM auth_user`, quindi li mostravano
+# come persone senza cognome: nessun errore, righe vere di una specie
+# sbagliata.
+#   ⭐ Il discriminante e' DICHIARATO, non dedotto dal nome utente:
+#   `anagrafiche.identita_digitali.tecnica`, il flag che il cantiere
+#   «nessun processo senza operatore» ha introdotto apposta.
+#   ⚠️ `COALESCE(..., false)`: la JOIN sull'identita' e' LEFT, e un auth_user
+#   SENZA identita' (`tecnica` NULL) e' una persona a cui manca qualcosa —
+#   deve continuare a comparire, o si nasconderebbe proprio il caso da sanare.
+#   ⚠️ Va nel `WHERE`, non nella condizione di JOIN: nella JOIN l'utente
+#   tecnico resterebbe in elenco con le colonne dell'identita' a NULL.
+ESCLUDI_UTENTI_TECNICI = "NOT COALESCE(id.tecnica, false)"
 
 # Whitelist ORDER BY lista operatori: chiave = `campo_sorgente` inviato dal
 # frontend, valore = espressione SQL. Le chiavi che sono alias di output della
@@ -135,7 +152,7 @@ class AmmSoftwareRepository:
         if order_dir and order_dir.upper() not in ("ASC", "DESC"):
             order_dir = None
 
-        conditions: list[str] = []
+        conditions: list[str] = [ESCLUDI_UTENTI_TECNICI]
         params: list[Any] = []
 
         if search:
@@ -748,6 +765,7 @@ class AmmSoftwareRepository:
     def list_model_overrides(self) -> list[dict[str, Any]]:
         sql = """
             SELECT amo.id, amo.app_label, amo.model_name,
+                   af.id AS area_id,
                    af.schema_db AS area_schema, af.descrizione AS area_descrizione
               FROM config.area_model_overrides amo
               JOIN config.aree_funzionali af ON af.id = amo.area_id
@@ -887,6 +905,95 @@ class AmmSoftwareRepository:
                     WHERE pab.unita_organizzativa_id = %s
                     ORDER BY af.ordinamento, ap.permission_codename""",
                 [uo_id],
+            )
+            cols_z = [c.name for c in cursor.description]
+            azioni = [dict(zip(cols_z, row)) for row in cursor.fetchall()]
+
+        return {"aree": aree, "azioni": azioni}
+
+    # Scopo: I livelli che un operatore EREDITA dal profilo, per area e per
+    #        azione — cioe' cosa avrebbe senza nessun override individuale.
+    #        Alimenta la colonna «ereditato» del pannello permessi: senza,
+    #        l'admin riscrive override che ripetono il profilo, e un override
+    #        che ripete il profilo CONGELA la riga (da quel momento non segue
+    #        piu' il reparto se il reparto cambia).
+    #
+    # ⛔ NON e' `get_profilo_reparto`, e la differenza non e' cosmetica. Quello
+    #    legge il solo binding REPARTO per `unita_organizzativa_id`; i bindings
+    #    sono TRE — `AD_HOC` (priorita' 1, sull'identita'), `PORTALE` e
+    #    `REPARTO` (priorita' 2) — e i resolver prendono il primo per priorita'.
+    #    Per un utente con un binding AD_HOC quella lettura darebbe un valore
+    #    PLAUSIBILE E SBAGLIATO, su una schermata di sicurezza.
+    #
+    # ⭐ La sorgente e' `script.fn_get_profili_accesso_applicabili`, cioe' LA
+    #    STESSA funzione che usano `fn_resolve_livello_area` e
+    #    `fn_check_azione_processo`: l'insieme dei profili e le loro priorita'
+    #    non sono ricalcolati qui.
+    # ⚠️ Cio' che si ripete e' il `DISTINCT ON ... ORDER BY priorita`, cioe' lo
+    #    spareggio. E' il minimo duplicabile, ma resta una seconda scrittura di
+    #    un criterio: il presidio e' il test che, su un utente SENZA override,
+    #    confronta questo livello con `fn_resolve_livello_area` — senza override
+    #    la catena del resolver E' l'ereditato, quindi devono coincidere per
+    #    costruzione.
+    #
+    # ℹ️ Nessuna chiave `oggetti`: `config.profili_accesso_oggetti` non esiste.
+    #    Per un model l'ereditato e' il livello della sua AREA, che il chiamante
+    #    ha gia' da `aree` — restituirlo qui sarebbe una seconda risposta alla
+    #    stessa domanda, con due posti in cui sbagliarla.
+    # ℹ️ Voce ASSENTE = nessun profilo copre quell'area/azione ⇒ vale il default
+    #    (`BLOCCATO` / azione negata). La lista vuota e' un dato, non un buco.
+    # ⚠️ PARITA' A PRIORITA' UGUALE: `PORTALE` e `REPARTO` valgono entrambi 2,
+    #    quindi un utente bindato a tutti e due ha due profili indistinguibili
+    #    per lo spareggio, e `DISTINCT ON` ne prende uno arbitrario — esattamente
+    #    come fa il resolver col suo `ORDER BY h.priorita LIMIT 1`. Le due
+    #    letture restano quindi coerenti fra loro, ma su quella coppia il
+    #    risultato non e' DETERMINATO: e' un'ambiguita' del modello dei
+    #    bindings, non di questa query, e va risolta li' (una terza chiave di
+    #    ordinamento, o priorita' distinte) se un giorno si presentera'.
+    def get_permessi_ereditati(self, auth_user_id: int) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT DISTINCT ON (paa.area_id)
+                          paa.area_id,
+                          af.codice        AS area_codice,
+                          af.descrizione   AS area_descrizione,
+                          paa.livello::text,
+                          pa.descrizione   AS profilo_nome,
+                          pa.tipo::text    AS profilo_tipo
+                     FROM script.fn_get_profili_accesso_applicabili(%s) h
+                     JOIN config.profili_accesso_aree paa
+                       ON paa.profilo_accesso_id = h.profilo_accesso_id
+                     JOIN config.profili_accesso pa
+                       ON pa.id = h.profilo_accesso_id
+                     JOIN config.aree_funzionali af
+                       ON af.id = paa.area_id
+                    ORDER BY paa.area_id, h.priorita""",
+                [auth_user_id],
+            )
+            cols_a = [c.name for c in cursor.description]
+            aree = [dict(zip(cols_a, row)) for row in cursor.fetchall()]
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT DISTINCT ON (paz.azione_id)
+                          paz.azione_id,
+                          ap.permission_codename,
+                          ap.descrizione   AS azione_descrizione,
+                          af.codice        AS area_codice,
+                          paz.abilitata,
+                          pa.descrizione   AS profilo_nome,
+                          pa.tipo::text    AS profilo_tipo
+                     FROM script.fn_get_profili_accesso_applicabili(%s) h
+                     JOIN config.profili_accesso_azioni paz
+                       ON paz.profilo_accesso_id = h.profilo_accesso_id
+                     JOIN config.profili_accesso pa
+                       ON pa.id = h.profilo_accesso_id
+                     JOIN config.azioni_processo ap
+                       ON ap.id = paz.azione_id
+                     JOIN config.aree_funzionali af
+                       ON af.id = ap.area_id
+                    ORDER BY paz.azione_id, h.priorita""",
+                [auth_user_id],
             )
             cols_z = [c.name for c in cursor.description]
             azioni = [dict(zip(cols_z, row)) for row in cursor.fetchall()]
@@ -1071,8 +1178,10 @@ class AmmSoftwareRepository:
     # ⚠️ `storico_table` e' QUALIFICATA (`schema.tabella`), quindi vuole una sua
     #    regex: `_AUDIT_CODE_RE` non ammette il punto e scarterebbe OGNI riga —
     #    cioe' un audit log vuoto invece di un errore. ⭐ E il primo segmento
-    #    ammette `_` iniziale apposta: la tabella che ha fatto emergere tutto
-    #    questo si chiama `_legacy_risorse_umane_auth_user`.
+    #    ammette `_` iniziale apposta: un identificatore PostgreSQL puo'
+    #    cominciare con `_`, e la tabella che ha fatto emergere tutto questo
+    #    (una shadow «legacy» rinominata col prefisso, droppata il 2026-09-12)
+    #    lo faceva. La regex resta giusta anche senza quella tabella.
     _AUDIT_STORICO_TABLE_RE: ClassVar = re.compile(
         r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$"
     )
@@ -1238,7 +1347,7 @@ class AmmSoftwareRepository:
         aree = self.list_aree_funzionali()
 
         # 2. Query operatori attivi con livello effettivo per ogni area
-        conditions: list[str] = ["au.is_active = true"]
+        conditions: list[str] = ["au.is_active = true", ESCLUDI_UTENTI_TECNICI]
         params: list[Any] = []
 
         if unita_organizzativa_id is not None:

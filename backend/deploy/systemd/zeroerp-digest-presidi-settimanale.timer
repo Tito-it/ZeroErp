@@ -1,0 +1,19 @@
+# Template systemd — timer del digest settimanale dei presidi.
+# Placeholder per-host: __ONCALENDAR__ (cadenza, default `Mon *-*-* 07:30`,
+# dichiarato in `backend/deploy/sveglie.json`).
+#
+# ⭐ Mezz'ora dopo la giornaliera del lunedì, e non alla stessa ora: le due corse
+# leggono lo stesso catalogo e scrivono sullo stesso giornale, e accavallarle
+# renderebbe il battito ambiguo proprio nel giorno in cui lo si legge.
+#
+# ⚠️ `Persistent=true`: un lunedì in cui l'host era spento non deve costare una
+# settimana di silenzio — ed è il silenzio, qui, la cosa da non lasciar passare.
+[Unit]
+Description=Timer ZeroERP digest settimanale dei presidi
+
+[Timer]
+OnCalendar=__ONCALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target

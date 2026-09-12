@@ -13,17 +13,31 @@
 
 ## Stack tecnologico
 
-| Componente | Versione | Ruolo                   |
-| ---------- | -------- | ----------------------- |
-| Vue.js     | 3.5.x    | Framework UI            |
-| Vite       | 8.x      | Build tool e dev server |
-| PrimeVue   | 4.5.x    | Libreria componenti     |
-| PrimeIcons | latest   | Iconografia             |
-| Pinia      | 3.x      | Gestione stato          |
-| Vue Router | 5.x      | Navigazione             |
-| vue-i18n   | 10.x     | Multilingua             |
-| Axios      | latest   | Client HTTP             |
-| Node.js    | 24 LTS   | Runtime di sviluppo     |
+> ⛔ **Le versioni non stanno qui.** Fonte unica di verità:
+> **`frontend/package.json`** (versione risolta in `package-lock.json`, runtime
+> Node in `engines.node`). Questa tabella dichiara **a cosa serve** ogni pezzo —
+> il ruolo non invecchia, il numero sì.
+>
+> ⚠️ **Perché la colonna «Versione» è sparita il 2026-09-09.** Lo stesso stack
+> era scritto in tre documenti — qui, in `.codex/AGENTS.md` e in
+> `.codex/PROJECT_CONTEXT.md` — e li diceva **tutti e tre diversi e tutti e tre
+> sbagliati**: `Pinia 3` contro un lock a **4.0.3**, `vue-i18n 10` contro
+> **11.4.10**, `Vite 7` contro **8.2.2**. Due salti di **major** passati senza
+> che nessuno dei tre se ne accorgesse. ⭐ Vale il precedente di Python
+> (`.python-version`): *un numero scritto in due posti ne ha sempre uno stantio,
+> e quello senza presidio è sempre il documento.*
+
+| Componente | Ruolo                   |
+| ---------- | ----------------------- |
+| Vue.js     | Framework UI            |
+| Vite       | Build tool e dev server |
+| PrimeVue   | Libreria componenti     |
+| PrimeIcons | Iconografia             |
+| Pinia      | Gestione stato          |
+| Vue Router | Navigazione             |
+| vue-i18n   | Multilingua             |
+| Axios      | Client HTTP (⛔ importato in **un solo file**: `src/core/api.js`) |
+| Node.js    | Runtime di sviluppo (via nvm) |
 
 ---
 
@@ -630,6 +644,25 @@ cambiare i 60 giorni e' una riga in `core/utils/date`
 
 Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise da tutte le liste.
 
+### Interruttore «mostra i nascosti» — `ToggleNascoste`
+
+Quando una lista lascia fuori di default degli elementi che **esistono** (righe
+archiviate, lotti annullati) e li rimette dentro a richiesta, l'interruttore è
+il BB `ToggleNascoste`: `[switch] Mostra annullati (3)`, con il **numero** di
+ciò che resta fuori finché è spento. ⛔ Non un `ToggleSwitch` scritto in
+pagina: il 2026-09-12 erano già due copie con due CSS e due chiavi plurali.
+
+- il numero lo **dichiara il backend** (`archiviate_count`, `annullati_count`):
+  spento e senza numero, «elenco pulito» e «tre righe messe via» si leggono
+  uguali — è la stessa regola di `ritirate_count` sul giornale;
+- la forma dell'etichetta è `Etichetta (N)` (decisione di Tid, 2026-09-12), non
+  una frase plurale: la chiave i18n è una, quella dell'interruttore;
+- il cambio ricarica **da pagina 1**: la pagina 3 dell'insieme piccolo può non
+  esistere in quello grande, e viceversa.
+
+Consumer: `LottiListView`, `CodaFiltriToolbar`. Dettaglio nel
+[catalogo](catalogo-building-block-frontend.md).
+
 ### Scorciatoie da tastiera (Keyboard Shortcuts)
 
 Scorciatoie globali per operatori ERP power user. Due meccanismi:
@@ -927,10 +960,14 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
 
 ### Regole (PrimeVue 4 — `Tabs`)
 
-> Siamo su **PrimeVue 4.5**. I componenti da usare sono `Tabs`, `TabList`, `Tab`,
-> `TabPanels`, `TabPanel`. `TabView` (PrimeVue 3) è **eliminato dal repo**
-> (migrazione completata 2026-07-22): se lo trovi in un esempio, l'esempio è
+> I componenti da usare sono `Tabs`, `TabList`, `Tab`, `TabPanels`, `TabPanel`.
+> `TabView` (l'API di PrimeVue 3) è **eliminato dal repo** — migrazione
+> completata il 2026-07-22, zero residui: se lo trovi in un esempio, l'esempio è
 > vecchio.
+> ⚠️ La versione di PrimeVue in uso si legge in `frontend/package.json`, non qui:
+> ciò che questa sezione fissa è **quale API si usa**, e quella non cambia con la
+> patch. Il salto alla generazione successiva ha un piano suo
+> ([piano-migrazione-primevue-5.md](../work-in-progress/piano-migrazione-primevue-5.md)).
 
 - Usare `Tabs` con `lazy` (carica il contenuto solo quando il tab è attivo)
 - Il div root della vista ha `class="app-page"` — `Tabs` si espande in altezza
@@ -2375,13 +2412,56 @@ inventa una — è lo stesso patto dei tre livelli già descritto sopra.
 ⚠️ **Oggi `TASK_RUN` non è raggiungibile**, ed è deliberato: è a catalogo perché
 serve al giornale degli eventi, e nessuna schermata mostra un giro per id.
 
+### ⭐ La soluzione — `hint`, cioè cosa fare adesso (dal 2026-09-09)
+
+`campiErrati` dice **quale campo** correggere, il bersaglio dice **a quale altra
+cosa** andare. La **soluzione** dice **cosa fare adesso** — ed è la terza metà,
+quella che mancava.
+
+```
+messaggio:   «Non si può numerare il documento 835: la fattura che
+              rettifica non è ancora numerata (documento 820).»
+soluzione:   «Numerare prima i documenti che questo rettifica, poi ripetere.»
+gesto:       [ Apri Fattura 820 ]
+```
+
+⭐ **La frase non la scrive il frontend, e nemmeno il backend**: è la `soluzione`
+che il team DB scrive **a catalogo per ogni codice**, quindi è multilingua e
+cambia con un seed. Viaggia nell'envelope come `error.hint`.
+
+**Non c'è niente da scrivere nei componenti.** La estrae `useApiHandler` e la
+consegna al toast, che la rende **sotto il messaggio** — esattamente come per il
+gesto:
+
+```js
+// Serve solo a chi ha una superficie PROPRIA dove metterla.
+const { execute, soluzione } = useApiHandler()
+```
+
+| Regola | Perché |
+|---|---|
+| va nel **`detail`** del toast, mai concatenata al messaggio | sono due frasi con due ruoli — cosa è successo, cosa fare — e il tema le rende una sotto l'altra con pesi diversi. Unirle produce un periodo unico in cui l'istruzione si perde dentro la diagnosi |
+| il toast che la porta dura **di più** (`TOAST_DURATION.ERROR_CON_SOLUZIONE`) | la durata si calibra su **quanto c'è da leggere**, e qui il testo è il doppio. ⛔ Non è persistente come quello col gesto: la soluzione è a catalogo per ogni codice, e `life: 0` farebbe di **ogni** errore di dominio un toast da chiudere a mano |
+| su un errore **tecnico** non arriva, e non è il frontend a deciderlo | lo toglie `_apply_policy` sui tre codici in cui il canale `HINT` non porta una soluzione a catalogo ma il testo che PostgreSQL scrive per lo sviluppatore. ⛔ Ri-deciderlo qui sarebbe una **seconda sede** della stessa regola |
+| il **rifiuto confermabile** non la mostra, ed è voluto | lì la frase «cosa fare adesso» **è il dialog che sta comparendo** (`useForzaturaConfermata`): ripeterla sotto sarebbe dire due volte la stessa cosa |
+
+⛔ **Chi chiama `notify.error(...)` a mano non ce l'ha**, ed è la stessa
+asimmetria che già vale per il gesto: il canale è `execute`, e un secondo
+percorso che legge l'envelope per conto proprio è la forma in cui i due
+divergono. Se una schermata mostra un errore senza passare da `useApiHandler`,
+la domanda da farsi è perché.
+
 ---
 
-⚠️ **`ui_action` non si usa ancora.** `useApiHandler` lo espone come `azioneUi`
-per chi vorra' costruirci sopra, ma **nessun componente lo legge**: la reazione
-della pagina la decidono il messaggio e lo status. Prima di dargli un
-comportamento vanno rilette le 176 scelte fatte quando nessuno poteva
-verificarle a video.
+⚠️ **`ui_action`: un valore su sette, e gli altri sei sono SERVITI.**
+`useApiHandler` lo espone come `azioneUi`; l'unico componente che ci ramifica è
+`useForzaturaConfermata`, su `confirm_and_retry`. ⭐ **Non è una lacuna, ed è
+dichiarato** (decisione di Tid, 2026-09-09): `highlight_form_fields` lo serve
+`campiErrati`, `redirect_login` lo serve lo **status 401** in `core/api.js`, e i
+restanti quattro li serve il **toast** — che ora porta anche la soluzione e, dove
+c'è un bersaglio, il gesto. ⚠️ Prima di dare un comportamento al settimo vanno
+rilette le **176 righe di override**, decise quando nessuno poteva verificarle a
+video. Tabella completa: [api.md §Cosa cambia davvero lo status](../api.md).
 
 ---
 

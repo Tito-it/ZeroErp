@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-6 (pezzo 2 di 2) — IL VERBO CHE MANCAVA.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, DB-6
+#
+# ⛔ SENZA QUESTO PEZZO IL RIFIUTO DEL -13 INDICA UNA PORTA CHE NON ESISTE.
+# Il changeSet precedente smette di alzare un 23505 nudo e dice «esiste gia', usa
+# l'altro verbo». Se l'altro verbo non c'e', abbiamo solo cambiato il testo di un
+# vicolo cieco — e un messaggio che manda da nessuna parte e' peggio di un errore
+# tecnico, perche' fa perdere tempo a chi ci crede.
+#
+# ── ⭐ CHE COSA RIATTIVA, E PERCHE' TRE COSE E NON UNA ──────────────
+#   Un utente tecnico «spento» puo' esserlo a tre livelli, e spegnerne uno solo
+#   basta a fermarlo:
+#     dbops.processi_identita.attivo        il LEGAME col processo
+#     anagrafiche.identita_digitali.attivo  l'IDENTITA' applicativa
+#     django.auth_user.is_active            l'UTENTE
+#   ⇒ Riattivarne uno solo lascerebbe l'utente a meta': esistente, ma inerte in
+#   un modo che non si vede. Si riattivano tutti e tre, o non si riattiva niente.
+#
+# ── ⛔ NON RICOSTRUISCE NIENTE, e questo e' il confine ──────────────
+#   Non crea soggetti, non tocca il perimetro in config.user_emittenti_fiscali,
+#   non assegna profili. Se manca uno di quei pezzi la coppia non e' «da
+#   riattivare»: e' rotta, e va guardata. ⇒ Questo verbo RIACCENDE cio' che c'e',
+#   e la fabbrica CREA cio' che non c'e'. Due verbi, due mestieri.
+#
+# ── ⚠️ IL PERIMETRO NON SI TOCCA, ed e' deliberato ──────────────────
+#   `config.user_emittenti_fiscali` e' 1-a-1 e con emittente immutabile: se
+#   quell'utente aveva un altro emittente, riattivarlo NON lo sposta. La
+#   funzione lo verifica e si ferma, invece di riaccendere un utente che
+#   lavorerebbe per l'azienda sbagliata — che e' il guasto silenzioso che tutto
+#   questo cantiere esiste per impedire.
+#
+# ── ⚠️ NON E' SECURITY DEFINER ─────────────────────────────────────
+#   Chi la chiama e' una persona che sta configurando, e deve avere i permessi
+#   per farlo. Come la fabbrica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260905-14-create-fn-riattiva-utente-tecnico-mctit.yaml
+
+  - changeSet:
+      id: 20260905-14-create-fn-riattiva-utente-tecnico
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_riattiva_utente_tecnico: riaccende il legame, l'identita' e
+        l'utente Django di un utente tecnico gia' esistente per la coppia
+        (processo, emittente). E' il verbo che il rifiuto del changeSet -13
+        indica, e senza il quale quel rifiuto manderebbe in un vicolo cieco.
+      # ⛔ NESSUNA preCondition sui codici errore, ed e' una regola non un
+      #   dettaglio: `20_code` gira PRIMA di `80_data`, quindi in CI quel
+      #   `count(*)` troverebbe zero e il migrate morirebbe. Un codice errore e'
+      #   un fatto di RUNTIME: si nomina come stringa e si risolve quando la
+      #   funzione viene chiamata, cioe' quando il seed e' passato da un pezzo.
+      #   ⭐ Cio' che il cancello voleva difendere — «il codice esiste davvero» —
+      #     e' un presidio pgTAP (test 1 di
+      #     db/pgtap/script/test-fn-riattiva-utente-tecnico.sql), non un
+      #     cancello di migrate. Regola: linee-guida-sql, sezione 11.4.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: processi_identita }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_riattiva_utente_tecnico(
+                  p_processo_codice  dbops.processi.codice%TYPE,
+                  p_emittente_codice anagrafiche.emittenti_fiscali.codice%TYPE
+              )
+               RETURNS integer   -- ⚠️ niente %TYPE su django.*
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_username     text;
+                  v_auth_user_id integer;   -- ⚠️ niente %TYPE su django.*
+                  v_processo     dbops.processi%ROWTYPE;
+                  v_emittente    anagrafiche.emittenti_fiscali%ROWTYPE;
+                  v_emit_perim   anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Riaccendere un utente tecnico che ESISTE ed e' spento.
+                  --   ⛔ Non crea niente: se manca un pezzo, la coppia non e'
+                  --   «da riattivare», e' rotta — e va guardata da una persona.
+                  --
+                  -- ⭐ Perche' esiste: lo username degli utenti tecnici e'
+                  --   deterministico (processo@emittente) e il suo UNIQUE non
+                  --   ha condizioni. Disattivare il legame — la via che il
+                  --   brief documenta per sostituire l'utente di un processo —
+                  --   non libera lo username, quindi la fabbrica non puo'
+                  --   rifarlo. Senza questo verbo quella strada e' chiusa.
+                  -- =========================================================
+
+                  -- Guard 1: il processo deve esistere. «Non c'e'» e «non e'
+                  -- eleggibile» sono due cose diverse (DB-8).
+                  SELECT * INTO v_processo
+                    FROM dbops.processi
+                   WHERE codice = p_processo_codice;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_riattiva_utente_tecnico',
+                          'E_PROCESSO_NON_TROVATO',
+                          jsonb_build_object('processo_codice', p_processo_codice),
+                          NULL::uuid, p_processo_codice);
+                  END IF;
+
+                  SELECT * INTO v_emittente
+                    FROM anagrafiche.emittenti_fiscali
+                   WHERE codice = p_emittente_codice;
+
+                  IF NOT FOUND OR NOT v_emittente.attivo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_riattiva_utente_tecnico',
+                          'E_UTENTE_TECNICO_EMITTENTE_NON_VALIDO',
+                          jsonb_build_object('emittente_codice', p_emittente_codice),
+                          NULL::uuid, p_emittente_codice);
+                  END IF;
+
+                  -- Guard 2: c'e' qualcosa da riattivare?
+                  v_username := p_processo_codice || '@' || p_emittente_codice;
+
+                  SELECT au.id INTO v_auth_user_id
+                    FROM django.auth_user au
+                   WHERE au.username = v_username;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_riattiva_utente_tecnico',
+                          'E_UTENTE_TECNICO_NON_TROVATO',
+                          jsonb_build_object('processo_codice',  p_processo_codice,
+                                             'emittente_codice', p_emittente_codice,
+                                             'username',         v_username),
+                          NULL::uuid, p_processo_codice, p_emittente_codice);
+                  END IF;
+
+                  -- ⛔ Guard 3: IL PERIMETRO NON SI SPOSTA.
+                  --   config.user_emittenti_fiscali e' 1-a-1 e l'emittente e'
+                  --   immutabile. Se quell'utente aveva un'altra azienda,
+                  --   riaccenderlo lo farebbe lavorare per l'azienda sbagliata:
+                  --   il guasto silenzioso che questo cantiere esiste per
+                  --   impedire. Meglio fermarsi e farlo guardare.
+                  SELECT uef.emittente_fiscale_id INTO v_emit_perim
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = v_auth_user_id;
+
+                  IF v_emit_perim IS DISTINCT FROM v_emittente.id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_riattiva_utente_tecnico',
+                          'E_UTENTE_TECNICO_NON_TROVATO',
+                          jsonb_build_object(
+                              'detail', 'utente presente ma con perimetro diverso o assente',
+                              'username',              v_username,
+                              'emittente_atteso',      v_emittente.id,
+                              'emittente_del_perimetro', v_emit_perim),
+                          NULL::uuid, p_processo_codice, p_emittente_codice);
+                  END IF;
+
+                  -- ⭐ I TRE LIVELLI, e si riaccendono INSIEME: spegnerne uno
+                  --   solo basta a fermare l'utente, quindi riaccenderne uno
+                  --   solo lo lascerebbe inerte in un modo che non si vede.
+                  UPDATE django.auth_user
+                     SET is_active = true
+                   WHERE id = v_auth_user_id
+                     AND is_active IS DISTINCT FROM true;
+
+                  UPDATE anagrafiche.identita_digitali
+                     SET attivo = true
+                   WHERE auth_user_id = v_auth_user_id
+                     AND tecnica
+                     AND attivo IS DISTINCT FROM true;
+
+                  UPDATE dbops.processi_identita
+                     SET attivo = true
+                   WHERE auth_user_id = v_auth_user_id
+                     AND processo_id = v_processo.id
+                     AND attivo IS DISTINCT FROM true;
+
+                  RETURN v_auth_user_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_riattiva_utente_tecnico(text, character varying)
+              IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. ⭐ Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente — e senza questo verbo la strada di sostituzione documentata resta chiusa. ⛔ NON ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili. Se manca un pezzo la coppia non e'' «da riattivare», e'' rotta. ⛔ E il perimetro NON si sposta: config.user_emittenti_fiscali e'' 1-a-1 con emittente immutabile, quindi se l''utente aveva un''altra azienda la funzione si ferma invece di riaccenderlo — riaccenderlo lo farebbe lavorare per l''azienda sbagliata. Compagna di script.fn_crea_utente_tecnico: quella CREA cio'' che non c''e'', questa RIACCENDE cio'' che c''e''. Brief: brief-db-processi-automatici-residui-be, DB-6.';
+
+              -- ⛔ Non eseguibile da PUBLIC: riaccende un'identita' che lavora
+              --   dentro il perimetro di un'azienda.
+              REVOKE EXECUTE ON FUNCTION
+                  script.fn_riattiva_utente_tecnico(text, character varying)
+                  FROM PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS
+                  script.fn_riattiva_utente_tecnico(text, character varying);

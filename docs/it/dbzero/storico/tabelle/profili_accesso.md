@@ -18,6 +18,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -28,6 +30,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_profili_accesso_profili_accesso_id_fk | `CREATE INDEX ix_profili_accesso_profili_accesso_id_fk ON storico.profili_accesso USING btree (profili_accesso_id)` |
+| ix_profili_accesso_scope_ef | `CREATE INDEX ix_profili_accesso_scope_ef ON storico.profili_accesso USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_profili_accesso | `CREATE UNIQUE INDEX pk_storico_profili_accesso ON storico.profili_accesso USING btree (id)` |
 
 ## 🚨 Trigger

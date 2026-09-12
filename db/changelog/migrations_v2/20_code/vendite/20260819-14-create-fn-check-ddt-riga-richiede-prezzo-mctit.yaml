@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # «Questa riga di DDT ha bisogno di un prezzo?» — la domanda in una funzione.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice C,
 # punto C3 (decisione D-5 = K2).
 #
 # A COSA SERVE. Il changeSet 20260819-15 la usa nella clausola WHEN del trigger

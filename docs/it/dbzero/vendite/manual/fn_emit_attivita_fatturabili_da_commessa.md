@@ -27,6 +27,20 @@ Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipel
   vengono **rinfrescate** dalla riga commessa, coerentemente con `prezzo_unitario`/
   `prezzo_snapshot` (lo snapshot di emissione resta allineato finché non è fatturato).
 * Aggiorna `commesse_attivita.stato_emissione = 'EMESSA'` per le righe emesse.
+* **Quali righe** (rev 2026-09-09/12): si legge la **classe** da
+  [vw_commesse_attivita_emittibilita](/dbzero/vendite/manual/vw_commesse_attivita_emittibilita),
+  **vista dal giro** con [fn_classe_emittibilita_per_giro](/dbzero/vendite/manual/fn_classe_emittibilita_per_giro):
+  `PRONTA` entra; `TRATTENUTA` soltanto dal lotto corrente
+  ([fn_lotto_da_emit_batch](/dbzero/vendite/manual/fn_lotto_da_emit_batch)`(p_emit_batch_id)`)
+  è `PRONTA` e entra — è il proprio documento di un tentativo fallito, da
+  riprendere al rilancio; trattenuta da un **altro** lotto in gioco resta fuori;
+  `NON_APPROVATA`/`RIFIUTATA` solo con `p_only_approved = false`.
+  ⭐ Dal 12-09-2026 l'auto-esclusione del proprio lotto **non è più scritta qui**:
+  vive nell'helper, la stessa riga che legge la discovery
+  ([fn_list_commesse_emittibili](/dbzero/vendite/manual/fn_list_commesse_emittibili)).
+  Due copie si erano già sfilate una volta — la discovery non l'aveva, e questa
+  funzione, che avrebbe ripreso i documenti, non veniva mai raggiunta.
+  Presidio: `test-pull-non-prende-trattenuti-v1.sql` (P-5, P-5-bis, P-5-ter).
 
 ---
 

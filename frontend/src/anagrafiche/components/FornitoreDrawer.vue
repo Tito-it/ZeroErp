@@ -7,6 +7,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
@@ -32,6 +33,8 @@ import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 
+
+
 const { t } = useI18n()
 const store = useFornitoriStore()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -46,6 +49,11 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   fornitoreId: { type: Number, default: null }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -209,6 +217,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
     @update:visible="val => emit('update:visible', val)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -218,7 +227,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
 
         <!-- === Soggetto === -->

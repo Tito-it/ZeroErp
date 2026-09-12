@@ -9,7 +9,7 @@
 -- pgTAP test STRUTTURALE — postura ruolo batch per-job zeroerp_batch_fatturazione
 --
 -- Canale di sistema headless per il batch di fatturazione sotto RLS (Path A).
--- Vedi: docs/it/dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md
+-- Vedi: brief-db-contesto-sistema-batch-fatturazione-rls.md
 --       scripts/sql/provision_db_role_batch_fatturazione.sql (provisioning)
 --       scripts/sql/check_db_role_batch_fatturazione.sql (verifica manuale)
 --
@@ -79,7 +79,6 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('vendite', 'fatture_arrotondamenti_scope',     'iu'),
     ('vendite', 'fatture_indirizzi',                'iu'),
     ('vendite', 'event_log',                        'i'),
-    ('vendite', 'attivita_fatturabili_log',         'i'),
     ('pagamenti', 'vendite_contabili_lotti',        'i'),
     -- render documentale (C-2b): il worker fa solo INSERT append.
     ('documenti', 'documenti_generati',             'i'),
@@ -245,7 +244,15 @@ SELECT ok(
 -- (il ruolo le ottiene via il broad GRANT EXECUTE su schema script del provisioning)
 SELECT ok(
     has_function_privilege('zeroerp_batch_fatturazione',
-        'script.fn_job_run_start(text,text,text,text,text)', 'EXECUTE'),
+        -- ⚠️ Funzione cercata per NOME, non per firma letterale: la firma
+        --   cambia quando si aggiungono parametri (2026-09-04: +attore), e
+        --   un test che la scrive a mano fallisce per il MOTIVO SBAGLIATO —
+        --   segnala la firma invece del privilegio che deve presidiare.
+        (SELECT p.oid
+           FROM pg_catalog.pg_proc p
+           JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'script' AND p.proname = 'fn_job_run_start'),
+        'EXECUTE'),
     'zeroerp_batch_fatturazione: EXECUTE su script.fn_job_run_start'
 );
 SELECT ok(

@@ -9,7 +9,7 @@
 # Il MOTIVO 1 di fn_check_preventivo_annullabile non e' mai scattato.
 #   Rilievo del team DB del 2026-08-10, chiudendo il giro «vie d'uscita
 #   per l'operatore». Attivita' §1 di
-#   docs/it/dev/work-in-progress/attivita-urgenti-del-10-08.md.
+#   attivita-urgenti-del-10-08.md.
 #
 # 🔴 IL FATTO, MISURATO. Il motivo deve rifiutare l'annullamento di un
 #   preventivo da cui e' gia' nato un ordine, e solleva

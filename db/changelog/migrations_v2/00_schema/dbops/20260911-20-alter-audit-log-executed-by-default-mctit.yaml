@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL REGISTRO DI AUDIT NON HA MAI REGISTRATO CHI ESEGUE.
+#   Brief: brief-db-rls-storico-scope-congelato.md §8.4
+#
+# `dbops.audit_log.executed_by` aveva come default la STRINGA `'CURRENT_USER'`
+# — le virgolette fanno la differenza fra la funzione e la parola. Nessuna
+# delle tre porte di scrittura (`fn_audit_begin`, `fn_audit_log_once`, le
+# `fn_admin_merge_*`) valorizza la colonna, quindi ogni riga porta la parola.
+#
+# ── LETTO IL 2026-09-11 (fatto datato, non premessa) ──────────────────
+#   Struttura: `pg_attrdef` → `'CURRENT_USER'::text`. Controesempio sui dati
+#   di sviluppo: 3014 righe su 3014 con `executed_by = 'CURRENT_USER'`.
+#   Trovato scrivendo il pgTAP della postura append-only: l'asserzione «la
+#   riga scritta dall'app è firmata dall'app» rispondeva zero.
+#
+# ── PERCHÉ STA QUI E NON IN UN BRIEF SUO ──────────────────────────────
+#   Il §8.4 dice che *un registro di audit modificabile da chi è auditato non
+#   è un registro*. Un registro che non sa DIRE chi è l'auditato non lo è
+#   nemmeno: è la stessa domanda, dall'altro lato. E la correzione è una
+#   riga sulla stessa tabella che il changeSet gemello (`90_end/20260911-09`)
+#   sta rendendo append-only.
+#
+# ── ⚠️ COSA DICE `current_user`, E COSA NON PUÒ DIRE ──────────────────
+#   È il RUOLO DI DATABASE: `zeroerp_app` per tutto ciò che passa da Django,
+#   il migratore per le automazioni, il ruolo del canale (`zeroerp_log`) per
+#   le righe che escono via dblink con `myapp.log_with_dblink = on`. Non è
+#   l'operatore: quello viaggia nelle GUC `app.*` e nel `tx_id`, che il trigger
+#   `trgfn_tx_id_managed` aggancia alla riga. Il ruolo è comunque
+#   un'informazione — la costante non lo era.
+#
+# ── ⛔ NESSUN BACKFILL ────────────────────────────────────────────────
+#   Le righe esistenti restano `CURRENT_USER`: chi le ha scritte non si può
+#   ricostruire, e riscriverle con un valore plausibile direbbe di saperlo.
+#   Un registro che porta il proprio difetto in chiaro vale più di uno
+#   corretto a indovinare.
+#
+# ✅ Solo il default cambia: nessuna riga esistente è toccata, nessun vincolo
+#    nuovo, il tipo (`text`) accoglie il `name` di `current_user` per cast
+#    implicito.
+#
+# Verifica: db/pgtap/dbops/test-registri-append-only-postura-v1.sql (test 24)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260911-20-alter-audit-log-executed-by-default-mctit.yaml
+
+  - changeSet:
+      id: 20260911-20-alter-audit-log-executed-by-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.audit_log.executed_by: il default diventa la funzione current_user
+        al posto della stringa letterale 'CURRENT_USER'. Il registro delle
+        esecuzioni non ha mai registrato chi esegue (3014 righe su 3014 con la
+        parola al posto del ruolo, 2026-09-11). Nessun backfill: il pregresso non
+        si può ricostruire e resta riconoscibile. Solo il default cambia.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: audit_log }
+            - columnExists:
+                schemaName: dbops
+                tableName: audit_log
+                columnName: executed_by
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- current_user (senza virgolette): il ruolo di database che sta
+              -- eseguendo. Con le virgolette era la parola, ed era il difetto.
+              ALTER TABLE dbops.audit_log
+                  ALTER COLUMN executed_by SET DEFAULT current_user;
+
+              COMMENT ON COLUMN dbops.audit_log.executed_by IS
+                  'Ruolo di database che ha eseguito l''operazione (default current_user). '
+                  '⚠️ È il RUOLO, non l''operatore: zeroerp_app per ciò che passa da Django, '
+                  'il migratore per le automazioni, il ruolo del canale dblink per le righe '
+                  'scritte fuori transazione. L''operatore viaggia nelle GUC app.* e nel '
+                  'tx_id. ⛔ Fino al 2026-09-11 il default era la STRINGA ''CURRENT_USER'' — '
+                  'le righe che portano ancora quella parola sono il pregresso, non '
+                  'ricostruibile e lasciato in chiaro di proposito. '
+                  'Brief: brief-db-rls-storico-scope-congelato §8.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riporta la parola al posto della funzione: è il difetto di
+              -- partenza, e un rollback lo ripristina fedelmente.
+              ALTER TABLE dbops.audit_log
+                  ALTER COLUMN executed_by SET DEFAULT 'CURRENT_USER'::text;
+              COMMENT ON COLUMN dbops.audit_log.executed_by IS NULL;

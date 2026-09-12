@@ -7,6 +7,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSoggettoForm } from '../../core/composables/useSoggettoForm'
@@ -34,6 +35,8 @@ import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+
+
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -92,6 +95,11 @@ const props = defineProps({
   tipoDefaultId: { type: Number, default: null },
   tipiAmmessiIds: { type: Array, default: null }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'saved-with-data'])
 
@@ -394,11 +402,12 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
     </template>
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Sezione: Dati soggetto -->
       <SoggettoForm
         :form="soggetto.form"

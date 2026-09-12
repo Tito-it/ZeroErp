@@ -27,7 +27,7 @@ rincorrere il vocabolario; il **BE pivota**.
 | `valore_fatturato_tot` | Somma `imponibile_riga` (riconciliazione col fatturato reale) |
 | `n_in_ritardo`, `valore_in_ritardo` | Recuperi tardivi del gruppo (`emessa_in_ritardo`) |
 | `tipo_movimento` | `NORMALE` / `RETTIFICA` / `ONERE` — dimensione del raggruppamento dal 20-08-2026 |
-| `motivo_non_fatturata` | `IN_ATTESA_LOTTO` / `GIRO_IN_CORSO` / `RESIDUO` / `SENZA_ATTIVITA_FATTURABILE`, `NULL` fuori dallo stadio `EMESSA_NON_FATTURATA` — dimensione del raggruppamento dal 26-08-2026 |
+| `motivo_non_fatturata` | `GIRO_IN_CORSO` / `RESIDUO` / `SENZA_ATTIVITA_FATTURABILE`, `NULL` fuori dallo stadio `EMESSA_NON_FATTURATA` — dimensione del raggruppamento dal 26-08-2026. ⚠️ `IN_ATTESA_LOTTO` è **ritirato** dal 12-09-2026 (`20260912-36`): nessun caso lo produce, vedi il manuale del dettaglio |
 
 Eredita dal dettaglio perimetro computabile e scope emittente fail-closed.
 

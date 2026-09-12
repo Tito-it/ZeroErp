@@ -6,7 +6,7 @@ Espone in lettura i tre livelli di tracciamento del sistema: audit log operativo
 
 ## Contesto
 
-Il sistema di tracciamento Zero ERP opera su tre livelli distinti (vedi [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job)):
+Il sistema di tracciamento Zero ERP opera su tre livelli distinti (vedi [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job)):
 
 1. **Audit log** (`dbops.audit_log`) -- operazioni generiche trasversali
 2. **Task registry** (`dbops.domini_task`, `pipeline_task_registry`, `pipeline_task_registry_impl`) -- catalogo task multi-dominio

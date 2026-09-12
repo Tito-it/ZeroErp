@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Il prezzo del kit impara la differenza fra «zero» e «non si sa».
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice C,
 # punto C2 (decisione D-5 = K2, presa da Tid il 2026-08-19).
 #
 # ⛔ E' IL PUNTO DELICATO DELL'INTERA SLICE, e va applicato PRIMA che la colonna

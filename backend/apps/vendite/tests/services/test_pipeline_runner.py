@@ -43,6 +43,12 @@ Indice test eseguiti:
 41) test_il_filo_del_giro_arriva_allo_step_executor (BE-2 / D-7)
 42) test_giornale_rotto_non_annulla_la_marcatura_di_errore (BE-7, il verso mancante)
 43) test_marcatura_rifiutata_non_impedisce_il_diario (lotto 6260, giro vero 2026-08-23)
+44) test_resolver_fuori_catena_non_ricade_sul_primo_step (LTF-0009971, 2026-09-08)
+45) test_resolver_lotto_nuovo_fuori_catena_parte_dal_primo_step (controprova del 44)
+46) test_runner_rifiuta_il_giro_su_lotto_fuori_catena
+47) test_giro_senza_step_non_cancella_lo_stato_errore
+48) test_giro_senza_step_spegne_l_errore_se_le_segnalazioni_sono_rientrate (controprova del 47)
+49) test_runner_blocks_when_documenti_hanno_esito_errore_senza_critiche (D2, 2026-09-12)
 
 Nota Fase 6 (2026-08-03): i test 33-37 presidiano il ritorno del lotto a
 DRAFT. Il 33 e il 34 vanno letti in COPPIA: da soli non distinguono un ramo
@@ -51,6 +57,13 @@ che discrimina da uno che risponde sempre allo stesso modo.
 Nota D-Q (2026-07-31): i test 13-14 ora esercitano il blocco sull'AVANZAMENTO
 (lotto esistente → step successivo); il rilancio dello STESSO step con
 criticita' attive e' ammesso per disegno (test 28).
+
+Nota «lotto dentro la propria catena» (2026-09-08, segnalazione team DB sul
+lotto LTF-0009971): i test 44-48 presidiano due meta' dello stesso difetto —
+il resolver che rispondeva con la catena INTERA su uno stato che non e' un suo
+step (44/45), e la conclusione che dichiarava «Pipeline completata» dopo un
+giro senza step (47/48). Le due COPPIE vanno lette come tali: il ramo deve
+discriminare, non rispondere sempre allo stesso modo.
 """
 
 from contextlib import contextmanager, nullcontext
@@ -58,6 +71,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.core.services.db_error_fields import Bersaglio
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.lotto_segnalazioni_service import LottoSignalStatus
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
@@ -152,6 +166,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
                 "fatture_stato_esecuzione_errore_count": 0,
+                "esiti_stato_esecuzione_errore_count": 0,
             }
 
         # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
@@ -373,6 +388,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 return LottoSignalStatus(
                     critical_count=0, warning_count=0, attention_count=0,
                     fatture_stato_esecuzione_errore_count=0,
+                    esiti_stato_esecuzione_errore_count=0,
                     is_error=False, blocks_next_step=False, summary={},
                 )
 
@@ -728,6 +744,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         # D-Q p.1: il blocco vale per l'AVANZAMENTO. Lotto ESISTENTE (non in
@@ -743,6 +760,45 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
         self.assertFalse(step_executor.called)
 
+    # Scopo: ⭐ D2 (2026-09-12) — il runner blocca l'AVANZAMENTO quando un
+    #        documento preso in carico ha l'ultimo esito ERRORE, con ZERO
+    #        critiche vive e zero fatture in errore: e' il terzo addendo del
+    #        verdetto, e il caso che prima usciva COMPLETATO per sottrazione.
+    # ⚠️ E il rifiuto NOMINA il motivo: `context` e `detail` portano
+    #        `esiti_errore_count`. Un lotto bloccato con `critical_count=0` e
+    #        `stato_esecuzione_errore_count=0` e basta sarebbe un rifiuto senza
+    #        ragione — un bug, agli occhi di chi legge il log.
+    def test_runner_blocks_when_documenti_hanno_esito_errore_senza_critiche(self):
+        class _EsitiErroreRepo(self._RepoMock):
+            # Scopo: riepilogo con il SOLO terzo addendo valorizzato.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
+                    "documenti_bloccanti_count": 0,
+                    "documenti_presi_in_carico_count": 2,
+                    "critiche_giro_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 2,
+                }
+
+        # Lotto ESISTENTE che tenterebbe l'avanzamento allo step 2 (come i due
+        # gemelli sopra): il gate deve scattare per il solo terzo addendo.
+        repo = _EsitiErroreRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
+        self.assertFalse(step_executor.called)
+        self.assertEqual(exc.exception.context["esiti_errore_count"], 2)
+        self.assertEqual(exc.exception.context["critical_count"], 0)
+        self.assertIn("esiti_errore_count=2", exc.exception.detail or "")
+
     # Scopo: Verifica che il runner blocchi quando la tabella ponte ha fatture con stato_esecuzione=ERRORE,
     # anche in assenza di segnalazioni critical nei log (guard unificata PRE-1).
     def test_runner_blocks_when_fatture_hanno_stato_esecuzione_errore(self):
@@ -756,6 +812,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 2,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         # Come sopra: lotto ESISTENTE che tenterebbe l'avanzamento allo step 2.
@@ -789,6 +846,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _ErroreRerunRepo()
@@ -821,6 +879,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _ErroreDuranteStepRepo()
@@ -862,6 +921,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 1,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _OnlyWarningsRepo()
@@ -1273,6 +1333,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _CriticalRepo()
@@ -1317,6 +1378,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _ErroreDuranteStepStatefulRepo()
@@ -1360,6 +1422,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _RilancioRiuscitoRepo()
@@ -1375,6 +1438,70 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(
             [c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8],
         )
+
+    # ------------------------------------------------------------------
+    # Il blob `errore` dentro il 200: stessi NOMI dell'envelope, e dal
+    # 2026-09-09 anche le stesse REGOLE.
+    # ------------------------------------------------------------------
+
+    # Scopo: 🔴 LA REGOLA CHE MANCAVA. Questi endpoint rispondono **200 anche
+    #        quando la catena si ferma**: il fallimento e' un campo del payload,
+    #        quindi `useApiHandler` non vede nessun envelope e a video arriva
+    #        SOLO cio' che sta in questo dizionario.
+    #        ⛔ Fino al 2026-09-09 il blob leggeva `exc.hint` ed `exc.targets`
+    #        DIRETTI, mentre l'envelope li fa passare da `_apply_policy` — che su
+    #        un codice tecnico li toglie. Stesso nome, regola diversa: e due
+    #        regole non si notano come si notano due nomi. Il difetto e' diventato
+    #        visibile quando il frontend ha cominciato a RENDERE il suggerimento.
+    #        ⚠️ `message` e `detail` restano invece quelli grezzi dell'eccezione,
+    #        di proposito: qui alimentano il pannello di diagnostica di un lotto.
+    def test_il_blob_di_errore_applica_le_politiche_dell_envelope(self):
+        class _StepChe(self._StepExecutorMock):
+            def __init__(self, exc):
+                super().__init__()
+                self._exc = exc
+
+            def execute_step(self, **kwargs):
+                raise self._exc
+
+        casi = {
+            # Tecnico: niente suggerimento (il canale HINT li' porta il testo di
+            # PostgreSQL) e niente bersaglio (su un guasto non c'e' un gesto).
+            "E_DATABASE": (None, None),
+            # Rimediabile: escono entrambi, o il test sopra passerebbe anche se
+            # non uscissero MAI.
+            "E_FATTURA_RETTIFICATA_SENZA_NUMERO": (
+                "Numerare prima i documenti che questo rettifica.",
+                [{"type": "FATTURA", "id": "820"}],
+            ),
+        }
+        for codice, (hint_atteso, targets_attesi) in casi.items():
+            with self.subTest(codice=codice):
+                exc = ServiceError(
+                    code=codice,
+                    message="non numerabile",
+                    detail="dettaglio grezzo del database",
+                    hint="Numerare prima i documenti che questo rettifica.",
+                    targets=(Bersaglio(tipo="FATTURA", id="820"),),
+                )
+                repo = self._StatefulRepo(chiude_su=8)
+                runner = LottoPipelineRunner(
+                    repository=repo, step_executor=_StepChe(exc),
+                )
+                with _fake_tx():
+                    esito = runner.run_lotto_until_done(
+                        LottoPipelineParams(lotto_id=10, dry_run=False)
+                    )
+                self.assertEqual(esito["motivo_stop"], "ERRORE")
+                self.assertEqual(esito["errore"]["hint"], hint_atteso)
+                self.assertEqual(esito["errore"]["targets"], targets_attesi)
+                # ⚠️ Il codice e il messaggio NON passano dalla policy: restano
+                #    quelli dell'eccezione. E' la differenza voluta.
+                self.assertEqual(esito["errore"]["code"], codice)
+                self.assertEqual(esito["errore"]["message"], "non numerabile")
+                self.assertEqual(
+                    esito["errore"]["detail"], "dettaglio grezzo del database"
+                )
 
     # ------------------------------------------------------------------
     # Fase 6 — ritorno del lotto a DRAFT (brief DB→BE ritorno-lotto-a-draft)
@@ -1544,3 +1671,164 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             getattr(repo, "riaperto_azzerato", []), [],
             "Un rifacimento a vuoto non deve spegnere il segnale di riapertura",
         )
+
+    # ------------------------------------------------------------------
+    # Il lotto dentro la propria catena (difetto 2026-09-08, LTF-0009971)
+    # ------------------------------------------------------------------
+
+    # Scopo: 🔴 UN LOTTO FUORI DALLA PROPRIA CATENA NON RIPARTE DAL PRIMO STEP.
+    #
+    #        `_resolve_steps_for_run` rispondeva con la catena INTERA quando lo
+    #        stato corrente non e' uno dei suoi step, e il chiamante prende
+    #        `steps[:1]`: su un lotto ANNULLATA veniva scelto lo step DRAFT e il
+    #        runner provava a riportarcelo. E' la TRANSIZIONE RETROATTIVA che
+    #        questo resolver dichiara di esistere per impedire.
+    #
+    # ⚠️ Il test guarda il RESOLVER e non l'effetto a valle, perche' a valle il
+    #    difetto non si vedeva: la matrice di `stati_doc_fiscale_transizioni`
+    #    non ha righe in uscita da ANNULLATA, quindi il guard a DB rifiutava e
+    #    tutto sembrava a posto. Fail-safe per accidente del seed, non per
+    #    progetto — ed e' il seed a poter cambiare.
+    def test_resolver_fuori_catena_non_ricade_sul_primo_step(self):
+        steps = self._RepoMock().list_pipeline_steps("MASSIVO")
+        risolti = LottoPipelineRunner._resolve_steps_for_run(
+            steps=steps,
+            is_existing_lotto_request=True,
+            deve_rifare_step_corrente=False,
+            # 7 = ANNULLATA: non e' uno step della catena.
+            lotto_stato_doc_corrente=7,
+        )
+        self.assertEqual(risolti, [])
+
+    # Scopo: controprova del test precedente — su un lotto APPENA CREATO lo
+    #        stesso stato sconosciuto NON blocca: non c'e' nessuna posizione da
+    #        rispettare, e la catena parte dal suo primo step. Le due vanno
+    #        lette in coppia: da sole non distinguono un ramo che discrimina da
+    #        uno che risponde sempre allo stesso modo.
+    def test_resolver_lotto_nuovo_fuori_catena_parte_dal_primo_step(self):
+        steps = self._RepoMock().list_pipeline_steps("MASSIVO")
+        risolti = LottoPipelineRunner._resolve_steps_for_run(
+            steps=steps,
+            is_existing_lotto_request=False,
+            deve_rifare_step_corrente=False,
+            lotto_stato_doc_corrente=7,
+        )
+        self.assertEqual(risolti, steps)
+
+    # Scopo: ⭐ E il giro si RIFIUTA, non si esegue a vuoto. La lista vuota piu'
+    #        avanti significa gia' «catena esaurita» e porta a «Pipeline
+    #        completata»: su un lotto ANNULLATA sarebbe un giro che non ha fatto
+    #        niente e si annuncia riuscito.
+    #
+    # ⚠️ `E_PIPELINE_STATO_LOTTO` e' un riuso dichiarato: dice il vero
+    #    all'operatore ed e' della classe giusta (CONFLITTO_STATO), ma i suoi
+    #    altri punti di chiamata parlano dell'asse LAVORO. Il codice suo e'
+    #    `E_LOTTO_NON_AVANZABILE`, chiesto al team DB — e quando arriva questo
+    #    test cambia una stringa.
+    def test_runner_rifiuta_il_giro_su_lotto_fuori_catena(self):
+        class _FuoriCatenaRepo(self._RepoMock):
+            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+                return 7  # ANNULLATA, fuori dalla catena [1, 2, 8]
+
+        repo = _FuoriCatenaRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
+        # ⚠️ Anche la FRASE, e non e' pignoleria: gli endpoint del runner
+        #    rispondono 200 con l'esito nel payload, e il frontend rende
+        #    `errore.message` — quindi questa e' la riga che l'operatore legge.
+        #    Lo stesso codice e' sollevato da altri tre punti con messaggi loro:
+        #    se questo tornasse alla frase generica del catalogo, nessun test se
+        #    ne accorgerebbe.
+        self.assertEqual(
+            exc.exception.message,
+            "Il lotto non e' in uno stato da cui la pipeline possa proseguire.",
+        )
+        # Nessuno step eseguito: il rifiuto arriva PRIMA del lavoro.
+        self.assertEqual(len(step_executor.calls), 0)
+
+    # Scopo: 🔴 UN GIRO SENZA STEP NON CANCELLA UN ERRORE.
+    #
+    #        La conclusione leggeva le segnalazioni solo `if steps`: con la
+    #        catena vuota `step_con_errori` risultava falso SENZA aver contato
+    #        niente, e il lotto usciva COMPLETATO da un giro che non aveva
+    #        eseguito nulla. La matrice di `set_lotto_job_stato` non poteva
+    #        fermarlo: vieta `ERRORE -> COMPLETATO`, ma l'avvio scrive
+    #        `IN_ESECUZIONE`, che da ERRORE e' l'unica porta aperta.
+    #
+    # ⚠️ Il caso non e' solo quello dei lotti fuori catena (ora rifiutati): un
+    #    GIORNALIERO in ERRORE fermo all'ultimo step della sua catena risolve a
+    #    `steps[current+1:] == []` — `is_massivo_error_rerun` guarda solo i
+    #    MASSIVO — e ci passava.
+    def test_giro_senza_step_non_cancella_lo_stato_errore(self):
+        class _UltimoStepInErroreRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "ERRORE"
+
+            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+                return 8  # ultimo step: non resta niente da eseguire
+
+            # ⚠️ GIORNALIERO di proposito: su MASSIVO `is_massivo_error_rerun`
+            #    rifarebbe lo step corrente e la catena non sarebbe vuota.
+            def get_lotto_tipo(self, lotto_id):
+                return "GIORNALIERO"
+
+        class _SegnalazioniAncoraRotte:
+            def evaluate_lotto_status(self, lotto_id):
+                return LottoSignalStatus(
+                    critical_count=1, warning_count=0, attention_count=0,
+                    fatture_stato_esecuzione_errore_count=1,
+                    esiti_stato_esecuzione_errore_count=0,
+                    is_error=True, blocks_next_step=False, summary={},
+                )
+
+        repo = _UltimoStepInErroreRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        runner.lotto_segnalazioni_service = _SegnalazioniAncoraRotte()
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(len(step_executor.calls), 0)
+        self.assertEqual(
+            repo.last_stato, "ERRORE",
+            "Un giro a vuoto non puo' concludere «Pipeline completata» su un "
+            "lotto le cui fatture sono ancora rotte",
+        )
+
+    # Scopo: controprova — se le segnalazioni sono RIENTRATE, lo stesso giro a
+    #        vuoto riporta il lotto a COMPLETATO. E' lo spegnimento automatico
+    #        promesso da `set_lotto_job_stato` («a fine di ogni giro il runner
+    #        ricalcola»): la correzione toglie la scorciatoia, non il
+    #        meccanismo. Senza questa coppia, «resta ERRORE» sarebbe
+    #        indistinguibile da «non scrive mai piu' niente».
+    def test_giro_senza_step_spegne_l_errore_se_le_segnalazioni_sono_rientrate(self):
+        class _UltimoStepRepo(self._RepoMock):
+            def get_lotto_job_stato(self, lotto_id):
+                return "ERRORE"
+
+            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+                return 8
+
+            def get_lotto_tipo(self, lotto_id):
+                return "GIORNALIERO"
+
+        class _SegnalazioniRientrate:
+            def evaluate_lotto_status(self, lotto_id):
+                return LottoSignalStatus(
+                    critical_count=0, warning_count=0, attention_count=0,
+                    fatture_stato_esecuzione_errore_count=0,
+                    esiti_stato_esecuzione_errore_count=0,
+                    is_error=False, blocks_next_step=False, summary={},
+                )
+
+        repo = _UltimoStepRepo()
+        runner = LottoPipelineRunner(
+            repository=repo, step_executor=self._StepExecutorMock(),
+        )
+        runner.lotto_segnalazioni_service = _SegnalazioniRientrate()
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(repo.last_stato, "COMPLETATO")

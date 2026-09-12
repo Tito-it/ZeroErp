@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Opt-in dbops.fk_index_policy per le DIECI FK del cantiere nota di credito
-#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md
+#   brief-design-note-credito-resi.md
 #
 # La policy e' **OPT-IN**: `fn_populate_fk_index_policy()` registra le FK nuove
 # a `consentito=false`, quindi senza questo seed non nasce nessun indice. Ma la

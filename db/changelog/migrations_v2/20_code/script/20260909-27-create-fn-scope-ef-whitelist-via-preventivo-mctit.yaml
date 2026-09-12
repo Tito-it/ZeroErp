@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — Gli adattatori di scope per la famiglia PREVENTIVI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §4
+#   Slice 20260909-27..30 (helper -> policy inerti -> viste -> armamento).
+#
+# ── ⛔ IL DIFETTO CHE APRE LA SLICE ────────────────────────────────────
+#   Una riga di documento appartiene all'emittente della sua testata. Oggi la
+#   policy sta solo sulla testata: `vendite.preventivi` e' protetta, i suoi
+#   satelliti no, e `zeroerp_app` ha SELECT su tutti.
+#   ⚠️ E non e' teorico: `vendite.vw_preventivi_righe_dettaglio` legge
+#   `preventivi_righe` SENZA passare da `preventivi` (le sue dipendenze sono
+#   articoli, unita_misura, iva e le righe — la testata non c'e'), ed e'
+#   concessa in SELECT al ruolo applicativo. Articolo, quantita' e prezzo delle
+#   righe di preventivo di ogni emittente passano di li'.
+#
+# ── ⭐ PERCHE' DUE FUNZIONI E NON UNA ─────────────────────────────────
+#   I satelliti stanno su due livelli e portano chiavi diverse:
+#     * `preventivi_righe`, `preventivi_indirizzi`, `preventivi_riepiloghi_iva`
+#       e `note_preventivo` puntano alla TESTATA (`preventivo_id`, `target_id`);
+#     * `preventivi_righe_componenti` punta alla RIGA (`riga_preventivo_id`).
+#   La seconda delega alla prima invece di ripetere la risalita: se un giorno
+#   cambia il modo in cui un preventivo nomina il proprio emittente, si corregge
+#   in un posto solo.
+#   ⚠️ Tutte quelle FK sono `NOT NULL` (verificato il 2026-09-09): non c'e' il
+#   caso «chiave nulla» e la policy non ha un ramo scoperto.
+#
+# ── ⚠️ LA POSTURA, che non e' un dettaglio ────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — la stessa degli otto
+#   `script.fn_scope_*` gia' in servizio. Una policy che chiamasse una funzione
+#   `SECURITY DEFINER` guarderebbe con gli occhi dell'owner, che la RLS non la
+#   vede: il filtro passerebbe sempre, e in silenzio.
+#
+# ⭐ E la risalita e' piu' corta di quella delle fatture: `vendite.fatture`
+#   porta `emittente_soggetto_ruolo_id` e deve passare dall'adattatore
+#   `_via_sr`; `vendite.preventivi` porta `emittente_fiscale_id`, che e'
+#   esattamente cio' che `script.fn_scope_ef_whitelist` accetta.
+#
+# Permessi: funzioni di titodb, non in dbops.sec_functions_owner, nessun GRANT
+# esplicito (l'ALTER DEFAULT PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-27-create-fn-scope-ef-whitelist-via-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20260909-27-create-fn-scope-ef-whitelist-via-preventivo
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatori di scope per la famiglia preventivi:
+        script.fn_scope_ef_whitelist_via_preventivo(auth_user_id, preventivo_id)
+        e script.fn_scope_ef_whitelist_via_preventivo_riga(auth_user_id,
+        riga_id), che risalgono alla testata e delegano alla canonica
+        fn_scope_ef_whitelist. Nessuna policy le usa ancora: le crea 20260909-28.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_preventivo(
+                  p_auth_user_id  integer,
+                  p_preventivo_id vendite.preventivi.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del preventivo indicato.
+                  -- ⚠️ Preventivo inesistente -> emittente NULL -> la canonica
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come per le fatture.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT p.emittente_fiscale_id
+                         FROM vendite.preventivi p
+                        WHERE p.id = p_preventivo_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_preventivo_riga(
+                  p_auth_user_id integer,
+                  p_riga_id      vendite.preventivi_righe.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una RIGA di preventivo —
+                  --   e' la chiave che portano i componenti.
+                  -- ⭐ Delega alla sorella invece di ripetere la risalita: la
+                  --   regola «come un preventivo nomina il suo emittente» resta
+                  --   scritta in un posto solo.
+                  SELECT script.fn_scope_ef_whitelist_via_preventivo(
+                      p_auth_user_id,
+                      (SELECT r.preventivo_id
+                         FROM vendite.preventivi_righe r
+                        WHERE r.id = p_riga_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_preventivo(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.preventivi: risale dalla chiave della testata a `emittente_fiscale_id` e delega a script.fn_scope_ef_whitelist. STABLE e NON security definer, come gli altri fn_scope_*: una funzione security definer dentro una policy guarderebbe con gli occhi dell''owner, che la RLS non vede. Preventivo inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). Brief: work-in-progress/brief-db-perimetro-emittente-righe-documento.md';
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_preventivo_riga(integer, bigint)
+              IS 'Come fn_scope_ef_whitelist_via_preventivo ma a partire da una riga di preventivo: e'' la chiave che porta vendite.preventivi_righe_componenti. Delega alla sorella invece di ripetere la risalita alla testata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_preventivo_riga(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_preventivo(integer, bigint);

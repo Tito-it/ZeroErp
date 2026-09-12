@@ -23,10 +23,15 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| archiviato | boolean | NO | false |
+| archiviato_il | timestamp with time zone | YES |  |
+| archiviato_da | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_stampa_coda_archiviato_coerente |  |
+| CHECK | chk_fatture_stampa_coda_archiviato_non_vivo |  |
 | CHECK | chk_fatture_stampa_coda_stato |  |
 | CHECK | chk_fatture_stampa_coda_tentativi |  |
 | FOREIGN KEY | fk_fatture_stampa_coda_fattura | sorgente_id |
@@ -45,8 +50,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_fatture_stampa_coda_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatture_stampa_coda_a10_archiviazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_coda_archiviazione()` |
+| trg_fatture_stampa_coda_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'sorgente_id')` |
+| trg_fatture_stampa_coda_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'sorgente_id')` |
 | trg_fatture_stampa_coda_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatture_stampa_coda_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatture_stampa_coda_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatture_stampa_coda_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

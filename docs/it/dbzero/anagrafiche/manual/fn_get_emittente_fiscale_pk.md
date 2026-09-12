@@ -15,10 +15,22 @@
 
 ### Scopo Principale
 
-(creata 07-04-2026)
+(creata 07-04-2026 · latest review 13-09-2026)
 
 Restituisce la **PK numerica reale** di `anagrafiche.emittenti_fiscali.id` per un dato
-`billing_account`, applicando una catena di risoluzione con fallback al gestore globale.
+`billing_account`, e **solleva** se non è risolvibile.
+
+⭐ **Dal 2026-09-13 (changeSet `20260913-03`, D13) non riscrive più la regola**: è
+l'**involucro PK** del lettore
+[`script.fn_get_ba_emittente_sr_id`](/dbzero/script/manual/fn_get_ba_emittente_sr_id),
+esattamente come [`fn_get_emittente_fiscale_id`](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_id)
+ne è l'involucro SR. Fino a quel giorno teneva una **copia** della regola a due
+livelli (mapping specifico, altrimenti default): finché i livelli erano gli stessi
+non si vedeva, ma con il terzo livello del lettore — *in sessione, l'emittente di
+chi agisce* — le due copie avrebbero risposto cose diverse sullo stesso billing
+account senza legame: la RLS lo mostra all'operatore, il guard di un preventivo
+(`trgfn_preventivi_guard_emittente_ba`, che passa da qui) lo rifiuta perché «il BA
+è del default». Una regola, un posto.
 
 E' la funzione **da usare** quando serve l'`id` reale dell'emittente fiscale, ad esempio per:
 
@@ -64,15 +76,28 @@ STABLE
 
 ### Logica di risoluzione
 
-La funzione usa `COALESCE` con due subquery, valutate in **cortocircuito**:
+La regola vive nel lettore, e ha **tre livelli** (dettaglio e ragioni nella sua
+pagina): mapping specifico; altrimenti, **in sessione**, l'emittente dell'operatore
+che sta agendo; altrimenti il default dell'installazione.
 
-1. **Mapping specifico** -- cerca in `emittenti_fiscali_billing_account` la riga
-   con `billing_account_id = p_billing_account_id`, joina su `emittenti_fiscali` via
-   `soggetto_ruolo_id`, filtra per `attivo = true`
-2. **Fallback default globale** -- se la 1) non trova nulla, cerca la riga con
-   `billing_account_id IS NULL AND is_default = true`, sempre con `attivo = true`
+Qui resta solo ciò che è *suo*:
 
-Se nemmeno il default risolve, raise `E_EMITTENTE_DEFAULT_MISSING`.
+1. il **guard sul parametro** (`E_PARAMETRO_INVALIDO` su `NULL` o `<= 0`);
+2. la **traduzione** `soggetto_ruolo_id` → `emittenti_fiscali.id`, con il filtro
+   `ef.attivo = true`. ⚠️ Il filtro c'era già, su entrambe le vecchie subquery, e
+   resta come **difesa** e non come regola: sul modello un emittente con una riga
+   di mapping non si può disattivare (`trgfn_prevent_deactivate_if_children`,
+   `emittenti_fiscali_billing_account` non ha `attivo`) e una riga di mapping non
+   può puntare a un emittente spento (`trgfn_child_requires_active_parent`), quindi
+   il ramo non è raggiungibile. Se lo fosse, «non risolto» è la risposta giusta —
+   non un ripiego silenzioso su un'altra azienda, che era il comportamento della
+   copia;
+3. il raise `E_EMITTENTE_DEFAULT_MISSING` quando nessun livello risponde.
+
+Presidio: `db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-pk.sql` — i test `6`
+e `7` sono la coppia in sessione / senza sessione, il `9` dice che la delega è
+esatta (PK → SR coincide con il lettore) e il `10` è l'anti-ritorno della copia
+(il corpo nomina il lettore e non `is_default`).
 
 ---
 
@@ -104,7 +129,8 @@ Se nemmeno il default risolve, raise `E_EMITTENTE_DEFAULT_MISSING`.
 | Filtra per `attivo = true` | NO                            | SI                                                  |
 | Guard input                | NO                            | SI (`NULL` o `<= 0` solleva `E_PARAMETRO_INVALIDO`) |
 | Volatility                 | (default `VOLATILE`)          | `STABLE`                                            |
-| Convenzione default        | `is_default = true`           | `BA NULL + is_default = true`                       |
+| Ripiego senza BA           | SI (una query in più, portante per i lotti) | NO: il guard rifiuta il parametro     |
+| Regola «quale emittente»   | delega al lettore             | delega al lettore (dal `20260913-03`; prima una copia) |
 
 ---
 
@@ -129,7 +155,7 @@ FROM vendite.preventivi p;
 | Codice                       | Quando                                                |
 |------------------------------|-------------------------------------------------------|
 | `E_PARAMETRO_INVALIDO`       | `p_billing_account_id IS NULL` o `<= 0`               |
-| `E_EMITTENTE_DEFAULT_MISSING` | Ne' mapping specifico ne' default globale risolvibili |
+| `E_EMITTENTE_DEFAULT_MISSING` | Nessuno dei tre livelli del lettore risponde (o l'emittente risolto e' spento) |
 
 ---
 

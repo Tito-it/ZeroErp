@@ -48,6 +48,8 @@ import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPag
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import FatturaDrawer from './FatturaDrawer.vue'
 import NumerazioneDataDialog from './NumerazioneDataDialog.vue'
+import AppDialog from '../../core/components/AppDialog.vue'
+import Textarea from 'primevue/textarea'
 import { useDocumentiPerSorgenteStore } from '../../documenti/stores/documentiPerSorgente'
 import { SORGENTE_CODES } from '../../documenti/constants'
 import { downloadBlob } from '../../core/utils/download'
@@ -71,22 +73,38 @@ import { extractApiError } from '../../core/utils/apiError'
 import {
   gravitaGiornaleSeverity,
   naturaDocSeverity,
-  statoEsecuzioneFatturaSeverity,
+  statoEsecuzioneLottoSeverity,
   statoLottoSeverity,
   statoTaskRunSeverity,
 } from '../../core/utils/severity'
 import {
   getLotto,
   listLottoFatture,
+  escludiDocumentiDaGiro,
+  listLottoGruppi,
   listLottoTaskRuns,
   getLottoSegnalazioni,
   listLottoSegnalazioni,
   exportLottoFatture,
+  exportLottoGruppi,
   exportLottoTaskRuns,
   exportLottoSegnalazioni,
   eliminaFatturaDaLotto,
   getLottoGiornale,
 } from '../api/lotti'
+// ⭐ Il gesto «apri il documento / apri la commessa» del kebab dei documenti
+// presi in carico passa dal RESOLVER GLOBALE dei bersagli, non da drawer
+// montati qui: l'ospite è UNO SOLO, in `App.vue`, e la mappa tipo→destinazione
+// applica già i guard dei permessi. Montarne di propri vorrebbe dire una
+// seconda catena — e un pulsante che porta su «accesso negato» dove l'altra
+// non lo mostra affatto.
+import { BERSAGLIO_TIPI, normalizzaBersagli } from '../../core/bersagli'
+import { azioniDaBersagli } from '../../core/bersaglioGesto'
+import { useAuthStore } from '../../stores/auth'
+import { STATO_ESECUZIONE_LOTTO, LOTTO_SCHEDE } from '../constants'
+import { useSelezioneDocumentiLotto } from '../composables/useSelezioneDocumentiLotto'
+import { scegliRamoBanner, conteggiDaSegnalazioni } from '../_shared/lotti/ramoBannerLotto'
+import { motivoUscitaBloccata } from '../uscitaDalGiro'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -130,6 +148,33 @@ const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir
   listLottoFatture(props.lottoId, {
     page, page_size: pageSize, ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
   }))
+// ⭐ LA QUARTA SCHEDA — I DOCUMENTI PRESI IN CARICO (brief-db-esito-gruppo-lotto).
+//
+// ⛔ NON è un doppione della scheda «Documenti», ed è la ragione per cui esiste.
+//    Quella elenca `fatturazione_lotti_fatture`, che si aggancia a
+//    `fattura_id`: un documento caduto PRIMA che una fattura esista non ha
+//    niente a cui appendersi. Sul lotto LTF-0009578 se ne vedevano DUE su tre,
+//    e il terzo era nominato solo da una segnalazione — per giunta con
+//    l'identificativo della COMMESSA, così che la segnalazione sembrava
+//    sbagliata mentre era l'unica cosa vera in giro.
+//
+// ⚠️ Le due liste non sono in corrispondenza 1:1 nemmeno a giro riuscito: una
+//    fattura può raccogliere più documenti. Sono due domande diverse, non due
+//    viste della stessa — per questo è una scheda e non una colonna in più.
+//
+// Nessun ordinamento iniziale dichiarato: il default lo decide il backend e
+// mette in cima i FALLITI, che è la domanda con cui questa scheda si apre.
+// ⛔ NIENTE FLAG «questo lotto dichiara un perimetro», e la sua sparizione è
+//    il segno che il database ha risolto il problema invece di spostarlo
+//    (rev 2026-09-07). Serviva perché la lista leggeva il solo PERIMETRO, che i
+//    giri di massa non scrivono: zero righe voleva dire due cose. Ora legge
+//    anche gli ESITI, che ci sono su entrambi i tipi di giro, e zero righe ne
+//    vuol dire una sola.
+const listaGruppi = useListaDrawerPaginata(
+  ({ page, pageSize, sortBy, sortDir }) =>
+    listLottoGruppi(props.lottoId, { page, pageSize, orderBy: sortBy, orderDir: sortDir }),
+)
+
 // ⭐ Ordinamento iniziale «Fine» DESC: la diagnostica si legge dall'ULTIMA cosa
 //    successa. Senza, la funzione DB ripiega su `started_at` e il frontend manda
 //    `asc` — cioe' il piu' VECCHIO in cima, e su un lotto ripreso otto volte
@@ -195,6 +240,7 @@ const listaSegnalazioni = useListaDrawerPaginata(
 // ⭐ L'export riceve gli STESSI filtri e lo STESSO ordinamento della lista a
 // video: il file E' la lista, non una seconda query che le somiglia.
 const listaDocumentiRef = ref(null)
+const listaGruppiRef = ref(null)
 const listaTaskRef = ref(null)
 const listaSegnalazioniRef = ref(null)
 
@@ -223,6 +269,21 @@ const azioniDocumenti = useListaAzioni(() => listaDocumentiRef.value, {
       ? {
           sort_by: listaDocumenti.sortField.value,
           sort_dir: listaDocumenti.sortOrder.value === -1 ? 'desc' : 'asc',
+        }
+      : {}),
+  }),
+})
+const azioniGruppi = useListaAzioni(() => listaGruppiRef.value, {
+  exportFn: (params) => exportLottoGruppi(props.lottoId, params),
+  getExportParams: (formato) => ({
+    formato,
+    // ⚠️ L'ordinamento viaggia col file: il file È la lista, non una seconda
+    // query che le somiglia. Il verso si manda solo con la colonna — da solo
+    // annullerebbe il default del backend, che mette i falliti in cima.
+    ...(listaGruppi.sortField.value
+      ? {
+          order_by: listaGruppi.sortField.value,
+          order_dir: listaGruppi.sortOrder.value === -1 ? 'desc' : 'asc',
         }
       : {}),
   }),
@@ -263,6 +324,59 @@ const azioniSegnalazioni = useListaAzioni(() => listaSegnalazioniRef.value, {
 
 // Le tre barre a video: «ricarica» davanti, poi personalizza e esporta.
 const barraDocumenti = conRicarica(azioniDocumenti.azioniLista, () => listaDocumenti.carica())
+// ⭐ LA SELEZIONE DELLA SCHEDA «DOCUMENTI»: chi si può togliere dal giro lo dice
+//    il database in riga, e il telaio lo gira alle caselle. ⚠️ `abilitata` è
+//    falsa in sola lettura: senza, la colonna delle caselle comparirebbe a chi
+//    non può farci niente.
+const selezioneDocumenti = useSelezioneDocumentiLotto({
+  righeVisibili: computed(() => listaGruppi.righe.value),
+  abilitata: computed(() => !isReadonly.value),
+})
+
+// ⭐ L'AZIONE DI MASSA compare SOLO con qualcosa spuntato, e porta il conteggio
+//    nell'etichetta: un pulsante che dice «(3)» è già la conferma di ciò che
+//    l'operatore ha selezionato, prima ancora della dialog.
+// ⛔ Non è un secondo verbo: apre la STESSA conferma e chiama la STESSA API
+//    della riga singola — che è una lista di uno.
+// ⭐ IL SEGNO DEL VERBO «TOGLI DAL GIRO», in un posto solo — lo portano la voce
+//    di riga e il pulsante di massa, che sono lo STESSO gesto: due segni diversi
+//    per lo stesso atto si leggono come due atti.
+//
+// ⛔ NON `pi-sign-out`, che era la prima scelta ed era sbagliata (rilievo di
+//    Tid): quella è **letteralmente** l'icona del logout, la stessa che
+//    `AppTopbar` usa per uscire dall'applicazione. Un segno già impegnato
+//    altrove non diventa disponibile perché la metafora torna.
+// ⭐ Una X, e ROSSA: l'uscita è a senso unico (D-3) e cancella la bozza — per
+//    rimettere tutto in un lotto solo si annulla il lotto e lo si rigenera.
+//    L'arancio dice «attenzione», il rosso dice «non si torna indietro», ed è
+//    lo stesso colore che la conferma porta già sul pulsante.
+const ESCLUDI_ICON = MANAGE_ICONS.CANCEL
+const ESCLUDI_SEVERITY = 'danger'
+
+const barraGruppiBase = conRicarica(azioniGruppi.azioniLista, () => listaGruppi.carica())
+const barraGruppi = computed(() => {
+  // ⛔ LO STESSO CANCELLO DELLA COLONNA DELLE CASELLE, e non un secondo: quando
+  //    `perLista` è `null` la selezione non è più offerta — sola lettura, o
+  //    permesso assente — ma l'array di ciò che era già spuntato resta lì. Senza
+  //    questa riga il pulsante di massa sopravviverebbe alle caselle che l'hanno
+  //    riempito: un lotto che avanza di stato mentre lo si guarda toglierebbe i
+  //    quadratini e lascerebbe un «Togli dal giro (3)» che nessuno può più
+  //    disfare. È l'idioma già in uso su `CodaTabBase`.
+  const n = selezioneDocumenti.perLista.value ? selezioneDocumenti.ids.value.length : 0
+  if (!n) return barraGruppiBase.value
+  return [
+    {
+      key: 'escludi-selezione',
+      kind: 'primary',
+      label: t('vendite.lotti.gruppo_escludi_n', { n }),
+      icon: ESCLUDI_ICON,
+      severity: ESCLUDI_SEVERITY,
+      action: 'reset_lotto_fattura_draft',
+      command: () => apriEsclusione({ chiavi: selezioneDocumenti.ids.value }),
+    },
+    ...barraGruppiBase.value,
+  ]
+})
 const barraTask = conRicarica(azioniTask.azioniLista, () => listaTask.carica())
 const barraSegnalazioni = conRicarica(azioniSegnalazioni.azioniLista, caricaSegnalazioni)
 const segnalazioni = ref(null)
@@ -289,12 +403,77 @@ const fatturaDrawerId = ref(null)
 // condiviso col kebab della lista.
 const availableActions = computed(() => lotto.value?.available_actions ?? [])
 
-// Segnalazioni bloccanti: mostra il banner se il lotto ha criticità.
-const haSegnalazioniCritiche = computed(() => (segnalazioni.value?.critical_count ?? 0) > 0)
+// ⭐ IL LOTTO E' FERMO? LO DICE IL BACKEND, e qui si LEGGE — non si ricalcola.
+//    `blocks_next_step` e' il verdetto di `LottoSegnalazioniService`: critiche
+//    vive + fatture in errore + (dal 2026-09-12, D2) documenti il cui ultimo
+//    esito e' ERRORE. Il DB non conosce le segnalazioni, il BE le somma agli
+//    esiti, il FE rende.
+// 🔴 Fino al 12-09 questo gate era `critical_count > 0`, cioe' una COPIA del
+//    verdetto di allora. Coincidevano per costruzione, e D2 e' il giorno in cui
+//    si sfilano: con soli esiti in errore la copia avrebbe acceso «Avanza» su
+//    un lotto che il runner rifiuta, e nessun banner su un lotto in ERRORE —
+//    il vicolo cieco, con il client che mente. Un gate in due sedi e' la copia
+//    che il piano §9.3 toglie: non se ne tiene una «per compatibilita'».
+// ⚠️ Fail-closed sul payload non ancora arrivato: `undefined` non e' «libero».
+const lottoFermo = computed(() => segnalazioni.value?.blocks_next_step === true)
+
+// Scopo: ⭐ LA FRASE DEL BANNER, che dal 2026-09-08 conta GESTI e non allarmi.
+//
+// 🔴 Il difetto che chiude: «3 segnalazioni critiche bloccano l'avanzamento» è
+//    un numero VERO che descrive la cosa sbagliata. Un documento con tre
+//    critiche resta UN documento, e il gesto che l'operatore ha davanti è uno
+//    solo — «togli questo dal giro». Chi leggeva tre si preparava a tre.
+//
+// ⚠️ FORMA PLURALE, e la sceglie il numero che è SOGGETTO della frase. «1
+//    documenti su 3» non è un dettaglio di stile: è la prima riga che si legge
+//    su un lotto fermo, e una frase sgrammaticata lì fa sembrare rotto il resto.
+// 🔴 L'ORDINE DEGLI ARGOMENTI È `t(chiave, {nomi}, plurale)` E NON IL CONTRARIO,
+//    ed è un difetto già commesso qui: con `t(chiave, plurale, {nomi})` vue-i18n
+//    legge il terzo posto come OPZIONI e ogni segnaposto DIVERSO da `n`
+//    sparisce — a video usciva «fermo per 1 documento su : si toglie…», nessun
+//    errore, solo un buco dove c'era il totale. ⚠️ E il `{n}` sopravviveva,
+//    perché vue-i18n inietta da sé il conteggio con quel nome: è la trappola in
+//    cui stanno gli altri 18 messaggi plurali del progetto, che funzionano solo
+//    perché hanno il SOLO `{n}`.
+//
+// ⭐ IL GIRO E' ANCORA RIMEDIABILE? La soglia e' UNA SOLA e si LEGGE, non si
+//    riscrive: `congela_fiscale` del catalogo, la stessa che `useLottoAzioni`
+//    consulta per proporre i verbi. ⛔ Non `stato_doc_fiscale_codice !== 'DRAFT'`
+//    — quella era l'ennesima copia, tolta da questo stesso file il 2026-08-31.
+// ⚠️ Fail-closed (`=== false`): un dettaglio non ancora arrivato non conta come
+//    «si puo' rimediare».
+const giroRimediabile = computed(() => lotto.value?.stato_congela_fiscale === false)
+
+// ⭐ LA SCELTA DEL RAMO VIVE IN UNA FUNZIONE PURA (`scegliRamoBanner`, F2-bis
+//    del 2026-09-12): cinque rami su due assi — rimediabile × specie del blocco
+//    (critiche di documento, critiche del giro, critiche del canale fattura,
+//    esiti in errore, fatture in errore) — e ognuno ha il suo caso nella spec.
+//    Qui resta solo `t()`: le regole di precedenza (le critiche vive vincono
+//    sugli esiti, i conteggi non si sommano, il giro congelato parla al
+//    passato senza proporre gesti) stanno la', con il loro perche'.
+// ⚠️ I ramo `null` non e' un vuoto: e' «il backend blocca per una ragione che
+//    questo client non conosce» — un quarto addendo futuro. Si rende con la
+//    frase generica, cosi' si VEDE invece di sparire.
+const ramoBanner = computed(() => {
+  if (!lottoFermo.value) return null
+  return scegliRamoBanner(conteggiDaSegnalazioni(segnalazioni.value, giroRimediabile.value))
+})
+
+const fraseBanner = computed(() => {
+  const ramo = ramoBanner.value
+  if (!ramo) return t('vendite.lotti.blocca_step')
+  // ⚠️ `(chiave, {nomi}, plurale)` e non il contrario: con l'ordine inverso
+  //    vue-i18n legge il terzo posto come OPZIONI e ogni segnaposto diverso da
+  //    `n` sparisce — difetto gia' pagato qui. Le parti sono frasi INTERE
+  //    giustapposte, mai frammenti: un pezzo senza soggetto non si traduce.
+  return ramo.parti
+    .map((p) => (p.plurale === undefined ? t(p.chiave, p.argomenti) : t(p.chiave, p.argomenti, p.plurale)))
+    .join(' ')
+})
 
 // Tab attiva CONTROLLATA (era fissa a "fatture"): serve al link del banner, che
 // porta l'operatore sulla scheda invece di dirgli dove guardare.
-const tabAttiva = ref('fatture')
+const tabAttiva = ref(LOTTO_SCHEDE.DOCUMENTI)
 
 // ------------------------------------------------------ la STORIA del lotto
 // ⭐ La quarta scheda (Passo A, seconda meta'). Non e' un altro elenco di
@@ -376,13 +555,19 @@ function severitaLivelloSegnalazione(livello) {
 // conteggio a parte che la funzione DB ripete su ogni riga.
 const segnalazioniFuoriJob = ref(0)
 
-// Scopo: il link del banner — porta sulla scheda già filtrata sulle critiche.
-//        Rimette il livello anche se l'operatore l'aveva cambiato prima: il
-//        banner parla di quelle, e atterrare sugli avvisi sarebbe una risposta
-//        a un'altra domanda.
+// Scopo: il link del banner — porta sulla scheda DEL RAMO. Le critiche stanno
+//        su «Segnalazioni», gia' filtrata su di loro (rimette il livello anche
+//        se l'operatore l'aveva cambiato: il banner parla di quelle, atterrare
+//        sugli avvisi sarebbe una risposta a un'altra domanda). Un documento il
+//        cui ultimo esito e' ERRORE senza critica viva (D2) NON ha una riga la',
+//        e nemmeno fra le fatture (se il pull e' fallito la fattura non e' mai
+//        nata): la sua riga sta su «Presi in carico», con `ErroreRigaInfo` e
+//        «Togli dal giro». ⛔ Mandarlo altrove aprirebbe un elenco che quella
+//        riga non la contiene — il vicolo cieco che le linee guida vietano.
 async function apriSegnalazioni() {
-  tabAttiva.value = 'segnalazioni'
-  if (livelloSegnalazioni.value !== LIVELLI_SEGNALAZIONE.CRITICHE) {
+  const scheda = ramoBanner.value?.scheda ?? LOTTO_SCHEDE.SEGNALAZIONI
+  tabAttiva.value = scheda
+  if (scheda === LOTTO_SCHEDE.SEGNALAZIONI && livelloSegnalazioni.value !== LIVELLI_SEGNALAZIONE.CRITICHE) {
     livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
   }
 }
@@ -461,6 +646,7 @@ async function loadTabs() {
     const [sRes] = await Promise.all([
       getLottoSegnalazioni(props.lottoId),
       listaDocumenti.carica(),
+      listaGruppi.carica(),
       listaTask.carica(),
       caricaSegnalazioni(),
       caricaGiornale(),
@@ -535,6 +721,7 @@ watch(
     segnalazioni.value = null
     segnalazioniFuoriJob.value = 0
     listaDocumenti.reset()
+    listaGruppi.reset()
     listaTask.reset()
     listaSegnalazioni.reset()
     // Riapertura = si riparte dai DOCUMENTI, sempre. Senza questo reset il
@@ -542,7 +729,7 @@ watch(
     // (tipicamente «Segnalazioni», dove l'aveva portato il link del banner):
     // un drawer che si apre in un punto diverso a ogni giro fa perdere il
     // riferimento. Stessa ragione per il livello del filtro.
-    tabAttiva.value = 'fatture'
+    tabAttiva.value = LOTTO_SCHEDE.DOCUMENTI
     livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
     livelloCaricato.value = null
     // Stessa ragione del livello: il drawer riapre sempre dallo stesso punto.
@@ -600,12 +787,12 @@ const drawerActions = computed(() => {
   }).map((a) => ({
     ...a,
     ...(LOTTO_AZIONE_PERMESSO[a.key] ? { action: LOTTO_AZIONE_PERMESSO[a.key] } : {}),
-    // La numerazione è uno STEP di pipeline: con criticità attive il runner la
+    // La numerazione è uno STEP di pipeline: su un lotto fermo il runner la
     // rifiuta (`blocks_next_step`). Il DB non conosce le segnalazioni, quindi
-    // questo disabilitato lo aggiunge chi le ha: noi. Non sovrascrive un
-    // `disabled` già vero arrivato dalle `fn_check_*` (né il suo tooltip,
-    // che spiega il motivo del DB).
-    ...(a.key === 'numera' && haSegnalazioniCritiche.value && !a.disabled
+    // questo disabilitato lo aggiunge chi ha il verdetto: noi, LEGGENDOLO. Non
+    // sovrascrive un `disabled` già vero arrivato dalle `fn_check_*` (né il
+    // suo tooltip, che spiega il motivo del DB).
+    ...(a.key === 'numera' && lottoFermo.value && !a.disabled
       ? { disabled: true, tooltip: t('vendite.lotti.blocca_step') }
       : {}),
   }))
@@ -620,10 +807,11 @@ const drawerActions = computed(() => {
     const ui = LOTTO_AZIONE_PIPELINE_UI[key]
     // ⚠️ SOLO `avanza_step`, ed è una condizione scritta apposta e non un
     // effetto di come è scritta: `rigenera_bozza` è un rilancio dello STESSO
-    // step, che con criticità attive il runner ammette (è la via d'uscita).
-    // Bloccarlo qui toglierebbe l'unica strada per uscire dalle criticità
-    // proprio ai lotti riaperti.
-    const bloccato = key === 'avanza_step' && haSegnalazioniCritiche.value
+    // step, che su un lotto fermo il runner ammette (è la via d'uscita — e
+    // per gli esiti in errore di D2 è l'UNICA: il pull rivede il documento e
+    // scrive l'esito nuovo). Bloccarlo qui toglierebbe l'unica strada per
+    // uscire proprio ai lotti riaperti.
+    const bloccato = key === 'avanza_step' && lottoFermo.value
     azioni.unshift({
       key,
       kind: 'state',
@@ -788,6 +976,280 @@ function buildFatturaActions(row) {
   return actions
 }
 
+const auth = useAuthStore()
+
+// Scopo: le azioni del kebab sui DOCUMENTI PRESI IN CARICO — «apri il
+//        documento» e «apri la commessa da correggere».
+//
+// ⭐ SI COSTRUISCONO DAL RESOLVER DEI BERSAGLI, non a mano. La mappa
+//    tipo→destinazione vive in `core/bersagli.js`, applica i guard dei permessi
+//    e apre l'ospite globale di `App.vue`: qui non si monta nessun drawer.
+//    ⚠️ E `tipo_gruppo` È già il vocabolario di quella mappa — sono entrambi i
+//    `config.sorgenti.codice_interno`. Non c'era una tabella da inventare, ce
+//    n'era una da riconoscere.
+//
+// ⛔ Il degrado è dichiarato e va tenuto: un tipo senza destinazione (le voci
+//    manuali, `ONERI_COMMESSA`), un documento fuori scope, un'area BLOCCATA →
+//    nessuna voce. Mai un pulsante che porta in un vicolo cieco (§4.3 di
+//    `brief-db-bersaglio-errore`).
+//
+// ⚠️ La commessa esce SOLO quando ce n'è una: `commesse_n > 1` significa che il
+//    documento ne alimenta più d'una, e offrirne una a caso sarebbe una
+//    scommessa travestita da regola — la stessa ragione per cui il backend
+//    lascia `commessa_id` a NULL in quel caso.
+function buildGruppoRowActions(row) {
+  const bersagli = []
+  if (row.documento_id && row.tipo_gruppo) {
+    bersagli.push({ type: row.tipo_gruppo, id: row.documento_id })
+  }
+  bersagli.push(...bersaglioCommessa(row))
+  const azioni = azioniDaBersagli(normalizzaBersagli(bersagli), auth).map((azione, i) => ({
+    key: `bersaglio_${i}`,
+    label: azione.label,
+    icon: azione.icon,
+    command: azione.esegui,
+  }))
+  if (isReadonly.value) return azioni
+  azioni.push(azioneEscludi(motivoUscitaBloccata(t, te, row), row))
+  return azioni
+}
+
+// Scopo: ⭐ IL VERBO «TOGLI DAL GIRO» IN UN POSTO SOLO — la voce di riga che
+//        libera gli altri documenti del lotto. La rendono DUE schede, e questo
+//        è ciò che le tiene la stessa azione invece di due che si somigliano:
+//        stessa etichetta, stessa icona, stesso permesso, stesso comando.
+//
+// ⛔ SI SPEGNE COL MOTIVO, NON SI NASCONDE (§12.1 delle linee guida): lo STATO
+//    disabilita spiegando, il PERMESSO nasconde. Il permesso lo applica
+//    `action`; lo stato arriva dal database e passa da qui come `motivo`.
+// ⭐ E LA FIRMA RENDE LA REGOLA STRUTTURALE: non c'è modo di spegnere questa
+//    voce senza dire perché, perché `disabled` NON è un parametro — si deduce
+//    dalla presenza del motivo. Un `disabled` indipendente sarebbe la terza via
+//    vietata dal §12, disponibile per distrazione.
+// ⚠️ Il campo si chiama `tooltip`, non `motivo`: `RowActionsMenu` legge quello,
+//    e da lì ricava da sé sia il tooltip inline sia la riga sotto la voce nel
+//    kebab — che su touch è l'unico posto in cui il motivo si vede. Un
+//    `motivo:` non lo legge nessuno.
+function azioneEscludi(motivo, payload) {
+  return {
+    key: 'escludi',
+    label: t('vendite.lotti.gruppo_escludi'),
+    icon: ESCLUDI_ICON,
+    severity: ESCLUDI_SEVERITY,
+    disabled: Boolean(motivo),
+    tooltip: motivo,
+    // Stesso potere della cancellazione di una bozza dal lotto, che questo
+    // verbo COMPONE: non è un'altra facoltà, e un codename proprio direbbe
+    // che lo è.
+    action: 'reset_lotto_fattura_draft',
+    command: () => apriEsclusione(payload),
+  }
+}
+
+// Scopo: le azioni di riga della scheda CRITICHE. ⭐ È la seconda superficie
+//        dello stesso verbo — «togli dal giro» — e non ne è una copia: chiama
+//        la stessa funzione con lo stesso stato. *Stessa azione, seconda
+//        superficie, un verbo solo.*
+//
+// ⭐ E QUI IL POSTO È GIUSTO: quando un documento rompe il giro, l'operatore è
+//    su questa scheda. Era l'ipotesi di partenza di Tid — «nell'area Critiche si
+//    annulla il messaggio» — con l'oggetto corretto: il gesto si appende al
+//    DOCUMENTO, non al messaggio. Un documento può avere più critiche, e
+//    toglierlo dal messaggio richiederebbe N gesti.
+//
+// ⛔ SULLE CRITICHE DEL GIRO L'AZIONE È SPENTA COL MOTIVO, MAI NASCOSTA (§12.1):
+//    togliere la voce farebbe sparire l'azione senza spiegazione, e chi la
+//    cercava non saprebbe se è un permesso, un bug o una versione vecchia.
+// ⚠️ E quel motivo NON viene dal database, ed è l'unica eccezione dichiarata:
+//    la `fn_check_*` risponde sullo STATO di un documento, mentre qui il verbo
+//    non ha OGGETTO — la riga non ne nomina nessuno. È una proprietà della
+//    forma della riga, visibile in `gruppo_key`, non una regola di dominio
+//    riscritta.
+function buildSegnalazioneRowActions(row) {
+  if (isReadonly.value) return []
+  return [azioneEscludi(
+    // Il ramo senza documento è l'eccezione spiegata qui sopra.
+    row.gruppo_key
+      ? motivoUscitaBloccata(t, te, row)
+      : t('vendite.lotti.segn_escludi_del_giro'),
+    {
+      gruppo_key: row.gruppo_key,
+      // ⭐ La conferma nomina il documento come lo legge una persona
+      //    (`ORD0036004`), non la chiave. ⚠️ Il ripiego sulla chiave resta e
+      //    non è teorico: `riferimento` è l'ULTIMO gradino di una scala che il
+      //    database percorre — numero, codice commessa, chiave — e su un lavoro
+      //    che non si risolve più torna proprio lei.
+      riferimento: row.riferimento || row.gruppo_key,
+      // ⚠️ Il conteggio dei trascinati vive sulla scheda Documenti, non qui:
+      //    `null` significa «non lo so», e la conferma non promette un numero
+      //    che non ha. ⛔ Non `0`, che direbbe «non trascina nessuno».
+      n_trascinati: null,
+    },
+  )]
+}
+
+// ⭐ FE — L'USCITA DI UN DOCUMENTO DAL GIRO (brief-db-uscita-documento-dal-giro).
+//
+// ⛔ Il motivo è OBBLIGATORIO (D-5) e il pulsante resta spento finché non c'è:
+//    un documento che esce senza motivo è una riga che fra un mese nessuno sa
+//    spiegare. ⚠️ La regola vera la tiene il database — il `CHECK` rifiuta anche
+//    i soli spazi — e questo è il non-proporre, non il cancello.
+//
+// ⚠️ E LA CONSEGUENZA SI DICHIARA PRIMA. Una bozza può coprire più documenti:
+//    togliere A può portare via anche B, che torna «da emettere» e si fattura al
+//    giro dopo. Non è un motivo che rifiuta — rifiutare lascerebbe bloccati
+//    anche i documenti di un'ALTRA bozza, cioè il sequestro di partenza in forma
+//    più stretta — è una conseguenza, e le conseguenze stanno nella conferma.
+// ⚠️ La forma chiusa in una FUNZIONE e non in due letterali gemelli: la stessa
+//    tupla serve all'inizializzazione e alla chiusura dopo l'atto, e due copie
+//    divergono al primo campo aggiunto — con la seconda che lascia in giro il
+//    valore vecchio invece di azzerarlo.
+const esclusioneChiusa = () => ({
+  visible: false, chiavi: [], riferimento: '', trascinati: null,
+})
+const esclusione = ref(esclusioneChiusa())
+const esclusioneMotivo = ref('')
+
+// Scopo: apre la conferma dell'uscita — per UNA riga o per la selezione.
+// ⚠️ Una firma sola per i due percorsi: `{chiavi}` dal gesto di massa,
+//    `{gruppo_key, …}` da una riga. Due funzioni divergerebbero sul testo della
+//    conferma, che è la cosa che l'operatore legge prima di un atto
+//    irreversibile.
+function apriEsclusione(row) {
+  esclusioneMotivo.value = ''
+  esclusione.value = {
+    visible: true,
+    chiavi: row.chiavi ?? [row.gruppo_key],
+    // Vuoto sul gesto di massa: lì il soggetto è il numero, non un nome.
+    riferimento: row.chiavi ? '' : gruppoRiferimento(row),
+    // ⚠️ `?? null` e MAI `?? 0`, e vale per i due percorsi che qui non hanno il
+    //    numero — la scheda Critiche, che il conteggio non lo riceve, e il gesto
+    //    di MASSA, dove sommare i trascinati riga per riga conterebbe due volte
+    //    i documenti che si trascinano a vicenda ed ESSENDO entrambi selezionati
+    //    non tornano indietro affatto. `0` direbbe «non trascina nessuno», che
+    //    è un'affermazione; `null` dice «non lo so», e la conferma tace invece
+    //    di promettere un numero che non ha.
+    trascinati: row.n_trascinati ?? null,
+  }
+}
+
+// Scopo: esegue l'uscita e RACCONTA il consuntivo — quante bozze sono state
+//        cancellate e quanti documenti sono tornati in coda. ⛔ Non è
+//        decorazione: sono le due conseguenze che l'operatore non si aspetta, e
+//        chi non le mostra le nasconde.
+async function confermaEsclusione() {
+  const chiavi = esclusione.value.chiavi
+  const res = await execute(
+    () => escludiDocumentiDaGiro(props.lottoId, {
+      gruppoKeys: chiavi, motivo: esclusioneMotivo.value,
+    }),
+  )
+  // `!== null` e non `if (res)`: un esito vuoto è comunque un successo.
+  if (res === null) return
+  esclusione.value = esclusioneChiusa()
+
+  // ⛔ UN 200 NON È UN SUCCESSO: la risposta è un REPORT a tre stati e il
+  //    fallimento è un campo del payload — il verbo non produce un atto
+  //    fiscale, quindi un esito parziale lascia documenti in coda, non mezzo
+  //    documento. Chi legge solo lo status annuncia riuscita un'operazione in
+  //    cui quattro righe su cinque sono state rifiutate.
+  const falliti = res?.falliti ?? []
+  if (falliti.length) {
+    // ⭐ SI TENGONO SPUNTATE SOLO LE FALLITE, che sono esattamente ciò su cui
+    //    l'operatore deve tornare. ⚠️ E non è cosmetica: le riuscite escono
+    //    dall'elenco lavorabile, quindi il prune — che guarda solo ciò che la
+    //    pagina dichiara — non le vedrebbe mai: resterebbero spuntate e
+    //    invisibili, contate dal pulsante.
+    selezioneDocumenti.tieniSolo(falliti.map((f) => f.gruppo_key))
+    // ⚠️ Il MOTIVO del primo rifiuto, non un «alcuni non sono passati»: il
+    //    codice per riga esiste apposta, e su una selezione omogenea è il
+    //    motivo di tutte.
+    notify.warn(t('vendite.lotti.gruppo_escludi_parziale', {
+      ok: res?.ok ?? 0,
+      totale: res?.totale ?? 0,
+      motivo: falliti[0]?.messaggio || falliti[0]?.codice || '',
+    }))
+  } else {
+    selezioneDocumenti.azzera()
+    notify.success(t('vendite.lotti.gruppo_escludi_esito', {
+      n: res?.ok ?? 0,
+      // ⚠️ Le bozze si SOMMANO e i documenti NO, e la differenza è di merito:
+      //    una bozza la cancella una sola uscita — la seconda che la tocca ne
+      //    trova zero — mentre lo STESSO documento può essere nominato
+      //    «riaperto» da due uscite diverse della stessa corsa.
+      fatture: (res?.usciti ?? []).reduce((tot, u) => tot + (u.fatture_cancellate ?? 0), 0),
+      riaperti: contaRiaperti(res?.usciti ?? []).length,
+    }))
+  }
+  // ⚠️ Si ricarica TUTTO e non la sola scheda: l'uscita cambia il riepilogo
+  //    delle segnalazioni (il lotto può essere ripartito) e può aver cancellato
+  //    una bozza, che è nella scheda accanto.
+  await reloadAll()
+  emit('changed')
+}
+
+// Scopo: ⭐ LA COMMESSA DA CORREGGERE, come bersaglio. Sta in una funzione e non
+//        in due espressioni perché le superfici sono DUE — il kebab qui sopra e
+//        l'icona d'errore nella cella dell'esito — e scriverla due volte
+//        significa dimenticare in un posto il guard su `commessa_id`.
+// ⚠️ Elenco vuoto e non `null`: chi la usa la concatena o la passa a
+//        `ErroreRigaInfo`, e in entrambi i casi «niente» è la lista vuota.
+// ⛔ Il tipo viene dalla mappa dei bersagli, non da una stringa a mano: un tipo
+//        che quella mappa non conosce non risolve, e il pulsante semplicemente
+//        non compare — senza nessun errore.
+function bersaglioCommessa(row) {
+  return row.commessa_id
+    ? [{ type: BERSAGLIO_TIPI.COMMESSA, id: row.commessa_id }]
+    : []
+}
+
+// Scopo: ⭐ I DOCUMENTI CHE TORNANO DAVVERO «DA EMETTERE» dopo una corsa di
+//        uscite — l'insieme, non la somma dei conteggi per riga.
+//
+// 🔴 Sommare `n_gruppi_riaperti` mente in due modi, ed è il difetto che questa
+//    funzione chiude. Due documenti che condividono una bozza si nominano A
+//    VICENDA come trascinati: togliendoli ENTRAMBI nella stessa corsa la somma
+//    dice «2 documenti tornati da emettere» mentre in coda non ne torna
+//    NESSUNO — sono usciti tutti e due. E lo stesso terzo documento trascinato
+//    da due uscite diverse verrebbe contato due volte.
+// ⚠️ Nessun errore, solo un numero più grande del vero in un messaggio che
+//    l'operatore usa per decidere se il mese è a posto.
+//
+// ⭐ È ANCHE LA RAGIONE PER CUI IL BACKEND MANDA LE CHIAVI e non solo il
+//    conteggio: un numero da solo non si può né deduplicare né sottrarre. Le
+//    chiavi arrivano perché la conferma possa NOMINARE i trascinati; questo è
+//    il secondo consumatore della stessa scelta.
+function contaRiaperti(usciti) {
+  const usciteDelGiro = new Set(usciti.map((u) => u.gruppo_escluso))
+  const riaperti = new Set()
+  usciti.forEach((u) => (u.gruppi_riaperti ?? []).forEach((chiave) => {
+    // Chi è uscito lui stesso non «torna da emettere»: è fuori dal giro.
+    if (!usciteDelGiro.has(chiave)) riaperti.add(chiave)
+  }))
+  return [...riaperti]
+}
+
+// Scopo: chi ha tolto il documento dal giro, quando e perché — in una riga.
+// ⚠️ Il motivo c'è SEMPRE su una riga `ESCLUSO` (lo impone un `CHECK`), quindi
+//    non serve un ripiego per «uscito senza motivo»: non esiste. Il ripiego
+//    serve sul TIMBRO, che lo scrive un trigger e non il chiamante.
+function uscitaTooltip(row) {
+  return t('vendite.lotti.gruppo_uscita_tooltip', {
+    motivo: row.uscita_motivo || '—',
+    chi: row.uscita_da || '—',
+    quando: row.uscita_quando ? displayTimestamp(row.uscita_quando) : '—',
+  })
+}
+
+// Scopo: il nome del documento preso in carico. ⚠️ Il ripiego è la CHIAVE del
+//        gruppo e non un trattino: quando l'identità non si risolve più — il
+//        lavoro è finito in un altro giro, o è uscito dal mese — la riga resta
+//        in elenco col suo esito, ed è proprio quella per cui questa scheda
+//        esiste. Una riga senza nome è comunque meglio di una riga assente.
+function gruppoRiferimento(row) {
+  return row.riferimento || row.gruppo_key
+}
+
 // ⛔ Niente composizione locale: il numero documento viene dalla sede unica
 // (`vendite.fn_numero_documento_fattura`, 20260829-15). Qui si scriveva
 // `serie numero`, nel drawer fattura `serie numero/anno`: due schermate, due
@@ -830,9 +1292,19 @@ function fatturaNumero(row) {
           <span v-if="lotto.stato_operativo" class="text-color-secondary">· {{ lotto.stato_operativo }}</span>
         </div>
 
-        <!-- Banner segnalazioni critiche (blocca l'avanzamento). -->
-        <Message v-if="haSegnalazioniCritiche" severity="error" :closable="false" class="app-mt-1">
-          {{ t('vendite.lotti.segnalazioni_bloccanti', { n: segnalazioni.critical_count }) }}
+        <!-- Banner del lotto FERMO (blocca l'avanzamento). Compare sul VERDETTO
+             del backend, non su un conteggio: dal 2026-09-12 un lotto puo' essere
+             fermo con zero critiche vive (esiti in errore, D2). -->
+        <!-- ⚠️ Il ROSSO solo dove c'e' qualcosa da fare: su un lotto congelato
+             le critiche sono storia, e un allarme rosso su un giro chiuso
+             insegna a ignorare gli allarmi rossi. -->
+        <Message
+          v-if="lottoFermo"
+          :severity="giroRimediabile ? 'error' : 'secondary'"
+          :closable="false"
+          class="app-mt-1"
+        >
+          {{ fraseBanner }}
           <!-- Il banner dice QUANTE sono; il dettaglio sta in una scheda sola,
                e il link ci porta invece di chiedere all'operatore di cercarla.
                Apre già filtrata sulle critiche: sono quelle di cui parla. -->
@@ -864,13 +1336,18 @@ function fatturaNumero(row) {
             <!-- ⚠️ Il conteggio e' il TOTALE del server, non le righe caricate:
                  con la paginazione «(25)» su 137 documenti sarebbe la
                  dimensione della pagina spacciata per quantita'. -->
-            <Tab value="fatture">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
-            <Tab value="task">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
-            <Tab value="segnalazioni">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
+            <Tab :value="LOTTO_SCHEDE.DOCUMENTI">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
+            <!-- ⭐ I documenti PRESI IN CARICO — quelli che una fattura non sono
+                 mai diventati compresi. Il conteggio è quello del server, come
+                 sulle altre schede: dal 2026-09-07 vale su entrambi i tipi di
+                 giro, quindi non ha più bisogno di essere condizionato. -->
+            <Tab :value="LOTTO_SCHEDE.PRESI_IN_CARICO">{{ t('vendite.lotti.tab_gruppi') }} ({{ listaGruppi.totale.value }})</Tab>
+            <Tab :value="LOTTO_SCHEDE.TASK">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
+            <Tab :value="LOTTO_SCHEDE.SEGNALAZIONI">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
             <!-- ⭐ La quarta scheda risponde a una domanda che le altre tre non
                  fanno: le prime dicono COSA C'E' ORA, questa COSA E' SUCCESSO.
                  Il conteggio nell'etichetta dice se vale la pena entrare. -->
-            <Tab value="storia">
+            <Tab :value="LOTTO_SCHEDE.STORIA">
               {{ t('vendite.lotti.tab_storia') }}
               <template v-if="giornaleTotale"> ({{ giornaleTotale }})</template>
             </Tab>
@@ -881,7 +1358,7 @@ function fatturaNumero(row) {
                  catalogo: qui restano solo gli slot delle celle che hanno una
                  resa propria (Tag, icona errore, kebab). Aggiungere una
                  colonna e' ora un seed, non una riga di `.vue`. -->
-            <TabPanel value="fatture">
+            <TabPanel :value="LOTTO_SCHEDE.DOCUMENTI">
               <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
                    destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
                    stesso di ogni pagina lista.
@@ -932,7 +1409,7 @@ function fatturaNumero(row) {
                 </template>
                 <template #cell-stato_esecuzione="{ data }">
                   <span class="app-lotto-esecuzione-cella">
-                    <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneFatturaSeverity(data.stato_esecuzione)" />
+                    <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)" />
                     <!-- Il PERCHE' accanto al CHE COSA: senza, «ERRORE» e' una
                          bandiera senza messaggio. Il componente si nasconde da
                          solo quando non c'e' errore. -->
@@ -967,7 +1444,114 @@ function fatturaNumero(row) {
               </ListaConfigurabile>
             </TabPanel>
 
-            <TabPanel value="task">
+            <TabPanel :value="LOTTO_SCHEDE.PRESI_IN_CARICO">
+              <div class="app-page-toolbar">
+                <span class="app-page-filters" />
+                <PageActionsBar :actions="barraGruppi">
+                  <template #suffix>
+                    <ListaConfigStatusTag :dirty="azioniGruppi.dirty.value" />
+                  </template>
+                </PageActionsBar>
+              </div>
+              <ListaConfigurabile
+                ref="listaGruppiRef"
+                codice="vendite.lotto_gruppi"
+                data-key="gruppo_key"
+                :selezione="selezioneDocumenti.perLista.value"
+                :rows="listaGruppi.righe.value"
+                :total="listaGruppi.totale.value"
+                :loading="tabLoading || listaGruppi.loading.value"
+                :paginator-options="listaGruppi.paginatorOptions.value"
+                :page="listaGruppi.page.value"
+                :sort-field="listaGruppi.sortField.value"
+                :sort-order="listaGruppi.sortOrder.value"
+                @page="listaGruppi.onPage"
+                @sort="listaGruppi.onSort"
+                @config-loaded="listaGruppi.onConfigLoaded"
+              >
+                <!-- ⚠️ Il ripiego è la CHIAVE del gruppo, non un trattino: una
+                     riga che ha perso l'identità ha comunque un esito da
+                     raccontare, ed è quella per cui la scheda esiste. -->
+                <template #cell-riferimento="{ data }">
+                  <strong>{{ gruppoRiferimento(data) }}</strong>
+                </template>
+                <template #cell-tipo_gruppo="{ data }">
+                  <Tag v-if="data.tipo_gruppo" :value="data.tipo_gruppo" severity="secondary" />
+                  <span v-else>—</span>
+                </template>
+                <!-- ⚠️ Vuota quando il documento alimenta PIÙ commesse
+                     (`commesse_n > 1`): non è «non lo so», è «sono più di una»,
+                     e le due cose si scrivono diverse — stessa forma con cui
+                     questa applicazione tratta già il sezionale multiplo. -->
+                <template #cell-commessa_codice="{ data }">
+                  <span v-if="data.commessa_codice">{{ data.commessa_codice }}</span>
+                  <span
+                    v-else-if="data.commesse_n > 1"
+                    v-tooltip.bottom="t('vendite.lotti.gruppo_commesse_multi_tooltip')"
+                  >
+                    <i class="pi pi-clone" />
+                    {{ t('vendite.lotti.gruppo_commesse_multi', { n: data.commesse_n }) }}
+                  </span>
+                  <span v-else>—</span>
+                </template>
+                <!-- ⭐ Il CHE COSA e il PERCHÉ nella stessa cella, come sulla
+                     scheda «Documenti»: il tag dice com'è andata, l'icona apre
+                     il motivo per intero e porta alla commessa da correggere.
+                     ⚠️ Vuoto = MAI TENTATO in questo lotto, e non è «andata
+                     bene»: si scrive «—», che è l'assenza, non un `PENDING`
+                     inventato qui. -->
+                <template #cell-stato_esecuzione="{ data }">
+                  <span class="app-lotto-esecuzione-cella">
+                    <Tag
+                      v-if="data.stato_esecuzione"
+                      :value="data.stato_esecuzione"
+                      :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)"
+                    />
+                    <span v-else>—</span>
+                    <ErroreRigaInfo
+                      v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ERRORE"
+                      :messaggio="data.errore_messaggio"
+                      :codice="data.errore_codice"
+                      :quando="data.errore_quando"
+                      :bersagli="bersaglioCommessa(data)"
+                      :titolo="t('vendite.lotti.gruppo_errore_titolo')"
+                    />
+                    <!-- ⭐ CHI L'HA TOLTO E PERCHÉ. Il motivo è obbligatorio
+                         (D-5) proprio perché fra un mese qualcuno chiederà come
+                         mai quel documento non è in quella fattura: senza il
+                         nome e la data, «ESCLUSO» è un tag che non risponde.
+                         ⚠️ Il timbro lo scrive un trigger dalla GUC, non il
+                         chiamante — e non riusa `data_update`/`user_update`,
+                         che qualunque aggiornamento successivo riscriverebbe. -->
+                    <i
+                      v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ESCLUSO"
+                      v-tooltip.bottom="uscitaTooltip(data)"
+                      class="pi pi-info-circle"
+                    />
+                  </span>
+                </template>
+                <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
+                     colonna non viene resa affatto e non fallisce niente. -->
+                <template #actions="{ data, compact }">
+                  <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
+                </template>
+                <!-- ⚠️ Empty-state ONESTO, e la frase è cambiata col modello:
+                     zero righe non vuol più dire «giro di massa, qui non si può
+                     sapere» — vuol dire che di questo lotto non risulta nessun
+                     documento. Vero sia per un lotto che non ha ancora
+                     lavorato, sia per uno anteriore al tracciamento: non si
+                     afferma che non abbia fatto niente, e si dice dove
+                     guardare. -->
+                <template #empty>
+                  <div class="app-empty-state">
+                    <i class="pi pi-inbox" />
+                    <p>{{ t('vendite.lotti.nessun_gruppo') }}</p>
+                  </div>
+                </template>
+              </ListaConfigurabile>
+            </TabPanel>
+
+            <TabPanel :value="LOTTO_SCHEDE.TASK">
               <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
                    destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
                    stesso di ogni pagina lista, quindi queste tre si comportano come le
@@ -1035,7 +1619,7 @@ function fatturaNumero(row) {
               </ListaConfigurabile>
             </TabPanel>
 
-            <TabPanel value="segnalazioni">
+            <TabPanel :value="LOTTO_SCHEDE.SEGNALAZIONI">
               <div v-if="segnalazioni">
                 <Message
                   v-if="segnalazioni.blocks_next_step"
@@ -1131,6 +1715,39 @@ function fatturaNumero(row) {
                     <span v-if="data.documento_display">{{ data.documento_display }}</span>
                     <span v-else class="text-color-secondary">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
                   </template>
+                  <!-- ⭐ DI CHI E' LA CRITICA — la colonna che divide la scheda
+                       in DUE FAMIGLIE con vie d'uscita diverse: quella di un
+                       documento si toglie dal giro, quella del GIRO si corregge
+                       e basta. Prima erano indistinguibili, ed è la ragione per
+                       cui l'unica proposta a video era «annulla tutto».
+                       ⚠️ Il vuoto si SCRIVE, non si lascia in bianco: «è del
+                       giro» è un'informazione, non un dato mancante.
+                       ⭐ Si legge il RIFERIMENTO e non la chiave (2026-09-08):
+                       `ORD0036004` invece di `ORDINE_VENDITA:<uuid>`. I due non
+                       sono in concorrenza — servono a destinatari diversi: la
+                       chiave la vuole il PULSANTE e continua a viaggiare in
+                       riga, il riferimento è per la persona ed è l'unico dei
+                       due che si vede (la colonna della chiave è spenta a
+                       catalogo, D-7).
+                       ⚠️ Nessun ripiego sulla chiave qui: la scala di ripiego
+                       la fa già il database — numero del documento, codice
+                       commessa, chiave grezza — e rifarla qui sarebbe la terza
+                       sede della stessa regola. -->
+                  <template #cell-riferimento="{ data }">
+                    <span v-if="data.riferimento">{{ data.riferimento }}</span>
+                    <span v-else class="text-color-secondary">
+                      {{ t('vendite.lotti.segn_del_giro') }}
+                    </span>
+                  </template>
+                  <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
+                       colonna non viene resa affatto e non fallisce niente. -->
+                  <template #actions="{ data, compact }">
+                    <RowActionsMenu
+                      :row="data"
+                      :actions="buildSegnalazioneRowActions(data)"
+                      :force-compact="compact"
+                    />
+                  </template>
                   <template #empty>
                     <div class="app-empty-state">
                       <i class="pi pi-check-circle" />
@@ -1141,7 +1758,7 @@ function fatturaNumero(row) {
               </div>
               <div v-else class="app-empty-state"><i class="pi pi-check-circle" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
             </TabPanel>
-            <TabPanel value="storia">
+            <TabPanel :value="LOTTO_SCHEDE.STORIA">
 
               <!-- ⭐ LA STORIA DEL LOTTO — «cosa è successo, in che ordine».
                    Sorgente `script.vw_giornale_entita`: sul lotto rispondono
@@ -1341,6 +1958,58 @@ function fatturaNumero(row) {
       :lotto-id="numeraDialog.lottoId"
       @conferma="confermaNumera"
     />
+
+    <!-- ⭐ USCITA DI UN DOCUMENTO DAL GIRO. Non è un «sei sicuro?»: chiede il
+         MOTIVO, che è obbligatorio, e DICHIARA la conseguenza quando la bozza
+         è condivisa. ⚠️ `save-severity="danger"`: l'uscita è a senso unico —
+         per rimettere tutto in un lotto solo si annulla il lotto e si rigenera.
+         ⚠️ `readonly: false` esplicito: il drawer del lotto è locked-by-stato,
+         e senza questo `FormFooter` erediterebbe readonly e nasconderebbe la
+         conferma di un'azione che su quello stato è legittima. -->
+    <AppDialog
+      v-model:visible="esclusione.visible"
+      :header="t('vendite.lotti.gruppo_escludi_header')"
+      width="md"
+      :loading="loading"
+      :readonly="false"
+      :save-disabled="!esclusioneMotivo.trim() || !esclusione.chiavi.length || loading"
+      :save-label="t('vendite.lotti.gruppo_escludi_conferma')"
+      save-severity="danger"
+      @save="confermaEsclusione"
+    >
+      <!-- Il soggetto è il documento quando è uno, il NUMERO quando sono tanti:
+           «I 3 documenti selezionati escono…» dice cosa sta per succedere
+           meglio di un elenco di chiavi lungo tre righe. -->
+      <p v-if="esclusione.riferimento">
+        {{ t('vendite.lotti.gruppo_escludi_testo', { documento: esclusione.riferimento }) }}
+      </p>
+      <p v-else>
+        {{ t('vendite.lotti.gruppo_escludi_testo_n', { n: esclusione.chiavi.length }) }}
+      </p>
+      <!-- ⚠️ L'AVVISO C'È SOLO QUANDO TRASCINA, e nomina il numero: dirlo
+           sempre lo renderebbe rumore, e chi legge un avviso perpetuo smette
+           di leggerlo. I documenti trascinati NON escono — tornano «da
+           emettere» e si fatturano al giro dopo: rimandati, non distrutti. -->
+      <Message
+        v-if="esclusione.trascinati > 0"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        {{ t('vendite.lotti.gruppo_escludi_trascina', { n: esclusione.trascinati }) }}
+      </Message>
+      <div class="form-field">
+        <label for="esclusione-motivo">{{ t('vendite.lotti.gruppo_escludi_motivo') }}</label>
+        <Textarea
+          id="esclusione-motivo"
+          v-model="esclusioneMotivo"
+          rows="3"
+          auto-resize
+          class="w-full"
+          :placeholder="t('vendite.lotti.gruppo_escludi_motivo_placeholder')"
+        />
+      </div>
+    </AppDialog>
   </Drawer>
 </template>
 
@@ -1363,6 +2032,12 @@ function fatturaNumero(row) {
 }
 .app-mt-1 {
   margin-top: 1rem;
+}
+/* Stacco fra il banner «questo lotto non dichiara un perimetro» e ciò che
+   segue. ⚠️ Locale come `.app-mt-1` qui sopra: le spaziature globali di
+   `main.css` sono `mt-025`/`mt-05`/`mt-1`, senza gemelle in basso. */
+.app-mb-1 {
+  margin-bottom: 1rem;
 }
 .app-lotto-segn-link {
   padding: 0 0 0 0.35rem;

@@ -24,17 +24,24 @@
 - [messaggi_errore_codici_legacy](manual/messaggi_errore_codici_legacy.md) — (rev 2026-08-21)
 - [pipeline_task_registry](manual/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](manual/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
+- [presidi](manual/presidi.md) — (latest review 10-09-2026)
+- [processi](manual/processi.md) — (latest review 04-09-2026)
+- [processi_bersagli](manual/processi_bersagli.md) — (latest review 04-09-2026)
+- [processi_identita](manual/processi_identita.md) — (latest review 04-09-2026)
 - [request_log](manual/request_log.md) — (latest review 05-03-2026)
 - [riferimenti_morti_esenzioni](manual/riferimenti_morti_esenzioni.md) — (rev 2026-08-21)
+- [rls_perimetro_debito](manual/rls_perimetro_debito.md) — (latest review 09-09-2026)
 - [sec_functions_owner](manual/sec_functions_owner.md) — * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato. * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`. * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati. * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
 - [sessioni_utente](manual/sessioni_utente.md) — (latest review 05-03-2026)
+- [storico_scope_policy](manual/storico_scope_policy.md) — (latest review 11-09-2026)
 - [transaction_ids](manual/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
 
 ## ⚙️ Funzioni (manuale)
 - [apply_fk_index_policy](manual/apply_fk_index_policy.md) — (latest update 27-07-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
+- [fn_accoda_chiusura_scadenze](manual/fn_accoda_chiusura_scadenze.md) — (latest review 05-09-2026)
 - [fn_accoda_lavoro](manual/fn_accoda_lavoro.md) — (latest review 20-07-2026)
-- [fn_admin_merge_comune](manual/fn_admin_merge_comune.md) — (rev 2026-08-21)
-- [fn_admin_merge_stradario](manual/fn_admin_merge_stradario.md) — (rev 2026-08-21)
+- [fn_admin_merge_comune](manual/fn_admin_merge_comune.md) — (rev 2026-09-12)
+- [fn_admin_merge_stradario](manual/fn_admin_merge_stradario.md) — (rev 2026-09-12)
 - [fn_apply_automazione_guard_utility_tipo_ruolo](manual/fn_apply_automazione_guard_utility_tipo_ruolo.md) — La funzione **`dbops.fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode, p_dry_run)`** crea in modo idempotente i trigger di guardia utility/ruolo sulle tabelle configurate in `dbops.automazione_guard_utility_tipo_ruolo`.
 - [fn_apply_automazione_overlap](manual/fn_apply_automazione_overlap.md) — (latest review 02-06-26) La funzione **`dbops.fn_apply_automazione_overlap(p_exec_mode, p_dry_run)`** applica i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in `dbops.automazione_overlap`. Dalla rev 2026-06-02 supporta anche vincoli **parziali** (con clausola `WHERE`) tramite la colonna `where_predicate`.
 - [fn_apply_chiusura_scadenze](manual/fn_apply_chiusura_scadenze.md) — (latest review 26-04-2026)
@@ -46,6 +53,7 @@
 - [fn_check_funzioni_riferimenti_morti](manual/fn_check_funzioni_riferimenti_morti.md) — (rev 2026-08-21)
 - [fn_check_pipeline_task_registered](manual/fn_check_pipeline_task_registered.md) — (latest review 08-02-2026) Verifica che un task sia registrato e **attivo** per un dominio. La funzione fallisce con errore applicativo se il task non e` ammesso.
 - [fn_col_exists](manual/fn_col_exists.md) — (rev 2026-08-21)
+- [fn_conta_presidio](manual/fn_conta_presidio.md) — (latest review 10-09-2026)
 - [fn_drop_triggers_by_function_args](manual/fn_drop_triggers_by_function_args.md) — (latest review 13-01-26) La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger associati a una tabella** che invocano una determinata funzione di trigger, filtrando in base a **schema**, **nome funzione** e **lista di argomenti**.
 - [fn_ensure_storico_table](manual/fn_ensure_storico_table.md) — (latest review 16-01-26) La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste) la **tabella di storico** nello schema `storico` corrispondente ad una tabella base (`p_schema_base.p_table_base`), con **colonna FK** coerente al **tipo** della PK della tabella padre, **indici** necessari e **logging** integrato. Supporta modalità **dry‑run** e la creazione opzionale di un **indice GIN** sullo `snapshot`.
 - [fn_find_file_usage](manual/fn_find_file_usage.md) — * **Analisi d’impatto**     Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.
@@ -57,6 +65,7 @@
 - [fn_get_or_create_session_tx_id](manual/fn_get_or_create_session_tx_id.md) — (latest review 22-07-2026) * **Unicità per transazione**: restituisce un `tx_id` costante per la durata della transazione. La GUC è impostata con `set_config(..., TRUE)`, quindi **locale**: ogni nuova transazione ottiene il proprio identificativo. È coerente col nome — un identificativo *di transazione* non deve sopravvivere alla transazione. * **Fallback sicuro**: se il canale di log non è disponibile, restituisce l’UUID “nil” per non bloccare i processi. * **Contesto centralizzato**: memorizza il `tx_id` nella GUC `dbops.tx_id` per gli accessi successivi.
 - [fn_get_override_col](manual/fn_get_override_col.md) — (latest review 10-01-26) La funzione **`dbops.fn_get_override_col(p_schema, p_table, p_role, p_default)`** permette di ottenere in modo centralizzato il nome di una colonna “override” per un ruolo specifico, qualora sia stato definito nella tabella di configurazione `dbops.automation_overrides_cols`. Se non esiste un override registrato, viene restituito il valore di default passato come parametro.
 - [fn_get_pipeline_task_implementation](manual/fn_get_pipeline_task_implementation.md) — (latest review 08-02-2026) Risoluzione controllata dell'implementazione di un task: usa la variante richiesta se valida, altrimenti il **default**.
+- [fn_guardiano_digest](manual/fn_guardiano_digest.md) — (latest review 11-09-2026)
 - [fn_list_indices](manual/fn_list_indices.md) — (rev 2026-08-21)
 - [fn_name_from_template](manual/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
 - [fn_non_editable_fields](manual/fn_non_editable_fields.md)
@@ -85,6 +94,9 @@
 - [fn_seed_automazione_overlap](manual/fn_seed_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna) `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita (`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
 - [fn_seed_fk_index_policy](manual/fn_seed_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_set_gucs_conn](manual/fn_set_gucs_conn.md) — (latest review 29-12-25) La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**. Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
+- [fn_storico_arma_scope](manual/fn_storico_arma_scope.md) — (latest review 11-09-2026)
+- [fn_storico_backfill_scope](manual/fn_storico_backfill_scope.md) — (latest review 11-09-2026)
+- [fn_storico_risolvi_scope](manual/fn_storico_risolvi_scope.md) — (latest review 11-09-2026)
 - [fn_sync_functions_owner](manual/fn_sync_functions_owner.md) — * **Applicare automaticamente la policy di sicurezza** definita in `dbops.sec_functions_owner`. * **Rilevare e correggere** owner incoerenti di funzioni critiche. * Rendere ripetibile e idempotente il processo di *hardening* dopo:
 - [fn_table_in_scope](manual/fn_table_in_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene all'ambito di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
 - [fn_trigger_exists_block_by_args](manual/fn_trigger_exists_block_by_args.md) — (last review 31-12-25) La funzione **`dbops.fn_trigger_exists_block_by_args(p_parent_rel, p_child_schema, p_child_table, p_fk_col)`** verifica l’esistenza di un **trigger di blocco** basato sulla funzione `trgfn_prevent_deactivate_if_children`, applicato ad una tabella padre per impedire la disattivazione se esistono righe figlio attive.
@@ -98,11 +110,17 @@
 - [trgfn_tx_id_managed](manual/trgfn_tx_id_managed.md) — (latest review 01-01-26) La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su ogni tabella che contiene la colonna `tx_id` e centralizza la **logica di validazione**, **generazione** e **assegnazione** dell’**UUID di transazione** per la riga in corso di inserimento/aggiornamento.
 
 ## 🔍 Views (manuale)
+- [vw_af_senza_giro](manual/vw_af_senza_giro.md) — (latest review 04-09-2026)
+- [vw_audit_log_scrittori_fuori_perimetro](manual/vw_audit_log_scrittori_fuori_perimetro.md) — (latest review 12-09-2026)
 - [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
+- [vw_coda_lavori_da_guardare](manual/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
 - [vw_codici_errore_da_dichiarare](manual/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
-- [vw_codici_errore_forme_condizione](manual/vw_codici_errore_forme_condizione.md) — (rev 2026-08-21)
+- [vw_codici_errore_forme_condizione](manual/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
 - [vw_diag_v_clienti_links](manual/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](manual/vw_duplicate_indexes.md) — (latest review 27-07-26)
+- [vw_email_da_guardare](manual/vw_email_da_guardare.md) — (latest review 11-09-2026)
+- [vw_emittenti_non_serviti](manual/vw_emittenti_non_serviti.md) — (latest review 04-09-2026)
+- [vw_fatture_stampa_coda_da_guardare](manual/vw_fatture_stampa_coda_da_guardare.md) — (latest review 11-09-2026)
 - [vw_fk_con_indice_missing_policy](manual/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md) — (latest review 27-07-26)
 - [vw_function_list](manual/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
@@ -111,6 +129,17 @@
 - [vw_non_editable_fields](manual/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_operatori_senza_emittente](manual/vw_operatori_senza_emittente.md) — (latest review 18-08-26)
 - [vw_parameter_fk_surrogate_dangling](manual/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
+- [vw_processi_che_bypassano](manual/vw_processi_che_bypassano.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_senza_difesa](manual/vw_processi_dominio_senza_difesa.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_senza_emittente](manual/vw_processi_dominio_senza_emittente.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_senza_identita](manual/vw_processi_dominio_senza_identita.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_su_pgagent](manual/vw_processi_dominio_su_pgagent.md) — (latest review 05-09-2026)
+- [vw_processi_programmazione](manual/vw_processi_programmazione.md) — (latest review 07-09-2026)
+- [vw_processi_programmazione_da_guardare](manual/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
+- [vw_processi_roster](manual/vw_processi_roster.md) — (latest review 05-09-2026)
 - [vw_riferimenti_morti_da_sanare](manual/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
+- [vw_rls_perimetro_scoperto](manual/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)
+- [vw_run_senza_attore](manual/vw_run_senza_attore.md) — (latest review 04-09-2026)
+- [vw_storico_scope_da_dichiarare](manual/vw_storico_scope_da_dichiarare.md) — (latest review 12-09-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

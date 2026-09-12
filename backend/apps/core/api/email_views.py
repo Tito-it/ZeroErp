@@ -4,6 +4,17 @@
 # Doc: Python
 # Scopo: API email per operatori: outbox (bozze), allegati, log.
 #        Visibilita' basata su ambito e reparto dell'operatore.
+# Note: ⛔ Tutte le view stanno sotto l'area `config` — LETTURA per leggere,
+#       TUTTO per preparare, modificare e SPEDIRE — per decisione di Tid
+#       (2026-09-12). Fino a quel giorno dichiaravano anche
+#       `skip_area_check = True`, che era MUTO (la catena legge lo skip solo se
+#       l'area non si risolve): il comportamento e' lo stesso, il codice adesso
+#       lo dice. ⚠️ Non e' un'API «per tutti gli operatori»: sei di queste
+#       scrivono senza `post_permission`, e con lo skip attivo qualunque
+#       identita' autenticata potrebbe spedire dall'account aziendale. Se un
+#       giorno dovra' aprirsi oltre `config`, prima un'azione di processo a
+#       catalogo (`invia_email`) e la schermata (D7), poi lo skip — mai il
+#       contrario. Presidiato da `core/tests/test_skip_area_check_registro.py`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -22,6 +33,10 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_outbox_service import EmailOutboxService, _get_attachments_root
+from apps.core.services.email_constants import AMBITI_EMAIL
+from apps.core.services.auth_helpers import (
+    extract_emittente_attivo_from_request,
+)
 from apps.core.services.error_manager import ErrorManager
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
@@ -57,14 +72,30 @@ def _check_outbox_access(request: Request, outbox: dict[str, Any]) -> None:
     )
 
 
+# ⭐ Il vocabolario vive in `services/email_constants.py`, non qui: lo usa anche
+#    il repository, e un repository che importa una view per sapere una regola di
+#    dominio ha il livello sbagliato. Qui si ri-esporta col nome storico, cosi'
+#    chi lo importava da questo modulo non si accorge dello spostamento.
+AMBITI_OUTBOX = AMBITI_EMAIL
+
+
 class EmailPrepareView(DomainAPIView):
     """POST: prepara bozza email da template + variabili."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Prepara una bozza email renderizzando un template con variabili.
+    #
+    # ⛔ `ambito` E' OBBLIGATORIO, e dal 2026-09-05 non ha piu' un default.
+    #    Valeva `SISTEMA` quando il client taceva — cioe' «nessuno ha detto
+    #    l'ambito» e «email di sistema» erano lo stesso valore. Su quella
+    #    colonna il database sta per montare una policy di lettura che tratta
+    #    `SISTEMA` come segreto di sistema (reset password, alert): un valore di
+    #    RIPIEGO non puo' fare da cancello di sicurezza, o basta un campo
+    #    dimenticato per classificare come segreta una bozza qualunque.
+    #    ⇒ Chi crea una bozza dichiara di che cosa e'. Brief:
+    #    brief-db-processi-automatici-residui-be §1-octies, punto 1.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             codice_template = (payload.get("codice_template") or "").strip()
@@ -73,15 +104,64 @@ class EmailPrepareView(DomainAPIView):
             destinatario = (payload.get("destinatario") or "").strip()
             ErrorManager.require(bool(destinatario), code=E_EMAIL_OP, message="destinatario obbligatorio.")
 
+            ambito = (payload.get("ambito") or "").strip().upper()
+            ErrorManager.require(
+                ambito in AMBITI_OUTBOX,
+                code=E_EMAIL_OP,
+                message=(
+                    "Indicare l'ambito della bozza: "
+                    f"{', '.join(AMBITI_OUTBOX)}."
+                ),
+                context={"field": "ambito"},
+            )
+
+            # ⭐ L'emittente della bozza e' quello ATTIVO di chi la crea, letto
+            #    dal claim del token — la stessa fonte che la RLS usa per
+            #    filtrare. ⛔ Non si deduce dal template ne' dall'unita'
+            #    organizzativa: sarebbe una seconda regola di perimetro accanto
+            #    a quella vera.
+            # ⚠️ Per `SISTEMA` resta `None`: quelle righe non appartengono a
+            #    nessuna azienda, e il CHECK del database lo pretende
+            #    (`chk_email_outbox_ambito_emittente`). Sugli altri ambiti
+            #    l'emittente c'e' per forza — se manca, si ferma qui con una
+            #    frase, invece di sbattere sul vincolo.
+            emittente_fiscale_id = (
+                None if ambito == "SISTEMA"
+                else extract_emittente_attivo_from_request(request)
+            )
+            ErrorManager.require(
+                ambito == "SISTEMA" or emittente_fiscale_id is not None,
+                code=E_EMAIL_OP,
+                message=(
+                    "Nessuna azienda attiva: una bozza che non e' di sistema "
+                    "appartiene all'azienda per cui si sta lavorando."
+                ),
+            )
+
+            # ⛔ `REPARTO` senza unita' organizzativa lo rifiuta il database
+            #    (`chk_email_outbox_reparto_uo`). Prima non capitava — nessuno
+            #    mandava `REPARTO`, perche' il default copriva tutto; da quando
+            #    l'ambito si dichiara, quel ramo e' raggiungibile e va chiuso
+            #    QUI, con una frase, invece di far arrivare l'operatore a una
+            #    violazione di vincolo.
+            unita_organizzativa_id = optional_int(payload, "unita_organizzativa_id")
+            ErrorManager.require(
+                ambito != "REPARTO" or unita_organizzativa_id is not None,
+                code=E_EMAIL_OP,
+                message="Una bozza di reparto deve indicare l'unita' organizzativa.",
+                context={"field": "unita_organizzativa_id"},
+            )
+
             service = EmailOutboxService()
             return service.prepare_draft(
                 codice_template=codice_template,
                 destinatario=destinatario,
                 variabili=payload.get("variabili") or {},
-                unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
+                unita_organizzativa_id=unita_organizzativa_id,
                 tipo_prestazione_id=optional_int(payload, "tipo_prestazione_id"),
                 lingua=(payload.get("lingua") or "it").strip(),
-                ambito=(payload.get("ambito") or "SISTEMA").strip(),
+                ambito=ambito,
+                emittente_fiscale_id=emittente_fiscale_id,
                 pratica_id=optional_int(payload, "pratica_id"),
                 auth_user_id=optional_int(payload, "auth_user_id"),
                 creato_da_user_id=request.user.id,
@@ -95,7 +175,6 @@ class EmailOutboxListView(DomainAPIView):
     """GET: lista bozze email visibili all'operatore."""
 
     area_funzionale = "config"
-    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(
@@ -129,7 +208,6 @@ class EmailOutboxDetailView(DomainAPIView):
     """GET: dettaglio bozza. PATCH: modifica bozza."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Dettaglio bozza email con allegati. Verifica proprieta'.
@@ -163,7 +241,6 @@ class EmailOutboxSendView(DomainAPIView):
     """POST: conferma e invia una bozza DRAFT."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Conferma e invia una bozza email (DRAFT -> SENT). Verifica proprieta'.
@@ -183,7 +260,6 @@ class EmailOutboxCancelView(DomainAPIView):
     """POST: annulla una bozza DRAFT."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Annulla una bozza email (DRAFT -> CANCELLED). Verifica proprieta'.
@@ -208,7 +284,6 @@ class EmailAllegatoUploadView(DomainAPIView):
     """POST: upload allegato per una bozza outbox (multipart)."""
 
     area_funzionale = "config"
-    skip_area_check = True
     parser_classes = [MultiPartParser]
 
     @extend_schema(responses={200: dict})
@@ -238,7 +313,6 @@ class EmailAllegatoListView(DomainAPIView):
     """GET: lista allegati di una bozza outbox."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Lista allegati di una bozza outbox. Verifica proprieta'.
@@ -255,7 +329,6 @@ class EmailAllegatoDeleteView(DomainAPIView):
     """DELETE: rimuove un allegato (file + record DB)."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={204: None})
     # Scopo: Elimina un allegato da una bozza. Verifica proprieta' outbox.
@@ -275,7 +348,6 @@ class EmailAllegatoDownloadView(DomainAPIView):
     """GET: download file allegato."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: bytes})
     # Scopo: Download file allegato per ID. Verifica proprieta' outbox.
@@ -309,11 +381,24 @@ class EmailAllegatoDownloadView(DomainAPIView):
 # -------------------------------------------------------
 
 
+# ⛔ LO SCOPE NON STA QUI, E NON VA AGGIUNTO: lo tiene la RLS su
+#    `config.email_log` — policy per `fn_scope_ef_whitelist(user,
+#    emittente_fiscale_id)`, e per l'ambito `SISTEMA` un super admin oppure lo
+#    scope del processo `send_pending_emails`. Un filtro applicativo qui sarebbe
+#    una SECONDA SEDE della stessa regola.
+# ⚠️ Fino al 2026-09-11 il docstring diceva «per ambito/reparto», e i due
+#    parametri che il repository espone per quello (`ambito`,
+#    `unita_organizzativa_id`) non sono mai stati passati: lo scope che questa
+#    vista ha e' per EMITTENTE, non per reparto. La frase prometteva un filtro
+#    che non c'e' — corretta, non implementata (piano-be-fe-endpoint-senza-porta
+#    §1.1).
+# ⚠️ Il docstring resta UNA RIGA di proposito: drf-spectacular lo pubblica come
+#    descrizione dell'operazione nello schema OpenAPI, e le note di
+#    implementazione non appartengono a un contratto pubblico.
 class EmailLogOperatoreListView(DomainAPIView):
-    """GET: log email visibili all'operatore (per ambito/reparto)."""
+    """GET: log email inviate, nel perimetro dell'operatore."""
 
     area_funzionale = "config"
-    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(

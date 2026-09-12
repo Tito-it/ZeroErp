@@ -47,6 +47,43 @@ per il portale B2B + `SHOP_CUSTOMER` attivo per il canale shop B2C).
 
 ---
 
+### ⭐ Il flag `tecnica` — identità di PERSONE e identità di PROCESSI
+
+*(dal 2026-09-04)* `tecnica` *(boolean NN, default `false`)* distingue le
+identità che appartengono a una **persona** da quelle che appartengono a un
+**processo automatico**.
+
+⚠️ **Perché un flag e non un ruolo applicativo nuovo.** Un processo che emette
+fatture deve attraversare *esattamente* i controlli che attraversa un operatore:
+le stesse policy, lo stesso perimetro. Un ruolo dedicato avrebbe voluto dire
+riscrivere tutte quelle regole una seconda volta — e due scritture della stessa
+regola prima o poi dissentono. ⇒ Il processo **è** un operatore, e il flag dice
+soltanto che dietro non c'è nessuno.
+
+⛔ **Il flag non è liberamente assegnabile**, ed è il punto che protegge dal
+caso peggiore. Il guard di coerenza
+[trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/manual/trgfn_identita_digitali_guard_coerenza)
+si biforca:
+
+| `tecnica` | Che cosa pretende |
+| --- | --- |
+| `true` | un soggetto-ruolo di tipo **`PROC_AUTO`** |
+| `false` | un soggetto-ruolo `RIS_UMANA`, **e una persona fisica pura** |
+
+⇒ Marcare «tecnica» l'identità di una persona **non passa**: sarebbe stato il
+modo di far sparire un utente vero da tutti i conteggi che riguardano le
+persone.
+
+⭐ Il default `false` lascia il pregresso dov'è: tutto ciò che esisteva prima
+resta di persone.
+
+⇒ Le identità tecniche le crea
+[script.fn_crea_utente_tecnico](/dbzero/script/manual/fn_crea_utente_tecnico),
+e il legame col processo vive in
+[dbops.processi_identita](/dbzero/dbops/manual/processi_identita).
+
+---
+
 ### Regole di dominio
 
 * **Modello SSO multi-veste** (post 20-04-2026): un `auth_user` rappresenta
@@ -126,7 +163,10 @@ e' stata rinominata `_legacy_risorse_umane_auth_user` e sostituita da una
 vista read-only con `security_invoker = true` costruita su
 `identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`. La sorgente dati
 unica e' `identita_digitali`; la vista serve solo per retrocompatibilita'
-con codice legacy non ancora migrato.
+con codice legacy non ancora migrato. **Dal 12-09-2026 la tabella legacy non
+esiste piu'** (`90_end/20260912-10`, decisione Tid): la vista resta, la
+tabella che sostituiva e' stata eliminata con la sua shadow e le sue
+registrazioni.
 
 ---
 

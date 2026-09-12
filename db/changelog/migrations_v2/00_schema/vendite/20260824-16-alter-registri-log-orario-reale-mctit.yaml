@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # R-1 — L'ORARIO DEI REGISTRI DIVENTA QUELLO DELLA SCRITTURA
 #   I quattro DEFAULT passano da now() a clock_timestamp().
-#   Richiesta: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §13
+#   Richiesta: brief-db-event-log-scope-e-riga-parlante.md §13
 #
 # ── IL PROBLEMA, IN UNA RIGA ────────────────────────────────────────
 #   `now()` e' l'istante in cui e' COMINCIATA la transazione, non quello della

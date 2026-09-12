@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: schema documenti + tabelle base + check minori (E1..E4)
--- Riferimento: docs/it/dev/work-in-progress/sviluppo-documenti-db.md §13.3 F
+-- Riferimento: sviluppo-documenti-db.md §13.3 F
 -- ------------------------------------------------------------
 -- Indice test (1..18):
 --  1) Schema documenti presente

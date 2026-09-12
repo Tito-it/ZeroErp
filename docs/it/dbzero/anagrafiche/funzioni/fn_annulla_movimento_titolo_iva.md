@@ -32,8 +32,9 @@ AS $function$
 --    divergere.
 DECLARE
     v_mov     RECORD;
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi  jsonb;
-    v_primo   jsonb;
     v_new_id  anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE;
 BEGIN
     -- 1) Guard di parametro. Un id assente o non positivo e un
@@ -67,17 +68,17 @@ BEGIN
     -- 2) Ammissibilita': si CHIAMA la check, non si riscrive.
     v_motivi := script.fn_check_annullo_movimento_titolo_iva(p_movimento_id);
 
-    IF jsonb_array_length(v_motivi) > 0 THEN
-        v_primo := v_motivi -> 0;
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche','fn_annulla_movimento_titolo_iva',
-            v_primo ->> 'codice',
-            jsonb_build_object('movimento_id', p_movimento_id,
-                               'motivi',       v_motivi),
-            NULL::uuid,
-            VARIADIC ARRAY(SELECT jsonb_array_elements_text(
-                                      v_primo -> 'valori')));
-    END IF;
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⭐ `motivi` non si passa piu': lo mette l'helper, sempre. Nel contesto
+    --   resta la sola chiave di dominio.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'anagrafiche', 'fn_annulla_movimento_titolo_iva',
+        v_motivi,
+        NULL,
+        NULL::uuid,
+        jsonb_build_object('movimento_id', p_movimento_id));
 
     -- 3) La riga da annullare, per derivarne titolo e importo.
     -- ⚠️ Questa lettura e' INVOKER: se la riga fosse fuori

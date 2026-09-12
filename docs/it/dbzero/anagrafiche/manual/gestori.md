@@ -10,7 +10,7 @@ Approfondimento Tabelle:
 >
 Approfondimenti funzioni:   
 >
-[anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_check_ruolo_gestore)   
+[anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_ruolo_gestore)   
 > [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)  
 
 La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza e amministra il sistema Zero ERP (“gestore”). Attualmente raccoglie le informazioni di base necessarie a identificare il gestore, ma è ancora in fase di definizione: in futuro potrà essere estesa per includere ulteriori parametri funzionali e di configurazione del software.

@@ -9,7 +9,7 @@ Indice test eseguiti:
 """
 
 from django.http import Http404
-from django.test import Client, SimpleTestCase, override_settings
+from django.test import Client, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from django.urls import path
 

@@ -92,3 +92,22 @@ La trigger function **`script.trgfn_storico_generic()`** centralizza la logica d
 ---
 
 > **“Con `trgfn_storico_generic`, Zero ERP ha una soluzione unica e versatile per versionare ogni entità storica, riducendo complessità e aumentando l’affidabilità.”**
+
+### 🔒 Dall'11-09-2026: ogni versione porta origine e scope
+
+Il trigger scrive due dati in più in ogni versione:
+
+* **`origine_schema`** = lo schema della madre. Sei tabelle di storico sono
+  condivise fra due madri omonime (`acquisti.ddt` e `vendite.ddt` scrivono
+  entrambe in `storico.ddt`): la chiusura della versione precedente filtra anche
+  su questo, così due documenti con lo stesso `id` non si chiudono più a vicenda.
+* **`scope_emittente_fiscale_id`** = l'emittente a cui la riga appartiene *nel
+  momento della fotografia*, risolto da
+  [dbops.fn_storico_risolvi_scope](/dbzero/dbops/manual/fn_storico_risolvi_scope)
+  seguendo la mappa [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy),
+  e mai più ricalcolato. Se il padre di un satellite non è più vivo (`DELETE` a
+  cascata), il resolver legge l'ultima versione del padre nel suo storico.
+
+Le versioni scritte prima ricevono i valori dal backfill
+([dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope)).
+Guida: *Storicizzazione delle tabelle*, sezione *Di chi è una versione*.

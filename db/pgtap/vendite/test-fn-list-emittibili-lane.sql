@@ -49,7 +49,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(13);
+SELECT plan(15);
 
 -- ============================================================
 -- SETUP: riferimenti minimi + due tipi_doc distinti (X, Y)
@@ -463,6 +463,86 @@ SELECT CASE WHEN (
     '13. Giro MIRATO troncato dal tetto: SOLLEVA, non restituisce una risposta parziale che a valle diventa una diagnosi falsa'
   )
 END;
+
+-- ============================================================
+-- 14-15) ⭐ IL DOCUMENTO TRATTENUTO DA UN LOTTO VIVO NON SI RI-OFFRE
+-- ============================================================
+-- ⛔ IL DIFETTO: la lane filtrava solo su `stato_emissione = 'NON_EMESSA'` e
+--   `stato_approvazione = 'APPROVATA'`, senza guardare gli esiti dei lotti. Un
+--   documento gia' preso da un giro VIVO che non ha ancora finito — tipicamente
+--   perche' il suo pull e' FALLITO, quindi niente fattura, quindi NON_EMESSA —
+--   veniva riofferto, e un secondo lotto se lo prendeva.
+--   ⚠️ La casella spenta a video non lo impedisce: chi costruisce il lotto lo
+--   prende da QUI. E' il lato macchina della regola.
+--
+-- ⭐ I DUE TEST SONO UN VERSO E IL SUO CONTRARIO, e servono entrambi: col solo
+--   14 passerebbe anche un filtro che esclude QUALUNQUE documento con un esito,
+--   e allora un lotto annullato bloccherebbe per sempre il suo contenuto. Il 15
+--   e' quello che se ne accorge — ed e' anche il test che morde se qualcuno
+--   leggesse `congela_fiscale` al posto di `is_abortito`.
+--
+-- ⚠️ Il predicato NON si riscrive qui: si interroga la sede unica
+--   (vendite.vw_documenti_trattenuti_da_lotto). Scriverlo nel test sarebbe una
+--   seconda copia della regola, cioe' il difetto stesso — la stessa ragione per
+--   cui la fixture qui sopra chiede la chiave a fn_build_gruppo_fatturabile_key
+--   invece di comporla a mano.
+-- Brief: brief-db-documento-trattenuto-da-un-lotto-vivo.md (T-4)
+
+-- Un gruppo vero della fixture. ⚠️ ORDER BY prima del LIMIT: senza, quale
+--   gruppo esca dipende dal planner e il test proverebbe una riga diversa a
+--   ogni corsa.
+CREATE TEMP TABLE tmp_trat_g AS
+SELECT k FROM tmp_gruppi ORDER BY k LIMIT 1;
+
+CREATE TEMP TABLE tmp_trat_lotto AS
+WITH ins AS (
+  INSERT INTO vendite.fatturazione_lotti (
+    codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
+    stato_doc_fiscale_id)
+  SELECT 'PGTAP-LANE-TRAT-' || substr(md5(clock_timestamp()::text), 1, 8),
+         DATE '2026-07-01',
+         (SELECT l.tipo_doc_fiscale_id FROM vendite.fatturazione_lotti l
+           ORDER BY l.id DESC LIMIT 1),
+         (SELECT e FROM tmp_e),
+         -- ⛔ `codice_interno`, mai un id.
+         (SELECT sdf.id FROM config.stati_doc_fiscale sdf
+           WHERE sdf.codice_interno = 'DRAFT')
+  RETURNING id)
+SELECT id FROM ins;
+
+INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
+SELECT (SELECT id FROM tmp_trat_lotto), (SELECT k FROM tmp_trat_g);
+
+-- ⭐ Esito COMPLETED di proposito: il caso in cui l'esito direbbe «libero».
+INSERT INTO vendite.fatturazione_lotti_esiti (lotto_id, gruppo_key, stato_esecuzione)
+SELECT (SELECT id FROM tmp_trat_lotto), (SELECT k FROM tmp_trat_g), 'COMPLETED';
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1
+      FROM vendite.fn_list_emittibili_lane(
+             p_competenza_mese => DATE '2026-07-01',
+             p_emittente_soggetto_ruolo_id => (SELECT e FROM tmp_e)) l
+     WHERE (SELECT k FROM tmp_trat_g) = ANY (l.gruppi_coperti)),
+  '14. un documento trattenuto da un lotto VIVO non viene riofferto a un secondo giro'
+);
+
+-- ⭐ IL VERSO OPPOSTO: annullato il lotto, il documento torna disponibile — e
+--   l'esito e' rimasto COMPLETED, cioe' non e' lui a decidere.
+UPDATE vendite.fatturazione_lotti
+   SET stato_doc_fiscale_id = (SELECT sdf.id FROM config.stati_doc_fiscale sdf
+                                WHERE sdf.codice_interno = 'ANNULLATA')
+ WHERE id = (SELECT id FROM tmp_trat_lotto);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM vendite.fn_list_emittibili_lane(
+             p_competenza_mese => DATE '2026-07-01',
+             p_emittente_soggetto_ruolo_id => (SELECT e FROM tmp_e)) l
+     WHERE (SELECT k FROM tmp_trat_g) = ANY (l.gruppi_coperti)),
+  '15. annullato il lotto il documento torna offerto: decide lo STATO, non l''esito'
+);
 
 SELECT * FROM finish();
 

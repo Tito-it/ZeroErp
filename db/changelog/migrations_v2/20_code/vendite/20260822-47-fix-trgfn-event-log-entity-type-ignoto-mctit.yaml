@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # UN TIPO IGNOTO DEVE DIRLO — correzione in avanti di 20260822-43
 #   vendite.trgfn_event_log_deriva_scope
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.2
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.2
 #
 # ── 🔴 IL DIFETTO, MISURATO SCRIVENDO I pgTAP ───────────────────────
 #   `20260822-40` mette il `CHECK chk_event_log_entity_type` sulla tabella, e

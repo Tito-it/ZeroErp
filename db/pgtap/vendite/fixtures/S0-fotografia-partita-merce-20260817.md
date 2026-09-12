@@ -1,7 +1,7 @@
 # S0 — Fotografia di riferimento del contatore merce (2026-08-17)
 
 > **Perché esiste**: il §4.2 del brief
-> [brief-design-partita-merce-generalizzata.md](../../../docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md)
+> [brief-design-partita-merce-generalizzata.md](../../../../docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md)
 > chiede la parità **su dati reali, non su fixture**. Dopo la slice S3 il «prima»
 > non è più interrogabile: questa è la sua unica copia.
 >

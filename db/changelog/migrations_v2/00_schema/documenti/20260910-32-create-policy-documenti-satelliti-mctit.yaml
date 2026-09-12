@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DG-2 — Le DUE policy dei satelliti del motore documentale. INERTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.16
+#   Slice 20260910-31..34. L'armamento e' 20260910-33.
+#
+# ── ⛔ IL DIFETTO, DETTO SUL MODELLO ──────────────────────────────────
+#   Un file generato appartiene all'emittente del documento che lo ha prodotto.
+#   `documenti.documenti_generati` e' protetta; i suoi due satelliti no, e
+#   `zeroerp_app` ha su entrambi SELECT, INSERT, UPDATE e DELETE.
+#
+#   ⚠️ E qui il perimetro pesa piu' che altrove: `documenti_generati_file` porta
+#   `storage_key`, `file_name`, `sha256` e `mime_type`. Non sono metadati sopra
+#   un documento — sono le **coordinate con cui il documento si recupera**.
+#   `documenti_generati_eventi` e' il diario: chi ha generato cosa, quando, con
+#   quale esito e con quale messaggio.
+#
+# ── ⭐ UNA CHIAVE, UN ADATTATORE, UNA VESTE ──────────────────────────
+#   Tutti e due pendono da `documento_generato_id` (`NOT NULL`), quindi un
+#   adattatore solo — `_via_documento_generato`, creato da 20260910-31.
+#   E la testata porta **una** policy, `OPERATORE` `FOR ALL`: i due la
+#   rispecchiano. ⚠️ Il giorno in cui `documenti_generati` ricevesse una veste
+#   cliente — un portale che mostra i propri documenti — questa slice va estesa
+#   **nello stesso gesto**, o i satelliti restano indietro rispetto al documento.
+#
+# ── ⛔ `FOR ALL` E `WITH CHECK`, e NON e' ridondante coi guard ────────
+#   I due satelliti hanno gia' dei trigger che li difendono: gli eventi sono
+#   **append-only** (`a10_block_update`, `a10_block_delete`) e il file ha
+#   `a10_protect_file` sull'UPDATE. ⛔ Ma quei guard difendono l'IMMUTABILITA',
+#   non il PERIMETRO: nessuno dei due impedisce di **inserire** una riga sotto
+#   il documento di un'altra azienda, ne' di **leggerla**. E' esattamente cio'
+#   che fa la `WITH CHECK`, ed e' un'altra domanda.
+#   ⚠️ Corollario per il collaudo: la prova di scrittura fuori perimetro va
+#   fatta con un `INSERT`. Con un `UPDATE` sarebbe verde per la ragione
+#   sbagliata — a rifiutare sarebbe il guard, non la policy.
+#
+# ⭐ `zeroerp_batch_fatturazione` e' `BYPASSRLS`: la generazione documentale in
+#   batch non si accorge di questa slice. Il perimetro morde su `zeroerp_app`,
+#   che e' `NOBYPASSRLS`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260910-32-create-policy-documenti-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-32-create-policy-documenti-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Due policy sui satelliti del motore documentale:
+        documenti.documenti_generati_eventi e documenti.documenti_generati_file
+        risalgono dal documento generato con
+        script.fn_scope_ef_whitelist_via_documento_generato. Veste OPERATORE FOR
+        ALL con WITH CHECK, come la testata. INERTI: l'armamento e' 20260910-33.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist_via_documento_generato'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- documenti.documenti_generati_eventi ----------
+              -- ⚠️ La tabella e' append-only per trigger: la WITH CHECK qui
+              --   serve all'INSERT, che e' l'unica scrittura che i guard
+              --   lasciano passare — ed e' proprio quella che oggi puo'
+              --   appendere un evento al documento di un'altra azienda.
+              CREATE POLICY rls_documenti_generati_eventi_ef_whitelist
+                  ON documenti.documenti_generati_eventi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_documento_generato(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              documento_generato_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_documento_generato(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              documento_generato_id)
+                  );
+
+              -- ---------- documenti.documenti_generati_file ----------
+              -- ⚠️ Stessa chiave e stesso adattatore: il file non pende
+              --   dall'evento, pende dal documento.
+              CREATE POLICY rls_documenti_generati_file_ef_whitelist
+                  ON documenti.documenti_generati_file
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_documento_generato(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              documento_generato_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_documento_generato(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              documento_generato_id)
+                  );
+
+              COMMENT ON POLICY rls_documenti_generati_eventi_ef_whitelist ON documenti.documenti_generati_eventi IS
+                  'Perimetro emittente del diario di generazione documentale: risale da documento_generato_id (NOT NULL) e rispecchia rls_documenti_generati_ef_whitelist. ⚠️ La tabella e'' append-only per trigger, ma quei guard difendono l''immutabilita'', non il perimetro: nessuno dei due impedisce di appendere un evento al documento di un''altra azienda. Slice 20260910-31..34.';
+              COMMENT ON POLICY rls_documenti_generati_file_ef_whitelist ON documenti.documenti_generati_file IS
+                  'Perimetro emittente del FILE generato: risale da documento_generato_id (NOT NULL). ⚠️ Qui il perimetro pesa piu'' che altrove — la riga porta storage_key, file_name e sha256, cioe'' le coordinate con cui il documento si recupera, non dei metadati. Slice 20260910-31..34.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_documenti_generati_file_ef_whitelist   ON documenti.documenti_generati_file;
+              DROP POLICY IF EXISTS rls_documenti_generati_eventi_ef_whitelist ON documenti.documenti_generati_eventi;

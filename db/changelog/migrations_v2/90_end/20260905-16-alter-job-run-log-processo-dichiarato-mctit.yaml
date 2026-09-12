@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-5 — LA STRETTA FINALE: un run nuovo deve dire CHI E'.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, DB-5
+#
+# ⭐ La colonna `processo_codice` e' nata FACOLTATIVA di proposito, e la ragione
+# era giusta: un vincolo prima che i chiamanti sapessero passare il dato avrebbe
+# fermato i dodici job pgAgent al primo giro. Adesso lo passano tutti — il
+# backend esplicitamente (lotto 1), i wrapper per derivazione dal jobname, che
+# dal changeSet 20260905-01… -08 aggancia per tutti e dodici.
+#
+# ── ⛔ MA NON E' UN `SET NOT NULL`, E LA RAGIONE E' UN NUMERO ───────
+#   Misurato il 2026-09-05: `maintenance.job_run_log` ha **99.775 righe senza
+#   attore** su 100.738. Sono il giornale di IERI, scritto prima che la colonna
+#   esistesse: l'attore non si puo' fornire, e non si potra' mai.
+#   ⛔ Un `SET NOT NULL` fallirebbe all'istante. E riempirle «per far passare il
+#   vincolo» sarebbe **riscrivere il giornale**, cioe' inventare un attore per
+#   corse che non l'avevano: la cosa peggiore che si possa fare a un registro.
+#   ⇒ Un `CHECK ... NOT VALID`: vale su cio' che si scrive DA ADESSO, e lascia
+#     la storia dov'e'. E' la regola gia' scritta — un vincolo va dove il dato
+#     SI PUO' FORNIRE.
+#
+# ── ⚠️ CHE COSA SUCCEDE A CHI NON SI DICHIARA ──────────────────────
+#   L'INSERT fallisce, quindi **il job fallisce**. Non e' un effetto
+#   collaterale: e' la scelta. Un processo che non sa dire chi e' non deve
+#   girare — e fallire rumorosamente e' meglio di girare lasciando una riga
+#   muta, che e' il difetto per cui questo cantiere esiste.
+#   ✅ Verificato che nessuno oggi ci cade: gli unici due scrittori sono
+#   `maintenance.fn_run_and_log` (deriva dal jobname, e tutti e dodici i wrapper
+#   agganciano) e `script.fn_job_run_start` (i sei comandi Django lo passano
+#   esplicito, verificato dal BE).
+#
+# ── ⚠️ IL CRITERIO DEL BE NON E' ANCORA SODDISFATTO, e non per colpa nostra ──
+#   `dbops.vw_run_senza_attore` non e' vuota, e non lo sara' a breve: contiene
+#   `apply_storicizza_weekly`, la cui ultima riga di giornale e' del **21
+#   febbraio**. Quel job gira ogni settimana e **fallisce da allora** — prova a
+#   fare `ALTER TABLE vendite.attivita_fatturabili_lotti`, che non esiste piu'.
+#   ⇒ E' un guasto VERO, trovato guardando questa vista, ma di un altro
+#     cantiere: `config.storico_set_storicizza` ha TRE righe che puntano a
+#     tabelle sparite. Registrato come R-12.
+#   ⭐ Questo changeSet non ne dipende: il `CHECK` vincola le righe NUOVE, non
+#     ha bisogno che la vista sia vuota. Le due cose si chiudono in tempi
+#     diversi, ed e' giusto che sia cosi'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260905-16-alter-job-run-log-processo-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20260905-16-alter-job-run-log-processo-dichiarato
+      author: mctit
+      failOnError: true
+      comment: >
+        maintenance.job_run_log: un run NUOVO deve dichiarare il proprio processo.
+        CHECK NOT VALID e non SET NOT NULL, perche' 99.775 righe storiche hanno
+        l'attore vuoto per sempre — sono il giornale di ieri, e riempirle
+        significherebbe inventare un attore per corse che non l'avevano.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: maintenance
+                tableName: job_run_log
+                columnName: processo_codice
+            - not:
+                - sqlCheck:
+                    expectedResult: 1
+                    sql: >-
+                      SELECT count(*) FROM pg_constraint
+                       WHERE conname = 'chk_job_run_log_processo_dichiarato'
+                         AND conrelid = 'maintenance.job_run_log'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  ADD CONSTRAINT chk_job_run_log_processo_dichiarato
+                      CHECK (processo_codice IS NOT NULL)
+                      NOT VALID;
+
+              COMMENT ON CONSTRAINT chk_job_run_log_processo_dichiarato
+                  ON maintenance.job_run_log IS
+                  'Un run NUOVO deve dichiarare di quale processo e''. ⛔ NOT VALID e non '
+                  'un NOT NULL: al 2026-09-05 la tabella ha 99.775 righe senza attore su '
+                  '100.738, scritte prima che la colonna esistesse — il giornale di ieri, '
+                  'dove l''attore non si puo'' fornire e non si potra'' mai. Riempirle per '
+                  'far passare il vincolo sarebbe inventare un attore per corse che non '
+                  'l''avevano. ⚠️ Chi non si dichiara vede fallire l''INSERT, quindi il '
+                  'job: e'' la scelta, non un effetto collaterale — un processo che non sa '
+                  'dire chi e'' non deve girare, e fallire rumorosamente e'' meglio che '
+                  'lasciare una riga muta. ⛔ NON si esegue VALIDATE CONSTRAINT: '
+                  'fallirebbe sulle righe storiche, ed e'' giusto che le nomini invece di '
+                  'accettarle. Brief: brief-db-processi-automatici-residui-be, DB-5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  DROP CONSTRAINT IF EXISTS chk_job_run_log_processo_dichiarato;

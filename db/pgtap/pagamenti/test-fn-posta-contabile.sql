@@ -37,7 +37,7 @@
 --  - presidiare la quarta mossa del guard sulla distinta finale (test 17), che
 --    e' il prezzo della chiusura automatica.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.1 S1-10, §2.4 casi 1, 2, 3, 5, 13 · lotto 4
 -- ------------------------------------------------------------
 

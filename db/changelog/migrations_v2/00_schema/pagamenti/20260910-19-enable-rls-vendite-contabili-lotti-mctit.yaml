@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-2, ARMAMENTO — ENABLE ROW LEVEL SECURITY su vendite_contabili_lotti.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.10
+#   Slice 20260910-18..20. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: il precedente non filtrava niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Il pgTAP di questa slice
+#   asserisce `relrowsecurity`, non l'esistenza della policy.
+#
+# ── NO FORCE, a parita' con le due sorelle ────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come
+#   `pagamenti.vendite_contabili` e `pagamenti.vendite_contabili_righe`: l'owner
+#   (`titodb`) resta esente, cosi' migrazioni, job owner e i pgTAP marcati
+#   `pgtap-runner: owner` non si bloccano. ⚠️ Il runtime applicativo e'
+#   `zeroerp_app`, che NON e' l'owner ed e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── DOPO L'APPLICAZIONE: dove guardare ───────────────────────────────
+#   ⭐ **Nessuna vista la legge** e **nessuna tabella ha una FK verso di lei**
+#   (verificato 2026-09-10): e' una foglia, e il criterio del perimetro non
+#   portera' nessuna sorpresa al giro dopo. E' la differenza con `pratiche`,
+#   dove armare `flussi` faceva entrare due nipoti mai censite.
+#   ⇒ L'unico consumatore e' l'SQL diretto del backend sulle distinte.
+#
+#   Da sessione OPERATORE i conteggi devono restare quelli di prima. ⚠️ Il punto
+#   in cui una divergenza si vedrebbe e' il pannello che elenca **quali lotti
+#   una distinta raccoglie**: se una riga sparisse, la domanda non e' «allargo la
+#   policy?» ma «quella distinta e il suo lotto hanno davvero perimetri
+#   diversi?» — cioe' un dato incoerente, non un filtro sbagliato.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-vendite-contabili-lotti.sql, che
+#   costruisce DUE aziende con canali di incasso distinti, piu' una distinta
+#   INTERNA per provare il ramo che rispecchia la testata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260910-19-enable-rls-vendite-contabili-lotti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-19-enable-rls-vendite-contabili-lotti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY su
+        pagamenti.vendite_contabili_lotti. Da qui la policy di 20260910-18
+        filtra davvero. Isolato apposta: si disarma con il rollback di questo
+        solo changeSet, e la policy resta dove sta.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'pagamenti'
+                 AND tablename  = 'vendite_contabili_lotti'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_lotti ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_lotti DISABLE ROW LEVEL SECURITY;

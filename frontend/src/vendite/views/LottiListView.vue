@@ -12,6 +12,7 @@ import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusu
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ToggleNascoste from '../../core/components/ToggleNascoste.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
@@ -26,6 +27,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -45,10 +47,11 @@ import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
 import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
 import { menuItemClass } from '../../core/utils/rowActions'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
-import { useLottiStore } from '../stores/lotti'
+import { paramsPerimetro, useLottiStore } from '../stores/lotti'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const notify = useNotify()
 // Servono al deep-link `?open=<id>` (vedi `applicaDeepLink` piu' sotto).
 const route = useRoute()
@@ -112,9 +115,9 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportLotti,
   getExportParams: (fmt) => {
-    const p = { formato: fmt }
-    if (store.filters.competenza_mese) p.competenza_mese = store.filters.competenza_mese
-    if (store.filters.stato_lotto) p.stato_lotto = store.filters.stato_lotto
+    // Il file E' la lista: stesso perimetro (mese, stato, annullati — e
+    // l'intestazione del file lo dichiara), stesso ordine.
+    const p = { formato: fmt, ...paramsPerimetro(store.filters) }
     if (store.filters.order_by) {
       p.order_by = store.filters.order_by
       p.order_dir = store.filters.order_dir || 'desc'
@@ -169,20 +172,84 @@ const listaRecuperiRef = ref(null)
 function registraListaRecuperi(istanza) {
   listaRecuperiRef.value = istanza ?? null
 }
-const listaRecuperi = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
-  listLotti({
-    competenza_mese: store.filters.competenza_mese,
-    // ⚠️ ANCHE `stato_lotto`: la scheda si ricarica al cambio filtro, ma senza
-    // questo si ricaricherebbe IDENTICA — e un filtro che si muove sopra una
-    // lista che non cambia si legge come un filtro rotto (rilievo di Tid,
-    // 2026-08-24). I filtri della pagina sono due: mese e stato, e valgono per
-    // entrambe le schede.
-    ...(store.filters.stato_lotto ? { stato_lotto: store.filters.stato_lotto } : {}),
+// Ripartizione per stato della SECONDA scheda. I recuperi sono un perimetro
+// diverso (competenza precedente + documenti emessi nel mese), quindi hanno il
+// loro breakdown: i pulsanti devono contare la lista che sta sotto, non l'altra.
+const statiRecuperi = ref([])
+// Quanti annullati la scheda «Recuperi» sta nascondendo (stesso campo della
+// lista principale, dalla propria risposta).
+const annullatiRecuperi = ref(0)
+
+// ⚠️ Qui la cattura sta NELLA promise, al contrario dello store — e non e' una
+//    disattenzione: `useListaDrawerPaginata` non ha il guard di versione, e
+//    scrive `righe`/`totale` subito dopo questo `await`. Conteggi e righe
+//    atterrano quindi nella stessa finestra e nello stesso ordine, anche con
+//    due chiamate in volo: non c'e' nessuna risposta «scartata» da cui
+//    disallinearsi. E' il motivo per cui la lista principale, che quel guard ce
+//    l'ha, deve invece passare da `onPayload`.
+const listaRecuperi = useListaDrawerPaginata(async ({ page, pageSize, sortBy, sortDir }) => {
+  const res = await listLotti({
+    // ⚠️ TUTTO il perimetro della pagina, non solo il mese: la scheda si
+    // ricarica al cambio filtro, e senza `stato_lotto` si ricaricherebbe
+    // IDENTICA — un filtro che si muove sopra una lista che non cambia si
+    // legge come un filtro rotto (rilievo di Tid, 2026-08-24). I filtri di
+    // pagina valgono per entrambe le schede, e stanno in una sede sola.
+    ...paramsPerimetro(store.filters),
     recuperi_mese: true,
     page,
     page_size: pageSize,
     ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
-  }))
+  })
+  statiRecuperi.value = res.data?.data?.stati ?? []
+  annullatiRecuperi.value = res.data?.data?.annullati_count ?? 0
+  return res
+})
+
+// ── I PULSANTI-FILTRO PER STATO ──────────────────────────────────────────
+//
+// ⭐ Stesso gesto dei chip per area della Lente Backlog: etichetta + conteggio,
+//    click = filtro, e SOLO gli stati sopra zero (decisione di Tid, 2026-08-17:
+//    un elenco in cui meta' delle voci dicono zero e' rumore, non informazione).
+//    L'operatore vede la ripartizione del mese PRIMA di filtrare, che e' la
+//    domanda che si fa aprendo la pagina — con la sola tendina la doveva
+//    scoprire provando uno stato per volta.
+//
+// ⭐ I chip cambiano con la SCHEDA, perche' le due schede sono due perimetri
+//    diversi: «Lotti del mese» e «Recuperi del mese» non contengono gli stessi
+//    lotti, e un pulsante che dicesse «5 Bozza» sopra una lista che ne ha 2
+//    sarebbe peggio di nessun pulsante. Il conteggio lo produce il BE dallo
+//    stesso costruttore di `WHERE` della lista, quindi la seconda scheda l'ha
+//    senza lavoro in piu'.
+//
+// ⚠️ Il vocabolario e' del DATABASE ed e' aperto: `labelOrCode` e non `t()`
+//    secco, cosi' uno stato nuovo compare col suo codice grezzo invece di
+//    sparire. La tendina qui sotto elenca i quattro stati noti — e resta il
+//    modo per filtrare uno stato oggi a zero, che per costruzione non ha chip.
+const chipStati = computed(() => {
+  const sorgente = schedaAttiva.value === 'recuperi' ? statiRecuperi.value : store.stati
+  return (sorgente ?? [])
+    .filter((s) => (s.n_lotti ?? 0) > 0)
+    .map((s) => ({
+      stato: s.stato_lotto,
+      label: labelOrCode(
+        t, te, `vendite.lotti.stato_${String(s.stato_lotto).toLowerCase()}`, s.stato_lotto,
+      ),
+      n: s.n_lotti,
+    }))
+})
+
+// Scopo: click su un pulsante di stato = filtro, sullo STESSO ref della tendina
+//        (`statoFilter`): due comandi, una sola verita'.
+// ⭐ Ri-cliccare lo stato gia' attivo lo azzera, come sui chip del Backlog: qui
+//    il toggle-off e' legittimo perche' i pulsanti non hanno un «Tutti» e senza
+//    di esso per tornare a tutti gli stati si dovrebbe passare per la tendina.
+//    E' la stessa regola per cui il toggle e' stato invece TOLTO dalle card
+//    della Lente Competenza, che un ritorno esplicito ce l'hanno: un toggle-off
+//    si tiene solo dove non c'e' altra via indietro.
+function selezionaStato(stato) {
+  statoFilter.value = statoFilter.value === stato ? null : stato
+  onFilterChange()
+}
 
 // Personalizza colonne + esporta anche sulla seconda scheda: è una lista come
 // le altre. ⚠️ `?.lista`: `useListaAzioni` vuole l'istanza di
@@ -191,11 +258,10 @@ const azioniRecuperi = useListaAzioni(() => listaRecuperiRef.value, {
   exportFn: exportLotti,
   getExportParams: (fmt) => ({
     formato: fmt,
-    competenza_mese: store.filters.competenza_mese,
-    // Il file È la lista, quindi porta ENTRAMBI i filtri della pagina: senza
-    // `recuperi_mese` esporterebbe i lotti del mese, senza `stato_lotto`
-    // esporterebbe tutti gli stati mentre a video se ne vede uno.
-    ...(store.filters.stato_lotto ? { stato_lotto: store.filters.stato_lotto } : {}),
+    // Il file È la lista, quindi porta TUTTO il perimetro della pagina piu'
+    // la scheda: senza `recuperi_mese` esporterebbe i lotti del mese, senza
+    // `stato_lotto` tutti gli stati mentre a video se ne vede uno.
+    ...paramsPerimetro(store.filters),
     recuperi_mese: true,
     ...(listaRecuperi.sortField.value
       ? {
@@ -207,29 +273,51 @@ const azioniRecuperi = useListaAzioni(() => listaRecuperiRef.value, {
 })
 
 // Scopo: carica la lista con toast d'errore (fail-visible: lo store propaga).
+//
+// ⚠️ Anche la seconda scheda, e insieme alla prima: il CONTEGGIO sta
+// nell'etichetta, e un'etichetta che dice «(0)» finché non la si apre è peggio
+// di nessun conteggio. ⛔ Best-effort: se i recuperi non arrivano, la lista
+// principale si vede lo stesso.
+//
+// ⛔ E parte PRIMA dell'`await`, non dopo: stava dentro il `try`, quindi un
+//    errore della lista principale la saltava del tutto. I filtri sono già
+//    stati riversati nello store da `syncFiltri`, quindi la seconda scheda
+//    restava sui dati del filtro precedente mentre il pulsante-stato del nuovo
+//    filtro risultava già acceso: un chip che afferma un perimetro che sotto
+//    non è applicato. Le due liste hanno perimetri indipendenti — il fallimento
+//    di una non è una ragione per non aggiornare l'altra.
 async function load() {
+  listaRecuperi.page.value = 1
+  listaRecuperi.carica().catch(() => {})
   try {
     await store.fetchList()
-    // ⚠️ Anche la seconda scheda, e insieme alla prima: il CONTEGGIO sta
-    // nell'etichetta, e un'etichetta che dice «(0)» finché non la si apre è
-    // peggio di nessun conteggio. ⛔ Best-effort: se i recuperi non arrivano,
-    // la lista principale si vede lo stesso.
-    listaRecuperi.page.value = 1
-    listaRecuperi.carica().catch(() => {})
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))
   }
 }
 
 // Scopo: conteggi lotti/mese dell'anno per il badge della sidebar. Fotografia
-//        completa (nessun filtro stato): indipendente dai filtri di lista.
+//        completa (nessun filtro stato): indipendente dai filtri di lista —
+//        ⭐ tranne l'interruttore degli annullati, che vale per tutta la pagina:
+//        un calendario che contasse i gusci sopra una lista che non li mostra
+//        direbbe «35» su un mese con due lotti (misurato il 2026-09-12).
+// ⚠️ Guard di versione (`useFetchVersion`, BB), come la lista e i chip: i
+//    grilletti sono DUE — l'anno e l'interruttore degli annullati — e senza
+//    guard acceso→spento in fretta lascia vincere la risposta lenta, cioe' un
+//    calendario che conta i gusci sopra una lista che non li mostra. Nessun
+//    errore: solo un numero che non torna con la lista sotto.
+const versioneMensile = useFetchVersion()
 async function loadMensile() {
+  const tag = versioneMensile.tag()
   try {
-    const res = await listLottiMensile(anno.value)
+    const res = await listLottiMensile(anno.value, { annullati: store.filters.annullati })
+    if (!versioneMensile.isCurrent(tag)) return
     const map = {}
     for (const m of res.data?.data?.mesi ?? []) map[m.competenza_mese] = m.n_lotti
     conteggiMese.value = map
   } catch (err) {
+    // Il fallimento di una richiesta gia' superata non e' una notizia.
+    if (!versioneMensile.isCurrent(tag)) return
     notify.error(extractApiError(err, t('common.error')))
   }
 }
@@ -256,6 +344,22 @@ function onFilterChange() {
   syncFiltri()
   load()
 }
+
+// Scopo: l'interruttore «mostra annullati» cambia il PERIMETRO, non un filtro
+//        dentro il perimetro: si ricaricano lista, chip (viaggiano con la
+//        lista), scheda recuperi E calendario. Da pagina 1: la pagina 3 di un
+//        insieme piu' piccolo puo' non esistere in quello piu' grande e viceversa.
+function onAnnullatiChange() {
+  store.filters.offset = 0
+  load()
+  loadMensile()
+}
+
+// Il conteggio dei nascosti da mostrare accanto all'interruttore: quello della
+// scheda attiva, come i chip — le due schede sono due perimetri.
+const annullatiNascosti = computed(() => (
+  schedaAttiva.value === 'recuperi' ? annullatiRecuperi.value : store.annullatiCount
+))
 
 // KeepAlive (ContentTabs): onActivated scatta anche al primo mount e a ogni
 // rientro nel tab (feedback_keepalive_onactivated).
@@ -601,15 +705,23 @@ const verbiMenuItems = computed(() => verbiNumerazione.value.map((v) => ({
   command: v.command,
 })))
 
+// Istanza del pannello esiti, per poterlo ricaricare dal «Ricarica» di pagina.
+// ⛔ Dal 2026-09-03 il pannello non ha piu' un pulsante suo: due «Ricarica»
+//    identici a mezzo schermo di distanza non erano una comodita' ma un dubbio
+//    su cosa aggiornassero. ⚠️ Toglierlo senza questo aggancio lo avrebbe
+//    lasciato SENZA alcun modo di aggiornarsi a comando: `defineExpose({refresh})`
+//    era dichiarato dal primo giorno e non lo chiamava nessuno.
+const esitiRef = ref(null)
+
 // Azioni di pagina: quelle standard del BB (reload / personalizza / export).
 // Niente «Nuovo» — un lotto non si crea da qui, lo genera la pipeline: lo
 // scaffolding lo omette da sé, non ricevendo `onNew`.
-// Unico adattamento: «Ricarica» aggiorna ANCHE i badge per-mese della sidebar,
-// che il BB non conosce — la fotografia dell'anno deve restare coerente con la
-// lista.
+// Unico adattamento: «Ricarica» aggiorna ANCHE i badge per-mese della sidebar
+// e il pannello esiti, che il BB non conosce — la fotografia dell'anno e il
+// riassunto dei giri devono restare coerenti con la lista.
 const azioniPagina = computed(() =>
   pageActions.value.map((a) => (a.key === 'reload'
-    ? { ...a, command: () => { reload(); loadMensile() } }
+    ? { ...a, command: () => { reload(); loadMensile(); esitiRef.value?.refresh() } }
     : a)),
 )
 </script>
@@ -669,22 +781,64 @@ const azioniPagina = computed(() =>
         <!-- Esiti fatturazione (C-5): stato coda stampa + giri del mese
              selezionato. La competenza è la STESSA della lista: pannello e
              lista raccontano lo stesso periodo. -->
-        <FatturazioneEsitiPanel :competenza-mese="competenzaParam" />
+        <FatturazioneEsitiPanel ref="esitiRef" :competenza-mese="competenzaParam" />
 
         <div class="app-page-toolbar">
           <div class="app-page-filters" :inert="perimetroBloccato">
-            <div class="form-field">
-              <label>{{ t('vendite.lotti.filtro_stato') }}</label>
+            <!-- Etichetta A SINISTRA della tendina, non sopra: due righe per un
+                 filtro sono altezza tolta ai lotti, che sono il lavoro.
+                 ⭐ `app-dash-filter-toggle` e' la classe che i tre cruscotti
+                 usano gia' per «etichetta + controllo in linea» (muted, 0.78rem):
+                 questa e' la quarta occorrenza dello stesso filtro di
+                 cruscotto, quindi si riusa invece di scriverne uno locale. -->
+            <label class="app-dash-filter-toggle">
+              <span>{{ t('vendite.lotti.filtro_stato') }}</span>
               <Select
                 v-model="statoFilter"
                 :options="statoOptions"
                 option-label="label"
                 option-value="value"
                 show-clear
+                size="small"
                 :placeholder="t('common.all')"
                 @update:model-value="onFilterChange"
               />
+            </label>
+
+            <!-- Pulsanti-filtro per stato: la ripartizione della scheda attiva,
+                 solo sopra zero. Stesso ref della tendina qui a fianco, quindi
+                 i due comandi non possono mostrare filtri diversi. -->
+            <div v-if="chipStati.length" class="app-dash-chips">
+              <span
+                v-for="c in chipStati"
+                :key="c.stato"
+                class="app-dash-chip"
+                :class="{ 'is-selected': statoFilter === c.stato }"
+                role="button"
+                tabindex="0"
+                @click="selezionaStato(c.stato)"
+                @keydown.enter="selezionaStato(c.stato)"
+              >
+                {{ c.label }}
+                <strong>{{ c.n }}</strong>
+              </span>
             </div>
+
+            <!-- ⭐ «Mostra annullati (N)» (2026-09-12). I lotti annullati sono
+                 gusci: fuori dal perimetro di default, ma non spariscono in
+                 silenzio — il numero dice che ci sono, e l'interruttore li
+                 rimette dentro OVUNQUE (lista, chip, calendario, export).
+                 BB `ToggleNascoste`, lo stesso del «Mostra archiviate» delle
+                 code; `app-dash-filter-toggle` gli da' il look dei filtri di
+                 cruscotto che ha accanto. -->
+            <ToggleNascoste
+              v-model="store.filters.annullati"
+              class="app-dash-filter-toggle"
+              :label="t('vendite.lotti.filtro_annullati')"
+              :hint="t('vendite.lotti.filtro_annullati_hint')"
+              :count="annullatiNascosti"
+              @change="onAnnullatiChange"
+            />
           </div>
 
           <!-- I DUE VERBI DELL'ATTO FISCALE. ⚠️ `severity="warn"` su entrambi:

@@ -328,7 +328,11 @@ onActivated(() => {
       </PageActionsBar>
     </div>
 
-    <div class="app-dash-main">
+    <!-- `--scorrimento-unico`: card e lista sono UNA cosa sola che
+         scorre, come nella Lente Competenza — le card salgono
+         insieme alle righe invece di lasciare la lista incastrata
+         in un riquadro con una barra sua. -->
+    <div class="app-dash-main app-dash-main--scorrimento-unico">
       <!-- Contatori per classe di azionabilita' (card = filtro, selezione
            esclusiva). La card "Tutte" azzera il filtro classe. -->
       <div class="app-dash-cards">
@@ -382,11 +386,11 @@ onActivated(() => {
            stato della tendina); le aree a zero non compaiono. Solo conteggi,
            mai importi: offerte, contratti e resi vanno a conteggi per
            decisione (DL-11, DL-24) e un «€ 0» accanto sarebbe falso. -->
-      <div v-if="riepilogoAree.length" class="app-dash-aree-riepilogo">
+      <div v-if="riepilogoAree.length" class="app-dash-chips">
         <span
           v-for="v in riepilogoAree"
           :key="v.area"
-          class="app-dash-area-chip"
+          class="app-dash-chip"
           :class="{ 'is-selected': areaSelezionata === v.area }"
           role="button"
           tabindex="0"

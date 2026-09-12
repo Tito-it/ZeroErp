@@ -50,7 +50,7 @@ class ClientiService:
     # Scopo: Lista paginata clienti.
     #        Param `emittente_ids` (lista bigint[] di soggetto_ruolo_id
     #        emittente, oppure None) e' lo scope risolto dal chiamante
-    #        via PermissionResolver.get_emittenti_ids. None = bypass
+    #        via PermissionResolver.get_emittenti_pk_ids. None = bypass
     #        (superuser/admin globale/0 emittenti). Refactor operatore-
     #        emittenti, follow-up BE-3.5: senza questo filtro un operatore
     #        di EF A vedrebbe i clienti di EF B nella lista.

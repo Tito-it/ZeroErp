@@ -220,7 +220,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_or_create_lotto(p_lotto_id bigint, p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_billing_account_id bigint, p_lock_batch_id uuid, p_meta jsonb, p_tipo_lotto text, p_emittente_soggetto_ruolo_id bigint)
-IS 'Recupera o crea lotto con validazione coerenza dimensionale completa. Helper condiviso per utility/emittente. ⭐ rev 2026-08-24: E_LOTTO_NON_RIUTILIZZABILE porta il BERSAGLIO sul lotto, in entrambi i suoi punti. Qui l''operatore NON e'' sul lotto: sta lanciando un''emissione e si sente dire che ce n''e'' gia'' uno in esecuzione — e senza bersaglio dovrebbe cercarselo. Il lotto e'' appena stato letto, quindi esiste ed e'' visibile: nessuna query in piu'', nessun ramo condizionale. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
+IS 'Recupera o crea lotto con validazione coerenza dimensionale completa. Helper condiviso per utility/emittente. ⭐ rev 2026-08-24: E_LOTTO_NON_RIUTILIZZABILE porta il BERSAGLIO sul lotto, in entrambi i suoi punti. Qui l''operatore NON e'' sul lotto: sta lanciando un''emissione e si sente dire che ce n''e'' gia'' uno in esecuzione — e senza bersaglio dovrebbe cercarselo. Il lotto e'' appena stato letto, quindi esiste ed e'' visibile: nessuna query in piu'', nessun ramo condizionale. Brief: brief-db-bersaglio-errore.md §6 L6.';
 ```
 
 ---

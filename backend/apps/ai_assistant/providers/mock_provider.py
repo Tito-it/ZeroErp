@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from apps.ai_assistant.providers.base import AIProvider, EMBEDDING_DIMENSIONS

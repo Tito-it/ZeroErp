@@ -4,7 +4,7 @@
 --
 -- Passo 6 (P-4) del cantiere «perimetro emittente»: la lista PILOTA
 -- «Competenza — gruppi fatturabili» dichiara da quale emittente arriva la riga.
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §11.4, Q4
+-- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §11.4, Q4
 --
 -- Elenco test (plan 5):
 --   1) la vista espone `emittente_ragione_sociale`

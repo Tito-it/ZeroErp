@@ -112,8 +112,9 @@ class ApiDistinteList(DomainAPIView):
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Whitelist: data_contabile (default) | codice | stato | "
-                    "origine | centro | totale_righe."
+                    "Whitelist (nome FISICO della colonna, come la lista lo espone): "
+                    "data_contabile (default) | codice | stato_descrizione | "
+                    "origine | centro_descrizione | totale_righe."
                 ),
             ),
             OpenApiParameter(
@@ -516,7 +517,10 @@ class ApiRigheCoda(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description="Whitelist: data_pagamento (default) | importo | stato | distinta.",
+                description=(
+                    "Whitelist (nome FISICO): data_pagamento (default) | importo | "
+                    "stato_descrizione | contabile_codice."
+                ),
             ),
             OpenApiParameter(
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,
@@ -581,8 +585,8 @@ class ApiRateFuoriCapienza(DomainAPIView):
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Whitelist: data_scadenza (default) | motivo | residuo | "
-                    "importo_rata | fattura."
+                    "Whitelist (nome FISICO): data_scadenza (default) | motivo | residuo | "
+                    "importo_rata | fattura_numero."
                 ),
             ),
             OpenApiParameter(
@@ -651,7 +655,6 @@ class ApiRataSaldo(DomainAPIView):
 class ApiFatturaSaldo(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/saldo/ — il saldo di un documento."""
 
-    area_funzionale = AREA
     # ⭐ Lo consuma il drawer FATTURA, che vive in `vendite`: senza questo, per
     #    vedere se una fattura e' pagata servirebbe la LETTURA su `pagamenti` —
     #    cioe' allargare un permesso per comodita'. E' lo stesso pattern del
@@ -659,16 +662,23 @@ class ApiFatturaSaldo(DomainAPIView):
     # ⚠️ E sta qui e non in `vendite` per un vincolo, non per gusto: le chiamate
     #    laterali fra moduli di pari livello non sono ammesse (api.md), quindi
     #    `vendite` non puo' chiedere un saldo a `pagamenti`.
+    # ⛔ E NON dichiara `area_funzionale`, ed e' la riga che conta: la catena
+    #    legge lo skip SOLO se l'area non si risolve. Fino al 2026-09-12 queste
+    #    quattro view dichiaravano anche `area_funzionale = AREA`, e lo skip era
+    #    MUTO — la LETTURA su `pagamenti` serviva davvero, e il commento qui
+    #    sopra prometteva un comportamento che il codice non aveva. Decisione
+    #    di Tid (2026-09-12): vale lo skip. Presidiato da
+    #    `core/tests/test_skip_area_check_registro.py`.
     skip_area_check = True
 
     @extend_schema(
         operation_id="pagamenti_fattura_saldo",
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Restituisce via GET residuo e in lavorazione di una fattura.
-    # ⚠️ `incassato` risponde `null`: a questo livello il database non lo sa
-    #    ancora dire, e ⛔ non si somma dalle rate (una riga puo' avere fattura
-    #    senza rata: il fondo fattura e' cosi').
+    # Scopo: Restituisce via GET residuo, in lavorazione e incassato di una fattura.
+    # ⭐ Tutti e tre dal 2026-08-29 (DB-10 atterrata il 25/08): fino ad allora
+    #    `incassato` era `null`. ⛔ Resta il divieto: NON si somma dalle rate (una
+    #    riga puo' avere fattura senza rata: il fondo fattura e' cosi').
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
         return success_response(saldi_service.saldo_documento(fattura_id))
 
@@ -676,7 +686,6 @@ class ApiFatturaSaldo(DomainAPIView):
 class ApiFatturaRateSaldo(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/rate/ — le rate con il loro saldo."""
 
-    area_funzionale = AREA
     # Stessa ragione del saldo documento: lo consuma il form dell'abbinamento,
     # e risponde il minimo su una fattura gia' scelta.
     skip_area_check = True
@@ -725,8 +734,9 @@ class ApiEccedenze(DomainAPIView):
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Whitelist: eccedenza_cliente (default) | cliente | "
-                    "eccedenza | fattura_data | fattura. ⭐ Il default è per "
+                    "Whitelist (nome FISICO): eccedenza_cliente (default) | "
+                    "cliente_ragione_sociale | eccedenza | fattura_data | "
+                    "fattura_numero. ⭐ Il default è per "
                     "CLIENTE, non per documento: la decisione si prende "
                     "guardando il cliente."
                 ),
@@ -816,7 +826,6 @@ class ApiSistemazioneDetail(DomainAPIView):
 class ApiFatturaSistemazioni(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/ — gli atti su un documento."""
 
-    area_funzionale = AREA
     # ⭐ Cancello di perimetro emittente (2026-09-02, con la conversione della
     #    lista su `<ListaConfigurabile>`): `perimetro_emittente = t` a catalogo
     #    (decisione D-3 del lotto 2), quindi vale l'emittente dell'operatore e
@@ -860,7 +869,6 @@ class ApiFatturaSistemazioni(DomainAPIView):
 class ApiFatturaSistemazioniExport(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/export/ — CSV/XLSX."""
 
-    area_funzionale = AREA
     # ⭐ Stesso `lista_codice` della lista a video, ed e' il punto dell'export
     #    configurabile: le colonne del file sono quelle che l'operatore VEDE
     #    (preferenza + preset + permessi), non un elenco cablato qui che
@@ -995,7 +1003,10 @@ class ApiEntiIncasso(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description="Whitelist: codice (default) | descrizione | tipo | centro.",
+                description=(
+                    "Whitelist (nome FISICO): codice (default) | descrizione | tipo | "
+                    "centro_descrizione."
+                ),
             ),
             OpenApiParameter(
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,

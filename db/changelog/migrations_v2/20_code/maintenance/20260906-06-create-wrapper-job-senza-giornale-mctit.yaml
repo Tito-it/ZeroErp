@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 DUE JOB GIRAVANO SENZA LASCIARE TRACCIA — e li ha trovati il panorama.
+#   Trovato con: dbops.vw_processi_programmazione (20260906-05)
+#
+# `dbops.vw_processi_programmazione` ha nominato tre processi
+# `GIRA_E_NON_REGISTRA`. Uno era R-12, gia' riparato. Gli altri due non
+# fallivano affatto: **non passavano da nessun wrapper**, quindi non
+# attraversavano `maintenance.fn_run_and_log` e non scrivevano niente.
+#
+#     chiusura_scadenze_daily       -> SELECT dbops.fn_accoda_chiusura_scadenze();
+#     sync_auth_user_expired_daily  -> SELECT anagrafiche.fn_sync_auth_user_expired();
+#
+# ── ⛔ UNO DEI DUE L'HO INTRODOTTO IO ───────────────────────────────
+#   `chiusura_scadenze_daily` **registrava**, finche' eseguiva. Il changeSet
+#   `20260905-25` l'ha trasformato da lavoratore a sveglia — la decisione era
+#   giusta — ma nel farlo ha sostituito lo step con una `SELECT` diretta,
+#   perdendo il wrapper e con lui il giornale.
+#   ⚠️ Nessun test poteva prenderlo: guardavano che il lavoro venisse **accodato**,
+#   e quello funzionava. Cio' che si era perso era il **verbale della sveglia**,
+#   e per accorgersene bisognava confrontare pgAgent col giornale.
+#   ⭐ Il secondo (`sync_auth_user_expired_daily`) era cosi' da sempre.
+#
+# ── ⭐ PERCHE' UN WRAPPER E NON UNA `SELECT` DIRETTA ────────────────
+#   `fn_run_and_log` non e' un abbellimento: e' cio' che scrive **chi ha girato,
+#   quando, con quale esito e per conto di quale processo**. Un job che la salta
+#   e' invisibile a tutti i presidi — non perche' vada male, ma perche' non
+#   esiste per chi guarda.
+#   ⇒ E dal `20260905-36` e' anche cio' che fa sopravvivere il verbale di un
+#     fallimento: chi salta il wrapper non ha nemmeno quello.
+#
+# ── ⚠️ IL `jobname` E' IL CODICE DEL PROCESSO, NON IL NOME DEL JOB ──
+#   `fn_run_and_log` deriva l'attore dal `p_jobname` cercandolo in
+#   `dbops.processi.codice`. ⇒ Si passa il **codice**, e i due coincidono per
+#   entrambi. ⛔ Passare il nome del job pgAgent, dove differisce, lascerebbe la
+#   corsa senza attore — e dal `20260905-16` non entrerebbe affatto.
+#
+# ⚠️ Questi wrapper NON prendono un `lock_key`: nessuno dei due ne aveva uno, e
+# aggiungerlo qui cambierebbe il comportamento di un processo in esercizio dentro
+# un changeSet che parla di tracciabilita'.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260906-06-create-wrapper-job-senza-giornale-mctit.yaml
+
+  - changeSet:
+      id: 20260906-06-create-wrapper-job-senza-giornale
+      author: mctit
+      failOnError: true
+      comment: >
+        I wrapper per i due job che giravano senza scrivere nel giornale:
+        chiusura_scadenze_daily (perso col 20260905-25, quando e' passato da
+        esecutore a sveglia) e sync_auth_user_expired_daily (da sempre). Senza
+        passare da fn_run_and_log un job e' invisibile a tutti i presidi.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'fn_accoda_chiusura_scadenze'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'fn_sync_auth_user_expired'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job()
+               LANGUAGE plpgsql
+              AS $procedure$
+              BEGIN
+                  -- ⚠️ `p_jobname` e' il CODICE DEL PROCESSO: e' cosi' che
+                  --   fn_run_and_log risale all'attore (cerca in
+                  --   dbops.processi.codice). Passare il nome del job pgAgent
+                  --   lascerebbe la corsa senza attore.
+                  PERFORM maintenance.fn_run_and_log(
+                      p_jobname  := 'chiusura_scadenze_daily',
+                      p_stepname := 'accoda_chiusura_scadenze',
+                      p_sql      := 'SELECT dbops.fn_accoda_chiusura_scadenze();');
+              END
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job()
+              IS 'Wrapper del job chiusura_scadenze_daily: sveglia la chiusura scadenze PASSANDO dal giornale. ⛔ Esiste perche'' il changeSet 20260905-25, trasformando quel job da esecutore a sveglia, ha sostituito lo step con una SELECT diretta e ha perso il wrapper — e con lui la registrazione della corsa. Il lavoro veniva accodato correttamente, ma della sveglia non restava traccia: nessun test poteva prenderlo, perche'' tutti guardavano che il lavoro fosse accodato. L''ha trovato dbops.vw_processi_programmazione confrontando pgAgent col giornale.';
+
+              CREATE OR REPLACE PROCEDURE maintenance.proc_sync_auth_user_expired_job()
+               LANGUAGE plpgsql
+              AS $procedure$
+              BEGIN
+                  PERFORM maintenance.fn_run_and_log(
+                      p_jobname  := 'sync_auth_user_expired_daily',
+                      p_stepname := 'run_sync_auth_user_expired',
+                      p_sql      := 'SELECT anagrafiche.fn_sync_auth_user_expired();');
+              END
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_sync_auth_user_expired_job()
+              IS 'Wrapper del job sync_auth_user_expired_daily: disattiva le utenze scadute PASSANDO dal giornale. ⛔ Quel job girava dal principio con una SELECT diretta, quindi non ha MAI scritto una riga di corsa — non falliva, semplicemente non esisteva per chi guarda i presidi. L''ha trovato dbops.vw_processi_programmazione confrontando quello che pgAgent sa con quello che il giornale dice.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP PROCEDURE IF EXISTS maintenance.proc_accoda_chiusura_scadenze_job();
+              DROP PROCEDURE IF EXISTS maintenance.proc_sync_auth_user_expired_job();

@@ -16,7 +16,7 @@ Approfondimento funzioni:
 Pattern correlato (domini gemelli):
 > [vendite.trgfn_contratti_guard_transizione_stato](/dbzero/vendite/funzioni/trgfn_contratti_guard_transizione_stato)
 > [vendite.trgfn_offerte_commerciali_guard_transizione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione)
-> [vendite.trgfn_ordini_guard_transizione_approvazione](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione_approvazione)
+> `vendite.trgfn_ordini_guard_transizione_approvazione` — **ritirata** (DROP `20260512-28`)
 
 ### 🎯 Scopo Principale
 
@@ -72,7 +72,7 @@ DRAFT ──conferma──> CONFERMATO
 ### Convivenza con il guard approvazione
 
 Sulla stessa colonna (`BEFORE UPDATE OF stato_doc_ordine_id`, fase `_a10_`) opera anche
-[`trgfn_ordini_guard_transizione_approvazione`](/dbzero/vendite/funzioni/trgfn_ordini_guard_transizione_approvazione)
+`trgfn_ordini_guard_transizione_approvazione`
 (trigger `trg_ordini_a10_guard_transizione_approvazione_upd`, migration 20260512-20), che
 copre un **concern distinto**: blocca `CONFERMATO` se un componente BoM CASO A ha
 `stato_approvazione_prezzo = PENDING` o `prezzo_unitario IS NULL`.

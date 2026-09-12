@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N-2 — Le policy sul PADRE partizionato `vendite.note`, piu' quella che
+#   mancava sulla partizione `note_attivita_fatturabili`. INERTI: la RLS si
+#   accende in 20260909-74.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §6.4 e §7 (passo 8)
+#   Slice 20260909-72..74.
+#
+# ── TRE POLICY SUL PADRE, una per veste ───────────────────────────────
+#     rls_note_ef_whitelist    OPERATORE        FOR ALL     tutte e sette
+#     rls_note_cliente         CLIENTE_PORTALE  FOR SELECT  FATTURA, ORDINE
+#     rls_note_shop            SHOP_CUSTOMER    FOR SELECT  ORDINE
+#   E' l'unione ESATTA di cio' che le sette partizioni gia' concedono: il padre
+#   non apre niente in piu' e non chiude niente che una partizione conceda.
+#   La logica di smistamento sta nelle `script.fn_scope_note_*` (20260909-72),
+#   non qui: [linee-guida-sql §10.3].
+#
+# ── ⭐ E UNA POLICY SULLA PARTIZIONE CHE NON L'AVEVA ──────────────────
+#   `note_attivita_fatturabili` era l'unica delle sette senza policy nemmeno
+#   sull'accesso diretto: le altre sei le hanno prese dai passi 1-7. Risale
+#   all'attivita' e da li' alla COMMESSA (`commessa_id` NOT NULL, brief §6.1).
+#   ⚠️ Una veste sola, `OPERATORE`, perche' una ne ha `vendite.commesse`.
+#
+# ── ⛔ PERCHE' IL PADRE HA BISOGNO DI POLICY PROPRIE ──────────────────
+#   Le policy delle partizioni NON risalgono. Provato il 2026-09-09: con la RLS
+#   accesa sul padre e nessuna policy sul padre, `SELECT FROM vendite.note`
+#   risponde ZERO anche per le righe che la partizione avrebbe concesso.
+#   ⇒ Senza queste tre policy, armare il padre non chiuderebbe un buco:
+#   spegnerebbe la tabella.
+#
+# ── ⚠️ `FOR ALL` sull'operatore: il WITH CHECK vale anche per il ROUTING ──
+#   Un `INSERT INTO vendite.note` viene instradato alla partizione dal
+#   partizionamento, ma il `WITH CHECK` del padre si applica lo stesso: e' cio'
+#   che impedisce di appendere una nota a un documento di un'altra azienda
+#   passando dal padre invece che dalla partizione.
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione — sul
+# padre la RLS e' ancora spenta. Collaudo: db/pgtap/rls/test-rls-note-padre.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-73-create-policy-note-padre-mctit.yaml
+
+  - changeSet:
+      id: 20260909-73-create-policy-note-padre
+      author: mctit
+      runOnChange: false
+      comment: >
+        Tre policy sul padre partizionato vendite.note (operatore FOR ALL,
+        cliente del portale e shop FOR SELECT), che smistano su target_tipo via
+        script.fn_scope_note_*; piu' la policy operatore sulla partizione
+        note_attivita_fatturabili, l'unica delle sette che non l'aveva. INERTI:
+        l'armamento e' 20260909-74.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_note_ef_whitelist',
+                                   'fn_scope_note_cliente',
+                                   'fn_scope_note_shop',
+                                   'fn_scope_ef_whitelist_via_attivita_fatturabile')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- il PADRE partizionato ----------
+              CREATE POLICY rls_note_ef_whitelist
+                  ON vendite.note
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_note_ef_whitelist(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_tipo, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_note_ef_whitelist(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_tipo, target_id)
+                  );
+
+              CREATE POLICY rls_note_cliente
+                  ON vendite.note
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_note_cliente(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              target_tipo, target_id)
+                  );
+
+              CREATE POLICY rls_note_shop
+                  ON vendite.note
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_note_shop(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              target_tipo, target_id)
+                  );
+
+              -- ---------- la partizione che non aveva nemmeno l'accesso diretto ----------
+              CREATE POLICY rls_note_attivita_fatturabili_ef_whitelist
+                  ON vendite.note_attivita_fatturabili
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_attivita_fatturabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_attivita_fatturabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  );
+
+              COMMENT ON POLICY rls_note_ef_whitelist ON vendite.note IS
+                  'Perimetro emittente sul PADRE partizionato: smista su target_tipo verso l''adattatore della famiglia. ⛔ Esiste perche'' le policy delle PARTIZIONI non risalgono al padre — provato il 2026-09-09: col padre armato e senza policy propria, SELECT FROM vendite.note risponde zero. Senza questa policy, ogni policy sulle partizioni resta aggirabile leggendo dal padre. Brief §6.4, passo 8.';
+              COMMENT ON POLICY rls_note_cliente ON vendite.note IS
+                  'Veste CLIENTE_PORTALE sul padre: copre FATTURA e ORDINE, cioe'' l''unione esatta delle vesti cliente che le partizioni concedono. Le altre cinque famiglie non ne hanno.';
+              COMMENT ON POLICY rls_note_shop ON vendite.note IS
+                  'Veste SHOP_CUSTOMER sul padre: solo ORDINE, con la doppia condizione (proprieta'' e canale SHOP) che pretende la testata.';
+              COMMENT ON POLICY rls_note_attivita_fatturabili_ef_whitelist ON vendite.note_attivita_fatturabili IS
+                  'Perimetro emittente per le note di attivita'' fatturabile: risale all''attivita'' e da li'' alla COMMESSA (commessa_id NOT NULL). ⚠️ Protegge la NOTA, non vendite.attivita_fatturabili, che resta il debito dichiarato del brief §6.1. Slice 20260909-72..74.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_note_attivita_fatturabili_ef_whitelist ON vendite.note_attivita_fatturabili;
+              DROP POLICY IF EXISTS rls_note_shop ON vendite.note;
+              DROP POLICY IF EXISTS rls_note_cliente ON vendite.note;
+              DROP POLICY IF EXISTS rls_note_ef_whitelist ON vendite.note;

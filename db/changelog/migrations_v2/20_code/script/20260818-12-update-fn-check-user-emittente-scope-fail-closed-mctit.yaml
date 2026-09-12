@@ -18,7 +18,7 @@
 #    l'unico punto in cui la selezione puo' restringere chi vede tutto: e'
 #    l'invariante «solo restringente, mai allargante» (rev 2026-08-04).
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

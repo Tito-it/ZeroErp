@@ -19,8 +19,10 @@ Indice test eseguiti:
 8) SessioneRevocaViewTests.test_revoca_success
 9) SessioneRevocaViewTests.test_revoca_sessione_corrente
 10) SessioneRevocaViewTests.test_revoca_sessione_not_found
+10b) SessioneRevocaViewTests.test_revoca_gia_revocata_resta_idempotente
 11) SessioniRevocaTutteViewTests.test_revoca_tutte_success
 12) SessioniRevocaTutteViewTests.test_revoca_tutte_senza_remote
+12b) SessioniRevocaTutteViewTests.test_revoca_tutte_sessione_senza_token
 13) SessionAuditRepositoryTests.test_list_sessioni_attive
 """
 
@@ -249,12 +251,51 @@ class SessioneRevocaViewTests(TestCase):
 
         self.assertEqual(response.status_code, 204)
         MockOutstanding.objects.filter.assert_called_once_with(user_id=1)
-        MockBlacklisted.objects.get_or_create.assert_called_once_with(token=mock_ot)
+        # ⚠️ `bulk_create` e non `get_or_create` per token: dal 2026-09-04 le
+        #    due view di revoca condividono `_blocca_token_sessioni`, che fa una
+        #    query per i gia' bloccati e una scrittura sola. La copia precedente
+        #    faceva una SELECT per token — ~1400 sul database di sviluppo — e
+        #    avvolgeva la scrittura nel `try` della decodifica, trasformando un
+        #    errore di scrittura in un «sessione non trovata».
+        creati = MockBlacklisted.objects.bulk_create.call_args.args[0]
+        self.assertEqual(len(creati), 1)
         mock_audit.record_revoca.assert_called_once_with(
             user_id=1,
             request=request._request,
             jti="other-sid",
         )
+
+    # Scopo: ⛔ Revocare una sessione i cui token sono GIA' bloccati resta 204.
+    #        E' l'idempotenza del verbo: un doppio click, o un secondo tentativo
+    #        su una riga rimasta a video, non deve diventare «sessione non
+    #        trovata». Presidia una regressione introdotta e corretta il
+    #        2026-09-04 nell'estrazione di `_blocca_token_sessioni`, che
+    #        contava le SCRITTURE invece dei token corrispondenti.
+    @patch(f"{_SESSIONI_VIEW}.session_audit_service")
+    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
+    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
+    @patch(f"{_SESSIONI_VIEW}.jwt")
+    def test_revoca_gia_revocata_resta_idempotente(
+        self, mock_jwt, MockOutstanding, MockBlacklisted, mock_audit
+    ):
+        from apps.core.api.sessioni_view import SessioneRevocaView
+
+        mock_ot = MagicMock()
+        mock_ot.id = 7
+        mock_ot.token = "encoded-jwt-token"
+        MockOutstanding.objects.filter.return_value = [mock_ot]
+        mock_jwt.decode.return_value = {"sid": "other-sid"}
+        # Il token di quella sessione risulta gia' bloccato.
+        MockBlacklisted.objects.filter.return_value.values_list.return_value = [7]
+
+        request = _mock_request(auth={"sid": "current-sid"})
+        response = SessioneRevocaView().post(request, jti="other-sid")
+
+        self.assertEqual(response.status_code, 204)
+        # Niente da scrivere: era gia' bloccato.
+        MockBlacklisted.objects.bulk_create.assert_not_called()
+        # L'evento si registra comunque: e' la risposta a «revoca questa».
+        mock_audit.record_revoca.assert_called_once()
 
     # Scopo: Verifica POST con sid corrente → 400 E_SESSIONE_REVOCA_CORRENTE.
     def test_revoca_sessione_corrente(self):
@@ -290,12 +331,25 @@ class SessioneRevocaViewTests(TestCase):
 
 class SessioniRevocaTutteViewTests(TestCase):
 
-    # Scopo: Verifica POST bulk → blacklista solo sid remoti distinti e registra REVOCA.
+    # Scopo: Verifica POST bulk → l'AUDIT copre le sole sessioni ATTIVE (quelle
+    #        che il pannello mostra), la BLACKLIST tutti i token non correnti.
+    #
+    # ⭐ Il contratto e' cambiato il 2026-09-04, e questi due test dicevano il
+    #    contrario: prima si scriveva una riga REVOCA per ogni sid trovato negli
+    #    OutstandingToken, cioe' per ogni sessione MAI esistita. Misurato sul
+    #    database di sviluppo: 1138 righe di diario e 2,2 secondi per un click
+    #    con due sole sessioni a video, e `dbops.sessioni_utente` all'80% di
+    #    REVOCA. Il perimetro dell'audit e' ora quello dell'elenco.
+    # ⚠️ La blacklist resta LARGA di proposito: il diario racconta, la blacklist
+    #    presidia, e i due perimetri non devono coincidere.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
     @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
     @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
     @patch(f"{_SESSIONI_VIEW}.jwt")
-    def test_revoca_tutte_success(self, mock_jwt, MockOutstanding, MockBlacklisted, mock_audit):
+    def test_revoca_tutte_success(
+        self, mock_jwt, MockOutstanding, MockBlacklisted, MockRepo, mock_audit
+    ):
         from apps.core.api.sessioni_view import SessioniRevocaTutteView
 
         current = MagicMock(token="jwt-current")
@@ -311,6 +365,12 @@ class SessioniRevocaTutteViewTests(TestCase):
             {"sid": "other-sid-2"},
             {"sid": "other-sid-2"},
         ]
+        # L'elenco che il pannello mostra: due remote + la corrente.
+        MockRepo.return_value.list_sessioni_attive.return_value = [
+            {"jti": "current-sid"},
+            {"jti": "other-sid-1"},
+            {"jti": "other-sid-2"},
+        ]
 
         request = _mock_request(auth={"sid": "current-sid"})
 
@@ -319,9 +379,13 @@ class SessioniRevocaTutteViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = json.loads(response.content)
+        # Due SESSIONI revocate — non i sid storici.
         self.assertEqual(payload["data"]["revoked"], 2)
         MockOutstanding.objects.filter.assert_called_once_with(user_id=1)
-        self.assertEqual(MockBlacklisted.objects.get_or_create.call_count, 3)
+        # I tre token non correnti bloccati in una scrittura sola.
+        self.assertEqual(MockBlacklisted.objects.bulk_create.call_count, 1)
+        creati = MockBlacklisted.objects.bulk_create.call_args.args[0]
+        self.assertEqual(len(creati), 3)
         self.assertEqual(mock_audit.record_revoca.call_count, 2)
         revoked_sids = {
             call.kwargs["jti"]
@@ -329,17 +393,22 @@ class SessioniRevocaTutteViewTests(TestCase):
         }
         self.assertEqual(revoked_sids, {"other-sid-1", "other-sid-2"})
 
-    # Scopo: Verifica POST bulk senza sessioni remote → 200 con revoked=0.
+    # Scopo: Verifica POST bulk senza sessioni remote → 200 con revoked=0 e
+    #        nessuna riga di diario.
     @patch(f"{_SESSIONI_VIEW}.session_audit_service")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
     @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
     @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
     @patch(f"{_SESSIONI_VIEW}.jwt")
-    def test_revoca_tutte_senza_remote(self, mock_jwt, MockOutstanding, MockBlacklisted, mock_audit):
+    def test_revoca_tutte_senza_remote(
+        self, mock_jwt, MockOutstanding, MockBlacklisted, MockRepo, mock_audit
+    ):
         from apps.core.api.sessioni_view import SessioniRevocaTutteView
 
         current = MagicMock(token="jwt-current")
         MockOutstanding.objects.filter.return_value = [current]
         mock_jwt.decode.return_value = {"sid": "current-sid"}
+        MockRepo.return_value.list_sessioni_attive.return_value = [{"jti": "current-sid"}]
 
         request = _mock_request(auth={"sid": "current-sid"})
 
@@ -349,8 +418,38 @@ class SessioniRevocaTutteViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = json.loads(response.content)
         self.assertEqual(payload["data"]["revoked"], 0)
-        MockBlacklisted.objects.get_or_create.assert_not_called()
+        MockBlacklisted.objects.bulk_create.assert_not_called()
         mock_audit.record_revoca.assert_not_called()
+
+    # Scopo: ⛔ Una sessione ATTIVA i cui token sono spariti (scaduti e ripuliti)
+    #        va comunque tolta dall'elenco: e' proprio il caso in cui l'operatore
+    #        preme «revoca tutte», niente si blocca, e la riga resterebbe li' a
+    #        dire che la sessione e' viva.
+    @patch(f"{_SESSIONI_VIEW}.session_audit_service")
+    @patch(f"{_SESSIONI_VIEW}.SessionAuditRepository")
+    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
+    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
+    @patch(f"{_SESSIONI_VIEW}.jwt")
+    def test_revoca_tutte_sessione_senza_token(
+        self, mock_jwt, MockOutstanding, MockBlacklisted, MockRepo, mock_audit
+    ):
+        from apps.core.api.sessioni_view import SessioniRevocaTutteView
+
+        MockOutstanding.objects.filter.return_value = []
+        MockRepo.return_value.list_sessioni_attive.return_value = [
+            {"jti": "current-sid"},
+            {"jti": "orfana-sid"},
+        ]
+
+        request = _mock_request(auth={"sid": "current-sid"})
+        response = SessioniRevocaTutteView().post(request)
+
+        self.assertEqual(json.loads(response.content)["data"]["revoked"], 1)
+        MockBlacklisted.objects.bulk_create.assert_not_called()
+        self.assertEqual(mock_audit.record_revoca.call_count, 1)
+        self.assertEqual(
+            mock_audit.record_revoca.call_args.kwargs["jti"], "orfana-sid"
+        )
 
 
 # --------------- SessionAuditRepository ---------------

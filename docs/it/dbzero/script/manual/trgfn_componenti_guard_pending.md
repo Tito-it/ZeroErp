@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> [config.stato_approvazione_prezzo](/dbzero/config/tabelle/stati_approvazione_prezzo) — enum PENDING/APPROVED/REJECTED
+> `config.stato_approvazione_prezzo` — TYPE enum PENDING/APPROVED/REJECTED (non e' una tabella: non ha pagina propria)
 > [vendite.contratti_righe_componenti](/dbzero/vendite/tabelle/contratti_righe_componenti) — prima tabella utente
 > [vendite.offerte_commerciali_eccezioni_componenti](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni_componenti) — seconda tabella utente
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)

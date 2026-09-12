@@ -6,6 +6,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso } from '../api/amministrazione'
@@ -26,6 +27,8 @@ import Column from 'primevue/column'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 
+
+
 const { t } = useI18n()
 const repartiStore = useRepartiStore()
 const { execute, loading } = useApiHandler()
@@ -39,6 +42,11 @@ const props = defineProps({
   uoId: { type: Number, default: null },
   uoNome: { type: String, default: '' }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -101,12 +109,13 @@ const onClose = useDrawerClose(emit, 'cancelled')
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @update:visible="val => emit('update:visible', val)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :action="t('common.edit')" :title="t('amministrazione.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.SITEMAP" />
     </template>
 
-    <div :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
     <Accordion :value="['aree', 'azioni']" multiple>
       <AccordionPanel value="aree">
         <AccordionHeader>{{ t('amministrazione.aree_funzionali') }}</AccordionHeader>
@@ -140,6 +149,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
     </Accordion>
     </div>
 
-    <FormFooter :loading="loading" @save="onSave" @cancel="onClose" />
+    <FormFooter v-if="contentReady" :loading="loading" @save="onSave" @cancel="onClose" />
   </Drawer>
 </template>

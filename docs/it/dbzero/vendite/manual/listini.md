@@ -5,7 +5,7 @@
 **Approfondimento tabelle:**
 >
 • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
-> • [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)  
+> • `vendite.listini_associazioni` — **ritirata** (DROP TABLE `20260415-05`)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 > • [config.listini_tipologie](/dbzero/config/manual/listini_tipologie)  
 > • [config.listini_tipologie_utilities](/dbzero/config/manual/listini_tipologie_utilities)  
@@ -14,7 +14,36 @@
 >
 • [trgfn_listini_guard_tipologia_utility](/dbzero/vendite/manual/trgfn_listini_guard_tipologia_utility)  
 > • [trgfn_listini_righe_guard_stato](/dbzero/vendite/manual/trgfn_listini_righe_guard_stato)  
-> • [fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino)  
+> • [fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)  
+
+### ⛔ Rev 2026-09-05 — il listino ha un perimetro, e adesso qualcuno lo applica
+
+`emittente_soggetto_ruolo_id` è `NOT NULL` **dal principio**, e fino a questa data non
+la usava nessuno: né una policy, né un guard. ⇒ Un operatore di un'azienda vedeva e
+scriveva i listini — cioè i **PREZZI** — di tutte le altre.
+
+Adesso la tabella ha entrambe le difese della famiglia dei documenti:
+
+| | |
+| --- | --- |
+| `rls_listini_ef_whitelist` | la policy **nasconde** ciò che è di altri |
+| `trg_listini_a10_guard_emittente_scope_ins_upd` | il guard **rifiuta e spiega** (`E_SCOPE_EMITTENTE`) |
+
+⭐ Servono entrambe: una policy senza guard lascerebbe scoperto il caso in cui la RLS
+non morde — una `SECURITY DEFINER` di `titodb` che scriva qui passerebbe senza che
+nessuno guardi l'emittente.
+
+⚠️ **E non era solo una falla di lettura.** `chiusura_scadenze_daily` tocca ogni notte
+`vendite.listini_versioni`, e sta per girare **un'azienda alla volta**: senza queste
+policy avrebbe filtrato i contratti e non i listini, dicendo un'azienda e toccandole
+tutte. Per questo il lavoro è arrivato prima di quella migrazione, non dopo.
+
+⛔ **Scrivere un listino e la sua prima versione nella stessa istruzione non funziona
+più**: la policy della figlia legge il padre con lo snapshot dell'istruzione. Due
+istruzioni separate — vedi
+[listini_versioni](/dbzero/vendite/manual/listini_versioni).
+
+---
 
 ### 🎯 Scopo Principale
 La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo

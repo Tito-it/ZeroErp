@@ -118,6 +118,53 @@ REVOKE CREATE ON SCHEMA public FROM ${DB_USER};
 -- host  ${DB_NAME}  ${DB_USER}  100.x.y.z/32  scram-sha-256
 ```
 
+## 7-bis) Ruoli DB — il passo che non si vede
+
+⛔ **Il `CREATE ROLE` del §7 è il minimo per collegarsi, non il provisioning.**
+I `GRANT` sul perimetro applicativo, la policy del ruolo migratore e i **ruoli
+batch** (`zeroerp_batch_*`, che hanno `BYPASSRLS`) li scrive uno script dedicato,
+e **Liquibase non può farlo**: quei ruoli vogliono un **superuser**, mentre le
+migrazioni girano come `zeroerp`.
+
+⚠️ **Perché sta qui e non altrove**: la procedura è documentata per intero in
+[provisioning-db-roles.md](provisioning-db-roles.md) — con le verifiche dei grant
+e della postura RLS — ma fino al 2026-09-11 **questo play-book non la nominava**,
+e chi lo seguiva dall'alto in basso incontrava il ruolo batch solo al §15, dove è
+già dato per esistente (`DB_BATCH_PASS` sta fra le variabili in cima).
+*Un documento giusto, non agganciato al passo in cui serve, è invisibile quanto
+uno che non c'è.*
+
+**a) Ruolo applicativo e policy migratore — subito dopo il §7**
+
+```bash
+psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
+  -v app_role=${DB_USER} \
+  -v app_password='${DB_PASS}' \
+  -v migrator_role=titodb \
+  -f scripts/sql/provision_db_roles.sql
+```
+
+**b) Ruolo batch della fatturazione — ⛔ DOPO le migrazioni del §11**
+
+L'ordine non è una preferenza: lo script **concede sul perimetro**, e il
+perimetro (schemi e tabelle) deve già esistere.
+
+```bash
+psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
+  -v batch_role=zeroerp_batch_fatturazione \
+  -v batch_password='${DB_BATCH_PASS}' \
+  -f scripts/sql/provision_db_role_batch_fatturazione.sql
+```
+
+⚠️ **Va rilanciato quando serve un privilegio in più**: una tabella nuova non
+concessa fallisce **rumorosamente** (`permission denied`), che è il comportamento
+voluto — ⛔ e il rimedio è aggiungere il grant *qui*, mai in un changeSet, che
+nominando un ruolo inesistente fermerebbe la pipeline (`linee-guida-sql §11.6`).
+
+> ✅ **Come so che è andata bene**: le due sezioni di verifica in
+> [provisioning-db-roles.md](provisioning-db-roles.md) — «Verifica grant runtime»
+> e «Verifica postura RLS».
+
 ## 8) Gunicorn (systemd)
 
 ```bash
@@ -368,3 +415,138 @@ journalctl -u zeroerp-coda-lavori.service -n 50 --no-pager
 > Convergenza futura (Q-4): `draina_coda_stampa` aggancerà lo stesso motore
 > (`QueueDrainEngine`) via un `QueueBackend` sui metodi repo esistenti — la tabella resta,
 > si deduplica solo il loop; il worker/timer non cambiano.
+
+---
+
+## 17) Il dichiarato delle sveglie — `deploy/sveglie.json` (dal 2026-09-06)
+
+⭐ **Che cosa si installa non sta più negli script.** L'elenco degli unit, la
+cadenza di ciascuno e cosa va acceso si leggono da
+[`backend/deploy/sveglie.json`](../../../../backend/deploy/sveglie.json), che è
+la **sede unica** del dichiarato di deploy. Lo leggono in due:
+
+| Chi | Cosa ne prende |
+| --- | --- |
+| `backend/bin/install-timers.sh` | l'`OnCalendar` da sostituire nei template e la lista di cosa abilitare |
+| `apps.core.services.sveglie` (backend) | la `tolleranza_minuti`, cioè entro quanto l'ultimo run di un processo vale ancora come segno di vita |
+
+⛔ **Perché è cambiato.** Prima le cadenze erano cablate in quattro chiamate
+dentro l'installer, e la tolleranza di liveness degli stessi processi era un
+`WORKER_ATTIVO_SOGLIA_MINUTI = 10` in `coda_lavori/gestione_service.py`. Lo
+stesso fatto — *«ogni quanto ci si aspetta questo processo»* — scritto in due
+posti che non si conoscevano. Due scritture prima o poi dissentono, e lì la
+divergenza sarebbe stata **muta**: un pallino verde su un worker fermo.
+
+### 17.1) I sette unit, e i tre nati quel giorno
+
+| Unit | Processo | Forma | Cadenza default | Acceso dall'installer |
+| --- | --- | --- | --- | --- |
+| `zeroerp-coda-lavori` | `draina_coda_lavori` | timer | `*:0/1` | ✅ |
+| `zeroerp-coda-stampa` | `draina_coda_stampa` | timer | `*:0/2` | ✅ |
+| `zeroerp-fatturazione-immediata` | `run_fatturazione_batch` | timer | `*:0/2` | ⛔ emette documenti |
+| `zeroerp-fatturazione-differita` | `run_fatturazione_batch` | timer | `*-*-01 02:00` | ⛔ idem |
+| **`zeroerp-send-pending-emails`** | `send_pending_emails` | timer | `*:0/5` | ✅ |
+| **`zeroerp-listen-cambio-reparto`** | `listen_cambio_reparto` | **servizio** | — | ✅ |
+
+🔴 **I due in grassetto non esistevano**, e non è un dettaglio: erano processi a
+catalogo in `dbops.processi`, che si registravano su `maintenance.job_run_log`
+dal 2026-09-05, e che **nessun artefatto di deploy faceva partire**. Su un host
+nuovo non partivano mai. `dbops.vw_processi_programmazione` li classifica
+`FUORI_PORTATA` — *«il database non può saperlo»* — quindi il guasto non aveva
+nessun modo di manifestarsi se non come assenza.
+
+⚠️ **Erano tre.** Il terzo — `zeroerp-sync-auth-user-active` — è nato spento il
+2026-09-06 e ritirato il **2026-09-07**: §17.3.
+
+⭐ **Adesso lo presidia il backend**:
+`apps/core/tests/services/test_sveglie.py::test_ogni_processo_del_backend_ha_una_sveglia`
+fallisce se un processo che il backend dichiara di eseguire non ha un unit che
+lo faccia partire. Gira in CI, senza database.
+
+### 17.2) Due forme, e la differenza conta
+
+* **timer** (`Type=oneshot` + `.timer`) — si abilita il **`.timer`**; per un run
+  manuale si lancia il `.service`.
+* **servizio** (`Type=simple` + `Restart=always`, **nessun `.timer`**) — oggi
+  solo `listen_cambio_reparto`: è un listener `LISTEN/NOTIFY` sempre acceso, non
+  ha una cadenza da dichiarare. Si abilita il **`.service`**.
+  ⚠️ Scrive **un solo run**, quello di avvio (decisione di Tid, 2026-09-05):
+  sul giornale dice *«sono partito alle ore X»*, non *«sono vivo adesso»*. Per
+  questo la sua `tolleranza_minuti` è `null` — presidiarne la liveness
+  sull'ultimo run direbbe «fermo» su un listener sano partito tre settimane fa.
+
+### 17.3) ✅ `sync-auth-user-active` è stato RITIRATO (2026-09-07)
+
+`dbops.processi` aveva **due righe per lo stesso lavoro**: `sync_auth_user_active`
+(id 23, `COMMAND`) e `sync_auth_user_expired_daily` (id 11, `PGAGENT`). Il modello
+ammetteva che fossero **accesi tutti e due**, cioè la disattivazione degli utenti
+scaduti due volte per notte, e nulla nel database lo impediva né lo segnalava.
+Per questo il timer era nato **scritto e spento**.
+
+**Deciso dal team DB** (brief §8.5): si tiene il `PGAGENT`. Il lavoro vero
+(`anagrafiche.fn_sync_auth_user_expired`) sta tutto nel database, ha il suo
+wrapper di giornale, ed è l'**unica** delle due righe che il confronto a due
+fonti riesca a vedere — ritirare quella visibile per tenere l'invisibile
+toglierebbe presidio. La riga 23 porta `obsoleto_dal = 2026-09-07`.
+
+**Da questo lato** sono spariti **insieme** unit, voce in `sveglie.json` e
+costante `PROCESSO_SYNC_AUTH_USER_ACTIVE`: lasciarne una farebbe dissentire
+`test_ogni_processo_del_backend_ha_una_sveglia` e `test_nessun_template_orfano`,
+che guardano lo stesso fatto dai due versi.
+
+⭐ **Il management command resta come attrezzo a mano, e NON registra più un
+run.** La FK lo accetterebbe sotto il codice superstite, ma la LATERAL di
+`dbops.vw_processi_programmazione` legge il giornale con
+`processo_codice = codice OR jobname = codice` **senza filtrare `origine`**: una
+corsa a mano sposterebbe avanti `giornale_ultima_corsa` e spegnerebbe il
+confronto `GIRA_E_NON_REGISTRA` su quel job — cioè il rilevatore di R-12, che su
+`apply_storicizza_weekly` ha lavorato indisturbato per sei mesi e mezzo.
+⚠️ Il prezzo dichiarato: **un lancio manuale non lascia traccia**
+(decisione di Tid, 2026-09-07).
+
+### 17.4) Aggiungere una sveglia
+
+1. una voce in `deploy/sveglie.json` (il **perché** delle scelte va nel template,
+   qui il valore — due programmi devono poterlo leggere);
+2. la coppia `deploy/systemd/<unit>.{service,timer}` — solo il `.service` se è un
+   servizio sempre acceso;
+3. `sudo backend/bin/install-timers.sh`.
+
+⚠️ **Modifiche agli unit si fanno sui template**, mai in `/etc/systemd/system`:
+l'installer è idempotente e riscrive tutto a ogni run, quindi una modifica a
+valle sparisce al primo re-install.
+
+```bash
+# Validazione locale, senza root né systemctl (la stessa che gira in CI):
+backend/bin/install-timers.sh --render-only /tmp/units && systemd-analyze verify /tmp/units/*
+```
+
+### 17.5) Come si prova, e le due metà
+
+| Prova | Che cosa dice | Dove gira |
+| --- | --- | --- |
+| `systemd-analyze verify` sui template renderizzati | gli unit **sono validi** | CI, `validate-deploy` |
+| `backend/scripts/tests/test-install-timers.sh` | si accendono **quelli giusti** | CI, `validate-deploy` |
+| `apps/core/tests/services/test_sveglie.py` | ogni processo ha una sveglia, nessun template orfano | CI, suite Django |
+
+🔴 **Fino al 2026-09-06 c'era solo la prima**, e il difetto è passato di lì:
+`install-timers.sh` leggeva i campi con `IFS=$'\t'` — il TAB è IFS-whitespace,
+quindi `read` collassa i delimitatori consecutivi. Su un `oncalendar` vuoto (il
+caso normale di un servizio sempre acceso) `abilita` diventava il testo della
+nota, e `zeroerp-listen-cambio-reparto` veniva **installato e mai avviato**. La
+CI renderizzava sette unit corretti e non poteva vederlo: `--render-only` esce
+**prima** del ramo che accende.
+
+⭐ Il secondo test apre quel ramo senza inventarne uno nuovo: un `systemctl`
+**finto** in testa al `PATH` (lo script lo invoca senza percorso assoluto) e
+`ZEROERP_SYSTEMD_DIR` per la destinazione — con cui cade anche il requisito di
+root, che serve a scrivere in `/etc/systemd/system` e non «perché è la modalità
+install». ⛔ Un `--dry-run` che salta `systemctl` avrebbe provato il ramo che
+**non** accende: inutile per questo bug.
+
+```bash
+# In locale, senza root e senza toccare il sistema:
+bash backend/scripts/tests/test-install-timers.sh
+```
+
+⚠️ Resta scoperto il caso «`systemctl enable` fallisce»: lo stub esce sempre `0`.

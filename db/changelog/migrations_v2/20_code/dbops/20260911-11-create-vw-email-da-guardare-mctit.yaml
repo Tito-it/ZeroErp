@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LE EMAIL CHE RESTANO IN CODA — il presidio che `config.email_log` non aveva.
+#   Brief: brief-db-quattro-processi-senza-presidio §5 · §10.1 · A3
+#
+# Se `send_pending_emails` non gira, le email si accumulano in coda PER SEMPRE,
+# in silenzio: nessuno aspetta una mail entro un tempo preciso, quindi nessuno
+# se ne accorge. ⛔ Non e' un'ipotesi: il timer NON era installato su
+# `backend-dev` (presidi §11.5), e l'unico motivo per cui non ci sono state
+# conseguenze e' che la coda era vuota.
+#
+# ── ⭐ SI PRESIDIA L'EFFETTO, NON LO SCHEDULATORE ────────────────────
+#   Nessuno chiede a systemd se il timer e' acceso: si guarda la coda che si
+#   accumula. Prende anche il processo che gira e sbaglia, e non ha bisogno di
+#   sapere niente dell'host. E' il criterio della gemella
+#   `dbops.vw_coda_lavori_da_guardare`, e chiude anche il buco «fra dichiarato e
+#   installato non guarda nessuno»: un timer mai installato non ha un effetto.
+#
+# ── ⭐ LA DEFINIZIONE DI «IN CODA» NON E' QUI ────────────────────────
+#   Sta in `config.vw_email_in_coda` (changeSet -10), scritta una volta sola per
+#   il cron e per questo presidio. Qui c'e' SOLO la soglia: «dovuta da oltre
+#   un'ora». Se il criterio di coda cambia, cambia in un posto e questo lo segue.
+#
+# ── ⚠️ LA SOGLIA: un'ora, e NON deriva dalla cadenza ─────────────────
+#   Il cron gira ogni 5 minuti e un'ora sono «12 giri», ma non e' quello
+#   l'argomento — vale quello della gemella: una soglia dedotta dai tempi di
+#   oggi si taglierebbe addosso al carico di oggi. Un'ora dice «qualcosa e'
+#   chiaramente sbagliato», e basta. Il backoff dei RETRY e' rispettato per
+#   costruzione: `dovuta_dal` misura da quando la riga era DOVUTA.
+#
+# ── ⛔ PERIMETRO `DEFINER`, ed e' il modello ─────────────────────────
+#   `config.email_log` ha la row level security, e questa vista e'
+#   `security_invoker`: una persona la legge col SUO perimetro; il digest — un
+#   command senza veste — la conta con `dbops.fn_conta_presidio`, da
+#   proprietario, e riporta il NUMERO e non le righe. Senza, «zero righe» e «non
+#   ho potuto vedere» si scriverebbero uguale. La riga a catalogo lo dichiara.
+#
+# ── ⛔ STA IN `dbops`, NON IN `config` ──────────────────────────────
+#   Il test 2 di `test-catalogo-presidi-v1` legge il perimetro dagli schemi che
+#   compaiono nel catalogo: un presidio in `config` porterebbe TUTTE le viste di
+#   `config` nel perimetro. Stessa ragione di `vw_af_senza_giro`, che legge
+#   `vendite.*` e vive qui.
+#
+# Verifica: db/pgtap/dbops/test-vw-email-da-guardare.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260911-11-create-vw-email-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20260911-11-create-vw-email-da-guardare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_email_da_guardare: le email dovute alla coda da oltre un'ora e
+        che nessuno ha preso in mano — cioe' send_pending_emails non gira, o gira
+        e non svuota. DEVE restare VUOTA. Proietta config.vw_email_in_coda (la
+        definizione unica di «in coda») con la sola soglia. Perimetro DEFINER a
+        catalogo: email_log ha la RLS, il digest conta e non elenca.
+      preConditions:
+        - onFail: HALT
+        - viewExists: { schemaName: config, viewName: vw_email_in_coda }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_email_da_guardare
+              WITH (security_invoker = true) AS
+              SELECT c.id,
+                     c.destinatario,
+                     c.oggetto,
+                     c.stato,
+                     c.tentativi,
+                     c.max_tentativi,
+                     c.ambito,
+                     c.emittente_fiscale_id,
+                     -- ⭐ Due motivi, perche' sono due gesti diversi: una riga
+                     --   mai presa dice «il cron non gira»; una riga dovuta e
+                     --   non ripresa dice «il cron non ritenta» — o non gira.
+                     CASE
+                         WHEN c.stato = 'PENDING'
+                             THEN 'mai presa in mano: send_pending_emails non sta girando'
+                         ELSE 'ritentativo dovuto e mai eseguito'
+                     END AS motivo,
+                     -- Da quanto la coda la deve: il numero che dice se guardare
+                     -- adesso o domani.
+                     now() - c.dovuta_dal AS da_quanto,
+                     c.dovuta_dal,
+                     c.data_insert
+                FROM config.vw_email_in_coda c
+               -- ⚠️ La sola soglia. Il criterio di «in coda» non si ripete qui.
+               WHERE c.dovuta_dal < now() - interval '60 minutes';
+
+              COMMENT ON VIEW dbops.vw_email_da_guardare IS
+                  'PRESIDIO: le email che la coda deve a qualcuno da oltre un''ora e che '
+                  'nessuno ha preso in mano. DEVE restare VUOTA. ⭐ Si presidia l''EFFETTO '
+                  'e non lo schedulatore: se send_pending_emails non gira (o gira e non '
+                  'svuota) le email si accumulano qui, e questo prende anche il timer mai '
+                  'installato — che e'' esattamente cio'' che era successo su backend-dev '
+                  'senza che nessuno se ne accorgesse. ⭐ La definizione di «in coda» NON '
+                  'e'' scritta qui: sta in config.vw_email_in_coda, una volta sola, per il '
+                  'cron e per questo presidio; qui c''e'' SOLO la soglia. ⚠️ Un''ora non '
+                  'deriva dalla cadenza del cron (5 minuti): una soglia dedotta dai tempi '
+                  'di oggi si taglierebbe addosso al carico di oggi. Il backoff dei RETRY '
+                  'e'' rispettato per costruzione, perche'' dovuta_dal misura da quando la '
+                  'riga era DOVUTA e non da quando e'' nata. ⛔ Perimetro DEFINER a '
+                  'catalogo: email_log ha la RLS e la vista e'' security_invoker — una '
+                  'persona la legge col suo perimetro, il digest la CONTA da proprietario '
+                  'con fn_conta_presidio e riporta il numero, mai le righe. Sta in dbops e '
+                  'non in config perche'' il catalogo dei presidi legge il perimetro dagli '
+                  'schemi che vi compaiono. Brief: brief-db-quattro-processi-senza-presidio §5.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_email_da_guardare TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_email_da_guardare;

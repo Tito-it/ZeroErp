@@ -22,7 +22,6 @@ from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
-    qp_bool_optional,
     qp_int_optional,
     qp_iso_date_optional,
     qp_str,

@@ -22,7 +22,7 @@ Indice test eseguiti:
 12) CompetenzeFlussiServiceTests.test_elimina_competenza_non_trovata
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 

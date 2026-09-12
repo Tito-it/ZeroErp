@@ -28,6 +28,7 @@ from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
     LOTTO_FATTURE_SORT_COLUMNS,
+    LOTTO_GRUPPI_SORT_COLUMNS,
     MOTIVO_NON_FATTURATA_RESIDUO,
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
@@ -37,6 +38,7 @@ from apps.vendite.db.vendite_repository import (
     DASH_FATTURAZIONE_AREE_EURO,
     FONDI_DA_DECIDERE_MOTIVI,
     SEARCH_MIN_LEN,
+    STATI_ESECUZIONE_DOCUMENTO,
     VenditeRepository,
 )
 from apps.vendite.types import (
@@ -50,6 +52,7 @@ from apps.vendite.types import (
     DashCompetenzaGruppoRow,
     FondoFatturaDaDecidereRow,
     LottoFattureRow,
+    LottoGruppoRow,
     LottoListRow,
 )
 
@@ -202,6 +205,7 @@ def fn_list_lotti(
     page: int = 1,
     page_size: int = 50,
     solo_recuperi_mese: bool = False,
+    includi_annullati: bool = False,
 ) -> dict[str, object]:
     offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
     # ⛔ La scheda «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
@@ -231,8 +235,49 @@ def fn_list_lotti(
         limit=page_size,
         offset=offset,
         solo_recuperi_mese=solo_recuperi_mese,
+        includi_annullati=includi_annullati,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    risposta = _build_list_response(results, total_count, page, page_size)
+    # ⭐ La ripartizione per stato viaggia NELLA STESSA risposta della lista, e
+    #    non su un endpoint suo: cosi' i pulsanti-filtro e le righe sotto
+    #    vengono dalla stessa valutazione del perimetro e non possono
+    #    raccontare due cose diverse. Due chiamate separate potrebbero non
+    #    concordare — basta un lotto che cambia stato fra l'una e l'altra — e i
+    #    chip direbbero 5 dove la lista ne mostra 4.
+    # ⚠️ Il perimetro e' quello della lista MENO il filtro stato: `stato_lotto`
+    #    non si passa. Contandolo, scelto uno stato gli altri andrebbero a zero
+    #    e i loro pulsanti sparirebbero — vedi `_lotti_where`.
+    risposta["stati"] = [
+        {"stato_lotto": stato, "n_lotti": n}
+        for stato, n in sorted(
+            repository.count_lotti_per_stato(
+                competenza_mese=competenza_mese,
+                utility_id=utility_id,
+                area_geografica_id=area_geografica_id,
+                tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+                emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+                auth_user_id=auth_user_id,
+                solo_recuperi_mese=solo_recuperi_mese,
+                includi_annullati=includi_annullati,
+            ).items()
+        )
+    ]
+    # ⭐ Quanti lotti annullati il perimetro sta NASCONDENDO (2026-09-12): senza
+    #    questo numero «mese pulito» e «tre lotti annullati» si leggono uguali.
+    #    A interruttore acceso non c'e' niente di nascosto, e il conteggio non si
+    #    paga. Stesso perimetro della lista, stato compreso: e' «quante righe
+    #    QUESTO filtro lascia fuori» (pattern `archiviate_count` delle code).
+    risposta["annullati_count"] = 0 if includi_annullati else repository.count_lotti_annullati(
+        competenza_mese=competenza_mese,
+        utility_id=utility_id,
+        stato_lotto=stato_lotto,
+        area_geografica_id=area_geografica_id,
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+        auth_user_id=auth_user_id,
+        solo_recuperi_mese=solo_recuperi_mese,
+    )
+    return risposta
 
 
 # Scopo: Estrae i lotti per l'EXPORT (CSV/XLSX), con gli stessi filtri e lo
@@ -259,7 +304,22 @@ def fn_export_lotti(
     order_by: str | None = None,
     order_dir: str | None = None,
     max_rows: int,
+    solo_recuperi_mese: bool = False,
+    includi_annullati: bool = False,
 ) -> tuple[list[LottoListRow], int]:
+    # ⛔ Stesso guard della lista, e per la stessa ragione: «competenza
+    #    precedente» senza un mese non ha un termine di paragone. Senza, il
+    #    predicato diventa `competenza_mese < NULL` — che non e' un errore, e'
+    #    zero righe: un file VUOTO consegnato come se fosse la risposta.
+    ErrorManager.require(
+        not solo_recuperi_mese or competenza_mese is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="competenza_mese obbligatoria per l'export dei recuperi del mese",
+        context={"field": "competenza_mese"},
+        function_name="vendite.vendite_service.fn_export_lotti",
+        log_to_db=False,
+    )
     repository = VenditeRepository()
     return repository.list_lotti(
         competenza_mese=competenza_mese,
@@ -274,6 +334,8 @@ def fn_export_lotti(
         limit=max_rows,
         offset=0,
         max_limit=max_rows,
+        solo_recuperi_mese=solo_recuperi_mese,
+        includi_annullati=includi_annullati,
     )
 
 
@@ -289,7 +351,9 @@ _DASH_ANNO_MAX = 2100
 #        Ritorna sempre i 12 mesi (0-riempiti) in ordine, ognuno con la sua
 #        competenza (YYYY-MM-01, chiave stabile per il componente FE) e n_lotti.
 #        Scope emittente applicato in repo (RLS + whitelist), come la lista.
-def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str, object]:
+def fn_lotti_mensile(
+    *, anno: int, auth_user_id: int | None = None, includi_annullati: bool = False,
+) -> dict[str, object]:
     ErrorManager.require(
         isinstance(anno, int) and _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
         code="E_VENDITE_VALIDATION",
@@ -299,7 +363,9 @@ def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str,
         function_name="vendite.vendite_service.fn_lotti_mensile",
     )
     repository = VenditeRepository()
-    per_mese = repository.count_lotti_per_mese(anno=anno, auth_user_id=auth_user_id)
+    per_mese = repository.count_lotti_per_mese(
+        anno=anno, auth_user_id=auth_user_id, includi_annullati=includi_annullati,
+    )
     mesi = [
         {
             "competenza_mese": f"{anno:04d}-{mese:02d}-01",
@@ -420,6 +486,71 @@ def fn_list_lotto_fatture(
         offset=offset,
         max_rows=max_rows,
     )
+    return _build_list_response(results, total_count, page, page_size)
+
+
+# Scopo: I DOCUMENTI CHE UN LOTTO HA PRESO IN CARICO, con l'esito di ciascuno.
+# Obiettivo: rispondere a «quale documento di questo giro non e' passato, e
+#        perche'» — la domanda a cui la scheda «Documenti» non puo' rispondere,
+#        perche' elenca le FATTURE e un documento caduto prima di diventarne una
+#        non ha niente a cui appendersi (brief-db-esito-gruppo-lotto §0).
+# Perimetro: sola lettura; il cancello di scope e' la TESTATA del lotto —
+#        ne' `fatturazione_lotti_gruppi` ne' `fatturazione_lotti_esiti` hanno
+#        RLS, `fatturazione_lotti` si'.
+# Risultato: dict con count, page, page_size, total_pages, results.
+def fn_list_lotto_gruppi(
+    *,
+    lotto_id: int,
+    auth_user_id: int | None = None,
+    stato_esecuzione: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+    max_rows: int | None = None,
+) -> dict[str, object]:
+    # ⚠️ Il vocabolario del DOCUMENTO, non quello comune: questa lista legge
+    #    `fatturazione_lotti_esiti`, che dal 2026-09-08 ammette anche `ESCLUSO`.
+    #    Con l'elenco comune il filtro «uscito dal giro» rispondeva **400 a una
+    #    domanda buona** — il difetto in LETTURA che il cancello del vocabolario
+    #    dichiara nella propria intestazione.
+    _validate_enum(
+        stato_esecuzione,
+        allowed=STATI_ESECUZIONE_DOCUMENTO,
+        param_name="stato_esecuzione",
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi",
+    )
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=LOTTO_GRUPPI_SORT_COLUMNS,
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi",
+    )
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi",
+    )
+    repository = VenditeRepository()
+    results: list[LottoGruppoRow]
+    results, total_count = repository.list_lotto_gruppi(
+        lotto_id=lotto_id,
+        auth_user_id=auth_user_id,
+        stato_esecuzione=stato_esecuzione,
+        sort_by=order_by,
+        sort_dir=order_dir or "asc",
+        limit=limit,
+        offset=offset,
+        max_rows=max_rows,
+    )
+    # ⛔ NIENTE `perimetro_dichiarato`, e la sua sparizione e' il segno che il
+    #    database ha risolto il problema invece di spostarlo (rev 2026-09-07).
+    #    Serviva a distinguere «questo lotto non ha lavorato niente» da «questo
+    #    lotto non dichiara un perimetro», perche' la lista leggeva il solo
+    #    perimetro e i giri di massa non ne scrivono uno. Ora la lista legge
+    #    ANCHE gli esiti, che ci sono su entrambi i tipi di giro: zero righe ha
+    #    un significato solo — di questo lotto non risulta nessun documento.
+    # ⚠️ Tolto e non lasciato «per compatibilita'»: un campo che non discrimina
+    #    piu' niente e' peggio di un campo assente, perche' chi lo legge crede
+    #    che discrimini.
     return _build_list_response(results, total_count, page, page_size)
 
 
@@ -634,11 +765,22 @@ class _CellaCompetenza:
     # ⭐ La quota RESIDUA dentro `EMESSA_NON_FATTURATA`. Sta a parte e non
     # sostituisce il totale, perche' la card deve dire DUE cose: quanto lavoro
     # e' fermo in quello stadio, e quanta parte di quel lavoro **chiede
-    # un'azione**. Le altre tre situazioni dello stadio — in attesa del lotto,
-    # giro in corso, senza attivita' fatturabile — non chiedono niente, e
+    # un'azione**. Le altre due situazioni dello stadio — giro in corso,
+    # senza attivita' fatturabile — non chiedono niente, e
     # sommarle al residuo darebbe un numero solo per rimedi opposti.
     n_residui: int = 0
     valore_residui: Decimal = Decimal(0)
+    # ⭐ Il lavoro che un GIRO ANCORA IN CORSO sta trattenendo, e che quindi
+    # `n_attivita` non conta piu' (changeSet `20260909-67`). Stessa forma della
+    # quota residua qui sopra, e per la stessa ragione: la card deve dire DUE
+    # cose — quanto lavoro si puo' prendere, e quanto ce n'e' che non si puo'
+    # prendere perche' e' gia' in mano a qualcuno.
+    # ⛔ Senza questa meta' il numero cala e nessuno sa di quanto: «non c'e'
+    # niente da fare» e «c'e' del lavoro in un giro vivo» si leggerebbero
+    # uguali. Era il difetto del collaudo 09-09 girato di 180 gradi — li' la
+    # card diceva 4 su un elenco di 3, qui direbbe 3 senza spiegare il quarto.
+    n_trattenute: int = 0
+    valore_trattenuto: Decimal = Decimal(0)
 
 
 # Scopo: Serializza una cella-stadio nel payload API. Contratto SIMMETRICO su
@@ -713,6 +855,13 @@ def _cella_stadio_payload(
         # transito legittimo e non va toccata.
         "n_residui": cella.n_residui,
         "valore_residui": str(cella.valore_residui),
+        # ⭐ La quota TRATTENUTA da un giro ancora in corso. Contratto
+        # simmetrico come il resto: il campo c'e' su ogni stadio e vale 0 dove
+        # non si applica — e su `DA_EMETTERE` e' l'unico posto in cui la card
+        # puo' spiegare perche' il suo numero e' piu' piccolo dell'elenco che
+        # l'operatore ricorda.
+        "n_trattenute": cella.n_trattenute,
+        "valore_trattenuto": str(cella.valore_trattenuto),
         # Le voci del breakdown, serializzate qui una volta sola: dentro la
         # cella i valori restano Decimal (si sommano fra loro), fuori sono
         # stringhe come ogni altro importo del payload.
@@ -812,6 +961,11 @@ def fn_dash_competenza_mensile(
             #    sede sola in questa funzione ed e' `valore_abs`, che serve al
             #    donut di copertura — dove non compensare e' proprio il punto.
             cella.valore_residui += Decimal(r["valore"])
+        # ⭐ La quota che un giro in corso trattiene. ⚠️ Arriva GIA' esclusa da
+        #    `n_attivita` e da `valore` (il `FILTER` sta nella vista): qui non
+        #    si sottrae niente, si DICHIARA quanto e' stato tolto.
+        cella.n_trattenute += r["n_attivita_trattenute"]
+        cella.valore_trattenuto += Decimal(r["valore_trattenuto"])
         if r["stadio"] == "FATTURATA":
             # Una voce per STATO FATTURA, con i movimenti sommati dentro: il
             # breakdown risponde a «di cio' che e' fatturato, in che stato sono
@@ -1136,7 +1290,7 @@ def fn_dash_competenza_residui(
     max_rows: int | None = None,
 ) -> dict[str, object]:
     # ⚠️ Nessun parametro `stadio`: la lista E' uno stadio, anzi una delle
-    #    quattro situazioni dentro `EMESSA_NON_FATTURATA`. Accettarlo darebbe
+    #    tre situazioni dentro `EMESSA_NON_FATTURATA`. Accettarlo darebbe
     #    all'invocante l'illusione di poter allargare il perimetro del verbo.
     _valida_ordinamento(
         order_by, order_dir,

@@ -13,6 +13,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -53,6 +54,8 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+
+
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -95,6 +98,11 @@ const props = defineProps({
   contrattoStatoCodice: { type: String, default: '' },
   contrattoStatoDescrizione: { type: String, default: '' },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'changed'])
 
 const righe = ref([])
@@ -986,12 +994,13 @@ function origineSeverity(origine) {
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
     :dismissable="true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :title="t('vendite.contratti.drawer_righe_titolo')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- === Intestazione contesto contratto (BB DrawerContextHeader) === -->
       <DrawerContextHeader

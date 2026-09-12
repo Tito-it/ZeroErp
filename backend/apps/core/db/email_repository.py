@@ -24,8 +24,10 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
         except (json.JSONDecodeError, TypeError):
             pass
 
+from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
     fetchone_scalar,
+    jsonb_out,
     row_to_dict,
     rows_to_list,
     sql_order_direction,
@@ -304,7 +306,7 @@ class EmailRepository:
             cursor.execute(sql, [unita_organizzativa_id])
             row = cursor.fetchone()
             if row and row[0]:
-                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                return jsonb_out(row[0])
         return None
 
     # -------------------------------------------------------
@@ -459,7 +461,7 @@ class EmailRepository:
             cursor.execute(sql, [codice, unita_organizzativa_id, tipo_prestazione_id, lingua])
             row = cursor.fetchone()
             if row and row[0]:
-                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                return jsonb_out(row[0])
         return None
 
     # -------------------------------------------------------
@@ -478,12 +480,59 @@ class EmailRepository:
         corpo_inviato_html: str | None = None,
         corpo_inviato_testo: str | None = None,
         stato: str = "PENDING",
-        ambito: str = "SISTEMA",
+        # ⛔ Nessun default, come su `create_outbox` (2026-09-05). `ambito`
+        #    classifica A CHI APPARTIENE l'email, ed e' la colonna su cui il
+        #    database sta per montare una policy di lettura: un valore di
+        #    RIPIEGO non puo' fare da cancello di sicurezza, o basta un campo
+        #    dimenticato per classificare come segreta una riga qualunque.
+        #    Prerequisito dichiarato dal team DB per la policy su
+        #    `config.email_log` (brief residui §1-nonies).
+        ambito: str,
         unita_organizzativa_id: int | None = None,
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         contesto_json: dict[str, Any] | None = None,
     ) -> int:
+        # ⛔ LE EMAIL DI SISTEMA PASSANO DA UNA PORTA LORO, e non e' una
+        #    preferenza di stile: dal 2026-09-05 `config.email_log` ha la RLS
+        #    accesa, e la policy ammette in scrittura solo il super admin o
+        #    l'identita' tecnica di `send_pending_emails`. Un reset password
+        #    nasce su un endpoint NON autenticato — nessuna sessione, nessuna
+        #    GUC — e un invito puo' partire da un admin che super admin non e':
+        #    misurato il 2026-09-05, entrambi venivano RIFIUTATI.
+        # ⭐ `config.fn_accoda_email_sistema` e' `SECURITY DEFINER` e sa scrivere
+        #    UNA COSA SOLA: `ambito='SISTEMA'`, emittente `NULL`. Non prende
+        #    l'ambito come parametro proprio per non essere una porta di
+        #    servizio con cui scrivere qualunque riga aggirando la policy.
+        # ⚠️ Il bivio guarda LA RIGA, non il chiamante: `_send_smtp` e
+        #    `retry_log_entry` arrivano qui sia dal percorso senza sessione sia
+        #    dal worker, che l'identita' ce l'ha. E' l'ambito a decidere.
+        if ambito == AMBITO_SISTEMA:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT config.fn_accoda_email_sistema(
+                        p_destinatario           => %s,
+                        p_oggetto                => %s,
+                        p_corpo_html             => %s,
+                        p_corpo_testo            => %s,
+                        p_email_account_id       => %s,
+                        p_email_template_id      => %s,
+                        p_auth_user_id           => %s,
+                        p_contesto_json          => %s::jsonb,
+                        p_unita_organizzativa_id => %s,
+                        p_destinatari_cc         => %s,
+                        p_pratica_id             => %s)
+                    """,
+                    [
+                        destinatario, oggetto, corpo_inviato_html, corpo_inviato_testo,
+                        email_account_id, email_template_id, auth_user_id,
+                        json.dumps(contesto_json or {}),
+                        unita_organizzativa_id, destinatari_cc, pratica_id,
+                    ],
+                )
+                return fetchone_scalar(cursor)
+
         sql = """
             INSERT INTO config.email_log
                 (email_account_id, email_template_id, destinatario, destinatari_cc,
@@ -503,15 +552,38 @@ class EmailRepository:
             cursor.execute(sql, params)
             return fetchone_scalar(cursor)
 
-    # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY).
+    # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY,
+    #        SIMULATA). ⚠️ L'elenco autorevole e' il `CHECK`
+    #        `chk_email_log_stato`, specchiato in
+    #        `amm_software_service._EMAIL_LOG_STATI_VALIDI`: qui si dice
+    #        cosa passa di qua, non cosa e' ammesso.
+    #
+    # ⛔ `ambito` NON ha un default, e serve a scegliere la porta — non a
+    #    descrivere la riga. Su una `SISTEMA` l'UPDATE diretto e' rifiutato
+    #    dalla policy per lo stesso motivo per cui lo era l'INSERT: chi ha
+    #    appena spedito un reset password non ha una sessione.
+    # ⭐ `config.fn_chiudi_email_sistema` tocca SOLO righe `SISTEMA` e SOLO i
+    #    campi dell'esito. ⚠️ Se la riga non e' di sistema **solleva**, e quel
+    #    rifiuto NON va trasformato in un ripiego sull'UPDATE diretto: dice che
+    #    qualcuno sta usando la porta di sistema per l'email di un'azienda, ed e'
+    #    il solo posto in cui quel difetto si vede.
     def update_log_stato(
         self,
         log_id: int,
         stato: str,
         *,
+        ambito: str,
         errore: str | None = None,
         inviato_at: str | None = None,
     ) -> bool:
+        if ambito == AMBITO_SISTEMA:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config.fn_chiudi_email_sistema(%s, %s, %s, %s::timestamptz)",
+                    [log_id, stato, errore, inviato_at],
+                )
+                return bool(fetchone_scalar(cursor))
+
         sql = """
             UPDATE config.email_log
                SET stato = %s,
@@ -639,7 +711,13 @@ class EmailRepository:
         destinatari_cc: list[str] | None = None,
         email_account_id: int | None = None,
         email_template_id: int | None = None,
-        ambito: str = "SISTEMA",
+        # ⛔ Nessun default: lo dichiara chi crea la bozza. Vedi `EmailPrepareView`.
+        ambito: str,
+        # ⭐ L'azienda a cui la bozza appartiene. Obbligatoria per il database su
+        #    tutto cio' che non e' `SISTEMA` (`chk_email_outbox_ambito_emittente`),
+        #    ed e' la colonna su cui la policy RLS filtra: senza, la riga non
+        #    sarebbe di nessuno e nessun operatore la vedrebbe.
+        emittente_fiscale_id: int | None = None,
         unita_organizzativa_id: int | None = None,
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
@@ -648,15 +726,15 @@ class EmailRepository:
     ) -> int:
         sql = """
             INSERT INTO config.email_outbox
-                (email_account_id, email_template_id, ambito,
+                (email_account_id, email_template_id, ambito, emittente_fiscale_id,
                  unita_organizzativa_id, pratica_id,
                  destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo,
                  stato, contesto_json, auth_user_id, creato_da_user_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'DRAFT', %s::jsonb, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'DRAFT', %s::jsonb, %s, %s)
             RETURNING id
         """
         params = [
-            email_account_id, email_template_id, ambito,
+            email_account_id, email_template_id, ambito, emittente_fiscale_id,
             unita_organizzativa_id, pratica_id,
             destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo,
             json.dumps(contesto_json or {}), auth_user_id, creato_da_user_id,

@@ -10,7 +10,6 @@
 - [articolo_regole_fatturazione](tabelle/articolo_regole_fatturazione.md) — (latest review 21-01-2026) Questa tabella definisce, **per ciascun articolo**, le regole di business che governano:
 - [attivita_consumi](tabelle/attivita_consumi.md) — (latest review 24-01-2026) `vendite.attivita_consumi` rappresenta la **testata consumi** per utilities, con totalizzatori e periodi di riferimento. E` il punto di aggregazione per dettagli futuri (fasce, minimi, tipologie energia, ecc.) e puo` essere collegata alla fattura in emissione.
 - [attivita_fatturabili](tabelle/attivita_fatturabili.md) — (latest review 21-01-2026) `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.). Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*. Queste righe sono **pre‑documentali**: quando il ciclo di fatturazione le preleva, diventano **righe di fattura** (`vendite.fatture_righe`).
-- [attivita_fatturabili_log](tabelle/attivita_fatturabili_log.md) — (latest review 24-01-2026) `vendite.attivita_fatturabili_log` registra **warning** e **errori critici** relativi ai processi di alimentazione di `attivita_fatturabili`.
 - [commesse](tabelle/commesse.md) — (latest review 26-02-2026)   `vendite.commesse` e` la testata di governo del ciclo operativo `sorgente -> commessa -> commesse_attivita -> attivita_fatturabili`.
 - [commesse_attivita](tabelle/commesse_attivita.md) — La tabella `vendite.commesse_attivita` e` la sorgente di verita` operativa delle righe da emettere verso `attivita_fatturabili`.
 - [commesse_attivita_log](tabelle/commesse_attivita_log.md) — La tabella `vendite.commesse_attivita_log` registra eventi di dominio sulle righe `commesse_attivita`, come audit persistente indipendente dal layer applicativo.
@@ -29,6 +28,7 @@
 - [event_log](tabelle/event_log.md) — `vendite.event_log` centralizza in un unico stream temporale gli eventi tecnici/funzionali dei domini vendite (pipeline, commesse, SDI, fatture), con modello **append-only**.
 - [famiglie_documento](tabelle/famiglie_documento.md) — (latest review 31-08-2026)
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti` rappresenta il **lotto di fatturazione**, ovvero il contenitore operativo che fissa i **parametri di calcolo** (competenza, utility, tipo documento, BA, emittente fiscale) e consente la gestione coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, statistiche).
+- [fatturazione_lotti_esiti](tabelle/fatturazione_lotti_esiti.md)
 - [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti_fatture` rappresenta la **relazione esplicita** tra lotto e fattura, consentendo di:
 - [fatturazione_lotti_gruppi](tabelle/fatturazione_lotti_gruppi.md) — Registra il **perimetro di un lotto mirato**: quali gruppi fatturabili quel lotto ha il permesso di lavorare.
 - [fatturazione_lotti_log](tabelle/fatturazione_lotti_log.md) — (latest review 28-01-2026) `vendite.fatturazione_lotti_log` registra **warning** e **errori critici** relativi ai processi del lotto di fatturazione.
@@ -116,6 +116,7 @@
 - [fn_check_fondo_fattura_capiente](funzioni/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
 - [fn_chiudi_contratto_per_successione](funzioni/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](funzioni/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
+- [fn_classe_emittibilita_per_giro](funzioni/fn_classe_emittibilita_per_giro.md) — (latest review 12-09-2026)
 - [fn_cleanup_fatture_by_ids](funzioni/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](funzioni/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
@@ -138,6 +139,7 @@
 - [fn_documento_lineage](funzioni/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_elimina_fattura_da_lotto](funzioni/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
 - [fn_emit_attivita_fatturabili_da_commessa](funzioni/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
+- [fn_escludi_documento_da_giro](funzioni/fn_escludi_documento_da_giro.md) — (latest review 2026-09-08)
 - [fn_esito_gruppi_giro](funzioni/fn_esito_gruppi_giro.md) — (latest review 15-08-2026)
 - [fn_espandi_listino_versione](funzioni/fn_espandi_listino_versione.md)
 - [fn_event_log_ttl_days](funzioni/fn_event_log_ttl_days.md)
@@ -182,7 +184,7 @@
 - [fn_libera_attivita_fatturabili](funzioni/fn_libera_attivita_fatturabili.md) — (latest review 26-08-2026)
 - [fn_link_commessa_sorgente](funzioni/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
 - [fn_list_commessa_attivita](funzioni/fn_list_commessa_attivita.md) — (latest review 26-02-2026)   Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
-- [fn_list_commesse_emittibili](funzioni/fn_list_commesse_emittibili.md) — (latest review 26-02-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
+- [fn_list_commesse_emittibili](funzioni/fn_list_commesse_emittibili.md) — (latest review 12-09-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
 - [fn_list_consumi_da_pushare](funzioni/fn_list_consumi_da_pushare.md) — `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility pronti per il push verso `commesse_attivita`, restituendo un payload di base per l'handler di calcolo componenti.
 - [fn_list_contratti_da_pushare](funzioni/fn_list_contratti_da_pushare.md) — `vendite.fn_list_contratti_da_pushare(...)` seleziona le righe contratto pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
 - [fn_list_ddt_da_pushare](funzioni/fn_list_ddt_da_pushare.md) — `vendite.fn_list_ddt_da_pushare(...)` seleziona le righe DDT pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
@@ -194,9 +196,10 @@
 - [fn_list_preventivi_da_pushare](funzioni/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_log_event](funzioni/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](funzioni/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
-- [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
+- [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 2026-09-08)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
 - [fn_lookup_registro_documento](funzioni/fn_lookup_registro_documento.md) — (latest review 31-08-2026)
 - [fn_lookup_registro_id](funzioni/fn_lookup_registro_id.md) — **Cercare il sezionale di numerazione, e basta.**
+- [fn_lotto_da_emit_batch](funzioni/fn_lotto_da_emit_batch.md) — (latest review 12-09-2026)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
 - [fn_numero_documento_fattura](funzioni/fn_numero_documento_fattura.md) — **È la sede unica che dice come si scrive il numero di una fattura.**
 - [fn_offerta_eccezione_componenti_init](funzioni/fn_offerta_eccezione_componenti_init.md)
@@ -239,10 +242,12 @@
 - [fn_ricalcola_totali_fattura](funzioni/fn_ricalcola_totali_fattura.md) — La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**, applicando le regole di arrotondamento definite per **emittente/utility**.
 - [fn_ricalcola_totali_ordine](funzioni/fn_ricalcola_totali_ordine.md) — (latest review 05-06-2026)
 - [fn_ricalcola_totali_preventivo](funzioni/fn_ricalcola_totali_preventivo.md) — (latest review 02-05-2026)
+- [fn_riferimento_gruppo_fatturabile](funzioni/fn_riferimento_gruppo_fatturabile.md) — (latest review 2026-09-08)
 - [fn_riporta_attivita_da_emettere](funzioni/fn_riporta_attivita_da_emettere.md) — (latest review 26-08-2026)
 - [fn_riporta_lotto_a_draft](funzioni/fn_riporta_lotto_a_draft.md) — (latest review 31-08-2026)  
 - [fn_ritira_commessa_attivita_da_sorgente](funzioni/fn_ritira_commessa_attivita_da_sorgente.md) — (latest review 26-08-2026)
 - [fn_saldo_sorgente_fondo](funzioni/fn_saldo_sorgente_fondo.md) — (latest review 15-08-2026)
+- [fn_segna_esito_gruppo_lotto](funzioni/fn_segna_esito_gruppo_lotto.md) — (latest review 2026-09-08)
 - [fn_select_attivita_fatturabili](funzioni/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
 - [fn_set_arrotondamento_scope](funzioni/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](funzioni/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
@@ -251,6 +256,7 @@
 - [fn_snapshot_fattura_lotto](funzioni/fn_snapshot_fattura_lotto.md) — (latest review 02-08-2026)
 - [fn_snapshot_indirizzi_fattura](funzioni/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
 - [fn_snapshot_intestazione_fattura](funzioni/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
+- [fn_split_gruppo_fatturabile_key](funzioni/fn_split_gruppo_fatturabile_key.md) — (latest review 2026-09-08)
 - [fn_start_commessa_push_run](funzioni/fn_start_commessa_push_run.md) — `vendite.fn_start_commessa_push_run` **apre** un giro dell'orchestratore push: scrive la riga in `commesse_push_log` all'inizio della corsa, in stato `IN_ESECUZIONE`, e ne restituisce l'identificativo. Quell'identificativo è ciò che il chiamante conserva per chiudere il giro quando ha finito.
 - [fn_start_lotto_task_run](funzioni/fn_start_lotto_task_run.md) — Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 - [fn_sync_contabili_fondo_fattura](funzioni/fn_sync_contabili_fondo_fattura.md) — Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`), senza scrivere movimenti pagamenti diretti.
@@ -258,7 +264,7 @@
 - [fn_sync_fatture_log_critical_lotto](funzioni/fn_sync_fatture_log_critical_lotto.md) — (latest review 20-02-2026)   La funzione **`vendite.fn_sync_fatture_log_critical_lotto()`** sincronizza in modo set-based:
 - [fn_sync_lotto_fatture_stato](funzioni/fn_sync_lotto_fatture_stato.md) — (latest review 30-01-2026)   La funzione **`vendite.fn_sync_lotto_fatture_stato()`** allinea lo stato documentale delle fatture collegate a un lotto.
 - [fn_upsert_commessa_attivita](funzioni/fn_upsert_commessa_attivita.md) — (latest review 15-04-2026)
-- [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()`** valida la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di `attivita_fatturabili`.
+- [trgfn_attivita_fatturabili_guard_ba_coerenza](funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 10-09-2026)
 - [trgfn_attivita_fatturabili_guard_commessa](funzioni/trgfn_attivita_fatturabili_guard_commessa.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_attivita_fatturabili_guard_commessa()` applica il guardrail anti-bypass sul dominio `attivita_fatturabili`, impedendo scritture senza collegamento commessa quando il flag è attivo.
 - [trgfn_attivita_fatturabili_guard_fatturato](funzioni/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
 - [trgfn_attivita_fatturabili_guard_quantita_immutabile](funzioni/trgfn_attivita_fatturabili_guard_quantita_immutabile.md) — (rev 2026-08-21)
@@ -308,6 +314,7 @@
 - [trgfn_famiglie_documento_guard_riferimenti](funzioni/trgfn_famiglie_documento_guard_riferimenti.md) — (latest review 31-08-2026)
 - [trgfn_famiglie_documento_guard_struttura](funzioni/trgfn_famiglie_documento_guard_struttura.md) — *(rev 2026-09-01 — trigger nato il 2026-09-01)*
 - [trgfn_fattura_satellite_guard_congelamento](funzioni/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
+- [trgfn_fatturazione_lotti_esiti_uscita](funzioni/trgfn_fatturazione_lotti_esiti_uscita.md) — (latest review 2026-09-08)
 - [trgfn_fatturazione_lotti_gen_codice](funzioni/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_guard_stato](funzioni/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
 - [trgfn_fatture_guard_data_numerata](funzioni/trgfn_fatture_guard_data_numerata.md) — **Rende immutabile `vendite.fatture.data` da quando la fattura ha un numero.**
@@ -363,6 +370,7 @@
 - [trgfn_promo_articoli_guard_data_driven](funzioni/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 - [trgfn_registri_fatturazione_guard_forma_numero](funzioni/trgfn_registri_fatturazione_guard_forma_numero.md)
 - [trgfn_registri_fatturazione_guard_serie_ammessa](funzioni/trgfn_registri_fatturazione_guard_serie_ammessa.md)
+- [trgfn_registri_fatturazione_set_anno_nel_numero](funzioni/trgfn_registri_fatturazione_set_anno_nel_numero.md)
 - [trgfn_resi_accrediti_guard](funzioni/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
 - [trgfn_resi_gen_numero](funzioni/trgfn_resi_gen_numero.md) — (rev 2026-08-31, sera)
 - [trgfn_resi_guard_ddt_consegnato](funzioni/trgfn_resi_guard_ddt_consegnato.md) — (rev 2026-07-13)
@@ -379,16 +387,17 @@
 
 ## 🔍 Views
 - [vw_af_merce_per_riga](views/vw_af_merce_per_riga.md) — (latest review 2026-08-17)
+- [vw_commesse_attivita_emittibilita](views/vw_commesse_attivita_emittibilita.md)
 - [vw_contatore_merce](views/vw_contatore_merce.md) — (latest review 2026-08-17)
 - [vw_contratti_lista](views/vw_contratti_lista.md) — (rev 2026-08-21)
 - [vw_dash_aperto_documenti](views/vw_dash_aperto_documenti.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Vista dettaglio della **Situazione aperta v2 — serbatoio pre-commessa**: lo **stock dei documenti aperti e non conclusi** delle 4 aree documento (PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale**. Risponde a: *"quali documenti aperti, se conclusi, andrebbero in commessa/fatturazione ma non ci sono ancora arrivati, e in che fase sono?"*. Il concetto **"transitato"** è **eliminato** (DL-14): in una vista senza asse temporale totalizzava *dalla notte dei tempi* documenti già passati avanti, informazione non azionabile.
 - [vw_dash_aperto_riepilogo](views/vw_dash_aperto_riepilogo.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Le **card della Situazione aperta v2**: aggregata `area × fase` sullo stock degli **aperti-non-conclusi** (`vw_dash_aperto_documenti` v2). Alimenta le card senza aggregazione BE-side (DB-first). Le fasi presenti sono solo APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte dalla dettaglio) → il FE le rappresenta con un **donut a spicchi per fase** (maturità verso la commessa).
 - [vw_dash_backlog_documenti](views/vw_dash_backlog_documenti.md) — (latest review 2026-07-18) **Lente 2 Backlog** (cruscotti fatturazione a due lenti): la lista dei **non-collegati azionabili** — cosa è fermo prima della commessa, da quanto, e cosa serve per sbloccarlo. L'asse **non è la competenza** (i fermi non ce l'hanno): è l'**anzianità** (`data_riferimento`/`anzianita_giorni`) e l'**azionabilità** (`classe` dalla lookup `config.motivi_fermo`).
 - [vw_dash_backlog_riepilogo](views/vw_dash_backlog_riepilogo.md) — (latest review 06-07-2026) Contatori di testata della pagina **Backlog** (Lente 2): `🟠 n · 🔵 n · 🔴 n` per classe × area (il 🟢 FISIOLOGICO è già escluso a monte da `vw_dash_backlog_documenti`). Grana: una riga per `classe × area` con `n_documenti`, `valore_fermo_tot` (0 per le aree a conteggi), `unita_ferme_tot`, `anzianita_max_giorni`.
+- [vw_dash_commesse_respinte](views/vw_dash_commesse_respinte.md) — (latest review 04-09-2026)
 - [vw_dash_competenza_attivita](views/vw_dash_competenza_attivita.md) — (latest review 06-07-2026) Vista di dettaglio della **Lente 1 Competenza** (cruscotti fatturazione a due lenti, brief `brief-db-fatturazione-due-lenti` §4): una riga per **attività di commessa computabile**, con la sua posizione nel funnel a valle (commessa → attività fatturabile → riga fattura → stato fiscale) e la dimensione dei **recuperi tardivi**. L'asse è la competenza **vera** (`commesse_attivita.competenza_mese`, NOT NULL) — nessun proxy.
 - [vw_dash_competenza_errori](views/vw_dash_competenza_errori.md) — (latest review 06-07-2026) Blocco **errori** della Lente 1 Competenza (blocco 4 del design, assorbe §12.3 del brief pre-fatturazione): gli eventi di errore **vivi** della pipeline di fatturazione, per mese di competenza — dal cruscotto si vede subito se c'è un lotto o una fattura inceppati, senza andare a caccia nei log.
 - [vw_dash_competenza_gruppi](views/vw_dash_competenza_gruppi.md) — L'**elenco dei gruppi fatturabili** che alimenta la card «Da emettere» della Lente Competenza. Prima di agire, l'operatore deve vedere cosa può fatturare, raggruppato nelle unità su cui può decidere, con **quante righe** e **quanto valore** ciascuna pesa.
-- [vw_dash_competenza_gruppi_riepilogo](views/vw_dash_competenza_gruppi_riepilogo.md) — I **totali del perimetro** per la riga di riconciliazione sotto la lista dei gruppi fatturabili:
 - [vw_dash_competenza_mensile](views/vw_dash_competenza_mensile.md) — (latest review 26-08-2026) Aggregata mensile della **Lente 1 Competenza** in **formato lungo**: una riga per `competenza_mese × stadio × stato_fattura_codice_interno × tipo_movimento × motivo_non_fatturata`. Gli stati fattura sono **dati** (`config.stati_doc_fiscale`), non colonne: il formato lungo regge il breakdown per stato (blocco 3a del design) senza rincorrere il vocabolario; il **BE pivota**.
 - [vw_dash_fatturazione_commesse](views/vw_dash_fatturazione_commesse.md) — (latest review 03-07-2026) Resolver dell'area **COMMESSE** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per **commessa × `competenza_mese`** delle attività (la competenza "vera" del funnel, la stessa che perimetra i lotti): valore **imponibile** totale vs **transitato** (attività emesse in `attivita_fatturabili`). È il tratto finale pre-fattura.
 - [vw_dash_fatturazione_contratti](views/vw_dash_fatturazione_contratti.md) — (latest review 07-07-2026) Resolver dell'area **CONTRATTI** per la famiglia dash fatturazione / Situazione aperta (brief `brief-db-situazione-aperta` SA-1, decisione **DL-12**): **una riga per contratto vivo**, **de-esplosa** (fino al 2026-07-07 era una riga per contratto × mese coperto — l'asse mensile serviva alla 5-card, dismessa). Area **a conteggi** (D-3), con **giudizio di transito SOSPESO** finché non esiste il push ricorrente dei canoni.
@@ -400,6 +409,7 @@
 - [vw_ddt_lista](views/vw_ddt_lista.md) — (rev 2026-08-28)
 - [vw_ddt_riepilogo_iva_dettaglio](views/vw_ddt_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)
 - [vw_ddt_righe_iva_base](views/vw_ddt_righe_iva_base.md) — (rev 2026-08-21)
+- [vw_documenti_trattenuti_da_lotto](views/vw_documenti_trattenuti_da_lotto.md)
 - [vw_documento_lineage](views/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
 - [vw_documento_lineage_archi](views/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
 - [vw_documento_lineage_nodi](views/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
@@ -407,6 +417,8 @@
 - [vw_fattura_righe_esposte](views/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
 - [vw_fatture_lista](views/vw_fatture_lista.md)
 - [vw_fondi_fattura_da_decidere](views/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
+- [vw_lotti_chiusi_con_gruppi_in_errore](views/vw_lotti_chiusi_con_gruppi_in_errore.md)
+- [vw_lotti_fase](views/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
 - [vw_lotti_fatture_incoerenti](views/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)
 - [vw_lotti_gruppi_serviti](views/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
 - [vw_offerte_commerciali_lista](views/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
@@ -428,6 +440,7 @@
 - [vw_resi_lista](views/vw_resi_lista.md) — (rev 2026-07-13)
 - [vw_resi_righe_dettaglio](views/vw_resi_righe_dettaglio.md) — (latest review 25-08-2026)
 - [vw_resi_righe_effettive](views/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
+- [vw_segnalazioni_con_documento_ignoto](views/vw_segnalazioni_con_documento_ignoto.md) — (latest review 2026-09-08)
 - [vw_situazione_merce_ordine](views/vw_situazione_merce_ordine.md) — (rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](views/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_ddt](views/vw_stato_sorgente_ddt.md) — (latest review 2026-07-18)

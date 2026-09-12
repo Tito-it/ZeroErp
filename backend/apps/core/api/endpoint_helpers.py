@@ -14,6 +14,7 @@ from apps.core.api.error_responses import (
 )
 from apps.core.api.request_parsers import parse_json_body
 from apps.core.api.success_responses import success_response
+from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.idempotency_store import IdempotencyStore
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
@@ -32,7 +33,25 @@ def get_scope_user_id(request: HttpRequest | Request) -> int | None:
 
 
 # Scopo: Restituisce il risorsa_umana_id dell'utente autenticato.
-# Risolve dalla tabella bridge anagrafiche.risorse_umane_auth_user.
+# Risolve dalla MADRE `anagrafiche.identita_digitali` (veste OPERATORE, attiva)
+# verso `risorse_umane` (attiva) per `soggetto_ruolo_id`: la STESSA catena e
+# gli STESSI filtri di `script.fn_get_uo_id_for_user`, la funzione DB che
+# risponde alla domanda gemella («l'UO di questo utente»).
+# ⚠️ La risposta e' DETERMINATA per struttura, non per `LIMIT 1`: al piu' una
+#    identita' OPERATORE attiva per utente (`uq_identita_digitali_auth_user_
+#    ruolo_attivo`) e al piu' una risorsa umana per soggetto_ruolo
+#    (`uq_risorse_umane_soggetto_ruolo`). Senza il filtro `attivo` la scelta
+#    fra un'identita' viva e una spenta sarebbe casuale.
+# ⚠️ E' la terza sede della catena (con `fn_get_uo_id_for_user` e il profilo):
+#    la forma giusta e' una `fn_get_risorsa_umana_id_for_user` gemella, e
+#    questo helper un wrapper — chiesta al DB in analisi-software-per-dati-morti
+#    §6. Finche' non c'e', la copia resta allineata alla sorella DB, non
+#    inventata qui.
+# ⛔ Fino al 2026-09-12 leggeva la vista `anagrafiche.risorse_umane_auth_user`:
+#    il nome vecchio del ponte RU↔utente, che nasconde nel proprio corpo il
+#    filtro OPERATORE e la proiezione di compatibilita' (analisi-software-per-
+#    dati-morti §2.1, «strato 2»). Il DB la ritira: il lettore va sulla madre
+#    PRIMA del DROP, o l'endpoint risponde 500 (lezione del 12-09).
 # Ritorna None se l'utente non e' associato a una risorsa umana.
 def get_risorsa_umana_id(request: HttpRequest | Request) -> int | None:
     user = request.user
@@ -45,8 +64,18 @@ def get_risorsa_umana_id(request: HttpRequest | Request) -> int | None:
     from django.db import connection
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT risorsa_umana_id FROM anagrafiche.risorse_umane_auth_user WHERE auth_user_id = %s LIMIT 1",
-            [user.id],
+            """
+            SELECT ru.id
+              FROM anagrafiche.identita_digitali id
+              JOIN anagrafiche.risorse_umane ru
+                ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+             WHERE id.auth_user_id = %s
+               AND id.ruolo_applicativo = %s
+               AND id.attivo = true
+               AND ru.attivo = true
+             LIMIT 1
+            """,
+            [user.id, RUOLO_APPLICATIVO_OPERATORE],
         )
         row = cursor.fetchone()
     result = int(row[0]) if row else None

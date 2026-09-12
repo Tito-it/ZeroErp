@@ -70,6 +70,28 @@ a {
   width: 200px;
 }
 
+/* «Mostra i nascosti» (BB ToggleNascoste): interruttore + etichetta + «(N)»
+ * in linea. `min-height` = altezza dei controlli di form della stessa riga
+ * (`.app-form-select.p-select`): un interruttore e' piu' basso di una Select e
+ * senza pavimento si disallineerebbe dai vicini. Il numero e' muted perche' e'
+ * un'informazione di contorno: cio' che conta e' la parola accanto. */
+.app-toggle-nascoste {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  cursor: pointer;
+}
+
+/* `font-weight` esplicito: il root del BB e' un `<label>`, e dentro un
+ * `.form-field` erediterebbe il grassetto delle etichette — il numero deve
+ * restare di contorno anche li'. */
+.app-toggle-nascoste-count {
+  color: var(--p-text-muted-color);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 /* Gruppo azioni toolbar (azioni pagina/lista) */
 .app-page-actions {
   display: flex;
@@ -1801,6 +1823,24 @@ a {
   box-shadow: 0 0 0 1px var(--p-primary-color);
 }
 
+/* ⭐ La card che NON si sceglie — oggi la copertura del mese, che è un totale e
+   non uno stadio del funnel: non ha una lista sotto, quindi non c'è niente da
+   aprire (rilievo di Tid, 2026-09-09).
+   ⛔ Non basta togliere il `@click`: con la mano del puntatore e il bordo che
+   si accende al passaggio la card PROMETTE un drill-down che non arriva — e
+   una promessa che non si mantiene si prova due o tre volte prima di
+   rinunciare. Qui si spengono entrambe le affordance, non solo il gesto.
+   ⚠️ Sostituisce uno `style="cursor: default"` in linea: il colore e il
+   comportamento delle card stanno qui, non nel template
+   (feedback_css_centralizzazione). */
+.app-dash-card--statica {
+  cursor: default;
+}
+
+.app-dash-card--statica:hover {
+  border-color: var(--app-card-border);
+}
+
 /* Voci del residuo sotto un donut di card (copertura competenza: «Da
    addebitare» / «Da accreditare»). ⭐ STESSA FORMA per tutte: cambia la parola
    e il colore, mai la struttura — due lavori dello stesso tipo in due versi
@@ -2106,6 +2146,53 @@ a {
   min-height: var(--app-dash-lista-min-h);
 }
 
+/* ⭐ CARD E LISTA COME UN UNICO SCORRIMENTO (2026-09-03, diagnosi di Tid).
+ *
+ * 🔴 Il difetto NON era l'altezza: era che card e lista erano due aree di
+ * scorrimento DISTINTE. Il pavimento di 22rem qui sopra da' al blocco lista
+ * un'altezza DEFINITA; `.lista-configurabile` e' `height: 100%` e la DataTable
+ * ha `scroll-height="flex"`, quindi da quell'altezza definita nasce un corpo
+ * tabella CON UNA BARRA SUA. Sotto, `.app-dash-main` scorre come pagina. Due
+ * contesti di scorrimento annidati: si scende un po' con la pagina, si finisce
+ * dentro un riquadro di 22rem che scorre per conto proprio, e il paginatore —
+ * che sta in cima alla lista — resta una cosa da andare a cercare.
+ *
+ * ⭐ La Lente Competenza funziona proprio perche' NON ha quella catena: li' il
+ * blocco lista vive dentro i `Tabs`, l'altezza definita non arriva fino in
+ * fondo, la tabella si rende alla sua altezza naturale e a scorrere e' UNA cosa
+ * sola — le card salgono insieme alle righe, come componenti della stessa
+ * lista. E' il comportamento giusto, ed e' quello che questo modo riproduce.
+ *
+ * ⛔ DUE TENTATIVI SBAGLIATI PRIMA DI QUESTO, e stanno scritti perche' la
+ * lezione e' una: stavo lavorando CONTRO la struttura invece che su di essa.
+ *   1) solo `flex: 1` sul blocco lista → gli dava un'altezza definita mentre
+ *      pavimento e `overflow-y` restavano attivi: DUE barre annidate;
+ *   2) `overflow: hidden` sopra + `min-height: 0` sotto → toglieva la barra
+ *      esterna ma teneva in piedi l'idea di fondo, cioe' una lista incastrata
+ *      in un riquadro suo.
+ * ⭐ Il verso giusto e' l'OPPOSTO di entrambi: non dare al blocco un'altezza
+ * definita — TOGLIERGLIELA, cosi' la tabella si rende intera e l'unica barra
+ * torna a essere quella del cruscotto.
+ *
+ * ⚠️ E' un MODIFICATORE, non una modifica a `.app-dash-fermi`: quella classe la
+ * usa anche la Competenza, che il pavimento se lo tiene. */
+.app-dash-main--scorrimento-unico > .app-dash-fermi {
+  /* Altezza NATURALE: niente `flex: 1` (che la renderebbe definita) e niente
+     pavimento (che la renderebbe definita lo stesso, dal basso). */
+  flex: none;
+  min-height: 0;
+}
+
+/* Il `height: 100%` del componente si risolve contro il genitore: con l'altezza
+ * naturale qui sopra diventa auto, la DataTable non riceve piu' un limite e si
+ * rende per intero. Dichiarato esplicito perche' un `100%` che «si risolve ad
+ * auto» e' una cosa che nessuno legge nel foglio del componente.
+ * ⚠️ Ambito ristretto a questo modo: `height: 100%` resta il contratto di
+ * `<ListaConfigurabile>` per tutti gli altri consumatori. */
+.app-dash-main--scorrimento-unico > .app-dash-fermi > .lista-configurabile {
+  height: auto;
+}
+
 /* I due elenchi della lente Competenza stanno in TAB, non impilati: prima il
  * pannello errori restava sopra e spingeva in basso l'area appena selezionata
  * (rilievo in app, 2026-08-24).
@@ -2161,6 +2248,19 @@ a {
   margin-left: 0.4rem;
   color: var(--app-in-corso-color);
   font-size: 0.85rem;
+}
+
+/* Un gesto (`BersaglioAzioni`) dentro una cella di contenuto INLINE. La radice
+ * di quel componente è un `<div>` flex — di blocco — e senza questo wrapper
+ * manda a capo tutto ciò che lo segue: nella cella «riferimento» del cruscotto
+ * competenza l'icona d'errore finiva su una seconda riga, e la riga della
+ * tabella cresceva in altezza per ospitarla.
+ * ⚠️ Il wrapper e non una modifica a `BersaglioAzioni`: là la radice di blocco
+ * è giusta — vive dentro un popover, dove i pulsanti stanno su una riga loro. */
+.app-cella-gesto-inline {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.4rem;
 }
 
 /* Stepper compatto anno/mese — solo piccoli schermi. Sostituisce il pannello
@@ -2238,14 +2338,21 @@ a {
  * cliccabili che dicono di cosa sono i documenti contati dalla card. Stessa
  * grammatica visiva delle card — bordo che si accende sulla selezione — ma
  * peso minore: è una lettura di dettaglio, non il livello principale. */
-.app-dash-aree-riepilogo {
+/* Fila di CHIP DI CONTEGGIO che filtrano una lista: etichetta + numero, click
+ * = filtro, e solo le voci sopra zero. Nome neutro dal 2026-09-03 (era
+ * `-aree-riepilogo` / `-area-chip`): il secondo consumatore filtra per STATO
+ * del lotto, non per area, e una classe che nomina l'asse del primo consumatore
+ * costringe il secondo a scegliere fra un nome che mente e una copia del CSS.
+ * Consumatori: ripartizione per area della Lente Backlog, stati del registro
+ * lotti. */
+.app-dash-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
   margin: 0.6rem 0 0;
 }
 
-.app-dash-area-chip {
+.app-dash-chip {
   display: inline-flex;
   align-items: baseline;
   gap: 0.35rem;
@@ -2258,11 +2365,11 @@ a {
   transition: border-color var(--app-transition-fast, 0.15s);
 }
 
-.app-dash-area-chip:hover {
+.app-dash-chip:hover {
   border-color: var(--app-card-hover-border);
 }
 
-.app-dash-area-chip.is-selected {
+.app-dash-chip.is-selected {
   border-color: var(--app-in-corso-color);
   box-shadow: 0 0 0 1px var(--app-in-corso-color);
 }

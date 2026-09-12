@@ -69,55 +69,54 @@ BEGIN
   -- funzione, cioe' l'errore che il §7.1 ha gia' corretto.
   FOR v_corsia IN
     SELECT
-      c.emittente_soggetto_ruolo_id  AS emittente_sr,
-      ca.tipo_doc_fiscale_id         AS tipo_doc,
-      c.utility_id                   AS utility,
-      max(ca.competenza_mese)        AS competenza,
-      count(ca.id)::bigint           AS candidate,
-      -- I gruppi fatturabili coperti da questa terna. La chiave viene
-      -- dalla SOLA fonte di verita' (fn_build_gruppo_fatturabile_key),
-      -- mai ricostruita qui: e' la stessa funzione che filtra nel WHERE
-      -- e che alimenta vw_dash_competenza_gruppi.
-      -- ORDER BY dentro l'aggregato: l'ordine dev'essere DETERMINISTICO,
+      e.emittente_soggetto_ruolo_id  AS emittente_sr,
+      e.tipo_doc_fiscale_id          AS tipo_doc,
+      e.utility_id                   AS utility,
+      max(e.competenza_mese)         AS competenza,
+      count(e.commessa_attivita_id)::bigint AS candidate,
+      -- I gruppi fatturabili coperti da questa terna.
+      -- ⭐ rev 2026-09-09: la chiave arriva GIA' COSTRUITA dal classificatore,
+      -- che la calcola una volta per riga dalla sola fonte di verita'
+      -- (vendite.fn_build_gruppo_fatturabile_key). Prima era invocata qui, e
+      -- l'intestazione spiegava perche' l'ORDER BY dentro l'aggregato non la
+      -- valutasse due volte: quel paragrafo non serve piu'.
+      -- ⚠️ ORDER BY dentro l'aggregato: l'ordine dev'essere DETERMINISTICO,
       -- altrimenti due chiamate identiche danno array diversi e chi li
       -- confronta (l'esito, un test) vede differenze che non esistono.
-      array_agg(DISTINCT vendite.fn_build_gruppo_fatturabile_key(
-                             ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
-                ORDER BY vendite.fn_build_gruppo_fatturabile_key(
-                             ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
-               )                     AS gruppi
-    FROM vendite.commesse c
-    JOIN vendite.stati_commessa sc
-      ON sc.id = c.stato_commessa_id
-     AND sc.emittibile = true
-    INNER JOIN vendite.commesse_attivita ca
-      ON ca.commessa_id = c.id
-     AND ca.stato_emissione = 'NON_EMESSA'
-     AND ca.stato_approvazione = 'APPROVATA'
-     AND ca.tipo_doc_fiscale_id IS NOT NULL
-     AND (v_competenza_mese IS NULL OR ca.competenza_mese <= v_competenza_mese)
-    WHERE true
-      AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
-      AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
-      AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
-      AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
-      -- EMISSIONE MIRATA (rev 2026-07-27): chiave dalla funzione A1,
-      -- mai ricostruita qui. Un gruppo con righe di tipo doc diverso
-      -- resta su piu' terne, e vengono restituite tutte (G15).
-      AND (
-           p_gruppi IS NULL
-           OR vendite.fn_build_gruppo_fatturabile_key(
-                  ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
-              ) = ANY (p_gruppi)
-          )
+      array_agg(DISTINCT e.gruppo_key ORDER BY e.gruppo_key) AS gruppi
+    -- ⭐ LA SEDE UNICA DEL CRITERIO (changeSet 20260909-59). Qui non si
+    --   scrive PIU' nessuna condizione di ammissibilita': si LEGGE la classe.
+    --   La gemella fn_diagnostica_gruppi_fatturabili conta le stesse classi,
+    --   quindi le due non possono piu' divergere — ed e' successo davvero, il
+    --   2026-09-09: un criterio aggiunto qui e non li'.
+    FROM vendite.vw_commesse_attivita_emittibilita e
+    -- ⭐ I DUE FATTORI, dichiarati. La lane li pretende ENTRAMBI: la RIGA
+    --   dev'essere pronta e la TESTATA emittibile. La diagnostica li tiene
+    --   separati apposta, per poter dire «le righe sarebbero pronte, e' la
+    --   commessa a essere in BOZZA» — ed e' la differenza che prima era
+    --   IMPLICITA, cioe' indistinguibile da una svista.
+   WHERE e.classe_emittibilita = 'PRONTA'
+     AND e.commessa_emittibile
+     -- ⚠️ IL PERIMETRO DELLA DOMANDA resta qui, e non nella vista: dipende da
+     --   chi chiede, non dalla riga. La competenza e' CUMULATIVA (<=), ed e'
+     --   anche il motivo per cui «fuori competenza» non e' una classe: quella
+     --   riga e' PRONTA, solo non per QUESTO mese.
+     AND (v_competenza_mese IS NULL OR e.competenza_mese <= v_competenza_mese)
+     AND (p_billing_account_id IS NULL OR e.billing_account_id = p_billing_account_id)
+     AND (p_utility_id IS NULL OR e.utility_id = p_utility_id)
+     AND (p_emittente_soggetto_ruolo_id IS NULL OR e.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+     AND (p_fatturazione_immediata IS NULL OR e.fatturazione_immediata = p_fatturazione_immediata)
+     -- EMISSIONE MIRATA (rev 2026-07-27): un gruppo con righe di tipo doc
+     -- diverso resta su piu' terne, e vengono restituite tutte (G15).
+     AND (p_gruppi IS NULL OR e.gruppo_key = ANY (p_gruppi))
     GROUP BY
-      c.emittente_soggetto_ruolo_id,
-      ca.tipo_doc_fiscale_id,
-      c.utility_id
+      e.emittente_soggetto_ruolo_id,
+      e.tipo_doc_fiscale_id,
+      e.utility_id
     ORDER BY
-      c.emittente_soggetto_ruolo_id,
-      ca.tipo_doc_fiscale_id,
-      c.utility_id
+      e.emittente_soggetto_ruolo_id,
+      e.tipo_doc_fiscale_id,
+      e.utility_id
     LIMIT p_limit + 1
   LOOP
     v_n := v_n + 1;
@@ -159,7 +158,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
-IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata. rev 2026-07-27 (brief emissione mirata A5): p_gruppi text[] restringe alle terne dei gruppi richiesti — NULL = nessuna restrizione (G1). Un gruppo con righe di tipo doc fiscale diverso resta su piu'' terne e vengono restituite TUTTE (G15): e'' il motivo per cui l''esito verso il BE e'' una lista di lotto_id. rev 2026-08-15 (brief emittibilita §5): + gruppi_coperti text[], l''elenco DETERMINISTICO dei gruppi fatturabili coperti da ciascuna terna, per il caso dell''emissione PARZIALE che prima era muto. La chiave arriva da vendite.fn_build_gruppo_fatturabile_key, unica fonte di verita'', mai ricostruita qui. ⚠️ gruppi_coperti e'' una PREVISIONE, non un consuntivo: dice quali gruppi la discovery si aspetta di coprire, e fra quel momento e l''esecuzione le righe possono essere prese da un altro giro. Per sapere cosa un giro ha fatturato DAVVERO usare vendite.fn_esito_gruppi_giro(lotti) — brief emittibilita §8.2. ⚠️ Il campo si calcola SEMPRE, anche nel giro di massa, ed e'' deliberato: un campo che a volte vale NULL perche'' «non calcolato» e a volte perche'' «nessun gruppo» e'' il tipo di ambiguita'' che si paga sei mesi dopo. COSTO MISURATO (2026-08-15, 100k righe sintetiche): la chiave vale ~5 µs a chiamata, cioe'' ~0,5 s ogni 100.000 righe candidate — sul cron non morde. ⭐ E la mitigazione «ovvia» NON esiste: sembra che l''ORDER BY dentro l''aggregato valuti la funzione una seconda volta e che basti una LATERAL per dimezzare, ma il parser deduplica l''espressione dell''ORDER BY con quella dell''argomento quando sono identiche — la valutazione e'' gia'' una sola per riga, e le due forme misurano uguale. Scritto perche'' e'' controintuitivo e qualcuno lo riproverebbe. rev 2026-08-15 (§9 F7): il TETTO p_limit non tronca piu'' in silenzio una richiesta MIRATA. Si legge una corsia in piu'' del tetto e, se ce n''era dell''altra: con p_gruppi valorizzato si solleva E_FATTURAZIONE_MIRATA_TRONCATA, perche'' il perimetro mirato e'' NOMINALE e una corsia tagliata porterebbe via i suoi gruppi, che a valle risulterebbero «non fatturabili» pur essendo solo fuori dal taglio — una diagnosi falsa al posto di un errore; sul giro di MASSA il tetto resta una valvola di sicurezza e tronca come prima. Il conteggio si fa scorrendo il risultato UNA volta (RETURN NEXT): un secondo SELECT count(*) sarebbe stato una seconda copia dei filtri di discovery dentro la stessa funzione. ⚠️ RETURN NEXT accumula in un tuplestore, quindi sollevando non esce nessuna riga: mai una mezza risposta piu'' un errore.';
+IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata. rev 2026-07-27 (brief emissione mirata A5): p_gruppi text[] restringe alle terne dei gruppi richiesti — NULL = nessuna restrizione (G1). Un gruppo con righe di tipo doc fiscale diverso resta su piu'' terne e vengono restituite TUTTE (G15): e'' il motivo per cui l''esito verso il BE e'' una lista di lotto_id. rev 2026-08-15 (brief emittibilita §5): + gruppi_coperti text[], l''elenco DETERMINISTICO dei gruppi fatturabili coperti da ciascuna terna, per il caso dell''emissione PARZIALE che prima era muto. La chiave arriva da vendite.fn_build_gruppo_fatturabile_key, unica fonte di verita'', mai ricostruita qui. ⚠️ gruppi_coperti e'' una PREVISIONE, non un consuntivo: dice quali gruppi la discovery si aspetta di coprire, e fra quel momento e l''esecuzione le righe possono essere prese da un altro giro. Per sapere cosa un giro ha fatturato DAVVERO usare vendite.fn_esito_gruppi_giro(lotti) — brief emittibilita §8.2. ⚠️ Il campo si calcola SEMPRE, anche nel giro di massa, ed e'' deliberato: un campo che a volte vale NULL perche'' «non calcolato» e a volte perche'' «nessun gruppo» e'' il tipo di ambiguita'' che si paga sei mesi dopo. COSTO MISURATO (2026-08-15, 100k righe sintetiche): la chiave vale ~5 µs a chiamata, cioe'' ~0,5 s ogni 100.000 righe candidate — sul cron non morde. ⭐ E la mitigazione «ovvia» NON esiste: sembra che l''ORDER BY dentro l''aggregato valuti la funzione una seconda volta e che basti una LATERAL per dimezzare, ma il parser deduplica l''espressione dell''ORDER BY con quella dell''argomento quando sono identiche — la valutazione e'' gia'' una sola per riga, e le due forme misurano uguale. Scritto perche'' e'' controintuitivo e qualcuno lo riproverebbe. rev 2026-08-15 (§9 F7): il TETTO p_limit non tronca piu'' in silenzio una richiesta MIRATA. Si legge una corsia in piu'' del tetto e, se ce n''era dell''altra: con p_gruppi valorizzato si solleva E_FATTURAZIONE_MIRATA_TRONCATA, perche'' il perimetro mirato e'' NOMINALE e una corsia tagliata porterebbe via i suoi gruppi, che a valle risulterebbero «non fatturabili» pur essendo solo fuori dal taglio — una diagnosi falsa al posto di un errore; sul giro di MASSA il tetto resta una valvola di sicurezza e tronca come prima. Il conteggio si fa scorrendo il risultato UNA volta (RETURN NEXT): un secondo SELECT count(*) sarebbe stato una seconda copia dei filtri di discovery dentro la stessa funzione. ⚠️ RETURN NEXT accumula in un tuplestore, quindi sollevando non esce nessuna riga: mai una mezza risposta piu'' un errore. ⭐ rev 2026-09-09: I CRITERI DI AMMISSIBILITA'' NON SONO PIU'' SCRITTI QUI. Si leggono da vendite.vw_commesse_attivita_emittibilita — questa funzione filtra `classe_emittibilita = PRONTA` piu'' il fattore di TESTATA `commessa_emittibile`, e la gemella fn_diagnostica_gruppi_fatturabili conta le stesse classi: le due non possono piu'' divergere. Il PERIMETRO DELLA DOMANDA (competenza cumulativa, billing account, utility, emittente, corsia, p_gruppi) resta qui, perche'' dipende da chi chiede e non dalla riga. Firma e uscita invariate.';
 ```
 
 ---

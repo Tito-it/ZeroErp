@@ -138,9 +138,20 @@ SELECT ok(
 -- ------------------------------------------------------------
 -- Fixtures (rollback a fine test): un tipo SISTEMA e un tipo INATTIVO.
 -- ------------------------------------------------------------
-INSERT INTO dbops.coda_lavori_tipi (codice, handler_code, run_as_default, attivo)
-VALUES ('PGTAP_CL_SISTEMA', 'pgtap_noop', 'SISTEMA', TRUE),
-       ('PGTAP_CL_INATTIVO', 'pgtap_noop', 'OPERATORE', FALSE);
+-- ⚠️ 2026-09-04: `dbops.coda_lavori_tipi.processo_codice` e' NOT NULL — ogni
+--   tipo di coda dichiara di quale PROCESSO e', e da li' il guard di classe in
+--   dbops.fn_accoda_lavoro legge se il lavoro e' di dominio. Un tipo senza
+--   processo non avrebbe una classe, quindi niente da controllare.
+--   ⇒ La fixture si fabbrica il proprio processo invece di appoggiarsi a uno
+--     del catalogo: MANUTENZIONE, cosi' il guard di classe non entra in gioco e
+--     questo file continua a collaudare cio' che collaudava.
+INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+VALUES (9702, 'PGTAP_PROC_CODA_LAVORI', 'processo di prova per test-coda-lavori', 'MANUTENZIONE', 'CODA');
+
+INSERT INTO dbops.coda_lavori_tipi
+  (codice, handler_code, run_as_default, attivo, processo_codice)
+VALUES ('PGTAP_CL_SISTEMA',  'pgtap_noop', 'SISTEMA',   TRUE,  'PGTAP_PROC_CODA_LAVORI'),
+       ('PGTAP_CL_INATTIVO', 'pgtap_noop', 'OPERATORE', FALSE, 'PGTAP_PROC_CODA_LAVORI');
 
 -- Side-effect: enqueue base (OPERATORE, scope obbligatorio) + 2a chiamata
 -- idempotente stessa chiave + enqueue SISTEMA. Id catturati in tmp_enq.

@@ -123,6 +123,37 @@ class LottoSegnalazioniSummary(TypedDict):
     lotto_warning_count: int
     lotto_info_count: int
     fatture_stato_esecuzione_errore_count: int
+    # ═══ I TRE NUMERI DEL BANNER (2026-09-08) ═══
+    # ⭐ I sei qui sopra contano SEGNALAZIONI; questi contano GESTI. Un documento
+    # con tre critiche resta UN documento, e il gesto che l'operatore ha davanti
+    # e' uno solo: «togli questo dal giro». «3 segnalazioni bloccanti» e' un
+    # numero vero che descrive la cosa sbagliata.
+    documenti_bloccanti_count: int
+    # Il DENOMINATORE, e viene dagli ESITI — non dal perimetro, che sui giri di
+    # massa e' vuoto e direbbe «su 0» su meta' dei lotti.
+    documenti_presi_in_carico_count: int
+    # ⛔ Le critiche che un documento NON ce l'hanno, e non e' un di piu': senza,
+    # un lotto fermo per un emittente non risolto direbbe «0 documenti su 4» —
+    # cioe' che non c'e' niente da fare mentre il giro e' bloccato.
+    # ⚠️ I tre descrivono il canale LOTTO. Gli altri due parlano per FATTURA, e
+    # una bozza puo' coprire piu' documenti: non si sommano a questi.
+    critiche_giro_count: int
+    # ═══ IL DECIMO NUMERO (2026-09-12, D2 del brief «il rilancio dello step non
+    # rivede le proprie commesse») — e questo ENTRA NEL VERDETTO ═══
+    # I documenti presi in carico il cui ULTIMO fatto registrato
+    # (`fatturazione_lotti_esiti`) e' `ERRORE`. Un esito e' un fatto su un
+    # documento preso in carico: un lotto `COMPLETATO` con un documento il cui
+    # ultimo fatto e' `ERRORE` si dichiara a posto per SOTTRAZIONE — il runner
+    # ritira le proprie bandiere all'avvio di ogni rerun, e se il giro non
+    # rivede quel documento nessuno le rialza. Sette lotti usciti cosi' prima
+    # del 12-09 (fatto datato, §4 D2 del brief).
+    # ⭐ `ESCLUSO` non conta: e' la via d'uscita, la dichiarazione dell'operatore
+    # che quel documento non fa piu' parte del giro.
+    # ⚠️ Si SOVRAPPONE ai tre qui sopra: un documento con una critica viva ha
+    # anche l'esito `ERRORE`. Non si somma a `documenti_bloccanti_count`: il caso
+    # che aggiunge e' quello con ZERO critiche vive, ed e' l'unico che prima
+    # non vedeva nessuno.
+    esiti_stato_esecuzione_errore_count: int
 
 
 class LottoSegnalazioneRow(TypedDict):
@@ -161,6 +192,25 @@ class LottoSegnalazioneRow(TypedDict):
     # FALLITO, questo e' dove l'operatore deve andare. Sul caso collaudato sono
     # due fatture diverse.
     target: list[dict[str, str]] | None
+    # ⭐ DI QUALE DOCUMENTO parla la segnalazione (brief-db-uscita-documento-dal-giro
+    # §4.1). ⚠️ `None` = e' del GIRO — emittente non risolto, configurazione
+    # mancante — e NON e' un buco: e' la meta' sana del vocabolario. Le due
+    # famiglie hanno vie d'uscita diverse, e questa colonna e' cio' che le separa.
+    # ⛔ Sul ramo FATTURA e' sempre `None`: una bozza puo' coprire piu' documenti,
+    # quindi una segnalazione appesa alla fattura non ne nomina uno.
+    gruppo_key: str | None
+    # ⭐ Il motivo del pulsante spento, dalla `fn_check_*` — la stessa con cui il
+    # database rifiuta. ⚠️ `None` su una riga CON documento = azione ammessa; su
+    # una riga del giro non significa niente, perche' li' non e' stato chiesto.
+    uscita_blocco_reason: str | None
+    uscita_blocco_reason_key: str | None
+    # ⭐ IL DOCUMENTO COME LO LEGGE UNA PERSONA: `ORD0036004` invece di
+    # `ORDINE_VENDITA:<uuid>`. ⛔ Non sostituisce `gruppo_key`, che resta e serve
+    # al PULSANTE: i due hanno destinatari diversi, e l'unico che si vede e'
+    # questo (la colonna della chiave e' spenta a catalogo, D-7).
+    # ⚠️ `None` = la segnalazione e' del GIRO — lo stesso NULL di `gruppo_key`,
+    # non un'identita' che non si e' risolta.
+    riferimento: str | None
 
 
 class LottoTaskRunRow(TypedDict):
@@ -240,6 +290,87 @@ class LottoFattureRow(TypedDict):
     can_reset_fattura_reason_key: str | None
 
 
+class LottoGruppoRow(TypedDict):
+    # UN DOCUMENTO PRESO IN CARICO DA UN LOTTO, e com'e' andato
+    # (`vendite.fatturazione_lotti_gruppi`, brief-db-esito-gruppo-lotto).
+    #
+    # ⭐ PERCHE' NON E' `LottoFattureRow`. Quella riga si aggancia a
+    # `fattura_id`: descrive un documento che una fattura l'ha prodotta. Un
+    # documento che cade PRIMA — al pull delle attivita' dalla commessa — non
+    # ha nessuna fattura a cui appendersi, e finora non compariva da nessuna
+    # parte. Questa e' la grana in cui esiste comunque.
+    # ⚠️ Le due NON sono in corrispondenza 1:1 nemmeno quando tutto va bene:
+    # `fn_build_fattura_key` puo' raccogliere piu' gruppi nello stesso
+    # documento. Sono due domande diverse, non due viste della stessa.
+    #
+    # ⭐ LA RIGA E' L'UNIONE DI DUE FATTI (rev 2026-09-07): il PERIMETRO
+    # (`fatturazione_lotti_gruppi` — che cosa il lotto doveva lavorare, e lo
+    # dichiarano i soli giri mirati) e l'ESITO (`fatturazione_lotti_esiti` —
+    # com'e' andata, e c'e' su entrambi i tipi di giro). Nessuno dei due da solo
+    # risponde: il primo lascia muti i giri di massa, il secondo perde i
+    # documenti dichiarati e non ancora tentati.
+    # ⛔ Per questo NON c'e' un `id`: la riga non e' una riga di tabella. La
+    # chiave e' il DOCUMENTO dentro il lotto, cioe' `gruppo_key`.
+    # La chiave di dominio del gruppo, `<sorgente>:<uid>` oppure
+    # `MAN:<commessa>`. E' anche il RIPIEGO a video quando l'identita' non si
+    # risolve piu': una riga senza nome e' peggio di una riga con la chiave.
+    gruppo_key: str
+    # Vocabolario chiuso `PENDING` · `RUNNING` · `COMPLETED` · `ERRORE`,
+    # identico a quello delle fatture del lotto (D-2 del brief): due colonne
+    # che rispondono alla stessa domanda a due livelli non possono parlare due
+    # lingue.
+    # ⚠️ `None` = «nessuno l'ha detto» — il documento e' nel perimetro ma non e'
+    # stato tentato, oppure il giro e' anteriore al tracciamento. NON e' «andato
+    # bene», e chi rende deve tenerli distinti.
+    # ⭐ Sulla tabella degli esiti la colonna e' NOT NULL apposta: la riga NASCE
+    # quando qualcuno lo dice, quindi il non-detto e' l'ASSENZA della riga.
+    # Il `None` qui viene dalla LEFT JOIN, non da uno stato di mezzo.
+    stato_esecuzione: str | None
+    errore_codice: str | None
+    errore_messaggio: str | None
+    errore_quando: str | None
+    # ═══ L'IDENTITA', risolta dalla vista di competenza sul mese del lotto ═══
+    # ⚠️ Tutte opzionali, e il caso vuoto e' reale: il lavoro di quel gruppo
+    # puo' essere stato preso da un altro giro o essere uscito dal mese, e
+    # allora la vista non lo espone piu'. La riga resta — con il suo esito e la
+    # sua chiave — perche' e' proprio quella per cui questa lista esiste.
+    riferimento: str | None
+    tipo_gruppo: str | None
+    area_documento: str | None
+    documento_id: int | None
+    # ⭐ LA COMMESSA DA CORREGGERE: nel caso vero il fallimento non era un
+    # difetto del programma ma un dato mancante sulla commessa, e senza questo
+    # id l'operatore sa di avere un problema e non sa dove andare.
+    # ⚠️ Valorizzata SOLO quando il gruppo ne ha una sola. La chiave di un
+    # gruppo-documento non contiene la commessa, quindi due commesse sullo
+    # stesso documento sono ammesse per costruzione: `commesse_n` dice quante
+    # sono, e offrirne una a caso sarebbe una scommessa travestita da regola.
+    commessa_id: int | None
+    commessa_codice: str | None
+    commesse_n: int
+    # ═══ L'USCITA DAL GIRO (brief-db-uscita-documento-dal-giro, 2026-09-08) ═══
+    # ⭐ `None` su tutte e tre finche' il documento e' dentro. Il motivo lo
+    # scrive l'operatore ed e' OBBLIGATORIO (D-5): su una riga `ESCLUSO` c'e'
+    # sempre. Il timbro (`uscita_quando`/`uscita_da`) lo mette un trigger dalla
+    # GUC, non il chiamante — e non riusa `data_update`/`user_update`, che
+    # qualunque aggiornamento successivo riscriverebbe.
+    uscita_motivo: str | None
+    uscita_quando: str | None
+    uscita_da: str | None
+    # ⭐ IL MOTIVO DEL PULSANTE SPENTO, prodotto da
+    # `script.fn_check_documento_escludibile_da_giro` — la STESSA funzione che
+    # la madre chiama per rifiutare. ⚠️ `None` = azione AMMESSA.
+    # ⛔ Il TESTO non viaggia: viaggia la chiave i18n (§12.5.5).
+    uscita_blocco_reason: str | None
+    uscita_blocco_reason_key: str | None
+    # ⭐ Quanti ALTRI documenti verrebbero via insieme, perche' condividono la
+    # bozza (D-2b). Va detto PRIMA, nella conferma — non e' un motivo che
+    # rifiuta.
+    # ⚠️ `None` NON e' `0`: significa «non e' stato chiesto», perche' l'azione
+    # su quella riga e' bloccata e la conferma non si aprirebbe mai.
+    n_trascinati: int | None
+
+
 class LottoListRow(TypedDict):
     id: int
     codice: str
@@ -274,6 +405,15 @@ class LottoListRow(TypedDict):
     # mobile. Zero e' un totale valido (lotto senza documenti), non un vuoto.
     n_fatture: int
     totale_documenti: str
+    # ⭐ Quanti documenti il lotto ha PRESO IN CARICO e quanti sono ANDATI A
+    # BUON FINE (2026-09-12) — contati sugli ESITI (`fatturazione_lotti_esiti`),
+    # non sulle fatture: le fatture spariscono con l'annullo e possono essere
+    # meno dei presi anche a giro riuscito (fusioni). `ESCLUSO` non conta fra i
+    # presi: e' la dichiarazione dell'operatore che il documento e' uscito dal
+    # giro. Il client mostra `completati/presi` SOLO quando differiscono: su un
+    # lotto senza esiti (giri precedenti al 07-09) sono zero e zero.
+    n_presi_in_carico: int
+    n_esiti_completati: int
     ha_errori_gravi: bool
     # ⭐ Lotto riportato in lavorazione e step non ancora rifatto. Non e' uno
     # stato: e' un SEGNALE di un giro solo (`vendite.fatturazione_lotti.riaperto_il`,
@@ -287,6 +427,62 @@ class LottoListRow(TypedDict):
     # (`OGGI` o `FINE_MESE_COMPETENZA`) quando la testata nasce. Le due cose non
     # vanno confuse a video — un vuoto qui e' «non deciso», non «assente».
     data_documento: str | None
+    # ⭐ Lo stato fiscale del lotto CONGELA il documento
+    # (`config.stati_doc_fiscale.congela_fiscale`): e' la soglia oltre la quale
+    # la pipeline non ha piu' niente da fare, qualunque sia l'esito dell'ultimo
+    # giro. Non e' un codice: e' la PROPRIETA' che decide, cosi' uno stato nuovo
+    # a catalogo entra nel gate senza toccare il frontend.
+    # ⚠️ `None` = il lotto non ha uno stato fiscale (il JOIN e' LEFT). Vale
+    # «non lo so», e chi legge deve essere fail-closed.
+    stato_congela_fiscale: bool | None
+
+
+class EsitoMarcaturaGruppi(TypedDict):
+    """Consuntivo di `vendite.fn_segna_esito_gruppo_lotto` (changeSet `-20`).
+
+    ⭐ TRE numeri e non uno, ed e' la ragione per cui la firma e' cambiata: lo
+    zero del marcatore aveva tre cause diverse e ne raccontava una sola.
+
+    ⚠️ Prima la funzione tornava un `integer`. Chi legge per posizione o si
+    aspetta uno scalare NON fallisce in modo utile: `SELECT fn(...)` su una
+    `RETURNS TABLE` a tre colonne consegna una tupla.
+    """
+
+    # Documenti che hanno ricevuto l'esito: il caso normale.
+    marcati: int
+    # ⭐ Documenti SALTATI perche' gia' usciti dal giro. `> 0` non e' un
+    # difetto: e' il motivo per cui il verbo «togli dal giro» esiste, e prima
+    # del `-18` era il caso che faceva CADERE l'intero statement — quindi
+    # lasciava senza esito anche i documenti SANI della stessa commessa.
+    usciti: int
+    # ⚠️ Documenti che esistono ma non appartengono al perimetro di QUESTO
+    # lotto. Non nasce da questo difetto: c'era gia', nascosto nello stesso
+    # zero. `> 0` resta sospetto e va detto.
+    fuori_perimetro: int
+
+
+class EsclusioneDocumentoDaGiroResult(TypedDict):
+    """Consuntivo di `vendite.fn_escludi_documento_da_giro`.
+
+    ⚠️ I due numeri che l'operatore NON si aspetta sono `fatture_cancellate` e
+    `gruppi_riaperti`: una bozza puo' coprire piu' documenti, quindi togliere A
+    puo' portare via anche B — che torna «da emettere» e si fattura al giro
+    dopo. Chi non li mostra li nasconde (D-2b del brief).
+    ⭐ `gruppi_riaperti` porta le CHIAVI e non solo il conteggio: la conferma
+    deve poterli NOMINARE, e un numero da solo non si verifica.
+    """
+
+    lotto_id: int
+    gruppo_escluso: str
+    # Bozze pre-fiscali cancellate. Puo' essere 0: un documento caduto al pull
+    # una fattura non l'ha mai avuta.
+    fatture_cancellate: int
+    # Attivita' di commessa tornate NON_EMESSA e quindi rifatturabili.
+    attivita_riemesse: int
+    # I documenti TRASCINATI dalla cancellazione della bozza condivisa: tornano
+    # a `PENDING`, non a `ESCLUSO` — non sono usciti da niente.
+    gruppi_riaperti: list[str]
+    n_gruppi_riaperti: int
 
 
 class EsitoDataDocumento(TypedDict):
@@ -785,7 +981,6 @@ class OffertaRow(TypedDict):
     can_push_contratto_reason: str | None
     can_push_contratto_reason_key: str | None
     non_editable_fields: list[str]
-    stato_codice_interno: str
     # Audit
     data_insert: str
     user_insert: str
@@ -946,6 +1141,17 @@ class DashCompetenzaMensileRow(TypedDict):
     # distingue il RESIDUO (chiede un'azione) dalle tre situazioni di transito
     # (non chiedono niente). `None` sugli altri stadi.
     motivo_non_fatturata: str | None
+    # ⭐ `20260909-67` — LE ATTIVITA' CHE LA CARD NON CONTA PIU'.
+    # `n_attivita` e `valore` ESCLUDONO le attivita' trattenute da un lotto
+    # ancora in gioco: sono lavoro che l'operatore non puo' prendere, e un
+    # numero che le comprende e' una promessa che non si mantiene.
+    # ⛔ Questi due non sono decorazione: un numero che cala senza dire di
+    # quanto e' un numero che non si sa leggere — «non c'e' niente da fare» e
+    # «c'e' lavoro che un giro sta gia' tenendo» si leggerebbero uguali.
+    # Stessa forma di `ritirate_count` sul giornale e di `archiviate_count`
+    # sulle code.
+    n_attivita_trattenute: int
+    valore_trattenuto: str
 
 
 class DashCompetenzaResiduoRow(TypedDict):
@@ -1134,6 +1340,78 @@ class DashCompetenzaGruppoRow(TypedDict):
     # `fattura_riga_id IS NULL`. ⚠️ Il discriminante e' la riga di fattura, non
     # lo stadio — `EMESSA_NON_FATTURATA` un documento non ce l'ha ancora.
     data_documento_prevista: str | None
+    # ⭐ D3 (changeSet 20260904-48, brief-residuo-fatturabili-e-bandiere):
+    # l'ULTIMO rifiuto del pull su questa commessa in questo mese, e il suo
+    # motivo di dominio. `None` = nessun rifiuto noto.
+    # ⛔ Non e' una colonna di `vw_dash_competenza_gruppi` ma un JOIN a
+    #    `vw_dash_commesse_respinte`: quella vista ha un dipendente e non
+    #    saprebbe perdere una colonna in rollback.
+    # ⚠️ `respinta_motivo` vale quanto vale cio' che il pull ha scritto in
+    #    `meta->>'detail'`: e' il campo che `_PullCommesseRunLogger` riempie
+    #    con il motivo di dominio, non con il dump tecnico.
+    respinta_il: str | None
+    respinta_motivo: str | None
+    # ═══ COM'E' ANDATO L'ULTIMO TENTATIVO DI FATTURARE QUESTO DOCUMENTO ═══
+    # (changeSet DB `20260906-12`, brief-db-esito-gruppo-lotto R-3).
+    #
+    # ⭐ IL CASO CHE LE HA FATTE NASCERE. Un lotto prende in carico tre
+    # documenti e ne fattura due; il terzo cade al primo passo — prima che una
+    # fattura esista — e sparisce dal racconto: non e' nel lotto (non c'e'
+    # nessuna fattura a cui appendersi) e qui resta fra quelli da emettere,
+    # senza un segno. Sembra fatturabile.
+    #
+    # ⛔ IL SEGNO NON SPEGNE NIENTE (decisione di Tid, 2026-09-06): `stadio` e
+    # `commessa_emittibile` restano quelli di prima. Dice «ci ho provato e non
+    # ci sono riuscito», non «non e' fatturabile» — la riga resta selezionabile
+    # e il verbo resta acceso, perche' il rimedio e' correggere la commessa e
+    # riprovare.
+    #
+    # ⚠️ `None` = «nessuno l'ha detto», e NON e' «e' andata bene»: e' la verita'
+    # di ogni gruppo che nessun giro ha ancora lavorato, e di tutti quelli
+    # lavorati prima del 2026-09-06. Chi rende a video deve tenere distinti i
+    # due casi, o un documento mai tentato si leggerebbe come uno riuscito.
+    #
+    # ⚠️ Il legame e' (gruppo, MESE di competenza) e il mese non e' un di piu':
+    # senza, il documento di settembre erediterebbe l'errore di agosto.
+    # Vocabolario chiuso, identico a quello delle fatture del lotto (D-2):
+    # `PENDING` · `RUNNING` · `COMPLETED` · `ERRORE`.
+    ultimo_esito: str | None
+    ultimo_errore_codice: str | None
+    ultimo_errore_messaggio: str | None
+    ultimo_errore_quando: str | None
+    # In QUALE lotto e' stato tentato. ⚠️ Il codice e non l'id: serve a
+    # nominarlo in una frase («ultimo tentativo — lotto LTF-0009578»), non a
+    # navigarci. Il giorno in cui servisse il salto, l'id lo deve aggiungere la
+    # vista — comporlo qui vorrebbe dire una seconda lettura per una colonna.
+    ultimo_lotto_codice: str | None
+    # ═══ TRATTENUTO DA UN LOTTO VIVO (brief-db-documento-trattenuto-da-un-lotto-vivo)
+    # ⭐ Il VERDETTO, non la materia per dedurlo: «questo documento lo sta
+    # trattenendo un lotto ancora vivo, quindi non si offre due volte».
+    # ⛔ NON si ricava da `ultimo_esito`: quello risponde giusto per caso —
+    # misurato il 2026-09-08, due documenti su tre avevano `COMPLETED` con il
+    # lotto ANNULLATO, cioe' erano liberi. Dedurlo avrebbe tenuto bloccato per
+    # sempre il contenuto di ogni lotto annullato.
+    # ⚠️ `None` = la riga si puo' prendere.
+    emissione_blocco_reason: str | None
+    emissione_blocco_reason_key: str | None
+    # ⭐ Il lotto che trattiene, come BERSAGLIO: la frase dice cosa fare, il
+    # bersaglio ci porta senza far ricopiare un codice a mano.
+    emissione_blocco_lotto_id: int | None
+    emissione_blocco_lotto_codice: str | None
+    # ═══ V-1 · IL LOTTO DEL TENTATIVO, CON IL SUO STATO (2026-09-09) ════════
+    # ⭐ `ultimo_lotto_codice` qui sopra diceva DOVE si e' tentato, non SE quel
+    # tentativo conta ancora: a video un lotto ANNULLATO si leggeva come uno in
+    # corso — rilievo di Tid sul collaudo del 09-09, dove la colonna mostrava
+    # LTF-0010332 (annullato) su tre righe.
+    # ⛔ Il dato NON si toglie: e' l'unica traccia che spieghi perche' il
+    # documento e' tornato disponibile. Si aggiunge il fatto che mancava.
+    # ⚠️ `ultimo_lotto_pre_fiscale` e' il flag su cui il frontend spegne il
+    # GESTO — testo si', pulsante no: un bersaglio verso un lotto che non conta
+    # piu' e' un pulsante in un vicolo cieco.
+    # ⚠️ Tutte e tre `None` quando nessun giro ha ancora toccato il gruppo.
+    ultimo_lotto_id: int | None
+    ultimo_lotto_stato: str | None
+    ultimo_lotto_pre_fiscale: bool | None
 
 
 class DashCompetenzaGruppoRegistroRow(TypedDict):
@@ -1186,14 +1464,22 @@ class DashCompetenzaGruppoTipoRow(TypedDict):
 
 
 class DashCompetenzaGruppiRiepilogoRow(TypedDict):
-    # Totali di perimetro dell'elenco gruppi (vw_dash_competenza_gruppi_riepilogo):
-    # aggregano la vista di dettaglio, quindi non possono divergere da essa.
-    # Vengono dal DB e non dal FE di proposito: sommare la pagina corrente
-    # mostrerebbe un parziale che sembra un totale.
+    # Totali di perimetro dell'elenco gruppi: aggregano la vista di dettaglio,
+    # quindi non possono divergere da essa. Vengono dal DB e non dal FE di
+    # proposito: sommare la pagina corrente mostrerebbe un parziale che sembra
+    # un totale.
+    # ⚠️ Li calcola `get_dash_competenza_gruppi_accessori`, NON la vista
+    # `vw_dash_competenza_gruppi_riepilogo` che questo commento nominava: quella
+    # non applicava i filtri dell'operatore, non e' mai stata letta da qui ed e'
+    # stata ritirata il 2026-09-09 (`20260909-64`).
+    # ⭐ Dal 2026-09-09 i tre totali ESCLUDONO i gruppi trattenuti da un lotto
+    # in gioco, e `n_gruppi_trattenuti` dichiara quanti: un numero che cala
+    # senza dire di quanto e' un numero che non si sa leggere.
     n_gruppi: int
     n_attivita: int
     valore: str | None
     n_gruppi_oneri: int
+    n_gruppi_trattenuti: int
 
 
 class DashBacklogRiepilogoRow(TypedDict):
@@ -1259,6 +1545,15 @@ class DashCompetenzaErroreRow(TypedDict):
     # serve a chi ha piu' di un emittente davanti. La chiave e' il
     # `campo_sorgente` dichiarato in `ui.lista_colonna`.
     emittente_ragione_sociale: str | None
+    # ⭐ D3 (changeSet 20260904-47, brief-residuo-fatturabili-e-bandiere):
+    # QUALI commesse ha respinto il giro — una voce per commessa, con il suo
+    # motivo — e non solo quante volte c'e' stato un errore. Vuoto sugli
+    # eventi FATTURA_CRITICA, che commesse non ne hanno.
+    # ⛔ Il badge del calendario continua a contare gli EVENTI: queste due
+    #    colonne vivono nel dettaglio. Sommarle al conteggio farebbe di «4»
+    #    la somma di tre unita' diverse (task, fatture, commesse).
+    commesse_fallite: list[dict[str, Any]]
+    n_commesse_fallite: int
 
 
 class LineageSorgenteRow(TypedDict):

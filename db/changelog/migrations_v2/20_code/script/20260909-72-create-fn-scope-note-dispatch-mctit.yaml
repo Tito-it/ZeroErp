@@ -1,0 +1,224 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N-1 — Gli smistatori di scope per il PADRE partizionato `vendite.note`.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §6.4 e §7 (passo 8)
+#   Slice 20260909-72..74 (smistatori -> policy inerti -> armamento).
+#
+# ── ⛔ IL DIFETTO, MISURATO IL 2026-09-09 ─────────────────────────────
+#   Le sette `note_*` non sono tabelle: sono PARTIZIONI di `vendite.note`, che
+#   e' partizionata, ha la RLS SPENTA e su cui `zeroerp_app` ha SELECT, INSERT,
+#   UPDATE e DELETE. Con `note_ddt` gia' armata, un operatore vede:
+#       dalla partizione `vendite.note_ddt`  ->  1 riga, la propria
+#       dal padre       `vendite.note`       ->  2 righe, anche l'altrui
+#   ⇒ Ogni policy messa sulle partizioni nei passi 1-7 e' aggirabile con un
+#   `SELECT FROM vendite.note`.
+#
+# ── ⭐ E LA SECONDA MISURA DICE COME SI RIPARA ────────────────────────
+#   Accendendo la RLS sul padre SENZA dargli una policy, il padre risponde
+#   ZERO: le policy delle partizioni NON risalgono. Al padre serve una policy
+#   SUA — non basta armarlo.
+#
+# ── PERCHE' UNO SMISTATORE E NON UN `CASE` DENTRO LA POLICY ───────────
+#   [linee-guida-sql §10.3] la condizione di una policy invoca una
+#   `script.fn_scope_*` e non porta logica inline: cosi' e' chiamabile da un
+#   pgTAP con dati sintetici, e la policy resta una riga leggibile.
+#   ⭐ Il `CASE` valuta SOLO il ramo che corrisponde: nessuna chiamata sprecata.
+#
+# ── ⛔ FAIL-CLOSED SULL'IGNOTO, ed e' la riga piu' importante ─────────
+#   L'`ELSE false` finale non e' difensivismo: e' cio' che decide cosa succede
+#   il giorno in cui qualcuno aggiunge un ottavo `target_tipo` al `CHECK` e si
+#   dimentica di questo file. Con `ELSE false` quelle note diventano invisibili
+#   dal padre — un difetto che si vede subito. Senza, sarebbero visibili a
+#   tutti, e non farebbe rumore nessuno.
+#   ⚠️ Il pgTAP della slice presidia proprio questo: confronta i valori ammessi
+#   dal `CHECK` con i rami dello smistatore, e diventa rosso se qualcuno ne
+#   aggiunge uno senza passare di qui.
+#
+# ── TRE SMISTATORI, perche' le vesti non sono le stesse per tutti ─────
+#   Le sette famiglie non hanno le stesse vesti, e il padre e' UNA tabella:
+#     * `OPERATORE`        -> tutte e sette
+#     * `CLIENTE_PORTALE`  -> solo FATTURA (ba_ownership) e ORDINE (cliente)
+#     * `SHOP_CUSTOMER`    -> solo ORDINE
+#   E' l'unione esatta di cio' che le partizioni gia' concedono: il padre non
+#   apre niente che una partizione non aprisse, e non chiude niente che una
+#   partizione conceda.
+#
+# ── ⭐ E L'ADATTATORE CHE MANCAVA: `ATTIVITAFT` ──────────────────────
+#   `note_attivita_fatturabili` punta a `vendite.attivita_fatturabili`, la cui
+#   rotta portante e' `commessa_id` — `NOT NULL`, mentre `billing_account_id` e'
+#   nullable (brief §6.1). `vendite.commesse` e' gia' protetta e
+#   `fn_scope_ef_whitelist_via_commessa` esiste: l'adattatore nuovo e' due
+#   righe.
+#   ⚠️ Questo protegge la NOTA, non `attivita_fatturabili` stessa, che resta il
+#   debito dichiarato del §6.1. L'asimmetria e' voluta e va detta: la nota ha
+#   una FK `NOT NULL` verso una tabella la cui protezione e' un cantiere a
+#   parte.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, NON `SECURITY DEFINER` — come tutti i
+#   `script.fn_scope_*`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-72-create-fn-scope-note-dispatch-mctit.yaml
+
+  - changeSet:
+      id: 20260909-72-create-fn-scope-note-dispatch
+      author: mctit
+      runOnChange: false
+      comment: >
+        Smistatori di scope per il padre partizionato vendite.note: uno per
+        veste (operatore, cliente del portale, shop), che instradano su
+        target_tipo verso l'adattatore della famiglia. Piu' l'adattatore
+        mancante fn_scope_ef_whitelist_via_attivita_fatturabile, che risale alla
+        commessa. Fail-closed su un target_tipo non gestito. Nessuna policy li
+        usa ancora: le crea 20260909-73.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 8
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_preventivo',
+                                   'fn_scope_ef_whitelist_via_ordine',
+                                   'fn_scope_ef_whitelist_via_ddt',
+                                   'fn_scope_ef_whitelist_via_contratto',
+                                   'fn_scope_ef_whitelist_via_fattura',
+                                   'fn_scope_ef_whitelist_via_offerta',
+                                   'fn_scope_ef_whitelist_via_commessa',
+                                   'fn_scope_cliente_ownership_via_ordine')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =====================================================
+              -- L'adattatore che mancava: ATTIVITAFT
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_attivita_fatturabile(
+                  p_auth_user_id integer,
+                  p_attivita_id  vendite.attivita_fatturabili.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: perimetro emittente di un'attivita' fatturabile,
+                  --   risalendo alla COMMESSA.
+                  -- ⛔ `commessa_id` e non `billing_account_id`: la prima e'
+                  --   NOT NULL, la seconda no, e una policy costruita su una
+                  --   chiave nullable ha un buco esatto dove il NULL passa.
+                  --   Brief §6.1.
+                  SELECT script.fn_scope_ef_whitelist_via_commessa(
+                      p_auth_user_id,
+                      (SELECT af.commessa_id
+                         FROM vendite.attivita_fatturabili af
+                        WHERE af.id = p_attivita_id)
+                  );
+              $function$;
+
+              -- =====================================================
+              -- OPERATORE — tutte e sette le famiglie
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_ef_whitelist(
+                  p_auth_user_id integer,
+                  p_target_tipo  vendite.note.target_tipo%TYPE,
+                  p_target_id    vendite.note.target_id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: smistare la nota verso l'adattatore della sua
+                  --   famiglia. Serve al PADRE partizionato vendite.note, che
+                  --   non eredita le policy delle partizioni.
+                  -- ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo e
+                  --   non gestito rende quelle note INVISIBILI dal padre, non
+                  --   visibili a tutti. Presidiato dal pgTAP della slice.
+                  SELECT CASE p_target_tipo
+                      WHEN 'PREVENTIVO' THEN script.fn_scope_ef_whitelist_via_preventivo(p_auth_user_id, p_target_id)
+                      WHEN 'ORDINE'     THEN script.fn_scope_ef_whitelist_via_ordine(p_auth_user_id, p_target_id)
+                      WHEN 'DDT'        THEN script.fn_scope_ef_whitelist_via_ddt(p_auth_user_id, p_target_id)
+                      WHEN 'CONTRATTO'  THEN script.fn_scope_ef_whitelist_via_contratto(p_auth_user_id, p_target_id)
+                      WHEN 'FATTURA'    THEN script.fn_scope_ef_whitelist_via_fattura(p_auth_user_id, p_target_id)
+                      WHEN 'OFFERTA'    THEN script.fn_scope_ef_whitelist_via_offerta(p_auth_user_id, p_target_id)
+                      WHEN 'ATTIVITAFT' THEN script.fn_scope_ef_whitelist_via_attivita_fatturabile(p_auth_user_id, p_target_id)
+                      ELSE false
+                  END;
+              $function$;
+
+              -- =====================================================
+              -- CLIENTE_PORTALE — solo dove la testata concede quella veste
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_cliente(
+                  p_identita_id bigint,
+                  p_target_tipo vendite.note.target_tipo%TYPE,
+                  p_target_id   vendite.note.target_id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- ⚠️ Due famiglie soltanto, ed e' l'unione ESATTA di cio' che
+                  --   le partizioni gia' concedono: `note_fatture` ha la veste
+                  --   ba_ownership, `note_ordini` la cliente_ownership. Le altre
+                  --   cinque non hanno vesti cliente, quindi il padre non deve
+                  --   inventarne — aprirebbe piu' delle partizioni.
+                  SELECT CASE p_target_tipo
+                      WHEN 'FATTURA' THEN script.fn_scope_ba_ownership_via_fattura(p_identita_id, p_target_id)
+                      WHEN 'ORDINE'  THEN script.fn_scope_cliente_ownership_via_ordine(p_identita_id, p_target_id)
+                      ELSE false
+                  END;
+              $function$;
+
+              -- =====================================================
+              -- SHOP_CUSTOMER — solo ORDINE, e con la condizione del canale
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_shop(
+                  p_identita_id bigint,
+                  p_target_tipo vendite.note.target_tipo%TYPE,
+                  p_target_id   vendite.note.target_id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- ⛔ `fn_scope_shop_via_ordine` porta DUE condizioni —
+                  --   proprieta' e `canale_origine = 'SHOP'` — perche' due ne
+                  --   pretende la testata. Il padre non puo' farsi bastare la
+                  --   proprieta': sarebbe piu' permissivo della partizione.
+                  SELECT CASE p_target_tipo
+                      WHEN 'ORDINE' THEN script.fn_scope_shop_via_ordine(p_identita_id, p_target_id)
+                      ELSE false
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_attivita_fatturabile(integer, bigint)
+              IS 'Perimetro emittente di una vendite.attivita_fatturabili, risalendo a `commessa_id` (NOT NULL) e delegando a script.fn_scope_ef_whitelist_via_commessa. ⛔ Non si usa `billing_account_id`, che e'' nullable: una policy su una chiave nullable ha un buco esatto dove il NULL passa (brief §6.1). ⚠️ Serve a proteggere le NOTE di attivita'' fatturabile: la tabella attivita_fatturabili resta il debito dichiarato del §6.1. Brief: brief-db-perimetro-emittente-righe-documento.md';
+
+              COMMENT ON FUNCTION script.fn_scope_note_ef_whitelist(integer, character varying, bigint)
+              IS 'Smistatore di scope per il PADRE partizionato vendite.note, veste OPERATORE: instrada su target_tipo verso l''adattatore della famiglia. Esiste perche'' le policy delle PARTIZIONI non risalgono al padre — provato il 2026-09-09: col padre armato e senza policy propria, risponde zero. ⛔ ELSE false: un target_tipo non gestito rende quelle note invisibili dal padre, non visibili a tutti; presidiato dal pgTAP della slice, che confronta i rami col CHECK. Brief §6.4.';
+
+              COMMENT ON FUNCTION script.fn_scope_note_cliente(bigint, character varying, bigint)
+              IS 'Smistatore per il padre vendite.note, veste CLIENTE_PORTALE. ⚠️ Copre solo FATTURA e ORDINE: e'' l''unione esatta delle vesti cliente che le partizioni gia'' concedono. Le altre cinque famiglie non ne hanno, e il padre non deve inventarne — aprirebbe piu'' delle partizioni.';
+
+              COMMENT ON FUNCTION script.fn_scope_note_shop(bigint, character varying, bigint)
+              IS 'Smistatore per il padre vendite.note, veste SHOP_CUSTOMER. Solo ORDINE, e delegando a fn_scope_shop_via_ordine, che pretende proprieta'' E canale_origine = SHOP: due condizioni, come la testata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_note_shop(bigint, character varying, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_note_cliente(bigint, character varying, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_note_ef_whitelist(integer, character varying, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_attivita_fatturabile(integer, bigint);

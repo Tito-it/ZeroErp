@@ -104,7 +104,7 @@ class PermissionsAuditRepositoryTests(TestCase):
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
             ("user_override_aree", ts, 1, "setup", {"livello": "TUTTO"}, "tx-a", 3),
-            ("risorse_umane_auth_user", ts, 2, "admin", {"ruolo": "OPERATIVO"}, "tx-b", 3),
+            ("identita_digitali", ts, 2, "admin", {"ruolo_applicativo": "OPERATORE"}, "tx-b", 3),
             ("user_emittenti_fiscali", ts, 3, "admin", {"emittente_id": 7}, "tx-c", 3),
         ]
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)

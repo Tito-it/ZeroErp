@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ CORRETTIVA di 20260904-27 — i quattro utenti tecnici si rifanno, uno per
+# ogni emittente attivo.
+#
+# 🔴 Quelli creati dal -27 sono nati SENZA emittente, e in questo modello un
+# utente senza emittente non puo' fare niente: `fn_check_user_emittente_scope`
+# con zero righe di whitelist risponde `false` (P-2a, 2026-08-18). Erano quattro
+# badge che non aprivano nessuna porta.
+#   ⭐ E lo diceva gia' un presidio piu' vecchio di questo cantiere:
+#   `dbops.vw_operatori_senza_emittente` li elencava tutti e quattro.
+#
+# ⚠️ Si DISATTIVANO invece di cancellarli, ed e' la stessa regola che vale per
+# tutto il cantiere: le righe di `maintenance.job_run_log` che nominassero
+# quegli utenti devono restare leggibili. Un attore non si cancella dalla
+# storia perche' oggi non serve piu'.
+#
+# ⭐ La ricreazione e' un PRODOTTO: per ogni processo DOMINIO headless x ogni
+# emittente ATTIVO. Oggi, con un emittente solo, sono di nuovo quattro utenti —
+# ma la struttura e' quella giusta per il secondo emittente, invece di scoprire
+# il muro quel giorno.
+#
+# ⚠️ `context: dati_macchina`: crea righe in `django.auth_user` e dipende dagli
+# emittenti di QUESTA installazione. Il cancello in CI e' armato dal 2026-09-04
+# (`--contexts="!provision and !dati_macchina"` nei tre punti che lanciano il
+# migrate).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260904-39-rifai-utenti-tecnici-per-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260904-39-rifai-utenti-tecnici-per-emittente
+      author: mctit
+      context: dati_macchina
+      failOnError: true
+      comment: >
+        Disattiva gli utenti tecnici senza emittente creati dal -27 e li ricrea
+        per ogni coppia (processo DOMINIO headless, emittente attivo).
+        Ripetibile: salta le coppie gia' servite.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_crea_utente_tecnico'
+                     AND p.pronargs = 3;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $rifai$
+              DECLARE
+                  -- Nessun %TYPE su django.*.
+                  v_auth_user_id integer;
+                  v_orfano       integer;
+                  v_coppia       record;
+                  v_creati       integer := 0;
+                  v_disattivati  integer := 0;
+              BEGIN
+                  -- =====================================================
+                  -- 1. Gli utenti tecnici SENZA emittente: badge che non
+                  --    aprono nessuna porta. Si disattivano, non si
+                  --    cancellano — la storia dei run resta leggibile.
+                  -- =====================================================
+                  FOR v_orfano IN
+                      SELECT pi.auth_user_id
+                        FROM dbops.processi_identita pi
+                       WHERE pi.attivo
+                         AND NOT EXISTS (SELECT 1
+                                           FROM config.user_emittenti_fiscali uef
+                                          WHERE uef.auth_user_id = pi.auth_user_id)
+                       ORDER BY pi.auth_user_id
+                  LOOP
+                      UPDATE dbops.processi_identita
+                         SET attivo = false
+                       WHERE auth_user_id = v_orfano;
+
+                      -- Anche l'identita', altrimenti resterebbe un'identita'
+                      -- col flag `tecnica` che nessun processo rivendica —
+                      -- cioe' il terzo verso di
+                      -- dbops.vw_processi_dominio_senza_identita.
+                      UPDATE anagrafiche.identita_digitali
+                         SET attivo = false
+                       WHERE auth_user_id = v_orfano;
+
+                      v_disattivati := v_disattivati + 1;
+                      RAISE NOTICE 'Utente tecnico senza emittente disattivato: auth_user_id=%',
+                                   v_orfano;
+                  END LOOP;
+
+                  -- =====================================================
+                  -- 2. Il prodotto: ogni processo DOMINIO headless x ogni
+                  --    emittente ATTIVO. La vista di presidio calcola
+                  --    esattamente le coppie mancanti — si legge da li',
+                  --    cosi' presidio e seed non possono divergere.
+                  -- =====================================================
+                  FOR v_coppia IN
+                      SELECT processo_codice, emittente_codice
+                        FROM dbops.vw_emittenti_non_serviti
+                       ORDER BY processo_codice, emittente_codice
+                  LOOP
+                      v_auth_user_id := script.fn_crea_utente_tecnico(
+                          v_coppia.processo_codice,
+                          v_coppia.emittente_codice);
+                      v_creati := v_creati + 1;
+                      RAISE NOTICE 'Utente tecnico creato: %@% (auth_user_id=%)',
+                                   v_coppia.processo_codice,
+                                   v_coppia.emittente_codice,
+                                   v_auth_user_id;
+                  END LOOP;
+
+                  RAISE NOTICE 'Riepilogo: % disattivati, % creati.',
+                               v_disattivati, v_creati;
+
+                  IF v_creati = 0 AND v_disattivati = 0 THEN
+                      RAISE NOTICE 'Niente da fare: nessun emittente attivo, oppure gia'' tutto servito.';
+                  END IF;
+              END
+              $rifai$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Si disattiva il legame, non si cancellano le identita': le
+              -- righe di maintenance.job_run_log che nominano quegli utenti
+              -- restano leggibili, ed e' il punto di tutto il cantiere.
+              UPDATE dbops.processi_identita pi
+                 SET attivo = false
+                FROM dbops.processi p
+               WHERE p.id = pi.processo_id
+                 AND p.classe = 'DOMINIO'
+                 AND p.canale IN ('PGAGENT', 'COMMAND');

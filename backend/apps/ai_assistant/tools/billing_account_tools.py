@@ -78,7 +78,7 @@ class CercaBillingAccountTool(AITool):
         # Scope emittente fiscale: None per superuser, lista bigint[] per operatori.
         # Coerente con la view REST: permette all'utente normale di vedere solo
         # i BA degli emittenti su cui e' autorizzato.
-        emittente_ids = PermissionResolver.get_emittenti_ids(request.user, cache={})
+        emittente_ids = PermissionResolver.get_emittenti_pk_ids(request.user, cache={})
 
         svc = BillingAccountService()
         response = svc.search_lookup(

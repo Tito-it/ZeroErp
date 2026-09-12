@@ -18,7 +18,7 @@
 #   - vendite.trgfn_contratti_righe_guard_modalita_c:
 #       BEFORE INSERT OR UPDATE su vendite.contratti_righe
 #
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 5.3.
 # ------------------------------------------------------------
 

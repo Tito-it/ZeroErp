@@ -93,7 +93,21 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "ALTER ROLE zeroerp SET myapp.user_language = 'it';"
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "ALTER ROLE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp password=postgres';"
+            "CREATE ROLE zeroerp_log LOGIN PASSWORD 'secret-log';"
+          # ⛔ CORRETTO il 2026-09-05. La riga precedente diceva
+          #   `user=zeroerp password=postgres`: la password di `zeroerp` in
+          #   questo workflow e' `secret` (riga sopra), quindi quel DSN non si
+          #   sarebbe autenticato. Non se n'e' accorto nessuno perche' in CI non
+          #   gira nessun job e il canale non viene mai aperto — una riga che
+          #   sembrava configurare un canale e configurava un errore.
+          # ⚠️ L'utente giusto e' `zeroerp_log`: privilegi minimi (scrive il
+          #   giornale, non lo legge), ed e' quello che i GRANT di
+          #   `90_end/20260905-38` si aspettano.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';"
+          # ⚠️ Solo `zeroerp`: in QUESTO workflow `zeroerp_app` non viene creato
+          #   (lo fa `ci-validate`, dove gira la suite pgTAP). Un ALTER ROLE su
+          #   un ruolo inesistente fermerebbe la build con ON_ERROR_STOP=1.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
              "SELECT name, setting FROM pg_settings WHERE name LIKE 'myapp.%' ORDER BY name;"
 
@@ -171,7 +185,7 @@ jobs:
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
-            update --contexts="!provision"
+            update --contexts="!provision and !dati_macchina"
 
       # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
       # -> provisioning come 'postgres' (non Liquibase, che gira come 'zeroerp').

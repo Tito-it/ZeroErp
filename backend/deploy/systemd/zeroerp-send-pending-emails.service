@@ -1,0 +1,38 @@
+# Template systemd — drenaggio della coda email (config.email_log / email_outbox).
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# La cadenza sta in `backend/deploy/sveglie.json`, non qui.
+#
+# 🔴 PERCHE' NASCE IL 2026-09-06, e vale la riga. Questo processo era in
+# `dbops.processi` da mesi, si registrava su `maintenance.job_run_log` dal
+# 2026-09-05 — e non aveva NESSUN artefatto di deploy: né template, né riga
+# nell'installer. Su un host nuovo non partiva mai, e nessuna vista poteva
+# accorgersene: `dbops.vw_processi_programmazione` lo classifica FUORI_PORTATA,
+# che significa «il database non può saperlo». È l'esempio che il brief della
+# sveglia usa per descrivere il guasto-per-assenza, ed era vero di sé stesso.
+#
+# ⭐ CADENZA PIU' LENTA DEI DUE DRAINER DI CODA, ed è una scelta di modello non
+# un numero preso a caso: le email di **sistema** (reset password, inviti) NON
+# aspettano questo giro — partono in sincrono, e la decisione è del
+# 2026-09-05 (`brief-db-email-perimetro-e-invio-di-sistema` §1: «un reset
+# password che arriva un minuto dopo è un reset password che l'utente ha già
+# chiesto due volte»). Qui si drena ciò che resta e si ritenta ciò che è
+# fallito, e per quel mestiere cinque minuti sono una latenza, non un guasto.
+#
+# ⚠️ ANTI-OVERLAP: NON c'è. Il command non ha `lock_key` — decisione dichiarata
+# nel suo header il 2026-09-05 («aggiungerlo ora cambierebbe il comportamento di
+# un processo in esercizio dentro un cantiere che parla di identità»). Con
+# `Type=oneshot` e cadenza a 5 minuti due fire non si sovrappongono in pratica;
+# se un giorno servirà, il posto è il command, non il timer.
+[Unit]
+Description=ZeroERP drenaggio coda email (config.email_log)
+After=network.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+ExecStart=__APP_DIR__/bin/run-command.sh send_pending_emails

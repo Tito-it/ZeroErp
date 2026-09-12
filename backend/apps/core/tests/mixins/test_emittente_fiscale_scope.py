@@ -17,7 +17,7 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 from apps.core.mixins import EmittenteFiscaleScopeMixin
 
@@ -56,7 +56,6 @@ class _FakeParentView:
 class _ViewWithMixin(EmittenteFiscaleScopeMixin, _FakeParentView):
     """Scopo: View concreta che combina mixin + parent per i test."""
 
-    pass
 
 
 class EmittenteFiscaleScopeMixinTests(TestCase):
@@ -105,7 +104,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_operativo_senza_righe_nessun_filtro(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = None
+        mock_resolver.get_emittenti_pk_ids.return_value = None
 
         qs = MagicMock()
         request = _mock_request()
@@ -121,7 +120,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_operativo_con_righe_filtra_queryset(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = [1, 3, 5]
+        mock_resolver.get_emittenti_pk_ids.return_value = [1, 3, 5]
 
         qs = MagicMock()
         filtered_qs = MagicMock()
@@ -140,7 +139,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_filtro_usa_campo_personalizzato(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = [2, 4]
+        mock_resolver.get_emittenti_pk_ids.return_value = [2, 4]
 
         qs = MagicMock()
         filtered_qs = MagicMock()
@@ -150,7 +149,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
         view = _ViewWithMixin(qs, request)
         view.emittente_field = "billing_account__emittente_fiscale_id"
 
-        result = view.get_queryset()
+        view.get_queryset()
 
         qs.filter.assert_called_once_with(
             billing_account__emittente_fiscale_id__in=[2, 4]
@@ -160,7 +159,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_cache_request_riutilizzata(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = [10]
+        mock_resolver.get_emittenti_pk_ids.return_value = [10]
 
         qs = MagicMock()
         qs.filter.return_value = MagicMock()

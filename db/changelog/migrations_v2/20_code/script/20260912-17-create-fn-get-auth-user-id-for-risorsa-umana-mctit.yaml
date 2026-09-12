@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA CATENA «risorsa umana -> utente» IN UNA SEDE SOLA (strato 2, D1).
+#   Analisi: analisi-software-per-dati-morti.md §6.2 / §6.3-bis
+#
+# Due funzioni (fn_notify_cambio_reparto, trgfn_risorse_umane_sync_auth_user_active)
+# risolvevano l'auth_user di una risorsa umana leggendo la VISTA col nome vecchio
+# `anagrafiche.risorse_umane_auth_user`. La vista viene ritirata (90_end/-26) e la
+# stessa catena, riscritta due volte sulla madre, sarebbe la regola del 2 violata
+# alla seconda riga. Gemella (nel verso opposto) di script.fn_get_uo_id_for_user:
+# stessa forma, STABLE, LANGUAGE sql.
+#
+# ⚠️ NON filtra su `attivo`: i due chiamanti vogliono l'utente collegato ANCHE se
+#   l'identita' e' spenta (il sync di is_active deve poterlo SPEGNERE, la notifica
+#   di cambio reparto deve poterlo nominare). Se ce n'e' piu' d'una, vince quella
+#   attiva, poi la piu' recente. Chi vuole solo le attive filtra da se'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260912-17-create-fn-get-auth-user-id-for-risorsa-umana-mctit.yaml
+
+  - changeSet:
+      id: 20260912-17-create-fn-get-auth-user-id-for-risorsa-umana
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Helper script.fn_get_auth_user_id_for_risorsa_umana(p_risorsa_umana_id):
+        auth_user_id dell'identita' OPERATORE collegata alla risorsa umana via
+        soggetto_ruolo_id (identita_digitali JOIN risorse_umane). Sostituisce le
+        letture della vista risorse_umane_auth_user in due funzioni (regola del 2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_auth_user_id_for_risorsa_umana(
+                  p_risorsa_umana_id anagrafiche.risorse_umane.id%TYPE)
+               RETURNS anagrafiche.identita_digitali.auth_user_id%TYPE
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- La catena risorsa umana -> identita' OPERATORE -> auth_user, dalla madre.
+                  -- Nessun filtro su attivo (vedi intestazione): attiva prima, poi la piu' recente.
+                  SELECT id.auth_user_id
+                    FROM anagrafiche.identita_digitali id
+                    JOIN anagrafiche.risorse_umane     ru
+                      ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                   WHERE ru.id                = p_risorsa_umana_id
+                     AND id.ruolo_applicativo = 'OPERATORE'
+                   ORDER BY id.attivo DESC, id.id DESC
+                   LIMIT 1;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_auth_user_id_for_risorsa_umana(anagrafiche.risorse_umane.id%TYPE) IS
+              'auth_user_id dell''identita'' OPERATORE collegata a una risorsa umana (identita_digitali JOIN risorse_umane su soggetto_ruolo_id). Nessun filtro su attivo: attiva prima, poi la piu'' recente; NULL se non collegata. Gemella nel verso opposto di script.fn_get_uo_id_for_user. Nata il 12-09-2026 ritirando la vista risorse_umane_auth_user (regola del 2: due lettori).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_auth_user_id_for_risorsa_umana(anagrafiche.risorse_umane.id%TYPE);

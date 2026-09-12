@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La competenza mostra come e' andato l'ULTIMO tentativo (R-3).
+#   Brief: brief-db-esito-gruppo-lotto §5, residuo R-3.
+#   Chi scrive l'esito: 20260906-10 (colonne) e 20260906-11 (la funzione).
+#
+# -- CHE COSA CAMBIA PER CHI GUARDA --------------------------------
+#   Un documento che un lotto ha provato a fatturare e non ce l'ha fatta resta
+#   fra quelli DA EMETTERE — ed e' giusto, perche' e' ancora da fatturare — ma
+#   adesso porta addosso il suo ultimo esito: che cosa e' andato storto, quando,
+#   e in quale lotto.
+#   Prima non c'era niente: sembrava un documento sano che nessuno aveva ancora
+#   lavorato, ed era il difetto che ha aperto questo cantiere.
+#
+# -- IL SEGNO NON SPEGNE L'EMITTIBILITA' (decisione di Tid) --------
+#   `stadio` e `commessa_emittibile` restano quelli di prima. Il rosso dice
+#   «ci ho provato e non ci sono riuscito», non «non e' fatturabile»: se
+#   spegnesse l'emittibilita', il documento sparirebbe dall'elenco e si
+#   tornerebbe al problema di partenza, dall'altra parte.
+#   Provato sul caso vero in transazione annullata (ORD0036005, lotto
+#   LTF-0009578): dopo la marcatura resta DA_EMETTERE con la commessa
+#   emittibile, e in piu' porta E_PULL_COMMESSA, la frase e il codice del lotto.
+#
+# -- SI GUARDA L'ULTIMO TENTATIVO, E UNO SOLO ----------------------
+#   Lo stesso documento puo' essere stato provato piu' volte — un lotto
+#   riaperto, un giro rifatto. Conta com'e' andata l'ultima volta.
+#   L'ordinamento e' esplicito e ha un secondo criterio: un LIMIT senza
+#   ORDER BY scommette, e a parita' di istante due tentativi darebbero
+#   risposte diverse a ogni lettura.
+#   Si guardano solo i tentativi che hanno DETTO qualcosa: uno stato NULL
+#   vuol dire che nessuno l'ha scritto, e non e' un esito.
+#
+# -- IL LEGAME E' (gruppo, mese di competenza) ---------------------
+#   La stessa chiave di gruppo torna su mesi diversi. Senza il mese, il
+#   documento di settembre erediterebbe l'errore di agosto.
+#
+# -- `security_invoker` SI RIMETTE A MANO --------------------------
+#   Un CREATE OR REPLACE VIEW lo azzera, e questa vista lo ha acceso: senza,
+#   la vista leggerebbe con i diritti del proprietario e il perimetro emittente
+#   smetterebbe di mordere. Il corpo qui sotto e' quello VIVO, ripreso dal
+#   database e non da uno YAML, con l'aggiunta in coda.
+#
+# Finche' il backend non chiama la funzione, le cinque colonne sono NULL su
+#   tutto: la vista e' pronta, il dato lo scrive R-1.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql (test 7 e 8).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260906-12-update-vw-dash-competenza-gruppi-esito-mctit.yaml
+
+  - changeSet:
+      id: 20260906-12-update-vw-dash-competenza-gruppi-esito
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_dash_competenza_gruppi espone l'esito dell'ultimo tentativo
+        di fatturazione del documento (stato, codice, frase, quando, lotto).
+        Chiude R-3: un documento provato e fallito resta DA EMETTERE e porta il
+        motivo, invece di sembrare sano. stadio e commessa_emittibile non
+        cambiano. security_invoker rimesso esplicitamente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_gruppi, columnName: stato_esecuzione }
+            - viewExists:
+                { schemaName: vendite, viewName: vw_dash_competenza_gruppi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+                  WITH (security_invoker = true)
+              AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), 0::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(a.tipo_movimento::text = 'ONERE'::text) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min(a.registro_codice::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  cardinality(g.registri_ids)::smallint AS registri_n,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione   AS ultimo_esito,
+                  esito.errore_codice      AS ultimo_errore_codice,
+                  esito.errore_messaggio   AS ultimo_errore_messaggio,
+                  esito.errore_quando      AS ultimo_errore_quando,
+                  esito.lotto_codice       AS ultimo_lotto_codice
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON s.area IS NOT NULL
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ba_riga.id = g.billing_account_id
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id)
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON sr_fatt.id = ba_fatt.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti sog ON sog.id = sr_fatt.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = g.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   -- ⭐ L'ULTIMO TENTATIVO, e uno solo.
+                   --   Lo stesso documento puo' essere stato provato piu' volte (un lotto
+                   --   riaperto, un giro rifatto): quello che conta e' com'e' andata
+                   --   l'ultima. ⚠️ L'ordinamento e' esplicito e con un secondo criterio:
+                   --   un LIMIT senza ORDER BY scommette, e a parita' di istante due
+                   --   tentativi diversi darebbero risposte diverse a ogni lettura.
+                   -- ⚠️ Si guardano solo i tentativi che hanno DETTO qualcosa: uno stato
+                   --   NULL vuol dire che nessuno l'ha scritto, e non e' un esito.
+                   LEFT JOIN LATERAL (
+                       SELECT lg.stato_esecuzione,
+                              lg.errore_codice,
+                              lg.errore_messaggio,
+                              lg.errore_quando,
+                              l.codice AS lotto_codice
+                         FROM vendite.fatturazione_lotti_gruppi lg
+                         JOIN vendite.fatturazione_lotti l ON l.id = lg.lotto_id
+                        WHERE lg.gruppo_key = g.gruppo_key
+                          AND l.competenza_mese = g.competenza_mese
+                          AND lg.stato_esecuzione IS NOT NULL
+                        ORDER BY COALESCE(lg.errore_quando, lg.data_update) DESC, lg.id DESC
+                        LIMIT 1
+                   ) esito ON true;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                  'I documenti da emettere di una competenza, un gruppo per riga. '
+                  'Dal 2026-09-06 porta anche l''esito dell''ULTIMO tentativo di '
+                  'fatturazione (ultimo_esito, ultimo_errore_codice, '
+                  'ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice), '
+                  'letto da vendite.fatturazione_lotti_gruppi. Nasce da un caso vero: '
+                  'un lotto prendeva in carico tre documenti, ne fatturava due, e il terzo '
+                  '— caduto prima di diventare fattura — restava qui senza nessun segno, '
+                  'quindi sembrava fatturabile. Il segno NON spegne stadio ne'' '
+                  'commessa_emittibile (decisione di Tid): dice che un tentativo e'' '
+                  'fallito, non che il documento non si possa fatturare. Il legame e'' '
+                  '(gruppo, mese di competenza): senza il mese, il documento di settembre '
+                  'erediterebbe l''errore di agosto. Le colonne restano NULL finche'' il '
+                  'backend non scrive l''esito con vendite.fn_segna_esito_gruppo_lotto. '
+                  'Brief: brief-db-esito-gruppo-lotto R-3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback rimette la vista SENZA le cinque colonne: un
+              -- CREATE OR REPLACE non sa toglierle, quindi serve il DROP.
+              -- Chi lo esegue deve poi rilanciare la definizione precedente.
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi;

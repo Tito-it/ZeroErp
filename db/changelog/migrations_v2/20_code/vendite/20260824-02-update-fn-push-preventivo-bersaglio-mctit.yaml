@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # ROLL-OUT DEL BERSAGLIO — primo scaglione, 2 di 2
 #   vendite.fn_push_preventivo_a_ordine
-#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 lotto L6
+#   Brief: brief-db-bersaglio-errore.md §6 lotto L6
 #
 # ── ⭐ IL PRIMO USO REALE DI `key_selector` ─────────────────────────
 #   E' la ragione per cui questo codice e' stato scelto per aprire il roll-out.

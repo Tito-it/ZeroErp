@@ -18,27 +18,31 @@ AS $function$
 --   motivo. ⚠️ L'ordine dell'array e' il contratto: se cambiasse,
 --   il codice sollevato e il motivo mostrato direbbero cose diverse.
 DECLARE
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi jsonb;
-    v_primo  jsonb;
 BEGIN
     v_motivi := anagrafiche.fn_check_titolo_iva_ambito(NEW.titolo_iva_id);
 
-    IF jsonb_array_length(v_motivi) = 0 THEN
-        RETURN NEW;
-    END IF;
-
-    v_primo := v_motivi -> 0;
-
-    PERFORM script.fn_log_and_raise_error(
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⚠️ `NEW.tx_id` e' giusto e non per l'ordine dei nomi: questo guard sta su
+    --   un trigger `_z90_` **AFTER**, quindi TUTTI i BEFORE — gen_tx_id
+    --   compreso — sono gia' passati.
+    -- ⚠️ L'ordine di fusione del contesto lo decide ora l'helper, e `campo`
+    --   VINCE sul `dettaglio`. Qui era il contrario; misurato il 2026-09-08,
+    --   nessuna fn_check_* del database mette `campo` dentro `dettaglio`,
+    --   quindi a video non cambia niente e la regola smette di essere doppia.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
         'anagrafiche', 'trgfn_soggetti_titoli_iva_ambiti_guard',
-        v_primo ->> 'codice',
-        jsonb_build_object('campo', 'ambito')
-            || COALESCE(v_primo -> 'dettaglio', '{}'::jsonb),
-        NEW.tx_id,
-        VARIADIC ARRAY(SELECT jsonb_array_elements_text(
-                           COALESCE(v_primo -> 'valori', '[]'::jsonb))));
+        v_motivi,
+        'ambito',
+        NEW.tx_id);
 
-    RETURN NEW;   -- irraggiungibile: la riga sopra solleva sempre
+    -- ⭐ Ora RAGGIUNGIBILE, ed e' il ramo «passa»: l'helper tace quando la
+    --   check non ha trovato nessun motivo.
+    RETURN NEW;
 END;
 $function$
 

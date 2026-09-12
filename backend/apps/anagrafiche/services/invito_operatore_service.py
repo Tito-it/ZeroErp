@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import secrets
 from typing import Any
@@ -18,8 +17,8 @@ from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
 
+from apps.core.db._helpers import jsonb_out
 from apps.core.db.auth_repository import AuthRepository
-from apps.core.db.email_repository import EmailRepository
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
@@ -159,7 +158,7 @@ class InvitoOperatoreService:
             cursor.execute(sql, [auth_user_id])
             row = cursor.fetchone()
             if row and row[0]:
-                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                return jsonb_out(row[0])
         return {"invitabile": False, "motivo": "Errore verifica invitabilita'."}
 
     # Scopo: Recupera nome visualizzabile di un utente.

@@ -39,6 +39,12 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⚠️ 2026-09-04: `dbops.automazione_chiusura_scadenze.classe` e' NOT NULL —
+--   ogni bersaglio dichiara la propria natura (MANUTENZIONE|AMMINISTRAZIONE|
+--   DOMINIO), perche' il framework legge le tabelle da questa configurazione e
+--   una riga nuova ne cambierebbe la natura senza che nessuno se ne accorga.
+--   Le fixture qui sotto usano DOMINIO: sono gli stessi bersagli del seed reale
+--   (contratti e listini portano entrambi l'emittente).
 SELECT plan(6);
 
 -- Rimuove le righe seed durante il test per evitare conflitti con
@@ -112,11 +118,11 @@ SELECT 'PGTAP_FW_CONTR_SCAD', ba.billing_account_id, ba.istanza_utility_id, ba.u
 INSERT INTO dbops.automazione_chiusura_scadenze (
     id, schema_tabella, nome_tabella, col_stato, tipo_stato,
     col_valido_al, stato_attivo_codice, stato_chiuso_codice,
-    attivo, descrizione
+    attivo, descrizione, classe
 ) VALUES (
     1001, 'vendite', 'listini_versioni', 'stato', 'VARCHAR',
     'valido_al', 'ATTIVA', 'CHIUSA',
-    true, 'pgtap test 1'
+    true, 'pgtap test 1', 'DOMINIO'
 );
 
 -- Esegui il framework.
@@ -140,12 +146,12 @@ INSERT INTO dbops.automazione_chiusura_scadenze (
     id, schema_tabella, nome_tabella, col_stato, tipo_stato,
     col_valido_al, stato_attivo_codice, stato_chiuso_codice,
     fk_lookup_schema, fk_lookup_table, fk_lookup_codice_col, fk_lookup_id_col,
-    attivo, descrizione
+    attivo, descrizione, classe
 ) VALUES (
     1002, 'vendite', 'contratti', 'stato_doc_contratto_id', 'FK',
     'valido_al', 'ATTIVO', 'CESSATO',
     'config', 'stati_doc_contratti', 'codice_interno', 'id',
-    true, 'pgtap test 2'
+    true, 'pgtap test 2', 'DOMINIO'
 );
 
 DO $$ BEGIN PERFORM dbops.fn_apply_chiusura_scadenze(); END $$;
@@ -187,11 +193,11 @@ DELETE FROM dbops.automazione_chiusura_scadenze WHERE id IN (1001, 1002);
 INSERT INTO dbops.automazione_chiusura_scadenze (
     id, schema_tabella, nome_tabella, col_stato, tipo_stato,
     col_valido_al, stato_attivo_codice, stato_chiuso_codice,
-    attivo, descrizione
+    attivo, descrizione, classe
 ) VALUES (
     1003, 'vendite', 'tabella_che_non_esiste_pgtap', 'stato', 'VARCHAR',
     'valido_al', 'ATTIVA', 'CHIUSA',
-    true, 'pgtap test 4'
+    true, 'pgtap test 4', 'DOMINIO'
 );
 
 SELECT throws_ok(
@@ -209,11 +215,11 @@ DELETE FROM dbops.automazione_chiusura_scadenze WHERE id = 1003;
 INSERT INTO dbops.automazione_chiusura_scadenze (
     id, schema_tabella, nome_tabella, col_stato, tipo_stato,
     col_valido_al, stato_attivo_codice, stato_chiuso_codice,
-    attivo, descrizione
+    attivo, descrizione, classe
 ) VALUES (
     1004, 'vendite', 'listini_versioni', 'colonna_inesistente_pgtap', 'VARCHAR',
     'valido_al', 'ATTIVA', 'CHIUSA',
-    true, 'pgtap test 5'
+    true, 'pgtap test 5', 'DOMINIO'
 );
 
 SELECT throws_ok(
@@ -232,12 +238,12 @@ INSERT INTO dbops.automazione_chiusura_scadenze (
     id, schema_tabella, nome_tabella, col_stato, tipo_stato,
     col_valido_al, stato_attivo_codice, stato_chiuso_codice,
     fk_lookup_schema, fk_lookup_table, fk_lookup_codice_col, fk_lookup_id_col,
-    attivo, descrizione
+    attivo, descrizione, classe
 ) VALUES (
     1005, 'vendite', 'contratti', 'stato_doc_contratto_id', 'FK',
     'valido_al', 'CODICE_INESISTENTE_PGTAP', 'CESSATO',
     'config', 'stati_doc_contratti', 'codice_interno', 'id',
-    true, 'pgtap test 6'
+    true, 'pgtap test 6', 'DOMINIO'
 );
 
 SELECT throws_ok(

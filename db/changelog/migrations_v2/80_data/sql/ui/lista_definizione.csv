@@ -64,3 +64,5 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 63,anagrafiche.titoli_iva_sfondati,Titoli IVA eccedenti,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
 64,anagrafiche.titolo_iva_ambiti,Ambiti di un titolo IVA,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
 65,anagrafiche.titolo_iva_movimenti,Registro movimenti di un titolo IVA,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
+66,amm.processi,Processi automatici,dbops,NULL,t,2026-09-05 00:00:00,mctit,f
+67,vendite.lotto_gruppi,Documenti presi in carico dal lotto,vendite,NULL,t,2026-09-06 00:00:00,mctit,f

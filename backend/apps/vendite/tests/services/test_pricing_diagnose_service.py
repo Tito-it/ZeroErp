@@ -44,14 +44,14 @@ def _make_service(repo: MagicMock) -> PricingDiagnoseService:
 
 
 def _common_args():
-    return dict(
-        articolo_id=_ART,
-        uom_id=12,
-        data_riferimento=_DATA,
-        ba_id=7,
-        utility_id=5,
-        emittente_soggetto_ruolo_id=72,
-    )
+    return {
+        "articolo_id": _ART,
+        "uom_id": 12,
+        "data_riferimento": _DATA,
+        "ba_id": 7,
+        "utility_id": 5,
+        "emittente_soggetto_ruolo_id": 72,
+    }
 
 
 class PricingDiagnoseServiceTests(TestCase):

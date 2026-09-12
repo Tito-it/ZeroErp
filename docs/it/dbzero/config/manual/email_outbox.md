@@ -25,10 +25,20 @@ Template renderizzato
   → Bozza DRAFT (oggetto e corpo pre-compilati, editabili)
   → Operatore modifica testo, aggiunge CC, allega file
   → Conferma → stato READY → invio effettivo → stato SENT
+  → (oppure) invio NON tentato, di proposito → stato SIMULATA
+  → (oppure) invio fallito → torna a DRAFT, perche' l'operatore riprovi
   → (oppure) Annullamento → stato CANCELLED
 ```
 
 Il dialog "Componi email" nel frontend mostra la bozza con editor HTML, permette modifiche e upload allegati.
+
+#### ⭐ Questa colonna parla di CONSEGNA, non di redazione
+
+Sembra il ciclo di vita di una bozza — e i nomi lo suggeriscono — ma **non lo e'**: lo dice il ramo che su fallimento dell'invio riporta la bozza a `DRAFT`. Una colonna che retrocede quando la consegna fallisce sta descrivendo la consegna.
+
+⇒ Da qui `SIMULATA` (changeSet `20260911-07`, 2026-09-11): quando la mail viene mostrata invece che spedita, la bozza **non e' stata consegnata**, e scrivere `SENT` direbbe il contrario. E' il gemello del valore omonimo su [config.email_log](/dbzero/config/tabelle/email_log), dove sta la spiegazione per esteso.
+
+⚠️ Le due righe sono legate da `email_log_id`: allargare il vocabolario di una sola delle due le avrebbe fatte dissentire sulla **stessa** spedizione, in modo leggibile a occhio nudo.
 
 ---
 
@@ -61,7 +71,7 @@ Questa relazione bidirezionale permette di navigare in entrambe le direzioni: da
 
 ### Vincoli e regole
 
-* CHECK: `stato IN ('DRAFT', 'READY', 'SENT', 'CANCELLED')`
+* CHECK: `stato IN ('DRAFT', 'READY', 'SENT', 'CANCELLED', 'SIMULATA')` -- `SIMULATA` dal 2026-09-11
 * CHECK: `ambito IN ('SISTEMA', 'REPARTO', 'OPERATORE')`
 * CHECK: se `ambito = 'REPARTO'` allora `unita_organizzativa_id IS NOT NULL`
 * FK NO ACTION su account, template, reparto, pratica

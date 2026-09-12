@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test del canale di sistema headless (RLS Path A) — gateway
-#        system_process_context + helper connection_role_bypasses_rls.
+# Scopo: Test dell'unica domanda rimasta sul bypass della RLS:
+#        `connection_role_bypasses_rls`.
+# ⭐ I due test del GATEWAY sono stati tolti il 2026-09-05 (R-2) insieme al
+#    gateway: `system_process_context` non esiste piu'. Che non torni lo
+#    presidia `apps/core/tests/test_system_context_usage_whitelist.py`, che dal
+#    2026-09-05 pretende ZERO occorrenze invece di una whitelist.
 # Indice test:
-#   1) il gateway ripunta la connessione default alle credenziali del canale,
-#      setta app.jwt_user (audit) e RIPRISTINA le credenziali web in uscita
-#   2) fail-loud: se il ruolo del canale non ha BYPASSRLS → RuntimeError + ripristino
-#   3) connection_role_bypasses_rls legge rolbypassrls del ruolo corrente
+#   1) connection_role_bypasses_rls legge rolbypassrls del ruolo corrente
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -38,45 +39,6 @@ def _make_fake_connections(*, bypassrls: bool):
 class SystemProcessContextTests(TestCase):
     # Scopo: dentro il blocco la default usa le credenziali del canale + audit;
     #        all'uscita le credenziali web sono ripristinate.
-    def test_swaps_credentials_sets_audit_and_restores(self):
-        fake, default, cursor = _make_fake_connections(bypassrls=True)
-        with patch(_CONNECTIONS, fake):
-            seen = {}
-            with system_context.system_process_context(
-                alias="system_fatturazione", actor="BATCH_FATTURAZIONE",
-            ):
-                seen["user"] = default.settings_dict["USER"]
-                seen["password"] = default.settings_dict["PASSWORD"]
-
-        # Dentro il blocco: credenziali del canale batch.
-        self.assertEqual(seen["user"], "zeroerp_batch_fatturazione")
-        self.assertEqual(seen["password"], "batchpw")
-        # Audit attore settato sulla connessione di sistema.
-        calls = [c.args for c in cursor.execute.call_args_list]
-        self.assertIn(
-            ("SELECT set_config('app.jwt_user', %s, false)", ["BATCH_FATTURAZIONE"]),
-            calls,
-        )
-        # All'uscita: credenziali web ripristinate + connessione chiusa (open + restore).
-        self.assertEqual(default.settings_dict["USER"], "zeroerp_app")
-        self.assertEqual(default.settings_dict["PASSWORD"], "webpw")
-        self.assertGreaterEqual(default.close.call_count, 2)
-
-    # Scopo: fail-loud — ruolo del canale senza BYPASSRLS → RuntimeError (niente
-    #        batch in default-deny silenzioso) + ripristino credenziali web.
-    def test_fail_loud_when_channel_role_not_bypassrls(self):
-        fake, default, _cursor = _make_fake_connections(bypassrls=False)
-        with patch(_CONNECTIONS, fake):
-            with self.assertRaises(RuntimeError):
-                with system_context.system_process_context(
-                    alias="system_fatturazione", actor="BATCH_FATTURAZIONE",
-                ):
-                    pass
-        # Anche in errore le credenziali web devono essere ripristinate.
-        self.assertEqual(default.settings_dict["USER"], "zeroerp_app")
-        self.assertEqual(default.settings_dict["PASSWORD"], "webpw")
-
-    # Scopo: connection_role_bypasses_rls interroga rolbypassrls del ruolo corrente.
     def test_connection_role_bypasses_rls_reads_current_user(self):
         fake, _default, cursor = _make_fake_connections(bypassrls=True)
         with patch(_CONNECTIONS, fake):

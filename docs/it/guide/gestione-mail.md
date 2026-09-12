@@ -1,6 +1,6 @@
 # Guida – Gestione Mail
 
-> (latest review 31-03-2026)
+> (latest review 06-09-2026)
 >
 > Destinatari: amministratori di sistema, sviluppatori backend, analisti funzionali
 >
@@ -42,6 +42,7 @@ in base al contesto, con fallback sull'account di sistema.
 * [config.email_template](/dbzero/config/tabelle/email_template) — template parametrizzabili
 * [config.email_log](/dbzero/config/tabelle/email_log) — log immutabile di ogni invio
 * [config.email_outbox](/dbzero/config/tabelle/email_outbox) — bozze editabili prima dell'invio
+* [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — `send_pending_emails` è un lavoro **di dominio**: gira per conto di un'azienda, non in incognito
 * [config.email_allegato](/dbzero/config/tabelle/email_allegato) — allegati per outbox e log
 * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti
 
@@ -74,7 +75,8 @@ Funzioni:
    |
 6. Invia via SMTP (o logga in console se in modalita' sviluppo)
    |
-7. Aggiorna stato: SENT o FAILED
+7. Aggiorna stato: **SENT** (spedita), **FAILED** (non spedita) o **SIMULATA**
+   (mostrata a video invece che spedita — modalita' console, dal 2026-09-11)
 ```
 
 ### Invio diretto vs bozza (outbox)
@@ -108,7 +110,7 @@ Da **Amm. Software → Account Email** (solo ADMIN):
 | --- | --- | --- |
 | Codice | `SISTEMA` | Non modificare — e' il fallback di tutto il sistema |
 | Descrizione | Account di sistema | Libero |
-| SMTP Host | `smtp.gmail.com` | Lasciare vuoto per modalita' console |
+| SMTP Host | `smtp.gmail.com` | ⚠️ Vuoto o `smtp.example.com` = l'account **non spedisce**: e' modalita' console solo in sviluppo, altrove e' configurazione che manca |
 | SMTP Port | `587` | 587 per STARTTLS, 465 per SSL |
 | SMTP TLS | `true` | Abilitare per Gmail e la maggior parte dei provider |
 | SMTP SSL | `false` | Alternativo a TLS (non entrambi) |
@@ -151,8 +153,9 @@ Per produzione: valutare servizio dedicato (SendGrid, Mailgun, Amazon SES, SMTP 
 
 ### Modalita' console (sviluppo)
 
-Quando `DEBUG = True` e l'account ha host SMTP vuoto (o `smtp.example.com`),
-le email **non vengono inviate** ma loggate nel terminale Django:
+Quando `DEBUG = True` le email **non vengono inviate** ma loggate nel terminale
+Django. ⚠️ Basta `DEBUG`: l'host non c'entra — anche con un SMTP reale
+configurato, in sviluppo non parte niente.
 
 ```
 ============================================================
@@ -167,8 +170,20 @@ Benvenuto Mario! Sei stato invitato ad accedere...
 ============================================================
 ```
 
-Il record viene comunque creato in `email_log` con stato `SENT`, permettendo
-di verificare il flusso completo senza SMTP reale.
+Il record viene comunque creato in `email_log`, cosi' si verifica il flusso
+completo senza SMTP reale — ma con stato **`SIMULATA`** e `inviato_at` **vuoto**.
+
+⛔ **Fino al 2026-09-11 quello stato era `SENT`**, ed era un difetto vero: una
+mail stampata a video risultava *consegnata*, indistinguibile da una vera.
+Nessun errore, nessun allarme — la si scopriva solo non vedendo arrivare niente.
+
+### ⛔ E se `DEBUG = False` con l'host ancora finto?
+
+Non e' console mode: e' **configurazione che manca**, e il programma lo dice.
+L'email **non viene ne' spedita ne' stampata**, e il giornale registra
+**`FAILED`** col motivo e la strada per rimediare. ⚠️ Anche il pulsante «prova
+connessione» risponde di no: prima diceva OK, ed e' cosi' che un'installazione
+e' rimasta senza posta senza che nessuno se ne accorgesse.
 
 ### Testare la connessione
 
@@ -271,6 +286,40 @@ Le email collegate a una **pratica** (`pratica_id`) sono visibili anche dalla
 scheda pratica, indipendentemente dall'ambito. Questo permette di ricostruire
 la storia comunicativa di una pratica.
 
+### ⭐ Dal 06-09-2026 questa tabella non è più solo una regola dell'applicazione
+
+Fino a settembre l'ambito era una convenzione: a farlo rispettare era il codice
+che leggeva le email. Ora lo fa **il database**, su tutte e due le tabelle — le
+bozze e il registro degli invii.
+
+Cambia poco per chi legge la tabella qui sopra, e cambia molto per chi scrive
+codice: non c'è più modo di dimenticarsi il filtro.
+
+⚠️ **E si aggiunge una seconda dimensione: l'azienda.** Le email che non sono di
+sistema appartengono a un'azienda, e si vedono solo se quell'azienda è fra
+quelle di chi guarda. Prima l'ambito diceva *quale gruppo di persone*; adesso
+dice anche *di chi è la posta*.
+
+⛔ Le email di **sistema** (reset password, inviti, alert) restano fuori da
+questa seconda regola, ed è voluto: non appartengono a nessuna azienda, e il
+loro contenuto vale quanto una password. Le legge solo un amministratore.
+
+### ⚠️ La porta per i percorsi senza utente
+
+Un reset password parte **prima** che qualcuno abbia fatto l'accesso: in quel
+momento non c'è nessun utente in sessione. Con il filtro acceso, la scrittura
+dell'email verrebbe rifiutata — cioè il reset non partirebbe, e nessuno se ne
+accorgerebbe.
+
+Per questo esistono due funzioni dedicate, ed è l'unico modo previsto di
+scrivere una email di sistema da un percorso non autenticato:
+[fn_accoda_email_sistema](/dbzero/config/funzioni/fn_accoda_email_sistema) la
+mette in coda, [fn_chiudi_email_sistema](/dbzero/config/funzioni/fn_chiudi_email_sistema)
+ne registra l'esito.
+
+⛔ Non sono una scorciatoia da usare altrove: fanno una cosa sola, e solo per le
+email di sistema.
+
 ---
 
 ## Allegati
@@ -312,6 +361,7 @@ usa l'account SMTP originale (quello con cui l'email era stata preparata).
 
 ## Sicurezza
 
+* **Filtro nel database** su bozze e registro invii: l'ambito e l'azienda non sono più solo una regola applicativa — vedi [Ambito e visibilità](#ambito-e-visibilita)
 * **Password SMTP crittografata** con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
 * **Ownership check** su tutte le operazioni outbox e allegati — fail-closed se nessun outbox padre
 * **Path traversal guard** su download allegati

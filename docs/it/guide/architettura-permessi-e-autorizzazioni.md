@@ -19,7 +19,7 @@
 >   collega `soggetti_ruoli` a `auth_user` per 5 ruoli applicativi
 >   (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
 >   `API_CLIENT`) + stato `DISABILITATO`. La ex tabella bridge
->   `risorse_umane_auth_user` e' ora una vista read-only di compatibilita'.
+>   `risorse_umane_auth_user` **non esiste piu'** (tabella e vista ritirate il 12-09-2026).
 > * **Profili accesso generalizzati** — `config.profili_accesso` con tipo
 >   `REPARTO` / `PORTALE` / `AD_HOC` / `SUPER_ADMIN`, binding via
 >   `config.profili_accesso_bindings` verso reparto, identita o ruolo.
@@ -797,10 +797,10 @@ fornitore, shop customer). Il profilo di accesso si ottiene tramite
 diretta all'identita (AD_HOC), per ruolo applicativo (preset portale/shop),
 per unita' organizzativa (ereditarieta' reparto per operatori).
 
-La tabella legacy `risorse_umane_auth_user` non esiste piu' come tabella:
-e' una **vista read-only** costruita sopra `identita_digitali` filtrando
-`ruolo_applicativo = 'OPERATORE'`, mantenuta per retrocompatibilita' del
-codice Python che non e' ancora stato migrato.
+La tabella legacy `risorse_umane_auth_user` **non esiste piu'** in nessuna
+forma: la tabella e' stata eliminata e la vista che ne aveva preso il nome e'
+stata ritirata il 12-09-2026 (`90_end/20260912-10` e `-26`), dopo che il codice
+Python e' passato a leggere `identita_digitali` (`ruolo_applicativo = 'OPERATORE'`).
 
 ```mermaid
 erDiagram

@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il presidio della decisione «trattiamo il 3 su 3 come il 2 su 3».
+#   Brief: brief-db-esito-gruppo-lotto §13.
+#
+# ── ⭐ LA DECISIONE (Tid, 2026-09-06) ──────────────────────────────
+#   Quando TUTTE le commesse di un giro falliscono, il passo smette di
+#   sollevare e torna un esito, come fa gia' quando ne falliscono alcune. Cosi'
+#   i segni sui documenti falliti non vengono piu' annullati dal rollback.
+#
+# ── 🔴 IL RISCHIO CHE QUELLA DECISIONE INTRODUCE, E CHE QUESTA VISTA GUARDA ──
+#   Senza l'eccezione, lo stato finale del lotto lo decide `evaluate_lotto_status`,
+#   che chiede: «ci sono fatture in errore, o segnalazioni critiche?».
+#   ⛔ Nel caso «tutte fallite» le fatture **non esistono**: non ne e' nata
+#   nessuna. Se anche le segnalazioni critiche mancassero, la risposta sarebbe
+#   «nessun errore» e il lotto verrebbe chiuso **COMPLETATO** — cioe' un
+#   fallimento totale che si presenta come «Pipeline completata».
+#
+#   ⚠️ Oggi non succede, ed e' importante capire PERCHE': il passo scrive una
+#   segnalazione critica **per ogni commessa fallita** prima di decidere il
+#   ramo, quindi con tutte fallite ce ne sono n, e il lotto va in ERRORE.
+#   ⭐ Ma e' una salvezza **indiretta**: dipende da come un altro pezzo scrive i
+#   propri log. Il giorno in cui quelle righe cambiassero forma — accorpate,
+#   declassate a warning, spostate — il lotto tornerebbe a dirsi completato, e
+#   nessuno se ne accorgerebbe.
+#   ⇒ Un difetto che si manifesta come SILENZIO e' esattamente cio' per cui
+#     questo cantiere e' nato. Si mette un presidio, invece di fidarsi.
+#
+# ── ⭐ LA CONTRADDIZIONE CHE LA VISTA CERCA, in una riga ────────────
+#   «Un lotto chiuso COMPLETATO che contiene documenti dichiarati in ERRORE.»
+#   Sono due affermazioni che non possono stare insieme: o il lotto e' andato
+#   bene, o quei documenti non erano suoi.
+#
+# ── ✅ E PUO' ARRIVARE A ZERO ──────────────────────────────────────
+#   Non elenca i lotti in errore — quelli sono un fatto normale. Elenca solo
+#   la coppia impossibile. Oggi e' vuota, e deve restarci: e' la condizione che
+#   un presidio deve sapere raggiungere, altrimenti e' rumore.
+#
+# ── ⚠️ NON GUARDA I GRUPPI SENZA ESITO ─────────────────────────────
+#   Un gruppo con `stato_esecuzione` a NULL vuol dire «nessuno l'ha detto», e
+#   sui lotti anteriori al 2026-09-06 sono tutti cosi'. Contarli qui farebbe
+#   una vista che parte con centinaia di righe e non arriva mai a zero — cioe'
+#   un presidio che nasce gia' spento.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql (test 9).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260907-11-create-vw-lotti-chiusi-con-gruppi-in-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260907-11-create-vw-lotti-chiusi-con-gruppi-in-errore
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_chiusi_con_gruppi_in_errore: presidio della decisione
+        di trattare «tutte fallite» come «alcune fallite». Elenca la
+        contraddizione — un lotto COMPLETATO che contiene documenti in ERRORE —
+        e deve restare vuota. Serve perche' senza l'eccezione lo stato finale
+        del lotto dipende dalle segnalazioni critiche scritte da un altro
+        pezzo: una salvezza indiretta, che va sorvegliata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_gruppi, columnName: stato_esecuzione }
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_chiusi_con_gruppi_in_errore
+                  WITH (security_invoker = true)
+              AS
+              SELECT l.id                       AS lotto_id,
+                     l.codice                   AS lotto_codice,
+                     l.stato_lotto,
+                     l.competenza_mese,
+                     l.emittente_soggetto_ruolo_id,
+                     count(*)                   AS gruppi_in_errore,
+                     min(g.errore_quando)       AS primo_errore,
+                     max(g.errore_quando)       AS ultimo_errore,
+                     -- ⭐ I codici distinti, non il primo che capita: se un
+                     --   lotto e' caduto per due motivi diversi, saperlo cambia
+                     --   dove si va a guardare.
+                     array_agg(DISTINCT g.errore_codice)
+                         FILTER (WHERE g.errore_codice IS NOT NULL) AS codici_errore
+                FROM vendite.fatturazione_lotti l
+                JOIN vendite.fatturazione_lotti_gruppi g ON g.lotto_id = l.id
+               WHERE g.stato_esecuzione = 'ERRORE'
+                 -- ⚠️ La contraddizione e' con lo stato CHIUSO BENE, non con
+                 --   «non e' in errore»: un lotto ancora in esecuzione che ha
+                 --   gia' un gruppo fallito e' una fotografia legittima di un
+                 --   giro in corso, non un difetto.
+                 AND l.stato_lotto = 'COMPLETATO'
+               GROUP BY l.id, l.codice, l.stato_lotto, l.competenza_mese,
+                        l.emittente_soggetto_ruolo_id;
+
+              COMMENT ON VIEW vendite.vw_lotti_chiusi_con_gruppi_in_errore IS
+                  'PRESIDIO, e deve restare VUOTO. Elenca una contraddizione: un lotto '
+                  'chiuso COMPLETATO che contiene documenti dichiarati in ERRORE. Sono '
+                  'due affermazioni che non possono stare insieme — o il giro e'' andato '
+                  'bene, o quei documenti non erano suoi. ⭐ Nasce dalla decisione del '
+                  '2026-09-06 di non sollevare piu'' quando falliscono TUTTE le commesse '
+                  'di un giro (il raise annullava i segni sui documenti falliti). Senza '
+                  'l''eccezione lo stato finale del lotto lo decide evaluate_lotto_status, '
+                  'che guarda fatture in errore e segnalazioni critiche: se tutte le '
+                  'commesse falliscono NON nasce nessuna fattura, quindi la salvezza '
+                  'dipende solo dalle segnalazioni critiche scritte per ogni commessa da '
+                  'un altro pezzo. ⚠️ Oggi quelle righe ci sono e il lotto va in ERRORE '
+                  'correttamente — ma e'' una salvezza INDIRETTA: se cambiassero forma, un '
+                  'fallimento totale tornerebbe a presentarsi come «Pipeline completata», '
+                  'in silenzio. ⛔ Non elenca i lotti in errore, che sono un fatto '
+                  'normale, e non conta i gruppi senza esito (NULL = nessuno l''ha detto, '
+                  'ed e'' lo stato di tutti i lotti anteriori al 2026-09-06): contarli '
+                  'darebbe un presidio che nasce gia'' spento. Brief: '
+                  'brief-db-esito-gruppo-lotto §13.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON vendite.vw_lotti_chiusi_con_gruppi_in_errore
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_lotti_chiusi_con_gruppi_in_errore;

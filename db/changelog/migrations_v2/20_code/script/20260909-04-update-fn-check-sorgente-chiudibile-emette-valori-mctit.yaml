@@ -1,0 +1,225 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-1 — IL MOTIVO DELLA CHIUSURA SORGENTE PORTA I SUOI `valori`
+#
+# ── ⭐ PERCHE' LA CHECK DEVE EMETTERE `valori` ─────────────────────
+#   Nel pattern §12.5 la check sa QUALE codice ha scelto; la frase la componeva
+#   il CHIAMANTE, con un numero FISSO di valori presi dai propri dati. Le due
+#   cose non erano legate da niente: un motivo nuovo con un'altra forma di
+#   frase non fa fallire nulla, esce solo una frase sbagliata.
+#   ⇒ Chi sceglie il codice sceglie anche cosa ci va dentro. E' la stessa
+#   ragione di §12.5.2 per il predicato, applicata al messaggio.
+#
+# ── ⚠️ L'ORDINE DEI `valori` E' IL CONTRATTO DELLA FRASE ──────────
+#   Non si verifica contando i segnaposto: si verifica LEGGENDO la frase resa.
+#   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — arita'
+#   giusta, valori invertiti, «Registro X1» a video con la serie al posto della
+#   famiglia. Nessun cancello lo vide.
+#
+#
+# ── 🔴 SECONDO DIFETTO VIVO, e si vede solo componendo ─────────────
+#   Questo motivo ha DUE strade. vendite.trgfn_doc_guard_chiusura_sorgente lo
+#   solleva passando `dettaglio`, cioe' il conteggio: corretto.
+#   Ma script.fn_check_ordine_annullabile lo CONCATENA nei propri motivi, e la'
+#   la madre (trgfn_ordini_guard_transizione) passa per primo il NUMERO
+#   dell'ordine — perche' il suo altro codice comincia con «Ordine %s».
+#   ⇒ Annullando un ordine con righe di commessa emesse e senza DDT, a video
+#   usciva «Il documento ha ORD-... righe di commessa gia' emesse».
+#   ⭐ Due chiamanti, una frase sola, due esiti diversi: e' esattamente cio' che
+#   finisce quando i `valori` li mette chi sceglie il codice.
+#
+# ── ⚠️ PERCHE' QUESTA CHECK E' NEL CANTIERE ───────────────────────
+#   Non e' fra le otto di partenza: ci entra per COMPOSIZIONE. I suoi motivi
+#   viaggiano dentro fn_check_ordine_annullabile gia' fatti, e senza `valori`
+#   meta' dei motivi di quella funzione resterebbe senza.
+#
+# ⛔ Nessun codice errore nuovo, nessun `reason` toccato, nessun motivo
+#   riordinato: si AGGIUNGE una chiave.
+# ⚠️ Questo changeSet da solo NON basta: fa entrare il suo sito nel perimetro
+#   del rubinetto (test 2 di test-rubinetto-primo-motivo-v1.sql), che pretende
+#   zero code scritte a mano. Va nella STESSA consegna dei changeSet C-2.
+#
+# ⭐ Il corpo e' quello VIVO (pg_get_functiondef), non ricostruito da uno YAML.
+# Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (C-1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-04-update-fn-check-sorgente-chiudibile-emette-valori-mctit.yaml
+
+  - changeSet:
+      id: 20260909-04-update-fn-check-sorgente-chiudibile-emette-valori
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_check_sorgente_chiudibile: il motivo emette `valori` (il conteggio). Ripara la frase quando il motivo viaggia dentro fn_check_ordine_annullabile, dove riceveva il numero dell'ordine.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_sorgente_chiudibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_uid text)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_motivi  jsonb := '[]'::jsonb;
+                  v_emesse  integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Elencare i motivi che impediscono di CHIUDERE (annullare)
+                  --   un documento che ha spinto righe in commessa.
+                  --   Funzione PURA: nessuna scrittura, nessun raise di
+                  --   dominio. Chi ferma solleva il primo motivo.
+                  --
+                  -- ⛔ LA CHIAVE. Si legge vendite.commesse_attivita, dove
+                  --   `sorgente_uid` porta `<testata>.uid::text` per TUTTE le
+                  --   sorgenti. NON e' la stessa chiave di
+                  --   vendite.commesse_sorgenti, che varia per sorgente (uid
+                  --   per il preventivo, id per l'ordine). Sbagliarla non
+                  --   produce un errore: produce ZERO motivi.
+                  -- =========================================================
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_sorgente_chiudibile',
+                          'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+                          jsonb_build_object('parametro', 'p_sorgente_tipo_id',
+                                             'valore',    p_sorgente_tipo_id),
+                          NULL::uuid, 'p_sorgente_tipo_id');
+                  END IF;
+
+                  IF p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_sorgente_chiudibile',
+                          'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+                          jsonb_build_object('parametro', 'p_sorgente_uid',
+                                             'valore',    p_sorgente_uid),
+                          NULL::uuid, 'p_sorgente_uid');
+                  END IF;
+
+                  -- ── MOTIVO 1 — righe gia' EMESSA ─────────────────────────
+                  -- ⛔ Sono in volo verso una fattura: non si ritirano, e
+                  --    finche' ci sono la testata non si chiude.
+                  -- ⭐ Da L5 il rifiuto ha una via d'uscita, e il messaggio la
+                  --    nomina: «Riporta da emettere» le riporta a NON_EMESSA,
+                  --    e da li' il ritiro le prende. Prima era un vicolo cieco.
+                  -- ℹ️ Le ANNULLATA non si contano (sono uscite di proposito) e
+                  --    nemmeno le NON_EMESSA: quelle sono proprio cio' che il
+                  --    ritiro portera' via.
+                  SELECT count(*)
+                    INTO v_emesse
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND ca.sorgente_uid     = btrim(p_sorgente_uid)
+                     AND ca.stato_emissione  = 'EMESSA';
+
+                  IF v_emesse > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_SORGENTE_CON_RIGHE_EMESSE',
+                          'reason',     'RIGHE_COMMESSA_EMESSE',
+                          'reason_key', 'vendite.sorgenti.azione_reason.righe_commessa_emesse',
+                          'dettaglio',  v_emesse::text,
+                          'quante',     v_emesse,
+                          -- ⭐ «Il documento ha %s righe di commessa gia' emesse»: ci va il
+                          --   CONTEGGIO. Fino al 2026-09-09 questo motivo viaggiava anche
+                          --   dentro fn_check_ordine_annullabile, che lo concatena, e li' la
+                          --   madre passava per primo il NUMERO dell'ordine: a video usciva
+                          --   «Il documento ha ORD-... righe». Il guard della chiusura
+                          --   sorgente invece passava il dettaglio, ed era corretto — due
+                          --   chiamanti, una frase sola, due esiti diversi.
+                          'valori',     jsonb_build_array(v_emesse));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_uid text)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_motivi  jsonb := '[]'::jsonb;
+                  v_emesse  integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Elencare i motivi che impediscono di CHIUDERE (annullare)
+                  --   un documento che ha spinto righe in commessa.
+                  --   Funzione PURA: nessuna scrittura, nessun raise di
+                  --   dominio. Chi ferma solleva il primo motivo.
+                  --
+                  -- ⛔ LA CHIAVE. Si legge vendite.commesse_attivita, dove
+                  --   `sorgente_uid` porta `<testata>.uid::text` per TUTTE le
+                  --   sorgenti. NON e' la stessa chiave di
+                  --   vendite.commesse_sorgenti, che varia per sorgente (uid
+                  --   per il preventivo, id per l'ordine). Sbagliarla non
+                  --   produce un errore: produce ZERO motivi.
+                  -- =========================================================
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_sorgente_chiudibile',
+                          'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+                          jsonb_build_object('parametro', 'p_sorgente_tipo_id',
+                                             'valore',    p_sorgente_tipo_id),
+                          NULL::uuid, 'p_sorgente_tipo_id');
+                  END IF;
+
+                  IF p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_sorgente_chiudibile',
+                          'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+                          jsonb_build_object('parametro', 'p_sorgente_uid',
+                                             'valore',    p_sorgente_uid),
+                          NULL::uuid, 'p_sorgente_uid');
+                  END IF;
+
+                  -- ── MOTIVO 1 — righe gia' EMESSA ─────────────────────────
+                  -- ⛔ Sono in volo verso una fattura: non si ritirano, e
+                  --    finche' ci sono la testata non si chiude.
+                  -- ⭐ Da L5 il rifiuto ha una via d'uscita, e il messaggio la
+                  --    nomina: «Riporta da emettere» le riporta a NON_EMESSA,
+                  --    e da li' il ritiro le prende. Prima era un vicolo cieco.
+                  -- ℹ️ Le ANNULLATA non si contano (sono uscite di proposito) e
+                  --    nemmeno le NON_EMESSA: quelle sono proprio cio' che il
+                  --    ritiro portera' via.
+                  SELECT count(*)
+                    INTO v_emesse
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND ca.sorgente_uid     = btrim(p_sorgente_uid)
+                     AND ca.stato_emissione  = 'EMESSA';
+
+                  IF v_emesse > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_SORGENTE_CON_RIGHE_EMESSE',
+                          'reason',     'RIGHE_COMMESSA_EMESSE',
+                          'reason_key', 'vendite.sorgenti.azione_reason.righe_commessa_emesse',
+                          'dettaglio',  v_emesse::text,
+                          'quante',     v_emesse);
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$

@@ -304,11 +304,19 @@ with transaction.atomic():
     print()
 
     # --- pull REALE: e' il passo che ristampa la sorgente a COMMESSA --------
+    # ⭐ Il giro si dichiara QUI, prima del pull: dal changeSet 20260904-50 la
+    #   select prende solo le righe che il PROPRIO pull ha marchiato
+    #   (`a.emit_batch_id = p_lock_batch_id`), quindi il marchio e il lucchetto
+    #   sono lo stesso identificativo e nascono insieme. E' la forma che ha il
+    #   backend: `pipeline_step_executor` passa `context.lock_batch_id` al pull.
+    lock_batch_id = str(uuid.uuid4())
     with connection.cursor() as cur:
         for cid in (com_a, com_b):
             cur.execute(
                 "SELECT inserted_rows FROM"
-                " vendite.fn_emit_attivita_fatturabili_da_commessa(%s)", [cid],
+                " vendite.fn_emit_attivita_fatturabili_da_commessa("
+                "    p_commessa_id => %s, p_emit_batch_id => %s::uuid)",
+                [cid, lock_batch_id],
             )
             inserted = cur.fetchone()[0]
             if inserted < 1:
@@ -447,7 +455,7 @@ with transaction.atomic():
             [ba_id],
         )
         utility_id = cur.fetchone()[0]
-        lock_batch_id = str(uuid.uuid4())
+        # `lock_batch_id` e' gia' quello con cui il pull ha marchiato le righe.
         cur.execute(
             """
             INSERT INTO vendite.fatturazione_lotti (

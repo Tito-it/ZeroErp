@@ -1,0 +1,18 @@
+# Template systemd — timer del digest giornaliero dei presidi.
+# Placeholder per-host: __ONCALENDAR__ (cadenza, default `*-*-* 07:00`,
+# dichiarato in `backend/deploy/sveglie.json`). Vedi il .service gemello per il
+# perché di quell'ora.
+#
+# ⚠️ `Persistent=true`: dopo un'interruzione (riavvio, host spento) il giro perso
+# parte una volta al riaggancio. Su un digest conta più che altrove — è proprio
+# il giorno in cui la macchina è stata ferma che si vuole sapere cosa è successo,
+# e un allarme saltato non si ripresenta da solo.
+[Unit]
+Description=Timer ZeroERP digest giornaliero dei presidi
+
+[Timer]
+OnCalendar=__ONCALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target

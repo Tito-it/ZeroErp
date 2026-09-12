@@ -61,6 +61,20 @@ export function displayTime(ts) {
   return `${hh}:${mm}`
 }
 
+// ⛔ SU UNA INVALID DATE QUESTA FUNZIONE PRODUCE "NaN-NaN-NaN", E DEVE
+//    CONTINUARE A FARLO. Sembra un difetto ed e' il comportamento giusto QUI:
+//    i suoi ~90 chiamanti sono in maggioranza PAYLOAD DI FORM (`valido_al`,
+//    `data_valuta`, `data_scadenza`, `data_riattivazione_prevista`), e li'
+//    «data scritta male» e «nessuna data» sono l'OPPOSTO l'una dell'altra.
+//    Una stringa storta la respinge il backend con un 400 che l'operatore vede;
+//    un `null` su un campo OPZIONALE verrebbe accettato e salverebbe il record
+//    col campo SVUOTATO — su un `valido_al` vuol dire trasformare in silenzio
+//    una validita' chiusa in una aperta.
+// ⚠️ Provato e ritirato il 2026-09-08: il guard su `Number.isNaN` era stato
+//    messo QUI per il filtro data delle code, e collassava i due significati
+//    per tutti i chiamanti. Chi vuole «data oppure niente» usa
+//    `toDateStringOrNull` qui sotto: sono due domande diverse e restano due
+//    funzioni.
 export function toDateString(d) {
   if (!d) return null
   if (d instanceof Date) {
@@ -71,6 +85,33 @@ export function toDateString(d) {
   }
   // Se gia' stringa, ritorna cosi' com'e' (assume formato valido)
   return String(d)
+}
+
+/**
+ * Come `toDateString`, ma una data NON VALIDA vale «nessuna data» (`null`).
+ *
+ * ⭐ E' la variante per i FILTRI di lista, dove «non ho ancora finito di
+ * scrivere una data» deve valere «non filtrare» — non «filtra per una data
+ * impossibile». Il chiamante tipico e' il `buildParams` di uno store.
+ *
+ * ⛔ NON usarla per i payload dei form: li' una data storta deve arrivare al
+ * backend e farsi respingere, altrimenti il campo si salva vuoto in silenzio.
+ * E' esattamente la ragione per cui esistono due funzioni invece di un guard
+ * dentro `toDateString`.
+ *
+ * ⚠️ DA DOVE ARRIVA UNA INVALID DATE, perche' non e' un caso di laboratorio: i
+ * `DatePicker` PrimeVue hanno `manualInput` a `true` di DEFAULT (verificato su
+ * 4.5), quindi il campo si digita — e mentre si digita il componente emette
+ * una `Date` non valida. Sulle due code produceva
+ * `data_da=NaN-NaN-NaN` e un `E_VALIDATION_INPUT / data_da_invalid` a ogni
+ * tasto (2026-09-07).
+ *
+ * @param {Date|string|null} d - Valore data
+ * @returns {string|null} - 'YYYY-MM-DD', oppure null se assente o non valida
+ */
+export function toDateStringOrNull(d) {
+  if (d instanceof Date && Number.isNaN(d.getTime())) return null
+  return toDateString(d)
 }
 
 /**

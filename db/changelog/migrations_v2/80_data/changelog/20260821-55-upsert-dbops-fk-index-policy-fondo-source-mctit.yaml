@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Opt-in dbops.fk_index_policy per la FK del legame riga -> atto (lotto 3)
 #   pagamenti.vendite_contabili_righe.fondo_source_id -> changeSet 20260821-48
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.1 S1-14, §1.4 C-7
 #
 # ── PERCHE' LA RIGA ESISTE ─────────────────────────────────────────────

@@ -13,8 +13,6 @@ Indice test eseguiti:
 5) CatalogoServiceTests.test_fn_get_articolo_not_found
 6) CatalogoServiceTests.test_fn_lookup_articoli_ok
 7) CatalogoServiceTests.test_fn_lookup_articoli_invalid_limit
-8) CatalogoServiceTests.test_fn_lookup_unita_misura_ok
-9) CatalogoServiceTests.test_fn_lookup_unita_misura_invalid_limit
 10) CatalogoServiceTests.test_fn_create_articolo_ok
 11) CatalogoServiceTests.test_fn_create_articolo_missing_codice
 11b) CatalogoServiceTests.test_fn_create_articolo_missing_uom_id
@@ -134,14 +132,17 @@ class CatalogoServiceTests(TestCase):
     def test_fn_lookup_articoli_ok(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_lookup_articoli
 
-        mock_repo_cls.return_value.lookup_articoli.return_value = [
-            {"id": 1, "codice": "ART-001"}
-        ]
+        # ⚠️ Il repository consegna una COPPIA `(righe, troncato)`: e' lui a
+        #    conoscere `safe_limit`, quindi e' lui a sapere se ha tagliato.
+        mock_repo_cls.return_value.lookup_articoli.return_value = (
+            [{"id": 1, "codice": "ART-001"}], False,
+        )
 
         result = fn_lookup_articoli(search="art")
 
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["id"], 1)
+        self.assertFalse(result["troncato"])
 
     # Scopo: il filtro natura (escludi_destinazione_tipi) è inoltrato al
     # repository invariato (passthrough, filtro applicato in SQL).
@@ -149,12 +150,48 @@ class CatalogoServiceTests(TestCase):
     def test_fn_lookup_articoli_escludi_destinazione(self, mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_lookup_articoli
 
-        mock_repo_cls.return_value.lookup_articoli.return_value = []
+        mock_repo_cls.return_value.lookup_articoli.return_value = ([], False)
 
         fn_lookup_articoli(search="art", escludi_destinazione_tipi=["CONTRATTO"])
 
         kwargs = mock_repo_cls.return_value.lookup_articoli.call_args.kwargs
         self.assertEqual(kwargs["escludi_destinazione_tipi"], ["CONTRATTO"])
+
+    # Scopo: 🔴 IL CASO PER CUI D6 ESISTE — un lookup TAGLIATO lo dichiara.
+    #        Prima di oggi la risposta era `{"count": 20, "results": [20 righe]}`
+    #        anche quando i risultati erano cento: il conteggio CONFERMAVA il
+    #        troncamento invece di rivelarlo, e chi legge non aveva modo di
+    #        sapere che l'elenco era parziale.
+    #        ⚠️ Il conteggio resta quello delle righe consegnate: cio' che cambia
+    #        e' che accanto c'e' la sola informazione che lo rende leggibile.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_lookup_articoli_dichiara_il_troncamento(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_lookup_articoli
+
+        mock_repo_cls.return_value.lookup_articoli.return_value = (
+            [{"id": i} for i in range(20)], True,
+        )
+
+        result = fn_lookup_articoli(search="a", limit=20)
+
+        self.assertEqual(result["count"], 20)
+        self.assertTrue(result["troncato"], "il taglio non arriva a chi legge")
+
+    # Scopo: ⭐ E la collezione INTERA non porta `troncato`, perche' non puo'
+    #        essere tagliata: due nature, due envelope. Tenerle sullo stesso
+    #        helper era il difetto — la forma sbagliata era indistinguibile da
+    #        quella giusta perche' era la stessa riga di codice.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_una_collezione_intera_non_dichiara_troncamento(self, _mock_repo, mock_bom):
+        from apps.catalogo.services.catalogo_service import fn_list_componenti
+
+        mock_bom.return_value.list_componenti.return_value = [{"id": 1}, {"id": 2}]
+
+        result = fn_list_componenti("00000000-0000-0000-0000-000000000001")
+
+        self.assertEqual(result["count"], 2)
+        self.assertNotIn("troncato", result)
 
     # Scopo: limit lookup articoli fuori range -> ServiceError.
     def test_fn_lookup_articoli_invalid_limit(self):
@@ -162,28 +199,6 @@ class CatalogoServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             fn_lookup_articoli(limit=0)
-        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
-
-    # Scopo: Lookup UoM valido -> count e risultati coerenti.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_lookup_unita_misura_ok(self, mock_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_lookup_unita_misura
-
-        mock_repo_cls.return_value.lookup_unita_misura.return_value = [
-            {"id": 3, "codice": "PZ"}
-        ]
-
-        result = fn_lookup_unita_misura(search="pez")
-
-        self.assertEqual(result["count"], 1)
-        self.assertEqual(result["results"][0]["codice"], "PZ")
-
-    # Scopo: limit lookup UoM fuori range -> ServiceError.
-    def test_fn_lookup_unita_misura_invalid_limit(self):
-        from apps.catalogo.services.catalogo_service import fn_lookup_unita_misura
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_lookup_unita_misura(limit=250)
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: Create articolo valido -> insert + dettaglio finale.

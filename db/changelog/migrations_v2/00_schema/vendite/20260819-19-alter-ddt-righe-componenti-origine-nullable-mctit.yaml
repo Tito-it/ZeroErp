@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Se il prezzo puo' mancare, anche la sua origine deve poterlo.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C.
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice C.
 # Completa 20260819-13 (prezzo del componente facoltativo) e 20260819-17
 # (l'init che scrive NULL invece di sollevare).
 #

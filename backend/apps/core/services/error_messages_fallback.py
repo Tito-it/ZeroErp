@@ -146,6 +146,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CLIENTE_NON_ATTIVO": "Il cliente non e' in stato attivo.",
     "E_CLIENTE_NON_TROVATO": "Cliente non trovato.",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "Utility non coerente con il billing account del cliente.",
+    # ⚠️ SENZA segnaposto, mentre il messaggio a catalogo ha un `%s` con lo
+    # STATO della riga: è proprio quando gli argomenti non arrivano che il
+    # segnaposto finirebbe a video in chiaro.
+    "E_CODA_ARCHIVIAZIONE_NON_AMMESSA": (
+        "La riga della coda sta ancora lavorando: si mette via solo quando ha "
+        "finito."
+    ),
     "E_CODA_HANDLER_NON_REGISTRATO": "Tipo di lavoro non cablato nel sistema.",
     "E_CODA_IDENTITA_NON_ATTIVA": "Identità operatore non più attiva: lavoro non eseguibile.",
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "Lavoro accodato con scope operatore incompleto.",
@@ -301,6 +308,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_TIPO_NON_GESTITO": "Tipo di documento non gestito dal controllo di cancellazione: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_EMAIL": "Errore configurazione email.",
     "E_EMAIL_ADMIN": "Operazione sulla configurazione email non riuscita.",
+    "E_EMAIL_LOG_INESISTENTE": (
+        "Impossibile registrare l'esito dell'invio: l'email indicata non esiste."
+    ),
+    "E_EMAIL_LOG_NON_DI_SISTEMA": (
+        "Impossibile registrare l'esito dell'invio: l'email indicata non e' di "
+        "sistema. Va chiusa dal perimetro a cui appartiene, non da questa porta."
+    ),
     "E_EMAIL_OP": "Operazione email non riuscita.",
     "E_EMITTENTE_ATTIVO_NON_VALIDO": "Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",
     "E_EMITTENTE_ATTIVO_TOKEN": "Refresh token richiesto per applicare il cambio di emittente.",
@@ -452,12 +466,19 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_IVA_RESOLVE_NON_INVOCABILE": "Risoluzione IVA invocata senza i dati necessari, o su un articolo che non esiste.",
     "E_IVA_TITOLI_AMBIGUI": "Su questa riga ricadono due o piu' titoli IVA del soggetto con la stessa specificita': il trattamento non e' determinabile. Restringere l'ambito di uno dei titoli, o chiuderne uno.",
     "E_IVA_TRATTAMENTO_IMMUTABILE": "Aliquota e natura di un codice IVA non si modificano: cambiarle riscriverebbe il trattamento dei documenti gia' emessi. Per un trattamento diverso si crea un codice nuovo.",
+    # ⚠️ SENZA segnaposto: a catalogo il messaggio nomina il tipo di job e il
+    # `run_as` chiesto. Qui la frase deve reggere anche a mani vuote.
+    "E_JOB_DOMINIO_SENZA_OPERATORE": (
+        "Lavoro di dominio accodato senza operatore: un lavoro che tocca i dati "
+        "di un'azienda deve girare con l'identita' di chi lo ha chiesto."
+    ),
     "E_JOB_NON_ANNULLABILE": "Il lavoro non e` piu` in attesa: annullo non possibile.",
     "E_JOB_NON_RIACCODABILE": "Il lavoro non e` riaccodabile nello stato corrente.",
     "E_JOB_NON_TROVATO": "Lavoro non trovato.",
     "E_JOB_TYPE_NON_ATTIVO": "Tipo di job non attivo.",
     "E_JOB_TYPE_NON_TROVATO": "Tipo di job non registrato nel registry.",
     "E_JWT_SENZA_IDENTITA": "Sessione scaduta: effettua nuovamente l'accesso.",
+    "E_JWT_SENZA_SID": "La sessione in corso non e' identificabile: esci e rientra per continuare.",
     "E_KIT_QUANTITA_DISOMOGENEE": "Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile.",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "Riga listino componenti incoerente con la distinta base.",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",
@@ -467,6 +488,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LOCK_COLUMNS": "Automazione delle colonne di lock fallita.",
     "E_LOGOUT_NO_TOKEN": "Token di refresh richiesto per il logout.",
     "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": "Configurazione lookup non valida: la tabella richiesta non e' compatibile col formato lookup standard. Contattare l'amministratore.",
+    "E_LOTTO_DOC_GIA_USCITO": "Il documento e` gia` stato tolto da questo giro: ricarica il lotto per vedere l'elenco aggiornato.",
+    "E_LOTTO_DOC_NON_IN_ERRORE": "Dal giro si tolgono solo i documenti che hanno fallito, e questo non e` in errore. Se non deve essere fatturato in questo giro: annulla il lotto e rigeneralo senza di lui.",
+    "E_LOTTO_DOC_SENZA_ESITO": "Il documento non risulta lavorato da questo giro: l'elenco a video potrebbe essere invecchiato, oppure il documento appartiene a un altro lotto.",
+    "E_LOTTO_DOC_USCITA_IRREVERSIBILE": "Un documento uscito da un giro non vi rientra. Per fatturare tutto in un lotto solo si annulla il lotto, si corregge il documento e si rigenera il giro.",
     "E_LOTTO_FATTURE_NON_PRE_FISCALI": "Il lotto contiene fatture oltre lo stato pre-fiscale: non possono essere eliminate.",
     "E_LOTTO_FATTURE_NUMERATE": "Il lotto contiene fatture gia` numerate: l'operazione aprirebbe un buco nella numerazione fiscale.",
     "E_LOTTO_FATTURE_STATO_INCOERENTE": "Fatture con stato fiscale diverso da quello del lotto.",
@@ -578,7 +603,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PIPELINE_DOMINIO": "Errore dominio pipeline.",
     "E_PIPELINE_DOMINIO_NOT_FOUND": "Dominio pipeline non trovato.",
     "E_PIPELINE_DRIVER_MAX_ITER": "Pipeline interrotta: superato il numero massimo di iterazioni.",
-    "E_PIPELINE_LOTTO_CRITICAL": "Lotto con segnalazioni critiche.",
+    "E_PIPELINE_LOTTO_CRITICAL": "Lotto bloccato per segnalazioni critiche o documenti in errore.",
     "E_PIPELINE_LOTTO_IN_ESECUZIONE": "Lotto gia' in esecuzione.",
     "E_PIPELINE_LOTTO_NOT_FOUND": "Lotto non trovato.",
     "E_PIPELINE_MARK_ERROR": "Errore marcatura pipeline.",
@@ -612,6 +637,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": "Impossibile modificare il flusso: la pratica e' in stato terminale.",
     "E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": "Impossibile creare un flusso: la pratica e' in stato terminale.",
     "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": "Transizione di stato pratica non ammessa.",
+    # ⚠️ Il messaggio a catalogo NOMINA la vista con un `%s`: qui la frase deve
+    #    reggere senza, perche' il ripiego serve proprio quando gli argomenti
+    #    non sono arrivati — e un `%s` a video sarebbe la cosa peggiore da
+    #    mostrare in un caso gia' tecnico.
+    "E_PRESIDIO_NON_A_CATALOGO": "Vista di presidio non dichiarata nel catalogo dbops.presidi, oppure spenta o ritirata. Non e' un errore di dati: segnalalo a chi mantiene il catalogo.",
     "E_PREVENTIVO_RIGA_NON_TROVATA": "Riga preventivo non trovata.",
     "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "Esistono righe con prezzo in attesa di approvazione. Attendi esito o annulla la richiesta prima di accettare il preventivo.",
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "Righe del preventivo gia' fatturate in commessa: l'annullamento non e' ammesso. Storna le attivita' emesse dal lato fatturazione, oppure crea una revisione del preventivo.",
@@ -642,6 +672,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.",
     "E_PRICING_SCONTO_ECCESSIVO": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
+    "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": (
+        "Questo processo non puo' avere un utente tecnico: ne serve uno solo ai "
+        "processi che fanno il lavoro di un'azienda senza che nessuno li avvii."
+    ),
+    "E_PROCESSO_NON_TROVATO": (
+        "Il processo indicato non esiste nel registro dei processi automatici."
+    ),
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "Binding non coerente con il tipo del profilo di accesso.",
     "E_PROFILO_ACCESSO_NON_TROVATO": "Profilo di accesso non trovato.",
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "Tipo profilo non gestito dal guard di coerenza bindings: regola mancante.",
@@ -704,6 +741,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_LISTINO_PROPAGATA": "Riga listino gia' propagata a valle: operazione non ammessa.",
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "Modifica righe listino non consentita: la versione non e' in stato BOZZA.",
     "E_RIGA_PREZZO_PENDENTE": "La riga e' in attesa di approvazione: solo lo stato di approvazione e i campi audit sono modificabili.",
+    "E_RISORSA_UMANA_IDENTITA_ATTIVA": "Non si puo' disattivare la risorsa umana: l'utente ha ancora un'identita' operatore attiva.",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "Il soggetto collegato alla risorsa umana non e' un gestore.",
     "E_RITIRO_SORGENTE_PARAMETRO_MANCANTE": "Ritiro delle righe di commessa non eseguibile: la richiesta e' arrivata senza uno dei dati obbligatori (tipo del documento di origine, sua chiave, motivo).",
     "E_RUOLO_APPLICATIVO_NON_GESTITO": "Ruolo applicativo non gestito dal guard di coerenza: regola mancante.",
@@ -716,6 +754,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SCADENZE_TERMINE_INVALIDO": "Regola di ripartizione del termine di pagamento non valida.",
     "E_SCADENZE_TERMINE_MANCANTE": "Termine di pagamento non valorizzato in testata.",
     "E_SCOPE_EMITTENTE": "Accesso negato per scope emittente fiscale.",
+    # ⚠️ Il FRATELLO di sopra nega a un utente NOTO un emittente fuori perimetro;
+    # questo dice che un utente non c'e' affatto. Le due frasi vanno tenute
+    # distinte: sono due guasti diversi, e confonderli manda a cercare un
+    # permesso dove manca un'identita'.
+    "E_SCOPE_SENZA_UTENTE": (
+        "Scrittura senza un utente in sessione su una tabella con perimetro "
+        "emittente: il processo non dichiara chi agisce."
+    ),
     "E_SEARCH_NOT_FOUND": "Nessun risultato trovato.",
     "E_SEARCH_VALIDATION": "Parametri ricerca non validi.",
     "E_SEQUENZA_NON_CONFIGURATA": "Sequenza di numerazione non configurata.",
@@ -771,6 +817,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_STATO_WORKFLOW_NON_TROVATO": "Stato di destinazione non trovato o non attivo.",
     "E_STORICO_PARENT_PK_NOT_FOUND": "Impossibile determinare la chiave primaria della tabella padre.",
     "E_STORICO_PROVISION": "Generazione della tabella di storico fallita.",
+    "E_STORICO_SCOPE_CATENA_CICLICA": (
+        "La mappa del perimetro dello storico gira in cerchio: la catena dei "
+        "padri non termina."
+    ),
     "E_STORICO_UD": "Automazione di storicizzazione fallita.",
     "E_TABELLA_OP_NON_CONSENTITA": "Operazione non consentita su questa tabella.",
     "E_TASK": "Errore esecuzione task.",
@@ -849,6 +899,24 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UTENTE_DISABILITATO": "Account disabilitato. Contattare l'amministratore.",
     "E_UTENTE_NON_ATTIVO": "Account non ancora attivo.",
     "E_UTENTE_SCADUTO": "Account scaduto. Contattare l'amministratore.",
+    "E_UTENTE_TECNICO_DA_RIATTIVARE": (
+        "Per questo processo e quell'azienda un utente tecnico esiste gia', ma e' "
+        "spento: va riattivato, non creato di nuovo."
+    ),
+    "E_UTENTE_TECNICO_EMITTENTE_NON_VALIDO": (
+        "Azienda emittente inesistente o non attiva: un utente tecnico nasce PER "
+        "un'azienda, e senza non potrebbe fare niente."
+    ),
+    "E_UTENTE_TECNICO_GIA_ESISTE": (
+        "Il processo ha gia' un utente tecnico attivo per quell'azienda."
+    ),
+    "E_UTENTE_TECNICO_NON_TROVATO": (
+        "Non esiste un utente tecnico da riattivare per questo processo e "
+        "quell'azienda: va creato."
+    ),
+    "E_UTENTE_TECNICO_PROFILO_VIETATO": (
+        "Profilo di accesso non utilizzabile per un utente tecnico."
+    ),
     "E_UTILITY_RUOLO_NON_AMMESSO": "Tipo ruolo non ammesso per questa utility.",
     "E_VALIDATION_INPUT": "Parametro di input non valido.",
     "E_VALIDAZIONE": "Validazione fallita.",

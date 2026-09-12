@@ -1,0 +1,313 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL TRIGGER CONGELA LO SCOPE — passo 4 del brief.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b (D1, D2)
+#
+# `script.trgfn_storico_generic` scrive ogni versione con due dati in più:
+#   · `origine_schema` = TG_TABLE_SCHEMA — da quale madre viene la versione.
+#     Sei shadow sono condivise fra due madri omonime (§4b.2): la chiusura
+#     dello snapshot aperto filtra anche su questo, così due documenti con lo
+#     stesso id non si chiudono più a vicenda;
+#   · `scope_emittente_fiscale_id` = dbops.fn_storico_risolvi_scope(...) sulla
+#     riga che sta fotografando — l'emittente di ALLORA, risolto una volta e
+#     mai più ricalcolato (§2.1). Una madre non protetta dà NULL.
+#
+# ── ⚠️ IL RESOLVER È SECURITY DEFINER, IL TRIGGER NO ──────────────────
+#   Il trigger gira come chi scrive la madre (l'applicazione, sotto RLS) e
+#   scrive nella shadow con i suoi GRANT e con le policy di scrittura «true»
+#   della shadow armata (-24). Il resolver, invece, risale al padre come il
+#   proprietario delle tabelle: senza, un satellite scritto da chi non vede il
+#   padre porterebbe NULL e sparirebbe a tutti.
+#
+# ── 🔴 PRECONDIZIONE: ogni shadow ha le due colonne, o ci si ferma ────
+#   Il trigger le scrive: se una shadow non le avesse, la prima scrittura su
+#   quella madre fallirebbe. La -27 le aggiunge dove il migratore è
+#   proprietario; su dev 68 shadow sono di `postgres` e vanno allineate PRIMA
+#   con `scripts/sql/provision_storico_scope.sql` da superuser. Qui si conta e
+#   con HALT si aspetta. In CI la prima passata non ha shadow (nascono da
+#   `ci_apply`, già complete dal generatore): zero, e passa.
+#   ✅ `expectedResult: 0` con un database senza automazioni applicate è
+#   soddisfatto: è la forma lecita di §11.5.
+#
+# ── ⚠️ `OR origine_schema IS NULL` nella chiusura ────────────────────
+#   Le versioni scritte prima del backfill, e quelle che il backfill non sa
+#   attribuire nelle shadow condivise, hanno origine NULL: si continuano a
+#   chiudere come prima (era già così), finché la colonna non diventa NOT NULL.
+#
+# ⭐ Corpo dalla doc auto-gen (l'oggetto vivo), non da uno YAML precedente;
+#   aggiunto il `;` dopo `$function$` che l'auto-gen omette.
+#
+# Verifica: db/pgtap/storico/test-storico-scope-congelato-v1.sql (passo 6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260911-28-update-trgfn-storico-generic-scope-congelato-mctit.yaml
+
+  - changeSet:
+      id: 20260911-28-update-trgfn-storico-generic-scope-congelato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_storico_generic: ogni versione porta origine_schema
+        (TG_TABLE_SCHEMA) e scope_emittente_fiscale_id, risolto una volta alla
+        scrittura da dbops.fn_storico_risolvi_scope e congelato; la chiusura
+        dello snapshot aperto filtra anche sull'origine, così due madri omonime
+        nella stessa shadow non si chiudono a vicenda. Precondizione HALT: ogni
+        shadow ha già le due colonne (la -27 le aggiunge; le shadow di postgres
+        le allinea il provisioning da superuser). Corpo dalla doc auto-gen.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*)
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'storico' AND c.relkind = 'r'
+                 AND EXISTS (SELECT 1 FROM pg_catalog.pg_class mc
+                               JOIN pg_catalog.pg_trigger t ON t.tgrelid = mc.oid AND NOT t.tgisinternal
+                               JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
+                              WHERE mc.relname = c.relname AND p.proname = 'trgfn_storico_generic')
+                 AND (   NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                      WHERE a.attrelid = c.oid AND a.attname = 'origine_schema' AND NOT a.attisdropped)
+                      OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                      WHERE a.attrelid = c.oid AND a.attname = 'scope_emittente_fiscale_id' AND NOT a.attisdropped));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_storico_generic()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+                    DECLARE
+                      id_col_hist     TEXT          := TG_ARGV[0];  -- Nome colonna FK nella tabella storica (es: 'indirizzo_dettaglio_id')
+                      id_col_orig     TEXT          := 'id';        -- Nome colonna PK nella tabella originale (default 'id')
+                      hist_schema     CONSTANT TEXT := 'storico';   -- Schema destinazione per i dati storici
+                      orig_schema     TEXT          := TG_TABLE_SCHEMA; -- Schema della tabella sorgente
+                      orig_table      TEXT          := TG_TABLE_NAME;   -- Nome tabella sorgente
+                      hist_table      TEXT          := orig_table;      -- Nome tabella storica (stesso nome)
+                      --v_current_date  CONSTANT DATE := CURRENT_DATE; -- Data corrente per chiusura snapshot
+                      v_current_date  CONSTANT timestamptz := CURRENT_TIMESTAMP; -- Data corrente per chiusura snapshot
+                      v_fixed_date    CONSTANT DATE := '1950-01-01'; -- Data fissa per nuovi record storici
+                      v_rowcount      INTEGER;      -- Contatore righe per operazioni UPDATE
+                      v_snapshot_open BOOLEAN := FALSE; -- Flag snapshot aperti
+                      snapshot_data   JSONB;        -- Dati serializzati del record
+                      op_type         SMALLINT;     -- 1=creazione, 2=modifica, 3=eliminazione
+                      v_id_value      TEXT;       -- Valore ID del record originale
+                      v_id_col_type  TEXT; -- Tipo della colonna ID nella tabella originale
+                      v_should_reset  BOOLEAN;  -- = NOT v_skip_reset, valorizzata in BEGIN
+                      v_skip_reset    BOOLEAN;
+                      -- rev 2026-09-11 (brief-db-rls-storico-scope-congelato §4b): lo scope
+                      -- della versione, risolto UNA volta per scrittura dalla mappa
+                      -- dbops.storico_scope_policy e congelato nella shadow. Due variabili
+                      -- perche' la versione INIZIALE fotografa OLD e quella finale NEW.
+                      v_scope         anagrafiche.emittenti_fiscali.id%TYPE;
+                      v_scope_old     anagrafiche.emittenti_fiscali.id%TYPE;
+
+                    BEGIN
+                      -- 0) Controllo da tabella di configurazione
+                      --
+                      -- rev 2026-08-04: il confronto usa il nome QUALIFICATO
+                      -- (schema.tabella). Prima si confrontava TG_TABLE_NAME, che
+                      -- e' il nome NUDO, contro un registro che contiene solo nomi
+                      -- qualificati: non ha mai matchato nulla, quindi l'esenzione
+                      -- dal reset non ha mai funzionato per nessuna tabella e ogni
+                      -- riga registrava una sola modifica nella vita. Il nome nudo
+                      -- non e' comunque una chiave valida: `acquisti.ddt` e
+                      -- `vendite.ddt` sono entrambi registrati e si
+                      -- esenterebbero a vicenda.
+                        SELECT EXISTS (
+                          SELECT 1
+                            FROM config.storico_set_storicizza s
+                          WHERE s.table_name = TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                        ) INTO v_skip_reset;
+
+                      -- Inizializziamo il flag una sola volta
+                      v_should_reset := NOT v_skip_reset;
+
+                    -- 0.1) Trova il tipo della colonna PK (id) nella tabella origine
+                      SELECT format_type(a.atttypid, a.atttypmod)
+                        INTO v_id_col_type
+                      FROM pg_attribute a
+                      JOIN pg_class   c ON a.attrelid = c.oid
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                      WHERE n.nspname = orig_schema
+                        AND c.relname = orig_table
+                        AND a.attname = id_col_orig
+                        AND NOT a.attisdropped;
+
+                      --0) Se la colonna storicizza esiste e vale FALSE, non storicizzo
+                      IF TG_OP = 'UPDATE' AND NOT NEW.storicizza THEN
+                        RETURN NEW;
+                      ELSIF TG_OP = 'DELETE' AND NOT OLD.storicizza THEN
+                        RETURN OLD;
+                      END IF;
+
+                      -- [Sezione 1] Recupero ID record originale ---------------------------------
+                      -- Ottiene l'ID del record dalla tabella sorgente (OLD per DELETE, NEW per UPDATE)
+                      -- Gestisce eventuali errori di colonna mancante
+                      BEGIN
+                        IF TG_OP = 'DELETE' THEN
+                          v_id_value := OLD.id::text; -- Per operazioni DELETE usa OLD
+                        ELSE
+                          v_id_value := NEW.id::text; -- Per operazioni UPDATE usa NEW
+                        END IF;
+                      EXCEPTION WHEN OTHERS THEN
+                        -- Gestione errore: logga e solleva eccezione tramite funzione dedicata
+                        PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_SNAPSHOT_ID_NOT_FOUND',
+                          jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+                          NULL::uuid, SQLERRM::text
+                        );
+                      END;
+
+                      -- [Sezione 2] Creazione snapshot -------------------------------------------
+                      -- Serializza i dati del record in formato JSONB
+                      -- Assegna il tipo di operazione (2=UPDATE, 3=DELETE)
+                      IF TG_OP = 'UPDATE' THEN
+                        op_type := 2;
+                        snapshot_data := to_jsonb(NEW); -- Snapshot dello stato nuovo
+                      ELSIF TG_OP = 'DELETE' THEN
+                        op_type := 3;
+                        snapshot_data := to_jsonb(OLD); -- Snapshot dello stato vecchio
+                      ELSE
+                        RETURN COALESCE(NEW,OLD); -- Caso non gestito (non dovrebbe verificarsi)
+                      END IF;
+                      -- [Sezione 2b] Lo scope della versione ------------------------------------
+                      -- L'emittente a cui la riga appartiene ADESSO, che e' l'unico momento in
+                      -- cui e' certo (la madre esiste ancora, §2.3): si congela nella shadow e
+                      -- non si ricalcola piu'. La mappa dice da dove prenderlo; una madre non
+                      -- protetta (NESSUNO) da' NULL. Il resolver e' SECURITY DEFINER: risale al
+                      -- padre anche quando chi scrive non lo vedrebbe sotto RLS.
+                      v_scope := dbops.fn_storico_risolvi_scope(orig_schema, orig_table, snapshot_data);
+
+                      -- [Sezione 3] Chiusura snapshot aperti ------------------------------------
+                      -- Cerca e chiude eventuali snapshot precedenti ancora aperti (valid_to IS NULL)
+                      -- per lo stesso record (stesso ID)
+                      BEGIN
+                        -- rev 2026-09-11: si chiude SOLO la versione dello stesso schema di
+                        -- origine. Sei shadow sono condivise fra due madri omonime
+                        -- (acquisti.ddt e vendite.ddt scrivono entrambe in storico.ddt): senza
+                        -- questo filtro, due documenti con lo stesso id si chiuderebbero a
+                        -- vicenda. ⚠️ `OR origine_schema IS NULL` per le versioni scritte prima
+                        -- del backfill e non attribuibili: e' il comportamento che avevano, non
+                        -- una regressione, e sparisce quando la colonna diventa NOT NULL.
+                        EXECUTE format(
+                          'UPDATE %I.%I
+                              SET valid_to = $1
+                            WHERE %I = $2::%s AND valid_to IS NULL
+                              AND (origine_schema = $3 OR origine_schema IS NULL)',
+                          hist_schema, hist_table, id_col_hist, v_id_col_type
+                        )
+                        USING v_current_date, v_id_value, orig_schema;
+
+                GET DIAGNOSTICS v_rowcount = ROW_COUNT; -- Controlla se ha chiuso record
+                v_snapshot_open := (v_rowcount > 0);    -- Imposta flag se trovati snapshot
+                      EXCEPTION WHEN OTHERS THEN
+                        -- Gestione errore chiusura snapshot
+                        PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_SNAPSHOT_CLOSE_ERROR',
+                          jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+                          NULL::uuid, SQLERRM::text, SQLSTATE::text
+                        );
+                      END;
+
+                      -- [Sezione 4] Inserimento dati storici -------------------------------------
+                      BEGIN
+                        -- [4.1] Inserimento storico INIZIALE (solo se non c'erano snapshot aperti)
+                        -- Crea un record storico con intervallo di validità fisso (1950-01-01 -> CURRENT_DATE)
+                        -- per mantenere traccia dello stato precedente all'operazione corrente
+                        IF NOT v_snapshot_open THEN
+                          BEGIN
+                            -- Lo scope di com'era la riga PRIMA: e' la versione che si sta
+                            -- fotografando. Di norma coincide con quello della versione finale
+                            -- (l'emittente non cambia), ma si risolve sulla riga giusta.
+                            v_scope_old := dbops.fn_storico_risolvi_scope(orig_schema, orig_table, to_jsonb(OLD));
+                            EXECUTE format(
+                              'INSERT INTO %I.%I (%I, valid_from, valid_to, data_insert, user_insert, snapshot, tipo_operazione,
+                                                  origine_schema, scope_emittente_fiscale_id)
+                              VALUES ($1::%s, $2, $3, now(), current_user, $4, 1, $5, $6)',
+                              hist_schema, hist_table, id_col_hist, v_id_col_type
+                            )
+                            USING v_id_value, v_fixed_date, v_current_date, to_jsonb(OLD), orig_schema, v_scope_old;
+
+                          EXCEPTION WHEN OTHERS THEN
+                            -- Gestione errore inserimento storico iniziale
+                            PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_SNAPSHOT_INIT_INSERT_ERROR',
+                              jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+                              NULL::uuid, SQLERRM::text, SQLSTATE::text
+                            );
+                          END;
+                        END IF;
+
+                        -- [4.2] Inserimento storico FINALE (sempre)
+                        -- Crea un record storico con valid_from = CURRENT_DATE e valid_to = NULL
+                        -- per registrare il nuovo stato del record
+                        BEGIN
+
+                        EXECUTE format(
+                          'INSERT INTO %I.%I (%I, valid_from, data_insert, user_insert, snapshot, tipo_operazione,
+                                              origine_schema, scope_emittente_fiscale_id)
+                            VALUES ($1::%s, $2, now(), current_user, $3, $4, $5, $6)',
+                          hist_schema, hist_table, id_col_hist, v_id_col_type
+                        )
+                        USING v_id_value, v_current_date, snapshot_data, op_type, orig_schema, v_scope;
+
+                        EXCEPTION WHEN OTHERS THEN
+                          -- Gestione errore inserimento storico finale
+                          PERFORM script.fn_log_and_raise_error(
+                            'database', TG_NAME, 'E_SNAPSHOT_FINAL_INSERT_ERROR',
+                            jsonb_build_object('error', SQLERRM, 'schema', hist_schema, 'table', hist_table),
+                            NULL::uuid, SQLERRM::text, SQLSTATE::text
+                          );
+                        END;
+                      END;
+
+                      -- [Sezione 5] Reset del flag per le tabelle NON registrate.
+                      -- Le registrate in config.storico_set_storicizza tengono il
+                      -- flag acceso e hanno memoria continua; le altre restano
+                      -- "a richiesta": una modifica registrata, poi silenzio finche'
+                      -- qualcuno non riaccende il flag.
+                      IF TG_OP = 'UPDATE' AND v_should_reset THEN
+                        NEW.storicizza := FALSE;
+                      END IF;
+
+                      -- Restituisce il record appropriato (OLD per DELETE, NEW per UPDATE)
+                      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                    END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_storico_generic()
+              IS 'Funzione generica per la gestione dello storico delle modifiche.
+                    Gestisce automaticamente:
+                    1. Chiusura degli snapshot aperti (imposta valid_to = CURRENT_DATE)
+                    2. Creazione snapshot iniziale (se necessario) con valid_from fisso a 1950-01-01
+                    3. Creazione snapshot finale con valid_from = CURRENT_DATE e valid_to NULL
+                    4. Logging degli errori tramite script.fn_log_and_raise_error
+                    5. Importante deve essere sempre definita la colonna "storicizza"
+                    6. Rev 2026-09-11 (brief-db-rls-storico-scope-congelato §4b): ogni versione porta
+                       origine_schema (lo schema della madre: sei shadow sono condivise fra due madri
+                       omonime, e la chiusura dello snapshot filtra anche su questo) e
+                       scope_emittente_fiscale_id, risolto UNA volta alla scrittura da
+                       dbops.fn_storico_risolvi_scope secondo dbops.storico_scope_policy e mai piu''
+                       ricalcolato. Le versioni scritte prima ricevono i valori dal backfill.
+                    6. rev 2026-08-05: il registro config.storico_set_storicizza si consulta col nome QUALIFICATO (schema.tabella). Prima si usava TG_TABLE_NAME, cioe'' il nome nudo, contro un registro che contiene solo nomi qualificati: nessuna riga matchava e l''esenzione dal reset del flag non ha mai funzionato per nessuna tabella — ognuna registrava una sola modifica nella vita (misurato: esattamente 2,00 righe di storico per documento su ordini e ddt). Il nome nudo non sarebbe comunque una chiave valida, perche'' acquisti.ddt e vendite.ddt sono entrambi registrati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente è nella doc auto-gen alla revisione prima di
+              -- questa: si ripristina da lì. Qui non si riscrive un corpo stantio.
+              SELECT 1;

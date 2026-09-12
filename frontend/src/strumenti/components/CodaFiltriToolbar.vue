@@ -11,6 +11,7 @@ import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import SelectButton from 'primevue/selectbutton'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import ToggleNascoste from '../../core/components/ToggleNascoste.vue'
 
 // Stato filtri del padre via defineModel: il figlio muta `filtri.xxx`
 // (oggetto reactive condiviso per riferimento, pattern ContattoForm), senza
@@ -21,6 +22,11 @@ defineProps({
   statoOptions: { type: Array, required: true },
   ambitoOptions: { type: Array, required: true },
   pageActions: { type: Array, required: true },
+  // Quante righe l'archiviazione sta lasciando fuori dall'elenco (dal BE).
+  // ⚠️ L'interruttore da solo non basta: spento e senza numero, «coda pulita»
+  // e «tre righe messe via» si leggono uguali. E' la stessa disciplina di
+  // `ritirate_count` sul giornale della fattura.
+  archiviateCount: { type: Number, default: 0 },
   // Cancello di perimetro emittente (P-2b): filtrare una lista che il backend
   // rifiutera' comunque non porta da nessuna parte. `inert` e non `disabled`
   // sui singoli campi: rende il sottoalbero non cliccabile E non raggiungibile
@@ -79,6 +85,20 @@ const { t } = useI18n()
           @update:model-value="$emit('change')"
         />
       </div>
+      <!-- «Mostra archiviate (N)»: BB ToggleNascoste, lo stesso del «Mostra
+           annullati» della lista Lotti. Uno solo, qui: le due schede lo
+           ereditano dal telaio. Nessuna etichetta sopra — il testo sta
+           nell'interruttore — e il campo si allinea in basso, alla riga dei
+           controlli dei vicini. -->
+      <div class="form-field app-coda-filtri-toggle">
+        <ToggleNascoste
+          v-model="filtri.archiviate"
+          :label="t('strumenti.code.filtro_archiviate')"
+          :hint="t('strumenti.code.filtro_archiviate_hint')"
+          :count="archiviateCount"
+          @change="$emit('change')"
+        />
+      </div>
     </div>
     <PageActionsBar :actions="pageActions">
       <template #suffix>
@@ -88,3 +108,13 @@ const { t } = useI18n()
     </PageActionsBar>
   </div>
 </template>
+
+<style scoped>
+/* I vicini sono «etichetta sopra + controllo sotto»; questo campo ha il solo
+   interruttore (l'etichetta e' dentro). Si stira all'altezza della riga e
+   spinge il controllo in basso, cosi' resta allineato agli altri. */
+.app-coda-filtri-toggle {
+  align-self: stretch;
+  justify-content: flex-end;
+}
+</style>

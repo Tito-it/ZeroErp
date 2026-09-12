@@ -41,8 +41,13 @@ def invalid_payload_response() -> JsonResponse:
 # Prima di mascherare i dettagli tecnici per il client, registra l'eccezione
 # sul logger "api.exception" cosi' il dev puo' risalire dal request_id mostrato
 # all'utente al problema reale. Differenzia due livelli per non inquinare il log:
-# - errori tecnici (E_DATABASE/E_PIPELINE/E_GENERICO) -> exception con stack trace
+# - errori tecnici (E_DATABASE/E_PIPELINE/E_GENERICO) -> ERROR con stack trace
 # - errori business (E_*_NOT_FOUND, E_*_VALIDAZIONE, ...) -> warning senza stack
+# ⚠️ `logger.error(..., exc_info=exc)` e non `logger.exception(...)`: sono la
+#    stessa riga di log, ma `.exception()` e' pensato per stare DENTRO un
+#    `except`, dove l'eccezione la prende dal contesto. Qui arriva come
+#    parametro, quindi il traceback lo passa `exc_info` — e la forma esplicita
+#    dice a chi legge da dove viene (regola `LOG004`).
 #
 # ⭐ IL `request_id` NON SI SCRIVE PIU' QUI (consegna BE-8): lo mette il
 #    formatter su OGNI riga, come `req=...`. Questo era l'unico punto del
@@ -53,7 +58,7 @@ def exception_to_error_response(exc: Exception) -> JsonResponse:
     api_error = ErrorTranslator.to_api_error(exc)
     status_code = ErrorTranslator.get_http_status(api_error)
     if ErrorTranslator.is_technical_code(api_error.code):
-        logger.exception(
+        logger.error(
             "api_exception[tech] code=%s http=%s message=%s",
             api_error.code,
             status_code,

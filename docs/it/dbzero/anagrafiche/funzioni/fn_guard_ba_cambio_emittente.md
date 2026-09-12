@@ -15,8 +15,9 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_ac
  SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi jsonb;
-    v_primo  jsonb;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -37,26 +38,18 @@ BEGIN
     v_motivi := script.fn_check_ba_cambio_emittente(
                     p_billing_account_id, p_emittente_sr_prima, p_emittente_sr_dopo);
 
-    IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
-        RETURN;
-    END IF;
-
-    v_primo := v_motivi -> 0;
-
-    -- ⚠️ Il `context` porta il dettaglio della check piu' il
-    --   `reason`: il frontend che riceve il 409 e quello che
-    --   legge la riga leggono la stessa parola.
-    --   ⛔ Nessuna chiave `campo`: la classe e' CONFLITTO_STATO —
-    --   «non c'e' un campo da correggere, e' la situazione che
-    --   non lo consente».
-    PERFORM script.fn_log_and_raise_error(
-        'anagrafiche',
-        'fn_guard_ba_cambio_emittente',
-        v_primo ->> 'codice',
-        COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
-            || jsonb_build_object('reason', v_primo ->> 'reason'),
-        NULL::uuid,
-        VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⚠️ Il `context` porta il dettaglio della check piu' il `reason`: il
+    --   frontend che riceve il 409 e quello che legge la riga leggono la
+    --   stessa parola. ⭐ Non si compone piu' qui — `reason` lo PROMUOVE
+    --   l'helper dal primo motivo.
+    -- ⛔ Nessuna chiave `campo`: la classe e' CONFLITTO_STATO, «non c'e' un
+    --   campo da correggere, e' la situazione che non lo consente».
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'anagrafiche', 'fn_guard_ba_cambio_emittente',
+        v_motivi);
 END;
 $function$
 

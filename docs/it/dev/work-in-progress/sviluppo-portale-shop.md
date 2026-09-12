@@ -199,7 +199,11 @@ Riferimento: `sviluppo-multi-face-auth.md §5.10` + `§4.9.7-9.9` (RLS).
       `acquisti.acquisti_ordini`, `acquisti.acquisti_ddt_ingresso`,
       `anagrafiche.billing_account`). Policy gia' DRY-RUN, serve
       `ENABLE ROW LEVEL SECURITY` + `FORCE` + `BYPASSRLS` per ruolo DB
-      `zeroerp_admin`. Benchmark pre/post (<10% degrado query).
+      `zeroerp_admin`. ~~Benchmark pre/post (<10% degrado query)~~ —
+      ⚠️ voce ritirata il 2026-09-11: il predicato RLS è una chiamata di
+      funzione per riga, non un confronto indicizzabile; per le FK di scope
+      vale la decisione dichiarata in `dbops.fk_index_policy`
+      (linee-guida-sql §10.9).
 - [ ] 2.2 Notifica email all'utente ad ogni cambio password (§5.10.3)
 - [ ] 2.3 Audit sessioni: estendere `dbops.sessioni_utente` con colonna
       `ruolo_applicativo` + tracciare tutti gli eventi LOGIN/LOGOUT/REFRESH

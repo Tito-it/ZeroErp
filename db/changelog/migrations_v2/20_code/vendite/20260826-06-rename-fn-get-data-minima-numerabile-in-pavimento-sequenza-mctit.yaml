@@ -46,7 +46,7 @@
 #   Copiato dalla doc auto-gen (l'oggetto vivo), non dallo YAML. Cambiano il
 #   NOME, il tipo di `p_serie` (ora ancorato a `vendite.fatture.serie%TYPE`:
 #   e' una funzione nuova, quindi non c'e' nessuna identita' da preservare) e
-#   il COMMENT, che smette di citare un path `work-in-progress/` ormai morto.
+#   il COMMENT, che smette di citare un path `` ormai morto.
 #
 # Dipendenze: nessuna. La usa fn_get_pavimento_data_documento (20260826-07).
 # Verifica: db/pgtap/vendite/test-registri-progressivi.sql · test-limite-emissione-v1.sql

@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §8 (fase 2) — i run che non
+# dicono per conto di chi sono girati.
+#
+# ⚠️ AGGREGATA PER JOBNAME, e non e' un vezzo. Il giorno dell'apply TUTTE le
+# righe storiche di job_run_log hanno processo_codice NULL: una vista riga-per-
+# riga stamperebbe decine di migliaia di record, cioe' un dump, non un
+# presidio. Nessuno lo guarderebbe due volte — e un presidio che non si guarda
+# non presidia.
+#   Aggregando per jobname l'elenco e' una lista di COSE DA FARE: una riga per
+#   job non ancora conforme, con quante volte e' girato e quando l'ultima. Cala
+#   di una riga per ogni job che comincia a dichiarare l'attore, e arriva a
+#   zero. E' la forma in cui un registro di debito resta leggibile.
+#
+# ⭐ Attesa quasi vuota gia' al primo giro: fn_run_and_log DERIVA il codice dal
+# jobname, quindi i 12 job pgAgent si dichiarano da soli. Restano i chiamanti
+# di fn_job_run_start finche' il backend non passa il parametro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-19-create-vw-run-senza-attore-mctit.yaml
+
+  - changeSet:
+      id: 20260904-19-create-vw-run-senza-attore
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.vw_run_senza_attore: job che hanno registrato run senza
+        processo_codice, aggregati per jobname con conteggio e ultimo run.
+        Registro di debito, deve calare a zero.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: maintenance, tableName: job_run_log, columnName: processo_codice }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Elenco dei job la cui ULTIMA corsa non dice chi l'ha
+              --   eseguita. Una riga per job da sistemare, non per run.
+              --
+              -- ⛔ E il discriminante e' l'ULTIMA corsa, non «esiste una corsa
+              --   senza attore», ed e' la differenza fra un registro che cala
+              --   e uno che non cala mai. Le righe STORICHE di job_run_log
+              --   hanno processo_codice NULL e resteranno NULL per sempre:
+              --   sono giornale di ieri, e nessuno puo' dire a posteriori chi
+              --   le ha eseguite. Contandole, la vista non arriverebbe a zero
+              --   nemmeno a lavoro finito — cioe' sarebbe rumore.
+              --   ⭐ Guardando l'ultima corsa, un job SPARISCE dall'elenco
+              --   appena comincia a dichiarare l'attore. I dodici job pgAgent
+              --   si tolgono da soli alla prima corsa notturna, grazie alla
+              --   derivazione dal jobname in fn_run_and_log.
+              --
+              -- `run_senza_attore` resta come CONTESTO (quanto e' vecchia
+              --   l'omissione), non come criterio.
+              --
+              -- `origine` dice DOVE intervenire: PGAGENT -> il jobname non
+              --   corrisponde a nessun processo registrato; CRON/COMMAND -> il
+              --   chiamante headless non passa ancora il parametro, ed e'
+              --   lavoro di backend.
+              -- =========================================================
+              CREATE OR REPLACE VIEW dbops.vw_run_senza_attore AS
+              WITH ultima_corsa AS (
+                  SELECT DISTINCT ON (jrl.jobname, jrl.origine)
+                         jrl.jobname,
+                         jrl.origine,
+                         jrl.processo_codice,
+                         jrl.started_at
+                    FROM maintenance.job_run_log jrl
+                   ORDER BY jrl.jobname, jrl.origine, jrl.started_at DESC, jrl.id DESC
+              )
+              SELECT u.jobname,
+                     u.origine,
+                     u.started_at AS ultimo_run,
+                     (SELECT count(*)
+                        FROM maintenance.job_run_log j
+                       WHERE j.jobname = u.jobname
+                         AND j.origine = u.origine
+                         AND j.processo_codice IS NULL) AS run_senza_attore,
+                     EXISTS (SELECT 1
+                               FROM dbops.processi pr
+                              WHERE pr.codice = u.jobname) AS processo_registrato
+                FROM ultima_corsa u
+               WHERE u.processo_codice IS NULL;
+
+              COMMENT ON VIEW dbops.vw_run_senza_attore IS
+                  'Job la cui ULTIMA corsa non dice chi l''ha eseguita (maintenance.job_run_log.processo_codice NULL). Una riga per job da sistemare, non una per run. ⛔ Il criterio e'' l''ULTIMA corsa, non «esiste una corsa senza attore»: le righe storiche hanno processo_codice NULL e resteranno NULL per sempre — sono giornale di ieri — quindi contandole la vista non arriverebbe a zero nemmeno a lavoro finito, e un registro di debito che non cala e'' rumore. ⭐ Cosi'' invece un job sparisce appena comincia a dichiarare l''attore, e i dodici job pgAgent si tolgono da soli alla prima corsa notturna (fn_run_and_log deriva il codice dal jobname). run_senza_attore resta come CONTESTO — quanto e'' vecchia l''omissione — non come criterio. processo_registrato false = manca la riga in dbops.processi; true con origine CRON/COMMAND = il chiamante headless non passa ancora il parametro (lavoro di backend). Quando la vista e'' vuota, processo_codice puo'' diventare NOT NULL. Brief: brief-db-processi-automatici-identita-e-perimetro §8.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_run_senza_attore;

@@ -7,6 +7,54 @@
 • [vendite.listini](/dbzero/vendite/tabelle/listini)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
+### ⛔ Rev 2026-09-05 — il perimetro arriva dal LISTINO PADRE
+
+La tabella non porta l'emittente, e **non deve portarlo**: una versione non può
+appartenere a un'azienda diversa dal proprio listino, quindi una colonna qui sarebbe
+una **seconda scrittura dello stesso fatto** — e due scritture prima o poi dissentono.
+
+⇒ Il percorso è `listino_id → listini.emittente_soggetto_ruolo_id`, ed è applicato da:
+
+| | |
+| --- | --- |
+| `rls_listini_versioni_ef_whitelist` | policy, via [fn_scope_ef_whitelist_via_listino](/dbzero/script/manual/fn_scope_ef_whitelist_via_listino) |
+| `trg_listini_versioni_a10_guard_emittente_scope_ins_upd` | guard di scrittura, modo `listino` |
+
+⭐ `listino_id` è `NOT NULL`: non esiste una versione orfana, quindi il percorso non ha
+il buco tipico delle figlie facoltative — dove «padre assente» diventa «nessun
+perimetro» e la policy si spegne da sola.
+
+⚠️ **Su UPDATE il guard esce se `listino_id` non è cambiato.** Copre il caso peggiore —
+spostare una versione sotto il listino di un altro — mentre le modifiche di merito (il
+prezzo) le ferma la policy, che valuta ogni riga. Non è una svista: sono due presidi
+con due compiti.
+
+---
+
+### ⛔ La trappola: padre e figlia nella STESSA istruzione
+
+```sql
+-- ⛔ Non funziona più
+WITH lst AS (INSERT INTO vendite.listini (...) RETURNING id),
+     v   AS (INSERT INTO vendite.listini_versioni (listino_id, ...)
+             SELECT id FROM lst RETURNING id)
+SELECT ...;
+```
+
+La policy legge il listino padre con **lo snapshot dell'istruzione**, che non contiene
+la riga appena scritta dalla CTE sorella. ⇒ Padre invisibile, perimetro `NULL`, e la
+scrittura viene rifiutata.
+
+**Due istruzioni separate**: il padre prima, la figlia poi.
+
+⚠️ E un secondo caso, più insidioso: i **vincoli differiti** — in testa
+`trgfn_child_requires_active_parent` — non scattano all'`INSERT` ma alla verifica dei
+vincoli, e lì leggono **col contesto attivo in quel momento**. Chi cambia utente fra la
+scrittura e il commit si vede alzare *«Padre non attivo»* su un listino perfettamente
+attivo. ⇒ I vincoli differiti si chiudono **nei panni di chi ha scritto**.
+
+---
+
 ### 🎯 Scopo Principale
 (latest review 09-04-2026)
 
@@ -146,7 +194,7 @@ Riferimenti:
 > discriminava piu nulla. La colonna e il check constraint
 > `chk_listini_versioni_priorita` sono stati droppati con la migration
 > `20260409-05-drop-priorita-listini-versioni`. Vedi
-> [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
+> [WIP listini-commercio §5](/dev/work-done/listini-commercio).
 
 ---
 
@@ -192,11 +240,11 @@ di entrata in vigore:
 * **Una versione = una sola valuta**: il modello attuale e implicitamente
   monovaluta (nessuna colonna `valuta_id` su `listini_versioni`). Per supportare
   valuta multipla in futuro andra aggiunta una colonna additiva. Vedi
-  [WIP listini-commercio §6.4](/dev/work-in-progress/listini-commercio).
+  [WIP listini-commercio §6.4](/dev/work-done/listini-commercio).
 * **`pricing_mode` non ancora esplicito**: il modello v1 e dichiaratamente
   `FIXED` per tutte le righe (prezzo unitario costante). I modi `SCAGLIONI` e
   `FORMULA` previsti per v2 non sono ancora rappresentati nello schema. Vedi
-  [WIP listini-commercio §6.6](/dev/work-in-progress/listini-commercio).
+  [WIP listini-commercio §6.6](/dev/work-done/listini-commercio).
 
 ---
 

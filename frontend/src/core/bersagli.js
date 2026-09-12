@@ -26,7 +26,8 @@
 //    seconda di come e' arrivato — e nessuno se ne accorgerebbe, perche' le tre
 //    strade non si incontrano mai.
 import { DOCUMENTO_DRAWERS, DOCUMENTO_DRAWER_TIPI } from '../vendite/_shared/documenti/documentoDrawers'
-import { READONLY_DOMAINS } from './constants'
+import { MANAGE_ICONS, READONLY_DOMAINS } from './constants'
+import { NAV_ICONS } from './navigation'
 
 // ⭐ LA MAPPA TIPO → DESTINAZIONE, e la scoperta che l'ha resa corta: le chiavi
 // di `DOCUMENTO_DRAWER_TIPI` **sono gia'** i `config.sorgenti.codice_interno`,
@@ -56,9 +57,20 @@ import { READONLY_DOMAINS } from './constants'
 //              documento si apre, non si "visita").
 //   `rotta`    per le entita' che hanno una pagina: `queryKey` per un
 //              deep-link `?open=<id>`, `param` per una rotta con `:id`.
+//   `icona`    ⭐ IL SEGNO DELLA COSA DOVE SI VA, e si IMPORTA dal registro
+//              della navigazione invece di scriverlo qui: il pulsante deve
+//              portare lo stesso segno della voce di menu che apre la stessa
+//              entita', o chi ha cliccato non la riconosce quando ci arriva.
+//              ⛔ Prima era UNA sola per tutti — `pi pi-external-link`, cioe'
+//              «un collegamento» — che dice come ci si va e non DOVE si va
+//              (rilievo di Tid, 2026-09-08). In un kebab con due voci era il
+//              segno identico su due destinazioni diverse.
+//              ⚠️ Importato e non ricopiato: una stringa ripetuta e' la seconda
+//              sede, e il giorno che l'icona dei documenti cambia il bersaglio
+//              resterebbe indietro **senza fallire**.
 //   `area`     schema DB per il guard dei permessi (`isAreaBlocked`).
 //   `richiedeAdmin`  per le rotte del dominio `amm-software`, dove il route
-//              guard non guarda l'area ma `isAdmin`: se il pulsante non
+//              guard non guarda l'area ma `isSuperAdmin`: se il pulsante non
 //              rispettasse la stessa regola porterebbe su «accesso negato».
 const DESTINAZIONI = Object.freeze({
   FATTURA: {
@@ -70,12 +82,17 @@ const DESTINAZIONI = Object.freeze({
     // se ne inventa una. E' il patto dei tre livelli gia' scritto in
     // frontend-standards (il DB emette l'indirizzo, il FE lo risolve).
     etichettaKey: 'config.tipi_entita.fattura',
+    icona: NAV_ICONS.FATTURE,
   },
   COMMESSA: {
     area: READONLY_DOMAINS.VENDITE,
     chiave: 'id',
     drawer: DOCUMENTO_DRAWER_TIPI.COMMESSA,
     etichettaKey: 'config.tipi_entita.commessa',
+    // ⚠️ La commessa non ha una voce di navigazione (nessuna lista propria):
+    //    la sua icona vive gia' in `MANAGE_ICONS`, centralizzata li' il
+    //    2026-07-25 proprio dall'azione «Apri commessa» di un drill-down.
+    icona: MANAGE_ICONS.COMMESSA,
   },
   LOTTO: {
     area: READONLY_DOMAINS.VENDITE,
@@ -85,18 +102,21 @@ const DESTINAZIONI = Object.freeze({
     // in servizio su `vendite-contratti`).
     rotta: { name: 'vendite-lotti', queryKey: 'open' },
     etichettaKey: 'config.tipi_entita.lotto',
+    icona: NAV_ICONS.LOTTI,
   },
   CONTRATTO: {
     area: READONLY_DOMAINS.VENDITE,
     chiave: 'id',
     drawer: DOCUMENTO_DRAWER_TIPI.CONTRATTO,
     etichettaKey: 'config.tipi_entita.contratto',
+    icona: NAV_ICONS.CONTRATTI,
   },
   ORDINE_VENDITA: {
     area: READONLY_DOMAINS.VENDITE,
     chiave: 'id',
     drawer: DOCUMENTO_DRAWER_TIPI.ORDINE_VENDITA,
     etichettaKey: 'config.tipi_entita.ordine_vendita',
+    icona: NAV_ICONS.ORDINI,
   },
   PREVENTIVO: {
     area: READONLY_DOMAINS.VENDITE,
@@ -110,6 +130,7 @@ const DESTINAZIONI = Object.freeze({
     chiave: 'id',
     drawer: DOCUMENTO_DRAWER_TIPI.PREVENTIVO,
     etichettaKey: 'config.tipi_entita.preventivo',
+    icona: NAV_ICONS.PREVENTIVI,
   },
   FLUSSO: {
     area: READONLY_DOMAINS.PRATICHE,
@@ -121,6 +142,7 @@ const DESTINAZIONI = Object.freeze({
     //    non e' cio' di cui l'errore parla.
     rotta: { name: 'pratiche-gestione', queryKey: 'flusso_id' },
     etichettaKey: 'config.tipi_entita.flusso',
+    icona: NAV_ICONS.PRATICHE,
   },
   DEFINIZIONE_WORKFLOW: {
     area: READONLY_DOMAINS.AMM_SOFTWARE,
@@ -129,17 +151,45 @@ const DESTINAZIONI = Object.freeze({
     // non un drawer: il dettaglio strutturale di un'edizione e' troppo ricco
     // per un pannello (lo dice il commento della rotta stessa).
     rotta: { name: 'amm-software-definizione-editor', param: 'id' },
-    // ⚠️ Il route guard di `amm-software` NON guarda l'area: guarda `isAdmin`.
+    // ⚠️ Il route guard di `amm-software` NON guarda l'area: guarda `isSuperAdmin`.
     // Un pulsante che non rispettasse la stessa regola porterebbe l'operatore
     // su «accesso negato», che e' il vicolo cieco che il §4.3 vieta.
     richiedeAdmin: true,
     etichettaKey: 'config.tipi_entita.definizione_workflow',
+    // La voce «Definizioni workflow» del menu amm-software porta questo segno.
+    icona: NAV_ICONS.SITEMAP,
   },
   // ⛔ UN SOLO TIPO DEL CATALOGO NON E' QUI, e non e' una svista: `TASK_RUN`.
   //    Nessuna schermata mostra un giro per id — sta a catalogo perche' serve
   //    al giornale degli eventi dell'altro cantiere, non al bersaglio.
   //    Otto destinazioni su nove tipi.
 })
+
+// Scopo: ⭐ I NOMI DEI TIPI, per chi un bersaglio se lo COMPONE invece di
+//        riceverlo dal backend.
+//
+// ⭐ PERCHE' ESISTE (2026-09-06). La maggioranza dei bersagli arriva
+//    dall'envelope o dal `meta` di una segnalazione: chi li rende non li
+//    scrive, li passa. Ma due superfici li compongono da sé — l'icona d'errore
+//    dei gruppi in competenza e il kebab dei documenti presi in carico dal
+//    lotto — perché lì la cosa da aprire è già una colonna della riga, e
+//    chiederla al backend sarebbe lo stesso dato due volte.
+//
+// ⛔ Alla terza occorrenza la stringa `'COMMESSA'` era scritta a mano in tre
+//    template, e il modo in cui sbaglia è MUTO: un tipo che non sta nella mappa
+//    non risolve, `bersagliRisolti` lo scarta e il pulsante semplicemente non
+//    compare. Nessun errore, nessun avviso — solo un gesto che manca.
+//
+// ⚠️ Si DERIVA dalle chiavi di `DESTINAZIONI`, non si riscrive: un elenco
+//    parallelo sarebbe la seconda sede della stessa cosa, e il giorno in cui
+//    una destinazione cambia nome resterebbe indietro senza fallire.
+// ⛔ Da NON confondere con `DOCUMENTO_DRAWER_TIPI`, che oggi porta gli stessi
+//    nomi: sono due vocabolari distinti che coincidono per caso — uno dice
+//    «quale entità», l'altro «quale pannello» — e appoggiarsi all'altro
+//    significherebbe legarsi a una coincidenza.
+export const BERSAGLIO_TIPI = Object.freeze(
+  Object.fromEntries(Object.keys(DESTINAZIONI).map((tipo) => [tipo, tipo])),
+)
 
 // Scopo: ⭐ IL CONFINE, e passa TUTTO di qui. Il backend parla inglese
 //        (`{type, id}`, come ogni chiave dell'envelope), questo lato parla
@@ -200,8 +250,8 @@ function raggiungibile(destinazione, authStore) {
   if (!destinazione.drawer && !destinazione.rotta) return false
   if (destinazione.drawer && !DOCUMENTO_DRAWERS[destinazione.drawer]) return false
   // ⚠️ Le due regole di accesso sono DIVERSE e vanno guardate come le guarda il
-  // route guard: `amm-software` su `isAdmin`, tutto il resto sull'area.
-  if (destinazione.richiedeAdmin && !authStore?.isAdmin) return false
+  // route guard: `amm-software` su `isSuperAdmin`, tutto il resto sull'area.
+  if (destinazione.richiedeAdmin && !authStore?.isSuperAdmin) return false
   if (!destinazione.area) return true
   // `isAreaBlocked` e' la stessa lettura che fa il route guard: una regola sola.
   return !authStore?.isAreaBlocked?.(destinazione.area)
@@ -246,10 +296,12 @@ export function risolviBersaglio(bersaglio, authStore) {
   if (id === null) return null
   return {
     tipo: bersaglio.tipo,
+    icona: destinazione.icona,
     id,
-    // ⚠️ L'etichetta mostra il valore ORIGINALE (stringa): è ciò che
-    //    l'operatore ritrova nella frase dell'errore.
-    idEtichetta: bersaglio.id,
+    // ⛔ Niente `idEtichetta`, tolto il 2026-09-08: l'etichetta del pulsante NON
+    //    porta più l'identificativo, perché quella è la chiave primaria e non il
+    //    numero con cui una persona chiama il documento. Un campo che nessuno
+    //    legge invita a rimetterlo in una frase.
     etichettaKey: destinazione.etichettaKey,
     drawer: destinazione.drawer ?? null,
     rotta: destinazione.rotta ?? null,

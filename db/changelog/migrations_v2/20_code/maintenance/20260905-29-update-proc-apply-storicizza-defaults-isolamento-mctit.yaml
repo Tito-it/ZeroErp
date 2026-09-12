@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ IL CONSUMATORE DI UN INSIEME DERIVATO DEVE SOPRAVVIVERE A UNA RIGA STANTIA.
+#   Brief: brief-db-storicizzazione-bersagli-spariti.md §2.1 (R-12)
+#
+# `proc_apply_storicizza_defaults` gira su `config.storico_set_storicizza` e fa
+# un `ALTER TABLE` per riga. ⛔ Una riga che punta a una tabella inesistente
+# solleva `undefined_table` e **ferma il giro per tutte le altre 103**.
+#
+# ── ⭐ NON E' UNA CONSEGUENZA DELLE TRE RIGHE DI OGGI ───────────────
+#   Sarebbe facile dire «tolte le righe morte, non serve». ⛔ Ma produttore e
+#   consumatore sono **due job pgAgent distinti, su due schedulazioni diverse**:
+#   `sync_storico_set_storicizza` pota, `apply_storicizza_weekly` applica. Se
+#   l'apply gira prima del sync — e prima o poi capita, e' l'ordine di due
+#   sveglie indipendenti — la riga stantia c'e'.
+#   ⇒ E' una possibilita' **strutturale**, non un incidente. La correzione sta
+#     nel modello: chi consuma un insieme derivato non puo' morire perche' una
+#     riga non e' ancora stata potata.
+#
+# ── ⭐ COSA CAMBIA ─────────────────────────────────────────────────
+#     1. una riga senza referente si SALTA (e lo dice), non uccide il giro
+#     2. un `ALTER` che fallisce per un altro motivo isola quella riga sola
+#     3. il giro finisce sempre con un riepilogo: quante applicate, saltate,
+#        fallite
+#
+# ── ⚠️ NON E' «INGOIARE GLI ERRORI», ed e' la parte da capire ───────
+#   Il posto dove un guasto si racconta cambia: non piu' un'eccezione che
+#   nessuno vede (⛔ e' esattamente cio' che R-12 dimostra: sei mesi di
+#   eccezioni settimanali, invisibili), ma un `WARNING` nel log del server piu'
+#   il presidio che nomina le righe senza referente.
+#   ⚠️ E c'e' una ragione tecnica in piu': **un'eccezione qui cancellava anche
+#   il proprio verbale.** `maintenance.fn_run_and_log` cattura l'errore, scrive
+#   la riga `ok = false` con codice e dettaglio… e poi rilancia — e il `RAISE`
+#   fa rollback della transazione, quindi **anche di quella riga**. Il fallimento
+#   veniva scritto e subito buttato via. (Registrato nel brief §2.3: e' una
+#   proprieta' del meccanismo, non di questo job.)
+#
+# ── ⭐ `split_part` SPARISCE, e non e' un ritocco ───────────────────
+#   La forma vecchia spezzava il nome sul primo punto: `split_part(x,'.',1)` e
+#   `split_part(x,'.',2)`. ⛔ Su un nome con piu' di un punto, o su un
+#   identificatore quotato, produce due pezzi sbagliati e un `ALTER TABLE` che
+#   colpisce altro (o niente). Adesso il nome lo risolve `to_regclass` una volta
+#   sola, e il `format` usa l'oggetto risolto: il nome non viene mai smontato.
+#
+# Verifica: db/pgtap/maintenance/test-storicizza-set-potatura.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260905-29-update-proc-apply-storicizza-defaults-isolamento-mctit.yaml
+
+  - changeSet:
+      id: 20260905-29-update-proc-apply-storicizza-defaults-isolamento
+      author: mctit
+      failOnError: true
+      comment: >
+        maintenance.proc_apply_storicizza_defaults salta le righe che non hanno
+        piu' un referente e isola il fallimento di una riga dalle altre. Prima
+        una sola riga stantia fermava il giro per tutte: produttore e consumatore
+        sono due job su schedulazioni diverse, quindi una riga non ancora potata
+        e' una possibilita' strutturale, non un incidente.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: config, tableName: storico_set_storicizza }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults()
+               LANGUAGE plpgsql
+              AS $procedure$
+              DECLARE
+                  rec         record;
+                  v_applicate integer := 0;
+                  v_saltate   integer := 0;
+                  v_fallite   integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rimettere `DEFAULT true` sulla colonna `storicizza` di
+                  --   ogni tabella del set. E' il consumatore di un insieme
+                  --   DERIVATO, popolato e potato da
+                  --   maintenance.proc_sync_storico_set_storicizza.
+                  --
+                  -- ⭐ I due girano su schedulazioni diverse: se l'apply arriva
+                  --   prima del sync, una riga stantia c'e'. Morirci sopra
+                  --   ferma il lavoro per tutte le altre — ed e' cosi' che
+                  --   questo job e' rimasto morto per sei mesi (R-12).
+                  -- =========================================================
+
+                  -- ⚠️ Ordine stabile: due corse devono essere confrontabili
+                  --   leggendo il log del server.
+                  FOR rec IN
+                      SELECT s.table_name,
+                             s.insert_manuale,
+                             -- ⭐ Il nome si risolve UNA volta e non si smonta
+                             --   mai: `split_part` sul punto sbaglia su un nome
+                             --   con piu' punti o su un identificatore quotato.
+                             to_regclass(s.table_name) AS rel
+                        FROM config.storico_set_storicizza s
+                       ORDER BY s.table_name
+                  LOOP
+                      IF rec.rel IS NULL THEN
+                          -- Nessun referente: si salta e si dice — non si muore.
+                          -- ⚠️ Il messaggio distingue i due casi, perche' hanno
+                          --   due rimedi opposti: una riga DERIVATA la togliera'
+                          --   il sync da sola; una riga MANUALE il sync non la
+                          --   tocca mai, quindi promettere una potatura che non
+                          --   arrivera' sarebbe peggio di non dire niente.
+                          v_saltate := v_saltate + 1;
+                          IF rec.insert_manuale THEN
+                              RAISE WARNING
+                                  'storicizza: % e'' una riga MANUALE che non risolve a '
+                                  'nessun oggetto: una decisione che ha perso il suo '
+                                  'bersaglio, e il sync non la potera'' — va guardata da '
+                                  'una persona', rec.table_name;
+                          ELSE
+                              RAISE WARNING
+                                  'storicizza: % non risolve a nessun oggetto, riga '
+                                  'saltata (la potera'' il prossimo sync)', rec.table_name;
+                          END IF;
+                          CONTINUE;
+                      END IF;
+
+                      BEGIN
+                          EXECUTE format(
+                              'ALTER TABLE %s ALTER COLUMN storicizza SET DEFAULT true',
+                              rec.rel::regclass);
+                          v_applicate := v_applicate + 1;
+                      EXCEPTION WHEN OTHERS THEN
+                          -- ⭐ Isolamento per riga: un permesso mancante o una
+                          --   colonna che non c'e' piu' riguarda QUELLA tabella,
+                          --   non le altre cento.
+                          v_fallite := v_fallite + 1;
+                          RAISE WARNING 'storicizza: % non applicata: %',
+                                        rec.table_name, SQLERRM;
+                      END;
+                  END LOOP;
+
+                  RAISE NOTICE 'storicizza: % applicate, % saltate, % fallite',
+                               v_applicate, v_saltate, v_fallite;
+              END
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults()
+              IS 'Rimette DEFAULT true sulla colonna `storicizza` di ogni tabella di config.storico_set_storicizza. ⭐ Rev 2026-09-05 (R-12): salta le righe che non risolvono a nessun oggetto e ISOLA il fallimento di una riga dalle altre. Prima una sola riga stantia sollevava undefined_table e fermava il giro per tutte — ed e'' cosi'' che questo job e'' morto ogni settimana per SEI MESI senza che nessuno lo sapesse. ⛔ Non e'' una conseguenza delle tre righe morte trovate quel giorno: produttore (proc_sync_storico_set_storicizza) e consumatore girano su due job pgAgent con schedulazioni diverse, quindi una riga non ancora potata e'' una possibilita'' STRUTTURALE. ⚠️ Non «ingoia gli errori»: cambia il posto dove si raccontano — un WARNING nel log del server invece di un''eccezione che nessuno vede, e un''eccezione qui cancellava anche il proprio verbale (fn_run_and_log scrive la riga ok=false e poi rilancia: il RAISE fa rollback anche di quella). ⭐ Il nome della tabella si risolve una volta con to_regclass e non si smonta mai: split_part sul punto sbaglia su un nome con piu'' punti o su un identificatore quotato. ⚠️ Il WARNING distingue una riga derivata da una manuale: la prima la potera'' il sync, la seconda no — e'' una decisione che ha perso il suo bersaglio e va guardata da una persona.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna alla forma che muore alla prima riga stantia, e con
+              --   essa alla forma che ha tenuto il job morto per sei mesi.
+              CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults()
+               LANGUAGE plpgsql
+              AS $procedure$
+                DECLARE
+                  rec RECORD;
+                  sch TEXT;
+                  tbl TEXT;
+                BEGIN
+                  FOR rec IN
+                    SELECT table_name
+                      FROM config.storico_set_storicizza
+                  LOOP
+                    sch := split_part(rec.table_name, '.', 1);
+                    tbl := split_part(rec.table_name, '.', 2);
+                    EXECUTE format(
+                      'ALTER TABLE %I.%I ALTER COLUMN storicizza SET DEFAULT true',
+                      sch, tbl);
+                  END LOOP;
+                END;
+              $procedure$;

@@ -9,7 +9,7 @@
 # LA RIGA SI COMPILA DA SOLA — L1 del Passo 0
 #   vendite.fn_event_log_ttl_days + vendite.trgfn_event_log_deriva_scope
 #   + trg_event_log_a10_deriva_scope_ins
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §3.2 · Decisioni D-2, D-12, D-13, D-14
 #
 # ── ⭐ LA REGOLA, IN UNA FRASE ───────────────────────────────────────
@@ -35,7 +35,7 @@
 #   ⚠️ E non si segnala nemmeno l'anomalia sulla riga: un avviso che scatta sul
 #   caso NORMALE diventa rumore, e un presidio che tutti ignorano e' peggio di
 #   uno che non c'e'. Il posto di quel presidio e' sul documento — vedi
-#   docs/it/dev/work-in-progress/analisi-presidi-percorso-storto.md.
+#   analisi-presidi-percorso-storto.md.
 #
 # ── ⚠️ IL NOME DEL TRIGGER E' PORTANTE ──────────────────────────────
 #   I BEFORE ROW scattano in **ordine alfabetico di nome**. Oggi la tabella non

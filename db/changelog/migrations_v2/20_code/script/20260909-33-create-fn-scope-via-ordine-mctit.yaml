@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# O-1 — Gli adattatori di scope per la famiglia ORDINI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §4
+#   Slice 20260909-33..35 (helper -> policy inerti -> armamento).
+#   Precedente: la famiglia PREVENTIVI, slice 20260909-27..30.
+#
+# ── ⭐ PERCHE' ORDINI SUBITO DOPO PREVENTIVI ──────────────────────────
+#   Non perche' sia la piu' esposta, ma perche' e' la piu' DIFFICILE: la sua
+#   testata ha TRE policy, cioe' tre vesti, mentre `preventivi` ne aveva una.
+#   E' il caso che verifica se la forma della slice regge quando le vesti sono
+#   piu' d'una — e se non reggesse, e' meglio scoprirlo al secondo passo che al
+#   quinto.
+#
+# ── ⛔ SI RISPECCHIANO TUTTE E TRE, e non e' un di piu' ───────────────
+#   La tentazione e' dare ai satelliti la sola veste `OPERATORE`, che e' quella
+#   che chiude il buco. Sarebbe sbagliato: oggi un `CLIENTE_PORTALE` vede le
+#   righe di TUTTI gli ordini (i satelliti non hanno policy), e con la sola
+#   veste operatore ne vedrebbe ZERO — anche di quelli che possiede.
+#   ⇒ Questa slice CHIUDE UN BUCO, non apre e non chiude una porta. Ogni
+#   satellite riceve le stesse tre condizioni della sua testata, tradotte:
+#
+#     rls_<tab>_ef_whitelist        OPERATORE       FOR ALL     perimetro emittente
+#     rls_<tab>_cliente_ownership   CLIENTE_PORTALE FOR SELECT  proprieta' del cliente
+#     rls_<tab>_shop                SHOP_CUSTOMER   FOR SELECT  proprieta' + canale SHOP
+#
+#   ⚠️ Se un domani si decidesse che il portale NON deve vedere le righe, quella
+#   e' una decisione di dominio e si prende togliendo la policy, con la sua
+#   ragione scritta. Non si prende per omissione dentro un cantiere di RLS.
+#
+# ── Le sei funzioni, e perche' sono sei ───────────────────────────────
+#   Tre vesti x due livelli di chiave:
+#     * `ordini_righe`, `ordini_indirizzi`, `note_ordini` portano la TESTATA
+#       (`ordine_id`, `target_id`)          -> `_via_ordine`
+#     * `ordini_righe_componenti` e `ordini_righe_fulfillment` portano la RIGA
+#       (`riga_ordine_id`, `ordine_riga_id`) -> `_via_ordine_riga`
+#   Le `_via_ordine_riga` delegano alle sorelle invece di ripetere la risalita:
+#   la regola «come un ordine nomina il suo emittente» resta in un posto solo.
+#   ⚠️ Tutte quelle FK sono `NOT NULL` (verificato 2026-09-09): nessun ramo con
+#   la chiave nulla.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, NON `SECURITY DEFINER` — come gli altri
+#   `script.fn_scope_*`. Una funzione `SECURITY DEFINER` dentro una policy
+#   guarderebbe con gli occhi dell'owner, che la RLS non vede: il filtro
+#   passerebbe sempre, e in silenzio.
+#
+# ⭐ La veste SHOP porta una condizione IN PIU' della proprieta': la testata
+#   pretende anche `canale_origine = 'SHOP'`. L'adattatore la risolve
+#   dall'ordine, cosi' il satellite non puo' essere piu' permissivo della
+#   propria testata — che e' l'invariante di tutta la slice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-33-create-fn-scope-via-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260909-33-create-fn-scope-via-ordine
+      author: mctit
+      runOnChange: false
+      comment: >
+        Sei adattatori di scope per la famiglia ordini: ef_whitelist,
+        cliente_ownership e shop, ciascuno nella variante via testata e via
+        riga. Rispecchiano le tre vesti di vendite.ordini. Nessuna policy li usa
+        ancora: le crea 20260909-34.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =====================================================
+              -- OPERATORE — il perimetro dell'emittente
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ordine(
+                  p_auth_user_id integer,
+                  p_ordine_id    vendite.ordini.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- ⚠️ Ordine inesistente -> emittente NULL -> la canonica
+                  --   risponde false a whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT o.emittente_fiscale_id
+                         FROM vendite.ordini o WHERE o.id = p_ordine_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ordine_riga(
+                  p_auth_user_id integer,
+                  p_riga_id      vendite.ordini_righe.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  SELECT script.fn_scope_ef_whitelist_via_ordine(
+                      p_auth_user_id,
+                      (SELECT r.ordine_id
+                         FROM vendite.ordini_righe r WHERE r.id = p_riga_id)
+                  );
+              $function$;
+
+              -- =====================================================
+              -- CLIENTE_PORTALE — la proprieta' del cliente
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership_via_ordine(
+                  p_identita_id bigint,
+                  p_ordine_id   vendite.ordini.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  SELECT script.fn_scope_cliente_ownership(
+                      p_identita_id,
+                      (SELECT o.soggetto_ruolo_id
+                         FROM vendite.ordini o WHERE o.id = p_ordine_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership_via_ordine_riga(
+                  p_identita_id bigint,
+                  p_riga_id     vendite.ordini_righe.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  SELECT script.fn_scope_cliente_ownership_via_ordine(
+                      p_identita_id,
+                      (SELECT r.ordine_id
+                         FROM vendite.ordini_righe r WHERE r.id = p_riga_id)
+                  );
+              $function$;
+
+              -- =====================================================
+              -- SHOP_CUSTOMER — proprieta' PIU' il canale
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_shop_via_ordine(
+                  p_identita_id bigint,
+                  p_ordine_id   vendite.ordini.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- ⛔ DUE condizioni, non una: la testata pretende anche
+                  --   `canale_origine = 'SHOP'`. Un satellite che chiedesse la
+                  --   sola proprieta' sarebbe PIU' PERMISSIVO della propria
+                  --   testata, che e' l'invariante che questa slice difende.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.ordini o
+                       WHERE o.id = p_ordine_id
+                         AND o.canale_origine = 'SHOP'::config.canale_origine
+                         AND script.fn_scope_cliente_ownership(
+                                 p_identita_id, o.soggetto_ruolo_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_shop_via_ordine_riga(
+                  p_identita_id bigint,
+                  p_riga_id     vendite.ordini_righe.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  SELECT script.fn_scope_shop_via_ordine(
+                      p_identita_id,
+                      (SELECT r.ordine_id
+                         FROM vendite.ordini_righe r WHERE r.id = p_riga_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_ordine(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.ordini, veste OPERATORE: risale dalla chiave della testata a `emittente_fiscale_id` e delega a script.fn_scope_ef_whitelist. STABLE e NON security definer, come gli altri fn_scope_*. Ordine inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). Brief: work-in-progress/brief-db-perimetro-emittente-righe-documento.md';
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_ordine_riga(integer, bigint)
+              IS 'Come fn_scope_ef_whitelist_via_ordine ma a partire da una riga d''ordine: e'' la chiave che portano ordini_righe_componenti e ordini_righe_fulfillment. Delega alla sorella invece di ripetere la risalita.';
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership_via_ordine(bigint, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.ordini, veste CLIENTE_PORTALE: risale dalla testata a `soggetto_ruolo_id` e delega a script.fn_scope_cliente_ownership. ⚠️ Esiste perche'' i satelliti devono rispecchiare TUTTE le vesti della testata: con la sola veste operatore un cliente del portale smetterebbe di vedere le righe degli ordini che possiede.';
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership_via_ordine_riga(bigint, bigint)
+              IS 'Come fn_scope_cliente_ownership_via_ordine ma a partire da una riga d''ordine.';
+              COMMENT ON FUNCTION script.fn_scope_shop_via_ordine(bigint, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.ordini, veste SHOP_CUSTOMER: proprieta'' del cliente PIU'' `canale_origine = SHOP`. ⛔ Le condizioni sono due perche'' due ne pretende la testata: un satellite che chiedesse la sola proprieta'' sarebbe piu'' permissivo del documento a cui appartiene.';
+              COMMENT ON FUNCTION script.fn_scope_shop_via_ordine_riga(bigint, bigint)
+              IS 'Come fn_scope_shop_via_ordine ma a partire da una riga d''ordine.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_shop_via_ordine_riga(bigint, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_shop_via_ordine(bigint, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_cliente_ownership_via_ordine_riga(bigint, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_cliente_ownership_via_ordine(bigint, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_ordine_riga(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_ordine(integer, bigint);

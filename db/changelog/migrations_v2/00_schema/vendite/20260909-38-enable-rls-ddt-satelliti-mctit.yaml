@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui quattro satelliti di DDT.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-36..38. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Non e' un'ipotesi: il
+#   2026-09-09 `acquisti.ddt`, `acquisti.ordini` e `shop.ricevute` erano
+#   esattamente in quello stato, e chi avesse verificato con
+#   `EXISTS (SELECT 1 FROM pg_policies …)` avrebbe letto verde. Il pgTAP di
+#   questa slice asserisce `relrowsecurity`, non l'esistenza della policy.
+#
+# ── NO FORCE, a parita' con tutta la famiglia ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `vendite.ddt` e come
+#   i satelliti di `fatture`, `preventivi` e `ordini`: l'owner (`titodb`) resta
+#   esente, cosi' migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner`
+#   non si bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e'
+#   l'owner ed e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   ⭐ Nessuna vista da sistemare, verificato il 2026-09-09: le sei viste che
+#   leggono i satelliti di `ddt` — vw_partite_merce, vw_resi_da_accreditare,
+#   vw_resi_da_riconsegnare, vw_ddt_righe_iva_base, vw_dash_fatturazione_ddt,
+#   vw_documento_lineage_archi — hanno gia' tutte `security_invoker`. E' la
+#   differenza con la famiglia `preventivi`, che ne aveva due scoperte.
+#
+#   Da sessione OPERATORE i conteggi devono restare quelli di prima. I punti in
+#   cui una divergenza si vedrebbe:
+#     - il drawer DDT e le sue righe;
+#     - il giro dei RESI: `vw_resi_da_accreditare` e `vw_resi_da_riconsegnare`
+#       leggono `ddt_righe`, e `resi_righe` / `resi_righe_riconsegne` hanno una
+#       FK `NOT NULL` verso di essa;
+#     - il FULFILLMENT: `ordini_righe_fulfillment` e' il ponte fra ordine e DDT
+#       ed e' gia' filtrato dal lato ORDINE (slice 20260909-33..35). Da oggi la
+#       stessa riga e' raggiungibile attraverso un `ddt_righe` filtrato dal lato
+#       DDT. ⚠️ Le due strade devono dare la stessa risposta: se una riga
+#       sparisse da un giro di evasione, non e' la policy da allargare — e' il
+#       segno che ordine e DDT hanno emittenti diversi, cioe' un guard mancante
+#       (brief §6.2, domanda residua e dichiarata).
+#
+#   ⭐ Nessun cambiamento per un utente del portale o dello shop: `vendite.ddt`
+#   non ha vesti cliente, quindi non ne hanno i suoi satelliti. A differenza
+#   della slice ordini, qui non c'e' niente che un utente finale possa notare.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-ddt-satelliti.sql, che
+#   costruisce DUE aziende con `dbops.fn_pgtap_crea_emittente_operatore()` e
+#   verifica che l'una non veda le righe dell'altra, in lettura E in scrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-38-enable-rls-ddt-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-38-enable-rls-ddt-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui quattro satelliti di
+        vendite.ddt. Da qui le policy di 20260909-37 filtrano davvero. Isolato
+        apposta: si disarma con il rollback di questo solo changeSet, e le
+        policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('ddt_righe', 'ddt_indirizzi', 'note_ddt',
+                                   'ddt_righe_componenti')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe            ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ddt_indirizzi        ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_ddt             ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ddt_righe_componenti ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_ddt             DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ddt_indirizzi        DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ddt_righe            DISABLE ROW LEVEL SECURITY;

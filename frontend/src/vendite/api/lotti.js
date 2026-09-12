@@ -24,8 +24,10 @@ export function exportLotti(params = {}) {
 
 // GET conteggi lotti/mese di un anno (badge sidebar anno/mese). Fotografia
 // completa (nessun filtro stato): { anno, mesi: [{competenza_mese, n_lotti}] }.
-export function listLottiMensile(anno) {
-  return api.get(`${BASE}/mensile/`, { params: { anno } })
+// ⭐ `annullati`: come la lista, i lotti annullati restano fuori dal conteggio
+//    a meno che l'operatore non li chieda (2026-09-12).
+export function listLottiMensile(anno, { annullati = false } = {}) {
+  return api.get(`${BASE}/mensile/`, { params: { anno, ...(annullati ? { annullati: 1 } : {}) } })
 }
 
 // GET dettaglio testata lotto (B-1). 404 su lotto fuori scope/inesistente.
@@ -39,6 +41,73 @@ export function getLotto(lottoId) {
 // la nominava era una condizione sempre vera.
 export function listLottoFatture(lottoId, params = {}) {
   return api.get(`${BASE}/${lottoId}/fatture/`, { params })
+}
+
+// GET i DOCUMENTI che il lotto ha preso in carico, con l'esito di ciascuno.
+//
+// ⭐ Non è un doppione di `listLottoFatture`, ed è la ragione per cui esiste
+// (brief-db-esito-gruppo-lotto). Quella elenca le FATTURE del lotto: un
+// documento che cade PRIMA di diventarne una non ha niente a cui appendersi e
+// sparisce dal racconto — sul lotto LTF-0009578 se ne vedevano due su tre, e il
+// terzo era nominato solo da una segnalazione, per giunta con
+// l'identificativo della COMMESSA.
+// ⚠️ Le due liste NON sono in corrispondenza 1:1 nemmeno a giro riuscito: una
+// fattura può raccogliere più documenti. Sono due domande diverse.
+// ⭐ La riga è l'UNIONE di due fatti (rev DB 2026-09-07): il PERIMETRO — che
+// dichiarano i soli giri mirati — e l'ESITO, che c'è su entrambi i tipi di
+// giro. Perciò la scheda dice qualcosa anche sui giri di massa, che prima
+// restavano muti, e continua a mostrare i documenti dichiarati e non ancora
+// tentati (esito vuoto).
+// `statoEsecuzione` assente = tutti, compresi i mai tentati.
+export function listLottoGruppi(
+  lottoId, { page = 1, pageSize = 25, orderBy = null, orderDir = null, statoEsecuzione = null } = {},
+) {
+  const params = { page, page_size: pageSize }
+  if (orderBy) params.order_by = orderBy
+  // ⚠️ Il verso si manda SOLO insieme alla colonna: senza colonna il backend ha
+  // un ordine di default suo — i falliti in cima — e un `asc` spedito a vuoto
+  // lo annullerebbe.
+  if (orderBy && orderDir) params.order_dir = orderDir
+  if (statoEsecuzione) params.stato_esecuzione = statoEsecuzione
+  return api.get(`${BASE}/${lottoId}/gruppi/`, { params })
+}
+
+// POST toglie N documenti dal giro di fatturazione
+// (`vendite.fn_escludi_documento_da_giro`, brief-db-uscita-documento-dal-giro).
+//
+// ⭐ Un giro prende in carico N documenti; se uno è rotto il lotto si ferma e
+// gli altri N-1 — che hanno già le loro bozze — non vengono emessi. Questo è il
+// gesto che li libera: il documento esce, il lotto riparte con quelli che
+// restano. Con più documenti rotti si ripete, e il lotto riparte quando esce
+// l'ultimo.
+//
+// ⚠️ Le chiavi viaggiano nel BODY e non nel path: sono chiavi di dominio
+// (`ORDINE_VENDITA:01a06…`) e contiene i due punti, che in un segmento di URL
+// vanno codificati — un contratto che si sbaglia a mano.
+// ⛔ `motivo` è OBBLIGATORIO e non ha un default: un documento che esce senza
+// motivo è una riga che fra un mese nessuno sa spiegare (D-5). La regola la
+// tiene il database; qui non c'è un ripiego che la aggiri.
+// ⚠️ L'uscita è a SENSO UNICO (D-3): per rimettere tutto in un lotto solo si
+// annulla il lotto e lo si rigenera.
+// ⭐ Una LISTA anche per un documento solo, ed è una scelta: un endpoint solo,
+// e la riga singola è una lista di uno. Due superfici per lo stesso verbo
+// divergerebbero su permessi, conferme e forma dell'esito.
+// ⭐ La risposta è un REPORT a tre stati (`COMPLETATO` / `PARZIALE` / `ERRORE`)
+// e torna 200 anche quando falliscono tutti: chi legge DEVE guardare `esito` e
+// `falliti`, dove ogni riga porta il suo CODICE — «già uscito» si legge diverso
+// da «non è in errore».
+// 🔴 `Idempotency-Key`, e la sua assenza NON e' un dettaglio: il backend chiede
+// l'header su ogni write e senza risponde `E_IDEMPOTENCY_KEY_REQUIRED` — cioe'
+// il verbo non parte affatto. Trovato provandolo a video il 2026-09-08: la
+// conferma tornava un errore dopo che l'operatore aveva gia' scritto il motivo.
+// ⚠️ Nessun test lo vedeva: i test del servizio chiamano la funzione Python, e
+// l'header vive due strati piu' su.
+export function escludiDocumentiDaGiro(lottoId, { gruppoKeys, motivo }) {
+  return api.post(
+    `${BASE}/${lottoId}/documenti/escludi/`,
+    { gruppo_keys: gruppoKeys, motivo },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
 }
 
 // GET i tentativi dei task del lotto — elenco PAGINATO e ordinabile
@@ -69,6 +138,10 @@ export function listLottoTaskRuns(
 // verrebbe intercettato prima della view (memoria feedback_drf_format_magic_param).
 export function exportLottoFatture(lottoId, params = {}) {
   return api.get(`${BASE}/${lottoId}/fatture/export/`, { params, responseType: 'blob' })
+}
+
+export function exportLottoGruppi(lottoId, params = {}) {
+  return api.get(`${BASE}/${lottoId}/gruppi/export/`, { params, responseType: 'blob' })
 }
 
 export function exportLottoTaskRuns(lottoId, params = {}) {

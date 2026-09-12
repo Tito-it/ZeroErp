@@ -29,7 +29,7 @@
 #   INSERT...SELECT delle eccezioni. Firma e resto del corpo INVARIATI
 #   (CREATE OR REPLACE, nessun DROP).
 #
-# Riferimento: docs/it/dev/work-in-progress/refactor-prezzi-db.md §1.2, §3.4
+# Riferimento: refactor-prezzi-db.md §1.2, §3.4
 # ------------------------------------------------------------
 
 databaseChangeLog:

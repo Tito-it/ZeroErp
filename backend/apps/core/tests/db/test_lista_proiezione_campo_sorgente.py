@@ -494,6 +494,17 @@ _ESERCIZI: dict[str, Esercizio] = {
             **_ordine(ob, od, chiavi=("sort_by", "sort_dir")),
         ),
     ),
+    # ⚠️ Il registro dei processi automatici sta fra le liste di TRACCIAMENTO
+    #    anche se il suo codice comincia per `amm.`: il dato e' `dbops`, e il
+    #    repository e' in `core` perche' il roster serve anche a `vendite` (una
+    #    chiamata laterale fra domini non si fa). Il prefisso dice DOVE si
+    #    guarda la lista, non di chi e' il dato.
+    "amm.processi": Esercizio(
+        dove="core/db/processi_repository.py::list_processi",
+        chiama=lambda ob, od: _r(
+            "apps.core.db.processi_repository", "ProcessiRepository"
+        ).list_processi(limit=1, offset=0, **_ordine(ob, od)),
+    ),
     # ---------- vendite ----------
     "vendite.lotti": Esercizio(
         dove="vendite/db/vendite_repository.py::list_lotti",
@@ -603,6 +614,22 @@ _ESERCIZI: dict[str, Esercizio] = {
             limit=1,
             offset=0,
             **_ordine(ob, od, "id", chiavi=("sort_by", "sort_dir")),
+        ),
+    ),
+    # ⭐ La scheda «Presi in carico» (brief-db-esito-gruppo-lotto): i documenti
+    #    che il lotto ha preso, compresi quelli che una fattura non sono mai
+    #    diventati. ⚠️ Nessun `campi_da_python`: qui il cursore vede TUTTO —
+    #    l'identita' del gruppo la porta la SELECT (aggregata dalla vista di
+    #    competenza), non il mapping.
+    "vendite.lotto_gruppi": Esercizio(
+        dove="vendite/db/vendite_repository.py::list_lotto_gruppi",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.vendite_repository", "VenditeRepository"
+        ).list_lotto_gruppi(
+            lotto_id=_ID_FINTO,
+            limit=1,
+            offset=0,
+            **_ordine(ob, od, chiavi=("sort_by", "sort_dir")),
         ),
     ),
     "vendite.lotto_task_runs": Esercizio(

@@ -5,7 +5,7 @@
 # Aggiorna fn_seed_automazione_overlap per rilevare la presenza
 # di una colonna daterange nativa (es. 'validita') e popolare
 # automaticamente range_col nella tabella automazione_overlap.
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.4
+# Vedi: migrazione-daterange.md §4.4
 # ------------------------------------------------------------
 
 databaseChangeLog:

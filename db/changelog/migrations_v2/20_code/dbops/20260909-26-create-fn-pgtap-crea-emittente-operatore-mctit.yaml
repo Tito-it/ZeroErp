@@ -1,0 +1,297 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due helper di fixture pgTAP, e il rifacimento di un terzo che ne diventa
+# chiamante:
+#
+#   dbops.fn_pgtap_crea_emittente()            <- primitiva estratta
+#   dbops.fn_pgtap_crea_emittente_operatore()  <- nuova, la piu' usata
+#   dbops.fn_pgtap_crea_roster_processo()      <- ora chiama la primitiva
+#
+# ── ⭐ IL NUMERO CHE LI GIUSTIFICA, misurato il 2026-09-09 ────────────
+#   Sul database scratch di `scripts/ci-local.sh` — ricostruito dai changelog,
+#   quindi senza `dati_macchina` — 185 file di `db/pgtap/vendite/` muoiono nel
+#   fixture, cioe' senza eseguire una sola asserzione. Raccogliendo il PRIMO
+#   errore di ognuno, si raggruppano in poche cause e la prima e' una sola:
+#
+#     ~102 file  «Nessun emittente fiscale attivo» (68), «Emittente di default
+#                mancante» (12), registri_fatturazione.emittente_soggetto_ruolo_id
+#                NOT NULL (11), «valuta non risolta (BA/emittente/gestore)» (11)
+#      ~45 file  p_billing_account_id obbligatorio e > 0  <- famiglia successiva
+#
+#   Regola del 2 superata di due ordini di grandezza.
+#
+# ── ⛔ E NON BASTA CREARE L'EMITTENTE: SERVE IL SUO OPERATORE ──────────
+#   E' il punto che non si indovina leggendo il messaggio d'errore.
+#   `script.fn_pgtap_set_contesto_operatore()` — la riga di preambolo che ogni
+#   test ha — sceglie un operatore **che abbia gia' un emittente assegnato**,
+#   leggendo `config.user_emittenti_fiscali`. Su un database ricostruito non c'e'
+#   nessun operatore, quindi il contesto resta vuoto e il primo accesso di
+#   dominio solleva «Nessun emittente fiscale attivo». Un emittente creato e
+#   basta non cambia niente: nessuno lo sta guardando.
+#   ⇒ La primitiva utile e' emittente **+ operatore che lo ha nel perimetro**.
+#
+# ── ⚠️ PERCHE' L'OPERATORE E' UN UTENTE TECNICO, e va detto ───────────
+#   L'unico percorso di PRODUZIONE che crea un utente legato a un emittente e'
+#   `script.fn_crea_utente_tecnico`. Non esiste una funzione che crei un
+#   operatore «umano» con il suo perimetro: quella strada passa dal backend.
+#   ⭐ E per cio' che i test devono attraversare, un utente tecnico e' un
+#   operatore a tutti gli effetti: identita' `OPERATORE` attiva, non super
+#   admin, una riga in `config.user_emittenti_fiscali`. Sono esattamente i tre
+#   controlli che `fn_pgtap_set_contesto_operatore` e le policy RLS fanno.
+#   ⚠️ Cio' che NON e': una persona. Un test che verifichi qualcosa di
+#   specifico dell'operatore umano (il flag `tecnica`, un profilo di accesso)
+#   non deve usare questo helper — deve costruirsi il caso suo.
+#   Verificato il 2026-09-09 sullo scratch: dopo la chiamata,
+#   `fn_pgtap_set_contesto_operatore()` risolve l'utente e
+#   `fn_pgtap_emittente_operatore()` risponde con l'emittente appena creato.
+#
+# ── Il processo su cui si aggancia ────────────────────────────────────
+#   `fn_crea_utente_tecnico` pretende un processo a catalogo, e uno vale
+#   l'altro: l'utente serve per il suo PERIMETRO, non per il lavoro che
+#   quel processo farebbe. Si passa come parametro con un default, cosi' un
+#   test che avesse una ragione per sceglierlo puo' farlo.
+#
+# Permessi: funzioni di titodb, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner -> CREATE OR REPLACE liscio, nessun GRANT.
+# Stessa forma di 20260818-76 e 20260909-19.
+#
+# ⚠️ `fn_pgtap_crea_roster_processo` viene RISCRITTA (CREATE OR REPLACE) per
+#   chiamare la primitiva invece di duplicarla: la firma e il RETURNS TABLE non
+#   cambiano, quindi non serve un DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260909-26-create-fn-pgtap-crea-emittente-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20260909-26-create-fn-pgtap-crea-emittente-operatore
+      author: mctit
+      runOnChange: false
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_emittente() (primitiva
+        estratta da fn_pgtap_crea_roster_processo) e
+        dbops.fn_pgtap_crea_emittente_operatore(), che le aggancia un operatore
+        col perimetro su quell'emittente cosi'
+        script.fn_pgtap_set_contesto_operatore() lo trova.
+        fn_pgtap_crea_roster_processo diventa un chiamante della primitiva.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =====================================================
+              -- 1. La primitiva: solo l'azienda
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_emittente(
+                  p_sigla anagrafiche.emittenti_fiscali.codice%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE (
+                  emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_codice     anagrafiche.emittenti_fiscali.codice%TYPE,
+                  soggetto_ruolo_id    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  soggetto_id          anagrafiche.soggetti.id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: creare per una fixture pgTAP un emittente fiscale nuovo,
+              --   completo del soggetto persona giuridica e del ruolo EF.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_ef AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_emittente();
+              DECLARE
+                  v_soggetto_id anagrafiche.soggetti.id%TYPE;
+                  v_sr_id       anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_codice      anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_id       anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_try         integer := 0;
+                  v_libera      boolean := FALSE;
+              BEGIN
+                  -- La sigla: se non la impone il chiamante se ne cerca una
+                  -- LIBERA. ⚠️ `uq:codice` e' UNIQUE senza filtro su `attivo`,
+                  -- quindi una sigla fissa farebbe collidere la seconda corsa
+                  -- con il residuo della prima — lo stesso difetto per cui
+                  -- esiste dbops.fn_pgtap_piva_libera.
+                  -- ⚠️ La forma la impone chk_emittenti_fiscali_codice_forma:
+                  -- solo maiuscole e cifre, da 2 a 10 caratteri.
+                  IF p_sigla IS NOT NULL THEN
+                      v_codice := p_sigla;
+                  ELSE
+                      LOOP
+                          v_try := v_try + 1;
+                          EXIT WHEN v_try > 9999;
+                          v_codice := 'PGTR' || lpad(v_try::text, 4, '0');
+                          IF NOT EXISTS (SELECT 1
+                                           FROM anagrafiche.emittenti_fiscali e
+                                          WHERE e.codice = v_codice) THEN
+                              v_libera := TRUE;
+                              EXIT;
+                          END IF;
+                      END LOOP;
+
+                      IF NOT v_libera THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_emittente: nessuna sigla PGTRnnnn libera';
+                      END IF;
+                  END IF;
+
+                  -- I due helper aprono e richiudono da soli la finestra dei
+                  -- guard differiti, quindi qui non serve toccarla.
+                  v_soggetto_id := dbops.fn_pgtap_crea_soggetto_pg(
+                                       'Emittente pgTAP ' || v_codice);
+                  v_sr_id       := dbops.fn_pgtap_crea_soggetto_ruolo(
+                                       v_soggetto_id, 'EF'::character varying);
+
+                  -- ⭐ Nascendo, l'emittente fa nascere anche i suoi registri di
+                  --   numerazione (vendite.fn_provision_registri_emittente): e'
+                  --   il percorso reale, e un test che ne avesse bisogno li
+                  --   trova gia' pronti.
+                  INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice)
+                  VALUES (v_sr_id, v_codice)
+                  RETURNING id INTO v_ef_id;
+
+                  RETURN QUERY SELECT v_ef_id, v_codice, v_sr_id, v_soggetto_id;
+              END;
+              $function$;
+
+              -- =====================================================
+              -- 2. L'azienda con il suo operatore — la piu' usata
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_emittente_operatore(
+                  p_sigla           anagrafiche.emittenti_fiscali.codice%TYPE DEFAULT NULL,
+                  p_processo_codice text DEFAULT 'chiusura_scadenze_daily'
+              )
+               RETURNS TABLE (
+                  emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_codice     anagrafiche.emittenti_fiscali.codice%TYPE,
+                  soggetto_ruolo_id    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id         anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  identita_id          anagrafiche.identita_digitali.id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un'azienda su cui lavorare E
+              --   l'operatore che la ha nel perimetro, perche' senza operatore
+              --   il contesto resta vuoto e il dominio solleva «Nessun
+              --   emittente fiscale attivo».
+              -- Uso, in testa al file, al posto della sola riga di contesto:
+              --   DO $ctx$
+              --   DECLARE v_u integer;
+              --   BEGIN
+              --       SELECT auth_user_id INTO v_u
+              --         FROM dbops.fn_pgtap_crea_emittente_operatore();
+              --       PERFORM script.fn_pgtap_set_contesto_operatore(v_u);
+              --   END $ctx$;
+              DECLARE
+                  v_ef          record;
+                  v_auth_user   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita_id anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  SELECT * INTO v_ef FROM dbops.fn_pgtap_crea_emittente(p_sigla);
+
+                  -- ⛔ DENTRO UNA FINESTRA DIFFERITA, o non parte.
+                  --   `fn_crea_utente_tecnico` e' una SAGA: scrive il soggetto
+                  --   del processo e SOLO DOPO il suo contatto. Il guard
+                  --   `trgfn_soggetti_guard_soggetto_contatti` e' DEFERRABLE
+                  --   INITIALLY DEFERRED apposta, ma qui i vincoli sono
+                  --   IMMEDIATE — li mette il preambolo obbligatorio dei pgTAP e
+                  --   li richiude `fn_pgtap_crea_soggetto_pg` in uscita.
+                  --   Senza queste due righe si muore su «Il soggetto non ha
+                  --   contatti validi» al primo INSERT. In produzione non
+                  --   succede: li' nessuno ha mai messo i vincoli IMMEDIATE.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  v_auth_user := script.fn_crea_utente_tecnico(
+                                     p_processo_codice  := p_processo_codice,
+                                     p_emittente_codice := v_ef.emittente_codice);
+
+                  -- Saga completa: i guard differiti scattano QUI, su un mondo
+                  -- finito. ⚠️ La richiusura non e' facoltativa: senza, il
+                  -- ROLLBACK del test se li porterebbe via NON verificati.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  SELECT idg.id
+                    INTO v_identita_id
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_auth_user
+                     AND idg.attivo;
+
+                  -- ⚠️ Guard sul RISULTATO, non sul parametro: senza identita'
+                  --   l'operatore non e' selezionabile dal contesto, e
+                  --   restituire una tupla con un NULL dentro manderebbe il
+                  --   chiamante a cercare il difetto tre passi piu' in la'.
+                  IF v_identita_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_emittente_operatore: nessuna identita'' attiva per auth_user_id=%',
+                          v_auth_user;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_ef.emittente_fiscale_id, v_ef.emittente_codice,
+                         v_ef.soggetto_ruolo_id, v_auth_user, v_identita_id;
+              END;
+              $function$;
+
+              -- =====================================================
+              -- 3. Il roster diventa un chiamante della primitiva
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_roster_processo(
+                  p_processo_codice text,
+                  p_sigla           anagrafiche.emittenti_fiscali.codice%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE (
+                  emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_codice            anagrafiche.emittenti_fiscali.codice%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  identita_id                 anagrafiche.identita_digitali.id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una coppia (processo, azienda)
+              --   che compaia davvero in dbops.vw_processi_roster.
+              -- ⭐ Rev 2026-09-09: il corpo era identico a
+              --   fn_pgtap_crea_emittente_operatore tranne il nome del processo.
+              --   Ora la chiama: resta qui solo il guard sul parametro, che e'
+              --   l'unica cosa che questa funzione ha in piu' — li' il processo
+              --   e' il SOGGETTO del test, non un dettaglio con un default.
+              DECLARE
+                  v_r record;
+              BEGIN
+                  IF p_processo_codice IS NULL OR btrim(p_processo_codice) = '' THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_roster_processo: p_processo_codice e'' obbligatorio';
+                  END IF;
+
+                  SELECT * INTO v_r
+                    FROM dbops.fn_pgtap_crea_emittente_operatore(
+                             p_sigla           := p_sigla,
+                             p_processo_codice := p_processo_codice);
+
+                  RETURN QUERY
+                  SELECT v_r.emittente_fiscale_id, v_r.emittente_codice,
+                         v_r.soggetto_ruolo_id, v_r.auth_user_id, v_r.identita_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente(character varying)
+              IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera. Ritorna emittente_fiscale_id, emittente_codice, soggetto_ruolo_id, soggetto_id. ⚠️ Da sola NON basta a far vedere l''emittente a un test: il contesto operatore sceglie un utente che abbia gia'' un emittente in config.user_emittenti_fiscali, e su un database ricostruito non ce n''e'' nessuno — per quello serve dbops.fn_pgtap_crea_emittente_operatore. ⭐ Nascendo, l''emittente fa nascere i propri registri di numerazione (vendite.fn_provision_registri_emittente).';
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente_operatore(character varying,text)
+              IS 'Helper di fixture pgTAP: un''azienda su cui lavorare PIU'' l''operatore che la ha nel perimetro. Senza operatore il contesto di sessione resta vuoto e il dominio solleva «Nessun emittente fiscale attivo» — misurato il 2026-09-09 su 102 dei 185 file di vendite che sul database scratch morivano nel fixture. ⚠️ L''operatore e'' un utente TECNICO, perche'' script.fn_crea_utente_tecnico e'' l''unico percorso di produzione che lega un utente a un emittente; per cio'' che i test attraversano e'' un operatore a tutti gli effetti (identita'' OPERATORE attiva, non super admin, un emittente nel perimetro). ⛔ Non usarlo dove il soggetto del test e'' l''operatore UMANO — flag tecnica, profili di accesso: li'' il caso va costruito. Il chiamante deve poi puntarci il contesto: PERFORM script.fn_pgtap_set_contesto_operatore(auth_user_id).';
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_roster_processo(text,character varying)
+              IS 'Helper di fixture pgTAP: crea un''azienda e le aggancia l''utente tecnico di un processo automatico, cosi'' la coppia (processo, azienda) compare in dbops.vw_processi_roster. ⭐ Rev 2026-09-09: il corpo e'' passato a dbops.fn_pgtap_crea_emittente_operatore, di cui questa e'' il caso in cui il processo e'' il SOGGETTO del test e quindi non ha un default. ⚠️ Pretende django.auth_user, che costruisce manage.py migrate e non Liquibase.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_emittente_operatore(character varying,text);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_emittente(character varying);

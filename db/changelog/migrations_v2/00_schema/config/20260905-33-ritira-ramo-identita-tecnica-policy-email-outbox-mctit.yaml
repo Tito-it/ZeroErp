@@ -1,0 +1,206 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ IL RAMO DELLA MACCHINA ESCE DA QUESTA POLICY — era sulla tabella sbagliata.
+#   Corregge: `20260905-32` · Decisione: brief-db-processi-automatici-identita-e-perimetro §12.15
+#
+# `rls_email_outbox_ambito` dava lettura, sul ramo `SISTEMA`, anche all'identita'
+# tecnica di `send_pending_emails`. Il ragionamento era giusto — nel database
+# **portare e' leggere**, e senza autorizzazione la posta di sistema non
+# partirebbe — ma applicato alla **tabella sbagliata**.
+#
+# ── ⭐ MISURATO SUI DUE SOLI PERCORSI CHE POTEVANO SMENTIRLO ────────
+#     * inviare una bozza (`EmailOutboxSendView` -> `confirm_and_send`) gira
+#       DENTRO la richiesta HTTP, con una persona vera: crea l'`email_log`,
+#       spedisce, aggiorna la bozza. Nessuna coda, nessuna identita' tecnica;
+#     * il ritentativo del command (`retry_log_entry`) tocca SOLO
+#       `config.email_log` — non scrive mai la riga di outbox.
+#   ⇒ Non esiste un percorso in cui l'identita' tecnica apra questa tabella.
+#
+# ── ⛔ E IL PROBLEMA NON E' CHE IL PERMESSO SIA «INUTILE» ───────────
+#   E' che **non si puo' collaudare**. Non «non ancora testato»: NON
+#   ESERCITABILE, perche' nessun codice ci arriva. Un ramo cosi' si scopre
+#   sbagliato il giorno in cui serve, che e' troppo tardi — ed e' la lezione che
+#   questo cantiere ha gia' pagato.
+#   ⚠️ In piu' afferma una cosa FALSA dentro una regola di sicurezza — «chi
+#   spedisce legge le bozze» — cioe' lo stesso errore del bersaglio dichiarato
+#   che puntava alla tabella sbagliata, ma in un posto che si legge quando si
+#   indaga un incidente.
+#
+# ── ⭐ DOVE VA, E PERCHE' LA FUNZIONE RESTA ────────────────────────
+#   Il ramo della macchina va sulla policy di `config.email_log`, dove quel
+#   processo legge davvero e dove un collaudo funzionale lo puo' esercitare.
+#   ⇒ `script.fn_scope_identita_processo` (`20260905-31`) **non si ritira**: e'
+#   il predicato che quella policy usera', ha un test suo che lo esercita
+#   direttamente (`db/pgtap/script/test-fn-scope-identita-processo.sql`), e
+#   riscriverlo sarebbe la terza stesura della stessa domanda.
+#   ⚠️ Non e' «codice morto»: e' un blocco collaudato che aspetta il suo
+#   consumatore. Cio' che non si poteva collaudare era il RAMO nella policy, non
+#   la funzione.
+#
+# ── ⚠️ LA SIMMETRIA FRA LE DUE TABELLE E' UNA COINCIDENZA ──────────
+#   Contengono lo stesso tipo di roba, e per questo tenerle uguali era tentante.
+#   Ma due tabelle con LETTORI diversi si somigliano per caso: `config.email_log`
+#   la apre una macchina, `config.email_outbox` solo delle persone.
+#
+# ── ℹ️ PERCHE' UN CHANGESET NUOVO E NON LA CORREZIONE DEL `-32` ─────
+#   Il `-32` e' gia' EXECUTED: correggerlo sul posto falsificherebbe la sua
+#   storia, e su un database dove ha gia' girato non ri-eseguirebbe. ⇒ Forma
+#   forward-only di sempre: l'ultimo changeSet e' la definizione viva, i
+#   precedenti sono storia. ⛔ Da qui in poi il `-32` non si tocca.
+#
+# ── ⚠️ CHE COSA NON CAMBIA ────────────────────────────────────────
+#   La `ROW LEVEL SECURITY` resta SPENTA (§12.15: l'API scrive
+#   `ambito = 'SISTEMA'` per default e non valorizza l'emittente), e il presidio
+#   continua a dirlo: *«la policy c'e' ma la ROW LEVEL SECURITY non e' attiva
+#   sulla tabella, e manca il write-guard»*.
+#
+# Verifica: db/pgtap/rls/test-rls-email-outbox-ambito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260905-33-ritira-ramo-identita-tecnica-policy-email-outbox-mctit.yaml
+
+  - changeSet:
+      id: 20260905-33-ritira-ramo-identita-tecnica-policy-email-outbox
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        rls_email_outbox_ambito perde il ramo per l'identita' tecnica di
+        send_pending_emails: quel processo legge config.email_log e questa tabella
+        non la apre mai — ne' inviando una bozza (gira dentro la richiesta HTTP)
+        ne' ritentando. Un permesso che nessun codice esercita non si puo'
+        collaudare, e afferma dentro una regola di sicurezza una cosa falsa. Il
+        ramo va sulla policy di config.email_log.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_policy
+                   WHERE polrelid = 'config.email_outbox'::regclass
+                     AND polname  = 'rls_email_outbox_ambito'
+            - sqlCheck:
+                expectedResult: 2
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_is_super_admin', 'fn_scope_ef_whitelist')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_outbox_ambito ON config.email_outbox;
+
+              CREATE POLICY rls_email_outbox_ambito ON config.email_outbox
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          -- ⚠️ Il ramo si sceglie sull'ETICHETTA, non sulla
+                          --   colonna nulla: una riga SISTEMA puo' avere un
+                          --   emittente, e sceglierlo sul NULL la darebbe in
+                          --   lettura all'azienda.
+                          -- ⛔ Nessun ramo per l'identita' tecnica: su QUESTA
+                          --   tabella nessun processo automatico legge, e un
+                          --   permesso che nessun codice esercita non si puo'
+                          --   collaudare. Sta sulla policy di config.email_log.
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  );
+
+              COMMENT ON POLICY rls_email_outbox_ambito ON config.email_outbox IS
+                  'RLS: le email di ambito SISTEMA — reset password, alert — le legge e '
+                  'le scrive solo il SUPER ADMIN. Tutte le altre righe seguono la '
+                  'whitelist emittente dell''operatore, come la famiglia. Gate OPERATORE '
+                  'fail-closed. ⚠️ Il ramo si sceglie su `ambito` e non su '
+                  '`emittente_fiscale_id IS NULL`: il CHECK permette a una riga SISTEMA di '
+                  'avere un emittente, e sceglierlo sulla colonna nulla la darebbe in '
+                  'lettura a quell''azienda. ⛔ NESSUN ramo per l''identita'' tecnica di '
+                  'send_pending_emails, e non e'' una dimenticanza (changeSet 20260905-33, '
+                  'che ritira quello scritto dal -32): quel processo legge '
+                  'config.email_log e questa tabella non la apre mai — ne'' inviando una '
+                  'bozza (confirm_and_send gira dentro la richiesta HTTP, con una persona '
+                  'vera) ne'' ritentando (retry_log_entry tocca solo email_log). Un '
+                  'permesso che nessun codice esercita non si puo'' COLLAUDARE, e in piu'' '
+                  'afferma dentro una regola di sicurezza una cosa falsa: «chi spedisce '
+                  'legge le bozze». Il ramo della macchina va sulla policy di '
+                  'config.email_log, dove un collaudo funzionale lo esercita. '
+                  '🔴 La ROW LEVEL SECURITY sulla tabella e'' SPENTA di proposito: oggi '
+                  'l''API scrive ambito=SISTEMA per DEFAULT quando il client non lo manda, '
+                  'quindi SISTEMA significa «nessuno ha detto» e non «email di sistema» — '
+                  'e un valore di default non puo'' fare da cancello di sicurezza. '
+                  'Decisione: brief-db-processi-automatici-identita-e-perimetro §12.15. '
+                  'rev 2026-09-05.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette il ramo per l'identita' tecnica, cioe' un permesso che
+              --   nessun codice esercita su questa tabella. Manovra di
+              --   emergenza, non una configurazione.
+              DROP POLICY IF EXISTS rls_email_outbox_ambito ON config.email_outbox;
+
+              CREATE POLICY rls_email_outbox_ambito ON config.email_outbox
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  );

@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# A-1 — LA FAMIGLIA DICHIARA SE IL SUO NUMERO PORTA L'ANNO
+#   vendite.famiglie_documento.anno_nel_numero_default
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8
+#
+# -- IL DIFETTO ------------------------------------------------
+#   Un registro ANNUALE azzera il progressivo a ogni anno, ma il numero
+#   ESPOSTO di DDT, ordini e resi e' prefisso + progressivo e basta:
+#   `ORD0036007`. Al primo gennaio il contatore riparte e quella stringa
+#   TORNA, su un ordine diverso. Il database non se ne accorge — la sua
+#   unicita' porta l'anno in colonna — quindi non fallisce niente: e'
+#   un'ambiguita' MUTA, che vive nelle liste, nelle ricerche e nella
+#   telefonata in cui un cliente cita un numero.
+#   => E' l'invariante della sezione 1 un piano piu' su: tutto cio' che
+#   discrimina il contatore deve poter discriminare anche la stringa che una
+#   persona legge.
+#
+# -- PERCHE' STA SULLA FAMIGLIA, E COME DEFAULT ----------------
+#   E' la forma gia' scritta per prefisso e lunghezza: il DEFAULT sta sul
+#   catalogo delle famiglie (il tipo documento), l'EFFETTIVO sul registro
+#   (il sezionale). fn_provision_registri legge di qui, come fa gia' con
+#   prefisso_default e lunghezza_default.
+#
+# -- PERCHE' LA FATTURA DICHIARA false, E NON E' UNA DIMENTICANZA
+#   Il numero della fattura e' il progressivo NUDO (`101`), e anno e serie
+#   viaggiano in COLONNA: e' la convenzione fiscale, e la stampa li
+#   ricompone (`N. 101 / Serie VX1 / 2026`). Mettere l'anno dentro la
+#   stringa cambierebbe il numero di una fattura.
+#   => L'anno c'e', in un posto diverso — nella colonna, non nella stringa.
+#   E' l'UNICO `false` dei cinque, ed e' una scelta di modello, non di
+#   meccanismo.
+#
+# -- E LA COMMESSA DICHIARA true, COME TUTTI ------------------
+#   Il codice commessa l'anno ce l'ha gia' dentro — `CMM-<sigla>-<anno>-<9>` —
+#   ma fino al 2026-09-08 glielo metteva il compositore di DOMINIO
+#   (fn_get_or_create_commessa, che se lo scriveva nel proprio `p_corpo`),
+#   non quello generico. ⛔ Era una seconda sorgente di verita' per la stessa
+#   cosa, e si vedeva da qui: questa colonna avrebbe dovuto dire `false` su
+#   una famiglia il cui numero l'anno lo porta eccome — cioe' mentire sul
+#   contenuto della stringa per descrivere CHI la compone.
+#   ⭐ Decisione di Tid, 2026-09-08: «la commessa deve diventare standard,
+#   tutti devono avere gli stessi parametri». Il pezzo passa al compositore
+#   generico (20260908-13) e questa colonna torna a dire una cosa sola: il
+#   numero di questa famiglia porta l'anno. La stringa esce identica byte per
+#   byte, verificato sui 66 codici esistenti.
+#
+# -- IL DEFAULT E' false, ED E' LA SCELTA PORTANTE -------------
+#   Cosi' NESSUN registro esistente cambia forma quando questa colonna
+#   arriva. L'anno nel numero e' FORMA DEL NUMERO: accenderlo su un
+#   sezionale che ha gia' numerato farebbe convivere due forme con numeri
+#   consecutivi, che e' esattamente cio' che il guard di 20260901-03
+#   impedisce. Il valore vero lo mette il seed di 80_data, e da li' in poi
+#   la scelta e' dei registri NUOVI.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260908-11-alter-famiglie-documento-anno-nel-numero-default-mctit.yaml
+
+  - changeSet:
+      id: 20260908-11-alter-famiglie-documento-anno-nel-numero-default
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Dichiara sulla famiglia se il numero porta l''anno DENTRO la stringa. Serve perche'' un
+        registro ANNUALE azzera il progressivo e il numero esposto di DDT/ordini/resi non porta
+        l''anno: al primo gennaio la stessa stringa torna su un documento diverso, e il database
+        non se ne accorge perche'' la sua unicita'' l''anno ce l''ha in colonna. E'' il DEFAULT del
+        tipo documento, come prefisso_default e lunghezza_default; l''effettivo sta sul registro.
+        Nasce false su tutte: cosi'' nessun sezionale esistente cambia forma: il valore vero
+        arriva dal seed di 80_data. Piano:
+        brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8 (A-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: famiglie_documento
+                    columnName: anno_nel_numero_default
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                  ADD COLUMN anno_nel_numero_default boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN vendite.famiglie_documento.anno_nel_numero_default IS
+                  'Default del tipo documento: il numero di questa famiglia porta l''anno DENTRO la stringa, e a metterlo e'' il compositore generico (vendite.fn_assegna_numero_documento). L''effettivo del sezionale sta in vendite.registri_fatturazione.anno_nel_numero, applicato in INSERT dal risolutore trg_registri_fatturazione_a10_set_anno_nel_numero_ins. FATTURA e'' l''unica a dichiarare false: il suo numero e'' il progressivo nudo e anno/serie viaggiano in colonna, per convenzione fiscale. COMMESSA dichiara true come le altre dal 2026-09-08: il suo codice l''anno lo portava gia'', ma glielo metteva il compositore di dominio invece di quello generico. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                  DROP COLUMN IF EXISTS anno_nel_numero_default;

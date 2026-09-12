@@ -38,6 +38,7 @@
 from __future__ import annotations
 
 import os
+import re
 import unittest
 
 # Interruttore unico: i test che hanno bisogno del DB vero sono spenti di
@@ -89,3 +90,113 @@ def richiedi_db_provvisto(sonda: str = SONDA_SCHEMA_LIQUIBASE) -> None:
             "trovata): il runner ne ha creato uno usa-e-getta perche' qualche "
             "test dichiara un database. Vedi brief-be-e2e-db-error-fields-skip-schema.md"
         )
+
+
+# Scopo: apre il CONTESTO OPERATORE su un cursore, cioe' le due GUC senza le
+#        quali ogni tabella sotto RLS risponde ZERO RIGHE. Torna l'id
+#        dell'utente su cui il contesto e' stato aperto.
+#
+# ⭐ ESTRATTO IL 2026-09-09 (regola del 2, ok di Tid): le stesse cinque righe
+#    stavano in tre file e2e — `test_lotto_gruppi_ordine`,
+#    `test_pull_tutte_fallite_scrittura_reale` e
+#    `test_riepilogo_esclude_trattenuti`. Non e' comodita': e' il pezzo la cui
+#    assenza NON da' errore, e per questo va scritto una volta sola.
+#
+# ⛔ PERCHE' LO ZERO E' IL PERICOLO, e non il rosso. Senza contesto le viste di
+#    dominio non falliscono: rispondono un insieme VUOTO. Un test che cerca
+#    materiale trova zero righe, chiama `skipTest` e si dichiara «ok» —
+#    verde per sottrazione, che e' il difetto che questi presidi esistono per
+#    non avere.
+#
+# 🔴 IL GUARD SULLA TRANSAZIONE, ed e' la ragione per cui questa funzione vale
+#    piu' delle tre copie che sostituisce. `SET LOCAL` FUORI da un blocco
+#    transazionale PostgreSQL lo IGNORA — con un semplice avviso, non un errore.
+#    Il contesto non si apre, RLS taglia tutto, e si legge zero credendo di aver
+#    misurato. Successo il 2026-09-09 misurando a mano: «zero lotti in totale»
+#    su un database che ne aveva 85. Nessuna delle tre copie aveva questo
+#    controllo, ed e' esattamente cio' che un building block deve aggiungere:
+#    non solo togliere la ripetizione, ma chiudere il modo di sbagliare che la
+#    ripetizione lasciava aperto a tutti.
+#
+# ⚠️ Solleva `SkipTest` quando non c'e' un utente su cui aprirlo — un database
+#    senza operatori e' una condizione d'AMBIENTE, non un difetto del codice
+#    sotto test. Il guard sulla transazione invece FALLISCE: quello e' un errore
+#    di chi scrive il test, e uno skip lo nasconderebbe.
+def apri_contesto_operatore(cur) -> int:
+    from django.db import connection
+
+    if not connection.in_atomic_block:
+        raise AssertionError(
+            "apri_contesto_operatore chiamata FUORI da una transazione: "
+            "`SET LOCAL` sarebbe ignorato da PostgreSQL, RLS risponderebbe "
+            "zero righe e il test misurerebbe il vuoto credendolo un dato. "
+            "Avvolgi la chiamata in `with transaction.atomic():`."
+        )
+    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+    cur.execute("SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1")
+    riga = cur.fetchone()
+    if riga is None:
+        raise unittest.SkipTest("nessun utente su cui aprire il contesto operatore")
+    cur.execute("SET LOCAL app.current_user_id = %s", [str(riga[0])])
+    return int(riga[0])
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  I VOCABOLARI SPECCHIATI — Python contro il CHECK che li possiede
+# ══════════════════════════════════════════════════════════════════════
+#
+# ⭐ PERCHE' STA QUI E NON IN UN TEST. Il backend tiene piu' di una copia
+#    dichiarata di un vocabolario che vive in un `CHECK` del database: i canali e
+#    le classi di `dbops.processi` (per rifiutare un filtro senza senso con un
+#    400 parlante) e gli ambiti di `config.email_outbox` (per non far nascere una
+#    bozza che la policy di lettura non sa classificare). Sono mirror LEGITTIMI —
+#    servono a parlare all'operatore, non a decidere la regola — ma un mirror che
+#    nessuno confronta con l'originale e' solo una copia che invecchia.
+#
+# ⚠️ E' GIA' SUCCESSO, due volte in un giorno (2026-09-05): `CODA_AUTOMATICA` e'
+#    entrato nel CHECK dei canali e `_CANALI` ne aveva tre — un filtro legittimo
+#    avrebbe preso un 400; e `ambito` usava `SISTEMA` come default, cioe' un
+#    valore di ripiego davanti a una policy di sicurezza.
+#
+# ⚠️ LA SECONDA COPIA SAREBBE GIA' DIVERGENTE, ed e' la ragione dell'estrazione
+#    (regola del 2, ok di Tid): i due CHECK scrivono i letterali con cast
+#    DIVERSI — `'PGAGENT'::text` su una colonna `text`, `'SISTEMA'::character
+#    varying` su una `varchar`. Due regex scritte a mesi di distanza avrebbero
+#    coperto un caso ciascuna, e la seconda sarebbe stata verde per sottrazione.
+
+# Il blocco `ARRAY[...]` di un CHECK di appartenenza, e i letterali dentro.
+# ⛔ Si pretende la forma `= ANY (ARRAY[...])`: puntare questo strumento a un
+#    CHECK di ALTRA natura (per dire `chk_email_outbox_ambito_emittente`, che e'
+#    un `OR`) tornerebbe un insieme plausibile e SBAGLIATO. Meglio fermarsi.
+_CHECK_ARRAY_RE = re.compile(r"ARRAY\[(.*?)\]", re.S)
+_CHECK_LITERAL_RE = re.compile(r"'([^']*)'::")
+
+
+# Scopo: i valori ammessi da un CHECK di appartenenza, letti dal CATALOGO del
+#        database. E' la sola fonte: l'elenco non si riscrive nel test, o il
+#        test proverebbe se stesso e un valore nuovo che nessuno dei due lati
+#        conosce passerebbe verde.
+#
+# Param: `tabella` qualificata (`dbops.processi`), `conname` il nome del vincolo.
+# ⚠️ Solleva invece di tornare un insieme vuoto: un vocabolario vuoto renderebbe
+#    verde qualunque confronto.
+def valori_check(tabella: str, conname: str) -> set[str]:
+    from django.db import connection
+
+    with connection.cursor() as cur:
+        cur.execute(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conrelid = %s::regclass AND conname = %s",
+            [tabella, conname],
+        )
+        riga = cur.fetchone()
+    assert riga is not None, f"CHECK {conname} assente su {tabella}"
+    definizione = riga[0]
+    blocco = _CHECK_ARRAY_RE.search(definizione)
+    assert blocco is not None, (
+        f"{conname} non e' un CHECK di appartenenza (nessun ARRAY[...]): "
+        f"{definizione}"
+    )
+    valori = set(_CHECK_LITERAL_RE.findall(blocco.group(1)))
+    assert valori, f"CHECK {conname} senza letterali interpretabili: {definizione}"
+    return valori

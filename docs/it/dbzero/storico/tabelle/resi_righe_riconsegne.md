@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_resi_righe_riconsegne_resi_righe_riconsegne_id_fk | `CREATE INDEX ix_resi_righe_riconsegne_resi_righe_riconsegne_id_fk ON storico.resi_righe_riconsegne USING btree (resi_righe_riconsegne_id)` |
+| ix_resi_righe_riconsegne_scope_ef | `CREATE INDEX ix_resi_righe_riconsegne_scope_ef ON storico.resi_righe_riconsegne USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_resi_righe_riconsegne | `CREATE UNIQUE INDEX pk_storico_resi_righe_riconsegne ON storico.resi_righe_riconsegne USING btree (id)` |
 
 ## 🚨 Trigger

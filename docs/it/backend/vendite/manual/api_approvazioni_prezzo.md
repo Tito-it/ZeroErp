@@ -8,7 +8,7 @@ i limiti L2 configurati: l'operatore richiede approvazione, l'approver
 dedicata.
 
 Riferimento concettuale:
-[sviluppo-listini-v5.md](/dev/work-in-progress/sviluppo-listini-v5) §14.6
+[sviluppo-listini-v5.md](/dev/work-done/sviluppo-listini-v5) §14.6
 e guida operativa [gestione-listini.md §6.1](/guide/gestione-listini#61-l3-workflow-approvazione-out-of-policy-sprint-e).
 
 ## Contesto

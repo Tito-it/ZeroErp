@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RIFERIMENTO AL BRIEF SI SCRIVE PER NOME, NON COL PERCORSO
+#
+# ── ⛔ LA REGOLA, E QUI E' STATA INFRANTA ──────────────────────────
+#   Il changeSet 20260908-34 ha messo dentro il `COMMENT ON VIEW` il percorso
+#   `...`. A cantiere chiuso il brief si sposta in
+#   `work-done/` e quel percorso diventa morto.
+#
+# ── ⭐ E IL COSTO NON E' LO YAML: E' LA COPIA NEL DATABASE ─────────
+#   Un percorso scritto in un commento YAML si corregge editando il file — i
+#   commenti `#` non entrano nemmeno nel checksum Liquibase. Ma la stessa
+#   stringa dentro un `COMMENT ON` vive in `pg_description`, riappare nella doc
+#   auto-gen (docs/it/dbzero/dbops/views/vw_punti_primo_motivo.md) e li' non si
+#   edita: bisogna RI-EMETTERE il commento con un changeSet nuovo. E' questo.
+#   ⛔ Il changeSet -34 non si tocca: e' gia' applicato, e cambiarne l'SQL
+#   invaliderebbe il checksum.
+#
+# ── ⭐ IL NOME NUDO BASTA ──────────────────────────────────────────
+#   I brief hanno nomi unici in tutto il repo: chi legge lo trova con un `grep`
+#   in due secondi — che e' comunque quello che fa, perche' il documento nel
+#   frattempo puo' essersi spostato.
+#
+# ⚠️ Solo il COMMENT: la vista non cambia, quindi niente CREATE OR REPLACE e
+#   nessun rischio di azzerare `security_invoker`.
+#
+# Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (§9.2)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260909-17-comment-vw-punti-primo-motivo-brief-per-nome-mctit.yaml
+
+  - changeSet:
+      id: 20260909-17-comment-vw-punti-primo-motivo-brief-per-nome
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_punti_primo_motivo: il rimando al brief nel COMMENT ON passa
+        dal percorso al NOME del documento. Un percorso in pg_description non si
+        corregge editando un file, e muore quando il brief si sposta.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops' AND viewname = 'vw_punti_primo_motivo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_punti_primo_motivo IS
+              'I punti che sollevano il codice del PRIMO MOTIVO di una script.fn_check_* (linee-guida-sql §12.5.2), legati alla check da cui il motivo viene e ai codici che quella nomina. Una riga per (punto, check, codice).
+              SEDE UNICA della risalita punto->check: prima viveva in una vista temporanea dentro db/pgtap/script/test-rubinetto-primo-motivo-v1.sql, quindi ogni altro presidio che ne avesse bisogno se la sarebbe ricopiata — ed e'' cosi'' che due presidi sullo stesso fatto cominciano a dissentire.
+              COME SI USA. (A) il perimetro dell''helper: SELECT sch, fn, count(check_funzione) AS check_trovate, coalesce(bool_or(check_emette_valori), false) AS in_perimetro FROM dbops.vw_punti_primo_motivo GROUP BY 1,2; (B) i codici che un punto puo'' sollevare: SELECT DISTINCT funzione, codice FROM dbops.vw_punti_primo_motivo WHERE codice IS NOT NULL.
+              ⭐ PESSIMISTA DI PROPOSITO, ed e'' la scelta portante: i codici sono l''UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche'' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; e un falso positivo qui costa una riga in piu'' nel VARIADIC, non un rifiuto sbagliato.
+              ⚠️ RAMO CIECO — un punto con check_funzione NULL non e'' «a posto»: e'' un sito che la lettura non sa legare alla sua check, e va visto. E'' il test 3 di test-rubinetto-primo-motivo-v1.sql.
+              ⛔ NON serve a dbops.vw_codici_errore_forme_condizione: quella classifica la forma della GUARDIA, e sopra questi punti la guardia e'' sempre «IF jsonb_array_length(v_motivi) > 0», che non dice niente. Li'' si classifica dove il codice e'' NOMINATO (changeSet 20260908-35).
+              ⚠️ E'' un''euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md, passo V-0.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_punti_primo_motivo IS
+              'I punti che sollevano il codice del PRIMO MOTIVO di una script.fn_check_* (linee-guida-sql §12.5.2), legati alla check da cui il motivo viene e ai codici che quella nomina. Una riga per (punto, check, codice).
+              SEDE UNICA della risalita punto->check: prima viveva in una vista temporanea dentro db/pgtap/script/test-rubinetto-primo-motivo-v1.sql, quindi ogni altro presidio che ne avesse bisogno se la sarebbe ricopiata — ed e'' cosi'' che due presidi sullo stesso fatto cominciano a dissentire.
+              COME SI USA. (A) il perimetro dell''helper: SELECT sch, fn, count(check_funzione) AS check_trovate, coalesce(bool_or(check_emette_valori), false) AS in_perimetro FROM dbops.vw_punti_primo_motivo GROUP BY 1,2; (B) i codici che un punto puo'' sollevare: SELECT DISTINCT funzione, codice FROM dbops.vw_punti_primo_motivo WHERE codice IS NOT NULL.
+              ⭐ PESSIMISTA DI PROPOSITO, ed e'' la scelta portante: i codici sono l''UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche'' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; e un falso positivo qui costa una riga in piu'' nel VARIADIC, non un rifiuto sbagliato.
+              ⚠️ RAMO CIECO — un punto con check_funzione NULL non e'' «a posto»: e'' un sito che la lettura non sa legare alla sua check, e va visto. E'' il test 3 di test-rubinetto-primo-motivo-v1.sql.
+              ⛔ NON serve a dbops.vw_codici_errore_forme_condizione: quella classifica la forma della GUARDIA, e sopra questi punti la guardia e'' sempre «IF jsonb_array_length(v_motivi) > 0», che non dice niente. Li'' si classifica dove il codice e'' NOMINATO (changeSet 20260908-35).
+              ⚠️ E'' un''euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: docs/it/dev/work-in-progress/brief-db-i-motivi-si-fermano-dentro-la-check.md, passo V-0.';

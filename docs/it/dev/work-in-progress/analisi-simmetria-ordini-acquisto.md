@@ -126,6 +126,39 @@ Due cose da sapere, e la seconda è la più importante:
   ordini dal portale). **Per l'operatore interno non c'è nessuna policy**, e non può esserci
   finché non c'è ①.
 
+### 4.1-bis ✅ Come si arma la RLS — e perché non è un interruttore (D-2)
+
+✅ **Deciso da Tid il 2026-09-02: si arma.** ⛔ Ma `ENABLE ROW LEVEL SECURITY` rende la
+tabella **deny-by-default per chiunque non sia coperto da una policy**. Ne discendono tre
+pezzi che devono atterrare **nello stesso changeSet**, o il dominio nasce morto:
+
+| # | Pezzo | Se manca |
+| --- | --- | --- |
+| 1 | la policy **operatore** `EF_WHITELIST` — **non esiste**, va scritta (discende da D-1, `emittente_fiscale_id`) | l'operatore interno vede **zero righe**: non c'è nessuna policy che lo copra |
+| 2 | l'estensione a **`FOR ALL`** delle due policy fornitore già scritte | vedi il riquadro qui sotto |
+| 3 | l'`ENABLE` su `acquisti.ordini` e `acquisti.ddt` | resta il dry-run di oggi: policy che sembrano presidiare e non presidiano (⑨ della classe §9-bis) |
+
+#### ⛔ Il difetto che vendite ha già pagato, e che qui si eviterebbe per un soffio
+
+Le due policy di `20260419-65/-66` sono **`FOR SELECT`**. In PostgreSQL una tabella con RLS
+attiva e sole policy `FOR SELECT` è **deny-all in scrittura**: nessuno inserisce e nessuno
+aggiorna più, operatori compresi.
+
+⭐ **Non è un'ipotesi: è la sequenza che `vendite.ordini` ha percorso**, e sta nei changeSet —
+`20260601-37-create-policy-rls-ordini-ef-whitelist` (la policy), poi **due giorni dopo**
+`20260603-18-extend-policy-rls-ordini-ef-whitelist-**for-all**`. La correzione porta la data
+di chi ha scoperto il problema usandolo.
+
+⇒ Su acquisti il precedente è già scritto: le due policy fornitore vanno portate a `FOR ALL`
+(o affiancate da policy di scrittura) **prima** dell'`ENABLE`, non dopo.
+
+⚠️ E vale la distinzione già usata per il satellite: **non è un rischio sui dati** — è un
+dominio che smette di funzionare, e smette anche su un database appena ricostruito.
+
+📌 Perimetro: la veste `FORNITORE_PORTALE` resta quella di
+[sviluppo-multi-face-da-completare.md](sviluppo-multi-face-da-completare.md); qui si decide
+solo che le sue policy **si armano** invece di restare dichiarate e spente.
+
 ### 4.2 Gli stati
 
 **③ `config.stati_doc_ordini` è condivisa e parla vendite.**
@@ -276,12 +309,12 @@ e una raccomandazione da confermare.
 | # | Decisione | Risposta | Stato |
 | --- | --- | --- | --- |
 | **D-1** | **Perimetro emittente**: l'ordine di acquisto è dell'emittente fiscale? | ✅ **Sì, stesso schema di vendite**, `emittente_fiscale_id` ricavato dall'operatore | **CHIUSA** |
-| **D-2** | **RLS**: si arma il perimetro operatore, e che si fa delle due policy fornitore in dry-run? | discende da D-1: EF_WHITELIST sull'operatore. ⚠️ **Le policy fornitore restano da decidere**: armarle insieme o lasciarle spente e dichiararlo | **aperta (parte)** |
-| **D-3** | **Stati**: split o tabella unica? | ✅ **Tabella unica con le regole che suddividono il dominio**, «ma accetto consigli» → raccomandazione al **§7** | **CHIUSA sul principio, da confermare la forma** |
-| **D-4** | **Motore di stato**: transizioni + `fn_available_actions_ordine_acquisto` + capability | discende da D-3 | aperta |
+| **D-2** | **RLS**: si arma il perimetro operatore, e che si fa delle due policy fornitore in dry-run? | ✅ **SI ARMA** (Tid, 2026-09-02). ⛔ Ma non è un interruttore: le tre cose devono atterrare **insieme**, e la policy fornitore va prima estesa a `FOR ALL` → **§4.1-bis** | **CHIUSA, con vincolo di esecuzione** |
+| **D-3** | **Stati**: split o tabella unica? | ✅ **Satellite** — forma confermata da Tid il 2026-09-02 con tutte le conseguenze: `config.stati_doc_ordini_ambiti` (+ gemello DDT), `ambito` come **CHECK** a due valori, `nessuna_azione_key` e `ordine` sul **paio**, `ambito` nella chiave delle transizioni, seed `VENDITE` completo, invariante in pgTAP → **§7** | **CHIUSA** |
+| **D-4** | **Motore di stato**: transizioni + `fn_available_actions_ordine_acquisto` + capability | discende da D-3, ora **chiusa**: la forma del satellite è quella su cui il motore si appoggia | **sbloccata, da costruire (Lotto 2)** |
 | **D-5** | **Numerazione**: motore di vendite o proprio? | ✅ **Quello di vendite**. Obiezione sul billing account → **§6**, l'obiezione è fondata | **CHIUSA sul principio** |
 | **D-6** | **Indirizzi**: tabella satellite allineata al BB, o forma attuale? | ✅ **Stesso BB**. Verificato: l'ancora è un parametro, non «il cliente», e il DDT di acquisto **è già convergente**. Restano due limiti del BB da estendere → **§7-bis** | **CHIUSA sul principio** |
-| **D-6b** | **L'ordine di acquisto ha DUE ancore** (sede fornitore / consegna nostra): mappa `tipo → colonna` sul BB (A) o ancora unica + scelta esplicita (B)? | aperta qui dal §7-bis. Raccomandazione: **A** | **APERTA** |
+| **D-6b** | **L'ordine di acquisto ha DUE ancore** (sede fornitore / consegna nostra): mappa `tipo → colonna` sul BB (A) o ancora unica + scelta esplicita (B)? | ✅ **DECISO A (Tid, 2026-09-02)**: l'ancora diventa una **mappa `tipo_indirizzo → colonna`** con un default. ⚠️ Tocca il BB usato da 5 domini di vendita — vanno riprovati | **CHIUSA** |
 | **D-7** | **Perimetro del cantiere**: solo ordine, o ordine + ricezione? | ✅ **Ordine + ricezione DDT**, con il meccanismo carico / reso al fornitore / da ri-consegnare → **§8** | **CHIUSA** |
 | **D-8** | **Prezzo**: a mano o listini fornitore? | ✅ **A mano**, con l'ipotesi di un «prezzo fornitore» sull'articolo → **§9** | **CHIUSA sul principio, da progettare** |
 | **D-9** | **Kit / BoM**: l'ordine a fornitore espande i compositi? | ✅ **Sì, se l'articolo lo richiede** ⇒ `acquisti.ordini_righe_componenti` + i gemelli di `fn_ordine_riga_componenti_init` / `_preview`, modello snapshot come in vendite | **CHIUSA** |
@@ -289,7 +322,9 @@ e una raccomandazione da confermare.
 | **D-11** | **`config.ambiti`**: che farne (popolarla per il suo scopo localizzato, o ritirarla)? | ⛔ **fuori da questo cantiere** — §7 dice perché | rinviata |
 | **D-12** | **Il numero della controparte**: dove sta, e come non collide col nostro | ✅ posta da Tid. `numero` = sempre il **nostro**; il riferimento del fornitore ha colonna propria. Su `acquisti.ddt` il `numero` liberato **si toglie**, non si tiene vuoto → **§6, «I DUE numeri»** | **CHIUSA sul principio** |
 | **D-13** | **`acquisti.ddt.serie` e `.anno`**: sono del fornitore o nostri? | ✅ **Del fornitore** (Tid): `serie_fornitore`, `anno_fornitore`. Servono davvero, e servono all'unicità per fornitore — una bolla è identificata da **numero + anno del suo emittente**. La data di ricezione sta in una colonna data, non in un intero: tenerla in `anno` sarebbe la stessa collisione di `numero` un giro dopo → **§6** | **CHIUSA** |
-| **D-13b** | **`acquisti.ddt.data`**: è la data del documento del fornitore o quella di ricezione? | emersa chiudendo D-13: è `NOT NULL DEFAULT CURRENT_DATE`, e **il default è il campanello**. Proposta: `data_documento_fornitore` (sua, senza default) + ricezione su `data_ora_consegna_eff`. ⛔ Sono tre colonne dello stesso documento: farne due su tre lascia la terza a mentire | **APERTA** |
+| **D-16** | ✅ **Le date di consegna violano D-12**: `data_consegna_confermata` esiste su vendite (nostra promessa) e acquisti (promessa del fornitore), stesso nome attore opposto — e §7-bis del carico/scarico le legge insieme, dove il nome della tabella sparisce. Proposta: *non marcato = nostro* → **§6, D-16** | ✅ **DECISA (Tid, 2026-09-02): si applica.** Nomi nel [brief §2.2](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md), ricadono anche la colonna derivata della vista e la chiave i18n | **CHIUSA** |
+| **D-17** | **La soglia dell'impegno (M-3) dipende dal satellite (D-3)**: M-3 legge la soglia da `config.stati_doc_*.codice_interno`, ma quel catalogo è **condiviso** con acquisti e senza discriminante non può portare **due soglie diverse** per i due cicli → **§7** | dipendenza non dichiarata da nessuna delle due parti fino al 2026-09-02 | **dichiarata, discende da D-3** |
+| **D-13b** | **`acquisti.ddt.data`**: del fornitore o di ricezione? | ✅ **DECISO (Tid, 2026-09-02)**: `data_documento_fornitore` — **sua**, e **senza** il `DEFAULT CURRENT_DATE` che era il campanello; il momento della ricezione resta su `data_ora_consegna_eff`, che è nostro. ⭐ Completa la terna di D-13: tre colonne dello stesso documento, tutte e tre coerenti | **CHIUSA** |
 | **D-14** | **La chiusura del ramo CREDITO** dei resi a fornitore | ⭐ buco individuato in revisione: la coda «da accreditare» non ha porta d'uscita finché non c'è il ciclo passivo. Serve la **dichiarazione esplicita di accredito**, sul modello di `resi_righe_rinunce` → **§8** | **da progettare — è del Lotto 3** |
 | **D-15** | **I presidi della classe «esiste e non è armata»** (3 viste `dbops` che devono restare vuote) | ⭐ proposto in revisione: 4 istanze in 2 analisi, nessuna produce un rosso → **§9-bis**. ⚠️ **cantiere di `dbops`, non di questo** | **proposta, fuori perimetro** |
 
@@ -489,6 +524,57 @@ stesso documento, e farne due su tre lascia la terza a mentire.
   (un ordine cumulativo). ⇒ nessun UNIQUE finché non è un caso reale: è un dato di
   riferimento, non una chiave.
 
+#### 🔴 D-16 — la convenzione NON è stata applicata alle date nuove (2026-09-02)
+
+**Rilievo in revisione incrociata, ed è fondato.** Il [brief delle modifiche
+certe](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) §2.2 introduce
+`data_consegna_confermata` **su due tabelle**, e l'attore è **opposto**:
+
+| Tabella | `data_consegna_richiesta` la esprime… | `data_consegna_confermata` la promette… |
+| --- | --- | --- |
+| `vendite.ordini_righe` | il **cliente** | **noi** |
+| `acquisti.ordini_righe` | **noi** | il **fornitore** |
+
+⛔ **Stesso nome, proprietario invertito — e per giunta incrociato**: su ogni tabella
+una delle due colonne è nostra e l'altra è della controparte, ma non la stessa. È
+precisamente il caso che D-12 è nata per prevenire, e stavolta **siamo in tempo**:
+nessuna delle quattro colonne esiste ancora.
+
+⚠️ **Perché la prima volta l'ho lasciato passare, e perché era sbagliato.** Avevo
+ragionato che «confermata» è neutro e che *quale* attore conferma si deduce dalla
+tabella. ⭐ **Il contesto che smonta l'argomento è arrivato dopo**: la vista di
+[§7-bis del carico/scarico](analisi-db-magazzino-carico-e-scarico.md) legge
+**entrambe** — l'impegnato dalle righe di vendita, l'in-arrivo da quelle di
+acquisto — e le mette accanto. ⛔ **Dentro una `UNION` o una `JOIN` il nome della
+tabella è esattamente ciò che sparisce**: restano due colonne omonime che
+promettono cose di due soggetti diversi.
+
+**La proposta — è la regola di D-12 applicata alla lettera**: *non marcato = nostro,
+marcato = della controparte.*
+
+| Tabella | Colonna nostra | Colonna della controparte |
+| --- | --- | --- |
+| `vendite.ordini_righe` | `data_consegna_confermata` | `data_consegna_richiesta_cliente` |
+| `acquisti.ordini_righe` | `data_consegna_richiesta` | `data_consegna_confermata_fornitore` |
+
+⭐ **Il guadagno si vede proprio nella vista di §7-bis**: chi la legge trova
+`data_consegna_confermata` accanto a `data_consegna_confermata_fornitore` e sa
+**a colpo d'occhio** quale promessa è nostra e quale del fornitore, senza risalire
+alla tabella d'origine.
+
+✅ **DECISA da Tid il 2026-09-02, e applicata al brief.** Costa la rinomina di una
+colonna del **lato vendita** (`data_consegna_richiesta` → `_cliente`) e delle sue
+derivate — la colonna di testata della vista diventa `data_consegna_richiesta_cliente_min`,
+e con lei la chiave i18n. ⭐ **Nomi lunghi, ed è il prezzo giusto**: dicono di chi è la
+data senza che si debba risalire alla tabella.
+
+⭐ **Decisa quando nessuna delle quattro colonne esisteva** — dopo sarebbero state
+quattro colonne in esercizio, due viste, e un brief già partito verso BE/FE.
+
+📌 Ricadute: il brief §2.2 (le quattro colonne) e §5 (la parte BE/FE).
+
+---
+
 ⭐ E la simmetria che ne esce **vale anche per la vendita**: il «vostro riferimento» del
 cliente sull'ordine di vendita è lo stesso concetto, non ce l'ha nessuno, e il giorno che
 servirà avrà già la sua convenzione. Non lo faccio qui — è fuori perimetro — ma la regola
@@ -633,6 +719,33 @@ condizione che le due funzioni preservino il proprio contratto d'uscita. ⚠️ 
 condizione da **provare**, non da assumere: se una delle due cambia la forma del blob, il
 lotto «solo DB» rompe il dominio che funziona.
 
+### 🔴 D-17 — e c'è un consumatore che il satellite non sapeva di avere (2026-09-02)
+
+**Emerso dalla revisione incrociata.** La formula di «disponibile» decisa in
+[carico e scarico §7-bis, M-3](analisi-db-magazzino-carico-e-scarico.md) dice — e fa
+bene — che *«la soglia non va inventata: è già dato, viene da
+`config.stati_doc_*.codice_interno`»*.
+
+⛔ **Ma quel catalogo è proprio quello condiviso di ③.** E la conseguenza non è che
+le righe si mescolino — quelle restano distinte dalla tabella di provenienza — è più
+sottile e più seria:
+
+> La soglia dell'**impegno in uscita** (da quale stato un ordine di vendita blocca
+> merce) e la soglia dell'**atteso in entrata** (da quale stato un ordine di acquisto
+> conta come merce in arrivo) sono **due domande diverse**, e non c'è nessuna ragione
+> perché la risposta sia lo stesso stato. ⛔ **Oggi non c'è dove scriverle
+> separatamente**: `CONFERMATO` è una riga sola, e vale per tutti e due i cicli.
+
+⭐ **È esattamente ciò che la colonna `ordine` sul paio è nata per portare** (§7): il
+satellite non serve solo a dire *quali* stati un ciclo ammette, ma anche *da quale
+punto in poi* quel ciclo considera l'impegno preso. Senza, M-3 può leggere una
+soglia sola e spacciarla per due.
+
+⇒ **La dipendenza va dichiarata da entrambe le parti** — fatto il 2026-09-02 — e
+l'ordine è quello: **D-3 (la forma del satellite) precede l'implementazione di
+M-3**, non il contrario. ⚠️ Non blocca la *decisione* M-3, che è presa: blocca la
+vista che la realizza.
+
 ### E lo stesso trattamento serve a `config.stati_doc_ddt`
 
 ⚠️ È la seconda occorrenza della stessa cosa, e conviene farle **insieme**: gli stati del DDT
@@ -706,8 +819,15 @@ idioma già usato per `_indirizzi_doc_sr_column`: renderlo **dichiarativo e opzi
 | **A** (consigliata) | l'ancora diventa una **mappa `tipo_indirizzo → colonna`**, con un default. Vendite dichiara un solo tipo e non cambia di una riga | tocca il BB, quindi va provato sui 5 domini che lo usano già |
 | **B** | ancora unica = fornitore; l'indirizzo di consegna **non** passa dalla cascata ma è una scelta esplicita fra i nostri indirizzi | ⛔ è una **seconda sede** della stessa regola: due modi di risolvere un indirizzo di documento, e il giorno che la cascata cambia uno dei due resta indietro |
 
-⇒ Consiglio **A**, ed è la stessa ragione per cui il BB esiste: la regola «da dove viene
-l'indirizzo di tipo X» deve stare in **una** sede. B costa meno oggi e paga dopo.
+✅ **SCELTA A** (Tid, 2026-09-02), ed è la stessa ragione per cui il BB esiste: la regola
+«da dove viene l'indirizzo di tipo X» deve stare in **una** sede. B costava meno oggi e
+avrebbe pagato dopo.
+
+⚠️ **Ne discende un obbligo di collaudo, ed è l'unico costo vero di questa decisione**: la
+mappa tocca `IndirizziDocumentoRepositoryMixin`, che serve **cinque domini di vendita** già
+in esercizio. Vendite dichiara un tipo solo e non cambia di una riga — ma *«non cambia»* va
+**provato**, non assunto: è la stessa specie di regressione silenziosa che questo documento
+insegue altrove.
 
 ### Il seed che serve
 
@@ -759,8 +879,12 @@ Sono quelle che hai descritto, con il nome del gemello di vendita accanto:
 1. **CARICO** — la merce entra in magazzino. Causale `CARICO_ACQ` (segno `+1`) **esiste già** a
    seed in `magazzino.causali`.
 2. **RESO AL FORNITORE, a credito** — torna indietro e ci aspettiamo una nota di credito.
-   ⛔ La causale di scarico per reso a fornitore **non esiste** nel seed: c'è `SCARICO_VEN` (DDT
-   vendita) ma nessuna `SCARICO_RESO_FORN`.
+   ⛔ La causale di scarico per reso a fornitore **non esiste** nel seed.
+
+📌 **Il vocabolario delle causali, e le due che mancano, non stanno più qui**: dal 2026-09-02
+sono in [analisi-db-magazzino-carico-e-scarico §2 e §3](analisi-db-magazzino-carico-e-scarico.md). Di questa sezione resta il
+**ciclo del documento** — le quattro destinazioni di una riga ricevuta; il *movimento* che ne
+consegue è di là.
 3. **RESO AL FORNITORE, per ri-consegna** — torna indietro e deve tornare. ⭐ Il residuo
    dell'ordine si riapre: è `riapre_residuo` applicato a `ordini_righe_fulfillment`.
 4. **RINUNCIA** — la quarta, che c'è in vendita e serve anche qui: si dichiara che quella quota
@@ -779,12 +903,17 @@ l'asse «fatturato dal fornitore» arriva col ciclo passivo. Va dichiarato nel m
 lasciato come colonna sempre vuota: una colonna che nessuno riempie, a video, si legge come un
 difetto (è la stessa lezione di ⑩).
 
-**b) Il carico dipende da decisioni che stanno in un altro brief.** `magazzino.movimenti` ha
-oggi **due** modi di dire da dove viene un movimento, e il DDT di acquisto **non è una
-sorgente registrata**. Sono D-1 e D-7 di
+**b) Il carico dipende da decisioni e da un meccanismo che stanno altrove, e sono due cose
+diverse.** Le **decisioni** — `magazzino.movimenti` ha due modi di dire da dove viene un
+movimento, e il DDT di acquisto **non è una sorgente registrata** — sono D-1 e D-7 di
 [analisi-db-magazzino-aggancio-documento-e-produzione.md](analisi-db-magazzino-aggancio-documento-e-produzione.md),
-e sono **aperte**. ⇒ La ricezione si può progettare, ma il momento in cui il carico tocca il
-ledger va concordato con quel cantiere, non deciso qui.
+e sono **aperte**. Il **meccanismo** del carico — verso della quantità, chi scrive, e come non
+caricare due volte lo stesso ricevimento parziale — è in
+[analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md).
+⭐ Da lì viene un fatto che questa sezione deve sapere: **il ricevimento parziale è il caso che
+smaschera l'identità sbagliata** di un movimento (là §6), ed è nato proprio guardando gli
+acquisti. ⇒ La ricezione si può progettare, ma il momento in cui il carico tocca il ledger va
+concordato con quei due documenti, non deciso qui.
 
 **c) Gli stati del DDT ricevuto sono altri.** `EMESSO`/`SPEDITO` non hanno senso per un
 documento che riceviamo: servono qualcosa come *RICEVUTO → VERIFICATO → CARICATO*, più
@@ -931,10 +1060,10 @@ volte.
 
 | Lotto | Cosa | Perché prima di quello dopo |
 | --- | --- | --- |
-| **0** | Chiudere **D-2** (policy fornitore) e **D-6b** (ancora doppia degli indirizzi) + confermare la forma del satellite §7 | sono le due rimaste. D-6b decide se si tocca un BB usato da 5 domini |
+| **0** | ✅ **VUOTO dal 2026-09-02**: tutte le decisioni che bloccavano il cantiere sono chiuse (D-2, D-3, D-6b, D-13b, D-16 + le due del §4-bis del brief). ⚠️ Restano decisioni **non bloccanti**, elencate in §5 col loro momento | — si può cominciare |
 | **1a — DB, terreno vuoto** (solo `acquisti`) | `emittente_fiscale_id` + guard; `acquisti.ordini_indirizzi` + ambito `ACQUISTI_ORDINI` (§7-bis); **le colonne del fornitore** — `numero_fornitore` su ordini; su DDT `numero`→`numero_fornitore`, `serie`/`anno`→`_fornitore`, `data`→`data_documento_fornitore`, **DROP** del `numero` liberato, UNIQUE per fornitore (§6, che assorbe ⑦ e D-13); **rimozione** di `ddt.ordine_id` ⑧; `uid NOT NULL` ⑫ | ⭐ **qui l'argomento «prima che qualsiasi riga esista» vale davvero**: `acquisti` è a zero, e ognuna di queste dopo sarebbe una migrazione con dati da sanare |
 | **1b — DB, tocca una FUNZIONE che gira** (`config` + `vendite`) | satellite ambiti su `stati_doc_ordini` **e** `stati_doc_ddt` + **backfill `VENDITE` completo**; `ambito` nella chiave delle transizioni + backfill; aggiornamento di `fn_available_actions_ordine` e `_ddt`; `colonna_billing_account` nullable (§6, **senza** il trasloco) | ⛔ **Non va nello stesso paniere di 1a**, e non per i dati (quelli sono di prova): il guard legge il satellite, e un catalogo incompleto **impedisce a qualunque ordine di vendita di cambiare stato** — anche su un database appena rifatto. Invariante da provare: **§7 «Qui non si rompono dei DATI»** |
-| **2 — DB, motore** | RLS armata; `fn_available_actions_ordine_acquisto`; numerazione (§6); `fn_ricalcola_totali_ordine_acquisto`; sorgenti a catalogo ⑨ | sono i **quattro ganci** a cui i building block si attaccano. Senza, il BE si scrive contro il nulla |
+| **2 — DB, motore** | **RLS armata nei tre pezzi del §4.1-bis** (policy operatore + `FOR ALL` sulle fornitore + `ENABLE`); `fn_available_actions_ordine_acquisto`; numerazione (§6); `fn_ricalcola_totali_ordine_acquisto`; sorgenti a catalogo ⑨ | sono i **quattro ganci** a cui i building block si attaccano. Senza, il BE si scrive contro il nulla |
 | **3 — DB, ricezione** | partita di acquisto, reso al fornitore, ri-consegna, rinuncia **e la dichiarazione di accredito** (§8, D-14) — coordinato con l'analisi magazzino | poggia sul motore del lotto 2. ⛔ La porta d'uscita del ramo credito entra **qui**, non dopo: una coda senza uscita al terzo mese non la guarda più nessuno |
 | **4 — BE** | app `acquisti`: repository + service + rotte, in fotocopia da `vendite` | ⭐ qui la simmetria paga davvero |
 | **5 — FE** | dominio `acquisti`: lista configurabile (è **dato**, non DDL — si semina in-app), drawer, righe, ricezione | idem |
@@ -971,3 +1100,6 @@ volte.
 | 2026-09-01 | 🔴 **Revisione — il Lotto 1 non era tutto su terreno vuoto** (rilievo di Tid). ① Il satellite degli ambiti sta in `config`, su tabelle che **`vendite` usa in esercizio**: senza il backfill `VENDITE` completo il guard rifiuta il primo cambio di stato di un ordine di vendita. Il Lotto 1 è stato **spaccato in 1a (terreno vuoto, solo `acquisti`) e 1b (migrazione su dominio vivo)**, con l'invariante «nessuno stato senza ambito» da provare in pgTAP — il seed incompleto non fallisce, *non fa niente*. ② Verificata la **coda fuori dal DB**: cambiano **due** funzioni (`fn_available_actions_ordine`/`_ddt`), BE e FE **zero righe** perché il contratto è il campo emesso `stato_info_key` e non la colonna — ⚠️ ma la proprietà nel satellite deve restare `nessuna_azione_key`, o `check_i18n_keys.py` diventa verde per cecità. ③ **D-13 chiusa**: `serie` e `anno` sono del fornitore, e ne esce **D-13b** su `data` |
 | 2026-09-02 | 🔴 **Corretto un fatto sbagliato al §6** (rilievo di Tid), e **verificato sul DB** invece che ragionato: `format('%I', NULL)` **solleva** (`22004`, «i valori vuoti non possono essere formattati come un identificativo SQL»), non produce l'identificatore letterale. Era falso in tutte e due le metà. ⭐ La regola — saltare nella query che sceglie le famiglie — **non cambia**, e il motivo migliora: si fallirebbe con un errore **di PostgreSQL**, senza codice di dominio, dentro uno spostamento di billing account che con le famiglie non c'entra. ⚠️ Il ramo muto vive su `%s` (stringa vuota), non su `%I`. Allineato al [brief](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) §3-bis, che era già stato corretto: i due documenti dicevano due cose opposte sullo stesso fatto |
 | 2026-09-02 | 🔴 **Tolta la cerimonia da produzione** (Tid: «i dati sono solo di test, possiamo fare quello che vogliamo»). Il §7 chiamava il Lotto 1b «migrazione su dominio vivo con dati veri» e ne faceva una cautela sui **dati**: registro sbagliato. ⭐ Riscritto sul punto vero, che ne esce **più forte** — il satellite non mette a rischio delle righe, mette a rischio **una funzione di vendita che gira**: un catalogo incompleto impedisce a *qualunque* ordine di cambiare stato, anche su un DB appena rifatto. ⇒ La distinzione da tenere: «niente produzione» toglie il rischio **sui dati**, non quello **funzionale**. Da tre obblighi a due, e il Lotto 1b rinominato |
+| 2026-09-02 | 🔴 **Revisione incrociata fra i quattro documenti — cinque contraddizioni, tutte verificate.** ① *riferimento morto*: la D-4 dell'analisi aggancio puntava a un §8-quater traslocato → ora punta a carico/scarico §6. ② *off-by-one*: cappello e §10 dell'analisi aggancio (e §10 della commessa) dicevano «D-1 → D-8» con la D-9 esistente → corretti. ③ il **passo 4** della sequenza nell'analisi commessa elencava ancora come da fare il verso della giacenza e «chi scrive», **decisi lo stesso giorno** (M-1, M-2) mentre la §6.B era già aggiornata → allineato. ④ ⭐ **D-16, e avevo sbagliato io**: `data_consegna_confermata` nasce su due tabelle con l'attore **invertito e incrociato**; avevo giudicato il nome neutro perché la tabella disambigua — ma la vista di §7-bis le legge **insieme**, e lì il nome della tabella sparisce. Proposta la regola di D-12 alla lettera (non marcato = nostro). ⑤ **D-17**: la soglia di M-3 legge un catalogo di stati **condiviso senza discriminante**, e le due soglie (impegno in uscita / atteso in entrata) sono due domande diverse che oggi hanno una riga sola → dipendenza dichiarata **da entrambe le parti**, D-3 precede la vista di M-3 |
+| 2026-09-02 | ✅ **Quattro decisioni di Tid, applicate ai quattro documenti.** **D-16**: i nomi delle date seguono D-12 (*non marcato = nostro*) → `data_consegna_richiesta_cliente` su vendite/preventivi, `data_consegna_confermata_fornitore` su acquisti, con le derivate (colonna di testata della vista + chiave i18n). **D-13b**: `acquisti.ddt.data` → `data_documento_fornitore`, **senza** il `DEFAULT CURRENT_DATE`; la ricezione resta su `data_ora_consegna_eff`. **D-6b**: scelta **A**, l'ancora degli indirizzi diventa una mappa `tipo → colonna` — ⚠️ con obbligo di ri-collaudo sui 5 domini di vendita che usano il BB. **§4-bis del brief**: `modo_approvvigionamento` default `ACQUISTO`, `commesse.data_apertura` `NOT NULL` con valore iniziale da `data_insert`. 📌 Resta aperta la sola **D-3** (forma del satellite) |
+| 2026-09-02 | ✅ **D-3 e D-2 chiuse — il Lotto 0 si svuota.** **D-3: satellite**, con tutte le conseguenze confermate (due cataloghi insieme, `ambito` come CHECK a due valori, `nessuna_azione_key` e `ordine` sul paio, `ambito` nella chiave delle transizioni, seed `VENDITE` completo, invariante in pgTAP). ⇒ **D-4 si sblocca**. **D-2: si arma la RLS** — ⛔ ma verificando il precedente è emerso che non è un interruttore: le due policy di acquisti sono `FOR SELECT`, e `vendite.ordini` ha già percorso quella strada (`20260601-37` crea la policy, `20260603-18` la estende a `FOR ALL` **due giorni dopo**). Nuovo **§4.1-bis** coi tre pezzi che devono atterrare insieme. 📌 Nessuna decisione bloccante resta aperta |

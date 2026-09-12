@@ -30,7 +30,7 @@
 // - onLoaded: (rows) => void opzionale — seed di mappe extra del caller
 //   (es. tipo/motivo per riga nel crea-reso).
 import { computed, ref } from 'vue'
-import { useSelezioneToggle } from './useSelezioneToggle'
+import { useSelezioneToggle } from '../../../core/composables/useSelezioneToggle'
 
 export function useRigheSelezioneQta({
   fetchRighe,

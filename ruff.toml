@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: configurazione ruff
+# Scopo: la PRIMA analisi statica del backend. Presidiata dall'hook pre-commit
+#        `ruff-check`, che gira anche in CI (`ci-validate.yaml` lancia
+#        `pre-commit run` sui file cambiati).
+# ------------------------------------------------------------
+#
+# ⛔ PERCHE' LA SELEZIONE E' COSI' STRETTA, ed e' la decisione che conta.
+#
+# Misurato il 2026-09-09 su 258.000 righe di Python, prima che questo file
+# esistesse:
+#
+#   --select F        ->    136 rilievi   (126 import morti)   ⇐ SCELTO
+#   --select F,E9     ->    136 rilievi   (E9 = errori di sintassi: gratis)
+#   --select E        ->  5.051 rilievi,  di cui 4.853 E501 (lunghezza riga)
+#
+# `E501` da solo vale il 96% del rumore, su un progetto che una lunghezza di
+# riga dichiarata **non ce l'ha**. Un cancello che nasce con 4.853 righe di
+# registro protegge solo cio' che avanza, e viene spento al secondo blocco
+# inutile — e un presidio spento e' peggio di uno assente.
+#
+# ⭐ I 136 sono stati sanati PRIMA di accendere il cancello (129 con `--fix`,
+#    7 `F841` a mano perche' ruff non poteva sapere se la chiamata contasse).
+#    Questo cancello nasce quindi a **ZERO**, che e' la sola condizione in cui
+#    un rosso significa davvero «hai introdotto tu un difetto».
+#
+# ⚠️ ALLARGARE LA SELEZIONE E' LEGITTIMO, ma si fa con la stessa disciplina:
+#    prima si misura quante righe apre la regola nuova, poi si sana, poi si
+#    accende. Mai il contrario.
+
+# Fonte unica della versione: `.python-version` (3.14). Va tenuta allineata a
+# mano: ruff non legge quel file.
+target-version = "py314"
+
+# ⚠️ Il default di ruff (88) qui non presidia niente, perche' `E501` non e'
+#    selezionata. Resta dichiarata come intenzione per il giorno in cui il
+#    progetto vorra' una lunghezza di riga.
+line-length = 100
+
+exclude = [
+    ".git",
+    ".tmp",
+    "**/.venv",
+    "**/node_modules",
+    "site-zensical",
+    # Migrazioni Django: generate, non scritte.
+    "**/migrations",
+    # Doc auto-generata e artefatti di build.
+    "docs/it/dbzero",
+]
+
+[lint]
+# F   = pyflakes — import morti, nomi non definiti, variabili inutilizzate,
+#       ridefinizioni. Sono DIFETTI, non stile: nessuno di questi e' una
+#       preferenza su cui si possa non essere d'accordo.
+# E9  = errori di sintassi e di I/O. Costo zero, e un file che non si compila
+#       deve fermare il commit.
+#
+# ⭐ ALLARGAMENTO DEL 2026-09-10, con la disciplina scritta qui sopra: misurato,
+#    sanato, poi acceso. Ogni gruppo nasce a ZERO.
+#
+# T20 = nessun `print()` nel codice. ⭐ Era gia' a zero prima di accenderlo
+#       (misurato: 0 rilievi su 940 file, controprova col grep): un cancello
+#       che non chiede di sanare niente e chiude un'asimmetria — la regola
+#       «nessun `console.log` in produzione» valeva per il solo frontend, e
+#       quindi per meta' applicazione.
+# C4  = costruzioni inutili di dict/list/set (`dict()` dove basta `{}`).
+# A   = un argomento che ombreggia un builtin. ⚠️ Dove il nome e' imposto da
+#       una firma altrui si marca `# noqa: A002` col perche' (un solo punto:
+#       `fake_import`, che imita `builtins.__import__`).
+# PIE = costruzioni ridondanti. ⭐ Fra queste `PIE794`, che ha trovato un
+#       difetto vero: `stato_codice_interno` dichiarato DUE volte nello stesso
+#       TypedDict (`OffertaRow`). In Python vince l'ultima e la prima e' morta,
+#       senza errori e senza test rossi — la stessa specie della chiave i18n
+#       duplicata che il progetto ha gia' pagato il 2026-08-26.
+# G   = uso del logging (`logger.exception` dentro un `except`, non
+#       `logger.error(..., exc_info=True)`).
+# LOG = uso del logging, l'altra meta': `.exception()` FUORI da un except.
+#
+# ⛔ B (bugbear) NON e' acceso, e la ragione va scritta perche' e' il candidato
+#    piu' ovvio: dei 54 rilievi, `B017` (2) e' stato sanato subito — era un
+#    `assertRaises(Exception)`, cioe' un test che passa su QUALUNQUE errore, la
+#    stessa regola gia' scritta per i pgTAP — ma restano `B905` (34, `zip()`
+#    senza `strict=`: tronca in silenzio alla lista piu' corta) e `B023` (5),
+#    che sono 39 decisioni una per una, non una sostituzione.
+#    ⚠️ E `B904` (12) e' stato guardato e SCARTATO: 8 sono
+#    `raise AssertionError("unreachable")  # pragma: no cover`, righe che non
+#    si eseguono mai, e le altre 4 non traducono errori di database — nessuna
+#    perde la diagnostica psycopg, che e' l'unica cosa che il `from` porta qui
+#    (`db_error_fields` legge `__cause__` in cinque punti). Correggerle sarebbe
+#    stato rumore su righe morte.
+select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG"]
+
+[lint.per-file-ignores]
+# Un import "inutilizzato" in `apps.py` o in `settings.py` e' spesso IL LAVORO:
+# serve l'effetto collaterale della registrazione, non il nome. Dove capita si
+# marca `# noqa: F401` sul punto — cosi' resta scritto che e' voluto — e non si
+# spegne la regola per il file intero.
+#
+# ⭐ La sezione e' rimasta vuota fino al 2026-09-10, e la prima voce che entra
+#    NON e' un'eccezione a quella disciplina: e' una classe di file in cui la
+#    regola non si applica per NATURA.
+#
+# ⛔ In uno script da riga di comando `print()` E' l'interfaccia utente, non un
+#    residuo di debug: e' il modo in cui lo script parla a chi lo ha lanciato.
+#    Misurati il 2026-09-10: 352 `print` nel repo, TUTTI qui dentro (198 in
+#    `scripts/`, 160 in `backend/scripts/`) e ZERO in `backend/apps/`, che e' il
+#    codice servito da Django — cioe' il perimetro in cui un `print` e' davvero
+#    un difetto (finisce sullo stdout di gunicorn invece che nel logger, senza
+#    livello, senza `request_id`, e nessuno lo vede).
+# ⚠️ Il `noqa` sul punto qui non e' una via: sarebbero 352 righe di rumore in
+#    file dove la regola non ha nulla da dire.
+"scripts/**" = ["T201", "T203"]
+"backend/scripts/**" = ["T201", "T203"]
+[format]
+# ⛔ Il formattatore NON e' acceso. Riformattare 258.000 righe in un colpo
+#    renderebbe illeggibile ogni `git blame` del progetto, e non e' una
+#    decisione che si prende di straforo dentro un file di configurazione.
+#    Se un giorno si vorra': va fatto in un commit suo, dichiarato, e aggiunto
+#    a `.git-blame-ignore-revs`.
+quote-style = "preserve"

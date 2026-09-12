@@ -10,7 +10,6 @@ Architettura di riferimento:
 >
 [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
 > [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 >
 **Approfondimento funzioni:**
 >
@@ -32,14 +31,21 @@ che triggeri i trigger reattivi.
 
 ### Estensione §4.5 multi-face-auth
 
-Con la generalizzazione del modello (§4.5.5 WIP multi-face-auth), la
-funzione ora copre **entrambi i modelli**:
+Dal **12-09-2026** (`20_code/20260912-21`) la funzione ha **un solo ramo**:
+qualsiasi identità digitale attiva (tutti i ruoli applicativi: operatori,
+clienti portale, fornitori portale, shop customer, api_client) con
+`identita_digitali.valido_al < CURRENT_DATE`.
 
-* **Ramo legacy** (`risorse_umane`): risorse umane con `valido_al <
-  CURRENT_DATE` che hanno un collegamento in `risorse_umane_auth_user`.
-* **Ramo nuovo** (`identita_digitali`): qualsiasi identità attiva (tutti i
-  ruoli applicativi: operatori, clienti portale, fornitori portale, shop
-  customer, api_client) con `valido_al < CURRENT_DATE`.
+⛔ **Il «ramo legacy» è caduto** — leggeva `risorse_umane.valido_al` attraverso
+la vista `risorse_umane_auth_user` (ritirata). Decisione di Tid: *«tutto deve
+entrare in `identita_digitali`»*. E non è una perdita di regola:
+`fn_sync_auth_user_is_active` (v4) decide **solo** sull'identità, quindi quel
+ramo poteva proporre candidati, mai cambiare l'esito. Chi vuole spegnere un
+operatore a fine rapporto chiude la **validità dell'identità**, non quella
+della risorsa umana (che è la finestra del rapporto di lavoro, non dell'accesso).
+
+*(Testo precedente, per la storia: la funzione copriva «entrambi i modelli»,
+combinati via `UNION`.)*
 
 Le due sorgenti sono combinate via `UNION` e poi filtrate con
 `SELECT DISTINCT auth_user_id` per evitare double-sync quando lo stesso

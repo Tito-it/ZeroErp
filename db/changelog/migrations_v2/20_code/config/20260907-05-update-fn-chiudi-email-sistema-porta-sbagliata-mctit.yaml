@@ -1,0 +1,212 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA DOMANDA APERTA DI `20260906-14`, CHIUSA — e l'ha riaperta il metro.
+#   Brief: brief-db-sveglia-dei-processi §23.
+#
+# Il changeSet `20260906-14` ha spezzato la SECONDA guardia di
+# `config.fn_chiudi_email_sistema` (`E_EMAIL_LOG_INESISTENTE`) e ha lasciato la
+# TERZA, scrivendolo:
+#
+#     🔵 Su quest'ultima la stessa regola direbbe di spezzare ancora: non e' un
+#        dato sbagliato, e' LA PORTA SBAGLIATA. La lascio perche' il
+#        classificatore non l'ha segnalata [...] ma e' una domanda aperta, non
+#        una svista.
+#
+# ⭐ Il classificatore non la segnalava perche' NON SAPEVA LEGGERLA: la forma
+#   `x <> 'LETTERALE'` cadeva in `IGNOTO`, e `IGNOTO` non fa famiglia. Gliel'ha
+#   insegnata `20260907-03` (famiglia `VALORE_ATTESO`), e il giro dopo il
+#   rubinetto degli accumulatori ha detto esattamente quello che il §23 aveva
+#   previsto:
+#
+#     🔴 ACCUMULA  E_VALIDAZIONE — famiglia nuova: VALORE_ATTESO
+#                  (prima: PARAMETRO · ora: PARAMETRO,VALORE_ATTESO)
+#
+# ── ⛔ E QUESTO NON E' «IL METRO CHE CAMBIA» ────────────────────────
+#   Sugli altri SETTE codici della stessa corsa i punti di sollevamento sono
+#   IDENTICI alla baseline del 02-09: li' non ha allargato nessuno, ha imparato
+#   a leggere il classificatore. Su `E_VALIDAZIONE` no — i punti passano da 13 a
+#   16, e uno dei tre nuovi e' proprio questa guardia. ⇒ Ri-basare avrebbe
+#   dichiarato AMMESSA la famiglia `VALORE_ATTESO` su un codice `DATO_ERRATO`,
+#   cioe' avrebbe fatto marcire la baseline nel verso permissivo — l'unico verso
+#   in cui un presidio marcisce senza che nessuno se ne accorga.
+#
+# ── ⛔ PERCHE' `E_VALIDAZIONE` E' IL CODICE SBAGLIATO, QUI ──────────
+#   E' di classe `DATO_ERRATO`: a video diventa «hai sbagliato i dati». ⚠️ Ma la
+#   riga esiste e i parametri sono a posto: quello che non torna e' che quella
+#   email appartiene a un'azienda, e questa e' la porta che chiude le email di
+#   SISTEMA. Nessuno ha compilato niente di sbagliato — il chiamante ha bussato
+#   alla porta sbagliata.
+#   ⚠️ Ed e' la stessa nota del codice a dirlo: «13 punti, TUTTI la stessa
+#   condizione: parametro obbligatorio mancante o non valido. Non e' un
+#   accumulatore, misurato il 2026-08-07». Oggi non sarebbe piu' vero.
+#
+# ── ⭐ E PERCHE' NON SI RIUSA `E_EMAIL_LOG_INESISTENTE` ─────────────
+#   Stessa classe e stesso lettore, ma non stesso fatto: «la riga non c'e'» e
+#   «la riga c'e' e non e' tua» mandano a guardare due posti diversi. E' la
+#   ragione per cui il commento di quella guardia dice «ha parole sue»: e'
+#   l'unico momento in cui l'uso improprio della porta di sistema si nota.
+#
+# ── ⚠️ IL MESSAGGIO HA DUE SEGNAPOSTO, E LA CHIAMATA DUE VALORI ─────
+#   `id` e `ambito`. Un segnaposto senza valore fa crashare `format()`, e il
+#   codice e il suo messaggio sono in coda ai CSV di `80_data` — non in un
+#   loader nuovo. ⛔ Nel VARIADIC non entra nessun nome di parametro: entrano
+#   i due valori che dicono a chi legge QUALE riga e DI CHI e'.
+#   ⚠️ Nessuna chiave `campo` nel contesto e nessun `bersaglio`: su un TECNICO
+#   (500) non c'e' nessun campo da accendere ne' un gesto da offrire.
+#
+# ⚠️ Nessuna preCondition sul codice a catalogo: `20_code` gira PRIMA di
+# `80_data`, quindi su un database nuovo quella riga non esiste ancora. Il
+# codice si nomina come stringa e si risolve a runtime (linee-guida-sql §11.4).
+#
+# Verifica: db/pgtap/config/test-fn-email-sistema.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260907-05-update-fn-chiudi-email-sistema-porta-sbagliata-mctit.yaml
+
+  - changeSet:
+      id: 20260907-05-update-fn-chiudi-email-sistema-porta-sbagliata
+      author: mctit
+      failOnError: true
+      comment: >
+        config.fn_chiudi_email_sistema solleva E_EMAIL_LOG_NON_DI_SISTEMA
+        (classe TECNICO) quando la riga esiste ma non e' di ambito SISTEMA,
+        invece di E_VALIDAZIONE. Chiude la domanda lasciata aperta da
+        20260906-14: il classificatore non vedeva quella guardia finche'
+        20260907-03 non gli ha insegnato la forma VALORE_ATTESO. ⛔ Non e' un
+        dato sbagliato, e' la porta sbagliata — e E_VALIDAZIONE e' DATO_ERRATO.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config'
+                     AND p.proname = 'fn_chiudi_email_sistema'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_chiudi_email_sistema(
+                  p_email_log_id config.email_log.id%TYPE,
+                  p_stato        config.email_log.stato%TYPE,
+                  p_errore       config.email_log.errore%TYPE     DEFAULT NULL,
+                  p_inviato_at   config.email_log.inviato_at%TYPE DEFAULT NULL)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_ambito config.email_log.ambito%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere l'ESITO dell'invio di una email di SISTEMA, dal
+                  --   percorso che non ha un utente in sessione.
+                  --
+                  -- ⛔ Tocca SOLO righe di ambito SISTEMA e SOLO i campi
+                  --   dell'esito. Non e' una porta di servizio per aggiornare
+                  --   una email qualunque.
+                  --
+                  -- ⭐ LE TRE GUARDIE HANNO TRE CODICI, e non e' pignoleria:
+                  --   ognuna manda a guardare un posto diverso.
+                  --     p_stato fuori dai valori ammessi -> il PARAMETRO;
+                  --     la riga non esiste               -> l'ID passato;
+                  --     la riga non e' di sistema        -> la PORTA scelta.
+                  -- =========================================================
+
+                  -- ⛔ `PENDING` non e' un esito: questa e' la funzione che
+                  --   CHIUDE, non quella che rimette in coda. Ammetterlo
+                  --   vorrebbe dire poter resuscitare una email gia' chiusa.
+                  -- ⚠️ Qui `E_VALIDAZIONE` e' il codice GIUSTO, ed e' l'unica
+                  --   delle tre guardie che lo resta: e' la validazione di un
+                  --   parametro, la famiglia che quel codice copre da sempre.
+                  IF p_stato IS NULL OR p_stato NOT IN ('SENT', 'FAILED', 'RETRY') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('stato', p_stato,
+                                             'email_log_id', p_email_log_id),
+                          NULL::uuid,
+                          'stato ammesso solo fra SENT, FAILED e RETRY');
+                  END IF;
+
+                  -- ⚠️ Si legge PRIMA di scrivere, per poter distinguere i due
+                  --   modi in cui la riga puo' non essere quella giusta. Un
+                  --   UPDATE che non trova niente e' muto, e il chiamante
+                  --   crederebbe di aver chiuso qualcosa.
+                  SELECT l.ambito INTO v_ambito
+                    FROM config.email_log l
+                   WHERE l.id = p_email_log_id;
+
+                  IF NOT FOUND THEN
+                      -- ⭐ CODICE PROPRIO, di classe TECNICO. Non e'
+                      --   E_VALIDAZIONE (DATO_ERRATO, «hai sbagliato i dati»):
+                      --   questo id non arriva da una persona, e' quello che il
+                      --   chiamante ha scritto un istante prima.
+                      -- ⛔ E non e' NON_TROVATO, che porta un 404: qui non c'e'
+                      --   nessuno che cerca una risorsa, c'e' del codice che
+                      --   passa un valore inesistente.
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_EMAIL_LOG_INESISTENTE',
+                          jsonb_build_object('email_log_id', p_email_log_id),
+                          NULL::uuid,
+                          p_email_log_id::text);
+                  END IF;
+
+                  -- ⛔ IL CASO PERICOLOSO, e per questo ha un codice suo:
+                  --   qualcuno sta usando la porta di sistema per una email che
+                  --   appartiene a un'azienda. Dirlo con lo stesso codice del
+                  --   caso sopra avrebbe sprecato l'unico momento in cui si puo'
+                  --   notare — «la riga non c'e'» e «la riga c'e' e non e' tua»
+                  --   mandano a guardare due posti diversi.
+                  -- ⭐ TECNICO, non DATO_ERRATO: i parametri sono a posto e la
+                  --   riga esiste. Non c'e' nessun dato da correggere, c'e' un
+                  --   chiamante che ha bussato alla porta sbagliata.
+                  -- ⚠️ Fino al 2026-09-07 era `E_VALIDAZIONE`: 20260906-14 lo
+                  --   aveva dichiarato domanda aperta, e il classificatore non
+                  --   sapeva ancora leggere questa forma di guardia.
+                  IF v_ambito <> 'SISTEMA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_EMAIL_LOG_NON_DI_SISTEMA',
+                          jsonb_build_object('email_log_id', p_email_log_id,
+                                             'ambito', v_ambito),
+                          NULL::uuid,
+                          p_email_log_id::text, v_ambito::text);
+                  END IF;
+
+                  -- ⚠️ `tentativi + 1` come faceva update_log_stato: instradare
+                  --   dev'essere un cambio di indirizzo, non di comportamento.
+                  UPDATE config.email_log l
+                     SET stato      = p_stato,
+                         errore     = p_errore,
+                         inviato_at = COALESCE(p_inviato_at, l.inviato_at),
+                         tentativi  = l.tentativi + 1
+                   WHERE l.id     = p_email_log_id
+                     AND l.ambito = 'SISTEMA';
+
+                  RETURN true;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_chiudi_email_sistema(bigint, varchar, text, timestamptz)
+              IS 'Scrive l''ESITO dell''invio (SENT / FAILED / RETRY, errore, inviato_at, tentativi+1) su una riga di ambito SISTEMA, dal percorso che NON ha un utente in sessione. ⭐ E'' la meta'' mancante di config.fn_accoda_email_sistema: la decisione e'' che una mail di sistema parta SUBITO, quindi dopo l''INSERT il backend tenta l''invio e deve scriverne l''esito — e quell''UPDATE e'' bloccato dalla stessa policy, per lo stesso motivo. ⛔ Non e'' una porta di servizio: tocca SOLO righe di ambito SISTEMA (sta nella WHERE, non in un controllo dimenticabile) e SOLO i campi dell''esito. ⭐ LE TRE GUARDIE HANNO TRE CODICI, rev 2026-09-07, e ognuna manda a guardare un posto diverso. (1) PENDING non e'' un esito ammesso — questa chiude, non rimette in coda: E_VALIDAZIONE, ed e'' il codice giusto perche'' li'' c''e'' davvero un parametro fuori dai valori. (2) La riga non esiste: E_EMAIL_LOG_INESISTENTE, classe TECNICO — quell''id non arriva da una persona ma dal chiamante che l''ha scritto un istante prima, e NON_TROVATO porterebbe un 404 mandando a cercare una risorsa invece di un difetto di codice. (3) La riga esiste ma NON e'' di sistema: E_EMAIL_LOG_NON_DI_SISTEMA, anch''esso TECNICO — e'' qualcuno che usa la porta di sistema per l''email di un''azienda, ed e'' l''unico momento in cui lo si puo'' notare. ⛔ Quest''ultima era E_VALIDAZIONE fino al 2026-09-07: 20260906-14 l''aveva dichiarata domanda aperta, e il rubinetto degli accumulatori l''ha vista solo dopo 20260907-03, che gli ha insegnato la forma x <> ''LETTERALE''. ⚠️ tentativi+1 lo fa la funzione perche'' lo faceva update_log_stato: instradare dev''essere un cambio di indirizzo, non di comportamento.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare indietro rimetterebbe `E_VALIDAZIONE` — DATO_ERRATO —
+              --   su una condizione che non e' un dato sbagliato, e il
+              --   rubinetto degli accumulatori tornerebbe rosso avendo ragione.
+              SELECT 1;

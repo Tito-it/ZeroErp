@@ -16,7 +16,7 @@
 #
 # Fase a10 (gira prima di a20 set_periodo). Codice errore E_SOSPENSIONE_DATA_FUTURA
 # registrato in config.messaggi_errore da 20260626-03 (serve solo a runtime).
-# Brief: docs/it/dev/work-in-progress/brief-db-sospensioni-anti-overlap-data-manuale_db.md
+# Brief: brief-db-sospensioni-anti-overlap-data-manuale_db.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

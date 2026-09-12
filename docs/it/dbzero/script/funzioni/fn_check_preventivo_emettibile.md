@@ -25,6 +25,7 @@ AS $function$
 DECLARE
     v_motivi   jsonb := '[]'::jsonb;
     v_uid      vendite.preventivi.uid%TYPE;
+    v_numero   vendite.preventivi.numero%TYPE;
     v_riga_id  vendite.preventivi_righe.id%TYPE;
     v_riga_des vendite.preventivi_righe.descrizione%TYPE;
 BEGIN
@@ -35,7 +36,9 @@ BEGIN
             NULL::uuid, 'preventivo_id obbligatorio (>0)');
     END IF;
 
-    SELECT p.uid INTO v_uid
+    -- ⭐ `p.numero` sulla SELECT che c'era gia': serve a COMPORRE la frase
+    --   («Preventivo %s: la riga «%s» ...»), non a decidere.
+    SELECT p.uid, p.numero INTO v_uid, v_numero
       FROM vendite.preventivi p
      WHERE p.id = p_preventivo_id;
 
@@ -97,7 +100,12 @@ BEGIN
             'reason_key', 'vendite.preventivi.azione_reason.iva_mancante',
             'dettaglio',  jsonb_build_object(
                               'riga_id',     v_riga_id,
-                              'descrizione', v_riga_des));
+                              'descrizione', v_riga_des),
+            -- ⚠️ preventivi_righe non ha riga_nr e `ordine` ha default 0: nella
+            --   frase va la DESCRIZIONE, ed e' la stessa scelta gia' dichiarata
+            --   nel commento di trgfn_preventivi_guard_transizione.
+            'valori',     jsonb_build_array(COALESCE(v_numero, p_preventivo_id::text),
+                                            COALESCE(v_riga_des, 'senza descrizione')));
     END IF;
 
     RETURN v_motivi;

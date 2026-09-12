@@ -23,6 +23,20 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { statoLottoSeverity } from '../../core/utils/severity'
 
+// Scopo: il rapporto `completati/presi` degli ESITI di un lotto, o `null`
+//        quando non c'e' niente da segnalare: lotto congelato (annullato,
+//        definitivo — nessun giro da raccontare), nessun preso in carico (giri
+//        precedenti al 2026-09-07), oppure tutti andati a buon fine.
+// ⚠️ `=== false` e non `!`: `stato_congela_fiscale` a `null` e' «non lo so»,
+//    e su un «non lo so» non si segnala niente (fail-closed).
+function rapportoEsiti(row) {
+  if (row?.stato_congela_fiscale !== false) return null
+  const presi = row.n_presi_in_carico ?? 0
+  const completati = row.n_esiti_completati ?? 0
+  if (presi === 0 || completati === presi) return null
+  return `${completati}/${presi}`
+}
+
 defineProps({
   rows: { type: Array, required: true },
   total: { type: Number, default: 0 },
@@ -135,6 +149,34 @@ onMounted(() => emit('lista-pronta', listaRef.value))
     <template #cell-tipo_lotto="{ data }">
       <Tag :value="data.tipo_lotto" severity="secondary" />
     </template>
+    <!-- ⭐ QUANTI DEI PRESI IN CARICO SONO ANDATI A BUON FINE (richiesta di
+         Tid, 2026-09-12). Fino a quel giorno i presi in carico si vedevano
+         SOLO nel drawer: un lotto in ERRORE con zero fatture non diceva
+         «zero su due». Il rapporto e' `completati/presi` sugli ESITI — non
+         `fatture/presi`: le fatture spariscono con l'annullo e possono essere
+         meno dei presi anche a giro riuscito (fusioni) — e compare SOLO quando
+         i due differiscono: e' un segnale di anomalia, non una colonna.
+         ⛔ Niente su un lotto CONGELATO (annullato, definitivo): non ha piu' un
+         giro da raccontare (decisione di Tid). Fail-closed come nel drawer:
+         un dettaglio non ancora arrivato non e' «rimediabile».
+         ⚠️ Rosso solo a giro fermo: mentre il lotto e' IN_ESECUZIONE i presi
+         non ancora completati sono lavoro in corso, non un'anomalia.
+         📌 Sulla cella di `n_fatture` e non in una colonna nuova, per la
+         stessa ragione della spia degli errori: la lista e' a catalogo e una
+         colonna in piu' e' una casella in piu' per ogni utente. -->
+    <template #cell-n_fatture="{ data }">
+      <!-- ⚠️ O il numero O il rapporto, mai tutti e due: «0 0/2» ripeteva lo
+           zero e si leggeva come tre numeri (rilievo di Tid). Le fatture
+           generate restano nel tooltip del badge, dove c'e' spazio per dirle
+           per esteso. -->
+      <Tag
+        v-if="rapportoEsiti(data)"
+        :value="rapportoEsiti(data)"
+        :severity="data.stato_lotto === 'IN_ESECUZIONE' ? 'secondary' : 'danger'"
+        v-tooltip.top="t('vendite.lotti.esiti_rapporto_tooltip', { n: data.n_esiti_completati, m: data.n_presi_in_carico, f: data.n_fatture })"
+      />
+      <span v-else>{{ data.n_fatture }}</span>
+    </template>
     <!-- ⭐ La spia degli errori gravi vive SULLO STATO (richiesta di Tid,
          2026-08-21): basta UN documento fallito nel dettaglio per accenderla.
          È la forma dei gestionali a lotti — la testata avvisa, il dettaglio
@@ -147,7 +189,7 @@ onMounted(() => emit('lista-pronta', listaRef.value))
         <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
         <i
           v-if="data.ha_errori_gravi"
-          class="pi pi-exclamation-triangle app-lotto-spia-errore"
+          :class="[MANAGE_ICONS.ERRORE, 'app-lotto-spia-errore']"
           v-tooltip.top="t('vendite.lotti.spia_errori_gravi')"
         />
       </span>

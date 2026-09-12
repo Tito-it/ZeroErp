@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# F-1 — Gli adattatori a DUE livelli per la famiglia FATTURE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7 (passo 7)
+#   Slice 20260909-69..71 (helper -> policy inerti -> armamento).
+#
+# ── ⛔ PERCHE' ESISTE UN PASSO 7, se `fatture` era «gia' fatta» ────────
+#   Il §2 del brief diceva «fatture: tutte protette». Era sbagliato, e il modo
+#   in cui lo era e' la lezione: erano protette **le cinque che l'elenco
+#   nominava** — righe, scadenze, riepiloghi_iva, indirizzi,
+#   fondi_fattura_source — cioe' quelle che chi scriveva aveva guardato.
+#   Ricontando per FK invece che a memoria, `vendite.fatture` ha altre SEI
+#   figlie dirette scoperte, piu' una nipote:
+#     `fatture_atti` · `fatture_fondi_fattura` · `fatture_log`
+#     `fatture_rettifiche` · `fatture_sdi` · `note_fatture`
+#     e `fatture_sdi_eventi`, che pende da `fatture_sdi`.
+#   ⭐ E' lo stesso difetto che il brief denuncia, in miniatura: *un elenco
+#   scritto a mano ha per perimetro cio' che chi lo scriveva aveva in mente.*
+#
+# ── ⭐ QUI GLI ADATTATORI DI PRIMO LIVELLO ESISTONO GIA' ──────────────
+#   `script.fn_scope_ef_whitelist_via_fattura` e
+#   `script.fn_scope_ba_ownership_via_fattura` sono in servizio dal cantiere
+#   che protesse le cinque figlie. Le sei tabelle di primo livello le usano
+#   direttamente: questo changeSet serve solo per la NIPOTE.
+#
+# ── Le due funzioni nuove, e perche' due ──────────────────────────────
+#   `vendite.fatture` ha DUE vesti — operatore e cliente del portale — quindi
+#   ogni livello di risalita ne vuole due. `fatture_sdi_eventi` porta
+#   `fattura_sdi_id` (NOT NULL) e non la fattura: risale passando da
+#   `fatture_sdi`, e delega alle sorelle di primo livello invece di ripetere il
+#   percorso.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — come gli altri
+#   `script.fn_scope_*`. Una funzione `SECURITY DEFINER` dentro una policy
+#   guarderebbe con gli occhi dell'owner, che la RLS non vede: il filtro
+#   passerebbe sempre, e in silenzio.
+#
+# Permessi: funzioni di titodb, nessun GRANT esplicito (l'ALTER DEFAULT
+# PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-69-create-fn-scope-via-fattura-sdi-mctit.yaml
+
+  - changeSet:
+      id: 20260909-69-create-fn-scope-via-fattura-sdi
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatori a due livelli per vendite.fatture_sdi_eventi:
+        script.fn_scope_ef_whitelist_via_fattura_sdi(auth_user_id, sdi_id) e
+        script.fn_scope_ba_ownership_via_fattura_sdi(identita_id, sdi_id),
+        che risalgono da fatture_sdi alla fattura e delegano alle sorelle di
+        primo livello, gia' in servizio. Nessuna policy li usa ancora: le crea
+        20260909-70.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_fattura_sdi(
+                  p_auth_user_id integer,
+                  p_sdi_id       vendite.fatture_sdi.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: veste OPERATORE per gli eventi SDI, che portano la
+                  --   chiave della trasmissione e non quella della fattura.
+                  -- ⭐ Delega alla sorella di primo livello: la regola «come una
+                  --   fattura nomina il proprio emittente» resta in un posto solo.
+                  -- ⚠️ Trasmissione inesistente -> fattura NULL -> false a
+                  --   whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist_via_fattura(
+                      p_auth_user_id,
+                      (SELECT s.fattura_id
+                         FROM vendite.fatture_sdi s
+                        WHERE s.id = p_sdi_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(
+                  p_identita_id bigint,
+                  p_sdi_id      vendite.fatture_sdi.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: veste CLIENTE_PORTALE per gli eventi SDI.
+                  -- ⚠️ Esiste perche' i satelliti devono rispecchiare TUTTE le
+                  --   vesti della testata: `vendite.fatture` ne ha due.
+                  SELECT script.fn_scope_ba_ownership_via_fattura(
+                      p_identita_id,
+                      (SELECT s.fattura_id
+                         FROM vendite.fatture_sdi s
+                        WHERE s.id = p_sdi_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_fattura_sdi(integer, bigint)
+              IS 'Adattatore di scope a due livelli per vendite.fatture_sdi_eventi, veste OPERATORE: risale da fatture_sdi alla fattura e delega a script.fn_scope_ef_whitelist_via_fattura. STABLE e NON security definer, come gli altri fn_scope_*. Trasmissione inesistente -> fattura NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md';
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(bigint, bigint)
+              IS 'Come fn_scope_ef_whitelist_via_fattura_sdi ma per la veste CLIENTE_PORTALE. ⚠️ Esiste perche'' vendite.fatture ha DUE vesti e ogni satellite le rispecchia entrambe: con la sola veste operatore un cliente del portale smetterebbe di vedere gli eventi SDI delle proprie fatture.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ba_ownership_via_fattura_sdi(bigint, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_fattura_sdi(integer, bigint);

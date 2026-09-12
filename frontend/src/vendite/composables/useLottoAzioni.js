@@ -35,6 +35,7 @@ import {
   resetLottoDraft,
   runLottoPipeline,
 } from '../api/lotti'
+import { MANAGE_ICONS } from '../../core/constants'
 
 // Permesso di processo per verbo. La numerazione ha un gate fiscale SEPARATO
 // (I-7); annullamento e ritorno in lavorazione condividono `reset_lotto_draft`
@@ -62,6 +63,14 @@ export const LOTTO_AZIONE_PIPELINE_UI = {
   rilancia_step: { label_key: 'vendite.lotti.rerun', icon: 'pi pi-replay', severity: 'warn' },
 }
 
+// Le tre CHIAVI dei due verbi che il DB non espone (`rigenera_bozza` è la
+// seconda presentazione di `avanza_step`: stessa API, stesso permesso), in UNA
+// sede sola — sono le chiavi dell'oggetto qui sopra, non una lista riscritta.
+// `esegui` e `eseguiVerificato` le trattano diversamente dagli altri verbi, e
+// prima l'elenco stava per esteso dentro un `if`: una presentazione aggiunta
+// sopra e dimenticata nell'`if` sarebbe passata dal percorso sbagliato.
+const VERBI_PIPELINE = Object.keys(LOTTO_AZIONE_PIPELINE_UI)
+
 // Icona/severity dei verbi di stato per il kebab della lista. Nel drawer
 // arrivano dal `meta` di catalogo insieme al resto del blob; la riga di lista il
 // blob non ce l'ha, quindi qui si rispecchiano i valori seedati il 2026-08-04 —
@@ -70,7 +79,7 @@ export const LOTTO_AZIONE_PIPELINE_UI = {
 const LOTTO_AZIONE_ICONA = {
   numera: 'pi pi-verified',
   ristampa: 'pi pi-print',
-  annulla: 'pi pi-times-circle',
+  annulla: MANAGE_ICONS.ANNULLA,
   riporta_a_draft: 'pi pi-undo',
 }
 
@@ -308,24 +317,42 @@ function verdettoRunner(res) {
   //   davvero: la lista resta senza capability per riga (scelta del team DB,
   //   §3.3 della risposta) e senza precondizioni ricopiate.
   //
-  //   I due verbi di pipeline non sono nel blob per costruzione: per loro non
-  //   c'è verdetto da chiedere e si procede diretti.
+  //   ⛔ Le tre chiavi di pipeline non sono nel blob per costruzione — ma «non
+  //   c'è un verdetto da chiedere» NON vuol dire «si procede diretti», ed è
+  //   così che era scritto fino al 2026-09-08: da lì passavano senza nemmeno
+  //   rileggere la riga. La regola di proposta esiste ed è una sola
+  //   (`verbiPipeline`): quello che mancava non era il verdetto, era il DATO
+  //   FRESCO su cui applicarla. La riga della lista può avere minuti — il lotto
+  //   nel frattempo può essere stato annullato, numerato o preso in carico da
+  //   un collega — e il dettaglio lo si sta già leggendo per tutti gli altri
+  //   verbi. Si rilegge anche per questi tre e si rivaluta la STESSA regola:
+  //   nessuna seconda copia, e la lista vecchia smette di essere autorevole.
+  //   ⚠️ Il rifiuto vero resta del runner (guard di transizione a DB): questo
+  //   è il non-proporre, non il cancello.
   async function eseguiVerificato(lottoId, key) {
-    if (key === 'avanza_step' || key === 'rigenera_bozza' || key === 'rilancia_step') {
-      esegui(lottoId, key)
-      return
-    }
     const dettaglio = await execute(() => getLotto(lottoId))
     if (dettaglio === null) return
     const azione = (dettaglio.available_actions ?? []).find((a) => a.key === key)
+    // ⭐ DUE FAMIGLIE, UNA SOLA DOMANDA: «la riga fresca propone ancora questo
+    //   verbo?». Per i verbi di stato la risposta è nel blob del DB; per i tre
+    //   di pipeline, che nel blob non ci sono per costruzione, è `verbiPipeline`
+    //   — la stessa regola con cui il kebab li ha proposti, riapplicata al dato
+    //   fresco. La differenza sta tutta in questa riga; il seguito è comune.
+    const ancoraProposto = VERBI_PIPELINE.includes(key)
+      ? verbiPipeline(dettaglio).includes(key)
+      : azione !== undefined
     // Verbo sparito fra il render della lista e il click (qualcun altro ha
-    // fatto avanzare il lotto): non è un errore di sistema, è una lista vecchia.
-    if (!azione) {
+    // fatto avanzare o annullato il lotto): non è un errore di sistema, è una
+    // lista vecchia — si avvisa e si ricarica.
+    if (!ancoraProposto) {
       notify.warn(t('vendite.lotti.azione_non_piu_disponibile'))
       await onDone?.()
       return
     }
-    if (azione.enabled === false) {
+    // Proposto ma non eseguibile ADESSO: il motivo lo dà il DB. ⚠️ Vale solo
+    // per i verbi del blob — sui tre di pipeline `azione` è `undefined`, e
+    // `undefined === false` è falso: si prosegue, che è corretto.
+    if (azione?.enabled === false) {
       notify.warn(motiviTesto(azione) || t('vendite.lotti.azione_non_piu_disponibile'))
       return
     }
@@ -355,7 +382,43 @@ function verdettoRunner(res) {
   //   ⚠️ Il flag `riaperto` arriva dal BE (`fatturazione_lotti.riaperto_il`):
   //   NON si deduce qui, o diventerebbe una seconda regola accanto a quella
   //   del runner.
+  //   ⛔ LA SOGLIA DI CONGELAMENTO VIENE PRIMA DI TUTTO, ed è l'ordine il
+  //   punto. `stato_lotto` racconta com'è andato l'ULTIMO GIRO; lo stato
+  //   fiscale dice se una pipeline ha ancora senso. Sono due assi, e il
+  //   secondo comanda: su un documento congelato — DEFINITIVA, INVIATA,
+  //   REGISTRATA, ANNULLATA — non c'è nessuno step da rifare, per bene o per
+  //   male che sia finito il giro precedente.
+  //
+  //   🔴 Il difetto che questo ordine chiude (segnalato dal team DB,
+  //   2026-09-07): con il ramo `ERRORE` per primo, un lotto ANNULLATA rimasto
+  //   in `stato_lotto = 'ERRORE'` si vedeva proporre «Rilancia lo step» — su
+  //   un documento terminale, che non ha nemmeno una transizione in uscita.
+  //   ⚠️ Il ramo era **irraggiungibile per un dato**, non per costruzione:
+  //   finché l'annullo portava anche `stato_lotto` a COMPLETATO nessun lotto
+  //   annullato era in ERRORE. Tolta quella falsificazione a DB, il difetto è
+  //   emerso — non è nato lì.
+  //
+  //   ⛔ E NON è «tutto ciò che non è DRAFT», che era la scorciatoia da una
+  //   riga: su un lotto EMESSA finito in ERRORE il rilancio dello STESSO step
+  //   è la via d'uscita definita da Tid (D-Q p.1, «correggo l'anagrafica →
+  //   rieseguo lo step»), e spegnerlo la toglierebbe. La domanda non è «in che
+  //   stato è», è «quello stato congela il documento?».
+  //
+  //   ⭐ E la risposta arriva dal CATALOGO (`config.stati_doc_fiscale.congela_fiscale`,
+  //   esposto sulla riga dal 2026-09-08), non da un elenco di codici scritto
+  //   qui. Era l'ennesima copia della soglia che `D33` ha portato a leggere il
+  //   database: l'ultima copia fuori dal DB è stata tolta da `LottoDrawer` il
+  //   2026-08-31 (F5) con la stessa motivazione — *una copia in un template il
+  //   DB non la vede, e il giorno che il confine si sposta non fallisce:
+  //   propone un verbo che verrà rifiutato*. Uno stato nuovo a catalogo entra
+  //   nel gate senza toccare questo file.
   function verbiPipeline(lotto) {
+    // Fail-closed: `false` è l'unico valore che apre. `null` (lotto senza stato
+    // fiscale, il JOIN è LEFT) e `undefined` (riga vecchia, prima che il BE
+    // esponesse il campo) valgono «non lo so» — e su un verbo che riesegue la
+    // pipeline «non lo so» non può voler dire «vai». Stessa disciplina del
+    // `can_reset_fattura` in `LottoDrawer`.
+    if (lotto?.stato_congela_fiscale !== false) return []
     if (lotto?.stato_lotto === 'ERRORE') return ['rilancia_step']
     if (lotto?.stato_lotto === 'IN_ESECUZIONE') return []
     if (lotto?.stato_doc_fiscale_codice !== 'DRAFT') return []

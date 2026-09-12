@@ -79,7 +79,7 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
     def test_numera_ok_accoda_operatore_scope_business_key(
         self, repo_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
-        resolver.get_emittenti_ids.return_value = [4, 3]  # non ordinati
+        resolver.get_emittenti_pk_ids.return_value = [4, 3]  # non ordinati
         repo_cls.return_value.accoda.return_value = 777
 
         resp = self.client.post(

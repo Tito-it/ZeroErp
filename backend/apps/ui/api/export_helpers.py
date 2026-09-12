@@ -73,7 +73,7 @@ def build_export_response(
         colonne=colonne,
         righe=results,
         filtri_applicati=filtri_applicati,
-        format=fmt,
+        formato=fmt,
     )
 
     response = HttpResponse(body, content_type=content_type)

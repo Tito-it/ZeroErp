@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AS-3 — Il debito PAGATO esce dal registro.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.18
+#   Slice 20260911-01..03, ultimo pezzo.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LA RIGA TOLTA DAL CSV ──────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**. Le due cose vanno
+#   insieme — il CSV perche' un database ricostruito da zero non la crei, questa
+#   `DELETE` perche' dove c'e' gia' se ne vada. Senza, esce come
+#   `DEBITO_ESTINTO` e il test 2 di
+#   `db/pgtap/rls/test-rls-perimetro-scoperto.sql` diventa rosso.
+#
+# ── 🔴 E LA RIGA CHE ESCE DICEVA IL FALSO ────────────────────────────
+#   Sosteneva che servisse una decisione — *«va deciso se le sue righe seguano
+#   il perimetro dell'emittente o restino leggibili come catalogo»* — mentre la
+#   tabella porta `emittente_soggetto_ruolo_id` **NOT NULL**, cioe' la risposta
+#   era gia' scritta nella struttura.
+#   ⚠️ E' la **terza** riga di registro che sbaglia, sempre nel verso che
+#   *ferma un cantiere che poteva partire*: le prime due sono state corrette al
+#   §11.12. ⭐ Il campo `ragione` serve a dire a chi legge se ha davanti un
+#   allarme, un lavoro pronto o una domanda aperta — quando dice «serve una
+#   decisione» e la decisione c'e' gia', nessuno va a rileggere il catalogo per
+#   verificarlo.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260911-03-delete-debito-rls-arrotondamenti-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260911-03-delete-debito-rls-arrotondamenti-scope
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito la riga di
+        vendite.fatture_arrotondamenti_scope, armata dalla slice
+        20260911-01..02. loadUpdateData non cancella, quindi togliere la riga
+        dal CSV non basta.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (25, 'vendite', 'fatture_arrotondamenti_scope'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette in piedi un debito che NON esiste piu'. Ha senso solo
+              --   insieme al rollback di 20260911-02, che disarma la tabella.
+              --   ⭐ La ragione ripristinata e' quella CORRETTA, non quella
+              --   sbagliata di partenza: un rollback non deve rimettere in
+              --   circolo un'informazione falsa.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (25, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'fatture_arrotondamenti_scope',
+                 'Ripristino di rollback: porta emittente_soggetto_ruolo_id NOT NULL, quindi la rotta e'' diretta (fn_scope_ef_whitelist_via_sr) e non serve nessun adattatore. E'' lavoro pronto, non una domanda di modello.', DATE '2026-09-11');

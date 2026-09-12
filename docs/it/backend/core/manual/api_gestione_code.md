@@ -23,7 +23,8 @@ Asimmetria di scope (regge il design):
 | | Coda lavori | Coda stampa |
 | --- | --- | --- |
 | Proprietario | per-UTENTE via `scope->>'scope_key'` (whitelist emittenti) | per-EMITTENTE via JOIN a `vendite.fatture` |
-| Azioni | annulla / requeue (solo propri, o `code_manage`) | nessuna (il drainer ritenta da solo) |
+| Azioni di esecuzione | annulla / requeue (solo propri, o `code_manage`) | nessuna (il drainer ritenta da solo) |
+| Archiviazione | archivia / ripristina (`code_manage`, effetto globale) | identica: le due code sono simmetriche |
 
 Tre layer: `views_tracciamento.py` (`ApiCode*`, `ApiCodaLavori*`,
 `ApiCodaStampaList`) → `apps/core/services/coda_lavori/gestione_service.py` →
@@ -43,23 +44,89 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
 
 - `GET /api/v1/core/tracciamento/code/conteggi/`
 - Conteggi vivi (PENDING/IN_CORSO) delle due code, **scoped** al chiamante, +
-  liveness worker (`ultimo run entro 10 minuti` = attivo). Pollato dal FE a 60s.
+  liveness worker (`ultimo run entro la tolleranza dichiarata` = attivo).
+  Pollato dal FE a 60s.
+- ⭐ **La soglia non è più un numero nel backend** (dal 2026-09-06): arriva dal
+  **dichiarato di deploy**, `backend/deploy/sveglie.json`, campo
+  `tolleranza_minuti` della sveglia del worker, letto via
+  `apps.core.services.sveglie`. Oggi vale 10 minuti per entrambi i drainer, che
+  è il valore che c'era prima — **il numero non cambia, cambia chi lo dice**.
+- ⛔ Prima era `WORKER_ATTIVO_SOGLIA_MINUTI = 10` in `gestione_service.py`, con
+  il commento «i timer girano a 1-2 minuti»: per sapere se 10 fosse ancora
+  giusto bisognava aprire l'`OnCalendar` in un altro file, che nessuno
+  rileggeva. Due scritture dello stesso fatto, e la divergenza sarebbe stata
+  **muta** — un pallino verde su un worker fermo.
+- ⚠️ Il contratto della risposta **non cambia**: `{last_run_at, attivo,
+  last_ok}` per worker, e un worker mai girato resta `{attivo: false}`
+  esplicito.
+- ⚠️ Se un worker arrivasse senza tolleranza dichiarata il service ripiega su 10
+  minuti per non spegnere il badge, ma è una configurazione incompleta e la CI
+  la rifiuta (`test_worker_del_badge_hanno_una_tolleranza`).
 
 ### 2. Lista coda lavori (BE-5, sola lettura)
 
 - `GET /api/v1/core/tracciamento/coda-lavori/`
 - Query: `ambito` (`miei` default | `tutti` — richiede `code_manage`/SUPER_ADMIN),
   `stato`, `tipo` (job_type), `solo_vivi`, `data_da`/`data_a` (YYYY-MM-DD,
-  inclusiva), `limit` (max 200)/`offset`.
+  inclusiva), `archiviate` (bool, default `false` — vedi §6), `limit` (max
+  200)/`offset`, `sort_by`/`sort_dir`.
 - Ogni riga porta `is_mio` (calcolato dal BE: la `scope_key` del job coincide
   con quella del chiamante) e `proprietario` (`scope->>'username'`).
+
+#### ⭐ `data_insert` e l'ordinamento di default (dal 2026-09-07)
+
+Ogni riga porta **`data_insert`** — *quando il lavoro è entrato in coda*. È un
+fatto **diverso da `started_at`**: il primo lo scrive chi accoda, il secondo il
+worker quando prende il lavoro. Su un lavoro in **attesa** esiste solo il primo.
+
+⇒ **È anche il nuovo ordinamento di default**, `DESC`, su **entrambe** le code.
+
+🔴 **Perché è cambiato, ed è un difetto che vale la pena non ricreare.** Il
+default era `started_at DESC NULLS LAST`. Un lavoro `PENDING` `started_at` non
+ce l'ha per definizione, quindi finiva **dopo ogni lavoro mai avviato**: non
+filtrato — *sepolto*. Misurato il 2026-09-07 su dbdev: le righe senza
+`started_at` in posizione **112 e 113 su 113**, cioè in quinta pagina da 25.
+⛔ La lista non sbagliava e non nascondeva niente: metteva in fondo esattamente
+la riga che interessa. È la stessa forma già nominata in
+[api.md](../../../dev/api.md) per i gruppi del lotto — *«il caso che interessa
+finirebbe in fondo»*.
+⭐ L'argomento strutturale, al netto dei gusti: **`data_insert` è `NOT NULL`**.
+Ordinare su una colonna che ammette NULL significa avere sempre un ramo che cade
+in fondo — e qui quel ramo era sistematicamente lo **stato vivo**.
+
+⚠️ **La coda stampa non aveva il difetto, ma per coincidenza**: ordinava su
+`data_update`, che è `NOT NULL` e su una riga mai toccata vale quanto
+`data_insert`. Le due code hanno una semantica sola per decisione (Tid,
+2026-07-23), quindi sono state allineate: due default diversi erano una
+simmetria che reggeva finché nessuno aggiornava una riga in attesa.
+
+⛔ **Questo default vive in TRE sedi che devono concordare**, e la divergenza non
+darebbe nessun errore — darebbe una lista che si riordina da sola al primo tocco
+dell'operatore:
+
+| Sede | Cosa |
+| --- | --- |
+| `gestione_service` (`default=`) | ciò che il BE applica se il client non chiede niente |
+| `ui.lista_preset.ordinamento_default` | ciò che il preset del catalogo dichiara |
+| store FE (`orderBy`) | ciò che il client manda al primo caricamento |
+
+⛔ **E nessun presidio tiene insieme le tre**, verificato il 2026-09-08:
+`test_liste_configurabili_seed` confronta le colonne **ordinabili** del seed con
+la whitelist del repository — non i default — e in tutto `backend/apps` niente
+legge `ordinamento_default`. `test_coda_lavori_gestione_service` fissa i due
+default **del service** e nient'altro. ⇒ Le tre sedi si controllano **a mano**,
+e questa riga esiste perché la prossima persona non creda il contrario.
 
 ### 3. Lista coda stampa (BE-6, sola lettura)
 
 - `GET /api/v1/core/tracciamento/coda-stampa/`
 - Query: come sopra + `lotto_id`; niente `is_mio` (la coda è per-emittente).
 - Righe: fattura (numero/anno/serie), emittente, lotto, stato, tentativi,
-  ultimo_errore, documento_id.
+  ultimo_errore, documento_id, `data_insert`/`data_update`,
+  `archiviato`/`archiviato_il`/`archiviato_da`.
+  ⚠️ `data_insert` era già nel payload da prima del 2026-09-07 — mancava solo
+  dalla whitelist d'ordinamento e dal catalogo colonne, quindi nessuno poteva
+  né ordinarci né vederlo.
 
 ⭐ **`ultimo_errore` porta il codice di DOMINIO, dal 2026-08-25.** Prima, su un
 rifiuto del database, la riga conteneva `{"code": "ProgrammingError", "message":
@@ -104,6 +171,104 @@ prima li perdeva — la stessa riga raccontava due storie a seconda di quale
   concorrente** (review 2026-07-22). → `PENDING` con `max_tentativi += extra`
   (storia tentativi preservata).
 
+### 6. Archiviazione delle righe di coda (2026-09-04)
+
+> Brief: `brief-db-archiviazione-righe-code`. DB applicato il 2026-09-04.
+
+Togliere una riga **dall'elenco** senza toccarne lo **stato**. Nasce da una
+richiesta precisa: i conteggi del pannello **Esiti fatturazione**
+(`count_coda_stampa_per_stato`) sono un `GROUP BY` sullo stato **senza filtro di
+visibilità**, quindi una cancellazione li fa calare e un annullamento sposta la
+ripartizione. Serviva una bandiera che leggesse **solo la lista**.
+
+- `POST /api/v1/core/tracciamento/coda-lavori/archivia/` · body `{"ids": [...]}`
+- `POST /api/v1/core/tracciamento/coda-lavori/ripristina/` · body `{"ids": [...]}`
+- `POST /api/v1/core/tracciamento/coda-stampa/archivia/` · body `{"ids": [...]}`
+- `POST /api/v1/core/tracciamento/coda-stampa/ripristina/` · body `{"ids": [...]}`
+
+⭐ **Rotte di COLLEZIONE, elenco nel corpo — anche per una riga sola.** Il menu
+di riga manda `{"ids": [12]}`. Un verbo di massa e uno singolo sarebbero **due
+contratti da tenere allineati per lo stesso rifiuto**, che è per riga. Tetto
+`MAX_RIGHE_ARCHIVIAZIONE = 200` (lo stesso della paginazione, e la stessa
+ragione di `MAX_ATTIVITA_RIPORTO`: oltre un certo punto «metti via N righe»
+smette di essere un gesto che una persona ha guardato). Gli `ids` sono
+**deduplicati** conservando l'ordine — il database tratterebbe due volte lo
+stesso id come una riga sola, ma il conteggio che torna a video direbbe un
+numero diverso da quello spuntato.
+
+⛔ **ESITO PARZIALE, e il 200 non è un successo.** Il rifiuto è **per riga** (una
+riga tornata al lavoro nel frattempo, una che non c'è più): un'unica transazione
+farebbe fallire venti archiviazioni buone per una riga sola, e chi guarda non
+saprebbe quale. Il telaio è il BB `run_fan_out` — **un savepoint per riga**,
+errore isolato, esito aggregato a tre stati. **Chi consuma DEVE guardare
+`esito`**, non lo status.
+
+```json
+{ "data": { "esito": "PARZIALE", "archiviato": true,
+            "richieste": 4, "riuscite": 3,
+            "falliti": [ { "id": 1398,
+                           "code": "E_CODA_ARCHIVIAZIONE_NON_AMMESSA",
+                           "message": "Questa riga della coda è ancora in stato PENDING: …" } ] } }
+```
+
+⛔ **E per questo NON si fa un solo `UPDATE … WHERE id = ANY(…)` col predicato
+di stato nella `WHERE`**: sarebbe più veloce, ma scriverebbe la **seconda copia**
+di «riga viva» — che ha una sede sola, il trigger, e che questo cantiere ha
+deliberatamente lasciato lì (brief §7.4).
+
+⛔ **Gate `code_manage`, NON l'ownership degli altri due verbi.** Annulla e
+requeue sono owner-scoped — un operatore agisce sui **propri** job e il permesso
+serve solo ad **allargare** agli altrui. L'archiviazione ha effetto **globale**:
+chi archivia toglie la riga dall'elenco anche all'amministratore. Effetto
+globale, permesso globale (decisione di Tid, brief §7.2). ⚠️ Il perimetro
+dell'**archiviazione** non è quello della **lista**: la lista è visibilità ed è
+aperta a ogni operatore, qui si scrive.
+
+⛔ **E il gate lo verifica il SERVICE, non un `post_permission` sulla view.**
+`ZeroERPPermission`, quando trova un `<metodo>_permission`, **ritorna l'esito
+dell'azione di processo e salta il controllo di area**: un operatore con
+`code_manage` e area `strumenti` in sola `LETTURA` passerebbe, mentre i due
+verbi accanto — che quel campo non lo dichiarano — cadono su
+`METHOD_REQUIRES['POST'] = 'add'` e pretendono `TUTTO`. Due POST adiacenti nella
+stessa schermata con due contratti d'area diversi sono la forma in cui un
+permesso «funziona» finché qualcuno non lo restringe e non capisce perché non ha
+effetto. Senza `post_permission` valgono **entrambi** i controlli: l'area dalla
+catena, `code_manage` dal service (`_guard_archiviazione` → `E_PERMESSO_NEGATO`,
+403). Presidio: `test_archiviazione_senza_code_manage_403`.
+
+⭐ **Due verbi e non un flag nel corpo**: le due direzioni hanno esiti diversi —
+archiviare una riga ancora viva è un rifiuto del database, ripristinare non
+fallisce mai — e un endpoint il cui esito dipende da un booleano nel payload
+nasconderebbe quella differenza a chi legge le rotte.
+
+⛔ **Il criterio «solo una riga NON VIVA si archivia» NON vive nel backend.** Ha
+una sede sola: il trigger `_a10_archiviazione_upd` (funzione unica
+`dbops.trgfn_coda_archiviazione` per le due code) più il `CHECK`
+`chk_*_archiviato_non_vivo`. Il backend **traduce e passa**. «Vivo» è
+`PENDING|IN_CORSO`, la stessa definizione che conta il badge in topbar.
+⛔ Anche `archiviato_il` e `archiviato_da` **le deriva il trigger** (GUC
+`app.jwt_user`): il backend non le scrive, quindi non può dire una cosa che la
+bandiera smentisce.
+
+⚠️ Sulla coda stampa è la **prima scrittura dell'operatore** su
+`vendite.fatture_stampa_coda`. Dal 2026-09-04 la difende la policy RLS
+`rls_fatture_stampa_coda_ef_whitelist`, **e il filtro applicativo di emittente
+resta**: la RLS si somma ai filtri, non li sostituisce. Fuori perimetro → 0
+righe → **404**, indistinguibile da inesistente.
+
+⛔ **Chi NON legge la bandiera, ed è il contratto del cantiere**: claim,
+drainer, reaper, `mark_*`/`marca_*`, `count_per_stato`,
+`count_coda_stampa_per_stato`, `get_stato`, `uq_fatture_stampa_coda_vivo`. Un
+lettore in più farebbe dell'archiviazione un **annullamento silenzioso**, cioè
+qualcosa di peggio della cancellazione che esiste per evitare.
+
+⚠️ **`archiviate_count` non è un accessorio.** Le liste nascondono le archiviate
+di default e dichiarano quante ne restano fuori: senza quel numero «coda pulita»
+e «tre righe messe via» si leggono uguali — è la stessa lezione di
+`ritirate_count` sul giornale della fattura. È un conteggio **suo**, con lo
+stesso perimetro della lista meno la bandiera; vale **0** quando le archiviate
+sono incluse (lì non c'è niente di nascosto da dichiarare).
+
 ## Output
 
 - Conteggi:
@@ -117,8 +282,11 @@ prima li perdeva — la stessa riga raccontava due storie a seconda di quale
     }
 } }
 ```
-- Liste: `{ "data": { "count": N, "results": [ ... ] } }` (offset-based).
-- Azioni: `{ "data": { "job_id": 5, "stato": "ANNULLATO" | "PENDING" } }`.
+- Liste: `{ "data": { "count": N, "archiviate_count": M, "results": [ ... ] } }`
+  (offset-based).
+- Azioni di esecuzione: `{ "data": { "job_id": 5, "stato": "ANNULLATO" | "PENDING" } }`.
+- Archiviazione: `{ "data": { esito, archiviato, richieste, riuscite, falliti[] } }`
+  — vedi §6. Identica sulle due code.
 
 ## Regole
 
@@ -144,6 +312,10 @@ prima li perdeva — la stessa riga raccontava due storie a seconda di quale
 | `E_JOB_NON_TROVATO` | 404 | job inesistente o di altro scope (dettaglio/azioni) |
 | `E_JOB_NON_ANNULLABILE` | 409 | annulla su job non più PENDING |
 | `E_JOB_NON_RIACCODABILE` | 409 | requeue su job non riaccodabile (né ERRORE né IN_CORSO stantio) |
+| `E_JOB_NON_TROVATO` | 404 sul singolo, **riga fallita** nel giro di massa | riga inesistente o fuori perimetro emittente (stesso codice sulle due code: la **condizione** è la stessa, non il dominio) |
+| `E_PERMESSO_NEGATO` | 403 | archivia/ripristina senza `code_manage`/SUPER_ADMIN |
+| `E_VALIDATION_INPUT` | 400 | `ids` assente/vuoto, non interi positivi, o oltre 200 |
+| `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` | **riga fallita** nel giro (409 se fosse sola) | archiviazione di una riga ancora VIVA (`PENDING`/`IN_CORSO`). Lo solleva il **trigger**, con la sua frase a catalogo |
 | `E_VALIDATION_INPUT` | 400 | `extra_tentativi` fuori range 1..10 |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | POST senza header `Idempotency-Key` |
 
@@ -151,10 +323,29 @@ prima li perdeva — la stessa riga raccontava due storie a seconda di quale
 
 - `dbops.coda_lavori` (+ `coda_lavori_tipi`): lettura/UPDATE diretti
   (annulla/requeue condizionati allo stato — design brief coda §3a).
+- `dbops.trgfn_coda_archiviazione` + i due trigger `_a10_archiviazione_upd` e i
+  `CHECK` gemelli sulle due code: **la** sede del criterio di archiviabilità e
+  degli scrittori di `archiviato_il`/`archiviato_da`.
+- Policy RLS `rls_fatture_stampa_coda_ef_whitelist` (`FOR ALL`, scope delegato
+  alla testata via `script.fn_scope_ef_whitelist_via_fattura`), armata il
+  2026-09-04.
+- Seed `ui.lista_colonna`: **712** (colonna `azioni` sulla lista 35 — senza,
+  il kebab della coda stampa non avrebbe dove attaccarsi), **713**/**714**
+  (`archiviato_il` sulle liste 34/35, accese dal BE nello stesso commit in cui
+  la colonna entra nella proiezione).
 - `vendite.fatture_stampa_coda` + JOIN `vendite.fatture` (scope emittente via
   `add_emittente_scope_condition`, convenzione SR) + `anagrafiche.emittenti_fiscali`.
 - `maintenance.job_run_log` (liveness worker, jobname
   `draina_coda_lavori`/`draina_coda_stampa`).
+  ⚠️ I due jobname **non sono letterali** in `gestione_service.py`: sono le
+  costanti di `apps.core.services.processi`, perché il worker si registra sul
+  giornale col proprio `processo_codice` ed è con quello che si cerca la
+  tolleranza nel dichiarato. Due stringhe uguali in due file si sarebbero
+  sfilate al primo rename **senza che niente fallisse**: la tolleranza non si
+  sarebbe più trovata e il badge avrebbe continuato con il ripiego.
+- `backend/deploy/sveglie.json` — **non è una dipendenza DB ma di deploy**, ed è
+  la sede della `tolleranza_minuti`. Vedi
+  [sveglie_processi.md](sveglie_processi.md).
 - Seed `config.aree_funzionali` area `strumenti` + azione
   `config.azioni_processo` `code_manage` su quell'area (team DB, brief §6).
 

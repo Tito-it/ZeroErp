@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LI-2 — Le TRE policy della catena dei listini. INERTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.11
+#   Slice 20260910-21..24. L'armamento e' 20260910-23.
+#
+# ── ⚠️ PERCHE' UN CHANGESET SOLO PER DUE SCHEMI, e va detto ───────────
+#   Due tabelle stanno in `vendite`, una in `anagrafiche` — ma sono **una catena
+#   sola**: `anagrafiche.categorie_clienti_listini` e' un satellite di
+#   `vendite.listini`, non un'entita' di anagrafiche. Spezzare la slice per
+#   cartella avrebbe diviso una decisione in due, e l'armamento in due momenti.
+#   ⭐ Il precedente c'e' ed e' della stessa specie: `20260601-39-enable-rls-ondata2`
+#   arma insieme `documenti`, `pratiche` e `vendite`. La cartella e' una
+#   convenzione di archiviazione, non un perimetro.
+#
+# ── ⭐ DUE CHIAVI, DUE ADATTATORI — ma nessuno dei due e' nuovo del tutto ─
+#     * `listini_righe` e `listini_righe_componenti` -> `listino_versione_id`
+#       -> `_via_listino_versione` (creato da 20260910-21)
+#     * `categorie_clienti_listini` -> `listino_id`
+#       -> `_via_listino`, **gia' in servizio** su `vendite.listini_versioni`
+#   ⚠️ Le due chiavi sono entrambe `bigint`: scambiarle non darebbe nessun
+#   errore e filtrerebbe sul listino sbagliato, in silenzio. Lo presidia il
+#   test 3 del pgTAP, che legge la definizione della policy.
+#
+# ── ⭐ UNA VESTE SOLA, e viene da due passi piu' su ───────────────────
+#   `vendite.listini` e `vendite.listini_versioni` portano una policy ciascuna,
+#   `OPERATORE` `FOR ALL`. I tre satelliti la rispecchiano. ⚠️ Il giorno in cui
+#   il listino ricevesse una veste cliente — un portale che mostra i propri
+#   prezzi — questa slice va estesa nello stesso gesto.
+#
+# ── ⛔ `FOR ALL` E `WITH CHECK`, non `FOR SELECT` ─────────────────────
+#   `zeroerp_app` ha SELECT, INSERT, UPDATE e DELETE su tutte e tre (verificato
+#   2026-09-10). E qui il contenuto sono **i prezzi**: la `WITH CHECK` e' cio'
+#   che impedisce di scrivere una riga nel listino di un'altra azienda.
+#
+# ⚠️ `listini_righe_componenti` NON pende dalla riga: pende direttamente dalla
+#   versione (`listino_versione_id NOT NULL`, verificato). Quindi niente terzo
+#   livello — le due si agganciano allo stesso anello.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260910-22-create-policy-listini-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-22-create-policy-listini-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Tre policy sulla catena dei listini: vendite.listini_righe e
+        vendite.listini_righe_componenti risalgono dalla versione,
+        anagrafiche.categorie_clienti_listini dal listino. Veste OPERATORE FOR
+        ALL con WITH CHECK, come i due padri. INERTI: l'armamento e'
+        20260910-23.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_listino',
+                                   'fn_scope_ef_whitelist_via_listino_versione')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.listini_righe (chiave: listino_versione_id) ----------
+              CREATE POLICY rls_listini_righe_ef_whitelist
+                  ON vendite.listini_righe
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino_versione(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              listino_versione_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino_versione(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              listino_versione_id)
+                  );
+
+              -- ---------- vendite.listini_righe_componenti (stessa chiave) ----------
+              -- ⚠️ Non pende dalla riga ma dalla VERSIONE: stessa chiave, stesso
+              --   adattatore, nessun terzo livello.
+              CREATE POLICY rls_listini_righe_componenti_ef_whitelist
+                  ON vendite.listini_righe_componenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino_versione(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              listino_versione_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino_versione(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              listino_versione_id)
+                  );
+
+              -- ---------- anagrafiche.categorie_clienti_listini (chiave: listino_id) ----------
+              -- ⛔ Qui l'adattatore e' `_via_listino`, non `_via_listino_versione`:
+              --   la chiave e' il LISTINO, e le due sono entrambe bigint.
+              CREATE POLICY rls_categorie_clienti_listini_ef_whitelist
+                  ON anagrafiche.categorie_clienti_listini
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              listino_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              listino_id)
+                  );
+
+              COMMENT ON POLICY rls_listini_righe_ef_whitelist ON vendite.listini_righe IS
+                  'Perimetro emittente per le righe di listino — cioe'' per i PREZZI: rispecchia rls_listini_versioni_ef_whitelist risalendo da listino_versione_id. Slice 20260910-21..24.';
+              COMMENT ON POLICY rls_listini_righe_componenti_ef_whitelist ON vendite.listini_righe_componenti IS
+                  'Perimetro emittente per i componenti di riga di listino. ⚠️ La chiave e'' listino_versione_id, non una riga: questa tabella pende direttamente dalla versione. Slice 20260910-21..24.';
+              COMMENT ON POLICY rls_categorie_clienti_listini_ef_whitelist ON anagrafiche.categorie_clienti_listini IS
+                  'Perimetro emittente per l''aggancio categoria cliente - listino: risale da listino_id con fn_scope_ef_whitelist_via_listino, gia'' in servizio. ⚠️ Sta in anagrafiche ma e'' un satellite di vendite.listini: armare il listino e lasciare aperto chi lo aggancia sposterebbe solo il punto da cui si legge. Slice 20260910-21..24.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_categorie_clienti_listini_ef_whitelist ON anagrafiche.categorie_clienti_listini;
+              DROP POLICY IF EXISTS rls_listini_righe_componenti_ef_whitelist  ON vendite.listini_righe_componenti;
+              DROP POLICY IF EXISTS rls_listini_righe_ef_whitelist             ON vendite.listini_righe;

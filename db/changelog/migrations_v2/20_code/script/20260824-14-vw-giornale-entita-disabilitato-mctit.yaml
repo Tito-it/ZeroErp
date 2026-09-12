@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # NON FILTRARE E NON DIRE SONO DUE COSE DIVERSE
 #   script.vw_giornale_entita — colonna `disabilitato`
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.6
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.6
 #   Richiesta del backend, 2026-08-24. ⭐ E corregge una decisione presa qui.
 #
 # ── LA DECISIONE CHE ERA MEZZA GIUSTA ──────────────────────────────

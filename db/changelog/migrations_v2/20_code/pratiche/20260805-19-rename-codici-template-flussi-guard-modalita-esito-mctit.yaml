@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Rinomina a `E_*` dei 4 codici di trgfn_template_flussi_guard_modalita_esito
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15
+#   Brief: brief-db-codice-errore-strutturato.md §15
 #   Seed dei nuovi codici + ritiro dei vecchi: CSV (nessun changeSet, §15.4)
 #   Precedente della stessa famiglia: 20260805-15 (E_PREV_TRANSIZIONE_NON_AMMESSA)
 #

@@ -30,7 +30,7 @@ Obiettivi principali:
 
 ### Collocazione nel flusso di fatturazione
 
-1. **Acquisizione**: le attività arrivano da input manuali, sistemi esterni, motori di calcolo o letture; vengono registrate qui con `data_attivita`, `quantita`, riferimenti a `articolo_id`, `istanza_utility_id`, `billing_account_id` (opz.).
+1. **Acquisizione**: le attività arrivano da input manuali, sistemi esterni, motori di calcolo o letture; vengono registrate qui con `data_attivita`, `quantita`, riferimenti a `articolo_id`, `istanza_utility_id`, `billing_account_id` (**obbligatorio**).
 2. **Normalizzazione/validazione** (trigger): allineamento della competenza mensile, coerenze su sorgente, BA e istanza.
 3. **Approvazione**: il flag `approvato` abilita l’eleggibilità al prelievo.
 4. **Selezione per fatturazione**: il motore estrae le righe **non fatturate**, **non sospese**, **non posticipate** e **in competenza** (vedi paragrafo successivo).
@@ -64,7 +64,7 @@ Tipico filtro di eleggibilità per il motore:
 ### Campi chiave (uso applicativo)
 
 * **Identificazione & riferimenti**:
-  `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica), `area_geografica_id` (opz. area di fatturazione).
+  `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (**obbligatorio** — l'intestazione economica), `area_geografica_id` (opz. area di fatturazione).
   Con modello commessa attivo:
   `commessa_id` (testata), `commessa_attivita_id` (riga commessa).
 * **Dati attività**:
@@ -97,7 +97,8 @@ Tipico filtro di eleggibilità per il motore:
 * **FK principali**:
 
   * `articolo_id` → `catalogo.articoli`.
-  * `billing_account_id` → `anagrafiche.billing_account` (nullable, `ON DELETE SET NULL`).
+  * `billing_account_id` → `anagrafiche.billing_account` (**NOT NULL** dal 2026-09-10, `ON UPDATE CASCADE`).
+    ⚠️ Questa riga diceva «nullable, `ON DELETE SET NULL`»: **erano due cose false**. La nullabilità è caduta con il changeSet `20260910-25`; l'`ON DELETE SET NULL` non c'è mai stato sul vincolo vivo, che non dichiara nessuna azione di cancellazione.
   * `istanza_utility_id` → `anagrafiche.istanze_utilities`.
   * `sorgente_tipo_id` → `config.sorgenti`.
 * **Indici utili al motore**:
@@ -110,7 +111,8 @@ Tipico filtro di eleggibilità per il motore:
 * **Trigger**:
 
 * `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (obbligatoria, derivata da `posticipa_al` se assente), imposta `sorgente_riga` a `0` se `sorgente_tipo_id` è valorizzato e risolve `tipo_doc_fiscale_id`/`valuta_id` quando mancanti.
-  * `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` → **coerenze BA/istanza/articolo** (regole di dominio).
+  * `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` → **coerenza BA/istanza**: la riga e il suo billing account devono nominare la stessa istanza di utility.
+    🔴 Fino al 2026-09-10 **non validava niente**: usciva subito quando `commessa_attivita_id` era valorizzato, e quella colonna è obbligatoria — quindi l'uscita valeva per ogni riga. Corretto dal changeSet `20260910-26`.
   * `trg_attivita_fatturabili_a10_guard_commessa_ins_upd` → coerenza col segmento commessa (`commessa_id`/`commessa_attivita_id`).
   * `trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt` → **fail‑fast**: blocca update/delete se già collegate a fattura.
 

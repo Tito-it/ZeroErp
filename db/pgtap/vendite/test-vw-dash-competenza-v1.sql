@@ -50,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+SELECT plan(23);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -281,28 +281,40 @@ INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, valuta_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, data_insert)
+  commessa_id, commessa_attivita_id, data_insert,
+  -- ⭐ billing_account_id: NOT NULL dal changeSet 20260910-25. Si deriva
+  --   dalla COMMESSA, che e' la rotta portante (commessa_id NOT NULL ->
+  --   commesse.billing_account_id NOT NULL): la fixture non lo inventa.
+  billing_account_id)
 SELECT r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', 1,
        DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
        r.uom_id, r.valuta_id, 30.000000, r.tipo_doc_fiscale_id,
        (SELECT id FROM tmp_dc_commessa),
        (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A3_EMESSA'),
-       TIMESTAMPTZ '2080-01-05 10:00:00+00'
-FROM tmp_dc_refs r;
+       TIMESTAMPTZ '2080-01-05 10:00:00+00',
+       (SELECT c.billing_account_id FROM vendite.commesse c
+         WHERE c.id = (SELECT id FROM tmp_dc_commessa))
+       FROM tmp_dc_refs r;
 
 INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, valuta_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, fattura_riga_id, data_insert)
+  commessa_id, commessa_attivita_id, fattura_riga_id, data_insert,
+  -- ⭐ billing_account_id: NOT NULL dal changeSet 20260910-25. Si deriva
+  --   dalla COMMESSA, che e' la rotta portante (commessa_id NOT NULL ->
+  --   commesse.billing_account_id NOT NULL): la fixture non lo inventa.
+  billing_account_id)
 SELECT r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', 1,
        DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
        r.uom_id, r.valuta_id, 40.000000, r.tipo_doc_fiscale_id,
        (SELECT id FROM tmp_dc_commessa),
        (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A4_FATTURATA'),
        (SELECT id FROM tmp_dc_fattura_riga),
-       TIMESTAMPTZ '2080-03-15 10:00:00+00'
-FROM tmp_dc_refs r;
+       TIMESTAMPTZ '2080-03-15 10:00:00+00',
+       (SELECT c.billing_account_id FROM vendite.commesse c
+         WHERE c.id = (SELECT id FROM tmp_dc_commessa))
+       FROM tmp_dc_refs r;
 
 -- ============================================================
 -- 3-6) Stadi del funnel
@@ -526,6 +538,153 @@ SELECT ok(
     WHERE g.commessa_id = (SELECT id FROM tmp_dc_commessa)
       AND g.stadio = 'DA_EMETTERE'),
   '15. Gruppi: commessa_stato_descrizione decodificata; documento_id NULL sul gruppo sourceless (oneri), col riferimento che ripiega sulla commessa'
+);
+
+-- ============================================================
+-- 15-bis..quater) ⭐ IL DOCUMENTO TRATTENUTO DA UN LOTTO VIVO
+-- ============================================================
+-- ⛔ Perche' qui e non in un file suo: la riga di dashboard esiste solo con
+--   questa fixture (commessa + attivita + operatore + GUC), e un presidio che
+--   se la rifabbrica da zero sarebbe una seconda fixture che diverge.
+-- ⚠️ E vanno PRIMA del test 16, che azzera la GUC: dopo, la vista non rende
+--   righe e queste asserzioni passerebbero a vuoto.
+--
+-- ⭐ I tre test sono un verso e il suo contrario, e servono entrambi:
+--     · lotto VIVO      -> la riga si spegne e il conteggio la toglie;
+--     · lotto ANNULLATO -> la riga torna libera e il conteggio la riprende.
+--   Con il solo primo, un predicato che blocca QUALUNQUE documento con un esito
+--   passerebbe — ed e' l'errore che `ultimo_esito` fa davvero: su un lotto
+--   annullato direbbe «bloccato» per un documento fatturabile.
+--   Brief: brief-db-documento-trattenuto-da-un-lotto-vivo.md (T-2, T-3)
+
+-- La riga da trattenere, con le chiavi con cui il riepilogo la raggruppa.
+-- ⚠️ ORDER BY prima del LIMIT: senza, quale gruppo esca dipende dal planner.
+CREATE TEMP TABLE tmp_dc_trat AS
+SELECT g.gruppo_key, g.competenza_mese, g.stadio, g.emittente_soggetto_ruolo_id
+  FROM vendite.vw_dash_competenza_gruppi g
+ WHERE g.commessa_id = (SELECT id FROM tmp_dc_commessa)
+   AND g.stadio = 'DA_EMETTERE'
+ ORDER BY g.gruppo_key
+ LIMIT 1;
+
+-- Un lotto VIVO che tiene quel documento. ⛔ `codice_interno`, mai un id.
+CREATE TEMP TABLE tmp_dc_lotto_vivo AS
+WITH ins AS (
+  INSERT INTO vendite.fatturazione_lotti (
+    codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
+    stato_doc_fiscale_id, meta)
+  SELECT 'PGTAP-DC-TRAT-' || substr(md5(clock_timestamp()::text), 1, 8),
+         t.competenza_mese, r.tipo_doc_fiscale_id, r.ef_a_sr,
+         (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT'),
+         jsonb_build_object('test_scope','pgtap_dash_competenza')
+    FROM tmp_dc_refs r, tmp_dc_trat t
+  RETURNING id)
+SELECT id FROM ins;
+
+INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
+SELECT (SELECT id FROM tmp_dc_lotto_vivo), t.gruppo_key FROM tmp_dc_trat t;
+
+-- ⭐ Esito COMPLETED di proposito: e' il caso in cui `ultimo_esito` direbbe
+--   «libero» e il documento e' invece trattenuto. Il verso che nessuno vedeva.
+INSERT INTO vendite.fatturazione_lotti_esiti (lotto_id, gruppo_key, stato_esecuzione)
+SELECT (SELECT id FROM tmp_dc_lotto_vivo), t.gruppo_key, 'COMPLETED' FROM tmp_dc_trat t;
+
+SELECT is(
+  (SELECT g.emissione_blocco_reason || '|' || g.emissione_blocco_lotto_codice
+     FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+    WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio),
+  'TRATTENUTO_DA_LOTTO|' || (SELECT l.codice FROM vendite.fatturazione_lotti l
+                              WHERE l.id = (SELECT id FROM tmp_dc_lotto_vivo)),
+  '15-bis. la riga si spegne col motivo e nomina il lotto che la trattiene (esito COMPLETED, lotto VIVO)'
+);
+
+-- ⭐ rev 2026-09-09 — IL CONTEGGIO SI LEGGE DOVE IL NUMERO VIVE.
+--   Prima questa asserzione stava su vw_dash_competenza_gruppi_riepilogo, che
+--   pero' NON e' la card: quella vista non la legge nessuno (misurato il
+--   2026-09-09, zero consumatori) ed e' stata ritirata. La card e'
+--   `vw_dash_competenza_mensile`, e il numero e' `n_attivita`.
+-- ⛔ E' la §12.5.3 applicata a un numero invece che a un pulsante: si consegna
+--   dove il numero VIENE LETTO, non dove parlerebbe della stessa cosa.
+-- ⭐ Le due meta' contano entrambe: il numero CALA e la riga RESTA. Con una
+--   `WHERE` al posto del `FILTER` il bucket sparirebbe, e sparirebbe con lui
+--   la dichiarazione che spiega il calo.
+SELECT results_eq(
+  $$ SELECT count(*)::int AS righe,
+            COALESCE(sum(m.n_attivita_trattenute), 0)::int AS trattenute
+       FROM vendite.vw_dash_competenza_mensile m, tmp_dc_trat t
+      WHERE m.competenza_mese = t.competenza_mese AND m.stadio = t.stadio $$,
+  $$ VALUES (1, 1) $$,
+  '15-ter. la card ESCLUDE la trattenuta e la DICHIARA, e il bucket non sparisce'
+);
+
+-- ============================================================
+-- 15-quinquies) ⭐ Il verdetto e' SPENTO su cio' che e' gia' fatturato
+-- ============================================================
+-- ⛔ E' il difetto §6.3 del brief: un documento appena fatturato ha esito
+--   COMPLETED sul PROPRIO lotto, che resta DRAFT fino a «Rendi definitive».
+--   Un verdetto che guardasse l'esito invece della CLASSE lo direbbe
+--   «trattenuto» — e lo toglierebbe dai conteggi dei FATTURATI.
+-- ⭐ Non serve nessun filtro sullo stadio: la classe TRATTENUTA vuole
+--   NON_EMESSA + APPROVATA, quindi su FATTURATA non puo' accendersi.
+SELECT is(
+  (SELECT count(*)::int
+     FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.stadio <> 'DA_EMETTERE' AND g.emissione_blocco_reason IS NOT NULL),
+  0,
+  '15-quinquies. il verdetto e'' spento fuori da DA_EMETTERE: un documento gia'' fatturato non e'' «trattenuto»'
+);
+
+-- ============================================================
+-- 15-sexies) ⭐ V-1: il lotto del TENTATIVO esce con il suo STATO
+-- ============================================================
+-- ⛔ Domanda di Tid: «la colonna mostra il lotto anche se e' annullato». Il
+--   dato non si toglie — e' l'unica traccia che spieghi perche' il documento
+--   e' tornato disponibile — ma va detto SE quel tentativo conta ancora.
+-- ⚠️ `ultimo_lotto_pre_fiscale` e' il flag su cui il frontend spegne il GESTO:
+--   testo si', pulsante no.
+-- ⚠️ Sta PRIMA dell'annullamento del 15-quater, e non e' un caso: la
+--   transizione ANNULLATA -> DRAFT non esiste (guard di stato), quindi i casi
+--   «lotto vivo» vanno tutti prima. L'ordine di questo blocco e' portante.
+SELECT results_eq(
+  $$ SELECT g.ultimo_lotto_id = (SELECT id FROM tmp_dc_lotto_vivo),
+            g.ultimo_lotto_stato::text,
+            g.ultimo_lotto_pre_fiscale
+       FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+      WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio $$,
+  $$ VALUES (true, 'DRAFT', true) $$,
+  '15-sexies. il lotto del tentativo esce con identita'' e STATO: si sa se conta ancora'
+);
+
+-- ⭐ IL VERSO OPPOSTO. Annullato il lotto, il documento torna fatturabile: e'
+--   il caso in cui `ultimo_esito` (rimasto COMPLETED) non cambia di una virgola
+--   e il verdetto invece si ribalta.
+UPDATE vendite.fatturazione_lotti
+   SET stato_doc_fiscale_id = (SELECT s.id FROM config.stati_doc_fiscale s
+                                WHERE s.codice_interno = 'ANNULLATA')
+ WHERE id = (SELECT id FROM tmp_dc_lotto_vivo);
+
+SELECT ok(
+  (SELECT g.emissione_blocco_reason IS NULL
+     FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+    WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio),
+  '15-quater. annullato il lotto la riga torna libera: il verdetto e'' lo STATO, non l''esito'
+);
+
+-- ============================================================
+-- 15-septies) ⭐ E il contrario: annullato, il tentativo NON conta piu'
+-- ============================================================
+-- ⛔ Col solo 15-sexies passerebbe anche una vista che dice sempre «in corso»:
+--   e' il caso del collaudo, dove tre righe mostravano un lotto ANNULLATO come
+--   se fosse ancora vivo.
+-- ⚠️ Il lotto e' gia' annullato dal 15-quater: non si ri-annulla e soprattutto
+--   non si torna indietro — la transizione ANNULLATA -> DRAFT non esiste.
+SELECT results_eq(
+  $$ SELECT g.ultimo_lotto_stato::text, g.ultimo_lotto_pre_fiscale,
+            g.ultimo_lotto_codice IS NOT NULL
+       FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+      WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio $$,
+  $$ VALUES ('ANNULLATA', false, true) $$,
+  '15-septies. annullato: pre_fiscale falso (il gesto si spegne) ma il codice RESTA (la traccia non si perde)'
 );
 
 -- ============================================================

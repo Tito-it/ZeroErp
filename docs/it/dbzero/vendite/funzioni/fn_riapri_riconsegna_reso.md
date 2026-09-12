@@ -93,16 +93,19 @@ BEGIN
 
         -- Gate dormiente: oggi nessun motivo, domani il divieto NC.
         v_motivi := script.fn_check_rinuncia_reversibile(v_riga.resi_riga_id);
-        IF jsonb_array_length(v_motivi) > 0 THEN
-            PERFORM script.fn_log_and_raise_error(
-                'vendite','fn_riapri_riconsegna_reso',
-                v_motivi -> 0 ->> 'codice',
-                jsonb_build_object('reso_id', p_reso_id,
-                                   'resi_riga_id', v_riga.resi_riga_id,
-                                   'motivi', v_motivi),
-                NULL::uuid,
-                v_riga.resi_riga_id::text);
-        END IF;
+        -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+        --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+        --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi
+        --   (il backend puo' mostrarli tutti anche se la frase ne nomina uno).
+        -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+        --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'vendite', 'fn_riapri_riconsegna_reso',
+            v_motivi,
+            NULL,
+            NULL::uuid,
+            jsonb_build_object('reso_id',      p_reso_id,
+                               'resi_riga_id', v_riga.resi_riga_id));
 
         -- Quanto riaprire: tutto, oppure la quota richiesta troncata
         -- al totale rinunciato.

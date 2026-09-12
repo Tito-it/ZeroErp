@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Pubblica la BOZZA del Preventivo scritta dal changeSet 20260816-01.
 #   Richiesta del BE del 2026-08-16; sede DB del cantiere:
-#   docs/it/dev/work-in-progress/brief-db-template-preventivo-slot-indirizzi.md
+#   brief-db-template-preventivo-slot-indirizzi.md
 #
 #   `valido_dal = current_date`, `valido_al = NULL`. La versione precedente
 #   passa a OBSOLETA e resta **ri-renderizzabile**: i preventivi gia' generati

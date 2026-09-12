@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-4 (pezzo 4 di 5) — IL PERIMETRO SULLE VERSIONI DI LISTINO.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, sezione DB-4 (R-8)
+#
+# ⭐ E' QUESTA la tabella che il presidio nomina.
+# `dbops.vw_processi_dominio_senza_difesa` elenca oggi:
+#     chiusura_scadenze_daily | vendite.listini_versioni | policy RLS e write-guard
+# ⇒ E' il bersaglio che la chiusura scadenze tocca ogni notte cambiando lo stato
+# gestionale delle versioni scadute. Senza policy, quel lavoro non ha un
+# perimetro nemmeno quando gli si da' un'identita'.
+#
+# ── ⚠️ NON HA UNA COLONNA EMITTENTE, E NON DEVE AVERLA ──────────────
+#   Il percorso e' `listino_id -> listini.emittente_soggetto_ruolo_id`, gia'
+#   dichiarato in `dbops.processi_bersagli` con `emittente_via = 'padre'`.
+#   ⛔ Aggiungere qui una colonna emittente sarebbe una SECONDA scrittura dello
+#   stesso fatto: una versione non puo' appartenere a un'azienda diversa dal
+#   proprio listino, e due scritture prima o poi dissentono. Si passa dal padre,
+#   come `vendite.fatture_scadenze` passa dalla fattura.
+#
+# ── ⭐ IL PADRE E' `NOT NULL`, E CAMBIA IL COSTO DELLA SCELTA ────────
+#   `listini_versioni.listino_id` e' NOT NULL: non esiste una versione orfana,
+#   quindi il percorso non ha il buco tipico delle figlie facoltative — dove
+#   «padre assente» diventa «nessun perimetro» e la policy si spegne da sola.
+#
+# ── ⚠️ `ENABLE` SENZA `FORCE` ───────────────────────────────────────
+#   Stessa ragione del changeSet -04: l'owner e' `titodb`, e un FORCE
+#   romperebbe le SECURITY DEFINER che leggono fuori dalla row security.
+#
+# ── ⚠️ LA POLICY LEGGE UNA TABELLA CHE DAL -04 HA LA RLS ────────────
+#   `fn_scope_ef_whitelist_via_listino` e' `SECURITY INVOKER` e legge
+#   `vendite.listini`, che dal changeSet -04 e' protetta. Non e' un problema, ed
+#   e' bene dire perche': la domanda che pone e' «questo utente puo' vedere il
+#   listino padre?», e leggerla filtrata da' esattamente quella risposta. Se il
+#   padre non e' visibile, la figlia non deve esserlo — il fail-closed e'
+#   corretto **per costruzione**, non per fortuna.
+#   ⛔ Il caso opposto — il guard di SCRITTURA, che deve sapere di chi e' la riga
+#   anche quando non la vede — e' coperto dalla SECURITY DEFINER del -03.
+#
+# Dipendenze: script.fn_scope_ef_whitelist_via_listino (changeSet -02).
+# Verifica: db/pgtap/rls/test-rls-listini-ef-whitelist-write.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260905-05-enable-rls-listini-versioni-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260905-05-create-policy-rls-listini-versioni-ef-whitelist
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Policy rls_listini_versioni_ef_whitelist su vendite.listini_versioni (FOR ALL,
+        scope emittente operatore via fn_scope_ef_whitelist_via_listino, cioe' passando
+        dal listino padre) + ENABLE ROW LEVEL SECURITY (NO FORCE). E' il bersaglio che
+        dbops.vw_processi_dominio_senza_difesa nomina per chiusura_scadenze_daily.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_versioni
+                columnName: listino_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_listino'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_listini_versioni_ef_whitelist
+                  ON vendite.listini_versioni;
+              CREATE POLICY rls_listini_versioni_ef_whitelist
+                  ON vendite.listini_versioni
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          listino_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_listino(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          listino_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_listini_versioni_ef_whitelist
+                  ON vendite.listini_versioni IS
+                  'RLS: l''operatore vede e scrive solo le versioni dei listini il cui '
+                  'emittente e'' nella sua whitelist, passando dal LISTINO PADRE '
+                  '(fn_scope_ef_whitelist_via_listino -> adapter SR -> canonica). '
+                  '⛔ Nessuna colonna emittente su questa tabella: sarebbe una seconda '
+                  'scrittura dello stesso fatto, e una versione non puo'' appartenere a '
+                  'un''azienda diversa dal proprio listino. ⭐ listino_id e'' NOT NULL, '
+                  'quindi il percorso non ha il buco delle figlie facoltative, dove '
+                  '«padre assente» diventa «nessun perimetro». Gemella di '
+                  'rls_fatture_scadenze_ef_whitelist. rev 2026-09-05.';
+
+              ALTER TABLE vendite.listini_versioni ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_listini_versioni_ef_whitelist
+                  ON vendite.listini_versioni;

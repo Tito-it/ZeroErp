@@ -34,8 +34,12 @@ Indice test eseguiti:
 23) VenditePipelineRepositoryUnitTests.test_list_lotto_task_runs_maps_rows
 24) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_chiama_la_fn_e_ritorna_le_coppie
 25) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_casta_id_a_intero
+26) VenditePipelineRepositoryUnitTests.test_gruppi_di_commessa_decodifica_il_jsonb_stringa
+27) VenditePipelineRepositoryUnitTests.test_gruppi_di_commessa_forma_inattesa_ripiega_a_vuoto
+28) VenditePipelineRepositoryUnitTests.test_log_pipeline_fase_passa_la_gruppo_key_per_nome
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 from unittest import TestCase
@@ -224,7 +228,21 @@ class VenditePipelineRepositoryUnitTests(TestCase):
     def test_get_lotto_segnalazioni_summary_maps_counts(self, mocked_cursor_factory):
         cursor = MagicMock()
         cursor.__enter__.return_value = cursor
-        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7)
+        # ⭐ I NOMI vengono dal cursore (`row_to_dict`), e qui il cursore finto
+        #    li dichiara nell'ORDINE della SELECT: e' il contratto che il test
+        #    presidia. Una colonna aggiunta alla SELECT e non al `TypedDict` —
+        #    o rinominata — fa divergere il dict atteso, invece di uscire a
+        #    video con un numero plausibile sotto il nome sbagliato.
+        cursor.description = [
+            SimpleNamespace(name=nome) for nome in (
+                "fatture_critical_count", "fatture_warning_count",
+                "lotto_critical_count", "lotto_warning_count", "lotto_info_count",
+                "fatture_stato_esecuzione_errore_count",
+                "documenti_bloccanti_count", "documenti_presi_in_carico_count",
+                "critiche_giro_count", "esiti_stato_esecuzione_errore_count",
+            )
+        ]
+        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7, 2, 4, 1, 3)
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
@@ -239,10 +257,22 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 "lotto_warning_count": 4,
                 "lotto_info_count": 5,
                 "fatture_stato_esecuzione_errore_count": 7,
+                # ⭐ I GESTI, non gli allarmi: due documenti da togliere su
+                #    quattro presi in carico, piu' una critica del GIRO che
+                #    non si toglie in nessun modo.
+                "documenti_bloccanti_count": 2,
+                "documenti_presi_in_carico_count": 4,
+                "critiche_giro_count": 1,
+                # ⭐ Il DECIMO (D2, `20260912-16`): tre documenti presi in carico
+                #    il cui ultimo esito e' ERRORE. Questo entra nel verdetto.
+                "esiti_stato_esecuzione_errore_count": 3,
             },
         )
         execute_sql, execute_params = cursor.execute.call_args.args
         self.assertIn("fn_get_lotto_segnalazioni_summary", execute_sql)
+        # ⛔ La colonna si chiede PER NOME: un lettore posizionale sbagliato non
+        #    protesta, mostra numeri plausibili e falsi.
+        self.assertIn("esiti_stato_esecuzione_errore_count", execute_sql)
         self.assertEqual(execute_params, [10])
 
     # Scopo: Verifica il caso `test_get_pipeline_id_for_step_returns_id_when_found`.
@@ -580,6 +610,18 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 # ⚠️ 15a colonna della SELECT: il bersaglio. Come stringa,
                 #    perche' da un cursore RAW psycopg NON decodifica i jsonb.
                 '[{"id": "835", "type": "FATTURA"}]',        # 14 target
+                # ⛔ Sul ramo FATTURA la `gruppo_key` e' NULL per costruzione:
+                #    una bozza puo' coprire piu' documenti, quindi una
+                #    segnalazione appesa alla fattura non ne nomina uno — e
+                #    sceglierne uno sarebbe una scommessa.
+                None,                               # 15 gruppo_key
+                # ⚠️ Le due colonne del blocco restano NULL sulle righe senza
+                #    documento: il `CASE` non chiama nemmeno la check.
+                None,                               # 16 uscita_blocco_reason
+                None,                               # 17 uscita_blocco_reason_key
+                # ⚠️ Senza chiave non c'e' riferimento: e' lo STESSO NULL, non
+                #    un'identita' che non si e' risolta.
+                None,                               # 18 riferimento
             ),
         ]
         mocked_cursor_factory.return_value = cursor
@@ -603,13 +645,26 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         cursor = MagicMock()
         cursor.__enter__.return_value = cursor
         cursor.fetchall.return_value = [
+            # ⚠️ Riga del GIRO: nessun bersaglio, nessun documento e — di
+            #    conseguenza — nessun motivo di blocco, perche' il `CASE` non
+            #    chiama nemmeno la check, ne' riferimento leggibile, perche'
+            #    senza chiave non c'e' niente da nominare. Le QUATTRO code sono
+            #    `None` insieme, e non e' una coincidenza: senza documento il
+            #    verbo non ha oggetto e l'etichetta non ha soggetto.
             ("LOTTO:7", "LOTTO", None, "C", "Errore pipeline", "E_PIPELINE",
-             "Numerazione", None, None, None, False, True, 1, 0, None),
+             "Numerazione", None, None, None, False, True, 1, 0, None,
+             None, None, None, None),
         ]
         mocked_cursor_factory.return_value = cursor
 
         righe, _, _ = VenditePipelineRepository().list_lotto_segnalazioni(lotto_id=6260)
         self.assertIsNone(righe[0]["target"])
+        # ⭐ E la riga dichiara di essere del GIRO: `gruppo_key` a `None` NON e'
+        #    un buco — e' la meta' sana del vocabolario, ed e' cio' che il
+        #    frontend legge per spegnere «togli dal giro» col motivo giusto.
+        self.assertIsNone(righe[0]["gruppo_key"])
+        self.assertIsNone(righe[0]["uscita_blocco_reason"])
+        self.assertIsNone(righe[0]["riferimento"])
 
     # Scopo: Verifica che list_lotto_task_runs mappi correttamente righe runtime task da DB.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
@@ -713,3 +768,59 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         VenditePipelineRepository().popola_fatture_rettifiche("7701")
 
         self.assertEqual(cursor.execute.call_args.args[1], [7701])
+
+    # 26) 🔴 IL `jsonb` ARRIVA COME STRINGA, e una stringa e' ITERABILE.
+    #
+    #     Il difetto, misurato con una chiamata vera il 2026-09-08: senza
+    #     decodifica il chiamante riceve `'["ORDINE_VENDITA:01a0…"]'` e il ciclo
+    #     «una riga per documento» gira una volta per CARATTERE — cinquantacinque
+    #     segnalazioni critiche su un lotto, una per lettera, senza nessun errore.
+    #
+    # ⛔ E i mock non lo vedono: restituiscono liste. Questo test esiste per
+    #    riprodurre la forma che il DRIVER consegna davvero, non quella comoda.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_gruppi_di_commessa_decodifica_il_jsonb_stringa(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = ('["ORDINE_VENDITA:aaa", "ORDINE_VENDITA:bbb"]',)
+        mocked_cursor_factory.return_value = cursor
+
+        gruppi = VenditePipelineRepository().gruppi_di_commessa_nel_lotto(1, 2)
+
+        self.assertEqual(gruppi, ["ORDINE_VENDITA:aaa", "ORDINE_VENDITA:bbb"])
+
+    # 27) ⛔ DECODIFICARE NON BASTA: un JSON scalare resta una stringa iterabile
+    #     e rifarebbe lo stesso danno. Sulla forma inattesa si ripiega a `[]`, che
+    #     il chiamante legge come «nessun proprietario» e traduce in UNA riga
+    #     senza `gruppo_key` — cioe' una segnalazione che BLOCCA il giro.
+    # ⚠️ E' il verso sicuro, ed e' una scelta: un contratto rotto deve fermare il
+    #    lotto, non inventargli documenti.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_gruppi_di_commessa_forma_inattesa_ripiega_a_vuoto(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = ('"ORDINE_VENDITA:aaa"',)
+        mocked_cursor_factory.return_value = cursor
+
+        self.assertEqual(VenditePipelineRepository().gruppi_di_commessa_nel_lotto(1, 2), [])
+
+    # 28) ⚠️ PARAMETRI PER NOME, e non e' estetica: `p_gruppo_key` e' l'OTTAVO e
+    #     il settimo (`p_error_code`) qui non si passa — posizionalmente non si
+    #     puo' saltare un buco. Per nome il default del settimo resta quello che
+    #     era, e il comportamento storico non cambia.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_log_pipeline_fase_passa_la_gruppo_key_per_nome(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        mocked_cursor_factory.return_value = cursor
+
+        VenditePipelineRepository().log_pipeline_fase(
+            lotto_id=1, stato_doc_fiscale_id=2, fase="Errore pipeline",
+            status="C", messaggio="ko", meta=None, gruppo_key="ORDINE_VENDITA:aaa",
+        )
+
+        sql, params = cursor.execute.call_args.args[0], cursor.execute.call_args.args[1]
+        self.assertIn("p_gruppo_key           => %s", sql)
+        # ⛔ `p_error_code` NON si passa: deve restare al suo default.
+        self.assertNotIn("p_error_code", sql)
+        self.assertEqual(params[-1], "ORDINE_VENDITA:aaa")

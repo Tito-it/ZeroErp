@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §3.2 (fase 2) — il canale
+# PGAGENT del registro dei run prende l'attore.
+#
+# Corpo preso dalla doc auto-gen (l'oggetto vivo).
+#
+# ⭐ LA DERIVAZIONE DAL JOBNAME, ed e' il motivo per cui i 12 job pgAgent
+# diventano conformi senza toccare NIENTE in 85_pgagent — una fase che in CI
+# non gira mai (MARK_RAN) e che quindi si collauda solo a mano.
+#   I wrapper maintenance.proc_*_job chiamano con
+#       p_jobname := 'automations_tx_id'
+#   che e' ESATTAMENTE la riga seedata in dbops.processi. Se il chiamante non
+#   passa il codice e il jobname corrisponde a un processo registrato, si usa
+#   quello.
+#
+# ⚠️ Ed e' lecito perche' QUI la derivazione e' COMPLETA: nel dominio di questa
+# funzione — i job pgAgent — il jobname E' l'identita' del processo. Dove non
+# lo e', non si deriva: script.fn_job_run_start riceve nomi come
+# «run_fatturazione_batch:immediata», con la corsia attaccata, e li' il codice
+# lo passa il chiamante. Una derivazione incompleta e' peggio di nessuna
+# derivazione, perche' copre una parte dei casi e tace sull'altra.
+# ⇒ Un jobname che non corrisponde a nessun processo resta NULL, e la vista
+#   dbops.vw_run_senza_attore lo dice. Niente e' mascherato.
+#
+# ⛔ L'ADVISORY LOCK NON SI ALLINEA, e correggo qui il brief (§3.2, «si allinea
+# mentre la si tocca»). Il ragionamento era superficiale: le due forme — a 1 e
+# a 2 argomenti — occupano spazi di lock DISTINTI in PostgreSQL, e questo tiene
+# INDIPENDENTI i due canali (pgAgent e headless). Allineare non sarebbe
+# «coerenza»: accoppierebbe due canali che oggi non si bloccano a vicenda per
+# costruzione, e in piu' costringerebbe a stringere il bigint di p_lock_key in
+# un int. Nessun vantaggio, due rischi. Resta com'e'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260904-18-update-fn-run-and-log-attore-mctit.yaml
+
+  - changeSet:
+      id: 20260904-18-update-fn-run-and-log-attore
+      author: mctit
+      failOnError: true
+      comment: >
+        maintenance.fn_run_and_log prende p_processo_codice e p_auth_user_id, e
+        deriva il codice dal jobname quando non passato (per i job pgAgent il
+        jobname E' il processo). DROP della firma a 4 argomenti per non
+        lasciare un overload. Advisory lock invariato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: maintenance, tableName: job_run_log, columnName: processo_codice }
+            - tableExists:
+                { schemaName: dbops, tableName: processi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La vecchia firma a 4 argomenti se ne va: restando, i wrapper
+              -- proc_*_job continuerebbero a risolverla e a scrivere run senza
+              -- attore. I 12 wrapper chiamano con argomenti NOMINATI, quindi
+              -- risolvono la firma nuova senza modifiche.
+              DROP FUNCTION IF EXISTS maintenance.fn_run_and_log(text, text, text, bigint);
+
+              CREATE OR REPLACE FUNCTION maintenance.fn_run_and_log(
+                  p_jobname         maintenance.job_run_log.jobname%TYPE,
+                  p_stepname        maintenance.job_run_log.stepname%TYPE,
+                  p_sql             text,
+                  p_lock_key        bigint DEFAULT NULL,
+                  p_processo_codice maintenance.job_run_log.processo_codice%TYPE
+                                        DEFAULT NULL,
+                  p_auth_user_id    maintenance.job_run_log.auth_user_id%TYPE
+                                        DEFAULT NULL)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+                DECLARE
+                  v_id         maintenance.job_run_log.id%TYPE;
+                  v_rows       maintenance.job_run_log.rows_affected%TYPE := 0;
+                  v_locked     boolean := false;
+                  -- Attore risolto: passato dal chiamante, oppure derivato dal
+                  -- jobname (vedi intestazione: qui la derivazione e' completa).
+                  v_processo   maintenance.job_run_log.processo_codice%TYPE;
+
+                  -- diagnosi errori
+                  v_errmsg     maintenance.job_run_log.message%TYPE;
+                  v_errdetail  text;
+                  v_errhint    text;
+                  v_errcontext text;
+                  v_sqlstate   maintenance.job_run_log.error_code%TYPE;
+                BEGIN
+                  -- Sotto-select scalare, non SELECT INTO: senza righe ritorna
+                  -- NULL senza azzerare nulla di gia' calcolato.
+                  v_processo := COALESCE(
+                      p_processo_codice,
+                      (SELECT pr.codice
+                         FROM dbops.processi pr
+                        WHERE pr.codice = p_jobname)
+                  );
+
+                  -- lock opzionale per evitare overlap
+                  -- ⚠️ Forma a UN argomento, invariata di proposito: e' uno
+                  --   spazio di lock distinto da quello di
+                  --   script.fn_job_run_start, e i due canali restano
+                  --   indipendenti (vedi intestazione).
+                  IF p_lock_key IS NOT NULL THEN
+                    v_locked := pg_try_advisory_lock(p_lock_key);
+                    IF NOT v_locked THEN
+                      -- L'attore va scritto anche sulla riga di skip: senza,
+                      -- ogni sovrapposizione lascerebbe un run senza attore.
+                      INSERT INTO maintenance.job_run_log
+                          (jobname, stepname, ok, message, processo_codice, auth_user_id)
+                      VALUES (p_jobname, p_stepname, TRUE, 'skip: another run in progress',
+                              v_processo, p_auth_user_id);
+                      RETURN;
+                    END IF;
+                  END IF;
+
+                  INSERT INTO maintenance.job_run_log
+                      (jobname, stepname, processo_codice, auth_user_id)
+                  VALUES (p_jobname, p_stepname, v_processo, p_auth_user_id)
+                  RETURNING id INTO v_id;
+
+                  BEGIN
+                    EXECUTE p_sql;
+                    GET DIAGNOSTICS v_rows = ROW_COUNT;
+
+                    UPDATE maintenance.job_run_log
+                      SET ended_at      = clock_timestamp(),
+                          ok            = TRUE,
+                          rows_affected = v_rows,
+                          message       = 'done'
+                    WHERE id = v_id;
+
+                    IF v_locked THEN
+                      PERFORM pg_advisory_unlock(p_lock_key);
+                    END IF;
+
+                  EXCEPTION WHEN OTHERS THEN
+                    -- cattura dettagli dal frame eccezione
+                    GET STACKED DIAGNOSTICS
+                      v_errmsg     = MESSAGE_TEXT,
+                      v_errdetail  = PG_EXCEPTION_DETAIL,
+                      v_errhint    = PG_EXCEPTION_HINT,
+                      v_errcontext = PG_EXCEPTION_CONTEXT,
+                      v_sqlstate   = RETURNED_SQLSTATE;
+
+                    UPDATE maintenance.job_run_log
+                      SET ended_at     = clock_timestamp(),
+                          ok           = FALSE,
+                          message      = v_errmsg,
+                          error_code   = v_sqlstate,
+                          error_detail = coalesce(v_errdetail,'') ||
+                                          CASE WHEN v_errhint IS NOT NULL THEN E'\nHINT: '||v_errhint ELSE '' END ||
+                                          CASE WHEN v_errcontext IS NOT NULL THEN E'\nCONTEXT: '||v_errcontext ELSE '' END
+                    WHERE id = v_id;
+
+                    IF v_locked THEN
+                      PERFORM pg_advisory_unlock(p_lock_key);
+                    END IF;
+
+                    RAISE;  -- lascio propagare
+                  END;
+                END;
+              $function$;
+
+              -- Tipi SCIOLTI: PostgreSQL risolve i %TYPE alla CREATE, e
+              -- pg_proc conserva i tipi reali.
+              COMMENT ON FUNCTION maintenance.fn_run_and_log(
+                  text, text, text, bigint, text, integer)
+              IS 'Esegue p_sql registrandone l''esito su maintenance.job_run_log, con advisory lock anti-overlap opzionale. Canale PGAGENT (origine default). Rev 2026-09-04: prende p_processo_codice (l''ATTORE, hard FK verso dbops.processi) e p_auth_user_id, scritti su entrambi i rami — anche sulla riga di «skip». ⭐ Se il codice non e'' passato lo DERIVA dal jobname: per i job pgAgent il jobname E'' il processo (i wrapper proc_*_job passano gia'' esattamente il codice seedato), quindi i 12 job diventano conformi senza toccare 85_pgagent. Un jobname che non corrisponde a nessun processo resta NULL e finisce in dbops.vw_run_senza_attore: niente e'' mascherato. ⛔ L''advisory lock resta alla forma a UN argomento: e'' uno spazio di lock distinto da quello di script.fn_job_run_start, e i due canali restano indipendenti. Brief: brief-db-processi-automatici-identita-e-perimetro §3.2.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS maintenance.fn_run_and_log(
+                  text, text, text, bigint, text, integer);

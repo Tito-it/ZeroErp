@@ -23,9 +23,16 @@ Serve a governare in modo configurabile:
 
 * Chiave logica unica: `pipeline_id + task_code`.
 * `resume_mode` ammessi:
-  * `RESET_STEP`
-  * `RESUME_STEP`
-  * `RESUME_TASK`
+  * `RESET_STEP` — la corsa ferma non riprende: serve un reset (`RESET_REQUIRED`)
+  * `RESUME_TASK` — la corsa `IN_ESECUZIONE`/`ERRORE` riprende (`RESUME`)
+  * ⛔ `RESUME_STEP` è stato **ritirato il 12-09-2026** (`00_schema/20260912-32`):
+    il resolver lo trattava come `RESUME_TASK` e nessuno lo implementava — una
+    distinzione senza differenza. La «ripresa a livello di step» (a valle di un
+    task eseguito in questo giro nessun task si salta) è una regola
+    dell'**orchestratore** (`PipelineStepExecutor`), non una policy per task: la
+    domanda «qualcosa a monte è stato eseguito?» la sa solo lui. Il CHECK respinge
+    il valore (pgTAP `test-fatturazione-pipeline-task-runtime` 19). Brief:
+    `brief-db-rilancio-step-non-rivede-le-proprie-commesse` §10.3
 * `attivo=true` abilita l'applicazione della policy nel runner.
 
 ---

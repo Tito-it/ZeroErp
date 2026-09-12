@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unit TemplateService. Mocka DocumentiRepository (via
-#        init param) e PermissionResolver.get_emittenti_ids (via patch).
+#        init param) e PermissionResolver.get_emittenti_pk_ids (via patch).
 #        Verifica:
 #        - scope emittente: admin globale -> None, operatore -> lista,
 #          user None/non auth -> lista vuota (no leak);
@@ -43,7 +43,7 @@ def _make_user(*, is_authenticated: bool = True) -> Any:
 class TemplateServiceListTests(SimpleTestCase):
     # 0. operatore -> emittente_ids_scope = lista.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11, 22],
     )
     def test_list_templates_passes_emittenti_ids_for_operator(self, _mock) -> None:
@@ -60,7 +60,7 @@ class TemplateServiceListTests(SimpleTestCase):
 
     # 1. admin globale -> emittente_ids_scope = None (vede tutto).
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_list_templates_admin_globale_passes_none(self, _mock) -> None:
@@ -92,7 +92,7 @@ class TemplateServiceListTests(SimpleTestCase):
 class TemplateServiceGetTemplateTests(SimpleTestCase):
     # 3. row None -> E_DOCUMENTI_NOT_FOUND.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11],
     )
     def test_get_template_not_found_raises(self, _mock) -> None:
@@ -118,7 +118,7 @@ class TemplateServiceGetTemplateTests(SimpleTestCase):
 class TemplateServiceVersioniTests(SimpleTestCase):
     # 5. list_versioni: template fuori scope (get_template -> None) -> 404.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11],
     )
     def test_list_versioni_404_if_template_invisible(self, _mock) -> None:
@@ -133,7 +133,7 @@ class TemplateServiceVersioniTests(SimpleTestCase):
 
     # 6. stato versione fuori whitelist -> E_DOCUMENTI_VALIDATION.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_list_versioni_invalid_stato_raises(self, _mock) -> None:
@@ -147,7 +147,7 @@ class TemplateServiceVersioniTests(SimpleTestCase):
 
     # 7. get_versione: template visibile + versione None -> 404 sulla versione.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_get_versione_404_if_versione_missing(self, _mock) -> None:

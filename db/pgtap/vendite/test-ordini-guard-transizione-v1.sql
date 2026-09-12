@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_ordini_guard_transizione (+ trigger)
 -- ------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-ordini-azioni-data-driven.md
+-- Brief: brief-ordini-azioni-data-driven.md
 -- Enforcement DB-first del grafo transizioni stato ordine letto da
 -- config.transizioni_stati_ordini.
 -- Indice test (1..6):
@@ -38,7 +38,7 @@
 -- controlli che devono impedirla. Il test segue la decisione nuova e diventa
 -- piu' forte: non basta che l'annullamento sia ammesso, deve essere ammesso
 -- SOLO quando non c'e' gia' qualcosa a valle.
--- Brief: docs/it/dev/work-in-progress/brief-db-vie-uscita-operatore.md
+-- Brief: brief-db-vie-uscita-operatore.md
 -- ------------------------------------------------------------
 
 -- Nota emittente: gli ordini passano emittente_fiscale_id esplicito e
@@ -65,7 +65,18 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(8);
 
 -- Contesto non-API: GUC vuota.
-SELECT set_config('app.current_user_id', '', true);
+-- ⛔ 2026-09-04 — QUI IL TEST SPEGNEVA IL GUARD, e adesso non piu'.
+--   La riga rimossa era `set_config('app.current_user_id', '', true)`: senza
+--   utente in sessione `script.trgfn_guard_emittente_scope` usciva subito con
+--   RETURN NEW, e le fixture entravano senza che nessuno guardasse l'emittente.
+--   La fase 6 di `brief-db-processi-automatici-identita-e-perimetro` chiude quel
+--   ramo — una sessione applicativa senza utente non scrive piu'.
+--   ⇒ Il contesto operatore del preambolo RESTA valido per tutto il file, e le
+--     fixture prendono l'emittente su cui quell'operatore puo' davvero scrivere
+--     (`script.fn_pgtap_emittente_operatore()`).
+--   ⭐ Non e' una riparazione di comodo: prima questo file collaudava il
+--     comportamento di una porta aperta, adesso attraversa il guard come lo
+--     attraversa l'applicazione.
 
 -- ============================================================
 -- Riferimenti minimi

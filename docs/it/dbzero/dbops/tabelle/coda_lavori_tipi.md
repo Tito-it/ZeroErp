@@ -21,12 +21,14 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| processo_codice | text | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_coda_lavori_tipi_max_tentativi |  |
 | CHECK | chk_coda_lavori_tipi_run_as_default |  |
+| FOREIGN KEY | fk_coda_lavori_tipi_processi | processo_codice |
 | PRIMARY KEY | pk_coda_lavori_tipi | id |
 | UNIQUE | uq_coda_lavori_tipi_codice | codice |
 

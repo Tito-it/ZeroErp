@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # NOVE E_GENERICO IN UNA FUNZIONE SOLA — passo P-7 (1 di 6)
 #   pagamenti.fn_get_or_create_vendite_contabile
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.0 P-7
 #
 # ── PERCHE' ORA, E NON «QUANDO CAPITA» ──────────────────────────────────
 #   Il brief madre diceva che nessun codice errore di dominio `pagamenti` esiste

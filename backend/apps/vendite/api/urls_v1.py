@@ -20,6 +20,7 @@ from apps.vendite.api.views import (
     ApiCommessaOneri,
     ApiCommessePushLog,
     ApiCommessaStato,
+    ApiEscludiDocumentiDaGiro,
     ApiFatturazioneApprovaCompetenza,
     ApiFatturazioneFinestraNumerazione,
     ApiFatturazioneEsiti,
@@ -33,6 +34,8 @@ from apps.vendite.api.views import (
     ApiLottiMensile,
     ApiLottoDetail,
     ApiLottoFattureList,
+    ApiLottoGruppiExport,
+    ApiLottoGruppiList,
     ApiLottoGiornale,
     ApiLottoFattureExport,
     ApiLottoTaskRunsExport,
@@ -223,7 +226,7 @@ urlpatterns = [
     # I RESIDUI: le attivita' che una fattura non ce l'hanno piu' e che nessun
     # giro riprendera' da solo. E' l'elenco su cui agisce «Riporta da emettere»,
     # ed e' una lista sua e non un filtro di `attivita/`: lo stadio
-    # EMESSA_NON_FATTURATA contiene quattro situazioni e solo questa chiede
+    # EMESSA_NON_FATTURATA contiene tre situazioni e solo questa chiede
     # un'azione.
     path(
         "dashboard-competenza/residui/",
@@ -331,6 +334,16 @@ urlpatterns = [
         ApiLottoFattureList.as_view(),
         name="vendite-lotto-fatture-list",
     ),
+    # I DOCUMENTI presi in carico dal lotto, con l'esito di ciascuno.
+    # ⭐ Non e' un doppione di `fatture/`: quella si aggancia a `fattura_id` e
+    # non puo' mostrare un documento caduto PRIMA che una fattura esista — che
+    # e' esattamente quello che l'operatore sta cercando quando apre un lotto
+    # in ERRORE (brief-db-esito-gruppo-lotto).
+    path(
+        "lotti/<int:lotto_id>/gruppi/",
+        ApiLottoGruppiList.as_view(),
+        name="vendite-lotto-gruppi-list",
+    ),
     # La STORIA del lotto (Passo A, seconda meta'): il lotto piu' le sue
     # fatture, righe non-INFO. ⛔ Da non confondere con `segnalazioni/`, che
     # elenca i problemi APERTI: qui c'e' anche cio' che e' andato bene.
@@ -346,6 +359,11 @@ urlpatterns = [
         "lotti/<int:lotto_id>/fatture/export/",
         ApiLottoFattureExport.as_view(),
         name="vendite-lotto-fatture-export",
+    ),
+    path(
+        "lotti/<int:lotto_id>/gruppi/export/",
+        ApiLottoGruppiExport.as_view(),
+        name="vendite-lotto-gruppi-export",
     ),
     path(
         "lotti/<int:lotto_id>/task-runs/export/",
@@ -393,6 +411,14 @@ urlpatterns = [
         "lotti/<int:lotto_id>/fatture/<int:fattura_id>/reset-draft/",
         ApiResetLottoFatturaDraft.as_view(),
         name="vendite-reset-lotto-fattura-draft",
+    ),
+    # ⚠️ La `gruppo_key` viaggia nel BODY e non nel path: e' una chiave di
+    #    dominio (`ORDINE:123`, `MAN:45`) e contiene i due punti, che in un
+    #    segmento di URL vanno codificati — un contratto che si sbaglia a mano.
+    path(
+        "lotti/<int:lotto_id>/documenti/escludi/",
+        ApiEscludiDocumentiDaGiro.as_view(),
+        name="vendite-lotto-documenti-escludi",
     ),
     # --- Commesse ---
     path(

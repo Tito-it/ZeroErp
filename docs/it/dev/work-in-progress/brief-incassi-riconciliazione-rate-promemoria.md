@@ -7,7 +7,7 @@
 >
 > ℹ️ **Il nome del file resta quello**, benché ora sia stretto: ci puntano la
 > guida [gestione-dei-pagamenti.md](/guide/gestione-dei-pagamenti) e
-> [fatturazione-roadmap.md](fatturazione-roadmap.md), e un rename romperebbe
+> [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md), e un rename romperebbe
 > due link per guadagnare un titolo più bello.
 >
 > **Cos'è.** Il cantiere che porta l'area `pagamenti` da modello disegnato a
@@ -115,7 +115,7 @@ database la chiama**.
 
 🔴 È probabilmente una delle ragioni per cui la guida descrive il posting come se
 esistesse. Chi cerca il posting la trova, e si ferma. Segnalata anche in
-[brief-db-fondo-fattura-ricalcolo-e-governo.md](brief-db-fondo-fattura-ricalcolo-e-governo.md)
+[brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md)
 §2, dove si decide se rinominarla o ritirarla (F-4).
 
 ### ⚠️ Il buco logico che questo apre, e che è **armato**, non teorico
@@ -164,7 +164,7 @@ il fondo fattura crea è `ABBINATA`, cioè **postabile**: il giorno del posting
 diventerà un `vendite_movimenti` vero. Ed è **giusto** — la fattura sorgente è
 davvero stata saldata, per **trasferimento** su un'altra fattura e non per
 cassa. Segue il limite di dominio scritto in §4: *ogni misura di «incassato»
-deve escludere i centri non-cassa*. Analisi: [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2 Fase F.
+deve escludere i centri non-cassa*. Analisi: [brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2 Fase F.
 
 ### Conseguenza sull'ordine dei lavori
 
@@ -499,7 +499,7 @@ presenterebbe come **caso ordinario** e non di bordo.
 
 ⚠️ Va in un **guard trigger**, non in un CHECK: deve leggere `vendite.fatture`.
 
-Piano completo: [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md)
+Piano completo: [brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md)
 §8.1 F-5 e §8.2 D-3.
 
 ##### 🔴 E una seconda scoperta: «soglia non impostata = meccanismo spento» vale solo a metà
@@ -519,7 +519,7 @@ o nessuna» (passo D-0 dell'altro brief).
 esistente** il cui target diventa negativo — lo si lascia com'è, o lo si porta ad
 `ANNULLATO` come già accade a importo zero?~~
 
-✅ **Chiusa il 2026-08-15** ([brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md)
+✅ **Chiusa il 2026-08-15** ([brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md)
 §8.1 F-2): **si lascia com'è**. Portarlo ad `ANNULLATO` sarebbe uno stato
 cambiato da un pagamento, cioè l'automatismo che scrive che §3-bis ha escluso —
 e la coerenza («il fondo non è più recuperabile») la dà la **rilettura al momento
@@ -581,7 +581,7 @@ stata vista. Togliendo l'`ANNULLATO` automatico a target zero, un fondo non più
 giustificato **resta `DISPONIBILE`** e `applica_fondi_lotto` lo assegna comunque
 a una figlia. Serve nello stesso lotto di lavoro un **guard all'applicazione**
 che rilegga la capienza della sorgente **nell'istante in cui muove il denaro** —
-è il passo D-3 del piano: [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2 Fase A.
+è il passo D-3 del piano: [brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2 Fase A.
 
 ℹ️ Misurato **leggendo** i corpi vivi (doc auto-generata) e la struttura delle
 tabelle, non eseguendo SQL.
@@ -1474,7 +1474,7 @@ singola, il trigger che scrive da `pagamenti` verso `vendite`) in
 
 ⚠️ **Questa decisione cambia un modello di un altro cantiere**: la matrice degli
 stati del fondo era dichiarata a **tre stati** in
-[brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2
+[brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2
 D-7. Marcata lì come superata.
 
 ---
@@ -1984,7 +1984,7 @@ macchina nuova: è quella che stiamo già facendo.
 
 ℹ️ Il ripensamento del **meccanismo** dei fondi (che un numero ricalcolato muova
 denaro da solo) resta un problema vero, ma è un cantiere suo, in `vendite`:
-[brief-db-fondo-fattura-ricalcolo-e-governo.md](brief-db-fondo-fattura-ricalcolo-e-governo.md).
+[brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md).
 Qui ci si ferma a **non farlo peggiorare**.
 
 ---
@@ -2258,7 +2258,7 @@ esiste un movimento vero tutto il resto si progetta al buio.
 | Come sono nate le rate (cantiere chiuso) | `work-done/brief-db-generazione-scadenze-fattura.md` |
 | Atomicità: una azione = una unità di lavoro | [api.md §Atomicità](/dev/api) + `linee-guida-sql` §5b |
 | ⚠️ Il guscio vuoto che sembra il posting | `vendite.fn_sync_pagamento_fondo_fattura` — vedi §1-bis. ✅ **Deciso il 2026-08-15: si ritira** (`DROP`), il difetto è che esiste |
-| Il meccanismo dei fondi, cantiere a parte | [brief-db-fondo-fattura-ricalcolo-e-governo.md](brief-db-fondo-fattura-ricalcolo-e-governo.md) — dal 2026-08-15 ha il suo **piano** in §8: la Fase A è la metà «fondi» della slice 1 |
+| Il meccanismo dei fondi, cantiere a parte | [brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) — dal 2026-08-15 ha il suo **piano** in §8: la Fase A è la metà «fondi» della slice 1 |
 
 ---
 
@@ -2269,7 +2269,7 @@ successiva dà per scontata.
 
 | | Slice | Contenuto | Chiude |
 | --- | --- | --- | --- |
-| **1** | **Posting, stati e correzione** | madre DB `ABBINATA → POSTATA` + movimento, atomica, per testata; **transizioni dichiarate** su testata e righe + guard stato ↔ nullità; `STORNATA` ritirato; annullamento solo in bozza; `stato_id` NOT NULL; **CSV + loader per `centri_riscossione`** (oggi inesistenti: le 2 righe sono state inserite a mano) con backfill delle esistenti e aggiunta dei centri reali; 🔴 **la Fase A del cantiere fondi** — ⚠️ **non** «limite inferiore `> 0`», che era sbagliato (D1-bis): CHECK «entrambe le soglie o nessuna», sorgente solo **DEFINITIVA**, guard di **corrispondenza col documento** e di capienza all'applicazione, chiave a nove elementi ([brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2); codici errore di dominio a catalogo con la loro classe | B-1, B-2, D3, D9, la metà «fondi» di D1-bis. Rende **vero** `fn_get_saldo_fattura`, che oggi risponde sempre `totale_a_pagare` |
+| **1** | **Posting, stati e correzione** | madre DB `ABBINATA → POSTATA` + movimento, atomica, per testata; **transizioni dichiarate** su testata e righe + guard stato ↔ nullità; `STORNATA` ritirato; annullamento solo in bozza; `stato_id` NOT NULL; **CSV + loader per `centri_riscossione`** (oggi inesistenti: le 2 righe sono state inserite a mano) con backfill delle esistenti e aggiunta dei centri reali; 🔴 **la Fase A del cantiere fondi** — ⚠️ **non** «limite inferiore `> 0`», che era sbagliato (D1-bis): CHECK «entrambe le soglie o nessuna», sorgente solo **DEFINITIVA**, guard di **corrispondenza col documento** e di capienza all'applicazione, chiave a nove elementi ([brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2); codici errore di dominio a catalogo con la loro classe | B-1, B-2, D3, D9, la metà «fondi» di D1-bis. Rende **vero** `fn_get_saldo_fattura`, che oggi risponde sempre `totale_a_pagare` |
 | **2** | **Abbinamento alla rata** | `scadenza_id` sulla riga + mirror sul movimento; guard di quadratura (**con forzatura motivata e gated sul limite superiore**, D1-bis) e di coerenza; `fn_get_saldo_rata`; elenco delle rate sovra-incassate | D1, D1-bis, D2. Rende derivabile «questa rata è pagata» — la domanda da cui dipendono 3.2, 3.3 e 3.4 |
 | **3** | **Perimetro e coda operativa** | conto sull'ente di incasso, vincolo di unicità conto → emittente, RLS in lettura; poi BE e FE | D5, B-3. Rende la coda «da abbinare» **visibile a chi deve** |
 
@@ -2331,7 +2331,7 @@ stub vuoti.
 | **2026-08-24** | ✅ **D1-ter — il pagamento di una rata NON si spezza** (decisione di Tid). ⭐ Toglie un equivoco che stava in **D1-bis** dal 9 agosto: là la spezzatura era la strada *preferibile* per il sovra-incasso, ma su una rata **identificata** l'atto del cliente è **uno solo con un importo sbagliato** — spezzarlo inventerebbe due allocazioni dove il cliente ne ha voluta una, e deciderebbe **al posto suo** dove vanno i soldi di troppo. 🔴 **E la ragione per cui cade non è che fosse sbagliata allora**: D1-bis preferiva spezzare perché *«l'eccedenza resta denaro identificato invece di sparire dentro una rata che non la giustifica»*, e il **9 agosto era vero** — le sistemazioni non esistevano. Il **lotto 7 del 22/08** le ha costruite (elenco + registro + tre destinazioni), quindi l'eccedenza **non sparisce più**: la preferenza cade perché il problema che la giustificava è stato risolto altrove. ⭐ La strada ordinaria diventa **una sola a tre tempi**: si registra il fatto (forzata, con motivo) → l'eccedenza si vede negli elenchi → qualcuno **decide** (riporto/rimborso/compensazione, a registro e annullabile). La forzatura smette di essere un ripiego e diventa il primo tempo di un processo chiuso. ⛔ **Che cosa NON cade**: **D1 regge intatta** — un incasso che copre tre rate resta tre righe; cambia solo **quando** si scrivono (subito, digitandole) invece che ricavandole spezzando. 📮 Ne discende: nel piano BE/FE **cade il verbo «spezza»**, la slice dedicata **sparisce** e `fn_spezza_riga_contabile` esce dalle richieste al team DB (il piano DB non ne risente: non l'aveva in nessun lotto). ⚠️ Potrà tornare **solo con l'import** (D6), dove la riga arriva già fatta da fuori e non si può digitare |
 | 2026-08-21 | ⭐ **Estratto il piano DB in un brief suo**: [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md). Qui restano le **decisioni di dominio**, là i **passi e le misure** — con la regola esplicita di quale sede si aggiorna per cosa, perché due documenti sullo stesso cantiere aperto divergono al primo aggiornamento (lezione già pagata dal cantiere fondi). 🔴 **Tre punti di questo brief corretti perché parlavano al presente di cose non più vere**: `fn_sync_pagamento_fondo_fattura` **non esiste più** (ritirata il 15/08); **B-2 era sbagliato a metà** — il trigger di mirror ha **già** il guard e solleva `P0001`, e il difetto vero è che tutte e quattro le funzioni di `pagamenti` sollevano `E_GENERICO`; il riquadro sulla **scadenza della metà «fondi»** è chiuso, perché quella metà è **fatta** (Fasi A/B/C/E/F applicate il 15-16/08) e **la dipendenza si è invertita** — la Fase D del cantiere fondi aspetta il processo rimborsi di `pagamenti`, cioè la **D8 (b)** di §4-bis. 🔴 **Cinque difetti nuovi misurati** e scritti là, tre bloccanti: `centri_riscossione` **non può contenere più di due righe** (il `where:` su `addUniqueConstraint` fu ignorato: il passo 3 di D9-d-1 oggi non è eseguibile, annotato in loco); `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate**; un fondo interamente postato **si auto-annullerebbe**. ⭐ La lezione trasversale ai due: *verificare che un'identità algebrica si conservi non è verificare che i consumatori la usino ancora bene* — §1-bis prova che «la bilancia regge da sé» ed è vero, ma il codice che quei termini li **riscrive** non regge |
 | 2026-08-15 (sera) | 🔴 **Il tampone di D1-bis era sbagliato, e l'ha smontato Tid spiegando cosa sono davvero le due soglie.** *«Il verso opposto non è un fondo»* è **falso**: `minimo_soglia_min` e `minimo_soglia_max` sono i **due capi di una banda che contiene lo zero** (esempio reale: `−500 / +10`), e il capo inferiore esiste **apposta** per riportare avanti i **crediti**. Un filtro `importo_target > 0` avrebbe spento metà del meccanismo, in silenzio. Il controllo giusto è la **corrispondenza col documento** (stesso segno del totale della sorgente, non superiore in valore assoluto), in un **guard trigger** perché un CHECK non può leggere `vendite.fatture`. 🔴 Seconda scoperta: **«soglia non impostata = meccanismo spento» vale solo a metà** — se manca il *massimo* la condizione diventa vera per tutti e **ogni** fattura diventa di minimo: configurazione incompleta = meccanismo **spalancato**. Deciso da Tid: dev'essere un errore di configurazione (CHECK «entrambe o nessuna»). Ritirata la trappola *«un automatismo tarato su un verso»* di §5, che era essa stessa l'errore, e sostituita con le due lezioni vere: **leggere la configurazione prima di dedurre l'intenzione**, e **un difetto e un comportamento voluto possono avere lo stesso sintomo**. ✅ Confermato il perimetro del processo rimborsi (in `pagamenti`, tre uscite, passaggio **passivo**: se le va a cercare da sé) |
-| 2026-08-15 | 🔴 **Rimisurata la tabella delle «due serrature» di D1-bis: sbagliata su entrambe le righe.** Il fondo si genera sulla **differenza** `saldo − saldo_contabile` e il secondo termine non dipende dai movimenti: la seconda serratura **non è la slice 1**, è **l'assenza di scrittori di righe contabili** (il guard di quadratura è la slice **2**), e si apre col primo altro scrittore — import del flusso, correzione a mano, o slice 1. E `minimo` non è una configurazione: lo **riscrive** `fn_ricalcola_totali_fattura` dal confronto fra totale e soglie dell'emittente, quindi si accende da solo. La conclusione operativa non cambia (il limite inferiore resta nella slice 1), cambia la **scadenza**. 🔴 Aggiunto che **il limite inferiore da solo peggiora le cose**: senza l'`ANNULLATO` automatico un fondo non più dovuto resta `DISPONIBILE` e viene comunque **applicato** — serve nello stesso lotto il guard che rilegge la capienza al momento dell'atto. ✅ Chiusa la domanda lasciata aperta in D1-bis (fondo esistente con target negativo: **si lascia com'è**) e decisa F-4 (`fn_sync_pagamento_fondo_fattura` si **ritira**). ⭐ Verificato che con un posting **atomico** la bilancia di B-1 **regge da sé** (i due termini si scambiano lo stesso importo): il rischio è tutto nella non-atomicità. ⚠️ Nuovo limite di dominio in §4: «incassato» ≠ «postato» — le misure di cassa devono **escludere i centri non-cassa** (`is_fondo_fattura`, `is_compensazione`), perché il fondo diventerà un movimento vero ma per **trasferimento**. Quattro trappole nuove in §5. Fonte: il piano del cantiere fondi, [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
+| 2026-08-15 | 🔴 **Rimisurata la tabella delle «due serrature» di D1-bis: sbagliata su entrambe le righe.** Il fondo si genera sulla **differenza** `saldo − saldo_contabile` e il secondo termine non dipende dai movimenti: la seconda serratura **non è la slice 1**, è **l'assenza di scrittori di righe contabili** (il guard di quadratura è la slice **2**), e si apre col primo altro scrittore — import del flusso, correzione a mano, o slice 1. E `minimo` non è una configurazione: lo **riscrive** `fn_ricalcola_totali_fattura` dal confronto fra totale e soglie dell'emittente, quindi si accende da solo. La conclusione operativa non cambia (il limite inferiore resta nella slice 1), cambia la **scadenza**. 🔴 Aggiunto che **il limite inferiore da solo peggiora le cose**: senza l'`ANNULLATO` automatico un fondo non più dovuto resta `DISPONIBILE` e viene comunque **applicato** — serve nello stesso lotto il guard che rilegge la capienza al momento dell'atto. ✅ Chiusa la domanda lasciata aperta in D1-bis (fondo esistente con target negativo: **si lascia com'è**) e decisa F-4 (`fn_sync_pagamento_fondo_fattura` si **ritira**). ⭐ Verificato che con un posting **atomico** la bilancia di B-1 **regge da sé** (i due termini si scambiano lo stesso importo): il rischio è tutto nella non-atomicità. ⚠️ Nuovo limite di dominio in §4: «incassato» ≠ «postato» — le misure di cassa devono **escludere i centri non-cassa** (`is_fondo_fattura`, `is_compensazione`), perché il fondo diventerà un movimento vero ma per **trasferimento**. Quattro trappole nuove in §5. Fonte: il piano del cantiere fondi, [brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
 | 2026-08-02 | Stesura originale alla chiusura del cantiere satelliti fattura |
 | 2026-08-09 (mattina) | Rimisurato il DB. Corrette 3 righe della tabella §2 (cataloghi seminati, non a zero); aggiunta §1-bis — **il posting non esiste**, più tre buchi logici misurati: B-1 bilancia dei due saldi, B-2 nullità riga↔movimento e stato slegato dai dati, B-3 scope emittente asimmetrico; aggiunte 3.0 (posting) e 3.5 (`sepa_mandati` orfana); riscritto il limite di scope in §4; due trappole nuove in §5 (`n_live_tup`, terreno vuoto) |
 | 2026-08-09 (notte, 6) | ⭐ Fissato con Tid il **principio di chiusura sul flusso di denaro** (§3-bis): **i fatti si aggiungono, i saldi si leggono, le decisioni le prende una persona**. Ne discende che la rincorsa degli incassi è **impossibile per costruzione**, non solo improbabile: un ciclo richiede un automatismo che riscriva un numero, e non ce ne sono. Regola pratica: nessun automatismo tocca il fondo in base agli incassi; l'attività pre-fatturazione **presenta, non sana**. Annotato che il **rimborso non è da costruire** (il movimento copre già «incasso o rimborso», e con D3-d è una contabile negativa). Trovato e segnalato `vendite.fn_sync_pagamento_fondo_fattura`: nome e colonne promettono movimenti, il corpo delega tutto a `fn_sync_contabili_fondo_fattura` e **nessuno la chiama** — probabile causa dell'equivoco «il posting esiste». Estratto il cantiere del meccanismo fondi in un **brief proprio**: `brief-db-fondo-fattura-ricalcolo-e-governo.md` |

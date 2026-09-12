@@ -41,7 +41,7 @@ export function useConfirmAction() {
     confirm.require({
       header: t('confirm.delete_title'),
       message: t('confirm.delete_message', { name: itemName }),
-      icon: 'pi pi-exclamation-triangle',
+      icon: MANAGE_ICONS.ERRORE,
       acceptClass: 'p-button-danger',
       rejectClass: 'p-button-secondary',
       // Coppia coerente: label "Elimina" + icona cestino (non "Conferma").
@@ -74,7 +74,7 @@ export function useConfirmAction() {
     confirm.require({
       header: title,
       message: message,
-      icon: 'pi pi-exclamation-triangle',
+      icon: MANAGE_ICONS.ERRORE,
       acceptClass: danger ? 'p-button-danger' : '',
       rejectClass: 'p-button-secondary',
       acceptLabel: acceptLabel || (danger ? t('common.delete') : t('common.confirm')),
@@ -96,7 +96,7 @@ export function useConfirmAction() {
     confirm.require({
       header: t('confirm.save_title'),
       message: message || t('confirm.save_message'),
-      icon: 'pi pi-exclamation-triangle',
+      icon: MANAGE_ICONS.ERRORE,
       rejectClass: 'p-button-secondary',
       acceptLabel: t('common.confirm'),
       rejectLabel: t('common.cancel'),

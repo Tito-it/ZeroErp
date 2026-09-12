@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L-1 — L'adattatore di scope per la famiglia LOTTI DI FATTURAZIONE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.9
+#   Slice 20260910-14..17 (helper -> policy inerti -> armamento -> registro).
+#   Precedenti: le sei famiglie di documento (20260909-27..49) e `pratiche`
+#   (20260910-01..04), che e' la prima consegnata dal presidio del perimetro.
+#
+# ── ⛔ IL DIFETTO, DETTO SUL MODELLO ──────────────────────────────────
+#   Una riga che racconta com'e' andato un giro di fatturazione appartiene
+#   all'emittente di quel giro. `vendite.fatturazione_lotti` e' protetta
+#   (`rls_fatturazione_lotti_ef_whitelist`); i suoi cinque satelliti non hanno
+#   nessuna policy e `zeroerp_app` ha su tutti SELECT, INSERT, UPDATE e DELETE.
+#   Il perimetro si ferma alla testata.
+#
+# ── ⭐ QUI L'ADATTATORE E' IL CASO LUNGO, e non e' un dettaglio ───────
+#   `vendite.fatturazione_lotti` NON porta `emittente_fiscale_id`: porta
+#   **`emittente_soggetto_ruolo_id`** (`bigint NOT NULL`), come `vendite.fatture`
+#   e a differenza delle sei famiglie di documento. ⇒ Si delega a
+#   `script.fn_scope_ef_whitelist_via_sr`, non alla canonica
+#   `fn_scope_ef_whitelist`.
+#   ⛔ Scambiarle non darebbe nessun errore — le due accettano entrambe un
+#   `bigint` — e filtrerebbe confrontando un id di soggetto-ruolo con una
+#   whitelist di id di emittente fiscale: due numerazioni diverse, quindi quasi
+#   sempre **nessuna riga**. Un fail-closed per la ragione sbagliata, che
+#   sembra una difesa e invece e' un guasto. Lo presidia il test 3 del pgTAP
+#   della slice, che legge la definizione della policy.
+#
+# ── ⭐ UN SOLO ADATTATORE, e il perimetro resta CINQUE ────────────────
+#   Tutti e cinque i satelliti portano `lotto_id` (`NOT NULL`): una chiave
+#   sola, quindi una funzione sola. E **nessuna tabella ha una FK verso i
+#   cinque** (verificato 2026-09-10): a differenza di `pratiche` — dove armare
+#   `flussi` faceva entrare nel perimetro due nipoti mai censite — qui il
+#   criterio non porta sorprese al giro dopo.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — la stessa dei
+#   `script.fn_scope_*` gia' in servizio. Una policy che chiamasse una funzione
+#   `SECURITY DEFINER` guarderebbe con gli occhi dell'owner, che la RLS non
+#   vede: il filtro passerebbe sempre, e in silenzio.
+#
+# Permessi: funzione di titodb, non in dbops.sec_functions_owner, nessun GRANT
+# esplicito (l'ALTER DEFAULT PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260910-14-create-fn-scope-ef-whitelist-via-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20260910-14-create-fn-scope-ef-whitelist-via-lotto
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatore di scope per la famiglia dei lotti di fatturazione:
+        script.fn_scope_ef_whitelist_via_lotto(auth_user_id, lotto_id), che
+        risale alla testata e delega a fn_scope_ef_whitelist_via_sr — la
+        variante per soggetto-ruolo, che e' la chiave che porta
+        vendite.fatturazione_lotti. Nessuna policy lo usa ancora: le crea
+        20260910-15.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_lotto(
+                  p_auth_user_id integer,
+                  p_lotto_id     vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del lotto di fatturazione indicato.
+                  -- ⚠️ Si passa da `_via_sr` e NON dalla canonica: la testata
+                  --   porta emittente_soggetto_ruolo_id, non emittente_fiscale_id.
+                  --   Le due numerazioni sono diverse, quindi confonderle non
+                  --   da' errore — da' zero righe.
+                  -- ⚠️ Lotto inesistente -> emittente NULL -> la canonica
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come per tutte le altre famiglie.
+                  SELECT script.fn_scope_ef_whitelist_via_sr(
+                      p_auth_user_id,
+                      (SELECT l.emittente_soggetto_ruolo_id
+                         FROM vendite.fatturazione_lotti l
+                        WHERE l.id = p_lotto_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_lotto(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.fatturazione_lotti: risale da lotto_id a `emittente_soggetto_ruolo_id` e delega a script.fn_scope_ef_whitelist_via_sr. ⚠️ Via SR e non la canonica fn_scope_ef_whitelist: la testata dei lotti nomina l''emittente per soggetto-ruolo, come vendite.fatture e a differenza delle sei famiglie di documento — e le due numerazioni non sono confrontabili. STABLE e NON security definer, come gli altri fn_scope_*. Lotto inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md §11.9';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_lotto(integer, bigint);

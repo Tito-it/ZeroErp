@@ -66,4 +66,4 @@ Il trigger e' `AFTER INSERT`: si applica solo alle nuove istanze. Le istanze sto
 * [`script.fn_check_utility_istanza_coerenza`](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — fn riusabile cross-tabella allineata alle stesse 3 fonti
 * [`vendite.trgfn_preventivi_guard_utility_istanza_coerenza`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_utility_istanza_coerenza) — guard sui preventivi che usa la fn check
 * [Guida: Gestione delle istanze utility — sezione "Strategia C"](/it/guide/gestione-delle-istanze-utility#strategia-c--ogni-istanza-dichiara-la-utility-tramite-un-satellite-2026-05-01)
-* Brief sessione 2026-05-01: `docs/it/dev/work-in-progress/risposta-db-brief-preventivi-rev2.md`
+* Brief sessione 2026-05-01: `docs/it/dev/work-done/risposta-db-brief-preventivi-rev2.md`

@@ -14,18 +14,15 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active
 AS $function$
 DECLARE
     -- %TYPE sulle colonne sorgente (policy ZeroErp).
-    v_auth_user_id anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+    v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
 BEGIN
-    -- Risolve l'auth_user_id dal bridge. Se la risorsa non ha
-    -- collegamento, il LIMIT 1 + FOUND salta il sync (nessun
-    -- auth_user da aggiornare).
-    SELECT rau.auth_user_id
-      INTO v_auth_user_id
-      FROM anagrafiche.risorse_umane_auth_user rau
-     WHERE rau.risorsa_umana_id = NEW.id
-     LIMIT 1;
+    -- Risolve l'auth_user_id dalla madre identita_digitali via
+    -- l'helper condiviso (12-09-2026: la vista risorse_umane_auth_user
+    -- e' stata ritirata). NULL = risorsa senza collegamento: nessun
+    -- auth_user da aggiornare, il sync si salta.
+    v_auth_user_id := script.fn_get_auth_user_id_for_risorsa_umana(NEW.id);
 
-    IF FOUND THEN
+    IF v_auth_user_id IS NOT NULL THEN
         PERFORM anagrafiche.fn_sync_auth_user_is_active(v_auth_user_id);
     END IF;
 
@@ -34,7 +31,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
-IS 'Trigger function: sincronizza auth_user.is_active al cambio stato/finestra di risorse_umane. Risolve auth_user_id dal bridge RUA e delega a fn_sync_auth_user_is_active. (§4.5 WIP).';
+IS 'Trigger function: sincronizza auth_user.is_active al cambio stato/finestra di risorse_umane. Risolve l''auth_user da identita_digitali con script.fn_get_auth_user_id_for_risorsa_umana (dal 12-09-2026: la vista risorse_umane_auth_user e'' stata ritirata) e delega a fn_sync_auth_user_is_active.';
 ```
 
 ---

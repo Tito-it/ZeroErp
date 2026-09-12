@@ -6,7 +6,7 @@
 # Se valorizzata (es. 'validita'), fn_apply_automazione_overlap
 # usa direttamente la colonna daterange nativa invece di
 # ricostruire il range da valido_dal/valido_al.
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.4
+# Vedi: migrazione-daterange.md §4.4
 # ------------------------------------------------------------
 
 databaseChangeLog:

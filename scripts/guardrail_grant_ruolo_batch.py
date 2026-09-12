@@ -74,7 +74,7 @@ BLOCCO_COMMENTO_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 # Scopo: una riga che e' solo commento — YAML (`#`) o SQL (`--`) — non esegue.
 def _e_commento(riga: str) -> bool:
     nuda = riga.lstrip()
-    return nuda.startswith("#") or nuda.startswith("--")
+    return nuda.startswith(("#", "--"))
 
 
 # Scopo: elenca le violazioni (file, riga, ruolo, testo).

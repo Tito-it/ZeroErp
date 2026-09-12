@@ -186,7 +186,11 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
 - Substrato DB v2 applicato con changeset `20260708-03/04` (PR #944): viste
   ristrette agli aperti-non-chiusi + drop colonne transitato (DROP+CREATE
   ordinato, non `CREATE OR REPLACE`), pgTAP `test-vw-dash-security-invoker.sql`
-  (plan 14, verdi).
+  (plan 14, verdi). ⚠️ Quel file è stato **ritirato il 2026-09-07**: il presidio
+  non elenca più le viste per nome ma chiede *«esiste una vista che tocca dati
+  protetti e non gira col perimetro di chi legge?»*, e vive in
+  `db/pgtap/rls/test-rls-viste-security-invoker.sql`. La riga qui sopra resta
+  perché racconta cosa fu fatto allora.
 - Test: `apps/vendite/tests/api/test_dashboard_aperto_api.py` (9 casi) +
   `apps/vendite/tests/services/test_dashboard_aperto_service.py` (16 casi),
   tutti con mock (CI-safe).

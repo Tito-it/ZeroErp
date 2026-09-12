@@ -2217,4 +2217,4 @@ Quando esporremo `fonte_quantita_attesa` in UI (5 valori: `FISSA`, `MANUALE`, `T
 - Doc DB: [`fn_list_contratti_da_pushare`](/dbzero/vendite/manual/fn_list_contratti_da_pushare) — sezione "meta tecnico per il push".
 - Modello tabella: [`contratti_righe`](/dbzero/vendite/manual/contratti_righe) — campi `tipo_erogazione`, `fonte_quantita_attesa` (CHECK con i 5 valori in `chk_contrighe_fonte_qta`).
 - Pattern fan-out: [`HandlerConsumi._expand_rows()`](../../../../backend/apps/vendite/services/commesse_source_handlers.py) — replicabile per `DERIVATA_COMPONENTI`.
-- Trigger del refactor UI: [fatturazione-roadmap.md §10](../work-in-progress/fatturazione-roadmap.md) (preview fatturazione contratto; era PROMO-1 di `sviluppo-fatturazione.md`, assorbito il 2026-08-22) + futura analisi opzione B su `contratti_righe`.
+- Trigger del refactor UI: [fatturazione-roadmap.md §10](fatturazione-roadmap.md) (preview fatturazione contratto; era PROMO-1 di `sviluppo-fatturazione.md`, assorbito il 2026-08-22) + futura analisi opzione B su `contratti_righe`.

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-perimetro-emittente-righe-documento §8/§10 — il contenuto iniziale
+# del registro del debito: le 33 righe che il criterio pesca il 2026-09-09.
+#
+# ── ⭐ SEED DI CATALOGO, non di macchina ────────────────────────────
+#   Il contenuto nomina TABELLE DEL SOFTWARE. Nessuna cella valorizza una FK
+#   verso `anagrafiche.*`, che e' il discriminante di linee-guida-sql §11.7:
+#   vale identico su qualunque installazione, quindi niente
+#   `context: dati_macchina`.
+#
+# ── ⚠️ TRENTA RIGHE, E NON DODICI ───────────────────────────────────
+#   Il §10 del brief ne contava dodici perche' guardava il solo schema
+#   `vendite`. Applicato a tutto il database, lo stesso criterio ne trova
+#   **trenta** per il primo criterio piu' **tre** per il secondo. Le diciotto in
+#   piu' non sono una scoperta di questo changeSet: sono la dimostrazione della
+#   lezione con cui il cantiere si e' chiuso — *un elenco scritto a mano ha per
+#   perimetro cio' che chi lo scriveva aveva in mente*. Nessuno le aveva ancora
+#   guardate.
+#
+#   Le famiglie, e sono quello che il presidio consegnera' ai prossimi cantieri:
+#
+#     lotti (5)      i satelliti di vendite.fatturazione_lotti
+#     commesse (4)   attivita_fatturabili e cio' che pende da lei
+#     listini (3)    la catena versione -> riga, piu' l'aggancio per categoria
+#     pratiche (7)   pratiche.pratiche e' protetta, i suoi sette satelliti no
+#     documenti (2)  gli eventi e il file di documenti_generati
+#     anagrafiche(3) clienti, e le due tabelle che DEFINISCONO il perimetro
+#     email (1)      config.email_allegato, sull'asse ambito e non emittente
+#     magazzino (1)  due rotte protette, tutte e due nullable
+#     pagamenti (2)  sepa_mandati, e il ponte con due perimetri diversi
+#     shop (2)       ricevute, in tutti e due i criteri
+#     acquisti (2)   due policy scritte e mai applicate
+#
+# ── ⛔ LEGGERE «DICHIARATO» COME «RISOLTO» E' L'UNICO MODO DI SBAGLIARE ─
+#   Ognuna di queste righe e' un lavoro con un nome. Il presidio tace su di
+#   loro e parla su tutto il resto: e' il patto che permette di accendere il
+#   cancello oggi invece che a bonifica finita — un cancello rosso dal primo
+#   giorno viene disattivato, e un presidio spento e' peggio di uno assente.
+#
+# ⚠️ `loadUpdateData` non cancella: pagare un debito vuol dire togliere la riga
+#   dal CSV **e** cancellarla con un `DELETE` forward-only. Il presidio se ne
+#   accorge da solo — una riga rimasta esce come `DEBITO_ESTINTO` e fa rosso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260909-77-upsert-dbops-rls-perimetro-debito-mctit.yaml
+
+  - changeSet:
+      id: 20260909-77-upsert-dbops-rls-perimetro-debito
+      author: mctit
+      runOnChange: true
+      validCheckSums: ANY
+      failOnError: true
+      comment: >
+        Seed di catalogo di dbops.rls_perimetro_debito dal CSV (mirror
+        loadUpdateData): le 33 righe che il criterio del perimetro RLS trova
+        scoperte il 2026-09-09 e che restano tali per una decisione, ognuna con
+        la sua ragione tecnica.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/rls_perimetro_debito.csv
+            tableName: rls_perimetro_debito
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: criterio, type: STRING }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: ragione, type: STRING }
+              # ⚠️ La data sta nel CSV e non si lascia al DEFAULT: su un
+              #   database ricostruito da zero CURRENT_DATE direbbe «oggi», e
+              #   l'orologio del debito ripartirebbe da capo a ogni build.
+              - column: { name: data_registrazione, type: DATE }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.rls_perimetro_debito;

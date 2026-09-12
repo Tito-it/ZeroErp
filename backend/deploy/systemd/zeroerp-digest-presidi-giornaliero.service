@@ -1,0 +1,44 @@
+# Template systemd — digest GIORNALIERO dei presidi (dbops.presidi).
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# La cadenza sta in `backend/deploy/sveglie.json`, non qui.
+#
+# 🔴 PERCHE' ESISTE, ed è un fatto datato. Il 2026-09-09 il job
+# `CHIUSURA_SCADENZE` risultava fallito **quattro notti consecutive**: le otto
+# righe che lo dicevano stavano in `dbops.vw_coda_lavori_da_guardare` — una vista
+# che porta nel nome ciò che serviva — e sono rimaste lì. Il presidio aveva
+# funzionato benissimo: *guardare non era di nessuno*. Questo unit è il
+# destinatario che mancava.
+#
+# ⛔ QUALI VISTE GUARDI NON STA QUI, e non sta nemmeno nel backend: lo dice il
+# catalogo `dbops.presidi`, colonna `cadenza`. Questo timer sveglia la corsa; il
+# perimetro della corsa lo decide il database. Un elenco di viste in un unit
+# sarebbe la terza sede dello stesso fatto.
+#
+# ⭐ ALLE 07:00 E NON DI NOTTE: un lavoro fallito stanotte va visto stamattina,
+# e un avviso che arriva alle 3 lo si legge comunque alle 8 — con in più il
+# rischio di essere quello che si impara a scartare.
+#
+# ⚠️ NIENTE `OnFailure=`, ed è un'assenza DICHIARATA, non una dimenticanza
+# (§7.7b del brief lo chiedeva). Un `OnFailure=` serve a dire che il giro è
+# fallito, ma l'unico canale che raggiunge una persona in questo progetto è la
+# coda email, che vive nel database: se il giro è fallito perché il database non
+# risponde, anche la notifica non partirebbe — e senza database resterebbe solo
+# una riga nel journal, che systemd scrive già da sé. ⇒ Un fallimento con il
+# database vivo lascia invece una riga `ok=false` su `maintenance.job_run_log`,
+# che è esattamente ciò che `maintenance.vw_job_run_da_guardare` raccoglie e che
+# il digest riporta: il giro seguente lo dice. Il residuo — «fallito con il
+# database irraggiungibile» — è dichiarato e resta aperto: chiuderlo vuole un
+# canale che non dipenda dal database, cioè una decisione sua.
+[Unit]
+Description=ZeroERP digest giornaliero dei presidi (allarmi)
+After=network.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+ExecStart=__APP_DIR__/bin/run-command.sh digest_presidi --cadenza giornaliera

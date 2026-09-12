@@ -86,7 +86,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     def test_run_ok_accoda_operatore_scope_business_key(
         self, repo_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
-        resolver.get_emittenti_ids.return_value = [4, 3]  # non ordinati
+        resolver.get_emittenti_pk_ids.return_value = [4, 3]  # non ordinati
         repo_cls.return_value.accoda.return_value = 555
 
         resp = self.client.post(
@@ -115,8 +115,17 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         })
         # competenza normalizzata al 1° nel payload del job
         self.assertEqual(kwargs["payload"]["competenza_mese"], "2026-06-01")
-        # chiave business = competenza + emittenti ORDINATI (dedup deterministico)
-        self.assertEqual(kwargs["idempotency_key"], "FATTURAZIONE_GIRO:2026-06-01:3,4")
+        # ⭐ Chiave business = tipo + CORSIA + competenza + emittenti ORDINATI.
+        #    La corsia e' entrata il 2026-09-05 (opzione A): senza, il batch
+        #    notturno avrebbe visto «immediata» e «differita» dello stesso mese e
+        #    della stessa azienda come lo stesso lavoro, e ne avrebbe scartata
+        #    una in silenzio. Qui il valore e' «differita» — il giro on-demand di
+        #    massa — quindi per il verbo web cambia la FORMA, non il
+        #    comportamento: nessun giro che si deduplicava smette di farlo.
+        self.assertEqual(
+            kwargs["idempotency_key"],
+            "FATTURAZIONE_GIRO:differita:2026-06-01:3,4",
+        )
 
     # 4. JWT senza claim identita_id (token anomalo) → 400 parlante, no accoda.
     @patch(_AUTH, return_value=(_mock_user(), None))
@@ -140,7 +149,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     @patch(_RESOLVER)
     @patch(_REPO)
     def test_stato_ok_ritorna_job(self, repo_cls, resolver, _auth) -> None:
-        resolver.get_emittenti_ids.return_value = [72]  # operatore scoped
+        resolver.get_emittenti_pk_ids.return_value = [72]  # operatore scoped
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "FATTO",
             "tentativi": 0, "max_tentativi": 5,
@@ -161,7 +170,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     @patch(_RESOLVER)
     @patch(_REPO)
     def test_stato_non_trovato_404(self, repo_cls, resolver, _auth) -> None:
-        resolver.get_emittenti_ids.return_value = [72]
+        resolver.get_emittenti_pk_ids.return_value = [72]
         repo_cls.return_value.get_stato.return_value = None
         resp = self.client.get(f"{_RUN}999/")
         self.assertEqual(resp.status_code, 404)
@@ -173,7 +182,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     @patch(_RESOLVER)
     @patch(_REPO)
     def test_stato_admin_vede_tutto(self, repo_cls, resolver, _auth) -> None:
-        resolver.get_emittenti_ids.return_value = None  # admin globale
+        resolver.get_emittenti_pk_ids.return_value = None  # admin globale
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",
             "tentativi": 0, "max_tentativi": 5,
@@ -195,7 +204,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     def test_stato_ownership_scope_non_enqueuer(
         self, repo_cls, resolver, _auth,
     ) -> None:
-        resolver.get_emittenti_ids.return_value = [4, 3]  # stessa whitelist
+        resolver.get_emittenti_pk_ids.return_value = [4, 3]  # stessa whitelist
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",
             "tentativi": 0, "max_tentativi": 5,

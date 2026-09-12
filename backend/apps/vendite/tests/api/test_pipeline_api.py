@@ -30,7 +30,7 @@ import json
 from unittest.mock import patch
 from unittest.mock import Mock
 
-from django.test import Client, SimpleTestCase, override_settings
+from django.test import Client, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.idempotency_store import IdempotencyDecision

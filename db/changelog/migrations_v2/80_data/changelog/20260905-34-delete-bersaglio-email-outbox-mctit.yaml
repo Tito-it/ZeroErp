@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ `config.email_outbox` SMETTE DI ESSERE UN BERSAGLIO DICHIARATO.
+#   Decisione: Tid, 2026-09-05 — brief-db-processi-automatici-identita-e-perimetro §12.18
+#
+# ── ⭐ CHE COSA AFFERMA UNA RIGA DI `processi_bersagli` ─────────────
+#   *«Questo PROCESSO AUTOMATICO tocca questa tabella.»* Non «questa tabella ha
+#   bisogno di un perimetro» — quella e' un'altra frase, e vale per mezzo
+#   database.
+#   ⇒ Le bozze di `config.email_outbox` le scrive **l'interfaccia**, con una
+#     persona vera dietro. `send_pending_emails` legge `config.email_log` e
+#     l'outbox non la apre mai — ne' inviando una bozza (`confirm_and_send` gira
+#     dentro la richiesta HTTP) ne' ritentando (`retry_log_entry` tocca solo
+#     `email_log`). Misurato sul codice, non dedotto.
+#   ⇒ La riga era **falsa**, ed e' per questo che se ne va.
+#
+# ── ⚠️ E IL PRESIDIO DI LIVELLO 2 VA A ZERO. E' voluto, e va spiegato ─
+#   Con questa riga fuori, `dbops.vw_processi_dominio_senza_difesa` non ha piu'
+#   niente da dire su `email_outbox` — e la row level security su quella tabella
+#   e' ancora **spenta**.
+#   ⛔ Non e' un debito nascosto sotto il tappeto: e' un debito che **non
+#   apparteneva a questo presidio**. La domanda che quel presidio fa e' «i
+#   processi automatici rispettano il perimetro emittente?», non «ogni tabella
+#   del database e' difesa?». Rispondere alla seconda con lo strumento della
+#   prima e' come tenere una riga falsa per non perdere una spia.
+#   ⭐ Il debito resta scritto dove e' vero: §12.15 del brief, e soprattutto la
+#   riga 51 — `config.email_log`, il bersaglio VERO di quel processo, che il
+#   livello 1 nomina come `DEBITO_DICHIARATO` finche' non ha la colonna
+#   emittente. Quello si', e' un debito di processo.
+#
+# ── ⚠️ PERCHE' UNA `DELETE` E NON SOLO LA RIGA TOLTA DAL CSV ────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**: togliere la riga dal
+#   CSV la lascia nel database per sempre. Le due cose vanno insieme — il CSV
+#   perche' un database da zero non la crei, questa `DELETE` perche' dove c'e'
+#   gia' se ne vada. Stessa forma di `20260807-20`.
+#
+# ⚠️ La guardia sull'`id` E sul nome: cancellare per solo `id` sarebbe scommettere
+# che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260905-34-delete-bersaglio-email-outbox-mctit.yaml
+
+  - changeSet:
+      id: 20260905-34-delete-bersaglio-email-outbox
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie la riga di censimento che dichiarava config.email_outbox come
+        bersaglio di send_pending_emails: quel processo legge config.email_log e
+        l'outbox la scrive l'interfaccia. loadUpdateData non cancella, quindi
+        togliere la riga dal CSV non basta. Il bersaglio VERO e' la riga 51
+        (config.email_log), che resta.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: processi_bersagli
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate della tabella: sul solo
+              --   id si scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.processi_bersagli b
+               WHERE b.id             = 30
+                 AND b.schema_tabella = 'config'
+                 AND b.nome_tabella   = 'email_outbox';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette una riga che AFFERMA IL FALSO: che
+              --   send_pending_emails tocchi config.email_outbox. Manovra di
+              --   emergenza, non una configurazione.
+              INSERT INTO dbops.processi_bersagli
+                  (id, processo_id, schema_tabella, nome_tabella,
+                   emittente_via, emittente_colonna, note, debito_dichiarato)
+              SELECT 30, p.id, 'config', 'email_outbox',
+                     'fiscale', 'emittente_fiscale_id',
+                     'Riga di censimento ripristinata da un rollback: dichiarava '
+                     'config.email_outbox come bersaglio di send_pending_emails, '
+                     'che quella tabella non apre mai.',
+                     true
+                FROM dbops.processi p
+               WHERE p.codice = 'send_pending_emails'
+                 AND NOT EXISTS (SELECT 1 FROM dbops.processi_bersagli x
+                                  WHERE x.id = 30);

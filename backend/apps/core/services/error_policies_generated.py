@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 835, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 855, di cui 89 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -203,6 +203,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CLIENTE_UTILITY_MISMATCH_BA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": "DATO_ERRATO",
+    # dbops.trgfn_coda_archiviazione: una riga di coda ancora VIVA (PENDING o IN_CORSO) non si archivia. L'archiviazione è la bandiera che toglie una riga dall'elenco senza toccarne lo stato, e vale solo su una riga che ha finito: archiviarne una viva la lascerebbe nel conteggio del badge in topbar - che conta esattamente PENDING e IN_CORSO - e fuori dalla lista, senza nessun modo di arrivarci per rimetterla a posto. Sulla coda stampa il danno è più concreto: la riga occuperebbe lo slot di uq_fatture_stampa_coda_vivo e bloccherebbe la ristampa della fattura restando invisibile. Classe CONFLITTO_STATO e non DATO_ERRATO: non c'è nessun campo che l'operatore possa correggere, c'è una riga che in questo momento sta ancora lavorando - ed è esattamente il criterio della guida. Si accoda alla famiglia E_CODA_*, dove E_CODA_IDENTITA_NON_ATTIVA è già CONFLITTO_STATO. Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
+    "E_CODA_ARCHIVIAZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_CODA_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_CODA_IDENTITA_NON_ATTIVA": "CONFLITTO_STATO",
     # Coda lavori generica (worker): codici sollevati durante il dispatch/ · esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono · in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
@@ -443,6 +445,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DRYRUN_CREATE_TRIGGER": "TECNICO",
     "E_EMAIL": "DATO_ERRATO",
     "E_EMAIL_ADMIN": "DATO_ERRATO",
+    # config.fn_chiudi_email_sistema: l''identificativo passato non corrisponde a nessuna riga di config.email_log. ⛔ Prima era E_VALIDAZIONE, e il classificatore l''ha preso: quel codice e'' di classe DATO_ERRATO, cioe'' a video diventa «hai sbagliato i dati». ⚠️ Ma p_email_log_id non arriva mai da una persona: e'' l''id che il chiamante ha scritto un istante prima. Se non risolve, nessuno ha sbagliato a compilare niente — e'' il codice che passa un valore inesistente. ⭐ TECNICO e non NON_TROVATO: quella classe porta un 404, giusto quando e'' una persona a chiedere una cosa che non c''e''. Qui chi chiede e'' il backend, e un 404 manderebbe a cercare una risorsa mancante invece di un difetto di codice. Regola applicata: «un codice usato per due cose si spezza a monte, non si rimappa a valle» (DB-8). Brief: brief-db-email-perimetro-e-invio-di-sistema.
+    "E_EMAIL_LOG_INESISTENTE": "TECNICO",
+    # config.fn_chiudi_email_sistema: la riga di config.email_log esiste, ma il suo ambito non è SISTEMA — qualcuno sta usando la porta di sistema per una email che appartiene a un'azienda. ⛔ Prima era E_VALIDAZIONE, che è DATO_ERRATO, cioè a video diventa «hai sbagliato i dati»: ma qui nessuno ha compilato niente, è il chiamante che ha bussato alla porta sbagliata. ⭐ TECNICO come il fratello E_EMAIL_LOG_INESISTENTE, e per la stessa ragione: chi chiama è il backend, non una persona. ⛔ E non si riusa quello: «la riga non c'è» e «la riga c'è e non è tua» mandano a guardare due posti diversi, e questo è l'unico momento in cui il secondo caso si può notare. ⚠️ La guardia era già dichiarata domanda aperta in 20260906-14: il classificatore non la vedeva perché non sapeva leggere la forma x <> 'LETTERALE', e l'ha imparata con 20260907-03. Brief: brief-db-sveglia-dei-processi §23.
+    "E_EMAIL_LOG_NON_DI_SISTEMA": "TECNICO",
     # ⚠️ Codici-modulo generici (validazione, not-found e accesso negato · sotto la stessa etichetta): 400 come il gemello `E_EMAIL`. Andrebbero · spacchettati per verbo — debito noto, non toccato qui per non · cambiare gli status HTTP di endpoint gia' in uso.
     "E_EMAIL_OP": "DATO_ERRATO",
     # Impersonazione di scope emittente per SUPER_ADMIN: la selezione e' · solo restringente, quindi un valore non ammesso e' un tentativo di · uscire dal proprio perimetro (403), non un campo mal compilato.
@@ -617,6 +623,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_IVA_TITOLI_AMBIGUI": "NON_ESEGUIBILE",
     # script.trgfn_lock_columns su config.iva: si e' tentato di modificare aliquota_iva o natura_iva_id di un codice IVA. ⛔ Cambiare l'aliquota di un codice in USO ne riscrive il significato retroattivamente su ogni documento che l'ha applicato - e su una fattura gia' emessa il numero e' scritto, ma la percentuale che lo spiega verrebbe da un catalogo diverso: il documento si contraddirebbe. La forma giusta e' coniare un CODICE NUOVO, che e' anche come funziona nella realta' - un cambio di aliquota non trasforma il vecchio codice, ne affianca uno. CONFLITTO_STATO come i tre lock gemelli (CODICE_NON_MODIFICABILE, E_ORD_CLIENTE_IMMUTABILE, E_PREV_RIGA_NATURA_IMMUTABILE): non c'e' un campo del form da correggere, e' l'operazione a non essere ammessa - ne discende che nel contesto non va la chiave `campo`. ⚠️ Il VARIADIC porta il NOME DELLA COLONNA, ed e' il caso in cui farlo e' giusto: e' l'informazione utile, e i tre lock gemelli fanno lo stesso. ⭐ Chiude il buco per cui il risolutore avrebbe potuto trovare due aliquote diverse per lo stesso codice sulla stessa fattura (righe scritte prima e dopo una modifica del catalogo): con il lock quel caso e' IRRAGGIUNGIBILE, e non serve allargare uq_fatture_r_iva_key. Uscita dichiarata per correggere un refuso su un codice appena creato: GUC zeroerp.allow_lock_columns_override. Piano: brief-db-be-iva-risolutore-e-regime-cliente, Fase 3.
     "E_IVA_TRATTAMENTO_IMMUTABILE": "CONFLITTO_STATO",
+    # dbops.fn_accoda_lavoro: si e' provato ad accodare un lavoro il cui processo e' di classe DOMINIO con run_as diverso da OPERATORE. ⛔ Un lavoro di dominio tocca righe dentro il perimetro di un emittente: senza operatore girerebbe senza perimetro, ed e' esattamente cio' che il cantiere «nessun processo senza operatore» esiste per impedire. ⭐ Serve perche' coda_lavori_tipi.run_as_default e' un SUGGERIMENTO che p_run_as sovrascrive, e il CHECK chk_coda_lavori_run_as_scope guarda la coerenza fra run_as e scope, non la natura del lavoro. La classe si legge da dbops.processi via coda_lavori_tipi.processo_codice. ⛔ Non si e' riusato E_PARAMETRO_INVALIDO: li' non c'e' un parametro invalido, c'e' un'invariante rotta — e quel codice e' un debito dichiarato, non una sede (D11 di brief-db-be-classe-codici-errore). ⚠️ TECNICO e non DATO_ERRATO: l'enqueue lo fa il backend o un trigger, non una persona in un form, quindi niente chiave campo.
+    "E_JOB_DOMINIO_SENZA_OPERATORE": "TECNICO",
     # UI gestione code (BE-7): annullo di un job non piu` PENDING → · conflitto di stato (il worker lo ha gia` preso, o e` terminato).
     "E_JOB_NON_ANNULLABILE": "CONFLITTO_STATO",
     # UI gestione code (BE-7): requeue di un job non IN_CORSO/ERRORE → · conflitto di stato (solo i bloccati/terminali si riaccodano).
@@ -628,6 +636,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # `dbops.coda_lavori_tipi` non ha quel codice: un tipo di job che il · backend accoda ma nessuno ha registrato. E' il gemello esatto di · `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non · risorsa mancante.
     "E_JOB_TYPE_NON_TROVATO": "TECNICO",
     "E_JWT_SENZA_IDENTITA": "NON_AUTENTICATO",
+    # apps/core/api/jwt_audit_authentication.py: il JWT è valido e porta identita_id, ma non porta il claim sid. Il sid è ciò che distingue una sessione dall'altra: senza, la revoca delle altre sessioni non sa quale risparmiare e revoca anche quella di chi ha premuto, e il diario delle sessioni non sa a quale riga attribuire logout e refresh. La classe è NON_AUTENTICATO come per il fratello E_JWT_SENZA_IDENTITA e per la stessa ragione: il token è incompleto e l'unico rimedio è un accesso nuovo, che l'operatore fa da solo; TECNICO direbbe «non puoi farci niente» a chi invece deve solo rientrare, e il messaggio che accompagna questo codice dice l'opposto. NON si riusa E_JWT_SENZA_IDENTITA: quello è il claim identita_id, e due condizioni diverse sotto lo stesso codice sono la definizione di accumulatore. La ui_action redirect_login si dichiara come override lato BE e non arriva dal default: sul 401 il default è il banner, perché buttare l'operatore fuori dall'applicazione si decide riga per riga. Il nome segue la sede: il claim si verifica una volta in autenticazione, dove il contratto del JWT interno pretende identita_id, ruolo_applicativo e sid, non in ciascuna delle view che leggono il sid. Origine: guard di SessioniRevocaTutteView, analisi del 2026-09-04.
+    "E_JWT_SENZA_SID": "NON_AUTENTICATO",
     "E_KIT_QUANTITA_DISOMOGENEE": "CONFLITTO_STATO",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "DATO_ERRATO",
     # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca · prezzi bundle riferiti a componenti non presenti nella BoM corrente · del padre composito (o fuori dal range di validita' della BoM).
@@ -640,6 +650,14 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LOGOUT_NO_TOKEN": "DATO_ERRATO",
     # Sollevato da dbops.fn_get_lookup_codici (migration 20260520-04+06) · quando la tabella passata non ha la struttura attesa · (id + codice/codice_interno + descrizione) e non esiste override · dichiarativo in dbops.automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL). · E' un errore di configurazione/sviluppo (rel whitelistato in dbops_repository · senza colonne compatibili, o override mancante per tabella custom): · utente finale non puo' rimediarlo, va corretto dal team.
     "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": "TECNICO",
+    # script.fn_check_documento_escludibile_da_giro: il documento e gia stato tolto da questo giro. Non e un guasto ed e la lettura idempotente del verbo: due operatori sulla stessa lista, o un doppio clic. Il rifiuto serve a non riscrivere il timbro dell uscita, che e immutabile per costruzione. Brief: brief-db-uscita-documento-dal-giro.
+    "E_LOTTO_DOC_GIA_USCITO": "CONFLITTO_STATO",
+    # script.fn_check_documento_escludibile_da_giro: si tolgono dal giro solo i documenti in ERRORE (decisione D-4). Un documento sano non si toglie: se non deve essere fatturato non lo si mette nel perimetro, oppure si annulla il lotto e si rigenera senza di lui. Il verbo resta stretto apposta - uno largo andrebbe spiegato ogni volta, e permetterebbe di svuotare un giro a mano una riga per volta. Brief: brief-db-uscita-documento-dal-giro.
+    "E_LOTTO_DOC_NON_IN_ERRORE": "CONFLITTO_STATO",
+    # script.fn_check_documento_escludibile_da_giro: il documento indicato non ha una riga di esito su questo lotto, quindi il giro non lo ha mai lavorato e non c e niente da togliere. Quasi sempre significa che l elenco a video e invecchiato: il giro e ripartito, oppure il documento appartiene a un altro lotto. CONFLITTO_STATO e non NON_TROVATO: la cosa esiste, e lo STATO del lotto che non la contiene - e un 404 manderebbe a cercare un documento che c e. Brief: brief-db-uscita-documento-dal-giro.
+    "E_LOTTO_DOC_SENZA_ESITO": "CONFLITTO_STATO",
+    # vendite.trgfn_fatturazione_lotti_esiti_uscita: qualcuno sta riportando indietro un documento gia uscito dal giro di fatturazione. ESCLUSO e terminale (decisione di Tid, 2026-09-08): il documento tolto da un lotto non rientra, e per avere tutto in un lotto solo si annulla il lotto e si rigenera. TECNICO e non CONFLITTO_STATO, ed e la parte che conta: la madre fn_escludi_documento_da_giro chiede prima alla sua check, quindi qui ci si arriva solo con un UPDATE diretto - cioe un chiamante rotto, non una persona. Un 409 direbbe a un operatore di rileggere uno stato che non ha nessun modo di cambiare. Brief: brief-db-uscita-documento-dal-giro.
+    "E_LOTTO_DOC_USCITA_IRREVERSIBILE": "TECNICO",
     "E_LOTTO_FATTURE_NON_PRE_FISCALI": "CONFLITTO_STATO",
     # Ridondante rispetto al precedente per scelta del DB, e va tenuto: · guarda il NUMERO della fattura, non lo stato che dovrebbe implicarlo. · Cancellare una fattura numerata aprirebbe un buco nella numerazione.
     "E_LOTTO_FATTURE_NUMERATE": "CONFLITTO_STATO",
@@ -809,6 +827,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": "CONFLITTO_STATO",
     # <- PRATICHE_TRANSIZIONE_NON_AMMESSA  (vivo)
     "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # dbops.fn_conta_presidio: la vista chiesta non e dichiarata in dbops.presidi, oppure e spenta (attivo false) o ritirata (obsoleto_dal valorizzato). TECNICO e non DATO_ERRATO perche quel parametro non lo fornisce nessuna persona in un form: lo passa il digest leggendo il catalogo, quindi una vista sconosciuta significa che il chiamante sta chiedendo qualcosa che il catalogo non conosce. Il perimetro del catalogo e voluto: senza, la funzione sarebbe una porta per contare qualunque relazione del database aggirando la row level security. Brief: brief-db-un-destinatario-per-i-presidi.
+    "E_PRESIDIO_NON_A_CATALOGO": "TECNICO",
     # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la · regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza · prefisso `E_`, quindi invisibile all'estrattore e degradato a · E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come · motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello · dice che esiste un collegamento a commessa, questo che a valle esiste · gia' una FATTURA — e una fattura senza l'origine che la giustifica non · si crea annullando il preventivo, si corregge dal lato fatturazione.
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "CONFLITTO_STATO",
     "E_PREV_COMPONENTE_NOT_FOUND": "NON_TROVATO",
@@ -854,6 +874,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "NON_PERMESSO",
     # Refactor 2026-05-20: user_message generico "Variazione prezzo" per · entrambi i codici. La distinzione SCONTO/MAGGIORAZIONE resta nel · codice errore + nel detail tecnico (segno della variazione) — utile · per workflow approvazione, dashboard e log, ma non per l'utente. · L'UX vede la direzione esplicita nel detail ("in diminuzione" / · "in aumento") generato da `_raise_or_return_violazione_l2`.
     "E_PRICING_SCONTO_ECCESSIVO": "NON_PERMESSO",
+    # script.fn_crea_utente_tecnico: si e' chiesto un utente tecnico per un processo che non ne vuole uno. Eleggibili SOLO i processi di dbops.processi con classe DOMINIO, attivi, non obsoleti e su canale PGAGENT o COMMAND. ⛔ I processi su canale CODA sono esclusi di proposito: sono accodati da un OPERATORE e girano con lo scope catturato all'enqueue: hanno gia' un'identita', ed e' quella della persona che ha chiesto il lavoro. Dargliene una tecnica ne cancellerebbe il nome dall'audit. ⛔ TECNICO e non DATO_ERRATO: quella chiamata non la fa un operatore in un form, la fa una migrazione o l'amministrazione - quindi niente chiave campo. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
+    "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": "TECNICO",
+    # Il codice processo indicato non esiste in dbops.processi. ⭐ Nasce per il dettaglio di un processo automatico (schermata Amm. Software) e per il guard 1 di script.fn_crea_utente_tecnico, che prima diceva «non eleggibile» anche quando il processo NON C''ERA: due situazioni diverse mandano a cercare in due posti diversi. ⛔ Non si riusa E_JOB_NON_TROVATO, che parla del LAVORO in coda numero N: un processo e un lavoro sono due cose diverse. Un codice usato per due cose si spezza a monte, non si rimappa a valle. Brief: brief-db-processi-automatici-residui-be, DB-8.
+    "E_PROCESSO_NON_TROVATO": "NON_TROVATO",
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "DATO_ERRATO",
     "E_PROFILO_ACCESSO_NON_TROVATO": "NON_TROVATO",
     # Gemello esatto di E_RUOLO_APPLICATIVO_NON_GESTITO: ramo ELSE per un · valore nuovo dell'enum senza regola. Il guard non apre per omissione.
@@ -864,6 +888,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PROMO_RETROATTIVA": "DATO_ERRATO",
     "E_PROMO_SCADUTA_IMMUTABILE": "CONFLITTO_STATO",
     "E_PULL_COMMESSA": "DATO_ERRATO",
+    # Ritirato il 2026-09-07. Fermava lo step quando fallivano TUTTE le commesse di un giro di fatturazione, ma il rollback che si portava dietro cancellava anche le marcature d'esito appena scritte: il documento fallito spariva dal lotto e tornava a sembrare fatturabile in competenza, ed e' il difetto che ha aperto il cantiere (caso LTF-0009578 / ORD0036005, 2026-09-06). Dal 2026-09-07 il ramo «tutte fallite» si comporta come il parziale: l'esito si scrive in vendite.fatturazione_lotti_esiti e lo step si ferma SENZA sollevare, cosi' la contraddizione «lotto COMPLETATO con documenti in ERRORE» resta visibile al presidio vendite.vw_lotti_chiusi_con_gruppi_in_errore invece di sparire dentro un rollback. Non ha un codice sostituto, e non e' una dimenticanza: il caso non e' piu' un errore da sollevare, e' un esito da registrare. Non si cancella perche' dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e le righe gia' scritte sotto questo codice devono restare leggibili — e' il pattern obsoleto_dal, non attivo=false. Brief: brief-db-esito-gruppo-lotto P-6.
+    # ⚠️ RITIRATO il 2026-09-07
     "E_PULL_COMMESSA_ALL_FAILED": "DATO_ERRATO",
     "E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO": "DATO_ERRATO",
     "E_PUSH_SORGENTE_ID_INVALIDO": "DATO_ERRATO",
@@ -952,6 +978,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti · (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando · la versione listino non e' in BOZZA. Solleva il service · `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle · su versione ATTIVA/CHIUSA.
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
     "E_RIGA_PREZZO_PENDENTE": "CONFLITTO_STATO",
+    # anagrafiche.trgfn_risorse_umane_guard_identita_attiva: si prova a disattivare una risorsa umana mentre la sua identita digitale OPERATORE (stesso soggetto_ruolo_id) e ancora attiva. Figli prima, padre poi: il legame non e una FK (passa da soggetti_ruoli), quindi l automazione ATTIVO non lo genera e il guard e scritto a mano (12-09-2026, analisi-software-per-dati-morti 6.2). CONFLITTO_STATO: lo stato del figlio puo cambiare, l azione resta proposta e disabilitata col motivo.
+    "E_RISORSA_UMANA_IDENTITA_ATTIVA": "CONFLITTO_STATO",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "DATO_ERRATO",
     # script.fn_check_sorgente_chiudibile e vendite.fn_ritira_commessa_attivita_da_sorgente: il ritiro e' stato invocato senza il tipo sorgente, senza la chiave del documento o senza il motivo. Nasce il 2026-08-26 col ritiro (Q-5' strada A). · TECNICO e non DATO_ERRATO: il chiamante e' un trigger o un servizio, non una persona in un form, e chi ha fatto la richiesta non puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⭐ IL VALORE nella frase e' il nome del parametro, ed e' deliberato: qui il lettore e' uno sviluppatore, e sapere QUALE dei tre manca e' l'informazione utile. · ⚠️ Il motivo e' fra i tre obbligatori perche' ANNULLATA e' irreversibile: senza motivo resta il fatto senza la ragione, e a mesi di distanza un importo sparito senza spiegazione e' indistinguibile da un difetto.
     "E_RITIRO_SORGENTE_PARAMETRO_MANCANTE": "TECNICO",
@@ -972,6 +1000,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SCADENZE_TERMINE_MANCANTE": "CONFLITTO_STATO",
     # script.trgfn_guard_emittente_scope: fn_check_user_emittente_scope · nega. E' il perimetro dell'operatore, non uno stato sfavorevole.
     "E_SCOPE_EMITTENTE": "NON_PERMESSO",
+    # script.trgfn_guard_emittente_scope: una sessione APPLICATIVA ha provato a scrivere su una tabella con perimetro emittente senza dichiarare chi agisce (app.current_user_id vuota). ⛔ Fino al 2026-09-04 quel caso usciva con RETURN NEW: era la porta da cui un processo automatico scriveva ovunque, e il cantiere «nessun processo senza operatore» esiste per chiuderla. ⭐ Il criterio non e il ruolo DB ma row_security_active() sulla tabella: chi passa dalla RLS (proprietario, superuser, BYPASSRLS) passa anche di qui, e chi la subisce deve dire chi e. Un criterio solo, quello che PostgreSQL applica gia. ⚠️ TECNICO e non NON_PERMESSO: non ce una persona a cui negare qualcosa: ce un processo configurato senza identita. Il fratello NON_PERMESSO e E_SCOPE_EMITTENTE, che nega a un utente NOTO un emittente fuori perimetro. Brief: brief-db-processi-automatici-identita-e-perimetro §7.
+    "E_SCOPE_SENZA_UTENTE": "TECNICO",
     "E_SEARCH_NOT_FOUND": "NON_TROVATO",
     "E_SEARCH_VALIDATION": "DATO_ERRATO",
     # <- SEQUENZA_NON_CONFIGURATA  (vivo)
@@ -1053,6 +1083,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ⚠️ Finisce per NOT_FOUND e non e' un 404: non manca un record · richiesto, il provisioning dello storico non riesce a determinare · la PK della tabella padre. Stesso inganno di · `E_SNAPSHOT_ID_NOT_FOUND` (§15.1).
     "E_STORICO_PARENT_PK_NOT_FOUND": "TECNICO",
     "E_STORICO_PROVISION": "TECNICO",
+    # dbops.fn_storico_risolvi_scope: la catena PADRE della mappa dbops.storico_scope_policy non termina entro il tetto di profondita, cioe gira in cerchio. TECNICO e non DATO_ERRATO: nessuna persona fornisce quel dato in un form, e la mappa e un seed di catalogo. E l unico caso in cui il resolver solleva: negli altri (madre non mappata, colonna vuota, padre sparito) risponde NULL, fail-closed sulla shadow, perche la storicizzazione non deve fermare la scrittura della madre per un difetto della mappa. Il presidio che lo previene e db/pgtap/dbops/test-storico-scope-policy-v1.sql. Brief: brief-db-rls-storico-scope-congelato §4b.
+    "E_STORICO_SCOPE_CATENA_CICLICA": "TECNICO",
     "E_STORICO_UD": "TECNICO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_STORICO_UPD": "TECNICO",
@@ -1158,6 +1190,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UTENTE_DISABILITATO": "NON_PERMESSO",
     "E_UTENTE_NON_ATTIVO": "NON_PERMESSO",
     "E_UTENTE_SCADUTO": "NON_PERMESSO",
+    # script.fn_crea_utente_tecnico: per la coppia (processo, emittente) lo username deterministico processo@emittente e'' gia'' preso, ma il legame in dbops.processi_identita e'' SPENTO. ⛔ Prima ci si sbatteva contro un 23505 NUDO su auth_user_username_key: il guard sul duplicato guarda processi_identita.attivo, e lo username no — quindi disattivare il legame (la via che la documentazione indicava per sostituire l''utente di un processo) liberava il guard e lasciava in piedi il muro. ⚠️ NON e'' E_UTENTE_TECNICO_GIA_ESISTE, che dice «ha gia'' un utente ATTIVO» e il cui rimedio e'' «non serve fare niente». Qui l''utente c''e'' ed e'' spento, e il rimedio e'' l''opposto: RIATTIVARLO con script.fn_riattiva_utente_tecnico. Due situazioni diverse mandano a fare due cose diverse. ⭐ CONFLITTO_STATO: i parametri sono giusti, e'' lo STATO del mondo che non ammette questa operazione. Brief: brief-db-processi-automatici-residui-be, DB-6.
+    "E_UTENTE_TECNICO_DA_RIATTIVARE": "CONFLITTO_STATO",
+    # script.fn_crea_utente_tecnico: l'emittente fiscale indicato per l'utente tecnico non esiste o non e' attivo. ⭐ L'emittente e' OBBLIGATORIO e costitutivo, non un permesso aggiunto dopo: config.user_emittenti_fiscali e' 1-a-1 sull'utente (UNIQUE(auth_user_id), changeSet 20260408-11), quindi un utente tecnico nasce PER un emittente e un utente senza non potrebbe fare niente, mai. ⛔ TECNICO e non DATO_ERRATO: la chiamata la fa una migrazione o l'amministrazione, non un operatore in un form.
+    "E_UTENTE_TECNICO_EMITTENTE_NON_VALIDO": "TECNICO",
+    # script.fn_crea_utente_tecnico: il processo ha gia' un utente tecnico attivo per quell'emittente, e la regola e' UNO per processo PER EMITTENTE (decisione D-6, rivista il 2026-09-04: config.user_emittenti_fiscali e' 1-a-1 sull'utente). ⭐ La fn si ferma prima invece di lasciar sollevare uq_processi_identita_processo: un 23505 nudo non direbbe QUALE regola e' stata infranta, e questa e' una regola di dominio, non un incidente di chiave. Per sostituire l'utente di un processo si disattiva la riga esistente e se ne crea una nuova: la storia dei run che lo nominano resta leggibile. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
+    "E_UTENTE_TECNICO_GIA_ESISTE": "TECNICO",
+    # script.fn_riattiva_utente_tecnico: non esiste un utente tecnico da riattivare per la coppia (processo, emittente). ⚠️ E'' il verso opposto di E_UTENTE_TECNICO_GIA_ESISTE, e i due insieme rendono percorribile la sostituzione: se c''e'' si riattiva, se non c''e'' si crea. Un solo codice per entrambi avrebbe lasciato chi legge senza sapere quale dei due verbi usare. Brief: brief-db-processi-automatici-residui-be, DB-6.
+    "E_UTENTE_TECNICO_NON_TROVATO": "NON_TROVATO",
+    # script.fn_crea_utente_tecnico: il profilo di accesso chiesto per un utente tecnico non e' utilizzabile - non esiste, non e' attivo, oppure non e' di tipo AD_HOC (l'unico legabile a una singola identita'; SUPER_ADMIN vi rientra ed e' escluso). ⛔ Il divieto su SUPER_ADMIN e' il punto: e' la scorciatoia ovvia per «deve servire tutti gli emittenti», e bypasserebbe lo scope PRIMA della whitelist in script.fn_check_user_emittente_scope - riaprendo con un nome rassicurante la porta che tutto il cantiere esiste per chiudere. Il perimetro di un processo si scrive riga per riga in config.user_emittenti_fiscali. ⚠️ Su un TECNICO la chiave campo esce dal contesto. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
+    "E_UTENTE_TECNICO_PROFILO_VIETATO": "TECNICO",
     "E_UTILITY_RUOLO_NON_AMMESSO": "DATO_ERRATO",
     "E_VALIDATION_INPUT": "DATO_ERRATO",
     # 13 punti di sollevamento, tutti la stessa condizione: parametro obbligatorio mancante o non valido (la guard prescritta da AGENTS.md). Non e un accumulatore, misurato il 2026-08-07.
@@ -1352,6 +1394,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_PIPELINE_MARK_ERROR",
         "E_PREV_GIA_IN_COMMESSA",
         "E_PREZZO_LISTINO_NON_TROVATO",
+        "E_PULL_COMMESSA_ALL_FAILED",
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",
         "ERRORE_PARAMETRI",

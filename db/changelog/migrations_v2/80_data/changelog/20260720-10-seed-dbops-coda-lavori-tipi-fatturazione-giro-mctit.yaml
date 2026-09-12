@@ -15,6 +15,11 @@
 # nessuna finestra di dispatch orfano. Upsert su codice (chiave naturale
 # stabile referenziata in FK da coda_lavori.job_type); id (identity) e meta
 # (default '{}') omessi.
+#
+# ⚠️ 2026-09-05 — QUESTO MIRROR NON SCRIVE `processo_codice`: la colonna e' nel
+# CSV ma qui e' dichiarata `type: SKIP`, perche' la sua FK punta a un catalogo
+# (`dbops.processi`) seminato piu' avanti nella timeline. La scrive il mirror
+# ri-ancorato `20260905-01`. Il perche' per esteso e' sulla colonna, in fondo.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -30,20 +35,43 @@ databaseChangeLog:
         - tableExists:
             schemaName: dbops
             tableName: coda_lavori_tipi
+      # ⛔ 2026-09-05 — QUESTO MIRROR NON CARICA PIU', e la ragione va letta.
+      #
+      # Era il mirror ANCORATO A LUGLIO del CSV `coda_lavori_tipi`, e saltava
+      # `processo_codice` (`type: SKIP`) perche' la FK di quella colonna punta a
+      # `dbops.processi`, seminato a settembre: in CI avrebbe girato prima del
+      # proprio bersaglio. Da settembre il CSV lo carica anche il mirror
+      # RI-ANCORATO `20260905-01`, che sta dopo quel seme e scrive tutte le
+      # colonne.
+      #
+      # ⛔ Il difetto che si chiude: una riga NUOVA del CSV veniva inserita dal
+      # mirror piu' VECCHIO — questo — che per disegno non sa scrivere
+      # `processo_codice`. E quella colonna e' diventata `NOT NULL`
+      # (20260904-42). ⇒ Un tipo di coda nuovo faceva fallire il migrate.
+      #
+      # ⚠️ E si vedeva SOLO su dev, che e' la parte insidiosa: in CI il database
+      # nasce vuoto e questo mirror gira a luglio, quando la colonna e' ancora
+      # nullable — la riga entrava, e `20260905-01` la completava a settembre.
+      # Su dev il `NOT NULL` c'e' gia' quando il mirror ri-esegue, quindi
+      # esplode. E' la stessa divergenza CI-vs-DEV descritta nel commento
+      # originale, presa dal verso opposto.
+      #
+      # ⭐ Perche' si SPEGNE questo e non si aggiunge la colonna: aggiungerla
+      # qui riaprirebbe esattamente il problema di timeline per cui era stata
+      # messa in SKIP. E il mirror ri-ancorato fa gia' tutto il lavoro, sullo
+      # STESSO CSV. Due mirror sulla stessa sorgente erano una ridondanza
+      # accettata; da quando uno dei due non sa scrivere una colonna
+      # obbligatoria, e' una trappola.
+      #   ⇒ Il changeSet resta, con la sua data e la sua storia: cambia che non
+      #     carica piu' niente. Il dato ha una sorgente sola e un'ancora sola.
+      #
+      # ⚠️ Non si CANCELLA il file: e' gia' applicato, e la sua riga in
+      # `databasechangelog` racconta che a luglio quei due tipi sono stati
+      # seminati. Un changeSet applicato descrive cio' che e' stato fatto.
       changes:
-        - loadUpdateData:
-            relativeToChangelogFile: true
-            file: ../sql/dbops/coda_lavori_tipi.csv
-            tableName: coda_lavori_tipi
-            schemaName: dbops
-            separator: ","
-            encoding: UTF-8
-            nullValue: "NULL"
-            primaryKey: "codice"
-            columns:
-              - column: { name: codice, type: STRING }
-              - column: { name: handler_code, type: STRING }
-              - column: { name: descrizione, type: STRING }
-              - column: { name: run_as_default, type: STRING }
-              - column: { name: max_tentativi_default, type: NUMERIC }
-              - column: { name: attivo, type: BOOLEAN }
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il caricamento e' passato a 20260905-01 (mirror ri-ancorato).
+              SELECT 1;

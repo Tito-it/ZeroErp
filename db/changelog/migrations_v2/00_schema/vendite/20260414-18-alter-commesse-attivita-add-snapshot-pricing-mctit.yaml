@@ -11,7 +11,7 @@
 # Il campo jsonb `meta` resta per dettagli non strutturati (es. flag
 # particolari, deroghe). Queste colonne sono quelle strutturate che
 # servono per query dirette.
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 10.1.
 # ------------------------------------------------------------
 

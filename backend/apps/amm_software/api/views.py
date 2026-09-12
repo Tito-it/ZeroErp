@@ -17,9 +17,16 @@ from apps.amm_software.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int
+from apps.core.api.payload_validators import (
+    optional_int,
+    qp_bool_optional,
+    qp_int,
+    qp_str,
+    qp_str_upper,
+)
 from apps.core.api.success_responses import success_response
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.core.services.processi_service import ProcessiService
 
 
 # Scopo: Decodifica query param a bool opzionale. Valori True: 1|true|yes|on
@@ -258,6 +265,31 @@ class RepartiListView(AdminAPIView):
         return success_response({"results": AmmSoftwareService().list_reparti()})
 
 
+class PermessiEreditatiView(AdminAPIView):
+    """GET livelli EREDITATI dal profilo per un operatore (sola lettura).
+
+    Cosa l'operatore avrebbe **senza** override individuali: e' la colonna
+    «ereditato» del pannello permessi, che evita di scrivere un override che
+    ripete il profilo — e un override che ripete il profilo congela la riga,
+    perche' da quel momento non segue piu' il reparto quando il reparto cambia.
+
+    ⛔ Non e' `reparti/<uo_id>/profilo/`: quello legge il solo binding REPARTO,
+    mentre i bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i
+    resolver prendono il primo per priorita'.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PermessiEreditatiGetResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Livelli ereditati dal profilo, per area e per azione.
+    def get(self, request: Request, auth_user_id: int) -> JsonResponse:
+        return success_response(
+            AmmSoftwareService().get_permessi_ereditati(auth_user_id)
+        )
+
+
 class RepartoProfiloView(AdminAPIView):
     """GET/PUT profilo reparto."""
 
@@ -281,6 +313,184 @@ class RepartoProfiloView(AdminAPIView):
 # ================================================================== #
 # Riepilogo permessi                                                   #
 # ================================================================== #
+
+
+class ProcessiListView(AdminAPIView):
+    """GET registro dei PROCESSI AUTOMATICI (`dbops.processi`).
+
+    ⭐ Prima schermata che rende leggibile da dentro l'applicazione cio' che
+    fino al 2026-09-05 si vedeva solo da `psql`: quali programmi girano da
+    soli, di che classe sono, con quale identita' e per quali aziende.
+    ⛔ `AdminAPIView` e non `DomainAPIView`: le viste di presidio che alimentano
+    questa area nominano TUTTI gli emittenti e non hanno RLS.
+    """
+
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="classe", type=str, required=False),
+            OpenApiParameter(name="canale", type=str, required=False),
+            OpenApiParameter(name="attivo", type=bool, required=False),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="ProcessiListResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Elenco paginato dei processi automatici con filtri di pannello.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        return success_response(ProcessiService().list_processi(
+            classe=qp_str_upper(qp.get("classe")),
+            canale=qp_str_upper(qp.get("canale")),
+            attivo=qp_bool_optional(qp.get("attivo"), "attivo"),
+            search=qp_str(qp.get("search")),
+            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
+            offset=qp_int(qp.get("offset"), 0),
+            order_by=qp_str(qp.get("order_by")),
+            # ⚠️ Il valore GREZZO: `parse_list_params` normalizzerebbe a "asc" e
+            #    annullerebbe il default del repository.
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
+
+
+class ProcessiPresidiView(AdminAPIView):
+    """GET stato dei presidi del cantiere «nessun processo senza operatore».
+
+    ⭐ La natura di ogni presidio — «deve restare vuota» oppure «registro di
+    debito che deve calare» — arriva dal COMMENTO della vista a database, non
+    da un elenco nel backend: e' il team DB a dichiararla, e a dirla e' una
+    sede sola.
+    ⭐ E DAL 2026-09-10 NEMMENO QUALI SIANO: le viste sono quelle che il
+    catalogo `dbops.presidi` marca di natura `ZERO` (decisione di Tid). Erano
+    una tupla di dieci nomi nel backend, e le due gia' non coincidevano —
+    cinque `ZERO` a catalogo non le guardava nessuno, e una `LAVORAZIONE` stava
+    fra gli allarmi. ⚠️ Una vista `LAVORAZIONE` non e' un allarme: una coda con
+    righe e' lavoro in corso, e un pannello che mostra righe verdi insegna a
+    leggere il verde come debito.
+    ⚠️ QUANTI SIANO non si scrive qui, e non e' pignoleria: fino al 2026-09-07
+    questa riga diceva «SEI», e alla stessa data la tupla ne elencava dieci. Un
+    numero copiato accanto a un elenco che cresce invecchia in silenzio — la
+    sede e' il catalogo, e si legge da li'.
+    ⛔ E un presidio che non si e' potuto LEGGERE arriva con il suo `errore` e
+    `conteggio` a `null`: non e' «zero righe», ed e' l'unica differenza che
+    conta su una schermata dove il verde vuol dire «tutto a posto».
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ProcessiPresidiResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: I presidi in un round-trip: conteggio, prime righe, descrizione.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(ProcessiService().stato_presidi())
+
+
+class ProcessiDetailView(AdminAPIView):
+    """GET dettaglio di un processo: bersagli dichiarati e identita' tecniche."""
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ProcessiDetailResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Dettaglio completo del processo (404 se il codice non esiste).
+    def get(self, request: Request, codice: str) -> JsonResponse:
+        return success_response(ProcessiService().get_processo(codice))
+
+
+class ProcessiRunView(AdminAPIView):
+    """GET le corse recenti di un processo (`maintenance.job_run_log`)."""
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="ProcessiRunResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Storia recente delle corse di un processo.
+    def get(self, request: Request, codice: str) -> JsonResponse:
+        qp = request.query_params
+        return success_response(ProcessiService().list_run(
+            codice,
+            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
+            offset=qp_int(qp.get("offset"), 0),
+        ))
+
+
+# Scopo: il pezzo comune ai due verbi sull'utente tecnico (crea / riattiva):
+#        stesso header obbligatorio, stesso corpo, stessa traduzione del
+#        payload. I due endpoint restano SEPARATI — sono due intenzioni — ma
+#        cio' che hanno in comune sta scritto una volta.
+# ⚠️ `_IDEMPOTENCY_HEADER_PARAM` esiste identico in `core/api/views_tracciamento.py`:
+#    e' la seconda copia. Portarla in `core/api` e' un'estrazione di building
+#    block, e si fa quando Tid dice di si', non di passaggio.
+_IDEMPOTENCY_HEADER_PARAM = OpenApiParameter(
+    name="Idempotency-Key", type=str,
+    location=OpenApiParameter.HEADER, required=True,
+    description="Chiave idempotenza obbligatoria per endpoint write.",
+)
+_IDENTITA_REQ_FIELDS = {"emittente_codice": serializers.CharField()}
+
+
+def _post_verbo_identita(request: Request, codice: str, verbo) -> JsonResponse:
+    def _handler(payload: dict[str, object]) -> dict[str, object]:
+        return verbo(codice, emittente_codice=str(payload.get("emittente_codice") or ""))
+
+    return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ProcessiIdentitaView(AdminAPIView):
+    """POST crea l'utente tecnico di un processo PER UN EMITTENTE.
+
+    ⛔ D-9: il sistema non SCEGLIE l'emittente, lo riceve da una persona. Non
+    esiste un verbo «crea tutti quelli che mancano»: il pannello mostra chi non
+    e' servito, la decisione resta di chi guarda.
+    """
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(name="ProcessiIdentitaReq", fields=_IDENTITA_REQ_FIELDS),
+        responses={200: inline_serializer(
+            name="ProcessiIdentitaResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Crea l'utente tecnico (processo x emittente) via fabbrica di dominio.
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        return _post_verbo_identita(request, codice, ProcessiService().crea_utente_tecnico)
+
+
+class ProcessiIdentitaRiattivaView(AdminAPIView):
+    """POST riaccende l'utente tecnico SPENTO di un processo per un emittente.
+
+    ⭐ Endpoint SEPARATO dalla creazione, e non un flag su quello: sono due
+    intenzioni diverse davanti a due stati del mondo diversi — «non c'e'» e
+    «c'e' ed e' spento». Un `POST … /identita/` che a volte crea e a volte
+    riaccende sarebbe un verbo che decide da solo quale, e chi lo chiama non
+    saprebbe piu' quale dei due e' avvenuto.
+    ⚠️ Ci si arriva da un rifiuto parlante: `fn_crea_utente_tecnico` risponde
+    `E_UTENTE_TECNICO_DA_RIATTIVARE` e manda qui.
+    """
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(name="ProcessiIdentitaRiattivaReq", fields=_IDENTITA_REQ_FIELDS),
+        responses={200: inline_serializer(
+            name="ProcessiIdentitaRiattivaResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Riattiva l'utente tecnico (processo x emittente) via fabbrica.
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        return _post_verbo_identita(request, codice, ProcessiService().riattiva_utente_tecnico)
 
 
 class AuditLogView(AdminAPIView):
@@ -506,9 +716,11 @@ class EmailLogStatiLookupView(AdminAPIView):
     """GET lookup statico stati email log (Fase 5).
 
     Single source of truth in `amm_software_service._EMAIL_LOG_STATI_VALIDI`
-    + `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente DB: 4 codici fissi
-    (SENT/PENDING/RETRY/FAILED) gestiti dal `EmailDispatchService`.
+    + `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente DB: 5 codici fissi
+    (SENT/PENDING/RETRY/FAILED/SIMULATA) gestiti dal `EmailDispatchService`.
     Pattern simmetrico a `EmittenteRoundingModesLookupView`.
+    ⚠️ Questa docstring finisce nello schema OpenAPI: e' la descrizione che
+    legge chi consuma la rotta, quindi il numero va tenuto col vocabolario.
     """
 
     @extend_schema(

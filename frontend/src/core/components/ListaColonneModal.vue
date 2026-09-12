@@ -26,6 +26,9 @@ import Tag from 'primevue/tag'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { DRAWER_WIDTH } from '../constants'
 import { useConfirmAction } from '../composables/useConfirmAction'
+import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+
+
 const { confirmAction } = useConfirmAction()
 
 // Limiti UX per la larghezza colonna in pixel. Coerenti con i tipici
@@ -46,6 +49,11 @@ const props = defineProps({
   // Codice lista (per i18n contestuale eventuale).
   codice: { type: String, default: '' },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'apply', 'reset'])
 const { t, te } = useI18n()
@@ -159,6 +167,7 @@ function onReset() {
     :modal="true"
     :dismissable="!loading"
     @update:visible="emit('update:visible', $event)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <div class="lista-config-header">
@@ -172,7 +181,7 @@ function onReset() {
       </div>
     </template>
 
-    <div class="lista-config-body">
+    <div v-if="contentReady" class="lista-config-body">
       <div
         v-for="(gruppo, gIdx) in gruppiOrdinati"
         :key="gruppo.label"

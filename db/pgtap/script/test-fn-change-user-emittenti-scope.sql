@@ -34,11 +34,29 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
+-- ⛔ LE TRE IDENTITA' SI COSTRUISCONO, non si cercano (2026-09-12). La fixture
+--   del 2026-08-18 aveva imparato a COSTRUIRE lo stato GLOBAL, ma l'operatore a
+--   cui costruirlo lo cercava ancora fra gli esistenti — e su un database
+--   ricostruito dai changelog non ce n'e' nessuno: «p_auth_user_id non valido:
+--   NULL», sette asserzioni perse. Tre aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di aprire il contesto:
+--   quella del contesto, quella dell'operatore sotto test, quella del super admin.
+CREATE TEMP TABLE _mondi AS
+SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'CTX'));
+END $ctx$;
 
 -- 🔴 plan 6 -> 7 il 2026-08-18: le asserzioni erano SEMPRE state sette (il
 --   punto 2 ne ha due: `changed=true` e la riga effettivamente scritta), ma il
@@ -50,24 +68,14 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(7);
 
 -- =========================================================
--- Helper SA standard
+-- Helper SA: l'identita' OPERATORE costruita per il ruolo SA + binding SA
 -- =========================================================
 CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT au_id integer, OUT bind_id bigint)
 LANGUAGE plpgsql AS $$
 BEGIN
-    SELECT id.id, id.auth_user_id INTO id_id, au_id
-      FROM anagrafiche.identita_digitali id
-     WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-       AND id.attivo = true
-       AND NOT EXISTS (
-           SELECT 1 FROM config.profili_accesso_bindings pab
-            WHERE pab.identita_digitale_id = id.id
-       )
-     ORDER BY id.id LIMIT 1;
-
-    IF id_id IS NULL THEN
-        RAISE EXCEPTION 'Setup impossibile: nessuna identita OPERATORE vergine disponibile';
-    END IF;
+    SELECT m.identita_id, m.auth_user_id INTO id_id, au_id
+      FROM _mondi m
+     WHERE m.lato = 'SA';
 
     INSERT INTO config.profili_accesso_bindings
         (profilo_accesso_id, identita_digitale_id, attivo)
@@ -111,35 +119,24 @@ $$;
 --   difetto che ha gia' colpito test-permessi-user-overrides — «prendi il primo
 --   e spera» — solo al contrario: li' il dato reale c'era di troppo, qui manca.
 --
---   ⭐ Ora lo stato GLOBAL si COSTRUISCE: si prende un operatore vero e gli si
---   toglie la riga di scope. Il DELETE passa dall'override GUC perche' la
+--   ⭐ Ora lo stato GLOBAL si COSTRUISCE: si prende l'operatore costruito e gli
+--   si toglie la riga di scope. Il DELETE passa dall'override GUC perche' la
 --   tabella ha un guard sul delete.
 --   ⛔ E si toglie a mano invece di chiamare `fn_change_user_emittenti_scope`
 --   con array vuoto: sarebbe la funzione SOTTO TEST a costruire la propria
 --   precondizione, e un difetto in lei renderebbe il test verde per errore.
 --   Il file e' transazionale: lo scope vero torna al ROLLBACK.
 CREATE TEMP TABLE _t_user AS
-SELECT id.auth_user_id AS au_id
-  FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND id.attivo = true
-   AND NOT EXISTS (
-       SELECT 1 FROM config.profili_accesso_bindings pab
-        WHERE pab.identita_digitale_id = id.id AND pab.attivo = true
-   )
- ORDER BY id.auth_user_id LIMIT 1;
+SELECT m.auth_user_id AS au_id FROM _mondi m WHERE m.lato = 'OP';
 
 SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 DELETE FROM config.user_emittenti_fiscali
  WHERE auth_user_id = (SELECT au_id FROM _t_user);
 SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
--- Due EF attivi (per il caso SINGLE con id reale)
+-- L'EF per il caso SINGLE: quello dell'azienda dell'operatore sotto test
 CREATE TEMP TABLE _t_ef AS
-SELECT ef.id AS ef_id, row_number() OVER (ORDER BY ef.id) AS rn
-  FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.attivo = true
- ORDER BY ef.id LIMIT 1;
+SELECT m.emittente_fiscale_id AS ef_id FROM _mondi m WHERE m.lato = 'OP';
 
 -- =========================================================
 -- 1) Guard MULTI (>1 elementi) -> raise E_OPERATORE_SCOPE_MULTI_NON_AMMESSO

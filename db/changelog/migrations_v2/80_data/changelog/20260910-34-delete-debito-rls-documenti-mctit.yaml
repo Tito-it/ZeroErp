@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DG-4 — Il DEBITO PAGATO esce dal registro.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.16
+#   Slice 20260910-31..34, ultimo pezzo.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LE RIGHE TOLTE DAL CSV ─────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**. Le due cose vanno
+#   insieme — il CSV perche' un database ricostruito da zero non le crei, questa
+#   `DELETE` perche' dove ci sono gia' se ne vadano. Senza, escono come
+#   `DEBITO_ESTINTO` e il test 2 di
+#   `db/pgtap/rls/test-rls-perimetro-scoperto.sql` diventa rosso.
+#
+# ── ⭐ E QUESTA VOLTA NON ENTRA NESSUNA RIGA NUOVA ────────────────────
+#   Le due slice precedenti ne avevano portata una ciascuna per transitivita' —
+#   `pratiche` scopri' due nipoti (§11.7), `commesse` consegno'
+#   `attivita_fatturabili_log` (§11.15). Qui **nessuna tabella ha una FK verso i
+#   due satelliti** (verificato 2026-09-10) ⇒ armarli non fa entrare nessuno nel
+#   criterio al giro dopo. Il registro cala e basta: **14 -> 12**.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-34-delete-debito-rls-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-34-delete-debito-rls-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito le due righe dei satelliti documentali
+        (documenti.documenti_generati_eventi, documenti.documenti_generati_file),
+        armate dalla slice 20260910-31..33. loadUpdateData non cancella, quindi
+        togliere le righe dal CSV non basta.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (40, 'documenti', 'documenti_generati_eventi'),
+                         (41, 'documenti', 'documenti_generati_file'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette in piedi un debito che NON esiste piu'. Ha senso solo
+              --   insieme al rollback di 20260910-33, che disarma i due.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (40, 'FIGLIA_DI_TABELLA_PROTETTA', 'documenti', 'documenti_generati_eventi',
+                 'Ripristino di rollback: satellite di documenti.documenti_generati (protetta) via documento_generato_id NOT NULL. Serve l''adattatore _via_documento_generato, che arriva con 20260910-31.', DATE '2026-09-09'),
+                (41, 'FIGLIA_DI_TABELLA_PROTETTA', 'documenti', 'documenti_generati_file',
+                 'Ripristino di rollback: satellite di documenti.documenti_generati (protetta) via documento_generato_id NOT NULL. E'' la riga da cui si arriva al file su storage: qui il perimetro pesa piu'' che altrove.', DATE '2026-09-09');

@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L4 — LA CARD CONTA COME LA LISTA
+#
+# ── 🔴 IL DIFETTO DEL COLLAUDO, ed e' la richiesta 1 del backend ─
+#   2026-09-09, su 09/2026: la card «Da emettere» diceva 4, l'elenco sotto ne
+#   mostrava 3 e sbarrava il quarto. Le due cifre convivevano sulla stessa
+#   schermata, e il numero su cui l'operatore decide comprendeva lavoro che non
+#   poteva prendere.
+#
+# ── ⛔ E LA CARD NON POTEVA FILTRARE: NON AVEVA IL DATO ──────────
+#   Il verdetto viveva su vw_dash_competenza_gruppi, un piano SOPRA questa
+#   vista. Un aggregato non puo' leggere una colonna che la sua sorgente non
+#   espone. ⇒ Il verdetto e' sceso alla grana attivita' (changeSet -65), e qui
+#   si limita a filtrare.
+#
+# ── ⛔ `FILTER` E MAI UNA `WHERE` ────────────────────────────────
+#   E' la lezione gia' pagata sul riepilogo dei gruppi (§8.4 del brief
+#   precedente): filtrando le righe FUORI, il bucket sparisce quando TUTTE le
+#   sue attivita' sono trattenute — cioe' esattamente quando il numero serve —
+#   e con lui sparisce la dichiarazione che spiega il calo. Con `FILTER` la
+#   riga resta, il numero cala e accanto c'e' scritto di quanto.
+#
+# ── ⭐ E LA DICHIARAZIONE NON E' UN DI PIU' ──────────────────────
+#   Un numero che cala senza dire di quanto e' un numero che l'operatore non sa
+#   leggere: «non c'e' niente da fare» e «c'e' del lavoro che un giro sta gia'
+#   tenendo» si leggerebbero uguali. Stessa forma di `ritirate_count` sul
+#   giornale della fattura e di `archiviate_count` sulle code.
+#
+# ── ⚠️ E QUESTO CAMBIA UN NUMERO CHE IL BACKEND GIA' LEGGE ───────
+#   `n_attivita` e `valore_tot` ora ESCLUDONO le trattenute. Nessuna colonna
+#   cambia posizione, quindi la lettura posizionale del repository regge — ma
+#   le DUE NUOVE vanno lette, o la dichiarazione non arriva a video e il numero
+#   cala in silenzio: che e' il difetto di partenza girato di 180 gradi.
+#
+# ⚠️ Colonne IN CODA. `security_invoker=on` ri-specificato.
+#
+# Verifica: db/pgtap/vendite/test-vw-dash-competenza-v1.sql
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L4, §3.1, §5.1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-67-update-vw-dash-competenza-mensile-card-mctit.yaml
+
+  - changeSet:
+      id: 20260909-67-update-vw-dash-competenza-mensile-card
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_dash_competenza_mensile: n_attivita e valore_tot ESCLUDONO le
+        attivita' trattenute (FILTER, mai WHERE) e due colonne nuove in coda le
+        dichiarano. E' il numero della card.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite' AND viewname = 'vw_lotti_fase'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name = 'vw_dash_competenza_attivita'
+                     AND column_name = 'emissione_trattenuta'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  -- ⭐ IL NUMERO DELLA CARD, e da qui esce cio' che l'operatore non puo'
+                  --   prendere. Il verdetto arriva dalla grana attivita' (changeSet -65),
+                  --   che lo legge dalla sede unica: qui non si riscrive nessun predicato.
+                  -- ⛔ `FILTER` e MAI una `WHERE`: filtrando le righe fuori, il bucket
+                  --   SPARIREBBE quando tutte le sue attivita' sono trattenute — cioe'
+                  --   esattamente quando il numero serve — e con lui sparirebbe la
+                  --   dichiarazione qui sotto, che sta li' per spiegare il calo.
+                  (count(*) FILTER (WHERE NOT emissione_trattenuta))::integer AS n_attivita,
+                  COALESCE(sum(valore) FILTER (WHERE NOT emissione_trattenuta), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo,
+                  tipo_movimento,
+                  motivo_non_fatturata,
+                  -- ⭐ LA DICHIARAZIONE, e non e' un di piu': un numero che cala senza dire
+                  --   di quanto e' un numero che l'operatore non sa leggere. E' la stessa
+                  --   forma di `ritirate_count` sul giornale della fattura — «elenco pulito»
+                  --   e «tre righe messe via» non devono leggersi uguali.
+                  -- ⚠️ IN CODA: il backend legge questa vista per POSIZIONE, e una colonna
+                  --   infilata in mezzo sposta in silenzio tutte quelle dopo.
+                  (count(*) FILTER (WHERE emissione_trattenuta))::integer AS n_attivita_trattenute,
+                  COALESCE(sum(valore) FILTER (WHERE emissione_trattenuta), (0)::numeric) AS valore_trattenuto
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento, motivo_non_fatturata;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*))::integer AS n_attivita,
+                  COALESCE(sum(valore), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo,
+                  tipo_movimento,
+                  motivo_non_fatturata
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento, motivo_non_fatturata;

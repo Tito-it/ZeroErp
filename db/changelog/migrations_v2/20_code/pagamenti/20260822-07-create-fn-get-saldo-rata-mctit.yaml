@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # QUANTO RESTA SU UNA RATA — passo S2-6 (lotto 5)
 #   pagamenti.fn_get_saldo_rata
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.2 S2-6 · Decisioni: brief madre §4 (incassato ≠ postato), D2
 #
 # ── ⭐ TRE NUMERI, NON UNO — E OGNUNO RISPONDE A UNA DOMANDA DIVERSA ───

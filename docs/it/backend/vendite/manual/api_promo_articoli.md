@@ -9,7 +9,7 @@ da listino o matrice categoria. E' l'unico livello che ammette
 in listini e matrice categoria).
 
 Riferimento concettuale:
-[sviluppo-listini-v5.md](/dev/work-in-progress/sviluppo-listini-v5) §6.
+[sviluppo-listini-v5.md](/dev/work-done/sviluppo-listini-v5) §6.
 
 ## Contesto
 

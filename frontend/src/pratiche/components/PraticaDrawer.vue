@@ -41,6 +41,7 @@ import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
+import { MANAGE_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
 const store = usePraticheStore()
@@ -323,7 +324,7 @@ const drawerActions = computed(() => {
       key: 'annulla',
       kind: 'state',
       label: t('pratiche.azione_annulla'),
-      icon: 'pi pi-times-circle',
+      icon: MANAGE_ICONS.ANNULLA,
       severity: 'danger',
       outlined: true,
       visible: s !== '' && s !== STATO_PRATICA.CHIUSA && s !== STATO_PRATICA.ANNULLATA,

@@ -17,7 +17,7 @@
 - [api_parameter_settings](manual/api_parameter_settings.md) — Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, group, emittente fiscale) e CRUD override personale operatore.
 - [api_parameters](manual/api_parameters.md) — Espone la gestione dei parametri di sistema (config.parameters) con risoluzione override multi-livello per l'utente autenticato. Supporta:
 - [api_password_reset](manual/api_password_reset.md) — Permette all'operatore di reimpostare la propria password via email, senza intervento admin. Tre endpoint pubblici (non autenticati) con rate limiting.
-- [api_permessi_audit](manual/api_permessi_audit.md) — Endpoint che restituisce la timeline audit delle modifiche ai permessi di un utente. Interroga le 7 tabelle storico del sistema permessi con filtri opzionali e paginazione.
+- [api_permessi_audit](manual/api_permessi_audit.md) — Endpoint che restituisce la timeline audit delle modifiche ai permessi di un utente. Interroga le 8 tabelle storico del sistema permessi (5 per utente + 3 per reparto) con filtri opzionali e paginazione.
 - [api_permessi_effettivi](manual/api_permessi_effettivi.md) — Esporre un endpoint diagnostico che restituisce i permessi effettivi risolti per un utente, iterando tutte le aree funzionali attive e mostrando il livello di accesso, le azioni consentite e lo stato del profilo reparto.
 - [api_response_envelope](manual/api_response_envelope.md) — Definire il formato uniforme delle risposte successo/errore per tutte le API.
 - [api_retry_policies](manual/api_retry_policies.md) — Uniformare gestione idempotency key e semantica retry lato API.
@@ -45,7 +45,8 @@
 - [jwt_audit_authentication](manual/jwt_audit_authentication.md) — Subclass DRF di rest_framework_simplejwt.authentication.JWTAuthentication che propaga l'identita' utente JWT come GUC PostgreSQL (app.jwt_user, app.current_user_id) subito dopo authenticate() di successo, prima che il v…
 - [jwt_audit_middleware](manual/jwt_audit_middleware.md) — Middleware Django per le request /api/*. Tre responsabilita':
 - [permissions_cache](manual/permissions_cache.md) — Cache Redis L2 per i permessi utente. Integra la cache per-request (L1 dict) con Redis (L2) per evitare query DB su ogni richiesta HTTP.
-- [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp. Implementa la catena di risoluzione: ruolo_sistema → override utente → profilo reparto → BLOCCATO (default sicuro).
+- [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp: una classe statica che **delega ogni decisione alle funzioni SQL script.fn_*** e tiene una cache per-request per non ripetere lo stesso round-trip due volte nella stessa richies…
 - [request_log_middleware](manual/request_log_middleware.md) — Registrare ogni request API autenticata nella tabella dbops.request_log con metodo, path, status, durata e utente.
 - [session_audit_service](manual/session_audit_service.md) — Registrare eventi di sessione JWT (login, refresh, logout, revoca) nella tabella dbops.sessioni_utente.
+- [sveglie_processi](manual/sveglie_processi.md) — Dire **chi sveglia ogni processo automatico del backend**, con quale cadenza, e entro quanto il suo ultimo run vale ancora come segno di vita — da una sede sola, leggibile da due programmi.
 - [zeroerp_permission](manual/zeroerp_permission.md) — Permission class DRF centrale per ZeroErp. Risolve automaticamente l'area funzionale dallo schema del model e verifica il livello di accesso tramite PermissionResolver.

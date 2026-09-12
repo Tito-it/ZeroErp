@@ -37,6 +37,8 @@ from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
+    chiave_idempotenza_giro,
+    corsia_del_giro,
     insieme_digest,
     parse_lotti,
     parse_gruppi,
@@ -65,6 +67,7 @@ from apps.vendite.services.pipeline_service import (
     fn_annulla_lotto_da_draft,
     fn_riporta_lotto_a_draft,
     fn_elimina_fattura_da_lotto,
+    fn_escludi_documenti_da_giro,
     numera_lotto,
     ristampa_lotto,
     run_lotto_pipeline,
@@ -75,6 +78,7 @@ from apps.vendite.services.vendite_service import (
     fn_export_lotti,
     fn_list_lotti,
     fn_list_lotto_fatture,
+    fn_list_lotto_gruppi,
     fn_lotti_mensile,
     get_lotto_giornale,
 )
@@ -712,6 +716,111 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
 
 
 
+class ApiEscludiDocumentiDaGiro(DomainAPIView):
+    """Toglie N documenti dal giro, cosi' che il lotto riparta con gli altri.
+
+    ⭐ Un giro prende in carico N documenti; se uno e' rotto il lotto si ferma e
+    gli altri N-1, che hanno gia' le loro bozze, non vengono emessi. Prima
+    l'unica azione su un lotto fermo era ANNULLARLO — buttare via il giro
+    intero, bozze sane comprese.
+
+    ⚠️ **Il consuntivo va mostrato, non ingoiato.** Una bozza puo' coprire piu'
+    documenti: togliere A puo' portare via anche B, che torna «da emettere» e si
+    fattura al giro dopo. `gruppi_riaperti` porta le CHIAVI proprio perche' la
+    conferma deve poterli nominare (D-2b del brief).
+
+    ⛔ Nessuna regola qui: il verdetto e' della funzione MADRE, che chiama
+    `script.fn_check_documento_escludibile_da_giro` — la stessa da cui la lista
+    documenti prende il motivo del pulsante spento. Un rifiuto arriva come 409
+    con il codice del PRIMO motivo.
+
+    ⚠️ **Permesso RIUSATO e non coniato**: `reset_lotto_fattura_draft`. Il potere
+    e' lo stesso — cancellare bozze pre-fiscali di un lotto, una alla volta — e
+    questo verbo quella primitiva la COMPONE. Un codename nuovo sarebbe un seed
+    a catalogo (`config.azioni_processo`) per dire che e' un'altra facolta',
+    e non lo e'.
+    """
+
+    area_funzionale = "vendite"
+    post_permission = "reset_lotto_fattura_draft"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeEscludiDocumentiDaGiroRequest",
+            fields={
+                # ⭐ Una LISTA anche per un documento solo: un endpoint solo, e
+                #    la riga singola è una lista di uno. Due superfici per lo
+                #    stesso verbo divergerebbero su permessi, conferme e forma
+                #    dell'esito.
+                "gruppo_keys": serializers.ListField(child=serializers.CharField()),
+                # ⚠️ Obbligatorio, e la regola la tiene il database (D-5): un
+                #    documento che esce senza motivo e' una riga che fra un mese
+                #    nessuno sa spiegare.
+                # ⚠️ UNO per il giro, non uno per riga: chi toglie cinque
+                #    documenti li toglie per la stessa ragione, e chiederne
+                #    cinque renderebbe il gesto di massa più lento della somma
+                #    dei singoli.
+                "motivo": serializers.CharField(),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeEscludiDocumentiDaGiroResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeEscludiDocumentiDaGiroData",
+                        fields={
+                            # ⭐ Un REPORT a tre stati, e torna 200 anche quando
+                            #    falliscono tutti: il verbo non produce un atto
+                            #    fiscale, lascia documenti che tornano in
+                            #    competenza. Sollevare sul «tutti falliti»
+                            #    darebbe due forme da leggere per la stessa
+                            #    domanda.
+                            "esito": serializers.CharField(),
+                            "totale": serializers.IntegerField(),
+                            "ok": serializers.IntegerField(),
+                            "usciti": serializers.ListField(
+                                child=serializers.DictField(),
+                            ),
+                            # ⚠️ Il CODICE per riga, non solo la frase: è ciò su
+                            #    cui il frontend instrada — «già uscito» si legge
+                            #    diverso da «non è in errore».
+                            "falliti": serializers.ListField(
+                                child=serializers.DictField(),
+                            ),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            # ⛔ NESSUNA NORMALIZZAZIONE, e nemmeno un `str()` di comodo: il
+            #    `CHECK` di tabella rifiuta anche i soli spazi, e sistemarlo qui
+            #    trasformerebbe un rifiuto in un motivo vuoto scritto. Il TIPO
+            #    lo controlla il service; il CONTENUTO e' del database (D-5).
+            return fn_escludi_documenti_da_giro(
+                lotto_id=lotto_id,
+                gruppo_keys=payload.get("gruppo_keys"),
+                motivo=payload.get("motivo"),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 # Whitelist di ordinamento della lista lotti: derivata dalla mappa del
 # repository invece che ricopiata, cosi' le due non possono divergere (stesso
 # accorgimento di `_ORDER_BY_CONTRATTI` in contratti_service). La mappa e'
@@ -766,6 +875,21 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
         "emittente_soggetto_ruolo_id": optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None,
         "order_by": order_by,
         "order_dir": order_dir,
+        # ⭐ Il perimetro della scheda «Recuperi del mese» sta QUI, insieme agli
+        #    altri filtri, e non piu' solo nella view della lista.
+        # 🔴 Difetto corretto il 2026-09-03: l'export lo riceveva dal frontend
+        #    (`recuperi_mese: true`, con tanto di commento «il file E' la lista»)
+        #    e NESSUNO lo leggeva — questa funzione non lo estraeva e
+        #    `fn_export_lotti` non aveva il parametro. Esportando dalla seconda
+        #    scheda usciva l'elenco ORDINARIO del mese: non un file incompleto,
+        #    un insieme DISGIUNTO da quello a video. Niente falliva.
+        # ⚠️ E' la specie «campo dichiarato e non letto»: sembrava presidiato
+        #    perche' il parametro partiva davvero.
+        "solo_recuperi_mese": as_bool(qp.get("recuperi_mese"), default=False),
+        # ⭐ `?annullati=1` mostra anche i lotti col fiscale ABORTITO (2026-09-12).
+        #    Di default restano fuori — da lista, chip ed export insieme, perche'
+        #    il parser e' uno — e la risposta dice quanti sono (`annullati_count`).
+        "includi_annullati": as_bool(qp.get("annullati"), default=False),
     }
 
 
@@ -782,6 +906,7 @@ class ApiLottiList(DomainAPIView):
             OpenApiParameter(name="area_geografica_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per area geografica fatturazione."),
             OpenApiParameter(name="tipo_doc_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per tipo documento fiscale."),
             OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per emittente fiscale (soggetto_ruolo_id)."),
+            OpenApiParameter(name="annullati", type=bool, location=OpenApiParameter.QUERY, required=False, description="`1` mostra anche i lotti col fiscale ABORTITO (`config.stati_doc_fiscale.is_abortito`, oggi ANNULLATA). Default: nascosti — lista, chip per stato ed export insieme — e la risposta dichiara quanti sono in `annullati_count`."),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento: `campo_sorgente` del catalogo lista `vendite.lotti`. Whitelist autoritativa: `VenditeRepository.LOTTI_SORT_COLUMNS` — codice, competenza_mese, data_documento, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, emittente_ragione_sociale, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, n_fatture, totale_documenti, data_insert, user_insert."),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
@@ -799,6 +924,16 @@ class ApiLottiList(DomainAPIView):
                             "page_size": serializers.IntegerField(),
                             "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
+                            # Ripartizione per stato del perimetro corrente
+                            # (mese/recuperi compresi, filtro `stato_lotto`
+                            # ESCLUSO): alimenta i pulsanti-filtro della lista.
+                            # Solo gli stati presenti — uno stato a zero non
+                            # diventa un pulsante.
+                            "stati": serializers.ListField(child=serializers.DictField()),
+                            # Quanti lotti annullati il perimetro sta NASCONDENDO
+                            # (0 con `?annullati=1`): il numero accanto
+                            # all'interruttore che li mostra.
+                            "annullati_count": serializers.IntegerField(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -820,14 +955,6 @@ class ApiLottiList(DomainAPIView):
             auth_user_id=get_scope_user_id(request),
             page=page,
             page_size=page_size,
-            # ⭐ La scheda «Recuperi del mese»: STESSA lista, stesse colonne,
-            #    stesse azioni — cambia solo QUALI lotti. Sono quelli di
-            #    competenza precedente che hanno emesso documenti nel mese
-            #    filtrato: chi lavora su agosto li cerca per data documento, e
-            #    per competenza non li trova.
-            solo_recuperi_mese=as_bool(
-                request.query_params.get("recuperi_mese"), default=False
-            ),
         )
         return success_response(data)
 
@@ -864,6 +991,7 @@ class ApiLottiExportView(DomainAPIView):
             OpenApiParameter(name="area_geografica_id", type=int, required=False),
             OpenApiParameter(name="tipo_doc_fiscale_id", type=int, required=False),
             OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, required=False),
+            OpenApiParameter(name="annullati", type=bool, required=False, description="`1` esporta anche i lotti annullati (stesso interruttore della lista)."),
             OpenApiParameter(name="order_by", type=str, required=False, description="`campo_sorgente` del catalogo `vendite.lotti` (stessa whitelist della lista)."),
             OpenApiParameter(name="order_dir", type=str, required=False, description="asc | desc"),
         ],
@@ -895,6 +1023,16 @@ class ApiLottiExportView(DomainAPIView):
                 ("utility_id", filtri["utility_id"]),
                 ("area_geografica_id", filtri["area_geografica_id"]),
                 ("tipo_doc_fiscale_id", filtri["tipo_doc_fiscale_id"]),
+                # ⭐ Dichiarato nell'intestazione del file solo quando e' vero:
+                #    due export dello stesso mese con perimetri disgiunti
+                #    sarebbero altrimenti indistinguibili aprendoli.
+                (
+                    "recuperi_mese",
+                    True if filtri["solo_recuperi_mese"] else None,
+                ),
+                # Stessa ragione: un file con gli annullati dentro e uno senza
+                # sono due perimetri, e aprendoli devono dirlo.
+                ("annullati", True if filtri["includi_annullati"] else None),
             )
             if valore is not None
         }
@@ -913,7 +1051,9 @@ class ApiLottiMensile(DomainAPIView):
     """Conteggio lotti generati per mese di un anno — alimenta il badge della
     sidebar anno/mese del registro lotti (stile Lente Competenza). Read-only,
     scope emittente DB-side come la lista. Fotografia completa (nessun filtro
-    stato: il badge conta i lotti generati, non quelli dello stato filtrato)."""
+    stato: il badge conta i lotti generati, non quelli dello stato filtrato).
+    ⭐ Ma SENZA gli annullati, come la lista (2026-09-12): un guscio non e' un
+    lotto generato che chieda lavoro — `?annullati=1` li rimette dentro."""
 
     area_funzionale = "vendite"
 
@@ -925,6 +1065,13 @@ class ApiLottiMensile(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Anno di competenza (default: anno corrente). 2000-2100.",
+            ),
+            OpenApiParameter(
+                name="annullati",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="`1` conta anche i lotti annullati (stesso interruttore della lista).",
             ),
         ],
         responses={
@@ -947,7 +1094,11 @@ class ApiLottiMensile(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         anno = qp_int_strict(request.query_params.get("anno"), "anno", timezone.localdate().year)
         auth_user_id = get_scope_user_id(request)
-        data = fn_lotti_mensile(anno=anno, auth_user_id=auth_user_id)
+        data = fn_lotti_mensile(
+            anno=anno,
+            auth_user_id=auth_user_id,
+            includi_annullati=as_bool(request.query_params.get("annullati"), default=False),
+        )
         return success_response(data)
 
 
@@ -1112,6 +1263,144 @@ class ApiLottoFattureList(DomainAPIView):
             page_size=page_size,
         )
         return success_response(data)
+
+
+class ApiLottoGruppiList(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/gruppi/
+
+    I DOCUMENTI che il lotto ha preso in carico, con l'esito di ciascuno.
+
+    ⭐ Non e' un doppione di `/fatture/`, ed e' la ragione per cui esiste
+    (brief-db-esito-gruppo-lotto). Quella lista si aggancia a `fattura_id`:
+    descrive i documenti che una fattura l'hanno prodotta. Un documento che
+    cade PRIMA — al pull delle attivita' dalla commessa — non ha nessuna
+    fattura a cui appendersi e finora spariva dal racconto: sul lotto
+    LTF-0009578 se ne vedevano due su tre, e il terzo era nominato solo da una
+    segnalazione, per giunta con l'identificativo della COMMESSA.
+
+    ⚠️ Le due liste NON sono in corrispondenza 1:1 nemmeno quando tutto va
+    bene: `fn_build_fattura_key` puo' raccogliere piu' gruppi nello stesso
+    documento. Sono due domande diverse, non due viste della stessa.
+
+    ⭐ La riga e' l'UNIONE di due fatti (rev DB 2026-09-07): il PERIMETRO
+    (`fatturazione_lotti_gruppi`, che dichiarano i soli giri mirati) e l'ESITO
+    (`fatturazione_lotti_esiti`, che c'e' su entrambi i tipi di giro). Nessuno
+    dei due da solo risponde: il primo lascia muti i giri di massa, il secondo
+    perde i documenti dichiarati e non ancora tentati.
+
+    🔒 Il cancello di scope e' la TESTATA: le due tabelle figlie non hanno RLS,
+    `vendite.fatturazione_lotti` si'. Lotto fuori perimetro -> elenco vuoto,
+    mai le righe di un lotto altrui.
+    """
+
+    area_funzionale = "vendite"
+    # Lista configurabile 67: il codice dichiara da quale catalogo arrivano le colonne.
+    lista_codice = "vendite.lotto_gruppi"
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Filtro esito: PENDING | RUNNING | COMPLETED | ERRORE. "
+                    "Assente = tutti, compresi i gruppi mai tentati (esito NULL)."
+                ),
+            ),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+                description="Verso: asc (default) o desc.",
+            ),
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoGruppiListResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoGruppiListData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET l'elenco paginato dei documenti presi in carico
+    #        dal lotto, con l'esito di ciascuno.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        q = request.query_params
+        data = fn_list_lotto_gruppi(
+            lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
+            stato_esecuzione=qp_str(q.get("stato_esecuzione")),
+            order_by=qp_str(q.get("order_by")),
+            # ⚠️ Il valore GREZZO, non un default `"asc"` scritto qui: il
+            #    repository ha un ordine di default suo — i falliti in cima —
+            #    e un verso dichiarato lo annullerebbe (api.md §parse_list_params).
+            order_dir=qp_str(q.get("order_dir")),
+            page=qp_int_strict(q.get("page"), "page", 1),
+            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
+        )
+        return success_response(data)
+
+
+class ApiLottoGruppiExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/gruppi/export/?formato=csv|xlsx
+
+    I documenti presi in carico dal lotto, colonne dal catalogo
+    `vendite.lotto_gruppi`."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_gruppi"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX dei documenti presi in carico dal lotto.
+    # ⚠️ Il filtro viaggia anche qui: il file E' la lista. Un export che
+    #    ignorasse l'esito scelto conterrebbe tutti i documenti mentre a video
+    #    se ne vede una fetta.
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        q = request.query_params
+        stato_esecuzione = qp_str(q.get("stato_esecuzione"))
+        data = fn_list_lotto_gruppi(
+            lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
+            stato_esecuzione=stato_esecuzione,
+            order_by=qp_str(q.get("order_by")),
+            order_dir=qp_str(q.get("order_dir")),
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        # I filtri finiscono nell'intestazione del file: chi lo riapre fra un
+        # mese deve poter sapere di quale fetta si tratta.
+        filtri_applicati: dict[str, str] = {"lotto_id": str(lotto_id)}
+        if stato_esecuzione:
+            filtri_applicati["stato_esecuzione"] = stato_esecuzione
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_gruppi",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 
@@ -2190,7 +2479,7 @@ def _accoda_job_fatturazione(
     emittente_attivo_id = extract_emittente_attivo_from_request(request)
     # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
     # DB run_as↔scope, all'idempotenza di business e all'audit.
-    emittente_ids = PermissionResolver.get_emittenti_ids(user)
+    emittente_ids = PermissionResolver.get_emittenti_pk_ids(user)
     # Chiave canonica dello scope (BB core `coda_lavori.scope` — fonte unica
     # del formato, condivisa con polling/liste/badge della UI code).
     scope_key = scope_key_da_emittenti(emittente_ids)
@@ -2230,9 +2519,18 @@ def _accoda_job_fatturazione(
     # ⚠️ Un verbo accetta gruppi OPPURE lotti, mai entrambi (sono due atti
     #    diversi): l'insieme che alimenta il digest e' quello dei due che c'e'.
     digest = insieme_digest(gruppi or lotti)
-    idempotency_key = f"{job_type}:{competenza.isoformat()}:{scope_key}"
-    if digest:
-        idempotency_key = f"{idempotency_key}:{digest}"
+    # ⭐ La CORSIA entra nella chiave (2026-09-05, opzione A): qui il valore e'
+    #    determinato dal perimetro — «mirata» quando l'operatore ha scelto dei
+    #    gruppi, «differita» sul giro di massa — cioe' lo stesso che l'handler
+    #    userebbe. ⇒ la chiave cambia forma e NON cambia comportamento; serve al
+    #    secondo produttore, il batch, che le corsie le fa entrambe.
+    # ⛔ Il valore NON si ricalcola qui con un `if`: si chiede al modulo che
+    #    possiede la regola, o al primo cambio le due copie divergono.
+    corsia = corsia_del_giro(job_type, gruppi=gruppi)
+    idempotency_key = chiave_idempotenza_giro(
+        job_type=job_type, competenza=competenza, scope_key=scope_key,
+        corsia=corsia, digest=digest,
+    )
 
     job_id = CodaLavoriRepository().accoda(
         job_type=job_type,
@@ -2377,7 +2675,7 @@ class ApiFatturazioneRunStato(DomainAPIView):
     #        via dedup ne seguono entrambi l'avanzamento (fix cross-operatore).
     #        Admin globale (whitelist None) → nessun filtro (vede ogni job).
     def get(self, request: Request, job_id: int) -> JsonResponse:
-        emittente_ids = PermissionResolver.get_emittenti_ids(request.user)
+        emittente_ids = PermissionResolver.get_emittenti_pk_ids(request.user)
         owner_scope_key = (
             None if emittente_ids is None
             else scope_key_da_emittenti(emittente_ids)

@@ -20,7 +20,8 @@
 --   9  ⭐ D-2 su un caso COSTRUITO: gruppo con due sezionali -> codice e data VUOTI
 --  10  ⭐ D-5 sullo stesso caso: il gruppo compare sotto ENTRAMBI i sezionali
 --  11  registri_n e' sempre cardinality(registri_ids)
---  12  security_invoker=on non e' stata azzerata dai CREATE OR REPLACE VIEW
+--  (security_invoker: presidiato da rls/test-rls-viste-security-invoker.sql,
+--   non piu' qui — vedi la nota in coda al file)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -29,7 +30,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(11);
 
 -- ============================================================
 -- Il taglio lettore / involucro (L0, L1)
@@ -301,15 +302,18 @@ SELECT is(
 -- 12. ⛔ security_invoker e' una reloption invisibile nel corpo della vista: un
 --     CREATE OR REPLACE che non la ripete la AZZERA, senza errore. Qui ci sta
 --     lo scope emittente, quindi il presidio e' esplicito.
-SELECT is(
-  (SELECT count(*)::int
-     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'vendite'
-      AND c.relname IN ('vw_dash_competenza_attivita', 'vw_dash_competenza_gruppi')
-      AND c.reloptions::text LIKE '%security_invoker=on%'),
-  2,
-  'le due viste hanno ancora security_invoker=on dopo il CREATE OR REPLACE'
-);
+-- ⛔ QUI `security_invoker` NON SI PRESIDIA PIU' (rev 2026-09-07), e non e' una
+--   rinuncia: lo fa gia' db/pgtap/rls/test-rls-viste-security-invoker.sql, su
+--   TUTTE le viste che toccano dati in RLS — anche attraverso altre viste — e
+--   leggendo la PROPRIETA' invece della parola. Nessun elenco di nomi.
+--   ⚠️ Il doppione locale non aggiungeva copertura, e ne ha tolta: era scritto
+--   come confronto di GRAFIA (`security_invoker=on`) ed e' diventato ROSSO su
+--   una vista perfettamente sana, riscritta con `= true` — che significa la
+--   stessa identica cosa. Due falsi allarmi il 2026-09-07, e una bisezione fra
+--   due cantieri per scoprire che non era rotto niente.
+--   ⭐ Una seconda sede diverge sempre; questa e' divergiata verso il FALSO
+--   ALLARME, che e' il verso che fa spegnere i presidi.
+
 
 SELECT finish();
 

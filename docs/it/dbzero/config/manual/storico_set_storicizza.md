@@ -8,8 +8,8 @@ Guide :
 >
 Approfondimento funzioni:
 >
-[dbops.proc_sync_storico_set_storicizza](/dbzero/dbops/funzioni/proc_sync_storico_set_storicizza)
-> [dbops.proc_apply_storicizza_defaults](/dbzero/dbops/funzioni/proc_apply_storicizza_defaults)
+[dbops.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza)
+> [dbops.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults)
 > [maintenance.proc_apply_storicizza_defaults_job](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults_job) *(job pgAgent che richiama la procedura)*
 > [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
 

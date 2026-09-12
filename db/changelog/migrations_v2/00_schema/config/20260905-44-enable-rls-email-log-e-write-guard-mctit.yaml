@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 QUESTO CHANGESET ASPETTA IL BACKEND — leggere prima di applicarlo.
+#   Brief: brief-db-processi-automatici-identita-e-perimetro §12.15
+#
+# Accende la row level security su `config.email_log` e monta il write-guard.
+# Da quel momento il perimetro sulle email lo garantisce il database.
+#
+# ── ⛔ MA PRIMA SERVONO DUE COSE, E NON SONO NOSTRE ─────────────────
+#   1. **Il reset password deve passare da `config.fn_accoda_email_sistema`**
+#      (`20260905-42`). `PasswordResetRequestView` e `PasswordResetConfirmView`
+#      girano con `AllowAny` e `authentication_classes = []`: senza utente in
+#      sessione, con la RLS accesa il loro `INSERT` viene respinto.
+#      ⛔ E il reset password non e' una funzione che non usa nessuno: e' la
+#      ragione per cui le email di SISTEMA esistono.
+#   2. **`insert_log` deve smettere di avere `ambito = "SISTEMA"` per default**
+#      (`email_repository.py:481`). Finche' c'e', su questa tabella `SISTEMA`
+#      significa «nessuno ha detto», e la policy ramificherebbe su un campo che
+#      un client puo' aver semplicemente dimenticato.
+#
+#   ⚠️ **Applicarlo prima rompe il reset password.** Non e' il caso delle bozze —
+#   li' il costo era una funzione che non usa nessuno, e si e' accettato. Qui no.
+#
+# ── ⭐ COME SI SA CHE SI PUO' APPLICARE ─────────────────────────────
+#   Le due cose sopra sono nel codice del backend, non nel database: non c'e' una
+#   preCondition che possa verificarle. ⇒ Il criterio e' una prova, e si fa in un
+#   minuto: chiedere un reset password e vedere che l'email finisce in
+#   `config.email_log`. Se ci finisce passando dalla funzione, questo changeSet
+#   e' sicuro.
+#
+# ── ⚠️ IL WRITE-GUARD VA INSIEME, non dopo ─────────────────────────
+#   Un guard e' un TRIGGER: morde anche con la RLS spenta. Montarlo prima
+#   fermerebbe le scritture subito, senza aspettare nessuno. ⇒ I due gesti sono
+#   uno solo.
+#   ⚠️ Sulle righe `SISTEMA` la colonna emittente e' NULL e il guard esce subito:
+#   quelle non le ferma lui, le governa la policy.
+#
+# ── ✅ COME SI VEDE CHE E' CHIUSO ──────────────────────────────────
+#   `dbops.vw_processi_dominio_senza_emittente` **vuota** — oggi contiene
+#   `config.email_log` come debito dichiarato — e
+#   `dbops.vw_processi_dominio_senza_difesa` che resta vuota.
+#
+# Verifica: db/pgtap/rls/test-rls-email-log-ambito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260905-44-enable-rls-email-log-e-write-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260905-44-enable-rls-email-log-e-write-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Accende la ROW LEVEL SECURITY su config.email_log e monta il write-guard.
+        🔴 DA APPLICARE SOLO DOPO che il backend usa config.fn_accoda_email_sistema
+        nei password_reset_views e ha tolto il default di ambito da insert_log:
+        prima, il reset password si rompe. Il criterio e' una prova, non una
+        preCondition — quelle due cose stanno nel codice, non nel database.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_policy
+                   WHERE polrelid = 'config.email_log'::regclass
+                     AND polname  = 'rls_email_log_ambito'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config'
+                     AND p.proname = 'fn_accoda_email_sistema'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.email_log ENABLE ROW LEVEL SECURITY;
+
+              DROP TRIGGER IF EXISTS trg_email_log_a10_guard_emittente_scope_ins_upd
+                  ON config.email_log;
+
+              CREATE TRIGGER trg_email_log_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON config.email_log
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                      'fiscale', 'emittente_fiscale_id');
+
+              COMMENT ON TRIGGER trg_email_log_a10_guard_emittente_scope_ins_upd
+                  ON config.email_log IS
+                  'Difesa in profondita'' sul perimetro emittente delle email. Affianca '
+                  'rls_email_log_ambito: la policy NASCONDE, il trigger RIFIUTA E SPIEGA '
+                  '(E_SCOPE_EMITTENTE). ⚠️ Sulle righe di ambito SISTEMA la colonna '
+                  'emittente e'' NULL e il guard esce subito: quelle non le ferma lui, le '
+                  'governa la policy (super admin piu'' l''identita'' tecnica di '
+                  'send_pending_emails). ⭐ Copre il caso che la policy non copre: una '
+                  'SECURITY DEFINER del proprietario che scriva qui non subisce la row '
+                  'level security, il trigger si'' — ed e'' esattamente il caso di '
+                  'config.fn_accoda_email_sistema, che infatti scrive con emittente NULL e '
+                  'passa. rev 2026-09-05.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_email_log_a10_guard_emittente_scope_ins_upd
+                  ON config.email_log;
+              ALTER TABLE config.email_log DISABLE ROW LEVEL SECURITY;

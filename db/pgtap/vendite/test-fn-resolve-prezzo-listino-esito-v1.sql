@@ -5,7 +5,7 @@
 -- Test: vendite.fn_resolve_prezzo_listino_v2_esito (NUCLEO puro del resolver
 --   prezzi) e vendite.fn_resolve_prezzo_listino_v2 (GUSCIO che ne solleva
 --   l'esito). Changeset 20260819-07 / 20260819-08.
---   Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md
+--   Brief: brief-ddt-righe-senza-prezzo.md
 --          §9 slice A (decisione D-3).
 --
 -- COSA PRESIDIA, in una riga: che le due funzioni siano lo STESSO corpo con

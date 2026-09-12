@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA TRIGGER FUNCTION RIMASTA ORFANA DAL DROP DI version_info — gemello del -29.
+#   Analisi: analisi-software-per-dati-morti.md §6.7 · trovato dal presidio
+#   dbops/test-riferimenti-morti-v1 (test 3) il 12-09-2026, subito dopo il -29.
+#
+# `internal.trgfn_audit_version_info()` era la funzione del trigger di audit di
+# public.version_info. Il DROP TABLE (-29) ha portato via il TRIGGER, non la
+# funzione: e' rimasta senza trigger e senza chiamanti — «non validabile, e gia'
+# di per se' un residuo», dice il presidio. Stessa lezione del -10 e dell'-11:
+# cancellare una fonte vuol dire censire i lettori, e una trigger function e'
+# un lettore che vive fuori dalla tabella.
+#
+# ── Dove nasce, e perche' in CI non c'e' ──
+#   La creava migrations/00_bootstrap/20250513_02-trgfn-trg-audit-generic, che
+#   oggi e' un `.old_yaml`: nessun changelog lo include piu'. Su un database
+#   ricostruito da zero la funzione NON esiste; su dev e' un residuo di quando
+#   quel file era attivo, di proprieta' del migratore (titodb). IF EXISTS copre
+#   entrambi i mondi. Sta nel provisioning, come il -29, perche' e' la famiglia
+#   del bootstrap: cio' che nasce li' si ritira li'.
+#   ⛔ Non si modifica il -29 (gia' eseguito su dev): un changeSet nuovo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/90_end/20260912-30-drop-trgfn-audit-version-info-provision-mctit.yaml
+
+  - changeSet:
+      id: 20260912-30-drop-trgfn-audit-version-info-provision
+      author: mctit
+      context: provision
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP FUNCTION internal.trgfn_audit_version_info(): trigger function del
+        trigger di audit di public.version_info, orfana dopo il -29. Nasceva da
+        un bootstrap ormai .old_yaml: in CI non esiste (IF EXISTS), su dev e' un
+        residuo. Segnalata dal presidio riferimenti morti il 12-09-2026.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS internal.trgfn_audit_version_info();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non si ricrea una trigger function senza tabella. Forward-only.
+              SELECT 1;

@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # ROLL-OUT DEL BERSAGLIO — primo scaglione, 3 di 3 (chiude la famiglia)
 #   vendite.fn_genera_ddt_da_ordine
-#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 lotto L6
+#   Brief: brief-db-bersaglio-errore.md §6 lotto L6
 #
 # ── I DUE RIFIUTI, E PERCHE' IL BERSAGLIO SERVE ─────────────────────
 #   «Ordine 918 in stato BOZZA non evadibile (attesi CONFERMATO o

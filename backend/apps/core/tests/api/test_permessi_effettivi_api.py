@@ -18,7 +18,6 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from django.contrib.auth import get_user_model
 
 
 def _mock_request(user_id: int = 1, is_superuser: bool = False) -> MagicMock:
@@ -49,7 +48,7 @@ class ApiPermessiEffettiviViewTests(TestCase):
         mock_resolver.is_super_admin.return_value = is_super
         mock_resolver.get_ruolo_applicativo.return_value = "OPERATORE"
         mock_resolver.get_unita_organizzativa_id.return_value = None
-        mock_resolver.get_emittenti_ids.return_value = None
+        mock_resolver.get_emittenti_pk_ids.return_value = None
         mock_resolver.get_livello_area.return_value = "TUTTO"
         mock_resolver.has_profilo_applicabile_per_area.return_value = True
         mock_resolver.get_livello_oggetto.return_value = "TUTTO"

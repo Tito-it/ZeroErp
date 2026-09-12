@@ -42,7 +42,14 @@ class PipelineErrorLogger:
         stato_doc_fiscale_id: int | None = None,
         context: dict[str, Any] | None = None,
         function_name: str = "vendite.pipeline_error_logger.log_error",
+        gruppo_key: str | None = None,
     ) -> None:
+        # ⭐ `gruppo_key` — DI QUALE DOCUMENTO parla la segnalazione di LOTTO
+        #    (brief-db-uscita-documento-dal-giro §6.1). `None` = e' del GIRO, ed
+        #    e' il default che dice il vero: chi non lo dichiara sta parlando del
+        #    giro, e una segnalazione del giro deve fermare il giro.
+        # ⚠️ Vale solo per `scope="LOTTO"`: sulle FATTURE il proprietario e' gia'
+        #    la fattura, e la colonna non esiste.
         # Non inferire dal testo: scope e severity sono espliciti.
         #
         # ⛔ `error_code` e NON `code`, ed e' una lezione gia' pagata una volta.
@@ -94,6 +101,7 @@ class PipelineErrorLogger:
                 status=severity,
                 messaggio=message,
                 meta=meta,
+                gruppo_key=gruppo_key,
             )
             return
 

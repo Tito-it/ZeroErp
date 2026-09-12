@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-6 — LA DATA DELLA FATTURA SMETTE DI ESSERE UN EFFETTO COLLATERALE
 #   vendite.fn_get_or_create_fattura_header
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-6
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-6
 #
 # ── ⛔ QUESTA E' L'UNICA RIGA IN TUTTO IL REPO CHE SCRIVE fatture.data ─
 #   Verificato il 2026-08-25 su `pg_proc` (nessun'altra funzione fa `INSERT INTO

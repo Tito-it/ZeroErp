@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: I7 — anagrafiche.soggetti_titoli_iva, il suo ambito, il registro dei
 --       movimenti di plafond e la primitiva di consumo.
---       Piano: docs/it/dev/work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md
+--       Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --       D5 / D10 / D12 / D13 / D15-bis · changeSet 20260829-23 … -34
 -- ------------------------------------------------------------
 -- Elenco test (plan 23):

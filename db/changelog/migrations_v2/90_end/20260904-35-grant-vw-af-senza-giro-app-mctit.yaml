@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GRANT — dbops.vw_af_senza_giro a zeroerp_app
+#   Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezione 9
+#
+#   Gemello del 20260904-20: idempotente e difensivo (salta se il ruolo o la
+#   vista non ci sono, cosi' un ambiente senza provisioning non si ferma).
+#   ⚠️ La vista e' security_invoker: il GRANT apre la vista, non i dati sotto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260904-35-grant-vw-af-senza-giro-app-mctit.yaml
+
+  - changeSet:
+      id: 20260904-35-grant-vw-af-senza-giro-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT SELECT a zeroerp_app su dbops.vw_af_senza_giro. Idempotente e
+        difensivo (skip se il ruolo o la vista mancano).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $grant$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                      RETURN;
+                  END IF;
+                  IF to_regclass('dbops.vw_af_senza_giro') IS NOT NULL THEN
+                      GRANT SELECT ON dbops.vw_af_senza_giro TO zeroerp_app;
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $revoke$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+                  IF to_regclass('dbops.vw_af_senza_giro') IS NOT NULL THEN
+                      REVOKE SELECT ON dbops.vw_af_senza_giro FROM zeroerp_app;
+                  END IF;
+              END
+              $revoke$;

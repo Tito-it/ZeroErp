@@ -1,0 +1,125 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-contesto: escluso — test STRUTTURALE sul catalogo (pg_proc): nessuna
+--   tabella sotto RLS viene letta, il contesto operatore non cambierebbe
+--   nessuna risposta.
+-- pgTAP test per Zero ERP
+--
+-- Postura di sicurezza delle SECURITY DEFINER: il `search_path`.
+--   D5 (riga 3) e D6 di migliorie-generali-da-test-valutazione.md.
+--   ChangeSet: 20260912-39..41 (provision-post).
+--
+-- Elenco test (plan 5):
+--  1) ⛔ INVARIANTE: nessuna SECURITY DEFINER del progetto senza `search_path`
+--  2) gemello «esiste»: la lente vede le DEFINER — il test 1 non e' muto
+--  3) ⭐ le tre di `postgres` (dbops.fn_generate_tx_id,
+--        fn_get_or_create_session_tx_id, fn_sync_functions_owner) pinnano
+--        ESATTAMENTE pg_catalog, public, pg_temp
+--  4) ⚠️ DEBITO A SOGLIA (D6-bis): DEFINER con un path che NON elenca pg_temp
+--  5) ⚠️ DEBITO A SOGLIA (D6-bis): DEFINER con `public` PRIMA di pg_catalog
+--
+-- ⭐ PERCHE' UN INVARIANTE GENERALE E NON TRE NOMI. Fino al 2026-09-12 il
+--   `search_path` delle DEFINER era asserito caso per caso (maintenance.fn_job_run_*,
+--   due in vendite, una in script): un criterio che nasce quando un difetto ha
+--   gia' morso. Le tre di postgres non avevano ancora morso, ed erano gia'
+--   violate. Il test 1 guarda il CATALOGO: una DEFINER nuova senza pin esce
+--   qui, non quando qualcuno se ne accorge.
+--
+-- ⚠️ PERCHE' LE ESTENSIONI SONO ESCLUSE. `public.dblink_connect_u` e' SECURITY
+--   DEFINER senza search_path, ed e' di dblink: non e' codice del progetto, e
+--   un CREATE OR REPLACE su una funzione di estensione non e' una cosa che si
+--   fa. Si escludono per DIPENDENZA (pg_depend deptype 'e'), non per nome.
+--
+-- ⚠️ I TEST 4 E 5 SONO RUBINETTI, non divieti. Le forme del path sono cinque
+--   (D6), e 18 DEFINER non elencano pg_temp — quando non e' elencato PostgreSQL
+--   lo cerca per PRIMO per le relazioni, che e' semantica e non stile. Vietarlo
+--   oggi farebbe nascere il file rosso, e un cancello rosso il primo giorno
+--   viene spento. La soglia PUO' SOLO CALARE: chi sana una DEFINER la abbassa
+--   qui. ⛔ Se per far passare la CI la soglia dovesse SALIRE, il difetto e'
+--   nella funzione nuova.
+--
+-- ⚠️ IL PIN NON E' UNA FORMA SOLA, ed e' il motivo per cui il test 3 asserisce
+--   la forma solo sulle tre di postgres: una DEFINER il cui percorso tocca
+--   un'estensione DEVE avere `public` nel path (dblink, unaccent, geometry),
+--   una che non ne tocca fa bene a non averlo. La forma si sceglie guardando
+--   i CHIAMATI, non una funzione alla volta (memoria «una DEFINER col
+--   search_path blindato accieca la INVOKER che chiama»).
+-- ------------------------------------------------------------
+
+BEGIN;
+
+SET CONSTRAINTS ALL IMMEDIATE;
+
+SELECT plan(5);
+
+-- ============================================================
+-- La lente: le SECURITY DEFINER del progetto, con il loro path
+-- ============================================================
+CREATE TEMP TABLE _definer ON COMMIT DROP AS
+SELECT n.nspname,
+       p.proname,
+       n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS firma,
+       (SELECT split_part(c, '=', 2)
+          FROM unnest(p.proconfig) AS c
+         WHERE c LIKE 'search_path=%') AS search_path
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE p.prosecdef
+   AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+   -- ⚠️ le funzioni che appartengono a un'ESTENSIONE non sono del progetto
+   AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                    WHERE d.classid = 'pg_proc'::regclass
+                      AND d.objid = p.oid
+                      AND d.deptype = 'e');
+
+-- ============================================================
+-- 1..2. L'invariante, e la prova che la lente vede
+-- ============================================================
+SELECT is(
+    (SELECT coalesce(string_agg(firma, ', ' ORDER BY firma), '')
+       FROM _definer WHERE search_path IS NULL),
+    '',
+    '1. ⛔ nessuna SECURITY DEFINER del progetto senza search_path (elenco = i colpevoli)'
+);
+
+SELECT cmp_ok(
+    (SELECT count(*) FROM _definer), '>', 20::bigint,
+    '2. la lente vede le DEFINER del progetto (erano 42 il 2026-09-12): il test 1 non e'' muto'
+);
+
+-- ============================================================
+-- 3. Le tre di postgres: la forma esatta
+-- ============================================================
+SELECT is(
+    (SELECT string_agg(proname || '=' || coalesce(search_path, '<nessuno>'), ' | ' ORDER BY proname)
+       FROM _definer
+      WHERE nspname = 'dbops'
+        AND proname IN ('fn_generate_tx_id', 'fn_get_or_create_session_tx_id',
+                        'fn_sync_functions_owner')),
+    'fn_generate_tx_id=pg_catalog, public, pg_temp | '
+    'fn_get_or_create_session_tx_id=pg_catalog, public, pg_temp | '
+    'fn_sync_functions_owner=pg_catalog, public, pg_temp',
+    '3. ⭐ le tre DEFINER di postgres pinnano pg_catalog, public, pg_temp (public: dblink vive li'')'
+);
+
+-- ============================================================
+-- 4..5. I rubinetti di D6-bis
+-- ============================================================
+-- ⚠️ Soglie misurate il 2026-09-12 su dbdev. Possono solo CALARE.
+SELECT cmp_ok(
+    (SELECT count(*) FROM _definer
+      WHERE search_path IS NOT NULL
+        AND search_path NOT LIKE '%pg_temp%'),
+    '<=', 18::bigint,
+    '4. ⚠️ DEFINER con search_path senza pg_temp: al massimo 18 (rubinetto D6-bis, puo'' solo calare)'
+);
+
+SELECT cmp_ok(
+    (SELECT count(*) FROM _definer
+      WHERE search_path LIKE 'public,%'),
+    '<=', 5::bigint,
+    '5. ⚠️ DEFINER con public PRIMA di pg_catalog: al massimo 5 (rubinetto D6-bis, puo'' solo calare)'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

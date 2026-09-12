@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_stati_pdp_scope_ef | `CREATE INDEX ix_stati_pdp_scope_ef ON storico.stati_pdp USING btree (scope_emittente_fiscale_id)` |
 | ix_stati_pdp_stati_pdp_id_fk | `CREATE INDEX ix_stati_pdp_stati_pdp_id_fk ON storico.stati_pdp USING btree (stati_pdp_id)` |
 | pk_storico_stati_pdp | `CREATE UNIQUE INDEX pk_storico_stati_pdp ON storico.stati_pdp USING btree (id)` |
 

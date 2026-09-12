@@ -28,6 +28,48 @@ export const STATO_EMISSIONE_ATTIVITA = Object.freeze({
   ANNULLATA: 'ANNULLATA',
 })
 
+// Esito di esecuzione dentro un lotto di fatturazione. UN vocabolario per DUE
+// livelli — `fatturazione_lotti_fatture.stato_esecuzione` (la fattura prodotta)
+// e `fatturazione_lotti_gruppi.stato_esecuzione` (il documento preso in carico,
+// che una fattura può non essere mai diventata): la D-2 di
+// `brief-db-esito-gruppo-lotto` tiene i due CHECK identici, perché «due colonne
+// che rispondono alla stessa domanda a due livelli non possono parlare due
+// lingue».
+// ⚠️ Specchio, non autorità: a enforcare sono `chk_lotti_gruppi_stato_esecuzione`
+// e `chk_fatturazione_lf_stato_esecuzione`. Vive qui per la stessa ragione degli
+// altri enum del file — un typo non romperebbe niente a runtime: la riga
+// smetterebbe di accendersi e la lista sembrerebbe semplicemente sana.
+// ⛔ `null` NON è un valore di questo vocabolario: significa «nessuno l'ha
+// detto» — il documento non è stato tentato in quel lotto — e NON «è andata
+// bene». Chi rende deve tenere distinti i due casi.
+// ⚠️ Gemello cromatico in `core/utils/severity.js`
+// (`STATO_ESECUZIONE_LOTTO_MAP`), da tenere allineato a mano: `core/` non può
+// importare da un dominio.
+export const STATO_ESECUZIONE_LOTTO = Object.freeze({
+  PENDING: 'PENDING',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  ERRORE: 'ERRORE',
+  // ⭐ Solo sul livello DOCUMENTO (2026-09-08): l'operatore ha tolto questo
+  // documento dal giro. Una FATTURA non lo può avere — quando un documento
+  // esce, la sua bozza viene cancellata e la riga di ponte sparisce.
+  ESCLUSO: 'ESCLUSO',
+})
+
+// Le schede del drawer del lotto (`LottoDrawer`), per `value` dei `Tabs`.
+// ⭐ Vivono qui e non nel template perché sono un CONTRATTO fra due sedi: il
+// template le dichiara, e `scegliRamoBanner` (la funzione pura del banner)
+// decide su QUALE atterra il link del lotto fermo. Scritte a mano in entrambe,
+// una rinomina lascerebbe la pagina SENZA PANNELLO e senza errore — il caso
+// dei tab condizionali di frontend-standards §Pattern Tab-View.
+export const LOTTO_SCHEDE = Object.freeze({
+  DOCUMENTI: 'fatture',
+  PRESI_IN_CARICO: 'gruppi',
+  TASK: 'task',
+  SEGNALAZIONI: 'segnalazioni',
+  STORIA: 'storia',
+})
+
 // Natura della riga di commessa (`commesse_attivita.tipo_movimento`): filtro
 // della lista attivita' e colonna «Movimento».
 // ⚠️ Specchio, non autorita': a enforcare e' il CHECK

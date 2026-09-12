@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_documenti_fatturazione_canali_documenti_fatturazione_canali_ | `CREATE INDEX ix_documenti_fatturazione_canali_documenti_fatturazione_canali_ ON storico.documenti_fatturazione_canali USING btree (documenti_fatturazione_canali_id)` |
+| ix_documenti_fatturazione_canali_scope_ef | `CREATE INDEX ix_documenti_fatturazione_canali_scope_ef ON storico.documenti_fatturazione_canali USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_documenti_fatturazione_canali | `CREATE UNIQUE INDEX pk_storico_documenti_fatturazione_canali ON storico.documenti_fatturazione_canali USING btree (id)` |
 
 ## 🚨 Trigger

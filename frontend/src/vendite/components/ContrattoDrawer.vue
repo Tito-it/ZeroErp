@@ -1071,7 +1071,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           :disabled="isEdit && (isLocked('listino_id') || righeCount > 0)" />
         <small v-if="isEdit && righeCount > 0 && !isLocked('listino_id')"
           style="color: var(--p-yellow-700, #b45309);">
-          <i class="pi pi-exclamation-triangle" />
+          <i :class="MANAGE_ICONS.ERRORE" />
           {{ t('vendite.contratti.hint_listino_lock_righe', { n: righeCount }) }}
         </small>
         <small v-else class="text-color-secondary">

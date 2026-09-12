@@ -5,7 +5,7 @@
 # Migrazione daterange: aggiorna fn_resolve_prezzo_listino per usare
 # la colonna validita nativa al posto del doppio confronto su
 # valido_dal/valido_al.
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.5
+# Vedi: migrazione-daterange.md §4.5
 # ------------------------------------------------------------
 
 databaseChangeLog:

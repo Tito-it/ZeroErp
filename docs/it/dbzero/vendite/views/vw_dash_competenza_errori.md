@@ -122,10 +122,17 @@ WITH escope AS (
     e.messaggio,
     e.data_evento,
     e.emittente_soggetto_ruolo_id,
-    s_ef.ragione_sociale_completa AS emittente_ragione_sociale
-   FROM ((eventi e
+    s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+    COALESCE(cf.commesse, '[]'::jsonb) AS commesse_fallite,
+    COALESCE(cf.n, 0) AS n_commesse_fallite
+   FROM (((eventi e
      LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = e.emittente_soggetto_ruolo_id)))
-     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)));
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+     LEFT JOIN LATERAL ( SELECT jsonb_agg(jsonb_build_object('commessa_id', (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint, 'commessa_codice', c.codice, 'error_code', (ll.meta ->> 'error_code'::text), 'messaggio', ll.messaggio, 'dettaglio', (ll.meta ->> 'detail'::text)) ORDER BY (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint) AS commesse,
+            (count(*))::integer AS n
+           FROM (vendite.fatturazione_lotti_log ll
+             LEFT JOIN vendite.commesse c ON ((c.id = (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint)))
+          WHERE (((e.tipo_evento)::text = 'TASK_ERRORE'::text) AND (ll.lotto_id = e.lotto_id) AND (ll.disabilitato IS FALSE) AND (ll.status = 'C'::bpchar) AND (((ll.meta -> 'context'::text) ->> 'commessa_id'::text) ~ '^[0-9]+$'::text) AND (((ll.meta -> 'context'::text) ->> 'task'::text) = (e.task_code)::text) AND (ll.data_ora >= e.data_evento))) cf ON (true));
 ```
 
 

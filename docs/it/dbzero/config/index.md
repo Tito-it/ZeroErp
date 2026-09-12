@@ -20,7 +20,7 @@
 - [conti_contabili](tabelle/conti_contabili.md) — * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia. * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
 - [email_account](tabelle/email_account.md) — La tabella `config.email_account` definisce gli **account SMTP** utilizzati dal sistema per l'invio di email. Ogni unita' organizzativa (reparto) puo' avere il proprio account mittente; un account con `unita_organizzativa_id = NULL` funge da **fallback di sistema**.
 - [email_allegato](tabelle/email_allegato.md) — La tabella `config.email_allegato` traccia i **file allegati** alle email. I file sono salvati su filesystem (non in DB); la tabella contiene solo i metadati e il percorso relativo.
-- [email_log](tabelle/email_log.md) — La tabella `config.email_log` registra **ogni email inviata dal sistema**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
+- [email_log](tabelle/email_log.md) — La tabella `config.email_log` registra **ogni email che il sistema ha provato a mandare**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
 - [email_outbox](tabelle/email_outbox.md) — La tabella `config.email_outbox` contiene le **bozze email** preparate dal sistema e modificabili dall'operatore prima dell'invio. Rappresenta il passaggio intermedio tra la generazione automatica dal template e l'invio effettivo.
 - [email_template](tabelle/email_template.md) — La tabella `config.email_template` contiene i **template email parametrizzabili** con variabili `{{...}}`. Ogni template puo' essere specializzato per reparto, tipo prestazione e lingua, con una catena di fallback a 5 livelli.
 - [esiti_flussi_pratiche](tabelle/esiti_flussi_pratiche.md) — Vocabolario **data-driven** degli **esiti** dei flussi operativi (il "verdetto" con cui un flusso si chiude, es. `POSITIVO`). Sostituisce l'enum che prima era **cablato** in piu' CHECK (`chk_flussi_esito`, ecc.): il motore fornisce il **meccanismo** (la tabella), i domini seedano i **valori**. Cosi' un dominio puo' aggiungere un esito senza toccare il codice del motore — decisivo per il **bivio-per-esito** (instradamento merce/servizi dello SMISTAMENTO) senza portare semantica di dominio in un CHECK di motore (layering).
@@ -119,6 +119,8 @@
 - [valute](tabelle/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni
+- [fn_accoda_email_sistema](funzioni/fn_accoda_email_sistema.md)
+- [fn_chiudi_email_sistema](funzioni/fn_chiudi_email_sistema.md)
 - [fn_cleanup_token_scaduti](funzioni/fn_cleanup_token_scaduti.md) — Pulizia periodica dei token monouso scaduti o gia' utilizzati. Pensata per esecuzione automatica come job pgAgent notturno, elimina i record che non hanno piu' utilita' operativa.
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_natura_doc_fiscale_id](funzioni/fn_get_natura_doc_fiscale_id.md) — (rev 2026-08-18)
@@ -147,3 +149,4 @@
 ## 🔍 Views
 - [vw_codici_errore](views/vw_codici_errore.md) — (rev 2026-08-21)
 - [vw_codici_errore_identita](views/vw_codici_errore_identita.md) — (rev 2026-08-21)
+- [vw_email_in_coda](views/vw_email_in_coda.md) — (latest review 11-09-2026)

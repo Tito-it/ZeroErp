@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le shadow ESISTENTI ricevono le colonne dello scope — passo 3 del brief.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b
+#
+# Una chiamata a `dbops.fn_storico_arma_scope_tutte()`: per ogni madre col
+# trigger di storico, la sua shadow riceve `origine_schema` e
+# `scope_emittente_fiscale_id` (con indice) e, se la mappa dice che la madre è
+# protetta, la RLS con le policy. È l'«ALTER parametrico» sulle 121 shadow, in
+# una riga: la forma vive nella primitiva, non qui.
+#
+# ── PERCHÉ QUI, PRIMA DEL TRIGGER (-28) ───────────────────────────────
+#   Il trigger nuovo SCRIVE le due colonne. Devono esistere su ogni shadow
+#   prima che entri, o la prima scrittura su una madre fallirebbe. L'ordine
+#   dell'autogen è per numero: -27 aggiunge, -28 pretende (preCondition HALT).
+#
+# ── 🔴 SU DEV NON BASTA, ED È VOLUTO CHE SI FERMI ─────────────────────
+#   68 shadow su 121 sono di `postgres`: qui vengono SALTATE con WARN (il
+#   migratore non può fare ALTER su tabelle altrui). La -28 lo vede e si
+#   ferma: la strada è `scripts/sql/provision_storico_scope.sql`, da eseguire
+#   come superuser, che allinea quelle shadow e ne riassegna la proprietà al
+#   migratore. In CI tutto è di `zeroerp` e non si ferma niente.
+#
+# ── IN CI, PRIMA PASSATA ──────────────────────────────────────────────
+#   Le shadow non esistono ancora (nascono da `ci_apply`): zero madri col
+#   trigger, zero azioni, un audit. Le shadow nuove le arma il generatore.
+#
+# ⚠️ Idempotente: si può rieseguire; il 90_end runAlways (-29) la ripete a ogni
+#   migrate per far convergere ciò che nasce dopo (nuove shadow, righe di mappa
+#   che passano da NESSUNO a un modo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20260911-27-run-storico-arma-scope-tutte-mctit.yaml
+
+  - changeSet:
+      id: 20260911-27-run-storico-arma-scope-tutte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Chiama dbops.fn_storico_arma_scope_tutte() una volta: ogni shadow
+        esistente di cui il migratore è proprietario riceve origine_schema e
+        scope_emittente_fiscale_id con indice e, dove la mappa dice che la
+        madre è protetta, la RLS con le policy dello scope congelato. Le shadow
+        di altri proprietari sono saltate con WARN: le allinea il provisioning
+        da superuser. Va prima del trigger (-28), che pretende le colonne.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_storico_arma_scope_tutte';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $run$
+              DECLARE
+                  v_esito jsonb;
+              BEGIN
+                  v_esito := dbops.fn_storico_arma_scope_tutte(false);
+                  RAISE NOTICE 'storico scope: %', v_esito::text;
+                  IF (v_esito ->> 'saltate_owner')::int > 0 THEN
+                      RAISE NOTICE '⚠️ % shadow di un altro proprietario non allineate: eseguire scripts/sql/provision_storico_scope.sql come superuser prima del trigger (-28)',
+                          v_esito ->> 'saltate_owner';
+                  END IF;
+              END
+              $run$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le colonne e le policy aggiunte restano: toglierle richiederebbe di
+              -- sapere quali shadow le avevano già, e un rollback non lo sa. Forward-only.
+              SELECT 1;

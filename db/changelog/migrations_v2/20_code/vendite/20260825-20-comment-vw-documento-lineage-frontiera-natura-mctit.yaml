@@ -54,7 +54,7 @@
 #   la vista, non solo nel brief.
 #
 # Dipendenze: 20260825-19 (l'arco S, verificato in precondizione).
-# Cantiere: docs/it/dev/work-in-progress/brief-db-lineage-arco-reso-nota-credito.md §5 DB-C
+# Cantiere: brief-db-lineage-arco-reso-nota-credito.md §5 DB-C
 # Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql (prosa sopra il test 7)
 # ------------------------------------------------------------
 

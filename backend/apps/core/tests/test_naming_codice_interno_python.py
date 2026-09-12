@@ -49,17 +49,8 @@
 
 import re
 from collections import Counter
-from pathlib import Path
 from unittest import TestCase
-
-
-# Scopo: root del repo, risalendo fino a `db/changelog` invece di contare i
-#        livelli a mano (`parents[N]` si rompe in silenzio se il file si sposta).
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata (nessun db/changelog risalendo)")
+from apps.core.tests._repo import repo_root
 
 
 # Scopo: sorgente Python (e SQL dentro le sue stringhe) ripulito dai COMMENTI.
@@ -138,7 +129,7 @@ _RADICE_APPS = "backend/apps"
 # Scopo: tutte le violazioni delle tre regole nell'SQL scritto in Python.
 #        Ritorna (percorso relativo a `backend/`, alias, regola, riga).
 def _violazioni() -> list[tuple[str, str, str, int]]:
-    radice = _repo_root() / _RADICE_APPS
+    radice = repo_root() / _RADICE_APPS
     trovate: list[tuple[str, str, str, int]] = []
     for percorso in sorted(radice.rglob("*.py")):
         rel = percorso.relative_to(radice.parent).as_posix()
@@ -177,7 +168,7 @@ class NamingCodiceInternoPythonTests(TestCase):
     #    due sintassi diverse) ma le RIGHE SORGENTE del file SQL, che sono il
     #    testo che una persona modifica.
     def test_le_regole_sono_ancora_quelle_del_guardrail_sql(self):
-        sorgente = (_repo_root() / _GUARDRAIL_SQL).read_text(encoding="utf-8")
+        sorgente = (repo_root() / _GUARDRAIL_SQL).read_text(encoding="utf-8")
         attese = (
             r"'codice_interno[ \t]+AS[ \t]+[a-z_]*codice([^_a-z]|$)'",
             r"'[^_a-z]codice[ \t]+AS[ \t]+[a-z_]*codice_interno'",

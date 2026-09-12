@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-2 — Le quattro policy sui satelliti di DDT. INERTI: la RLS si accende in
+#   20260909-38.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-36..38.
+#
+# ── QUATTRO E NON QUINDICI: la testata ha UNA veste ───────────────────
+#   `vendite.ddt` porta la sola `rls_ddt_ef_whitelist` (OPERATORE, FOR ALL,
+#   perimetro emittente). I satelliti la rispecchiano, e basta. Su `ordini` le
+#   policy erano quindici perche' le vesti erano tre: la regola e' la stessa —
+#   *rispecchiare tutte le vesti della testata* — ed e' il numero delle vesti a
+#   cambiare, non il criterio.
+#
+# ── Le quattro tabelle, e da quale chiave risalgono ───────────────────
+#     vendite.ddt_righe             ddt_id        -> testata
+#     vendite.ddt_indirizzi         ddt_id        -> testata
+#     vendite.note_ddt              target_id     -> testata
+#     vendite.ddt_righe_componenti  riga_ddt_id   -> riga
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#   ⚠️ `note_ddt` porta ANCHE `target_riga_id`, che e' nullable e punta alla
+#   riga. La policy NON la usa: la sede del perimetro e' `target_id`, che e'
+#   `NOT NULL` e ha una FK vera verso `vendite.ddt`. Una policy costruita sulla
+#   chiave nullable avrebbe un buco esatto dove il NULL passa — ed e' la nota
+#   che vale per tutte e sette le tabelle di note (brief §6.4).
+#
+# ── ⚠️ `ddt_righe` E' MADRE DI TRE TABELLE DI ALTRE FAMIGLIE ──────────
+#   `ordini_righe_fulfillment` (gia' armata dalla slice ordini),
+#   `resi_righe` e `resi_righe_riconsegne` (famiglia `resi`, passo 4 del brief)
+#   hanno tutte una FK `NOT NULL` verso `vendite.ddt_righe`.
+#   ⇒ Da qui in avanti quelle righe si leggono attraverso un `ddt_righe`
+#   filtrato. Le due strade — dall'ordine e dal DDT — devono dare la stessa
+#   risposta; se potessero dissentire sarebbe un GUARD MANCANTE fra ordine e
+#   DDT sull'emittente, non un problema di policy (brief §6.2). Una policy non
+#   e' il posto dove si decide a chi appartiene una riga: li' si applica una
+#   decisione gia' presa.
+#
+# ── ⛔ `FOR ALL` con `WITH CHECK`, non `FOR SELECT` ───────────────────
+#   E' la forma della testata, tradotta. Il `WITH CHECK` non e' decorativo: e'
+#   cio' che impedisce a un operatore di appendere una riga al DDT di un'altra
+#   azienda. Senza, la policy difenderebbe la sola lettura — ed e' la meta' che
+#   si dimentica, perche' il sintomo non si vede leggendo.
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione.
+# Il collaudo funzionale e' in db/pgtap/rls/test-rls-ddt-satelliti.sql, che
+# gira dopo l'armamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-37-create-policy-ddt-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-37-create-policy-ddt-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Quattro policy sui satelliti di vendite.ddt (ddt_righe, ddt_indirizzi,
+        note_ddt, ddt_righe_componenti): veste OPERATORE FOR ALL con WITH CHECK,
+        come la testata. INERTI: l'armamento e' 20260909-38.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_ddt',
+                                   'fn_scope_ef_whitelist_via_ddt_riga')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.ddt_righe (chiave: ddt_id) ----------
+              CREATE POLICY rls_ddt_righe_ef_whitelist
+                  ON vendite.ddt_righe
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ddt_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ddt_id)
+                  );
+
+              -- ---------- vendite.ddt_indirizzi (chiave: ddt_id) ----------
+              CREATE POLICY rls_ddt_indirizzi_ef_whitelist
+                  ON vendite.ddt_indirizzi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ddt_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ddt_id)
+                  );
+
+              -- ---------- vendite.note_ddt (chiave: target_id) ----------
+              -- ⚠️ `target_id`, non `target_riga_id`: la prima e' NOT NULL con
+              --   FK verso vendite.ddt, la seconda e' nullable.
+              CREATE POLICY rls_note_ddt_ef_whitelist
+                  ON vendite.note_ddt
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  );
+
+              -- ---------- vendite.ddt_righe_componenti (chiave: riga_ddt_id) ----------
+              CREATE POLICY rls_ddt_righe_componenti_ef_whitelist
+                  ON vendite.ddt_righe_componenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_ddt_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_ddt_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_ddt_id)
+                  );
+
+              COMMENT ON POLICY rls_ddt_righe_ef_whitelist ON vendite.ddt_righe IS
+                  'Perimetro emittente per le righe di DDT: rispecchia rls_ddt_ef_whitelist della testata risalendo da ddt_id. Slice 20260909-36..38.';
+              COMMENT ON POLICY rls_ddt_indirizzi_ef_whitelist ON vendite.ddt_indirizzi IS
+                  'Perimetro emittente per gli indirizzi di DDT: rispecchia rls_ddt_ef_whitelist risalendo da ddt_id. Slice 20260909-36..38.';
+              COMMENT ON POLICY rls_note_ddt_ef_whitelist ON vendite.note_ddt IS
+                  'Perimetro emittente per le note di DDT: rispecchia rls_ddt_ef_whitelist risalendo da target_id (NOT NULL, FK verso vendite.ddt). Slice 20260909-36..38.';
+              COMMENT ON POLICY rls_ddt_righe_componenti_ef_whitelist ON vendite.ddt_righe_componenti IS
+                  'Perimetro emittente per i componenti di riga DDT: risale di due livelli via fn_scope_ef_whitelist_via_ddt_riga. Slice 20260909-36..38.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_ddt_righe_componenti_ef_whitelist ON vendite.ddt_righe_componenti;
+              DROP POLICY IF EXISTS rls_note_ddt_ef_whitelist ON vendite.note_ddt;
+              DROP POLICY IF EXISTS rls_ddt_indirizzi_ef_whitelist ON vendite.ddt_indirizzi;
+              DROP POLICY IF EXISTS rls_ddt_righe_ef_whitelist ON vendite.ddt_righe;

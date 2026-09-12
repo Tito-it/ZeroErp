@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL GUARDIANO PASSA DAL GIORNALE — il wrapper del job pgAgent.
+#   Brief: brief-db-quattro-processi-senza-presidio §10.2 · B6
+#
+# Lo step del job `guardiano_digest` non chiama la funzione direttamente:
+# chiama questa procedura, che la esegue DENTRO `maintenance.fn_run_and_log`.
+# Senza, il guardiano sarebbe invisibile a tutti i presidi — cioe' il difetto
+# che `20260906-06` ha appena chiuso su due job: un job che gira senza scrivere
+# nel giornale non fallisce, semplicemente non esiste per chi guarda.
+#
+# ⭐ E QUI E' IL PEZZO CHE CHIUDE IL CERCHIO: passando dal giornale, il
+#   guardiano e' un processo PGAGENT come gli altri, e `vw_processi_programmazione`
+#   lo guarda (JOB_ASSENTE, JOB_SPENTO, GIRA_E_NON_REGISTRA, MAI_PARTITO). Il
+#   digest riporta il guardiano; il guardiano accoda per il digest. Ognuno dei
+#   due vede la morte dell'altro — e' la guardia reciproca del §10.2.
+#
+# ⚠️ `p_jobname` e' il CODICE DEL PROCESSO (`guardiano_digest`), che e' anche
+#   il jobname pgAgent: e' cosi' che fn_run_and_log risale all'attore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260911-16-create-proc-guardiano-digest-job-mctit.yaml
+
+  - changeSet:
+      id: 20260911-16-create-proc-guardiano-digest-job
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_guardiano_digest_job(): il wrapper che esegue
+        dbops.fn_guardiano_digest() PASSANDO dal giornale (fn_run_and_log).
+        E' cio' che rende il guardiano un processo PGAGENT visibile al
+        panorama: il digest guarda il guardiano, il guardiano accoda per il
+        digest.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_guardiano_digest'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance' AND p.proname = 'fn_run_and_log'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_guardiano_digest_job()
+               LANGUAGE plpgsql
+              AS $procedure$
+              BEGIN
+                  -- ⚠️ `p_jobname` e' il CODICE DEL PROCESSO: e' cosi' che
+                  --   fn_run_and_log risale all'attore (cerca in
+                  --   dbops.processi.codice). Qui coincide col jobname pgAgent.
+                  PERFORM maintenance.fn_run_and_log(
+                      p_jobname  := 'guardiano_digest',
+                      p_stepname := 'guarda_il_digest',
+                      p_sql      := 'SELECT dbops.fn_guardiano_digest();');
+              END
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_guardiano_digest_job()
+              IS 'Wrapper del job guardiano_digest: esegue dbops.fn_guardiano_digest() PASSANDO dal giornale. ⭐ E'' cio'' che rende il guardiano un processo PGAGENT come gli altri, che dbops.vw_processi_programmazione guarda: il digest riporta il guardiano, il guardiano accoda per il digest — ognuno vede la morte dell''altro. ⛔ Senza il giornale il guardiano sarebbe invisibile a tutti i presidi, cioe'' il difetto che 20260906-06 ha chiuso su due job. Brief: brief-db-quattro-processi-senza-presidio §10.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP PROCEDURE IF EXISTS maintenance.proc_guardiano_digest_job();

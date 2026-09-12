@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-1 — IL MOTIVO DELLA CHIUSURA COMMESSA PORTA I SUOI `valori`
+#
+# ── ⭐ PERCHE' LA CHECK DEVE EMETTERE `valori` ─────────────────────
+#   Nel pattern §12.5 la check sa QUALE codice ha scelto; la frase la componeva
+#   il CHIAMANTE, con un numero FISSO di valori presi dai propri dati. Le due
+#   cose non erano legate da niente: un motivo nuovo con un'altra forma di
+#   frase non fa fallire nulla, esce solo una frase sbagliata.
+#   ⇒ Chi sceglie il codice sceglie anche cosa ci va dentro. E' la stessa
+#   ragione di §12.5.2 per il predicato, applicata al messaggio.
+#
+# ── ⚠️ L'ORDINE DEI `valori` E' IL CONTRATTO DELLA FRASE ──────────
+#   Non si verifica contando i segnaposto: si verifica LEGGENDO la frase resa.
+#   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — arita'
+#   giusta, valori invertiti, «Registro X1» a video con la serie al posto della
+#   famiglia. Nessun cancello lo vide.
+#
+#
+# ── ⭐ Stessa forma della gemella (changeSet -05) ──────────────────
+#   «Commessa %s: chiusura non consentita, %s riga/e approvate non ancora
+#   emesse.» La check legge `commesse.codice` per il primo segnaposto. Ragione,
+#   divergenza chiusa e caveat del trigger BEFORE: vedi il -05, che li scrive
+#   per esteso.
+#   ⚠️ Questa e la gemella condividono UN SOLO punto di sollevamento
+#   (vendite.trgfn_commesse_guard_transizione sceglie fra tre check con un
+#   CASE): vanno insieme, o quel sito entra in perimetro a meta'.
+#
+# ⛔ Nessun codice errore nuovo, nessun `reason` toccato, nessun motivo
+#   riordinato: si AGGIUNGE una chiave.
+# ⚠️ Questo changeSet da solo NON basta: fa entrare il suo sito nel perimetro
+#   del rubinetto (test 2 di test-rubinetto-primo-motivo-v1.sql), che pretende
+#   zero code scritte a mano. Va nella STESSA consegna dei changeSet C-2.
+#
+# ⭐ Il corpo e' quello VIVO (pg_get_functiondef), non ricostruito da uno YAML.
+# Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (C-1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-06-update-fn-check-commessa-chiudibile-emette-valori-mctit.yaml
+
+  - changeSet:
+      id: 20260909-06-update-fn-check-commessa-chiudibile-emette-valori
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_check_commessa_chiudibile: il motivo emette `valori` e la check legge la chiave visibile della commessa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_commessa_chiudibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_commessa_chiudibile(p_commessa_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono la CHIUSURA di una
+              --   commessa. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: il guard di transizione (che
+              --   solleva il codice del primo motivo) e fn_available_actions_commessa
+              --   (che espone l'azione disabled + reasons).
+              --   Brief: brief-db-guard-uscita-commessa-e-capabilities §3.2.
+              -- Ritorna: [] se chiudibile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi  jsonb   := '[]'::jsonb;
+                v_pendenti integer;
+                v_codice  vendite.commesse.codice%TYPE;
+              BEGIN
+                -- Guard parametro (AGENTS.md): id assente o non valido e' un errore
+                -- di programmazione, non una condizione di dominio.
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_commessa_chiudibile','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','commessa_id','valore',p_commessa_id),
+                    NULL::uuid, 'commessa_id obbligatorio (>0)');
+                END IF;
+
+                -- MOTIVO 1 — righe approvate e non ancora emesse (D2).
+                -- Congiunzione sui DUE assi distinti: stato_approvazione e
+                -- stato_emissione sono colonne separate con CHECK separati.
+                -- Sono le righe che fn_list_commesse_emittibili avrebbe raccolto:
+                -- chiudere sopra di esse le perde, e CHIUSA e' irreversibile.
+                -- Indice: ix_commesse_attivita_commessa_stati.
+                    -- ⭐ LA CHIAVE VISIBILE, dal 2026-09-09. Non serve a DECIDERE — il
+                    --   verdetto non la guarda — ma a COMPORRE la frase del motivo che
+                    --   questa funzione ha scelto: «%s: ...» vuole il nome che una persona
+                    --   riconosce, non l'id. Finche' i `valori` li metteva il chiamante,
+                    --   glieli dava NEW; adesso il codice e la sua frase escono dallo stesso
+                    --   posto, che e' tutto il senso di §12.5.2.
+                    -- ⚠️ Dentro un trigger BEFORE questa SELECT legge la riga PRE-modifica,
+                    --   mentre il chiamante usava NEW. Sulle transizioni di stato le due
+                    --   coincidono (una transizione non rinomina il documento) ed e' anzi il
+                    --   valore che l'operatore ha davanti sullo schermo — ma va detto, non
+                    --   dato per scontato.
+                SELECT c.codice INTO v_codice
+                  FROM vendite.commesse c
+                 WHERE c.id = p_commessa_id;
+
+                SELECT count(*)
+                  INTO v_pendenti
+                  FROM vendite.commesse_attivita ca
+                 WHERE ca.commessa_id = p_commessa_id
+                   AND ca.stato_approvazione = 'APPROVATA'
+                   AND ca.stato_emissione    = 'NON_EMESSA';
+
+                IF v_pendenti > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI',
+                    'reason',     'RIGHE_DA_EMETTERE',
+                    'reason_key', 'vendite.commesse.azione_reason.righe_da_emettere',
+                    'dettaglio',  v_pendenti,
+                    -- «Commessa %s: chiusura non consentita, %s riga/e approvate ...»
+                    'valori',     jsonb_build_array(COALESCE(v_codice, p_commessa_id::text),
+                                                    v_pendenti));
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_commessa_chiudibile(p_commessa_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono la CHIUSURA di una
+              --   commessa. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: il guard di transizione (che
+              --   solleva il codice del primo motivo) e fn_available_actions_commessa
+              --   (che espone l'azione disabled + reasons).
+              --   Brief: brief-db-guard-uscita-commessa-e-capabilities §3.2.
+              -- Ritorna: [] se chiudibile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi  jsonb   := '[]'::jsonb;
+                v_pendenti integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md): id assente o non valido e' un errore
+                -- di programmazione, non una condizione di dominio.
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_commessa_chiudibile','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','commessa_id','valore',p_commessa_id),
+                    NULL::uuid, 'commessa_id obbligatorio (>0)');
+                END IF;
+
+                -- MOTIVO 1 — righe approvate e non ancora emesse (D2).
+                -- Congiunzione sui DUE assi distinti: stato_approvazione e
+                -- stato_emissione sono colonne separate con CHECK separati.
+                -- Sono le righe che fn_list_commesse_emittibili avrebbe raccolto:
+                -- chiudere sopra di esse le perde, e CHIUSA e' irreversibile.
+                -- Indice: ix_commesse_attivita_commessa_stati.
+                SELECT count(*)
+                  INTO v_pendenti
+                  FROM vendite.commesse_attivita ca
+                 WHERE ca.commessa_id = p_commessa_id
+                   AND ca.stato_approvazione = 'APPROVATA'
+                   AND ca.stato_emissione    = 'NON_EMESSA';
+
+                IF v_pendenti > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI',
+                    'reason',     'RIGHE_DA_EMETTERE',
+                    'reason_key', 'vendite.commesse.azione_reason.righe_da_emettere',
+                    'dettaglio',  v_pendenti);
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$

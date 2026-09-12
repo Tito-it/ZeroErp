@@ -6,8 +6,8 @@
 #        Cabla il motore condiviso `QueueDrainEngine` sul backend
 #        `CodaLavoriRepository` con un `per_item` che dispatcha per
 #        `handler_code` e imposta il CONTESTO DI ESECUZIONE secondo `run_as`:
-#         - `SISTEMA`  → `system_process_context` (ruolo BYPASSRLS): il job vede
-#           tutto, `scope=None`;
+#         - `SISTEMA`  → ruolo applicativo normale, `scope=None`: nessuna
+#           identita' e nessun emittente, quindi solo tabelle senza perimetro;
 #         - `OPERATORE`→ `operator_identity_context` (RLS attiva, 5 GUC =
 #           identità completa dell'operatore che ha accodato, dallo scope
 #           catturato: auth_user_id+username+identita_id). Nessuna interruzione
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.services.auth_constants import AUDIT_ACTOR_WORKER_CODA_LAVORI
 from apps.core.services.coda_lavori.backend import QueueItem
 from apps.core.services.coda_lavori.context import operator_identity_context
 from apps.core.services.coda_lavori.drain_engine import QueueDrainEngine
@@ -32,15 +31,6 @@ from apps.core.services.coda_lavori.repository import (
     STALE_MINUTI_DEFAULT,
     CodaLavoriRepository,
 )
-# Canale di sistema per i job run_as=SISTEMA: fonte unica del letterale in
-# system_context (regola del 2). È l'UNICO ruolo BYPASSRLS oggi disponibile
-# (batch fatturazione); alias dominio-neutro = cleanup futuro. Nessun job
-# SISTEMA seedato oggi (FATTURAZIONE_GIRO è OPERATORE).
-from apps.core.services.system_context import (
-    SYSTEM_FATTURAZIONE_DB_ALIAS,
-    system_process_context,
-)
-
 # Righe claimate per giro (batch unico misto per priorità). Tarabile su volumi.
 _LIMIT_DEFAULT = 200
 # Reaper: righe IN_CORSO stantie oltre N minuti (worker morto): tentativi+1 →
@@ -57,11 +47,19 @@ _STALE_MINUTI_DEFAULT = STALE_MINUTI_DEFAULT
 def _dispatch_item(item: QueueItem) -> dict[str, Any] | None:
     handler = get_handler(item.raw.get("handler_code"))
     if item.run_as == RUN_AS_SISTEMA:
-        with system_process_context(
-            alias=SYSTEM_FATTURAZIONE_DB_ALIAS,
-            actor=AUDIT_ACTOR_WORKER_CODA_LAVORI,
-        ):
-            return handler(item.payload, scope=None)
+        # ⭐ `SISTEMA` ha cambiato SIGNIFICATO (2026-09-05, §10.2 dell'analisi).
+        #    Voleva dire «col bypass della RLS»; adesso vuole dire «senza
+        #    emittente». Il job gira sul ruolo applicativo normale, quindi puo'
+        #    toccare solo cio' che non ha un perimetro — ed e' esattamente cio'
+        #    che un lavoro senza azienda deve poter fare.
+        # ⛔ Niente canale di sistema: era l'ultimo punto del backend che lo
+        #    apriva, e finche' esisteva bastava un tipo di coda dichiarato male
+        #    per attraversare tutte le aziende.
+        # ⚠️ Nessun tipo `SISTEMA` e' seedato oggi (i due esistenti sono
+        #    `DOMINIO`/`OPERATORE`), e dal 2026-09-04 il guard di classe di
+        #    `fn_accoda_lavoro` impedisce di accodare un lavoro di dominio come
+        #    `SISTEMA`: il ramo vincola il futuro, non rompe il presente.
+        return handler(item.payload, scope=None)
     # OPERATORE: RLS attiva con l'identità COMPLETA dell'operatore (5 GUC,
     # stessa risoluzione del web) dallo scope catturato all'enqueue.
     scope = item.scope or {}

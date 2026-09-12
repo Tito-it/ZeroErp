@@ -50,6 +50,10 @@ Indice test eseguiti:
 24-quinquies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittente_ragione_sociale
 24-sexies) DashCompetenzaGruppiRepositoryTests.test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
 24-septies) DashCompetenzaGruppiRepositoryTests.test_larghezza_riga_finta_uguale_al_select
+24-novies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_il_blocco_di_emissione_col_bersaglio
+24-novies-bis) DashCompetenzaGruppiRepositoryTests.test_senza_blocco_di_emissione_i_quattro_campi_restano_none
+24-decies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_l_esito_dell_ultimo_tentativo
+24-undecies) DashCompetenzaGruppiRepositoryTests.test_esito_assente_resta_none
 24-octies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_riferimento_non_nullo
 25) DashCompetenzaFatturePerCellaTests.test_n_fatture_innestato_sulla_cella_di_quello_stadio
 26) DashCompetenzaFatturePerCellaTests.test_stadio_non_calcolabile_e_non_applicabile
@@ -60,7 +64,7 @@ Indice test eseguiti:
 31) DashCompetenzaFatturePerCellaTests.test_errore_solo_dove_ci_sono_attivita
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
@@ -81,10 +85,12 @@ from apps.vendite.services.vendite_service import (
 # forma misurata dal team DB su luglio 2026 — 25 attivita' NORMALE + 1 ONERE da
 # 5.000 €. Il breakdown 3a deve restare UNA voce per stato.
 # ⭐ Le DUE popolazioni dentro `EMESSA_NON_FATTURATA`, che la card deve saper
-# distinguere: il RESIDUO chiede un'azione («Riporta da emettere»), le altre tre
-# situazioni no. ⚠️ Il caso si COSTRUISCE qui: nei dati di sviluppo del
-# 2026-08-27 il transito non c'era (5 righe su 5 residue), quindi un test che
-# guardasse la popolazione reale sarebbe verde senza aver verificato niente.
+# distinguere: il RESIDUO chiede un'azione («Riporta da emettere»), le altre due
+# situazioni no. ⚠️ Una riga per valore VIVO del vocabolario (tre: vedi il
+# commento su `MOTIVO_NON_FATTURATA_RESIDUO` nel repository, che e' la sede).
+# ⚠️ Il caso si COSTRUISCE qui: nei dati di sviluppo del 2026-08-27 il transito
+# non c'era (5 righe su 5 residue), quindi un test che guardasse la popolazione
+# reale sarebbe verde senza aver verificato niente.
 _ROWS_DUE_POPOLAZIONI = [
     {
         "competenza_mese": "2026-07-01",
@@ -93,6 +99,8 @@ _ROWS_DUE_POPOLAZIONI = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 5,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "5019.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -105,20 +113,9 @@ _ROWS_DUE_POPOLAZIONI = [
         "stato_fattura_codice_interno": None,
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
-        "n_attivita": 12,
-        "valore": "8400.00",
-        "valore_fatturato": "0",
-        "n_in_ritardo": 0,
-        "valore_in_ritardo": "0",
-        "motivo_non_fatturata": "IN_ATTESA_LOTTO",
-    },
-    {
-        "competenza_mese": "2026-07-01",
-        "stadio": "EMESSA_NON_FATTURATA",
-        "stato_fattura_codice_interno": None,
-        "stato_fattura_codice": None,
-        "tipo_movimento": "NORMALE",
         "n_attivita": 3,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "150.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -135,6 +132,8 @@ _ROWS_DUE_POPOLAZIONI = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 1,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "70.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -152,6 +151,8 @@ _ROWS_BUCKET_SPEZZATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 25,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "924.00",
         "valore_fatturato": "924.00",
         "n_in_ritardo": 0,
@@ -164,6 +165,8 @@ _ROWS_BUCKET_SPEZZATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "ONERE",
         "n_attivita": 1,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "5000.00",
         "valore_fatturato": "5000.00",
         "n_in_ritardo": 0,
@@ -182,6 +185,8 @@ _ROWS_COMPENSAZIONE = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 10,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "1000.00",
         "valore_fatturato": "1000.00",
         "n_in_ritardo": 0,
@@ -194,6 +199,8 @@ _ROWS_COMPENSAZIONE = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 1,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "29.50",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -206,6 +213,8 @@ _ROWS_COMPENSAZIONE = [
         "stato_fattura_codice": None,
         "tipo_movimento": "RETTIFICA",
         "n_attivita": 2,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "-29.50",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -226,6 +235,8 @@ _ROWS_TUTTO_FATTURATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 10,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "1000.00",
         "valore_fatturato": "1000.00",
         "n_in_ritardo": 0,
@@ -238,6 +249,8 @@ _ROWS_TUTTO_FATTURATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "RETTIFICA",
         "n_attivita": 2,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "-29.50",
         "valore_fatturato": "-29.50",
         "n_in_ritardo": 0,
@@ -255,6 +268,8 @@ _ROWS_GENNAIO = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 2,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "300.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -267,6 +282,8 @@ _ROWS_GENNAIO = [
         "stato_fattura_codice": "DRAFT",
         "tipo_movimento": "NORMALE",
         "n_attivita": 3,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "1000.00",
         "valore_fatturato": "990.00",
         "n_in_ritardo": 1,
@@ -279,6 +296,8 @@ _ROWS_GENNAIO = [
         "stato_fattura_codice": "DEFINITIVA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 4,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "2000.00",
         "valore_fatturato": "2010.50",
         "n_in_ritardo": 0,
@@ -531,6 +550,8 @@ class DashCompetenzaMensileServiceTests(TestCase):
                 "valore_fatturato": "0",
                 "n_in_ritardo": 0,
                 "valore_in_ritardo": "0",
+                "n_attivita_trattenute": 0,
+                "valore_trattenuto": "0",
             }
         ],
     )
@@ -994,14 +1015,148 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
               ba_codice="BA-0001", id_fiscale="12345678901",
               emittente="Tito Srl",
               registri_n=1, registro_codice="Front-office",
-              data_prevista=date(2026, 8, 31)):
+              data_prevista=date(2026, 8, 31),
+              ultimo_esito=None, ultimo_errore_codice=None,
+              ultimo_errore_messaggio=None, ultimo_errore_quando=None,
+              ultimo_lotto_codice=None,
+              blocco_reason=None, blocco_reason_key=None,
+              blocco_lotto_id=None, blocco_lotto_codice=None,
+              ultimo_lotto_id=None, ultimo_lotto_stato=None,
+              ultimo_lotto_pre_fiscale=None):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
             emittibile, stato, stato_descr, ba_codice, id_fiscale, emittente,
             registri_n, registro_codice, data_prevista,
+            # ⭐ L'esito dell'ULTIMO tentativo (rev 2026-09-06, changeSet DB
+            # `20260906-12` — brief-db-esito-gruppo-lotto R-3). I default sono
+            # tutti `None` e NON e' pigrizia: e' la forma che il database
+            # produce su ogni gruppo che nessun giro ha ancora lavorato, cioe'
+            # il caso normale. Chi prova il ramo «e' fallito» lo chiede.
+            ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio,
+            ultimo_errore_quando, ultimo_lotto_codice,
+            # ⭐ Il VERDETTO «trattenuto da un lotto vivo» (changeSet DB
+            # `20260909-24`). Default `None` = la riga si puo' prendere, che e'
+            # il caso normale.
+            # ⛔ E' un verdetto, non materia da dedurre: `ultimo_esito` qui
+            # sopra NON risponde alla stessa domanda — su un lotto ANNULLATO
+            # vale `COMPLETED` e il documento e' LIBERO.
+            blocco_reason, blocco_reason_key, blocco_lotto_id, blocco_lotto_codice,
+            # ⭐ V-1 (`20260909-66`): il lotto del TENTATIVO esce col suo STATO,
+            # non col solo codice — a video un tentativo dentro un lotto
+            # ANNULLATO si leggeva come uno ancora in corso.
+            # ⛔ `ultimo_lotto_id` NON e' `blocco_lotto_id` qui sopra: quello e'
+            # il lotto che TRATTIENE adesso, questo e' l'ultimo che ci ha
+            # provato — su un lotto annullato il secondo c'e' e il primo no.
+            # I default `None` sono la forma che il database produce su un
+            # gruppo che nessun giro ha ancora lavorato, cioe' il caso normale.
+            ultimo_lotto_id, ultimo_lotto_stato, ultimo_lotto_pre_fiscale,
         )]
+
+    # 24-novies) 🟢 IL VERDETTO «TRATTENUTO DA UN LOTTO VIVO» arriva dalla vista
+    #     e il mapping lo consegna intero, bersaglio compreso
+    #     (brief-db-documento-trattenuto-da-un-lotto-vivo, changeSet
+    #     `20260909-24`).
+    # ⛔ E si presidia che NON venga dedotto da `ultimo_esito`: qui la riga ha
+    #     `ultimo_esito = COMPLETED` — che su un lotto annullato significa
+    #     LIBERO — e insieme il verdetto di blocco. Sono due domande diverse, e
+    #     un mapping che le confondesse passerebbe questo test solo per caso.
+    # ⚠️ Il `lotto_id` viaggia perche' il frontend ci disegna un GESTO: senza,
+    #     l'operatore ricopia un codice e poi lo cerca a mano.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_il_blocco_di_emissione_col_bersaglio(
+        self, mock_query, _band,
+    ):
+        mock_query.return_value = (
+            self._rows(
+                99, ultimo_esito="COMPLETED",
+                blocco_reason="TRATTENUTO_DA_LOTTO",
+                blocco_reason_key="vendite.emissione.blocco_reason.trattenuto_da_lotto",
+                blocco_lotto_id=11764, blocco_lotto_codice="LTF-0010331",
+            ),
+            1,
+        )
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio="DA_EMETTERE", limit=10, offset=0,
+        )
+        self.assertEqual(righe[0]["emissione_blocco_reason"], "TRATTENUTO_DA_LOTTO")
+        self.assertEqual(
+            righe[0]["emissione_blocco_reason_key"],
+            "vendite.emissione.blocco_reason.trattenuto_da_lotto",
+        )
+        self.assertEqual(righe[0]["emissione_blocco_lotto_id"], 11764)
+        self.assertEqual(righe[0]["emissione_blocco_lotto_codice"], "LTF-0010331")
+
+    # 24-novies-bis) ⚠️ E senza blocco resta `None` su tutti e quattro: la riga
+    #     si puo' prendere. Uno zero o una stringa vuota direbbero un'altra cosa.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_senza_blocco_di_emissione_i_quattro_campi_restano_none(
+        self, mock_query, _band,
+    ):
+        mock_query.return_value = (self._rows(99), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio="DA_EMETTERE", limit=10, offset=0,
+        )
+        for campo in ("emissione_blocco_reason", "emissione_blocco_reason_key",
+                      "emissione_blocco_lotto_id", "emissione_blocco_lotto_codice"):
+            self.assertIsNone(righe[0][campo], campo)
+
+    # 24-decies) 🟢 L'ESITO DELL'ULTIMO TENTATIVO arriva dalla VISTA e il
+    #     mapping lo consegna (brief-db-esito-gruppo-lotto R-3, changeSet DB
+    #     `20260906-12`). ⭐ Il caso vero e' il documento che il lotto ha preso
+    #     in carico e NON e' riuscito a fatturare: restava fra quelli da
+    #     emettere senza un segno, quindi sembrava fatturabile.
+    #     ⛔ Il test verifica anche cio' che NON deve cambiare: `stadio` e
+    #     `commessa_emittibile` restano quelli di prima (decisione di Tid). Il
+    #     segno dice «ci ho provato», non «non si puo' fare» — e la riga deve
+    #     restare fatturabile, o il rimedio (correggi e riprova) sarebbe
+    #     impossibile proprio dove serve.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_l_esito_dell_ultimo_tentativo(self, mock_query, _band):
+        mock_query.return_value = (self._rows(
+            5387,
+            ultimo_esito="ERRORE",
+            ultimo_errore_codice="E_PULL_COMMESSA",
+            ultimo_errore_messaggio="ROOT source mancante per commessa 34137",
+            ultimo_errore_quando=datetime(2026, 9, 6, 17, 12, tzinfo=UTC),
+            ultimo_lotto_codice="LTF-0009578",
+        ), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["ultimo_esito"], "ERRORE")
+        self.assertEqual(righe[0]["ultimo_errore_codice"], "E_PULL_COMMESSA")
+        self.assertEqual(
+            righe[0]["ultimo_errore_messaggio"],
+            "ROOT source mancante per commessa 34137",
+        )
+        # ISO, come ogni altro timestamp del payload.
+        self.assertTrue(righe[0]["ultimo_errore_quando"].startswith("2026-09-06T17:12"))
+        self.assertEqual(righe[0]["ultimo_lotto_codice"], "LTF-0009578")
+        # ⛔ Il segno NON spegne la riga.
+        self.assertEqual(righe[0]["stadio"], "DA_EMETTERE")
+        self.assertTrue(righe[0]["commessa_emittibile"])
+
+    # 24-undecies) ⚠️ `None` NON diventa una stringa, e non e' un dettaglio: e' la
+    #     verita' di ogni gruppo che nessun giro ha ancora lavorato — «nessuno
+    #     l'ha detto», che il frontend deve poter distinguere da «e' andata
+    #     bene». Un `"None"` a video sarebbe un esito inventato.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_esito_assente_resta_none(self, mock_query, _band):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio=None, limit=25, offset=0,
+        )
+        for chiave in (
+            "ultimo_esito", "ultimo_errore_codice", "ultimo_errore_messaggio",
+            "ultimo_errore_quando", "ultimo_lotto_codice",
+        ):
+            self.assertIsNone(righe[0][chiave], chiave)
 
     # 24-septies) La riga finta e il SELECT vero devono avere la STESSA
     #     larghezza. E' il presidio del presidio: tutti i test di mapping di
@@ -1372,6 +1527,165 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertNotIn("registri_ids", righe[0])
 
 
+class DashCompetenzaRespintaEErroriRepositoryTests(TestCase):
+    """D3 · le commesse respinte arrivano fino alla riga.
+
+    Due superfici, due presidi. Sulla lista GRUPPI la bandiera arriva da una
+    LATERAL su `vw_dash_commesse_respinte`; sulla lista ERRORI arrivano
+    l'elenco delle commesse respinte e il loro numero, in coda alle colonne
+    esistenti.
+
+    ⛔ Entrambe le liste mappano per INDICE. Il modo in cui si rompono non e'
+    un'eccezione: e' una data nel campo del task e un messaggio in quello della
+    data, senza nessun errore. Per questo i test guardano la LARGHEZZA oltre ai
+    valori.
+    """
+
+    # Scopo: la bandiera si accende SOLO sulle commesse respinte, e le altre
+    #        righe restano pulite. Il caso NULL e' la stragrande maggioranza:
+    #        una bandiera che si accende ovunque non e' una bandiera.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_la_bandiera_si_accende_solo_su_chi_e_stato_respinto(self, mock_conn):
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [
+            (34137, datetime(2026, 9, 4, 17, 32, 38, tzinfo=UTC),
+             "ROOT source mancante per commessa 34137"),
+        ]
+        righe = [
+            {"commessa_id": 34136, "respinta_il": None, "respinta_motivo": None},
+            {"commessa_id": 34137, "respinta_il": None, "respinta_motivo": None},
+            {"commessa_id": None, "respinta_il": None, "respinta_motivo": None},
+        ]
+        VenditeRepository()._applica_bandiera_respinta(
+            righe, competenza_mese=date(2026, 9, 1),
+        )
+        self.assertIsNone(righe[0]["respinta_il"])
+        self.assertTrue(righe[1]["respinta_il"].startswith("2026-09-04"))
+        self.assertEqual(
+            righe[1]["respinta_motivo"], "ROOT source mancante per commessa 34137"
+        )
+        self.assertIsNone(righe[2]["respinta_il"])
+
+    # Scopo: ⛔ IL PRESIDIO DI COSTO. La forma ovvia — una LATERAL nella
+    #        proiezione — si valuta su TUTTO il perimetro del mese e non sulla
+    #        pagina, perche' `query_paged_view` materializza la CTE per contare
+    #        il totale. Misurato il 2026-09-04 su `2026-06` (48 gruppi): 27 ms
+    #        senza, 1073 ms con. Questo test dice che la lettura resta UNA,
+    #        fuori dal SELECT paginato e ristretta agli id della pagina.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_la_bandiera_non_entra_nel_select_paginato(self, mock_query, _mock_band):
+        mock_query.return_value = (DashCompetenzaGruppiRepositoryTests()._rows(1), 1)
+        VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio=None, limit=25, offset=0,
+        )
+        sql = mock_query.call_args.kwargs["select_sql"]
+        self.assertNotIn("vw_dash_commesse_respinte", sql)
+
+    # Scopo: la lettura e' ristretta al MESE della riga e prende l'ULTIMO
+    #        rifiuto. Senza il mese, un rifiuto di agosto accenderebbe la
+    #        bandiera su una riga di settembre; senza il collasso, una commessa
+    #        respinta due volte porterebbe due righe e vincerebbe quella
+    #        arrivata per ultima nel dizionario — cioe' il caso.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_la_bandiera_e_legata_al_mese_e_prende_l_ultimo_rifiuto(self, mock_conn):
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = []
+        VenditeRepository()._applica_bandiera_respinta(
+            [{"commessa_id": 34137, "respinta_il": None, "respinta_motivo": None}],
+            competenza_mese=date(2026, 9, 1),
+        )
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("DISTINCT ON (commessa_id)", sql)
+        self.assertIn("ORDER BY commessa_id, respinta_il DESC", sql)
+        self.assertIn("competenza_mese = %s", sql)
+        self.assertEqual(params[0], date(2026, 9, 1))
+        self.assertEqual(params[1], [34137])
+
+    # Scopo: nessuna commessa nella pagina = nessuna interrogazione. Un giro a
+    #        vuoto su `= ANY('{}')` costerebbe una lettura per non trovare mai
+    #        niente — e le liste dei cruscotti si pagano a query.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_la_bandiera_non_interroga_il_db_senza_commesse(self, mock_conn):
+        VenditeRepository()._applica_bandiera_respinta(
+            [{"commessa_id": None, "respinta_il": None, "respinta_motivo": None}],
+            competenza_mese=date(2026, 9, 1),
+        )
+        mock_conn.cursor.assert_not_called()
+
+    # Scopo: le due colonne nuove della lista errori arrivano in fondo e sono
+    #        mappate. ⛔ IN FONDO e' il contratto: infilarle in mezzo
+    #        sposterebbe di una casella tutto cio' che segue, in silenzio.
+    # ⚠️ Riga finta UNICA per i due test qui sotto: la sua larghezza e' cio' che
+    #    `test_larghezza_riga_errori_uguale_al_select` confronta col SELECT
+    #    vero. Scriverla due volte, o scrivere il numero a mano, rimetterebbe in
+    #    piedi proprio la doppia verita' che il presidio esiste per togliere.
+    def _riga_errore(self):
+        return (
+            "TASK_ERRORE", date(2026, 9, 1), 10141, "LTF-0009181", "ERRORE",
+            None, None, None, None, None,
+            "pull_attivita_da_commessa", "E_PULL_COMMESSA",
+            "Pull attivita' completato con 1 commesse su 3 in errore",
+            datetime(2026, 9, 4, 17, 32, 38, tzinfo=UTC),
+            "Gestore Test pgTAP",
+            # 🔴 STRINGA, non lista: e' la forma che il driver consegna
+            #    davvero (psycopg 3 in questa configurazione non decodifica il
+            #    jsonb fuori dall'ORM). Un finto che passasse gia' una lista
+            #    farebbe passare il test per una ragione diversa da quella per
+            #    cui passa il sistema — ed e' esattamente cosi' che, il
+            #    2026-09-04, la suite era verde mentre l'endpoint restituiva
+            #    una stringa al posto dell'array.
+            '[{"commessa_id": 34137, "commessa_codice": "CMM-…-004", '
+            '"error_code": "E_PULL_COMMESSA", '
+            '"messaggio": "Errore emissione commessa 34137", '
+            '"dettaglio": "ROOT source mancante per commessa 34137"}]',
+            1,
+        )
+
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_errori_mappano_le_commesse_respinte_in_coda(self, mock_query):
+        mock_query.return_value = ([self._riga_errore()], 1)
+        righe, _ = VenditeRepository().list_dash_competenza_errori(
+            competenza_mese=date(2026, 9, 1), limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["n_commesse_fallite"], 1)
+        # ⛔ Una LISTA, non la stringa che il driver ha consegnato: e' il campo
+        #    su cui il frontend cicla. Senza decodifica non ci sarebbe nessun
+        #    errore — solo una lista che non si puo' ciclare.
+        self.assertIsInstance(righe[0]["commesse_fallite"], list)
+        self.assertEqual(righe[0]["commesse_fallite"][0]["commessa_id"], 34137)
+        self.assertEqual(
+            righe[0]["commesse_fallite"][0]["dettaglio"],
+            "ROOT source mancante per commessa 34137",
+        )
+        # I campi preesistenti non si sono spostati di una casella.
+        self.assertEqual(righe[0]["task_code"], "pull_attivita_da_commessa")
+        self.assertEqual(righe[0]["emittente_ragione_sociale"], "Gestore Test pgTAP")
+
+    # Scopo: il presidio del presidio, come per i gruppi — la riga finta e il
+    #        SELECT vero devono avere la stessa larghezza, o tutti i test di
+    #        mapping qui sopra girano su una forma che il database non produce.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_larghezza_riga_errori_uguale_al_select(self, mock_query):
+        mock_query.return_value = ([self._riga_errore()], 1)
+        VenditeRepository().list_dash_competenza_errori(
+            competenza_mese=date(2026, 9, 1), limit=25, offset=0,
+        )
+        sql = mock_query.call_args.kwargs["select_sql"]
+        proiezione = sql.split("FROM vendite.vw_dash_competenza_errori")[0]
+        # Le colonne della proiezione sono `e.<nome>` piu' la chiamata alla
+        # sede unica del numero documento, che colonna della vista non e'.
+        colonne = [
+            r for r in (x.strip() for x in proiezione.splitlines())
+            if r.startswith(("e.", "vendite.fn_numero_documento_fattura"))
+        ]
+        self.assertEqual(
+            len(colonne), len(self._riga_errore()),
+            "la riga finta non ha piu' la larghezza del SELECT: i test di "
+            "mapping stanno girando su una forma che il database non produce.",
+        )
+
+
 class DashCompetenzaGruppiExportParitaTests(TestCase):
     """L'export deve portare gli STESSI filtri della lista (D-7).
 
@@ -1493,6 +1807,8 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
  "tipo_movimento": "NORMALE",
             "n_attivita": 9, "valore": "900.00", "valore_fatturato": "900.00",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
+            "n_attivita_trattenute": 0,
+            "valore_trattenuto": "0",
         },
         {
             "competenza_mese": "2026-01-01", "stadio": "DA_EMETTERE",
@@ -1500,6 +1816,8 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
  "tipo_movimento": "NORMALE",
             "n_attivita": 3, "valore": "300.00", "valore_fatturato": "0",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
+            "n_attivita_trattenute": 0,
+            "valore_trattenuto": "0",
         },
         {
             "competenza_mese": "2026-01-01", "stadio": "EMESSA_NON_FATTURATA",
@@ -1507,6 +1825,8 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
  "tipo_movimento": "NORMALE",
             "n_attivita": 5, "valore": "500.00", "valore_fatturato": "0",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
+            "n_attivita_trattenute": 0,
+            "valore_trattenuto": "0",
         },
     ]
 
@@ -1664,14 +1984,14 @@ class CardResiduiTests(TestCase):
         luglio = vendite_service.fn_dash_competenza_mensile(anno=2026)["mesi"][6]
         card = next(s for s in luglio["stadi"] if s["stadio"] == "EMESSA_NON_FATTURATA")
 
-        # Il totale li contiene tutti: 5 + 12 + 3 + 1.
-        self.assertEqual(card["n_attivita"], 21)
+        # Il totale li contiene tutti: 5 + 3 + 1.
+        self.assertEqual(card["n_attivita"], 9)
         # La quota che chiede un'azione e' SOLO il residuo.
         self.assertEqual(card["n_residui"], 5)
         self.assertEqual(card["valore_residui"], "5019.00")
-        # ⚠️ E le altre tre NON entrano: sommarle direbbe «21 da recuperare»,
-        #    cioe' proporrebbe il verbo su 16 righe che lo rifiuterebbero.
-        self.assertEqual(card["n_attivita"] - card["n_residui"], 16)
+        # ⚠️ E le altre due NON entrano: sommarle direbbe «9 da recuperare»,
+        #    cioe' proporrebbe il verbo su 4 righe che lo rifiuterebbero.
+        self.assertEqual(card["n_attivita"] - card["n_residui"], 4)
 
     # Scopo: Su uno stadio dove il motivo non si applica il campo c'e' e vale 0
     #        (contratto simmetrico DL-8: il frontend rende, non deduce).
@@ -1711,6 +2031,8 @@ class CardResiduiTests(TestCase):
                 "n_in_ritardo": 0,
                 "valore_in_ritardo": "0",
                 "motivo_non_fatturata": "RESIDUO",
+                "n_attivita_trattenute": 0,
+                "valore_trattenuto": "0",
             },
         ],
     )
@@ -1721,3 +2043,50 @@ class CardResiduiTests(TestCase):
         # Lo stesso segno del `valore` accanto a cui viene reso.
         self.assertEqual(card["valore_residui"], "-500.00")
         self.assertEqual(card["valore_residui"], card["valore"])
+
+    # Scopo: LA QUOTA TRATTENUTA DA UN GIRO IN CORSO arriva alla card, e ci
+    #        arriva DICHIARATA — non sottratta una seconda volta.
+    # ⛔ Il presidio serve perche' senza di lui questo file e' verde per
+    #    SOTTRAZIONE: dal 2026-09-09 il servizio aggrega `n_attivita_trattenute`
+    #    e `valore_trattenuto`, ma ogni fixture qui dentro li porta a ZERO —
+    #    quindi le due righe girano e non provano niente. Uno scambio fra le due
+    #    (`n_trattenute += valore_trattenuto`) passerebbe tutto il resto.
+    # ⭐ E l'asserzione che conta davvero e' la terza: `n_attivita` NON si
+    #    riduce. Il `FILTER` sta nella VISTA, quindi la quota arriva gia'
+    #    esclusa dal totale; se qui si sottraesse ancora, il totale mostrerebbe
+    #    meno righe di quante ne esistono — e a video sarebbe un numero
+    #    plausibile, cioe' un difetto che nessuno nota.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "count_dash_competenza_errori_mensile", return_value={},
+    )
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=[
+            {
+                "competenza_mese": "2026-07-01",
+                "stadio": "DA_EMETTERE",
+                "stato_fattura_codice_interno": None,
+                "stato_fattura_codice": None,
+                "tipo_movimento": "NORMALE",
+                "n_attivita": 5,
+                "valore": "500.00",
+                "valore_fatturato": "0",
+                "n_in_ritardo": 0,
+                "valore_in_ritardo": "0",
+                "n_attivita_trattenute": 2,
+                "valore_trattenuto": "200.00",
+            },
+        ],
+    )
+    def test_la_quota_trattenuta_arriva_alla_card_e_non_si_sottrae(
+        self, _mock_rows, _mock_err,
+    ):
+        luglio = vendite_service.fn_dash_competenza_mensile(anno=2026)["mesi"][6]
+        card = next(s for s in luglio["stadi"] if s["stadio"] == "DA_EMETTERE")
+        self.assertEqual(card["n_trattenute"], 2)
+        self.assertEqual(card["valore_trattenuto"], "200.00")
+        # ⛔ Il totale resta quello della vista: la quota e' gia' esclusa la'.
+        self.assertEqual(card["n_attivita"], 5)
+        self.assertEqual(card["valore"], "500.00")

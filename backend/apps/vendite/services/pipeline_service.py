@@ -7,22 +7,27 @@
 
 
 import re
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
-from apps.vendite.services.lotto_reset_service import LottoResetService
+from apps.vendite.services.lotto_reset_service import (
+    CODICE_RIPIEGO_USCITA,
+    LottoResetService,
+)
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
     EliminaFatturaDaLottoResult,
+    EsclusioneDocumentoDaGiroResult,
     GroupAttivitaKey,
     LottoPipelineMeta,
     LottoTaskRunRow,
@@ -788,6 +793,162 @@ def fn_elimina_fattura_da_lotto(
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_elimina_fattura_da_lotto."""
     service = LottoResetService()
     return service.elimina_fattura_da_lotto(lotto_id, fattura_id)
+
+
+# Scopo: Entrypoint servizio per l'uscita di UN documento dal giro (brief
+#        `brief-db-uscita-documento-dal-giro`). Stesso intento della funzione
+#        SQL omonima, e stessa forma degli altri verbi del lotto.
+# ⚠️ Non e' l'entrypoint dell'API: quello e' `fn_escludi_documenti_da_giro`, che
+#    tratta la riga singola come una lista di uno. Questa resta la primitiva su
+#    cui il giro di massa itera.
+def fn_escludi_documento_da_giro(
+    *,
+    lotto_id: int,
+    gruppo_key: str,
+    motivo: str,
+) -> EsclusioneDocumentoDaGiroResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_escludi_documento_da_giro."""
+    service = LottoResetService()
+    return service.escludi_documento_da_giro(lotto_id, gruppo_key, motivo)
+
+
+# Scopo: diario del fan-out delle uscite — l'unica parte di DOMINIO del giro.
+#        Serve a tenere il CODICE di ogni documento rifiutato: `FanOutEsito`
+#        porta il messaggio normalizzato, non il codice, e il codice e' cio' su
+#        cui il frontend instrada — «gia' uscito» si legge diverso da «non e' in
+#        errore». Il BB sa QUANDO chiamare, questo sa COSA tenere.
+@dataclass
+class _EsclusioneRunLogger(FanOutRunLogger):
+    esiti: dict[str, tuple[str, str]] = field(default_factory=dict)
+
+    # Scopo: Registra codice e messaggio del documento che non e' uscito.
+    def item_failed(self, *, item: Any, indice: int, exc: Exception) -> None:
+        codice = getattr(exc, "code", None) or CODICE_RIPIEGO_USCITA
+        messaggio = getattr(exc, "message", None) or str(exc)
+        self.esiti[str(item)] = (codice, messaggio)
+
+
+# Scopo: toglie N documenti dal giro in una corsa sola.
+#
+# ⭐ UN ENDPOINT SOLO, e la riga singola e' una lista di uno — la lezione e'
+#    scritta sul gemello degli accrediti: due superfici per lo stesso verbo
+#    divergerebbero su permessi, conferme e forma dell'esito.
+#
+# ⭐ La risposta e' un REPORT e torna sempre 200, anche quando tutti i documenti
+#    sono rifiutati. Il verbo non produce un atto fiscale: lascia documenti che
+#    tornano in competenza. E sollevare sul «tutti falliti» darebbe al chiamante
+#    DUE forme da leggere per la stessa domanda — un elenco di esiti oppure un
+#    errore — che e' lo stesso argomento per cui l'endpoint e' uno.
+#
+# ⚠️ `run_fan_out` e non un ciclo scritto a mano: savepoint per elemento (un
+#    documento rifiutato non si porta via le uscite gia' riuscite), stack
+#    loggato una volta per tutte, esito a tre stati.
+# ⚠️ Il MOTIVO e' uno per il giro, non uno per riga: chi toglie cinque documenti
+#    li toglie per la stessa ragione, e chiederne cinque renderebbe il gesto di
+#    massa piu' lento della somma dei singoli. La D-5 resta soddisfatta — ogni
+#    riga il suo motivo ce l'ha, scritto dall'operatore.
+def fn_escludi_documenti_da_giro(
+    *,
+    lotto_id: int,
+    gruppo_keys: Any,
+    motivo: Any,
+) -> dict[str, Any]:
+    chiavi = _parse_gruppo_keys(gruppo_keys)
+    motivo_testo = _testo_del_motivo(motivo)
+    diario = _EsclusioneRunLogger()
+    esito = run_fan_out(
+        chiavi,
+        lambda chiave: fn_escludi_documento_da_giro(
+            lotto_id=lotto_id, gruppo_key=chiave, motivo=motivo_testo,
+        ),
+        run_logger=diario,
+    )
+    # ⚠️ UN SOLO lookup con UN default, e la coppia si sfascia in due nomi: due
+    #    `.get` separati con default diversi sullo stesso item potrebbero
+    #    raccontare due storie — codice di ripiego e messaggio vero, o viceversa
+    #    — proprio nel caso in cui il diario non ha visto l'errore, cioe'
+    #    quando serve capirlo.
+    # ⚠️ E il default e' RAGGIUNGIBILE: `run_fan_out` inghiotte di proposito i
+    #    fallimenti del proprio logger, quindi `esiti` puo' non avere la chiave.
+    falliti = []
+    for errore in esito.errori:
+        chiave = str(errore.item)
+        codice, messaggio = diario.esiti.get(
+            chiave, (CODICE_RIPIEGO_USCITA, errore.messaggio),
+        )
+        falliti.append(
+            {"gruppo_key": chiave, "codice": codice, "messaggio": messaggio},
+        )
+    return {
+        "esito": esito.esito,
+        "totale": esito.totale,
+        "ok": esito.ok,
+        "usciti": list(esito.risultati),
+        "falliti": falliti,
+    }
+
+
+# Scopo: il motivo come TESTO — un guard di TIPO, non di contenuto.
+#
+# ⛔ NON VALIDA LA REGOLA: «il motivo e' obbligatorio» e' la D-5, la tiene il
+#    `CHECK` di tabella e la madre solleva anche sui soli spazi. Riscriverla qui
+#    sarebbe la seconda sede di una regola che il database gia' possiede — e
+#    quella dell'applicazione e' la copia che invecchia.
+#
+# ⚠️ `None` NON e' un errore di tipo: e' l'ASSENZA, e diventa stringa vuota
+#    perche' il rifiuto lo dica il database con la sua frase a catalogo.
+# 🔴 Ma qualunque ALTRO tipo si RIFIUTA, ed e' il difetto che questo guard
+#    chiude: prima il confine faceva `str(payload.get("motivo") or "")`, e su un
+#    body storto — un numero, una lista, un oggetto — `str()` non fallisce, ne
+#    INVENTA uno. Un «[1, 2]» finiva scritto come motivo dell'uscita e ci
+#    restava per sempre, dove D-5 vuole una frase che fra un mese qualcuno possa
+#    leggere.
+def _testo_del_motivo(raw: Any) -> str:
+    if raw is None:
+        return ""
+    ErrorManager.require(
+        isinstance(raw, str),
+        code="E_PIPELINE_VALIDATION",
+        message="`motivo` deve essere testo.",
+        detail=f"tipo ricevuto: {type(raw).__name__}",
+        function_name="vendite.pipeline_service._testo_del_motivo",
+        log_to_db=False,
+    )
+    assert isinstance(raw, str)
+    return raw
+
+
+# Scopo: normalizza e valida le chiavi da togliere dal giro.
+# ⚠️ Lista VUOTA rifiutata e non trattata come «tutti»: indovinare male qui
+#    vorrebbe dire svuotare un giro intero con una richiesta che non lo chiedeva.
+# ⚠️ Deduplica PRESERVANDO L'ORDINE: la stessa chiave due volte nello stesso
+#    body produrrebbe un `E_LOTTO_DOC_GIA_USCITO` autoinflitto, che a video
+#    sembra un difetto del sistema mentre e' il body.
+def _parse_gruppo_keys(raw: Any) -> tuple[str, ...]:
+    fn = "vendite.pipeline_service._parse_gruppo_keys"
+    ErrorManager.require(
+        isinstance(raw, (list, tuple)) and len(raw) > 0,
+        code="E_PIPELINE_VALIDATION",
+        message="`gruppo_keys` deve essere una lista non vuota di documenti.",
+        detail=f"tipo ricevuto: {type(raw).__name__}",
+        function_name=fn,
+        log_to_db=False,
+    )
+    chiavi: list[str] = []
+    for elemento in raw:
+        valido = isinstance(elemento, str) and bool(elemento.strip())
+        ErrorManager.require(
+            valido,
+            code="E_PIPELINE_VALIDATION",
+            message="`gruppo_keys` contiene un documento non valido.",
+            detail=repr(elemento),
+            function_name=fn,
+            log_to_db=False,
+        )
+        valore = elemento.strip()
+        if valore not in chiavi:
+            chiavi.append(valore)
+    return tuple(chiavi)
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.

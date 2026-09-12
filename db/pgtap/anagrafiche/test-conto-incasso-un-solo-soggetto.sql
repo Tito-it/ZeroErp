@@ -37,7 +37,7 @@
 --    regge su una porta sola non e' una garanzia: e' una convenzione che
 --    nessuno ha ancora infranto.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3 S3-2 (lotto 6) · §3-bis e §6.16 la seconda porta (lotto 9)
 --        Decisione: brief madre D5 · la seconda porta: Tid, 2026-08-25
 -- ------------------------------------------------------------

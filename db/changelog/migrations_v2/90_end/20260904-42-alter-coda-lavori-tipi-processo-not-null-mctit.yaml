@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §5.2 (fase 4) — il
+# `NOT NULL` su dbops.coda_lavori_tipi.processo_codice.
+#
+# ⚠️ PERCHE' STA IN `90_end` E NON ACCANTO ALLA COLONNA. La colonna nasce in
+# `00_schema` (changeSet -40) e la riempie il mirror CSV, che gira in `80_data`
+# — cioe' DOPO. Un `NOT NULL` in `00_schema` fallirebbe sulle righe gia'
+# presenti, e in CI su un database ricostruito da zero fallirebbe comunque
+# perche' il seed non e' ancora passato.
+#   ⭐ `90_end` gira dopo `80_data`, ed e' la sede che il progetto usa gia' per
+#   questo caso (20260501-18, 20260526-08, 20260601-25).
+#   ⇒ E' la regola scritta: un `NOT NULL` va dove il dato SI PUO' FORNIRE.
+#
+# ⚠️ Idempotente e difensivo: se una riga fosse ancora scoperta il changeSet
+# deve dirlo con una frase leggibile, non morire su un `23502` nudo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/90_end/20260904-42-alter-coda-lavori-tipi-processo-not-null-mctit.yaml
+
+    - changeSet:
+          id: 20260904-42-alter-coda-lavori-tipi-processo-not-null
+          author: mctit
+          failOnError: true
+          comment: >
+              dbops.coda_lavori_tipi.processo_codice diventa NOT NULL, dopo che
+              il mirror CSV di 80_data l'ha riempita. In 90_end perche' e' la
+              fase che gira dopo il seed.
+          preConditions:
+              - onFail: HALT
+              - columnExists:
+                    { schemaName: dbops, tableName: coda_lavori_tipi, columnName: processo_codice }
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DO $notnull$
+                        DECLARE
+                            v_scoperti integer;
+                        BEGIN
+                            SELECT count(*) INTO v_scoperti
+                              FROM dbops.coda_lavori_tipi
+                             WHERE processo_codice IS NULL;
+
+                            IF v_scoperti > 0 THEN
+                                RAISE EXCEPTION
+                                  'Impossibile rendere NOT NULL: % tipi di coda non dichiarano il processo. '
+                                  'Aggiungere la colonna processo_codice nel CSV 80_data/sql/dbops/coda_lavori_tipi.csv.',
+                                  v_scoperti;
+                            END IF;
+
+                            -- Idempotente: se il NOT NULL c'e' gia', non si rifa'.
+                            IF EXISTS (
+                                SELECT 1
+                                  FROM pg_attribute a
+                                  JOIN pg_class c ON c.oid = a.attrelid
+                                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                                 WHERE n.nspname = 'dbops'
+                                   AND c.relname = 'coda_lavori_tipi'
+                                   AND a.attname = 'processo_codice'
+                                   AND NOT a.attnotnull) THEN
+                                ALTER TABLE dbops.coda_lavori_tipi
+                                    ALTER COLUMN processo_codice SET NOT NULL;
+                                RAISE NOTICE 'processo_codice ora e'' NOT NULL.';
+                            END IF;
+                        END
+                        $notnull$;
+          rollback:
+              - sql:
+                    splitStatements: false
+                    sql: |
+                        ALTER TABLE dbops.coda_lavori_tipi
+                            ALTER COLUMN processo_codice DROP NOT NULL;

@@ -19,6 +19,8 @@ DECLARE
     v_serie      TEXT := COALESCE(p_serie, '');
     v_last       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
     v_next       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
+    -- ⭐ Il valore da cui parte un secchio APPENA NATO: non piu' zero.
+    v_seme       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
     v_pavimento  vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
     v_origine    text;
     v_competenza vendite.fatture.competenza_mese%TYPE;
@@ -246,9 +248,41 @@ BEGIN
        FOR UPDATE;
 
     IF v_last IS NULL THEN
+        -- ⭐ IL SEME DEL SECCHIO NUOVO, e non e' zero.
+        --   Un secchio nasce quando cambia la CHIAVE, e la chiave cambia in
+        --   due momenti: a capodanno (ANNUALE) e quando qualcuno cambia
+        --   reset_policy su un registro che ha gia' numerato. Nel secondo caso
+        --   ripartire da 1 consegna un numero che nell'anno solare del
+        --   documento e' gia' stato emesso: il vincolo di unicita' del
+        --   documento lo respinge, il rollback riporta indietro anche
+        --   l'incremento, e al tentativo dopo si sbatte di nuovo. Cioe' un
+        --   numeratore PIANTATO, con un errore che parla del numero e non
+        --   nomina la causa.
+        --
+        -- ⛔ Il criterio NON e' «il massimo di sempre»: sotto ANNUALE il primo
+        --   documento dell'anno DEVE ripartire da 1, ed e' tutto il senso della
+        --   politica. Si guardano solo i secchi che possono COLLIDERE, cioe'
+        --   quelli i cui documenti condividono un anno solare con questo:
+        --     · secchio continuo (v_anno = 0)  -> li attraversa TUTTI  ⇒ max su tutti;
+        --     · secchio d'anno   (v_anno = Y)  -> solo il continuo, se esiste;
+        --       gli altri anni no, altrimenti l'azzeramento non avverrebbe mai.
+        --
+        -- ⚠️ Su un registro che il secchio continuo non ce l'ha, il massimo e'
+        --   su zero righe e il COALESCE rende 0: il comportamento di prima,
+        --   identico. Il ramo si accende SOLO dove una politica e' cambiata.
+        -- ⭐ E gira gia' sotto il lock giusto: la chiave dell'advisory lock non
+        --   porta l'anno (vedi sopra), quindi due transazioni con date in anni
+        --   diversi sullo stesso (registro, serie) sono comunque serializzate.
+        SELECT COALESCE(max(rp.last_numero), 0)
+          INTO v_seme
+          FROM vendite.registri_fatturazione_progressivi rp
+         WHERE rp.registro_id = p_registro_id
+           AND rp.serie       = v_serie
+           AND (v_anno = 0 OR rp.anno = 0);
+
         INSERT INTO vendite.registri_fatturazione_progressivi
                (registro_id, anno, serie, last_numero, attivo)
-        VALUES (p_registro_id, v_anno, v_serie, 0, true)
+        VALUES (p_registro_id, v_anno, v_serie, v_seme, true)
         RETURNING last_numero INTO v_last;
     END IF;
 

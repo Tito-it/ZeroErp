@@ -5,7 +5,7 @@
 -- Passo 3 (P-3) del cantiere «perimetro emittente»: il §2.2 di
 -- anagrafiche.trgfn_billing_account_guard_normalize non confronta piu'
 -- il solo codice fiscale.
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §4, §11.1
+-- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §4, §11.1
 --
 -- Elenco test (plan 7):
 --   0) PRECONDIZIONI: due soggetti distinti con CF + fixture creata

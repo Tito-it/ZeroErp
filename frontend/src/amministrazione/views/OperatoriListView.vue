@@ -7,7 +7,7 @@
 // Button Nuovo -> apre OperatoreDrawer in modalita' crea.
 // Nessun export: il dominio non ha endpoint (lo scaffolding omette l'azione da
 // se', non ricevendo `exportFn`).
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -66,9 +66,24 @@ const {
 const superAdminOptions = buildFilterSuperAdminOptions(t)
 const activeOptions = buildFilterStatoOptions(t)
 
+// La LISTA al mount: il rientro sotto `<KeepAlive>` lo rinfresca gia' lo
+// scaffolding (`useListaConfigurabilePage` → `useSearchTable`, che salta la
+// prima attivazione apposta per non raddoppiare questo fetch).
 onMounted(() => {
   store.fetchList()
-  loadSetupStatus()
+})
+
+// ⚠️ Il BANNER, invece, non lo rinfresca nessuno: `onActivated` copre il primo
+//    montaggio E ogni rientro, quindi il caricamento sta qui e NON in
+//    `onMounted` — tenerlo in tutti e due lo chiamerebbe due volte all'apertura.
+// ⛔ E `true` non e' pignoleria: `useSetupStatus.load(force = false)` esce
+//    subito se ha gia' caricato (`if (loaded.value && !force) return`), e quella
+//    cache vive nell'istanza, che KeepAlive tiene in vita. Senza il `force` il
+//    rientro non rileggerebbe NIENTE e il banner «operatori non assegnati»
+//    resterebbe quello della prima apertura — cioe' la correzione sembrerebbe
+//    fatta e non farebbe nulla.
+onActivated(() => {
+  loadSetupStatus(true)
 })
 
 // Refresh setup status quando si chiude il drawer (assignment puo' essere

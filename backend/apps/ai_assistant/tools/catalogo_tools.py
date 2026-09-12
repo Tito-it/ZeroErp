@@ -25,7 +25,19 @@ class CercaArticoliTool(AITool):
                 "Restituisce codice, descrizione, unita' di misura base e flag "
                 "(attivo, composito). Usare quando l'utente chiede di trovare "
                 "un prodotto, un servizio o una voce merceologica "
-                "(es. 'cerca articolo energia', 'trova prodotto ACQUA')."
+                "(es. 'cerca articolo energia', 'trova prodotto ACQUA'). "
+                # ⛔ IL CAMPO VA SPIEGATO QUI, non solo emesso: questa
+                #    descrizione e' l'unica cosa che il modello legge per sapere
+                #    cosa riceve. Il flag `troncato` era gia' nel payload e non
+                #    era nominato da nessuna parte — cioe' emesso e non
+                #    consumato, che su un tool AI significa esattamente il
+                #    difetto che il flag doveva chiudere: «ho trovato 10
+                #    articoli» detto su un catalogo che ne ha centinaia.
+                "IMPORTANTE: `troncato: true` significa che i risultati sono i "
+                "PRIMI `count` di un insieme piu' grande, non tutti quelli che "
+                "esistono. In quel caso non dire mai un totale: di' che sono i "
+                "primi N e invita a restringere la ricerca o ad alzare "
+                "`page_size` (max 50)."
             ),
             input_schema={
                 "type": "object",
@@ -67,9 +79,16 @@ class CercaArticoliTool(AITool):
             limit=self.safe_page_size(params),
         )
 
-        # catalogo_service._build_results_response -> {"count": N, "results": [...]}
+        # `catalogo_service._lookup_response` -> {"count": N, "results": [...], "troncato": bool}
+        # 🔴 `troncato` si propaga, e su questo tool conta piu' che altrove
+        #    (2026-09-10). `safe_page_size` chiede 10 righe di default: senza
+        #    quel campo il modello legge `count: 10` e dice a una persona «ho
+        #    trovato 10 articoli» — anche quando a catalogo ce ne sono centinaia.
+        #    ⇒ Non e' un numero impreciso: e' una frase falsa, detta con
+        #    sicurezza. Con `troncato` il modello puo' dire «i primi 10 di piu'».
         items = response.get("results", []) if isinstance(response, dict) else []
         total = response.get("count", len(items)) if isinstance(response, dict) else len(items)
+        troncato = bool(response.get("troncato")) if isinstance(response, dict) else False
 
         _FIELD_MAP = {
             "id": "id",
@@ -81,7 +100,7 @@ class CercaArticoliTool(AITool):
             "is_composito": "is_composito",
         }
         simplified = self.simplify_results(items, _FIELD_MAP)
-        return {"count": total, "results": simplified}
+        return {"count": total, "results": simplified, "troncato": troncato}
 
 
 # Scopo: Funzione di registrazione tool catalogo.

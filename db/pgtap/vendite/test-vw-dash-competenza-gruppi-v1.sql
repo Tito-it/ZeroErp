@@ -5,7 +5,7 @@
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE A (step A10)
 -- Changeset coperti: 20260727-16, 20260727-17 (+ seed CSV), 20260727-18
 -- ------------------------------------------------------------
--- Indice test (1..10):
+-- Indice test (plan 8):
 --  1) la vista espone i 3 gruppi della commessa: preventivo, contratto, oneri
 --  2) n_attivita per gruppo = 2 / 2 / 1
 --  3) valore per gruppo = somma di prezzo_snapshot * quantita
@@ -14,8 +14,10 @@
 --  6) D-5 riferimento del gruppo documento = numero del documento (via area)
 --  7) G4 il gruppo oneri c'e', con area NULL e riferimento = commessa (LEFT JOIN)
 --  8) G14 operatore fuori scope emittente -> zero righe
---  9) security_invoker=on presente su entrambe le viste
--- 10) A5/A9: il riepilogo coincide con la somma dell'elenco (riconciliazione)
+--  (security_invoker: presidiato da rls/test-rls-viste-security-invoker.sql,
+--   non piu' qui)
+--  (10: TOLTO il 2026-09-09 col ritiro della vista di riepilogo — il perche' e
+--   dove e' finito l'invariante stanno in coda al file, dove il test stava)
 -- ------------------------------------------------------------
 -- ⭐ IL TEST 4 e' quello che protegge la promessa di D-4: l'elenco e' derivato
 --    da vw_dash_competenza_attivita proprio perche' i suoi numeri coincidano
@@ -48,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(8);
 
 -- ============================================================
 -- Riferimenti minimi
@@ -358,49 +360,43 @@ SELECT set_config('app.current_user_id', '', true);
 --   security_definer di fatto, aprendo un buco nello scope emittente
 --   su tutte le dashboard di competenza.
 -- ============================================================
-SELECT is(
-  (SELECT count(*)::int FROM pg_class c
-     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'vendite'
-      AND c.relname IN ('vw_dash_competenza_attivita', 'vw_dash_competenza_gruppi')
-      AND c.reloptions::text LIKE '%security_invoker=on%'),
-  2,
-  '9) security_invoker=on presente su entrambe le viste'
-);
+-- ⛔ QUI `security_invoker` NON SI PRESIDIA PIU' (rev 2026-09-07), e non e' una
+--   rinuncia: lo fa gia' db/pgtap/rls/test-rls-viste-security-invoker.sql, su
+--   TUTTE le viste che toccano dati in RLS — anche attraverso altre viste — e
+--   leggendo la PROPRIETA' invece della parola. Nessun elenco di nomi.
+--   ⚠️ Il doppione locale non aggiungeva copertura, e ne ha tolta: era scritto
+--   come confronto di GRAFIA (`security_invoker=on`) ed e' diventato ROSSO su
+--   una vista perfettamente sana, riscritta con `= true` — che significa la
+--   stessa identica cosa. Due falsi allarmi il 2026-09-07, e una bisezione fra
+--   due cantieri per scoprire che non era rotto niente.
+--   ⭐ Una seconda sede diverge sempre; questa e' divergiata verso il FALSO
+--   ALLARME, che e' il verso che fa spegnere i presidi.
+
 
 -- ============================================================
--- TEST 10 (requisito A5, step A9): la riga di totali.
---   Il riepilogo AGGREGA l'elenco invece di ricalcolare: i due numeri non
---   possono divergere per costruzione. Questo test lo verifica sul dato,
---   cosi' se qualcuno riscrivesse il riepilogo come query autonoma se ne
---   accorge.
---   ⚠️ Rimesso lo scope dell'operatore giusto (il test 8 lo aveva spostato).
+-- TEST 10 — TOLTO il 2026-09-09: il suo SOGGETTO non esiste piu'
 -- ============================================================
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_vg_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_vg_op), (SELECT emittente_fiscale_id FROM tmp_vg_ef);
-
-SELECT set_config('app.current_user_id', (SELECT user_id::text FROM tmp_vg_op), true);
-
-SELECT is(
-  (SELECT ARRAY[r.n_gruppi, r.n_attivita::int, r.n_gruppi_oneri]
-     FROM vendite.vw_dash_competenza_gruppi_riepilogo r
-    WHERE r.competenza_mese = DATE '2081-01-01'
-      AND r.stadio = 'DA_EMETTERE'
-      AND r.emittente_soggetto_ruolo_id = (
-          SELECT c.emittente_soggetto_ruolo_id FROM vendite.commesse c
-           WHERE c.id = (SELECT commessa_id FROM tmp_vg_comm))),
-  (SELECT ARRAY[count(*)::int, sum(g.n_attivita)::int,
-                count(*) FILTER (WHERE g.tipo_gruppo = 'ONERI_COMMESSA')::int]
-     FROM vendite.vw_dash_competenza_gruppi g
-    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
-      AND g.stadio = 'DA_EMETTERE'),
-  '10) A5/A9: il riepilogo coincide con la somma dell''elenco'
-);
+-- ⛔ Asseriva «il riepilogo coincide con la somma dell'elenco» su
+--   vendite.vw_dash_competenza_gruppi_riepilogo, RITIRATA dal changeSet
+--   20260909-64: il riepilogo che il frontend mostra lo calcola una query del
+--   backend, che applica i filtri dell'operatore — cosa che una vista
+--   aggregata per (competenza, stadio, emittente) non puo' fare. Le due sedi
+--   non convivevano, e a perdere e' stata la vista.
+--
+-- ⚠️ NON e' un presidio abbandonato: l'invariante si e' SPOSTATO dove sta il
+--   calcolo — `P-10` di brief-db-il-trattenuto-passa-lo-stesso.md, un test
+--   Django con database. Un invariante si asserisce dove il numero si produce,
+--   non dove starebbe comodo.
+--
+-- ⭐ E COME E' ARRIVATO QUI UN ROSSO: il `-64` aveva censito i lettori della
+--   vista e ne aveva trovato UNO (il test 15-ter di
+--   test-vw-dash-competenza-v1.sql, tolto nello stesso giro). Questo file era
+--   il secondo, e non e' stato guardato. *Cancellare una fonte e' censire i suoi
+--   lettori — tutti, e la ricerca si fa sul NOME dell'oggetto in tutto il
+--   repository.*
+-- ⚠️ Il rosso che ne usciva non era «un test che fallisce»: era un ERRORE di
+--   relazione inesistente, quindi il file si fermava li' e perdeva anche il
+--   plan. Otto asserzioni sane, e `pg_prove` che dice `Bad plan`.
 
 SELECT * FROM finish();
 ROLLBACK;

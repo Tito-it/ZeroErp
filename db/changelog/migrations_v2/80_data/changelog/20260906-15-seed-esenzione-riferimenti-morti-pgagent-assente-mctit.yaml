@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La SECONDA faccia dello stesso falso positivo: in CI pgAgent non c'e' proprio.
+#   La prima faccia (permesso negato) e' registrata dal changeSet 20260906-09.
+#
+# ── 🔴 IL CASO ─────────────────────────────────────────────────────
+#   Il guardrail dei riferimenti morti si e' fermato in CI su
+#   `dbops.fn_get_pgagent_job_stato`:
+#     error:42P01:33:RETURN QUERY: relation "pgagent.pga_job" does not exist
+#
+#   ⚠️ **Non e' lo stesso errore gia' registrato.** Su dbdev l'esito e' `42501`
+#   — permesso negato: le tabelle ci sono, il chiamante non le vede. In CI e'
+#   `42P01` — le tabelle **non esistono**, perche' la fase `85_pgagent` in CI e'
+#   segnata come eseguita senza essere eseguita.
+#   ⇒ Due SQLSTATE diversi, due motivi diversi, due righe. Un'unica riga con un
+#     motivo che prova a spiegare tutti e due sarebbe un motivo che non spiega
+#     nessuno dei due.
+#
+# ── ⭐ PERCHE' E' UN FALSO POSITIVO, E QUI LO DIMOSTRA IL CODICE ────
+#   La funzione **se lo chiede gia'**, tre righe sopra il punto in cui il
+#   controllo si ferma:
+#
+#       IF to_regclass('pgagent.pga_job') IS NULL THEN
+#           RETURN;
+#
+#   Se pgAgent non c'e', la funzione torna vuota e non tocca niente. Non e' una
+#   dimenticanza coperta da un'esenzione: e' un caso **previsto e gestito**.
+#   ⛔ Quello che `plpgsql_check` non puo' sapere e' che quel guard protegge
+#   l'istruzione sotto: lui compila tutto il corpo, e sulla `RETURN QUERY` trova
+#   una tabella che in CI non esiste.
+#
+# ── ⛔ LE STRADE SCARTATE, e perche' ────────────────────────────────
+#   * **Installare pgAgent in CI**: e' una decisione piu' grande di questo
+#     difetto, e ha un residuo suo (i due job del framework automazioni vivono
+#     in `85_pgagent` e in CI non nascono). Non la si prende per far tacere un
+#     controllo.
+#   * **Riscrivere la lettura in SQL dinamico**, che il controllo non analizza:
+#     sarebbe codice peggiore per compiacere un test — ed e' la stessa strada
+#     gia' scartata nel changeSet `-09`.
+#   * **Allargare il modello dell'esenzione esistente** a un `LIKE` generico:
+#     coprirebbe anche gli errori che devono continuare a gridare.
+#
+# ── ✅ QUANDO ESCE DA QUESTO REGISTRO ───────────────────────────────
+#   Il giorno in cui la funzione smette di leggere `pgagent.*`, **oppure** il
+#   giorno in cui la CI costruisce davvero pgAgent. ⛔ NON il giorno in cui
+#   qualcuno decidesse di ignorarla.
+#
+# ⚠️ Il `NOT EXISTS` guarda anche il MODELLO, non solo la funzione: quello del
+#   `-09` guardava la sola coppia (schema, funzione), e da solo impedirebbe a
+#   questa seconda riga di nascere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260906-15-seed-esenzione-riferimenti-morti-pgagent-assente-mctit.yaml
+
+  - changeSet:
+      id: 20260906-15-seed-esenzione-riferimenti-morti-pgagent-assente
+      author: mctit
+      failOnError: true
+      comment: >
+        Registra la seconda faccia del falso positivo su
+        dbops.fn_get_pgagent_job_stato: in CI le tabelle di pgAgent non
+        esistono (42P01), perche' la fase 85_pgagent e' MARK_RAN. La funzione
+        gia' si chiede se ci sono (to_regclass ... RETURN) e torna vuota: e' un
+        caso previsto, non un debito. Riga distinta da quella del 20260906-09,
+        che copre il permesso negato su dbdev (42501).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: riferimenti_morti_esenzioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.riferimenti_morti_esenzioni
+                     (schema_nome, funzione, esito_like, motivo, data_registrazione)
+              SELECT 'dbops',
+                     'fn_get_pgagent_job_stato',
+                     -- ⚠️ Lo SQLSTATE, non il messaggio: quello e' tradotto e su
+                     --   un server con un'altra lingua l'esenzione smetterebbe di
+                     --   agganciare. E si nomina anche l'ISTRUZIONE, cosi' un
+                     --   42P01 su un'altra riga della funzione resterebbe scoperto.
+                     '%42P01:%RETURN QUERY%',
+                     'FALSO POSITIVO STRUTTURALE, e qui lo dimostra il codice stesso. La '
+                     'funzione chiede to_regclass(''pgagent.pga_job'') e torna VUOTA se '
+                     'non c''e'': l''assenza di pgAgent e'' un caso previsto e gestito, non '
+                     'una dimenticanza. Ma plpgsql_check compila tutto il corpo e sulla '
+                     'RETURN QUERY trova una tabella che in CI non esiste — perche'' la '
+                     'fase 85_pgagent in CI e'' segnata come eseguita senza essere '
+                     'eseguita. ⚠️ E'' un errore DIVERSO da quello del changeSet '
+                     '20260906-09: li'' e'' 42501 (le tabelle ci sono, il chiamante non le '
+                     'vede), qui e'' 42P01 (le tabelle non ci sono). Due cause, due righe. '
+                     '⛔ Scartato installare pgAgent in CI: e'' una decisione piu'' grande '
+                     'di questo difetto e non la si prende per far tacere un controllo. '
+                     'Scartata la riscrittura in SQL dinamico, che il controllo non '
+                     'analizza: sarebbe codice peggiore per compiacere un test. '
+                     '✅ Esce da questo registro quando la funzione smette di leggere '
+                     'pgagent.*, oppure quando la CI costruira'' davvero pgAgent.',
+                     DATE '2026-09-06'
+               WHERE NOT EXISTS (
+                     SELECT 1 FROM dbops.riferimenti_morti_esenzioni e
+                      WHERE e.schema_nome = 'dbops'
+                        AND e.funzione    = 'fn_get_pgagent_job_stato'
+                        AND e.esito_like  = '%42P01:%RETURN QUERY%');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.riferimenti_morti_esenzioni
+               WHERE schema_nome = 'dbops'
+                 AND funzione    = 'fn_get_pgagent_job_stato'
+                 AND esito_like  = '%42P01:%RETURN QUERY%';

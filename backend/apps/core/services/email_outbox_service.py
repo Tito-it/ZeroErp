@@ -18,7 +18,7 @@ from django.conf import settings
 from django.db import transaction
 
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_service import E_EMAIL, EmailDispatchService
+from apps.core.services.email_service import CANALE_CONSOLE, EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 
 E_OUTBOX = "E_OUTBOX"
@@ -71,7 +71,11 @@ class EmailOutboxService:
         unita_organizzativa_id: int | None = None,
         tipo_prestazione_id: int | None = None,
         lingua: str = "it",
-        ambito: str = "SISTEMA",
+        # ⛔ Senza default, ed e' il punto: `SISTEMA` come ripiego rendeva
+        #    indistinguibile «non dichiarato» da «di sistema», proprio sulla
+        #    colonna su cui il database decide chi puo' leggere.
+        ambito: str,
+        emittente_fiscale_id: int | None = None,
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         creato_da_user_id: int | None = None,
@@ -97,6 +101,7 @@ class EmailOutboxService:
             email_account_id=account["id"],
             email_template_id=template["id"],
             ambito=ambito,
+            emittente_fiscale_id=emittente_fiscale_id,
             unita_organizzativa_id=unita_organizzativa_id,
             pratica_id=pratica_id,
             auth_user_id=auth_user_id,
@@ -173,7 +178,42 @@ class EmailOutboxService:
             self._repo.update_log_outbox_link(log_id, outbox_id)
             self._repo.copy_allegati_to_log(outbox_id, log_id)
             if success:
-                self._repo.update_outbox_stato(outbox_id, "SENT", email_log_id=log_id, inviato_at=now)
+                # ⭐ La bozza segue l'esito della MAIL, non il fatto che la
+                #    chiamata sia andata a buon fine: in console mode `send_raw`
+                #    torna `True` ma la posta non e' partita, e scrivere `SENT`
+                #    qui sarebbe **la stessa bugia una tabella piu' in la'** —
+                #    con le due righe legate da `email_log_id`, quindi la
+                #    divergenza si leggerebbe a occhio nudo (brief §7.1).
+                # ⛔ E non vale dire «l'outbox parla del ciclo della bozza, non
+                #    della consegna»: lo smentisce il ramo `else` qui sotto, che
+                #    su fallimento riporta la bozza a `DRAFT` perche' l'operatore
+                #    riprovi. Quella colonna parla di consegna.
+                # ⚠️ LA DECISIONE E' PRESA DUE VOLTE, e va saputo: `send_raw`
+                #    l'ha gia' presa per scrivere l'`email_log`, e qui si
+                #    ri-deriva per la bozza. Oggi non possono divergere —
+                #    `canale_invio` e' deterministico su (account, DEBUG) e le
+                #    due chiamate stanno nella stessa richiesta — ma sono due
+                #    sedi, e al primo canale nuovo che non spedisce andranno
+                #    allineate insieme.
+                # ⛔ **Leggere indietro lo stato scritto sarebbe PEGGIO**, ed e'
+                #    la strada che sembra ovvia: `config.email_log` ha la RLS, e
+                #    la policy sull'ambito `SISTEMA` pretende `fn_is_super_admin`
+                #    — un operatore normale che conferma una bozza di sistema
+                #    rileggerebbe **zero righe** e cadrebbe nel ramo sbagliato,
+                #    cioe' uno zero per cecita' al posto di un dato.
+                # ⇒ Il contratto che toglierebbe il doppione e' un `send_raw`
+                #    che dice COSA HA SCRITTO invece di un booleano: `success`
+                #    non basta a rappresentare tre esiti. E' un cambio di firma
+                #    con due chiamanti, fuori dal perimetro di questo cantiere.
+                if self._dispatch.canale_invio(account) == CANALE_CONSOLE:
+                    # `inviato_at` non si passa: niente e' stato consegnato.
+                    self._repo.update_outbox_stato(
+                        outbox_id, "SIMULATA", email_log_id=log_id,
+                    )
+                else:
+                    self._repo.update_outbox_stato(
+                        outbox_id, "SENT", email_log_id=log_id, inviato_at=now,
+                    )
             else:
                 # Torna a DRAFT per permettere all'operatore di riprovare
                 self._repo.update_outbox_stato(outbox_id, "DRAFT", email_log_id=log_id)

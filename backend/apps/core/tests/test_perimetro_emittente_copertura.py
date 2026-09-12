@@ -45,25 +45,16 @@ import csv
 import re
 import unittest
 from functools import lru_cache
-from pathlib import Path
 
+from apps.core.tests._repo import repo_root
 from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
-    _colonne_attive,
     _seed,
 )
 
 
-# Scopo: root del repo, cercata risalendo (vedi test_liste_configurabili_seed).
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata")
-
-
-_APPS = _repo_root() / "backend/apps"
-_USE_API_HANDLER = _repo_root() / "frontend/src/core/composables/useApiHandler.js"
+_APPS = repo_root() / "backend/apps"
+_USE_API_HANDLER = repo_root() / "frontend/src/core/composables/useApiHandler.js"
 
 # ⛔ Liste che NON possono avere il cancello, con la ragione. Non e' una lista
 #    di comodo: sono tutte servite da `AdminAPIView`, e il cancello vive su
@@ -84,6 +75,13 @@ _ESENZIONI: dict[str, str] = {
     "anagrafiche.emittente_billing_account": "AdminAPIView — configura la mappatura BA→emittente",
     "anagrafiche.emittenti_fiscali": "AdminAPIView — e' l'elenco degli emittenti stessi",
     "anagrafiche.operatori": "AdminAPIView — gestione utenti",
+    # ⭐ Il registro dei processi automatici e' CATALOGO: descrive il software,
+    #    non i dati di un'azienda. Le sue righe valgono identiche su ogni
+    #    installazione e non hanno un emittente da cui arrivare — chiedere «da
+    #    quale azienda viene questa riga?» sarebbe una domanda senza risposta.
+    #    ⚠️ Le IDENTITA' un emittente ce l'hanno, ma stanno nel DETTAGLIO (una
+    #    riga per azienda servita), non in questa lista.
+    "amm.processi": "AdminAPIView — registro di catalogo, senza perimetro emittente",
     "config.email_account": "AdminAPIView — configurazione tecnica",
     "config.email_log": "AdminAPIView — diario tecnico di sistema",
     # ⭐ La schermata che monta questa lista e' `/amm-software/audit-log/`
@@ -366,7 +364,7 @@ class PerimetroEmittenteCoperturaTests(unittest.TestCase):
 #        cartella, non un'altra logica.
 def _seed_config(nome: str) -> list[dict[str, str]]:
     percorso = (
-        _repo_root() / "db/changelog/migrations_v2/80_data/sql/config" / nome
+        repo_root() / "db/changelog/migrations_v2/80_data/sql/config" / nome
     )
     with percorso.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))

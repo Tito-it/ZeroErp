@@ -1,0 +1,183 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL PRESIDIO MOSTRA LA PROVA DEL VERDETTO, E IL COMMENTO SMETTE DI DIRE
+#   UNA COSA CHE NON E' PIU' VERA.
+#   Brief: brief-db-sveglia-dei-processi §9.5-bis e §22.
+#
+# ── 1) LA COLONNA CHE REGGE IL VERDETTO ────────────────────────────
+#   Dal 20260907-06 il ramo `GIRA_E_NON_REGISTRA` non si legge piu' su
+#   `giornale_ultima_corsa` ma su `giornale_ultima_corsa_pgagent`. ⛔ Un
+#   presidio che mostra due date e ne usa una terza e' un presidio che nessuno
+#   puo' contestare: chi guarda la riga vedrebbe due timestamp coerenti e un
+#   verdetto che non torna. ⇒ La colonna nuova entra qui accanto alle altre due.
+#   ⚠️ `da_guardare` continua a NON entrare: in un presidio sarebbe una colonna
+#   sempre vera, cioe' rumore in un elenco che deve restare corto.
+#   ⚠️ E resta l'enumerazione esplicita: `SELECT *` viene espanso e CONGELATO
+#   alla creazione, quindi una colonna aggiunta domani al panorama non
+#   arriverebbe mai al pannello — e non lo direbbe nessuno.
+#
+# ── 2) IL FATTO DATATO E' RIENTRATO, QUINDI SI TOGLIE ───────────────
+#   Il commento di questa vista portava, per scelta, un fatto datato:
+#
+#       🔴 FATTO DATATO 2026-09-06, e va tolto da qui quando sara' rientrato:
+#          questa vista NASCE con due righe. [...]
+#
+#   ⭐ Era una riga che dichiarava la propria scadenza, ed e' arrivata:
+#   `chiusura_scadenze_daily` ha registrato alla corsa successiva, e
+#   `apply_storicizza_weekly` ha lasciato la sua traccia il 2026-09-07 alle
+#   09:35:47 UTC (corsa forzata da pgAgent), VERDE. Il presidio e' vuoto.
+#   ⛔ E' il pannello dei presidi a rendere questo testo (`obj_description`):
+#   lasciarlo direbbe a chi guarda di aspettarsi due righe che non ci sono piu',
+#   cioe' insegnerebbe a non fidarsi del numero.
+#
+# ── ⚠️ CIO' CHE NON SI TOGLIE, E PERCHE' ───────────────────────────
+#   Il sintomo e' sparito, la causa NO: perche' fra il 21-02-2026 e il
+#   05-09-2026 quel job girasse senza scrivere non e' accertato, e da questo
+#   lato non si accerta — `pgagent.*` non e' leggibile come `zeroerp_app`. ⇒ Al
+#   posto del fatto datato resta UNA RIGA che dice esattamente questo: non e'
+#   una condizione di riapertura, e' il punto da cui ricominciare la prossima
+#   volta che quel giornale tace. Un sintomo sparito e una causa accertata sono
+#   due cose diverse, e scriverne una sola sarebbe la piu' comoda.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione-da-guardare.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260907-07-update-vw-processi-programmazione-da-guardare-prova-e-commento-mctit.yaml
+
+  - changeSet:
+      id: 20260907-07-update-vw-processi-programmazione-da-guardare-prova-e-commento
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_programmazione_da_guardare: espone
+        `giornale_ultima_corsa_pgagent`, che dal 20260907-06 e' la colonna su
+        cui poggia GIRA_E_NON_REGISTRA — un presidio che mostra due date e ne
+        usa una terza non si puo' contestare. E il COMMENT perde il fatto datato
+        «questa vista NASCE con due righe»: sono rientrate entrambe il
+        2026-09-07, ed era il commento stesso a dire che andava tolto. Resta
+        scritto che la causa del silenzio non e' accertata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'dbops.vw_processi_programmazione'::regclass
+                     AND a.attname = 'giornale_ultima_corsa_pgagent'
+                     AND NOT a.attisdropped
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'dbops.vw_processi_programmazione'::regclass
+                     AND a.attname = 'da_guardare'
+                     AND NOT a.attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Serve il DROP: CREATE OR REPLACE VIEW sa solo AGGIUNGERE
+              --   colonne in coda, e qui la colonna nuova va INFILATA fra le
+              --   date, dove si legge. Questa vista non ha dipendenti (la
+              --   consuma il backend via SELECT), quindi il DROP e' innocuo — e
+              --   il GRANT si rifa' due righe sotto, dove si rifa' sempre.
+              DROP VIEW IF EXISTS dbops.vw_processi_programmazione_da_guardare;
+
+              CREATE VIEW dbops.vw_processi_programmazione_da_guardare AS
+              SELECT v.processo_codice,
+                     -- Il verdetto per primo: e' la colonna che dice cosa
+                     -- guardare, e in un presidio si legge quella.
+                     v.stato,
+                     v.classe,
+                     v.canale,
+                     v.jobname_pgagent,
+                     v.job_abilitato,
+                     -- ⭐ Le date sono la PROVA del verdetto, non un ornamento:
+                     --   `GIRA_E_NON_REGISTRA` si legge guardando quanto
+                     --   distano.
+                     v.pgagent_ultima_corsa,
+                     -- ⛔ E la prova e' QUESTA, non quella sotto: dal
+                     --   20260907-06 il confronto legge le sole corse scritte
+                     --   dal percorso DB. Mostrarne una e usarne un'altra
+                     --   renderebbe il verdetto incontestabile nel senso
+                     --   sbagliato.
+                     v.giornale_ultima_corsa_pgagent,
+                     -- ⚠️ Resta accanto perche' la differenza fra le due E'
+                     --   l'informazione: se questa e' avanti e quella indietro,
+                     --   qualcuno ha registrato sotto questo codice senza
+                     --   essere pgAgent.
+                     v.giornale_ultima_corsa,
+                     v.ultimo_esito,
+                     v.prossima_corsa
+                FROM dbops.vw_processi_programmazione v
+               -- ⛔ Nessun NOT IN qui: il criterio sta nel panorama, accanto al
+               --   CASE che produce gli stati. Questa vista proietta.
+               WHERE v.da_guardare
+               ORDER BY v.canale, v.processo_codice;
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione_da_guardare IS
+                  'PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa '
+                  'non tornano. DEVE restare VUOTA. ⭐ E'' il panorama '
+                  '(dbops.vw_processi_programmazione) proiettato sulla colonna '
+                  '`da_guardare`, NON un secondo criterio: ripetere qui un NOT IN sugli '
+                  'stati sarebbe la seconda enumerazione dello stesso vocabolario, e la '
+                  'seconda diverge — il giorno in cui uno stato nuovo entra, qualcuno '
+                  'dovrebbe ricordarsi di venire a decidere da che parte cade. '
+                  '⛔ Il panorama non puo'' stare al suo posto: elenca anche i sani (12 '
+                  'righe OK al 2026-09-06), e un presidio che mostra il verde insegna a '
+                  'leggere il verde come debito, cioe'' a ignorare l''avviso. '
+                  '⚠️ Restano FUORI di proposito FUORI_PORTATA e SU_RICHIESTA, che non '
+                  'sono guasti per ragioni opposte: il primo e'' un limite di vista del '
+                  'database (i COMMAND li sveglia systemd, e chi li presidia e'' il '
+                  'backend da deploy/sveglie.json), il secondo e'' la natura del processo '
+                  '(un CODA lo sveglia una persona: una cadenza da confrontare non '
+                  'esiste). ⭐ Lo stato che vale piu'' di tutti e'' GIRA_E_NON_REGISTRA: '
+                  'pgAgent dice che il job e'' girato, il giornale non lo sa. E'' la firma '
+                  'di R-12 — un lavoro che muore prima di riuscire a raccontarlo. '
+                  '⭐ LE DUE DATE DEL GIORNALE SONO DUE, rev 2026-09-07: il verdetto '
+                  'poggia su `giornale_ultima_corsa_pgagent` (le sole corse scritte dal '
+                  'percorso DB), e `giornale_ultima_corsa` sta accanto perche'' la '
+                  'DIFFERENZA fra le due e'' informazione — se la seconda e'' avanti e la '
+                  'prima indietro, qualcuno ha registrato sotto questo codice senza '
+                  'essere pgAgent. Brief §9.5-bis. '
+                  '⚠️ UNA CAUSA NON ACCERTATA, e non e'' una condizione di riapertura: '
+                  'fra il 21-02-2026 e il 05-09-2026 apply_storicizza_weekly e'' girato '
+                  'ogni settimana senza lasciare una riga, e la corsa forzata del '
+                  '2026-09-07 e'' andata VERDE — quindi il difetto non era nel job, era '
+                  'nel verbale, ma perche'' sei mesi e mezzo di corse riuscite non '
+                  'abbiano scritto niente resta senza risposta. Da qui non si accerta: '
+                  'lo storico degli esiti dello scheduler sta in pgagent.*, che '
+                  'zeroerp_app non legge. ⇒ La prossima volta che questo giornale tace, '
+                  'si comincia da li''.';
+
+              -- Il ruolo applicativo la legge: il pannello dei presidi della
+              -- schermata «Processi automatici» la mostra accanto alle altre.
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_programmazione_da_guardare
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare indietro toglie dal presidio la colonna su cui poggia
+              --   il verdetto, e rimette nel commento un fatto datato rientrato.
+              DROP VIEW IF EXISTS dbops.vw_processi_programmazione_da_guardare;

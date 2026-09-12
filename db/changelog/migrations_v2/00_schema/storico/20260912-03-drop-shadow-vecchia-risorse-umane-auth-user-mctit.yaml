@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La shadow VECCHIA di una madre rinominata: si elimina — e il backend smette
+# di leggerla.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4d (decisione Tid, 11-09)
+#
+# `anagrafiche.risorse_umane_auth_user` è diventata `_legacy_risorse_umane_auth_user`
+# (il nome vecchio è una vista). La sua shadow ha seguito il nome nuovo:
+# `storico._legacy_risorse_umane_auth_user`, viva. `storico.risorse_umane_auth_user`
+# è l'archivio di PRIMA della rinomina — 12 versioni, congelate lì — che nessun
+# trigger alimenta più. Su un database ricostruito da zero non nasce (la CI lo
+# ha già detto il 2026-09-02: 9 errori, spenti con `attivo = f` sulla riga 5 di
+# dbops.audit_sources). Decisione: non si tiene una storia spezzata in due
+# tabelle di cui una morta — si elimina.
+#
+# ── 🔴 LETTORI CENSITI, e uno è FUORI dal perimetro DB ──────────────────
+#   · backend/apps/core/db/permissions_audit_repository.py, `_USER_TABLES`,
+#     riga 48: `("storico.risorse_umane_auth_user", "risorse_umane_auth_user")`
+#     — la timeline «storia dei permessi» la legge in UNION ALL. ⛔ Dopo questo
+#     DROP quella query fallisce (42P01). Il backend deve togliere la riga — o,
+#     se la storia dei permessi di quell'anagrafica serve ancora, puntarla alla
+#     shadow viva `storico._legacy_risorse_umane_auth_user` (il filtro passa
+#     dallo snapshot, `auth_user_id`, che c'è anche lì). Decisione del team BE;
+#     registrata nel brief come consegna.
+#   · dbops.audit_sources, riga 5 (`storico_table = storico.risorse_umane_auth_user`):
+#     già `attivo = f`, e il pgTAP test-audit-sources-seed pinna proprio che sia
+#     spenta. Resta com'è: è la dichiarazione della dismissione, non sporcizia.
+#   · nessuna funzione o vista DB.
+#
+# ⚠️ ORDINE CONSIGLIATO: prima la modifica al backend, poi questo changeSet. Se
+#   si applica prima, su dev l'endpoint della storia permessi risponde 500 con
+#   «relation storico.risorse_umane_auth_user does not exist»: rumoroso, non
+#   silenzioso — ma è comunque un'interruzione da evitare.
+#
+# In CI la tabella non esiste: IF EXISTS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20260912-03-drop-shadow-vecchia-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260912-03-drop-shadow-vecchia-risorse-umane-auth-user
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Elimina storico.risorse_umane_auth_user, la shadow di prima della
+        rinomina della madre in _legacy_risorse_umane_auth_user: nessun trigger
+        la alimenta, su un database ricostruito non nasce, la storia vive in
+        storico._legacy_risorse_umane_auth_user. ⚠️ Lettore fuori perimetro:
+        backend permissions_audit_repository._USER_TABLES deve smettere di
+        leggerla (o puntare alla shadow viva) — prima di questo changeSet.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TABLE IF EXISTS storico.risorse_umane_auth_user;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le 12 versioni congelate non si ricostruiscono: la decisione era
+              -- di non tenerle. Forward-only.
+              SELECT 1;

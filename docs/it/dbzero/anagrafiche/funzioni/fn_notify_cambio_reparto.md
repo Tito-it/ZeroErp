@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_notify_cambio_reparto(p_risorsa_umana_
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_auth_user_id anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+    v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
     v_payload      text;
 BEGIN
 -- ------------------------------------------------------------
@@ -52,12 +52,11 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------
-    -- 2) Lookup auth_user_id (potrebbe non esistere)
+    -- 2) Lookup auth_user_id (potrebbe non esistere): dalla madre
+    --    identita_digitali, via l'helper condiviso (12-09-2026: la
+    --    vista risorse_umane_auth_user e' stata ritirata).
     ----------------------------------------------------------------
-    SELECT rau.auth_user_id
-      INTO v_auth_user_id
-      FROM anagrafiche.risorse_umane_auth_user rau
-     WHERE rau.risorsa_umana_id = p_risorsa_umana_id;
+    v_auth_user_id := script.fn_get_auth_user_id_for_risorsa_umana(p_risorsa_umana_id);
 
     ----------------------------------------------------------------
     -- 3) Costruzione payload e NOTIFY
@@ -74,8 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_notify_cambio_reparto(p_risorsa_umana_id bigint, p_old_uo_id integer, p_new_uo_id integer)
-IS 'Emette NOTIFY cambio_reparto con payload JSON (risorsa_umana_id, old_uo_id, new_uo_id, auth_user_id).
-Usata dal trigger z90 su risorse_umane per invalidazione cache permessi via LISTEN/NOTIFY.';
+IS 'Emette NOTIFY cambio_reparto con payload JSON (risorsa_umana_id, old_uo_id, new_uo_id, auth_user_id). Usata dal trigger z90 su risorse_umane per invalidazione cache permessi via LISTEN/NOTIFY. L''auth_user si risolve da identita_digitali con script.fn_get_auth_user_id_for_risorsa_umana (dal 12-09-2026: la vista risorse_umane_auth_user e'' stata ritirata).';
 ```
 
 ---
