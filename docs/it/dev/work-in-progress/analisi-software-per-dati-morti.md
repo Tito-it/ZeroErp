@@ -110,12 +110,30 @@ progetto. Il catalogo BB la dichiara **deprecata** dal 2026-04-19.
 | BE · 3 punti + 1 model | `endpoint_helpers.get_risorsa_umana_id` (`SELECT … FROM anagrafiche.risorse_umane_auth_user`), `anagrafiche_repository.list_expired_auth_user_ids` (`JOIN`), `permissions_cache.invalidate_department` via l'ORM `RisorseUmaneAuthUser` (`managed = False`) | 🔴 **`list_expired_auth_user_ids` è una copia Python del solo «ramo legacy»** di `fn_sync_auth_user_expired` — lo dichiara nel commento (*«stessa logica WHERE»*). Conosce il ponte vecchio e **ignora `identita_digitali`**: la cache dei permessi viene invalidata per gli operatori scaduti via risorsa umana, non per le identità portale/shop scadute che la funzione DB invece disattiva. Due livelli, la stessa regola scritta due volte, e la copia conosce metà del modello |
 | pgTAP · 9 file | `config/test-fn-cleanup-token-scaduti`, `config/test-user-emittenti-fiscali-immutable`, `anagrafiche/test-risorse-umane-auth-user-view`, `script/test-fn-get-soggetto-dati-and-user-profile`, `anagrafiche/test-fn-crea-operatore`, `anagrafiche/test-fn-crea-risorsa-umana`, `script/test-fn-check-user-can-create-ba`, `script/test-fn-check-operatore-invitabile`, `dbops/test-audit-sources-seed` | fixture e asserzioni che la leggono per nome |
 
-⚠️ Il **«ramo legacy»** di `fn_sync_auth_user_expired` (risorsa umana con
-`valido_al` scaduto ⇒ utente spento) **non è detto che sia morto**: è una regola
-di dominio espressa attraverso il nome vecchio. Il cantiere deve **decidere se
-la regola vive** (e allora si riscrive su `risorse_umane` ⋈ `identita_digitali`)
-o se è stata assorbita da `identita_digitali.valido_al` (e allora il ramo cade
-con la copia Python). Non si cancella un ramo perché ha l'etichetta «legacy».
+✅ **Il «ramo legacy» di `fn_sync_auth_user_expired` — deciso da Tid il 12-09:
+*«tutto deve entrare in `identita_digitali`»*.** La regola «risorsa umana con
+`valido_al` scaduto ⇒ utente spento» è assorbita da `identita_digitali.valido_al`;
+il ramo cade, e con lui la copia Python `list_expired_auth_user_ids`.
+⭐ E la struttura lo diceva già: `fn_sync_auth_user_is_active` (v4) decide
+**solo** su `identita_digitali` (`attivo`, `valido_al`, soggetto attivo) — il ramo
+legacy poteva **proporre** un candidato, mai cambiare l'esito. Era morto per
+costruzione, non per etichetta.
+
+🔴 **Trovato verificando la decisione (12-09 pomeriggio): il `-10` ha lasciato
+una mina sulla MADRE.** Su `anagrafiche.risorse_umane` vivevano **due** guard di
+automazione «blocca la disattivazione se ha figli attivi», uno per la figlia
+droppata e uno per il nome vecchio:
+
+| Trigger su `risorse_umane` | Figlia nominata | Oggi |
+| --- | --- | --- |
+| `trg_risorse_umane_a10_legacy_risorse_umane_auth_user_blo_feea48` | `_legacy_risorse_umane_auth_user` (**droppata dal `-10`**) | 🔴 su ogni `attivo` true→false cerca in `pg_attribute` la colonna FK di una tabella che non c'è e **solleva `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND`**: da stamattina alle 11:30 **nessuna risorsa umana si può disattivare su dev**. Provato in ROLLBACK. ⇒ `00_schema/anagrafiche/20260912-11` (`DROP TRIGGER IF EXISTS`, forma §11.5; l'automazione ATTIVO genera dalle FK, quindi in CI non nasce e su dev non rinasce) + test 10 del pgTAP `test-legacy-risorse-umane-auth-user-ritirata-v1`. ✅ **Applicato il 12-09 alle 11:54** (`EXECUTED`), baseline pgTAP verde senza regressioni (Tid); verificato sul catalogo: nessun trigger sulla madre nomina più la figlia |
+| `trg_risorse_umane_a10_risorse_umane_auth_user_block_deact_upd` | la **vista** `risorse_umane_auth_user` | funziona (la vista ha `risorsa_umana_id` e `attivo`) ed è **l'unico** guard che lega RU ↔ identità OPERATORE attiva: `identita_digitali` non ha un guard suo su `soggetti_ruoli`. **Resta**, e sparirà con la vista — lo strato 2 deve prima decidere se la regola migra sul figlio vero |
+
+⭐ La lezione, che il `-10` aveva dichiarato a metà: *cancellare una fonte =
+censire i lettori* — e un trigger montato sulla **madre** è un lettore della
+figlia che vive addosso a un'altra tabella. Un censimento «chi nomina la tabella»
+lo trova solo se guarda anche `pg_trigger` dei padri (`pg_get_triggerdef`), non
+solo `pg_proc` e le viste.
 
 **Decisione (12-09, delegata da Tid: «a decidere tu»): via il nome.**
 
@@ -149,7 +167,8 @@ vecchio**, non il concetto.
 | --- | --- | --- |
 | 1 | **BE** — prima, perché è il lettore vivo fuori dal DB (lezione del 12-09: il DROP è passato prima della consegna e l'endpoint è andato a 500) | i tre punti su `identita_digitali` (+ `risorse_umane` dove serve `risorsa_umana_id`); ritiro del model `RisorseUmaneAuthUser`; `list_expired_auth_user_ids` **non** ricopiata sul nuovo modello ma **sostituita** da una chiamata alla stessa `WHERE` del DB (una regola, una sede); la chiave del profilo rinominata o tolta |
 | 2 | **DB** | le cinque funzioni riscritte sulla madre (`%TYPE` su `identita_digitali`), i nove pgTAP, `DROP VIEW`, manuale **cancellato**; il presidio `vw_riferimenti_morti_da_sanare` fa da rete su ogni `%TYPE` o corpo dimenticato |
-| 3 | DB | il ramo legacy di `fn_sync_auth_user_expired`: **decisione scritta** (vive/assorbito), poi il codice |
+| 3 | DB | ~~il ramo legacy di `fn_sync_auth_user_expired`: decisione scritta~~ ✅ deciso (assorbito da `identita_digitali.valido_al`): cade con la copia Python, dentro il passo 2. ⚠️ Prima dello `DROP VIEW`: dove va il guard RU ↔ identità attiva (oggi vive solo attraverso la vista) |
+| 0 | DB | ✅ `20260912-11`: via il guard stantio sulla madre `risorse_umane` (§2.1). Applicato il 12-09 alle 11:54, baseline verde |
 
 ### 2.2 🟠 B — Ripiego su una forma di `meta` che nessuno scrive più
 

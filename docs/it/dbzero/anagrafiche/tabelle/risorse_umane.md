@@ -49,7 +49,6 @@
 | trg_risorse_umane_a10_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'flussi', 'risorsa_umana_id', 'id', 'attivo')` |
 | trg_risorse_umane_a10_guard_ruolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()` |
 | trg_risorse_umane_a10_guard_ruolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()` |
-| trg_risorse_umane_a10_legacy_risorse_umane_auth_user_blo_feea48 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', '_legacy_risorse_umane_auth_user', 'risorsa_umana_id', 'id', 'attivo')` |
 | trg_risorse_umane_a10_pratiche_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche', 'risorsa_umana_id', 'id', 'attivo')` |
 | trg_risorse_umane_a10_qualifiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'qualifiche', 'attivo', 'qualifica_id', 'id')` |
 | trg_risorse_umane_a10_qualifiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'qualifiche', 'attivo', 'qualifica_id', 'id')` |
