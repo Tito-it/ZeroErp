@@ -2002,7 +2002,7 @@ vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
       col rumore insegna a non guardarlo**, ed è esattamente la proprietà che il
       brief voleva comprare. ⇒ Da portare al team DB.
   * **Com'era la richiesta, per chi rilegge** — 🔵 brief scritto il 2026-09-09:
-      [brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md).
+      [brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md).
       ⛔ Non si poteva fare tutto lato backend, e il perché è la parte utile:
       delle 31 viste `dbops.vw_*`, **14 non sono vuote ma quasi tutte sono
       inventari** — un digest ingenuo si aprirebbe con 2.035 righe di

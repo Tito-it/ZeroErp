@@ -108,4 +108,4 @@ risposta è no.
 
 ---
 
-*Brief: `docs/it/dev/work-in-progress/brief-db-un-destinatario-per-i-presidi.md`.*
+*Brief: `docs/it/dev/work-done/brief-db-un-destinatario-per-i-presidi.md`.*

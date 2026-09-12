@@ -13,13 +13,14 @@
 --   scripts/sql/guardrail_riferimenti_morti.sql        il gate della CI
 --   questo file                                        il gate della suite
 --
--- Indice test (6 asserzioni):
+-- Indice test (7 asserzioni):
 --   1. l'estensione plpgsql_check c'e' (senza, i test 2 e 3 fanno skip)
 --   1-bis. plpgsql_check ha potuto controllare OGNI funzione (NON_MISURATO)
 --   2. nessun difetto REALE/ORFANA fuori dal registro del debito
 --   3. nessuna voce RIENTRATA nel registro (il debito deve calare)
 --   4. ogni voce del registro ha un motivo scritto
 --   5. nessun riferimento morto nei DATI di configurazione
+--   6. il conteggio che legge il DIGEST concorda con la misura diretta
 --
 -- ── PERCHE' ESISTE ──────────────────────────────────────────────────────
 --   Il 2026-03-31 due funzioni morte furono **viste**, e lasciate li' con
@@ -52,7 +53,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- ============================================================
 -- 1. L'estensione c'e'?
@@ -197,6 +198,60 @@ SELECT is(
   '',
   'nessuna riga di config.sistema_codici punta a una tabella inesistente'
 );
+
+-- ============================================================
+-- 6. 🔴 IL CONTEGGIO CHE LEGGE IL DIGEST — quello che il test 1-bis NON vede
+--
+-- ⛔ Il digest dei presidi non legge questa vista: chiede
+--    `dbops.fn_conta_presidio`, che e' SECURITY DEFINER con
+--    `search_path = pg_catalog, pg_temp`. Fino al 2026-09-12 la scansione
+--    ereditava quel path, e li' non si risolvevano NE' `plpgsql_check_function`
+--    (sta in `public`) NE' i riferimenti a `unaccent`, `dblink` e `geometry`
+--    dentro le funzioni che compila: ogni funzione usciva `NON_MISURATO`.
+--    Misurato quel giorno: il digest riferiva **784** «riferimenti morti»
+--    mentre questa stessa vista, letta diretta, rispondeva **0**.
+--
+-- ⭐ Il test 1-bis non poteva prenderlo, e non per una svista: misura la
+--    scansione DIRETTA, cioe' il percorso SANO. Per due giorni e' stato verde
+--    su un difetto vivo.
+--    *Un presidio che misura il percorso sano non presidia quello in servizio.*
+--
+-- ⇒ Qui si confrontano i DUE percorsi. Non e' circolare — i due lati girano in
+--    contesti di risoluzione diversi, ed e' proprio la differenza fra i due che
+--    il difetto produceva.
+-- ⚠️ E non pinna un numero: se comparira' un riferimento morto vero, i due lati
+--    saliranno INSIEME e questo test restera' verde. A dirlo e' il test 2, che
+--    e' il suo mestiere. Qui si asserisce che i due percorsi CONCORDANO.
+--
+-- ⚠️ Il `DROP TABLE IF EXISTS tmp_raw` non e' pulizia: e' obbligatorio. La
+--    scansione lavora su una temp table, e quella creata qui sopra appartiene
+--    al ruolo del TEST; `fn_conta_presidio` gira come PROPRIETARIO e il suo
+--    `DELETE FROM tmp_raw` prenderebbe `42501 permesso negato` — cioe' un
+--    ERRORE, che ferma il file e lascia tutti i test SENZA girare.
+-- ⚠️ Costa una seconda scansione completa (~4s): e' il prezzo per misurare il
+--    percorso che il digest usa davvero, e non un suo somigliante.
+-- ============================================================
+-- ⚠️ Il verbo in un'istruzione SUA, prima dell'asserzione: dentro la `SELECT`
+--    non si droppa niente, e il `DELETE` della DEFINER arriverebbe comunque su
+--    una temp table che non e' sua.
+DROP TABLE IF EXISTS tmp_raw;
+
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'plpgsql_check')
+    THEN skip('plpgsql_check assente: misura non eseguibile', 1)
+  ELSE is(
+    dbops.fn_conta_presidio('dbops.vw_riferimenti_morti_da_sanare'),
+    (SELECT count(*)
+       FROM misura m
+      WHERE m.classe IN ('REALE', 'ORFANA', 'NON_MISURATO')
+        AND NOT EXISTS (
+              SELECT 1 FROM dbops.riferimenti_morti_esenzioni e
+               WHERE e.schema_nome = m.schema_nome
+                 AND e.funzione    = m.funzione
+                 AND m.esito LIKE e.esito_like)),
+    'il conteggio che legge il digest (fn_conta_presidio) concorda con la misura diretta'
+  )
+END;
 
 SELECT * FROM finish();
 
