@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 (2 di 3) — LA DATA RICHIESTA SULLA RIGA DI PREVENTIVO
+#   vendite.preventivi_righe.data_consegna_richiesta_cliente
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 2.2
+#
+# -- SOLO LA RICHIESTA, NON LA CONFERMATA ----------------------------
+#   Su un preventivo non c'e' ancora niente da confermare: la promessa nasce
+#   con l'ordine. La riga porta cio' che il cliente chiede, e
+#   fn_push_preventivo_a_ordine la porta avanti (P-5) — altrimenti la data
+#   si perde nel punto in cui il documento cambia natura, che e' il punto
+#   in cui gli utenti smetterebbero di fidarsene.
+#   ⚠️ Il push legge le righe da vw_preventivi_righe_smistabili_ordine, che
+#   proietta colonne per nome: la colonna nuova entra in quella vista (P-6),
+#   non con un JOIN dentro la funzione.
+#
+# -- IL GUARD PENDING NON LA BLOCCA, ED E' GIUSTO COSI' ---------------
+#   trg_preventivi_righe_a10_guard_pending_upd confronta OLD/NEW per
+#   allowlist: con la riga in approvazione prezzo PENDING anche questa data
+#   e' congelata, come tutta la struttura della riga. Non e' un'eccezione da
+#   aprire — l'approvatore decide sulla riga ESATTA proposta.
+#
+# -- RLS E STORICO ----------------------------------------------------
+#   preventivi_righe e' sotto RLS dal 2026-09-09 (20260909-30): una colonna
+#   in piu' non tocca la policy. La shadow serializza in JSONB.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260913-07-alter-preventivi-righe-add-data-consegna-mctit.yaml
+
+  - changeSet:
+      id: 20260913-07-alter-preventivi-righe-add-data-consegna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.preventivi_righe.data_consegna_richiesta_cliente (date NULL): la sola
+        richiesta, perche' su un preventivo non c'e' ancora niente da confermare. La porta
+        avanti fn_push_preventivo_a_ordine (P-5) attraverso
+        vw_preventivi_righe_smistabili_ordine (P-6). Brief:
+        brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 2.2 (P-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi_righe
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: preventivi_righe
+                    columnName: data_consegna_richiesta_cliente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  ADD COLUMN data_consegna_richiesta_cliente DATE NULL;
+
+              COMMENT ON COLUMN vendite.preventivi_righe.data_consegna_richiesta_cliente IS
+                  'Quando il CLIENTE vuole la merce di questa riga. Sul preventivo esiste '
+                  'solo la richiesta: la conferma nasce con l''ordine, dove '
+                  'fn_push_preventivo_a_ordine copia questa data in '
+                  'ordini_righe.data_consegna_richiesta_cliente (via '
+                  'vw_preventivi_righe_smistabili_ordine). NULL = non dichiarata. '
+                  'Congelata con il resto della riga quando l''approvazione prezzo e'' '
+                  'PENDING (guard_pending). Brief: '
+                  'brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 2.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DROP COLUMN IF EXISTS data_consegna_richiesta_cliente;

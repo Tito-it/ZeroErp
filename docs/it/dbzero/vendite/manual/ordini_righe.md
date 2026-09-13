@@ -106,3 +106,25 @@ GROUP BY r.id;
 * **Niente hard delete**: i flussi applicativi usano annulli/storni.
 * Le **API** dovrebbero accettare entrambe le rappresentazioni ma applicare la **priorità all’operativa**; le GET restituiscono entrambe per trasparenza.
 * La stampa documenti può mostrare la UoM operativa, lasciando i calcoli in base per confrontabilità.
+
+### 🔄 rev 2026-09-13 — le date di consegna, sulla riga
+
+Due date nuove (`20260913-06`), entrambe facoltative:
+**`data_consegna_richiesta_cliente`** — quando il cliente la vuole — e
+**`data_consegna_confermata`** — quando **noi** ci impegniamo a darla. La
+differenza fra le due è la promessa. Il suffisso `_cliente` segue la regola dei
+documenti: non marcato = nostro, marcato = della controparte (sull'ordine
+d'acquisto è il contrario, e i nomi lo dicono).
+
+* **Sulla riga, non sulla testata**: una riga può essere pronta e un'altra no.
+  La testata la espone come minimo delle righe attive
+  ([vw_ordini_lista](/dbzero/vendite/views/vw_ordini_lista)).
+* **Nessun vincolo fra le due**, né con la data del documento: si può
+  confermare *prima* di quanto chiesto, e la retrodatazione è un caso d'uso.
+* La richiesta arriva dal preventivo al push; la conferma si decide alla
+  conferma dell'ordine, e il database **non** la blocca per stato: è il
+  backend a limitare oggi la modifica delle righe alla bozza.
+* Con il residuo da spedire danno il **ritardo**
+  ([vw_situazione_merce_ordine](/dbzero/vendite/views/vw_situazione_merce_ordine)).
+
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 2.

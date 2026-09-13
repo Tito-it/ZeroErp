@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 (1 di 3) — LE DATE DI CONSEGNA SULLA RIGA D'ORDINE DI VENDITA
+#   vendite.ordini_righe.data_consegna_richiesta_cliente  (del cliente)
+#   vendite.ordini_righe.data_consegna_confermata         (nostra)
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 2
+#
+# -- IL BUCO ---------------------------------------------------
+#   Non esiste alcuna data di consegna in tutto il database (verificato il
+#   2026-09-01 su vendite, acquisti e magazzino). ordini.data e' la data
+#   DOCUMENTO e governa numerazione e pavimenti; commesse.competenza_* e'
+#   competenza FISCALE; data_insert e' quando la riga e' stata scritta.
+#   Senza una data di consegna non esiste la nozione di RITARDO:
+#   vw_situazione_merce_ordine sa dire quanto resta da spedire e non sapra'
+#   mai dire se e' tardi.
+#
+# -- DUE DATE, ED E' LA DIFFERENZA A VALERE ---------------------
+#   La prima e' quando il cliente la vuole, la seconda quando ci si impegna
+#   a darla: la differenza fra le due E' la promessa. E la conferma
+#   dell'ORDINE e' il momento in cui si decide la seconda («ne chiedono 10:
+#   3 ci sono, 7 arrivano il 20» — analisi carico e scarico 5-bis), che e'
+#   il terzo cantiere indipendente a chiederla dopo produzione e merce in
+#   arrivo.
+#
+# -- I NOMI: D-16, DECISA DA TID IL 2026-09-02 ------------------
+#   Regola di D-12 «non marcato = nostro, marcato = della controparte», la
+#   stessa di numero / numero_fornitore: qui la richiesta e' del CLIENTE e
+#   la conferma e' NOSTRA. Su acquisti.ordini_righe (20260913-08) e' il
+#   contrario, e i nomi lo dicono: la vista di carico e scarico 7-bis legge
+#   entrambe insieme, e li' il nome della tabella sparisce.
+#
+# -- SULLA RIGA, NON SULLA TESTATA ------------------------------
+#   Una riga puo' essere pronta e un'altra no («il pezzo grosso arriva a
+#   marzo, il resto subito»). Niente colonna di testata: la data della
+#   testata e' min(richiesta) sulle righe attive e la espone la vista
+#   (P-6), o sarebbe una seconda sorgente di verita'.
+#
+# -- NESSUN CHECK, ED E' UNA SCELTA (brief 2.3) ------------------
+#   confermata >= richiesta e' FALSO: si puo' confermare prima di quanto
+#   chiesto, ed e' una buona notizia. E nessun CHECK contro ordini.data:
+#   la retrodatazione e' un caso d'uso vivo (lezione del cantiere
+#   numerazione). Un vincolo si mette dove il modello lo richiede.
+#
+# -- RLS E STORICO -------------------------------------------------
+#   Le righe sono sotto RLS dal 2026-09-09 (20260909-35): due colonne in
+#   piu' non toccano la policy. La shadow di storico serializza in JSONB.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260913-06-alter-ordini-righe-add-date-consegna-mctit.yaml
+
+  - changeSet:
+      id: 20260913-06-alter-ordini-righe-add-date-consegna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini_righe: data_consegna_richiesta_cliente (quando il cliente la vuole)
+        e data_consegna_confermata (quando ci si impegna a darla), entrambe date NULL.
+        Nomi da D-16 (non marcato = nostro). Nessun CHECK fra le due ne' contro
+        ordini.data, per scelta. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo,
+        sezione 2 (P-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini_righe
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ordini_righe
+                    columnName: data_consegna_richiesta_cliente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe
+                  ADD COLUMN data_consegna_richiesta_cliente DATE NULL,
+                  ADD COLUMN data_consegna_confermata        DATE NULL;
+
+              COMMENT ON COLUMN vendite.ordini_righe.data_consegna_richiesta_cliente IS
+                  'Quando il CLIENTE vuole la merce di questa riga. Suffisso _cliente '
+                  'per la regola D-12 (non marcato = nostro, marcato = della '
+                  'controparte): su acquisti.ordini_righe la richiesta e'' nostra e la '
+                  'conferma del fornitore. Arriva dal preventivo via '
+                  'fn_push_preventivo_a_ordine (preventivi_righe porta la sola '
+                  'richiesta). NULL = non dichiarata. Nessun CHECK contro '
+                  'data_consegna_confermata ne'' contro ordini.data: si puo'' confermare '
+                  'prima di quanto chiesto, e la retrodatazione e'' un caso d''uso. '
+                  'Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 2.';
+              COMMENT ON COLUMN vendite.ordini_righe.data_consegna_confermata IS
+                  'Quando NOI ci impegniamo a consegnare questa riga: si decide alla '
+                  'conferma dell''ordine, guardando disponibile e in arrivo. La '
+                  'differenza con data_consegna_richiesta_cliente e'' la promessa; '
+                  'insieme al residuo di vw_situazione_merce_ordine da'' il ritardo '
+                  '(giorni_ritardo, P-6). NULL = non ancora promessa. Sulla riga e non '
+                  'sulla testata: una riga puo'' essere pronta e un''altra no.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe
+                  DROP COLUMN IF EXISTS data_consegna_confermata,
+                  DROP COLUMN IF EXISTS data_consegna_richiesta_cliente;

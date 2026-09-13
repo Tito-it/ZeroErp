@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 (passo 3 di 3) — vendite.commesse.data_apertura:
+#   SET DEFAULT script.fn_data_operativa() + SET NOT NULL
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezioni 4 e 4-bis
+#
+# -- IL DEFAULT: mai now() nudo --------------------------------------------
+#   script.fn_data_operativa() e' la data di oggi NEL FUSO DELL'AZIENDA
+#   (SYSTEM_FUSO_ORARIO), non in quello della sessione: current_date da Django
+#   e' UTC, da psql e pgAgent Europe/Rome, e lo stesso oggetto dava due date
+#   diverse secondo il canale (brief numerazione DB-2). Serve alle commesse
+#   FUTURE, dove e' la risposta giusta; per il passato ha risposto
+#   data_insert (20260913-14).
+#
+# -- PERCHE' QUI E NON NELL'ADD COLUMN ----------------------------------------
+#   SET DEFAULT non valuta l'espressione (nessuna riga da riempire): la
+#   funzione viene chiamata solo al primo INSERT che omette la data, quando
+#   80_data e' passato e il fuso esiste. L'ADD COLUMN invece l'avrebbe
+#   valutata all'ALTER, in 00_schema, prima del seed del fuso (testata di
+#   20260913-13). Stessa forma di 20260825-08 (vendite.fatture.data).
+#
+# -- IL NOT NULL: un'affermazione sul modello -----------------------------
+#   «Ogni commessa ha una data di apertura, e la sappiamo»: la colonna nasce
+#   per essere letta in lista, un NULL sarebbe una cella vuota per sempre, e
+#   il default risponde per ogni percorso di creazione. Fail-fast se il
+#   backfill 20260913-14 avesse lasciato NULL residui.
+#
+# -- TRANSAZIONE SEPARATA DAL BACKFILL ---------------------------------------
+#   L'UPDATE di 20260913-14 lascia eventi trigger in sospeso (i require_attivo
+#   di commesse sono constraint trigger AFTER): un ALTER TABLE nella stessa
+#   transazione muore con «cannot ALTER TABLE because it has pending trigger
+#   events». Liquibase committa fra un changeSet e l'altro, ed e' la ragione
+#   per cui sono due file.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260913-15-alter-commesse-data-apertura-default-notnull-mctit.yaml
+
+  - changeSet:
+      id: 20260913-15-alter-commesse-data-apertura-default-notnull
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        SET DEFAULT script.fn_data_operativa() e SET NOT NULL su
+        vendite.commesse.data_apertura. Transazione separata dal backfill 20260913-14
+        (eventi trigger in sospeso); SET DEFAULT non valuta la funzione, che resta
+        fail-loud sul fuso al primo INSERT. Idempotente. Brief:
+        brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezioni 4 e 4-bis (P-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse
+                columnName: data_apertura
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_data_operativa'
+                     AND p.pronargs = 0
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) DEFAULT: la data di oggi nel fuso dell'azienda. SET DEFAULT non
+              --    chiama la funzione: la chiamera' il primo INSERT senza data.
+              ALTER TABLE vendite.commesse
+                  ALTER COLUMN data_apertura SET DEFAULT script.fn_data_operativa();
+
+              -- 2) NOT NULL: ogni commessa dichiara quando e' stata aperta.
+              --    Idempotente (no-op se gia' NOT NULL). Fail-fast su NULL residui.
+              ALTER TABLE vendite.commesse
+                  ALTER COLUMN data_apertura SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse ALTER COLUMN data_apertura DROP NOT NULL;
+              ALTER TABLE vendite.commesse ALTER COLUMN data_apertura DROP DEFAULT;

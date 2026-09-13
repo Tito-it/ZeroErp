@@ -79,3 +79,38 @@ create dai test non passano dalla funzione che le riempie, e pretendere il
 contrario avrebbe fatto fallire una decina di file di prova senza aggiungere
 nessuna garanzia.
 
+
+### 🔄 rev 2026-09-13 — la commessa leggibile: descrizione, data di apertura, responsabile
+
+Tre colonne nuove (`20260913-13`, `-14`, `-15`), perché finora una commessa in
+una lista era **un codice e nient'altro**. Brief
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 4.
+
+| Colonna | Che cosa dice | Vuoto ammesso? |
+|---|---|---|
+| `descrizione` | l'oggetto della commessa, in parole | sì |
+| `data_apertura` | quando è stata aperta; per le commesse nuove è **oggi nel fuso dell'azienda** (`script.fn_data_operativa()`), mai l'orologio della sessione | **no** |
+| `responsabile_risorsa_umana_id` | chi la governa: una **risorsa umana**, come in `pratiche` — non un ruolo qualsiasi | sì |
+
+⭐ **Per le commesse che c'erano già**, la data di apertura è **quando la riga
+è stata scritta** (`data_insert`, letta nel fuso dell'azienda): non è la data di
+apertura reale, ma è un fatto e non un'invenzione — e una colonna che nasce per
+essere letta in lista non poteva restare vuota per sempre. È stato un
+aggiornamento di comodo su dati di prova, ed è passato dallo storico: quelle
+commesse hanno una versione shadow in più.
+
+⚠️ **`data_apertura` non è la competenza.** `competenza_dal`/`competenza_al`
+restano la finestra **fiscale**: riusarle avrebbe fatto rispondere a una colonna
+sola due domande diverse.
+
+⚠️ **Una persona responsabile di una commessa non si può disattivare** finché lo
+è — anche se la commessa è chiusa, perché la commessa non ha un proprio
+«attivo». È il comportamento che `anagrafiche.risorse_umane` ha già verso le
+pratiche e i flussi: il quarto della stessa specie, generato dal framework
+ATTIVO a `ci_apply` (guida [automazione DB](/guide/automazione-db)), non scritto
+a mano. Per liberare una persona si cambia il responsabile, non si spegne la
+persona.
+
+ℹ️ Non esiste ancora una lista configurata delle commesse: le tre colonne hanno
+come sola superficie il drawer e le API, finché una lista non verrà configurata
+— ed è dato, non un cantiere.

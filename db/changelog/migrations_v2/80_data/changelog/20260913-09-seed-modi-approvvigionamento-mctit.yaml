@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (seed) — I QUATTRO MODI DI APPROVVIGIONAMENTO
+#   config.modi_approvvigionamento: ACQUISTO, PRODUZIONE, STOCK, NON_APPLICABILE
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3.2
+#
+# ⚠️ Mirror `loadUpdateData`, `runOnChange`: un valore si cambia nel CSV, mai
+#   con un UPDATE a parte (AGENTS 80_data). Colonne di audit lasciate ai
+#   DEFAULT del database (now() / CURRENT_USER), come per nature_vendita.
+# ⚠️ Gli `id` sono FISSI nel CSV (1..4): il DEFAULT di
+#   catalogo.articoli.modo_approvvigionamento_id (20260913-11) e' risolto per
+#   codice_interno a runtime e NON dipende da questi numeri — ma un reseed
+#   con id diversi cambierebbe l'id scritto nel DEFAULT della colonna, che
+#   andrebbe riallineato. E' l'eccezione ammessa da linee-guida-sql 6b (FK
+#   fisica reale), la stessa di natura_vendita_id.
+# ⚠️ Deve girare PRIMA di 20260913-10/-11 (backfill e NOT NULL), che lo
+#   presuppongono: in 80_data l'ordine e' quello dei nomi dei file.
+# ⚠️ Seed di CATALOGO: nessuna FK verso anagrafiche.*, nessun `context`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260913-09-seed-modi-approvvigionamento-mctit.yaml
+
+  - changeSet:
+      id: 20260913-09-seed-modi-approvvigionamento
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed config.modi_approvvigionamento: ACQUISTO (default degli articoli, deciso da
+        Tid il 2026-09-02), PRODUZIONE, STOCK, NON_APPLICABILE. codice_interno = chiave
+        naturale stabile; codice e descrizione sono dell'operatore. Mirror loadUpdateData.
+        Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3.2 (P-1).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: modi_approvvigionamento
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/modi_approvvigionamento.csv
+            tableName: modi_approvvigionamento
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordine, type: NUMERIC }
+              - column: { name: meta, type: JSON }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM config.modi_approvvigionamento
+               WHERE codice_interno IN ('ACQUISTO', 'PRODUZIONE', 'STOCK', 'NON_APPLICABILE');

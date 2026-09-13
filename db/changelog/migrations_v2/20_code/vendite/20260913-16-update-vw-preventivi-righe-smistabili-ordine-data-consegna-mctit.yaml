@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 (1 di 4) — vendite.vw_preventivi_righe_smistabili_ordine:
+#   + data_consegna_richiesta_cliente
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2
+#
+# -- PERCHE' QUESTA VISTA, E PERCHE' PRIMA DELLA FUNZIONE --------------------
+#   E' la vista da cui vendite.fn_push_preventivo_a_ordine LEGGE le righe da
+#   copiare (cursore FOR v_riga IN … FROM questa vista), con una proiezione
+#   ESPLICITA di dodici colonne: senza questa colonna P-5 (20260913-20) non
+#   ha da dove prendere la data. Un JOIN sulla tabella dentro la funzione
+#   sarebbe una seconda sede della stessa lista di righe, ed e' esattamente
+#   cio' che la vista-predicato unica (20260610-02) esiste per evitare.
+#   ⚠️ Fino al 2026-09-12 il brief non la nominava: «quarta vista» di P-6.
+#
+# -- CREATE OR REPLACE: la colonna e' in ULTIMA posizione -------------------
+#   PostgreSQL consente solo di appendere. Il predicato (attiva, natura a
+#   destinazione ORDINE, non ancora allocata) non cambia di una virgola.
+#
+# -- security_invoker=on RI-SPECIFICATA ------------------------------------
+#   Un CREATE OR REPLACE VIEW senza la reloption la azzera, e la vista
+#   smetterebbe di rispettare la RLS di chi legge — preventivi_righe e'
+#   sotto RLS dal 20260909-30. Presidiato sul merito da
+#   db/pgtap/rls/test-rls-viste-security-invoker.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260913-16-update-vw-preventivi-righe-smistabili-ordine-data-consegna-mctit.yaml
+
+  - changeSet:
+      id: 20260913-16-update-vw-preventivi-righe-smistabili-ordine-data-consegna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_righe_smistabili_ordine: + data_consegna_richiesta_cliente
+        in coda, cosi' fn_push_preventivo_a_ordine (20260913-20) la porta sull'ordine
+        senza un secondo lettore delle righe. security_invoker=on ri-specificata.
+        Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2 (P-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_preventivi_righe_smistabili_ordine
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi_righe
+                columnName: data_consegna_richiesta_cliente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_ordine
+              WITH (security_invoker=on) AS
+              SELECT pr.preventivo_id,
+                  pr.id,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine,
+                  -- rev 2026-09-13 (P-6): la data che il cliente ha chiesto sulla riga
+                  -- di preventivo, da portare sulla riga d'ordine nel push.
+                  pr.data_consegna_richiesta_cliente
+                 FROM vendite.preventivi_righe pr
+                   JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+                WHERE COALESCE(pr.attivo, true) IS TRUE
+                  AND nv.destinazione_tipo::text = 'ORDINE'::text
+                  AND NOT (EXISTS ( SELECT 1
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.preventivo_riga_id = pr.id));
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_ordine
+              IS 'Sorgente unica (DB-first) del predicato di smistamento: righe-merce di un preventivo ancora da portare in un ordine (natura destinazione_tipo=ORDINE, attive, non ancora allocate a una ordini_righe.preventivo_riga_id). Grana = preventivi_righe; i consumatori filtrano per preventivo_id ed eventualmente per id (smistamento parziale). Consumata da fn_preventivo_ha_residuo_ordine e fn_push_preventivo_a_ordine; predisposta per il dialog BE di selezione righe. ⭐ rev 2026-09-13 (P-6): + data_consegna_richiesta_cliente in coda — e'' la proiezione da cui fn_push_preventivo_a_ordine copia la riga, e senza questa colonna la data del cliente si perdeva nel punto in cui il documento cambia natura. In ultima posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere. security_invoker=on. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_preventivi_righe_smistabili_ordine;
+              CREATE VIEW vendite.vw_preventivi_righe_smistabili_ordine
+              WITH (security_invoker=on) AS
+              SELECT pr.preventivo_id,
+                  pr.id,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine
+                 FROM vendite.preventivi_righe pr
+                   JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+                WHERE COALESCE(pr.attivo, true) IS TRUE
+                  AND nv.destinazione_tipo::text = 'ORDINE'::text
+                  AND NOT (EXISTS ( SELECT 1
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.preventivo_riga_id = pr.id));
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_ordine
+              IS 'Sorgente unica (DB-first) del predicato di smistamento: righe-merce di un preventivo ancora da portare in un ordine (natura destinazione_tipo=ORDINE, attive, non ancora allocate a una ordini_righe.preventivo_riga_id). Grana = preventivi_righe; i consumatori filtrano per preventivo_id ed eventualmente per id (smistamento parziale). Consumata da fn_preventivo_ha_residuo_ordine e fn_push_preventivo_a_ordine; predisposta per il dialog BE di selezione righe.';

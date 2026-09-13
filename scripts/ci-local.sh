@@ -62,16 +62,30 @@
 #
 #     1. l'estensione `pgtap` — non la crea nessun changelog. Senza, ogni file
 #        muore su `SELECT plan(N)`;
-#     2. i privilegi di `zeroerp_app` (`scripts/sql/provision_db_roles.sql`) —
-#        senza, ogni rosso e' un permesso e non un difetto;
-#     3. lo schema `django`, COPIATO da `$DEV_DB` — lo costruisce
-#        `manage.py migrate`, che su questa macchina non c'e'. Diciassette
+#     2. lo schema `django`, COPIATO da `$DEV_DB` — lo costruisce
+#        `manage.py migrate`, che su questa macchina non c'e'. Sedici
 #        funzioni plpgsql scrivono e leggono `django.auth_user`.
+#        ⛔ SENZA le ACL (`pg_dump --no-acl`), ed e' il punto: su dev quelle
+#        tabelle portano `zeroerp_app=arwd/titodb` dato A MANO, che nessuno
+#        script concedeva. Copiandolo, lo scratch aveva un privilegio che la
+#        CI non ha, e 23 file (fra cui ogni pgTAP che crea un operatore)
+#        erano verdi qui e «permission denied for table auth_user» la' —
+#        47 volte nel log Postgres della corsa 34723456630 (12-09), tutti in
+#        baseline come ERRORE_FIXTURE senza che la causa fosse letta;
+#     3. i privilegi di `zeroerp_app` (`scripts/sql/provision_db_roles.sql`) —
+#        senza, ogni rosso e' un permesso e non un difetto. DOPO la copia di
+#        `django`, come in ci-validate.yaml sta dopo `manage.py migrate`: il
+#        `GRANT … ON ALL TABLES` e' una fotografia, e deve vedere anche le
+#        tabelle del secondo migratore. Dal 2026-09-13 `django` e' nella
+#        whitelist del provisioning: e' li' che il privilegio e' dichiarato.
 #
 #   ⚠️ Nessun flag: una preparazione che dipende da cosa uno si ricorda non
 #   sopravvive a un `--fresh`. E' la lezione del `GRANT USAGE` su `maintenance`,
 #   che esisteva solo su dbdev perche' era stato dato a mano — e per questo un
-#   pgTAP era verde qui e rosso su ogni installazione nuova.
+#   pgTAP era verde qui e rosso su ogni installazione nuova. Il punto 2 e' la
+#   stessa lezione una seconda volta, con un aggravante: qui il privilegio a
+#   mano NON restava su dev, lo si COPIAVA, e lo scratch smetteva di essere
+#   un metro.
 #   ⛔ Lo schema `django` si COPIA: e' fedele oggi, e invecchia in silenzio il
 #   giorno in cui arriva una migration Django nuova. La strada fedele resta
 #   lanciare `manage.py migrate` DAL SERVER BACKEND puntando a questo host.
@@ -402,8 +416,43 @@ if ! psql_admin -d "$CI_DB" -tAc "SELECT 1 FROM pg_extension WHERE extname='pgta
   psql_admin -d "$CI_DB" -c "CREATE EXTENSION IF NOT EXISTS pgtap;" >/dev/null
 fi
 
-# 2. I privilegi del ruolo applicativo, come il passo `provision_db_roles` della
-#    CI. ⛔ La password si LEGGE da ~/.pgpass e non si inventa: lo script fa
+# 2. Lo schema django, copiato da $DEV_DB. ⚠️ E' una COPIA, non un migrate: il
+#    DDL e' quello che Django ha prodotto la', quindi fedele oggi. Si carica
+#    come `zeroerp` cosi' le tabelle le possiede lui — i pgTAP marcati
+#    `pgtap-runner: owner` girano con quel ruolo e ci scrivono dentro.
+#    ⚠️ `django_migrations` resta vuota: e' dichiarato in intestazione.
+#    ⛔ `--no-acl`: il DDL si', i privilegi NO. Su dev quelle tabelle hanno
+#    `zeroerp_app=arwd/titodb` dato a mano, e `pg_dump --schema-only` lo
+#    emette come GRANT: copiandolo, lo scratch aveva un privilegio che nessuno
+#    script concede e che in CI non c'e'. I privilegi li da' il passo 3, che
+#    per questo sta DOPO.
+if ! psql_admin -d "$CI_DB" -tAc \
+       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname='django' AND c.relname='auth_user'" | grep -q 1; then
+  if psql_admin -d "$DEV_DB" -tAc \
+       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname='django' AND c.relname='auth_user'" | grep -q 1; then
+    echo "── copio lo schema django da $DEV_DB (sola lettura di la')"
+    # -T token_blacklist: quelle due tabelle su CI_DB le ha gia' create Liquibase.
+    # Si toglie `CREATE SCHEMA` (lo schema c'e' gia'). `--no-acl` lascia fuori
+    # sia i GRANT sia le ALTER DEFAULT PRIVILEGES di dev: i privilegi arrivano
+    # dal provisioning, come in CI.
+    sudo -u postgres pg_dump -d "$DEV_DB" --schema-only --no-owner --no-acl \
+         -n django -T 'django.token_blacklist_*' \
+      | sed -e '/^CREATE SCHEMA django;$/d' \
+      | PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
+          -X -q -v ON_ERROR_STOP=1 >/dev/null
+  else
+    echo "⚠️  django.auth_user non c'e' nemmeno su $DEV_DB: niente da copiare." >&2
+    echo "    Lancia 'manage.py migrate' dal server backend puntando a questo host." >&2
+  fi
+fi
+
+# 3. I privilegi del ruolo applicativo, come il passo `provision_db_roles` della
+#    CI — DOPO la copia di `django`, perche' il `GRANT … ON ALL TABLES` e' una
+#    fotografia e deve vedere anche le tabelle del secondo migratore (in
+#    ci-validate.yaml il passo sta dopo `manage.py migrate` dal 2026-09-13).
+#    ⛔ La password si LEGGE da ~/.pgpass e non si inventa: lo script fa
 #    `ALTER ROLE ... PASSWORD` e i ruoli sono di CLUSTER, quindi un valore nuovo
 #    spaccherebbe l'accesso di zeroerp_app al database di sviluppo. Con la
 #    password che ha gia', quella riga e' un non-evento.
@@ -437,32 +486,6 @@ else
   echo "    NON la invento: un ALTER ROLE con un valore nuovo e' di CLUSTER e" >&2
   echo "    romperebbe l'accesso al database di sviluppo. I pgTAP falliranno" >&2
   echo "    tutti per permessi finche' non la aggiungi." >&2
-fi
-
-# 3. Lo schema django, copiato da $DEV_DB. ⚠️ E' una COPIA, non un migrate: il
-#    DDL e' quello che Django ha prodotto la', quindi fedele oggi. Si carica
-#    come `zeroerp` cosi' le tabelle le possiede lui — i pgTAP marcati
-#    `pgtap-runner: owner` girano con quel ruolo e ci scrivono dentro.
-#    ⚠️ `django_migrations` resta vuota: e' dichiarato in intestazione.
-if ! psql_admin -d "$CI_DB" -tAc \
-       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-         WHERE n.nspname='django' AND c.relname='auth_user'" | grep -q 1; then
-  if psql_admin -d "$DEV_DB" -tAc \
-       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-         WHERE n.nspname='django' AND c.relname='auth_user'" | grep -q 1; then
-    echo "── copio lo schema django da $DEV_DB (sola lettura di la')"
-    # -T token_blacklist: quelle due tabelle su CI_DB le ha gia' create Liquibase.
-    # Si tolgono `CREATE SCHEMA` (lo schema c'e' gia') e le ALTER DEFAULT
-    # PRIVILEGES di un altro ruolo (zeroerp non puo' cambiarle, e qui non servono).
-    sudo -u postgres pg_dump -d "$DEV_DB" --schema-only --no-owner \
-         -n django -T 'django.token_blacklist_*' \
-      | sed -e '/^CREATE SCHEMA django;$/d' -e '/^ALTER DEFAULT PRIVILEGES FOR ROLE/d' \
-      | PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
-          -X -q -v ON_ERROR_STOP=1 >/dev/null
-  else
-    echo "⚠️  django.auth_user non c'e' nemmeno su $DEV_DB: niente da copiare." >&2
-    echo "    Lancia 'manage.py migrate' dal server backend puntando a questo host." >&2
-  fi
 fi
 
 DEV_DOPO="$(testimone_dev)"

@@ -231,6 +231,31 @@ WHERE stato = 'NON_IMPEGNATA';
   visibile in `pg_get_viewdef` e verrebbe azzerata in silenzio.
 * Test: `db/pgtap/vendite/test-vw-situazione-merce-ordine-v1.sql`.
 
+### 🔄 rev 2026-09-13 — le due date della riga e il ritardo
+
+Tre colonne in coda (`20260913-18`): `data_consegna_richiesta_cliente`,
+`data_consegna_confermata` e **`giorni_ritardo`**.
+
+* **Il ritardo sta qui e non altrove**, perché non è «oggi > data richiesta»:
+  è «oggi > data di riferimento **e resta merce da spedire**». Il residuo e la
+  soglia dell'impegno vivono in questa vista; calcolarlo altrove avrebbe
+  significato ricalcolarli, cioè una seconda verità sul residuo. La formula di
+  `da_spedire` è la stessa per le due colonne, scritta una volta sola.
+* **La data di riferimento è la promessa** (`data_consegna_confermata`) se c'è,
+  altrimenti la richiesta del cliente. Si è in ritardo rispetto a ciò a cui ci
+  si è impegnati: se a una richiesta per il 1° abbiamo risposto «il 15», il 10
+  non siamo in ritardo. Finché non ci si è impegnati, l'unica attesa è quella
+  del cliente.
+* **Tre valori, e il vuoto non è zero** — la regola di questa vista:
+  `NULL` = non si applica (niente da spedire, riga non ancora impegnata, o
+  nessuna data dichiarata); **`0`** = c'è da spedire e non è tardi; `N` =
+  giorni di ritardo.
+* `giorni_ritardo` conta con la data della **sessione** (`CURRENT_DATE`), come
+  gli altri contatori di giorni delle viste: è un indicatore, non una data
+  documento.
+
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 5.2.
+
 ---
 
 {% include-markdown "signature-core.md" %}

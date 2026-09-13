@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 (passo 2 di 3) — BACKFILL: gli articoli senza modo -> ACQUISTO
+#   catalogo.articoli.modo_approvvigionamento_id NULL -> id di ACQUISTO
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 4-bis
+#
+# -- PERCHE' IN 80_data, E PERCHE' DOPO IL SEED ----------------------
+#   L'id di ACQUISTO lo scrive il seed 20260913-09, che gira in questo
+#   stesso 80_data poche righe prima (ordine per nome). In 00_schema la
+#   riga non c'era ancora: e' la ragione per cui 20260913-05 ha lasciato la
+#   colonna nullable. Su un database ricostruito da zero il mirror
+#   articoli.csv (20260114-06) ha gia' inserito gli articoli con la colonna
+#   a NULL: questo UPDATE li raccoglie tutti.
+#
+# -- PERCHE' UN CHANGESET SUO, SEPARATO DAL SET NOT NULL -------------
+#   L'UPDATE lascia eventi trigger in sospeso su catalogo.articoli (i
+#   constraint trigger DEFERRABLE delle automazioni, l'audit) che PostgreSQL
+#   scarica solo al commit: un ALTER TABLE nella stessa transazione muore con
+#   «ha eventi trigger in sospeso». Liquibase fa commit fra un changeSet e
+#   l'altro: l'ALTER e' il 20260913-11. Stessa forma di 20260609-03/-04.
+#
+# -- NON E' UNA BONIFICA: E' IL VALORE DECISO ------------------------
+#   ACQUISTO e' il default deciso da Tid il 2026-09-02: afferma «questo
+#   articolo si compra», e per una prestazione e' falso — ma il vocabolario
+#   e' dell'operatore e la marcatura e' un lavoro di dato che si fa
+#   comunque, come per gestito_a_magazzino. NON_APPLICABILE non avrebbe
+#   mentito, ma avrebbe reso obbligatoria la marcatura di ogni articolo
+#   prima di poterlo comprare. I dati sono di test.
+#
+# ⚠️ L'UPDATE attraversa i trigger di articoli (audit, tx_id, storico):
+#   ogni articolo riceve una versione shadow. Su dati di test e'
+#   indifferente, ma va saputo leggendo storico.articoli dopo l'apply.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260913-10-backfill-articoli-modo-approvvigionamento-mctit.yaml
+
+  - changeSet:
+      id: 20260913-10-backfill-articoli-modo-approvvigionamento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill catalogo.articoli.modo_approvvigionamento_id NULL -> ACQUISTO (id risolto
+        per codice_interno dal seed 20260913-09). Solo DML: SET DEFAULT e SET NOT NULL
+        stanno nel gemello 20260913-11, in transazione separata (eventi trigger in
+        sospeso). Idempotente. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo,
+        sezione 4-bis (P-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: modo_approvvigionamento_id
+            - tableExists:
+                schemaName: config
+                tableName: modi_approvvigionamento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_acquisto_id config.modi_approvvigionamento.id%TYPE;
+                  v_updated     integer;
+              BEGIN
+                  -- Id di ACQUISTO risolto a runtime per codice_interno (no hardcode).
+                  SELECT id INTO v_acquisto_id
+                    FROM config.modi_approvvigionamento
+                   WHERE codice_interno = 'ACQUISTO'
+                     AND attivo IS TRUE;
+
+                  IF v_acquisto_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'Modo ACQUISTO non trovato in config.modi_approvvigionamento: '
+                          'seed 20260913-09 non applicato o ACQUISTO non attivo.';
+                  END IF;
+
+                  -- Il valore deciso per chi non ne ha uno. Idempotente: al secondo
+                  -- giro non trova righe.
+                  UPDATE catalogo.articoli
+                     SET modo_approvvigionamento_id = v_acquisto_id
+                   WHERE modo_approvvigionamento_id IS NULL;
+
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill catalogo.articoli.modo_approvvigionamento_id -> ACQUISTO (id %): % righe',
+                      v_acquisto_id, v_updated;
+              END
+              $BACKFILL$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il backfill non e' reversibile per riga (non si sa quali erano NULL):
+              -- il rollback e' quello della colonna, in 20260913-05.
+              SELECT 1;

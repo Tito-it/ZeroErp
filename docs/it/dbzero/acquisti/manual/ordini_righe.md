@@ -31,6 +31,19 @@ vecchia — ed è corretto per un documento emesso, ma è la domanda che arriva 
 
 {% include-markdown "it/dbzero/acquisti/_dominio-acquisti.md" %}
 
+
+### 🔄 rev 2026-09-13 — le date di consegna, con l'attore invertito
+
+Due date nuove (`20260913-08`), facoltative: **`data_consegna_richiesta`** —
+quando **noi** la chiediamo al fornitore — e
+**`data_consegna_confermata_fornitore`** — quando **lui** conferma. È
+l'informazione che mancava per sapere se la merce arriverà in tempo per una
+consegna già promessa a un cliente. I nomi seguono la regola dei documenti
+(non marcato = nostro, marcato = della controparte): rispetto a
+`vendite.ordini_righe` sono **ribaltati**, e la vista di magazzino che leggerà
+entrambe le tabelle non potrà confonderle. Nessun vincolo fra le due date.
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 2.
+
 ---
 
 {% include-markdown "signature-core.md" %}

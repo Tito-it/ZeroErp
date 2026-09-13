@@ -673,6 +673,63 @@ statici verdi.
 | ⏳ | commit: il `-31` entra nel tree di oggi (61 file) | **Tid** |
 | ⚠️ | il verdetto vero lo dà la corsa di GitHub sul push DB verso Tito-dev — la prima verde da #1563 | CI |
 
+### 6.9 🔴 Il verdetto di GitHub (13-09): il `-31` ha sanato i quattro, e dietro c'era una SECONDA causa — non di oggi, non dello storico
+
+> Corsa `34723456630` (PR `Tito-dev → main`, 12-09 22:42): roster, congelato,
+> pdp e fk-surrogate **usciti** dalle regressioni — il `-31` fa il suo lavoro.
+> Restano **cinque** `ERRORE_FIXTURE`: `anagrafiche/test-fn-crea-operatore`,
+> `test-fn-crea-risorsa-umana`, `test-risorse-umane-guard-identita-attiva-v1`,
+> `dbops/test-storico-scope-policy-v1`,
+> `rls/test-rls-billing-account-returning-secondo-emittente`. Sullo scratch
+> locale, ricostruito con `--fresh --ci-apply`, tutti verdi.
+
+**Il denominatore comune** non è lo storico: tutti e cinque **creano un
+operatore** — `fn_crea_operatore_v2` diretta, o `dbops.fn_pgtap_crea_emittente_operatore()`
+→ `script.fn_crea_utente_tecnico` — e tutti girano come **app**. E il quadro
+sull'intera suite è netto: *ogni* file `app` che crea un `auth_user` è o in
+`baseline-rossi-ci.tsv` come `ERRORE_FIXTURE` (`test-fn-crea-auth-user`,
+`test-rls-pagamenti-perimetro`, `test-fn-scope-ef-whitelist`, …) o fra questi
+cinque; *ogni* file `owner` che fa la stessa cosa è verde. I due riscritti al
+§6.7 erano in baseline già prima — per la v1 morta — e riscritti sulla v2 hanno
+cambiato causa, non colore.
+
+**La causa, letta nel log del container Postgres** (passo «Stop containers»
+della corsa): **47 × `ERROR: permission denied for table auth_user`**, in
+`fn_crea_utente_tecnico` (13), `fn_crea_auth_user` (2), `INSERT INTO
+django.auth_user` diretti (6) e nelle `SELECT` di fixture che cercano un
+utente (il resto) — **23 statement distinti, cioè 23 file**. Sul modello:
+`zeroerp_app` non aveva **nessuna sede** che gli concedesse `django.auth_user`.
+Lo schema lo crea `manage.py migrate` e per questo era escluso dal provisioning
+(*«gestito da Django»*: Django gestisce il DDL, non i privilegi); nessun
+changeSet lo nomina; sedici funzioni `SECURITY INVOKER` lo attraversano. Su dev
+il privilegio c'era su tutti e 23 gli oggetti, `zeroerp_app=arwd/titodb`, **dato
+a mano**.
+
+⭐ **Perché lo scratch era verde, ed è la parte che conta**: `ci-local.sh` non ha
+`manage.py migrate` e **copia** lo schema `django` da dev con `pg_dump
+--schema-only` — che emette anche le ACL: 22 istruzioni di privilegio, misurate.
+Lo scratch aveva un GRANT che la CI non ha: un metro che copia la risposta dalla
+macchina che misura. Stessa forma del `GRANT USAGE` su `maintenance` (09-09).
+
+**Il rimedio** (13-09, nessun changeSet, nessun file in `backend/`):
+
+| Sede | Cosa |
+| --- | --- |
+| `scripts/sql/provision_db_roles.sql` | `django` entra nella whitelist `_app_schemas` (SIUD sulle tabelle, USAGE sulle sequenze, `ALTER DEFAULT PRIVILEGES` per chi migra); `check_db_role_access.sql` smette di escluderlo |
+| `.github/workflows/ci-validate.yaml` | il passo «Privilegi del ruolo applicativo» si sposta **dopo «Django migrate»**: il `GRANT … ON ALL TABLES` è una fotografia e deve vedere entrambi i migratori |
+| `scripts/ci-local.sh` | la copia di `django` è `--no-acl` e passa **prima** del provisioning, che ora la copre come in CI |
+| `db/pgtap/dbops/test-app-postura-schema-django-v1.sql` | presidio: postura (`has_*_privilege`), default di chi possiede `auth_user` (`pg_default_acl`), comportamento (`fn_crea_auth_user` come app scrive). Provato sullo scratch come `zeroerp_app`: 10/11, il test 8 rosso perché il provisioning dello scratch è girato prima della whitelist — verde col default, in transazione annullata |
+| doc | `linee-guida-sql.md` §11.9, `AGENTS.md` (dove si legge l'errore vero di un pgTAP in CI) |
+
+**Resta, e va nell'ordine giusto**:
+
+| | Cosa | Di chi |
+| --- | --- | --- |
+| ⏳ | commit e push DB verso Tito-dev: la corsa dice quanti dei 23 **rientrano** — l'elenco RIENTRATI è la misura, e le righe si tolgono da `baseline-rossi-ci.tsv` a mano, dalla corsa | **Tid** + CI |
+| ⏳ | su **dev**: rilanciare `provision_db_roles.sql` (default `migrator_role=titodb`) — mette il default su `django` e sana anche `documenti`/`pratiche`/`ui`, che oggi non hanno il default per `zeroerp_app` (letto da `pg_default_acl` il 13-09). Fino ad allora il test 8 del presidio è rosso su dev, e dice il vero | **Tid** |
+| ⏳ | sullo scratch: `scripts/ci-local.sh --fresh --ci-apply` — solo così la copia perde le ACL di dev e lo scratch torna un metro | **Tid** |
+| ⚠️ | se qualcuno dei cinque resta rosso in CI **dopo** questo, c'è una terza causa: si legge nel log del container, non si insegue dallo scratch | CI |
+
 ---
 
 *Analisi 12-09-2026 — letture di struttura sul database `zeroerp` (catalogo,

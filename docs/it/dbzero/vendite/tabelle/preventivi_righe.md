@@ -30,6 +30,7 @@
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 | tx_id | uuid | YES |  |
 | natura_vendita_id | bigint | YES |  |
+| data_consegna_richiesta_cliente | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

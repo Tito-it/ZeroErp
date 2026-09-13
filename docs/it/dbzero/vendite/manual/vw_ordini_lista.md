@@ -175,3 +175,24 @@ SELECT numero, data, ragione_sociale_completa, documento_origine_codice
 ---
 
 {% include-markdown "signature-core.md" %}
+
+---
+
+### 🔄 rev 2026-09-13 — la consegna richiesta, in testata
+
+Colonna nuova in coda: **`data_consegna_richiesta_cliente_min`**, la prima data
+di consegna che il cliente ha chiesto sulle righe **attive** dell'ordine
+(`20260913-17`).
+
+* **È un calcolo, non una colonna dell'ordine.** La data di consegna vive
+  sulla riga — una riga può essere pronta e un'altra no — e la testata la
+  espone come minimo delle righe. Una colonna in `vendite.ordini` sarebbe una
+  seconda verità, fuori sincrono al primo cambio di riga.
+* **Vuota = nessuna riga attiva la dichiara.** Le righe spente non contano.
+* **Il nome dice di chi è la data.** Il suffisso `_cliente` segue la regola dei
+  documenti: non marcato = nostro, marcato = della controparte. Sull'ordine
+  d'acquisto la richiesta è nostra e la conferma è del fornitore.
+* È la colonna `746` della lista ordini, disponibile in «Personalizza colonne»;
+  non ordina finché il backend non la mette in whitelist.
+
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 5.2.

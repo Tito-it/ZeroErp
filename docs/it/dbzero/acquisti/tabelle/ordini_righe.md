@@ -30,6 +30,8 @@
 | user_update | text | YES | CURRENT_USER |
 | hash_contenuto | character varying | YES |  |
 | sorgente_uid | uuid | YES |  |
+| data_consegna_richiesta | date | YES |  |
+| data_consegna_confermata_fornitore | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

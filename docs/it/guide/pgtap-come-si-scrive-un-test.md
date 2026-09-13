@@ -257,6 +257,18 @@ metro disomogeneo da cui è nato tutto.
 Quindi: **un rosso in CI non è automaticamente un rosso da te, e viceversa.**
 Prima di inseguirlo, guarda quale baseline lo conosce.
 
+⚠️ **E un `ERRORE_FIXTURE` in CI si legge, non si indovina.** La baseline stampa
+solo l'etichetta: il messaggio vero sta nel **log del container Postgres**, che
+GitHub scarica per intero nel passo «Stop containers» del job
+(`gh run view <run> --job <job> --log`, poi cercare `ERROR:` con lo `STATEMENT:`
+che segue). Il 2026-09-13 quel log ha detto in una riga ciò che due giorni di
+confronto con lo scratch non dicevano: **47 × `permission denied for table
+auth_user`**, cioè 23 file morti per un privilegio che esisteva solo su dev —
+e lo scratch era verde perché **copiava** quel privilegio insieme allo schema
+`django` ([linee-guida-sql §11.9](/linee-guida-sql)). Lo scratch è un metro
+finché riceve la configurazione dalla stessa sede della CI; quando la copia da
+dev, misura dev.
+
 ## Perché una guida non basta
 
 Chi ha scritto queste regole ne ha violata una **poche ore dopo averla

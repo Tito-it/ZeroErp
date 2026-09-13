@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 (passo 1 di 3) — LA COMMESSA LEGGIBILE: tre colonne su vendite.commesse
+#   vendite.commesse.descrizione                    (varchar(255) NULL)
+#   vendite.commesse.data_apertura                  (date, qui NULL e SENZA default)
+#   vendite.commesse.responsabile_risorsa_umana_id  (FK anagrafiche.risorse_umane, NULL)
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 4
+#
+# -- IL BUCO ---------------------------------------------------------------
+#   vendite.commesse ha `codice` e nient'altro di parlante: in una lista non
+#   si capisce che cosa sia. Le tre colonne servono alla commessa COM'E' OGGI
+#   (il contenitore di fatturazione) e restano identiche in tutti e due gli
+#   esiti della sezione 7 dell'analisi commessa: se domani diventasse anche la
+#   testata di produzione, queste tre resterebbero e se ne aggiungerebbero
+#   altre.
+#
+# -- PERCHE' data_apertura NASCE NULL E SENZA DEFAULT, E NON E' PRUDENZA -----
+#   Il valore finale e' NOT NULL DEFAULT script.fn_data_operativa() (mai
+#   now() nudo: la data segue il fuso dell'AZIENDA, non della sessione).
+#   Ma quella funzione e' FAIL-LOUD sul parametro SYSTEM_FUSO_ORARIO, che
+#   nasce in 80_data (20260825-12), e PostgreSQL VALUTA il DEFAULT di un
+#   ADD COLUMN al momento dell'ALTER — per un'espressione non volatile lo
+#   calcola una volta e lo scrive in pg_attribute.attmissingval, anche a
+#   ZERO righe (provato il 2026-09-13 su una tabella temporanea: una
+#   funzione STABLE che solleva fa morire l'ADD COLUMN, mentre un
+#   SET DEFAULT successivo non la chiama). Su un database ricostruito da
+#   zero il migrate morirebbe qui con E_CONFIG_MANCANTE, in 00_schema, prima
+#   che il fuso esista. Su dev il parametro c'e' da agosto e non si vede.
+#   ⇒ Stessa forma di modo_approvvigionamento_id (20260913-05 → -10 → -11):
+#   qui la colonna nuda; in 80_data — dopo il seed del fuso — il valore
+#   iniziale da data_insert (20260913-14) e poi SET DEFAULT + SET NOT NULL
+#   (20260913-15), in due changeSet perche' l'UPDATE lascia eventi trigger
+#   in sospeso (i require_attivo di commesse sono constraint trigger AFTER)
+#   e un ALTER TABLE nella stessa transazione fallisce.
+#   ⚠️ Fino al 2026-09-13 il brief (sezione 4-bis) diceva che data_apertura
+#   «sta in un passo solo: default da funzione, che esiste gia'». La
+#   funzione esiste; e' il suo PARAMETRO a non esistere ancora.
+#
+# -- IL BERSAGLIO DELLA FK: D-A, DECISA DA TID IL 2026-09-12 -----------------
+#   anagrafiche.risorse_umane, non soggetti_ruoli: e' la convenzione di casa
+#   per «una persona interna che governa o e' assegnata» (pratiche.pratiche,
+#   pratiche.flussi, pratiche.competenze_flussi — tutte e tre). Una FK verso
+#   soggetti_ruoli avrebbe ammesso come responsabile qualunque ruolo, un
+#   cliente o un fornitore compresi. ON UPDATE CASCADE come fk_pratiche_risorsa_umana
+#   e fk_flussi_risorsa_umana (la terza sorella non lo dichiara).
+#
+# -- CHE COSA NASCE DA SOLO A ci_apply, E NESSUN CHANGESET LO SCRIVE ---------
+#   risorse_umane ha `attivo`, quindi dbops.fn_run_automations_attivo genera:
+#     trg_risorse_umane_a10_commesse_block_deact_upd            (padre, BEFORE UPDATE OF attivo)
+#     trg_commesse_a10_risorse_umane_require_attivo_ins_upd      (figlio, AFTER, DEFERRABLE)
+#   Il block sul padre e' il QUARTO della sua specie su risorse_umane
+#   (pratiche, flussi, competenze_flussi): una persona responsabile di una
+#   commessa — anche chiusa, perche' commesse non ha `attivo` e il generato
+#   conta tutti i figli — non si disattiva finche' lo e'. Dichiarato, non
+#   corretto: e' la postura che quella tabella ha gia'.
+#   ⛔ Niente DDL ne' preCondition su quei nomi (linee-guida-sql 11.5): il
+#   pgTAP di P-8 li asserisce a ci_apply avvenuto.
+#
+# -- L'INDICE DELLA FK: un no, scritto ------------------------------------
+#   dbops.fk_index_policy: fk_commesse_risorse_umane a consentito=false, nel
+#   CSV dedicato del cantiere (80_data/sql/catalogo/fk_index_policy_approvvigionamento.csv,
+#   loader 20260913-12 runOnChange): nessuna query dell'applicazione entra
+#   oggi da questa colonna; il controllo referenziale scatta solo quando si
+#   disattiva una persona. Si decide sulla query, non sulla FK (8.7).
+#
+# -- RLS E STORICO -----------------------------------------------------------
+#   vendite.commesse ha la policy rls_commesse_ef_whitelist (ENABLE, no
+#   FORCE): tre colonne in piu' non la toccano, e il migratore-proprietario
+#   non ne e' soggetto. La shadow di storico serializza in JSONB (to_jsonb),
+#   nessuna colonna da allineare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260913-13-alter-commesse-add-descrizione-data-apertura-responsabile-mctit.yaml
+
+  - changeSet:
+      id: 20260913-13-alter-commesse-add-descrizione-data-apertura-responsabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse: descrizione (varchar 255 NULL), data_apertura (date, qui NULL e
+        senza default: fn_data_operativa() e' fail-loud sul fuso, seminato in 80_data, e
+        l'ADD COLUMN valuterebbe il DEFAULT all'ALTER — valore iniziale e NOT NULL in
+        20260913-14/-15) e responsabile_risorsa_umana_id (FK anagrafiche.risorse_umane,
+        D-A decisa da Tid il 2026-09-12). La coppia ATTIVO nasce a ci_apply.
+        Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 4 (P-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: risorse_umane
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: commesse
+                    columnName: data_apertura
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse
+                  ADD COLUMN descrizione                   VARCHAR(255) NULL,
+                  ADD COLUMN data_apertura                 DATE NULL,
+                  ADD COLUMN responsabile_risorsa_umana_id BIGINT NULL;
+
+              ALTER TABLE vendite.commesse
+                  ADD CONSTRAINT fk_commesse_risorse_umane
+                  FOREIGN KEY (responsabile_risorsa_umana_id)
+                  REFERENCES anagrafiche.risorse_umane (id)
+                  ON UPDATE CASCADE
+                  ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN vendite.commesse.descrizione IS
+                  'L''oggetto della commessa, in parole: la sola colonna parlante accanto '
+                  'a codice. NULL = non descritta. Serve alla commessa com''e'' oggi (il '
+                  'contenitore di fatturazione) e resta identica qualunque forma prenda '
+                  'la produzione. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, '
+                  'sezione 4.';
+              COMMENT ON COLUMN vendite.commesse.data_apertura IS
+                  'Quando la commessa e'' stata aperta. Valore finale NOT NULL DEFAULT '
+                  'script.fn_data_operativa() (20260913-15): mai now() nudo, la data segue '
+                  'il fuso dell''azienda e non della sessione. Per le commesse gia'' '
+                  'esistenti all''apply il valore iniziale e'' data_insert nel fuso '
+                  'dell''azienda (20260913-14, deciso da Tid il 2026-09-02): non e'' la '
+                  'data di apertura reale, ma e'' un fatto e non un''invenzione. Nasce NULL '
+                  'e senza default in 20260913-13 per la timeline delle fasi: '
+                  'fn_data_operativa() e'' fail-loud sul parametro SYSTEM_FUSO_ORARIO, che '
+                  'e'' un seed di 80_data, e PostgreSQL valuta il DEFAULT di un ADD COLUMN '
+                  'all''ALTER. NON e'' competenza_dal: quella e'' competenza fiscale.';
+              COMMENT ON COLUMN vendite.commesse.responsabile_risorsa_umana_id IS
+                  'Chi governa la commessa: una risorsa umana (anagrafiche.risorse_umane), '
+                  'la convenzione di casa per una persona interna (pratiche.pratiche, '
+                  'flussi, competenze_flussi). Deciso da Tid il 2026-09-12 (D-A) al posto '
+                  'di soggetti_ruoli, che avrebbe ammesso come responsabile qualunque '
+                  'ruolo. NULL = nessun responsabile. A ci_apply nasce la coppia ATTIVO: '
+                  'il block sul padre (trg_risorse_umane_a10_commesse_block_deact_upd) '
+                  'impedisce di disattivare una persona finche'' e'' responsabile di '
+                  'qualunque commessa, anche chiusa — commesse non ha attivo — ed e'' la '
+                  'postura che risorse_umane ha gia'' da pratiche; il require sul figlio '
+                  '(AFTER, DEFERRABLE) impedisce di puntare a una risorsa spenta. Indice: '
+                  'dbops.fk_index_policy, consentito=false (nessuna query entra da qui).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse
+                  DROP CONSTRAINT IF EXISTS fk_commesse_risorse_umane;
+              ALTER TABLE vendite.commesse
+                  DROP COLUMN IF EXISTS responsabile_risorsa_umana_id,
+                  DROP COLUMN IF EXISTS data_apertura,
+                  DROP COLUMN IF EXISTS descrizione;
