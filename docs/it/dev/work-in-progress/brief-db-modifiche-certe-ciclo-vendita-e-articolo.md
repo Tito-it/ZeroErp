@@ -17,8 +17,17 @@
 > scritta lo stesso giorno. Ha prodotto **tre** voci che passano lo stesso filtro
 > (§3-bis, §7, §8) e ha allargato la motivazione del Blocco B — vedi §1.
 >
-> **Stato:** 🔵 **APERTO — piano scritto, nulla applicato.** Nessun changeSet
-> ancora creato. ⛔ Niente si applica senza autorizzazione esplicita di Tid.
+> **Stato:** 🟡 **IN CORSO — P-1, P-2, P-3 APPLICATI il 2026-09-13 (ore 01:00);
+> P-4, P-5, P-6, P-7 SCRITTI E PROVATI nella stessa notte, NON applicati.**
+> Nove changeSet `20260913-04` → `-12` `EXECUTED` in `databasechangelog` (§6-bis).
+> Otto changeSet nuovi `20260913-13` → `-20` più due append a CSV, provati con
+> l'SQL reso da Liquibase eseguito intero in `BEGIN … ROLLBACK` sul DB di
+> sviluppo: **§6-ter**, da leggere per primo. ⚠️ La coppia ATTIVO su
+> `articoli`/`modi_approvvigionamento` (e quella su `commesse`/`risorse_umane`
+> che P-4 fa nascere) e il lock su `codice_interno` arrivano con `ci_apply`.
+> Restano **P-8** (pgTAP) e **P-9** (opzionale). ⛔ Niente si applica senza
+> autorizzazione esplicita di Tid. 🔴 Emerso in P-4 un **tredicesimo punto**
+> (§10.2): `data_apertura` non poteva nascere con il default in `00_schema`.
 >
 > 🔴 **Verificato il 2026-09-12 contro il DB vivo (doc auto-gen) e contro ciò che
 > è entrato in esercizio fra il 01-09 e il 12-09.** I tre blocchi reggono —
@@ -531,6 +540,31 @@ rifanno. **Non è un rischio: è una comodità che abbiamo.**
 > trigger di `commesse` — audit, `tx_id` e **storico**: ogni commessa esistente
 > riceve una versione shadow. Su dati di test è indifferente, ma va saputo
 > leggendo `storico.commesse` dopo l'apply.
+>
+> 🔴 **Corretto il 2026-09-13 scrivendo P-4: FALSO anche per `data_apertura`,
+> ed è il tredicesimo punto (§10.2).** La funzione esiste; è il suo
+> **parametro** a non esistere ancora. `script.fn_data_operativa()` è
+> fail-loud su `SYSTEM_FUSO_ORARIO`, che è un seed di `80_data`
+> (`20260825-12`) — e PostgreSQL **valuta il `DEFAULT` di un `ADD COLUMN` al
+> momento dell'ALTER**: per un'espressione non volatile lo calcola una volta e
+> lo scrive in `pg_attribute.attmissingval`, **anche a zero righe**. Provato
+> sul DB di sviluppo su una tabella temporanea: una funzione `STABLE` che
+> solleva fa morire l'`ADD COLUMN`; un `SET DEFAULT` successivo non la chiama.
+> ⇒ In CI, in `00_schema`, il migrate sarebbe morto con `E_CONFIG_MANCANTE`
+> prima che il fuso esistesse; su dev il parametro c'è da agosto e non si vede.
+> **Forma applicata, la stessa di `modo_approvvigionamento_id`**: colonna nuda
+> in `00_schema` (`20260913-13`), valore iniziale da `data_insert` **nel fuso
+> dell'azienda** in `80_data` (`-14`, dopo il seed del fuso per nome), poi
+> `SET DEFAULT` + `SET NOT NULL` (`-15`, transazione separata: i
+> `require_attivo` di `commesse` sono constraint trigger `AFTER` e l'UPDATE
+> lascia eventi in sospeso). ⭐ Il precedente era già scritto: `20260825-08` su
+> `vendite.fatture.data` fa `SET DEFAULT`, non `ADD COLUMN … DEFAULT`.
+> ⚠️ E il cast di `data_insert` **non è `::date` nudo**: è
+> `AT TIME ZONE <SYSTEM_FUSO_ORARIO>`, letto come lo legge `fn_data_operativa`
+> (default nudo, non la cascata di override) — altrimenti la data iniziale
+> avrebbe seguito il fuso della sessione di Liquibase, cioè il difetto che quella
+> funzione chiude (DB-2 del brief numerazione). Misurato sulla prova: 49 shadow
+> su 66 commesse, perché 17 hanno `storicizza = false`.
 
 ### Quel che resta, ed è la parte che i dati non risolvono
 
@@ -586,6 +620,45 @@ merce da spedire». Il residuo e la soglia dell'impegno vivono in
 ricalcolarli, cioè creare una seconda verità sul residuo. ⛔ **NULL quando
 `da_spedire` è NULL o zero**: «non è in ritardo» e «non c'è niente da spedire»
 sono due cose diverse, e quella vista ha già la disciplina di non confonderle.
+
+> ✅ **Scritto il 2026-09-13 (`20260913-18`), con due scelte da dichiarare —
+> una delle quali il brief non aveva deciso.**
+>
+> 1. **Contro quale data si misura il ritardo.** Qui sopra c'è scritto «oggi >
+>    data richiesta»; il `COMMENT` di `data_consegna_confermata` (`20260913-06`,
+>    già applicato) dice che è *lei*, col residuo, a dare il ritardo. Le due
+>    frasi dissentono, e si conciliano sul modello: **si è in ritardo rispetto
+>    a ciò a cui ci si è impegnati** — se a una richiesta per il 1° abbiamo
+>    risposto «il 15», il 10 non siamo in ritardo — e finché non ci si è
+>    impegnati l'unica attesa è quella del cliente. ⇒ La data di riferimento è
+>    `COALESCE(data_consegna_confermata, data_consegna_richiesta_cliente)`. ⚠️
+>    È una **scelta di Tid da confermare**: se preferisce la sola richiesta,
+>    cambia un `COALESCE` in un changeSet nuovo. Il pgTAP di P-8 la inchioda
+>    nella forma che resterà.
+> 2. **La polarità, con un valore in più.** `NULL` = non si applica
+>    (`da_spedire` NULL o zero, oppure nessuna data dichiarata); **`0` = c'è da
+>    spedire e non è tardi**; `N > 0` = giorni di ritardo. Senza lo zero, «in
+>    tempo» e «niente da spedire» si sarebbero letti uguali.
+>
+> ⭐ **Una sola verità sul residuo, davvero.** `giorni_ritardo` legge
+> `da_spedire`, e in una select list una colonna non può leggerne un'altra:
+> la formula del residuo è passata in una `CROSS JOIN LATERAL (… ) ds` — come
+> già `v.misurabile` e `imp.impegnata` — e le **due** colonne leggono la stessa
+> espressione. `da_spedire` resta identica per posizione, nome e tipo.
+>
+> ⚠️ `CURRENT_DATE`, non `script.fn_data_operativa()`: è un indicatore calcolato
+> e non persistito, come `anzianita_giorni` di `vw_dash_backlog_documenti` e
+> `is_scaduta` di `vw_offerte_commerciali_lista`; la convenzione «mai `now()`
+> nudo» è per le date documento che si **scrivono**. In una vista la funzione
+> sarebbe una chiamata plpgsql per riga (legge `config.parameters`), per uno
+> scarto di un giorno fra le 00:00 e le 02:00 locali su un contatore di giorni.
+> Dichiarato nel `COMMENT` della vista.
+>
+> ⭐ Sulla lista ordini il `min()` della testata è un **`LEFT JOIN LATERAL`**
+> per riga (`20260913-17`), servito da `uq_ordrig_riga_nr (ordine_id, riga_nr)`
+> per prefisso — non un `GROUP BY` su tutte le righe: la vista serve anche il
+> dettaglio per id. Provato con un caso costruito: due righe, `min` = la più
+> bassa; spenta quella, il `min` sale — le righe non attive non contano.
 
 ⚠️ **Due trappole tecniche su queste viste, entrambe verificate:**
 
@@ -670,6 +743,44 @@ componente. L'unica cosa che serve dall'altro lato sono le **traduzioni**.
 > `scripts/gen_seed_lista.py --verifica-ordinamento <codice>` confronta le due
 > sedi: una colonna `ordinabile=t` fuori whitelist è *una freccia che non
 > ordina*. Chi semina `t` lo scrive nella §5.5 come voce BE, o semina `f`.
+>
+> ✅ **Seminate il 2026-09-13 (P-7): righe `746` → `749` di `lista_colonna.csv`,
+> append a mano, `git diff --numstat` = `4 0`.** Il mirror `20260806-15`
+> (`runOnChange`) le carica: provato rieseguendo l'upsert su **tutte** le 748
+> righe in transazione annullata — nessuna riga irriscrivibile, il trigger che
+> valida `campo_sorgente` contro la vista le ha accettate.
+>
+> | id | lista | `codice` | `campo_sorgente` | `attivo` | `ordinabile` | chiave i18n |
+> | --- | --- | --- | --- | --- | --- | --- |
+> | 746 | 7 | `data_consegna_richiesta_cliente_min` | idem | **t** | f | `vendite.ordini.col_data_consegna_richiesta_cliente_min` |
+> | 747 | 26 | `modo_approvvigionamento` | `modo_approvvigionamento_descrizione` | **f** | f | `catalogo.col_modo_approvvigionamento` |
+> | 748 | 26 | `gestito_a_magazzino` | idem | **f** | f | `catalogo.col_gestito_a_magazzino` |
+> | 749 | 26 | `lead_time_giorni` | idem | **f** | f | `catalogo.col_lead_time_giorni` |
+>
+> * `ordinabile = f` su **tutte e quattro**: nessuna è in whitelist
+>   (`_ORDER_COLS_ORDINI`, `ARTICOLI_ORDER_COLUMNS` — che oggi non ordina
+>   nemmeno tipologia o gruppo). `--verifica-ordinamento` è verde su entrambe le
+>   liste. Accenderla è la modifica in due file della nota qui sopra.
+> * `filtrabile = f` sulla 746: la lista ordini filtra per data **documento**
+>   (`data_da`/`data_a` nel BE), non per questa. Il flag oggi non è letto da
+>   nessun componente FE (solo dal drawer di amministrazione), quindi è
+>   dichiarativo — ma un `t` prometterebbe un filtro che il BE non ha.
+> * **Il preset di default non è stato toccato** (`lista_preset_colonna.csv`):
+>   `ui.fn_resolve_lista_config` fonde le colonne nuove del catalogo con
+>   `visibile = false`, quindi la 746 compare in «Personalizza colonne» e
+>   l'operatore la accende. Metterla nella vista standard di tutti è una scelta
+>   di UX (di Tid), non un fatto del DB.
+> * 🔴 **`scripts/check_i18n_keys.py` è rosso su `746` finché il FE non aggiunge
+>   la chiave** (le tre a `attivo = f` non le conta). Prima dell'append il
+>   cancello era verde; dopo, `[X] 1 INTESTAZIONI DI COLONNA senza traduzione`.
+>   La CI frontend (`ci-frontend.yaml`) gira solo su path `frontend/**`, quindi
+>   una PR solo-DB non la vede — la **prima PR FE** sì. È lo stesso meccanismo
+>   con cui il §12.3 delle linee guida fa arrivare le `reason_key` al FE, ed è il
+>   precedente del 09-08 (`col_riferimento`, 745): CSV e `it.json`/`en.json`
+>   nello **stesso** commit, ma quello era un commit FE. ⇒ O Tid aggiunge le
+>   due righe ai locales nel commit di questo brief, o la voce sta in §5.5 e la
+>   prossima PR FE la chiude. Non l'ho fatto io: `frontend/` è fuori perimetro
+>   del ramo DB.
 
 ### 5.4 Le chiavi i18n dichiarate qui
 
@@ -756,7 +867,7 @@ config.modi_approvvigionamento.non_applicabile
 > | # | Superficie | Che cosa c'è da fare, davvero | Dove |
 > | --- | --- | --- | --- |
 > | 1 | **Righe ordine/preventivo/ordine d'acquisto — lettura** | `list_righe` e `get_riga` proiettano colonne esplicite: le due date vanno **aggiunte alla SELECT**, o il form di riga non le vede mai | `vendite/db/ordini_repository.py`, `preventivi_repository.py`, l'omologo di `acquisti` |
-> | 1-bis | **Righe — scrittura** | `create_riga` ha l'`INSERT` con l'elenco colonne; `update_riga` passa da `execute_dynamic_update` (whitelist del chiamante); nel service il parsing con `optional_iso_date` — una data malformata è un `400`, non un `500` | stessi file + `*_service.py` |
+> | 1-bis | **Righe — scrittura** | `create_riga` ha l'`INSERT` con l'elenco colonne; `update_riga` passa da `execute_dynamic_update` (whitelist del chiamante); nel service il parsing con `optional_iso_date` — una data malformata è un `400`, non un `500`. 🔴 **E c'è un fatto di modello da decidere lato BE** (*letto il 13-09 in `ordini_service`*): `_STATI_RIGHE_MODIFICABILI = {"DRAFT"}` — le righe si scrivono **solo in bozza**. `data_consegna_confermata` è «quando ci si impegna», cioè si decide **alla conferma** (carico e scarico §5-bis) e può cambiare **dopo** (il fornitore ritarda). Il DB non mette nessun guard di stato su questa colonna, di proposito; ma con `update_riga` com'è oggi la promessa si scrive solo prima di confermare. ⇒ O il dialog di conferma raccoglie le date nello stesso atto della transizione, o serve un **verbo suo** per la data confermata su ordine `CONFERMATO` (stampo: gli override di prezzo). Non è di questo brief: è dichiarato perché non venga scoperto in collaudo. ✅ *Verificato il 13-09 nella prova di P-6*: l'`UPDATE` delle due date su una riga di ordine **impegnato** (riga 21, `NON_SPEDITA`) passa a DB — nessun guard di stato le ferma, com'è voluto; il limite alla bozza è solo del BE | stessi file + `*_service.py` |
 > | 1-ter | **Form di riga (FE)** | due `DatePicker` nel form della riga (`RigheMasterDetailTable` dei tre domini), chiavi i18n di §5.4 | `vendite/components/*RigheDrawer*`, acquisti |
 > | 2 | **Articolo — lettura** | ⛔ `ARTICOLI_DETAIL_COLUMNS` è una tupla esplicita di 49 nomi: **le tre colonne nuove non escono** finché non ci sono (§5.3, riquadro). Poi `ARTICOLI_CREATE_COLUMNS` (da cui `_UPDATE_COLUMNS` deriva) per la scrittura e, se `ordinabile=t`, `ARTICOLI_ORDER_COLUMNS` | `catalogo/db/catalogo_repository.py` |
 > | 3 | **Lookup** | ⭐ **non è un endpoint**: è **una riga** in `_REL_CONSENTITE` (`core/db/dbops_repository.py`, la whitelist del lookup generico) + `<LookupSelect rel="config.modi_approvvigionamento">` nel drawer — esattamente com'è fatto `config.nature_vendita` | `dbops_repository.py`, `ArticoloDrawer.vue` |
@@ -796,13 +907,13 @@ non vengono da qui.
 
 | # | Passo | Fase |
 | --- | --- | --- |
-| **P-1** | `config.modi_approvvigionamento`: tabella + seed CSV + riga in `fk_index_policy` per la FK che nasce in P-2. 🔴 *2026-09-12*: **niente seed del lock** — `codice_interno` è implicito (§3.2, riquadro); la coppia ATTIVO nasce da `ci_apply` | `00_schema` + `80_data` |
-| **P-2** | `catalogo.articoli`: `gestito_a_magazzino` e `lead_time_giorni` in un passo; `modo_approvvigionamento_id` **in due** — 🔴 *2026-09-12*: colonna nullable + FK in `00_schema`, poi in `80_data` **dopo** il seed di P-1: id di `ACQUISTO` risolto per `codice_interno`, backfill, `SET DEFAULT`, `SET NOT NULL` (forma di `20260609-04`, §3.3 riquadro). ✅ default `ACQUISTO` deciso 2026-09-02 | `00_schema` + `80_data` |
-| **P-3** | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date. ✅ nomi da **D-16** (§2.2), decisa | `00_schema` |
-| **P-4** | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_risorsa_umana_id` → `anagrafiche.risorse_umane`. ✅ **§4-bis**: `data_apertura` **NOT NULL**, valore iniziale da `data_insert` (deciso 2026-09-02). ✅ *2026-09-12*: bersaglio della FK deciso (**D-A**, §4); + riga in `fk_index_policy`; la coppia ATTIVO nasce da `ci_apply` e si asserisce in P-8, non con DDL | `00_schema` (+ `80_data` per la policy) |
-| **P-5** | `fn_push_preventivo_a_ordine` porta avanti la data richiesta (+ toglie il nome morto nel commento). 🔴 *2026-09-12*: la legge dalla **quarta vista** di P-6, non con un `JOIN` suo | `20_code` |
-| **P-6** | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` + 🔴 `vendite.vw_preventivi_righe_smistabili_ordine` (*2026-09-12*, §5.2). ⚠️ `security_invoker` ri-specificata sulle tre di `vendite`, **non** aggiunta a quella di `catalogo` | `20_code` |
-| **P-7** | `ui.lista_colonna`: le righe nuove, append al CSV. 🔴 *2026-09-12*: le tre della lista 26 nascono **`attivo=f`** (§5.3 riquadro); `ordinabile=t` solo se il BE estende la whitelist nello stesso giro | `80_data` |
+| **P-1** ✅ *applicato il 13-09 (§6-bis)* | `config.modi_approvvigionamento`: tabella + seed CSV + riga in `fk_index_policy` per la FK che nasce in P-2. 🔴 *2026-09-12*: **niente seed del lock** — `codice_interno` è implicito (§3.2, riquadro); la coppia ATTIVO nasce da `ci_apply` | `00_schema` + `80_data` |
+| **P-2** ✅ *applicato il 13-09 (§6-bis)* | `catalogo.articoli`: `gestito_a_magazzino` e `lead_time_giorni` in un passo; `modo_approvvigionamento_id` **in due** — 🔴 *2026-09-12*: colonna nullable + FK in `00_schema`, poi in `80_data` **dopo** il seed di P-1: id di `ACQUISTO` risolto per `codice_interno`, backfill, `SET DEFAULT`, `SET NOT NULL` (forma di `20260609-04`, §3.3 riquadro). ✅ default `ACQUISTO` deciso 2026-09-02 | `00_schema` + `80_data` |
+| **P-3** ✅ *applicato il 13-09 (§6-bis)* | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date. ✅ nomi da **D-16** (§2.2), decisa | `00_schema` |
+| **P-4** ✅ *scritto e provato il 13-09 (§6-ter)* | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_risorsa_umana_id` → `anagrafiche.risorse_umane`. ✅ **§4-bis**: `data_apertura` **NOT NULL**, valore iniziale da `data_insert` (deciso 2026-09-02). ✅ *2026-09-12*: bersaglio della FK deciso (**D-A**, §4); + riga in `fk_index_policy`; la coppia ATTIVO nasce da `ci_apply` e si asserisce in P-8, non con DDL. 🔴 *2026-09-13*: `data_apertura` **in tre passi** come `modo_approvvigionamento_id` — il `DEFAULT` da funzione non può stare nell'`ADD COLUMN` (§4-bis, riquadro; §10.2 punto 13) | `00_schema` + `80_data` |
+| **P-5** ✅ *scritto e provato il 13-09 (§6-ter)* | `fn_push_preventivo_a_ordine` porta avanti la data richiesta (+ toglie il nome morto nel commento). 🔴 *2026-09-12*: la legge dalla **quarta vista** di P-6, non con un `JOIN` suo | `20_code` |
+| **P-6** ✅ *scritto e provato il 13-09 (§6-ter)* | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` + 🔴 `vendite.vw_preventivi_righe_smistabili_ordine` (*2026-09-12*, §5.2). ⚠️ `security_invoker` ri-specificata sulle tre di `vendite`, **non** aggiunta a quella di `catalogo`. ⚠️ *2026-09-13*: `giorni_ritardo` contro `COALESCE(confermata, richiesta)` — scelta da confermare (§5.2, riquadro) | `20_code` |
+| **P-7** ✅ *scritto e provato il 13-09 (§6-ter)* | `ui.lista_colonna`: le righe nuove, append al CSV. 🔴 *2026-09-12*: le tre della lista 26 nascono **`attivo=f`** (§5.3 riquadro); `ordinabile=t` solo se il BE estende la whitelist nello stesso giro. *2026-09-13*: righe 746-749, `ordinabile=f` su tutte; `check_i18n_keys.py` rosso sulla 746 finché il FE non traduce (§5.3) | `80_data` |
 | **P-8** | pgTAP (§7). 🔴 *2026-09-12*: le righe sono sotto RLS, il trigger «riga spenta» viene da `ci_apply` — vedi il riquadro di §7 | `db/pgtap` |
 | **P-9** | ⚠️ **OPZIONALE, da confermare (§3-bis)** — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente`. 🔴 *2026-09-12*: + `fn_crea_famiglia_documento` (oggi la pretende), + BE/FE (§3-bis censimento) | `00_schema` + `20_code` |
 
@@ -819,6 +930,138 @@ Liquibase ignora.
 (`brief-db-modifiche-certe-ciclo-vendita-e-articolo`), **mai il path
 `work-in-progress/`**: il documento un giorno si sposterà, e il riferimento deve
 sopravvivere al trasloco.
+
+## 6-bis. ✅ P-1, P-2, P-3 — scritti, provati e APPLICATI il 2026-09-13
+
+> ✅ **Applicati da Tid il 2026-09-13 alle 01:00** sul DB di sviluppo: i nove
+> changeSet sono `EXECUTED` in `databasechangelog` (`20260913-04` → `-12`, in
+> ordine). Letto a valle: 4 righe in `config.modi_approvvigionamento`, **0**
+> articoli con `modo_approvvigionamento_id` NULL, le cinque colonne data
+> presenti. ⚠️ `trg_articoli_a10_modi_approvvigionamento_require_attivo_ins_upd`
+> e il gemello sul padre **non esistono ancora** (`pg_trigger`): arrivano con
+> `ci_apply`, e finché non gira il pgTAP di P-8 non li può asserire. Da qui in
+> poi i file `-04 → -12` **non si toccano più**: un cambio va in un changeSet
+> nuovo.
+
+| File | Fase | Passo | Cosa |
+| --- | --- | --- | --- |
+| `00_schema/config/20260913-04-create-modi-approvvigionamento` | `00_schema` | P-1 | la tabella, sulla forma di `nature_vendita`; CHECK `codice_interno` non vuoto; **nessun** seed del lock (implicito), **nessun** GRANT (ADP del loop) |
+| `00_schema/catalogo/20260913-05-alter-articoli-add-approvvigionamento` | `00_schema` | P-2 (1/3) | `modo_approvvigionamento_id` **nullable** + FK `fk_articoli_modi_approvvigionamento`; `gestito_a_magazzino` NOT NULL false; `lead_time_giorni` + CHECK `>= 0` |
+| `00_schema/vendite/20260913-06-alter-ordini-righe-add-date-consegna` | `00_schema` | P-3 | le due date su `vendite.ordini_righe` |
+| `00_schema/vendite/20260913-07-alter-preventivi-righe-add-data-consegna` | `00_schema` | P-3 | la richiesta su `vendite.preventivi_righe` |
+| `00_schema/acquisti/20260913-08-alter-acquisti-ordini-righe-add-date-consegna` | `00_schema` | P-3 | le due date su `acquisti.ordini_righe`, attore invertito |
+| `80_data/changelog/20260913-09-seed-modi-approvvigionamento` + `sql/config/modi_approvvigionamento.csv` | `80_data` | P-1 | i quattro modi, mirror `loadUpdateData` |
+| `80_data/changelog/20260913-10-backfill-articoli-modo-approvvigionamento` | `80_data` | P-2 (2/3) | NULL → ACQUISTO, id risolto per `codice_interno`, `DECLARE` con `%TYPE`; **solo DML** |
+| `80_data/changelog/20260913-11-alter-articoli-modo-approvvigionamento-default-notnull` | `80_data` | P-2 (3/3) | `SET DEFAULT` + `SET NOT NULL`, transazione separata dal backfill (eventi trigger in sospeso) |
+| `80_data/changelog/20260913-12-upsert-fk-index-policy-approvvigionamento` + `sql/catalogo/fk_index_policy_approvvigionamento.csv` | `80_data` | P-1/P-2 | il **no** all'indice, scritto; CSV dedicato con loader suo (non si sveglia il mirror di gennaio). La riga di P-4 entrerà nello stesso CSV |
+
+**Come è stato provato**, ed è la forma da ripetere per P-4 → P-9:
+
+1. i cinque cancelli statici della CI (`guardrail_sql_letterali`, `_run_on_change`,
+   `_precondition_seed`, `_ddl_su_trigger_automazione`, `_grant_ruolo_batch`): verdi;
+2. `scripts/liquibase5.sh … --url=offline:postgresql updateSQL` su una **copia**
+   dei nove file senza `preConditions` (non valutabili offline), con la stessa
+   struttura di cartelle perché i CSV sono relativi al changelog: l'SQL **reso da
+   Liquibase**, non riscritto — commenti, `DO` e il blocco `UPDATE … IF not found
+   THEN INSERT` dei due `loadUpdateData` compresi;
+3. i nove SQL concatenati nell'ordine di esecuzione dentro `BEGIN … ROLLBACK`,
+   eseguiti come proprietario sul DB di sviluppo con `ON_ERROR_STOP=1`. ⚠️ **Una
+   riga di prova in più**, dichiarata: `SET CONSTRAINTS ALL IMMEDIATE` fra `-10` e
+   `-11`, che emula il commit che Liquibase fa fra i due changeSet — senza,
+   l'`ALTER TABLE` muore per gli eventi trigger in sospeso, cioè esattamente la
+   ragione per cui sono due file;
+4. asserzioni prima del `ROLLBACK`: 4 modi; **257 articoli** backfillati e 0 senza
+   modo; `attnotnull` e default (`1`, `false`) letti da `pg_attribute`; le cinque
+   date presenti; la riga di policy caricata; e i cinque rifiuti attesi — CHECK sul
+   negativo (`23514`), FK su un modo inesistente (`23503`), NOT NULL (`23502`), CHECK
+   sul `codice_interno` vuoto — più un `INSERT` senza modo che prende `ACQUISTO`,
+   com'è la strada del mirror `articoli.csv`;
+5. `liquibase validate` offline sui **file veri**: *No validation errors found*
+   per tutti e nove;
+6. dopo il `ROLLBACK`: tabella, colonne, date e riga di policy **assenti** sul DB di
+   sviluppo. Nulla è stato applicato.
+
+⚠️ **Che cosa la prova NON copre, dichiarato**: la coppia ATTIVO su
+`articoli`/`modi_approvvigionamento` e il lock su `codice_interno` nascono a
+`ci_apply` — si vedranno al primo `make db-ci-apply` dopo l'apply, e li asserisce
+il pgTAP di P-8. E i `preConditions` sono stati letti, non eseguiti: sul DB di
+sviluppo passano per costruzione (`not columnExists`, `tableExists`).
+
+⚠️ La numerazione `-04 → -12` è stata verificata sul filesystem prima di ogni
+file: `-01 → -03` di oggi sono di un altro cantiere.
+
+## 6-ter. ✅ P-4, P-5, P-6, P-7 — scritti e provati il 2026-09-13, NON applicati
+
+> Otto changeSet `20260913-13` → `-20` e **due append a CSV** che risvegliano
+> due mirror `runOnChange` già in esercizio. Nessuno è applicato: la
+> `databasechangelog` si ferma a `-12`. ⛔ Si applicano solo su autorizzazione
+> esplicita di Tid. Dopo l'apply i file `-13 → -20` diventano immutabili.
+
+| File | Fase | Passo | Cosa |
+| --- | --- | --- | --- |
+| `00_schema/vendite/20260913-13-alter-commesse-add-descrizione-data-apertura-responsabile` | `00_schema` | P-4 (1/3) | `descrizione` varchar(255) NULL; `data_apertura` date **NULL e senza default** (§4-bis, riquadro del 13-09); `responsabile_risorsa_umana_id` + FK `fk_commesse_risorse_umane` (`ON UPDATE CASCADE`, come `fk_pratiche_risorsa_umana` e `fk_flussi_risorsa_umana`); tre `COMMENT` |
+| `80_data/changelog/20260913-14-backfill-commesse-data-apertura` | `80_data` | P-4 (2/3) | `data_apertura ← (data_insert AT TIME ZONE SYSTEM_FUSO_ORARIO)::date` dove NULL; **solo DML**; il fuso letto come lo legge `fn_data_operativa` (default nudo), fail-loud sulle tre forme di guasto; su un DB nuovo esce prima di leggerlo |
+| `80_data/changelog/20260913-15-alter-commesse-data-apertura-default-notnull` | `80_data` | P-4 (3/3) | `SET DEFAULT script.fn_data_operativa()` + `SET NOT NULL`, transazione separata dal backfill (eventi trigger in sospeso) |
+| `80_data/sql/catalogo/fk_index_policy_approvvigionamento.csv` (+1 riga) | `80_data` | P-4 | `fk_commesse_risorse_umane`, `consentito = false`, `dll_command` col nome canonico `ix_commesse_responsabile_risorsa_umana_id`; la carica il loader `20260913-12`, che è `runOnChange` |
+| `20_code/vendite/20260913-16-update-vw-preventivi-righe-smistabili-ordine-data-consegna` | `20_code` | P-6 | `+ data_consegna_richiesta_cliente` in coda; `security_invoker=on` ri-specificata. **Prima** della funzione, per numero |
+| `20_code/vendite/20260913-17-update-vw-ordini-lista-data-consegna-min` | `20_code` | P-6 | `+ data_consegna_richiesta_cliente_min` via `LEFT JOIN LATERAL` sulle righe attive; `security_invoker=on` ri-specificata |
+| `20_code/vendite/20260913-18-update-vw-situazione-merce-ordine-date-consegna-ritardo` | `20_code` | P-6 | `+ data_consegna_richiesta_cliente`, `data_consegna_confermata`, `giorni_ritardo`; la formula di `da_spedire` in una `LATERAL` letta da entrambe; `security_invoker=on` ri-specificata |
+| `20_code/catalogo/20260913-19-update-vw-articoli-dettaglio-approvvigionamento` | `20_code` | P-6 | `+ modo_approvvigionamento_id`, `_codice_interno`, `_descrizione` (`LEFT JOIN config.modi_approvvigionamento`), `gestito_a_magazzino`, `lead_time_giorni`; **nessuna** `security_invoker`; primo `COMMENT ON VIEW` della vista |
+| `20_code/vendite/20260913-20-update-fn-push-preventivo-a-ordine-data-consegna` | `20_code` | P-5 | corpo dalla funzione viva (= doc auto-gen, diff verificato): `+ v.data_consegna_richiesta_cliente` nel cursore e nell'`INSERT`; `data_consegna_confermata` resta NULL; il commento del passo 4 nomina `trgfn_ordini_gen_numero`. Firma invariata |
+| `80_data/sql/ui/lista_colonna.csv` (+4 righe, `746 → 749`) | `80_data` | P-7 | §5.3, riquadro del 13-09; le carica il mirror `20260806-15`, che è `runOnChange` |
+
+**Come è stato provato** — la forma di §6-bis, punto per punto:
+
+1. i cinque cancelli statici della CI: verdi. In più: le due `grep` del §6c
+   (nessun `codice_interno AS *_codice`), `gen_seed_lista.py
+   --verifica-ordinamento` su `vendite.ordini` e `catalogo.articoli`: verdi.
+   `check_i18n_keys.py`: **rosso atteso** sulla chiave della 746 (§5.3);
+2. `scripts/liquibase5.sh … --url=offline:postgresql updateSQL` su una copia
+   dei dieci changeSet senza `preConditions`, nell'**ordine reale**: autogen
+   (`-13`, poi `-16 → -20` per numero) → `80_data` alfabetico (`20260806-15`
+   mirror liste, `20260913-12` mirror policy, `-14`, `-15`). 8.942 righe di
+   SQL reso, i due `loadUpdateData` compresi (il mirror delle liste ri-esegue
+   l'upsert su **tutte** le 748 righe: è la prova che nessuna è irriscrivibile);
+3. quell'SQL eseguito intero dentro `BEGIN … ROLLBACK` come proprietario, con
+   `ON_ERROR_STOP=1`, e `SET CONSTRAINTS ALL IMMEDIATE` fra `-14` e `-15`
+   (emula il commit che Liquibase fa fra i due — stessa riga di §6-bis);
+4. asserzioni prima del `ROLLBACK`, tutte verdi: `data_apertura` NOT NULL con
+   default `script.fn_data_operativa()`, **66 commesse** con
+   `data_apertura = data_insert` nel fuso `Europe/Rome`, 0 NULL; FK e NOT NULL
+   rifiutano (`23503`, `23502`); una commessa nuova senza data prende
+   `fn_data_operativa()`; la riga di policy c'è a `false`; le 4 righe di lista
+   con `attivo`/`ordinabile` attesi, 748 righe totali; le quattro viste hanno
+   la colonna nuova in **ultima** posizione, `security_invoker` sulle tre di
+   `vendite` e non su `catalogo`, `da_spedire` ancora `numeric`; su **257**
+   articoli la decodifica del modo coincide con la sorgente (non un
+   `has_column`); ⭐ **casi costruiti, non trovati**: sull'ordine 55 il `min`
+   della testata è la data più bassa fra due righe e sale quando quella riga
+   viene spenta; sulla riga 21 `giorni_ritardo` è NULL senza date, **5** con la
+   sola richiesta a −5, **3** con la promessa a −3 (vince), **0** con la promessa
+   a +2, e sulla riga 60 non impegnata resta NULL con una data a −30; ⭐ **il
+   percorso reale**: `fn_push_preventivo_a_ordine(1271)` ha creato l'ordine
+   52362 con 2 righe, tutte con la data richiesta e nessuna confermata; il nome
+   morto non è più nel corpo vivo. Informativo: 49 shadow in `storico.commesse`
+   (17 commesse hanno `storicizza = false`);
+5. `liquibase validate` offline sui **file veri**, `preConditions` comprese:
+   *No validation errors found*;
+6. dopo il `ROLLBACK`: colonne, riga di policy, righe di lista, colonne delle
+   viste e commento vivo tutti allo stato di prima; l'ordine 52362 non esiste;
+   `databasechangelog` ferma a `-12`. Nulla è stato applicato.
+
+⚠️ **Che cosa la prova NON copre, dichiarato**: come in §6-bis, i due trigger
+ATTIVO su `commesse`/`risorse_umane` nascono a `ci_apply`; le `preConditions`
+sono state validate ma non eseguite; e la prova gira da **proprietario**, quindi
+la RLS delle righe (`20260909-30/-35`) non è esercitata — le tre viste sono
+`security_invoker` ed erano già così, ma il verde con `zeroerp_app` lo dà il
+pgTAP di P-8.
+
+⚠️ Due fatti sull'albero di lavoro, fuori da questo cantiere: `databasechangelog.csv`
+è un file **tracciato** in git (commit `35cadf9bb`, un artefatto di un `updateSQL`
+offline) e oggi risulta **cancellato** nel working tree; e cinque file
+(`ci-validate.yaml`, `ci-local.sh`, `guardrail_pgtap_preambolo.py`,
+`check_db_role_access.sql`, `provision_db_roles.sql`) risultano modificati alle
+01:20–01:24 da un altro lavoro. Nessuno dei due è di questo brief.
 
 ---
 
@@ -1043,6 +1286,7 @@ contro le otto decisioni M-* chiuse dopo: nessuna **modifica** una voce di qui
 | 10 | chiavi i18n `catalogo.articoli.*`, `vendite.ordini_righe.*`, `config.modi_approvvigionamento.*` | i vicini sono `catalogo.col_*` e `vendite.ordini.riga_*`; il vocabolario non ha chiavi (mostra `descrizione`) | forma — **decisione** D-C | §5.4 |
 | 11 | il registro di prontezza è «un cantiere di `dbops` che forse non parte» | `dbops.presidi` esiste dal 10-09; la polarità si dichiara con `stato_atteso` | forma del presidio | §7 |
 | 12 | §8: «§8-quater», D-3 e D-6b «da confermare», una causale mancante, D-1 → D-8 | riferimento morto; D-3 e D-6b **chiuse** il 02-09; le causali sono quattro; D-9 esiste; `requires_lotto` decisa (M-5) | stati stantii | §1, §8, §9 |
+| 13 *(13-09)* | `data_apertura` «in un passo solo: default da funzione, che esiste già» | la funzione esiste, il suo **parametro** no: `SYSTEM_FUSO_ORARIO` è un seed di `80_data`, e l'`ADD COLUMN` valuta il `DEFAULT` all'ALTER anche a zero righe (provato) | 🔴 **migrate fallito in CI** | §4-bis, P-4 |
 
 ⚠️ **E la RLS sulle righe** (`20260909-30`/`-35`) non è un tredicesimo punto: non
 cambia una riga del piano, cambia come si scrivono le fixture di P-8 (§7,
@@ -1075,3 +1319,6 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | 2026-09-04 | Riferimenti aggiornati alla nascita di [analisi-db-magazzino-carico-e-scarico](analisi-db-magazzino-carico-e-scarico.md) |
 | 2026-09-12 | 🔴 **Verifica contro il DB vivo e le implementazioni del 01→12-09**: dodici punti corretti in loco con nota datata (§10.2), tre decisioni aperte a Tid (§10.3). I tre blocchi non cambiano. ⭐ Il brief passa da «parallelo a magazzino» a **prerequisito** del prossimo cantiere (§1) |
 | 2026-09-12 | ✅ **Le tre decisioni prese da Tid nella stessa sessione**: D-A `responsabile_risorsa_umana_id → risorse_umane` (§4, P-4, §5.5); D-B `requires_lotto` aspetta i lotti (§8); D-C chiavi i18n dei vicini, elenco definitivo di tredici chiavi (§5.4). Il brief è eseguibile: piano in §6, presidi in §7 |
+| 2026-09-13 | ✅ **P-1, P-2, P-3 scritti e provati** (§6-bis): nove changeSet `20260913-04 → -12` e due CSV; SQL reso da Liquibase offline ed eseguito intero in `BEGIN … ROLLBACK` sul DB di sviluppo, 257 articoli backfillati, cinque rifiuti attesi verificati, `validate` pulito. 🔴 Emerso e dichiarato in §5.5: il BE modifica le righe solo in `DRAFT` — la data confermata dopo la conferma vuole un verbo suo |
+| 2026-09-13 | ✅ **P-1, P-2, P-3 APPLICATI** (Tid, ore 01:00): nove `EXECUTED` in `databasechangelog`, 4 modi, 0 articoli senza modo. La coppia ATTIVO e il lock aspettano `ci_apply`. I file `-04 → -12` sono ora immutabili. Prossimo: P-4 |
+| 2026-09-13 | ✅ **P-4, P-5, P-6, P-7 scritti e provati** (§6-ter): otto changeSet `20260913-13 → -20` e due append a CSV; SQL reso da Liquibase eseguito intero in `BEGIN … ROLLBACK`, 66 commesse backfillate nel fuso azienda, casi costruiti su `min` e `giorni_ritardo`, push reale con la data, `validate` pulito. 🔴 Tredicesimo punto (§10.2): `data_apertura` in tre passi, non uno. ⚠️ Due scelte da confermare: il riferimento di `giorni_ritardo` = promessa, poi richiesta (§5.2); la chiave i18n della 746 nel commit DB o nella prossima PR FE (§5.3). Prossimo: P-8 |

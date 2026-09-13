@@ -61,7 +61,7 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 # Soglia del debito: numero di `throws_ok` senza discriminante ammessi.
 # ⚠️ Si abbassa quando se ne sana uno. NON si alza mai: se questo numero deve
 #    crescere per far passare la CI, il difetto e' nel test nuovo.
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 131
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 129
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)

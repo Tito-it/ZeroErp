@@ -35,10 +35,14 @@
 | listino_tipologia_id | smallint | YES |  |
 | natura_vendita_id | bigint | NO | 1 |
 | causale_onere_id | bigint | YES |  |
+| modo_approvvigionamento_id | bigint | NO | 1 |
+| gestito_a_magazzino | boolean | NO | false |
+| lead_time_giorni | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_articoli_lead_time_giorni_non_negativo |  |
 | CHECK | chk_articoli_note_target_tipo |  |
 | FOREIGN KEY | fk_articoli_articoli_gruppi | gruppo_voce_id |
 | FOREIGN KEY | fk_articoli_articoli_spesa | spesa_id |
@@ -48,6 +52,7 @@
 | FOREIGN KEY | fk_articoli_conti_contabili_vendita | conto_contabile_vendita_id |
 | FOREIGN KEY | fk_articoli_iva | iva_id |
 | FOREIGN KEY | fk_articoli_listino_tipologia | listino_tipologia_id |
+| FOREIGN KEY | fk_articoli_modi_approvvigionamento | modo_approvvigionamento_id |
 | FOREIGN KEY | fk_articoli_nature_vendita | natura_vendita_id |
 | FOREIGN KEY | fk_articoli_note | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_note_1 | note_target_tipo, note_id |

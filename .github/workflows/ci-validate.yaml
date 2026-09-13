@@ -465,21 +465,6 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
 
-      - name: Privilegi del ruolo applicativo (provision_db_roles)
-        # DOPO Liquibase, e non prima: lo script fa GRANT ... ON ALL TABLES IN
-        # SCHEMA, quindi vuole gli schemi gia' popolati. Il ruolo invece esiste
-        # da prima (passo "DB bootstrap"), perche' i changeSet di GRANT
-        # difensivi lo cercano mentre girano.
-        #
-        # ⚠️ migrator_role=zeroerp e non titodb: in CI l'owner degli oggetti e'
-        # l'utente con cui gira Liquibase, non quello del server di sviluppo.
-        env:
-          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
-        run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
-            -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
-            -f scripts/sql/provision_db_roles.sql
-
       # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
       # -> provisioning come 'postgres' (non Liquibase), DOPO le migrazioni, con lo
       # stesso script admin di dbdev/prod e di ci.yaml (DRY).
@@ -587,6 +572,36 @@ jobs:
           python manage.py migrate auth --noinput
           python manage.py migrate token_blacklist --fake
           python manage.py migrate --noinput
+
+      - name: Privilegi del ruolo applicativo (provision_db_roles)
+        # DOPO ENTRAMBI i migratori, e non prima: lo script fa GRANT ... ON ALL
+        # TABLES IN SCHEMA, quindi vuole gli schemi gia' popolati. Il ruolo
+        # invece esiste da prima (passo "DB bootstrap"), perche' i changeSet di
+        # GRANT difensivi lo cercano mentre girano.
+        #
+        # ⭐ «Entrambi» e' la parola che conta, dal 2026-09-13. Fino a quel
+        # giorno questo passo stava subito dopo `ci_apply`, cioe' PRIMA di
+        # «Django migrate»: lo schema `django` — che il provisioning nemmeno
+        # nominava — nasceva dopo, e `zeroerp_app` restava senza un solo
+        # privilegio su `django.auth_user`. Ogni pgTAP che crea un operatore
+        # (fn_crea_auth_user, fn_crea_utente_tecnico: SECURITY INVOKER) moriva
+        # nel fixture con «permission denied for table auth_user» — 47 volte nel
+        # log Postgres della corsa 34723456630 — e stava in baseline come
+        # ERRORE_FIXTURE senza che nessuno ne leggesse la causa. Su dev il GRANT
+        # c'era, dato a mano; lo scratch di ci-local.sh lo COPIAVA con lo schema.
+        # Il posto giusto e' dopo l'ULTIMO migrate, che qui e' quello di Django.
+        #
+        # ⚠️ migrator_role=zeroerp e non titodb: in CI l'owner degli oggetti e'
+        # l'utente con cui gira Liquibase E con cui gira `manage.py migrate`
+        # (DB_USER), non quello del server di sviluppo. L'ALTER DEFAULT
+        # PRIVILEGES per quel ruolo copre anche le tabelle che una migration
+        # Django futura creera'.
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
+            -f scripts/sql/provision_db_roles.sql
 
       - name: Guardrail riferimenti morti (funzioni plpgsql + dati di config)
         env:

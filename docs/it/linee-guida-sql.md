@@ -1857,6 +1857,69 @@ non è dichiarato.
 
 ---
 
+### 11.9 ⛔ Lo schema `django` è dell'applicazione: i suoi privilegi stanno nel provisioning, e lo scratch non li copia
+
+**Il meccanismo.** Le tabelle di `django` (`auth_user`, `django_session`, …) le
+crea `manage.py migrate`, il **secondo** migratore, che gira **dopo** Liquibase.
+Per questo lo schema era escluso da `scripts/sql/provision_db_roles.sql` con la
+dicitura *«gestito da Django»* — e Django gestisce il **DDL**, non i privilegi:
+nessun changeSet, nessun passo di Django e nessuno script concedeva a
+`zeroerp_app` un solo privilegio su `django.auth_user`. Eppure quello schema è
+in **testa** al `search_path` del ruolo applicativo, e **sedici** funzioni
+plpgsql `SECURITY INVOKER` lo attraversano — `anagrafiche.fn_crea_auth_user`,
+`script.fn_crea_utente_tecnico`, `fn_sync_auth_user_is_active`: ogni creazione
+di operatore, risorsa umana, utente tecnico, identità.
+
+Sul database di sviluppo il privilegio c'era su tutti e 23 gli oggetti, dato
+**a mano** (`zeroerp_app=arwd/titodb`). Su un database ricostruito da zero — la
+CI — l'app non poteva nemmeno **leggere** la tabella:
+
+```text
+ERROR:  permission denied for table auth_user
+```
+
+**47 volte** nel log Postgres della corsa 34723456630 (2026-09-12), **23 file**
+morti nel fixture — ogni pgTAP che crea un operatore come app, e ogni fixture
+che cerca un `auth_user` con una `SELECT` — quasi tutti in
+`baseline-rossi-ci.tsv` come `ERRORE_FIXTURE` con la causa mai letta. Il giorno
+in cui due di loro sono stati riscritti e tre nuovi hanno costruito un operatore
+sono usciti come «cinque regressioni». I file marcati `pgtap-runner: owner`
+erano verdi: `zeroerp` possiede le tabelle che ha migrato.
+
+⭐ **E lo scratch locale non lo vedeva, per costruzione.** `scripts/ci-local.sh`
+non ha `manage.py migrate`: **copia** lo schema `django` da dev con
+`pg_dump --schema-only`, che emette **anche le ACL** — 22 istruzioni di
+privilegio, fra cui i GRANT dati a mano. Lo scratch aveva quindi un privilegio
+che nessuno script concede e che la CI non ha: *un metro che copia la risposta
+dalla macchina che sta misurando*. È la stessa forma del `GRANT USAGE` su
+`maintenance` del 2026-09-09, con un aggravante: lì il privilegio a mano
+restava su dev, qui viaggiava.
+
+**Il rimedio, in tre sedi** (2026-09-13):
+
+| Sede | Cosa |
+| --- | --- |
+| `scripts/sql/provision_db_roles.sql` | `django` **entra nella whitelist** `_app_schemas`: `SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle, `USAGE` sulle sequenze, e l'`ALTER DEFAULT PRIVILEGES` per chi migra — che copre le tabelle che una migration Django **futura** creerà. Anche `check_db_role_access.sql` smette di escluderlo |
+| `ci-validate.yaml` | il passo del provisioning si sposta **dopo `manage.py migrate`**: un `GRANT … ON ALL TABLES` è una fotografia, e deve vedere le tabelle di **entrambi** i migratori |
+| `scripts/ci-local.sh` | la copia di `django` diventa `--no-acl` e passa **prima** del provisioning: lo scratch riceve i privilegi dalla stessa sede della CI, non da dev |
+
+⭐ **Il presidio**: `db/pgtap/dbops/test-app-postura-schema-django-v1.sql` —
+postura con `has_*_privilege('zeroerp_app', …)`, il default di chi possiede
+`auth_user` letto da `pg_default_acl`, e il **comportamento**: come app,
+`anagrafiche.fn_crea_auth_user` deve scrivere. ⚠️ Il test del default è rosso su
+una macchina il cui provisioning è girato **prima** che `django` fosse in
+whitelist (dev, 13-09): il rimedio è rilanciare `provision_db_roles.sql`, non
+il test.
+
+⛔ **La regola generale**, ed è la terza volta che si scrive (§11.6, il blocco
+`maintenance` del provisioning, qui): *un privilegio che esiste su una sola
+macchina non è una configurazione, è un ricordo*. Se un pgTAP come app tocca
+un oggetto, il privilegio deve stare in una sede che una **installazione nuova**
+attraversa — il provisioning, o un changeSet — e lo scratch deve **riceverlo da
+lì**, mai copiarlo.
+
+---
+
 ---
 
 ## 12. Capability: le azioni che il database propone all'operatore

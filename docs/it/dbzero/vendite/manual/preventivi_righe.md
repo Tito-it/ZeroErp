@@ -101,3 +101,11 @@ base e' **derivata** dal trigger:
 necessario per trasformare il preventivo in elementi fatturabili in modo tracciabile,
 coerente e idempotente lungo la pipeline.
 
+### 🔄 rev 2026-09-13 — la data di consegna richiesta dal cliente
+
+Colonna nuova, facoltativa: **`data_consegna_richiesta_cliente`**
+(`20260913-07`). Solo la richiesta, non la conferma: su un preventivo non c'è
+ancora niente da confermare. Al push verso l'ordine la data passa sulla riga
+d'ordine (`fn_push_preventivo_a_ordine`, dal `20260913-20`), attraverso la
+vista [vw_preventivi_righe_smistabili_ordine](/dbzero/vendite/views/vw_preventivi_righe_smistabili_ordine).
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 2.

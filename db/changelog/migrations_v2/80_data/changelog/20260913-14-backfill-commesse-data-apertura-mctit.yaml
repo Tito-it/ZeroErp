@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 (passo 2 di 3) — IL VALORE INIZIALE DI vendite.commesse.data_apertura
+#   data_apertura NULL -> data_insert nel fuso dell'azienda
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 4-bis
+#
+# -- UN UPDATE DI COMODO, NON UNA BONIFICA (deciso da Tid il 2026-09-02) -----
+#   Si fa perche' «quando la riga e' stata scritta» e' piu' utile di «oggi»,
+#   non perche' ci siano dati da salvare: quelli sono di test. data_insert non
+#   e' la data di apertura reale, ma e' un FATTO e non un'invenzione — e la
+#   colonna nasce per essere letta in lista, dove un NULL sarebbe una cella
+#   vuota per sempre.
+#
+# -- PERCHE' STA IN 80_data E NON NEL PASSO 1 --------------------------------
+#   data_insert e' un timestamptz e la data che ne esce dipende dal fuso in
+#   cui la si legge: la sessione di Django e' UTC, psql e pgAgent Europe/Rome
+#   (e' il difetto che script.fn_data_operativa() chiude, brief numerazione
+#   DB-2). Qui si usa lo STESSO fuso — il default nudo di SYSTEM_FUSO_ORARIO,
+#   non fn_get_parameter_full con la sua cascata di override — e quel
+#   parametro e' un seed di 80_data (20260825-12): questo file sta dopo per
+#   nome, quindi lo trova. In 00_schema non ci sarebbe ancora.
+#
+# -- SOLO DML, E IN UN CHANGESET SUO -----------------------------------------
+#   L'UPDATE attraversa tutti i trigger di commesse — audit, tx_id, STORICO
+#   (ogni commessa esistente riceve una versione shadow), il guard emittente/BA
+#   e i require_attivo, che sono constraint trigger AFTER e lasciano eventi in
+#   sospeso: un ALTER TABLE nella stessa transazione fallirebbe. SET DEFAULT
+#   e SET NOT NULL stanno nel gemello 20260913-15.
+#   ⚠️ Su dati di test e' indifferente, ma va saputo leggendo storico.commesse
+#   dopo l'apply.
+#
+# -- SU UN DATABASE NUOVO ----------------------------------------------------
+#   Zero commesse: l'UPDATE non tocca nulla e il fuso non viene nemmeno letto
+#   (il blocco esce prima). Idempotente: al secondo giro non trova righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260913-14-backfill-commesse-data-apertura-mctit.yaml
+
+  - changeSet:
+      id: 20260913-14-backfill-commesse-data-apertura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Valore iniziale di vendite.commesse.data_apertura per le commesse gia' esistenti:
+        data_insert nel fuso dell'azienda (SYSTEM_FUSO_ORARIO, default nudo — stessa scelta
+        di script.fn_data_operativa). Solo DML: SET DEFAULT e SET NOT NULL stanno nel gemello
+        20260913-15, in transazione separata (eventi trigger in sospeso). Idempotente.
+        Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 4-bis (P-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse
+                columnName: data_apertura
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  -- %TYPE: il tipo lo decide la colonna che lo contiene.
+                  v_fuso    config.parameters.default_value%TYPE;
+                  v_updated integer;
+              BEGIN
+                  -- Niente da valorizzare (database nuovo, o secondo giro): si esce
+                  -- senza nemmeno leggere il fuso.
+                  IF NOT EXISTS (SELECT 1 FROM vendite.commesse WHERE data_apertura IS NULL) THEN
+                      RAISE NOTICE 'Backfill vendite.commesse.data_apertura: nessuna riga da valorizzare';
+                      RETURN;
+                  END IF;
+
+                  -- Il fuso dell'azienda, letto come lo legge script.fn_data_operativa():
+                  -- il default NUDO, non la cascata di override. Fail-loud sulle stesse
+                  -- tre forme di guasto (assente, vuoto, non riconosciuto): un ripiego a
+                  -- UTC darebbe una data plausibile e sbagliata.
+                  SELECT btrim(p.default_value) INTO v_fuso
+                    FROM config.parameters p
+                   WHERE p.code = 'SYSTEM_FUSO_ORARIO';
+
+                  IF v_fuso IS NULL OR v_fuso = ''
+                     OR NOT EXISTS (SELECT 1 FROM pg_timezone_names tz WHERE tz.name = v_fuso) THEN
+                      RAISE EXCEPTION
+                          'SYSTEM_FUSO_ORARIO assente, vuoto o non riconosciuto (%): '
+                          'seed 20260825-12 non applicato.', COALESCE(v_fuso, '<nullo>');
+                  END IF;
+
+                  -- Il fatto, non un'invenzione: quando la riga e' stata scritta, nel
+                  -- fuso dell'azienda. Idempotente: al secondo giro non trova righe.
+                  UPDATE vendite.commesse
+                     SET data_apertura = (data_insert AT TIME ZONE v_fuso)::date
+                   WHERE data_apertura IS NULL;
+
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill vendite.commesse.data_apertura <- data_insert (fuso %): % righe',
+                      v_fuso, v_updated;
+              END
+              $BACKFILL$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il backfill non e' reversibile per riga (non si sa quali erano NULL):
+              -- il rollback e' quello della colonna, in 20260913-13.
+              SELECT 1;

@@ -211,3 +211,32 @@ erDiagram
 {% include-markdown "signature-core.md" %}
 
 ---
+
+### 🔄 rev 2026-09-13 — da dove arriva l'articolo: tre colonne di approvvigionamento
+
+Nate con `20260913-05` (e `-10`/`-11` per il default), brief
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3.
+
+| Colonna | Che cosa dice | Vuoto ammesso? |
+|---|---|---|
+| `modo_approvvigionamento_id` | **da dove arriva la merce**: acquisto, produzione, stock, non applicabile — vocabolario [config.modi_approvvigionamento](/dbzero/config/tabelle/modi_approvvigionamento) | no, default **acquisto** |
+| `gestito_a_magazzino` | l'articolo **movimenta giacenza** | no, default **no** |
+| `lead_time_giorni` | giorni fra «lo chiedo» e «ce l'ho» | sì: per una prestazione non significa niente, e `0` non è «non si applica» |
+
+⭐ **Perché tre domande e non una.** «Da dove arriva» non dice «passa da
+magazzino» — una merce può essere consegnata direttamente dal fornitore — e
+nessuna delle due si deduce dalla natura di vendita, che dice invece *dove va*
+la riga venduta. Sono domande diverse, e vanno tenute separate anche quando oggi
+le risposte coincidono.
+
+⚠️ **Al rilascio tutti gli articoli risultano «non a magazzino».** Il default è
+volutamente prudente — nessun articolo comincia a movimentare giacenza per
+distrazione — ma la conseguenza è che la merce **va marcata**: è un lavoro di
+dato, e il magazzino, finché non lo si fa, si comporta come se non ci fosse
+merce, senza nessun errore. Il controllo di prontezza sta nel catalogo dei
+presidi (`dbops.presidi`), non in un rosso.
+
+Le tre colonne escono dalla vista
+[vw_articoli_dettaglio](/dbzero/catalogo/views/vw_articoli_dettaglio) (con la
+decodifica del modo) e sono configurate come colonne della lista articoli,
+**spente** finché il backend non le proietta.

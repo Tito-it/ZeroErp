@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 (passo 1 di 3) — LE TRE COLONNE DI APPROVVIGIONAMENTO SULL'ARTICOLO
+#   catalogo.articoli.modo_approvvigionamento_id  (FK, qui NULLABLE)
+#   catalogo.articoli.gestito_a_magazzino         (boolean NOT NULL false)
+#   catalogo.articoli.lead_time_giorni            (integer NULL, >= 0)
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3.3
+#
+# -- PERCHE' modo_approvvigionamento_id NASCE NULLABLE, E NON E' PRUDENZA --
+#   Il valore finale e' NOT NULL DEFAULT ACQUISTO (deciso da Tid il
+#   2026-09-02). Ma il DEFAULT e' l'id di una riga che nasce dal seed CSV di
+#   80_data (20260913-09), e 80_data gira DOPO tutto 00_schema. Un
+#   `NOT NULL DEFAULT <id>` scritto qui:
+#     - su dev muore subito: catalogo.articoli ha righe (257 il 13-09), la FK
+#       si valida all'ADD CONSTRAINT e config.modi_approvvigionamento e'
+#       ancora VUOTA;
+#     - in CI muore poco dopo: il mirror articoli.csv e' ancorato a
+#       20260114-06 e in 80_data inserisce gli articoli PRIMA del seed del
+#       vocabolario, col default a un id che non esiste ancora.
+#   ⇒ Stessa forma di natura_vendita_id (20260608-43 → -42 → 20260609-03/-04):
+#   qui la colonna e la FK; in 80_data, dopo il seed, il backfill
+#   (20260913-10) e poi SET DEFAULT + SET NOT NULL (20260913-11), in due
+#   changeSet separati perche' l'UPDATE lascia eventi trigger in sospeso e
+#   un ALTER TABLE nella stessa transazione fallisce.
+#   ⚠️ L'header di articoli.csv NON prende le colonne nuove: e' un mirror di
+#   gennaio, e una colonna con FK aggiunta a un mirror vecchio lo manda a
+#   scrivere prima del bersaglio.
+#
+# -- LE NULLABILITA' DELLE ALTRE DUE, sul modello --------------------------
+#   gestito_a_magazzino NOT NULL DEFAULT false: fail-safe, «nel dubbio non
+#   movimentare». ⚠️ Al rilascio TUTTI gli articoli sono false, e magazzino
+#   leggera' che nessuno movimenta giacenza senza nessun errore: e' la classe
+#   «esiste e non e' collegata» — il presidio di prontezza e' in
+#   dbops.presidi (brief 7), non qui.
+#   lead_time_giorni NULLABLE: per una prestazione non significa niente, e
+#   0 non e' «non si applica». Qui il NULL e' un'informazione.
+#   ⛔ gestito_a_magazzino NON si deriva da natura_vendita = MERCE: una merce
+#   puo' essere venduta senza passare da giacenza (consegna diretta dal
+#   fornitore). Due domande, due colonne.
+#
+# -- CHE COSA NASCE DA SOLO -------------------------------------------------
+#   A ci_apply, perche' il vocabolario ha `attivo`:
+#     trg_modi_approvvigionamento_a10_articoli_block_deact_upd   (padre)
+#     trg_articoli_a10_modi_approvvigionamento_require_attivo_ins_upd (figlio, AFTER)
+#   Niente DDL ne' preCondition su quei nomi (linee-guida-sql 11.5): il pgTAP
+#   di P-8 li asserisce a ci_apply avvenuto.
+#   L'indice sulla FK e' governato da dbops.fk_index_policy (20260913-12,
+#   consentito=false): nessuna query dell'applicazione entra oggi da questa
+#   colonna, e la policy e' OPT-IN (linee-guida-sql 8.7).
+#   Storico: la shadow serializza in JSONB (to_jsonb), nessuna colonna da
+#   allineare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260913-05-alter-articoli-add-approvvigionamento-mctit.yaml
+
+  - changeSet:
+      id: 20260913-05-alter-articoli-add-approvvigionamento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli: modo_approvvigionamento_id (FK config.modi_approvvigionamento,
+        NULLABLE in questo passo: il DEFAULT e' un id del seed di 80_data, che gira dopo;
+        il NOT NULL arriva con 20260913-11), gestito_a_magazzino (NOT NULL false,
+        fail-safe) e lead_time_giorni (NULL, CHECK >= 0). Stessa forma di natura_vendita_id.
+        Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3.3 (P-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+            - tableExists:
+                schemaName: config
+                tableName: modi_approvvigionamento
+            - not:
+                - columnExists:
+                    schemaName: catalogo
+                    tableName: articoli
+                    columnName: modo_approvvigionamento_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  ADD COLUMN modo_approvvigionamento_id BIGINT NULL,
+                  ADD COLUMN gestito_a_magazzino        BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN lead_time_giorni           INTEGER NULL;
+
+              ALTER TABLE catalogo.articoli
+                  ADD CONSTRAINT fk_articoli_modi_approvvigionamento
+                  FOREIGN KEY (modo_approvvigionamento_id)
+                  REFERENCES config.modi_approvvigionamento (id)
+                  ON UPDATE CASCADE
+                  ON DELETE NO ACTION;
+
+              ALTER TABLE catalogo.articoli
+                  ADD CONSTRAINT chk_articoli_lead_time_giorni_non_negativo
+                  CHECK (lead_time_giorni IS NULL OR lead_time_giorni >= 0);
+
+              COMMENT ON COLUMN catalogo.articoli.modo_approvvigionamento_id IS
+                  'Da dove arriva la merce di questo articolo '
+                  '(config.modi_approvvigionamento: ACQUISTO | PRODUZIONE | STOCK | '
+                  'NON_APPLICABILE). Rende ponibile la domanda «questa riga richiede '
+                  'produzione?» e dice se l''articolo si compra. NON e'' derivabile da '
+                  'is_composito (fatturazione), natura_vendita_id (destinazione della '
+                  'riga) ne'' da nature_vendita.e_cessione_beni (fiscale). Nasce NULL '
+                  'in 20260913-05 solo per la timeline delle fasi; dal 20260913-11 e'' '
+                  'NOT NULL DEFAULT ACQUISTO (id risolto per codice_interno). '
+                  'Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3.3.';
+              COMMENT ON COLUMN catalogo.articoli.gestito_a_magazzino IS
+                  'L''articolo movimenta giacenza. Default false = fail-safe: nessun '
+                  'articolo comincia a movimentare per distrazione. NON si deriva da '
+                  'natura_vendita = MERCE (una merce puo'' essere consegnata dal '
+                  'fornitore senza passare da giacenza). E'' un ingresso della primitiva '
+                  'di scrittura del magazzino (analisi carico e scarico, M-2). ⚠️ Al '
+                  'rilascio tutte le righe sono false e la merce va marcata: il presidio '
+                  'di prontezza e'' in dbops.presidi, non un rosso.';
+              COMMENT ON COLUMN catalogo.articoli.lead_time_giorni IS
+                  'Giorni fra «lo chiedo» e «ce l''ho»: serve a ricavare la data di '
+                  'lancio dalla data di consegna. NULL = non si applica (una '
+                  'prestazione); 0 non e'' «non si applica». CHECK >= 0.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  DROP CONSTRAINT IF EXISTS chk_articoli_lead_time_giorni_non_negativo;
+              ALTER TABLE catalogo.articoli
+                  DROP CONSTRAINT IF EXISTS fk_articoli_modi_approvvigionamento;
+              ALTER TABLE catalogo.articoli
+                  DROP COLUMN IF EXISTS lead_time_giorni,
+                  DROP COLUMN IF EXISTS gestito_a_magazzino,
+                  DROP COLUMN IF EXISTS modo_approvvigionamento_id;

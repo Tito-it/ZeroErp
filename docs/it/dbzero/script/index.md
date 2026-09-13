@@ -61,7 +61,7 @@
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_auth_user_id_for_risorsa_umana](funzioni/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
 - [fn_get_auth_user_stato](funzioni/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
-- [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
+- [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
 - [fn_get_billing_account_by_istanza](funzioni/fn_get_billing_account_by_istanza.md)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.

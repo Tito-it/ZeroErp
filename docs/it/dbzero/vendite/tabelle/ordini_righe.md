@@ -33,6 +33,8 @@
 | factor_to_base | numeric | NO | 1 |
 | attivo | boolean | NO | true |
 | preventivo_riga_id | bigint | YES |  |
+| data_consegna_richiesta_cliente | date | YES |  |
+| data_consegna_confermata | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

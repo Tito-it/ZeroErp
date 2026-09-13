@@ -76,5 +76,19 @@ WHERE codice ILIKE 'ART%';
 * Usare la vista per letture, reporting e API di consultazione.
 * Per modifiche, aggiornare sempre le tabelle base (`catalogo.articoli` e relazioni).
 
+### 🔄 rev 2026-09-13 — da dove arriva l'articolo
+
+Cinque colonne in coda (`20260913-19`): `modo_approvvigionamento_id`, la sua
+decodifica — `modo_approvvigionamento_codice_interno` per la logica e
+`modo_approvvigionamento_descrizione` a video, sulla forma di
+`natura_vendita_*` — più `gestito_a_magazzino` e `lead_time_giorni`. La
+decodifica **non** si chiama `_codice`: il valore viene dalla chiave immutabile,
+e il nome deve dirlo ([linee guida SQL §6c](/linee-guida-sql)).
+
+⚠️ La vista le espone, ma il backend della lista e del drawer articolo elenca
+le colonne **per nome**: finché non le aggiunge, a video non arrivano. Per
+questo le tre colonne della lista articoli sono seminate spente. Brief:
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezioni 5.2 e 5.5.
+
 ---
 {% include-markdown "signature-core.md" %}

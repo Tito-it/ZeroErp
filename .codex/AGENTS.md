@@ -424,6 +424,29 @@ singola **colonna** il privilegio non sa esprimere l'eccezione: lì è un trigge
 default. Si asserisce con `has_*_privilege(ruolo, …)`, mai con
 `role_table_grants`, che è cieco fuori dal ruolo connesso.
 
+### ⛔ Un privilegio che esiste su UNA macchina è un ricordo, non una configurazione
+
+Regola estesa: [linee-guida-sql.md §11.9](../docs/it/linee-guida-sql.md).
+
+Lo schema `django` lo crea `manage.py migrate` — il **secondo** migratore — e
+fino al 2026-09-13 era escluso dal provisioning come *«gestito da Django»*.
+Django gestisce il DDL, **non i privilegi**: `zeroerp_app` non aveva nessuna
+sede che gli desse `django.auth_user`, che **sedici** funzioni `INVOKER`
+attraversano (ogni creazione di operatore). Su dev il GRANT c'era, **dato a
+mano**; in CI ogni pgTAP come app moriva con `permission denied for table
+auth_user` — 47 volte in una corsa, **23 file**, in baseline come
+`ERRORE_FIXTURE` senza che nessuno leggesse la causa.
+
+⭐ **E lo scratch locale non lo vedeva perché COPIAVA le ACL di dev** insieme
+allo schema (`pg_dump --schema-only` le emette): un metro che copia la risposta
+dalla macchina che misura. Dal 13-09 `django` è nella whitelist di
+`provision_db_roles.sql`, il passo in `ci-validate.yaml` sta **dopo
+`manage.py migrate`** (dopo *entrambi* i migratori), la copia è `--no-acl`, e
+`db/pgtap/dbops/test-app-postura-schema-django-v1.sql` lo pinna.
+⚠️ **Dove leggere l'errore vero di un pgTAP in CI**: la baseline stampa solo
+l'etichetta; il messaggio sta nel **log del container Postgres**, che GitHub
+scarica nel passo «Stop containers» (`gh run view <id> --job <job> --log`).
+
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 
 La sede di una tabella di configurazione è il suo CSV in `80_data/sql/...`, letto

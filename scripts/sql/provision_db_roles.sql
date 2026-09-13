@@ -47,10 +47,33 @@ SELECT format(
 -- Sorgente unica della whitelist schemi applicativi.
 -- Aggiungere qui i nuovi schemi: tutti i blocchi sottostanti la
 -- leggono automaticamente. Solo schemi che zeroerp_app deve usare
--- a runtime. Esclusi intenzionalmente: django (gestito da Django),
--- maintenance (pgAgent: l'app non ne legge né scrive le tabelle).
+-- a runtime. Escluso intenzionalmente: maintenance (pgAgent: l'app non
+-- ne legge né scrive le tabelle).
 -- ⚠️ `maintenance` resta fuori di qui, ma riceve il solo `USAGE` in fondo
 --    allo script: il perché sta lì, e non è un ripensamento su questa riga.
+--
+-- ⭐ `django` STA QUI, dal 2026-09-13 — e fino a quel giorno era escluso con
+--    la dicitura «gestito da Django». Django gestisce il DDL di quelle tabelle
+--    (`manage.py migrate` le crea), NON i privilegi: nessun changeSet, nessun
+--    passo di Django e nessuno script concedeva a `zeroerp_app` un solo
+--    privilegio su `django.auth_user`. Eppure il ruolo applicativo ci passa a
+--    ogni login (search_path = django,…) e SEDICI funzioni plpgsql SECURITY
+--    INVOKER la leggono e la scrivono — `anagrafiche.fn_crea_auth_user`,
+--    `script.fn_crea_utente_tecnico`, `fn_sync_auth_user_is_active`…
+--    Sul database di sviluppo il privilegio c'era su tutti e 23 gli oggetti,
+--    dato A MANO (`zeroerp_app=arwd/titodb`): esisteva su quella sola macchina.
+--    Su un database ricostruito da zero — la CI — `manage.py migrate` crea le
+--    tabelle e l'app non può nemmeno leggerle: 47 «permission denied for table
+--    auth_user» nel log Postgres della corsa 34723456630 (12-09), ogni pgTAP che
+--    crea un operatore morto nel fixture, e lo scratch di ci-local.sh non lo
+--    vedeva perché COPIAVA le ACL di dev insieme allo schema.
+--    È la stessa forma del `GRANT USAGE` su `maintenance` raccontato in fondo.
+-- ⚠️ Vale anche l'ALTER DEFAULT PRIVILEGES qui sotto: le tabelle di Django
+--    nascono DOPO Liquibase, quindi il `GRANT … ON ALL TABLES` le copre solo
+--    se questo script gira dopo ENTRAMBI i migratori (in ci-validate.yaml sta
+--    dopo `manage.py migrate` dal 2026-09-13); il default per il migratore
+--    copre quelle che una migration Django futura creerà. Il pgTAP che pinna
+--    la postura: db/pgtap/dbops/test-app-postura-schema-django-v1.sql.
 -- ------------------------------------------------------------------
 CREATE TEMP TABLE _app_schemas (nspname TEXT);
 INSERT INTO _app_schemas (nspname) VALUES
@@ -60,6 +83,7 @@ INSERT INTO _app_schemas (nspname) VALUES
     ('config'),
     ('contabilita'),
     ('dbops'),
+    ('django'),
     ('documenti'),
     ('magazzino'),
     ('pagamenti'),
