@@ -45,6 +45,34 @@ BEGIN
   -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #2):
   --   stato corrente e risoluzione DRAFT per codice_interno (immutabile),
   --   non per codice (mutabile). Literali EMESSO/DRAFT sono codice_interno.
+  --
+  -- NOTE data di consegna (rev 2026-09-14, 20260914-13):
+  --   le righe copiate portano data_consegna_richiesta_cliente. La data
+  --   e' del CLIENTE, non una promessa nostra: una revisione rinegozia
+  --   prezzi e quantita', non cio' che il cliente ha chiesto. Le righe si
+  --   copiano con un elenco ESPLICITO di colonne, quindi una colonna non
+  --   nominata non passa — e' lo stesso punto in cui si perdeva al push
+  --   (20260913-20). Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo.
+  --
+  -- NOTE marche di approvazione prezzo (rev 2026-09-14, 20260914-14, D di Tid):
+  --   stato_approvazione_prezzo e pratica_approvazione_prezzo_id si copiano
+  --   1:1 sulla riga, come gia' sui componenti qui sotto e come
+  --   fn_crea_revisione_offerta (20260601-05). Ragione: i gate L3 scattano
+  --   sull'edit, non alla revisione; lo stato e' l'unico marcatore
+  --   persistente che un prezzo fuori policy e' autorizzato o in attesa.
+  --   Azzerarlo faceva nascere la rev N+1 con lo stesso prezzo e senza
+  --   marca (com'era dal 2026-04-22 al 20260914-13). Una riga PENDING
+  --   copiata resta protetta da trgfn_righe_guard_pending. ⚠️ Caveat, lo
+  --   stesso dell'offerta: la pratica resta agganciata per id a ENTRAMBE
+  --   le righe e il suo meta nomina la riga della rev N — il ciclo di vita
+  --   della pratica su una rev superata e' del dominio approvazioni (BE),
+  --   refactor-prezzi.md 4.7. Non si decide qui.
+  --
+  --   ⚠️ Colonne che NON si copiano di proposito: natura_vendita_id (la
+  --   deriva e la congela il trigger BEFORE INSERT dall'articolo), tx_id
+  --   (framework), id/data_insert/data_update (identity e audit). Il
+  --   presidio che pretende l'elenco COMPLETO o la dichiarazione e'
+  --   db/pgtap/vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.
   -- ==========================================================
 
   -- Guard: parametro obbligatorio
@@ -163,6 +191,8 @@ BEGIN
     quantita, prezzo_unitario, sconto_percentuale,
     iva_id, ordine, attivo,
     qta_operativa, uom_operativa_id, factor_to_base,
+    data_consegna_richiesta_cliente,
+    stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
     meta,
     user_insert, user_update
   )
@@ -171,6 +201,8 @@ BEGIN
     pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale,
     pr.iva_id, pr.ordine, pr.attivo,
     pr.qta_operativa, pr.uom_operativa_id, pr.factor_to_base,
+    pr.data_consegna_richiesta_cliente,
+    pr.stato_approvazione_prezzo, pr.pratica_approvazione_prezzo_id,
     pr.meta,
     COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
   FROM vendite.preventivi_righe pr
@@ -247,7 +279,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal.';
+IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1.';
 ```
 
 ---

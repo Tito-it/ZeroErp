@@ -27,7 +27,7 @@
 > numerazione, dove l'**analisi** dice *perché* e il **brief** dice *cosa si fa*.
 > Il piano operativo che ne discende — le sole modifiche **certe**, quelle che
 > nessuna decisione aperta cambia — vive in
-> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
+> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
 > ⛔ Da qui in avanti **questo documento non si esegue**: si consulta.
 >
 > ⚠️ **Perimetro:** questa analisi guarda la **commessa e il ciclo di vendita**.

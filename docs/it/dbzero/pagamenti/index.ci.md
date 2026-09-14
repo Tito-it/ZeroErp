@@ -31,6 +31,7 @@
 - [trgfn_vendite_contabili_guard_transizione](manual/trgfn_vendite_contabili_guard_transizione.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_validazione](manual/trgfn_vendite_contabili_guard_validazione.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_lotti_guard_sistemazione](manual/trgfn_vendite_contabili_lotti_guard_sistemazione.md) — (rev 2026-08-22 — sostituisce `trgfn_vendite_contabili_lotti_guard_compensazione`)
+- [trgfn_vendite_contabili_righe_guard_contenuto](manual/trgfn_vendite_contabili_righe_guard_contenuto.md) — (scritto il 14-09-2026)
 - [trgfn_vendite_contabili_righe_guard_distinta_finale](manual/trgfn_vendite_contabili_righe_guard_distinta_finale.md) — (rev 2026-08-22)
 - [trgfn_vendite_contabili_righe_guard_rata](manual/trgfn_vendite_contabili_righe_guard_rata.md) — (rev 2026-08-22)
 - [trgfn_vendite_contabili_righe_guard_stato_dati](manual/trgfn_vendite_contabili_righe_guard_stato_dati.md) — (rev 2026-08-21)
