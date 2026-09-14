@@ -151,6 +151,41 @@ BEGIN
     ELSIF r.msg ~ '^error:42601:' AND r.msg LIKE '%:EXECUTE:%' THEN
       classe := 'FP_SQL_DINAMICO';
 
+    -- (1-quater) «permesso negato» (SQLSTATE 42501) dentro una funzione
+    --     SECURITY DEFINER, misurata da chi NON e' il suo proprietario (ne'
+    --     membro del suo ruolo). Il corpo di una DEFINER gira con i privilegi
+    --     del PROPRIETARIO: «il chiamante puo' risolvere il riferimento?» e'
+    --     la domanda sbagliata, e la risposta non dice niente della funzione.
+    --     La domanda giusta — «puo' risolverlo il proprietario?» — la fanno
+    --     gli altri occhi del presidio: fn_conta_presidio (DEFINER, conta per
+    --     il digest) e il guardrail in CI (superuser). Chi e' proprietario, o
+    --     ne ha i privilegi, e prende lo stesso un 42501, cade nell'ELSE:
+    --     quello e' REALE.
+    --
+    -- ⭐ rev 2026-09-14 — Il caso: dbops.fn_get_pgagent_job_stato (DEFINER di
+    --     titodb) legge pgagent.pga_job, che zeroerp_app non vede: come app
+    --     usciva REALE 42501 e stava a registro (esenzione 7, «due facce»); come
+    --     proprietario NON usciva affatto, e il primo digest settimanale
+    --     (14-09 07:30) ha dato la riga 7 «rientrata». Tre occhi, due
+    --     risposte, una sola verita': quel 42501 non era un difetto della
+    --     funzione, era il ruolo che la misurava. Lo stesso tipo di falso
+    --     positivo era gia' stato sanato per maintenance.* dando USAGE all'app
+    --     (provision_db_roles.sql): un rimedio per-schema, questo e' la regola.
+    --     ⚠️ In CI non cambia niente: il guardrail misura da superuser, dove
+    --     un 42501 non esiste; il difetto pgAgent-assente la' resta 42P01 e
+    --     resta REALE, com'e' giusto.
+    ELSIF r.msg ~ '^error:42501:' AND EXISTS (
+            SELECT 1
+              FROM pg_proc p6
+              JOIN pg_namespace n6 ON n6.oid = p6.pronamespace
+             WHERE n6.nspname = r.nsp
+               AND p6.proname = r.pro
+               AND pg_get_function_identity_arguments(p6.oid) = r.args
+               AND p6.prosecdef
+               AND NOT pg_has_role(current_user, p6.proowner, 'MEMBER'))
+    THEN
+      classe := 'FP_DEFINER_PRIVILEGIO';
+
     -- (2) «funzione non esiste» (SQLSTATE 42883): falso positivo SOLO se
     --     tutti i tipi passati sono testo-compatibili — allora e' la
     --     variadic che plpgsql_check non sa risolvere. Se c'e' un tipo
@@ -240,7 +275,7 @@ END
 $function$
 
 COMMENT ON FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
-IS 'Compila con plpgsql_check ogni funzione plpgsql non-estensione e classifica i difetti (REALE, ORFANA, NON_MISURATO, FP_*). Fonte unica: la usano sia scripts/sql/check_funzioni_riferimenti_morti.sql sia il pgTAP db/pgtap/dbops/test-riferimenti-morti-v1.sql. Richiede l''estensione plpgsql_check. NON_MISURATO dal 2026-09-10: e'' la classe di chi NON SI E'' POTUTO CONTROLLARE - plpgsql_check ha sollevato invece di rispondere, e il gestore EXCEPTION ha scritto error:CHECK-KO:. Prima quella forma cadeva nell''ELSE e usciva come REALE, cioe'' una funzione non misurata veniva riferita come riferimento morto: il 2026-09-10 su dbdev sono uscite 779 righe su 780 funzioni, con un registro del debito di DUE voci e lo stesso controllo verde in CI. NON_MISURATO va trattato come un ROSSO da chi consuma, mai come assenza di difetti: e'' la stessa regola che questo presidio applica gia'' all''estensione ASSENTE. Il search_path e'' PINNATO dal 2026-09-12 (pg_catalog, public, pg_temp) e la chiamata a plpgsql_check_function e'' qualificata con public.: sono DUE strati della stessa cosa e servono entrambi. Questa funzione e'' SECURITY INVOKER e gira anche DENTRO dbops.fn_conta_presidio, che e'' SECURITY DEFINER con search_path = pg_catalog, pg_temp: senza il pin ereditava quello, plpgsql_check_function non si risolveva (42883, l''estensione sta in public) e OGNI funzione del database usciva NON_MISURATO - il digest riferiva 784 riferimenti morti mentre la lettura diretta della stessa vista rispondeva 0, e delle 37 righe di dbops.presidi divergeva solo quella. ⛔ Ma il search_path governa anche la risoluzione dei riferimenti DENTRO le funzioni che si compilano: con la sola chiamata qualificata restavano QUATTRO falsi REALE - unaccent in config.trgfn_stradario_generale_normalize, dblink in dbops.fn_audit_end e fn_get_or_create_session_tx_id, il tipo geometry in script.fn_get_stradario - cioe'' funzioni sane che nominano un''estensione senza schema, come e'' normale e come funziona in esercizio. public nel pin non e'' arbitrario: e'' nel path reale dell''applicazione, quindi la misura compila nel contesto in cui quelle funzioni girano davvero. ⚠️ Chi rifa'' questa funzione tenga il pin: un CREATE OR REPLACE che perde la clausola SET non fallisce - riporta il presidio a mentire, ed e'' la stessa trappola di security_invoker su CREATE OR REPLACE VIEW. Lo prende solo il test 7 del suo pgTAP, che conta attraverso fn_conta_presidio. Brief: brief-db-un-destinatario-per-i-presidi 13.2.';
+IS 'Compila con plpgsql_check ogni funzione plpgsql non-estensione e classifica i difetti (REALE, ORFANA, NON_MISURATO, FP_*). Fonte unica: la usano sia scripts/sql/check_funzioni_riferimenti_morti.sql sia il pgTAP db/pgtap/dbops/test-riferimenti-morti-v1.sql. Richiede l''estensione plpgsql_check. NON_MISURATO dal 2026-09-10: e'' la classe di chi NON SI E'' POTUTO CONTROLLARE - plpgsql_check ha sollevato invece di rispondere, e il gestore EXCEPTION ha scritto error:CHECK-KO:. Prima quella forma cadeva nell''ELSE e usciva come REALE, cioe'' una funzione non misurata veniva riferita come riferimento morto: il 2026-09-10 su dbdev sono uscite 779 righe su 780 funzioni, con un registro del debito di DUE voci e lo stesso controllo verde in CI. NON_MISURATO va trattato come un ROSSO da chi consuma, mai come assenza di difetti: e'' la stessa regola che questo presidio applica gia'' all''estensione ASSENTE. Il search_path e'' PINNATO dal 2026-09-12 (pg_catalog, public, pg_temp) e la chiamata a plpgsql_check_function e'' qualificata con public.: sono DUE strati della stessa cosa e servono entrambi. Questa funzione e'' SECURITY INVOKER e gira anche DENTRO dbops.fn_conta_presidio, che e'' SECURITY DEFINER con search_path = pg_catalog, pg_temp: senza il pin ereditava quello, plpgsql_check_function non si risolveva (42883, l''estensione sta in public) e OGNI funzione del database usciva NON_MISURATO - il digest riferiva 784 riferimenti morti mentre la lettura diretta della stessa vista rispondeva 0, e delle 37 righe di dbops.presidi divergeva solo quella. ⛔ Ma il search_path governa anche la risoluzione dei riferimenti DENTRO le funzioni che si compilano: con la sola chiamata qualificata restavano QUATTRO falsi REALE - unaccent in config.trgfn_stradario_generale_normalize, dblink in dbops.fn_audit_end e fn_get_or_create_session_tx_id, il tipo geometry in script.fn_get_stradario - cioe'' funzioni sane che nominano un''estensione senza schema, come e'' normale e come funziona in esercizio. public nel pin non e'' arbitrario: e'' nel path reale dell''applicazione, quindi la misura compila nel contesto in cui quelle funzioni girano davvero. ⚠️ Chi rifa'' questa funzione tenga il pin: un CREATE OR REPLACE che perde la clausola SET non fallisce - riporta il presidio a mentire, ed e'' la stessa trappola di security_invoker su CREATE OR REPLACE VIEW. Lo prende solo il test 7 del suo pgTAP, che conta attraverso fn_conta_presidio. Brief: brief-db-un-destinatario-per-i-presidi 13.2. ⭐ FP_DEFINER_PRIVILEGIO dal 2026-09-14: un 42501 (permesso negato) dentro una funzione SECURITY DEFINER misurata da chi non e'' il suo proprietario ne'' membro del suo ruolo NON e'' un riferimento morto - il corpo di una DEFINER gira coi privilegi del proprietario, e la domanda giusta la fanno gli altri occhi del presidio (fn_conta_presidio come proprietario, il guardrail in CI come superuser). Trovato dal primo digest settimanale: dbops.fn_get_pgagent_job_stato usciva REALE come zeroerp_app e non usciva affatto come titodb, e la riga 7 del registro risultava insieme necessaria e di troppo sulla stessa macchina. Chi e'' proprietario e prende un 42501 resta REALE. Le classi sono OTTO.';
 ```
 
 ---

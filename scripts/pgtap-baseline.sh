@@ -275,7 +275,8 @@ if [ "$UPDATE" -eq 1 ] \
   echo "   la' no, e alla corsa successiva tornano come finte regressioni." >&2
   echo >&2
   echo "   Se un file e' RIENTRATO davvero, lo dira' la CI: la sua corsa lo" >&2
-  echo "   elenca, e la riga si toglie a mano da $BASELINE." >&2
+  echo "   elenca, e le righe le toglie scripts/pgtap-baseline-ci-rientrati.sh" >&2
+  echo "   leggendo QUEL log (o a mano da $BASELINE)." >&2
   echo "   Per rigenerarla per intero: cancella il file e lascia che la CI la" >&2
   echo "   stampi (il passo della suite la genera fra due marcatori 8<)." >&2
   echo >&2
@@ -471,7 +472,8 @@ if [ -n "$RIENTRATI" ]; then
     echo "ℹ️  Verdi QUI, e questa non e' la CI — potrebbero essere rossi la':"
     echo "$RIENTRATI" | sed 's/^/   /'
     echo "   ⛔ Non si aggiorna da qui: $(basename "$BASELINE") registra i rossi"
-    echo "      della corsa di GitHub. Se sono rientrati davvero, lo dira' la CI."
+    echo "      della corsa di GitHub. Se sono rientrati davvero, lo dira' la CI:"
+    echo "      → scripts/pgtap-baseline-ci-rientrati.sh   (legge il log della corsa)"
   else
     echo "✅ RIENTRATI — ora verdi, vanno tolti dalla baseline:"
     echo "$RIENTRATI" | sed 's/^/   /'
@@ -481,14 +483,32 @@ if [ -n "$RIENTRATI" ]; then
 fi
 
 if [ -n "$NUOVI" ]; then
-  echo "❌ REGRESSIONI — rossi NUOVI, non erano in baseline:"
+  # ⛔ Stessa regola dei RIENTRATI: il registro della CI letto fuori dalla CI
+  #   non sa giudicare QUESTO database. Il 14-09, tolto dal registro della CI
+  #   `rls/test-role-batch-fatturazione-postura` (verde la', rientrato), lo
+  #   scratch lo ha stampato come «REGRESSIONE»: la' e' rosso per costruzione
+  #   (il batch riceve DML su tutto, dichiarato in ci-local.sh) e il suo
+  #   registro e' baseline-rossi-scratch.tsv, dove sta dal 09-09.
+  if [ "$(basename "$BASELINE")" = "baseline-rossi-ci.tsv" ] \
+     && [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+    echo "❌ Rossi QUI che la CI non conosce — e questa non e' la CI:"
+  else
+    echo "❌ REGRESSIONI — rossi NUOVI, non erano in baseline:"
+  fi
   while IFS= read -r nf; do
     [ -z "$nf" ] && continue
     causa=$(grep -F "$nf"$'\t' "$CORRENTE" | cut -f2)
     printf '   %-62s %s\n' "$nf" "$causa"
   done <<< "$NUOVI"
   echo
-  echo "Sono da guardare: tutto il resto era gia' rosso prima."
+  if [ "$(basename "$BASELINE")" = "baseline-rossi-ci.tsv" ] \
+     && [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+    echo "   Possono essere regressioni vere o rossi di QUESTO database (es. la"
+    echo "   postura del batch, che lo scratch non sa misurare). Si giudicano sul"
+    echo "   registro di questo metro: PGTAP_BASELINE=db/pgtap/baseline-rossi-scratch.tsv"
+  else
+    echo "Sono da guardare: tutto il resto era gia' rosso prima."
+  fi
   exit 1
 fi
 

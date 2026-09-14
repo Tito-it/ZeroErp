@@ -257,6 +257,22 @@ metro disomogeneo da cui è nato tutto.
 Quindi: **un rosso in CI non è automaticamente un rosso da te, e viceversa.**
 Prima di inseguirlo, guarda quale baseline lo conosce.
 
+⭐ **E la baseline della CI si aggiorna DALLA CI** — `--update` su quel file
+fuori da GitHub è un cancello (`exit 2`), perché la misura dello scratch non è
+la sua: il 14-09 lo scratch dava 33 «verdi non registrati», la CI ne dichiarava
+31, e i due elenchi differivano di quattro file. La CI però non committa: stampa
+l'elenco RIENTRATI, e per due giorni nessuno l'ha trascritto. Da quel giorno:
+
+```bash
+scripts/pgtap-baseline-ci-rientrati.sh            # ultima corsa utile su Tito-dev
+scripts/pgtap-baseline-ci-rientrati.sh <run-id>   # una corsa precisa
+```
+
+legge il log della corsa di GitHub (`gh`), toglie da `baseline-rossi-ci.tsv`
+**quelle** righe e stampa le regressioni senza aggiungerle — un rosso nuovo entra
+nel registro solo per decisione. ⚠️ GitHub ritira i log dopo pochi giorni
+(`410`): l'elenco si prende dalla corsa mentre c'è.
+
 ⚠️ **E un `ERRORE_FIXTURE` in CI si legge, non si indovina.** La baseline stampa
 solo l'etichetta: il messaggio vero sta nel **log del container Postgres**, che
 GitHub scarica per intero nel passo «Stop containers» del job

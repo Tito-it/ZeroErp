@@ -1748,3 +1748,77 @@ difetto nel proprio strumento di misura, e l'ha trovato perché qualcuno è anda
 a chiedere il conto a un numero che non tornava. Il motivo sta sul modello: una
 funzione che dipende dal `search_path` di chi la chiama non ha un comportamento,
 ne ha uno per chiamante — e il presidio guardava quello sbagliato.*
+
+## 14. 🔵 Il primo settimanale (14-09) — «rientrati: 1», e il checker dava una risposta per ruolo
+
+> `dbops.vw_riferimenti_morti_rientrati: 1` — la riga 7 del registro
+> (`dbops.fn_get_pgagent_job_stato`, `%:RETURN QUERY:%pgagent%`, l'esenzione «a
+> due facce» del `20260906-16`). E in testa: `digest_presidi:settimanale …
+> (FALLITA)`, con il giornale che dice `ok = t` per quella stessa corsa.
+
+### 14.1 Tre occhi, due risposte
+
+Misurato lo stesso giorno, stessa macchina, stessa funzione:
+
+| Chi misura | `fn_check_funzioni_riferimenti_morti()` su `fn_get_pgagent_job_stato` | La riga 7 |
+| --- | --- | --- |
+| `zeroerp_app` (pgTAP) | `REALE error:42501:33:RETURN QUERY:permesso negato per lo schema pgagent` | **serve** |
+| `titodb` (`fn_conta_presidio`, DEFINER → il digest) | *niente*: legge `pgagent.*` | **di troppo** |
+| CI, `postgres` (guardrail) | `42P01` — pgAgent assente per decisione | **serve** |
+
+Il registro pretende che ogni riga corrisponda a un difetto **su questa
+macchina** — e ha ragione (`-16`). Ma sulla stessa macchina la stessa riga era
+insieme necessaria e di troppo: non un difetto del registro, **del checker**,
+che faceva una domanda dipendente dal ruolo. `fn_get_pgagent_job_stato` è
+`SECURITY DEFINER`: il suo corpo gira coi privilegi del proprietario, e *«il
+chiamante può risolvere il riferimento?»* non dice niente della funzione — lo
+scrivevano già il `-09` e il motivo della riga 7. Il checker lo chiedeva lo
+stesso. ⚠️ Ed era **lo stesso falso positivo** già sanato per `maintenance.*`
+con il `GRANT USAGE` all'app in `provision_db_roles.sql`: un rimedio per-schema
+a un difetto di regola. Il test 3 del pgTAP non poteva vederlo (gira come app:
+la riga serviva) e il test 7 confronta col digest solo `da_sanare`.
+
+### 14.2 Il rimedio, in due pezzi che servono entrambi
+
+| | Cosa | Perché da solo non basta |
+| --- | --- | --- |
+| `20_code/dbops/20260914-02` | **ottava classe `FP_DEFINER_PRIVILEGIO`**: un `42501` in una funzione `prosecdef` il cui proprietario non è chi misura (né un ruolo di cui è membro). Chi è proprietario e prende un `42501` resta `REALE`. In CI non cambia niente: da superuser un `42501` non esiste | senza il `-03`, su dev la riga 7 resta e diventa di troppo **per tutti** (test 3 rosso da ogni ruolo) |
+| `90_end/20260914-03` | la riga «pgAgent» del registro **segue la macchina**: `runAlways`, la toglie dove `pgagent.pga_job` esiste, la mette dove manca — cioè in CI, dove il `42P01` c'è per chiunque. In `90_end` perché viene **dopo** `85_pgagent`; presenza letta dal catalogo, non con `to_regclass` (che solleva `42501` senza `USAGE`) | senza il `-02`, su dev l'app continuerebbe a vedere un `REALE` non registrato (test 2 rosso come app) |
+
+⛔ Scartati: `GRANT USAGE` su `pgagent` all'app (per-schema, e la riga 7 lo
+aveva già scartato — anche se le ACL dicono che non esporrebbe nulla: `USAGE`
+non dà `SELECT`); SQL dinamico nella funzione (scartato il 06-09); perimetro
+`DEFINER` → altro sul presidio; membership o `pg_read_all_stats` a `titodb` (un
+privilegio su una macchina — la lezione del 13-09).
+
+**Provato su dev, transazioni annullate**: come `titodb`, `-02` + `-03` + pgTAP
+→ **9/9** (la riga 7 cancellata, test 4 «nessuna rientrata» verde, il nuovo test
+7 in skip dichiarato «nessun 42501 da questo ruolo», il test 8 «l'esenzione c'è
+sse pgAgent manca» 0 = 0); come `zeroerp_app`, la funzione nuova creata in
+copia nello schema `django` → `fn_get_pgagent_job_stato` esce
+**`FP_DEFINER_PRIVILEGIO`** e resta solo l'`ORFANA` registrata. Il ramo INSERT
+del `-03` provato a parte (sintassi, vincoli, motivo di 960 caratteri).
+
+### 14.3 🔵 Al BACKEND: «FALLITA» era la corsa stessa, in corso
+
+`MaintenanceRepository.job_liveness` prende `last_ok` dalla riga **più
+recente** per `started_at`; per la corsia `digest_presidi:settimanale`, mentre
+il digest compone la mail, quella riga è **la propria corsa** (`fn_job_run_start`
+l'ha aperta, `ok` è ancora `NULL`) e `presidi_digest` rende `None` come
+«FALLITA». La giornaliera dice «ok» solo perché era finita da mezz'ora. Non è del
+DB e su `dev/db-tid` non si tocca: `last_ok` va preso dall'ultima corsa
+**conclusa** (`FILTER (WHERE ended_at IS NOT NULL)`), o `None` va reso «in
+corso» — le tre facce di `ok` sono tre, e la mail ne mostrava due.
+
+### 14.4 Resta
+
+| | Cosa | Di chi |
+| --- | --- | --- |
+| ⏳ | apply `-02` + `-03` su dev (il `-03` cancella la riga 7 e lo dice con un NOTICE); pgTAP `dbops/test-riferimenti-morti-v1` (9) | **Tid** |
+| ⏳ | push DB → Tito-dev: in CI il guardrail deve restare verde con la riga 7 **presente** (pgAgent assente) | CI |
+| 🔵 | `job_liveness.last_ok` / resa «in corso» (14.3) | **BE** |
+| ⏳ | il settimanale di lunedì prossimo: zero rientrati, e la propria corsa non «FALLITA» | digest |
+
+*14-09. Il primo settimanale ha fatto quello per cui esiste: ha messo uno
+accanto all'altro due occhi che non si erano mai guardati, e la differenza era
+nel metro.*

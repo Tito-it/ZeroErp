@@ -122,3 +122,12 @@ Sembra meno preciso ed è l'unico corretto: sulle fatture la serie entra
 nell'unicità **dentro una funzione** — `COALESCE(serie, '')` — e per l'elenco
 delle colonne quella non è una colonna. La versione «precisa» avrebbe **rifiutato
 la fattura**, cioè fatto fallire la migrazione sul seed delle famiglie.
+
+### 🔄 rev 2026-09-14 — la colonna del billing account si verifica solo se dichiarata
+
+Dal `20260914-08` il terzo controllo (la colonna del billing account esiste
+sulla tabella) si esegue **solo se la famiglia la dichiara**, con la stessa
+regola già usata per la serie: vuoto o assente = «questa famiglia non ha un
+billing account». Tabella e colonna del numero restano sempre verificate.
+Motivo: l'ordine di acquisto, la cui controparte è un fornitore. Brief:
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.

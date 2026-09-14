@@ -759,6 +759,11 @@ anche il ramo di scambio BE/DB: 107 commit su 656 negli ultimi 30gg toccano solo
 quello di sviluppo ha dati veri, quindi i rossi sono popolazioni diverse. **Un
 rosso in CI non e` automaticamente un rosso da te**: guarda quale baseline lo
 conosce prima di inseguirlo.
+⭐ **E quel file si aggiorna DALLA CI**: `--update` fuori da GitHub e` un
+cancello. I RIENTRATI che la corsa stampa li toglie
+`scripts/pgtap-baseline-ci-rientrati.sh`, leggendo il log della corsa con `gh`
+(dal 14-09: trentuno righe erano rimaste nel registro per due giorni perche` il
+passo era «a mano»). Le regressioni le stampa e basta: entrano solo per decisione.
 
 ⚠️ La baseline e` un **registro di debito, non una lista di eccezioni**: deve
 calare. Un file che fallisce nel *fixture* non esegue **nessuna** asserzione — la

@@ -17,18 +17,21 @@
 > scritta lo stesso giorno. Ha prodotto **tre** voci che passano lo stesso filtro
 > (§3-bis, §7, §8) e ha allargato la motivazione del Blocco B — vedi §1.
 >
-> **Stato:** 🟡 **IN CORSO — P-1 → P-7 APPLICATI sul DB di sviluppo il
-> 2026-09-13** (P-1/2/3 alle 01:00, P-4/5/6/7 alle 09:35, Tid). In
-> `databasechangelog`: `20260913-04` → `-20` tutti `EXECUTED`, il mirror `-12`
-> `RERAN` per la riga di policy di P-4; a valle 66 commesse con `data_apertura`
-> (0 NULL), righe di lista 746-749 caricate, le quattro viste con le colonne in
-> coda. I file `-04 → -20` sono ora **immutabili**. Come sono stati provati:
-> §6-bis e **§6-ter**. ⚠️ Le due coppie ATTIVO (`articoli`/`modi_approvvigionamento`,
-> `commesse`/`risorse_umane`) e il lock su `codice_interno` arrivano con
-> `ci_apply`. Restano **P-8** (pgTAP) e **P-9** (opzionale). 🔴 Emerso in P-4 un
+> **Stato:** ✅ **LATO DB COMPLETO — P-1 → P-9 APPLICATI sul DB di sviluppo**
+> (P-1/2/3 il 13-09 alle 01:00; P-4/5/6/7 il 13-09 alle 09:35; P-8 verde col
+> runner il 14-09; **P-9 e la firma ri-ancorata di `fn_push` applicate il
+> 14-09, test verdi** — Tid). In `databasechangelog`: `20260913-04 → -20` e
+> `20260914-07 → -12`. I file sono tutti **immutabili**: un cambio va in un
+> changeSet nuovo. Come sono stati provati: §6-bis, §6-ter, §6-quater.
+> ⚠️ Le due coppie ATTIVO (`articoli`/`modi_approvvigionamento`,
+> `commesse`/`risorse_umane`) e i lock su `codice_interno` arrivano con `ci_apply`
+> (su dev ci sono già; il require sul figlio `articoli` ha il nome hashato, §3.2).
+> ⭐ **Resta il lato BE/FE**, ed è tutto in §5.5 — sette voci, con file e
+> costanti — più le tredici chiavi i18n di §5.4 (una è già su `Tito-dev`).
+> Questo documento resta in `work-in-progress/` finché quelle voci non sono
+> chiuse: è l'unica comunicazione che BE e FE ricevono. 🔴 Emerso in P-4 un
 > **tredicesimo punto** (§10.2): `data_apertura` non poteva nascere con il
-> default in `00_schema`. ⚠️ Due scelte da confermare: il riferimento di
-> `giorni_ritardo` (§5.2) e la chiave i18n della 746 (§5.3).
+> default in `00_schema`.
 >
 > 🔴 **Verificato il 2026-09-12 contro il DB vivo (doc auto-gen) e contro ciò che
 > è entrato in esercizio fra il 01-09 e il 12-09.** I tre blocchi reggono —
@@ -279,7 +282,13 @@ valorizzato**, anche a `consentito = false`).
 > `trg_modi_approvvigionamento_a10_articoli_block_deact_upd` (BEFORE UPDATE OF
 > attivo: non si spegne un modo usato da articoli attivi) e sul **figlio**
 > `trg_articoli_a10_modi_approvvigionamento_require_attivo_ins_upd` (constraint
-> trigger AFTER, DEFERRABLE: un articolo non punta a un modo spento). ⚠️ È
+> trigger AFTER, DEFERRABLE: un articolo non punta a un modo spento) — 🔴
+> *2026-09-14, letto su `pg_trigger` a `ci_apply` avvenuto*: **il nome vero è
+> `trg_articoli_a10_modi_approvvigionamento_require_attivo__1ad7bd`**. Il nome
+> pieno fa esattamente 63 caratteri e il framework lo tronca e lo hasha; il
+> changeSet `20260913-05` lo nomina per esteso e si sbaglia. ⇒ Il pgTAP di P-8
+> lo cerca per **funzione e argomenti**, mai per nome (memoria *un presidio
+> dinamico non si trova per nome*). ⚠️ È
 > **questo** trigger a rendere vera l'asserzione «un articolo non può puntare a
 > una riga spenta» del pgTAP di §7 — e nasce a `ci_apply`, non da un changeSet:
 > su un `--fresh` senza `--ci-apply` quel test è rosso per assenza, non per
@@ -424,6 +433,16 @@ comando si compone con `%s`, il ramo muto è lì, non su `%I`.
 ⛔ **Non la decido io.** La riga di destra è un argomento vero, ed è lo stesso che
 in §8 tiene fuori altre voci. ⇒ **P-9 è marcata come opzionale** in §6: si esegue
 solo se Tid la conferma.
+
+> ✅ **Confermata da Tid il 2026-09-14, scritta e provata lo stesso giorno (§6-quater).**
+> La forma è esattamente quella di `colonna_serie`: `NULL` = «questa famiglia non
+> ha un billing account». Il salto sta **nella query che sceglie le famiglie**
+> (le due `fn_*_storia_emittente`) e **prima del confronto su `pg_attribute`**
+> (il guard), mai dentro il `format()`; la madre normalizza `''` a `NULL` e
+> smette di pretenderla, con **firma a posizioni e tipi invariati** — il backend
+> passa gli argomenti per posizione (`_CAMPI_CREATE`). Il guard di struttura non
+> cambia: `IS DISTINCT FROM` tratta `NULL ↔ valore` come un cambio, e il test 28
+> del CRUD lo pinna.
 
 ⚠️ E comunque **il trasloco del motore fuori da `vendite` NON è di questo brief**:
 l'analisi acquisto lo ha rimandato di proposito al giorno in cui il primo ordine
@@ -632,10 +651,9 @@ sono due cose diverse, e quella vista ha già la disciplina di non confonderle.
 >    a ciò a cui ci si è impegnati** — se a una richiesta per il 1° abbiamo
 >    risposto «il 15», il 10 non siamo in ritardo — e finché non ci si è
 >    impegnati l'unica attesa è quella del cliente. ⇒ La data di riferimento è
->    `COALESCE(data_consegna_confermata, data_consegna_richiesta_cliente)`. ⚠️
->    È una **scelta di Tid da confermare**: se preferisce la sola richiesta,
->    cambia un `COALESCE` in un changeSet nuovo. Il pgTAP di P-8 la inchioda
->    nella forma che resterà.
+>    `COALESCE(data_consegna_confermata, data_consegna_richiesta_cliente)`.
+>    ✅ **DECISO (Tid, 2026-09-14): questa regola** — «prima la promessa,
+>    altrimenti la richiesta». Il pgTAP di P-8 la inchioda così.
 > 2. **La polarità, con un valore in più.** `NULL` = non si applica
 >    (`da_spedire` NULL o zero, oppure nessuna data dichiarata); **`0` = c'è da
 >    spedire e non è tardi**; `N > 0` = giorni di ritardo. Senza lo zero, «in
@@ -778,10 +796,13 @@ componente. L'unica cosa che serve dall'altro lato sono le **traduzioni**.
 >   una PR solo-DB non la vede — la **prima PR FE** sì. È lo stesso meccanismo
 >   con cui il §12.3 delle linee guida fa arrivare le `reason_key` al FE, ed è il
 >   precedente del 09-08 (`col_riferimento`, 745): CSV e `it.json`/`en.json`
->   nello **stesso** commit, ma quello era un commit FE. ⇒ O Tid aggiunge le
->   due righe ai locales nel commit di questo brief, o la voce sta in §5.5 e la
->   prossima PR FE la chiude. Non l'ho fatto io: `frontend/` è fuori perimetro
->   del ramo DB.
+>   nello **stesso** commit, ma quello era un commit FE. Non l'ho fatto io:
+>   `frontend/` è fuori perimetro del ramo DB.
+>   ✅ **DECISO (Tid, 2026-09-14): resta al FE** — e il FE l'ha **già fatto**:
+>   su `origin/Tito-dev` (commit `f3f011edc`, «Aggiornamento BE lista colonne»)
+>   `it.json` ed `en.json` portano `col_data_consegna_richiesta_cliente_min`.
+>   Alla merge del ramo DB il cancello torna verde da solo. Le altre dodici
+>   chiavi di §5.4 non ci sono ancora: arrivano con il lavoro BE/FE di §5.5.
 
 ### 5.4 Le chiavi i18n dichiarate qui
 
@@ -876,7 +897,7 @@ config.modi_approvvigionamento.non_applicabile
 > | 5 | **Lista ordini (7)** | ✅ davvero niente: `SELECT v.*` in lista e dettaglio | — |
 > | 5-bis | **Lista articoli (26)** | ⛔ vedi la voce 2: le righe di `ui.lista_colonna` nascono `attivo=f` e le accende il BE **nello stesso commit** della proiezione | `lista_colonna.csv` + `catalogo_repository.py` |
 > | 6 | **Pannello situazione merce** *(mancava del tutto)* | la SELECT su `vw_situazione_merce_ordine` in `vendite_repository` proietta **22 colonne per nome**: `data_consegna_richiesta_cliente`, `data_consegna_confermata` e `giorni_ritardo` vanno aggiunte, e il BB FE `situazioneMerce` deve **renderle** (una colonna «ritardo» nella sezione per riga) — è il posto per cui `giorni_ritardo` esiste | `vendite_repository.py` (≈ r. 4775), `src/vendite/_shared/situazioneMerce/` |
-> | 7 | **P-9, se confermata** | `famiglie_service._OBBLIGATORI_CREATE` perde `colonna_billing_account`; il form FE delle famiglie la rende opzionale (§3-bis, censimento) | `famiglie_service.py`, drawer famiglie |
+> | 7 | **P-9 — confermata il 14-09** | `famiglie_service._OBBLIGATORI_CREATE` perde la voce `colonna_billing_account` (il DB non la pretende più: `20260914-11`); `views_famiglie.py` il `CharField` di **creazione** (r. 125) diventa `required=False` come già quello di update; `test_famiglie_service.py` perde il caso «BA obbligatorio» e ne prende uno «BA vuoto → NULL»; il drawer FE `FamigliaDocumentoDrawer.vue` toglie l'asterisco a r. 271 e manda `null`/`''` senza bloccare. ⚠️ Finché non lo fanno, il BE rifiuta **prima** della madre: nessun difetto, una capacità del DB non ancora esposta. ⚠️ La firma della madre **non cambia** (posizioni e tipi): `_CAMPI_CREATE` resta com'è | `famiglie_service.py`, `views_famiglie.py`, `test_famiglie_service.py`, `FamigliaDocumentoDrawer.vue` |
 >
 > ⚠️ **Un criterio per non scoprirne un'ottava fra sei mesi**: prima di dire che
 > una colonna «arriva dalla vista», cercare **`SELECT` con l'asterisco** nel
@@ -913,10 +934,10 @@ non vengono da qui.
 | **P-3** ✅ *applicato il 13-09 (§6-bis)* | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date. ✅ nomi da **D-16** (§2.2), decisa | `00_schema` |
 | **P-4** ✅ *scritto e provato il 13-09 (§6-ter)* | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_risorsa_umana_id` → `anagrafiche.risorse_umane`. ✅ **§4-bis**: `data_apertura` **NOT NULL**, valore iniziale da `data_insert` (deciso 2026-09-02). ✅ *2026-09-12*: bersaglio della FK deciso (**D-A**, §4); + riga in `fk_index_policy`; la coppia ATTIVO nasce da `ci_apply` e si asserisce in P-8, non con DDL. 🔴 *2026-09-13*: `data_apertura` **in tre passi** come `modo_approvvigionamento_id` — il `DEFAULT` da funzione non può stare nell'`ADD COLUMN` (§4-bis, riquadro; §10.2 punto 13) | `00_schema` + `80_data` |
 | **P-5** ✅ *scritto e provato il 13-09 (§6-ter)* | `fn_push_preventivo_a_ordine` porta avanti la data richiesta (+ toglie il nome morto nel commento). 🔴 *2026-09-12*: la legge dalla **quarta vista** di P-6, non con un `JOIN` suo | `20_code` |
-| **P-6** ✅ *scritto e provato il 13-09 (§6-ter)* | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` + 🔴 `vendite.vw_preventivi_righe_smistabili_ordine` (*2026-09-12*, §5.2). ⚠️ `security_invoker` ri-specificata sulle tre di `vendite`, **non** aggiunta a quella di `catalogo`. ⚠️ *2026-09-13*: `giorni_ritardo` contro `COALESCE(confermata, richiesta)` — scelta da confermare (§5.2, riquadro) | `20_code` |
+| **P-6** ✅ *scritto e provato il 13-09 (§6-ter)* | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` + 🔴 `vendite.vw_preventivi_righe_smistabili_ordine` (*2026-09-12*, §5.2). ⚠️ `security_invoker` ri-specificata sulle tre di `vendite`, **non** aggiunta a quella di `catalogo`. ✅ *2026-09-14*: `giorni_ritardo` contro `COALESCE(confermata, richiesta)` — deciso da Tid (§5.2, riquadro) | `20_code` |
 | **P-7** ✅ *scritto e provato il 13-09 (§6-ter)* | `ui.lista_colonna`: le righe nuove, append al CSV. 🔴 *2026-09-12*: le tre della lista 26 nascono **`attivo=f`** (§5.3 riquadro); `ordinabile=t` solo se il BE estende la whitelist nello stesso giro. *2026-09-13*: righe 746-749, `ordinabile=f` su tutte; `check_i18n_keys.py` rosso sulla 746 finché il FE non traduce (§5.3) | `80_data` |
-| **P-8** | pgTAP (§7). 🔴 *2026-09-12*: le righe sono sotto RLS, il trigger «riga spenta» viene da `ci_apply` — vedi il riquadro di §7 | `db/pgtap` |
-| **P-9** | ⚠️ **OPZIONALE, da confermare (§3-bis)** — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente`. 🔴 *2026-09-12*: + `fn_crea_famiglia_documento` (oggi la pretende), + BE/FE (§3-bis censimento) | `00_schema` + `20_code` |
+| **P-8** ✅ *chiuso il 14-09: tre pgTAP verdi col runner (Tid)* | pgTAP (§7). 🔴 *2026-09-12*: le righe sono sotto RLS, il trigger «riga spenta» viene da `ci_apply` — vedi il riquadro di §7. *14-09*: tre file, 33 asserzioni, provati in transazione annullata come proprietario; il lancio col runner è di Tid | `db/pgtap` |
+| **P-9** ✅ *applicata il 14-09, test verdi (§6-quater)* | ⚠️ ~~OPZIONALE, da confermare~~ **CONFERMATA** (§3-bis) — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente`. 🔴 *2026-09-12*: + `fn_crea_famiglia_documento` (oggi la pretende), + BE/FE (§3-bis censimento) | `00_schema` + `20_code` |
 
 ⛔ **L'ordine di fase non è negoziabile**: `00_schema` → `20_code` → `80_data`.
 Una `preCondition` di `20_code` **non** deve verificare il *contenuto* di
@@ -1065,6 +1086,64 @@ offline) e oggi risulta **cancellato** nel working tree; e cinque file
 `check_db_role_access.sql`, `provision_db_roles.sql`) risultano modificati alle
 01:20–01:24 da un altro lavoro. Nessuno dei due è di questo brief.
 
+## 6-quater. ✅ P-9 — scritta, provata e APPLICATA il 2026-09-14
+
+> Sei changeSet `20260914-07` → `-12` più due pgTAP esistenti estesi.
+> ✅ **Applicati da Tid il 14-09, test verdi col runner** (i due file estesi,
+> 9 e 28 asserzioni). I file sono ora immutabili. Sotto, com'erano stati
+> provati prima dell'apply.
+> ⚠️ Nati come `-02 → -06` e **rinumerati** nello stesso giro: mentre venivano
+> scritti, un altro cantiere ha preso `20260914-02` (dbops) e `-03` (90_end). La
+> numerazione è globale per data e il numero libero scade nel minuto: si
+> ricontrolla **prima di salvare**, non all'inizio del lavoro.
+
+| File | Fase | Cosa |
+| --- | --- | --- |
+| `00_schema/vendite/20260914-07-alter-famiglie-documento-colonna-billing-account-nullable` | `00_schema` | `DROP NOT NULL` + `COMMENT` nuovo: `NULL` = «questa famiglia non ha un billing account». Nessun `DEFAULT` |
+| `20_code/vendite/20260914-08-update-trgfn-famiglie-documento-guard-riferimenti-ba-opzionale` | `20_code` | il controllo su `pg_attribute` del BA solo se `COALESCE(btrim(…), '') <> ''` — la forma già usata per la serie; numero e tabella restano obbligatori |
+| `20_code/anagrafiche/20260914-09-update-fn-ba-ha-storia-emittente-salta-famiglie-senza-ba` | `20_code` | la query che sceglie le famiglie esclude quelle senza BA; il `format()` non cambia |
+| `20_code/anagrafiche/20260914-10-update-fn-get-storia-emittente-ba-salta-famiglie-senza-ba` | `20_code` | idem, sul conteggio per famiglia |
+| `20_code/vendite/20260914-11-update-fn-crea-famiglia-documento-ba-opzionale` | `20_code` | `p_colonna_billing_account` esce dagli obbligatori (sei → cinque), `''` → `NULL`, `DEFAULT NULL` sul sesto parametro; **posizioni e tipi invariati** |
+| `20_code/vendite/20260914-12-update-fn-push-preventivo-a-ordine-firma-ancorata` | `20_code` | 🔴 *aggiunto il 14-09 su rilievo di Tid*: `fn_push_preventivo_a_ordine` torna con la **firma ancorata** (`%TYPE`) di `20260824-02` — `-10` e il mio `-20` l'avevano ricopiata **sciolta** dal corpo vivo. Corpo identico (stesso `md5(prosrc)`), identità byte-identica: **no-op sul DB**, cambia la dichiarazione nella timeline |
+| `db/pgtap/vendite/test-famiglie-documento-guard-riferimenti.sql` | pgTAP | plan 7 → **9**: famiglia attiva senza BA **passa** (8); senza BA il numero resta verificato (9); l'invariante 7 salta il BA solo se dichiarato |
+| `db/pgtap/vendite/test-famiglie-documento-crud-v1.sql` | pgTAP | plan 24 → **28**: la madre accetta senza BA e salva `NULL` (25); `'   '` → `NULL` (26); le due `fn_*_storia_emittente` reggono una famiglia attiva senza BA (27); `NULL → valore` a registri vivi è rifiutato (28, `skip` dichiarato se non ci sono emittenti, come già il test 9 dipende dai registri della DDT) |
+
+**Come è stato provato** (la forma di §6-bis): cinque cancelli statici verdi;
+`updateSQL` offline su una copia senza `preConditions` (453 righe); quell'SQL
+**più il corpo di ciascuno dei due pgTAP** nella stessa transazione annullata,
+come proprietario: **9/9** e **28/28**; ⭐ **mutazione**: gli stessi due file sul DB
+di oggi, senza l'SQL, sono rossi proprio dove devono — il test 8 del guard
+(`23502`) e il CRUD muore nella fixture della 25 (la madre rifiuta con
+`E_VENDITE_VALIDATION`), cioè le due cose che P-9 toglie; `liquibase validate`
+sui file veri: *No validation errors found*; dopo il rollback la colonna è
+ancora `NOT NULL`, la madre ha ancora «i sei obbligatori», zero famiglie di prova.
+`guardrail_pgtap_preambolo`: verde, debito a 129.
+
+> 🔴 **Rilievo di Tid, 2026-09-14: «ti sei dimenticato di usare `%TYPE` in firma
+> e `RETURNS TABLE`».** Vero, ed è la **quinta ricaduta** dello stesso
+> meccanismo (memoria *il `%TYPE` in firma*): il corpo vivo di
+> `pg_get_functiondef` scioglie i `%TYPE` e il `SECURITY INVOKER`, e i miei
+> generatori partivano da lì senza rimettere la firma. Corretto **in loco** sui
+> tre non applicati — `-09`, `-10` (parametro e `RETURNS TABLE` ancorati a
+> `billing_account.id`, `famiglie_documento.codice_interno/descrizione`;
+> `n_documenti` resta `bigint` perché è un conteggio), `-11` (undici parametri,
+> `RETURNS TABLE` e **`SECURITY INVOKER` esplicito** come in `20260901-19`) — e
+> con il changeSet `-12` per `fn_push`, che è già applicato. ⭐ Prova che toglie
+> il dubbio dell'overload: `pg_get_function_identity_arguments`,
+> `pg_get_function_result` e `prosecdef` **byte-identici** prima/dopo in
+> transazione annullata, una sola funzione per nome; per `-12` anche
+> `md5(prosrc)` identico. Le viste e i DDL non hanno firme; `-14` ha già il
+> `DECLARE` ancorato (`config.parameters.default_value%TYPE`).
+
+⚠️ **Che cosa NON copre**: la RLS non entra (nessuna delle tabelle toccate ne
+ha); il lato BE/FE è la voce 7 di §5.5 e resta da fare — finché non lo fanno, il
+BE rifiuta prima della madre.
+
+⚠️ **Non un `context: dati_macchina`**: il seed delle famiglie non cambia (le
+cinque hanno tutte il BA), e la famiglia dell'ordine di acquisto la registrerà
+il cantiere acquisti, quando avrà un motore. Qui si apre la porta, non la si
+attraversa.
+
 ---
 
 ## 7. I presidi
@@ -1105,6 +1184,51 @@ averlo verificato.
 > * il presidio di `security_invoker` sulle viste è ora **globale e sul merito**
 >   (`rls/test-rls-viste-security-invoker.sql`): i tre test qui sopra non ne
 >   scrivono una copia, e il «`has_column` non basta» resta l'unica cosa loro.
+>
+> ✅ **Scritti il 2026-09-14, provati come proprietario in transazione annullata
+> (33/33), lancio col runner a Tid:**
+>
+> | File | Runner | Plan | Che cosa pinna, oltre al brief |
+> | --- | --- | --- | --- |
+> | `catalogo/test-articoli-approvvigionamento-v1.sql` | app | 12 | i quattro modi; il **lock** su `codice_interno`; le tre nullabilità; default `ACQUISTO` letto per `codice_interno`; `gestito=false`/lead NULL alla nascita; CHECK sul negativo e gemello positivo sullo **zero**; FK; il require sul figlio **cercato per funzione e argomenti** (nome hashato); riga spenta rifiutata; modo usato non si spegne; la vista decodifica dalla sorgente su valori non di default |
+> | `vendite/test-date-consegna-ordine-v1.sql` | owner (costruisce l'azienda, criterio 2) | 10 | le cinque colonne con i nomi di D-16; **nessun CHECK** sulle date (pinna la scelta di §2.3); la smistabili espone la data; ⭐ il push reale porta la data, non la inventa sulla riga senza, lascia NULL la confermata; il `min` di testata e il filtro sulle righe attive; confermare **prima** di quanto chiesto passa; rilettura |
+> | `vendite/test-situazione-merce-ritardo-v1.sql` | owner (idem) | 11 | le tre nuove **in coda** (posizioni 19-20-21) con il loro tipo, e `da_spedire` ancora `numeric` in 14ª posizione — ⚠️ *dal 14-09 pomeriggio*: l'**insieme** delle 21 colonne lo pinna il gemello `test-vw-situazione-merce-ordine-v1` (test 3), non due volte (riquadro sotto); NULL/5/3/0 sulla riga impegnata (la **promessa vince**); NULL sulla riga in bozza; ⭐ **spedita per intero con DDT vero**: `da_spedire = 0` e ritardo NULL; due invarianti su tutta la vista |
+>
+> 🔴 **Il pgTAP che GIÀ pinnava il contratto era rosso, e il brief non lo aveva
+> censito** (rilievo di Tid, 2026-09-14, lanciando `test-vw-situazione-merce-ordine-v1`
+> col runner: *«Failed test 3: espone le 18 colonne del contratto — Extra
+> columns: data_consegna_confermata, data_consegna_richiesta_cliente,
+> giorni_ritardo»*). P-6 ha cambiato il contratto della vista e P-8 ha scritto
+> il gemello **nuovo**, ma nessuno dei due passi ha censito il test **esistente**
+> che inchiodava le 18 — è la stessa forma di «cambiare una firma = censire
+> anche i pgTAP», applicata a una vista. Corretto lo stesso giorno, in due
+> file e senza toccare la vista:
+>
+> * `test-vw-situazione-merce-ordine-v1`, test 3 → le **21** colonne. È la sede
+>   del contratto (quali colonne), e resta l'unica;
+> * `test-situazione-merce-ritardo-v1`, test 1 → **non più una copia** del
+>   `columns_are` del gemello, ma posizione e tipo delle tre nuove (19-20-21,
+>   `date`/`date`/`integer`) letti da `pg_attribute`, nello stesso idioma del
+>   suo test 2. ⭐ Ed è la cosa che l'etichetta prometteva e l'asserzione non
+>   provava: `columns_are` confronta **insiemi**, non l'ordine — «nello stesso
+>   ordine + le tre in coda» non era verificato da nessuno. Plan invariato (11).
+>   ⚠️ `attname` è di tipo `name` (collation `C`): nel confronto record di
+>   `results_eq` serve `COLLATE "default"` esplicito, o esce *«non è stato
+>   possibile determinare quale ordinamento usare»* — trovato provando.
+>
+> Provato senza runner: le tre asserzioni di struttura (21 colonne, 19-20-21,
+> `numeric/14`) in `BEGIN … ROLLBACK` come proprietario, 3/3, più la mutazione
+> (posizione attesa 22 → rosso con `have: (giorni_ritardo,integer,21)`).
+> `guardrail_pgtap_preambolo` verde. **Il lancio col runner dei due file è di
+> Tid.**
+>
+> ⚠️ Che cosa questa prova NON copre: la RLS delle righe (`20260909-30/-35`)
+> — i due file di `vendite` girano da owner, che ne è esente; il file di
+> `catalogo` gira come app ma non attraversa tabelle protette. Il verde
+> definitivo lo dà `scripts/testpgtap.sh` sui tre file, poi
+> `scripts/pgtap-baseline.sh catalogo` e `vendite` per le regressioni.
+> ⚠️ `acquisti.ordini_righe` entra solo nella struttura: un ordine d'acquisto
+> non ha ancora un comportamento da esercitare.
 
 ### ⛔ Il presidio che manca, e riguarda ciò che consegna QUESTO brief
 
@@ -1324,3 +1448,9 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | 2026-09-13 | ✅ **P-1, P-2, P-3 scritti e provati** (§6-bis): nove changeSet `20260913-04 → -12` e due CSV; SQL reso da Liquibase offline ed eseguito intero in `BEGIN … ROLLBACK` sul DB di sviluppo, 257 articoli backfillati, cinque rifiuti attesi verificati, `validate` pulito. 🔴 Emerso e dichiarato in §5.5: il BE modifica le righe solo in `DRAFT` — la data confermata dopo la conferma vuole un verbo suo |
 | 2026-09-13 | ✅ **P-1, P-2, P-3 APPLICATI** (Tid, ore 01:00): nove `EXECUTED` in `databasechangelog`, 4 modi, 0 articoli senza modo. La coppia ATTIVO e il lock aspettano `ci_apply`. I file `-04 → -12` sono ora immutabili. Prossimo: P-4 |
 | 2026-09-13 | ✅ **P-4, P-5, P-6, P-7 scritti e provati, poi APPLICATI da Tid alle 09:35** (§6-ter): otto changeSet `20260913-13 → -20` e due append a CSV; SQL reso da Liquibase eseguito intero in `BEGIN … ROLLBACK`, 66 commesse backfillate nel fuso azienda, casi costruiti su `min` e `giorni_ritardo`, push reale con la data, `validate` pulito. 🔴 Tredicesimo punto (§10.2): `data_apertura` in tre passi, non uno. ⚠️ Due scelte da confermare: il riferimento di `giorni_ritardo` = promessa, poi richiesta (§5.2); la chiave i18n della 746 nel commit DB o nella prossima PR FE (§5.3). Prossimo: P-8 |
+| 2026-09-14 | ✅ **Le due scelte del 13-09 prese da Tid**: `giorni_ritardo` = «prima la promessa, altrimenti la richiesta» (§5.2); la chiave i18n della colonna 746 resta al FE, che l'ha già portata su `Tito-dev` (`f3f011edc`, §5.3). Nessuna riga di SQL cambia. Prossimo: P-8 |
+| 2026-09-14 | ✅ **P-8 scritto e provato**: tre pgTAP (`catalogo/test-articoli-approvvigionamento-v1`, `vendite/test-date-consegna-ordine-v1`, `vendite/test-situazione-merce-ritardo-v1`), 33 asserzioni verdi come proprietario in transazione annullata, preambolo verde. 🔴 Il require generato da `ci_apply` su `articoli` ha il nome **hashato** (`…require_attivo__1ad7bd`): il brief e `20260913-05` lo nominavano per esteso (§3.2). Lancio col runner e baseline: Tid |
+| 2026-09-14 | ✅ **P-9 confermata da Tid, scritta e provata** (§6-quater): cinque changeSet `20260914-07 → -11` (colonna nullable, guard, due `fn_*_storia_emittente`, madre) + due pgTAP estesi (9 e 28 asserzioni), prova con mutazione. Lato BE/FE in §5.5 voce 7. Da applicare |
+| 2026-09-14 | 🔴 **Rilievo di Tid: `%TYPE` mancante in firma e `RETURNS TABLE`** (quinta ricaduta del corpo vivo che li scioglie). Corretti in loco `-09/-10/-11` (+ `SECURITY INVOKER` sulla madre) e aggiunto `20260914-12`, no-op sul DB, che ri-ancora la firma di `fn_push_preventivo_a_ordine` degradata da `20260824-10` e dal mio `-20`. Identità byte-identiche, nessun overload |
+| 2026-09-14 | ✅ **P-9 e `-12` APPLICATI, test verdi** (Tid). Lato DB il brief è **completo**: P-1 → P-9 tutti in `databasechangelog`. Restano le sette voci BE/FE di §5.5 e le chiavi i18n di §5.4; il documento resta in `work-in-progress/` finché non sono chiuse |
+| 2026-09-14 | 🔴 **Rilievo di Tid: `test-vw-situazione-merce-ordine-v1` rosso al test 3** («18 colonne», tre extra). P-6 ha allargato il contratto e P-8 ha scritto solo il gemello nuovo: il pgTAP **esistente** non era stato censito. Test 3 → 21 colonne (sede unica del contratto); test 1 del gemello → posizione e tipo delle tre in coda invece di una seconda copia del `columns_are` (che non prova l'ordine). Provate 3/3 + mutazione in transazione annullata, preambolo verde (§7, riquadro). Lancio col runner dei due file: Tid |
