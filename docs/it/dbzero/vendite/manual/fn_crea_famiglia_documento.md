@@ -114,3 +114,13 @@ un errore.
 ---
 
 *Piano: `brief-be-fe-crud-registri-di-numerazione`, sezione 11.7.*
+
+### 🔄 rev 2026-09-14 — il billing account non è più obbligatorio
+
+`p_colonna_billing_account` è facoltativo come `p_colonna_serie` (`20260914-11`):
+gli obbligatori sul valore scendono da sei a cinque, e un campo vuoto viene
+salvato come «nessuno» (`NULL`), non come stringa vuota. La firma non cambia né
+nelle posizioni né nei tipi — il backend passa gli argomenti per posizione — e
+il sesto parametro prende semplicemente un default. Vale per il primo documento
+la cui controparte non è un cliente: l'ordine di acquisto. Brief:
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.

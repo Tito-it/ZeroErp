@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ L'ESENZIONE «pgAgent» DEL REGISTRO DEI RIFERIMENTI MORTI ESISTE SOLO DOVE
+#    pgAgent NON C'E'. Una rete che converge, a ogni migrate.
+#   Brief: brief-db-un-destinatario-per-i-presidi §14 (14-09)
+#
+# ── Il principio, gia' scritto e ora eseguibile ─────────────────────
+#   20260906-16: «un registro di debito descrive lo stato di UNA macchina alla
+#   volta. Una riga che documenta un caso che su questa macchina non puo'
+#   verificarsi non e' documentazione: e' rumore che il presidio deve
+#   segnalare». Quel changeSet tenne UNA riga per le due facce del falso
+#   positivo di dbops.fn_get_pgagent_job_stato — 42501 su dev (l'app non vede
+#   pgagent.*), 42P01 in CI (pgAgent assente per decisione di Tid, 06-09) —
+#   ancorata a `%:RETURN QUERY:%pgagent%`. Reggeva finche' su dev qualcuno
+#   misurava come app.
+#
+# ── Perche' non regge piu' ───────────────────────────────────────────
+#   Dal 20260914-02 il 42501 dentro una DEFINER misurata da un non-proprietario
+#   e' FP_DEFINER_PRIVILEGIO, non REALE: su dev la faccia dell'app e' sparita
+#   — ed era gia' assente per il proprietario, con cui il digest conta dal
+#   10-09 (primo settimanale, 14-09: «rientrati: 1»). Su una macchina CON
+#   pgAgent nessun occhio trova piu' un difetto: la riga e' di troppo. In CI,
+#   SENZA pgAgent, il 42P01 c'e' per chiunque: la riga serve. La stessa riga
+#   non puo' stare in un changelog che gira ovunque, se non con una condizione.
+#
+# ── La forma: 90_end, runAlways, sulla PRESENZA di pgAgent ──────────
+#   * 90_end perche' viene DOPO 85_pgagent, cioe' dopo che questa macchina ha
+#     deciso se pgAgent c'e' (installato) o no (MARK_RAN in CI). In 80_data
+#     girerebbe sempre prima, quindi vedrebbe pgAgent assente OVUNQUE e
+#     seminerebbe la riga anche dove poi arriva — e il presidio la darebbe di
+#     troppo alla prima misura.
+#   * runAlways perche' e' una convergenza, non una migrazione: se pgAgent
+#     arriva o se ne va, la riga lo segue al migrate successivo. validCheckSums
+#     ANY per la stessa ragione del 20260911-29.
+#   * la presenza si legge dal CATALOGO (pg_class/pg_namespace), non con
+#     to_regclass('pgagent.pga_job'): quella solleva 42501 se lo schema esiste
+#     e il migratore non ha USAGE — e su questa domanda il privilegio del
+#     migratore non c'entra.
+#   * la riga si identifica per (schema, funzione, esito_like), non per id: il
+#     registro ha un'identity, e su un database da zero l'id non e' 7.
+#
+# ⚠️ Su dev la riga 7 c'e' (dal -16) e pgAgent c'e': questo changeSet la
+#   CANCELLA. In CI non c'e' pgAgent: la riga resta (l'ha messa il -16) e il
+#   guardrail continua a trovarla necessaria. Il presidio che lo verifica e' lo
+#   stesso di sempre: (B) del guardrail e il test 3 del pgTAP, ora da ogni
+#   ruolo.
+#
+# Verifica: db/pgtap/dbops/test-riferimenti-morti-v1.sql (test 3 e 8)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260914-03-converge-esenzione-riferimenti-morti-pgagent-alla-macchina-mctit.yaml
+
+  - changeSet:
+      id: 20260914-03-converge-esenzione-riferimenti-morti-pgagent-alla-macchina
+      author: mctit
+      runAlways: true
+      # Una rete che converge: il corpo può cambiare senza che il checksum
+      # debba invalidare i database dove ha già girato.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Converge l'esenzione «pgAgent» di dbops.riferimenti_morti_esenzioni
+        (dbops.fn_get_pgagent_job_stato, %:RETURN QUERY:%pgagent%) allo stato
+        di QUESTA macchina: la toglie dove pgagent.pga_job esiste (nessun occhio
+        trova piu' quel difetto, dal 20260914-02), la mette dove manca (in CI il
+        42P01 c'e' per chiunque). Un registro di debito descrive una macchina
+        alla volta. Gira in 90_end, dopo 85_pgagent, a ogni migrate.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: riferimenti_morti_esenzioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_pgagent_presente boolean := EXISTS (
+                  SELECT 1
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'pgagent'
+                     AND c.relname = 'pga_job'
+                     AND c.relkind = 'r');
+                v_righe integer;
+              BEGIN
+                IF v_pgagent_presente THEN
+                  DELETE FROM dbops.riferimenti_morti_esenzioni
+                   WHERE schema_nome = 'dbops'
+                     AND funzione    = 'fn_get_pgagent_job_stato'
+                     AND esito_like  = '%:RETURN QUERY:%pgagent%';
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+                  IF v_righe > 0 THEN
+                    RAISE NOTICE 'riferimenti_morti_esenzioni: tolta l''esenzione pgAgent (% riga/e): su questa macchina pgagent.pga_job esiste e il riferimento si risolve', v_righe;
+                  END IF;
+                ELSIF NOT EXISTS (
+                  SELECT 1 FROM dbops.riferimenti_morti_esenzioni
+                   WHERE schema_nome = 'dbops'
+                     AND funzione    = 'fn_get_pgagent_job_stato'
+                     AND esito_like  = '%:RETURN QUERY:%pgagent%')
+                THEN
+                  INSERT INTO dbops.riferimenti_morti_esenzioni
+                      (schema_nome, funzione, esito_like, data_registrazione, motivo)
+                  VALUES
+                      ('dbops', 'fn_get_pgagent_job_stato', '%:RETURN QUERY:%pgagent%',
+                       DATE '2026-09-06',
+                       'FALSO POSITIVO STRUTTURALE, presente SOLO dove pgAgent manca (in CI e'' assente per decisione di Tid, 2026-09-06: «e'' sempre stato un problema»). '
+                       'La funzione chiede to_regclass(''pgagent.pga_job'') e torna VUOTA se non c''e'': l''assenza di pgAgent e'' prevista e gestita, ma plpgsql_check compila tutto il corpo e non sa che quel guard protegge la RETURN QUERY - da qui il 42P01 sulla RETURN QUERY. '
+                       'Il modello si ancora all''istruzione e allo schema, non allo SQLSTATE ne'' al messaggio tradotto. '
+                       'Dal 2026-09-14 questa riga la mette e la toglie 90_end/20260914-03 a ogni migrate, secondo che pgagent.pga_job esista o no su QUESTA macchina: un registro di debito descrive una macchina alla volta (20260906-16). '
+                       'L''altra faccia di un tempo - il 42501 di chi non vede pgagent.* dentro una SECURITY DEFINER - non e'' piu'' un difetto: e'' FP_DEFINER_PRIVILEGIO (20260914-02). '
+                       'Esce dal registro quando la funzione smette di leggere pgagent.*, o quando pgAgent arriva anche qui.');
+                  RAISE NOTICE 'riferimenti_morti_esenzioni: messa l''esenzione pgAgent: su questa macchina pgagent.pga_job non esiste e plpgsql_check non puo'' risolvere il riferimento';
+                END IF;
+              END
+              $$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Convergenza: non ha un verso di ritiro. Il registro torna allo
+              -- stato che il 20260906-16 ha lasciato solo cancellando questo file.
+              SELECT 1;

@@ -13,7 +13,7 @@
 --       vendite.trgfn_famiglie_documento_guard_riferimenti  (20260831-18)
 --       Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-18
 -- ------------------------------------------------------------
--- Elenco test (plan 7):
+-- Elenco test (plan 9):
 -- 1) La funzione guard esiste
 -- 2) Il trigger e' montato BEFORE, su INSERT e su UPDATE
 -- 3) ⛔ Famiglia ATTIVA che nomina una tabella inesistente: respinta (P0001)
@@ -21,6 +21,9 @@
 -- 5) ⭐ Famiglia RITIRATA che nomina una tabella inesistente: PASSA
 -- 6) ⛔ ... ma RIACCENDERLA e' respinto
 -- 7) ⭐ Il catalogo VIVO e' coerente: ogni riga attiva punta a oggetti reali
+-- 8) ⭐ rev 2026-09-14 (P-9): una famiglia ATTIVA SENZA billing account PASSA — il
+--    vuoto e' una dichiarazione, come per la serie (l'ordine di acquisto)
+-- 9) ⛔ ...ma senza billing account il NUMERO resta verificato: il salto e' SOLO sul BA
 --
 -- Scopo:
 --   Dal 2026-08-31 il presidio sul cambio emittente di un billing account non
@@ -58,7 +61,7 @@ BEGIN;
 -- ⚠️ 2. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+SELECT plan(9);
 
 -- ============================================================
 -- 1) La funzione guard esiste
@@ -181,11 +184,47 @@ SELECT ok(
                                 WHERE a.attrelid = c.oid
                                   AND a.attname = fd.colonna_numero
                                   AND a.attnum > 0 AND NOT a.attisdropped)
-                OR NOT EXISTS (SELECT 1 FROM pg_attribute a
-                                WHERE a.attrelid = c.oid
-                                  AND a.attname = fd.colonna_billing_account
-                                  AND a.attnum > 0 AND NOT a.attisdropped))),
+                -- rev 2026-09-14: il billing account e' opzionale — si verifica
+                -- solo se dichiarato, come fa il guard
+                OR (COALESCE(btrim(fd.colonna_billing_account), '') <> ''
+                    AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                                     WHERE a.attrelid = c.oid
+                                       AND a.attname = fd.colonna_billing_account
+                                       AND a.attnum > 0 AND NOT a.attisdropped)))),
     '7) Il catalogo vivo non e'' vuoto e ogni sua riga attiva punta a oggetti reali');
+
+-- ============================================================
+-- 8) ⭐ Famiglia ATTIVA SENZA billing account: passa (P-9, 20260914-07/-08)
+-- ============================================================
+-- La controparte di un ordine di acquisto e' un soggetto_ruolo, non un
+-- billing account: la colonna resta NULL, e il guard non la cerca. E' la
+-- stessa forma di colonna_serie. La tabella e' quella vera del caso d'uso,
+-- e non ha ancora una famiglia attiva (uq_famiglie_documento_tabella_attiva).
+SELECT lives_ok(
+    $q$INSERT INTO vendite.famiglie_documento (
+           codice_interno, descrizione, schema_tabella, nome_tabella,
+           colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
+       VALUES ('TSTNOBA', 'Famiglia di test senza billing account', 'acquisti',
+               'ordini', 'numero', NULL, true, false)$q$,
+    '8) Una famiglia ATTIVA senza billing account passa: il vuoto e'' una dichiarazione (l''ordine di acquisto)');
+
+-- ============================================================
+-- 9) ⛔ ...ma il numero resta verificato anche senza billing account
+-- ============================================================
+-- E' il gemello che distingue «salta il BA» da «salta tutto»: un guard che
+-- uscisse presto su NULL lascerebbe passare anche il refuso sul numero.
+PREPARE fdgr_noba_numero_assente AS
+INSERT INTO vendite.famiglie_documento (
+    codice_interno, descrizione, schema_tabella, nome_tabella,
+    colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
+VALUES ('TSTNOBA2', 'Famiglia senza BA con numero rotto', 'acquisti',
+        'ddt', 'colonna_che_non_esiste_pgtap', NULL, true, false);
+
+SELECT throws_ok(
+    'EXECUTE fdgr_noba_numero_assente',
+    'P0001',
+    NULL,
+    '9) Senza billing account la colonna del numero resta verificata: il salto e'' solo sul BA');
 
 SELECT * FROM finish();
 ROLLBACK;

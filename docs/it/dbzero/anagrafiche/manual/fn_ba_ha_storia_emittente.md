@@ -80,3 +80,13 @@ perché non vede quello che c'è.
 * il controllo che gira spesso costa poco, e quello che costa gira di rado;
 * la definizione di «storia» sta in un posto solo, condivisa da chi spegne il
   pulsante e da chi rifiuta l'operazione: non possono divergere.
+
+### 🔄 rev 2026-09-14 — le famiglie senza billing account restano fuori dal giro
+
+Dal `20260914-09/-10` la funzione gira solo sulle famiglie che **dichiarano**
+una colonna del billing account (`vendite.famiglie_documento.colonna_billing_account`
+è facoltativa da quel giorno). Il salto sta nella query che sceglie le famiglie,
+**non** dentro la composizione dell'SQL: un nome vuoto lì dentro avrebbe
+prodotto un errore tecnico senza codice, o — peggio — un'interrogazione muta.
+Una famiglia senza cliente non può contribuire alla storia di nessun cliente.
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.

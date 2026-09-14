@@ -14,7 +14,7 @@
 | schema_tabella | text | NO |  |
 | nome_tabella | text | NO |  |
 | colonna_numero | text | NO |  |
-| colonna_billing_account | text | NO |  |
+| colonna_billing_account | text | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |

@@ -1,0 +1,378 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ OTTAVA CLASSE: FP_DEFINER_PRIVILEGIO — un 42501 dentro una SECURITY DEFINER
+#    misurata da chi non ne e' il proprietario non e' un riferimento morto.
+#   Brief: brief-db-un-destinatario-per-i-presidi §14 (14-09)
+#
+# ── Che cosa e' successo ─────────────────────────────────────────────
+#   Primo digest SETTIMANALE, 14-09 07:30:
+#     dbops.vw_riferimenti_morti_rientrati: 1
+#   La riga 7 del registro — dbops.fn_get_pgagent_job_stato, esito
+#   `%:RETURN QUERY:%pgagent%`, l'esenzione «a due facce» del 20260906-16 —
+#   risultava di troppo. Misurato lo stesso giorno, stessa macchina:
+#     come zeroerp_app  → REALE  error:42501:33:RETURN QUERY:permesso negato per lo schema pgagent
+#     come titodb       → (niente)
+#   `vw_riferimenti_morti_rientrati` ha perimetro DEFINER dal 10-09: il digest
+#   conta come titodb, che legge pgagent.*, e per lui la riga 7 non copre
+#   nessun difetto. Per l'app la copre. In CI (pgAgent assente per decisione)
+#   la copre da qualunque ruolo (42P01).
+#
+# ── Il difetto, sul modello: tre occhi, due risposte ─────────────────
+#   fn_get_pgagent_job_stato e' SECURITY DEFINER. Il suo corpo gira coi
+#   privilegi del PROPRIETARIO, quindi «il chiamante puo' risolvere
+#   pgagent.pga_job?» non dice niente della funzione — lo scriveva gia' il
+#   motivo della riga 7 e il 20260906-09. Ma il checker quella domanda la
+#   faceva lo stesso, e da tre ruoli otteneva tre misure:
+#     app        42501 → REALE         (la riga 7 SERVE)
+#     titodb     —                     (la riga 7 E' DI TROPPO)
+#     CI/postgres 42P01 → REALE        (la riga 7 SERVE)
+#   Il registro pretende — giustamente — che ogni riga corrisponda a un
+#   difetto presente su QUESTA macchina, e su dev la stessa riga era insieme
+#   necessaria (app) e di troppo (proprietario). Non e' un difetto del
+#   registro: e' il checker che dava una risposta dipendente dal ruolo.
+#
+# ── Il rimedio ──────────────────────────────────────────────────────
+#   Ramo (1-quater): `error:42501:` su una funzione `prosecdef` il cui
+#   proprietario NON e' chi misura (ne' un ruolo di cui e' membro) ⇒
+#   FP_DEFINER_PRIVILEGIO. Le viste a valle filtrano su REALE/ORFANA/
+#   NON_MISURATO e non lo vedono, come gli altri FP_*. Chi e' proprietario e
+#   prende lo stesso un 42501 cade nell'ELSE: REALE, com'e' giusto.
+#   ⚠️ E' la generalizzazione di un rimedio gia' preso per-schema: il GRANT
+#   USAGE su `maintenance` all'app in provision_db_roles.sql esiste perche' le
+#   DEFINER che nominano maintenance.* uscivano REALE dall'app. Quel grant
+#   resta (e' innocuo e documentato); la regola sta qui.
+#   ⛔ Scartati: GRANT USAGE su pgagent all'app (un altro rimedio per-schema, e
+#   la riga 7 lo aveva gia' scartato); SQL dinamico nella funzione (codice
+#   peggiore per compiacere un controllo, scartato il 06-09); dare pg_read /
+#   membership a titodb (un privilegio su una macchina).
+#
+# ── E la riga 7? ────────────────────────────────────────────────────
+#   Con questa classe, su dev NESSUN occhio la trova piu' necessaria; in CI
+#   resta necessaria (42P01, pgAgent assente). Un registro descrive UNA
+#   macchina alla volta (20260906-16): la riga deve esistere SOLO dove il
+#   difetto esiste. Lo fa il 90_end/20260914-03, che converge a ogni migrate.
+#
+# ⚠️ Corpo dalla doc auto-gen (docs/it/dbzero/dbops/funzioni/…), non dallo
+#   YAML: e' la revisione -37 del 12-09 con il ramo nuovo. Il pin del
+#   search_path resta (pg_catalog, public, pg_temp).
+#
+# Verifica: db/pgtap/dbops/test-riferimenti-morti-v1.sql (test 7 nuovo; i
+#           test 2 e 3 sono il presidio vero: senza questa classe, tolta la
+#           riga 7, il 2 e' rosso come app su dev)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260914-02-update-fn-check-riferimenti-morti-fp-definer-privilegio-mctit.yaml
+
+  - changeSet:
+      id: 20260914-02-update-fn-check-riferimenti-morti-fp-definer-privilegio
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.fn_check_funzioni_riferimenti_morti: ottava classe
+        FP_DEFINER_PRIVILEGIO - un 42501 dentro una SECURITY DEFINER misurata da
+        chi non ne e' il proprietario non e' un riferimento morto (il corpo gira
+        coi privilegi del proprietario). Fino a oggi lo stesso riferimento
+        usciva REALE dall'app e non usciva affatto dal proprietario, e la riga 7
+        del registro risultava insieme necessaria e di troppo sulla stessa
+        macchina (primo digest settimanale, 14-09). Il pin del search_path resta.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname = 'fn_check_funzioni_riferimenti_morti'
+                 AND p.pronargs = 0
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
+               RETURNS TABLE(classe text, schema_nome text, funzione text, argomenti text, esito text)
+               LANGUAGE plpgsql
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                r          record;
+                rel        record;
+                m          text;
+                v_relazioni int;
+                v_tipi     text[];
+                v_chiamata text;
+                v_e_variadic boolean;
+              BEGIN
+                CREATE TEMP TABLE IF NOT EXISTS tmp_raw(
+                  nsp text, pro text, args text, relid oid, msg text
+                ) ON COMMIT DROP;
+                DELETE FROM tmp_raw;
+
+                FOR r IN
+                  SELECT p.oid                                     AS oid,
+                         n.nspname::text                           AS nsp,
+                         p.proname::text                           AS pro,
+                         pg_get_function_identity_arguments(p.oid) AS args,
+                         (p.prorettype = 'trigger'::regtype)       AS is_trg
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                    JOIN pg_language  l ON l.oid = p.prolang
+                   WHERE l.lanname = 'plpgsql'
+                     AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND n.nspname NOT LIKE 'pg\_%'
+                     -- fuori tutto cio' che appartiene a un'estensione: non e' codice
+                     -- che manteniamo noi (PostGIS, topology, pgagent).
+                     AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                                      WHERE d.objid = p.oid AND d.deptype = 'e')
+                   ORDER BY n.nspname, p.proname
+                LOOP
+                  IF r.is_trg THEN
+                    -- Trigger function: si valida contro OGNI tabella su cui e'
+                    -- agganciata. Zero tabelle = orfana, e non e' validabile.
+                    v_relazioni := 0;
+                    FOR rel IN
+                      SELECT DISTINCT tg.tgrelid
+                        FROM pg_trigger tg
+                       WHERE tg.tgfoid = r.oid AND NOT tg.tgisinternal
+                    LOOP
+                      v_relazioni := v_relazioni + 1;
+                      BEGIN
+                        -- ⛔ `public.` NON e' decorazione: togliendolo il presidio MENTE.
+                        --   Questa funzione gira anche DENTRO `dbops.fn_conta_presidio`, che
+                        --   e' SECURITY DEFINER con `search_path = pg_catalog, pg_temp`. Li'
+                        --   un nome non qualificato non si risolve — 42883, l'estensione sta
+                        --   in `public` — l'EXCEPTION qui sotto lo scrive come
+                        --   `error:CHECK-KO:` e OGNI funzione del database esce
+                        --   NON_MISURATO. Misurato il 2026-09-12: il digest riferiva 784
+                        --   «riferimenti morti» che erano 784 «non ho potuto guardare», e la
+                        --   lettura diretta della stessa vista rispondeva 0.
+                        --   Brief: brief-db-un-destinatario-per-i-presidi §13.2.
+                        FOR m IN SELECT c FROM public.plpgsql_check_function(
+                                   r.oid::regprocedure, relid => rel.tgrelid::regclass,
+                                   fatal_errors => false) AS c
+                        LOOP
+                          IF m LIKE 'error:%' THEN
+                            INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid, m);
+                          END IF;
+                        END LOOP;
+                      EXCEPTION WHEN OTHERS THEN
+                        INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, rel.tgrelid,
+                                                    'error:CHECK-KO:' || SQLERRM);
+                      END;
+                    END LOOP;
+
+                    IF v_relazioni = 0 THEN
+                      classe := 'ORFANA'; schema_nome := r.nsp; funzione := r.pro;
+                      argomenti := r.args;
+                      esito := 'trigger function senza alcun trigger agganciato: non validabile, e gia'' di per se'' un residuo';
+                      RETURN NEXT;
+                    END IF;
+
+                  ELSE
+                    BEGIN
+                      -- ⛔ Qualificato come il gemello qui sopra e per la stessa ragione: i
+                      --   due rami sono la stessa chiamata su due forme di funzione, quindi
+                      --   sanarne uno solo lascerebbe cieca meta' della scansione.
+                      FOR m IN SELECT c FROM public.plpgsql_check_function(
+                                 r.oid::regprocedure, fatal_errors => false) AS c
+                      LOOP
+                        IF m LIKE 'error:%' THEN
+                          INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL, m);
+                        END IF;
+                      END LOOP;
+                    EXCEPTION WHEN OTHERS THEN
+                      INSERT INTO tmp_raw VALUES (r.nsp, r.pro, r.args, NULL,
+                                                  'error:CHECK-KO:' || SQLERRM);
+                    END;
+                  END IF;
+                END LOOP;
+
+                -- ── Classificazione ──────────────────────────────────────────────
+                FOR r IN
+                  SELECT t.nsp, t.pro, t.args, t.msg,
+                         count(*)                                   AS visto_su,
+                         (SELECT count(DISTINCT tg.tgrelid)
+                            FROM pg_trigger tg
+                            JOIN pg_proc p2 ON p2.oid = tg.tgfoid
+                            JOIN pg_namespace n2 ON n2.oid = p2.pronamespace
+                           WHERE n2.nspname = t.nsp AND p2.proname = t.pro
+                             AND NOT tg.tgisinternal)                AS tabelle_totali
+                    FROM tmp_raw t
+                   GROUP BY t.nsp, t.pro, t.args, t.msg
+                   ORDER BY t.nsp, t.pro, t.msg
+                LOOP
+                  schema_nome := r.nsp; funzione := r.pro; argomenti := r.args; esito := r.msg;
+
+                  -- (1) Errore visto solo su ALCUNE delle tabelle del trigger: e' il
+                  --     ramo dedicato a un'altra tabella, non un difetto.
+                  IF r.tabelle_totali > 1 AND r.visto_su < r.tabelle_totali THEN
+                    classe := 'FP_RAMO_ALTRA_TABELLA';
+
+                  -- (1-bis) «relazione X non esiste» dove X e' una TRANSITION TABLE
+                  --     dichiarata nel CREATE TRIGGER (`REFERENCING NEW TABLE AS ...`).
+                  --     Esiste solo durante lo scatto del trigger, plpgsql_check non la
+                  --     vede. Il nome non si indovina: si legge da pg_trigger, che lo
+                  --     conserva in tgnewtable/tgoldtable.
+                  ELSIF r.msg ~ '^error:42P01:' AND EXISTS (
+                          SELECT 1
+                            FROM pg_trigger tg
+                            JOIN pg_proc p3      ON p3.oid = tg.tgfoid
+                            JOIN pg_namespace n3 ON n3.oid = p3.pronamespace
+                           WHERE n3.nspname = r.nsp AND p3.proname = r.pro
+                             AND NOT tg.tgisinternal
+                             AND substring(r.msg from '"([^"]+)"')
+                                 IN (tg.tgnewtable::text, tg.tgoldtable::text))
+                  THEN
+                    classe := 'FP_TRANSITION_TABLE';
+
+                  -- (1-ter) Errore di SINTASSI dentro un EXECUTE: e' SQL costruito a
+                  --     runtime, con dentro segnaposto che non sono SQL valido finche'
+                  --     non vengono sostituiti. plpgsql_check prova a interpretarlo
+                  --     comunque.
+                  ELSIF r.msg ~ '^error:42601:' AND r.msg LIKE '%:EXECUTE:%' THEN
+                    classe := 'FP_SQL_DINAMICO';
+
+                  -- (1-quater) «permesso negato» (SQLSTATE 42501) dentro una funzione
+                  --     SECURITY DEFINER, misurata da chi NON e' il suo proprietario (ne'
+                  --     membro del suo ruolo). Il corpo di una DEFINER gira con i privilegi
+                  --     del PROPRIETARIO: «il chiamante puo' risolvere il riferimento?» e'
+                  --     la domanda sbagliata, e la risposta non dice niente della funzione.
+                  --     La domanda giusta — «puo' risolverlo il proprietario?» — la fanno
+                  --     gli altri occhi del presidio: fn_conta_presidio (DEFINER, conta per
+                  --     il digest) e il guardrail in CI (superuser). Chi e' proprietario, o
+                  --     ne ha i privilegi, e prende lo stesso un 42501, cade nell'ELSE:
+                  --     quello e' REALE.
+                  --
+                  -- ⭐ rev 2026-09-14 — Il caso: dbops.fn_get_pgagent_job_stato (DEFINER di
+                  --     titodb) legge pgagent.pga_job, che zeroerp_app non vede: come app
+                  --     usciva REALE 42501 e stava a registro (esenzione 7, «due facce»); come
+                  --     proprietario NON usciva affatto, e il primo digest settimanale
+                  --     (14-09 07:30) ha dato la riga 7 «rientrata». Tre occhi, due
+                  --     risposte, una sola verita': quel 42501 non era un difetto della
+                  --     funzione, era il ruolo che la misurava. Lo stesso tipo di falso
+                  --     positivo era gia' stato sanato per maintenance.* dando USAGE all'app
+                  --     (provision_db_roles.sql): un rimedio per-schema, questo e' la regola.
+                  --     ⚠️ In CI non cambia niente: il guardrail misura da superuser, dove
+                  --     un 42501 non esiste; il difetto pgAgent-assente la' resta 42P01 e
+                  --     resta REALE, com'e' giusto.
+                  ELSIF r.msg ~ '^error:42501:' AND EXISTS (
+                          SELECT 1
+                            FROM pg_proc p6
+                            JOIN pg_namespace n6 ON n6.oid = p6.pronamespace
+                           WHERE n6.nspname = r.nsp
+                             AND p6.proname = r.pro
+                             AND pg_get_function_identity_arguments(p6.oid) = r.args
+                             AND p6.prosecdef
+                             AND NOT pg_has_role(current_user, p6.proowner, 'MEMBER'))
+                  THEN
+                    classe := 'FP_DEFINER_PRIVILEGIO';
+
+                  -- (2) «funzione non esiste» (SQLSTATE 42883): falso positivo SOLO se
+                  --     tutti i tipi passati sono testo-compatibili — allora e' la
+                  --     variadic che plpgsql_check non sa risolvere. Se c'e' un tipo
+                  --     non testuale, il cast non esiste e la chiamata fallisce davvero.
+                  --
+                  -- 🔴 v4 (2026-08-05) — LA PREMESSA DI v1 ERA FALSA. Solo
+                  --     `VARIADIC "any"` (quello di `format()`) ammette ZERO argomenti
+                  --     variadici; un `VARIADIC <tipo>[]` no. Verificato in SQL e in
+                  --     plpgsql: la chiamata a 5 argomenti NON si risolve davvero.
+                  --     Le due strette precedenti (v2 sui TIPI, v3 su provariadic <> 0)
+                  --     hanno ridotto il danno senza mai toccare l'assunto che lo
+                  --     causava. Segnalato dal team BE il 2026-08-05.
+                  --     ⚠️ Da noi nessuna funzione e' `VARIADIC "any"`: la classe resta
+                  --     strutturalmente vuota, ed e' il risultato giusto.
+                  --
+                  -- ⚠️ v3 (2026-08-04) — la regola era TROPPO LARGA e ha scusato un
+                  --     difetto vero. La chiamata
+                  --       dbops.fn_audit_log_once('…','SKIP_EXISTS','STORICO', jsonb, '…')
+                  --     ha il 3o e 4o argomento INVERTITI rispetto alla firma
+                  --     (p_params jsonb, p_message text). Ma `jsonb` e' nella lista dei
+                  --     testo-compatibili, quindi uno scambio fra un text e un jsonb
+                  --     produce esattamente la stessa firma di un variadico omesso, e
+                  --     usciva etichettato FP_VARIADIC.
+                  --     Rimedio: l'esenzione vale solo se la funzione chiamata **ha
+                  --     davvero** un parametro VARIADIC. Se non ce l'ha, il variadico
+                  --     non c'entra e l'errore e' reale.
+                  --     Delle 17 righe FP_VARIADIC del primo giro, questa era l'unica a
+                  --     non chiamare fn_log_and_raise_error / fn_log_error_only — ed era
+                  --     l'unica sbagliata.
+                  ELSIF r.msg ~ '^error:42883:' AND r.msg LIKE '%(%)%' THEN
+                    v_tipi := string_to_array(
+                                btrim(substring(r.msg from '\(([^)]*)\)')), ', ');
+                    -- Nome della funzione chiamata, come compare nel messaggio:
+                    -- «la funzione <schema>.<nome>(tipi) non esiste».
+                    v_chiamata := substring(r.msg from '([A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*)\s*\(');
+                    v_e_variadic := EXISTS (
+                      SELECT 1
+                        FROM pg_proc p4
+                        JOIN pg_namespace n4 ON n4.oid = p4.pronamespace
+                       WHERE n4.nspname || '.' || p4.proname = v_chiamata
+                         AND p4.provariadic = '"any"'::regtype   -- virgolette: `any` e' riservata
+                    );
+                    IF v_e_variadic AND NOT EXISTS (
+                         SELECT 1 FROM unnest(v_tipi) AS x(t)
+                          WHERE btrim(x.t) NOT IN ('unknown','text','name','jsonb','uuid',
+                                                   'character varying','"unknown"'))
+                    THEN
+                      classe := 'FP_VARIADIC';
+                    ELSE
+                      classe := 'REALE';
+                    END IF;
+
+                  -- (5) 🔴 LO STRUMENTO NON HA MISURATO, e non e' un difetto del codice.
+                  --     `error:CHECK-KO:` lo scrive il gestore EXCEPTION qui sopra quando
+                  --     `plpgsql_check_function` SOLLEVA invece di rispondere. Fino al
+                  --     2026-09-10 quella forma non aveva un ramo e cadeva nell'ELSE, cioe'
+                  --     usciva come REALE: una funzione che non si e' potuta controllare
+                  --     veniva riferita come «riferimento morto».
+                  --
+                  -- ⛔ NON e' un caso di bordo: il 2026-09-10 su dbdev plpgsql_check ha
+                  --     fallito su quasi ogni funzione e la vista di lavoro ha esposto 779
+                  --     righe su 780 funzioni plpgsql, mentre il registro del debito ne ha
+                  --     DUE e lo stesso controllo passava in CI. Un presidio che, quando il
+                  --     suo strumento si rompe, riferisce 779 difetti invece di dire «non ho
+                  --     misurato» e' peggio di un presidio assente: manda a cercare 779 cose
+                  --     che non ci sono, e nasconde l'unica che c'e'.
+                  --
+                  -- ⭐ La regola era gia' scritta, e in casa: `guardrail_riferimenti_morti.sql`
+                  --     tratta cosi' l'estensione ASSENTE — «NON si passa in silenzio: un
+                  --     guardrail che non misura e non lo dice e' peggio di uno assente».
+                  --     Qui l'estensione c'e' e si rompe: stesso principio, e fino a oggi due
+                  --     esiti opposti.
+                  --
+                  -- ⚠️ E NON si nasconde: chi consuma questa classe deve trattarla come un
+                  --     ROSSO, non come un'assenza di difetti. La vista di lavoro la include
+                  --     e il guardrail solleva con un messaggio suo.
+                  ELSIF r.msg LIKE 'error:CHECK-KO:%' THEN
+                    classe := 'NON_MISURATO';
+
+                  ELSE
+                    classe := 'REALE';
+                  END IF;
+
+                  RETURN NEXT;
+                END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
+              IS 'Compila con plpgsql_check ogni funzione plpgsql non-estensione e classifica i difetti (REALE, ORFANA, NON_MISURATO, FP_*). Fonte unica: la usano sia scripts/sql/check_funzioni_riferimenti_morti.sql sia il pgTAP db/pgtap/dbops/test-riferimenti-morti-v1.sql. Richiede l''estensione plpgsql_check. NON_MISURATO dal 2026-09-10: e'' la classe di chi NON SI E'' POTUTO CONTROLLARE - plpgsql_check ha sollevato invece di rispondere, e il gestore EXCEPTION ha scritto error:CHECK-KO:. Prima quella forma cadeva nell''ELSE e usciva come REALE, cioe'' una funzione non misurata veniva riferita come riferimento morto: il 2026-09-10 su dbdev sono uscite 779 righe su 780 funzioni, con un registro del debito di DUE voci e lo stesso controllo verde in CI. NON_MISURATO va trattato come un ROSSO da chi consuma, mai come assenza di difetti: e'' la stessa regola che questo presidio applica gia'' all''estensione ASSENTE. Il search_path e'' PINNATO dal 2026-09-12 (pg_catalog, public, pg_temp) e la chiamata a plpgsql_check_function e'' qualificata con public.: sono DUE strati della stessa cosa e servono entrambi. Questa funzione e'' SECURITY INVOKER e gira anche DENTRO dbops.fn_conta_presidio, che e'' SECURITY DEFINER con search_path = pg_catalog, pg_temp: senza il pin ereditava quello, plpgsql_check_function non si risolveva (42883, l''estensione sta in public) e OGNI funzione del database usciva NON_MISURATO - il digest riferiva 784 riferimenti morti mentre la lettura diretta della stessa vista rispondeva 0, e delle 37 righe di dbops.presidi divergeva solo quella. ⛔ Ma il search_path governa anche la risoluzione dei riferimenti DENTRO le funzioni che si compilano: con la sola chiamata qualificata restavano QUATTRO falsi REALE - unaccent in config.trgfn_stradario_generale_normalize, dblink in dbops.fn_audit_end e fn_get_or_create_session_tx_id, il tipo geometry in script.fn_get_stradario - cioe'' funzioni sane che nominano un''estensione senza schema, come e'' normale e come funziona in esercizio. public nel pin non e'' arbitrario: e'' nel path reale dell''applicazione, quindi la misura compila nel contesto in cui quelle funzioni girano davvero. ⚠️ Chi rifa'' questa funzione tenga il pin: un CREATE OR REPLACE che perde la clausola SET non fallisce - riporta il presidio a mentire, ed e'' la stessa trappola di security_invoker su CREATE OR REPLACE VIEW. Lo prende solo il test 7 del suo pgTAP, che conta attraverso fn_conta_presidio. Brief: brief-db-un-destinatario-per-i-presidi 13.2. ⭐ FP_DEFINER_PRIVILEGIO dal 2026-09-14: un 42501 (permesso negato) dentro una funzione SECURITY DEFINER misurata da chi non e'' il suo proprietario ne'' membro del suo ruolo NON e'' un riferimento morto - il corpo di una DEFINER gira coi privilegi del proprietario, e la domanda giusta la fanno gli altri occhi del presidio (fn_conta_presidio come proprietario, il guardrail in CI come superuser). Trovato dal primo digest settimanale: dbops.fn_get_pgagent_job_stato usciva REALE come zeroerp_app e non usciva affatto come titodb, e la riga 7 del registro risultava insieme necessaria e di troppo sulla stessa macchina. Chi e'' proprietario e prende un 42501 resta REALE. Le classi sono OTTO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare al corpo del 20260912-37 rimetterebbe il 42501 delle
+              --   DEFINER fra i REALE, cioe' una misura che dipende dal ruolo.
+              --   Il verso di ritiro e' un changeSet nuovo.
+              SELECT 1;

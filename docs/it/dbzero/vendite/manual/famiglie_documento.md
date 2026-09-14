@@ -316,3 +316,32 @@ comandava anche l'altra.
 dichiarato: il registro della fattura si sceglie per tipo documento e natura, per
 una strada tutta sua.
 
+### 🔄 rev 2026-09-14 — una famiglia può **non avere** un billing account
+
+`colonna_billing_account` diventa facoltativa (`20260914-07`): il vuoto è la
+dichiarazione che **quella famiglia di documenti non ha un cliente** — la
+controparte di un ordine d'acquisto è un fornitore, un ruolo di soggetto, non
+un billing account. È la stessa forma di `colonna_serie`, due righe sopra.
+
+Chi legge quella colonna lo sa:
+
+* il controllo dei riferimenti (`trgfn_famiglie_documento_guard_riferimenti`)
+  verifica che la colonna esista **solo se è dichiarata**; tabella e colonna
+  del numero restano obbligatorie;
+* le due funzioni della storia dell'emittente
+  ([fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente),
+  [fn_get_storia_emittente_ba](/dbzero/anagrafiche/funzioni/fn_get_storia_emittente_ba))
+  **saltano** le famiglie senza billing account già quando scelgono su quali
+  famiglie girare — una famiglia senza cliente non può contribuire alla storia
+  di nessun cliente;
+* la funzione che crea una famiglia (`fn_crea_famiglia_documento`) non la
+  pretende più e trasforma il campo vuoto in «nessuno».
+
+⚠️ Il controllo di struttura **non cambia**: su una famiglia che ha già dei
+registri, passare da «nessuno» a un nome di colonna è un cambio come gli altri,
+e viene rifiutato.
+
+ℹ️ Le cinque famiglie in servizio hanno tutte il billing account: questa
+revisione **apre la porta** al primo documento che non ce l'ha, non lo
+registra. Sarà il cantiere acquisti a farlo. Brief:
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.
