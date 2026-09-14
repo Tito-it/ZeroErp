@@ -328,6 +328,12 @@ DELETE FROM vendite.fatture_log
 DELETE FROM pagamenti.vendite_movimenti
  WHERE contabile_riga_id IN (SELECT riga_id FROM tmp_riga);
 
+-- ⚠️ Dal 2026-09-14 (D17) il DELETE di una riga contabile passa dal guard del
+--    contenuto della distinta: sotto una CHIUSA o una GENERATA e' rifiutato.
+--    Questo cleanup e' un passaggio tecnico e lo dichiara con la stessa GUC
+--    che usa la madre del giro dei fondi (fn_cancella_fondo_fattura); il
+--    ROLLBACK farebbe comunque il lavoro.
+SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
 DELETE FROM pagamenti.vendite_contabili_righe
  WHERE fondo_source_id IN (SELECT source_id FROM tmp_atto);
 

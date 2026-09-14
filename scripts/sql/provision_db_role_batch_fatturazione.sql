@@ -27,7 +27,7 @@
 -- ============================================================================
 
 \echo [ZeroErp] Provisioning ruolo batch: zeroerp_batch_fatturazione
-\echo [ZeroErp] Required vars: batch_role, batch_password
+\echo [ZeroErp] Required vars: batch_role; batch_password (obbligatoria solo se il ruolo NON esiste)
 \echo [ZeroErp] Optional vars: migrator_role (default: titodb), db_name (default: current db)
 
 \if :{?batch_role}
@@ -36,10 +36,24 @@
 \quit 1
 \endif
 
+-- ⭐ La password e' OBBLIGATORIA solo per CREARE il ruolo. Se il ruolo esiste
+--   gia' e la password non viene passata, resta quella che ha (dal 2026-09-14).
+--   Perche': i ruoli sono di CLUSTER, i privilegi di DATABASE. Sul server di
+--   sviluppo il ruolo serve al worker con la SUA password; per dare a un
+--   database nuovo dello stesso cluster (lo scratch di scripts/ci-local.sh)
+--   la stessa postura della CI, i GRANT servono e la password no — e una
+--   password inventata romperebbe il worker. Fino a oggi lo scratch per questo
+--   saltava il provisioning e dava al batch il DML su tutto: la postura non era
+--   misurabile la'. In CI non cambia niente: passa `batch_password=secret`.
 \if :{?batch_password}
 \else
-\echo ERROR: missing -v batch_password=...
+SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'batch_role') AS _ruolo_esiste \gset
+\if :_ruolo_esiste
+\echo [ZeroErp] batch_password non data: il ruolo esiste, la password NON si tocca
+\else
+\echo ERROR: missing -v batch_password=... (il ruolo non esiste: per crearlo la password serve)
 \quit 1
+\endif
 \endif
 
 \if :{?migrator_role}
@@ -58,12 +72,18 @@ SELECT current_database() AS _db_name \gset
 -- BYPASSRLS richiede privilegi di superuser per essere assegnato:
 -- lo script va eseguito da un utente amministrativo del DB.
 -- ------------------------------------------------------------------
+\if :{?batch_password}
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'batch_role', :'batch_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'batch_role')
 \gexec
 
 SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'batch_role', :'batch_password')
 \gexec
+\else
+-- Senza password: il ruolo esiste (verificato sopra), si ribadisce solo LOGIN.
+SELECT format('ALTER ROLE %I LOGIN', :'batch_role')
+\gexec
+\endif
 
 SELECT format(
     'ALTER ROLE %I NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT BYPASSRLS',
