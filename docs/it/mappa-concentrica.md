@@ -170,7 +170,7 @@ account non ancora collegato a un emittente appartiene a chi lo sta creando —
 prima, l'operatore di un emittente non di default non poteva aprire un cliente
 (`RETURNING` respinto dalla policy, perché il legame lo scrive un trigger
 `AFTER`). Su un'installazione a due emittenti il secondo era chiuso fuori —
-[brief-db-ba-riserva-emittente-operatore-d13.md](dev/work-in-progress/brief-db-ba-riserva-emittente-operatore-d13.md).
+[brief-db-ba-riserva-emittente-operatore-d13.md](dev/work-done/brief-db-ba-riserva-emittente-operatore-d13.md).
 
 ### 🧪 I presidi hanno un catalogo (dal 10 settembre 2026)
 

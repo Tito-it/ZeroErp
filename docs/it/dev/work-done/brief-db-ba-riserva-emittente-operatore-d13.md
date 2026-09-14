@@ -1,21 +1,30 @@
 # Brief DB — Un billing account non ancora collegato appartiene a chi lo sta creando (D13)
 
 > **Da leggere per primo: §7 — cosa resta.**
-> Origine: [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md) §D13
-> e [brief-db-fixture-che-costruiscono-d7-d6-d4.md](brief-db-fixture-che-costruiscono-d7-d6-d4.md) §4,
+> Origine: [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md) §D13
+> e [brief-db-fixture-che-costruiscono-d7-d6-d4.md](../work-in-progress/brief-db-fixture-che-costruiscono-d7-d6-d4.md) §4,
 > dove il difetto è stato trovato il 2026-09-12 «strada facendo».
 > Decisione di Tid, 2026-09-12: **opzione 1**, nessuna bonifica dei dati.
 >
-> ✅ **Stato 2026-09-13: APPLICATO E COLLAUDATO da Tid.** I tre changeSet
-> (`20260913-01/02/03`) sono applicati su dbdev (00:22–00:23, doc auto-gen
-> rigenerate) e **la baseline pgTAP di sviluppo è senza regressioni**. I
-> quattro pgTAP (uno nuovo, tre riscritti) erano già verdi in prova **su dbdev
-> come app** e **sullo scratch della CI** con i changeSet iniettati in
-> transazione ritirata — e il caso di prodotto è **rosso** sullo scratch senza
-> di essi (§5). Manuali e guide aggiornati (§6). Restano: la prima corsa della
-> CI (due file del registro dovrebbero rientrare), i tre lettori Python che
-> tengono ancora una copia della regola vecchia (§6.2), e due decisioni di
-> modello in coda (§3.4).
+> ✅ **Stato 2026-09-14: CHIUSO — verificato contro repo, dbdev e CI.** I tre
+> changeSet (`20260913-01/02/03`) sono `EXECUTED` su dbdev (13-09, 00:22–00:23,
+> letto da `databasechangelog`) e mergiati su `Tito-dev` e `main`; le tre
+> funzioni toccate sono `STABLE PARALLEL UNSAFE` come dichiarato. **La CI ha
+> detto la sua** (14-09, corsa su `Tito-dev` per la PR #1583, verde):
+> `test-ba-emittente-risoluzione-v1` e `test-fn-get-emittente-fiscale-pk` sono
+> **rientrati** e le loro righe sono uscite da `baseline-rossi-ci.tsv` (commit
+> `8454f7cbd`); nel registro resta solo `test-billing-account-auto-link-ef`,
+> che è D7 (§6.3). I tre lettori Python delegano dal 13-09 (§6.2). Le due
+> decisioni di modello di §3.4 sono **prese** (14-09): da interfaccia il DB
+> rifiuta già un BA senza emittente, i percorsi senza sessione sono dati e
+> non un caso d'uso — niente presidio, opzione 3 fuori dalla coda. **Non
+> resta nulla**: brief archiviato in `work-done/` il 14-09 (§7.6).
+>
+> Stato 2026-09-13 (storico): applicato e collaudato da Tid; i quattro pgTAP
+> (uno nuovo, tre riscritti) erano già verdi in prova **su dbdev come app** e
+> **sullo scratch della CI** con i changeSet iniettati in transazione ritirata,
+> e il caso di prodotto era **rosso** sullo scratch senza di essi (§5).
+> Manuali e guide aggiornati (§6).
 
 ---
 
@@ -131,6 +140,35 @@ con emittenti presenti — `a10_guard_admin_globale`) e la decisione lo accetta:
   collegati); su un database nuovo le anagrafiche non ci sono. Proposto, non
   fatto.
 
+✅ **CHIUSO il 2026-09-14, per decisione di Tid — e per un cancello che c'era
+già.** Riverificato sul codice vivo: **nessuna modifica** sull'`INSERT` del BA
+dopo il 13-09 (nessun changeSet, `create_billing_account` invariato, i trigger
+sono i tre di sempre). Ma il prezzo qui sopra riguarda **solo i percorsi senza
+sessione**. Da interfaccia la sessione c'è sempre, e allora:
+
+- `a10_guard_admin_globale` (BEFORE INSERT, rev 2026-08-04) chiama
+  `script.fn_check_user_can_create_ba`: passa solo chi **sta dentro un
+  emittente** (emittente attivo valido per l'utente, o riga in
+  `config.user_emittenti_fiscali`); chi non ne ha uno è ammesso **solo se
+  l'istanza ha zero emittenti attivi**, altrimenti `E_BA_ADMIN_GLOBALE_VIETATO`
+  e l'`INSERT` muore;
+- `z90_link_ef` (AFTER INSERT) usa lo **stesso** resolver
+  (`fn_resolve_emittente_for_user`, stessi due rami): se l'`a10` è passato con
+  un emittente, il legame **si scrive sempre**.
+
+⇒ Da interfaccia un BA senza emittente **il DB non lo accetta**. L'unica
+eccezione in sessione è l'installazione a **zero emittenti**, dove non c'è
+niente a cui legare e il primo emittente creato diventa il default
+(`trgfn_emittenti_fiscali_default_bootstrap`) che raccoglie quei BA. I due
+rami `RETURN NEW` senza legame di `trgfn_billing_account_link_ef`
+(`v_user_id IS NULL`, resolver a `NULL`) servono solo a seed, migrazioni e
+manutenzione a mano: **dati, non un caso d'uso** — decisione di Tid, 14-09:
+«i dati vecchi non contano». Ne discende che **nessuna delle due voci sopra è
+lavoro**: il presidio `ZERO` non si fa (nulla lo alimenterebbe da interfaccia)
+e l'opzione 3 esce dalla coda — il cancello all'inserimento rende il caso
+irraggiungibile per costruzione, che è ciò che l'opzione 3 avrebbe comprato.
+⚠️ Fino a questa nota il brief citava l'`a10` senza tirarne la conseguenza.
+
 ---
 
 ## 4. Le tre facce del cantiere — i changeSet
@@ -208,9 +246,14 @@ della riserva risponderebbero lo stesso emittente. Le due aziende si creano in
 | scratch `zeroerp_ci`, `zeroerp_app`, **senza** changeSet | il file nuovo | **5 rossi su 10**: il test 1 muore con `42501`, e 2/3/4/7 lo seguono — è il difetto, fabbricato |
 | scratch `zeroerp_ci`, owner `zeroerp`, SQL **estratto** dei tre changeSet (preCondition comprese, tutte = 1) + `FORCE ROW LEVEL SECURITY` + il file | i quattro file | tutti verdi tranne l'8 del nuovo, che misura *«non forzata»* ed è rosso per il FORCE della prova |
 
-I due file già nel registro della CI (`test-ba-emittente-risoluzione-v1`,
-`test-fn-get-emittente-fiscale-pk`) dovrebbero **rientrare**: le righe si
-tolgono da `baseline-rossi-ci.tsv` quando lo dice la CI, non lo scratch.
+✅ I due file già nel registro della CI (`test-ba-emittente-risoluzione-v1`,
+`test-fn-get-emittente-fiscale-pk`) sono **rientrati**: lo ha detto la CI il
+14-09 e le righe sono uscite da `baseline-rossi-ci.tsv` con il commit
+`8454f7cbd` (`scripts/pgtap-baseline-ci-rientrati.sh`, che da quel giorno
+legge i RIENTRATI dal log della corsa con `gh`). La corsa successiva su
+`Tito-dev` (PR #1583, tocca `db/` ⇒ suite completa) è verde. Fino a quel
+momento questo paragrafo diceva «dovrebbero rientrare: le righe si tolgono
+quando lo dice la CI, non lo scratch» — ed è andata così.
 
 ---
 
@@ -279,16 +322,31 @@ forma con la fn non è più lenta del semi-join inline (3,6 vs 4,6 ms su
 
 1. ✅ **Apply** — fatto da Tid il 13-09 (00:22–00:23), doc auto-gen rigenerate.
 2. ✅ **pgTAP col runner e baseline di sviluppo** — fatti da Tid il 13-09:
-   **nessuna regressione**. Resta la prima corsa della **CI**: i due file già
-   nel registro (`test-ba-emittente-risoluzione-v1`,
-   `test-fn-get-emittente-fiscale-pk`) dovrebbero rientrare — le righe si
-   tolgono a mano da `baseline-rossi-ci.tsv` quando lo dice la CI.
+   **nessuna regressione**. ✅ **CI** — il 14-09 i due file già nel registro
+   (`test-ba-emittente-risoluzione-v1`, `test-fn-get-emittente-fiscale-pk`)
+   sono rientrati e le righe sono uscite da `baseline-rossi-ci.tsv` (commit
+   `8454f7cbd`); corsa su `Tito-dev` per la PR #1583 verde. Nessun file di
+   questo brief in nessuna delle due baseline (§5).
 3. ✅ **Team BE** — fatto il 13-09: le tre copie inline delegano a
-   `fn_check_ba_visible_for_emittenti`, con presidio sulla forma (§6.2).
-4. **Decisioni di Tid, non lavoro**: l'opzione 3 (emittente come colonna del
-   BA) resta in coda; il presidio «BA senza legame» (§3.4) è proposto.
-5. La valutazione (§D13, checklist) e la memoria sono aggiornate con lo stato.
+   `fn_check_ba_visible_for_emittenti`, con presidio sulla forma (§6.2,
+   `apps/anagrafiche/tests/test_scope_ba_delega_alla_fn.py`).
+4. ✅ **Decisioni di Tid, prese il 14-09** (§3.4): da interfaccia il DB
+   rifiuta già un BA senza emittente (`a10_guard_admin_globale` +
+   `z90_link_ef`); i percorsi senza sessione sono dati, non un caso d'uso.
+   **Niente presidio** «BA senza legame» e **l'opzione 3 esce dalla coda**.
+5. ✅ La valutazione (`migliorie-generali-da-test-valutazione.md` §D13 e
+   checklist) dice CHIUSO il 13-09; la memoria è riallineata il 14-09.
+6. ✅ **Chiusura formale** — fatta il 14-09 su richiesta di Tid: brief
+   spostato in `work-done/`, riscritti i **tre link per path** che lo
+   puntavano (`docs/it/mappa-concentrica.md`,
+   `docs/it/dev/mappa-concentrica-changelog.md`,
+   `docs/it/dbzero/script/manual/fn_get_ba_emittente_sr_id.md`) e i due link
+   relativi di questo file verso `work-in-progress/`. Gli altri lettori (la
+   valutazione, il brief D7-D6-D4, i tre YAML, i tre pgTAP, i due repository
+   e il test BE) lo citano **per nome** e non si toccano.
 
 *Scritto il 2026-09-13. Nessun test eseguito col runner ufficiale; ogni prova è
 un `psql -f` in transazione ritirata, un file alla volta, su dbdev e sullo
-scratch della CI.*
+scratch della CI. Verificato il 2026-09-14 contro `databasechangelog`, i rami
+`origin/Tito-dev` e `origin/main`, le due baseline, `pg_proc` e le corse della
+CI: ogni ✅ qui sopra è letto dalla sorgente, non ricopiato.*
