@@ -6,15 +6,17 @@
 --   — e un operatore dentro un perimetro non crea l'azienda in cui lavora.
 --   E' il criterio 2 di scripts/testpgtap.sh. Dal contesto in poi si lavora
 --   nei panni dell'operatore costruito.
--- pgTAP test — le DATE DI CONSEGNA sulla riga, e la data che SOPRAVVIVE al push
+-- pgTAP test — le DATE DI CONSEGNA sulla riga, e la data che SOPRAVVIVE ai passaggi
+--   (il push preventivo→ordine e la revisione N→N+1)
 --   vendite.ordini_righe.data_consegna_richiesta_cliente / data_consegna_confermata
 --   vendite.preventivi_righe.data_consegna_richiesta_cliente
 --   acquisti.ordini_righe.data_consegna_richiesta / data_consegna_confermata_fornitore
 --   ChangeSet: 20260913-06/-07/-08 (colonne), -16 (vista smistabili), -17
---   (vw_ordini_lista), -20 (fn_push_preventivo_a_ordine). Brief:
---   brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezioni 2 e 7 (P-8).
+--   (vw_ordini_lista), -20 (fn_push_preventivo_a_ordine), 20260914-13
+--   (fn_crea_revisione_preventivo). Brief:
+--   brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezioni 2, 6-quinquies e 7 (P-8, P-10).
 --
--- Elenco test (plan 10):
+-- Elenco test (plan 13):
 --   STRUTTURA
 --    1) le cinque colonne data esistono, con i nomi di D-16 (attore non marcato = nostro)
 --    2) ⛔ nessun CHECK fra le due date ne' contro la data documento: e' una SCELTA (brief 2.3)
@@ -30,13 +32,21 @@
 --   LE DATE SI SCRIVONO E SI RILEGGONO
 --    9) si puo' confermare PRIMA di quanto chiesto — nessun vincolo, e' una buona notizia
 --   10) le due date si rileggono tali e quali dalla riga
+--   LA REVISIONE — percorso reale, vendite.fn_crea_revisione_preventivo (20260914-13)
+--   11) ⭐ la data richiesta dal cliente sopravvive alla revisione: sulla riga della rev N+1 c'e' la stessa
+--   12) la riga di preventivo SENZA data resta senza data sulla rev N+1: non si inventa
+--   13) la rev N conserva le sue date: la revisione COPIA, non sposta
 --
 -- ────────────────────────────────────────────────────────────────
--- ⭐ IL TEST 4 E' PROVATO SUL PERCORSO REALE: chiama fn_push_preventivo_a_ordine
---   e legge la riga d'ordine che ne esce. Confrontare due colonne di due
---   tabelle proverebbe che oggi coincidono; cosi' si prova che il passaggio
---   di natura del documento NON perde la data — che e' il punto in cui gli
---   utenti smetterebbero di fidarsene (brief 2.4).
+-- ⭐ I TEST 4 E 11 SONO PROVATI SUL PERCORSO REALE: chiamano
+--   fn_push_preventivo_a_ordine e fn_crea_revisione_preventivo e leggono la
+--   riga che ne esce. Confrontare due colonne di due tabelle proverebbe che
+--   oggi coincidono; cosi' si prova che il passaggio NON perde la data — che
+--   e' il punto in cui gli utenti smetterebbero di fidarsene (brief 2.4).
+--   ⚠️ Sono DUE passaggi, e il secondo era scoperto: P-5 ha coperto il push,
+--   la revisione ricopia le righe con un ALTRO elenco esplicito di colonne
+--   (segnalazione del BE, 2026-09-14). Un presidio che guarda un passaggio
+--   solo non dice niente sull'altro.
 --
 -- ⚠️ IL MONDO SI COSTRUISCE, NON SI CERCA: azienda (con i suoi registri, che il
 --   provisioning dell'emittente crea da solo — serve il registro ORDINE per
@@ -58,7 +68,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(10);
+SELECT plan(13);
 
 -- ============================================================
 -- STRUTTURA (prima della fixture: non dipende da nessun dato)
@@ -259,6 +269,78 @@ SELECT is(
                       WHERE p.ordine = 1)),
     '2026-11-11 -> 2026-11-05',
     '10) le due date si rileggono dalla riga tali e quali: richiesta dal cliente e confermata da noi'
+);
+
+-- ============================================================
+-- LA REVISIONE, sul percorso reale — vendite.fn_crea_revisione_preventivo
+--   Il secondo passaggio in cui le righe si RICOPIANO colonna per colonna
+--   (20260914-13). Serve un preventivo EMESSO: la revisione nasce solo da
+--   li', e quello sopra e' ACCETTATO ed e' gia' passato all'ordine.
+--   Stesso cliente, stessa azienda, stesso articolo: cambia solo lo stato.
+-- ============================================================
+CREATE TEMP TABLE _preventivo_rev AS
+WITH p AS (
+    INSERT INTO vendite.preventivi
+        (numero, billing_account_id, istanza_utility_id, utility_id, valuta_id,
+         stato_doc_preventivo_id, emittente_fiscale_id, meta)
+    SELECT 'PGTAP-DATECONS-REV-' || substr(md5(random()::text), 1, 8),
+           c.billing_account_id, c.istanza_utility_id, c.utility_id,
+           (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
+           (SELECT s.id FROM config.stati_doc_preventivi s
+             WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE),
+           m.emittente_fiscale_id,
+           jsonb_build_object('test_scope', 'pgtap_date_consegna')
+      FROM _cliente c, _mondo m
+    RETURNING id
+)
+SELECT id AS preventivo_id FROM p;
+
+-- Le stesse due righe del push: una CON la data, una SENZA. Una data diversa
+-- da quella del test 4, cosi' un'asserzione che leggesse per sbaglio l'altro
+-- preventivo non passerebbe per caso.
+INSERT INTO vendite.preventivi_righe
+    (preventivo_id, articolo_id, prezzo_unitario, qta_operativa, iva_id, ordine,
+     data_consegna_richiesta_cliente)
+SELECT p.preventivo_id, a.articolo_id, 10.00, 2, i.iva_id, x.ordine, x.data_richiesta
+  FROM _preventivo_rev p, _articolo a,
+       (SELECT i.id AS iva_id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) i,
+       (VALUES (1, DATE '2026-12-03'), (2, NULL::date)) AS x(ordine, data_richiesta);
+
+-- La revisione, nei panni dell'operatore: la testata nuova prende l'emittente
+-- dal contesto (trigger BEFORE INSERT su preventivi), che e' quello del mondo.
+CREATE TEMP TABLE _rev AS
+SELECT r.nuovo_preventivo_id, r.nuova_rev
+  FROM vendite.fn_crea_revisione_preventivo((SELECT preventivo_id FROM _preventivo_rev), 'pgtap') r;
+
+-- La riga della rev N+1 si riconosce per `ordine`, che la revisione copia:
+-- e' la stessa chiave con cui la funzione rimappa i componenti.
+SELECT is(
+    (SELECT pr.data_consegna_richiesta_cliente
+       FROM vendite.preventivi_righe pr
+      WHERE pr.preventivo_id = (SELECT nuovo_preventivo_id FROM _rev)
+        AND pr.ordine = 1),
+    DATE '2026-12-03',
+    '11) la data richiesta dal cliente SOPRAVVIVE alla revisione: sulla riga della rev N+1 c''e'' la stessa del preventivo'
+);
+
+SELECT is(
+    (SELECT pr.data_consegna_richiesta_cliente
+       FROM vendite.preventivi_righe pr
+      WHERE pr.preventivo_id = (SELECT nuovo_preventivo_id FROM _rev)
+        AND pr.ordine = 2),
+    NULL::date,
+    '12) la riga di preventivo senza data resta senza data sulla rev N+1: la revisione non inventa'
+);
+
+-- La rev N e' storia: le sue righe restano come erano. Se una revisione un
+-- giorno SPOSTASSE la data invece di copiarla, questo fa rosso.
+SELECT is(
+    (SELECT (SELECT nuova_rev FROM _rev)::text || ' | ' ||
+            string_agg(pr.ordine || ':' || COALESCE(pr.data_consegna_richiesta_cliente::text, 'NULL'), ',' ORDER BY pr.ordine)
+       FROM vendite.preventivi_righe pr
+      WHERE pr.preventivo_id = (SELECT preventivo_id FROM _preventivo_rev)),
+    '1 | 1:2026-12-03,2:NULL',
+    '13) la rev N+1 e'' nata (rev 1) e la rev N conserva le sue date tali e quali: la revisione COPIA, non sposta'
 );
 
 SELECT * FROM finish();

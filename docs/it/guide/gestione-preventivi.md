@@ -284,7 +284,17 @@ La funzione [`fn_crea_revisione_preventivo`](/dbzero/vendite/funzioni/fn_crea_re
 copia in transazione atomica:
 
 - testata (campi commerciali + dati cliente)
-- righe attive (`preventivi_righe` con `attivo=TRUE` e `quantita > 0`)
+- righe attive (`preventivi_righe` con `attivo=TRUE` e `quantita > 0`) —
+  compresa la **data di consegna richiesta dal cliente**
+  (`data_consegna_richiesta_cliente`, dal 2026-09-14): è ciò che il cliente
+  ha chiesto, non una promessa nostra, e la rev N+1 la eredita come eredita
+  articolo e quantità. ⚠️ Fino a quel giorno la revisione la perdeva: la copia
+  nomina le colonne una per una, e una colonna non nominata non passa
+- …e comprese le **marche di approvazione prezzo** (`stato_approvazione_prezzo`,
+  `pratica_approvazione_prezzo_id`, dal 2026-09-14): un prezzo fuori policy
+  approvato o in attesa resta marcato anche sulla rev N+1, e una riga in attesa
+  resta congelata — come già per le offerte. Fino a quel giorno la revisione le
+  perdeva, per la stessa ragione della data
 - componenti BoM (`preventivi_righe_componenti`, con FK rimappata sulle nuove
   righe via `ROW_NUMBER`)
 - indirizzi (`preventivi_indirizzi`)

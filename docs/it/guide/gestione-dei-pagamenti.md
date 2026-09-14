@@ -379,7 +379,21 @@ Ogni testata contabile contiene una o piu righe, ciascuna riferita a una fattura
 
 Lo stato della riga e gestito dalla lookup `vendite_contabili_righe_stati`, che include il flag `is_postabile`: solo le righe in stato postabile possono generare movimenti effettivi tramite il processo di posting.
 
-La disattivazione di una riga (`attivo = false`) e bloccata se esistono movimenti collegati.
+⭐ **Una riga si elimina, e c'e' un momento in cui il contenuto si ferma** (dal
+14-09-2026, D17/D18). Una riga digitata male su una distinta **compilata a mano e
+ancora in bozza** non e' un fatto — non e' denaro arrivato, e' un errore di
+battitura — e si **elimina** (`attivo = false`; anche il `DELETE` fisico segue la
+stessa regola). Non si «scarta»: `SCARTATA` vuol dire *denaro arrivato, non
+nostro* e **conta nella quadratura** — scartare la riga sbagliata renderebbe la
+distinta invalidabile. Quando la distinta viene **validata** («ho finito di
+inserire»), il suo contenuto e' **fermo**: niente righe nuove, niente modifiche a
+importo e date, niente eliminazioni, finche' non torna in bozza. Le decisioni —
+abbinare, sospendere, scartare — restano possibili. Il perche' di ogni rifiuto lo
+dice il database con una regola sola, la stessa che spegne il cestino a video:
+[script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile);
+il guard e'
+[trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto).
+Sotto una distinta **registrata** o generata dal sistema non si elimina niente.
 
 Da un punto di vista tecnico:
 
@@ -411,7 +425,7 @@ Da un punto di vista tecnico:
 
 **Vincoli CHECK:** `chk_vendite_contabili_righe_importo_non_zero` — l'importo non puo essere zero.
 
-**Protezione disattivazione:** trigger `trgfn_prevent_deactivate_if_children` blocca la disattivazione se esistono movimenti con `contabile_riga_id` che referenziano la riga.
+**Protezione disattivazione:** trigger `trgfn_prevent_deactivate_if_children` blocca la disattivazione se esistono movimenti con `contabile_riga_id` che referenziano la riga. ⚠️ Dal 14-09-2026 non e' piu' lui a parlare per primo: una riga registrata sta sotto una distinta chiusa, e il guard del contenuto la ferma prima, col messaggio della distinta finale.
 
 > Documentazione dettagliata: [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)
 
@@ -987,6 +1001,12 @@ Questo trigger (BEFORE INSERT/UPDATE su `vendite_movimenti`) garantisce la coere
 
 ---
 
+### Il contenuto della distinta: `trgfn_vendite_contabili_righe_guard_contenuto`
+
+Questo trigger (BEFORE INSERT / UPDATE dei fatti / DELETE su `vendite_contabili_righe`) custodisce **chi puo' togliere, aggiungere o cambiare una riga, e quando**: una riga si elimina solo su una distinta **manuale in bozza**, e sotto una manuale **validata** il contenuto e' fermo finche' non torna in bozza. Il predicato dell'eliminazione sta in una funzione sola, `script.fn_check_riga_contabile_eliminabile`, che il guard chiama e il backend legge per spegnere il cestino col perche'. Il `DELETE` del giro dei fondi passa perche' la sua madre lo dichiara. Tutto il resto — le due porte, l'ordine dei motivi, il residuo dichiarato — sta nella scheda: [trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto).
+
+---
+
 ### Mutua esclusione lotto/sistemazione: `trgfn_vendite_contabili_lotti_guard_sistemazione`
 
 Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata **nata da una sistemazione** — la domanda si fa all'atto, non piu' alla testata — ~~con `compensazione_id IS NOT NULL` venga associata a un lotto. Lavora in coppia con il blocco 2 del guard ente/centro per applicare la mutua esclusione da entrambi i lati.
@@ -994,6 +1014,16 @@ Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che
 ---
 
 ## Flusso logico del pagamento
+
+⭐ **Validare non e' registrare.** Una distinta manuale passa per tre momenti:
+in **bozza** si digita, si corregge, si elimina; **validata** vuol dire «ho
+finito di inserire, e' pronta da registrare» — la quadratura col totale
+dichiarato e' verificata e il contenuto e' fermo, ma **il denaro non e' ancora
+registrato**; **registrata** (`fn_posta_contabile`, solo da validata) nascono i
+movimenti, le righe vanno a `POSTATA`, la distinta si chiude — ed e'
+irreversibile. Il saldo della fattura resta invariato fino alla validazione,
+mostra le righe come «in lavorazione» da validata, e cambia davvero solo alla
+registrazione.
 
 ```mermaid
 flowchart TD
@@ -1032,7 +1062,7 @@ flowchart TD
 
 7. **Posting condizionato da stato**: solo le righe il cui stato ha `is_postabile = true` e la cui testata non e in stato `is_final = true` sono candidate alla generazione di movimenti.
 
-8. **Protezione disattivazione**: centri, enti, stati e righe non possono essere disattivati se referenziati da record figli attivi.
+8. **Protezione disattivazione**: centri, enti, stati e righe non possono essere disattivati se referenziati da record figli attivi. ⭐ Per le **righe** la regola dal 14-09-2026 e' piu' precisa: si eliminano (`attivo = false`, e `DELETE`) solo su una distinta **manuale in bozza**; sotto una manuale **validata** il contenuto (righe nuove, importi, date, eliminazioni) e' fermo finche' non torna in bozza, mentre le decisioni restano libere (guard: `trgfn_vendite_contabili_righe_guard_contenuto`).
 
 9. **Validazione PSP**: gli enti di incasso con `tipo = PSP` richiedono un `soggetto_ruolo_id` con ruolo `PSP` e un record attivo in `anagrafiche.psp`.
 

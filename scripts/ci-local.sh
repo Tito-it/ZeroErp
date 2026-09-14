@@ -18,14 +18,18 @@
 #   changeSet gia' applicato, l'incrementale non la vede: li' serve `--fresh`.
 #
 # ── ⛔ COSA NON RIPRODUCE, E PERCHE' E' UNA SCELTA ─────────────────────
-#   * il provisioning del ruolo batch (`provision_db_role_batch_*.sql`): fa
-#     `ALTER ROLE … PASSWORD`, e i ruoli sono di CLUSTER — cambierebbe la
-#     password del ruolo usato dal database di sviluppo. Si salta;
-#   * di conseguenza la passata `--contexts=ci_apply`, che da quel ruolo
-#     dipende, gira solo con `--ci-apply` e sapendo cosa si sta facendo;
+#   * la passata `--contexts=ci_apply` gira solo con `--ci-apply`, sapendo
+#     cosa si sta facendo (vedi «LE PASSATE» qui sotto);
 #   * i test Django e la build della documentazione: non c'entrano col migrate.
 #   ⇒ Copre la passata `--contexts="!provision and !dati_macchina"`, che e' dove il migrate si
 #   ferma ogni volta.
+#   ⭐ Il provisioning del ruolo batch (`provision_db_role_batch_*.sql`) fino al
+#   2026-09-14 stava in questo elenco: fa `ALTER ROLE … PASSWORD`, i ruoli sono
+#   di CLUSTER, e una password inventata avrebbe rotto il worker di sviluppo.
+#   Da quel giorno lo script accetta di girare SENZA password quando il ruolo
+#   esiste (i GRANT sono per database, la password no), e il passo 4 in fondo
+#   lo lancia davvero: la postura del batch qui e' quella della CI, e
+#   `rls/test-role-batch-fatturazione-postura.sql` si misura anche qui.
 #
 # ── ⭐ LE PASSATE, E SONO QUATTRO — nello stesso ordine di ci-validate.yaml ──
 #     1. provision PRE   (superuser) · changelog-provision-pre.yaml
@@ -223,13 +227,15 @@ SQL
 #   DATABASE (vive in pg_default_acl di questo database), quindi non tocca
 #   sviluppo.
 #
-#   🔴 E VA DICHIARATO: cosi' il database scratch da al ruolo batch PIU' di
-#   quanto il provisioning vero gli darebbe — li' il DML e' un perimetro
-#   esplicito di 28 tabelle, qui e' tutto. ⇒ Questo database serve a trovare
-#   i changeSet che rompono un migrate da zero, NON a collaudare la postura
-#   dei permessi: per quella c'e'
-#   db/pgtap/rls/test-role-batch-fatturazione-postura.sql, che va girato sul
-#   database vero.
+#   🔴 E VA DICHIARATO: cosi', DURANTE il migrate, il database scratch da al
+#   ruolo batch PIU' di quanto il provisioning vero gli darebbe — li' il DML e'
+#   un perimetro esplicito di 28 tabelle, qui e' tutto. E' un PONTE per
+#   superare il cancello, non la postura: il passo 4 in fondo lo RITIRA
+#   (revoca il DML largo e i due default) e lancia il provisioning vero. Fino
+#   al 2026-09-14 il ponte restava, e `rls/test-role-batch-fatturazione-postura`
+#   era rosso qui per costruzione — «lo scratch non e' un metro per quel file»
+#   scritto in tre posti, e trentuno giorni di un rosso che nessuno poteva
+#   leggere come un fatto.
 #   ⚠️ SENZA `IN SCHEMA`, e non e' pigrizia: la forma con lo schema pretende
 #   che lo schema ESISTA, e qui gli schemi li crea la passata principale, dopo.
 #   Crearli in anticipo sarebbe peggio del problema: un changeSet con
@@ -486,6 +492,48 @@ else
   echo "    NON la invento: un ALTER ROLE con un valore nuovo e' di CLUSTER e" >&2
   echo "    romperebbe l'accesso al database di sviluppo. I pgTAP falliranno" >&2
   echo "    tutti per permessi finche' non la aggiungi." >&2
+fi
+
+# 4. Il ruolo batch, con il provisioning VERO — come il passo «Provision ruolo
+#    batch fatturazione» di ci-validate.yaml, DOPO le automazioni (le shadow
+#    storico del perimetro nascono li') e dopo i privilegi dell'app.
+#    ⛔ Prima si RITIRA il ponte: i due ALTER DEFAULT PRIVILEGES senza schema
+#    dati in testa (per superare il cancello di 20260729-05 durante il migrate)
+#    e il DML largo del blocco «tabelle GIA' create». Il provisioning e'
+#    additivo — non revoca niente — quindi senza questo passo il DML su tutto
+#    resterebbe e la postura sarebbe quella del ponte, non quella dello script.
+#    Si azzera TUTTO (tabelle, sequenze, USAGE sugli schemi) e si lascia allo
+#    script ridare la sua postura: cosi' anche sugli schemi fuori whitelist —
+#    maintenance, django, pgagent — il batch resta a zero, come in CI.
+#    ⚠️ Senza password: il ruolo esiste nel cluster (e' quello di sviluppo) e
+#    lo script, dal 2026-09-14, in quel caso non la tocca. I GRANT sono per
+#    database: sviluppo non vede niente di tutto questo.
+#    ⚠️ Nella corsa INCREMENTALE il ponte torna in testa e questo passo lo
+#    ritira di nuovo: a regime e' un no-op che rifa' la stessa postura.
+if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
+  echo "── ruolo batch: ritiro il DML largo del ponte e lancio il provisioning vero (senza password)"
+  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
+ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp
+  REVOKE INSERT, UPDATE, DELETE ON TABLES FROM zeroerp_batch_fatturazione;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres
+  REVOKE INSERT, UPDATE, DELETE ON TABLES FROM zeroerp_batch_fatturazione;
+DO $$
+DECLARE s text;
+BEGIN
+  FOR s IN SELECT nspname FROM pg_namespace
+            WHERE nspname NOT LIKE 'pg\_%' AND nspname <> 'information_schema'
+  LOOP
+    EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA %I FROM zeroerp_batch_fatturazione', s);
+    EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA %I FROM zeroerp_batch_fatturazione', s);
+    EXECUTE format('REVOKE ALL ON SCHEMA %I FROM zeroerp_batch_fatturazione', s);
+  END LOOP;
+END $$;
+SQL
+  psql_admin -d "$CI_DB" \
+    -v batch_role=zeroerp_batch_fatturazione -v migrator_role=zeroerp \
+    < scripts/sql/provision_db_role_batch_fatturazione.sql >/dev/null
+else
+  echo "ℹ️  ruolo batch assente nel cluster: niente postura da collaudare qui (in CI lo crea il suo passo)."
 fi
 
 DEV_DOPO="$(testimone_dev)"

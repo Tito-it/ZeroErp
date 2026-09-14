@@ -109,6 +109,11 @@ Modello (vedi
 Ruolo esistente: **`zeroerp_batch_fatturazione`** (batch di fatturazione).
 
 - Provisioning (admin DB): `scripts/sql/provision_db_role_batch_fatturazione.sql`
+  — `batch_password` è obbligatoria **solo per creare** il ruolo (dal 2026-09-14):
+  se il ruolo esiste e la password non viene passata, resta quella che ha. I ruoli
+  sono di cluster e i privilegi di database: è ciò che permette a `scripts/ci-local.sh`
+  di dare allo scratch la stessa postura della CI senza toccare la password del
+  worker di sviluppo.
 - Verifica postura: `scripts/sql/check_db_role_batch_fatturazione.sql`
 - CI: step psql-as-`postgres` in `.github/workflows/ci.yaml` ("Provision ruolo batch
   fatturazione") che riusa lo stesso script

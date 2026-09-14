@@ -1814,11 +1814,29 @@ corso» — le tre facce di `ok` sono tre, e la mail ne mostrava due.
 
 | | Cosa | Di chi |
 | --- | --- | --- |
-| ⏳ | apply `-02` + `-03` su dev (il `-03` cancella la riga 7 e lo dice con un NOTICE); pgTAP `dbops/test-riferimenti-morti-v1` (9) | **Tid** |
+| ✅ | apply `-02` + `-03` su dev (il `-03` cancella la riga 7 e lo dice con un NOTICE); pgTAP `dbops/test-riferimenti-morti-v1` (9) | **Tid** — `databasechangelog` 14-09 10:55; il registro ha la sola `ORFANA` (riga 1); `guardrail_riferimenti_morti.sql` verde **da entrambi i ruoli** (`titodb` e `zeroerp_app`), che è la cosa che il 14-09 mattina non era |
 | ⏳ | push DB → Tito-dev: in CI il guardrail deve restare verde con la riga 7 **presente** (pgAgent assente) | CI |
-| 🔵 | `job_liveness.last_ok` / resa «in corso» (14.3) | **BE** |
-| ⏳ | il settimanale di lunedì prossimo: zero rientrati, e la propria corsa non «FALLITA» | digest |
+| ✅ | `job_liveness.last_ok` / resa «in corso» (14.3) | **BE** — `46061d739` (14-09 11:42, `dev/backend-tid`): `last_ok` dall'ultima corsa **conclusa** (`FILTER (WHERE ended_at IS NOT NULL)`) **e** `None` reso «in corso». Fatte entrambe, e ne discende il §14.5 |
+| ✅ | il settimanale rilanciato a mano (14-09 11:47, run `122445`): zero rientrati, la propria corsa **non** «FALLITA», i sei `LAVORAZIONE` uguali a `fn_conta_presidio` letto a mano (0·0·0·57·1·0), le sette `ZERO` e il `REGISTRO` a zero da entrambi i ruoli | digest |
+
+### 14.5 ⚠️ Residuo, per il BE: sulla propria corsia la data è di una corsa e l'esito di un'altra
+
+Con `last_run_at = MAX(started_at)` (riga più recente, **anche aperta**) e
+`last_ok` dall'ultima corsa **conclusa**, la riga del battito
+`digest_presidi:settimanale: <data> (<esito>)` cuce due corse diverse: nel
+messaggio delle 11:47 la data è quella della corsa in esecuzione (`122445`) e
+l'«ok» è della corsa delle 07:30 (`121985`). Riprodotto sul giornale com'era
+alle 11:47:33. Oggi è vero per i dati; sul modello no: se la settimanale
+precedente fosse finita con `ok = false`, lunedì la mail direbbe
+`<adesso> (FALLITA)` — cioè «questa corsa è fallita» a chi la sta leggendo,
+mentre la notizia vera è «quella di sette giorni fa». ⇒ Per la corsia che sta
+componendo il messaggio, o l'esito viaggia con la **sua** data (la corsa
+conclusa a cui appartiene), o la riga dice «in corso» e la precedente sta a
+parte. Non è del DB e su `dev/db-tid` non si tocca. ⚠️ Cosmesi accanto: la
+testata è in ora locale (`14/09/2026 11:47`) e le corse in UTC
+(`09:47:32+00:00`) — due orologi in una mail.
 
 *14-09. Il primo settimanale ha fatto quello per cui esiste: ha messo uno
 accanto all'altro due occhi che non si erano mai guardati, e la differenza era
-nel metro.*
+nel metro. Alle 11:47 il secondo settimanale ha confermato il rimedio — e ha
+lasciato un residuo più piccolo, di forma e non di sostanza (§14.5).*

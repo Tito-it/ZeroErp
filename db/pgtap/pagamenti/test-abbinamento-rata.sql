@@ -33,7 +33,12 @@
 --    verrebbe rifiutato perche' un'altra riga ha nel frattempo occupato lo
 --    spazio — si rifiuterebbe un gesto che libera;
 --  - presidiare che «incassato» non sia «registrato» (test 12): i centri
---    interni saldano il documento ma in banca non entra niente.
+--    interni saldano il documento ma in banca non entra niente;
+--  - ⭐ i test 5-6 sono ANCHE il contratto di D16 (2026-09-14, brief
+--    riga-manuale-nasce-abbinata §4 P-0): la riga manuale nasce con
+--    INSERT diretto in ABBINATA, e il doppio tempo della capienza — rifiuto
+--    coi numeri, poi `forzata = true` — vale sull'INSERT come sull'UPDATE.
+--    E' il contratto su cui il backend fa nascere la riga gia' abbinata.
 --
 -- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.2 S2-1…S2-8 · Decisioni: brief madre D14-b/c/d/e · lotto 5
@@ -424,6 +429,12 @@ SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
 DELETE FROM pagamenti.vendite_movimenti m
  WHERE m.fattura_id IN (SELECT id FROM tmp_fatture);
 
+-- ⚠️ Dal 2026-09-14 (D17) il DELETE di una riga contabile passa dal guard del
+--    contenuto della distinta: sotto una CHIUSA o una GENERATA e' rifiutato.
+--    Questo cleanup e' un passaggio tecnico e lo dichiara con la stessa GUC
+--    che usa la madre del giro dei fondi (fn_cancella_fondo_fattura); il
+--    ROLLBACK farebbe comunque il lavoro.
+SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
 DELETE FROM pagamenti.vendite_contabili_righe cr
  WHERE cr.contabile_id IN (SELECT contabile_id FROM tmp_contabile
                            UNION ALL SELECT contabile_id FROM tmp_contabile_fondo
