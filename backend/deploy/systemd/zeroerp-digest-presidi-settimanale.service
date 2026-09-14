@@ -1,7 +1,9 @@
 # Template systemd — digest SETTIMANALE dei presidi (dbops.presidi) + BATTITO.
 # Fonte di verità versionata: si edita QUI e si ri-renderizza con
 # `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
-# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app),
+# __COMANDO__ (l'argv dopo run-command.sh: dal 2026-09-14 la riga di comando
+# sta in `sveglie.json`, campo `comando` — è la stessa che «Esegui ora» lancia).
 # La cadenza sta in `backend/deploy/sveglie.json`, non qui.
 #
 # ⭐ QUESTA CORSA PARTE ANCHE QUANDO NON HA NIENTE DA DIRE, ed è la ragione per
@@ -31,4 +33,4 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
-ExecStart=__APP_DIR__/bin/run-command.sh digest_presidi --cadenza settimanale
+ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

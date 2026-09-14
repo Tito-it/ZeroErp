@@ -1,7 +1,9 @@
 # Template systemd — batch fatturazione, corsia IMMEDIATA (lotti GIORNALIERO).
 # Fonte di verità versionata: si edita QUI e si ri-renderizza con
 # `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
-# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app),
+# __COMANDO__ (l'argv dopo run-command.sh: dal 2026-09-14 la riga di comando
+# sta in `sveglie.json`, campo `comando` — è la stessa che «Esegui ora» lancia).
 #
 # Gira headless nel CANALE DI SISTEMA (RLS Path A): il command apre la
 # connessione col ruolo `zeroerp_batch_fatturazione` (BYPASSRLS) via l'alias
@@ -31,4 +33,4 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
-ExecStart=__APP_DIR__/bin/run-command.sh run_fatturazione_batch --modalita immediata
+ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

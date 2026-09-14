@@ -349,11 +349,20 @@ claim dipendono da lei.
 1. **DB** (brief [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md)):
    processo `avvio_manuale`, tipo `ESEGUI_PROCESSO` con `attivo = false`,
    azione `processo_avvia`. Nessun host, nessuna colonna nuova.
-2. **Deploy**: `comando` in `sveglie.json` (voci `timer`), `__COMANDO__` nei
-   template al posto della riga cablata, render in `install-timers.sh`,
-   `test-install-timers.sh` lo prova; `carica_sveglie()` legge il campo e
-   **rifiuta** una voce `timer` senza `comando` (come rifiuta
-   `tolleranza_minuti`).
+2. **Deploy** — ✅ **fatto il 14-09** (non dipende dal DB): `comando` in
+   `sveglie.json`, `__COMANDO__` negli otto template al posto della riga
+   cablata, render in `install-timers.sh`, `test-install-timers.sh` test 6-7
+   (nessun `ExecStart` cablato; l'unit reso porta l'argv del JSON);
+   `carica_sveglie()` legge il campo e **rifiuta** una voce senza `comando`
+   (come rifiuta `tolleranza_minuti`), con whitelist sui token e
+   `test_sveglie.py` 11-13 (il primo token è un management command esistente).
+   ⭐ Due scostamenti da questa riga, dichiarati: `comando` è obbligatorio per
+   **ogni forma**, non solo `timer` — ogni `.service` ha un `ExecStart`, e una
+   regola con un'eccezione sono due regole (che il pulsante valga solo per i
+   timer lo decide chi lo rende, sulla `forma`); e `timeout_minuti` (D-B)
+   **non è entrato**: il suo unico lettore è l'handler, e un campo letto da
+   nessuno è un numero che sembra dichiarato e non lo è. Gli otto `ExecStart`
+   resi sono identici a prima. Playbook §17.6.
 3. **BE**: `job_run()` legge `ZEROERP_JOB_ORIGINE`/`ZEROERP_JOB_AUTH_USER_ID`;
    handler `esegui_processo_default` (whitelist da `carica_sveglie()`, `abilita`,
    sottoprocesso a lista con timeout, esito = exit code + coda dell'output nel

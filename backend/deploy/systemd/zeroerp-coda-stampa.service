@@ -1,7 +1,9 @@
 # Template systemd — worker DRAINER coda stampa (vendite.fatture_stampa_coda).
 # Fonte di verità versionata: si edita QUI e si ri-renderizza con
 # `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
-# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app),
+# __COMANDO__ (l'argv dopo run-command.sh: dal 2026-09-14 la riga di comando
+# sta in `sveglie.json`, campo `comando` — è la stessa che «Esegui ora» lancia).
 # NB: dal 2026-08-04 l'installer abilita anche questo timer. Il gate precedente
 # («scritto ma non abilitato, attende i GRANT del ruolo batch») è caduto quando
 # i GRANT sono stati applicati: tenerlo avrebbe dato a ogni host nuovo una coda
@@ -16,4 +18,4 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
-ExecStart=__APP_DIR__/bin/run-command.sh draina_coda_stampa
+ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

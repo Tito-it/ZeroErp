@@ -2,7 +2,9 @@
 # Fonte di verità versionata: NON modificare gli unit installati in
 # /etc/systemd/system a mano — si editano QUI e si ri-renderizzano con
 # `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
-# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app),
+# __COMANDO__ (l'argv dopo run-command.sh: dal 2026-09-14 la riga di comando
+# sta in `sveglie.json`, campo `comando` — è la stessa che «Esegui ora» lancia).
 [Unit]
 Description=ZeroERP drainer coda lavori generica (dbops.coda_lavori)
 After=network.target
@@ -13,4 +15,4 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
-ExecStart=__APP_DIR__/bin/run-command.sh draina_coda_lavori
+ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

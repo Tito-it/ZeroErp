@@ -31,19 +31,29 @@
 #   dicono «gli unit sono validi» E «si accendono quelli giusti»; finora c'era
 #   solo la prima.
 #
-# Indice test (0..5):
+# ⭐ DAL 2026-09-14 PROVA ANCHE CHE LA RIGA DI COMANDO HA UNA SEDE SOLA (test 6
+#   e 7): il template porta `__COMANDO__` e l'unit reso porta l'argv di
+#   `sveglie.json`. È il prerequisito di «Esegui ora» (analisi-riavvio-processi-
+#   da-interfaccia.md §4.1-bis): il pulsante lancia il comando letto dal JSON, e
+#   se un template avesse ancora una riga cablata il timer e il pulsante
+#   potrebbero eseguire due cose diverse — in silenzio, perché entrambe girano.
+#
+# Indice test (0..7):
 #   0. il piano accende ESATTAMENTE gli unit dichiarati `abilita: true`
 #   1. gli unit dichiarati `abilita: false` non vengono accesi
 #   2. si accende il `.timer` dei timer e il `.service` dei servizi sempre accesi
 #   3. `daemon-reload` precede gli `enable`
 #   4. REGRESSIONE: un campo vuoto non fa slittare i campi (il difetto del 06-09)
 #   5. senza root e senza destinazione alternativa, si ferma
+#   6. nessun template `.service` ha un `ExecStart` cablato: tutti `__COMANDO__`
+#   7. l'unit reso esegue ESATTAMENTE l'argv di `sveglie.json`, senza residui
 
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 INSTALLER="${APP_DIR}/bin/install-timers.sh"
 SVEGLIE="${APP_DIR}/deploy/sveglie.json"
+TEMPLATE_DIR="${APP_DIR}/deploy/systemd"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -114,9 +124,24 @@ for s in json.load(open(sys.argv[1], encoding="utf-8"))["sveglie"]:
 PY
 }
 
+# Scopo: per ogni unit dichiarata, la riga `ExecStart=` che l'unit reso DEVE
+#        avere: il wrapper di questo checkout più l'argv di `sveglie.json`,
+#        unito da spazi come fa l'installer. Letto dalla stessa fonte, non
+#        riscritto qui — vale la nota di `attesi()`.
+exec_start_attesi() {
+  python3 - "$SVEGLIE" "$APP_DIR" <<'PY'
+import json, sys
+app_dir = sys.argv[2]
+for s in json.load(open(sys.argv[1], encoding="utf-8"))["sveglie"]:
+    argv = " ".join(str(x) for x in s["comando"])
+    print(f"{s['unit']}\tExecStart={app_dir}/bin/run-command.sh {argv}")
+PY
+}
+
 echo "== install-timers: il ramo che accende =="
 prepara_stub
 REGISTRO="$(esegui_installer principale)"
+UNITS_RESI="$TMP/principale/units"
 
 # ── 0. accende esattamente i dichiarati `abilita: true` ──────────────────
 ACCESI="$(grep '^enable --now ' "$REGISTRO" | sed 's/^enable --now //' | sort)"
@@ -185,6 +210,48 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 else
   echo "  ⏭️  test 5 saltato: la suite gira come root"
+fi
+
+# ── 6. nessun template `.service` con un ExecStart cablato ───────────────
+# ⛔ Un template che porta ancora la riga scritta a mano è la SECONDA sede del
+#    comando: il timer eseguirebbe quella, «Esegui ora» quella del JSON, e
+#    nessuna delle due fallirebbe. Ogni `.service` deve portare `__COMANDO__`
+#    nell'`ExecStart`, e uno solo.
+CABLATI=""
+for tpl in "$TEMPLATE_DIR"/*.service; do
+  n_exec="$(grep -c '^ExecStart=' "$tpl" || true)"
+  if [ "$n_exec" -ne 1 ] \
+     || ! grep -Fxq 'ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__' "$tpl"; then
+    CABLATI="$CABLATI $(basename "$tpl")"
+  fi
+done
+if [ -z "$CABLATI" ]; then
+  ok "ogni template .service porta 'ExecStart=… run-command.sh __COMANDO__' (una sede sola)"
+else
+  ko "template con ExecStart cablato o non standard:$CABLATI"
+fi
+
+# ── 7. l'unit reso esegue esattamente l'argv del dichiarato ──────────────
+# È la prova dell'altra metà: il segnaposto è stato SOSTITUITO con l'argv del
+# JSON — non lasciato lì (systemd lancerebbe un comando chiamato `__COMANDO__`)
+# e non con un'altra cosa. Si confronta la riga intera, non una sottostringa.
+DIVERGENTI=""
+while IFS=$'\t' read -r unit atteso; do
+  [ -n "$unit" ] || continue
+  reso="$UNITS_RESI/${unit}.service"
+  if [ ! -f "$reso" ]; then
+    DIVERGENTI="$DIVERGENTI ${unit}(non-reso)"
+  elif ! grep -Fxq "$atteso" "$reso"; then
+    DIVERGENTI="$DIVERGENTI ${unit}"
+  fi
+done <<< "$(exec_start_attesi)"
+if grep -l '__COMANDO__' "$UNITS_RESI"/* >/dev/null 2>&1; then
+  DIVERGENTI="$DIVERGENTI (residuo __COMANDO__ in un unit reso)"
+fi
+if [ -z "$DIVERGENTI" ]; then
+  ok "ogni unit reso esegue l'argv dichiarato in sveglie.json"
+else
+  ko "unit resi che non eseguono l'argv dichiarato:$DIVERGENTI"
 fi
 
 echo
