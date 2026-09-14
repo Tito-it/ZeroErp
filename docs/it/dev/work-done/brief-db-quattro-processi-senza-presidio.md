@@ -635,6 +635,65 @@ l'handler), header di `install-timers.sh`, `_contratto` in `sveglie.json`.
   interfaccia — [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md).
   Non è di questo brief: lo cita perché nasce dal suo ultimo anello umano.
 
+### 🔴 10.8 · Il primo digest (14-09 07:00) ha contato un MUTO su un listener VIVO — e la §10.3 aveva verificato la colonna sbagliata
+
+> `dbops.vw_processi_programmazione_da_guardare: 1` — `listen_cambio_reparto`
+> → `MUTO`. E sotto: *«il conteggio dice 1 ma da qui la vista risponde vuota: il
+> perimetro dichiarato (LIBERO) non regge, la riga di catalogo va corretta»*.
+
+**Il listener era vivo**: pid 45447, utente `zeroerp_app`, `backend_start`
+2026-09-13 00:15:58 — 31 ore prima. Provato allo stesso istante sullo stesso
+pid: come `zeroerp_app` il panorama dice **OK**, come `titodb` dice **MUTO**.
+
+**Il meccanismo, sul modello.** `pg_stat_activity` mostra a tutti la *riga* di
+ogni sessione, ma **maschera** `backend_start` (e `state`, `query`…) a chi non è
+lo stesso utente della sessione né `pg_read_all_stats` — misurato: a `titodb`
+sulla sessione di `zeroerp_app` restano visibili solo `pid`, `datid`, `datname`,
+`usesysid`, `usename`, `application_name`. E una vista non cambia l'utente che
+`pg_stat_get_activity()` guarda. Il ramo del `-14` leggeva `viva_dal IS NOT NULL`
+con `viva_dal = min(backend_start)`: la §10.3 aveva verificato che
+`application_name` si legge da qualunque ruolo — vero — ma la vista ha poi usato
+`backend_start`, verificato dallo stesso utente della sessione, dove il
+mascheramento non c'è. `fn_conta_presidio` è `SECURITY DEFINER` di `titodb`:
+contava MUTO; il digest elencava come app: zero. **Il perimetro `LIBERO` era la
+cosa giusta** — è stato lui a far suonare la contraddizione — e il rimedio
+suggerito dal digest («correggi la riga di catalogo») qui sarebbe stato il verso
+sbagliato: avrebbe reso *vero* il conteggio falso.
+
+⚠️ **Perché il pgTAP non l'ha visto**: il test 17 usa la sessione del test
+stesso (`SET application_name`), stesso utente, nessun mascheramento — verde con
+il difetto dentro.
+
+**Il rimedio** (14-09): `20_code/dbops/20260914-01-update-vw-processi-programmazione-sessione-esistenza`
+— il LATERAL espone `viva` (`count(*) > 0`: esiste, visibile a chiunque) e
+`viva_dal` (informazione); il `CASE` legge `viva`; `ultimo_segno_di_vita` per
+`SESSIONE` resta `viva_dal`, `NULL` per chi non può leggerlo, e il `COMMENT` lo
+dice. Provato su dev con l'SQL estratto in transazione annullata: come `titodb`
+→ `OK / da_guardare = false`, proiezione vuota, colonne invariate.
+⛔ Scartati: `pg_read_all_stats` a `titodb` (un privilegio su una macchina — la
+lezione del 13-09 sullo schema `django`); perimetro `DEFINER` sul presidio (rende
+vero il falso); una `DEFINER` di `postgres` su `pg_stat_activity` (renderebbe
+visibile anche `viva_dal`, ma è una riga in `sec_functions_owner` e una passata
+di provisioning per un'informazione che non decide niente — se un giorno serve,
+è quella la strada).
+
+**Il presidio**: test **19** in `dbops/test-vw-processi-programmazione.sql`, in
+due asserzioni — 19a *la sessione altrui è mascherata a questo lettore* (la
+precondizione, altrimenti il 19b è verde per sottrazione come il 17), 19b *il
+panorama la dà OK lo stesso*. Il caso si costruisce con `dblink` sul DSN del
+canale di log (`myapp.dblink_log_connection`): in CI è di `zeroerp_log` e si
+costruisce davvero; su dev è `service=` e un non-superuser non lo apre; sullo
+scratch è dello stesso utente del runner. Dove non si può, **lo dichiara** con
+`skip()` e il motivo. Provato in una transazione annullata su dev con un DSN di
+`zeroerp_app` passato a mano: vista nuova **21/21**; vista vecchia **19b rosso**
+(`MUTO/true/true`). Aggiornati il manuale della vista e la `nota` di
+`dbops.presidi` (seed `presidi.csv`), che diceva ancora «non copre i COMMAND».
+
+| | Cosa | Di chi |
+| --- | --- | --- |
+| ⏳ | apply del `-01` su dev (il mirror di `presidi.csv` rilegge la nota da solo); pgTAP `dbops/test-vw-processi-programmazione` (19a/19b in skip dichiarato su dev) | **Tid** |
+| ⏳ | il digest di domani: `da_guardare` a zero, nessun «perimetro non regge» | CI/digest |
+
 ### ⚠️ Una cosa vista facendo, da non perdere
 
 **Il BE e il DB calcolano lo stesso predicato in due posti.** Il badge code

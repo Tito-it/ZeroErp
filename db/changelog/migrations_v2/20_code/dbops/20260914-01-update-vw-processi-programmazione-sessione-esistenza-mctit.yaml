@@ -1,0 +1,224 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ IL VERDETTO `SESSIONE` POGGIA SULL'ESISTENZA DELLA SESSIONE, NON SU
+#    `backend_start`.
+#   Brief: brief-db-quattro-processi-senza-presidio §10.8 (14-09)
+#
+# ── Che cosa e' successo ─────────────────────────────────────────────
+#   Primo digest della giornaliera, 14-09 07:00:
+#     dbops.vw_processi_programmazione_da_guardare: 1
+#     ⚠️ il conteggio dice 1 ma da qui la vista risponde vuota: il perimetro
+#        dichiarato (LIBERO) non regge, la riga di catalogo va corretta.
+#   La riga era `listen_cambio_reparto` → MUTO. Il listener era VIVO: pid 45447,
+#   utente zeroerp_app, backend_start 2026-09-13 00:15:58 — 31 ore prima.
+#
+# ── Il meccanismo, sul modello ───────────────────────────────────────
+#   `pg_stat_activity` mostra a TUTTI la riga di ogni sessione (pid, datname,
+#   usename, application_name) ma MASCHERA le altre colonne — backend_start,
+#   state, query… — a chi non e' lo stesso utente della sessione ne' membro di
+#   pg_read_all_stats. E una vista non cambia questo: i permessi sulle tabelle
+#   si valutano come l'owner, ma pg_stat_get_activity() guarda l'UTENTE DELLA
+#   SESSIONE che legge. Il ramo del 20260911-14 diceva
+#     CASE WHEN s.viva_dal IS NOT NULL THEN 'OK' ELSE 'MUTO' END
+#   con viva_dal = min(backend_start): OK per zeroerp_app (la sessione del
+#   listener e' sua), MUTO per titodb — cioe' per dbops.fn_conta_presidio, che
+#   e' SECURITY DEFINER e conta per il digest. Il digest ha poi elencato le
+#   righe come app: zero. Il perimetro LIBERO del presidio («l'app puo'
+#   elencare cio' che il definer conta») era la cosa giusta: e' la vista che
+#   dava due verdetti, e quello VERO era dell'app.
+#   ⚠️ L'intestazione del -14 diceva «application_name e backend_start si
+#   leggono da qualunque ruolo (verificato 2026-09-11)»: verificato dallo
+#   stesso utente della sessione, dove il mascheramento non c'e'. Misurato il
+#   14-09 come titodb sulla sessione di zeroerp_app: visibili SOLO pid, datid,
+#   datname, usesysid, usename, application_name.
+#
+# ── Il rimedio ──────────────────────────────────────────────────────
+#   Il LATERAL espone `viva` (count(*) > 0: la riga esiste, visibile a
+#   chiunque) e `viva_dal` (min(backend_start): informazione). Il CASE legge
+#   `viva`. `ultimo_segno_di_vita` per SESSIONE resta viva_dal — e' NULL per un
+#   lettore che non puo' vederlo, e lo dice il COMMENT: e' un «da quando», non
+#   un «se».
+#   ⛔ Scartati: dare pg_read_all_stats a titodb (un privilegio su UNA macchina,
+#   la stessa lezione del 13-09 sullo schema django); cambiare il perimetro del
+#   presidio in DEFINER (avrebbe reso VERO il conteggio falso); una funzione
+#   SECURITY DEFINER di postgres che legga pg_stat_activity per tutti (avrebbe
+#   reso visibile anche viva_dal, ma aggiunge una riga a sec_functions_owner e
+#   una passata di provisioning per un'informazione che non decide niente —
+#   se un giorno serve, e' quella la strada).
+#
+# ── Perche' il pgTAP non l'ha visto ──────────────────────────────────
+#   Il test 17 usa la sessione del test stesso (SET application_name): stesso
+#   utente, nessun mascheramento. Il caso «sessione di un ALTRO utente» si
+#   costruisce con dblink sul DSN del canale di log (test 19, rev 14-09): in CI
+#   il DSN porta la password e il caso si costruisce; su dev e' `service=` e un
+#   non-superuser non puo' aprirlo — li' il test lo DICHIARA con skip(), e il
+#   presidio cross-ruolo resta il digest, che e' quello che l'ha trovato.
+#
+# ⚠️ Stesse colonne, stesso ordine: CREATE OR REPLACE VIEW. Corpo dal -14, che
+#   e' l'ultima revisione e coincide con la doc auto-gen (verificato 14-09).
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione.sql (test 19 nuovo)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260914-01-update-vw-processi-programmazione-sessione-esistenza-mctit.yaml
+
+  - changeSet:
+      id: 20260914-01-update-vw-processi-programmazione-sessione-esistenza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_processi_programmazione: il verdetto SESSIONE (OK/MUTO) poggia
+        sull'esistenza della sessione in pg_stat_activity, visibile a qualunque
+        ruolo, e non piu' su backend_start, che PostgreSQL maschera a chi non e'
+        lo stesso utente ne' pg_read_all_stats. Fino a oggi il panorama diceva
+        OK all'app e MUTO al definer del digest sullo stesso listener vivo.
+        Stesse colonne; ultimo_segno_di_vita per SESSIONE resta informazione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: dbops
+                viewName: vw_processi_programmazione
+            - columnExists:
+                schemaName: dbops
+                tableName: processi
+                columnName: segno_di_vita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione AS
+              WITH panorama AS (
+                  SELECT p.codice AS processo_codice,
+                         p.classe,
+                         p.canale,
+                         p.jobname_pgagent,
+                         p.tolleranza_minuti,
+                         p.segno_di_vita,
+                         g.abilitato          AS job_abilitato,
+                         g.prossima_esecuzione AS prossima_corsa,
+                         g.ultima_esecuzione  AS pgagent_ultima_corsa,
+                         l.ultima_corsa       AS giornale_ultima_corsa,
+                         l.ultima_corsa_pgagent,
+                         l.ultimo_esito,
+                         s.viva_dal           AS sessione_viva_dal,
+                         CASE
+                             WHEN p.canale = 'CODA' THEN 'SU_RICHIESTA'
+                             -- ⭐ Un COMMAND con CONTRATTO: il database sa che
+                             --   cosa aspettarsi, e lo confronta.
+                             -- ⛔ Il verdetto poggia su s.viva (ESISTE una sessione),
+                             --   non su s.viva_dal: backend_start e' mascherato a
+                             --   chi non e' lo stesso utente della sessione ne'
+                             --   pg_read_all_stats, e «NULL» li' vuol dire «non
+                             --   ti e' dato vedere», non «non c'e'». Rev 2026-09-14.
+                             WHEN p.canale = 'COMMAND' AND p.segno_di_vita = 'SESSIONE' THEN
+                                 CASE WHEN s.viva THEN 'OK' ELSE 'MUTO' END
+                             WHEN p.canale = 'COMMAND' AND p.tolleranza_minuti IS NOT NULL THEN
+                                 CASE
+                                     WHEN l.ultima_corsa IS NULL THEN 'MAI_PARTITO'
+                                     WHEN l.ultima_corsa
+                                          < now() - make_interval(mins => p.tolleranza_minuti)
+                                         THEN 'MUTO'
+                                     ELSE 'OK'
+                                 END
+                             -- ⚠️ Senza contratto resta un limite di VISTA, come
+                             --   prima: la sveglia vive fuori e nessuno l'ha
+                             --   dichiarata qui.
+                             WHEN p.canale = 'COMMAND' THEN 'FUORI_PORTATA'
+                             WHEN p.jobname_pgagent IS NULL THEN 'NON_PROGRAMMATO'
+                             WHEN g.abilitato IS NULL THEN 'JOB_ASSENTE'
+                             WHEN g.abilitato IS FALSE THEN 'JOB_SPENTO'
+                             WHEN g.ultima_esecuzione IS NOT NULL
+                                  AND COALESCE(l.ultima_corsa_pgagent, '-infinity'::timestamptz)
+                                      < g.ultima_esecuzione - interval '1 hour'
+                                 THEN 'GIRA_E_NON_REGISTRA'
+                             WHEN g.ultima_esecuzione IS NULL THEN 'MAI_PARTITO'
+                             ELSE 'OK'
+                         END AS stato
+                    FROM dbops.processi p
+                    LEFT JOIN LATERAL dbops.fn_get_pgagent_job_stato(p.jobname_pgagent)
+                         g(abilitato, ultima_esecuzione, prossima_esecuzione) ON true
+                    LEFT JOIN LATERAL (
+                        SELECT max(r.started_at) AS ultima_corsa,
+                               max(r.started_at) FILTER (WHERE r.origine::text = 'PGAGENT')
+                                   AS ultima_corsa_pgagent,
+                               (SELECT r2.ok
+                                  FROM maintenance.job_run_log r2
+                                 WHERE r2.processo_codice = p.codice OR r2.jobname = p.codice
+                                 ORDER BY r2.started_at DESC, r2.id DESC
+                                 LIMIT 1) AS ultimo_esito
+                          FROM maintenance.job_run_log r
+                         WHERE r.processo_codice = p.codice OR r.jobname = p.codice
+                    ) l ON true
+                    -- ⭐ SESSIONE: il segno di vita e' una connessione, non una riga.
+                    --   Il processo si presenta con il proprio codice.
+                    -- ⚠️ pg_stat_activity mostra a TUTTI la riga della sessione
+                    --   (pid, usename, application_name), ma MASCHERA le altre
+                    --   colonne — backend_start compresa — a chi non e' lo
+                    --   stesso utente ne' pg_read_all_stats. Una vista non cambia
+                    --   l'utente che pg_stat_get_activity() guarda. Percio':
+                    --   `viva` = esiste la riga (visibile a chiunque, e' il
+                    --   verdetto); `viva_dal` = da quando (informazione, NULL a
+                    --   chi non puo' leggerla). Il 14-09 il digest ha contato un
+                    --   MUTO su listen_cambio_reparto VIVO da 31 ore: contava
+                    --   come titodb, e la sessione era di zeroerp_app.
+                    LEFT JOIN LATERAL (
+                        SELECT count(*) > 0          AS viva,
+                               min(a.backend_start)  AS viva_dal
+                          FROM pg_stat_activity a
+                         WHERE p.segno_di_vita = 'SESSIONE'
+                           AND a.datname = current_database()
+                           AND a.application_name = p.codice
+                    ) s ON true
+                   WHERE p.attivo AND p.obsoleto_dal IS NULL
+              )
+              SELECT processo_codice,
+                     classe,
+                     canale,
+                     jobname_pgagent,
+                     job_abilitato,
+                     prossima_corsa,
+                     pgagent_ultima_corsa,
+                     giornale_ultima_corsa,
+                     ultimo_esito,
+                     stato,
+                     -- ⛔ Il criterio del guasto sta QUI, accanto al CASE: uno
+                     --   stato nuovo non ha un default in cui cadere. MUTO e
+                     --   MAI_PARTITO sono da guardare senza toccare questa riga.
+                     stato NOT IN ('OK', 'FUORI_PORTATA', 'SU_RICHIESTA') AS da_guardare,
+                     ultima_corsa_pgagent AS giornale_ultima_corsa_pgagent,
+                     -- Colonne nuove, IN CODA.
+                     tolleranza_minuti,
+                     segno_di_vita,
+                     -- ⭐ L'ultimo segno di vita che il verdetto ha usato: la
+                     --   corsa per GIORNALE, l'avvio della sessione per SESSIONE.
+                     -- ⚠️ Per SESSIONE e' informazione, non verdetto: NULL per un
+                     --   lettore che non puo' vedere backend_start della sessione
+                     --   altrui (vedi il LATERAL s). Lo stato dice OK lo stesso.
+                     CASE WHEN segno_di_vita = 'SESSIONE' THEN sessione_viva_dal
+                          ELSE giornale_ultima_corsa END AS ultimo_segno_di_vita
+                FROM panorama
+               ORDER BY canale, processo_codice;
+
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione IS
+                  'PANORAMA: per ogni processo automatico attivo — quale job pgAgent lo sveglia, quando girera'', quando ha girato secondo pgAgent e secondo il nostro giornale. ⭐ La colonna che vale piu'' di tutte e'' `stato`, e il valore che conta e'' GIRA_E_NON_REGISTRA: pgAgent dice che il job e'' girato, il giornale non lo sa — e'' la firma esatta di un lavoro che muore prima di riuscire a raccontarlo, cioe'' di R-12, il job morto per sei mesi con l''ultimo verdetto a «done». Questo confronto lo avrebbe trovato in un giorno. ⚠️ Il legame col job NON e'' il nome: si legge da dbops.processi.jobname_pgagent, perche'' due job su quattordici si chiamano diversamente dal processo che registrano. ⚠️ Il giornale si legge per processo_codice OPPURE per jobname: le corse storiche hanno la prima colonna vuota, e senza il ripiego ogni processo sembrerebbe non aver mai girato prima di settembre 2026. ⛔ IL CONFRONTO GUARDA CHI HA SCRITTO LA RISPOSTA, rev 2026-09-07 (brief-db-sveglia-dei-processi §9.5-bis, segnalato dal backend): il ramo GIRA_E_NON_REGISTRA legge `giornale_ultima_corsa_pgagent`, non `giornale_ultima_corsa`. ⭐ I COMMAND CON UN CONTRATTO NON SONO PIU'' FUORI_PORTATA, rev 2026-09-11 (brief-db-quattro-processi-senza-presidio §10.2, decisione di Tid): dal 20260911-13 il catalogo dichiara tolleranza_minuti e segno_di_vita, quindi il database SA che cosa aspettarsi. GIORNALE + tolleranza: OK se l''ultima corsa e'' entro la tolleranza, MUTO se e'' piu'' vecchia, MAI_PARTITO se non c''e'' — e MAI_PARTITO su un COMMAND e'' il timer dichiarato e mai installato, cioe'' il §11.5 dei presidi visto dal database. SESSIONE: OK se in pg_stat_activity c''e'' una connessione viva con application_name = codice sul database corrente, altrimenti MUTO — e'' la forma dei servizi sempre accesi (listen_cambio_reparto), il segno di vita e'' un FATTO e non una dichiarazione. MUTO e'' l''unico stato nuovo: «era vivo ed e'' taciuto». FUORI_PORTATA resta per i COMMAND SENZA contratto: un limite di vista, non un guasto. SU_RICHIESTA resta per i CODA: una cadenza non esiste. ⭐ E'' un panorama, non un presidio: elenca anche i sani. ⛔ Il presidio NON si scrive come un NOT IN a mano: e'' la colonna `da_guardare`, calcolata qui accanto al CASE, e dbops.vw_processi_programmazione_da_guardare la proietta — MUTO e MAI_PARTITO ci entrano da soli, senza toccare quella riga. Tre colonne in coda dal 2026-09-11: tolleranza_minuti, segno_di_vita, ultimo_segno_di_vita (la corsa per GIORNALE, l''avvio della sessione per SESSIONE). ⛔ IL VERDETTO SESSIONE POGGIA SULL''ESISTENZA DELLA SESSIONE, rev 2026-09-14: pg_stat_activity mostra a tutti la riga (pid, usename, application_name) ma maschera backend_start e il resto a chi non e'' lo stesso utente della sessione ne'' pg_read_all_stats — e una vista non cambia l''utente che pg_stat_get_activity() guarda. Fino a quel giorno il ramo leggeva `viva_dal IS NOT NULL`: OK per zeroerp_app (la sessione del listener e'' sua) e MUTO per chiunque altro, titodb compreso — cioe'' per fn_conta_presidio, che e'' SECURITY DEFINER. Il primo digest della giornaliera (14-09 07:00) ha contato 1 su un listener vivo da 31 ore e il perimetro LIBERO del presidio ha protestato: il conteggio diceva 1 e l''elenco letto come app era vuoto. Il pgTAP non lo vedeva perche'' la sessione del test e'' del suo stesso utente. ultimo_segno_di_vita per SESSIONE resta informazione (NULL a chi non puo'' leggerlo), non verdetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare al corpo del 20260911-14 rimetterebbe il verdetto su
+              --   backend_start, cioe' il MUTO falso per ogni lettore che non e'
+              --   l'utente del listener. Il verso di ritiro e' un changeSet nuovo.
+              SELECT 1;
