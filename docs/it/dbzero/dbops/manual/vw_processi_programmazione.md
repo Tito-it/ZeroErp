@@ -111,6 +111,23 @@ processo muore la sessione sparisce; se sta riconnettendo non c'è — ed è ver
 Nessun battito sul giornale, nessuna tabella nuova. Il backend si presenta con
 `application_name = codice del processo` (una riga in `notify_listener`).
 
+⛔ **E il verdetto poggia sull'*esistenza* della sessione, non su `backend_start`**
+(rev `20260914-01`). `pg_stat_activity` mostra a **tutti** la riga di ogni
+sessione (`pid`, `usename`, `application_name`), ma **maschera** le altre
+colonne — `backend_start`, `state`, `query` — a chi non è lo stesso utente della
+sessione né membro di `pg_read_all_stats`; e una vista non cambia l'utente che
+`pg_stat_get_activity()` guarda. Fino al 14-09 il ramo leggeva `viva_dal IS NOT
+NULL`: **OK** per `zeroerp_app` (la sessione del listener è sua) e **MUTO** per
+chiunque altro — `titodb` compreso, cioè `fn_conta_presidio`, che conta per il
+digest. Il primo digest della giornaliera ha contato 1 su un listener vivo da 31
+ore, e il perimetro `LIBERO` del presidio ha protestato: *«il conteggio dice 1 ma
+da qui la vista risponde vuota»*. Era la vista a dare due verdetti, e quello vero
+era dell'app. ⇒ `ultimo_segno_di_vita` per `SESSIONE` è **informazione** («da
+quando»), non verdetto: è `NULL` per chi non può leggerlo, e lo stato dice `OK`
+lo stesso. Il caso «sessione di un altro utente» sta nel test 19 del pgTAP
+(`dbops/test-vw-processi-programmazione.sql`), costruito con `dblink` dove il
+DSN lo permette e **dichiarato** con `skip()` dove no.
+
 ⛔ **Il limite, dichiarato**: il catalogo non sa quali processi sono **accesi su
 questo host** (`abilita` sta nel deploy). Oggi non morde — ogni sveglia accesa è
 universale, e `run_fatturazione_batch` è spento per decisione di prodotto

@@ -31,6 +31,9 @@
 | modalita_pagamento_id | integer | YES |  |
 | registro_id | bigint | YES |  |
 | anno | smallint | YES |  |
+| descrizione | character varying | YES |  |
+| data_apertura | date | NO | script.fn_data_operativa() |
+| responsabile_risorsa_umana_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,6 +46,7 @@
 | FOREIGN KEY | fk_commesse_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_commesse_modalita_pagamento | modalita_pagamento_id |
 | FOREIGN KEY | fk_commesse_registro | registro_id |
+| FOREIGN KEY | fk_commesse_risorse_umane | responsabile_risorsa_umana_id |
 | FOREIGN KEY | fk_commesse_stato_commessa | stato_commessa_id |
 | FOREIGN KEY | fk_commesse_termine_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_commesse_utility | utility_id |

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/modi_approvvigionamento.md" %}
 # 📚 Tabella `modi_approvvigionamento`
 
 > 📝 **Descrizione**

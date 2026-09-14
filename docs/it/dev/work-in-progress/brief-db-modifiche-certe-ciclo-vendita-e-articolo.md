@@ -17,17 +17,18 @@
 > scritta lo stesso giorno. Ha prodotto **tre** voci che passano lo stesso filtro
 > (§3-bis, §7, §8) e ha allargato la motivazione del Blocco B — vedi §1.
 >
-> **Stato:** 🟡 **IN CORSO — P-1, P-2, P-3 APPLICATI il 2026-09-13 (ore 01:00);
-> P-4, P-5, P-6, P-7 SCRITTI E PROVATI nella stessa notte, NON applicati.**
-> Nove changeSet `20260913-04` → `-12` `EXECUTED` in `databasechangelog` (§6-bis).
-> Otto changeSet nuovi `20260913-13` → `-20` più due append a CSV, provati con
-> l'SQL reso da Liquibase eseguito intero in `BEGIN … ROLLBACK` sul DB di
-> sviluppo: **§6-ter**, da leggere per primo. ⚠️ La coppia ATTIVO su
-> `articoli`/`modi_approvvigionamento` (e quella su `commesse`/`risorse_umane`
-> che P-4 fa nascere) e il lock su `codice_interno` arrivano con `ci_apply`.
-> Restano **P-8** (pgTAP) e **P-9** (opzionale). ⛔ Niente si applica senza
-> autorizzazione esplicita di Tid. 🔴 Emerso in P-4 un **tredicesimo punto**
-> (§10.2): `data_apertura` non poteva nascere con il default in `00_schema`.
+> **Stato:** 🟡 **IN CORSO — P-1 → P-7 APPLICATI sul DB di sviluppo il
+> 2026-09-13** (P-1/2/3 alle 01:00, P-4/5/6/7 alle 09:35, Tid). In
+> `databasechangelog`: `20260913-04` → `-20` tutti `EXECUTED`, il mirror `-12`
+> `RERAN` per la riga di policy di P-4; a valle 66 commesse con `data_apertura`
+> (0 NULL), righe di lista 746-749 caricate, le quattro viste con le colonne in
+> coda. I file `-04 → -20` sono ora **immutabili**. Come sono stati provati:
+> §6-bis e **§6-ter**. ⚠️ Le due coppie ATTIVO (`articoli`/`modi_approvvigionamento`,
+> `commesse`/`risorse_umane`) e il lock su `codice_interno` arrivano con
+> `ci_apply`. Restano **P-8** (pgTAP) e **P-9** (opzionale). 🔴 Emerso in P-4 un
+> **tredicesimo punto** (§10.2): `data_apertura` non poteva nascere con il
+> default in `00_schema`. ⚠️ Due scelte da confermare: il riferimento di
+> `giorni_ritardo` (§5.2) e la chiave i18n della 746 (§5.3).
 >
 > 🔴 **Verificato il 2026-09-12 contro il DB vivo (doc auto-gen) e contro ciò che
 > è entrato in esercizio fra il 01-09 e il 12-09.** I tre blocchi reggono —
@@ -990,12 +991,13 @@ sviluppo passano per costruzione (`not columnExists`, `tableExists`).
 ⚠️ La numerazione `-04 → -12` è stata verificata sul filesystem prima di ogni
 file: `-01 → -03` di oggi sono di un altro cantiere.
 
-## 6-ter. ✅ P-4, P-5, P-6, P-7 — scritti e provati il 2026-09-13, NON applicati
+## 6-ter. ✅ P-4, P-5, P-6, P-7 — scritti, provati e APPLICATI il 2026-09-13
 
 > Otto changeSet `20260913-13` → `-20` e **due append a CSV** che risvegliano
-> due mirror `runOnChange` già in esercizio. Nessuno è applicato: la
-> `databasechangelog` si ferma a `-12`. ⛔ Si applicano solo su autorizzazione
-> esplicita di Tid. Dopo l'apply i file `-13 → -20` diventano immutabili.
+> due mirror `runOnChange` già in esercizio. ✅ **Applicati da Tid alle 09:35**:
+> tutti `EXECUTED`, il mirror `-12` `RERAN`, `20260806-15` (liste) rieseguito
+> dal CSV. I file `-13 → -20` sono ora immutabili: un cambio va in un changeSet
+> nuovo. Sotto, com'erano stati provati prima dell'apply.
 
 | File | Fase | Passo | Cosa |
 | --- | --- | --- | --- |
@@ -1321,4 +1323,4 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | 2026-09-12 | ✅ **Le tre decisioni prese da Tid nella stessa sessione**: D-A `responsabile_risorsa_umana_id → risorse_umane` (§4, P-4, §5.5); D-B `requires_lotto` aspetta i lotti (§8); D-C chiavi i18n dei vicini, elenco definitivo di tredici chiavi (§5.4). Il brief è eseguibile: piano in §6, presidi in §7 |
 | 2026-09-13 | ✅ **P-1, P-2, P-3 scritti e provati** (§6-bis): nove changeSet `20260913-04 → -12` e due CSV; SQL reso da Liquibase offline ed eseguito intero in `BEGIN … ROLLBACK` sul DB di sviluppo, 257 articoli backfillati, cinque rifiuti attesi verificati, `validate` pulito. 🔴 Emerso e dichiarato in §5.5: il BE modifica le righe solo in `DRAFT` — la data confermata dopo la conferma vuole un verbo suo |
 | 2026-09-13 | ✅ **P-1, P-2, P-3 APPLICATI** (Tid, ore 01:00): nove `EXECUTED` in `databasechangelog`, 4 modi, 0 articoli senza modo. La coppia ATTIVO e il lock aspettano `ci_apply`. I file `-04 → -12` sono ora immutabili. Prossimo: P-4 |
-| 2026-09-13 | ✅ **P-4, P-5, P-6, P-7 scritti e provati** (§6-ter): otto changeSet `20260913-13 → -20` e due append a CSV; SQL reso da Liquibase eseguito intero in `BEGIN … ROLLBACK`, 66 commesse backfillate nel fuso azienda, casi costruiti su `min` e `giorni_ritardo`, push reale con la data, `validate` pulito. 🔴 Tredicesimo punto (§10.2): `data_apertura` in tre passi, non uno. ⚠️ Due scelte da confermare: il riferimento di `giorni_ritardo` = promessa, poi richiesta (§5.2); la chiave i18n della 746 nel commit DB o nella prossima PR FE (§5.3). Prossimo: P-8 |
+| 2026-09-13 | ✅ **P-4, P-5, P-6, P-7 scritti e provati, poi APPLICATI da Tid alle 09:35** (§6-ter): otto changeSet `20260913-13 → -20` e due append a CSV; SQL reso da Liquibase eseguito intero in `BEGIN … ROLLBACK`, 66 commesse backfillate nel fuso azienda, casi costruiti su `min` e `giorni_ritardo`, push reale con la data, `validate` pulito. 🔴 Tredicesimo punto (§10.2): `data_apertura` in tre passi, non uno. ⚠️ Due scelte da confermare: il riferimento di `giorni_ritardo` = promessa, poi richiesta (§5.2); la chiave i18n della 746 nel commit DB o nella prossima PR FE (§5.3). Prossimo: P-8 |

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Sorgente unica (DB-first) del predicato di smistamento: righe-merce di un preventivo ancora da portare in un ordine (natura destinazione_tipo=ORDINE, attive, non ancora allocate a una ordini_righe.preventivo_riga_id). Grana = preventivi_righe; i consumatori filtrano per preventivo_id ed eventualmente per id (smistamento parziale). Consumata da fn_preventivo_ha_residuo_ordine e fn_push_preventivo_a_ordine; predisposta per il dialog BE di selezione righe.
+> Sorgente unica (DB-first) del predicato di smistamento: righe-merce di un preventivo ancora da portare in un ordine (natura destinazione_tipo=ORDINE, attive, non ancora allocate a una ordini_righe.preventivo_riga_id). Grana = preventivi_righe; i consumatori filtrano per preventivo_id ed eventualmente per id (smistamento parziale). Consumata da fn_preventivo_ha_residuo_ordine e fn_push_preventivo_a_ordine; predisposta per il dialog BE di selezione righe. ⭐ rev 2026-09-13 (P-6): + data_consegna_richiesta_cliente in coda — e' la proiezione da cui fn_push_preventivo_a_ordine copia la riga, e senza questa colonna la data del cliente si perdeva nel punto in cui il documento cambia natura. In ultima posizione perche' CREATE OR REPLACE VIEW puo' solo appendere. security_invoker=on. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -21,7 +21,8 @@ SELECT pr.preventivo_id,
     pr.qta_operativa,
     pr.uom_operativa_id,
     pr.factor_to_base,
-    pr.ordine
+    pr.ordine,
+    pr.data_consegna_richiesta_cliente
    FROM (vendite.preventivi_righe pr
      JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
   WHERE ((COALESCE(pr.attivo, true) IS TRUE) AND ((nv.destinazione_tipo)::text = 'ORDINE'::text) AND (NOT (EXISTS ( SELECT 1

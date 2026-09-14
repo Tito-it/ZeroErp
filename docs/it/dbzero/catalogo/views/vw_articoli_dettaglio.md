@@ -1,6 +1,10 @@
 {% include-markdown "it/dbzero/catalogo/manual/vw_articoli_dettaglio.md" %}
 # 🔍 View `vw_articoli_dettaglio`
 
+> 📝 **Descrizione**
+>
+> Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo' solo appendere). La decodifica e' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). LEFT JOIN per coerenza con le altre decodifiche, anche se la FK e' NOT NULL. ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: le cinque colonne non escono finche' il BE non le aggiunge, e le righe di lista 747-749 nascono attivo=f (brief 5.3 e 5.5).
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
 SELECT a.id,
@@ -58,15 +62,21 @@ SELECT a.id,
     a.natura_vendita_id,
     nv.codice_interno AS natura_vendita_codice_interno,
     nv.descrizione AS natura_vendita_descrizione,
-    nv.destinazione_tipo AS natura_vendita_destinazione_tipo
-   FROM (((((((catalogo.articoli a
+    nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+    a.modo_approvvigionamento_id,
+    ma.codice_interno AS modo_approvvigionamento_codice_interno,
+    ma.descrizione AS modo_approvvigionamento_descrizione,
+    a.gestito_a_magazzino,
+    a.lead_time_giorni
+   FROM ((((((((catalogo.articoli a
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
      LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
      LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))
      LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id)))
      LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
      LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
-     LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)));
+     LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
+     LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));
 ```
 
 
