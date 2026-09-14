@@ -29,7 +29,7 @@
 #        fra i «non letti» e vale come un allarme: tacere sarebbe la stessa
 #        cecita' che `dbops.fn_conta_presidio` esiste per chiudere.
 #
-#        Brief: work-in-progress/brief-db-un-destinatario-per-i-presidi.md §5, §8.2.
+#        Brief: work-done/brief-db-un-destinatario-per-i-presidi.md §5, §8.2.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -600,12 +600,17 @@ def _voce_testo(v: VocePresidio) -> list[str]:
         r.append(f"      … e altre {v.conteggio - len(v.righe)}")
     elif v.cieco:
         # ⛔ Il numero c'e' e l'elenco no, su una vista che il catalogo dichiara
-        #    elencabile: e' il perimetro a essere dichiarato male, e va detto —
-        #    non lasciato leggere come un difetto del digest.
+        #    elencabile. Le cause sono DUE, e il messaggio le nomina entrambe:
+        #    fino al 2026-09-14 diceva solo «la riga di catalogo va corretta»,
+        #    e il 14-09 la riga era giusta — era la vista a rispondere diverso
+        #    per ruolo (`pg_stat_activity` maschera `backend_start` alle
+        #    sessioni altrui; sanato lato DB con `20260914-01`).
         r.append(
             "      ⚠️ il conteggio dice " + str(v.conteggio) + " ma da qui la "
-            "vista risponde VUOTA: il perimetro dichiarato (LIBERO) non regge, "
-            "la riga di catalogo va corretta."
+            "vista risponde VUOTA: o il perimetro e' dichiarato male (LIBERO), "
+            "o la vista risponde diverso a seconda di chi legge. Confrontare "
+            "la lettura come definer e come app prima di correggere la riga "
+            "di catalogo."
         )
     elif v.perimetro == PERIMETRO_DEFINER:
         # ⭐ Perimetro DEFINER: il numero c'e', le righe no. Dirlo evita che
@@ -624,6 +629,26 @@ def _riga_compatta(riga: dict[str, Any]) -> str:
 
 
 # Scopo: il battito in testo: quando ho girato, corsia per corsia.
+# Scopo: la parola per l'esito dell'ultima corsa conclusa di una corsia. TRE
+#        facce, non due: `True` ok, `False` FALLITA, `None` = nessuna corsa
+#        conclusa (la corsia sta girando adesso, o non ha mai finito un giro).
+# ⛔ Fino al 2026-09-14 `None` cadeva su «FALLITA», e il digest chiamava cosi'
+#    la PROPRIA corsa in corso — quella che stava componendo la mail. La
+#    giornaliera usciva «ok» solo perche' era finita da mezz'ora.
+# ⚠️ Le tre parole sono costanti perche' la resa HTML ne riconosce una per
+#    marcarla: un confronto con un letterale ricopiato sarebbe la seconda sede.
+ESITO_OK = "ok"
+ESITO_FALLITA = "FALLITA"
+ESITO_IN_CORSO = "in corso"
+
+
+def _esito_corsa(corsa: dict[str, Any]) -> str:
+    last_ok = corsa.get("last_ok")
+    if last_ok is None:
+        return ESITO_IN_CORSO
+    return ESITO_OK if last_ok else ESITO_FALLITA
+
+
 def _battito_testo(b: Battito) -> list[str]:
     if not b.corse:
         return [
@@ -634,7 +659,7 @@ def _battito_testo(b: Battito) -> list[str]:
     r = ["ULTIME CORSE DEL DIGEST:"]
     ferme = set(b.corsie_ferme)
     for jobname, corsa in sorted(b.corse.items()):
-        esito = "ok" if corsa.get("last_ok") else "FALLITA"
+        esito = _esito_corsa(corsa)
         # ⭐ Il giudizio sta accanto alla data, non in fondo: chi legge un elenco
         #    di date non sa da solo quale sia «troppo vecchia».
         ferma = "  ⛔ FERMA da piu' della tolleranza" if jobname in ferme else ""
@@ -680,7 +705,9 @@ def _corpo_html(digest: Digest, quando: str) -> str:
             ferme = set(digest.battito.corsie_ferme)
             p.append("<ul>")
             for jobname, corsa in sorted(digest.battito.corse.items()):
-                esito = "ok" if corsa.get("last_ok") else "<strong>FALLITA</strong>"
+                esito = _esito_corsa(corsa)
+                if esito == ESITO_FALLITA:
+                    esito = f"<strong>{esito}</strong>"
                 ferma = (
                     " — <strong>⛔ FERMA da più della tolleranza</strong>"
                     if jobname in ferme else ""

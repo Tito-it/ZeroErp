@@ -100,6 +100,15 @@ class MaintenanceRepository:
     # ⛔ Esattamente UNA delle due, e mai nessuna: senza filtro questa query
     #    leggerebbe il giornale INTERO e risponderebbe la liveness di tutto —
     #    un errore che non fallisce, restituisce solo la cosa sbagliata.
+    # ⭐ `ok` ha TRE facce — true, false, NULL = corsa ancora aperta — e
+    #    `last_ok` risponde per l'ultima corsa CONCLUSA (`ended_at IS NOT
+    #    NULL`), non per la riga piu' recente. Fino al 2026-09-14 prendeva la
+    #    riga piu' recente: mentre il digest componeva la mail, per la PROPRIA
+    #    corsia quella riga era la corsa in esecuzione (ok NULL), e la mail la
+    #    chiamava «FALLITA» — con `job_run_log.ok = true` scritto mezzo minuto
+    #    dopo. `last_run_at` e `attivo` restano sulla riga piu' recente: una
+    #    corsa aperta e' un segno di vita legittimo. `last_ok` e' NULL solo se
+    #    nessuna corsa e' mai stata conclusa, e chi lo rende deve dirlo.
     def job_liveness(
         self,
         jobnames: list[str] | None = None,
@@ -126,7 +135,8 @@ class MaintenanceRepository:
                        MAX(started_at) AS last_run_at,
                        MAX(started_at) > now() - make_interval(mins => %s)
                            AS attivo,
-                       (ARRAY_AGG(ok ORDER BY started_at DESC))[1] AS last_ok
+                       (ARRAY_AGG(ok ORDER BY started_at DESC)
+                            FILTER (WHERE ended_at IS NOT NULL))[1] AS last_ok
                   FROM maintenance.job_run_log
                  WHERE {filtro}
                  GROUP BY jobname
@@ -207,7 +217,10 @@ class MaintenanceRepository:
                            COUNT(*) FILTER (WHERE ok = true) AS ok_count,
                            COUNT(*) FILTER (WHERE ok = false) AS fail_count,
                            MAX(started_at) AS last_run_at,
-                           (ARRAY_AGG(ok ORDER BY started_at DESC))[1] AS last_ok
+                           -- Ultima corsa CONCLUSA, come in `job_liveness`: una
+                           -- riga aperta (ok NULL) non e' un esito.
+                           (ARRAY_AGG(ok ORDER BY started_at DESC)
+                                FILTER (WHERE ended_at IS NOT NULL))[1] AS last_ok
                       FROM maintenance.job_run_log
                       {where}
                      GROUP BY jobname

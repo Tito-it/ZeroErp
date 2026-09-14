@@ -433,7 +433,7 @@ applicato dal team DB (`20260910-35..37`), il backend ha ritirato la riga di
 debito (`_IN_ATTESA_DI_CATALOGO` a zero, e il test di ritiro è diventato rosso in
 CI nominandola — il meccanismo che fa il suo mestiere), i due timer girano
 (`digest-presidi-giornaliero` 07:00, `settimanale` lunedì 07:30). Brief:
-[brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md).
+[brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md).
 ⚠️ **Aperto, da portare al team DB**: la prima notizia del digest è stata
 rumore — `sync_auth_user_active`, processo **ritirato** il 09-07, con 31
 fallimenti storici in finestra (registrato nel brief §9.5). *Un presidio che
@@ -643,6 +643,15 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D13-bis** — ✅ 2026-09-11 su entrambi i lati: catalogo `dbops.presidi`, digest attivo.
 * [ ] **D13-quater** — il rumore del primo digest (`sync_auth_user_active`,
       processo ritirato in finestra): da portare al team DB (brief §9.5).
+* [x] **D13-quinquies** — ✅ 2026-09-14, dalla nota DB del 14-09: il digest
+      chiamava «FALLITA» la **propria** corsa in corso — `last_ok` era la riga
+      più recente, cioè quella aperta (`ok` NULL). Ora `last_ok` è l'ultima
+      corsa **conclusa** in entrambe le sedi (`job_liveness`,
+      `list_job_summary`), `None` è reso «in corso», il messaggio del perimetro
+      nomina le due cause (riga di catalogo **o** vista che risponde diverso
+      per ruolo), cinque puntatori al brief spostato in `work-done/` sanati.
+      Test: la corsa aperta **costruita** sul DB vero con `fn_job_run_start`,
+      più la resa; tre mutazioni, tre rossi.
 * [x] **INFRA-1** — ✅ 2026-09-09/11: la chiave Tailscale di `dbdev` scaduta
       aveva fermato il DB di sviluppo (e gunicorn in `SYN-SENT`, senza avvisi);
       `KeyExpiry: None` su tutti i nodi di sviluppo, verificato l'11-09.

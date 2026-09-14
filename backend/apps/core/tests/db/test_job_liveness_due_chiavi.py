@@ -26,17 +26,21 @@ Senza database:
 
 Su DB provvisto (`ZEROERP_TEST_DB_E2E=1`):
   5. test_la_liveness_per_processo_gira_sul_database_vero
+  6. test_una_corsa_aperta_non_e_un_esito   ⭐ 14-09, le tre facce di `ok`
 """
 
 from __future__ import annotations
 
+import uuid
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from django.db import connection, transaction
 from django.test import SimpleTestCase
 
 from apps.core.db import maintenance_repository as modulo
 from apps.core.db.maintenance_repository import MaintenanceRepository
+from apps.core.services.job_run import ORIGINE_COMMAND
 from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
@@ -117,3 +121,61 @@ class JobLivenessSulDatabaseTests(TestCase):
                 # ⭐ Il jobname porta la corsia: e' la forma che il battito
                 #    ritrova, ed e' il motivo per cui la chiave e' il processo.
                 self.assertTrue(jobname.startswith(PROCESSO_DIGEST_PRESIDI))
+
+    # 6. ⛔ `ok` ha TRE facce — true, false, NULL = corsa ancora aperta — e
+    #    `last_ok` deve rispondere per l'ultima corsa CONCLUSA. Fino al
+    #    2026-09-14 prendeva la riga piu' recente: il digest, componendo la mail
+    #    dentro la propria corsa, leggeva la propria riga aperta e si chiamava
+    #    «FALLITA». Qui il caso si COSTRUISCE, con le stesse funzioni con cui
+    #    il giornale si scrive davvero (`script.fn_job_run_start/_end`,
+    #    SECURITY DEFINER), e si ritira: una corsa chiusa ok = true, poi una
+    #    corsa APERTA sullo stesso jobname. Entrambe le sedi — `job_liveness`
+    #    e `list_job_summary` — devono dire `last_ok = True`, e la liveness
+    #    deve vedere la corsa aperta come segno di vita.
+    def test_una_corsa_aperta_non_e_un_esito(self) -> None:
+        jobname = "test-liveness-corsa-aperta:" + uuid.uuid4().hex[:8]
+
+        def apri(cur) -> int:
+            cur.execute(
+                "SELECT id FROM script.fn_job_run_start(%s, %s, %s, %s, %s, %s, %s)",
+                [jobname, ORIGINE_COMMAND, "test", None, "test", PROCESSO_DIGEST_PRESIDI, None],
+            )
+            riga = cur.fetchone()
+            assert riga is not None
+            return int(riga[0])
+
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                prima = apri(cur)
+                cur.execute(
+                    "SELECT script.fn_job_run_end(%s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+                    [prima, True, "conclusa", 0, None, None, None, None],
+                )
+                apri(cur)  # la seconda resta APERTA: ok NULL, ended_at NULL
+                # ⚠️ La premessa si ASSERISCE, non si presume: due righe, una
+                #    aperta, e l'aperta e' la PIU' RECENTE (`started_at` e'
+                #    `clock_timestamp()`, quindi cresce anche dentro una
+                #    transazione) — e' esattamente la riga che il difetto leggeva.
+                cur.execute(
+                    "SELECT count(*), count(*) FILTER (WHERE ended_at IS NULL), "
+                    "       (ARRAY_AGG(ended_at IS NULL ORDER BY started_at DESC))[1] "
+                    "  FROM maintenance.job_run_log WHERE jobname = %s",
+                    [jobname],
+                )
+                totale, aperte, recente_aperta = cur.fetchone()
+            self.assertEqual((totale, aperte), (2, 1), "il caso non e' stato costruito")
+            self.assertTrue(recente_aperta, "la riga piu' recente doveva essere quella aperta")
+
+            liveness = MaintenanceRepository().job_liveness(
+                jobnames=[jobname], soglia_minuti=60,
+            )
+            corsa = liveness[jobname]
+            self.assertIs(corsa["last_ok"], True, "la corsa aperta e' stata letta come esito")
+            self.assertTrue(corsa["attivo"], "una corsa aperta e' un segno di vita")
+
+            righe, _totale = MaintenanceRepository().list_job_summary(
+                jobname_prefix=jobname, limit=10, offset=0,
+            )
+            self.assertEqual(len(righe), 1)
+            self.assertIs(righe[0]["last_ok"], True, "la seconda sede ha ancora il difetto")
+            transaction.set_rollback(True)

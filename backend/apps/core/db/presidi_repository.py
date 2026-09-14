@@ -23,7 +23,7 @@
 #        ⚠️ E la colonna `perimetro` dice un'ALTRA cosa: se chi legge puo' anche
 #        ELENCARE le righe. Su `DEFINER` il conteggio si mostra e le righe no.
 #
-#        Brief: work-in-progress/brief-db-un-destinatario-per-i-presidi.md §8.2.
+#        Brief: work-done/brief-db-un-destinatario-per-i-presidi.md §8.2.
 # ------------------------------------------------------------
 
 from __future__ import annotations
