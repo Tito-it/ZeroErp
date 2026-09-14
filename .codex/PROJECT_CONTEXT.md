@@ -209,10 +209,39 @@ che nessuno rilegge.
 (schema DB vuoto, verificato 01-09-2026): non sono la stessa cosa e non vanno
 letti insieme ai due sopra.
 
+✅ **Il prerequisito è consegnato** (2026-09-14, brief chiuso in
+`work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): le date di
+consegna sulle righe (vendite **e** acquisti), `config.modi_approvvigionamento`,
+`articoli.gestito_a_magazzino`/`lead_time_giorni`, la commessa leggibile,
+`famiglie_documento` senza BA obbligatorio — DB, BE e FE. **Tre cose il cantiere
+le eredita, e sono scritte nel riquadro «CHIUSO» di quel brief:**
+
+- 🔴 il **presidio di prontezza** su `articoli.gestito_a_magazzino` (vista
+  `dbops` a una riga `MARCATI`/`NESSUNO_MARCATO`, `ZERO`, `stato_atteso =
+  MARCATI` in `presidi.csv`) — deciso da Tid il 14-09: si scrive **qui**, col
+  primo carico (analisi carico e scarico §8), non prima: al rilascio tutti gli
+  articoli sono `false` e nessun rosso lo dice;
+- le due date di `acquisti.ordini_righe` sono a DB **senza consumatore**
+  (nessun repository di righe, nessuna chiave i18n);
+- `E_ATTIVO_REQUIRE`, il codice del require generato dal framework ATTIVO, è
+  **TECNICO** anche quando il dato l'ha scelto una persona: candidato allo split,
+  per **tutte** le coppie — cantiere `dbops`, non di dominio.
+
 ### Aperto — Media priorità
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
+- **La promessa di consegna dopo la conferma** (BE, decisione di Tid; ereditata
+  il 2026-09-14 dal brief «modifiche certe», voce 1-bis): le righe d'ordine si
+  scrivono solo in `DRAFT` (`_STATI_RIGHE_MODIFICABILI`), ma
+  `data_consegna_confermata` si decide **alla conferma** e può cambiare dopo. Il
+  DB non mette guard di stato di proposito: serve un verbo suo (stampo: gli
+  override di prezzo) o il dialog di conferma che la raccolga
+- **Pratica di approvazione prezzo su revisione superata** (BE,
+  `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
+  2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1
+  ricopia `stato_approvazione_prezzo` e la pratica 1:1, e una riga `PENDING`
+  può trovarsi con la pratica già chiusa sulla rev N
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di

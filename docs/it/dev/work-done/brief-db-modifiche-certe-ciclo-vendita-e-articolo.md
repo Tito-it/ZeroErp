@@ -13,41 +13,13 @@
 > prendere»*.
 >
 > ⭐ **Terza origine, aggiunta il 2026-09-01 a sera**:
-> [analisi-simmetria-ordini-acquisto.md](analisi-simmetria-ordini-acquisto.md),
+> [analisi-simmetria-ordini-acquisto.md](../work-in-progress/analisi-simmetria-ordini-acquisto.md),
 > scritta lo stesso giorno. Ha prodotto **tre** voci che passano lo stesso filtro
 > (§3-bis, §7, §8) e ha allargato la motivazione del Blocco B — vedi §1.
 >
-> **Stato:** ✅ **LATO DB COMPLETO — P-1 → P-9 APPLICATI sul DB di sviluppo**
-> (P-1/2/3 il 13-09 alle 01:00; P-4/5/6/7 il 13-09 alle 09:35; P-8 verde col
-> runner il 14-09; **P-9 e la firma ri-ancorata di `fn_push` applicate il
-> 14-09, test verdi** — Tid). In `databasechangelog`: `20260913-04 → -20` e
-> `20260914-07 → -12`. I file sono tutti **immutabili**: un cambio va in un
-> changeSet nuovo. Come sono stati provati: §6-bis, §6-ter, §6-quater.
-> 🔴 **14-09 (sera): P-10 emersa dal BE, ✅ APPLICATA da Tid alle 15:45**
-> (§6-quinquies, `20260914-13`): la **revisione** del preventivo perdeva la
-> data richiesta — P-5 aveva coperto il push, non rev N→N+1. ⭐ E dalla stessa
-> rilettura **P-11, DA APPLICARE** (`20260914-14`, decisione di Tid «facciamo
-> A»): le marche di approvazione prezzo sulla riga si copiano 1:1 come i
-> componenti e come l'offerta. Con un presidio nuovo che pretende l'elenco
-> **completo** delle colonne copiate: la prossima non si perde più.
-> ⚠️ Le due coppie ATTIVO (`articoli`/`modi_approvvigionamento`,
-> `commesse`/`risorse_umane`) e i lock su `codice_interno` arrivano con `ci_apply`
-> (su dev ci sono già; il require sul figlio `articoli` ha il nome hashato, §3.2).
-> ✅ **LATO BE/FE FATTO il 2026-09-14** (`dev/backend-tid`): le sette voci di
-> §5.5 e le tredici chiavi i18n di §5.4 — riquadro «Esecuzione» in coda a §5.5,
-> voce per voce. Suite backend 4751 test verdi (e2e compresi), lint/guard/test/
-> build frontend verdi, `check_i18n_keys.py` verde con le righe 747-749 accese.
-> ⚠️ Due cose restano a Tid: (1) il mirror `20260806-15` è `runOnChange` e
-> ricarica le tre righe (`attivo = t`) al prossimo `db-migrate` — fino ad allora
-> sul DB di sviluppo restano `f` e la lista 26 non le mostra; (2) il fatto di
-> modello della voce 1-bis (la promessa si scrive solo in `DRAFT`) resta
-> **dichiarato e non deciso**. Il trasloco in `work-done/` è di Tid.
-> ⭐ ~~Resta il lato BE/FE~~, era tutto in §5.5 — sette voci, con file e
-> costanti — più le tredici chiavi i18n di §5.4 (una era già su `Tito-dev`).
-> Questo documento resta in `work-in-progress/` finché quelle voci non sono
-> chiuse: è l'unica comunicazione che BE e FE ricevono. 🔴 Emerso in P-4 un
-> **tredicesimo punto** (§10.2): `data_apertura` non poteva nascere con il
-> default in `00_schema`.
+> **Stato:** ✅ **CHIUSO il 2026-09-14** — riquadro «CHIUSO» qui sotto: che cosa
+> è consegnato, come è stato provato, e le **sei** cose che escono dal brief con
+> la loro destinazione. La storia passo per passo è in §11.
 >
 > 🔴 **Verificato il 2026-09-12 contro il DB vivo (doc auto-gen) e contro ciò che
 > è entrato in esercizio fra il 01-09 e il 12-09.** I tre blocchi reggono —
@@ -64,6 +36,44 @@
 
 ---
 
+> ## ✅ CHIUSO — 2026-09-14 · DB P-1 → P-11 · BE/FE §5.5 · archiviato in `work-done/`
+>
+> **Lato DB**: tutti i changeSet `EXECUTED` in `databasechangelog` —
+> `20260913-04 → -20` (13-09) e `20260914-07 → -14` (14-09; il `-14`, P-11,
+> alle 16:15 — *fino al trasloco l'intestazione lo dava «DA APPLICARE»*: letto
+> dal `databasechangelog` perché lo stato non era stato riportato). Quattro
+> pgTAP nuovi (§7) e tre estesi (`famiglie-documento-crud` 24→28,
+> `famiglie-documento-guard-riferimenti` 7→9, `vw-situazione-merce-ordine`
+> test 3 a 21 colonne): i tre di P-8 e i tre estesi lanciati col runner da Tid;
+> quello di P-11 provato 8/8 con l'SQL estratto e committato da Tid con
+> «Eseguiti test» (`7598dce86`). I file sono **immutabili**: un cambio va in un
+> changeSet nuovo. Come sono stati provati: §6-bis → §6-quinquies.
+>
+> **Lato BE/FE**: le sette voci di §5.5 e le tredici chiavi di §5.4 sono
+> **mergiate** su `Tito-dev` (`22096e6a0`, `eeed40be8` → PR #1586), doc API e
+> cataloghi BB compresi. L'osservazione su `api.md` (§10.3, ultima riga) non era
+> più un residuo: corretta il 12-09, §«Enforcement RLS».
+>
+> ⚠️ **Che cosa ESCE dal brief, e dove va** — censito alla chiusura, perché un
+> residuo senza destinazione è la classe del §7 (*«esiste e non è collegata a
+> niente»*):
+>
+> | # | Residuo | Dove va | Perché non resta qui |
+> | --- | --- | --- | --- |
+> | 1 | 🔴 **Il presidio di prontezza su `gestito_a_magazzino`** (§7): vista a una riga `MARCATI`/`NESSUNO_MARCATO`, natura `ZERO`, `stato_atteso = MARCATI` in `presidi.csv`. **Non è stato scritto**: non stava in nessun passo di §6, e nessuno dei riquadri di §7 l'aveva promosso a P-* | ✅ **Deciso da Tid il 14-09: cantiere `magazzino`**, con la forma di §7 già fissata — agganciato in [analisi carico e scarico §8](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) | la §7 del 01-09 lo teneva qui *«perché non si può delegare a un cantiere che forse non parte»*: quella premessa è caduta l'11-09 (`magazzino` **è** il prossimo cantiere) ed è lì che nasce il lettore della colonna (primitiva M-2). ⭐ E un allarme che deve suonare per mesi prima che qualcuno possa agire viene ignorato — è l'argomento di AGENTS.md sul presidio che blocca tutto e viene spento |
+> | 2 | ⚠️ Sul DB di **sviluppo** le righe 747-749 di `ui.lista_colonna` sono ancora `attivo = f` e 327/748 senza `formato = yesno`: il mirror `20260806-15` ha girato l'ultima volta il 13-09 alle 09:35, **prima** del commit BE che ha cambiato il CSV | un `db-migrate` di Tid; il CSV in albero è già giusto (`3 3` + `4 4` di §5.3/§5.5) | è stato di macchina, non di progetto: in CI il mirror ri-esegue da solo |
+> | 3 | Voce **1-bis** di §5.5: `data_consegna_confermata` si scrive solo in `DRAFT` (`_STATI_RIGHE_MODIFICABILI`), ma la promessa si decide **alla conferma** e può cambiare dopo — serve un verbo suo (stampo: gli override di prezzo) o il dialog di conferma che la raccolga | **BE**, decisione di Tid; registrata in `.codex/PROJECT_CONTEXT.md` | è una decisione di modello lato applicativo; il DB non mette guard di stato **di proposito** (provato in P-6) |
+> | 4 | `E_ATTIVO_REQUIRE` del require generato dal framework ATTIVO è **TECNICO** (500) anche quando il dato l'ha scelto una persona (§5.5, nota 2) — candidato allo split, vale per **tutte** le coppie ATTIVO | **DB**, cantiere suo (`dbops`, framework delle automazioni); intanto il BE pre-verifica e risponde 400 col campo | riguarda un codice generato per ogni coppia, non questa colonna |
+> | 5 | Ciclo di vita della **pratica di approvazione prezzo** quando la sua revisione viene superata — con P-11 riguarda anche i preventivi (§6-quinquies) | **BE**, `refactor-prezzi.md` §4.7, aperta dal 2026-06-01 | dominio approvazioni, non di questo brief |
+> | 6 | Le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun repository di righe, nessuna chiave i18n) | cantiere **acquisti** | l'app non ha ancora endpoint di riga (§5.5, nota 5) |
+>
+> Nessun residuo resta senza casa. Il trasloco in `work-done/` chiude il brief:
+> i link relativi alle quattro analisi sono riscritti (`../work-in-progress/`),
+> la voce del 14-09 in `mappa-concentrica-changelog.md` punta alla sede nuova,
+> e il residuo 1 è scritto **nel documento che lo riceve**, non solo qui.
+
+---
+
 ## 1. Il filtro, ed è tutto il valore di questo documento
 
 Le due analisi contengono molto più di quanto sta qui. La domanda che ha separato
@@ -73,11 +83,11 @@ le voci è **una sola**:
 > cambierebbe?** Se sì, non è in questo brief.
 
 Le decisioni aperte sono le **D-1 → D-9** dell'[analisi
-magazzino](analisi-db-magazzino-aggancio-documento-e-produzione.md) §8 (*fino al
+magazzino](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md) §8 (*fino al
 2026-09-12 qui c'era scritto «D-8»: è lo stesso off-by-one che la revisione
 incrociata del 02-09 aveva corretto negli altri tre documenti e non in questo*)
 e la **§7**
-dell'[analisi commessa](analisi-db-commessa-e-produzione-predisposizione.md) —
+dell'[analisi commessa](../work-in-progress/analisi-db-commessa-e-produzione-predisposizione.md) —
 cioè: se l'ODL è una sorgente o un anello proprio, se il ledger di magazzino usa
 il catalogo delle sorgenti o il riferimento testuale, e se la commessa di
 produzione è `vendite.commesse` o un'entità sua.
@@ -99,7 +109,7 @@ lavoro di questo brief si può fare adesso, sulle tabelle in esercizio, mentre
 > ⚠️ **Aggiornamento del 2026-09-12: un ordine adesso C'È, ed è questo brief per
 > primo.** Due fatti nuovi: (1) `acquisti` e `magazzino` sono **il prossimo
 > cantiere** (decisione di Tid dell'11-09, in `.codex/PROJECT_CONTEXT.md`);
-> (2) l'[analisi carico e scarico](analisi-db-magazzino-carico-e-scarico.md) ha
+> (2) l'[analisi carico e scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) ha
 > **chiuso** M-1, M-2, M-3, M-4, M-5, M-6, M-8 e M-9 fra il 02-09 e il 04-09, e
 > tre di quelle decisioni **leggono colonne che nascono qui**: la primitiva di
 > scrittura (M-2) è guidata da `catalogo.articoli.gestito_a_magazzino`; la vista
@@ -186,7 +196,7 @@ utilities ed eccezioni), quindi non c'è la riga a cui la data apparterrebbe.
 > mentre su acquisti la esprimiamo **noi**.
 >
 > ⛔ Il posto dove il difetto sarebbe morso è la vista di [carico e scarico
-> §7-bis](analisi-db-magazzino-carico-e-scarico.md), che legge **entrambe** per comporre
+> §7-bis](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md), che legge **entrambe** per comporre
 > impegnato e in-arrivo: lì il nome della tabella sparisce e restano due omonime che
 > promettono cose di soggetti diversi.
 >
@@ -206,7 +216,7 @@ utilities ed eccezioni), quindi non c'è la riga a cui la data apparterrebbe.
 >
 > ⭐ **Decisa prima di P-3**, cioè quando nessuna delle colonne esisteva: dopo sarebbero
 > state quattro colonne in esercizio, due viste e una comunicazione già partita verso
-> BE/FE. Origine: [analisi acquisti §6, D-12 e D-16](analisi-simmetria-ordini-acquisto.md).
+> BE/FE. Origine: [analisi acquisti §6, D-12 e D-16](../work-in-progress/analisi-simmetria-ordini-acquisto.md).
 
 ### 2.3 ⛔ Nessun CHECK fra le due date, ed è una scelta
 
@@ -712,7 +722,7 @@ sono due cose diverse, e quella vista ha già la disciplina di non confonderle.
    > sul **merito** e non sui nomi — `db/pgtap/rls/test-rls-viste-security-invoker.sql`
    > fa rosso su qualunque vista che attraversa una tabella protetta senza
    > l'interruttore, anche attraverso altre viste
-   > ([brief-db-viste-security-invoker-criterio](../work-done/brief-db-viste-security-invoker-criterio.md)).
+   > ([brief-db-viste-security-invoker-criterio](brief-db-viste-security-invoker-criterio.md)).
    > ⇒ La trappola resta vera per le **tre** viste di `vendite` (le due della
    > tabella più la smistabili), e adesso ha una rete: dimenticarla è un rosso,
    > non un buco silenzioso.
@@ -1071,7 +1081,7 @@ non vengono da qui.
 | **BE/FE** ✅ *eseguito il 14-09 (§5.5, riquadro «Esecuzione»)* | Le sette voci di §5.5 + le tredici chiavi di §5.4, su `dev/backend-tid`: righe 747-749 accese nel CSV (il mirror le ricarica al prossimo migrate), lookup `/anagrafiche/risorse-umane/lookup/`, `PATCH /commesse/<id>/`. Note e fatti emersi: i sette punti in coda al riquadro | `backend/` + `frontend/` + `lista_colonna.csv` |
 | **P-9** ✅ *applicata il 14-09, test verdi (§6-quater)* | ⚠️ ~~OPZIONALE, da confermare~~ **CONFERMATA** (§3-bis) — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente`. 🔴 *2026-09-12*: + `fn_crea_famiglia_documento` (oggi la pretende), + BE/FE (§3-bis censimento) | `00_schema` + `20_code` |
 | **P-10** ✅ *emersa dal BE il 14-09, applicata da Tid alle 15:45 (§6-quinquies)* | `fn_crea_revisione_preventivo` porta la data richiesta sulla **rev N+1**: P-5 aveva coperto preventivo→ordine, non rev N→N+1 — la revisione ricopia le righe con un **altro** elenco esplicito di colonne, e la data nasceva `NULL`. + firma e `RETURNS TABLE` ri-ancorati (`20260805-25` li aveva sciolti), `SECURITY INVOKER` esplicito. Presidio in `test-date-consegna-ordine-v1` (11-13), fixture costruita | `20_code` |
-| **P-11** ✅ *decisa da Tid il 14-09 («facciamo A»), scritta e provata (§6-quinquies), DA APPLICARE* | `fn_crea_revisione_preventivo` copia 1:1 anche `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id` sulla riga — come i componenti della stessa funzione e come `fn_crea_revisione_offerta` (invariante «prezzo fuori policy sempre marcato»). Caveat ereditato dall'offerta (ciclo di vita della pratica su rev superata: BE, `refactor-prezzi` §4.7). ⭐ pgTAP nuovo a fixture costruita con il **presidio sull'elenco completo** delle colonne copiate | `20_code` |
+| **P-11** ✅ *decisa da Tid il 14-09 («facciamo A»), scritta e provata (§6-quinquies), APPLICATA alle 16:15* | `fn_crea_revisione_preventivo` copia 1:1 anche `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id` sulla riga — come i componenti della stessa funzione e come `fn_crea_revisione_offerta` (invariante «prezzo fuori policy sempre marcato»). Caveat ereditato dall'offerta (ciclo di vita della pratica su rev superata: BE, `refactor-prezzi` §4.7). ⭐ pgTAP nuovo a fixture costruita con il **presidio sull'elenco completo** delle colonne copiate | `20_code` |
 
 ⛔ **L'ordine di fase non è negoziabile**: `00_schema` → `20_code` → `80_data`.
 Una `preCondition` di `20_code` **non** deve verificare il *contenuto* di
@@ -1280,7 +1290,7 @@ attraversa.
 
 ---
 
-## 6-quinquies. ✅ P-10 (applicata) e P-11 (da applicare) — la riga della rev N+1 è completa
+## 6-quinquies. ✅ P-10 e P-11 (entrambe applicate il 14-09) — la riga della rev N+1 è completa
 
 > 🔴 **Segnalazione del BE, 14-09 (sera)**: *«`vendite.fn_crea_revisione_preventivo`
 > copia le righe con elenco esplicito di colonne e non porta
@@ -1505,7 +1515,7 @@ vuoto, e nessuno se n'è accorto per mesi.
 ⇒ Il presidio **generale** della classe (tre viste in `dbops` che devono restare
 vuote — funzioni trigger montate da nessuno, policy su tabelle senza RLS attiva,
 cataloghi orfani) è proposto in
-[analisi-simmetria-ordini-acquisto §9-bis](analisi-simmetria-ordini-acquisto.md).
+[analisi-simmetria-ordini-acquisto §9-bis](../work-in-progress/analisi-simmetria-ordini-acquisto.md).
 ⚠️ **È un cantiere di `dbops`, non di questo brief**: qui resta l'obbligo del
 registro su `gestito_a_magazzino`, che è nostro e non si può delegare a un cantiere
 che forse non parte.
@@ -1515,7 +1525,7 @@ che forse non parte.
 > di presidio** — 37 righe al 12-09, non più «otto» — con una `natura`
 > (`ZERO` / `REGISTRO` / `LAVORAZIONE` / `CANCELLO` / `INVENTARIO`), una
 > `cadenza`, e il digest notturno che le legge
-> ([brief-db-un-destinatario-per-i-presidi](../work-done/brief-db-un-destinatario-per-i-presidi.md)).
+> ([brief-db-un-destinatario-per-i-presidi](brief-db-un-destinatario-per-i-presidi.md)).
 > ⇒ Il registro di prontezza su `gestito_a_magazzino` **non nasce fuori dal
 > catalogo**: è una vista più **una riga in `presidi.csv`**, o il digest non la
 > legge e siamo daccapo — *«esiste e non è collegata a niente»* per la quinta
@@ -1533,6 +1543,15 @@ che forse non parte.
 >
 > ⚠️ Le tre viste del §9-bis dell'analisi acquisto **non sono ancora nate**
 > (verificato sul catalogo): quando nasceranno, la loro sede è la stessa.
+>
+> 🔴 **Alla chiusura del brief (2026-09-14) questo presidio NON è stato
+> scritto**: non stava in nessun passo di §6, e questa sezione — che lo
+> dichiarava *obbligo nostro* — non l'aveva mai promosso a P-*. È esattamente
+> la forma che denuncia: una cosa scritta bene e collegata a niente.
+> ✅ **Deciso da Tid: va al cantiere `magazzino`**, con la forma fissata qui
+> sopra (vista a una riga, `ZERO`, `stato_atteso = MARCATI`) — residuo 1 del
+> riquadro «CHIUSO» in testa, con la ragione; agganciato in
+> [analisi carico e scarico §8](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md).
 
 ---
 
@@ -1544,11 +1563,11 @@ che forse non parte.
 | `uom_id` del componente e **sfrido** sulla BoM | analisi commessa §8.4 | dipendono dal fatto che la distinta di produzione sia o no `articoli_componenti`, che è **immutabile** per un altro motivo |
 | **Consuntivo**, ODL, ciclo di lavorazione | analisi commessa §6 e §7 | sono **strutture**, non colonne, e stanno di là dalla decisione |
 | Cliente proprio, budget, data di chiusura prevista sulla commessa | analisi commessa §8.5 ⏸️ | dipendono dalla §7 |
-| `vw_giacenza` (il segno) e le **causali che mancano** | ⭐ *aggiornato 2026-09-02*: hanno una sede loro, [analisi-db-magazzino-carico-e-scarico](analisi-db-magazzino-carico-e-scarico.md) §4, §3 e §7 | ⚠️ **il fatto è certo, la forma è una decisione**: che vadano toccati non è in dubbio, *come* sì. ✅ *2026-09-02*: la **scelta sul verso è presa** (sta nella quantità), quindi `vw_giacenza` **resta com'è**; di lei resta da scrivere il `COMMENT` che dice perché. 🔴 *2026-09-12*: le causali mancanti sono **quattro**, non una (versamento, reso a fornitore, carico da reso cliente, inventario iniziale — là §3), e con M-2 chiusa ciascuna costa **una riga di seed**: resta `magazzino` perché la primitiva che le legge non esiste ancora, non perché sia indecisa |
-| `uq_mag_movimenti_docref` | analisi magazzino D-4, con la risposta in [carico e scarico **§6**](analisi-db-magazzino-carico-e-scarico.md) — 🔴 *fino al 2026-09-12 questa cella diceva «§8-quater», sezione traslocata il 02-09: era lo stesso riferimento morto che la revisione incrociata aveva sanato negli altri documenti* | ⭐ la forma ora **c'è** — identità `(sorgente, chiave, verbo, discriminante fisico)`, colonna e non tabella. Resta fuori di qui perché è `magazzino` e perché la D-4 è di Tid, non perché manchi il disegno |
+| `vw_giacenza` (il segno) e le **causali che mancano** | ⭐ *aggiornato 2026-09-02*: hanno una sede loro, [analisi-db-magazzino-carico-e-scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) §4, §3 e §7 | ⚠️ **il fatto è certo, la forma è una decisione**: che vadano toccati non è in dubbio, *come* sì. ✅ *2026-09-02*: la **scelta sul verso è presa** (sta nella quantità), quindi `vw_giacenza` **resta com'è**; di lei resta da scrivere il `COMMENT` che dice perché. 🔴 *2026-09-12*: le causali mancanti sono **quattro**, non una (versamento, reso a fornitore, carico da reso cliente, inventario iniziale — là §3), e con M-2 chiusa ciascuna costa **una riga di seed**: resta `magazzino` perché la primitiva che le legge non esiste ancora, non perché sia indecisa |
+| `uq_mag_movimenti_docref` | analisi magazzino D-4, con la risposta in [carico e scarico **§6**](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) — 🔴 *fino al 2026-09-12 questa cella diceva «§8-quater», sezione traslocata il 02-09: era lo stesso riferimento morto che la revisione incrociata aveva sanato negli altri documenti* | ⭐ la forma ora **c'è** — identità `(sorgente, chiave, verbo, discriminante fisico)`, colonna e non tabella. Resta fuori di qui perché è `magazzino` e perché la D-4 è di Tid, non perché manchi il disegno |
 | `causali.ambito_causale_id` | analisi magazzino D-8 | ⭐ *aggiornato*: gli appunti di revisione lo chiudono («valorizzare», + `NOT NULL` perché l'undicesima causale non rinasca vuota). ⇒ smetterà di essere una decisione, ma resta `magazzino`: andrà in un piano suo, non qui |
 | Chi scrive un movimento di magazzino | analisi magazzino D-1 | la forma del riferimento al documento è la prima decisione aperta. ⚠️ *2026-09-12*: **chi** scrive è deciso (M-2, la primitiva guidata da due cataloghi); resta aperto solo **come dichiara l'origine** |
-| 🔴 **`catalogo.articoli.requires_lotto`** *(voce nuova, 2026-09-12)* | [carico e scarico §7-quater](analisi-db-magazzino-carico-e-scarico.md), M-5 — **decisa** il 02-09 | ⚠️ **tocca `catalogo.articoli`, cioè P-2, ed è certa quanto le tre del Blocco B** (boolean `NOT NULL DEFAULT false`, decide l'articolo e non la causale). Non entra in P-2 per una ragione sola, ed è quella scritta nell'analisi: *«va aggiunta insieme alla tabella dei lotti, o la decisione non ha chi la governa»* — una colonna senza il suo lettore è la classe del §7. ⇒ **Seconda occasione dichiarata** in cui `articoli` verrà toccata. ✅ **DECISO (Tid, 2026-09-12, D-B): aspetta i lotti** — non entra in P-2 |
+| 🔴 **`catalogo.articoli.requires_lotto`** *(voce nuova, 2026-09-12)* | [carico e scarico §7-quater](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md), M-5 — **decisa** il 02-09 | ⚠️ **tocca `catalogo.articoli`, cioè P-2, ed è certa quanto le tre del Blocco B** (boolean `NOT NULL DEFAULT false`, decide l'articolo e non la causale). Non entra in P-2 per una ragione sola, ed è quella scritta nell'analisi: *«va aggiunta insieme alla tabella dei lotti, o la decisione non ha chi la governa»* — una colonna senza il suo lettore è la classe del §7. ⇒ **Seconda occasione dichiarata** in cui `articoli` verrà toccata. ✅ **DECISO (Tid, 2026-09-12, D-B): aspetta i lotti** — non entra in P-2 |
 | **Prezzo di riferimento del fornitore** sull'articolo | analisi acquisto §9, D-8 | ⚠️ **tocca `catalogo.articoli`, cioè P-2.** Le due forme in campo (una colonna sull'articolo *oppure* la tabella `catalogo.articoli_fornitori`) sono una decisione aperta ⇒ chi esegue P-2 sappia che quella tabella **potrebbe essere toccata una seconda volta**, e non consideri P-2 l'ultimo intervento su di lei |
 | **Discriminante di ciclo** sugli stati (`stati_doc_ordini`, `stati_doc_ddt`) | analisi acquisto §7, D-3 | il fatto è certo — le due tabelle sono **condivise con `acquisti`** e non hanno modo di dire a quale ciclo appartiene uno stato. ✅ *2026-09-12*: la **forma è confermata** (Tid, 02-09): **satellite** `config.stati_doc_ordini_ambiti` + gemello DDT, `ambito` come CHECK a due valori. Resta fuori di qui perché è il Lotto 0 del cantiere acquisto — e perché **D-17** lo lega alla vista di M-3, non a questo brief |
 | Ancora doppia degli **indirizzi documento** | analisi acquisto §7-bis, D-6b | tocca un BB usato da **5 domini di vendita**. ✅ *2026-09-12*: **decisa A** (Tid, 02-09) — l'ancora diventa una mappa `tipo_indirizzo → colonna` sul BB. ⚠️ Non è DDL: è backend, e resta del cantiere acquisto |
@@ -1599,15 +1618,15 @@ dominio, non perché siano indecise.
 
 ## 9. Riferimenti
 
-* [analisi-db-commessa-e-produzione-predisposizione.md](analisi-db-commessa-e-produzione-predisposizione.md)
+* [analisi-db-commessa-e-produzione-predisposizione.md](../work-in-progress/analisi-db-commessa-e-produzione-predisposizione.md)
   — perché il punto di fermata non è la commessa, e la §8 da cui questo brief è estratto
-* [analisi-db-magazzino-aggancio-documento-e-produzione.md](analisi-db-magazzino-aggancio-documento-e-produzione.md)
+* [analisi-db-magazzino-aggancio-documento-e-produzione.md](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md)
   — le decisioni D-1 → D-9, nessuna delle quali tocca questo brief
-* [analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md)
+* [analisi-db-magazzino-carico-e-scarico.md](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md)
   — *(aggiunta il 2026-09-12)* M-1 → M-9, chiuse fra il 02-09 e il 04-09: sono
   loro a fare di questo brief un **prerequisito** (§1, riquadro) e a chiedere
   `requires_lotto` (§8)
-* [analisi-simmetria-ordini-acquisto.md](analisi-simmetria-ordini-acquisto.md)
+* [analisi-simmetria-ordini-acquisto.md](../work-in-progress/analisi-simmetria-ordini-acquisto.md)
   — terza origine (2026-09-01): il §3-bis viene dal suo §6, la convenzione del §8
   dal suo §6 «I DUE numeri», il presidio del §7 dal suo §9-bis. ⚠️ Le sue
   decisioni aperte (D-2, D-6b, D-13) non toccano questo brief; **D-8 sì**, di
@@ -1615,7 +1634,7 @@ dominio, non perché siano indecise.
 * Convenzioni SQL (naming, §6c sul `codice_interno`): `docs/it/linee-guida-sql.md`
 * Standard liste e `<ListaConfigurabile>`: `docs/it/dev/frontend/frontend-standards.md`
 * Il residuo del nome morto in `fn_push_preventivo_a_ordine`:
-  [brief-db-prefisso-sul-registro-e-allineamento-contatori.md](../work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md) §6.3
+  [brief-db-prefisso-sul-registro-e-allineamento-contatori.md](brief-db-prefisso-sul-registro-e-allineamento-contatori.md) §6.3
   — ✅ ancora lì il 2026-09-12 (riga 141 del corpo): P-5 resta l'occasione
 
 ---
@@ -1676,6 +1695,8 @@ qualcuno. ✅ *2026-09-14: ESEGUITO per intero, lato DB (P-1 → P-9) e lato BE/
 (§5.5). Restano a Tid il `db-migrate` che riaccende le righe 747-749 e le note
 in coda a §5.5 (split di `E_ATTIVO_REQUIRE`, verbo per la data confermata).* ⚠️ L'osservazione su `docs/it/dev/api.md` («le righe non hanno la
 RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
+✅ *Chiuso il 14-09 sera: `api.md` era già corretto il 12-09; i residui hanno
+tutti una destinazione (riquadro «CHIUSO» in testa).*
 
 ---
 
@@ -1685,7 +1706,7 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | --- | --- |
 | 2026-09-01 | Prima stesura dalle due analisi commessa e magazzino; a sera la terza origine (analisi acquisto) e la §8 aggiornata dagli appunti di revisione |
 | 2026-09-02 | Decisioni di Tid: nomi D-16 (§2.2), default `ACQUISTO` e `data_apertura` da `data_insert` (§4-bis riscritta), correzione del fatto su `format('%I', NULL)` (§3-bis) |
-| 2026-09-04 | Riferimenti aggiornati alla nascita di [analisi-db-magazzino-carico-e-scarico](analisi-db-magazzino-carico-e-scarico.md) |
+| 2026-09-04 | Riferimenti aggiornati alla nascita di [analisi-db-magazzino-carico-e-scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) |
 | 2026-09-12 | 🔴 **Verifica contro il DB vivo e le implementazioni del 01→12-09**: dodici punti corretti in loco con nota datata (§10.2), tre decisioni aperte a Tid (§10.3). I tre blocchi non cambiano. ⭐ Il brief passa da «parallelo a magazzino» a **prerequisito** del prossimo cantiere (§1) |
 | 2026-09-12 | ✅ **Le tre decisioni prese da Tid nella stessa sessione**: D-A `responsabile_risorsa_umana_id → risorse_umane` (§4, P-4, §5.5); D-B `requires_lotto` aspetta i lotti (§8); D-C chiavi i18n dei vicini, elenco definitivo di tredici chiavi (§5.4). Il brief è eseguibile: piano in §6, presidi in §7 |
 | 2026-09-13 | ✅ **P-1, P-2, P-3 scritti e provati** (§6-bis): nove changeSet `20260913-04 → -12` e due CSV; SQL reso da Liquibase offline ed eseguito intero in `BEGIN … ROLLBACK` sul DB di sviluppo, 257 articoli backfillati, cinque rifiuti attesi verificati, `validate` pulito. 🔴 Emerso e dichiarato in §5.5: il BE modifica le righe solo in `DRAFT` — la data confermata dopo la conferma vuole un verbo suo |
@@ -1702,3 +1723,4 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | 2026-09-14 | 📚 **Documentazione allineata al brief** (sera): scheda nuova per il CRUD famiglie (`api_famiglie_documento.md`, mancava del tutto) e per il lookup risorse umane (`api_risorse_umane_lookup.md`); whitelist del lookup generico rigenerata dal codice (89, era ferma a 83); riga `Catalogo` nell'inventario di `api.md` (mancava); guide ordini, preventivi, commesse, numerazione e liste aggiornate **e ripulite dalla cronaca datata** (solo «ultimo aggiornamento» in testa, la storia sta nel changelog della mappa); voce del 14-09 nel changelog della mappa concentrica e stato corrente nella mappa. 🔴 Nota 9 in §5.5: la revisione del preventivo non copia la data richiesta |
 | 2026-09-14 | 🔴 **Segnalazione del BE → P-10 scritta e provata** (§6-quinquies): `fn_crea_revisione_preventivo` perdeva `data_consegna_richiesta_cliente` sulla rev N+1 — stessa forma di P-5 (copia colonna per colonna), un passaggio più a monte, senza presidio. ChangeSet `20260914-13` (+ firma e `RETURNS TABLE` ri-ancorati, sciolti dal `20260805-25`; `SECURITY INVOKER` esplicito); `test-date-consegna-ordine-v1` 10 → 13 con fixture costruita (in `test-fn-crea-revisione-preventivo` sarebbe stato muto in CI: `ERRORE_FIXTURE`). Provato: 13/13 con l'SQL estratto, rosso-prima solo al test 11, identità byte-identica, vivo intatto. 🔴 **Emerso, D di Tid**: sulla riga `stato_approvazione_prezzo`/`pratica_approvazione_prezzo_id` non si copiano (i componenti e l'offerta sì). **Da applicare** |
 | 2026-09-14 | ✅ **P-10 applicata da Tid (15:45)** mentre stavo estendendo lo stesso file con la decisione «A»: il `-13` è stato **ripristinato byte-identico** (stesso SQL provato, stesso id; `validate` pulito) e la decisione è andata nel **`20260914-14` (P-11)**: `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id` copiati 1:1 sulla riga, come i componenti e come l'offerta (`20260601-05`), corpo dal vivo post-`-13`, firma ancorata. pgTAP **nuovo** `test-fn-crea-revisione-preventivo-riga-completa-v1` (8, fixture costruita con due pratiche vere): ⭐ test 1 pretende l'**elenco completo** delle colonne copiate o la dichiarazione — la terza colonna persa in cinque mesi non ci sarà. Provato: 8/8 con l'SQL estratto, rosso-prima su 1/4/5/8, regressioni 10/10 · 6/6 · 13/13, vivo intatto. ⚠️ Caveat BE dichiarato (pratica su rev superata, `refactor-prezzi` §4.7). **Da applicare `-14`** |
+| 2026-09-14 | ✅ **P-11 APPLICATA da Tid (16:15, `20260914-14` `EXECUTED`) e BRIEF CHIUSO** (sera): BE/FE mergiato (`22096e6a0`, `eeed40be8`, PR #1586). 🔴 Alla rilettura di chiusura: il presidio di prontezza su `gestito_a_magazzino` (§7) non era in nessun passo e non esiste — ✅ deciso da Tid: **cantiere `magazzino`**, agganciato nell'analisi carico e scarico §8. Sei residui censiti con destinazione (riquadro «CHIUSO»). Trasloco in `work-done/`; link delle quattro analisi e della mappa concentrica riscritti |

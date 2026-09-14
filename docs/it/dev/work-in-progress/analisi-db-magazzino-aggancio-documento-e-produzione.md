@@ -25,7 +25,7 @@
 > ⛔ **Di questo documento non esce nessuna modifica certa**, ed è il suo esito
 > vero: ogni voce qui dentro è agganciata a una delle D-1 → D-9. Il piano
 > operativo delle sole modifiche **certe** vive in
-> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
+> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
 > e sta quasi tutto su `vendite` e `catalogo`.
 >
 > ⚠️ **Perimetro di questa analisi:** solo l'**aggancio al documento di origine** e

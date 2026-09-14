@@ -832,7 +832,7 @@ data attesa è un numero che non serve a decidere niente — *«ne arrivano 40»
 risponde a *«faccio in tempo a promettere la consegna di giovedì?»*. La data
 attesa sull'ordine di acquisto è **`acquisti.ordini_righe.data_consegna_confermata_fornitore`**,
 cioè una delle colonne del [brief delle modifiche
-certe](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
+certe](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
 
 ✅ **Il nome è `acquisti.ordini_righe.data_consegna_confermata_fornitore`** — D-16,
 decisa il 2026-09-02. L'omonima non marcata esiste su `vendite.ordini_righe`, dove la
@@ -1887,7 +1887,7 @@ più.)*
 | Dato | Dove | Note |
 | --- | --- | --- |
 | **data dell'ordine** | `vendite.ordini.data` | ✅ c'è |
-| **data di consegna** richiesta/confermata | — | ⏳ in arrivo col [brief modifiche certe](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md): ⭐ è il **quarto** cantiere indipendente che le chiede |
+| **data di consegna** richiesta/confermata | — | ✅ **a DB dal 13-09** (P-3 del [brief modifiche certe](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md), chiuso il 14-09): `vendite.ordini_righe.data_consegna_confermata` e `acquisti.ordini_righe.data_consegna_confermata_fornitore` esistono; ⭐ era il **quarto** cantiere indipendente che le chiedeva. ⚠️ Quelle di `acquisti` non hanno ancora un consumatore: le prende il cantiere acquisti |
 | **priorità** `ALTA`/`NORMALE`/`BASSA` | `vendite.commesse.priorita_operativa` | ⭐ esiste già — ⚠️ ma sta sulla **commessa**, non sul cliente |
 | **categoria cliente** | `anagrafiche.billing_account.categoria_cliente_id` | ⚠️ sta sul **BA**, ed è nata per i **listini** |
 | **priorità del cliente** | — | ⛔ **non esiste** |
@@ -1961,6 +1961,23 @@ la data dell'ordine e una categoria nata per i listini.
 | 4 | **Acquisti** come seconda sorgente | entra su un registro già provato, e porta con sé la sua decisione (D-7) |
 | 5 | **Produzione** come terza | ⭐ se i punti sopra sono stati decisi bene, è *una sorgente in più e un set di causali*, non una riscrittura |
 
+> ⭐ **Ereditato il 2026-09-14 dal brief delle modifiche certe, alla sua
+> chiusura (decisione di Tid)**: il **presidio di prontezza su
+> `catalogo.articoli.gestito_a_magazzino`**. La colonna è nata `NOT NULL
+> DEFAULT false` (fail-safe), quindi al rilascio *nessun* articolo movimenta
+> giacenza e nessun rosso lo dice — è la stessa forma di `ambito_causale_id`
+> (§3). La forma è già fissata nel brief (§7): una vista `dbops` a **una riga**,
+> `stato = 'MARCATI'` se esiste almeno un articolo con `gestito_a_magazzino =
+> true`, altrimenti `'NESSUNO_MARCATO'`; iscritta in `presidi.csv` con natura
+> `ZERO`, `colonna_stato = stato`, `stato_atteso = 'MARCATI'` — lo zero
+> suona, il pieno tace; ⛔ non una natura nuova per un caso solo. ⭐ **Va
+> scritto col passo 2** (inventario iniziale): è il momento in cui i primi
+> articoli vengono marcati e la primitiva M-2 comincia a leggere la colonna —
+> prima, sarebbe un allarme che suona per mesi senza che nessuno possa agire,
+> e un presidio così viene spento. Il brief lo teneva per sé *«perché non si
+> può delegare a un cantiere che forse non parte»*: dall'11-09 questo cantiere
+> **parte**, e la premessa è caduta.
+
 ⚠️ **Il passo 3 è il primo che ha bisogno della §6**: è lì che nasce il
 doppio scarico, e la chiave dell'operazione va decisa prima di scriverlo — non
 dopo aver tolto l'indice.
@@ -2014,7 +2031,7 @@ DOCUMENTO che lo causa e le decisioni di dominio.*
 | [analisi aggancio documento e produzione](analisi-db-magazzino-aggancio-documento-e-produzione.md) | **D-1 → D-9**: come un movimento dichiara la propria origine, il guard della sorgente polimorfa, l'ODL sorgente-o-anello | è la scelta su *come si nomina l'origine*, che questo documento **presuppone**. ⚠️ La D-4 in particolare vive lì e la sua risposta sta qui in §6: le due si leggono insieme |
 | [analisi simmetria ordini acquisto](analisi-simmetria-ordini-acquisto.md) | la **ricezione come documento**: le quattro destinazioni di una riga ricevuta, i resi al fornitore, le code, la rinuncia, la porta del ramo credito (D-14) | è il ciclo di un **documento di acquisto**. Il carico è il suo effetto sul magazzino, e l'effetto è di qui |
 | [analisi commessa e produzione](analisi-db-commessa-e-produzione-predisposizione.md) | l'ODL come oggetto, la distinta, il consuntivo, le dimensioni del ciclo di vendita | i prelievi e i versamenti di produzione sono **movimenti**, e stanno qui; l'ordine di lavoro che li ordina sta lì |
-| [brief modifiche certe](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) | `articoli.gestito_a_magazzino` e il suo registro di prontezza | è una colonna di `catalogo`, e serve a decidere **se** un articolo movimenta, non **come** |
+| [brief modifiche certe](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) — ✅ chiuso il 14-09 | `articoli.gestito_a_magazzino` (a DB dal 13-09). ⚠️ Il suo **registro di prontezza** invece **è passato QUI** il 14-09 (§8, riquadro): il brief lo aveva dichiarato e non scritto | è una colonna di `catalogo`, e serve a decidere **se** un articolo movimenta, non **come**. Il presidio che dice «qualcuno l'ha marcata» vive dove nasce chi la legge |
 
 ---
 

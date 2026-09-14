@@ -241,7 +241,7 @@ candidato allo split. ⚠️ Dichiarato e non deciso: le righe d'ordine si scriv
 solo in `DRAFT`, ma la promessa di consegna si decide alla conferma — serve un
 verbo suo. ⚠️ E `fn_crea_revisione_preventivo` non copia la data richiesta sulla
 nuova revisione. Vedi
-[brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](work-in-progress/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
+[brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
 §5.5 e §10.
 
 **In breve, senza un tema proprio** — la **copertura della doc API** rimisurata
