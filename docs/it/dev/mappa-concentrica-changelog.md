@@ -32,6 +32,234 @@
 
 ---
 
+## 14 settembre 2026
+
+> Copre il periodo **11 – 14 settembre**. Quattro giorni, **103 changeSet**
+> (25 in `dbops`, 23 in `vendite`, 10 in `anagrafiche`, 8 in `script`, 4 in
+> `storico`) e **undici documenti chiusi in `work-done`**. Anche qui si scrive
+> per **temi**: sono sei.
+>
+> ⚠️ Due brief di questo periodo restano in `work-in-progress` per scelta, non
+> per incompiutezza: quello delle **modifiche certe** ha un fatto di modello
+> dichiarato e non deciso (il verbo per la promessa di consegna), e quello delle
+> **fixture che costruiscono il mondo** tiene in coda il pezzo nuovo di D6.
+> Sono linkati dove stanno.
+>
+> ⭐ **Il tema portante è ancora la CATENA DI VERIFICA, ma stavolta dal verso
+> dei presidi che si guardano allo specchio.** Il 10 settembre i presidi avevano
+> ricevuto un catalogo e un destinatario; in questi quattro giorni **tre di loro
+> hanno mentito** — il digest contava 784 riferimenti morti che non c'erano, un
+> listener vivo risultava `MUTO`, un checker dava una risposta diversa per ruolo
+> — e in tutti e tre i casi la causa stava nel **metro**, non nel misurato. È
+> il motivo per cui la lezione che resta non è «un presidio in più» ma *un
+> presidio si prova dal percorso che lo attraversa*.
+
+**Anello 0 — Lo storico porta il proprio perimetro, e il perimetro finisce di
+chiudersi.** Il cantiere del perimetro si chiude formalmente l'11 settembre con
+l'ultima famiglia armata (`arrotondamenti_scope`) e un ritiro
+(`attivita_fatturabili_log`): registro del debito da 33 a **10** righe, tutte
+decisioni di modello o cantieri di un altro dominio. Ma il criterio transitivo
+**non vede lo `storico`** — le shadow sono gemelle delle madri, non figlie — e
+lì il dato vivo di `vendite.fatture` era protetto da due policy mentre **ogni
+sua versione precedente era leggibile da chiunque**. La decisione portante è che
+lo scope **si cattura, non si deriva**: una riga di storico è un fatto datato,
+e il suo perimetro fa parte del fatto — se si ricalcolasse dalla madre viva, il
+presente riscriverebbe la visibilità del passato. Ogni shadow prende
+`origine_schema` (cinque shadow erano **condivise** fra `vendite` e `acquisti`
+senza saperlo: due `BIGSERIAL` nella stessa colonna, e la chiusura dello
+snapshot chiudeva quello dell'altro schema) e `scope_emittente_fiscale_id`,
+scritti dal trigger una volta sola; la mappa `dbops.storico_scope_policy` dice
+per ogni madre *dove* sta lo scope (colonna EF, colonna SR, risalita al padre —
+con **ripiego sull'archivio del padre** quando un `DELETE … CASCADE` l'ha già
+cancellato — o via billing account), ed è anche il presidio. **37 shadow armate**
+con policy generata, 65.751 versioni attribuite, `REVOKE DELETE` all'app su
+tutto lo schema, e le shadow nuove nascono armate dal generatore. ⭐
+`dbops.audit_log` era la stessa famiglia di difetto e un rimedio **diverso**:
+non è un registro di dominio (ci scrivono solo `dbops` e `maintenance`), quindi
+il presidio non è una policy ma un **cancello** alla scrittura, più il `REVOKE`
+di `UPDATE`/`DELETE` all'app dichiarato nel loop dei grant — *un registro di
+audit modificabile da chi è auditato non è un registro*. Nello stesso giro
+`shop.ricevute` viene armata (12-09, il debito scende a **8**), il benchmark RLS
+«pre/post ENABLE» viene ritirato dalla documentazione perché sbagliato nella
+premessa (la canonica è plpgsql: il predicato non è indicizzabile), e il 13-09
+cade **D13**: come `zeroerp_app`, l'operatore di un emittente **non di default**
+non riusciva a creare un billing account, perché il `RETURNING` chiedeva di
+vedere la riga *prima* che il trigger `AFTER` scrivesse il legame e il resolver
+ricadeva su un'altra azienda. Ora *un BA non ancora collegato appartiene a chi
+lo sta creando* — riserva a tre livelli, e la seconda copia della regola
+(`fn_get_emittente_fiscale_pk`) delega; lato BE le tre copie inline della regola
+vecchia delegano a `fn_check_ba_visible_for_emittenti`. Vedi
+[brief-db-perimetro-emittente-righe-documento.md](work-done/brief-db-perimetro-emittente-righe-documento.md) §12,
+[brief-db-rls-storico-scope-congelato.md](work-done/brief-db-rls-storico-scope-congelato.md),
+[brief-db-ba-riserva-emittente-operatore-d13.md](work-in-progress/brief-db-ba-riserva-emittente-operatore-d13.md).
+
+**Anello 0 — I processi automatici hanno un contratto di vitalità.** Dei sei
+processi che il backend dichiara di svegliare, due avevano un presidio che si
+accorge se smettono di girare; gli altri quattro no — e `send_pending_emails`,
+che gira ogni cinque minuti, era rimasto **non installato** senza che nessuno se
+ne accorgesse. *Il discriminante non è «ogni quanto gira»: è «qualcuno aspetta
+l'esito, e in quanto tempo se ne accorge?»*. La tolleranza diventa un dato di
+catalogo (`dbops.processi.tolleranza_minuti`, che esce da `sveglie.json`), il
+panorama dice `MUTO` e `MAI_PARTITO`, il listener si presidia dalla **sessione**
+(`pg_stat_activity` + `application_name`, un fatto e non una dichiarazione), le
+email e la coda stampa hanno la loro vista `ZERO`, e un **guardiano pgAgent**
+accoda su `coda_lavori` la notifica se il digest stesso tace — *chi guarda il
+guardiano*. ⚠️ Il primo digest utile (14-09) ha contato un `MUTO` su un listener
+**vivo**: `pg_stat_activity` maschera `backend_start` a chi non è lo stesso
+utente della sessione, e il pgTAP non poteva vederlo perché usava la propria
+sessione. Corretto leggendo l'**esistenza** della riga, che è visibile a
+chiunque, con un test che costruisce la sessione altrui via `dblink`. Sullo
+stesso asse, «una mail stampata a video non è una mail inviata»: il digest era
+stato dichiarato `SENT` su un host col placeholder SMTP del seed, e ora esiste lo
+stato `SIMULATA` (terminale e voluto), con `inviato_at` a NULL. E il cantiere dei
+presidi si chiude scoprendo che **il presidio dei presidi mentiva**: 784
+riferimenti morti nel digest contro zero nella lettura diretta, perché la
+funzione ereditava il `search_path` blindato della `DEFINER` che la chiamava e
+non risolveva più `plpgsql_check` in `public` — *una funzione che dipende dal
+`search_path` del chiamante non ha un comportamento, ne ha uno per chiamante*.
+Il primo settimanale (14-09) ne ha trovato un terzo: il checker dava una
+risposta **per ruolo** su una `SECURITY DEFINER` di un altro proprietario
+(ottava classe `FP_DEFINER_PRIVILEGIO`, e l'esenzione pgAgent del registro
+**segue la macchina**). ⚠️ Nel working tree del 14-09, non ancora consolidato:
+`job_liveness` del backend prendeva l'esito dalla riga più recente — cioè dalla
+propria corsa in esecuzione — e `last_ok` è sostituito da `in_corso` +
+`ultima_conclusa` nelle tre sedi. Aperto: far partire o riavviare un processo
+**dall'interfaccia** — «Esegui ora» passa dalla coda e non aspetta l'host, il
+brief DB è scritto; «Riavvia» resta dietro la decisione su che cosa sia un host.
+Vedi
+[brief-db-quattro-processi-senza-presidio.md](work-done/brief-db-quattro-processi-senza-presidio.md),
+[brief-db-stato-email-console-non-e-inviata.md](work-done/brief-db-stato-email-console-non-e-inviata.md),
+[brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md) §13-§14,
+[analisi-riavvio-processi-da-interfaccia.md](work-in-progress/analisi-riavvio-processi-da-interfaccia.md),
+[brief-db-avvio-manuale-di-un-processo.md](work-in-progress/brief-db-avvio-manuale-di-un-processo.md).
+
+**Anello 0 + 1 — Il software che serviva dati morti.** Nato dalla coda del
+cantiere dello storico, dove si stava per scrivere codice che mostrasse la
+storia di una tabella già dismessa: la domanda diventa *c'è software in
+servizio il cui unico lavoro è tenere in vita dati — o nomi — che il modello ha
+già lasciato?* Otto voci, tutte chiuse il 12-09: la vista col nome vecchio
+`anagrafiche.risorse_umane_auth_user` (una proiezione filtrata su `OPERATORE`
+che rispondeva **zero righe** in silenzio su un'identità portale) ritirata con i
+lettori DB riscritti sulla **madre** `identita_digitali` e un guard scritto a
+mano; le shadow legacy droppate; `dbops._defaults_backup_usercols` e
+`public.version_info` **droppate** (la seconda in due giri: nata nel
+provisioning come `postgres`, si ritira nel provisioning — *ciò che nasce nel
+provisioning si ritira nel provisioning*); l'alias «deprecato»
+`get_emittenti_ids` con nove chiamanti, due ripieghi su forme di `meta` che
+nessuno scrive più, e `isAdmin` sul frontend. ⛔ La lezione: *«tenere per
+sicurezza» è la forma da cui ogni voce di quell'elenco è nata*, e il precedente
+mostra dove porta — a un endpoint a 500 e a una policy scritta per sei righe di
+test. ⭐ Il giorno dopo la CI ha detto due cose che lo scratch locale non poteva
+vedere: le 15 shadow create a mano in `00_schema` nascevano senza
+`origine_schema` su un DB da zero (convergenza in `ci_apply`), e sotto c'era una
+**seconda causa, non di oggi**: `zeroerp_app` non aveva nessuna sede che gli
+desse `django.auth_user` — su dev il GRANT era **dato a mano**, e lo scratch
+copiava le ACL di dev insieme allo schema. *Un privilegio che esiste su una
+macchina è un ricordo, non una configurazione*: lo schema `django` entra nel
+provisioning, il passo in CI si sposta dopo entrambi i migratori, e un pgTAP
+pinna la postura. Vedi
+[analisi-software-per-dati-morti.md](work-done/analisi-software-per-dati-morti.md).
+
+**Anello 0 — La postura degli oggetti si presidia per criterio, e il registro
+della CI cala.** Le tre `SECURITY DEFINER` di `postgres` senza `search_path` —
+una sul percorso di 305 trigger `tx_id` — hanno il pin (12-09), nella timeline
+normale e senza superuser, col **prestito di proprietà** via
+`fn_sync_functions_owner`. ⚠️ Con una lezione presa dal verso opposto: la forma
+«prudente» `pg_catalog, pg_temp` avrebbe **accecato** `dblink`, che vive in
+`public`, dentro un `WHEN OTHERS` — spegnendo il tracciamento delle transazioni
+**senza un rosso da nessuna parte**. *Una forma canonica uguale per tutte non
+esiste: si decide per funzione, guardando ciò che chiama.* Il terzo invariante di
+D5 ha ora il suo pgTAP sul catalogo (`test-security-definer-search-path-v1`),
+come i primi due. Sul registro della CI il triage è partito **dal perimetro**:
+21 file (le `fn_scope_*`, il fail-closed, le `rls/`) morivano nella fixture
+perché **cercavano** i soggetti fra i dati esistenti, e su un database
+ricostruito `anagrafiche` è a zero — riscritti con fixture che **costruiscono**
+il mondo, e nessun ramo `skip` residuo. Il registro passa da 406 (09-09) a 403
+(12-09) a **372** (14-09), e i RIENTRATI li toglie ora uno script che legge il
+log della corsa, non una mano. Lato applicazione, D15: `skip_area_check` era
+**muto** su 15 view che dichiaravano anche `area_funzionale` — sei delle quali
+scrivevano senza permesso — e le famiglie hanno deciso quale delle due parole
+vale; le due vulnerabilità npm e `weasyprint 70` sanate senza dipendenze nuove.
+Vedi
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-in-progress/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
+[migliorie-generali-BE-FE-da-test-valutazione.md](work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
+
+**Anello 3 (vendite) — Il rilancio rivede le proprie commesse.** Trovato dal
+collaudo in-app dell'esito parziale, prova 5: ripristinate le ROOT, «Riprova
+step» portava il lotto a `COMPLETATO` **senza emettere niente**, perché la
+discovery scartava le commesse `TRATTENUTA` — anche quando a trattenerle era il
+lotto stesso che stava riprovando. L'auto-esclusione esisteva, ma solo
+nell'emit, un cancello più a valle che non veniva mai raggiunto. La parte comune
+ai due predicati ha ora **una sede** (`fn_classe_emittibilita_per_giro`, SQL
+`IMMUTABLE` che il planner inlina: *una riga trattenuta soltanto dal mio giro,
+per il mio giro è pronta*), e gli esiti `ERRORE` **contano nel verdetto** del
+lotto. ⭐ Sotto c'era un **secondo difetto**, nell'orchestratore: i task a valle
+del pull erano `COMPLETATO` a vuoto e il resolver li saltava come «già fatti»
+su un input appena cambiato — *a valle di un task eseguito in questo giro nessun
+task si salta*; `RESUME_STEP` era una distinzione senza differenza ed è ritirato.
+E sotto ancora: `fn_cleanup_fatture_by_ids` usciva su «zero fatture» e non
+liberava **nessuna** attività di un lotto fermo prima della generazione. Il
+collaudo chiude verde, e con lui la linea del fan-out **per intero**. Nello
+stesso giro `ANNULLATA` prende `applica_lotto` (il catalogo diceva il falso), e
+la **roadmap fatturazione** viene archiviata: tre riverifiche in fila avevano
+aggiunto un blocco senza togliere il precedente, e il documento si leggeva a
+quattro date sovrapposte — lo stato delle voci aperte vive ora in una riga
+ciascuna in `PROJECT_CONTEXT.md`. Vedi
+[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](work-done/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
+[collaudo-in-app-esito-parziale-pull-commessa.md](work-done/collaudo-in-app-esito-parziale-pull-commessa.md),
+[brief-be-fan-out-isolato-e-esito-parziale.md](work-done/brief-be-fan-out-isolato-e-esito-parziale.md),
+[fatturazione-roadmap.md](work-done/fatturazione-roadmap.md).
+
+**Anello 1 + 3 — L'articolo dice da dove arriva, la riga d'ordine sa quando, la
+commessa si legge.** Tre buchi del modello, tutti *certi* perché nessuna delle
+decisioni aperte su magazzino e produzione li cambia — ed è il filtro che ha
+prodotto il brief: fra due analisi contigue (commessa/produzione e magazzino) si
+è estratto ciò che vale in qualunque esito. **Blocco A**: non esisteva alcuna
+data di consegna in tutto il database — `vendite.ordini_righe` e
+`acquisti.ordini_righe` prendono richiesta e conferma (con la convenzione dei
+nomi *non marcato = nostro, marcato = della controparte*), `preventivi_righe` la
+sola richiesta, che il push porta sull'ordine; niente CHECK fra le due date e
+niente colonna di testata (il `min` lo dà la vista di lista); il **ritardo** vive
+in `vw_situazione_merce_ordine`, dove c'è già il residuo, e distingue «in tempo»
+da «niente da spedire». **Blocco B**: nasce il vocabolario
+`config.modi_approvvigionamento` (acquisto / produzione / stock / non
+applicabile) e `catalogo.articoli` prende `modo_approvvigionamento_id`,
+`gestito_a_magazzino` (default fail-safe `false`) e `lead_time_giorni` — è il
+perno da cui partiranno acquisti e magazzino, il prossimo cantiere. **Blocco C**:
+`vendite.commesse` ha `descrizione`, `data_apertura` e un responsabile che è una
+**risorsa umana**, come in `pratiche`; `PATCH /commesse/<id>/` e un lookup
+dedicato `GET /anagrafiche/risorse-umane/lookup/`. **B-bis**:
+`famiglie_documento.colonna_billing_account` diventa facoltativa come
+`colonna_serie` — la porta per il primo documento senza cliente, l'ordine di
+acquisto. ⭐ Due cose emerse facendolo: il `DEFAULT` di una colonna che punta a
+un seed di `80_data` (o a una funzione che lo legge) **non può stare in
+`00_schema`** — tre passi, come `natura_vendita_id`; e `E_ATTIVO_REQUIRE`, il
+codice del require generato dal framework ATTIVO, è **TECNICO** anche quando il
+dato sbagliato l'ha scelto una persona — il service pre-verifica e risponde 400,
+candidato allo split. ⚠️ Dichiarato e non deciso: le righe d'ordine si scrivono
+solo in `DRAFT`, ma la promessa di consegna si decide alla conferma — serve un
+verbo suo. ⚠️ E `fn_crea_revisione_preventivo` non copia la data richiesta sulla
+nuova revisione. Vedi
+[brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](work-in-progress/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
+§5.5 e §10.
+
+**In breve, senza un tema proprio** — la **copertura della doc API** rimisurata
+il 12-09 (613 rotte, la misura vecchia contava come «coperte» rotte servite da
+segnaposto, e `pagamenti` passa da 1/25 a 25/25 con una pagina sola); le
+**rotte senza porta** (D7) hanno tutte una risposta scritta (due candidate al ritiro,
+una schermata da aprire: il registro email dell'operatore); l'**area funzionale
+dell'assistente AI** ha il brief e attende la riga di catalogo, perché la
+decisione è che lo usino anche gli operatori; l'analisi dell'osservabilità
+riletta contro il repo (B e C erano «mossi da fuori» dal cantiere dei presidi);
+in `api.md` cinque voci dicevano ancora «la testata ha la RLS, il figlio no» e
+ora il fatto sta in una sede sola; e in `AGENTS.md` tre regole nuove nate da
+altrettanti incidenti — *un privilegio su una macchina è un ricordo*,
+`unittest.TestCase` non è `SimpleTestCase`, e dove si legge l'errore vero di un
+pgTAP in CI (nel log del container, non nella baseline).
+
+---
+
 ## 10 settembre 2026
 
 > Copre il periodo **31 agosto – 10 settembre**. Undici giorni, **384 changeSet**

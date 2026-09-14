@@ -1,24 +1,19 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> Destinatari: sviluppatori backend e database di Zero ERP
+> **Ultimo aggiornamento**: 14 settembre 2026
 >
-> **Ultima revisione**: 16 giugno 2026 — allineata allo stato reale: macchina di
-> transizioni data-driven (2026-06-08), ruolo sorgente auto `ROOT`/`COLLEGATO`,
-> nomi step pipeline reali (`pull_attivita_da_commessa`, …), espansione BoM dal
-> **modello snapshot** `*_righe_componenti` per tutte le sorgenti documento (rimosso
-> `fn_resolve_prezzo_composito`), snapshot 8 colonne audit popolato dal push e propagato
-> all'emissione (2026-06-16), consumi utility rimandati. Storico: pricing v5 (resolver
-> `fn_resolve_prezzo_listino_v2` a 3 stadi, F2-BE-11/12, workflow L3 Sprint E).
+> Destinatari: sviluppatori backend e database di Zero ERP
 >
 > 👀 **Vedi anche**
 >
-> * Gestione commesse v2 (architettura interna di lavoro)
 > * [Guida fatturazione](/guide/fatturazione)
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini) — modello pricing che alimenta lo snapshot commesse
-> * [vendite.commesse](/dbzero/vendite/tabelle/commesse)
+> * [vendite.commesse](/dbzero/vendite/manual/commesse) — la tabella, con la testata leggibile
 > * [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)
 > * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
 > * [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)
+> * [API stato commessa](/backend/vendite/manual/api_commessa_stato) — `GET/POST …/stato/` e `PATCH /commesse/<id>/`
+> * [API lookup risorse umane](/backend/anagrafiche/manual/api_risorse_umane_lookup) — il picker del responsabile
 > * [BoMComponentExpander (catalogo BB backend)](/dev/backend/catalogo-building-block-backend) — espansione compositi nella pipeline push
 
 ---
@@ -67,7 +62,7 @@ I flag governano le operazioni:
 * **emittibile**: consente il pull verso AF (`fn_list_commesse_emittibili`)
 * **chiude_commessa**: impedisce riuso da `fn_get_or_create_commessa`
 
-### Macchina di transizioni (data-driven, 2026-06-08)
+### Macchina di transizioni (data-driven)
 
 Lo stato della testata vive **solo** nella FK `stato_commessa_id` (nessuna colonna
 `stato` testuale — rimossa). Ogni cambio stato è validato contro una matrice:
@@ -87,8 +82,8 @@ Transizioni attualmente in matrice: `BOZZA→{APERTA,PRONTA,ANNULLATA}`,
 transizioni *automatiche* (push/ponte emittibilità) da quelle *utente*; il guard non lo
 filtra (valida solo l'ammissibilità della coppia).
 
-Le **azioni di stato utente** (chiudi / riapri / annulla) sono **esposte**
-(verificato 2026-09-02): le calcola
+Le **azioni di stato utente** (chiudi / riapri / annulla) sono **esposte**: le
+calcola
 [script.fn_available_actions_commessa](/dbzero/script/manual/fn_available_actions_commessa)
 — mirror del pattern di ordini, offerte, contratti e preventivi, **senza azioni
 applicative** (il push è *verso* la commessa, non un'azione della commessa) — e le
@@ -113,10 +108,6 @@ non la legge prende il rifiuto del guard, e ha ragione lui.
 
 ## Di chi è una commessa
 
-> ⭐ Sezione aggiunta il 2026-08-26 — cantiere «l'emittente della commessa è un
-> invariante». È il concetto che sta sotto a mezza guida, e non era scritto da
-> nessuna parte.
-
 ### L'emittente non è un attributo: è la chiave di perimetro
 
 `vendite.commesse.emittente_soggetto_ruolo_id` decide **chi può vedere quella
@@ -126,7 +117,7 @@ del cruscotto competenza e il giornale degli eventi.
 ⛔ Con quella colonna vuota la commessa non compariva sbagliata: **spariva**. Il
 lavoro restava nel database, non lo vedeva nessuno e non veniva mai fatturato —
 e una lista che non mostra una riga ha lo stesso aspetto di una lista in cui
-quella riga non c'è. Da qui il `NOT NULL` (`20260826-41`).
+quella riga non c'è. Da qui il `NOT NULL`.
 
 ### Da dove viene il valore
 
@@ -167,6 +158,63 @@ resterebbero orfani. Vedi
 
 ---
 
+## La testata leggibile
+
+`vendite.commesse` porta, oltre al codice, tre colonne che dicono **che cosa è**
+una commessa a chi la legge in una lista o in un drawer:
+
+| Colonna | Che cosa dice | Null | Chi la scrive |
+| --- | --- | :---: | --- |
+| `descrizione` | l'oggetto della commessa, in parole (max 255) | sì | l'operatore, dal drawer |
+| `data_apertura` | quando è stata aperta — per le commesse nuove è **oggi nel fuso dell'azienda** (`script.fn_data_operativa()`), mai l'orologio della sessione | **no** | il default alla nascita; **sola lettura** dall'API |
+| `responsabile_risorsa_umana_id` | chi la governa: una **risorsa umana** (`anagrafiche.risorse_umane`), come in `pratiche` — non un ruolo qualsiasi | sì | l'operatore, dal drawer |
+
+⚠️ **`data_apertura` non è la competenza**: `competenza_dal`/`competenza_al`
+restano la finestra fiscale del lavoro, e riusarle per «quando è nata» avrebbe
+fatto rispondere una colonna a due domande.
+
+### Come si leggono e si scrivono
+
+* **Lettura**: nello stesso payload di `GET …/commesse/<id>/stato/` (`descrizione`,
+  `data_apertura` ISO, `responsabile_risorsa_umana_id`, `responsabile_display` —
+  il nome della persona dalla vista modello `anagrafiche.vw_risorse_umane_dettaglio`,
+  la stessa che serve il picker). ⚠️ Non escono da `fn_get_commessa_stato`: il
+  backend le fonde (§3 sotto).
+* **Scrittura**: `PATCH /commesse/<id>/` — parziale, `null` esplicito **azzera**
+  (togliere il responsabile è un gesto legittimo); `data_apertura` non si scrive
+  e una chiave estranea è un `400` (whitelist chiusa). Nessun guard di **stato**:
+  il database non ne mette, di proposito — la descrizione di una commessa chiusa
+  si può correggere.
+* **Il picker del responsabile** è `GET /anagrafiche/risorse-umane/lookup/`
+  (cross-dominio: `risorse_umane` non ha codice/descrizione, il lookup generico
+  non la può servire). Elenca le **attive**; una persona disattivata che è già
+  responsabile compare come voce non selezionabile, col nome che arriva dal
+  dettaglio.
+
+### Il responsabile deve essere una persona attiva — nei due versi
+
+* **Figlio → padre**: una commessa non punta a una risorsa umana spenta. Lo
+  impone a DB il require generato dal framework ATTIVO
+  (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), che però risponde
+  con `E_ATTIVO_REQUIRE` — classe **TECNICO**, la stessa del trigger montato
+  male. Per l'operatore è un dato sbagliato, non un guasto: il backend verifica
+  «persona attiva» **prima** dell'`UPDATE` e risponde `400` col campo; il guard
+  DB resta l'autorità.
+* **Padre → figli**: una persona responsabile di una commessa — **anche
+  chiusa**, perché `commesse` non ha `attivo` e il block conta tutti i figli —
+  **non si disattiva** (`trg_risorse_umane_a10_commesse_block_deact_upd`). È il
+  quarto block della sua specie su `risorse_umane`, accanto a `pratiche`,
+  `flussi` e `competenze_flussi`: per liberare una persona si cambia il
+  responsabile, non si spegne la persona.
+
+⚠️ **Non esiste una lista configurata `vendite.commesse`**: in
+`ui.lista_definizione` ci sono `vendite.commesse_attivita` e il drill-down di
+dashboard, non la commessa. Le tre colonne hanno quindi come sola superficie il
+drawer e l'API, finché una lista non verrà configurata — e configurarla è dato,
+non un cantiere.
+
+---
+
 ## API — Funzioni DB
 
 ### 1. `fn_get_or_create_commessa`
@@ -187,8 +235,8 @@ resterebbero orfani. Vedi
 | `p_competenza_dal` / `_al` | no | Range competenza testata |
 | `p_force_new` | no | Default `false` — forza nuova commessa |
 
-⛔ **Dal 2026-08-26 non esiste più `p_emittente_soggetto_ruolo_id`.** L'emittente
-non si passa: **si deriva dal billing account**, sempre. Vedi
+⛔ **Non esiste un parametro per l'emittente.** L'emittente non si passa: **si
+deriva dal billing account**, sempre. Vedi
 [§ Di chi è una commessa](#di-chi-e-una-commessa).
 
 **Ritorna**: `commessa_id` (nuova o riusata).
@@ -197,7 +245,7 @@ non si passa: **si deriva dal billing account**, sempre. Vedi
 
 * Riuso solo su commesse con `chiude_commessa = false`
 * Advisory lock transazionale per evitare doppie create concorrenti
-* Emittente **derivato** dal billing account (non più un parametro)
+* Emittente **derivato** dal billing account (non è un parametro)
 
 ```sql
 SELECT vendite.fn_get_or_create_commessa(
@@ -287,6 +335,11 @@ SELECT vendite.fn_upsert_commessa_attivita(
 SELECT * FROM vendite.fn_get_commessa_stato(12345);
 ```
 
+⚠️ **La testata leggibile non esce da qui**: `descrizione`, `data_apertura` e
+responsabile (§ *La testata leggibile*) li legge il backend da `vendite.commesse`
+e li fonde nello stesso payload del `GET …/stato/` — un secondo endpoint sarebbe
+una seconda chiamata per tre colonne della stessa riga.
+
 ---
 
 ### 4. `fn_list_commessa_attivita`
@@ -340,7 +393,7 @@ FROM vendite.fn_list_commessa_attivita(
 | `p_emittente_soggetto_ruolo_id` | no | Filtro emittente |
 | `p_limit` | no | Default 1000, max 10000 |
 | `p_gruppi` | no | Emissione mirata: solo le commesse con almeno una riga dei gruppi richiesti |
-| `p_emit_batch_id` | no (⛔ **sì** per il pull) | L'identità del giro (`fatturazione_lotti.lock_batch_id`), la stessa dell'emit. Con essa le righe trattenute **dal lotto stesso** contano come pronte: al rilancio di un pull fallito la commessa viene rivisitata. `NULL` = nessuna auto-esclusione (dal 2026-09-12) |
+| `p_emit_batch_id` | no (⛔ **sì** per il pull) | L'identità del giro (`fatturazione_lotti.lock_batch_id`), la stessa dell'emit. Con essa le righe trattenute **dal lotto stesso** contano come pronte: al rilancio di un pull fallito la commessa viene rivisitata. `NULL` = nessuna auto-esclusione |
 
 **Criteri di inclusione**:
 
@@ -348,7 +401,7 @@ FROM vendite.fn_list_commessa_attivita(
 2. Almeno una riga `commesse_attivita` con classe `PRONTA`, `RIFIUTATA` o
    `NON_APPROVATA` in `vw_commesse_attivita_emittibilita` — **vista dal giro**:
    una riga `TRATTENUTA` soltanto dal lotto di `p_emit_batch_id` è `PRONTA`;
-   trattenuta da un **altro** lotto in gioco non conta (dal 2026-09-09/12)
+   trattenuta da un **altro** lotto in gioco non conta
 3. Se `p_competenza_mese` fornito, filtra su `commesse_attivita.competenza_mese`
 
 **Ritorna**: lista commesse con `total_non_emesse` per ciascuna.
@@ -378,10 +431,6 @@ FROM vendite.fn_list_commesse_emittibili(
 | `p_only_approved` | no | Default `true` — solo righe APPROVATA |
 | `p_dry_run` | no | Default `false` — simula senza scrivere |
 
-> ⚠️ Il parametro `p_lotto_attivita_id` **non esiste più** (sotto-sistema
-> lotto-attività rimosso, changeset `20260227-16`): la firma reale è
-> `(p_commessa_id, p_only_approved, p_dry_run)` — vedi la nota nel «Flusso tipo».
-
 **Ritorna**: contatori (`total_candidate`, `inserted_rows`, `updated_rows`, `skipped_rows`).
 
 **Regole chiave**:
@@ -408,16 +457,13 @@ FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
 
 | Funzione | Scopo |
 |----------|-------|
-| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO` (dal 2026-06-09; superato il vecchio modello mono-ROOT, non più "CONTRIBUENTE") |
+| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO` |
 | [`fn_start_commessa_push_run`](/dbzero/vendite/funzioni/fn_start_commessa_push_run) | **Apre** il giro di push: la riga nasce in testa alla corsa, in stato `IN_ESECUZIONE` |
 | [`fn_close_commessa_push_run`](/dbzero/vendite/funzioni/fn_close_commessa_push_run) | **Chiude** lo stesso giro con il suo esito, il risultato per handler e la durata |
 
-> ⭐ **Dal 2026-08-22 il giro di push si apre e si chiude, invece di essere
-> registrato alla fine.** La funzione unica `fn_log_commessa_push_run` è stata
-> tolta: scriveva una riga di un giro *già finito*, quindi un push interrotto
-> non lasciava nessuna traccia — moriva e spariva. Con la riga creata
-> all'inizio, quella rimasta a `IN_ESECUZIONE` è la prova che qualcosa è
-> partito e non è tornato.
+> ⭐ **Il giro di push si apre e si chiude, non si registra a cose fatte.** Con
+> la riga creata all'inizio, quella rimasta a `IN_ESECUZIONE` è la prova che
+> qualcosa è partito e non è tornato: un push interrotto lascia traccia.
 >
 > ⚠️ Il guadagno vale sul **batch**, che gira in autocommit. Il push singolo dal
 > drawer avvolge tutta la corsa in una transazione unica: lì anche la riga
@@ -452,15 +498,13 @@ for row in rows:
              f"{result.updated_rows} upd")
 ```
 
-> **Nota**: `fn_emit_attivita_fatturabili_da_commessa` NON ha più il parametro
-> `p_lotto_attivita_id` (sottosistema lotto rimosso, deprecato 20260227-16); la firma
-> reale è `(p_commessa_id, p_only_approved, p_dry_run)`. Dal 2026-06-16 la fn propaga
-> anche le 8 colonne snapshot audit pricing v5 da `commesse_attivita` ad
+> **Nota**: la firma di `fn_emit_attivita_fatturabili_da_commessa` è
+> `(p_commessa_id, p_only_approved, p_dry_run)`; la funzione propaga anche le 8
+> colonne snapshot audit pricing v5 da `commesse_attivita` ad
 > `attivita_fatturabili`.
 
-**Catena pipeline reale** (ordine dato dal seed `fn_list_fatturazione_pipeline_steps`,
-orchestrata in Python da `LottoPipelineRunner`; i vecchi nomi
-`PULL_COMMESSA/RACCOLTA_INPUT/NORMALIZZAZIONE` **non esistono**):
+**Catena pipeline** (ordine dato dal seed `fn_list_fatturazione_pipeline_steps`,
+orchestrata in Python da `LottoPipelineRunner`):
 
 ```
 pull_attivita_da_commessa --> select_attivita --> generate_fatture_righe
@@ -530,7 +574,7 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
        STADIO 1: CONTRATTO (modalita A/B/C)
        STADIO 2: CATEGORIA cliente via matrice
    - Override manuale L1 (azione processo prezzo_override_manuale)
-   - Workflow L3 approvazione (Sprint E):
+   - Workflow L3 approvazione:
        Se override viola L2 (limiti VENDITE_MAX_SCONTO/MAGGIORAZIONE_PCT)
        e l'operatore richiede approvazione (richiesta_approvazione=true),
        la riga e' salvata con stato_approvazione_prezzo='PENDING'.
@@ -583,7 +627,7 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
    - NON rilegge mai il listino
 ```
 
-### Snapshot pricing v5 — 8 colonne audit (Sprint F2-BE-11)
+### Snapshot pricing v5 — 8 colonne audit
 
 Ogni riga `commesse_attivita` registra l'audit completo del calcolo prezzo
 all'epoca del push. Queste colonne sono **immutabili dopo emissione fattura**
@@ -601,13 +645,13 @@ modifiche successive a listini/contratti/promo.
 | `categoria_cliente_id_snapshot` | FK categoria cliente al momento dello snapshot (anche se categoria poi cambia) |
 | `classe_utenza_id_snapshot` | FK classe utenza derivata da contratto/istanza |
 
-Popolazione (aggiornata 2026-06): `fn_upsert_commessa_attivita` riceve gli 8 campi dal
+Popolazione: `fn_upsert_commessa_attivita` riceve gli 8 campi dal
 chiamante Python (`CommessaAttivitaInput`). Al **push** li valorizza
 `BaseSourceHandler._resolve_pricing_audit` via `PricingService.resolve_prezzo`
 (`fn_resolve_prezzo_listino_v2`), **senza sovrascrivere `prezzo_snapshot`** (negoziato,
 autoritativo): l'audit è diagnostico. Best-effort (errore resolver → audit NULL, push non
 si blocca), `origine_prezzo` filtrato contro il CHECK (valore fuori set → NULL). Per i
-componenti BoM l'`origine_prezzo` negoziato (in `meta`) prevale. Dal 2026-06-16 la pull
+componenti BoM l'`origine_prezzo` negoziato (in `meta`) prevale. La pull
 `fn_emit_attivita_fatturabili_da_commessa` propaga gli 8 campi anche su
 `attivita_fatturabili` (audit completo fino all'emissione).
 
@@ -616,7 +660,7 @@ componenti BoM l'`origine_prezzo` negoziato (in `meta`) prevale. Dal 2026-06-16 
 Quando una sorgente contiene un articolo composito
 (`catalogo.articoli.is_composito = true`), la pipeline push **espande sempre** la riga
 padre in N righe `commesse_attivita`, una per ogni componente **attivo** della BoM —
-`esposto_in_fattura` **non è gate di espansione** (modello unificato 2026-05-13): è solo
+`esposto_in_fattura` **non è gate di espansione**: è solo
 un flag di **presentazione** in fattura (vedi sotto). Vale per **tutte le sorgenti
 documento** (preventivi, ordini, contratti, DDT) tramite lo stesso modello.
 
@@ -625,8 +669,8 @@ Logica orchestrata da `BoMComponentExpander` + `_componenti_repo_factory` in
 
 * 1 riga sorgente composito → N righe `commesse_attivita`
 * i componenti sono letti **dallo snapshot negoziato** della riga sorgente
-  (`<sorgente>_righe_componenti` via `ComponentiRepositoryMixin.list_componenti_riga`);
-  il vecchio `fn_resolve_prezzo_composito` è stato **rimosso** (cleanup 2026-05-14)
+  (`<sorgente>_righe_componenti` via `ComponentiRepositoryMixin.list_componenti_riga`),
+  mai risolti di nuovo dal catalogo
 * `articolo_id` = `componente_id`
 * `quantita` = `quantita_padre × coeff_qta` (no rounding sotto-componenti)
 * `prezzo_snapshot` = `prezzo_unitario` negoziato del componente (dallo snapshot)
@@ -641,8 +685,8 @@ totale vs figli come righe descrittive), gestita nella generazione `fatture_righ
 **Caso semplice (non composito, o senza loader/snapshot)**: pass-through,
 1 riga sorgente → 1 riga `commesse_attivita`.
 
-**Consumi utility (gas/energia/acqua/…)**: la decomposizione tariffaria è **rimandata**
-(decisione 2026-06-16); un consumo entra in commessa come **riga singola** (nessun fan-out).
+**Consumi utility (gas/energia/acqua/…)**: la decomposizione tariffaria è **rimandata**;
+un consumo entra in commessa come **riga singola** (nessun fan-out).
 
 **BoM immutabile**: la struttura BoM non puo' essere modificata in place
 dopo essere stata pushata. Pattern admin: chiudi riga + duplica nuova
@@ -684,6 +728,7 @@ Errori comuni:
 | riga AF gia` fatturata | emit_da_commessa | Tentativo update su riga fatturato=true |
 | ROOT source mancante | emit_da_commessa | Nessun link ROOT in commesse_sorgenti |
 | sorgente COMMESSA non attiva | emit_da_commessa | config.sorgenti COMMESSA disabilitata |
+| responsabile non attivo | `PATCH /commesse/<id>/` | il backend risponde `400` col campo (`E_COMMESSA_VALIDATION`) **prima** del require DB, che rifiuterebbe con `E_ATTIVO_REQUIRE` (classe TECNICO) |
 
 ---
 
@@ -694,6 +739,3 @@ Errori comuni:
 | `test-commesse-stati-commessa-v1.sql` | DDL stati_commessa, flag, fn_get_commessa_stato, fn_upsert guard, fn_list_commesse_emittibili (20 test) |
 | `test-fn-list-commessa-attivita-v1.sql` | fn_list_commessa_attivita: filtri, paginazione, guard (14 test) |
 
----
-
-*Documento generato — febbraio 2026. Aggiornato 23 aprile 2026 (Lifecycle prezzo allineato a pricing v5: resolver_v2, snapshot 8 colonne, BoM expander, workflow L3).*

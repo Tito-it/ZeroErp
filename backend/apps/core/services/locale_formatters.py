@@ -26,6 +26,17 @@
 #          - oggi: editare le costanti del modulo + redeploy
 #          - in v2: settare i parameter `LOCALE_*` per l'emittente
 #            specifico oppure per il singolo utente, niente deploy
+#
+#        ⭐ IL FUSO E' PARTE DEL FORMATO (decisione di Tid, 2026-09-14): un
+#        istante si scrive nell'ORA LOCALE dell'applicazione (`TIME_ZONE` di
+#        Django, o il fuso attivato per la richiesta), mai nel fuso che il
+#        valore porta. Con `USE_TZ` la connessione consegna i timestamptz in
+#        UTC, e fino a quel giorno ogni export scriveva ore UTC — una o due
+#        indietro — mentre le liste a video le mostravano giuste, perche' il
+#        browser converte. Lo stesso istante con due ore a seconda del canale
+#        e' una data senza il suo contesto: il difetto e' emerso sul digest
+#        dei presidi (testata in ora locale, corse in UTC) e vale qui per
+#        tutti, cosi' nessun chiamante deve ricordarsi di convertire.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -33,6 +44,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+
+from django.utils import timezone
 
 # =================================================================
 # Costanti di default italiane (v1).
@@ -73,30 +86,45 @@ CURRENCY_SYMBOL: str = "€"
 # Formattatori atomici (uno per tipo)
 # =================================================================
 
+# Scopo: Porta un istante nel fuso LOCALE dell'applicazione prima di
+#        scriverlo (vedi l'intestazione del modulo). E' la sede unica della
+#        conversione: la usano i formattatori qui sotto e il helper
+#        None-preserving dei documenti (`_date_formatting`), cosi' un PDF e un
+#        export dicono la stessa ora.
+# ⚠️ Un datetime NAIVE non si tocca: non porta un fuso, quindi non c'e'
+#    niente da convertire (`timestamp without time zone`, o un valore costruito
+#    a mano nei test) — e `localtime` su un naive solleverebbe.
+def in_ora_locale(value: datetime) -> datetime:
+    return timezone.localtime(value) if timezone.is_aware(value) else value
+
+
 # Scopo: Formatta una `date` Python in DD-MM-YYYY (formato italiano).
 #        Accetta anche stringhe ISO ('2026-05-10') per robustezza:
 #        alcune query potrebbero ritornare stringhe (jsonb opaco) e il
 #        chiamante non sempre fa il cast.
 #        None -> stringa vuota (export-friendly).
+# ⚠️ Da un `datetime` si prende il giorno IN ORA LOCALE: le 23:30 UTC del 14
+#    sono gia' il 15 a Roma, e la data di un export deve essere quella che
+#    l'operatore ha visto a video.
 def format_date(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, datetime):
         # datetime e' anche date in Python: prendi solo la parte data.
-        return value.strftime(DATE_FORMAT)
+        return in_ora_locale(value).strftime(DATE_FORMAT)
     if isinstance(value, date):
         return value.strftime(DATE_FORMAT)
     if isinstance(value, str):
         # Best-effort: parse ISO e riformatta. Se fallisce, ritorna
         # la stringa originale per non perdere informazione.
         try:
-            return datetime.fromisoformat(value).strftime(DATE_FORMAT)
+            return in_ora_locale(datetime.fromisoformat(value)).strftime(DATE_FORMAT)
         except (ValueError, TypeError):
             return value
     return str(value)
 
 
-# Scopo: Formatta una `datetime` Python in DD-MM-YYYY HH:MM.
+# Scopo: Formatta una `datetime` Python in DD-MM-YYYY HH:MM, in ORA LOCALE.
 #        `with_seconds=True` per casi che richiedono precisione (audit,
 #        logs). Accetta anche stringhe ISO con timezone.
 def format_datetime(value: Any, *, with_seconds: bool = False) -> str:
@@ -104,10 +132,10 @@ def format_datetime(value: Any, *, with_seconds: bool = False) -> str:
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return value.strftime(fmt)
+        return in_ora_locale(value).strftime(fmt)
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value).strftime(fmt)
+            return in_ora_locale(datetime.fromisoformat(value)).strftime(fmt)
         except (ValueError, TypeError):
             return value
     return str(value)

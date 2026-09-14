@@ -25,6 +25,34 @@ def iso_or_none(value: Any) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+# Scopo: L'ULTIMA CORSA CONCLUSA di un job come UN oggetto — data ed esito
+#        insieme, dalla stessa riga — o `None` se il job non ne ha mai conclusa
+#        una. E' la forma comune delle tre sedi che riassumono le corse
+#        (`MaintenanceRepository.job_liveness` / `.list_job_summary` sul
+#        giornale dei run, `CodaLavoriRepository.summary_per_job_type` sulla
+#        coda lavori), e sta qui perche' il pannello degli esiti le FONDE in una
+#        lista sola: una forma diversa per sorgente e' esattamente cio' che il
+#        template non puo' vedere.
+# ⛔ Nasce il 2026-09-14 al posto di un `last_ok` accanto a un `last_run_at`:
+#    due campi da due corse diverse (l'ultima avviata e l'ultima conclusa) che
+#    a video si leggevano come una — «<adesso> (ok)» con l'ok della corsa
+#    precedente. Un esito senza la sua data e' il campo che invita a ricucire.
+# ⚠️ `ok` passa cosi' com'e' (`bool | None`): `job_run_log.ok` e' nullable e
+#    nessun CHECK lo lega a `ended_at`, quindi una corsa chiusa senza esito
+#    scritto e' un caso che il modello ammette — chi rende lo dice, non lo
+#    trasforma in un fallimento.
+def corsa_conclusa(
+    started_at: Any, ended_at: Any, ok: bool | None,
+) -> dict[str, Any] | None:
+    if started_at is None:
+        return None
+    return {
+        "started_at": iso_or_none(started_at),
+        "ended_at": iso_or_none(ended_at),
+        "ok": ok,
+    }
+
+
 def row_to_dict(cursor) -> dict[str, Any] | None:
     """Converte la riga corrente (fetchone) in dict {colonna: valore}.
 

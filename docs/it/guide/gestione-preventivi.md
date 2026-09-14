@@ -1,12 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultima revisione**: 22 agosto 2026 — nota in §2.1: il **termine di pagamento
-> determina quante fatture nascono** (raggruppamento a valle). Revisione
-> precedente (12 giugno): modello revisione attiva derivata
-> (`is_attiva` su `vw_preventivi` + copia componenti BoM in
-> `fn_crea_revisione_preventivo`); **split per natura** all'accettazione (merce →
-> ordine via smistamento riga-per-riga, servizio una tantum → commessa), **stato
-> terminale EVASO** con gate bi-ramo, **annullamento manuale solo da DRAFT**.
+> **Ultimo aggiornamento**: 14 settembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -21,6 +15,7 @@
 > **Vedi anche** — funzioni DB:
 >
 > * [vendite.fn_crea_revisione_preventivo](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo) — crea nuova revisione da EMESSO
+> * [vendite.fn_push_preventivo_a_ordine](/dbzero/vendite/manual/fn_push_preventivo_a_ordine) — smistamento delle righe merce verso un ordine; porta avanti la data di consegna richiesta
 > * [vendite.fn_preventivo_riga_componenti_init](/dbzero/vendite/funzioni/fn_preventivo_riga_componenti_init) — popola componenti BoM su riga padre composito
 > * [vendite.fn_preventivo_riga_componenti_preview](/dbzero/vendite/funzioni/fn_preventivo_riga_componenti_preview) — read-only, suggerimento prezzi pre-save
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) — resolver pricing bundle-aware
@@ -86,12 +81,12 @@ Contiene il contesto commerciale del preventivo:
 > `emittente_fiscale_id`, se assente, è valorizzato di default dal trigger DB
 > sull'utente corrente.
 >
-> ⚠️ **Il `termine_pagamento_id` decide anche quante fatture nascono.** Dal
-> luglio 2026 le condizioni di pagamento entrano nei criteri con cui il lavoro si
-> raggruppa a valle: un preventivo con un termine diverso **apre una commessa
-> propria** e produce una **fattura separata** da quelle degli altri documenti
-> dello stesso cliente. È l'unico esito corretto — una fattura sola non potrebbe
-> portare due scadenzari — ma è un cambio di conseguenze rispetto a prima:
+> ⚠️ **Il `termine_pagamento_id` decide anche quante fatture nascono.** Le
+> condizioni di pagamento entrano nei criteri con cui il lavoro si raggruppa a
+> valle: un preventivo con un termine diverso **apre una commessa propria** e
+> produce una **fattura separata** da quelle degli altri documenti dello stesso
+> cliente. È l'unico esito corretto — una fattura sola non potrebbe portare due
+> scadenzari — ma va saputo quando ci si aspetta un documento solo:
 > [Termini di pagamento §4](/guide/termini-di-pagamento).
 >
 > **`fatturazione_immediata` e `competenza_mese` non sono campi della bozza** ma
@@ -110,6 +105,8 @@ Ogni riga rappresenta una voce dell'offerta:
 - articolo + UoM operativa + quantità
 - prezzo unitario, sconto percentuale, IVA
 - ordine di presentazione
+- **data di consegna richiesta dal cliente** (`data_consegna_richiesta_cliente`),
+  facoltativa — vedi sotto
 
 #### La quantità e l'unità di misura operativa
 
@@ -136,6 +133,22 @@ controlli L1/L2/L3 di autorizzazione che vedremo in §6.
 
 Per gli articoli **compositi** (kit, bundle) la riga è solo la "testata" del
 gruppo: i prezzi reali stanno nei componenti BoM (§5).
+
+#### La data di consegna richiesta
+
+Sulla riga di preventivo c'è **solo la richiesta** del cliente
+(`data_consegna_richiesta_cliente`), non una data confermata: su un preventivo
+non c'è ancora niente da confermare. È facoltativa, si scrive con la riga (un
+selettore di data nel form) e compare nella tabella delle righe.
+
+⭐ **Viaggia con la riga verso l'ordine**: quando la riga merce viene smistata
+(§8), `fn_push_preventivo_a_ordine` la copia sulla riga d'ordine come richiesta
+del cliente, e lì la promessa (`data_consegna_confermata`) nasce vuota. Vedi
+[Gestione Ordini §3.5](/guide/gestione-ordini).
+
+⚠️ **Non viene copiata da `fn_crea_revisione_preventivo`**: una nuova revisione
+nasce con le righe senza data richiesta (§4.2). Sul preventivo la data sta sulla
+riga e la riga è **per documento**, quindi in una revisione va reinserita.
 
 #### Quali articoli possono stare su un preventivo
 
@@ -227,8 +240,8 @@ EMESSO     → RIFIUTATO  (rifiuta)
 ```
 
 > **L'annullamento manuale è ammesso solo da DRAFT** (le transizioni
-> `EMESSO → ANNULLATO` e `ACCETTATO → ANNULLATO` sono state disattivate il
-> 22 maggio 2026). Un preventivo EMESSO si **rifiuta** (è il "no" del cliente) o
+> `EMESSO → ANNULLATO` e `ACCETTATO → ANNULLATO` esistono in matrice ma sono
+> disattivate). Un preventivo EMESSO si **rifiuta** (è il "no" del cliente) o
 > **scade**; uno ACCETTATO ha già avviato il downstream.
 
 `EMESSO → SCADUTO` è automatica (job notturno quando supera `validita_al`).
@@ -291,6 +304,8 @@ copia in transazione atomica:
 
 Non viene copiato lo stato (la nuova rev è sempre DRAFT) né il numero documento
 generato per la rev precedente (il nuovo rev mantiene lo stesso `numero`).
+⚠️ Non viene copiata nemmeno la **data di consegna richiesta** delle righe
+(§2.2): nella nuova revisione va reinserita.
 
 ### 4.3 Predicato `is_attiva` derivato
 
@@ -300,7 +315,7 @@ ZeroERP non mantiene un flag persistito "questa è la rev attiva": il predicato
 > "è la rev viva del numero" = "il suo stato **non è abortito** **e** non esiste
 > una rev superiore non-abortita per lo stesso numero"
 
-Il termine sul proprio stato (aggiunto 2026-07-08) garantisce che una revisione
+Il termine sul proprio stato garantisce che una revisione
 **annullata in cima** alla catena non si dichiari attiva "guardando solo verso
 l'alto": senza di esso `is_attiva` non sarebbe univoco (due rev attive per lo
 stesso numero) nel caso "rev0 EMESSO + rev1 ANNULLATO".
@@ -376,7 +391,7 @@ configurazione del catalogo è incoerente per la data scelta).
 
 ### 5.2 Cosa può modificare l'operatore
 
-Per BoM contratto immutabile (decisione 2026-05-13):
+Per BoM contratto immutabile:
 
 - ✅ **prezzi unitari** dei componenti, con controlli di autorizzazione
 - ✅ **IVA** del componente (deve restare coerente col padre)
@@ -530,6 +545,8 @@ Smistamento* e governate dalle capability sullo stato e sul residuo righe:
   `fn_push_preventivo_a_ordine`. Lo smistamento è **selettivo** (si scelgono le
   righe) e **idempotente a livello di riga**: ogni riga merce è smistabile una sola
   volta. Dallo stesso preventivo possono nascere più ordini (consegne parziali).
+  La riga d'ordine nasce con la **data di consegna richiesta** della riga di
+  preventivo (§2.2) e senza data confermata.
 - **Push commessa** (`can_push_commessa`): smista **solo** le righe **servizio una
   tantum** (destinazione `COMMESSA`) verso una commessa, applicando la politica di
   fatturazione (immediata/differita). Anche questo smistamento può essere selettivo.

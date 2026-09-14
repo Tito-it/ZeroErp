@@ -26,7 +26,7 @@ Senza database:
 
 Su DB provvisto (`ZEROERP_TEST_DB_E2E=1`):
   5. test_la_liveness_per_processo_gira_sul_database_vero
-  6. test_una_corsa_aperta_non_e_un_esito   ⭐ 14-09, le tre facce di `ok`
+  6. test_una_corsa_aperta_non_e_un_esito_e_la_conclusa_porta_la_sua_data   ⭐ 14-09
 """
 
 from __future__ import annotations
@@ -85,7 +85,10 @@ class JobLivenessGuardTests(SimpleTestCase):
         sql, params = cursore.execute.call_args[0]
         self.assertIn("processo_codice = %s", sql)
         self.assertNotIn("jobname = ANY", sql)
-        self.assertEqual(params, [90, "un_processo"])
+        # ⚠️ Il valore del filtro va una volta per CTE (`recente`, `conclusa`),
+        #    poi la soglia: e' l'ordine dei `%s` nel testo, e un parametro
+        #    fuori posto qui non fallisce — filtra sulla cosa sbagliata.
+        self.assertEqual(params, ["un_processo", "un_processo", 90])
 
     # 4. Una lista vuota non e' «nessun filtro»: e' «nessun job», e la risposta
     #    e' vuota senza interrogare niente.
@@ -117,22 +120,27 @@ class JobLivenessSulDatabaseTests(TestCase):
             with self.subTest(jobname=jobname):
                 self.assertIn("last_run_at", corsa)
                 self.assertIn("attivo", corsa)
-                self.assertIn("last_ok", corsa)
+                self.assertIn("in_corso", corsa)
+                self.assertIn("ultima_conclusa", corsa)
                 # ⭐ Il jobname porta la corsia: e' la forma che il battito
                 #    ritrova, ed e' il motivo per cui la chiave e' il processo.
                 self.assertTrue(jobname.startswith(PROCESSO_DIGEST_PRESIDI))
 
     # 6. ⛔ `ok` ha TRE facce — true, false, NULL = corsa ancora aperta — e
-    #    `last_ok` deve rispondere per l'ultima corsa CONCLUSA. Fino al
-    #    2026-09-14 prendeva la riga piu' recente: il digest, componendo la mail
-    #    dentro la propria corsa, leggeva la propria riga aperta e si chiamava
-    #    «FALLITA». Qui il caso si COSTRUISCE, con le stesse funzioni con cui
-    #    il giornale si scrive davvero (`script.fn_job_run_start/_end`,
-    #    SECURITY DEFINER), e si ritira: una corsa chiusa ok = true, poi una
-    #    corsa APERTA sullo stesso jobname. Entrambe le sedi — `job_liveness`
-    #    e `list_job_summary` — devono dire `last_ok = True`, e la liveness
-    #    deve vedere la corsa aperta come segno di vita.
-    def test_una_corsa_aperta_non_e_un_esito(self) -> None:
+    #    una corsa aperta NON e' un esito. Fino al 2026-09-14 (mattina) la riga
+    #    piu' recente dava l'esito: il digest, componendo la mail dentro la
+    #    propria corsa, si chiamava «FALLITA». La correzione della mattina
+    #    prese l'esito dall'ultima CONCLUSA — ma lascio' la DATA sulla riga piu'
+    #    recente: «09:47:32 (ok)», l'ora della corsa in esecuzione con l'ok di
+    #    quella delle 07:30 (nota del team DB, sera). Qui il caso si
+    #    COSTRUISCE, con le stesse funzioni con cui il giornale si scrive
+    #    davvero (`script.fn_job_run_start/_end`, SECURITY DEFINER), e si
+    #    ritira: una corsa chiusa ok = true, poi una corsa APERTA sullo stesso
+    #    jobname. Entrambe le sedi — `job_liveness` e `list_job_summary` —
+    #    devono dire `in_corso`, la liveness deve vedere la corsa aperta come
+    #    segno di vita, e `ultima_conclusa` deve portare l'esito CON LA DATA
+    #    DELLA PRIMA corsa — non quella dell'aperta.
+    def test_una_corsa_aperta_non_e_un_esito_e_la_conclusa_porta_la_sua_data(self) -> None:
         jobname = "test-liveness-corsa-aperta:" + uuid.uuid4().hex[:8]
 
         def apri(cur) -> int:
@@ -151,7 +159,7 @@ class JobLivenessSulDatabaseTests(TestCase):
                     "SELECT script.fn_job_run_end(%s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
                     [prima, True, "conclusa", 0, None, None, None, None],
                 )
-                apri(cur)  # la seconda resta APERTA: ok NULL, ended_at NULL
+                seconda = apri(cur)  # resta APERTA: ok NULL, ended_at NULL
                 # ⚠️ La premessa si ASSERISCE, non si presume: due righe, una
                 #    aperta, e l'aperta e' la PIU' RECENTE (`started_at` e'
                 #    `clock_timestamp()`, quindi cresce anche dentro una
@@ -163,19 +171,44 @@ class JobLivenessSulDatabaseTests(TestCase):
                     [jobname],
                 )
                 totale, aperte, recente_aperta = cur.fetchone()
+                # Le due date, per confrontarle con cio' che le sedi rispondono.
+                cur.execute(
+                    "SELECT started_at FROM maintenance.job_run_log WHERE id = %s", [prima],
+                )
+                avvio_prima = cur.fetchone()[0].isoformat()
+                cur.execute(
+                    "SELECT started_at FROM maintenance.job_run_log WHERE id = %s", [seconda],
+                )
+                avvio_seconda = cur.fetchone()[0].isoformat()
             self.assertEqual((totale, aperte), (2, 1), "il caso non e' stato costruito")
             self.assertTrue(recente_aperta, "la riga piu' recente doveva essere quella aperta")
+            self.assertNotEqual(avvio_prima, avvio_seconda)
 
             liveness = MaintenanceRepository().job_liveness(
                 jobnames=[jobname], soglia_minuti=60,
             )
             corsa = liveness[jobname]
-            self.assertIs(corsa["last_ok"], True, "la corsa aperta e' stata letta come esito")
             self.assertTrue(corsa["attivo"], "una corsa aperta e' un segno di vita")
+            self.assertTrue(corsa["in_corso"], "la riga piu' recente e' aperta, e va detto")
+            self.assertEqual(corsa["last_run_at"], avvio_seconda)
+            conclusa = corsa["ultima_conclusa"]
+            self.assertIsNotNone(conclusa)
+            self.assertIs(conclusa["ok"], True, "la corsa aperta e' stata letta come esito")
+            # ⛔ La cucitura: l'esito della prima con la data della seconda.
+            self.assertEqual(
+                conclusa["started_at"], avvio_prima,
+                "l'esito viaggia con la data di un'altra corsa",
+            )
+            self.assertIsNotNone(conclusa["ended_at"])
 
             righe, _totale = MaintenanceRepository().list_job_summary(
                 jobname_prefix=jobname, limit=10, offset=0,
             )
             self.assertEqual(len(righe), 1)
-            self.assertIs(righe[0]["last_ok"], True, "la seconda sede ha ancora il difetto")
+            self.assertTrue(righe[0]["in_corso"], "la seconda sede non vede la corsa aperta")
+            self.assertIs(righe[0]["ultima_conclusa"]["ok"], True)
+            self.assertEqual(
+                righe[0]["ultima_conclusa"]["started_at"], avvio_prima,
+                "la seconda sede ha ancora la cucitura",
+            )
             transaction.set_rollback(True)

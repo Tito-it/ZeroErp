@@ -2464,6 +2464,9 @@
       "coda_vuota_mese": "no prints for the selected month",
       "giro_ok": "OK",
       "giro_ko": "Failed",
+      "giro_in_corso": "Running",
+      "giro_mai_concluso": "Never completed",
+      "giro_esito_non_scritto": "Outcome not recorded",
       "giro_esecuzioni": "{ok}/{tot} successful runs",
       "giro_app": "Invoicing run",
       "numera_app": "Numbering (make final)",
@@ -3999,7 +4002,12 @@
       "stato_cambiato": "Line status updated.",
       "gia_registrata": "The line is already posted: it cannot be changed.",
       "porta_a": "Move to {stato}",
-      "conferma_stato_a": "Move the line to «{stato}»?"
+      "conferma_stato_a": "Move the line to «{stato}»?",
+      "elimina_reason": {
+        "distinta_finale": "The batch is closed or cancelled: its lines can no longer be worked.",
+        "distinta_non_manuale": "The batch was not entered by hand: its lines cannot be deleted from here. For one produced by the system act on what generated it (invoice fund or adjustment); for one loaded from a file cancel it and import it again.",
+        "distinta_validata": "The batch is validated: reopen it to draft with «Reopen», delete the line, then validate it again."
+      }
     },
     "rate_fuori_capienza": {
       "col_motivo": "Reason",

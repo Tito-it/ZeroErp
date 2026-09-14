@@ -2464,6 +2464,9 @@
       "coda_vuota_mese": "nessuna stampa per il mese selezionato",
       "giro_ok": "OK",
       "giro_ko": "Errore",
+      "giro_in_corso": "In corso",
+      "giro_mai_concluso": "Mai concluso",
+      "giro_esito_non_scritto": "Esito non scritto",
       "giro_esecuzioni": "{ok}/{tot} esecuzioni riuscite",
       "giro_app": "Giro di fatturazione",
       "numera_app": "Numerazione (rendi definitive)",
@@ -3999,7 +4002,12 @@
       "stato_cambiato": "Stato della riga aggiornato.",
       "gia_registrata": "La riga e' gia' registrata: non si tocca piu'.",
       "porta_a": "Porta a {stato}",
-      "conferma_stato_a": "Vuoi portare la riga a «{stato}»?"
+      "conferma_stato_a": "Vuoi portare la riga a «{stato}»?",
+      "elimina_reason": {
+        "distinta_finale": "La distinta è chiusa o annullata: le sue righe non si lavorano più.",
+        "distinta_non_manuale": "La distinta non è compilata a mano: le sue righe non si eliminano da qui. Per una prodotta dal sistema si agisce sull'atto che l'ha generata (fondo fattura o sistemazione); per una arrivata da un file si annulla e si reimporta.",
+        "distinta_validata": "La distinta è validata: riportala in bozza con «Riapri», elimina la riga, poi validala di nuovo."
+      }
     },
     "rate_fuori_capienza": {
       "col_motivo": "Motivo",

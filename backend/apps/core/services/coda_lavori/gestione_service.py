@@ -206,7 +206,13 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
     liveness = _liveness_worker(
         [JOBNAME_WORKER_CODA_LAVORI, JOBNAME_WORKER_CODA_STAMPA],
     )
-    worker_giu = {"last_run_at": None, "attivo": False, "last_ok": None}
+    # ⚠️ Stessa forma di `job_liveness` (2026-09-14): la riga piu' recente come
+    #    segno di vita e l'ultima conclusa a parte, con la sua data — un worker
+    #    mai girato non ha ne' l'una ne' l'altra.
+    worker_giu = {
+        "last_run_at": None, "attivo": False, "in_corso": False,
+        "ultima_conclusa": None,
+    }
 
     return {
         "coda_lavori": {

@@ -58,6 +58,7 @@ from apps.core.db.presidi_repository import (
 )
 from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.email_constants import AMBITO_SISTEMA
+from apps.core.services.locale_formatters import format_datetime
 from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI
 
 logger = logging.getLogger(__name__)
@@ -220,12 +221,24 @@ class PresidioNonLetto:
 # Scopo: il battito — le ultime corse del digest stesso, corsia per corsia, e se
 #        valgono ancora come segno di vita.
 #
-# ⭐ `corse` e' un dict `jobname -> {last_run_at, attivo, last_ok}`, cioe' cio'
-#    che `MaintenanceRepository.job_liveness` risponde: `attivo` e' il confronto
-#    con la tolleranza del contratto a catalogo, fatto in SQL col clock del
-#    DATABASE. ⛔ Non si confrontano timestamp in Python: sarebbero due orologi,
-#    e su una macchina con l'ora storta il battito direbbe «morto» su un digest
-#    vivo — il falso allarme che fa smettere di guardare un presidio.
+# ⭐ `corse` e' un dict `jobname -> {last_run_at, attivo, in_corso,
+#    ultima_conclusa}`, cioe' cio' che `MaintenanceRepository.job_liveness`
+#    risponde: la riga PIU' RECENTE come segno di vita (`last_run_at`, `attivo`,
+#    e `in_corso` se e' ancora aperta) e l'ultima corsa CONCLUSA a parte, con la
+#    sua data e il suo esito insieme (`{started_at, ended_at, ok}`, `None` se
+#    non ne esiste una). `attivo` e' il confronto con la tolleranza del
+#    contratto a catalogo, fatto in SQL col clock del DATABASE. ⛔ Non si
+#    confrontano timestamp in Python: sarebbero due orologi, e su una macchina
+#    con l'ora storta il battito direbbe «morto» su un digest vivo — il falso
+#    allarme che fa smettere di guardare un presidio.
+# ⛔ Per la corsia che sta componendo la mail la riga piu' recente e' SEMPRE
+#    aperta, e l'esito e' sempre quello di un'altra corsa. Fino al 2026-09-14 i
+#    due arrivavano in due campi piatti (`last_run_at`, `last_ok`) e la mail li
+#    scriveva come uno: «09:47:32 (ok)», dove l'ora era della corsa in
+#    esecuzione e l'ok di quella delle 07:30 (nota del team DB). Sul modello,
+#    con la precedente fallita, lunedi' si sarebbe letto «<adesso> (FALLITA)»
+#    con la mail in mano. Ora la riga dice «in corso» e la precedente sta a
+#    parte, con la sua data.
 # ⚠️ `corse` VUOTO non e' «vecchio», e' PEGGIO: nessuna corsa registrata, cioe'
 #    il digest non ha mai girato oppure non si registra.
 @dataclass(frozen=True)
@@ -517,7 +530,7 @@ def _leggi_battito(
 #    il NUMERO e non le righe, e in un messaggio di posta non finisce niente
 #    fuori perimetro.
 def componi_messaggio(digest: Digest) -> tuple[str, str, str]:
-    quando = digest.quando.astimezone().strftime("%d/%m/%Y %H:%M")
+    quando = _ora_locale(digest.quando, secondi=False)
     cadenza = digest.cadenza.lower()
     if digest.non_letti:
         oggetto = (
@@ -628,25 +641,86 @@ def _riga_compatta(riga: dict[str, Any]) -> str:
     )
 
 
-# Scopo: il battito in testo: quando ho girato, corsia per corsia.
-# Scopo: la parola per l'esito dell'ultima corsa conclusa di una corsia. TRE
-#        facce, non due: `True` ok, `False` FALLITA, `None` = nessuna corsa
-#        conclusa (la corsia sta girando adesso, o non ha mai finito un giro).
-# ⛔ Fino al 2026-09-14 `None` cadeva su «FALLITA», e il digest chiamava cosi'
-#    la PROPRIA corsa in corso — quella che stava componendo la mail. La
-#    giornaliera usciva «ok» solo perche' era finita da mezz'ora.
-# ⚠️ Le tre parole sono costanti perche' la resa HTML ne riconosce una per
+# Scopo: un istante del messaggio, nel formato e nel fuso del BB
+#        `locale_formatters` (ora locale di `TIME_ZONE`, non quella dell'host:
+#        su un'unit systemd `TZ` puo' non esserci) — con i secondi per le
+#        corse, dove due corse dello stesso minuto vanno distinte, senza per la
+#        testata. `None` si scrive «—», non stringa vuota: in una riga di
+#        elenco il vuoto si legge come un difetto di resa.
+# ⛔ Fino al 2026-09-14 la testata era in ora locale e le corse in UTC: il
+#    giornale risponde nel fuso della connessione (`USE_TZ`, cioe' UTC) e
+#    `isoformat()` lo consegna con `+00:00`, che a video si legge come un'ora
+#    sbagliata di uno o due — «cosmesi» nella nota del team DB, ma della stessa
+#    famiglia: una data senza il suo contesto. La conversione ora sta nel BB,
+#    per decisione di Tid dello stesso giorno: vale per gli export e per i
+#    documenti, non solo per questa mail.
+def _ora_locale(quando: datetime | str | None, *, secondi: bool) -> str:
+    if quando is None:
+        return "—"
+    return format_datetime(quando, with_seconds=secondi)
+
+
+# Scopo: la parola per l'esito di una corsa CONCLUSA. Tre facce anche qui:
+#        `True` ok, `False` FALLITA, `None` = la corsa e' chiusa ma nessuno ha
+#        scritto l'esito (`job_run_log.ok` e' nullable e nessun CHECK lo lega a
+#        `ended_at`: e' un caso che il modello ammette, e si dice).
+# ⚠️ Le parole sono costanti perche' la resa HTML ne riconosce una per
 #    marcarla: un confronto con un letterale ricopiato sarebbe la seconda sede.
 ESITO_OK = "ok"
 ESITO_FALLITA = "FALLITA"
-ESITO_IN_CORSO = "in corso"
+ESITO_NON_SCRITTO = "esito non scritto"
+# ⭐ E la corsa APERTA non ha un esito: ha una parola sua, che dice cosa sta
+#    succedendo invece di prendere in prestito l'esito di un'altra corsa.
+IN_CORSO = "in corso"
 
 
-def _esito_corsa(corsa: dict[str, Any]) -> str:
-    last_ok = corsa.get("last_ok")
-    if last_ok is None:
-        return ESITO_IN_CORSO
-    return ESITO_OK if last_ok else ESITO_FALLITA
+def _esito_conclusa(conclusa: dict[str, Any]) -> str:
+    ok = conclusa.get("ok")
+    if ok is None:
+        return ESITO_NON_SCRITTO
+    return ESITO_OK if ok else ESITO_FALLITA
+
+
+# Scopo: la riga di una corsia, come SEQUENZA di pezzi (parola, marcata?): il
+#        testo li concatena, l'HTML li escapa e mette in grassetto quelli
+#        marcati. Una sola composizione per le due rese, cosi' non possono
+#        raccontare la stessa corsia in due modi.
+#
+# ⭐ Due forme, e la differenza e' il punto:
+#    - riga piu' recente APERTA → «in corso (avviata 14-09-2026 09:47:32) —
+#      ultima conclusa 14-09-2026 07:30:49 (ok)», o «— nessuna corsa conclusa»;
+#    - riga piu' recente CHIUSA → «14-09-2026 07:00:12 (ok)»: qui la riga piu'
+#      recente E' l'ultima conclusa, e una data basta.
+def _pezzi_corsa(corsa: dict[str, Any]) -> list[tuple[str, bool]]:
+    conclusa = corsa.get("ultima_conclusa")
+    if corsa.get("in_corso"):
+        pezzi = [
+            (f"{IN_CORSO} (avviata {_ora_locale(corsa.get('last_run_at'), secondi=True)})", False),
+        ]
+        if conclusa:
+            esito = _esito_conclusa(conclusa)
+            pezzi.append((
+                f" — ultima conclusa {_ora_locale(conclusa.get('started_at'), secondi=True)} (",
+                False,
+            ))
+            pezzi.append((esito, esito == ESITO_FALLITA))
+            pezzi.append((")", False))
+        else:
+            pezzi.append((" — nessuna corsa conclusa", False))
+        return pezzi
+    if conclusa:
+        esito = _esito_conclusa(conclusa)
+        return [
+            (f"{_ora_locale(conclusa.get('started_at'), secondi=True)} (", False),
+            (esito, esito == ESITO_FALLITA),
+            (")", False),
+        ]
+    # ⚠️ Riga piu' recente chiusa e nessuna conclusa non puo' succedere dal
+    #    repository (una riga chiusa E' una conclusa); da un dict costruito
+    #    altrove si', e si dice invece di sollevare dentro il messaggio.
+    return [
+        (f"{_ora_locale(corsa.get('last_run_at'), secondi=True)} (nessuna corsa conclusa)", False),
+    ]
 
 
 def _battito_testo(b: Battito) -> list[str]:
@@ -659,13 +733,11 @@ def _battito_testo(b: Battito) -> list[str]:
     r = ["ULTIME CORSE DEL DIGEST:"]
     ferme = set(b.corsie_ferme)
     for jobname, corsa in sorted(b.corse.items()):
-        esito = _esito_corsa(corsa)
+        descrizione = "".join(parola for parola, _marcata in _pezzi_corsa(corsa))
         # ⭐ Il giudizio sta accanto alla data, non in fondo: chi legge un elenco
         #    di date non sa da solo quale sia «troppo vecchia».
         ferma = "  ⛔ FERMA da piu' della tolleranza" if jobname in ferme else ""
-        r.append(
-            f"  · {jobname}: {corsa.get('last_run_at') or '—'} ({esito}){ferma}"
-        )
+        r.append(f"  · {jobname}: {descrizione}{ferma}")
     for jobname in b.corsie_mai_girate:
         r.append(f"  · {jobname}: ⛔ MAI GIRATA — nessuna corsa sul giornale")
     if b.tolleranza_minuti is None:
@@ -705,17 +777,15 @@ def _corpo_html(digest: Digest, quando: str) -> str:
             ferme = set(digest.battito.corsie_ferme)
             p.append("<ul>")
             for jobname, corsa in sorted(digest.battito.corse.items()):
-                esito = _esito_corsa(corsa)
-                if esito == ESITO_FALLITA:
-                    esito = f"<strong>{esito}</strong>"
+                descrizione = "".join(
+                    f"<strong>{e(parola)}</strong>" if marcata else e(parola)
+                    for parola, marcata in _pezzi_corsa(corsa)
+                )
                 ferma = (
                     " — <strong>⛔ FERMA da più della tolleranza</strong>"
                     if jobname in ferme else ""
                 )
-                p.append(
-                    f"<li><code>{e(jobname)}</code>: "
-                    f"{e(corsa.get('last_run_at'))} ({esito}){ferma}</li>"
-                )
+                p.append(f"<li><code>{e(jobname)}</code>: {descrizione}{ferma}</li>")
             for jobname in digest.battito.corsie_mai_girate:
                 p.append(
                     f"<li><code>{e(jobname)}</code>: <strong>⛔ MAI GIRATA</strong> "

@@ -161,7 +161,17 @@ Include tutte le tabelle con struttura `id / codice / descrizione` distribuite s
 La funzione DB `fn_get_lookup_codici` valida ulteriormente la struttura reale delle colonne
 e solleva errore se mancante.
 
-Totale: **83 tabelle** (elenco generato dal codice, 2026-07-02).
+Totale: **89 tabelle** (elenco generato dal codice, 2026-09-14).
+
+⭐ L'ultima entrata è `config.modi_approvvigionamento` (Blocco B di
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`): il modo di approvvigionamento
+dell'articolo è **una riga qui e non un endpoint** — è un vocabolario
+codice/descrizione come `config.nature_vendita`, il suo modello dichiarato, e il
+drawer articolo lo monta con `<LookupSelect rel="config.modi_approvvigionamento">`.
+⚠️ L'ordine è quello del contratto generico (`order_col` = `codice` | `descrizione`),
+**non** la colonna `ordine` del vocabolario: vale per tutte le decodifiche, e se un
+giorno l'ordine di presentazione conterà è un'estensione di questo lookup, non un
+endpoint dedicato.
 
 ### anagrafiche (1)
 
@@ -175,7 +185,7 @@ anagrafiche.categorie_clienti
 catalogo.unita_misura  catalogo.uom_tipi
 ```
 
-### config (57)
+### config (62)
 
 ```text
 config.ambiti                       config.stati_doc_contratti
@@ -184,29 +194,31 @@ config.aspetti_beni                 config.stati_doc_fiscale
 config.assets_ownership             config.stati_doc_offerte
 config.canali_pratiche              config.stati_doc_ordini
 config.categoria_accisa             config.stati_doc_preventivi
-config.causali_trasporto            config.stati_flussi_pratiche
-config.classi_utenze                config.stati_fornitore
-config.conti_contabili              config.stati_pdp
-config.email_account                config.stati_pratiche
-config.esiti_flussi_pratiche        config.stati_sdi
-config.forme_giuridiche             config.termini_pagamento
-config.iva                          config.tipi_allegato
-config.iva_assoggettamenti          config.tipi_attivita
-config.iva_natura                   config.tipi_contatti
-config.lingue                       config.tipi_doc_fiscale
-config.listini_tipologie            config.tipi_documenti
-config.modalita_addebito_trasporto  config.tipi_evento_assets
-config.modalita_pagamento           config.tipi_indirizzi
-config.nature_vendita               config.tipi_nota
+config.causali_trasporto            config.stati_doc_reso
+config.classi_utenze                config.stati_flussi_pratiche
+config.conti_contabili              config.stati_fornitore
+config.email_account                config.stati_pdp
+config.esiti_flussi_pratiche        config.stati_pratiche
+config.forme_giuridiche             config.stati_sdi
+config.iva                          config.termini_pagamento
+config.iva_assoggettamenti          config.tipi_allegato
+config.iva_natura                   config.tipi_attivita
+config.lingue                       config.tipi_contatti
+config.listini_tipologie            config.tipi_doc_fiscale
+config.modalita_addebito_trasporto  config.tipi_documenti
+config.modalita_pagamento           config.tipi_evento_assets
+config.modi_approvvigionamento      config.tipi_indirizzi
+config.nature_doc_fiscale           config.tipi_nota
+config.nature_vendita               config.tipi_reso
 config.note_stili                   config.tipi_ruoli
 config.priorita_pratiche            config.tipi_soggetto_dettaglio
-config.profili_accesso              config.tipi_ubicazione
-config.qualifiche                   config.tipi_utenze
-config.sistema_codici               config.titoli_cortesia
-config.sorgenti                     config.unita_organizzative
-config.stati                        config.utilities
-config.stati_assets                 config.valute
-config.stati_cliente
+config.profili_accesso              config.tipi_titolo_iva
+config.qualifiche                   config.tipi_ubicazione
+config.sistema_codici               config.tipi_utenze
+config.sorgenti                     config.titoli_cortesia
+config.stati                        config.unita_organizzative
+config.stati_assets                 config.utilities
+config.stati_cliente                config.valute
 ```
 
 ### documenti (4)
@@ -243,13 +255,13 @@ pratiche.template_flussi
 ui.lista_definizione
 ```
 
-### vendite (7)
+### vendite (8)
 
 ```text
-vendite.area_geografica_fatturazione  vendite.listini
-vendite.articoli_gruppi               vendite.stati_commessa
-vendite.articoli_spesa                vendite.tipi_fondi_fattura
-vendite.articoli_tipologie
+vendite.area_geografica_fatturazione  vendite.famiglie_documento
+vendite.articoli_gruppi               vendite.listini
+vendite.articoli_spesa                vendite.stati_commessa
+vendite.articoli_tipologie            vendite.tipi_fondi_fattura
 ```
 
 Per aggiungere una nuova relazione: inserire la stringa `schema.tabella` in `_REL_CONSENTITE`

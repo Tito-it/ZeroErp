@@ -102,7 +102,7 @@ ZeroErp/
 | `dbops` | Strumenti DBA, registry task, FK policy |
 | `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
-| `public` | Oggetti pubblici. ⚠️ `version_info` **esiste** (verificato 2026-09-12): una riga, **zero lettori** in BE/FE/pgTAP — la nomina solo il resync delle sequence per escluderla. Per la versione applicata usare `DATABASECHANGELOG`. La decisione se ha un mestiere (allora un lettore e un manuale) o no (allora `DROP`) è di Tid: analisi-software-per-dati-morti §2.6 |
+| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`), **nessuna tabella**. ⛔ `version_info` — una riga, zero lettori — è stata **droppata il 2026-09-12** (decisione Tid, `90_end/20260912-29`, nel provisioning perché lì era nata). Per la versione applicata usare `DATABASECHANGELOG`. Fino a quel giorno questa riga la dava «esiste, decisione aperta»: analisi-software-per-dati-morti §2.6 |
 
 ## Struttura App Django (pattern per ogni dominio)
 

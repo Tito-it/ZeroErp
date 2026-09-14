@@ -1,11 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultima revisione**: 3 giugno 2026 — aggiunta la **responsività** (§7): le
-> liste configurabili si adattano da sole allo spazio disponibile (ritiro
-> dinamico delle colonne). Migrazione della lista contratti + estrazione dei
-> building block frontend riusabili.
-> Revisione precedente: 10 maggio 2026 — Blocco F Fase 2 (DEF-5b): CRUD
-> `lista_definizione` + `lista_colonna` via UI per SUPER_ADMIN.
+> **Ultimo aggiornamento**: 14 settembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -266,7 +261,7 @@ colonne registrate per quella lista, attive e disattivate.
 * **Nuova colonna**: drawer con 3 sotto-tab:
   * **Generale**: codice, etichetta visibile, etichetta estesa (tooltip), chiave i18n (per traduzioni), tipo colonna, tipo dato, campo sorgente
   * **Comportamento**: filtrabile, ordinabile, esportabile, ricercabile full-text, sensibile, attivo
-  * **Layout**: ordine default, larghezza default (px), allineamento (left/right/center), formato (es. `date_short`, `currency_eur`), gruppo, ordine gruppo
+  * **Layout**: ordine default, larghezza default (px), allineamento (left/right/center), formato (tabella sotto), gruppo, ordine gruppo
 * **Modifica colonna**: tutti i campi sono mutabili. Il `lista_id` è
   immutabile (per "spostare" una colonna da una lista all'altra,
   cancellala e ricreala).
@@ -277,6 +272,22 @@ colonne registrate per quella lista, attive e disattivate.
   utente che la referenziano (prevenzione di configurazioni stale
   silenziose). Il messaggio indica il numero di preferenze coinvolte;
   l'alternativa raccomandata è disattivare con `attivo=false`.
+
+#### 5.2.0 I formati di resa (`formato`)
+
+Il valore di `formato` sceglie il formatter con cui `<ListaConfigurabile>` rende
+la cella (`CellaConfigurabile`), a meno che la view non fornisca uno slot
+`cell-{codice}` suo:
+
+| `formato` | Resa | Note |
+|---|---|---|
+| `date_short` | data nel locale dell'utente | per le colonne `tipo_dato = date` |
+| `datetime`, `datetime_short` | data e ora | |
+| `currency_eur` | importo in euro | |
+| `number` | numero nel locale | |
+| `percent_2` | numero a due decimali + ` %` | |
+| `yesno` | etichetta **Sì / No** (building block `SiNoTag`); `null` resta vuoto | ⭐ **è la resa di un booleano in lista**: una colonna booleana è una riga di `ui.lista_colonna` con questo formato, non uno slot riscritto nella view. Un `tipo_dato = boolean` **senza** formato prende la stessa resa, così un booleano dimenticato non esce mai come `true`/`false` grezzi |
+| *(vuoto)* | il valore com'è | |
 
 #### 5.2.1 Vincoli automatici applicati dal sistema
 
@@ -681,8 +692,8 @@ nascosta lato UI.
 
 ### 11.7 Il bollino «multi-emittente» — un'etichetta che si guadagna
 
-> 🔵 Introdotto il **18-08-2026**. Oggi è **spento su tutte le liste**, ed è
-> corretto che lo sia: sotto c'è scritto perché.
+> 🔵 Oggi è **spento su tutte le liste**, ed è corretto che lo sia: sotto c'è
+> scritto perché.
 
 #### Il problema, in parole semplici
 
@@ -774,7 +785,7 @@ dati veri.
 > diventata lo standard del frontend. Uno stato in questa sezione va **verificato
 > contro il codice** prima di citarlo — una roadmap che dice «non c'è» di cose che
 > ci sono è peggio di una sezione mancante, perché chi legge non ha modo di
-> accorgersene. Stati verificati il **2026-09-02**.
+> accorgersene.
 
 ### 12.1 Notifica "Preset aggiornato" (DEF-2)
 
@@ -793,7 +804,7 @@ banner.
 
 ### 12.2 Export CSV/Excel con metadati filtri (DEF-1)
 
-> **Stato**: 🟢 Done — atterrata 2026-05-10 sulla lista clienti.
+> **Stato**: 🟢 Done.
 
 Le liste configurabili migrate al pattern `<ListaConfigurabile>` espongono
 nella toolbar due azioni utility "Esporta CSV" e "Esporta Excel". Il
@@ -850,7 +861,7 @@ l'autore la modifica.
 
 ### 12.5 Layout mobile / card list responsive (DEF-6)
 
-> **Stato**: 🟢 In gran parte risolto dalla §7 (ritiro dinamico colonne, 2026-06-03). Card list dedicata: 🔴 non più prioritaria.
+> **Stato**: 🟢 In gran parte risolto dalla §7 (ritiro dinamico colonne). Card list dedicata: 🔴 non più prioritaria.
 
 Su viewport stretto (mobile/tablet portrait) la lista resta usabile grazie al
 **ritiro dinamico delle colonne** (§7): le colonne meno prioritarie scendono
@@ -880,9 +891,8 @@ Da decidere se fondere DEF-7+10 in un unico item con sotto-categorie
 
 ### 12.7 Estensione ad altre liste (DEF-8)
 
-> **Stato**: ✅ **Superata come voce di roadmap** (verificato 2026-09-02) — non è
-> più un'estensione da pianificare, è **lo standard**. Resta il debito dichiarato
-> qui sotto.
+> **Stato**: ✅ **Superata come voce di roadmap** — non è più un'estensione da
+> pianificare, è **lo standard**. Resta il debito dichiarato qui sotto.
 
 ⛔ **Oggi ogni lista si monta con `<ListaConfigurabile>`**: montare una `DataTable`
 grezza in una view è l'**eccezione**, e va motivata in un commento sopra l'import.
@@ -897,9 +907,9 @@ si monta con `useDrawerTabLista` + `<DrawerTabLista>`.
 dal motore erano quattro e l'elenco qui sotto era la coda da smaltire —
 `catalogo.articoli`, `vendite.preventivi`, `vendite.listini`,
 `vendite.promo_articoli`, `vendite.approvazioni_prezzo`, `anagrafiche.indirizzi`,
-`catalogo.unita_misura`, `pratiche`. **Sono tutte a catalogo**, e il catalogo
-`ui.lista_definizione` al 2026-09-02 porta **65** definizioni (il seed è in
-`80_data/sql/ui/lista_definizione.csv`, quindi si legge lì, non da questa pagina).
+`catalogo.unita_misura`, `pratiche`. **Sono tutte a catalogo**, e quante
+definizioni porta `ui.lista_definizione` si legge dal seed
+(`80_data/sql/ui/lista_definizione.csv`), non da questa pagina.
 
 ⭐ **La lezione che vale più dell'elenco**: una lista nuova **non richiede un
 brief e non aspetta nessuno**. La sua configurazione è **dato, non DDL** — una

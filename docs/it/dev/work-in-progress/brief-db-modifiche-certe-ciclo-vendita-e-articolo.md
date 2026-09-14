@@ -1016,6 +1016,16 @@ config.modi_approvvigionamento.non_applicabile
 >    riscritte provato sul DB di sviluppo in transazione annullata, **col caso
 >    del responsabile valorizzato costruito** (nessuna commessa in dev ne ha
 >    uno) e col rifiuto DB `E_ATTIVO_REQUIRE` forzato `IMMEDIATE`.
+> 9. 🔴 **Emerso il 14-09 (sera) aggiornando le guide — per il team DB.**
+>    `vendite.fn_crea_revisione_preventivo` copia le righe attive con un
+>    `INSERT` a **elenco esplicito di colonne** (doc auto-gen, riga 161) e
+>    **non porta `data_consegna_richiesta_cliente`** sulla nuova revisione:
+>    P-5 ha coperto il passaggio preventivo → ordine, non quello rev N → rev
+>    N+1, e nessun pgTAP lo pinna. È la stessa classe del §2.4 («si perde nel
+>    punto in cui il documento cambia») su un percorso che il brief non aveva
+>    censito. Dichiarato nelle guide come comportamento corrente
+>    (`gestione-preventivi` §2.2 e §4.2); la correzione è un changeSet di
+>    `20_code` + un caso nel pgTAP delle revisioni, di `dev/db-tid`.
 
 ⚠️ **Sulla commessa, un fatto che eviterà una ricerca a vuoto: non esiste una
 lista configurata `vendite.commesse`.** In `ui.lista_definizione` ci sono
@@ -1573,3 +1583,4 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | 2026-09-14 | ✅ **Lato BE/FE eseguito** (`dev/backend-tid`, riquadro «Esecuzione» in §5.5): le sette voci e le tredici chiavi i18n. Un lookup nuovo (`/anagrafiche/risorse-umane/lookup/`) e un verbo nuovo (`PATCH /commesse/<id>/`); nessun BB nuovo (il parsing date è `PayloadValidator.optional_date`, già a catalogo). 🔴 Fatto emerso: `E_ATTIVO_REQUIRE` del require sul figlio è TECNICO — il service pre-verifica «persona attiva» per rispondere 400 col campo. Righe 747-749 accese nel CSV: il mirror le ricarica al prossimo migrate (Tid). Il 1-bis resta dichiarato e non deciso |
 | 2026-09-14 | 🔴 **Rilievo di Tid: `test-vw-situazione-merce-ordine-v1` rosso al test 3** («18 colonne», tre extra). P-6 ha allargato il contratto e P-8 ha scritto solo il gemello nuovo: il pgTAP **esistente** non era stato censito. Test 3 → 21 colonne (sede unica del contratto); test 1 del gemello → posizione e tipo delle tre in coda invece di una seconda copia del `columns_are` (che non prova l'ordine). Provate 3/3 + mutazione in transazione annullata, preambolo verde (§7, riquadro). Lancio col runner dei due file: Tid |
 | 2026-09-14 | 🔴 **Revisione critica del lavoro BE/FE, su richiesta di Tid** (§5.5, nota 8): due bug (responsabile attivo mostrato «non più attivo» a lookup non caricato; data del preventivo validata dopo la richiesta L3 e la sua email) e quattro fragilità corrette — catena risorsa→soggetto scritta tre volte al posto della vista modello `vw_risorse_umane_dettaglio`, blocco FK NOT NULL duplicato in `catalogo_service`, form di testata senza `useDrawerFormPreserve`, terza copia del Tag sì/no. ⭐ **Un BB nuovo, `SiNoTag`** (ok Tid): `formato=yesno` di `CellaConfigurabile` lo rende, i tre slot spariscono, righe 327/748 con `yesno` nel seed. Binding provato sul DB vivo col caso costruito. Tutto in working tree, nessun commit |
+| 2026-09-14 | 📚 **Documentazione allineata al brief** (sera): scheda nuova per il CRUD famiglie (`api_famiglie_documento.md`, mancava del tutto) e per il lookup risorse umane (`api_risorse_umane_lookup.md`); whitelist del lookup generico rigenerata dal codice (89, era ferma a 83); riga `Catalogo` nell'inventario di `api.md` (mancava); guide ordini, preventivi, commesse, numerazione e liste aggiornate **e ripulite dalla cronaca datata** (solo «ultimo aggiornamento» in testa, la storia sta nel changelog della mappa); voce del 14-09 nel changelog della mappa concentrica e stato corrente nella mappa. 🔴 Nota 9 in §5.5: la revisione del preventivo non copia la data richiesta |

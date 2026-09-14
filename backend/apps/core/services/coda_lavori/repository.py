@@ -27,6 +27,7 @@ from django.db import connection
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
     conta_con_perimetro,
+    corsa_conclusa,
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
@@ -442,6 +443,20 @@ class CodaLavoriRepository:
     # `ok`/`fail` contano gli stati TERMINALI (FATTO/ERRORE); `total` include
     # anche i non terminali (PENDING/IN_CORSO) e gli ANNULLATO, così «10/13» si
     # legge onestamente come «13 lanciati, 10 riusciti» senza gonfiare i riusciti.
+    #
+    # ⭐ Le corse hanno la STESSA forma di `MaintenanceRepository.job_liveness`
+    #    (2026-09-14): `last_run_at` = il lavoro toccato piu' di recente,
+    #    `in_corso` = quel lavoro e' ancora vivo (PENDING/IN_CORSO), e
+    #    `ultima_conclusa` = l'ultimo lavoro arrivato a un ESITO (FATTO/ERRORE)
+    #    con la sua data e il suo `ok` insieme, via `corsa_conclusa`.
+    # ⛔ Fino a quel giorno `last_ok` era `stato = 'FATTO'` sulla riga piu'
+    #    recente: un lavoro IN_CORSO usciva «Errore» nel pannello degli esiti,
+    #    e un ANNULLATO pure. Qui la riga e' una sola per costruzione (`DISTINCT
+    #    ON`), ma il difetto era della stessa famiglia della cucitura sul
+    #    giornale dei run — un esito letto da una riga che un esito non ce l'ha.
+    # ⚠️ ANNULLATO non e' ne' in corso ne' concluso: e' un lavoro che non ha
+    #    girato, e per «com'e' andata l'ultima volta» non conta. Resta nel
+    #    `total`, ed e' giusto cosi': e' stato lanciato.
     def summary_per_job_type(
         self,
         *,
@@ -462,26 +477,48 @@ class CodaLavoriRepository:
         # così «ultimo giro» non risulta mai vuoto per un job in corso.
         # `caller_scope_key` è il primo parametro perché compare per primo
         # nell'SQL (FILTER del mio_count); '' quando None: non matcha nessuna
-        # scope_key reale → mio_count 0.
+        # scope_key reale → mio_count 0. Le condizioni compaiono TRE volte
+        # (summary, recente, conclusa): i loro valori, nello stesso ordine.
         sql = f"""
-            SELECT job_type,
-                   COUNT(*)::int AS total_runs,
-                   COUNT(*) FILTER (WHERE stato = 'FATTO')::int AS ok_count,
-                   COUNT(*) FILTER (WHERE stato = 'ERRORE')::int AS fail_count,
-                   COUNT(*) FILTER (WHERE scope->>'scope_key' = %s)::int
-                       AS mio_count,
-                   MAX(COALESCE(ended_at, started_at, data_insert))::text
-                       AS last_run_at,
-                   (ARRAY_AGG(stato ORDER BY
-                        COALESCE(ended_at, started_at, data_insert) DESC))[1]
-                       = 'FATTO' AS last_ok
-              FROM dbops.coda_lavori
-              {where}
-             GROUP BY job_type
-             ORDER BY job_type
+            WITH summary AS (
+                SELECT job_type,
+                       COUNT(*)::int AS total_runs,
+                       COUNT(*) FILTER (WHERE stato = 'FATTO')::int AS ok_count,
+                       COUNT(*) FILTER (WHERE stato = 'ERRORE')::int AS fail_count,
+                       COUNT(*) FILTER (WHERE scope->>'scope_key' = %s)::int
+                           AS mio_count
+                  FROM dbops.coda_lavori
+                  {where}
+                 GROUP BY job_type
+            ),
+            recente AS (
+                SELECT DISTINCT ON (job_type) job_type,
+                       COALESCE(ended_at, started_at, data_insert) AS toccato_il,
+                       stato IN ('PENDING', 'IN_CORSO') AS in_corso
+                  FROM dbops.coda_lavori
+                  {where}
+                 ORDER BY job_type,
+                          COALESCE(ended_at, started_at, data_insert) DESC, id DESC
+            ),
+            conclusa AS (
+                SELECT DISTINCT ON (job_type) job_type,
+                       started_at, ended_at, stato = 'FATTO' AS ok
+                  FROM dbops.coda_lavori
+                  {where} AND stato IN ('FATTO', 'ERRORE')
+                 ORDER BY job_type,
+                          COALESCE(ended_at, started_at, data_insert) DESC, id DESC
+            )
+            SELECT s.job_type, s.total_runs, s.ok_count, s.fail_count, s.mio_count,
+                   r.toccato_il::text AS last_run_at,
+                   r.in_corso,
+                   c.started_at, c.ended_at, c.ok
+              FROM summary s
+              JOIN recente r USING (job_type)
+              LEFT JOIN conclusa c USING (job_type)
+             ORDER BY s.job_type
         """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
         with connection.cursor() as cursor:
-            cursor.execute(sql, [caller_scope_key or "", *params])
+            cursor.execute(sql, [caller_scope_key or "", *params, *params, *params])
             return [
                 {
                     "jobname": str(r[0]),
@@ -490,7 +527,8 @@ class CodaLavoriRepository:
                     "fail_count": int(r[3]),
                     "mio_count": int(r[4]),
                     "last_run_at": r[5],
-                    "last_ok": r[6],
+                    "in_corso": bool(r[6]),
+                    "ultima_conclusa": corsa_conclusa(r[7], r[8], r[9]),
                 }
                 for r in cursor.fetchall()
             ]

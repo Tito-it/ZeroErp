@@ -324,6 +324,18 @@ Quando una persona lascia l'organico, la sequenza e:
 
 Se la risorsa non ha un collegamento a `auth_user`, basta il solo passo 2.
 
+⛔ **Il passo 2 è rifiutato finché la persona governa qualcosa.** Il framework
+ATTIVO monta su `risorse_umane` un block per ogni tabella che la referenzia
+come persona interna: `pratiche.pratiche`, `pratiche.flussi`,
+`pratiche.competenze_flussi` e `vendite.commesse`
+(`responsabile_risorsa_umana_id`). ⚠️ Quest'ultimo conta **tutte** le commesse
+di cui la persona è responsabile — anche chiuse, perché `commesse` non ha
+`attivo` — quindi per liberare una persona si cambia il responsabile sulle sue
+commesse, non si spegne la persona. Il picker con cui si sceglie il responsabile
+è `GET /anagrafiche/risorse-umane/lookup/`
+([scheda](/backend/anagrafiche/manual/api_risorse_umane_lookup)), che elenca
+solo le risorse attive.
+
 ### Rientro
 
 Il vincolo di unicita ([R5](#r5--unicita-per-persona)) garantisce un solo record per persona in `risorse_umane`. Non e possibile creare un secondo record — e non serve: per il rientro di un ex-dipendente si **riattiva il record esistente**.
