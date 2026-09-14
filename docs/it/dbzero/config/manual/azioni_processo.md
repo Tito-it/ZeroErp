@@ -68,6 +68,9 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 | genera_pratica_preventivi | Genera pratica esecutiva da preventivo | NO | vendite | 2026-05-02 |
 | documenti_template_manage | Gestione template e versioni documenti | NO | documenti | 2026-05-03 |
 | documenti_asset_manage | Gestione asset documentali (logo, firma, CSS, allegati) | NO | documenti | 2026-05-03 |
+| … | ⚠️ **Tabella parziale**: ferma al 2026-05-03 su 35 righe a catalogo (14-09-2026). La sede è il CSV `80_data/sql/config/azioni_processo.csv`; qui restano i casi che insegnano qualcosa | | | |
+| code_manage | Gestione code di lavoro e stampa (vista e azioni cross-utente). ⭐ Il precedente su area `strumenti`: valutata da `DomainAPIView(area_funzionale="strumenti")` | NO | strumenti | 2026-07-21 |
+| processo_avvia | Avvio manuale di un processo dall'interfaccia («Esegui ora» su una sveglia di deploy). ⛔ **Non** è `code_manage`: chi può riaccodare un lavoro non è per questo chi può avviare un giro. ⚠️ Conta solo se la view che la dichiara **non** è `AdminAPIView` (`IsAdminZeroERP` non legge `post_permission`) — brief `brief-db-avvio-manuale-di-un-processo` §8.2.2 | SI | strumenti | 2026-09-14 |
 
 ---
 
