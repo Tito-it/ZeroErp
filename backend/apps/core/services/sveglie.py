@@ -39,6 +39,20 @@
 #        tolleranza): quella verifica e' `test_contratto_liveness_vs_deploy`,
 #        che confronta l'`oncalendar` di qui con il seed del catalogo nel repo.
 #
+#        ⭐ E DAL 2026-09-14 STA QUI ANCHE LA RIGA DI COMANDO (`comando`, l'argv
+#        dopo `bin/run-command.sh`), e il template `.service` porta il segnaposto
+#        `__COMANDO__` che l'installer rende come gia' `__ONCALENDAR__`. Il
+#        motivo e' «Esegui ora» (analisi-riavvio-processi-da-interfaccia.md
+#        §4.1-bis, brief-db-avvio-manuale-di-un-processo.md): il pulsante lancia
+#        LO STESSO comando del timer, meno l'orario, e il backend non puo'
+#        leggerlo da un file `.service`. Una sede sola: la riga che il timer
+#        esegue E' quella che il pulsante esegue, e non possono divergere.
+#        ⛔ Un `comando` ricopiato qui ACCANTO a una riga cablata nel template
+#        sarebbe la seconda sede — quella che resta indietro, e qui «indietro»
+#        vuol dire un pulsante che lancia una cosa diversa dal timer. Lo
+#        presidia `scripts/tests/test-install-timers.sh` (nessun `ExecStart`
+#        cablato; l'unit reso porta l'argv di qui).
+#
 #        ⚠️ Il dichiarato e' il DEFAULT di progetto, non lo stato di un host.
 #        Un host puo' avere un `OnCalendar` diverso (l'installer sostituisce un
 #        placeholder) o un timer spento a mano: per sapere cosa sta girando
@@ -81,6 +95,19 @@ _FORME = (FORMA_TIMER, FORMA_SERVIZIO)
 # (`PartitionedNoteRepository`, `emittente_scope_helpers`).
 _UNIT_AMMESSA = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
+# I token di `comando` finiscono in DUE posti che li leggono in modo diverso:
+# la riga `ExecStart=` dell'unit (systemd la spezza sugli spazi, espande `%x`
+# come specifier e `$VAR` dall'ambiente) e l'argv di un `subprocess` (che passa
+# ogni token intero). ⛔ Un token con uno spazio darebbe due esecuzioni DIVERSE
+# dello «stesso» comando; uno con `%` o `$` una riga che systemd riscrive. E
+# l'installer li interpola con `sed`, dove `|`, `&` e `\` hanno un significato.
+# ⇒ Whitelist stretta, e si allarga quando un comando VERO ne ha bisogno: un
+#    cancello che boccia un carattere di troppo si vede in CI, uno che ne lascia
+#    passare uno di meno si vede sull'host. Il primo token e' il nome di un
+#    management command Django (`test_sveglie.py` prova che esista).
+_COMANDO_AMMESSO = re.compile(r"^[a-z][a-z0-9_]*$")
+_ARGOMENTO_AMMESSO = re.compile(r"^-{0,2}[A-Za-z0-9][A-Za-z0-9._:/=-]*$")
+
 
 # Scopo: una sveglia dichiarata — l'unit systemd che fa partire un processo.
 # ⚠️ La chiave e' `unit`, NON `processo_codice`: un processo puo' avere piu'
@@ -91,6 +118,11 @@ class Sveglia:
     unit: str
     processo_codice: str
     forma: str
+    # L'argv dopo `bin/run-command.sh`: `("digest_presidi", "--cadenza",
+    # "settimanale")`. E' la riga resa nell'`ExecStart` del template, ed e' la
+    # riga che «Esegui ora» lancera' come sottoprocesso — la stessa, per
+    # costruzione.
+    comando: tuple[str, ...]
     oncalendar: str | None
     abilita: bool
     nota: str
@@ -99,6 +131,38 @@ class Sveglia:
     @property
     def e_timer(self) -> bool:
         return self.forma == FORMA_TIMER
+
+
+# Scopo: legge e valida il `comando` di una voce: una lista NON vuota di token,
+#        il primo un nome di management command, gli altri argomenti senza
+#        spazi ne' metacaratteri (vedi `_ARGOMENTO_AMMESSO`).
+# ⛔ Obbligatorio per OGNI forma, non solo per i timer: anche un servizio sempre
+#    acceso ha un `ExecStart`, e una regola con un'eccezione sono due regole.
+#    Che «Esegui ora» valga solo per i timer lo decide chi rende il pulsante,
+#    sulla `forma` — non questo file.
+# ⛔ Una LISTA, mai una stringa: una stringa andrebbe spezzata sugli spazi, e
+#    «come si spezza» sarebbe una regola scritta due volte (qui e in systemd).
+def _leggi_comando(unit: str, grezzo: object) -> tuple[str, ...]:
+    if not isinstance(grezzo, list) or not grezzo:
+        raise ValueError(
+            f"{_PERCORSO_SVEGLIE}: {unit}: 'comando' e' obbligatorio ed e' una lista "
+            f"di token non vuota (l'argv dopo bin/run-command.sh)"
+        )
+    token = [str(x) for x in grezzo]
+    if not _COMANDO_AMMESSO.match(token[0]):
+        raise ValueError(
+            f"{_PERCORSO_SVEGLIE}: {unit}: il primo token di 'comando' dev'essere "
+            f"il nome di un management command (minuscole, cifre, underscore): "
+            f"{token[0]!r}"
+        )
+    for arg in token[1:]:
+        if not _ARGOMENTO_AMMESSO.match(arg):
+            raise ValueError(
+                f"{_PERCORSO_SVEGLIE}: {unit}: argomento di 'comando' non ammesso: "
+                f"{arg!r} (niente spazi, quote, %, $, |, & — systemd e "
+                f"subprocess lo leggerebbero in due modi diversi)"
+            )
+    return tuple(token)
 
 
 # Scopo: carica e valida il dichiarato. Cache di modulo: il file e' un dato di
@@ -136,6 +200,8 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
                 f"{_PERCORSO_SVEGLIE}: {unit}: forma '{forma}' non ammessa "
                 f"(attese: {', '.join(_FORME)})"
             )
+
+        comando = _leggi_comando(unit, riga.get("comando"))
 
         oncalendar = riga.get("oncalendar")
         # ⚠️ Un timer senza cadenza non e' un timer: l'installer scriverebbe un
@@ -177,6 +243,7 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
             unit=unit,
             processo_codice=processo,
             forma=forma,
+            comando=comando,
             oncalendar=str(oncalendar) if oncalendar else None,
             # Già validato bool qui sopra: un `bool(...)` in più direbbe che il
             # valore può non esserlo, cioè il contrario di quanto appena imposto.

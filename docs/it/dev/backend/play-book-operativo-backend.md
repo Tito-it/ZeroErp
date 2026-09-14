@@ -380,7 +380,9 @@ Dopo i GRANT del ruolo batch:  `sudo systemctl enable --now zeroerp-coda-stampa.
 Gli unit **non si scrivono più a mano**: i template sono versionati in
 [`backend/deploy/systemd/`](../../../../backend/deploy/systemd/) —
 `zeroerp-coda-lavori.service|.timer` e `zeroerp-coda-stampa.service|.timer` — con
-placeholder per-host `__APP_DIR__` / `__APP_USER__` / `__ONCALENDAR__`.
+placeholder per-host `__APP_DIR__` / `__APP_USER__` / `__ONCALENDAR__` e, dal
+2026-09-14, `__COMANDO__` (la riga di comando, campo `comando` di `sveglie.json`
+— §17.6).
 `install-timers.sh` (§16.0) li renderizza (sostituzione placeholder) e li copia in
 `/etc/systemd/system`. Per cambiare un unit si **edita il template** e si ri-lancia
 l'installer: le modifiche passano da PR come qualsiasi codice, e la CI
@@ -427,8 +429,8 @@ la **sede unica** del dichiarato di deploy. Lo leggono in due:
 
 | Chi | Cosa ne prende |
 | --- | --- |
-| `backend/bin/install-timers.sh` | l'`OnCalendar` da sostituire nei template e la lista di cosa abilitare |
-| `apps.core.services.sveglie` (backend) | la `tolleranza_minuti`, cioè entro quanto l'ultimo run di un processo vale ancora come segno di vita |
+| `backend/bin/install-timers.sh` | l'`OnCalendar` **e il comando** (`__COMANDO__`, dal 2026-09-14) da sostituire nei template, e la lista di cosa abilitare |
+| `apps.core.services.sveglie` (backend) | le unit di ogni processo (per la mail del guardiano del digest), la cadenza da confrontare col contratto (`test_contratto_liveness_vs_deploy`) e — prossimo consumer — il `comando` che «Esegui ora» lancerà come sottoprocesso (§17.6). ⚠️ Fino al 2026-09-11 qui c'era «la `tolleranza_minuti`»: il contratto di liveness vive in `dbops.processi`, e il JSON **rifiuta** il campo |
 
 ⛔ **Perché è cambiato.** Prima le cadenze erano cablate in quattro chiamate
 dentro l'installer, e la tolleranza di liveness degli stessi processi era un
@@ -507,9 +509,11 @@ confronto `GIRA_E_NON_REGISTRA` su quel job — cioè il rilevatore di R-12, che
 ### 17.4) Aggiungere una sveglia
 
 1. una voce in `deploy/sveglie.json` (il **perché** delle scelte va nel template,
-   qui il valore — due programmi devono poterlo leggere);
+   qui il valore — due programmi devono poterlo leggere), **con il suo
+   `comando`** (l'argv dopo `run-command.sh`, come lista di token — §17.6);
 2. la coppia `deploy/systemd/<unit>.{service,timer}` — solo il `.service` se è un
-   servizio sempre acceso;
+   servizio sempre acceso; l'`ExecStart` è
+   `__APP_DIR__/bin/run-command.sh __COMANDO__`, **mai** la riga scritta a mano;
 3. `sudo backend/bin/install-timers.sh`.
 
 ⚠️ **Modifiche agli unit si fanno sui template**, mai in `/etc/systemd/system`:
@@ -550,3 +554,40 @@ bash backend/scripts/tests/test-install-timers.sh
 ```
 
 ⚠️ Resta scoperto il caso «`systemctl enable` fallisce»: lo stub esce sempre `0`.
+
+### 17.6) La riga di comando sta nel JSON — `comando` e `__COMANDO__` (dal 2026-09-14)
+
+⭐ **Perché.** «Esegui ora» dal drawer dei processi
+([analisi-riavvio-processi-da-interfaccia.md §4.1-bis](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md),
+brief [brief-db-avvio-manuale-di-un-processo.md](../work-in-progress/brief-db-avvio-manuale-di-un-processo.md))
+lancia **lo stesso comando del timer, meno l'orario** — e il backend non può
+leggerlo da un file `.service`. Fino al 14-09 la riga viveva **solo** lì
+(`ExecStart=… run-command.sh digest_presidi --cadenza settimanale`).
+
+⇒ Ogni voce di `sveglie.json` porta `comando` (l'argv dopo `run-command.sh`,
+come **lista** di token) e ogni template `.service` porta
+`ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__`, che l'installer rende
+come già `__ONCALENDAR__`. **Una sede sola**: la riga che il timer esegue *è*
+quella che il pulsante eseguirà, e non possono divergere.
+
+⛔ Un `comando` nel JSON *accanto* a una riga cablata nel template sarebbe la
+seconda sede — quella che resta indietro, e qui «indietro» vuol dire un pulsante
+che lancia una cosa diversa dal timer, **senza che nessuna delle due fallisca**.
+Lo presidia `test-install-timers.sh`: test 6 (nessun template con `ExecStart`
+cablato) e test 7 (l'unit reso porta esattamente l'argv del JSON).
+
+| Regola | Perché |
+| --- | --- |
+| lista di token, mai una stringa | systemd spezza l'`ExecStart` sugli spazi, `subprocess` passa il token intero: «come si spezza» sarebbe una regola scritta due volte |
+| whitelist stretta sui token (niente spazi, quote, `%`, `$`, `\|`, `&`) | `%x` è uno specifier systemd, `$VAR` si espande, `\|`/`&` sono del `sed` dell'installer; si allarga quando un comando **vero** ne ha bisogno |
+| il primo token è un management command **che esiste** | un refuso non fallisce in CI ma sull'host, alla prima corsa (`test_sveglie.py`, test 13) |
+| obbligatorio anche per `forma = servizio` | ogni `.service` ha un `ExecStart`; una regola con un'eccezione sono due regole |
+
+⚠️ Sugli host **non cambia niente**: gli otto `ExecStart` resi sono identici a
+prima, perché il campo è nato dalla riga che ogni template eseguiva. Cambia il
+template, non l'unit installato — un re-install lo riscrive uguale.
+
+⛔ `timeout_minuti` (D-B dell'analisi) **non è ancora un campo**: il suo unico
+lettore è l'handler di «Esegui ora», che arriva con le tre righe di catalogo
+del brief. Un campo letto da nessuno è un numero che sembra dichiarato e non
+lo è.

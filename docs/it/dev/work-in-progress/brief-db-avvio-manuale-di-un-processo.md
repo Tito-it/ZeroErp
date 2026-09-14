@@ -134,3 +134,8 @@ stesso verso, stessa prova.
 *Scritto il 2026-09-14. Nessuna riga di codice applicativo scritta; il
 backend parte dopo l'apply, e chiede l'accensione del tipo a handler in
 servizio.*
+
+*Aggiornamento 14-09 (sera): il solo pezzo di **deploy** — `comando` in
+`sveglie.json` e `__COMANDO__` nei template, §9-bis punto 2 dell'analisi — è
+fatto, perché non dipende dalle tre righe. Handler, endpoint e pulsante restano
+in attesa dell'apply.*
