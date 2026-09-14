@@ -31,6 +31,7 @@
 15. test_le_due_composizioni_nominano_le_stesse_viste
 16. test_il_nome_della_corsia_viene_dalla_cadenza_non_dalla_riga_di_comando
 17. test_una_corsia_mai_girata_non_sparisce_dal_battito   ⭐
+18. test_una_corsia_in_corso_si_dice_in_corso_non_fallita   ⭐ 14-09
 """
 
 from __future__ import annotations
@@ -502,3 +503,55 @@ class PresidiDigestTests(SimpleTestCase):
             digest.riepilogo()["corsie_mai_girate"],
             ["digest_presidi:giornaliera"],
         )
+
+    # 18. ⛔ `last_ok` ha TRE facce, e la mail ne mostrava due. `None` non e'
+    #     un fallimento: e' «nessuna corsa conclusa» — e per la corsia che sta
+    #     componendo la mail e' la normalita', perche' la sua riga sul giornale
+    #     e' aperta (ok NULL). Il settimanale del 2026-09-14 ha scritto
+    #     «digest_presidi:settimanale (FALLITA)» su una corsa che il giornale
+    #     dava ok = true mezzo minuto dopo. Da qui: «in corso».
+    def test_una_corsia_in_corso_si_dice_in_corso_non_fallita(self) -> None:
+        repo = _RepoFinto(
+            [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
+            {"dbops.vw_zero": 0},
+        )
+        giornale = _MaintenanceFinto({
+            "digest_presidi:giornaliera": {
+                "last_run_at": "2026-09-14T07:00:00+02:00",
+                "attivo": True, "last_ok": True,
+            },
+            # La corsia che sta girando ADESSO: viva, e senza esito.
+            "digest_presidi:settimanale": {
+                "last_run_at": "2026-09-14T07:30:49+02:00",
+                "attivo": True, "last_ok": None,
+            },
+        })
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=_ProcessiFinto(11520),
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        # ⚠️ L'esito si legge SULLA RIGA della corsia: «in corso» da qualche
+        #    parte nel corpo non dice a quale corsia appartiene, e uno scambio
+        #    fra le due passerebbe. La finestra si chiude alla prima parentesi
+        #    — l'HTML e' una riga sola, e un match pigro salterebbe alla corsia
+        #    dopo; il `</code>` opzionale e' l'unica differenza fra le due rese.
+        for corpo in (testo, html):
+            self.assertNotIn("FALLITA", corpo)
+            self.assertRegex(corpo, r"digest_presidi:settimanale(?:</code>)?:[^()]*\(in corso\)")
+            self.assertRegex(corpo, r"digest_presidi:giornaliera(?:</code>)?:[^()]*\(ok\)")
+        # ⚠️ E `False` resta FALLITA: la terza faccia non ha ammorbidito le
+        #    altre due.
+        giornale_ko = _MaintenanceFinto({
+            "digest_presidi:settimanale": {
+                "last_run_at": "2026-09-07T07:30:00+02:00",
+                "attivo": False, "last_ok": False,
+            },
+        })
+        digest_ko = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale_ko,
+            processi=_ProcessiFinto(11520),
+        )
+        _oggetto, testo_ko, html_ko = componi_messaggio(digest_ko)
+        self.assertIn("FALLITA", testo_ko)
+        self.assertIn("<strong>FALLITA</strong>", html_ko)

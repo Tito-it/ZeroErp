@@ -34,7 +34,7 @@ PROCESSO_LISTEN_CAMBIO_REPARTO = "listen_cambio_reparto"
 #    emittente — e' una lettura periodica che nel dominio non scrive niente.
 # ⚠️ Ha DUE corsie, come `run_fatturazione_batch`: si registra sul giornale come
 #    `digest_presidi:<cadenza>`, e la chiave del battito resta il codice del
-#    processo. Brief: work-in-progress/brief-db-un-destinatario-per-i-presidi.md.
+#    processo. Brief: work-done/brief-db-un-destinatario-per-i-presidi.md.
 PROCESSO_DIGEST_PRESIDI = "digest_presidi"
 
 # ⛔ `sync_auth_user_active` NON sta piu' qui: la riga 23 di `dbops.processi` e'

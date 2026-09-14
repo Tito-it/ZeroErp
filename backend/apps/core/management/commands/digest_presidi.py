@@ -24,7 +24,7 @@
 #        dichiara — in coda al proprio esito e nel `meta` del run. Un invio che
 #        non parte in silenzio sarebbe la prima cosa da non fare qui.
 #
-#        Brief: work-in-progress/brief-db-un-destinatario-per-i-presidi.md §5, §8.2.
+#        Brief: work-done/brief-db-un-destinatario-per-i-presidi.md §5, §8.2.
 # ------------------------------------------------------------
 
 from __future__ import annotations
