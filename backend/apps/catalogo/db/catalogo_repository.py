@@ -88,6 +88,14 @@ ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
     "requires_serial": "bool",
     "listino_tipologia_id": "int",
     "natura_vendita_id": "int",
+    # Blocco B del brief modifiche certe (2026-09-13): DA DOVE arriva l'articolo.
+    # `modo_approvvigionamento_id` e' NOT NULL con DEFAULT ACQUISTO (come
+    # `natura_vendita_id`), `gestito_a_magazzino` NOT NULL DEFAULT false
+    # (fail-safe), `lead_time_giorni` nullable con CHECK >= 0 (NULL = «non si
+    # applica», per una prestazione; `0` NON e' «non si applica»).
+    "modo_approvvigionamento_id": "int",
+    "gestito_a_magazzino": "bool",
+    "lead_time_giorni": "int",
     "meta": "jsonb",
 }
 
@@ -152,6 +160,17 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     # motivo_non_gestibile_bom: 'ARTICOLO_SOLO_COMPONENTE' | 'ARTICOLO_NON_COMPOSITO' | NULL.
     "a.puo_gestire_bom",
     "a.motivo_non_gestibile_bom",
+    # Modo di approvvigionamento (Blocco B, brief modifiche certe): decodifica
+    # sulla forma di `natura_vendita_*` — `codice_interno` per la logica,
+    # `descrizione` a video. ⛔ NON `_codice`: il valore viene dalla colonna
+    # immutabile e il nome mentirebbe sulla sorgente (linee-guida-sql §6c).
+    # ⚠️ Proiezione ESPLICITA: senza queste righe le colonne della lista 26
+    # (747-749) e il drawer non vedrebbero niente — cella vuota, nessun rosso.
+    "a.modo_approvvigionamento_id",
+    "a.modo_approvvigionamento_codice_interno",
+    "a.modo_approvvigionamento_descrizione",
+    "a.gestito_a_magazzino",
+    "a.lead_time_giorni",
 )
 
 

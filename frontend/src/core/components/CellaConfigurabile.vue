@@ -8,13 +8,26 @@
 // function del caller (`cellSlot`) passata come prop — cosa scomoda da fare in
 // un `<template>` con slot dinamici — e di cadere sul formatter di default
 // quando il caller non fornisce lo slot.
-import { useI18n } from 'vue-i18n'
+import { h } from 'vue'
 import { displayDate, displayTimestamp } from '../utils/date'
 import { formatCurrency, formatNumber } from '../utils/format'
+import SiNoTag from './SiNoTag.vue'
 
 // Formatter built-in da `formato` del catalogo. Il caller puo' sovrascrivere
 // completamente via slot `cell-{codice}` (prop `cellSlot`).
-function formatValue(value, formato, t) {
+// ⭐ `yesno` non e' piu' testo dal 2026-09-14 (ok Tid): e' il BB `SiNoTag`, la
+//    stessa resa che tre liste si erano riscritte in uno slot — una delle tre
+//    SOPRA una colonna che a catalogo aveva gia' `formato=yesno`. Un booleano
+//    in lista e' una riga di `ui.lista_colonna`, non uno slot; il `null` resta
+//    vuoto (lo decide il BB, non il formatter).
+// ⚠️ E un `tipo_dato = boolean` SENZA formato prende la stessa resa: prima
+//    cadeva su `String(value)`, cioe' «true»/«false» grezzi a video (la
+//    `is_scaduta` delle offerte lo faceva davvero). Il `formato=yesno` nel
+//    seed resta la dichiarazione; questo e' il ripiego per chi non l'ha scritta.
+function formatValue(value, formato, tipoDato) {
+  if (formato === 'yesno' || (!formato && tipoDato === 'boolean')) {
+    return h(SiNoTag, { value })
+  }
   if (value == null) return ''
   switch (formato) {
     case 'date_short':
@@ -28,8 +41,6 @@ function formatValue(value, formato, t) {
       return formatNumber(value)
     case 'percent_2':
       return formatNumber(value, { minimumFractionDigits: 2 }) + ' %'
-    case 'yesno':
-      return value ? t('common.yes') : t('common.no')
     default:
       return String(value)
   }
@@ -47,13 +58,12 @@ export default {
     cellSlot: { type: Function, default: null },
   },
   setup(props) {
-    const { t } = useI18n()
     return () => {
       const value = props.data?.[props.col.campo_sorgente]
       if (props.cellSlot) {
         return props.cellSlot({ data: props.data, value, col: props.col })
       }
-      return formatValue(value, props.col.formato, t)
+      return formatValue(value, props.col.formato, props.col.tipo_dato)
     }
   },
 }

@@ -26,9 +26,12 @@ import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { DATE_FORMAT } from '../../../core/constants'
+import { parseIsoDate, toDateString } from '../../../core/utils/date'
 
 const { t } = useI18n()
 const store = useOrdiniStore()
@@ -48,6 +51,11 @@ const {
 
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
+// Le due date di consegna (brief-db-modifiche-certe-ciclo-vendita-e-articolo,
+// Blocco A): la RICHIESTA e' del cliente, la CONFERMATA e' la nostra promessa.
+// Stanno sulla RIGA e non sulla testata: una riga puo' essere pronta e un'altra
+// no. Entrambe facoltative; nessun vincolo fra le due (si puo' confermare PRIMA
+// di quanto chiesto, ed e' una buona notizia — brief §2.3).
 const form = ref({
   articolo_id: null,
   descrizione: '',
@@ -56,6 +64,8 @@ const form = ref({
   sconto_percentuale: 0,
   iva_id: null,
   uom_operativa_id: null,
+  data_consegna_richiesta_cliente: null,
+  data_consegna_confermata: null,
 })
 
 // Articolo selezionato (per restore autocomplete).
@@ -88,6 +98,8 @@ watch(() => props.riga, (riga) => {
       sconto_percentuale: Number(riga.sconto_percentuale) || 0,
       iva_id: riga.iva_id || null,
       uom_operativa_id: riga.uom_operativa_id || null,
+      data_consegna_richiesta_cliente: parseIsoDate(riga.data_consegna_richiesta_cliente),
+      data_consegna_confermata: parseIsoDate(riga.data_consegna_confermata),
     }
     articoloObj.value = riga.articolo_id
       ? { id: riga.articolo_id, codice: riga.articolo_codice, descrizione: riga.articolo_descrizione }
@@ -96,6 +108,7 @@ watch(() => props.riga, (riga) => {
     form.value = {
       articolo_id: null, descrizione: '', qta_operativa: 1, prezzo_unitario: null,
       sconto_percentuale: 0, iva_id: null, uom_operativa_id: null,
+      data_consegna_richiesta_cliente: null, data_consegna_confermata: null,
     }
     articoloObj.value = null
     resetUomOptions()
@@ -146,6 +159,17 @@ const canSave = computed(() => {
   return true
 })
 
+// Scopo: le date di consegna nel payload — ISO o `null` (`toDateString` di un
+//        DatePicker vuoto e' gia' `null`). Il `null` esplicito AZZERA in PATCH
+//        (semantica dei documenti vendite), quindi si mandano sempre: svuotare
+//        il DatePicker deve togliere la data, non lasciarla.
+function dateConsegnaPayload(f) {
+  return {
+    data_consegna_richiesta_cliente: toDateString(f.data_consegna_richiesta_cliente),
+    data_consegna_confermata: toDateString(f.data_consegna_confermata),
+  }
+}
+
 function buildRigaPayload() {
   const f = form.value
   if (isEdit.value) {
@@ -153,6 +177,7 @@ function buildRigaPayload() {
       qta_operativa: f.qta_operativa,
       sconto_percentuale: f.sconto_percentuale,
       descrizione: f.descrizione || null,
+      ...dateConsegnaPayload(f),
     }
     // Per riga CASO A il prezzo padre e' SUM(componenti) via trigger DB:
     // l'edit del prezzo avviene per componente nel pannello sotto.
@@ -167,6 +192,7 @@ function buildRigaPayload() {
     qta_operativa: f.qta_operativa,
     sconto_percentuale: f.sconto_percentuale,
     uom_operativa_id: f.uom_operativa_id,
+    ...dateConsegnaPayload(f),
   }
   // Articolo composito CREATE: il prezzo padre e' SUM(componenti) — non inviarlo
   // (il BE inizializza i componenti). Per articoli semplici: solo se valorizzato
@@ -266,6 +292,23 @@ async function handleSave() {
           :placeholder="form.articolo_id
             ? t('vendite.ordini.riga_uom')
             : t('vendite.ordini.riga_uom_articolo_first')" />
+      </div>
+    </div>
+
+    <!-- Le due date di consegna della riga (Blocco A): quando il cliente la
+         vuole e quando ci si impegna a darla. La differenza fra le due E' la
+         promessa; il ritardo lo calcola la vista situazione merce contro la
+         promessa (o, senza promessa, contro la richiesta). -->
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.ordini.riga_data_consegna_richiesta_cliente') }}</label>
+        <DatePicker v-model="form.data_consegna_richiesta_cliente"
+          :date-format="DATE_FORMAT" show-icon show-button-bar />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.ordini.riga_data_consegna_confermata') }}</label>
+        <DatePicker v-model="form.data_consegna_confermata"
+          :date-format="DATE_FORMAT" show-icon show-button-bar />
       </div>
     </div>
 

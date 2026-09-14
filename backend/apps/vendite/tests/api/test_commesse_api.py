@@ -40,6 +40,10 @@ VenditeCommessaOneriApiTests (porta oneri §A1 + gate prezzo N5/N7 §C1):
 27) test_post_onere_permission_denied
 28) test_post_onere_permission_allowed
 29) test_endpoint_prezzo_richiedono_permesso_override
+VenditeCommessaTestataApiTests (Blocco C, brief-db-modifiche-certe-ciclo-vendita-e-articolo):
+30) test_patch_testata_ok_risponde_col_dettaglio
+31) test_patch_testata_requires_jwt
+32) test_patch_testata_errore_di_validazione_400_col_campo
 """
 
 import json
@@ -724,3 +728,54 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
                 )
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(mock_azione.call_args.args[1], "prezzo_override_manuale")
+
+
+# Scopo: `PATCH /vendite/commesse/<id>/` — la testata leggibile (descrizione +
+#        responsabile). Contratto HTTP: il payload arriva al service per
+#        posizione (id, payload), la risposta e' il dettaglio, gli errori del
+#        service diventano envelope con `fields` (il campo si accende).
+@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
+class VenditeCommessaTestataApiTests(JwtMockedApiTest):
+    def setUp(self) -> None:
+        super().setUp()
+        self.client = Client()
+
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.aggiorna_commessa_testata")
+    def test_patch_testata_ok_risponde_col_dettaglio(self, mocked_upd, _mock_auth):
+        mocked_upd.return_value = {"commessa_id": 1, "descrizione": "Impianto", "responsabile_display": "Bianchi"}
+        response = self.client.patch(
+            "/api/v1/vendite/commesse/1/",
+            data=json.dumps({"descrizione": "Impianto", "responsabile_risorsa_umana_id": 7}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["descrizione"], "Impianto")
+        mocked_upd.assert_called_once_with(
+            1, {"descrizione": "Impianto", "responsabile_risorsa_umana_id": 7},
+        )
+
+    def test_patch_testata_requires_jwt(self):
+        response = self.client.patch(
+            "/api/v1/vendite/commesse/1/",
+            data=json.dumps({"descrizione": "x"}), content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.aggiorna_commessa_testata")
+    def test_patch_testata_errore_di_validazione_400_col_campo(self, mocked_upd, _mock_auth):
+        mocked_upd.side_effect = ServiceError(
+            code="E_COMMESSA_VALIDATION",
+            message="Il responsabile deve essere una risorsa umana attiva.",
+            context={"field": "responsabile_risorsa_umana_id"},
+        )
+        response = self.client.patch(
+            "/api/v1/vendite/commesse/1/",
+            data=json.dumps({"responsabile_risorsa_umana_id": 7}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        errore = response.json()["error"]
+        self.assertEqual(errore["code"], "E_COMMESSA_VALIDATION")
+        self.assertEqual(errore["fields"], ["responsabile_risorsa_umana_id"])

@@ -26,8 +26,17 @@
 > ⚠️ Le due coppie ATTIVO (`articoli`/`modi_approvvigionamento`,
 > `commesse`/`risorse_umane`) e i lock su `codice_interno` arrivano con `ci_apply`
 > (su dev ci sono già; il require sul figlio `articoli` ha il nome hashato, §3.2).
-> ⭐ **Resta il lato BE/FE**, ed è tutto in §5.5 — sette voci, con file e
-> costanti — più le tredici chiavi i18n di §5.4 (una è già su `Tito-dev`).
+> ✅ **LATO BE/FE FATTO il 2026-09-14** (`dev/backend-tid`): le sette voci di
+> §5.5 e le tredici chiavi i18n di §5.4 — riquadro «Esecuzione» in coda a §5.5,
+> voce per voce. Suite backend 4751 test verdi (e2e compresi), lint/guard/test/
+> build frontend verdi, `check_i18n_keys.py` verde con le righe 747-749 accese.
+> ⚠️ Due cose restano a Tid: (1) il mirror `20260806-15` è `runOnChange` e
+> ricarica le tre righe (`attivo = t`) al prossimo `db-migrate` — fino ad allora
+> sul DB di sviluppo restano `f` e la lista 26 non le mostra; (2) il fatto di
+> modello della voce 1-bis (la promessa si scrive solo in `DRAFT`) resta
+> **dichiarato e non deciso**. Il trasloco in `work-done/` è di Tid.
+> ⭐ ~~Resta il lato BE/FE~~, era tutto in §5.5 — sette voci, con file e
+> costanti — più le tredici chiavi i18n di §5.4 (una era già su `Tito-dev`).
 > Questo documento resta in `work-in-progress/` finché quelle voci non sono
 > chiuse: è l'unica comunicazione che BE e FE ricevono. 🔴 Emerso in P-4 un
 > **tredicesimo punto** (§10.2): `data_apertura` non poteva nascere con il
@@ -401,8 +410,8 @@ la composizione.
 > | `vendite.fn_crea_famiglia_documento` | ⛔ **la pretende non vuota** (riga 56: `COALESCE(btrim(p_colonna_billing_account), '') = ''` → rifiuto) | diventa opzionale come `p_colonna_serie` |
 > | `vendite.trgfn_famiglie_documento_guard_struttura` + `script.fn_check_famiglia_documento_struttura_modificabile` | la contano fra le cinque colonne **immutabili** a registri vivi (`IS DISTINCT FROM`) | nulla: `NULL ↔ valore` è comunque un cambio, e va rifiutato |
 > | `vendite.vw_famiglie_documento_lista` | la espone | nulla |
-> | `backend/apps/vendite/services/famiglie_service.py` | ⛔ `_OBBLIGATORI_CREATE`: *«La colonna che porta il cliente è obbligatoria»* | esce dall'elenco, come `colonna_serie` che già non c'è |
-> | il form FE delle famiglie | campo obbligatorio | opzionale |
+> | `backend/apps/vendite/services/famiglie_service.py` | ⛔ `_OBBLIGATORI_CREATE`: *«La colonna che porta il cliente è obbligatoria»* | esce dall'elenco, come `colonna_serie` che già non c'è — ✅ **fatto il 14-09** (+ schema OpenAPI di creazione `required=False, allow_null=True`) |
+> | il form FE delle famiglie | campo obbligatorio | opzionale — ✅ **fatto il 14-09** (`FamigliaDocumentoDrawer.vue`: niente asterisco, hint «vuota = nessun billing account») |
 > | `db/pgtap/vendite/test-famiglie-documento-crud-v1.sql` · `test-famiglie-documento-guard-riferimenti.sql` | fixture con la colonna sempre valorizzata | un caso in più: famiglia senza BA |
 >
 > ⇒ La riga «cinque righe» della tabella qui sotto **non è più vera**: sono
@@ -756,6 +765,10 @@ componente. L'unica cosa che serve dall'altro lato sono le **traduzioni**.
 > ⇒ Le tre righe della lista 26 si seminano **`attivo = f`** e le accende il BE
 > nello stesso commit in cui estende la proiezione (memoria *colonna con
 > `campo_sorgente`: `attivo=f` fino al BE*). La riga della lista 7 nasce attiva.
+> ✅ **Accese il 14-09** nel commit BE che estende `ARTICOLI_DETAIL_COLUMNS`
+> (`git diff --numstat` = `3 3`). ⚠️ Sul DB di sviluppo restano `f` finché il
+> mirror `20260806-15` (`runOnChange`) non ri-esegue: al prossimo `db-migrate`,
+> di Tid.
 >
 > ⚠️ **`ordinabile = t` è una modifica in due file.** La whitelist di ordinamento
 > vive nel repository (`_ORDER_COLS_ORDINI`, `ARTICOLI_ORDER_COLUMNS`) e
@@ -803,6 +816,8 @@ componente. L'unica cosa che serve dall'altro lato sono le **traduzioni**.
 >   `it.json` ed `en.json` portano `col_data_consegna_richiesta_cliente_min`.
 >   Alla merge del ramo DB il cancello torna verde da solo. Le altre dodici
 >   chiavi di §5.4 non ci sono ancora: arrivano con il lavoro BE/FE di §5.5.
+>   ✅ **Arrivate il 14-09**: `check_i18n_keys.py` verde con le tre righe 747-749
+>   accese e quindi contate.
 
 ### 5.4 Le chiavi i18n dichiarate qui
 
@@ -860,6 +875,13 @@ config.modi_approvvigionamento.non_applicabile
 > vendite.commesse.field_responsabile
 > ```
 >
+> ✅ **Tutte e tredici in `it.json`/`en.json` dal 14-09**, più le chiavi di
+> servizio dei form nuovi (`vendite.ordini.riga_data_consegna`,
+> `vendite.situazione_merce.ritardo_giorni`/`ritardo_in_tempo`,
+> `catalogo.field_*`/`select_*`/`hint_*` dell'approvvigionamento,
+> `vendite.commesse.select_responsabile`/`responsabile_non_attivo`/
+> `testata_salva`/`testata_salvata`, `amministrazione.famiglie_documento.billing_account_hint`).
+>
 > ⚠️ Le tre di `vendite.commesse.*` non c'erano nell'elenco originale: il drawer
 > commessa ha tre campi nuovi e le sue chiavi vivono in quel ramo, che esiste.
 > Le due di `acquisti` (`riga_data_consegna_richiesta`,
@@ -869,16 +891,19 @@ config.modi_approvvigionamento.non_applicabile
 
 ### 5.5 Che cosa deve fare il BE
 
-1. **Righe d'ordine — scrittura**: gli endpoint di creazione/aggiornamento riga
+1. ✅ **Righe d'ordine — scrittura**: gli endpoint di creazione/aggiornamento riga
    (vendite e acquisti) devono accettare e persistere le due date. Sono
-   nullable: ometterle resta legittimo.
-2. **Drawer articolo — scrittura**: i tre campi nuovi nel payload del drawer, con
+   nullable: ometterle resta legittimo. *(14-09: vendite sì; `acquisti` non ha
+   ancora endpoint di riga — vedi la voce 1 del riquadro sotto.)*
+2. ✅ **Drawer articolo — scrittura**: i tre campi nuovi nel payload del drawer, con
    il modo di approvvigionamento come **lookup** sul vocabolario.
-3. **Lookup nuovo**: `config.modi_approvvigionamento` va esposto come le altre
-   decodifiche (attivi, ordinati per `ordine`).
-4. **Drawer commessa**: `descrizione` e `responsabile` in scrittura,
+3. ✅ **Lookup nuovo**: `config.modi_approvvigionamento` va esposto come le altre
+   decodifiche (attivi, ordinati per `ordine`). *(14-09: come le altre = per
+   `descrizione`, che è il contratto del lookup generico — nota 4 sotto.)*
+4. ✅ **Drawer commessa**: `descrizione` e `responsabile` in scrittura,
    `data_apertura` in sola lettura (la scrive il default).
-5. **Niente da fare per la lista**: le colonne arrivano dalla configurazione.
+5. ✅ **Niente da fare per la lista**: le colonne arrivano dalla configurazione.
+   *(vero per la lista 7; per la 26 e il pannello situazione merce no — riquadro sotto.)*
 
 > 🔴 **L'elenco qui sopra è INCOMPLETO, e la §5.5 «deve bastare da sola» —
 > riscritto il 2026-09-12 dopo aver letto i repository, non i documenti.** La
@@ -902,6 +927,95 @@ config.modi_approvvigionamento.non_applicabile
 > ⚠️ **Un criterio per non scoprirne un'ottava fra sei mesi**: prima di dire che
 > una colonna «arriva dalla vista», cercare **`SELECT` con l'asterisco** nel
 > repository che la serve. Se la SELECT elenca i nomi, la colonna è un lavoro BE.
+
+> ✅ **Esecuzione BE/FE — 2026-09-14, `dev/backend-tid`.** Voce per voce, con
+> ciò che il codice fa davvero e i tre fatti emersi facendolo:
+>
+> | # | Fatto | Dove |
+> | --- | --- | --- |
+> | 1 · 1-bis | Le due date escono da `list_righe`/`get_riga` (ordini) e la richiesta da quelli dei preventivi (proiezione esplicita); entrano in `create_riga` e nelle whitelist di `update_riga`. ⭐ Il parsing è il BB **già esistente** `PayloadValidator.optional_date` (nessun BB nuovo): malformata → 400 col campo (`E_ORD_VALIDAZIONE` / `E_PREV_VALIDAZIONE`), `null` esplicito azzera in PATCH, `""` è un'assenza. `PreventivoRigaRow` porta la chiave. **`acquisti`: niente** — l'app ha 23 righe Python e nessun repository di righe; le sue due date entrano col cantiere acquisti, come già detto in §5.4 | `ordini_repository/service`, `preventivi_repository/service`, `preventivi_views` (schema), `types.py` |
+> | 1-ter | Due `DatePicker` in `OrdiniRigaForm`, uno in `PreventiviRigaForm` (ISO ↔ `Date` con `toDateString`/`parseIsoDate`, `null` mandato sempre così lo svuotamento azzera); una colonna nella tabella righe di ciascuno — sull'ordine mostra la **promessa** e, in sua assenza, la richiesta in tono muted col tooltip che dice quale delle due si legge | `OrdiniRigaForm/RigheTable`, `PreventiviRigaForm/RigheTable` |
+> | 2 | `ARTICOLI_DETAIL_COLUMNS` + le cinque colonne della vista; `ARTICOLI_CREATE_COLUMNS` (→ `_UPDATE`) + le tre scrivibili. Nel service: `modo_approvvigionamento_id` sulla forma di `natura_vendita_id` (mai `null` esplicito), `gestito_a_magazzino` fra i flag, `lead_time_giorni` fra gli int nullable con il `>= 0` **anticipato** col campo (il fallback dell'`IntegrityError` direbbe «violazione vincoli» senza dire quale). `ARTICOLI_ORDER_COLUMNS` invariata (`ordinabile = f`) | `catalogo_repository.py`, `catalogo_service.py` |
+> | 3 | Una riga in `_REL_CONSENTITE` + `<LookupSelect rel="config.modi_approvvigionamento">` nel drawer, con `ToggleSwitch` e `InputNumber min 0` accanto. ⚠️ **Ordinato per `descrizione`**, non per `ordine`: è il contratto di `dbops.fn_get_lookup_codici` per tutti i vocabolari (`ORDER BY codice \| descrizione`), `nature_vendita` compresa — «come le altre decodifiche» vale così | `dbops_repository.py`, `ArticoloDrawer.vue` |
+> | 4 | `fn_get_commessa_stato` porta anche `descrizione`, `data_apertura` (ISO), `responsabile_risorsa_umana_id`, `responsabile_display` (`get_commessa_testata`: `fn_get_commessa_stato` non le espone, il service le fonde). **`PATCH /commesse/<id>/`** (`aggiorna_commessa_testata`, whitelist chiusa, `null` azzera, 404 su zero righe = inesistente o fuori scope). ⭐ **Lookup nuovo** `GET /anagrafiche/risorse-umane/lookup/` (`skip_area_check`, envelope `results`): `/pratiche/operatori/` è per reparto e sull'area `pratiche`, non serviva. 🔴 **Fatto emerso**: il require sul figlio nato da `ci_apply` rifiuta una persona disattivata con `E_ATTIVO_REQUIRE`, che è di classe **TECNICO** (500) e parla di trigger — lo stesso codice del montaggio sbagliato. Il service pre-verifica «attiva» e risponde 400 col campo; il guard DB resta l'autorità. Nessun guard di stato, come il DB. Drawer: sezione testata sotto l'header (descrizione, responsabile con la persona **disattivata** aggiunta come voce non selezionabile, data in sola lettura, «Salva testata» acceso solo su modifica vera) | `commesse_repository/service`, `views.py`, `urls_v1.py`, `anagrafiche_service.py` (nuovo), `views_risorse_umane.py` (nuovo), `CommessaGestioneDrawer.vue`, `apiCore.js`, `api/commesse.js` |
+> | 5-bis | Righe 747-749 **accese** (`attivo = t`) nello stesso commit della proiezione. ~~La 748 (boolean) si rende con uno slot `#cell-gestito_a_magazzino` come il vicino `is_solo_componente`~~ 🔴 **Rivisto il 14-09 sera (ok Tid)**: quello slot era la **terza copia** dello stesso Tag sì/no (327, 748 e la 220 delle categorie clienti — che aveva **già** `formato=yesno` a catalogo e lo slot sopra, perché il formatter rendeva testo). ⇒ BB `SiNoTag` in `core/components`, `CellaConfigurabile` rende `yesno` (e `tipo_dato=boolean` senza formato) con quello, i tre slot spariti, righe **327 e 748** con `formato=yesno` nel seed; `git diff --numstat` del CSV = `4 4`. Un booleano in lista torna a essere una riga di CSV, come §5.3 promette | `lista_colonna.csv`, `SiNoTag.vue`, `CellaConfigurabile.vue`, `ArticoliSearchTable.vue`, `CategorieClientiSearchTable.vue` |
+> | 6 | Le tre colonne nella proiezione (22 → 25 nomi); nel pannello due colonne data e una colonna «Ritardo» a Tag: vuota se `null`, verde «In tempo» se `0`, rossa «N gg di ritardo» se `> 0`. Il verso **non** si ricalcola nel FE | `vendite_repository.py`, `SituazioneMerceContenuto.vue` |
+> | 7 | `_OBBLIGATORI_CREATE` senza il BA; lo schema OpenAPI di creazione `required=False, allow_null=True`; il test «BA obbligatorio» sostituito da «BA vuoto/assente → NULL alla madre» (tre forme); il drawer senza asterisco e con l'hint. `_CAMPI_CREATE` invariata (posizioni e tipi della madre) | `famiglie_service.py`, `views_famiglie.py`, `test_famiglie_service.py`, `FamigliaDocumentoDrawer.vue` |
+> | §5.4 | Le dodici chiavi mancanti in `it.json`/`en.json` (i vicini, D-C) + le chiavi di servizio dei form nuovi (select/hint/salva). `check_i18n_keys.py` verde, con le tre righe della lista 26 ora attive e quindi contate | locales |
+>
+> Presidi scritti: date di consegna (3 + 3 test, ordini/preventivi), Blocco B
+> (3, catalogo), testata commessa (9 service + 3 API), lookup risorse umane
+> (5, forma della risposta compresa), famiglie (2-bis). ⭐ Il binding reale
+> delle query nuove è stato provato **sul DB di sviluppo** in transazione
+> annullata, con contesto operatore (RLS attiva): i mock non lo vedono.
+> Verifiche complessive: suite backend **4751** test verdi con
+> `ZEROERP_TEST_DB_E2E=1` (zero skip); frontend lint, guard, 44 test e build
+> verdi; `check_i18n_keys.py` verde; ruff verde. Documentazione aggiornata:
+> `api_ordini.md`, `api_preventivi.md`, `api_commessa_stato.md`,
+> `api_situazione_merce.md`, `api_catalogo.md`, `api.md` (inventario endpoint +
+> lookup dedicati), i due cataloghi BB.
+>
+> **Note dell'esecuzione — fatti emersi e ciò che resta a Tid (2026-09-14):**
+>
+> 1. ⚠️ **Il DB di sviluppo non mostra ancora le tre colonne della lista 26.**
+>    Le righe 747-749 sono `attivo = t` nel CSV, ma il mirror `20260806-15` è
+>    `runOnChange` e le ricarica solo al prossimo `db-migrate` — che non lancia
+>    l'agent. Fino ad allora la lista 26 le tiene spente (la proiezione BE le
+>    porta già, la colonna «Personalizza» non le offre).
+> 2. 🔴 **Un codice che dice due cose, candidato allo split per il team DB.**
+>    Il require sul figlio nato da `ci_apply`
+>    (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`) rifiuta un
+>    responsabile **disattivato** con `E_ATTIVO_REQUIRE`, che è di classe
+>    **TECNICO** (500) perché lo stesso codice copre il trigger *montato male*
+>    (`TG_NARGS`, colonne inesistenti). Per l'operatore è un dato sbagliato, non
+>    un guasto. Il BE pre-verifica «persona attiva» (`AnagraficheService.
+>    get_risorsa_umana_lookup`) e risponde 400 col campo; il guard DB resta
+>    l'autorità. È la stessa regola di AGENTS.md («chi può rimediare decide la
+>    classe»), applicata a un codice generato dal framework delle automazioni:
+>    vale per **tutte** le coppie ATTIVO, non solo per questa.
+> 3. ⚠️ **La voce 1-bis resta dichiarata e non decisa.** Le righe d'ordine si
+>    scrivono solo in `DRAFT`, ma `data_consegna_confermata` è «quando ci si
+>    impegna», cioè si decide alla conferma e può cambiare dopo. Il BE non ha
+>    inventato niente: serve un verbo suo (stampo: gli override di prezzo) o il
+>    dialog di conferma che la raccolga. Decisione di Tid, cantiere suo.
+> 4. ℹ️ **«Ordinati per `ordine`» non è vero per nessun vocabolario del lookup
+>    generico**: `dbops.fn_get_lookup_codici` ordina per `codice` o
+>    `descrizione` (whitelist di `order_col`), `nature_vendita` compresa. Il
+>    modo di approvvigionamento segue il suo modello dichiarato; se un giorno
+>    l'ordine di presentazione conterà, è un'estensione del lookup generico,
+>    non un endpoint dedicato.
+> 5. ℹ️ **`acquisti` non ha endpoint di riga** (23 righe Python, nessun
+>    repository): le sue due date (`data_consegna_richiesta`,
+>    `data_consegna_confermata_fornitore`) sono a DB e senza consumatore, e lo
+>    prendono col cantiere acquisti — come già scritto in §5.4 per le chiavi.
+> 6. ℹ️ **Nessun BB nuovo**: il parsing delle date di riga è
+>    `PayloadValidator.optional_date`, già a catalogo (400 col campo per
+>    costruzione). Le due cose nuove sono un lookup dedicato
+>    (`RisorseUmaneLookupView`, pattern «lookup top-level liberato») e un verbo
+>    (`PATCH /commesse/<id>/`), entrambi registrati nei cataloghi e in `api.md`.
+> 7. ℹ️ **Nessun commit**: tutto in working tree su `dev/backend-tid`, allineato
+>    a `origin/Tito-dev` con fast-forward. Gunicorn ricaricato (HUP) per la
+>    prova in-app.
+> 8. 🔴 **Revisione critica del 14-09 (sera), su richiesta di Tid — sei
+>    correzioni sul lavoro del mattino, tutte in working tree.** Due bug:
+>    (a) nel drawer commessa il responsabile **attivo** compariva come «non
+>    più attivo» in sola lettura e mentre il lookup caricava (`items` di
+>    `useGlobalLookup` parte vuoto: «assente dalle attive» si dice solo a
+>    `loaded`); (b) su `preventivi.gestisci_riga` la data si validava dentro la
+>    chiamata a `create_riga`, cioè **dopo** la richiesta L3 che crea la pratica
+>    e manda un'email fuori transazione — ora in testa con le altre validazioni,
+>    e il test pretende che il resolver non sia chiamato. Quattro fragilità:
+>    la catena `risorse_umane → soggetti_ruoli → soggetti` scritta tre volte
+>    quando esiste la vista modello `anagrafiche.vw_risorse_umane_dettaglio`
+>    (ora una query privata nel repository anagrafiche + `LEFT JOIN` sulla vista
+>    in `get_commessa_testata`, `CommessaTestataRow` tipizzata); il blocco
+>    `natura_vendita_id`/`modo_approvvigionamento_id` byte-identico in
+>    `catalogo_service` (helper locale `_extract_fk_not_null`); il form di
+>    testata senza `useDrawerFormPreserve` (ogni `reloadAll` cancellava la
+>    descrizione non salvata); e la voce 5-bis qui sopra. Binding delle query
+>    riscritte provato sul DB di sviluppo in transazione annullata, **col caso
+>    del responsabile valorizzato costruito** (nessuna commessa in dev ne ha
+>    uno) e col rifiuto DB `E_ATTIVO_REQUIRE` forzato `IMMEDIATE`.
 
 ⚠️ **Sulla commessa, un fatto che eviterà una ricerca a vuoto: non esiste una
 lista configurata `vendite.commesse`.** In `ui.lista_definizione` ci sono
@@ -937,6 +1051,7 @@ non vengono da qui.
 | **P-6** ✅ *scritto e provato il 13-09 (§6-ter)* | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` + 🔴 `vendite.vw_preventivi_righe_smistabili_ordine` (*2026-09-12*, §5.2). ⚠️ `security_invoker` ri-specificata sulle tre di `vendite`, **non** aggiunta a quella di `catalogo`. ✅ *2026-09-14*: `giorni_ritardo` contro `COALESCE(confermata, richiesta)` — deciso da Tid (§5.2, riquadro) | `20_code` |
 | **P-7** ✅ *scritto e provato il 13-09 (§6-ter)* | `ui.lista_colonna`: le righe nuove, append al CSV. 🔴 *2026-09-12*: le tre della lista 26 nascono **`attivo=f`** (§5.3 riquadro); `ordinabile=t` solo se il BE estende la whitelist nello stesso giro. *2026-09-13*: righe 746-749, `ordinabile=f` su tutte; `check_i18n_keys.py` rosso sulla 746 finché il FE non traduce (§5.3) | `80_data` |
 | **P-8** ✅ *chiuso il 14-09: tre pgTAP verdi col runner (Tid)* | pgTAP (§7). 🔴 *2026-09-12*: le righe sono sotto RLS, il trigger «riga spenta» viene da `ci_apply` — vedi il riquadro di §7. *14-09*: tre file, 33 asserzioni, provati in transazione annullata come proprietario; il lancio col runner è di Tid | `db/pgtap` |
+| **BE/FE** ✅ *eseguito il 14-09 (§5.5, riquadro «Esecuzione»)* | Le sette voci di §5.5 + le tredici chiavi di §5.4, su `dev/backend-tid`: righe 747-749 accese nel CSV (il mirror le ricarica al prossimo migrate), lookup `/anagrafiche/risorse-umane/lookup/`, `PATCH /commesse/<id>/`. Note e fatti emersi: i sette punti in coda al riquadro | `backend/` + `frontend/` + `lista_colonna.csv` |
 | **P-9** ✅ *applicata il 14-09, test verdi (§6-quater)* | ⚠️ ~~OPZIONALE, da confermare~~ **CONFERMATA** (§3-bis) — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente`. 🔴 *2026-09-12*: + `fn_crea_famiglia_documento` (oggi la pretende), + BE/FE (§3-bis censimento) | `00_schema` + `20_code` |
 
 ⛔ **L'ordine di fase non è negoziabile**: `00_schema` → `20_code` → `80_data`.
@@ -1136,8 +1251,8 @@ ancora `NOT NULL`, la madre ha ancora «i sei obbligatori», zero famiglie di pr
 > `DECLARE` ancorato (`config.parameters.default_value%TYPE`).
 
 ⚠️ **Che cosa NON copre**: la RLS non entra (nessuna delle tabelle toccate ne
-ha); il lato BE/FE è la voce 7 di §5.5 e resta da fare — finché non lo fanno, il
-BE rifiuta prima della madre.
+ha); il lato BE/FE è la voce 7 di §5.5 — ✅ **fatto il 14-09** (riquadro
+«Esecuzione» in §5.5): il BE non rifiuta più prima della madre.
 
 ⚠️ **Non un `context: dati_macchina`**: il seed delle famiglie non cambia (le
 cinque hanno tutte il BA), e la famiglia dell'ordine di acquisto la registrerà
@@ -1431,7 +1546,9 @@ con un censimento più onesto (§3-bis).
 
 ⭐ **Con le tre decisioni prese il brief è di nuovo ESEGUIBILE**: il piano è la
 §6 (P-1 → P-8, P-9 se confermata), i presidi la §7, e nessuna voce aspetta
-qualcuno. ⚠️ L'osservazione su `docs/it/dev/api.md` («le righe non hanno la
+qualcuno. ✅ *2026-09-14: ESEGUITO per intero, lato DB (P-1 → P-9) e lato BE/FE
+(§5.5). Restano a Tid il `db-migrate` che riaccende le righe 747-749 e le note
+in coda a §5.5 (split di `E_ATTIVO_REQUIRE`, verbo per la data confermata).* ⚠️ L'osservazione su `docs/it/dev/api.md` («le righe non hanno la
 RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 
 ---
@@ -1453,4 +1570,6 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | 2026-09-14 | ✅ **P-9 confermata da Tid, scritta e provata** (§6-quater): cinque changeSet `20260914-07 → -11` (colonna nullable, guard, due `fn_*_storia_emittente`, madre) + due pgTAP estesi (9 e 28 asserzioni), prova con mutazione. Lato BE/FE in §5.5 voce 7. Da applicare |
 | 2026-09-14 | 🔴 **Rilievo di Tid: `%TYPE` mancante in firma e `RETURNS TABLE`** (quinta ricaduta del corpo vivo che li scioglie). Corretti in loco `-09/-10/-11` (+ `SECURITY INVOKER` sulla madre) e aggiunto `20260914-12`, no-op sul DB, che ri-ancora la firma di `fn_push_preventivo_a_ordine` degradata da `20260824-10` e dal mio `-20`. Identità byte-identiche, nessun overload |
 | 2026-09-14 | ✅ **P-9 e `-12` APPLICATI, test verdi** (Tid). Lato DB il brief è **completo**: P-1 → P-9 tutti in `databasechangelog`. Restano le sette voci BE/FE di §5.5 e le chiavi i18n di §5.4; il documento resta in `work-in-progress/` finché non sono chiuse |
+| 2026-09-14 | ✅ **Lato BE/FE eseguito** (`dev/backend-tid`, riquadro «Esecuzione» in §5.5): le sette voci e le tredici chiavi i18n. Un lookup nuovo (`/anagrafiche/risorse-umane/lookup/`) e un verbo nuovo (`PATCH /commesse/<id>/`); nessun BB nuovo (il parsing date è `PayloadValidator.optional_date`, già a catalogo). 🔴 Fatto emerso: `E_ATTIVO_REQUIRE` del require sul figlio è TECNICO — il service pre-verifica «persona attiva» per rispondere 400 col campo. Righe 747-749 accese nel CSV: il mirror le ricarica al prossimo migrate (Tid). Il 1-bis resta dichiarato e non deciso |
 | 2026-09-14 | 🔴 **Rilievo di Tid: `test-vw-situazione-merce-ordine-v1` rosso al test 3** («18 colonne», tre extra). P-6 ha allargato il contratto e P-8 ha scritto solo il gemello nuovo: il pgTAP **esistente** non era stato censito. Test 3 → 21 colonne (sede unica del contratto); test 1 del gemello → posizione e tipo delle tre in coda invece di una seconda copia del `columns_are` (che non prova l'ordine). Provate 3/3 + mutazione in transazione annullata, preambolo verde (§7, riquadro). Lancio col runner dei due file: Tid |
+| 2026-09-14 | 🔴 **Revisione critica del lavoro BE/FE, su richiesta di Tid** (§5.5, nota 8): due bug (responsabile attivo mostrato «non più attivo» a lookup non caricato; data del preventivo validata dopo la richiesta L3 e la sua email) e quattro fragilità corrette — catena risorsa→soggetto scritta tre volte al posto della vista modello `vw_risorse_umane_dettaglio`, blocco FK NOT NULL duplicato in `catalogo_service`, form di testata senza `useDrawerFormPreserve`, terza copia del Tag sì/no. ⭐ **Un BB nuovo, `SiNoTag`** (ok Tid): `formato=yesno` di `CellaConfigurabile` lo rende, i tre slot spariscono, righe 327/748 con `yesno` nel seed. Binding provato sul DB vivo col caso costruito. Tutto in working tree, nessun commit |

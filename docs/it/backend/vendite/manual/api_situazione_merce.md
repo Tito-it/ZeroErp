@@ -62,6 +62,21 @@ quell'euristica conterebbe sul DDT il saldo dell'**intera riga d'ordine** —
 tutte le sue spedizioni — al posto di questa: un numero plausibile e sbagliato.
 Chi consuma legge `contesto`, non indovina.
 
+⭐ **Dal 2026-09-14 `righe_ordine` porta anche le date di consegna e il
+ritardo** (`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, P-6 e §5.5
+voce 6): `data_consegna_richiesta_cliente` (quando il cliente la vuole),
+`data_consegna_confermata` (la nostra promessa) e `giorni_ritardo`. Il ritardo
+sta **nella vista** e non altrove perché non è «oggi > data richiesta»: è
+«oggi > data di riferimento **e** resta merce da spedire», e il residuo con la
+soglia dell'impegno vive già lì. La data di riferimento è la **promessa** se
+c'è, altrimenti la richiesta del cliente (deciso da Tid il 2026-09-14). ⛔ Tre
+valori, e non si appiattiscono: `null` = il conto non si applica (`da_spedire`
+NULL o zero, o nessuna data dichiarata), `0` = c'è da spedire e non è tardi,
+`N > 0` = giorni di ritardo. Un `COALESCE(..., 0)` direbbe «in tempo» su una
+riga che non ha niente da spedire. Il repository proietta le colonne **per
+nome** (25 dal 14-09): una colonna nuova della vista non esce finché nessuno la
+nomina.
+
 Esempio reale (l'ordine del §3 del brief pannello, la riga da 21 pezzi):
 
 ```text

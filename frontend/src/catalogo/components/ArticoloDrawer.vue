@@ -25,6 +25,7 @@ import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -82,6 +83,14 @@ function defaultForm() {
     conto_contabile_vendita_id: null, conto_contabile_acquisto_id: null,
     is_composito: false, is_solo_componente: false,
     requires_serial: false,
+    // Blocco B (brief-db-modifiche-certe-ciclo-vendita-e-articolo): DA DOVE
+    // arriva l'articolo. `modo_approvvigionamento_id` NOT NULL a DB con
+    // DEFAULT ACQUISTO (null = «lascia decidere il default», come la natura);
+    // `gestito_a_magazzino` fail-safe a false; `lead_time_giorni` null = non
+    // si applica (una prestazione), e 0 NON e' «non si applica».
+    modo_approvvigionamento_id: null,
+    gestito_a_magazzino: false,
+    lead_time_giorni: null,
   }
 }
 
@@ -153,6 +162,9 @@ async function loadDetail() {
     is_composito: data.is_composito || false,
     is_solo_componente: data.is_solo_componente || false,
     requires_serial: data.requires_serial || false,
+    modo_approvvigionamento_id: data.modo_approvvigionamento_id,
+    gestito_a_magazzino: data.gestito_a_magazzino || false,
+    lead_time_giorni: data.lead_time_giorni ?? null,
   }
   // Carica riepilogo in parallelo
   await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
@@ -207,6 +219,10 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
+      // NOT NULL a DB: in EDIT il valore arriva sempre dal detail, mai null.
+      modo_approvvigionamento_id: f.modo_approvvigionamento_id,
+      gestito_a_magazzino: f.gestito_a_magazzino,
+      lead_time_giorni: f.lead_time_giorni,
     }
     const result = await execute(
       () => store.update(props.articoloId, payload),
@@ -232,6 +248,11 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
+      // NOT NULL a DB con DEFAULT ACQUISTO: si invia solo se scelto esplicitamente.
+      ...(f.modo_approvvigionamento_id != null
+        ? { modo_approvvigionamento_id: f.modo_approvvigionamento_id } : {}),
+      gestito_a_magazzino: f.gestito_a_magazzino,
+      lead_time_giorni: f.lead_time_giorni,
     }
     const result = await execute(
       () => store.create(payload),
@@ -431,6 +452,31 @@ const drawerActions = computed(() => {
             <label>{{ t('catalogo.field_requires_serial') }}</label>
             <ToggleSwitch v-model="form.requires_serial"
               :disabled="isFieldLocked('requires_serial')" />
+          </div>
+        </div>
+
+        <!-- Blocco B: da dove arriva l'articolo. Il modo e' un vocabolario
+             (`config.modi_approvvigionamento`, come la natura di vendita):
+             NOT NULL a DB, niente show-clear. `gestito_a_magazzino` e' una
+             domanda DIVERSA dalla natura MERCE (una merce puo' essere venduta
+             senza passare da giacenza). Il lead time e' in giorni, >= 0, e
+             vuoto significa «non si applica». -->
+        <div class="form-grid-3col">
+          <div class="form-field">
+            <label>{{ t('catalogo.field_modo_approvvigionamento') }}</label>
+            <LookupSelect v-model="form.modo_approvvigionamento_id" rel="config.modi_approvvigionamento"
+              :placeholder="t('catalogo.select_modo_approvvigionamento')" />
+            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_modo_approvvigionamento') }}</small>
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_gestito_a_magazzino') }}</label>
+            <ToggleSwitch v-model="form.gestito_a_magazzino" />
+            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_lead_time_giorni') }}</label>
+            <InputNumber v-model="form.lead_time_giorni" :min="0" :use-grouping="false"
+              :invalid="campiErrati.includes('lead_time_giorni')" />
           </div>
         </div>
         <!-- Sezione: UoM riepilogo (edit mode) -->

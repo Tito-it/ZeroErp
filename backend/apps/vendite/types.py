@@ -651,6 +651,19 @@ class CommessaStatoResult(TypedDict):
     cliente_display: str | None
 
 
+class CommessaTestataRow(TypedDict):
+    # La testata LEGGIBILE della commessa (Blocco C di brief-db-modifiche-certe-
+    # ciclo-vendita-e-articolo): cio' che `fn_get_commessa_stato` non espone e
+    # `CommesseRepository.get_commessa_testata` legge da `vendite.commesse`.
+    descrizione: str | None
+    # NOT NULL a DB (default `script.fn_data_operativa()`): mai None.
+    data_apertura: date
+    responsabile_risorsa_umana_id: int | None
+    # Nome della persona da `anagrafiche.vw_risorse_umane_dettaglio`; None
+    # senza responsabile.
+    responsabile_display: str | None
+
+
 class CommessaPushLogRow(TypedDict):
     id: int
     run_at: str
@@ -800,6 +813,9 @@ class PreventivoRigaRow(TypedDict):
     importo_iva_riga: str | None
     meta: dict[str, Any]
     is_composito_caso_a: bool
+    # Data di consegna richiesta dal cliente (Blocco A del brief modifiche
+    # certe): sul preventivo c'e' solo la richiesta, la conferma nasce sull'ordine.
+    data_consegna_richiesta_cliente: str | None
 
 
 class PreventivoRigaComponenteRow(TypedDict):

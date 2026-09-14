@@ -4,6 +4,11 @@
 > **Owner**: Tid · **Stato**: 🟠 **DA APPROFONDIRE** — le decisioni sono in §7, e la
 > prima (l'host) viene prima di tutte le altre.
 >
+> ✅ **Addendum del 2026-09-14 (§4.1-bis, §7-bis, §9-bis)**: «Esegui ora» si
+> **stacca** da «Riavvia» e parte per primo, senza aspettare l'host. Decisione
+> di Tid del 14-09, dopo aver rilanciato a mano le due cadenze del digest.
+> Brief DB: [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md).
+>
 > **Origine.** Domanda di Tid del 2026-09-11, subito dopo aver riavviato a mano il
 > listener (`sudo systemctl restart zeroerp-listen-cambio-reparto`) per spegnere la
 > riga `MUTO` del panorama: *«questi comandi di riavvio potranno mai essere messi su
@@ -90,6 +95,82 @@ dall'host, e se l'esecutore è morto la richiesta resta «mai presa» — cioè
 <unit>.timer`): è **`abilita`**, cioè un fatto di deploy che il DB ha
 dichiarato fuori dal catalogo (§10.2 del brief). Accenderlo da video vorrebbe
 dire avere quella decisione a catalogo, per host — vedi §5.
+
+### 4.1-bis ⭐ Addendum 14-09 — «Esegui ora» non ha bisogno di systemd
+
+> Scritto dopo aver rilanciato a mano le due cadenze del digest (14-09), con
+> la riga che il timer stesso usa: `bin/run-command.sh digest_presidi --cadenza
+> settimanale`. Ha funzionato identico al timer — perché **è** il timer, meno
+> l'orario.
+
+I due verbi del §4.1 hanno **nature diverse**, e il disegno del §4.3 le tratta
+uguali. «Riavvia» agisce su un *servizio* di un host: è `systemctl` per forza,
+con host e privilegio per forza — il §5 ha ragione, e D1 viene prima. «Esegui
+ora» agisce su un *timer*, e un timer è solo un orario attorno a un comando:
+`ExecStart=run-command.sh <comando>`. Il comando si lancia da solo, come
+l'utente applicativo, da qualunque host abbia il checkout.
+
+| | «Riavvia» (§4.3) | «Esegui ora» (questo addendum) |
+| --- | --- | --- |
+| L'handler del drenatore fa | `sudo -n systemctl restart <unit>.service` | `subprocess.run([APP_DIR/bin/run-command.sh, *comando])` — **senza `sudo`, senza shell** |
+| Privilegio | `sudoers` reso e validato (§4.4) | nessuno: lo stesso utente del timer |
+| Host | **obbligatorio** (D1) | irrilevante: il comando parla col DB |
+| Cosa compra | il servizio morto riparte | una corsa adesso, di qualunque timer |
+
+⛔ **Sottoprocesso, non `call_command` dentro il drenatore.** Il comando ha il
+suo `job_run`, il suo lock anti-sovrapposizione, i suoi tempi: un giro di
+fatturazione non deve tenere occupato il drenatore che gira ogni minuto, e
+un `job_run` annidato nello stesso processo sarebbe una cosa che oggi nessuno
+ha mai provato. Il sottoprocesso è **esattamente** ciò che systemd farebbe.
+
+⭐ **Dove sta il comando, ed è il punto che il §2 non aveva visto**: la riga
+di comando di ogni timer vive nel **template `.service`**
+(`deploy/systemd/*.service`, riga `ExecStart`), non in `sveglie.json`, che
+dichiara unit, processo, forma, `oncalendar` e `abilita`. Il backend non la
+può leggere da lì. ⇒ `sveglie.json` prende un campo **`comando`** (l'argv dopo
+`run-command.sh`, es. `["digest_presidi", "--cadenza", "settimanale"]`), e il
+template smette di ricopiarlo: `ExecStart=__APP_DIR__/bin/run-command.sh
+__COMANDO__`, reso da `install-timers.sh` come già `__ONCALENDAR__`. **Una
+sede**: la stessa riga che il timer esegue è quella che il pulsante esegue, e
+`test-install-timers.sh` prova il render come prova già gli altri segnaposto.
+⚠️ Un `comando` ricopiato nel json *accanto* al template sarebbe la seconda
+sede — quella che resta indietro, e qui «indietro» vuol dire un pulsante che
+lancia una cosa diversa dal timer.
+
+**Chi ha premuto, sul giornale — senza toccare i comandi.** Il comando lanciato
+a mano deve registrarsi con `origine = COMMAND` e l'`auth_user_id` di chi ha
+premuto, così nel giornale si distingue dal timer (`CRON`). I comandi oggi
+scrivono l'origine da soli (`digest_presidi` passa `ORIGINE_CRON`). La sede
+giusta è **una**: `apps.core.services.job_run.job_run()` legge due variabili
+d'ambiente (`ZEROERP_JOB_ORIGINE`, `ZEROERP_JOB_AUTH_USER_ID`) e, se ci sono,
+**vincono** sugli argomenti; l'handler le mette nell'ambiente del sottoprocesso.
+Ogni comando presente e futuro le eredita senza una riga.
+
+**D6 qui non morde.** Una corsa lanciata a mano *è* una corsa vera del
+processo: il suo run sotto `digest_presidi:settimanale` è un segno di vita
+legittimo. Il problema di D6 resta per «Riavvia», dove il run racconta un
+tentativo e non un'esecuzione.
+
+**Il lavoro di coda, e il suo run.** Il tipo `ESEGUI_PROCESSO` sta sotto un
+processo suo, `avvio_manuale` (MANUTENZIONE, canale **CODA**: *lo accoda una
+persona, l'identità è la sua* — §4.2, D4). Il drenatore registra il run del
+lavoro sotto `avvio_manuale` con l'`auth_user_id` dallo `scope`: è l'audit
+del **gesto**. Il comando registra il suo run sotto il **processo eseguito**:
+è l'audit dell'**esecuzione**. Due righe, due domande, nessuna tabella nuova
+(§4.6). `max_tentativi = 1`: ritentare un processo che è partito e fallito a
+metà non è idempotente per natura — se serve ripetere, si preme di nuovo.
+
+**Idempotenza**: `idempotency_key = f"esegui:{unit}"` sui job vivi (§4.2):
+due click, un lavoro. E il lock del comando (`fn_job_run_start` con
+`lock_key`) fa il resto: un avvio a mano mentre il timer sta girando produce
+una riga di **skip**, non due corse.
+
+**Cosa NON copre, e va detto a video** (si somma al §6):
+* un timer con **`abilita = false`** su questa installazione (oggi i due di
+  fatturazione): il pulsante è **spento** con il motivo *«sveglia non abilitata
+  su questa installazione»* — ⚠️ è una decisione, D-A in §7-bis;
+* un processo **senza sveglia** (`forma = servizio`, o assente da
+  `sveglie.json`): non c'è comando da lanciare, il pulsante non compare.
 
 ### 4.2 La richiesta — un tipo di coda, un processo a catalogo
 
@@ -253,6 +334,44 @@ claim dipendono da lei.
 | D7 | Riavvio **automatico** dal guardiano su `MUTO`? | **no**, per ora | nasconde il bug che ha ucciso il processo; se mai, una volta al giorno e a parte |
 | D8 | Nome dell'azione di processo e chi la riceve nei profili | `unit_riavvia` su `strumenti`; profili: da decidere in-app | è una decisione di profilo, non di codice |
 
+### 7-bis — Decisioni per «Esegui ora» (addendum 14-09)
+
+| # | Domanda | Raccomandazione | Perché |
+| --- | --- | --- | --- |
+| **D-A** | Un timer con `abilita = false` si può lanciare a mano? | **No**: pulsante spento, motivo a video | `abilita` è una decisione di deploy (i due timer di fatturazione sono spenti *perché* l'SDI è sospeso); un pulsante che la aggira è una seconda sede di quella decisione |
+| D-B | Il tempo massimo del sottoprocesso | un default largo dichiarato nell'handler (30 min) e `timeout_minuti` **opzionale** per voce in `sveglie.json` | il digest finisce in 3 s, un giro di fatturazione no; il tetto sta con il comando, che è l'unico a sapere quanto dura |
+| D-C | Nome del processo e dell'azione | processo `avvio_manuale`; azione `processo_avvia` su `strumenti` | un'azione **diversa** da `code_manage` (D8): requeue-are un lavoro e avviare un processo sono due fiducie |
+| D-D | L'azione è «pericolosa» a catalogo? | **sì** | avvia un giro di fatturazione con un click; la conferma a video è il minimo |
+| D-E | L'`origine` del run lanciato a mano | `COMMAND`, con `auth_user_id` di chi ha premuto, via ambiente letto da `job_run()` | il giornale distingue timer e persona senza toccare nessun comando |
+
+### 9-bis — Sequenza per «Esegui ora» (addendum 14-09)
+
+1. **DB** (brief [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md)):
+   processo `avvio_manuale`, tipo `ESEGUI_PROCESSO` con `attivo = false`,
+   azione `processo_avvia`. Nessun host, nessuna colonna nuova.
+2. **Deploy**: `comando` in `sveglie.json` (voci `timer`), `__COMANDO__` nei
+   template al posto della riga cablata, render in `install-timers.sh`,
+   `test-install-timers.sh` lo prova; `carica_sveglie()` legge il campo e
+   **rifiuta** una voce `timer` senza `comando` (come rifiuta
+   `tolleranza_minuti`).
+3. **BE**: `job_run()` legge `ZEROERP_JOB_ORIGINE`/`ZEROERP_JOB_AUTH_USER_ID`;
+   handler `esegui_processo_default` (whitelist da `carica_sveglie()`, `abilita`,
+   sottoprocesso a lista con timeout, esito = exit code + coda dell'output nel
+   `result`); `POST /api/v1/amm-software/processi/<codice>/esegui-ora/` con
+   `{unit}` nel body (validata fra le sveglie **di quel processo**: il client
+   non manda mai un comando), `AdminAPIView` + `post_permission =
+   "processo_avvia"`, `handle_post_json` + `Idempotency-Key`; il dettaglio
+   `GET processi/<codice>/` espone le **sveglie** con la capability di riga
+   (`can_esegui_ora` · `can_esegui_ora_reason` · `can_esegui_ora_reason_key`,
+   la terna del dettaglio in `api.md`). Test: handler con `subprocess` finto
+   (whitelist, `abilita`, exit ≠ 0 → ERRORE, timeout), e2e su DB provvisto per
+   l'accodamento.
+4. **FE**: nel `ProcessoDrawer` una sezione «Sveglie» con «Esegui ora» per
+   unit (`useConfirmAction`, motivo dell'azione spenta), toast con il lavoro
+   accodato, refresh del tab «Ultimi run». Niente pagine nuove.
+5. **Team DB**: `attivo = true` sul tipo, a release BE avvenuta.
+6. «Riavvia» resta il secondo incremento, con D1 e il §4.3-4.4 così come sono.
+
 ## 8. Rischi, e come si contengono
 
 | Rischio | Contenimento |
@@ -262,6 +381,8 @@ claim dipendono da lei.
 | **Doppio click / due tecnici** | `idempotency_key` sui job vivi: il secondo trova il primo |
 | **Host sbagliato** | D1/D2: host obbligatorio, claim filtrato; un host che riceve una richiesta non sua **non la esegue** e lo dice |
 | **Falso «vivo»** dopo un tentativo di avvio | D6: il run del riavvio non è un segno di vita del processo riavviato |
+| **Un comando che il json dichiara e il template no** (o viceversa) | una sede sola: il template porta `__COMANDO__` e il render lo prende dal json; `test-install-timers.sh` fa rosso se un template ha ancora una riga cablata |
+| **`abilita = false` aggirato dal pulsante** | D-A: la capability è spenta con motivo; l'handler ricontrolla `abilita` dalla stessa `carica_sveglie()` (difesa in profondità, come per la whitelist) |
 | **Un tecnico che riavvia a raffica** | la coda è un giornale: ogni gesto ha un run con chi/quando; se serve, `run_after` con un minimo fra due riavvii della stessa unit — è una riga nell'handler, non un rate limit a parte |
 | **Il file `sudoers` reso male** | `install-timers.sh` lo scrive in un temporaneo e lo valida con `visudo -cf` **prima** di copiarlo; un `sudoers` rotto blocca `sudo` per tutti, ed è l'unico modo per non scoprirlo dopo |
 

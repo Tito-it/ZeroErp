@@ -14,6 +14,7 @@ import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
@@ -41,6 +42,9 @@ import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import { lookupRisorseUmane } from '../../core/apiCore'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
@@ -52,7 +56,7 @@ import {
   STATO_EMISSIONE_ATTIVITA,
   TIPO_MOVIMENTO_ATTIVITA,
 } from '../constants'
-import { toDateString } from '../../core/utils/date'
+import { displayDate, toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
 import {
@@ -70,6 +74,7 @@ import {
   listCommessaAttivita,
   riallineaPrezzoAttivita,
   sbloccaPrezzoAttivita,
+  updateCommessaTestata,
   variazionePrezzoAttivita,
 } from '../api/commesse'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
@@ -229,11 +234,112 @@ async function reloadAll() {
   if (await loadStato()) await loadRighe()
 }
 
+// ------------------------------------------------------------------ testata leggibile
+// Blocco C di brief-db-modifiche-certe-ciclo-vendita-e-articolo: la commessa
+// aveva `codice` e nient'altro di parlante. `descrizione` e `responsabile`
+// si scrivono (PATCH /commesse/<id>/), `data_apertura` e' in sola lettura —
+// la mette il default alla nascita. Nessun guard di stato: il DB non ne
+// mette, di proposito (la descrizione di una commessa chiusa si corregge).
+const testataForm = ref({ descrizione: '', responsabile_risorsa_umana_id: null })
+const testataSaving = ref(false)
+// ⚠️ `stato` si ricarica da MOLTI punti (apertura, approva riga, prezzi,
+//    cambio stato: ogni `reloadAll`), e il watch qui sotto SOSTITUISCE il
+//    form. Senza il BB, una descrizione digitata e non ancora salvata
+//    sparirebbe al primo «Approva» su una riga — in silenzio, ed e' il difetto
+//    per cui `useDrawerFormPreserve` esiste. La baseline si azzera all'apertura
+//    (sotto, nel watch su `visible`/`commessaId`), o il non-salvato della
+//    commessa precedente finirebbe su quella nuova.
+const { preserva: preservaTestata, reset: resetTestata } = useDrawerFormPreserve(testataForm)
+
+// Scopo: allinea il form alla testata caricata (a ogni `loadStato`),
+//        ripristinando cio' che l'operatore aveva cambiato e non salvato.
+watch(stato, (s) => {
+  const applica = preservaTestata()
+  testataForm.value = {
+    descrizione: s?.descrizione ?? '',
+    responsabile_risorsa_umana_id: s?.responsabile_risorsa_umana_id ?? null,
+  }
+  applica()
+})
+
+// Il form e' «sporco» solo se differisce da cio' che il server ha detto: il
+// pulsante Salva si accende su una modifica vera, non sull'apertura.
+const testataDirty = computed(() => {
+  const s = stato.value
+  if (!s) return false
+  const descrizione = (testataForm.value.descrizione || '').trim() || null
+  return descrizione !== (s.descrizione ?? null)
+    || (testataForm.value.responsabile_risorsa_umana_id ?? null) !== (s.responsabile_risorsa_umana_id ?? null)
+})
+
+// Le risorse umane ATTIVE (lookup cross-dominio, cache condivisa per chiave).
+// Caricate solo quando il campo e' scrivibile: in sola lettura basta il nome
+// che il dettaglio porta gia' (`responsabile_display`).
+const {
+  items: responsabiliAttive,
+  loading: responsabiliLoading,
+  loaded: responsabiliCaricate,
+  load: loadResponsabili,
+} = useGlobalLookup('anagrafiche.risorse_umane', () => lookupRisorseUmane())
+watch(
+  () => [props.visible, isReadonly.value],
+  ([visible, readonly]) => {
+    if (visible && !readonly) loadResponsabili().catch(() => {})
+  },
+  { immediate: true },
+)
+// ⚠️ Il responsabile ATTUALE puo' essere una persona poi disattivata: non sta
+//    piu' fra le attive, ma spegnere il select senza dirlo mostrerebbe un
+//    campo vuoto su un'assegnazione che esiste. Si aggiunge come voce
+//    NON selezionabile, col suo nome, finche' resta assegnata.
+// ⛔ «Non e' fra le attive» si puo' dire SOLO a lookup caricato: `items` parte
+//    vuoto, e in sola lettura il lookup non si carica affatto — senza il
+//    guard su `loaded`, una persona attiva comparirebbe come «non piu'
+//    attiva» finche' la lista non arriva (e per sempre in consultazione).
+//    Prima di allora la voce e' il solo nome, dal dettaglio.
+const responsabiliOptions = computed(() => {
+  const attive = responsabiliAttive.value ?? []
+  const attualeId = stato.value?.responsabile_risorsa_umana_id ?? null
+  if (attualeId == null || attive.some((r) => r.id === attualeId)) return attive
+  const nome = stato.value?.responsabile_display ?? `#${attualeId}`
+  const nonAttivo = responsabiliCaricate.value
+  return [
+    {
+      id: attualeId,
+      display: nonAttivo ? t('vendite.commesse.responsabile_non_attivo', { nome }) : nome,
+      attivo: !nonAttivo,
+    },
+    ...attive,
+  ]
+})
+
+// Scopo: salva la testata (PATCH parziale) e riallinea il dettaglio con la
+//        risposta, che e' lo stesso payload di `/stato/`.
+async function salvaTestata() {
+  if (!testataDirty.value) return
+  testataSaving.value = true
+  try {
+    const res = await execute(() => updateCommessaTestata(props.commessaId, {
+      descrizione: (testataForm.value.descrizione || '').trim() || null,
+      responsabile_risorsa_umana_id: testataForm.value.responsabile_risorsa_umana_id ?? null,
+    }), { successMessage: t('vendite.commesse.testata_salvata') })
+    if (res !== null) {
+      stato.value = res.data?.data ?? stato.value
+      emit('saved')
+    }
+  } finally {
+    testataSaving.value = false
+  }
+}
+
 watch(
   () => [props.visible, props.commessaId],
   async ([visible]) => {
     if (!visible || !props.commessaId) return
     stato.value = null
+    // Baseline del form di testata azzerata PRIMA che `stato` cambi: il
+    // non-salvato di un'altra commessa non deve sopravvivere alla riapertura.
+    resetTestata()
     righe.value = []
     righeTotale.value = 0
     righePage.value = 1
@@ -825,6 +931,42 @@ const drawerActions = computed(() => [
           :doc-id="commessaId"
           :readonly="isReadonly" />
 
+        <!-- La TESTATA LEGGIBILE (Blocco C): descrizione e responsabile si
+             scrivono qui, la data di apertura si legge. Salva e' un gesto
+             suo, acceso solo su una modifica vera: la testata non passa da
+             nessun dialog perche' non e' un'azione di processo. -->
+        <div v-if="stato" class="app-commessa-testata">
+          <div class="form-grid-3col">
+            <div class="form-field">
+              <label>{{ t('vendite.commesse.field_descrizione') }}</label>
+              <InputText v-model="testataForm.descrizione" :maxlength="255" fluid
+                :disabled="isReadonly"
+                :invalid="campiErrati.includes('descrizione')" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.commesse.field_responsabile') }}</label>
+              <Select v-model="testataForm.responsabile_risorsa_umana_id"
+                :options="responsabiliOptions" option-label="display" option-value="id"
+                :option-disabled="(o) => o.attivo === false"
+                :loading="responsabiliLoading"
+                :disabled="isReadonly" show-clear filter fluid
+                :placeholder="t('vendite.commesse.select_responsabile')"
+                :invalid="campiErrati.includes('responsabile_risorsa_umana_id')" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.commesse.field_data_apertura') }}</label>
+              <!-- Sola lettura: la scrive il default (`fn_data_operativa`)
+                   alla nascita, e non e' fra i campi del PATCH. -->
+              <InputText :model-value="displayDate(stato.data_apertura)" disabled fluid />
+            </div>
+          </div>
+          <div v-if="!isReadonly" class="app-commessa-testata-azioni">
+            <Button :label="t('vendite.commesse.testata_salva')" icon="pi pi-check" size="small"
+              :loading="testataSaving" :disabled="!testataDirty || loading"
+              @click="salvaTestata" />
+          </div>
+        </div>
+
         <!-- Contatori funnel testata. -->
         <div v-if="stato" class="app-commessa-contatori">
           <span v-for="c in contatori" :key="c.key" class="app-commessa-contatore">
@@ -1148,6 +1290,14 @@ const drawerActions = computed(() => [
 </template>
 
 <style scoped>
+.app-commessa-testata {
+  margin-top: 0.75rem;
+}
+.app-commessa-testata-azioni {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
 .app-commessa-contatori {
   display: flex;
   flex-wrap: wrap;

@@ -289,9 +289,27 @@ La response espone `commesse_ids` (commesse toccate dal push), oltre a
 
 Payload riga (create): `articolo_id` (obbligatorio), `descrizione`, `quantita`,
 `qta_operativa`, `uom_operativa_id`, `factor_to_base`, `prezzo_unitario`,
-`sconto_percentuale`, `iva_id`, `meta`. La doppia quantità operativa/base segue il
+`sconto_percentuale`, `iva_id`, `meta`, e — dal 2026-09-14 — le due **date di
+consegna**. La doppia quantità operativa/base segue il
 pattern standard (input con priorità all'operativa; `quantita` base derivata dal
 trigger `trgfn_qta_from_operativa`). I totali testata sono ricalcolati da trigger DB.
+
+⭐ **Le date di consegna della riga** (`brief-db-modifiche-certe-ciclo-vendita-e-articolo`,
+Blocco A): `data_consegna_richiesta_cliente` (quando il cliente la vuole) e
+`data_consegna_confermata` (quando **noi** ci impegniamo — D-16: non marcato =
+nostro, marcato = della controparte). ISO `YYYY-MM-DD`, entrambe nullable:
+ometterle resta legittimo; in `PATCH` un `null` esplicito **azzera**. Nessun
+CHECK fra le due, ed è una scelta del modello (si può confermare *prima* di
+quanto chiesto); una data malformata è un **400** col campo
+(`E_ORD_VALIDAZIONE`, `fields`), non un 500 dal DB. Escono da `list_righe` e
+`get_riga` (proiezione esplicita). Sulla testata non c'è nessuna colonna: la
+lista ordini espone `data_consegna_richiesta_cliente_min` dalla vista
+(`vw_ordini_lista`), il `min()` sulle righe attive. ⚠️ **Fatto di modello
+dichiarato nel brief (§5.5, 1-bis) e non deciso qui**: le righe si scrivono solo
+in `DRAFT`, ma la promessa si decide **alla conferma** e può cambiare dopo — il
+DB non mette nessun guard di stato su questa colonna, di proposito. Serve un
+verbo suo per la data confermata su ordine `CONFERMATO` (stampo: gli override
+di prezzo) o un dialog di conferma che la raccolga: non è di questo cantiere.
 
 ### Componenti BoM (CASO A)
 

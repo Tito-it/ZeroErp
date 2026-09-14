@@ -52,6 +52,9 @@ _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
     "is_composito",
     "is_solo_componente",
     "requires_serial",
+    # NOT NULL DEFAULT false a DB (fail-safe: nessun articolo movimenta giacenza
+    # per distrazione). Brief modifiche certe, Blocco B.
+    "gestito_a_magazzino",
 )
 # Scopo: Campi int nullable di articolo (escluso uom_id che e' NOT NULL e immutabile).
 # Vedi DDL catalogo.articoli e trigger trg_articoli_a10_protect_uom_id_upd.
@@ -63,6 +66,20 @@ _ARTICOLO_INT_FIELDS: tuple[str, ...] = (
     "conto_contabile_vendita_id",
     "conto_contabile_acquisto_id",
     "listino_tipologia_id",
+    # Nullable per scelta di modello: per una prestazione non significa niente,
+    # e `0` non e' «non si applica». Il CHECK `>= 0` e' anticipato nel service
+    # con messaggio parlante (vedi `_validate_articolo_payload`).
+    "lead_time_giorni",
+)
+# Scopo: FK NOT NULL a DB con DEFAULT: (chiave, dettaglio dell'errore se
+#        arriva null). Il valore si puo' cambiare, mai azzerare — assente nel
+#        payload = «lascia decidere il default».
+_ARTICOLO_FK_NOT_NULL: tuple[tuple[str, str], ...] = (
+    ("natura_vendita_id", "natura_vendita_id non puo' essere null: indica una natura valida."),
+    (
+        "modo_approvvigionamento_id",
+        "modo_approvvigionamento_id non puo' essere null: indica un modo valido.",
+    ),
 )
 _ARTICOLO_NULLABLE_FIELDS: frozenset[str] = frozenset({
     "descrizione_breve",
@@ -297,6 +314,33 @@ def _extract_nullable_int(
             log_to_db=True,
             cause=exc,
         )
+
+
+# Scopo: Estrae una FK NOT NULL a DB con DEFAULT (`_ARTICOLO_FK_NOT_NULL`):
+#        chiave assente -> _MISSING (il DB applica il default), presente ->
+#        int > 0, altrimenti 400 col campo. Un `null` esplicito e' un errore,
+#        non un azzeramento: la colonna non ammette «non lo so».
+def _extract_fk_not_null(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    detail: str,
+    function_name: str,
+) -> int | _MissingType:
+    value = _extract_nullable_int(payload, key, function_name=function_name)
+    if value is _MISSING:
+        return _MISSING
+    ErrorManager.require(
+        isinstance(value, int) and value > 0,
+        code="E_CATALOGO_VALIDATION",
+        message="Payload articolo non valido.",
+        detail=detail,
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    assert isinstance(value, int)
+    return value
 
 
 # Scopo: Estrae booleano solo se esplicitamente presente nel payload.
@@ -667,25 +711,32 @@ def _extract_articolo_payload(
         if field_value is not _MISSING:
             data[field_name] = field_value
 
-    # natura_vendita_id e' NOT NULL a livello DDL (DEFAULT 1 = MERCE): opzionale
-    # nel payload, ma se presente deve essere un id valido (> 0), mai null —
-    # decide l'instradamento post-accettazione (ordine/commessa/contratto).
-    natura_value = _extract_nullable_int(
-        payload,
-        "natura_vendita_id",
-        function_name=function_name,
-    )
-    if natura_value is not _MISSING:
+    # Le due FK NOT NULL con DEFAULT a DB — natura_vendita_id (MERCE, decide
+    # l'instradamento post-accettazione) e modo_approvvigionamento_id (ACQUISTO,
+    # Blocco B del brief modifiche certe, deciso 2026-09-02): opzionali nel
+    # payload, ma se presenti devono essere un id valido, mai null. Un NULL
+    # significherebbe «non lo so», cioe' lo stato che la colonna esiste per
+    # abolire (brief §3.3). Stessa regola, una sede sola.
+    for fk_key, fk_detail in _ARTICOLO_FK_NOT_NULL:
+        fk_value = _extract_fk_not_null(
+            payload, fk_key, detail=fk_detail, function_name=function_name,
+        )
+        if fk_value is not _MISSING:
+            data[fk_key] = fk_value
+
+    # lead_time_giorni: anticipa il CHECK `chk_articoli_lead_time_giorni_non_negativo`
+    # con un messaggio che nomina il campo. Il NULL e' ammesso (e' un'informazione).
+    lead_time = data.get("lead_time_giorni")
+    if lead_time is not None:
         ErrorManager.require(
-            isinstance(natura_value, int) and natura_value > 0,
+            lead_time >= 0,
             code="E_CATALOGO_VALIDATION",
             message="Payload articolo non valido.",
-            detail="natura_vendita_id non puo' essere null: indica una natura valida.",
-            context={"field": "natura_vendita_id"},
+            detail="lead_time_giorni non puo' essere negativo.",
+            context={"field": "lead_time_giorni"},
             function_name=function_name,
             log_to_db=True,
         )
-        data["natura_vendita_id"] = natura_value
 
     meta = _extract_meta(payload, function_name=function_name)
     if meta is not _MISSING:

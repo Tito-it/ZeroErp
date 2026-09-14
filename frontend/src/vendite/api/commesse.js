@@ -14,6 +14,14 @@ export function getCommessaStato(commessaId) {
   return api.get(`${BASE}/${commessaId}/stato/`)
 }
 
+// PATCH testata leggibile (Blocco C di brief-db-modifiche-certe-ciclo-vendita-
+// e-articolo): `descrizione` e `responsabile_risorsa_umana_id`, parziale —
+// `null` esplicito azzera. Risponde col dettaglio (lo stesso di `/stato/`).
+// `data_apertura` non si scrive: la mette il default alla nascita.
+export function updateCommessaTestata(commessaId, payload) {
+  return api.patch(`${BASE}/${commessaId}/`, payload)
+}
+
 // GET righe attivita' paginate (limit/offset; filtri stato opzionali;
 // order_by/order_dir opzionali — whitelist nella fn DB, assenti = ordine per id).
 export function listCommessaAttivita(commessaId, params = {}) {

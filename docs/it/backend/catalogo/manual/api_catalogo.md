@@ -142,6 +142,9 @@ il motivo via tooltip i18n (chiavi `catalogo.motivo_*`).
 | `requires_serial` | bool | No | Richiede seriale |
 | `voce_utility` | bool | No | Articolo utility |
 | `natura_vendita_id` | int | No | Natura di vendita (FK `config.nature_vendita`): decide l'instradamento post-accettazione del modello split (ORDINE/COMMESSA/CONTRATTO). Se omesso → default DB `MERCE`. **Mai null esplicito** (colonna NOT NULL): risponde `E_CATALOGO_VALIDATION` |
+| `modo_approvvigionamento_id` | int | No | **Da dove arriva** l'articolo (FK `config.modi_approvvigionamento`: `ACQUISTO` / `PRODUZIONE` / `STOCK` / `NON_APPLICABILE` — 2026-09-14, Blocco B di `brief-db-modifiche-certe-ciclo-vendita-e-articolo`). Dimensione **ortogonale** alla natura di vendita (dice dove *va* la riga, non da dove *viene*). Se omesso → default DB `ACQUISTO`. **Mai null esplicito** (NOT NULL): `E_CATALOGO_VALIDATION` col campo. Lookup: `GET /core/lookup/codici/?rel=config.modi_approvvigionamento` |
+| `gestito_a_magazzino` | bool | No | L'articolo **movimenta giacenza**. Default DB `false` (fail-safe: nessun articolo comincia a movimentare per distrazione). ⚠️ Non si deriva da natura `MERCE`: una merce può essere venduta senza passare da giacenza |
+| `lead_time_giorni` | int | No | Giorni fra richiesta e disponibilità. **Nullable per modello**: per una prestazione non significa niente, e `0` non è «non si applica». Negativo → `E_CATALOGO_VALIDATION` col campo (anticipa il CHECK) |
 | `meta` | object | No | Metadati liberi |
 
 ### 1.3 Dettaglio articolo
@@ -171,6 +174,14 @@ immutabilita' (Fase 5):
   (`ORDINE` / `COMMESSA` / `CONTRATTO`). Il FE inizializza il Select
   "Natura di vendita" del drawer da `natura_vendita_id`; gli stessi campi
   sono disponibili anche nelle righe della lista (§1.1).
+- Approvvigionamento (2026-09-14, da `vw_articoli_dettaglio`):
+  `modo_approvvigionamento_id`, `modo_approvvigionamento_codice_interno`,
+  `modo_approvvigionamento_descrizione` (⛔ non `_codice`: il valore viene
+  dalla colonna immutabile, linee-guida-sql §6c), `gestito_a_magazzino`,
+  `lead_time_giorni`. ⚠️ `ARTICOLI_DETAIL_COLUMNS` è una proiezione **per
+  nome**: una colonna nuova della vista non esce finché nessuno la nomina —
+  le tre colonne della lista 26 (`ui.lista_colonna` 747-749) sono nate
+  `attivo = f` e accese nello stesso commit di questa proiezione.
 
 ### 1.4 Aggiorna articolo
 
