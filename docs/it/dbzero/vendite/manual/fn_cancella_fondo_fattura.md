@@ -20,7 +20,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 31-08-2026)
+(latest review 14-09-2026)
 
 Cancella un atto di fondo fattura **che non è ancora diventato un fatto** —
 oppure **rifiuta, dicendo perché**.
@@ -85,6 +85,19 @@ di scriverlo inline e chiama questa.
 > ℹ️ Il legame verso `vendite.fatture_fondi_fattura` **non è una FK** — quella
 > tabella non ha `fondo_source_id` — ma la terna *(figlia, sorgente, tipo)*, che
 > è esattamente come lo scrive `fn_applica_fondi_fattura`.
+
+> ⭐ **Rev 14-09-2026 — il primo `DELETE` apre una porta.** Dal guard del
+> contenuto della distinta
+> ([trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto),
+> D17) cancellare una riga contabile passa da
+> `script.fn_check_riga_contabile_eliminabile`, che sotto una `GENERATA` risponde
+> *«non è compilata a mano»*: quel predicato è il cestino dell'**operatore**, e
+> qui non c'è un operatore — c'è il giro che ha prodotto quelle righe, e che ha
+> già letto il **suo** criterio (punto 2). La funzione lo dichiara con
+> `SET LOCAL zeroerp.allow_contabile_riga_delete_override = 'on'` prima del
+> `DELETE` delle righe, e lo **richiude** subito dopo. Stesso contratto di
+> `script.fn_change_user_emittenti_scope` sulla sua porta. Nessun predicato e
+> nessun conteggio è cambiato.
 
 ---
 

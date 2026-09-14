@@ -1,0 +1,367 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-10 — vendite.fn_crea_revisione_preventivo porta la data richiesta sulla rev N+1
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies
+#   Segnalazione del BE (2026-09-14): «P-5 ha coperto preventivo→ordine, non
+#   rev N→N+1, e nessun pgTAP lo pinna».
+#
+# -- IL PUNTO IN CUI LA DATA SI PERDEVA, la seconda volta -----------------------
+#   P-5 (20260913-20) ha portato data_consegna_richiesta_cliente dal
+#   preventivo all'ordine. Ma il preventivo ha un ALTRO passaggio in cui le
+#   righe vengono ricopiate colonna per colonna: la revisione. La copia ha un
+#   elenco ESPLICITO di 15 colonne, e una colonna non nominata non passa —
+#   la rev N+1 nasceva con la data a NULL, in silenzio. Stessa forma del
+#   difetto di P-5, un passaggio piu' a monte.
+#
+# -- PERCHE' SI COPIA: e' la data del CLIENTE -----------------------------------
+#   La revisione rinegozia prezzi, quantita', righe. La data richiesta e'
+#   cio' che il cliente ha chiesto (brief, sezione 2.2: «non marcato =
+#   nostro, marcato = della controparte»): non e' una promessa nostra da
+#   ridiscutere, e' un input che la rev N+1 eredita come eredita l'articolo
+#   e la quantita'. Chi la vuole cambiare la cambia sulla riga, come tutto
+#   il resto.
+#
+# -- CHE COSA NON SI COPIA, e perche' (e' scritto anche nel corpo) --------------
+#   natura_vendita_id: la deriva e la CONGELA il trigger BEFORE INSERT
+#   dall'articolo (trgfn_preventivi_righe_set_natura_vendita), quindi
+#   nominarla sarebbe scrivere un valore che viene sovrascritto. tx_id: trigger.
+#   🔴 EMERSO scrivendo questo file, e NON si decide qui: sulla RIGA
+#   stato_approvazione_prezzo e pratica_approvazione_prezzo_id (20260422-04)
+#   non si copiano, mentre i COMPONENTI della stessa funzione li portano 1:1
+#   e fn_crea_revisione_offerta (rev2 2026-06-01) li porta 1:1 «per
+#   preservare l'invariante prezzo fuori-policy sempre marcato». E' la stessa
+#   forma — elenco esplicito, colonna arrivata dopo — su una colonna che
+#   governa un workflow (L3). Dichiarato nel brief come decisione di Tid.
+#
+# -- FIRMA RI-ANCORATA: la stessa regressione per eredita' di 20260914-12 -------
+#   20260515-04 e 20260628-21 dichiaravano p_preventivo_id
+#   vendite.preventivi.id%TYPE e RETURNS TABLE ancorato; 20260805-25 ha
+#   ricopiato la firma dal corpo vivo, che SCIOGLIE i %TYPE, e da allora
+#   l'ultimo YAML dichiara lo stile sbagliato. %TYPE si risolve al CREATE:
+#   pg_get_function_identity_arguments e pg_get_function_result restano
+#   BYTE-IDENTICI (bigint, text / bigint, character varying, integer —
+#   letti da pg_attribute prima di scrivere). Nessun overload, nessun
+#   chiamante da toccare. + SECURITY INVOKER esplicito: e' una madre a piu'
+#   scritture (linee-guida-sql 5b) e prosecdef era gia' false.
+#
+# -- CORPO DALLA FUNZIONE VIVA, NON DALLO YAML ------------------------------------
+#   Base: pg_get_functiondef (= doc auto-gen, confrontati byte a byte il
+#   2026-09-14), cioe' la rev 20260805-25. Patch generata da uno script che
+#   dichiara le sostituzioni, la prima e' la firma. Cambiano: intestazione,
+#   un blocco NOTE, due righe nell'INSERT delle righe, il COMMENT.
+#
+# -- CHI LA CHIAMA (firma invariata nell'identita') -----------------------------
+#   backend: apps/vendite/db/preventivi_repository.py (una chiamata, 2 arg).
+#   DB: nessuna funzione la nomina (pg_proc). pgTAP:
+#   vendite/test-fn-crea-revisione-preventivo (⚠️ ERRORE_FIXTURE in CI:
+#   fixture pescata dalla popolazione, non costruita — debito suo),
+#   vendite/test-vw-dash-competenza-gruppi-riferimento-sorgente-v1.
+#   Il presidio «la data sopravvive alla revisione» sta in
+#   vendite/test-date-consegna-ordine-v1 (test 11-13), fixture COSTRUITA:
+#   misura la stessa cosa su dbdev e in CI.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260914-13-update-fn-crea-revisione-preventivo-data-consegna-mctit.yaml
+
+  - changeSet:
+      id: 20260914-13-update-fn-crea-revisione-preventivo-data-consegna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_crea_revisione_preventivo: le righe copiate sulla rev N+1 portano
+        data_consegna_richiesta_cliente (elenco esplicito di colonne: la colonna non
+        nominata non passava). Firma e RETURNS TABLE di nuovo ancorati con %TYPE
+        (identita' byte-identica), SECURITY INVOKER esplicito. Brief:
+        brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies (P-10).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi_righe
+                columnName: data_consegna_richiesta_cliente
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_crea_revisione_preventivo'
+                     AND p.pronargs = 2
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_preventivo(
+                  p_preventivo_id vendite.preventivi.id%TYPE,
+                  p_user          vendite.preventivi.user_update%TYPE)
+               RETURNS TABLE(nuovo_preventivo_id vendite.preventivi.id%TYPE,
+                             numero              vendite.preventivi.numero%TYPE,
+                             nuova_rev           vendite.preventivi.rev%TYPE)
+               LANGUAGE plpgsql
+               -- Madre a piu' scritture (linee-guida-sql 5b): gira come chi la chiama,
+               -- RLS e scope emittente restano quelli dell'operatore. Esplicito, non
+               -- ereditato dal default.
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_max_rev             vendite.preventivi.rev%TYPE;
+                v_stato_draft_id      config.stati_doc_preventivi.id%TYPE;
+                v_new_id              vendite.preventivi.id%TYPE;
+                v_new_rev             vendite.preventivi.rev%TYPE;
+                v_has_draft           boolean;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Creare una nuova revisione in DRAFT a partire da un
+                --   preventivo in stato EMESSO. Copia testata, righe attive,
+                --   indirizzi e componenti BoM (con FK remap). Non gestisce
+                --   is_revision_attiva: l'attivazione e' derivata in
+                --   vendite.vw_preventivi tramite is_abortito degli stati.
+                --
+                -- Regole (rev 2026-05-15):
+                --   - stato corrente DEVE essere EMESSO
+                --   - non deve esistere gia' una revisione DRAFT per lo stesso numero
+                --   - la nuova revisione ha rev = max(rev)+1, stato DRAFT
+                --   - righe copiate: solo attive con quantita > 0, ORDER BY ordine, id
+                --   - componenti BoM: copiati con FK remap old→new riga_id
+                --     via ROW_NUMBER su (ordine, id); solo attivi
+                --   - indirizzi: tutti copiati
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo da revisionare
+                --   p_user          : utente che esegue l'operazione
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #2):
+                --   stato corrente e risoluzione DRAFT per codice_interno (immutabile),
+                --   non per codice (mutabile). Literali EMESSO/DRAFT sono codice_interno.
+                --
+                -- NOTE data di consegna (rev 2026-09-14, 20260914-13):
+                --   le righe copiate portano data_consegna_richiesta_cliente. La data
+                --   e' del CLIENTE, non una promessa nostra: una revisione rinegozia
+                --   prezzi e quantita', non cio' che il cliente ha chiesto. Le righe si
+                --   copiano con un elenco ESPLICITO di colonne, quindi una colonna non
+                --   nominata non passa — e' lo stesso punto in cui si perdeva al push
+                --   (20260913-20). Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo.
+                --   ⚠️ Colonne che NON si copiano di proposito: natura_vendita_id (la
+                --   deriva e la congela il trigger BEFORE INSERT dall'articolo), tx_id
+                --   (trigger). stato_approvazione_prezzo/pratica_approvazione_prezzo_id
+                --   sulla RIGA: non copiati dal 2026-04-22 (i componenti si'): decisione
+                --   aperta, dichiarata nel brief — non e' di questo changeSet.
+                -- ==========================================================
+
+                -- Guard: parametro obbligatorio
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente e numero
+                SELECT sdp.codice_interno, p.numero
+                  INTO v_stato_corrente_cod, v_numero
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_cod IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Guard: revisione ammessa SOLO da EMESSO
+                IF v_stato_corrente_cod NOT IN ('EMESSO') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PREV_REVISIONE_STATO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_corrente', v_stato_corrente_cod
+                    ),
+                    NULL::uuid,
+                    p_preventivo_id::text, v_stato_corrente_cod
+                  );
+                END IF;
+
+                -- Guard: non deve esistere gia' una revisione DRAFT
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM vendite.preventivi p2
+                    JOIN config.stati_doc_preventivi sdp2 ON sdp2.id = p2.stato_doc_preventivo_id
+                   WHERE p2.numero = v_numero
+                     AND sdp2.codice_interno = 'DRAFT'
+                ) INTO v_has_draft;
+
+                IF v_has_draft THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_PREV_REVISIONE_BOZZA_ESISTENTE',
+                    jsonb_build_object('numero', v_numero),
+                    NULL::uuid,
+                    v_numero
+                  );
+                END IF;
+
+                -- Recupera stato DRAFT id
+                SELECT id INTO v_stato_draft_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+
+                IF v_stato_draft_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_crea_revisione_preventivo',
+                    'E_CONFIG_MANCANTE',
+                    jsonb_build_object('tabella', 'config.stati_doc_preventivi', 'codice', 'DRAFT'),
+                    NULL::uuid,
+                    'stato DRAFT non trovato o non attivo in config.stati_doc_preventivi'
+                  );
+                END IF;
+
+                -- Calcola nuova revisione
+                SELECT COALESCE(MAX(p.rev), 0) + 1
+                  INTO v_new_rev
+                  FROM vendite.preventivi p
+                 WHERE p.numero = v_numero;
+
+                -- Crea nuova testata (copia campi dal preventivo originale).
+                -- Totali a 0: il trigger STATEMENT su preventivi_righe li ricalcolera'
+                -- dopo l'INSERT bulk delle righe copiate (una sola invocazione).
+                INSERT INTO vendite.preventivi (
+                  numero, rev,
+                  billing_account_id, istanza_utility_id, utility_id,
+                  validita_dal, validita_al,
+                  totale_imponibile, totale_iva, totale_documento,
+                  valuta_id, competenza_mese, fatturazione_immediata,
+                  stato_doc_preventivo_id, data, termine_pagamento_id,
+                  storicizza, meta,
+                  user_insert, user_update
+                )
+                SELECT
+                  p.numero, v_new_rev,
+                  p.billing_account_id, p.istanza_utility_id, p.utility_id,
+                  p.validita_dal, p.validita_al,
+                  0, 0, 0,
+                  p.valuta_id, p.competenza_mese, p.fatturazione_immediata,
+                  v_stato_draft_id, CURRENT_DATE, p.termine_pagamento_id,
+                  p.storicizza, p.meta,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi p
+                WHERE p.id = p_preventivo_id
+                RETURNING id INTO v_new_id;
+
+                -- Copia righe attive.
+                -- ORDER BY ordine, id: ordine deterministico necessario per il
+                -- remap FK componenti tramite ROW_NUMBER (vedi blocco successivo).
+                INSERT INTO vendite.preventivi_righe (
+                  preventivo_id, articolo_id, descrizione,
+                  quantita, prezzo_unitario, sconto_percentuale,
+                  iva_id, ordine, attivo,
+                  qta_operativa, uom_operativa_id, factor_to_base,
+                  data_consegna_richiesta_cliente,
+                  meta,
+                  user_insert, user_update
+                )
+                SELECT
+                  v_new_id, pr.articolo_id, pr.descrizione,
+                  pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale,
+                  pr.iva_id, pr.ordine, pr.attivo,
+                  pr.qta_operativa, pr.uom_operativa_id, pr.factor_to_base,
+                  pr.data_consegna_richiesta_cliente,
+                  pr.meta,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi_righe pr
+                WHERE pr.preventivo_id = p_preventivo_id
+                  AND pr.attivo IS TRUE
+                  AND pr.quantita > 0
+                ORDER BY pr.ordine, pr.id;
+
+                -- Copia componenti BoM per le righe padre composite.
+                -- FK remap old_riga_id → new_riga_id via ROW_NUMBER su (ordine, id):
+                -- la SELECT righe usa ORDER BY ordine, id → i nuovi id (IDENTITY
+                -- sequenziale) sono assegnati nello stesso ordine → RN allineati 1:1.
+                -- Il trigger trgfn_componenti_calcola_quantita (BEFORE INSERT)
+                -- ricalcola quantita/qta_operativa da coeff_qta_snapshot: i valori
+                -- copiati vengono sovrascritti correttamente.
+                WITH old_righe AS (
+                    SELECT id AS old_riga_id,
+                           ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+                      FROM vendite.preventivi_righe
+                     WHERE preventivo_id = p_preventivo_id
+                       AND attivo IS TRUE
+                       AND quantita > 0
+                ),
+                new_righe AS (
+                    SELECT id AS new_riga_id,
+                           ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+                      FROM vendite.preventivi_righe
+                     WHERE preventivo_id = v_new_id
+                ),
+                riga_map AS (
+                    SELECT old_r.old_riga_id, new_r.new_riga_id
+                      FROM old_righe old_r
+                      JOIN new_righe new_r USING (rn)
+                )
+                INSERT INTO vendite.preventivi_righe_componenti (
+                    riga_preventivo_id, articolo_componente_id, componente_id,
+                    coeff_qta_snapshot, quantita, prezzo_unitario, iva_id,
+                    origine_prezzo, prezzo_resolver_context,
+                    stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+                    uom_operativa_id, factor_to_base, qta_operativa,
+                    ordine, attivo, meta,
+                    user_insert, user_update
+                )
+                SELECT
+                    rm.new_riga_id,
+                    prc.articolo_componente_id, prc.componente_id,
+                    prc.coeff_qta_snapshot, prc.quantita, prc.prezzo_unitario, prc.iva_id,
+                    prc.origine_prezzo, prc.prezzo_resolver_context,
+                    prc.stato_approvazione_prezzo, prc.pratica_approvazione_prezzo_id,
+                    prc.uom_operativa_id, prc.factor_to_base, prc.qta_operativa,
+                    prc.ordine, prc.attivo, prc.meta,
+                    COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                  FROM vendite.preventivi_righe_componenti prc
+                  JOIN riga_map rm ON rm.old_riga_id = prc.riga_preventivo_id
+                 WHERE prc.attivo IS TRUE;
+
+                -- Copia indirizzi
+                INSERT INTO vendite.preventivi_indirizzi (
+                  preventivo_id, tipo_indirizzo_id, snapshot,
+                  origine_indirizzo_id, origine_soggetto_ruolo_id,
+                  user_insert, user_update
+                )
+                SELECT
+                  v_new_id, pi.tipo_indirizzo_id, pi.snapshot,
+                  pi.origine_indirizzo_id, pi.origine_soggetto_ruolo_id,
+                  COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+                FROM vendite.preventivi_indirizzi pi
+                WHERE pi.preventivo_id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT v_new_id, v_numero, v_new_rev;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(
+                  vendite.preventivi.id%TYPE, vendite.preventivi.user_update%TYPE)
+              IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies.';

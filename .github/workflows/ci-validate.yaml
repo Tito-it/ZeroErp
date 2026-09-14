@@ -474,9 +474,11 @@ jobs:
       # postura che questo script produce: senza il passo, in questo workflow il
       # ruolo non esisteva e il file era rosso «noto» nella baseline della CI —
       # cioe' la postura del batch non era misurata da nessuna parte fuori da
-      # dbdev. ⚠️ Lo scratch di scripts/ci-local.sh NON e' un metro per quel
-      # file: la' il ruolo riceve apposta il DML su tutto (vedi il commento nello
-      # script). Qui invece riceve il perimetro vero.
+      # dbdev. ⭐ Dal 2026-09-14 lo e' anche sullo scratch di scripts/ci-local.sh:
+      # il ponte «DML su tutto» che serve a superare 20260729-05 durante il
+      # migrate viene ritirato in coda, e lo stesso script di provisioning gira
+      # la' SENZA password (il ruolo esiste nel cluster: i GRANT sono per
+      # database, la password no).
       - name: Provision ruolo batch fatturazione (BYPASSRLS, superuser)
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}

@@ -10,7 +10,7 @@
 --  3) ⭐ zero punti NON CLASSIFICATI — un presidio che non sa leggere un sito
 --        deve diventare ROSSO, non saltarlo
 --  4) il debito FUORI perimetro non cresce (soglia 6, puo' solo calare)
---  5) le sedici funzioni bonificate chiamano davvero l'helper
+--  5) le diciassette funzioni bonificate chiamano davvero l'helper
 --  6) ⚠️ il marcatore non e' troppo LARGO: un codice LETTERALE resta fuori
 --  7) ⭐⭐ la canarina: il marcatore non e' troppo STRETTO
 --
@@ -142,12 +142,16 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE p.prosrc ~ 'fn_raise_primo_motivo_se_presente'
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    16,
+    17,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
     --   aggiornare questa riga. In entrambi i casi va guardato.
-    'le sedici funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-14: da 16 a 17. Non una bonifica: un sito NUOVO nato gia'
+    --   sull'helper — pagamenti.trgfn_vendite_contabili_righe_guard_contenuto
+    --   (D17, brief riga-manuale-nasce-abbinata-ed-elimina-riga), che solleva
+    --   il primo motivo di script.fn_check_riga_contabile_eliminabile.
+    'le diciassette funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

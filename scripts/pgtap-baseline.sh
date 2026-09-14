@@ -486,9 +486,11 @@ if [ -n "$NUOVI" ]; then
   # ⛔ Stessa regola dei RIENTRATI: il registro della CI letto fuori dalla CI
   #   non sa giudicare QUESTO database. Il 14-09, tolto dal registro della CI
   #   `rls/test-role-batch-fatturazione-postura` (verde la', rientrato), lo
-  #   scratch lo ha stampato come «REGRESSIONE»: la' e' rosso per costruzione
-  #   (il batch riceve DML su tutto, dichiarato in ci-local.sh) e il suo
-  #   registro e' baseline-rossi-scratch.tsv, dove sta dal 09-09.
+  #   scratch lo ha stampato come «REGRESSIONE»: la' era rosso per costruzione
+  #   (il batch riceveva DML su tutto) e il suo registro e'
+  #   baseline-rossi-scratch.tsv. Lo stesso giorno ci-local.sh ha imparato a
+  #   rilanciare il provisioning vero del batch; la regola resta: tre metri,
+  #   tre registri, e questo blocco si limita a dirlo.
   if [ "$(basename "$BASELINE")" = "baseline-rossi-ci.tsv" ] \
      && [ "${GITHUB_ACTIONS:-}" != "true" ]; then
     echo "❌ Rossi QUI che la CI non conosce — e questa non e' la CI:"
@@ -503,8 +505,8 @@ if [ -n "$NUOVI" ]; then
   echo
   if [ "$(basename "$BASELINE")" = "baseline-rossi-ci.tsv" ] \
      && [ "${GITHUB_ACTIONS:-}" != "true" ]; then
-    echo "   Possono essere regressioni vere o rossi di QUESTO database (es. la"
-    echo "   postura del batch, che lo scratch non sa misurare). Si giudicano sul"
+    echo "   Possono essere regressioni vere o rossi di QUESTO database (lo scratch"
+    echo "   non e' la CI: django copiato, dblink spento, ...). Si giudicano sul"
     echo "   registro di questo metro: PGTAP_BASELINE=db/pgtap/baseline-rossi-scratch.tsv"
   else
     echo "Sono da guardare: tutto il resto era gia' rosso prima."

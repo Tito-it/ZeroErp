@@ -154,4 +154,5 @@ due flag portati nel payload della lookup — e **non l'ho scelta da solo**.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-14** | 🔴 **Primo giro eseguito da Tid (prima contabile): tre rilievi, e il copione va riscritto** — vedi [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md) §7. In sintesi: **§2.6** la riga deve nascere **cercando la fattura** (D16), non `DA_ABBINARE`; **§3.1-3.3** diventano la prova del ri-abbinamento e dell'eccezione «non identificato»; manca una prova **elimina riga in bozza** (D17); e ⛔ **fra §2.7 e §4.1 manca «Porta a VALIDATA»**: `fn_posta_contabile` registra **solo da `VALIDATA`** (`E_CONTABILE_NON_REGISTRABILE`), quindi §4.1 così com'è fallisce per costruzione. La riscrittura è del piano BE/FE |
 | **2026-08-29** | Stesura, dopo la chiusura di **C-1** e la costruzione della base dei saldi (**A-8**). ⛔ Il cantiere non ha più niente da costruire e **non è mai stato visto**: `pagamenti` ha zero righe. I dati del copione sono **misurati**, non inventati. Un punto è già noto prima di cominciare (§7) |

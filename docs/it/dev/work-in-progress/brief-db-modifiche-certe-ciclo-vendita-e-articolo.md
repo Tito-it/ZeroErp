@@ -23,6 +23,13 @@
 > 14-09, test verdi** — Tid). In `databasechangelog`: `20260913-04 → -20` e
 > `20260914-07 → -12`. I file sono tutti **immutabili**: un cambio va in un
 > changeSet nuovo. Come sono stati provati: §6-bis, §6-ter, §6-quater.
+> 🔴 **14-09 (sera): P-10 emersa dal BE, ✅ APPLICATA da Tid alle 15:45**
+> (§6-quinquies, `20260914-13`): la **revisione** del preventivo perdeva la
+> data richiesta — P-5 aveva coperto il push, non rev N→N+1. ⭐ E dalla stessa
+> rilettura **P-11, DA APPLICARE** (`20260914-14`, decisione di Tid «facciamo
+> A»): le marche di approvazione prezzo sulla riga si copiano 1:1 come i
+> componenti e come l'offerta. Con un presidio nuovo che pretende l'elenco
+> **completo** delle colonne copiate: la prossima non si perde più.
 > ⚠️ Le due coppie ATTIVO (`articoli`/`modi_approvvigionamento`,
 > `commesse`/`risorse_umane`) e i lock su `codice_interno` arrivano con `ci_apply`
 > (su dev ci sono già; il require sul figlio `articoli` ha il nome hashato, §3.2).
@@ -1063,6 +1070,8 @@ non vengono da qui.
 | **P-8** ✅ *chiuso il 14-09: tre pgTAP verdi col runner (Tid)* | pgTAP (§7). 🔴 *2026-09-12*: le righe sono sotto RLS, il trigger «riga spenta» viene da `ci_apply` — vedi il riquadro di §7. *14-09*: tre file, 33 asserzioni, provati in transazione annullata come proprietario; il lancio col runner è di Tid | `db/pgtap` |
 | **BE/FE** ✅ *eseguito il 14-09 (§5.5, riquadro «Esecuzione»)* | Le sette voci di §5.5 + le tredici chiavi di §5.4, su `dev/backend-tid`: righe 747-749 accese nel CSV (il mirror le ricarica al prossimo migrate), lookup `/anagrafiche/risorse-umane/lookup/`, `PATCH /commesse/<id>/`. Note e fatti emersi: i sette punti in coda al riquadro | `backend/` + `frontend/` + `lista_colonna.csv` |
 | **P-9** ✅ *applicata il 14-09, test verdi (§6-quater)* | ⚠️ ~~OPZIONALE, da confermare~~ **CONFERMATA** (§3-bis) — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente`. 🔴 *2026-09-12*: + `fn_crea_famiglia_documento` (oggi la pretende), + BE/FE (§3-bis censimento) | `00_schema` + `20_code` |
+| **P-10** ✅ *emersa dal BE il 14-09, applicata da Tid alle 15:45 (§6-quinquies)* | `fn_crea_revisione_preventivo` porta la data richiesta sulla **rev N+1**: P-5 aveva coperto preventivo→ordine, non rev N→N+1 — la revisione ricopia le righe con un **altro** elenco esplicito di colonne, e la data nasceva `NULL`. + firma e `RETURNS TABLE` ri-ancorati (`20260805-25` li aveva sciolti), `SECURITY INVOKER` esplicito. Presidio in `test-date-consegna-ordine-v1` (11-13), fixture costruita | `20_code` |
+| **P-11** ✅ *decisa da Tid il 14-09 («facciamo A»), scritta e provata (§6-quinquies), DA APPLICARE* | `fn_crea_revisione_preventivo` copia 1:1 anche `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id` sulla riga — come i componenti della stessa funzione e come `fn_crea_revisione_offerta` (invariante «prezzo fuori policy sempre marcato»). Caveat ereditato dall'offerta (ciclo di vita della pratica su rev superata: BE, `refactor-prezzi` §4.7). ⭐ pgTAP nuovo a fixture costruita con il **presidio sull'elenco completo** delle colonne copiate | `20_code` |
 
 ⛔ **L'ordine di fase non è negoziabile**: `00_schema` → `20_code` → `80_data`.
 Una `preCondition` di `20_code` **non** deve verificare il *contenuto* di
@@ -1271,13 +1280,120 @@ attraversa.
 
 ---
 
+## 6-quinquies. ✅ P-10 (applicata) e P-11 (da applicare) — la riga della rev N+1 è completa
+
+> 🔴 **Segnalazione del BE, 14-09 (sera)**: *«`vendite.fn_crea_revisione_preventivo`
+> copia le righe con elenco esplicito di colonne e non porta
+> `data_consegna_richiesta_cliente` sulla nuova revisione: P-5 ha coperto
+> preventivo→ordine, non rev N→N+1, e nessun pgTAP lo pinna»*. Verificato sul
+> corpo vivo (`pg_get_functiondef` = doc auto-gen, byte a byte): l'`INSERT`
+> delle righe nomina **15 colonne** e la data non c'è. ⭐ È la **stessa forma**
+> del difetto di P-5 — copia colonna per colonna, colonna nuova non nominata —
+> un passaggio più a monte. Il documento ha **due** punti in cui le righe si
+> ricopiano, e il brief ne aveva censito uno.
+
+| File | Fase | Cosa |
+| --- | --- | --- |
+| `20_code/vendite/20260914-13-update-fn-crea-revisione-preventivo-data-consegna` | `20_code` | `+ data_consegna_richiesta_cliente` nell'elenco e nella `SELECT` della copia righe; un blocco `NOTE` nel corpo che dice **che cosa non si copia e perché** (`natura_vendita_id` la deriva e congela il trigger `BEFORE INSERT`, `tx_id` trigger); `COMMENT` aggiornato. 🔴 **Firma e `RETURNS TABLE` ri-ancorati** (`%TYPE` su `preventivi.id/user_update/numero/rev`): `20260515-04` e `20260628-21` le dichiaravano ancorate, `20260805-25` le ha ricopiate sciolte dal corpo vivo — la regressione per eredità di `-12`, un giorno dopo. `SECURITY INVOKER` esplicito (madre a più scritture, `prosecdef` era già `false`). Corpo dalla funzione viva, patch da uno script che **dichiara le sostituzioni e la prima è la firma** (`assert live.startswith(HEADER_SCIOLTO)`) |
+| `db/pgtap/vendite/test-date-consegna-ordine-v1.sql` | pgTAP | plan 10 → **13**: un secondo preventivo **`EMESSO`** (la revisione nasce solo da lì; quello del push è `ACCETTATO`), due righe con/senza data, `fn_crea_revisione_preventivo` sul **percorso reale**: la data sopravvive sulla rev N+1 (11), la riga senza data resta senza (12), la rev N conserva le sue — la revisione **copia, non sposta** (13). ⭐ Qui e non in `test-fn-crea-revisione-preventivo`: quel file pesca la fixture dalla **popolazione** ed è `ERRORE_FIXTURE` in `baseline-rossi-ci.tsv` — un caso aggiunto lì sarebbe **muto in CI**. La fixture costruita misura la stessa cosa su dbdev e in CI |
+| `20_code/vendite/20260914-14-update-fn-crea-revisione-preventivo-carry-approvazione-prezzo` *(P-11)* | `20_code` | `+ stato_approvazione_prezzo, pratica_approvazione_prezzo_id` nell'elenco e nella `SELECT` della copia righe; il blocco `NOTE` porta la ragione (la stessa di `20260601-05` per l'offerta) e il **caveat** sulla pratica; l'elenco delle esclusioni nel corpo diventa `natura_vendita_id`, `tx_id`, `id`/`data_insert`/`data_update`. Corpo dalla funzione **viva dopo il `-13`** (assert nello script: il vivo nomina già la data), firma ri-ancorata come nel `-13`, `COMMENT` in coda. ⚠️ Nato come modifica del `-13` mentre Tid lo stava applicando: il `-13` è stato **ripristinato byte-identico** (stesso SQL provato, stesso id, `validate` pulito) e la decisione è andata in un changeSet suo |
+| `db/pgtap/vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.sql` *(nuovo, P-11)* | pgTAP | **8 asserzioni**, fixture costruita (azienda, cliente, articolo, **due pratiche** via `pratiche.fn_crea_pratica` col tipo `APPROVAZIONE_PREZZO` del catalogo). ⭐ **Test 1 è il presidio che mancava**: legge `pg_attribute` di `preventivi_righe` e l'`INSERT` della copia dal **corpo vivo**, e pretende che ogni colonna sia o nominata o **dichiarata esclusa con la ragione** (tabella `_escluse` nel file) — la prossima colonna di riga fa rosso finché qualcuno decide. Test 2 tiene le dichiarazioni oneste (una colonna esclusa e poi nominata è stantia). Poi il percorso reale: riga `APPROVED` (4) e `PENDING` (5) portano stato e pratica identici sulla rev N+1, la riga senza marca resta senza (6), la rev N conserva le sue (7), e **la marca copiata fa il suo mestiere**: la riga `PENDING` della rev N+1 rifiuta il cambio prezzo con `E_RIGA_PREZZO_PENDENTE` (8, `throws_like` sulla frase). ⚠️ Perimetro dichiarato nel file: **una funzione per nome** — chi estrae la copia in una funzione sua aggiorna il test 1 |
+
+**Come è stato provato** (la forma di §6-bis): cinque cancelli statici verdi +
+`guardrail_pgtap_preambolo` (debito fermo a 129); SQL **estratto** dallo YAML
+più il corpo del pgTAP nella stessa transazione annullata, come proprietario:
+**13/13**; ⭐ **mutazione**: lo stesso file sul DB di oggi, senza l'SQL, è rosso
+**solo al test 11** (`have: NULL, want: 2026-12-03`) — cioè esattamente la
+cosa che P-10 corregge; i due pgTAP esistenti che chiamano la funzione
+(`test-fn-crea-revisione-preventivo` 10/10, `test-vw-dash-competenza-gruppi-riferimento-sorgente-v1`
+6/6) identici con e senza la patch; identità della funzione
+(`pg_get_function_identity_arguments` + `pg_get_function_result` + `prosecdef`)
+**byte-identica** prima/dopo, **una sola** funzione con quel nome; dopo il
+rollback `md5(prosrc)` del vivo invariato. Chiamanti: `preventivi_repository.py`
+(2 argomenti, invariato), nessuna funzione DB la nomina.
+
+**P-11, provata allo stesso modo** (sul vivo = `-13` applicato): sei cancelli
+statici verdi; SQL estratto dal `-14` + corpo del pgTAP nuovo in transazione
+annullata, da proprietario: **8/8**; ⭐ **mutazione**: lo stesso file sul DB di
+oggi, senza il `-14`, è rosso **esattamente** su 1 (`have:
+stato_approvazione_prezzo, pratica_approvazione_prezzo_id`), 4, 5 e 8 — il
+presidio sull'elenco, le due marche, e il guard che senza marca non scatta;
+i tre pgTAP esistenti che chiamano la funzione (10/10, 6/6, 13/13) identici
+con la patch; identità byte-identica, una sola funzione, `md5(prosrc)` del
+vivo invariato dopo il rollback; `liquibase validate` pulito — che conferma
+anche il checksum del `-13` ripristinato. ⚠️ Un difetto **del test** trovato
+alla prima corsa: `btrim` toglie solo spazi, e l'elenco dell'`INSERT` è su
+più righe — il primo nome di ogni riga restava «`\n    preventivo_id`».
+`regexp_replace(c, '\s+', '', 'g')`. *Anche la misura è un programma.*
+
+⭐ **Il censimento che chiude la domanda «ce n'è una terza?»** (letto da
+`pg_proc` il 14-09): le funzioni DB che fanno `INSERT INTO
+vendite.preventivi_righe (…)` con elenco esplicito sono **una** — questa — e
+quelle su `vendite.ordini_righe` **una** — il push (P-5). Le due copie sono
+ora allineate; la terza sede è Python (`create_riga` nei repository), che è
+la voce 1-bis di §5.5. ⭐ La regola che ne esce, e vale per la prossima
+colonna di riga: *una colonna nuova su una tabella di righe si censisce su
+TUTTE le copie esplicite* — `prosrc ~ 'INSERT INTO <schema>.<righe> ('` —
+non solo sul passaggio che il brief aveva in testa.
+
+> 🔴 **EMERSO scrivendo il `-13`, ✅ DECISO da Tid lo stesso giorno («facciamo A») → P-11.**
+> Sulla **riga** di preventivo `stato_approvazione_prezzo` e
+> `pratica_approvazione_prezzo_id` (`20260422-04`) **non si copiavano** nella
+> revisione — stesso elenco esplicito, colonne arrivate dopo la funzione
+> (`20260403-09`); il rewrite del `20260515-04` le aveva nominate per i
+> **componenti** e non per le righe. Intanto `fn_crea_revisione_offerta`
+> (rev2 2026-06-01) le porta **1:1** *«per preservare l'invariante prezzo
+> fuori-policy sempre marcato»*, e i componenti di questa stessa funzione pure.
+> ⇒ Una riga `PENDING` (richiesta L3 in attesa) o `APPROVED` rinasceva sulla
+> rev N+1 **senza marca**, col prezzo fuori-policy copiato tale e quale: la
+> revisione era una porta da cui un prezzo approvato *su un altro documento*
+> usciva non marcato.
+>
+> **A — copia 1:1** (`20260914-14`), con la ragione dell'offerta: i gate L3
+> scattano sull'edit BE, non all'emissione né alla revisione, quindi lo stato
+> è l'unico marcatore persistente di un prezzo fuori soglia autorizzato o in
+> attesa; coerente con «niente doppia approvazione». La riga `PENDING` copiata
+> resta congelata da `trgfn_righe_guard_pending` (provato, test 8).
+> ⚠️ **Il caveat resta, ed è dichiarato al BE, non deciso qui**: la pratica è
+> una FK semplice, dopo la revisione è agganciata a **due** righe (rev N e
+> N+1) e il suo `meta` nomina la riga della rev N — `approva`/`rifiuta` dalla
+> coda (`approvazioni_prezzo_service`) agiscono su **quella**; la riga della
+> rev N+1 resta `PENDING` finché il dominio approvazioni non decide che cosa
+> fa una pratica quando la sua revisione viene superata. È la voce **§4.7 di
+> `refactor-prezzi.md`**, aperta dal 2026-06-01 per le offerte: da oggi vale
+> anche per i preventivi, e la copia 1:1 la rende **visibile** (una riga
+> `PENDING` con una pratica chiusa) invece di nasconderla (una riga pulita).
+>
+> ⭐ **La regola generale, e il presidio che la tiene**: una colonna nuova su una
+> tabella di righe si censisce su **tutte** le copie esplicite
+> (`prosrc ~ 'INSERT INTO <schema>.<righe> ('`). Per questa funzione da oggi
+> non è più disciplina: è il test 1 di `test-fn-crea-revisione-preventivo-riga-completa-v1`.
+
+⚠️ **Debito documentale sanato di passaggio**: il manuale
+`fn_crea_revisione_preventivo.md` citava ancora i tre codici **senza** prefisso
+`E_`, ritirati dal `20260805-25`. Corretti, con la nota.
+
+⚠️ **Che cosa NON copre**: nessuna RLS nuova (le righe la portano già dal
+`20260910`, e il pgTAP gira nei panni dell'operatore costruito); nessun lato
+BE/FE per P-10 — il backend chiama la funzione con 2 argomenti e la riga della
+rev N+1 la legge dal drawer come ogni altra. Il BE ha registrato il fatto come
+nota 9 di §5.5 sul proprio ramo; alla fusione le due note si leggono insieme.
+🔴 **Per P-11 c'è invece una voce BE, ed è vecchia**: il ciclo di vita della
+pratica di approvazione quando la sua revisione viene superata
+(`refactor-prezzi.md` §4.7, aperta dal 2026-06-01) — da oggi riguarda anche i
+preventivi. Non è di questo brief: è dichiarata perché il BE non la scopra in
+collaudo su una riga `PENDING` con la pratica già chiusa.
+
+---
+
 ## 7. I presidi
 
 | Test | Che cosa prova |
 | --- | --- |
 | `catalogo/test-articoli-approvvigionamento-v1` | il vocabolario ha i quattro valori; un articolo non può puntare a una riga **spenta**; il default è `ACQUISTO`; `lead_time_giorni` rifiuta il negativo |
-| `vendite/test-date-consegna-ordine-v1` | le date si scrivono e si rileggono sulla riga; ⭐ **la data sopravvive al push** preventivo → ordine — provata sul **percorso reale**, chiamando `fn_push_preventivo_a_ordine`, non confrontando due colonne |
+| `vendite/test-date-consegna-ordine-v1` | le date si scrivono e si rileggono sulla riga; ⭐ **la data sopravvive al push** preventivo → ordine — provata sul **percorso reale**, chiamando `fn_push_preventivo_a_ordine`, non confrontando due colonne. ⭐ *dal 14-09 (P-10)*: **e sopravvive alla revisione** N→N+1, chiamando `fn_crea_revisione_preventivo` (test 11-13) — sono **due** passaggi in cui la riga si ricopia, e un presidio su uno solo non dice niente sull'altro |
 | `vendite/test-situazione-merce-ritardo-v1` | `giorni_ritardo` è **NULL** quando `da_spedire` è NULL o zero, ed è valorizzato solo sopra la soglia dell'impegno |
+| `vendite/test-fn-crea-revisione-preventivo-riga-completa-v1` *(P-11, 14-09)* | ⭐ **l'elenco delle colonne copiate dalla revisione è COMPLETO**: ogni colonna di `preventivi_righe` è nominata nella copia o dichiarata esclusa con la ragione (test 1-2, da `pg_attribute` e dal corpo vivo); le marche di approvazione prezzo sopravvivono alla revisione sul **percorso reale** e la riga `PENDING` copiata è congelata dal guard |
 
 ⚠️ **Un `has_column` sulle viste non basta**: prova che la colonna esiste, non
 **da dove viene il valore**. Sulle tre viste il test deve confrontare il valore
@@ -1584,3 +1700,5 @@ RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
 | 2026-09-14 | 🔴 **Rilievo di Tid: `test-vw-situazione-merce-ordine-v1` rosso al test 3** («18 colonne», tre extra). P-6 ha allargato il contratto e P-8 ha scritto solo il gemello nuovo: il pgTAP **esistente** non era stato censito. Test 3 → 21 colonne (sede unica del contratto); test 1 del gemello → posizione e tipo delle tre in coda invece di una seconda copia del `columns_are` (che non prova l'ordine). Provate 3/3 + mutazione in transazione annullata, preambolo verde (§7, riquadro). Lancio col runner dei due file: Tid |
 | 2026-09-14 | 🔴 **Revisione critica del lavoro BE/FE, su richiesta di Tid** (§5.5, nota 8): due bug (responsabile attivo mostrato «non più attivo» a lookup non caricato; data del preventivo validata dopo la richiesta L3 e la sua email) e quattro fragilità corrette — catena risorsa→soggetto scritta tre volte al posto della vista modello `vw_risorse_umane_dettaglio`, blocco FK NOT NULL duplicato in `catalogo_service`, form di testata senza `useDrawerFormPreserve`, terza copia del Tag sì/no. ⭐ **Un BB nuovo, `SiNoTag`** (ok Tid): `formato=yesno` di `CellaConfigurabile` lo rende, i tre slot spariscono, righe 327/748 con `yesno` nel seed. Binding provato sul DB vivo col caso costruito. Tutto in working tree, nessun commit |
 | 2026-09-14 | 📚 **Documentazione allineata al brief** (sera): scheda nuova per il CRUD famiglie (`api_famiglie_documento.md`, mancava del tutto) e per il lookup risorse umane (`api_risorse_umane_lookup.md`); whitelist del lookup generico rigenerata dal codice (89, era ferma a 83); riga `Catalogo` nell'inventario di `api.md` (mancava); guide ordini, preventivi, commesse, numerazione e liste aggiornate **e ripulite dalla cronaca datata** (solo «ultimo aggiornamento» in testa, la storia sta nel changelog della mappa); voce del 14-09 nel changelog della mappa concentrica e stato corrente nella mappa. 🔴 Nota 9 in §5.5: la revisione del preventivo non copia la data richiesta |
+| 2026-09-14 | 🔴 **Segnalazione del BE → P-10 scritta e provata** (§6-quinquies): `fn_crea_revisione_preventivo` perdeva `data_consegna_richiesta_cliente` sulla rev N+1 — stessa forma di P-5 (copia colonna per colonna), un passaggio più a monte, senza presidio. ChangeSet `20260914-13` (+ firma e `RETURNS TABLE` ri-ancorati, sciolti dal `20260805-25`; `SECURITY INVOKER` esplicito); `test-date-consegna-ordine-v1` 10 → 13 con fixture costruita (in `test-fn-crea-revisione-preventivo` sarebbe stato muto in CI: `ERRORE_FIXTURE`). Provato: 13/13 con l'SQL estratto, rosso-prima solo al test 11, identità byte-identica, vivo intatto. 🔴 **Emerso, D di Tid**: sulla riga `stato_approvazione_prezzo`/`pratica_approvazione_prezzo_id` non si copiano (i componenti e l'offerta sì). **Da applicare** |
+| 2026-09-14 | ✅ **P-10 applicata da Tid (15:45)** mentre stavo estendendo lo stesso file con la decisione «A»: il `-13` è stato **ripristinato byte-identico** (stesso SQL provato, stesso id; `validate` pulito) e la decisione è andata nel **`20260914-14` (P-11)**: `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id` copiati 1:1 sulla riga, come i componenti e come l'offerta (`20260601-05`), corpo dal vivo post-`-13`, firma ancorata. pgTAP **nuovo** `test-fn-crea-revisione-preventivo-riga-completa-v1` (8, fixture costruita con due pratiche vere): ⭐ test 1 pretende l'**elenco completo** delle colonne copiate o la dichiarazione — la terza colonna persa in cinque mesi non ci sarà. Provato: 8/8 con l'SQL estratto, rosso-prima su 1/4/5/8, regressioni 10/10 · 6/6 · 13/13, vivo intatto. ⚠️ Caveat BE dichiarato (pratica su rev superata, `refactor-prezzi` §4.7). **Da applicare `-14`** |
