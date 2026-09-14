@@ -88,6 +88,23 @@ function etichettaOrigine(origine) {
     : t('vendite.fatturazione.origine_batch')
 }
 
+// Esito dell'ULTIMO GIRO CONCLUSO di una corsia: etichetta + severità dal
+// solo `ultima_conclusa` — data ed esito arrivano insieme, dalla stessa corsa
+// (2026-09-14). ⛔ Prima il Tag leggeva `last_ok` e la data `last_run_at`, che
+// erano due corse diverse: durante un giro in esecuzione il pannello mostrava
+// l'ora del giro in corso con l'esito del precedente; e sulle righe «app» un
+// job IN_CORSO usciva «Errore». Ora «in corso» è un Tag a parte (`in_corso`)
+// e l'esito ha tre facce: ok, errore, e «esito non scritto» — `ok` è nullable
+// sul giornale dei run, e un null reso come «Errore» sarebbe un'invenzione.
+// Chiavi i18n ESPLICITE (mai costruite), come le altre mappe di questo file.
+function esitoGiro(g) {
+  const c = g.ultima_conclusa
+  if (!c) return { label: t('vendite.fatturazione.giro_mai_concluso'), severity: 'secondary' }
+  if (c.ok === true) return { label: t('vendite.fatturazione.giro_ok'), severity: 'success' }
+  if (c.ok === false) return { label: t('vendite.fatturazione.giro_ko'), severity: 'danger' }
+  return { label: t('vendite.fatturazione.giro_esito_non_scritto'), severity: 'warn' }
+}
+
 async function load() {
   try {
     const res = await getFatturazioneEsiti(props.competenzaMese)
@@ -148,9 +165,13 @@ defineExpose({ refresh: load })
       <!-- Giri delle corsie di fatturazione per il mese selezionato. -->
       <div v-if="giri.length" class="app-esiti-giri">
         <div v-for="g in giri" :key="`${g.origine}:${g.jobname}`" class="app-esiti-giro">
+          <Tag :value="esitoGiro(g).label" :severity="esitoGiro(g).severity" />
+          <!-- Un giro che sta girando ADESSO non è un esito: si dice a parte,
+               e l'esito accanto resta quello dell'ultimo giro concluso. -->
           <Tag
-            :value="g.last_ok ? t('vendite.fatturazione.giro_ok') : t('vendite.fatturazione.giro_ko')"
-            :severity="g.last_ok ? 'success' : 'danger'"
+            v-if="g.in_corso"
+            :value="t('vendite.fatturazione.giro_in_corso')"
+            severity="info"
           />
           <span class="app-esiti-giro-label">{{ etichettaGiro(g.jobname) }}</span>
           <!-- Da DOVE è partito il lavoro: le due strade convivono e vanno
@@ -160,8 +181,11 @@ defineExpose({ refresh: load })
             severity="secondary"
             class="app-esiti-origine"
           />
+          <!-- La data del giro CONCLUSO a cui l'esito appartiene, non l'ultimo
+               segno di vita: quella sta in `last_run_at` e, quando differisce,
+               è il giro in corso — già detto dal Tag qui sopra. -->
           <span class="text-color-secondary">
-            {{ g.last_run_at ? displayTimestamp(g.last_run_at) : '—' }}
+            {{ g.ultima_conclusa?.started_at ? displayTimestamp(g.ultima_conclusa.started_at) : '—' }}
           </span>
           <!-- Esecuzioni riuscite sul totale, RELATIVE al mese filtrato.
                L'etichetta è esplicita: "(23/24)" da solo si legge come un

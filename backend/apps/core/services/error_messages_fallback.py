@@ -733,6 +733,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO": "L'abbinamento della riga contabile e' incompleto: mancano dei dati per portarla a quello stato.",
     "E_RIGA_CONTABILE_CAPIENZA_SUPERATA": "L'importo non rientra in quanto resta da regolare sulla rata.",
     "E_RIGA_CONTABILE_DISTINTA_FINALE": "La distinta contabile e' in uno stato finale: non accetta altre righe, e quelle che ha non si lavorano piu'.",
+    "E_RIGA_CONTABILE_DISTINTA_NON_MANUALE": "La distinta contabile non e' compilata a mano: le sue righe non si eliminano da qui.",
+    "E_RIGA_CONTABILE_DISTINTA_VALIDATA": "La distinta contabile e' validata: le sue righe non si aggiungono, non si modificano e non si eliminano finche' non torna in bozza.",
     "E_RIGA_CONTABILE_NON_TROVATA": "Riga contabile non trovata.",
     "E_RIGA_CONTABILE_RATA_INCOERENTE": "La rata non appartiene alla fattura di questa riga contabile.",
     "E_RIGA_CONTABILE_SENZA_ABBINAMENTO": "La riga contabile non e' registrabile: manca l'abbinamento a una fattura e a un billing account.",

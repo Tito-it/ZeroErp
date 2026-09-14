@@ -74,6 +74,15 @@ CommessaAnnullaRigaManualeServiceTests (annullamento riga manuale §5):
 - test_annulla_ordine_guard_identita_prima_di_stato
 - test_annulla_senza_motivo / _motivo_troppo_lungo
 - test_annulla_traduce_errori_madre / _errore_db_sconosciuto_fallback
+
+CommessaTestataLeggibileTests (Blocco C di brief-db-modifiche-certe-ciclo-vendita-e-articolo):
+- test_il_dettaglio_porta_la_testata_leggibile / _e_data_apertura_iso
+- test_aggiorna_testata_ok_e_risponde_col_dettaglio
+- test_aggiorna_testata_null_toglie_il_responsabile
+- test_aggiorna_testata_chiave_estranea_400 / _nessun_campo_400
+- test_aggiorna_testata_descrizione_troppo_lunga_400
+- test_aggiorna_testata_responsabile_non_attivo_400 / _inesistente_400
+- test_aggiorna_testata_commessa_inesistente_o_fuori_scope_404
 """
 
 from decimal import Decimal
@@ -1850,3 +1859,141 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             annulla_attivita_manuale(10, 501, {"motivo": "errore"})
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+
+# Scopo: La TESTATA LEGGIBILE della commessa (Blocco C del brief modifiche
+#        certe): descrizione, data di apertura e responsabile arrivano nel
+#        dettaglio dallo stesso payload di `/stato/`, e si scrivono con un
+#        PATCH parziale. Il responsabile deve essere una persona ATTIVA e lo
+#        si dice con un 400 che nomina il campo — a DB lo rifiuterebbe il
+#        require sul figlio con `E_ATTIVO_REQUIRE`, che e' TECNICO (500).
+class CommessaTestataLeggibileTests(TestCase):
+    _REPO = "apps.vendite.services.commesse_service.CommesseRepository"
+    _ANAG = "apps.vendite.services.commesse_service.AnagraficheService"
+    _STATO = "apps.vendite.services.commesse_service.fn_get_commessa_stato"
+
+    def _repo_con_stato(self, repo_cls):
+        from datetime import date
+        repo = repo_cls.return_value
+        repo.get_capabilities.return_value = {"stato_codice": "APERTA"}
+        repo.get_commessa_stato.return_value = {
+            "stato_commessa_id": 1, "stato_commessa": "APERTA",
+            "commessa_codice": "COMM-0042", "cliente_display": "Rossi",
+        }
+        repo.get_commessa_testata.return_value = {
+            "descrizione": "Impianto sede",
+            "data_apertura": date(2026, 9, 1),
+            "responsabile_risorsa_umana_id": 7,
+            "responsabile_display": "Bianchi Anna",
+        }
+        return repo
+
+    @patch(_REPO)
+    def test_il_dettaglio_porta_la_testata_leggibile_e_data_apertura_iso(self, repo_cls):
+        from apps.vendite.services.commesse_service import fn_get_commessa_stato
+
+        self._repo_con_stato(repo_cls)
+        out = fn_get_commessa_stato(commessa_id=1)
+        self.assertEqual(out["descrizione"], "Impianto sede")
+        self.assertEqual(out["data_apertura"], "2026-09-01")   # ISO, non `date`
+        self.assertEqual(out["responsabile_risorsa_umana_id"], 7)
+        self.assertEqual(out["responsabile_display"], "Bianchi Anna")
+        # E lo stato non e' stato spostato: i campi storici restano al loro posto.
+        self.assertEqual(out["commessa_codice"], "COMM-0042")
+
+    @patch(_STATO, return_value={"commessa_id": 1, "descrizione": "Nuova"})
+    @patch(_ANAG)
+    @patch(_REPO)
+    def test_aggiorna_testata_ok_e_risponde_col_dettaglio(self, repo_cls, anag_cls, stato):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        repo = repo_cls.return_value
+        repo.update_commessa_testata.return_value = True
+        anag_cls.return_value.get_risorsa_umana_lookup.return_value = {
+            "id": 7, "display": "Bianchi Anna", "attivo": True,
+        }
+        out = aggiorna_commessa_testata(
+            1, {"descrizione": "  Nuova  ", "responsabile_risorsa_umana_id": 7},
+        )
+        repo.update_commessa_testata.assert_called_once_with(
+            1, {"descrizione": "Nuova", "responsabile_risorsa_umana_id": 7},
+        )
+        stato.assert_called_once_with(commessa_id=1)
+        self.assertEqual(out["descrizione"], "Nuova")
+
+    @patch(_STATO, return_value={"commessa_id": 1})
+    @patch(_ANAG)
+    @patch(_REPO)
+    def test_aggiorna_testata_null_toglie_il_responsabile(self, repo_cls, anag_cls, _stato):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        repo = repo_cls.return_value
+        repo.update_commessa_testata.return_value = True
+        aggiorna_commessa_testata(1, {"responsabile_risorsa_umana_id": None})
+        repo.update_commessa_testata.assert_called_once_with(
+            1, {"responsabile_risorsa_umana_id": None},
+        )
+        # Niente lookup per un azzeramento: non c'e' nessuna persona da verificare.
+        anag_cls.return_value.get_risorsa_umana_lookup.assert_not_called()
+
+    @patch(_REPO)
+    def test_aggiorna_testata_chiave_estranea_400(self, repo_cls):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        # `data_apertura` NON si scrive: la mette il default alla nascita.
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_commessa_testata(1, {"data_apertura": "2026-01-01"})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        repo_cls.return_value.update_commessa_testata.assert_not_called()
+
+    @patch(_REPO)
+    def test_aggiorna_testata_nessun_campo_400(self, repo_cls):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_commessa_testata(1, {})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+    @patch(_REPO)
+    def test_aggiorna_testata_descrizione_troppo_lunga_400(self, repo_cls):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_commessa_testata(1, {"descrizione": "x" * 256})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "descrizione")
+
+    @patch(_ANAG)
+    @patch(_REPO)
+    def test_aggiorna_testata_responsabile_non_attivo_400(self, repo_cls, anag_cls):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        anag_cls.return_value.get_risorsa_umana_lookup.return_value = {
+            "id": 7, "display": "Bianchi Anna", "attivo": False,
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_commessa_testata(1, {"responsabile_risorsa_umana_id": 7})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "responsabile_risorsa_umana_id")
+        repo_cls.return_value.update_commessa_testata.assert_not_called()
+
+    @patch(_ANAG)
+    @patch(_REPO)
+    def test_aggiorna_testata_responsabile_inesistente_400(self, repo_cls, anag_cls):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        anag_cls.return_value.get_risorsa_umana_lookup.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_commessa_testata(1, {"responsabile_risorsa_umana_id": 99})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "responsabile_risorsa_umana_id")
+
+    @patch(_REPO)
+    def test_aggiorna_testata_commessa_inesistente_o_fuori_scope_404(self, repo_cls):
+        from apps.vendite.services.commesse_service import aggiorna_commessa_testata
+
+        # Zero righe toccate: inesistente O fuori scope RLS — stesso 404.
+        repo_cls.return_value.update_commessa_testata.return_value = False
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_commessa_testata(1, {"descrizione": "x"})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_NOT_FOUND")

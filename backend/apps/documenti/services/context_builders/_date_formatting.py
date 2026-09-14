@@ -24,6 +24,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from apps.core.services.locale_formatters import in_ora_locale
+
 
 # Scopo: Formatta una data in DD-MM-YYYY (formato italiano). None-preserving;
 #        valore non parsabile -> stringa originale.
@@ -49,7 +51,10 @@ def _parse_date(value: Any) -> date | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.date()
+        # ⚠️ Il giorno in ORA LOCALE, come negli export (2026-09-14): un
+        #    istante a cavallo della mezzanotte UTC e' gia' il giorno dopo a
+        #    Roma, e il documento deve portare la data che l'operatore vede.
+        return in_ora_locale(value).date()
     if isinstance(value, date):
         return value
     if isinstance(value, str):

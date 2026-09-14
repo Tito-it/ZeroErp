@@ -46,7 +46,12 @@ nel CSV, foglio «Filtri applicati» nell'XLSX. Servono a non ritrovarsi in mano
 un file che nessuno sa piu' da dove venga.
 
 Date e numeri passano da `locale_formatters.format_for_export` — formato
-italiano (`DD-MM-YYYY`), mai la serializzazione di default.
+italiano (`DD-MM-YYYY`), mai la serializzazione di default. ⭐ **E in ora
+locale** (`TIME_ZONE`, dal 2026-09-14): fino a quel giorno un `datetime`
+usciva nel fuso che portava, cioe' UTC per ogni timestamptz letto dal DB —
+una o due ore indietro rispetto alla lista a video, che il browser converte.
+Vale anche per il giorno preso da un datetime (le 23:30 UTC del 14 sono il
+15) e per il timestamp nel nome del file.
 
 ## 3. Gli endpoint
 

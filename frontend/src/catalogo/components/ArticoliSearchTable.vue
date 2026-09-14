@@ -12,7 +12,6 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -170,10 +169,9 @@ onMounted(() => {
       <template #cell-iva_ref_id="{ data }">
         {{ data.iva_aliquota_iva != null ? `${data.iva_aliquota_iva}%` : '' }}
       </template>
-      <template #cell-is_solo_componente="{ data }">
-        <Tag :value="data.is_solo_componente ? t('common.yes') : t('common.no')"
-          :severity="data.is_solo_componente ? 'info' : 'secondary'" />
-      </template>
+      <!-- ⛔ Nessuno slot per `is_solo_componente` (327) e `gestito_a_magazzino`
+           (748): sono `formato=yesno` a catalogo e li rende `SiNoTag` dal BB.
+           Fino al 2026-09-14 erano due slot con lo stesso Tag scritto a mano. -->
       <template #cell-attivo="{ data }">
         <AttivoTag :active="data.attivo" />
       </template>

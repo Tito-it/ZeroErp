@@ -5,7 +5,11 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import (
+    get_scope_user_id,
+    handle_detail_patch,
+    handle_post_json,
+)
 from apps.core.services.coda_lavori.repository import (
     ORIGINE_API,
     RUN_AS_OPERATORE,
@@ -44,6 +48,7 @@ from apps.vendite.services._fatturazione_job_helpers import (
     parse_gruppi,
 )
 from apps.vendite.services.commesse_service import (
+    aggiorna_commessa_testata,
     aggiungi_onere_commessa,
     annulla_attivita_manuale,
     approva_attivita_competenza,
@@ -1697,6 +1702,42 @@ class ApiCommessaStato(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ApiCommessaDetail(DomainAPIView):
+    """PATCH /api/v1/vendite/commesse/<id>/ — la testata leggibile.
+
+    `descrizione` e `responsabile_risorsa_umana_id` (Blocco C di
+    brief-db-modifiche-certe-ciclo-vendita-e-articolo); `data_apertura` e' in
+    sola lettura e viaggia nel dettaglio. ⚠️ Il DETTAGLIO resta su `/stato/`
+    (`ApiCommessaStato.get`), che e' la rotta storica del drawer e porta gia'
+    anche questi tre campi: qui c'e' il solo verbo di scrittura, sulla risorsa
+    come vuole la grammatica URL (PATCH /{risorsa}/{id}/). Permesso = livello
+    d'area `vendite` (`change`), come le testate degli altri documenti.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="VenditeCommessaTestataRequest",
+            fields={
+                "descrizione": serializers.CharField(
+                    required=False, allow_null=True, max_length=255,
+                ),
+                "responsabile_risorsa_umana_id": serializers.IntegerField(
+                    required=False, allow_null=True,
+                    help_text="Risorsa umana ATTIVA; null toglie il responsabile.",
+                ),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="VenditeCommessaTestataResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Aggiorna via PATCH la testata leggibile e risponde col dettaglio
+    #        aggiornato (lo stesso payload di `/stato/`).
+    def patch(self, request: Request, commessa_id: int) -> JsonResponse:
+        return handle_detail_patch(request, aggiorna_commessa_testata, commessa_id)
 
 
 class ApiCommessaRegistro(DomainAPIView):

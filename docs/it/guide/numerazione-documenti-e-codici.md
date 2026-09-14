@@ -1,10 +1,10 @@
 # Guida – Numerazione dei documenti e codici automatici
 
+> **Ultimo aggiornamento:** 14 settembre 2026
+>
 > **Destinatari:** chiunque debba capire come nasce un numero o un codice in ZeroErp — sviluppatori database, backend, frontend e analisti funzionali
 >
-> **Prerequisiti:** nessuno. Le parti tecniche stanno in fondo a ogni capitolo.
->
-> **Stato:** aggiornata al **31-08-2026 (sera)**, dopo che i quattro documenti traslocati hanno portato sui registri anche la **forma** del numero, e non più solo il contatore. Descrive **come funziona oggi**, non come funzionava prima.
+> **Prerequisiti:** nessuno. Le parti tecniche stanno in fondo a ogni capitolo. La guida descrive **come funziona oggi**; il *perché*, con le misure e le strade scartate, sta nei brief elencati in fondo (§10).
 
 ---
 
@@ -45,19 +45,18 @@ prefisso = BAC     separatore = /     cifre = 7      →     BAC/0001234
 pratiche, preventivi, contratti, offerte commerciali, lotti di fatturazione.
 Dieci voci, e nessun documento di vendita.
 
-⭐ **Dal 31 agosto 2026 questa tabella descrive solo cose che genera davvero.**
-Fino a quel giorno conteneva anche le righe di documenti di trasporto, ordini,
-resi e commesse: righe che non contavano più niente da mesi, ma che restavano
-visibili nel pannello di configurazione con un prefisso che **nessuno leggeva
-più**. Un amministratore che lo cambiava non otteneva alcun effetto, e non aveva
-modo di accorgersene.
+⭐ **Questa tabella descrive solo cose che genera davvero**: nessuna riga per i
+documenti che si numerano sui registri. Una riga che non conta più niente
+resterebbe visibile nel pannello di configurazione con un prefisso che **nessuno
+legge**: un amministratore che lo cambia non ottiene alcun effetto, e non ha
+modo di accorgersene. Lo pretende un presidio (§9).
 
 ### 2.2 Il **motore dei registri** — `vendite.registri_fatturazione`
 
 Un **registro** è un sezionale di numerazione: appartiene a **una** azienda
-emittente, tiene il proprio contatore, sa ripartire da 1 a ogni Capodanno e —
-dal 31 agosto 2026 — porta anche la **forma** del numero che produce: prefisso,
-suffisso e quante cifre.
+emittente, tiene il proprio contatore, sa ripartire da 1 a ogni Capodanno e
+porta anche la **forma** del numero che produce: prefisso, suffisso, quante
+cifre, e se l'anno sta dentro il numero.
 
 **Chi lo usa, oggi** — fatture, documenti di trasporto, ordini, commesse, resi.
 
@@ -81,21 +80,10 @@ mettere insieme **tre** cose diverse, e non è detto che vengano dallo stesso po
 | **Il contatore** | chi tiene il conto e fino a quanto è arrivato | il registro **oppure** il catalogo dei formati |
 | **Il momento** | quando il numero viene consegnato | dipende dal documento, e non si centralizza |
 
-### ⚠️ Il trasloco è avvenuto in **due tempi**, e conviene saperlo
-
-Chi ha letto questa guida in una versione precedente ci ha trovato scritto che i
-quattro documenti *«hanno cambiato solo il contatore»*. Era vero, ma **solo per
-mezza giornata**:
-
-1. **la mattina** del 31 agosto 2026 si è spostato il **contatore**, lasciando la
-   forma nel catalogo dei formati;
-2. **la sera** si è spostata anche la **forma** — ed è stato spostandola che si è
-   visto perché doveva muoversi: finché la forma restava di là, quelle quattro
-   righe dovevano restarci anche loro, e restavano **monche**.
-
-⭐ È il caso tipico in cui un lavoro fatto a metà non si vede finché non lo si
-guarda da vicino. Le righe non davano errore: davano confusione, che è più
-difficile da notare e più lunga da smaltire.
+⚠️ **Formato e contatore stanno nello stesso posto**, per ogni documento: un
+numeratore che tenesse il contatore sul registro e la forma nel catalogo dei
+formati lascerebbe di là una riga **monca**, che non dà errore ma confusione —
+ed è il motivo della regola del §7.
 
 ### La forma ha un **default** e un **effettivo**
 
@@ -117,8 +105,6 @@ momento vive di vita propria. Nessuno deve ricordarsi di riempirlo.
 ---
 
 ## 4. Come nasce oggi ogni identificativo
-
-*(fotografia al 31-08-2026, sera)*
 
 | Documento / entità | Formato | Contatore | Quando riceve il numero |
 | --- | --- | --- | --- |
@@ -144,9 +130,9 @@ si vede solo guardando le colonne:
   esempio `DDT0000123`), presa dal registro;
 * **la commessa tiene la stringa in un campo solo**, il codice —
   `CMM-ACME-2026-000000001` — e non ha un campo «numero» a parte: quella stringa
-  *è* il suo numero. ⭐ **Dal 2 settembre 2026 ha però anche l'anno e il registro
-  in due colonne proprie**, come gli altri: prima erano leggibili solo spezzando
-  la stringa.
+  *è* il suo numero. ⭐ Porta però anche l'anno e il registro in **due colonne
+  proprie**, come gli altri, e un controllo automatico pretende che il codice e
+  le colonne dicano la stessa cosa (§8-bis).
 
 ⚠️ Ne discende una cosa pratica: **chi scrive codice che confronta o ordina i numeri
 non può trattarli tutti allo stesso modo.** Ed è la ragione per cui il controllo
@@ -163,32 +149,27 @@ cui la fattura si numera solo all'emissione.
 
 ## 5. Un solo posto che compone il numero
 
-Fino al 31 agosto 2026 i quattro documenti traslocati facevano **gli stessi sei
-passi**, ciascuno per conto proprio: trovare il registro, ricavare l'anno dalla
-data, chiedere il progressivo, leggere il formato, comporre la stringa, scrivere
-le colonne. Quattro copie della stessa cosa.
+Assegnare un numero sono **sei passi**: trovare il registro, ricavare l'anno
+dalla data, chiedere il progressivo, leggere il formato, comporre la stringa,
+scrivere le colonne. Stanno in **una funzione sola**
+(`vendite.fn_assegna_numero_documento`), e i generatori dei singoli documenti
+conservano l'unica cosa che li distingue davvero: **il momento**. Il documento
+di trasporto numera all'emissione, il reso alla conferma, ordine e commessa alla
+creazione — quello resta scritto ciascuno a casa propria, perché è la sola cosa
+che non hanno in comune.
 
-⛔ **Il difetto di quattro copie non è la lunghezza: è che si può correggerne
-tre.** Una modifica al modo di comporre il numero andava fatta in quattro posti, e
-chi ne dimenticava uno otteneva un documento formattato diversamente dagli altri —
+⛔ **Perché una sede sola, e non una copia per documento**: di quattro copie se
+ne possono correggere tre. Una modifica al modo di comporre il numero fatta in
+tre posti su quattro produce un documento formattato diversamente dagli altri —
 che **nessun controllo respinge**, perché è un numero valido, solo diverso.
 
-⭐ Oggi i sei passi stanno in una funzione sola, e i quattro generatori conservano
-l'unica cosa che li distingue davvero: **il momento**. Il documento di trasporto
-numera all'emissione, il reso alla conferma, ordine e commessa alla creazione —
-quello resta scritto ciascuno a casa propria, perché è la sola cosa che non hanno
-in comune.
+### ⭐ La composizione si prova in una riga
 
-### ⭐ Il guadagno che non si vedeva: provare la composizione
-
-La parte che compone la stringa è ora una funzione **pura**: riceve dei valori e
-restituisce una stringa, senza leggere niente.
-
-Prima, per verificare che un numero venisse formattato bene, bisognava
-**fabbricare un documento intero** — un documento di trasporto con le sue righe,
-il suo indirizzo, la sua causale e la sua transizione di stato. Oggi si scrive una
-riga di prova con i valori che si vogliono. Il costo di verificare un caso in più è
-passato da venti righe a una.
+La parte che compone la stringa (`vendite.fn_componi_numero_documento`) è una
+funzione **pura**: riceve dei valori e restituisce una stringa, senza leggere
+niente. Per verificare che un numero venga formattato bene non serve fabbricare
+un documento intero — con le sue righe, l'indirizzo, la causale e la transizione
+di stato — basta una riga di prova con i valori che si vogliono.
 
 ---
 
@@ -211,10 +192,11 @@ avere entrambe il documento numero 1 dello stesso anno, senza pestarsi i piedi.
 Non dalla data in cui qualcuno preme il pulsante. Un documento **datato** dicembre
 prende un numero del contatore di dicembre anche se viene emesso a gennaio.
 
-⚠️ È una distinzione che è già costata un difetto: prima di agosto 2026 su alcuni
-documenti l'anno lo scriveva un automatismo **alla creazione**, leggendo la data di
-quel giorno, mentre il contatore usava la data del documento. Due nozioni di «anno»
-sulla stessa riga — e il controllo di unicità usava la prima.
+⚠️ La colonna `anno` del documento e l'anno del contatore vengono dalla **stessa
+data**. Un automatismo che scrivesse l'anno alla creazione leggendo la data di
+quel giorno, mentre il contatore usa la data del documento, metterebbe due
+nozioni di «anno» sulla stessa riga — e il controllo di unicità userebbe la
+prima.
 
 ### 6.3 Il numero non torna indietro nel tempo — **solo per le fatture**
 
@@ -227,7 +209,7 @@ trasporto per la spedizione di ieri, inserito stamattina dopo che ne è già usc
 uno con la data di oggi, è un caso d'uso normale. Applicare lì lo stesso cancello lo
 avrebbe reso impossibile.
 
-#### ⭐ E guarda la **sequenza**, non il registro — deciso l'8 settembre 2026
+#### ⭐ E guarda la **sequenza**, non il registro
 
 Il cancello confronta la data con l'ultima numerata **sulla stessa sequenza**,
 dove una sequenza è la coppia *registro + serie*. Su un registro che emette su
@@ -284,52 +266,48 @@ l'azienda e dove comincia l'anno.
 ⭐ **La commessa è l'unica delle quattro a usare nove cifre**, ed è per questo che è
 stata la sola a rivelare un difetto altrimenti invisibile — se ne parla al §9.
 
-> 🔄 **Aggiornamento del 2 settembre 2026.** Fino a quel giorno il fatto che la
-> sigla e l'anno fossero *dentro* la stringa era una **convenzione di chi la
-> compone**: giusta, e verificabile solo rileggendo il programma. Ora la commessa
-> porta l'anno e il registro anche in **due colonne**, e un controllo automatico
-> confronta le due cose — se un domani qualcuno cambiasse la composizione senza
-> toccare le colonne, o viceversa, se ne accorge un test invece di un cliente.
-> ⚠️ L'identità **non è cambiata**: unico resta il codice, e resta unico da solo.
+> ⭐ Che la sigla e l'anno stiano *dentro* la stringa non è solo una convenzione
+> di chi la compone: la commessa porta l'anno e il registro anche in **due
+> colonne**, e un controllo automatico confronta le due cose — se qualcuno
+> cambiasse la composizione senza toccare le colonne, o viceversa, se ne accorge
+> un test invece di un cliente. ⚠️ L'identità resta il codice, unico da solo.
 
-### 6.5 Il separatore non è più un campo a sé
+### 6.5 Il separatore non è un campo a sé
 
-Prima il formato aveva un campo «separatore» accanto al prefisso. Oggi non c'è più:
-**se serve un separatore, si scrive dentro il prefisso** (`CMM-`).
+La forma sul registro non ha un campo «separatore» accanto al prefisso: **se
+serve un separatore, si scrive dentro il prefisso** (`CMM-`).
 
 ⭐ Non è una semplificazione estetica. Con due campi distinti, un prefisso vuoto
-lasciava il separatore **orfano in testa** — `-ACME-2026-000000001` — e chi spezzava
-quel codice sul trattino si ritrovava un primo pezzo vuoto. Un caso speciale che la
-commessa aveva e gli altri no, sparito insieme al campo.
+lascerebbe il separatore **orfano in testa** — `-ACME-2026-000000001` — e chi
+spezza quel codice sul trattino si ritroverebbe un primo pezzo vuoto.
 
 ### 6.6 I numeri già assegnati non si rifanno
 
 Nessuna rinumerazione del pregresso, per nessun documento. I documenti numerati
-prima di agosto 2026 non hanno il registro e in alcuni casi nemmeno l'anno: **è
-storia**, e resta com'è. Non collidono con i nuovi perché **la forma è diversa** —
-ed è l'unica cosa che li separa, quindi chi cambia il formato dei numeri nuovi sta
-toccando anche la ragione per cui non collidono con i vecchi.
+**prima** che la loro famiglia passasse sui registri non hanno il registro e in
+alcuni casi nemmeno l'anno: **è storia**, e resta com'è. Non collidono con i nuovi
+perché **la forma è diversa** — ed è l'unica cosa che li separa, quindi chi cambia
+il formato dei numeri nuovi sta toccando anche la ragione per cui non collidono
+con i vecchi.
 
-### 6.7 ⛔ I contatori sono stati allineati al massimo già emesso
+### 6.7 ⛔ Un contatore non nasce mai sotto il massimo già emesso
 
-Il giorno del trasloco è successa una cosa che merita un paragrafo suo: i contatori
-dei registri partivano da zero, mentre i documenti vecchi erano arrivati per esempio
-a `ORD0040688`. Il primo ordine nuovo ha ricevuto `ORD0000001` — **un numero già
-usato anni prima**, con la stessa identica forma.
+Un contatore che partisse da zero su una famiglia che ha già documenti
+consegnerebbe un numero **già usato**, con la stessa identica forma (`ORD0000001`
+dopo un `ORD0040688`). ⛔ E il controllo di unicità non se ne accorgerebbe: le
+righe vecchie non hanno un registro, le nuove sì, e **due righe che differiscono
+per un campo vuoto contro un campo pieno non collidono mai**. Il vincolo c'è, e
+tace.
 
-⛔ E il controllo di unicità non se n'è accorto, per una ragione che vale la pena
-capire: le righe vecchie non hanno un registro, le nuove sì, e **due righe che
-differiscono per un campo vuoto contro un campo pieno non collidono mai**. Il
-vincolo c'era, e taceva.
+⭐ Per questo ogni contatore nasce **almeno** al massimo progressivo già emesso
+dalla stessa azienda in quell'anno — scritto come **regola** e non come elenco:
+vale per un registro nuovo, per un contatore rimasto indietro, e per il secchio
+nuovo che nasce cambiando politica di azzeramento (§8-bis).
 
-⭐ La riparazione ha portato ogni contatore **almeno** al massimo progressivo già
-emesso dalla stessa azienda in quell'anno, ed è scritta come **regola** e non come
-elenco: vale anche per il prossimo contatore che nascesse indietro.
-
-⚠️ **Ne resta una conseguenza da conoscere:** un contatore non torna mai indietro,
-quindi allinearlo lascia dei buchi nella progressione — i numeri fra l'ultimo
-davvero emesso e il massimo storico. È il prezzo accettato, ed è molto più basso di
-un numero doppio.
+⚠️ **Ne discende una conseguenza da conoscere:** un contatore non torna mai
+indietro, quindi allinearlo lascia dei buchi nella progressione — i numeri fra
+l'ultimo davvero emesso e il massimo storico. È il prezzo accettato, ed è molto
+più basso di un numero doppio.
 
 ---
 
@@ -359,10 +337,9 @@ non c'è.
 
 ### ⛔ E il trasloco si finisce, non si lascia a metà
 
-La lezione del 31 agosto 2026, in una riga: **spostare un numeratore vuol dire
-spostare il contatore E la forma.** Fermarsi al contatore lascia una riga monca in
-una tabella di configurazione, con dei campi che nessuno legge più e che qualcuno
-prima o poi proverà a cambiare.
+**Spostare un numeratore vuol dire spostare il contatore E la forma.** Fermarsi
+al contatore lascia una riga monca in una tabella di configurazione, con dei
+campi che nessuno legge più e che qualcuno prima o poi proverà a cambiare.
 
 La checklist operativa aggiornata sta nella scheda tecnica di
 [`config.sistema_codici`](/dbzero/config/manual/sistema_codici).
@@ -371,16 +348,14 @@ La checklist operativa aggiornata sta nella scheda tecnica di
 
 ## 8. ⛔ Un'idea valutata e **scartata**: la colonna che rappresenta l'unicità
 
-*(valutata il 31-08-2026)*
-
 **L'idea.** Aggiungere a ogni documento una colonna che rappresenti la sua identità,
 composta automaticamente dai valori delle altre colonne — qualcosa come
 `2581/2026/A/DDT0000123` — così che l'unicità stia in **un posto solo, uguale
 ovunque**, e ogni azienda possa eventualmente definirsela a modo proprio.
 
-L'idea nasceva da un'osservazione **giusta**: le forme di identità oggi sono tre
-diverse su sette documenti, e fino ad agosto 2026 **due di esse non funzionavano
-affatto** senza che nessuno se ne accorgesse.
+L'idea nasceva da un'osservazione **giusta**: le forme di identità sono tre
+diverse su sette documenti, e una forma che smette di funzionare **non dà nessun
+errore**.
 
 **Perché è stata scartata.** Tre ragioni, in ordine di peso.
 
@@ -391,8 +366,7 @@ ha scritto la riga* non è più un controllo del database, ma una regola nel
 programma, con tutte le fragilità che si era appena finito di togliere.
 ⭐ E soprattutto: **l'unicità per azienda esiste già**. È il registro. «La mia
 azienda vuole la sua numerazione» oggi si traduce in: il mio registro, il mio
-contatore, il mio anno, la mia serie — e da fine agosto anche il mio prefisso e il
-mio suffisso.
+contatore, il mio anno, la mia serie, il mio prefisso e il mio suffisso.
 
 **2. L'uniformità sarebbe stata solo nel nome.** Le tabelle non hanno le stesse
 colonne — i resi non hanno la serie, la commessa non ha un campo «numero» perché
@@ -412,8 +386,8 @@ colonna: serve un **controllo automatico** che, per ogni famiglia di documento
 registrata a catalogo, verifichi che l'identità distingua l'azienda e che l'anno sia
 davvero in chiave.
 
-⭐ È stato scritto, e ha una proprietà che la colonna non avrebbe avuto: **non elenca
-i documenti, li legge dal catalogo**. Il giorno in cui si registra una famiglia
+⭐ Esiste (§8-bis), e ha una proprietà che la colonna non avrebbe avuto: **non
+elenca i documenti, li legge dal catalogo**. Il giorno in cui si registra una famiglia
 nuova, il controllo la copre da solo.
 
 ℹ️ Resta possibile, se un domani servisse **leggere** l'identità completa in un
@@ -425,12 +399,10 @@ tabella. La colonna tornerebbe sul tavolo solo se quell'identità dovesse essere
 
 ## 8-bis. ⭐ La chiave del contatore: gli assi si **dichiarano**, non si assumono
 
-*(rev 2026-09-01)*
-
-Il §8 qui sopra si chiude chiedendo *«un controllo automatico che, per ogni
-famiglia di documento registrata a catalogo, verifichi che l'identità distingua
-l'azienda e che l'anno sia davvero in chiave»*. ⭐ **Quel controllo ora esiste**,
-e per scriverlo è venuta fuori la regola che lo governa.
+Il §8 qui sopra chiede *«un controllo automatico che, per ogni famiglia di
+documento registrata a catalogo, verifichi che l'identità distingua l'azienda e
+che l'anno sia davvero in chiave»*. ⭐ **Quel controllo esiste**, e questa è la
+regola che lo governa.
 
 ### La regola
 
@@ -450,31 +422,32 @@ dichiarato:
 | il **contatore** ha un asse che il **documento** non ha | ⛔ **collisione** |
 | il **documento** ha un asse che il **contatore** non ha | ✅ innocuo — il documento è solo più specifico |
 
-### ⛔ Il difetto che c'era, e il §8 lo aveva già sfiorato
+### ⛔ Che cosa succede quando un asse non è dichiarato
 
-Il §8 osserva che *«i resi non hanno la serie, la commessa non ha un campo
-numero»*.
-Era vero, ed era **più grave di come suonava**: la serie entra nella chiave del
-contatore, quindi cambiare il `serie_default` di un registro `RESO` avrebbe fatto
-ripartire il progressivo da 1 su numeri già emessi — con `uq_resi_anno_numero`
-che non porta la serie, il vincolo rifiuta, e col rollback torna indietro anche
-l'incremento del contatore. ⇒ **Il reso non si numerava più.**
+L'esempio è la **serie sui resi**. La serie entra nella chiave del contatore: se
+il vincolo di unicità del reso non la porta, cambiare il `serie_default` del
+registro `RESO` fa ripartire il progressivo da 1 su numeri già emessi — il
+vincolo rifiuta, col rollback torna indietro anche l'incremento del contatore, e
+**il reso non si numera più**.
 
-### ✅ La cura: la famiglia dichiara l'asse
+⛔ Dare la colonna `serie` ai resi sistemerebbe il **sintomo su una tabella**: il
+sesto documento che entra domani avrebbe lo stesso problema senza che nessuno
+gliel'abbia chiesto.
 
-Non si è data la colonna `serie` ai resi — sistemava il **sintomo su una
-tabella**, e il sesto documento che entra domani avrebbe avuto lo stesso problema
-senza che nessuno gliel'avesse chiesto.
+### La famiglia dichiara l'asse
 
 ⭐ La domanda si fa **dove una famiglia entra nei registri**:
-`vendite.famiglie_documento.colonna_serie` — il **nome** della colonna in cui
-quella famiglia registra la serie, `NULL` se non ne ha una.
+`vendite.famiglie_documento` dichiara, per ogni famiglia, il **nome** della
+colonna con cui il documento esprime ciascun asse — `NULL` se quel documento non
+ce l'ha:
 
 | Cosa | Dove sta | Che natura ha |
 | --- | --- | --- |
 | `serie` sul documento | `fatture.serie`, `ddt.serie`, `ordini.serie` | **il fatto** |
 | `serie_default` | `registri_fatturazione` | **la scelta** del sezionale |
-| `colonna_serie` | `famiglie_documento` | **la capacità** della famiglia |
+| `colonna_serie` | `famiglie_documento` | **la capacità** della famiglia: `NULL` per resi e commesse |
+| `colonna_billing_account` | `famiglie_documento` | **la capacità** di portare un cliente: `NULL` per una famiglia la cui controparte non è un billing account (l'ordine di acquisto, che ha un fornitore) |
+| `colonna_numero` | `famiglie_documento` | dove il documento scrive il numero — sempre dichiarata |
 
 > **Sulla FAMIGLIA si dichiara ciò che il documento PUÒ esprimere. Sul REGISTRO
 > si sceglie ciò che quel sezionale FA.**
@@ -482,34 +455,32 @@ quella famiglia registra la serie, `NULL` se non ne ha una.
 ⭐ **Il nome e non un booleano**, per la stessa ragione di `colonna_numero`: un
 flag «gestisce la serie» messo su una famiglia la cui tabella non ce l'ha
 riporterebbe il difetto senza che nessuno se ne accorga; col nome, il controllo
-verifica che la colonna **esista davvero**.
+verifica che la colonna **esista davvero** — e la verifica salta gli assi
+dichiarati `NULL`, prima di comporre qualunque query.
 
 ⛔ E un registro di una famiglia senza serie **non può averne una**: si rifiuta,
-non si ignora. Un campo editabile che non fa niente è il difetto che il trasloco
-del prefisso ha appena finito di togliere (§7).
+non si ignora. Un campo editabile che non fa niente è esattamente il difetto
+della riga monca del §7.
 
-### 🔴 Due cose sono sparite dal contatore
+⚠️ **Le famiglie senza billing account saltano** nei lettori che ricostruiscono
+la storia di un cliente per emittente (`fn_ba_ha_storia_emittente`,
+`fn_get_storia_emittente_ba`): un documento senza cliente non può contribuire
+alla storia di nessun cliente. Il CRUD delle famiglie tratta la colonna come
+facoltativa, esattamente come la serie
+([api_famiglie_documento](/backend/vendite/manual/api_famiglie_documento)).
 
-**`mese` non c'è più.** Stava nella chiave e **in nessun documento**. Era innocua
-solo perché inchiodata: `mese = 0` nella funzione e un `CHECK` che ammetteva il
-solo `ANNUALE`.
+### La chiave del contatore non ha un asse `mese`, ed è voluto
 
-⛔ **Una dimensione dormiente in una chiave è ARMATA, non inutilizzata**: il
-giorno che qualcuno avesse acceso un reset mensile sarebbero collidati **tutti e
-cinque** i documenti. E a tenerla chiusa non era un vincolo, era una **rinuncia**
-— che si revoca per distrazione. Se un giorno servirà, l'asse torna **insieme**
-alla colonna sui documenti, dichiarato come lo è `colonna_serie`.
+La chiave è `(registro, anno, serie)`. Un asse `mese` **non c'è**, e non deve
+tornare senza la colonna sui documenti: ⛔ **una dimensione dormiente in una
+chiave è ARMATA, non inutilizzata** — il giorno che qualcuno accendesse un reset
+mensile senza che nessun documento porti il mese, colliderebbero **tutti e
+cinque** i documenti. Se un giorno servirà, l'asse torna **insieme** alla colonna
+sui documenti, dichiarato come lo è `colonna_serie`.
 
-**E con lei un `UNIQUE` ridondante** che nessuno vedeva: con quattro colonne
-`NOT NULL`, i `COALESCE` di `uq_registri_progressivi_scope` erano no-op e la
-chiave era la **stessa** di `uq_regprog_key`. ⚠️ Il presidio degli indici
-duplicati non lo segnalava, perché confronta colonne e lì una chiave era colonne
-e l'altra espressioni.
+### `reset_policy` — la politica del contatore
 
-### ✅ E `reset_policy` adesso funziona davvero
-
-Era **dichiarata e mai letta**: nessuna funzione ci ramificava sopra e l'anno era
-inchiodato nel codice. Ora `fn_get_next_progressivo` la legge:
+`fn_get_next_progressivo` la legge:
 
 | `reset_policy` | L'anno del secchio | Effetto |
 | --- | --- | --- |
@@ -528,22 +499,15 @@ seconda domanda, e per questo non è stata toccata.
 
 #### ⚠️ E cambiare politica su un registro che ha già numerato
 
-La politica si può cambiare, ma il momento in cui la si cambia conta. Il
+La politica si può cambiare anche su un registro che ha già numerato. Il
 contatore vive in un «secchio» identificato dall'anno: passando da `ANNUALE` a
-`NESSUNA` (o viceversa) la chiave del secchio cambia, quindi ne nasce uno nuovo —
-e un secchio nuovo, fino all'8 settembre 2026, **partiva da zero**.
-
-⛔ **Cosa succedeva davvero**, ed è stato provato prima di ripararlo: il registro
-aveva già emesso i numeri 1 e 2; cambiata la politica, il documento successivo
-chiedeva il numero **1**. Quel numero, nell'anno del documento, esisteva già: la
-scrittura veniva respinta, e con l'annullamento tornava indietro anche il
-contatore. Al tentativo dopo ricominciava da 1 e sbatteva di nuovo — cioè **un
-numeratore piantato**, con un errore che parlava del numero e non nominava la
-causa.
-
-✅ **Ora un secchio nuovo nasce dal numero più alto di quelli con cui potrebbe
-scontrarsi**, quindi la numerazione prosegue e il cambio di politica è
-un'operazione sicura, nei due versi.
+`NESSUNA` (o viceversa) la chiave del secchio cambia, quindi ne nasce uno nuovo
+— e **un secchio nuovo nasce dal numero più alto di quelli con cui potrebbe
+scontrarsi** (§6.7), quindi la numerazione prosegue e il cambio è un'operazione
+sicura, nei due versi. Un secchio che partisse da zero chiederebbe un numero che
+nell'anno del documento esiste già: scrittura respinta, contatore riportato
+indietro dal rollback, e al tentativo dopo di nuovo da capo — un numeratore
+piantato, con un errore che parla del numero e non nomina la causa.
 
 ⛔ **E non "dal numero più alto in assoluto"**: sotto `ANNUALE` il primo documento
 dell'anno **deve** ripartire da 1, ed è tutto il senso della politica. Si guardano
@@ -561,50 +525,30 @@ Tre verifiche, tutte **derivate** — nessun elenco scritto a mano:
 Una famiglia nuova che entra sui registri senza la chiave completa fa **rosso
 prima del merge**, invece che in campo.
 
-### ✅ E il pezzo che restava scoperto è stato chiuso — 2 settembre 2026
+### La commessa: identità a stringa, assi dichiarati lo stesso
 
-Fino al 2 settembre `vendite.commesse` era **l'unica delle cinque** la cui
-identità è una stringa nuda: dichiarava di non avere una serie — quindi i
-controlli la proteggevano — ma registro e anno stavano solo *dentro* il codice,
-per convenzione di chi lo compone.
-
-⛔ **Perché era un debito e non un dettaglio**: quell'invariante nessuno la
-imponeva. Il giorno che al contatore si fosse aggiunto un asse senza toccare la
-composizione della stringa, il codice sarebbe tornato a ripetersi al primo cambio
-di periodo — e sarebbe uscito come un errore di duplicato, in mezzo a
-un'elaborazione che con la numerazione non c'entra.
-
-⭐ **La cura, ed è più piccola di come sembrava.** Guardando le altre quattro si è
-visto che il loro campo «numero» contiene la **stringa già formattata**, non il
-progressivo nudo: sulla commessa quella stringa è il codice, che c'era già.
-Mancavano solo **due colonne** — registro e anno — e nessun numero da inventare
-per le righe vecchie.
-
-⚠️ **E il riempimento delle righe esistenti non ha ricostruito niente a mano**: il
-registro lo ha *chiesto* alla funzione che già risponde a «quale registro per
-questo documento», invece di riscriverne la regola. Riscrivendola si sarebbe
-sbagliato — le commesse hanno un'utility e i loro registri valgono «per tutte»,
-quindi un accostamento ingenuo non avrebbe trovato **nessuna** riga.
-
-⇒ Oggi l'invariante è **verificata da un controllo automatico**, non affidata a
-chi rilegge: il codice deve portare la sigla e l'anno che le colonne dichiarano.
-L'identità, però, resta il codice — ed è più stretta di quella degli altri
-quattro, perché porta la sigla dell'azienda e quindi non si ripete mai fra
-registri diversi.
+`vendite.commesse` è **l'unica delle cinque** la cui identità è una stringa
+nuda, il codice. Dichiara di non avere una serie, e registro e anno — che
+stanno *dentro* il codice — li porta anche in **due colonne**, come gli altri
+quattro portano la stringa formattata nel campo «numero» accanto alle colonne
+di anno e registro. ⇒ L'invariante «il codice porta la sigla e l'anno che le
+colonne dichiarano» è **verificata da un controllo automatico**, non affidata a
+chi rilegge: se al contatore si aggiungesse un asse senza toccare la
+composizione della stringa, lo direbbe un test e non un errore di duplicato in
+mezzo a un'elaborazione che con la numerazione non c'entra. L'identità resta il
+codice — più stretta di quella degli altri quattro, perché porta la sigla
+dell'azienda e non si ripete mai fra registri diversi.
 
 ---
 
-## 8-ter. ⭐ L'anno **dentro** il numero — 8 settembre 2026
+## 8-ter. ⭐ L'anno **dentro** il numero
 
-> Osservazione di Tid: *«gli ordini hanno l'azzeramento annuale ma il numero non
-> mostra l'anno: `ORD0036007`»*.
+### Perché, in una riga
 
-### Il difetto, in una riga
-
-Se la numerazione riparta ogni anno **e** il numero non porta l'anno, allora il
+Se la numerazione riparte ogni anno **e** il numero non porta l'anno, allora il
 1° gennaio la stessa identica stringa torna su un documento diverso. `ORD0000001`
-del 2026 e `ORD0000001` del 2027 sono due ordini diversi con lo stesso numero
-scritto sopra.
+del 2026 e `ORD0000001` del 2027 sarebbero due ordini diversi con lo stesso
+numero scritto sopra.
 
 ⚠️ **Il database non se ne accorge**, e questo è il punto: la sua regola di
 unicità l'anno ce l'ha in una colonna a parte, quindi nessuna scrittura fallisce.
@@ -636,13 +580,10 @@ Il numero diventa così: `DDT` + `2026-` + `0023456` → **`DDT2026-0023456`**.
   viaggiano in colonne a parte — è la convenzione fiscale, ed è la stampa a
   ricomporli (*«N. 101 / Serie VX1 / 2026»*). Mettere l'anno dentro la stringa
   cambierebbe il numero di una fattura.
-* ⭐ **La commessa lo fa, ma per una strada diversa da prima.** Il suo codice
-  l'anno lo portava già — `CMM-<sigla>-<anno>-<9 cifre>` — solo che glielo
-  metteva un pezzo di codice **suo**, diverso da quello di tutti gli altri.
-  Decisione di Tid: *«la commessa deve diventare standard, tutti devono avere gli
-  stessi parametri»*. Ora l'anno glielo mette lo stesso meccanismo degli altri, e
-  **il codice esce identico carattere per carattere** — verificato sui codici già
-  esistenti prima di applicare.
+* ⭐ **La commessa lo fa con lo stesso meccanismo degli altri**:
+  `CMM-<sigla>-<anno>-<9 cifre>`, dove l'anno lo mette il registro
+  (`anno_nel_numero`) e non un pezzo di codice suo — la commessa è standard, con
+  gli stessi parametri degli altri documenti.
 
 ### ⚠️ Una cosa da sapere prima di chiederla su un registro vecchio
 
@@ -656,41 +597,26 @@ distinguerle.
 l'alternativa è l'altra: se la sua numerazione non riparte (politica `NESSUNA`),
 il numero non si ripete e l'anno non serve.
 
-## 9. ⚠️ Un difetto trovato il giorno stesso, e cosa insegna
+## 9. Il presidio: nessuna funzione di vendite legge il catalogo dei formati
 
-*(31-08-2026, sera)*
+Prefisso, suffisso e cifre dei cinque documenti stanno **sul registro** (§3). Una
+funzione che li cercasse ancora nel catalogo dei formati non troverebbe la riga e
+cadrebbe sul valore di ripiego — **sette cifre** — senza nessun errore:
 
-Tolte le quattro righe dal catalogo dei formati, la funzione che compone i numeri
-**continuava a cercarle lì** per sapere quante cifre usare. Non trovandole più, si
-appoggiava al valore di ripiego: **sette cifre**.
-
-| | quante cifre vuole | quante ne otteneva |
+| | quante cifre vuole | quante ne otterrebbe |
 | --- | --- | --- |
 | DDT, ordine, reso | 7 | 7 — **giusto per caso** |
 | Commessa | 9 | **7** |
 
-⛔ Nessun errore, nessun vincolo violato: solo una commessa con un codice più corto
-— `CMM-ACME-2026-0000007` invece di `CMM-ACME-2026-000000007`. E la forma è proprio
-ciò che, secondo il §6.6, tiene separati i codici nuovi da quelli vecchi.
+⛔ Nessun vincolo violato: solo una commessa con un codice più corto —
+`CMM-ACME-2026-0000007` invece di `CMM-ACME-2026-000000007`. E la forma è proprio
+ciò che, secondo il §6.6, tiene separati i codici nuovi da quelli vecchi. ⚠️ Un
+valore di ripiego che coincide col valore giusto nasconde il difetto: tre
+famiglie su quattro passerebbero.
 
-**Tre cose che questo caso insegna, e che valgono ben oltre la numerazione:**
-
-1. ⛔ **Prima di cancellare una fonte si censiscono i suoi lettori.** I controlli
-   messi a protezione della cancellazione verificavano che la **sede nuova** fosse
-   piena — i registri col prefisso, le famiglie coi default — e **nessuno chiedeva
-   chi leggesse ancora quella vecchia**. È l'inventario giusto della metà sbagliata.
-2. ⚠️ **Il valore di ripiego che coincide col valore giusto nasconde il difetto.**
-   Tre famiglie su quattro passavano, perché il ripiego valeva esattamente quanto
-   dovevano avere. Il caso che ha parlato è stato l'unico diverso — e il difetto era
-   lì da ore.
-3. ⚠️ **Le descrizioni superate non sono rumore: sono prove false.** Quattro
-   descrizioni nel database dicevano ancora che la lunghezza «resta nel catalogo dei
-   formati». Chi indagava le leggeva per prime e ne concludeva che quel pezzo era
-   già a posto.
-
-⭐ Il presidio che ne è nato non guarda un documento: guarda il **codice**, e
-pretende che nessuna funzione dell'area vendite legga più il catalogo dei formati.
-Copre da sola anche il generatore che qualcuno scrivesse domani.
+⭐ Il presidio non guarda un documento: guarda il **codice**, e pretende che
+nessuna funzione dell'area vendite legga il catalogo dei formati. Copre da solo
+anche il generatore che qualcuno scrivesse domani.
 
 ---
 
@@ -701,7 +627,8 @@ Copre da sola anche il generatore che qualcuno scrivesse domani.
 * [`vendite.registri_fatturazione`](/dbzero/vendite/manual/registri_fatturazione) —
   i registri di numerazione, con prefisso, suffisso e lunghezza
 * [`vendite.famiglie_documento`](/dbzero/vendite/manual/famiglie_documento) — quali
-  documenti si numerano su un registro, dove vivono e **con quale forma nascono**
+  documenti si numerano su un registro, dove vivono e **con quale forma nascono**;
+  il CRUD: [api_famiglie_documento](/backend/vendite/manual/api_famiglie_documento)
 * [`vendite.fn_assegna_numero_documento`](/dbzero/vendite/manual/fn_assegna_numero_documento) —
   i sei passi, in una sede sola
 * [`vendite.fn_componi_numero_documento`](/dbzero/vendite/manual/fn_componi_numero_documento) —

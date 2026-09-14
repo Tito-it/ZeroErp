@@ -55,9 +55,10 @@ def execute(self, flusso_id: int, pratica_id: int,
    distingue "già smistato" (esistono ordine/commessa pregressi →
    `E_VENDITA_PREVENTIVO_GIA_PUSHATO`) da "preventivo vuoto" (`E_PREV_NESSUNA_RIGA`);
 5. **ramo MERCE** (se residuo): `push_a_ordine(preventivo_id, pratica_id)` →
-   `fn_push_preventivo_a_ordine`. La fn DB copia solo le righe `ORDINE`, scrive il
-   link di riga e aggancia `pratiche_sorgenti` (preventivo `ROOT` + ordine
-   `COLLEGATO`);
+   `fn_push_preventivo_a_ordine`. La fn DB copia solo le righe `ORDINE` (con la
+   `data_consegna_richiesta_cliente` della riga; la confermata nasce `NULL`),
+   scrive il link di riga e aggancia `pratiche_sorgenti` (preventivo `ROOT` +
+   ordine `COLLEGATO`);
 6. **ramo SERVIZI** (se `righe_commessa>0`): qui vive la **c7-2** — risolve la
    policy (`IMMEDIATA` → `true` + mese corrente; `DIFFERITA` → `false` +
    `meta.competenza_fatturazione`, `E_VENDITA_COMPETENZA_RICHIESTA` se assente,

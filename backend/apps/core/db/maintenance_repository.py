@@ -4,13 +4,60 @@
 # Doc: Python
 # Scopo: Repository per accesso in lettura a maintenance.job_run_log
 #        (tracciamento esecuzioni job pgAgent).
+# Note: ⭐ LE CORSE DI UN JOB SI RACCONTANO IN UNA FORMA SOLA (2026-09-14, dalla
+#        nota del team DB sul giornale delle 11:47): la riga PIU' RECENTE come
+#        segno di vita (`last_run_at`, `attivo`, `in_corso`) e l'ultima
+#        CONCLUSA come `ultima_conclusa = {started_at, ended_at, ok}` — data ed
+#        esito INSIEME, presi dalla stessa riga per costruzione (la factory e'
+#        `corsa_conclusa` in `_helpers`, condivisa con la coda lavori).
+#        ⛔ Fino a quel giorno `last_run_at` era `MAX(started_at)` (la riga piu'
+#        recente, anche aperta) e `last_ok` l'esito dell'ultima conclusa: due
+#        corse cucite in una riga. Il digest, componendo la mail dentro la
+#        propria corsa, scriveva la data della corsa in esecuzione con l'esito
+#        della precedente — «09:47:32 (ok)», dove le 09:47 erano la corsa 122445
+#        e l'«ok» quella delle 07:30. Vero per i dati di quel giorno; sul
+#        modello, con la precedente fallita, lunedi' si sarebbe letto «<adesso>
+#        (FALLITA)» con la mail in mano. `last_ok` non esiste piu': un esito
+#        senza la sua data e' esattamente il campo che invita a ricucire.
 # ------------------------------------------------------------
 
 from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import corsa_conclusa
 from apps.core.types import JobRunLogRow
+
+
+# Scopo: le due CTE che leggono, per jobname, la riga PIU' RECENTE (`recente`)
+#        e l'ultima CONCLUSA (`conclusa`), ciascuna come UNA riga intera con
+#        `DISTINCT ON`. E' la forma che rende la cucitura impossibile: tre
+#        aggregati con lo stesso `ORDER BY` restano d'accordo finche' nessuno ne
+#        tocca uno; una riga intera non ha niente da tenere allineato.
+# ⚠️ `conditions` sono frammenti SQL costanti del chiamante (whitelist, mai
+#    input libero); i VALORI viaggiano nei parametri, e vanno passati UNA VOLTA
+#    PER CTE, nell'ordine in cui le CTE compaiono: `recente`, poi `conclusa`.
+# ⭐ Le due sedi di questo file (`job_liveness`, `list_job_summary`) le usano
+#    entrambe: e' la ragione per cui il frammento sta qui e non dentro una
+#    delle due — prima erano due copie di `MAX` + `ARRAY_AGG … FILTER`, e il
+#    difetto stava in tutte e due.
+def _cte_corse(conditions: list[str]) -> str:
+    where_recente = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    where_conclusa = "WHERE " + " AND ".join([*conditions, "ended_at IS NOT NULL"])
+    return f"""
+        recente AS (
+            SELECT DISTINCT ON (jobname) jobname, started_at, ended_at
+              FROM maintenance.job_run_log
+              {where_recente}
+             ORDER BY jobname, started_at DESC, id DESC
+        ),
+        conclusa AS (
+            SELECT DISTINCT ON (jobname) jobname, started_at, ended_at, ok
+              FROM maintenance.job_run_log
+              {where_conclusa}
+             ORDER BY jobname, started_at DESC, id DESC
+        )
+    """
 
 
 class MaintenanceRepository:
@@ -80,11 +127,13 @@ class MaintenanceRepository:
         return results, total_count
 
     # Scopo: Liveness dei worker schedulati (badge UI code, BE-4): per ogni
-    #        jobname ritorna ultimo run, esito dell'ultimo run e flag
-    #        `attivo` = ultimo run entro `soglia_minuti` (confronto in SQL col
-    #        clock DB — nessun parsing timestamp in Python, tz-safe). Jobname
-    #        MAI girati non compaiono nel dict (il caller li tratta come
-    #        "worker giù"). Sola lettura su maintenance.job_run_log.
+    #        jobname ritorna la riga piu' recente come segno di vita
+    #        (`last_run_at`, `attivo` = entro `soglia_minuti` col clock DB —
+    #        nessun parsing timestamp in Python, tz-safe — e `in_corso` = quella
+    #        riga e' ancora aperta) piu' `ultima_conclusa` (vedi `corsa_conclusa`,
+    #        `None` se nessuna corsa e' mai stata chiusa). Jobname MAI girati
+    #        non compaiono nel dict (il caller li tratta come "worker giù").
+    #        Sola lettura su maintenance.job_run_log.
     #
     # ⭐ DUE CHIAVI, UNA DOMANDA (2026-09-10). Si chiede per `jobnames` — il caso
     #    dei due drainer, dove il jobname È il codice del processo — oppure per
@@ -100,15 +149,10 @@ class MaintenanceRepository:
     # ⛔ Esattamente UNA delle due, e mai nessuna: senza filtro questa query
     #    leggerebbe il giornale INTERO e risponderebbe la liveness di tutto —
     #    un errore che non fallisce, restituisce solo la cosa sbagliata.
-    # ⭐ `ok` ha TRE facce — true, false, NULL = corsa ancora aperta — e
-    #    `last_ok` risponde per l'ultima corsa CONCLUSA (`ended_at IS NOT
-    #    NULL`), non per la riga piu' recente. Fino al 2026-09-14 prendeva la
-    #    riga piu' recente: mentre il digest componeva la mail, per la PROPRIA
-    #    corsia quella riga era la corsa in esecuzione (ok NULL), e la mail la
-    #    chiamava «FALLITA» — con `job_run_log.ok = true` scritto mezzo minuto
-    #    dopo. `last_run_at` e `attivo` restano sulla riga piu' recente: una
-    #    corsa aperta e' un segno di vita legittimo. `last_ok` e' NULL solo se
-    #    nessuna corsa e' mai stata conclusa, e chi lo rende deve dirlo.
+    # ⭐ `ok` ha TRE facce — true, false, NULL = corsa ancora aperta — e una
+    #    corsa aperta e' un segno di vita legittimo (`attivo`, `in_corso`) ma
+    #    NON un esito: l'esito sta in `ultima_conclusa`, con la SUA data. Storia
+    #    del difetto nell'intestazione del modulo.
     def job_liveness(
         self,
         jobnames: list[str] | None = None,
@@ -131,17 +175,18 @@ class MaintenanceRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT jobname,
-                       MAX(started_at) AS last_run_at,
-                       MAX(started_at) > now() - make_interval(mins => %s)
-                           AS attivo,
-                       (ARRAY_AGG(ok ORDER BY started_at DESC)
-                            FILTER (WHERE ended_at IS NOT NULL))[1] AS last_ok
-                  FROM maintenance.job_run_log
-                 WHERE {filtro}
-                 GROUP BY jobname
-                """,  # noqa: S608 — due frammenti costanti, il valore è parametro
-                [int(soglia_minuti), valore],
+                WITH {_cte_corse([filtro])}
+                SELECT r.jobname,
+                       r.started_at AS last_run_at,
+                       r.started_at > now() - make_interval(mins => %s) AS attivo,
+                       r.ended_at IS NULL AS in_corso,
+                       c.started_at, c.ended_at, c.ok
+                  FROM recente r
+                  LEFT JOIN conclusa c USING (jobname)
+                """,  # noqa: S608 — frammenti costanti, il valore è parametro
+                # ⚠️ Il valore del filtro va UNA volta per CTE (recente, conclusa),
+                #    poi la soglia del SELECT: e' l'ordine dei `%s` nel testo.
+                [valore, valore, int(soglia_minuti)],
             )
             rows = cursor.fetchall()
         return {
@@ -153,12 +198,16 @@ class MaintenanceRepository:
                 # "abbastanza vero" per un confronto lato server.
                 "last_run_at": r[1].isoformat() if r[1] else None,
                 "attivo": bool(r[2]),
-                "last_ok": r[3],
+                "in_corso": bool(r[3]),
+                "ultima_conclusa": corsa_conclusa(r[4], r[5], r[6]),
             }
             for r in rows
         }
 
-    # Scopo: Restituisce la lista dei jobname distinti con conteggio esecuzioni e ultimo esito.
+    # Scopo: Restituisce la lista dei jobname distinti con conteggio esecuzioni
+    #        e le corse nella stessa forma di `job_liveness`: `last_run_at`
+    #        (riga piu' recente, `::text` di PG per contratto storico),
+    #        `in_corso` e `ultima_conclusa` (date in ISO-8601).
     # Utile per dashboard riepilogativa dei job schedulati.
     #
     # Filtri OPZIONALI (default: nessuno → comportamento storico invariato):
@@ -206,7 +255,6 @@ class MaintenanceRepository:
             )
             params.append(str(mese))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        params.extend([limit, offset])
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -215,31 +263,33 @@ class MaintenanceRepository:
                     SELECT jobname,
                            COUNT(*) AS total_runs,
                            COUNT(*) FILTER (WHERE ok = true) AS ok_count,
-                           COUNT(*) FILTER (WHERE ok = false) AS fail_count,
-                           MAX(started_at) AS last_run_at,
-                           -- Ultima corsa CONCLUSA, come in `job_liveness`: una
-                           -- riga aperta (ok NULL) non e' un esito.
-                           (ARRAY_AGG(ok ORDER BY started_at DESC)
-                                FILTER (WHERE ended_at IS NOT NULL))[1] AS last_ok
+                           COUNT(*) FILTER (WHERE ok = false) AS fail_count
                       FROM maintenance.job_run_log
                       {where}
                      GROUP BY jobname
-                )
-                SELECT jobname, total_runs, ok_count, fail_count,
-                       last_run_at::text, last_ok,
+                ),
+                {_cte_corse(conditions)}
+                SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count,
+                       r.started_at::text AS last_run_at,
+                       r.ended_at IS NULL AS in_corso,
+                       c.started_at, c.ended_at, c.ok,
                        COUNT(*) OVER () AS total_count
-                  FROM summary
-                 ORDER BY last_run_at DESC NULLS LAST, jobname
+                  FROM summary s
+                  JOIN recente r USING (jobname)
+                  LEFT JOIN conclusa c USING (jobname)
+                 ORDER BY r.started_at DESC, s.jobname
                  LIMIT %s OFFSET %s
                 """,  # noqa: S608 — `where` da condizioni whitelisted, valori parametrizzati
-                params,
+                # ⚠️ Le condizioni compaiono TRE volte nel testo (summary,
+                #    recente, conclusa): i loro valori, nello stesso ordine.
+                [*params, *params, *params, limit, offset],
             )
             rows = cursor.fetchall()
 
         if not rows:
             return [], 0
 
-        total_count: int = rows[0][6]
+        total_count: int = rows[0][9]
         results = [
             {
                 "jobname": r[0],
@@ -247,7 +297,8 @@ class MaintenanceRepository:
                 "ok_count": r[2],
                 "fail_count": r[3],
                 "last_run_at": r[4],
-                "last_ok": r[5],
+                "in_corso": bool(r[5]),
+                "ultima_conclusa": corsa_conclusa(r[6], r[7], r[8]),
             }
             for r in rows
         ]

@@ -46,6 +46,12 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.listini_tipologie",
         "config.modalita_addebito_trasporto",
         "config.modalita_pagamento",
+        # Modo di approvvigionamento dell'articolo (brief-db-modifiche-certe-
+        # ciclo-vendita-e-articolo, Blocco B). ⭐ Una riga qui e non un endpoint:
+        # e' un vocabolario codice/descrizione come `config.nature_vendita`, il
+        # suo modello dichiarato, e il drawer articolo lo monta con
+        # `<LookupSelect rel="config.modi_approvvigionamento">`.
+        "config.modi_approvvigionamento",
         "config.nature_doc_fiscale",
         "config.nature_vendita",
         "config.note_stili",

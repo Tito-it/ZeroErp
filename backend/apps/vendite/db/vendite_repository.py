@@ -4795,7 +4795,18 @@ class VenditeRepository:
                 s.differenza,
                 s.stato,
                 orr.uom_operativa_id,
-                um.codice           AS uom_codice
+                um.codice           AS uom_codice,
+                -- Le date di consegna e il ritardo (brief-db-modifiche-certe-
+                -- ciclo-vendita-e-articolo, P-6). `giorni_ritardo` sta nella
+                -- vista e non altrove perche' legge `da_spedire` con la soglia
+                -- dell'impegno: NULL = «non si applica» (niente da spedire, o
+                -- nessuna data), 0 = c'e' da spedire e non e' tardi, N > 0 =
+                -- giorni di ritardo rispetto alla PROMESSA (o, senza promessa,
+                -- alla richiesta del cliente). Un COALESCE(..., 0) qui direbbe
+                -- «in tempo» su una riga che non ha niente da spedire.
+                s.data_consegna_richiesta_cliente,
+                s.data_consegna_confermata,
+                s.giorni_ritardo
               FROM vendite.vw_situazione_merce_ordine s
               JOIN vendite.ordini_righe orr      ON orr.id = s.ordine_riga_id
               LEFT JOIN catalogo.articoli a      ON a.id   = s.articolo_id

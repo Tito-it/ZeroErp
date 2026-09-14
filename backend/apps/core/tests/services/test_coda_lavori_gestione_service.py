@@ -92,8 +92,12 @@ class ConteggiCodeTests(SimpleTestCase):
             }
             maint_cls.return_value.job_liveness.return_value = {
                 "draina_coda_lavori": {
-                    "last_run_at": "2026-07-21 22:00:00+02", "attivo": True,
-                    "last_ok": True,
+                    "last_run_at": "2026-07-21T22:00:00+02:00", "attivo": True,
+                    "in_corso": False,
+                    "ultima_conclusa": {
+                        "started_at": "2026-07-21T22:00:00+02:00",
+                        "ended_at": "2026-07-21T22:00:01+02:00", "ok": True,
+                    },
                 },
             }
             with patch(
@@ -136,9 +140,15 @@ class ConteggiCodeTests(SimpleTestCase):
         repo_cls.return_value.count_per_stato.assert_called_once_with(
             owner_scope_key=None,
         )
+        # Stessa forma di `job_liveness` (2026-09-14): ne' un segno di vita ne'
+        # una corsa conclusa — non un `last_ok` che di una corsa inesistente
+        # direbbe l'esito.
         self.assertEqual(
             esito["worker"]["coda_stampa"],
-            {"last_run_at": None, "attivo": False, "last_ok": None},
+            {
+                "last_run_at": None, "attivo": False, "in_corso": False,
+                "ultima_conclusa": None,
+            },
         )
 
 

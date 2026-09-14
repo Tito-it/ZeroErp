@@ -8,6 +8,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
 import { formatCurrency, formatNumber } from '../../../core/utils/format'
+import { displayDate } from '../../../core/utils/date'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { STATO_APPROVAZIONE } from '../../constants'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
@@ -117,6 +118,11 @@ function approvazioneTooltip(data) {
       </Column>
       <Column field="iva_descrizione" :header="t('vendite.preventivi.riga_iva')" sortable style="width: 80px;">
         <template #body="{ data }">{{ data.iva_descrizione || data.iva_codice || '' }}</template>
+      </Column>
+      <!-- La data di consegna richiesta dal cliente (Blocco A): sul preventivo
+           c'e' solo la richiesta, e il push la porta sull'ordine. -->
+      <Column field="data_consegna_richiesta_cliente" :header="t('vendite.preventivi.riga_data_consegna_richiesta_cliente')" sortable style="width: 110px;">
+        <template #body="{ data }">{{ displayDate(data.data_consegna_richiesta_cliente) }}</template>
       </Column>
     </template>
 

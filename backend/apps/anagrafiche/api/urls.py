@@ -20,6 +20,7 @@ from apps.anagrafiche.api.views_clienti import (
     ClientiView,
     UtilitiesManualLookupView,
 )
+from apps.anagrafiche.api.views_risorse_umane import RisorseUmaneLookupView
 from apps.anagrafiche.api.views_invito_portale import (
     ClientiDisattivaPortaleView,
     ClientiDisattivaShopView,
@@ -233,6 +234,11 @@ urlpatterns = [
     path("regioni/", RegioniView.as_view(), name="anagrafiche-regioni-list"),
     path("regioni/<int:pk>/", RegioniDetailView.as_view(), name="anagrafiche-regioni-detail"),
     path("regioni/lookup/", RegioniLookupView.as_view(), name="anagrafiche-regioni-lookup"),
+    # Risorse umane — lookup di selezione cross-dominio (responsabile commessa,
+    # brief-db-modifiche-certe-ciclo-vendita-e-articolo §5.5 voce 4). ⛔ Non
+    # il lookup generico: `risorse_umane` non ha codice/descrizione, il nome
+    # e' quello del soggetto (vista `vw_risorse_umane_dettaglio`).
+    path("risorse-umane/lookup/", RisorseUmaneLookupView.as_view(), name="anagrafiche-risorse-umane-lookup"),
     # Stati
     path("stati/", StatiView.as_view(), name="anagrafiche-stati-list"),
     path("stati/<int:pk>/", StatiDetailView.as_view(), name="anagrafiche-stati-detail"),

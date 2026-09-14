@@ -614,6 +614,10 @@ class ApiPreventivoRigheList(DomainAPIView):
                 "iva_id": serializers.IntegerField(required=False, allow_null=True),
                 "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
                 "ordine": serializers.IntegerField(required=False, allow_null=True),
+                "data_consegna_richiesta_cliente": serializers.DateField(
+                    required=False, allow_null=True,
+                    help_text="Quando il cliente vuole la merce (Blocco A). Nullable.",
+                ),
                 "componenti_overrides": serializers.DictField(
                     required=False,
                     help_text=(
@@ -667,6 +671,7 @@ class ApiPreventivoRigaDetail(DomainAPIView):
                 "quantita": serializers.DecimalField(max_digits=22, decimal_places=6, required=False),
                 "prezzo_unitario": serializers.DecimalField(max_digits=22, decimal_places=10, required=False),
                 "sconto_percentuale": serializers.DecimalField(max_digits=5, decimal_places=2, required=False),
+                "data_consegna_richiesta_cliente": serializers.DateField(required=False, allow_null=True),
             },
         ),
         responses={200: inline_serializer(

@@ -29,6 +29,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.services._smistamento_gate_helpers import (
     transiziona_a_evaso_se_smistato,
@@ -61,6 +62,23 @@ _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
+# La data di consegna RICHIESTA dal cliente sulla riga (brief-db-modifiche-certe-
+# ciclo-vendita-e-articolo, Blocco A). Sul preventivo c'e' solo la richiesta:
+# la conferma nasce sull'ordine, e `fn_push_preventivo_a_ordine` porta avanti
+# questa. Nullable: ometterla resta legittimo; in PATCH `null` esplicito azzera.
+# Solo la FORMA si controlla qui (una data malformata e' un 400 col campo
+# acceso, non un 500 dal DB): nessun CHECK di dominio, per scelta (brief §2.3).
+_CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
+_V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
+
+
+# Scopo: La data di consegna richiesta dal payload di riga: `None` se assente,
+#        vuota o `null`; `date` se ISO valida; 400 col campo se malformata.
+def _data_consegna_da_payload(payload: dict[str, Any], *, function_name: str) -> date | None:
+    normalizzato = {_CHIAVE_DATA_CONSEGNA: empty_to_none(payload.get(_CHIAVE_DATA_CONSEGNA))}
+    return _V_RIGA.optional_date(
+        normalizzato, _CHIAVE_DATA_CONSEGNA, function_name=function_name,
+    )
 
 
 # ══════════════════════════════════════════════════════════
@@ -863,6 +881,15 @@ def gestisci_riga(
     # Validazione vincoli economici (prezzo >= 0, quantita > 0) prima del
     # resolver: anticipa i CHECK DB con messaggio parlante.
     _validate_riga_economic(payload, function_name=f"{_FN}.gestisci_riga")
+    # La FORMA della data di consegna si controlla QUI, con le altre
+    # validazioni di payload, e non al momento dell'INSERT: fra i due punti
+    # stanno il resolver del prezzo, il gate L2 e la richiesta L3, che crea
+    # una pratica e MANDA UN'EMAIL (side-effect fuori dalla transazione) — una
+    # data malformata scoperta dopo avrebbe spedito l'avviso di una pratica
+    # poi annullata dal rollback.
+    data_consegna_richiesta = _data_consegna_da_payload(
+        payload, function_name=f"{_FN}.gestisci_riga",
+    )
 
     # Gating L1 sui componenti_overrides (form atomic 2026-05-12): se il
     # payload contiene overrides ma l'operatore non ha l'azione
@@ -964,6 +991,7 @@ def gestisci_riga(
         meta=merged_meta or None,
         stato_approvazione_prezzo=stato_approvazione,
         pratica_approvazione_prezzo_id=pratica_id_l3,
+        data_consegna_richiesta_cliente=data_consegna_richiesta,
     )
     # L3: registra riga_id nel meta della pratica per permettere all'approver
     # di risalire alla riga dalla coda (UI ApprovazioniPrezzoListView).
@@ -1120,6 +1148,12 @@ def aggiorna_riga(
     ):
         if key in payload:
             update_fields[key] = payload[key]
+    # La data di consegna richiesta: presente nel payload -> si scrive (anche
+    # `null`, che azzera); assente -> non si tocca.
+    if _CHIAVE_DATA_CONSEGNA in payload:
+        update_fields[_CHIAVE_DATA_CONSEGNA] = _data_consegna_da_payload(
+            payload, function_name=f"{_FN}.aggiorna_riga",
+        )
 
     pratica_id_l3: int | None = None
 

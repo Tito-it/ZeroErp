@@ -849,3 +849,79 @@ class OrdiniPrezzoInvariatoTests(SimpleTestCase):
         # 2. e la strada e' il guscio, non il nucleo del DDT
         pricing.resolve_prezzo.assert_called_once()
         pricing.resolve_prezzo_esito.assert_not_called()
+
+
+# Scopo: Le DUE DATE DI CONSEGNA della riga (Blocco A di brief-db-modifiche-
+#        certe-ciclo-vendita-e-articolo): richiesta dal cliente e confermata da
+#        noi. Tre cose che il contratto dichiara e che vanno provate per intero:
+#        la data arriva a `create_riga` come `date`; una malformata e' un 400
+#        col CAMPO acceso (non un 500 dal DB); in PATCH `null` esplicito azzera.
+#
+# Indice:
+#  1. test_le_date_di_consegna_arrivano_a_create_riga_come_date
+#  2. test_data_di_consegna_malformata_e_400_col_campo
+#  3. test_in_patch_null_esplicito_azzera_la_data
+class OrdiniRigaDateConsegnaTests(SimpleTestCase):
+    def _riga_composita(self, repo_cls):
+        # Composita come i test vicini: sulla riga semplice il pricing pretende
+        # il billing account in testata, e qui si prova il trasporto delle date.
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.is_articolo_composito.return_value = True
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 60}
+        return repo
+
+    @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}.validate_componenti_overrides_authorization")
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_le_date_di_consegna_arrivano_a_create_riga_come_date(
+        self, repo_cls, mock_tx, _gate, _sr, _dr, _iva,
+    ) -> None:
+        mock_tx.atomic.return_value = nullcontext()
+        repo = self._riga_composita(repo_cls)
+
+        ordini_service.gestisci_riga(
+            7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3,
+                "data_consegna_richiesta_cliente": "2026-10-01",
+                # La stringa vuota e' un'assenza (il form la manda cosi').
+                "data_consegna_confermata": ""},
+            auth_user_id=42,
+        )
+        _, kwargs = repo.create_riga.call_args
+        self.assertEqual(kwargs["data_consegna_richiesta_cliente"], date(2026, 10, 1))
+        self.assertIsNone(kwargs["data_consegna_confermata"])
+
+    @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
+    @patch(f"{_SVC}.validate_componenti_overrides_authorization")
+    @patch(_REPO)
+    def test_data_di_consegna_malformata_e_400_col_campo(self, repo_cls, _gate, _iva) -> None:
+        repo = self._riga_composita(repo_cls)
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.gestisci_riga(
+                7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3,
+                    "data_consegna_confermata": "domani"},
+                auth_user_id=42,
+            )
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "data_consegna_confermata")
+        # E si ferma PRIMA di scrivere: niente riga con una data inventata.
+        repo.create_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_in_patch_null_esplicito_azzera_la_data(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_riga.return_value = {"id": 60, "ordine_id": 7}
+        repo.update_riga.return_value = True
+
+        ordini_service.aggiorna_riga(
+            7, 60, {"data_consegna_confermata": None,
+                    "data_consegna_richiesta_cliente": "2026-10-02"},
+        )
+        _, kwargs = repo.update_riga.call_args
+        self.assertIsNone(kwargs["data_consegna_confermata"])
+        self.assertEqual(kwargs["data_consegna_richiesta_cliente"], date(2026, 10, 2))

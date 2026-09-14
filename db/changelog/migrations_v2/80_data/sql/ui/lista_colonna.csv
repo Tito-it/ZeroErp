@@ -324,7 +324,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 324,26,tipologia_descrizione,Tipologia,Tipologia di listino a cui l articolo appartiene,tipologia_descrizione,informazione,string,,,40,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_tipologia,50
 325,26,gruppo_descrizione,Gruppo,Gruppo merceologico dell articolo,gruppo_descrizione,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_gruppo,50
 326,26,iva_ref_id,IVA,Aliquota IVA di riferimento,iva_ref_id,informazione,numeric,,,60,right,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_iva,50
-327,26,is_solo_componente,Componente,Articolo utilizzabile solo come componente di distinta,is_solo_componente,informazione,boolean,,,70,center,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_solo_comp,50
+327,26,is_solo_componente,Componente,Articolo utilizzabile solo come componente di distinta,is_solo_componente,informazione,boolean,yesno,,70,center,,,t,f,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_solo_comp,50
 328,26,attivo,Attivo,Articolo attivo o disattivato,attivo,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_attivo,50
 329,26,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-08-01 00:00:00,mctit,common.col_azioni,50
 330,27,codice,Codice,Codice del listino,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-01 00:00:00,mctit,vendite.listini.col_codice,50
@@ -744,6 +744,6 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 744,47,azioni,Azioni,,,azione,string,,90,999,center,,,f,f,f,f,f,t,2026-09-08 00:00:00,mctit,common.col_azioni,100
 745,47,riferimento,Documento,"Il numero del documento a cui la segnalazione appartiene (ORD0036004). Vuoto = la segnalazione e' del GIRO: non c'e' nessun documento da togliere, si corregge e si rilancia",riferimento,informazione,string,,180,45,left,,,f,t,t,f,f,t,2026-09-08 00:00:00,mctit,vendite.lotto_segnalazioni.col_riferimento,75
 746,7,data_consegna_richiesta_cliente_min,Consegna richiesta,Prima data di consegna richiesta dal cliente sulle righe attive dell ordine,data_consegna_richiesta_cliente_min,informazione,date,date_short,120,25,center,Ciclo vita,6,f,f,t,f,f,t,2026-09-13 00:00:00,mctit,vendite.ordini.col_data_consegna_richiesta_cliente_min,40
-747,26,modo_approvvigionamento,Approvvigionamento,Da dove arriva l articolo (acquisto / produzione / stock / non applicabile),modo_approvvigionamento_descrizione,informazione,string,,,72,left,,,t,f,t,f,f,f,2026-09-13 00:00:00,mctit,catalogo.col_modo_approvvigionamento,50
-748,26,gestito_a_magazzino,A magazzino,L articolo movimenta giacenza,gestito_a_magazzino,informazione,boolean,,,74,center,,,t,f,t,f,f,f,2026-09-13 00:00:00,mctit,catalogo.col_gestito_a_magazzino,50
-749,26,lead_time_giorni,Lead time (gg),Giorni fra la richiesta e la disponibilita dell articolo,lead_time_giorni,informazione,numeric,,,76,right,,,f,f,t,f,f,f,2026-09-13 00:00:00,mctit,catalogo.col_lead_time_giorni,50
+747,26,modo_approvvigionamento,Approvvigionamento,Da dove arriva l articolo (acquisto / produzione / stock / non applicabile),modo_approvvigionamento_descrizione,informazione,string,,,72,left,,,t,f,t,f,f,t,2026-09-13 00:00:00,mctit,catalogo.col_modo_approvvigionamento,50
+748,26,gestito_a_magazzino,A magazzino,L articolo movimenta giacenza,gestito_a_magazzino,informazione,boolean,yesno,,74,center,,,t,f,t,f,f,t,2026-09-13 00:00:00,mctit,catalogo.col_gestito_a_magazzino,50
+749,26,lead_time_giorni,Lead time (gg),Giorni fra la richiesta e la disponibilita dell articolo,lead_time_giorni,informazione,numeric,,,76,right,,,f,f,t,f,f,t,2026-09-13 00:00:00,mctit,catalogo.col_lead_time_giorni,50

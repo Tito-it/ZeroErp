@@ -268,12 +268,20 @@ const titolo = computed(() => (isEdit.value
           />
         </div>
         <div class="form-field">
-          <label>{{ t('vendite.famiglie_documento.col_colonna_billing_account') }} *</label>
+          <!-- Dal 2026-09-14 (P-9 di brief-db-modifiche-certe-ciclo-vendita-e-
+               articolo) NON e' piu' obbligatoria: vuota = NULL = «questa
+               famiglia non ha un billing account», la forma dell'ordine di
+               acquisto (controparte = soggetto_ruolo). Stessa disciplina di
+               `colonna_serie`: e' il backend a normalizzare il vuoto a NULL. -->
+          <label>{{ t('vendite.famiglie_documento.col_colonna_billing_account') }}</label>
           <InputText
             v-model="form.colonna_billing_account"
             :disabled="isReadonly || strutturaBloccata"
             class="w-full"
           />
+          <small class="app-field-hint">
+            {{ t('amministrazione.famiglie_documento.billing_account_hint') }}
+          </small>
         </div>
         <div class="form-field">
           <label>{{ t('vendite.famiglie_documento.col_colonna_serie') }}</label>

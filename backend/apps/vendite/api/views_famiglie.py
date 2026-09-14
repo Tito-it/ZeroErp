@@ -122,7 +122,14 @@ class ApiFamiglieList(AdminAPIView):
             "schema_tabella": serializers.CharField(),
             "nome_tabella": serializers.CharField(),
             "colonna_numero": serializers.CharField(),
-            "colonna_billing_account": serializers.CharField(),
+            "colonna_billing_account": serializers.CharField(
+                required=False, allow_null=True,
+                help_text=(
+                    "Vuota = questa famiglia non ha un billing account "
+                    "(P-9, 2026-09-14: la controparte di un ordine di acquisto "
+                    "e' un soggetto_ruolo)."
+                ),
+            ),
             "colonna_serie": serializers.CharField(
                 required=False, allow_null=True,
                 help_text="Vuota = questa famiglia non gestisce le serie.",

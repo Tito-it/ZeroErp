@@ -50,16 +50,19 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple] = {
 # I campi che la madre pretende: senza uno di questi non si crea niente.
 # ⚠️ `colonna_serie` NON e' qui — la sua assenza e' un'informazione («questa
 #    famiglia non gestisce le serie»), non un campo dimenticato.
+# ⚠️ E dal 2026-09-14 (P-9 di brief-db-modifiche-certe-ciclo-vendita-e-articolo,
+#    changeSet `20260914-07/-11`) NEMMENO `colonna_billing_account`: `NULL` =
+#    «questa famiglia non ha un billing account», ed e' la forma dell'ordine di
+#    acquisto, la cui controparte e' un `soggetto_ruolo`. Stessa forma di
+#    `colonna_serie`; la madre normalizza `''` a NULL e non la pretende piu'.
+#    Finche' questa riga la pretendeva, il BE rifiutava PRIMA della madre: una
+#    capacita' del DB non ancora esposta, non un difetto.
 _OBBLIGATORI_CREATE: tuple[tuple[str, str], ...] = (
     ("codice_interno", "Il codice interno della famiglia è obbligatorio."),
     ("descrizione", "La descrizione della famiglia è obbligatoria."),
     ("schema_tabella", "Lo schema della tabella del documento è obbligatorio."),
     ("nome_tabella", "Il nome della tabella del documento è obbligatorio."),
     ("colonna_numero", "La colonna che porta il numero è obbligatoria."),
-    (
-        "colonna_billing_account",
-        "La colonna che porta il cliente è obbligatoria.",
-    ),
 )
 
 

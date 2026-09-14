@@ -15,7 +15,6 @@ import { TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -112,12 +111,9 @@ onMounted(() => store.fetchList())
       @row-click="onRowClick"
       @config-loaded="onConfigLoaded"
     >
-      <template #cell-partecipa_promo="{ data }">
-        <Tag
-          :value="data.partecipa_promo ? t('common.yes') : t('common.no')"
-          :severity="data.partecipa_promo ? 'info' : 'secondary'"
-        />
-      </template>
+      <!-- ⛔ Nessuno slot per `partecipa_promo` (220): e' `formato=yesno` a
+           catalogo e lo rende `SiNoTag` dal BB. Fino al 2026-09-14 qui c'era
+           lo stesso Tag scritto a mano SOPRA quel formato. -->
       <template #cell-attivo="{ data }">
         <AttivoTag :active="data.attivo" />
       </template>

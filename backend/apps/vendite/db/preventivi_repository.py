@@ -412,6 +412,11 @@ class PreventiviRepository(
                 pr.meta,
                 pr.data_insert,
                 pr.data_update,
+                -- Data di consegna RICHIESTA dal cliente (brief-db-modifiche-
+                -- certe-ciclo-vendita-e-articolo, Blocco A). Sul preventivo
+                -- solo la richiesta: non c'e' ancora niente da confermare. La
+                -- porta avanti `fn_push_preventivo_a_ordine`.
+                pr.data_consegna_richiesta_cliente,
                 -- Sprint E (autorizzazioni prezzi L3): flag + FK pratica
                 -- per il tag UI "In approvazione" su righe PENDING.
                 pr.stato_approvazione_prezzo,
@@ -493,6 +498,7 @@ class PreventiviRepository(
                 iva.descrizione         AS iva_descrizione,
                 iva.aliquota_iva        AS iva_aliquota,
                 pr.meta,
+                pr.data_consegna_richiesta_cliente,
                 pr.stato_approvazione_prezzo,
                 pr.pratica_approvazione_prezzo_id,
                 EXISTS (
@@ -820,15 +826,18 @@ class PreventiviRepository(
         meta: dict[str, Any] | None = None,
         stato_approvazione_prezzo: str | None = None,
         pratica_approvazione_prezzo_id: int | None = None,
+        data_consegna_richiesta_cliente: date | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO vendite.preventivi_righe (
                 preventivo_id, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
                 prezzo_unitario, sconto_percentuale, iva_id, ordine, meta,
-                stato_approvazione_prezzo, pratica_approvazione_prezzo_id
+                stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+                data_consegna_richiesta_cliente
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s,
+                %s
             )
             RETURNING id
         """
@@ -839,6 +848,7 @@ class PreventiviRepository(
                 prezzo_unitario, sconto_percentuale, iva_id, ordine,
                 json.dumps(meta or {}),
                 stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+                data_consegna_richiesta_cliente,
             ])
             result = row_to_dict(cursor)
             assert result is not None

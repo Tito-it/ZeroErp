@@ -13,6 +13,7 @@
 Indice test eseguiti:
  1) create_senza_campi_obbligatori_e_400_col_campo
  2) create_normalizza_la_colonna_serie_vuota_a_null
+ 2-bis) create_senza_billing_account_passa_e_arriva_null (P-9, 2026-09-14)
  3) create_passa_dalla_madre_e_riporta_i_registri_creati
  4) duplicato_tabella_nomina_la_famiglia_che_la_occupa
  5) duplicato_tabella_senza_occupante_dice_comunque_la_cosa_vera
@@ -68,13 +69,13 @@ _CREATE_MINIMO = {
     "schema_tabella": "vendite",
     "nome_tabella": "parcelle",
     "colonna_numero": "numero",
-    "colonna_billing_account": "billing_account_id",
 }
 
 
 class FamiglieValidazioneTests(TestCase):
     # 1. Il campo mancante si NOMINA: senza, l'operatore legge «obbligatorio» e
-    #    deve indovinare quale dei sei.
+    #    deve indovinare quale dei cinque (erano sei fino al 2026-09-14: il
+    #    billing account e' uscito dagli obbligatori con la P-9).
     def test_create_senza_campi_obbligatori_e_400_col_campo(self):
         for campo in _CREATE_MINIMO:
             payload = {k: v for k, v in _CREATE_MINIMO.items() if k != campo}
@@ -97,6 +98,29 @@ class FamiglieValidazioneTests(TestCase):
             {**_CREATE_MINIMO, "colonna_serie": "   "},
         )
         self.assertIsNone(mock_crea.call_args.args[0]["colonna_serie"])
+
+    # 2-bis. ⭐ IL BILLING ACCOUNT NON E' PIU' OBBLIGATORIO (P-9, 2026-09-14):
+    #    `NULL` = «questa famiglia non ha un billing account», ed e' la forma
+    #    dell'ordine di acquisto (controparte = soggetto_ruolo). Vuoto o
+    #    assente, alla madre arriva NULL — la stessa disciplina di
+    #    `colonna_serie`, e per la stessa ragione: un `''` la farebbe risultare
+    #    una colonna DICHIARATA, e il guard dei riferimenti la cercherebbe.
+    @patch.object(_REPO, "get_famiglia", return_value=_famiglia(colonna_billing_account=None))
+    @patch.object(_REPO, "crea_famiglia")
+    def test_create_senza_billing_account_passa_e_arriva_null(self, mock_crea, _get):
+        mock_crea.return_value = {
+            "famiglia_id": 3, "codice_interno": "PARCELLA", "registri_creati": 0,
+        }
+        for payload in (
+            dict(_CREATE_MINIMO),
+            {**_CREATE_MINIMO, "colonna_billing_account": ""},
+            {**_CREATE_MINIMO, "colonna_billing_account": "   "},
+        ):
+            with self.subTest(payload=payload):
+                FamiglieDocumentoService().crea_famiglia(payload)
+                self.assertIsNone(
+                    mock_crea.call_args.args[0].get("colonna_billing_account"),
+                )
 
     # 3. ⭐ `registri_creati` e' meta' del lavoro che la creazione ha fatto: la
     #    madre scrive la famiglia E le provvede i registri, e la maschera deve

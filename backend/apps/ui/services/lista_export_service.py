@@ -35,7 +35,7 @@ from __future__ import annotations
 import csv
 import io
 import json
-from datetime import datetime
+from django.utils import timezone
 from typing import Any
 
 from openpyxl import Workbook
@@ -108,7 +108,10 @@ class ListaExportService:
 
         colonne_export = self._filter_colonne_esportabili(colonne)
         filtri = filtri_applicati or {}
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        # ⚠️ Ora LOCALE di `TIME_ZONE`, non dell'host: il nome del file deve
+        #    dire la stessa ora delle celle che contiene (2026-09-14), e su
+        #    un'unit systemd `TZ` puo' non esserci.
+        timestamp = timezone.localtime().strftime("%Y%m%d-%H%M%S")
         # Filename safe: caratteri speciali del codice rimpiazzati con `_`.
         # Pattern es. `anagrafiche.clienti` -> `anagrafiche_clienti`.
         safe_codice = lista_codice.replace(".", "_").replace(":", "_")

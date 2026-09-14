@@ -1581,6 +1581,22 @@ Le mappe sono centralizzate in `core/utils/severity.js` — un solo punto di mod
      :severity="data.attivo ? 'success' : 'warn'" />
 ```
 
+(BB: `<AttivoTag :active="data.attivo" />`.)
+
+### Sì / No — un booleano che è un DATO, non uno stato
+
+`info` sul vero, `secondary` sul falso, **vuoto** sul `null`: `<SiNoTag :value="x" />`.
+⛔ Non è «attivo/non attivo»: quello è la salute di un record e colora
+verde/arancio; questo è un fatto («partecipa alle promo?», «gestito a
+magazzino?»), e il vero è un'informazione — blu, non verde.
+
+⭐ **In una `<ListaConfigurabile>` non si scrive lo slot**: la colonna dichiara
+`formato = yesno` (o anche solo `tipo_dato = boolean`) in `ui.lista_colonna` e
+`CellaConfigurabile` la rende con `SiNoTag`. Fino al 2026-09-14 il formatter
+rendeva **testo** e tre liste si erano riscritte il Tag in uno slot — una delle
+tre sopra una colonna che aveva già `yesno`: il formatter aveva perso sul campo.
+Un booleano nuovo in lista è una riga di CSV, non un componente.
+
 ### Stati pratica
 
 | Stato | Severity | Colore |

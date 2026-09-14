@@ -614,4 +614,3 @@ controlli equivalenti solo per dare messaggi parlanti prima del roundtrip.
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi la
 documentazione backend di dominio. Le decisioni di modello sono raccolte negli
 addendum di sviluppo (`dev/work-done/addendum-db-offerta-commerciale.md` e correlati).*
-</content>

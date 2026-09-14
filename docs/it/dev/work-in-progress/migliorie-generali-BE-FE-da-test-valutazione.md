@@ -652,6 +652,22 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
       per ruolo), cinque puntatori al brief spostato in `work-done/` sanati.
       Test: la corsa aperta **costruita** sul DB vero con `fn_job_run_start`,
       più la resa; tre mutazioni, tre rossi.
+      🔴 **Il seguito, stesso giorno (sera), dal DB**: quella correzione
+      lasciava la **data** sulla riga più recente e prendeva l'**esito**
+      dall'ultima conclusa — «`09:47:32 (ok)`», l'ora della corsa 122445 in
+      esecuzione con l'ok di quella delle 07:30. Vero per i dati di oggi; sul
+      modello, con la precedente fallita, lunedì «`<adesso> (FALLITA)`» con la
+      mail in mano. E il test 18 era **verde per sottrazione**: costruiva un
+      `last_ok: None` che il repository non emetteva più. ✅ Chiuso: `last_ok`
+      **non esiste più** in nessuna delle tre sedi (`job_liveness`,
+      `list_job_summary`, `summary_per_job_type`) — al suo posto `in_corso` +
+      `ultima_conclusa = {started_at, ended_at, ok}` (BB `corsa_conclusa`),
+      letti da righe **intere** (`DISTINCT ON`). La riga del digest dice «in
+      corso (avviata …) — ultima conclusa … (ok)»; il pannello esiti rende il
+      giro in corso a parte e l'esito con la sua data (e un `IN_CORSO` non è
+      più «Errore»); le date del messaggio sono tutte in `TIME_ZONE`. Test: il
+      caso costruito sul DB vero in **tre** sedi, il lunedì del team DB, il
+      fuso, il `null` di `ok`.
 * [x] **INFRA-1** — ✅ 2026-09-09/11: la chiave Tailscale di `dbdev` scaduta
       aveva fermato il DB di sviluppo (e gunicorn in `SYN-SENT`, senza avvisi);
       `KeyExpiry: None` su tutti i nodi di sviluppo, verificato l'11-09.

@@ -19,6 +19,7 @@ from apps.vendite.api.views import (
     ApiCommessaAttivitaVariazionePrezzoEccezionale,
     ApiCommessaOneri,
     ApiCommessePushLog,
+    ApiCommessaDetail,
     ApiCommessaStato,
     ApiEscludiDocumentiDaGiro,
     ApiFatturazioneApprovaCompetenza,
@@ -435,6 +436,13 @@ urlpatterns = [
         "commesse/<int:commessa_id>/stato/",
         ApiCommessaStato.as_view(),
         name="vendite-commessa-stato",
+    ),
+    # Testata leggibile (descrizione + responsabile): il solo verbo di
+    # scrittura; il dettaglio resta su `/stato/` (rotta storica del drawer).
+    path(
+        "commesse/<int:commessa_id>/",
+        ApiCommessaDetail.as_view(),
+        name="vendite-commessa-detail",
     ),
     # Genealogia/lineage commessa (Fase C): sorgenti che l'hanno generata
     # (indietro) + fatture a valle (avanti). Consumato dal drawer leggero
