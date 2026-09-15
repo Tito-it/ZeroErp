@@ -1,14 +1,19 @@
 # Brief DB — Avviare un processo dall'interfaccia: il lavoro di coda che lo chiede
 
-> **Da leggere per primo: §10 — la risposta del BE (15-09, sera): stato di
+> **Da leggere per primo: §11 — il terzo giro (15-09): il tipo
+> `ESEGUI_PROCESSO` è **ACCESO nel CSV** (una cella, nessun changeSet, prova
+> verde in transazione annullata), il pgTAP resta com'è per scelta; il
+> migrate su dbdev va fatto **DOPO** il deploy + `kill -HUP` del BE (§11.4).
+> Poi §10 — la risposta del BE (15-09, sera): stato di
 > ogni pezzo e le decisioni prese nel piano BE/FE. Poi §9 — il secondo giro
 > (15-09): i cinque codici errore del verbo sono **a catalogo e in git**
 > (CSV, id 1067–1071, PR #1591 su Tito-dev), con una classe diversa da quella
 > chiesta su uno solo (§9.2). Poi §8 — la risposta del DB (14-09, sera): le
 > tre righe reggono e sono **APPLICATE** (pgTAP verde — §8.4); tre cose del
 > brief no (§8.2). Le due domande a Tid (§8.5) sono decise — solo
-> `SUPER_ADMIN`; «Esegui ora» solo su comandi brevi. Il DB aspetta il BE per
-> accendere il tipo.**
+> `SUPER_ADMIN`; «Esegui ora» solo su comandi brevi.**
+> Gemello BE/FE: [piano-be-fe-avvio-manuale-di-un-processo.md](piano-be-fe-avvio-manuale-di-un-processo.md)
+> — passi, test e decisioni per esteso; qui solo ciò che tocca il DB.
 > Chi scrive: backend (`dev/backend-tid`), 2026-09-14. Decisione di Tid del
 > 14-09, dopo aver rilanciato a mano le due cadenze del digest.
 > Origine: [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
@@ -340,7 +345,7 @@ escludere per forma, come il §4.3 dell'analisi esclude «Riavvia».
 | handler `esegui_processo_default`, endpoint su `AdminAPIView` (§8.5.1), tetto basso nel sottoprocesso (§8.5.2), capability sulle sveglie | BE | ✅ 15-09 sera (§10.1) — in attesa del deploy sul backend di sviluppo |
 | pulsante «Esegui ora» nel drawer del processo (tab «Sveglie») | FE | ✅ 15-09 sera (piano §4.3), scritto sul contratto della capability |
 | `registered_job()` (⚠️ il nome vero, non `job_run()`) che legge `ZEROERP_JOB_ORIGINE` / `ZEROERP_JOB_AUTH_USER_ID` (analisi §9-bis punto 3) | BE | ✅ 15-09 (`job_run.py::origine_e_attore_dall_ambiente`, fail-loud sul valore) |
-| `attivo = true` su `ESEGUI_PROCESSO`, **dal CSV**, su richiesta del BE a handler in servizio (come `NOTIFICA_DIGEST_MUTO` l'11-09) | DB | ⏳ in attesa del BE (§10, «chiusura») |
+| `attivo = true` su `ESEGUI_PROCESSO`, **dal CSV**, su richiesta del BE a handler in servizio (come `NOTIFICA_DIGEST_MUTO` l'11-09) | DB | ✅ 15-09 **nel CSV** (§11.1, prova verde) — migrate di Tid **dopo** deploy + HUP del BE (§11.4) |
 | i cinque codici errore del verbo, nei due CSV del catalogo (§9) | DB | ✅ 15-09, applicati sul dbdev e **in git** (commit `5dd7013fd`, PR #1591 su Tito-dev) |
 | `genera_error_policies` + le cinque frasi di ripiego in `error_messages_fallback.py` | BE | ✅ 15-09 sera — il file porta il catalogo **di git**; i due `E_MAG_*` del dbdev sono di un altro cantiere (§10.3) |
 | commit di `dev/db-tid` (3 CSV, pgTAP, 3 doc manuali, brief e analisi) | Tid | ✅ 15-09 (`53d5ca923`, PR #1590; codici: PR #1591) |
@@ -608,6 +613,10 @@ rossi **per quei due**, e questo è il verso giusto: il primo commit di
 è un promemoria di dove sta la divergenza, perché il rosso non venga letto
 come un difetto di questo cantiere.
 
+> ⚠️ **Aggiornamento DB, 15-09 (dopo la PR #1593)**: i due codici **sono in
+> git** — `dev/db-tid` e `Tito-dev`. Il rosso si chiude con la prossima
+> rigenerazione BE, non con un commit DB: §11.3.
+
 ### 10.4 Chiusura — cosa chiede il BE, e quando
 
 A handler in servizio sul backend di sviluppo (deploy + `kill -HUP` al master:
@@ -616,3 +625,97 @@ CSV**, come per `NOTIFICA_DIGEST_MUTO` l'11-09. Poi il collaudo in-app (piano
 §4.4.2) su `zeroerp-digest-presidi-giornaliero`: lavoro `FATTO` in *Code di
 lavoro*, run `digest_presidi:giornaliera` con `origine = COMMAND` e lo username
 di chi ha premuto, panorama `avvio_manuale | SU_RICHIESTA | f`.
+
+---
+
+## 11. Terzo giro — l'accensione (2026-09-15)
+
+> Chi scrive: DB (`dev/db-tid`). Il BE è su `Tito-dev` dalla PR #1592
+> (commit `337c255fb`) e chiede l'accensione (§10.4). Qui il lato DB: la
+> cella del CSV, la prova, che cosa **non** cambia, i due fatti che il BE ha
+> lasciato al DB, e che cosa resta a Tid — nell'**ordine** in cui va fatto.
+
+### 11.1 ✅ Acceso nel CSV — una cella, nessun changeSet
+
+* `80_data/sql/dbops/coda_lavori_tipi.csv`: `attivo` `false → true` su
+  `ESEGUI_PROCESSO`, e la descrizione registra data e motivo nella forma di
+  `NOTIFICA_DIGEST_MUTO` dell'11-09 — *«Nato attivo=false (…) e ACCESO il
+  2026-09-15 su richiesta del backend, che dichiara l handler
+  esegui_processo_default registrato in CoreConfig.ready() (…); se l handler
+  non fosse registrato nel backend in servizio, il lavoro finirebbe in ERRORE
+  al primo claim (un solo tentativo) e lo direbbe vw_coda_lavori_da_guardare»*.
+  Il mirror `20260905-01` è `runOnChange` e rilegge il file al migrate.
+* Letto sul **modello** prima di toccare: sulla tabella ci sono solo i trigger
+  di audit e `tx_id` e i due CHECK (`max_tentativi`, `run_as_default`) —
+  nessun guard sull'attivazione. Il cancello che l'accensione apre è **uno**,
+  `IF NOT v_tipo.attivo` in `fn_accoda_lavoro` (`E_JOB_TYPE_NON_ATTIVO`,
+  §8.1). Che l'handler sia registrato in `CoreConfig.ready()` è letto dal
+  codice arrivato con la PR (`apps/core/apps.py`), non dal messaggio.
+* **Prova** (linee-guida-sql §11.2): SQL del mirror **reso** offline
+  (`updateSQL`, copia senza `preConditions`) ed eseguito su dbdev in
+  transazione annullata — `ESEGUI_PROCESSO` `f → t` (descrizione 760 → 1182
+  char), le altre quattro righe identiche, cinque righe in tutto, nessun tipo
+  spento; dopo il `ROLLBACK` il vivo è ancora `f`. ⚠️ **Senza** chiamare
+  `fn_accoda_lavoro` nella prova: un rifiuto passa da
+  `fn_log_and_raise_error` → `dblink` e lascerebbe una riga in
+  `dbops.error_log` anche dopo il rollback.
+
+### 11.2 Che cosa NON cambia, e perché
+
+* `db/pgtap/dbops/test-coda-tipi-canale-e-run-as.sql`: **intatto**. I test
+  5 e 6 pinnano handler, `run_as`, tentativi e processo **senza `attivo`** —
+  scelta scritta nell'intestazione del file il 14-09 proprio per questo
+  giorno (*«un test che lo pinnasse sarebbe rosso sulla riparazione»*).
+  Niente da aggiornare nello stesso commit, e niente da rieseguire per
+  questa modifica.
+* Doc manuale `dbops/manual/coda_lavori_tipi.md`: il precedente e la riga in
+  tabella dicono ora «nato spento il 14-09, acceso il 15-09», e la regola del
+  binding porta l'ordine DB (spento) → BE → DB (acceso) con la nota che
+  l'accensione è **una cella**, da applicare **dopo** il deploy.
+* `processi.md`, `azioni_processo.md`, `processi.csv`,
+  `azioni_processo.csv`: niente — l'accensione non li tocca.
+
+### 11.3 Due fatti lasciati dal BE, letti dal DB
+
+**I cinque codici (id 1067–1071) li solleva Python, non
+`fn_log_and_raise_error`.** Identità, classi e `%s` (1/1/2/2/2) sono quelli
+che il BE usa: niente da rifare. ⚠️ Ma il BE compone la frase **con i valori
+dentro** (unit, id del lavoro, secondi, exit code) e il client legge la
+`reason_key`: **il testo a catalogo e la `soluzione` non li rende nessuno a
+runtime** — un `ServiceError` Python non porta `hint`, e il canale `HINT`
+esiste solo per un errore nato in PL/pgSQL (api.md §Envelope). Per questi
+cinque il catalogo è quindi **la sede dell'identità e della classe** (da cui
+il file generato deriva status e `ui_action`) e **la doc per chi legge
+`dbops.error_log`** — non il messaggio a video. ⭐ È lo stato di ogni codice
+«sollevato in Python» già a catalogo (la `note` di ciascuno dei cinque lo
+dichiara), e la §9.2 lo diceva in negativo (*«nessuna funzione del database
+solleva questi codici»*): qui sta scritto in positivo, perché chi rilegge la
+`soluzione` dei cinque non cerchi dove compaia a video. Se un giorno il BE
+vorrà rendere la `soluzione` anche sui codici nati in Python, la sede è il
+traduttore (una lettura dal catalogo, per codice), non una copia in Python —
+la stessa ragione per cui `hint` è arrivato all'envelope il 18-08. Fuori da
+questo cantiere.
+
+**I due `E_MAG_*` — correzione datata del §10.3.**
+`E_MAG_MOVIMENTO_VERSO_INCOERENTE` e `E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI`
+**sono in git**: `dev/db-tid` dal commit `937acd83a` (15-09, cantiere
+magazzino lotto 1) e `Tito-dev` dalla PR #1593, mergiata **dopo** la #1592
+del BE. `error_policies_generated.py` su `Tito-dev` non li porta ancora (zero
+occorrenze, letto il 15-09): il rosso di `genera_error_policies --check` /
+`test_error_policies_divergenza_db` si chiude con la **prossima rigenerazione
+BE**, non con un commit DB — come il §10.3 stesso prevedeva. Nessuna azione
+lato DB.
+
+### 11.4 Che cosa resta, e di chi è — nell'ordine
+
+| # | Passo | Di chi | Stato |
+| --- | --- | --- | --- |
+| 1 | deploy del BE sul backend di sviluppo + `kill -HUP` al master (gunicorn dev non ricarica da sé, §10.4) | Tid | ⏳ **prima** del 2 |
+| 2 | `make db-migrate` su dbdev: il mirror `20260905-01` rilegge il CSV e accende il tipo. Verifica: `SELECT codice, attivo FROM dbops.coda_lavori_tipi WHERE codice = 'ESEGUI_PROCESSO'` → `t` | Tid | ⏳ **dopo** l'1 — invertiti, `test_ogni_tipo_attivo_ha_un_handler` è rosso nel verso sbagliato (§8.1) |
+| 3 | pgTAP `test-coda-tipi-canale-e-run-as.sql` (6/6, invariato) | Tid | ⏳ |
+| 4 | collaudo in-app (piano §4.4.2) su `zeroerp-digest-presidi-giornaliero`: lavoro `FATTO` in *Code di lavoro*, run `digest_presidi:giornaliera` con `origine = COMMAND` e lo username di chi ha premuto, panorama `avvio_manuale \| SU_RICHIESTA \| f` | BE / Tid | ⏳ |
+| 5 | commit di `dev/db-tid` (CSV, doc manuale, brief) | Tid | ⏳ |
+| 6 | a collaudo fatto: brief in `work-done/` e una riga nel changelog della mappa concentrica (tema «processi automatici») | DB | ⏳ |
+
+*Scritto il 2026-09-15. Lato DB il cantiere è chiuso: ciò che resta è
+l'apply nell'ordine detto, il collaudo e l'archiviazione.*

@@ -93,7 +93,12 @@ domande diverse, e servono due presidi.
 > `test_nessun_handler_orfano` (handler registrato prima del seed → rosso) e
 > `test_ogni_tipo_attivo_ha_un_handler` (tipo acceso prima dell'handler →
 > rosso). Precedenti: `NOTIFICA_DIGEST_MUTO` (nato spento l'11-09, acceso la
-> sera stessa), `ESEGUI_PROCESSO` (14-09).
+> sera stessa), `ESEGUI_PROCESSO` (nato spento il 14-09, acceso il 15-09 a
+> handler dichiarato in servizio — `brief-db-avvio-manuale-di-un-processo` §11).
+> ⚠️ L'accensione è **una cella del CSV**, non un changeSet: il mirror è
+> `runOnChange` e rilegge il file al migrate. Va applicata **dopo** il deploy
+> del backend che registra l'handler, mai prima — l'ordine è
+> DB (spento) → BE → DB (acceso), e il secondo guardrail è ciò che lo pinna.
 
 ---
 
@@ -105,7 +110,7 @@ domande diverse, e servono due presidi.
 | `FATTURAZIONE_NUMERA` | `fatturazione_numera_default` | `OPERATORE` | `FATTURAZIONE_NUMERA` (`CODA`) | Numerazione di perimetro (C-4). |
 | `CHIUSURA_SCADENZE` | `chiusura_scadenze_default` | `OPERATORE` | `chiusura_scadenze_daily` (`CODA_AUTOMATICA`) | Chiusura per scadenza degli stati gestionali, un emittente alla volta: lo accoda pgAgent con l'identità tecnica dell'emittente. |
 | `NOTIFICA_DIGEST_MUTO` | `notifica_digest_muto_default` | `SISTEMA` | `guardiano_digest` (`PGAGENT`) | Avvisa una persona che il digest dei presidi ha smesso di girare (uno al giorno). |
-| `ESEGUI_PROCESSO` | `esegui_processo_default` | `OPERATORE` | `avvio_manuale` (`CODA`) | «Esegui ora» su una sveglia di deploy: il drenatore lancia il comando del timer come sottoprocesso, con l'identità di chi ha premuto. `max_tentativi 1`: un processo caduto a metà non è idempotente. Nato spento (brief `brief-db-avvio-manuale-di-un-processo`). |
+| `ESEGUI_PROCESSO` | `esegui_processo_default` | `OPERATORE` | `avvio_manuale` (`CODA`) | «Esegui ora» su una sveglia di deploy: il drenatore lancia il comando del timer come sottoprocesso, con l'identità di chi ha premuto. `max_tentativi 1`: un processo caduto a metà non è idempotente. Nato spento il 14-09, acceso il 15-09 a handler in servizio (brief `brief-db-avvio-manuale-di-un-processo`). |
 
 ⭐ I due giri di fatturazione appartengono a un processo di classe `DOMINIO`:
 la coda li accetta **solo** come `OPERATORE`, con lo scope di chi li richiede
