@@ -13,7 +13,7 @@
 >
 
 ### 🎯 Scopo Principale
-(latest review 20-07-2026)
+(latest review 14-09-2026)
 
 `dbops.coda_lavori_tipi` è il **registry dei tipi di job** della coda lavori
 generica ([dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori)). Una riga per
@@ -78,23 +78,52 @@ domande diverse, e servono due presidi.
    i default (`run_as`, `max_tentativi`).
 
 > **Un nuovo tipo di job = un seed qui + un handler BE. Zero DDL.** Il dispatch
-> è worker-based (non in-transazione), quindi il tipo può nascere `attivo=true`:
-> in assenza dell'handler i job restano semplicemente `PENDING` finché il worker
-> non atterra, senza abortire nessuna transazione di dominio.
+> è worker-based (non in-transazione), quindi un tipo senza handler non abortisce
+> nessuna transazione di dominio.
+>
+> ⛔ **Ma NON può nascere `attivo=true`, e questa riga lo diceva fino al
+> 2026-09-14.** Diceva: *«in assenza dell'handler i job restano semplicemente
+> `PENDING` finché il worker non atterra»*. Era vero prima del drenatore, e non
+> lo è più: `draina_coda_lavori` **claima** il lavoro, `get_handler` solleva
+> `E_CODA_HANDLER_NON_REGISTRATO` e il lavoro va in `ERRORE` (al primo colpo,
+> se `max_tentativi = 1`) — visibile in `vw_coda_lavori_da_guardare`, non in
+> attesa. ⇒ **Regola del binding**: il tipo nasce **`attivo = false`** e il DB
+> lo accende quando il backend dichiara l'handler in servizio. L'ordine lo
+> fissano due guardrail del backend, non una convenzione:
+> `test_nessun_handler_orfano` (handler registrato prima del seed → rosso) e
+> `test_ogni_tipo_attivo_ha_un_handler` (tipo acceso prima dell'handler →
+> rosso). Precedenti: `NOTIFICA_DIGEST_MUTO` (nato spento l'11-09, acceso la
+> sera stessa), `ESEGUI_PROCESSO` (14-09).
 
 ---
 
-### Primo tipo seed
+### I tipi a catalogo
 
-| codice | handler_code | run_as_default | descrizione |
-| --- | --- | --- | --- |
-| `FATTURAZIONE_GIRO` | `fatturazione_giro_default` | `OPERATORE` | Giro fatturazione on-demand (C-3). |
-| `FATTURAZIONE_NUMERA` | `fatturazione_numera_default` | `OPERATORE` | Numerazione di perimetro (C-4). |
+| codice | handler_code | run_as_default | processo (canale) | che cosa fa |
+| --- | --- | --- | --- | --- |
+| `FATTURAZIONE_GIRO` | `fatturazione_giro_default` | `OPERATORE` | `FATTURAZIONE_GIRO` (`CODA`) | Giro fatturazione on-demand (C-3). |
+| `FATTURAZIONE_NUMERA` | `fatturazione_numera_default` | `OPERATORE` | `FATTURAZIONE_NUMERA` (`CODA`) | Numerazione di perimetro (C-4). |
+| `CHIUSURA_SCADENZE` | `chiusura_scadenze_default` | `OPERATORE` | `chiusura_scadenze_daily` (`CODA_AUTOMATICA`) | Chiusura per scadenza degli stati gestionali, un emittente alla volta: lo accoda pgAgent con l'identità tecnica dell'emittente. |
+| `NOTIFICA_DIGEST_MUTO` | `notifica_digest_muto_default` | `SISTEMA` | `guardiano_digest` (`PGAGENT`) | Avvisa una persona che il digest dei presidi ha smesso di girare (uno al giorno). |
+| `ESEGUI_PROCESSO` | `esegui_processo_default` | `OPERATORE` | `avvio_manuale` (`CODA`) | «Esegui ora» su una sveglia di deploy: il drenatore lancia il comando del timer come sottoprocesso, con l'identità di chi ha premuto. `max_tentativi 1`: un processo caduto a metà non è idempotente. Nato spento (brief `brief-db-avvio-manuale-di-un-processo`). |
 
-⭐ Entrambi appartengono a un processo di classe `DOMINIO`: la coda li accetta
-**solo** come `OPERATORE`, con lo scope di chi li richiede.
+⭐ I due giri di fatturazione appartengono a un processo di classe `DOMINIO`:
+la coda li accetta **solo** come `OPERATORE`, con lo scope di chi li richiede
+(guard di classe, sopra).
 
-Brief: `brief-db-coda-lavori-generica` §2 e §4.
+⭐ **Il canale del processo e il `run_as` del tipo si accordano, e non è un
+caso** (dal 2026-09-14, `db/pgtap/dbops/test-coda-tipi-canale-e-run-as.sql`):
+`CODA ⇒ OPERATORE` (lo accoda una persona, l'identità è la sua — è la
+definizione del canale); `PGAGENT ⇒ SISTEMA` (una macchina non ha un nome da
+prestare: se il lavoro vuole un'identità, il canale è `CODA_AUTOMATICA`);
+nessun tipo sotto un `COMMAND` (lo esegue systemd, non il drenatore). Non c'è
+un guard a DB per questo — la posta è l'audit, non il perimetro — e il seed lo
+presidia quel pgTAP.
+
+Brief: `brief-db-coda-lavori-generica` §2 e §4;
+`brief-db-processi-automatici-identita-e-perimetro` §5;
+`brief-db-quattro-processi-senza-presidio` §10.2;
+`brief-db-avvio-manuale-di-un-processo` §8.
 
 ---
 

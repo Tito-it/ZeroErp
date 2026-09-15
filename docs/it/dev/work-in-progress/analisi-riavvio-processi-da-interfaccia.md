@@ -159,6 +159,13 @@ del **gesto**. Il comando registra il suo run sotto il **processo eseguito**:
 è l'audit dell'**esecuzione**. Due righe, due domande, nessuna tabella nuova
 (§4.6). `max_tentativi = 1`: ritentare un processo che è partito e fallito a
 metà non è idempotente per natura — se serve ripetere, si preme di nuovo.
+⚠️ **Corretto dal DB il 14-09 (brief §8.2.1): il drenatore NON registra
+nessun run per lavoro** — apre un run per *corsa* sotto `draina_coda_lavori`
+e timbra `job_run_id` sui lavori claimati; nessun handler apre il proprio, e i
+due `CODA` in servizio da luglio hanno zero righe in `job_run_log`. L'audit
+del gesto è la riga di `dbops.coda_lavori` (scope, payload, esito, corsa),
+non una riga del giornale sotto `avvio_manuale`. La seconda riga c'è, ma in
+un'altra tabella.
 
 **Idempotenza**: `idempotency_key = f"esegui:{unit}"` sui job vivi (§4.2):
 due click, un lavoro. E il lock del comando (`fn_job_run_start` con
@@ -369,7 +376,12 @@ claim dipendono da lei.
    `result`); `POST /api/v1/amm-software/processi/<codice>/esegui-ora/` con
    `{unit}` nel body (validata fra le sveglie **di quel processo**: il client
    non manda mai un comando), `AdminAPIView` + `post_permission =
-   "processo_avvia"`, `handle_post_json` + `Idempotency-Key`; il dettaglio
+   "processo_avvia"` (⚠️ **le due cose insieme non stanno** — brief §8.2.2:
+   `IsAdminZeroERP` risponde SUPER_ADMIN-o-niente e non legge mai
+   `post_permission`; l'azione conta solo su `DomainAPIView(area_funzionale =
+   "strumenti")`, com'è `code_manage` — **deciso da Tid il 14-09: v1 solo
+   `SUPER_ADMIN`**, la view resta admin e l'azione è la sede per dopo, brief §8.5),
+   `handle_post_json` + `Idempotency-Key`; il dettaglio
    `GET processi/<codice>/` espone le **sveglie** con la capability di riga
    (`can_esegui_ora` · `can_esegui_ora_reason` · `can_esegui_ora_reason_key`,
    la terna del dettaglio in `api.md`). Test: handler con `subprocess` finto

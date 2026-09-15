@@ -1,6 +1,10 @@
 # Brief DB — Avviare un processo dall'interfaccia: il lavoro di coda che lo chiede
 
-> **Da leggere per primo: §4 — cosa si chiede, in tre righe.**
+> **Da leggere per primo: §8 — la risposta del DB (14-09, sera): le tre righe
+> reggono e sono **APPLICATE** (14-09 sera, pgTAP verde — §8.4); tre cose del
+> brief no (§8.2). Le due domande a Tid (§8.5) sono decise — solo
+> `SUPER_ADMIN`; «Esegui ora» solo su comandi brevi. Il DB aspetta il BE per
+> accendere il tipo.**
 > Chi scrive: backend (`dev/backend-tid`), 2026-09-14. Decisione di Tid del
 > 14-09, dopo aver rilanciato a mano le due cadenze del digest.
 > Origine: [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
@@ -26,6 +30,9 @@ giornale sotto **il suo** processo (`digest_presidi:settimanale`, origine
 `COMMAND`, `auth_user_id` di chi ha premuto); il lavoro di coda si registra
 sotto il processo di questo brief: è l'audit del **gesto**, distinto
 dall'audit dell'**esecuzione**. Due righe, due domande, nessuna tabella nuova.
+⚠️ **La seconda riga non sta dove questa frase la mette** — vedi §8.2.1: il
+drenatore non apre nessun run per lavoro; l'audit del gesto è la riga di
+`dbops.coda_lavori`, non una riga di `job_run_log` sotto `avvio_manuale`.
 
 È il disegno del §4 dell'analisi («la UI dichiara, l'host esegue»), con una
 differenza sola: niente `systemctl`, niente `sudoers`, niente host. Il §3
@@ -99,7 +106,8 @@ Nell'ordine, dopo l'apply (tutto in `analisi-riavvio-processi-da-interfaccia.md`
 sede); `job_run()` che legge origine e attore dall'ambiente; l'handler
 `esegui_processo_default` (whitelist, `abilita`, sottoprocesso a lista con
 timeout, esito dall'exit code); l'endpoint con `post_permission =
-"processo_avvia"` e `Idempotency-Key`; la capability di riga sulle sveglie nel
+"processo_avvia"` e `Idempotency-Key` (⚠️ **non su `AdminAPIView`**, che il
+`post_permission` non lo legge — §8.2.2); la capability di riga sulle sveglie nel
 dettaglio del processo; il pulsante nel drawer. ⚠️ Finché il tipo è
 `attivo = false`, `fn_accoda_lavoro` rifiuta: è il cancello giusto, e il
 backend chiede l'accensione quando l'handler è in servizio.
@@ -139,3 +147,259 @@ servizio.*
 `sveglie.json` e `__COMANDO__` nei template, §9-bis punto 2 dell'analisi — è
 fatto, perché non dipende dalle tre righe. Handler, endpoint e pulsante restano
 in attesa dell'apply.*
+
+---
+
+## 8. Risposta del DB — 2026-09-14, sera
+
+> Chi scrive: DB (`dev/db-tid`). Tutto ciò che segue è letto dal **modello**
+> (CHECK, funzioni, viste, pgTAP, codice del drenatore), non dalle righe di
+> oggi; dove compare un numero è un fatto datato, e sta scritto come tale.
+
+### 8.1 Che cosa regge — le tre domande del §7 hanno già una risposta a DB
+
+**Domanda 1 — `tolleranza_minuti = NULL` su un `CODA`.** Il panorama non lo
+«tratta»: lo **impone**. `chk_processi_contratto_solo_command` dice
+`canale = 'COMMAND' OR (tolleranza_minuti IS NULL AND segno_di_vita = 'GIORNALE')`,
+quindi su `CODA` un numero è un `23514`, non un'opinione. E
+`vw_processi_programmazione` mette ogni `CODA` a **`SU_RICHIESTA`** con
+`da_guardare = false` (primo ramo del `CASE`, prima ancora di guardare il
+contratto), presidiato da `test-vw-processi-programmazione.sql` test 8 e da
+`…-da-guardare.sql`. Un processo che «sta bene anche se non gira per mesi» è
+esattamente ciò che quel ramo descrive: nessuna riga in più, nessun allarme.
+
+**Domanda 2 — il guard di classe su `MANUTENZIONE` + `OPERATORE`.** Non ha
+niente da dire: in `fn_accoda_lavoro` scatta **solo** su
+`v_classe = 'DOMINIO' AND v_run_as <> 'OPERATORE'`, e il pgTAP
+`test-coda-accoda-classe.sql` test 6 fissa proprio che la manutenzione resta
+libera («altrimenti il guard sarebbe una tassa su tutta la coda»). ⚠️ Quello
+che invece **morde** è l'altro guard, tre righe sotto: `OPERATORE ⇒ p_scope
+NOT NULL` (con il `CHECK chk_coda_lavori_run_as_scope` dietro). E il drenatore
+pretende di più del `NOT NULL`: `operator_identity_context` esige la **terna
+completa** `auth_user_id` + `username` + `identita_id`, e rilegge che la coppia
+(utente, identità) sia **ancora attiva** all'esecuzione
+(`E_CODA_SCOPE_OPERATORE_INVALIDO`, `E_CODA_IDENTITA_NON_ATTIVA`). ⇒ Un
+superuser Django senza identità `OPERATORE` non può premere il pulsante: il
+lavoro nascerebbe e morirebbe in `ERRORE` un minuto dopo. Il rifiuto va
+**prima** di accodare, nell'endpoint — è la stessa regola scritta per i giri
+di fatturazione. La semantica di `CODA` («lo accoda una persona, l'identità è
+la sua») è confermata in tre sedi indipendenti: `vw_processi_dominio_senza_identita`,
+`processi_repository._CANALI_CON_IDENTITA` e `test-processi-coda-automatica.sql`
+test 6, che rifiuta `CODA` alla fabbrica di identità tecniche.
+
+**Domanda 3 — il pgTAP.** Sì, ma non quello proposto. «`ESEGUI_PROCESSO` sta
+sotto un `CODA` e non un `PGAGENT`» pinnerebbe **una riga**; quello che si
+presidia è l'**invariante da cui quella riga discende**, e vale per tutti i
+tipi presenti e futuri (§8.3). Il presidio esistente sui tipi
+(`test-coda-accoda-classe.sql` test 7) guarda solo che il processo ci sia.
+
+**La regola del binding, verificata sul codice e non sul precedente.** Un tipo
+`attivo = true` senza handler **non** resta `PENDING`: il drenatore lo claima,
+`get_handler` solleva `E_CODA_HANDLER_NON_REGISTRATO`, il lavoro va in
+`ERRORE` (con `max_tentativi = 1`, al primo colpo). ⚠️ La doc manuale di
+`coda_lavori_tipi` diceva il contrario («può nascere `attivo=true`: i job
+restano `PENDING` finché il worker non atterra») — era vera prima che il
+drenatore esistesse, ed è corretta in questo cantiere. E l'**ordine** lo fissa
+un guardrail del backend, non una convenzione: `test_nessun_handler_orfano`
+diventa rosso se il BE registra `esegui_processo_default` **prima** che il tipo
+sia a catalogo, `test_ogni_tipo_attivo_ha_un_handler` se il DB lo accende
+prima che l'handler ci sia. DB (spento) → BE → DB (acceso): non c'è altro
+ordine possibile.
+
+**Le tre righe, provate.** Non solo lette: eseguito in transazione annullata
+l'**upsert completo** dei tre CSV come lo farebbe il mirror (§11.2 delle linee
+guida, le due specie di mina) più le tre righe nuove — 62 righe esistenti
+riscritte senza rifiuti, zero divergenze CSV ↔ DB, le tre nuove accettate da
+CHECK, FK e trigger; il panorama risponde `avvio_manuale | CODA | SU_RICHIESTA
+| f`; `fn_accoda_lavoro('ESEGUI_PROCESSO', …)` rifiuta con
+`E_JOB_TYPE_NON_ATTIVO`, che è il cancello su cui il §5 conta.
+
+### 8.2 ⛔ Tre cose del brief che non reggono
+
+**1. «Il lavoro di coda si registra sotto il processo di questo brief» (§1,
+descrizione del §4.1; analisi §4.1-bis e §4.6 «come ogni handler»).** Nessun
+handler apre un run, e il drenatore nemmeno *per lavoro*: `draina_coda_lavori`
+apre **un** run per **corsa** sotto il proprio processo (origine `CRON`) e
+timbra `job_run_id` sui lavori claimati. `FATTURAZIONE_GIRO` e
+`FATTURAZIONE_NUMERA` — i due `CODA` in servizio da luglio — hanno **zero**
+righe in `job_run_log` (letto il 14-09; i run `PGAGENT` di `guardiano_digest` e
+`chiusura_scadenze_daily` sono quelli del *wrapper* pgAgent, non del lavoro).
+⇒ L'audit del gesto **esiste**, ma sta in `dbops.coda_lavori`: `scope ->>
+'auth_user_id'`, `payload`, `data_insert`, `result`, `job_run_id` della corsa
+che l'ha eseguito — leggibile in *Strumenti → Code di lavoro* (con
+`?ambito=tutti` per chi ha `code_manage`). Il tab «Ultimi run» di
+`avvio_manuale` resterà vuoto, come per i due giri di fatturazione: non è un
+difetto, è dove sta l'audit dei lavori di coda. Se un giorno lo si vorrà nel
+giornale è una decisione a parte, e va detto che `chk_job_run_log_origine`
+ammette `PGAGENT | CRON | COMMAND` — «una persona da API» esiste solo su
+`coda_lavori`. La **descrizione** di `avvio_manuale` è riscritta per non
+promettere ciò che nessuno scrive.
+
+**2. `AdminAPIView` + `post_permission = "processo_avvia"` (§5; analisi §9-bis
+punto 3).** `AdminAPIView` monta `IsAdminZeroERP`, che risponde
+SUPER_ADMIN-o-niente e **non legge mai** `post_permission`: con quella base
+view l'azione `processo_avvia` è una riga che nessuna porta valuta, e «due
+fiducie» (D8, D-C) resta un argomento scritto e non applicato. Il precedente
+che il brief cita — `code_manage` — sta su `DomainAPIView(area_funzionale =
+"strumenti")`, ed è così che l'azione **conta**. ⚠️ E non è solo il verbo:
+`ProcessiListView`, `ProcessiDetailView`, `ProcessiRunView` sono tutte
+`AdminAPIView`, quindi un tecnico con `processo_avvia` e senza `SUPER_ADMIN`
+non arriva nemmeno al drawer in cui il pulsante starebbe. Il DB semina l'azione
+**comunque**: è la sede della fiducia, e `code_manage` fu seminato prima delle
+sue view («fino all'apply, fail-closed = solo SUPER_ADMIN»). Ma la scelta va
+scritta, ed è di Tid — §8.5.
+
+**3. Il sottoprocesso sincrono e il contratto del drenatore (D-B).** Il
+drenatore è un timer oneshot ogni minuto con `tolleranza_minuti = 10` a
+catalogo; l'handler aspetta il sottoprocesso fino a 30 minuti. systemd non fa
+partire un oneshot mentre l'istanza precedente è attiva ⇒ per tutta la durata
+del comando **nessun altro lavoro** viene drenato (fatturazione, avviso del
+guardiano), il badge in topbar segna il worker fermo e il panorama dice
+`MUTO` su `draina_coda_lavori` — un allarme *vero* su un sistema che sta
+facendo quello che gli è stato chiesto. Oggi non morde: i cinque timer con
+`abilita = true` finiscono in secondi e i due di fatturazione sono spenti. Ma
+il modello lo ammette e il brief stesso scrive «un click avvia un giro di
+fatturazione». Da dichiarare nel brief BE, in una delle due forme: o il tetto è
+dell'ordine del minuto e un comando lungo **non è un candidato** a «Esegui
+ora»; o l'handler non aspetta, e l'esito lo racconta il giornale del comando
+(che già lo scrive, con `auth_user_id`). ⚠️ E `STALE_MINUTI_DEFAULT = 30` del
+reaper coincide col default di D-B: con `max_tentativi = 1` un lavoro
+riconosciuto stantìo va **direttamente** in `ERRORE` mentre il comando magari
+sta ancora finendo — un allineamento da scrivere, non da lasciare al caso.
+Nota minore, stessa famiglia: la whitelist di `sveglie.json` contiene
+`zeroerp-coda-lavori` — «Esegui ora» sul drenatore *dal* drenatore. Da
+escludere per forma, come il §4.3 dell'analisi esclude «Riavvia».
+
+### 8.3 Le decisioni del DB, in una riga ciascuna
+
+* **`id`**: `45` per `avvio_manuale` (prossimo libero nel blocco `4x`, dove
+  sono atterrati anche `42`–`44`), `35` per `processo_avvia`. Il codice resta
+  `snake_case` come `digest_presidi` e `guardiano_digest`: i due `CODA` in
+  maiuscolo (`FATTURAZIONE_*`) lo sono perché **nati** come tipi di coda con lo
+  stesso nome, e qui il processo non coincide col tipo.
+* **Descrizioni** riscritte nella forma dei tre CSV — ASCII, senza apostrofi
+  né virgolette tipografiche né backtick — e quella di `avvio_manuale` senza la
+  promessa del run (§8.2.1); quella di `ESEGUI_PROCESSO` senza il path
+  dell'endpoint, che è la cosa più volatile che si possa scrivere in un
+  catalogo (il precedente nomina un *setting*, non una URL).
+* **`attivo`**: `false` sul tipo (regola del binding, ora verificata); `t`
+  sull'azione — non è un binding, è «assegnabile a un profilo», e
+  `test-permessi-strutture-base.sql` conta le attive.
+* **`max_tentativi_default = 1`**: accolto, con la conseguenza detta in
+  §8.2.3 sul reaper.
+* **pgTAP** — `db/pgtap/dbops/test-coda-tipi-canale-e-run-as.sql`, nuovo:
+  `CODA ⇒ run_as_default = OPERATORE` (è la *definizione* del canale);
+  `PGAGENT ⇒ SISTEMA` (una macchina non ha un nome da prestare: se le serve,
+  il canale è `CODA_AUTOMATICA` — è la correzione R-E); `COMMAND` non ospita
+  tipi (lo esegue systemd, non il drenatore — ed è la ragione per cui si conia
+  `avvio_manuale` invece di appendere il tipo a `draina_coda_lavori`); più la
+  terna di questo brief come seed pin, **senza `attivo`**, che si accende e
+  un test che lo pinnasse sarebbe rosso sulla riparazione.
+* **Nessun guard nuovo** in `fn_accoda_lavoro` per `CODA` + `SISTEMA`: la
+  posta è l'audit, non il perimetro come per `DOMINIO`; il seed lo presidia il
+  pgTAP e l'enqueue lo scrive il BE con il suo test. Se servirà, ha la stessa
+  forma del guard di classe.
+* **Nessuna validazione del payload a DB** (`processo_codice`, `unit`): la
+  whitelist è del deploy e il DB non conosce le unit — §2 del brief, accolto.
+  ⚠️ Vale anche come limite dichiarato: un `processo_codice` inesistente nel
+  payload lo scopre l'handler, non un vincolo.
+
+### 8.4 ✅ Fatto e APPLICATO — 2026-09-14, sera
+
+> **Migrazione applicata da Tid e pgTAP verde** (`test-coda-tipi-canale-e-run-as.sql`,
+> 6/6 come `zeroerp_app`). Le tre righe sono a catalogo sul dbdev; il tipo
+> `ESEGUI_PROCESSO` è **spento** e lo resta finché il backend non dichiara
+> l'handler in servizio. Lato DB il cantiere è **chiuso**, salvo l'accensione.
+
+
+* Le tre righe nei CSV: `80_data/sql/dbops/processi.csv` (id 45),
+  `80_data/sql/dbops/coda_lavori_tipi.csv` (`ESEGUI_PROCESSO`),
+  `80_data/sql/config/azioni_processo.csv` (id 35). **Nessun changeSet**: i
+  tre mirror (`20260904-13`, `20260905-01`, `20260228-18`) sono `runOnChange`
+  e rileggono il file al prossimo migrate.
+* `db/pgtap/dbops/test-coda-tipi-canale-e-run-as.sql` (plan 6), runner `app`: verde pre-apply concatenato all'SQL reso dai tre mirror in transazione annullata, e **mutazione fatta** — tre difetti costruiti (tipo `SISTEMA` sotto un `CODA`, `OPERATORE` sotto un `PGAGENT`, tipo sotto un `COMMAND`), tre rossi che nominano la riga.
+* Doc manuali: `dbops/manual/coda_lavori_tipi.md` (tabella dei tipi completa —
+  ne elencava due su quattro — e la frase falsa su `attivo=true`),
+  `dbops/manual/processi.md` (`avvio_manuale` e il quarto canale
+  `CODA_AUTOMATICA`, che il CHECK ammette dal 05-09 e la tabella «I tre
+  canali» non nominava), `config/manual/azioni_processo.md`.
+* Le tre `SELECT` del §6 (più `SELECT stato, da_guardare FROM
+  dbops.vw_processi_programmazione WHERE processo_codice = 'avvio_manuale'`
+  → `SU_RICHIESTA | f`) tornano le righe attese: provate sull'SQL reso prima
+  dell'apply (§8.1), e il pgTAP le fissa sul vivo (test 5 e 6).
+
+**Che cosa resta, e di chi è:**
+
+| Passo | Di chi | Stato |
+| --- | --- | --- |
+| handler `esegui_processo_default`, endpoint su `AdminAPIView` (§8.5.1), tetto basso nel sottoprocesso (§8.5.2), capability sulle sveglie, pulsante nel drawer | BE | 🔵 da fare, dopo questo apply |
+| `job_run()` che legge `ZEROERP_JOB_ORIGINE` / `ZEROERP_JOB_AUTH_USER_ID` (analisi §9-bis punto 3) | BE | 🔵 |
+| `attivo = true` su `ESEGUI_PROCESSO`, **dal CSV**, su richiesta del BE a handler in servizio (come `NOTIFICA_DIGEST_MUTO` l'11-09) | DB | ⏳ in attesa del BE |
+| commit di `dev/db-tid` (3 CSV, pgTAP, 3 doc manuali, brief e analisi) | Tid | ⏳ |
+| a cantiere chiuso: brief in `work-done/` e una riga nel changelog della mappa concentrica (tema «processi automatici») | DB | ⏳ |
+
+### 8.5 ✅ Due domande a Tid — entrambe decise il 14-09, sera
+
+1. ✅ **La porta del verbo** (§8.2.2) — **decisione di Tid, 14-09 sera: (a),
+   v1 solo `SUPER_ADMIN`.** Il pannello resta in *Amministrazione*, il verbo
+   nasce su `AdminAPIView` come le sue sorelle, e l'azione `processo_avvia`
+   è la **sede della fiducia** per il giorno in cui il verbo passerà a
+   `strumenti` — non un cancello che oggi qualcuno attraversa. Si semina lo
+   stesso (precedente `code_manage`), e questa riga dice perché: chi la
+   trovasse a catalogo senza una view che la valuti non deve cercare un
+   difetto. ⚠️ Per il BE: `post_permission = "processo_avvia"` sulla view
+   admin è **decorativo** e va commentato come tale, o omesso — non deve
+   sembrare il presidio. Scartata (b): `DomainAPIView(area_funzionale =
+   "strumenti")` per il verbo **e** per il dettaglio che espone le sveglie.
+2. ✅ **Comandi lunghi** (§8.2.3) — **decisione di Tid, 14-09 sera: (a),
+   solo comandi brevi.** Riformulata qui sotto, perché la prima stesura non
+   si capiva. Il pulsante mette un biglietto in coda; il drenatore passa ogni
+   minuto, prende il biglietto, lancia il comando e **resta ad aspettare che
+   finisca** (fino a 30 minuti, D-B) per leggerne l'esito. Finché aspetta, la
+   corsa del minuto dopo non parte: nessun altro biglietto viene lavorato
+   (un giro di fatturazione dal cockpit, l'avviso del guardiano), dopo 10
+   minuti il badge dice «worker fermo» e il panorama segna il drenatore
+   `MUTO` — un allarme su un sistema che sta facendo ciò che gli è stato
+   chiesto. Oggi non si nota: i comandi accesi finiscono in secondi. Due
+   uscite:
+   * **(a) solo comandi brevi** — tetto basso e dichiarato nell'handler
+     (pochi minuti); un comando lungo non è candidato a «Esegui ora», e il
+     pulsante non compare per lui. ⭐ **Consigliata**: coerente con la 1 e
+     con i due timer di fatturazione spenti; zero deploy;
+   * **(b) il drenatore non aspetta** — lancia e se ne va, l'esito lo dice il
+     giornale del comando (che già lo scrive, con `auth_user_id`). ⚠️ **Non è
+     gratis**: `zeroerp-coda-lavori.service` è `Type=oneshot` senza
+     `KillMode`, quindi al termine della corsa systemd **uccide i processi
+     figli rimasti** (default `control-group`). Servono `KillMode=process`
+     nel template più il distacco del figlio (`start_new_session`): un
+     cantiere di deploy suo, per il giorno in cui un giro di fatturazione si
+     vorrà lanciare dal pulsante.
+
+   ⇒ **Conseguenze per il BE, dalla (a)**: il tetto del sottoprocesso è
+   **basso e scritto nell'handler** (pochi minuti, non 30) e un comando che lo
+   supera va in `ERRORE` con un messaggio che dice *«troppo lungo per «Esegui
+   ora»»*, non in silenzio; con `max_tentativi = 1` l'`ERRORE` è terminale
+   e si legge in `vw_coda_lavori_da_guardare`. La capability di riga sulle
+   sveglie spegne il pulsante sui comandi che per natura non sono brevi —
+   oggi i due di fatturazione, già `abilita = false` (D-A), e il drenatore
+   stesso (`zeroerp-coda-lavori`: «Esegui ora» dal drenatore, §8.2.3). La
+   (b) resta scritta come strada per quando servirà, con il suo costo di
+   deploy. `timeout_minuti` in `sveglie.json` **non rientra**: con un tetto
+   unico basso non ha un lettore che lo distingua dal default.
+
+### 8.6 Per il backend, a valle dell'apply
+
+* Lo `scope` di `ESEGUI_PROCESSO` porta la terna completa o l'endpoint risponde
+  400 **prima** di `fn_accoda_lavoro` (§8.1, domanda 2); `p_origine = 'API'`
+  (default del CHECK di `coda_lavori`).
+* ⛔ **Non** aggiungere `PROCESSO_AVVIO_MANUALE` a `apps/core/services/processi.py`:
+  `test_ogni_processo_del_backend_ha_una_sveglia` pretende un unit per ogni
+  costante di quel modulo, e `avvio_manuale` per definizione non ne ha — e
+  non serve, perché nessun run va scritto sotto quel processo (§8.2.1).
+* L'accensione è una riga del CSV (`attivo = true` su `ESEGUI_PROCESSO`), a
+  carico del DB su richiesta, come per `NOTIFICA_DIGEST_MUTO` l'11-09.
+* Fuori da questo brief, ma visto facendo: non esiste un presidio «ogni
+  azione di `config.azioni_processo` è valutata da almeno una view» — il
+  gemello, per le capability, è la regola *«verificare che il client la
+  LEGGA»* di `api.md`. È così che una riga come `processo_avvia` può restare
+  decorativa senza che niente lo dica.

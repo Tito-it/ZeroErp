@@ -91,7 +91,7 @@ lo sta creando* — riserva a tre livelli, e la seconda copia della regola
 vecchia delegano a `fn_check_ba_visible_for_emittenti`. Vedi
 [brief-db-perimetro-emittente-righe-documento.md](work-done/brief-db-perimetro-emittente-righe-documento.md) §12,
 [brief-db-rls-storico-scope-congelato.md](work-done/brief-db-rls-storico-scope-congelato.md),
-[brief-db-ba-riserva-emittente-operatore-d13.md](work-in-progress/brief-db-ba-riserva-emittente-operatore-d13.md).
+[brief-db-ba-riserva-emittente-operatore-d13.md](work-done/brief-db-ba-riserva-emittente-operatore-d13.md).
 
 **Anello 0 — I processi automatici hanno un contratto di vitalità.** Dei sei
 processi che il backend dichiara di svegliare, due avevano un presidio che si
