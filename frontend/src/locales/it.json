@@ -1315,7 +1315,7 @@
       "col_percorso": "Percorso all'azienda",
       "col_colonna": "Colonna",
       "identita_help": "Questo processo lavora i dati di un'azienda alla volta, e per ognuna serve un utente tecnico dedicato.",
-      "identita_non_serve": "Questo processo non ha bisogno di un utente tecnico: viene avviato da una persona e lavora con l'identità di chi lo ha chiesto.",
+      "identita_non_serve": "Questo processo non ha bisogno di un utente tecnico: o lo avvia una persona e lavora con la sua identità, oppure non tocca i dati di nessuna azienda.",
       "col_utente": "Utente tecnico",
       "col_azienda": "Azienda",
       "aziende_scoperte": "{n} azienda/e attiva/e non hanno un utente tecnico per questo processo: il loro lavoro non viene fatto, e nessun errore lo segnala.",

@@ -96,13 +96,15 @@ const emittentiScoperti = computed(
   })),
 )
 
-// ⚠️ Un processo su canale CODA non VUOLE un utente tecnico: gira con
-//    l'identità di chi lo accoda. Dirlo evita che l'assenza sembri un difetto.
-const vuoleIdentita = computed(
-  () => dettaglio.value
-    && dettaglio.value.classe === 'DOMINIO'
-    && ['PGAGENT', 'COMMAND'].includes(dettaglio.value.canale),
-)
+// ⛔ «Questo processo vuole un utente tecnico?» NON si calcola qui: arriva dal
+//    dettaglio come `vuole_identita`, dalla stessa espressione che la lista
+//    legge da sempre. Fino al 2026-09-15 il drawer rifaceva il conto da sé con
+//    `classe === 'DOMINIO' && ['PGAGENT', 'COMMAND'].includes(canale)` — una
+//    copia della regola del database senza nessun test che la guardasse — ed è
+//    rimasta indietro quando il DB ha aggiunto il canale `CODA_AUTOMATICA`
+//    (05-09): su `chiusura_scadenze_daily` diceva «non gli serve» mentre ne usa
+//    uno per azienda, e nascondeva l'avviso delle aziende scoperte. Il difetto
+//    non dava nessun errore. La regola ha una sede sola, e non è questa.
 
 // Scopo: carica dettaglio + corse del processo aperto.
 async function carica() {
@@ -269,7 +271,7 @@ async function riattivaIdentita() {
 
             <TabPanel value="identita">
               <p class="app-proc-help">
-                {{ vuoleIdentita
+                {{ dettaglio.vuole_identita
                   ? t('amministrazione.processi.identita_help')
                   : t('amministrazione.processi.identita_non_serve') }}
               </p>
@@ -291,7 +293,7 @@ async function riattivaIdentita() {
               <!-- ⭐ Il numero che rompe il silenzio: senza questo blocco, «due
                    identità» si legge come «tutto a posto» anche quando la terza
                    azienda non viene servita e il suo lavoro non parte. -->
-              <template v-if="vuoleIdentita && emittentiScoperti.length">
+              <template v-if="dettaglio.vuole_identita && emittentiScoperti.length">
                 <Message severity="warn" :closable="false">
                   {{ t('amministrazione.processi.aziende_scoperte', { n: emittentiScoperti.length }) }}
                 </Message>

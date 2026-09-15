@@ -1315,7 +1315,7 @@
       "col_percorso": "Path to company",
       "col_colonna": "Column",
       "identita_help": "This process works one company at a time, and each one needs its own technical user.",
-      "identita_non_serve": "This process does not need a technical user: a person starts it, and it runs with that person's identity.",
+      "identita_non_serve": "This process does not need a technical user: either a person starts it and it runs with that person's identity, or it touches no company data at all.",
       "col_utente": "Technical user",
       "col_azienda": "Company",
       "aziende_scoperte": "{n} active company/companies have no technical user for this process: their work is not done, and no error reports it.",
