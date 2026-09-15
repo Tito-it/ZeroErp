@@ -19,11 +19,16 @@
 > (il DB ricostruito da zero). Ventitré file di changeSet, cinque pgTAP del
 > lotto più due fuori lotto riscritti, la doc. ✅ **Commit `61b4cb5d3` su
 > `dev/db-tid` (15-09, 15:18), pushato, pagine auto-gen rigenerate e dentro.**
-> ⏳ **Aperti**: la PR verso `Tito-dev` (è la corsa in cui il RIENTRATO di
-> `config/test-sorgenti-scope-pulizia-v1` compare), le **quattro** richieste
-> BE/FE — la quarta, `genera_error_policies` + i due ripieghi per gli `E_MAG_*`,
-> mancava a §12 fino alla verifica delle 15:30 —, e un cantiere `dbops` trovato
-> per strada (l'ordine dei job di storico su dev). Fotografia e consegna in §12.
+> ✅ **Mergiato su `Tito-dev`** (PR #1593, 15-09 14:43 UTC, commit `937acd83a`
+> = il `61b4cb5d3` riallineato dopo #1592). Corsa del merge (`34984791746`):
+> pgTAP **nessuna regressione**, RIENTRATO di `config/test-sorgenti-scope-pulizia-v1`
+> confermato; Django **rosso per due test**, entrambi per i soli `E_MAG_*`
+> (§12 p.6). ⏳ **Aperti** (verificati 15-09, 17:10): la riga 58 di
+> `baseline-rossi-ci.tsv` da togliere (DB), le **quattro** richieste BE/FE di
+> §12 p.7 — tutte ancora aperte —, e il brief del **BB dell'emittente di
+> default** (§4.7: decisione di Tid 15-09 sera, funzione generica **e** ritiro
+> delle copie di vendite, prima del Lotto 2). ⛔ Il cantiere `dbops` sull'ordine
+> dei job **non si apre** (§12 p.2: le automazioni su dev si lanciano a mano).
 > ⚠️ La sera del 15-09 ha insegnato più della scrittura: **sette** cose erano
 > verdi in sessione per ragioni sbagliate e le ha trovate solo il DB da zero
 > o il runner — sono le ultime sei righe di §5, e il Lotto 2 parte da lì.
@@ -332,9 +337,23 @@ stata scritta, entrambi motivati nell'intestazione dei changeSet:
 - 🔵 **Per BE/FE, Lotto 2**: `requires_serial` è esposto da
   `vw_articoli_dettaglio`, da `catalogo_repository`/`catalogo_service`/`views`
   e dal drawer articolo (`ArticoloDrawer.vue`); `requires_lotto` dovrà
-  seguirlo **per simmetria** quando la primitiva lo leggerà — la vista la
-  tocca il DB in quel lotto (un `CREATE OR REPLACE` oggi azzererebbe
-  `security_invoker` per un consumatore che non c'è).
+  seguirlo quando la primitiva lo leggerà — la vista la tocca il DB in quel
+  lotto. ⚠️ **Corretto il 15-09 (sera)**: la prima stesura (e l'intestazione di
+  `20260914-15`) diceva *«un `CREATE OR REPLACE` oggi azzererebbe
+  `security_invoker`»* — **falso**: quella vista **non** ha `security_invoker`
+  e non deve prenderlo (`catalogo.articoli` non è in RLS; è scritto nel suo
+  `COMMENT`, presidio `rls/test-rls-viste-security-invoker`). La ragione vera
+  del rinvio è una sola: **nessun consumatore** finché la primitiva non legge
+  la colonna. ⛔ **E «per simmetria» vale solo per il POSTO nel drawer, non per
+  il comportamento**: `requires_serial` è un **flag di struttura BoM** —
+  congelato da `trgfn_articoli_guard_flags_struttura_bom_attiva` insieme a
+  `is_composito`/`is_solo_componente`, registrato in
+  `dbops.lock_columns_conditional`, e il drawer lo **disabilita** via
+  `non_editable_fields` quando l'articolo è padre di una distinta attiva.
+  `requires_lotto` è **fuori** da quel guard e da quel registro **per
+  decisione** (§7-quater p.3: una partita non è struttura di composizione):
+  il toggle nel drawer **non** passa da `isFieldLocked`, e il BE non lo mette
+  nel lock. Chi copia `requires_serial` a occhi chiusi eredita il lucchetto.
 
 ### 4.4 `magazzino.movimenti` (D-1, D-6, D-4, M-1, M-5, M-8, D-L1-a, D-L1-c)
 
@@ -483,14 +502,42 @@ NULL, e vale NULL (passa) con entrambe NULL. Riscritti: `from <> to` sui
 trasferimenti, `from IS NULL OR to IS NULL OR from <> to` sugli eventi. Un
 trasferimento da un magazzino a se stesso ora è rifiutato (provato).
 
-⚠️ **Punto aperto per BE / Lotto 2 (non deciso qui)**: `magazzini` e `assets`
-non hanno un trigger di **default** dell'emittente (vendite ne ha cinque copie
-per dominio, `trgfn_<doc>_default_emittente`, ciascuna col suo codice).
-`magazzini` è nel CRUD generico del pannello admin (`CONFIG_TABLES`), che oggi
-non passa `emittente_fiscale_id` → l'INSERT dal pannello fallirebbe `23502`.
-Tre strade: il BE lo passa (dalla sessione), una sesta copia, o un BB generico
-`script.trgfn_default_emittente_fiscale` — la terza è la «regola del 2»
-arrivata alla sesta occorrenza. Da decidere quando il pannello servirà.
+✅ **Deciso da Tid il 15-09 (sera)** — era: *«`magazzini` e `assets` non hanno
+un trigger di default dell'emittente; tre strade: il BE lo passa, una sesta
+copia, o un BB generico `script.trgfn_default_emittente_fiscale`; da decidere
+quando il pannello servirà»*. **Decisione: il BB generico, E il ritiro delle
+copie di vendite nello stesso giro** — *«che aspettiamo, la produzione, per
+fare questi refactor?»*. Non «la BB ora e le copie dopo»: un refactor rimandato
+è un debito che nessuno rilegge. 🔵 **È un brief suo** (tocca `vendite`, in
+esercizio), da scrivere **prima del Lotto 2**, che lo presuppone (il primo
+magazzino vero nasce lì). Censimento fatto il 15-09 per non partire da un
+numero sbagliato — le cinque di vendite **non sono cinque copie**:
+
+| Funzione | Che cosa fa | Sorte |
+| --- | --- | --- |
+| `trgfn_ordini_default_emittente`, `_preventivi_`, `_contratti_` | dalla GUC di sessione via `fn_resolve_emittente_for_user`; **solleva** `E_ORDINE\|E_PREV\|E_CONTRATTO_EMITTENTE_NON_RISOLTO` (`DATO_ERRATO`) se GUC vuota o admin globale | **tre copie vere** → il BB in modo «solleva» |
+| `trgfn_ddt_default_emittente` | stessa GUC, ma **non solleva**: lascia NULL a `trgfn_ddt_normalize`, che eredita dalla sorgente/BA | **variante morbida** → il BB in modo «lascia NULL» (`TG_ARGV`) |
+| `trgfn_commesse_default_emittente` | dal **billing account** (`fn_get_emittente_fiscale_id`), colonna `emittente_soggetto_ruolo_id` | **non è una copia**: resta |
+
+Tabelle ancorate su `emittente_fiscale_id NOT NULL` **senza** alcun default
+(doc auto-gen, 15-09): `magazzino.magazzini`, `magazzino.assets`,
+`vendite.resi`, `vendite.offerte_commerciali`, `pratiche.pratiche`,
+`documenti.documenti_generati`/`template_documenti`/`template_asset`,
+`anagrafiche.soggetti_titoli_iva` (le due `config.user_emittent*` sono la
+mappa stessa: nessun default ha senso). ⇒ Il perimetro del BB è **più largo
+di magazzino**, ed è la ragione per cui dev'essere generico: per ciascuna il
+brief dice da dove si deriva (sessione o padre) o perché no. Lettori da
+censire nel ritiro dei tre codici (`obsoleto_dal`, mai `DELETE`):
+`error_ui_overrides.py` (`E_PREV_…` → `highlight_form_fields`), i cinque
+ripieghi in `error_messages_fallback.py`, `error_policies_generated.py`,
+dieci pgTAP che nominano codici o trigger (fra cui
+`vendite/test-trgfn-preventivi-default-emittente-e-guard-coerenza`), i
+`manual/` delle cinque funzioni. ⚠️ Il CRUD generico del pannello è
+metadata-driven (`config_metadata_repository`: tutte le colonne non-audit
+sono editabili): oggi mostrerebbe `emittente_fiscale_id` **e**
+`indirizzo_dettaglio_id` come interi da digitare — il default risolve il
+primo; il secondo è la ragione per cui un magazzino, prima o poi, vuole un
+drawer suo (FE, non urgente).
 
 **Le tre righe** (`inventari_righe`, `rettifiche_righe`, `trasferimenti_righe`):
 `lotto varchar` → `lotto_id` FK `lotti`; `seriale varchar` → `asset_id` FK
@@ -887,6 +934,7 @@ dove la frase è la posta in gioco.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-09-15 (sera, 17:10) | **Mergiato e verificato.** PR #1593 su `Tito-dev` (14:43 UTC); corsa del merge letta dal log: pgTAP senza regressioni, RIENTRATO confermato (riga 58 della baseline CI ancora da togliere), Django rosso **solo** per i due `E_MAG_*` — i cinque `E_PROCESSO_*` sono già rigenerati (#1592). **Tre correzioni di Tid**: (1) §4.7 **deciso** — BB generico dell'emittente di default **e ritiro delle copie di vendite nello stesso giro**, brief suo prima del Lotto 2; censite: tre copie vere, una variante morbida (ddt), una diversa (commesse), e nove tabelle ancorate senza default; (2) §4.3 — `requires_lotto` non si copia da `requires_serial` a occhi chiusi: quello è un flag di **struttura BoM** sotto lock, questo **no** per decisione; e la frase sul `security_invoker` di `vw_articoli_dettaglio` era **falsa** (la vista non ce l'ha e non deve averlo); (3) §12 p.2 — **nessun cantiere `dbops`**: le automazioni su dev si lanciano a mano nell'ordine della CI, scritto lì |
 | 2026-09-15 15:18 → 15:30 | ✅ **Commit `61b4cb5d3` su `dev/db-tid`** (Tid, 15:18, pushato: `origin/dev/db-tid` allineato) — «Aggiornamento Db … Eseguiti test pgtap e aggiornata documentazione»: 23 changeSet nuovi + il loader `20251001-51` in place, 5 pgTAP nuovi + 2 riscritti, i CSV, 32 manuali, le pagine auto-gen rigenerate (`gen_db_docs.py`: indice `magazzino/` con rev 15-09, `lotti`/`movimenti_attesi`/`valore_giacenza`/`vw_giacenza_ubicazione`, le otto `fn_scope_*`, `fn_pgtap_crea_indirizzo_dettaglio`), questo brief. Le cancellazioni (`git rm`) erano già nel commit precedente `f6eb32841` e sono su `Tito-dev` dalla PR #1591 (12:47) **senza** il lotto — stato a metà innocuo, vedi §12 p.5 e p.6. **Verifica alle 15:30** (letta dal `databasechangelog` e dal catalogo di dbdev): 26 `EXECUTED` (`-18` alle 12:29, `-19`/`-20` alle 12:50 — non «tutti e tre alle 12:50»), 23 tabelle RLS / 23 policy, `vw_rls_perimetro_scoperto` e `vw_storico_scope_da_dichiarare` a 0 per `magazzino`, shadow su `lotti` e `movimenti_attesi`, 12 trigger sugli attesi, 0 `ix_mag_res*`, 0 esenzioni, 16 causali, oggetti ritirati assenti — la fotografia di §12 regge. 🔴 **Trovato verificando: una richiesta BE mancava a §12.** I due `E_MAG_*` sono a catalogo e hanno **0** occorrenze in `error_policies_generated.py` e `error_messages_fallback.py`; `test_il_file_generato_e_allineato_al_catalogo` è **già rosso su `Tito-dev`** dalla PR #1591 (i cinque `E_PROCESSO_*` di «Esegui ora», 23 righe) e questo lotto vi aggiunge due codici → §12 p.7, quarta voce. ⚠️ E la suite pgTAP in CI **non gira sulla PR** verso `Tito-dev` (`ci-validate.yaml`: PR verso `main`, push su `Tito-dev` che toccano `db/`): il RIENTRATO si legge nella corsa **del merge** |
 | 2026-09-15 (notte) | ✅ **CHIUSO lato DB** (Tid): `-18`, `-19`, `-20` applicati su dbdev (12:50), automazioni passate, **`scripts/pgtap-baseline.sh` verde su dbdev e su `zeroerp_ci` ricostruito da zero** (`ci-local.sh --fresh --ci-apply`). Letto dal catalogo dopo: 0 righe in `vw_rls_perimetro_scoperto` e in `vw_storico_scope_da_dichiarare` per `magazzino`, shadow e `z90_storico` su `lotti` e `movimenti_attesi` (non su `valore_giacenza`: per progetto, §4.6), 7 `require_attivo` sugli attesi, indici degli attesi tutti col nome di policy, registro dei riferimenti morti a 0/0/0. Il bilancio della sera è in §12 e nelle ultime sei righe di §5 |
 | 2026-09-15 (sera) | **Prima corsa su `zeroerp_ci` (`scripts/ci-local.sh`) rossa su P-4**: «il vincolo `uq_mag_movimenti_docref` non esiste». Non erano i sette `DROP TRIGGER` (tutti `IF EXISTS`): è il `MARK_RAN` autolesionista di `20251005-11/-15` (§5, riga nuova) — `-13/-14` e `-17/-18` sono `MARK_RAN` su **ogni** DB da zero (letto nel `databasechangelog` di `zeroerp_ci`), e i due `uq_*_docref` esistono solo su dev. Corretti `20260915-05` e `-07`: `DROP CONSTRAINT IF EXISTS` sul solo docref, intestazioni col perché. Censiti sullo `zeroerp_ci` **tutti** i nomi che il lotto droppa o rinomina senza `IF EXISTS` (10 `DROP CONSTRAINT`, 23 `RENAME CONSTRAINT`, sequenze): mancavano solo quei due. Provata la catena `00_schema`/`20_code` del lotto (11 changeSet, `-05` → `-17`) con l'SQL estratto da `updateSQL` contro `zeroerp_ci` in `BEGIN … ROLLBACK`, tolti i tre rename condizionali: **passa**. I cinque `80_data` del lotto precondizionano solo `tableExists`. ⚠️ Su dev i due changeSet sono già `EXECUTED` col checksum vecchio: il riallineamento è il passo 1-bis di §12. **Poi, prima corsa col runner** (Tid) di `test-movimenti-attesi-forma-v1`: 12/14 — il 2 è il momento sbagliato (`ci_apply` non passato), il **14 pinnava un `23502` che sotto RLS non arriva** (la policy scatta prima del vincolo: `42501`) → riscritto su `col_not_null` (§12, punto 3). Poi **14/14**, ma dopo **due** passate di automazioni: su dev `db-ci-apply` non le rilancia, sono dieci job pgAgent senza ordine, e `storico` gira prima di `storico_provision` → una madre nuova ha la shadow alla passata 1 e il trigger alla 2 (§12, punto 2: finestra di 24h, cantiere `dbops`). **Terzo rosso col runner**, `dbops/test-riferimenti-morti-v1` test 4: la voce «orfana di proposito» di `trgfn_guard_sorgente_polimorfa_tipizzata` (unica del registro dal 04-08) è **rientrata** — il lotto l'ha montata su sei tabelle e nessuno ha censito il registro che la dichiarava orfana. `20260915-18`: `DELETE` in avanti, provato in `BEGIN … ROLLBACK` (rientrati 0, da sanare 0). Lezione in §5. **Poi `ci-local.sh --fresh --ci-apply`** (Tid): tre `ERRORE_FIXTURE` — le fixture cercavano un `indirizzi_dettaglio` «attivo», dato di macchina assente da zero → helper `fn_pgtap_crea_indirizzo_dettaglio` (`20260915-19`) nelle quattro fixture; e il test 1 degli attesi rosso solo da zero: tre indici FK del 2025 sopravvissuti alla rinomina (la policy copre solo FK scoperte) → `20260915-20`, e il test cerca anche `mag_res_`. Provati i quattro file su `zeroerp_ci` con l'SQL estratto: tutti verdi. Due righe in §5. Terzo giro (`dbops` sul CI): `test-trgfn-prevent-deactivate-if-children-pdp` `ASSERZIONE` — stesso lookup dell'indirizzo, fuori lotto, verde su GitHub solo per contaminazione d'ordine (fonte non trovata: i quattro file che fanno `COMMIT` scrivono solo conti bancari) → helper anche lì, 13/13 con i test 7-12 finalmente eseguiti. Il lookup non esiste più in nessun pgTAP. Quarto: `config/test-sorgenti-scope-pulizia-v1` rosso su dev (test 6 e 9) — pinnava le cinque `*_RIGA` archiviate, cioè l'`UPDATE` a mano che D-L1-f ha disfatto; in CI era già `ASSERZIONE` in baseline (da zero quelle righe non esistevano). Riscritti sul contratto D-L1-f: 9/9 su `zeroerp_ci`, stessi valori su dev → **rientra** in CI (lo toglie `pgtap-baseline-ci-rientrati.sh` dalla corsa). Censimento mancato del lotto: riga in §5 |
@@ -973,9 +1021,14 @@ autonomo»):
    le fanno i dieci job pgAgent `automations_*`, tutti `daily_21` senza ordine, e
    `automations_storico` gira **prima** di `automations_storico_provision`: una madre nuova ha
    la shadow alla passata 1 e il `z90_storico` alla 2 — alle 21:00 vuol dire il giorno dopo.
-   🔴 **Cantiere `dbops` da aprire**, non del lotto: job `automations_storico` a `21:05`, o una
-   procedura unica nell'ordine del changeSet della CI. Finché non c'è, ogni tabella nuova in
-   scope storico ha 24 ore senza storico su dev;
+   ✅ **Nessun cantiere `dbops`** (Tid, 15-09 sera): *«le automazioni posso lanciarle a mano
+   anch'io, se servono»*. La prima stesura chiedeva un job a `21:05` o una procedura unica; non
+   serve. La regola operativa resta scritta qui: su dev, dopo un apply che crea una tabella in
+   scope storico, si lanciano a mano **nell'ordine della CI** (`220250627-31`):
+   `CALL maintenance.proc_automations_audit_update_job()` → `…_storico_provision_job()` →
+   `…_storico_job()` → `…_tx_id_job()` → `…_attivo_job()` → `…_lock_columns_job()` →
+   `…_delete_block_job()`. Un pgTAP che conta i generati di una tabella nuova si legge **dopo**
+   quel giro, non dopo i job delle 21:00;
 3. ✅ pgTAP col runner su dbdev e su `zeroerp_ci` da zero: baseline verde;
 4. ✅ la doc: le pagine auto-gen sono **rigenerate e nel commit** (`scripts/gen_db_docs.py`,
    che è quello che scrive `dbzero/*` — non `build_docs_zensical.py`, che costruisce il sito):
@@ -993,16 +1046,20 @@ autonomo»):
    non supposto**: nel `causali.csv` di quel commit `ambito_causale_id` era vuoto per tutte le
    righe, e sul push di merge (`run 34959875667`) migrate e suite pgTAP sono verdi. Si chiude
    con il punto 6;
-6. ⏳ la **PR `dev/db-tid` → `Tito-dev`**. ⚠️ Dove si legge il RIENTRATO: la suite pgTAP in
-   CI **non gira sulla PR** (`ci-validate.yaml`: PR verso `main`, e push su `Tito-dev` che
-   toccano `db/`) — compare nella corsa **del merge**, e da quella si lancia
-   `scripts/pgtap-baseline-ci-rientrati.sh` per togliere `config/test-sorgenti-scope-pulizia-v1`
-   (riga 58 di `baseline-rossi-ci.tsv`, oggi ancora lì, com'è giusto). ⚠️ Quella corsa sarà
-   **rossa su «Django tests» a prescindere dal lotto**: `test_il_file_generato_e_allineato_al_catalogo`
-   è rosso su `Tito-dev` dalla PR #1591 (i cinque `E_PROCESSO_*` di «Esegui ora», 23 righe
-   di divergenza) e i due `E_MAG_*` di qui vi si sommano — è il punto 7, quarta voce, non un
-   rosso del DB;
-7. ⏳ **richieste a BE/FE** (fuori perimetro, memoria «non toccare backend/»): togliere
+6. ✅ la **PR `dev/db-tid` → `Tito-dev`**: **#1593, mergiata il 15-09 alle 14:43 UTC**
+   (commit `937acd83a`; poi #1594). **Corsa del merge `34984791746`, letta dal log** (non
+   supposta): suite pgTAP «nessuna regressione: ogni rosso era già noto», e
+   **RIENTRATO `db/pgtap/config/test-sorgenti-scope-pulizia-v1.sql`** — la riga 58 di
+   `baseline-rossi-ci.tsv` è **ancora lì** (⏳ DB: `scripts/pgtap-baseline-ci-rientrati.sh` su
+   quella corsa). «Django tests» **rosso: 2 FAIL su 4861** —
+   `test_nessun_codice_nuovo_senza_policy` e `test_il_file_generato_e_allineato_al_catalogo`,
+   ed **entrambi nominano solo i due `E_MAG_*`**: i cinque `E_PROCESSO_*` li ha già rigenerati
+   il BE con #1592 (9 occorrenze in `error_policies_generated.py`). ⇒ Il rosso residuo su
+   `Tito-dev` è **tutto di questo lotto**, e lo chiude la quarta voce del punto 7;
+7. ⏳ **richieste a BE/FE** (fuori perimetro, memoria «non toccare backend/») — **verificate
+   il 15-09 alle 17:10 con `grep`: tutte e quattro ancora aperte** (0 occorrenze di `E_MAG_`
+   nei due moduli, `ambito_causale` ancora a riga 107 e 63, 0 `requires_lotto` in BE/FE):
+   togliere
    `"magazzino.ambito_causale"` da `_REL_CONSENTITE` (`backend/apps/core/db/dbops_repository.py`)
    e la riga di `CONFIG_TABLES` (`frontend/src/core/config-tables.js`) — finché restano, la
    voce «Ambito Causale» del pannello risponde 500 (D-L1-g); esporre `requires_lotto`
