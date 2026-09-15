@@ -503,6 +503,22 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LOTTO_NON_RIUTILIZZABILE": "Lotto non riutilizzabile.",
     "E_LOTTO_NON_TROVATO": "Lotto non trovato.",
     "E_LOTTO_PARAMETRO_NON_COERENTE": "Parametri lotto non coerenti.",
+    # Magazzino, Lotto 1 (brief-db-magazzino-lotto-1-terreno-vuoto §4.7, §4.9):
+    # i due guard del terreno vuoto. A catalogo portano causale, segno, quantita'
+    # e i due magazzini: qui la frase senza. Il primo e' TECNICO (il verso lo
+    # compone l'operazione, non una persona), il secondo DATO_ERRATO (la
+    # destinazione la sceglie l'operatore nel form).
+    "E_MAG_MOVIMENTO_VERSO_INCOERENTE": (
+        "Movimento di magazzino con verso incoerente: la quantita' non ha il "
+        "segno della causale (entrata positiva, uscita negativa) oppure vale "
+        "zero. Non e' un dato da correggere nel form: segnalare al supporto."
+    ),
+    "E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI": (
+        "Il magazzino di destinazione non appartiene allo stesso emittente "
+        "fiscale del magazzino di origine, oppure non e' visibile nel tuo "
+        "perimetro: un trasferimento sposta merce solo fra magazzini dello "
+        "stesso emittente."
+    ),
     # ⭐ `E_MESSAGGIO_NON_DEFINITO` — RINOMINATO dal team DB il 2026-08-07 (era
     # `MESSAGGIO_NON_DEFINITO`, senza prefisso). E' l'ULTIMA riga del registro dei
     # codici fuori convenzione `dbops.messaggi_errore_codici_legacy`, che con

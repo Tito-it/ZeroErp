@@ -104,7 +104,6 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "documenti.tipi_documento_output",
         "documenti.tipi_file_documento",
         # --- magazzino ---
-        "magazzino.ambito_causale",
         "magazzino.causali",
         "magazzino.magazzini",
         "magazzino.ubicazioni",

@@ -60,7 +60,6 @@ export const CONFIG_TABLES = [
   // --- catalogo ---
   { schema: 'catalogo', rel: 'catalogo.unita_misura', label: 'Unita\' di Misura', drawer: null },
   // --- magazzino ---
-  { schema: 'magazzino', rel: 'magazzino.ambito_causale', label: 'Ambito Causale', drawer: null },
   { schema: 'magazzino', rel: 'magazzino.causali', label: 'Causali', drawer: null },
   { schema: 'magazzino', rel: 'magazzino.magazzini', label: 'Magazzini', drawer: null },
   { schema: 'magazzino', rel: 'magazzino.ubicazioni', label: 'Ubicazioni', drawer: null },
