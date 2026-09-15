@@ -1,5 +1,11 @@
 # Brief DB — Avviare un processo dall'interfaccia: il lavoro di coda che lo chiede
 
+> ✅ **CHIUSO il 2026-09-15 (sera): collaudato in-app da Tid** — due «Esegui
+> ora» sul digest settimanale, lavori `FATTO`, run con `origine = COMMAND` e
+> l'utente di chi ha premuto, email `SENT` e ricevute. Spostato in
+> `work-done/` insieme al piano BE/FE, dove sta il resoconto del collaudo
+> (§4.4 e §7.5 del piano).
+>
 > **Da leggere per primo: §11 — il terzo giro (15-09): il tipo
 > `ESEGUI_PROCESSO` è **ACCESO nel CSV** (una cella, nessun changeSet, prova
 > verde in transazione annullata), il pgTAP resta com'è per scelta; il
@@ -16,7 +22,7 @@
 > — passi, test e decisioni per esteso; qui solo ciò che tocca il DB.
 > Chi scrive: backend (`dev/backend-tid`), 2026-09-14. Decisione di Tid del
 > 14-09, dopo aver rilanciato a mano le due cadenze del digest.
-> Origine: [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
+> Origine: [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md)
 > §4.1-bis (addendum 14-09) — il verbo **«Esegui ora»** si stacca da «Riavvia»
 > e parte per primo, **senza host**: un timer è un orario attorno a un
 > comando, e il comando si lancia da solo.
@@ -618,6 +624,9 @@ come un difetto di questo cantiere.
 > rigenerazione BE, non con un commit DB: §11.3.
 
 ### 10.4 Chiusura — cosa chiede il BE, e quando
+
+> ✅ Fatto il 15-09: accensione applicata dal DB (§11), collaudo in-app la
+> sera stessa — il resoconto è nel piano, §4.4.
 
 A handler in servizio sul backend di sviluppo (deploy + `kill -HUP` al master:
 gunicorn dev non ricarica da sé): **`attivo = true` su `ESEGUI_PROCESSO` dal

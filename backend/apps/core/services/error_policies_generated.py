@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 862, di cui 89 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 864, di cui 89 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -675,6 +675,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LOTTO_NON_RIUTILIZZABILE": "CONFLITTO_STATO",
     "E_LOTTO_NON_TROVATO": "NON_TROVATO",
     "E_LOTTO_PARAMETRO_NON_COERENTE": "DATO_ERRATO",
+    # magazzino.trgfn_movimenti_guard_verso: la quantità del movimento (o dell'atteso) non ha il segno della causale — sign(qta) <> causali.segno. ⭐ TECNICO e non DATO_ERRATO: il verso non lo digita mai una persona, lo compone l'operazione dalla causale (M-1); un mismatch è un chiamante rotto, e il contesto non porta campo. La primitiva del Lotto 2 dà il messaggio comprensibile PRIMA di arrivare qui: questo è la rete, e il lettore è dbops.error_log. ⚠️ Anche qta = 0 cade qui (sign = 0), prima del CHECK qta <> 0. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.9.
+    "E_MAG_MOVIMENTO_VERSO_INCOERENTE": "TECNICO",
+    # magazzino.trgfn_trasferimenti_guard_stesso_emittente: i due magazzini di un trasferimento non appartengono allo stesso emittente fiscale, o uno dei due non è visibile a chi scrive (lettura sotto RLS, fail-closed). Nessuna operazione di magazzino attraversa due emittenti (M-6): fra due emittenti sarebbe una cessione con un documento, non uno spostamento. DATO_ERRATO perché la destinazione la sceglie una persona nel form: campo = magazzino_id_to. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7.
+    "E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI": "DATO_ERRATO",
     # Ripiego del ripiego di fn_log_error_only: la funzione lo cerca per nome scritto a mano. Rinominato da MESSAGGIO_NON_DEFINITO il 2026-08-07, ultima riga del registro dei codici fuori convenzione.
     "E_MESSAGGIO_NON_DEFINITO": "TECNICO",
     # pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga: chi inserisce il movimento ha passato a mano contabile_id, fattura_id o billing_account_id con un valore diverso da quello della riga contabile agganciata. Un codice solo per tutti e tre perche' il rimedio e' identico - non passare quel valore, lo deriva il trigger dalla riga - e il messaggio nomina la colonna in un segnaposto invece di moltiplicare i codici. I tre punti erano E_GENERICO fino al 2026-08-21.

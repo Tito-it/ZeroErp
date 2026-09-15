@@ -211,11 +211,13 @@ function onIdentitaCreata() {
         />
       </h3>
       <p class="app-proc-help">{{ t('amministrazione.processi.presidi_help') }}</p>
-      <PresidiProcessiPanel
-        :presidi="store.presidi"
-        :loading="store.presidiLoading"
-        :errore="store.presidiErrore"
-      />
+      <div class="app-proc-presidi-corpo">
+        <PresidiProcessiPanel
+          :presidi="store.presidi"
+          :loading="store.presidiLoading"
+          :errore="store.presidiErrore"
+        />
+      </div>
     </section>
 
     <ProcessoDrawer
@@ -229,7 +231,24 @@ function onIdentitaCreata() {
 
 <style scoped>
 .app-proc-na { opacity: 0.55; }
-.app-proc-presidi { margin-top: 1.25rem; }
+/* ⛔ La sezione dei presidi ha un TETTO e scrolla dentro di sé. La pagina non
+   scrolla (`.app-page` è `overflow: hidden`) e la lista può schiacciarsi
+   (`min-height: 0`): un pannello senza limite prende tutta l'altezza e la
+   lista — il contenuto principale — finisce a ZERO pixel, senza nessun
+   errore. È successo il 2026-09-15 con 17 presidi a catalogo: il numero e la
+   lunghezza li decide il DB, non questa pagina, quindi il limite sta qui.
+   ⚠️ `vh` e non `%`: una percentuale che non riesce a risolversi vale `none`,
+   cioè torna il difetto in silenzio. `flex: 0 0 auto`: la sezione non cede
+   spazio alla lista oltre il tetto, ma nemmeno glielo ruba. */
+.app-proc-presidi {
+  margin-top: 1.25rem;
+  flex: 0 0 auto;
+  max-height: 40vh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.app-proc-presidi-corpo { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .app-proc-presidi-titolo {
   display: flex; align-items: center; gap: 0.5rem;
   font-size: 1rem; margin: 0 0 0.25rem;

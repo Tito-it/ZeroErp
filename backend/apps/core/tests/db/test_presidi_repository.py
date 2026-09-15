@@ -218,6 +218,9 @@ class PresidiPannelloTests(SimpleTestCase):
         # Una riga su due: `troncato` lo dice, o «una» si leggerebbe come «tutte».
         self.assertTrue(stato[0]["troncato"])
         self.assertIsNone(stato[0]["errore"])
+        # ⭐ «Chiede un occhio» viaggia nella riga: il pannello lo LEGGE, non
+        #    lo ricalcola (2026-09-15).
+        self.assertTrue(stato[0]["da_guardare"])
 
     # 7. ⛔ Un presidio che non si legge e' una riga che LO DICE.
     def test_un_presidio_non_letto_diventa_una_riga_che_lo_dice(self) -> None:
@@ -241,6 +244,11 @@ class PresidiPannelloTests(SimpleTestCase):
         #    schermata lo zero e' il verde.
         self.assertIsNone(caduta["conteggio"])
         self.assertIn("connessione persa", caduta["errore"])
+        # Non letto = da guardare; i due letti a zero no.
+        self.assertTrue(caduta["da_guardare"])
+        self.assertFalse(
+            next(p for p in stato if p["vista"] == "dbops.vw_prima")["da_guardare"],
+        )
         self.assertEqual(len(stato), 3, "gli altri due presidi restano guardati")
         # E la connessione si rimette a posto, ma solo se e' inutilizzabile:
         # questo giro sta dentro una richiesta web.

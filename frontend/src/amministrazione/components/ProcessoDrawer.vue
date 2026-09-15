@@ -287,10 +287,16 @@ async function eseguiOra(sveglia) {
 </script>
 
 <template>
+  <!-- ⚠️ WIDE_PLUS e non COMPLEX (rilievo di Tid, 2026-09-15): a 800 px il tab
+       «Sveglie» sforava — la tabella voleva 983 px su `run_fatturazione_batch`
+       — e «Esegui ora», ultima colonna, finiva oltre la barra di scorrimento.
+       La larghezza da sola non basta, perché unit e comando sono testo libero
+       del deploy: le due colonne vanno anche a capo (`app-proc-wrap`), così il
+       pulsante resta in vista qualunque riga dichiari domani `sveglie.json`. -->
   <Drawer
     :visible="visible"
     position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
     @update:visible="v => emit('update:visible', v)"
     @after-show="onAfterShow"
   >
@@ -492,7 +498,7 @@ async function eseguiOra(sveglia) {
                 </thead>
                 <tbody>
                   <tr v-for="s in sveglie" :key="s.unit">
-                    <td>{{ s.unit }}</td>
+                    <td class="app-proc-wrap">{{ s.unit }}</td>
                     <td>
                       <Tag
                         :value="s.forma === FORMA_TIMER
@@ -515,7 +521,7 @@ async function eseguiOra(sveglia) {
                         inactive-severity="secondary"
                       />
                     </td>
-                    <td><code class="app-proc-mono">{{ s.comando.join(' ') }}</code></td>
+                    <td class="app-proc-wrap"><code class="app-proc-mono">{{ s.comando.join(' ') }}</code></td>
                     <td>
                       <!-- ⭐ Solo sui TIMER: su un servizio sempre acceso non
                            c'è una corsa da lanciare — non è un candidato, non
@@ -569,6 +575,12 @@ async function eseguiOra(sveglia) {
   text-align: left; padding: 0.25rem 0.5rem; white-space: nowrap;
 }
 .app-proc-tabella th { opacity: 0.7; font-weight: 500; }
+/* Le celle di TESTO LIBERO del deploy (unit, comando) vanno a capo: la loro
+ * lunghezza non la decide questa schermata, e con `nowrap` spingerebbero
+ * l'ultima colonna — il pulsante — oltre la barra di scorrimento. Le altre
+ * restano `nowrap`: sono tag, date e codici corti. `anywhere` spezza dentro
+ * un token solo se non c'è un punto di rottura naturale (spazio, trattino). */
+.app-proc-tabella td.app-proc-wrap { white-space: normal; overflow-wrap: anywhere; }
 .app-proc-crea { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
 /* Cadenza e comando si LEGGONO come sono scritti nel deploy: il `<code>` dà
  * già il monospace, qui solo la taglia — senza sfondo (è un dato, non un

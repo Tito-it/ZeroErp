@@ -1193,9 +1193,12 @@ di DEBITO che deve CALARE»*, e il backend lo consegna in `descrizione` leggendo
 con `obj_description`. ⛔ Un elenco di eccezioni scritto nel backend o nel
 frontend sarebbe la seconda sede della stessa decisione, e la seconda diverge.
 
-⛔ **Quante siano non è scritto da nessuna parte, ed è una scelta.** L'elenco è
-`PRESIDI_PROCESSI` in `apps/core/db/processi_repository.py`, qualificato collo
-schema (ci sono viste di `dbops` **e** di `maintenance`). Un numero copiato
+⛔ **Quante siano non è scritto da nessuna parte, ed è una scelta.** Dal
+2026-09-10 l'elenco è il **catalogo** `dbops.presidi` (natura `ZERO`), letto da
+`PresidiRepository.stato_presidi`; fino a quel giorno era la costante
+`PRESIDI_PROCESSI` di `processi_repository.py`, oggi rimossa. Il nome della vista
+esce qualificato collo schema (ci sono viste di `dbops` **e** di `maintenance`).
+Un numero copiato
 accanto a un elenco che cresce invecchia in silenzio: fino al 2026-09-07 il
 docstring della view diceva «i SEI presidi» e alla stessa data l'elenco ne
 contava dieci.
@@ -1212,10 +1215,14 @@ per primo.
         "descrizione": "PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa non tornano. DEVE restare VUOTA. …",
         "conteggio": 1,
         "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "…": "…" } ],
-        "troncato": false
+        "troncato": false,
+        "elencabili": true,
+        "errore": null,
+        "da_guardare": true
       }
     ],
-    "con_righe": 4
+    "con_righe": 4,
+    "non_letti": 0
   }
 }
 ```
@@ -1227,6 +1234,9 @@ per primo.
 | `conteggio` | `count(*)` **senza filtro e prima delle righe**: dice quanto sta fuori dalle prime consegnate |
 | `righe` | le prime N righe, con le colonne che la vista ha (forme diverse per vista) |
 | `troncato` | le righe mostrate non sono tutte — senza, venti su duecento si leggerebbero come «sono venti» |
+| `elencabili` | `false` sulle viste con perimetro (`security_invoker`): il conteggio arriva da `fn_conta_presidio`, le righe **no**, per contratto — «non elencabile» e «niente da elencare» vanno distinti |
+| `errore` | il presidio **non si è potuto leggere**: `conteggio` è `null` e qui c'è il perché. ⛔ Non è uno zero: il verde vuol dire «visto e vuoto» |
+| `da_guardare` | `true` se ha righe **oppure** non è stato letto. È la stessa domanda che la testata conta (`con_righe` + `non_letti`), decisa **nella riga** dal repository: il pannello la legge e non la ricalcola (2026-09-15, tolta la copia in `PresidiProcessiPanel.vue`) |
 
 ⚠️ **Le colonne di `righe` non sono un contratto fisso**: ogni presidio ha la sua
 forma e il client le rende leggendo le chiavi che trova
@@ -1255,7 +1265,7 @@ deploy indicata, con lo scope di chi preme (`run_as = OPERATORE`); il drenatore
 sottoprocesso — **la stessa riga del timer, meno l'orario** — e il comando
 registra il suo run sotto il proprio processo con `origine = COMMAND` e
 l'utente di chi ha premuto. **Il web non esegue niente.** Brief:
-`work-in-progress/brief-db-avvio-manuale-di-un-processo.md`; piano
+`work-done/brief-db-avvio-manuale-di-un-processo.md`; piano
 `piano-be-fe-avvio-manuale-di-un-processo.md`.
 
 ⚠️ **Porta**: `AdminAPIView` (v1 solo `SUPER_ADMIN`, decisione di Tid del

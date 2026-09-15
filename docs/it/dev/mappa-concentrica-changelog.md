@@ -131,7 +131,7 @@ Vedi
 [brief-db-stato-email-console-non-e-inviata.md](work-done/brief-db-stato-email-console-non-e-inviata.md),
 [brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md) §13-§14,
 [analisi-riavvio-processi-da-interfaccia.md](work-in-progress/analisi-riavvio-processi-da-interfaccia.md),
-[brief-db-avvio-manuale-di-un-processo.md](work-in-progress/brief-db-avvio-manuale-di-un-processo.md).
+[brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md).
 
 **Anello 0 + 1 — Il software che serviva dati morti.** Nato dalla coda del
 cantiere dello storico, dove si stava per scrivere codice che mostrasse la

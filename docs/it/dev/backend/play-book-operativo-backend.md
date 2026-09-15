@@ -559,7 +559,7 @@ bash backend/scripts/tests/test-install-timers.sh
 
 ⭐ **Perché.** «Esegui ora» dal drawer dei processi
 ([analisi-riavvio-processi-da-interfaccia.md §4.1-bis](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md),
-brief [brief-db-avvio-manuale-di-un-processo.md](../work-in-progress/brief-db-avvio-manuale-di-un-processo.md))
+brief [brief-db-avvio-manuale-di-un-processo.md](../work-done/brief-db-avvio-manuale-di-un-processo.md))
 lancia **lo stesso comando del timer, meno l'orario** — e il backend non può
 leggerlo da un file `.service`. Fino al 14-09 la riga viveva **solo** lì
 (`ExecStart=… run-command.sh digest_presidi --cadenza settimanale`).
