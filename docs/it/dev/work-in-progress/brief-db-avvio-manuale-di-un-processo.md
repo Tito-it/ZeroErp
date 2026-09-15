@@ -1,12 +1,14 @@
 # Brief DB — Avviare un processo dall'interfaccia: il lavoro di coda che lo chiede
 
-> **Da leggere per primo: §9 — il secondo giro (15-09): i cinque codici errore
-> del verbo sono **a catalogo** (CSV, id 1067–1071, nessun changeSet), con una
-> classe diversa da quella chiesta su uno solo (§9.2). Poi §8 — la risposta del
-> DB (14-09, sera): le tre righe reggono e sono **APPLICATE** (pgTAP verde —
-> §8.4); tre cose del brief no (§8.2). Le due domande a Tid (§8.5) sono decise
-> — solo `SUPER_ADMIN`; «Esegui ora» solo su comandi brevi. Il DB aspetta il
-> BE per accendere il tipo.**
+> **Da leggere per primo: §10 — la risposta del BE (15-09, sera): stato di
+> ogni pezzo e le decisioni prese nel piano BE/FE. Poi §9 — il secondo giro
+> (15-09): i cinque codici errore del verbo sono **a catalogo e in git**
+> (CSV, id 1067–1071, PR #1591 su Tito-dev), con una classe diversa da quella
+> chiesta su uno solo (§9.2). Poi §8 — la risposta del DB (14-09, sera): le
+> tre righe reggono e sono **APPLICATE** (pgTAP verde — §8.4); tre cose del
+> brief no (§8.2). Le due domande a Tid (§8.5) sono decise — solo
+> `SUPER_ADMIN`; «Esegui ora» solo su comandi brevi. Il DB aspetta il BE per
+> accendere il tipo.**
 > Chi scrive: backend (`dev/backend-tid`), 2026-09-14. Decisione di Tid del
 > 14-09, dopo aver rilanciato a mano le due cadenze del digest.
 > Origine: [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
@@ -335,12 +337,13 @@ escludere per forma, come il §4.3 dell'analisi esclude «Riavvia».
 
 | Passo | Di chi | Stato |
 | --- | --- | --- |
-| handler `esegui_processo_default`, endpoint su `AdminAPIView` (§8.5.1), tetto basso nel sottoprocesso (§8.5.2), capability sulle sveglie, pulsante nel drawer | BE | 🔵 da fare, dopo questo apply |
-| `job_run()` che legge `ZEROERP_JOB_ORIGINE` / `ZEROERP_JOB_AUTH_USER_ID` (analisi §9-bis punto 3) | BE | 🔵 |
-| `attivo = true` su `ESEGUI_PROCESSO`, **dal CSV**, su richiesta del BE a handler in servizio (come `NOTIFICA_DIGEST_MUTO` l'11-09) | DB | ⏳ in attesa del BE |
-| i cinque codici errore del verbo, nei due CSV del catalogo (§9) | DB | ✅ 15-09, in attesa del migrate e del commit |
-| `genera_error_policies` + le cinque frasi di ripiego in `error_messages_fallback.py` | BE | 🔵 dopo il migrate dei CSV |
-| commit di `dev/db-tid` (3 CSV, pgTAP, 3 doc manuali, brief e analisi) | Tid | ⏳ |
+| handler `esegui_processo_default`, endpoint su `AdminAPIView` (§8.5.1), tetto basso nel sottoprocesso (§8.5.2), capability sulle sveglie | BE | ✅ 15-09 sera (§10.1) — in attesa del deploy sul backend di sviluppo |
+| pulsante «Esegui ora» nel drawer del processo (tab «Sveglie») | FE | ✅ 15-09 sera (piano §4.3), scritto sul contratto della capability |
+| `registered_job()` (⚠️ il nome vero, non `job_run()`) che legge `ZEROERP_JOB_ORIGINE` / `ZEROERP_JOB_AUTH_USER_ID` (analisi §9-bis punto 3) | BE | ✅ 15-09 (`job_run.py::origine_e_attore_dall_ambiente`, fail-loud sul valore) |
+| `attivo = true` su `ESEGUI_PROCESSO`, **dal CSV**, su richiesta del BE a handler in servizio (come `NOTIFICA_DIGEST_MUTO` l'11-09) | DB | ⏳ in attesa del BE (§10, «chiusura») |
+| i cinque codici errore del verbo, nei due CSV del catalogo (§9) | DB | ✅ 15-09, applicati sul dbdev e **in git** (commit `5dd7013fd`, PR #1591 su Tito-dev) |
+| `genera_error_policies` + le cinque frasi di ripiego in `error_messages_fallback.py` | BE | ✅ 15-09 sera — il file porta il catalogo **di git**; i due `E_MAG_*` del dbdev sono di un altro cantiere (§10.3) |
+| commit di `dev/db-tid` (3 CSV, pgTAP, 3 doc manuali, brief e analisi) | Tid | ✅ 15-09 (`53d5ca923`, PR #1590; codici: PR #1591) |
 | a cantiere chiuso: brief in `work-done/` e una riga nel changelog della mappa concentrica (tema «processi automatici») | DB | ⏳ |
 
 ### 8.5 ✅ Due domande a Tid — entrambe decise il 14-09, sera
@@ -528,3 +531,88 @@ sole righe appese (niente CRLF, niente ri-quotatura).
 | `manage.py genera_error_policies` + cinque frasi **senza segnaposto** in `error_messages_fallback.py` (`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`) — e finché non è fatto, a migrate avvenuto `test_error_policies_divergenza_db` (CI, `ZEROERP_TEST_DB_E2E=1`; a mano `genera_error_policies --check`) è rosso perché il file committato non è più quello che `config.vw_codici_errore_identita` produce, e `test_error_codes_declared_guardrail` (AST, senza DB) rifiuta i cinque codici appena nominati in Python finché il file non li porta: è il verso giusto, non un difetto. ⚠️ `dbops.vw_codici_errore_da_dichiarare` **non** li vede e non deve: legge i corpi plpgsql, e questi codici a database non li solleva nessuno | BE |
 | ⚠️ nel `VARIADIC`/nei valori entrano **unit, id, secondi, exit code** — mai il nome di un parametro (AGENTS.md §«tre canali, tre destinatari») | BE |
 | `attivo = true` su `ESEGUI_PROCESSO`, dal CSV, a handler in servizio (§8.6) | DB, su richiesta |
+
+---
+
+## 10. Risposta del BE — 2026-09-15, sera
+
+> Chi scrive: backend (`dev/backend-tid`). Il dettaglio passo per passo, i
+> test e le decisioni per esteso stanno nel
+> [piano BE/FE](piano-be-fe-avvio-manuale-di-un-processo.md) (§0-bis per lo
+> stato, §3 per le decisioni). Qui c'è ciò che il DB deve sapere per chiudere
+> il suo lato.
+
+### 10.1 Stato, in una riga per pezzo
+
+| Pezzo | Stato |
+| --- | --- |
+| `registered_job` legge origine e attore dall'ambiente (`ZEROERP_JOB_ORIGINE`, `ZEROERP_JOB_AUTH_USER_ID`), fail-loud su un valore fuori vocabolario | ✅ |
+| `avvio_manuale` **obbligatorio** in `sveglie.json` (§10.2, decisione 1) | ✅ |
+| `lavori_vivi_per_chiave` nel repository della coda (`STATI_VIVI` sede unica) | ✅ |
+| BB `scope_operatore_da_request` (§10.2, decisione 4) | ✅ |
+| costanti e tetto (`avvio_manuale.py`, 300 s pinnati ai due limiti del repo) | ✅ |
+| predicato `motivi_esegui_ora`, handler `esegui_processo_default` (registrato in `CoreConfig.ready()`), verbo `POST processi/<codice>/esegui-ora/`, capability `sveglie[]` nel dettaglio, policy rigenerate + cinque ripieghi, test (unit, API, DB provvisto) | ✅ 15-09 sera — 1607/1609 verdi, i due rossi sono i due `E_MAG_*` di §10.3 |
+| FE: tab «Sveglie» nel drawer del processo, pulsante, conferma, toast, i18n | ✅ |
+| accensione di `ESEGUI_PROCESSO` | ⏳ la chiede il BE a handler in servizio (§10.4) |
+
+### 10.2 Le decisioni del piano che toccano anche il DB
+
+1. **«Non candidato» ha una sede, ed è il dichiarato di deploy.** La
+   decisione 2a di §8.5 («solo comandi brevi») aveva bisogno di un posto in
+   cui *«questa sveglia non si lancia a mano»* fosse scritto: `abilita = false`
+   copriva i due timer di fatturazione **per coincidenza**, e il giorno in cui
+   si accendono il pulsante si sarebbe acceso con loro. Da qui `avvio_manuale`
+   obbligatorio su ogni voce di `sveglie.json` (`false` sul drenatore, sui due
+   di fatturazione e sul listener; `true` su digest ×2, email, coda stampa).
+   ⚠️ Non tocca `dbops.processi`: è un fatto del deploy, come la cadenza.
+2. **Il «registro a ritiro» del §6 non serve più**: l'apply è avvenuto, e il
+   verso di ritiro che il DB stesso ha nominato (`test_nessun_handler_orfano`)
+   esiste già. Resta un test **su DB provvisto** che fissa le tre righe come le
+   legge il backend (piano §5.4).
+3. **`post_permission = "processo_avvia"` non si scrive sulla view** (decisione
+   1 di §8.5: v1 solo `SUPER_ADMIN`). Si scrive il **commento** che dice dov'è
+   la sede della fiducia: un attributo che sembra un cancello e non lo è
+   sarebbe peggio di nessun attributo. `processo_avvia` resta per scelta la
+   prima riga «decorativa» di `config.azioni_processo`; il presidio «ogni
+   azione è valutata da almeno una view» è un cantiere suo (§8.6).
+4. **«Già in coda»: entrambi, con ruoli diversi.** La capability spegne il
+   pulsante e l'endpoint rifiuta con 409 su una schermata invecchiata;
+   `fn_accoda_lavoro` resta la rete per la corsa fra due click. Un endpoint che
+   assorbisse in silenzio direbbe «accodato» a chi non ha accodato niente.
+5. **Il BB dello scope operatore** (`scope_operatore_da_request`) è stato
+   estratto da `_accoda_job_fatturazione` alla seconda occorrenza (ok Tid).
+   ⚠️ Effetto collaterale dichiarato: su un percorso **vivo** (il giro di
+   fatturazione dal cockpit) la terna mancante risponde ora
+   `E_CODA_SCOPE_OPERATORE_INVALIDO` e non più `E_VALIDATION_INPUT` — stesso
+   400, codice che dice *di che cosa*.
+6. **Le `reason_key` le ha fissate il FE** (piano §2.5), nella forma già in uso
+   per le check del DB: `amministrazione.processi.esegui_ora_blocco.{non_avviabile_a_mano,
+   non_abilitata, gia_in_coda}`; la terza porta `{job_id}` nel `dettaglio`.
+7. Il nome vero della registrazione run è **`registered_job`**, non `job_run()`
+   (analisi §9-bis punto 3): corretto nelle righe di §8.4.
+
+### 10.3 La rigenerazione, e i due codici che non sono di questo cantiere
+
+I cinque codici sono in git dal 15-09 (PR #1591) e il file generato li porta.
+⚠️ **Fatto datato, 15-09 sera**: sul dbdev `config.vw_codici_errore_identita`
+porta anche `E_MAG_MOVIMENTO_VERSO_INCOERENTE` e
+`E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI` (seminati lo stesso giorno da `titodb`,
+sollevati da due trigger di `magazzino`), che **non sono in nessun branch**.
+Rigenerare «come viene» avrebbe agganciato il ramo BE a un seed non mergiato —
+e la CI, che ricostruisce il DB da git, avrebbe visto il file **avanti** —
+quindi il file generato porta il catalogo **di git**, cioè senza quelle due
+righe. Finché il cantiere magazzino non le committa, sul dbdev
+`genera_error_policies --check` e `test_error_policies_divergenza_db` restano
+rossi **per quei due**, e questo è il verso giusto: il primo commit di
+`dev/db-tid` con i due CSV li fa rientrare da soli. Non è una richiesta al DB:
+è un promemoria di dove sta la divergenza, perché il rosso non venga letto
+come un difetto di questo cantiere.
+
+### 10.4 Chiusura — cosa chiede il BE, e quando
+
+A handler in servizio sul backend di sviluppo (deploy + `kill -HUP` al master:
+gunicorn dev non ricarica da sé): **`attivo = true` su `ESEGUI_PROCESSO` dal
+CSV**, come per `NOTIFICA_DIGEST_MUTO` l'11-09. Poi il collaudo in-app (piano
+§4.4.2) su `zeroerp-digest-presidi-giornaliero`: lavoro `FATTO` in *Code di
+lavoro*, run `digest_presidi:giornaliera` con `origine = COMMAND` e lo username
+di chi ha premuto, panorama `avvio_manuale | SU_RICHIESTA | f`.

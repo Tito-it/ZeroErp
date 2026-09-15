@@ -44,6 +44,7 @@ per processo: `run_fatturazione_batch` ne ha due, una per corsia.
 | `comando` | string[] | **dal 2026-09-14** — l'argv dopo `bin/run-command.sh` (`["digest_presidi", "--cadenza", "settimanale"]`), reso nel template come `__COMANDO__`. **Obbligatorio per ogni forma**, una lista non vuota, primo token = nome di un management command |
 | `oncalendar` | string \| null | cadenza default (`null` per i servizi) |
 | `abilita` | bool | se l'installer lo accende — **obbligatorio** |
+| `avvio_manuale` | bool | **dal 2026-09-15** — «Esegui ora» è un gesto sensato su questa sveglia? **Obbligatorio** (anche sui servizi, dove vale `false` per natura e un `true` è rifiutato). ⛔ Non è `abilita`: quella dice se il *timer* è acceso su questa installazione, questa se il *pulsante* ha senso — un comando lungo per natura resta `false` anche il giorno in cui il suo timer si accende |
 | `nota` | string | il perché delle scelte, mostrato dall'installer per gli spenti |
 
 ⛔ **`tolleranza_minuti` non è un campo**, e se compare il caricamento
@@ -60,21 +61,28 @@ from apps.core.services.sveglie import (
     sveglie_di_processo,   # (processo_codice) -> tuple[Sveglia, ...]
     DEPLOY_DIR,            # backend/deploy/
     TEMPLATE_DIR,          # backend/deploy/systemd/
+    RUN_COMMAND,           # backend/bin/run-command.sh — il wrapper che systemd
+                           # esegue e che «Esegui ora» lancia come sottoprocesso
 )
 ```
 
 `Sveglia` porta `unit`, `processo_codice`, `forma`, **`comando`**
-(`tuple[str, ...]`), `oncalendar`, `abilita`, `nota` e la proprietà `e_timer`.
+(`tuple[str, ...]`), `oncalendar`, `abilita`, **`avvio_manuale`**, `nota` e la
+proprietà `e_timer`.
 ⚠️ `tolleranza_minuti(...)` **non esiste più** dal 2026-09-11 (sopra).
 
 Consumer: `notifica_digest_muto_handler` (le unit del processo muto, per la
 mail), `test_contratto_liveness_vs_deploy` (la cadenza contro il contratto) e —
 dall'altro lato — `backend/bin/install-timers.sh`, che dallo stesso file prende
 l'`OnCalendar` **e il comando** da sostituire nei template e la lista di cosa
-abilitare. ⭐ Il prossimo consumer di `comando` è l'handler di «Esegui ora»
-(brief [brief-db-avvio-manuale-di-un-processo](../../../dev/work-in-progress/brief-db-avvio-manuale-di-un-processo.md)),
-che lancerà `run-command.sh *comando` come sottoprocesso: la stessa riga del
-timer, per costruzione.
+abilitare. ⭐ **Dal 2026-09-15 `comando` ha il consumer per cui è nato**:
+`esegui_processo_handler` (il drenatore) lancia `[RUN_COMMAND, *comando]` come
+sottoprocesso — la stessa riga del timer, per costruzione — e
+`avvio_manuale.py` legge `forma`, `avvio_manuale` e `abilita` per il predicato
+«si può lanciare a mano?» (capability `can_esegui_ora` nel dettaglio del
+processo, rifiuto dell'endpoint `esegui-ora/`, ricontrollo dell'handler).
+Brief [brief-db-avvio-manuale-di-un-processo](../../../dev/work-in-progress/brief-db-avvio-manuale-di-un-processo.md),
+piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-in-progress/piano-be-fe-avvio-manuale-di-un-processo.md).
 
 ## Regole
 
@@ -151,6 +159,8 @@ timer, per costruzione.
 | `test_worker_del_badge_hanno_un_contratto` | che il ripiego da 10 minuti diventi la strada normale in silenzio (legge il seed `processi.csv`) |
 | `test_comando_obbligatorio_lista_non_vuota` · `test_comando_con_spazi_o_metacaratteri_e_rifiutato` | un `comando` assente, stringa, o con token che systemd e `subprocess` leggerebbero in due modi |
 | `test_il_comando_dichiarato_esiste_nel_backend` | ⭐ un `comando` che nomina un management command inesistente: fallirebbe sull'host, non in CI |
+| `test_avvio_manuale_obbligatorio_e_bool` · `test_un_servizio_non_si_avvia_a_mano` · `test_il_drenatore_non_e_candidato_e_almeno_un_timer_si` (`test_sveglie.py` 14-16) | «Esegui ora» dal drenatore, o su un servizio, nato da una dimenticanza: `avvio_manuale` si dichiara, e la unit del drenatore si legge da `sveglie_di_processo`, non ricopiata |
+| `test_avvio_manuale_tetto` | un tetto del sottoprocesso più largo della metà della tolleranza del drenatore o della soglia del reaper: `MUTO` a video, o un lavoro in `ERRORE` mentre il comando sta finendo |
 | `scripts/tests/test-install-timers.sh` (test 0-5) | che si accendano unit diversi da quelli dichiarati (vedi sotto) |
 | `scripts/tests/test-install-timers.sh` (test 6-7) | una **seconda sede** del comando: un template con `ExecStart` cablato, o un unit reso che non porta l'argv del JSON |
 | `systemd-analyze verify` (CI) | un unit sintatticamente invalido |
@@ -193,9 +203,18 @@ Nessuna: è un file di progetto, e il modulo non apre connessioni.
   `ExecStart` resi sono **identici** a prima (il campo è nato dalla riga che
   ogni template eseguiva): sugli host cambia il template, non l'unit
   installato. Prerequisito di deploy di «Esegui ora» (analisi
-  `analisi-riavvio-processi-da-interfaccia.md` §9-bis, punto 2); l'handler, il
-  comando `job_run()` con origine e attore dall'ambiente, l'endpoint e il
-  pulsante arrivano con le tre righe di catalogo del brief.
+  `analisi-riavvio-processi-da-interfaccia.md` §9-bis, punto 2); l'handler,
+  `registered_job` con origine e attore dall'ambiente, l'endpoint e il
+  pulsante sono arrivati il 15-09 (voce sotto).
+- **2026-09-15 — `avvio_manuale` nel JSON, `RUN_COMMAND` nel modulo, e i
+  consumer di `comando` in servizio.** Otto voci: `false` su drenatore
+  (`zeroerp-coda-lavori`: «Esegui ora» lo esegue lui), sui due giri di
+  fatturazione (lunghi per natura: terrebbero fermo il drenatore, decisione 2a
+  di Tid — brief §8.5) e sul listener (servizio); `true` su digest ×2,
+  `send-pending-emails`, `coda-stampa`. `install-timers.sh` **non** legge il
+  campo — non è un fatto di systemd — e `test-install-timers.sh` non cambia.
+  Chi lo legge: `avvio_manuale.py` (predicato), `esegui_processo_handler`
+  (drenatore), `ProcessiService` (capability nel dettaglio, verbo).
 - `WORKER_ATTIVO_SOGLIA_MINUTI` **non esiste più**: era pubblico nel modulo
   `gestione_service` e non aveva altri consumatori. Il numero a video non
   cambia — 10 minuti per entrambi i drainer — cambia chi lo dichiara.

@@ -1336,7 +1336,30 @@
       "presidi_troncato": "first {n} rows",
       "presidi_non_letto": "not read",
       "presidi_non_letti_conteggio": "{n} not read",
-      "presidi_non_elencabili": "rows not listable: the view has a perimeter"
+      "presidi_non_elencabili": "rows not listable: the view has a perimeter",
+      "tab_sveglie": "Schedules",
+      "sveglie_help": "The deployment schedules declared for this process: what starts it and how often. It is the project declaration, not the state of this host: what is actually running is told by the runs.",
+      "sveglie_nessuna": "No deployment schedule declared for this process: if it runs, something else wakes it (pgAgent, for instance).",
+      "col_unit": "Unit",
+      "col_forma": "Form",
+      "col_cadenza": "Cadence",
+      "col_abilita": "On this installation",
+      "col_comando": "Command",
+      "forma_timer": "timer",
+      "forma_servizio": "service",
+      "sveglia_sempre_accesa": "always on",
+      "sveglia_abilitata": "enabled",
+      "sveglia_spenta": "disabled",
+      "esegui_ora": "Run now",
+      "esegui_ora_tooltip": "Queues one run of this schedule under your identity: it starts at the drainer's next pass.",
+      "esegui_ora_conferma_titolo": "Run now",
+      "esegui_ora_conferma": "Run «{unit}» now? The command «{comando}» will be queued under your identity and will start at the drainer's next pass. Its outcome will show among the recent runs when you reopen this panel.",
+      "esegui_ora_accodato": "Job #{job_id} queued: it starts at the drainer's next pass.",
+      "esegui_ora_blocco": {
+        "non_avviabile_a_mano": "This schedule is declared not startable by hand in the deployment: its command is not suited to «Run now» (it is long by nature, or it is the drainer itself).",
+        "non_abilitata": "The schedule is disabled on this installation: it is enabled from the deployment, not from here.",
+        "gia_in_coda": "Already queued (job #{job_id}): it can be pressed again once that job has finished."
+      }
     }
   },
   "indirizzi": {

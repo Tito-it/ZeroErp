@@ -15,10 +15,9 @@ from apps.core.services.coda_lavori.repository import (
     RUN_AS_OPERATORE,
     CodaLavoriRepository,
 )
-from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
-from apps.core.services.auth_helpers import (
-    extract_emittente_attivo_from_request,
-    extract_identita_id_from_request,
+from apps.core.services.coda_lavori.scope import (
+    scope_key_da_emittenti,
+    scope_operatore_da_request,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
@@ -2500,30 +2499,18 @@ def _accoda_job_fatturazione(
     # Normalizza al 1° del mese PRIMA di comporre payload+chiave business: la
     # dedup dei job vivi è per-MESE, non per-giorno.
     competenza = competenza.replace(day=1)
-    # Identità dell'operatore che accoda: id VERO (`user.id`, anche per
-    # superuser — NON `get_scope_user_id`, che per superuser è None e
-    # bloccherebbe l'admin globale) + username + identita_id dal JWT.
-    user = request.user
-    identita_id = extract_identita_id_from_request(request)
-    ErrorManager.require(
-        identita_id is not None,
-        code="E_VALIDATION_INPUT",
-        message="Identità operatore non risolta dal token.",
-    )
-    # Emittente ATTIVO congelato ora: il worker esegue minuti dopo, senza
-    # token, e senza questo valore girerebbe in modalità globale — un giro
-    # chiesto «dentro A» toccherebbe anche B. Va catturato PRIMA dello scope,
-    # perché lo scope stesso ne risente: dal 2026-08-04 le funzioni di scope
-    # intersecano con l'emittente attivo, quindi `emittente_ids` (e con esso
-    # `scope_key`, che governa dedup e ownership del polling) riflette già
-    # l'impersonazione. Le due cose devono raccontare la stessa storia.
-    emittente_attivo_id = extract_emittente_attivo_from_request(request)
-    # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
-    # DB run_as↔scope, all'idempotenza di business e all'audit.
-    emittente_ids = PermissionResolver.get_emittenti_pk_ids(user)
-    # Chiave canonica dello scope (BB core `coda_lavori.scope` — fonte unica
-    # del formato, condivisa con polling/liste/badge della UI code).
-    scope_key = scope_key_da_emittenti(emittente_ids)
+    # Lo scope dell'operatore che accoda — terna dal JWT, emittente attivo
+    # congelato, whitelist e `scope_key` — catturato dal BB `coda_lavori.scope`
+    # (dal 2026-09-15 e' la sede unica: la stessa cattura serve a «Esegui ora»
+    # dal drawer dei processi). ⚠️ Senza `identita_id` rifiuta PRIMA di
+    # accodare, con lo stesso codice che il drenatore solleverebbe un minuto
+    # dopo (`E_CODA_SCOPE_OPERATORE_INVALIDO`): fino a quel giorno qui era
+    # `E_VALIDATION_INPUT` — stesso 400, ma un codice che non diceva DI CHE
+    # COSA fosse l'errore.
+    scope = scope_operatore_da_request(request)
+    # Whitelist e chiave dello scope servono anche QUI, alla chiave di
+    # business: dedup dei job vivi per (competenza, scope[, perimetro]).
+    scope_key = str(scope["scope_key"])
     job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
     for key in extra_payload_keys:
         value = payload.get(key)
@@ -2577,16 +2564,7 @@ def _accoda_job_fatturazione(
         job_type=job_type,
         payload=job_payload,
         run_as=RUN_AS_OPERATORE,
-        scope={
-            "auth_user_id": int(user.id),
-            "username": str(user.username),
-            "identita_id": identita_id,
-            "emittente_attivo_id": emittente_attivo_id,
-            "emittente_ids": emittente_ids,
-            # Token di ownership del polling: scope-based (chi condivide lo
-            # scope vede il job condiviso via dedup). Vedi scope_key_da_emittenti.
-            "scope_key": scope_key,
-        },
+        scope=scope,
         idempotency_key=idempotency_key,
         origine=ORIGINE_API,
     )

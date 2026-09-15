@@ -31,6 +31,14 @@
 #  12. un token con spazi o metacaratteri è rifiutato (systemd ≠ subprocess)
 #  13. il primo token di ogni `comando` dichiarato è un management command
 #      che esiste nel backend                                               ⭐
+#  14. `avvio_manuale` è obbligatorio e booleano: il silenzio non decide
+#  15. un servizio sempre acceso non può dichiararsi avviabile a mano
+#  16. il drenatore NON è candidato a «Esegui ora» (letto dal JSON per
+#      processo, non ricopiato) — e almeno un timer lo è
+#
+#  ⭐ Dal 2026-09-15 il JSON porta `avvio_manuale`: la sede in cui si dice
+#     quali sveglie hanno il pulsante «Esegui ora» (solo comandi brevi —
+#     decisione 2a del brief §8.5, piano §3.2). Non è `abilita`.
 #
 #  ⭐ Dal 2026-09-14 il JSON porta anche il `comando` (l'argv dopo
 #     `run-command.sh`), reso nel template come `__COMANDO__`: è la riga che
@@ -83,6 +91,7 @@ def _voce(**override: object) -> dict:
     base: dict = {
         "unit": "x", "processo_codice": "p", "forma": "timer",
         "comando": ["p"], "oncalendar": "*:0/1", "abilita": True,
+        "avvio_manuale": True,
     }
     base.update(override)
     return {k: v for k, v in base.items() if v is not _ASSENTE}
@@ -226,7 +235,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     #    questo file esiste per togliere, reintrodotto dalla porta di servizio.
     def test_abilita_omesso_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
-            _voce(forma="servizio", oncalendar=None, abilita=_ASSENTE),
+            _voce(forma="servizio", oncalendar=None, abilita=_ASSENTE, avvio_manuale=False),
             "abilita",
         )
 
@@ -254,7 +263,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     #     `/etc/systemd/system` senza che niente lo dica.
     def test_unit_con_barra_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
-            _voce(unit="../../etc/cattivo", forma="servizio", oncalendar=None),
+            _voce(unit="../../etc/cattivo", forma="servizio", oncalendar=None, avvio_manuale=False),
             "non ammesso",
         )
 
@@ -327,3 +336,42 @@ class SveglieDichiarateTests(SimpleTestCase):
                 with self.assertRaises(ValueError) as ctx:
                     sveglie.carica_sveglie()
         self.assertIn(atteso, str(ctx.exception))
+
+    # 14. ⛔ `avvio_manuale` SI DICHIARA. Con un default a `false` una sveglia
+    #     nuova non avrebbe mai il pulsante senza che nessuno l'abbia deciso;
+    #     con un default a `true` un comando lungo lo avrebbe. Nessun silenzio
+    #     è una decisione — la stessa ragione del test 8.
+    def test_avvio_manuale_omesso_o_non_booleano_solleva(self) -> None:
+        self._assert_dichiarato_rifiutato(_voce(avvio_manuale=_ASSENTE), "avvio_manuale")
+        self._assert_dichiarato_rifiutato(_voce(avvio_manuale="si"), "avvio_manuale")
+        self._assert_dichiarato_rifiutato(_voce(avvio_manuale=None), "avvio_manuale")
+
+    # 15. Un servizio sempre acceso non ha una corsa da lanciare: dichiararlo
+    #     avviabile a mano è una contraddizione, e si ferma qui, non nel drawer.
+    def test_servizio_avviabile_a_mano_solleva(self) -> None:
+        self._assert_dichiarato_rifiutato(
+            _voce(forma="servizio", oncalendar=None, avvio_manuale=True),
+            "servizio sempre acceso",
+        )
+
+    # 16. ⭐ Il drenatore NON è candidato: «Esegui ora» lo esegue lui, e un
+    #     lavoro che lancia il drenatore dal drenatore non ha senso (brief
+    #     §8.2.3). L'unit si legge dal dichiarato PER PROCESSO, non ricopiata
+    #     qui: il nome è un fatto del JSON. E almeno un timer deve essere
+    #     candidato, o il pulsante non comparirebbe mai e il cantiere sarebbe
+    #     verde a vuoto.
+    def test_il_drenatore_non_e_candidato_e_almeno_un_timer_lo_e(self) -> None:
+        drenatore = sveglie.sveglie_di_processo(processi.PROCESSO_DRAINA_CODA_LAVORI)
+        self.assertTrue(drenatore, "il drenatore non ha una sveglia dichiarata")
+        for s in drenatore:
+            with self.subTest(unit=s.unit):
+                self.assertFalse(
+                    s.avvio_manuale,
+                    f"{s.unit}: «Esegui ora» dal drenatore non ha senso — avvio_manuale dev'essere false",
+                )
+        candidati = [s.unit for s in sveglie.carica_sveglie() if s.avvio_manuale]
+        self.assertTrue(candidati, "nessuna sveglia candidata a «Esegui ora»: il pulsante non comparirebbe mai")
+        for s in sveglie.carica_sveglie():
+            with self.subTest(unit=s.unit):
+                if not s.e_timer:
+                    self.assertFalse(s.avvio_manuale, f"{s.unit}: un servizio non si avvia a mano")

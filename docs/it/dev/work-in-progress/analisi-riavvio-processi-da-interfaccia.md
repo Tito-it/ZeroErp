@@ -370,7 +370,16 @@ claim dipendono da lei.
    **non è entrato**: il suo unico lettore è l'handler, e un campo letto da
    nessuno è un numero che sembra dichiarato e non lo è. Gli otto `ExecStart`
    resi sono identici a prima. Playbook §17.6.
-3. **BE**: `job_run()` legge `ZEROERP_JOB_ORIGINE`/`ZEROERP_JOB_AUTH_USER_ID`;
+3. **BE** — ✅ **fatto il 15-09** (piano
+   [piano-be-fe-avvio-manuale-di-un-processo.md](piano-be-fe-avvio-manuale-di-un-processo.md),
+   brief §10). ⚠️ Tre cose di questa riga sono scritte diversamente da com'è
+   andata: la registrazione run si chiama **`registered_job`** (non
+   `job_run()`); il tetto è **fisso** nell'handler (300 s, `avvio_manuale.py`) e
+   `timeout_minuti` è chiuso per decisione; e «non candidato» ha una sede sua,
+   `avvio_manuale` in `sveglie.json`, letta dal predicato insieme ad `abilita`
+   (che da solo copriva i due timer di fatturazione per coincidenza). La riga
+   originale, per la storia:
+   `job_run()` legge `ZEROERP_JOB_ORIGINE`/`ZEROERP_JOB_AUTH_USER_ID`;
    handler `esegui_processo_default` (whitelist da `carica_sveglie()`, `abilita`,
    sottoprocesso a lista con timeout, esito = exit code + coda dell'output nel
    `result`); `POST /api/v1/amm-software/processi/<codice>/esegui-ora/` con
@@ -387,9 +396,12 @@ claim dipendono da lei.
    la terna del dettaglio in `api.md`). Test: handler con `subprocess` finto
    (whitelist, `abilita`, exit ≠ 0 → ERRORE, timeout), e2e su DB provvisto per
    l'accodamento.
-4. **FE**: nel `ProcessoDrawer` una sezione «Sveglie» con «Esegui ora» per
-   unit (`useConfirmAction`, motivo dell'azione spenta), toast con il lavoro
-   accodato, refresh del tab «Ultimi run». Niente pagine nuove.
+4. **FE** — ✅ **fatto il 15-09**: nel `ProcessoDrawer` il quarto tab «Sveglie»
+   con «Esegui ora» per unit (solo sui timer; `useConfirmAction`; motivo
+   dell'azione spenta dalla capability, via `bloccoMotivo.js`), toast con il
+   lavoro accodato e ricarica del dettaglio. ⚠️ Non «refresh del tab Ultimi
+   run»: il gesto è asincrono per costruzione e il run del comando compare
+   alla riapertura, senza polling in v1. Niente pagine nuove.
 5. **Team DB**: `attivo = true` sul tipo, a release BE avvenuta.
 6. «Riavvia» resta il secondo incremento, con D1 e il §4.3-4.4 così come sono.
 

@@ -26,6 +26,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.core.services.coda_lavori.scope import scope_operatore_da_request
 from apps.core.services.processi_service import ProcessiService
 
 
@@ -491,6 +492,52 @@ class ProcessiIdentitaRiattivaView(AdminAPIView):
     # Scopo: Riattiva l'utente tecnico (processo x emittente) via fabbrica.
     def post(self, request: Request, codice: str) -> JsonResponse:
         return _post_verbo_identita(request, codice, ProcessiService().riattiva_utente_tecnico)
+
+
+class ProcessiEseguiOraView(AdminAPIView):
+    """POST «Esegui ora» su una SVEGLIA di deploy di un processo.
+
+    Il web non esegue niente: ACCODA un lavoro `ESEGUI_PROCESSO` su
+    `dbops.coda_lavori` con lo scope di chi preme (`run_as = OPERATORE`), e il
+    drenatore lancia `run-command.sh <comando>` — la stessa riga del timer,
+    meno l'orario — alla corsa successiva. Risposta: l'handle del lavoro
+    (`job_id`, `stato`, `unit`), la stessa forma del giro di fatturazione.
+    Il corpo porta la sola `unit`: il comando si risolve dal dichiarato di
+    deploy (`sveglie.json`), che e' la whitelist — mai dal client.
+
+    ⚠️ LA SEDE DELLA FIDUCIA E' `AdminAPIView` (decisione 1 di brief §8.5: v1
+    solo `SUPER_ADMIN`). L'azione `processo_avvia` esiste a catalogo
+    (`config.azioni_processo`, id 35) ma NON e' dichiarata qui come
+    `post_permission`: `AdminAPIView` non la leggerebbe, e un attributo che
+    sembra un cancello e non lo e' sarebbe peggio di nessun attributo. Il
+    giorno in cui il verbo si aprira' agli operatori, la view cambia base e
+    quell'azione diventa il permesso — con la stessa riga di catalogo.
+    """
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(
+            name="ProcessiEseguiOraReq", fields={"unit": serializers.CharField()},
+        ),
+        responses={200: inline_serializer(
+            name="ProcessiEseguiOraResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Accoda «Esegui ora» sulla sveglia indicata, con lo scope di chi
+    #        preme catturato dalla richiesta (terna rifiutata PRIMA di accodare).
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            # Lo scope si cattura QUI, dalla richiesta, con il BB della coda:
+            # e' cio' con cui il drenatore ripropone l'identita' di chi ha
+            # premuto, minuti dopo e senza token. Senza `identita_id` il BB
+            # rifiuta con `E_CODA_SCOPE_OPERATORE_INVALIDO` — 400 adesso, a chi
+            # puo' fare qualcosa, invece di un lavoro che muore nel drenatore.
+            scope = scope_operatore_da_request(request)
+            return ProcessiService().esegui_ora(
+                codice, unit=payload.get("unit"), scope=scope,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 class AuditLogView(AdminAPIView):

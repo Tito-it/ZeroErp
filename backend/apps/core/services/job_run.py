@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -29,6 +30,68 @@ logger = logging.getLogger(__name__)
 ORIGINE_PGAGENT = "PGAGENT"
 ORIGINE_CRON = "CRON"
 ORIGINE_COMMAND = "COMMAND"
+_ORIGINI = (ORIGINE_PGAGENT, ORIGINE_CRON, ORIGINE_COMMAND)
+
+# ⭐ CHI STA LANCIANDO QUESTO COMMAND, detto dall'AMBIENTE (dal 2026-09-15).
+#    Un command scrive da solo la propria origine (`ORIGINE_CRON`, tutti e sei)
+#    e non sa chi lo ha fatto partire. Quando a lanciarlo e' «Esegui ora» dal
+#    drawer dei processi — l'handler `esegui_processo_default` del drenatore,
+#    come sottoprocesso `run-command.sh <comando>` — la corsa e' di una
+#    PERSONA, e sul giornale deve distinguersi dal timer: `origine = COMMAND`
+#    e `auth_user_id` di chi ha premuto. La sede e' UNA, qui: l'handler mette
+#    le due variabili nell'ambiente del figlio, e ogni command presente e
+#    futuro le eredita senza una riga (analisi-riavvio-processi-da-interfaccia
+#    §4.1-bis, brief-db-avvio-manuale-di-un-processo §8.1).
+# ⛔ SE CI SONO, VINCONO sugli argomenti: il command dice «CRON» per abitudine,
+#    l'ambiente dice la verita' di QUESTA corsa.
+# ⛔ FAIL-LOUD SUL VALORE: un'origine fuori dal CHECK o un id non numerico
+#    SOLLEVANO, non ripiegano sull'argomento — un ripiego scriverebbe un run
+#    del timer per una corsa a mano, cioe' il contrario di cio' per cui la
+#    variabile esiste. Vale anche per la stringa vuota: una variabile presente
+#    e vuota e' un segnaposto mai riempito, non un'assenza.
+# ⚠️ `auth_user_id` sul giornale e' documentato come «l'utente TECNICO, solo
+#    dove la risposta e' UNA» (vedi `registered_job`). Qui la risposta e' una:
+#    la persona che ha premuto. Non e' un'eccezione alla regola, e' il caso in
+#    cui la regola risponde si'.
+ENV_JOB_ORIGINE = "ZEROERP_JOB_ORIGINE"
+ENV_JOB_AUTH_USER_ID = "ZEROERP_JOB_AUTH_USER_ID"
+
+
+# Scopo: applica l'ambiente agli argomenti di `registered_job`: ritorna
+#        (origine, auth_user_id) da scrivere sul giornale — quelli dell'ambiente
+#        se dichiarati, altrimenti quelli del chiamante.
+# ⚠️ Si legge `os.environ` a ogni chiamata, non a import: il modulo vive anche
+#    nel processo del drenatore, dove le variabili NON devono esserci (stanno
+#    nell'`env` del figlio) — leggerle una volta all'import le renderebbe
+#    invisibili al test e a qualunque ambiente cambiato dopo.
+def origine_e_attore_dall_ambiente(
+    origine: str, auth_user_id: int | None,
+) -> tuple[str, int | None]:
+    grezza = os.environ.get(ENV_JOB_ORIGINE)
+    if grezza is not None:
+        valore = grezza.strip()
+        if valore not in _ORIGINI:
+            raise ValueError(
+                f"{ENV_JOB_ORIGINE}={grezza!r} non e' un'origine ammessa "
+                f"(attese: {', '.join(_ORIGINI)}): il run non si registra con "
+                f"un'origine di ripiego"
+            )
+        origine = valore
+
+    grezzo_id = os.environ.get(ENV_JOB_AUTH_USER_ID)
+    if grezzo_id is not None:
+        try:
+            valore_id = int(grezzo_id.strip())
+        except ValueError:
+            valore_id = 0
+        if valore_id <= 0:
+            raise ValueError(
+                f"{ENV_JOB_AUTH_USER_ID}={grezzo_id!r} non e' un id utente "
+                f"(intero > 0): il run non si registra con un attore di ripiego"
+            )
+        auth_user_id = valore_id
+
+    return origine, auth_user_id
 
 
 # Scopo: handle del run restituito da `registered_job`. Espone l'esito dello start
@@ -84,6 +147,11 @@ class JobRunHandle:
 #        risposta e' UNA: un processo di dominio che lavora un emittente alla
 #        volta ce l'ha, un produttore che ne serve N no (i suoi utenti sono N, e
 #        chi scrive davvero e' il lavoro accodato).
+#        ⭐ `origine` e `auth_user_id` possono arrivare dall'AMBIENTE e VINCERE
+#        sugli argomenti (`ENV_JOB_ORIGINE`, `ENV_JOB_AUTH_USER_ID`, dal
+#        2026-09-15): e' il canale con cui «Esegui ora» dice al command che
+#        questa corsa e' di una persona. Un valore invalido solleva PRIMA di
+#        aprire il run — vedi `origine_e_attore_dall_ambiente`.
 @contextmanager
 def registered_job(
     job_name: str,
@@ -95,6 +163,8 @@ def registered_job(
     agent_host: str | None = None,
     auth_user_id: int | None = None,
 ) -> Iterator[JobRunHandle]:
+    # ⛔ Prima del cursore: un ambiente malformato non deve aprire nessuna riga.
+    origine, auth_user_id = origine_e_attore_dall_ambiente(origine, auth_user_id)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT id, run_uuid, acquired "

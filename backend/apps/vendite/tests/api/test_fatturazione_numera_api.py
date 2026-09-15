@@ -25,11 +25,16 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.vendite.api.views.CodaLavoriRepository"
-_RESOLVER = "apps.vendite.api.views.PermissionResolver"
-_EXTRACT_IDENTITA = "apps.vendite.api.views.extract_identita_id_from_request"
+# ⭐ Dal 2026-09-15 la CATTURA dello scope all'enqueue sta nel BB
+#    `coda_lavori.scope.scope_operatore_da_request`: i tre nomi si mockano LA',
+#    non nella view — che non li importa piu' (questo verbo non fa polling,
+#    quindi qui non serve il resolver della view).
+_SCOPE = "apps.core.services.coda_lavori.scope"
+_RESOLVER = f"{_SCOPE}.PermissionResolver"
+_EXTRACT_IDENTITA = f"{_SCOPE}.extract_identita_id_from_request"
 # Emittente attivo del JWT: congelato nello scope del job (impersonazione di
 # scope). Mockato come l'identita' — il claim vero non passa dai test API.
-_EXTRACT_EMITTENTE = "apps.vendite.api.views.extract_emittente_attivo_from_request"
+_EXTRACT_EMITTENTE = f"{_SCOPE}.extract_emittente_attivo_from_request"
 
 _NUMERA = "/api/v1/vendite/fatturazione/numera/"
 
