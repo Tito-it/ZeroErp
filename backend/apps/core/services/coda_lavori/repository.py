@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
@@ -45,6 +46,12 @@ ORIGINE_TRIGGER = "TRIGGER"
 # Modalità di esecuzione (CHECK chk_coda_lavori_run_as + chk_..._run_as_scope).
 RUN_AS_SISTEMA = "SISTEMA"
 RUN_AS_OPERATORE = "OPERATORE"
+
+# Gli stati in cui un lavoro e' VIVO — «ancora da fare o in mano al worker».
+# E' la definizione dell'unique parziale `uq_coda_lavori_vivo_idem` (la dedup di
+# `fn_accoda_lavoro`), del badge in topbar e del trigger di archiviazione:
+# una sola, e sta qui con gli altri vocabolari di questa tabella.
+STATI_VIVI = ("PENDING", "IN_CORSO")
 
 # Soglia (minuti) oltre cui un IN_CORSO è considerato STANTIO (worker morto):
 # fonte unica condivisa da reaper (drainer) e requeue manuale — la stessa
@@ -784,6 +791,42 @@ class CodaLavoriRepository:
     #        allo stesso job solo chi ha la stessa scope_key). Un job di altro
     #        scope è indistinguibile da inesistente (no leak). `owner_scope_key`
     #        None = nessun filtro (admin globale / sistema: vede ogni job).
+    # Scopo: i lavori VIVI di un tipo, per chiave di idempotenza:
+    #        `{chiave: {"id", "stato"}}` per le sole chiavi che ne hanno uno.
+    #        Una `SELECT` per tutte le chiavi chieste (`= ANY`), non una per
+    #        chiave.
+    # ⭐ Serve alla capability «Esegui ora» (2026-09-15): il dettaglio di un
+    #    processo spegne il pulsante sulla sveglia che ha gia' un lavoro in
+    #    coda, e l'endpoint rifiuta con `E_PROCESSO_AVVIO_GIA_IN_CODA` prima di
+    #    accodare. La dedup di `fn_accoda_lavoro` resta la rete sotto (la corsa
+    #    fra due click): qui si LEGGE la stessa definizione di «vivo», non se ne
+    #    scrive una seconda.
+    # ⚠️ Per costruzione al piu' UN lavoro vivo per chiave (l'unique parziale):
+    #    l'`ORDER BY id` serve solo a rendere deterministico chi vince se un
+    #    giorno quell'unique cadesse — il piu' vecchio, come fa la funzione.
+    def lavori_vivi_per_chiave(
+        self, *, job_type: str, chiavi: Sequence[str],
+    ) -> dict[str, dict[str, Any]]:
+        if not chiavi:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT idempotency_key, id, stato
+                  FROM dbops.coda_lavori
+                 WHERE job_type = %s
+                   AND idempotency_key = ANY(%s)
+                   AND stato = ANY(%s)
+                 ORDER BY id
+                """,
+                [job_type, list(chiavi), list(STATI_VIVI)],
+            )
+            rows = cursor.fetchall()
+        vivi: dict[str, dict[str, Any]] = {}
+        for chiave, item_id, stato in rows:
+            vivi.setdefault(str(chiave), {"id": int(item_id), "stato": str(stato)})
+        return vivi
+
     def get_stato(
         self, item_id: int, *, owner_scope_key: str | None = None,
     ) -> dict[str, Any] | None:

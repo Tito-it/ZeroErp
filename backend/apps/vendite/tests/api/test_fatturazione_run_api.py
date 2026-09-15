@@ -30,11 +30,18 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.vendite.api.views.CodaLavoriRepository"
+# Il resolver del POLLING (ownership scope-based) vive nella view di vendite.
 _RESOLVER = "apps.vendite.api.views.PermissionResolver"
-_EXTRACT_IDENTITA = "apps.vendite.api.views.extract_identita_id_from_request"
+# ⭐ Dal 2026-09-15 la CATTURA dello scope all'enqueue sta nel BB
+#    `coda_lavori.scope.scope_operatore_da_request` (seconda occorrenza: «Esegui
+#    ora» dal drawer dei processi): i tre nomi dell'enqueue si mockano LA', non
+#    nella view — che non li importa piu'.
+_SCOPE = "apps.core.services.coda_lavori.scope"
+_RESOLVER_SCOPE = f"{_SCOPE}.PermissionResolver"
+_EXTRACT_IDENTITA = f"{_SCOPE}.extract_identita_id_from_request"
 # Emittente attivo del JWT: congelato nello scope del job (impersonazione di
 # scope). Mockato come l'identita' — il claim vero non passa dai test API.
-_EXTRACT_EMITTENTE = "apps.vendite.api.views.extract_emittente_attivo_from_request"
+_EXTRACT_EMITTENTE = f"{_SCOPE}.extract_emittente_attivo_from_request"
 
 _RUN = "/api/v1/vendite/fatturazione/run/"
 
@@ -81,7 +88,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     @patch(_AUTH, return_value=(_mock_user(), None))
     @patch(_EXTRACT_EMITTENTE, return_value=3)
     @patch(_EXTRACT_IDENTITA, return_value=5)
-    @patch(_RESOLVER)
+    @patch(_RESOLVER_SCOPE)
     @patch(_REPO)
     def test_run_ok_accoda_operatore_scope_business_key(
         self, repo_cls, resolver, _extract, _extract_ef, _auth,
@@ -130,7 +137,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
     # 4. JWT senza claim identita_id (token anomalo) → 400 parlante, no accoda.
     @patch(_AUTH, return_value=(_mock_user(), None))
     @patch(_EXTRACT_IDENTITA, return_value=None)
-    @patch(_RESOLVER)
+    @patch(_RESOLVER_SCOPE)
     @patch(_REPO)
     def test_run_senza_identita_400(
         self, repo_cls, _resolver, _extract, _auth,
@@ -141,6 +148,11 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
             headers={"Idempotency-Key": "k-run-2"},
         )
         self.assertEqual(resp.status_code, 400)
+        # ⭐ Il codice e' quello della terna incompleta — lo stesso che il
+        #    drenatore solleverebbe un minuto dopo — detto adesso.
+        self.assertEqual(
+            resp.json()["error"]["code"], "E_CODA_SCOPE_OPERATORE_INVALIDO",
+        )
         repo_cls.return_value.accoda.assert_not_called()
 
     # 5. Polling: ritorna lo stato del job, ownership SCOPE-based (la scope_key

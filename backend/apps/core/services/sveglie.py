@@ -53,6 +53,21 @@
 #        presidia `scripts/tests/test-install-timers.sh` (nessun `ExecStart`
 #        cablato; l'unit reso porta l'argv di qui).
 #
+#        ⭐ E DAL 2026-09-15 STA QUI ANCHE `avvio_manuale` — «questa sveglia e'
+#        candidata a «Esegui ora»?» — obbligatorio come `abilita` e per la
+#        stessa ragione. Decisione di Tid (piano-be-fe-avvio-manuale §3.2,
+#        brief §8.5 punto 2): il drenatore ASPETTA il sottoprocesso e intanto
+#        non drena altro, quindi a mano si lanciano solo comandi BREVI; un
+#        comando lungo per natura (i due giri di fatturazione) e il drenatore
+#        stesso non sono candidati, e «non candidato» deve avere una SEDE.
+#        ⛔ Non e' `abilita`: quella dice se il TIMER e' acceso su questa
+#        installazione, questa se il PULSANTE ha senso — i due timer di
+#        fatturazione sono spenti oggi per un'altra ragione (SDI sospeso), e il
+#        giorno in cui si accendono il pulsante deve restare spento. Il modello
+#        ammette `abilita = true` su un comando lungo: si progetta su quello.
+#        ⛔ E non e' una lista di esclusioni in Python: sarebbe la seconda sede
+#        della whitelist, quella che resta indietro alla prima sveglia nuova.
+#
 #        ⚠️ Il dichiarato e' il DEFAULT di progetto, non lo stato di un host.
 #        Un host puo' avere un `OnCalendar` diverso (l'installer sostituisce un
 #        placeholder) o un timer spento a mano: per sapere cosa sta girando
@@ -74,9 +89,15 @@ from pathlib import Path
 #    percorso che punta alla cartella sbagliata non fallisce — trova zero file e
 #    passa. È il «verde per sottrazione», e su un presidio che deve accorgersi
 #    di ciò che MANCA sarebbe il difetto peggiore possibile.
-DEPLOY_DIR = Path(__file__).resolve().parents[3] / "deploy"
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+DEPLOY_DIR = BACKEND_DIR / "deploy"
 TEMPLATE_DIR = DEPLOY_DIR / "systemd"
 _PERCORSO_SVEGLIE = DEPLOY_DIR / "sveglie.json"
+# Il wrapper che systemd esegue (`ExecStart=… run-command.sh __COMANDO__`) ed
+# e' lo STESSO che «Esegui ora» lancia come sottoprocesso: carica `env.sh` e
+# chiama `manage.py` col venv giusto. Sta qui perche' la sua posizione e' un
+# fatto del layout, e il layout si calcola una volta.
+RUN_COMMAND = BACKEND_DIR / "bin" / "run-command.sh"
 
 # ⭐ QUI si definisce il vocabolario delle forme: il JSON non ha uno schema, e
 #    questa è la sua unica dichiarazione in codice.
@@ -125,6 +146,10 @@ class Sveglia:
     comando: tuple[str, ...]
     oncalendar: str | None
     abilita: bool
+    # «Esegui ora» ha senso su questa sveglia? Dichiarato, non dedotto: un
+    # timer puo' essere acceso (`abilita`) e non candidato (comando lungo), o
+    # candidato e spento su questa installazione. Vedi header.
+    avvio_manuale: bool
     nota: str
 
     # Scopo: vero se questa sveglia e' un timer con una cadenza dichiarata.
@@ -239,6 +264,27 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
                 f"dev'essere true o false"
             )
 
+        # ⛔ `avvio_manuale` SI DICHIARA, per la stessa ragione di `abilita`: con
+        #    un default a `false` una sveglia nuova non avrebbe mai il pulsante
+        #    senza che nessuno l'abbia deciso; con un default a `true` un
+        #    comando lungo lo avrebbe. Nessuno dei due silenzi e' una decisione.
+        #    ⚠️ Obbligatorio anche su `forma = servizio`, dove vale `false` per
+        #    natura: una regola con un'eccezione sono due regole (come per
+        #    `comando`), e il pulsante lo decide comunque chi lo rende, sulla
+        #    `forma`.
+        if "avvio_manuale" not in riga or not isinstance(riga["avvio_manuale"], bool):
+            raise ValueError(
+                f"{_PERCORSO_SVEGLIE}: {unit}: 'avvio_manuale' è obbligatorio e "
+                f"dev'essere true o false (e' «Esegui ora» un gesto sensato su "
+                f"questa sveglia?)"
+            )
+        if forma == FORMA_SERVIZIO and riga["avvio_manuale"]:
+            raise ValueError(
+                f"{_PERCORSO_SVEGLIE}: {unit}: un servizio sempre acceso non si "
+                f"avvia a mano (non c'e' una corsa da lanciare): 'avvio_manuale' "
+                f"dev'essere false"
+            )
+
         sveglie.append(Sveglia(
             unit=unit,
             processo_codice=processo,
@@ -248,6 +294,7 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
             # Già validato bool qui sopra: un `bool(...)` in più direbbe che il
             # valore può non esserlo, cioè il contrario di quanto appena imposto.
             abilita=riga["abilita"],
+            avvio_manuale=riga["avvio_manuale"],
             nota=str(riga.get("nota") or ""),
         ))
 
@@ -257,3 +304,17 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
 # Scopo: le sveglie dichiarate per un processo (zero, una o piu').
 def sveglie_di_processo(processo_codice: str) -> tuple[Sveglia, ...]:
     return tuple(s for s in carica_sveglie() if s.processo_codice == processo_codice)
+
+
+# Scopo: la sveglia `unit` FRA QUELLE DEL PROCESSO, o None. E' la risoluzione
+#        con cui «Esegui ora» traduce cio' che il client manda (un codice
+#        processo e una unit) nel dichiarato: il verbo la usa per rifiutare
+#        PRIMA di accodare, l'handler per rifiutare PRIMA di lanciare.
+# ⛔ La coppia si guarda INSIEME: cercare la unit da sola risolverebbe anche
+#    una sveglia di un altro processo, e il lavoro si registrerebbe sotto il
+#    processo sbagliato senza che niente fallisca.
+def sveglia_di_processo(processo_codice: str, unit: str) -> Sveglia | None:
+    for sveglia in sveglie_di_processo(processo_codice):
+        if sveglia.unit == unit:
+            return sveglia
+    return None

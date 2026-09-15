@@ -3,8 +3,9 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Facade del REGISTRO DEI PROCESSI AUTOMATICI: elenco, dettaglio, corse,
-#        stato dei presidi, e i verbi che creano o riaccendono l'utente tecnico di un
-#        processo per un emittente.
+#        stato dei presidi, i verbi che creano o riaccendono l'utente tecnico di un
+#        processo per un emittente e, dal 2026-09-15, «Esegui ora» su una
+#        sveglia di deploy (accoda un lavoro `ESEGUI_PROCESSO`, non esegue).
 # Note: ⭐ Sta in `apps/core` come il suo repository, e per la stessa ragione:
 #        il roster serve anche a chi PRODUCE lavoro in `apps/vendite`, e le
 #        chiamate laterali fra domini non si fanno. Chi lo ESPONE — le view di
@@ -26,15 +27,31 @@ from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import LIST_MAX_LIMIT
 from apps.core.db.presidi_repository import PresidiRepository
 from apps.core.db.processi_repository import ProcessiRepository
+from apps.core.services.avvio_manuale import (
+    JOB_TYPE_ESEGUI_PROCESSO,
+    chiave_idempotenza,
+    motivi_esegui_ora,
+    riga_sveglia,
+)
+from apps.core.services.coda_lavori.repository import (
+    ORIGINE_API,
+    RUN_AS_OPERATORE,
+    CodaLavoriRepository,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
     validate_enum_param,
     validate_order_params,
 )
 from apps.core.services.payload_helpers import translate_db_errors
+from apps.core.services.sveglie import sveglia_di_processo, sveglie_di_processo
 
 _FN = "core.processi_service"
 E_VALIDATION = "E_CORE_VALIDATION"
+# Il codice del payload malformato di un VERBO (unit assente o non del
+# processo): e' quello che il resto dei verbi di coda usa per la stessa
+# condizione, con `field` nel context per accendere il campo a video.
+E_VALIDATION_INPUT = "E_VALIDATION_INPUT"
 
 # ✅ Il ripiego dichiarato e' RIENTRATO il 2026-09-05 (DB-8): il codice esiste a
 # catalogo con classe `NON_TROVATO`, quindi un codice processo inesistente in URL
@@ -68,18 +85,22 @@ _ORDER_AMMESSI = (
 
 
 class ProcessiService:
-    """Registro dei processi automatici: letture e creazione utente tecnico."""
+    """Registro dei processi automatici: letture, utente tecnico, «Esegui ora»."""
 
     def __init__(
         self,
         repo: ProcessiRepository | None = None,
         presidi: PresidiRepository | None = None,
+        coda: CodaLavoriRepository | None = None,
     ) -> None:
         self._repo = repo or ProcessiRepository()
         # ⭐ I presidi hanno un lettore LORO dal 2026-09-10: non sono i presidi
         #    «dei processi», sono il catalogo intero — e li leggono in due, questa
         #    schermata e il digest.
         self._presidi = presidi or PresidiRepository()
+        # La coda generica: «Esegui ora» ACCODA, e la capability nel dettaglio
+        # legge i lavori vivi per unit. Iniettabile per i test.
+        self._coda = coda or CodaLavoriRepository()
 
     # Scopo: Elenco paginato dei processi, con i filtri del pannello.
     def list_processi(
@@ -123,22 +144,119 @@ class ProcessiService:
     # Scopo: Dettaglio di un processo: la riga, i bersagli dichiarati, le
     #        identita' con cui lavora. 404 parlante se il codice non esiste.
     def get_processo(self, codice: str) -> dict[str, Any]:
-        fn = f"{_FN}.get_processo"
-        dettaglio = self._repo.get_processo(codice)
-        ErrorManager.require(
-            dettaglio is not None,
-            code=E_NOT_FOUND,
-            message="Il processo indicato non esiste nel registro.",
-            detail=f"codice={codice!r}",
-            function_name=fn,
-        )
-        assert dettaglio is not None
+        dettaglio = self._require_processo(codice, fn=f"{_FN}.get_processo")
         # ⭐ Gli emittenti che questo processo NON serve viaggiano col
         #    dettaglio: e' la domanda che uno si fa guardando le identita'
         #    («ce ne sono due — e la terza azienda?»), e senza risposta si
         #    legge come «e' tutto a posto».
         dettaglio["emittenti_non_serviti"] = self._repo.emittenti_non_serviti(codice)
+        # ⭐ Le sveglie di deploy del processo (zero, una o piu'), ognuna con
+        #    la capability «Esegui ora» (piano §2.5). Il dichiarato e' cio' che
+        #    il client MOSTRA; la capability e' cio' su cui DECIDE — e la
+        #    produce lo stesso predicato con cui `esegui_ora` rifiuta.
+        dettaglio["sveglie"] = self._sveglie_con_capability(codice)
         return dettaglio
+
+    # Scopo: la riga del processo dal registro, o il 404 di dominio. E' il
+    #        guard di ogni verbo che nomina un processo in URL: una sede, cosi'
+    #        il codice e la frase del rifiuto non divergono fra i verbi.
+    def _require_processo(self, codice: str, *, fn: str) -> dict[str, Any]:
+        riga = self._repo.get_processo(codice)
+        ErrorManager.require(
+            riga is not None,
+            code=E_NOT_FOUND,
+            message="Il processo indicato non esiste nel registro.",
+            detail=f"codice={codice!r}",
+            function_name=fn,
+        )
+        assert riga is not None
+        return riga
+
+    # Scopo: le righe `sveglie[]` del dettaglio: il dichiarato di deploy piu'
+    #        la terna `can_esegui_ora*` per ciascuna. I lavori vivi si leggono
+    #        con UNA query per tutte le unit del processo (`= ANY`), non una
+    #        per riga.
+    def _sveglie_con_capability(self, processo_codice: str) -> list[dict[str, Any]]:
+        sveglie = sveglie_di_processo(processo_codice)
+        if not sveglie:
+            return []
+        vivi = self._coda.lavori_vivi_per_chiave(
+            job_type=JOB_TYPE_ESEGUI_PROCESSO,
+            chiavi=[chiave_idempotenza(s.unit) for s in sveglie],
+        )
+        return [
+            riga_sveglia(s, lavoro_vivo=vivi.get(chiave_idempotenza(s.unit)))
+            for s in sveglie
+        ]
+
+    # Scopo: «Esegui ora» su una sveglia: ACCODA un lavoro `ESEGUI_PROCESSO`
+    #        con lo scope di chi preme, e risponde con l'handle del lavoro. Il
+    #        web non esegue niente: il drenatore lancera' il comando alla corsa
+    #        successiva (`esegui_processo_handler`).
+    #
+    #        Nell'ordine del piano §2.4, e ogni rifiuto sta PRIMA di accodare:
+    #          1. `unit` obbligatoria e stringa (400, campo `unit`);
+    #          2. il processo esiste (404) e la unit e' fra le SUE sveglie (400,
+    #             campo `unit`): il client manda una unit, mai un comando, e il
+    #             backend la risolve dal dichiarato — la whitelist;
+    #          3. il predicato: primo motivo come rifiuto (422/501/409 dalla
+    #             classe a catalogo), con «gia' in coda» letto dal repository;
+    #          4. l'accodamento, con la chiave di business per unit.
+    #        ⚠️ La TERNA dello scope la rifiuta chi la cattura
+    #        (`scope_operatore_da_request`, nella view) con
+    #        `E_CODA_SCOPE_OPERATORE_INVALIDO` — lo stesso codice che il
+    #        drenatore solleverebbe un minuto dopo, detto a chi puo' fare
+    #        qualcosa. Qui lo scope arriva gia' completo.
+    #        ⚠️ A tipo `attivo = false` il passo 4 risponde
+    #        `E_JOB_TYPE_NON_ATTIVO` (501): e' il cancello voluto finche'
+    #        l'handler non e' in servizio, e non si maschera.
+    def esegui_ora(
+        self, codice: str, *, unit: Any, scope: dict[str, Any],
+    ) -> dict[str, Any]:
+        fn = f"{_FN}.esegui_ora"
+        ErrorManager.require(
+            isinstance(unit, str) and bool(unit.strip()),
+            code=E_VALIDATION_INPUT,
+            message="Indicare la sveglia (`unit`) da eseguire.",
+            context={"field": "unit"},
+            function_name=fn,
+        )
+        assert isinstance(unit, str)
+        unit = unit.strip()
+        self._require_processo(codice, fn=fn)
+        sveglia = sveglia_di_processo(codice, unit)
+        ErrorManager.require(
+            sveglia is not None,
+            code=E_VALIDATION_INPUT,
+            message=(
+                f"La sveglia {unit} non e' fra quelle dichiarate per il processo "
+                f"{codice}."
+            ),
+            detail=f"codice={codice!r} unit={unit!r}",
+            context={"field": "unit"},
+            function_name=fn,
+        )
+        assert sveglia is not None
+
+        chiave = chiave_idempotenza(unit)
+        vivi = self._coda.lavori_vivi_per_chiave(
+            job_type=JOB_TYPE_ESEGUI_PROCESSO, chiavi=[chiave],
+        )
+        motivi = motivi_esegui_ora(sveglia, lavoro_vivo=vivi.get(chiave))
+        if motivi:
+            raise motivi[0].come_errore(unit=unit)
+
+        job_id = self._coda.accoda(
+            job_type=JOB_TYPE_ESEGUI_PROCESSO,
+            payload={"processo_codice": codice, "unit": unit},
+            run_as=RUN_AS_OPERATORE,
+            scope=scope,
+            # Chiave di BUSINESS (una per unit, sui lavori vivi): la rete sotto
+            # il 409 qui sopra, per la corsa fra due click contemporanei.
+            idempotency_key=chiave,
+            origine=ORIGINE_API,
+        )
+        return {"job_id": job_id, "stato": "PENDING", "unit": unit}
 
     # Scopo: Le corse recenti di un processo (tab «Ultimi run» del drawer).
     def list_run(

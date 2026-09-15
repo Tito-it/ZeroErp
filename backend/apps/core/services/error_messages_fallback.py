@@ -672,12 +672,35 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.",
     "E_PRICING_SCONTO_ECCESSIVO": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
+    # «Esegui ora» su una sveglia (brief-db-avvio-manuale-di-un-processo §9):
+    # i tre motivi del predicato e i due esiti dell'handler. A catalogo portano
+    # unit, id del lavoro, secondi ed exit code: qui la frase senza.
+    "E_PROCESSO_AVVIO_FALLITO": (
+        "Il comando della sveglia e' uscito con un errore: il dettaglio e' nel "
+        "giornale del processo eseguito."
+    ),
+    "E_PROCESSO_AVVIO_GIA_IN_CODA": (
+        "Un avvio di questa sveglia e' gia' in coda: attendi che finisca prima "
+        "di chiederne un altro."
+    ),
+    "E_PROCESSO_AVVIO_TROPPO_LUNGO": (
+        "Il comando della sveglia non e' finito entro il tempo massimo: e' troppo "
+        "lungo per «Esegui ora» ed e' stato interrotto."
+    ),
     "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": (
         "Questo processo non puo' avere un utente tecnico: ne serve uno solo ai "
         "processi che fanno il lavoro di un'azienda senza che nessuno li avvii."
     ),
     "E_PROCESSO_NON_TROVATO": (
         "Il processo indicato non esiste nel registro dei processi automatici."
+    ),
+    "E_PROCESSO_SVEGLIA_NON_ABILITATA": (
+        "La sveglia non e' abilitata su questa installazione: il comando non "
+        "parte ne' dal timer ne' a mano."
+    ),
+    "E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO": (
+        "La sveglia non e' avviabile a mano: e' un servizio sempre acceso oppure "
+        "un comando dichiarato non candidato a «Esegui ora»."
     ),
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "Binding non coerente con il tipo del profilo di accesso.",
     "E_PROFILO_ACCESSO_NON_TROVATO": "Profilo di accesso non trovato.",

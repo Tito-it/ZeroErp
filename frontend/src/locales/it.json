@@ -1336,7 +1336,30 @@
       "presidi_troncato": "prime {n} righe",
       "presidi_non_letto": "non letto",
       "presidi_non_letti_conteggio": "{n} non letti",
-      "presidi_non_elencabili": "righe non elencabili: la vista ha un perimetro"
+      "presidi_non_elencabili": "righe non elencabili: la vista ha un perimetro",
+      "tab_sveglie": "Sveglie",
+      "sveglie_help": "Le sveglie di deploy dichiarate per questo processo: chi lo fa partire e con quale cadenza. È il dichiarato di progetto, non lo stato di questo host: che cosa sta girando davvero lo dicono le corse.",
+      "sveglie_nessuna": "Nessuna sveglia di deploy dichiarata per questo processo: se gira, lo sveglia qualcun altro (per esempio pgAgent).",
+      "col_unit": "Unit",
+      "col_forma": "Forma",
+      "col_cadenza": "Cadenza",
+      "col_abilita": "Su questa installazione",
+      "col_comando": "Comando",
+      "forma_timer": "timer",
+      "forma_servizio": "servizio",
+      "sveglia_sempre_accesa": "sempre acceso",
+      "sveglia_abilitata": "attiva",
+      "sveglia_spenta": "spenta",
+      "esegui_ora": "Esegui ora",
+      "esegui_ora_tooltip": "Accoda una corsa di questa sveglia con la tua identità: parte alla prossima corsa del drenatore.",
+      "esegui_ora_conferma_titolo": "Esegui ora",
+      "esegui_ora_conferma": "Lanciare adesso «{unit}»? Il comando «{comando}» verrà accodato con la tua identità e partirà alla prossima corsa del drenatore. L'esito comparirà fra le ultime corse alla riapertura di questo pannello.",
+      "esegui_ora_accodato": "Lavoro #{job_id} accodato: parte alla prossima corsa del drenatore.",
+      "esegui_ora_blocco": {
+        "non_avviabile_a_mano": "Questa sveglia è dichiarata non avviabile a mano nel deploy: il suo comando non è adatto a «Esegui ora» (è lungo per natura, oppure è il drenatore stesso).",
+        "non_abilitata": "La sveglia è spenta su questa installazione: si accende dal deploy, non da qui.",
+        "gia_in_coda": "È già in coda (lavoro #{job_id}): si potrà premere di nuovo quando quel lavoro sarà finito."
+      }
     }
   },
   "indirizzi": {

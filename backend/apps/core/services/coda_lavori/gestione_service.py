@@ -32,6 +32,7 @@ from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.coda_lavori.repository import (
     DEFAULT_EXTRA_TENTATIVI,
     ELENCA_SORT_SQL,
+    STATI_VIVI,
     CodaLavoriRepository,
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
@@ -73,8 +74,9 @@ JOBNAME_WORKER_CODA_STAMPA = PROCESSO_DRAINA_CODA_STAMPA
 #    Questo resta per il runtime, dove un badge che si spegne sarebbe peggio.
 _SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 
-# Stati "vivi" delle due code (vocabolario condiviso PENDING/IN_CORSO).
-_STATI_VIVI = ("PENDING", "IN_CORSO")
+# Gli stati "vivi" delle due code sono `STATI_VIVI` del repository (dal
+# 2026-09-15, accanto agli altri vocabolari della tabella): qui c'era la
+# seconda copia, e un alias locale sarebbe un secondo nome per la stessa cosa.
 
 
 # Scopo: Risolve le due chiavi di scope del chiamante: `caller_key` (la
@@ -285,9 +287,9 @@ def elenca_coda_lavori(
     esito = CodaLavoriRepository().elenca(
         owner_scope_key=owner_filter,
         caller_scope_key=caller_key,
-        # `solo_vivi` → vocabolario _STATI_VIVI QUI (simmetrico alla coda
+        # `solo_vivi` → vocabolario STATI_VIVI QUI (simmetrico alla coda
         # stampa: il repo riceve sempre `stati`, mai un secondo meccanismo).
-        stati=list(_STATI_VIVI) if solo_vivi else ([stato] if stato else None),
+        stati=list(STATI_VIVI) if solo_vivi else ([stato] if stato else None),
         job_type=job_type,
         data_da=data_da,
         data_a=(data_a + timedelta(days=1)) if data_a else None,
@@ -352,7 +354,7 @@ def elenca_coda_stampa(
     esito = VenditePipelineRepository().elenca_coda_stampa(
         operatore=None if tutti else caller_username,
         caller_username=caller_username,
-        stati=list(_STATI_VIVI) if solo_vivi else ([stato] if stato else None),
+        stati=list(STATI_VIVI) if solo_vivi else ([stato] if stato else None),
         lotto_id=lotto_id,
         data_da=data_da,
         data_a=(data_a + timedelta(days=1)) if data_a else None,

@@ -9,17 +9,28 @@
 #   3) eccezione nel corpo → fn_job_run_end ok=False + error_code/detail, eccezione rilanciata
 #   4) ⭐ l'ATTORE arriva a fn_job_run_start — e non si deriva dal job_name
 #   5) ⛔ senza attore il BB non si chiama: TypeError, non un run anonimo
+#   6) ⭐ l'AMBIENTE vince sugli argomenti: origine e attore di «Esegui ora»
+#   7) ambiente assente → valgono gli argomenti (i sei command non cambiano)
+#   8) ⛔ origine ignota nell'ambiente → solleva PRIMA di aprire il run
+#   9) ⛔ id non numerico, vuoto o <= 0 → solleva, nessun attore di ripiego
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import json
+import os
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 
-from apps.core.services.job_run import ORIGINE_CRON, registered_job
+from apps.core.services.job_run import (
+    ENV_JOB_AUTH_USER_ID,
+    ENV_JOB_ORIGINE,
+    ORIGINE_COMMAND,
+    ORIGINE_CRON,
+    registered_job,
+)
 from apps.core.services.service_errors import ServiceError
 
 _CONN = "apps.core.services.job_run.connection"
@@ -139,3 +150,70 @@ class RegisteredJobAttoreTests(TestCase):
     def test_senza_attore_non_si_chiama(self):
         with self.assertRaises(TypeError):
             registered_job("job:senza-attore")  # type: ignore[call-arg]
+
+
+# Scopo: i parametri con cui e' stata chiamata `fn_job_run_start`
+#        (jobname, origine, stepname, lock_key, agent_host, processo, auth_user).
+def _params_start(cursor):
+    call = next(c for c in cursor.execute.call_args_list if "fn_job_run_start" in c.args[0])
+    return call.args[1]
+
+
+class RegisteredJobAmbienteTests(TestCase):
+    """L'origine e l'attore letti dall'ambiente — il canale di «Esegui ora»."""
+
+    # 6. ⭐ Le due variabili VINCONO: il command dice CRON per abitudine,
+    #    l'ambiente dice che questa corsa l'ha chiesta una persona.
+    def test_l_ambiente_vince_sugli_argomenti(self):
+        conn, cursor = _mock_connection(start_row=(1, "uuid-1", True))
+        ambiente = {ENV_JOB_ORIGINE: ORIGINE_COMMAND, ENV_JOB_AUTH_USER_ID: "42"}
+        with patch(_CONN, conn), patch.dict("os.environ", ambiente):
+            with registered_job(
+                "digest_presidi:settimanale", processo_codice="digest_presidi",
+                origine=ORIGINE_CRON, auth_user_id=None,
+            ):
+                pass
+        params = _params_start(cursor)
+        self.assertEqual(params[1], ORIGINE_COMMAND)
+        self.assertEqual(params[6], 42)
+
+    # 7. Senza le variabili non cambia niente: e' il percorso dei sei command
+    #    sotto timer, e deve restare quello di prima.
+    def test_senza_ambiente_valgono_gli_argomenti(self):
+        conn, cursor = _mock_connection(start_row=(1, "uuid-1", True))
+        pulito = {k: v for k, v in os.environ.items()
+                  if k not in (ENV_JOB_ORIGINE, ENV_JOB_AUTH_USER_ID)}
+        with patch(_CONN, conn), patch.dict("os.environ", pulito, clear=True):
+            with registered_job(
+                "job:x", processo_codice=_PROCESSO,
+                origine=ORIGINE_CRON, auth_user_id=7,
+            ):
+                pass
+        params = _params_start(cursor)
+        self.assertEqual(params[1], ORIGINE_CRON)
+        self.assertEqual(params[6], 7)
+
+    # 8. ⛔ Un'origine fuori dal CHECK non ripiega su CRON: solleva, e lo fa
+    #    PRIMA di toccare il database — nessuna riga aperta con l'attore
+    #    sbagliato. La stringa vuota e' un segnaposto mai riempito, non un'assenza.
+    def test_origine_ignota_solleva_prima_del_run(self):
+        for valore in ("MANUALE", "", "cron"):
+            with self.subTest(valore=valore):
+                conn, cursor = _mock_connection(start_row=(1, "uuid-1", True))
+                with patch(_CONN, conn), patch.dict("os.environ", {ENV_JOB_ORIGINE: valore}):
+                    with self.assertRaises(ValueError):
+                        with registered_job("job:x", processo_codice=_PROCESSO):
+                            self.fail("il corpo non deve partire")
+                cursor.execute.assert_not_called()
+
+    # 9. ⛔ Idem per l'attore: non numerico, vuoto o non positivo.
+    def test_attore_invalido_solleva(self):
+        for valore in ("abc", "", "0", "-3", "4.5"):
+            with self.subTest(valore=valore):
+                conn, cursor = _mock_connection(start_row=(1, "uuid-1", True))
+                ambiente = {ENV_JOB_ORIGINE: ORIGINE_COMMAND, ENV_JOB_AUTH_USER_ID: valore}
+                with patch(_CONN, conn), patch.dict("os.environ", ambiente):
+                    with self.assertRaises(ValueError):
+                        with registered_job("job:x", processo_codice=_PROCESSO):
+                            self.fail("il corpo non deve partire")
+                cursor.execute.assert_not_called()

@@ -518,13 +518,19 @@ una.** Le famiglie in servizio sono tre, e nessuna è il calco delle altre:
 | Superficie | Flag | Motivo | Chiave i18n |
 | --- | --- | --- | --- |
 | dettaglio documento | `can_push_commessa` | `can_push_commessa_reason` | `can_push_commessa_reason_key` |
+| riga `sveglie[]` del dettaglio processo (2026-09-15) | `can_esegui_ora` | `can_esegui_ora_reason` | `can_esegui_ora_reason_key` (+ `can_esegui_ora_dettaglio`, i parametri con nome della frase) |
 | riga mapping BA | `can_remove` | `rimozione_blocco_reason` | `rimozione_blocco_reason_key` |
 | righe reso · coda accrediti | — | `annullo_blocco_codice` · `blocco_codice` | — |
 
-⭐ **Solo la prima è una terna coerente**: motivo e chiave si ricavano dal nome
-del flag, quindi chi ne legge uno sa già come si chiamano gli altri due. La
-seconda ha il motivo che non discende dal flag; la terza non ha flag **e** porta
-due nomi diversi per la stessa cosa su due superfici.
+⭐ **Solo le prime due sono terne coerenti** (la famiglia 1): motivo e chiave
+si ricavano dal nome del flag, quindi chi ne legge uno sa già come si chiamano
+gli altri due — e il client le legge con un solo prefisso
+(`bloccoAttivo(riga, 'can_esegui_ora', 'can_esegui_ora')`). La terza ha il
+motivo che non discende dal flag; la quarta non ha flag **e** porta due nomi
+diversi per la stessa cosa su due superfici. ⚠️ Il predicato di «Esegui ora»
+sta in **Python** (`avvio_manuale.motivi_esegui_ora`) perché la whitelist è del
+deploy e il database non conosce le unit — ma la regola del trasporto vale
+uguale: lo stesso predicato serve capability, endpoint e handler.
 
 ⇒ Ciò che **vale in tutte** è la proprietà, non il template: il nome dice
 **quale verbo** blocca, e motivo e chiave viaggiano **in coppia**. Un

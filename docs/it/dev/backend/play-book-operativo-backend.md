@@ -430,7 +430,7 @@ la **sede unica** del dichiarato di deploy. Lo leggono in due:
 | Chi | Cosa ne prende |
 | --- | --- |
 | `backend/bin/install-timers.sh` | l'`OnCalendar` **e il comando** (`__COMANDO__`, dal 2026-09-14) da sostituire nei template, e la lista di cosa abilitare |
-| `apps.core.services.sveglie` (backend) | le unit di ogni processo (per la mail del guardiano del digest), la cadenza da confrontare col contratto (`test_contratto_liveness_vs_deploy`) e — prossimo consumer — il `comando` che «Esegui ora» lancerà come sottoprocesso (§17.6). ⚠️ Fino al 2026-09-11 qui c'era «la `tolleranza_minuti`»: il contratto di liveness vive in `dbops.processi`, e il JSON **rifiuta** il campo |
+| `apps.core.services.sveglie` (backend) | le unit di ogni processo (per la mail del guardiano del digest), la cadenza da confrontare col contratto (`test_contratto_liveness_vs_deploy`), il `comando` che «Esegui ora» lancia come sottoprocesso (§17.6) e `avvio_manuale` (§17.7). ⚠️ Fino al 2026-09-11 qui c'era «la `tolleranza_minuti`»: il contratto di liveness vive in `dbops.processi`, e il JSON **rifiuta** il campo |
 
 ⛔ **Perché è cambiato.** Prima le cadenze erano cablate in quattro chiamate
 dentro l'installer, e la tolleranza di liveness degli stessi processi era un
@@ -587,7 +587,49 @@ cablato) e test 7 (l'unit reso porta esattamente l'argv del JSON).
 prima, perché il campo è nato dalla riga che ogni template eseguiva. Cambia il
 template, non l'unit installato — un re-install lo riscrive uguale.
 
-⛔ `timeout_minuti` (D-B dell'analisi) **non è ancora un campo**: il suo unico
-lettore è l'handler di «Esegui ora», che arriva con le tre righe di catalogo
-del brief. Un campo letto da nessuno è un numero che sembra dichiarato e non
-lo è.
+⛔ `timeout_minuti` (D-B dell'analisi) **non è un campo, per decisione**
+(Tid, 15-09, piano §3.2 e brief §8.5): il tetto del sottoprocesso è **unico**
+e sta nell'handler (`TETTO_SOTTOPROCESSO_SECONDI = 300`, `avvio_manuale.py`),
+pinnato da `test_avvio_manuale_tetto` sotto la metà della tolleranza del
+drenatore e sotto la soglia del reaper. Un tetto per sveglia non avrebbe un
+lettore che lo distingua: chi supera il tetto unico **non è candidato**, e
+quella è la riga sotto.
+
+### 17.7) `avvio_manuale` accanto ad `abilita` — e come si vede a video un run lanciato a mano (dal 2026-09-15)
+
+⭐ **Due campi, due domande.** `abilita` dice se il **timer** è acceso su questa
+installazione; `avvio_manuale` dice se il **pulsante** «Esegui ora» ha senso su
+questa sveglia. Sono indipendenti per modello: i due giri di fatturazione sono
+`abilita: false` oggi per un'altra ragione (SDI sospeso) e restano
+`avvio_manuale: false` anche il giorno in cui si accendono — un giro di
+fatturazione è lungo per natura e terrebbe fermo il drenatore, che mentre
+aspetta il sottoprocesso non drena altro (decisione 2a di Tid, brief §8.5).
+Il drenatore stesso è `false` («Esegui ora» lo esegue lui); il listener è
+`false` per natura (servizio: non c'è una corsa da lanciare, e un `true` è
+rifiutato). **Obbligatorio** su ogni voce, come `abilita`: con un default il
+silenzio varrebbe qualcosa. L'installer **non** lo legge — non è un fatto di
+systemd.
+
+**Chi lo legge**: `avvio_manuale.motivi_esegui_ora` (il predicato «si può
+lanciare a mano?»), che risponde alla capability `can_esegui_ora` nel dettaglio
+del processo, al rifiuto di `POST processi/<codice>/esegui-ora/` e al
+ricontrollo dell'handler nel drenatore — **una sede, tre lettori**, così il
+tooltip del pulsante spento e il 4xx non possono dire due cose diverse.
+
+**Come si vede a video un run lanciato a mano**, e dove guardare se non torna:
+
+| Dove | Che cosa si vede |
+| --- | --- |
+| *Amministrazione → Processi automatici → drawer → «Sveglie»* | la riga della sveglia col pulsante **spento e il motivo** finché il lavoro è vivo («già in coda, lavoro #id»); si riaccende da sé alla riapertura, quando il lavoro è finito |
+| *Strumenti → Code di lavoro* | il lavoro `ESEGUI_PROCESSO` con la chiave `esegui:<unit>`: `PENDING` → `IN_CORSO` → `FATTO` (result con `exit_code`, `durata_ms`, `coda_output`) oppure `ERRORE` terminale (`E_PROCESSO_AVVIO_FALLITO` con l'exit code, `E_PROCESSO_AVVIO_TROPPO_LUNGO` oltre i 300 s) |
+| *drawer del processo ESEGUITO → «Ultime corse»* | il run del **comando**, con `origine = COMMAND` e lo **username di chi ha premuto** (`registered_job` li legge dall'ambiente del sottoprocesso: `ZEROERP_JOB_ORIGINE`, `ZEROERP_JOB_AUTH_USER_ID`) — non `CRON`, che è la corsa del timer |
+| panorama `dbops.vw_processi_programmazione` | `avvio_manuale \| SU_RICHIESTA \| f`: il processo del gesto non ha una cadenza e non ha un run suo (§8.2.1 del brief: l'audit del gesto è la riga di coda) |
+
+⚠️ **Un run a mano mentre il timer sta girando** produce una riga di *skip* nel
+giornale del comando (il lock di `fn_job_run_start`), non due corse: il lavoro
+esce `FATTO` con exit 0. È ciò che succede oggi a chi lancia da shell.
+
+⛔ **Finché il tipo `ESEGUI_PROCESSO` è `attivo = false`** il verbo risponde
+`E_JOB_TYPE_NON_ATTIVO` (501): è il cancello voluto (regola del binding), non
+un difetto. L'accensione la chiede il BE a handler in servizio, ed è una riga
+del CSV `coda_lavori_tipi` a carico del team DB (brief §10.4).

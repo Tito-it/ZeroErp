@@ -1172,11 +1172,12 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
-## 6. Processi automatici — i presidi
+## 6. Processi automatici — i presidi e «Esegui ora»
 
-⚠️ **Di questa famiglia qui c'e' solo l'endpoint dei presidi.** Le altre cinque
-rotte (`GET processi/`, `GET processi/{codice}/`, `POST processi/{codice}/run/`,
-`GET|POST processi/{codice}/identita/`, `POST .../identita/riattiva/`) esistono e
+⚠️ **Di questa famiglia qui ci sono due endpoint su sette**: i presidi (§6.1) e
+«Esegui ora» (§6.2), con la parte del dettaglio che lo alimenta (§6.3). Le altre
+rotte (`GET processi/`, `GET processi/{codice}/`, `GET processi/{codice}/run/`,
+`POST processi/{codice}/identita/`, `POST .../identita/riattiva/`) esistono e
 **non sono documentate**: e' un debito dichiarato, non un'omissione da leggere
 come «non ci sono». Contratto vivo: `/api/docs/`.
 
@@ -1245,6 +1246,106 @@ giornale): il suo stesso `COMMENT` lo dichiara e dice quando va tolto. Brief:
 curl -H "Authorization: Bearer <token>" \
   "https://host/api/v1/amm-software/processi/presidi/"
 ```
+
+### 6.2 POST /api/v1/amm-software/processi/{codice}/esegui-ora/ — «Esegui ora» su una sveglia
+
+Accoda **un** lavoro `ESEGUI_PROCESSO` su `dbops.coda_lavori` per la sveglia di
+deploy indicata, con lo scope di chi preme (`run_as = OPERATORE`); il drenatore
+(`draina_coda_lavori`, ogni minuto) lancia `bin/run-command.sh <comando>` come
+sottoprocesso — **la stessa riga del timer, meno l'orario** — e il comando
+registra il suo run sotto il proprio processo con `origine = COMMAND` e
+l'utente di chi ha premuto. **Il web non esegue niente.** Brief:
+`work-in-progress/brief-db-avvio-manuale-di-un-processo.md`; piano
+`piano-be-fe-avvio-manuale-di-un-processo.md`.
+
+⚠️ **Porta**: `AdminAPIView` (v1 solo `SUPER_ADMIN`, decisione di Tid del
+14-09). L'azione `processo_avvia` e' a catalogo ma **non** e' dichiarata sulla
+view — `AdminAPIView` non la leggerebbe, e un attributo che sembra un cancello
+e non lo e' sarebbe peggio di nessun attributo.
+
+**Header obbligatorio**: `Idempotency-Key` (400 senza). E' la chiave HTTP del
+doppio submit; quella di **business** («una per unit sui lavori vivi»,
+`esegui:<unit>`) la scrive il backend, ed e' quella che fa dire «gia' in coda».
+
+**Request body**:
+
+```json
+{ "unit": "zeroerp-digest-presidi-giornaliero" }
+```
+
+⛔ Si manda la **unit**, mai un comando: l'argv si risolve dal dichiarato di
+deploy (`backend/deploy/sveglie.json`), che e' la whitelist.
+
+**Response** (200) — la forma del giro di fatturazione:
+
+```json
+{ "data": { "job_id": 4321, "stato": "PENDING", "unit": "zeroerp-digest-presidi-giornaliero" } }
+```
+
+**Rifiuti, nell'ordine in cui si valutano — tutti PRIMA di accodare:**
+
+| Status | Codice | Quando |
+| --- | --- | --- |
+| 400 | `E_CODA_SCOPE_OPERATORE_INVALIDO` | il JWT non porta l'`identita_id`: lo stesso codice che il drenatore solleverebbe un minuto dopo, detto adesso a chi puo' fare qualcosa |
+| 400 | `E_VALIDATION_INPUT` (`fields: ["unit"]`) | `unit` assente / non stringa, oppure non fra le sveglie **di quel** processo |
+| 404 | `E_PROCESSO_NON_TROVATO` | il codice non e' nel registro |
+| 422 | `E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO` | `forma = servizio`, o `avvio_manuale = false` nel dichiarato: non e' un candidato (natura, non stato) |
+| 501 | `E_PROCESSO_SVEGLIA_NON_ABILITATA` | `abilita = false` su questa installazione: si accende dal deploy, non da qui |
+| 409 | `E_PROCESSO_AVVIO_GIA_IN_CODA` | esiste un lavoro `ESEGUI_PROCESSO` vivo (`PENDING`/`IN_CORSO`) con la stessa chiave; il `context` porta `job_id` |
+| 501 | `E_JOB_TYPE_NON_ATTIVO` | il tipo di coda e' ancora `attivo = false` (regola del binding): e' il cancello voluto finche' l'handler non e' in release |
+
+⚠️ I tre motivi 422/501/409 sono gli stessi — nello stesso ordine — della
+capability `can_esegui_ora` del dettaglio (§6.3): li produce **lo stesso
+predicato** (`avvio_manuale.motivi_esegui_ora`), quindi il tooltip del pulsante
+spento e il rifiuto non possono dire due cose diverse.
+
+**Gli esiti dell'esecuzione non passano da qui**: `E_PROCESSO_AVVIO_FALLITO`
+(exit ≠ 0) ed `E_PROCESSO_AVVIO_TROPPO_LUNGO` (oltre il tetto di 300 s, figlio
+ucciso) finiscono in `coda_lavori.ultimo_errore`, terminali, e si leggono in
+*Strumenti → Code di lavoro*; la diagnosi del comando sta nel run del
+processo eseguito (tab «Ultime corse» del suo drawer).
+
+**Esempio curl:**
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -H "Idempotency-Key: $(uuidgen)" -H "Content-Type: application/json" \
+  -d '{"unit":"zeroerp-digest-presidi-giornaliero"}' \
+  "https://host/api/v1/amm-software/processi/digest_presidi/esegui-ora/"
+```
+
+### 6.3 `sveglie[]` nel dettaglio — `GET processi/{codice}/`
+
+Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
+(zero, una o piu'): il **dichiarato** di deploy (cio' che il client mostra) e la
+**capability** (cio' su cui decide), nella famiglia 1 dei nomi di `api.md`
+§Capability di riga (motivo e chiave discendono dal flag).
+
+```json
+{
+  "unit": "zeroerp-digest-presidi-settimanale", "forma": "timer",
+  "comando": ["digest_presidi", "--cadenza", "settimanale"],
+  "oncalendar": "Mon *-*-* 07:30", "abilita": true, "avvio_manuale": true,
+  "nota": "…",
+  "can_esegui_ora": false,
+  "can_esegui_ora_reason": "E_PROCESSO_AVVIO_GIA_IN_CODA",
+  "can_esegui_ora_reason_key": "amministrazione.processi.esegui_ora_blocco.gia_in_coda",
+  "can_esegui_ora_dettaglio": {"job_id": 4321}
+}
+```
+
+| Campo | Significato |
+| --- | --- |
+| `can_esegui_ora` | **derivato** dal motivo (`reason is None`), mai calcolato a parte |
+| `can_esegui_ora_reason` | il codice macchina del **primo** motivo, o `null` |
+| `can_esegui_ora_reason_key` | la chiave i18n del tooltip — una per motivo, fissata nei locales del client |
+| `can_esegui_ora_dettaglio` | i parametri **con nome** della frase (`{job_id}`), o `null` |
+
+⭐ Il client la legge con `bloccoAttivo(riga, 'can_esegui_ora',
+'can_esegui_ora')` / `motivoBloccoRiga(...)` (`ProcessoDrawer.vue`, tab
+«Sveglie»); il test `test_processi_esegui_ora` (17-18) pinna che i nomi emessi
+siano quelli letti e che le tre chiavi esistano in `it.json` e `en.json`. I
+lavori vivi si leggono con **una** query per tutte le unit del processo.
 
 ---
 
