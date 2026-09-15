@@ -30,7 +30,7 @@ import { useApiHandler } from './useApiHandler'
 export const CONFERMA_E_RIPETI = 'confirm_and_retry'
 
 // Scopo: esegue un gesto che il database puo' rifiutare in modo CONFERMABILE.
-// @returns {{esegui, conferma, annulla, richiestaConferma, loading}}
+// @returns {{esegui, conferma, annulla, richiestaConferma, loading, campiErrati}}
 //
 // Uso:
 //   const { esegui, richiestaConferma, conferma, annulla } = useForzaturaConfermata()
@@ -39,7 +39,7 @@ export const CONFERMA_E_RIPETI = 'confirm_and_retry'
 //   // se `richiestaConferma` si valorizza, il chiamante mostra un dialog con
 //   // `richiestaConferma.messaggio` e chiede il MOTIVO, poi `conferma(motivo)`.
 export function useForzaturaConfermata() {
-  const { execute, loading, azioneUi, messaggioErrore } = useApiHandler()
+  const { execute, loading, azioneUi, messaggioErrore, campiErrati } = useApiHandler()
 
   // La domanda in sospeso: `{ messaggio }` oppure `null`.
   // ⭐ Il messaggio e' quello del DATABASE, e porta gia' i numeri: non si
@@ -104,5 +104,9 @@ export function useForzaturaConfermata() {
     inSospeso = null
   }
 
-  return { esegui, conferma, annulla, richiestaConferma, loading }
+  // ⭐ `campiErrati` e' quello dell'handler INTERNO (2026-09-14): un form che
+  //    salva con `esegui` e tiene il rosso sui campi con un secondo handler
+  //    non vedrebbe mai i campi del 400 — il primo li riceve, il secondo li
+  //    mostra, e non sono lo stesso oggetto.
+  return { esegui, conferma, annulla, richiestaConferma, loading, campiErrati }
 }

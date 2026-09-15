@@ -17,7 +17,9 @@
 > — un nome ambiguo, una promessa invecchiata, un'istruzione non eseguibile.
 > Nessuno dei 4166 test poteva vederli: si vedono solo guardando la schermata.
 >
-> **Stato**: da eseguire. **Ambiente**: sviluppo (`dbdev`).
+> **Stato**: primo giro eseguito il 2026-09-14 (tre rilievi → D16/D17/D18);
+> **da rieseguire** con le sezioni 2, 3 e 4 riscritte lo stesso giorno.
+> **Ambiente**: sviluppo (`dbdev`).
 > **Utente**: un **operatore**, non il super admin — ⚠️ il perimetro emittente
 > è metà di ciò che si sta provando, e il super admin lo vede tutto.
 
@@ -68,8 +70,14 @@ sbagliate. Per questo si guarda, non si assume.
 | **2.3** | ⚠️ **Togli il canale** e guarda la tendina dei **centri** | 🔴 **Che cosa offre?** Il modello marca due centri come **interni** (`Fondi Fattura`, `Compensazione`): sono la macchina delle sistemazioni, non un posto dove digitare incassi a mano | ⛔ Se li offre è un difetto della **famiglia BE-8**, con un'aggravante: qui il database **non rifiuta**. Vedi §7 |
 | **2.4** | Apri la distinta con **importo dichiarato 400,00** | Si apre il drawer. Quadratura: dichiarato 400, digitato 0, **scarto −400** | — |
 | **2.5** | Ripremi «Apri distinta» con **gli stessi dati** | ⭐ Non nasce una seconda distinta: **ridà quella di prima**, e lo **dice** | Entrare in silenzio dentro il lavoro di stamattina è il modo in cui si registra due volte credendo di cominciare |
-| **2.6** | Aggiungi una riga da **400,00**, data di oggi, con un riferimento | Compare in elenco, stato **DA_ABBINARE** | — |
-| **2.7** | Guarda la quadratura | **Scarto 0** e il segno «quadra» | Con `importo dichiarato` vuoto deve dire «non si applica»: ⛔ **tre esiti, non due** |
+| **2.6** | «Nuova riga» → **cerca la fattura 103** (numero o ragione sociale, dai 3 caratteri) → scegli la **rata** | ⭐ Il form parte dal **documento**, non dall'importo. Scelta la rata, l'importo si **propone da solo** = residuo della rata (**400,00**); senza rata, il residuo del documento. Sotto la tendina una frase dice che la rata è **facoltativa** | Se l'importo non si propone, la riga nasce dalla memoria dell'operatore invece che dal documento (D16) |
+| **2.6-bis** | Digita un riferimento e salva | Compare in elenco già **ABBINATA**, con fattura e cliente. ⛔ **Nessun passo «Abbina» dopo**: la riga è nata giusta | Se nasce `DA_ABBINARE`, il default del form ha scelto il flusso dell'import per chi ha il nome sotto gli occhi |
+| **2.6-ter** | «Nuova riga» → accendi **«Non riesco ad associarlo»** → importo **50,00** → salva | La ricerca fattura e la rata **si spengono**; la riga nasce **DA_ABBINARE** e in **Incassi → Da abbinare** compare | ⭐ L'eccezione si **dichiara** con un gesto: senza l'interruttore il pulsante Salva deve restare **spento** finché non c'è una fattura |
+| **2.7** | Guarda la quadratura | Dichiarato 400, digitato 450: **scarto +50** e il segno «non quadra» | Con `importo dichiarato` vuoto deve dire «non si applica»: ⛔ **tre esiti, non due** |
+| 🆕 **2.8** | Azioni della riga da 50,00 → **Elimina** (il cestino) → conferma | ⭐ La riga **sparisce** e la quadratura **torna** (scarto 0, «quadra»). Il messaggio di conferma nomina importo e riferimento | ⛔ Se l'unica via è «Porta a SCARTATA»: scartare **conta nella quadratura** (D12-e) e un errore di battitura resterebbe nel totale |
+| 🆕 **2.8-bis** | Guarda le icone del kebab della riga rimasta | Il **cestino** è solo su «Elimina»; «Porta a SCARTATA» ha un'altra icona (⊘) | Un'icona con due sensi è il difetto del primo giro: il cestino su «scarta» ha fatto leggere uno stato come un'eliminazione |
+| 🆕 **2.9** | Barra azioni → **Porta a VALIDATA** | La barra dice in una riga **dove sei** («validata: pronta da registrare, il denaro non è ancora registrato»). Sopra le righe compare «il contenuto è fermo»; «Nuova riga» **sparisce**, il click sulla riga **non apre** il form, il cestino è **spento col motivo** («riportala in bozza…»). ⭐ **Abbina** e «Porta a …» restano accesi | ⚠️ La riga di stato compare solo dopo l'apply del seed P-8 (brief DB §4): se la barra è muta, è quello — non un difetto del drawer |
+| 🆕 **2.9-bis** | **Porta a BOZZA** | Tutto si riapre: «Nuova riga», il form, il cestino | — |
 
 ---
 
@@ -77,9 +85,10 @@ sbagliate. Per questo si guarda, non si assume.
 
 | | Cosa fare | Cosa deve succedere | Se non succede |
 | --- | --- | --- | --- |
-| **3.1** | Azioni della riga → **Abbina** → cerca la fattura **103** | ⚠️ Sotto i **3 caratteri** non cerca. Le voci mostrano **numero e cliente** | — |
-| **3.2** | Guarda la tendina delle **rate** | Ogni rata porta il **saldo**. E una frase dice che la rata è **facoltativa** | Un elenco di rate senza saldo non risponde alla domanda per cui lo si apre |
-| **3.3** | Scegli la rata e conferma | La riga passa ad **ABBINATA** | — |
+| **3.1** | Sulla riga **ABBINATA** del §2.6: kebab → **Porta a DA_ABBINARE** | ⭐ È il **ri-abbinamento**: l'unico modo di sganciare un abbinamento sbagliato. La riga torna `DA_ABBINARE`, fattura e rata restano scritte ma non contano. ⚠️ Il kebab **non** offre «Porta a SCARTATA» su una riga ABBINATA: le voci vengono dalla **matrice**, non dal vocabolario | Se offre SCARTATA e il DB rifiuta, il vocabolario è tornato al posto della matrice (§12) |
+| **3.2** | Azioni della riga → **Abbina** → cerca la fattura **103** → guarda la tendina delle **rate** | ⚠️ Sotto i **3 caratteri** non cerca; le voci mostrano **numero e cliente**. Ogni rata porta il **saldo**, e una frase dice che la rata è **facoltativa** — è la **stessa tendina** del form di creazione (`RataSelect`) | Un elenco di rate senza saldo non risponde alla domanda per cui lo si apre |
+| **3.3** | Scegli la rata e conferma | La riga torna ad **ABBINATA** | — |
+| **3.3-bis** | **Incassi → Da abbinare**: apri la riga da 50,00 del §2.6-ter e abbinala alla fattura 103, rata 1 | ⭐ L'**eccezione** si recupera dalla coda col verbo `abbina`, senza altre porte | — |
 | **3.4** | 🔴 **Il doppio tempo.** Aggiungi una **seconda** riga da 400,00 e abbinala **alla stessa rata** | ⛔ **Non deve passare al primo colpo.** Deve comparire una **domanda** — non un errore rosso — col **messaggio del database e i numeri**, e un campo **motivo** | Se passa liscia, la forzatura è stata scritta senza che nessuno l'abbia chiesta: è il difetto peggiore del cantiere |
 | **3.5** | Scrivi il motivo e conferma | Ora passa. ⭐ Il motivo **resta scritto** | — |
 | **3.6** | **Incassi → Rate fuori capienza** | La rata compare, con **motivo** in prima colonna e il tuo testo | Se non compare, l'elenco che rende onesta la forzatura non funziona |
@@ -91,10 +100,11 @@ sbagliate. Per questo si guarda, non si assume.
 
 | | Cosa fare | Cosa deve succedere | Se non succede |
 | --- | --- | --- | --- |
-| **4.1** | Sul drawer → **Registra** | ⭐ Prima **l'anteprima**: righe registrabili, totale, e **chi resta indietro e perché** | Senza l'elenco di chi resta fuori, una registrazione parziale è indistinguibile da una totale |
+| 🔴 **4.0** | Con la distinta in **BOZZA** e un **totale dichiarato sbagliato** (es. 400 con righe per 450): barra → **Porta a VALIDATA** | ⛔ Si ferma **QUI**, non alla registrazione: `E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA`, con i due numeri. Correggi il dichiarato (o le righe) e riprova: passa a **VALIDATA** | ⚠️ Validare ≠ registrare: la validazione è «ho finito, quadra»; il denaro si registra al passo 4.3. Il primo giro saltava questo passo e 4.1 falliva per costruzione (`E_CONTABILE_NON_REGISTRABILE`) |
+| **4.1** | Sul drawer (in **VALIDATA**) → **Registra** | ⭐ Prima **l'anteprima**: righe registrabili, totale, e **chi resta indietro e perché** | Senza l'elenco di chi resta fuori, una registrazione parziale è indistinguibile da una totale |
 | **4.2** | Leggi l'avviso | Dice che **non si torna indietro**, e lo dice **prima** | — |
 | **4.3** | Conferma | ⭐ Il messaggio porta i **numeri**: «registrata: N righe per X €» | ⛔ Un «fatto» senza numeri non dice se erano due righe o venti. *(Corretto il 29/08: questa prova verifica la correzione)* |
-| **4.4** | Guarda il drawer | Stato **CHIUSA**, «Registra» **sparisce**, compare **«Correggi»** | ⛔ Nessun pulsante «chiudi» da nessuna parte: la chiusura è una conseguenza |
+| **4.4** | Guarda il drawer | Stato **CHIUSA**, «Registra» **sparisce**, compare **«Correggi»**; la riga di stato dice «registrata» e il cestino di ogni riga è **spento** col motivo «chiusa» | ⛔ Nessun pulsante «chiudi» da nessuna parte: la chiusura è una conseguenza |
 | **4.5** | Apri il **drawer della fattura 103** | ⭐ In cima il **residuo**, aggiornato. «In lavorazione» **non** deve comparire se è zero | A zero ruba spazio al numero che conta |
 
 ---
@@ -154,5 +164,6 @@ due flag portati nel payload della lookup — e **non l'ho scelta da solo**.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-14** (sera) | ✏️ **Sezioni 2, 3 e 4 riscritte** per D16/D17/D18 (brief DB §7): §2.6 la riga nasce **cercando la fattura**, con l'importo **proposto**; §2.6-ter l'eccezione dichiarata; 🆕 §2.8 **elimina** in bozza e la quadratura che torna; 🆕 §2.9 il contenuto **fermo** sotto VALIDATA e la riga di stato; §3.1–3.3 diventano la prova del **ri-abbinamento** e del recupero dalla coda; 🆕 §4.0 **Porta a VALIDATA** prima di «Registra», con lo stop sul dichiarato sbagliato. Da rieseguire |
 | **2026-09-14** | 🔴 **Primo giro eseguito da Tid (prima contabile): tre rilievi, e il copione va riscritto** — vedi [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md) §7. In sintesi: **§2.6** la riga deve nascere **cercando la fattura** (D16), non `DA_ABBINARE`; **§3.1-3.3** diventano la prova del ri-abbinamento e dell'eccezione «non identificato»; manca una prova **elimina riga in bozza** (D17); e ⛔ **fra §2.7 e §4.1 manca «Porta a VALIDATA»**: `fn_posta_contabile` registra **solo da `VALIDATA`** (`E_CONTABILE_NON_REGISTRABILE`), quindi §4.1 così com'è fallisce per costruzione. La riscrittura è del piano BE/FE |
 | **2026-08-29** | Stesura, dopo la chiusura di **C-1** e la costruzione della base dei saldi (**A-8**). ⛔ Il cantiere non ha più niente da costruire e **non è mai stato visto**: `pagamenti` ha zero righe. I dati del copione sono **misurati**, non inventati. Un punto è già noto prima di cominciare (§7) |

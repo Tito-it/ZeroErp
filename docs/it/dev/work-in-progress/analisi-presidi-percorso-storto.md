@@ -6,9 +6,11 @@
 > l'inventario di una leva che il progetto usa bene su metà del suo perimetro.
 >
 > **Stato:** WIP — inventario misurato il 2026-08-22, **rimisurato il 2026-09-05**
-> (§3-bis). Nessun candidato è stato scritto; due si sono chiusi o quasi **da
-> soli**, uno è peggiorato in silenzio. Le decisioni del §6 sono tutte ancora
-> aperte.
+> (§3-bis) **e il 2026-09-15** (§3-ter). Nessun candidato è stato scritto; due
+> si sono chiusi o quasi **da soli**, uno è peggiorato in silenzio.
+> ⏱️ *15-09*: **C2 ha il suo primo consumatore**, arrivato da fuori (28-08) —
+> la decisione 3 del §6 è presa **di fatto** e il presidio C2 ora si può
+> scrivere. Le altre tre decisioni restano aperte.
 >
 > **Origine:** discussione con Tid del 2026-08-22, nata da un'altra domanda
 > («l'osservabilità ci fa trovare i bug più in fretta?»). La risposta ha fatto
@@ -218,6 +220,68 @@ l'osservazione del §2 regge invariata.
 
 ---
 
+## 3-ter. ⏱️ Rimisurato il 2026-09-15 — un filo si è riattaccato, da fuori
+
+> Dieci giorni dopo. Stesse sorgenti (git, seed, catalogo). **Nessun presidio
+> candidato è stato scritto**; ma la voce che il 05-09 «peggiorava in silenzio»
+> si è mossa, e l'ha mossa un cantiere che non pensava a questo documento.
+
+| Candidato | 2026-09-05 | 2026-09-15 | |
+| --- | --- | --- | --- |
+| **C1** stato di fallimento mai scritto | 🔴 | 🔴 **invariato** | nessun presidio, nessuna esenzione |
+| **C2** promessa all'interfaccia | 🔴 | 🟡 **mosso, da fuori** | `ui_action` ha il suo **primo consumatore**: `core/composables/useForzaturaConfermata.js` (28-08, brief incassi) dichiara a `useApiHandler` `azioniGestite: [CONFERMA_E_RIPETI]`, e il composable **spegne il toast** solo quando l'azione è gestita dal chiamante — «si dichiara la `ui_action`, mai un elenco di codici». Catalogo: **857** codici (+11), override **182** (=), `highlight_form_fields` **131** (=) |
+| **C3** liste che non sanno dire perché | 🟢 | 🟢 **cresce da solo** | **67** liste (+1); **7** con colonna errore/stato di esecuzione (+1), **16** includendo `motivo` (+1). `ErroreRigaInfo.vue` ha **3** consumatori (era 1 il 22-08) |
+| **C4** registri scritti e mai letti | ✅ | ✅ | — |
+| **C5** numero a mano | ⛔ | ⛔ **fermo** | il commento dice ancora **176**, le voci **182**: nessuno ha toccato il file |
+
+### ⭐ Che cosa dice, e che cosa corregge della misura del 22-08
+
+**La misura di C2 guardava la grana sbagliata.** «Quanti `.vue` consumano
+`azioneUi`» dice ancora **0** — e resta 0 anche oggi. Ma il consumatore giusto di
+una `ui_action` non è un componente: è un **composable** che traduce l'azione in
+un comportamento (qui: niente toast, la domanda la fa il chiamante). Contando i
+`.vue` la misura non l'avrebbe mai visto. ⇒ La misura buona è «quanti punti
+leggono `azioneUi` o dichiarano `azioniGestite`»: **1**, e prima era 0.
+
+**La decisione 3 del §6 è presa di fatto: si consuma.** Non l'ha presa nessuno
+in una riunione; l'ha presa il primo cantiere che aveva bisogno di
+un'`ui_action` per fare la cosa giusta (chiedere conferma invece di mostrare un
+errore). È esattamente il modo in cui C3 e C4 si erano chiusi: *sul percorso di
+qualcosa che qualcuno voleva*.
+
+⚠️ **Ma il presidio C2 resta da scrivere, e il secondo strato è intatto**: un
+consumatore su 182 override non dice niente sulla coerenza fra la `ui_action`
+dichiarata e il canale che la realizza — `highlight_form_fields` (131) viaggia
+ancora sui `fields`, e i due binari possono divergere in silenzio come il 22-08.
+Quello che cambia è che ora **si può** scrivere: la domanda a monte (produrla o
+no) ha una risposta.
+
+### ⚠️ L'inventario del §2: dieci, oggi **dodici**
+
+Nuovi in `apps/core/tests/` dal 05-09: `test_skip_area_check_registro` e
+`test_copertura_doc_api` (entrambi 12-09). ⚠️ Percorso felice tutti e due — il
+registro delle esenzioni `skip_area_check` e la copertura della doc API.
+L'osservazione del §2 regge invariata **per i presidi di CI**.
+
+### ⭐ Fuori dal perimetro, ma sulla stessa leva: `dbops.presidi`
+
+Dal 10-09 il progetto ha un **catalogo di presidi in esercizio** (`dbops.presidi`:
+viste `ZERO` che *devono restare vuote* — code ferme, job falliti, processi
+muti — contate da `fn_conta_presidio` attraverso la RLS) con un **destinatario**:
+il digest email giornaliero/settimanale e il guardiano pgAgent che avvisa se il
+digest stesso tace. Le prime corse vere sono del 14-09 e 15-09.
+
+Non è questo documento — qui si parla di proprietà del **codice** verificabili
+in CI, là di **dati** letti in esercizio — e non chiude C1 né C2. Ma va detto
+per onestà verso il §2: l'osservazione «nessuno controlla che un fallimento sia
+raccontabile» **non vale più sul lato runtime**. Là qualcuno guarda i
+fallimenti, e c'è un catalogo con la ragione scritta per ogni vista — l'idioma
+del registro delle esenzioni, che il §3 chiede per C1 e C3. ⇒ Quando C1 si
+scriverà, la forma è già decisa dal vicino: **una riga di catalogo con la
+ragione**, non un elenco nel test.
+
+---
+
 ## 4. La forma tecnica: perché costano poco
 
 I candidati C1-C4 sono tutti test che **contano cose in git**, non nel database.
@@ -268,6 +332,9 @@ Sono documentati, tutti e tre, da cose successe qui.
 3. **`ui_action`: consumarla o smettere di produrla?** È una decisione di
    interfaccia, non un presidio — ma il presidio C2 non si può scrivere prima di
    averla presa.
+   ⏱️ *2026-09-15*: **presa di fatto — si consuma** (§3-ter:
+   `useForzaturaConfermata` + `azioniGestite`). Il presidio C2 ha il suo
+   prerequisito.
 4. **Chi decide le esenzioni.** Il registro con la ragione scritta funziona solo
    se la ragione la scrive chi conosce il dominio, non chi scrive il test.
 
@@ -284,4 +351,5 @@ Sono documentati, tutti e tre, da cose successe qui.
 
 ---
 
-*Analisi WIP — Presidi sul percorso storto (22 agosto 2026).*
+*Analisi WIP — Presidi sul percorso storto (22 agosto 2026; rimisure del 5 e
+del 15 settembre 2026 — §3-bis, §3-ter).*

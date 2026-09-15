@@ -29,6 +29,7 @@ from apps.pagamenti.db.pagamenti_repository import (
     PagamentiRepository,
 )
 from apps.pagamenti.services._helpers import (
+    E_FATTURA_NON_TROVATA,
     E_VALIDAZIONE,
     decimal_da_payload,
     risposta_paginata,
@@ -39,7 +40,6 @@ logger = logging.getLogger(__name__)
 _FN = "pagamenti.sistemazioni_service"
 
 E_SISTEMAZIONE_NON_TROVATA = "E_SISTEMAZIONE_NON_TROVATA"
-E_FATTURA_NON_TROVATA = "E_FATTURA_NON_TROVATA"
 
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 

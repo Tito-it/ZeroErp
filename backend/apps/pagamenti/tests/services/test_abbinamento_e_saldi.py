@@ -11,7 +11,8 @@
 
 """
 Indice test eseguiti:
-1)  AbbinamentoTests.test_fattura_e_cliente_obbligatori
+1)  AbbinamentoTests.test_fattura_obbligatoria_cliente_derivato
+1a) AbbinamentoTests.test_cliente_dichiarato_non_si_rilegge
 2)  AbbinamentoTests.test_la_rata_resta_facoltativa
 3)  AbbinamentoTests.test_porta_la_riga_ad_abbinata
 4)  AbbinamentoTests.test_forzatura_passa_intatta_al_database
@@ -78,6 +79,11 @@ def _repo() -> MagicMock:
         "has_movimenti": True,
     }
     repo.list_rate_con_saldo.return_value = []
+    # Il cliente della fattura, per quando il chiamante non lo passa.
+    repo.get_riferimenti_fattura.return_value = {
+        "fattura_id": 2263, "billing_account_id": 41,
+        "emittente_soggetto_ruolo_id": 32, "cliente_soggetto_ruolo_id": 9,
+    }
     return repo
 
 
@@ -96,13 +102,25 @@ class _Base(TestCase):
 class AbbinamentoTests(_Base):
     _OK = {"fattura_id": 2263, "billing_account_id": 41}
 
-    # Scopo: Senza fattura e cliente non c'e' abbinamento — e lo stesso lo
-    #        pretende il guard sui dati, che parla dopo di noi.
-    def test_fattura_e_cliente_obbligatori(self):
-        with self.assertRaises(ServiceError):
-            pagamenti_service.abbina_riga(11, {"fattura_id": 2263})
+    # Scopo: Senza fattura non c'e' abbinamento — e lo stesso lo pretende il
+    #        guard sui dati, che parla dopo di noi. ⭐ Il cliente invece si puo'
+    #        omettere (dal 14/09, stessa regola della nascita della riga): e'
+    #        quello della fattura, LETTO dal documento e passato al database —
+    #        il guard lo pretende comunque su ABBINATA.
+    def test_fattura_obbligatoria_cliente_derivato(self):
         with self.assertRaises(ServiceError):
             pagamenti_service.abbina_riga(11, {"billing_account_id": 41})
+        self.repo.abbina_riga.assert_not_called()
+        pagamenti_service.abbina_riga(11, {"fattura_id": 2263})
+        self.repo.get_riferimenti_fattura.assert_called_once_with(2263)
+        self.assertEqual(self.repo.abbina_riga.call_args.kwargs["billing_account_id"], 41)
+
+    # Scopo: Se il cliente arriva dal chiamante, non si rilegge dalla fattura:
+    #        e' un dato dichiarato, e il database lo verifichera'.
+    def test_cliente_dichiarato_non_si_rilegge(self):
+        pagamenti_service.abbina_riga(11, dict(self._OK))
+        self.repo.get_riferimenti_fattura.assert_not_called()
+        self.assertEqual(self.repo.abbina_riga.call_args.kwargs["billing_account_id"], 41)
 
     # Scopo: ⚠️ La rata resta FACOLTATIVA anche su una riga abbinata: la riga
     #        del fondo fattura ha fattura si' e rata no, ed e' un caso normale.

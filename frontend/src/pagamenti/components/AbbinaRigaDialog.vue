@@ -26,17 +26,16 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
-import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
 import AppDialog from '../../core/components/AppDialog.vue'
 import FatturaLookup from '../../core/components/FatturaLookup.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
-import { RISULTATI, useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { displayDate } from '../../core/utils/date'
-import { abbinaRiga, listRateFattura } from '../api/pagamenti'
+import { abbinaRiga } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
+import RataSelect from './RataSelect.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -50,44 +49,16 @@ const { esegui, conferma, annulla, richiestaConferma, loading } = useForzaturaCo
 const fattura = ref(null)
 const scadenzaId = ref(null)
 const motivoForzatura = ref('')
-// ⚠️ «La fattura non ha rate» e «non sono riuscito a leggerle» si vedono uguali
-//    — un Select vuoto — e portano a due conclusioni diverse. I tre stati li
-//    tiene il BB.
-const {
-  dati: rate,
-  caricati: rateCaricate,
-  errore: erroreRate,
-  loading: caricamento,
-  carica: caricaRate,
-  azzera: azzeraRate,
-} = useLetturaTreStati((id) => listRateFattura(id), { estrai: RISULTATI, vuoto: [] })
+// ⭐ Le rate COL SALDO, i tre stati e la nota «facoltativa» stanno in
+//    `RataSelect` (estratto il 14/09 alla seconda occorrenza: la nascita
+//    della riga con la destinazione fa la stessa domanda). Qui resta il verbo.
+const rataSelect = ref(null)
+const caricamento = computed(() => rataSelect.value?.loading === true)
 
 const canSave = computed(() => fattura.value?.id != null)
 
-// Scopo: scelta la fattura, si caricano le sue rate COL SALDO.
-// Note: ⭐ Le rate arrivano gia' col saldo (`residuo · in_lavorazione ·
-//       incassato`): un elenco di rate senza saldo non risponde alla domanda per
-//       cui lo si apre — «dove ci sta questo incasso?».
-watch(fattura, async (f) => {
-  scadenzaId.value = null
-  azzeraRate()
-  if (!f?.id) return
-  await caricaRate(f.id)
-})
-
-// ⚠️ Il residuo NEGATIVO su una rata significa «e' gia' entrato piu' del
-//    dovuto»: si dice a parole, mai come «-120,00», che si legge come un guasto.
-function etichettaRata(r) {
-  const residuo = Number(r.residuo ?? 0)
-  const stato = residuo < 0
-    ? t('pagamenti.abbina.rata_di_troppo', { importo: formatCurrency(Math.abs(residuo)) })
-    : t('pagamenti.abbina.rata_residuo', { importo: formatCurrency(residuo) })
-  return `${t('pagamenti.abbina.rata_n', { n: r.numero_rata })} · ${displayDate(r.data_scadenza)} · ${stato}`
-}
-
 function reset() {
   fattura.value = null
-  azzeraRate()
   scadenzaId.value = null
   motivoForzatura.value = ''
   annulla()
@@ -153,29 +124,9 @@ function chiudiConEsito() {
         <FatturaLookup v-model="fattura" />
       </div>
 
-      <div class="form-field">
-        <label>{{ t('pagamenti.abbina.campo_rata') }}</label>
-        <Select
-          v-model="scadenzaId"
-          :options="rate"
-          :option-label="etichettaRata"
-          option-value="scadenza_id"
-          :placeholder="t('pagamenti.abbina.campo_rata_placeholder')"
-          :disabled="!fattura || !rate.length"
-          show-clear
-        />
-        <!-- ⭐ La rata e' FACOLTATIVA, e va detto: senza, l'operatore crede di
-             dover per forza sceglierne una e su un fondo fattura si blocca. -->
-        <!-- ⛔ Tre casi, non due: rate presenti · nessuna rata · non lette.
-             L'ultimo NON si spaccia per il secondo. -->
-        <small v-if="erroreRate" class="app-text-muted">
-          {{ t('pagamenti.abbina.rate_non_lette') }}
-        </small>
-        <small v-else-if="rateCaricate && !rate.length" class="app-text-muted">
-          {{ t('pagamenti.abbina.nessuna_rata') }}
-        </small>
-        <small v-else class="app-text-muted">{{ t('pagamenti.abbina.rata_facoltativa') }}</small>
-      </div>
+      <!-- Le rate col saldo, facoltative: il BB di dominio. `v-model` porta
+           lo `scadenza_id`, ed e' tutto cio' che il verbo deve mandare. -->
+      <RataSelect ref="rataSelect" v-model="scadenzaId" :fattura-id="fattura?.id ?? null" />
 
       <!-- ══ Il secondo tempo: la capienza non basta ══
            ⛔ NON e' un errore: e' una domanda. Il messaggio arriva dal DATABASE

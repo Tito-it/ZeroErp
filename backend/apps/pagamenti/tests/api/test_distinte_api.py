@@ -27,6 +27,9 @@ Indice test eseguiti:
 15) Slice3RotteTests.test_le_rotte_della_slice_3_esistono
 16) Slice3ApiTests.test_abbina_senza_idempotency_key_rifiutato
 17) Slice3ApiTests.test_abbina_ok
+17a) Slice3ApiTests.test_elimina_senza_idempotency_key_rifiutato
+17b) Slice3ApiTests.test_elimina_ok
+17c) Slice3ApiTests.test_crea_riga_con_destinazione_passa_al_service
 18) Slice3ApiTests.test_coda_filtri_tradotti
 19) Slice3ApiTests.test_saldo_rata_ok
 20) Slice3ApiTests.test_saldo_fattura_ok
@@ -433,6 +436,50 @@ class Slice3ApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(mocked.call_args.args[1]["forzata"])
+
+    # Scopo: ⭐ D17 — `DELETE /righe/{id}/` e' una scrittura (attivo = false):
+    #        senza chiave di idempotenza un doppio invio non e' distinguibile.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.elimina_riga")
+    def test_elimina_senza_idempotency_key_rifiutato(self, mocked, _auth):
+        response = self.client.delete("/api/v1/pagamenti/righe/11/")
+        self.assertEqual(response.json()["error"]["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
+        mocked.assert_not_called()
+
+    # Scopo: Il metodo dice il verbo (api.md §Grammatica URL): niente
+    #        `/elimina/` nel path, e la risposta risale intatta.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.elimina_riga")
+    def test_elimina_ok(self, mocked, _auth):
+        mocked.return_value = {"riga_id": 11, "eliminata": True}
+        response = self.client.delete(
+            "/api/v1/pagamenti/righe/11/",
+            HTTP_IDEMPOTENCY_KEY="test-key-0011",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"], {"riga_id": 11, "eliminata": True})
+        mocked.assert_called_once_with(11)
+
+    # Scopo: ⭐ D16 — la destinazione viaggia col POST della riga, e arriva al
+    #        service INTATTA: e' lui a decidere lo stato di nascita.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.crea_riga")
+    def test_crea_riga_con_destinazione_passa_al_service(self, mocked, _auth):
+        mocked.return_value = {"riga": {"id": 11, "stato_codice": "ABBINATA"}}
+        payload = {
+            "importo": "400.00", "data_pagamento": "2026-09-14",
+            "fattura_id": 2263, "scadenza_id": 900,
+        }
+        response = self.client.post(
+            "/api/v1/pagamenti/distinte/7/righe/",
+            data=payload,
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-0012",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked.call_args.args[0], 7)
+        self.assertEqual(mocked.call_args.args[1]["fattura_id"], 2263)
+        self.assertEqual(mocked.call_args.args[1]["scadenza_id"], 900)
 
     @_AUTH
     @patch("apps.pagamenti.api.views.pagamenti_service.list_coda_righe")

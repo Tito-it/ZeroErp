@@ -95,6 +95,13 @@ _DISTINTA_SELECT = """
         st.codice_interno  AS stato_codice,
         st.descrizione     AS stato_descrizione,
         st.is_final        AS stato_is_final,
+        -- ⭐ La riga «dove sono» del drawer (FE-9): la chiave i18n vive nel
+        --    `meta` dello STATO, come negli otto domini che usano
+        --    `DrawerActionsBar :info-key`. Il backend la TRASPORTA: un `CASE`
+        --    sul codice qui sarebbe la stessa regola scritta due volte.
+        --    ⚠️ NULL finche' il seed (brief §4 P-8) non e' applicato: il
+        --    frontend non mostra niente, non una chiave grezza.
+        st.meta ->> 'nessuna_azione_key' AS stato_info_key,
         c.origine,
         c.importo_dichiarato,
         c.data_conferma,
@@ -172,9 +179,37 @@ _RIGA_COLONNE = """
         r.motivo_sospeso,
         r.fondo_source_id,
         r.attivo,
-        r.meta
+        r.meta,
+        -- ⭐ IL VERBO «ELIMINA» E IL SUO MOTIVO (D17, linee-guida-sql §12.5):
+        --    la terna `reason / reason_key / dettaglio` + il flag, letti dalla
+        --    STESSA check che il guard chiama per rifiutare. Cosi' il cestino
+        --    spento in lista e il 409 del database non «coincidono oggi»: non
+        --    possono divergere. ⛔ Il nome dice QUALE verbo: su una riga ce ne
+        --    sono altri (abbina, sospendi), e un `blocco_reason` generico li
+        --    confonderebbe al primo che si aggiunge.
+        elimina.reason             AS elimina_blocco_reason,
+        elimina.reason_key         AS elimina_blocco_reason_key,
+        elimina.dettaglio          AS elimina_blocco_dettaglio,
+        (elimina.reason IS NULL)   AS can_eliminare
 """
 
+# ⚠️ `LEFT JOIN LATERAL ... ON TRUE` e non `CROSS JOIN`: la check risponde `[]`
+#    quando l'azione e' ammessa, e `jsonb_array_elements` su un array vuoto non
+#    produce righe — con un CROSS JOIN sparirebbero dalla lista proprio le
+#    righe che si possono eliminare. Forma di `registri_repository._LATERAL_BLOCCHI`.
+# ⚠️ L'ORDINE E' IL CONTRATTO: il guard solleva il PRIMO motivo, e il tooltip
+#    deve mostrare quello stesso. Da qui `ORDER BY ord LIMIT 1`.
+# ⚠️ COSTO, letto sul piano: nella coda paginata (`_lista_paginata`, con
+#    `COUNT(*) OVER ()`) la LATERAL gira per ogni riga FILTRATA, non per riga
+#    di pagina. La check e' due ricerche su indice sotto RLS (riga + testata),
+#    e il frammento e' UNO per le tre letture: si e' scelto di pagarlo qui
+#    piuttosto che tenere due frammenti gemelli. ⭐ Fatto datato (EXPLAIN del
+#    2026-09-14, contesto operatore): la `Function Scan` sta nel Nested Loop
+#    SOTTO la `WindowAgg`, accanto ai predicati RLS che gia' girano per riga
+#    (`fn_scope_ef_whitelist_via_fattura`, ...) — stessa specie di costo, non
+#    una specie nuova. Se un giorno pesera', la coda si ristruttura «pagina
+#    prima, motivo dopo»: e' una decisione da prendere col piano in mano.
+#    Presidio: `tests/db/test_riga_elimina_e_transizioni_db.py`.
 _RIGA_FROM = """
       FROM pagamenti.vendite_contabili_righe r
       LEFT JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
@@ -186,6 +221,16 @@ _RIGA_FROM = """
       LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
              ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
       LEFT JOIN vendite.fatture_scadenze sc  ON sc.id = r.scadenza_id
+      LEFT JOIN LATERAL (
+          SELECT m.value ->> 'reason'     AS reason,
+                 m.value ->> 'reason_key' AS reason_key,
+                 m.value -> 'dettaglio'   AS dettaglio
+            FROM jsonb_array_elements(
+                     script.fn_check_riga_contabile_eliminabile(r.id)
+                 ) WITH ORDINALITY AS m(value, ord)
+           ORDER BY m.ord
+           LIMIT 1
+      ) elimina ON TRUE
 """
 
 # La riga «nuda», per il dettaglio e per le righe di UNA distinta.
@@ -202,6 +247,53 @@ _RIGA_CODA_SELECT = f"""
         c.origine         AS contabile_origine
     {_RIGA_FROM}
       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
+"""
+
+# L'INSERT della riga, coi fatti E la destinazione (D16). A costante di modulo
+# perche' il presidio sul DB provvisto lo pianifica con `EXPLAIN` senza
+# scrivere niente: un nome di colonna sbagliato qui e' un 500 sul primo
+# incasso digitato, non un test rosso.
+_RIGA_INSERT = """
+    INSERT INTO pagamenti.vendite_contabili_righe (
+        contabile_id, importo, stato_id, riferimento_ente,
+        data_pagamento, data_valuta, data_operazione,
+        motivo_sospeso, meta,
+        fattura_id, billing_account_id, scadenza_id,
+        forzata, motivo_forzatura
+    )
+    SELECT
+        %s, %s, st.id, %s,
+        %s, %s, %s,
+        %s, %s::jsonb,
+        %s, %s, %s,
+        %s, %s
+      FROM pagamenti.vendite_contabili_righe_stati st
+     WHERE st.codice_interno = %s
+       AND st.attivo IS TRUE
+    RETURNING id
+"""
+
+# Scopo: Il predicato «questo stato si propone ancora» — attivo e non
+#        RITIRATO (`obsoleto_dal`) — per le due tabelle di stato del dominio.
+# ⚠️ `alias` e' un identificatore scelto dal codice (mai da input): finisce
+#    interpolato nell'SQL. Vuoto = colonne non qualificate.
+# ⭐ Era scritto sei volte fra i cataloghi e le matrici: uno stato ritirato
+#    che restava proponibile in UNA delle sei copie non avrebbe dato errore —
+#    avrebbe offerto un pulsante che il guard rifiuta.
+def _sql_stato_vivo(alias: str = "") -> str:
+    p = f"{alias}." if alias else ""
+    return (
+        f"{p}attivo IS TRUE"
+        f" AND ({p}obsoleto_dal IS NULL OR {p}obsoleto_dal > CURRENT_DATE)"
+    )
+
+
+# L'eliminazione (D17): `attivo = false`, solo su una riga ancora attiva.
+_RIGA_DISATTIVA = """
+    UPDATE pagamenti.vendite_contabili_righe
+       SET attivo = false
+     WHERE id = %s
+       AND attivo IS TRUE
 """
 
 # 🔴 LE CHIAVI SONO IL `campo_sorgente` DEL SEED, NON IL `codice` LOGICO — e la
@@ -379,7 +471,10 @@ ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
 }
 
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
-_JSONB_COLS = ("meta",)
+# ⚠️ `elimina_blocco_dettaglio` e' l'oggetto coi NOMI dei parametri della frase
+#    i18n del cestino spento: servito come stringa non fallisce — il frontend
+#    si limita a non trovarci le chiavi, e la frase esce coi segnaposto dentro.
+_JSONB_COLS = ("meta", "elimina_blocco_dettaglio")
 
 # 🔴 Le colonne che questo repository accetta di aggiornare, e non e' una
 # ripetizione della whitelist del service: quella dice che cosa il CONTRATTO
@@ -467,11 +562,10 @@ class PagamentiRepository:
     # Nota: `obsoleto_dal` filtra i valori RITIRATI — che restano leggibili
     #       sui documenti vecchi ma non si propongono piu' a nessuno.
     def list_stati_distinta(self) -> list[StatoCatalogoRow]:
-        sql = """
+        sql = f"""
             SELECT id, codice, codice_interno, descrizione, is_final, ordine
               FROM pagamenti.vendite_contabili_stati
-             WHERE attivo IS TRUE
-               AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE)
+             WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
         """
         with connection.cursor() as cursor:
@@ -482,12 +576,11 @@ class PagamentiRepository:
     #        l'interfaccia — `is_postabile` (occupa spazio, si puo' registrare)
     #        e `richiede_abbinamento` (pretende fattura e cliente).
     def list_stati_riga(self) -> list[StatoRigaCatalogoRow]:
-        sql = """
+        sql = f"""
             SELECT id, codice, codice_interno, descrizione, is_final, ordine,
                    is_postabile, richiede_abbinamento
               FROM pagamenti.vendite_contabili_righe_stati
-             WHERE attivo IS TRUE
-               AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE)
+             WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
         """
         with connection.cursor() as cursor:
@@ -718,21 +811,35 @@ class PagamentiRepository:
             rows = rows_to_list(cursor)
         return [self._shape(row) for row in rows]
 
-    # Scopo: Dettaglio di una singola riga contabile.
+    # Scopo: Dettaglio di una singola riga contabile ATTIVA.
+    # ⚠️ Il filtro su `attivo` e' un cancello, non un dettaglio (D17): questa
+    #    lettura e' il `_riga_o_404` di ogni verbo — PATCH, stato, abbina,
+    #    elimina. Senza, una riga eliminata (che nessuna lista mostra) restava
+    #    modificabile e abbinabile dall'API, in silenzio. Prima del 14/09 non
+    #    c'era modo di produrne una dall'app; adesso c'e'.
     def get_riga(self, riga_id: int) -> RigaContabileRow | None:
         self._guard_canale_sistema("get_riga")
         sql = f"""
             {_RIGA_SELECT}
             WHERE r.id = %s
+              AND r.attivo IS TRUE
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id)])
             rows = rows_to_list(cursor)
         return self._shape(rows[0]) if rows else None
 
-    # Scopo: Crea una riga sotto una distinta.
+    # Scopo: Crea una riga sotto una distinta — coi fatti E la destinazione.
     # ⚠️ Lo stato si risolve dal catalogo per codice: gli id sono smallint
     #    seminati e non si scrivono a mano da nessuna parte (mai id cablati).
+    # ⭐ D16: fattura, cliente, rata e forzatura entrano nello STESSO INSERT dei
+    #    fatti. ⛔ Fino al 14/09 questi parametri erano stati TOLTI come «seconda
+    #    porta per scrivere l'abbinamento aggirando il verbo»: la ragione decade
+    #    perche' la nascita abbinata E' il verbo, e i guard che lo governano
+    #    (dati richiesti dallo stato, coerenza rata/fattura, capienza, scope
+    #    emittente) sono `BEFORE INSERT OR UPDATE` — sull'INSERT parlano uguale.
+    #    Lo STATO lo sceglie il service in base alla destinazione; qui non si
+    #    decide niente.
     def create_riga(
         self,
         *,
@@ -745,34 +852,21 @@ class PagamentiRepository:
         data_operazione: date | None = None,
         motivo_sospeso: str | None = None,
         meta: str = "{}",
+        fattura_id: int | None = None,
+        billing_account_id: int | None = None,
+        scadenza_id: int | None = None,
+        forzata: bool = False,
+        motivo_forzatura: str | None = None,
     ) -> int:
-        # ⛔ Niente `fattura_id`, `billing_account_id`, `scadenza_id` qui: una
-        # riga NASCE senza destinazione (`DA_ABBINARE`), e l'abbinamento e' un
-        # verbo con le sue regole — la coerenza rata/fattura e la capienza. Dei
-        # parametri accettati qui e mai passati sarebbero una seconda porta per
-        # scriverli, che aggirerebbe quel verbo senza dirlo.
-        sql = """
-            INSERT INTO pagamenti.vendite_contabili_righe (
-                contabile_id, importo, stato_id, riferimento_ente,
-                data_pagamento, data_valuta, data_operazione,
-                motivo_sospeso, meta
-            )
-            SELECT
-                %s, %s, st.id, %s,
-                %s, %s, %s,
-                %s, %s::jsonb
-              FROM pagamenti.vendite_contabili_righe_stati st
-             WHERE st.codice_interno = %s
-               AND st.attivo IS TRUE
-            RETURNING id
-        """
         with connection.cursor() as cursor:
             cursor.execute(
-                sql,
+                _RIGA_INSERT,
                 [
                     int(contabile_id), importo, riferimento_ente,
                     data_pagamento, data_valuta, data_operazione,
                     motivo_sospeso, meta,
+                    fattura_id, billing_account_id, scadenza_id,
+                    bool(forzata), motivo_forzatura,
                     codice_stato_interno,
                 ],
             )
@@ -868,6 +962,58 @@ class PagamentiRepository:
                 ],
             )
             return cursor.rowcount
+
+    # Scopo: Elimina una riga — `attivo = false` (D17).
+    # ⭐ E' la porta che il modello aveva gia' aperto: tutti i lettori (saldi,
+    #    posting, quadratura, viste, e qui `list_righe`) filtrano `attivo`.
+    #    Resta la traccia di chi ha tolto cosa (`user_update`/`data_update`).
+    # ⛔ Nessun predicato qui: chi puo' e chi no lo dice
+    #    `trgfn_vendite_contabili_righe_guard_contenuto`, leggendo la stessa
+    #    check che alimenta `elimina_blocco_*` in lista.
+    # ⚠️ `AND attivo IS TRUE`: su una riga gia' eliminata non si scrive niente
+    #    (zero righe, e il service lo traduce in «non trovata»), e il guard non
+    #    viene nemmeno svegliato per un `false -> false`.
+    def disattiva_riga(self, riga_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(_RIGA_DISATTIVA, [int(riga_id)])
+            return cursor.rowcount
+
+    # Scopo: Le due matrici di transizione — testata e riga — come coppie di
+    #        codici `(stato_da, stato_a)`, in una lettura sola.
+    # ⭐ Sono catalogo (BE-5): il frontend costruisce le voci «Porta a …» da
+    #    qui, ristrette dal service a cio' che una PERSONA puo' chiedere. Prima
+    #    offriva il vocabolario intero meno lo stato corrente, e su una riga
+    #    `ABBINATA` proponeva `SCARTATA`, che il guard rifiuta.
+    # ⚠️ Gli stati RITIRATI (`obsoleto_dal`) escono da entrambi i lati: una
+    #    transizione verso uno stato che non si propone piu' non e' un'uscita.
+    # ⚠️ `UNION ALL` con una colonna discriminante e non due query: una
+    #    lettura, e le due mappe non possono descrivere due istanti diversi.
+    def list_transizioni(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+        sql = f"""
+            SELECT 'distinta' AS macchina, sd.codice_interno AS stato_da, sa.codice_interno AS stato_a
+              FROM pagamenti.transizioni_stati_contabile t
+              JOIN pagamenti.vendite_contabili_stati sd ON sd.id = t.stato_da_id
+              JOIN pagamenti.vendite_contabili_stati sa ON sa.id = t.stato_a_id
+             WHERE t.attivo IS TRUE
+               AND {_sql_stato_vivo("sd")}
+               AND {_sql_stato_vivo("sa")}
+            UNION ALL
+            SELECT 'riga', sd.codice_interno, sa.codice_interno
+              FROM pagamenti.transizioni_stati_contabile_riga t
+              JOIN pagamenti.vendite_contabili_righe_stati sd ON sd.id = t.stato_da_id
+              JOIN pagamenti.vendite_contabili_righe_stati sa ON sa.id = t.stato_a_id
+             WHERE t.attivo IS TRUE
+               AND {_sql_stato_vivo("sd")}
+               AND {_sql_stato_vivo("sa")}
+             ORDER BY 1, 2, 3
+        """
+        distinta: list[tuple[str, str]] = []
+        riga: list[tuple[str, str]] = []
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            for macchina, stato_da, stato_a in cursor.fetchall():
+                (distinta if macchina == "distinta" else riga).append((stato_da, stato_a))
+        return distinta, riga
 
     # ══════════════════════════════════════════════════════════════
     #  I saldi — le tre letture, e nient'altro le chiama

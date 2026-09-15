@@ -102,6 +102,14 @@ def _repo(**over) -> MagicMock:
     repo.set_stato_riga.return_value = 1
     repo.update_distinta.return_value = 1
     repo.update_riga.return_value = 1
+    repo.disattiva_riga.return_value = 1
+    # Le due matrici, come coppie di codici: vuote qui, la forma e' provata in
+    # `test_riga_nasce_abbinata_ed_elimina`.
+    repo.list_transizioni.return_value = ([], [])
+    repo.get_riferimenti_fattura.return_value = {
+        "fattura_id": 2263, "billing_account_id": 41,
+        "emittente_soggetto_ruolo_id": 32, "cliente_soggetto_ruolo_id": 9,
+    }
     for chiave, valore in over.items():
         getattr(repo, chiave).return_value = valore
     return repo

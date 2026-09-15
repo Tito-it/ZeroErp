@@ -26,6 +26,13 @@ _FN = "pagamenti.helpers"
 # `..._VALIDAZIONE`: il catalogo tiene le due forme e questa e' quella scelta.
 E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"
 
+# La fattura indicata non c'e' — o il perimetro non la lascia vedere, e i due
+# restano volutamente indistinguibili. ⭐ A catalogo (NON_TROVATO, 404); e'
+# il codice che i tre service del dominio sollevano da se' quando leggono un
+# documento per id: era scritto in ognuno dei tre, e una stringa ripetuta e'
+# gia' divergente il giorno in cui una delle copie cambia.
+E_FATTURA_NON_TROVATA = "E_FATTURA_NON_TROVATA"
+
 
 # Scopo: Rifiuta un valore che non e' un importo, con la stessa frase ovunque.
 def rifiuta_importo(raw: Any, key: str, *, condizione: bool) -> None:

@@ -8,20 +8,29 @@
 //        verbi che le fanno avanzare fino alla registrazione.
 //
 // ⭐ I DUE CATALOGHI DI STATO arrivano dentro il dettaglio, in un round-trip
-//    (`stati_distinta`, `stati_riga`), insieme agli elenchi di cio' che una
-//    PERSONA puo' chiedere (`stati_richiedibili`). ⛔ Non si riscrivono qui: il
+//    (`stati_distinta`, `stati_riga`), insieme alle TRANSIZIONI che una PERSONA
+//    puo' chiedere DA OGNI STATO (`transizioni.{distinta,riga}`, lette dalle
+//    matrici del database — BE-5, dal 14/09). ⛔ Non si riscrivono qui: il
 //    giorno che nasce uno stato nuovo, una copia nel frontend lo nasconderebbe
-//    senza dirlo — e `POSTATA` non e' fra i richiedibili proprio perche' la
-//    scrive il posting, non un operatore.
+//    senza dirlo — e `POSTATA` non e' fra le uscite proprio perche' la scrive
+//    il posting, non un operatore. ⚠️ Fino al 14/09 viaggiava il solo
+//    VOCABOLARIO e il drawer toglieva lo stato corrente: su una riga ABBINATA
+//    proponeva SCARTATA, che il database rifiuta — il difetto del collaudo.
 //
-// ⚠️ Le righe si modificano solo finche' la distinta NON e' in uno stato finale
-//    (`stato_is_final`, dal catalogo): dopo, il foglio e' chiuso. Il flag lo
-//    porta il dettaglio — non si deduce dal nome dello stato.
+// ⚠️ Il CONTENUTO delle righe (nuove, fatti, eliminazioni) si lavora solo su
+//    una MANUALE in BOZZA (`contenuto_modificabile`, D17/D18 — dal dettaglio,
+//    non dedotto dallo stato): sotto VALIDATA il foglio e' «finito» e resta
+//    aperto alle sole DECISIONI (abbina, sospendi, porta a). Su una distinta
+//    FINALE (`stato_is_final`) non si fa piu' niente.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
+// ⚠️ DataTable grezza, ed e' l'eccezione ammessa dalla regola zero della lista:
+//    sono le RIGHE DI UN DOCUMENTO dentro il suo master (frontend-standards
+//    §Regola zero). 🔵 Debito dichiarato: la macchina a stati del master-detail
+//    e' scritta qui invece di passare da `RigheMasterDetailTable` (28/08).
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
@@ -34,6 +43,7 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
@@ -43,7 +53,7 @@ import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { statoDistintaSeverity, statoRigaContabileSeverity } from '../../core/utils/severity'
-import { cambiaStatoDistinta, cambiaStatoRiga, getDistinta } from '../api/pagamenti'
+import { cambiaStatoDistinta, cambiaStatoRiga, eliminaRiga, getDistinta } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
 import CorreggiDistintaDialog from './CorreggiDistintaDialog.vue'
@@ -59,7 +69,7 @@ const props = defineProps({
 //    lavorare la correzione, non guardarla da dietro il documento sbagliato.
 const emit = defineEmits(['update:visible', 'cambiata', 'apri-distinta'])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -88,16 +98,22 @@ const statiDistinta = computed(() => dettaglio.value?.stati_distinta || [])
 //    davvero: porta `is_final`, che il singolo record di riga NON espone — la
 //    riga porta solo `stato_is_postabile` e `stato_richiede_abbinamento`.
 const statiRiga = computed(() => dettaglio.value?.stati_riga || [])
-const richiedibiliDistinta = computed(
-  () => dettaglio.value?.stati_richiedibili?.distinta || [],
+// ⭐ Le uscite ammesse DALLO STATO CORRENTE, per le due macchine: la matrice
+//    del database ristretta a cio' che una persona puo' chiedere. Uno stato
+//    senza uscite ha la lista vuota — e non e' un errore, e' un fatto.
+const transizioniDistinta = computed(
+  () => dettaglio.value?.transizioni?.distinta?.[distinta.value?.stato_codice] || [],
 )
-const richiedibiliRiga = computed(() => dettaglio.value?.stati_richiedibili?.riga || [])
+function transizioniRiga(riga) {
+  return dettaglio.value?.transizioni?.riga?.[riga.stato_codice] || []
+}
 
-// ⚠️ Il foglio si lavora finche' non e' finale. `stato_is_final` viene dal
-//    CATALOGO: dedurlo dal nome («CHIUSA», «ANNULLATA») sarebbe una seconda
-//    copia della regola, che il giorno di uno stato nuovo direbbe il falso.
+// ⚠️ Il CONTENUTO si lavora solo su una manuale in bozza (D17/D18). Il flag
+//    viene dal DETTAGLIO: dedurlo dallo stato («BOZZA» + «MANUALE») sarebbe
+//    una seconda copia della regola. ⛔ Fino al 14/09 era `!stato_is_final`:
+//    sotto VALIDATA il form si apriva e il database rifiutava.
 const modificabile = computed(
-  () => !isReadonly.value && distinta.value != null && !distinta.value.stato_is_final,
+  () => !isReadonly.value && distinta.value?.contenuto_modificabile === true,
 )
 
 // ── quadratura ────────────────────────────────────────────────────
@@ -127,15 +143,13 @@ const quadra = computed(
 )
 
 // ── i verbi della testata ─────────────────────────────────────────
-// ⭐ Le transizioni si costruiscono INCROCIANDO i richiedibili col catalogo: il
-//    primo dice cosa una persona puo' chiedere, il secondo come si chiama a
-//    video. Nessuno dei due si scrive qui.
-// ⚠️ Lo stato CORRENTE si esclude: chiedere lo stato in cui si e' gia' non e'
-//    un'azione, e a video sarebbe un pulsante che non fa niente.
+// ⭐ Le transizioni vengono dalla MATRICE (le uscite dallo stato corrente) e
+//    si INCROCIANO col catalogo, che dice come si chiamano a video. Nessuno
+//    dei due si scrive qui. ⚠️ Lo stato corrente non c'e' per costruzione: la
+//    matrice ha un CHECK «da ≠ a».
 const drawerActions = computed(() => {
   if (!distinta.value) return []
-  const azioni = richiedibiliDistinta.value
-    .filter((codice) => codice !== distinta.value.stato_codice)
+  const azioni = transizioniDistinta.value
     .map((codice) => {
       const stato = statiDistinta.value.find((s) => s.codice_interno === codice)
       return {
@@ -222,13 +236,12 @@ const pageActionsRighe = computed(() => [
 //    decidere, quindi le voci non applicabili si disabilitano con la ragione
 //    invece di sparire — una voce che sparisce non spiega niente.
 //
-// ⭐ Le transizioni della riga si generano INCROCIANDO `stati_richiedibili.riga`
-//    col catalogo, esattamente come quelle della testata. ⛔ La prima stesura
-//    ne scriveva DUE a mano (`SOSPESA`, `SCARTATA`): erano codici cablati contro
-//    la regola del cantiere, e per giunta lasciavano fuori una transizione che
-//    il contratto dichiara ammessa — il ritorno a `DA_ABBINARE`, cioe' l'unico
-//    modo di sganciare un abbinamento sbagliato. Cio' che il contratto dichiara
-//    va provato per intero.
+// ⭐ Le transizioni della riga vengono dalla MATRICE, per lo stato in cui la
+//    riga si trova (`transizioni.riga[stato]`), esattamente come quelle della
+//    testata. ⛔ La prima stesura ne scriveva DUE a mano; la seconda offriva il
+//    vocabolario intero meno lo stato corrente, e su una riga ABBINATA
+//    proponeva SCARTATA — che la matrice non ammette e il database rifiutava.
+//    Un vocabolario offerto per intero non e' una matrice (brief §8).
 //
 // ⛔ L'UNICA esclusa e' quella che ha un VERBO PROPRIO: ad `ABBINATA` non ci si
 //    porta cambiando stato — ci si arriva scegliendo la fattura. Offrirla come
@@ -243,10 +256,17 @@ const STATO_RIGA_CON_VERBO_PROPRIO = 'ABBINATA'
 //    stessa ragione della mappa dei colori in `core/utils/severity.js`.
 // ⛔ Senza, le voci sarebbero tre spunte identiche: nella variante desktop il
 //    menu e' icon-only, e tre icone uguali non si distinguono.
+// ⛔ SCARTATA NON E' IL CESTINO (D17-e, 14/09): «scarta» vuol dire «denaro
+//    arrivato, non nostro» e conta nella quadratura; «elimina» toglie una riga
+//    digitata male. Col cestino su «scarta» Tid ha letto uno stato di dominio
+//    come un'eliminazione — la stessa lezione di `UNDO` in `constants.js`
+//    (19/08). Il cestino da oggi e' di «Elimina», e basta. L'icona e'
+//    letterale perche' ha un lettore solo (frontend-standards §«dove vive il
+//    nome di un'icona»).
 const ICONA_TRANSIZIONE_RIGA = {
   DA_ABBINARE: 'pi pi-link',
   SOSPESA: 'pi pi-pause',
-  SCARTATA: MANAGE_ICONS.DELETE,
+  SCARTATA: 'pi pi-ban',
 }
 
 // Scopo: la riga di catalogo dello stato in cui la riga si trova.
@@ -277,8 +297,7 @@ function buildRowActions(riga) {
       ? t('pagamenti.distinte.foglio_chiuso')
       : undefined
 
-  const transizioni = richiedibiliRiga.value
-    .filter((codice) => codice !== riga.stato_codice)
+  const transizioni = transizioniRiga(riga)
     .filter((codice) => codice !== STATO_RIGA_CON_VERBO_PROPRIO)
     .map((codice) => {
       const stato = catalogoRiga(codice)
@@ -294,6 +313,23 @@ function buildRowActions(riga) {
       }
     })
 
+  // ⭐ ELIMINA (D17): il cestino, spento COL MOTIVO che manda il database —
+  //    la stessa check che il guard chiama per rifiutare, quindi tooltip e
+  //    409 non possono dire due cose diverse. La terna la legge il BB
+  //    `bloccoMotivo` (prefisso `elimina_blocco`, flag `can_eliminare`).
+  //    ⛔ Nessun `if stato === ...` qui: sotto VALIDATA, su una GENERATA, su
+  //    una CHIUSA il motivo e' del database, e cambia frase da solo.
+  const eliminaBloccata = bloccoAttivo(riga, 'elimina_blocco', 'can_eliminare')
+  const elimina = {
+    key: 'elimina',
+    label: t('pagamenti.righe.elimina'),
+    icon: MANAGE_ICONS.DELETE,
+    severity: 'danger',
+    disabled: eliminaBloccata,
+    tooltip: eliminaBloccata ? motivoBloccoRiga(t, te, riga, 'elimina_blocco') : undefined,
+    command: () => onEliminaRiga(riga),
+  }
+
   return [
     {
       key: 'abbina',
@@ -304,6 +340,7 @@ function buildRowActions(riga) {
       command: () => { rigaDaAbbinare.value = riga; abbinaVisible.value = true },
     },
     ...transizioni,
+    elimina,
   ]
 }
 
@@ -363,8 +400,28 @@ function onCambiaStatoRiga(riga, codice, descrizione, terminale) {
   })
 }
 
-// ⚠️ Il click sulla riga apre la MODIFICA solo se il foglio si lavora: su una
-//    distinta chiusa aprirebbe un form che non salva.
+// Scopo: elimina una riga (attivo = false) dopo conferma. ⭐ Rossa: la riga
+//        sparisce dall'elenco e dalla quadratura. Il rifiuto — se il foglio
+//        non e' piu' in bozza — arriva dal database con la sua frase.
+function onEliminaRiga(riga) {
+  confirmAction({
+    message: t('pagamenti.righe.conferma_elimina', {
+      importo: formatCurrency(riga.importo),
+      riferimento: riga.riferimento_ente || '—',
+    }),
+    danger: true,
+    onAccept: async () => {
+      const esito = await execute(
+        () => eliminaRiga(riga.id),
+        { successMessage: t('pagamenti.righe.eliminata') },
+      )
+      if (esito !== null) ricarica()
+    },
+  })
+}
+
+// ⚠️ Il click sulla riga apre la MODIFICA solo se il contenuto si lavora: su
+//    una distinta validata o chiusa aprirebbe un form che il database rifiuta.
 function onRigaClick(evento) {
   if (!modificabile.value) return
   rigaInModifica.value = evento.data
@@ -432,7 +489,16 @@ watch(
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" />
+        <!-- ⭐ La riga «dove sono» (FE-9): «bozza: si digita» · «validata:
+             pronta da registrare, il denaro non e' ancora registrato» ·
+             «registrata». La CHIAVE arriva dal `meta` dello stato via backend
+             (`stato_info_key`), come negli otto drawer di vendite: qui non
+             c'e' nessun `v-if` sullo stato — sarebbe la regola scritta due
+             volte. Finche' il seed (brief §4 P-8) non e' applicato, e' vuota. -->
+        <DrawerActionsBar
+          :actions="drawerActions"
+          :info-key="distinta?.stato_info_key || ''"
+        />
 
         <!-- ⭐ IL LEGAME DELLA CORREZIONE, nei due versi. Senza, due documenti
              gemelli di segno opposto stanno nell'elenco senza niente che dica
@@ -523,7 +589,10 @@ watch(
         </div>
 
         <!-- ⚠️ Il foglio chiuso lo si DICE: senza, l'assenza dei verbi si legge
-             come un'interfaccia rotta invece che come uno stato. -->
+             come un'interfaccia rotta invece che come uno stato. E lo stesso
+             vale per il foglio VALIDATO (D18): niente righe nuove ne' fatti,
+             ma abbinare e sospendere si puo' — e va detto, o il pulsante
+             «Nuova riga» che manca sembra un difetto. -->
         <Message
           v-if="distinta.stato_is_final"
           severity="info"
@@ -531,6 +600,14 @@ watch(
           size="small"
         >
           {{ t('pagamenti.distinte.foglio_chiuso') }}
+        </Message>
+        <Message
+          v-else-if="!distinta.contenuto_modificabile && !isReadonly"
+          severity="info"
+          :closable="false"
+          size="small"
+        >
+          {{ t('pagamenti.distinte.contenuto_fermo') }}
         </Message>
 
         <div class="app-page-toolbar">

@@ -35,6 +35,10 @@ class DistintaRow(TypedDict):
     stato_codice: str | None
     stato_descrizione: str | None
     stato_is_final: bool | None
+    # La chiave i18n della riga «dove sono» del drawer, dal `meta` dello stato
+    # (`nessuna_azione_key`, lo stesso campo degli otto domini con
+    # `DrawerActionsBar :info-key`). NULL finche' il seed non c'e'.
+    stato_info_key: str | None
     origine: str
     importo_dichiarato: Decimal | None
     data_conferma: datetime | None
@@ -95,6 +99,15 @@ class RigaContabileRow(TypedDict):
     fondo_source_id: int | None
     attivo: bool
     meta: Any
+    # ── Il verbo «elimina» e il suo motivo (D17, linee-guida-sql §12.5) ──────
+    # La terna del PRIMO motivo di `script.fn_check_riga_contabile_eliminabile`
+    # piu' il flag derivato (`reason IS NULL`). NULL/True = si puo' eliminare.
+    # ⛔ Il nome dice QUALE verbo: `abbina` e `sospendi` hanno i loro blocchi,
+    #    e una colonna generica li confonderebbe (api.md §capability).
+    elimina_blocco_reason: str | None
+    elimina_blocco_reason_key: str | None
+    elimina_blocco_dettaglio: Any
+    can_eliminare: bool
 
 
 # ⭐ La riga vista dalla CODA porta anche la sua distinta: una riga

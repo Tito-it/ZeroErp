@@ -40,6 +40,20 @@
 > era ferma a B1. Tutto aggiornato in questa passata, col marcatore ⏱️.
 > L'unica decisione ancora di Tid è la **#8** (§5).
 >
+> ⏱️ **Riletto il 2026-09-15** (quarta passata) contro repo, doc auto-gen e
+> giornale di systemd. **Il quadro del 12-09 regge riga per riga**: nessun
+> residuo si è mosso. La novità è di **esercizio**, non di piano: la corsia
+> giornaliera del digest dei presidi ha fatto le sue prime corse vere (14-09 e
+> 15-09, 07:00). La prima ha riportato un allarme che era un **falso positivo
+> della vista** — `vw_processi_programmazione_da_guardare` diceva `MUTO` un
+> listener vivo, perché `pg_stat_activity` maschera `backend_start` a chi non è
+> l'utente della sessione — chiuso lo stesso giorno da `20260914-01`
+> (verdetto sull'*esistenza* della sessione, il perimetro `LIBERO` era giusto);
+> la seconda ha trovato zero righe e, **per scelta**, non ha spedito. ⛔ Ciò che
+> resta di questo documento resta tale e quale: B intero, la sorgente «lotto
+> fermo» di C, i tre log senza `cleanup_at` di D, R-6, la #8 di Tid, il brief
+> della #14.
+>
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
 > `emittente_soggetto_ruolo_id` (non la PK) ~~e il vocabolario è un `CHECK` (non
@@ -352,6 +366,10 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 > lavoro sui processi automatici e sui presidi (05-09 → 11-09) li ha mossi da
 > fuori, e questa tabella li descriveva fermi. R-6 è ancora vero.
 >
+> ⏱️ **Rimisurato il 2026-09-15** (tre giorni dopo). Nessuna riga cambia di
+> stato. Sotto, dove serve, una nota ⏱️ *15-09* dice **come** è stato
+> riverificato — non «è ancora così», ma da quale sorgente lo si legge.
+>
 > ⚠️ **E si legge con il contesto operatore addosso**: `vendite.event_log` ha la
 > RLS attiva, quindi un `count(*)` da una sessione senza GUC torna **0**. Non è
 > «il registro è vuoto», è **fail-closed**. Con il contesto: **236 righe**
@@ -364,7 +382,7 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | **2** — `request_id` nei log Python | ✅ **FATTO** *(consegna BE-8)* | `settings.py`: filtro `request_id` + `req=%(request_id)s` nel formatter. ⭐ **B11 chiuso nello stesso giro, e in due direzioni opposte**: `emittente_attivo_id` ora si **scrive** (si collega in SQL, non passa dal Python), `tx_id` su `request_log` si è **tolto** — quella riga nasce quando l'unità di lavoro ha già chiuso, quindi il suo `tx_id` non esiste più. ⭐ *Una colonna che nessuno scrive si valorizza o si toglie: qui è successo l'uno e l'altro, sulla stessa tabella* |
 | **A** — la timeline di un caso | ✅ **CHIUSO — fattura e lotto** *(2026-08-24 sera)* | `GET /vendite/fatture/<id>/giornale/` (validato in-app da Tid) e `GET /vendite/lotti/<id>/giornale/` + le due schede «Storia». ⭐ Sono i **due soli consumatori** di `script.vw_giornale_entita`. Sul lotto: il lotto **più le sue fatture**, righe non-INFO, con `entity_type` su ogni riga — e alla prima chiamata vera *il lotto dice che è andata male, la fattura dice perché* (R-3). 🔵 Resta la validazione in-app del pannello lotto |
 | **B** — superfici aggregate | 🔵 aperto — 🟡 **mosso da fuori** ⏱️ *12-09* | `GET /tracciamento/job-runs/` ha il suo primo consumatore: la schermata **«Processi automatici»** (`amm-software`, 05-09), che affianca ai run lo stato dei presidi `ZERO`. ⛔ Non è la vista errori né la consultazione di `error_log`: quelle restano da fare, dietro il permesso del vincolo del Passo A |
-| **C** — notifiche | 🔵 aperto — 🟡 **il canale c'è** ⏱️ *12-09* | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C |
+| **C** — notifiche | 🔵 aperto — 🟡 **il canale c'è** ⏱️ *12-09* | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C. ⏱️ *15-09*: la giornaliera è **in esercizio** (corse 14-09 e 15-09 alle 07:00, exit 0 a giornale); a zero righe non spedisce, per scelta — il battito lo porta la settimanale. La sorgente «lotto fermo» **non è a catalogo**: `presidi.csv` non ha nessuna riga sui lotti |
 | **D** — retention sui log di dominio | 🟡 **parziale** — ma la parte difficile è fatta | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⛔ Resta il pezzo meccanico: `fatturazione_lotti_log` e `fatture_log` non hanno `cleanup_at` — ⏱️ *12-09*: confermato sulla doc auto-gen, e nemmeno `commesse_push_log` ce l'ha |
 
 ### ✅ R-1 — l'orario ora è quello vero *(chiesto dal BE, scritto dal team DB il 2026-08-24)*
@@ -431,7 +449,7 @@ incontra tutti:
 | **R-2** | `LOTTO_LOG` e `FATTURA_LOG` hanno `correlation_id` **NULL per costruzione della vista** | Filtrare per «filo» tiene `event_log` + `task_run` e butta via le righe scritte **per una persona**. ⛔ Un filtro per giro nasconderebbe metà del contenuto |
 | **R-4** | Il **perimetro non è mai stato esercitato** su nessuno dei quattro rami | Un solo emittente ha righe. Il fail-closed funziona (senza GUC la vista torna 0), la **discriminazione** no: va collaudata **apposta**, i dati non lo faranno |
 | **R-5** | Due **generazioni di righe** convivono | Le vecchie hanno `tx_id` NULL e per «filo» il lotto; le nuove il giro. A video sono **indistinguibili** — e da R-1 in poi si aggiunge l'orario |
-| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05 e il 2026-09-12*: `script.vw_giornale_entita` usa tuttora `COALESCE(tr.ended_at, tr.started_at) AS quando` | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
+| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05, il 2026-09-12 e il 2026-09-15*: `script.vw_giornale_entita` usa tuttora `COALESCE(tr.ended_at, tr.started_at) AS quando` | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
 | **R-7** | **Rumore**: sul 6260, 213 righe, 82 non-INFO — e **81 sono la stessa storia ripetuta otto volte**. L'errore vero è **una riga** | Il filtro non-INFO da solo non basta: nascondere le ritirate ne toglie una parte, il resto è **de-duplicazione**, da guardare col pannello davanti |
 
 ---
@@ -691,6 +709,10 @@ tutte le aziende e non hanno RLS: è il vincolo del Passo A applicato a un
 aggregato. Restano interi il primo punto (vista errori trasversale) e il terzo
 (`error_log` con filtri), più i quattro endpoint ancora orfani (§2).
 
+⏱️ *2026-09-15*: **invariato**. Nessun `urls.py` espone `error_log`, nessuna
+vista errori trasversale esiste; `job-runs` resta l'unico endpoint aggregato con
+un consumatore.
+
 ### Passo C — Notifiche
 
 Il precedente da imitare esiste: `MaintenanceRepository.job_liveness()` più le
@@ -717,6 +739,19 @@ catalogo — canale, cadenza e destinatario sono decisi altrove
 ⚠️ Resta di Tid la #8: se al canale email va affiancato un **badge in-app** per
 l'operatore, o se per lui basta il binario parallelo (fallimenti nelle liste).
 
+⏱️ *2026-09-15*: **il canale ha fatto le prime corse vere.** Giornaliera del
+14-09: un allarme (`vw_processi_programmazione_da_guardare: 1`) con l'avviso
+«il conteggio dice 1 ma da qui la vista risponde vuota» — era la vista a dare
+due verdetti secondo il ruolo che la legge, non il perimetro; corretta il giorno
+stesso (`20260914-01`, verdetto `SESSIONE` sull'esistenza della riga). Giornaliera
+del 15-09: zero righe, **nessun invio** — e va saputo che è così per scelta
+([brief](../work-done/brief-db-un-destinatario-per-i-presidi.md): un messaggio
+al giorno che dice «niente da segnalare» è la posta che si impara ad archiviare;
+il battito «sono vivo» lo porta la settimanale del lunedì, più il guardiano
+pgAgent se il digest tace). ⇒ Il residuo del Passo C è **solo** la sorgente
+«lotto fermo in errore»: `presidi.csv` non ha righe sui lotti, e il canale la
+aspetta.
+
 ### Passo D — Retention sui log di dominio
 
 Estendere `cleanup_at` a `event_log` e ai log funzionali, con i termini decisi
@@ -732,6 +767,9 @@ decidono con calma senza riaprire niente.
 decisione 11). Il residuo è un brief piccolo del team DB: `cleanup_at` su
 `fatturazione_lotti_log`, `fatture_log` e `commesse_push_log` — verificato
 sulla doc auto-gen, nessuna delle tre ce l'ha.
+
+⏱️ *2026-09-15*: **invariato**, riverificato sulle tre pagine `dbzero` delle
+tabelle. Il brief non è stato scritto.
 
 ---
 
@@ -811,6 +849,11 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    esiste ed è in servizio per i presidi (Passo C). La domanda che resta è più
    stretta: serve **anche** un badge in-app per l'operatore, o il binario
    parallelo (fallimenti nelle liste) copre quel bisogno? Resta di Tid.
+   ⏱️ *2026-09-15*: **ancora aperta**, e con un fatto in più sul piatto: la
+   giornaliera a zero righe **tace** per scelta, quindi l'operatore che non
+   riceve l'email non sa se «va tutto bene» o se non è destinatario — un badge
+   in-app direbbe la prima cosa a chi non legge la posta di sistema. È un
+   argomento, non una decisione.
 > ✅ **Le voci 9, 10, 11, 12 e 13 sono state decise il 2026-08-22 e sono
 > confluite nel [brief del Passo 0](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
 > come D-6 (`actor`/`source` via), D-7 (il giro), D-8 (retention),
@@ -909,6 +952,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
     ⏱️ *2026-09-12*: **il brief non esiste ancora** (nessun file né in
     `work-in-progress/` né in `work-done/`). Resta un debito dichiarato, non
     un'urgenza: la D11 del brief classi lo tiene come «split rimandato».
+    ⏱️ *2026-09-15*: ancora nessun file.
 
 ---
 
@@ -927,4 +971,4 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 
 *Analisi WIP — Osservabilità e consultazione dei log (3 agosto 2026;
 piano rivisto il 22 agosto 2026: §0-bis, Passo 0, divisione A/B; riletture
-del 24 agosto, 5 settembre e 12 settembre 2026 — §3-quater).*
+del 24 agosto, 5, 12 e 15 settembre 2026 — §3-quater).*

@@ -145,7 +145,7 @@ class CataloghiTests(TestCase):
             _catalogo("vendite_contabili_stati.csv"),
         )
         self.assertIn(
-            pagamenti_service.STATO_RIGA_INIZIALE,
+            pagamenti_service.STATO_RIGA_SENZA_DESTINAZIONE,
             _catalogo("vendite_contabili_righe_stati.csv"),
         )
 
