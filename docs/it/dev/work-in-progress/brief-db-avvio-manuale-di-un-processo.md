@@ -1,10 +1,12 @@
 # Brief DB — Avviare un processo dall'interfaccia: il lavoro di coda che lo chiede
 
-> **Da leggere per primo: §8 — la risposta del DB (14-09, sera): le tre righe
-> reggono e sono **APPLICATE** (14-09 sera, pgTAP verde — §8.4); tre cose del
-> brief no (§8.2). Le due domande a Tid (§8.5) sono decise — solo
-> `SUPER_ADMIN`; «Esegui ora» solo su comandi brevi. Il DB aspetta il BE per
-> accendere il tipo.**
+> **Da leggere per primo: §9 — il secondo giro (15-09): i cinque codici errore
+> del verbo sono **a catalogo** (CSV, id 1067–1071, nessun changeSet), con una
+> classe diversa da quella chiesta su uno solo (§9.2). Poi §8 — la risposta del
+> DB (14-09, sera): le tre righe reggono e sono **APPLICATE** (pgTAP verde —
+> §8.4); tre cose del brief no (§8.2). Le due domande a Tid (§8.5) sono decise
+> — solo `SUPER_ADMIN`; «Esegui ora» solo su comandi brevi. Il DB aspetta il
+> BE per accendere il tipo.**
 > Chi scrive: backend (`dev/backend-tid`), 2026-09-14. Decisione di Tid del
 > 14-09, dopo aver rilanciato a mano le due cadenze del digest.
 > Origine: [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
@@ -310,7 +312,8 @@ escludere per forma, come il §4.3 dell'analisi esclude «Riavvia».
 > 6/6 come `zeroerp_app`). Le tre righe sono a catalogo sul dbdev; il tipo
 > `ESEGUI_PROCESSO` è **spento** e lo resta finché il backend non dichiara
 > l'handler in servizio. Lato DB il cantiere è **chiuso**, salvo l'accensione.
-
+> ⚠️ **Non del tutto (15-09)**: il BE ha chiesto i codici errore del verbo, che
+> questo brief non aveva previsto — §9.
 
 * Le tre righe nei CSV: `80_data/sql/dbops/processi.csv` (id 45),
   `80_data/sql/dbops/coda_lavori_tipi.csv` (`ESEGUI_PROCESSO`),
@@ -335,6 +338,8 @@ escludere per forma, come il §4.3 dell'analisi esclude «Riavvia».
 | handler `esegui_processo_default`, endpoint su `AdminAPIView` (§8.5.1), tetto basso nel sottoprocesso (§8.5.2), capability sulle sveglie, pulsante nel drawer | BE | 🔵 da fare, dopo questo apply |
 | `job_run()` che legge `ZEROERP_JOB_ORIGINE` / `ZEROERP_JOB_AUTH_USER_ID` (analisi §9-bis punto 3) | BE | 🔵 |
 | `attivo = true` su `ESEGUI_PROCESSO`, **dal CSV**, su richiesta del BE a handler in servizio (come `NOTIFICA_DIGEST_MUTO` l'11-09) | DB | ⏳ in attesa del BE |
+| i cinque codici errore del verbo, nei due CSV del catalogo (§9) | DB | ✅ 15-09, in attesa del migrate e del commit |
+| `genera_error_policies` + le cinque frasi di ripiego in `error_messages_fallback.py` | BE | 🔵 dopo il migrate dei CSV |
 | commit di `dev/db-tid` (3 CSV, pgTAP, 3 doc manuali, brief e analisi) | Tid | ⏳ |
 | a cantiere chiuso: brief in `work-done/` e una riga nel changelog della mappa concentrica (tema «processi automatici») | DB | ⏳ |
 
@@ -403,3 +408,123 @@ escludere per forma, come il §4.3 dell'analisi esclude «Riavvia».
   gemello, per le capability, è la regola *«verificare che il client la
   LEGGA»* di `api.md`. È così che una riga come `processo_avvia` può restare
   decorativa senza che niente lo dica.
+
+---
+
+## 9. Secondo giro — i cinque codici errore di «Esegui ora»
+
+> Richiesta del backend, 2026-09-15 (dal
+> [piano BE/FE](piano-be-fe-avvio-manuale-di-un-processo.md) §3.1: *«ogni
+> codice nominato in Python deve esistere in `error_policies_generated.py`,
+> che è generato dal catalogo»*). Risposta del DB lo stesso giorno, §9.2.
+
+### 9.1 La richiesta, in sintesi
+
+Il predicato *«questa sveglia si può lanciare a mano?»* vive in **Python**
+(la whitelist è `sveglie.json`, il DB non conosce le unit — §2 di questo
+brief) e lo leggono **tre** consumatori: la capability `can_esegui_ora` nel
+dettaglio del processo, il rifiuto dell'endpoint `esegui-ora/`, il ricontrollo
+dell'handler `esegui_processo_default`. I primi tre codici sono i **motivi**
+di quel predicato; gli ultimi due sono gli **esiti dell'handler**, che non
+attraversano HTTP: finiscono in `coda_lavori.ultimo_errore` (terminali,
+`max_tentativi = 1`) e si leggono in `vw_coda_lavori_da_guardare`.
+
+| # | Codice | Classe chiesta | Chi lo solleva | `%s` |
+| --- | --- | --- | --- | --- |
+| 1 | `E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO` | `NON_ESEGUIBILE` (422) | capability · endpoint · handler | unit |
+| 2 | `E_PROCESSO_SVEGLIA_NON_ABILITATA` | `NON_ESEGUIBILE` (422) | capability · endpoint · handler | unit |
+| 3 | `E_PROCESSO_AVVIO_GIA_IN_CODA` | `CONFLITTO_STATO` (409) | capability · endpoint | unit, id del lavoro |
+| 4 | `E_PROCESSO_AVVIO_TROPPO_LUNGO` | `NON_ESEGUIBILE` | handler | unit, secondi del tetto |
+| 5 | `E_PROCESSO_AVVIO_FALLITO` | `TECNICO` | handler | unit, exit code |
+
+Condizioni: (1) `forma = servizio` oppure `avvio_manuale = false` nel
+dichiarato — vale per il drenatore stesso e per i comandi lunghi per natura,
+perché il drenatore aspetta il sottoprocesso (§8.5, decisione 2a); (2)
+`abilita = false` su questa installazione (D-A); (3) un lavoro
+`ESEGUI_PROCESSO` vivo — `PENDING`/`IN_CORSO`, la definizione di
+`uq_coda_lavori_vivo_idem` — con chiave `esegui:<unit>`, incontrato su una
+schermata invecchiata (sotto resta la dedup di `fn_accoda_lavoro` per la corsa
+fra due click); (4) il sottoprocesso ha superato il tetto dell'handler (300 s)
+ed è stato ucciso; (5) `run-command.sh <comando>` è uscito con exit ≠ 0, e la
+diagnosi sta nel run del comando (origine `COMMAND`, con l'utente di chi ha
+premuto), non qui.
+
+Si **riusano**, perché la condizione è la stessa: `E_VALIDATION_INPUT` (unit
+assente o non fra le sveglie del processo, `campo = unit`),
+`E_CODA_SCOPE_OPERATORE_INVALIDO` (terna incompleta, detta **prima** di
+accodare), `E_CONFIG_MANCANTE` (`run-command.sh` assente),
+`E_PROCESSO_NON_TROVATO`, `E_JOB_TYPE_NON_ATTIVO`.
+
+### 9.2 ✅ Risposta del DB — seminati, 2026-09-15
+
+**Cinque righe in ciascuno dei due CSV del catalogo, nessun changeSet**: il
+mirror `20260614-08` è `runOnChange` + `validCheckSums: ANY` e rilegge i file al
+prossimo migrate. `config/codici_errore.csv` porta identità, classe e la
+`note` per chi legge `error_policies_generated.py` (dove quella nota diventa
+il commento sopra la voce); `config/messaggi_errore.csv` porta frase, causa e
+soluzione con **id 1067–1071**, in quest'ordine.
+
+| # | Codice | Classe a catalogo | id msg | `%s` |
+| --- | --- | --- | --- | --- |
+| 1 | `E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO` | `NON_ESEGUIBILE` (422) | 1067 | 1 |
+| 2 | `E_PROCESSO_SVEGLIA_NON_ABILITATA` | ⛔ **`NON_DISPONIBILE` (501)** — non `NON_ESEGUIBILE` | 1068 | 1 |
+| 3 | `E_PROCESSO_AVVIO_GIA_IN_CODA` | `CONFLITTO_STATO` (409) | 1069 | 2 |
+| 4 | `E_PROCESSO_AVVIO_TROPPO_LUNGO` | `NON_ESEGUIBILE` (422) | 1070 | 2 |
+| 5 | `E_PROCESSO_AVVIO_FALLITO` | `TECNICO` (500) | 1071 | 2 |
+
+**La sola divergenza, ed è di classe: il 2 nasce `NON_DISPONIBILE`.** Il
+catalogo delle classi (`classi_errore.csv`) definisce `NON_DISPONIBILE` come
+*«la funzione esiste ma non è servita: è spenta»* e `NON_ESEGUIBILE` come *«la
+richiesta si capisce ma non si può eseguire: una configurazione che non regge
+a quella data»*. `abilita = false` è la prima cosa, non la seconda: la sveglia è
+nel dichiarato, il comando esiste, su questa installazione **non lo serve
+nessuno** — né il timer né a mano — e la configurazione non «non regge», è
+spenta di proposito. È la famiglia di `E_JOB_TYPE_NON_ATTIVO` (tipo di coda
+spento dal seed, la cui nota dice *«funzione presente ma non servita»*),
+`E_AI_DISABLED`, `E_SHOP_NON_DISPONIBILE` — e il rimedio è **lo stesso** di
+`E_JOB_TYPE_NON_ATTIVO`, che sullo stesso endpoint risponde già 501: una
+release, non un click. Il 1 invece resta `NON_ESEGUIBILE`: non è spento, è *per
+natura* non candidato — un limite dichiarato dell'attrezzo, che nessuna
+release accende senza cambiare una decisione di progetto. ⚠️ Per il BE e il FE
+non cambia niente: `ui_action` è `show_error_banner` in entrambe le classi, il
+tooltip legge la `reason_key`, la classe arriva dal file generato. Cambia
+**solo** lo status del rifiuto (501 invece di 422). Se Tid preferisce la
+classe chiesta, è una cella del CSV e una rigenerazione — ma allora andrebbe
+riletto anche `E_JOB_TYPE_NON_ATTIVO`, che sullo stesso verbo dice l'altra cosa.
+
+**Le frasi.** Scritte per chi le legge — in v1 un `SUPER_ADMIN` nel drawer del
+processo o nel pannello delle code — nella forma del catalogo: messaggio con i
+`%s` che il BE riempie (unit; unit e id del lavoro; unit e secondi; unit e exit
+code), `causa` che dice da dove viene il fatto, `soluzione` che dice cosa fare
+adesso — e per i due esiti dell'handler *dove andare a leggere* (il run del
+comando nel tab «Ultimi run» del processo eseguito). ⚠️ Nella `causa` del 2
+*«oggi i due timer di fatturazione, spenti perché l'invio SDI è sospeso»* è un
+fatto datato al 15-09, scritto come esempio e non come regola. ⚠️ Il termine
+«reaper» non compare nelle frasi (soluzione del 3: *«se resta fermo troppo a
+lungo il sistema lo chiude da solo come stantio»*): è il nome del meccanismo,
+non una cosa che la persona vede.
+
+**Che cosa è provato, e come.** Non un pgTAP: nessuna funzione del database
+solleva questi codici, quindi i test 2, 4 e 5 di
+`test-catalogo-messaggi-errore-completo.sql` (che leggono `pg_proc`) non li
+vedono **per costruzione**, e il test 3 (nessun doppione per `(codice,
+lingua)`) li copre come tutti gli altri. La prova è quella prescritta per un
+mirror CSV (linee-guida-sql §11.2): l'SQL del mirror `20260614-08` reso
+**offline** (`updateSQL`, su una copia senza `preConditions`) ed eseguito su
+dbdev in una transazione annullata — upsert completo dei tre CSV, **864 codici
+e 859 messaggi** riscritti senza rifiuti, le cinque righe nuove accettate da
+FK (`classe`), CHECK (`note` su una riga) e PK; dopo il `ROLLBACK` zero righe
+sul vivo e nessuna sessione appesa in `DblinkGetResult` (la trappola
+dell'upsert completo vale solo con un pgTAP nella stessa transazione — qui non
+c'è). Segnaposto passati al setaccio (ogni `%` seguito da `s`), conteggio dei
+`%s` = arità dichiarata dal BE (1/1/2/2/2), id unici, `git diff --numstat` =
+sole righe appese (niente CRLF, niente ri-quotatura).
+
+**Che cosa resta, e di chi è** (anche nella tabella di §8.4):
+
+| Passo | Di chi |
+| --- | --- |
+| migrate dei CSV su dbdev (il mirror rilegge da sé) e commit di `dev/db-tid` | Tid |
+| `manage.py genera_error_policies` + cinque frasi **senza segnaposto** in `error_messages_fallback.py` (`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`) — e finché non è fatto, a migrate avvenuto `test_error_policies_divergenza_db` (CI, `ZEROERP_TEST_DB_E2E=1`; a mano `genera_error_policies --check`) è rosso perché il file committato non è più quello che `config.vw_codici_errore_identita` produce, e `test_error_codes_declared_guardrail` (AST, senza DB) rifiuta i cinque codici appena nominati in Python finché il file non li porta: è il verso giusto, non un difetto. ⚠️ `dbops.vw_codici_errore_da_dichiarare` **non** li vede e non deve: legge i corpi plpgsql, e questi codici a database non li solleva nessuno | BE |
+| ⚠️ nel `VARIADIC`/nei valori entrano **unit, id, secondi, exit code** — mai il nome di un parametro (AGENTS.md §«tre canali, tre destinatari») | BE |
+| `attivo = true` su `ESEGUI_PROCESSO`, dal CSV, a handler in servizio (§8.6) | DB, su richiesta |
