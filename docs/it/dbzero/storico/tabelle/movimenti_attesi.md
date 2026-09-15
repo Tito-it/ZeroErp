@@ -1,0 +1,38 @@
+# 📚 Tabella `movimenti_attesi`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO | nextval('storico.movimenti_attesi_id_seq'::regclass) |
+| movimenti_attesi_id | bigint | NO |  |
+| change_type | character | YES | 'A'::bpchar |
+| tipo_operazione | smallint | YES |  |
+| snapshot | jsonb | YES |  |
+| user_insert | text | YES | CURRENT_USER |
+| data_insert | timestamp with time zone | YES | now() |
+| tx_id | uuid | YES |  |
+| valid_from | timestamp with time zone | YES | now() |
+| valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_storico_movimenti_attesi | id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_movimenti_attesi_movimenti_attesi_id_fk | `CREATE INDEX ix_movimenti_attesi_movimenti_attesi_id_fk ON storico.movimenti_attesi USING btree (movimenti_attesi_id)` |
+| ix_movimenti_attesi_scope_ef | `CREATE INDEX ix_movimenti_attesi_scope_ef ON storico.movimenti_attesi USING btree (scope_emittente_fiscale_id)` |
+| pk_storico_movimenti_attesi | `CREATE UNIQUE INDEX pk_storico_movimenti_attesi ON storico.movimenti_attesi USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_movimenti_attesi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_movimenti_attesi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
+---
+{% include-markdown "signature-core.md" %}

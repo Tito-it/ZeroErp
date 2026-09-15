@@ -1,0 +1,290 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 (file 2 di 2) — GLI ATTESI NELLA FORMA DECISA
+#   magazzino.movimenti_attesi
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.5
+#   (M-1, M-5, M-6, D-1, D-6, D-L1-b; analisi c/s sezione 7-bis)
+#
+# -- CHE COSA REGISTRA, RIDOTTA A CIO' CHE NON SI DERIVA -------------------------
+#   Quanto e' impegnato o in arrivo da un DOCUMENTO lo dicono le righe del
+#   documento (ordine, DDT, ricevimento). Qui sta cio' che nessun documento
+#   sa: il BLOCCO MANUALE («tienimene 10 per il cliente X») e la merce
+#   PRELEVATA non ancora uscita. La natura dell'attesa la dice la CAUSALE
+#   (verso) piu' la SORGENTE (c'e' un documento o no); allo stato resta una
+#   sola domanda — conta ancora? — APERTA/CHIUSA (D-L1-b). Il blocco si libera
+#   a mano: liberare = CHIUSA, con data_chiusura e l'autore dell'audit.
+#   attivo se ne va: sarebbe il secondo modo di dire «non conta» (M-8).
+#
+# -- LE REGOLE, UNA PER CHECK ----------------------------------------------------
+#   qta firmata e <> 0 (M-1): il verso sta nella quantita', come sul ledger;
+#     il guard sign(qta) = causali.segno (P-9) vale anche qui. Via
+#     chk_mag_res_qta_pos (qta > 0), che era il verso lasciato libero.
+#   sorgente_chiave: senza documento NIENTE chiave; con documento esattamente
+#     una (id o uid). ⚠️ Piu' stretta della prima stesura del brief
+#     (sorgente_tipo_id IS NULL OR ...): una sorgente_riga senza tipo sarebbe
+#     un numero appeso al nulla, e passerebbe. Il guard tipizzato verifica
+#     che il record esista, come sul ledger.
+#   per_chi: un'attesa dice per chi e' — dal documento, dal soggetto, o dalla
+#     nota. Il coalesce(btrim(nota), '') <> '' non e' ornamentale: una nota
+#     di soli spazi e' la riga muta che il CHECK serve a fermare (provato il
+#     04-09).
+#   data_solo_senza_documento: dove c'e' un documento la data e' la sua; una
+#     seconda data qui divergerebbe (7-bis, punto 4).
+#   stato/chiusura in coppia: CHIUSA se e solo se data_chiusura.
+#   asset_qta_unitaria: l'atteso eredita gli obblighi dell'articolo (M-5);
+#     un pezzo serializzato atteso e' UN pezzo, come sul ledger. ⚠️ Non era
+#     scritto nel brief per gli attesi; qui per simmetria col ledger, e
+#     registrato.
+#   magazzino_id NOT NULL (M-6): e' l'ancora del perimetro. La tabella e'
+#     vuota (sqlCheck = 0 in preCondition, la forma ammessa).
+#
+# -- L'INDICE CHE SERVE -----------------------------------------------------------
+#   Il brief diceva «indice su stato». Un btree su due valori non seleziona:
+#   la domanda della disponibilita' (M-3, Lotto 2) e' «le attese APERTE di
+#   questo articolo in questo magazzino» → indice PARZIALE su
+#   (articolo_id, magazzino_id) WHERE stato = 'APERTA'. Registrato come
+#   forma, non come scostamento di sostanza. ix_mag_res_stato cade con la
+#   colonna.
+#
+# -- CHE COSA NASCE DA SOLO -------------------------------------------------------
+#   A ci_apply: i require_attivo verso sorgenti, causali, soggetti_ruoli,
+#   lotti, assets (piu' i tre rigenerati verso articoli, magazzini,
+#   ubicazioni, senza attivo) e i block_deact sui padri; audit e tx_id
+#   rinominati dal file 1; storico.movimenti_attesi + trigger. Niente DDL ne'
+#   preCondition sui loro nomi. Le righe di fk_index_policy stanno nel CSV del
+#   lotto (20260914-17). La riga 77 di storico_scope_policy: PADRE via
+#   magazzino_id.
+#
+# -- ⚠️ uq_mag_reservations_docref ESISTE SOLO SU DEV: IF EXISTS ------------------
+#   Stessa mina trovata il 15-09 su zeroerp_ci per movimenti (20260915-05, dove
+#   sta la spiegazione intera): nel file che lo crea
+#   (00_schema/magazzino/20251005-15) i changeSet -17 (NOT NULL) e -18 (UNIQUE
+#   docref) portano `not columnExists doc_schema` + MARK_RAN, ma doc_schema lo
+#   crea -16 un attimo prima → su un DB da zero sono SEMPRE MARK_RAN e il
+#   vincolo non nasce. Su dev c'e' per una prima corsa sotto un altro path.
+#   IF EXISTS sul solo docref; chk_mag_res_qta_pos e chk_mag_res_stato nascono
+#   con la tabella ed esistono ovunque: restano secchi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-07-alter-movimenti-attesi-forma-decisa-mctit.yaml
+
+  - changeSet:
+      id: 20260915-07-alter-movimenti-attesi-forma-decisa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.movimenti_attesi nella forma decisa: via doc_* con l'UNIQUE docref,
+        stato_reservation col suo CHECK e indice, attivo; entrano sorgente_tipo_id
+        (nullable: il blocco manuale non ha documento) + sorgente_riga/sorgente_uid col
+        guard tipizzato, causale_id NOT NULL (il verso), stato APERTA/CHIUSA + data_chiusura
+        in coppia, soggetto_ruolo_id + nota (per chi), lotto_id, asset_id; qta firmata e
+        <> 0; magazzino_id NOT NULL (l'ancora); indice parziale sulle aperte. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.5 (P-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+            - tableExists:
+                schemaName: magazzino
+                tableName: lotti
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+                columnName: stato_reservation
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: movimenti_attesi
+                    columnName: causale_id
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.movimenti_attesi;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Via il riferimento libero, lo stato a quattro valori, attivo.
+              --    IF EXISTS sul docref: su un DB da zero non nasce mai (20251005-18
+              --    e' MARK_RAN, vedi intestazione).
+              ALTER TABLE magazzino.movimenti_attesi
+                  DROP CONSTRAINT IF EXISTS uq_mag_reservations_docref,
+                  DROP CONSTRAINT chk_mag_res_qta_pos,
+                  DROP CONSTRAINT chk_mag_res_stato;
+              ALTER TABLE magazzino.movimenti_attesi
+                  DROP COLUMN doc_schema,
+                  DROP COLUMN doc_table,
+                  DROP COLUMN doc_id,
+                  DROP COLUMN doc_riga_id,
+                  DROP COLUMN stato_reservation,
+                  DROP COLUMN attivo;
+
+              -- 2. La forma decisa.
+              ALTER TABLE magazzino.movimenti_attesi
+                  ADD COLUMN sorgente_tipo_id  BIGINT,
+                  ADD COLUMN sorgente_riga     BIGINT,
+                  ADD COLUMN sorgente_uid      UUID,
+                  ADD COLUMN causale_id        BIGINT NOT NULL,
+                  ADD COLUMN stato             VARCHAR(12) NOT NULL DEFAULT 'APERTA',
+                  ADD COLUMN data_chiusura     TIMESTAMPTZ,
+                  ADD COLUMN soggetto_ruolo_id BIGINT,
+                  ADD COLUMN nota              TEXT,
+                  ADD COLUMN lotto_id          BIGINT,
+                  ADD COLUMN asset_id          BIGINT;
+              ALTER TABLE magazzino.movimenti_attesi
+                  ALTER COLUMN magazzino_id SET NOT NULL;
+
+              ALTER TABLE magazzino.movimenti_attesi
+                  ADD CONSTRAINT fk_mag_movimenti_attesi_sorgente_tipo
+                      FOREIGN KEY (sorgente_tipo_id) REFERENCES config.sorgenti (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_attesi_causale
+                      FOREIGN KEY (causale_id) REFERENCES magazzino.causali (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_attesi_soggetto_ruolo
+                      FOREIGN KEY (soggetto_ruolo_id) REFERENCES anagrafiche.soggetti_ruoli (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_attesi_lotto
+                      FOREIGN KEY (lotto_id) REFERENCES magazzino.lotti (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_attesi_asset
+                      FOREIGN KEY (asset_id) REFERENCES magazzino.assets (id)
+                      ON UPDATE CASCADE,
+                  -- Il verso sta nella quantita': mai zero.
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_qta_non_zero
+                      CHECK (qta <> 0),
+                  -- Senza documento niente chiave; con documento esattamente una.
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_sorgente_chiave
+                      CHECK (
+                          (sorgente_tipo_id IS NULL AND sorgente_riga IS NULL AND sorgente_uid IS NULL)
+                          OR (sorgente_tipo_id IS NOT NULL AND ((sorgente_riga IS NOT NULL) <> (sorgente_uid IS NOT NULL)))
+                      ),
+                  -- Un'attesa dice per chi e': dal documento, dal soggetto o dalla nota.
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_per_chi
+                      CHECK (
+                          sorgente_tipo_id IS NOT NULL
+                          OR soggetto_ruolo_id IS NOT NULL
+                          OR coalesce(btrim(nota), '') <> ''
+                      ),
+                  -- Dove c'e' un documento la data e' la sua.
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_data_solo_senza_documento
+                      CHECK (sorgente_tipo_id IS NULL OR data_prevista IS NULL),
+                  -- Conta ancora? Due valori senza attributi: CHECK, non tabella.
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_stato
+                      CHECK (stato IN ('APERTA', 'CHIUSA')),
+                  -- CHIUSA se e solo se c'e' la data di chiusura.
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_chiusura
+                      CHECK ((stato = 'CHIUSA') = (data_chiusura IS NOT NULL)),
+                  -- Un pezzo serializzato atteso e' un pezzo.
+                  ADD CONSTRAINT chk_mag_movimenti_attesi_asset_qta_unitaria
+                      CHECK (asset_id IS NULL OR abs(qta) = 1);
+
+              -- 3. L'indice che la disponibilita' usera': le attese APERTE per articolo e magazzino.
+              CREATE INDEX ix_mag_movimenti_attesi_aperte
+                  ON magazzino.movimenti_attesi (articolo_id, magazzino_id)
+                  WHERE stato = 'APERTA';
+
+              -- 4. Il guard tipizzato: se c'e' una sorgente, il record esiste.
+              CREATE TRIGGER trg_movimenti_attesi_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON magazzino.movimenti_attesi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              -- 5. Le regole, scritte dove si leggono.
+              COMMENT ON TABLE magazzino.movimenti_attesi IS
+                  'I movimenti che DEVONO ancora accadere e che nessun documento sa: il '
+                  'blocco manuale di merce per qualcuno e la merce prelevata non ancora '
+                  'uscita. Cio'' che un documento dice (impegnato da ordine, in arrivo da '
+                  'ordine fornitore) NON sta qui: si legge dalle righe del documento. '
+                  'Stessa forma del ledger: qta firmata (sign = causali.segno), sorgente a '
+                  'catalogo — facoltativa, perche'' il blocco manuale non ha documento — e '
+                  'allora per chi e'' lo dice il soggetto o la nota. Lo stato risponde a una '
+                  'domanda sola, «conta ancora?»: APERTA o CHIUSA con data_chiusura; non ha '
+                  'attivo. Si chiamava reservations fino al 2026-09-15 (analisi carico e '
+                  'scarico, sezione 7-bis: «picked e'' di sola uscita»). Perimetro: '
+                  'l''emittente del magazzino (magazzino_id NOT NULL, RLS via_magazzino). '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.5.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.qta IS
+                  'Quantita'' FIRMATA in UoM base dell''articolo, come sul ledger: + in '
+                  'arrivo, - impegnata; mai 0; sign(qta) = causali.segno.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.causale_id IS
+                  'La causale che dice il VERSO dell''attesa (e, col lotto 2, la sua '
+                  'natura). La direzione non e'' una colonna a parte.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.sorgente_tipo_id IS
+                  'Il documento che genera l''attesa (config.sorgenti), se c''e''. NULL = '
+                  'attesa senza documento (blocco manuale): allora per chi e'' lo dicono '
+                  'soggetto_ruolo_id o nota, e data_prevista e'' ammessa.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.stato IS
+                  'APERTA = conta ancora nella disponibilita''; CHIUSA = non conta piu'' '
+                  '(evasa, liberata a mano, superata). Con data_chiusura in coppia (CHECK). '
+                  'Due valori senza attributi: un CHECK, non una tabella (D-L1-b).';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.data_chiusura IS
+                  'Quando l''attesa ha smesso di contare. NOT NULL se e solo se CHIUSA; '
+                  'l''autore lo dice l''audit (user_update).';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.soggetto_ruolo_id IS
+                  'Per chi e'' bloccata la merce, quando non c''e'' un documento a dirlo '
+                  '(anagrafiche.soggetti_ruoli). Con la nota e'' l''alternativa alla sorgente.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.nota IS
+                  'Perche'' e per chi, in parole, quando non c''e'' ne'' documento ne'' '
+                  'soggetto. Una nota di soli spazi non vale (CHECK per_chi).';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.data_prevista IS
+                  'Quando ci si aspetta il movimento, SOLO per le attese senza documento: '
+                  'dove c''e'' un documento la data e'' la sua (CHECK).';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.lotto_id IS
+                  'La partita attesa, se l''articolo la pretende (requires_lotto): lo '
+                  'controlla l''operazione, come sul ledger.';
+              COMMENT ON COLUMN magazzino.movimenti_attesi.asset_id IS
+                  'Il pezzo serializzato atteso, se l''articolo lo pretende: con un asset '
+                  '|qta| = 1 (CHECK), come sul ledger.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_movimenti_attesi_a10_guard_sorgente_ins_upd ON magazzino.movimenti_attesi;
+              DROP INDEX IF EXISTS magazzino.ix_mag_movimenti_attesi_aperte;
+              ALTER TABLE magazzino.movimenti_attesi
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_attesi_asset_qta_unitaria,
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_attesi_chiusura,
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_attesi_stato,
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_attesi_data_solo_senza_documento,
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_attesi_per_chi,
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_attesi_sorgente_chiave,
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_attesi_qta_non_zero,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_attesi_asset,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_attesi_lotto,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_attesi_soggetto_ruolo,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_attesi_causale,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_attesi_sorgente_tipo;
+              ALTER TABLE magazzino.movimenti_attesi
+                  ALTER COLUMN magazzino_id DROP NOT NULL;
+              ALTER TABLE magazzino.movimenti_attesi
+                  DROP COLUMN IF EXISTS asset_id,
+                  DROP COLUMN IF EXISTS lotto_id,
+                  DROP COLUMN IF EXISTS nota,
+                  DROP COLUMN IF EXISTS soggetto_ruolo_id,
+                  DROP COLUMN IF EXISTS data_chiusura,
+                  DROP COLUMN IF EXISTS stato,
+                  DROP COLUMN IF EXISTS causale_id,
+                  DROP COLUMN IF EXISTS sorgente_uid,
+                  DROP COLUMN IF EXISTS sorgente_riga,
+                  DROP COLUMN IF EXISTS sorgente_tipo_id;
+              ALTER TABLE magazzino.movimenti_attesi
+                  ADD COLUMN IF NOT EXISTS doc_schema VARCHAR(64) NOT NULL DEFAULT '',
+                  ADD COLUMN IF NOT EXISTS doc_table VARCHAR(64) NOT NULL DEFAULT '',
+                  ADD COLUMN IF NOT EXISTS doc_id BIGINT NOT NULL DEFAULT 0,
+                  ADD COLUMN IF NOT EXISTS doc_riga_id BIGINT,
+                  ADD COLUMN IF NOT EXISTS stato_reservation VARCHAR(16) NOT NULL DEFAULT 'planned',
+                  ADD COLUMN IF NOT EXISTS attivo BOOLEAN NOT NULL DEFAULT true;

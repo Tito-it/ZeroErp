@@ -380,6 +380,10 @@ che si **fattura**, mai ciò che si **consuma**. Va progettato, non aggiunto.
 
 📌 Entrambe sono ora trattate in
 [analisi-db-magazzino-carico-e-scarico §3](analisi-db-magazzino-carico-e-scarico.md), che è la sede del vocabolario.
+✅ *2026-09-14 (D-8, Tid)*: la causale del versamento **entra** col Lotto 1 del
+magazzino; l'ambito invece **si ritira**, non si valorizza — non ha un consumatore
+nella primitiva, che è guidata da causale e articolo. Il secondo punto qui sopra
+è quindi superato, nel verso opposto a quello scritto.
 
 ---
 

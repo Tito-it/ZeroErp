@@ -1,0 +1,239 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 (file 1 di 2) — reservations DIVENTA movimenti_attesi: LA RINOMINA DI TUTTO
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.5 (analisi
+#   carico e scarico, sezione 7-bis)
+#
+# -- PERCHE' IL NOME CAMBIA ----------------------------------------------------
+#   «Prenotazione» dice una sola delle cose che la tabella registra. Ridotta
+#   a cio' che NON si deriva dai documenti — il blocco manuale e la merce
+#   prelevata non ancora uscita — e' il registro dei movimenti che DEVONO
+#   ancora accadere, in entrata o in uscita: la stessa forma del ledger, con
+#   la causale a dire il verso. Si rinomina e non si rifa': una tabella nuova
+#   resterebbe senza audit e tx_id fino a ci_apply, e due tabelle per lo
+#   stesso mestiere divergono.
+#
+# -- LA RINOMINA E' DI TUTTO (lezione di 20260822-25) -----------------------------
+#   Tabella, PK, sequenza, i NOT NULL nominati (PG17+: sono vincoli di
+#   catalogo con un nome proprio), i tre indici delle FK, le tre FK. Gli otto
+#   NOT NULL che sopravvivono al file 2 si rinominano qui; i cinque delle
+#   colonne che il file 2 elimina (attivo, doc_id, doc_schema, doc_table,
+#   stato_reservation) cadono con le colonne. I due CHECK vecchi
+#   (chk_mag_res_qta_pos, chk_mag_res_stato) e l'UNIQUE docref li sostituisce
+#   il file 2: non si rinominano.
+#
+# -- I TRIGGER GENERATI, UNO PER UNO (P-0, sezione 6-bis del brief) -------------
+#   DUE si rinominano, condizionalmente, nei changeSet -01 e -02 di questo
+#   file (audit, tx_id): su un DB da zero non esistono ancora — li fa ci_apply
+#   col nome nuovo — e dove esistono vanno rinominati, altrimenti la prossima
+#   passata li rigenera col nome nuovo ACCANTO ai vecchi (due audit che
+#   scrivono due volte). MARK_RAN + sqlCheck su pg_trigger, uno per trigger.
+#   QUATTRO si tolgono qui, DROP TRIGGER IF EXISTS, senza preCondition:
+#     trg_reservations_a10_{articoli,magazzini,ubicazioni}_require_attivo_ins_upd
+#       portano `attivo` in UPDATE OF e bloccherebbero il DROP COLUMN del file
+#       2 (provato); ci_apply li rigenera col nome nuovo e senza attivo.
+#     trg_reservations_z90_storico_upd_dlt porta l'argomento 'reservations_id':
+#       non si rinomina, si toglie; ci_apply riprovvede storico.movimenti_attesi
+#       e il suo trigger.
+#   TRE stanno SUI PADRI e portano 'reservations' come argomento — con la
+#   tabella rinominata cercherebbero in pg_attribute una relazione che non
+#   c'e' e solleverebbero E_ATTIVO_BLOCK_FKCOL_NOT_FOUND a ogni disattivazione
+#   del padre (il caso -10/-11 del 12-09): DROP IF EXISTS, ci_apply li
+#   rigenera col nome nuovo.
+#     trg_magazzini_a10_reservations_block_deact_upd   (magazzino.magazzini)
+#     trg_ubicazioni_a10_reservations_block_deact_upd  (magazzino.ubicazioni)
+#     trg_articoli_a10_reservations_block_deact_upd    (catalogo.articoli)
+#   storico.reservations: 0 righe al 14-09, DROP TABLE IF EXISTS (su un DB da
+#   zero nasce a ci_apply, cioe' dopo); ci_apply riprovvede la shadow nuova.
+#
+# -- CHE COSA NON E' QUI --------------------------------------------------------
+#   Le colonne della forma decisa (file 2, 20260915-07), il guard del verso
+#   (P-9), la policy RLS (P-10). La riga 77 di dbops.storico_scope_policy
+#   prende il nome nuovo e il modo PADRE nel CSV della mappa; le tre righe
+#   fk_mag_reservations_* di fk_index_policy le toglie il DELETE di fine
+#   lotto, le tre nuove stanno nel CSV del lotto. Il manual/reservations.md
+#   si cancella, nasce manual/movimenti_attesi.md (P-13).
+#   ⭐ L'ESITO — «nessun vincolo, trigger, sequenza o indice della tabella
+#   nomina piu' reservations» — lo asserisce il pgTAP di P-12
+#   (magazzino/test-movimenti-attesi-forma-v1), a ci_apply avvenuto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-06-rename-reservations-in-movimenti-attesi-mctit.yaml
+
+  - changeSet:
+      id: 20260915-06-rename-reservations-in-movimenti-attesi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.reservations diventa magazzino.movimenti_attesi: tabella, PK,
+        sequenza, otto NOT NULL nominati, tre indici, tre FK. Quattro trigger generati
+        tolti (tre require_attivo che bloccano il DROP di attivo, lo storico con
+        l'argomento vecchio), tre block_deact sui padri tolti (argomento 'reservations'),
+        storico.reservations eliminata: ci_apply rigenera tutto col nome nuovo. Audit e
+        tx_id si rinominano nei changeSet -01/-02. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.5 (P-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: reservations
+            - not:
+                - tableExists:
+                    schemaName: magazzino
+                    tableName: movimenti_attesi
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.reservations;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. I generati che se ne vanno (IF EXISTS: su un DB da zero non ci sono).
+              DROP TRIGGER IF EXISTS trg_reservations_a10_articoli_require_attivo_ins_upd   ON magazzino.reservations;
+              DROP TRIGGER IF EXISTS trg_reservations_a10_magazzini_require_attivo_ins_upd  ON magazzino.reservations;
+              DROP TRIGGER IF EXISTS trg_reservations_a10_ubicazioni_require_attivo_ins_upd ON magazzino.reservations;
+              DROP TRIGGER IF EXISTS trg_reservations_z90_storico_upd_dlt                   ON magazzino.reservations;
+              DROP TRIGGER IF EXISTS trg_magazzini_a10_reservations_block_deact_upd         ON magazzino.magazzini;
+              DROP TRIGGER IF EXISTS trg_ubicazioni_a10_reservations_block_deact_upd        ON magazzino.ubicazioni;
+              DROP TRIGGER IF EXISTS trg_articoli_a10_reservations_block_deact_upd          ON catalogo.articoli;
+              DROP TABLE IF EXISTS storico.reservations;
+
+              -- 2. La tabella e tutto cio' che porta il suo nome.
+              ALTER TABLE magazzino.reservations RENAME TO movimenti_attesi;
+              ALTER TABLE magazzino.movimenti_attesi
+                  RENAME CONSTRAINT pk_mag_reservations TO pk_mag_movimenti_attesi;
+              ALTER SEQUENCE magazzino.reservations_id_seq RENAME TO movimenti_attesi_id_seq;
+
+              -- Gli otto NOT NULL che sopravvivono al file 2.
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_id_not_null          TO movimenti_attesi_id_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_articolo_id_not_null TO movimenti_attesi_articolo_id_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_qta_not_null         TO movimenti_attesi_qta_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_meta_not_null        TO movimenti_attesi_meta_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_storicizza_not_null  TO movimenti_attesi_storicizza_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_data_insert_not_null TO movimenti_attesi_data_insert_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_data_update_not_null TO movimenti_attesi_data_update_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT reservations_user_insert_not_null TO movimenti_attesi_user_insert_not_null;
+
+              -- Le tre FK e i loro tre indici (creati da apply_fk_index_policy).
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT fk_mag_reservations_articolo   TO fk_mag_movimenti_attesi_articolo;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT fk_mag_reservations_magazzino  TO fk_mag_movimenti_attesi_magazzino;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT fk_mag_reservations_ubicazione TO fk_mag_movimenti_attesi_ubicazione;
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_reservations_articolo_id   RENAME TO ix_magazzino_movimenti_attesi_articolo_id;
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_reservations_magazzino_id  RENAME TO ix_magazzino_movimenti_attesi_magazzino_id;
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_reservations_ubicazione_id RENAME TO ix_magazzino_movimenti_attesi_ubicazione_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger generati li riprovvede ci_apply; qui si disfa solo la rinomina.
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_movimenti_attesi_ubicazione_id RENAME TO ix_magazzino_reservations_ubicazione_id;
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_movimenti_attesi_magazzino_id  RENAME TO ix_magazzino_reservations_magazzino_id;
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_movimenti_attesi_articolo_id   RENAME TO ix_magazzino_reservations_articolo_id;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT fk_mag_movimenti_attesi_ubicazione TO fk_mag_reservations_ubicazione;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT fk_mag_movimenti_attesi_magazzino  TO fk_mag_reservations_magazzino;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT fk_mag_movimenti_attesi_articolo   TO fk_mag_reservations_articolo;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_user_insert_not_null TO reservations_user_insert_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_data_update_not_null TO reservations_data_update_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_data_insert_not_null TO reservations_data_insert_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_storicizza_not_null  TO reservations_storicizza_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_meta_not_null        TO reservations_meta_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_qta_not_null         TO reservations_qta_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_articolo_id_not_null TO reservations_articolo_id_not_null;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT movimenti_attesi_id_not_null          TO reservations_id_not_null;
+              ALTER SEQUENCE magazzino.movimenti_attesi_id_seq RENAME TO reservations_id_seq;
+              ALTER TABLE magazzino.movimenti_attesi RENAME CONSTRAINT pk_mag_movimenti_attesi TO pk_mag_reservations;
+              ALTER TABLE magazzino.movimenti_attesi RENAME TO reservations;
+
+  # ------------------------------------------------------------
+  # I DUE TRIGGER DEL FRAMEWORK CHE SI RINOMINANO — SE CI SONO (stampo 20260822-25-01/-02)
+  #   Su un database ricostruito da zero non esistono ancora: li crea ci_apply,
+  #   che gira dopo, gia' col nome nuovo. Dove esistono (dev) vanno rinominati,
+  #   altrimenti la prossima passata li rigenera ACCANTO ai vecchi. MARK_RAN e
+  #   non HALT: l'assenza non e' un errore, e' il mondo in cui non c'e' niente
+  #   da fare. Uno per trigger: uno stato a meta' non deve poter saltare in
+  #   silenzio. ⛔ Mai una preCondition sul changeSet della rinomina della
+  #   tabella: MARK_RAN salterebbe anche quella.
+  # ------------------------------------------------------------
+  - changeSet:
+      id: 20260915-06-01-rename-trigger-audit-reservations
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rinomina il trigger di audit generato dal framework, SE c'e' (su un DB da zero
+        lo crea ci_apply col nome nuovo). Brief: brief-db-magazzino-lotto-1-terreno-vuoto,
+        sezione 4.5 (P-5).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*) FROM pg_trigger tg
+                JOIN pg_class c     ON c.oid = tg.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE NOT tg.tgisinternal
+                 AND n.nspname = 'magazzino'
+                 AND c.relname = 'movimenti_attesi'
+                 AND tg.tgname = 'trg_reservations_audit_data_user_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TRIGGER trg_reservations_audit_data_user_upd
+                  ON magazzino.movimenti_attesi RENAME TO trg_movimenti_attesi_audit_data_user_upd;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TRIGGER trg_movimenti_attesi_audit_data_user_upd
+                  ON magazzino.movimenti_attesi RENAME TO trg_reservations_audit_data_user_upd;
+
+  - changeSet:
+      id: 20260915-06-02-rename-trigger-tx-id-reservations
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Gemello del -01 per il trigger di tx_id: stessa ragione, oggetto diverso.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*) FROM pg_trigger tg
+                JOIN pg_class c     ON c.oid = tg.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE NOT tg.tgisinternal
+                 AND n.nspname = 'magazzino'
+                 AND c.relname = 'movimenti_attesi'
+                 AND tg.tgname = 'trg_reservations_gen_tx_id_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TRIGGER trg_reservations_gen_tx_id_ins_upd
+                  ON magazzino.movimenti_attesi RENAME TO trg_movimenti_attesi_gen_tx_id_ins_upd;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TRIGGER trg_movimenti_attesi_gen_tx_id_ins_upd
+                  ON magazzino.movimenti_attesi RENAME TO trg_reservations_gen_tx_id_ins_upd;

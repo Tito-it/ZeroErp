@@ -14,7 +14,7 @@
 - [automazione_guard_utility_tipo_ruolo](manual/automazione_guard_utility_tipo_ruolo.md) — La tabella **`dbops.automazione_guard_utility_tipo_ruolo`** configura le tabelle su cui applicare automaticamente il trigger di guardia **utility -> tipo_ruolo**.
 - [automazione_overlap](manual/automazione_overlap.md) — (latest review 19-01-26) La tabella **`dbops.automazione_overlap`** centralizza la configurazione del controllo **anti-overlap temporale** tramite vincoli `EXCLUDE USING gist` sulle tabelle versionate.
 - [coda_lavori](manual/coda_lavori.md) — (latest review 20-07-2026)
-- [coda_lavori_tipi](manual/coda_lavori_tipi.md) — (latest review 20-07-2026)
+- [coda_lavori_tipi](manual/coda_lavori_tipi.md) — (latest review 14-09-2026)
 - [codici_errore_senza_policy](manual/codici_errore_senza_policy.md) — (rev 2026-08-21)
 - [domini_task](manual/domini_task.md) — (latest review 08-02-2026) `dbops.domini_task` definisce i **domini logici** per i task pipeline (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`, `PRATICHE`). Serve a stabilire un **perimetro chiaro** per il registry multi‑dominio e garantire univocita` dei task per dominio.
 - [error_log](manual/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
@@ -25,7 +25,7 @@
 - [pipeline_task_registry](manual/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](manual/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
 - [presidi](manual/presidi.md) — (latest review 10-09-2026)
-- [processi](manual/processi.md) — (latest review 04-09-2026)
+- [processi](manual/processi.md) — (latest review 14-09-2026)
 - [processi_bersagli](manual/processi_bersagli.md) — (latest review 04-09-2026)
 - [processi_identita](manual/processi_identita.md) — (latest review 04-09-2026)
 - [request_log](manual/request_log.md) — (latest review 05-03-2026)

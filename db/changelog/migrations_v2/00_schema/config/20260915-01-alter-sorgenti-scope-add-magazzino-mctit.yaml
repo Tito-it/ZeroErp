@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — LO SCOPE «MAGAZZINO» IN config.sorgenti
+#   chk_sorgenti_scope + 'MAGAZZINO'; COMMENT della colonna
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.2 (D-7)
+#
+# -- PERCHE' UNO SCOPE NUOVO ------------------------------------------------
+#   Le quattro sorgenti di magazzino che entrano col seed (INVENTARIO_RIGA,
+#   RETTIFICA_RIGA, TRASFERIMENTO_RIGA, EVENTO_ASSET) sono RECORD DI
+#   OPERAZIONE che generano movimenti: non alimentano commesse
+#   (PUSH_COMMESSA), non sono documenti del flusso inverso (REVERSE_FLOW),
+#   non sono la validazione polimorfa di una riga di vendita (ROW_VALIDATOR,
+#   che e' la classe delle cinque *_RIGA di vendite e della RESO_VENDITA_RIGA
+#   che entra con loro). Un valore nuovo, non un riuso: lo scope lo legge il
+#   backend per decidere che cosa fare di una sorgente (commesse_repository
+#   valida contro _SORGENTE_FN_MAP), e infilare il magazzino in una classe
+#   altrui avrebbe messo l'operazione di magazzino in un ramo che non la sa
+#   trattare. Stessa forma di REVERSE_FLOW (20260714-07).
+#
+# -- ORDINE DELLE FASI --------------------------------------------------------
+#   00_schema gira prima di 80_data: il CHECK ammette gia' MAGAZZINO quando il
+#   mirror sorgenti.csv (20251002-21, runOnChange) carica le righe 16-20.
+#   Strategia: DROP + ADD CONSTRAINT (PostgreSQL non ha ALTER CHECK).
+#   ⛔ Nessuna preCondition sul contenuto di config.sorgenti (linee-guida-sql
+#   11.4): il seed viene dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260915-01-alter-sorgenti-scope-add-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260915-01-alter-sorgenti-scope-add-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Estende chk_sorgenti_scope con MAGAZZINO: record di operazione di magazzino che
+        genera movimenti (inventario, rettifica, trasferimento, evento asset). Le righe
+        entrano col mirror sorgenti.csv in 80_data. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.2 (P-2, D-7).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - columnExists:
+                schemaName: config
+                tableName: sorgenti
+                columnName: scope
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimozione vincolo esistente (DROP obbligatorio: PG non supporta ALTER CHECK).
+              ALTER TABLE config.sorgenti
+                  DROP CONSTRAINT chk_sorgenti_scope;
+              -- Ricreazione con l'aggiunta di MAGAZZINO.
+              ALTER TABLE config.sorgenti
+                  ADD CONSTRAINT chk_sorgenti_scope
+                  CHECK (scope IN (
+                      'PUSH_COMMESSA',
+                      'PIPELINE_MARKER',
+                      'ROW_VALIDATOR',
+                      'POST_INVOICE',
+                      'DIRECT_ENTRY',
+                      'PUSH_CONTRATTO',
+                      'REVERSE_FLOW',
+                      'MAGAZZINO'
+                  ));
+              COMMENT ON COLUMN config.sorgenti.scope IS
+                  'Classificazione funzionale della sorgente: '
+                  'PUSH_COMMESSA   — documenti business che alimentano commesse (preventivo, contratto, ordine, ddt); '
+                  'PIPELINE_MARKER — marcatori interni pipeline attivita'' fatturabili; '
+                  'ROW_VALIDATOR   — validazione polimorfa di una riga di documento (le *_RIGA di vendite e del reso); '
+                  'POST_INVOICE    — riconciliazione post-fattura; '
+                  'DIRECT_ENTRY   — inserimento diretto (futuro); '
+                  'PUSH_CONTRATTO  — documenti che generano un contratto DRAFT tramite push 1:1 (offerta_commerciale); '
+                  'REVERSE_FLOW    — documenti del flusso inverso, merce/valore che torna indietro (reso vendita); '
+                  'MAGAZZINO       — record di operazione di magazzino che genera movimenti (riga di inventario, di rettifica, di trasferimento; evento asset). '
+                  'Il magazzino la nomina in movimenti.sorgente_tipo_id: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                  DROP CONSTRAINT IF EXISTS chk_sorgenti_scope;
+              ALTER TABLE config.sorgenti
+                  ADD CONSTRAINT chk_sorgenti_scope
+                  CHECK (scope IN (
+                      'PUSH_COMMESSA',
+                      'PIPELINE_MARKER',
+                      'ROW_VALIDATOR',
+                      'POST_INVOICE',
+                      'DIRECT_ENTRY',
+                      'PUSH_CONTRATTO',
+                      'REVERSE_FLOW'
+                  ));

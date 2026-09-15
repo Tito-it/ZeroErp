@@ -2,33 +2,36 @@
 
 > 👀 **Vedi anche**
 >
-> • [magazzino.vw_giacenza](/dbzero/magazzino/views/vw_giacenza)
-> • [magazzino.vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio)
+Approfondimento tabelle:
+> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — il registro
+> • [magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) — la copia del valore
+>
+Le cinque viste: [vw_giacenza](/dbzero/magazzino/views/vw_giacenza) · [vw_giacenza_ubicazione](/dbzero/magazzino/views/vw_giacenza_ubicazione) · [vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio) · [vw_costo_medio_globale](/dbzero/magazzino/views/vw_costo_medio_globale) · [vw_giacenza_valorizzata](/dbzero/magazzino/views/vw_giacenza_valorizzata)
+>
+Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.8)
 
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+(rev 2026-09-15 — Lotto 1 del magazzino)
 
-La giacenza con accanto **costo medio e valore**: `qta * costo_medio`, arrotondato a
-`numeric(18,6)`.
+**La situazione della giacenza**: per articolo e magazzino, la **quantità** (dal registro),
+il **valore** (dalla copia) e il **costo medio** (valore / quantità). È la vista che
+risponde a «quanto vale il mio magazzino».
 
-È la vista che risponde a «quanto vale il mio magazzino».
+⭐ Fino al 14-09 era tautologica: calcolava `qta × (valore / qta) = valore`, con la quantità
+presa dall'accumulatore — la stessa cifra letta due volte. Ora il join è fra **due fonti**, e
+una divergenza si vede.
 
----
+⚠️ `valore` e `costo_medio` possono essere `NULL`: una giacenza con movimenti e senza riga di
+valore è un'anomalia da guardare, e `sum(valore)` la ignorerebbe in silenzio. Prima di
+sommare va contato quante righe hanno `valore IS NULL`.
 
-### ⚠️ Il valore può essere `NULL`, e non è zero
+### Legge con gli occhi di chi interroga
 
-Il costo medio arriva con un **`LEFT JOIN`** su `vw_costo_medio`. Se per quella coppia
-articolo × magazzino non esiste una riga di costo — o se il costo medio è `NULL` perché la
-quantità accumulata è zero — allora `costo_medio` è `NULL`, e `qta * NULL` è **`NULL`**.
-
-⚠️ Conseguenza per chi somma: `sum(valore)` **ignora i NULL**, quindi un totale di magazzino
-può risultare più basso del vero senza che nulla lo segnali. Prima di sommare va contato
-quante righe hanno `costo_medio IS NULL`: sono merce presente ma non valorizzata.
-
-Il `LEFT JOIN` è però la scelta giusta: con un `JOIN` interno quelle righe **sparirebbero**,
-e la merce non valorizzata smetterebbe di comparire in giacenza.
+La vista è `security_invoker`: la RLS del registro e dei magazzini passa attraverso, e un
+operatore vede i magazzini del **proprio emittente**. ⚠️ Fino al 14-09 nessuna delle viste
+di magazzino lo era. Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
 ---
 

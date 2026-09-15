@@ -1,0 +1,195 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-7 — L'ANCORA DEL PERIMETRO: magazzini E assets PRENDONO L'EMITTENTE
+#   magazzino.magazzini.emittente_fiscale_id, magazzino.assets.emittente_fiscale_id
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (M-6, M-5;
+#   analisi carico e scarico, sezione 7-sexies)
+#
+# -- DI CHI E' UN MAGAZZINO ---------------------------------------------------------
+#   Di un emittente fiscale (M-6): e' l'ancora da cui TUTTO il perimetro di
+#   magazzino discende — movimenti, attesi, valore, inventari, rettifiche,
+#   trasferimenti, ubicazioni e le loro note leggono l'emittente dal
+#   magazzino (P-10, script.fn_scope_ef_whitelist_via_magazzino). NOT NULL:
+#   un magazzino senza emittente non appartiene a nessuno e nessuno lo vede.
+#   Il guard di scrittura script.trgfn_guard_emittente_scope('fiscale',
+#   'emittente_fiscale_id') (stampo: vendite.ordini) e' la difesa in
+#   profondita': chi scrive deve avere scope sull'emittente che dichiara.
+#   ⚠️ Nessun trigger di DEFAULT dell'emittente (vendite ne ha cinque copie
+#   per dominio, ciascuna col suo codice): chi crea un magazzino lo dice.
+#   Il CRUD generico delle tabelle di configurazione (magazzini e' in
+#   CONFIG_TABLES) dovra' passarlo — registrato nel brief come punto aperto
+#   per BE/Lotto 2, non deciso qui.
+#
+# -- L'ASSET NON E' IL SUO GPS (M-5, sezione 7-quater) --------------------------------
+#   magazzino_id e ubicazione_id su assets dicevano DOVE l'asset e' in questo
+#   momento: e' un fatto che si ricava dal registro (l'ultimo movimento che lo
+#   nomina, movimenti.asset_id), non una colonna da tenere allineata.
+#   `ubicazione` varchar era testo libero «in attesa di modello impianti».
+#   Se ne vanno tutti e tre. L'asset prende invece l'EMITTENTE (7-sexies,
+#   correzione del 04-09: NON magazzino_id NOT NULL — un asset installato dal
+#   cliente non e' in nessun magazzino, ma e' sempre di un emittente).
+#   billing_account_id e contratto_id restano NULLABLE: dicono presso chi e'
+#   e con quale contratto, non di chi e'. ownership_id resta: e' la
+#   PROPRIETA' (config.assets_ownership: ASSET_OWNED / CONSIGNMENT / CUSTOMER),
+#   la dimensione che 7-ter prevede per la merce di terzi.
+#
+# -- I TRIGGER GENERATI, UNO PER UNO (P-0, sezione 6-bis del brief) -------------
+#   Bloccano il DROP COLUMN (portano la colonna in UPDATE OF), provato:
+#     trg_assets_a10_magazzini_require_attivo_ins_upd   (attivo, magazzino_id)
+#     trg_assets_a10_ubicazioni_require_attivo_ins_upd  (attivo, ubicazione_id)
+#   Morirebbero a runtime (argomento = colonna sparita ->
+#   E_ATTIVO_BLOCK_FKCOL_NOT_FOUND a ogni disattivazione del padre):
+#     trg_magazzini_a10_assets_block_deact_upd   (magazzino.magazzini)
+#     trg_ubicazioni_a10_assets_block_deact_upd  (magazzino.ubicazioni)
+#   Tutti DROP TRIGGER IF EXISTS; nessuno si rigenera (le FK non ci sono piu').
+#   Nascono a ci_apply: i require_attivo verso emittenti_fiscali (ha attivo)
+#   su entrambe le tabelle e i block_deact su anagrafiche.emittenti_fiscali.
+#
+# -- IL REGISTRO DEL DEBITO RLS ---------------------------------------------------
+#   dbops.rls_perimetro_debito riga 65 (magazzino.assets: «quale delle due
+#   chiavi nullable porta il perimetro») ha la risposta: nessuna delle due,
+#   la terza. Una riga di registro estinta fa rosso quanto una non dichiarata:
+#   via dal CSV e DELETE in 20260915-10 (80_data). Le righe 70 e 75 di
+#   storico_scope_policy passano a EF nel CSV della mappa.
+#
+# -- PRECONDIZIONE «ZERO RIGHE» ------------------------------------------------
+#   La colonna nasce NOT NULL senza default: su una tabella con righe l'ADD
+#   fallirebbe, e non c'e' un valore giusto da inventare per un magazzino che
+#   qualcuno ha creato a mano. sqlCheck = 0 su entrambe (la forma ammessa da
+#   linee-guida-sql 11.4): il migrate si ferma dicendo perche', e il dato si
+#   sistema a mano (AGENTS.md, Workflow Safety), non con una migration.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-09-alter-magazzini-assets-ancora-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260915-09-alter-magazzini-assets-ancora-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzini.emittente_fiscale_id e assets.emittente_fiscale_id, NOT NULL con FK
+        e guard di scope (trgfn_guard_emittente_scope 'fiscale'): l'ancora del
+        perimetro (M-6). assets perde ubicazione (testo), magazzino_id e ubicazione_id
+        con FK, indici e i quattro generati che li nominano (l'asset non e' il suo GPS,
+        M-5). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (P-7).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: magazzini
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: magazzini
+                    columnName: emittente_fiscale_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: assets
+                columnName: magazzino_id
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.magazzini;
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.assets;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. magazzini: l'ancora.
+              ALTER TABLE magazzino.magazzini
+                  ADD COLUMN emittente_fiscale_id BIGINT NOT NULL;
+              ALTER TABLE magazzino.magazzini
+                  ADD CONSTRAINT fk_magazzini_emittente_fiscale
+                      FOREIGN KEY (emittente_fiscale_id) REFERENCES anagrafiche.emittenti_fiscali (id)
+                      ON UPDATE CASCADE;
+              CREATE TRIGGER trg_magazzini_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.magazzini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id');
+
+              -- 2. assets: via i generati che bloccano il DROP o che morirebbero.
+              DROP TRIGGER IF EXISTS trg_assets_a10_magazzini_require_attivo_ins_upd  ON magazzino.assets;
+              DROP TRIGGER IF EXISTS trg_assets_a10_ubicazioni_require_attivo_ins_upd ON magazzino.assets;
+              DROP TRIGGER IF EXISTS trg_magazzini_a10_assets_block_deact_upd         ON magazzino.magazzini;
+              DROP TRIGGER IF EXISTS trg_ubicazioni_a10_assets_block_deact_upd        ON magazzino.ubicazioni;
+
+              -- 3. assets: via il GPS (FK e indici cadono con le colonne), entra l'emittente.
+              ALTER TABLE magazzino.assets
+                  DROP COLUMN ubicazione,
+                  DROP COLUMN magazzino_id,
+                  DROP COLUMN ubicazione_id;
+              ALTER TABLE magazzino.assets
+                  ADD COLUMN emittente_fiscale_id BIGINT NOT NULL;
+              ALTER TABLE magazzino.assets
+                  ADD CONSTRAINT fk_mag_assets_emittente_fiscale
+                      FOREIGN KEY (emittente_fiscale_id) REFERENCES anagrafiche.emittenti_fiscali (id)
+                      ON UPDATE CASCADE;
+              CREATE TRIGGER trg_assets_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.assets
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id');
+
+              -- 4. Le regole, scritte dove si leggono.
+              COMMENT ON COLUMN magazzino.magazzini.emittente_fiscale_id IS
+                  'L''emittente fiscale a cui il magazzino appartiene: l''ANCORA del '
+                  'perimetro di tutto il dominio (movimenti, attesi, valore, inventari, '
+                  'rettifiche, trasferimenti, ubicazioni e note leggono l''emittente da '
+                  'qui: script.fn_scope_ef_whitelist_via_magazzino). NOT NULL, senza '
+                  'default: chi crea un magazzino dice di chi e''. Guard di scrittura '
+                  'trgfn_guard_emittente_scope. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (M-6).';
+              COMMENT ON TABLE magazzino.magazzini IS
+                  'Anagrafica dei magazzini/depositi di un emittente fiscale '
+                  '(emittente_fiscale_id, l''ancora del perimetro RLS del dominio). '
+                  'Indirizzo legato a anagrafiche.indirizzi_dettaglio (un magazzino non '
+                  'e'' un ruolo). Nessuna operazione di magazzino attraversa due '
+                  'emittenti (trasferimenti: guard stesso emittente).';
+              COMMENT ON COLUMN magazzino.assets.emittente_fiscale_id IS
+                  'L''emittente fiscale di cui l''asset e'': il suo perimetro, anche '
+                  'quando e'' installato presso un cliente e non sta in nessun magazzino '
+                  '(per questo NON magazzino_id: 7-sexies, correzione del 04-09). NOT '
+                  'NULL; guard di scrittura trgfn_guard_emittente_scope. DOVE si trova ora '
+                  'lo dice il registro (l''ultimo movimento con asset_id), non una colonna.';
+              COMMENT ON COLUMN magazzino.assets.ownership_id IS
+                  'La PROPRIETA'' dell''asset (config.assets_ownership: ASSET_OWNED, '
+                  'ASSET_CONSIGNMENT, ASSET_CUSTOMER): e'' la dimensione per la merce di '
+                  'terzi (7-ter). Distinta dall''emittente (di chi e'' il perimetro) e dal '
+                  'billing account (presso chi e'').';
+              COMMENT ON TABLE magazzino.assets IS
+                  'Istanza fisica di un bene serializzato (contatore, apparecchiatura): '
+                  'l''oggetto che movimenti.asset_id sposta uno alla volta (|qta| = 1). '
+                  'Di un emittente (emittente_fiscale_id), con una proprieta'' '
+                  '(ownership_id), eventualmente presso un billing account e sotto un '
+                  'contratto. Dal 2026-09-15 non porta piu'' la posizione (magazzino, '
+                  'ubicazione): la dice il registro. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_assets_a10_guard_emittente_scope_ins_upd ON magazzino.assets;
+              ALTER TABLE magazzino.assets DROP CONSTRAINT IF EXISTS fk_mag_assets_emittente_fiscale;
+              ALTER TABLE magazzino.assets DROP COLUMN IF EXISTS emittente_fiscale_id;
+              ALTER TABLE magazzino.assets
+                  ADD COLUMN IF NOT EXISTS ubicazione VARCHAR(120),
+                  ADD COLUMN IF NOT EXISTS magazzino_id BIGINT REFERENCES magazzino.magazzini (id),
+                  ADD COLUMN IF NOT EXISTS ubicazione_id BIGINT REFERENCES magazzino.ubicazioni (id);
+              DROP TRIGGER IF EXISTS trg_magazzini_a10_guard_emittente_scope_ins_upd ON magazzino.magazzini;
+              ALTER TABLE magazzino.magazzini DROP CONSTRAINT IF EXISTS fk_magazzini_emittente_fiscale;
+              ALTER TABLE magazzino.magazzini DROP COLUMN IF EXISTS emittente_fiscale_id;

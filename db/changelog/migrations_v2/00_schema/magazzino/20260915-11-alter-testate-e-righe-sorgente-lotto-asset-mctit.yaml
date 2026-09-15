@@ -1,0 +1,345 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-8 — LE QUATTRO TESTATE E LE TRE RIGHE: SORGENTE A CATALOGO, LOTTO E ASSET COME CHIAVI
+#   magazzino.inventari, rettifiche, trasferimenti, eventi_assets
+#   magazzino.inventari_righe, rettifiche_righe, trasferimenti_righe
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (D-1, D-2,
+#   D-3, D-6, M-5; analisi aggancio, sezione 8-quater)
+#
+# -- LE TESTATE: LA STESSA SORGENTE DEL LEDGER ---------------------------------
+#   Le quattro testate portano gia' sorgente_tipo_id + sorgente_uid (D-2). Qui
+#   prendono sorgente_riga (D-3: la chiave e' id O uid, secondo
+#   config.sorgenti.key_selector), il CHECK «tipo valorizzato => esattamente
+#   una chiave; tipo assente => nessuna» (la forma stretta di
+#   movimenti_attesi) e il guard tipizzato (D-9): sei tabelle di magazzino
+#   con lo stesso guard, e il record sorgente deve esistere.
+#   rettifiche prende la FK che MANCAVA (fk_mag_rettifiche_sorgente_tipo:
+#   sorgente_tipo_id poteva puntare a un tipo inesistente).
+#   trasferimenti perde il DOPPIONE sorgenti_tipo_id/sorgenti_uid con le sue
+#   due FK (fk_mag_rettifiche_sorgenti_tipo — si chiama cosi' —,
+#   fk_mag_trasferimenti_sorgenti_tipo): due coppie che dicevano la stessa
+#   cosa, e nessuna funzione le legge.
+#   eventi_assets perde doc_schema/doc_table/doc_id/doc_riga_id: il
+#   riferimento libero che D-1 ritira ovunque (trovato scrivendo P-2: la
+#   prima stesura del brief non l'aveva visto).
+#
+# -- DUE CHECK CHE NON VERIFICAVANO NIENTE (trovati leggendo la struttura) -----
+#   chk_mag_trasferimenti_da_a_distinti:
+#     (from <> to) OR (from IS NOT NULL) OR (to IS NOT NULL) — con entrambe
+#     NOT NULL e' SEMPRE vero: un trasferimento da un magazzino a se stesso
+#     passava. Riscritto: magazzino_id_from <> magazzino_id_to.
+#   chk_mag_eventi_assets_da_a_distinti: stessa forma con entrambe nullable —
+#     con entrambe NULL vale NULL (passa), con una sola vale true, con due
+#     uguali vale true. Non rifiutava nulla. Riscritto: from IS NULL OR to IS
+#     NULL OR from <> to.
+#   Nessuna riga in nessuna delle due tabelle: costo zero, adesso.
+#
+# -- LE RIGHE: LOTTO E SERIALE SONO CHIAVI, NON TESTO (M-5 propagata) ------------
+#   lotto varchar -> lotto_id (magazzino.lotti), seriale varchar -> asset_id
+#   (magazzino.assets), su tutte e tre: senza, l'operazione non avrebbe niente
+#   da passare alla primitiva (aggancio 8-quater). Con un asset la quantita'
+#   e' UNA: inventari_righe.qta_contata IN (0, 1) (c'e' o non c'e'),
+#   |rettifiche_righe.qta_delta| = 1, trasferimenti_righe.qta = 1.
+#   ⚠️ «il lotto appartiene all'articolo della riga» e' cross-tabella: lo
+#   controlla la primitiva, non un CHECK (come sul ledger).
+#
+# -- I TRIGGER GENERATI (P-0, sezione 6-bis del brief) -------------------------
+#   trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd porta
+#   sorgenti_tipo_id in UPDATE OF e blocca il DROP COLUMN (provato);
+#   trg_sorgenti_a10_trasferimenti_block_deact_upd (su config.sorgenti) porta
+#   'sorgenti_tipo_id' come argomento e solleverebbe
+#   E_ATTIVO_BLOCK_FKCOL_NOT_FOUND. DROP IF EXISTS entrambi; ci_apply li
+#   rigenera su sorgente_tipo_id (come gia' per inventari ed eventi_assets).
+#   I doc_* di eventi_assets e lotto/seriale delle righe cadono puliti
+#   (nessun trigger li nomina). Nascono a ci_apply: require_attivo verso
+#   sorgenti su rettifiche (finalmente), verso lotti e assets sulle tre righe,
+#   e i block_deact sui padri.
+#
+# -- CHE COSA NON E' QUI ------------------------------------------------------------
+#   Il guard «stesso emittente» dei trasferimenti (P-9, 20_code), le policy
+#   (P-10). Le righe di fk_index_policy nel CSV del lotto; le sette righe di
+#   storico_scope_policy (72, 73, 74, 78, 79, 80, 81) a PADRE nel CSV della
+#   mappa; il DELETE di fine lotto toglie le due righe del doppione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-11-alter-testate-e-righe-sorgente-lotto-asset-mctit.yaml
+
+  - changeSet:
+      id: 20260915-11-alter-testate-e-righe-sorgente-lotto-asset
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le quattro testate (inventari, rettifiche, trasferimenti, eventi_assets) prendono
+        sorgente_riga, il CHECK della chiave e il guard tipizzato; rettifiche la FK che
+        mancava; trasferimenti perde il doppione sorgenti_*; eventi_assets perde i doc_*;
+        i due CHECK da/a tautologici riscritti. Le tre righe: lotto/seriale testo ->
+        lotto_id/asset_id con FK, |qta| = 1 con asset. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (P-8).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: lotti
+            - columnExists:
+                schemaName: magazzino
+                tableName: trasferimenti
+                columnName: sorgenti_tipo_id
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: inventari
+                    columnName: sorgente_riga
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT (SELECT count(*) FROM magazzino.inventari_righe)
+                       + (SELECT count(*) FROM magazzino.rettifiche_righe)
+                       + (SELECT count(*) FROM magazzino.trasferimenti_righe)
+                       + (SELECT count(*) FROM magazzino.trasferimenti)
+                       + (SELECT count(*) FROM magazzino.eventi_assets);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1. I generati che nominano il doppione di trasferimenti.
+              -- ============================================================
+              DROP TRIGGER IF EXISTS trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd ON magazzino.trasferimenti;
+              DROP TRIGGER IF EXISTS trg_sorgenti_a10_trasferimenti_block_deact_upd        ON config.sorgenti;
+
+              -- ============================================================
+              -- 2. Le testate.
+              -- ============================================================
+              -- inventari
+              ALTER TABLE magazzino.inventari
+                  ADD COLUMN sorgente_riga BIGINT;
+              ALTER TABLE magazzino.inventari
+                  ADD CONSTRAINT chk_mag_inventari_sorgente_chiave
+                      CHECK (
+                          (sorgente_tipo_id IS NULL AND sorgente_riga IS NULL AND sorgente_uid IS NULL)
+                          OR (sorgente_tipo_id IS NOT NULL AND ((sorgente_riga IS NOT NULL) <> (sorgente_uid IS NOT NULL)))
+                      );
+              CREATE TRIGGER trg_inventari_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON magazzino.inventari FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              -- rettifiche (+ la FK che mancava)
+              ALTER TABLE magazzino.rettifiche
+                  ADD COLUMN sorgente_riga BIGINT;
+              ALTER TABLE magazzino.rettifiche
+                  ADD CONSTRAINT fk_mag_rettifiche_sorgente_tipo
+                      FOREIGN KEY (sorgente_tipo_id) REFERENCES config.sorgenti (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT chk_mag_rettifiche_sorgente_chiave
+                      CHECK (
+                          (sorgente_tipo_id IS NULL AND sorgente_riga IS NULL AND sorgente_uid IS NULL)
+                          OR (sorgente_tipo_id IS NOT NULL AND ((sorgente_riga IS NOT NULL) <> (sorgente_uid IS NOT NULL)))
+                      );
+              CREATE TRIGGER trg_rettifiche_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON magazzino.rettifiche FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              -- trasferimenti (via il doppione con le sue due FK; il CHECK da/a che verifica)
+              ALTER TABLE magazzino.trasferimenti
+                  DROP COLUMN sorgenti_tipo_id,
+                  DROP COLUMN sorgenti_uid;
+              ALTER TABLE magazzino.trasferimenti
+                  ADD COLUMN sorgente_riga BIGINT;
+              ALTER TABLE magazzino.trasferimenti
+                  DROP CONSTRAINT chk_mag_trasferimenti_da_a_distinti;
+              ALTER TABLE magazzino.trasferimenti
+                  ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
+                      CHECK (magazzino_id_from <> magazzino_id_to),
+                  ADD CONSTRAINT chk_mag_trasferimenti_sorgente_chiave
+                      CHECK (
+                          (sorgente_tipo_id IS NULL AND sorgente_riga IS NULL AND sorgente_uid IS NULL)
+                          OR (sorgente_tipo_id IS NOT NULL AND ((sorgente_riga IS NOT NULL) <> (sorgente_uid IS NOT NULL)))
+                      );
+              CREATE TRIGGER trg_trasferimenti_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON magazzino.trasferimenti FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              -- eventi_assets (via i doc_*; il CHECK da/a che verifica)
+              ALTER TABLE magazzino.eventi_assets
+                  DROP COLUMN doc_schema,
+                  DROP COLUMN doc_table,
+                  DROP COLUMN doc_id,
+                  DROP COLUMN doc_riga_id;
+              ALTER TABLE magazzino.eventi_assets
+                  ADD COLUMN sorgente_riga BIGINT;
+              ALTER TABLE magazzino.eventi_assets
+                  DROP CONSTRAINT chk_mag_eventi_assets_da_a_distinti;
+              ALTER TABLE magazzino.eventi_assets
+                  ADD CONSTRAINT chk_mag_eventi_assets_da_a_distinti
+                      CHECK (magazzino_id_from IS NULL OR magazzino_id_to IS NULL OR magazzino_id_from <> magazzino_id_to),
+                  ADD CONSTRAINT chk_mag_eventi_assets_sorgente_chiave
+                      CHECK (
+                          (sorgente_tipo_id IS NULL AND sorgente_riga IS NULL AND sorgente_uid IS NULL)
+                          OR (sorgente_tipo_id IS NOT NULL AND ((sorgente_riga IS NOT NULL) <> (sorgente_uid IS NOT NULL)))
+                      );
+              CREATE TRIGGER trg_eventi_assets_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON magazzino.eventi_assets FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              -- ============================================================
+              -- 3. Le righe: lotto e seriale diventano chiavi.
+              -- ============================================================
+              ALTER TABLE magazzino.inventari_righe
+                  DROP COLUMN lotto,
+                  DROP COLUMN seriale;
+              ALTER TABLE magazzino.inventari_righe
+                  ADD COLUMN lotto_id BIGINT,
+                  ADD COLUMN asset_id BIGINT;
+              ALTER TABLE magazzino.inventari_righe
+                  ADD CONSTRAINT fk_mag_inventari_righe_lotto
+                      FOREIGN KEY (lotto_id) REFERENCES magazzino.lotti (id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_inventari_righe_asset
+                      FOREIGN KEY (asset_id) REFERENCES magazzino.assets (id) ON UPDATE CASCADE,
+                  -- Un pezzo serializzato o c'e' o non c'e'.
+                  ADD CONSTRAINT chk_mag_inventari_righe_asset_qta_unitaria
+                      CHECK (asset_id IS NULL OR qta_contata IN (0, 1));
+
+              ALTER TABLE magazzino.rettifiche_righe
+                  DROP COLUMN lotto,
+                  DROP COLUMN seriale;
+              ALTER TABLE magazzino.rettifiche_righe
+                  ADD COLUMN lotto_id BIGINT,
+                  ADD COLUMN asset_id BIGINT;
+              ALTER TABLE magazzino.rettifiche_righe
+                  ADD CONSTRAINT fk_mag_rettifiche_righe_lotto
+                      FOREIGN KEY (lotto_id) REFERENCES magazzino.lotti (id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_rettifiche_righe_asset
+                      FOREIGN KEY (asset_id) REFERENCES magazzino.assets (id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT chk_mag_rettifiche_righe_asset_qta_unitaria
+                      CHECK (asset_id IS NULL OR abs(qta_delta) = 1);
+
+              ALTER TABLE magazzino.trasferimenti_righe
+                  DROP COLUMN lotto,
+                  DROP COLUMN seriale;
+              ALTER TABLE magazzino.trasferimenti_righe
+                  ADD COLUMN lotto_id BIGINT,
+                  ADD COLUMN asset_id BIGINT;
+              ALTER TABLE magazzino.trasferimenti_righe
+                  ADD CONSTRAINT fk_mag_trasferimenti_righe_lotto
+                      FOREIGN KEY (lotto_id) REFERENCES magazzino.lotti (id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_trasferimenti_righe_asset
+                      FOREIGN KEY (asset_id) REFERENCES magazzino.assets (id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT chk_mag_trasferimenti_righe_asset_qta_unitaria
+                      CHECK (asset_id IS NULL OR qta = 1);
+
+              -- ============================================================
+              -- 4. Le regole, scritte dove si leggono.
+              -- ============================================================
+              COMMENT ON COLUMN magazzino.inventari.sorgente_riga IS
+                  'Chiave del record sorgente quando config.sorgenti.key_selector = id; '
+                  'con sorgente_uid esattamente una, e solo se sorgente_tipo_id. Il guard '
+                  'tipizzato verifica che il record esista. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (D-3).';
+              COMMENT ON COLUMN magazzino.rettifiche.sorgente_riga IS
+                  'Chiave del record sorgente quando config.sorgenti.key_selector = id; '
+                  'con sorgente_uid esattamente una, e solo se sorgente_tipo_id. FK e guard '
+                  'tipizzato dal 2026-09-15 (prima la FK mancava).';
+              COMMENT ON COLUMN magazzino.trasferimenti.sorgente_riga IS
+                  'Chiave del record sorgente quando config.sorgenti.key_selector = id; '
+                  'con sorgente_uid esattamente una, e solo se sorgente_tipo_id. Il '
+                  'doppione sorgenti_tipo_id/sorgenti_uid e'' uscito il 2026-09-15.';
+              COMMENT ON COLUMN magazzino.eventi_assets.sorgente_riga IS
+                  'Chiave del record sorgente quando config.sorgenti.key_selector = id; '
+                  'con sorgente_uid esattamente una, e solo se sorgente_tipo_id. I doc_* '
+                  '(riferimento libero) sono usciti il 2026-09-15 (D-1).';
+              COMMENT ON CONSTRAINT chk_mag_trasferimenti_da_a_distinti ON magazzino.trasferimenti IS
+                  'Un trasferimento va da un magazzino a un ALTRO: fino al 2026-09-15 il '
+                  'CHECK era sempre vero (OR con IS NOT NULL su colonne NOT NULL). Uno '
+                  'spostamento dentro lo stesso magazzino e'' fra ubicazioni, sul registro.';
+              COMMENT ON CONSTRAINT chk_mag_eventi_assets_da_a_distinti ON magazzino.eventi_assets IS
+                  'Se l''evento dice sia da dove sia a dove, i due magazzini sono diversi. '
+                  'Fino al 2026-09-15 il CHECK non rifiutava nulla.';
+              COMMENT ON COLUMN magazzino.inventari_righe.lotto_id IS
+                  'La partita contata (magazzino.lotti), se l''articolo la pretende: e'' '
+                  'cio'' che l''operazione passa alla primitiva. Era un varchar libero.';
+              COMMENT ON COLUMN magazzino.inventari_righe.asset_id IS
+                  'Il pezzo serializzato contato (magazzino.assets): con un asset '
+                  'qta_contata e'' 0 o 1. Era un varchar libero (seriale).';
+              COMMENT ON COLUMN magazzino.rettifiche_righe.lotto_id IS
+                  'La partita rettificata (magazzino.lotti), se l''articolo la pretende. '
+                  'Era un varchar libero.';
+              COMMENT ON COLUMN magazzino.rettifiche_righe.asset_id IS
+                  'Il pezzo serializzato rettificato (magazzino.assets): con un asset '
+                  '|qta_delta| = 1. Era un varchar libero (seriale).';
+              COMMENT ON COLUMN magazzino.trasferimenti_righe.lotto_id IS
+                  'La partita trasferita (magazzino.lotti), se l''articolo la pretende. '
+                  'Era un varchar libero.';
+              COMMENT ON COLUMN magazzino.trasferimenti_righe.asset_id IS
+                  'Il pezzo serializzato trasferito (magazzino.assets): con un asset '
+                  'qta = 1. Era un varchar libero (seriale).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.trasferimenti_righe
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_righe_asset_qta_unitaria,
+                  DROP CONSTRAINT IF EXISTS fk_mag_trasferimenti_righe_asset,
+                  DROP CONSTRAINT IF EXISTS fk_mag_trasferimenti_righe_lotto;
+              ALTER TABLE magazzino.trasferimenti_righe
+                  DROP COLUMN IF EXISTS asset_id, DROP COLUMN IF EXISTS lotto_id,
+                  ADD COLUMN IF NOT EXISTS lotto VARCHAR(64), ADD COLUMN IF NOT EXISTS seriale VARCHAR(64);
+              ALTER TABLE magazzino.rettifiche_righe
+                  DROP CONSTRAINT IF EXISTS chk_mag_rettifiche_righe_asset_qta_unitaria,
+                  DROP CONSTRAINT IF EXISTS fk_mag_rettifiche_righe_asset,
+                  DROP CONSTRAINT IF EXISTS fk_mag_rettifiche_righe_lotto;
+              ALTER TABLE magazzino.rettifiche_righe
+                  DROP COLUMN IF EXISTS asset_id, DROP COLUMN IF EXISTS lotto_id,
+                  ADD COLUMN IF NOT EXISTS lotto VARCHAR(64), ADD COLUMN IF NOT EXISTS seriale VARCHAR(64);
+              ALTER TABLE magazzino.inventari_righe
+                  DROP CONSTRAINT IF EXISTS chk_mag_inventari_righe_asset_qta_unitaria,
+                  DROP CONSTRAINT IF EXISTS fk_mag_inventari_righe_asset,
+                  DROP CONSTRAINT IF EXISTS fk_mag_inventari_righe_lotto;
+              ALTER TABLE magazzino.inventari_righe
+                  DROP COLUMN IF EXISTS asset_id, DROP COLUMN IF EXISTS lotto_id,
+                  ADD COLUMN IF NOT EXISTS lotto VARCHAR(64), ADD COLUMN IF NOT EXISTS seriale VARCHAR(64);
+              DROP TRIGGER IF EXISTS trg_eventi_assets_a10_guard_sorgente_ins_upd ON magazzino.eventi_assets;
+              ALTER TABLE magazzino.eventi_assets
+                  DROP CONSTRAINT IF EXISTS chk_mag_eventi_assets_sorgente_chiave,
+                  DROP CONSTRAINT IF EXISTS chk_mag_eventi_assets_da_a_distinti;
+              ALTER TABLE magazzino.eventi_assets
+                  ADD CONSTRAINT chk_mag_eventi_assets_da_a_distinti
+                      CHECK ((magazzino_id_from <> magazzino_id_to) OR (magazzino_id_from IS NOT NULL) OR (magazzino_id_to IS NOT NULL));
+              ALTER TABLE magazzino.eventi_assets
+                  DROP COLUMN IF EXISTS sorgente_riga,
+                  ADD COLUMN IF NOT EXISTS doc_schema VARCHAR(64), ADD COLUMN IF NOT EXISTS doc_table VARCHAR(64),
+                  ADD COLUMN IF NOT EXISTS doc_id BIGINT, ADD COLUMN IF NOT EXISTS doc_riga_id BIGINT;
+              DROP TRIGGER IF EXISTS trg_trasferimenti_a10_guard_sorgente_ins_upd ON magazzino.trasferimenti;
+              ALTER TABLE magazzino.trasferimenti
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_sorgente_chiave,
+                  DROP CONSTRAINT IF EXISTS chk_mag_trasferimenti_da_a_distinti;
+              ALTER TABLE magazzino.trasferimenti
+                  ADD CONSTRAINT chk_mag_trasferimenti_da_a_distinti
+                      CHECK ((magazzino_id_from <> magazzino_id_to) OR (magazzino_id_from IS NOT NULL) OR (magazzino_id_to IS NOT NULL));
+              ALTER TABLE magazzino.trasferimenti
+                  DROP COLUMN IF EXISTS sorgente_riga,
+                  ADD COLUMN IF NOT EXISTS sorgenti_tipo_id BIGINT REFERENCES config.sorgenti (id),
+                  ADD COLUMN IF NOT EXISTS sorgenti_uid UUID;
+              DROP TRIGGER IF EXISTS trg_rettifiche_a10_guard_sorgente_ins_upd ON magazzino.rettifiche;
+              ALTER TABLE magazzino.rettifiche
+                  DROP CONSTRAINT IF EXISTS chk_mag_rettifiche_sorgente_chiave,
+                  DROP CONSTRAINT IF EXISTS fk_mag_rettifiche_sorgente_tipo;
+              ALTER TABLE magazzino.rettifiche DROP COLUMN IF EXISTS sorgente_riga;
+              DROP TRIGGER IF EXISTS trg_inventari_a10_guard_sorgente_ins_upd ON magazzino.inventari;
+              ALTER TABLE magazzino.inventari DROP CONSTRAINT IF EXISTS chk_mag_inventari_sorgente_chiave;
+              ALTER TABLE magazzino.inventari DROP COLUMN IF EXISTS sorgente_riga;

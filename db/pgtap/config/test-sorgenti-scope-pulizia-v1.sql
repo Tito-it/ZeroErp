@@ -9,10 +9,22 @@
 --  3) scope NOT NULL su tutti i record
 --  4) Sorgenti PUSH_COMMESSA: 5 record attivi
 --  5) Sorgenti PIPELINE_MARKER: 2 record attivi
---  6) Sorgenti ROW_VALIDATOR: tutti disattivati (attivo=false)
+--  6) Sorgenti ROW_VALIDATOR: le SEI sorgenti di riga sono attive (D-L1-f)
 --  7) Sorgente POST_INVOICE: FATTURA attiva
 --  8) Trigger polimorfo rimosso da attivita_fatturabili
---  9) Sorgenti RIGA archiviate con meta.archived=true
+--  9) Nessuna sorgente porta piu' il marchio meta.archived
+--
+-- ⚠️ Rev 2026-09-15 (brief-db-magazzino-lotto-1-terreno-vuoto, D-L1-f). I test
+--   6 e 9 pinnavano lo stato OPPOSTO: cinque *_RIGA «archiviate», attivo=false
+--   e meta.archived=true. Quello stato era un UPDATE a mano su dbdev del
+--   2026-02-25 che nessun changeSet registrava: su un DB da zero le cinque
+--   righe non esistevano affatto, e questo file era in baseline-rossi-ci come
+--   ASSERZIONE dal primo giorno — un ricordo di una macchina pinnato come
+--   test. Il Lotto 1 le mette nel CSV di sorgenti ATTIVE e senza marchio
+--   (piu' RESO_VENDITA_RIGA): config.sorgenti dice CHE COSA puo' essere
+--   nominato come sorgente — sei tabelle di riga che esistono — non chi lo
+--   nomina oggi; il guard tipizzato pretende attivo=true. Il file tiene il
+--   nome storico (la pulizia dello scope resta il suo oggetto: test 1-5, 7, 8).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -85,16 +97,19 @@ SELECT ok(
 );
 
 -- ============================================================
--- 6) Sorgenti ROW_VALIDATOR: tutti disattivati
+-- 6) Sorgenti ROW_VALIDATOR: le sei sorgenti di riga sono attive (D-L1-f)
 -- ============================================================
-SELECT ok(
+-- Per NOME e non per conteggio: un conteggio resta vero anche se una riga
+-- sparisce e un'altra entra. L'insieme e' il contratto del CSV di sorgenti.
+SELECT is(
   (
-    SELECT count(*) = 0
+    SELECT string_agg(s.codice_interno, ',' ORDER BY s.id)
     FROM config.sorgenti s
     WHERE s.scope = 'ROW_VALIDATOR'
       AND s.attivo IS TRUE
   ),
-  'ROW_VALIDATOR: nessuna sorgente attiva (tutte archiviate)'
+  'PREVENTIVO_RIGA,CONTRATTO_RIGA,ORDINE_VENDITA_RIGA,DDT_VENDITA_RIGA,FATTURA_RIGA,RESO_VENDITA_RIGA',
+  'ROW_VALIDATOR: le sei sorgenti di riga sono ATTIVE — il catalogo dice che cosa puo'' essere nominato (D-L1-f)'
 );
 
 -- ============================================================
@@ -125,17 +140,19 @@ SELECT ok(
 );
 
 -- ============================================================
--- 9) Sorgenti RIGA archiviate con meta.archived=true
+-- 9) Nessuna sorgente porta piu' il marchio meta.archived
 -- ============================================================
-SELECT ok(
+-- Il marchio {"archived": true, "archived_reason": "…commessa-v2"} parlava di UN
+-- consumatore, non del catalogo: e' uscito con D-L1-f. Su tutte le sorgenti,
+-- non solo ROW_VALIDATOR: un marchio del genere non ha una sede legittima.
+SELECT is(
   (
-    SELECT count(*) = 5
+    SELECT count(*)::int
     FROM config.sorgenti s
-    WHERE s.scope = 'ROW_VALIDATOR'
-      AND s.attivo IS FALSE
-      AND (s.meta->>'archived')::boolean IS TRUE
+    WHERE (s.meta->>'archived') IS NOT NULL
   ),
-  'Sorgenti RIGA: 5 record archiviati con meta.archived=true'
+  0,
+  'Nessuna sorgente porta meta.archived: l''archiviazione a mano del 2026-02-25 non e'' piu'' nel catalogo'
 );
 
 -- ============================================================

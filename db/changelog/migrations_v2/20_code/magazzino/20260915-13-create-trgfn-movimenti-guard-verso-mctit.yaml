@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 (1 di 2) — IL GUARD DEL VERSO: sign(qta) = causali.segno
+#   magazzino.trgfn_movimenti_guard_verso()
+#   trg_movimenti_a10_guard_verso_ins_upd        (magazzino.movimenti)
+#   trg_movimenti_attesi_a10_guard_verso_ins_upd (magazzino.movimenti_attesi)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.9 (M-1)
+#
+# -- LA RETE, NON IL MESSAGGIO ----------------------------------------------------
+#   Il verso sta nella quantita' (M-1): una causale di entrata porta qta > 0,
+#   una di uscita qta < 0. Chi compone il movimento e' l'OPERAZIONE (Lotto 2),
+#   che il verso lo prende dalla causale: un mismatch qui non e' un dato
+#   sbagliato da una persona, e' un chiamante rotto. Per questo il codice e'
+#   TECNICO (AGENTS.md, «riuso o conio si decide su chi puo' rimediare»), il
+#   contesto NON porta `campo` (su un 500 non c'e' un campo da accendere) e il
+#   lettore e' dbops.error_log. La primitiva dara' il messaggio comprensibile
+#   PRIMA di arrivare qui.
+#
+# -- UNA FUNZIONE, DUE TABELLE ------------------------------------------------------
+#   movimenti e movimenti_attesi hanno la stessa forma (qta firmata,
+#   causale_id NOT NULL): stessa funzione, due trigger. BEFORE INSERT OR
+#   UPDATE OF qta, causale_id: le sole due colonne che possono rompere la
+#   regola.
+#
+# -- IL CHECK qta <> 0 RESTA, E QUESTO GUARD LO OSCURA ------------------------------
+#   Un BEFORE ROW scatta prima che i vincoli di tabella siano valutati: con
+#   qta = 0 parla il guard (sign(0) = 0 <> segno -> P0001), non il CHECK
+#   (23514). Il CHECK non e' inutile: e' la seconda rete, e vale per chi
+#   scrivesse con i trigger disabilitati. Il pgTAP di P-12 asserisce il guard
+#   con throws_like sulla frase E l'esistenza del CHECK in pg_constraint.
+#
+# -- CAUSALE INESISTENTE: NON E' AFFAR SUO -----------------------------------------
+#   SELECT INTO a zero righe azzera la variabile: se la causale non esiste il
+#   guard RITORNA NEW e lascia parlare la FK (23503) e il require_attivo
+#   generato — un guard che dicesse «verso incoerente» su una causale
+#   inesistente mentirebbe sulla causa. Su una causale SPENTA il segno c'e' e
+#   si controlla: a rifiutarla e' il require_attivo, con la sua frase.
+#
+# -- ORDINE FRA I BEFORE ROW ---------------------------------------------------------
+#   Su movimenti convivono trg_movimenti_a10_guard_sorgente_ins_upd e questo:
+#   PostgreSQL li esegue in ordine alfabetico di nome (guard_sorgente, poi
+#   guard_verso). Sono indipendenti: nessuno dei due legge cio' che l'altro
+#   scrive.
+#
+# -- %TYPE nel DECLARE (regola di Tid) --------------------------------------------
+#   v_segno e v_causale sono il riflesso di due colonne di causali: ancorate.
+#   Una trigger function non ha parametri ne' RETURNS TABLE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260915-13-create-trgfn-movimenti-guard-verso-mctit.yaml
+
+  - changeSet:
+      id: 20260915-13-create-trgfn-movimenti-guard-verso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.trgfn_movimenti_guard_verso: rifiuta un movimento (o un atteso) la cui
+        quantita' non ha il segno della causale (E_MAG_MOVIMENTO_VERSO_INCOERENTE,
+        TECNICO: il verso lo compone l'operazione, un mismatch e' un chiamante rotto).
+        Una funzione, due trigger BEFORE INSERT OR UPDATE OF qta, causale_id su movimenti
+        e movimenti_attesi. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.9
+        (P-9, M-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+                columnName: causale_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: causali
+                columnName: segno
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_movimenti_guard_verso()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_segno   magazzino.causali.segno%TYPE;
+                v_causale magazzino.causali.codice_interno%TYPE;
+              BEGIN
+                -- Scopo: la rete di M-1. Il verso di un movimento sta nella quantita'
+                --   (qta firmata) e deve coincidere con il verso della causale
+                --   (causali.segno, -1 o +1). Vale per il registro e per gli attesi.
+                -- Regole:
+                --   - causale inesistente: non e' affar suo, parla la FK (RETURN NEW);
+                --   - sign(qta) <> segno: E_MAG_MOVIMENTO_VERSO_INCOERENTE (TECNICO,
+                --     senza `campo`: il verso lo compone l'operazione, non una persona);
+                --   - qta = 0 cade qui (sign = 0), prima del CHECK qta <> 0.
+                SELECT c.segno, c.codice_interno
+                  INTO v_segno, v_causale
+                  FROM magazzino.causali c
+                 WHERE c.id = NEW.causale_id;
+
+                IF NOT FOUND THEN
+                  RETURN NEW;
+                END IF;
+
+                IF sign(NEW.qta) <> v_segno THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_movimenti_guard_verso',
+                    'E_MAG_MOVIMENTO_VERSO_INCOERENTE',
+                    jsonb_build_object(
+                      'detail',     'sign(qta) diverso da causali.segno',
+                      'tabella',    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'causale_id', NEW.causale_id,
+                      'causale',    v_causale,
+                      'segno',      v_segno,
+                      'qta',        NEW.qta
+                    ),
+                    NEW.tx_id,
+                    v_causale, v_segno::text, NEW.qta::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_movimenti_guard_verso() IS
+                  'Guard del VERSO (M-1): rifiuta un movimento o un atteso la cui quantita'' '
+                  'non ha il segno della causale (sign(qta) <> causali.segno) con '
+                  'E_MAG_MOVIMENTO_VERSO_INCOERENTE, classe TECNICO — il verso lo compone '
+                  'l''operazione dalla causale, un mismatch e'' un chiamante rotto, e il '
+                  'contesto non porta campo. Causale inesistente: RETURN NEW, parla la FK. '
+                  'qta = 0 cade qui (sign = 0) prima del CHECK qta <> 0, che resta come '
+                  'seconda rete. Montata su magazzino.movimenti e magazzino.movimenti_attesi. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.9.';
+
+              CREATE TRIGGER trg_movimenti_a10_guard_verso_ins_upd
+                  BEFORE INSERT OR UPDATE OF qta, causale_id
+                  ON magazzino.movimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION magazzino.trgfn_movimenti_guard_verso();
+
+              CREATE TRIGGER trg_movimenti_attesi_a10_guard_verso_ins_upd
+                  BEFORE INSERT OR UPDATE OF qta, causale_id
+                  ON magazzino.movimenti_attesi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION magazzino.trgfn_movimenti_guard_verso();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_movimenti_attesi_a10_guard_verso_ins_upd ON magazzino.movimenti_attesi;
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_guard_verso_ins_upd ON magazzino.movimenti;
+              DROP FUNCTION IF EXISTS magazzino.trgfn_movimenti_guard_verso();

@@ -1,0 +1,307 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-10 (1 di 2) — GLI ADATTATORI DI SCOPE DELLA FAMIGLIA magazzino
+#   script.fn_scope_ef_whitelist_via_magazzino      (l'ancora: magazzini.emittente_fiscale_id)
+#   script.fn_scope_ef_whitelist_via_asset          (la seconda ancora: assets.emittente_fiscale_id)
+#   script.fn_scope_ef_whitelist_via_movimento      -> via_magazzino
+#   script.fn_scope_ef_whitelist_via_inventario     -> via_magazzino
+#   script.fn_scope_ef_whitelist_via_rettifica      -> via_magazzino
+#   script.fn_scope_ef_whitelist_via_trasferimento  -> via_magazzino(magazzino_id_from)
+#   script.fn_scope_ef_whitelist_via_evento_asset   -> via_asset
+#   script.fn_scope_note_magazzino_ef_whitelist     (lo smistatore del padre magazzino.note)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (M-6;
+#   analisi carico e scarico, sezione 7-sexies)
+#
+# -- LA FORMA (stampo 20260909-36, via_ddt) -----------------------------------------
+#   LANGUAGE sql, STABLE, NON security definer: una funzione security definer
+#   dentro una policy guarderebbe con gli occhi dell'owner, che la RLS non
+#   vede. La risalita alla testata vive in UN posto (via_magazzino) e le
+#   derivate delegano: se cambia il modo in cui un magazzino nomina il proprio
+#   emittente, si corregge in una riga.
+#   Fail-closed per costruzione: chiave inesistente -> emittente NULL -> la
+#   canonica fn_scope_ef_whitelist risponde false a whitelist valorizzata. E
+#   sotto RLS un magazzino fuori perimetro NON si vede da dentro la policy,
+#   quindi risolve NULL: la stessa cosa.
+#
+# -- DUE ANCORE, NON UNA -----------------------------------------------------------
+#   Il magazzino porta l'emittente e quasi tutto il dominio risale a lui.
+#   L'asset porta l'emittente in proprio (7-sexies, correzione del 04-09: un
+#   asset installato presso un cliente non e' in nessun magazzino) e gli
+#   eventi dell'asset risalgono a LUI, non a un magazzino.
+#   trasferimenti ha due magazzini: il perimetro poggia su magazzino_id_from
+#   e il guard trgfn_trasferimenti_guard_stesso_emittente (P-9) garantisce
+#   che magazzino_id_to sia dello stesso emittente — quindi una sola risalita
+#   basta.
+#
+# -- LO SMISTATORE DELLE NOTE (stampo 20260909-72) --------------------------------
+#   magazzino.note e' partizionata per target_tipo e le policy delle
+#   PARTIZIONI non risalgono al padre (provato il 09-09 in vendite): il padre
+#   ha bisogno di una policy propria, che smista sul target_tipo. Nelle
+#   partizioni _riga il target_id e' la TESTATA (FK verso inventari,
+#   rettifiche, trasferimenti; target_riga_id porta la riga): lo scope passa
+#   dalla testata anche li'.
+#   ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo non gestito
+#   rende quelle note INVISIBILI, non visibili a tutti. Il pgTAP di P-12
+#   confronta i nove rami con il CHECK chk_note_target_tipo del padre.
+#
+# -- %TYPE nelle firme (regola di Tid) -----------------------------------------------
+#   Ogni chiave e' il riflesso di una colonna: ancorata. p_auth_user_id e'
+#   integer esplicito come nella canonica (auth_user.id e' integer, in uno
+#   schema che il DB chiama e non possiede).
+#   ⚠️ Nei COMMENT ON FUNCTION la firma e' scritta coi tipi risolti (integer,
+#   bigint, character varying): il %TYPE perde il typmod e la firma e' quella.
+#
+# -- GRANT --------------------------------------------------------------------------
+#   Nessuno qui: il loop di 90_end (20260205-41) da' EXECUTE su tutte le
+#   funzioni di script a zeroerp_app, come per le sorelle via_*.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260915-15-create-fn-scope-ef-whitelist-via-magazzino-famiglia-mctit.yaml
+
+  - changeSet:
+      id: 20260915-15-create-fn-scope-ef-whitelist-via-magazzino-famiglia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Adattatori di scope della famiglia magazzino: via_magazzino (l'ancora), via_asset
+        (la seconda ancora) e le derivate via_movimento, via_inventario, via_rettifica,
+        via_trasferimento (magazzino_id_from), via_evento_asset, piu' lo smistatore
+        fn_scope_note_magazzino_ef_whitelist per il padre partizionato magazzino.note
+        (ELSE false). STABLE, non security definer, fail-closed. Le policy le crea
+        20260915-16. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: magazzini
+                columnName: emittente_fiscale_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: assets
+                columnName: emittente_fiscale_id
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =====================================================
+              -- L'ANCORA: il magazzino
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_magazzino(
+                  p_auth_user_id integer,
+                  p_magazzino_id magazzino.magazzini.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro l'emittente
+                  --   del magazzino indicato. E' la risalita che tutto il dominio usa.
+                  -- ⚠️ Magazzino inesistente o fuori perimetro (sotto RLS non si
+                  --   vede) -> emittente NULL -> la canonica risponde false a
+                  --   whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT m.emittente_fiscale_id
+                         FROM magazzino.magazzini m
+                        WHERE m.id = p_magazzino_id)
+                  );
+              $function$;
+
+              -- =====================================================
+              -- LA SECONDA ANCORA: l'asset
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_asset(
+                  p_auth_user_id integer,
+                  p_asset_id     magazzino.assets.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: perimetro emittente di un asset, che porta l'emittente in
+                  --   proprio (un asset presso un cliente non e' in nessun magazzino).
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT a.emittente_fiscale_id
+                         FROM magazzino.assets a
+                        WHERE a.id = p_asset_id)
+                  );
+              $function$;
+
+              -- =====================================================
+              -- LE DERIVATE A UN SALTO: delegano, non ripetono la risalita
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_movimento(
+                  p_auth_user_id integer,
+                  p_movimento_id magazzino.movimenti.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: perimetro di un movimento del registro, via il suo magazzino.
+                  --   E' la chiave che porta magazzino.note_movimento.
+                  SELECT script.fn_scope_ef_whitelist_via_magazzino(
+                      p_auth_user_id,
+                      (SELECT mv.magazzino_id
+                         FROM magazzino.movimenti mv
+                        WHERE mv.id = p_movimento_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_inventario(
+                  p_auth_user_id  integer,
+                  p_inventario_id magazzino.inventari.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: perimetro di un inventario via il suo magazzino. E' la chiave
+                  --   che portano inventari_righe (inventario_id) e le note
+                  --   note_inventario / note_inventario_riga (target_id = la testata).
+                  SELECT script.fn_scope_ef_whitelist_via_magazzino(
+                      p_auth_user_id,
+                      (SELECT i.magazzino_id
+                         FROM magazzino.inventari i
+                        WHERE i.id = p_inventario_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_rettifica(
+                  p_auth_user_id integer,
+                  p_rettifica_id magazzino.rettifiche.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: perimetro di una rettifica via il suo magazzino. Chiave di
+                  --   rettifiche_righe e delle note note_rettifica / note_rettifica_riga.
+                  SELECT script.fn_scope_ef_whitelist_via_magazzino(
+                      p_auth_user_id,
+                      (SELECT r.magazzino_id
+                         FROM magazzino.rettifiche r
+                        WHERE r.id = p_rettifica_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_trasferimento(
+                  p_auth_user_id     integer,
+                  p_trasferimento_id magazzino.trasferimenti.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: perimetro di un trasferimento via il magazzino di ORIGINE.
+                  -- ⭐ Una sola risalita basta: il guard
+                  --   magazzino.trgfn_trasferimenti_guard_stesso_emittente garantisce
+                  --   che la destinazione sia dello stesso emittente (M-6).
+                  SELECT script.fn_scope_ef_whitelist_via_magazzino(
+                      p_auth_user_id,
+                      (SELECT t.magazzino_id_from
+                         FROM magazzino.trasferimenti t
+                        WHERE t.id = p_trasferimento_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_evento_asset(
+                  p_auth_user_id integer,
+                  p_evento_id    magazzino.eventi_assets.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: perimetro di un evento asset via l'ASSET (non un magazzino:
+                  --   l'evento puo' non averne). Chiave di note_evento_asset.
+                  SELECT script.fn_scope_ef_whitelist_via_asset(
+                      p_auth_user_id,
+                      (SELECT e.asset_id
+                         FROM magazzino.eventi_assets e
+                        WHERE e.id = p_evento_id)
+                  );
+              $function$;
+
+              -- =====================================================
+              -- LO SMISTATORE DEL PADRE magazzino.note — nove rami, ELSE false
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_scope_note_magazzino_ef_whitelist(
+                  p_auth_user_id integer,
+                  p_target_tipo  magazzino.note.target_tipo%TYPE,
+                  p_target_id    magazzino.note.target_id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: smistare la nota verso l'adattatore della sua famiglia.
+                  --   Serve al PADRE partizionato magazzino.note, che non eredita le
+                  --   policy delle partizioni. Nelle partizioni _riga target_id e' la
+                  --   TESTATA: lo scope passa da li'.
+                  -- ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo e non
+                  --   gestito rende quelle note INVISIBILI dal padre, non visibili a
+                  --   tutti. Presidiato dal pgTAP di P-12 contro chk_note_target_tipo.
+                  SELECT CASE p_target_tipo
+                      WHEN 'ASSET'              THEN script.fn_scope_ef_whitelist_via_asset(p_auth_user_id, p_target_id)
+                      WHEN 'EVENTO_ASSET'       THEN script.fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id, p_target_id)
+                      WHEN 'INVENTARIO'         THEN script.fn_scope_ef_whitelist_via_inventario(p_auth_user_id, p_target_id)
+                      WHEN 'INVENTARIO_RIGA'    THEN script.fn_scope_ef_whitelist_via_inventario(p_auth_user_id, p_target_id)
+                      WHEN 'MOVIMENTO'          THEN script.fn_scope_ef_whitelist_via_movimento(p_auth_user_id, p_target_id)
+                      WHEN 'RETTIFICA'          THEN script.fn_scope_ef_whitelist_via_rettifica(p_auth_user_id, p_target_id)
+                      WHEN 'RETTIFICA_RIGA'     THEN script.fn_scope_ef_whitelist_via_rettifica(p_auth_user_id, p_target_id)
+                      WHEN 'TRASFERIMENTO'      THEN script.fn_scope_ef_whitelist_via_trasferimento(p_auth_user_id, p_target_id)
+                      WHEN 'TRASFERIMENTO_RIGA' THEN script.fn_scope_ef_whitelist_via_trasferimento(p_auth_user_id, p_target_id)
+                      ELSE false
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_magazzino(integer, bigint)
+              IS 'Adattatore di scope della famiglia magazzino, L''ANCORA: risale da magazzini.id a emittente_fiscale_id e delega a script.fn_scope_ef_whitelist. STABLE e NON security definer come le sorelle via_*. Magazzino inesistente o fuori perimetro (sotto RLS non si vede) -> emittente NULL -> false a whitelist valorizzata (fail-closed). Lo usano le policy di ubicazioni, movimenti, movimenti_attesi, valore_giacenza, inventari, rettifiche, trasferimenti e, per delega, le derivate. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10.';
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_asset(integer, bigint)
+              IS 'Adattatore di scope per gli asset, che portano l''emittente in proprio (un asset presso un cliente non e'' in nessun magazzino). Fail-closed su asset inesistente. Lo usano le policy di assets, eventi_assets (per delega) e note_asset.';
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_movimento(integer, bigint)
+              IS 'Adattatore di scope per una riga del registro (magazzino.movimenti) via il suo magazzino: delega a fn_scope_ef_whitelist_via_magazzino. E'' la chiave di note_movimento.';
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_inventario(integer, bigint)
+              IS 'Adattatore di scope per un inventario via il suo magazzino (delega a via_magazzino). Chiave di inventari_righe e delle note note_inventario e note_inventario_riga (dove target_id e'' la testata).';
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_rettifica(integer, bigint)
+              IS 'Adattatore di scope per una rettifica via il suo magazzino (delega a via_magazzino). Chiave di rettifiche_righe e delle note note_rettifica e note_rettifica_riga.';
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_trasferimento(integer, bigint)
+              IS 'Adattatore di scope per un trasferimento via il magazzino di ORIGINE (magazzino_id_from): una risalita basta perche'' trgfn_trasferimenti_guard_stesso_emittente garantisce che la destinazione sia dello stesso emittente (M-6). Chiave di trasferimenti_righe e delle note note_trasferimento e note_trasferimento_riga.';
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_evento_asset(integer, bigint)
+              IS 'Adattatore di scope per un evento asset via l''ASSET (delega a via_asset): un evento puo'' non avere magazzino. Chiave di note_evento_asset.';
+              COMMENT ON FUNCTION script.fn_scope_note_magazzino_ef_whitelist(integer, character varying, bigint)
+              IS 'Smistatore di scope per il PADRE partizionato magazzino.note: sceglie l''adattatore dalla famiglia (target_tipo) e passa target_id, che nelle partizioni _riga e'' la testata. ELSE false: un target_tipo nuovo e non gestito rende quelle note invisibili, non pubbliche — e'' la riga che conta, presidiata dal pgTAP di P-12 contro chk_note_target_tipo. Stampo: fn_scope_note_ef_whitelist (vendite). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_note_magazzino_ef_whitelist(integer, character varying, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_evento_asset(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_trasferimento(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_rettifica(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_inventario(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_movimento(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_asset(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_magazzino(integer, bigint);

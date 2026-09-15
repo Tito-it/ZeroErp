@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TRE INDICI DEL 2025 CHE SU UN DB DA ZERO SOPRAVVIVONO ALLA RINOMINA
+#   magazzino.movimenti_attesi (ex reservations)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezioni 4.5 e 11 (P-5)
+#
+# -- IL FATTO, letto su zeroerp_ci il 2026-09-15 dopo --fresh --ci-apply --------
+#   Il test 1 di magazzino/test-movimenti-attesi-forma-v1 («nessun oggetto
+#   nomina piu' reservations») e' verde su dev e rosso sul DB da zero: li'
+#   movimenti_attesi porta ancora
+#     ix_mag_res_articolo             (20251002-02)
+#     ix_mag_res_magazzino            (20251002-02)
+#     ix_mag_reservations_ubicazione  (20251005-34)
+#   mentre su dev quei tre non esistono da tempo e al loro posto ci sono i
+#   nomi di policy ix_magazzino_movimenti_attesi_{articolo,magazzino,ubicazione}_id,
+#   che il 20260915-06 rinomina con ALTER INDEX IF EXISTS.
+#
+# -- PERCHE' I DUE MONDI DIVERGONO --------------------------------------------
+#   dbops.apply_fk_index_policy (90_end, runAlways) crea l'indice di una riga
+#   `consentito = true` SOLO se la FK e' ancora scoperta (vw_fk_senza_indice,
+#   guardia 1). Su un DB da zero le tre FK sono gia' coperte dagli indici del
+#   2025, quindi la policy salta e quei nomi restano per sempre; su dev erano
+#   stati tolti a mano e la policy ha creato i suoi. Il lotto e' stato scritto
+#   guardando dev, dove i tre non c'erano: non poteva rinominarli.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   DROP INDEX IF EXISTS, non una rinomina: una RENAME verso il nome di policy
+#   collide dove quel nome esiste gia', un DROP no. Sono indici btree su una
+#   colonna FK di una tabella vuota (zero righe su dev al 15-09, nasce vuota in
+#   CI): dopo il DROP le tre FK sono scoperte e la policy, che gira nella
+#   STESSA passata (90_end/20250626-31, runAlways), le copre col nome suo. Su
+#   dev e' un no-op. Nessuna preCondition: l'idempotenza la da' il comando.
+#   Il test 1 del pgTAP passa a cercare anche `mag_res_` (stesso commit).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-20-drop-indici-reservations-superstiti-mctit.yaml
+
+  - changeSet:
+      id: 20260915-20-drop-indici-reservations-superstiti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da magazzino.movimenti_attesi i tre indici FK nati con reservations nel
+        2025 (ix_mag_res_articolo, ix_mag_res_magazzino, ix_mag_reservations_ubicazione),
+        che su un DB ricostruito da zero sopravvivono alla rinomina perche' la policy FK
+        crea il proprio indice solo su una FK scoperta. Nella stessa passata
+        apply_fk_index_policy li rigenera col nome ix_magazzino_movimenti_attesi_<col>.
+        No-op su dev. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.5 (P-5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS magazzino.ix_mag_res_articolo;
+              DROP INDEX IF EXISTS magazzino.ix_mag_res_magazzino;
+              DROP INDEX IF EXISTS magazzino.ix_mag_reservations_ubicazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non si ricreano i nomi vecchi: la copertura delle FK e' della policy.
+              SELECT 1;

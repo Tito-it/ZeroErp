@@ -1,0 +1,567 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-10 (2 di 2) — IL PERIMETRO RLS DI magazzino: VENTITRE' POLICY, UN GIRO SOLO
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (M-6;
+#   analisi carico e scarico, sezione 7-sexies)
+#
+# -- PERCHE' TUTTO INSIEME ------------------------------------------------------------
+#   dbops.vw_rls_perimetro_scoperto marca NON_DICHIARATO ogni tabella con una
+#   FK verso una tabella protetta e senza policy + ENABLE, e il suo pgTAP fa
+#   rosso. Armare magazzini e non le figlie farebbe rosso su tutte le figlie;
+#   armare a meta' lascerebbe una porta. Il perimetro si chiude quando nasce
+#   l'ancora (P-7), e si chiude tutto: un changeSet, ventitre' policy, ENABLE
+#   su ciascuna. (Il brief ne contava «venti»: sono 13 tabelle + il padre
+#   note + 9 partizioni.)
+#
+# -- LA FORMA (stampo 20260713-17, rls_resi_ef_whitelist) -------------------------
+#   Tutte rls_<tabella>_ef_whitelist, PERMISSIVE, FOR ALL, USING = WITH CHECK
+#   = «veste OPERATORE AND scope», poi ENABLE ROW LEVEL SECURITY — SENZA
+#   FORCE: nessuna tabella del progetto lo usa e l'app non e' owner (COMMENT
+#   di vw_rls_perimetro_scoperto); si cambia per tutti o per nessuno.
+#   Lo scope: diretto sulle due ancore (magazzini, assets), via_magazzino sul
+#   resto, via_asset per gli eventi, via la testata per le righe e le note,
+#   lo smistatore per il padre note (20260915-15). Nessuna veste
+#   CLIENTE_PORTALE / SHOP: il magazzino e' interno.
+#
+# -- CHE COSA RESTA FUORI, PER COSTRUZIONE --------------------------------------------
+#   causali, lotti, tipi_ubicazione, config.assets_ownership: vocabolari e
+#   definizioni, uguali per tutti (7-sexies, 1). Nessuna di loro ha una FK
+#   verso una tabella protetta: il presidio non le chiede.
+#
+# -- CHE COSA SCATTA DA QUI IN POI ----------------------------------------------------
+#   · i guard trgfn_guard_emittente_scope su magazzini e assets (P-7) passano
+#     da «RLS non attiva -> passa» a «chi scrive deve avere scope»;
+#   · trgfn_trasferimenti_guard_stesso_emittente (P-9) legge magazzini sotto
+#     RLS: un magazzino fuori perimetro non risolve -> rifiuto;
+#   · le shadow di storico delle madri armate vengono armate da
+#     fn_storico_arma_scope_tutte (90_end, runAlways) leggendo la mappa
+#     (storico_scope_policy: EF / PADRE, aggiornata in P-4 → P-8);
+#   · dbops.vw_rls_perimetro_scoperto per magazzino deve dare zero righe, e la
+#     riga 65 del registro e' uscita (20260915-10);
+#   · un pgTAP che scrive su queste tabelle deve dichiarare il contesto
+#     operatore: gira come l'applicazione (P-12).
+#
+# -- ORDINE NELLA TIMELINE ---------------------------------------------------------------
+#   Le funzioni di scope (20_code, 20260915-15) precedono per numero; le
+#   colonne (00_schema, -05 → -11) anche. Su un DB da zero tutto esiste quando
+#   gira questo changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-16-create-policy-rls-magazzino-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20260915-16-create-policy-rls-magazzino-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il perimetro RLS di magazzino (M-6) in un giro: ventitre' policy
+        rls_<tabella>_ef_whitelist (PERMISSIVE, FOR ALL, veste OPERATORE + scope) e
+        ENABLE ROW LEVEL SECURITY senza FORCE su magazzini, assets, ubicazioni, movimenti, movimenti_attesi, valore_giacenza, inventari, rettifiche, trasferimenti, eventi_assets, inventari_righe, rettifiche_righe, trasferimenti_righe, note, note_asset, note_evento_asset, note_inventario, note_inventario_riga, note_movimento, note_rettifica, note_rettifica_riga, note_trasferimento, note_trasferimento_riga.
+        Diretta su magazzini e assets, via_magazzino sul resto, via_asset per gli
+        eventi, via la testata per righe e note, smistatore per il padre note. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: magazzini
+                columnName: emittente_fiscale_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: assets
+                columnName: emittente_fiscale_id
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+            - tableExists:
+                schemaName: magazzino
+                tableName: valore_giacenza
+            - sqlCheck:
+                expectedResult: "8"
+                sql: |
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_scope_ef_whitelist_via_magazzino', 'fn_scope_ef_whitelist_via_asset',
+                                       'fn_scope_ef_whitelist_via_movimento', 'fn_scope_ef_whitelist_via_inventario',
+                                       'fn_scope_ef_whitelist_via_rettifica', 'fn_scope_ef_whitelist_via_trasferimento',
+                                       'fn_scope_ef_whitelist_via_evento_asset', 'fn_scope_note_magazzino_ef_whitelist');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- magazzino.magazzini: diretta sull'ancora emittente_fiscale_id ----------
+              DROP POLICY IF EXISTS rls_magazzini_ef_whitelist ON magazzino.magazzini;
+              CREATE POLICY rls_magazzini_ef_whitelist ON magazzino.magazzini
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(NULLIF(current_setting('app.current_user_id', true), '')::integer, emittente_fiscale_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(NULLIF(current_setting('app.current_user_id', true), '')::integer, emittente_fiscale_id)
+                  );
+              COMMENT ON POLICY rls_magazzini_ef_whitelist ON magazzino.magazzini IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: diretta sull''ancora emittente_fiscale_id. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.magazzini ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.assets: diretta: l'asset porta l'emittente in proprio (chiude il debito RLS riga 65) ----------
+              DROP POLICY IF EXISTS rls_assets_ef_whitelist ON magazzino.assets;
+              CREATE POLICY rls_assets_ef_whitelist ON magazzino.assets
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(NULLIF(current_setting('app.current_user_id', true), '')::integer, emittente_fiscale_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(NULLIF(current_setting('app.current_user_id', true), '')::integer, emittente_fiscale_id)
+                  );
+              COMMENT ON POLICY rls_assets_ef_whitelist ON magazzino.assets IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: diretta: l''asset porta l''emittente in proprio (chiude il debito RLS riga 65). '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.assets ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.ubicazioni: via il magazzino ----------
+              DROP POLICY IF EXISTS rls_ubicazioni_ef_whitelist ON magazzino.ubicazioni;
+              CREATE POLICY rls_ubicazioni_ef_whitelist ON magazzino.ubicazioni
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  );
+              COMMENT ON POLICY rls_ubicazioni_ef_whitelist ON magazzino.ubicazioni IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via il magazzino. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.ubicazioni ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.movimenti: via il magazzino (il registro) ----------
+              DROP POLICY IF EXISTS rls_movimenti_ef_whitelist ON magazzino.movimenti;
+              CREATE POLICY rls_movimenti_ef_whitelist ON magazzino.movimenti
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  );
+              COMMENT ON POLICY rls_movimenti_ef_whitelist ON magazzino.movimenti IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via il magazzino (il registro). '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.movimenti ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.movimenti_attesi: via il magazzino (magazzino_id NOT NULL da 20260915-07) ----------
+              DROP POLICY IF EXISTS rls_movimenti_attesi_ef_whitelist ON magazzino.movimenti_attesi;
+              CREATE POLICY rls_movimenti_attesi_ef_whitelist ON magazzino.movimenti_attesi
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  );
+              COMMENT ON POLICY rls_movimenti_attesi_ef_whitelist ON magazzino.movimenti_attesi IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via il magazzino (magazzino_id NOT NULL da 20260915-07). '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.movimenti_attesi ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.valore_giacenza: via il magazzino (la copia del valore) ----------
+              DROP POLICY IF EXISTS rls_valore_giacenza_ef_whitelist ON magazzino.valore_giacenza;
+              CREATE POLICY rls_valore_giacenza_ef_whitelist ON magazzino.valore_giacenza
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  );
+              COMMENT ON POLICY rls_valore_giacenza_ef_whitelist ON magazzino.valore_giacenza IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via il magazzino (la copia del valore). '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.valore_giacenza ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.inventari: via il magazzino ----------
+              DROP POLICY IF EXISTS rls_inventari_ef_whitelist ON magazzino.inventari;
+              CREATE POLICY rls_inventari_ef_whitelist ON magazzino.inventari
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  );
+              COMMENT ON POLICY rls_inventari_ef_whitelist ON magazzino.inventari IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via il magazzino. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.inventari ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.rettifiche: via il magazzino ----------
+              DROP POLICY IF EXISTS rls_rettifiche_ef_whitelist ON magazzino.rettifiche;
+              CREATE POLICY rls_rettifiche_ef_whitelist ON magazzino.rettifiche
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id)
+                  );
+              COMMENT ON POLICY rls_rettifiche_ef_whitelist ON magazzino.rettifiche IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via il magazzino. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.rettifiche ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.trasferimenti: via il magazzino di ORIGINE; la destinazione la garantisce trgfn_trasferimenti_guard_stesso_emittente ----------
+              DROP POLICY IF EXISTS rls_trasferimenti_ef_whitelist ON magazzino.trasferimenti;
+              CREATE POLICY rls_trasferimenti_ef_whitelist ON magazzino.trasferimenti
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id_from)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_magazzino(NULLIF(current_setting('app.current_user_id', true), '')::integer, magazzino_id_from)
+                  );
+              COMMENT ON POLICY rls_trasferimenti_ef_whitelist ON magazzino.trasferimenti IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via il magazzino di ORIGINE; la destinazione la garantisce trgfn_trasferimenti_guard_stesso_emittente. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.trasferimenti ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.eventi_assets: via l'asset (un evento puo' non avere magazzino) ----------
+              DROP POLICY IF EXISTS rls_eventi_assets_ef_whitelist ON magazzino.eventi_assets;
+              CREATE POLICY rls_eventi_assets_ef_whitelist ON magazzino.eventi_assets
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_asset(NULLIF(current_setting('app.current_user_id', true), '')::integer, asset_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_asset(NULLIF(current_setting('app.current_user_id', true), '')::integer, asset_id)
+                  );
+              COMMENT ON POLICY rls_eventi_assets_ef_whitelist ON magazzino.eventi_assets IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via l''asset (un evento puo'' non avere magazzino). '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.eventi_assets ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.inventari_righe: via la testata ----------
+              DROP POLICY IF EXISTS rls_inventari_righe_ef_whitelist ON magazzino.inventari_righe;
+              CREATE POLICY rls_inventari_righe_ef_whitelist ON magazzino.inventari_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_inventario(NULLIF(current_setting('app.current_user_id', true), '')::integer, inventario_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_inventario(NULLIF(current_setting('app.current_user_id', true), '')::integer, inventario_id)
+                  );
+              COMMENT ON POLICY rls_inventari_righe_ef_whitelist ON magazzino.inventari_righe IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via la testata. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.inventari_righe ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.rettifiche_righe: via la testata ----------
+              DROP POLICY IF EXISTS rls_rettifiche_righe_ef_whitelist ON magazzino.rettifiche_righe;
+              CREATE POLICY rls_rettifiche_righe_ef_whitelist ON magazzino.rettifiche_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_rettifica(NULLIF(current_setting('app.current_user_id', true), '')::integer, rettifica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_rettifica(NULLIF(current_setting('app.current_user_id', true), '')::integer, rettifica_id)
+                  );
+              COMMENT ON POLICY rls_rettifiche_righe_ef_whitelist ON magazzino.rettifiche_righe IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via la testata. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.rettifiche_righe ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.trasferimenti_righe: via la testata ----------
+              DROP POLICY IF EXISTS rls_trasferimenti_righe_ef_whitelist ON magazzino.trasferimenti_righe;
+              CREATE POLICY rls_trasferimenti_righe_ef_whitelist ON magazzino.trasferimenti_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_trasferimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, trasferimento_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_trasferimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, trasferimento_id)
+                  );
+              COMMENT ON POLICY rls_trasferimenti_righe_ef_whitelist ON magazzino.trasferimenti_righe IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: via la testata. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.trasferimenti_righe ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note: il PADRE partizionato: smista su target_tipo (le policy delle partizioni non risalgono al padre, provato il 09-09) ----------
+              DROP POLICY IF EXISTS rls_note_ef_whitelist ON magazzino.note;
+              CREATE POLICY rls_note_ef_whitelist ON magazzino.note
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_note_magazzino_ef_whitelist(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_tipo, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_note_magazzino_ef_whitelist(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_tipo, target_id)
+                  );
+              COMMENT ON POLICY rls_note_ef_whitelist ON magazzino.note IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: il PADRE partizionato: smista su target_tipo (le policy delle partizioni non risalgono al padre, provato il 09-09). '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_asset: partizione ASSET ----------
+              DROP POLICY IF EXISTS rls_note_asset_ef_whitelist ON magazzino.note_asset;
+              CREATE POLICY rls_note_asset_ef_whitelist ON magazzino.note_asset
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_asset(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_asset(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_asset_ef_whitelist ON magazzino.note_asset IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione ASSET. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_asset ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_evento_asset: partizione EVENTO_ASSET ----------
+              DROP POLICY IF EXISTS rls_note_evento_asset_ef_whitelist ON magazzino.note_evento_asset;
+              CREATE POLICY rls_note_evento_asset_ef_whitelist ON magazzino.note_evento_asset
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_evento_asset(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_evento_asset(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_evento_asset_ef_whitelist ON magazzino.note_evento_asset IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione EVENTO_ASSET. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_evento_asset ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_inventario: partizione INVENTARIO ----------
+              DROP POLICY IF EXISTS rls_note_inventario_ef_whitelist ON magazzino.note_inventario;
+              CREATE POLICY rls_note_inventario_ef_whitelist ON magazzino.note_inventario
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_inventario(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_inventario(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_inventario_ef_whitelist ON magazzino.note_inventario IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione INVENTARIO. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_inventario ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_inventario_riga: partizione INVENTARIO_RIGA: target_id e' la testata ----------
+              DROP POLICY IF EXISTS rls_note_inventario_riga_ef_whitelist ON magazzino.note_inventario_riga;
+              CREATE POLICY rls_note_inventario_riga_ef_whitelist ON magazzino.note_inventario_riga
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_inventario(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_inventario(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_inventario_riga_ef_whitelist ON magazzino.note_inventario_riga IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione INVENTARIO_RIGA: target_id e'' la testata. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_inventario_riga ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_movimento: partizione MOVIMENTO ----------
+              DROP POLICY IF EXISTS rls_note_movimento_ef_whitelist ON magazzino.note_movimento;
+              CREATE POLICY rls_note_movimento_ef_whitelist ON magazzino.note_movimento
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_movimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_movimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_movimento_ef_whitelist ON magazzino.note_movimento IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione MOVIMENTO. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_movimento ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_rettifica: partizione RETTIFICA ----------
+              DROP POLICY IF EXISTS rls_note_rettifica_ef_whitelist ON magazzino.note_rettifica;
+              CREATE POLICY rls_note_rettifica_ef_whitelist ON magazzino.note_rettifica
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_rettifica(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_rettifica(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_rettifica_ef_whitelist ON magazzino.note_rettifica IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione RETTIFICA. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_rettifica ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_rettifica_riga: partizione RETTIFICA_RIGA: target_id e' la testata ----------
+              DROP POLICY IF EXISTS rls_note_rettifica_riga_ef_whitelist ON magazzino.note_rettifica_riga;
+              CREATE POLICY rls_note_rettifica_riga_ef_whitelist ON magazzino.note_rettifica_riga
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_rettifica(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_rettifica(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_rettifica_riga_ef_whitelist ON magazzino.note_rettifica_riga IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione RETTIFICA_RIGA: target_id e'' la testata. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_rettifica_riga ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_trasferimento: partizione TRASFERIMENTO ----------
+              DROP POLICY IF EXISTS rls_note_trasferimento_ef_whitelist ON magazzino.note_trasferimento;
+              CREATE POLICY rls_note_trasferimento_ef_whitelist ON magazzino.note_trasferimento
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_trasferimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_trasferimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_trasferimento_ef_whitelist ON magazzino.note_trasferimento IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione TRASFERIMENTO. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_trasferimento ENABLE ROW LEVEL SECURITY;
+
+              -- ---------- magazzino.note_trasferimento_riga: partizione TRASFERIMENTO_RIGA: target_id e' la testata ----------
+              DROP POLICY IF EXISTS rls_note_trasferimento_riga_ef_whitelist ON magazzino.note_trasferimento_riga;
+              CREATE POLICY rls_note_trasferimento_riga_ef_whitelist ON magazzino.note_trasferimento_riga
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_trasferimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_trasferimento(NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id)
+                  );
+              COMMENT ON POLICY rls_note_trasferimento_riga_ef_whitelist ON magazzino.note_trasferimento_riga IS
+                  'Perimetro emittente (M-6), veste OPERATORE, fail-closed: partizione TRASFERIMENTO_RIGA: target_id e'' la testata. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10 (P-10).';
+              ALTER TABLE magazzino.note_trasferimento_riga ENABLE ROW LEVEL SECURITY;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.note_trasferimento_riga DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_trasferimento_riga_ef_whitelist ON magazzino.note_trasferimento_riga;
+              ALTER TABLE magazzino.note_trasferimento DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_trasferimento_ef_whitelist ON magazzino.note_trasferimento;
+              ALTER TABLE magazzino.note_rettifica_riga DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_rettifica_riga_ef_whitelist ON magazzino.note_rettifica_riga;
+              ALTER TABLE magazzino.note_rettifica DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_rettifica_ef_whitelist ON magazzino.note_rettifica;
+              ALTER TABLE magazzino.note_movimento DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_movimento_ef_whitelist ON magazzino.note_movimento;
+              ALTER TABLE magazzino.note_inventario_riga DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_inventario_riga_ef_whitelist ON magazzino.note_inventario_riga;
+              ALTER TABLE magazzino.note_inventario DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_inventario_ef_whitelist ON magazzino.note_inventario;
+              ALTER TABLE magazzino.note_evento_asset DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_evento_asset_ef_whitelist ON magazzino.note_evento_asset;
+              ALTER TABLE magazzino.note_asset DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_asset_ef_whitelist ON magazzino.note_asset;
+              ALTER TABLE magazzino.note DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_note_ef_whitelist ON magazzino.note;
+              ALTER TABLE magazzino.trasferimenti_righe DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_trasferimenti_righe_ef_whitelist ON magazzino.trasferimenti_righe;
+              ALTER TABLE magazzino.rettifiche_righe DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_rettifiche_righe_ef_whitelist ON magazzino.rettifiche_righe;
+              ALTER TABLE magazzino.inventari_righe DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_inventari_righe_ef_whitelist ON magazzino.inventari_righe;
+              ALTER TABLE magazzino.eventi_assets DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_eventi_assets_ef_whitelist ON magazzino.eventi_assets;
+              ALTER TABLE magazzino.trasferimenti DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_trasferimenti_ef_whitelist ON magazzino.trasferimenti;
+              ALTER TABLE magazzino.rettifiche DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_rettifiche_ef_whitelist ON magazzino.rettifiche;
+              ALTER TABLE magazzino.inventari DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_inventari_ef_whitelist ON magazzino.inventari;
+              ALTER TABLE magazzino.valore_giacenza DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_valore_giacenza_ef_whitelist ON magazzino.valore_giacenza;
+              ALTER TABLE magazzino.movimenti_attesi DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_movimenti_attesi_ef_whitelist ON magazzino.movimenti_attesi;
+              ALTER TABLE magazzino.movimenti DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_movimenti_ef_whitelist ON magazzino.movimenti;
+              ALTER TABLE magazzino.ubicazioni DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_ubicazioni_ef_whitelist ON magazzino.ubicazioni;
+              ALTER TABLE magazzino.assets DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_assets_ef_whitelist ON magazzino.assets;
+              ALTER TABLE magazzino.magazzini DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_magazzini_ef_whitelist ON magazzino.magazzini;

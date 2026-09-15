@@ -3,81 +3,70 @@
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
+> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — il modello (`requires_serial`)
+> • [config.assets_ownership](/dbzero/config/tabelle/assets_ownership) — di chi è la proprietà
+> • [config.stati_assets](/dbzero/config/tabelle/stati_assets) — lo stato nel ciclo di vita
+> • [magazzino.eventi_assets](/dbzero/magazzino/tabelle/eventi_assets) — che cosa gli è successo
+> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — `asset_id`: dove è passato
 >
-[catalogo.articoli](/dbzero/catalogo/tabelle/articoli) 
-> [config.stati_assets](/dbzero/config/tabelle/stati_assets)
-> [config.assets_ownership](/dbzero/config/tabelle/assets_ownership)
-> [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini)
-> [magazzino.ubicazioni](/dbzero/magazzino/tabelle/ubicazioni)
-> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> [vendite.contratti] (/dbzero/vendite/tabelle/contratti)
-
----
-
-La tabella **`magazzino.assets`** rappresenta l’**istanza fisica di un bene durevole serializzato** (contatore, router, PC, stampante, apparato di rete, ecc.).
-
-Ogni riga descrive **un singolo asset fisico**, collegato ad un articolo di catalogo, ad uno stato del ciclo di vita e, opzionalmente, a un cliente/contratto/magazzino/ubicazione.
+Approfondimento funzioni:
+> • [script.fn_scope_ef_whitelist_via_asset](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_asset)
+>
+Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.7) · analisi carico e scarico (§7-quater, §7-sexies)
 
 ---
 ### 🎯 Scopo Principale
-* Tracciare a livello puntuale **tutti gli asset fisici** gestiti da Zero ERP.
-* Collegare l’asset a:
 
-  * **articolo** (`articolo_id`),
-  * **proprietà** (`ownership_id` → `config.assets_ownership`),
-  * **stato operativo/logistico** (`stato_id` → `config.stati_assets`),
-  * **billing account** cliente (`billing_account_id`),
-  * **contratto** (`contratto_id`),
-  * **magazzino** e **ubicazione** (`magazzino_id`, `ubicazione_id`, `ubicazione`).
-* Costituire la base per:
+(rev 2026-09-15 — Lotto 1 del magazzino)
 
-  * inventario di beni serializzati,
-  * installato presso cliente,
-  * manutenzione, sostituzioni, letture, dismissioni.
+**Il pezzo serializzato**: l'istanza fisica di un bene con matricola — un contatore,
+un'apparecchiatura, una stampante — che il magazzino sposta **uno alla volta**
+(`movimenti.asset_id`, con quantità 1). Un asset è un bene che esce dal magazzino ma non
+smette di essere nostro: installato presso un cliente, in comodato, in riparazione.
+
+Ogni asset dice: che cosa è (`articolo_id`), la sua **matricola** (`seriale`, unica), di chi
+è la **proprietà** (`ownership_id`: nostro, in conto deposito, del cliente — è la dimensione
+per la merce di terzi), in che **stato** è (`stato_id`), e — facoltativi — presso quale
+billing account e sotto quale contratto si trova.
 
 ---
 
+### L'asset non è il suo GPS
 
-### Relazioni principali
-
-* **Catalogo articoli** → identifica modello e caratteristiche dell’asset.
-* **Proprietà asset** → `ownership_id` collega a chi è il proprietario.
-* **Stato ciclo vita** → definisce posizione nel flusso (magazzino → assegnato → installato → guasto → dismesso).
-* **Magazzino & ubicazione** → descrivono dove si trova fisicamente.
-* **Contratto & cliente** → aggancio commerciale per billing e manutenzione.
-
----
-
-### Indici
-
-Ottimizzano ricerche operative:
-
-* `ix_mag_assets_articolo` — ricerca per modello.
-* `ix_mag_assets_magazzino` — ricerca per magazzino.
-* `ix_mag_assets_ownership_id` — ricerca per tipo proprietà.
-* `ix_mag_assets_stato_id` — elenco asset installati/guasti.
-* `ix_mag_assets_ubicazione` — elenco per ubicazione.
-* `uq_mag_assets_seriale` — garantisce unicità del seriale.
+Fino al 14-09 la tabella portava `magazzino_id`, `ubicazione_id` e un testo `ubicazione`:
+tre colonne per dire *dove è adesso*, da tenere allineate a mano. Sono uscite. **Dove si
+trova** lo dice il registro: l'ultimo movimento che nomina l'asset. Ciò che un asset porta in
+proprio è invece **di chi è** — `emittente_fiscale_id`, obbligatorio — perché un asset
+installato presso un cliente non è in nessun magazzino, ma è sempre di un emittente. È la
+seconda ancora del perimetro (la prima è il magazzino).
 
 ---
 
-### Trigger previsti
+### Chi può vedere e scrivere
 
-* **Trigger audit** → aggiornano `data_update` / `user_update` automaticamente.
-* **Trigger TX-ID** → integrano il record nei batch logici.
-* **Trigger di storicizzazione** → creano snapshot in tabelle storico (se `storicizza = true`).
-* **Trigger di coerenza stato** → opzionale per garantire transizioni ammesse.
+Un operatore vede e scrive gli asset del **proprio emittente** (policy
+`rls_assets_ef_whitelist`, diretta); chi scrive deve avere quell'emittente nel perimetro
+(`trgfn_guard_emittente_scope`). Gli eventi dell'asset e le sue note risalgono a lui
+(`fn_scope_ef_whitelist_via_asset`). Meccanismo comune:
+[Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-security-rls).
 
----
-
-### Vantaggi operativi
-
-* Tracciabilità completa del patrimonio fisico.
-* Governance chiara di proprietà, stato, ubicazione e contratto.
-* Supporto a manutenzione, rientri, sostituzioni, installazioni.
-* Struttura compatibile con UI avanzate (icone, colori, info tecniche via `meta`).
-* Allineamento al framework Zero ERP (audit, tx-id, storicizzazione).
+Fino al 14-09 la tabella era nel registro del debito RLS («quale delle due chiavi nullable,
+billing account o contratto, porta il perimetro?»): la risposta è stata la terza chiave, e
+la riga di debito è uscita.
 
 ---
 
-> **“`magazzino.assets` è la vista unificata dell’intero ciclo di vita degli asset: logistica, tecnica e commerciale.”**
+### Le reti
+
+* `uq_mag_assets_seriale` — la matricola è unica;
+* un asset con eventi o note non si spegne, e non si assegna a un articolo, uno stato o una
+  proprietà spenti (guard generati dal framework);
+* `tx_id`, audit e storicizzazione, con il perimetro dell'emittente congelato nella storia.
+
+---
+
+{% include-markdown "it/dbzero/magazzino/_dominio-magazzino.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

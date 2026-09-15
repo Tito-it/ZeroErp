@@ -18,10 +18,49 @@
 > Nessuno dei 4166 test poteva vederli: si vedono solo guardando la schermata.
 >
 > **Stato**: primo giro eseguito il 2026-09-14 (tre rilievi → D16/D17/D18);
-> **da rieseguire** con le sezioni 2, 3 e 4 riscritte lo stesso giorno.
+> 🔴 **il secondo giro è C-2** (riquadro qui sotto): il brief che ne è nato è
+> **chiuso e archiviato** il 15/09 — la prova a video è l'unica cosa che ne è
+> uscita, e vive qui, con le sezioni 2, 3 e 4 riscritte per farla.
 > **Ambiente**: sviluppo (`dbdev`).
 > **Utente**: un **operatore**, non il super admin — ⚠️ il perimetro emittente
 > è metà di ciò che si sta provando, e il super admin lo vede tutto.
+
+---
+
+> ## 🔴 C-2 — Il secondo giro, per D16 · D17 · D18
+>
+> **Da dove viene.** Il primo giro (14/09) ha trovato tre cose che
+> l'interfaccia diceva al contrario del modello; le decisioni e il lavoro DB,
+> BE e FE sono in
+> [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md) —
+> **chiuso il 15/09** con tutto mergiato e verde in CI. Il brief chiude sul
+> *percorso*; **l'esito lo prova solo questo giro**, ed è per questo che C-2
+> sta qui e non lì: un copione si tiene aperto accanto all'app, un brief
+> chiuso no.
+>
+> **Che cosa deve dire il secondo giro**, punto per punto (le righe sono già
+> nelle sezioni; qui l'elenco di quelle che C-2 spunta):
+>
+> | Punto | Prova | Decisione |
+> | --- | --- | --- |
+> | **§2.6 · 2.6-bis** | la riga nasce **cercando la fattura**, con l'importo **proposto** dal residuo, e compare già `ABBINATA` — nessun «Abbina» dopo | D16 |
+> | **§2.6-ter** | «Non riesco ad associarlo» è un gesto: la riga nasce `DA_ABBINARE` e compare in **Da abbinare**; senza l'interruttore e senza fattura, Salva è spento | D16 |
+> | **§2.8 · 2.8-bis** | **Elimina** in bozza: la riga sparisce e la quadratura **torna**; il cestino è solo su «Elimina», «Porta a SCARTATA» ha un'altra icona | D17 |
+> | **§2.9 · 2.9-bis** | sotto **VALIDATA** il contenuto è fermo (niente «Nuova riga», form chiuso, cestino **spento col motivo**), abbina e «Porta a …» restano; **Porta a BOZZA** riapre tutto. ⚠️ La riga di stato della barra compare **solo dopo l'apply di P-8** (prerequisito qui sotto) | D18 · FE-9 |
+> | **§3.1 – 3.3-bis** | ri-abbinamento (`ABBINATA → DA_ABBINARE → abbina`); il kebab **non** offre SCARTATA su una `ABBINATA` (le voci vengono dalla matrice); la coda recupera l'eccezione col verbo `abbina` | D16 · BE-5 |
+> | **§3.4 – 3.5** | il doppio tempo della capienza vale anche **alla nascita** e in **modifica** (PATCH di `importo`, Q-H): domanda col messaggio del DB, poi «Forza» col motivo | BE-2 · Q-H |
+> | **§4.0** | **Porta a VALIDATA** prima di «Registra»: con un dichiarato sbagliato si ferma **qui** (`E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA`), non alla registrazione | §3 del brief |
+> | **§4.4** | dopo la registrazione il cestino di ogni riga è **spento** col motivo «chiusa» | D17, motivo 1 |
+>
+> **Con chi**: un operatore **dentro** il perimetro per il giro intero, e uno
+> **fuori** per la lista (§1.6 vale anche qui). **Se un punto non succede**: la
+> colonna «Se non succede» della sezione dice se è un difetto di modello (si
+> ferma e si segnala) o di resa; il *perché* di ogni riga è nel brief
+> archiviato, non va ricostruito.
+>
+> **Come si chiude**: una riga nel registro (§8) con la data, i punti passati
+> e i rilievi — e i rilievi, se ci sono, aprono un brief nuovo, non riaprono
+> quello chiuso.
 
 ---
 
@@ -32,6 +71,7 @@
 | **P-0** | 🔴 **Assegnare l'azione `registra_distinta` a un profilo.** Misurato il 29/08: è a catalogo (`pericolosa = true`, `attivo = true`) con **zero profili abilitati** | Finché è così, **registra solo il super admin** — e col super admin non si prova il perimetro. È fail-closed, cioè il verso giusto in cui sbagliare, ma va aperto per collaudare |
 | **Dato** | Nessun **canale di incasso** esiste (`enti_incasso` = 0 righe) | Non è un prerequisito: è la **prima prova** del copione, si crea da schermata |
 | **Contesto** | Entrare come operatore di **un** emittente, e sapere quale | Metà delle prove chiede «e l'altro emittente cosa vede?» |
+| 🆕 **P-8** | `make db-migrate` con il seed `meta.nessuna_azione_key` di `vendite_contabili_stati.csv` in albero (scritto il 15/09, [brief §4 P-8](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)) | Non blocca il giro: senza, la **riga di stato** della barra (§2.9, §4.4) è muta e sembrerebbe un difetto del drawer. È un prerequisito di lettura, non di modello |
 
 ⚠️ **I dati di prova sono finti, il perimetro è vero.** I due IBAN
 `IT00TESTINCASSO000000000{1,2}` sono fittizi, ma sono censiti **a livello di
@@ -76,7 +116,7 @@ sbagliate. Per questo si guarda, non si assume.
 | **2.7** | Guarda la quadratura | Dichiarato 400, digitato 450: **scarto +50** e il segno «non quadra» | Con `importo dichiarato` vuoto deve dire «non si applica»: ⛔ **tre esiti, non due** |
 | 🆕 **2.8** | Azioni della riga da 50,00 → **Elimina** (il cestino) → conferma | ⭐ La riga **sparisce** e la quadratura **torna** (scarto 0, «quadra»). Il messaggio di conferma nomina importo e riferimento | ⛔ Se l'unica via è «Porta a SCARTATA»: scartare **conta nella quadratura** (D12-e) e un errore di battitura resterebbe nel totale |
 | 🆕 **2.8-bis** | Guarda le icone del kebab della riga rimasta | Il **cestino** è solo su «Elimina»; «Porta a SCARTATA» ha un'altra icona (⊘) | Un'icona con due sensi è il difetto del primo giro: il cestino su «scarta» ha fatto leggere uno stato come un'eliminazione |
-| 🆕 **2.9** | Barra azioni → **Porta a VALIDATA** | La barra dice in una riga **dove sei** («validata: pronta da registrare, il denaro non è ancora registrato»). Sopra le righe compare «il contenuto è fermo»; «Nuova riga» **sparisce**, il click sulla riga **non apre** il form, il cestino è **spento col motivo** («riportala in bozza…»). ⭐ **Abbina** e «Porta a …» restano accesi | ⚠️ La riga di stato compare solo dopo l'apply del seed P-8 (brief DB §4): se la barra è muta, è quello — non un difetto del drawer |
+| 🆕 **2.9** | Barra azioni → **Porta a VALIDATA** | La barra dice in una riga **dove sei** («validata: pronta da registrare, il denaro non è ancora registrato»). Sopra le righe compare «il contenuto è fermo»; «Nuova riga» **sparisce**, il click sulla riga **non apre** il form, il cestino è **spento col motivo** («riportala in bozza…»). ⭐ **Abbina** e «Porta a …» restano accesi | ⚠️ La riga di stato compare solo dopo l'apply del seed P-8 ([brief §4](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md), prerequisito in testa): se la barra è muta, è quello — non un difetto del drawer |
 | 🆕 **2.9-bis** | **Porta a BOZZA** | Tutto si riapre: «Nuova riga», il form, il cestino | — |
 
 ---
@@ -164,6 +204,7 @@ due flag portati nel payload della lookup — e **non l'ho scelta da solo**.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-15** | 📥 **C-2 riceve casa qui.** Il brief nato dal primo giro è **chiuso e archiviato** ([work-done](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)): DB `20260914-04/05/06` applicati e verdi in CI, BE/FE mergiati (PR #1589), Q-H decisa (strada A: il doppio tempo anche in modifica). L'unica cosa che ne esce è la **prova a video**, cioè questo secondo giro: riquadro «C-2» in testa con l'elenco dei punti da spuntare. Prerequisito nuovo: l'apply del seed P-8 (riga di stato della barra) |
 | **2026-09-14** (sera) | ✏️ **Sezioni 2, 3 e 4 riscritte** per D16/D17/D18 (brief DB §7): §2.6 la riga nasce **cercando la fattura**, con l'importo **proposto**; §2.6-ter l'eccezione dichiarata; 🆕 §2.8 **elimina** in bozza e la quadratura che torna; 🆕 §2.9 il contenuto **fermo** sotto VALIDATA e la riga di stato; §3.1–3.3 diventano la prova del **ri-abbinamento** e del recupero dalla coda; 🆕 §4.0 **Porta a VALIDATA** prima di «Registra», con lo stop sul dichiarato sbagliato. Da rieseguire |
-| **2026-09-14** | 🔴 **Primo giro eseguito da Tid (prima contabile): tre rilievi, e il copione va riscritto** — vedi [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md) §7. In sintesi: **§2.6** la riga deve nascere **cercando la fattura** (D16), non `DA_ABBINARE`; **§3.1-3.3** diventano la prova del ri-abbinamento e dell'eccezione «non identificato»; manca una prova **elimina riga in bozza** (D17); e ⛔ **fra §2.7 e §4.1 manca «Porta a VALIDATA»**: `fn_posta_contabile` registra **solo da `VALIDATA`** (`E_CONTABILE_NON_REGISTRABILE`), quindi §4.1 così com'è fallisce per costruzione. La riscrittura è del piano BE/FE |
+| **2026-09-14** | 🔴 **Primo giro eseguito da Tid (prima contabile): tre rilievi, e il copione va riscritto** — vedi [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md) §7. In sintesi: **§2.6** la riga deve nascere **cercando la fattura** (D16), non `DA_ABBINARE`; **§3.1-3.3** diventano la prova del ri-abbinamento e dell'eccezione «non identificato»; manca una prova **elimina riga in bozza** (D17); e ⛔ **fra §2.7 e §4.1 manca «Porta a VALIDATA»**: `fn_posta_contabile` registra **solo da `VALIDATA`** (`E_CONTABILE_NON_REGISTRABILE`), quindi §4.1 così com'è fallisce per costruzione. La riscrittura è del piano BE/FE |
 | **2026-08-29** | Stesura, dopo la chiusura di **C-1** e la costruzione della base dei saldi (**A-8**). ⛔ Il cantiere non ha più niente da costruire e **non è mai stato visto**: `pagamenti` ha zero righe. I dati del copione sono **misurati**, non inventati. Un punto è già noto prima di cominciare (§7) |

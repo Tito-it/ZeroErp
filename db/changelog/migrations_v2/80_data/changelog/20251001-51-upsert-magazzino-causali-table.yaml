@@ -6,6 +6,18 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# Mirror vivo di causali.csv (runOnChange + validCheckSums ANY): si modifica
+#   IN PLACE, come il 20260614-08.
+# 2026-09-15 — brief-db-magazzino-lotto-1-terreno-vuoto, P-3: tolte dalla
+#   lista `columns:` le otto colonne che il 20260915-02 elimina dalla tabella
+#   (impatto_valorizzazione, richiede_lotto, richiede_seriale,
+#   richiede_magazzino_dest, abilita_billing, richiede_odl, contabilizza_cdc,
+#   ambito_causale_id); il CSV perde le stesse otto e prende le sei causali
+#   nuove (id 23-28: CARICO_RESO_VEN, SCARICO_RESO_ACQ, ODL_VERSAMENTO_PF,
+#   INV_INIZIALE, STORNO_POS, STORNO_NEG). Nessun loader nuovo.
+#   ⚠️ nullValue "": una cella vuota e' NULL (tx_id, user_*, data_update, che
+#   ha defaultValue NOW()).
+# ------------------------------------------------------------
 
 databaseChangeLog:
   - changeSet:
@@ -38,11 +50,6 @@ databaseChangeLog:
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
               - column: { name: segno, type: STRING }
-              - column: { name: richiede_lotto, type: BOOLEAN }
-              - column: { name: richiede_seriale, type: BOOLEAN }
-              - column: { name: richiede_magazzino_dest, type: BOOLEAN }
-              - column: { name: abilita_billing, type: BOOLEAN }
-              - column: { name: impatto_valorizzazione, type: STRING }
               - column: { name: ordine, type: STRING }
               - column: { name: attivo, type: BOOLEAN }
               - column:
@@ -59,9 +66,6 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: storicizza, type: BOOLEAN }
-              - column: { name: ambito_causale_id, type: BIGINT }
               - column: { name: is_installazione_asset, type: BOOLEAN }
               - column: { name: is_rettifica, type: BOOLEAN }
               - column: { name: consente_stock_negativo, type: BOOLEAN }
-              - column: { name: richiede_odl, type: BOOLEAN }
-              - column: { name: contabilizza_cdc, type: BOOLEAN }

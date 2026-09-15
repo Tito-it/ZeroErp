@@ -131,15 +131,23 @@
 - [fn_scope_ba_ownership_via_fattura](manual/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership](manual/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
 - [fn_scope_ef_whitelist](manual/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
+- [fn_scope_ef_whitelist_via_asset](manual/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_commessa](manual/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)
 - [fn_scope_ef_whitelist_via_contabile](manual/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22)
 - [fn_scope_ef_whitelist_via_efba](manual/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
 - [fn_scope_ef_whitelist_via_ente_incasso](manual/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
+- [fn_scope_ef_whitelist_via_evento_asset](manual/fn_scope_ef_whitelist_via_evento_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_fattura](manual/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_inventario](manual/fn_scope_ef_whitelist_via_inventario.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_listino](manual/fn_scope_ef_whitelist_via_listino.md) — (latest review 05-09-2026)
+- [fn_scope_ef_whitelist_via_magazzino](manual/fn_scope_ef_whitelist_via_magazzino.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [fn_scope_ef_whitelist_via_movimento](manual/fn_scope_ef_whitelist_via_movimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [fn_scope_ef_whitelist_via_rettifica](manual/fn_scope_ef_whitelist_via_rettifica.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_sr](manual/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_trasferimento](manual/fn_scope_ef_whitelist_via_trasferimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_fornitore_ownership](manual/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_scope_identita_processo](manual/fn_scope_identita_processo.md) — (latest review 05-09-2026)
+- [fn_scope_note_magazzino_ef_whitelist](manual/fn_scope_note_magazzino_ef_whitelist.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_search_soggetti_universale](manual/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](manual/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](manual/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
