@@ -81,8 +81,8 @@ sottoprocesso — la stessa riga del timer, per costruzione — e
 `avvio_manuale.py` legge `forma`, `avvio_manuale` e `abilita` per il predicato
 «si può lanciare a mano?» (capability `can_esegui_ora` nel dettaglio del
 processo, rifiuto dell'endpoint `esegui-ora/`, ricontrollo dell'handler).
-Brief [brief-db-avvio-manuale-di-un-processo](../../../dev/work-in-progress/brief-db-avvio-manuale-di-un-processo.md),
-piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-in-progress/piano-be-fe-avvio-manuale-di-un-processo.md).
+Brief [brief-db-avvio-manuale-di-un-processo](../../../dev/work-done/brief-db-avvio-manuale-di-un-processo.md),
+piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-done/piano-be-fe-avvio-manuale-di-un-processo.md).
 
 ## Regole
 

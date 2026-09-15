@@ -7,7 +7,7 @@
 > ✅ **Addendum del 2026-09-14 (§4.1-bis, §7-bis, §9-bis)**: «Esegui ora» si
 > **stacca** da «Riavvia» e parte per primo, senza aspettare l'host. Decisione
 > di Tid del 14-09, dopo aver rilanciato a mano le due cadenze del digest.
-> Brief DB: [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md).
+> Brief DB: [brief-db-avvio-manuale-di-un-processo.md](../work-done/brief-db-avvio-manuale-di-un-processo.md).
 >
 > **Origine.** Domanda di Tid del 2026-09-11, subito dopo aver riavviato a mano il
 > listener (`sudo systemctl restart zeroerp-listen-cambio-reparto`) per spegnere la
@@ -353,7 +353,7 @@ claim dipendono da lei.
 
 ### 9-bis — Sequenza per «Esegui ora» (addendum 14-09)
 
-1. **DB** (brief [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md)):
+1. **DB** (brief [brief-db-avvio-manuale-di-un-processo.md](../work-done/brief-db-avvio-manuale-di-un-processo.md)):
    processo `avvio_manuale`, tipo `ESEGUI_PROCESSO` con `attivo = false`,
    azione `processo_avvia`. Nessun host, nessuna colonna nuova.
 2. **Deploy** — ✅ **fatto il 14-09** (non dipende dal DB): `comando` in
@@ -371,7 +371,7 @@ claim dipendono da lei.
    nessuno è un numero che sembra dichiarato e non lo è. Gli otto `ExecStart`
    resi sono identici a prima. Playbook §17.6.
 3. **BE** — ✅ **fatto il 15-09** (piano
-   [piano-be-fe-avvio-manuale-di-un-processo.md](piano-be-fe-avvio-manuale-di-un-processo.md),
+   [piano-be-fe-avvio-manuale-di-un-processo.md](../work-done/piano-be-fe-avvio-manuale-di-un-processo.md),
    brief §10). ⚠️ Tre cose di questa riga sono scritte diversamente da com'è
    andata: la registrazione run si chiama **`registered_job`** (non
    `job_run()`); il tetto è **fisso** nell'handler (300 s, `avvio_manuale.py`) e

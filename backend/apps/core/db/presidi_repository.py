@@ -285,6 +285,9 @@ class PresidiRepository:
                     "troncato": False,
                     "elencabili": riga["perimetro"] == PERIMETRO_LIBERO,
                     "errore": str(exc),
+                    # ⛔ Non letto = chiede un occhio, sempre: il verde qui vuol
+                    #    dire «visto e vuoto», e questo non e' stato visto.
+                    "da_guardare": True,
                 })
                 continue
             esito.append({
@@ -308,6 +311,12 @@ class PresidiRepository:
                 #    `dbops.fn_conta_presidio`.
                 "elencabili": riga["perimetro"] == PERIMETRO_LIBERO,
                 "errore": None,
+                # ⭐ «Chiede un occhio?» si decide QUI, nella riga, e il client
+                #    lo legge: e' la stessa domanda che la testata conta
+                #    (`con_righe` + `non_letti`), e un predicato ricopiato nel
+                #    pannello (com'era il 2026-09-15) sarebbe la seconda sede —
+                #    la scheda e il numero potrebbero dire due cose.
+                "da_guardare": conteggio > 0,
             })
         return esito
 

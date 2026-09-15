@@ -46,6 +46,7 @@
 #   Contratto FE/BE
 #   17. i quattro nomi della capability sono quelli che il drawer legge
 #   18. le tre reason_key esistono in it.json E in en.json
+#   19. la copia di FORMA_TIMER nel drawer e' la costante del backend
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -334,3 +335,20 @@ class ContrattoConIlDrawerTests(SimpleTestCase):
         for segmento in gia_in_coda.split("."):
             nodo = nodo[segmento]
         self.assertIn("{job_id}", nodo)
+
+    # 19. ⭐ Il drawer decide «pulsante sì/no» sulla FORMA (`v-if` su
+    #     `s.forma === FORMA_TIMER`), ed e' l'unica ramificazione del client sul
+    #     vocabolario del backend (piano §4.3). Quel vocabolario e' una copia
+    #     locale nel drawer: se il backend rinominasse il valore, il pulsante
+    #     sparirebbe da TUTTI i timer senza nessun errore. Si pinna la copia
+    #     alla costante di `sveglie.py`.
+    def test_la_forma_timer_del_drawer_e_quella_del_backend(self) -> None:
+        sorgente = _DRAWER.read_text(encoding="utf-8")
+        trovato = re.search(r"const FORMA_TIMER = '([^']+)'", sorgente)
+        self.assertIsNotNone(trovato, "il drawer non dichiara piu' FORMA_TIMER")
+        assert trovato is not None
+        self.assertEqual(
+            trovato.group(1), FORMA_TIMER,
+            "la forma «timer» del drawer non e' quella del backend: il pulsante "
+            "«Esegui ora» non comparirebbe su nessuna sveglia",
+        )

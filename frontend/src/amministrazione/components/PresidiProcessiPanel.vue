@@ -26,17 +26,36 @@
 //    peggiore che possa avere.
 // ⚠️ `troncato` dice che le righe mostrate non sono tutte: senza, venti righe su
 //    duecento si leggerebbero come «sono venti».
+// ⭐ LO SPAZIO LO PRENDE CHI CHIEDE UN OCCHIO (rilievo di Tid, 2026-09-15). Un
+//    presidio acceso (righe > 0) o NON LETTO è una scheda intera: descrizione
+//    e righe, perché la spiegazione va letta accanto a ciò che spiega. Un
+//    presidio a zero è un chip — nome e conteggio — con la descrizione a un
+//    click (`PresidioChip`). Prima ogni presidio era una scheda con la
+//    descrizione intera, e il numero di presidi lo decide il catalogo DB: a
+//    17 viste e ~15.000 caratteri il pannello prendeva tutta la pagina e la
+//    lista dei processi finiva ad altezza zero, senza errore.
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
+import PresidioChip from './PresidioChip.vue'
 
 const { t } = useI18n()
 
-defineProps({
+const props = defineProps({
   presidi: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   errore: { type: Boolean, default: false },
 })
+
+// ⭐ «Questo presidio chiede un occhio?» lo dice la RIGA (`da_guardare`, dal
+//    repository dei presidi): è la stessa domanda che la testata conta con
+//    `con_righe` + `non_letti`, e qui si legge, non si ricalcola — un
+//    predicato ricopiato nel client sarebbe la seconda sede, e la scheda e il
+//    numero potrebbero dire due cose (regola di `api.md`: il backend
+//    trasporta, il client non deduce).
+const daGuardare = computed(() => props.presidi.filter((p) => p.da_guardare))
+const aZero = computed(() => props.presidi.filter((p) => !p.da_guardare))
 
 // Scopo: le colonne da mostrare per una riga di presidio. Le viste hanno forme
 //        diverse e il pannello non le conosce: si leggono le chiavi che ci sono.
@@ -65,7 +84,7 @@ function cella(valore) {
     </div>
 
     <template v-else>
-      <div v-for="p in presidi" :key="p.vista" class="app-presidio">
+      <div v-for="p in daGuardare" :key="p.vista" class="app-presidio">
         <div class="app-presidio-testa">
           <span class="app-presidio-nome">{{ p.vista }}</span>
           <!-- ⛔ «NON LETTO» NON È «ZERO RIGHE», ed è l'unica differenza che
@@ -114,6 +133,15 @@ function cella(valore) {
           </tbody>
         </table>
       </div>
+
+      <!-- I presidi a zero, tutti insieme: la striscia dice «questi sono
+           coperti e vuoti», e ognuno apre la propria descrizione a un click. -->
+      <div v-if="aZero.length" class="app-presidi-zero">
+        <span class="app-presidi-zero-label">
+          {{ t('amministrazione.processi.presidi_a_zero', { n: aZero.length }) }}
+        </span>
+        <PresidioChip v-for="p in aZero" :key="p.vista" :presidio="p" />
+      </div>
     </template>
   </div>
 </template>
@@ -144,4 +172,8 @@ function cella(valore) {
 }
 .app-presidio-righe th { opacity: 0.7; font-weight: 500; }
 .app-presidi-vuoto { opacity: 0.7; }
+.app-presidi-zero {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
+}
+.app-presidi-zero-label { font-size: 0.85rem; opacity: 0.8; }
 </style>

@@ -3,17 +3,18 @@
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-15.
 > **Origine:** [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md)
 > §8 (risposta DB del 14-09, con le due decisioni di Tid in §8.5) e
-> [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
+> [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md)
 > §4.1-bis / §7-bis / §9-bis.
-> **Stato:** 🟢 **BE e FE scritti e verdi (2026-09-15, sera)** — decisioni di
-> §3 confermate da Tid; lo stato passo per passo è in **§0-bis**. Restano la
-> **chiusura** (§4.4: deploy sul backend di sviluppo, richiesta al DB di
-> `attivo = true`, collaudo in-app) e il brief in `work-done/`. ⚠️ Un solo
-> fatto fuori dal cantiere da sapere: il file generato porta il catalogo **di
-> git**, e sul dbdev restano due codici `E_MAG_*` non committati (§4.1.2) —
-> finché il cantiere magazzino non li committa, `genera_error_policies
-> --check` e `test_error_policies_divergenza_db` sul dbdev sono rossi **per
-> quei due**.
+> **Stato:** ✅ **CHIUSO — collaudato in-app da Tid il 2026-09-15 (sera).**
+> Il DB ha acceso `ESEGUI_PROCESSO` (`dev/db-tid`, `a87c744ac`); due «Esegui
+> ora» sul digest settimanale → lavori #4016/#4017 `FATTO` in 3,4 s, run
+> `digest_presidi:settimanale` con `origine = COMMAND` e `auth_user_id = 1`,
+> email #801/#802 `SENT` alla corsa successiva di `send_pending_emails`,
+> ricevute. Lo stato passo per passo è in **§0-bis**; i **rilievi del
+> collaudo** (tre difetti trovati, due sistemati, uno passato al DB) in **§7.5**.
+> ⚠️ Un solo fatto fuori dal cantiere: il file generato portava il catalogo
+> **di git** mentre sul dbdev c'erano due `E_MAG_*` non committati (§4.1.2);
+> rientrati il 15-09 pomeriggio col commit del cantiere magazzino.
 >
 > **In una riga (com'era la mattina del 15-09):** il DB ha consegnato le tre
 > righe (processo `avvio_manuale`, tipo `ESEGUI_PROCESSO` **spento**, azione
@@ -48,7 +49,8 @@
 | FE 2-bis — via la copia `vuoleIdentita` | ✅ | `ProcessoDrawer.vue` | — |
 | FE 3 — chiavi i18n | ✅ | `locales/it.json` + `en.json`: 19 chiavi sotto `amministrazione.processi.*`, di cui le **tre `esegui_ora_blocco.*`** che il BE 7 deve emettere come `reason_key` (**nomi fissati in §2.5**); `check_i18n_keys.py` pulito | — |
 | Doc (§6) | ✅ | `sveglie_processi.md`, `api_amm_software.md` §6.2-6.3, `api.md` (famiglia 1, secondo esempio), catalogo BB backend (handler + `avvio_manuale`, BB scope), playbook §17.6-17.7, analisi §9-bis, brief §10 | — |
-| Accensione `ESEGUI_PROCESSO` | ⏳ DB | `coda_lavori_tipi.csv` | l'handler è scritto e registrato: la richiesta parte col deploy sul backend di sviluppo (§4.4.1) |
+| Accensione `ESEGUI_PROCESSO` | ✅ | `coda_lavori_tipi.csv` (`attivo = true`, `dev/db-tid` `a87c744ac`, applicato sul dbdev il 15-09 pomeriggio) | — |
+| Collaudo in-app (§4.4.2) | ✅ | Tid, 15-09 sera: `digest_presidi` → tab Sveglie → «Esegui ora» ×2 sul settimanale | — (vedi §7.5 per ciò che il collaudo ha fatto emergere) |
 
 **Che cosa è verde adesso** (sera): `apps.core.tests` + `apps.vendite.tests.api`
 + `apps.amm_software.tests` con `ZEROERP_TEST_DB_E2E=1` — **1607 su 1609, 1
@@ -59,10 +61,10 @@ skip dichiarato** (l'accodamento a tipo acceso, BE 9). I due rossi sono
 seminati sul dbdev il 15-09 e in nessun branch. In CI — DB da git — sono
 verdi. Frontend: `check_i18n_keys.py`, lint, guards, vitest e build verdi.
 
-**Il prossimo passo**: la chiusura di §4.4 — commit e PR di `dev/backend-tid`
-(Tid), deploy sul backend di sviluppo con `kill -HUP` al master, **richiesta al
-DB di `attivo = true`** su `ESEGUI_PROCESSO` dal CSV, collaudo in-app su
-`zeroerp-digest-presidi-giornaliero`. Poi brief e piano in `work-done/`.
+**Chiusura (15-09 sera)**: commit `337c255fb` su `dev/backend-tid` (Tid),
+`kill -HUP` al master, accensione dal CSV lato DB, collaudo in-app sul
+**settimanale** (non sul giornaliero come previsto: stessa natura, finisce in
+secondi). Brief e piano in `work-done/` lo stesso giorno.
 
 ---
 
@@ -478,14 +480,19 @@ solo su una sveglia dichiarata `avvio_manuale = true` che non doveva esserlo.
 
 ### 4.4 Chiusura
 
-1. Handler in servizio (deploy sul backend di sviluppo, `kill -HUP` al master:
-   gunicorn dev non ricarica da sé) → **richiesta al DB di `attivo = true`** su
-   `ESEGUI_PROCESSO` dal CSV, come per `NOTIFICA_DIGEST_MUTO` l'11-09.
-2. Collaudo in-app: «Esegui ora» su `zeroerp-digest-presidi-giornaliero`
-   (finisce in secondi) — lavoro `FATTO` in *Code di lavoro*, run
-   `digest_presidi:giornaliera` con `origine = COMMAND` e il mio username nel
-   tab «Ultimi run», panorama `avvio_manuale | SU_RICHIESTA | f`.
-3. Doc (§6) e brief in `work-done/`.
+1. ✅ Handler in servizio (deploy sul backend di sviluppo, `kill -HUP` al
+   master: gunicorn dev non ricarica da sé) → **`attivo = true`** su
+   `ESEGUI_PROCESSO` dal CSV, applicato dal DB il 15-09 pomeriggio
+   (`a87c744ac`), come per `NOTIFICA_DIGEST_MUTO` l'11-09.
+2. ✅ Collaudo in-app (Tid, 15-09 sera, sul **settimanale**): lavori #4016 e
+   #4017 `FATTO` in *Code di lavoro* (exit 0, 3,4 s, `coda_output` col testo
+   del digest), run `digest_presidi:settimanale` con `origine = COMMAND` e
+   `auth_user_id = 1` nel tab «Ultimi run», email #801/#802 `SENT` alle
+   17:35 dal timer di `send_pending_emails` e ricevute. ⚠️ Fra il click e la
+   casella passano fino a **cinque minuti** per costruzione — due code, il
+   drenatore dei lavori e poi quello delle email — e la prima volta si
+   guarda la posta troppo presto.
+3. ✅ Doc (§6); brief e piano in `work-done/` il 15-09.
 
 ---
 
@@ -581,3 +588,55 @@ drenatore di systemd trovi i segreti nell'ambiente. Lo prova il collaudo di
      quella riga» mentre il template spegne tutte le righe durante il volo —
      allineato al codice (che è la scelta giusta: la ricarica arriva subito
      dopo).
+5. ⭐ **Rilievi del collaudo in-app (15-09 sera)** — tre difetti che il
+   cantiere non aveva causato ma che il collaudo ha fatto emergere, perché
+   per la prima volta qualcuno ha aperto quella pagina con il catalogo di
+   oggi:
+   * 🔴 **La lista dei processi finiva ad altezza ZERO, senza errore.** Il
+     pannello «Controlli che devono restare vuoti» rendeva la descrizione
+     intera di ogni presidio `ZERO` — al 15-09 **17 viste, ~15.500
+     caratteri** — sotto una pagina che non scrolla (`.app-page` è
+     `overflow: hidden`) e una lista che può schiacciarsi (`min-height: 0`).
+     Il numero e la lunghezza dei presidi li decide il catalogo DB, quindi il
+     limite sta nella pagina: la sezione ha un tetto (`40vh`) e scrolla
+     dentro di sé; un presidio a zero è un **chip** (`PresidioChip.vue`,
+     nome + conteggio, descrizione in Popover a un click) e la scheda
+     intera resta solo a chi **chiede un occhio**. ⭐ E «chiede un occhio»
+     lo dice la **riga** (`da_guardare`, `PresidiRepository.stato_presidi`),
+     non un predicato del pannello: nella prima stesura era ricopiato nel
+     client, cioè la seconda sede della domanda che la testata conta con
+     `con_righe` + `non_letti` — tolto in revisione lo stesso giorno.
+     Verificato con Chromium headless pilotato via CDP: lista 378 px con 25
+     righe, pannello 288 px con 17 chip, popover con i 1188 caratteri di
+     `vw_email_da_guardare`.
+   * 🔴 **Il drawer sforava sul tab «Sveglie»**: a 800 px (`COMPLEX`) la
+     tabella voleva **983 px** su `run_fatturazione_batch`, e «Esegui ora» —
+     ultima colonna — stava oltre la barra di scorrimento. `WIDE_PLUS`
+     (1100 px) **e** le due colonne di testo libero del deploy (`unit`,
+     `comando`) che vanno a capo (`td.app-proc-wrap`): la larghezza da sola
+     non garantisce niente, perché quelle lunghezze le decide `sveglie.json`.
+     Provato a viewport 1000 px: due righe, pulsante dentro, zero overflow.
+   * 🟠 **Su «Tutti gli emittenti» la lista è sbarrata** dal cancello di
+     perimetro — su un registro di catalogo. `ui.lista_definizione
+     .perimetro_emittente` è al default `true` per `amm.processi`, le
+     quattro `ui.*` e `storico.audit_log`, mentre il commento della colonna
+     stessa (02-09) le nomina come cataloghi globali da dichiarare `false`;
+     il registro `_ESENZIONI` del BE lo sa, il seed no. È un seed → brief
+     al DB: [brief-db-perimetro-emittente-cataloghi-globali.md](../work-in-progress/brief-db-perimetro-emittente-cataloghi-globali.md).
+     Nel frattempo si entra scegliendo un emittente nella combo.
+6. **Revisione critica del 15-09 sera, seconda passata** (su richiesta di
+   Tid, dopo il collaudo). Sistemato: il mirror `const FORMA_TIMER = 'timer'`
+   del drawer — l'unica ramificazione del client sul vocabolario del BE —
+   non era pinnato: una rinomina lato BE avrebbe fatto sparire il pulsante da
+   tutti i timer senza errore → `test_processi_esegui_ora` 19 lo lega a
+   `sveglie.FORMA_TIMER`; e il predicato duplicato dei presidi (sopra).
+   Visto e **lasciato**, con la ragione: `"stato": "PENDING"` nella risposta
+   di `esegui_ora` (e del giro di fatturazione, stessa forma) è un'affermazione
+   non letta dal DB — `accoda` torna il solo id, e nella finestra fra il
+   controllo dei vivi e la dedup di `fn_accoda_lavoro` il lavoro restituito
+   potrebbe già essere `IN_CORSO`. Il client legge solo `job_id`; la sede
+   giusta è `fn_accoda_lavoro` che ritorni anche lo stato, ed è un cambio
+   di contratto per due consumatori, non di questo cantiere. La larghezza
+   inline del Popover (`460px`) è la **quarta** occorrenza nel FE
+   (`ErroreRigaInfo`, `ScadenzeSintesi`, `AlertScadenzeWidget`): candidata a
+   una scala come `DRAWER_WIDTH`, dichiarata qui e non estratta.
