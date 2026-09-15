@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (passo 1 di 2) — L'ARTICOLO DICE SE VUOLE IL LOTTO
+#   catalogo.articoli.requires_lotto  (boolean NOT NULL DEFAULT false)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3 (M-5)
+#
+# -- DUE BOOLEANI DISTINTI, NON UN ENUM ------------------------------------
+#   requires_serial c'e' gia' (dal 2025) e dice «ogni pezzo ha una matricola».
+#   requires_lotto dice «ogni carico appartiene a una partita». Sono due
+#   domande INDIPENDENTI: un articolo puo' volere il lotto e non il seriale
+#   (un reagente), il seriale e non il lotto (un'apparecchiatura), tutti e due
+#   (un dispositivo medico), nessuno. Un enum a tre valori le avrebbe legate
+#   (analisi carico e scarico, sezione 7-quater, punto 3).
+#
+# -- CHI LO LEGGE, E QUANDO -------------------------------------------------
+#   La primitiva di scrittura del magazzino (Lotto 2, M-2): se l'articolo lo
+#   pretende, un movimento senza lotto_id e' rifiutato LI', con un messaggio
+#   per l'operatore. Qui c'e' solo la colonna: nessun guard la legge in questo
+#   lotto, e il magazzino non ha una riga (sezione 1 del brief: e' la
+#   condizione per cambiarlo a costo zero).
+#   ⚠️ Non entra nel guard BoM (trgfn_articoli_guard_flags_struttura_bom_attiva,
+#   che congela is_composito/requires_serial su un padre di distinta attiva):
+#   il lotto e' una partita di arrivo o di produzione, non struttura di
+#   composizione. Se un giorno lo sara', e' una riga in quel guard.
+#   ⚠️ Non e' esposto da vw_articoli_dettaglio ne' dal drawer articolo: la
+#   vista si tocca quando il FE lo vorra' (Lotto 2, con requires_serial come
+#   stampo), perche' ricrearla oggi azzererebbe security_invoker per un
+#   consumatore che non c'e'. Registrato nel brief, sezione 8.
+#
+# -- DEFAULT false, FAIL-SAFE -----------------------------------------------
+#   Stessa scelta di gestito_a_magazzino (20260913-05): nessun articolo
+#   comincia a pretendere un lotto per distrazione. L'articolo che lo vuole
+#   va marcato; la tracciabilita' e' una scelta, non un default.
+#
+# -- CHE COSA NASCE DA SOLO ---------------------------------------------------
+#   Niente: e' un boolean senza FK. Storico: la shadow serializza in JSONB,
+#   nessuna colonna da allineare. Il mirror articoli.csv (gennaio) NON prende
+#   la colonna: il default la copre.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260914-15-alter-articoli-add-requires-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20260914-15-alter-articoli-add-requires-lotto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli.requires_lotto (boolean NOT NULL DEFAULT false), accanto a
+        requires_serial: due booleani distinti perche' lotto e seriale sono due domande
+        indipendenti (M-5). Lo legge la primitiva del Lotto 2; qui solo la colonna.
+        Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3 (P-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: requires_serial
+            - not:
+                - columnExists:
+                    schemaName: catalogo
+                    tableName: articoli
+                    columnName: requires_lotto
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  ADD COLUMN requires_lotto BOOLEAN NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN catalogo.articoli.requires_lotto IS
+                  'Se true, ogni carico di questo articolo appartiene a una partita '
+                  '(magazzino.lotti) e ogni movimento porta lotto_id. Indipendente da '
+                  'requires_serial: lotto e seriale sono due domande diverse e un '
+                  'articolo puo'' volerne uno, entrambi o nessuno. Default false = '
+                  'fail-safe: la tracciabilita'' per lotto si sceglie, non si eredita. '
+                  'Lo legge la primitiva di scrittura del magazzino (Lotto 2); nessun '
+                  'guard in questo lotto. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, '
+                  'sezione 4.3 (M-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  DROP COLUMN IF EXISTS requires_lotto;

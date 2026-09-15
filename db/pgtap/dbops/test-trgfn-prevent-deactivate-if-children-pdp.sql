@@ -115,10 +115,16 @@ SELECT lives_ok(
 -- =========================================================
 -- 3) Inserimento PDP figlio (se prerequisiti presenti)
 -- =========================================================
+-- ⚠️ L'indirizzo si FABBRICA (rev 2026-09-15). anagrafiche.indirizzi_dettaglio
+--   e' dato di macchina: su un database ricostruito da zero non ce n'e' nessuno,
+--   e con `SELECT … LIMIT 1` il test 6 era rosso e i test 7-12 «skipped» — il
+--   testimone del ramo A non eseguiva NIENTE. Su GitHub passava per un
+--   indirizzo lasciato da qualcun altro prima nella suite; su zeroerp_ci con la
+--   sola cartella dbops no. config.utilities e' seed di catalogo: si puo' cercare.
 CREATE TEMP TABLE tmp_pdp_base AS
 SELECT
     (SELECT id FROM config.utilities ORDER BY id LIMIT 1) AS utility_id,
-    (SELECT id FROM anagrafiche.indirizzi_dettaglio ORDER BY id LIMIT 1) AS indirizzo_id;
+    dbops.fn_pgtap_crea_indirizzo_dettaglio('pdp block_deact') AS indirizzo_id;
 
 SELECT ok(
     (SELECT utility_id IS NOT NULL AND indirizzo_id IS NOT NULL FROM tmp_pdp_base),

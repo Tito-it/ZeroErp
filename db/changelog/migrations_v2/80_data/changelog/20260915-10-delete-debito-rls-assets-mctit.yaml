@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-7 — LA RIGA 65 DEL REGISTRO DEL DEBITO RLS SI ESTINGUE
+#   dbops.rls_perimetro_debito, riga 65: magazzino.assets
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezioni 4.7 e 4.10
+#
+#   La riga diceva: «due rotte protette (billing_account_id, contratto_id) e
+#   tutte e due NULLABLE: prima va deciso quale delle due porta il perimetro».
+#   La risposta di M-6 e' la TERZA chiave: assets.emittente_fiscale_id, NOT
+#   NULL (20260915-09), con la policy diretta in P-10. Il debito non esiste
+#   piu', e una riga di registro estinta fa rosso in
+#   dbops.vw_rls_perimetro_scoperto quanto una non dichiarata («niente: la
+#   tabella non e' piu' scoperta per questo criterio … la riga va tolta dal
+#   CSV del registro»).
+#
+#   loadUpdateData non cancella: la riga esce dal CSV
+#   80_data/sql/dbops/rls_perimetro_debito.csv (mirror 20260909-77, vivo)
+#   nello stesso commit, e questo DELETE la toglie dal database. Stampo:
+#   20260910-30 (si cancella per id E per coordinate).
+#   In CI la riga non viene mai inserita e il DELETE trova zero righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260915-10-delete-debito-rls-assets-mctit.yaml
+
+  - changeSet:
+      id: 20260915-10-delete-debito-rls-assets
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito RLS la riga 65 (magazzino.assets): la domanda
+        «quale delle due chiavi nullable porta il perimetro» ha la risposta M-6, la terza
+        chiave emittente_fiscale_id (20260915-09), armata in P-10. loadUpdateData non
+        cancella: riga tolta anche dal CSV. Brief: brief-db-magazzino-lotto-1-terreno-vuoto,
+        sezione 4.7 (P-7).
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Per id E per coordinate: sul solo id si scommetterebbe che nessuno
+              -- abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) = (65, 'magazzino', 'assets');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rimetterebbe in piedi un debito che non esiste piu': la riga torna dal
+              -- CSV, se qualcuno la ripristina li'. Nessun INSERT qui.
+              SELECT 1;

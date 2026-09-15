@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 (2 di 2) — NESSUNA OPERAZIONE DI MAGAZZINO ATTRAVERSA DUE EMITTENTI
+#   magazzino.trgfn_trasferimenti_guard_stesso_emittente()
+#   trg_trasferimenti_a10_guard_stesso_emittente_ins_upd (magazzino.trasferimenti)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (M-6;
+#   analisi carico e scarico, sezione 7-sexies)
+#
+# -- PERCHE' UN GUARD, E NON LA SOLA POLICY ------------------------------------------
+#   trasferimenti ha DUE magazzini. Il perimetro RLS (P-10) poggia su
+#   magazzino_id_from: la policy dice se l'operatore puo' scrivere questo
+#   trasferimento, non se la destinazione appartiene allo stesso emittente.
+#   Un trasferimento fra due emittenti sarebbe una cessione, non uno
+#   spostamento interno: il registro di uno vedrebbe uscire merce che il
+#   registro dell'altro vede entrare, senza un documento fra i due.
+#
+# -- CHI PUO' RIMEDIARE: UNA PERSONA, NEL FORM ----------------------------------------
+#   La destinazione la sceglie l'operatore: DATO_ERRATO (400), campo =
+#   magazzino_id_to, cosi' il frontend accende il campo giusto. Il messaggio
+#   nomina i due magazzini (codici), non le colonne.
+#
+# -- SOTTO RLS, UN MAGAZZINO CHE NON SI VEDE NON E' PROPRIO ---------------------------
+#   La funzione e' SECURITY INVOKER e legge magazzini sotto row security: per
+#   un operatore, un magazzino fuori perimetro NON risolve (emittente NULL),
+#   mentre la FK — che la RLS non la vede — passerebbe. Si rifiuta anche
+#   allora, con lo stesso codice: dal punto di vista di chi scrive, un
+#   magazzino che non puo' vedere non e' del suo emittente. E' fail-closed,
+#   ed e' la stessa scelta del guard di scope (rev 2026-08-22).
+#
+# -- NON E' UNA fn_check_* ---------------------------------------------------------
+#   La domanda che viene prima (AGENTS.md): «deve anche accendere o spegnere
+#   un pulsante nel frontend?». Non in questo lotto (nessun FE); quando il
+#   form dei trasferimenti nascera', il picker della destinazione filtrera'
+#   per emittente A MONTE e questo resta la rete. Se un giorno servira' una
+#   capability, il predicato si estrae in una fn_check e il guard la chiama.
+#
+# -- %TYPE nel DECLARE (regola di Tid) ----------------------------------------------
+#   I due emittenti e i due codici sono riflessi di colonne di magazzini.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260915-14-create-trgfn-trasferimenti-guard-stesso-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260915-14-create-trgfn-trasferimenti-guard-stesso-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.trgfn_trasferimenti_guard_stesso_emittente: un trasferimento non
+        attraversa due emittenti (M-6). Legge magazzini.emittente_fiscale_id dei due
+        magazzini sotto RLS; se diversi o non risolvibili solleva
+        E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI (DATO_ERRATO, campo magazzino_id_to).
+        Trigger BEFORE INSERT OR UPDATE OF magazzino_id_from, magazzino_id_to. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7 (P-9).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: magazzini
+                columnName: emittente_fiscale_id
+            - tableExists:
+                schemaName: magazzino
+                tableName: trasferimenti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ef_from      magazzino.magazzini.emittente_fiscale_id%TYPE;
+                v_ef_to        magazzino.magazzini.emittente_fiscale_id%TYPE;
+                v_codice_from  magazzino.magazzini.codice%TYPE;
+                v_codice_to    magazzino.magazzini.codice%TYPE;
+              BEGIN
+                -- Scopo: nessuna operazione di magazzino attraversa due emittenti (M-6).
+                --   I due magazzini di un trasferimento devono appartenere allo stesso
+                --   emittente fiscale. Lettura sotto RLS (SECURITY INVOKER): un magazzino
+                --   fuori perimetro non risolve, e si rifiuta lo stesso (fail-closed).
+                -- Regole:
+                --   - emittenti diversi, o uno dei due non risolvibile:
+                --     E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI (DATO_ERRATO, campo magazzino_id_to).
+                SELECT m.emittente_fiscale_id, m.codice
+                  INTO v_ef_from, v_codice_from
+                  FROM magazzino.magazzini m
+                 WHERE m.id = NEW.magazzino_id_from;
+
+                SELECT m.emittente_fiscale_id, m.codice
+                  INTO v_ef_to, v_codice_to
+                  FROM magazzino.magazzini m
+                 WHERE m.id = NEW.magazzino_id_to;
+
+                IF v_ef_from IS NULL OR v_ef_to IS NULL OR v_ef_from <> v_ef_to THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_trasferimenti_guard_stesso_emittente',
+                    'E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI',
+                    jsonb_build_object(
+                      'detail',            'magazzino_id_from e magazzino_id_to non appartengono allo stesso emittente (o uno dei due non e'' visibile)',
+                      'campo',             'magazzino_id_to',
+                      'magazzino_id_from', NEW.magazzino_id_from,
+                      'magazzino_id_to',   NEW.magazzino_id_to,
+                      'emittente_from',    v_ef_from,
+                      'emittente_to',      v_ef_to
+                    ),
+                    NEW.tx_id,
+                    coalesce(v_codice_to, NEW.magazzino_id_to::text),
+                    coalesce(v_codice_from, NEW.magazzino_id_from::text)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente() IS
+                  'Guard M-6 sui trasferimenti: i due magazzini devono appartenere allo '
+                  'stesso emittente fiscale, altrimenti E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI '
+                  '(DATO_ERRATO, campo magazzino_id_to: la destinazione la sceglie una '
+                  'persona). Legge magazzini sotto RLS: un magazzino fuori perimetro non '
+                  'risolve e si rifiuta lo stesso (fail-closed). La policy RLS di '
+                  'trasferimenti poggia su magazzino_id_from; questo guard copre la '
+                  'destinazione. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7.';
+
+              CREATE TRIGGER trg_trasferimenti_a10_guard_stesso_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE OF magazzino_id_from, magazzino_id_to
+                  ON magazzino.trasferimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_trasferimenti_a10_guard_stesso_emittente_ins_upd ON magazzino.trasferimenti;
+              DROP FUNCTION IF EXISTS magazzino.trgfn_trasferimenti_guard_stesso_emittente();

@@ -15,7 +15,7 @@
 >
 > **Il modello:** [script.fn_check_ordine_annullabile](/dbzero/script/funzioni/fn_check_ordine_annullabile) · la regola: [linee-guida-sql §12.5](/linee-guida-sql)
 >
-> **Piano:** [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga](/dev/work-in-progress/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga) §2.2 (D17), §4 P-1
+> **Piano:** [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga](/dev/work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga) §2.2 (D17), §4 P-1
 
 ---
 

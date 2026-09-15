@@ -3,27 +3,55 @@
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
-> • [magazzino.trasferimenti_righe](/dbzero/magazzino/tabelle/trasferimenti_righe)
-> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti)
+> • [magazzino.trasferimenti_righe](/dbzero/magazzino/tabelle/trasferimenti_righe) — il dettaglio
+> • [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — origine e destinazione
+> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — le due righe OUT/IN
+>
+Approfondimento funzioni:
+> • [magazzino.trgfn_trasferimenti_guard_stesso_emittente](/dbzero/magazzino/funzioni/trgfn_trasferimenti_guard_stesso_emittente)
+>
+Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.7) · analisi carico e scarico (§7-sexies)
 
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+(rev 2026-09-15 — Lotto 1 del magazzino)
 
-Documento interno di **trasferimento fra magazzini**.
+**Il documento di trasferimento fra due magazzini**: da dove parte la merce
+(`magazzino_id_from`), dove arriva (`magazzino_id_to`), quando, in che stato. Il dettaglio
+per articolo sta nelle righe.
 
----
+Un trasferimento genera **due movimenti** per riga — `TRASF_OUT` dall'origine, `TRASF_IN`
+nella destinazione — con la stessa sorgente (`TRASFERIMENTO_RIGA`) e causali diverse: è così
+che le due righe non collidono nell'identità del registro. Il costo della riga IN è ereditato
+da quella OUT: spostare merce non cambia il suo valore, lo sposta. Uno spostamento **dentro**
+lo stesso magazzino non è un trasferimento: è una coppia di movimenti fra due ubicazioni.
 
-### Il ruolo nella catena
+### Due magazzini, un emittente solo
 
-Genera **due** movimenti — `TRASF_OUT` e `TRASF_IN` — entrambi a impatto `none` sulla valorizzazione: spostare merce non ne cambia il valore complessivo, lo sposta. ⚠️ Il modello a due movimenti convive con la colonna `movimenti.magazzino_id_dest`, che suggerirebbe un movimento solo: quale delle due rappresentazioni valga è una decisione da prendere prima di attivare il dominio.
+Origine e destinazione devono appartenere allo **stesso emittente**: fra due emittenti
+sarebbe una cessione con un documento, non uno spostamento. Lo fa rispettare il guard
+[trgfn_trasferimenti_guard_stesso_emittente](/dbzero/magazzino/funzioni/trgfn_trasferimenti_guard_stesso_emittente)
+(`E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI`, con il campo della destinazione acceso nel form). E
+un trasferimento da un magazzino a **se stesso** è rifiutato dal CHECK — che fino al 14-09
+era scritto in modo da non rifiutare nulla.
 
----
+### La sorgente, come sul registro
 
-### ⚠️ Testata e righe
+`sorgente_tipo_id` (una riga di [config.sorgenti](/dbzero/config/tabelle/sorgenti)) più
+**esattamente una** chiave fra `sorgente_riga` e `sorgente_uid`, secondo quanto il catalogo
+dichiara per quel tipo; senza tipo, nessuna chiave. Il guard tipizzato
+(`script.trgfn_guard_sorgente_polimorfa_tipizzata`) verifica che il record esista. Qui la
+sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è uno.
 
-Il dettaglio sta in `magazzino.trasferimenti_righe`. Le due tabelle vanno lette insieme: la testata porta il contesto (data, magazzino, stato), le righe le quantità.
+Fino al 14-09 la tabella portava **due** coppie di colonne sorgente (`sorgenti_*` e
+`sorgente_*`) che dicevano la stessa cosa: il doppione è uscito.
+
+### Chi può vedere e scrivere
+
+Il perimetro poggia sul magazzino di **origine** (`rls_trasferimenti_ef_whitelist`, via
+`magazzino_id_from`); la destinazione la copre il guard. Righe e note risalgono alla testata.
+Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
 ---
 

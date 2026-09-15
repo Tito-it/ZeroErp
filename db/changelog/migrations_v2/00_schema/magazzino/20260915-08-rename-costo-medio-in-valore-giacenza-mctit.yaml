@@ -1,0 +1,247 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 — costo_medio DIVENTA valore_giacenza: UNA COPIA RICOSTRUIBILE, SENZA QUANTITA'
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.6 (M-4, D-L1-e;
+#   analisi carico e scarico, sezione 7-ter)
+#
+# -- CHE COSA E', E CHE COSA NON E' PIU' ------------------------------------------
+#   Il VALORE della giacenza di un articolo in un magazzino: la ri-somma dei
+#   costo_unitario scritti sul ledger, tenuta aggiornata dalla primitiva
+#   (Lotto 2) e ricostruibile dal registro in qualunque momento — non una
+#   ri-esecuzione, una ri-somma (M-4, precisazione del 04-09). La QUANTITA'
+#   non sta qui: vive SOLO nel registro (vw_giacenza = sum(qta)). Con qta
+#   dentro, la tabella era una seconda giacenza da tenere allineata alla
+#   prima, e vw_giacenza_valorizzata era tautologica (rilievo del 04-09).
+#   Si rinomina e non si rifa': stessa ragione di 20260915-06.
+#
+# -- LE TRE VISTE BLOCCANO IL DROP DI qta (P-0) ---------------------------------
+#   vw_costo_medio e vw_costo_medio_globale leggono costo_medio.qta,
+#   vw_giacenza_valorizzata dipende da vw_costo_medio; su un DB da zero
+#   esistono gia' quando gira questo changeSet (le crea 20251003-11/12/13,
+#   numeri piu' bassi nella timeline dell'autogen). ⇒ DROP VIEW IF EXISTS
+#   delle tre, in ordine di dipendenza, PRIMA del DROP COLUMN; P-11 (20_code)
+#   le ricrea sulla forma nuova, tutte security_invoker. vw_giacenza non
+#   dipende da niente che cambia e resta in piedi.
+#
+# -- LA RINOMINA E' DI TUTTO (lezione di 20260822-25) -----------------------------
+#   Tabella, PK, UNIQUE (articolo_id, magazzino_id), indice della FK,
+#   FK, sequenza, gli otto NOT NULL nominati che sopravvivono (quello di qta
+#   cade con la colonna). Dei due trigger generati, l'audit si rinomina
+#   condizionalmente nel changeSet -01; il require_attivo verso magazzini NO:
+#   e' un CONSTRAINT TRIGGER, e provato il 15-09 ne' ALTER TRIGGER RENAME ne'
+#   ALTER TABLE RENAME CONSTRAINT rinominano ENTRAMBE le voci (pg_trigger e
+#   pg_constraint) — resterebbe un nome vecchio in una delle due. ⇒ DROP
+#   TRIGGER IF EXISTS (porta via entrambe), ci_apply lo rigenera col nome
+#   nuovo: la stessa sorte dei tre require_attivo di 20260915-06. Il
+#   block_deact sul padre porta 'costo_medio' come argomento: DROP IF EXISTS,
+#   ci_apply lo rigenera col nome nuovo. La tabella NON ha tx_id ne'
+#   storicizza: niente storico, niente riga nella mappa.
+#
+# -- LA FK CHE MANCAVA ------------------------------------------------------------
+#   costo_medio.articolo_id non aveva una FK: poteva puntare a un articolo
+#   inesistente. fk_mag_valore_giacenza_articolo la mette; l'indice lo copre
+#   gia' l'UNIQUE (articolo_id, magazzino_id) — riga di policy a false, come
+#   per lotti.
+#
+# -- LE NOTE SULL'ACCUMULATORE SE NE VANNO (D-L1-e) --------------------------------
+#   Una nota su una copia ricostruibile non ha un autore naturale: chi vuole
+#   dire qualcosa di un valore di giacenza lo dice dell'articolo o del
+#   magazzino. La partizione note_costo_medio cade (0 righe, un solo trigger,
+#   l'audit, che cade con lei) e COSTO_MEDIO esce dal CHECK chk_note_target_tipo
+#   del padre magazzino.note — DROP + ADD sul padre partizionato, che lo
+#   propaga alle nove partizioni superstiti (provato). Zero lettori di
+#   COSTO_MEDIO in pg_proc, backend, frontend, pgTAP e seed (P-0).
+#   La riga 247 di fk_index_policy (fk_note_costo_medio_testata) e la 135
+#   (fk_mag_costo_medio_magazzino) le toglie il DELETE di fine lotto.
+#
+# -- PRECONDIZIONE «ZERO RIGHE» --------------------------------------------------
+#   Una tabella con righe avrebbe una quantita' da non perdere: qui non c'e'
+#   nessuna riga (dev e CI), e il sqlCheck = 0 lo dice invece di darlo per
+#   scontato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-08-rename-costo-medio-in-valore-giacenza-mctit.yaml
+
+  - changeSet:
+      id: 20260915-08-rename-costo-medio-in-valore-giacenza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.costo_medio diventa magazzino.valore_giacenza (M-4): copia ricostruibile
+        del valore, senza qta (vive solo nel registro). Le tre viste che leggono qta
+        cadono qui e rinascono in P-11; rinomina di PK, UNIQUE, indice, FK, sequenza,
+        NOT NULL; FK articolo che mancava; block_deact sul padre e require_attivo
+        (constraint trigger: non si rinomina, si rigenera) tolti; partizione
+        note_costo_medio via e COSTO_MEDIO fuori dal CHECK del padre (D-L1-e). L'audit
+        si rinomina nel changeSet -01. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.6 (P-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: costo_medio
+            - not:
+                - tableExists:
+                    schemaName: magazzino
+                    tableName: valore_giacenza
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.costo_medio;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Le tre viste che leggono qta: cadono in ordine di dipendenza,
+              --    rinascono in P-11 sulla forma nuova.
+              DROP VIEW IF EXISTS magazzino.vw_giacenza_valorizzata;
+              DROP VIEW IF EXISTS magazzino.vw_costo_medio_globale;
+              DROP VIEW IF EXISTS magazzino.vw_costo_medio;
+
+              -- 2. Il block_deact sul padre porta 'costo_medio' come argomento; il
+              --    require_attivo e' un constraint trigger e non si rinomina (vedi
+              --    intestazione): entrambi li rigenera ci_apply col nome nuovo.
+              DROP TRIGGER IF EXISTS trg_magazzini_a10_costo_medio_block_deact_upd ON magazzino.magazzini;
+              DROP TRIGGER IF EXISTS trg_costo_medio_a10_magazzini_require_attivo_ins_upd ON magazzino.costo_medio;
+
+              -- 3. La tabella e tutto cio' che porta il suo nome.
+              ALTER TABLE magazzino.costo_medio RENAME TO valore_giacenza;
+              ALTER TABLE magazzino.valore_giacenza
+                  RENAME CONSTRAINT pk_mag_costo_medio TO pk_mag_valore_giacenza;
+              ALTER TABLE magazzino.valore_giacenza
+                  RENAME CONSTRAINT uq_mag_costo_medio_art_mag TO uq_mag_valore_giacenza_art_mag;
+              ALTER TABLE magazzino.valore_giacenza
+                  RENAME CONSTRAINT fk_mag_costo_medio_magazzino TO fk_mag_valore_giacenza_magazzino;
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_costo_medio_magazzino_id
+                  RENAME TO ix_magazzino_valore_giacenza_magazzino_id;
+              ALTER SEQUENCE magazzino.costo_medio_id_seq RENAME TO valore_giacenza_id_seq;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_id_not_null           TO valore_giacenza_id_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_articolo_id_not_null  TO valore_giacenza_articolo_id_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_magazzino_id_not_null TO valore_giacenza_magazzino_id_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_valore_not_null       TO valore_giacenza_valore_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_meta_not_null         TO valore_giacenza_meta_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_data_insert_not_null  TO valore_giacenza_data_insert_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_data_update_not_null  TO valore_giacenza_data_update_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT costo_medio_user_insert_not_null  TO valore_giacenza_user_insert_not_null;
+
+              -- 4. La quantita' vive solo nel registro; la FK che mancava.
+              ALTER TABLE magazzino.valore_giacenza
+                  DROP COLUMN qta;
+              ALTER TABLE magazzino.valore_giacenza
+                  ADD CONSTRAINT fk_mag_valore_giacenza_articolo
+                      FOREIGN KEY (articolo_id) REFERENCES catalogo.articoli (id)
+                      ON UPDATE CASCADE;
+
+              -- 5. Le note sull'accumulatore: via la partizione, COSTO_MEDIO fuori dal
+              --    CHECK del padre (DROP + ADD sul partizionato, si propaga alle figlie).
+              DROP TABLE IF EXISTS magazzino.note_costo_medio;
+              ALTER TABLE magazzino.note DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note ADD CONSTRAINT chk_note_target_tipo
+                  CHECK (target_tipo IN (
+                      'ASSET', 'EVENTO_ASSET', 'INVENTARIO', 'INVENTARIO_RIGA', 'MOVIMENTO',
+                      'RETTIFICA', 'RETTIFICA_RIGA', 'TRASFERIMENTO', 'TRASFERIMENTO_RIGA'
+                  ));
+
+              -- 6. Le regole, scritte dove si leggono.
+              COMMENT ON TABLE magazzino.valore_giacenza IS
+                  'Il VALORE della giacenza di un articolo in un magazzino: copia '
+                  'ricostruibile dal registro, tenuta aggiornata dalla primitiva di '
+                  'scrittura (Lotto 2). Il ricalcolo e'' una RI-SOMMA dei costo_unitario '
+                  'scritti su magazzino.movimenti (entrate al costo di documento, uscite '
+                  'alla media corrente), non una ri-esecuzione. La QUANTITA'' non sta qui: '
+                  'vive solo nel registro (vw_giacenza); costo medio = valore / qta, in '
+                  'vw_costo_medio. Si chiamava costo_medio e portava qta fino al '
+                  '2026-09-15 (M-4). Una riga per (articolo, magazzino). Nessuna nota: una '
+                  'copia non ha un autore (D-L1-e). Perimetro: l''emittente del magazzino. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.6.';
+              COMMENT ON COLUMN magazzino.valore_giacenza.valore IS
+                  'Valore totale corrente della giacenza, in valuta base: la somma '
+                  'firmata dei qta * costo_unitario del registro per questo articolo in '
+                  'questo magazzino. Costo medio = valore / vw_giacenza.qta.';
+              COMMENT ON COLUMN magazzino.valore_giacenza.articolo_id IS
+                  'FK catalogo.articoli (mancava fino al 2026-09-15). L''indice lo copre '
+                  'l''UNIQUE (articolo_id, magazzino_id).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le viste le ricrea il rollback di P-11; qui si disfa la forma.
+              ALTER TABLE magazzino.note DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE magazzino.note ADD CONSTRAINT chk_note_target_tipo
+                  CHECK (target_tipo IN (
+                      'ASSET', 'EVENTO_ASSET', 'INVENTARIO', 'INVENTARIO_RIGA', 'MOVIMENTO',
+                      'RETTIFICA', 'RETTIFICA_RIGA', 'TRASFERIMENTO', 'TRASFERIMENTO_RIGA',
+                      'COSTO_MEDIO'
+                  ));
+              CREATE TABLE IF NOT EXISTS magazzino.note_costo_medio
+                  PARTITION OF magazzino.note FOR VALUES IN ('COSTO_MEDIO');
+              ALTER TABLE magazzino.valore_giacenza DROP CONSTRAINT IF EXISTS fk_mag_valore_giacenza_articolo;
+              ALTER TABLE magazzino.valore_giacenza ADD COLUMN IF NOT EXISTS qta NUMERIC(18,6) NOT NULL DEFAULT 0;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_user_insert_not_null  TO costo_medio_user_insert_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_data_update_not_null  TO costo_medio_data_update_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_data_insert_not_null  TO costo_medio_data_insert_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_meta_not_null         TO costo_medio_meta_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_valore_not_null       TO costo_medio_valore_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_magazzino_id_not_null TO costo_medio_magazzino_id_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_articolo_id_not_null  TO costo_medio_articolo_id_not_null;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT valore_giacenza_id_not_null           TO costo_medio_id_not_null;
+              ALTER SEQUENCE magazzino.valore_giacenza_id_seq RENAME TO costo_medio_id_seq;
+              ALTER INDEX IF EXISTS magazzino.ix_magazzino_valore_giacenza_magazzino_id RENAME TO ix_magazzino_costo_medio_magazzino_id;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT fk_mag_valore_giacenza_magazzino TO fk_mag_costo_medio_magazzino;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT uq_mag_valore_giacenza_art_mag TO uq_mag_costo_medio_art_mag;
+              ALTER TABLE magazzino.valore_giacenza RENAME CONSTRAINT pk_mag_valore_giacenza TO pk_mag_costo_medio;
+              ALTER TABLE magazzino.valore_giacenza RENAME TO costo_medio;
+
+  # ------------------------------------------------------------
+  # IL TRIGGER DI AUDIT SI RINOMINA — SE C'E' (stampo 20260822-25-01)
+  #   Su un DB da zero lo crea ci_apply gia' col nome nuovo; dove esiste va
+  #   rinominato o la prossima passata lo rigenera accanto al vecchio.
+  #   MARK_RAN + sqlCheck su pg_trigger. (Il require_attivo non e' qui: e' un
+  #   constraint trigger, tolto nel changeSet principale.)
+  # ------------------------------------------------------------
+  - changeSet:
+      id: 20260915-08-01-rename-trigger-audit-costo-medio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rinomina il trigger di audit generato dal framework su valore_giacenza, SE c'e'.
+        Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.6 (P-6).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*) FROM pg_trigger tg
+                JOIN pg_class c     ON c.oid = tg.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE NOT tg.tgisinternal
+                 AND n.nspname = 'magazzino'
+                 AND c.relname = 'valore_giacenza'
+                 AND tg.tgname = 'trg_costo_medio_audit_data_user_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TRIGGER trg_costo_medio_audit_data_user_upd
+                  ON magazzino.valore_giacenza RENAME TO trg_valore_giacenza_audit_data_user_upd;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TRIGGER trg_valore_giacenza_audit_data_user_upd
+                  ON magazzino.valore_giacenza RENAME TO trg_costo_medio_audit_data_user_upd;

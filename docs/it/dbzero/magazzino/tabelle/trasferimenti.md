@@ -14,8 +14,6 @@
 | stato_trasferimento | character varying | NO | 'DRAFT'::character varying |
 | magazzino_id_from | bigint | NO |  |
 | magazzino_id_to | bigint | NO |  |
-| sorgenti_tipo_id | bigint | YES |  |
-| sorgenti_uid | uuid | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -25,17 +23,17 @@
 | user_update | text | YES | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
+| sorgente_riga | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_mag_trasferimenti_da_a_distinti |  |
+| CHECK | chk_mag_trasferimenti_sorgente_chiave |  |
 | CHECK | chk_mag_trasferimenti_stato |  |
-| FOREIGN KEY | fk_mag_rettifiche_sorgenti_tipo | sorgenti_tipo_id |
 | FOREIGN KEY | fk_mag_trasf_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_mag_trasferimenti_magazzino_from | magazzino_id_from |
 | FOREIGN KEY | fk_mag_trasferimenti_magazzino_to | magazzino_id_to |
-| FOREIGN KEY | fk_mag_trasferimenti_sorgenti_tipo | sorgenti_tipo_id |
 | PRIMARY KEY | pk_mag_trasferimenti | id |
 
 ## 📑 Indici
@@ -46,15 +44,18 @@
 | ix_mag_trasferimenti_stato | `CREATE INDEX ix_mag_trasferimenti_stato ON magazzino.trasferimenti USING btree (stato_trasferimento)` |
 | pk_mag_trasferimenti | `CREATE UNIQUE INDEX pk_mag_trasferimenti ON magazzino.trasferimenti USING btree (id)` |
 | uq_mag_trasf_sorgente_fk | `CREATE UNIQUE INDEX uq_mag_trasf_sorgente_fk ON magazzino.trasferimenti USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_tipo_id IS NOT NULL)` |
-| uq_mag_trasferimenti_sorgenti_fk | `CREATE UNIQUE INDEX uq_mag_trasferimenti_sorgenti_fk ON magazzino.trasferimenti USING btree (sorgenti_tipo_id, sorgenti_uid) WHERE ((sorgenti_tipo_id IS NOT NULL) AND (sorgenti_uid IS NOT NULL))` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgenti_tipo_id', 'id')` |
-| trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgenti_tipo_id', 'id')` |
-| trg_trasferimenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
+| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
+| trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
+| trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
+| trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
+| trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_trasferimenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_trasferimenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_trasferimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_trasferimenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_trasferimenti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('trasferimenti_id')` |

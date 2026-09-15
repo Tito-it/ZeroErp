@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 / P-3 — RISINCRONIZZAZIONE DELLE DUE SEQUENCE DOPO I SEED
+#   magazzino.causali_id_seq (righe 23-28 da causali.csv, mirror 20251001-51)
+#   config.sorgenti_id_seq  (righe 16-20 da sorgenti.csv, mirror 20251002-21)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezioni 4.1 e 4.2
+#
+# PERCHE'. I due CSV assegnano gli id ESPLICITAMENTE e un INSERT con id
+#   esplicito non avanza la sequence. Trovato provando P-3 in transazione
+#   annullata: l'INSERT di controllo senza id ha ricevuto 23, cioe' l'id della
+#   prima causale nuova — la sequence di causali era a 24 (is_called) prima del
+#   seed, e la tabella arriva a 28. ⚠️ Non e' teorico: magazzino.causali e'
+#   nella whitelist del CRUD generico delle tabelle di configurazione
+#   (_REL_CONSENTITE, CONFIG_TABLES): il pannello admin crea causali con
+#   nextval, e le prossime creazioni fallirebbero su chiave duplicata una
+#   dopo l'altra. config.sorgenti era a 32 (deriva pregressa, nessuna
+#   collisione oggi): si riallinea per la stessa regola, e GREATEST non la
+#   fa arretrare.
+#
+# FORMA IDEMPOTENTE, stampo 20260802-27: GREATEST(max(id), last_value).
+#   Rieseguirlo non fa mai arretrare; se qualcuno inserisse dall'applicazione
+#   prima di questo passo, il valore piu' alto resta quello buono.
+#   In 80_data DOPO i due mirror (20260915 > 20251001/20251002): su un DB da
+#   zero le righe ci sono gia' quando gira.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260915-04-resync-seq-causali-sorgenti-mctit.yaml
+
+  - changeSet:
+      id: 20260915-04-resync-seq-causali-sorgenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Risincronizza magazzino.causali_id_seq e config.sorgenti_id_seq dopo i seed
+        del Lotto 1 (id espliciti da CSV non avanzano la sequence; causali ha un CRUD
+        applicativo dal pannello admin). GREATEST(max(id), last_value): idempotente,
+        non arretra. Brief: brief-db-magazzino-lotto-1-terreno-vuoto (P-2, P-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: causali
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT setval(
+                  pg_get_serial_sequence('magazzino.causali', 'id'),
+                  GREATEST(
+                      (SELECT COALESCE(max(id), 1) FROM magazzino.causali),
+                      (SELECT last_value FROM magazzino.causali_id_seq)
+                  ),
+                  true
+              );
+              SELECT setval(
+                  pg_get_serial_sequence('config.sorgenti', 'id'),
+                  GREATEST(
+                      (SELECT COALESCE(max(id), 1) FROM config.sorgenti),
+                      (SELECT last_value FROM config.sorgenti_id_seq)
+                  ),
+                  true
+              );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Una sequence riallineata in avanti non si riporta indietro.
+              SELECT 1;

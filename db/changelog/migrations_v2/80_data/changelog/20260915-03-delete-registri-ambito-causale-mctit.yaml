@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — LE DUE REGISTRAZIONI DELL'AMBITO CHE IL DROP NON PORTA VIA
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.1 e 4.10-bis
+#
+#   Il 20260915-02 (00_schema) elimina magazzino.ambito_causale e la colonna
+#   causali.ambito_causale_id. Due registri li nominano ancora, e nessuno dei
+#   due si svuota da solo — loadUpdateData non cancella (AGENTS.md, «I dati
+#   di 80_data si cambiano dal CSV»: la cancellazione e' l'unica eccezione
+#   in cui il DELETE SQL forward-only e' la forma giusta):
+#
+#   · dbops.fk_index_policy — riga (magazzino, causali, fk_mag_causali_ambito),
+#     nel mirror base fk_index_policy.csv (gennaio, dormiente: NON si sveglia
+#     per togliere una riga, linee-guida-sql 11.2). La riga resta nel file:
+#     apply_fk_index_policy() salta una riga `t` la cui FK non e' piu' in
+#     vw_fk_senza_indice, quindi e' innocua — ma un registro che nomina un
+#     vincolo inesistente e' un registro sporco, e si pulisce.
+#   · dbops.storico_scope_policy — riga 69 (magazzino.ambito_causale, NESSUNO):
+#     senza la madre col trigger di storico diventerebbe RIGA_SENZA_MADRE
+#     (dbops.vw_storico_scope_da_dichiarare, test 5 di
+#     dbops/test-storico-scope-policy-v1). Il mirror 20260911-23 e' vivo
+#     (runOnChange + ANY): la riga e' tolta ANCHE dal CSV nello stesso commit,
+#     altrimenti il prossimo ritocco della mappa (P-4 → P-8 la cambiano) la
+#     rimetterebbe.
+#
+#   In CI: la tabella esiste finche' 00_schema non la elimina (prima di
+#   80_data); il mirror base inserisce la riga di fk_index_policy e questo
+#   DELETE la toglie subito dopo (20260915 > 20260116); la riga 69 non viene
+#   mai inserita e il DELETE trova zero righe. Su dev: entrambe trovate.
+#   Stampo: 20260912-09.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260915-03-delete-registri-ambito-causale-mctit.yaml
+
+  - changeSet:
+      id: 20260915-03-delete-registri-ambito-causale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie le due registrazioni di magazzino.ambito_causale che il DROP del
+        20260915-02 non porta via: la riga di dbops.fk_index_policy per
+        fk_mag_causali_ambito (mirror base dormiente) e la riga 69 di
+        dbops.storico_scope_policy (altrimenti RIGA_SENZA_MADRE; tolta anche dal
+        CSV). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.1 (P-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+            - tableExists:
+                schemaName: dbops
+                tableName: storico_scope_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE schema_name = 'magazzino'
+                 AND table_name = 'causali'
+                 AND constraint_name = 'fk_mag_causali_ambito';
+
+              DELETE FROM dbops.storico_scope_policy
+               WHERE schema_tabella = 'magazzino'
+                 AND nome_tabella = 'ambito_causale';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le righe tornano dai mirror: fk_index_policy.csv (riga di gennaio,
+              -- rilettura al prossimo risveglio del loader) e storico_scope_policy.csv
+              -- (riga 69, ripristinata a mano nel CSV). Nessun INSERT qui.
+              SELECT 1;

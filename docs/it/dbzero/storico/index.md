@@ -1,7 +1,6 @@
 # Schema `storico`
 
 ## 📚 Tabelle
-- [ambito_causale](tabelle/ambito_causale.md)
 - [articoli](tabelle/articoli.md)
 - [articoli_componenti](tabelle/articoli_componenti.md)
 - [articoli_uom_operativa](tabelle/articoli_uom_operativa.md)
@@ -54,8 +53,10 @@
 - [iva_stati](tabelle/iva_stati.md)
 - [listini_tipologie](tabelle/listini_tipologie.md)
 - [listini_tipologie_utilities](tabelle/listini_tipologie_utilities.md)
+- [lotti](tabelle/lotti.md)
 - [magazzini](tabelle/magazzini.md)
 - [movimenti](tabelle/movimenti.md)
+- [movimenti_attesi](tabelle/movimenti_attesi.md)
 - [note_flussi](tabelle/note_flussi.md)
 - [note_pratiche](tabelle/note_pratiche.md)
 - [note_stili](tabelle/note_stili.md)
@@ -77,7 +78,6 @@
 - [regole_generazione](tabelle/regole_generazione.md)
 - [render_engine_documento](tabelle/render_engine_documento.md)
 - [resellers](tabelle/resellers.md)
-- [reservations](tabelle/reservations.md)
 - [resi](tabelle/resi.md)
 - [resi_righe](tabelle/resi_righe.md)
 - [resi_righe_accrediti](tabelle/resi_righe_accrediti.md)

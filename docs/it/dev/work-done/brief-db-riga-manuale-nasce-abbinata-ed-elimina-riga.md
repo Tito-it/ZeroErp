@@ -16,27 +16,29 @@
 >
 > **Sede.** Le **decisioni di dominio** (D16, D17, D18) stanno qui e sono
 > riportate in sintesi nel brief madre
-> ([brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md)
+> ([brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
 > §2-bis), che resta la sede unica. Il **piano DB** è qui (§4). Per BE e FE
 > qui c'è **solo l'elenco di cosa fare** (§5, §6): il piano lo scrivono loro
-> in [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md).
+> in [brief-be-fe-posting-e-abbinamento-rata.md](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md).
 >
 > ✅ **Applicato su dev il 2026-09-14 alle 15:49** (`databasechangelog`:
 > `20260914-04`, `-05`, `-06`), pgTAP verdi col runner come applicazione
 > (Tid). Il brief era stato scritto la mattina misurando contro il modello vivo
 > (doc auto-gen), non contro i dati: `pagamenti` aveva ancora zero righe di
 > esercizio. **La parte DB è chiusa**; BE (§5), FE (§6) e il copione (§7)
-> sono stati scritti la sera stessa (riquadro sotto) — al DB resta il solo
-> seed P-8 (la doc auto-gen, P-9, è entrata con `84f1b3fd7`).
+> sono stati scritti la sera stessa (riquadro sotto). Il seed P-8 è **scritto
+> il 15/09** (CSV, prova in transazione annullata: riquadro sotto) e aspetta
+> il migrate di Tid; la doc auto-gen, P-9, è entrata con `84f1b3fd7`.
 >
 > ✅ **BE e FE scritti il 2026-09-14 (sera)** su «procedi» di Tid, e **riletti
 > criticamente** la sera stessa (registro §9): il piano sta in §10 col terreno
 > misurato sul codice e lo stato per voce in §10.1. La decisione emersa alla
 > rilettura (**Q-H**, il PATCH di `importo` e la capienza) è stata **presa il
-> 15/09** (strada A, §10.4). **Aperto**: la prova in-app (C-2) e **un** solo
-> prerequisito al team DB, il seed **P-8** (`meta.nessuna_azione_key` sui
-> cinque stati: a repo è ancora `{}`). P-9 risulta **già fatta** (doc auto-gen
-> in `84f1b3fd7` del 14/09, `check_i18n_keys` la legge). Nessun commit.
+> 15/09** (strada A, §10.4). La prova in-app (**C-2**) **esce dal brief** e vive
+> nel copione di collaudo (riquadro «CHIUSO», residuo 1). Il solo
+> prerequisito al team DB, il seed **P-8**, è **scritto il 15/09** (riquadro
+> sotto) e aspetta il migrate; P-9 risulta **già fatta** (doc auto-gen in
+> `84f1b3fd7` del 14/09, `check_i18n_keys` la legge). Nessun commit.
 >
 > ✅ **Sviluppo DB scritto il 2026-09-14** (stessa giornata): tre changeSet
 > `20260914-04/05/06`, il seed, un pgTAP nuovo da 30 asserzioni, sei pgTAP
@@ -48,6 +50,76 @@
 > lancio col runner sono di Tid** — fatti alle 15:49, verdi. Due decisioni
 > prese durante lo sviluppo — la porta `DELETE` del giro dei fondi e D18
 > confermata — stanno in §4 e §9.
+>
+> ✅ **P-8 scritto il 2026-09-15** (DB): `meta.nessuna_azione_key` sulle cinque
+> righe di `pagamenti/vendite_contabili_stati.csv`, **solo il CSV** — i mirror
+> sono due (`20260213-04` e il ri-ancorato `20260821-30`, quello che porta
+> tutte le colonne), entrambi `runOnChange` + `ANY` e già risvegliati
+> (`RERAN`/`EXECUTED` il 21-08), quindi rileggono il file al prossimo
+> migrate. Provato su dbdev in `BEGIN … ROLLBACK` con l'upsert di **tutte**
+> le righe (le due specie di mina): `UPDATE 5`, `lock_columns` muto, e la
+> colonna che legge `_DISTINTA_SELECT` risponde con le cinque chiavi;
+> `check_i18n_keys.py` verde (controllo 4 le trova nei locales `it`/`en`).
+> Scheda manuale del catalogo aggiornata (rimanda allo standard `infoKey`).
+> **L'apply è di Tid**: fino a lì `stato_info_key` resta `NULL` e la barra è
+> muta, non rotta.
+>
+> **Stato:** ✅ **CHIUSO il 2026-09-15** — riquadro «CHIUSO» qui sotto: che cosa
+> è consegnato, come è stato provato, e le **otto** cose che escono dal brief
+> con la loro destinazione — la prima è **C-2**, che vive nel copione. La
+> storia passo per passo è in §9.
+
+---
+
+> ## ✅ CHIUSO — 2026-09-15 · DB P-0 → P-9 · BE-1…8 · FE-1…9 · C-1 · archiviato in `work-done/`
+>
+> **Lato DB**: `20260914-04/05/06` `EXECUTED` su dev il 14-09 alle 15:49; pgTAP
+> nuovo (30 asserzioni) e i sei adeguati lanciati col runner come applicazione
+> da Tid; committati con `7598dce86` e **verdi in CI** — la `CI-Validate` su
+> `Tito-dev` del 15-09 alle 09:30 (`8b42e2807`) li contiene, e
+> `test-righe-contabili-eliminazione-v1.sql` non compare in nessuna delle due
+> baseline dei rossi. P-9 è entrata con `84f1b3fd7`. Il seed **P-8** è scritto
+> il 15-09 (CSV in albero, provato con l'upsert di tutte le righe in transazione
+> annullata, `check_i18n_keys.py` verde) e **aspetta il migrate di Tid**: è
+> stato di macchina, non di progetto — in CI il mirror ri-esegue da solo. I file
+> sono **immutabili**: un cambio va in un changeSet nuovo.
+>
+> **Lato BE/FE**: BE-1…BE-8, FE-1…FE-9 e la Q-H (strada A) sono **mergiati** su
+> `Tito-dev` (`3fd99cc0b` → PR #1589, `62426b8c7`), `api_pagamenti.md` compresa;
+> al consuntivo 217 test backend verdi (DB e2e compresi), build · lint · i18n
+> verdi. Il consuntivo per voce sta in
+> [brief-be-fe §10.12](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md).
+>
+> **Il copione (C-1) è riscritto. C-2 — la prova a video — ESCE dal brief** e
+> vive nel documento che si tiene aperto accanto all'applicazione:
+> [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md),
+> riquadro «C-2». ⚠️ Non è una chiusura «col test verde perché nessuno l'ha
+> guardato»: i tre rilievi che hanno generato questo brief li ha trovati un giro
+> a video, e il secondo giro è scritto lì punto per punto — cosa fare, cosa deve
+> succedere, cosa fare se non succede.
+>
+> ⚠️ **Che cosa ESCE dal brief, e dove va** — censito alla chiusura, perché un
+> residuo senza destinazione è un residuo che nessuno rilegge:
+>
+> | # | Residuo | Dove va | Perché non resta qui |
+> | --- | --- | --- | --- |
+> | 1 | 🔴 **C-2**, la prova in-app di D16/D17/D18: §2.6–2.9, §3.1–3.3-bis, §4.0 del copione, più la riga di stato del drawer (dopo l'apply di P-8) | [copione](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md), riquadro «C-2» | il copione è il documento che si **spunta** accanto all'app; un brief chiuso non si tiene aperto |
+> | 2 | **Apply di P-8** (il seed è in albero, provato) + commit del CSV e delle due schede | `db-migrate` di Tid | stato di macchina: in CI il mirror ri-esegue da solo |
+> | 3 | §8: i **fatti** di una riga sotto una distinta **finale** restano modificabili da SQL — sotto `CHIUSA` la porta 2 tace di proposito (la sede è `guard_distinta_finale`, che lascia «le altre scritture su una riga già lì»); nessun verbo BE lo fa | **DB**, decisione — brief madre [§2-bis D16-D18, «residui di modello»](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) | è una decisione (fatti immutabili sotto una finale, per ogni origine), non un passo |
+> | 4 | §10.2-2: sulle due matrici `meta` è `{"manuale": false}` ovunque (`20260821-31`) e «chi può chiedere» vive nel BE (`STATI_*_RICHIEDIBILI`); seminare `manuale`/`action_key`/`label_key` porterebbe il vocabolario dove il modello l'ha previsto | **DB**, decisione — brief madre §2-bis | è il modello della matrice, non di questo giro; BE-5 legge la matrice così com'è |
+> | 5 | A-5: `contenuto_modificabile` è una **copia dichiarata** del motivo 3, scritto tre volte (check, guard porta 2 sull'`INSERT`, BE) e legato da test; una `fn_check_contabile_contenuto_modificabile(p_contabile_id)` darebbe una sede sola | **DB**, decisione — brief madre §2-bis | BE-7 è deciso come derivata; cambiarlo è un giro suo |
+> | 6 | Q-G: la `LATERAL` «primo motivo» è scritta in **quattro** repository nella stessa forma (`registri` ×2, `vendite` ×1, `pagamenti` ×1) | **BE**, «in un giro suo» — [brief BE/FE §10.12](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | estrarre un BB `core/db` è trasversale ai domini |
+> | 7 | Q-C: il markup «richiesta di conferma» della forzatura (Message + motivo + «Forza») è alla **seconda** occorrenza, dichiarata e non estratta | **FE** — brief BE/FE §10.12 | il composable è già condiviso; il markup nel dialogo sta nel footer, nel form è inline |
+> | 8 | La `DataTable` grezza delle righe nel drawer (eccezione ammessa: righe di un documento nel suo master; debito verso `RigheMasterDetailTable`) | `frontend/scripts/datatable.baseline.json` + il commento sopra l'import | debito pre-esistente (28/08), dichiarato dove il presidio lo conta |
+>
+> Nessun residuo resta senza casa. Il trasloco in `work-done/` chiude il brief:
+> i link relativi ai documenti ancora in `work-in-progress/` sono riscritti, le
+> due schede manuali (`script/manual/fn_check_riga_contabile_eliminabile`,
+> `pagamenti/manual/trgfn_vendite_contabili_righe_guard_contenuto`) puntano alla
+> sede nuova, e i residui 1 e 3-7 sono scritti **nei documenti che li ricevono**,
+> non solo qui. ⚠️ `mappa-concentrica-changelog.md`: l'ultima voce copre
+> l'11–14/09 e non nomina questo cantiere — entra nella voce del periodo
+> successivo, quando si scriverà.
 
 ---
 
@@ -276,7 +348,7 @@ BOZZA ──(Porta a VALIDATA)──► VALIDATA ──(Registra)──► CHIUS
 saldo fattura: invariato ─────► «in lavorazione» ─────► residuo che CAMBIA
 ```
 
-🔴 **Il copione** ([collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-distinte-e-sistemazioni.md))
+🔴 **Il copione** ([collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md))
 passava da §2.7 a §4.1 «Sul drawer → Registra» **senza** il passo «Porta a
 VALIDATA»: la madre rifiuta da bozza (`E_CONTABILE_NON_REGISTRABILE`), e il
 punto 4.1 sarebbe fallito per costruzione. ✅ **Riscritto il 14/09** (C-1)
@@ -314,7 +386,7 @@ Tid.
 | **P-6** ✅ | Doc manuale: `docs/it/dbzero/script/manual/fn_check_riga_contabile_eliminabile.md`, `docs/it/dbzero/pagamenti/manual/trgfn_vendite_contabili_righe_guard_contenuto.md` (nuove); aggiornati `pagamenti/manual/vendite_contabili_righe.md` (sezione «Eliminare una riga, e quando il contenuto si ferma»), `vendite/manual/fn_cancella_fondo_fattura.md` (la porta del `DELETE`) e la guida [gestione-dei-pagamenti.md](/guide/gestione-dei-pagamenti) — §«Righe contabili», §«Trigger di guardia» (voce nuova che rimanda), §«Flusso logico» (validare ≠ registrare, in un paragrafo), regola di dominio 8. ⛔ Le doc auto-gen non si editano: le due schede nuove entrano nel sito alla prossima rigenerazione | docs | rimando al meccanismo, non copia |
 | **P-7** ✅ | 🆕 **Adeguamento dei pgTAP esistenti**, nello stesso giro (memoria: un guard restrittivo si grepa prima). Il `DELETE` di cleanup di **cinque** file cancella righe sotto distinte `CHIUSA` o `GENERATA` — `test-abbinamento-rata`, `test-fn-posta-contabile`, `test-fondi-fattura`, `test-fondi-fattura-governo`, `test-fondo-fattura-eseguito` — e ora lo dichiara con la stessa GUC della madre del giro (il ROLLBACK farebbe comunque il lavoro). `script/test-rubinetto-primo-motivo-v1.sql` test 5: da **16 a 17** funzioni che chiamano l'helper (un sito nuovo nato già sull'helper, non una bonifica). Nessun altro pgTAP scrive fatti sotto una manuale validata o disattiva righe: censiti 24 file che nominano gli oggetti toccati, tutti provati | pgTAP | 110/110 sui sei adeguati, 168 verdi sugli altri |
 
-| 📮 **P-8** | 🆕 *(richiesta dal lato BE/FE, 2026-09-14 sera — per FE-9, §10.2-3)* **Seed `meta.nessuna_azione_key` sui cinque stati della distinta**, in `80_data/sql/pagamenti/vendite_contabili_stati.csv` (mirror `20260213-04`, `runOnChange`: si edita il CSV, mai un `UPDATE`): `BOZZA` → `pagamenti.distinte.stato_info.bozza` · `IMPORTATA` → `…importata` · `VALIDATA` → `…validata` · `CHIUSA` → `…chiusa` · `ANNULLATA` → `…annullata`. Forma del valore: `"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.bozza""}"` (come `config/stati_doc_ordini.csv`). ⭐ **BE e FE sono già pronti**: `_DISTINTA_SELECT` legge `st.meta ->> 'nessuna_azione_key' AS stato_info_key` (oggi `NULL`), il drawer lo passa a `DrawerActionsBar :info-key`, e le **cinque chiavi sono già nei locales** `it`/`en` — quindi `check_i18n_keys.py` (controllo 4, che scandisce ogni CSV di `80_data/sql`) le troverà. Nessun altro oggetto | `80_data` | il testo compare a video all'apply; fino a lì la barra è muta, non rotta |
+| ✅ **P-8** *(scritto 15/09, apply di Tid)* | 🆕 *(richiesta dal lato BE/FE, 2026-09-14 sera — per FE-9, §10.2-3)* **Seed `meta.nessuna_azione_key` sui cinque stati della distinta**, in `80_data/sql/pagamenti/vendite_contabili_stati.csv` (⚠️ i mirror sono **due**, non uno: `20260213-04` e il ri-ancorato `20260821-30` con la lista completa delle colonne — entrambi `runOnChange` + `ANY`, entrambi già risvegliati; si edita il CSV, mai un `UPDATE`): `BOZZA` → `pagamenti.distinte.stato_info.bozza` · `IMPORTATA` → `…importata` · `VALIDATA` → `…validata` · `CHIUSA` → `…chiusa` · `ANNULLATA` → `…annullata`. Forma del valore: `"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.bozza""}"` (come `config/stati_doc_ordini.csv`). ⭐ **BE e FE sono già pronti**: `_DISTINTA_SELECT` legge `st.meta ->> 'nessuna_azione_key' AS stato_info_key` (oggi `NULL`), il drawer lo passa a `DrawerActionsBar :info-key`, e le **cinque chiavi sono già nei locales** `it`/`en` — quindi `check_i18n_keys.py` (controllo 4, che scandisce ogni CSV di `80_data/sql`) le troverà. Nessun altro oggetto. ✅ **Fatto il 15/09**: prova su dbdev in `BEGIN … ROLLBACK` con l'upsert di tutte le righe (CSV = DB prima dell'edit, nessuna riga irriscrivibile, `UPDATE 5`), `stato_info_key` letto come lo legge il BE, `check_i18n_keys.py` verde; scheda `pagamenti/manual/vendite_contabili_stati.md` aggiornata sul `meta` | `80_data` | il testo compare a video all'apply; fino a lì la barra è muta, non rotta |
 | ✅ **P-9** *(fatta: `84f1b3fd7`, 14/09)* | 🆕 Rigenerazione della **doc auto-gen** (`docs/it/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile.md`, `pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto.md`, `vendite/funzioni/fn_cancella_fondo_fattura.md`): le due schede manuali nuove entrano nel sito da lì, e il controllo 4 di `check_i18n_keys.py` legge le `reason_key` dal corpo delle funzioni — le tre `pagamenti.righe.elimina_reason.*` sono già nei locales | docs | già previsto in testa al brief; qui solo per completezza dell'elenco |
 
 **Cosa il DB NON fa, e perché**
@@ -361,7 +433,7 @@ Tid.
 
 ## 7. Il copione di collaudo — righe da riscrivere
 
-✅ **Riscritte il 2026-09-14 (C-1)** in [collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-distinte-e-sistemazioni.md):
+✅ **Riscritte il 2026-09-14 (C-1)** in [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md):
 la colonna «Domani» è ciò che il copione dice adesso; **la prova a video (C-2)
 non è ancora stata fatta**.
 
@@ -440,6 +512,8 @@ non è ancora stata fatta**.
 | 2026-09-14 15:49 | **Applicato su dev** (`20260914-04/05/06`), seed compreso; pgTAP verdi col runner come applicazione — quindi anche la lettura sotto RLS della check e del guard, che la prova da owner non poteva esercitare. **DB chiuso.** Da qui: BE-1…BE-8 e FE-1…FE-9 (piano in `brief-be-fe-posting-e-abbinamento-rata.md`), il copione §7, la rigenerazione della doc auto-gen (le due schede manuali nuove entrano nel sito da lì), e la baseline CI al primo giro verde. Resta dichiarato e **non pianificato** il residuo di §8 (fatti modificabili sotto una distinta finale): è una decisione, non un passo |
 | 2026-09-14 (sera, dopo) | ✅ **Sviluppo BE/FE scritto** (su «procedi» di Tid; Q-A sì, Q-D strada B, le altre come proposte). BE: `crea_riga` con la destinazione (un `INSERT`, `ABBINATA`/`DA_ABBINARE` dalla presenza della fattura, BA letto dal documento se assente, lettura unica `_destinazione_da_payload` condivisa con `abbina`), `DELETE /righe/{id}/` → `attivo = false`, le **quattro** colonne `elimina_blocco_*`/`can_eliminare` in LATERAL sul frammento condiviso (misurato con EXPLAIN: Function Scan sotto la WindowAgg, accanto ai predicati RLS — resta), `transizioni.{distinta,riga}` dalle due matrici al posto di `stati_richiedibili`, `contenuto_modificabile`, `stato_info_key` dal `meta`; e **`get_riga` filtra `attivo`** (il buco). FE: `RataSelect` estratto (dialogo + form), form riga documento-first con importo proposto e toggle «non riesco ad associarlo», forzatura a due tempi alla nascita, «Elimina» col cestino e il motivo dal DB (`bloccoMotivo`), `SCARTATA` con icona sua, transizioni e `modificabile` dal dettaglio, `:info-key`, chiavi i18n (compresi i cinque `stato_info.*`). Copione §7 riscritto (§2.6–2.9, §3.1–3.3, §4.0). 📮 Al DB: **P-8** seed `nessuna_azione_key` (righe esatte in §4) e **P-9** doc auto-gen. Nessun commit |
 | 2026-09-15 | ✅ **Q-H decisa: strada A** (Tid). Il PATCH della riga accetta `forzata` + `motivo_forzatura` come secondo tempo della capienza, con la stessa regola della nascita e di `abbina` (una funzione: `_guard_motivo_con_forzatura`); R-6 resta intero sulla destinazione. Schema OpenAPI, `api_pagamenti.md` §PATCH, client `aggiornaRiga`, form riga a un handler solo con `extra` in entrambi i modi. Test: +5 a mock (`ModificaTests`), **+2 sul DB provvisto** con fixture costruita (`ModificaSecondoTempoTests`: 400→900 rifiutato `E_RIGA_CONTABILE_CAPIENZA_SUPERATA`/`confirm_and_retry` e riga intatta; con `forzata` passa e resta scritto). Resta aperto **C-2**. Verificato a repo lo stato DB: **P-9 già fatta** (`84f1b3fd7`), **P-8 no** (`meta = {}` sulle cinque righe del CSV) |
+| 2026-09-15 (DB) | ✅ **P-8 scritto**: `meta.nessuna_azione_key` sulle cinque righe di `pagamenti/vendite_contabili_stati.csv`, forma dei CSV gemelli (`"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.bozza""}"`). Solo il CSV: i mirror sono **due** (`20260213-04` + ri-ancorato `20260821-30`), `runOnChange` + `ANY`, già `RERAN`/`EXECUTED` — rileggono il file al prossimo migrate. Prova su dbdev in `BEGIN … ROLLBACK`: CSV = DB prima dell'edit (nessuna mina stantìa), upsert di **tutte** le righe passato (`UPDATE 5`, nessuna irriscrivibile, `lock_columns` non si oppone), `meta ->> 'nessuna_azione_key'` risponde con le cinque chiavi; `check_i18n_keys.py` verde. Scheda `pagamenti/manual/vendite_contabili_stati.md`: il `meta` dichiara la chiave e rimanda allo standard `infoKey` (e il codice d'esempio smette di dire `DRAFT`). **Apply e runner di Tid**; nessun commit. Resta aperto C-2 |
+| 2026-09-15 (chiusura) | ✅ **CHIUSO e archiviato in `work-done/`** (riquadro in testa). C-2 esce dal brief e vive nel copione di collaudo, riquadro «C-2»; i residui di modello (fatti sotto una finale, `meta` delle matrici, sede unica del motivo 3) vanno al brief madre §2-bis; Q-C e Q-G al brief BE/FE §10.12; l'apply di P-8 resta a Tid come stato di macchina. Link relativi riscritti, schede manuali ri-puntate |
 | 2026-09-14 (sera, rilettura critica) | 🔍 **Rilettura del BE/FE scritto**, sul non committato. Un **difetto** corretto: in **modifica** il form riga passava da `useForzaturaConfermata` e sul 409 di capienza (che `guard_rata` solleva anche sull'`UPDATE` di `importo`) offriva un «Forza» che ripeteva lo stesso PATCH senza `forzata` — un pulsante che il DB rifiuta; ora la modifica usa un handler suo e il 409 è un toast, come prima. Il buco di modello che ci sta sotto è **Q-H** (§10.4). Un **codice fragile** chiuso nel BB: `useLetturaTreStati` non aveva guard di versione, e due letture in volo (cambio fattura in `RataSelect`, saldo in `useSaldi`) potevano lasciare a video il documento sbagliato — `useFetchVersion` dentro, 6 test costruiti (`useLetturaTreStati.spec.js`). **Duplicati** tolti: il predicato «stato vivo» scritto sei volte nel repository (`_sql_stato_vivo`), la whitelist di `crea_riga` che ricopiava `_CAMPI_RIGA_PATCH`, `E_FATTURA_NON_TROVATA` dichiarato in tre service (ora in `_helpers`). Doc `api_pagamenti.md` §abbina allineata (il cliente si deriva). Registro `datatable.baseline.json` abbassato (il commento sopra l'import era arrivato senza il verso). 4800 BE + 50 FE verdi, lint, build, guards, i18n |
 | 2026-09-14 (sera) | 📋 **Analisi e piano BE/FE scritti in §10**, fermo al piano (Tid). Misurato sul codice: **BE-6 e la metà i18n di FE-5 erano già chiusi** (`eeed40be8`, altro cantiere, stesso giorno); BE-2 e BE-8 non hanno lavoro; tutto il resto è 🔴. Tre correzioni a §5/§6: BE-4 porta **quattro** colonne (terna + flag, perché `bloccoMotivo.js` le legge così), BE-5 vale **anche per la testata** (oggi coincide con la matrice per caso; e la matrice ha `meta.manuale = false` ovunque — residuo di modello per il DB), FE-9 a standard passa da un **seed** `nessuna_azione_key` sugli stati (P-8) e non da un `v-if`. 🔴 **Un buco che nasce con D17**: `get_riga` non filtra `attivo`, quindi `PATCH`/`stato`/`abbina` passerebbero su una riga eliminata che nessuna lista mostra — si chiude in A-3. Regola del 2 da dichiarare: `RataSelect` (seconda occorrenza del giro fattura → rate col saldo) e `_destinazione_da_payload`. Sette decisioni in §10.4. Nessun codice scritto |
 
@@ -448,7 +522,7 @@ non è ancora stata fatta**.
 ## 10. Analisi e piano BE/FE *(2026-09-14, scritto dal lato BE/FE; eseguito la sera stessa — stato per voce in §10.1 e per passo in §10.3)*
 
 > **Perché sta qui e non nel piano BE/FE.** La sede naturale sarebbe
-> [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md)
+> [brief-be-fe-posting-e-abbinamento-rata.md](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md)
 > (la sua riga di registro del 14/09 dice *«il piano lo scrive questo
 > documento»*): Tid ha chiesto di scriverlo **qui**, accanto alle decisioni. Il
 > consuntivo, quando si costruirà, andrà nel §10 di quel documento — questa
@@ -462,11 +536,11 @@ non è ancora stata fatta**.
 > ✅ **Sviluppo BE/FE scritto il 2026-09-14 (sera), su «procedi» di Tid** —
 > Q-A estrazione **sì**, Q-D **strada B**, le altre cinque come proposte in
 > §10.4. Consuntivo nel piano BE/FE
-> ([§10.12](brief-be-fe-posting-e-abbinamento-rata.md)); qui resta il piano e
+> ([§10.12](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md)); qui resta il piano e
 > lo stato per voce. Verdi: **217** test backend (DB e2e compresi, 11 nuovi sul
 > DB provvisto + 25 a mock), build · eslint · oxlint · `check_i18n_keys.py`.
-> 📮 Al team DB resta **P-8** (seed, per FE-9); **P-9** è entrata con
-> `84f1b3fd7`. Nessun commit.
+> 📮 Al team DB restava **P-8** (seed, per FE-9): ✅ **scritto il 15/09**,
+> aspetta il migrate; **P-9** è entrata con `84f1b3fd7`. Nessun commit.
 
 ### 10.1 Il terreno, misurato sul codice
 
@@ -538,7 +612,7 @@ prima dell'ok (§10.4).
 
 | | Cosa | Serve a |
 | --- | --- | --- |
-| **P-8** | seed `meta.nessuna_azione_key` sulle cinque righe di `pagamenti/vendite_contabili_stati.csv` (chiavi in §10.2-3) | FE-9 a standard |
+| ✅ **P-8** *(scritto 15/09, apply di Tid)* | seed `meta.nessuna_azione_key` sulle cinque righe di `pagamenti/vendite_contabili_stati.csv` (chiavi in §10.2-3) — §4 P-8 | FE-9 a standard |
 | ✅ **P-9** | rigenerazione della doc auto-gen (le due schede nuove + il corpo della check, che il controllo 4 di `check_i18n_keys.py` legge) — **fatta** con `84f1b3fd7` (14/09) | chiudere il cerchio i18n |
 | 🔵 | *(residuo, decisione)* `meta.manuale`/`action_key`/`label_key` sulle matrici, per portare «chi può chiedere» dove il modello l'ha previsto | BE-5 senza vocabolario in Python |
 

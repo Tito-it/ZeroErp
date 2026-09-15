@@ -3,108 +3,123 @@
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
-> • [magazzino.causali](/dbzero/magazzino/tabelle/causali)
-> • [magazzino.costo_medio](/dbzero/magazzino/tabelle/costo_medio)
-> • [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini)
+> • [magazzino.causali](/dbzero/magazzino/tabelle/causali) — il verso
+> • [magazzino.lotti](/dbzero/magazzino/tabelle/lotti) e [magazzino.assets](/dbzero/magazzino/tabelle/assets) — la tranche
+> • [magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) — la copia del valore
+> • [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo delle sorgenti
 >
-Approfondimento viste:
-> • [magazzino.vw_giacenza](/dbzero/magazzino/views/vw_giacenza)
+Approfondimento viste e funzioni:
+> • [magazzino.vw_giacenza](/dbzero/magazzino/views/vw_giacenza), [magazzino.vw_giacenza_ubicazione](/dbzero/magazzino/views/vw_giacenza_ubicazione)
+> • [magazzino.trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso)
+> • [script.trgfn_guard_sorgente_polimorfa_tipizzata](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_tipizzata)
+>
+Guide: [Sorgente polimorfa](/guide/sorgente-polimorfa) · brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.4)
 
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+(rev 2026-09-15 — Lotto 1 del magazzino)
 
-**Il libro mastro del magazzino.** È l'unica scrittura che conta: giacenze e valori non sono
-dati autonomi, sono **derivati** da qui.
+**Il registro dei movimenti**: una riga per ogni entrata o uscita di un articolo da un
+magazzino. È l'unica scrittura che conta — la giacenza è la somma di queste righe, il valore
+è la ri-somma dei loro costi — e non esiste un posto dove «correggere la giacenza» senza
+passare da qui.
 
-È ciò che rende il magazzino ricostruibile — un saldo che non torna si spiega risalendo ai
-movimenti, e non esiste un posto dove «correggere la giacenza» senza lasciare traccia.
-
-Ogni riga porta articolo, magazzino, causale, quantità, costo unitario, data, ed
-eventualmente lotto, seriale, ubicazione di partenza e di arrivo.
-
----
-
-### 🔴 Difetto bloccante: oggi si possono registrare **solo trasferimenti**
-
-```sql
-chk_mag_movimenti_da_destinazione_distinti
-  CHECK (magazzino_id <> magazzino_id_dest
-         AND magazzino_id      IS NOT NULL
-         AND magazzino_id_dest IS NOT NULL)
-```
-
-Il vincolo pretende che **`magazzino_id_dest` sia sempre valorizzato**. Ma la colonna è
-dichiarata **`nullable`**, e un carico da acquisto o uno scarico da vendita **non hanno** un
-magazzino di destinazione.
-
-Verificato il 2026-08-21 valutando l'espressione:
-
-| Caso | Il CHECK vale | Esito |
-|---|---|---|
-| carico semplice (`dest` = `NULL`) | `false` | **RIFIUTATO** |
-| trasferimento (`dest` = altro magazzino) | `true` | passa |
-
-⚠️ In PostgreSQL un CHECK passa se è `TRUE` **o** `NULL`; qui la congiunzione con
-`IS NOT NULL` lo porta a `FALSE`, non a `NULL`. Il movimento più comune del magazzino — il
-carico — **non è inseribile**.
-
-È latente solo perché la tabella è **vuota**: il dominio non è mai stato avviato. Sarebbe il
-primo errore al primo giorno di esercizio.
-
-**La forma che esprime l'intenzione** — la destinazione serve ai soli trasferimenti, e quando
-c'è dev'essere diversa dall'origine:
-
-```sql
-CHECK (magazzino_id_dest IS NULL OR magazzino_id <> magazzino_id_dest)
-```
-
-⭐ Non è una forma inventata: è **quella che il vincolo gemello sulle ubicazioni usa già** sulla
-stessa tabella (`chk_mag_movimenti_ubi_from_to_diff`). «Se il valore c'è, dev'essere diverso»,
-non «il valore ci dev'essere». `magazzino_id` non ha bisogno del proprio `IS NOT NULL`: la
-colonna è già dichiarata `NOT NULL`, e ripeterlo nel CHECK è la ridondanza da cui è nato il
-difetto.
-
-✅ **Corretto da `00_schema/magazzino/20260821-10`**, e presidiato da
-`db/pgtap/magazzino/test-movimenti-vincoli-v1.sql` — che prima non esisteva: **nessun pgTAP
-toccava questa tabella**, ed è il motivo per cui il difetto ha potuto restare invisibile.
-
-⚠️ Il changeSet **allarga**: ammette tutto ciò che ammetteva prima, più i movimenti senza
-destinazione. Non può quindi invalidare righe esistenti.
+Dal 15 settembre 2026 la tabella ha la forma decisa dalle analisi di settembre (M-1 → M-8,
+D-1 → D-9). Quattro regole la governano, e chi la legge deve saperle prima di scrivere.
 
 ---
 
-### ⚠️ Il segno della causale non è legato al segno della quantità
+### Le quattro regole
 
-`magazzino.causali.segno` vale `+1` o `-1` (`CARICO_ACQ` +1, `SCARICO_VEN` -1, …), e
-`magazzino.vw_giacenza` calcola la giacenza con un puro `sum(qta)`.
+**1. La sorgente è obbligatoria e a catalogo.** Ogni movimento dice *quale operazione* lo
+ha generato: `sorgente_tipo_id` (una riga di [config.sorgenti](/dbzero/config/tabelle/sorgenti):
+riga di bolla, riga di inventario, riga di rettifica, riga di trasferimento, evento di un
+asset…) più **esattamente una** chiave fra `sorgente_riga` (numerica) e `sorgente_uid`
+(UUID), secondo quanto il catalogo dichiara per quel tipo. Un guard verifica che il record
+esista davvero: una sorgente inesistente è rifiutata, non registrata.
 
-Perché il conto torni, `qta` deve quindi arrivare **già firmata**, coerente con la causale. Il
-CHECK sulla quantità è `qta <> 0` — non `qta > 0` — il che conferma l'intenzione.
+⭐ Non esiste un movimento senza operazione a monte: **la correzione a mano è una
+rettifica**, con la sua riga. Fino al 14-09 la tabella portava un riferimento libero
+(`doc_schema`, `doc_table`, `doc_id`) che nessun vincolo controllava — poteva nominare una
+tabella che non c'era.
 
-⚠️ Ma **nulla lo garantisce**: nessun vincolo e nessun trigger legano il segno di `qta` al
-`segno` della causale. Un `CARICO_ACQ` con `qta = -5` è oggi scrivibile, e farebbe **calare**
-la giacenza pur essendo registrato come carico.
+**2. Il verso sta nella quantità.** `qta` è firmata: positiva in entrata, negativa in uscita,
+mai zero. Il segno deve coincidere con `causali.segno`; se non coincide, il guard
+[trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso) rifiuta
+la riga (`E_MAG_MOVIMENTO_VERSO_INCOERENTE`). È la ragione per cui `vw_giacenza` può sommare
+senza guardare le causali: la quantità arriva già nel verso giusto, e applicare il segno una
+seconda volta lo raddoppierebbe.
 
-Oggi la coerenza è affidata a chi scrive.
+**3. La quantità è in unità base dell'articolo.** Non c'è più una `uom_id` sul movimento:
+come l'operatore ha digitato la quantità (10 scatole da 12) sta sulla riga di documento, che
+il movimento raggiunge attraverso la sorgente. La conversione la fa l'operazione prima di
+scrivere qui.
 
-⭐ **Le due strade per chiuderlo — un CHECK che leghi i due segni, oppure un trigger che derivi
-`qta` — sono discusse in [magazzino.causali](/dbzero/magazzino/tabelle/causali)**, dove vive la
-colonna `segno`: lì c'è il confronto fra le due, con le conseguenze di ciascuna per chi scrive
-un movimento. Va deciso **prima** del primo movimento reale.
+**4. L'identità è l'operazione-per-tranche.** L'indice unico `uq_mag_movimenti_identita` è
+sulla terna *(sorgente, chiave del record, causale)* più la tranche *(asset, lotto,
+ubicazione)*, con `NULLS NOT DISTINCT`: due righe uguali senza lotto, seriale e ubicazione
+**collidono** (è la stessa operazione scritta due volte), mentre le due righe OUT/IN di un
+trasferimento no (causali diverse) e N tranche dello stesso ricevimento no (lotti diversi).
+⭐ La causale è il *verbo* dell'operazione: non serve una colonna che lo ripeta.
 
 ---
 
-### Le reti che invece ci sono
+### Lotto, seriale, posizione
 
-* `chk_mag_movimenti_qta_non_zero` — un movimento a quantità zero non ha significato;
-* `chk_mag_movimenti_ubi_from_to_diff` — ubicazione di partenza e arrivo non coincidono
-  (⭐ scritto **correttamente** con i `NULL` ammessi: `IS NULL OR ... <> ...`, la forma che
-  manca al vincolo sui magazzini);
-* quattro guard `require_attivo` su articolo, causale, magazzino e unità di misura;
-* `tx_id`, audit e **storicizzazione** (`trg_movimenti_z90_storico_upd_dlt`): il ledger è
-  archiviato a ogni modifica.
+`lotto_id` e `asset_id` sono chiavi verso [magazzino.lotti](/dbzero/magazzino/tabelle/lotti)
+e [magazzino.assets](/dbzero/magazzino/tabelle/assets), non più testo libero. Con un asset la
+quantità è **uno** (`|qta| = 1`): un pezzo serializzato si muove uno alla volta. Se
+l'articolo li pretende (`catalogo.articoli.requires_lotto`, `requires_serial`) è la primitiva
+di scrittura (Lotto 2) a rifiutare un movimento senza.
+
+`ubicazione_id` è **una sola** posizione per riga: uno spostamento dentro lo stesso magazzino
+sono due righe, un'uscita dall'una e un'entrata nell'altra. Le vecchie coppie
+(`magazzino_id_dest`, `ubicazione_id_from/_to`) non esistono più.
+
+---
+
+### Un ledger non si spegne: si storna
+
+Non c'è più `attivo`. Un movimento sbagliato si annulla con un movimento contrario, che lo
+nomina in `storno_di_movimento_id` e porta una causale di verso opposto (`STORNO_POS` per
+annullare un'uscita, `STORNO_NEG` per un'entrata). Il legame è unico: un movimento si storna
+una volta sola. L'utility che lo fa è un lotto successivo.
+
+---
+
+### Il costo
+
+`costo_unitario` ha tre significati, e vanno tenuti distinti: in **entrata** da documento è
+un dato in ingresso (il prezzo della riga d'acquisto, il costo di produzione); in **uscita** è
+un dato calcolato — la media ponderata corrente dell'articolo in quel magazzino; nella riga
+IN di un trasferimento è **ereditato** dalla riga OUT gemella.
+[magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) è la somma di questi
+valori, e si ricostruisce da qui.
+
+---
+
+### Chi può vedere e scrivere
+
+La tabella è nel perimetro RLS del dominio: un operatore vede e scrive i movimenti dei
+magazzini del **proprio emittente** (policy `rls_movimenti_ef_whitelist`, che risale dal
+magazzino). Il meccanismo è quello comune a tutto il progetto: vedi
+[Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
+
+⚠️ Finché la primitiva di scrittura non esiste, la tabella resta scrivibile
+dall'applicazione: il perimetro c'è, la porta no.
+
+---
+
+### Storia
+
+* 2026-08-21 — primo pgTAP della tabella; corretto il CHECK che rendeva inseribili solo i
+  trasferimenti (`20260821-10`).
+* 2026-09-15 — la forma decisa (`20260915-05`): via `doc_*`, `lotto`/`seriale` testo, le
+  coppie, `attivo`, `uom_id`; entrano sorgente a catalogo, `lotto_id`, `asset_id`,
+  `ubicazione_id`, `storno_di_movimento_id`, l'identità. Il guard del verso, che questa pagina
+  segnalava mancante dal 21-08, è `20260915-13`. Presidio:
+  `db/pgtap/magazzino/test-movimenti-vincoli-v2.sql`.
 
 ---
 

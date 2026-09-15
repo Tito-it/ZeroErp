@@ -15,7 +15,7 @@
 >
 > • [vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura)
 >
-> **Piano:** [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga](/dev/work-in-progress/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga) §2.2 (D17), §2.3 (D18), §4 P-2/P-5
+> **Piano:** [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga](/dev/work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga) §2.2 (D17), §2.3 (D18), §4 P-2/P-5
 
 ---
 

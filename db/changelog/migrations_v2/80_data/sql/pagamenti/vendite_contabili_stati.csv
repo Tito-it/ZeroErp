@@ -1,6 +1,6 @@
 id,codice,codice_interno,descrizione,is_final,ordine,attivo,meta,data_insert,user_insert,data_update,user_update,obsoleto_dal
-1,BOZZA,BOZZA,Bozza,false,10,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
-2,IMPORTATA,IMPORTATA,Importata,false,20,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
-3,VALIDATA,VALIDATA,Validata,false,30,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
-4,CHIUSA,CHIUSA,Chiusa,true,40,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
-5,ANNULLATA,ANNULLATA,Annullata,true,50,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
+1,BOZZA,BOZZA,Bozza,false,10,true,"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.bozza""}",2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
+2,IMPORTATA,IMPORTATA,Importata,false,20,true,"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.importata""}",2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
+3,VALIDATA,VALIDATA,Validata,false,30,true,"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.validata""}",2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
+4,CHIUSA,CHIUSA,Chiusa,true,40,true,"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.chiusa""}",2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
+5,ANNULLATA,ANNULLATA,Annullata,true,50,true,"{""nessuna_azione_key"":""pagamenti.distinte.stato_info.annullata""}",2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,
