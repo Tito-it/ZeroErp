@@ -269,13 +269,23 @@ class ApiDistintaRighe(DomainAPIView):
                 "data_operazione": serializers.DateField(required=False),
                 "motivo_sospeso": serializers.CharField(required=False),
                 "meta": serializers.DictField(required=False),
+                # ⭐ D16: la destinazione viaggia coi fatti. Con `fattura_id` la
+                #    riga nasce ABBINATA; senza, DA_ABBINARE (l'eccezione
+                #    dichiarata). `billing_account_id` assente = quello della
+                #    fattura. La forzatura e' il SECONDO tempo della capienza.
+                "fattura_id": serializers.IntegerField(required=False),
+                "billing_account_id": serializers.IntegerField(required=False),
+                "scadenza_id": serializers.IntegerField(required=False),
+                "forzata": serializers.BooleanField(required=False),
+                "motivo_forzatura": serializers.CharField(required=False),
             },
         ),
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Aggiunge via POST una riga — un importo arrivato.
-    # ⭐ Nasce `DA_ABBINARE`: quando il denaro arriva non si sa ancora di chi
-    #    sia, e quello stato dice esattamente questo.
+    # Scopo: Aggiunge via POST una riga — un importo arrivato, e di chi e'.
+    # ⭐ Con la fattura nasce `ABBINATA` in un INSERT solo (D16); senza nasce
+    #    `DA_ABBINARE`, che sulla manuale e' l'eccezione che l'operatore
+    #    dichiara, non il default.
     def post(self, request: Request, contabile_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return pagamenti_service.crea_riga(contabile_id, dict(payload))
@@ -284,7 +294,7 @@ class ApiDistintaRighe(DomainAPIView):
 
 
 class ApiRigaDetail(DomainAPIView):
-    """PATCH /api/v1/pagamenti/righe/<id>/ — i fatti della riga."""
+    """PATCH/DELETE /api/v1/pagamenti/righe/<id>/ — i fatti della riga, e la sua eliminazione."""
 
     area_funzionale = AREA
 
@@ -302,17 +312,47 @@ class ApiRigaDetail(DomainAPIView):
                 "data_operazione": serializers.DateField(required=False),
                 "motivo_sospeso": serializers.CharField(required=False),
                 "meta": serializers.DictField(required=False),
+                # ⭐ Il SECONDO TEMPO della capienza, anche in modifica (Tid,
+                #    2026-09-15): un importo corretto oltre il residuo della
+                #    rata prende il 409 confermabile, e qui si conferma.
+                "forzata": serializers.BooleanField(required=False),
+                "motivo_forzatura": serializers.CharField(required=False),
             },
         ),
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Aggiorna via PATCH i FATTI di una riga (com'e' arrivato il denaro).
-    # ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata e
-    #    la forzatura, e perche' e' una decisione — non la correzione di un
-    #    dato digitato male.
+    # Scopo: Aggiorna via PATCH i FATTI di una riga (com'e' arrivato il denaro)
+    #        e, se il guard della rata ha chiesto conferma, la forzatura.
+    # ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata,
+    #    e perche' e' una decisione — non la correzione di un dato digitato
+    #    male.
     def patch(self, request: Request, riga_id: int) -> JsonResponse:
         return success_response(
             pagamenti_service.aggiorna_riga(riga_id, dict(request.data))
+        )
+
+    @extend_schema(
+        operation_id="pagamenti_riga_delete",
+        responses={200: inline_serializer(
+            name="PagamentiRigaDelete",
+            fields={
+                "riga_id": serializers.IntegerField(),
+                "eliminata": serializers.BooleanField(),
+            },
+        )},
+    )
+    # Scopo: Elimina via DELETE una riga di una distinta manuale in bozza
+    #        (`attivo = false`, D17). Il metodo dice il verbo; i motivi per cui
+    #        non si puo' li da' il database (409 `E_RIGA_CONTABILE_DISTINTA_*`).
+    # ⚠️ `handle_post_json` e non una chiamata diretta: e' la sede unica del
+    #    controllo `Idempotency-Key` e del replay in strong mode. Il corpo di un
+    #    DELETE e' vuoto, e il payload viene ignorato di proposito — quello che
+    #    serve e' nel path (stessa forma di `DELETE /vendite/fondi-fattura/{id}/`).
+    def delete(self, request: Request, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda _payload: pagamenti_service.elimina_riga(riga_id),
+            require_idempotency_key=True,
         )
 
 

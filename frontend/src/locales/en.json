@@ -3972,7 +3972,15 @@
       "porta_a": "Move to {stato}",
       "conferma_stato": "Move the sheet to «{stato}»?",
       "stato_cambiato": "Sheet status updated.",
-      "foglio_chiuso": "This sheet is in a final state: lines can no longer be changed."
+      "foglio_chiuso": "This sheet is in a final state: lines can no longer be changed.",
+      "contenuto_fermo": "Batch validated: its content is frozen. A line can still be matched or suspended; to add, correct or delete, reopen the batch to draft.",
+      "stato_info": {
+        "bozza": "Draft: being entered. Lines can be added, corrected and deleted.",
+        "validata": "Validated: ready to be posted. The money is not posted yet — balances show it as “in progress”.",
+        "chiusa": "Posted: the movements exist and balances have changed. There is no way back; correct it with a batch of opposite sign.",
+        "annullata": "Cancelled: nothing was touched.",
+        "importata": "Imported: loaded from a file, not yet reviewed."
+      }
     },
     "righe": {
       "col_data_pagamento": "Payment date",
@@ -4007,7 +4015,12 @@
         "distinta_finale": "The batch is closed or cancelled: its lines can no longer be worked.",
         "distinta_non_manuale": "The batch was not entered by hand: its lines cannot be deleted from here. For one produced by the system act on what generated it (invoice fund or adjustment); for one loaded from a file cancel it and import it again.",
         "distinta_validata": "The batch is validated: reopen it to draft with «Reopen», delete the line, then validate it again."
-      }
+      },
+      "elimina": "Delete",
+      "conferma_elimina": "Delete the line of {importo} ({riferimento})? It disappears from the list and from the balancing: it is not money received, it is a mistyped line.",
+      "eliminata": "Line deleted.",
+      "non_identificata": "I can't match it",
+      "non_identificata_aiuto": "The line is created without a document and shows up in “To match”: it is the exception, not the rule."
     },
     "rate_fuori_capienza": {
       "col_motivo": "Reason",
@@ -4055,18 +4068,20 @@
       "campo_fattura": "Invoice",
       "campo_fattura_placeholder": "Search by number, customer or VAT number (min. 3 characters)",
       "senza_numero": "(not numbered)",
-      "campo_rata": "Instalment",
-      "campo_rata_placeholder": "Choose the instalment",
-      "rata_facoltativa": "Optional: the payment can be matched to the document without an instalment.",
-      "rata_n": "Instalment {n}",
-      "rata_residuo": "{importo} left",
-      "rata_di_troppo": "{importo} in excess",
       "campo_motivo": "Reason for forcing",
       "motivo_aiuto": "Whoever settles the excess will read it, even weeks later.",
       "forza": "Force anyway",
-      "forzatura_resta_scritta": "The forcing stays recorded on the line",
-      "rate_non_lette": "Could not read this invoice's instalments: retry before matching without one.",
-      "nessuna_rata": "This invoice has no instalments: it is matched to the document."
+      "forzatura_resta_scritta": "The forcing stays recorded on the line"
+    },
+    "rata": {
+      "campo": "Instalment",
+      "placeholder": "Choose the instalment",
+      "facoltativa": "Optional: the payment can be matched to the document without an instalment.",
+      "nessuna": "This invoice has no instalments: it is matched to the document.",
+      "non_lette": "Could not read this invoice's instalments: retry before matching without one.",
+      "n": "Instalment {n}",
+      "residuo": "{importo} left",
+      "di_troppo": "{importo} in excess"
     },
     "registra": {
       "azione": "Post",

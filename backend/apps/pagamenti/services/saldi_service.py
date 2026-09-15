@@ -24,13 +24,14 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
+from apps.pagamenti.services._helpers import E_FATTURA_NON_TROVATA
 from apps.pagamenti.types import SaldoRow
 
 _FN = "pagamenti.saldi_service"
 
-# Codici gia' a catalogo: il documento o la rata non esistono (o il perimetro
-# non li lascia vedere, e i due restano indistinguibili).
-E_FATTURA_NON_TROVATA = "E_FATTURA_NON_TROVATA"
+# Codice gia' a catalogo: la rata non esiste (o il perimetro non la lascia
+# vedere, e i due restano indistinguibili). Il gemello della fattura sta in
+# `_helpers`, condiviso coi due service che lo sollevano allo stesso modo.
 E_RATA_NON_TROVATA = "E_RATA_NON_TROVATA"
 
 # ⭐ IL VOCABOLARIO, e vale a ogni livello. Una schermata sceglie QUALI numeri

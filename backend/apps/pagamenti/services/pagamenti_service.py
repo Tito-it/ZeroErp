@@ -36,6 +36,7 @@ from apps.core.services.payload_helpers import (
     make_db_errors_translator,
 )
 from apps.pagamenti.services._helpers import (
+    E_FATTURA_NON_TROVATA,
     E_VALIDAZIONE,
     decimal_da_payload as _decimal_da_payload,
     risposta_paginata as _risposta_paginata,
@@ -59,6 +60,9 @@ _FN = "pagamenti.pagamenti_service"
 # restano volutamente indistinguibili).
 E_DISTINTA_NON_TROVATA = "E_CONTABILE_NON_TROVATA"
 E_RIGA_NON_TROVATA = "E_RIGA_CONTABILE_NON_TROVATA"
+# La fattura di destinazione che non c'e' (`E_FATTURA_NON_TROVATA`) e' lo
+# stesso codice di `saldi_service` e `sistemazioni_service`: importato da
+# `_helpers`, non riscritto.
 # Lo stato chiesto non risolve a catalogo (assente o non attivo). ⭐ TECNICO e
 # non «dato sbagliato»: chi ha fatto la richiesta non puo' rimediare — manca
 # una riga di configurazione, e la mette chi amministra il database.
@@ -115,12 +119,27 @@ ORIGINE_MANUALE = "MANUALE"
 
 # Gli stati in cui i due oggetti NASCONO. Sono codici di catalogo, non id: gli
 # id sono seminati e non si scrivono a mano da nessuna parte.
-# ⭐ La riga nasce `DA_ABBINARE` perche' quando il denaro arriva non si sa
-#    ancora di chi sia, e quello stato dice esattamente questo.
 STATO_DISTINTA_INIZIALE = "BOZZA"
-STATO_RIGA_INIZIALE = "DA_ABBINARE"
-# Lo stato in cui l'abbinamento porta la riga: e' lo stesso gesto, non due.
+# ⭐ La riga MANUALE nasce con la destinazione (D16, 2026-09-14): chi digita un
+#    incasso da una contabile sa chi ha pagato, quindi la riga nasce gia'
+#    `ABBINATA` — fattura, cliente e (facoltativa) rata nello stesso INSERT.
+# ⚠️ `DA_ABBINARE` e' lo stato di un importo arrivato SENZA NOME: sulla manuale
+#    e' l'ECCEZIONE che l'operatore dichiara («non ho trovato il documento»),
+#    non il default di un form. Fino al 14/09 era il default, col commento
+#    «quando il denaro arriva non si sa ancora di chi sia» — vero per l'import,
+#    falso per chi digita: il default aveva scelto il flusso sbagliato.
+STATO_RIGA_SENZA_DESTINAZIONE = "DA_ABBINARE"
+# Lo stato in cui l'abbinamento porta la riga — alla nascita come dopo: e' lo
+# stesso gesto, non due.
 STATO_RIGA_ABBINATA = "ABBINATA"
+# ⭐ L'origine e lo stato della distinta sotto cui il CONTENUTO delle righe si
+#    lavora (D17/D18): righe nuove, fatti modificati, eliminazioni. ⚠️ E' una
+#    COPIA DICHIARATA del motivo 3 di `script.fn_check_riga_contabile_eliminabile`
+#    e della porta 2 di `trgfn_vendite_contabili_righe_guard_contenuto` — il
+#    database stesso lo scrive due volte (brief §4 P-5) perche' sull'INSERT non
+#    c'e' una riga da passare alla check. Il presidio e' il pgTAP del guard piu'
+#    `test_gli_stati_iniziali_esistono_a_catalogo`: il rifiuto vero arriva
+#    comunque dal DB (409), questo flag serve solo a NON PROPORRE.
 
 # ⭐ Le due code del riconciliatore, e sono DUE MESTIERI (D12-f): `DA_ABBINARE`
 #    e' lavoro non ancora fatto, `SOSPESA` e' lavoro fatto che ha trovato un
@@ -147,7 +166,9 @@ _CAMPI_DISTINTA_PATCH: tuple[str, ...] = (
 
 # I FATTI di una riga (come sono arrivati i soldi) e le decisioni che non sono
 # un'azione di dominio. ⛔ `fattura_id`, `billing_account_id` e `scadenza_id`
-# NON sono qui: abbinare e' un verbo, e porta con se' la forzatura.
+# NON sono qui: abbinare e' un verbo, e porta con se' la destinazione. ⭐ Alla
+# NASCITA invece la destinazione viaggia coi fatti (D16): una riga che nasce
+# non ha uno stato da proteggere — R-6 vale per la modifica.
 _CAMPI_RIGA_PATCH: tuple[str, ...] = (
     "importo",
     "riferimento_ente",
@@ -156,6 +177,25 @@ _CAMPI_RIGA_PATCH: tuple[str, ...] = (
     "data_operazione",
     "motivo_sospeso",
     "meta",
+)
+
+# ⭐ IL SECONDO TEMPO: la conferma di una scrittura che il guard della rata
+#    rifiuterebbe. Viaggia con OGNI verbo che quel guard incontra — nascita,
+#    abbinamento e, dal 2026-09-15 (decisione di Tid, brief D16/D17 Q-H),
+#    anche la MODIFICA dell'importo: il guard gira sull'`UPDATE` come
+#    sull'`INSERT`, e un 409 «confermabile» su un verbo che non sa raccogliere
+#    la conferma e' una domanda a cui nessuno puo' rispondere. ⛔ Non e' la
+#    destinazione: R-6 protegge `fattura_id`/`billing_account_id`/`scadenza_id`
+#    e resta intero.
+_CAMPI_FORZATURA: tuple[str, ...] = ("forzata", "motivo_forzatura")
+
+# La DESTINAZIONE di una riga: le chiavi che `abbina` e `crea` leggono allo
+# stesso modo (una lettura sola, `_destinazione_da_payload`).
+_CAMPI_DESTINAZIONE: tuple[str, ...] = (
+    "fattura_id",
+    "billing_account_id",
+    "scadenza_id",
+    *_CAMPI_FORZATURA,
 )
 
 
@@ -198,6 +238,97 @@ def _riga_o_404(repository: PagamentiRepository, riga_id: int) -> RigaContabileR
     )
     assert riga is not None
     return riga
+
+
+# Scopo: «Il motivo si scrive solo insieme alla forzatura» — la regola vale
+#        identica ovunque la forzatura entri: nascita, abbinamento, modifica.
+# ⚠️ Un motivo senza forzatura e' una nota che nessuno leggera' mai: la
+#    colonna esiste per spiegare una forzatura, e scriverla su una riga non
+#    forzata lascerebbe a registro una spiegazione di un gesto mai fatto.
+def _guard_motivo_con_forzatura(
+    forzata: bool, motivo_forzatura: str | None, *, function_name: str
+) -> None:
+    ErrorManager.require(
+        forzata or motivo_forzatura is None,
+        code=E_VALIDAZIONE,
+        message="Il motivo si scrive solo insieme alla forzatura.",
+        detail="motivo_forzatura richiede forzata = true.",
+        context={"field": "motivo_forzatura"},
+        function_name=function_name,
+    )
+
+
+# Scopo: Legge la DESTINAZIONE di una riga dal payload — fattura, cliente,
+#        rata facoltativa e la forzatura col suo motivo — con le regole che
+#        valgono sia per `abbina` sia per la nascita della riga (D16).
+# Note: ⭐ Una lettura sola per i due verbi: la regola «il motivo si scrive solo
+#       insieme alla forzatura» e quella «rata e forzatura pretendono una
+#       fattura» stavano per nascere due volte, e due copie divergono alla
+#       prima correzione.
+#       ⚠️ `obbligatoria=False` e' la nascita: senza `fattura_id` la riga nasce
+#       senza destinazione (l'eccezione dichiarata), e allora rata, cliente e
+#       forzatura non hanno niente a cui riferirsi — un valore li' e' un
+#       errore del chiamante, non un dato da ignorare in silenzio.
+#       ⚠️ `billing_account_id` puo' mancare: lo deriva chi chiama, dalla
+#       fattura (`get_riferimenti_fattura`). Qui si legge, non si risolve.
+def _destinazione_da_payload(
+    payload: dict[str, Any], *, obbligatoria: bool, function_name: str
+) -> dict[str, Any]:
+    if obbligatoria:
+        fattura_id: int | None = _PAYLOAD.require_positive_int(
+            payload, "fattura_id", message="La fattura e' obbligatoria per abbinare."
+        )
+    else:
+        fattura_id = _PAYLOAD.optional_positive_int(payload, "fattura_id")
+    billing_account_id = _PAYLOAD.optional_positive_int(payload, "billing_account_id")
+    scadenza_id = _PAYLOAD.optional_positive_int(payload, "scadenza_id")
+    forzata = _PAYLOAD.optional_bool(payload, "forzata") or False
+    motivo_forzatura = _PAYLOAD.optional_string(payload, "motivo_forzatura")
+    _guard_motivo_con_forzatura(forzata, motivo_forzatura, function_name=function_name)
+    # ⚠️ Senza fattura non c'e' destinazione: una rata, un cliente o una
+    #    forzatura «orfani» non sono un'eccezione dichiarata — sono un payload
+    #    rotto, e si dice quale campo.
+    if fattura_id is None:
+        for campo, valore in (
+            ("scadenza_id", scadenza_id),
+            ("billing_account_id", billing_account_id),
+            ("forzata", forzata or None),
+        ):
+            ErrorManager.require(
+                valore is None,
+                code=E_VALIDAZIONE,
+                message="Senza fattura la riga non ha una destinazione.",
+                detail=f"{campo} richiede fattura_id.",
+                context={"field": campo},
+                function_name=function_name,
+            )
+    return {
+        "fattura_id": fattura_id,
+        "billing_account_id": billing_account_id,
+        "scadenza_id": scadenza_id,
+        "forzata": forzata,
+        "motivo_forzatura": motivo_forzatura,
+    }
+
+
+# Scopo: Risolve il cliente della riga quando il chiamante non lo passa: e' il
+#        billing account della fattura scelta, letto dal documento.
+# ⚠️ Il 404 di una fattura inesistente (o fuori perimetro) esce di qui col
+#    codice di dominio, prima dell'INSERT — e nomina il campo.
+def _billing_account_della_fattura(
+    repository: PagamentiRepository, fattura_id: int, *, function_name: str
+) -> int:
+    riferimenti = repository.get_riferimenti_fattura(fattura_id)
+    ErrorManager.require(
+        riferimenti is not None,
+        code=E_FATTURA_NON_TROVATA,
+        message="Fattura non trovata.",
+        detail=f"fattura_id={fattura_id}",
+        context={"field": "fattura_id"},
+        function_name=function_name,
+    )
+    assert riferimenti is not None
+    return int(riferimenti["billing_account_id"])
 
 
 # Scopo: Compone i campi da aggiornare leggendo SOLO le chiavi presenti nel
@@ -263,26 +394,70 @@ def list_distinte(
     return _risposta_paginata(results, total, page, page_size)
 
 
-# Scopo: Dettaglio di una distinta: testata, totali derivati, righe e i due
-#        cataloghi di stato — in un round-trip solo.
+# Scopo: Le transizioni che una PERSONA puo' chiedere, stato per stato, lette
+#        dalla MATRICE del database e ristrette al vocabolario dei richiedibili.
+# ⭐ E' il pezzo che mancava (BE-5, collaudo del 14/09): il vocabolario dice
+#    che cosa si puo' chiedere IN GENERALE, la matrice dice DA DOVE. Offrire il
+#    vocabolario intero meno lo stato corrente proponeva `SCARTATA` su una riga
+#    `ABBINATA`, che il database rifiuta — un pulsante che finisce in errore.
+# ⚠️ `stato_a` ristretto ai richiedibili, `stato_da` no: `POSTATA` e `CHIUSA`
+#    non si chiedono (li scrive la registrazione) ma da `IMPORTATA` — quando
+#    l'import ci sara' — si chiede eccome. La forma e' `{stato_da: [stato_a…]}`
+#    per entrambe le macchine, e uno stato senza uscite richiedibili ha la
+#    lista vuota, non la chiave assente.
+def _transizioni_richiedibili(
+    grafo: list[tuple[str, str]], richiedibili: tuple[str, ...]
+) -> dict[str, list[str]]:
+    ammesse: dict[str, list[str]] = {}
+    for stato_da, stato_a in grafo:
+        ammesse.setdefault(stato_da, [])
+        if stato_a in richiedibili and stato_a not in ammesse[stato_da]:
+            ammesse[stato_da].append(stato_a)
+    # L'ordine di offerta e' quello del vocabolario, non quello della matrice:
+    # e' stabile fra una lettura e l'altra e non dipende dagli id seminati.
+    for stato_da, uscite in ammesse.items():
+        ammesse[stato_da] = sorted(uscite, key=richiedibili.index)
+    return ammesse
+
+
+# Scopo: Dettaglio di una distinta: testata, totali derivati, righe, i due
+#        cataloghi di stato e le transizioni ammesse — in un round-trip solo.
 # ⭐ I cataloghi viaggiano col dettaglio e non si cablano nel frontend: quali
-#    stati si possono chiedere, quali pretendono fattura e cliente, quali
-#    occupano spazio su una rata lo dice il database.
+#    stati si possono chiedere e da dove, quali pretendono fattura e cliente,
+#    quali occupano spazio su una rata lo dice il database.
 def get_distinta(contabile_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
     distinta = _distinta_o_404(repository, contabile_id)
+    grafo_distinta, grafo_riga = repository.list_transizioni()
     return {
-        "distinta": distinta,
+        "distinta": {
+            **distinta,
+            # ⭐ D17/D18: il CONTENUTO (righe nuove, fatti, eliminazioni) si
+            #    lavora solo su una manuale in bozza. Il flag viaggia perche'
+            #    il frontend non ricalcoli la regola: e' una copia dichiarata
+            #    (vedi `STATO_RIGA_SENZA_DESTINAZIONE`), e il rifiuto vero
+            #    resta quello del database. ⚠️ Le DECISIONI (abbinare,
+            #    sospendere, cambiare stato) non passano di qui: sotto una
+            #    validata si abbina, non si digita.
+            "contenuto_modificabile": (
+                distinta.get("stato_codice") == STATO_DISTINTA_INIZIALE
+                and distinta.get("origine") == ORIGINE_MANUALE
+            ),
+        },
         "righe": repository.list_righe(contabile_id),
         "stati_distinta": repository.list_stati_distinta(),
         "stati_riga": repository.list_stati_riga(),
-        # ⭐ Gli elenchi sono DUE, e servono entrambi: il drawer disegna il
-        # percorso della testata e quello della riga nella stessa schermata.
-        # Prima ne viaggiava uno solo, e il form della riga sarebbe finito a
-        # cablarsi il proprio — cioe' a tenere una copia del vocabolario.
-        "stati_richiedibili": {
-            "distinta": list(STATI_DISTINTA_RICHIEDIBILI),
-            "riga": list(STATI_RIGA_RICHIEDIBILI),
+        # ⭐ Le transizioni sono DUE mappe, e servono entrambe: il drawer disegna
+        # il percorso della testata e quello della riga nella stessa
+        # schermata. ⛔ Fino al 14/09 viaggiava il solo vocabolario
+        # (`stati_richiedibili`), e il frontend toglieva lo stato corrente:
+        # cio' che offriva coincideva con la matrice sulla testata PER CASO e
+        # non coincideva sulla riga. Adesso non puo' divergere: si legge.
+        "transizioni": {
+            "distinta": _transizioni_richiedibili(
+                grafo_distinta, STATI_DISTINTA_RICHIEDIBILI
+            ),
+            "riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
         },
     }
 
@@ -426,49 +601,109 @@ def list_righe(contabile_id: int) -> dict[str, Any]:
     return {"count": len(righe), "results": righe}
 
 
-# Scopo: Aggiunge una riga alla distinta — un importo arrivato.
-# ⭐ Nasce `DA_ABBINARE`: quando il denaro arriva non si sa ancora di chi sia,
-#    e quello stato dice esattamente questo. Chi sa gia' la fattura la abbina
-#    subito dopo, col verbo dell'abbinamento.
+# Scopo: Aggiunge una riga alla distinta — un importo arrivato, e di chi e'.
+# ⭐ D16 (2026-09-14): la riga MANUALE nasce con la destinazione. Con
+#    `fattura_id` nasce `ABBINATA` — fattura, cliente, rata facoltativa e la
+#    forzatura viaggiano nello STESSO `INSERT` dei fatti, atomico per
+#    costruzione. Senza, nasce `DA_ABBINARE`: e' l'eccezione che l'operatore
+#    dichiara («non ho trovato il documento»), e si recupera dalla coda.
+# ⛔ Non due scritture (`create` + `abbina`): i guard di riga — dati richiesti
+#    dallo stato, coerenza rata/fattura, capienza, perimetro emittente — sono
+#    `BEFORE INSERT OR UPDATE`, e sull'INSERT fanno esattamente cio' che fanno
+#    sull'UPDATE. Il doppio tempo della capienza (D14-d) vale anche qui, e il
+#    backend NON lo interpreta: primo tentativo senza `forzata`, 409
+#    confermabile, secondo con `forzata = true` che resta scritto sulla riga.
+# ⚠️ `billing_account_id` assente ⇒ e' quello della fattura (letto, non
+#    dedotto): il guard lo pretende comunque su `ABBINATA`.
 def crea_riga(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    # I FATTI sono gli stessi del PATCH (una lista sola, non una ricopiata),
+    # piu' la destinazione che alla nascita viaggia con loro.
     _PAYLOAD.validate_allowed_keys(
-        payload,
-        allowed=frozenset(
-            {"importo", "riferimento_ente", "data_pagamento", "data_valuta",
-             "data_operazione", "motivo_sospeso", "meta"}
-        ),
+        payload, allowed=frozenset({*_CAMPI_RIGA_PATCH, *_CAMPI_DESTINAZIONE})
     )
     importo = _decimal_da_payload(payload, "importo", obbligatorio=True)
     assert importo is not None
+    destinazione = _destinazione_da_payload(
+        payload, obbligatoria=False, function_name=f"{_FN}.crea_riga"
+    )
 
     repository = PagamentiRepository()
     _distinta_o_404(repository, contabile_id)
+    fattura_id = destinazione["fattura_id"]
+    if fattura_id is not None and destinazione["billing_account_id"] is None:
+        destinazione["billing_account_id"] = _billing_account_della_fattura(
+            repository, fattura_id, function_name=f"{_FN}.crea_riga"
+        )
+    # Lo stato lo decide la presenza della destinazione, non un parametro: una
+    # riga che sa a chi appartiene nasce abbinata, una che non lo sa nasce da
+    # abbinare. Non c'e' un terzo caso da chiedere all'operatore.
+    stato_iniziale = (
+        STATO_RIGA_ABBINATA if fattura_id is not None else STATO_RIGA_SENZA_DESTINAZIONE
+    )
     with _db_errors("crea_riga"):
         riga_id = repository.create_riga(
             contabile_id=contabile_id,
             importo=importo,
-            codice_stato_interno=STATO_RIGA_INIZIALE,
+            codice_stato_interno=stato_iniziale,
             riferimento_ente=_PAYLOAD.optional_string(payload, "riferimento_ente"),
             data_pagamento=_PAYLOAD.optional_date(payload, "data_pagamento"),
             data_valuta=_PAYLOAD.optional_date(payload, "data_valuta"),
             data_operazione=_PAYLOAD.optional_date(payload, "data_operazione"),
             motivo_sospeso=_PAYLOAD.optional_string(payload, "motivo_sospeso"),
             meta=_meta_json(payload),
+            **destinazione,
         )
     return {"riga": _riga_o_404(repository, riga_id)}
 
 
-# Scopo: Aggiorna i FATTI di una riga.
-# ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata e la
-#    forzatura, e perche' un abbinamento e' una decisione — non la correzione
-#    di un dato che era stato digitato male.
+# Scopo: Elimina una riga di una distinta MANUALE in BOZZA — `attivo = false`.
+# ⭐ D17 (2026-09-14): una riga digitata male su una bozza non e' un fatto — non
+#    e' denaro arrivato, e' un errore di battitura — e si toglie. «Scarta» dice
+#    un'altra cosa (denaro arrivato, non nostro) e CONTA nella quadratura: con
+#    un totale dichiarato, scartare la riga sbagliata non ha via d'uscita.
+# ⛔ Nessuna copia del predicato in Python: i motivi li da' il database
+#    (`script.fn_check_riga_contabile_eliminabile`, la stessa funzione che
+#    alimenta il cestino spento in lista) e il guard rifiuta con
+#    `E_RIGA_CONTABILE_DISTINTA_*` (409), tradotto come ogni altro.
+# ⚠️ Una riga eliminata non e' piu' raggiungibile da nessun verbo: `get_riga`
+#    filtra `attivo`, quindi un secondo DELETE — come un PATCH o un abbina —
+#    risponde «non trovata», che e' la stessa risposta di «non la vedi». Il
+#    doppio invio lo copre l'`Idempotency-Key`, non un ramo «gia' eliminata».
+def elimina_riga(riga_id: int) -> dict[str, Any]:
+    repository = PagamentiRepository()
+    _riga_o_404(repository, riga_id)
+    with _db_errors("elimina_riga"):
+        toccate = repository.disattiva_riga(riga_id)
+    # La riga c'era un istante fa (l'abbiamo letta ATTIVA): zero righe toccate
+    # vuol dire che qualcun altro l'ha eliminata nel frattempo. Per chi chiede
+    # e' la stessa cosa di «non c'e'», ed e' quello che si risponde.
+    ErrorManager.require(
+        toccate > 0,
+        code=E_RIGA_NON_TROVATA,
+        message="Riga contabile non trovata.",
+        detail=f"riga_id={riga_id}",
+        function_name=f"{_FN}.elimina_riga",
+    )
+    return {"riga_id": int(riga_id), "eliminata": True}
+
+
+# Scopo: Aggiorna i FATTI di una riga — e, se serve, il SECONDO TEMPO.
+# ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata, e
+#    perche' un abbinamento e' una decisione — non la correzione di un dato che
+#    era stato digitato male (R-6).
+# ⭐ `forzata` + `motivo_forzatura` SI' (decisione di Tid, 2026-09-15 — Q-H):
+#    correggere un importo puo' incontrare il guard della rata esattamente
+#    come inserirlo, e il rifiuto arriva «confermabile». Senza questa porta il
+#    verbo riceveva una domanda a cui non sapeva rispondere, e il rimedio era
+#    eliminare la riga e ricrearla. Stessa regola della nascita: il motivo solo
+#    con la forzatura, e il backend NON decide che cosa sia forzabile.
 def aggiorna_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repository = PagamentiRepository()
     _riga_o_404(repository, riga_id)
 
     campi = _campi_presenti(
         payload,
-        _CAMPI_RIGA_PATCH,
+        (*_CAMPI_RIGA_PATCH, *_CAMPI_FORZATURA),
         lettori={
             "importo": lambda p: _decimal_da_payload(p, "importo", obbligatorio=True),
             "riferimento_ente": lambda p: _PAYLOAD.optional_string(
@@ -479,7 +714,17 @@ def aggiorna_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             "data_operazione": lambda p: _PAYLOAD.optional_date(p, "data_operazione"),
             "motivo_sospeso": lambda p: _PAYLOAD.optional_string(p, "motivo_sospeso"),
             "meta": lambda p: _meta_json(p),
+            # `null` su una colonna NOT NULL vale «torna al default»: falso.
+            "forzata": lambda p: _PAYLOAD.optional_bool(p, "forzata") or False,
+            "motivo_forzatura": lambda p: _PAYLOAD.optional_string(
+                p, "motivo_forzatura"
+            ),
         },
+    )
+    _guard_motivo_con_forzatura(
+        campi.get("forzata", False),
+        campi.get("motivo_forzatura"),
+        function_name=f"{_FN}.aggiorna_riga",
     )
     if campi:
         with _db_errors("aggiorna_riga"):
@@ -547,47 +792,26 @@ def cambia_stato_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 #    torna con `forzata = true`. ⛔ Il backend non decide che cosa sia
 #    forzabile — se lo facesse, sarebbe una seconda sede della regola.
 def abbina_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    _PAYLOAD.validate_allowed_keys(
-        payload,
-        allowed=frozenset(
-            {"fattura_id", "billing_account_id", "scadenza_id", "forzata",
-             "motivo_forzatura"}
-        ),
+    _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset(_CAMPI_DESTINAZIONE))
+    destinazione = _destinazione_da_payload(
+        payload, obbligatoria=True, function_name=f"{_FN}.abbina_riga"
     )
-    fattura_id = _PAYLOAD.require_positive_int(
-        payload, "fattura_id", message="La fattura e' obbligatoria per abbinare."
-    )
-    billing_account_id = _PAYLOAD.require_positive_int(
-        payload,
-        "billing_account_id",
-        message="Il cliente e' obbligatorio per abbinare.",
-    )
-    scadenza_id = _PAYLOAD.optional_positive_int(payload, "scadenza_id")
-    forzata = _PAYLOAD.optional_bool(payload, "forzata") or False
-    motivo_forzatura = _PAYLOAD.optional_string(payload, "motivo_forzatura")
-    # ⚠️ Un motivo senza forzatura e' una nota che nessuno leggera' mai: la
-    #    colonna esiste per spiegare una forzatura, e scriverla su una riga non
-    #    forzata lascerebbe a registro una spiegazione di un gesto mai fatto.
-    ErrorManager.require(
-        forzata or motivo_forzatura is None,
-        code=E_VALIDAZIONE,
-        message="Il motivo si scrive solo insieme alla forzatura.",
-        detail="motivo_forzatura richiede forzata = true.",
-        context={"field": "motivo_forzatura"},
-        function_name=f"{_FN}.abbina_riga",
-    )
+    fattura_id = destinazione["fattura_id"]
+    assert fattura_id is not None
 
     repository = PagamentiRepository()
     _riga_o_404(repository, riga_id)
+    # Il cliente, se non lo dice chi chiama, e' quello della fattura — come
+    # alla nascita della riga: stessa regola, stessa lettura.
+    if destinazione["billing_account_id"] is None:
+        destinazione["billing_account_id"] = _billing_account_della_fattura(
+            repository, fattura_id, function_name=f"{_FN}.abbina_riga"
+        )
     with _db_errors("abbina_riga"):
         toccate = repository.abbina_riga(
             riga_id=riga_id,
-            fattura_id=fattura_id,
-            billing_account_id=billing_account_id,
-            scadenza_id=scadenza_id,
-            forzata=forzata,
-            motivo_forzatura=motivo_forzatura,
             codice_stato_interno=STATO_RIGA_ABBINATA,
+            **destinazione,
         )
     ErrorManager.require(
         toccate > 0,

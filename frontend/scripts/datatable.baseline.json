@@ -71,7 +71,6 @@
     "core/components/SearchDrawer.vue",
     "core/components/SessioniAttivePanel.vue",
     "documenti/components/DocumentiGeneratiSorgenteList.vue",
-    "pagamenti/components/DistintaDrawer.vue",
     "pratiche/components/PraticaFlussiTab.vue",
     "vendite/_shared/componenti/ComponentiPanel.vue",
     "vendite/components/AlertScadenzeWidget.vue",

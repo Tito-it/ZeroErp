@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Client API del dominio INCASSI — le 23 rotte di `/api/v1/pagamenti/`.
+// Scopo: Client API del dominio INCASSI — le 24 rotte di `/api/v1/pagamenti/`.
 // Note: Brief: docs/it/dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md
 //       ⭐ Sul filo la risorsa si chiama `distinte`, non `contabili`: e' la
 //       parola che l'operatore legge sulla schermata (§4 del brief). La tabella
@@ -72,16 +72,32 @@ export function listRigheDistinta(contabileId) {
   return api.get(`${BASE}/distinte/${contabileId}/righe/`)
 }
 
-// La riga nasce `DA_ABBINARE`. Payload: `importo` (obbligatorio),
-// `riferimento_ente`, `data_pagamento`, `data_valuta`, `data_operazione`,
-// `motivo_sospeso`, `meta`.
+// ⭐ La riga nasce CON LA DESTINAZIONE (D16, 14/09): coi fatti — `importo`
+// (obbligatorio), `riferimento_ente`, `data_pagamento`, `data_valuta`,
+// `data_operazione`, `motivo_sospeso`, `meta` — viaggiano `fattura_id`,
+// `billing_account_id` (facoltativo: il backend lo legge dalla fattura),
+// `scadenza_id` (facoltativa) e la forzatura a due tempi (`forzata`,
+// `motivo_forzatura`), come in `abbinaRiga`. Con la fattura nasce ABBINATA in
+// un INSERT solo; senza nasce DA_ABBINARE — l'eccezione che si dichiara.
 export function creaRiga(contabileId, payload) {
   return api.post(`${BASE}/distinte/${contabileId}/righe/`, payload, idem())
 }
 
-// I FATTI della riga (importo, riferimento, date) — non il suo percorso.
+// I FATTI della riga (importo, riferimento, date) — non il suo percorso, e
+// non la destinazione (quella e' di `abbinaRiga`). ⭐ Dal 15/09 anche il
+// secondo tempo della capienza, `forzata` + `motivo_forzatura`, come alla
+// nascita: correggere un importo incontra lo stesso guard della rata.
 export function aggiornaRiga(rigaId, payload) {
   return api.patch(`${BASE}/righe/${rigaId}/`, payload)
+}
+
+// ⭐ ELIMINA una riga (D17, 14/09): `attivo = false`, solo su una distinta
+// manuale in bozza — e a dirlo e' il database (409 `E_RIGA_CONTABILE_DISTINTA_*`),
+// la stessa check che spegne il cestino in lista (`elimina_blocco_*`).
+// ⚠️ Il metodo dice il verbo: niente `/elimina/` nel path. E' una scrittura,
+// quindi porta l'`Idempotency-Key` come le POST.
+export function eliminaRiga(rigaId) {
+  return api.delete(`${BASE}/righe/${rigaId}/`, idem())
 }
 
 // Il PERCORSO della riga. ⚠️ `motivo_sospeso` è ammesso qui perché sospendere

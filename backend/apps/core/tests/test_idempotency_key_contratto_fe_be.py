@@ -79,6 +79,13 @@ def _normalizza(percorso: str) -> str:
     return percorso.strip("/")
 
 
+# Scopo: l'app (`apps/<app>/…`) a cui un sorgente appartiene.
+# ⚠️ E' la chiave che manca a un nome di classe: `ApiRigaDetail` esiste in
+#    SETTE app (sei di vendite piu' pagamenti), e non sono la stessa vista.
+def _app_di(sorgente) -> str:
+    return sorgente.relative_to(_BACKEND).parts[0]
+
+
 # Scopo: le rotte che PRETENDONO l'header, per (percorso, metodo).
 #
 # ⛔ PER METODO E NON PER CLASSE, ed e' la correzione che rende il presidio
@@ -87,14 +94,22 @@ def _normalizza(percorso: str) -> str:
 #    chiedere niente. Guardando la CLASSE si accusano chiamate legittime — due
 #    false accuse su `ui-api.js` alla prima stesura — e un presidio che grida al
 #    lupo viene disattivato, non corretto.
+# ⛔ E PER APP, NON PER SOLO NOME (2026-09-14): il nome di una classe non e'
+#    unico fra le app. Il giorno in cui `pagamenti.ApiRigaDetail` ha preso un
+#    `delete` con la chiave, il presidio ha accusato le SEI `ApiRigaDetail` di
+#    `vendite` — il cui `DELETE` la chiave non la chiede — perche' `per_vista`
+#    era chiavata sul solo nome. Sei false accuse in un colpo, e nessuna rotta
+#    di `pagamenti` fra loro. Un `urls*.py` risolve le sue classi nella
+#    PROPRIA app: e' cosi' che le importa, ed e' cosi' che si leggono qui.
 def _rotte_che_pretendono_header() -> dict[tuple[str, str], str]:
-    per_vista: dict[str, set[str]] = {}
+    per_vista: dict[tuple[str, str], set[str]] = {}
     for sorgente in _BACKEND.rglob("*.py"):
         if "/tests/" in str(sorgente):
             continue
         testo = sorgente.read_text(errors="ignore")
         if "require_idempotency_key" not in testo:
             continue
+        app = _app_di(sorgente)
         classi = list(re.finditer(r"^class\s+(\w+)\s*\(", testo, re.M))
         for indice, classe in enumerate(classi):
             fine = classi[indice + 1].start() if indice + 1 < len(classi) else len(testo)
@@ -108,15 +123,56 @@ def _rotte_che_pretendono_header() -> dict[tuple[str, str], str]:
                 if re.search(
                     r"require_idempotency_key\s*=\s*True", corpo[metodo.start():fine_m],
                 ):
-                    per_vista.setdefault(classe.group(1), set()).add(metodo.group(1))
+                    per_vista.setdefault((app, classe.group(1)), set()).add(metodo.group(1))
 
+    prefissi = _prefissi_di_montaggio()
     rotte: dict[tuple[str, str], str] = {}
     for sorgente in _BACKEND.rglob("urls*.py"):
         testo = sorgente.read_text(errors="ignore")
+        app = _app_di(sorgente)
+        prefisso = prefissi.get(_modulo_di(sorgente), "")
         for m in re.finditer(r'path\(\s*"([^"]*)"\s*,\s*(\w+)\.as_view\(\)', testo):
-            for metodo in per_vista.get(m.group(2), ()):
-                rotte[(_normalizza(m.group(1)), metodo)] = m.group(2)
+            for metodo in per_vista.get((app, m.group(2)), ()):
+                rotte[(_normalizza(prefisso + m.group(1)), metodo)] = m.group(2)
     return rotte
+
+
+_ROOT_URLS = repo_root() / "backend/zeroerp_backend/urls.py"
+
+
+# Scopo: il nome di modulo Python di un sorgente sotto `backend/`.
+def _modulo_di(sorgente) -> str:
+    rel = sorgente.relative_to(repo_root() / "backend").with_suffix("")
+    return ".".join(rel.parts)
+
+
+# Scopo: il PREFISSO COMPLETO con cui ogni `urls*.py` e' montato, seguendo gli
+#        `include()` dalla radice (`zeroerp_backend/urls.py`) in giu'.
+# ⛔ SENZA, IL CONFRONTO E' SULLA CODA (2026-09-14): `pagamenti/urls_v1.py`
+#    dichiara `righe/<int:riga_id>/`, e `vendite/contratti/{}/righe/{}` del
+#    client FINISCE con `righe/{}` — sei rotte di `vendite` accusate per una
+#    rotta di `pagamenti`. Un percorso relativo al proprio mount non e' un
+#    percorso: e' un pezzo, e due pezzi uguali di due domini diversi si
+#    toccano solo perche' manca la testa. Gli `include` sono annidati
+#    (`api/v1/vendite/` → `contratti/` → …), quindi si risolvono a catena.
+def _prefissi_di_montaggio() -> dict[str, str]:
+    include_re = re.compile(r'path\(\s*"([^"]*)"\s*,\s*include\(\s*"([^"]+)"\s*\)')
+    figli: dict[str, list[tuple[str, str]]] = {}
+    for sorgente in [_ROOT_URLS, *_BACKEND.rglob("urls*.py")]:
+        testo = sorgente.read_text(errors="ignore")
+        figli[_modulo_di(sorgente)] = [
+            (m.group(1), m.group(2)) for m in include_re.finditer(testo)
+        ]
+    prefissi: dict[str, str] = {}
+    da_visitare = [(_modulo_di(_ROOT_URLS), "")]
+    while da_visitare:
+        modulo, prefisso = da_visitare.pop()
+        for pezzo, incluso in figli.get(modulo, ()):
+            if incluso in prefissi:
+                continue
+            prefissi[incluso] = prefisso + pezzo
+            da_visitare.append((incluso, prefisso + pezzo))
+    return prefissi
 
 
 # Scopo: ogni scrittura del frontend — percorso, metodo, e se porta l'header.
@@ -169,11 +225,15 @@ class IdempotencyKeyContrattoFeBe(TestCase):
         self,
     ) -> None:
         rotte = _rotte_che_pretendono_header()
+        # ⚠️ Il client parla relativo a `baseURL` (`/api/v1`), il backend e'
+        #    risolto dalla radice: si confronta la rotta COMPLETA con la coda
+        #    che il client scrive — mai il contrario, che accuserebbe per
+        #    omonimia di pezzo.
         colpevoli = sorted(
             f"{metodo.upper()} {percorso} → {rotte[(rotta, metodo)]} ({dove})"
             for percorso, metodo, porta, dove in _scritture_frontend()
             if not porta
-            for rotta in [r for (r, m) in rotte if m == metodo and percorso.endswith(r)]
+            for rotta in [r for (r, m) in rotte if m == metodo and r.endswith(percorso)]
         )
         self.assertEqual(
             colpevoli, [],

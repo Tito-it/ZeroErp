@@ -3972,7 +3972,15 @@
       "porta_a": "Porta a {stato}",
       "conferma_stato": "Portare la distinta allo stato «{stato}»?",
       "stato_cambiato": "Stato della distinta aggiornato.",
-      "foglio_chiuso": "Questa distinta e' in uno stato finale: le righe non si modificano piu'."
+      "foglio_chiuso": "Questa distinta e' in uno stato finale: le righe non si modificano piu'.",
+      "contenuto_fermo": "Distinta validata: il contenuto è fermo. Si può ancora abbinare o sospendere una riga; per aggiungere, correggere o eliminare, riportala in bozza.",
+      "stato_info": {
+        "bozza": "Bozza: si digita. Le righe si aggiungono, si correggono e si eliminano.",
+        "validata": "Validata: pronta da registrare. Il denaro non è ancora registrato — i saldi lo vedono «in lavorazione».",
+        "chiusa": "Registrata: i movimenti esistono e i saldi sono cambiati. Da qui non si torna indietro; si corregge con una distinta di segno opposto.",
+        "annullata": "Annullata: non ha toccato niente.",
+        "importata": "Importata: arrivata da un file, non ancora guardata."
+      }
     },
     "righe": {
       "col_data_pagamento": "Data pagamento",
@@ -4007,7 +4015,12 @@
         "distinta_finale": "La distinta è chiusa o annullata: le sue righe non si lavorano più.",
         "distinta_non_manuale": "La distinta non è compilata a mano: le sue righe non si eliminano da qui. Per una prodotta dal sistema si agisce sull'atto che l'ha generata (fondo fattura o sistemazione); per una arrivata da un file si annulla e si reimporta.",
         "distinta_validata": "La distinta è validata: riportala in bozza con «Riapri», elimina la riga, poi validala di nuovo."
-      }
+      },
+      "elimina": "Elimina",
+      "conferma_elimina": "Vuoi eliminare la riga da {importo} ({riferimento})? Sparisce dall'elenco e dalla quadratura: non è denaro arrivato, è una riga digitata male.",
+      "eliminata": "Riga eliminata.",
+      "non_identificata": "Non riesco ad associarlo",
+      "non_identificata_aiuto": "La riga nasce senza documento e compare in «Da abbinare»: è l'eccezione, non la regola."
     },
     "rate_fuori_capienza": {
       "col_motivo": "Motivo",
@@ -4055,18 +4068,20 @@
       "campo_fattura": "Fattura",
       "campo_fattura_placeholder": "Cerca per numero, cliente o partita IVA (min. 3 caratteri)",
       "senza_numero": "(non numerata)",
-      "campo_rata": "Rata",
-      "campo_rata_placeholder": "Scegli la rata",
-      "rata_facoltativa": "Facoltativa: si puo' abbinare al documento senza indicare una rata.",
-      "rata_n": "Rata {n}",
-      "rata_residuo": "restano {importo}",
-      "rata_di_troppo": "{importo} di troppo",
       "campo_motivo": "Motivo della forzatura",
       "motivo_aiuto": "Lo leggera' chi dovra' sistemare l'eccedenza, anche settimane dopo.",
       "forza": "Forza comunque",
-      "forzatura_resta_scritta": "La forzatura resta scritta sulla riga",
-      "rate_non_lette": "Non e' stato possibile leggere le rate di questa fattura: riprova prima di abbinare senza rata.",
-      "nessuna_rata": "Questa fattura non ha rate: si abbina al documento."
+      "forzatura_resta_scritta": "La forzatura resta scritta sulla riga"
+    },
+    "rata": {
+      "campo": "Rata",
+      "placeholder": "Scegli la rata",
+      "facoltativa": "Facoltativa: si puo' abbinare al documento senza indicare una rata.",
+      "nessuna": "Questa fattura non ha rate: si abbina al documento.",
+      "non_lette": "Non e' stato possibile leggere le rate di questa fattura: riprova prima di abbinare senza rata.",
+      "n": "Rata {n}",
+      "residuo": "restano {importo}",
+      "di_troppo": "{importo} di troppo"
     },
     "registra": {
       "azione": "Registra",
