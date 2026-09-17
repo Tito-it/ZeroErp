@@ -20,7 +20,7 @@
 > §8-quater](analisi-db-magazzino-aggancio-documento-e-produzione.md), Tid).
 > ⚠️ **La D-6 rovescia una riga di §6** — *«resta tutto nullable»* — ed è
 > corretta lì, con la ragione. Il primo pezzo eseguibile è
-> [brief-db-magazzino-lotto-1-terreno-vuoto.md](brief-db-magazzino-lotto-1-terreno-vuoto.md):
+> [brief-db-magazzino-lotto-1-terreno-vuoto.md](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md):
 > tutto il DDL che M-1 → M-9 e le D hanno deciso, sul terreno vuoto, più il
 > perimetro RLS di M-6 — che atterra **con** l'ancora, non dopo (§7-sexies,
 > riquadro del 14-09).
@@ -2091,7 +2091,7 @@ prova niente: la prova l'ha fatta la decisione.
 >
 > | Lotto | Cosa | Brief |
 > | --- | --- | --- |
-> | **1 — DB, terreno vuoto** | tutto il DDL deciso da M-1 → M-9 e da D-1/D-4/D-6/D-7/D-8, **più il perimetro RLS di M-6** (riquadro di §7-sexies) e i pgTAP strutturali | [brief-db-magazzino-lotto-1-terreno-vuoto](brief-db-magazzino-lotto-1-terreno-vuoto.md) |
+> | **1 — DB, terreno vuoto** | tutto il DDL deciso da M-1 → M-9 e da D-1/D-4/D-6/D-7/D-8, **più il perimetro RLS di M-6** (riquadro di §7-sexies) e i pgTAP strutturali | [brief-db-magazzino-lotto-1-terreno-vuoto](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md) |
 > | **1-bis — DB, prerequisito del 2** (15-09) | l'**emittente di default** come building block unico (`script.trgfn_default_emittente_fiscale`), montato su `magazzini`/`assets` **e** al posto delle quattro copie di vendite, che si ritirano nello stesso giro (decisione di Tid: *«che aspettiamo, la produzione, per fare questi refactor?»*). Senza, il primo magazzino creato dal pannello muore con `23502` | [brief-db-emittente-di-default-un-bb-solo](brief-db-emittente-di-default-un-bb-solo.md) |
 > | **2 — DB, motore** | la primitiva (M-2), la `fn_check` di disponibilità separata, l'operazione **inventario iniziale** (passo 2), la vista situazione merce (M-3, senza le colonne che aspettano il satellite D-17), la vista degli orfani (D-9), il presidio di prontezza su `gestito_a_magazzino`, i pgTAP di comportamento (M-7). ⚠️ Con `requires_lotto` esposto in vista/BE/drawer **senza** il lock BoM di `requires_serial` (Lotto 1 §4.3) | da scrivere alla chiusura del Lotto 1 — ✅ Lotto 1 **chiuso e mergiato il 15-09** |
 > | **3** | scarico da DDT di vendita (passo 3): aggancio a `EMESSO`, utility di storno (M-8) | — |

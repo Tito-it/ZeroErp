@@ -9,7 +9,7 @@
 > l'analisi carico e scarico, utile sia per vendite che acquisti»*, e lo stesso
 > giorno le cinque decisioni che quel documento **presupponeva** senza
 > possederle — D-1, D-4, D-6, D-7, D-8 dell'[analisi aggancio
-> §8-quater](analisi-db-magazzino-aggancio-documento-e-produzione.md). Con
+> §8-quater](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md). Con
 > quelle prese, il primo pezzo eseguibile è **tutto il DDL già deciso**, sul
 > terreno vuoto.
 >
@@ -24,11 +24,23 @@
 > pgTAP **nessuna regressione**, RIENTRATO di `config/test-sorgenti-scope-pulizia-v1`
 > confermato; Django era rosso per i soli `E_MAG_*` — **chiuso dal BE con
 > `6f786ed9f` (PR #1595), CI su `Tito-dev` verde dalle 16:45 UTC del 15-09**
-> (§12 p.6-7). ⏳ **Aperti** (17-09): la riga 58 di `baseline-rossi-ci.tsv` da
-> togliere (DB, `pgtap-baseline-ci-rientrati.sh`), `requires_lotto` in UI (Lotto
-> 2), e l'**apply** del brief gemello `brief-db-emittente-di-default-un-bb-solo`
-> (scritto e provato: chiude il punto §4.7 su `magazzini`/`assets`). Con quelli,
-> il brief passa in `work-done/`. ⛔ Il cantiere `dbops` sull'ordine
+> (§12 p.6-7). ✅ **CHIUSO e archiviato in `work-done/` il 2026-09-17 (sera)**:
+> i tre «aperti» del 17-09 sono rientrati lo stesso giorno, ciascuno letto
+> dalla sua sorgente e non supposto — (1) il brief gemello
+> `brief-db-emittente-di-default-un-bb-solo` è **applicato** su dbdev
+> (`20260915-36 → -46` `EXECUTED` alle 12:06, dal `databasechangelog`;
+> `trg_magazzini_a10_default_emittente_ins` e `trg_assets_a10_default_emittente_ins`
+> montati: il punto §4.7 è chiuso) e il BE lo ha già assorbito
+> (`E_EMITTENTE_NON_RISOLTO` a policy, i tre codici marcati RITIRATI); (2) la
+> riga 58 di `baseline-rossi-ci.tsv` è **tolta** con
+> `scripts/pgtap-baseline-ci-rientrati.sh 35241276981` (la corsa verde del merge
+> #1601, 15:35 UTC: `config/test-sorgenti-scope-pulizia-v1` RIENTRATO, 372 → 365
+> righe insieme a sei rientrati di `pagamenti`/`vendite` che la stessa corsa ha
+> dichiarato); (3) `requires_lotto` in UI è del **Lotto 2** per definizione
+> (§4.3), non un residuo di questo. Verificato sui file di HEAD (`86deea82f`),
+> non sul commit: 2 `E_MAG_*` in ciascun modulo BE, 0 `ambito_causale` in
+> `backend/apps` e `frontend/src`; «Django tests» della corsa `35241276981`:
+> `Ran 4872 tests … OK (skipped=32)`. ⛔ Il cantiere `dbops` sull'ordine
 > dei job **non si apre** (§12 p.2: le automazioni su dev si lanciano a mano).
 > ⚠️ La sera del 15-09 ha insegnato più della scrittura: **sette** cose erano
 > verdi in sessione per ragioni sbagliate e le ha trovate solo il DB da zero
@@ -510,7 +522,7 @@ quando il pannello servirà»*. **Decisione: il BB generico, E il ritiro delle
 copie di vendite nello stesso giro** — *«che aspettiamo, la produzione, per
 fare questi refactor?»*. Non «la BB ora e le copie dopo»: un refactor rimandato
 è un debito che nessuno rilegge. 🔵 **È un brief suo, scritto il 15-09 sera:
-[brief-db-emittente-di-default-un-bb-solo](brief-db-emittente-di-default-un-bb-solo.md)**
+[brief-db-emittente-di-default-un-bb-solo](../work-in-progress/brief-db-emittente-di-default-un-bb-solo.md)**
 (tocca `vendite`, in esercizio), da applicare **prima del Lotto 2**, che lo
 presuppone (il primo magazzino vero nasce lì). Censimento fatto il 15-09 per
 non partire da un numero sbagliato — le cinque di vendite **non sono cinque
@@ -917,10 +929,10 @@ dove la frase è la posta in gioco.
 
 ## 10. Riferimenti
 
-- Le decisioni: [analisi carico e scarico](analisi-db-magazzino-carico-e-scarico.md)
-  (M-1 → M-9, §8 lotti), [analisi aggancio §8 e §8-quater](analisi-db-magazzino-aggancio-documento-e-produzione.md)
-  (D-1 → D-9), [analisi commessa](analisi-db-commessa-e-produzione-predisposizione.md)
-  (§7 rinviata), [analisi acquisti §8 e §10](analisi-simmetria-ordini-acquisto.md)
+- Le decisioni: [analisi carico e scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md)
+  (M-1 → M-9, §8 lotti), [analisi aggancio §8 e §8-quater](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md)
+  (D-1 → D-9), [analisi commessa](../work-in-progress/analisi-db-commessa-e-produzione-predisposizione.md)
+  (§7 rinviata), [analisi acquisti §8 e §10](../work-in-progress/analisi-simmetria-ordini-acquisto.md)
   (ricezione, D-17).
 - Le forme da copiare: rinomina con trigger condizionali
   `00_schema/pagamenti/20260822-25`; policy `00_schema/vendite/20260713-17`;
@@ -937,6 +949,7 @@ dove la frase è la posta in gioco.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-09-17 (sera) | ✅ **CHIUSO, in `work-done/`.** Verifica delle competenze BE sui **file di HEAD** (`86deea82f`, non sul commit `6f786ed9f`, che un commit dopo avrebbe potuto disfare): `E_MAG_MOVIMENTO_VERSO_INCOERENTE` → `TECNICO` e `E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI` → `DATO_ERRATO` in `error_policies_generated.py`, le stesse classi di `config.vw_codici_errore_identita` su dbdev; due ripieghi senza segnaposto in `error_messages_fallback.py`, coerenti con causa/soluzione a catalogo; `ambito_causale` a **0** occorrenze in `backend/apps` e `frontend/src` (le tre voci `magazzino` superstiti — `causali`, `magazzini`, `ubicazioni` — puntano a tabelle vive); `requires_lotto` a 0 (Lotto 2, atteso). Corsa CI del merge #1601 (`35241276981`, 15:35 UTC) letta dal log: Django `Ran 4872 tests … OK (skipped=32)`, pgTAP «nessuna regressione», **sette** RIENTRATI. I tre «aperti» del mattino: gemello **applicato** alle 12:06 (`20260915-36 → -46`, `databasechangelog`; i due `default_emittente` montati su `magazzini`/`assets`) e già nel modulo BE; riga 58 **tolta** con `pgtap-baseline-ci-rientrati.sh` sulla corsa (372 → 365: con la nostra sono uscite sei righe di `pagamenti`/`vendite` che la corsa dichiarava rientrate — lo script per progetto toglie ciò che la CI ha misurato, non una selezione); `requires_lotto` UI è Lotto 2. ⚠️ Il gemello porta ancora in testa «in attesa di apply»: è un brief suo, con la sua checklist §12, e si aggiorna lì. Ripuntati i link relativi dei tre documenti di `work-in-progress/` che lo citavano per path, `mappa-concentrica.md` riga `magazzino`, `PROJECT_CONTEXT.md`. La baseline l'ha committata Tid alle 17:47 (`0198a092a`, «Aggiornamento baseline-rossi»: le sette righe); lo spostamento del brief e i documenti ripuntati restano **non committati** (decisione di Tid) |
 | 2026-09-15 (sera, 17:10) | **Mergiato e verificato.** PR #1593 su `Tito-dev` (14:43 UTC); corsa del merge letta dal log: pgTAP senza regressioni, RIENTRATO confermato (riga 58 della baseline CI ancora da togliere), Django rosso **solo** per i due `E_MAG_*` — i cinque `E_PROCESSO_*` sono già rigenerati (#1592). **Tre correzioni di Tid**: (1) §4.7 **deciso** — BB generico dell'emittente di default **e ritiro delle copie di vendite nello stesso giro**, brief suo prima del Lotto 2; censite: tre copie vere, una variante morbida (ddt), una diversa (commesse), e nove tabelle ancorate senza default; (2) §4.3 — `requires_lotto` non si copia da `requires_serial` a occhi chiusi: quello è un flag di **struttura BoM** sotto lock, questo **no** per decisione; e la frase sul `security_invoker` di `vw_articoli_dettaglio` era **falsa** (la vista non ce l'ha e non deve averlo); (3) §12 p.2 — **nessun cantiere `dbops`**: le automazioni su dev si lanciano a mano nell'ordine della CI, scritto lì |
 | 2026-09-15 15:18 → 15:30 | ✅ **Commit `61b4cb5d3` su `dev/db-tid`** (Tid, 15:18, pushato: `origin/dev/db-tid` allineato) — «Aggiornamento Db … Eseguiti test pgtap e aggiornata documentazione»: 23 changeSet nuovi + il loader `20251001-51` in place, 5 pgTAP nuovi + 2 riscritti, i CSV, 32 manuali, le pagine auto-gen rigenerate (`gen_db_docs.py`: indice `magazzino/` con rev 15-09, `lotti`/`movimenti_attesi`/`valore_giacenza`/`vw_giacenza_ubicazione`, le otto `fn_scope_*`, `fn_pgtap_crea_indirizzo_dettaglio`), questo brief. Le cancellazioni (`git rm`) erano già nel commit precedente `f6eb32841` e sono su `Tito-dev` dalla PR #1591 (12:47) **senza** il lotto — stato a metà innocuo, vedi §12 p.5 e p.6. **Verifica alle 15:30** (letta dal `databasechangelog` e dal catalogo di dbdev): 26 `EXECUTED` (`-18` alle 12:29, `-19`/`-20` alle 12:50 — non «tutti e tre alle 12:50»), 23 tabelle RLS / 23 policy, `vw_rls_perimetro_scoperto` e `vw_storico_scope_da_dichiarare` a 0 per `magazzino`, shadow su `lotti` e `movimenti_attesi`, 12 trigger sugli attesi, 0 `ix_mag_res*`, 0 esenzioni, 16 causali, oggetti ritirati assenti — la fotografia di §12 regge. 🔴 **Trovato verificando: una richiesta BE mancava a §12.** I due `E_MAG_*` sono a catalogo e hanno **0** occorrenze in `error_policies_generated.py` e `error_messages_fallback.py`; `test_il_file_generato_e_allineato_al_catalogo` è **già rosso su `Tito-dev`** dalla PR #1591 (i cinque `E_PROCESSO_*` di «Esegui ora», 23 righe) e questo lotto vi aggiunge due codici → §12 p.7, quarta voce. ⚠️ E la suite pgTAP in CI **non gira sulla PR** verso `Tito-dev` (`ci-validate.yaml`: PR verso `main`, push su `Tito-dev` che toccano `db/`): il RIENTRATO si legge nella corsa **del merge** |
 | 2026-09-15 (notte) | ✅ **CHIUSO lato DB** (Tid): `-18`, `-19`, `-20` applicati su dbdev (12:50), automazioni passate, **`scripts/pgtap-baseline.sh` verde su dbdev e su `zeroerp_ci` ricostruito da zero** (`ci-local.sh --fresh --ci-apply`). Letto dal catalogo dopo: 0 righe in `vw_rls_perimetro_scoperto` e in `vw_storico_scope_da_dichiarare` per `magazzino`, shadow e `z90_storico` su `lotti` e `movimenti_attesi` (non su `valore_giacenza`: per progetto, §4.6), 7 `require_attivo` sugli attesi, indici degli attesi tutti col nome di policy, registro dei riferimenti morti a 0/0/0. Il bilancio della sera è in §12 e nelle ultime sei righe di §5 |
@@ -1053,21 +1066,25 @@ autonomo»):
    (commit `937acd83a`; poi #1594). **Corsa del merge `34984791746`, letta dal log** (non
    supposta): suite pgTAP «nessuna regressione: ogni rosso era già noto», e
    **RIENTRATO `db/pgtap/config/test-sorgenti-scope-pulizia-v1.sql`** — la riga 58 di
-   `baseline-rossi-ci.tsv` è **ancora lì** (⏳ DB: `scripts/pgtap-baseline-ci-rientrati.sh` su
-   quella corsa). «Django tests» **rosso: 2 FAIL su 4861** —
+   `baseline-rossi-ci.tsv` ✅ **tolta il 17-09 sera** con
+   `scripts/pgtap-baseline-ci-rientrati.sh 35241276981` (la corsa del merge #1601, che lo
+   dichiarava ancora RIENTRATO insieme ad altri sei). «Django tests» **rosso: 2 FAIL su 4861** —
    `test_nessun_codice_nuovo_senza_policy` e `test_il_file_generato_e_allineato_al_catalogo`,
    ed **entrambi nominano solo i due `E_MAG_*`**: i cinque `E_PROCESSO_*` li ha già rigenerati
    il BE con #1592 (9 occorrenze in `error_policies_generated.py`). ⇒ Il rosso residuo su
    `Tito-dev` è **tutto di questo lotto**, e lo chiude la quarta voce del punto 7;
-7. ✅/⏳ **richieste a BE/FE** — **aggiornato il 17-09**: il BE ha chiuso le prime due
-   con `6f786ed9f` (PR #1595, 15-09 16:45 UTC; **CI su `Tito-dev` verde**): `E_MAG_*`
-   rigenerati e coi ripieghi (2 occorrenze in ciascun modulo), `ambito_causale` via da
-   `_REL_CONSENTITE` e da `CONFIG_TABLES` (0 occorrenze). La terza — chi valorizza
-   `magazzini.emittente_fiscale_id` — è **decisa e scritta**: il building block
+7. ✅ **richieste a BE/FE** — **chiuse, verificate il 17-09 sera sui file di HEAD**: il BE
+   ha chiuso le prime due con `6f786ed9f` (PR #1595, 15-09 16:45 UTC; **CI su `Tito-dev`
+   verde**, e ancora verde al merge #1601 del 17-09): `E_MAG_*` rigenerati e coi ripieghi
+   (2 occorrenze in ciascun modulo, classi uguali a `vw_codici_errore_identita`),
+   `ambito_causale` via da `_REL_CONSENTITE` e da `CONFIG_TABLES` (0 occorrenze). La terza
+   — chi valorizza `magazzini.emittente_fiscale_id` — è il building block
    `script.trgfn_default_emittente_fiscale` di
-   [brief-db-emittente-di-default-un-bb-solo](brief-db-emittente-di-default-un-bb-solo.md)
-   (`20260915-43` monta il default su `magazzini` e `assets`; in attesa di apply). Resta
-   la sola **`requires_lotto` in UI**, che è del Lotto 2 (§4.3). Sotto, il testo del 15-09
+   [brief-db-emittente-di-default-un-bb-solo](../work-in-progress/brief-db-emittente-di-default-un-bb-solo.md):
+   `20260915-43` **applicato il 17-09 alle 12:06** (`trg_magazzini_a10_default_emittente_ins`,
+   `trg_assets_a10_default_emittente_ins` letti da `pg_trigger`), e il BE lo ha già
+   rigenerato (`E_EMITTENTE_NON_RISOLTO` a policy). Resta la sola **`requires_lotto` in
+   UI**, che è del Lotto 2 (§4.3) e non trattiene questo brief. Sotto, il testo del 15-09
    com'era — **verificato
    il 15-09 alle 17:10 con `grep`: tutte e quattro ancora aperte** (0 occorrenze di `E_MAG_`
    nei due moduli, `ambito_causale` ancora a riga 107 e 63, 0 `requires_lotto` in BE/FE):

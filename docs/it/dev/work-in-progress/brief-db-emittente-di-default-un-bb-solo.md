@@ -6,7 +6,7 @@
 > qui.
 >
 > **Origine.** Decisione di Tid, 2026-09-15 sera, sul punto aperto §4.7 del
-> [brief del Lotto 1 di magazzino](brief-db-magazzino-lotto-1-terreno-vuoto.md):
+> [brief del Lotto 1 di magazzino](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md):
 > *«bisogna fare in modo che non esistano tutte le copie, predisporre funzioni
 > generiche e ritirare i duplicati — ora non c'è produzione, che aspettiamo,
 > che arrivi la produzione per fare questi refactor?»*. La raccomandazione che
@@ -526,7 +526,7 @@ parla prima del trigger.
   `fn_crea_revisione_preventivo.md`): la revisione copia l'ancora (D3).
 - `docs/it/dbzero/magazzino/manual/magazzini.md` e `assets.md`: una riga sul
   default dell'emittente (oggi dicono solo dell'ancora e del guard di scope).
-- `docs/it/dev/work-in-progress/brief-db-magazzino-lotto-1-terreno-vuoto.md`
+- `docs/it/dev/work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`
   §4.7: rimando a questo brief (fatto il 15-09).
 - `docs/it/dev/work-in-progress/analisi-db-magazzino-carico-e-scarico.md`
   §8, tabella dei lotti: riga **1-bis** (fatto il 15-09).
@@ -597,7 +597,7 @@ Guardrail statici (`run_on_change`, `precondition_seed`, `ddt_su_trigger_automaz
 
 ## 13. Riferimenti
 
-- La decisione: [brief Lotto 1 §4.7](brief-db-magazzino-lotto-1-terreno-vuoto.md)
+- La decisione: [brief Lotto 1 §4.7](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md)
   (15-09), memoria `feedback_duplicati_si_ritirano_nello_stesso_cantiere`.
 - Le forme da copiare: il ritiro di un codice con `obsoleto_dal`
   `20_code/anagrafiche/20260820-02` (funzione doppione + codice 131); un

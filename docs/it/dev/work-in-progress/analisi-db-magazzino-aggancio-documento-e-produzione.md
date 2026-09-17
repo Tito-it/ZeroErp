@@ -23,7 +23,7 @@
 > D-3, D-4, D-6, D-7, D-8, D-9; resta aperta la sola **D-5**, rinviata di
 > proposito con la §7 dell'analisi commessa). Il verbale è in **§8-quater**, la
 > tabella di §8 porta l'esito riga per riga, e il primo pezzo eseguibile è
-> [brief-db-magazzino-lotto-1-terreno-vuoto.md](brief-db-magazzino-lotto-1-terreno-vuoto.md).
+> [brief-db-magazzino-lotto-1-terreno-vuoto.md](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md).
 >
 > 📌 **Declassato ad analisi il 2026-09-01** (decisione di Tid), e rinominato da
 > `brief-db-…` a `analisi-db-…`: ⭐ è la stessa distinzione già usata dal cantiere
