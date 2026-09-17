@@ -444,7 +444,6 @@ const onClose = useDrawerClose(emit)
               v-model="esito"
               :options="esitiOptions"
               option-label="label" option-value="value"
-              class="w-full"
               :placeholder="t('pratiche.flusso_esito')"
             />
             <!-- Lookup esiti fallito o vuoto: senza feedback l'operatore resta
@@ -458,7 +457,7 @@ const onClose = useDrawerClose(emit)
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.flusso_note_esito') }}</label>
-            <Textarea v-model="noteEsito" class="w-full" rows="3" auto-resize />
+            <Textarea v-model="noteEsito" rows="3" auto-resize />
           </div>
         </div>
       </div>
@@ -480,7 +479,7 @@ const onClose = useDrawerClose(emit)
       </div>
 
       <!-- COMPLETATO: Mostra esito (readonly) -->
-      <div v-if="stato === STATO_FLUSSO.COMPLETATO" class="form-grid mt-3">
+      <div v-if="stato === STATO_FLUSSO.COMPLETATO" class="form-grid">
         <div class="form-field">
           <label>{{ t('pratiche.flusso_esito') }}</label>
           <Tag :value="flusso.esito_descrizione || flusso.esito" :severity="esitoFlussoSeverity(flusso.esito)" />
@@ -547,7 +546,7 @@ const onClose = useDrawerClose(emit)
 .flusso-domain-hint {
   margin: 0.25rem 0 0;
   font-size: 0.85rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 .form-value {

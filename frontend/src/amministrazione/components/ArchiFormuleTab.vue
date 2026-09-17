@@ -138,28 +138,28 @@ function onSave() {
     <template #form>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_da') }} *</label>
-        <Select v-model="form.template_flusso_da_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <Select v-model="form.template_flusso_da_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_a') }} *</label>
-        <Select v-model="form.template_flusso_a_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <Select v-model="form.template_flusso_a_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field form-field--num">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_giorni_critico') }} *</label>
-        <InputNumber v-model="form.giorni_critico" :min="1" show-buttons class="w-full" />
+        <InputNumber v-model="form.giorni_critico" :min="1" show-buttons />
       </div>
       <div class="form-field form-field--num">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_giorni_warning') }} *</label>
-        <InputNumber v-model="form.giorni_warning" :min="1" show-buttons class="w-full" />
+        <InputNumber v-model="form.giorni_warning" :min="1" show-buttons />
       </div>
       <div class="form-field form-field--num">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_giorni_esecuzione') }} *</label>
-        <InputNumber v-model="form.giorni_esecuzione" :min="1" show-buttons class="w-full" />
+        <InputNumber v-model="form.giorni_esecuzione" :min="1" show-buttons />
       </div>
       <div class="form-field form-field--wide">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_descrizione') }}</label>
         <InputText v-model="form.descrizione"
-        :invalid="campiErrati.includes('descrizione')" class="w-full" />
+        :invalid="campiErrati.includes('descrizione')" />
       </div>
       <div class="form-field form-field--toggle">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_attivo') }}</label>

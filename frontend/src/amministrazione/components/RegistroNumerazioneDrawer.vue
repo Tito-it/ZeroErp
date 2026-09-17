@@ -410,7 +410,6 @@ const titolo = computed(() => {
             v-model="form.codice"
             :maxlength="FIELD_LENGTH.REGISTRO_CODICE_MAX"
             :disabled="isReadonly"
-            class="w-full"
           />
         </div>
         <div class="form-field">
@@ -419,7 +418,6 @@ const titolo = computed(() => {
             v-model="form.descrizione"
             :maxlength="FIELD_LENGTH.REGISTRO_DESCRIZIONE_MAX"
             :disabled="isReadonly"
-            class="w-full"
           />
         </div>
 
@@ -435,7 +433,6 @@ const titolo = computed(() => {
             option-label="label"
             option-value="value"
             :disabled="isReadonly"
-            class="w-full"
           />
           <span v-else>{{ dettaglio?.famiglia_descrizione || form.famiglia_documento }}</span>
         </div>
@@ -481,7 +478,6 @@ const titolo = computed(() => {
             option-label="label"
             option-value="value"
             :disabled="isReadonly"
-            class="w-full"
           />
           <span v-else>{{ resetLabel }}</span>
           <small class="app-field-hint">
@@ -491,9 +487,9 @@ const titolo = computed(() => {
       </div>
 
       <!-- ── La forma del numero ───────────────────────────────────────── -->
-      <h4 class="mt-3">{{ t('amministrazione.registri_numerazione.sezione_forma') }}</h4>
+      <h4>{{ t('amministrazione.registri_numerazione.sezione_forma') }}</h4>
 
-      <Message v-if="formaBloccata" severity="warn" :closable="false" class="mb-3">
+      <Message v-if="formaBloccata" severity="warn" :closable="false">
         {{ motivoForma }}
       </Message>
 
@@ -507,7 +503,6 @@ const titolo = computed(() => {
             v-model="form.prefisso"
             :maxlength="FIELD_LENGTH.REGISTRO_PREFISSO_MAX"
             :disabled="isReadonly || formaBloccata"
-            class="w-full"
           />
         </div>
         <div class="form-field">
@@ -516,7 +511,6 @@ const titolo = computed(() => {
             v-model="form.suffisso"
             :maxlength="FIELD_LENGTH.REGISTRO_SUFFISSO_MAX"
             :disabled="isReadonly || formaBloccata"
-            class="w-full"
           />
         </div>
         <div class="form-field">
@@ -526,7 +520,6 @@ const titolo = computed(() => {
             :min="REGISTRO_CIFRE_MIN"
             :max="REGISTRO_CIFRE_MAX"
             :disabled="isReadonly || formaBloccata"
-            class="w-full"
           />
         </div>
         <!-- ⭐ L'ANNO NELLA STRINGA — in SOLA LETTURA, sempre, anche in
@@ -555,7 +548,7 @@ const titolo = computed(() => {
 
       <!-- ── I campi che il CHECK ammette solo su FATTURA ───────────────── -->
       <template v-if="ammetteRegoleFiscali">
-        <h4 class="mt-3">{{ t('amministrazione.registri_numerazione.sezione_limiti') }}</h4>
+        <h4>{{ t('amministrazione.registri_numerazione.sezione_limiti') }}</h4>
         <div class="form-grid-2col">
           <!-- ⭐ La politica data è il terzo campo condizionato del §FE-4, e
                fino alla revisione critica non aveva un campo: viaggiava nel
@@ -568,7 +561,6 @@ const titolo = computed(() => {
               option-label="label"
               option-value="value"
               :disabled="isReadonly"
-              class="w-full"
             />
           </div>
           <div class="form-field">
@@ -576,7 +568,6 @@ const titolo = computed(() => {
             <InputNumber
               v-model="form.limite_emissione_giorni"
               :disabled="isReadonly"
-              class="w-full"
             />
           </div>
           <div class="form-field">
@@ -584,7 +575,6 @@ const titolo = computed(() => {
             <InputNumber
               v-model="form.limite_emissione_giorno_mese"
               :disabled="isReadonly"
-              class="w-full"
             />
           </div>
         </div>
@@ -599,7 +589,7 @@ const titolo = computed(() => {
            dentro un drawer, e importare `primevue/datatable` qui farebbe salire
            il contatore della regola zero per una cosa che non è una lista. -->
       <template v-if="isEdit && dettaglio?.progressivi?.length">
-        <h4 class="mt-3">{{ t('amministrazione.registri_numerazione.sezione_contatori') }}</h4>
+        <h4>{{ t('amministrazione.registri_numerazione.sezione_contatori') }}</h4>
         <table class="app-mini-table">
           <thead>
             <tr>

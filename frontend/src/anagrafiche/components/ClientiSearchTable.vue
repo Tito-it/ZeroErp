@@ -223,7 +223,7 @@ onMounted(() => {
         <!-- Sospensione/Riattivazione: colonna composta che mostra l'ultima delle due date. -->
         <template #cell-sosp_riatt="{ data }">
           <span v-if="data.data_sospensione || data.data_riattivazione">
-            <small class="text-color-secondary">{{ t(dataSospRiatt(data).label) }}</small><br>
+            <small class="app-text-muted">{{ t(dataSospRiatt(data).label) }}</small><br>
             {{ displayDate(dataSospRiatt(data).date) }}
           </span>
         </template>

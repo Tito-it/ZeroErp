@@ -2026,15 +2026,19 @@ in `:root:not(.p-dark)` (light).
 | `app-datatable`      | DataTable compatta (font ridotto, padding, stripe, hover) |
 | `app-drawer-content` | Wrapper contenuto drawer (gap via `--app-drawer-gap`)     |
 | `app-drawer-section` | Separatore sezione nei drawer (bordo da theme.css)        |
-| `app-drawer-footer`  | Footer drawer Annulla/Salva (flex, justify-end)           |
+| `app-form-footer`    | Footer Annulla/Salva (flex, justify-end). ⚠️ Fino al 2026-09-17 questa riga diceva `app-drawer-footer`, una classe che **non esiste** in nessun foglio: `ResoRigaForm` l'aveva copiata da qui e il suo footer non era allineato a destra. Il nome vero è quello di `FormFooter.vue` |
 | `form-grid`          | Contenitore campi form (flex column, gap)                 |
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
+| `app-text-muted`     | Testo sottotono (`--app-text-muted`): hint sotto i campi, note. ⛔ Non `text-color-secondary`: PrimeFlex non è installato, e fino al 17/09 nemmeno questa regola esisteva — 135 siti di testo «sottotono» erano testo normale |
+| `font-bold`          | `font-weight: 600` (globale dal 17/09; prima viveva in uno `<style scoped>` e altrove non faceva niente) |
+| `mt-025`/`mt-05`/`mt-1` · `ml-05`/`mr-05` | Le sole utility di spaziatura. ⛔ `mt-3`, `mb-3`, `w-full`, `flex`, `gap-2`… sono PrimeFlex: non esistono qui e sono state tolte da ~115 template il 17/09 |
 
 **Nota responsive sotto 1024px**: i pulsanti del `FormFooter` (Annulla,
 Chiudi, Salva) collassano automaticamente a icon-only via la classe
-`app-drawer-footer-btn` (stessa logica di `.app-page-action`). Il componente
+`app-form-footer-btn` (stessa logica di `.app-page-action`; ⚠️ fino al 17/09
+questa riga scriveva `app-drawer-footer-btn`, che non esiste). Il componente
 imposta `v-tooltip.top` con la label per garantire l'accessibilita'. La
 modifica e' centralizzata in [`FormFooter.vue`](../../../frontend/src/core/components/FormFooter.vue):
 qualsiasi pulsante Annulla/Salva sparso fuori dal componente NON eredita

@@ -1357,6 +1357,17 @@ a {
  * censimento delle altre classi morte della stessa famiglia (`w-full`, `flex`,
  * `mb-3`…) e' nel piano D19, registro del 17/09. */
 .ml-05  { margin-left: 0.5rem; }
+.mr-05  { margin-right: 0.5rem; }
+
+/* ===== Testo utility =====
+ * ⭐ `app-text-muted` esisteva solo come VARIABILE (`--app-text-muted`, in
+ * theme.css) e come classe in 34 template: la REGOLA non c'era, e il testo
+ * sottotono era testo normale. Stessa sorte di `text-color-secondary`
+ * (PrimeFlex, 101 siti), migrata qui il 2026-09-17: una classe sola, la nostra.
+ * `font-bold` stava in uno <style scoped> ed era usata in altri otto file:
+ * la regola globale e' questa, la copia scoped e' stata tolta. */
+.app-text-muted { color: var(--app-text-muted); }
+.font-bold { font-weight: 600; }
 
 /* ===== Lookup dropdown multi-riga =====
  * Layout riutilizzabile per voci di AutoComplete/Dropdown con piu' campi

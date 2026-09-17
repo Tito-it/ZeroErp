@@ -364,7 +364,7 @@ async function onConferma() {
         <label for="riga-non-identificata">{{ t('pagamenti.righe.non_identificata') }}</label>
         <div class="app-form-inline-toggle">
           <ToggleSwitch v-model="nonIdentificata" input-id="riga-non-identificata" />
-          <small class="text-color-secondary">
+          <small class="app-text-muted">
             {{ t('pagamenti.righe.non_identificata_aiuto') }}
           </small>
         </div>

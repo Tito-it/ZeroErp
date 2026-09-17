@@ -116,20 +116,20 @@ function onCancel() {
       <template v-if="isSospendi">
         <div class="form-field">
           <label>{{ t('pratiche.sosp_motivo') }} *</label>
-          <Textarea v-model="motivo" class="w-full" rows="3" auto-resize
+          <Textarea v-model="motivo" rows="3" auto-resize
             :placeholder="t('pratiche.sosp_motivo_placeholder')" />
         </div>
         <div class="form-field">
           <label>{{ t('pratiche.sosp_data_inizio') }} *</label>
-          <DatePicker v-model="dataInizio" class="w-full" show-time hour-format="24"
+          <DatePicker v-model="dataInizio" show-time hour-format="24"
             date-format="dd/mm/yy" show-icon :max-date="maxDate" />
-          <small class="text-color-secondary">{{ t('pratiche.sosp_data_hint') }}</small>
+          <small class="app-text-muted">{{ t('pratiche.sosp_data_hint') }}</small>
         </div>
         <div class="form-field">
           <label>{{ t('pratiche.sosp_riattivazione_prevista') }}</label>
-          <DatePicker v-model="dataRiattivazionePrevista" class="w-full"
+          <DatePicker v-model="dataRiattivazionePrevista"
             date-format="dd/mm/yy" show-icon show-button-bar />
-          <small class="text-color-secondary">{{ t('pratiche.sosp_prevista_hint') }}</small>
+          <small class="app-text-muted">{{ t('pratiche.sosp_prevista_hint') }}</small>
         </div>
       </template>
 
@@ -137,9 +137,9 @@ function onCancel() {
       <template v-else>
         <div class="form-field">
           <label>{{ t('pratiche.sosp_data_fine') }} *</label>
-          <DatePicker v-model="dataFine" class="w-full" show-time hour-format="24"
+          <DatePicker v-model="dataFine" show-time hour-format="24"
             date-format="dd/mm/yy" show-icon :max-date="maxDate" />
-          <small class="text-color-secondary">{{ t('pratiche.sosp_data_hint') }}</small>
+          <small class="app-text-muted">{{ t('pratiche.sosp_data_hint') }}</small>
         </div>
       </template>
     </div>

@@ -389,7 +389,7 @@ function isRamoChiuso(step) {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
 }
 
@@ -399,7 +399,7 @@ function isRamoChiuso(step) {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   border-bottom: 1px solid var(--surface-border);
   background: var(--surface-50);
   flex-shrink: 0;
@@ -420,7 +420,7 @@ function isRamoChiuso(step) {
 }
 
 .rac-vuoto {
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
   padding: 0.5rem 0;
 }
@@ -437,7 +437,7 @@ function isRamoChiuso(step) {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.82rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 .rac-fatto-icon {
@@ -534,13 +534,13 @@ function isRamoChiuso(step) {
   align-items: center;
   gap: 0.3rem;
   font-size: 0.8rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 /* POI */
 .rac-poi {
   font-size: 0.82rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   line-height: 1.4;
 }
 .rac-poi-label { font-weight: 600; }
@@ -595,7 +595,7 @@ function isRamoChiuso(step) {
 .percorso-step-seq {
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 .percorso-step-title {
@@ -612,7 +612,7 @@ function isRamoChiuso(step) {
 
 .percorso-step-esito {
   font-size: 0.74rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 .percorso-step-action {
@@ -624,7 +624,7 @@ function isRamoChiuso(step) {
   gap: 0.25rem;
 }
 
-.percorso-ramo-chiuso { color: var(--text-color-secondary); }
+.percorso-ramo-chiuso { color: var(--app-text-muted); }
 
 .percorso-attivita {
   margin-top: 0.3rem;
@@ -644,7 +644,7 @@ function isRamoChiuso(step) {
 
 .percorso-arrow {
   align-self: center;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 1rem;
   flex-shrink: 0;
 }

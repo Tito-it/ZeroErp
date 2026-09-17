@@ -188,13 +188,12 @@ async function onSoggettoCreatoDaDrawer(data) {
     </template>
 
     <div v-if="contentReady" class="app-drawer-content">
-      <div class="form-field mb-3">
+      <div class="form-field">
         <label>{{ t('resolver.search_label') }}</label>
         <span class="p-input-icon-right resolver-search">
           <InputText
             v-model="searchQuery"
             :placeholder="t('resolver.search_placeholder')"
-            class="w-full"
             autofocus
             @input="onSearchInput"
           />
@@ -242,19 +241,19 @@ async function onSoggettoCreatoDaDrawer(data) {
       </div>
 
       <!-- Soggetto selezionato -->
-      <div v-if="selectedSoggetto" class="resolver-selected mb-3">
+      <div v-if="selectedSoggetto" class="resolver-selected">
         <SoggettoMessageBanner
           :ragione-sociale="selectedSoggetto.ragione_sociale_completa"
           :id-fiscale="selectedSoggetto.codice_fiscale || selectedSoggetto.partita_iva"
         />
-        <div class="flex justify-end gap-2 mt-2">
+        <div>
           <Button :label="t('resolver.confirm_selection')" :icon="MANAGE_ICONS.CONFIRM"
             @click="confermaSelezionato" />
         </div>
       </div>
 
       <!-- Link per creazione nuovo -->
-      <div class="resolver-create-link mt-4">
+      <div class="resolver-create-link">
         <Button :label="t('resolver.create_new')" :icon="MANAGE_ICONS.ADD"
           text severity="primary" @click="passaACreazione" />
       </div>

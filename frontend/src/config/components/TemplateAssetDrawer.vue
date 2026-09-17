@@ -267,7 +267,7 @@ function close() {
             :placeholder="t('config.modelli_documenti.asset.filter_tipo')"
             :disabled="isEdit || isReadOnlyEffective"
           />
-          <small v-if="isEdit" class="text-color-secondary">
+          <small v-if="isEdit" class="app-text-muted">
             {{ t('config.modelli_documenti.asset.field_tipo_immutable_hint') }}
           </small>
         </div>
@@ -279,7 +279,7 @@ function close() {
             :is-edit="isEdit"
             :disabled="isReadOnlyEffective"
           />
-          <small class="text-color-secondary">
+          <small class="app-text-muted">
             {{ t('config.modelli_documenti.field_emittente_hint') }}
           </small>
         </div>
@@ -318,10 +318,10 @@ function close() {
               @clear="onFileClear"
               :disabled="isReadOnlyEffective"
             />
-            <small v-if="selectedFile" class="text-color-secondary">
+            <small v-if="selectedFile" class="app-text-muted">
               {{ selectedFile.name }} ({{ Math.round(selectedFile.size / 1024) }} KB)
             </small>
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ t('config.modelli_documenti.asset.field_file_hint') }}
             </small>
           </div>
@@ -335,7 +335,7 @@ function close() {
                   {{ t('config.modelli_documenti.asset.file_count', { count: currentFileCount }) }}
                 </span>
                 <strong>{{ form.file_name || '-' }}</strong>
-                <small class="text-color-secondary">
+                <small class="app-text-muted">
                   {{ form.mime_type || '-' }} · {{ formatFileSize(form.file_size_bytes) }}
                 </small>
               </div>
@@ -350,7 +350,7 @@ function close() {
                 @click="handleDownloadAsset"
               />
             </div>
-            <small v-if="form.sha256" class="text-color-secondary asset-file-hash">
+            <small v-if="form.sha256" class="app-text-muted asset-file-hash">
               SHA256 {{ form.sha256 }}
             </small>
           </div>
@@ -400,7 +400,7 @@ function close() {
 }
 
 .asset-file-count {
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.78rem;
   font-weight: 600;
   text-transform: uppercase;

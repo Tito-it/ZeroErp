@@ -1276,8 +1276,8 @@ function fatturaNumero(row) {
       <template v-if="contentReady && lotto">
         <DrawerEntityHeader>
           <Tag :value="lotto.codice" severity="secondary" />
-          <span class="text-color-secondary">{{ lotto.tipo_lotto }}</span>
-          <span v-if="lotto.competenza_mese" class="text-color-secondary">
+          <span class="app-text-muted">{{ lotto.tipo_lotto }}</span>
+          <span v-if="lotto.competenza_mese" class="app-text-muted">
             {{ displayDate(lotto.competenza_mese) }}
           </span>
           <template #status>
@@ -1287,9 +1287,9 @@ function fatturaNumero(row) {
 
         <!-- Step corrente (stato doc fiscale del lotto). -->
         <div class="app-lotto-step">
-          <span class="text-color-secondary">{{ t('vendite.lotti.step_corrente') }}:</span>
+          <span class="app-text-muted">{{ t('vendite.lotti.step_corrente') }}:</span>
           <Tag :value="lotto.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
-          <span v-if="lotto.stato_operativo" class="text-color-secondary">· {{ lotto.stato_operativo }}</span>
+          <span v-if="lotto.stato_operativo" class="app-text-muted">· {{ lotto.stato_operativo }}</span>
         </div>
 
         <!-- Banner del lotto FERMO (blocca l'avanzamento). Compare sul VERDETTO
@@ -1713,7 +1713,7 @@ function fatturaNumero(row) {
                        fase invece di un trattino muto. -->
                   <template #cell-documento_display="{ data }">
                     <span v-if="data.documento_display">{{ data.documento_display }}</span>
-                    <span v-else class="text-color-secondary">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
+                    <span v-else class="app-text-muted">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
                   </template>
                   <!-- ⭐ DI CHI E' LA CRITICA — la colonna che divide la scheda
                        in DUE FAMIGLIE con vie d'uscita diverse: quella di un
@@ -1735,7 +1735,7 @@ function fatturaNumero(row) {
                        sede della stessa regola. -->
                   <template #cell-riferimento="{ data }">
                     <span v-if="data.riferimento">{{ data.riferimento }}</span>
-                    <span v-else class="text-color-secondary">
+                    <span v-else class="app-text-muted">
                       {{ t('vendite.lotti.segn_del_giro') }}
                     </span>
                   </template>
@@ -2005,7 +2005,6 @@ function fatturaNumero(row) {
           v-model="esclusioneMotivo"
           rows="3"
           auto-resize
-          class="w-full"
           :placeholder="t('vendite.lotti.gruppo_escludi_motivo_placeholder')"
         />
       </div>

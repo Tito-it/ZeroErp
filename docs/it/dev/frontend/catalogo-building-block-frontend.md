@@ -376,7 +376,35 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | Classe | Descrizione |
 |---|---|
 | `mt-025` / `mt-05` / `mt-1` | Margin-top utility (0.25rem / 0.5rem / 1rem) |
-| `ml-05` | Margin-left (0.5rem), stessa famiglia: un Tag o uno span accanto a un testo (la natura accanto al numero del documento, il badge utility accanto al cliente). ⚠️ Nasce il 2026-09-17 e ha **sanato sei siti** che scrivevano `ml-1`/`ml-2`, classi che **non esistono in nessun foglio** — residui di PrimeFlex, che non è installato. 🔴 Il censimento dello stesso giorno dice che non erano le sole: `w-full` in **47** file, `flex` 13, `mb-3` 12, `mt-3` 11, `justify-end` 7, `mb-1` 7, `mt-2` 7, `mt-4` 6, `gap-2` 5, `mb-2` 5, `text-sm` 4, `mb-05` 4, `mt-0` 3, `block` 2, `gap-1`/`mb-4`/`ml-025` 1 — tutte morte. Toglierle è a rischio zero (non fanno niente) e mechanico; è un giro suo, dichiarato nel piano D19 (registro 17/09), non un'altra riga di questa tabella |
+| `ml-05` / `mr-05` | Margin-left / margin-right (0.5rem), stessa famiglia: un Tag o uno span accanto a un testo (la natura accanto al numero del documento, il badge utility accanto al cliente, i Tag dei documenti collegati nel drawer fattura). Nati il 2026-09-17 sanando `ml-1`/`ml-2`/`app-mr-1`, classi che **non esistevano in nessun foglio** |
+| `app-text-muted` | ⭐ **Il testo sottotono** (`color: var(--app-text-muted)`): hint sotto i campi, note «facoltativo», secondi righi. 🔴 **Fino al 2026-09-17 la classe NON ESISTEVA**: c'era la variabile (`theme.css`) e c'erano 34 template che la scrivevano — e 101 siti che scrivevano `text-color-secondary`, una utility PrimeFlex che non è mai stata installata. Il testo «sottotono» era testo normale ovunque, e nessuno l'ha notato perché il difetto non fa niente: non c'è una riga in più, c'è un colore in meno. La passata del 17/09 ha scritto la regola e migrato i 101 siti (e le 35 `var(--text-color-secondary)` / `var(--app-text-secondary)` negli `<style>`, variabili di PrimeVue 3 mai definite qui). ⛔ Non `text-color-secondary`, non `--text-color-secondary`: una sola classe, la nostra |
+| `font-bold` | `font-weight: 600`. Fino al 17/09 viveva in uno `<style scoped>` (`ImpostazioniSearchTable`) ed era usata in **altri otto** file, dove non faceva niente — `DrawerContextHeader` compreso, cioè il valore «primario» di ogni header di riga era in peso normale. Ora è globale in `main.css` |
+
+> 🔴 **La passata «classi morte» del 2026-09-17** (commit dedicato): tolti da
+> ~115 template i token PrimeFlex mai definiti — `w-full` (245), `mt-3` (40),
+> `mb-3` (23), `flex` (17), `mb-1`, `justify-end`, `mt-2`, `mb-2`, `mt-4`,
+> `text-sm`, `gap-2`, `mb-05`, `align-items-center`, `block`, `mb-4`, `mt-0`,
+> `text-red-500`, `text-green-500`, `gap-1`, `justify-content-center`,
+> `ml-025` — a rendering **invariato**, perché non facevano niente; migrati i
+> tre con una casa (`text-color-secondary` → `app-text-muted`, `app-mr-1` →
+> `mr-05`, `app-drawer-footer` → `app-form-footer`). ⚠️ **Restano due
+> famiglie, dichiarate e non toccate**: (1) nomi semantici senza CSS
+> (`form-field-wide` ×5, `bom-readonly-switch__label` ×4, `app-empty` ×3, i
+> root `app-giornale`/`app-matrice-override`/`app-riepilogo-iva`/`pratica-*-tab`/
+> `documento-emissione__*`/`lista-config-*`/`topbar-user-kebab-*`…) — sono
+> identificatori, non utility, e si tolgono o si stilano per decisione; (2)
+> **variabili CSS mai definite** negli `<style>`: `--surface-border` (12),
+> `--surface-hover` (5), `--surface-card` (4), `--surface-ground` (4),
+> `--surface-0/50/100` (7), `--text-color` (3), `--highlight-bg` (1) — PrimeVue 3
+> — e `--app-border-color` (3), `--app-gap-sm`/`--app-space-sm` (2+2),
+> `--app-border-radius`/`--app-radius`, `--app-primary-color`,
+> `--app-text-primary`, `--app-focus-ring`, `--app-row-hover-disabled` (1
+> ciascuna). ⛔ Queste **non sono innocue come le classi**: `border: 1px solid
+> var(--surface-border)` con la variabile assente annulla l'intera
+> dichiarazione — bordi e hover che il codice dichiara e lo schermo non ha.
+> Vanno mappate una per una sui token di PrimeVue 4 (`--p-content-border-color`,
+> `--p-content-hover-background`, …) o su `--app-*` definiti in `theme.css`:
+> passata sua, con decisione.
 
 ### Pagine auth (`auth-pages.css`)
 

@@ -131,7 +131,7 @@ function onPrendiInCarico(item, event) {
 .coda-lavoro-empty {
   padding: 1rem;
   text-align: center;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
 }
 
@@ -150,7 +150,7 @@ function onPrendiInCarico(item, event) {
   padding: 0.4rem 0.75rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   background: var(--surface-50);
@@ -175,7 +175,7 @@ function onPrendiInCarico(item, event) {
 
 .coda-item-desc {
   font-size: 0.75rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   margin-top: 0.1rem;
 }
 
@@ -189,7 +189,7 @@ function onPrendiInCarico(item, event) {
 
 .coda-item-risorsa {
   font-size: 0.72rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-style: italic;
 }
 </style>

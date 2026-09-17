@@ -243,7 +243,7 @@ function apriCoda(tab) {
               :severity="sez.severity(s.codice)"
             />
           </template>
-          <span v-if="caricato && sez.vivi === 0" class="text-color-secondary">
+          <span v-if="caricato && sez.vivi === 0" class="app-text-muted">
             {{ t('strumenti.code.coda_vuota') }}
           </span>
         </div>
@@ -252,19 +252,19 @@ function apriCoda(tab) {
              dentro quel numero. La riga di titolo dice di che elenco si tratta:
              «vuota» parla dei vivi, questo elenco anche delle terminate, e
              senza l'etichetta i due si leggerebbero in contraddizione. -->
-        <span class="app-code-recenti-titolo text-color-secondary">
+        <span class="app-code-recenti-titolo app-text-muted">
           {{ sez.titoloRecenti }}
         </span>
         <div v-if="sez.righe.length" class="app-code-jobs">
           <div v-for="riga in sez.righe" :key="riga.id" class="app-code-job">
             <Tag :value="riga.stato" :severity="sez.severity(riga.stato)" />
             <span class="app-code-job-tipo">{{ riga.testo }}</span>
-            <span class="text-color-secondary">
+            <span class="app-text-muted">
               {{ riga.quando ? displayTimestamp(riga.quando) : '—' }}
             </span>
           </div>
         </div>
-        <span v-else-if="caricato" class="text-color-secondary app-code-recenti-vuoto">
+        <span v-else-if="caricato" class="app-text-muted app-code-recenti-vuoto">
           {{ sez.vuotoRecenti }}
         </span>
       </div>

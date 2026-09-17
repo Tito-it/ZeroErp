@@ -544,7 +544,7 @@ function buildRigaActions(row) {
               :placeholder="t('catalogo.filtro_bom_validi_al')"
               style="width: 160px;"
             />
-            <div v-if="componentiList.length > 0" class="flex align-items-center gap-2">
+            <div v-if="componentiList.length > 0">
               <Checkbox v-model="filtroValiditaTutto" input-id="bom-filter-all" binary />
               <label for="bom-filter-all">{{ t('catalogo.filtro_bom_tutto') }}</label>
             </div>
@@ -582,7 +582,7 @@ function buildRigaActions(row) {
           <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" sortable />
           <Column field="esposto_in_fattura" :header="t('catalogo.col_esposto_fattura')" style="width: 80px;">
             <template #body="{ data }">
-              <i :class="data.esposto_in_fattura ? 'pi pi-check text-green-500' : 'pi pi-minus text-color-secondary'" />
+              <i :class="data.esposto_in_fattura ? 'pi pi-check' : 'pi pi-minus app-text-muted'" />
             </template>
           </Column>
           <Column field="valido_al" :header="t('catalogo.field_valido_al')" style="width: 130px;" sortable>
@@ -641,7 +641,7 @@ function buildRigaActions(row) {
               <div class="form-field">
                 <label>{{ t('catalogo.field_coeff_qta') }} *</label>
                 <InputNumber v-model="form.coeff_qta" :min="0" :min-fraction-digits="2"
-                  :max-fraction-digits="6" class="w-full" :disabled="isFormReadonly"
+                  :max-fraction-digits="6" :disabled="isFormReadonly"
                   :invalid="campiErrati.includes('coeff_qta')"
                 />
               </div>
@@ -650,14 +650,14 @@ function buildRigaActions(row) {
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_dal') }}</label>
                 <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly"
+                  show-icon show-button-bar :disabled="isFormReadonly"
                   :invalid="campiErrati.includes('valido_dal')"
                 />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_al') }}</label>
                 <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly"
+                  show-icon show-button-bar :disabled="isFormReadonly"
                   :invalid="campiErrati.includes('valido_al')"
                 />
               </div>
@@ -763,7 +763,6 @@ function buildRigaActions(row) {
       v-if="chiudiDialogIsImmediata"
       severity="warn"
       :closable="false"
-      class="mb-1"
     >
       {{ t('catalogo.chiudi_riga_warn_immediata') }}
     </Message>
@@ -771,7 +770,6 @@ function buildRigaActions(row) {
       v-else-if="chiudiDialogData"
       severity="info"
       :closable="false"
-      class="mb-1"
     >
       {{ t('catalogo.chiudi_riga_info_programmata', {
         data: displayDate(chiudiDialogData)
@@ -802,14 +800,13 @@ function buildRigaActions(row) {
     :save-label="t('catalogo.duplica_versione_conferma')"
     @save="confermaDuplicaVersione"
   >
-    <Message severity="info" :closable="false" class="mb-1">
+    <Message severity="info" :closable="false">
       {{ t('catalogo.duplica_versione_info') }}
     </Message>
     <Message
       v-if="duplicaDialogIsImmediata"
       severity="warn"
       :closable="false"
-      class="mb-1"
     >
       {{ t('catalogo.duplica_versione_warn_immediata') }}
     </Message>
@@ -817,7 +814,6 @@ function buildRigaActions(row) {
       v-else-if="duplicaDialogChiudiAl"
       severity="info"
       :closable="false"
-      class="mb-1"
     >
       {{ t('catalogo.duplica_versione_info_programmata', {
         data: displayDate(duplicaDialogChiudiAl)

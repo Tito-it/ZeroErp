@@ -233,7 +233,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Soggetto === -->
         <h4>{{ t('anagrafiche.fornitori.section_soggetto') }}</h4>
         <template v-if="!isEdit">
-          <div v-if="soggettoSelezionato" class="mb-3">
+          <div v-if="soggettoSelezionato">
             <SoggettoMessageBanner
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
               :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.piva"
@@ -243,10 +243,10 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
           <div v-else>
             <Button :label="t('resolver.open')" icon="pi pi-search"
-              outlined class="w-full" @click="resolverVisible = true" />
+              outlined @click="resolverVisible = true" />
           </div>
         </template>
-        <div v-if="isEdit && detail" class="mb-3">
+        <div v-if="isEdit && detail">
           <SoggettoMessageBanner
             :ragione-sociale="detail.ragione_sociale_completa"
             :id-fiscale="detail.codice_fiscale || detail.partita_iva"
@@ -256,7 +256,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Codice manuale (solo create, se non auto-generato) === -->
         <div v-if="!isEdit && codiceField.isEditable.value" class="form-field">
           <label>{{ t('anagrafiche.fornitori.col_codice') }}</label>
-          <InputText v-model="form.codice" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_codice')"
+          <InputText v-model="form.codice" :placeholder="t('anagrafiche.fornitori.placeholder_codice')"
             :invalid="campiErrati.includes('codice')"
           />
         </div>
@@ -266,7 +266,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <div class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('anagrafiche.fornitori.col_codice') }}</label>
-              <InputText :model-value="detail.codice" disabled class="w-full" />
+              <InputText :model-value="detail.codice" disabled />
             </div>
             <div class="form-field" style="align-self: flex-end;">
               <Tag :value="detail.stato_descrizione" :severity="statoFornitoreSeverity(detail.stato_codice_interno)"
@@ -275,7 +275,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_stato') }}</label>
-            <LookupSelect v-model="form.stato_fornitore_id" rel="config.stati_fornitore" class="w-full" />
+            <LookupSelect v-model="form.stato_fornitore_id" rel="config.stati_fornitore" />
           </div>
         </template>
 
@@ -283,28 +283,28 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <template v-if="isEdit || soggettoSelezionato">
 
         <!-- === Pagamento === -->
-        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_pagamento') }}</h4>
+        <h4>{{ t('anagrafiche.fornitori.section_pagamento') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_modalita_pagamento') }}</label>
-            <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento" class="w-full"
+            <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento"
               :placeholder="t('anagrafiche.fornitori.select_modalita')" show-clear />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_valuta') }}</label>
-            <LookupSelect v-model="form.valuta_id" rel="config.valute" class="w-full"
+            <LookupSelect v-model="form.valuta_id" rel="config.valute"
               :placeholder="t('anagrafiche.fornitori.select_valuta')" show-clear />
           </div>
         </div>
         <div class="form-grid-3col">
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_termine_pagamento') }}</label>
-            <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento" class="w-full"
+            <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento"
               :placeholder="t('anagrafiche.fornitori.select_termine')" show-clear />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_giorni_pagamento') }}</label>
-            <InputNumber v-model="form.giorni_pagamento" :min="0" :max="999" class="w-full" />
+            <InputNumber v-model="form.giorni_pagamento" :min="0" :max="999" />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_fine_mese') }}</label>
@@ -313,11 +313,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </div>
 
         <!-- === Fiscale === -->
-        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_fiscale') }}</h4>
+        <h4>{{ t('anagrafiche.fornitori.section_fiscale') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_regime_fiscale') }}</label>
-            <InputText v-model="form.regime_fiscale" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_regime')" />
+            <InputText v-model="form.regime_fiscale" :placeholder="t('anagrafiche.fornitori.placeholder_regime')" />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_split_payment') }}</label>
@@ -336,40 +336,40 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </div>
         <div v-if="form.ritenuta_acconto" class="form-field">
           <label>{{ t('anagrafiche.fornitori.field_ritenuta_aliquota') }}</label>
-          <InputNumber v-model="form.ritenuta_aliquota" class="w-full" :min="0" :max="100"
+          <InputNumber v-model="form.ritenuta_aliquota" :min="0" :max="100"
             suffix="%" mode="decimal" :min-fraction-digits="2" />
         </div>
 
         <!-- === FE / SDI === -->
-        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_fe_sdi') }}</h4>
+        <h4>{{ t('anagrafiche.fornitori.section_fe_sdi') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_canale_fe') }}</label>
-            <InputText v-model="form.canale_fe" class="w-full" maxlength="7" :placeholder="t('anagrafiche.fornitori.placeholder_canale_fe')" />
+            <InputText v-model="form.canale_fe" maxlength="7" :placeholder="t('anagrafiche.fornitori.placeholder_canale_fe')" />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_pec_email') }}</label>
-            <InputText v-model="form.pec_email" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_pec')" />
+            <InputText v-model="form.pec_email" :placeholder="t('anagrafiche.fornitori.placeholder_pec')" />
           </div>
         </div>
 
         <!-- === Rating === -->
-        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_rating') }}</h4>
+        <h4>{{ t('anagrafiche.fornitori.section_rating') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_rating') }}</label>
-            <InputNumber v-model="form.rating" class="w-full" :min="0" :max="100" />
+            <InputNumber v-model="form.rating" :min="0" :max="100" />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.fornitori.field_qualifica_scadenza') }}</label>
-            <DatePicker v-model="form.qualifica_scadenza" class="w-full" dateFormat="dd/mm/yy" show-icon />
+            <DatePicker v-model="form.qualifica_scadenza" dateFormat="dd/mm/yy" show-icon />
           </div>
         </div>
 
         <!-- === Note === -->
-        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_note') }}</h4>
+        <h4>{{ t('anagrafiche.fornitori.section_note') }}</h4>
         <div class="form-field">
-          <Textarea v-model="form.note" class="w-full" rows="3" auto-resize
+          <Textarea v-model="form.note" rows="3" auto-resize
             :invalid="campiErrati.includes('note')"
           />
         </div>

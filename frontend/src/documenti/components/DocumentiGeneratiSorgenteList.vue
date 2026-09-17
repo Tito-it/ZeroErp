@@ -315,7 +315,7 @@ async function reload() {
            con badge tipo e download per id. -->
       <template #expansion="{ data }">
         <div class="documenti-sorgente-list__files">
-          <div v-if="filesLoading[data.id]" class="text-color-secondary">
+          <div v-if="filesLoading[data.id]" class="app-text-muted">
             {{ t('documenti.allegati.files_loading') }}
           </div>
           <ul v-else-if="filesPerDoc[data.id]?.length" class="documenti-sorgente-list__file-list">
@@ -338,14 +338,14 @@ async function reload() {
               />
             </li>
           </ul>
-          <div v-else class="text-color-secondary">
+          <div v-else class="app-text-muted">
             {{ t('documenti.allegati.files_empty') }}
           </div>
         </div>
       </template>
     </DataTable>
 
-    <div v-if="isEmpty" class="text-color-secondary text-center mt-1">
+    <div v-if="isEmpty" class="app-text-muted text-center mt-1">
       {{ t('documenti.lista.empty') }}
     </div>
 

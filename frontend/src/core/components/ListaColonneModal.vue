@@ -217,7 +217,6 @@ function onReset() {
               v-if="col._meta?.sensibile"
               :value="t('lista_config.tag_sensibile')"
               severity="warning"
-              class="ml-025"
             />
           </div>
           <div class="lista-config-row-actions">

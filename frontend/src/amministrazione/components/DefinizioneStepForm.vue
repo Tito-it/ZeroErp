@@ -144,7 +144,7 @@ async function handleSave() {
     <div class="step-form__grid">
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_codice') }} *</label>
-        <InputText v-model="form.codice" :disabled="isEdit" class="w-full"
+        <InputText v-model="form.codice" :disabled="isEdit"
           :invalid="campiErrati.includes('codice')"
         />
         <small v-if="isEdit" class="step-form__hint">{{ t('amministrazione.definizioni_workflow.ed_codice_immutabile') }}</small>
@@ -156,12 +156,11 @@ async function handleSave() {
           :options="direzioneOptions"
           option-label="label"
           option-value="value"
-          class="w-full"
         />
       </div>
       <div class="form-field step-form__full">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_descrizione') }} *</label>
-        <Textarea v-model="form.descrizione" rows="2" auto-resize class="w-full"
+        <Textarea v-model="form.descrizione" rows="2" auto-resize 
           :invalid="campiErrati.includes('descrizione')"
         />
       </div>
@@ -172,7 +171,6 @@ async function handleSave() {
           :options="modalitaOptions"
           option-label="label"
           option-value="value"
-          class="w-full"
         />
       </div>
       <div v-if="mostraEsitoDefault" class="form-field">
@@ -188,7 +186,6 @@ async function handleSave() {
           :loading="esiti.loading.value"
           :placeholder="t('amministrazione.definizioni_workflow.ed_esito_default_placeholder')"
           :show-clear="!esitoObbligatorio"
-          class="w-full"
         />
       </div>
       <div class="form-field step-form__toggle">

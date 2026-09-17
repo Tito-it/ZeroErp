@@ -181,7 +181,7 @@ function toggle() {
 }
 
 .rail-counters-empty {
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.9rem;
 }
 

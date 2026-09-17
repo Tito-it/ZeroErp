@@ -197,7 +197,6 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
             :disabled="isReadonly || fallbackOptionsLoadingByRow[data.id]"
             show-clear
             filter
-            class="w-full"
             style="min-width: 150px;"
           />
         </div>

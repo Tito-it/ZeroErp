@@ -574,13 +574,12 @@ const onClose = useDrawerClose(emit)
               :disabled="!form.articolo_id || uomLoading"
               :loading="uomLoading"
               :empty-message="t('vendite.listini.uom_no_operative')"
-              class="w-full"
               :invalid="campiErrati.includes('uom_id')"
             />
           </div>
           <div class="form-field">
             <label>{{ t('vendite.listini.field_prezzo') }} *</label>
-            <InputNumber v-model="form.prezzo" class="w-full"
+            <InputNumber v-model="form.prezzo"
               :minFractionDigits="2" :maxFractionDigits="10"
               :invalid="campiErrati.includes('prezzo')"
             />

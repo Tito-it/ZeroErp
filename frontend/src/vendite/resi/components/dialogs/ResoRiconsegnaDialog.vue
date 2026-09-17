@@ -226,7 +226,7 @@ function onRiapri(riga) {
       </div>
     </template>
     <div class="form-grid">
-      <p style="margin: 0; font-size: 0.85rem; color: var(--text-color-secondary);">
+      <p style="margin: 0; font-size: 0.85rem; color: var(--app-text-muted);">
         {{ t('vendite.resi.riconsegna_intro') }}
       </p>
 
@@ -298,7 +298,7 @@ function onRiapri(riga) {
           </template>
         </Column>
       </DataTable>
-      <div v-else-if="!loadingRighe" style="color: var(--text-color-secondary); font-style: italic;">
+      <div v-else-if="!loadingRighe" style="color: var(--app-text-muted); font-style: italic;">
         {{ t('vendite.resi.riconsegna_nessuna_riga') }}
       </div>
 

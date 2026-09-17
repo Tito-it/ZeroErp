@@ -121,18 +121,17 @@ watch(() => props.praticaId, (id) => {
       <Textarea
         v-model="nuovaNota.contenuto"
         :placeholder="t('pratiche.nota_placeholder')"
-        class="w-full"
         rows="2"
         auto-resize
       />
     </div>
 
     <!-- Lista note -->
-    <div v-if="loading" class="text-center text-color-secondary p-3">
+    <div v-if="loading" class="text-center app-text-muted p-3">
       <i class="pi pi-spin pi-spinner"></i>
     </div>
 
-    <div v-else-if="note.length === 0" class="text-center text-color-secondary p-3">
+    <div v-else-if="note.length === 0" class="text-center app-text-muted p-3">
       {{ t('pratiche.note_vuote') }}
     </div>
 
@@ -151,7 +150,7 @@ watch(() => props.praticaId, (id) => {
         </div>
         <!-- Contenuto: editing inline o testo -->
         <div v-if="editingId === n.id" class="nota-edit">
-          <Textarea v-model="editingContenuto" class="w-full" rows="2" auto-resize />
+          <Textarea v-model="editingContenuto" rows="2" auto-resize />
           <div class="nota-edit-actions">
             <Button :icon="MANAGE_ICONS.CONFIRM" size="small" @click="onSalvaEdit(n)" />
             <Button :icon="MANAGE_ICONS.CANCEL" size="small" severity="secondary" @click="cancelEdit" />

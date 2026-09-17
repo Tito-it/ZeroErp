@@ -489,7 +489,7 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
           :min-fraction-digits="6" :max-fraction-digits="6"
           :disabled="isPadreComposito" />
-        <small class="text-color-secondary">{{ limitiPricingText }}</small>
+        <small class="app-text-muted">{{ limitiPricingText }}</small>
       </div>
       <!-- Prezzo listino: cella visibile accanto al prezzo editabile.
            Sorgente: resolver vivo (cambio articolo/uom) o meta denormalizzato.

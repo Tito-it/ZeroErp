@@ -42,7 +42,7 @@ const activeTab = useTabDaQuery({
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <h2 style="margin: 0;">{{ t('strumenti.code.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('strumenti.code.page_description') }}</small>
+        <small class="app-text-muted">{{ t('strumenti.code.page_description') }}</small>
       </div>
       <ReadonlyBadge />
     </div>

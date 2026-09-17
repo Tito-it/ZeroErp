@@ -219,7 +219,7 @@ function close() {
           :disabled="utilityLockedByBa"
           apply-default
         />
-        <small v-if="utilityLockedByBa" class="text-color-secondary">
+        <small v-if="utilityLockedByBa" class="app-text-muted">
           {{ t('vendite.listini.field_utility_derived_from_ba') }}
         </small>
       </div>
@@ -244,7 +244,7 @@ function close() {
           v-model="form.articolo_padre_obj"
           :filtri="{ compositi: 'solo' }"
         />
-        <small class="text-color-secondary">
+        <small class="app-text-muted">
           {{ t('vendite.listini.field_articolo_padre_contesto_hint') }}
         </small>
       </div>
@@ -337,7 +337,7 @@ function close() {
           <span v-if="diagnose.ba.categoria_descrizione"> — {{ diagnose.ba.categoria_descrizione }}</span>
           <Tag v-if="diagnose.ba.categoria_partecipa_promo" severity="info" :value="t('vendite.listini.diagnose_partecipa_promo')" style="margin-left: 0.4rem;" />
         </span>
-        <span v-else class="text-color-secondary">{{ t('vendite.listini.diagnose_no_categoria') }}</span>
+        <span v-else class="app-text-muted">{{ t('vendite.listini.diagnose_no_categoria') }}</span>
       </div>
 
       <!-- Stadio 0 PROMO -->
@@ -349,7 +349,7 @@ function close() {
           — <strong>{{ diagnose.stadio_0_promo.promo_codice }}</strong>
           <span v-if="diagnose.stadio_0_promo.promo_descrizione"> — {{ diagnose.stadio_0_promo.promo_descrizione }}</span>
         </span>
-        <small v-else class="text-color-secondary"> — {{ diagnose.stadio_0_promo.motivo }}</small>
+        <small v-else class="app-text-muted"> — {{ diagnose.stadio_0_promo.motivo }}</small>
       </div>
 
       <!-- Stadio 1 CONTRATTO -->
@@ -362,7 +362,7 @@ function close() {
           <Tag :value="`${t('vendite.listini.diagnose_modalita')}: ${diagnose.stadio_1_contratto.modalita_pricing}`"
             severity="info" style="margin-left: 0.4rem;" />
         </span>
-        <small v-if="diagnose.stadio_1_contratto.motivo" class="text-color-secondary">
+        <small v-if="diagnose.stadio_1_contratto.motivo" class="app-text-muted">
           — {{ diagnose.stadio_1_contratto.motivo }}
         </small>
       </div>
@@ -380,7 +380,7 @@ function close() {
           <Tag v-if="diagnose.stadio_2_categoria.classe_match === 'FALLBACK_NULL'"
             severity="warn" :value="t('vendite.listini.diagnose_fallback_classe')" style="margin-left: 0.4rem;" />
         </span>
-        <small v-else class="text-color-secondary"> — {{ diagnose.stadio_2_categoria.motivo }}</small>
+        <small v-else class="app-text-muted"> — {{ diagnose.stadio_2_categoria.motivo }}</small>
       </div>
 
       <!-- Azioni suggerite (lista ordinata) -->

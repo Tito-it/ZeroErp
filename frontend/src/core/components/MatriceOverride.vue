@@ -114,7 +114,6 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
       <InputText
         v-model="termine"
         :placeholder="ricercaPlaceholder || t('matrice_override.cerca')"
-        class="w-full"
       />
     </div>
 

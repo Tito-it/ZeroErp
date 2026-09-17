@@ -121,9 +121,9 @@ async function conferma() {
     :close-on-escape="false"
     :header="t('core.emittente_attivo.scelta_titolo')"
   >
-    <p class="mb-1">{{ t('core.emittente_attivo.scelta_messaggio') }}</p>
+    <p>{{ t('core.emittente_attivo.scelta_messaggio') }}</p>
 
-    <div v-if="caricamento" class="flex justify-content-center p-2">
+    <div v-if="caricamento" class="p-2">
       <ProgressSpinner style="width: 2.5rem; height: 2.5rem" />
     </div>
 
@@ -138,7 +138,6 @@ async function conferma() {
       option-label="label"
       option-value="value"
       :placeholder="t('core.emittente_attivo.aria')"
-      class="w-full"
       :disabled="inCorso"
     />
 

@@ -1067,7 +1067,7 @@ const drawerActions = computed(() => {
 
           <!-- ====================== TAB REVISIONI ====================== -->
           <TabPanel value="revisioni">
-            <p class="text-color-secondary mt-1">
+            <p class="app-text-muted mt-1">
               {{ t('vendite.preventivi.revisioni_intro') }}
             </p>
             <div v-if="!revisioni.length" class="app-empty-state">

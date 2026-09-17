@@ -518,13 +518,13 @@ async function handleSave() {
           <div class="form-field">
             <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
             <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
-              option-label="label" option-value="value" class="w-full"
+              option-label="label" option-value="value"
               :disabled="isReadonly" />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
             <Select v-model="soggetto.form.split_payment" :options="paOptions"
-              option-label="label" option-value="value" class="w-full"
+              option-label="label" option-value="value"
               :disabled="isReadonly" />
           </div>
         </div>

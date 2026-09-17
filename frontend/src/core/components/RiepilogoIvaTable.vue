@@ -91,7 +91,7 @@ function aliquotaLabel(row) {
     <DataTable :value="items" size="small" striped-rows show-gridlines class="app-datatable"
       :pt="{ table: { style: 'table-layout: fixed;' } }">
       <template #empty>
-        <span style="color: var(--text-color-secondary);">
+        <span style="color: var(--app-text-muted);">
           {{ t('common.riepilogo_iva_vuoto') }}
         </span>
       </template>
@@ -104,10 +104,10 @@ function aliquotaLabel(row) {
         <template #body="{ data }">
           <div style="display: flex; flex-direction: column; gap: 0.1rem;">
             <span>{{ aliquotaLabel(data) }}</span>
-            <small v-if="data.iva_descrizione" style="color: var(--text-color-secondary);">
+            <small v-if="data.iva_descrizione" style="color: var(--app-text-muted);">
               {{ data.iva_descrizione }}
             </small>
-            <small v-if="data.natura_codice" style="color: var(--text-color-secondary);">
+            <small v-if="data.natura_codice" style="color: var(--app-text-muted);">
               {{ t('common.riepilogo_iva_natura_label') }}: {{ data.natura_codice }}
             </small>
           </div>
@@ -143,7 +143,7 @@ function aliquotaLabel(row) {
         style="width: 10%;">
         <template #body="{ data }">
           <span v-tooltip.top="t('common.riepilogo_iva_arrotondamento_tooltip')"
-            style="color: var(--text-color-secondary); font-size: 0.85em;">
+            style="color: var(--app-text-muted); font-size: 0.85em;">
             {{ data.arrotondamento != null ? formatNumber(data.arrotondamento, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : '—' }}
           </span>
         </template>
@@ -173,7 +173,7 @@ function aliquotaLabel(row) {
 }
 
 .app-riepilogo-iva__subtitle {
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.8rem;
 }
 
@@ -187,7 +187,7 @@ function aliquotaLabel(row) {
 }
 
 .app-riepilogo-iva__totale-label {
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-weight: 600;
 }
 

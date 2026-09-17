@@ -209,7 +209,6 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
         id="portale-email"
         v-model="email"
         :disabled="readonly || loading"
-        class="w-full"
         :placeholder="t('portale.email_placeholder')"
       />
     </div>

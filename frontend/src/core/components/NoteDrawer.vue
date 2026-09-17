@@ -333,7 +333,7 @@ function rigaLabel(n) {
                 option-label="label" option-value="value"
                 :placeholder="t('note.placeholder_riga_doc')"
                 :disabled="formMode === 'edit'"
-                show-clear class="w-full"
+                show-clear 
                 :invalid="campiErrati.includes('target_riga_id')"
               />
             </div>
@@ -362,7 +362,7 @@ function rigaLabel(n) {
             <label>{{ t('note.field_testo') }} *</label>
             <Textarea
               v-model="form.testo_md" rows="6" auto-resize
-              :placeholder="t('note.placeholder_testo')" class="w-full"
+              :placeholder="t('note.placeholder_testo')"
               :invalid="campiErrati.includes('testo_md')"
             />
           </div>

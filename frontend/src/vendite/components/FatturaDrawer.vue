@@ -542,7 +542,7 @@ function onNoteSaved(total) {
               <Tag
                 v-for="d in b.documenti"
                 :key="d.id"
-                class="app-mr-1"
+                class="mr-05"
                 severity="info"
                 :value="documentoLabel(d)"
               />

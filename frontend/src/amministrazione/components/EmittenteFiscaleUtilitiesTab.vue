@@ -216,11 +216,11 @@ watch(() => props.emittenteId, async (id) => {
 
 <template>
   <div class="app-tab-content">
-    <Message severity="info" :closable="false" class="mb-3">
+    <Message severity="info" :closable="false">
       {{ t('amministrazione.emittenti_fiscali.ut_help_matrix') }}
     </Message>
 
-    <Message v-if="!emittenteAttivo" severity="warn" :closable="false" class="mb-3">
+    <Message v-if="!emittenteAttivo" severity="warn" :closable="false">
       {{ t('amministrazione.emittenti_fiscali.ut_parent_inactive_warn') }}
     </Message>
 
