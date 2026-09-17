@@ -239,6 +239,15 @@ emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
 produzione, non c'è niente da aspettare.*
 
 ### Aperto — Media priorità
+- **La distinta del fondo fattura fuori lotto** (DB, ereditata il 2026-09-17
+  dalla chiusura di `work-done/brief-db-distinta-numerata-sul-registro.md`,
+  §4-bis.19): `fn_sync_contabili_fondo_fattura` passa `p_lotto_id = NULL` se la
+  fattura non è in nessun lotto, e la distinta del fondo cade al **livello 3**
+  di `fn_get_emittente_distinta` (l'emittente di chi agisce) invece che a
+  quello della fattura — per l'admin globale in «tutti» è un
+  `E_CONTABILE_EMITTENTE_OBBLIGATORIO` in mezzo alla pipeline. La strada è che
+  la madre dei fondi passi `p_emittente_fiscale_id` dall'emittente della
+  **fattura**. Da decidere con Tid, un changeSet
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare

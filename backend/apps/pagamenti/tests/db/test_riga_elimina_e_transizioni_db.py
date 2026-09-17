@@ -45,6 +45,7 @@ Indice test eseguiti:
 
 from __future__ import annotations
 
+import re
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -196,7 +197,11 @@ class ColonneTests(_DbTestCase):
                     p_meta                  := %s::jsonb,
                     p_origine               := %s)
                 """,
-                [1, date.today(), None, None, "BOZZA", "{}", "MANUALE"],
+                [
+                    1, date.today(), None, None,
+                    pagamenti_service.STATO_DISTINTA_INIZIALE, "{}",
+                    pagamenti_service.ORIGINE_MANUALE,
+                ],
             )
             return cur.fetchall()
         self.assertTrue(self._con_operatore(_pianifica))
@@ -318,14 +323,23 @@ class MatriciTests(_DbTestCase):
 # ⚠️ Passi SEPARATI, non una CTE sola: il contesto operatore va aperto PRIMA
 #    che nasca il cliente (il guard del billing account lo pretende), e in una
 #    CTE l'ordine di valutazione dei rami non e' garantito.
-_FIXTURE_PASSI: tuple[str, ...] = (
+# Il MONDO di ogni fixture: un'azienda col suo operatore, e il contesto aperto
+# su di lui. E' il primo passo di tutte le fixture di questo file, e sta in una
+# sede sola (regola del 2): la seconda fixture lo ricopiava con un altro nome
+# di TEMP TABLE. ⚠️ Il contesto lo apre la funzione pgTAP, non
+# `apri_contesto_operatore`: l'operatore deve essere QUELLO dell'azienda
+# costruita, o la RLS non gli farebbe vedere cio' che nasce dopo.
+_FIXTURE_MONDO: tuple[str, ...] = (
     """
-    CREATE TEMP TABLE _mondo_bst AS
+    CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
     """
-    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo_bst))
+    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))
     """,
+)
+
+_FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
     """
     CREATE TEMP TABLE _cli_bst AS
     SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('secondo tempo') c
@@ -337,7 +351,7 @@ _FIXTURE_PASSI: tuple[str, ...] = (
             (registro_id, emittente_soggetto_ruolo_id, billing_account_id, meta)
         SELECT script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id), m.soggetto_ruolo_id,
                c.billing_account_id, '{"test_scope": "be_secondo_tempo"}'::jsonb
-          FROM _mondo_bst m, _cli_bst c
+          FROM _mondo m, _cli_bst c
         RETURNING id
     )
     SELECT id AS fattura_id FROM ins
@@ -381,11 +395,9 @@ _FIXTURE_PASSI: tuple[str, ...] = (
 
 
 class ModificaSecondoTempoTests(_DbTestCase):
-    # Scopo: monta la fixture nel contesto dell'operatore che la possiede e
-    #        consegna l'id della riga. ⚠️ Il contesto lo apre la funzione
-    #        pgTAP dentro la CTE, non `apri_contesto_operatore`: l'operatore
-    #        deve essere QUELLO dell'azienda costruita, o la RLS non gli
-    #        farebbe vedere la fattura. Le TEMP TABLE muoiono col rollback.
+    # Scopo: monta la fixture (il mondo di `_FIXTURE_MONDO` piu' cliente,
+    #        fattura, rata, distinta e riga) e consegna l'id della riga. Le
+    #        TEMP TABLE muoiono col rollback.
     def _riga_piena(self, cur) -> int:
         for passo in _FIXTURE_PASSI:
             cur.execute(passo)
@@ -434,19 +446,6 @@ class ModificaSecondoTempoTests(_DbTestCase):
         self.assertEqual(motivo, "pagato doppio")
 
 
-# La fixture della numerazione, COSTRUITA: un'azienda col suo operatore e
-# basta — la distinta la apre il SERVICE, com'e' in esercizio, non un INSERT.
-_FIXTURE_NUMERAZIONE: tuple[str, ...] = (
-    """
-    CREATE TEMP TABLE _mondo_num AS
-    SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
-    """,
-    """
-    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo_num))
-    """,
-)
-
-
 class NumerazioneSulRegistroTests(_DbTestCase):
     """⭐ La distinta prende il numero dal registro e sa di chi e' (brief
     distinta-numerata-sul-registro, BE-5), provato PER INTERO: service → madre
@@ -457,11 +456,13 @@ class NumerazioneSulRegistroTests(_DbTestCase):
     """
 
     # Scopo: monta l'azienda con l'operatore, apre il contesto SUO e consegna
-    #        (sigla, PK) dell'emittente. Le TEMP TABLE muoiono col rollback.
+    #        (sigla, PK) dell'emittente. Qui la distinta la apre il SERVICE,
+    #        com'e' in esercizio: il mondo basta, senza cliente ne' fattura.
+    #        Le TEMP TABLE muoiono col rollback.
     def _mondo(self, cur) -> tuple[str, int]:
-        for passo in _FIXTURE_NUMERAZIONE:
+        for passo in _FIXTURE_MONDO:
             cur.execute(passo)
-        cur.execute("SELECT emittente_codice, emittente_fiscale_id FROM _mondo_num")
+        cur.execute("SELECT emittente_codice, emittente_fiscale_id FROM _mondo")
         row = cur.fetchone()
         assert row is not None
         return str(row[0]), int(row[1])
@@ -486,21 +487,25 @@ class NumerazioneSulRegistroTests(_DbTestCase):
     #        `DIS-<sigla>-<anno>-<7 cifre>` sul SUO registro, e la testata lo
     #        racconta nelle tre forme. E' il percorso dell'operatore normale.
     def test_senza_emittente_la_distinta_e_della_sessione_e_numerata(self):
+        # ⚠️ Una data sola per tutto il test: `date.today()` chiamata due volte
+        #    a cavallo della mezzanotte darebbe due anni.
+        oggi = date.today()
+
         def _prova(cur):
             sigla, ef_id = self._mondo(cur)
             esito = pagamenti_service.crea_distinta({
                 "centro_riscossione_id": self._centro_cassa(cur),
-                "data_contabile": date.today().isoformat(),
+                "data_contabile": oggi.isoformat(),
                 "meta": {"test_scope": "be_numerazione"},
             })
             return sigla, ef_id, esito["distinta"]
         sigla, ef_id, d = self._con_operatore(_prova)
-        self.assertRegex(d["codice"], rf"^DIS-{sigla}-{date.today().year}-\d{{7}}$")
+        self.assertRegex(d["codice"], rf"^DIS-{re.escape(sigla)}-{oggi.year}-\d{{7}}$")
         self.assertEqual(d["emittente_fiscale_id"], ef_id)
         self.assertEqual(d["emittente_fiscale_codice"], sigla)
         self.assertTrue(d["emittente_ragione_sociale"])
         self.assertIsNotNone(d["registro_id"])
-        self.assertEqual(d["anno"], date.today().year)
+        self.assertEqual(d["anno"], oggi.year)
 
     # Scopo: Con l'emittente ESPLICITO nel payload (la PK, com'e' nel form)
     #        arriva com'e' — e con lo stesso operatore e' lo stesso documento:

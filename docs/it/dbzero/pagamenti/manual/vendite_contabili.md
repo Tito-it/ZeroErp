@@ -182,7 +182,7 @@ dalla sessione: parla il vincolo.
 `a10_gen_codice` (numera) < `a10_guard_emittente_scope` (giudica). Chi rinomina
 uno dei tre sposta la risoluzione dopo chi la usa.
 
-Brief: [brief-db-distinta-numerata-sul-registro](/dev/work-in-progress/brief-db-distinta-numerata-sul-registro).
+Brief: [brief-db-distinta-numerata-sul-registro](/dev/work-done/brief-db-distinta-numerata-sul-registro).
 
 ### 🔒 Chi la vede — la RLS del perimetro incassi (2026-08-22, corretta il 2026-09-15)
 

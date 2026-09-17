@@ -174,7 +174,7 @@ appartenere a più lotti; letta come valore singolo, la riga compariva **due
 volte** nell'elenco e il conteggio con lei — senza nessun errore.
 
 ⭐ **Il codice viene dal registro, e la distinta sa di chi è (dal 2026-09-17,
-[brief distinta-numerata-sul-registro](../../../dev/work-in-progress/brief-db-distinta-numerata-sul-registro.md)).**
+[brief distinta-numerata-sul-registro](../../../dev/work-done/brief-db-distinta-numerata-sul-registro.md)).**
 `codice` è `DIS-<SIGLA>-<ANNO>-<7 cifre>`: lo assegna il trigger sul registro
 `DISTINTA` dell'emittente alla **creazione**, con l'anno dalla `data_contabile`
 e il reset a Capodanno — la sesta famiglia di `vendite.famiglie_documento`, la

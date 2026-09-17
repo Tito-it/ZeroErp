@@ -24,21 +24,44 @@
 > **Sede.** Piano DB qui (§4, progetto; §4-bis, sviluppo lotto per lotto). Per BE
 > (§5) e FE (§6) c'è **solo l'elenco**: il piano lo scrivono loro. Il copione di collaudo prende quattro righe (§7).
 >
-> **Stato:** ✅ **DB applicato il 2026-09-17** (changeSet `20260915-21` …
-> `20260915-35`, `databasechangelog` su dbdev: `-21…-25` alle 12:03, stop
-> fail-closed su `-26` con le due residue, `UPDATE` a mano di 5730/5869 → sr 72,
-> `-26…-35` alle 12:06; zero distinte senza emittente; registri `DIS-72` e
-> `DIS-159` con l'anno nel numero) **e pgTAP verdi** — su dbdev come app (la
-> RLS è esercitata: è il verdetto che la prova di §4-bis.18 da owner non poteva
-> dare) e sullo scratch `zeroerp_ci` ricostruito da zero (dove L11 e
-> `20260831-03` si sono incontrati davvero). ✅ **BE-1..6 e FE-1..4 fatti il
-> 2026-09-17** (§5, §6, registro §9), provati per intero sul DB vero (service →
-> madre → trigger → `DIS-…`) e in-app da ricollaudare (§7). **Aperti**: il
-> residuo di `fn_sync_contabili_fondo_fattura` (§4-bis.19, seconda tabella) da
-> decidere, il commit. Le misure sono datate (§1, §2.6) e non sono
-> la ragione di nessuna scelta. ⚠️ Il piano ha **corretto** il brief in otto
-> punti, e la scrittura ne ha aggiunti cinque (§4-bis.19): due sono mine di CI
-> che l'analisi non aveva visto.
+> **Stato:** ✅ **CHIUSO il 2026-09-17** — riquadro «CHIUSO» qui sotto: DB
+> applicato e verde, BE/FE mergiati, e **il primo numero è uscito a video**.
+> Le misure sono datate (§1, §2.6) e non sono la ragione di nessuna scelta.
+> ⚠️ Il piano ha **corretto** il brief in otto punti, e la scrittura ne ha
+> aggiunti cinque (§4-bis.19): due sono mine di CI che l'analisi non aveva
+> visto. Il BE/FE ne ha corretti altri due (§5 BE-2, §6 FE-1), confermati da
+> Tid.
+
+---
+
+> ## ✅ CHIUSO — 2026-09-17 · DB L1 → L17 · BE-1..6 · FE-1..4 · archiviato in `work-done/`
+>
+> **Lato DB**: changeSet `20260915-21 → -35` `EXECUTED` su dbdev (`-21…-25`
+> alle 12:03, stop fail-closed su `-26` con le due residue 5730/5869, `UPDATE`
+> a mano → sr 72, `-26…-35` alle 12:06); zero distinte senza emittente;
+> registri `DIS-72` e `DIS-159` con l'anno nel numero. pgTAP **verdi come
+> app** su dbdev (RLS esercitata) e sullo scratch `zeroerp_ci` da zero — dove
+> L11 e `20260831-03` si sono incontrati davvero. Commit `e98cf2469`, PR #1598.
+>
+> **Lato BE/FE**: le sei voci di §5 e le quattro di §6 (commit `45046a6a7`),
+> con la rigenerazione delle policy che copre anche il BB gemello
+> (`emittente-di-default-un-bb-solo` §11). Provato per intero sul DB vero:
+> service → madre → sede unica dell'emittente → trigger → `DIS-<sigla>-<anno>-\d{7}`.
+>
+> ⭐ **A video, da Tid, il 2026-09-17: `DIS-PGTAPEF202-2026-0000001` — il PRIMO
+> numero emesso da un registro `DISTINTA`.** È la riga 2.4-bis del copione
+> (§7), e chiude la domanda da cui il brief è nato il 15-09: *«un `VC_…` dice
+> che il trigger non è montato; un codice senza sigla dice che il registro non
+> ha la forma»* — è arrivato con la sigla, l'anno e sette cifre.
+>
+> ⚠️ **Che cosa ESCE dal brief, e dove va** — un residuo senza destinazione è
+> un residuo che nessuno rilegge:
+>
+> | Cosa | Dove va |
+> | --- | --- |
+> | 🔴 `fn_sync_contabili_fondo_fattura` con una fattura **fuori lotto** passa `p_lotto_id = NULL` e la distinta del fondo cade al livello **3** (l'emittente di chi agisce) invece che a quello della fattura: per l'admin globale in «tutti» è un `E_CONTABILE_EMITTENTE_OBBLIGATORIO` in mezzo alla pipeline, in modo «uno» una fattura altrui darebbe una distinta attribuita alla sessione. La strada corretta è che la madre dei fondi passi `p_emittente_fiscale_id` dall'emittente della **fattura** (§4-bis.19, seconda tabella) | `.codex/PROJECT_CONTEXT.md` §«Aperto — Media priorità», cantiere DB |
+> | Le tre righe del copione **non ancora provate a video** — 2.4-ter (operatore su CASSA: campo emittente già compilato), 2.4-quater (super admin in «tutti»: avviso e Apri spento), 1.6-bis (l'altro emittente non vede la distinta su CASSA) — la prova a video è l'unica cosa che ne esce | [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md) §1 e §2, righe già scritte |
+> | Una colonna «Emittente» nella lista 50 delle distinte: dato, non DDL (`ui.lista_colonna`), non chiesta | si fa quando serve, dall'amministrazione in-app |
 
 ---
 
@@ -1313,7 +1336,7 @@ Come in §4 P-13, con tre precisazioni emerse dal piano:
 
 ## 7. Il copione di collaudo — righe da aggiungere
 
-In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-distinte-e-sistemazioni.md),
+In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md),
 §2 (e una in §1):
 
 | | Cosa fare | Cosa deve succedere | Se non succede |
@@ -1393,6 +1416,7 @@ In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-17** (sera) | ✅ **CHIUSO e archiviato in `work-done/`.** Collaudo in-app di Tid: la nuova numerazione funziona — **`DIS-PGTAPEF202-2026-0000001`, il primo numero emesso**. Riquadro «CHIUSO» in testa con ciò che esce: il residuo del fondo fattura fuori lotto (→ `PROJECT_CONTEXT`), le tre righe del copione ancora da provare a video (→ doc di collaudo, righe aggiunte oggi), la colonna «Emittente» in lista (dato, quando serve) |
 | **2026-09-17** (pomeriggio, dopo) | ✅ **Tid conferma i due scostamenti** della riga sotto: (1) il super admin in «tutti gli emittenti» **non apre** la distinta finché non sceglie l'emittente dalla topbar — *«quella scelta è legge»* (la decisione del 02-09 vale anche qui, nessuna Select nel form); (2) i tre nomi dei documenti di vendite (`emittente_fiscale_id/_codice`, `emittente_ragione_sociale`) al posto di `emittente_codice` |
 | **2026-09-17** (pomeriggio) | ✅ **BE-1..6 e FE-1..4 fatti** (§5, §6) insieme alle quattro richieste BE del brief gemello `emittente-di-default-un-bb-solo` §11 — è la stessa rigenerazione. Policy: +3 codici, 3 ritirati, zero classi mosse; tre ripieghi; nessun override (decisione motivata accanto a `E_PREV_EMITTENTE_NON_RISOLTO`); sei commenti coi nomi morti riscritti. **Due scostamenti dal brief, entrambi sul modello FE già in vigore**: i nomi dei campi emittente seguono `EmittenteFiscaleField` (`emittente_fiscale_id/_codice`, `emittente_ragione_sociale`) e non `emittente_codice`; il campo in `ApriDistintaDialog` è in sola lettura (Tid, 02-09) e il super admin in «tutti» ha Apri spento invece di una Select. Presidi: 17 test policy, 7 guardrail, 20 DB-provvisti fra cui la catena intera dal service (`DIS-<sigla>-2026-\d{7}`, riuso entro l'emittente), 1301 verdi su `core`+`pagamenti`, vitest 28, build e guard FE, `DataTable` grezze 48 = 48. ⏳ Collaudo in-app (§7) e commit a Tid |
 | **2026-09-17** | ✅ **Apply e baseline di Tid.** `make db-migrate` si è fermato su `-26` come previsto («Expected '0' got '2'»: 5730 e 5869, le due manuali senza canale né lotto né riga con fattura — le stesse della prova); `UPDATE … SET emittente_soggetto_ruolo_id = 72 WHERE id IN (5730, 5869)`; secondo `make db-migrate` fino a `-35` (e ai `-36…-46` del BB parallelo). **pgTAP verdi** su dbdev — come app, quindi con la RLS esercitata: i 9 rossi «solo RLS» della prova da owner erano davvero solo quello — e sullo scratch da zero. Sullo scratch un solo rosso ignoto, **non di questo cantiere**: `script/test-trgfn-default-emittente-fiscale-v1.sql` (BB emittente di default) moriva in fixture perché il suo SA era l'**unico** SUPER_ADMIN del database da zero e `fn_change_user_emittenti_scope` rifiuta il cambio di scope all'ultimo SA (`E_PROFILO_ULTIMO_SUPER_ADMIN`); corretto con un secondo SA in fixture (azienda Z, mai attore) — stessa famiglia dei tre `ERRORE_FIXTURE` già a registro nella baseline scratch che chiamano quella funzione. Restano: commit, BE/FE (§5/§6), la decisione sul residuo del fondo fattura |
