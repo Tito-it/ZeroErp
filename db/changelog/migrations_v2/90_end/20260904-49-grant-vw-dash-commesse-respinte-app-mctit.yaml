@@ -23,13 +23,17 @@ databaseChangeLog:
   - changeSet:
       id: 20260904-49-grant-vw-dash-commesse-respinte-app
       author: mctit
+      # ⚠️ Nessun `dbms:` sui change (tolto il 2026-09-17): con `runOnChange` +
+      #    `validCheckSums: ANY`, Liquibase 5.0.4 lascia un change `dbms:` FUORI
+      #    dal checksum quando decide se ri-eseguire — una ri-esecuzione spuria
+      #    alla corsa dopo (in CI la seconda invocazione, fuori ordine) e poi un
+      #    checksum «vuoto» cieco alle modifiche. linee-guida-sql §11.1.
       runOnChange: true
       comment: >
         GRANT SELECT a zeroerp_app su vendite.vw_dash_commesse_respinte. Idempotente e
         difensivo (skip se il ruolo o la vista mancano).
       changes:
         - sql:
-            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |

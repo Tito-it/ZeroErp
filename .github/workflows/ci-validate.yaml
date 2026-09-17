@@ -196,8 +196,21 @@ jobs:
         # difetto non si vede fino a qui. Il 2026-08-06 riportava indietro 49
         # funzioni a ogni build, fra cui dbops.trgfn_tx_id_managed.
         #
+        # ⚠️ PERCHE' riparte nella seconda invocazione, capito il 2026-09-17:
+        # non e' `runOnChange` da solo. In Liquibase 5.0.4 un runOnChange con
+        # `validCheckSums: ANY` e un change `dbms: postgresql` viene ri-eseguito
+        # UNA volta senza che nessuno l'abbia toccato — il filtro che decide se
+        # ri-eseguire calcola il checksum senza Database nello Scope e il change
+        # `dbms:` ne esce — e poi salva «il checksum di niente», cosi' un edit
+        # dell'SQL non ri-esegue mai piu'. Quel giorno e' morto 20260831-03,
+        # ripartito qui sotto DOPO il seed della sesta famiglia. Da allora lo
+        # stesso cancello pretende che i runOnChange di 80_data/85_pgagent/
+        # 90_end NON portino `dbms:` (seconda regola, linee-guida-sql §11.1).
+        #
         # Resta lecito in 80_data (mirror CSV), 85_pgagent, 90_end: la'
-        # ri-eseguire e' il comportamento voluto.
+        # ri-eseguire e' il comportamento voluto — purche' il corpo regga una
+        # ri-esecuzione DOPO changeSet piu' recenti (idempotente, precondizioni
+        # per nome).
         run: python scripts/guardrail_run_on_change.py
 
       - name: Guardrail preambolo pgTAP

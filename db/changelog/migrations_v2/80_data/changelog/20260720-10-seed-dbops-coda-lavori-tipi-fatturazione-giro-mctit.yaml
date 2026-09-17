@@ -28,6 +28,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260720-10-seed-dbops-coda-lavori-tipi-fatturazione-giro
       author: mctit
+      # ⚠️ Nessun `dbms:` sui change (tolto il 2026-09-17): con `runOnChange` +
+      #    `validCheckSums: ANY`, Liquibase 5.0.4 lascia un change `dbms:` FUORI
+      #    dal checksum quando decide se ri-eseguire — una ri-esecuzione spuria
+      #    alla corsa dopo (in CI la seconda invocazione, fuori ordine) e poi un
+      #    checksum «vuoto» cieco alle modifiche. linee-guida-sql §11.1.
       runOnChange: true
       failOnError: true
       preConditions:
@@ -70,7 +75,6 @@ databaseChangeLog:
       # seminati. Un changeSet applicato descrive cio' che e' stato fatto.
       changes:
         - sql:
-            dbms: postgresql
             splitStatements: false
             sql: |
               -- Il caricamento e' passato a 20260905-01 (mirror ri-ancorato).
