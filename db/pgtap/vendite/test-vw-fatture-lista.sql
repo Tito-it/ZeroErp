@@ -47,17 +47,31 @@
 --   ma per esercitarlo servirebbe un secondo perimetro emittente e una sessione
 --   fuori scope, cioe' una fixture a due perimetri che e' un file a se'.
 --   Il ramo resta presidiato dalla FORMA del codice (test 5) e da questa riga.
+--
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-09-17 sera). Fino a quel
+--   giorno il file pescava «un billing account con emittente» fra i dati
+--   esistenti: su un database ricostruito dai changelog (zeroerp_ci, la CI) le
+--   anagrafiche sono a ZERO, la fixture usciva vuota e i test 6-7 e 9-10
+--   confrontavano NULL — ASSERZIONE in baseline-rossi-ci.tsv, con i test 3 e
+--   8 verdi a vuoto (0 = 0). E la stessa fixture, ricopiata, ha fatto nascere
+--   rosso test-vw-fatture-scadenze-lista-v1. Ora: un'azienda col suo operatore
+--   (dbops.fn_pgtap_crea_emittente_operatore) PRIMA del contesto, e un cliente
+--   fatturabile (dbops.fn_pgtap_crea_cliente_ba) NEL contesto — guida
+--   pgtap-come-si-scrive-un-test §«Il mondo si costruisce, non si cerca».
 -- ------------------------------------------------------------
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(11);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 
 -- ============================================================
 -- 1) ⭐ security_invoker: la reloption che sparisce da sola
@@ -165,16 +179,18 @@ SELECT is(
 -- ⚠️ Il documento si crea con l'emittente dell'operatore: la RLS e' attiva e
 --    una fixture che scrive fuori perimetro non passa la WITH CHECK.
 -- ============================================================
+-- Il cliente fatturabile, nel contesto dell'operatore: il legame BA -> emittente
+-- lo scrive il trigger z90 verso l'emittente di chi agisce.
+CREATE TEMP TABLE tmp_cli_vfl AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('vw fatture lista') c;
+
 CREATE TEMP TABLE tmp_refs_vfl AS
 SELECT
-  ba.id                                    AS billing_account_id,
-  script.fn_pgtap_emittente_sr_operatore() AS emittente_sr_id,
-  script.fn_pgtap_registro_fattura()      AS registro_id,
+  (SELECT billing_account_id FROM tmp_cli_vfl)         AS billing_account_id,
+  m.soggetto_ruolo_id                                  AS emittente_sr_id,
+  script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id) AS registro_id,
   config.fn_get_natura_doc_fiscale_id('FATTURA')       AS natura_fattura_id
-FROM anagrafiche.billing_account ba
-WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+FROM _mondo m;
 
 -- ⚠️ L'INSERT sta in una CTE e non in un `CREATE TABLE AS INSERT`, che non
 --    esiste: il `RETURNING` va comunque letto attraverso la `USING` della

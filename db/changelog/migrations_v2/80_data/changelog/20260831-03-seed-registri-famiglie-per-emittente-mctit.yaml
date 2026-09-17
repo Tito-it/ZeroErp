@@ -8,6 +8,7 @@
 # ------------------------------------------------------------
 # C2-12 — UN REGISTRO PER OGNI EMITTENTE E OGNI FAMIGLIA NON FISCALE
 #   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12 (§3.5)
+#   Corretto il 2026-09-17: brief-db-distinta-numerata-sul-registro, §9
 #
 # ── ⛔ VA PRIMA DEI GENERATORI, E NON E' UN DETTAGLIO D'ORDINE ─────
 #   Dal C2-5 vendite.fn_get_registro_documento SOLLEVA quando un emittente non
@@ -25,30 +26,54 @@
 #   e' lo stesso ovunque, il CSV ce l'ha (20260830-14): la differenza fra i due
 #   e' esattamente quella fra CATALOGO e DATO DI INSTALLAZIONE.
 #
-# ── ⚠️ IL `codice` USA L'ID E NON LA SIGLA DELL'EMITTENTE ─────────
-#   `registri_fatturazione.codice` e' `varchar(16)` mentre
-#   `emittenti_fiscali.codice` e' `varchar(32)`: un `DDT-<sigla>` puo' non
-#   entrarci, e troncarlo su una colonna UNIQUE trasforma due emittenti con
-#   sigla simile in una collisione. ⛔ Un codice che tronca e' peggio di uno
-#   meno parlante: la parte parlante sta nella `descrizione`, che spazio ne ha.
+# ── ⭐ DAL 2026-09-17 IL CORPO E' LA PRIMITIVA, NON UN INSERT ──────
+#   Il codice `<FAM3>-<soggetto_ruolo_id>` (l'id e non la sigla: 16 caratteri
+#   contro 32, e troncare su una UNIQUE fa collidere due sigle simili), la
+#   descrizione, `utility_id` NULL («vale per tutte», secondo livello del
+#   fallback), prefisso e lunghezza dal catalogo famiglie: la regola vive in
+#   vendite.fn_provision_registri (20260901-18) ed e' la stessa porta che usano
+#   il trigger sull'emittente e il seed della DISTINTA (20260915-34). L'INSERT
+#   che stava qui ne era la copia del 31-08, gia' senza prefisso ne' lunghezza.
 #
-# ── ℹ️ UN REGISTRO PER TUTTE LE UTILITY ───────────────────────────
-#   `utility_id` resta NULL: e' il secondo livello del fallback di
-#   fn_lookup_registro_documento, cioe' «vale per tutte». Chi un domani vorra'
-#   separare per utility aggiunge una riga piu' specifica, e la risoluzione la
-#   preferisce da se' senza toccare questa.
+# ── ⛔ IL CANCELLO CONTA LE QUATTRO FAMIGLIE PER NOME, NON «QUANTE SONO» ──
+#   Fino al 2026-09-17 la preCondition pretendeva ESATTAMENTE 4 famiglie
+#   attive ≠ FATTURA: una fotografia del catalogo di quel giorno, che la sesta
+#   famiglia (DISTINTA, 20260915-33) ha smentito. Il corpo leggeva le famiglie
+#   dal catalogo proprio per coprire da solo la sesta, e il cancello lo
+#   contraddiceva. Adesso pretende che le QUATTRO per cui e' nato esistano
+#   (`IN (...)`, expectedResult 4): e' il fail-closed che serve — il mirror
+#   base deve essere passato, altrimenti la primitiva non troverebbe niente da
+#   provvedere e nessun registro nascerebbe, in silenzio — senza pinnare il
+#   totale. E' la forma dei quattro mirror laterali (`IN (...)`, 5 per nome).
 #
-# ── ⛔ COSA QUESTO PASSO NON FA, ed e' una lacuna DICHIARATA ──────
-#   Non provvede all'emittente FUTURO. Un emittente creato domani non avra' i
-#   suoi registri, e i suoi DDT non nasceranno finche' qualcuno non li
-#   configura — fail-closed e rumoroso, ma e' un attrito nuovo.
-#   ⚠️ Il posto dove chiuderla esiste gia' ed e'
-#   anagrafiche.trgfn_emittenti_fiscali_default_bootstrap, che al nuovo
-#   emittente le cose gliele provvede: estenderlo e' pero' FUORI dal perimetro
-#   di questo cantiere («cambia solo l'algoritmo di assegnazione del numero»),
-#   ed e' registrato come decisione da prendere, non come dimenticanza.
+# ── ⚠️ PERCHE' IL CANCELLO E' SCATTATO IN CI, E NON DOVE CI SI ASPETTAVA ──
+#   Sulla carta, su un DB da zero questo passo gira PRIMA di 20260915-33:
+#   l'ordine di 80_data lo garantisce, e la prova sullo scratch lo ha
+#   confermato. Ma in Liquibase 5.0.4 un changeSet `runOnChange` che contiene
+#   un change con `dbms:` viene RI-ESEGUITO UNA VOLTA all'update successivo
+#   alla sua prima esecuzione: il filtro che decide se ri-eseguire
+#   (ShouldRunChangeSetFilter) calcola il checksum FUORI dallo Scope che porta
+#   il Database — ChangeLogIterator lo mette solo attorno alla visit — e senza
+#   Database un change con `dbms: postgresql` viene ESCLUSO dal checksum
+#   (ChangeSet.generateCheckSum → DatabaseList.definitionMatches con shortName
+#   "null"). Il checksum salvato alla prima esecuzione (col Database) non
+#   torna, il changeSet e' RERAN, da li' in poi e' stabile. In CI l'update
+#   successivo e' la SECONDA invocazione di Liquibase (--contexts=ci_apply):
+#   li' questo passo e' ripartito DOPO 20260915-33, ha contato 5 e ha ucciso
+#   la build (2026-09-17, CI-Validate, «Expected '4' got '5'»). Su dbdev lo si
+#   legge dal databasechangelog: i 12 seed `runOnChange` di 80_data con
+#   `dbms:` sono tutti `exectype = RERAN`, i 164 mirror puri `loadUpdateData`
+#   `EXECUTED`. ⚠️ Il `dbms: postgresql` resta: il rimedio e' il cancello, non
+#   la scomparsa della ri-esecuzione — un cancello che regge solo finche'
+#   nessuno lo ri-esegue e' un cancello rotto.
 #
-# ⚠️ Idempotente: `WHERE NOT EXISTS`. Ri-eseguirlo non duplica niente.
+# ── ℹ️ L'EMITTENTE FUTURO ──────────────────────────────────────────
+#   Lo provvede anagrafiche.trgfn_emittenti_fiscali_provision_registri
+#   (trg_emittenti_fiscali_z90_provision_registri_ins_upd, 20260831-04): la
+#   lacuna dichiarata nella prima stesura di questo passo e' chiusa.
+#
+# ⚠️ Idempotente: la primitiva inserisce solo la coppia (emittente, famiglia)
+#   che manca. Ri-eseguirlo non duplica niente.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -62,22 +87,27 @@ databaseChangeLog:
         - ANY
       failOnError: true
       comment: >
-        C2-12: un registro di numerazione per ogni emittente attivo e ogni famiglia NON fiscale
-        (DDT, ORDINE, COMMESSA, RESO). ⛔ Va PRIMA dei generatori: dal C2-5
-        fn_get_registro_documento solleva quando il registro manca — fail-closed, verso giusto — e
-        finche'' questo passo non e'' fatto quel «meglio fermarsi» significa che quei documenti non
-        nascono. ⚠️ NON e'' un CSV, e la deroga e'' argomentata: queste righe dipendono da quali
-        emittenti esistono su QUELLA macchina, e un CSV fotograferebbe questo database creando
-        altrove registri per emittenti inesistenti — o lasciandone senza. Il catalogo delle
-        famiglie, che invece e'' uguale ovunque, il CSV ce l''ha: e'' la differenza fra CATALOGO e
-        DATO DI INSTALLAZIONE. ⚠️ Il codice usa l''ID e non la sigla: registri.codice e''
-        varchar(16) contro i 32 di emittenti_fiscali.codice, e troncare su una colonna UNIQUE
-        trasformerebbe due sigle simili in una collisione — la parte parlante sta nella
-        descrizione. ℹ️ utility_id resta NULL, cioe'' «vale per tutte»: chi vorra'' separare
-        aggiunge una riga piu'' specifica e la risoluzione la preferisce da se''. ⛔ Non provvede
-        all''emittente FUTURO: e'' una lacuna dichiarata, e il posto dove chiuderla
-        (trgfn_emittenti_fiscali_default_bootstrap) e'' fuori perimetro. Idempotente. Piano:
-        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12.
+        C2-12: un registro di numerazione per ogni emittente e ognuna delle quattro famiglie NON
+        fiscali nate col catalogo (DDT, ORDINE, COMMESSA, RESO). ⛔ Va PRIMA dei generatori: dal
+        C2-5 fn_get_registro_documento solleva quando il registro manca — fail-closed, verso
+        giusto — e finche'' questo passo non e'' fatto quel «meglio fermarsi» significa che quei
+        documenti non nascono. ⚠️ NON e'' un CSV, e la deroga e'' argomentata: queste righe
+        dipendono da quali emittenti esistono su QUELLA macchina, e un CSV fotograferebbe questo
+        database creando altrove registri per emittenti inesistenti — o lasciandone senza. Il
+        catalogo delle famiglie, che invece e'' uguale ovunque, il CSV ce l''ha: e'' la differenza
+        fra CATALOGO e DATO DI INSTALLAZIONE. ⭐ Dal 2026-09-17 il corpo chiama
+        vendite.fn_provision_registri_famiglia per ciascuna delle quattro: la regola di come nasce
+        un registro (codice con l''id, utility NULL, prefisso e lunghezza dal catalogo) vive nella
+        primitiva, la stessa porta del trigger sull''emittente e del seed della DISTINTA. ⛔ Il
+        cancello conta le quattro famiglie PER NOME: pretendere «esattamente 4 famiglie ≠ FATTURA»
+        era una fotografia che la sesta (DISTINTA) ha smentito — e in Liquibase 5.0.4 un
+        `runOnChange` con un change `dbms:` viene ri-eseguito una volta all''update successivo
+        alla prima esecuzione (il filtro calcola il checksum senza Database nello Scope e il change
+        `dbms:` ne esce), cioe'' in CI nella seconda invocazione, DOPO il seed della DISTINTA:
+        «Expected ''4'' got ''5''», 2026-09-17. ℹ️ L''emittente FUTURO lo provvede
+        trgfn_emittenti_fiscali_provision_registri. Idempotente. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12; correzione in
+        brief-db-distinta-numerata-sul-registro, §9.
       preConditions:
         - onFail: HALT
         - and:
@@ -85,62 +115,49 @@ databaseChangeLog:
                 schemaName: vendite
                 tableName: registri_fatturazione
                 columnName: famiglia_documento
-            # ⛔ Il catalogo dev'esserci: e' da li' che si prendono le famiglie,
-            #    invece di elencarle a mano in questo file.
+            # ⛔ Le QUATTRO famiglie per cui questo passo e' nato devono
+            #    esistere: e' il segno che il mirror base (20260830-14) e'
+            #    passato. Per NOME e non «quante sono»: il totale e' una
+            #    fotografia, e la sesta famiglia l'ha smentita il 2026-09-17
+            #    (vedi intestazione). Senza `attivo`: una famiglia spenta non
+            #    e' una famiglia mancante, e la primitiva la salta da se'.
             - sqlCheck:
                 expectedResult: 4
                 sql: |
                   SELECT COUNT(*)
                     FROM vendite.famiglie_documento
-                   WHERE attivo IS TRUE
-                     AND codice_interno <> 'FATTURA';
+                   WHERE codice_interno IN ('DDT', 'ORDINE', 'COMMESSA', 'RESO');
+            # ⭐ La primitiva e' di 20_code (20260901-18) e su un DB da zero
+            #    precede 80_data: il controllo costa niente e NOMINA la
+            #    dipendenza, come fa 20260915-34.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_provision_registri_famiglia';
       changes:
         - sql:
             dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
-              -- ⭐ Le famiglie si LEGGONO dal catalogo, non si elencano qui: il
-              --   giorno in cui ne nasce una sesta, questo passo la copre da
-              --   solo. E' la stessa ragione per cui il catalogo esiste.
+              -- ⭐ La primitiva, non un INSERT ricopiato: la regola di come nasce
+              --    un registro vive in vendite.fn_provision_registri.
+              --    Una chiamata per famiglia, PER NOME: sono le quattro per cui
+              --    questo passo e' nato. La sesta (DISTINTA) ha il suo passo
+              --    (20260915-34), la settima avra' il suo.
               -- ⛔ La FATTURA resta fuori: il suo registro dipende da
-              --   (tipo documento, natura) e passa da tipi_doc_fiscale_registri.
-              --   Fabbricargliene uno «di famiglia» qui creerebbe un sezionale
-              --   che nessuno risolve e che a video sembrerebbe configurazione.
-              INSERT INTO vendite.registri_fatturazione (
-                  codice,
-                  descrizione,
-                  famiglia_documento,
-                  emittente_soggetto_ruolo_id,
-                  utility_id,
-                  reset_policy,
-                  attivo,
-                  meta)
-              SELECT
-                  -- ⚠️ Prime tre lettere della famiglia + id dell'emittente:
-                  --   deterministico, unico per costruzione e dentro i 16
-                  --   caratteri della colonna.
-                  left(fd.codice_interno, 3) || '-' || ef.soggetto_ruolo_id::text,
-                  'Registro ' || lower(fd.descrizione) || ' — ' || ef.codice,
-                  fd.codice_interno,
-                  ef.soggetto_ruolo_id,
-                  NULL,          -- vale per tutte le utility (2º livello del fallback)
-                  'ANNUALE',
-                  TRUE,
-                  jsonb_build_object('origine', 'C2-12', 'famiglia', fd.codice_interno)
-                FROM anagrafiche.emittenti_fiscali ef
-               CROSS JOIN vendite.famiglie_documento fd
-               WHERE ef.attivo IS TRUE
-                 AND fd.attivo IS TRUE
-                 AND fd.codice_interno <> 'FATTURA'
-                 -- ⚠️ Idempotente: chi ha gia' il suo registro non ne prende un
-                 --   secondo. Il predicato guarda la COPPIA, non il codice:
-                 --   un registro creato a mano con un altro nome vale lo stesso.
-                 AND NOT EXISTS (
-                       SELECT 1
-                         FROM vendite.registri_fatturazione r
-                        WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
-                          AND r.famiglia_documento          = fd.codice_interno);
+              --    (tipo documento, natura) e passa da tipi_doc_fiscale_registri.
+              --    Fabbricargliene uno «di famiglia» creerebbe un sezionale che
+              --    nessuno risolve e che a video sembrerebbe configurazione —
+              --    e la primitiva la esclude da se'.
+              SELECT vendite.fn_provision_registri_famiglia('DDT'),
+                     vendite.fn_provision_registri_famiglia('ORDINE'),
+                     vendite.fn_provision_registri_famiglia('COMMESSA'),
+                     vendite.fn_provision_registri_famiglia('RESO');
       rollback:
         - sql:
             dbms: postgresql
@@ -150,6 +167,10 @@ databaseChangeLog:
               --   nessun documento le ha gia' usate: un registro che ha
               --   numerato non si toglie, perche' il numero resta scritto sul
               --   documento e il sezionale ne e' l'identita'.
+              -- ⚠️ `origine = C2-12` lo scrive la primitiva per CHIUNQUE la
+              --   chiami (trigger sull'emittente, seed della DISTINTA): il
+              --   perimetro di questo passo sono le sue quattro famiglie.
               DELETE FROM vendite.registri_fatturazione r
                WHERE r.meta->>'origine' = 'C2-12'
+                 AND r.famiglia_documento IN ('DDT', 'ORDINE', 'COMMESSA', 'RESO')
                  AND NOT EXISTS (SELECT 1 FROM vendite.fatture f WHERE f.registro_id = r.id);

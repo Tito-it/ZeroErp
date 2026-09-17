@@ -31,7 +31,7 @@
 --       comunque, ma non direbbe quale ramo del guard funziona.
 -- ------------------------------------------------------------
 -- Indice test (1..9):
---   1)  fixture: terna emittente/utility/BA con configurazione presente
+--   1)  fixture costruita: terna emittente/utility/BA coerente, con la configurazione scritta
 --   2)  C1 totali non calcolati        -> respinta
 --   3)  C2 riepilogo IVA assente       -> respinta
 --   4)  C3a piano rate assente         -> respinta
@@ -42,8 +42,27 @@
 --   9)  controprova: un documento COERENTE si numera e parte da 1
 --       (il guard non rifiuta troppo, e i sei rifiuti non lasciano residui)
 -- ------------------------------------------------------------
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-09-17 sera). Fino a quel
+--   giorno la «terna scelta insieme» era pescata fra i dati della macchina —
+--   una riga di anagrafiche.emittenti_fiscali_utilities con un billing account
+--   della stessa utility: su un database ricostruito dai changelog (zeroerp_ci,
+--   la CI) le anagrafiche sono a ZERO, tmp_refs_dk usciva vuota e il registro
+--   nasceva con emittente NULL — ERRORE_FIXTURE in baseline-rossi-ci.tsv, il
+--   guard D-K collaudato solo su dbdev. E la stessa fixture, ricopiata, ha fatto
+--   nascere rosso test-nc-rata-unica-v1. Ora: un'azienda col suo operatore
+--   (dbops.fn_pgtap_crea_emittente_operatore) PRIMA del contesto; NEL contesto
+--   un cliente fatturabile (dbops.fn_pgtap_crea_cliente_ba) e la riga
+--   emittente/utility che fn_ricalcola_totali_fattura pretende (2 decimali,
+--   HALF_UP) — la terna resta «scelta insieme», ma perche' e' COSTRUITA
+--   coerente, non perche' un LIMIT 1 l'ha trovata — guida
+--   pgtap-come-si-scrive-un-test §«Il mondo si costruisce, non si cerca».
+-- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 --   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
 --   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
@@ -57,33 +76,42 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 SELECT plan(9);
 
 -- ============================================================
 -- Fixture
 -- ============================================================
+-- Il cliente fatturabile, nel contesto dell'operatore: il legame BA -> emittente
+-- lo scrive il trigger z90 verso l'emittente di chi agisce.
+CREATE TEMP TABLE tmp_cli_dk AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('guard coerenza numerazione') c;
+
 -- La terna si sceglie INSIEME: il ricalcolo totali pretende una riga in
 -- anagrafiche.emittenti_fiscali_utilities per la coppia (emittente, utility).
--- Pescare emittente e BA separatamente li accoppia a caso e rende il test una
--- lotteria sui dati.
+-- Qui la coppia la SCRIVE il test, coerente col cliente appena costruito.
+INSERT INTO anagrafiche.emittenti_fiscali_utilities
+    (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec,
+     metodo_arrotondamento_importi, meta)
+SELECT m.soggetto_ruolo_id, c.utility_id, 2, 'HALF_UP',
+       jsonb_build_object('test_scope', 'pgtap_guard_dk')
+  FROM _mondo m, tmp_cli_dk c;
+
 CREATE TEMP TABLE tmp_refs_dk AS
-SELECT efu.emittente_soggetto_ruolo_id,
-       efu.utility_id,
-       (SELECT ba.id FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = efu.utility_id ORDER BY ba.id LIMIT 1) AS billing_account_id
-  FROM anagrafiche.emittenti_fiscali_utilities efu
-  JOIN anagrafiche.emittenti_fiscali ef
-    ON ef.soggetto_ruolo_id = efu.emittente_soggetto_ruolo_id AND ef.attivo IS TRUE
- WHERE efu.attivo IS TRUE
-   AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba WHERE ba.utility_id = efu.utility_id)
- ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
- LIMIT 1;
+SELECT m.soggetto_ruolo_id                        AS emittente_soggetto_ruolo_id,
+       (SELECT utility_id FROM tmp_cli_dk)        AS utility_id,
+       (SELECT billing_account_id FROM tmp_cli_dk) AS billing_account_id
+  FROM _mondo m;
 
 SELECT ok(
-  (SELECT count(*) = 1 FROM tmp_refs_dk WHERE billing_account_id IS NOT NULL),
-  '1) fixture: terna emittente/utility/BA con configurazione presente');
+  (SELECT count(*) = 1 FROM tmp_refs_dk WHERE billing_account_id IS NOT NULL)
+  AND EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_utilities efu
+               JOIN tmp_refs_dk r ON r.emittente_soggetto_ruolo_id = efu.emittente_soggetto_ruolo_id
+                                 AND r.utility_id = efu.utility_id
+              WHERE efu.attivo IS TRUE),
+  '1) fixture costruita: terna emittente/utility/BA coerente, con la configurazione scritta');
 
 -- Registro dedicato e VERGINE: e' cio' che rende leggibile il test 9.
 CREATE TEMP TABLE tmp_reg_dk AS

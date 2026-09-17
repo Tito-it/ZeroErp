@@ -612,12 +612,24 @@ NC scrive anche la riga `emittenti_fiscali_utilities` (2 dec, `HALF_UP`) che il
 ricalcolo totali pretende. Provate come `zeroerp_app` in transazione ritirata su
 **entrambi** i database: 8/8 · 17/17 · 12/12. ⚠️ La prova «come owner» del
 pomeriggio non poteva vederlo: l'owner salta la RLS e dbdev ha le anagrafiche.
-🔵 **Residuo dichiarato, non di questo cantiere**: i quattro file che ho
-ricopiato — `test-abbinamento-rata`, `test-fn-get-or-create-vendite-contabile`,
-`test-fn-posta-contabile`, `test-numerazione-guard-coerenza-v1` — più
-`test-genera-scadenze-fattura-v1` e `test-vw-fatture-lista` (toccati oggi)
-restano nel registro della CI con la stessa causa; sono righe di debito che
-calano solo riscrivendo la fixture, una per file.
+✅ **E i sei file da cui la forma veniva sono stati riscritti nello stesso
+giro** (decisione di Tid, sera): `test-abbinamento-rata` (18),
+`test-fn-get-or-create-vendite-contabile` (9), `test-fn-posta-contabile` (20),
+`test-numerazione-guard-coerenza-v1` (9), `test-genera-scadenze-fattura-v1`
+(16), `test-vw-fatture-lista` (11) — tutti sui BB, provati come `zeroerp_app`
+in transazione ritirata su dbdev **e** su `zeroerp_ci`, nessun residuo. Tre
+cose emerse riscrivendo: (a) `fn_get_or_create_vendite_contabile` col lotto
+vuole un lotto **dell'emittente** (livello 2 della sede unica; `codice` ed
+`emittente_soggetto_ruolo_id` sono NOT NULL — il ripiego «crea un lotto senza»
+non poteva mai passare); (b) in `test-genera-scadenze-fattura-v1` lo `skip`
+del test 4 sparisce: la fattura oltre la soglia **nasce** in uno stato con
+`congela_fiscale` (scelto dal contratto, non dal nome), senza attraversare la
+matrice degli stati — e il creatore applicativo `fn_get_or_create_fattura_header`
+non serviva, il generatore legge solo la testata; (c) dove passa
+`fn_ricalcola_totali_fattura` la riga `emittenti_fiscali_utilities` la scrive
+il test. ⏳ Le sei righe di `baseline-rossi-ci.tsv` **rientrano alla prossima
+corsa della CI** e le toglie `scripts/pgtap-baseline-ci-rientrati.sh` da quel
+log — non da qui.
 
 **Scostamenti dal piano, emersi sviluppando** (tutti nei changeSet, qui in una riga):
 
@@ -693,6 +705,7 @@ rifiuto di capienza su una riga sola che non porta via le altre.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-17** (sera, ancora) | ✅ **Sei pgTAP di pagamenti/vendite riscritti sui BB** (Tid: «puoi correggere anche questi»): abbinamento-rata, get-or-create-contabile, posta-contabile, numerazione-guard-coerenza, genera-scadenze-fattura (lo skip del test 4 sparisce), vw-fatture-lista. Provati come app su dbdev e scratch: 18 · 9 · 20 · 9 · 16 · 11. Sei righe di `baseline-rossi-ci.tsv` da togliere dalla prossima corsa CI. Dettaglio in §4-bis.9 |
 | **2026-09-17** (sera, poi) | 🔴→✅ **Tre pgTAP nuovi rossi su `zeroerp_ci`** (la CI non li conosceva): fixture che cercavano l'azienda, ricopiate da test già `ERRORE_FIXTURE` nel registro della CI. Riscritte sui BB (`fn_pgtap_crea_emittente_operatore` + `fn_pgtap_crea_cliente_ba`, NC con `emittenti_fiscali_utilities` costruita), provate come `zeroerp_app` su dbdev e scratch: 8/8 · 17/17 · 12/12. Dettaglio e residuo in §4-bis.9 |
 | **2026-09-17** (notte) | ✅ **Migrate completo (seed `ui` compreso), pgTAP come app verdi, baseline senza regressione** — Tid. Lato DB **chiuso**. Le tre fixture nuove rifatte sul modello «il mondo si costruisce, non si cerca» (§4-bis.9): su `zeroerp_ci` le anagrafiche sono a zero e una fixture che «cerca» esce vuota. Il brief resta in `work-in-progress/` per A-D (BE/FE) |
 | **2026-09-17** (sera) | ✅ **Lato DB consegnato e applicato su dev** (Tid, 15:04 e 15:23). Q-A…Q-F decise da Tid una alla volta (γ · spazio = saldo − in_lavorazione · data dal termine · il W_ resta · registro sulle tre sorelle · niente backfill). 13 changeSet `20260917-02…-14`: P-1 (+3 sorelle), P-2, P-3 (nucleo + porta 1 + porta 2, poi la rev γ), P-5 (drop CHECK, generatore, numerazione, `vw_rate_fuori_capienza` in forma D14-c + `numero_documento`), seed `ui` 68/750-765 + 766 tutti spenti. pgTAP: `test-fn-get-saldi-rate-v1` (17), `test-vw-fatture-scadenze-lista-v1` (8), `test-nc-rata-unica-v1` (12), `test-vw-fatture-lista` 8→11, due test riscritti. Due scostamenti di rilievo: l'array del nucleo è **obbligatorio** (EXPLAIN: l'`OR IS NULL` non si piega in LATERAL) e **l'ordine dei fatti conta** nell'imputazione. Stato e note per il BE in §4-bis.9 |
