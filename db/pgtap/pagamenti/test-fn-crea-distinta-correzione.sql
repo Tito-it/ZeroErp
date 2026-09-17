@@ -5,7 +5,7 @@
 --
 -- Elenco test (plan 14):
 --  1) Riferimenti minimi presenti
---  2) ⭐ Il `codice` si genera da se': la testata si crea senza passarlo
+--  2) ⭐ Il `codice` lo assegna il TRIGGER sul registro: DIS-<sigla>-<anno>-<7 cifre> (rev 2026-09-15)
 --  3) Una distinta NON registrata non si corregge
 --  4) La correzione crea una riga per ogni riga POSTATA
 --  5) ...e conta quelle saltate, invece di tacerle
@@ -18,7 +18,8 @@
 -- 11) Il legame col documento corretto e' scritto
 -- 12) Correggere due volte la stessa distinta e' rifiutato
 -- 13) ⭐ ...ma correggere LA CORREZIONE si puo': la catena resta leggibile
--- 14) Assert finale cleanup
+-- 14) ⭐ La correzione nasce sullo STESSO registro dell'originale, col progressivo successivo (rev 2026-09-15)
+-- 15) Assert finale cleanup
 --
 -- Scopo:
 --  - collaudare la madre di Q-7 (S6-4). ⭐ Il cuore sono i test 8 e 9: la
@@ -47,7 +48,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- Fixture
@@ -107,9 +108,13 @@ WITH ins AS (
 -- ============================================================
 -- 2) ⭐ La testata si crea SENZA passare il codice
 -- ============================================================
--- ⛔ E' il motivo per cui il default esiste: la madre crea una testata propria
---    e non puo' usare il get-or-create, la cui chiave di riuso comprende
---    l'operatore — le righe di correzione finirebbero nella distinta di oggi.
+-- ⛔ La madre crea una testata propria e non puo' usare il get-or-create, la
+--    cui chiave di riuso comprende l'operatore — le righe di correzione
+--    finirebbero nella distinta di oggi. ⭐ Rev 2026-09-15 (brief
+--    distinta-numerata-sul-registro, D5): il codice non lo mette piu' il DEFAULT
+--    della colonna (VC_…) ma il trigger a10_gen_codice sul registro DISTINTA
+--    dell'emittente in sessione: DIS-<sigla>-<anno>-<7 cifre>. La sigla ha
+--    chk_emittenti_fiscali_codice_forma (^[A-Z0-9]{2,10}$).
 CREATE TEMP TABLE tmp_originale AS
 WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
@@ -122,8 +127,8 @@ WITH ins AS (
 
 SELECT matches(
   (SELECT codice FROM tmp_originale),
-  '^VC_\d{17}_[0-9a-f]{8}$',
-  '2) Il `codice` lo genera il DEFAULT della colonna: la testata si crea senza passarlo'
+  '^DIS-[A-Z0-9]{2,10}-\d{4}-\d{7}$',
+  '2) Il `codice` lo assegna il trigger sul registro: la testata si crea senza passarlo'
 );
 
 -- Due righe che diventeranno movimenti, e una sospesa che non lo diventa.
@@ -269,14 +274,37 @@ SELECT is((SELECT esito FROM tmp_correzione2), 'CREATA',
   '13) ...ma correggere LA CORREZIONE si puo'': il caso vero non e'' bloccato');
 
 -- ============================================================
--- 14) Cleanup
+-- 14) ⭐ Stesso emittente => stesso registro => il progressivo SUCCESSIVO
+-- ============================================================
+-- ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, L8): la correzione
+--   copia l'emittente della distinta che corregge, quindi nasce sul suo stesso
+--   registro DISTINTA e prende il numero dopo; meta.correzione_di porta il
+--   codice dell'originale (che per il pregresso e' un VC_…, ed e' giusto).
+--   ⚠️ «Successivo» e' misurato fra ORIGINALE e prima correzione: fra le due
+--   nessun'altra distinta di questo emittente e' nata in questo file.
+SELECT is(
+  (SELECT concat_ws('|',
+              n.emittente_soggetto_ruolo_id = o.emittente_soggetto_ruolo_id,
+              n.registro_id = o.registro_id,
+              n.anno = o.anno,
+              right(n.codice, 7)::int - right(o.codice, 7)::int,
+              n.meta->>'correzione_di' = o.codice)
+     FROM pagamenti.vendite_contabili n, pagamenti.vendite_contabili o
+    WHERE n.id = (SELECT contabile_id FROM tmp_correzione)
+      AND o.id = (SELECT id FROM tmp_originale)),
+  't|t|t|1|t',
+  '14) La correzione nasce sullo stesso registro dell''originale, col progressivo successivo, e ne ricorda il codice'
+);
+
+-- ============================================================
+-- 15) Cleanup
 -- ============================================================
 -- ⛔ Niente DELETE a mano: le righe di correzione puntano alla rata, e
 --    cancellarla richiederebbe di smontare prima tutto cio' che il test ha
 --    costruito — lavoro che il ROLLBACK fa da se'. ⚠️ E' lecito proprio
 --    perche' il file e' transazionale: se un giorno non lo fosse, questa
 --    riga diventerebbe un residuo.
-SELECT ok(true, '14) Cleanup: la transazione viene annullata, nessun residuo');
+SELECT ok(true, '15) Cleanup: la transazione viene annullata, nessun residuo');
 
 SELECT * FROM finish();
 ROLLBACK;

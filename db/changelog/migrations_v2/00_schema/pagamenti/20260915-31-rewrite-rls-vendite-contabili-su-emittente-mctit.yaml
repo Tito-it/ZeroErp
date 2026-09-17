@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RLS DELLA DISTINTA PASSA SULLA COLONNA, E IL GUARD CAMBIA MODO — L9a
+#   rls_vendite_contabili_perimetro_incasso, riscritta
+#   trg_vendite_contabili_a10_guard_emittente_scope_ins_upd, in modo soggetto_ruolo
+#   Brief: brief-db-distinta-numerata-sul-registro, §2.3 (D3), §2.4, §3.3, §4-bis.9
+#
+# ── COSA CAMBIA, E COSA NO ──────────────────────────────────────────────
+#   La policy viene riscritta nella forma di rls_fatturazione_lotti_ef_whitelist
+#   (20260603-24): FOR ALL, USING = WITH CHECK = gate OPERATORE +
+#   fn_scope_ef_whitelist_via_sr(user, emittente_soggetto_ruolo_id). Il ramo
+#   «ente_incasso_id IS NULL => visibile a tutti» SPARISCE: una distinta
+#   interna e' del suo emittente, come il lotto o l'atto da cui nasce (D3).
+#   ⭐ Il NOME della policy resta: lo nominano i COMMENT delle policy sorelle
+#   e i pgTAP; cambia il predicato, non l'identita'. Stessa cosa per il trigger.
+#
+#   Il guard di scope passa dal modo 'ente_incasso' al modo 'soggetto_ruolo'
+#   sulla colonna nuova: con la coerenza canale<->emittente garantita dalla
+#   sede unica (livello 1) e l'emittente in perimetro, il canale e' in
+#   perimetro per costruzione — due guard sulla stessa domanda sarebbero due
+#   frasi per lo stesso rifiuto. ⚠️ Il DROP TRIGGER e' su un trigger scritto
+#   A MANO (20260822-20), non su uno generato: il guardrail §11.5 non si applica.
+#
+# ── PERCHE' DOPO IL NOT NULL (-26) ──────────────────────────────────────
+#   La policy legge la colonna: una riga con NULL sparirebbe a tutti, in
+#   silenzio. Il NOT NULL deve precederla, e lo fa per NN.
+#
+# ── ⚠️ INSERT … RETURNING PASSA DALLA USING (lezione del 22-08) ─────────
+#   La riga appena creata porta l'emittente risolto dal trigger a10_emittente
+#   — quello in sessione, o del canale in perimetro — quindi e' VISIBILE a chi
+#   l'ha scritta nello stesso istante. Un emittente fuori perimetro lo ferma
+#   il guard di scope PRIMA e con una frase (E_SCOPE_EMITTENTE): la policy non
+#   arriva mai a dire «new row violates row-level security policy».
+#   L'ordine dei BEFORE ROW lo garantisce per nome: a10_emittente (risolve)
+#   < a10_gen_codice (numera) < a10_guard_emittente_scope (giudica).
+#
+# ── ⚠️ ENABLE MA NON FORCE, e deve restare cosi' ────────────────────────
+#   relforcerowsecurity = f (verificato): il risolutore fn_resolve_emittente_-
+#   fiscale_id e' SECURITY DEFINER e gira come proprietario — con il FORCE
+#   rientrerebbe sotto la policy della tabella che sta leggendo (ricorsione).
+#   Non si tocca l'ENABLE, gia' acceso da 20260822-20.
+#
+# ── COSA SI VEDE DIVERSAMENTE, ED E' VOLUTO (brief §3.3) ─────────────────
+#   * una distinta SENZA canale aperta da un operatore di A non e' piu'
+#     visibile agli operatori di B (prima si': era «di tutti»);
+#   * il giro dei fondi passa da questa policy come tutti: ogni processo gira
+#     con un utente tecnico per (processo x azienda) dal 2026-09-05, dentro il
+#     proprio perimetro. Il livello 3 della sede unica risolve anche per lui.
+#
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql (7, 10, 12),
+#   db/pgtap/pagamenti/test-distinta-numerazione-registro-v1.sql (17, 18)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260915-31-rewrite-rls-vendite-contabili-su-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260915-31-rewrite-rls-vendite-contabili-su-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        rls_vendite_contabili_perimetro_incasso riscritta sulla colonna
+        emittente_soggetto_ruolo_id (forma di rls_fatturazione_lotti_ef_whitelist, FOR ALL,
+        USING = WITH CHECK): il ramo «senza canale = di tutti» sparisce, una distinta
+        interna e' del suo emittente (D3, brief distinta-numerata-sul-registro). Il guard
+        di scope trg_…_a10_guard_emittente_scope_ins_upd passa dal modo ente_incasso al
+        modo soggetto_ruolo sulla stessa colonna: una domanda, un guard. Nomi invariati.
+        Dopo il NOT NULL (-26): una riga con NULL sparirebbe a tutti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM information_schema.columns
+                   WHERE table_schema = 'pagamenti'
+                     AND table_name   = 'vendite_contabili'
+                     AND column_name  = 'emittente_soggetto_ruolo_id'
+                     AND is_nullable  = 'NO';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_sr';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger t
+                   WHERE t.tgrelid = 'pagamenti.vendite_contabili'::regclass
+                     AND t.tgname = 'trg_vendite_contabili_a10_emittente_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_vendite_contabili_perimetro_incasso
+                  ON pagamenti.vendite_contabili;
+
+              CREATE POLICY rls_vendite_contabili_perimetro_incasso
+                  ON pagamenti.vendite_contabili
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      -- ⭐ La distinta SA di chi e' (D3): il perimetro e' la sua
+                      --    colonna, come su fatturazione_lotti. Nessun ramo «senza
+                      --    canale = di tutti»: una distinta interna e' del suo
+                      --    emittente, come il lotto o l'atto da cui nasce.
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_soggetto_ruolo_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_soggetto_ruolo_id)
+                  );
+
+              COMMENT ON POLICY rls_vendite_contabili_perimetro_incasso
+                   ON pagamenti.vendite_contabili IS
+                  'RLS: l''operatore vede e scrive solo le distinte contabili del proprio '
+                  'perimetro, letto dalla COLONNA emittente_soggetto_ruolo_id (rev 2026-09-15, '
+                  'D3 del brief distinta-numerata-sul-registro), nella forma di '
+                  'rls_fatturazione_lotti_ef_whitelist. ⭐ Fino a quel giorno il perimetro '
+                  'veniva dal CONTO DI INCASSO e il ramo «ente_incasso_id IS NULL» rendeva la '
+                  'distinta INTERNA visibile a tutti, perche'' la chiave di riuso non nominava '
+                  'l''emittente e una distinta di fondi raccoglieva i fondi di tutti: oggi la '
+                  'distinta SA di chi e'' — risolto dal trigger a10_emittente in una sede sola '
+                  '(dato, canale, operatore in sessione, o rifiuto parlante) — e quel ramo non '
+                  'descrive piu'' il modello. Una distinta interna e'' del suo emittente come il '
+                  'lotto o l''atto da cui nasce. 🔴 FOR ALL e non FOR SELECT (lezione misurata il '
+                  '22-08): la RLS nega cio'' che nessuna policy permette, e INSERT … RETURNING '
+                  'passa dalla USING — la riga appena creata porta l''emittente risolto dal '
+                  'trigger, quindi e'' visibile a chi l''ha scritta nello stesso istante; un '
+                  'emittente fuori perimetro lo ferma prima il guard di scope (modo '
+                  'soggetto_ruolo), con una frase. ⚠️ ENABLE ma NON FORCE: il risolutore e'' '
+                  'SECURITY DEFINER e con il FORCE rientrerebbe sotto questa policy — ricorsione.';
+
+              -- ── Il guard di scope: una domanda, un guard ─────────────────
+              -- ⚠️ Scritto a mano nel 20260822-20, non generato: si puo' DROPpare.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('soggetto_ruolo', 'emittente_soggetto_ruolo_id');
+
+              COMMENT ON TRIGGER trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  ON pagamenti.vendite_contabili IS
+                'Guard di scope in scrittura sulla distinta, in modo soggetto_ruolo sulla colonna emittente_soggetto_ruolo_id (rev 2026-09-15; prima in modo ente_incasso sul canale). Con la coerenza canale-emittente garantita dalla sede unica (livello 1 di pagamenti.fn_get_emittente_distinta) e l''emittente in perimetro, il canale e'' in perimetro per costruzione: due guard sulla stessa domanda sarebbero due frasi per lo stesso rifiuto. ⛔ IL NOME NON SI CAMBIA A CASO: i BEFORE ROW girano in ordine alfabetico e «a10_guard_emittente_scope» deve seguire «a10_emittente», che riempie la colonna giudicata qui. La policy fa sparire, questo trigger rifiuta e spiega (E_SCOPE_EMITTENTE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La policy del 20260822-20 e il guard in modo ente_incasso, per esteso.
+              DROP POLICY IF EXISTS rls_vendite_contabili_perimetro_incasso
+                  ON pagamenti.vendite_contabili;
+
+              CREATE POLICY rls_vendite_contabili_perimetro_incasso
+                  ON pagamenti.vendite_contabili
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          ente_incasso_id IS NULL
+                          OR script.fn_scope_ef_whitelist_via_ente_incasso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ente_incasso_id
+                          )
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          ente_incasso_id IS NULL
+                          OR script.fn_scope_ef_whitelist_via_ente_incasso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ente_incasso_id
+                          )
+                      )
+                  );
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('ente_incasso', 'ente_incasso_id');

@@ -53,6 +53,18 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
   rev N→N+1, e nessun pgTAP lo pinnava (segnalazione del BE). Presidio:
   `db/pgtap/vendite/test-date-consegna-ordine-v1.sql`, test 11-13 (fixture
   costruita: misura la stessa cosa su dbdev e in CI).
+* **L'ancora si copia** (rev 2026-09-15, `20260915-41`, D3 di Tid): la **testata** della
+  rev N+1 porta `emittente_fiscale_id` della rev N. Fino a quel giorno non era nell'elenco
+  esplicito delle colonne e lo riempiva il **trigger di default di sessione**: per un
+  operatore della stessa azienda lo stesso valore, ma per un super admin senza emittente
+  attivo la revisione **sollevava** (`E_…_EMITTENTE_NON_RISOLTO`) e con un emittente attivo
+  diverso nasceva incoerente col BA e la fermava `trgfn_preventivi_guard_emittente_ba` —
+  un difetto mascherato da un guard, quindi mai un dato sbagliato a terra, solo una
+  revisione impossibile. La revisione è **lo stesso documento**: copia l'ancora, come già
+  [fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta). Trovato
+  censendo chi si appoggiava al default senza dirlo, nel ritiro delle copie
+  (`brief-db-emittente-di-default-un-bb-solo`, sezione 7.1). Presidio: test 18 di
+  `db/pgtap/script/test-trgfn-default-emittente-fiscale-v1.sql`.
 * **Marche di approvazione prezzo copiate 1:1** (rev 2026-09-14, `20260914-14`,
   decisione di Tid): `stato_approvazione_prezzo` e
   `pratica_approvazione_prezzo_id` passano sulla riga della rev N+1 come già

@@ -346,7 +346,7 @@ Da un punto di vista tecnico:
 | Colonna                 | Tipo               | Nullable | Descrizione                                                         |
 | ----------------------- | ------------------ | :------: | ------------------------------------------------------------------- |
 | `id`                    | BIGINT, PK         |    no    | Chiave primaria                                                     |
-| `codice`                | VARCHAR, UNIQUE    |    no    | Codice univoco (auto-generato: `VC_<timestamp>_<random8>`)          |
+| `codice`                | VARCHAR, UNIQUE    |    no    | Numero dal registro `DISTINTA` dell'emittente (`DIS-<SIGLA>-<ANNO>-<7 cifre>`, dal 2026-09-15): come nasce lo dice la scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
 | `centro_riscossione_id` | BIGINT, FK         |    no    | Centro di riscossione                                               |
 | `ente_incasso_id`       | BIGINT, FK         |    si    | Ente di incasso (opzionale)                                         |
 | `data_contabile`        | DATE               |    no    | Data contabile dell'operazione                                      |
@@ -778,6 +778,7 @@ Da un punto di vista tecnico:
 | `p_lotto_id`              | BIGINT | NULL           | Lotto di fatturazione                     |
 | `p_codice_stato_interno`  | TEXT   | `'BOZZA'`      | Codice interno dello stato iniziale       |
 | `p_meta`                  | JSONB  | `'{}'`         | Metadati                                  |
+| `p_emittente_fiscale_id`  | BIGINT | NULL           | Emittente della distinta (dal 2026-09-15): se manca, lo dice il lotto o il canale — regole nella scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
 
 **Restituisce:** `BIGINT` — l'ID della testata (esistente o appena creata).
 
@@ -786,7 +787,7 @@ Da un punto di vista tecnico:
 1. ⛔ *(rimosso il 2026-08-22)* Se `p_compensazione_id` era valorizzato: cercava per `compensazione_id` (relazione 1:1 UNIQUE). Se trovata, verifica coerenza dei parametri.
 2. Se `p_lotto_id` e NULL: cerca per combinazione `(centro, ente, data_contabile, data_registrazione, stato)` senza compensazione.
 3. Se `p_lotto_id` e valorizzato: cerca tramite JOIN su `vendite_contabili_lotti` con la stessa combinazione.
-4. Se non trovata: INSERT con codice auto-generato `VC_<timestamp>_<random8>`.
+4. Se non trovata: INSERT senza `codice` — il numero lo assegna il registro `DISTINTA` dell'emittente (dal 2026-09-15; prima era `VC_<timestamp>_<random8>`).
 5. Se `p_lotto_id` e valorizzato: INSERT in `vendite_contabili_lotti` con `ON CONFLICT DO NOTHING`.
 
 **Vincolo di mutua esclusione:** ⛔ *(non piu' applicabile dal 2026-08-22, il primo parametro non esiste)* `p_compensazione_id` e `p_lotto_id` erano mutuamente esclusivi (errore se entrambi valorizzati).
@@ -940,8 +941,8 @@ denaro, sarebbe diventata un varco che **non produce nessun errore visibile**.
 | Le sue **righe** | gli stessi — anche quelle non ancora abbinate a una fattura |
 | Una riga gia' abbinata a una **fattura** | anche chi ha quella fattura, se e' di un'altra azienda ⚠️ |
 | I **movimenti** (il denaro registrato) | chi ha la fattura che quel movimento paga |
-| Le distinte **interne** del sistema (fondi fattura, compensazioni) | tutti — non sono di nessuno |
-| Le **righe** di quelle distinte interne | solo chi ha la fattura che la riga porta |
+| Le distinte **interne** del sistema (fondi fattura, compensazioni) | chi lavora per l'azienda emittente della distinta (dal 2026-09-15 ogni distinta ha un emittente, anche senza canale) |
+| Le **righe** di quelle distinte interne | chi vede la testata, piu' chi ha la fattura che la riga porta |
 
 ⚠️ **La terza riga della tabella non e' una svista.** Se una riga finisce per
 sbaglio sulla distinta dell'azienda sbagliata, chi possiede la fattura **deve

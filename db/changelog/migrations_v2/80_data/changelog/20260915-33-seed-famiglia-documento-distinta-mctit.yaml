@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SESTA FAMIGLIA DI DOCUMENTO: DISTINTA, IN UN CSV SUO — L11
+#   vendite.famiglie_documento <- famiglie_documento_distinta.csv
+#   Brief: brief-db-distinta-numerata-sul-registro, §4 P-3 (corretto), §4-bis.11
+#
+# ── ⛔ PERCHE' NON E' UN APPEND A famiglie_documento.csv ─────────────────
+#   Il commento di 20260830-14 dice «una famiglia nuova e' un append, mai un
+#   INSERT a parte»: era vero fino a 20260831-03, che ha in preConditions
+#   `sqlCheck expectedResult: 4` su «famiglie attive <> FATTURA» con
+#   `onFail: HALT`. Su un database ricostruito da zero il mirror base gira
+#   PRIMA (includeAll ordina per nome file): con sei righe nel CSV base il
+#   cancello troverebbe 5 e il migrate morirebbe IN CI. Su dev non si vede
+#   mai — quel changeSet e' runOnChange ma ri-esegue solo se il SUO file
+#   cambia. E' la forma esatta del difetto gia' pagato il 2026-09-02
+#   (20260831-53: «il changelog descrive un mondo che esiste solo dove
+#   qualcuno e' passato prima»).
+#   ⇒ La sesta famiglia va in un CSV DEDICATO con un loader suo, numerato
+#   dopo i quattro mirror laterali (l'ultimo e' 20260908-16): alla corsa di
+#   20260831-03 le famiglie sono ancora cinque. Pattern di casa:
+#   parameters*.csv su cinque file, tipi_doc_fiscale_registri*.csv, e gli
+#   stessi famiglie_documento_*.csv.
+#   ⛔ Non si rilassa il cancello di 20260831-03 (mergiato): la SETTIMA
+#   famiglia dovra' fare lo stesso. Sta scritto in vendite/manual/famiglie_documento.md.
+#   ⚠️ I quattro laterali contano le cinque famiglie PER NOME (IN (…),
+#   expectedResult 5) e non si accorgono della sesta: restano verdi.
+#
+# ── LA RIGA ─────────────────────────────────────────────────────────────
+#   * pagamenti.vendite_contabili / codice: la PRIMA famiglia fuori da
+#     vendite, e la prima SENZA billing account in servizio (la porta aperta
+#     il 14-09 da 20260914-07 per l'ordine d'acquisto la attraversa per prima
+#     la distinta: il guard dei riferimenti con colonna_billing_account NULL
+#     SALTA il controllo su pg_attribute);
+#   * colonna_serie NULL: la distinta non ha serie;
+#   * DIS- / 7 / anno_nel_numero_default = true: DIS-<sigla>-<anno>-<7 cifre>
+#     (una distinta al giorno per emittente non ne consuma centomila in un
+#     anno); il registro nasce con anno_nel_numero = true dal trigger
+#     a10_set_anno_nel_numero_ins (politica ANNUALE + default della famiglia);
+#   * presidia_data_documento = false: la distinta di ieri inserita stamattina,
+#     dopo che ne e' gia' uscita una di oggi, e' un caso d'uso normale — lo
+#     stesso argomento del DDT;
+#   * ammette_regole_fiscali = false (default, e il CHECK lo vuole).
+#   ⛔ SENZA `id`: la PK e' IDENTITY BY DEFAULT e la prende da se'. Un id
+#   esplicito non avanza la sequence, e nessuno referenzia famiglie_documento.id
+#   — le FK vanno su codice_interno.
+#
+# ── COME SI PROVA E COME RI-ESEGUE ──────────────────────────────────────
+#   nullValue: "NULL" (il token letterale, come i laterali): colonna_billing_-
+#   account e colonna_serie DEVONO arrivare NULL, non stringa vuota — il guard
+#   dei riferimenti guarda il VALORE. Su ri-esecuzione (runOnChange) l'UPDATE
+#   riscrive gli stessi valori: il guard di struttura confronta con IS DISTINCT
+#   FROM e il lock su codice_interno vede lo stesso valore. Provato con DUE
+#   passate dell'upsert in transazione annullata.
+#
+#   uq_famiglie_documento_tabella_attiva (schema, tabella) WHERE attivo: coppia
+#   nuova, nessuna collisione. I registri li crea 20260915-34; gli emittenti
+#   futuri li prendono dal trigger z90 di provisioning.
+#
+# Verifica: db/pgtap/pagamenti/test-distinta-numerazione-registro-v1.sql (test 1),
+#   db/pgtap/vendite/test-identita-documenti-derivata-v1.sql (ramo stringa nuda)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260915-33-seed-famiglia-documento-distinta-mctit.yaml
+
+  - changeSet:
+      id: 20260915-33-seed-famiglia-documento-distinta
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Semina la sesta famiglia di documento numerabile, DISTINTA (pagamenti.vendite_contabili,
+        colonna codice, senza billing account e senza serie, DIS-/7/anno nel numero,
+        presidia_data_documento false), in un CSV DEDICATO: un append a famiglie_documento.csv
+        farebbe morire in CI il cancello «esattamente 4 famiglie non fiscali» di 20260831-03,
+        che su un DB da zero gira dopo il mirror base. Senza id: la PK e' identity. Brief:
+        brief-db-distinta-numerata-sul-registro, L11.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: anno_nel_numero_default
+            # Il guard dei riferimenti fa to_regclass sulla tabella dichiarata e
+            # pretende la colonna `codice`: la tabella deve esistere.
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: codice
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/famiglie_documento_distinta.csv
+            tableName: famiglie_documento
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            # ⚠️ Il token letterale NULL diventa SQL NULL: colonna_billing_account e
+            #    colonna_serie devono arrivare NULL, non stringa vuota.
+            nullValue: "NULL"
+            primaryKey: "codice_interno"
+            columns:
+              - column: { name: codice_interno,          type: STRING }
+              - column: { name: descrizione,             type: STRING }
+              - column: { name: schema_tabella,          type: STRING }
+              - column: { name: nome_tabella,            type: STRING }
+              - column: { name: colonna_numero,          type: STRING }
+              - column: { name: colonna_billing_account, type: STRING }
+              - column: { name: colonna_serie,           type: STRING }
+              - column: { name: attivo,                  type: BOOLEAN }
+              - column: { name: presidia_data_documento, type: BOOLEAN }
+              - column: { name: prefisso_default,        type: STRING }
+              - column: { name: lunghezza_default,       type: NUMERIC }
+              - column: { name: anno_nel_numero_default, type: BOOLEAN }
+              - column: { name: ammette_regole_fiscali,  type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert,             type: STRING }
+              - column: { name: user_insert,             type: STRING }
+              - column: { name: data_update,             type: STRING }
+              - column: { name: user_update,             type: STRING }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si toglie una famiglia che ha registri: il guard di
+              --    disattivazione lo rifiuterebbe comunque. Si toglie solo se
+              --    nessun registro la nomina (i registri li cancella il rollback
+              --    di 20260915-34, che viene prima nel rollback).
+              DELETE FROM vendite.famiglie_documento fd
+               WHERE fd.codice_interno = 'DISTINTA'
+                 AND NOT EXISTS (SELECT 1 FROM vendite.registri_fatturazione r
+                                  WHERE r.famiglia_documento = 'DISTINTA');

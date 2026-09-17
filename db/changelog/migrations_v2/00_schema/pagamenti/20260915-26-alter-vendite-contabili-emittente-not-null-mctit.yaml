@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# OGNI DISTINTA E' DI QUALCUNO: IL NOT NULL, DIETRO UN CANCELLO — L5b
+#   pagamenti.vendite_contabili.emittente_soggetto_ruolo_id SET NOT NULL
+#   Brief: brief-db-distinta-numerata-sul-registro, §2.3 (D3), §2.6 (D6), §4-bis.5
+#
+# ── IL CANCELLO E' FAIL-CLOSED, ED E' IL SUO MESTIERE ───────────────────
+#   `sqlCheck expectedResult: 0` su «righe con emittente NULL», `onFail:
+#   HALT`. Se il backfill (-25) ha lasciato residui, il migrate SI FERMA QUI
+#   e li nomina: «Expected '0' got '2'». ⛔ NON MARK_RAN: segnerebbe il
+#   vincolo come applicato senza applicarlo, e la policy di -31 leggerebbe
+#   poi una colonna che puo' essere NULL — una riga con NULL sparirebbe a
+#   tutti.
+#   ⭐ E' lecito in 00_schema: un `expectedResult: 0` («nessuna riga cattiva»)
+#   e' fra le forme che guardrail_precondition_seed ammette, perche' un
+#   database vuoto lo soddisfa.
+#
+# ── IL FLUSSO PREVISTO SU dbdev (deciso da Tid il 2026-09-15) ───────────
+#   `make db-migrate` -> questo changeSet si ferma sul cancello (5730 e 5869,
+#   bozze MANUALE vuote senza emittente ricostruibile) -> l'UPDATE a mano,
+#   PER ID, a «Gestore Test pgTAP» (soggetto_ruolo_id = 72):
+#     UPDATE pagamenti.vendite_contabili
+#        SET emittente_soggetto_ruolo_id = 72
+#      WHERE id IN (5730, 5869) AND emittente_soggetto_ruolo_id IS NULL;
+#   -> di nuovo `make db-migrate`, che riparte da qui. Due lanci, uno stop
+#   atteso. ⛔ Quell'UPDATE non entra in nessun changeSet: sarebbe il «default
+#   dell'installazione» che D4 vieta, e nominerebbe un id di questa macchina.
+#   ℹ️ L'UPDATE a mano attraversa il trigger di -23 (livello 0: 72 E' un
+#   emittente; livello 1: nessun canale) e il guard di scope ancora in modo
+#   ente_incasso (-31 viene dopo), che su canale NULL salta.
+#
+# ── PERCHE' PRIMA DELLA POLICY (-31) ────────────────────────────────────
+#   La policy nuova legge questa colonna: deve essere NOT NULL prima che una
+#   policy la legga, o una riga con NULL sparirebbe a tutti in silenzio.
+#   Su un DB da zero il cancello passa (zero righe).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260915-26-alter-vendite-contabili-emittente-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260915-26-alter-vendite-contabili-emittente-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        SET NOT NULL su pagamenti.vendite_contabili.emittente_soggetto_ruolo_id dietro un
+        cancello fail-closed (zero righe con emittente NULL, HALT): il pregresso non
+        ricostruibile dal backfill -25 ferma il migrate e lo decide una persona, a mano e
+        per id — mai un default dell'installazione in un changeSet (D4/D6, brief
+        distinta-numerata-sul-registro). Va PRIMA della policy -31, che legge la colonna.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: emittente_soggetto_ruolo_id
+            # ⛔ Fail-closed: una riga residua deve FERMARE il migrate e
+            #    nominarsi, non essere segnata come fatta. Lecito in 00_schema:
+            #    «nessuna riga cattiva» e' soddisfatto da un DB vuoto.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pagamenti.vendite_contabili c
+                   WHERE c.emittente_soggetto_ruolo_id IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili
+                  ALTER COLUMN emittente_soggetto_ruolo_id SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili
+                  ALTER COLUMN emittente_soggetto_ruolo_id DROP NOT NULL;

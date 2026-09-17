@@ -1,0 +1,238 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RISOLUTORE LEGGE LA COLONNA: UNA DISTINTA INTERNA NON E' PIU' DI NESSUNO — L10
+#   script.fn_resolve_emittente_fiscale_id, modo 'contabile'
+#   + i COMMENT di fn_scope_ef_whitelist_via_contabile e trgfn_guard_emittente_scope
+#   Brief: brief-db-distinta-numerata-sul-registro, §3.2, §4-bis.10
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────────
+#   Il modo 'contabile' risolveva la distinta per la catena distinta -> canale
+#   -> conto -> soggetto_ruolo -> emittente, con JOIN interne apposta: una
+#   distinta INTERNA (fondo fattura, compensazione), che canale non ha,
+#   rispondeva NULL — «non e' il canale di nessuno». Dal 20260915-21 la
+#   distinta SA di chi e' (emittente_soggetto_ruolo_id, NOT NULL dal -26): una
+#   lettura invece di tre JOIN, e una distinta interna risponde il SUO
+#   emittente. Gli altri cinque modi restano intatti.
+#
+# ── PERCHE' PRIMA DELLE POLICY DEI SATELLITI (-32) ──────────────────────
+#   Le policy di righe e lotti chiamano fn_scope_ef_whitelist_via_contabile,
+#   che passa di qui. Finche' il risolutore legge la catena per canale, una
+#   distinta SENZA canale risolve NULL e le sue righe sparirebbero anche al
+#   suo emittente nel tratto fra il ritiro del ramo «senza canale = di tutti»
+#   e questo changeSet. L'ordine per NN lo garantisce: -30 < -32.
+#
+# ── DUE COMMENT, NESSUN CODICE ──────────────────────────────────────────
+#   * fn_scope_ef_whitelist_via_contabile: il predicato non cambia (delega al
+#     risolutore), ma la frase «su una distinta INTERNA risponde FALSE — ed e'
+#     cio' che serve» diventa falsa: si riscrive.
+#   * trgfn_guard_emittente_scope: la nota «una distinta interna non e' il
+#     canale di nessuno» resta vera per il RAMO «non risolvibile» (dati non
+#     ancora collegati), falsa per la distinta: si riscrive.
+#
+# ── ⚠️ CREATE OR REPLACE DI UNA SECURITY DEFINER ────────────────────────
+#   Il proprietario resta chi migra; il search_path blindato va RICOPIATO —
+#   una DEFINER senza e' un'iniezione che aspetta. Firma dall'ultimo YAML
+#   (20260905-03), corpo dalla doc auto-gen del 2026-09-15.
+#   ⚠️ Cambiare il MOTIVO di una funzione di risoluzione censisce i pgTAP
+#   che ne pinnano la risposta: rls/test-rls-pagamenti-perimetro (7, 10),
+#   rls/test-rls-vendite-contabili-lotti (7), riscritti nello stesso lotto.
+#
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql,
+#   db/pgtap/rls/test-rls-vendite-contabili-lotti.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260915-30-update-fn-resolve-emittente-fiscale-id-modo-contabile-mctit.yaml
+
+  - changeSet:
+      id: 20260915-30-update-fn-resolve-emittente-fiscale-id-modo-contabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_resolve_emittente_fiscale_id, modo contabile: legge
+        vendite_contabili.emittente_soggetto_ruolo_id (una lettura, non tre JOIN per canale)
+        e una distinta interna non risponde piu' NULL — e' del suo emittente (D3, brief
+        distinta-numerata-sul-registro). Gli altri cinque modi intatti; search_path della
+        DEFINER ricopiato. Due COMMENT riscritti (via_contabile, trgfn_guard_emittente_scope):
+        la frase «una distinta interna non e' di nessuno» non descrive piu' il modello.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_contabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               STABLE SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire DI CHI E' una riga, e nient'altro. Risponde un id di
+                  --   emittente fiscale, o NULL se il riferimento non porta a
+                  --   nessun emittente.
+                  --
+                  -- ⭐ Perche' SECURITY DEFINER (ed e' il punto):
+                  --   il chiamante e' un guard di scrittura, che gira con i
+                  --   permessi di chi scrive. Due delle catene passano da
+                  --   tabelle con la ROW SECURITY ACCESA (vendite.fatture,
+                  --   pagamenti.vendite_contabili): letta da un utente fuori
+                  --   perimetro, la riga NON C'E' — e un guard che non trova
+                  --   l'emittente lascia passare. Il guard si spegnerebbe
+                  --   esattamente nel caso che esiste per coprire.
+                  --   La domanda di FATTO («di chi e'») e la domanda di
+                  --   PERMESSO («posso scriverci») sono due domande diverse:
+                  --   qui si risponde solo alla prima, la seconda resta a
+                  --   script.fn_check_user_emittente_scope.
+                  --
+                  -- ⚠️ Dipende dal fatto che le tabelle abbiano la RLS
+                  --   ABILITATA ma NON FORZATA: il proprietario la salta. Con
+                  --   un FORCE ROW LEVEL SECURITY questa funzione tornerebbe a
+                  --   leggere filtrata e andrebbe rivista. Stessa nota su
+                  --   script.fn_check_scadenza_di_fattura.
+                  --
+                  -- ⚠️ search_path bloccato: una SECURITY DEFINER senza
+                  --   search_path fisso e' un'iniezione che aspetta.
+                  -- =========================================================
+
+                  IF p_valore IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF p_modo = 'fiscale' THEN
+                      -- Convenzione PK: la colonna E' gia' emittente_fiscale_id.
+                      -- Si verifica comunque che esista: un id che non c'e' non
+                      -- deve valere come «emittente noto».
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.id = p_valore;
+
+                  ELSIF p_modo = 'soggetto_ruolo' THEN
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.soggetto_ruolo_id = p_valore;
+
+                  ELSIF p_modo = 'fattura' THEN
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM vendite.fatture f
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                       WHERE f.id = p_valore;
+
+                  ELSIF p_modo = 'ente_incasso' THEN
+                      -- ⭐ D5: il canale conosce il CONTO su cui atterra il suo
+                      --   denaro, e quel conto ha un solo padrone (lo garantisce
+                      --   ex_src_bancari_conto_incasso_un_solo_soggetto).
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM pagamenti.enti_incasso e
+                        JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+                          ON src.id = e.soggetto_ruolo_conto_bancario_id
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = src.soggetto_ruolo_id
+                       WHERE e.id = p_valore;
+
+                  ELSIF p_modo = 'contabile' THEN
+                      -- ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, D3):
+                      --   la distinta SA di chi e'. Una lettura, non tre JOIN per
+                      --   canale — e una distinta INTERNA (fondo fattura,
+                      --   compensazione) non risolve piu' NULL: e' del suo
+                      --   emittente, come il lotto o l'atto da cui nasce.
+                      --   Fino a oggi rispondeva NULL apposta («non e' il canale di
+                      --   nessuno»), e la testata era visibile a tutti: quel ramo
+                      --   non descrive piu' il modello.
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM pagamenti.vendite_contabili c
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+                       WHERE c.id = p_valore;
+
+                  ELSIF p_modo = 'listino' THEN
+                      -- ⭐ DB-4: una VERSIONE di listino non porta l'emittente — lo porta il
+                      --   listino padre, con `emittente_soggetto_ruolo_id` NOT NULL. Un salto
+                      --   solo, come il modo 'fattura'.
+                      -- ⚠️ JOIN interna: un listino il cui soggetto_ruolo non e' (piu') un
+                      --   emittente risolve a NULL, cioe' «nessun padrone». Oggi non ne
+                      --   esistono (misurato: zero orfani il 2026-09-05), ed e' il
+                      --   comportamento giusto se ne nascesse uno — non si inventa un
+                      --   padrone.
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM vendite.listini l
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+                       WHERE l.id = p_valore;
+
+                  ELSE
+                      -- ⛔ Non si restituisce NULL: NULL vuol dire «lascia
+                      --    passare», e un errore di battitura in un CREATE
+                      --    TRIGGER spegnerebbe il guard in silenzio.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_resolve_emittente_fiscale_id',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'Modo di risoluzione sconosciuto',
+                              'modo',   p_modo,
+                              'valore', p_valore
+                          ),
+                          NULL::uuid,
+                          format(
+                              'il modo di risoluzione dell''emittente «%s» non esiste: '
+                              'sono ammessi fiscale, soggetto_ruolo, fattura, listino, ente_incasso e contabile',
+                              p_modo
+                          )
+                      );
+                  END IF;
+
+                  RETURN v_emittente_fiscale_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
+              IS 'Risolve l''emittente fiscale di una riga FUORI dalla row security, e risponde un id. ⭐ Esiste perche'' il guard di scope in scrittura e'' SECURITY INVOKER e alcune catene passano da tabelle con la RLS accesa (vendite.fatture, pagamenti.vendite_contabili, e dal 2026-09-05 vendite.listini): letta da un utente fuori perimetro la riga non c''e'', l''emittente resta NULL, e il guard interpreta «non risolvibile» come «lascia passare» — cioe'' si spegne esattamente nel caso che esiste per coprire. La domanda di FATTO («di chi e''») e quella di PERMESSO («posso scriverci») sono due domande diverse: qui si risponde solo alla prima. ⚠️ Dipende dal fatto che la RLS sia abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista, come script.fn_check_scadenza_di_fattura. Modi: fiscale | soggetto_ruolo | fattura | listino | ente_incasso | contabile. ⭐ Rev 2026-09-05: aggiunto il modo listino per vendite.listini_versioni, che non porta l''emittente ma lo eredita dal listino padre (brief-db-processi-automatici-residui-be §DB-4). ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, D3): il modo contabile legge pagamenti.vendite_contabili.emittente_soggetto_ruolo_id — una lettura invece della catena per canale — e una distinta INTERNA non risponde piu'' NULL: e'' del suo emittente. ⛔ Un modo sconosciuto SOLLEVA: restituire NULL spegnerebbe il guard in silenzio.';
+
+              -- ── I due lettori: nessun codice cambia, cambiano le frasi ──
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_contabile(integer, bigint)
+              IS 'Scope dell''operatore su una DISTINTA contabile: risolve distinta -> emittente (dal 2026-09-15 leggendo pagamenti.vendite_contabili.emittente_soggetto_ruolo_id, prima per la catena canale -> conto -> soggetto -> emittente) e delega alla canonica. Serve alle policy dei satelliti (righe, manifesto dei lotti), che dalla testata prendono il perimetro. ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, D3): una distinta INTERNA (fondo fattura, sistemazione) e'' del suo emittente come il lotto o l''atto da cui nasce, quindi qui risponde TRUE per lui e FALSE per gli altri — fino a quel giorno rispondeva FALSE a tutti («non e'' il canale di nessuno»), e la testata era visibile a tutti: quel ramo non descrive piu'' il modello. ⭐ Resta SECURITY INVOKER come le sorelle perche'' e'' il risolutore a essere DEFINER: leggendo pagamenti.vendite_contabili, la cui policy chiama la gemella via_sr, da INVOKER sarebbe una ricorsione.';
+
+              COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
+              IS 'Difesa in profondita'': blocca INSERT/UPDATE se l''utente non ha scope sull''emittente fiscale della riga. Modalita'' TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta) | contabile (perimetro della RIGA contabile dalla sua testata) | ente_incasso | listino. ⭐ Rev 2026-08-22: la risoluzione dell''emittente e'' passata a script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER. Prima stava qui, e il guard e'' SECURITY INVOKER: nel modo fattura leggeva vendite.fatture sotto row security, e per un utente fuori perimetro la lettura dava zero righe -> emittente NULL -> ramo «non risolvibile» -> passa. ⛔ Rev 2026-09-04 (fase 6): il ramo «nessun utente in sessione -> passa» e'' chiuso. Passa solo chi bypasserebbe comunque la RLS, e il criterio e'' row_security_active() sulla tabella in gioco — la stessa regola che PostgreSQL applica alle policy, chiesta a lui invece che riscritta. Una sessione applicativa senza app.current_user_id ora alza E_SCOPE_SENZA_UTENTE. ⚠️ Il ramo «emittente non risolvibile» resta e serve per i dati non ancora collegati (una riga senza fattura ne'' canale). ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro): la DISTINTA non ci passa piu'' — porta il suo emittente in colonna, e su pagamenti.vendite_contabili il guard e'' in modo soggetto_ruolo; il modo contabile resta per i satelliti, e una distinta interna risolve il SUO emittente. Brief: brief-db-processi-automatici-identita-e-perimetro §7.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il corpo del 05-09 (modo contabile per canale) torna solo
+              --    rieseguendo 20260905-03: qui non si ricopia una DEFINER.
+              SELECT 1;

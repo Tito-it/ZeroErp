@@ -87,24 +87,19 @@ BEGIN
          WHERE e.id = p_valore;
 
     ELSIF p_modo = 'contabile' THEN
-        -- ⭐ D5: una riga ancora DA ABBINARE non ha fattura — ed e'
-        --   il caso normale, non l'eccezione. Il padrone di quel
-        --   denaro lo dice il CONTO su cui e' arrivato, e la riga
-        --   lo raggiunge passando dalla sua testata.
-        -- ⚠️ JOIN interne apposta: una distinta INTERNA (fondo
-        --   fattura, compensazione) nasce senza canale e risolve a
-        --   NULL. E' giusto: non e' il canale di nessuno, e
-        --   pretendere un perimetro da li' rifiuterebbe la prima
-        --   riga scritta dalla pipeline dei fondi.
+        -- ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, D3):
+        --   la distinta SA di chi e'. Una lettura, non tre JOIN per
+        --   canale — e una distinta INTERNA (fondo fattura,
+        --   compensazione) non risolve piu' NULL: e' del suo
+        --   emittente, come il lotto o l'atto da cui nasce.
+        --   Fino a oggi rispondeva NULL apposta («non e' il canale di
+        --   nessuno»), e la testata era visibile a tutti: quel ramo
+        --   non descrive piu' il modello.
         SELECT ef.id
           INTO v_emittente_fiscale_id
           FROM pagamenti.vendite_contabili c
-          JOIN pagamenti.enti_incasso e
-            ON e.id = c.ente_incasso_id
-          JOIN anagrafiche.soggetti_ruoli_conti_bancari src
-            ON src.id = e.soggetto_ruolo_conto_bancario_id
           JOIN anagrafiche.emittenti_fiscali ef
-            ON ef.soggetto_ruolo_id = src.soggetto_ruolo_id
+            ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
          WHERE c.id = p_valore;
 
     ELSIF p_modo = 'listino' THEN
@@ -150,7 +145,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
-IS 'Risolve l''emittente fiscale di una riga FUORI dalla row security, e risponde un id. ⭐ Esiste perche'' il guard di scope in scrittura e'' SECURITY INVOKER e alcune catene passano da tabelle con la RLS accesa (vendite.fatture, pagamenti.vendite_contabili, e dal 2026-09-05 vendite.listini): letta da un utente fuori perimetro la riga non c''e'', l''emittente resta NULL, e il guard interpreta «non risolvibile» come «lascia passare» — cioe'' si spegne esattamente nel caso che esiste per coprire. La domanda di FATTO («di chi e''») e quella di PERMESSO («posso scriverci») sono due domande diverse: qui si risponde solo alla prima. ⚠️ Dipende dal fatto che la RLS sia abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista, come script.fn_check_scadenza_di_fattura. Modi: fiscale | soggetto_ruolo | fattura | listino | ente_incasso | contabile. ⭐ Rev 2026-09-05: aggiunto il modo listino per vendite.listini_versioni, che non porta l''emittente ma lo eredita dal listino padre (brief-db-processi-automatici-residui-be §DB-4). ⛔ Un modo sconosciuto SOLLEVA: restituire NULL spegnerebbe il guard in silenzio.';
+IS 'Risolve l''emittente fiscale di una riga FUORI dalla row security, e risponde un id. ⭐ Esiste perche'' il guard di scope in scrittura e'' SECURITY INVOKER e alcune catene passano da tabelle con la RLS accesa (vendite.fatture, pagamenti.vendite_contabili, e dal 2026-09-05 vendite.listini): letta da un utente fuori perimetro la riga non c''e'', l''emittente resta NULL, e il guard interpreta «non risolvibile» come «lascia passare» — cioe'' si spegne esattamente nel caso che esiste per coprire. La domanda di FATTO («di chi e''») e quella di PERMESSO («posso scriverci») sono due domande diverse: qui si risponde solo alla prima. ⚠️ Dipende dal fatto che la RLS sia abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista, come script.fn_check_scadenza_di_fattura. Modi: fiscale | soggetto_ruolo | fattura | listino | ente_incasso | contabile. ⭐ Rev 2026-09-05: aggiunto il modo listino per vendite.listini_versioni, che non porta l''emittente ma lo eredita dal listino padre (brief-db-processi-automatici-residui-be §DB-4). ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, D3): il modo contabile legge pagamenti.vendite_contabili.emittente_soggetto_ruolo_id — una lettura invece della catena per canale — e una distinta INTERNA non risponde piu'' NULL: e'' del suo emittente. ⛔ Un modo sconosciuto SOLLEVA: restituire NULL spegnerebbe il guard in silenzio.';
 ```
 
 ---

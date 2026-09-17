@@ -53,11 +53,18 @@ sull'emittente fiscale della riga.
 * **`ente_incasso`** *(dal 2026-08-22)*: la colonna contiene un
   `ente_incasso_id`; l'emittente si risolve via il **conto di incasso** del
   canale (`enti_incasso → soggetti_ruoli_conti_bancari → emittenti_fiscali`).
-  Usato su `pagamenti.vendite_contabili` (colonna `ente_incasso_id`).
+  Usato su `pagamenti.vendite_contabili` (colonna `ente_incasso_id`) **fino al
+  2026-09-15**: da quel giorno la distinta porta il suo emittente in colonna e
+  il guard è montato in modo `soggetto_ruolo` su `emittente_soggetto_ruolo_id`
+  (`20260915-31`) — la coerenza canale↔emittente la garantisce prima
+  `pagamenti.fn_get_emittente_distinta`, quindi il canale è in perimetro per
+  costruzione, e due guard sulla stessa domanda sarebbero due frasi per lo
+  stesso rifiuto. Oggi il modo non ha montaggi.
 
 * **`contabile`** *(dal 2026-08-22)*: la colonna contiene un `contabile_id`; si
-  passa dalla testata e poi dal suo canale. Usato su
-  `pagamenti.vendite_contabili_righe` (colonna `contabile_id`).
+  passa dalla testata — *dal 2026-09-15 dalla sua colonna emittente, prima dal
+  suo canale*. Usato su `pagamenti.vendite_contabili_righe` (colonna
+  `contabile_id`).
 
   ⭐ Gli ultimi due sono **D5**: quando il denaro arriva in banca non ha ancora
   una fattura, e il suo padrone lo dice il **conto** su cui il cliente ha scelto
@@ -83,9 +90,11 @@ il proprietario del documento, come sua.
 ⭐ **Il rimedio**: la risoluzione è passata a
 [fn_resolve_emittente_fiscale_id](/dbzero/script/funzioni/fn_resolve_emittente_fiscale_id),
 che è `SECURITY DEFINER` e legge tutto. Qui resta solo l'**applicazione** della
-decisione. Il ramo «non risolvibile» **rimane e serve** — una distinta interna
-(fondo fattura, compensazione) non è il canale di nessuno — ma adesso raccoglie
-solo ciò che davvero non ha padrone, non i documenti altrui.
+decisione. Il ramo «non risolvibile» **rimane e serve** per i dati non ancora
+collegati (una riga senza fattura né canale) — ma adesso raccoglie solo ciò che
+davvero non ha padrone, non i documenti altrui. ⚠️ *Fino al 2026-09-15 vi
+cadeva anche la distinta interna («non è il canale di nessuno»): oggi la
+distinta sa di chi è, e non ci passa più.*
 
 ---
 
@@ -142,7 +151,7 @@ riga entra.
 4. Risolve `emittente_fiscale_id` chiamando
    `script.fn_resolve_emittente_fiscale_id(modo, valore)` — **fuori** dalla row
    security. Se non risolvibile → **skip** (nessun padrone: dati non ancora
-   collegati, oppure una distinta interna).
+   collegati; *dal 2026-09-15 non più la distinta interna, che sa di chi è*).
 5. Chiama `script.fn_check_user_emittente_scope()`.
    Se `false` → errore via `script.fn_log_and_raise_error` con codice `E_SCOPE_EMITTENTE`.
 

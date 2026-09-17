@@ -22,12 +22,13 @@
 > ✅ **Mergiato su `Tito-dev`** (PR #1593, 15-09 14:43 UTC, commit `937acd83a`
 > = il `61b4cb5d3` riallineato dopo #1592). Corsa del merge (`34984791746`):
 > pgTAP **nessuna regressione**, RIENTRATO di `config/test-sorgenti-scope-pulizia-v1`
-> confermato; Django **rosso per due test**, entrambi per i soli `E_MAG_*`
-> (§12 p.6). ⏳ **Aperti** (verificati 15-09, 17:10): la riga 58 di
-> `baseline-rossi-ci.tsv` da togliere (DB), le **quattro** richieste BE/FE di
-> §12 p.7 — tutte ancora aperte —, e il brief del **BB dell'emittente di
-> default** (§4.7: decisione di Tid 15-09 sera, funzione generica **e** ritiro
-> delle copie di vendite, prima del Lotto 2). ⛔ Il cantiere `dbops` sull'ordine
+> confermato; Django era rosso per i soli `E_MAG_*` — **chiuso dal BE con
+> `6f786ed9f` (PR #1595), CI su `Tito-dev` verde dalle 16:45 UTC del 15-09**
+> (§12 p.6-7). ⏳ **Aperti** (17-09): la riga 58 di `baseline-rossi-ci.tsv` da
+> togliere (DB, `pgtap-baseline-ci-rientrati.sh`), `requires_lotto` in UI (Lotto
+> 2), e l'**apply** del brief gemello `brief-db-emittente-di-default-un-bb-solo`
+> (scritto e provato: chiude il punto §4.7 su `magazzini`/`assets`). Con quelli,
+> il brief passa in `work-done/`. ⛔ Il cantiere `dbops` sull'ordine
 > dei job **non si apre** (§12 p.2: le automazioni su dev si lanciano a mano).
 > ⚠️ La sera del 15-09 ha insegnato più della scrittura: **sette** cose erano
 > verdi in sessione per ragioni sbagliate e le ha trovate solo il DB da zero
@@ -508,10 +509,12 @@ copia, o un BB generico `script.trgfn_default_emittente_fiscale`; da decidere
 quando il pannello servirà»*. **Decisione: il BB generico, E il ritiro delle
 copie di vendite nello stesso giro** — *«che aspettiamo, la produzione, per
 fare questi refactor?»*. Non «la BB ora e le copie dopo»: un refactor rimandato
-è un debito che nessuno rilegge. 🔵 **È un brief suo** (tocca `vendite`, in
-esercizio), da scrivere **prima del Lotto 2**, che lo presuppone (il primo
-magazzino vero nasce lì). Censimento fatto il 15-09 per non partire da un
-numero sbagliato — le cinque di vendite **non sono cinque copie**:
+è un debito che nessuno rilegge. 🔵 **È un brief suo, scritto il 15-09 sera:
+[brief-db-emittente-di-default-un-bb-solo](brief-db-emittente-di-default-un-bb-solo.md)**
+(tocca `vendite`, in esercizio), da applicare **prima del Lotto 2**, che lo
+presuppone (il primo magazzino vero nasce lì). Censimento fatto il 15-09 per
+non partire da un numero sbagliato — le cinque di vendite **non sono cinque
+copie**:
 
 | Funzione | Che cosa fa | Sorte |
 | --- | --- | --- |
@@ -1056,7 +1059,16 @@ autonomo»):
    ed **entrambi nominano solo i due `E_MAG_*`**: i cinque `E_PROCESSO_*` li ha già rigenerati
    il BE con #1592 (9 occorrenze in `error_policies_generated.py`). ⇒ Il rosso residuo su
    `Tito-dev` è **tutto di questo lotto**, e lo chiude la quarta voce del punto 7;
-7. ⏳ **richieste a BE/FE** (fuori perimetro, memoria «non toccare backend/») — **verificate
+7. ✅/⏳ **richieste a BE/FE** — **aggiornato il 17-09**: il BE ha chiuso le prime due
+   con `6f786ed9f` (PR #1595, 15-09 16:45 UTC; **CI su `Tito-dev` verde**): `E_MAG_*`
+   rigenerati e coi ripieghi (2 occorrenze in ciascun modulo), `ambito_causale` via da
+   `_REL_CONSENTITE` e da `CONFIG_TABLES` (0 occorrenze). La terza — chi valorizza
+   `magazzini.emittente_fiscale_id` — è **decisa e scritta**: il building block
+   `script.trgfn_default_emittente_fiscale` di
+   [brief-db-emittente-di-default-un-bb-solo](brief-db-emittente-di-default-un-bb-solo.md)
+   (`20260915-43` monta il default su `magazzini` e `assets`; in attesa di apply). Resta
+   la sola **`requires_lotto` in UI**, che è del Lotto 2 (§4.3). Sotto, il testo del 15-09
+   com'era — **verificato
    il 15-09 alle 17:10 con `grep`: tutte e quattro ancora aperte** (0 occorrenze di `E_MAG_`
    nei due moduli, `ambito_causale` ancora a riga 107 e 63, 0 `requires_lotto` in BE/FE):
    togliere

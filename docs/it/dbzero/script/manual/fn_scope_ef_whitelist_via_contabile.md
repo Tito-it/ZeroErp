@@ -2,32 +2,40 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-22)
+(rev 2026-08-22, corretta il 2026-09-15)
 
 Dice se l'operatore ha scope su una **distinta contabile**: risolve
-`distinta → canale → conto → soggetto → emittente` e delega alla canonica.
+`distinta → emittente` (dal 2026-09-15 leggendo la colonna
+`emittente_soggetto_ruolo_id` della testata; fino ad allora
+`distinta → canale → conto → soggetto → emittente`) e delega alla canonica.
 
-Serve alla policy della **riga** contabile, che il canale non ce l'ha in colonna:
-ce l'ha la sua testata. Gemella di
+Serve alle policy dei **satelliti** della distinta — le righe e il manifesto dei
+lotti — che l'emittente non ce l'hanno in colonna: ce l'ha la loro testata.
+Gemella di
 [fn_scope_ef_whitelist_via_ente_incasso](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_ente_incasso),
 che parte invece dal canale.
 
 ---
 
-### ⚠️ Su una distinta INTERNA risponde `false`, ed è voluto
+### ⭐ Su una distinta INTERNA risponde per il **suo** emittente (2026-09-15)
 
-Le distinte **interne** — fondo fattura, compensazione — nascono **senza canale**
-per disegno: non arrivano da nessun flusso, le fabbrica il sistema. La catena si
-interrompe, l'emittente resta `NULL`, la canonica risponde `false`.
+Le distinte **interne** — fondo fattura, sistemazione — nascono **senza canale**
+per disegno: non arrivano da nessun flusso, le fabbrica il sistema. Fino al
+2026-09-15 la catena per canale si interrompeva, l'emittente restava `NULL` e
+la canonica rispondeva `false` a tutti — *«le righe di una distinta interna non
+devono vedersi in giro, e a dire di chi è quel denaro è la fattura che la riga
+porta»*. Nel frattempo la **testata** era visibile a tutti per una scelta scritta
+nella policy (`ente_incasso_id IS NULL`).
 
-⭐ Ed è esattamente ciò che serve: **le righe di una distinta interna non devono
-vedersi in giro**, e a dire di chi è quel denaro è la **fattura che la riga
-porta**.
-
-> ⚠️ Che la **testata** di quella distinta sia invece visibile a tutti è una
-> decisione **diversa**, e sta scritta **nella policy** — `ente_incasso_id IS
-> NULL`, in chiaro — non qui dentro. Chi legge la policy deve vedere l'eccezione,
-> non scoprirla dentro una funzione.
+Dal brief
+[distinta-numerata-sul-registro](/dev/work-in-progress/brief-db-distinta-numerata-sul-registro)
+**la distinta sa di chi è**: porta l'emittente in colonna (risolto alla nascita
+in una sede sola — dato, canale, operatore in sessione, o rifiuto — e per una
+distinta di fondi è l'emittente del **lotto**, per una sistemazione quello
+dell'**atto**). Quindi qui una distinta interna risponde `true` per il suo
+emittente e `false` per gli altri, e le sue righe si vedono dalla **sola
+testata**, senza passare dalla fattura. Il ramo «senza canale = di tutti» è
+sparito dalla testata (`20260915-31`) e dai satelliti (`20260915-32`).
 
 ---
 

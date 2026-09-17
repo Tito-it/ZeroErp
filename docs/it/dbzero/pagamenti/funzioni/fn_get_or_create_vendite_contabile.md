@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_or_create_vendite_contabile`
 
 ```sql
-CREATE FUNCTION fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb, p_origine character varying)
+CREATE FUNCTION fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb, p_origine character varying, p_emittente_fiscale_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date DEFAULT CURRENT_DATE, p_ente_incasso_id bigint DEFAULT NULL::bigint, p_lotto_id bigint DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta jsonb DEFAULT '{}'::jsonb, p_origine character varying DEFAULT 'GENERATA'::character varying)
+CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date DEFAULT CURRENT_DATE, p_ente_incasso_id bigint DEFAULT NULL::bigint, p_lotto_id bigint DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta jsonb DEFAULT '{}'::jsonb, p_origine character varying DEFAULT 'GENERATA'::character varying, p_emittente_fiscale_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -17,6 +17,7 @@ DECLARE
   v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
   v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
   v_operatore pagamenti.vendite_contabili.user_insert%TYPE;
+  v_emittente_sr pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -27,6 +28,14 @@ BEGIN
   --     il riuso comprende CHI STA LAVORANDO, non solo la giornata.
   --     Cosi' la contesa fra due operatori non esiste, e il lock che
   --     sarebbe servito a governarla non si costruisce (D12-a).
+  --
+  -- Rev 2026-09-15 (brief distinta-numerata-sul-registro, L6):
+  --   la distinta SA DI CHI E' (D3). Parametro in coda
+  --   p_emittente_fiscale_id (PK), derivazione dal lotto, poi la
+  --   sede unica pagamenti.fn_get_emittente_distinta; l'emittente
+  --   entra nella CHIAVE DI RIUSO di entrambi i rami e
+  --   nell'INSERT. ⛔ `codice` non si passa: lo assegna il trigger
+  --   sul registro (D5) — sparito il DEFAULT di colonna del 28-08.
   --
   -- Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e
   --   con lui il ramo di riuso «una testata per atto», la mutua
@@ -107,6 +116,20 @@ BEGIN
     );
   END IF;
 
+  -- Rev 2026-09-15: stessa specie dei due sopra — NULL ammesso, un
+  -- id <= 0 lo produce solo un chiamante rotto.
+  IF p_emittente_fiscale_id IS NOT NULL AND p_emittente_fiscale_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+      jsonb_build_object(
+        'detail', 'p_emittente_fiscale_id deve essere > 0 se valorizzato',
+        'p_emittente_fiscale_id', p_emittente_fiscale_id
+      ),
+      NULL::uuid,
+      'pagamenti.fn_get_or_create_vendite_contabile', 'p_emittente_fiscale_id (se valorizzato, maggiore di zero)'
+    );
+  END IF;
+
   IF p_codice_stato_interno IS NULL OR btrim(p_codice_stato_interno) = '' THEN
     PERFORM script.fn_log_and_raise_error(
       'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
@@ -165,6 +188,70 @@ BEGIN
 
   v_data_registrazione := COALESCE(p_data_registrazione, current_date);
 
+  -- =========================================================
+  -- Rev 2026-09-15 — DI CHI E' LA DISTINTA, PRIMA DI CERCARLA.
+  --   La chiave di riuso comprende l'emittente (D3): si risolve
+  --   qui, prima delle due SELECT, o la manuale non ritroverebbe
+  --   mai «quella di prima».
+  -- =========================================================
+
+  -- 1) Il parametro: PK -> SR, esplicito, come trgfn_ordini_gen_numero.
+  --    Un id che non e' un emittente lo produce solo un chiamante rotto.
+  IF p_emittente_fiscale_id IS NOT NULL THEN
+    SELECT ef.soggetto_ruolo_id
+      INTO v_emittente_sr
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.id = p_emittente_fiscale_id;
+
+    IF v_emittente_sr IS NULL THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+        jsonb_build_object(
+          'detail', 'p_emittente_fiscale_id non e'' un emittente fiscale',
+          'p_emittente_fiscale_id', p_emittente_fiscale_id
+        ),
+        NULL::uuid,
+        'pagamenti.fn_get_or_create_vendite_contabile', 'p_emittente_fiscale_id (non e'' un emittente fiscale)'
+      );
+    END IF;
+  END IF;
+
+  -- 2) Dal LOTTO: chi passa un lotto sa gia' di chi e' la distinta
+  --    (fatturazione_lotti.emittente_soggetto_ruolo_id e' NOT NULL), e
+  --    lo dice per primo — il giro di massa di un admin globale in
+  --    modalita' «tutti gli emittenti» ha lotti di N aziende e una
+  --    sessione che non risolve nessuno.
+  -- ⚠️ STRICT: questa funzione e' INVOKER e fatturazione_lotti ha la
+  --    RLS. Un lotto che non c'e' o che non si vede NON cade sulla
+  --    sessione: la distinta del lotto di un altro nascerebbe di chi
+  --    agisce, agganciata a un lotto altrui (la FK del link non guarda
+  --    la RLS). Dalla pipeline non ci si arriva — il sync legge il
+  --    lotto della fattura che sta lavorando, nel proprio perimetro —
+  --    ci arriva solo una chiamata a mano. TECNICO.
+  IF v_emittente_sr IS NULL AND p_lotto_id IS NOT NULL THEN
+    SELECT l.emittente_soggetto_ruolo_id
+      INTO v_emittente_sr
+      FROM vendite.fatturazione_lotti l
+     WHERE l.id = p_lotto_id;
+
+    IF v_emittente_sr IS NULL THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+        jsonb_build_object(
+          'detail', 'p_lotto_id: lotto inesistente o fuori perimetro',
+          'p_lotto_id', p_lotto_id
+        ),
+        NULL::uuid,
+        'pagamenti.fn_get_or_create_vendite_contabile', 'p_lotto_id (lotto inesistente o fuori perimetro)'
+      );
+    END IF;
+  END IF;
+
+  -- 3) La sede unica: dato e coerente col canale / dal canale /
+  --    dalla sessione / rifiuto parlante (D4). Il trigger a10_emittente
+  --    la ri-applica all'INSERT (livelli 0-1, idempotente).
+  v_emittente_sr := pagamenti.fn_get_emittente_distinta(v_emittente_sr, p_ente_incasso_id);
+
   IF p_lotto_id IS NULL THEN
     -- ⭐ D12-a: su una distinta MANUALE la chiave di riuso comprende
     --    l'OPERATORE. Il raggruppamento «giornata + canale» non ha un
@@ -176,11 +263,17 @@ BEGIN
     -- ⚠️ Sulle altre due origini la chiave resta quella di prima: una
     --    distinta GENERATA non e' il lotto di lavoro di nessuno, e una
     --    AUTOMATICA e' il file.
+    -- ⭐ Rev 2026-09-15: l'EMITTENTE entra nella chiave su tutte le
+    --    origini (D3). Sulla manuale non cambia niente in pratica
+    --    (operatore => emittente); la GENERATA senza lotto smette di
+    --    raccogliere i fondi di tutti — e' la decisione aperta del
+    --    20260822-20, chiusa nel verso «una per emittente».
     SELECT vc.id
       INTO v_contabile_id
       FROM pagamenti.vendite_contabili vc
      WHERE vc.centro_riscossione_id = p_centro_riscossione_id
        AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+       AND vc.emittente_soggetto_ruolo_id = v_emittente_sr
        AND vc.data_contabile = p_data_contabile
        AND vc.data_registrazione = v_data_registrazione
        AND vc.stato_id = v_stato_id
@@ -197,6 +290,7 @@ BEGIN
      WHERE vcl.lotto_id = p_lotto_id
        AND vc.centro_riscossione_id = p_centro_riscossione_id
        AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+       AND vc.emittente_soggetto_ruolo_id = v_emittente_sr
        AND vc.data_contabile = p_data_contabile
        AND vc.data_registrazione = v_data_registrazione
        AND vc.stato_id = v_stato_id
@@ -207,13 +301,15 @@ BEGIN
   END IF;
 
   IF v_contabile_id IS NULL THEN
-    -- ⭐ Rev 2026-08-28 (S6-3): il codice NON si compone piu' qui. Lo mette
-    --    il DEFAULT della colonna, che e' la sua sede: la madre della
-    --    correzione crea una testata senza passare da questa funzione, e due
-    --    espressioni che compongono lo stesso codice sarebbero due sedi.
+    -- ⭐ Rev 2026-09-15: il codice lo assegna il TRIGGER sul registro
+    --    DISTINTA dell'emittente (a10_gen_codice, D5): non si passa.
+    --    Fino a oggi lo metteva il DEFAULT della colonna (rev 28-08),
+    --    caduto con 20260915-21. L'emittente entra nella riga: il
+    --    trigger a10_emittente lo ri-valuta (livelli 0-1, idempotente).
     INSERT INTO pagamenti.vendite_contabili (
       centro_riscossione_id,
       ente_incasso_id,
+      emittente_soggetto_ruolo_id,
       data_contabile,
       data_registrazione,
       stato_id,
@@ -222,6 +318,7 @@ BEGIN
     ) VALUES (
       p_centro_riscossione_id,
       p_ente_incasso_id,
+      v_emittente_sr,
       p_data_contabile,
       v_data_registrazione,
       v_stato_id,
@@ -248,8 +345,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb, p_origine character varying)
-IS 'Recupera o crea la testata contabile per un centro, un canale e una giornata. ⭐ Su una distinta MANUALE la chiave di riuso comprende CHI STA LAVORANDO (D12-a): il raggruppamento «giornata + canale» non ha un referente nel mondo, il lotto di lavoro di una persona si'' — e con quello la contesa fra due operatori non esiste, quindi il lock che sarebbe servito a governarla non si costruisce. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e con lui il guard di parametro, la mutua esclusione con p_lotto_id e il ramo di riuso «una testata per atto». Girato il verso del legame e'' l''ATTO a tenere l''id della sua contabile: chiederla qui voleva dire far nascere la testata sapendo gia'' di chi sarebbe stata — il verso opposto a come funziona il processo. L''unicita'' «una contabile per atto» vive su uq_sistemazioni_contabile. 🔴 La firma e'' cambiata, quindi la funzione e'' stata eliminata e ricreata: una sostituzione con parametri diversi affianca un overload, e coi default le chiamate diventano ambigue. ⭐ Rev 2026-08-28 (S6-3): il `codice` non si compone piu'' qui — lo mette il DEFAULT della colonna. La madre della correzione guidata crea una testata SENZA passare da questa funzione (la chiave di riuso comprende l''operatore, e le righe di correzione finirebbero nella distinta di lavoro di oggi), e due espressioni che compongono lo stesso codice sarebbero due sedi: il ramo diventato morto si toglie nello stesso lotto che lo rende morto.';
+COMMENT ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb, p_origine character varying, p_emittente_fiscale_id bigint)
+IS 'Recupera o crea la testata contabile per un centro, un canale e una giornata. ⭐ Su una distinta MANUALE la chiave di riuso comprende CHI STA LAVORANDO (D12-a): il raggruppamento «giornata + canale» non ha un referente nel mondo, il lotto di lavoro di una persona si'' — e con quello la contesa fra due operatori non esiste, quindi il lock che sarebbe servito a governarla non si costruisce. ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, L6): LA DISTINTA SA DI CHI E'' (D3). Parametro in coda p_emittente_fiscale_id (la PK, cio'' che backend e frontend conoscono; PK -> SR esplicito nel corpo); se manca si deriva dal LOTTO — chi passa un lotto sa gia'' di chi e'' la distinta, e il giro di massa di un admin globale in modalita'' «tutti gli emittenti» ha lotti di N aziende e una sessione che non risolve nessuno — con un ramo STRICT (lotto inesistente o fuori perimetro = TECNICO, non la sessione: la distinta del lotto di un altro nascerebbe di chi agisce, agganciata a un lotto altrui); poi la sede unica pagamenti.fn_get_emittente_distinta (canale / operatore in sessione / rifiuto parlante). L''emittente ENTRA NELLA CHIAVE DI RIUSO di entrambi i rami e nell''INSERT: la GENERATA senza lotto smette di raccogliere i fondi di tutti — e'' la decisione aperta del changeSet 20260822-20, chiusa nel verso «una per emittente» a costo zero, perche'' nessun percorso vivo la esercitava nell''altro. ⛔ `codice` non si passa: lo assegna il trigger a10_gen_codice sul registro DISTINTA dell''emittente (D5); il DEFAULT di colonna della rev 28-08 e'' caduto. 🔴 La firma e'' cambiata, quindi la funzione a otto parametri e'' stata eliminata e ricreata: una sostituzione con parametri diversi affianca un overload, e coi default le chiamate diventano ambigue. I due chiamanti vivi (backend pagamenti_repository, vendite.fn_sync_contabili_fondo_fattura) passano gli argomenti per nome e non cambiano. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id — girato il verso del legame e'' l''ATTO a tenere l''id della sua contabile; l''unicita'' «una contabile per atto» vive su uq_sistemazioni_contabile.';
 ```
 
 ---

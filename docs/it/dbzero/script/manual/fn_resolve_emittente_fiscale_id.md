@@ -64,19 +64,24 @@ Chiedere entrambe allo stesso lettore fa dare la risposta sbagliata alla prima.
 | `fattura` | `fattura_id` | via `vendite.fatture` |
 | `listino` | `listino_id` | ⭐ *(dal 2026-09-05)* via `vendite.listini`, per le **versioni di listino** |
 | `ente_incasso` | `ente_incasso_id` | ⭐ via il **conto di incasso** (D5) |
-| `contabile` | `contabile_id` | ⭐ la distinta, poi il suo canale |
+| `contabile` | `contabile_id` | ⭐ la distinta, che **sa di chi è** *(dal 2026-09-15: la colonna `emittente_soggetto_ruolo_id`; prima, il suo canale)* |
 
-⭐ Gli ultimi due sono **D5** in una riga: quando il denaro arriva in banca non ha
+⭐ `ente_incasso` è **D5** in una riga: quando il denaro arriva in banca non ha
 ancora una fattura, e il suo padrone lo dice il **conto** su cui il cliente ha
-scelto di pagare. Sono due e non uno perché i due presidi partono da due colonne
-diverse: la **testata** conosce il proprio canale, la **riga** conosce solo la
-testata.
+scelto di pagare. ⚠️ La `JOIN` è **interna apposta**: un canale il cui conto non
+è intestato a un emittente risolve a `NULL`, e nessuno inventa un padrone.
 
-⚠️ Le `JOIN` di quei due modi sono **interne apposta**: una distinta **senza
-canale** — fondo fattura, compensazione, che nascono così per disegno — risolve a
-`NULL`, e il guard la lascia stare. È giusto: una distinta interna non è il
-canale di nessuno, e pretendere un perimetro da lì rifiuterebbe **la prima riga
-scritta dalla pipeline dei fondi**.
+⭐ **Rev 2026-09-15 — il modo `contabile` legge la colonna.** Fino a quel giorno
+risolveva la distinta *per il suo canale*, con la stessa `JOIN` interna: una
+distinta **senza canale** — fondo fattura, sistemazione — rispondeva `NULL`
+(«non è il canale di nessuno») e la sua testata era visibile a tutti. Dal brief
+[distinta-numerata-sul-registro](/dev/work-in-progress/brief-db-distinta-numerata-sul-registro)
+la distinta porta `emittente_soggetto_ruolo_id` (`NOT NULL`, risolto in una sede
+sola alla nascita: dato, canale, operatore in sessione, o rifiuto), e questo
+modo legge quella colonna: **una lettura invece di tre `JOIN`**, e una distinta
+interna risponde il **suo** emittente — come il lotto o l'atto da cui nasce.
+Chi ne dipende: `fn_scope_ef_whitelist_via_contabile` (le policy di righe e
+manifesto dei lotti) e il guard di scope delle righe in modo `contabile`.
 
 ---
 

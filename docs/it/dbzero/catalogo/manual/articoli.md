@@ -23,7 +23,7 @@
 
 * **classificazione** (tipologia, gruppo, voce di spesa);
 * **fiscalità** (IVA, conti contabili di vendita/acquisto);
-* **logistica/serializzazione** (`requires_serial`);
+* **logistica/tracciabilità** (`requires_serial`, `requires_lotto` — due domande **indipendenti**, vedi sotto);
 * **distinta base leggera** (`is_composito`, via tabella componenti);
 * **aspetti documentali** (`voce_utility`).
 
@@ -60,7 +60,7 @@
 > Renderla `NOT NULL` «per igiene» spegnerebbe il secondo gradino — quello che
 > legge il tipo d'uso della fornitura — perche` il risolutore non avrebbe piu`
 > modo di sapere quando l'articolo non ha niente da dire.
-* **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `voce_utility` (voce utility)
+* **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `requires_lotto` (partita, dal 2026-09-14), `voce_utility` (voce utility)
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Tecnico**: `meta JSONB`, `attivo BOOLEAN` (default `true`), `storicizza BOOLEAN` (default `true`), `tx_id UUID`
 * **Audit**: `user_insert`, `user_update`, `data_insert`, `data_update`
@@ -171,7 +171,21 @@ WHERE a.uom_id IS NOT NULL
 ### Best practice
 
 * **Normalizzazione codice**: valuta un trigger di normalizzazione (trim/uppercase opzionale) e **protezione update** del campo `codice`.
-* **Serializzazione**: se `requires_serial=true`, prevedi controlli lato movimento (carico/scarico) e vincoli di coerenza.
+* **Serializzazione e lotto — due booleani, non un enum** (magazzino Lotto 1, 2026-09-14):
+  `requires_serial` dice *«ogni pezzo ha una matricola»* → `magazzino.assets`, una riga per
+  pezzo, `|qta| = 1` sul movimento; `requires_lotto` dice *«ogni carico appartiene a una
+  partita»* → `magazzino.lotti`, con data d'arrivo e scadenza. Un articolo può volerne uno,
+  entrambi o nessuno (reagente / apparecchiatura / dispositivo medico). Li legge la
+  **primitiva di scrittura del magazzino** (Lotto 2): un movimento senza il lotto o il
+  seriale che l'articolo pretende è rifiutato lì.
+  ⚠️ **Non sono simmetrici nel comportamento**: `requires_serial` è anche un **flag di
+  struttura BoM** — congelato da `trgfn_articoli_guard_flags_struttura_bom_attiva` insieme a
+  `is_composito`/`is_solo_componente` quando l'articolo è padre di una distinta attiva,
+  registrato in `dbops.lock_columns_conditional`, e il drawer lo disabilita via
+  `non_editable_fields`. `requires_lotto` è **fuori** da quel guard e da quel registro per
+  decisione (analisi carico/scarico §7-quater p.3: una partita non è struttura di
+  composizione): chi lo espone nel drawer **non** deve copiare il lucchetto. Al 2026-09-15
+  `requires_lotto` non è ancora in `vw_articoli_dettaglio` né nel drawer: arriva col Lotto 2.
 * **IVA e conti contabili**: applica regole applicative per la coerenza tra `iva_id` e tipo articolo (es. voci esenti).
 * **`meta` JSONB**: usa chiavi stabili (namespace logici: `utility.*`, `ui.*`, `calc.*`) e considera indici GIN se interrogato.
 * **Storicizza** anziché cancellare: usa `attivo=false` e lascia che i trigger di storico fotografino le modifiche.

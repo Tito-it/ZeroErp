@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 — IL DEFAULT DELL'EMITTENTE SI MONTA: PRATICHE.PRATICHE
+#   trg_pratiche_a10_default_emittente_ins
+#   -> script.trgfn_default_emittente_fiscale('SOLLEVA')
+#   Brief: brief-db-emittente-di-default-un-bb-solo, sezione 5 (P-5, D2)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Candidata di D2, confermata da Tid (15-09). Oggi l'emittente e' un input
+#   obbligatorio del payload (pratiche_service: emittente_fiscale_id > 0;
+#   views.py lo pretende anche in query): il trigger non cambia nessun
+#   comportamento in essere, chiude la porta del 23502 con una frase per
+#   l'operatore. Ordine: _a10_default_definizione_ins < _a10_default_emittente_ins
+#   < _a10_guard_emittente_scope_ins_upd (d < e < g).
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   Modo SOLLEVA: un valore esplicito non si tocca; senza valore e senza
+#   nessuno da cui dedurlo -> E_EMITTENTE_NON_RISOLTO (DATO_ERRATO, campo
+#   emittente_fiscale_id). Il nome del trigger segue lo stampo di vendite
+#   (trg_<t>_a10_default_emittente_ins): i BEFORE ROW scattano in ordine
+#   alfabetico e «default_» viene prima di «guard_» — e' l'ordine che serve
+#   (D5), e il pgTAP di P-6 lo asserisce per ogni tabella montata.
+#   preCondition HALT: la colonna esiste e il trigger non c'e' ancora — un
+#   CREATE TRIGGER su un nome gia' presente fermerebbe il migrate con 42710,
+#   e qui si vuole che lo dica prima.
+#
+# Dipendenze: 20260915-36 (il BB). Verifica:
+#   db/pgtap/script/test-trgfn-default-emittente-fiscale-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260915-44-create-trigger-default-emittente-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260915-44-create-trigger-default-emittente-pratiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.pratiche: trigger BEFORE INSERT trg_<t>_a10_default_emittente_ins su
+        script.trgfn_default_emittente_fiscale('SOLLEVA') — l'emittente di default dalla
+        sessione, dove oggi mancava (23502). Brief: brief-db-emittente-di-default-un-bb-solo
+        (P-5, D2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_default_emittente_fiscale';
+            - columnExists:
+                schemaName: pratiche
+                tableName: pratiche
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'pratiche.pratiche'::regclass
+                     AND tgname = 'trg_pratiche_a10_default_emittente_ins';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_pratiche_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON pratiche.pratiche
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_default_emittente_ins ON pratiche.pratiche;

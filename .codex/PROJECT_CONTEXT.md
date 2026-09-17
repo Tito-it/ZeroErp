@@ -227,6 +227,17 @@ le eredita, e sono scritte nel riquadro «CHIUSO» di quel brief:**
   **TECNICO** anche quando il dato l'ha scelto una persona: candidato allo split,
   per **tutte** le coppie — cantiere `dbops`, non di dominio.
 
+✅ **Il Lotto 1 di magazzino («il terreno vuoto») è chiuso e mergiato**
+(2026-09-15, PR #1593; brief ancora in `work-in-progress/` per le richieste
+BE — i due `E_MAG_*` da rigenerare sono il rosso di «Django tests» su
+`Tito-dev`). **Prima del Lotto 2** c'è un prerequisito deciso da Tid lo stesso
+giorno: `brief-db-emittente-di-default-un-bb-solo.md` — l'emittente di
+default come **building block unico** in `script`, montato su `magazzini`/
+`assets` e **al posto delle quattro copie di vendite**, che si ritirano nello
+stesso giro. ⭐ La regola che ne discende, e vale per ogni cantiere: *quando
+emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
+produzione, non c'è niente da aspettare.*
+
 ### Aperto — Media priorità
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9

@@ -227,7 +227,9 @@ SELECT is(
        FROM vendite.registri_fatturazione r, tmp_pfx_new n
       WHERE r.emittente_soggetto_ruolo_id = n.sr
         AND r.famiglia_documento <> 'FATTURA'),
-    'COMMESSA=CMM-, DDT=DDT, ORDINE=ORD, RESO=RESO',
+    -- ⭐ Rev 2026-09-15: la sesta famiglia, DISTINTA (DIS-), e' la prima fuori
+    --   da vendite (brief distinta-numerata-sul-registro, L11/L12).
+    'COMMESSA=CMM-, DDT=DDT, DISTINTA=DIS-, ORDINE=ORD, RESO=RESO',
     '6) I registri di un emittente nuovo nascono gia'' col prefisso');
 
 SELECT * FROM finish();

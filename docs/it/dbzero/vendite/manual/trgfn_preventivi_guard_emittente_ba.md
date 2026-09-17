@@ -8,7 +8,7 @@
 >
 > Funzioni correlate:
 > [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk)
-> [vendite.trgfn_preventivi_default_emittente](/dbzero/vendite/funzioni/trgfn_preventivi_default_emittente)
+> [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — il default (dal 2026-09-15 al posto di `trgfn_preventivi_default_emittente`)
 >
 > Pattern simmetrico:
 > [vendite.trgfn_ordini_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ordini_guard_emittente_ba)
@@ -57,7 +57,7 @@ Applicata dal trigger `trg_preventivi_a10_guard_emittente_ba_ins_upd`
 
 ### Note operative
 
-- Complementare a `trgfn_preventivi_default_emittente` (user-derived) e al
+- Complementare al default dell'emittente (`script.trgfn_default_emittente_fiscale`, user-derived; fino al 2026-09-15 la copia `trgfn_preventivi_default_emittente`) e al
   write-guard di scope `trg_preventivi_a10_guard_emittente_scope_ins_upd`.
 
 ---

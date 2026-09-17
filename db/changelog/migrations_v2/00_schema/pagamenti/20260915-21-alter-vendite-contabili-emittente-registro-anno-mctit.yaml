@@ -1,0 +1,169 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DISTINTA SA DI CHI E', E IL CODICE SMETTE DI NASCERE DA UN DEFAULT — L1
+#   pagamenti.vendite_contabili: emittente_soggetto_ruolo_id, registro_id, anno
+#   Brief: brief-db-distinta-numerata-sul-registro, §2.3 (D3), §2.5 (D5), §4-bis.1
+#
+# ── LE TRE COLONNE, E PERCHE' TRE ────────────────────────────────────────
+#   * `emittente_soggetto_ruolo_id` e' l'INPUT: di chi e' la distinta. E'
+#     l'unico documento numerabile che oggi non dichiara il proprio emittente,
+#     e un registro di numerazione appartiene a un emittente: senza questa
+#     colonna il numeratore non ha a chi chiedere il registro.
+#     SR e non PK, come fatturazione_lotti e fatture — i vicini di pipeline —
+#     e come vuole registri_fatturazione.emittente_soggetto_ruolo_id.
+#   * `registro_id` e `anno` sono l'OUTPUT del numeratore (L4): la chiave del
+#     documento, scritta insieme al codice. NULL sul pregresso, come sulle
+#     sorelle numerate prima del trasloco (guida numerazione §6.6).
+#
+#   ⚠️ NULLABLE IN QUESTO PASSO. Il NOT NULL sull'emittente arriva con
+#   20260915-26, DOPO il backfill del pregresso (-25) e DOPO il trigger che la
+#   riempie (-23): un NOT NULL che prende un numero piu' basso del trigger
+#   che lo soddisfa e' la lezione della commessa (brief emittente-commessa
+#   §7.0), e qui costa zero rispettarla.
+#
+# ── ⛔ IL DEFAULT DI `codice` CADE, ED E' LA RIGA CHE VALE ───────────────
+#   Il numeratore di L4 e' no-op su un codice fornito (rispetta le fixture e
+#   rende innocua ogni finestra). Con il DEFAULT ancora sulla colonna
+#   NEW.codice arriverebbe SEMPRE pieno e il trigger non numererebbe mai
+#   niente: nessun errore, distinte `VC_…` per sempre. Il rollback lo
+#   RIPRISTINA con l'espressione letta dall'auto-gen: un rollback che lasciasse
+#   la colonna senza default e senza trigger romperebbe ogni INSERT.
+#
+# ── GLI INDICI: UNO SOLO, E NON QUELLO CHE IL BRIEF DICEVA ────────────────
+#   * `ix_vendite_contabili_registro_anno (registro_id, anno)`: l'asse del
+#     contatore, come ix_commesse_registro_anno; copre anche la FK sul
+#     registro per prefisso, quindi la policy indici FK (20260915-35) la
+#     dichiara coperta.
+#   * ⛔ NESSUN indice dedicato su `emittente_soggetto_ruolo_id`, e il brief
+#     (§4 P-1) lo prevedeva «perche' la policy filtra ogni lettura su quella
+#     colonna». Verificato scrivendo: la policy la filtra ATTRAVERSO una
+#     funzione (fn_scope_ef_whitelist_via_sr), non con un confronto sulla
+#     colonna, quindi il planner non userebbe mai quell'indice; e le sorelle
+#     (fatturazione_lotti, sistemazioni) hanno la riga di policy a `false` e
+#     nessun indice. ⚠️ In piu' un indice creato qui col nome canonico e una
+#     riga `consentito = false` che lo nomina sarebbero in CONTRADDIZIONE:
+#     dbops.apply_fk_index_policy (90_end) DROPPA l'indice nominato nel
+#     dll_command quando consentito e' false. Si segue la sorella, non il brief.
+#
+# ── ⚠️ COSA NASCE DA SOLO A ci_apply, E NON DA QUI ───────────────────────
+#   La FK sul registro (registri_fatturazione HA `attivo`) fa generare
+#   all'automazione ATTIVO il `require_attivo` sulla distinta (CONSTRAINT
+#   TRIGGER AFTER, DEFERRABLE INITIALLY DEFERRED — il pgTAP vuole
+#   SET CONSTRAINTS ALL IMMEDIATE) e il `block_deact` su registri_fatturazione,
+#   entrambi col nome HASHATO a 63 caratteri: nei test si cercano per funzione
+#   e argomenti, mai per nome. La FK sull'emittente NON genera niente:
+#   anagrafiche.soggetti_ruoli non ha `attivo` (verificato su pg_attribute).
+#   Su dev i job pgAgent li portano la notte; `db-ci-apply` non li rilancia.
+#
+# Verifica: db/pgtap/pagamenti/test-distinta-numerazione-registro-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260915-21-alter-vendite-contabili-emittente-registro-anno-mctit.yaml
+
+  - changeSet:
+      id: 20260915-21-alter-vendite-contabili-emittente-registro-anno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.vendite_contabili: tre colonne per numerare la distinta sul registro
+        dell'emittente (D1/D3 del brief distinta-numerata-sul-registro).
+        emittente_soggetto_ruolo_id (input, NULLABLE qui: il NOT NULL e' in -26 dopo backfill
+        e trigger), registro_id e anno (output del numeratore, NULL sul pregresso). FK verso
+        soggetti_ruoli e registri_fatturazione; indice (registro_id, anno) come sulla
+        commessa; nessun indice dedicato sull'emittente (la policy filtra via funzione e la
+        riga di fk_index_policy a false lo dropperebbe). DROP DEFAULT su codice: con il
+        DEFAULT il numeratore no-op di L4 sarebbe muto per sempre.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_ruoli
+            - not:
+                - columnExists:
+                    schemaName: pagamenti
+                    tableName: vendite_contabili
+                    columnName: emittente_soggetto_ruolo_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili
+                  ADD COLUMN emittente_soggetto_ruolo_id bigint,
+                  ADD COLUMN registro_id                 bigint,
+                  ADD COLUMN anno                        smallint;
+
+              -- SR e non PK, come le sorelle fk_fatturazione_lotti_emittente_sr e
+              -- fk_sistemazioni_emittente. ⚠️ La FK NON garantisce che quel
+              -- soggetto-ruolo sia un emittente fiscale: lo garantisce il livello 0
+              -- di pagamenti.fn_get_emittente_distinta (20260915-22).
+              ALTER TABLE pagamenti.vendite_contabili
+                  ADD CONSTRAINT fk_vendite_contabili_emittente_sr
+                  FOREIGN KEY (emittente_soggetto_ruolo_id)
+                  REFERENCES anagrafiche.soggetti_ruoli (id);
+
+              ALTER TABLE pagamenti.vendite_contabili
+                  ADD CONSTRAINT fk_vendite_contabili_registro
+                  FOREIGN KEY (registro_id)
+                  REFERENCES vendite.registri_fatturazione (id);
+
+              -- L'asse del contatore, come ix_commesse_registro_anno: copre per
+              -- prefisso anche la FK sul registro.
+              CREATE INDEX ix_vendite_contabili_registro_anno
+                  ON pagamenti.vendite_contabili (registro_id, anno);
+
+              -- ⛔ Con il DEFAULT ancora sulla colonna NEW.codice arriverebbe pieno e
+              --    il numeratore (no-op su codice fornito) non numererebbe mai niente.
+              ALTER TABLE pagamenti.vendite_contabili
+                  ALTER COLUMN codice DROP DEFAULT;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili.emittente_soggetto_ruolo_id IS
+                'DI CHI E'' la distinta: il soggetto_ruolo dell''emittente fiscale (anagrafiche.emittenti_fiscali.soggetto_ruolo_id), come su fatturazione_lotti e fatture. ⭐ E'' l''INPUT del numeratore — un registro appartiene a un emittente, e senza questa colonna la distinta non aveva a chi chiedere il proprio — e dal 2026-09-15 e'' anche la colonna su cui passa la row security (D3): il ramo «senza canale = di tutti» non descrive piu'' il modello. ⭐ Si risolve in UNA sede, pagamenti.fn_get_emittente_distinta, applicata dal trigger a10_emittente a ogni INSERT: dato (coerente col canale, se c''e''), altrimenti dal canale, altrimenti dall''operatore in sessione, altrimenti rifiuto parlante (E_CONTABILE_EMITTENTE_OBBLIGATORIO). ⛔ Nessun «default dell''installazione»: dichiarare di un emittente il denaro di un altro e'' l''attribuzione che la numerazione per emittente esiste per impedire. ⚠️ NOT NULL dal 20260915-26, dopo il backfill del pregresso (-25). Brief: brief-db-distinta-numerata-sul-registro, D3/D4.';
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili.registro_id IS
+                'Il registro di numerazione (vendite.registri_fatturazione, famiglia DISTINTA) da cui il codice e'' uscito: OUTPUT del trigger a10_gen_codice, scritto INSIEME ad anno e codice perche'' sono una cosa sola — la chiave del documento. NULL sul pregresso numerato prima del 2026-09-15 (codici VC_…), come sui documenti delle altre famiglie numerati prima del trasloco (guida numerazione §6.6): quei codici non si rifanno. ⚠️ L''identita'' della distinta resta la STRINGA NUDA (uq_vendite_contabili_codice): la sigla dell''emittente e l''anno stanno dentro il codice, come nella commessa. Brief: brief-db-distinta-numerata-sul-registro, D2/D3.';
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili.anno IS
+                'L''anno del sezionale su cui la distinta e'' stata numerata, ricavato da data_contabile (vendite.fn_get_anno_registro): l''asse del contatore reso interrogabile, come commesse.anno. Scritto dal trigger a10_gen_codice insieme a registro_id e codice; NULL sul pregresso. ⚠️ Non e'' un doppione: il codice lo porta dentro una stringa, qui e'' un dato su cui si filtra e si conta. Brief: brief-db-distinta-numerata-sul-registro, D2.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP INDEX IF EXISTS pagamenti.ix_vendite_contabili_registro_anno;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                  DROP CONSTRAINT IF EXISTS fk_vendite_contabili_registro;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                  DROP CONSTRAINT IF EXISTS fk_vendite_contabili_emittente_sr;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                  DROP COLUMN IF EXISTS anno,
+                  DROP COLUMN IF EXISTS registro_id,
+                  DROP COLUMN IF EXISTS emittente_soggetto_ruolo_id;
+
+              -- ⛔ Il DEFAULT torna com'era (espressione letta dall'auto-gen il
+              --    2026-09-15): senza, con il trigger di L4 ritirato, ogni INSERT
+              --    senza codice morirebbe sul NOT NULL.
+              ALTER TABLE pagamenti.vendite_contabili
+                  ALTER COLUMN codice SET DEFAULT
+                      concat('VC_', to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'::text), '_',
+                             substr(md5(((random())::text || (clock_timestamp())::text)), 1, 8));

@@ -77,7 +77,8 @@ il push aggiunge solo *lock*, *routing* e *rete di sicurezza*.
     `listino_id`, `listino_versione_id`, `valore/tipo_variazione_globale`,
     `valido_dal`/`valido_al` (da `offerta.validita_dal`/`al`), `meta`.
   - `emittente_fiscale_id` copiato 1:1 da `v_offerta.emittente_fiscale_id`
-    (rev2, 2026-05-26). Il trigger `trgfn_contratti_default_emittente` salta
+    (rev2, 2026-05-26). Il trigger di default dell'emittente (dal 2026-09-15
+    `script.trgfn_default_emittente_fiscale`, prima la copia `trgfn_contratti_default_emittente`) salta
     (campo già valorizzato); il guard `trgfn_contratti_guard_emittente_ba`
     valida la coerenza BA↔emittente.
 - **Eccezioni → `contratti_righe`** + **componenti → `contratti_righe_componenti`**: il batch INSERT di eccezioni è stato convertito in un loop `FOR v_eccezione IN SELECT * FROM offerte_commerciali_eccezioni WHERE offerta_id = p_offerta_id ORDER BY id` che, per ogni eccezione, esegue:
@@ -193,7 +194,7 @@ fn_push_offerta_a_contratto
   └─ [caso C] fn_chiudi_contratto_per_successione → accorcia il vecchio
   └─ INSERT contratti (DRAFT, emittente_fiscale_id = v_offerta.emittente_fiscale_id)
        │  (avvolto in EXCEPTION WHEN exclusion_violation → backstop E_CONTRATTO_OVERLAP_ESISTENTE)
-       ├─ BEFORE INSERT: trgfn_contratti_default_emittente  → SKIP (già valorizzato)
+       ├─ BEFORE INSERT: trg_contratti_a10_default_emittente_ins (script.trgfn_default_emittente_fiscale) → SKIP (già valorizzato)
        ├─ BEFORE INSERT: trgfn_contratti_guard_emittente_ba → valida coerenza BA↔EF
        ├─ BEFORE INSERT: trgfn_contratti_gen_codice         → assegna numero contratto
        ├─ BEFORE INSERT: trgfn_contratti_normalize          → default ambito/campi

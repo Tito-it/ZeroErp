@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — LA COPIA DI ORDINI SI RITIRA: IL TRIGGER PASSA AL BUILDING BLOCK
+#   trg_ordini_a10_default_emittente_ins (vendite.ordini) -> script.trgfn_default_emittente_fiscale('SOLLEVA')
+#   DROP FUNCTION vendite.trgfn_ordini_default_emittente()
+#   Brief: brief-db-emittente-di-default-un-bb-solo, sezioni 4.3-4.4 e 5 (P-3)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Era una delle TRE copie esatte (con preventivi e contratti: diff del corpo
+#   = solo commenti e nome del campo nel context). Modo SOLLEVA: niente da cui
+#   dedurre -> E_EMITTENTE_NON_RISOLTO, come prima ma con un codice solo.
+#   fn_push_preventivo_a_ordine passa l'emittente esplicito: il trigger non
+#   scatta li'; scatta sull'INSERT del backend senza emittente (sessione).
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   Il NOME del trigger non cambia: e' per tabella, e i BEFORE ROW scattano in
+#   ordine alfabetico — trg_ordini_a10_default_emittente_ins resta prima di
+#   guard_emittente_ba, guard_emittente_scope e normalize (D5). Si fa DROP +
+#   CREATE con lo stesso nome sulla funzione nuova, POI il DROP FUNCTION della
+#   copia (una funzione con un trigger montato non si droppa). ⛔ DROP secchi,
+#   senza IF EXISTS: sono oggetti scritti a mano (non generati da ci_apply) e
+#   devono esistere — un IF EXISTS nasconderebbe un DB diverso da quello atteso.
+#   La preCondition lo dice prima: la copia e il BB esistono entrambi.
+#
+# -- IL CODICE ------------------------------------------------------------------
+#   E_ORDINE_EMITTENTE_NON_RISOLTO prende obsoleto_dal = 2026-09-15 in codici_errore.csv (mirror
+#   runOnChange + ANY, editato in place): mai un DELETE, il messaggio resta.
+#   Dopo questo changeSet nessuna funzione viva lo nomina piu'.
+# 🔴 RICHIESTA AL BE: manage.py genera_error_policies (il ritiro aggiunge la
+#   riga «RITIRATO» e test_error_policies_divergenza_db confronta il FILE
+#   INTERO col catalogo) + ripiego per E_EMITTENTE_NON_RISOLTO. Brief, sezione 11.
+#
+# Dipendenze: 20260915-36 (il BB), che ha numero minore. Verifica:
+#   db/pgtap/script/test-trgfn-default-emittente-fiscale-v1.sql (nessun oggetto
+#   vivo nomina piu' la copia; il trigger esegue il BB; l'ordine alfabetico).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260915-37-update-trigger-default-emittente-ordini-su-bb-mctit.yaml
+
+  - changeSet:
+      id: 20260915-37-update-trigger-default-emittente-ordini-su-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini: trg_ordini_a10_default_emittente_ins passa da vendite.trgfn_ordini_default_emittente a
+        script.trgfn_default_emittente_fiscale('SOLLEVA'), stesso nome, e la copia si droppa.
+        Il codice E_ORDINE_EMITTENTE_NON_RISOLTO e' ritirato (obsoleto_dal) nel CSV. Brief:
+        brief-db-emittente-di-default-un-bb-solo (P-3, D1/D4/D5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_default_emittente_fiscale';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_ordini_default_emittente';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.ordini'::regclass
+                     AND tgname = 'trg_ordini_a10_default_emittente_ins'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_ordini_a10_default_emittente_ins ON vendite.ordini;
+
+              CREATE TRIGGER trg_ordini_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON vendite.ordini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');
+
+              DROP FUNCTION vendite.trgfn_ordini_default_emittente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La copia non si ricrea qui: il ripristino di questo passo e' il ripristino
+              -- dell'intero brief (dal changeSet che la creo'). Si smonta solo il BB.
+              DROP TRIGGER IF EXISTS trg_ordini_a10_default_emittente_ins ON vendite.ordini;

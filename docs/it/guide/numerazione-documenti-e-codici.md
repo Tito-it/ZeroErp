@@ -58,11 +58,13 @@ emittente, tiene il proprio contatore, sa ripartire da 1 a ogni Capodanno e
 porta anche la **forma** del numero che produce: prefisso, suffisso, quante
 cifre, e se l'anno sta dentro il numero.
 
-**Chi lo usa, oggi** — fatture, documenti di trasporto, ordini, commesse, resi.
+**Chi lo usa, oggi** — fatture, documenti di trasporto, ordini, commesse, resi
+e, dal 2026-09-15, le **distinte contabili di incasso** (la prima famiglia
+fuori da `vendite`).
 
 ⚠️ **Il nome della tabella dice meno di quello che fa.** Si chiama
 `registri_fatturazione` perché all'inizio numerava solo le fatture; oggi numera
-cinque famiglie di documento. Il nome non è stato cambiato di proposito: cambiarlo
+sei famiglie di documento. Il nome non è stato cambiato di proposito: cambiarlo
 significherebbe toccare decine di oggetti collegati senza modificare **nessun**
 comportamento, e non è un lavoro da infilare dentro un altro. Il debito è
 dichiarato, non dimenticato.
@@ -113,6 +115,7 @@ momento vive di vita propria. Nessuno deve ricordarsi di riempirlo.
 | **Ordine** | **registro** | **registro** | alla creazione |
 | **Reso** | **registro** | **registro** | quando passa a *confermato* |
 | **Commessa** | **registro** | **registro** | alla creazione |
+| **Distinta contabile** *(dal 2026-09-15)* | **registro** | **registro** | alla creazione |
 | Preventivo, contratto, offerta | catalogo formati | catalogo formati | alla creazione |
 | Lotto di fatturazione | catalogo formati | catalogo formati | alla creazione |
 | Cliente, soggetto, fornitore, vettore, istanza, pratica | catalogo formati | catalogo formati | alla creazione |
@@ -132,7 +135,9 @@ si vede solo guardando le colonne:
   `CMM-ACME-2026-000000001` — e non ha un campo «numero» a parte: quella stringa
   *è* il suo numero. ⭐ Porta però anche l'anno e il registro in **due colonne
   proprie**, come gli altri, e un controllo automatico pretende che il codice e
-  le colonne dicano la stessa cosa (§8-bis).
+  le colonne dicano la stessa cosa (§8-bis). **La distinta contabile fa lo
+  stesso** (`DIS-ACME-2026-0000001`, sette cifre): è il secondo documento con
+  l'identità a stringa, e la ragione è la stessa (§6.4).
 
 ⚠️ Ne discende una cosa pratica: **chi scrive codice che confronta o ordina i numeri
 non può trattarli tutti allo stesso modo.** Ed è la ragione per cui il controllo
@@ -243,7 +248,7 @@ guarda il **registro** e la competenza — e che una serie nuova **non azzera**.
 | «questa sequenza va avanti?» | il cancello di cronologia | registro **+ serie** |
 | «questo documento è ancora emettibile?» | il limite di emissione | **registro** + competenza |
 
-### 6.4 Il codice della commessa contiene la sigla dell'azienda
+### 6.4 Il codice della commessa contiene la sigla dell'azienda — e quello della distinta pure
 
 La **identità** della commessa è la stringa stessa: è il codice a essere unico,
 non la coppia registro-numero come negli altri documenti. Quindi la stringa deve
@@ -263,8 +268,17 @@ caratteri, **niente trattino**. Il trattino è il separatore: se comparisse dent
 sigla, il codice smetterebbe di essere leggibile e nessuno saprebbe più dove finisce
 l'azienda e dove comincia l'anno.
 
-⭐ **La commessa è l'unica delle quattro a usare nove cifre**, ed è per questo che è
-stata la sola a rivelare un difetto altrimenti invisibile — se ne parla al §9.
+⭐ **La commessa è l'unica a usare nove cifre**, ed è per questo che è stata la
+sola a rivelare un difetto altrimenti invisibile — se ne parla al §9.
+
+⭐ **Dal 2026-09-15 vale anche per la distinta contabile di incasso**
+(`DIS-ACME-2026-0000001`, sette cifre): la stessa forma, per la stessa ragione.
+Il suo codice era un'etichetta da DEFAULT (`VC_…`) e la distinta era l'unico
+documento numerabile che non dichiarava il proprio emittente; oggi lo porta in
+colonna, e un registro `DIS-` per azienda le dà il numero alla creazione, come
+all'ordine. Come e da chi l'emittente si ricava — dato, canale di incasso,
+operatore in sessione, o rifiuto — sta nella scheda di
+[pagamenti.vendite_contabili](/dbzero/pagamenti/manual/vendite_contabili).
 
 > ⭐ Che la sigla e l'anno stiano *dentro* la stringa non è solo una convenzione
 > di chi la compone: la commessa porta l'anno e il registro anche in **due

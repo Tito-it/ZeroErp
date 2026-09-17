@@ -9,7 +9,7 @@
 >
 > Funzioni correlate:
 > [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk)
-> [vendite.trgfn_ddt_default_emittente](/dbzero/vendite/funzioni/trgfn_ddt_default_emittente)
+> [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — il default (montato su ddt con `'LASCIA_NULL', 'SALTA_CON_SORGENTE'`; dal 2026-09-15 al posto di `trgfn_ddt_default_emittente`)
 > [vendite.trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize)
 >
 > Pattern simmetrico (con differenza di piazzamento):

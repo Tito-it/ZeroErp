@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL NUMERATORE DELLA DISTINTA: DAL REGISTRO, ALLA CREAZIONE — L4
+#   pagamenti.trgfn_vendite_contabili_gen_codice()
+#   trg_vendite_contabili_a10_gen_codice_ins
+#   Brief: brief-db-distinta-numerata-sul-registro, §2.1 (D1), §2.2 (D2), §4-bis.4
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────────
+#   Fino a oggi `codice` nasceva da un DEFAULT di colonna (`VC_<ts>_<md5>`) e,
+#   sulla strada delle sistemazioni, da una seconda composizione
+#   (`SIS_<atto>_<ts>`): un'etichetta unica, non un numero. Da qui il codice
+#   viene dal MOTORE DEI REGISTRI: `DIS-<SIGLA>-<ANNO>-<7 cifre>` —
+#   prefisso dal registro, sigla dell'emittente come CORPO (D1, come la
+#   commessa), anno messo dal compositore generico (il registro nasce con
+#   anno_nel_numero = true), progressivo che riparte a Capodanno.
+#
+# ── IL MOMENTO: ALLA CREAZIONE (D2) ─────────────────────────────────────
+#   Come ordini e commessa, BEFORE INSERT. Il codice e' la maniglia con cui
+#   l'operatore lavora la distinta da subito — lista, drawer, «rida' quella di
+#   prima» del get-or-create — e `codice` e' NOT NULL. I buchi da bozza
+#   annullata sono la conseguenza dichiarata, come per l'ordine (guida §4).
+#   L'anno viene da `data_contabile` («l'anno viene dalla data del documento»,
+#   guida §6.2): una distinta datata 31/12 e registrata il 2/1 e' del 2026.
+#
+# ── ⭐ NO-OP SU CODICE FORNITO — E NON E' UNA PORTA PER LE MADRI ─────────
+#   Calco di trgfn_ordini_gen_numero: un codice arrivato da fuori si rispetta.
+#   Serve alle fixture (sette pgTAP inseriscono distinte con un codice
+#   proprio, `PGTAP_…`) e rende innocua ogni finestra. ⛔ Nessuna madre viva
+#   deve passare `codice`: lo presidia il test 13 di
+#   test-distinta-numerazione-registro-v1 leggendo pg_proc.
+#   ⛔ E per questo il DEFAULT di colonna e' caduto in 20260915-21: con il
+#   DEFAULT ancora vivo NEW.codice arriverebbe SEMPRE pieno e questo no-op
+#   sarebbe la regola, non l'eccezione.
+#
+# ── ⚠️ COSA PRESUPPONE, E CHI LO GARANTISCE ─────────────────────────────
+#   * NEW.emittente_soggetto_ruolo_id gia' risolto ed e' un emittente: lo fa
+#     trg_…_a10_emittente_ins_upd (20260915-23), che precede per NOME.
+#     Quindi qui v_sigla non e' mai NULL.
+#   * Un registro DISTINTA per quell'emittente: 20260915-34 per gli emittenti
+#     esistenti, trgfn_emittenti_fiscali_provision_registri (z90) per quelli
+#     futuri. Senza registro -> E_CONFIG_MANCANTE da fn_get_registro_documento:
+#     fail-closed, e giusto.
+#   * NEW.id gia' valorizzato in un BEFORE INSERT: e' l'identity, e vale per gli
+#     ordini nello stesso modo.
+#   * `presidia_data_documento = false` sulla famiglia: il pavimento di
+#     sequenza e' NULL e il ramo d'errore di fn_get_next_progressivo che
+#     compone un bersaglio con `tipo = famiglia` e' irraggiungibile — per
+#     questo non serve una riga DISTINTA in config.tipi_entita. Dichiarato.
+#   * ⚠️ Verificato su pg_proc: vendite.fn_assegna_numero_documento sul DB vivo
+#     NON e' SECURITY DEFINER (il suo COMMENT dice il contrario). Il percorso
+#     INVOKER regge gia' il trigger degli ordini come zeroerp_app: vale qui.
+#
+# Verifica: db/pgtap/pagamenti/test-distinta-numerazione-registro-v1.sql
+#   (test 3, 4, 5, 6, 10, 14)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260915-24-create-trgfn-vendite-contabili-gen-codice-mctit.yaml
+
+  - changeSet:
+      id: 20260915-24-create-trgfn-vendite-contabili-gen-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.trgfn_vendite_contabili_gen_codice + trigger a10_gen_codice_ins (BEFORE
+        INSERT): la distinta prende il codice dal motore dei registri (famiglia DISTINTA,
+        registro dell'emittente della riga, sigla come corpo, anno da data_contabile) e
+        scrive INSIEME registro_id, anno e codice. No-op su codice fornito (fixture), che
+        non e' una porta per le madri: lo presidia un pgTAP su pg_proc. Calco di
+        trgfn_ordini_gen_numero (momento) e fn_get_or_create_commessa (corpo).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: registro_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_assegna_numero_documento';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger t
+                   WHERE t.tgrelid = 'pagamenti.vendite_contabili'::regclass
+                     AND t.tgname = 'trg_vendite_contabili_a10_emittente_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_gen_codice()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_sigla anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ass   record;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Assegnare vendite_contabili.codice all'INSERT prendendolo
+                  --   dal MOTORE DEI REGISTRI (famiglia DISTINTA): fino al
+                  --   2026-09-15 il codice nasceva da un DEFAULT di colonna
+                  --   (VC_…) e, sulle sistemazioni, da una seconda
+                  --   composizione (SIS_…). Un'etichetta, non un numero.
+                  --
+                  -- ⭐ Il MOMENTO e' la creazione (D2), come ordini e
+                  --   commessa: il codice e' la maniglia con cui si lavora la
+                  --   distinta da subito. ⛔ I buchi da bozza annullata restano:
+                  --   e' la conseguenza dichiarata di quella scelta.
+                  -- ⭐ La FORMA e' DIS-<sigla>-<anno>-<7 cifre> (D1): la sigla
+                  --   dell'emittente entra come CORPO, come nella commessa, e
+                  --   l'anno lo mette il compositore generico perche' il
+                  --   registro nasce con anno_nel_numero = true.
+                  --
+                  -- Uso: BEFORE INSERT FOR EACH ROW — dopo a10_emittente (per
+                  --      nome), che ha gia' risolto NEW.emittente_soggetto_ruolo_id.
+                  -- =========================================================
+
+                  -- ⭐ Gia' numerato -> no-op: rispetta un codice fornito da
+                  --   fuori (le fixture dei pgTAP con PGTAP_…) e rende innocua
+                  --   ogni finestra. ⛔ Non e' una porta per le madri: lo
+                  --   presidia il test 13 di test-distinta-numerazione-registro-v1.
+                  IF NEW.codice IS NOT NULL AND btrim(NEW.codice::text) <> '' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ Senza data non c'e' anno: si lascia parlare il NOT NULL
+                  --   di data_contabile (23502), che nomina la colonna giusta.
+                  IF NEW.data_contabile IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La sigla: emittenti_fiscali non ha RLS. Il trigger a10_emittente
+                  -- ha gia' garantito (livello 0) che il SR sia un emittente,
+                  -- quindi v_sigla non e' mai NULL.
+                  SELECT ef.codice INTO v_sigla
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.soggetto_ruolo_id = NEW.emittente_soggetto_ruolo_id;
+
+                  -- ⛔ L'involucro, non il lettore: qui si SCRIVE, e un
+                  --   emittente senza registro DISTINTA deve fermare
+                  --   (E_CONFIG_MANCANTE da fn_get_registro_documento).
+                  -- ⭐ I SEI PASSI in una chiamata sola: registro, anno dalla
+                  --   data del documento, progressivo, formato, composizione.
+                  --   Il corpo e' la sigla piu' il separatore, come la commessa:
+                  --   il compositore aggiunge l'anno in coda al corpo.
+                  SELECT * INTO v_ass
+                    FROM vendite.fn_assegna_numero_documento(
+                             p_famiglia_documento          => 'DISTINTA',
+                             p_emittente_soggetto_ruolo_id => NEW.emittente_soggetto_ruolo_id,
+                             p_data                        => NEW.data_contabile,
+                             p_documento_id                => NEW.id,
+                             p_utility_id                  => NULL,
+                             p_corpo                       => v_sigla || '-',
+                             p_serie                       => NULL) v;
+
+                  -- ⚠️ INSIEME: registro, anno e codice sono una cosa sola — la
+                  --   chiave del documento — e scriverne uno senza gli altri
+                  --   lascerebbe la riga a raccontare un sezionale non suo
+                  --   (trgfn_ordini_gen_numero).
+                  NEW.registro_id := v_ass.registro_id;
+                  NEW.anno        := v_ass.anno;
+                  NEW.codice      := v_ass.numero;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_gen_codice() IS
+                'Assegna il codice alla distinta contabile ALLA CREAZIONE, chiamando vendite.fn_assegna_numero_documento sulla famiglia DISTINTA e sul registro dell''emittente della riga: DIS-<sigla>-<anno>-<7 cifre> (D1/D2 del brief distinta-numerata-sul-registro). ⭐ La sigla dell''emittente entra come CORPO — come la commessa, ed e'' per questo che il compositore ha un p_corpo — perche'' l''identita'' della distinta e'' la STRINGA NUDA (uq_vendite_contabili_codice): con un registro per emittente, due emittenti produrrebbero entrambi DIS-2026-0000001 e il secondo INSERT prenderebbe un 23505 a ogni tentativo (il numeratore piantato della guida §8-bis). L''anno lo mette il compositore generico perche'' il registro nasce con anno_nel_numero = true, e viene da data_contabile: una distinta datata 31/12 e inserita il 2/1 e'' dell''anno vecchio. ⚠️ Scrive INSIEME registro_id, anno e codice: sono la chiave del documento. ⭐ NO-OP su un codice fornito: rispetta le fixture dei pgTAP e rende innocua ogni finestra; ⛔ NON e'' una porta per le madri (nessuna funzione viva passa codice: presidio in test-distinta-numerazione-registro-v1, test 13), ed e'' la ragione per cui il DEFAULT di colonna e'' caduto — con il DEFAULT vivo NEW.codice arriverebbe sempre pieno e il numeratore sarebbe muto per sempre. ⚠️ Presuppone che a10_emittente abbia gia'' risolto l''emittente (precede per NOME) e che l''emittente abbia il registro DISTINTA (20260915-34 per gli esistenti, il trigger z90 di provisioning per i futuri): senza, E_CONFIG_MANCANTE, fail-closed. ⚠️ Il pregresso numerato prima (VC_…, SIS_…) non si rinumera: forma diversa, registro_id e anno NULL, guida §6.6. Rev 2026-09-15.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_gen_codice_ins
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_gen_codice_ins
+                  BEFORE INSERT
+                  ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_gen_codice();
+
+              COMMENT ON TRIGGER trg_vendite_contabili_a10_gen_codice_ins
+                  ON pagamenti.vendite_contabili IS
+                'Numera la distinta sul registro DISTINTA del suo emittente alla creazione (DIS-<sigla>-<anno>-<7 cifre>). ⛔ IL NOME NON SI CAMBIA A CASO: i BEFORE ROW girano in ordine alfabetico, e «a10_gen_codice» deve seguire «a10_emittente» (che risolve la colonna da cui questo trigger prende il registro) e precedere «a10_guard_emittente_scope». Rev 2026-09-15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_gen_codice_ins
+                  ON pagamenti.vendite_contabili;
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_gen_codice();
