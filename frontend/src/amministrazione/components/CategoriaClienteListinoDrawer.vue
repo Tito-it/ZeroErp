@@ -320,7 +320,7 @@ function close() {
               showButtons
               :invalid="campiErrati.includes('valore_variazione')"
             />
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ t('amministrazione.matrice_categorie_listini.field_valore_variazione_hint') }}
             </small>
           </div>

@@ -479,7 +479,7 @@ def crea_distinta(payload: dict[str, Any]) -> dict[str, Any]:
         payload,
         allowed=frozenset(
             {"centro_riscossione_id", "data_contabile", "ente_incasso_id",
-             "importo_dichiarato", "meta"}
+             "emittente_fiscale_id", "importo_dichiarato", "meta"}
         ),
     )
     centro_riscossione_id = _PAYLOAD.require_positive_int(
@@ -493,6 +493,17 @@ def crea_distinta(payload: dict[str, Any]) -> dict[str, Any]:
         message="La data contabile e' obbligatoria per aprire una distinta.",
     )
     ente_incasso_id = _PAYLOAD.optional_positive_int(payload, "ente_incasso_id")
+    # ⭐ L'EMITTENTE E' FACOLTATIVO QUI, E OBBLIGATORIO A DATABASE (D4, brief
+    #    distinta-numerata-sul-registro, 2026-09-17). Il backend lo TRASPORTA e
+    #    non lo deduce: se manca, lo risolve `fn_get_emittente_distinta` dal
+    #    canale o dall'operatore in sessione — la stessa `fn_resolve_emittente_
+    #    for_user` che legge l'emittente attivo scelto in topbar. E se non lo
+    #    trova rifiuta con `E_CONTABILE_EMITTENTE_OBBLIGATORIO` (400, campo
+    #    `emittente_fiscale_id`): e' il super admin in «tutti gli emittenti» su
+    #    CASSA, che deve scegliere. ⛔ Un default dal profilo scritto qui
+    #    sarebbe un secondo risolutore, e attribuirebbe denaro a un emittente
+    #    che nessuno ha scelto.
+    emittente_fiscale_id = _PAYLOAD.optional_positive_int(payload, "emittente_fiscale_id")
     importo_dichiarato = _decimal_da_payload(
         payload, "importo_dichiarato", obbligatorio=False
     )
@@ -510,6 +521,7 @@ def crea_distinta(payload: dict[str, Any]) -> dict[str, Any]:
             centro_riscossione_id=centro_riscossione_id,
             data_contabile=data_contabile,
             ente_incasso_id=ente_incasso_id,
+            emittente_fiscale_id=emittente_fiscale_id,
             origine=ORIGINE_MANUALE,
             codice_stato_interno=STATO_DISTINTA_INIZIALE,
             meta=_meta_json(payload),

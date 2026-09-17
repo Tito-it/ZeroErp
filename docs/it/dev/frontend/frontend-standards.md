@@ -1978,6 +1978,27 @@ I componenti usano **solo** `--app-*`. Mai `var(--p-*)` direttamente.
 Unico punto di personalizzazione: sidebar, topbar, contenuto, card, drawer, AI widget, transizioni, tipografia.
 Importato prima di `main.css` in `main.js`.
 
+### I token neutri e il font — `theme.css` (2026-09-17)
+
+| Token | Punta a | Per |
+| --- | --- | --- |
+| `--app-font-family` | stack di sistema sans-serif | il `body` (🔴 fino al 17/09 `main.css` scriveva `var(--p-font-family)`, che PrimeVue 4 **non definisce**: dichiarazione invalida, font di default del browser) |
+| `--app-surface-bg` | `--p-content-background` | la superficie di un contenuto (ex `--surface-0`) |
+| `--app-hover-bg` | `--p-content-hover-background` | riga o voce sotto il mouse (ex `--surface-hover`) |
+| `--app-highlight-bg` | `--p-highlight-background` | voce selezionata (ex `--highlight-bg`) |
+| `--app-border-color` | `--p-content-border-color` | il bordo neutro (ex `--surface-border`) |
+| `--app-border-radius` | `--p-border-radius-md` (6px) | raggi neutri |
+| `--app-focus-ring` | `--p-focus-ring-color` | l'anello di fuoco |
+| `--app-space-sm` | `0.5rem` | gap e padding piccoli |
+
+⛔ **I nomi di PrimeVue 3 non esistono più** (`--surface-*`, `--text-color`,
+`--highlight-bg`, `--p-info-color`, `--p-font-family`): un `var()` su un nome
+assente **annulla l'intera dichiarazione**, non solo il colore — un
+`border: 1px solid var(--surface-border)` è un bordo che non c'è. Il
+17/09 erano 60, tutti negli `<style>` di `pratiche` e in pochi altri: sanati
+(catalogo BB, riga `ml-05`). Per i colori semantici (info, warn, danger,
+success) i token sono `--app-severity-*`.
+
 ### Dark/Light mode
 
 Il tema supporta dark e light mode tramite la classe `.p-dark` su `<html>`.
@@ -2026,15 +2047,27 @@ in `:root:not(.p-dark)` (light).
 | `app-datatable`      | DataTable compatta (font ridotto, padding, stripe, hover) |
 | `app-drawer-content` | Wrapper contenuto drawer (gap via `--app-drawer-gap`)     |
 | `app-drawer-section` | Separatore sezione nei drawer (bordo da theme.css)        |
-| `app-drawer-footer`  | Footer drawer Annulla/Salva (flex, justify-end)           |
+| `app-form-footer`    | Footer Annulla/Salva (flex, justify-end). ⚠️ Fino al 2026-09-17 questa riga diceva `app-drawer-footer`, una classe che **non esiste** in nessun foglio: `ResoRigaForm` l'aveva copiata da qui e il suo footer non era allineato a destra. Il nome vero è quello di `FormFooter.vue` |
 | `form-grid`          | Contenitore campi form (flex column, gap)                 |
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
+| `form-field-wide`    | Il campo a **tutta riga** dentro una griglia a 2/3 colonne (`grid-column: 1 / -1`). ⚠️ Scritta in cinque template dal 2026-05, definita solo dal 17/09 |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
+| `app-text-muted`     | Testo sottotono (`--app-text-muted`): hint sotto i campi, note. ⛔ Non `text-color-secondary`: PrimeFlex non è installato, e fino al 17/09 nemmeno questa regola esisteva — 135 siti di testo «sottotono» erano testo normale |
+| `font-bold`          | `font-weight: 600` (globale dal 17/09; prima viveva in uno `<style scoped>` e altrove non faceva niente) |
+| `mt-025`/`mt-05`/`mt-1` · `ml-05`/`mr-05` | Le sole utility di spaziatura. ⛔ `mt-3`, `mb-3`, `w-full`, `flex`, `gap-2`… sono PrimeFlex: non esistono qui e sono state tolte da ~115 template il 17/09 |
+
+⭐ **Una classe che non sta in nessun foglio non fa niente, e non lo dice.**
+Prima di dire che una view è finita, il censimento delle classi statiche non
+definite deve restare a **zero** (dal 2026-09-17, dopo tre passate: utility
+PrimeFlex, variabili CSS di PrimeVue 3, identificatori orfani):
+`python3 scripts/check_classi_morte.py` (dalla root del repo; stampa l'elenco
+e esce 1 se ne trova).
 
 **Nota responsive sotto 1024px**: i pulsanti del `FormFooter` (Annulla,
 Chiudi, Salva) collassano automaticamente a icon-only via la classe
-`app-drawer-footer-btn` (stessa logica di `.app-page-action`). Il componente
+`app-form-footer-btn` (stessa logica di `.app-page-action`; ⚠️ fino al 17/09
+questa riga scriveva `app-drawer-footer-btn`, che non esiste). Il componente
 imposta `v-tooltip.top` con la label per garantire l'accessibilita'. La
 modifica e' centralizzata in [`FormFooter.vue`](../../../frontend/src/core/components/FormFooter.vue):
 qualsiasi pulsante Annulla/Salva sparso fuori dal componente NON eredita

@@ -225,13 +225,13 @@ function conferma() {
          classe nuova: nel foglio comune non c'e' una classe «testo introduttivo
          di dialog», e inventarla qui vorrebbe dire aggiungere CSS a un
          componente invece che al foglio (feedback_css_centralizzazione). -->
-    <Message v-if="nonCaricato" severity="warn" :closable="false" class="mb-1">
+    <Message v-if="nonCaricato" severity="warn" :closable="false">
       {{ t('vendite.numerazione_data.non_caricato') }}
     </Message>
-    <Message v-else-if="nienteDaNumerare" severity="info" :closable="false" class="mb-1">
+    <Message v-else-if="nienteDaNumerare" severity="info" :closable="false">
       {{ t('vendite.numerazione_data.niente_da_numerare') }}
     </Message>
-    <Message v-else-if="!loading" severity="info" :closable="false" class="mb-1">
+    <Message v-else-if="!loading" severity="info" :closable="false">
       <template v-if="perimetroTesto">{{ perimetroTesto }}</template>
       <template v-else-if="inCreazione">
         {{ t('vendite.numerazione_data.perimetro_creazione') }}
@@ -258,7 +258,7 @@ function conferma() {
 
     <!-- ⛔ L'avviso che conta: confermando si SPOSTANO le date dei documenti e
          si RIGENERANO le scadenze. Chi non lo dice lo nasconde. -->
-    <Message v-if="spostaLeDate" severity="warn" :closable="false" class="mb-1">
+    <Message v-if="spostaLeDate" severity="warn" :closable="false">
       {{ t('vendite.numerazione_data.sposta_le_date', {
         da: displayDate(corrente),
         a: displayDate(dataScelta),

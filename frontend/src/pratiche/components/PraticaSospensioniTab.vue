@@ -58,12 +58,12 @@ watch(() => props.praticaId, (id) => {
 </script>
 
 <template>
-  <div class="pratica-sospensioni-tab">
-    <div v-if="loading" class="text-center text-color-secondary p-3">
+  <div>
+    <div v-if="loading" class="text-center app-text-muted p-3">
       <i class="pi pi-spin pi-spinner"></i>
     </div>
 
-    <div v-else-if="sospensioni.length === 0" class="text-center text-color-secondary p-3">
+    <div v-else-if="sospensioni.length === 0" class="text-center app-text-muted p-3">
       {{ t('pratiche.sospensioni_vuote') }}
     </div>
 

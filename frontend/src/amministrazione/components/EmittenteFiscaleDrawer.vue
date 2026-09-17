@@ -279,7 +279,6 @@ function close() {
             v-if="!isEdit"
             severity="info"
             :closable="false"
-            class="mb-3"
           >
             {{ t('amministrazione.emittenti_fiscali.avviso_registri') }}
           </Message>
@@ -287,7 +286,7 @@ function close() {
           <!-- Soggetto -->
           <h4>{{ t('amministrazione.emittenti_fiscali.field_soggetto') }}</h4>
           <template v-if="!isEdit">
-            <div v-if="soggettoSelezionato" class="mb-3">
+            <div v-if="soggettoSelezionato">
               <SoggettoMessageBanner
                 :ragione-sociale="soggettoSelezionato.ragione_sociale || soggettoSelezionato.ragione_sociale_completa"
                 :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.codice_fiscale || soggettoSelezionato.piva || soggettoSelezionato.partita_iva"
@@ -297,7 +296,6 @@ function close() {
                 v-if="!soggettoHasPartitaIva"
                 severity="warn"
                 :closable="false"
-                class="mt-2"
               >
                 {{ t('amministrazione.emittenti_fiscali.soggetto_no_piva') }}
               </Message>
@@ -306,10 +304,10 @@ function close() {
             </div>
             <div v-else>
               <Button :label="t('resolver.open')" icon="pi pi-search"
-                outlined class="w-full" @click="resolverVisible = true" />
+                outlined @click="resolverVisible = true" />
             </div>
           </template>
-          <div v-if="isEdit && detail" class="mb-3">
+          <div v-if="isEdit && detail">
             <SoggettoMessageBanner
               :ragione-sociale="detail.ragione_sociale_completa"
               :id-fiscale="detail.codice_fiscale || detail.partita_iva"
@@ -318,7 +316,7 @@ function close() {
 
           <!-- Sezioni dati emittente: visibili solo dopo selezione soggetto (create) o sempre (edit) -->
           <template v-if="isEdit || (soggettoSelezionato && soggettoHasPartitaIva)">
-            <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_anagrafica') }}</h4>
+            <h4>{{ t('amministrazione.emittenti_fiscali.section_anagrafica') }}</h4>
 
             <!-- ⚠️ Il maiuscolo si ALZA, il trattino si RIFIUTA: e' la stessa
                  asimmetria del guard DB. `normalizeUpperNoSpaces` porta `acme`
@@ -333,7 +331,6 @@ function close() {
                 v-model="form.codice"
                 :disabled="isEdit"
                 :maxlength="FIELD_LENGTH.EMITTENTE_CODICE_MAX"
-                class="w-full"
                 :invalid="campiErrati.includes('codice')"
                 @keypress="blockNonAlphanumeric"
                 @input="normalizeUpperNoSpaces(form, 'codice')"
@@ -351,17 +348,17 @@ function close() {
                  SoggettoMessageBanner qui sopra (colonna droppata il
                  2026-08-02, `brief-emittente-ragione-sociale-dal-soggetto.md`). -->
 
-            <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_fiscale') }}</h4>
+            <h4>{{ t('amministrazione.emittenti_fiscali.section_fiscale') }}</h4>
 
             <div class="form-field">
               <label>{{ t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf') }}</label>
-              <InputText v-model="form.regime_fiscale_rf" maxlength="10" class="w-full" />
-              <small class="block mt-1 text-color-secondary">
+              <InputText v-model="form.regime_fiscale_rf" maxlength="10" />
+              <small class="mt-1 app-text-muted">
                 {{ t('amministrazione.emittenti_fiscali.regime_fiscale_rf_hint') }}
               </small>
             </div>
 
-            <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_bollo') }}</h4>
+            <h4>{{ t('amministrazione.emittenti_fiscali.section_bollo') }}</h4>
 
             <div class="form-grid-2col">
               <div class="form-field">
@@ -375,7 +372,6 @@ function close() {
                   v-model="form.bollo_soglia"
                   :disabled="!form.bollo_auto"
                   :min-fraction-digits="2" :max-fraction-digits="2"
-                  class="w-full"
                 />
               </div>
             </div>
@@ -386,7 +382,6 @@ function close() {
                 v-model="form.rounding_policy"
                 :placeholder="t('amministrazione.emittenti_fiscali.field_rounding_policy')"
                 show-clear
-                class="w-full"
               />
             </div>
 
@@ -400,15 +395,14 @@ function close() {
                 rel="config.valute"
                 :placeholder="t('amministrazione.emittenti_fiscali.field_valuta')"
                 show-clear
-                class="w-full"
               />
-              <small class="block mt-1 text-color-secondary">
+              <small class="mt-1 app-text-muted">
                 {{ t('amministrazione.emittenti_fiscali.field_valuta_hint') }}
               </small>
             </div>
 
             <!-- Attivo: ultimo elemento del form (richiesta UX) -->
-            <div class="form-field mt-3">
+            <div class="form-field">
               <label>{{ t('amministrazione.emittenti_fiscali.field_attivo') }}</label>
               <ToggleSwitch v-model="form.attivo"
                 :invalid="campiErrati.includes('attivo')"
@@ -418,7 +412,7 @@ function close() {
         </div>
 
         <!-- Footer Salva/Annulla -->
-        <div class="flex justify-end mt-4">
+        <div>
           <FormFooter
             :loading="loading"
             :disabled="!canSave"

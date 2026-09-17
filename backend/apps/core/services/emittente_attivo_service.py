@@ -40,7 +40,8 @@ E_EMITTENTE_ATTIVO_NON_VALIDO = "E_EMITTENTE_ATTIVO_NON_VALIDO"
 # costruzione, non per scelta nostra — `emittente_fiscale_id` è NOT NULL su
 # contratti, DDT, ordini e preventivi, e senza emittente attivo il DB non ha
 # con cosa riempirlo (§8.2.2 della risposta DB). Il FE spegne i verbi di
-# creazione; il DB comunque rifiuta, con i suoi codici `*_EMITTENTE_NON_RISOLTO`.
+# creazione; il DB comunque rifiuta, con `E_EMITTENTE_NON_RISOLTO` (un codice
+# solo dal 2026-09-15: `script.trgfn_default_emittente_fiscale`).
 MODALITA_GLOBALE = None
 
 

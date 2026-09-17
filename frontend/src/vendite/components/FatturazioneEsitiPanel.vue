@@ -147,7 +147,7 @@ defineExpose({ refresh: load })
     <div class="app-esiti-body">
       <!-- Stato coda stampa: conteggi per stato. -->
       <div class="app-esiti-coda">
-        <span class="text-color-secondary">{{ t('vendite.fatturazione.coda_stampa') }}:</span>
+        <span class="app-text-muted">{{ t('vendite.fatturazione.coda_stampa') }}:</span>
         <template v-for="s in CODA_STATI" :key="s.key">
           <Tag
             v-if="(codaStampa[s.key] ?? 0) > 0"
@@ -155,7 +155,7 @@ defineExpose({ refresh: load })
             :severity="statoCodaStampaSeverity(s.key)"
           />
         </template>
-        <span v-if="codaVuota" class="text-color-secondary">
+        <span v-if="codaVuota" class="app-text-muted">
           {{ competenzaMese
             ? t('vendite.fatturazione.coda_vuota_mese')
             : t('vendite.fatturazione.coda_vuota') }}
@@ -184,13 +184,13 @@ defineExpose({ refresh: load })
           <!-- La data del giro CONCLUSO a cui l'esito appartiene, non l'ultimo
                segno di vita: quella sta in `last_run_at` e, quando differisce,
                è il giro in corso — già detto dal Tag qui sopra. -->
-          <span class="text-color-secondary">
+          <span class="app-text-muted">
             {{ g.ultima_conclusa?.started_at ? displayTimestamp(g.ultima_conclusa.started_at) : '—' }}
           </span>
           <!-- Esecuzioni riuscite sul totale, RELATIVE al mese filtrato.
                L'etichetta è esplicita: "(23/24)" da solo si legge come un
                conteggio di fatture, che non è. -->
-          <span class="text-color-secondary">
+          <span class="app-text-muted">
             {{ t('vendite.fatturazione.giro_esecuzioni', {
               ok: g.ok_count, tot: g.total_runs,
             }) }}
@@ -199,14 +199,14 @@ defineExpose({ refresh: load })
                distingue il proprio lavoro dentro il totale complessivo. Sempre
                visibile, anche a split «0 tuoi»: l'assenza dello split è
                proprio l'ambiguità che nascondeva il lavoro altrui. -->
-          <span v-if="g.mio_count !== undefined" class="text-color-secondary">
+          <span v-if="g.mio_count !== undefined" class="app-text-muted">
             {{ t('vendite.fatturazione.giro_miei_altri', {
               mie: g.mio_count, altri: g.altri_count,
             }) }}
           </span>
         </div>
       </div>
-      <div v-else-if="caricato" class="text-color-secondary">
+      <div v-else-if="caricato" class="app-text-muted">
         {{ competenzaMese
           ? t('vendite.fatturazione.nessun_giro_mese')
           : t('vendite.fatturazione.nessun_giro') }}

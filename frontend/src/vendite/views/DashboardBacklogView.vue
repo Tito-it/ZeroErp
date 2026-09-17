@@ -318,7 +318,7 @@ onActivated(() => {
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <h2 style="margin: 0;">{{ t('vendite.dashboard_backlog.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('vendite.dashboard_backlog.page_description') }}</small>
+        <small class="app-text-muted">{{ t('vendite.dashboard_backlog.page_description') }}</small>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>

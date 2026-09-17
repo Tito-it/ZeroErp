@@ -75,7 +75,7 @@ scelto di pagare. ⚠️ La `JOIN` è **interna apposta**: un canale il cui cont
 risolveva la distinta *per il suo canale*, con la stessa `JOIN` interna: una
 distinta **senza canale** — fondo fattura, sistemazione — rispondeva `NULL`
 («non è il canale di nessuno») e la sua testata era visibile a tutti. Dal brief
-[distinta-numerata-sul-registro](/dev/work-in-progress/brief-db-distinta-numerata-sul-registro)
+[distinta-numerata-sul-registro](/dev/work-done/brief-db-distinta-numerata-sul-registro)
 la distinta porta `emittente_soggetto_ruolo_id` (`NOT NULL`, risolto in una sede
 sola alla nascita: dato, canale, operatore in sessione, o rifiuto), e questo
 modo legge quella colonna: **una lettura invece di tre `JOIN`**, e una distinta

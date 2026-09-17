@@ -208,7 +208,7 @@ function buildRowActions(data) {
     <div class="app-page-toolbar">
       <div class="app-page-filters" :inert="perimetroBloccato">
         <h2 style="margin: 0;">{{ t('vendite.approvazioni_prezzo.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('vendite.approvazioni_prezzo.page_description') }}</small>
+        <small class="app-text-muted">{{ t('vendite.approvazioni_prezzo.page_description') }}</small>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -269,7 +269,7 @@ function buildRowActions(data) {
       <p>{{ dialogMessage }}</p>
       <div class="form-field mt-1">
         <label>{{ dialogTextLabel }}</label>
-        <Textarea v-model="dialogText" rows="3" auto-resize class="w-full" />
+        <Textarea v-model="dialogText" rows="3" auto-resize />
       </div>
     </AppDialog>
   </div>

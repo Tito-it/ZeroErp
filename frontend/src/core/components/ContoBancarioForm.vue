@@ -93,7 +93,6 @@ function ibanOptionLabel(item) {
           option-label="label"
           option-value="value"
           :disabled="disabled"
-          class="w-full"
           :invalid="errors.includes('uso')"
         />
       </div>
@@ -110,13 +109,13 @@ function ibanOptionLabel(item) {
     <!-- Riga 2: Intestatario predefinito -->
     <div class="form-field">
       <label>{{ t('anagrafiche.conti_bancari.intestatario') }}</label>
-      <InputText v-model="form.intestatario_predefinito" :disabled="disabled" class="w-full" />
+      <InputText v-model="form.intestatario_predefinito" :disabled="disabled" />
     </div>
 
     <!-- Riga 3: Intestazione dichiarata -->
     <div class="form-field">
       <label>{{ t('anagrafiche.conti_bancari.intestazione_dichiarata') }}</label>
-      <InputText v-model="form.intestazione_dichiarata" :disabled="disabled" class="w-full" />
+      <InputText v-model="form.intestazione_dichiarata" :disabled="disabled" />
     </div>
 
     <!-- Riga 4: Banca/Filiale con autocomplete -->
@@ -129,7 +128,6 @@ function ibanOptionLabel(item) {
         :option-label="branchOptionLabel"
         :placeholder="t('anagrafiche.conti_bancari.banca_filiale')"
         :disabled="disabled"
-        class="w-full"
         :invalid="errors.includes('bank_branch_id')"
         :min-length="2"
         force-selection
@@ -150,7 +148,6 @@ function ibanOptionLabel(item) {
           :option-label="ibanOptionLabel"
           :placeholder="t('anagrafiche.conti_bancari.iban')"
           :disabled="disabled"
-          class="w-full"
           :invalid="errors.includes('iban') || errors.includes('iban_format')"
           :min-length="4"
           :inputProps="{ maxlength: FIELD_LENGTH.IBAN_MAX }"
@@ -167,7 +164,7 @@ function ibanOptionLabel(item) {
       </div>
       <div class="form-field">
         <label>{{ t('anagrafiche.conti_bancari.bic_swift') }}</label>
-        <InputText v-model="form.bic_swift" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.bic_swift" :disabled="disabled" />
       </div>
     </div>
 
@@ -176,12 +173,12 @@ function ibanOptionLabel(item) {
       <div class="form-field">
         <label>{{ t('anagrafiche.conti_bancari.valido_dal') }}</label>
         <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
-          :disabled="disabled" show-icon icon-display="input" class="w-full" />
+          :disabled="disabled" show-icon icon-display="input" />
       </div>
       <div class="form-field">
         <label>{{ t('anagrafiche.conti_bancari.valido_al') }}</label>
         <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
-          :disabled="disabled" show-icon icon-display="input" class="w-full"
+          :disabled="disabled" show-icon icon-display="input"
           :invalid="errors.includes('date_range')" />
       </div>
     </div>

@@ -28,7 +28,7 @@ porta»*. Nel frattempo la **testata** era visibile a tutti per una scelta scrit
 nella policy (`ente_incasso_id IS NULL`).
 
 Dal brief
-[distinta-numerata-sul-registro](/dev/work-in-progress/brief-db-distinta-numerata-sul-registro)
+[distinta-numerata-sul-registro](/dev/work-done/brief-db-distinta-numerata-sul-registro)
 **la distinta sa di chi è**: porta l'emittente in colonna (risolto alla nascita
 in una sede sola — dato, canale, operatore in sessione, o rifiuto — e per una
 distinta di fondi è l'emittente del **lotto**, per una sistemazione quello

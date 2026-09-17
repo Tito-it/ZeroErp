@@ -90,7 +90,7 @@ function eseguiAzione(azione, chiudi) {
 .app-toast-azioni {
   display: flex;
   flex-direction: column;
-  gap: var(--app-gap-sm, 0.5rem);
+  gap: var(--app-space-sm);
   width: 100%;
 }
 
@@ -116,6 +116,6 @@ function eseguiAzione(azione, chiudi) {
 .app-toast-azioni-pulsanti {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--app-gap-sm, 0.5rem);
+  gap: var(--app-space-sm);
 }
 </style>

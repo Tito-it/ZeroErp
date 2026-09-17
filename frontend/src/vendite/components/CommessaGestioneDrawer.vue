@@ -900,7 +900,7 @@ const drawerActions = computed(() => [
           <span v-if="stato.cliente_display" class="app-drawer-header-muted">
             {{ stato.cliente_display }}
           </span>
-          <span v-if="stato.policy_fatturazione" class="text-color-secondary">
+          <span v-if="stato.policy_fatturazione" class="app-text-muted">
             {{ stato.policy_fatturazione }}
           </span>
           <template #status>
@@ -1161,7 +1161,7 @@ const drawerActions = computed(() => [
       @save="salvaSblocco"
       @cancel="sbloccaDialog = false"
     >
-      <p class="text-color-secondary" style="margin-top: 0;">
+      <p class="app-text-muted" style="margin-top: 0;">
         {{ t('vendite.commesse.sblocca_conferma') }}
       </p>
       <div class="form-field">
@@ -1182,7 +1182,7 @@ const drawerActions = computed(() => [
       @save="salvaAnnullaRiga"
       @cancel="annullaRigaDialog = false"
     >
-      <p class="text-color-secondary" style="margin-top: 0;">
+      <p class="app-text-muted" style="margin-top: 0;">
         {{ t('vendite.commesse.annulla_riga_conferma') }}
       </p>
       <div class="form-field">

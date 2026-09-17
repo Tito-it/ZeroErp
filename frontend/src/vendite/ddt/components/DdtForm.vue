@@ -152,7 +152,7 @@ function onVettoreClear() {
             v-model="form.fatturazione_immediata"
             :invalid="campiErrati.includes('fatturazione_immediata')"
             :disabled="isLocked('fatturazione_immediata')" />
-          <small class="text-color-secondary">
+          <small class="app-text-muted">
             {{ t('vendite.ddt.fatturazione_immediata_hint') }}
           </small>
         </div>

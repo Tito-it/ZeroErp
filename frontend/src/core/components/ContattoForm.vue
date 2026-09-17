@@ -62,7 +62,6 @@ defineProps({
           :placeholder="t('anagrafiche.contatto.select_tipo_contatto')"
           :disabled="disabled || tipoDisabled"
           :invalid="errors.includes('tipo_contatto')"
-          class="w-full"
         />
         <small v-if="errors.includes('tipo_contatto')" class="app-field-error">
           {{ t('validation.campo_obbligatorio') }}
@@ -79,14 +78,13 @@ defineProps({
           :placeholder="t('anagrafiche.contatto.select_unita_organizzativa')"
           :disabled="disabled"
           show-clear
-          class="w-full"
         />
       </div>
     </div>
 
     <div class="form-field">
       <label>{{ t('anagrafiche.contatto.nominativo') }} *</label>
-      <InputText v-model="form.nominativo" :disabled="disabled" class="w-full"
+      <InputText v-model="form.nominativo" :disabled="disabled"
         :invalid="errors.includes('nominativo')" />
       <small v-if="errors.includes('nominativo')" class="app-field-error">
         {{ t('validation.campo_obbligatorio') }}
@@ -96,7 +94,7 @@ defineProps({
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('common.email') }}{{ requireEmail ? ' *' : '' }}</label>
-        <InputText v-model="form.email" :disabled="disabled" class="w-full"
+        <InputText v-model="form.email" :disabled="disabled"
           :invalid="emailInvalid || errors.includes('email') || errors.includes('email_format')"
           @blur="onEmailBlur" @input="onEmailInput" />
         <small v-if="emailInvalid || errors.includes('email_format')" class="app-field-error">
@@ -105,7 +103,7 @@ defineProps({
       </div>
       <div class="form-field">
         <label>{{ t('common.pec') }}</label>
-        <InputText v-model="form.pec" :disabled="disabled" class="w-full"
+        <InputText v-model="form.pec" :disabled="disabled"
           :invalid="pecInvalid || errors.includes('pec_format')"
           @blur="onPecBlur" @input="onPecInput" />
         <small v-if="pecInvalid || errors.includes('pec_format')" class="app-field-error">
@@ -117,18 +115,18 @@ defineProps({
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('common.telefono') }}</label>
-        <InputText v-model="form.telefono" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.telefono" :disabled="disabled" />
       </div>
       <div class="form-field">
         <label>{{ t('anagrafiche.contatto.cellulare') }}</label>
-        <InputText v-model="form.cellulare" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.cellulare" :disabled="disabled" />
       </div>
     </div>
 
     <div class="form-field">
       <label>{{ t('anagrafiche.contatto.note') }}</label>
       <Textarea v-model="form.note"
-      :invalid="campiErrati.includes('note')" :disabled="disabled" rows="2" class="w-full" />
+      :invalid="campiErrati.includes('note')" :disabled="disabled" rows="2" />
     </div>
   </div>
 </template>

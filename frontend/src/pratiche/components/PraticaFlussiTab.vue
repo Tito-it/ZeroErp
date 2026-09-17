@@ -56,7 +56,7 @@ watch(() => props.praticaId, (id) => { if (id) loadAll() }, { immediate: true })
 </script>
 
 <template>
-  <div class="pratica-flussi-tab">
+  <div>
     <!-- Lista 1: flussi istanziati (sola lettura) -->
     <h4 class="pratica-flussi-titolo">{{ t('pratiche.flussi_titolo') }}</h4>
     <DataTable
@@ -79,14 +79,14 @@ watch(() => props.praticaId, (id) => { if (id) loadAll() }, { immediate: true })
       </Column>
       <Column field="esito" :header="t('pratiche.flusso_col_esito')" style="width: 100px;">
         <template #body="{ data }">
-          <span v-if="data.esito" class="text-color-secondary">{{ data.esito }}</span>
+          <span v-if="data.esito" class="app-text-muted">{{ data.esito }}</span>
         </template>
       </Column>
       <Column field="data_scadenza" :header="t('pratiche.col_data_scadenza')" style="width: 100px;">
         <template #body="{ data }">{{ displayDate(data.data_scadenza) }}</template>
       </Column>
       <template #empty>
-        <div class="text-center text-color-secondary p-3">{{ t('pratiche.flussi_vuoti') }}</div>
+        <div class="text-center app-text-muted p-3">{{ t('pratiche.flussi_vuoti') }}</div>
       </template>
     </DataTable>
 
@@ -116,7 +116,7 @@ watch(() => props.praticaId, (id) => { if (id) loadAll() }, { immediate: true })
         </template>
       </Column>
       <template #empty>
-        <div class="text-center text-color-secondary p-3">{{ t('pratiche.flussi_step_tutti_completati') }}</div>
+        <div class="text-center app-text-muted p-3">{{ t('pratiche.flussi_step_tutti_completati') }}</div>
       </template>
     </DataTable>
   </div>

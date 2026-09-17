@@ -245,7 +245,7 @@ const pageActions = computed(() => [
           <Column :header="t('catalogo.col_fattore')" style="width: 150px;">
             <template #body="{ data }">
               <template v-if="editingFattoreId === data.id">
-                <div class="flex gap-1 align-items-center">
+                <div>
                   <InputNumber v-model="editingFattoreValue" :min="0" :min-fraction-digits="2"
                     :max-fraction-digits="10" style="width: 100px;" />
                   <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
@@ -285,7 +285,7 @@ const pageActions = computed(() => [
               <div class="form-field">
                 <label>{{ t('catalogo.col_fattore') }} *</label>
                 <InputNumber v-model="form.fattore" :min="0" :min-fraction-digits="2"
-                  :max-fraction-digits="10" class="w-full" />
+                  :max-fraction-digits="10" />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_dal') }}</label>
@@ -294,7 +294,6 @@ const pageActions = computed(() => [
                   :date-format="DATE_FORMAT"
                   show-icon
                   show-button-bar
-                  class="w-full"
                   :disabled="form.valido_dal_sempre"
                   :invalid="campiErrati.includes('valido_dal')"
                 />

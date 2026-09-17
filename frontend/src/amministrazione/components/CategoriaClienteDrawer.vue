@@ -179,7 +179,7 @@ function close() {
           <label>{{ t('amministrazione.categorie_clienti.field_partecipa_promo') }}</label>
           <ToggleSwitch v-model="form.partecipa_promo" :disabled="isReadOnlyEffective"
             :invalid="campiErrati.includes('partecipa_promo')" />
-          <small class="text-color-secondary">
+          <small class="app-text-muted">
             {{ t('amministrazione.categorie_clienti.field_partecipa_promo_hint') }}
           </small>
         </div>

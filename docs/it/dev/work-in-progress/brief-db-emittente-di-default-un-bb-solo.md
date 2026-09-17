@@ -482,6 +482,13 @@ parla prima del trigger.
 
 ## 11. Richieste al BE (stesso giro di PR, o subito dopo)
 
+> ✅ **Fatte tutte e quattro il 2026-09-17** (stesso giro del BE/FE della
+> distinta numerata, `dev/backend-tid`): policy rigenerate (i tre vecchi in
+> `CODICI_RITIRATI`, risolvono ancora), ripiego di `E_EMITTENTE_NON_RISOLTO`,
+> **nessun override** (raccomandazione accolta, ragione scritta accanto alla
+> voce di `E_PREV_…` che resta), i sei commenti coi nomi morti riscritti
+> (`emittente_attivo_service.py` sta in `core/`, non in `vendite/`).
+
 1. 🔴 `manage.py genera_error_policies`: entra `E_EMITTENTE_NON_RISOLTO`
    (`DATO_ERRATO`), i tre vecchi passano in `CODICI_RITIRATI` **e restano
    risolvibili**. È la corsa che copre anche i due `E_MAG_*` del Lotto 1 (già

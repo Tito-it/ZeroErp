@@ -536,7 +536,7 @@ const onClose = useDrawerClose(emit)
           </template>
         </DrawerContextHeader>
 
-        <div class="app-page-toolbar mt-2">
+        <div class="app-page-toolbar">
           <div class="app-page-filters" />
           <PageActionsBar :actions="pageActions" />
         </div>
@@ -677,7 +677,6 @@ const onClose = useDrawerClose(emit)
                 option-label="label"
                 option-value="value"
                 :disabled="formMode === 'edit'"
-                class="w-full"
                 :invalid="campiErrati.includes('tipo_eccezione')"
               />
             </div>
@@ -703,7 +702,6 @@ const onClose = useDrawerClose(emit)
                 option-label="label"
                 option-value="value"
                 show-clear
-                class="w-full"
               />
             </div>
             <div class="form-field">
@@ -713,7 +711,6 @@ const onClose = useDrawerClose(emit)
                 :options="fonteOptions"
                 option-label="label"
                 option-value="value"
-                class="w-full"
               />
             </div>
           </div>
@@ -723,7 +720,6 @@ const onClose = useDrawerClose(emit)
               <label>{{ t('vendite.offerte.field_prezzo_unitario') }}</label>
               <InputNumber
                 v-model="form.prezzo_unitario"
-                class="w-full"
                 :disabled="form.articolo_obj?.is_composito === true
                            || form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
                 :min-fraction-digits="0"
@@ -734,7 +730,6 @@ const onClose = useDrawerClose(emit)
               <label>{{ t('vendite.offerte.field_quantita') }}</label>
               <InputNumber
                 v-model="form.qta_operativa"
-                class="w-full"
                 :min-fraction-digits="0"
                 :max-fraction-digits="6"
               />
@@ -754,12 +749,11 @@ const onClose = useDrawerClose(emit)
                 :placeholder="form.articolo_id
                   ? t('vendite.offerte.field_uom_operativa')
                   : t('vendite.promo_articoli.field_uom_articolo_first')"
-                class="w-full"
               />
             </div>
             <div class="form-field">
               <label>{{ t('vendite.offerte.field_ordine') }}</label>
-              <InputNumber v-model="form.ordine" class="w-full" :min="0"
+              <InputNumber v-model="form.ordine" :min="0"
                 :invalid="campiErrati.includes('ordine')"
               />
             </div>

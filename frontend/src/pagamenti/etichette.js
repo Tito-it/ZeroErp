@@ -24,6 +24,8 @@
 
 import { useI18n } from 'vue-i18n'
 
+import { displayDate } from '../core/utils/date'
+import { formatCurrency } from '../core/utils/format'
 import { labelOrCode } from '../core/utils/i18nLabel'
 import {
   CHI_E_IN_CREDITO,
@@ -54,8 +56,35 @@ export function useEtichettePagamenti() {
     etichetta('pagamenti.rate_fuori_capienza.motivo', v)
   const coda = (v) => etichetta('pagamenti.righe.coda', v)
 
+  // Scopo: L'ETICHETTA DI UNA RATA — «Rata 2 · 30/09/2026 · 610,00 € ·
+  //        restano 400,00 €» — con i pezzi che il chiamante HA: numero e
+  //        scadenza sempre, importo e residuo quando ci sono.
+  // ⭐ Una sede sola (2026-09-17, rilettura del pezzo B di D19): la stessa
+  //    composizione stava nella tendina delle rate, nel blocco «Destinazione»
+  //    del form e nella colonna «Rata» del drawer — tre forme della stessa
+  //    riga, che a video devono leggersi uguali.
+  // ⚠️ Il residuo NEGATIVO si dice a parole («di troppo»), mai «-120,00», che
+  //    si legge come un guasto. ⛔ E vale finche' la nota di credito non ha
+  //    una rata (brief D19, P-5): li' il segno vuol dire «da rimborsare», e la
+  //    frase dovra' seguire la NATURA del documento — non un `if` sul segno.
+  const rata = ({ numero_rata, data_scadenza, importo = null, residuo = null } = {}) => {
+    const parti = [t('pagamenti.rata.n', { n: numero_rata })]
+    if (data_scadenza) parti.push(displayDate(data_scadenza))
+    if (importo != null) parti.push(formatCurrency(importo))
+    if (residuo != null) {
+      const r = Number(residuo)
+      parti.push(
+        r < 0
+          ? t('pagamenti.rata.di_troppo', { importo: formatCurrency(Math.abs(r)) })
+          : t('pagamenti.rata.residuo', { importo: formatCurrency(r) }),
+      )
+    }
+    return parti.join(' · ')
+  }
+
   return {
     etichetta,
+    rata,
     credito,
     tipoCanale,
     destinazione,

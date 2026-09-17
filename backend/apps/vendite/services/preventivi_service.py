@@ -365,7 +365,10 @@ def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
 #    parlante. Defense-in-depth: il trigger DB
 #    trgfn_preventivi_guard_utility_istanza_coerenza applica la stessa regola.
 #  - emittente_fiscale_id: opzionale nel payload. Se None il trigger DB
-#    trgfn_preventivi_default_emittente lo valorizza da GUC app.current_user_id.
+#    script.trgfn_default_emittente_fiscale (BB unico dal 2026-09-15; la copia
+#    trgfn_preventivi_default_emittente e' droppata) lo valorizza da GUC
+#    app.current_user_id, e senza sessione risolvibile solleva
+#    E_EMITTENTE_NON_RISOLTO.
 #    Specificarlo esplicito solo per admin globale (utente senza emittente
 #    assegnato che sceglie l'emittente del documento).
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:

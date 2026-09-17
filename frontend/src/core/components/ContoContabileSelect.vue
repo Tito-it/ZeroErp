@@ -76,7 +76,7 @@ function onChange(event) {
     </template>
     <template #value>
       <span v-if="selectedItem">{{ formatOption(selectedItem) }}</span>
-      <span v-else class="text-color-secondary">{{ placeholder || t('common.select_conto') }}</span>
+      <span v-else class="app-text-muted">{{ placeholder || t('common.select_conto') }}</span>
     </template>
   </Select>
 </template>

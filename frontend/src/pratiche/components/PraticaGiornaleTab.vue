@@ -86,6 +86,6 @@ watch(() => props.praticaId, (id) => {
 .giornale-flusso {
   font-size: var(--app-font-size-sm);
   font-weight: 600;
-  color: var(--text-color);
+  color: var(--app-text-color);
 }
 </style>

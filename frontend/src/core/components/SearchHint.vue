@@ -25,7 +25,7 @@ const { t } = useI18n()
   justify-content: center;
   gap: 0.75rem;
   height: 100%;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.95rem;
 }
 

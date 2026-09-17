@@ -91,7 +91,7 @@ function toggle(event) {
     </template>
 
     <Popover v-if="apribile" ref="popover" :style="{ width: '420px' }">
-      <h4 class="mt-0 mb-05">{{ titolo || t('common.scadenze_titolo') }}</h4>
+      <h4>{{ titolo || t('common.scadenze_titolo') }}</h4>
       <DataTable
         :value="sintesi.rate"
         class="app-datatable"

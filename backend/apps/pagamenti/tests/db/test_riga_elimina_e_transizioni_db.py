@@ -34,10 +34,18 @@ Indice test eseguiti:
 11) MatriciTests.test_il_difetto_del_collaudo_non_e_piu_offerto
 12) ModificaSecondoTempoTests.test_il_patch_oltre_la_capienza_e_rifiutato_confermabile
 13) ModificaSecondoTempoTests.test_col_secondo_tempo_il_patch_passa_e_resta_scritto
+14) ColonneTests.test_la_riga_porta_la_destinazione_leggibile
+15) ColonneTests.test_anche_la_coda_porta_la_destinazione_leggibile
+16) ColonneTests.test_il_numero_documento_viene_dalla_sede_unica
+17) ColonneTests.test_la_testata_porta_l_emittente_e_il_registro
+18) ColonneTests.test_la_madre_accetta_l_emittente
+19) NumerazioneSulRegistroTests.test_senza_emittente_la_distinta_e_della_sessione_e_numerata
+20) NumerazioneSulRegistroTests.test_con_emittente_esplicito_arriva_com_e_e_riusa
 """
 
 from __future__ import annotations
 
+import re
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -56,6 +64,30 @@ _COLONNE_ELIMINA = (
     "elimina_blocco_reason_key",
     "elimina_blocco_dettaglio",
     "can_eliminare",
+)
+
+# ⭐ La destinazione LEGGIBILE (D19-b, 2026-09-17): il documento e la rata con
+#    cui una persona li riconosce, non il contatore. Un nome sbagliato qui e'
+#    un 500 sul dettaglio della distinta, e i mock non lo vedono.
+_COLONNE_DESTINAZIONE = (
+    "fattura_numero_documento",
+    "fattura_data",
+    "fattura_totale_doc",
+    "fattura_registro_codice",
+    "fattura_natura_doc_codice_interno",
+    "fattura_natura_doc_descrizione",
+    "scadenza_importo",
+)
+
+# ⭐ Di chi e' la distinta (D3, 2026-09-17): le tre forme dell'emittente che
+#    il frontend legge, la chiave del DB e i due assi del contatore.
+_COLONNE_EMITTENTE_TESTATA = (
+    "emittente_soggetto_ruolo_id",
+    "emittente_fiscale_id",
+    "emittente_fiscale_codice",
+    "emittente_ragione_sociale",
+    "registro_id",
+    "anno",
 )
 
 
@@ -99,6 +131,35 @@ class ColonneTests(_DbTestCase):
         for nome in _COLONNE_ELIMINA:
             self.assertIn(nome, colonne)
 
+    # Scopo: D19-b — le sette colonne con cui la riga racconta il SUO documento
+    #        e la SUA rata (numero parlante, data, totale, registro, natura,
+    #        importo della rata), sulla riga «nuda».
+    def test_la_riga_porta_la_destinazione_leggibile(self):
+        colonne = self._colonne(f"{repo_mod._RIGA_SELECT} WHERE r.id = %s", [-1])
+        for nome in _COLONNE_DESTINAZIONE:
+            self.assertIn(nome, colonne)
+
+    # Scopo: ...e sulla coda, che condivide il frammento: il seed
+    #        `pagamenti.righe` puo' prenderle quando vorra'.
+    def test_anche_la_coda_porta_la_destinazione_leggibile(self):
+        colonne = self._colonne(f"{repo_mod._RIGA_CODA_SELECT} WHERE r.id = %s", [-1])
+        for nome in _COLONNE_DESTINAZIONE:
+            self.assertIn(nome, colonne)
+
+    # Scopo: il numero parlante NON e' composto nel repository: e' la sede unica
+    #        del database a produrlo. Si asserisce sul FRAMMENTO, perche' la
+    #        regola e' «si legge, non si compone» e una composizione a mano
+    #        (`numero::text || ' - ' || serie`) darebbe le stesse colonne e
+    #        passerebbe i due test sopra — sbagliando in silenzio sulla serie
+    #        NULL, dove il numero sparirebbe. ⚠️ E' un presidio sulla FORMA
+    #        (la chiamata alla fn c'e'), non un cancello contro ogni
+    #        composizione possibile: quello non si scrive con una stringa.
+    def test_il_numero_documento_viene_dalla_sede_unica(self):
+        self.assertIn(
+            "vendite.fn_numero_documento_fattura(f.numero, f.serie) AS fattura_numero_documento",
+            repo_mod._RIGA_COLONNE,
+        )
+
     # Scopo: FE-9 — la chiave della riga di stato si legge dal `meta` dello
     #        stato. Si asserisce che la COLONNA c'e', non il suo valore.
     def test_la_testata_porta_stato_info_key(self):
@@ -106,6 +167,44 @@ class ColonneTests(_DbTestCase):
             f"{repo_mod._DISTINTA_SELECT}{repo_mod._TOTALI_LATERAL} WHERE c.id = %s", [-1]
         )
         self.assertIn("stato_info_key", colonne)
+
+    # Scopo: ⭐ La distinta SA DI CHI E' (D3, 2026-09-17): la testata porta
+    #        l'emittente nelle tre forme che il frontend legge (PK, sigla,
+    #        ragione sociale) piu' la chiave del DB e i due assi del contatore.
+    #        Si pianifica contro il database vero: `emittente_soggetto_ruolo_id`,
+    #        `registro_id` e `anno` sono colonne nate col cantiere, e un nome
+    #        sbagliato in un JOIN e' un 500 sull'elenco, non un test rosso.
+    def test_la_testata_porta_l_emittente_e_il_registro(self):
+        colonne = self._colonne(
+            f"{repo_mod._DISTINTA_SELECT}{repo_mod._TOTALI_LATERAL} WHERE c.id = %s", [-1]
+        )
+        for nome in _COLONNE_EMITTENTE_TESTATA:
+            self.assertIn(nome, colonne, f"manca {nome} nella testata")
+
+    # Scopo: La madre accetta `p_emittente_fiscale_id` (L6 del brief): la
+    #        chiamata NOMINATA del repository si pianifica con la firma viva.
+    #        ⚠️ EXPLAIN pianifica senza eseguire: nessuna distinta nasce.
+    def test_la_madre_accetta_l_emittente(self):
+        def _pianifica(cur):
+            cur.execute(
+                """
+                EXPLAIN SELECT pagamenti.fn_get_or_create_vendite_contabile(
+                    p_centro_riscossione_id := %s,
+                    p_data_contabile        := %s,
+                    p_ente_incasso_id       := %s,
+                    p_emittente_fiscale_id  := %s,
+                    p_codice_stato_interno  := %s,
+                    p_meta                  := %s::jsonb,
+                    p_origine               := %s)
+                """,
+                [
+                    1, date.today(), None, None,
+                    pagamenti_service.STATO_DISTINTA_INIZIALE, "{}",
+                    pagamenti_service.ORIGINE_MANUALE,
+                ],
+            )
+            return cur.fetchall()
+        self.assertTrue(self._con_operatore(_pianifica))
 
     # Scopo: La check che alimenta la LATERAL esiste, con UN parametro. Se
     #        cambiasse firma, la lista delle righe risponderebbe 500.
@@ -224,14 +323,23 @@ class MatriciTests(_DbTestCase):
 # ⚠️ Passi SEPARATI, non una CTE sola: il contesto operatore va aperto PRIMA
 #    che nasca il cliente (il guard del billing account lo pretende), e in una
 #    CTE l'ordine di valutazione dei rami non e' garantito.
-_FIXTURE_PASSI: tuple[str, ...] = (
+# Il MONDO di ogni fixture: un'azienda col suo operatore, e il contesto aperto
+# su di lui. E' il primo passo di tutte le fixture di questo file, e sta in una
+# sede sola (regola del 2): la seconda fixture lo ricopiava con un altro nome
+# di TEMP TABLE. ⚠️ Il contesto lo apre la funzione pgTAP, non
+# `apri_contesto_operatore`: l'operatore deve essere QUELLO dell'azienda
+# costruita, o la RLS non gli farebbe vedere cio' che nasce dopo.
+_FIXTURE_MONDO: tuple[str, ...] = (
     """
-    CREATE TEMP TABLE _mondo_bst AS
+    CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
     """
-    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo_bst))
+    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))
     """,
+)
+
+_FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
     """
     CREATE TEMP TABLE _cli_bst AS
     SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('secondo tempo') c
@@ -243,7 +351,7 @@ _FIXTURE_PASSI: tuple[str, ...] = (
             (registro_id, emittente_soggetto_ruolo_id, billing_account_id, meta)
         SELECT script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id), m.soggetto_ruolo_id,
                c.billing_account_id, '{"test_scope": "be_secondo_tempo"}'::jsonb
-          FROM _mondo_bst m, _cli_bst c
+          FROM _mondo m, _cli_bst c
         RETURNING id
     )
     SELECT id AS fattura_id FROM ins
@@ -287,11 +395,9 @@ _FIXTURE_PASSI: tuple[str, ...] = (
 
 
 class ModificaSecondoTempoTests(_DbTestCase):
-    # Scopo: monta la fixture nel contesto dell'operatore che la possiede e
-    #        consegna l'id della riga. ⚠️ Il contesto lo apre la funzione
-    #        pgTAP dentro la CTE, non `apri_contesto_operatore`: l'operatore
-    #        deve essere QUELLO dell'azienda costruita, o la RLS non gli
-    #        farebbe vedere la fattura. Le TEMP TABLE muoiono col rollback.
+    # Scopo: monta la fixture (il mondo di `_FIXTURE_MONDO` piu' cliente,
+    #        fattura, rata, distinta e riga) e consegna l'id della riga. Le
+    #        TEMP TABLE muoiono col rollback.
     def _riga_piena(self, cur) -> int:
         for passo in _FIXTURE_PASSI:
             cur.execute(passo)
@@ -338,3 +444,85 @@ class ModificaSecondoTempoTests(_DbTestCase):
         self.assertEqual(importo, Decimal("900.00"))
         self.assertIs(forzata, True)
         self.assertEqual(motivo, "pagato doppio")
+
+
+class NumerazioneSulRegistroTests(_DbTestCase):
+    """⭐ La distinta prende il numero dal registro e sa di chi e' (brief
+    distinta-numerata-sul-registro, BE-5), provato PER INTERO: service → madre
+    → sede unica dell'emittente → trigger numeratore → `DistintaRow`.
+    ⚠️ I pgTAP provano il database con un INSERT; qui si prova che il BACKEND
+    ci arrivi — la chiamata nominata, il parametro nuovo, le colonne nuove —
+    che e' il pezzo in mezzo che nessuno dei due lati vede da solo.
+    """
+
+    # Scopo: monta l'azienda con l'operatore, apre il contesto SUO e consegna
+    #        (sigla, PK) dell'emittente. Qui la distinta la apre il SERVICE,
+    #        com'e' in esercizio: il mondo basta, senza cliente ne' fattura.
+    #        Le TEMP TABLE muoiono col rollback.
+    def _mondo(self, cur) -> tuple[str, int]:
+        for passo in _FIXTURE_MONDO:
+            cur.execute(passo)
+        cur.execute("SELECT emittente_codice, emittente_fiscale_id FROM _mondo")
+        row = cur.fetchone()
+        assert row is not None
+        return str(row[0]), int(row[1])
+
+    # Scopo: il centro CASSA (senza canale): e' il caso in cui l'emittente
+    #        non si deriva dal conto e la sessione deve rispondere.
+    @staticmethod
+    def _centro_cassa(cur) -> int:
+        cur.execute(
+            """
+            SELECT c.id FROM pagamenti.centri_riscossione c
+             WHERE c.attivo IS TRUE AND c.codice_interno = 'CASSA'
+             ORDER BY c.id LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        assert row is not None, "centro CASSA a catalogo"
+        return int(row[0])
+
+    # Scopo: ⭐ Senza canale e SENZA emittente nel payload la distinta nasce
+    #        lo stesso — dell'operatore in sessione (livello 3) — col codice
+    #        `DIS-<sigla>-<anno>-<7 cifre>` sul SUO registro, e la testata lo
+    #        racconta nelle tre forme. E' il percorso dell'operatore normale.
+    def test_senza_emittente_la_distinta_e_della_sessione_e_numerata(self):
+        # ⚠️ Una data sola per tutto il test: `date.today()` chiamata due volte
+        #    a cavallo della mezzanotte darebbe due anni.
+        oggi = date.today()
+
+        def _prova(cur):
+            sigla, ef_id = self._mondo(cur)
+            esito = pagamenti_service.crea_distinta({
+                "centro_riscossione_id": self._centro_cassa(cur),
+                "data_contabile": oggi.isoformat(),
+                "meta": {"test_scope": "be_numerazione"},
+            })
+            return sigla, ef_id, esito["distinta"]
+        sigla, ef_id, d = self._con_operatore(_prova)
+        self.assertRegex(d["codice"], rf"^DIS-{re.escape(sigla)}-{oggi.year}-\d{{7}}$")
+        self.assertEqual(d["emittente_fiscale_id"], ef_id)
+        self.assertEqual(d["emittente_fiscale_codice"], sigla)
+        self.assertTrue(d["emittente_ragione_sociale"])
+        self.assertIsNotNone(d["registro_id"])
+        self.assertEqual(d["anno"], oggi.year)
+
+    # Scopo: Con l'emittente ESPLICITO nel payload (la PK, com'e' nel form)
+    #        arriva com'e' — e con lo stesso operatore e' lo stesso documento:
+    #        la chiave di riuso comprende l'emittente, quindi «ridà quella di
+    #        prima» e non ne apre una seconda.
+    def test_con_emittente_esplicito_arriva_com_e_e_riusa(self):
+        def _prova(cur):
+            sigla, ef_id = self._mondo(cur)
+            base = {
+                "centro_riscossione_id": self._centro_cassa(cur),
+                "data_contabile": date.today().isoformat(),
+                "meta": {"test_scope": "be_numerazione"},
+            }
+            prima = pagamenti_service.crea_distinta({**base, "emittente_fiscale_id": ef_id})
+            seconda = pagamenti_service.crea_distinta(dict(base))
+            return ef_id, prima["distinta"], seconda["distinta"]
+        ef_id, prima, seconda = self._con_operatore(_prova)
+        self.assertEqual(prima["emittente_fiscale_id"], ef_id)
+        self.assertEqual(prima["id"], seconda["id"])
+        self.assertEqual(prima["codice"], seconda["codice"])

@@ -449,7 +449,8 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   (statement-level su `ordini_righe` INS/UPD/DLT) e `trgfn_ordini_ricalcola_totali`
   (`UPDATE OF emittente_fiscale_id`, l'aliquota dipende dallo stato emittente).
 - Trigger testata: `trgfn_ordini_gen_numero`, `trgfn_ordini_normalize`,
-  `trgfn_ordini_default_emittente`, `trgfn_ordini_guard_emittente_ba`,
+  `script.trgfn_default_emittente_fiscale` (dal 2026-09-15 al posto di
+  `trgfn_ordini_default_emittente`), `trgfn_ordini_guard_emittente_ba`,
   `trgfn_ordini_guard_transizione_approvazione`, lock numero, immutabilità
   `canale_origine`.
 - Modello esteso: `agente_soggetto_ruolo_id` (`20260603-12`),

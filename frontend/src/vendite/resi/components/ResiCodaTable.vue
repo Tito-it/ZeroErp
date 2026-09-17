@@ -454,7 +454,6 @@ defineExpose({ reload })
         severity="info"
         :closable="false"
         size="small"
-        class="app-coda-filtro-doc"
       >
         {{ filtroDocumento }}
         <Button

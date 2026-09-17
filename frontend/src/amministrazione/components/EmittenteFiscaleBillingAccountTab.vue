@@ -235,12 +235,12 @@ function buildRowActions(data) {
          e' il motivo per cui lo scaffolding non riceve `onNew` e per cui il
          BB espone lo slot `testata`. -->
     <template #testata>
-      <div v-if="!isReadonly" class="form-grid-2col mb-3">
+      <div v-if="!isReadonly" class="form-grid-2col">
         <BillingAccountLookup
           v-model="selectedBA"
           :placeholder="t('amministrazione.emittenti_fiscali.ba_search_placeholder')"
         />
-        <div class="flex gap-2">
+        <div>
           <Button
             :label="t('amministrazione.emittenti_fiscali.ba_add_specific')"
             icon="pi pi-plus"
@@ -293,7 +293,7 @@ function buildRowActions(data) {
     </template>
 
     <template #empty>
-      <div class="app-empty">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
+      <div class="app-empty-state">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
     </template>
   </DrawerTabLista>
 </template>

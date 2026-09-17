@@ -45,7 +45,7 @@ const { t } = useI18n()
           {{ contratto.billing_account_ragione_sociale || contratto.billing_account_codice }}
           <span
             v-if="contratto.billing_account_codice && contratto.billing_account_ragione_sociale"
-            class="text-color-secondary"
+            class="app-text-muted"
           >
             · {{ contratto.billing_account_codice }}
           </span>

@@ -43,7 +43,7 @@ const { t } = useI18n()
   font-size: 1.15rem;
   font-weight: 500;
   margin: 0 0 0.5rem 0;
-  color: var(--app-text-primary, inherit);
+  color: var(--app-text-color);
 }
 
 .app-blocked-panel__hint {

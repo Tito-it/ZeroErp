@@ -412,7 +412,7 @@ const drawerActions = computed(() => {
           <div class="form-field">
             <label>{{ t('catalogo.field_listino_tipologia') }}</label>
             <LookupSelect v-model="form.listino_tipologia_id" rel="config.listini_tipologie" :placeholder="t('catalogo.select_listino_tipologia')" show-clear />
-            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_spesa') }}</label>
@@ -422,7 +422,7 @@ const drawerActions = computed(() => {
             <label>{{ t('catalogo.field_natura_vendita') }}</label>
             <!-- NOT NULL a DB (default MERCE): niente show-clear -->
             <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')" />
-            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
           </div>
         </div>
 
@@ -466,12 +466,12 @@ const drawerActions = computed(() => {
             <label>{{ t('catalogo.field_modo_approvvigionamento') }}</label>
             <LookupSelect v-model="form.modo_approvvigionamento_id" rel="config.modi_approvvigionamento"
               :placeholder="t('catalogo.select_modo_approvvigionamento')" />
-            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_modo_approvvigionamento') }}</small>
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_modo_approvvigionamento') }}</small>
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_gestito_a_magazzino') }}</label>
             <ToggleSwitch v-model="form.gestito_a_magazzino" />
-            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_lead_time_giorni') }}</label>

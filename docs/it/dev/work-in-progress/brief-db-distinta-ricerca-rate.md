@@ -26,22 +26,14 @@
 > è in [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md).
 >
 > **Stato:** 📝 **brief scritto il 2026-09-15** (lato BE/FE, su «procedi» di
-> Tid). Nessun changeSet scritto, nessuna migrazione. Il pezzo **B** non ha
-> prerequisiti DB e parte subito; **A** aspetta P-1; **C** e **D** aspettano
-> P-2 e P-4; **P-5** è una decisione che il DB verifica sui due contro-pezzi.
->
-> 🔎 **2026-09-17 — risposta del DB in §4-bis**:
-> P-1, P-2, P-3, P-4 **si fanno** (P-3 in una terza forma: un nucleo set-based
-> e tre porte); P-5 ha **tre** contro-pezzi e non due, e **aspettava una
-> decisione di modello** che non è della nota di credito — il *punto cieco
-> della rata* (§4-bis.6, **Q-A**, decisa: **γ**, imputazione derivata).
-> ✅ **17-09 sera: lato DB CHIUSO** — 13 changeSet (`20260917-02 … -14`)
-> **applicati su dev** (migrate di Tid, seed `ui` compreso), **pgTAP verdi
-> come `zeroerp_app`, nessuna regressione in baseline** (Tid, 17-09 sera).
-> Le tre fixture nuove sono state rifatte sul modello «il mondo si costruisce,
-> non si cerca» (§4-bis.9). Stato per passo, scostamenti e note per il BE in
-> **§4-bis.9**. Il brief resta in `work-in-progress/` per i pezzi A-D del BE/FE;
-> lato DB non c'è più niente in attesa.
+> Tid). Nessun changeSet scritto, nessuna migrazione. ✅ **Il pezzo B è scritto
+> e committato il 2026-09-17** (BE + FE, riletto criticamente lo stesso giorno
+> — consuntivo in [piano §0-bis](piano-be-fe-distinta-ricerca-rate.md) e
+> registro): la riga porta il suo documento e la sua rata, il form li mostra
+> nei due modi, `RataSelect` l'importo, la base dei saldi il «prima di sé»
+> sulla rata. **A** aspetta P-1; **C** e **D** aspettano P-2 e P-4; **P-5** è
+> una decisione che il DB verifica sui due contro-pezzi; **P-6** (17/09) nasce
+> da B: l'esclusione «prima di sé» manca sul documento.
 
 ---
 
@@ -54,6 +46,7 @@
 | **P-3** | 🔴 **domanda**: il saldo di N rate in **una** valutazione. Oggi `fn_get_saldo_rata` è plpgsql a tre letture, per rata; su un perimetro filtrato regge, sullo scadenzario intero no. E il filtro «solo aperte» **è** sul residuo | C (il filtro), lo scadenzario | §4.3 |
 | **P-4** | seed `ui.lista_definizione` **`pagamenti.rate`** + colonne | C, D | §4.4 |
 | **P-5** | ⭐ **decisione di Tid da verificare**: la **nota di credito ha UNA rata**. Oggi non ne ha nessuna (`fn_genera_scadenze_fattura`, base < 0 → zero rate) e `fatture_scadenze` porta il CHECK `chk_fatture_scadenze_importo_pos` | C — nel picker la nota di credito va **segnalata, non nascosta**: capita che il cliente la paghi | §4.5 |
+| **P-6** *(17/09, dal pezzo B)* | «prima di sé» anche sul **documento**: `fn_get_saldo_fattura_contabili` prende il solo `p_fattura_id`, mentre `fn_get_saldo_rata` ha `p_escludi_contabile_riga_id`. Chi corregge una riga **senza rata** (fondo fattura) legge un «in lavorazione» che conta la riga stessa — il pannello lo dichiara, non lo sana | B — la modifica di una riga su documento | §4.6 |
 
 ---
 
@@ -218,6 +211,18 @@ La forma che propongo, sul modello e non sulla comodità:
 paga dal **lookup fattura** come riga su documento senza rata — il lookup ricco
 di P-1 la **segnala** già con la natura. Il caso di Tid è coperto oggi; P-5 lo
 porta nell'elenco.
+
+### 4.6 P-6 — `fn_get_saldo_fattura_contabili` con l'esclusione di una riga *(piccolo, dal pezzo B)*
+
+Stessa forma della sorella: `p_escludi_contabile_riga_id bigint DEFAULT NULL`,
+stesso guard (`<= 0` → `E_PAGAMENTI_CHIAMATA_NON_VALIDA`), la riga esclusa dal
+solo conto dell'«in lavorazione» (è l'unico numero in cui una riga non
+registrata entra). ⚠️ `fn_get_saldo_fattura` la chiama con un argomento: resta
+valida per l'overload con `DEFAULT`, ma vale la regola di
+`feedback_overload_ambiguo_default` — **non** due funzioni, un parametro in
+più sulla stessa. Il BE (`saldi_service.saldo_documento`) e il FE (`useSaldi`,
+`ESCLUSIONE_SUPPORTATA[DOCUMENTO]`) sono già scritti per riceverla: si accende
+un flag, niente di nuovo da disegnare.
 
 ---
 
@@ -675,7 +680,7 @@ ha scritto):
 
 ## 5. Cosa deve fare il backend *(solo l'elenco: il piano è loro)*
 
-- **B** (subito): cinque colonne in `_RIGA_COLONNE` (`fattura_numero_documento`, `fattura_data`, `fattura_totale_doc`, `fattura_registro_codice`, `scadenza_importo`) + `LEFT JOIN registri_fatturazione`.
+- **B** ✅ (17/09): **sette** colonne in `_RIGA_COLONNE` (le cinque previste — `fattura_numero_documento` dalla fn sede unica, `fattura_data`, `fattura_totale_doc`, `fattura_registro_codice`, `scadenza_importo` — più `fattura_natura_doc_codice_interno/descrizione`: la natura si segnala, D19-e) + `LEFT JOIN registri_fatturazione` e `nature_doc_fiscale`; tre presidi sul DB provvisto.
 - **C** (dopo P-2/P-4): `GET /pagamenti/rate/` paginata in `saldi_service`; whitelist di ordinamento chiavata sul `campo_sorgente`; saldi in `LATERAL` sulla pagina (P-3 quando c'è).
 - **D** (dopo C): `POST /pagamenti/distinte/{id}/righe/da-rate/` — fan-out per riga, `falliti[]` con l'errore intero (`ErrorTranslator.to_api_error`), `forzata`/`motivo_forzatura` per riga.
 - **A** (dopo P-1): niente da fare, la lista passa `v.*`.
@@ -683,7 +688,7 @@ ha scritto):
 ## 6. Cosa deve fare il frontend *(solo l'elenco)*
 
 - **A**: opzione del `FatturaLookup` a tre righe (documento · registro · data · totale · natura / cliente · id fiscale) — e la natura è un **Tag**, non testo.
-- **B**: tabella righe con documento e «rata n · scadenza»; blocco «Destinazione» in sola lettura nel form (creazione e modifica) + `SaldoPanel` RATA/DOCUMENTO; `RataSelect` con l'importo della rata.
+- **B** ✅ (17/09): tabella righe con documento (Tag natura via il BB nuovo `NaturaDocTag`) e «Rata n · scadenza»; blocco «Destinazione» in sola lettura nel form (creazione e modifica) + `SaldoPanel` RATA/DOCUMENTO con `escludiRigaId`; `RataSelect` con l'importo della rata; etichetta della rata in una sede (`useEtichettePagamenti().rata`).
 - **C**: `RatePickerDialog` (`AppDialog` xl + `<ListaConfigurabile codice="pagamenti.rate">`), pulsante accanto al lookup, criterio obbligatorio, modalità singola → compila il form.
 - **D**: modalità multipla dal toolbar del drawer, area temporanea (`useSelezioneLista` + importi per riga), Salva → `da-rate/`, esito parziale → restano le fallite col motivo e il secondo tempo per riga.
 - Dopo P-5: il residuo negativo si dice per **natura** («da rimborsare» su una NC, «di troppo» su una fattura).
@@ -710,4 +715,6 @@ rifiuto di capienza su una riga sola che non porta via le altre.
 | **2026-09-17** (notte) | ✅ **Migrate completo (seed `ui` compreso), pgTAP come app verdi, baseline senza regressione** — Tid. Lato DB **chiuso**. Le tre fixture nuove rifatte sul modello «il mondo si costruisce, non si cerca» (§4-bis.9): su `zeroerp_ci` le anagrafiche sono a zero e una fixture che «cerca» esce vuota. Il brief resta in `work-in-progress/` per A-D (BE/FE) |
 | **2026-09-17** (sera) | ✅ **Lato DB consegnato e applicato su dev** (Tid, 15:04 e 15:23). Q-A…Q-F decise da Tid una alla volta (γ · spazio = saldo − in_lavorazione · data dal termine · il W_ resta · registro sulle tre sorelle · niente backfill). 13 changeSet `20260917-02…-14`: P-1 (+3 sorelle), P-2, P-3 (nucleo + porta 1 + porta 2, poi la rev γ), P-5 (drop CHECK, generatore, numerazione, `vw_rate_fuori_capienza` in forma D14-c + `numero_documento`), seed `ui` 68/750-765 + 766 tutti spenti. pgTAP: `test-fn-get-saldi-rate-v1` (17), `test-vw-fatture-scadenze-lista-v1` (8), `test-nc-rata-unica-v1` (12), `test-vw-fatture-lista` 8→11, due test riscritti. Due scostamenti di rilievo: l'array del nucleo è **obbligatorio** (EXPLAIN: l'`OR IS NULL` non si piega in LATERAL) e **l'ordine dei fatti conta** nell'imputazione. Stato e note per il BE in §4-bis.9 |
 | **2026-09-17** | 🔎 **Risposta del DB** (§4-bis). Sei fatti del §1 corretti su `pg_catalog`: il CHECK è `>= 0` (lo zero è ammesso), le sorelle col registro sono **tre** e nessuna vista lo espone, una riga senza rata **non incontra nessuna capienza** (il guard esce su `scadenza_id IS NULL`), P-5 ha un **terzo** contro-pezzo (`fn_assign_numero_fattura` respinge rate su totale ≤ 0), la RLS delle rate ha anche la policy del portale, e impilare P-2 su `vw_fatture_lista` trascina la CTE del lineage (`EXPLAIN`). Piano: P-1/P-2/P-4 come chiesto (P-2 coi JOIN scritti, P-4 spento); P-3 in **terza forma** — un nucleo set-based `fn_get_saldi_rate` e tre porte; P-5 confermata sul modello ma **bloccata da Q-A**: il **punto cieco della rata** (i movimenti senza rata non arrivano a `fn_get_saldo_rata`; col fondo fattura una NC con rata conterebbe il credito due volte) — tre strade, raccomandata **γ** (imputazione derivata nel nucleo). Sei domande in §4-bis.7. Nessun changeSet scritto |
+| **2026-09-17** (2) | ✅ **B committato** dopo la rilettura critica (piano, registro 17/09-2): un BB nuovo (`NaturaDocTag`), l'etichetta della rata in una sede, `useSaldi` con lettore e capacità in una riga sola, sei classi morte sanate. §5/§6 aggiornati |
+| **2026-09-17** | ➕ **P-6** (§4.6), dal pezzo B scritto lo stesso giorno: l'esclusione «prima di sé» esiste solo sulla rata; sul documento il pannello la dichiara non applicata |
 | **2026-09-15** | 📝 Brief scritto (BE/FE), dopo la decisione di Tid in chat: i quattro pezzi accettati; sulla nota di credito «una rata sola, segnalata nel picker». Fatti verificati sulla doc auto-gen: NC senza rate per costruzione (base < 0), CHECK sull'importo positivo. D19 riportata nel brief madre §2-bis |

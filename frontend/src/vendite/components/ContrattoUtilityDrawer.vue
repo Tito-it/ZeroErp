@@ -103,26 +103,26 @@ const onClose = useDrawerClose(emit)
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_tipo_utenza') }}</label>
-          <LookupSelect v-model="form.tipo_utenza_id" rel="config.tipi_utenze" class="w-full"
+          <LookupSelect v-model="form.tipo_utenza_id" rel="config.tipi_utenze"
             :placeholder="t('vendite.contratti.select_tipo_utenza')" show-clear />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_classe_utenza') }}</label>
-          <LookupSelect v-model="form.classe_utenza_id" rel="config.classi_utenze" class="w-full"
+          <LookupSelect v-model="form.classe_utenza_id" rel="config.classi_utenze"
             :placeholder="t('vendite.contratti.select_classe_utenza')" show-clear />
         </div>
       </div>
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_param_1_num') }}</label>
-          <InputNumber v-model="form.param_1_num" class="w-full"
+          <InputNumber v-model="form.param_1_num"
             :min-fraction-digits="0" :max-fraction-digits="4"
             :invalid="campiErrati.includes('param_1_num')"
           />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_param_2_txt') }}</label>
-          <InputText v-model="form.param_2_txt" class="w-full"
+          <InputText v-model="form.param_2_txt"
             :invalid="campiErrati.includes('param_2_txt')"
           />
         </div>

@@ -141,7 +141,7 @@ function onChange(event) {
     </template>
     <template v-if="showCode" #value>
       <span v-if="selectedItem">{{ formatOption(selectedItem) }}</span>
-      <span v-else class="text-color-secondary">{{ placeholder }}</span>
+      <span v-else class="app-text-muted">{{ placeholder }}</span>
     </template>
   </Select>
 </template>

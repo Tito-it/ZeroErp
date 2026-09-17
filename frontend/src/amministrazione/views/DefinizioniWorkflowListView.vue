@@ -241,7 +241,6 @@ onActivated(() => store.load())
           :placeholder="t('amministrazione.definizioni_workflow.fork_emittente_placeholder')"
           filter
           show-clear
-          class="w-full"
         />
       </div>
     </AppDialog>

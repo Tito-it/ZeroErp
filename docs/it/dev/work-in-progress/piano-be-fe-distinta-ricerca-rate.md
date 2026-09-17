@@ -6,9 +6,9 @@
 > ([§2-bis](brief-incassi-riconciliazione-rate-promemoria.md)) → prerequisiti
 > DB in [brief-db-distinta-ricerca-rate.md](brief-db-distinta-ricerca-rate.md)
 > (P-1 … P-5).
-> **Stato:** 📝 **piano scritto il 2026-09-15. Nessun codice.** Il pezzo **B**
-> non ha prerequisiti DB e può partire su «vai» di Tid; **A** aspetta P-1;
-> **C** aspetta P-2 e P-4; **D** aspetta C. Lo stato per pezzo è in §0-bis.
+> **Stato:** ✅ **B scritto il 2026-09-17** (BE + FE, su «procedi» di Tid), in
+> attesa del collaudo a video; **A** aspetta P-1; **C** aspetta P-2 e P-4;
+> **D** aspetta C e l'ok su Q-1. Lo stato per pezzo è in §0-bis. Nessun commit.
 >
 > **In una riga.** Il rilievo è uno: *chi digita un incasso non riconosce il
 > documento da un contatore, e la domanda vera è «quale rata?»*. Da lì quattro
@@ -27,7 +27,7 @@
 
 | Pezzo | Stato | Prerequisito | Dove |
 | --- | --- | --- | --- |
-| **B** — destinazione visibile (BE 5 colonne + FE tabella, blocco, `SaldoPanel`, `RataSelect`) | 🔵 | nessuno | §3 |
+| **B** — destinazione visibile | ✅ (17/09) | nessuno | BE: **sette** colonne (le cinque di §3.1 più `fattura_natura_doc_codice_interno/descrizione` — la natura si segnala, D19-e) e due `LEFT JOIN` in `_RIGA_COLONNE`/`_RIGA_FROM`; `RigaContabileRow`; tre presidi sul DB provvisto in `test_riga_elimina_e_transizioni_db.py` (14-16: le colonne sulla riga e sulla coda, e il numero parlante **dalla sede unica**, non composto). FE: `DistintaDrawer` (colonne «Documento» con Tag natura e «Rata»), `DistintaRigaForm` (blocco «Destinazione» = `DrawerContextHeader` + `SaldoPanel`, nei due modi; riga non identificata dichiarata), `RataSelect` (importo), `useSaldi`/`SaldoPanel` (`escludiRigaId`, dichiarato dove non si applica — `useSaldi.spec.js`), `main.css` (`ml-05`), locales it/en. Verde: 189 test `pagamenti` (DB e2e compresi), 55 FE, lint, build, i18n, ruff. Doc: `api_pagamenti.md` §2, catalogo FE |
 | **A** — lookup ricco (FE) | ⏳ | P-1 (rev `vw_fatture_lista`) | §2 |
 | **C** — `GET /pagamenti/rate/` + `RatePickerDialog` singolo | ⏳ | P-2 (vista), P-4 (seed); P-3 migliora, non blocca | §4 |
 | **D** — modalità multipla + `POST …/righe/da-rate/` | ⏳ | C | §5 |
@@ -373,4 +373,6 @@ una `ListaConfigurabile`).
 | Data | Cosa |
 | --- | --- |
 | **2026-09-17** | ✅ **Lato DB consegnato e applicato su dev** (P-1…P-5 tutti, con Q-1 corretta: il registro va su ddt/ordini/resi, non su contratti/preventivi/offerte). ⚠️ **Prima di C e D leggere [brief-db-distinta-ricerca-rate §4-bis.9](brief-db-distinta-ricerca-rate.md)**: la chiave della vista è `scadenza_id` (`dataKey`), il nucleo dei saldi `pagamenti.fn_get_saldi_rate` vuole **l'array degli id della pagina** in una chiamata (non una `LATERAL` per riga, e non `NULL` per «tutte»: per lo scadenzario c'è `vw_saldi_rate`), «selezionabile» e importo proposto = `saldo − in_lavorazione` (Q-B di Tid), il seed `pagamenti.rate` nasce **spento** e si accende con la proiezione + `WHITELIST_BE`. P-3 c'è: il filtro «solo aperte» non è più «non supportato». P-5 c'è: la NC ha una rata negativa, `RataSelect` «di troppo» → «da rimborsare» per natura (§3.4), e il contesto PDF della NC riceve una rata negativa. Il residuo per rata ora **imputa** anche i movimenti senza rata (Q-A/γ): la riga «fattura sì, rata no» abbassa il residuo delle rate |
+| **2026-09-17** (2) | 🔍 **Rilettura critica di B su richiesta di Tid** («bug, codice fragile o duplicato, hardcoded»). Trovato e corretto: (1) il predicato «natura non ordinaria» era la stessa riga in **tre** file e il Tag della natura in **cinque** → BB **`NaturaDocTag`** (`core/components`), adottato in tutti e cinque (i due nuovi, `FatturaDrawer` da cui la riga era stata copiata, e le due celle di lista con `sempre`); (2) l'etichetta della rata composta in **tre** modi (tendina, blocco, colonna) → `useEtichettePagamenti().rata(...)`, una sede; (3) in `useSaldi` il lettore e la sua capacità (`ESCLUSIONE_SUPPORTATA`) erano **due tabelle** da tenere allineate — accendere una senza l'altra avrebbe fatto sparire l'opzione in silenzio → una riga per livello `{leggi, esclusione}`; (4) il nome del verbo «Abbina a fattura» era **scritto dentro** la frase `destinazione_assente` → parametro `{azione}` dalla chiave del verbo; (5) il presidio BE sul numero parlante teneva un `assertNotIn` su una sola forma di composizione: tolto, resta l'asserzione positiva (dichiarata «presidio sulla forma, non cancello»). ⛔ **Classi morte** (`ml-1`/`ml-2`, sei siti) sanate con `ml-05`; il censimento delle altre (`w-full` ×47 …) è nel catalogo FE alla riga `ml-05`: giro suo, a rischio zero, su decisione di Tid. Verde: 55 FE, 16 DB e2e, lint, build, i18n, ruff |
+| **2026-09-17** | ✅ **B scritto** (riga in §0-bis). Due cose viste facendo: (1) il saldo del **documento** non sa escludere una riga (`fn_get_saldo_fattura_contabili(p_fattura_id)` ha un parametro solo) — il pannello lo dichiara invece di sottrarre; 📮 **residuo per il DB**: un `p_escludi_contabile_riga_id` anche lì, come sulla rata, così la modifica di una riga senza rata legge lo stesso «prima di sé»; (2) `ml-1`/`ml-2` in cinque template sono classi **morte** (PrimeFlex non è installato) — nasce `ml-05` in `main.css`, e il censimento è scritto nel catalogo. In creazione il form legge il saldo documento **due volte** (la proposta dell'importo e il pannello): due letture della stessa base, non due formule — accettato |
 | **2026-09-15** | 📝 Piano scritto dopo il «procedi» di Tid. Corretta un'affermazione fatta in chat: il telaio di D è `useSelezioneLista`, non `useRigheSelezioneQta` (§5.3). Nessun codice |

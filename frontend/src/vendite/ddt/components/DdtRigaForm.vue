@@ -257,7 +257,7 @@ async function handleSave() {
              EDIT significa «nessun prezzo» — `aggiorna_riga` non ha auto-fill.
              Due frasi diverse perche' sono due comportamenti diversi:
              l'asimmetria esiste da sempre, questo e' il punto in cui si vede. -->
-        <small v-if="!isPadreComposito" class="text-color-secondary">
+        <small v-if="!isPadreComposito" class="app-text-muted">
           {{ isEdit ? t('vendite.ddt.riga_prezzo_edit_hint') : t('vendite.ddt.riga_prezzo_auto_hint') }}
         </small>
       </div>
@@ -334,7 +334,7 @@ async function handleSave() {
            condiviso con preventivi, ordini, contratti e listino bundle, e un
            testo che parla di «causale del DDT» dentro un BB e' un dominio che
            tracima. Il BB riceve un booleano, non una spiegazione. -->
-      <small v-if="!causaleFatturabile" class="text-color-secondary"
+      <small v-if="!causaleFatturabile" class="app-text-muted"
              style="display: block; margin-bottom: 0.5rem;">
         {{ t('vendite.ddt.componenti_senza_prezzo_hint') }}
       </small>

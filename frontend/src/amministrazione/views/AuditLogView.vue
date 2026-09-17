@@ -160,7 +160,7 @@ onMounted(() => {
       <!-- Colonna calcolata lato FE: nel seed ha `campo_sorgente` vuoto, quindi
            il valore puo' arrivare solo da qui. -->
       <template #cell-dettaglio="{ data }">
-        <span class="text-sm">{{ rowSummary(data) }}</span>
+        <span>{{ rowSummary(data) }}</span>
       </template>
     </ListaConfigurabile>
   </div>

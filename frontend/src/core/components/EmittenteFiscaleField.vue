@@ -50,6 +50,11 @@ const props = defineProps({
   record: { type: Object, default: null },
   isEdit: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
+  // Il bordo rosso di `campiErrati` (frontend-standards §Gestione errori
+  // API): il campo e' in sola lettura, ma quando il database rifiuta con
+  // `fields: ["emittente_fiscale_id"]` e' QUI che l'operatore deve guardare —
+  // e leggere il messaggio, che gli dice di scegliere l'emittente in alto.
+  invalid: { type: Boolean, default: false },
   // I18n keys overridable per riuso fuori dal contesto documenti.
   noneI18nKey: {
     type: String,
@@ -171,7 +176,7 @@ watch(
 </script>
 
 <template>
-  <div class="emittente-fiscale-field">
+  <div>
     <Select
       v-model="selectModel"
       :options="finalOptions"
@@ -180,6 +185,7 @@ watch(
       :placeholder="t(placeholderI18nKey)"
       :loading="useAdminLookup && emittentiLoading"
       :disabled="isFieldDisabled"
+      :invalid="invalid"
       class="app-form-select"
       style="width: 100%; min-width: 0;"
     />

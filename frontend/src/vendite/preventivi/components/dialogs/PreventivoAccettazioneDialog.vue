@@ -80,7 +80,7 @@ function onSave() {
     @update:visible="(val) => emit('update:visible', val)"
     @save="onSave"
   >
-    <p style="margin: 0 0 1rem 0; color: var(--text-color-secondary);">
+    <p style="margin: 0 0 1rem 0; color: var(--app-text-muted);">
       {{ t('vendite.preventivi.accetta_descrizione') }}
     </p>
     <div class="form-grid">
@@ -93,7 +93,7 @@ function onSave() {
         <label>{{ t('vendite.preventivi.accetta_competenza') }}</label>
         <DatePicker v-model="form.competenza_mese" :date-format="DATE_FORMAT"
           show-icon view="month" :disabled="competenzaDisabled" />
-        <small v-if="competenzaDisabled" style="color: var(--text-color-secondary);">
+        <small v-if="competenzaDisabled" style="color: var(--app-text-muted);">
           {{ t('vendite.preventivi.accetta_competenza_hint_immediata') }}
         </small>
         <small v-else-if="!form.competenza_mese" class="app-field-error">

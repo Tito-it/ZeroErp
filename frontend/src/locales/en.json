@@ -3990,6 +3990,9 @@
       "campo_centro": "Collection centre",
       "campo_centro_placeholder": "Choose the centre",
       "campo_note": "Notes",
+      "campo_emittente": "Issuer",
+      "emittente_aiuto": "The statement is numbered on the issuer's register: without a channel it is the one you are working with.",
+      "emittente_dal_canale": "The issuer is the one of the selected channel.",
       "centro_dal_canale": "Derived from the chosen channel.",
       "dichiarato_aiuto": "The total written on top of the incoming sheet: used for reconciliation.",
       "nessun_canale": "No collection channel configured: the sheet can be opened by picking the collection centre directly.",
@@ -4015,6 +4018,12 @@
       "col_riferimento_ente": "Channel reference",
       "col_billing_account_descrizione": "Customer",
       "col_fattura_numero": "Invoice",
+      "col_documento": "Document",
+      "col_rata": "Instalment",
+      "col_registro": "Register",
+      "col_fattura_data": "Issue date",
+      "col_fattura_totale": "Document total",
+      "destinazione_assente": "Unidentified line: it has neither a document nor an instalment. The destination is set with \"{azione}\".",
       "col_distinta": "Batch",
       "col_scadenza_numero_rata": "Instalment",
       "col_scadenza_data": "Due date",
@@ -4107,7 +4116,8 @@
       "non_lette": "Could not read this invoice's instalments: retry before matching without one.",
       "n": "Instalment {n}",
       "residuo": "{importo} left",
-      "di_troppo": "{importo} in excess"
+      "di_troppo": "{importo} in excess",
+      "sul_documento": "No instalment: on the document"
     },
     "registra": {
       "azione": "Post",
@@ -5195,7 +5205,8 @@
       "incassato_non_disponibile": "The collected amount is not available at this level: it is not zero, it is unknown.",
       "nessun_movimento": "Nothing has arrived on this document yet.",
       "non_letto": "The balance could not be read: retry before concluding there is nothing left to pay.",
-      "livello_non_pronto": "The balance for this level is not available yet."
+      "livello_non_pronto": "The balance for this level is not available yet.",
+      "include_riga_corrente": "The amount in progress also includes this line: at this level the balance cannot exclude it."
     }
   },
   "fattura_lookup": {

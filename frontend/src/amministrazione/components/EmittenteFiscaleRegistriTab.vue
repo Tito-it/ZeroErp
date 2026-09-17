@@ -262,7 +262,7 @@ function motivoForma(data) {
       </template>
 
       <template #empty>
-        <div class="app-empty">{{ t('amministrazione.registri_numerazione.vuota') }}</div>
+        <div class="app-empty-state">{{ t('amministrazione.registri_numerazione.vuota') }}</div>
       </template>
     </DrawerTabLista>
 

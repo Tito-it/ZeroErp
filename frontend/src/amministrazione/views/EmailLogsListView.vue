@@ -124,7 +124,7 @@ onMounted(() => {
       <!-- La data non ha slot: il seed dichiara `datetime_short` e il formatter
            di serie la rende gia' cosi'. -->
       <template #cell-errore="{ data }">
-        <span v-if="data.errore" class="text-red-500" style="font-size: 0.85rem;">{{ data.errore }}</span>
+        <span v-if="data.errore" style="font-size: 0.85rem;">{{ data.errore }}</span>
       </template>
       <template #cell-stato="{ data }">
         <Tag :value="data.stato" :severity="getEmailLogStatoSeverity(data.stato)" />
