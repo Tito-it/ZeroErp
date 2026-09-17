@@ -55,7 +55,6 @@ db/pgtap/config/test-parameters-vendite-limiti-prezzi.sql	ASSERZIONE
 db/pgtap/config/test-permessi-user-overrides.sql	ERRORE_FIXTURE
 db/pgtap/config/test-profili-accesso-guard-ultimo-super-admin.sql	ERRORE_FIXTURE
 db/pgtap/config/test-soglia-congelamento-sede-unica.sql	ASSERZIONE
-db/pgtap/config/test-sorgenti-scope-pulizia-v1.sql	ASSERZIONE
 db/pgtap/config/test-stati-doc-fiscale-congela-fiscale.sql	ERRORE_FIXTURE
 db/pgtap/config/test-user-emittenti-fiscali-immutable.sql	ERRORE_FIXTURE
 db/pgtap/dbops/test-coda-archiviazione.sql	ERRORE_FIXTURE
@@ -68,14 +67,11 @@ db/pgtap/documenti/test-documenti-template-asset.sql	ASSERZIONE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ASSERZIONE
 db/pgtap/documenti/test-documenti-template-versioni.sql	ERRORE_FIXTURE
 db/pgtap/maintenance/test-job-run-registrazione.sql	ERRORE_FIXTURE
-db/pgtap/pagamenti/test-abbinamento-rata.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-contabili-origine-e-quadratura.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-psp.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-fn-crea-distinta-correzione.sql	ERRORE_FIXTURE
-db/pgtap/pagamenti/test-fn-get-or-create-vendite-contabile.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-fn-get-saldo-fattura-tre-numeri.sql	ERRORE_FIXTURE
-db/pgtap/pagamenti/test-fn-posta-contabile.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-righe-contabili-guard-dati.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-sistemazione-annullo-riporto.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql	ERRORE_FIXTURE
@@ -282,7 +278,6 @@ db/pgtap/vendite/test-fondi-fattura-lotto.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fondi-fattura.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fondo-fattura-cancellazione.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fondo-fattura-eseguito.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-genera-scadenze-fattura-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-genera-scadenze-lotto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-gruppo-key-segnalazioni-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-guard-congelamento-fusione-v1.sql	ASSERZIONE
@@ -300,7 +295,6 @@ db/pgtap/vendite/test-lotti-gruppi-esito.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-motivo-non-fatturata-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-numera-fattura-opz-emessa.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-numera-nota-credito-riferimento-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-numerazione-guard-coerenza-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-numero-prefisso-registro-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-offerta-righe-espanse.sql	ASSERZIONE
 db/pgtap/vendite/test-ordini-fatturazione-trigger-eredita-v1.sql	ERRORE_FIXTURE
@@ -362,7 +356,6 @@ db/pgtap/vendite/test-vw-dash-fatturazione-ordini-residuo-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-fatturazione-ordini-trigger-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-fatturazione-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-preventivi-revisione-attiva.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-vw-fatture-lista.sql	ASSERZIONE
 db/pgtap/vendite/test-vw-partite-merce-riconsegna-dopo-nc-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-partite-merce-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-preventivi-smistamento-v1.sql	ERRORE_FIXTURE
