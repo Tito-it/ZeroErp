@@ -139,7 +139,7 @@ con N scrittori potenziali e nessuno che lo sa.
 > «più lavoro adesso», la ragione è scritta sul **modello**, mai sulla
 > comodità.
 
-### D-L2-a — La firma della primitiva → **quantità FIRMATA, causale per `codice_interno`, ritorna l'id**
+### D-L2-a — La firma della primitiva → **quantità FIRMATA, causale per `codice_interno`, ritorna l'id** — ✅ confermata da Tid il 2026-09-17
 
 ```
 magazzino.fn_scrivi_movimento(
@@ -180,7 +180,7 @@ fotografia del seed (linee-guida-sql §6b). Causale assente o `attivo = false`
 dell'operatore; è la famiglia `NOT_FOUND` su un catalogo che quel codice porta
 già, quindi il rubinetto non lo ferma).
 
-### D-L2-b — La porta → **DEFINER del proprietario, `zeroerp_app` in sola lettura sul ledger, perimetro col guard BB**
+### D-L2-b — La porta → **DEFINER del proprietario, `zeroerp_app` in sola lettura sul ledger, perimetro col guard BB** — ✅ confermata da Tid il 2026-09-17
 
 | Chi | Che cosa può fare, da questo lotto |
 | --- | --- |
@@ -241,7 +241,7 @@ privilegiato può far scattare»*) ⇒ `-- pgtap-runner: owner` con la ragione;
 `valore-giacenza-forma` costruisce la giacenza **attraverso la primitiva**
 (diventa un test di comportamento: §7). ⛔ Non si allarga la baseline.
 
-### D-L2-c — Il costo si decide dalla STRUTTURA del movimento → **niente colonna nuova su `causali`; `costo_unitario` sulle righe di inventario e rettifica**
+### D-L2-c — Il costo si decide dalla STRUTTURA del movimento → **niente colonna nuova su `causali`; `costo_unitario` sulle righe di inventario e rettifica** — ✅ confermata da Tid il 2026-09-17
 
 M-4 dà a `costo_unitario` tre significati e l'analisi li lascia al `COMMENT`.
 Scrivendo la primitiva serve una **regola eseguibile** su *chi* dà il costo, e
@@ -273,7 +273,7 @@ inventa uno zero. Si **vede**: `magazzino.vw_movimenti_senza_costo` (natura
 `LAVORAZIONE`: è una tendenza da guardare, non un guasto) — così il primo
 carico senza valore compare nel digest invece di sparire nella media.
 
-### D-L2-d — La disponibilità si controlla alla GRANA del movimento; i blocchi alla grana dell'articolo; `is_rettifica` esonera dai blocchi, `consente_stock_negativo` da tutto
+### D-L2-d — La disponibilità si controlla alla GRANA del movimento; i blocchi alla grana dell'articolo; `is_rettifica` esonera dai blocchi, `consente_stock_negativo` da tutto — ✅ confermata da Tid il 2026-09-17
 
 Un'uscita di **5 pezzi del lotto L** non può passare perché l'articolo ne ha 20
 in totale se il lotto L ne ha 3. E un **seriale** che esce deve essere **qui**.
@@ -306,7 +306,7 @@ la chiave è `(magazzino, articolo)` e tutte e tre le letture — asset, lotto,
 articolo, blocchi — stanno **dentro** quella coppia. Un lock per lotto sarebbe
 più stretto della lettura dei blocchi e non serializzerebbe niente.
 
-### D-L2-e — Un seriale ha una posizione DERIVATA, e la primitiva la difende
+### D-L2-e — Un seriale ha una posizione DERIVATA, e la primitiva la difende — ✅ confermata da Tid il 2026-09-17
 
 §7-quater dice che *«dov'è il pezzo si deriva dal registro»* e `|qta| = 1`.
 Ma senza un controllo lo stesso asset può risultare **dentro due magazzini**
@@ -329,7 +329,7 @@ posizione solo se la prima fosse già visibile. È una corsa **benigna**
 (READ COMMITTED: la seconda legge dopo il commit della prima) ma va scritta
 nel `COMMENT`, perché è il caso che qualcuno cercherà.
 
-### D-L2-f — L'inventario posta la DIFFERENZA, alla grana della riga; la causale la decide il registro
+### D-L2-f — L'inventario posta la DIFFERENZA, alla grana della riga; la causale la decide il registro — ✅ confermata da Tid il 2026-09-17 (⚠️ l'«angolo» delle ubicazioni qui sotto **sparisce** con D-L2-m: decide il magazzino, e la grana del registro coincide con quella del conteggio per costruzione. Resta il caso «contata in UY, a registro in UX» → D-L2-n)
 
 `fn_posta_inventario(p_inventario_id)`, per ogni riga (in ordine di `id`):
 
@@ -471,6 +471,84 @@ asset** (`ASSET_INSTALL` porta il pezzo fuori da ogni magazzino e cambia
 `assets.stato_id`), e quella operazione **non è di questo lotto** (§9).
 Toglierla qui sarebbe decidere sul lotto sbagliato; la scadenza si sposta con
 il consumatore, ed è scritta lì.
+
+### D-L2-m — Le ubicazioni: DECIDE IL MAGAZZINO (`magazzini.usa_ubicazioni`) — ✅ decisa da Tid il 2026-09-17, emersa dalla rilettura di D-L2-f
+
+**Il difetto che la fa nascere.** Con la sola regola «alla grana della riga»
+(D-L2-f), un magazzino con **10 pezzi di A senza ubicazione** a registro e un
+inventario che conta **10 pezzi di A in U1** carica altri 10 in U1: a registro
+diventano **20**, a scaffale sono 10. Un conteggio giusto raddoppia la
+giacenza, e il rimedio scritto in D-L2-f («una riga senza ubicazione = 0»)
+regge solo se l'operatore sa di doverla aggiungere. La causa è del **modello**:
+nello stesso magazzino può convivere merce *con* e *senza* ubicazione, perché
+`movimenti.ubicazione_id` è nullable e niente lega «questo magazzino usa le
+ubicazioni» a «qui ogni movimento ne nomina una». Per lotti e seriali il
+modello la domanda l'ha già chiusa — **decide l'articolo** (`requires_lotto`,
+`requires_serial`: o sempre o mai). Per le ubicazioni mancava chi decide.
+
+**La forma, sullo stesso stampo:** `magazzino.magazzini.usa_ubicazioni boolean
+NOT NULL DEFAULT false` (terza colonna di DDL del lotto, P-1).
+
+| `usa_ubicazioni` | ogni movimento (e ogni riga di inventario/rettifica) | se no |
+| --- | --- | --- |
+| `true` | **deve** nominare un'ubicazione, di quel magazzino e attiva | `E_MAG_UBICAZIONE_OBBLIGATORIA` (`DATO_ERRATO`, `campo = ubicazione_id`) |
+| `false` | **non può** nominarne una | `E_MAG_UBICAZIONE_NON_AMMESSA` (idem) |
+
+Lo fa rispettare la primitiva al **passo 8** (§4.2), che già verifica «l'ubicazione
+è di questo magazzino»: i due codici sono i gemelli di
+`E_MAG_LOTTO_OBBLIGATORIO`/`_NON_AMMESSO` ed entrano in §4.10.
+
+⭐ **Il flag si cambia solo a giacenza zero**: un guard `BEFORE UPDATE OF
+usa_ubicazioni` su `magazzini` rifiuta se esiste un movimento del magazzino
+(`E_MAG_MAGAZZINO_CON_GIACENZA`, `CONFLITTO_STATO`) — si decide **alla
+nascita**, prima del primo movimento. Un magazzino che «mette gli scaffali»
+dopo, con merce dentro, ne crea uno nuovo con le ubicazioni e ci trasferisce
+la merce: il documento di trasferimento fra magazzini **diversi** esiste già
+(`chk_mag_trasferimenti_da_a_distinti` lo pretende), quindi la strada è sul
+modello. ⚠️ Oggi il registro è vuoto: il vincolo non costa niente a nessuno.
+
+⇒ La grana del registro e quella del conteggio **coincidono per costruzione**,
+e l'angolo di D-L2-f sparisce invece di essere dichiarato. Un'area di
+ricezione, in un magazzino a ubicazioni, **è** un'ubicazione (`RICEZIONE`): la
+merce «da nessuna parte» non esiste più.
+
+### D-L2-n — Contata in UY, a registro in UX: il PIANO dell'inventario si legge PRIMA di confermare — ✅ confermata da Tid il 2026-09-17
+
+**Il caso di Tid** (17-09): l'articolo A sta in **UX** a registro, l'inventario
+lo conta in **UY**. Con D-L2-f la riga (A, UY) trova sistema 0 e carica; UX
+resta com'è. Può essere **giusto** (il pezzo è stato spostato senza documento, e
+il conteggio lo dice), ma *qualcuno deve saperlo prima di confermare*.
+
+**Proposta:** il numero lo dà il DB, in **una funzione sola** che l'operazione
+di posting e la UI leggono entrambe (è §12.5.2 applicato all'inventario: ciò
+che l'operatore vede è esattamente ciò che verrà scritto):
+
+```
+magazzino.fn_inventario_piano(p_inventario_id)
+    RETURNS TABLE (riga_id, articolo_id, ubicazione_id, lotto_id, asset_id,
+                   qta_contata, qta_sistema, delta, causale_codice_interno, esito)
+```
+
+`SECURITY INVOKER`, `STABLE`, sotto RLS come l'operatore. Una riga per
+**ogni posizione** (articolo × ubicazione × lotto × asset) che il registro ha
+**o** che il conteggio nomina, per gli articoli contati:
+
+| `esito` | Che cosa è |
+| --- | --- |
+| `INV_INIZIALE` / `RETT_POS` / `RETT_NEG` | riga contata con differenza: verrà postata così |
+| `INVARIATA` | riga contata, differenza zero: nessun movimento |
+| **`NON_CONTATA`** | posizione **a registro con giacenza** che nessuna riga dell'inventario copre (`riga_id NULL`, `qta_contata NULL`): **resta com'è** |
+
+`fn_posta_inventario` **legge il piano dalla stessa funzione** e posta le righe
+con `delta <> 0`; le `NON_CONTATA` sono informazione, non blocco — l'operatore
+può aggiungere una riga (UX = 0, o UX = 10) o lasciare. ⛔ Non un rifiuto:
+«potrebbe essere giusta», e un inventario che non può registrare ciò che vede
+mente. ⚠️ **E non un'altra sede del calcolo**: `qta_sistema` lo scrive il
+posting **dal piano**, non con una seconda query.
+
+🔵 **Per il BE/FE (brief loro):** il drawer dell'inventario, al passaggio a
+`CONFIRM`, mostra il piano con le `NON_CONTATA` evidenziate. È lì che
+«qualcuno lo sa prima di confermare».
 
 ---
 
