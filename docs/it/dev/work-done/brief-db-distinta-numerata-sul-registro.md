@@ -29,8 +29,9 @@
 > Le misure sono datate (§1, §2.6) e non sono la ragione di nessuna scelta.
 > ⚠️ Il piano ha **corretto** il brief in otto punti, e la scrittura ne ha
 > aggiunti cinque (§4-bis.19): due sono mine di CI che l'analisi non aveva
-> visto. Il BE/FE ne ha corretti altri due (§5 BE-2, §6 FE-1), confermati da
-> Tid.
+> visto — e la CI ne ha mostrata una terza, sotto la seconda (🔴→✅
+> CI-Validate rossa dopo il merge di PR #1598: riquadro sotto, §9). Il BE/FE
+> ne ha corretti altri due (§5 BE-2, §6 FE-1), confermati da Tid.
 
 ---
 
@@ -42,6 +43,13 @@
 > registri `DIS-72` e `DIS-159` con l'anno nel numero. pgTAP **verdi come
 > app** su dbdev (RLS esercitata) e sullo scratch `zeroerp_ci` da zero — dove
 > L11 e `20260831-03` si sono incontrati davvero. Commit `e98cf2469`, PR #1598.
+> 🔴→✅ **CI-Validate rossa dopo il merge**: `20260831-03` è morto lo stesso,
+> nella **seconda** invocazione di Liquibase (`--contexts=ci_apply`), con
+> «Expected '4' got '5'» — un `runOnChange` con un change `dbms:` viene
+> ri-eseguito **una volta** all'update successivo alla prima esecuzione
+> (Liquibase 5.0.4, letto nel jar). Corretto il cancello (conta le quattro
+> famiglie **per nome**) e il corpo (la primitiva, non l'INSERT ricopiato);
+> L11 resta com'è. Commit `237ea2939`; meccanismo, prova e perimetro in §9.
 >
 > **Lato BE/FE**: le sei voci di §5 e le quattro di §6 (commit `45046a6a7`),
 > con la rigenerazione delle policy che copre anche il BB gemello
@@ -62,6 +70,7 @@
 > | 🔴 `fn_sync_contabili_fondo_fattura` con una fattura **fuori lotto** passa `p_lotto_id = NULL` e la distinta del fondo cade al livello **3** (l'emittente di chi agisce) invece che a quello della fattura: per l'admin globale in «tutti» è un `E_CONTABILE_EMITTENTE_OBBLIGATORIO` in mezzo alla pipeline, in modo «uno» una fattura altrui darebbe una distinta attribuita alla sessione. La strada corretta è che la madre dei fondi passi `p_emittente_fiscale_id` dall'emittente della **fattura** (§4-bis.19, seconda tabella) | `.codex/PROJECT_CONTEXT.md` §«Aperto — Media priorità», cantiere DB |
 > | Le tre righe del copione **non ancora provate a video** — 2.4-ter (operatore su CASSA: campo emittente già compilato), 2.4-quater (super admin in «tutti»: avviso e Apri spento), 1.6-bis (l'altro emittente non vede la distinta su CASSA) — la prova a video è l'unica cosa che ne esce | [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md) §1 e §2, righe già scritte |
 > | Una colonna «Emittente» nella lista 50 delle distinte: dato, non DDL (`ui.lista_colonna`), non chiesta | si fa quando serve, dall'amministrazione in-app |
+| ⚠️ La **decisione sistemica** sui 28 `runOnChange` di `80_data`/`90_end` con un change `dbms:` — togliere `dbms:` (checksum deterministico, niente ri-esecuzione in `ci_apply`) o accettare la ri-esecuzione e censire i loro cancelli `HALT` sul contenuto — e la nota del guardrail `runOnChange` in `ci-validate.yaml`, che nomina `runOnChange` come causa quando la causa è `runOnChange` **+ `dbms:`** (§9, riga del 17-09 pomeriggio) | `.codex/PROJECT_CONTEXT.md` §«Aperto — Media priorità», cantiere DB (`dbops`) |
 
 ---
 
@@ -465,8 +474,16 @@ descrive un mondo che esiste solo dove qualcuno è passato prima»).
 quattro mirror laterali: alla corsa di `20260831-03` le famiglie sono ancora
 cinque. È il pattern di casa (`parameters*.csv` su cinque file,
 `tipi_doc_fiscale_registri*.csv`, `famiglie_documento_*.csv` stessi).
-⛔ **Non si rilassa il cancello** di `20260831-03` (changeSet mergiato): resta
-scritto in §8 che la **settima** famiglia dovrà fare la stessa cosa.
+~~⛔ **Non si rilassa il cancello** di `20260831-03` (changeSet mergiato): resta
+scritto in §8 che la **settima** famiglia dovrà fare la stessa cosa.~~
+🔴 **Smentito dalla CI il 2026-09-17** (§9): il CSV dedicato non è bastato,
+perché il cancello non scatta solo nell'ordine di `80_data` — scatta anche
+**fuori ordine**, alla ri-esecuzione una-tantum che Liquibase 5.0.4 impone a
+ogni `runOnChange` con un change `dbms:` (in CI: la seconda invocazione,
+`ci_apply`, dopo `20260915-33`). Un cancello su «quante righe ci sono oggi» era
+una fotografia, non un presidio: ora conta le **quattro famiglie per nome**, e
+il CSV dedicato resta per la ragione buona (la famiglia nasce col catalogo
+completo), non come schivata di una mina.
 
 ---
 
@@ -1048,11 +1065,14 @@ letterale, come i quattro laterali: `colonna_billing_account` e `colonna_serie`
   `codice_interno` vede lo stesso valore. Provato nella ricetta con **due**
   passate dell'upsert.
 * Il changeSet `20260830-14` dice «una famiglia nuova è un append, mai un
-  INSERT a parte»: era vero fino a `20260831-03`. ⛔ Non si edita il changeSet
-  mergiato e i CSV non hanno commenti: il fatto che il CSV base **non**
-  contenga la sesta famiglia sta nel COMMENT del loader L11 e in
-  `vendite/manual/famiglie_documento.md` (L17), che è dove lo cerca chi vuole
-  aggiungere la settima.
+  INSERT a parte»: era vero fino a `20260831-03`. I CSV non hanno commenti: il
+  fatto che il CSV base **non** contenga la sesta famiglia sta nel COMMENT del
+  loader L11 e in `vendite/manual/famiglie_documento.md` (L17), che è dove lo
+  cerca chi vuole aggiungere la settima. ⚠️ Il 2026-09-17 `20260831-03` **è
+  stato editato** (cancello per nome, corpo sulla primitiva): la ragione è in
+  §9 e nella sua intestazione, e l'edit fa un RERAN innocuo su dev
+  (idempotente, nessuna riga da creare: misurato, due emittenti entrambi con
+  registro).
 
 ### 4-bis.12 L12 — I registri `DIS-<sr>`
 
@@ -1392,12 +1412,21 @@ In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/coll
   fail-closed, ma su un DB nuovo l'ordine è: `00_schema` + `20_code`, poi
   `80_data` (famiglia, poi registri). Nessuna distinta nasce durante il migrate,
   quindi la finestra è vuota; i pgTAP girano dopo.
-- ⛔ **`20260831-03` pretende ESATTAMENTE quattro famiglie ≠ FATTURA** (`sqlCheck
-  expectedResult: 4`, `HALT`) e su un DB da zero gira **dopo** il mirror base
-  delle famiglie. La sesta famiglia va in un CSV dedicato numerato dopo
-  (§4-bis.11) — e la **settima** dovrà fare lo stesso finché quel cancello
-  resta com'è. Su dev non si vede mai: quel changeSet ri-esegue solo se il suo
-  file cambia.
+- ⛔ **`20260831-03` pretendeva ESATTAMENTE quattro famiglie ≠ FATTURA**
+  (`sqlCheck expectedResult: 4`, `HALT`) e su un DB da zero gira **dopo** il
+  mirror base delle famiglie. La sesta famiglia va in un CSV dedicato numerato
+  dopo (§4-bis.11) — e la **settima** fa lo stesso, per la ragione del modello
+  (nasce col catalogo completo). **Corretto il 2026-09-17** dopo la CI rossa:
+  il cancello conta le quattro **per nome**. ⛔ La frase «su dev non si vede
+  mai: ri-esegue solo se il suo file cambia» era **falsa**: in Liquibase 5.0.4
+  un `runOnChange` con un change `dbms:` viene ri-eseguito **una volta**
+  all'update successivo alla prima esecuzione (checksum calcolato dal filtro
+  senza Database nello Scope ⇒ il change `dbms:` ne esce ⇒ il checksum salvato
+  non torna) — su dbdev i 12 seed così fatti sono tutti `exectype = RERAN`, e
+  in CI la ri-esecuzione cade nella seconda invocazione (`ci_apply`), **dopo**
+  tutto il resto. Regola: un `sqlCheck` con `HALT` su **quante** righe ha oggi
+  una tabella di catalogo è una fotografia che la riga dopo smentisce; si
+  conta per nome ciò che il passo pretende, come fanno i laterali.
 - ⛔ **Le policy dei satelliti hanno un ramo che nomina il modello vecchio.**
   Righe (`20260822-24`) e lotti (`20260910-18`) dicono «testata senza canale
   = di tutti» con un `EXISTS` sulla testata: dopo D3 è morto per costruzione
@@ -1416,7 +1445,9 @@ In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/coll
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-17** (sera, riconciliazione) | 🔧 Il commit `424d3ce89` («aggiornata documentazione», 16:57) era stato scritto sul brief in `work-in-progress/` **senza vedere la chiusura** delle 15:51: riconciliato nell'archivio al rebase. La riga della CI-Validate (sotto) entra al suo posto; lo stato e il riquadro «CHIUSO» prendono la terza mina di CI; la **decisione sistemica su `runOnChange` + `dbms:`** e la nota del guardrail escono dal brief verso `PROJECT_CONTEXT` §«Aperto — Media priorità» — un brief chiuso non tiene «aperto a Tid» |
 | **2026-09-17** (sera) | ✅ **CHIUSO e archiviato in `work-done/`.** Collaudo in-app di Tid: la nuova numerazione funziona — **`DIS-PGTAPEF202-2026-0000001`, il primo numero emesso**. Riquadro «CHIUSO» in testa con ciò che esce: il residuo del fondo fattura fuori lotto (→ `PROJECT_CONTEXT`), le tre righe del copione ancora da provare a video (→ doc di collaudo, righe aggiunte oggi), la colonna «Emittente» in lista (dato, quando serve) |
+| **2026-09-17** (pomeriggio, in parallelo alla chiusura) | 🔴→🔧 **CI-Validate rossa dopo il merge (PR #1598), corretta.** Job `validate`, passo «Liquibase CI apply (run automations)» = **seconda** invocazione di Liquibase (`--contexts=ci_apply`): `20260831-03-seed-registri-famiglie-per-emittente` ri-eseguito **dopo** `20260915-33` → `sqlCheck` «famiglie attive ≠ FATTURA» = **5**, atteso 4, `HALT`. Nella prima invocazione (5660 changeSet, ordine di timeline) era passato: il CSV dedicato di L11 aveva fatto il suo. **Perché si è ri-eseguito, letto nel jar di Liquibase 5.0.4** (`tools/liquibase/5.0.4`): `ChangeLogIterator.run` mette il `Database` nello `Scope` solo attorno alla `visit`, **non** attorno ai filtri; `ShouldRunChangeSetFilter.checksumChanged` ricalcola quindi il checksum senza Database, e `ChangeSet.generateCheckSum` (v9) **salta** ogni change con `dbms:` quando `DatabaseList.definitionMatches(dbms, null→"null")` è falso. Il checksum salvato alla prima esecuzione (con Database, change incluso) non torna ⇒ `RERAN` una volta, poi stabile (il RERAN salva il checksum «senza»). Prova su dbdev, sola lettura: i **12** seed `runOnChange` di `80_data` con un change `sql` + `dbms: postgresql` sono **tutti** `exectype = RERAN` (compreso `20260915-34`, RERAN alle 12:39 al secondo migrate), i **164** mirror puri `loadUpdateData` `EXECUTED`; il fenomeno è quello che il guardrail `runOnChange` di `ci-validate.yaml` descrive dal 06-08 («49 funzioni riportate indietro a ogni build») attribuendolo al solo `runOnChange`. Perimetro: 2.110 changeSet hanno un change `dbms:`; ne ri-eseguono fuori ordine i **28** `runOnChange` di `80_data`/`90_end`, tutti tolleranti tranne questo cancello. **Rimedio** (un file, `20260831-03`): (1) `sqlCheck` **per nome** — `codice_interno IN ('DDT','ORDINE','COMMESSA','RESO')` = 4, senza `attivo`, come i laterali; (2) corpo = `fn_provision_registri_famiglia` per ciascuna delle quattro (la copia dell'INSERT del 31-08, senza prefisso né lunghezza, si ritira); (3) precondizione `pg_proc` sulla primitiva, come `20260915-34`; (4) rollback ristretto alle quattro famiglie (`origine = C2-12` lo scrive la primitiva per chiunque); (5) intestazione con il meccanismo. `dbms: postgresql` **resta**: il rimedio è il cancello, non la scomparsa della ri-esecuzione. **Prova**: YAML + 6 guardrail statici + pre-commit verdi; SQL **estratto** dallo YAML in `BEGIN … ROLLBACK` su dbdev via Liquibase `execute-sql`: nuove preCondition = 4 e 1, vecchio cancello = **5** (sarebbe morto anche su dev al primo RERAN), corpo pulito, conteggio C2-12 invariato (10); render `update-sql` offline corretto. Su dev l'edit produce un RERAN innocuo (misurato: 2 emittenti, entrambi con i 4 registri). Aggiornati `vendite/manual/famiglie_documento.md` (rev 17-09) e questo brief (stato, §4-bis.0, L11, §8). **Aperto a Tid**: (a) `make db-migrate` (RERAN di `-03`, atteso «0 righe») e ri-lancio CI; (b) decisione **sistemica** — togliere `dbms:` dai 28 `runOnChange` di `80_data`/`90_end` (checksum deterministico, niente ri-esecuzione in `ci_apply`) o accettare la ri-esecuzione e censire i loro cancelli `HALT` su contenuto; (c) la nota del guardrail `runOnChange` in `ci-validate.yaml` nomina `runOnChange` come causa: la causa è `runOnChange` **+ `dbms:`** |
 | **2026-09-17** (pomeriggio, dopo) | ✅ **Tid conferma i due scostamenti** della riga sotto: (1) il super admin in «tutti gli emittenti» **non apre** la distinta finché non sceglie l'emittente dalla topbar — *«quella scelta è legge»* (la decisione del 02-09 vale anche qui, nessuna Select nel form); (2) i tre nomi dei documenti di vendite (`emittente_fiscale_id/_codice`, `emittente_ragione_sociale`) al posto di `emittente_codice` |
 | **2026-09-17** (pomeriggio) | ✅ **BE-1..6 e FE-1..4 fatti** (§5, §6) insieme alle quattro richieste BE del brief gemello `emittente-di-default-un-bb-solo` §11 — è la stessa rigenerazione. Policy: +3 codici, 3 ritirati, zero classi mosse; tre ripieghi; nessun override (decisione motivata accanto a `E_PREV_EMITTENTE_NON_RISOLTO`); sei commenti coi nomi morti riscritti. **Due scostamenti dal brief, entrambi sul modello FE già in vigore**: i nomi dei campi emittente seguono `EmittenteFiscaleField` (`emittente_fiscale_id/_codice`, `emittente_ragione_sociale`) e non `emittente_codice`; il campo in `ApriDistintaDialog` è in sola lettura (Tid, 02-09) e il super admin in «tutti» ha Apri spento invece di una Select. Presidi: 17 test policy, 7 guardrail, 20 DB-provvisti fra cui la catena intera dal service (`DIS-<sigla>-2026-\d{7}`, riuso entro l'emittente), 1301 verdi su `core`+`pagamenti`, vitest 28, build e guard FE, `DataTable` grezze 48 = 48. ⏳ Collaudo in-app (§7) e commit a Tid |
 | **2026-09-17** | ✅ **Apply e baseline di Tid.** `make db-migrate` si è fermato su `-26` come previsto («Expected '0' got '2'»: 5730 e 5869, le due manuali senza canale né lotto né riga con fattura — le stesse della prova); `UPDATE … SET emittente_soggetto_ruolo_id = 72 WHERE id IN (5730, 5869)`; secondo `make db-migrate` fino a `-35` (e ai `-36…-46` del BB parallelo). **pgTAP verdi** su dbdev — come app, quindi con la RLS esercitata: i 9 rossi «solo RLS» della prova da owner erano davvero solo quello — e sullo scratch da zero. Sullo scratch un solo rosso ignoto, **non di questo cantiere**: `script/test-trgfn-default-emittente-fiscale-v1.sql` (BB emittente di default) moriva in fixture perché il suo SA era l'**unico** SUPER_ADMIN del database da zero e `fn_change_user_emittenti_scope` rifiuta il cambio di scope all'ultimo SA (`E_PROFILO_ULTIMO_SUPER_ADMIN`); corretto con un secondo SA in fixture (azienda Z, mai attore) — stessa famiglia dei tre `ERRORE_FIXTURE` già a registro nella baseline scratch che chiamano quella funzione. Restano: commit, BE/FE (§5/§6), la decisione sul residuo del fondo fattura |

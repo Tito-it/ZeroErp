@@ -248,6 +248,22 @@ produzione, non c'è niente da aspettare.*
   `E_CONTABILE_EMITTENTE_OBBLIGATORIO` in mezzo alla pipeline. La strada è che
   la madre dei fondi passi `p_emittente_fiscale_id` dall'emittente della
   **fattura**. Da decidere con Tid, un changeSet
+- **`runOnChange` + `dbms:` in `80_data`/`90_end`: la ri-esecuzione una-tantum**
+  (DB, ereditata il 2026-09-17 dalla chiusura di
+  `work-done/brief-db-distinta-numerata-sul-registro.md`, §9 riga del 17-09
+  pomeriggio): in Liquibase 5.0.4 un `runOnChange` con un change `dbms:` viene
+  ri-eseguito **una volta** all'update successivo alla prima esecuzione — il
+  filtro ricalcola il checksum senza `Database` nello `Scope` e salta il
+  change, quindi il checksum salvato non torna (`exectype = RERAN`, poi
+  stabile). In CI cade nella **seconda** invocazione (`ci_apply`), **fuori
+  ordine** rispetto a `80_data`: è così che `20260831-03` è morto dopo il
+  merge di PR #1598 (corretto: cancello per nome, `237ea2939`). Sono 28
+  changeSet in `80_data`/`90_end`, tolleranti tranne quel cancello. Da
+  decidere: togliere `dbms:` dai 28 (checksum deterministico, niente
+  ri-esecuzione) o accettare la ri-esecuzione e censire ogni `sqlCheck` con
+  `HALT` sul **contenuto**; e riscrivere la nota del guardrail `runOnChange`
+  in `ci-validate.yaml`, che nomina `runOnChange` come causa quando la causa è
+  `runOnChange` **+ `dbms:`**. Cantiere `dbops`, non di dominio
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare

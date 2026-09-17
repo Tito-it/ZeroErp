@@ -364,13 +364,30 @@ quelli futuri. Il resto — come e quando la distinta prende il numero, e di chi
 è — sta nella scheda di
 [pagamenti.vendite_contabili](/dbzero/pagamenti/manual/vendite_contabili).
 
-⛔ **Vive in un CSV dedicato (`famiglie_documento_distinta.csv`), non in
-`famiglie_documento.csv`**, e non è una preferenza. `20260831-03` (i registri
-per emittente) pretende in `preConditions` **esattamente 4** famiglie attive
-diverse da `FATTURA`, con `HALT`; su un database ricostruito da zero il mirror
-base gira **prima** di quel cancello, quindi una sesta riga nel CSV base
-farebbe morire il migrate **in CI** — e su dev non si vedrebbe mai, perché quel
-changeSet ri-esegue solo se il suo file cambia. ⚠️ **La settima famiglia dovrà
-fare lo stesso**: CSV suo, loader suo, numerato dopo. Il cancello di
-`20260831-03` non si rilassa (è mergiato). Il commento di `20260830-14` che dice
-«una famiglia nuova è un append» è vero **fino** al 31-08.
+⭐ **Vive in un CSV dedicato (`famiglie_documento_distinta.csv`), non in
+`famiglie_documento.csv`**: una riga sola con **tutte** le colonne, e un loader
+numerato dopo i quattro mirror laterali, così la famiglia nasce col catalogo
+già completo (formato, serie, anno nel numero) invece di nascere monca e farsi
+completare dopo; il passo dei registri (`20260915-34`) la segue subito. ⚠️ **La
+settima famiglia fa lo stesso**: CSV suo, loader suo, numerato dopo, poi il suo
+passo che chiama `fn_provision_registri_famiglia`. Il commento di `20260830-14`
+che dice «una famiglia nuova è un append» è vero **fino** al 31-08.
+
+🔄 **rev 2026-09-17 — il cancello di `20260831-03` conta per nome.** Fino a
+quel giorno il passo dei registri per emittente pretendeva in `preConditions`
+**esattamente 4** famiglie attive diverse da `FATTURA` (`HALT`): una fotografia
+del catalogo del 31-08, che la sesta famiglia ha smentito. Sulla carta il CSV
+dedicato bastava (su un DB da zero `20260831-03` gira prima di `20260915-33`),
+ma **in CI il migrate è morto lo stesso** («Expected '4' got '5'»): in
+Liquibase 5.0.4 un changeSet `runOnChange` che contiene un change con `dbms:`
+viene ri-eseguito **una volta** all'update successivo alla sua prima
+esecuzione — il filtro che decide se ri-eseguire calcola il checksum senza il
+Database nello Scope e il change `dbms:` ne esce, quindi il checksum non torna
+— e in CI quell'update è la seconda invocazione (`--contexts=ci_apply`), che
+riparte **dopo** il seed della distinta. Da allora il cancello pretende che le
+**quattro famiglie per cui è nato** esistano (`IN ('DDT','ORDINE','COMMESSA',
+'RESO')`), come fanno i laterali, e il corpo chiama
+`fn_provision_registri_famiglia` invece di un INSERT ricopiato. Il fatto
+Liquibase vale per tutti i seed `runOnChange` con `dbms:`: un cancello su
+quanto c'è *oggi* in una tabella di catalogo è una mina che scoppia alla
+riga dopo, non un presidio.
