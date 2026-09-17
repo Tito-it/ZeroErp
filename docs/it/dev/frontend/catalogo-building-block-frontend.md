@@ -407,11 +407,17 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 > `--app-font-family`, tutti sui semantici di PrimeVue 4 che seguono `.p-dark`
 > da soli; `--p-info-color`/`--p-warn-color` → `--app-severity-info/warn`.
 >
-> ⚠️ **Resta una famiglia, dichiarata e non toccata**: i nomi semantici senza
-> CSS (`form-field-wide` ×5, `bom-readonly-switch__label` ×4, `app-empty` ×3, i
-> root `app-giornale`/`app-matrice-override`/`app-riepilogo-iva`/`pratica-*-tab`/
-> `documento-emissione__*`/`lista-config-*`/`topbar-user-kebab-*`…) — sono
-> identificatori, non utility, e si tolgono o si stilano per decisione.
+> ✅ **Terza passata, lo stesso giorno — i nomi semantici senza CSS**: 26
+> identificatori orfani tolti (root come `app-giornale`, `pratica-*-tab`,
+> `documento-emissione__*`, `lista-config-*`, `topbar-user-kebab-*`, i BEM di
+> `bom-readonly-switch__label`…): nessun foglio, nessun `:deep()`, nessun test
+> li nominava. Due erano **intenzioni non finite** e hanno avuto la loro
+> regola: `form-field-wide` (il campo a tutta riga in una griglia — cinque
+> siti dal 2026-05 e uno `style="grid-column: 1 / -1"` inline che faceva lo
+> stesso) e `app-empty` → `app-empty-state`, il BB che già esisteva (la
+> matrice utility ne teneva una copia locale, `.ut-empty`, tolta). Dopo le tre
+> passate il censimento delle classi statiche non definite è **zero**, e il
+> comando per ricontrollarlo sta in [frontend-standards §Classi CSS](frontend-standards.md).
 
 ### Pagine auth (`auth-pages.css`)
 

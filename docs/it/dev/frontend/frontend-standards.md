@@ -2051,10 +2051,18 @@ in `:root:not(.p-dark)` (light).
 | `form-grid`          | Contenitore campi form (flex column, gap)                 |
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
+| `form-field-wide`    | Il campo a **tutta riga** dentro una griglia a 2/3 colonne (`grid-column: 1 / -1`). ⚠️ Scritta in cinque template dal 2026-05, definita solo dal 17/09 |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
 | `app-text-muted`     | Testo sottotono (`--app-text-muted`): hint sotto i campi, note. ⛔ Non `text-color-secondary`: PrimeFlex non è installato, e fino al 17/09 nemmeno questa regola esisteva — 135 siti di testo «sottotono» erano testo normale |
 | `font-bold`          | `font-weight: 600` (globale dal 17/09; prima viveva in uno `<style scoped>` e altrove non faceva niente) |
 | `mt-025`/`mt-05`/`mt-1` · `ml-05`/`mr-05` | Le sole utility di spaziatura. ⛔ `mt-3`, `mb-3`, `w-full`, `flex`, `gap-2`… sono PrimeFlex: non esistono qui e sono state tolte da ~115 template il 17/09 |
+
+⭐ **Una classe che non sta in nessun foglio non fa niente, e non lo dice.**
+Prima di dire che una view è finita, il censimento delle classi statiche non
+definite deve restare a **zero** (dal 2026-09-17, dopo tre passate: utility
+PrimeFlex, variabili CSS di PrimeVue 3, identificatori orfani):
+`python3 scripts/check_classi_morte.py` (dalla root del repo; stampa l'elenco
+e esce 1 se ne trova).
 
 **Nota responsive sotto 1024px**: i pulsanti del `FormFooter` (Annulla,
 Chiudi, Salva) collassano automaticamente a icon-only via la classe

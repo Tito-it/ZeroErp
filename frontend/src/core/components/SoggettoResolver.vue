@@ -241,7 +241,7 @@ async function onSoggettoCreatoDaDrawer(data) {
       </div>
 
       <!-- Soggetto selezionato -->
-      <div v-if="selectedSoggetto" class="resolver-selected">
+      <div v-if="selectedSoggetto" >
         <SoggettoMessageBanner
           :ragione-sociale="selectedSoggetto.ragione_sociale_completa"
           :id-fiscale="selectedSoggetto.codice_fiscale || selectedSoggetto.partita_iva"

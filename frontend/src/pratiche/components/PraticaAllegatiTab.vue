@@ -53,7 +53,7 @@ watch(() => props.praticaId, (id) => {
 </script>
 
 <template>
-  <div class="pratica-allegati-tab">
+  <div>
     <!-- Placeholder upload (futuro) -->
     <div v-if="!isReadonly" class="allegati-placeholder">
       <i class="pi pi-cloud-upload allegati-placeholder-icon"></i>

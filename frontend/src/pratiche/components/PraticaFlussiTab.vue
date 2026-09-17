@@ -56,7 +56,7 @@ watch(() => props.praticaId, (id) => { if (id) loadAll() }, { immediate: true })
 </script>
 
 <template>
-  <div class="pratica-flussi-tab">
+  <div>
     <!-- Lista 1: flussi istanziati (sola lettura) -->
     <h4 class="pratica-flussi-titolo">{{ t('pratiche.flussi_titolo') }}</h4>
     <DataTable

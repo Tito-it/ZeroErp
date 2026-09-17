@@ -535,7 +535,7 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
-        <div class="indirizzi-riepilogo">
+        <div>
           <div v-if="indirizziRiepilogo.length > 0" class="indirizzi-riepilogo-list">
             <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="indirizzi-riepilogo-item">
               <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />

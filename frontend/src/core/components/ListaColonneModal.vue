@@ -185,7 +185,6 @@ function onReset() {
       <div
         v-for="(gruppo, gIdx) in gruppiOrdinati"
         :key="gruppo.label"
-        class="lista-config-gruppo"
       >
         <h4 class="lista-config-gruppo-label">{{ gruppo.label }}</h4>
         <div

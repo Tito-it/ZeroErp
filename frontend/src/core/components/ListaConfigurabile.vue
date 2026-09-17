@@ -767,7 +767,6 @@ defineExpose({
       <Column
         v-if="haSelezione"
         :exportable="false"
-        class="lista-config-selezione"
         style="width: 3rem; max-width: 3rem;"
       >
         <template #header>
@@ -785,7 +784,6 @@ defineExpose({
         v-if="colonneRitirate.length > 0 || haRowExpansion"
         expander
         :header="''"
-        class="lista-config-expander"
         style="width: 3rem; max-width: 3rem;"
       />
 

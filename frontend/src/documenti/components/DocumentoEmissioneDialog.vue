@@ -221,7 +221,7 @@ onBeforeUnmount(revokePreview)
   >
     <div class="documento-emissione">
       <!-- Riepilogo di dominio (listino/versione/eccezioni per l'offerta). -->
-      <div v-if="$slots.riepilogo" class="documento-emissione__riepilogo">
+      <div v-if="$slots.riepilogo" >
         <slot name="riepilogo" />
       </div>
 
@@ -231,7 +231,7 @@ onBeforeUnmount(revokePreview)
            - append mode: upload immediato al pick (no staging, nessun
              bottone Conferma da cliccare — il file e' caricato subito,
              il documento esiste gia'). -->
-      <div class="documento-emissione__allegati">
+      <div>
         <div class="documento-emissione__allegati-head">
           <span class="documento-emissione__allegati-title">
             {{ t('documenti.emissione.allegati_titolo') }}
@@ -290,7 +290,7 @@ onBeforeUnmount(revokePreview)
       <!-- Anteprima del documento che verra' generato (solo draft mode).
            Sta sotto allegati per non spingere il bottone graffetta fuori
            dal viewport visibile del dialog. -->
-      <div v-if="advancesState" class="documento-emissione__preview">
+      <div v-if="advancesState" >
         <div class="documento-emissione__preview-head">
           <span class="documento-emissione__preview-title">
             {{ t('documenti.emissione.anteprima_titolo') }}

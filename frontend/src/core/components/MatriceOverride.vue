@@ -109,7 +109,7 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
 </script>
 
 <template>
-  <div class="app-matrice-override">
+  <div>
     <div v-if="ricerca" class="app-matrice-override-ricerca">
       <InputText
         v-model="termine"

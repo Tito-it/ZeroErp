@@ -58,7 +58,7 @@ watch(() => props.praticaId, (id) => {
 </script>
 
 <template>
-  <div class="pratica-sospensioni-tab">
+  <div>
     <div v-if="loading" class="text-center app-text-muted p-3">
       <i class="pi pi-spin pi-spinner"></i>
     </div>

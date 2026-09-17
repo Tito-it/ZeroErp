@@ -99,7 +99,7 @@ watch(() => props.praticaId, (id) => {
 </script>
 
 <template>
-  <div class="pratica-note-tab">
+  <div>
     <!-- Form nuova nota -->
     <div v-if="!isReadonly" class="nota-form">
       <div class="nota-form-row">

@@ -589,6 +589,15 @@ a {
 .form-grid-3col > * {
   min-width: 0;
 }
+/* Il campo che occupa TUTTA la riga dentro una griglia a 2/3 colonne (un file
+ * da caricare, un HTML da editare). ⚠️ La classe era scritta in cinque
+ * template dal 2026-05 e non esisteva in nessun foglio: i campi stavano in
+ * una colonna sola. Dal 2026-09-17 e' questa, e sostituisce anche lo
+ * `style="grid-column: 1 / -1"` inline che faceva la stessa cosa altrove.
+ * Fuori da una griglia e' innocua (grid-column non fa niente). */
+.form-field-wide {
+  grid-column: 1 / -1;
+}
 
 /* Input con bottone azione affiancato (es. genera CF) */
 .app-input-with-action {
@@ -1328,6 +1337,10 @@ a {
   padding: 1.5rem 1rem;
   color: var(--p-text-muted-color);
   font-size: 0.85rem;
+  /* Anche il testo su piu' righe resta centrato: `align-items` centra le
+   * scatole, non le righe dentro. (Dal 17/09: era nella copia locale
+   * `.ut-empty` della matrice utility, e valeva per tutti.) */
+  text-align: center;
 }
 
 .app-empty-state > i.pi {

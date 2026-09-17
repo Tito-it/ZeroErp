@@ -52,7 +52,7 @@ const levels = computed(() => {
 
 <template>
   <span v-if="compact" class="parameter-fallback-compact">
-    <span class="parameter-value">{{ parameter.resolved_value ?? '—' }}</span>
+    <span>{{ parameter.resolved_value ?? '—' }}</span>
     <Tag :value="levelLabel" :severity="levelSeverity" class="parameter-level-badge" />
   </span>
   <div v-else class="parameter-fallback-chain">

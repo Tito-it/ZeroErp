@@ -140,7 +140,7 @@ async function handleSave() {
 </script>
 
 <template>
-  <div class="step-form">
+  <div>
     <div class="step-form__grid">
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_codice') }} *</label>

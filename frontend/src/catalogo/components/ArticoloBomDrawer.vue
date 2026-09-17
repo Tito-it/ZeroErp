@@ -671,7 +671,7 @@ function buildRigaActions(row) {
                   :class="{ 'bom-readonly-switch--on': form.obbligatorio }"
                 >
                   <span class="bom-readonly-switch__knob" />
-                  <span class="bom-readonly-switch__label">{{ form.obbligatorio ? t('common.yes') : t('common.no') }}</span>
+                  <span>{{ form.obbligatorio ? t('common.yes') : t('common.no') }}</span>
                 </span>
                 <ToggleSwitch v-else v-model="form.obbligatorio"
                   :invalid="campiErrati.includes('obbligatorio')"
@@ -685,7 +685,7 @@ function buildRigaActions(row) {
                   :class="{ 'bom-readonly-switch--on': form.partecipa_qta }"
                 >
                   <span class="bom-readonly-switch__knob" />
-                  <span class="bom-readonly-switch__label">{{ form.partecipa_qta ? t('common.yes') : t('common.no') }}</span>
+                  <span>{{ form.partecipa_qta ? t('common.yes') : t('common.no') }}</span>
                 </span>
                 <ToggleSwitch v-else v-model="form.partecipa_qta" />
               </div>
@@ -699,7 +699,7 @@ function buildRigaActions(row) {
                   :class="{ 'bom-readonly-switch--on': form.determina_qta_padre }"
                 >
                   <span class="bom-readonly-switch__knob" />
-                  <span class="bom-readonly-switch__label">{{ form.determina_qta_padre ? t('common.yes') : t('common.no') }}</span>
+                  <span>{{ form.determina_qta_padre ? t('common.yes') : t('common.no') }}</span>
                 </span>
                 <ToggleSwitch v-else v-model="form.determina_qta_padre" />
               </div>
@@ -711,7 +711,7 @@ function buildRigaActions(row) {
                   :class="{ 'bom-readonly-switch--on': form.esposto_in_fattura }"
                 >
                   <span class="bom-readonly-switch__knob" />
-                  <span class="bom-readonly-switch__label">{{ form.esposto_in_fattura ? t('common.yes') : t('common.no') }}</span>
+                  <span>{{ form.esposto_in_fattura ? t('common.yes') : t('common.no') }}</span>
                 </span>
                 <ToggleSwitch v-else v-model="form.esposto_in_fattura" />
               </div>

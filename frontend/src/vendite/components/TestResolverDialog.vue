@@ -238,7 +238,7 @@ function close() {
           :invalid="campiErrati.includes('data_riferimento')"
         />
       </div>
-      <div class="form-field" style="grid-column: 1 / -1;">
+      <div class="form-field form-field-wide">
         <label>{{ t('vendite.listini.field_articolo_padre_contesto') }}</label>
         <ArticoloLookup
           v-model="form.articolo_padre_obj"

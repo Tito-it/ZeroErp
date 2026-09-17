@@ -171,7 +171,7 @@ watch(
 </script>
 
 <template>
-  <div class="emittente-fiscale-field">
+  <div>
     <Select
       v-model="selectModel"
       :options="finalOptions"

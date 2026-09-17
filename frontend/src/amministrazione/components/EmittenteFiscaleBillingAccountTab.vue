@@ -293,7 +293,7 @@ function buildRowActions(data) {
     </template>
 
     <template #empty>
-      <div class="app-empty">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
+      <div class="app-empty-state">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
     </template>
   </DrawerTabLista>
 </template>

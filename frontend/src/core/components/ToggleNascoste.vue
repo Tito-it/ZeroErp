@@ -53,7 +53,7 @@ defineEmits(['change'])
       v-tooltip.bottom="hint || undefined"
       @update:model-value="$emit('change', $event)"
     />
-    <span class="app-toggle-nascoste-label">
+    <span>
       {{ label }}<span
         v-if="!modelValue && count > 0"
         class="app-toggle-nascoste-count"

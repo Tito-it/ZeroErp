@@ -75,7 +75,7 @@ function aliquotaLabel(row) {
 </script>
 
 <template>
-  <div class="app-riepilogo-iva">
+  <div>
     <div class="app-riepilogo-iva__header">
       <h4 class="app-riepilogo-iva__title">{{ t('common.riepilogo_iva_titolo') }}</h4>
       <small v-if="showSubtitle" class="app-riepilogo-iva__subtitle">
