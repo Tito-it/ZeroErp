@@ -27,9 +27,8 @@ import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 
 import { RISULTATI, useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
-import { displayDate } from '../../core/utils/date'
-import { formatCurrency } from '../../core/utils/format'
 import { listRateFattura } from '../api/pagamenti'
+import { useEtichettePagamenti } from '../etichette'
 
 const props = defineProps({
   // La fattura di cui mostrare le rate; `null` = tendina spenta.
@@ -65,12 +64,16 @@ watch(
   { immediate: true },
 )
 
+// Scopo: «Rata n · scadenza · importo · residuo». ⭐ L'importo della rata
+//        accanto al residuo (D19-b): «restano 400» senza «di 1.000» non dice
+//        se e' la prima rata o l'ultima, e chi digita un incasso lo vuole
+//        sapere prima di confermare. La forma vive in `etichette.js`: qui,
+//        nel blocco «Destinazione» e nella tabella delle righe e' la stessa.
+// ⚠️ `residuo ?? 0`: la tendina mostra SEMPRE il residuo, anche a zero — e'
+//    la colonna che dice «qui non ci sta piu' niente».
+const { rata: etichettaBase } = useEtichettePagamenti()
 function etichettaRata(r) {
-  const residuo = Number(r.residuo ?? 0)
-  const stato = residuo < 0
-    ? t('pagamenti.rata.di_troppo', { importo: formatCurrency(Math.abs(residuo)) })
-    : t('pagamenti.rata.residuo', { importo: formatCurrency(residuo) })
-  return `${t('pagamenti.rata.n', { n: r.numero_rata })} · ${displayDate(r.data_scadenza)} · ${stato}`
+  return etichettaBase({ ...r, residuo: r.residuo ?? 0 })
 }
 
 function onChange(scadenzaId) {

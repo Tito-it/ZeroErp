@@ -163,12 +163,28 @@ _RIGA_COLONNE = """
         f.numero           AS fattura_numero,
         f.anno             AS fattura_anno,
         f.serie            AS fattura_serie,
+        -- ⭐ IL DOCUMENTO, NON IL CONTATORE (D19-b, 2026-09-17): chi corregge
+        --    un importo deve sapere su che cosa lo corregge. Il numero
+        --    parlante si LEGGE dalla sede unica (`fn_numero_documento_fattura`,
+        --    IMMUTABLE — si inlinea), mai composto qui: `fattura_numero` da
+        --    solo e' ambiguo per costruzione (una fattura 1 e una nota di
+        --    credito 1 nello stesso anno). NULL sulla non numerata: il ripiego
+        --    lo sceglie chi rende.
+        vendite.fn_numero_documento_fattura(f.numero, f.serie) AS fattura_numero_documento,
+        f.data             AS fattura_data,
+        f.totale_doc       AS fattura_totale_doc,
+        reg.codice         AS fattura_registro_codice,
+        -- La natura si SEGNALA, non si nasconde: una nota di credito su una
+        -- riga di incasso e' il caso in cui il cliente ce la paga (D19-e).
+        ndf.codice_interno AS fattura_natura_doc_codice_interno,
+        ndf.descrizione    AS fattura_natura_doc_descrizione,
         r.billing_account_id,
         ba.codice          AS billing_account_codice,
         srd.ragione_sociale_completa AS billing_account_descrizione,
         r.scadenza_id,
         sc.numero_rata     AS scadenza_numero_rata,
         sc.data_scadenza   AS scadenza_data,
+        sc.importo         AS scadenza_importo,
         r.forzata,
         r.motivo_forzatura,
         r.stato_id,
@@ -214,6 +230,11 @@ _RIGA_FROM = """
       FROM pagamenti.vendite_contabili_righe r
       LEFT JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
       LEFT JOIN vendite.fatture f            ON f.id = r.fattura_id
+      -- Registro e natura del documento: LEFT come tutto il resto — una riga
+      -- senza fattura (DA_ABBINARE) e una fattura in bozza senza registro
+      -- devono comparire, non sparire.
+      LEFT JOIN vendite.registri_fatturazione reg ON reg.id = f.registro_id
+      LEFT JOIN config.nature_doc_fiscale ndf     ON ndf.id = f.natura_doc_id
       LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
       -- Il nome del cliente non sta sul billing account: la vista di dettaglio
       -- e' la sede unica della ragione sociale (persone fisiche e giuridiche

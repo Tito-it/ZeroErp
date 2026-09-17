@@ -304,16 +304,28 @@ Non paginata: le righe di una distinta sono limitate per costruzione.
   "riferimento_ente": "TRN 2026…", "data_pagamento": "2026-08-30",
   "data_valuta": null, "data_operazione": null,
   "fattura_id": 820, "fattura_numero": 815, "fattura_anno": 2026, "fattura_serie": "A",
+  "fattura_numero_documento": "815 - A", "fattura_data": "2026-09-12", "fattura_totale_doc": "1220.00",
+  "fattura_registro_codice": "REG-01",
+  "fattura_natura_doc_codice_interno": "FATTURA", "fattura_natura_doc_descrizione": "Fattura",
   "billing_account_id": 44, "billing_account_codice": "BA-000044", "billing_account_descrizione": "…",
-  "scadenza_id": 1301, "scadenza_numero_rata": 2, "scadenza_data": "2026-09-30",
+  "scadenza_id": 1301, "scadenza_numero_rata": 2, "scadenza_data": "2026-09-30", "scadenza_importo": "610.00",
   "forzata": false, "motivo_forzatura": null,
   "stato_id": 52, "stato_codice": "ABBINATA", "stato_descrizione": "Abbinata",
   "stato_is_postabile": true, "stato_richiede_abbinamento": true,
   "motivo_sospeso": null, "fondo_source_id": null, "attivo": true, "meta": {} }
 ```
 
-⚠️ `fattura_numero` è un **bigint**, non una stringa: è il progressivo, e la
-forma leggibile (serie/anno/numero) la compone chi la mostra.
+⚠️ `fattura_numero` è un **bigint**, non una stringa: è il progressivo.
+⭐ **Dal 2026-09-17 la forma leggibile NON la compone più chi la mostra**
+(D19-b): `fattura_numero_documento` arriva dalla sede unica
+`vendite.fn_numero_documento_fattura` («numero - serie», `NULL` sulla non
+numerata — il ripiego lo sceglie chi rende), insieme a data, totale, registro,
+natura del documento e importo della rata. È ciò che serve a chi corregge un
+importo per sapere **su che cosa** lo corregge, e alla natura per **segnalare**
+una nota di credito su una riga di incasso (D19-e). Le sette colonne viaggiano
+anche sulla coda (`GET /righe/`), che condivide il frammento. Il residuo **non**
+sta sulla riga: si legge dalla base dei saldi (§5) col livello giusto — e in
+modifica con `escludi_riga_id`, che solo la rata sa applicare.
 
 ### `POST /api/v1/pagamenti/distinte/{contabile_id}/righe/`
 

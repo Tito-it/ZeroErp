@@ -39,6 +39,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
+import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -55,6 +56,7 @@ import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { statoDistintaSeverity, statoRigaContabileSeverity } from '../../core/utils/severity'
 import { cambiaStatoDistinta, cambiaStatoRiga, eliminaRiga, getDistinta } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
+import { useEtichettePagamenti } from '../etichette'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
 import CorreggiDistintaDialog from './CorreggiDistintaDialog.vue'
 import DistintaRigaForm from './DistintaRigaForm.vue'
@@ -70,6 +72,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'cambiata', 'apri-distinta'])
 
 const { t, te } = useI18n()
+const { rata: etichettaRata } = useEtichettePagamenti()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -642,8 +645,33 @@ watch(
           >
             <template #body="{ data }">{{ data.billing_account_descrizione || '—' }}</template>
           </Column>
-          <Column field="fattura_numero" :header="t('pagamenti.righe.col_fattura_numero')">
-            <template #body="{ data }">{{ data.fattura_numero || '—' }}</template>
+          <!-- ⭐ IL DOCUMENTO, NON IL CONTATORE (D19-b): il numero parlante
+               viene dalla sede unica a DB (`fattura_numero_documento`), e non
+               si compone qui — `fattura_numero` da solo e' ambiguo (una
+               fattura 1 e una nota di credito 1 nello stesso anno). La natura
+               si segnala quando non e' una fattura. -->
+          <Column field="fattura_numero_documento" :header="t('pagamenti.righe.col_documento')">
+            <template #body="{ data }">
+              <template v-if="data.fattura_id != null">
+                <span>{{ data.fattura_numero_documento || t('fattura_lookup.senza_numero') }}</span>
+                <NaturaDocTag
+                  :codice="data.fattura_natura_doc_codice_interno"
+                  :descrizione="data.fattura_natura_doc_descrizione"
+                  class="ml-05"
+                />
+              </template>
+              <template v-else>—</template>
+            </template>
+          </Column>
+          <!-- La rata: «n. · scadenza». Vuota sulla riga senza rata — il fondo
+               fattura e' cosi', non e' un dato perso. -->
+          <Column field="scadenza_numero_rata" :header="t('pagamenti.righe.col_rata')">
+            <template #body="{ data }">
+              <template v-if="data.scadenza_id != null">
+                {{ etichettaRata({ numero_rata: data.scadenza_numero_rata, data_scadenza: data.scadenza_data }) }}
+              </template>
+              <template v-else>—</template>
+            </template>
           </Column>
           <Column field="stato_descrizione" :header="t('pagamenti.righe.col_stato')">
             <template #body="{ data }">

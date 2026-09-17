@@ -201,7 +201,7 @@ const onClose = useDrawerClose(emit)
       <!-- Badge ragione sociale + utility -->
       <div class="mb-2">
         <span class="font-bold">{{ billingAccountLabel }}</span>
-        <Tag v-if="billingAccountUtility" :value="billingAccountUtility" severity="info" class="ml-2" />
+        <Tag v-if="billingAccountUtility" :value="billingAccountUtility" severity="info" class="ml-05" />
       </div>
 
       <div class="app-page-toolbar">

@@ -1033,7 +1033,7 @@ function origineSeverity(origine) {
           }) }}
           <Tag v-if="contestoPricing.listino_versione_fissata"
                :value="t('vendite.contratti.contesto_versione_fissata')"
-               severity="success" class="ml-1" />
+               severity="success" class="ml-05" />
           <!-- Drift warning: il contratto e' fissato a una versione listino
                diversa da quella attualmente ATTIVA sul listino. Tag
                informativo, no blocco: i prezzi restano calcolati sulla
@@ -1042,7 +1042,7 @@ function origineSeverity(origine) {
                :value="t('vendite.contratti.contesto_drift_versione', {
                  versione_corrente: contestoPricing.listino_versione_corrente_codice,
                })"
-               severity="warn" class="ml-1"
+               severity="warn" class="ml-05"
                v-tooltip.top="t('vendite.contratti.contesto_drift_versione_tooltip', {
                  versione_corrente: contestoPricing.listino_versione_corrente_codice,
                  versione_fissata: contestoPricing.listino_versione_codice,

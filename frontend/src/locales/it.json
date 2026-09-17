@@ -3990,6 +3990,9 @@
       "campo_centro": "Centro di riscossione",
       "campo_centro_placeholder": "Scegli il centro",
       "campo_note": "Note",
+      "campo_emittente": "Emittente",
+      "emittente_aiuto": "La distinta prende il numero dal registro dell'emittente: senza canale e' quello con cui stai lavorando.",
+      "emittente_dal_canale": "L'emittente e' quello del canale scelto.",
       "centro_dal_canale": "Derivato dal canale scelto.",
       "dichiarato_aiuto": "Il totale scritto in cima al foglio arrivato: serve alla quadratura.",
       "nessun_canale": "Nessun canale di incasso configurato: si puo' aprire la distinta indicando direttamente il centro di riscossione.",
@@ -4015,6 +4018,12 @@
       "col_riferimento_ente": "Riferimento",
       "col_billing_account_descrizione": "Cliente",
       "col_fattura_numero": "Fattura",
+      "col_documento": "Documento",
+      "col_rata": "Rata",
+      "col_registro": "Registro",
+      "col_fattura_data": "Data emissione",
+      "col_fattura_totale": "Totale documento",
+      "destinazione_assente": "Riga non identificata: non ha né documento né rata. La destinazione si assegna con «{azione}».",
       "col_distinta": "Distinta",
       "col_scadenza_numero_rata": "Rata",
       "col_scadenza_data": "Scadenza",
@@ -4107,7 +4116,8 @@
       "non_lette": "Non e' stato possibile leggere le rate di questa fattura: riprova prima di abbinare senza rata.",
       "n": "Rata {n}",
       "residuo": "restano {importo}",
-      "di_troppo": "{importo} di troppo"
+      "di_troppo": "{importo} di troppo",
+      "sul_documento": "Nessuna rata: sul documento"
     },
     "registra": {
       "azione": "Registra",
@@ -5195,7 +5205,8 @@
       "incassato_non_disponibile": "L'incassato non è disponibile a questo livello: non è zero, non si sa.",
       "nessun_movimento": "Su questo documento non è ancora arrivato niente.",
       "non_letto": "Non è stato possibile leggere il saldo: riprova prima di concludere che non c'è nulla da pagare.",
-      "livello_non_pronto": "Il saldo di questo livello non è ancora disponibile."
+      "livello_non_pronto": "Il saldo di questo livello non è ancora disponibile.",
+      "include_riga_corrente": "L'importo in lavorazione comprende anche questa riga: a questo livello il saldo non sa escluderla."
     }
   },
   "fattura_lookup": {

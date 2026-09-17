@@ -221,7 +221,7 @@ async function onSoggettoCreatoDaDrawer(data) {
             </div>
             <div class="resolver-suggestion-detail">
               <span v-if="option.codice_fiscale">CF: {{ option.codice_fiscale }}</span>
-              <span v-if="option.partita_iva" class="ml-2">P.IVA: {{ option.partita_iva }}</span>
+              <span v-if="option.partita_iva" class="ml-05">P.IVA: {{ option.partita_iva }}</span>
             </div>
             <div v-if="option._ruoloDuplicato" class="resolver-warning">
               <i :class="MANAGE_ICONS.ERRORE" />

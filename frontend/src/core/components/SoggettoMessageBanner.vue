@@ -23,7 +23,7 @@ const { t } = useI18n()
     <div class="flex align-items-center gap-2">
       <i class="pi pi-user" />
       <strong>{{ ragioneSociale }}</strong>&nbsp;
-      <span v-if="idFiscale" class="text-sm text-color-secondary ml-2">
+      <span v-if="idFiscale" class="text-sm text-color-secondary ml-05">
         {{ t('common.id_fiscale') }}: {{ idFiscale }}
       </span>
     </div>

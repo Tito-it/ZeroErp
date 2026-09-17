@@ -82,12 +82,24 @@ class RigaContabileRow(TypedDict):
     fattura_numero: int | None
     fattura_anno: int | None
     fattura_serie: str | None
+    # ── Il documento, non il contatore (D19-b) ─────────────────────────────
+    # Il numero parlante viene dalla sede unica `fn_numero_documento_fattura`
+    # (NULL sulla non numerata); registro e natura dal documento. Servono a chi
+    # corregge un importo per sapere su che cosa lo corregge, e alla natura per
+    # SEGNALARE una nota di credito, non per nasconderla.
+    fattura_numero_documento: str | None
+    fattura_data: date | None
+    fattura_totale_doc: Decimal | None
+    fattura_registro_codice: str | None
+    fattura_natura_doc_codice_interno: str | None
+    fattura_natura_doc_descrizione: str | None
     billing_account_id: int | None
     billing_account_codice: str | None
     billing_account_descrizione: str | None
     scadenza_id: int | None
     scadenza_numero_rata: int | None
     scadenza_data: date | None
+    scadenza_importo: Decimal | None
     forzata: bool
     motivo_forzatura: str | None
     stato_id: int

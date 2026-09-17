@@ -1350,6 +1350,13 @@ a {
 .mt-025 { margin-top: 0.25rem; }
 .mt-05  { margin-top: 0.5rem; }
 .mt-1   { margin-top: 1rem; }
+/* Margin-left, stessa famiglia: un Tag o uno span accanto a un testo (la natura
+ * del documento accanto al numero, il badge utility accanto al cliente).
+ * ⚠️ Fino al 2026-09-17 sei siti scrivevano `ml-1`/`ml-2`, che non esistono in
+ * nessun foglio: residui di PrimeFlex, che non e' installato. Sanati qui; il
+ * censimento delle altre classi morte della stessa famiglia (`w-full`, `flex`,
+ * `mb-3`…) e' nel piano D19, registro del 17/09. */
+.ml-05  { margin-left: 0.5rem; }
 
 /* ===== Lookup dropdown multi-riga =====
  * Layout riutilizzabile per voci di AutoComplete/Dropdown con piu' campi

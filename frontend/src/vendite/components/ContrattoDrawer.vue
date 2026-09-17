@@ -873,7 +873,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
       <!-- === Cliente (BA + utility) + badge utility/PDP === -->
       <h4 class="mt-3">
         {{ t('vendite.contratti.section_cliente') }}
-        <Tag v-if="baBadgeLabel" :value="baBadgeLabel" severity="info" class="ml-2" />
+        <Tag v-if="baBadgeLabel" :value="baBadgeLabel" severity="info" class="ml-05" />
       </h4>
       <div class="form-grid-2col">
         <div class="form-field">

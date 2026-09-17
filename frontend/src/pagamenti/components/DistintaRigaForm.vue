@@ -22,6 +22,15 @@
 //    una riga mentre si corregge un importo. Una riga che NASCE non ha uno
 //    stato da proteggere; una che c'e' gia' si'.
 //
+// ⭐ MA LA DESTINAZIONE SI VEDE SEMPRE (D19-b, Tid 2026-09-15): R-6 protegge
+//    la SCRITTURA di fattura e rata, non la loro lettura. Chi corregge un
+//    importo deve sapere su che cosa lo corregge — il documento com'e' scritto
+//    (numero parlante, registro, data, totale, natura), il cliente, la rata
+//    con scadenza e importo, e il residuo dalla base unica dei saldi. Fino al
+//    17/09 in modifica il form nascondeva tutto (`v-if="!isEdit"`): si
+//    cambiava un importo al buio. In creazione lo stesso blocco compare
+//    appena scelta la fattura, e si aggiorna alla scelta della rata.
+//
 // 🔴 IL DOPPIO TEMPO DELLA CAPIENZA vale in ENTRAMBI i modi, ed e' lo stesso
 //    BB del dialogo di abbinamento (`useForzaturaConfermata`): primo tentativo
 //    SENZA forzatura; sul rifiuto confermabile il messaggio del database coi
@@ -44,12 +53,17 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 
+import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
 import FatturaLookup from '../../core/components/FatturaLookup.vue'
+import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
+import SaldoPanel from '../../core/components/SaldoPanel.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { LIVELLO, useSaldi } from '../../core/composables/useSaldi'
 import { DATE_FORMAT } from '../../core/constants'
-import { toDateString, parseIsoDate } from '../../core/utils/date'
+import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
+import { formatCurrency } from '../../core/utils/format'
 import { aggiornaRiga, creaRiga } from '../api/pagamenti'
+import { useEtichettePagamenti } from '../etichette'
 import RataSelect from './RataSelect.vue'
 
 const props = defineProps({
@@ -60,6 +74,9 @@ const props = defineProps({
 const emit = defineEmits(['salvata', 'annulla'])
 
 const { t } = useI18n()
+// L'etichetta della rata ha una sede sola (`etichette.js`): qui, nella tendina
+// delle rate e nella tabella delle righe si legge la stessa forma.
+const { rata: etichettaRata } = useEtichettePagamenti()
 const isEdit = computed(() => props.riga?.id != null)
 
 // ⭐ Un handler solo, quello del BB, per entrambi i modi: e' lui che riceve il
@@ -167,6 +184,93 @@ watch(nonIdentificata, (v) => {
   annulla()
 })
 
+// ── la destinazione LEGGIBILE (D19-b) ─────────────────────────────
+// Scopo: il documento e la rata su cui si sta scrivendo, in UNA forma per i
+//        due modi: in modifica dalla RIGA (le colonne `fattura_*`/`scadenza_*`
+//        che il backend porta dal 17/09), in creazione dalla fattura scelta e
+//        dalla rata scelta. `null` = nessuna destinazione (riga «non
+//        identificata», o fattura non ancora scelta).
+// ⚠️ Il numero parlante si LEGGE (`numero_documento`, sede unica a DB), mai
+//    composto qui. Il ripiego al contatore (`numero`) vale per la fattura
+//    scelta dal lookup finche' la vista non lo porta (brief DB, P-1): e' lo
+//    stesso numero che il lookup mostra oggi, non una terza forma.
+const destinazione = computed(() => {
+  if (isEdit.value) {
+    const r = props.riga
+    if (r?.fattura_id == null) return null
+    return {
+      fatturaId: r.fattura_id,
+      numeroDocumento: r.fattura_numero_documento ?? null,
+      naturaCodice: r.fattura_natura_doc_codice_interno ?? null,
+      naturaDescrizione: r.fattura_natura_doc_descrizione ?? null,
+      registro: r.fattura_registro_codice ?? null,
+      data: r.fattura_data ?? null,
+      totale: r.fattura_totale_doc ?? null,
+      cliente: r.billing_account_descrizione ?? null,
+      scadenzaId: r.scadenza_id ?? null,
+      numeroRata: r.scadenza_numero_rata ?? null,
+      dataScadenza: r.scadenza_data ?? null,
+      importoRata: r.scadenza_importo ?? null,
+    }
+  }
+  const f = fattura.value
+  if (f?.id == null) return null
+  const rata = rataScelta.value
+  return {
+    fatturaId: f.id,
+    numeroDocumento: f.numero_documento ?? (f.numero != null ? String(f.numero) : null),
+    naturaCodice: f.natura_doc_codice_interno ?? null,
+    naturaDescrizione: f.natura_doc_descrizione ?? null,
+    registro: f.registro_codice ?? null,
+    data: f.data ?? null,
+    totale: f.totale_doc ?? null,
+    cliente: f.ragione_sociale_completa ?? null,
+    scadenzaId: rata?.scadenza_id ?? null,
+    numeroRata: rata?.numero_rata ?? null,
+    dataScadenza: rata?.data_scadenza ?? null,
+    importoRata: rata?.importo ?? null,
+  }
+})
+
+// Le voci del blocco: cliente in testa (la riga primaria dell'header), poi
+// registro · data · totale · rata. La rata assente si DICE («sul documento»):
+// una riga senza rata e' il fondo fattura, non un dato perso.
+const destinazioneItems = computed(() => {
+  const d = destinazione.value
+  if (!d) return []
+  const rata = d.scadenzaId != null
+    ? etichettaRata({ numero_rata: d.numeroRata, data_scadenza: d.dataScadenza, importo: d.importoRata })
+    : null
+  return [
+    { label: t('pagamenti.righe.col_billing_account_descrizione'), value: d.cliente },
+    { label: t('pagamenti.righe.col_registro'), value: d.registro },
+    { label: t('pagamenti.righe.col_fattura_data'), value: d.data ? displayDate(d.data) : null },
+    {
+      label: t('pagamenti.righe.col_fattura_totale'),
+      value: d.totale != null ? formatCurrency(d.totale) : null,
+    },
+    { label: t('pagamenti.rata.campo'), value: rata, fallback: t('pagamenti.rata.sul_documento') },
+  ]
+})
+
+// Il saldo del blocco: la RATA se c'e', altrimenti il DOCUMENTO. ⚠️ Il pannello
+// legge il livello UNA volta: la `:key` lo rimonta quando cambia (e quando
+// cambia il riferimento, cosi' non resta un istante il saldo di un'altra cosa).
+const saldoLivello = computed(
+  () => (destinazione.value?.scadenzaId != null ? LIVELLO.RATA : LIVELLO.DOCUMENTO),
+)
+const saldoRiferimentoId = computed(() => {
+  const d = destinazione.value
+  if (!d) return null
+  return d.scadenzaId ?? d.fatturaId
+})
+const saldoKey = computed(() => `${saldoLivello.value}:${saldoRiferimentoId.value}`)
+// ⭐ In modifica il saldo si chiede PRIMA DI SE': senza, «in lavorazione»
+//    conterebbe proprio i soldi che si stanno correggendo. Sul documento il
+//    pannello dichiara che non sa escluderla (la funzione DB non ha il
+//    parametro): si legge sapendolo, non si sana sottraendo.
+const saldoEscludiRigaId = computed(() => (isEdit.value ? props.riga?.id ?? null : null))
+
 // ⚠️ `!= null` e non un test di verita': lo ZERO non e' un importo valido qui
 //    (una riga da zero non e' denaro arrivato), ma va rifiutato dal DATABASE con
 //    la sua frase — non nascosto disabilitando il pulsante, che lascerebbe
@@ -266,6 +370,44 @@ async function onConferma() {
         </div>
       </div>
     </template>
+
+    <!-- ══ Su che cosa si sta scrivendo (D19-b) ══
+         Sempre, nei due modi: in creazione appena c'e' la fattura, in modifica
+         dalla riga. In sola lettura per costruzione — la destinazione si cambia
+         col verbo `abbina` (R-6), qui si guarda. -->
+    <template v-if="destinazione">
+      <DrawerContextHeader
+        :tag-value="destinazione.numeroDocumento || t('fattura_lookup.senza_numero')"
+        :items="destinazioneItems"
+      >
+        <!-- ⭐ La natura si SEGNALA, non si nasconde: una nota di credito su
+             una riga di incasso e' il caso in cui il cliente ce la paga
+             (D19-e) — e chi digita deve vederlo prima di confermare. Il BB
+             tace da se' su una fattura ordinaria. -->
+        <template #status>
+          <NaturaDocTag
+            :codice="destinazione.naturaCodice"
+            :descrizione="destinazione.naturaDescrizione"
+          />
+        </template>
+      </DrawerContextHeader>
+      <!-- Il residuo dalla BASE UNICA (§2.7): rata se c'e', documento
+           altrimenti. `:key` perche' il pannello legge il livello una volta. -->
+      <SaldoPanel
+        :key="saldoKey"
+        :livello="saldoLivello"
+        :riferimento-id="saldoRiferimentoId"
+        :escludi-riga-id="saldoEscludiRigaId"
+      />
+    </template>
+    <!-- In modifica, una riga SENZA destinazione lo dice: «non identificata»
+         e' uno stato, non un blocco mancante. In creazione lo dice gia'
+         l'interruttore. -->
+    <Message v-else-if="isEdit" severity="secondary" :closable="false" size="small">
+      <!-- Il nome del verbo viene dalla SUA chiave: se «Abbina a fattura»
+           cambia nome, la frase lo segue. -->
+      {{ t('pagamenti.righe.destinazione_assente', { azione: t('pagamenti.abbina.azione') }) }}
+    </Message>
 
     <!-- ══ I fatti ══ -->
     <div class="form-grid-2col">

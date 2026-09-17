@@ -34,6 +34,9 @@ Indice test eseguiti:
 11) MatriciTests.test_il_difetto_del_collaudo_non_e_piu_offerto
 12) ModificaSecondoTempoTests.test_il_patch_oltre_la_capienza_e_rifiutato_confermabile
 13) ModificaSecondoTempoTests.test_col_secondo_tempo_il_patch_passa_e_resta_scritto
+14) ColonneTests.test_la_riga_porta_la_destinazione_leggibile
+15) ColonneTests.test_anche_la_coda_porta_la_destinazione_leggibile
+16) ColonneTests.test_il_numero_documento_viene_dalla_sede_unica
 """
 
 from __future__ import annotations
@@ -56,6 +59,19 @@ _COLONNE_ELIMINA = (
     "elimina_blocco_reason_key",
     "elimina_blocco_dettaglio",
     "can_eliminare",
+)
+
+# ⭐ La destinazione LEGGIBILE (D19-b, 2026-09-17): il documento e la rata con
+#    cui una persona li riconosce, non il contatore. Un nome sbagliato qui e'
+#    un 500 sul dettaglio della distinta, e i mock non lo vedono.
+_COLONNE_DESTINAZIONE = (
+    "fattura_numero_documento",
+    "fattura_data",
+    "fattura_totale_doc",
+    "fattura_registro_codice",
+    "fattura_natura_doc_codice_interno",
+    "fattura_natura_doc_descrizione",
+    "scadenza_importo",
 )
 
 
@@ -98,6 +114,35 @@ class ColonneTests(_DbTestCase):
         colonne = self._colonne(f"{repo_mod._RIGA_CODA_SELECT} WHERE r.id = %s", [-1])
         for nome in _COLONNE_ELIMINA:
             self.assertIn(nome, colonne)
+
+    # Scopo: D19-b — le sette colonne con cui la riga racconta il SUO documento
+    #        e la SUA rata (numero parlante, data, totale, registro, natura,
+    #        importo della rata), sulla riga «nuda».
+    def test_la_riga_porta_la_destinazione_leggibile(self):
+        colonne = self._colonne(f"{repo_mod._RIGA_SELECT} WHERE r.id = %s", [-1])
+        for nome in _COLONNE_DESTINAZIONE:
+            self.assertIn(nome, colonne)
+
+    # Scopo: ...e sulla coda, che condivide il frammento: il seed
+    #        `pagamenti.righe` puo' prenderle quando vorra'.
+    def test_anche_la_coda_porta_la_destinazione_leggibile(self):
+        colonne = self._colonne(f"{repo_mod._RIGA_CODA_SELECT} WHERE r.id = %s", [-1])
+        for nome in _COLONNE_DESTINAZIONE:
+            self.assertIn(nome, colonne)
+
+    # Scopo: il numero parlante NON e' composto nel repository: e' la sede unica
+    #        del database a produrlo. Si asserisce sul FRAMMENTO, perche' la
+    #        regola e' «si legge, non si compone» e una composizione a mano
+    #        (`numero::text || ' - ' || serie`) darebbe le stesse colonne e
+    #        passerebbe i due test sopra — sbagliando in silenzio sulla serie
+    #        NULL, dove il numero sparirebbe. ⚠️ E' un presidio sulla FORMA
+    #        (la chiamata alla fn c'e'), non un cancello contro ogni
+    #        composizione possibile: quello non si scrive con una stringa.
+    def test_il_numero_documento_viene_dalla_sede_unica(self):
+        self.assertIn(
+            "vendite.fn_numero_documento_fattura(f.numero, f.serie) AS fattura_numero_documento",
+            repo_mod._RIGA_COLONNE,
+        )
 
     # Scopo: FE-9 — la chiave della riga di stato si legge dal `meta` dello
     #        stato. Si asserisce che la COLONNA c'e', non il suo valore.

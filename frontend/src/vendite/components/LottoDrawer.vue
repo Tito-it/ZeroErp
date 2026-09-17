@@ -33,6 +33,7 @@ import SelectButton from 'primevue/selectbutton'
 import SelectButtonGravita from '../../core/components/SelectButtonGravita.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
@@ -72,7 +73,6 @@ import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { extractApiError } from '../../core/utils/apiError'
 import {
   gravitaGiornaleSeverity,
-  naturaDocSeverity,
   statoEsecuzioneLottoSeverity,
   statoLottoSeverity,
   statoTaskRunSeverity,
@@ -1399,10 +1399,10 @@ function fatturaNumero(row) {
                      mai `danger` — e il totale negativo si mostra com'e',
                      perche' e' il documento a essere di segno opposto. -->
                 <template #cell-natura_doc_descrizione="{ data }">
-                  <Tag v-if="data.natura_doc_codice_interno"
-                    :value="data.natura_doc_descrizione || data.natura_doc_codice_interno"
-                    :severity="naturaDocSeverity(data.natura_doc_codice_interno)" />
-                  <span v-else>—</span>
+                  <NaturaDocTag
+                    :codice="data.natura_doc_codice_interno"
+                    :descrizione="data.natura_doc_descrizione"
+                    sempre />
                 </template>
                 <template #cell-stato_doc_fiscale_descrizione="{ data }">
                   <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
