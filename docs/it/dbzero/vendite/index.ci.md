@@ -396,6 +396,7 @@
 - [vw_documento_lineage_nodi](manual/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
 - [vw_famiglie_documento_lista](manual/vw_famiglie_documento_lista.md) — *(rev 2026-09-01 — vista nata il 2026-09-01)*
 - [vw_fattura_righe_esposte](manual/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
+- [vw_fatture_scadenze_lista](manual/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](manual/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_lotti_fase](manual/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
 - [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)

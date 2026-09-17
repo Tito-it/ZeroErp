@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 (1 di 4) — vendite.fatture_scadenze: cade chk_fatture_scadenze_importo_pos
+#   Brief: brief-db-distinta-ricerca-rate §4-bis.6 (D19-e, Tid 2026-09-17).
+#
+# -- COSA DICEVA DAVVERO ------------------------------------------------------------
+#   `CHECK (importo >= 0)`: dal nome «positivo», dal predicato «non negativo» —
+#   LO ZERO E' AMMESSO, ed e' raggiungibile dal generatore (base 0,01 su due
+#   rate → una rata a 0,00 per arrotondamento). Il brief BE proponeva
+#   `importo <> 0`: sbagliato sul modello, avrebbe rotto il generatore su un
+#   micro-documento. Il vincolo vietava il NEGATIVO, cioe' la rata della nota
+#   di credito che P-5 introduce.
+#
+# -- PERCHE' SI TOGLIE E NON SI SOSTITUISCE ----------------------------------------
+#   La regola vera e' «il segno della rata e' il segno del documento», e un
+#   CHECK non attraversa due tabelle. Ma quella regola ha GIA' un presidio:
+#   la numerazione (fn_assign_numero_fattura, condizione 3 riscritta nel
+#   20260917-13) pretende somma delle rate = totale a pagare, col segno —
+#   una rata di segno sbagliato rompe l'uguaglianza e il documento non si
+#   numera. E chi scrive le rate e' UNA funzione, fn_genera_scadenze_fattura
+#   (20260917-12), che il segno lo prende dalla base. Un guard di riga in piu'
+#   sarebbe una terza copia della stessa regola (linee-guida-sql §12.5,
+#   «si presidia in una sede»). Il pgTAP test-nc-rata-unica-v1 pinna il
+#   comportamento: rata negativa ammessa, numerazione che quadra.
+#
+# -- ORDINE NELLA TIMELINE ------------------------------------------------------------
+#   00_schema e 20_code si mescolano per NN (autogen): questo -11 sta PRIMA del
+#   -12 (il generatore che scrive il negativo) e del -13. Su un DB da zero il
+#   CHECK nasce col 20260731 e muore qui, prima che qualcuno scriva una rata
+#   negativa. Nessuna riga esistente lo viola (togliere un CHECK non
+#   convalida niente, e non c'e' niente da convalidare).
+#
+# -- IL ROLLBACK RIMETTE IL VINCOLO: fallirebbe su un DB con rate negative ----------
+#   ed e' giusto cosi' — il rollback di P-5 non e' «togli il vincolo e basta».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260917-11-drop-chk-fatture-scadenze-importo-pos-mctit.yaml
+
+  - changeSet:
+      id: 20260917-11-drop-chk-fatture-scadenze-importo-pos
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_scadenze: cade chk_fatture_scadenze_importo_pos (importo >= 0).
+        La rata della nota di credito e' negativa (P-5, D19-e); la coerenza di segno la
+        presidia la numerazione (somma rate = totale a pagare, col segno). Brief:
+        brief-db-distinta-ricerca-rate §4-bis.6 (P-5, 1 di 4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_scadenze
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_constraint
+                  WHERE conname = 'chk_fatture_scadenze_importo_pos'
+                    AND conrelid = 'vendite.fatture_scadenze'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_scadenze
+                  DROP CONSTRAINT chk_fatture_scadenze_importo_pos;
+
+              COMMENT ON COLUMN vendite.fatture_scadenze.importo
+              IS 'Importo della rata, COL SEGNO DEL DOCUMENTO: positivo su una fattura, negativo sulla rata unica di una nota di credito (P-5, 2026-09-17). Lo zero e'' ammesso: e'' raggiungibile per arrotondamento su un micro-documento a piu'' rate. ⛔ Fino al 2026-09-17 un CHECK (importo >= 0) vietava il negativo: tolto, perche'' la regola vera — il segno della rata e'' il segno del documento — non sta in un CHECK di tabella ma nella numerazione (fn_assign_numero_fattura: somma delle rate = totale a pagare, col segno) e nell''unico scrittore (fn_genera_scadenze_fattura, che il segno lo prende dalla base). Brief: brief-db-distinta-ricerca-rate §4-bis.6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_scadenze
+                  ADD CONSTRAINT chk_fatture_scadenze_importo_pos CHECK (importo >= 0);
+
+              COMMENT ON COLUMN vendite.fatture_scadenze.importo IS 'Importo rata (>= 0)';

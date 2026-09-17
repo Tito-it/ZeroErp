@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 (3 di 3) — pagamenti.vw_saldi_rate: la PORTA 2 del nucleo, cioe' la
+#   forma dello SCADENZARIO. Brief: brief-db-distinta-ricerca-rate §4-bis.4.
+#
+# -- CHE COS'E' -------------------------------------------------------------------
+#   Il nucleo pagamenti.fn_get_saldi_rate chiamato con l'ARRAY di tutte le rate
+#   visibili (ARRAY(SELECT id FROM vendite.fatture_scadenze), sotto RLS): il
+#   saldo di TUTTE le rate in un passaggio. ⚠️ L'array e' obbligatorio nel
+#   nucleo (niente «NULL = tutte»: la ragione, con l'EXPLAIN, sta nel 20260917-07). Chi vuole «solo aperte» fa
+#     JOIN pagamenti.vw_saldi_rate sr ON sr.scadenza_id = v.scadenza_id
+#     WHERE sr.saldo <> 0
+#   e il filtro sta nel WHERE, dove uno scadenzario lo vuole. Non e' una
+#   seconda formula: e' il nucleo su tutte le rate.
+#
+# -- CHI LA USA E CHI NO ------------------------------------------------------------
+#   Lo scadenzario, e la lista rate quando vorra' ORDINARE per residuo (il seed
+#   pagamenti.rate oggi dichiara i saldi ordinabile=f). ⛔ NON il picker sulla
+#   pagina: la' la porta giusta e' il nucleo con l'array degli id della pagina,
+#   che scende negli indici. Questa vista aggrega tutto: e' il costo onesto dello
+#   scadenzario, non del picker.
+#
+# -- security_invoker=on ------------------------------------------------------------
+#   Il nucleo e' INVOKER e legge tre tabelle con policy: la vista deve esserlo
+#   per non leggere coi diritti del proprietario. Va RI-SPECIFICATA a ogni
+#   CREATE OR REPLACE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260917-09-create-vw-saldi-rate-mctit.yaml
+
+  - changeSet:
+      id: 20260917-09-create-vw-saldi-rate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.vw_saldi_rate: il nucleo fn_get_saldi_rate sull'array di tutte le rate
+        visibili, security_invoker=on — la porta dello scadenzario. Brief:
+        brief-db-distinta-ricerca-rate §4-bis.4 (P-3, 3 di 3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldi_rate'
+            - sqlCheck:
+                expectedResult: 0
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                  WHERE schemaname = 'pagamenti' AND viewname = 'vw_saldi_rate'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW pagamenti.vw_saldi_rate
+              WITH (security_invoker=on) AS
+              SELECT r.scadenza_id,
+                     r.saldo,
+                     r.in_lavorazione,
+                     r.incassato,
+                     r.has_movimenti
+                FROM pagamenti.fn_get_saldi_rate(
+                         ARRAY(SELECT s.id FROM vendite.fatture_scadenze s),
+                         NULL::bigint) r;
+
+              COMMENT ON VIEW pagamenti.vw_saldi_rate
+              IS 'La PORTA 2 del nucleo pagamenti.fn_get_saldi_rate: il saldo di TUTTE le rate visibili in un passaggio (saldo · in_lavorazione · incassato · has_movimenti per scadenza_id) — il nucleo chiamato con ARRAY(SELECT id FROM vendite.fatture_scadenze), sotto RLS, perche'' nel nucleo l''array e'' obbligatorio (niente «NULL = tutte»: la ragione sta nel COMMENT del nucleo). E'' la forma dello scadenzario — «solo aperte» e'' `WHERE saldo <> 0` su un JOIN a vendite.vw_fatture_scadenze_lista — e non e'' una seconda formula: e'' il nucleo su tutte le rate. ⛔ Non e'' la porta del picker sulla pagina: la'' si chiama il nucleo con l''array degli id della pagina, che scende negli indici; questa aggrega tutto, ed e'' il costo onesto dello scadenzario. ⚠️ security_invoker=on, da RI-SPECIFICARE a ogni CREATE OR REPLACE: il nucleo legge tre tabelle con policy. Nasce il 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.4, P-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS pagamenti.vw_saldi_rate;

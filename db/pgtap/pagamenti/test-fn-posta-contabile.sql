@@ -4,7 +4,7 @@
 -- Test: la MADRE DEL POSTING — pagamenti.fn_posta_contabile
 --
 -- Elenco test (plan 20):
---  1) Riferimenti minimi presenti
+--  1) Riferimenti costruiti (azienda, operatore, cliente) e a catalogo
 --  2) La distinta nasce in BOZZA con le sue tre righe
 --  3) Una distinta non VALIDATA non si registra
 --  4) Una dichiarazione che non corrisponde viene RIFIUTATA
@@ -39,14 +39,32 @@
 --
 -- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.1 S1-10, §2.4 casi 1, 2, 3, 5, 13 · lotto 4
+--
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-09-17 sera). Fino a quel
+--   giorno il file pescava «l'ultimo billing account per data_insert» e ne
+--   deduceva l'emittente: su un database ricostruito dai changelog (zeroerp_ci,
+--   la CI) le anagrafiche sono a ZERO, tmp_refs usciva vuota e il file moriva
+--   nel fixture — ERRORE_FIXTURE in baseline-rossi-ci.tsv, e il PRIMO
+--   MOVIMENTO del progetto era collaudato solo su dbdev. Ora: un'azienda col
+--   suo operatore (dbops.fn_pgtap_crea_emittente_operatore) PRIMA del
+--   contesto, un cliente fatturabile (dbops.fn_pgtap_crea_cliente_ba) NEL
+--   contesto — guida pgtap-come-si-scrive-un-test §«Il mondo si costruisce,
+--   non si cerca». Con un emittente nuovo la chiave di riuso di
+--   fn_get_or_create_vendite_contabile (che dal 2026-09-15 comprende
+--   l'emittente) non puo' agganciare una distinta preesistente della macchina.
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE.
 BEGIN;
 
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
 -- ⚠️ 2. CONTESTO APPLICATIVO: si gira come gira l'applicazione (OPERATORE +
 --   RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 -- ⚠️ 3. VINCOLI DIFFERITI: senza, non verrebbero mai esercitati (si chiude in
 --   ROLLBACK) e il file sarebbe verde per sottrazione.
@@ -60,27 +78,22 @@ SELECT plan(20);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_posta_contabile'::text AS test_scope;
 
+-- Il cliente fatturabile, nel contesto dell'operatore: il legame BA -> emittente
+-- lo scrive il trigger z90 verso l'emittente di chi agisce.
+CREATE TEMP TABLE tmp_cli AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('posta contabile') c;
+
 -- ⚠️ Il centro NON si fabbrica: dal 2026-08-21 i cinque centri sono seminati e
 --   i due ruoli interni sono unici per vincolo. Un test che se li crea da solo
 --   non verifica il seed: lo nasconde.
 -- ⭐ E si prende BANCA, non FONDI_FATTURA: qui si registra denaro ARRIVATO.
 CREATE TEMP TABLE tmp_refs AS
-WITH ba AS (
-  SELECT b.id, b.utility_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-       ba.id                                                                        AS billing_account_id,
-       ba.utility_id                                                                AS utility_id,
+SELECT script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id)                       AS registro_id,
+       (SELECT billing_account_id FROM tmp_cli)                                      AS billing_account_id,
+       (SELECT utility_id FROM tmp_cli)                                              AS utility_id,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1)                           AS valuta_id,
-       (SELECT m.emittente_soggetto_ruolo_id
-          FROM anagrafiche.emittenti_fiscali_billing_account m
-         WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-         ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id
-         LIMIT 1)                                                                   AS emittente_soggetto_ruolo_id,
+       m.soggetto_ruolo_id                                                          AS emittente_soggetto_ruolo_id,
        (SELECT c.id FROM pagamenti.centri_riscossione c
          WHERE c.attivo IS TRUE AND c.codice_interno = 'BANCA'
          ORDER BY c.id LIMIT 1)                                                     AS centro_banca_id,
@@ -92,7 +105,7 @@ SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(
          WHERE s.codice_interno = 'DA_ABBINARE' ORDER BY s.id LIMIT 1)              AS stato_da_abbinare_id,
        (SELECT s.id FROM pagamenti.vendite_contabili_stati s
          WHERE s.codice_interno = 'VALIDATA' ORDER BY s.id LIMIT 1)                 AS stato_validata_id
-  FROM ba;
+  FROM _mondo m;
 
 SELECT ok(
   (SELECT registro_id IS NOT NULL
@@ -106,7 +119,7 @@ SELECT ok(
       AND stato_da_abbinare_id IS NOT NULL
       AND stato_validata_id IS NOT NULL
      FROM tmp_refs),
-  '1) Riferimenti minimi presenti (centro BANCA e stati compresi)'
+  '1) Riferimenti costruiti (azienda, operatore, cliente, registro) e a catalogo (centro BANCA, stati)'
 );
 
 -- La fattura da incassare: 300, di cui se ne registrano 150.

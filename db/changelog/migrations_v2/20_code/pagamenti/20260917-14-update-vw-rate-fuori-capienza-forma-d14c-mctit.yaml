@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 (4 di 4) + P-1-bis — pagamenti.vw_rate_fuori_capienza: la forma di D14-c,
+#   i candidati dell'imputazione, e numero_documento in coda.
+#   Brief: brief-db-distinta-ricerca-rate §4-bis.2 e §4-bis.6.
+#
+# -- IL WHERE ERA UN INTERVALLO A ESTREMI FISSI ----------------------------------------
+#   `saldo < 0 OR saldo > importo` e' la banda [0, importo] — esattamente la
+#   trappola del §5 del brief madre, che D14-c ha sciolto sul GUARD e non su
+#   questa vista. Su una rata NEGATIVA (la nota di credito, P-5) entrambi i
+#   motivi uscivano sbagliati: un +15 su -20 dava SOVRA_INCASSATA, un rimborso
+#   di 30 dava MOVIMENTO_CONTRARIO. La forma di D14-c non ha estremi:
+#     SOVRA_INCASSATA     = il residuo ha ATTRAVERSATO lo zero
+#                           (sign(saldo) <> sign(importo) AND saldo <> 0)
+#     MOVIMENTO_CONTRARIO = il residuo SUPERA l'importo in valore assoluto
+#                           (abs(saldo) > abs(importo))
+#   Sulle rate positive e' IDENTICA a prima (i test 13-14 di
+#   test-abbinamento-rata restano verdi): saldo -10 su 100 → segno diverso →
+#   SOVRA; saldo 110 → abs → CONTRARIO; saldo 0 → fuori. Il vocabolario resta
+#   a DUE valori: su una nota di credito SOVRA_INCASSATA significa
+#   «sovra-rimborsata», e a dirlo e' l'etichetta, non un terzo codice.
+#
+# -- I CANDIDATI: anche i documenti con movimenti SENZA rata ---------------------------
+#   Dal 20260917-10 il saldo di una rata include la quota IMPUTATA dei
+#   movimenti del documento senza rata. Una rata puo' quindi uscire dalla
+#   banda senza che nessun movimento la NOMINI (130 senza rata su 30 + 70:
+#   la seconda va a -30). Il pre-filtro guardava solo i movimenti che nominano
+#   la rata: quella rata non sarebbe mai entrata nell'elenco — e questo e'
+#   «l'elenco senza il quale la forzatura sarebbe un modo di NASCONDERE».
+#   Terzo ramo del pre-filtro: EXISTS di un movimento attivo del documento con
+#   scadenza_id NULL (ix_vendite_movimenti_fattura_id).
+#
+# -- IL SALDO DAL NUCLEO, in un passaggio ------------------------------------------------
+#   La LATERAL per candidato passa a UNA chiamata a pagamenti.fn_get_saldi_rate
+#   con l'array dei candidati: il nucleo con l'imputazione legge il piano
+#   intero di ogni documento, e per rata lo rileggerebbe N volte. Stessa
+#   formula (e' la porta 3), un'evaluazione.
+#
+# -- numero_documento IN CODA (P-1-bis) -----------------------------------------------
+#   La lista pagamenti.rate_fuori_capienza (ui 52) mostra fattura_numero,
+#   cioe' il CONTATORE nudo — la stessa ambiguita' di D19-a (una fattura 1 e
+#   una nota di credito 1 nello stesso anno). numero_documento dalla sede
+#   unica vendite.fn_numero_documento_fattura, appeso in coda: CREATE OR
+#   REPLACE ammette solo l'append. La riga del CSV (id 52) nasce attivo = f
+#   finche' il backend non la proietta (vista_sql NULL: cancello BE).
+#
+# -- security_invoker=on RI-SPECIFICATA: senza, la vista mostrerebbe le rate
+#    di tutti gli emittenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260917-14-update-vw-rate-fuori-capienza-forma-d14c-mctit.yaml
+
+  - changeSet:
+      id: 20260917-14-update-vw-rate-fuori-capienza-forma-d14c
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.vw_rate_fuori_capienza: motivo e WHERE nella forma di D14-c (segno e valore
+        assoluto, niente banda [0, importo]: giusti anche sulla rata negativa della nota di
+        credito), candidati estesi ai documenti con movimenti senza rata (l'imputazione del
+        nucleo), saldo dal nucleo in una chiamata, + numero_documento in coda (P-1-bis).
+        security_invoker=on ri-specificata. Brief: brief-db-distinta-ricerca-rate §4-bis.6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: pagamenti
+                viewName: vw_rate_fuori_capienza
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldi_rate'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_numero_documento_fattura'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW pagamenti.vw_rate_fuori_capienza
+              WITH (security_invoker=on) AS
+              WITH candidate AS (
+                  -- Il pre-filtro: le sole rate che qualcuno ha toccato. Tre rami:
+                  -- un movimento che la nomina, una riga forzata che la nomina,
+                  -- oppure — dal 2026-09-17 — un movimento del suo DOCUMENTO senza
+                  -- rata, che il nucleo imputa e che puo' portarla fuori banda senza
+                  -- nominarla.
+                  SELECT s.id AS scadenza_id,
+                         s.fattura_id,
+                         s.numero_rata,
+                         s.data_scadenza,
+                         s.importo
+                    FROM vendite.fatture_scadenze s
+                   WHERE EXISTS (SELECT 1 FROM pagamenti.vendite_movimenti m
+                                  WHERE m.scadenza_id = s.id AND m.attivo IS TRUE)
+                      OR EXISTS (SELECT 1 FROM pagamenti.vendite_contabili_righe cr
+                                  WHERE cr.scadenza_id = s.id AND cr.attivo IS TRUE AND cr.forzata IS TRUE)
+                      OR EXISTS (SELECT 1 FROM pagamenti.vendite_movimenti m
+                                  WHERE m.fattura_id = s.fattura_id AND m.scadenza_id IS NULL AND m.attivo IS TRUE)
+              )
+              SELECT
+                  -- D14-c, senza estremi da invertire: ha attraversato lo zero, oppure
+                  -- supera l'importo in valore assoluto.
+                  CASE
+                      WHEN sign(x.saldo) <> sign(c.importo) AND x.saldo <> 0 THEN 'SOVRA_INCASSATA'::text
+                      ELSE 'MOVIMENTO_CONTRARIO'::text
+                  END                                                   AS motivo,
+                  c.scadenza_id,
+                  c.fattura_id,
+                  f.anno,
+                  f.serie,
+                  f.numero                                              AS fattura_numero,
+                  f.billing_account_id,
+                  f.emittente_soggetto_ruolo_id,
+                  c.numero_rata,
+                  c.data_scadenza,
+                  c.importo                                             AS importo_rata,
+                  (c.importo - x.saldo)                                 AS registrato,
+                  x.saldo                                               AS residuo,
+                  x.incassato,
+                  x.in_lavorazione,
+                  fz.righe_forzate,
+                  fz.motivi_forzatura,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento
+                FROM candidate c
+                JOIN vendite.fatture f ON f.id = c.fattura_id
+                -- Il saldo dal NUCLEO, in una chiamata sull'insieme dei candidati
+                -- (la porta 3): con l'imputazione ogni rata legge il piano intero
+                -- del suo documento, e una LATERAL per rata lo rileggerebbe N volte.
+                JOIN pagamenti.fn_get_saldi_rate(ARRAY(SELECT cd.scadenza_id FROM candidate cd)) x
+                  ON x.scadenza_id = c.scadenza_id
+                LEFT JOIN LATERAL (
+                    SELECT count(*)::integer AS righe_forzate,
+                           string_agg(NULLIF(btrim(cr.motivo_forzatura), ''), ' · ' ORDER BY cr.id) AS motivi_forzatura
+                      FROM pagamenti.vendite_contabili_righe cr
+                     WHERE cr.scadenza_id = c.scadenza_id AND cr.attivo IS TRUE AND cr.forzata IS TRUE
+                ) fz ON true
+               WHERE (sign(x.saldo) <> sign(c.importo) AND x.saldo <> 0)
+                  OR abs(x.saldo) > abs(c.importo);
+
+              COMMENT ON VIEW pagamenti.vw_rate_fuori_capienza
+              IS 'Le rate il cui residuo e'' uscito dalla banda: l''elenco senza il quale la forzatura sarebbe un modo di NASCONDERE denaro invece di registrarlo (brief madre §5). ⭐ DUE motivi e non uno: SOVRA_INCASSATA (il residuo ha ATTRAVERSATO lo zero — e'' entrato piu'' del dovuto; su una nota di credito: rimborsato piu'' del credito) e MOVIMENTO_CONTRARIO (il residuo SUPERA l''importo della rata in valore assoluto — e'' uscito denaro dove non era entrato; su una nota di credito: e'' entrato denaro invece di uscire). Il secondo e'' il caso che ha fatto cadere l''asimmetria di D1-bis, ed e'' il motivo per cui la vista NON si chiama «sovra incassate». ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.6, P-5): la banda NON e'' piu'' [0, importo] — era la trappola del §5 del brief madre, sciolta sul guard da D14-c e non qui — ma la forma di D14-c: segno e valore assoluto, senza estremi da invertire, giusta anche sulla rata NEGATIVA della nota di credito. Sulle rate positive e'' identica a prima. Il vocabolario resta a due valori: la sfumatura la dice l''etichetta. ⭐ Stessa rev: i CANDIDATI includono le rate di un documento con movimenti SENZA rata (dal 20260917-10 il nucleo dei saldi li imputa alle rate, e una rata puo'' uscire dalla banda senza che nessun movimento la nomini); il saldo arriva dal nucleo pagamenti.fn_get_saldi_rate in UNA chiamata sull''insieme dei candidati e non piu'' in LATERAL per rata; + numero_documento in coda dalla sede unica vendite.fn_numero_documento_fattura (la lista ui 52 mostrava il contatore nudo, ambiguo fra fattura e nota di credito). ⚠️ Il criterio guarda i FATTI: contano i movimenti registrati, non le righe ancora in lavorazione — `in_lavorazione` resta come colonna, per chi legge la riga e se lo chiede. ⚠️ Le righe forzate sono la TRACCIA della decisione, non il criterio. ⚠️ La formula del saldo NON e'' ricopiata: e'' il nucleo, una sede sola. ⚠️ security_invoker=on: va RI-SPECIFICATA a ogni CREATE OR REPLACE o PostgreSQL la azzera. S2-7 del cantiere incassi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS pagamenti.vw_rate_fuori_capienza;
+              CREATE VIEW pagamenti.vw_rate_fuori_capienza
+              WITH (security_invoker=on) AS
+              WITH candidate AS (
+                       SELECT s.id AS scadenza_id,
+                          s.fattura_id,
+                          s.numero_rata,
+                          s.data_scadenza,
+                          s.importo
+                         FROM vendite.fatture_scadenze s
+                        WHERE ((EXISTS ( SELECT 1
+                                 FROM pagamenti.vendite_movimenti m
+                                WHERE ((m.scadenza_id = s.id) AND (m.attivo IS TRUE)))) OR (EXISTS ( SELECT 1
+                                 FROM pagamenti.vendite_contabili_righe cr
+                                WHERE ((cr.scadenza_id = s.id) AND (cr.attivo IS TRUE) AND (cr.forzata IS TRUE)))))
+                      )
+               SELECT
+                      CASE
+                          WHEN (x.saldo < (0)::numeric) THEN 'SOVRA_INCASSATA'::text
+                          ELSE 'MOVIMENTO_CONTRARIO'::text
+                      END AS motivo,
+                  c.scadenza_id,
+                  c.fattura_id,
+                  f.anno,
+                  f.serie,
+                  f.numero AS fattura_numero,
+                  f.billing_account_id,
+                  f.emittente_soggetto_ruolo_id,
+                  c.numero_rata,
+                  c.data_scadenza,
+                  c.importo AS importo_rata,
+                  (c.importo - x.saldo) AS registrato,
+                  x.saldo AS residuo,
+                  x.incassato,
+                  x.in_lavorazione,
+                  fz.righe_forzate,
+                  fz.motivi_forzatura
+                 FROM (((candidate c
+                   JOIN vendite.fatture f ON ((f.id = c.fattura_id)))
+                   CROSS JOIN LATERAL pagamenti.fn_get_saldo_rata(c.scadenza_id) x(saldo, in_lavorazione, incassato, has_movimenti))
+                   LEFT JOIN LATERAL ( SELECT (count(*))::integer AS righe_forzate,
+                          string_agg(NULLIF(btrim(cr.motivo_forzatura), ''::text), ' · '::text ORDER BY cr.id) AS motivi_forzatura
+                         FROM pagamenti.vendite_contabili_righe cr
+                        WHERE ((cr.scadenza_id = c.scadenza_id) AND (cr.attivo IS TRUE) AND (cr.forzata IS TRUE))) fz ON (true))
+                WHERE ((x.saldo < (0)::numeric) OR (x.saldo > c.importo));

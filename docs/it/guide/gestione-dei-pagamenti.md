@@ -88,11 +88,14 @@ vede.*
 * [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) — saldo finanziario effettivo
 * [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — ⭐ **la registrazione**: le righe pronte diventano movimenti, e la distinta si chiude
 * [pagamenti.fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) — il saldo per **rata**, che distingue il registrato dal dichiarato e l'incassato dal postato
+* [pagamenti.fn_get_saldi_rate](/dbzero/pagamenti/funzioni/fn_get_saldi_rate) — ⭐ dal 17-09-2026 **il nucleo** dei saldi: la formula scritta una volta per N rate, con l'**imputazione** dei movimenti senza rata; `fn_get_saldo_rata` ne è la porta a un elemento
 * [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura) — «questa rata e' di questa fattura?», chiesto **fuori** dalla row security
 
 **Viste:**
 
 * [pagamenti.vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) — le rate il cui residuo e' uscito dalla banda: l'elenco senza il quale la forzatura sarebbe un modo di nascondere denaro
+* [pagamenti.vw_saldi_rate](/dbzero/pagamenti/views/vw_saldi_rate) — il saldo di **tutte** le rate in un passaggio: la porta dello scadenzario
+* [vendite.vw_fatture_scadenze_lista](/dbzero/vendite/views/vw_fatture_scadenze_lista) — l'identità delle rate col loro documento, **senza** saldi: la sorgente della lista rate e del picker della distinta
 
 ---
 
@@ -168,7 +171,9 @@ riferirsi a una scadenza precisa, e quella del fondo fattura e' il caso vivo
 | **Questa rata e' stata pagata?** | ✅ `pagamenti.fn_get_saldo_rata` — e distingue il **registrato** dal **dichiarato** |
 | Quanto di quel che risulta pagato e' **denaro davvero arrivato**? | ✅ la colonna `incassato`: i centri interni (fondo fattura, compensazione) non sono cassa |
 | Quali rate hanno incassato piu' del dovuto? | ✅ [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) |
-| Quali rate sono scadute o insolute? | 🟠 **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca |
+| Quali rate sono scadute o insolute? | 🟠 **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca. ⭐ Dal 17-09-2026 i due pezzi DB ci sono: `vw_fatture_scadenze_lista` (chi e' la rata) + `vw_saldi_rate` (quanto resta), e «solo aperte» e' `WHERE saldo <> 0` |
+| **Un incasso registrato «sulla fattura, senza rata» — dove finisce?** | ✅ dal 17-09-2026 si **imputa** alle rate per data di scadenza, fino a capienza, e l'ultima assorbe: la somma dei saldi delle rate e' sempre il saldo del documento. Nessuno lo scrive: e' un calcolo del nucleo `fn_get_saldi_rate` |
+| **La nota di credito ha rate?** | ✅ dal 17-09-2026 **una**, negativa, alla prima data del termine: cosi' un pagamento o una compensazione sulla nota passa dal guard di capienza come tutto il resto |
 
 ### ⭐ Le due domande che il database tiene separate
 
@@ -188,6 +193,32 @@ modo opposto:
 >
 > ⚠️ Ed e' per questo che esiste l'elenco a valle: **una forzatura senza un
 > elenco e' un modo per nascondere, non per registrare**.
+
+### ⭐ Il punto cieco della rata, e come e' stato chiuso (17-09-2026)
+
+Il saldo di una fattura somma **tutti** i suoi incassi; il saldo di una rata
+sommava solo quelli che la **nominano**. Un incasso registrato «sulla fattura,
+senza rata» — il fondo fattura lo scrive sempre cosi', e l'operatore puo' farlo
+dal lookup — abbassava il saldo della fattura e non quello delle rate: una
+fattura a rata unica pagata senza rata diceva «saldata» come documento e
+«restano 100» come rata. Finche' si guardava la fattura non si notava; con il
+picker delle rate della distinta quella rata sarebbe comparsa aperta, e con la
+rata della nota di credito il credito riportato dal fondo sarebbe stato contato
+**due volte**.
+
+La risposta e' l'**imputazione derivata**: nel nucleo dei saldi gli incassi
+senza rata si attribuiscono alle rate del documento in ordine di scadenza, fino
+a capienza, e l'ultima assorbe l'eccedenza. Nessuno scrive niente sulle righe —
+e' un calcolo, come lo stato della rata e' sempre stato un calcolo — e la somma
+dei saldi delle rate torna sempre uguale al saldo del documento. Il guard di
+capienza legge lo stesso nucleo, quindi vede lo spazio che il documento sa,
+anche prima della registrazione.
+
+⚠️ **L'ordine dei fatti conta.** Un acconto senza rata gia' imputato alla prima
+rata occupa il suo spazio: una riga diretta sulla stessa rata che arriva dopo
+trova quel che resta, e il guard lo dice coi numeri. Non e' un difetto: il
+picker mostra esattamente i numeri del nucleo, e il guard accetta esattamente
+cio' che il picker mostra. La forzatura resta la via per il caso vero.
 
 ### ⚠️ Due avvertenze che restano valide
 

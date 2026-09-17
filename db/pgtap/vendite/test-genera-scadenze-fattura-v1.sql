@@ -17,7 +17,7 @@
 --   errore solo — che e' il difetto che C-4 ha tolto dal brief originale.
 -- ------------------------------------------------------------
 -- Indice test
--- 1) Fixture: fattura di prova in DRAFT
+-- 1) Fixture costruita: azienda, cliente, fattura in DRAFT, fattura oltre la soglia, termine a 3 rate
 -- 2) Termine mancante in testata -> E_SCADENZE_TERMINE_MANCANTE
 -- 3) Base non calcolata -> E_SCADENZE_BASE_NON_PRONTA
 -- 4) Fattura oltre la soglia DRAFT/EMESSA -> E_SCADENZE_FATTURA_BLOCCATA
@@ -29,11 +29,34 @@
 -- 10) numero_rata progressivo da 1 a numero_rate
 -- 11) Idempotenza: rieseguire ricostruisce lo stesso piano
 -- 12) Base = 0: zero rate, nessun log, e le rate precedenti spariscono
--- 13) Base < 0: zero rate e log NON critico
+-- 13) Base < 0: UNA rata col segno alla prima data del termine, e log NON critico (P-5, 2026-09-17)
 -- 14) Lo snapshot del termine finisce in testata con i VALORI
+-- 15) Il rifiuto del piano rate porta il BERSAGLIO sulla fattura
+-- 16) ...anche quello per termine mancante
+-- ------------------------------------------------------------
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-09-17 sera). Fino a quel
+--   giorno la fattura nasceva da fn_get_or_create_fattura_header su «la prima
+--   attivita' fatturabile» e «l'ultimo lotto in DRAFT» della macchina, e il
+--   caso oltre la soglia era «una fattura congelata qualunque», con uno skip
+--   se mancava: su un database ricostruito dai changelog (zeroerp_ci, la CI)
+--   non c'e' nessuna delle tre, e il file moriva nel fixture — ERRORE_FIXTURE
+--   in baseline-rossi-ci.tsv, il generatore del piano rate collaudato solo su
+--   dbdev. Ora: un'azienda col suo operatore
+--   (dbops.fn_pgtap_crea_emittente_operatore) PRIMA del contesto, un cliente
+--   fatturabile (dbops.fn_pgtap_crea_cliente_ba) NEL contesto, e DUE fatture
+--   scritte dal test — una in DRAFT, una nata gia' in uno stato che congela
+--   (nessuna transizione: la matrice degli stati resta al suo guard). Il
+--   generatore legge la sola testata (data, base, termine, stato): la porta
+--   del creatore applicativo non gli aggiungeva niente, e lo skip del test 4
+--   sparisce — guida pgtap-come-si-scrive-un-test §«Il mondo si costruisce,
+--   non si cerca».
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 --   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
@@ -48,36 +71,62 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 SELECT plan(16);
 
 -- ============================================================
 -- 0) Fixture
 -- ============================================================
--- La fattura si crea con il creatore applicativo, che la mette in DRAFT: cosi'
--- la fixture attraversa la stessa porta del giro reale invece di inventarsi
--- una riga a mano.
-CREATE TEMP TABLE tmp_refs_gsf AS
-SELECT (SELECT a.id FROM vendite.attivita_fatturabili a ORDER BY a.id LIMIT 1)      AS attivita_id,
-       -- ⚠️ Solo lotti in DRAFT: la fattura nasce in DRAFT (vedi sopra) e il
-       --    guard DEFERRED di coerenza pretende che il lotto sia nello stesso
-       --    stato. Il 2026-08-16 un lotto EMESSA creato dall'applicazione ha
-       --    fatto fallire questa fixture — e altre due — senza che il codice
-       --    collaudato fosse cambiato.
-       (SELECT fl.id FROM vendite.fatturazione_lotti fl
-          JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
-         WHERE s.codice_interno = 'DRAFT'
-         ORDER BY fl.id DESC LIMIT 1)                                                AS lotto_id,
-       (SELECT f.id FROM vendite.fatture f
-          JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
-         WHERE s.codice_interno NOT IN ('DRAFT','EMESSA')
-         ORDER BY f.id LIMIT 1)                                                      AS fattura_congelata_id;
+-- Il cliente fatturabile, nel contesto dell'operatore: il legame BA -> emittente
+-- lo scrive il trigger z90 verso l'emittente di chi agisce.
+CREATE TEMP TABLE tmp_cli_gsf AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('genera scadenze') c;
 
+CREATE TEMP TABLE tmp_refs_gsf AS
+SELECT m.soggetto_ruolo_id                                                          AS emittente_sr_id,
+       script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id)                        AS registro_id,
+       (SELECT billing_account_id FROM tmp_cli_gsf)                                  AS billing_account_id,
+       (SELECT utility_id FROM tmp_cli_gsf)                                          AS utility_id,
+       (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT')      AS stato_draft_id,
+       -- Lo stato oltre la soglia si sceglie dal CONTRATTO (congela_fiscale),
+       -- non da un nome: e' la stessa colonna che il generatore legge.
+       (SELECT id FROM config.stati_doc_fiscale WHERE congela_fiscale IS TRUE
+         ORDER BY ordine, id LIMIT 1)                                                AS stato_congelato_id,
+       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
+       (SELECT id FROM config.valute ORDER BY (iso_code <> 'EUR'), id LIMIT 1)       AS valuta_id
+  FROM _mondo m;
+
+-- La fattura di prova, in DRAFT: la testata e' tutto cio' che il generatore
+-- legge (data, base, termine, stato).
 CREATE TEMP TABLE tmp_f_gsf AS
-SELECT vendite.fn_get_or_create_fattura_header(
-         (SELECT lotto_id FROM tmp_refs_gsf),
-         (SELECT attivita_id FROM tmp_refs_gsf)) AS id;
+WITH ins AS (
+  INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
+                               billing_account_id, utility_id, stato_doc_fiscale_id,
+                               tipo_doc_fiscale_id, valuta_id, meta)
+  SELECT r.registro_id, DATE '2026-01-15', r.emittente_sr_id, r.billing_account_id,
+         r.utility_id, r.stato_draft_id, r.tipo_doc_fiscale_id, r.valuta_id,
+         jsonb_build_object('test_scope', 'pgtap_genera_scadenze_fattura')
+    FROM tmp_refs_gsf r
+  RETURNING id)
+SELECT id FROM ins;
+
+-- La fattura OLTRE la soglia, nata gia' in uno stato che congela: nessuna
+-- transizione attraversata, la matrice degli stati resta al suo guard.
+CREATE TEMP TABLE tmp_f_congelata_gsf AS
+WITH ins AS (
+  INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
+                               billing_account_id, utility_id, stato_doc_fiscale_id,
+                               tipo_doc_fiscale_id, valuta_id, totale_a_pagare,
+                               termine_pagamento_id, meta)
+  SELECT r.registro_id, DATE '2026-01-15', r.emittente_sr_id, r.billing_account_id,
+         r.utility_id, r.stato_congelato_id, r.tipo_doc_fiscale_id, r.valuta_id, 100.00,
+         (SELECT id FROM config.termini_pagamento WHERE codice_interno = 'TP_30G_1R'),
+         jsonb_build_object('test_scope', 'pgtap_genera_scadenze_fattura')
+    FROM tmp_refs_gsf r
+  RETURNING id)
+SELECT id FROM ins;
 
 -- Termine di prova a 3 rate: serve alla quadratura di 100/3, che e' il caso in
 -- cui la divisione non torna. I 9 termini di catalogo hanno 1 o 2 rate.
@@ -93,8 +142,9 @@ WITH ins AS (
 SELECT id FROM ins;
 
 SELECT ok(
-  (SELECT id FROM tmp_f_gsf) IS NOT NULL AND (SELECT id FROM tmp_tp3_gsf) IS NOT NULL,
-  '1) Fixture: fattura in DRAFT e termine a 3 rate');
+  (SELECT id FROM tmp_f_gsf) IS NOT NULL AND (SELECT id FROM tmp_tp3_gsf) IS NOT NULL
+  AND (SELECT id FROM tmp_f_congelata_gsf) IS NOT NULL,
+  '1) Fixture costruita: azienda, cliente, fattura in DRAFT, fattura oltre la soglia, termine a 3 rate');
 
 -- ============================================================
 -- 1) I codici di errore, uno per caso
@@ -120,18 +170,16 @@ SELECT throws_ok(
   'P0001', NULL,
   '3) Base non calcolata -> errore (passo eseguito fuori ordine)');
 
--- La soglia si prova su una fattura gia' oltre DRAFT/EMESSA, senza forzare
+-- La soglia si prova su una fattura NATA oltre DRAFT/EMESSA, senza forzare
 -- transizioni di stato: la matrice e' presidiata da un guard suo, e attraversarla
--- qui vorrebbe dire testare due cose insieme.
-SELECT CASE
-  WHEN (SELECT fattura_congelata_id FROM tmp_refs_gsf) IS NULL
-    THEN skip('nessuna fattura oltre la soglia su cui misurare', 1)
-  ELSE throws_ok(
-    format($$ SELECT * FROM vendite.fn_genera_scadenze_fattura(%s) $$,
-           (SELECT fattura_congelata_id FROM tmp_refs_gsf)),
-    'P0001', NULL,
-    '4) Fattura oltre la soglia DRAFT/EMESSA -> errore, non una DELETE che fallisce sul trigger')
-END;
+-- qui vorrebbe dire testare due cose insieme. ⚠️ throws_like sulla frase, non
+-- throws_ok P0001: la fattura ha termine e base, quindi l'unico rifiuto
+-- possibile e' la soglia — e la frase lo dice.
+SELECT throws_like(
+  format($$ SELECT * FROM vendite.fn_genera_scadenze_fattura(%s) $$,
+         (SELECT id FROM tmp_f_congelata_gsf)),
+  '%piano rate non%rigenerabile%',
+  '4) Fattura oltre la soglia DRAFT/EMESSA -> errore, non una DELETE che fallisce sul trigger');
 
 -- ============================================================
 -- 2) La formula delle date
@@ -237,12 +285,24 @@ SELECT ok(
 UPDATE vendite.fatture SET totale_a_pagare = -5.00 WHERE id = (SELECT id FROM tmp_f_gsf);
 SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
 
+-- ⭐ P-5 (2026-09-17, D19-e): la base negativa ha UNA rata, importo = la base
+--   col suo segno, data = la PRIMA del termine (primo_offset del termine a tre
+--   rate della fixture: +30), meta che lo dichiara. Il log NON critico resta
+--   (Q-D). Fino al 2026-09-17 qui si asseriva «zero rate».
 SELECT ok(
-  (SELECT count(*) FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)) = 0
+  (SELECT count(*) = 1
+      AND bool_and(s.numero_rata = 1)
+      AND bool_and(s.importo = -5.00)
+      AND bool_and(s.data_scadenza = f.data + 30)
+      AND bool_and((s.meta->>'rata_unica_credito')::boolean IS TRUE)
+     FROM vendite.fatture_scadenze s
+     JOIN vendite.fatture f ON f.id = s.fattura_id
+    WHERE s.fattura_id = (SELECT id FROM tmp_f_gsf))
   AND (SELECT count(*) FROM vendite.fatture_log
         WHERE fattura_id = (SELECT id FROM tmp_f_gsf) AND status = 'W'
-          AND meta->>'source' = 'fn_genera_scadenze_fattura') = 1,
-  '13) Base < 0: zero rate e log NON critico (mai un errore che ferma il lotto)');
+          AND meta->>'source' = 'fn_genera_scadenze_fattura'
+          AND meta->>'error_code' = 'W_SCADENZE_TOTALE_NEGATIVO') = 1,
+  '13) Base < 0: UNA rata col segno (-5) alla prima data del termine, e log NON critico');
 
 -- ============================================================
 -- 6) Lo snapshot del termine

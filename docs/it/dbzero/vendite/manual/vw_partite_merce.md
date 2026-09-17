@@ -300,4 +300,44 @@ La quantità fisica resta dov'è sempre stata: `vendite.ddt_righe.quantita`.
 
 ---
 
+### 🔄 rev 2026-09-17 — `sospetto` si calcola una volta, non per partita (D14)
+
+ChangeSet `20260917-01`. Registro: `migliorie-generali-da-test-valutazione.md`
+§3 D14. **Niente cambia nel risultato**: stesse colonne, stesse righe, stesso
+significato di `sospetto_duplicato_ordine`. Cambia **quante volte** la vista
+paga le policy RLS per calcolarlo.
+
+**Il difetto.** La CTE `sospetto` era un `EXISTS` correlato a quattro tabelle,
+che il planner eseguiva **riga per riga**: per ogni partita ri-scandiva
+`ddt_righe`, `ordini_righe_fulfillment` e `ordini_righe`, e ogni riga scandita
+pagava la propria policy. Da owner non si vede (nessuna policy); come
+applicazione sì — misura del 2026‑09‑17 su dbdev, 36 partite: la vista intera
+**18 ms da owner, 396 ms da app**, di cui 322 nella sola `sospetto`.
+
+⚠️ E chi la paga è la **capability del DDT** (`script.fn_available_actions_ddt`),
+che legge la vista due volte per un documento solo — lister e diagnosi, entrambe
+in `JOIN` con la vista, e il filtro sul documento non entra nelle CTE
+materializzate: ogni chiamata ricalcola le partite di tutti i DDT. ~850 ms per
+DDT come app, cioè il drawer a ogni apertura, e ogni pgTAP che itera i DDT vivi.
+
+**La forma nuova.** L'`EXISTS` diceva «la coppia (DDT, articolo) di questa riga
+sta nell'insieme delle coppie coperte da un ordine collegato al DDT». Quell'insieme
+si costruisce **una volta** (`articoli_ordinati_per_ddt`, `DISTINCT`) e
+`sospetto` diventa il `JOIN` delle righe senza fulfillment su quella coppia.
+Le tre condizioni dell'avviso restano tutte e tre. Entrambe le CTE sono
+`AS MATERIALIZED`: senza, il planner le inlina e torna al ciclo per riga.
+
+**Misurato prima di scrivere** (solo `SELECT`, transazione ritirata): vista
+intera come app **375 → 88 ms**, `EXCEPT ALL` nei due versi a zero righe.
+⚠️ Il prezzo, dichiarato: la lettura di **una** riga (`WHERE ddt_riga_id = x`)
+sale di ~12 ms, perché l'insieme si calcola intero anche quando serve una riga.
+Chi legge una riga è il pgTAP della vista e la situazione merce di un documento;
+chi la legge intera è la capability, cioè il drawer.
+
+Presidio: `test-vw-partite-merce-v1.sql` test 11, che **costruisce** il caso
+segnalato e quello legittimo — il dato vivo non ne contiene nessuno, e
+un'equivalenza sulle righe di oggi non proverebbe il ramo.
+
+---
+
 {% include-markdown "signature-core.md" %}

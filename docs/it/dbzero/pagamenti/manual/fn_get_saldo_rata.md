@@ -18,7 +18,16 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-22)
+(rev 2026-09-17)
+
+⭐ **Dal 17-09-2026 è la porta a UN ELEMENTO del nucleo
+[`pagamenti.fn_get_saldi_rate`](/dbzero/pagamenti/funzioni/fn_get_saldi_rate)**:
+la formula sta là, scritta una volta per tutte le porte (questa,
+`vw_saldi_rate`, la chiamata con l'array della pagina dal backend); qui restano
+il guard di parametro e l'errore. Firma, colonne e comportamento sui movimenti
+diretti sono invariati; ciò che il nucleo ha aggiunto — l'**imputazione** dei
+movimenti senza rata — arriva anche da qui, ed è descritto nella scheda del
+nucleo.
 
 Risponde a **tre** domande su una rata, e sono davvero tre:
 

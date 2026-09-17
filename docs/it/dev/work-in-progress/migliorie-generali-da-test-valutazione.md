@@ -727,9 +727,33 @@ cambiare di straforo.
 
 ⛔ Non è un problema del solo test: **ogni pgTAP che itera i DDT vivi paga lo
 stesso conto** (`test-capability-annulla-aspetto-e-stato-leggibile-v1.sql`
-chiama la capability su tutti gli otto domini una volta) e lo paga il drawer.
-Decisione aperta per Tid: changeSet su `vw_partite_merce` (ri-specificando
-`security_invoker=on`) con la prima leva, e se aprire un brief per la seconda.
+chiamava la capability su tutti gli otto domini una volta: ~49 s, di cui 43
+sui 51 DDT — senza chiamate duplicate) e lo paga il drawer.
+✅ **Applicato il 2026-09-17 alle 12:39**: capability DDT 850 → **230 ms**,
+quel file 49 → 11 s. ⭐ E poi, decisione di Tid lo stesso giorno, quel file è
+passato da «tutti i documenti» a **un documento per (dominio, stato)** — non un
+campionamento sui dati ma il perimetro giusto per una misura sulla **forma**
+delle azioni: le transizioni le produce `t.stato_da_id`, quindi il secondo
+documento nello stesso stato ripete il ramo del primo; le azioni applicative
+sono oggetti costanti nel codice, coperti se il rappresentante le esercita
+(e non era garantito nemmeno prima). Risultato: 8/8 in **2 s**, 35 stati
+attraversati, dichiarati nel messaggio del test 8.
+
+✅ **Prima leva scritta il 2026-09-17 (decisione di Tid, stesso giorno):
+`20_code/vendite/20260917-01-update-vw-partite-merce-sospetto-set-based`**,
+`security_invoker=on` ri-specificato, COMMENT della vista con la rev, manuale
+aggiornato. Provato con l'**SQL estratto** dallo YAML in transazione ritirata
+(owner): `reloptions` intatte, `EXCEPT ALL` con la definizione viva a zero nei
+due versi, e nella stessa transazione **verdi** `test-vw-partite-merce-v1`
+(11/11, compreso il test 11 che costruisce il caso — il dato vivo ha zero
+sospetti, quindi l'equivalenza sulle righe da sola non proverebbe il ramo),
+`test-vw-partite-merce-riconsegna-dopo-nc-v1` (8/8),
+`test-fn-list-ddt-da-pushare-contatore-v1` (7/7),
+`test-fn-available-actions-ddt-reason-catch-all-v1` (8/8);
+`test-vw-situazione-merce-ordine-v1` 16/17 con il solo test 11 rosso, che è
+l'asserzione di **scope** e come owner è rossa anche senza il changeSet. Cancelli
+statici della CI verdi. ⏳ **In attesa di apply e della corsa come app.**
+La seconda leva (una lettura invece di due nella capability) resta aperta.
 
 ---
 
@@ -865,12 +889,16 @@ D6 e il registro dei rossi in CI.
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno
       (append al CSV dei messaggi, mai un loader nuovo), oppure dichiarare che
       quei codici non raggiungono mai un operatore — e scriverlo nel `note`.
-* [ ] **D14** — (aperto il 2026-09-17) `sospetto` di `vw_partite_merce`
-      set-based + `AS MATERIALIZED` (provata: 375 → 88 ms da app, righe
-      identiche), changeSet con `security_invoker=on` ri-specificato. Poi
-      decidere se la capability del DDT debba leggere la vista **una** volta
-      invece di due (lister + diagnosi). ✅ Il pgTAP che l'ha fatto emergere è
-      già riscritto (blob una volta per documento, >90 s → 36 s).
+* [~] **D14** — (aperto il 2026-09-17) ✅ changeSet `20260917-01` **applicato**
+      lo stesso giorno (`sospetto` set-based + `AS MATERIALIZED`, vista
+      375 → 88 ms da app, capability DDT 850 → 230 ms). ✅ I due pgTAP lenti:
+      `capability-motivi` >90 s → 36 s (blob una volta per documento),
+      `annulla-aspetto` 49 → 11 → **2 s** (un documento per stato, decisione
+      di Tid). ⏳ Resta aperta la seconda leva: la capability del DDT legge la
+      vista **due** volte (lister + diagnosi) — derivare `push_ok` dalla
+      diagnosi la dimezzerebbe, ma è una scelta di contratto e vuole un brief.
+      Terza leva possibile, semantica invariata: `vw_af_merce_per_riga` letta
+      quattro volte dentro la vista (~12 ms l'una), una CTE condivisa.
 
 ### 🟡 Struttura
 

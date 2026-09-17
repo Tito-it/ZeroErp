@@ -412,6 +412,7 @@
 - [vw_famiglie_documento_lista](views/vw_famiglie_documento_lista.md) — *(rev 2026-09-01 — vista nata il 2026-09-01)*
 - [vw_fattura_righe_esposte](views/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
 - [vw_fatture_lista](views/vw_fatture_lista.md)
+- [vw_fatture_scadenze_lista](views/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](views/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_lotti_chiusi_con_gruppi_in_errore](views/vw_lotti_chiusi_con_gruppi_in_errore.md)
 - [vw_lotti_fase](views/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.

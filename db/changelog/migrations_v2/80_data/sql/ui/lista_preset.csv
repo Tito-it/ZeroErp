@@ -66,3 +66,4 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 65,65,titolo_iva_movimenti_default,Vista standard registro movimenti,sistema,,,t,25,,t,2026-09-02 00:00:00,mctit
 66,66,processi_default,Vista standard processi automatici,sistema,,,t,25,"[{""col"":""canale"",""dir"":""asc""}]",t,2026-09-05 00:00:00,mctit
 67,67,lotto_gruppi_default,Vista standard documenti presi in carico,sistema,,,t,25,,t,2026-09-06 00:00:00,mctit
+68,68,rate_default,Vista standard rate da incassare,sistema,,,t,25,"[{""col"":""data_scadenza"",""dir"":""asc""}]",t,2026-09-17 00:00:00,mctit

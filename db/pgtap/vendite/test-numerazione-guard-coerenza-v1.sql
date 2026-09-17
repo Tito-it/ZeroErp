@@ -36,7 +36,7 @@
 --   3)  C2 riepilogo IVA assente       -> respinta
 --   4)  C3a piano rate assente         -> respinta
 --   5)  C3b somma rate != totale       -> respinta
---   6)  C4 rate su totale non positivo -> respinta
+--   6)  C4 rate su totale ZERO -> respinta (dal 2026-09-17: il negativo ha la sua rata, P-5)
 --   7)  C5 riepiloghi IVA non coerenti con i totali di testata -> respinta
 --   8)  C6 totale_a_pagare != somma degli addendi (fondi/arrotondamenti) -> respinta
 --   9)  controprova: un documento COERENTE si numera e parte da 1
@@ -193,9 +193,12 @@ SELECT throws_like(
   '5) C3b: somma delle rate diversa dal totale -> numerazione respinta');
 
 -- ============================================================
--- 6) C4 — D-D allo specchio: rate su un documento a totale non positivo.
+-- 6) C4 — D-D allo specchio: rate su un documento a totale ZERO.
 --    Prezzo zero -> totale zero -> il generatore NON crea rate; una rata
 --    inserita a mano e' quindi esattamente l'incoerenza da intercettare.
+--    ⭐ Dal 2026-09-17 (P-5) la condizione e' «= 0» e non piu' «<= 0»: il
+--    documento NEGATIVO ha la sua rata unica e si numera (lo prova
+--    test-nc-rata-unica-v1.sql); qui resta il caso dello zero.
 -- ============================================================
 CREATE TEMP TABLE tmp_c4 AS SELECT pg_temp.fx_fattura_dk(0) AS id;
 SELECT pg_temp.fx_completa_dk((SELECT id FROM tmp_c4));
@@ -203,8 +206,8 @@ INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, im
 VALUES ((SELECT id FROM tmp_c4), 1, current_date, 0);
 SELECT throws_like(
   $$ SELECT * FROM vendite.fn_assign_numero_fattura((SELECT id FROM tmp_c4)) $$,
-  '%rate su un totale a pagare non positivo%',
-  '6) C4: rate presenti su totale non positivo -> numerazione respinta');
+  '%rate su un totale a pagare zero%',
+  '6) C4: rate presenti su totale zero -> numerazione respinta');
 
 -- ============================================================
 -- 7) C5 — i riepiloghi IVA si spostano, la testata resta ferma.
