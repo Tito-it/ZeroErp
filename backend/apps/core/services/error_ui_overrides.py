@@ -404,6 +404,17 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     #   automation_lock_columns su preventivi.emittente_fiscale_id:
     #     immutabile post-create. Codice senza prefisso E_ perche'
     #     coerente con il pattern lock_columns del DB.
+    #   ⚠️ RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo,
+    #   D1): le quattro copie di `trgfn_*_default_emittente` sono un BB solo,
+    #   `script.trgfn_default_emittente_fiscale`, che solleva
+    #   `E_EMITTENTE_NON_RISOLTO`. La voce resta perche' un codice ritirato
+    #   continua a risolvere per il diario. ⛔ Il SUCCESSORE NON HA OVERRIDE, ed
+    #   e' una decisione (brief §7.2/§11.3): tre codici per la stessa
+    #   condizione avevano DUE rese a video (questo evidenziava un campo, le
+    #   sorelle ordini/contratti no). Il rimedio e' la combo dell'emittente in
+    #   alto, non un campo del form: il banner (default di `DATO_ERRATO`) e' la
+    #   resa giusta, e `fields` — quando il DB lo manda — accende comunque
+    #   l'input via `campiErrati`.
     "E_PREV_EMITTENTE_NON_RISOLTO": "highlight_form_fields",  # classe DATO_ERRATO
     # <- PREV_STATO_CORRENTE_NON_TROVATO  (ritirato)
     "E_PREV_STATO_CORRENTE_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO

@@ -20,6 +20,9 @@ Indice test eseguiti:
 4)  CreaDistintaTests.test_gia_popolata_quando_la_distinta_ha_righe
 5)  CreaDistintaTests.test_centro_obbligatorio
 6)  CreaDistintaTests.test_data_contabile_obbligatoria
+6a) CreaDistintaTests.test_emittente_scelto_viene_trasportato
+6b) CreaDistintaTests.test_senza_emittente_passa_none_e_non_deduce
+6c) CreaDistintaTests.test_emittente_non_positivo_rifiutato
 7)  StatoDistintaTests.test_chiusa_non_e_richiedibile
 8)  StatoDistintaTests.test_annullata_e_richiedibile
 9)  StatoDistintaTests.test_distinta_inesistente_404
@@ -189,6 +192,32 @@ class CreaDistintaTests(_ServiceTestCase):
     def test_data_contabile_obbligatoria(self):
         with self.assertRaises(ServiceError):
             pagamenti_service.crea_distinta({"centro_riscossione_id": 39})
+
+    # Scopo: ⭐ L'emittente scelto nel form arriva alla madre COM'E' (D4 del
+    #        brief distinta-numerata-sul-registro): e' la PK, cio' che il
+    #        frontend conosce; la traduzione in soggetto-ruolo e' del database.
+    def test_emittente_scelto_viene_trasportato(self):
+        pagamenti_service.crea_distinta({**self._PAYLOAD, "emittente_fiscale_id": 32})
+        kwargs = self.repo.get_or_create_distinta.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 32)
+
+    # Scopo: ⛔ Senza emittente nel payload il backend passa `None` e NON lo
+    #        deduce dal profilo: i quattro livelli (canale → sessione →
+    #        rifiuto) vivono in `fn_get_emittente_distinta`, e un secondo
+    #        risolutore qui sarebbe la seconda sede della stessa regola.
+    def test_senza_emittente_passa_none_e_non_deduce(self):
+        pagamenti_service.crea_distinta(dict(self._PAYLOAD))
+        kwargs = self.repo.get_or_create_distinta.call_args.kwargs
+        self.assertIn("emittente_fiscale_id", kwargs)
+        self.assertIsNone(kwargs["emittente_fiscale_id"])
+
+    # Scopo: Un emittente non positivo e' un dato sbagliato, e lo dice il
+    #        backend prima di chiamare il database.
+    def test_emittente_non_positivo_rifiutato(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pagamenti_service.crea_distinta({**self._PAYLOAD, "emittente_fiscale_id": 0})
+        self.assertEqual(ctx.exception.code, pagamenti_service.E_VALIDAZIONE)
+        self.repo.get_or_create_distinta.assert_not_called()
 
 
 class StatoDistintaTests(_ServiceTestCase):

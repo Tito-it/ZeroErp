@@ -131,7 +131,9 @@ _TIPI_VARIAZIONE_GLOBALE_AMMESSI: frozenset[str] = frozenset({"PERCENTUALE"})
 _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # Post brief simmetria 2026-05-26: `emittente_fiscale_id` ora e' colonna
     # nativa di `vendite.contratti` (NOT NULL). Pattern duale al trigger
-    # `trgfn_contratti_default_emittente`: se il payload lo specifica il
+    # `script.trgfn_default_emittente_fiscale` (BB unico dal 2026-09-15, la
+    # copia `trgfn_contratti_default_emittente` e' droppata): se il payload lo
+    # specifica il
     # trigger salta; se NULL il trigger lo deriva da
     # `script.fn_resolve_emittente_for_user(GUC app.current_user_id)`.
     # Il FE invia sempre il valore pre-popolato da `defaultEmittenteId`
@@ -1994,7 +1996,7 @@ class ContrattiService:
             "valido_dal": self._v.require_date(payload, "valido_dal", message=_MESSAGE),
         }
         # emittente_fiscale_id opzionale: se presente passa al DB e il trigger
-        # `trgfn_contratti_default_emittente` lo lascia (skip su IS NOT NULL);
+        # `script.trgfn_default_emittente_fiscale` lo lascia (skip su IS NOT NULL);
         # se assente il trigger lo deriva via `fn_resolve_emittente_for_user`
         # dalla GUC `app.current_user_id`. Il guard `guard_emittente_ba`
         # rifiuta in ogni caso divergenze BA<->EF.

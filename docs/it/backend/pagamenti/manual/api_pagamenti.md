@@ -144,12 +144,16 @@ Ogni riga è una `DistintaRow`:
 
 ```json
 {
-  "id": 12, "codice": "DST-0000012",
+  "id": 12, "codice": "DIS-ACME-2026-0000012",
   "centro_riscossione_id": 3, "centro_codice": "BNK", "centro_descrizione": "Banca",
   "ente_incasso_id": 7, "ente_codice": "BNK-01", "ente_descrizione": "Conto incassi",
   "data_contabile": "2026-09-01", "data_registrazione": "2026-09-01",
   "stato_id": 41, "stato_codice": "BOZZA", "stato_descrizione": "Bozza", "stato_is_final": false,
-  "origine": "MANUALE", "importo_dichiarato": "1500.00",
+  "origine": "MANUALE",
+  "emittente_soggetto_ruolo_id": 72, "emittente_fiscale_id": 32,
+  "emittente_fiscale_codice": "ACME", "emittente_ragione_sociale": "ACME S.r.l.",
+  "registro_id": 91, "anno": 2026,
+  "importo_dichiarato": "1500.00",
   "data_conferma": null, "user_conferma": null,
   "lotti_ids": null, "meta": {},
   "righe_totali": 3, "righe_registrabili": 2,
@@ -169,18 +173,54 @@ dichiarato).
 appartenere a più lotti; letta come valore singolo, la riga compariva **due
 volte** nell'elenco e il conteggio con lei — senza nessun errore.
 
+⭐ **Il codice viene dal registro, e la distinta sa di chi è (dal 2026-09-17,
+[brief distinta-numerata-sul-registro](../../../dev/work-in-progress/brief-db-distinta-numerata-sul-registro.md)).**
+`codice` è `DIS-<SIGLA>-<ANNO>-<7 cifre>`: lo assegna il trigger sul registro
+`DISTINTA` dell'emittente alla **creazione**, con l'anno dalla `data_contabile`
+e il reset a Capodanno — la sesta famiglia di `vendite.famiglie_documento`, la
+prima fuori da `vendite` e la prima senza billing account. La testata porta
+l'emittente in **tre forme** — `emittente_soggetto_ruolo_id` (la chiave del
+database), `emittente_fiscale_id` + `emittente_fiscale_codice` +
+`emittente_ragione_sociale` (i nomi che `EmittenteFiscaleField` legge in
+edit, gli stessi dei documenti di vendite) — più i due assi del contatore,
+`registro_id` e `anno`. ⚠️ Sul **pregresso** (`VC_…`, numerato prima del
+trasloco) `registro_id` e `anno` sono `null`: non è un buco, è un documento
+che non ha mai avuto un registro; la forma diversa lo tiene separato dai
+nuovi. ⛔ **Il codice non si parsa**: sigla e anno stanno anche nelle colonne.
+🔒 **E la RLS passa dalla colonna**: una distinta senza canale non è più «di
+tutti» — è del suo emittente, come il lotto da cui nasce. `list_distinte` non
+aggiunge filtri applicativi.
+
 ### `POST /api/v1/pagamenti/distinte/`
 
 Apre — o **ritrova** — la distinta manuale dell'operatore.
 
 ```json
 { "centro_riscossione_id": 3, "data_contabile": "2026-09-01",
-  "ente_incasso_id": 7, "importo_dichiarato": "1500.00", "meta": {} }
+  "ente_incasso_id": 7, "emittente_fiscale_id": 32,
+  "importo_dichiarato": "1500.00", "meta": {} }
 ```
 
 `centro_riscossione_id` e `data_contabile` obbligatori; `ente_incasso_id`,
-`importo_dichiarato`, `meta` facoltativi. Nasce `origine = MANUALE`, stato
-`BOZZA`.
+`emittente_fiscale_id`, `importo_dichiarato`, `meta` facoltativi. Nasce
+`origine = MANUALE`, stato `BOZZA`.
+
+⭐ **`emittente_fiscale_id` (PK) è facoltativo qui e obbligatorio a database**
+(D4 del brief). Il backend lo **trasporta e non lo deduce**: se manca, lo
+risolve `pagamenti.fn_get_emittente_distinta` in un ordine solo — dato dal
+chiamante → dal **canale** (il conto su cui atterra il denaro ha un solo
+padrone) → dall'**operatore in sessione** (`fn_resolve_emittente_for_user`,
+che legge l'emittente attivo scelto in topbar) → altrimenti **rifiuto**
+`E_CONTABILE_EMITTENTE_OBBLIGATORIO` (400, `fields: ["emittente_fiscale_id"]`):
+è il super admin in «tutti gli emittenti» che apre una manuale su CASSA e
+deve scegliere. Se emittente **e** canale sono entrambi indicati e
+dissentono: `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` (400, `fields:
+["ente_incasso_id"]`, la frase nomina il canale e le due sigle). ⛔ Nessun
+ripiego sul «default dell'installazione», né a database né qui: dichiarare di
+un emittente il denaro di un altro è l'attribuzione che la numerazione per
+emittente esiste per impedire. ⚠️ La **chiave di riuso** del *get or create*
+comprende l'emittente: la manuale è il lotto di lavoro di un operatore **per
+un emittente**.
 
 ⭐ **È un *get or create*** (`fn_get_or_create_vendite_contabile`): se
 l'operatore riapre con gli stessi dati — stessa giornata, stesso centro,
@@ -975,6 +1015,7 @@ arrivano dai guard e dalle madri, e il backend li fa passare intatti.
 | `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` | 422 | cancello di perimetro | lista con `lista_codice` chiesta da un multi-emittente senza emittente scelto |
 | `E_CONTABILE_TRANSIZIONE_NON_AMMESSA` · `E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA` · `E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA` | 409 | matrici DB | il passaggio di stato non è ammesso da dove si è |
 | `E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA` · `E_CONTABILE_DATI_OBBLIGATORI` · `E_CONTABILE_CENTRO_ENTE_INCOERENTE` | 400 | guard DB | la distinta non quadra, o i suoi dati non stanno insieme |
+| `E_CONTABILE_EMITTENTE_OBBLIGATORIO` · `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` | 400 | `fn_get_emittente_distinta` (dal 2026-09-17) | nessun emittente risolvibile per una distinta senza canale (campo `emittente_fiscale_id`); il canale scelto è di un altro emittente (campo `ente_incasso_id`) |
 | `E_CONTABILE_RIAPERTURA_NON_MANUALE` · `E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE` · `E_CONTABILE_NON_REGISTRABILE` · `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE` · `E_CONTABILE_CORREZIONE_NON_REGISTRATA` · `E_CONTABILE_GIA_CORRETTA` · `E_CONTABILE_SISTEMAZIONE_CON_LOTTO` | 409 | guard e madri DB | lo stato della distinta non ammette il gesto |
 | `E_RIGA_CONTABILE_DISTINTA_FINALE` · `E_RIGA_CONTABILE_SENZA_ABBINAMENTO` | 409 | guard DB | la riga non si lavora più, o non ha di che postare |
 | `E_RIGA_CONTABILE_DISTINTA_NON_MANUALE` · `E_RIGA_CONTABILE_DISTINTA_VALIDATA` | 409 | guard DB (`guard_contenuto`, dal 14/09) | non si elimina una riga di una generata/automatica · sotto una manuale validata il contenuto è fermo (righe nuove, fatti, eliminazioni). Sono i motivi 2 e 3 di `fn_check_riga_contabile_eliminabile`, gli stessi che spengono il cestino in lista |
@@ -997,6 +1038,7 @@ li solleva più nessuno.
 | Oggetto | Ruolo |
 | --- | --- |
 | `pagamenti.fn_get_or_create_vendite_contabile` | l'apertura della distinta manuale (*get or create*, l'operatore lo mette la funzione) |
+| `pagamenti.fn_get_emittente_distinta` · `trgfn_vendite_contabili_emittente` · `trgfn_vendite_contabili_gen_codice` | la sede unica dei quattro livelli di risoluzione dell'emittente, il trigger che la applica a ogni scrittura e il numeratore sul registro `DISTINTA` (dal 2026-09-17) |
 | `pagamenti.fn_posta_contabile(p_contabile_id, p_righe_attese, p_totale_atteso)` | ⭐ **la madre della registrazione**: atomica, non solleva su `NULLA_DA_POSTARE`, porta la distinta a `CHIUSA` |
 | `pagamenti.fn_crea_distinta_correzione` | la correzione guidata: la distinta a segno opposto |
 | `pagamenti.fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)` · `fn_get_saldo_fattura` · `fn_get_saldo_fattura_contabili` | i tre numeri, letti **solo** da `saldi_service` |

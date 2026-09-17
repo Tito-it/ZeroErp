@@ -103,6 +103,23 @@ _DISTINTA_SELECT = """
         --    frontend non mostra niente, non una chiave grezza.
         st.meta ->> 'nessuna_azione_key' AS stato_info_key,
         c.origine,
+        -- ⭐ LA DISTINTA SA DI CHI E' (D3, brief distinta-numerata-sul-registro,
+        --    2026-09-17): l'emittente e' una COLONNA della riga, non piu' una
+        --    catena per canale — e il codice `DIS-<SIGLA>-<ANNO>-<7 cifre>` lo
+        --    porta dentro. Si espongono il soggetto-ruolo (la chiave che il DB
+        --    usa), la PK con sigla e ragione sociale (cio' che il frontend
+        --    conosce: `EmittenteFiscaleField` in edit legge
+        --    `emittente_fiscale_id/_codice` + `emittente_ragione_sociale`, gli
+        --    stessi nomi dei documenti di vendite), e i due assi del contatore.
+        -- ⚠️ `registro_id` e `anno` sono NULL sul pregresso `VC_…` (numerato
+        --    prima del trasloco): non e' un buco, e' un documento che non ha
+        --    mai avuto un registro.
+        c.emittente_soggetto_ruolo_id,
+        ef.id              AS emittente_fiscale_id,
+        ef.codice          AS emittente_fiscale_codice,
+        sre.ragione_sociale_completa AS emittente_ragione_sociale,
+        c.registro_id,
+        c.anno,
         c.importo_dichiarato,
         c.data_conferma,
         c.user_conferma,
@@ -132,6 +149,14 @@ _DISTINTA_SELECT = """
       JOIN pagamenti.centri_riscossione cr        ON cr.id = c.centro_riscossione_id
       LEFT JOIN pagamenti.enti_incasso ei         ON ei.id = c.ente_incasso_id
       LEFT JOIN pagamenti.vendite_contabili_stati st ON st.id = c.stato_id
+      -- L'emittente della distinta: LEFT per simmetria con le sorelle, ma la
+      -- colonna e' NOT NULL. `uq_emittenti_fiscali_ruolo` e' UNIQUE su
+      -- `soggetto_ruolo_id`: il join non puo' duplicare la riga (e il totale).
+      -- La ragione sociale viene dalla vista di dettaglio, la sede unica del
+      -- nome di un soggetto-ruolo — come per il billing account delle righe.
+      LEFT JOIN anagrafiche.emittenti_fiscali ef  ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+      LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio sre
+             ON sre.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
       -- Il documento da cui questa correzione nasce.
       LEFT JOIN pagamenti.vendite_contabili orig     ON orig.id = c.contabile_corretta_id
       -- ⚠️ E la correzione di QUESTO documento, se c'e'. E' un LEFT JOIN
@@ -614,9 +639,14 @@ class PagamentiRepository:
 
     # Scopo: Elenco paginato delle distinte contabili con i display field in
     #        JOIN e i totali derivati.
-    # Perimetro: la RLS della testata; nessun filtro applicativo aggiuntivo
-    #        (le policy passano dal canale e dalla fattura, non da una colonna
-    #        emittente su questa tabella).
+    # Perimetro: la RLS della testata, che dal 2026-09-17 (D3 del brief
+    #        distinta-numerata-sul-registro) passa dalla COLONNA
+    #        `emittente_soggetto_ruolo_id` — la forma di
+    #        `rls_fatturazione_lotti_ef_whitelist`. Nessun filtro applicativo
+    #        aggiuntivo. ⚠️ Fino a quel giorno questa riga diceva «le policy
+    #        passano dal canale e dalla fattura, non da una colonna emittente»,
+    #        ed era vero: una distinta senza canale era «di tutti». Non lo e'
+    #        piu': e' del suo emittente, come il lotto da cui nasce.
     def list_distinte(
         self,
         *,
@@ -705,6 +735,15 @@ class PagamentiRepository:
     #    governarla non si costruisce.
     # ⛔ L'operatore NON si passa: lo mette la funzione dall'identita' della
     #    connessione. Passarlo dal backend sarebbe una seconda verita'.
+    # ⛔ E l'EMITTENTE NON SI RISOLVE QUI (D4 del brief distinta-numerata-sul-
+    #    registro, 2026-09-17): `p_emittente_fiscale_id` (PK) e' cio' che il
+    #    chiamante SA — la scelta di un form — e viaggia com'e', `NULL`
+    #    compreso. I quattro livelli (dato → canale → operatore in sessione →
+    #    rifiuto `E_CONTABILE_EMITTENTE_OBBLIGATORIO`) vivono in
+    #    `pagamenti.fn_get_emittente_distinta`, e sono la CHIAVE DI RIUSO della
+    #    madre prima ancora dell'INSERT: un secondo risolutore in Python
+    #    sarebbe la seconda sede della stessa regola, e la manuale smetterebbe
+    #    di essere il lotto di lavoro dell'operatore.
     # ⚠️ Il valore di ritorno e' il solo `id`: «creata» e «riaperta» non si
     #    distinguono dalla chiamata — si leggono dal dettaglio (ha righe o no).
     def get_or_create_distinta(
@@ -714,6 +753,7 @@ class PagamentiRepository:
         data_contabile: date,
         data_registrazione: date | None = None,
         ente_incasso_id: int | None = None,
+        emittente_fiscale_id: int | None = None,
         codice_stato_interno: str = "BOZZA",
         origine: str = "MANUALE",
         meta: str = "{}",
@@ -724,6 +764,7 @@ class PagamentiRepository:
                 p_data_contabile        := %s,
                 p_data_registrazione    := COALESCE(%s, CURRENT_DATE),
                 p_ente_incasso_id       := %s,
+                p_emittente_fiscale_id  := %s,
                 p_codice_stato_interno  := %s,
                 p_meta                  := %s::jsonb,
                 p_origine               := %s
@@ -737,6 +778,7 @@ class PagamentiRepository:
                     data_contabile,
                     data_registrazione,
                     ente_incasso_id,
+                    emittente_fiscale_id,
                     codice_stato_interno,
                     meta,
                     origine,

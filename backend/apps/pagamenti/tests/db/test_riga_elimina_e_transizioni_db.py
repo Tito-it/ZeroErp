@@ -37,6 +37,10 @@ Indice test eseguiti:
 14) ColonneTests.test_la_riga_porta_la_destinazione_leggibile
 15) ColonneTests.test_anche_la_coda_porta_la_destinazione_leggibile
 16) ColonneTests.test_il_numero_documento_viene_dalla_sede_unica
+17) ColonneTests.test_la_testata_porta_l_emittente_e_il_registro
+18) ColonneTests.test_la_madre_accetta_l_emittente
+19) NumerazioneSulRegistroTests.test_senza_emittente_la_distinta_e_della_sessione_e_numerata
+20) NumerazioneSulRegistroTests.test_con_emittente_esplicito_arriva_com_e_e_riusa
 """
 
 from __future__ import annotations
@@ -72,6 +76,17 @@ _COLONNE_DESTINAZIONE = (
     "fattura_natura_doc_codice_interno",
     "fattura_natura_doc_descrizione",
     "scadenza_importo",
+)
+
+# ⭐ Di chi e' la distinta (D3, 2026-09-17): le tre forme dell'emittente che
+#    il frontend legge, la chiave del DB e i due assi del contatore.
+_COLONNE_EMITTENTE_TESTATA = (
+    "emittente_soggetto_ruolo_id",
+    "emittente_fiscale_id",
+    "emittente_fiscale_codice",
+    "emittente_ragione_sociale",
+    "registro_id",
+    "anno",
 )
 
 
@@ -151,6 +166,40 @@ class ColonneTests(_DbTestCase):
             f"{repo_mod._DISTINTA_SELECT}{repo_mod._TOTALI_LATERAL} WHERE c.id = %s", [-1]
         )
         self.assertIn("stato_info_key", colonne)
+
+    # Scopo: ⭐ La distinta SA DI CHI E' (D3, 2026-09-17): la testata porta
+    #        l'emittente nelle tre forme che il frontend legge (PK, sigla,
+    #        ragione sociale) piu' la chiave del DB e i due assi del contatore.
+    #        Si pianifica contro il database vero: `emittente_soggetto_ruolo_id`,
+    #        `registro_id` e `anno` sono colonne nate col cantiere, e un nome
+    #        sbagliato in un JOIN e' un 500 sull'elenco, non un test rosso.
+    def test_la_testata_porta_l_emittente_e_il_registro(self):
+        colonne = self._colonne(
+            f"{repo_mod._DISTINTA_SELECT}{repo_mod._TOTALI_LATERAL} WHERE c.id = %s", [-1]
+        )
+        for nome in _COLONNE_EMITTENTE_TESTATA:
+            self.assertIn(nome, colonne, f"manca {nome} nella testata")
+
+    # Scopo: La madre accetta `p_emittente_fiscale_id` (L6 del brief): la
+    #        chiamata NOMINATA del repository si pianifica con la firma viva.
+    #        ⚠️ EXPLAIN pianifica senza eseguire: nessuna distinta nasce.
+    def test_la_madre_accetta_l_emittente(self):
+        def _pianifica(cur):
+            cur.execute(
+                """
+                EXPLAIN SELECT pagamenti.fn_get_or_create_vendite_contabile(
+                    p_centro_riscossione_id := %s,
+                    p_data_contabile        := %s,
+                    p_ente_incasso_id       := %s,
+                    p_emittente_fiscale_id  := %s,
+                    p_codice_stato_interno  := %s,
+                    p_meta                  := %s::jsonb,
+                    p_origine               := %s)
+                """,
+                [1, date.today(), None, None, "BOZZA", "{}", "MANUALE"],
+            )
+            return cur.fetchall()
+        self.assertTrue(self._con_operatore(_pianifica))
 
     # Scopo: La check che alimenta la LATERAL esiste, con UN parametro. Se
     #        cambiasse firma, la lista delle righe risponderebbe 500.
@@ -383,3 +432,92 @@ class ModificaSecondoTempoTests(_DbTestCase):
         self.assertEqual(importo, Decimal("900.00"))
         self.assertIs(forzata, True)
         self.assertEqual(motivo, "pagato doppio")
+
+
+# La fixture della numerazione, COSTRUITA: un'azienda col suo operatore e
+# basta — la distinta la apre il SERVICE, com'e' in esercizio, non un INSERT.
+_FIXTURE_NUMERAZIONE: tuple[str, ...] = (
+    """
+    CREATE TEMP TABLE _mondo_num AS
+    SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
+    """,
+    """
+    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo_num))
+    """,
+)
+
+
+class NumerazioneSulRegistroTests(_DbTestCase):
+    """⭐ La distinta prende il numero dal registro e sa di chi e' (brief
+    distinta-numerata-sul-registro, BE-5), provato PER INTERO: service → madre
+    → sede unica dell'emittente → trigger numeratore → `DistintaRow`.
+    ⚠️ I pgTAP provano il database con un INSERT; qui si prova che il BACKEND
+    ci arrivi — la chiamata nominata, il parametro nuovo, le colonne nuove —
+    che e' il pezzo in mezzo che nessuno dei due lati vede da solo.
+    """
+
+    # Scopo: monta l'azienda con l'operatore, apre il contesto SUO e consegna
+    #        (sigla, PK) dell'emittente. Le TEMP TABLE muoiono col rollback.
+    def _mondo(self, cur) -> tuple[str, int]:
+        for passo in _FIXTURE_NUMERAZIONE:
+            cur.execute(passo)
+        cur.execute("SELECT emittente_codice, emittente_fiscale_id FROM _mondo_num")
+        row = cur.fetchone()
+        assert row is not None
+        return str(row[0]), int(row[1])
+
+    # Scopo: il centro CASSA (senza canale): e' il caso in cui l'emittente
+    #        non si deriva dal conto e la sessione deve rispondere.
+    @staticmethod
+    def _centro_cassa(cur) -> int:
+        cur.execute(
+            """
+            SELECT c.id FROM pagamenti.centri_riscossione c
+             WHERE c.attivo IS TRUE AND c.codice_interno = 'CASSA'
+             ORDER BY c.id LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        assert row is not None, "centro CASSA a catalogo"
+        return int(row[0])
+
+    # Scopo: ⭐ Senza canale e SENZA emittente nel payload la distinta nasce
+    #        lo stesso — dell'operatore in sessione (livello 3) — col codice
+    #        `DIS-<sigla>-<anno>-<7 cifre>` sul SUO registro, e la testata lo
+    #        racconta nelle tre forme. E' il percorso dell'operatore normale.
+    def test_senza_emittente_la_distinta_e_della_sessione_e_numerata(self):
+        def _prova(cur):
+            sigla, ef_id = self._mondo(cur)
+            esito = pagamenti_service.crea_distinta({
+                "centro_riscossione_id": self._centro_cassa(cur),
+                "data_contabile": date.today().isoformat(),
+                "meta": {"test_scope": "be_numerazione"},
+            })
+            return sigla, ef_id, esito["distinta"]
+        sigla, ef_id, d = self._con_operatore(_prova)
+        self.assertRegex(d["codice"], rf"^DIS-{sigla}-{date.today().year}-\d{{7}}$")
+        self.assertEqual(d["emittente_fiscale_id"], ef_id)
+        self.assertEqual(d["emittente_fiscale_codice"], sigla)
+        self.assertTrue(d["emittente_ragione_sociale"])
+        self.assertIsNotNone(d["registro_id"])
+        self.assertEqual(d["anno"], date.today().year)
+
+    # Scopo: Con l'emittente ESPLICITO nel payload (la PK, com'e' nel form)
+    #        arriva com'e' — e con lo stesso operatore e' lo stesso documento:
+    #        la chiave di riuso comprende l'emittente, quindi «ridà quella di
+    #        prima» e non ne apre una seconda.
+    def test_con_emittente_esplicito_arriva_com_e_e_riusa(self):
+        def _prova(cur):
+            sigla, ef_id = self._mondo(cur)
+            base = {
+                "centro_riscossione_id": self._centro_cassa(cur),
+                "data_contabile": date.today().isoformat(),
+                "meta": {"test_scope": "be_numerazione"},
+            }
+            prima = pagamenti_service.crea_distinta({**base, "emittente_fiscale_id": ef_id})
+            seconda = pagamenti_service.crea_distinta(dict(base))
+            return ef_id, prima["distinta"], seconda["distinta"]
+        ef_id, prima, seconda = self._con_operatore(_prova)
+        self.assertEqual(prima["emittente_fiscale_id"], ef_id)
+        self.assertEqual(prima["id"], seconda["id"])
+        self.assertEqual(prima["codice"], seconda["codice"])

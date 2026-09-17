@@ -49,7 +49,8 @@ _CONTRATTO_CREATE_REQUEST = inline_serializer(
     name="VenditeContrattoCreateReq",
     fields={
         # Post brief simmetria 2026-05-26: opzionale. Se omesso il trigger DB
-        # `trgfn_contratti_default_emittente` lo deriva dalla GUC
+        # `script.trgfn_default_emittente_fiscale` (BB unico dal 2026-09-15,
+        # al posto di `trgfn_contratti_default_emittente`) lo deriva dalla GUC
         # `app.current_user_id` (operatore non-admin). L'admin globale lo
         # specifica esplicitamente; il guard DB rifiuta coppie BA<->EF
         # incoerenti.

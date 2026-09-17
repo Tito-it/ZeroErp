@@ -476,6 +476,19 @@ watch(
       <template v-if="contentReady && distinta">
         <DrawerEntityHeader>
           <Tag :value="distinta.codice" severity="secondary" />
+          <!-- ⭐ DI CHI E', a colpo d'occhio (FE-2 del brief distinta-numerata-
+               sul-registro): la sigla sta gia' dentro il codice nuovo
+               (`DIS-<SIGLA>-…`), ma non nel pregresso `VC_…`, e comunque una
+               sigla non e' un nome. Si mostra la ragione sociale, e si ripiega
+               sulla sigla se il nome non e' arrivato — mai un vuoto che si
+               leggerebbe come «di nessuno». -->
+          <span
+            v-if="distinta.emittente_ragione_sociale || distinta.emittente_fiscale_codice"
+            class="app-drawer-header-muted"
+            v-tooltip.bottom="distinta.emittente_fiscale_codice || undefined"
+          >
+            {{ distinta.emittente_ragione_sociale || distinta.emittente_fiscale_codice }}
+          </span>
           <span class="app-drawer-header-muted">
             {{ displayDate(distinta.data_contabile) }}
           </span>

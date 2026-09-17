@@ -159,6 +159,9 @@ class ApiDistinteList(DomainAPIView):
                 "centro_riscossione_id": serializers.IntegerField(),
                 "data_contabile": serializers.DateField(),
                 "ente_incasso_id": serializers.IntegerField(required=False),
+                # Facoltativo: senza, lo risolve il DB dal canale o dalla
+                # sessione; se non puo', 400 `E_CONTABILE_EMITTENTE_OBBLIGATORIO`.
+                "emittente_fiscale_id": serializers.IntegerField(required=False),
                 "importo_dichiarato": serializers.DecimalField(
                     max_digits=18, decimal_places=2, required=False
                 ),
