@@ -49,23 +49,25 @@
 # ── ⚠️ PERCHE' IL CANCELLO E' SCATTATO IN CI, E NON DOVE CI SI ASPETTAVA ──
 #   Sulla carta, su un DB da zero questo passo gira PRIMA di 20260915-33:
 #   l'ordine di 80_data lo garantisce, e la prova sullo scratch lo ha
-#   confermato. Ma in Liquibase 5.0.4 un changeSet `runOnChange` che contiene
-#   un change con `dbms:` viene RI-ESEGUITO UNA VOLTA all'update successivo
-#   alla sua prima esecuzione: il filtro che decide se ri-eseguire
-#   (ShouldRunChangeSetFilter) calcola il checksum FUORI dallo Scope che porta
-#   il Database — ChangeLogIterator lo mette solo attorno alla visit — e senza
+#   confermato. Ma in Liquibase 5.0.4 un changeSet `runOnChange` con
+#   `validCheckSums: ANY` che contiene un change con `dbms:` viene RI-ESEGUITO
+#   UNA VOLTA all'update successivo alla sua prima esecuzione: con ANY la
+#   validazione non calcola il checksum, e il filtro che decide se ri-eseguire
+#   (ShouldRunChangeSetFilter) lo calcola FUORI dallo Scope che porta il
+#   Database — ChangeLogIterator lo mette solo attorno alla visit — e senza
 #   Database un change con `dbms: postgresql` viene ESCLUSO dal checksum
 #   (ChangeSet.generateCheckSum → DatabaseList.definitionMatches con shortName
 #   "null"). Il checksum salvato alla prima esecuzione (col Database) non
-#   torna, il changeSet e' RERAN, da li' in poi e' stabile. In CI l'update
-#   successivo e' la SECONDA invocazione di Liquibase (--contexts=ci_apply):
-#   li' questo passo e' ripartito DOPO 20260915-33, ha contato 5 e ha ucciso
-#   la build (2026-09-17, CI-Validate, «Expected '4' got '5'»). Su dbdev lo si
-#   legge dal databasechangelog: i 12 seed `runOnChange` di 80_data con
-#   `dbms:` sono tutti `exectype = RERAN`, i 164 mirror puri `loadUpdateData`
-#   `EXECUTED`. ⚠️ Il `dbms: postgresql` resta: il rimedio e' il cancello, non
-#   la scomparsa della ri-esecuzione — un cancello che regge solo finche'
-#   nessuno lo ri-esegue e' un cancello rotto.
+#   torna, il changeSet e' RERAN e da li' salva il checksum «di niente»: mai
+#   piu' una ri-esecuzione, nemmeno editando l'SQL. In CI l'update successivo
+#   e' la SECONDA invocazione di Liquibase (--contexts=ci_apply): li' questo
+#   passo e' ripartito DOPO 20260915-33, ha contato 5 e ha ucciso la build
+#   (2026-09-17, CI-Validate, «Expected '4' got '5'»). Su dbdev lo si legge dal
+#   databasechangelog: 175 righe RERAN col checksum della stringa vuota.
+#   ⛔ Per questo dal 2026-09-17 i change di questo passo NON portano `dbms:`
+#   (bonifica dei 28 runOnChange di 80_data/90_end, guardrail in CI): il
+#   cancello per nome resta comunque, perche' un cancello che regge solo
+#   finche' nessuno lo ri-esegue e' un cancello rotto.
 #
 # ── ℹ️ L'EMITTENTE FUTURO ──────────────────────────────────────────
 #   Lo provvede anagrafiche.trgfn_emittenti_fiscali_provision_registri
@@ -82,6 +84,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260831-03-seed-registri-famiglie-per-emittente
       author: mctit
+      # ⚠️ Nessun `dbms:` sui change (tolto il 2026-09-17): con `runOnChange` +
+      #    `validCheckSums: ANY`, Liquibase 5.0.4 lascia un change `dbms:` FUORI
+      #    dal checksum quando decide se ri-eseguire — una ri-esecuzione spuria
+      #    alla corsa dopo (in CI la seconda invocazione, fuori ordine) e poi un
+      #    checksum «vuoto» cieco alle modifiche. linee-guida-sql §11.1.
       runOnChange: true
       validCheckSums:
         - ANY
@@ -101,10 +108,11 @@ databaseChangeLog:
         primitiva, la stessa porta del trigger sull''emittente e del seed della DISTINTA. ⛔ Il
         cancello conta le quattro famiglie PER NOME: pretendere «esattamente 4 famiglie ≠ FATTURA»
         era una fotografia che la sesta (DISTINTA) ha smentito — e in Liquibase 5.0.4 un
-        `runOnChange` con un change `dbms:` viene ri-eseguito una volta all''update successivo
-        alla prima esecuzione (il filtro calcola il checksum senza Database nello Scope e il change
-        `dbms:` ne esce), cioe'' in CI nella seconda invocazione, DOPO il seed della DISTINTA:
-        «Expected ''4'' got ''5''», 2026-09-17. ℹ️ L''emittente FUTURO lo provvede
+        `runOnChange` con `validCheckSums: ANY` e un change `dbms:` viene ri-eseguito una volta
+        all''update successivo alla prima esecuzione (il filtro calcola il checksum senza Database
+        nello Scope e il change `dbms:` ne esce), cioe'' in CI nella seconda invocazione, DOPO il
+        seed della DISTINTA: «Expected ''4'' got ''5''», 2026-09-17. Da allora i change non
+        portano `dbms:` (bonifica dei 28 runOnChange di 80_data/90_end). ℹ️ L''emittente FUTURO lo provvede
         trgfn_emittenti_fiscali_provision_registri. Idempotente. Piano:
         brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12; correzione in
         brief-db-distinta-numerata-sul-registro, §9.
@@ -140,7 +148,6 @@ databaseChangeLog:
                      AND p.proname = 'fn_provision_registri_famiglia';
       changes:
         - sql:
-            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
@@ -160,7 +167,6 @@ databaseChangeLog:
                      vendite.fn_provision_registri_famiglia('RESO');
       rollback:
         - sql:
-            dbms: postgresql
             splitStatements: false
             sql: |
               -- ⛔ Si cancellano SOLO le righe nate da questo passo, e solo se

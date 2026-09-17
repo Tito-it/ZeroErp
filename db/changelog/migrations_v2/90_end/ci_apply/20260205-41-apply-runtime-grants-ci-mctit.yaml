@@ -57,6 +57,11 @@ databaseChangeLog:
       id: 20260205-41-apply-runtime-grants-ci
       author: mctit
       context: ci_apply
+      # ⚠️ Nessun `dbms:` sui change (tolto il 2026-09-17): con `runOnChange` +
+      #    `validCheckSums: ANY`, Liquibase 5.0.4 lascia un change `dbms:` FUORI
+      #    dal checksum quando decide se ri-eseguire — una ri-esecuzione spuria
+      #    alla corsa dopo (in CI la seconda invocazione, fuori ordine) e poi un
+      #    checksum «vuoto» cieco alle modifiche. linee-guida-sql §11.1.
       runOnChange: true
       # runAlways: true
       validCheckSums:
@@ -64,7 +69,6 @@ databaseChangeLog:
       comment: "Applica grant runtime in CI senza gestione password ruoli"
       changes:
         - sql:
-            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |

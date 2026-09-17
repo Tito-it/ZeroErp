@@ -42,6 +42,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260704-01-grant-editing-bozza-template-flussi-app
       author: mctit
+      # ⚠️ Nessun `dbms:` sui change (tolto il 2026-09-17): con `runOnChange` +
+      #    `validCheckSums: ANY`, Liquibase 5.0.4 lascia un change `dbms:` FUORI
+      #    dal checksum quando decide se ri-eseguire — una ri-esecuzione spuria
+      #    alla corsa dopo (in CI la seconda invocazione, fuori ordine) e poi un
+      #    checksum «vuoto» cieco alle modifiche. linee-guida-sql §11.1.
       runOnChange: true
       comment: >
         Editing strutturale BOZZA (prereq Slice 2): DML su
@@ -49,7 +54,6 @@ databaseChangeLog:
         delle tabelle storicizzate del set editabile, per il ruolo zeroerp_app.
       changes:
         - sql:
-            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
@@ -103,7 +107,6 @@ databaseChangeLog:
 
       rollback:
         - sql:
-            dbms: postgresql
             splitStatements: false
             sql: |
               DO $$

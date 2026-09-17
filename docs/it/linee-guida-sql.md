@@ -1359,12 +1359,44 @@ qui.
 Presidiato da `scripts/guardrail_run_on_change.py` in CI: un changeSet di schema
 o di codice che lo dichiara fa fallire la build.
 
-**Il meccanismo.** La CI invoca Liquibase **due volte** sullo stesso changelog:
-prima `--contexts="!provision"`, poi `--contexts=ci_apply` per le automazioni. Un
-changeSet `runOnChange: true` ri-esegue anche nella seconda passata, e lì l'ordine
-di timeline non lo protegge più: riscrive il proprio corpo **sopra** le revisioni
-successive, che sono `runOnChange: false` e non ri-eseguono. Su dev l'invocazione
-è una sola, quindi vince l'ultimo della timeline e il difetto è invisibile.
+**Il meccanismo.** Un changeSet `runOnChange: true` ri-esegue al migrate
+**successivo** a un edit, cioè fuori dall'ordine di timeline: riscrive il proprio
+corpo **sopra** le revisioni successive, che sono `runOnChange: false` e non
+ri-eseguono. La CI lo rende visibile perché invoca Liquibase **due volte** sullo
+stesso changelog — prima `--contexts="!provision"`, poi `--contexts=ci_apply` per
+le automazioni — e un changeSet che nella seconda passata risulta «cambiato»
+riparte lì, dopo tutto il resto. Su dev vince l'ultimo della timeline e il difetto
+è invisibile.
+
+> ⚠️ **Perché «risulta cambiato» senza che nessuno l'abbia toccato** (capito il
+> 2026-09-17, letto nel jar): in Liquibase 5.0.4 un `runOnChange` con
+> `validCheckSums: ANY` e un change `dbms: postgresql` viene ri-eseguito **una
+> volta** all'update successivo alla prima esecuzione. Con `ANY` la validazione
+> non calcola il checksum; il filtro che decide se ri-eseguire lo calcola
+> **senza** il Database nello Scope (`ChangeLogIterator` lo mette solo attorno
+> alla `visit`), e senza Database un change `dbms:` viene **escluso** dal
+> checksum. Il checksum salvato alla prima esecuzione non torna: `RERAN`, e da lì
+> resta salvato «il checksum di niente» — su dbdev 175 righe `RERAN` portano
+> l'MD5 della stringa vuota — quindi un edit dell'SQL **non ri-esegue mai più**.
+> È così che il 06-08 le 49 funzioni ripartivano a ogni build, ed è così che il
+> 17-09 `20260831-03` è ripartito in `ci_apply` **dopo** il seed della sesta
+> famiglia (`brief-db-distinta-numerata-sul-registro`, §9).
+
+⛔ **Seconda regola, dove `runOnChange` è lecito: i change non portano `dbms:`.**
+Stesso cancello (`guardrail_run_on_change.py`, dal 2026-09-17): un `runOnChange`
+di `80_data`/`85_pgagent`/`90_end` con un change `dbms:` fa fallire la build. Il
+database di ZeroErp è sempre PostgreSQL: quella riga non decide niente, e su un
+`runOnChange` costa una ri-esecuzione spuria fuori ordine e un checksum cieco.
+Bonificati i 28 che la portavano (`80_data`: 14, `90_end`: 14); il backfill
+`20260415-01` era una tantum e si è **spento** (`runOnChange: false` +
+`validCheckSums: ANY`): ri-eseguito, avrebbe riclassificato 221 articoli.
+
+⚠️ **Corollario per chi scrive un `runOnChange` in `80_data`/`90_end`**: il corpo
+deve reggere una ri-esecuzione **dopo** changeSet più recenti — idempotente, e
+con precondizioni che chiedono ciò che serve **per nome** (`IN (…)`), mai «quante
+righe ci sono oggi»: un `sqlCheck expectedResult: N` su un catalogo è una
+fotografia che la riga dopo smentisce. Un backfill è una tantum, non
+`runOnChange`.
 
 > Il 2026-08-06 questo riportava indietro **49 funzioni** a ogni build — fra cui
 > `dbops.trgfn_tx_id_managed`, le sei `vendite.vw_*_lista`, i cinque
