@@ -27,6 +27,8 @@ from typing import Any
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_translator import ErrorTranslator
+from apps.core.services.fan_out import run_fan_out
 from apps.core.services.list_helpers import (
     validate_order_params,
     validate_pagination,
@@ -37,6 +39,7 @@ from apps.core.services.payload_helpers import (
 )
 from apps.pagamenti.services._helpers import (
     E_FATTURA_NON_TROVATA,
+    E_RATA_NON_TROVATA,
     E_VALIDAZIONE,
     decimal_da_payload as _decimal_da_payload,
     risposta_paginata as _risposta_paginata,
@@ -666,6 +669,200 @@ def crea_riga(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             **destinazione,
         )
     return {"riga": _riga_o_404(repository, riga_id)}
+
+
+# I FATTI COMUNI di «righe da rate»: valgono per tutte le righe del giro. Sono i
+# fatti della riga MENO l'importo, che e' per rata, e meno `motivo_sospeso`, che
+# non ha senso su una riga che nasce ABBINATA.
+_CAMPI_DA_RATE_COMUNI: tuple[str, ...] = (
+    "riferimento_ente",
+    "data_pagamento",
+    "data_valuta",
+    "data_operazione",
+    "meta",
+)
+
+
+# Scopo: Legge i fatti comuni UNA volta, PRIMA del giro, con gli stessi lettori
+#        che `crea_riga` usa per riga — e li restituisce gia' letti, cosi' che
+#        per riga non ci sia piu' niente da rifiutare su di loro.
+# 🔴 Senza questa lettura una data malformata — un fatto della RICHIESTA, non
+#    di una rata — veniva rifiutata dentro il savepoint di OGNI riga: la
+#    risposta era un 200 con esito `ERRORE` e N fallite identiche, e il
+#    frontend avrebbe mostrato la stessa frase su ogni rata dell'area senza
+#    accendere il campo in testa. Un fatto comune sbagliato e' un 400 col
+#    campo, come su `POST righe/`.
+# ⚠️ Non e' una seconda regola: i lettori sono quelli di `_PAYLOAD`, e
+#    `crea_riga` li riapplica a valori gia' letti (una `date` resta una
+#    `date`, un `dict` resta un `dict`) — stesso esito, nessun secondo parere.
+def _fatti_comuni_da_rate(payload: dict[str, Any], *, function_name: str) -> dict[str, Any]:
+    comuni: dict[str, Any] = {}
+    for chiave in _CAMPI_DA_RATE_COMUNI:
+        if chiave not in payload:
+            continue
+        if chiave == "meta":
+            comuni[chiave] = _PAYLOAD.optional_meta(payload, chiave, function_name=function_name)
+        elif chiave.startswith("data_"):
+            comuni[chiave] = _PAYLOAD.optional_date(payload, chiave, function_name=function_name)
+        else:
+            comuni[chiave] = _PAYLOAD.optional_string(payload, chiave, function_name=function_name)
+    return comuni
+# Per riga: la rata, il suo importo e il secondo tempo.
+_CAMPI_DA_RATE_RIGA: tuple[str, ...] = ("scadenza_id", "importo", *_CAMPI_FORZATURA)
+# Il tetto delle rate in un giro. ⭐ Lo stesso 200 dei verbi di massa delle code
+#    (`archivia/`): un elenco piu' lungo e' un import, non un gesto.
+MAX_RIGHE_DA_RATE = 200
+
+
+# Scopo: Legge l'elenco delle rate scelte, con la regola che un elenco spedito
+#        da un picker rispetta per costruzione — e che, se non rispetta, e' un
+#        difetto del client da dire, non da aggiustare.
+# ⛔ `scadenza_id` DUPLICATO = 400 col campo: deduplicare in silenzio butterebbe
+#    via un importo, e non c'e' modo di sapere quale dei due voleva l'operatore.
+# ⚠️ Elenco VUOTO = 400: «zero righe da rate» non e' un giro a esito
+#    COMPLETATO, e' un payload che non chiede niente.
+def _righe_da_rate_da_payload(payload: dict[str, Any], *, function_name: str) -> list[dict[str, Any]]:
+    righe = payload.get("righe")
+    ErrorManager.require(
+        isinstance(righe, list) and len(righe) > 0,
+        code=E_VALIDAZIONE,
+        message="Indicare almeno una rata.",
+        context={"field": "righe"},
+        function_name=function_name,
+    )
+    assert isinstance(righe, list)
+    ErrorManager.require(
+        len(righe) <= MAX_RIGHE_DA_RATE,
+        code=E_VALIDAZIONE,
+        message=f"Al massimo {MAX_RIGHE_DA_RATE} rate per giro.",
+        detail=f"ricevute {len(righe)}",
+        context={"field": "righe"},
+        function_name=function_name,
+    )
+    letti: list[dict[str, Any]] = []
+    visti: set[int] = set()
+    for indice, riga in enumerate(righe):
+        ErrorManager.require(
+            isinstance(riga, dict),
+            code=E_VALIDAZIONE,
+            message="Ogni riga deve indicare la rata e l'importo.",
+            detail=f"righe[{indice}] non e' un oggetto",
+            context={"field": "righe"},
+            function_name=function_name,
+        )
+        assert isinstance(riga, dict)
+        _PAYLOAD.validate_allowed_keys(riga, allowed=frozenset(_CAMPI_DA_RATE_RIGA))
+        scadenza_id = _PAYLOAD.require_positive_int(
+            riga, "scadenza_id", message="La rata e' obbligatoria su ogni riga."
+        )
+        assert scadenza_id is not None
+        ErrorManager.require(
+            scadenza_id not in visti,
+            code=E_VALIDAZIONE,
+            message="La stessa rata compare due volte nell'elenco.",
+            detail=f"scadenza_id={scadenza_id} (righe[{indice}])",
+            context={"field": "righe", "scadenza_id": scadenza_id},
+            function_name=function_name,
+        )
+        visti.add(scadenza_id)
+        importo = _decimal_da_payload(riga, "importo", obbligatorio=True)
+        forzata = _PAYLOAD.optional_bool(riga, "forzata") or False
+        motivo_forzatura = _PAYLOAD.optional_string(riga, "motivo_forzatura")
+        _guard_motivo_con_forzatura(forzata, motivo_forzatura, function_name=function_name)
+        letti.append({
+            "scadenza_id": scadenza_id,
+            "importo": importo,
+            "forzata": forzata,
+            "motivo_forzatura": motivo_forzatura,
+        })
+    return letti
+
+
+# Scopo: N RATE → N RIGHE in un Salva (D19-d, 2026-09-17): le rate scelte nel
+#        picker diventano righe della distinta, ognuna con la propria
+#        destinazione — e' D1 reso a video (*«un incasso che copre tre rate
+#        resta tre righe»*).
+# ⭐ NESSUNA SECONDA STRADA DI INSERIMENTO: per ogni rata si risolve la
+#    fattura (sotto RLS) e si chiama `crea_riga` cosi' com'e' — BA dalla
+#    fattura, stato `ABBINATA`, i guard del database di coerenza rata/fattura e
+#    di capienza sull'`INSERT`. Il backend non decide niente in piu' di quello
+#    che decide per una riga sola.
+# ⭐ ESITO PARZIALE PER RIGA (`run_fan_out`, un savepoint per riga): le riuscite
+#    ENTRANO, le rifiutate tornano al chiamante col loro errore INTERO —
+#    `ErrorTranslator.to_api_error`, la sede unica delle politiche
+#    dell'envelope (hint tolto sui tecnici, bersaglio solo dove c'e' un gesto).
+#    Cosi' la capienza di una rata che non regge risale con
+#    `ui_action = confirm_and_retry` PER QUELLA RIGA, e il secondo tempo e'
+#    per riga: venti righe buone non si perdono per una.
+# ⚠️ Lo status HTTP e' 200 anche su `PARZIALE`/`ERRORE`: chi legge guarda
+#    `esito` e `falliti[]`, come per l'archiviazione delle code.
+# ⚠️ L'idempotenza copre il GIRO (la chiave e' della richiesta): il secondo
+#    tempo e' un giro NUOVO con le sole righe rimaste, e ha una chiave nuova.
+def crea_righe_da_rate(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    fn = f"{_FN}.crea_righe_da_rate"
+    _PAYLOAD.validate_allowed_keys(
+        payload, allowed=frozenset({*_CAMPI_DA_RATE_COMUNI, "righe"})
+    )
+    righe = _righe_da_rate_da_payload(payload, function_name=fn)
+    # I fatti comuni si leggono UNA volta, qui — un 400 col campo se sono
+    # sbagliati — e viaggiano gia' letti su ogni riga.
+    comuni = _fatti_comuni_da_rate(payload, function_name=fn)
+
+    repository = PagamentiRepository()
+    _distinta_o_404(repository, contabile_id)
+
+    # Scopo: UNA riga: risolve la fattura dalla rata e chiama la nascita. Solleva
+    #        su rifiuto — e' cosi' che il fan-out distingue riuscite e fallite,
+    #        e l'eccezione la tiene il BB (`FanOutItemErrore.eccezione`).
+    def _process(voce: tuple[int, dict[str, Any]]) -> dict[str, Any]:
+        indice, riga = voce
+        fattura_id = repository.get_fattura_id_di_rata(riga["scadenza_id"])
+        ErrorManager.require(
+            fattura_id is not None,
+            code=E_RATA_NON_TROVATA,
+            message="Rata non trovata.",
+            detail=f"scadenza_id={riga['scadenza_id']}",
+            context={"field": "scadenza_id"},
+            function_name=fn,
+        )
+        esito_riga = crea_riga(
+            contabile_id,
+            {
+                **comuni,
+                "importo": str(riga["importo"]),
+                "fattura_id": fattura_id,
+                "scadenza_id": riga["scadenza_id"],
+                "forzata": riga["forzata"],
+                **(
+                    {"motivo_forzatura": riga["motivo_forzatura"]}
+                    if riga["motivo_forzatura"] is not None else {}
+                ),
+            },
+        )
+        return {"indice": indice, "scadenza_id": riga["scadenza_id"], "riga": esito_riga["riga"]}
+
+    esito = run_fan_out(list(enumerate(righe)), _process)
+    return {
+        "esito": esito.esito,
+        "richieste": esito.totale,
+        "riuscite": esito.ok,
+        "creati": esito.risultati,
+        "falliti": [
+            {
+                "indice": e.indice,
+                "scadenza_id": righe[e.indice]["scadenza_id"],
+                # ⭐ L'errore INTERO, nella forma dell'envelope e con le sue
+                #    politiche — non un `code` + `message` a mano: il frontend
+                #    ramifica su `ui_action` e mostra `hint`, come su un rifiuto
+                #    arrivato da solo. L'eccezione la porta il BB, anche quando
+                #    nasce FUORI da `_process` (il savepoint stesso): li' e' un
+                #    GUASTO e `to_api_error` lo rende come errore tecnico
+                #    (messaggio della policy, niente `hint` grezzo).
+                "errore": ErrorTranslator.to_api_error(e.eccezione).to_dict(),
+            }
+            for e in esito.errori
+        ],
+    }
 
 
 # Scopo: Elimina una riga di una distinta MANUALE in BOZZA — `attivo = false`.

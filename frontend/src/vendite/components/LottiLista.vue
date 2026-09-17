@@ -21,6 +21,12 @@ import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+// ⚠️ Serve al TEMPLATE (la spia degli errori gravi). Fino al 2026-09-17 mancava:
+//    in `<script setup>` un nome non importato nel template compila a
+//    `_ctx.MANAGE_ICONS` = undefined, e `undefined.ERRORE` sollevava nel render
+//    della PRIMA riga con `ha_errori_gravi` — lista bianca, senza un errore a
+//    video, e solo nelle schede che avevano un lotto in ERRORE (i «Recuperi»).
+import { MANAGE_ICONS } from '../../core/constants'
 import { statoLottoSeverity } from '../../core/utils/severity'
 
 // Scopo: il rapporto `completati/presi` degli ESITI di un lotto, o `null`

@@ -298,6 +298,23 @@ WHITELIST_BE: dict[str, tuple] = {
                                        "DASH_COMPETENZA_ERRORI_SORT_COLUMNS", "class VenditeRepository"),
     "vendite.dash_competenza_gruppi": ("apps/vendite/db/vendite_repository.py",
                                        "DASH_COMPETENZA_GRUPPI_SORT_COLUMNS", "class VenditeRepository"),
+    # ⭐ Le sette liste di `pagamenti` (2026-09-17). Fino a quel giorno NESSUNA
+    #    era mappata: `--verifica-ordinamento` le saltava come «NON MAPPATA», cioe'
+    #    il controllo su di loro non era mai stato fatto — e questo registro dice
+    #    di se' che «una lista saltata in silenzio e' come non aver fatto il
+    #    controllo». Trovate registrando `pagamenti.rate` (lista 68, D19-c),
+    #    l'unica delle sette nata col presidio acceso. Tutte costanti di MODULO
+    #    nello stesso repository.
+    "pagamenti.distinte": ("apps/pagamenti/db/pagamenti_repository.py", "DISTINTE_SORT_COLUMNS"),
+    "pagamenti.righe": ("apps/pagamenti/db/pagamenti_repository.py", "RIGHE_SORT_COLUMNS"),
+    "pagamenti.rate_fuori_capienza": ("apps/pagamenti/db/pagamenti_repository.py",
+                                      "RATE_FUORI_CAPIENZA_SORT_COLUMNS"),
+    "pagamenti.rate": ("apps/pagamenti/db/pagamenti_repository.py", "RATE_SORT_COLUMNS"),
+    "pagamenti.eccedenze": ("apps/pagamenti/db/pagamenti_repository.py", "ECCEDENZE_SORT_COLUMNS"),
+    "pagamenti.sistemazioni_fattura": ("apps/pagamenti/db/pagamenti_repository.py",
+                                       "SISTEMAZIONI_SORT_COLUMNS"),
+    "pagamenti.canali_incasso": ("apps/pagamenti/db/pagamenti_repository.py",
+                                 "ENTI_INCASSO_SORT_COLUMNS"),
     "vendite.dash_competenza_commesse": ("apps/vendite/db/vendite_repository.py",
                                          "DASH_COMPETENZA_COMMESSE_SORT_COLUMNS", "class VenditeRepository"),
 }

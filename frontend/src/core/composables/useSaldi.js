@@ -63,6 +63,36 @@ export const LIVELLO = Object.freeze({
 //    un lato solo.
 export const CAMPI_SALDO = Object.freeze(['residuo', 'in_lavorazione', 'incassato'])
 
+// Scopo: LO SPAZIO di un saldo — quanto ci sta ANCORA, prima di se': il
+//        residuo meno cio' che e' gia' digitato su una bozza e non registrato.
+//        E' il numero che il guard di capienza confronta (D14-c), quindi e'
+//        l'importo che si PROPONE e il predicato «selezionabile» del picker
+//        (Q-B, decisione di Tid 2026-09-17: «aperta» = residuo ≠ 0,
+//        «selezionabile» e importo proposto = residuo − in lavorazione).
+// ⛔ Non e' un quarto numero della base: si CALCOLA dai due che ci sono, e
+//    sta qui — non nei tre form che lo usano — perche' una formula scritta in
+//    tre posti diverge alla prima regola nuova. Nessuna colonna a DB (Q-B).
+// ⚠️ `null` quando manca uno dei due: «non so» non e' zero, e proporre 0 su
+//    un saldo non letto inviterebbe a registrare il numero sbagliato.
+// ⚠️ Il SEGNO resta: su una nota di credito il residuo e' negativo (P-5) e lo
+//    spazio anche — e' «da rimborsare», non «niente da fare». Chi propone un
+//    importo guarda `!== 0`, non `> 0`.
+// 🔴 La sottrazione si fa in CENTESIMI, non sui float (rilettura del
+//    2026-09-17): `100.30 − 100.00` in virgola mobile vale
+//    `0.29999999999999716`, e quel numero e' l'importo PROPOSTO — viaggia nel
+//    payload cosi' com'e', la colonna `importo` e' `numeric` SENZA scala, e il
+//    guard di capienza confronta `abs(importo) > abs(spazio)`: un importo che
+//    l'operatore non ha nemmeno toccato veniva rifiutato per capienza. I due
+//    numeri arrivano dal database a due decimali: in centesimi la differenza
+//    e' esatta.
+export function spazioSaldo(saldo) {
+  const residuo = saldo?.residuo
+  const inLavorazione = saldo?.in_lavorazione
+  if (residuo == null || inLavorazione == null) return null
+  const centesimi = Math.round(Number(residuo) * 100) - Math.round(Number(inLavorazione) * 100)
+  return centesimi / 100
+}
+
 // I lettori, uno per livello, ciascuno con cio' che SA fare. ⛔ `CLIENTE` non
 // c'e': il backend non ha ancora la funzione, e un lettore che chiama una rotta
 // inesistente darebbe un 404 che si legge come «questo cliente non ha saldo».

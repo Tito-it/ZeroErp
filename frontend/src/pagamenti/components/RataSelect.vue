@@ -18,10 +18,21 @@
 // ⚠️ La rata e' FACOLTATIVA (la riga del fondo fattura ha fattura si' e rata
 //    no) e la nota lo dice: senza, l'operatore crede di doverne scegliere una
 //    e su un fondo fattura si blocca.
-// ⚠️ Il residuo NEGATIVO si dice a parole («120,00 di troppo»), mai come
-//    «-120,00», che si legge come un guasto.
+// ⚠️ Il residuo NEGATIVO si dice a parole, mai come «-120,00», che si legge
+//    come un guasto — e la frase segue la NATURA del documento (`etichette.js`):
+//    «di troppo» su una fattura, «da rimborsare» su una nota di credito, che
+//    dal 2026-09-17 (P-5) ha la sua rata negativa.
 // ⛔ Emette la rata INTERA con `select`: chi propone un importo ha bisogno del
 //    residuo, non del solo id — e non deve ricercarla nell'elenco.
+//
+// ⭐ LA SCELTA ARRIVATA DA FUORI SOPRAVVIVE (Q-2 del piano, 2026-09-17). Il
+//    picker delle rate consegna al form fattura E rata insieme; il `watch`
+//    sulla fattura ricarica le rate e — fino a quel giorno — azzerava la scelta
+//    a prescindere, quindi la rata scelta nel picker spariva un istante dopo.
+//    Ora, se il `modelValue` in arrivo e' fra le rate del documento appena
+//    caricato, si TIENE e si emette `select` con la rata intera (coi numeri
+//    della tendina); si azzera solo se non c'e' — cioe' quando era di un altro
+//    documento, che e' il caso per cui l'azzeramento esiste.
 import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
@@ -33,6 +44,9 @@ import { useEtichettePagamenti } from '../etichette'
 const props = defineProps({
   // La fattura di cui mostrare le rate; `null` = tendina spenta.
   fatturaId: { type: [Number, null], default: null },
+  // La NATURA del documento (`natura_doc_codice_interno`): decide come si
+  // legge un residuo negativo. `null` vale «fattura», il default a DB.
+  naturaDocCodice: { type: [String, null], default: null },
   // `scadenza_id` della rata scelta.
   modelValue: { type: [Number, null], default: null },
   disabled: { type: Boolean, default: false },
@@ -50,16 +64,32 @@ const {
   azzera: azzeraRate,
 } = useLetturaTreStati((id) => listRateFattura(id), { estrai: RISULTATI, vuoto: [] })
 
-// Scopo: cambia la fattura, cambiano le rate — e la scelta di prima non vale
-//        piu' (era di un altro documento).
+// Scopo: cambia la fattura, cambiano le rate — e la scelta di prima vale
+//        solo se e' una rata di QUESTO documento (Q-2).
+// ⚠️ La scelta si legge PRIMA di caricare e si decide DOPO: `caricaRate`
+//    risponde `null` quando una fattura piu' recente l'ha scavalcata, e in quel
+//    caso non si tocca niente — decidera' l'ultima.
 watch(
   () => props.fatturaId,
   async (id) => {
+    const preselezionata = props.modelValue
+    azzeraRate()
+    if (id == null) {
+      emit('update:modelValue', null)
+      emit('select', null)
+      return
+    }
+    const elenco = await caricaRate(id)
+    if (elenco == null) return
+    const tenuta = preselezionata != null
+      ? elenco.find((r) => r.scadenza_id === preselezionata) || null
+      : null
+    if (tenuta) {
+      emit('select', tenuta)
+      return
+    }
     emit('update:modelValue', null)
     emit('select', null)
-    azzeraRate()
-    if (id == null) return
-    await caricaRate(id)
   },
   { immediate: true },
 )
@@ -73,7 +103,11 @@ watch(
 //    la colonna che dice «qui non ci sta piu' niente».
 const { rata: etichettaBase } = useEtichettePagamenti()
 function etichettaRata(r) {
-  return etichettaBase({ ...r, residuo: r.residuo ?? 0 })
+  return etichettaBase({
+    ...r,
+    residuo: r.residuo ?? 0,
+    natura_doc_codice_interno: props.naturaDocCodice,
+  })
 }
 
 function onChange(scadenzaId) {

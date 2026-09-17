@@ -1467,6 +1467,70 @@ a {
   margin-right: 0.2rem;
 }
 
+/* ===== Area temporanea «righe scelte» (RatePickerDialog multipla) =====
+ * L'ANTEPRIMA di cio' che un Salva scrivera' in N righe: una riga per rata
+ * scelta, con documento, importo modificabile, esito dell'ultimo giro e
+ * cestino. ⛔ Non e' una DataTable (ne' grezza, ne' configurabile): e' un
+ * elenco di righe a griglia, come le card delle sotto-entita' nei drawer.
+ * Quattro zone su una riga larga, che a schermo stretto vanno a capo:
+ *   __doc     → documento · natura · cliente · rata · spazio (testo)
+ *   __importo → il campo (form-field, etichetta sopra)
+ *   __esito   → la frase del database e il secondo tempo («Forza» + motivo)
+ *   __azioni  → il cestino
+ * `--fallita` sottolinea la riga rimasta dopo un esito parziale. */
+.app-righe-scelte {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.app-righe-scelte__riga {
+  display: grid;
+  grid-template-columns: minmax(14rem, 2fr) minmax(10rem, 1fr) minmax(12rem, 2fr) auto;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--app-drawer-section-border);
+  border-radius: var(--p-border-radius-md, 6px);
+}
+
+.app-righe-scelte__riga--fallita {
+  border-color: var(--p-orange-400);
+}
+
+.app-righe-scelte__doc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  line-height: 1.25;
+  font-size: 0.9rem;
+}
+
+.app-righe-scelte__importo {
+  margin: 0;
+}
+
+.app-righe-scelte__esito {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.app-righe-scelte__azioni {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .app-righe-scelte__riga {
+    grid-template-columns: 1fr auto;
+  }
+  .app-righe-scelte__esito {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ===== Row expansion contenitore =====
  * Contenitore standard per il contenuto di <template #expansion> di un DataTable
  * con righe alternate. Aggiunge bordo sinistro primary, tinta di sfondo,

@@ -60,6 +60,7 @@ import { useEtichettePagamenti } from '../etichette'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
 import CorreggiDistintaDialog from './CorreggiDistintaDialog.vue'
 import DistintaRigaForm from './DistintaRigaForm.vue'
+import RatePickerDialog from './RatePickerDialog.vue'
 import RegistraDistintaDialog from './RegistraDistintaDialog.vue'
 
 const props = defineProps({
@@ -93,6 +94,8 @@ const abbinaVisible = ref(false)
 const rigaDaAbbinare = ref(null)
 const registraVisible = ref(false)
 const correggiVisible = ref(false)
+// Il picker delle rate in modalita' MULTIPLA (D19-d): N rate → N righe.
+const righeDaRateVisible = ref(false)
 
 const distinta = computed(() => dettaglio.value?.distinta || null)
 const righe = computed(() => dettaglio.value?.righe || [])
@@ -231,6 +234,20 @@ const pageActionsRighe = computed(() => [
     hideWhenReadonly: true,
     visible: modificabile.value && formMode.value === null,
     command: () => { rigaInModifica.value = null; formMode.value = 'create' },
+  },
+  // ⭐ «Righe da rate»: si scelgono le rate dallo scadenzario e ogni rata
+  //    diventa una riga (D1 reso a video). Stesso cancello di «Nuova riga»:
+  //    e' un altro modo di scriverne, non un altro permesso.
+  {
+    key: 'righe-da-rate',
+    // Inline accanto a «Nuova riga» (non nel kebab): e' il gesto principale
+    // della distinta manuale, non un'azione rara.
+    severity: 'primary',
+    label: t('pagamenti.rate.righe_da_rate'),
+    icon: 'pi pi-list-check',
+    hideWhenReadonly: true,
+    visible: modificabile.value && formMode.value === null,
+    command: () => { righeDaRateVisible.value = true },
   },
 ])
 
@@ -750,6 +767,16 @@ watch(
       v-model:visible="registraVisible"
       :distinta-id="distintaId"
       @registrata="ricarica"
+    />
+
+    <!-- ⚠️ `readonly` esplicito: e' il readonly da PERMESSI, non il combinato
+         con lo stato — l'azione e' gia' filtrata da `modificabile`. -->
+    <RatePickerDialog
+      v-model:visible="righeDaRateVisible"
+      modalita="multipla"
+      :contabile-id="distintaId"
+      :readonly="isReadonly"
+      @righe-create="ricarica"
     />
   </Drawer>
 </template>

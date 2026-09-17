@@ -49,11 +49,30 @@ def messaggio_eccezione(exc: BaseException) -> str:
 
 @dataclass(frozen=True)
 class FanOutItemErrore:
-    """Un singolo item fallito: posizione, item originale e messaggio normalizzato."""
+    """Un singolo item fallito: posizione, item originale, messaggio normalizzato
+    e — dal 2026-09-17 — l'eccezione INTERA.
+
+    ⭐ `eccezione` (regola del 2, ok Tid 2026-09-17): chi risponde un esito PER
+    RIGA a un operatore vuole il `ServiceError` com'e' — codice, campo,
+    `ui_action`, suggerimento — non la stringa `"TypeError: …"`. Due consumatori
+    (l'archiviazione delle code e «righe da rate») se la tenevano ciascuno in
+    un dizionario laterale popolato con un `try/except/raise` dentro `process`,
+    piu' un ripiego per il caso in cui l'eccezione nascesse FUORI da `process`
+    (il savepoint stesso), che il dizionario non vedeva. Qui il BB la cattura
+    nello stesso `except` che scrive `messaggio`: non c'e' un secondo canale da
+    tenere in passo, e il caso «fuori da `process`» e' coperto per costruzione.
+    ⚠️ `messaggio` resta: e' la forma per i log e i meta dei task_run
+    (`messaggio_eccezione`, sede unica del formato), e i lettori che vogliono
+    solo una riga di testo non devono formattare da soli.
+    """
 
     indice: int
     item: Any
     messaggio: str
+    # Sempre valorizzata: il BB la cattura nello stesso `except` del messaggio.
+    # NON opzionale di proposito — un `None` sarebbe un caso da gestire in ogni
+    # consumatore per un evento che non puo' succedere.
+    eccezione: Exception
 
 
 @dataclass
@@ -229,6 +248,7 @@ def run_fan_out(
                     indice=indice,
                     item=item,
                     messaggio=messaggio_eccezione(exc),
+                    eccezione=exc,
                 )
             )
             _chiama_logger(run_logger, "item_failed", item=item, indice=indice, exc=exc)

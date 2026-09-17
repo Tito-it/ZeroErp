@@ -40,7 +40,7 @@ vi.mock('./useApiHandler', () => ({
   }),
 }))
 
-const { LIVELLO, useSaldi } = await import('./useSaldi')
+const { LIVELLO, spazioSaldo, useSaldi } = await import('./useSaldi')
 
 beforeEach(() => {
   chiamate.rata.length = 0
@@ -85,5 +85,31 @@ describe('useSaldi — «prima di se\'»', () => {
     expect(livelloSupportato).toBe(false)
     expect(esclusioneSupportata).toBe(false)
     expect(await leggi(1)).toBeNull()
+  })
+})
+
+// ⭐ Lo SPAZIO (Q-B, Tid 2026-09-17): residuo − in lavorazione, calcolato in
+//    una sede sola. E' l'importo proposto e il predicato «selezionabile».
+describe('spazioSaldo — residuo meno in lavorazione', () => {
+  it('sottrae cio\' che e\' gia\' digitato e non registrato', () => {
+    expect(spazioSaldo({ residuo: '400.00', in_lavorazione: '150.00' })).toBe(250)
+  })
+
+  it('tiene il SEGNO: su una nota di credito lo spazio e\' negativo, non zero', () => {
+    expect(spazioSaldo({ residuo: '-20.00', in_lavorazione: '0.00' })).toBe(-20)
+  })
+
+  // 🔴 Il caso che il guard rifiutava: in virgola mobile `100.30 − 100.00` non
+  //    e' `0.30`, e l'importo proposto usciva con quattordici decimali.
+  it('sottrae in centesimi: nessun residuo di virgola mobile sull\'importo proposto', () => {
+    expect(spazioSaldo({ residuo: '100.30', in_lavorazione: '100.00' })).toBe(0.3)
+    expect(spazioSaldo({ residuo: '0.30', in_lavorazione: '0.10' })).toBe(0.2)
+    expect(spazioSaldo({ residuo: '400.10', in_lavorazione: '400.10' })).toBe(0)
+  })
+
+  it('e\' null se manca uno dei due numeri: «non so» non e\' zero', () => {
+    expect(spazioSaldo({ residuo: '400.00' })).toBeNull()
+    expect(spazioSaldo({ residuo: null, in_lavorazione: '1' })).toBeNull()
+    expect(spazioSaldo(null)).toBeNull()
   })
 })

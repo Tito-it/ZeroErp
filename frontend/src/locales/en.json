@@ -4146,7 +4146,19 @@
       "solo_aperte": "Open only",
       "esaurita": "Instalment settled: nothing left to collect",
       "nessuna_rata": "No instalment matches this criterion",
-      "non_lette": "Could not read the instalments: retry."
+      "non_lette": "Could not read the instalments: retry.",
+      "righe_da_rate": "Lines from instalments",
+      "titolo_righe_da_rate": "Lines from instalments: pick the instalments, each one becomes a line",
+      "seleziona_pagina": "Select the instalments on this page",
+      "area_titolo": "Chosen instalments | One chosen instalment | {n} chosen instalments",
+      "nessuna_scelta": "Tick the instalments to collect: each chosen instalment becomes a line of the remittance, with the amount proposed from its remaining space.",
+      "spazio": "Space",
+      "rimuovi": "Remove from the choice",
+      "crea_righe": "Create the lines | Create one line | Create {n} lines",
+      "create": "No line created | One line created | {n} lines created",
+      "parziale": "{riuscite} of {richieste} lines created: the others stay here, each with its reason.",
+      "abbandona_titolo": "Unsaved instalments",
+      "abbandona_msg": "{n} chosen instalments are not saved yet: close and lose them?"
     },
     "registra": {
       "azione": "Post",

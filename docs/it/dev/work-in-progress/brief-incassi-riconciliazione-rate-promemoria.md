@@ -1204,6 +1204,16 @@ lista.
 > (P-4) e — **domanda aperta** — il saldo di N rate in una valutazione (P-3),
 > che è ciò che il filtro «solo aperte» e lo scadenzario intero pretendono. Le
 > due avvertenze qui sotto sono scritte nel brief come regole del picker.
+>
+> ✅ **2026-09-17 — la rotta c'è.** `GET /api/v1/pagamenti/rate/`
+> (`saldi_service.list_rate`, la quarta lettura della base unica) e la lista
+> `pagamenti.rate` (68) sono in esercizio col picker della distinta; P-3 è
+> consegnata in **terza forma** (nucleo `fn_get_saldi_rate` + tre porte) e il
+> filtro «solo aperte» = `residuo <> 0` esiste. ⚠️ Lo scadenzario non è
+> ancora una **schermata**: gli manca solo la view (nessun criterio
+> obbligatorio lato rotta, `natura_doc_codice` e `data_scadenza_da/a` già
+> accettati). Le due avvertenze sotto **valgono già** nel codice: i numeri
+> escono dal nucleo, e «aperta» guarda il residuo, non l'incassato.
 
 ##### ⚠️ Le due avvertenze da portarsi dietro quando si aprirà
 
@@ -2019,6 +2029,17 @@ decisioni — si prendono quando un cantiere le incontra, non prima.
 > (BE/FE, pezzi A…D). Qui la sintesi, perché questa resta la sede.
 > ✅ **Il pezzo B (D19-b) è scritto e committato il 2026-09-17**; A, C, D
 > aspettano i prerequisiti DB (P-1, P-2, P-4).
+> ✅ **2026-09-17 sera/notte — tutti e quattro i pezzi sono scritti**, sul DB
+> consegnato lo stesso giorno (P-1…P-5, 13 changeSet, applicati su dev):
+> A (lookup a tre righe con `NaturaDocTag`), C (`GET /pagamenti/rate/` +
+> `RatePickerDialog` singolo), D (`da-rate/` + picker multiplo con area
+> temporanea). **D19-e è verificata e consegnata**: la nota di credito ha la
+> sua rata **negativa**, nel picker si segnala e si sceglie, il residuo si dice
+> «da rimborsare». Riletti criticamente la stessa notte (piano §9: un bug sul
+> modello nello spazio proposto, due sul contratto, un BB di core allargato —
+> `FanOutItemErrore.eccezione`). A/C/D **non committati**; resta il collaudo a
+> video (copione §7 del brief DB, 14 righe). Residui per il DB: P-6, P-7,
+> P-8 (§4-bis.9-ter).
 
 | | Decisione | Il perché, in una riga |
 | --- | --- | --- |
@@ -2026,7 +2047,7 @@ decisioni — si prendono quando un cantiere le incontra, non prima.
 | **D19-b** | La **destinazione di una riga si vede sempre**, anche in modifica: fattura, rata, scadenza, importo rata, residuo (dalla base unica, `SaldoPanel`) | R-6 protegge la **scrittura** della destinazione, non la lettura: chi corregge un importo deve sapere su che cosa lo corregge. Solo BE/FE |
 | **D19-c** | Nasce la **lista rate paginata** (`GET /pagamenti/rate/`) col saldo dalla base unica, montata da un **picker** accanto al lookup; nel picker un criterio (cliente **o** numero fattura, **esatto**) è obbligatorio | è il primo consumatore dello **scadenzario** (§3.4: «possibile e non fatto» dal 24/08 — la rotta paginata e i seed nascono qui, **P-2 … P-4**); il costo del saldo per rata è sul perimetro, e si sta registrando il pagamento di *questo* cliente |
 | **D19-d** | N rate scelte → **N righe** in un Salva (`POST …/righe/da-rate/`), con esito **PARZIALE** per riga: le riuscite entrano, le rifiutate restano nell'area temporanea col motivo del database, il secondo tempo della capienza è **per riga** | è **D1** reso a video («tre rate restano tre righe, cambia solo *quando* si scrivono»); ogni riga è un atto suo e il foglio è in bozza — la forma dell'archiviazione delle code (`run_fan_out`) |
-| **D19-e** ⭐ | *(Tid: «propendo per»; da verificare, P-5)* La **nota di credito ha una rata sola**, e nel picker si **segnala** con la natura, non si esclude | «ci sono anche casi in cui il cliente paga la nota di credito». Oggi una NC **non ha rate** (`fn_genera_scadenze_fattura`, base < 0 → zero rate) e `fatture_scadenze` ha il CHECK sull'importo positivo: due contro-pezzi per il DB. Finché non c'è, la NC si paga dal lookup fattura come riga senza rata — il caso è già ammesso (D14-c, verso sbagliato ⇒ segnala ⇒ forza) |
+| **D19-e** ⭐ | *(Tid: «propendo per»; verificata e consegnata dal DB il 17/09, P-5)* La **nota di credito ha una rata sola**, e nel picker si **segnala** con la natura, non si esclude | «ci sono anche casi in cui il cliente paga la nota di credito». Oggi una NC **non ha rate** (`fn_genera_scadenze_fattura`, base < 0 → zero rate) e `fatture_scadenze` ha il CHECK sull'importo positivo: due contro-pezzi per il DB. Finché non c'è, la NC si paga dal lookup fattura come riga senza rata — il caso è già ammesso (D14-c, verso sbagliato ⇒ segnala ⇒ forza) |
 
 ⚠️ **Che cosa resta com'è**: il lookup resta un autocomplete (chi ha il numero
 lo digita), il form singolo resta documento-first (D16), nessuna seconda sede
@@ -2396,6 +2417,7 @@ stub vuoti.
 
 | Data | Cosa è cambiato |
 | --- | --- |
+| **2026-09-17** (notte) | ✅ **D19 scritta per intero** (§2-bis): DB consegnato e applicato (P-1…P-5, terza forma di P-3 col nucleo `fn_get_saldi_rate`), BE/FE A-C-D scritti sui prerequisiti (B già committato). D19-e non è più «da verificare»: la NC ha una rata negativa. §3.4: lo scadenzario ha la sua rotta (`rate/`) e gli manca solo la view. Rilettura critica della stessa notte nel piano §9 (lo spazio in centesimi, i fatti comuni = 400, la lista che ricarica su PARZIALE, `FanOutItemErrore.eccezione` con l'ok di Tid). Residui DB: P-6 (esclusione sul saldo documento), P-7 (natura su `vw_rate_fuori_capienza`), P-8 (scala di `importo`) |
 | **2026-09-15** (2) | ⭐ **D19 — la distinta cerca le rate** (§2-bis): secondo giro in-app di Tid sul drawer della distinta; quattro pezzi (lookup fattura ricco · destinazione visibile sulla riga · picker delle rate = primo consumatore dello scadenzario · N rate → N righe con esito parziale) e la decisione sulla **nota di credito con una rata** (D19-e, da verificare). Brief DB [brief-db-distinta-ricerca-rate.md](brief-db-distinta-ricerca-rate.md) (P-1…P-5) e piano [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md). §3.4 annotata: la rotta rate paginata nasce qui. Nessun codice |
 | **2026-09-15** | ✅ **Il brief figlio di D16-D18 è chiuso e archiviato** ([work-done](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)): DB applicato (14/09) e verde in CI, BE/FE mergiati (PR #1589) con la Q-H decisa (il doppio tempo della capienza anche in modifica), copione riscritto. La prova a video (C-2) vive nel copione di collaudo. Qui entrano i **tre residui di modello** in §2-bis D16-D18 (R-16.1 fatti sotto una finale, R-16.2 `meta` delle matrici, R-16.3 sede unica del motivo 3): decisioni, non passi |
 | **2026-09-14** | ⭐ **Il primo collaudo in-app, e tre decisioni** (§2-bis, D16-D18; per esteso in [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)). Caricando la prima contabile Tid ha trovato che l'interfaccia diceva **il contrario del modello**: la riga nasceva `DA_ABBINARE` per default (lo stato dell'ignoto, cioè dell'import) mentre D1-ter dice che chi digita scrive già la riga giusta — **D16**: nasce con la destinazione, l'eccezione si **dichiara**; nessun gesto di eliminazione esisteva e l'unico offerto era `SCARTATA` **col cestino**, che sulla manuale **rompe la quadratura** (D12-e conta anche le scartate) — **D17**: `attivo = false` su manuale in bozza, check + guard su disattivazione e `DELETE`; e **niente** presidiava «finché è validata il contenuto non cambia» (D14-a-bis) — **D18**, proposta. Risposta a «il pagamento si scrive con la validazione?»: **no, con la registrazione** — e il copione di collaudo salta il passo di validazione (§4.1). ⭐ Lato DB D16 costa zero: il contratto era già pinnato dal pgTAP dell'abbinamento |

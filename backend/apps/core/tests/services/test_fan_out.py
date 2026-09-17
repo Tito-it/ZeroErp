@@ -16,6 +16,7 @@ Indice test eseguiti:
 6) RunFanOutTests.test_raccoglie_i_risultati_degli_item_riusciti
 7) RunFanOutTests.test_un_item_fallito_non_ferma_gli_altri
 8) RunFanOutTests.test_errore_porta_indice_item_e_messaggio_normalizzato
+8-bis) RunFanOutTests.test_errore_porta_l_eccezione_intera_anche_dal_savepoint
 9) RunFanOutTests.test_savepoint_aperto_per_ogni_item
 10) RunFanOutTests.test_nessun_savepoint_se_isolamento_disattivato
 11) RunFanOutTests.test_run_logger_riceve_start_item_failed_end
@@ -48,7 +49,10 @@ class FanOutEsitoTests(unittest.TestCase):
         return FanOutEsito(
             totale=ok + ko,
             risultati=[None] * ok,
-            errori=[FanOutItemErrore(indice=i, item=i, messaggio="boom") for i in range(ko)],
+            errori=[
+                FanOutItemErrore(indice=i, item=i, messaggio="boom", eccezione=RuntimeError("boom"))
+                for i in range(ko)
+            ],
         )
 
     # Scopo: ⚠️ La lista vuota e' un SUCCESSO — "niente da fare" non e' un
@@ -128,6 +132,31 @@ class RunFanOutTests(unittest.TestCase):
         self.assertEqual(errore.indice, 0)
         self.assertEqual(errore.item, "a")
         self.assertEqual(errore.messaggio, "ValueError: dettaglio")
+
+    # Scopo: ⭐ L'errore porta l'ECCEZIONE INTERA, la stessa istanza sollevata
+    #        (regola del 2, 2026-09-17): chi risponde un esito per riga vuole il
+    #        `ServiceError` com'e' — codice, campo, `ui_action` — non la stringa.
+    #        E la porta ANCHE quando nasce fuori da `process`, dal savepoint
+    #        stesso: e' il caso che i dizionari laterali dei consumatori non
+    #        vedevano, e la ragione per cui il campo sta nel BB.
+    def test_errore_porta_l_eccezione_intera_anche_dal_savepoint(self, mock_txn):
+        sollevata = ValueError("dettaglio")
+
+        def process(x):
+            raise sollevata
+
+        esito = run_fan_out(["a"], process)
+        self.assertIs(esito.errori[0].eccezione, sollevata)
+
+        # Il savepoint che non si apre: `process` non parte, l'eccezione e'
+        # quella del contesto — e arriva lo stesso, intera.
+        dal_savepoint = RuntimeError("savepoint rotto")
+        mock_txn.atomic.side_effect = dal_savepoint
+        mai = MagicMock()
+        esito = run_fan_out(["b"], mai)
+        mai.assert_not_called()
+        self.assertIs(esito.errori[0].eccezione, dal_savepoint)
+        self.assertEqual(esito.esito, "ERRORE")
 
     # Scopo: Un savepoint PER ITEM (default), non uno per giro: e' la ragione
     #        per cui il fallimento di uno non corrompe le scritture degli altri.

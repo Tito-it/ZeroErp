@@ -426,6 +426,8 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _da_costante("apps.pagamenti.db.pagamenti_repository", "RIGHE_SORT_COLUMNS")),
     ("pagamenti.rate_fuori_capienza",
      _da_costante("apps.pagamenti.db.pagamenti_repository", "RATE_FUORI_CAPIENZA_SORT_COLUMNS")),
+    ("pagamenti.rate",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "RATE_SORT_COLUMNS")),
     ("pagamenti.eccedenze",
      _da_costante("apps.pagamenti.db.pagamenti_repository", "ECCEDENZE_SORT_COLUMNS")),
     # Registri di numerazione (2026-09-01), primo tab dell'emittente fiscale.

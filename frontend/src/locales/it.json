@@ -4146,7 +4146,19 @@
       "solo_aperte": "Solo aperte",
       "esaurita": "Rata esaurita: non c'è più niente da regolare",
       "nessuna_rata": "Nessuna rata per questo criterio",
-      "non_lette": "Non è stato possibile leggere le rate: riprova."
+      "non_lette": "Non è stato possibile leggere le rate: riprova.",
+      "righe_da_rate": "Righe da rate",
+      "titolo_righe_da_rate": "Righe dalle rate: scegli le rate, ogni rata diventa una riga",
+      "seleziona_pagina": "Seleziona le rate della pagina",
+      "area_titolo": "Rate scelte | Una rata scelta | {n} rate scelte",
+      "nessuna_scelta": "Spunta le rate da incassare: ogni rata scelta diventa una riga della distinta, con l'importo proposto dallo spazio che le resta.",
+      "spazio": "Spazio",
+      "rimuovi": "Togli dalla scelta",
+      "crea_righe": "Crea le righe | Crea una riga | Crea {n} righe",
+      "create": "Nessuna riga creata | Una riga creata | {n} righe create",
+      "parziale": "{riuscite} righe su {richieste} create: le altre restano qui, ciascuna col suo motivo.",
+      "abbandona_titolo": "Rate non salvate",
+      "abbandona_msg": "Ci sono {n} rate scelte non ancora salvate: chiudere e perderle?"
     },
     "registra": {
       "azione": "Registra",
