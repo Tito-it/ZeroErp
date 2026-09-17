@@ -181,10 +181,10 @@ function close() {
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
         <!-- Banner refactor operatore-emittenti (solo creazione) -->
-        <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false" class="mb-05">
+        <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false">
           {{ t('vendite.listini.banner_admin_globale_no_create') }}
         </Message>
-        <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false" class="mb-05">
+        <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false">
           {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
         </Message>
         <div class="form-grid-2col">

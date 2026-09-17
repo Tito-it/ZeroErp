@@ -199,9 +199,9 @@ const onClose = useDrawerClose(emit)
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- Badge ragione sociale + utility -->
-      <div class="mb-2">
+      <div>
         <span class="font-bold">{{ billingAccountLabel }}</span>
-        <Tag v-if="billingAccountUtility" :value="billingAccountUtility" severity="info" class="ml-2" />
+        <Tag v-if="billingAccountUtility" :value="billingAccountUtility" severity="info" class="ml-05" />
       </div>
 
       <div class="app-page-toolbar">

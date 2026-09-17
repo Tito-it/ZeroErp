@@ -63,12 +63,23 @@ export const LIVELLO = Object.freeze({
 //    un lato solo.
 export const CAMPI_SALDO = Object.freeze(['residuo', 'in_lavorazione', 'incassato'])
 
-// I lettori, uno per livello. ⛔ `CLIENTE` non c'e': il backend non ha ancora la
-// funzione, e un lettore che chiama una rotta inesistente darebbe un 404 che si
-// legge come «questo cliente non ha saldo».
+// I lettori, uno per livello, ciascuno con cio' che SA fare. ⛔ `CLIENTE` non
+// c'e': il backend non ha ancora la funzione, e un lettore che chiama una rotta
+// inesistente darebbe un 404 che si legge come «questo cliente non ha saldo».
+//
+// ⭐ «Prima di se'» (D19-b, 2026-09-17): chi CORREGGE una riga vuole il saldo
+//    senza contarsi addosso — altrimenti «in lavorazione» conta proprio i soldi
+//    che sta cambiando. Il database lo sa fare sulla rata
+//    (`fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)`) e non
+//    sul documento (`fn_get_saldo_fattura_contabili` ha un parametro solo —
+//    brief D19, P-6): il suo lettore NON inoltra le opzioni, e `esclusione`
+//    lo dichiara nella stessa riga, cosi' non c'e' una seconda tabella da
+//    tenere allineata alla prima.
+// ⛔ Non si «sana» nel frontend sottraendo l'importo della riga: sarebbe la
+//    seconda formula del saldo. Si dichiara, e il pannello lo dice.
 const LETTORE = {
-  [LIVELLO.DOCUMENTO]: getSaldoFattura,
-  [LIVELLO.RATA]: getSaldoRata,
+  [LIVELLO.DOCUMENTO]: { leggi: (id) => getSaldoFattura(id), esclusione: false },
+  [LIVELLO.RATA]: { leggi: (id, opzioni) => getSaldoRata(id, opzioni), esclusione: true },
 }
 
 // Scopo: legge il saldo di UNA cosa, a un livello.
@@ -76,28 +87,34 @@ const LETTORE = {
 //    non cambia mestiere mentre e' a video. Se un giorno servisse cambiarlo
 //    senza rimontare, si passa `:key="livello"` al componente — cosi' e'
 //    esplicito nel chiamante invece che nascosto qui dentro.
-// @returns {{saldo, caricato, errore, loading, leggi, azzera, livelloSupportato}}
+// @returns {{saldo, caricato, errore, loading, leggi, azzera, livelloSupportato, esclusioneSupportata}}
 export function useSaldi(livello) {
   // ⚠️ Si dichiara SUBITO se il livello si sa leggere: un composable che
   //    risponde `null` sia per «non l'ho letto» sia per «questo livello non
   //    esiste ancora» costringe il chiamante a indovinare quale dei due.
-  const livelloSupportato = LETTORE[livello] != null
+  const lettore = LETTORE[livello] ?? null
+  const livelloSupportato = lettore != null
+  const esclusioneSupportata = lettore?.esclusione === true
 
   const { dati: saldo, caricati: caricato, errore, loading, carica, azzera } =
     useLetturaTreStati(
-      (id) => LETTORE[livello](id),
+      // `carica` inoltra tutti gli argomenti: l'id e le opzioni del lettore.
+      (id, opzioni) => lettore.leggi(id, opzioni),
       // ⚠️ La forma arriva gia' fatta dal backend (`livello`,
       //    `riferimento_id`, i tre numeri, `has_movimenti`): non si rimappa —
       //    rimappare e' il primo passo per rinominare.
       { estrai: (d) => d },
     )
 
-  async function leggi(riferimentoId) {
+  // Scopo: legge il saldo di `riferimentoId`; `escludiRigaId` chiede lo spazio
+  //        prima di quella riga, dove il livello lo sa fare.
+  async function leggi(riferimentoId, { escludiRigaId = null } = {}) {
     if (!livelloSupportato || riferimentoId == null) {
       azzera()
       return null
     }
-    return carica(riferimentoId)
+    const opzioni = esclusioneSupportata && escludiRigaId != null ? { escludiRigaId } : {}
+    return carica(riferimentoId, opzioni)
   }
 
   // ⭐ «Nessuno ha ancora pagato niente» e «il residuo e' zero» sono due fatti
@@ -107,5 +124,8 @@ export function useSaldi(livello) {
     () => caricato.value && !errore.value && saldo.value?.has_movimenti === false,
   )
 
-  return { saldo, caricato, errore, loading, leggi, azzera, livelloSupportato, senzaMovimenti }
+  return {
+    saldo, caricato, errore, loading, leggi, azzera,
+    livelloSupportato, esclusioneSupportata, senzaMovimenti,
+  }
 }

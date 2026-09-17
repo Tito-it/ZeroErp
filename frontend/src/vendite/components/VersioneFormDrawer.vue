@@ -132,7 +132,7 @@ function close() {
         <h4>{{ t('vendite.listini.listino') }}: {{ listino.codice }} — {{ listino.descrizione }}</h4>
       </div>
 
-      <Message v-if="bozzeEsistenti.length > 0" severity="warn" :closable="false" class="mb-1">
+      <Message v-if="bozzeEsistenti.length > 0" severity="warn" :closable="false">
         {{ t('vendite.listini.warning_bozza_esistente', { codice: bozzeEsistenti.map(b => b.codice_versione).join(', ') }) }}
       </Message>
 

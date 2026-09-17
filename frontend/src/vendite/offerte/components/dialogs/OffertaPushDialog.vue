@@ -70,7 +70,7 @@ function onConfirm() {
         :min="1"
         show-buttons
       />
-      <small class="text-color-secondary">
+      <small class="app-text-muted">
         {{ t('vendite.offerte.push_pratica_hint') }}
       </small>
     </div>

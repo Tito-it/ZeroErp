@@ -254,7 +254,7 @@ async function handleSave() {
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
           :min-fraction-digits="6" :max-fraction-digits="6"
           :disabled="isPadreComposito" />
-        <small v-if="!isPadreComposito" class="text-color-secondary">
+        <small v-if="!isPadreComposito" class="app-text-muted">
           {{ t('vendite.ordini.riga_prezzo_auto_hint') }}
         </small>
       </div>

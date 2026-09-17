@@ -136,7 +136,7 @@ function chiudiPopover() {
   />
 
   <Popover v-if="haErrore" ref="popover" :style="{ width: '460px' }">
-    <h4 class="mt-0 mb-05">{{ titolo || t('common.errore_riga_titolo') }}</h4>
+    <h4>{{ titolo || t('common.errore_riga_titolo') }}</h4>
     <div class="app-errore-riga-meta">
       <Tag v-if="codice" :value="codice" :severity="severita" />
       <span v-if="quando" class="app-errore-riga-quando">{{ displayTimestamp(quando) }}</span>

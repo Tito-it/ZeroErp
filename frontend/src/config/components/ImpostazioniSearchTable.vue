@@ -159,7 +159,6 @@ onMounted(() => store.fetchList())
 
 <style scoped>
 .font-mono { font-family: monospace; }
-.font-bold { font-weight: 600; }
 .text-muted { color: var(--p-text-muted-color); }
 .parameter-resolved {
   display: inline-flex;

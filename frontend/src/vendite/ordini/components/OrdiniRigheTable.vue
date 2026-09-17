@@ -73,7 +73,7 @@ defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
             v-tooltip.top="t('vendite.ordini.riga_data_consegna_confermata')">
             {{ displayDate(data.data_consegna_confermata) }}
           </span>
-          <span v-else-if="data.data_consegna_richiesta_cliente" class="text-color-secondary"
+          <span v-else-if="data.data_consegna_richiesta_cliente" class="app-text-muted"
             v-tooltip.top="t('vendite.ordini.riga_data_consegna_richiesta_cliente')">
             {{ displayDate(data.data_consegna_richiesta_cliente) }}
           </span>

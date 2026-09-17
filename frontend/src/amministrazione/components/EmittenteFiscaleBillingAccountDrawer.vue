@@ -61,7 +61,7 @@ function close() {
         :emittente-id="emittenteId"
       />
 
-      <div class="flex justify-end mt-4">
+      <div>
         <Button :label="t('common.close')" :icon="MANAGE_ICONS.CANCEL" text @click="close" />
       </div>
     </div>

@@ -109,12 +109,11 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
 </script>
 
 <template>
-  <div class="app-matrice-override">
+  <div>
     <div v-if="ricerca" class="app-matrice-override-ricerca">
       <InputText
         v-model="termine"
         :placeholder="ricercaPlaceholder || t('matrice_override.cerca')"
-        class="w-full"
       />
     </div>
 
@@ -203,13 +202,13 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
   margin-bottom: 0.5rem;
 }
 .app-matrice-override-ereditato {
-  color: var(--app-text-secondary, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 .app-matrice-override-avviso {
   margin-left: 0.4rem;
   color: var(--p-orange-500);
 }
 .app-matrice-override-vuota {
-  color: var(--app-text-secondary, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 </style>

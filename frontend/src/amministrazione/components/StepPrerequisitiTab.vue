@@ -93,11 +93,11 @@ function onSave() {
     <template #form>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_prerequisito') }} *</label>
-        <Select v-model="form.prerequisito_id" :options="prereqOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <Select v-model="form.prerequisito_id" :options="prereqOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
       </div>
     </template>
   </CollectionEditorPanel>

@@ -51,7 +51,7 @@ function confirm() {
     :save-label="t('documenti.scelta_template.confirm')"
     @save="confirm"
   >
-    <p class="text-color-secondary mb-1">
+    <p class="app-text-muted">
       {{ t('documenti.scelta_template.subtitle') }}
     </p>
     <Listbox
@@ -59,7 +59,6 @@ function confirm() {
       :options="templates"
       option-label="descrizione"
       option-value="id"
-      class="w-full"
       :listStyle="'max-height: 320px'"
     >
       <template #option="{ option }">

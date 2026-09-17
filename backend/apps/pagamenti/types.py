@@ -40,6 +40,18 @@ class DistintaRow(TypedDict):
     # `DrawerActionsBar :info-key`). NULL finche' il seed non c'e'.
     stato_info_key: str | None
     origine: str
+    # ── Di chi e' (D3, 2026-09-17) ──────────────────────────────────────────
+    # L'emittente e' una colonna della testata (NOT NULL), e il codice
+    # `DIS-<SIGLA>-<ANNO>-<7 cifre>` lo porta dentro. Il soggetto-ruolo e' la
+    # chiave del DB; PK, sigla e ragione sociale sono i tre nomi che
+    # `EmittenteFiscaleField` legge in edit — gli stessi dei documenti di
+    # vendite. ⚠️ `registro_id` e `anno` sono NULL sul pregresso `VC_…`.
+    emittente_soggetto_ruolo_id: int
+    emittente_fiscale_id: int | None
+    emittente_fiscale_codice: str | None
+    emittente_ragione_sociale: str | None
+    registro_id: int | None
+    anno: int | None
     importo_dichiarato: Decimal | None
     data_conferma: datetime | None
     user_conferma: str | None
@@ -82,12 +94,24 @@ class RigaContabileRow(TypedDict):
     fattura_numero: int | None
     fattura_anno: int | None
     fattura_serie: str | None
+    # ── Il documento, non il contatore (D19-b) ─────────────────────────────
+    # Il numero parlante viene dalla sede unica `fn_numero_documento_fattura`
+    # (NULL sulla non numerata); registro e natura dal documento. Servono a chi
+    # corregge un importo per sapere su che cosa lo corregge, e alla natura per
+    # SEGNALARE una nota di credito, non per nasconderla.
+    fattura_numero_documento: str | None
+    fattura_data: date | None
+    fattura_totale_doc: Decimal | None
+    fattura_registro_codice: str | None
+    fattura_natura_doc_codice_interno: str | None
+    fattura_natura_doc_descrizione: str | None
     billing_account_id: int | None
     billing_account_codice: str | None
     billing_account_descrizione: str | None
     scadenza_id: int | None
     scadenza_numero_rata: int | None
     scadenza_data: date | None
+    scadenza_importo: Decimal | None
     forzata: bool
     motivo_forzatura: str | None
     stato_id: int

@@ -1006,9 +1006,9 @@ function origineSeverity(origine) {
       <DrawerContextHeader
         :tag-value="contrattoNumero"
         :items="[
-          { label: t('vendite.contratti.col_ba'),         value: contrattoCliente },
+          { label: t('vendite.contratti.col_ba'), value: contrattoCliente },
           { label: t('vendite.contratti.col_valido_dal'), value: displayDate(contrattoValidoDal) },
-          { label: t('vendite.contratti.col_valido_al'),  value: contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' },
+          { label: t('vendite.contratti.col_valido_al'), value: contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' },
         ]">
         <template #status>
           <Tag v-if="contrattoStatoCodice"
@@ -1026,14 +1026,14 @@ function origineSeverity(origine) {
         <div>
           <strong>{{ t(`vendite.contratti.forma_${formaEffettiva}_descrizione`) }}</strong>
         </div>
-        <div v-if="contestoPricing.listino_codice" class="text-sm">
+        <div v-if="contestoPricing.listino_codice">
           {{ t('vendite.contratti.contesto_listino', {
             codice: contestoPricing.listino_codice,
             versione: contestoPricing.listino_versione_codice || '—',
           }) }}
           <Tag v-if="contestoPricing.listino_versione_fissata"
                :value="t('vendite.contratti.contesto_versione_fissata')"
-               severity="success" class="ml-1" />
+               severity="success" class="ml-05" />
           <!-- Drift warning: il contratto e' fissato a una versione listino
                diversa da quella attualmente ATTIVA sul listino. Tag
                informativo, no blocco: i prezzi restano calcolati sulla
@@ -1042,19 +1042,19 @@ function origineSeverity(origine) {
                :value="t('vendite.contratti.contesto_drift_versione', {
                  versione_corrente: contestoPricing.listino_versione_corrente_codice,
                })"
-               severity="warn" class="ml-1"
+               severity="warn" class="ml-05"
                v-tooltip.top="t('vendite.contratti.contesto_drift_versione_tooltip', {
                  versione_corrente: contestoPricing.listino_versione_corrente_codice,
                  versione_fissata: contestoPricing.listino_versione_codice,
                })" />
         </div>
-        <div v-if="contestoPricing.tipo_variazione_globale" class="text-sm">
+        <div v-if="contestoPricing.tipo_variazione_globale">
           {{ t('vendite.contratti.contesto_variazione', {
             tipo: contestoPricing.tipo_variazione_globale,
             valore: contestoPricing.valore_variazione_globale,
           }) }}
         </div>
-        <div v-if="contestoPricing.categoria_cliente_codice" class="text-sm">
+        <div v-if="contestoPricing.categoria_cliente_codice">
           {{ t('vendite.contratti.contesto_categoria', {
             codice: contestoPricing.categoria_cliente_codice,
           }) }}
@@ -1230,12 +1230,12 @@ function origineSeverity(origine) {
               :placeholder="form.articolo_id ? t('vendite.contratti.select_uom') : t('vendite.contratti.uom_select_articolo_first')"
               :disabled="!form.articolo_id || uomLoading"
               :loading="uomLoading"
-              class="w-full" />
+              />
           </div>
           <div class="form-field">
             <label>{{ t('vendite.contratti.field_tipo_erogazione') }}</label>
             <Select v-model="form.tipo_erogazione" :options="tipoErogazioneOptions"
-              option-label="label" option-value="value" class="w-full" />
+              option-label="label" option-value="value" />
           </div>
         </div>
 
@@ -1251,7 +1251,7 @@ function origineSeverity(origine) {
               :options="fonteQuantitaOptions"
               option-label="label" option-value="value"
               :placeholder="t('vendite.contratti.select_fonte_quantita')"
-              class="w-full" />
+              />
             <small v-if="fonteCorrente?.severity === 'warn'" class="contratti-fonte-uso-atipico">
               <i class="pi pi-info-circle" /> {{ t('vendite.contratti.fonte_quantita_uso_atipico') }}
             </small>
@@ -1271,7 +1271,7 @@ function origineSeverity(origine) {
                 v-tooltip.top="t('vendite.componenti.panel.padre_calcolato_tooltip')"
                 class="contratti-componenti-padre-tag" />
             </label>
-            <InputNumber v-model="form.prezzo_unitario" class="w-full"
+            <InputNumber v-model="form.prezzo_unitario"
               :disabled="articoloObj?.is_composito === true
                          || form.tipo_eccezione === 'ESCLUSIONE'"
               :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
@@ -1287,7 +1287,7 @@ function origineSeverity(origine) {
         <div class="form-grid-2col">
           <div class="form-field" v-if="showQtaOperativa">
             <label>{{ t('vendite.contratti.field_qta_operativa_fissa') }} *</label>
-            <InputNumber v-model="form.qta_operativa" class="w-full"
+            <InputNumber v-model="form.qta_operativa"
               :min="0.0001" :min-fraction-digits="0" :max-fraction-digits="4" showButtons />
           </div>
           <div class="form-field" v-else-if="form.fonte_quantita_attesa">
@@ -1298,7 +1298,7 @@ function origineSeverity(origine) {
           </div>
           <div class="form-field">
             <label>{{ t('vendite.contratti.field_ordine') }}</label>
-            <InputNumber v-model="form.ordine" class="w-full" :min="0"
+            <InputNumber v-model="form.ordine" :min="0"
               :invalid="campiErrati.includes('ordine')"
             />
           </div>

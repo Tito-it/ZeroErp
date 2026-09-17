@@ -54,7 +54,7 @@ function codice(ev) {
 </script>
 
 <template>
-  <div class="app-giornale">
+  <div>
     <div v-if="props.loading" class="app-giornale-stato">
       <i class="pi pi-spin pi-spinner" />
     </div>

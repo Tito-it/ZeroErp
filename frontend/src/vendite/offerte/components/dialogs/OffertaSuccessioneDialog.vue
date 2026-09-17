@@ -80,7 +80,7 @@ function onIspezionaContratto() {
           @click="onIspezionaContratto"
         />
       </div>
-      <div class="text-color-secondary">
+      <div class="app-text-muted">
         {{ t('vendite.offerte.successione_validita_attuale') }}:
         {{ displayDate(props.contratto.valido_dal) }} —
         {{ props.contratto.valido_al ? displayDate(props.contratto.valido_al) : t('vendite.offerte.successione_senza_fine') }}

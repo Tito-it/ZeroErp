@@ -193,8 +193,12 @@ export function listRateFuoriCapienza(params = {}) {
 // i giri interni. Una rata coperta da una compensazione è regolata anche se in
 // banca non è entrato niente.
 
-export function getSaldoRata(scadenzaId) {
-  return api.get(`${BASE}/rate/${scadenzaId}/saldo/`)
+// ⭐ `escludiRigaId` chiede lo spazio PRIMA DI SE' (il backend lo accetta dal
+//    lotto 5): serve a chi sta CORREGGENDO una riga, perche' senza, il saldo
+//    conta fra gli «in lavorazione» proprio i soldi che sta cambiando.
+export function getSaldoRata(scadenzaId, { escludiRigaId = null } = {}) {
+  const params = escludiRigaId != null ? { escludi_riga_id: escludiRigaId } : undefined
+  return api.get(`${BASE}/rate/${scadenzaId}/saldo/`, { params })
 }
 
 // ⚠️ Vive in `pagamenti` con `skip_area_check` e non in `vendite`: `api.md`

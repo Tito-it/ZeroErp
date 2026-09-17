@@ -119,7 +119,7 @@ defineExpose({
 <template>
   <div class="app-tab-content">
     <slot name="help">
-      <Message v-if="helpText" severity="info" :closable="false" class="mb-3">
+      <Message v-if="helpText" severity="info" :closable="false">
         {{ helpText }}
       </Message>
     </slot>

@@ -33,6 +33,7 @@ import SelectButton from 'primevue/selectbutton'
 import SelectButtonGravita from '../../core/components/SelectButtonGravita.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
@@ -72,7 +73,6 @@ import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { extractApiError } from '../../core/utils/apiError'
 import {
   gravitaGiornaleSeverity,
-  naturaDocSeverity,
   statoEsecuzioneLottoSeverity,
   statoLottoSeverity,
   statoTaskRunSeverity,
@@ -1276,8 +1276,8 @@ function fatturaNumero(row) {
       <template v-if="contentReady && lotto">
         <DrawerEntityHeader>
           <Tag :value="lotto.codice" severity="secondary" />
-          <span class="text-color-secondary">{{ lotto.tipo_lotto }}</span>
-          <span v-if="lotto.competenza_mese" class="text-color-secondary">
+          <span class="app-text-muted">{{ lotto.tipo_lotto }}</span>
+          <span v-if="lotto.competenza_mese" class="app-text-muted">
             {{ displayDate(lotto.competenza_mese) }}
           </span>
           <template #status>
@@ -1287,9 +1287,9 @@ function fatturaNumero(row) {
 
         <!-- Step corrente (stato doc fiscale del lotto). -->
         <div class="app-lotto-step">
-          <span class="text-color-secondary">{{ t('vendite.lotti.step_corrente') }}:</span>
+          <span class="app-text-muted">{{ t('vendite.lotti.step_corrente') }}:</span>
           <Tag :value="lotto.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
-          <span v-if="lotto.stato_operativo" class="text-color-secondary">· {{ lotto.stato_operativo }}</span>
+          <span v-if="lotto.stato_operativo" class="app-text-muted">· {{ lotto.stato_operativo }}</span>
         </div>
 
         <!-- Banner del lotto FERMO (blocca l'avanzamento). Compare sul VERDETTO
@@ -1399,10 +1399,10 @@ function fatturaNumero(row) {
                      mai `danger` — e il totale negativo si mostra com'e',
                      perche' e' il documento a essere di segno opposto. -->
                 <template #cell-natura_doc_descrizione="{ data }">
-                  <Tag v-if="data.natura_doc_codice_interno"
-                    :value="data.natura_doc_descrizione || data.natura_doc_codice_interno"
-                    :severity="naturaDocSeverity(data.natura_doc_codice_interno)" />
-                  <span v-else>—</span>
+                  <NaturaDocTag
+                    :codice="data.natura_doc_codice_interno"
+                    :descrizione="data.natura_doc_descrizione"
+                    sempre />
                 </template>
                 <template #cell-stato_doc_fiscale_descrizione="{ data }">
                   <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
@@ -1713,7 +1713,7 @@ function fatturaNumero(row) {
                        fase invece di un trattino muto. -->
                   <template #cell-documento_display="{ data }">
                     <span v-if="data.documento_display">{{ data.documento_display }}</span>
-                    <span v-else class="text-color-secondary">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
+                    <span v-else class="app-text-muted">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
                   </template>
                   <!-- ⭐ DI CHI E' LA CRITICA — la colonna che divide la scheda
                        in DUE FAMIGLIE con vie d'uscita diverse: quella di un
@@ -1735,7 +1735,7 @@ function fatturaNumero(row) {
                        sede della stessa regola. -->
                   <template #cell-riferimento="{ data }">
                     <span v-if="data.riferimento">{{ data.riferimento }}</span>
-                    <span v-else class="text-color-secondary">
+                    <span v-else class="app-text-muted">
                       {{ t('vendite.lotti.segn_del_giro') }}
                     </span>
                   </template>
@@ -2005,7 +2005,6 @@ function fatturaNumero(row) {
           v-model="esclusioneMotivo"
           rows="3"
           auto-resize
-          class="w-full"
           :placeholder="t('vendite.lotti.gruppo_escludi_motivo_placeholder')"
         />
       </div>

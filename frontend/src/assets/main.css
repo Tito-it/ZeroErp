@@ -9,7 +9,7 @@
 html,
 body {
   height: 100%;
-  font-family: var(--p-font-family);
+  font-family: var(--app-font-family);
   background: var(--app-content-bg);
   color: var(--p-text-color);
   -webkit-font-smoothing: antialiased;
@@ -589,6 +589,15 @@ a {
 .form-grid-3col > * {
   min-width: 0;
 }
+/* Il campo che occupa TUTTA la riga dentro una griglia a 2/3 colonne (un file
+ * da caricare, un HTML da editare). ⚠️ La classe era scritta in cinque
+ * template dal 2026-05 e non esisteva in nessun foglio: i campi stavano in
+ * una colonna sola. Dal 2026-09-17 e' questa, e sostituisce anche lo
+ * `style="grid-column: 1 / -1"` inline che faceva la stessa cosa altrove.
+ * Fuori da una griglia e' innocua (grid-column non fa niente). */
+.form-field-wide {
+  grid-column: 1 / -1;
+}
 
 /* Input con bottone azione affiancato (es. genera CF) */
 .app-input-with-action {
@@ -849,10 +858,10 @@ a {
 /* Hint informativo al posto di un campo (es. valore derivato automaticamente).
  * Stile coerente con .app-field-error ma colore neutro muted. */
 .app-field-hint {
-  color: var(--text-color-secondary, var(--p-content-color-muted, #6b7280));
+  color: var(--app-text-muted);
   font-size: 0.85rem;
   padding: 0.5rem 0.75rem;
-  background: var(--surface-100, var(--p-content-background, transparent));
+  background: var(--app-surface-bg);
   border-radius: 4px;
 }
 
@@ -1007,7 +1016,7 @@ a {
   opacity: 0.85;
 }
 .app-row-readonly:hover {
-  background: var(--app-row-hover-disabled, transparent) !important;
+  background: transparent !important;
 }
 
 /* ===== Livello BLOCCATO (safety net) =====
@@ -1328,6 +1337,10 @@ a {
   padding: 1.5rem 1rem;
   color: var(--p-text-muted-color);
   font-size: 0.85rem;
+  /* Anche il testo su piu' righe resta centrato: `align-items` centra le
+   * scatole, non le righe dentro. (Dal 17/09: era nella copia locale
+   * `.ut-empty` della matrice utility, e valeva per tutti.) */
+  text-align: center;
 }
 
 .app-empty-state > i.pi {
@@ -1350,6 +1363,24 @@ a {
 .mt-025 { margin-top: 0.25rem; }
 .mt-05  { margin-top: 0.5rem; }
 .mt-1   { margin-top: 1rem; }
+/* Margin-left, stessa famiglia: un Tag o uno span accanto a un testo (la natura
+ * del documento accanto al numero, il badge utility accanto al cliente).
+ * ⚠️ Fino al 2026-09-17 sei siti scrivevano `ml-1`/`ml-2`, che non esistono in
+ * nessun foglio: residui di PrimeFlex, che non e' installato. Sanati qui; il
+ * censimento delle altre classi morte della stessa famiglia (`w-full`, `flex`,
+ * `mb-3`…) e' nel piano D19, registro del 17/09. */
+.ml-05  { margin-left: 0.5rem; }
+.mr-05  { margin-right: 0.5rem; }
+
+/* ===== Testo utility =====
+ * ⭐ `app-text-muted` esisteva solo come VARIABILE (`--app-text-muted`, in
+ * theme.css) e come classe in 34 template: la REGOLA non c'era, e il testo
+ * sottotono era testo normale. Stessa sorte di `text-color-secondary`
+ * (PrimeFlex, 101 siti), migrata qui il 2026-09-17: una classe sola, la nostra.
+ * `font-bold` stava in uno <style scoped> ed era usata in altri otto file:
+ * la regola globale e' questa, la copia scoped e' stata tolta. */
+.app-text-muted { color: var(--app-text-muted); }
+.font-bold { font-weight: 600; }
 
 /* ===== Lookup dropdown multi-riga =====
  * Layout riutilizzabile per voci di AutoComplete/Dropdown con piu' campi
@@ -1542,7 +1573,7 @@ a {
   color: var(--app-text-muted);
   cursor: pointer;
 }
-.app-collapse-toggle:hover { background: var(--surface-hover); }
+.app-collapse-toggle:hover { background: var(--app-hover-bg); }
 
 /* ===== Responsive: schermi piccoli =====
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
@@ -1663,7 +1694,7 @@ a {
   cursor: pointer;
   padding: 0.1rem 0.3rem;
   margin: 0 -0.3rem;
-  border-radius: var(--app-border-radius, 6px);
+  border-radius: var(--app-border-radius);
 }
 
 .app-donut-legend-row--clickable:hover {
@@ -1675,7 +1706,7 @@ a {
 }
 
 .app-donut-legend-row--clickable:focus-visible {
-  outline: 2px solid var(--app-primary-color, #2563eb);
+  outline: 2px solid var(--app-focus-ring);
   outline-offset: -2px;
 }
 

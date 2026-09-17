@@ -26,6 +26,7 @@ import Select from 'primevue/select'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
@@ -39,7 +40,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { DATE_FORMAT, TAB_ENTITIES, TIPO_RUOLO } from '../../core/constants'
-import { naturaDocSeverity, statoDocFiscaleSeverity } from '../../core/utils/severity'
+import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { exportFatture } from '../api/fatture'
 import { useFattureStore } from '../stores/fatture'
 
@@ -272,12 +273,11 @@ onMounted(() => {
              `danger`. Il totale negativo si mostra com'è, perché è il documento
              a essere di segno opposto. -->
         <template #cell-natura_doc_descrizione="{ data }">
-          <Tag
-            v-if="data.natura_doc_codice_interno"
-            :value="data.natura_doc_descrizione || data.natura_doc_codice_interno"
-            :severity="naturaDocSeverity(data.natura_doc_codice_interno)"
+          <NaturaDocTag
+            :codice="data.natura_doc_codice_interno"
+            :descrizione="data.natura_doc_descrizione"
+            sempre
           />
-          <span v-else>—</span>
         </template>
 
         <template #cell-stato_descrizione="{ data }">

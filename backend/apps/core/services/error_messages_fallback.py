@@ -198,6 +198,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    segnaposto qui resterebbe a video come tale.
     "E_CONTABILE_CORREZIONE_NON_REGISTRATA": "La distinta non e' registrata: finche' non ha prodotto movimenti non c'e' niente da correggere.",
     "E_CONTABILE_GIA_CORRETTA": "Questa distinta ha gia' la sua correzione: aprila e lavora li'.",
+    # Distinta numerata sul registro (2026-09-17): il catalogo nomina canale e
+    # sigle con tre `%s`; qui la frase senza argomenti.
+    "E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE": "Il canale di incasso scelto e' di un altro emittente: scegliere un canale dell'emittente indicato, oppure cambiare emittente.",
+    "E_CONTABILE_EMITTENTE_OBBLIGATORIO": "Per aprire una distinta senza canale bisogna indicare l'emittente.",
     "E_CONTABILE_CENTRO_ENTE_INCOERENTE": "Il centro di riscossione della testata non e' quello dell'ente di incasso indicato.",
     "E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE": "La distinta contabile ha ancora righe pronte da registrare: non si puo' chiudere.",
     "E_CONTABILE_DATI_OBBLIGATORI": "Per aprire una distinta contabile mancano dei dati obbligatori.",
@@ -323,6 +327,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EMITTENTE_DEFAULT_SINGLETON": "Un solo emittente fiscale puo' essere impostato come default.",
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "Impossibile disattivare l'emittente fiscale: esistono entita' collegate.",
     "E_EMITTENTE_NON_MODIFICABILE": "L'emittente fiscale di un operatore e' immutabile. Per cambiare l'associazione disattivare l'utente e crearne uno nuovo per l'altro emittente.",
+    # BB emittente di default (2026-09-17): sostituisce E_ORDINE_/E_PREV_/
+    # E_CONTRATTO_EMITTENTE_NON_RISOLTO, che restano qui perche' ritirati, non
+    # cancellati. Stessa frase dei ripieghi delle sorelle.
+    "E_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "Il conto indicato per questo canale di incasso non e' un conto di incasso.",
     "E_ENTE_INCASSO_NON_TROVATO": "Il canale di incasso indicato non esiste, oppure appartiene a un emittente fuori dal tuo perimetro.",
     "E_ENTE_INCASSO_PSP_NON_CENSITO": "Il soggetto-ruolo ha il ruolo PSP ma non risulta censito e attivo fra i PSP.",

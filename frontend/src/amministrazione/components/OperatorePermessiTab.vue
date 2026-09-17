@@ -389,7 +389,7 @@ const azioneOptions = computed(() => [
 
 <template>
   <div class="permessi-tab">
-    <Message v-if="isSuperAdmin" severity="info" :closable="false" class="mb-3">
+    <Message v-if="isSuperAdmin" severity="info" :closable="false">
       {{ t('amministrazione.admin_full_access') }}
     </Message>
 
@@ -417,13 +417,12 @@ const azioneOptions = computed(() => [
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.override_non_impostato')"
-          class="w-full"
           :disabled="isReadonly"
           @update:model-value="v => setOverrideArea(voce.id, v)"
         />
       </template>
     </MatriceOverride>
-    <div v-if="!isReadonly" class="flex justify-end mb-4">
+    <div v-if="!isReadonly">
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAree" />
     </div>
 
@@ -451,13 +450,12 @@ const azioneOptions = computed(() => [
           option-label="label"
           option-value="value"
           :placeholder="t('amministrazione.override_non_impostato')"
-          class="w-full"
           :disabled="isReadonly"
           @update:model-value="v => setOverrideAzione(voce.id, v)"
         />
       </template>
     </MatriceOverride>
-    <div v-if="!isReadonly" class="flex justify-end mb-4">
+    <div v-if="!isReadonly">
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAzioni" />
     </div>
 
@@ -482,32 +480,31 @@ const azioneOptions = computed(() => [
         <small class="app-permessi-fonte">{{ fonteOggetto(voce) }}</small>
       </template>
       <template #override="{ voce, valore }">
-        <span v-tooltip.top="modelOverrideReason(voce)" class="block w-full">
+        <span v-tooltip.top="modelOverrideReason(voce)">
           <Select
             :model-value="valore?.livello ?? null"
             :options="livelloOptions"
             option-label="label"
             option-value="value"
             :placeholder="t('amministrazione.override_non_impostato')"
-            class="w-full"
             :disabled="isReadonly || !!modelOverrideReason(voce)"
             @update:model-value="v => setOverrideOggetto(voce, v)"
           />
         </span>
       </template>
     </MatriceOverride>
-    <div v-if="!isReadonly" class="flex justify-end mb-4">
+    <div v-if="!isReadonly">
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveOggetti" />
     </div>
 
     <!-- Emittenti Scope (Fase 2 multi-face) -->
     <h4>{{ t('amministrazione.emittenti_scope_title') }}</h4>
-    <p class="text-sm text-color-secondary mb-2">{{ t('amministrazione.emittenti_scope_hint') }}</p>
+    <p class="app-text-muted">{{ t('amministrazione.emittenti_scope_hint') }}</p>
 
     <!-- Radio scope: GLOBAL/SINGLE. `MULTI` non e' incluso in
          allowed_scope_modes post Q2 (architetturalmente chiuso). -->
     <div
-      class="scope-radio-group mb-2"
+      class="scope-radio-group"
       v-tooltip.bottom="!canChangeScope ? changeScopeReason : null"
     >
       <div
@@ -534,11 +531,10 @@ const azioneOptions = computed(() => [
       option-value="id"
       :placeholder="t('amministrazione.select_emittenti')"
       show-clear
-      class="w-full mb-2"
       :disabled="isReadonly || !canChangeScope"
     />
 
-    <div v-if="!isReadonly" class="flex justify-end">
+    <div v-if="!isReadonly">
       <Button
         :label="t('common.save')"
         icon="pi pi-check"
@@ -576,13 +572,13 @@ h4:first-child {
 }
 .app-permessi-nota {
   font-size: 0.85rem;
-  color: var(--app-text-secondary, var(--p-text-muted-color));
+  color: var(--app-text-muted);
   margin-bottom: 0.75rem;
 }
 /* La fonte del valore ereditato: sta sotto il livello, non accanto — la
    domanda «quanto» viene prima della domanda «da dove». */
 .app-permessi-fonte {
   display: block;
-  color: var(--app-text-secondary, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 </style>

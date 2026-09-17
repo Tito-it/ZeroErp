@@ -55,7 +55,6 @@ const destinatarioFeOptions = computed(() => [
         :placeholder="t('dati_societari.select_forma_giuridica')"
         :disabled="disabled"
         filter
-        class="w-full"
       />
     </div>
 
@@ -73,12 +72,11 @@ const destinatarioFeOptions = computed(() => [
             :placeholder="t('geo.select_regione')"
             :disabled="disabled"
             filter
-            class="w-full"
           />
         </div>
         <div class="form-field">
           <label>{{ t('dati_societari.iscrizione_rea') }}{{ requireRea ? ' *' : '' }}</label>
-          <InputText v-model="form.iscrizione_rea" :disabled="disabled" class="w-full" />
+          <InputText v-model="form.iscrizione_rea" :disabled="disabled" />
         </div>
       </div>
     </template>
@@ -93,7 +91,6 @@ const destinatarioFeOptions = computed(() => [
         currency="EUR"
         locale="it-IT"
         :min-fraction-digits="2"
-        class="w-full"
       />
     </div>
 
@@ -107,7 +104,6 @@ const destinatarioFeOptions = computed(() => [
           option-label="label"
           option-value="value"
           :disabled="disabled"
-          class="w-full"
         />
       </div>
       <div class="form-field">
@@ -118,7 +114,6 @@ const destinatarioFeOptions = computed(() => [
           option-label="label"
           option-value="value"
           :disabled="disabled"
-          class="w-full"
         />
       </div>
     </div>
@@ -134,18 +129,17 @@ const destinatarioFeOptions = computed(() => [
         :placeholder="t('dati_societari.select_destinatario_fe')"
         :disabled="disabled"
         show-clear
-        class="w-full"
       />
     </div>
 
     <div class="form-grid-2col">
       <div v-if="form.destinatario_fe === 'P'" class="form-field">
         <label>{{ t('dati_societari.pec_fatturazione') }}</label>
-        <InputText v-model="form.pec_fatturazione" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.pec_fatturazione" :disabled="disabled" />
       </div>
       <div v-if="form.destinatario_fe === 'C'" class="form-field">
         <label>{{ t('dati_societari.codice_sdi') }}</label>
-        <InputText v-model="form.codice_sdi" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.codice_sdi" :disabled="disabled" />
       </div>
     </div>
   </div>

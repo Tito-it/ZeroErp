@@ -302,14 +302,14 @@ onMounted(async () => {
            Standard di kebab (stessa palette `app-menu-item-action`).
            Sempre visibile, subito prima del logout. -->
       <button
-        class="topbar-icon-btn topbar-user-kebab-btn"
+        class="topbar-icon-btn"
         v-tooltip.bottom="t('common.altre_azioni')"
         aria-haspopup="true"
         @click="toggleUserKebab"
       >
         <i :class="MANAGE_ICONS.KEBAB"></i>
       </button>
-      <TieredMenu ref="userKebabMenu" :model="userKebabItems" popup class="topbar-user-kebab-menu" />
+      <TieredMenu ref="userKebabMenu" :model="userKebabItems" popup />
 
       <!-- Logout -->
       <button

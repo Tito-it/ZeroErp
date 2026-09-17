@@ -200,7 +200,7 @@ const onClose = useDrawerClose(emit)
                plafond non si mostra uno zero, che sembrerebbe «esaurito». -->
           <Tag v-if="data.residuo != null" :value="formatCurrency(data.residuo)"
             :severity="residuoSeverity(data)" />
-          <span v-else class="text-color-secondary">—</span>
+          <span v-else class="app-text-muted">—</span>
         </template>
         <template #cell-stato="{ data }">
           <Tag v-if="!data.attivo" :value="t('anagrafiche.titoli_iva.tag_non_attivo')" severity="secondary" />

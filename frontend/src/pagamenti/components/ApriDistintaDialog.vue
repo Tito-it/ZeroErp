@@ -21,6 +21,17 @@
 //    canale e' configurato si sceglie il centro direttamente. Oggi
 //    `enti_incasso` e' a zero righe — ma dal 2026-08-28 e' a zero perche'
 //    nessuno ne ha ancora creato uno, non perche' non si possa (DATO-1 chiuso).
+//
+// ⭐ E LA DISTINTA SA DI CHI E' (D3/D4 del brief distinta-numerata-sul-registro,
+//    2026-09-17): il codice nasce sul registro dell'emittente, quindi
+//    l'emittente si decide QUI. Col canale scelto e' il suo — il conto su cui
+//    atterra il denaro ha un solo padrone — e il campo NON si mostra: chiederlo
+//    sarebbe costruire un dissenso che il database rifiuterebbe. Senza canale
+//    (la cassa) e' quello della SESSIONE, mostrato dal BB `EmittenteFiscaleField`
+//    in sola lettura: l'emittente di lavoro si sceglie una volta dalla topbar
+//    (decisione di Tid, 2026-09-02), e chi sta in «tutti gli emittenti» vede
+//    l'avviso del BB e non puo' aprire — e' il livello 4 del database
+//    (`E_CONTABILE_EMITTENTE_OBBLIGATORIO`) detto PRIMA di premere.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DatePicker from 'primevue/datepicker'
@@ -30,8 +41,10 @@ import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 
 import AppDialog from '../../core/components/AppDialog.vue'
+import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { useNotify } from '../../core/composables/useNotify'
 import { DATE_FORMAT } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
@@ -51,6 +64,10 @@ const emit = defineEmits(['update:visible', 'aperta'])
 const { t } = useI18n()
 const notify = useNotify()
 const { execute, loading, campiErrati } = useApiHandler()
+// L'emittente su cui la SESSIONE scrive: `null` per chi lavora in «tutti gli
+// emittenti». E' la stessa risposta che il database da' al livello 3
+// (`fn_resolve_emittente_for_user` legge l'emittente attivo della topbar).
+const { defaultEmittenteId } = useEmittenteFiscaleField()
 
 // ⚠️ «Caricati e vuoti» e «non caricati» NON sono la stessa cosa, e a video si
 //    somigliano: senza distinguerli, una fetch fallita direbbe «nessun canale
@@ -71,6 +88,9 @@ function defaultForm() {
   return {
     ente_incasso_id: null,
     centro_riscossione_id: null,
+    // ⚠️ Non e' una scelta di riga: e' l'emittente della sessione, pre-popolato
+    //    come in ogni drawer documento (`ContrattoDrawer`, `OrdiniDrawer`…).
+    emittente_fiscale_id: defaultEmittenteId.value ?? null,
     data_contabile: new Date(),
     importo_dichiarato: null,
     note: '',
@@ -81,8 +101,18 @@ function defaultForm() {
 //    VISIBILE (chi apre deve vedere su quale centro sta lavorando) ma disabilitato.
 const centroDerivato = computed(() => form.value.ente_incasso_id != null)
 
+// ⭐ L'emittente si mostra SOLO SENZA CANALE: col canale e' il suo per
+//    costruzione, e a video lo dice una riga sotto il canale — non un campo
+//    che chiederebbe di confermare una cosa gia' decisa.
+const emittenteVisibile = computed(() => form.value.ente_incasso_id == null)
+// Senza canale serve un emittente in sessione, o il database rifiuta al
+// livello 4: e' il caso in cui il pulsante va SPENTO e non premuto per sentire
+// un no — l'avviso che spiega e' quello del BB sotto il campo.
 const canSave = computed(
-  () => form.value.centro_riscossione_id != null && form.value.data_contabile != null,
+  () =>
+    form.value.centro_riscossione_id != null &&
+    form.value.data_contabile != null &&
+    (!emittenteVisibile.value || form.value.emittente_fiscale_id != null),
 )
 
 // Scopo: scelto un canale, deriva il suo centro.
@@ -112,6 +142,13 @@ async function onSave() {
     data_contabile: toDateString(form.value.data_contabile),
   }
   if (form.value.ente_incasso_id != null) payload.ente_incasso_id = form.value.ente_incasso_id
+  // ⛔ L'emittente viaggia SOLO se il campo e' a video (senza canale). Col
+  //    canale non si manda: lo deriva il database dal conto, e mandarlo
+  //    aprirebbe la porta a `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` per un
+  //    dissenso che nessuno ha scelto.
+  if (emittenteVisibile.value && form.value.emittente_fiscale_id != null) {
+    payload.emittente_fiscale_id = form.value.emittente_fiscale_id
+  }
   // ⚠️ `0` e' un dichiarato legittimo («il foglio dice zero»): si esclude solo
   //    il campo NON compilato, non lo zero.
   if (form.value.importo_dichiarato != null) {
@@ -187,8 +224,28 @@ function onCancel() { emit('update:visible', false) }
           option-value="id"
           :placeholder="t('pagamenti.distinte.campo_canale_placeholder')"
           :disabled="!canali.length"
+          :invalid="campiErrati.includes('ente_incasso_id')"
           show-clear
         />
+        <!-- ⭐ Col canale l'emittente e' deciso: si DICE, non si chiede. -->
+        <small v-if="!emittenteVisibile" class="app-text-muted">
+          {{ t('pagamenti.distinte.emittente_dal_canale') }}
+        </small>
+      </div>
+
+      <!-- ⭐ Senza canale la distinta e' dell'emittente della SESSIONE: in sola
+           lettura, come in ogni documento. Chi lavora in «tutti gli emittenti»
+           vede l'avviso del BB e il pulsante resta spento. -->
+      <div v-if="emittenteVisibile" class="form-field">
+        <label>{{ t('pagamenti.distinte.campo_emittente') }} *</label>
+        <EmittenteFiscaleField
+          v-model="form.emittente_fiscale_id"
+          :is-edit="false"
+          :invalid="campiErrati.includes('emittente_fiscale_id')"
+        />
+        <small class="app-text-muted">
+          {{ t('pagamenti.distinte.emittente_aiuto') }}
+        </small>
       </div>
 
       <div class="form-field">

@@ -2017,6 +2017,8 @@ decisioni — si prendono quando un cantiere le incontra, non prima.
 > [brief-db-distinta-ricerca-rate.md](brief-db-distinta-ricerca-rate.md) (DB,
 > P-1…P-5) e [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md)
 > (BE/FE, pezzi A…D). Qui la sintesi, perché questa resta la sede.
+> ✅ **Il pezzo B (D19-b) è scritto e committato il 2026-09-17**; A, C, D
+> aspettano i prerequisiti DB (P-1, P-2, P-4).
 
 | | Decisione | Il perché, in una riga |
 | --- | --- | --- |

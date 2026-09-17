@@ -110,7 +110,7 @@ function onScaricaClick() {
 </script>
 
 <template>
-  <div class="entity-pdf-button">
+  <div>
     <!-- Unico Button: label/tooltip/disabled/handler derivati da `mode`.
          Disabled se manca l'id (baseDisabled) OPPURE se lo stato non ha
          gestione PDF (`mode === 'disabled'`, es. ANNULLATO o detail non

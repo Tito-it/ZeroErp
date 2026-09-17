@@ -102,7 +102,7 @@ async function rimuoviChiusura() {
   <AppDialog :visible="visible" @update:visible="onHide"
     :header="t('vendite.listini.chiudi_versione_titolo')" width="sm">
 
-    <Message v-if="dataChiusura" severity="warn" :closable="false" class="mb-1">
+    <Message v-if="dataChiusura" severity="warn" :closable="false">
       {{ t('vendite.listini.chiudi_versione_warning', { data_dopo: dataDopoLabel }) }}
     </Message>
 

@@ -418,7 +418,7 @@ function close() {
               showButtons
               :invalid="campiErrati.includes('valore_variazione')"
             />
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ form.tipo_variazione === 'PREZZO_FISSO'
                 ? t('vendite.promo_articoli.field_valore_variazione_hint_prezzo_fisso')
                 : t('vendite.promo_articoli.field_valore_variazione_hint') }}

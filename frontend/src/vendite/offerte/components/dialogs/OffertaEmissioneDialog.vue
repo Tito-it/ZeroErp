@@ -51,7 +51,7 @@ const eccezioniCount = computed(
         <div>
           <strong>{{ t('vendite.offerte.field_listino') }}:</strong>
           {{ offerta.listino_codice || '—' }}
-          <span v-if="offerta.listino_versione_codice" class="text-color-secondary">
+          <span v-if="offerta.listino_versione_codice" class="app-text-muted">
             · v{{ offerta.listino_versione_codice }}
           </span>
         </div>

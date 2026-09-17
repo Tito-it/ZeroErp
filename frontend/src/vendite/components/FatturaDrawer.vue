@@ -41,6 +41,7 @@ import Column from 'primevue/column'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import SaldoPanel from '../../core/components/SaldoPanel.vue'
 import { LIVELLO } from '../../core/composables/useSaldi'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
@@ -61,18 +62,13 @@ import { SORGENTE_CODES } from '../../documenti/constants'
 import {
   DRAWER_WIDTH,
   MANAGE_ICONS,
-  NATURA_DOC,
   READONLY_DOMAINS,
   READONLY_MODELS,
 } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { formatCurrency, formatIvaLabel, formatNumber } from '../../core/utils/format'
-import {
-  gravitaGiornaleSeverity,
-  naturaDocSeverity,
-  statoDocFiscaleSeverity,
-} from '../../core/utils/severity'
+import { gravitaGiornaleSeverity, statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { downloadBlob } from '../../core/utils/download'
 import { getFatturaDettaglio, getFatturaGiornale } from '../api/fatture'
 
@@ -193,14 +189,6 @@ function numeroDocumento(doc) {
 const numeroDisplay = computed(() =>
   fattura.value ? numeroDocumento(fattura.value) : '',
 )
-
-// Natura del documento (B5): si dichiara solo quando NON è una fattura — vedi
-// il commento nel template. `FATTURA` è il default della colonna a DB, quindi
-// una testata senza natura è una fattura, non un dato mancante.
-const naturaNonOrdinaria = computed(() => {
-  const codice = fattura.value?.natura_doc_codice_interno
-  return !!codice && codice !== NATURA_DOC.FATTURA
-})
 
 // Legame documentale (B7/F5). Il backend risponde nei due versi; a video se ne
 // mostra UNO — quello che questo documento «è»:
@@ -496,15 +484,13 @@ function onNoteSaved(total) {
                    (quale servizio si sta fatturando), non un suo stato. -->
               <div class="app-drawer-header-status-stack">
                 <!-- Natura del documento: si dichiara solo quando NON è una
-                     fattura. ⚠️ Mostrarla sempre («Fattura» su una fattura)
+                     fattura (B5) — lo decide il BB, che tace sulla ordinaria.
+                     ⚠️ Mostrarla sempre («Fattura» su una fattura)
                      aggiungerebbe rumore al caso normale e toglierebbe forza
-                     al caso che conta. ⛔ E mai `danger`: una nota di credito
-                     non è un errore, è un documento di segno opposto — il
-                     totale negativo è il suo contenuto, non un difetto. -->
-                <Tag
-                  v-if="naturaNonOrdinaria"
-                  :value="fattura.natura_doc_descrizione || fattura.natura_doc_codice_interno"
-                  :severity="naturaDocSeverity(fattura.natura_doc_codice_interno)"
+                     al caso che conta. -->
+                <NaturaDocTag
+                  :codice="fattura.natura_doc_codice_interno"
+                  :descrizione="fattura.natura_doc_descrizione"
                 />
                 <Tag
                   v-if="fattura.stato_descrizione"
@@ -556,7 +542,7 @@ function onNoteSaved(total) {
               <Tag
                 v-for="d in b.documenti"
                 :key="d.id"
-                class="app-mr-1"
+                class="mr-05"
                 severity="info"
                 :value="documentoLabel(d)"
               />

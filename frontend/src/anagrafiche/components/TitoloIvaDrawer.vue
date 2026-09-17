@@ -536,7 +536,7 @@ const onClose = useDrawerClose(emit)
       <!-- ⚠️ Avviso, non blocco (Q2): il DB ammette apposta un titolo RISTRETTO
            senza righe, perche' il caso si costruisce in due istruzioni. Il
            messaggio dice l'EFFETTO, non lo stato. -->
-      <Message v-if="ambitoIncompleto" severity="warn" :closable="false" class="mb-2">
+      <Message v-if="ambitoIncompleto" severity="warn" :closable="false">
         {{ t('anagrafiche.titoli_iva.avviso_ambito_incompleto') }}
       </Message>
 
@@ -552,7 +552,7 @@ const onClose = useDrawerClose(emit)
           <label>{{ t('anagrafiche.titoli_iva.field_tipo') }} *</label>
           <LookupSelect
             v-model="form.tipo_titolo_iva_id" rel="config.tipi_titolo_iva"
-            class="w-full" :disabled="isReadonly"
+            :disabled="isReadonly"
             :placeholder="t('anagrafiche.titoli_iva.select_tipo')" />
         </div>
       </div>
@@ -565,56 +565,56 @@ const onClose = useDrawerClose(emit)
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.field_ambito') }}</label>
           <Select v-model="form.ambito" :options="ambitoOptions"
-            option-label="label" option-value="value" class="w-full"
+            option-label="label" option-value="value"
             :disabled="isReadonly" />
         </div>
       </div>
 
-      <h4 class="mt-3">{{ t('anagrafiche.titoli_iva.section_validita') }}</h4>
+      <h4>{{ t('anagrafiche.titoli_iva.section_validita') }}</h4>
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.field_valido_dal') }} *</label>
           <DatePicker :model-value="parseIsoDate(form.valido_dal)"
             @update:model-value="form.valido_dal = toDateString($event)"
-            date-format="dd/mm/yy" show-icon class="w-full" :disabled="isReadonly"
+            date-format="dd/mm/yy" show-icon :disabled="isReadonly"
             :invalid="campiErrati.includes('valido_dal')" />
         </div>
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.field_valido_al') }}</label>
           <DatePicker :model-value="parseIsoDate(form.valido_al)"
             @update:model-value="form.valido_al = toDateString($event)"
-            date-format="dd/mm/yy" show-icon show-button-bar class="w-full"
+            date-format="dd/mm/yy" show-icon show-button-bar 
             :disabled="isReadonly" />
         </div>
       </div>
 
-      <h4 class="mt-3">{{ t('anagrafiche.titoli_iva.section_prova') }}</h4>
+      <h4>{{ t('anagrafiche.titoli_iva.section_prova') }}</h4>
       <div class="form-grid-3col">
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.field_protocollo') }}</label>
-          <InputText v-model="form.protocollo" class="w-full" :disabled="isReadonly" />
+          <InputText v-model="form.protocollo" :disabled="isReadonly" />
         </div>
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.field_data_ricezione') }}</label>
           <DatePicker :model-value="parseIsoDate(form.data_ricezione)"
             @update:model-value="form.data_ricezione = toDateString($event)"
-            date-format="dd/mm/yy" show-icon show-button-bar class="w-full"
+            date-format="dd/mm/yy" show-icon show-button-bar 
             :disabled="isReadonly" />
         </div>
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.field_riferimento') }}</label>
-          <InputText v-model="form.riferimento" class="w-full" :disabled="isReadonly" />
+          <InputText v-model="form.riferimento" :disabled="isReadonly" />
         </div>
       </div>
 
       <!-- Il plafond esiste solo per i tipi che un tetto ce l'hanno (D10). -->
       <template v-if="mostraPlafond">
-        <h4 class="mt-3">{{ t('anagrafiche.titoli_iva.section_plafond') }}</h4>
+        <h4>{{ t('anagrafiche.titoli_iva.section_plafond') }}</h4>
         <div class="form-grid-3col">
           <div class="form-field">
             <label>{{ t('anagrafiche.titoli_iva.field_plafond') }}</label>
             <InputNumber v-model="form.plafond" mode="currency" currency="EUR" locale="it-IT"
-              class="w-full" :disabled="isReadonly" />
+              :disabled="isReadonly" />
           </div>
           <div v-if="isEdit" class="form-field">
             <label>{{ t('anagrafiche.titoli_iva.field_utilizzato') }}</label>
@@ -622,20 +622,20 @@ const onClose = useDrawerClose(emit)
                  come somma del registro (D5). Un campo editabile qui sarebbe il
                  «numero sovrascritto» che D5 ha tolto di mezzo. -->
             <InputText :model-value="formatCurrency(detail?.imponibile_utilizzato)"
-              disabled class="w-full" />
+              disabled />
           </div>
           <div v-if="isEdit" class="form-field">
             <label>{{ t('anagrafiche.titoli_iva.field_residuo') }}</label>
             <InputText :model-value="formatCurrency(detail?.residuo)"
-              disabled class="w-full" />
+              disabled />
           </div>
         </div>
       </template>
 
       <!-- === Ambito ristretto: su cosa si applica (D12) === -->
       <template v-if="form.ambito === 'RISTRETTO' && isEdit">
-        <h4 class="mt-3">{{ t('anagrafiche.titoli_iva.section_ambito') }}</h4>
-        <p class="text-color-secondary" style="font-size: 0.85rem;">
+        <h4>{{ t('anagrafiche.titoli_iva.section_ambito') }}</h4>
+        <p class="app-text-muted" style="font-size: 0.85rem;">
           {{ t('anagrafiche.titoli_iva.ambito_hint') }}
         </p>
 
@@ -672,13 +672,13 @@ const onClose = useDrawerClose(emit)
           </template>
         </DrawerTabLista>
 
-        <div v-if="!isReadonly" class="mt-2">
+        <div v-if="!isReadonly">
           <div v-if="ambitoFormAperto" class="app-drawer-section">
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('anagrafiche.titoli_iva.col_livello') }}</label>
                 <Select v-model="ambitoForm.livello" :options="livelloOptions"
-                  option-label="label" option-value="value" class="w-full"
+                  option-label="label" option-value="value"
                   @change="onLivelloChange" />
               </div>
               <div class="form-field">
@@ -688,12 +688,12 @@ const onClose = useDrawerClose(emit)
                   @select="ambitoForm.articolo_id = $event?.id ?? null" />
                 <LookupSelect v-else-if="ambitoForm.livello === 'GRUPPO_VOCE'"
                   v-model="ambitoForm.gruppo_voce_id" rel="vendite.articoli_gruppi"
-                  class="w-full" />
+                  />
                 <LookupSelect v-else v-model="ambitoForm.tipo_voce_id"
-                  rel="vendite.articoli_tipologie" class="w-full" />
+                  rel="vendite.articoli_tipologie" />
               </div>
             </div>
-            <div class="flex gap-2 mt-2">
+            <div>
               <Button :label="t('common.add')" :icon="MANAGE_ICONS.ADD" size="small"
                 :disabled="!ambitoValido" :loading="loading" @click="onAddAmbito" />
               <Button :label="t('common.cancel')" text size="small"
@@ -711,7 +711,7 @@ const onClose = useDrawerClose(emit)
            una seconda verita' sullo stesso numero, cioe' il difetto che D5
            esiste per evitare. -->
       <template v-if="isEdit && mostraPlafond">
-        <h4 class="mt-3">{{ t('anagrafiche.titoli_iva.section_registro') }}</h4>
+        <h4>{{ t('anagrafiche.titoli_iva.section_registro') }}</h4>
         <!-- ⭐ PAGINATO: un registro append-only cresce a ogni fattura, e la
              pagina la decide il catalogo (lista 65, `pagina_dimensione = 25`).
              ⛔ NESSUNO slot per data e imponibile: il catalogo dichiara
@@ -755,9 +755,9 @@ const onClose = useDrawerClose(emit)
         </DrawerTabLista>
       </template>
 
-      <div v-if="isEdit" class="form-field mt-3">
+      <div v-if="isEdit" class="form-field">
         <label>{{ t('anagrafiche.titoli_iva.field_note') }}</label>
-        <Textarea v-model="form.note" rows="2" class="w-full" :disabled="isReadonly" />
+        <Textarea v-model="form.note" rows="2" :disabled="isReadonly" />
       </div>
 
       <FormFooter v-if="!isReadonly" :loading="loading" :disabled="!canSave"
@@ -772,12 +772,12 @@ const onClose = useDrawerClose(emit)
       width="md" :loading="loading" :save-disabled="!annulloValido"
       :save-label="t('anagrafiche.titoli_iva.annulla_movimento')"
       @save="onSalvaAnnullo" @cancel="annulloVisible = false">
-      <p class="text-color-secondary" style="font-size: 0.85rem;">
+      <p class="app-text-muted" style="font-size: 0.85rem;">
         {{ t('anagrafiche.titoli_iva.annullo_hint') }}
       </p>
       <div class="form-field">
         <label>{{ t('anagrafiche.titoli_iva.col_motivo') }} *</label>
-        <Textarea v-model="annullo.motivo" rows="2" class="w-full" />
+        <Textarea v-model="annullo.motivo" rows="2" />
       </div>
     </AppDialog>
 
@@ -788,24 +788,24 @@ const onClose = useDrawerClose(emit)
       width="md" :loading="loading" :save-disabled="!forzaturaValida"
       :save-label="t('anagrafiche.titoli_iva.registra_forzatura')"
       @save="onSalvaForzatura" @cancel="forzaturaVisible = false">
-      <p class="text-color-secondary" style="font-size: 0.85rem;">
+      <p class="app-text-muted" style="font-size: 0.85rem;">
         {{ t('anagrafiche.titoli_iva.forzatura_hint') }}
       </p>
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.col_imponibile') }} *</label>
           <InputNumber v-model="forzatura.imponibile" mode="currency" currency="EUR"
-            locale="it-IT" class="w-full" />
+            locale="it-IT" />
         </div>
         <div class="form-field">
           <label>{{ t('anagrafiche.titoli_iva.col_data') }} *</label>
           <DatePicker v-model="forzatura.data_movimento" date-format="dd/mm/yy"
-            show-icon class="w-full" />
+            show-icon />
         </div>
       </div>
       <div class="form-field">
         <label>{{ t('anagrafiche.titoli_iva.col_motivo') }} *</label>
-        <Textarea v-model="forzatura.motivo" rows="2" class="w-full" />
+        <Textarea v-model="forzatura.motivo" rows="2" />
       </div>
     </AppDialog>
   </Drawer>

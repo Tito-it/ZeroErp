@@ -86,6 +86,24 @@
   --app-text-color: var(--p-text-color);
   --app-text-muted: var(--p-text-muted-color);
 
+  /* ===== Superfici, bordi, fuoco — i nomi NEUTRI (2026-09-17) =====
+   * Fino a quel giorno i componenti chiedevano queste cose con i nomi di
+   * PrimeVue 3 (`--surface-border`, `--surface-hover`, `--surface-card`,
+   * `--surface-ground`, `--surface-0/50/100`, `--text-color`, `--highlight-bg`)
+   * o con nomi `--app-*` mai scritti qui (`--app-border-color`, `--app-radius`,
+   * `--app-focus-ring`…): 60 `var()` su variabili inesistenti. ⛔ NON e' innocuo
+   * come una classe morta: `border: 1px solid var(--x)` con `--x` assente
+   * annulla l'INTERA dichiarazione — bordi, hover e sfondi che il codice
+   * dichiarava e lo schermo non aveva. I nomi sotto puntano ai token semantici
+   * di PrimeVue 4, che seguono `.p-dark` da soli. */
+  --app-surface-bg: var(--p-content-background);          /* la superficie di un contenuto (ex --surface-0) */
+  --app-hover-bg: var(--p-content-hover-background);      /* riga/voce sotto il mouse (ex --surface-hover) */
+  --app-highlight-bg: var(--p-highlight-background);      /* voce selezionata (ex --highlight-bg) */
+  --app-border-color: var(--p-content-border-color);      /* il bordo neutro (ex --surface-border) */
+  --app-border-radius: var(--p-border-radius-md);         /* 6px: lo stesso di preview/sidebar */
+  --app-focus-ring: var(--p-focus-ring-color);            /* l'anello di fuoco */
+  --app-space-sm: 0.5rem;                                 /* la spaziatura piccola (gap, padding) */
+
   /* ===== Semantica esiti ===== */
   /* Verde "fatto/successo" per icone di completamento (es. check dei passi
    * conclusi nel percorso pratica). Centralizzato: mai green hardcoded. */
@@ -181,6 +199,13 @@
   --app-transition-normal: 0.2s;
 
   /* ===== Tipografia app ===== */
+  /* 🔴 Il font dell'applicazione. `main.css` scriveva `font-family:
+   * var(--p-font-family)` sul body, ma PrimeVue 4 quel token NON lo definisce
+   * (era di PrimeVue 3): la dichiarazione era invalida e il body prendeva il
+   * font di DEFAULT del browser — i componenti ereditano (`font-family:
+   * inherit`), quindi tutta l'app. Dal 2026-09-17 il font e' deciso qui, e
+   * solo qui. */
+  --app-font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
   --app-font-size-sm: 0.85rem;
   --app-font-size-base: 0.875rem;
   --app-font-size-lg: 1.1rem;

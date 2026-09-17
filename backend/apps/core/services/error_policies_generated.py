@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 864, di cui 89 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 867, di cui 92 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -260,6 +260,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONFIG_MATRICE_FK": "DATO_ERRATO",
     "E_CONFIG_MATRICE_NOT_FOUND": "NON_TROVATO",
     "E_CONFIG_VALIDATION": "DATO_ERRATO",
+    # pagamenti.fn_get_emittente_distinta, livello 1 (D4 del brief distinta-numerata-sul-registro): l'emittente indicato per la distinta e il canale di incasso scelto dissentono — il conto su cui atterra il denaro del canale e' intestato a un altro emittente (catena canale -> conto -> soggetto_ruolo -> emittente, un solo padrone per conto). Scatta all'apertura di una distinta con emittente e canale entrambi indicati, e anche su un UPDATE che sposta una distinta esistente sul canale di un altro (trigger a10_emittente). Il campo da accendere e' ente_incasso_id: si corregge il canale, o si cambia emittente — lo dice la soluzione. DATO_ERRATO (400): il valore in conflitto l'ha scelto una persona in un form. Il messaggio nomina il canale e le due sigle: sono cio' che una persona legge, non nomi di parametro. Nasce il 2026-09-15 (L2/L13 del brief).
+    "E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE": "DATO_ERRATO",
     # pagamenti.trgfn_vendite_contabili_guard_ente_centro: il centro di riscossione scritto sulla testata non e' quello a cui appartiene l'ente di incasso scelto. Il centro e' derivabile dall'ente e non andrebbe passato a mano: e' la stessa classe di problema di E_MOVIMENTO_RIFERIMENTO_INCOERENTE (944) un piano piu' su.
     "E_CONTABILE_CENTRO_ENTE_INCOERENTE": "DATO_ERRATO",
     # pagamenti.trgfn_vendite_contabili_guard_chiusura: si sta portando a uno stato finale una distinta contabile che ha ancora righe in uno stato registrabile (is_postabile). E' la PORTA D'USCITA del difetto C-5, e quella che capita davvero: si registra, restano due righe non pronte, qualcuno chiude comunque - e quelle righe spariscono da entrambi i conti. La regola in una riga: una distinta non si chiude finche' ha righe pronte da registrare. Chi vuole chiudere ha due strade oneste, registrarle oppure portarle a SOSPESA/SCARTATA, cioe' DIRE che cosa ne e' stato. Gemello d'ingresso: E_RIGA_CONTABILE_DISTINTA_FINALE (956).
@@ -279,6 +281,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTABILE_DATI_OBBLIGATORI": "DATO_ERRATO",
     # pagamenti.fn_posta_contabile: chi ha confermato la registrazione ha dichiarato quante righe pronte aveva davanti e per che totale (D13), e nel frattempo la distinta e' cambiata. La registrazione NON si torna indietro: scrivere movimenti diversi da quelli approvati sarebbe irreversibile, quindi si rifiuta PRIMA e non si registra niente. ⚠️ Da non confondere con E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA (959): quello confronta TUTTA la distinta con l'importo dichiarato all'arrivo (il controllo da inserimento dati, che scatta alla validazione), questo confronta CIO' CHE SI STA REGISTRANDO ADESSO con cio' che l'operatore ha visto un istante fa. CONFLITTO_STATO e non DATO_ERRATO perche' non c'e' nessun campo da correggere: lo stato e' cambiato sotto, e il rimedio e' rileggere e riconfermare.
     "E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE": "CONFLITTO_STATO",
+    # pagamenti.fn_get_emittente_distinta, livello 4 (D4 del brief distinta-numerata-sul-registro): per aprire una distinta contabile non c'e' nessun emittente — ne' dato dal chiamante, ne' derivabile dal canale di incasso, ne' dall'operatore in sessione (script.fn_resolve_emittente_for_user risponde NULL). E' il super admin o l'admin globale in modalita' «tutti gli emittenti» che apre una distinta manuale senza canale (es. su CASSA): deve SCEGLIERE l'emittente nel form, e il campo da accendere e' emittente_fiscale_id. DATO_ERRATO e non TECNICO perche' il rimedio ce l'ha chi compila: una scelta che manca, non una configurazione. ⛔ NON E_CONFIG_MANCANTE: non manca una configurazione, manca una scelta. ⛔ E nessun ripiego sul «default dell'installazione»: dichiarare di un emittente il denaro di un altro e' l'attribuzione che la numerazione per emittente esiste per impedire. Nasce il 2026-09-15 (L2/L13 del brief).
+    "E_CONTABILE_EMITTENTE_OBBLIGATORIO": "DATO_ERRATO",
     # pagamenti.fn_crea_distinta_correzione: la distinta ha gia' la sua correzione. ⭐ Una sola per documento (decisione C-4): senza il vincolo si moltiplicherebbero distinte gemelle sullo stesso documento e nessuno saprebbe quale vale. ⚠️ Il caso vero non e' bloccato - se e' la CORREZIONE a essere sbagliata si corregge lei, e il legame punta a lei. ⭐ La rete e' l'unico parziale uq_vendite_contabili_correzione, ma un 23505 non dice QUALE correzione esiste gia': questo codice la nomina. Nasce il 2026-08-28 (S6-4 del cantiere incassi).
     "E_CONTABILE_GIA_CORRETTA": "CONFLITTO_STATO",
     # pagamenti.fn_posta_contabile: si sta registrando una distinta che non e' VALIDATA. Il percorso e' quello di D14-a-bis: prima l'operatore dichiara di aver finito di inserire (BOZZA -> VALIDATA), poi si registra (VALIDATA -> CHIUSA). Una distinta ancora in bozza potrebbe cambiare mentre la si registra; una gia' chiusa o annullata e' finita, e il posting non si ripete. ⚠️ Distinto da E_CONTABILE_TRANSIZIONE_NON_AMMESSA (954), che presidia la MATRICE: li' si sta chiedendo un passaggio che non esiste, qui si sta chiedendo un'AZIONE da uno stato in cui quell'azione non ha senso - e il rimedio si legge sul documento sbagliato se il messaggio non lo dice.
@@ -307,6 +311,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "DATO_ERRATO",
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
     "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
+    # RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo, D1): vendite.trgfn_contratti_default_emittente era una delle tre copie della stessa regola (ordini, preventivi, contratti; ddt la variante) e la sua funzione e' droppata. La regola vive in script.trgfn_default_emittente_fiscale, che solleva E_EMITTENTE_NON_RISOLTO. Nessuna funzione viva nomina piu' questo codice; il messaggio resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-09-15
     "E_CONTRATTO_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA": "NON_ESEGUIBILE",
     "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI": "NON_ESEGUIBILE",
@@ -464,6 +470,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "CONFLITTO_STATO",
     # 400 -> 409 il 2026-08-06 (audit coerenza status, api.md · §Tassonomia): «non si tocca piu' dopo la creazione» e' la · definizione RFC 9110 del 409 — conflitto con lo stato attuale · della risorsa — ed e' gia' lo status degli altri 29 codici della · stessa famiglia. `ui_action` invariata: a video non cambia nulla.
     "E_EMITTENTE_NON_MODIFICABILE": "CONFLITTO_STATO",
+    # script.trgfn_default_emittente_fiscale: chi scrive non ha un emittente da cui dedurre il default (GUC vuota, oppure operatore senza assegnazione in modalita' «tutti gli emittenti»). DATO_ERRATO perche' il rimedio e' di una persona: scegliere l'emittente in alto o dichiararlo nella riga; nel contesto va la chiave campo. Un codice solo per N tabelle, come E_SCOPE_EMITTENTE: e' la condizione ad essere una, non un accumulo. Sostituisce dal 2026-09-15 E_ORDINE_/E_PREV_/E_CONTRATTO_EMITTENTE_NON_RISOLTO (stessa condizione con tre nomi e DUE ui_action). Da non confondere con E_FATTURA_/E_SORG_EMITTENTE_NON_RISOLTO (TECNICO: e' un documento gia' esistente a non avere l'emittente). Brief: brief-db-emittente-di-default-un-bb-solo, D1.
+    "E_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     # pagamenti.trgfn_enti_incasso_guard_conto_incasso: il conto agganciato a un canale di incasso non ha uso INCASSO. E' un errore di CONFIGURAZIONE, e si fallisce li' apposta (D5): un ente senza il conto giusto produrrebbe una coda invisibile in esercizio, dove non se ne accorge nessuno. ⭐ Il punto non e' l'etichetta: l'unicita' che regge tutto il perimetro degli incassi (ex_src_bancari_conto_incasso_un_solo_soggetto) vive SOLO sulle righe con uso = 'INCASSO'. Un ente appeso alla riga dei PAGAMENTI starebbe fuori da quella garanzia, e «un conto -> un solo emittente» tornerebbe a essere un'assunzione senza che nessun errore lo dica. ⚠️ Da non confondere con la FK fk_enti_incasso_conto_incasso, che presidia una cosa diversa: quella sa che la riga ESISTE, questo che cosa E'. DATO_ERRATO e non NON_PERMESSO perche' il rimedio e' cambiare un campo — scegliere l'altro conto — e il contesto porta la chiave campo perche' l'interfaccia possa evidenziarlo.
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "DATO_ERRATO",
     # Il canale di incasso indicato non esiste — o non e' visibile a chi chiede. Nasce il 2026-08-25 su richiesta del backend (slice 4 del cantiere incassi): senza, l'elenco e il dettaglio dei canali ripiegavano su E_PAGAMENTI_VALIDATION, che e' DATO_ERRATO (400) mentre qui la risposta giusta e' 404 - un ripiego dichiarato, non una scelta. ⛔ Non si e' usato un NON_TROVATO generico perche' nel progetto non esiste: ogni dominio ha il suo, ed e' la convenzione (E_FATTURA_NON_TROVATA, E_RATA_NON_TROVATA, E_CONTABILE_NON_TROVATA). ⚠️ Il messaggio NON ha segnaposti: a sollevarlo e' il backend, che passa accanto al codice la frase specifica; format() ignora i valori che avanzano ma non perdona quelli che mancano.
@@ -732,6 +740,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "CONFLITTO_STATO",
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
     "E_ORDINE_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
+    # RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo, D1): vendite.trgfn_ordini_default_emittente era una delle tre copie della stessa regola (ordini, preventivi, contratti; ddt la variante) e la sua funzione e' droppata. La regola vive in script.trgfn_default_emittente_fiscale, che solleva E_EMITTENTE_NON_RISOLTO. Nessuna funzione viva nomina piu' questo codice; il messaggio resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-09-15
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     # Una riga di ORDINE che porta un PREZZO deve portare anche l'ALIQUOTA: senza, vendite.vw_ordini_righe_iva_base la fa entrare nel riepilogo (filtra solo attivo e quantita > 0, NON guarda ne' prezzo ne' iva_id) e vw_ordini_riepilogo_iva_dettaglio la somma con COALESCE(aliquota,0), producendo un imponibile pieno con codice IVA vuoto e imposta zero - su un ordine confermato e stampato. Gemello di E_DDT_RIGA_IVA_MANCANTE (2026-08-28), stessa regola sull'altro documento. Sollevato dal guard di transizione vendite.trgfn_ordini_guard_transizione (Regola 4), via script.fn_check_ordine_confermabile. CONFLITTO_STATO come i gemelli: la richiesta e' "porta l'ordine a CONFERMATO" e non c'e' un campo di quella richiesta da correggere - ne discende che nel contesto non va la chiave `campo`. ⚠️ Il perimetro e' QUALUNQUE transizione verso CONFERMATO, non il solo DRAFT->CONFERMATO: la matrice ammette il rientro da PARZIALMENTE_EVASO e da EVASO, e la vista del riepilogo non sa da dove si arriva. ⚠️ Nel VARIADIC va il NUMERO di riga, non l'id: e' la frase che legge una persona. ⛔ Non e' un NOT NULL di colonna: ordini_righe.iva_id e' nullable e la bozza deve restare libera. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I9.
     "E_ORDINE_RIGA_IVA_MANCANTE": "CONFLITTO_STATO",
@@ -838,6 +848,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREV_COMPONENTE_NOT_FOUND": "NON_TROVATO",
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
     "E_PREV_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
+    # RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo, D1): vendite.trgfn_preventivi_default_emittente era una delle tre copie della stessa regola (ordini, preventivi, contratti; ddt la variante) e la sua funzione e' droppata. La regola vive in script.trgfn_default_emittente_fiscale, che solleva E_EMITTENTE_NON_RISOLTO. Nessuna funzione viva nomina piu' questo codice; il messaggio resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-09-15
     "E_PREV_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
     "E_PREVENTIVO_RIGA_NON_TROVATA": "NON_TROVATO",
     # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione · prezzo out-of-policy. Codici sollevati da preventivi_service + · approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
@@ -1396,6 +1408,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTABILE_COMPENSAZIONE_CON_LOTTO",
         "E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE",
         "E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI",
+        "E_CONTRATTO_EMITTENTE_NON_RISOLTO",
         "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
         "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
         "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
@@ -1407,9 +1420,11 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_INVALID_SNAPSHOT",
         "E_NUMERAZIONE_IMMUTABILE",
         "E_ORD_ANNULLA_IN_COMMESSA",
+        "E_ORDINE_EMITTENTE_NON_RISOLTO",
         "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID",
         "E_PERC_IVA_NO_MOD",
         "E_PIPELINE_MARK_ERROR",
+        "E_PREV_EMITTENTE_NON_RISOLTO",
         "E_PREV_GIA_IN_COMMESSA",
         "E_PREZZO_LISTINO_NON_TROVATO",
         "E_PULL_COMMESSA_ALL_FAILED",

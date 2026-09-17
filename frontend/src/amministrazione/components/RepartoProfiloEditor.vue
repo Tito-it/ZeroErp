@@ -125,7 +125,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <Column :header="t('amministrazione.col_livello')" style="width: 12rem">
               <template #body="{ data }">
                 <Select v-model="data.livello" :options="livelloOptions"
-                  option-label="label" option-value="value" class="w-full" />
+                  option-label="label" option-value="value" />
               </template>
             </Column>
           </DataTable>

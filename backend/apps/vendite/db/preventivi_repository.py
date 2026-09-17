@@ -553,7 +553,8 @@ class PreventiviRepository(
 
     # Scopo: Inserisce un nuovo preventivo e restituisce id e uid.
     #        emittente_fiscale_id e' opzionale: se None il trigger DB
-    #        (vendite.trgfn_preventivi_default_emittente, fase _a10_default)
+    #        (script.trgfn_default_emittente_fiscale, BB unico dal 2026-09-15,
+    #        montato in fase _a10_default)
     #        lo valorizza da GUC app.current_user_id via
     #        script.fn_resolve_emittente_for_user. Va passato esplicito solo
     #        per il caso admin globale (utente senza emittente assegnato che

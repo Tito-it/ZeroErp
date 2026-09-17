@@ -141,7 +141,6 @@ const viaNoResultsGenerale = computed(() =>
             :placeholder="t('indirizzi.campo_cap')"
             :loading="loadingCap"
             :disabled="disabled || !form.comune_id"
-            class="w-full"
           />
         </div>
       </div>
@@ -179,23 +178,23 @@ const viaNoResultsGenerale = computed(() =>
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_estensione') }}</label>
-          <InputText :model-value="form.estensione_civico" @update:model-value="v => form.estensione_civico = (v || '').toUpperCase()" :disabled="disabled" class="w-full" />
+          <InputText :model-value="form.estensione_civico" @update:model-value="v => form.estensione_civico = (v || '').toUpperCase()" :disabled="disabled" />
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_palazzina') }}</label>
-          <InputText v-model="form.palazzina" :disabled="disabled" class="w-full" />
+          <InputText v-model="form.palazzina" :disabled="disabled" />
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_scala') }}</label>
-          <InputText v-model="form.scala" :disabled="disabled" class="w-full" />
+          <InputText v-model="form.scala" :disabled="disabled" />
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_piano') }}</label>
-          <InputText v-model="form.piano" :disabled="disabled" class="w-full" />
+          <InputText v-model="form.piano" :disabled="disabled" />
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_interno') }}</label>
-          <InputText v-model="form.interno" :disabled="disabled" class="w-full" />
+          <InputText v-model="form.interno" :disabled="disabled" />
         </div>
       </div>
 
@@ -217,7 +216,7 @@ const viaNoResultsGenerale = computed(() =>
     <template v-else>
       <div class="form-field">
         <label>{{ t('anagrafiche.indirizzo_soggetto.indirizzo_libero') }} *</label>
-        <InputText v-model="form.indirizzo_libero" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.indirizzo_libero" :disabled="disabled" />
       </div>
       <div class="form-field" v-if="statiLookup">
         <label>{{ t('anagrafiche.indirizzo_soggetto.stato') }} *</label>
@@ -230,12 +229,11 @@ const viaNoResultsGenerale = computed(() =>
           :placeholder="t('geo.select_stato')"
           :disabled="disabled"
           filter
-          class="w-full"
         />
       </div>
       <div class="form-field">
         <label>{{ t('anagrafiche.indirizzo_soggetto.locality') }}</label>
-        <InputText v-model="form.locality" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.locality" :disabled="disabled" />
       </div>
     </template>
 
