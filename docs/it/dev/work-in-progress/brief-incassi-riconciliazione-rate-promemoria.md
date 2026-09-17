@@ -1197,6 +1197,14 @@ ancora da fare — la **rotta scadenze paginata** (il cantiere incassi apre solo
 **lookup** delle rate di *una* fattura, che è un'altra cosa) e i suoi seed di
 lista.
 
+> ⭐ **2026-09-15 — la rotta rate paginata e il seed nascono con D19** (§2-bis):
+> il picker delle rate della distinta è il **primo consumatore** dello
+> scadenzario, e il brief [brief-db-distinta-ricerca-rate.md](brief-db-distinta-ricerca-rate.md)
+> chiede al DB la vista d'identità delle rate (P-2), il seed `pagamenti.rate`
+> (P-4) e — **domanda aperta** — il saldo di N rate in una valutazione (P-3),
+> che è ciò che il filtro «solo aperte» e lo scadenzario intero pretendono. Le
+> due avvertenze qui sotto sono scritte nel brief come regole del picker.
+
 ##### ⚠️ Le due avvertenze da portarsi dietro quando si aprirà
 
 | | Avvertenza |
@@ -2000,6 +2008,31 @@ decisioni — si prendono quando un cantiere le incontra, non prima.
 
 ---
 
+### ⭐ D19 — Il secondo giro in-app: la distinta cerca le RATE (Tid, 2026-09-15)
+
+> Nata sul drawer della distinta, alla seconda contabile: *chi digita un
+> incasso non riconosce il documento da un contatore, e la domanda vera non è
+> «quale fattura?» ma «quale rata?»*. Per esteso — fatti verificati,
+> prerequisiti DB e piano — in
+> [brief-db-distinta-ricerca-rate.md](brief-db-distinta-ricerca-rate.md) (DB,
+> P-1…P-5) e [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md)
+> (BE/FE, pezzi A…D). Qui la sintesi, perché questa resta la sede.
+
+| | Decisione | Il perché, in una riga |
+| --- | --- | --- |
+| **D19-a** | Il **lookup fattura** mostra il **documento** — numero parlante (`fn_numero_documento_fattura`), registro, data, totale, natura, cliente — non il contatore | un contatore nudo è ambiguo per costruzione (fattura 1 e nota di credito 1 nello stesso anno); la vista porta già data e totale, le manca il numero parlante e il registro (**P-1**) |
+| **D19-b** | La **destinazione di una riga si vede sempre**, anche in modifica: fattura, rata, scadenza, importo rata, residuo (dalla base unica, `SaldoPanel`) | R-6 protegge la **scrittura** della destinazione, non la lettura: chi corregge un importo deve sapere su che cosa lo corregge. Solo BE/FE |
+| **D19-c** | Nasce la **lista rate paginata** (`GET /pagamenti/rate/`) col saldo dalla base unica, montata da un **picker** accanto al lookup; nel picker un criterio (cliente **o** numero fattura, **esatto**) è obbligatorio | è il primo consumatore dello **scadenzario** (§3.4: «possibile e non fatto» dal 24/08 — la rotta paginata e i seed nascono qui, **P-2 … P-4**); il costo del saldo per rata è sul perimetro, e si sta registrando il pagamento di *questo* cliente |
+| **D19-d** | N rate scelte → **N righe** in un Salva (`POST …/righe/da-rate/`), con esito **PARZIALE** per riga: le riuscite entrano, le rifiutate restano nell'area temporanea col motivo del database, il secondo tempo della capienza è **per riga** | è **D1** reso a video («tre rate restano tre righe, cambia solo *quando* si scrivono»); ogni riga è un atto suo e il foglio è in bozza — la forma dell'archiviazione delle code (`run_fan_out`) |
+| **D19-e** ⭐ | *(Tid: «propendo per»; da verificare, P-5)* La **nota di credito ha una rata sola**, e nel picker si **segnala** con la natura, non si esclude | «ci sono anche casi in cui il cliente paga la nota di credito». Oggi una NC **non ha rate** (`fn_genera_scadenze_fattura`, base < 0 → zero rate) e `fatture_scadenze` ha il CHECK sull'importo positivo: due contro-pezzi per il DB. Finché non c'è, la NC si paga dal lookup fattura come riga senza rata — il caso è già ammesso (D14-c, verso sbagliato ⇒ segnala ⇒ forza) |
+
+⚠️ **Che cosa resta com'è**: il lookup resta un autocomplete (chi ha il numero
+lo digita), il form singolo resta documento-first (D16), nessuna seconda sede
+dei saldi, nessun guard nuovo — la riga nata da rata passa dagli stessi
+trigger dell'`INSERT` di D16.
+
+---
+
 ### La regola pratica per queste slice
 
 > **Nessun automatismo tocca il fondo in base agli incassi.** Il fondo esistente
@@ -2361,6 +2394,7 @@ stub vuoti.
 
 | Data | Cosa è cambiato |
 | --- | --- |
+| **2026-09-15** (2) | ⭐ **D19 — la distinta cerca le rate** (§2-bis): secondo giro in-app di Tid sul drawer della distinta; quattro pezzi (lookup fattura ricco · destinazione visibile sulla riga · picker delle rate = primo consumatore dello scadenzario · N rate → N righe con esito parziale) e la decisione sulla **nota di credito con una rata** (D19-e, da verificare). Brief DB [brief-db-distinta-ricerca-rate.md](brief-db-distinta-ricerca-rate.md) (P-1…P-5) e piano [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md). §3.4 annotata: la rotta rate paginata nasce qui. Nessun codice |
 | **2026-09-15** | ✅ **Il brief figlio di D16-D18 è chiuso e archiviato** ([work-done](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)): DB applicato (14/09) e verde in CI, BE/FE mergiati (PR #1589) con la Q-H decisa (il doppio tempo della capienza anche in modifica), copione riscritto. La prova a video (C-2) vive nel copione di collaudo. Qui entrano i **tre residui di modello** in §2-bis D16-D18 (R-16.1 fatti sotto una finale, R-16.2 `meta` delle matrici, R-16.3 sede unica del motivo 3): decisioni, non passi |
 | **2026-09-14** | ⭐ **Il primo collaudo in-app, e tre decisioni** (§2-bis, D16-D18; per esteso in [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)). Caricando la prima contabile Tid ha trovato che l'interfaccia diceva **il contrario del modello**: la riga nasceva `DA_ABBINARE` per default (lo stato dell'ignoto, cioè dell'import) mentre D1-ter dice che chi digita scrive già la riga giusta — **D16**: nasce con la destinazione, l'eccezione si **dichiara**; nessun gesto di eliminazione esisteva e l'unico offerto era `SCARTATA` **col cestino**, che sulla manuale **rompe la quadratura** (D12-e conta anche le scartate) — **D17**: `attivo = false` su manuale in bozza, check + guard su disattivazione e `DELETE`; e **niente** presidiava «finché è validata il contenuto non cambia» (D14-a-bis) — **D18**, proposta. Risposta a «il pagamento si scrive con la validazione?»: **no, con la registrazione** — e il copione di collaudo salta il passo di validazione (§4.1). ⭐ Lato DB D16 costa zero: il contratto era già pinnato dal pgTAP dell'abbinamento |
 | **2026-08-24** (2) | ⭐ **Nota nuova in §3.4: il vincolo che teneva chiuso lo scadenzario è caduto** — emersa parlando con Tid mentre si chiudeva Q-8 del piano BE/FE, e **nessuno l'aveva messa a piano**. §3.4 diceva che lo scadenzario richiede la 3.1 *«perché senza stato di pagamento ogni sua colonna sarebbe falsa»*: la 3.1 adesso c'è (posting dal lotto 4, rata dal lotto 5, `fn_get_saldo_rata` per singola rata), quindi «scaduto» e «insoluto» sono **derivabili** e lo scadenzario è passato da **impossibile** a **possibile e non fatto**. ⛔ Resta fuori dal cantiere incassi — è un cantiere suo, e gli mancano ancora la rotta scadenze **paginata** (qui nasce solo un *lookup* delle rate di una fattura) e i suoi seed. ⚠️ Due avvertenze scritte per quando si aprirà: i numeri devono venire dalla **base unica dei saldi** e mai da una query propria (uno scadenzario è la porta dei solleciti: un numero sbagliato lì diventa una telefonata a chi ha già pagato), e **«incassato» non è «a posto»** — una rata coperta da un giro interno è regolata anche se in banca non è entrato niente, quindi si guarda il **residuo** |
