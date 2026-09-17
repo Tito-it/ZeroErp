@@ -522,7 +522,7 @@ quando il pannello servirà»*. **Decisione: il BB generico, E il ritiro delle
 copie di vendite nello stesso giro** — *«che aspettiamo, la produzione, per
 fare questi refactor?»*. Non «la BB ora e le copie dopo»: un refactor rimandato
 è un debito che nessuno rilegge. 🔵 **È un brief suo, scritto il 15-09 sera:
-[brief-db-emittente-di-default-un-bb-solo](../work-in-progress/brief-db-emittente-di-default-un-bb-solo.md)**
+[brief-db-emittente-di-default-un-bb-solo](brief-db-emittente-di-default-un-bb-solo.md)**
 (tocca `vendite`, in esercizio), da applicare **prima del Lotto 2**, che lo
 presuppone (il primo magazzino vero nasce lì). Censimento fatto il 15-09 per
 non partire da un numero sbagliato — le cinque di vendite **non sono cinque
@@ -1080,7 +1080,7 @@ autonomo»):
    `ambito_causale` via da `_REL_CONSENTITE` e da `CONFIG_TABLES` (0 occorrenze). La terza
    — chi valorizza `magazzini.emittente_fiscale_id` — è il building block
    `script.trgfn_default_emittente_fiscale` di
-   [brief-db-emittente-di-default-un-bb-solo](../work-in-progress/brief-db-emittente-di-default-un-bb-solo.md):
+   [brief-db-emittente-di-default-un-bb-solo](brief-db-emittente-di-default-un-bb-solo.md):
    `20260915-43` **applicato il 17-09 alle 12:06** (`trg_magazzini_a10_default_emittente_ins`,
    `trg_assets_a10_default_emittente_ins` letti da `pg_trigger`), e il BE lo ha già
    rigenerato (`E_EMITTENTE_NON_RISOLTO` a policy). Resta la sola **`requires_lotto` in
