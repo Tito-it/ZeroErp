@@ -24,6 +24,7 @@
 
 import { useI18n } from 'vue-i18n'
 
+import { NATURA_DOC } from '../core/constants'
 import { displayDate } from '../core/utils/date'
 import { formatCurrency } from '../core/utils/format'
 import { labelOrCode } from '../core/utils/i18nLabel'
@@ -63,11 +64,16 @@ export function useEtichettePagamenti() {
   //    composizione stava nella tendina delle rate, nel blocco «Destinazione»
   //    del form e nella colonna «Rata» del drawer — tre forme della stessa
   //    riga, che a video devono leggersi uguali.
-  // ⚠️ Il residuo NEGATIVO si dice a parole («di troppo»), mai «-120,00», che
-  //    si legge come un guasto. ⛔ E vale finche' la nota di credito non ha
-  //    una rata (brief D19, P-5): li' il segno vuol dire «da rimborsare», e la
-  //    frase dovra' seguire la NATURA del documento — non un `if` sul segno.
-  const rata = ({ numero_rata, data_scadenza, importo = null, residuo = null } = {}) => {
+  // ⚠️ Il residuo NEGATIVO si dice a parole, mai «-120,00», che si legge come
+  //    un guasto. ⭐ E dal 2026-09-17 (P-5 consegnata: la nota di credito HA
+  //    una rata, negativa) la frase segue la NATURA del documento, non il
+  //    segno: su una fattura «120,00 di troppo» (e' entrato piu' del dovuto),
+  //    su una nota di credito «20,00 da rimborsare» (e' il nostro debito, il
+  //    segno e' quello giusto). ⛔ Non un `if` sul segno: il segno e' lo stesso,
+  //    cambia cosa SIGNIFICA — e' `residuoNegativo`, una sede per tutti.
+  const rata = ({
+    numero_rata, data_scadenza, importo = null, residuo = null, natura_doc_codice_interno = null,
+  } = {}) => {
     const parti = [t('pagamenti.rata.n', { n: numero_rata })]
     if (data_scadenza) parti.push(displayDate(data_scadenza))
     if (importo != null) parti.push(formatCurrency(importo))
@@ -75,16 +81,31 @@ export function useEtichettePagamenti() {
       const r = Number(residuo)
       parti.push(
         r < 0
-          ? t('pagamenti.rata.di_troppo', { importo: formatCurrency(Math.abs(r)) })
+          ? residuoNegativo(r, natura_doc_codice_interno)
           : t('pagamenti.rata.residuo', { importo: formatCurrency(r) }),
       )
     }
     return parti.join(' · ')
   }
 
+  // Scopo: LA FRASE DI UN RESIDUO NEGATIVO, per natura: «da rimborsare» sulla
+  //        nota di credito (il segno e' il verso del documento), «di troppo» su
+  //        tutto il resto (e' entrato piu' del dovuto). Una sede per la
+  //        tendina delle rate, il blocco «Destinazione», la colonna della
+  //        distinta e il picker.
+  // ⚠️ La natura assente vale «fattura»: e' il default della colonna a DB
+  //    (`NATURA_DOC`), non un dato mancante.
+  const residuoNegativo = (residuo, naturaCodice = null) => {
+    const importo = formatCurrency(Math.abs(Number(residuo)))
+    return naturaCodice === NATURA_DOC.NOTA_CREDITO
+      ? t('pagamenti.rata.da_rimborsare', { importo })
+      : t('pagamenti.rata.di_troppo', { importo })
+  }
+
   return {
     etichetta,
     rata,
+    residuoNegativo,
     credito,
     tipoCanale,
     destinazione,

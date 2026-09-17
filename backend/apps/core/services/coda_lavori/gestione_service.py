@@ -587,11 +587,12 @@ def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
 #    viva» — che ha una sede sola, il trigger, e che questo cantiere ha
 #    deliberatamente lasciato lì (brief §7.4).
 #
-# ⚠️ `motivi` è un dizionario Python popolato DENTRO il savepoint e letto DOPO
-#    il rollback, ed è voluto: un rollback annulla le righe di database, non un
-#    assegnamento in memoria. È l'unico modo di conservare il codice e la frase
-#    del rifiuto, che altrimenti resterebbero solo nella stringa normalizzata
-#    del BB — leggibile per un log, non per un operatore.
+# ⭐ L'eccezione di ogni riga la porta il BB (`FanOutItemErrore.eccezione`, dal
+#    2026-09-17): fino a quel giorno questo sito la tratteneva in un dizionario
+#    laterale popolato con un `try/except/raise` dentro `_process` — la prima
+#    delle due copie che hanno fatto nascere il campo (la seconda: «righe da
+#    rate» in `pagamenti`). Un rollback annulla le righe di database, non un
+#    oggetto in memoria: l'eccezione sopravvive al savepoint anche da lì.
 def _esegui_archiviazione(
     ids: object,
     *,
@@ -600,28 +601,36 @@ def _esegui_archiviazione(
     function_name: str,
 ) -> dict[str, Any]:
     righe = _valida_ids_archiviazione(ids, function_name=function_name)
-    motivi: dict[int, dict[str, Any]] = {}
 
     # Scopo: la bandiera su UNA riga. Solleva su rifiuto: è così che il fan-out
     #        distingue riuscite e fallite.
     def _process(riga_id: int) -> int:
-        try:
-            with translate_db_errors(
-                context={"op": function_name, "riga_id": riga_id},
-                fallback_code="E_CODA_ARCHIVIAZIONE_NON_AMMESSA",
-                fallback_message=_ARCHIVIAZIONE_FALLBACK,
-            ):
-                trovata = applica(riga_id)
-            ErrorManager.require(
-                trovata,
-                code="E_JOB_NON_TROVATO",
-                message="Riga di coda non trovata.",
-                detail=f"riga_id={riga_id}",
-            )
-        except ServiceError as exc:
-            motivi[riga_id] = {"code": exc.code, "message": exc.message}
-            raise
+        with translate_db_errors(
+            context={"op": function_name, "riga_id": riga_id},
+            fallback_code="E_CODA_ARCHIVIAZIONE_NON_AMMESSA",
+            fallback_message=_ARCHIVIAZIONE_FALLBACK,
+        ):
+            trovata = applica(riga_id)
+        ErrorManager.require(
+            trovata,
+            code="E_JOB_NON_TROVATO",
+            message="Riga di coda non trovata.",
+            detail=f"riga_id={riga_id}",
+        )
         return riga_id
+
+    # Scopo: il motivo di UNA riga fallita, nella forma che il client legge.
+    # ⛔ Il ripiego copre l'eccezione che NON è un `ServiceError` — cioè un
+    #    GUASTO — e lì NON si rimanda la stringa normalizzata del BB:
+    #    sarebbe un `TypeError: ...` letto da un operatore, che non è un
+    #    messaggio business-safe e non gli dice niente di azionabile. La
+    #    diagnostica vera sta nel log, che `run_fan_out` scrive con lo
+    #    stack e l'identità della riga. Il `code` resta `None`: inventarne
+    #    uno di dominio direbbe una cosa falsa.
+    def _motivo(exc: Exception) -> dict[str, Any]:
+        if isinstance(exc, ServiceError):
+            return {"code": exc.code, "message": exc.message}
+        return {"code": None, "message": _ARCHIVIAZIONE_FALLBACK}
 
     esito = run_fan_out(righe, _process)
     return {
@@ -629,21 +638,7 @@ def _esegui_archiviazione(
         "archiviato": bool(archiviato),
         "richieste": esito.totale,
         "riuscite": esito.ok,
-        # ⛔ Il ripiego copre l'eccezione che NON è un `ServiceError` — cioè un
-        #    GUASTO — e lì NON si rimanda la stringa normalizzata del BB:
-        #    sarebbe un `TypeError: ...` letto da un operatore, che non è un
-        #    messaggio business-safe e non gli dice niente di azionabile. La
-        #    diagnostica vera sta nel log, che `run_fan_out` scrive con lo
-        #    stack e l'identità della riga. Il `code` resta `None`: inventarne
-        #    uno di dominio direbbe una cosa falsa.
-        "falliti": [
-            {
-                "id": e.item,
-                **(motivi.get(e.item)
-                   or {"code": None, "message": _ARCHIVIAZIONE_FALLBACK}),
-            }
-            for e in esito.errori
-        ],
+        "falliti": [{"id": e.item, **_motivo(e.eccezione)} for e in esito.errori],
     }
 
 

@@ -608,6 +608,10 @@ class FanOutItemErrore:
     indice: int
     item: Any
     messaggio: str          # f"{type(exc).__name__}: {exc}"
+    eccezione: Exception    # ⭐ dal 2026-09-17 (regola del 2, ok Tid): l'eccezione
+                            #    INTERA — i due consumatori con esito per riga
+                            #    (archiviazione code, righe da rate) la tenevano in
+                            #    dizionari laterali; vedi catalogo BB backend
 
 @dataclass
 class FanOutEsito:

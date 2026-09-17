@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Client API del dominio INCASSI — le 24 rotte di `/api/v1/pagamenti/`.
+// Scopo: Client API del dominio INCASSI — le 26 rotte di `/api/v1/pagamenti/`.
 // Note: Brief: docs/it/dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md
 //       ⭐ Sul filo la risorsa si chiama `distinte`, non `contabili`: e' la
 //       parola che l'operatore legge sulla schermata (§4 del brief). La tabella
@@ -81,6 +81,20 @@ export function listRigheDistinta(contabileId) {
 // un INSERT solo; senza nasce DA_ABBINARE — l'eccezione che si dichiara.
 export function creaRiga(contabileId, payload) {
   return api.post(`${BASE}/distinte/${contabileId}/righe/`, payload, idem())
+}
+
+// ⭐ N RATE → N RIGHE in un Salva (D19-d): le rate scelte nel picker diventano
+// righe della distinta, ognuna con la propria destinazione. Payload: i FATTI
+// COMUNI (`data_pagamento`, `data_valuta`, `data_operazione`,
+// `riferimento_ente`, `meta`) + `righe: [{scadenza_id, importo, forzata?,
+// motivo_forzatura?}]` (tetto 200, `scadenza_id` duplicato = 400).
+// ⚠️ La risposta è un ESITO A TRE STATI, e lo status è 200 anche su
+// `PARZIALE`/`ERRORE`: chi legge guarda `esito`, `creati[]` e `falliti[]` — ogni
+// fallita porta il suo errore INTERO (`code`, `message`, `hint`, `ui_action`,
+// `fields`, `targets`), quindi la capienza che non regge risale «confermabile»
+// PER RIGA e il secondo tempo è un giro nuovo con le sole righe rimaste.
+export function creaRigheDaRate(contabileId, payload) {
+  return api.post(`${BASE}/distinte/${contabileId}/righe/da-rate/`, payload, idem())
 }
 
 // I FATTI della riga (importo, riferimento, date) — non il suo percorso, e
@@ -179,6 +193,20 @@ export function listCodaRighe(params = {}) {
 // movimento contrario) che non vanno confuse.
 export function listRateFuoriCapienza(params = {}) {
   return api.get(`${BASE}/rate/fuori-capienza/`, { params })
+}
+
+// ⭐ L'ELENCO DELLE RATE COL SALDO (lista `pagamenti.rate`, D19-c): la sorgente
+// del picker della distinta e, domani, dello scadenzario. Offset-based
+// (`limit`/`offset`, la lingua di `useSearchTable`). Criteri: `billing_account_id`,
+// `fattura_numero` (ESATTO: 101 non porta 1010; `serie`/`anno` per disambiguare),
+// `search` (min 3, cerca il CLIENTE — mai il numero), `solo_aperte` (residuo ≠ 0),
+// `data_scadenza_da/a`, `natura_doc_codice`. Ogni riga porta la vista
+// `vw_fatture_scadenze_lista` più `residuo · in_lavorazione · incassato ·
+// has_movimenti` dalla base unica dei saldi.
+// ⛔ Nessun criterio è obbligatorio QUI: lo pretende il picker (D19-c), non la rotta
+// — lo scadenzario la chiama senza.
+export function listRate(params = {}) {
+  return api.get(`${BASE}/rate/`, { params })
 }
 
 // ══════════════════════════════════════════════════════════════

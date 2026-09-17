@@ -768,6 +768,20 @@ _ESERCIZI: dict[str, Esercizio] = {
             limit=1, offset=0, **_ordine(ob, od, "data_scadenza", "DESC")
         ),
     ),
+    # ⭐ I tre saldi arrivano da una SECONDA query (il nucleo `fn_get_saldi_rate`
+    #    sugli id della pagina) e su una pagina vuota non c'e' nessuna riga su
+    #    cui appoggiarli: qui si passa `solo_aperte=True`, dove i saldi escono
+    #    dalla STESSA query e le colonne le dichiara il cursore anche a zero
+    #    righe. L'altro ramo lo prova `test_rate_lista_db` sul caso costruito.
+    "pagamenti.rate": Esercizio(
+        dove="pagamenti/db/pagamenti_repository.py::list_rate_paginata",
+        chiama=lambda ob, od: _r(
+            "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
+        ).list_rate_paginata(
+            auth_user_id=None, solo_aperte=True, limit=1, offset=0,
+            **_ordine(ob, od, None),
+        ),
+    ),
     "pagamenti.eccedenze": Esercizio(
         dove="pagamenti/db/pagamenti_repository.py::list_eccedenze",
         chiama=lambda ob, od: _r(

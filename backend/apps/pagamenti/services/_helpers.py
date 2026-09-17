@@ -33,6 +33,12 @@ E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"
 # gia' divergente il giorno in cui una delle copie cambia.
 E_FATTURA_NON_TROVATA = "E_FATTURA_NON_TROVATA"
 
+# La rata indicata non c'e' — o il perimetro non la lascia vedere. ⭐ A catalogo
+# (NON_TROVATO, 404). Stava in `saldi_service` finche' era l'unico a sollevarla;
+# dal 2026-09-17 la solleva anche «righe da rate» (`pagamenti_service`), e una
+# stringa ripetuta e' gia' divergente il giorno in cui una delle copie cambia.
+E_RATA_NON_TROVATA = "E_RATA_NON_TROVATA"
+
 
 # Scopo: Rifiuta un valore che non e' un importo, con la stessa frase ovunque.
 def rifiuta_importo(raw: Any, key: str, *, condizione: bool) -> None:

@@ -659,6 +659,15 @@ log — non da qui.
 - `test-numerazione-guard-coerenza-v1` test 6: il messaggio è ora «…su un totale
   a pagare **zero**».
 
+#### 4-bis.9-ter Residui per il DB, emersi scrivendo BE/FE (2026-09-17, sera)
+
+| | Cosa | Perché |
+| --- | --- | --- |
+| **P-6** | `fn_get_saldo_fattura_contabili(p_fattura_id, p_escludi_contabile_riga_id DEFAULT NULL)` — **non consegnato** in questo giro (§4.6) | il pannello lo dichiara «comprende anche questa riga»; BE e FE sono già scritti per riceverlo |
+| **P-7** | `vw_rate_fuori_capienza`: appendere `natura_doc_codice_interno` (e la descrizione) | §4-bis.6 dice *«su una NC `SOVRA_INCASSATA` significa sovra-rimborsata, e a dirlo è l'etichetta FE»* — ma la vista non porta la natura, quindi il FE **non può** dirlo. Il residuo negativo «per natura» oggi vale su tendina, form e picker, non su quella lista |
+| nota | il messaggio di `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` scrive «restano **0.000000** da regolare» (sei decimali nel `%s`) | visto nel test BE sul DB provvisto; un `round(…, 2)` o un cast nel `VARIADIC`. Non blocca |
+| **P-8** *(domanda, non urgente)* | `vendite_contabili_righe.importo` (e `fatture_scadenze.importo`) sono `numeric` **senza scala** (`20260213-10`, `type: numeric`): è voluto? | Emerso dalla rilettura BE/FE del 17/09: lo spazio proposto dal FE (`residuo − in_lavorazione`) usciva dalla sottrazione in virgola mobile con quattordici decimali, la colonna li accettava com'erano e il guard (`abs(importo) > abs(spazio)`) rifiutava per capienza un importo che era esattamente lo spazio. Corretto nel FE (centesimi), ma **per qualunque client**: se gli importi del dominio sono a due decimali, una scala a DB fermerebbe il caso **prima** del guard — e i sei decimali della nota sopra sono lo stesso sintomo visto dall'altro lato. Da decidere con Tid; se sì, un changeSet `00_schema` con backfill `round(importo, 2)` |
+
 **Per il BE, in aggiunta al §5** (dalle decisioni Q-A/Q-B e da ciò che il DB
 ha scritto):
 
@@ -681,23 +690,42 @@ ha scritto):
 ## 5. Cosa deve fare il backend *(solo l'elenco: il piano è loro)*
 
 - **B** ✅ (17/09): **sette** colonne in `_RIGA_COLONNE` (le cinque previste — `fattura_numero_documento` dalla fn sede unica, `fattura_data`, `fattura_totale_doc`, `fattura_registro_codice`, `scadenza_importo` — più `fattura_natura_doc_codice_interno/descrizione`: la natura si segnala, D19-e) + `LEFT JOIN registri_fatturazione` e `nature_doc_fiscale`; tre presidi sul DB provvisto.
-- **C** (dopo P-2/P-4): `GET /pagamenti/rate/` paginata in `saldi_service`; whitelist di ordinamento chiavata sul `campo_sorgente`; saldi in `LATERAL` sulla pagina (P-3 quando c'è).
-- **D** (dopo C): `POST /pagamenti/distinte/{id}/righe/da-rate/` — fan-out per riga, `falliti[]` con l'errore intero (`ErrorTranslator.to_api_error`), `forzata`/`motivo_forzatura` per riga.
+- **C** ✅ (17/09 sera): `GET /pagamenti/rate/` in `saldi_service.list_rate` → `list_rate_paginata`: pagina prima, saldo dopo con `fn_get_saldi_rate(ARRAY[ids pagina])` (porta 3, una chiamata); `solo_aperte` sul perimetro (`ARRAY(SELECT …)` con la stessa `FROM`+`WHERE`, scritta come funzione dell'alias); numero **esatto**; whitelist sul `campo_sorgente` con `numero_documento → (numero, serie)`; seed 68 + 750-765 accesi (e 766 su 52), `WHITELIST_BE` completata con tutte le liste di `pagamenti`. ⚠️ Due colonne in più ordinabili rispetto al §4-bis.9 (`stato_descrizione`, `ba_codice`): lo pretende la regola del **nucleo** di `gen_seed_lista` (Tid, 2026-07-31).
+- **D** ✅ BE (17/09 sera; rilettura 17/09 notte): `POST /pagamenti/distinte/{id}/righe/da-rate/` — `run_fan_out` per riga, `falliti[]` con l'errore intero (`ErrorTranslator.to_api_error` sull'eccezione che porta il BB, `FanOutItemErrore.eccezione`), `forzata`/`motivo_forzatura` per riga; i **fatti comuni** letti una volta prima del giro (malformati = 400, non N fallite); provato per intero sul DB provvisto (PARZIALE, poi il secondo tempo).
 - **A** (dopo P-1): niente da fare, la lista passa `v.*`.
 
 ## 6. Cosa deve fare il frontend *(solo l'elenco)*
 
-- **A**: opzione del `FatturaLookup` a tre righe (documento · registro · data · totale · natura / cliente · id fiscale) — e la natura è un **Tag**, non testo.
+- **A** ✅ (17/09 sera): opzione del `FatturaLookup` a tre righe (documento · registro · data · totale · natura / cliente · id fiscale) — e la natura è un **Tag** (`NaturaDocTag`), non testo.
 - **B** ✅ (17/09): tabella righe con documento (Tag natura via il BB nuovo `NaturaDocTag`) e «Rata n · scadenza»; blocco «Destinazione» in sola lettura nel form (creazione e modifica) + `SaldoPanel` RATA/DOCUMENTO con `escludiRigaId`; `RataSelect` con l'importo della rata; etichetta della rata in una sede (`useEtichettePagamenti().rata`).
-- **C**: `RatePickerDialog` (`AppDialog` xl + `<ListaConfigurabile codice="pagamenti.rate">`), pulsante accanto al lookup, criterio obbligatorio, modalità singola → compila il form.
-- **D**: modalità multipla dal toolbar del drawer, area temporanea (`useSelezioneLista` + importi per riga), Salva → `da-rate/`, esito parziale → restano le fallite col motivo e il secondo tempo per riga.
-- Dopo P-5: il residuo negativo si dice per **natura** («da rimborsare» su una NC, «di troppo» su una fattura).
+- **C** ✅ (17/09 sera): `RatePickerDialog` (`AppDialog` xl + `DrawerTabLista`/`<ListaConfigurabile codice="pagamenti.rate">`, `dataKey="scadenza_id"`), pulsante accanto al lookup, criterio obbligatorio (gate dello store), modalità singola → compila il form; `RataSelect` tiene la scelta arrivata dal picker (Q-2); proposta e selezionabile = **spazio** (Q-B, `spazioSaldo` nella base dei saldi FE).
+- **D** ✅ (17/09 notte; rilettura 17/09 notte) FE: azione «Righe da rate» nel toolbar delle righe del drawer, picker in `modalita="multipla"`, area temporanea (`useSelezioneLista` + `useSelezioneConValore` composti in `useRigheDaRate`; a video `app-righe-scelte`, **non** una DataTable), fatti comuni, Salva → `da-rate/`, esito parziale → restano le fallite col motivo e «Forza» + motivo **per riga** (conferma e motivo nella macchina, non nel dialog), il giro dopo rimanda solo loro **e la lista ricarica** (le rate scritte hanno un altro spazio); conferma sull'abbandono. Lo spazio si sottrae in **centesimi** (P-8). Q-1 chiusa da Tid (`useSelezioneConValore` in `core`; `useRigheSelezioneQta` non migrato, debito dichiarato).
+- Dopo P-5 ✅: il residuo negativo si dice per **natura** («da rimborsare» su una NC, «di troppo» su una fattura) — tendina, form, picker. Non su `rate_fuori_capienza` (P-7).
 
 ## 7. Il copione di collaudo — righe da aggiungere
 
 Al piano BE/FE, §6: la ricerca per numero **esatto** (101 non porta 1010), la
 NC segnalata, tre rate → tre righe, una rata esaurita non selezionabile, il
 rifiuto di capienza su una riga sola che non porta via le altre.
+
+Per esteso, sul dev migrato (17/09 notte — è di Tid, io non ho un browser):
+
+| # | Gesto | Atteso |
+| --- | --- | --- |
+| 1 | Distinta manuale in BOZZA → «Nuova riga» → lente accanto al lookup fattura | Il picker si apre **vuoto** con la frase «Indica il cliente o il numero…»; nessuna chiamata parte |
+| 2 | Numero fattura `101` | Compare **solo** la 101 (non la 1010); colonne Documento con Tag natura, Rata, Scadenza, Residuo, In lavorazione, Incassato |
+| 3 | Click su una rata **esaurita** (residuo = in lavorazione) | Tag «esaurita» in colonna, toast informativo, il picker resta aperto |
+| 4 | Click su una rata aperta | Il picker si chiude, fattura e rata compilati nel form, importo proposto = **spazio** (residuo − in lavorazione); la tendina delle rate mostra la stessa rata scelta (Q-2) |
+| 5 | Stessa cosa su una **nota di credito** | Natura in Tag, residuo scritto «da rimborsare», la rata **si sceglie**, importo proposto **negativo** |
+| 6 | Toolbar righe → «Righe da rate» | Dialog con caselle di selezione, area «Rate scelte» vuota sotto, data pagamento = oggi |
+| 7 | Cliente con più fatture, spunta 2 rate a pagina 1, cambia pagina, spunta 1 rata, torna indietro | Le prime due restano spuntate; l'area elenca **tre** righe con importo = spazio; il pulsante dice «Crea 3 righe» |
+| 8 | Svuota un importo | Il pulsante si spegne; ricompilalo e si riaccende |
+| 9 | Cestino su una riga dell'area | Sparisce dall'area **e** si stacca la casella nella lista |
+| 10 | Salva (tre rate buone) | Toast «3 righe create», dialog chiuso, tre righe nel foglio con documento e rata, contatori del drawer aggiornati |
+| 11 | «Righe da rate» di nuovo: una rata aperta con importo = spazio **+ 1**, più una buona | Toast di avviso «1 righe su 2 create», il dialog **resta aperto**: la buona è sparita dall'area, la fuori capienza resta con la frase del database e il toggle «Forza comunque» |
+| 12 | Accendi «Forza comunque», scrivi il motivo, Salva | Toast «1 riga creata», dialog chiuso, nel foglio la riga con `forzata` e il motivo |
+| 13 | Spunta una rata, poi X del dialog | Conferma «Rate non salvate… chiudere e perderle?»; su «Chiudi» il dialog si chiude, riaprendo l'area è vuota |
+| 14 | Distinta **non** in BOZZA (o senza permesso di scrittura) | L'azione «Righe da rate» non c'è; il picker dal form non c'è (il form stesso non c'è) |
 
 ## 8. Trappole da non ripagare, viste scrivendo
 
@@ -710,6 +738,9 @@ rifiuto di capienza su una riga sola che non porta via le altre.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-17** (notte, rilettura) | 🔍 **Rilettura critica di A/C/D (BE+FE)** su richiesta di Tid — dettaglio nel piano §9; §5/§6 aggiornati. Per il DB conta una cosa, registrata come **P-8** in §4-bis.9-ter: lo **spazio** proposto dal FE usciva dalla sottrazione in virgola mobile con quattordici decimali, `importo` è `numeric` **senza scala** e il guard rifiutava per capienza un importo che era esattamente lo spazio. Corretto nel FE (centesimi); la domanda sulla scala resta al DB |
+| **2026-09-17** (notte, D-FE) | ✅ **D-FE scritto** su Q-1 chiusa (piano §0-bis e registro). Il copione per esteso in §7 — 14 righe, la 11-12 sono il secondo tempo per riga. Restano per il DB i residui di §4-bis.9-ter (P-6, P-7, sei decimali) e per Tid tre liste `pagamenti` KO al nucleo (`righe`, `eccedenze`, `canali_incasso`) |
+| **2026-09-17** (notte, BE/FE) | ✅ **A, C e D-BE scritti** sui prerequisiti consegnati (dettaglio nel piano §0-bis e registro). Residui per il DB in §4-bis.9-ter: **P-6** non consegnato, **P-7** la natura su `vw_rate_fuori_capienza`, i sei decimali nel messaggio della capienza. D-FE aspetta Q-1 |
 | **2026-09-17** (sera, ancora) | ✅ **Sei pgTAP di pagamenti/vendite riscritti sui BB** (Tid: «puoi correggere anche questi»): abbinamento-rata, get-or-create-contabile, posta-contabile, numerazione-guard-coerenza, genera-scadenze-fattura (lo skip del test 4 sparisce), vw-fatture-lista. Provati come app su dbdev e scratch: 18 · 9 · 20 · 9 · 16 · 11. Sei righe di `baseline-rossi-ci.tsv` da togliere dalla prossima corsa CI. Dettaglio in §4-bis.9 |
 | **2026-09-17** (sera, poi) | 🔴→✅ **Tre pgTAP nuovi rossi su `zeroerp_ci`** (la CI non li conosceva): fixture che cercavano l'azienda, ricopiate da test già `ERRORE_FIXTURE` nel registro della CI. Riscritte sui BB (`fn_pgtap_crea_emittente_operatore` + `fn_pgtap_crea_cliente_ba`, NC con `emittenti_fiscali_utilities` costruita), provate come `zeroerp_app` su dbdev e scratch: 8/8 · 17/17 · 12/12. Dettaglio e residuo in §4-bis.9 |
 | **2026-09-17** (notte) | ✅ **Migrate completo (seed `ui` compreso), pgTAP come app verdi, baseline senza regressione** — Tid. Lato DB **chiuso**. Le tre fixture nuove rifatte sul modello «il mondo si costruisce, non si cerca» (§4-bis.9): su `zeroerp_ci` le anagrafiche sono a zero e una fixture che «cerca» esce vuota. Il brief resta in `work-in-progress/` per A-D (BE/FE) |

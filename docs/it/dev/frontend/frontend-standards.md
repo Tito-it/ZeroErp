@@ -2064,6 +2064,18 @@ PrimeFlex, variabili CSS di PrimeVue 3, identificatori orfani):
 `python3 scripts/check_classi_morte.py` (dalla root del repo; stampa l'elenco
 e esce 1 se ne trova).
 
+⛔ **E un NOME usato nel template ma non dichiarato nello `<script setup>` è
+peggio di una classe morta: non fa niente finché i dati non lo toccano, poi
+SOLLEVA.** Il compilatore lo traduce in `_ctx.<nome>` = `undefined`, la build
+è verde, e `undefined.QUALCOSA` esplode nel render della prima riga che entra
+in quel ramo — Vue svuota il sottoalbero e a video resta una lista bianca,
+senza un errore per l'operatore. Successo il 2026-09-17 su `LottiLista.vue`:
+`MANAGE_ICONS.ERRORE` senza import, dal 09/09; la scheda «Lotti del mese» si
+rendeva e la scheda «Recuperi» no, perché solo lì c'era un lotto con
+`ha_errori_gravi`, e l'etichetta accanto contava correttamente le righe che la
+tabella non mostrava. Presidio: `vue/no-undef-properties` in `eslint.config.js`
+(`npm run lint`, in CI), acceso quel giorno a zero segnalazioni.
+
 **Nota responsive sotto 1024px**: i pulsanti del `FormFooter` (Annulla,
 Chiudi, Salva) collassano automaticamente a icon-only via la classe
 `app-form-footer-btn` (stessa logica di `.app-page-action`; ⚠️ fino al 17/09

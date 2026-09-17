@@ -34,6 +34,10 @@ from apps.core.db._helpers import (
     sql_order_direction,
     sql_tiebreak_direction,
 )
+from apps.core.db.emittente_scope_helpers import (
+    add_emittente_scope_condition_risolta,
+    fetch_emittenti_scope_ids,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.pagamenti.types import (
@@ -375,13 +379,58 @@ RIGHE_SORT_COLUMNS: dict[str, str] = {
 }
 
 # Colonne ordinabili dell'elenco delle rate fuori capienza.
+# ⭐ `numero_documento` (P-1-bis, 2026-09-17): la vista porta il numero
+#    parlante e la colonna 766 lo mostra; si ordina per la coppia
+#    `(fattura_numero, serie)` come sulla lista rate, non per il testo.
 RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
     "data_scadenza": "data_scadenza",
     "motivo": "motivo",
     "residuo": "residuo",
     "importo_rata": "importo_rata",
     "fattura_numero": "fattura_numero",
+    "numero_documento": "(fattura_numero, serie)",
 }
+
+# Colonne ordinabili dell'elenco delle RATE (lista `pagamenti.rate`, id 68 —
+# D19-c, 2026-09-17): le chiavi sono i `campo_sorgente` FISICI del seed
+# (`ordinabile = t`), i valori le espressioni sulla vista
+# `vendite.vw_fatture_scadenze_lista` (alias della sottoquery, non `v.`: la
+# clausola si applica FUORI, sul risultato paginato).
+# ⭐ `numero_documento` si ordina per la COPPIA `(numero, serie)` — il
+#    costruttore di riga — e non per il testo «numero - serie»: ordinando il
+#    testo, «10 - A» verrebbe prima di «9 - A». E' la ragione scritta nel brief
+#    DB (§4-bis.9). ⚠️ Provato con EXPLAIN sul DB vero il 2026-09-17:
+#    `Sort Key: (ROW(f.numero, f.serie)) DESC NULLS LAST`, sintassi accettata
+#    da PostgreSQL 18.
+# ⛔ I tre saldi (`residuo`, `in_lavorazione`, `incassato`) NON ci sono, ed e'
+#    il seed a dichiararli `ordinabile = f`: non stanno nella vista — arrivano
+#    dal nucleo `fn_get_saldi_rate` DOPO la pagina — e una whitelist che li
+#    nominasse produrrebbe un 500 sul primo click.
+#    ⭐ `stato_descrizione` e `ba_codice` ordinano perche' lo pretende il NUCLEO
+#    (regola di dominio di Tid, 2026-07-31, presidiata da
+#    `gen_seed_lista.py --verifica-ordinamento`): stato e billing account
+#    ordinano sempre, quando la lista ce li ha. Il brief DB le dava
+#    `ordinabile = f`; la regola vince.
+RATE_SORT_COLUMNS: dict[str, str] = {
+    "numero_documento": "(numero, serie)",
+    "data": "data",
+    "ragione_sociale_completa": "ragione_sociale_completa",
+    "ba_codice": "ba_codice",
+    "numero_rata": "numero_rata",
+    "data_scadenza": "data_scadenza",
+    "importo": "importo",
+    "totale_doc": "totale_doc",
+    "stato_descrizione": "stato_descrizione",
+}
+
+# Le colonne DATA della lista 68, per il verso DESC quando il chiamante non ne
+# indica uno (regola di Tid del 2026-09-02). ⚠️ NON e' il default della lista:
+# senza `order_by` la lista si apre `data_scadenza ASC` — e' una CODA, la rata
+# piu' vecchia e' quella che un pagamento piu' probabilmente salda (stessa
+# ragione dei residui di competenza). Il primo click dell'operatore
+# sull'intestazione resta DESC per la regola generale, e lo decide il catalogo
+# (`tipo_dato = date`) nel frontend.
+RATE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data", "data_scadenza"})
 
 # Colonne ordinabili dell'elenco delle eccedenze da sistemare.
 # ⭐ Il default e' per CLIENTE, non per documento: la decisione si prende
@@ -1152,9 +1201,15 @@ class PagamentiRepository:
     #    laterali fra moduli di pari livello non sono ammesse (api.md).
     def list_rate_con_saldo(self, fattura_id: int) -> list[dict[str, Any]]:
         self._guard_canale_sistema("list_rate_con_saldo")
+        # ⭐ `fattura_id` viaggia con la rata (2026-09-17, D19-c): il form della
+        #    riga tiene «una rata resta scelta solo se e' del documento scelto»,
+        #    e per dirlo la rata deve sapere di chi e' — la stessa chiave che
+        #    porta la riga della lista rate (`vw_fatture_scadenze_lista`), cosi'
+        #    le due sorgenti hanno la stessa forma.
         sql = """
             SELECT
                 sc.id                AS scadenza_id,
+                sc.fattura_id,
                 sc.numero_rata,
                 sc.data_scadenza,
                 sc.importo,
@@ -1170,6 +1225,202 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
             return rows_to_list(cursor)
+
+    # Scopo: I saldi di UN INSIEME di rate in una chiamata — la «porta 3» del
+    #        nucleo `pagamenti.fn_get_saldi_rate` (brief DB distinta-ricerca-rate,
+    #        §4-bis.4): `{scadenza_id: {residuo, in_lavorazione, incassato,
+    #        has_movimenti}}`.
+    # ⛔ UNA chiamata con l'ARRAY, non una `LATERAL` per riga: provato dal team
+    #    DB con EXPLAIN (§4-bis.9), `ARRAY[sc.id]` in `LATERAL` non piega il
+    #    filtro dentro gli aggregati e diventa una scansione dei movimenti PER
+    #    RATA. Con l'array costante della pagina il nucleo si inlinea e va a
+    #    indice sui due parziali. ⚠️ E l'array e' OBBLIGATORIO: `NULL` non vuol
+    #    dire «tutte» — per lo scadenzario c'e' `vw_saldi_rate`.
+    # ⚠️ Il nucleo e' `security_invoker`: una rata fuori perimetro e' ZERO righe,
+    #    non un errore — il chiamante confronta il numero delle risposte con
+    #    quello delle domande. Una rata SENZA movimenti torna lo stesso (LEFT nel
+    #    nucleo), con `has_movimenti = false`.
+    # ⭐ Le chiavi escono col NOME della base dei saldi (`residuo`, non `saldo`):
+    #    e' il vocabolario di `saldi_service.CAMPI_SALDO`, e chi consuma la
+    #    riga della lista legge lo stesso nome del pannello.
+    def get_saldi_rate(self, scadenza_ids: list[int]) -> dict[int, dict[str, Any]]:
+        self._guard_canale_sistema("get_saldi_rate")
+        if not scadenza_ids:
+            return {}
+        sql = """
+            SELECT scadenza_id,
+                   saldo AS residuo,
+                   in_lavorazione,
+                   incassato,
+                   has_movimenti
+              FROM pagamenti.fn_get_saldi_rate(%s::bigint[])
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [[int(i) for i in scadenza_ids]])
+            righe = rows_to_list(cursor)
+        return {int(r.pop("scadenza_id")): r for r in righe}
+
+    # Scopo: L'ELENCO PAGINATO DELLE RATE (lista `pagamenti.rate`, id 68 — D19-c,
+    #        2026-09-17): una riga per rata di `vendite.vw_fatture_scadenze_lista`
+    #        col documento, il cliente e i tre saldi dalla base unica.
+    # ⭐ PAGINA PRIMA, SALDO DOPO (brief DB §8): la query pagina la VISTA
+    #    (`COUNT(*) OVER ()` nella stessa valutazione) e i saldi si chiedono al
+    #    nucleo in una SECONDA query, sugli id della pagina. ⛔ Non nella stessa
+    #    query del `COUNT(*) OVER ()`: girerebbe sul perimetro intero e non
+    #    sulla pagina — il costo gia' letto sul piano della coda righe (EXPLAIN
+    #    del 14/09 per la `LATERAL` dei motivi).
+    # ⚠️ L'ECCEZIONE E' `solo_aperte`, e non puo' essere altrimenti: «aperta» =
+    #    `saldo <> 0` (Q-B, Tid 2026-09-17) e' un predicato sul SALDO, quindi sta
+    #    nel `WHERE` — e un `WHERE` non puo' aspettare la pagina. Li' il nucleo
+    #    si chiama sul PERIMETRO (l'array delle rate che passano i filtri,
+    #    `ARRAY(SELECT …)`) e i saldi escono dalla stessa query: e' il costo
+    #    onesto che il brief DB ha accettato per quel filtro (§4.3 «col filtro
+    #    solo aperte, di ogni rata del perimetro, perche' il filtro sta nel
+    #    WHERE»). ⚠️ Sullo scadenzario intero (nessun criterio) e' il costo di
+    #    `vw_saldi_rate`; sul perimetro di un cliente regge.
+    # ⛔ `fattura_numero` e' un confronto ESATTO, non un `ILIKE`: nel lookup 101
+    #    porta anche 1010 e 2101, ed e' giusto la'; qui chi digita un numero
+    #    vuole QUEL documento (brief §8). `search` invece cerca il CLIENTE —
+    #    ragione sociale, codice BA, id fiscale — mai il numero.
+    # ⚠️ Lo scope emittente applicativo si SOMMA alla RLS (api.md §Enforcement
+    #    RLS), come sulla lista fatture da cui il lookup legge: `v.emittente_fiscale_id`
+    #    e' la PK dell'emittente, convenzione `pk`.
+    def list_rate_paginata(
+        self,
+        *,
+        auth_user_id: int | None,
+        billing_account_id: int | None = None,
+        fattura_numero: int | None = None,
+        serie: str | None = None,
+        anno: int | None = None,
+        search: str | None = None,
+        solo_aperte: bool = False,
+        data_scadenza_da: date | None = None,
+        data_scadenza_a: date | None = None,
+        natura_doc_codice: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_rate_paginata")
+
+        # Il perimetro emittente si risolve UNA volta: con `solo_aperte` la
+        # stessa condizione entra due volte (pagina e perimetro del nucleo), e
+        # risolverla per ogni entrata sarebbe una query in piu' per niente.
+        scope_ids = (
+            fetch_emittenti_scope_ids(auth_user_id, convention="pk")
+            if auth_user_id is not None else None
+        )
+
+        # Scopo: le condizioni della lista su un ALIAS dato — la stessa funzione
+        #        per la pagina (`v`) e per il perimetro del nucleo (`p`), cosi'
+        #        i due insiemi non possono divergere.
+        def _condizioni(alias: str) -> tuple[list[str], list[Any]]:
+            conditions: list[str] = []
+            params: list[Any] = []
+            if billing_account_id is not None:
+                conditions.append(f"{alias}.billing_account_id = %s")
+                params.append(billing_account_id)
+            if fattura_numero is not None:
+                conditions.append(f"{alias}.numero = %s")
+                params.append(fattura_numero)
+            if serie is not None:
+                conditions.append(f"{alias}.serie = %s")
+                params.append(serie)
+            if anno is not None:
+                conditions.append(f"{alias}.anno = %s")
+                params.append(anno)
+            if search and len(search) >= 3:
+                conditions.append(
+                    f"({alias}.ragione_sociale_completa ILIKE %s "
+                    f"OR {alias}.ba_codice ILIKE %s "
+                    f"OR {alias}.id_fiscale_univoco_cf_piva ILIKE %s)"
+                )
+                like = f"%{search}%"
+                params.extend([like, like, like])
+            if data_scadenza_da is not None:
+                conditions.append(f"{alias}.data_scadenza >= %s")
+                params.append(data_scadenza_da)
+            if data_scadenza_a is not None:
+                conditions.append(f"{alias}.data_scadenza <= %s")
+                params.append(data_scadenza_a)
+            if natura_doc_codice is not None:
+                conditions.append(f"{alias}.natura_doc_codice_interno = %s")
+                params.append(natura_doc_codice)
+            add_emittente_scope_condition_risolta(
+                conditions, params,
+                scope_ids=scope_ids,
+                column=f"{alias}.emittente_fiscale_id",
+            )
+            return conditions, params
+
+        conditions, params = _condizioni("v")
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        # ⚠️ `default_desc=False` e' la scelta, non l'omissione: e' una coda
+        #    (vedi `RATE_SORT_COLONNE_DATA`). Il tiebreak `scadenza_id` e' la
+        #    chiave della vista — la PK della rata.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=RATE_SORT_COLUMNS,
+            default="data_scadenza",
+            tiebreak="scadenza_id",
+            colonne_desc=RATE_SORT_COLONNE_DATA,
+        )
+
+        if solo_aperte:
+            # Il perimetro e' la STESSA `FROM`+`WHERE` della pagina: l'array del
+            # nucleo e la lista che lo legge devono parlare dello stesso insieme.
+            cond_p, params_p = _condizioni("p")
+            where_p = ("WHERE " + " AND ".join(cond_p)) if cond_p else ""
+            perimetro_sql = (
+                f"SELECT p.scadenza_id FROM vendite.vw_fatture_scadenze_lista p {where_p}"
+            )
+            select_sql = f"""
+                SELECT v.*,
+                       s.saldo AS residuo,
+                       s.in_lavorazione,
+                       s.incassato,
+                       s.has_movimenti
+                  FROM vendite.vw_fatture_scadenze_lista v
+                  JOIN pagamenti.fn_get_saldi_rate(ARRAY({perimetro_sql})::bigint[]) s
+                    ON s.scadenza_id = v.scadenza_id
+                 {where}{" AND" if where else " WHERE"} s.saldo <> 0
+            """  # noqa: S608
+            return self._lista_paginata(
+                select_sql=select_sql,
+                # Prima i parametri del perimetro (l'`ARRAY(...)` sta nella
+                # `FROM`), poi quelli del `WHERE` della pagina: l'ordine e'
+                # quello in cui psycopg incontra i `%s`.
+                params=[*params_p, *params],
+                order_clause=f"ORDER BY {ordinamento}",
+                limit=limit,
+                offset=offset,
+            )
+
+        rows, total = self._lista_paginata(
+            select_sql=f"SELECT v.* FROM vendite.vw_fatture_scadenze_lista v {where}",  # noqa: S608
+            params=params,
+            order_clause=f"ORDER BY {ordinamento}",
+            limit=limit,
+            offset=offset,
+        )
+        saldi = self.get_saldi_rate([int(r["scadenza_id"]) for r in rows])
+        # Il nucleo risponde per OGNI rata visibile (LEFT sulle senza
+        # movimenti): una rata della pagina senza saldo e' un contratto rotto,
+        # non un dato da riempire con dei NULL — e va detto, non nascosto.
+        mancanti = [int(r["scadenza_id"]) for r in rows if int(r["scadenza_id"]) not in saldi]
+        ErrorManager.require(
+            not mancanti,
+            code=_E_CHIAMATA,
+            message="Il saldo di una rata della pagina non e' stato restituito.",
+            detail=f"pagamenti.fn_get_saldi_rate senza riga per scadenza_id={mancanti}",
+            function_name=f"{_FN}.list_rate_paginata",
+        )
+        for r in rows:
+            r.update(saldi[int(r["scadenza_id"])])
+        return rows, total
 
     # ══════════════════════════════════════════════════════════════
     #  Le due code di lavoro
@@ -1545,6 +1796,21 @@ class PagamentiRepository:
             cursor.execute(sql, [int(fattura_id)])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
+
+    # Scopo: Di quale documento e' una rata — la sola cosa che il verbo
+    #        «righe da rate» (D19-d) deve risolvere prima di chiamare la nascita
+    #        della riga, che vuole la fattura.
+    # ⚠️ Sotto RLS: una rata fuori perimetro e' `None`, indistinguibile da una
+    #    inesistente — ed e' voluto, come per ogni lettura per id del dominio.
+    def get_fattura_id_di_rata(self, scadenza_id: int) -> int | None:
+        self._guard_canale_sistema("get_fattura_id_di_rata")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT fattura_id FROM vendite.fatture_scadenze WHERE id = %s",
+                [int(scadenza_id)],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
 
     # Scopo: Registra l'atto di sistemazione.
     # ⭐ Un `INSERT`, non una funzione madre: una scrittura sola non ha bisogno
