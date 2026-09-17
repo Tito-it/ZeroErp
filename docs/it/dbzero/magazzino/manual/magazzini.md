@@ -30,8 +30,8 @@ bordi): `mag1`, `MAG1 ` e ` Mag1` sono lo stesso codice.
 
 ### L'ancora del perimetro: `emittente_fiscale_id`
 
-Dal 15-09 ogni magazzino dice **di chi è**: `emittente_fiscale_id` è obbligatorio, senza
-default, con la FK verso `anagrafiche.emittenti_fiscali`. È l'**ancora** da cui discende il
+Dal 15-09 ogni magazzino dice **di chi è**: `emittente_fiscale_id` è obbligatorio (con il
+default dalla sessione, vedi sotto), con la FK verso `anagrafiche.emittenti_fiscali`. È l'**ancora** da cui discende il
 perimetro di tutto il dominio — movimenti, attese, valore, inventari, rettifiche,
 trasferimenti, ubicazioni e le loro note leggono l'emittente dal magazzino
 (`fn_scope_ef_whitelist_via_magazzino`). Un magazzino senza emittente non appartiene a
@@ -42,9 +42,15 @@ Un operatore vede e scrive i magazzini del **proprio emittente** (policy
 perimetro (`trgfn_guard_emittente_scope`, la difesa in profondità). Il meccanismo è quello
 comune: [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-security-rls).
 
-⚠️ **Punto aperto**: non c'è un trigger che assegni l'emittente da solo dalla sessione (nelle
-vendite ce n'è uno per documento). Chi crea un magazzino lo dice; il pannello di
-amministrazione generico oggi non lo passa, ed è un punto da chiudere quando servirà.
+✅ **Il default dell'emittente** (chiuso il 2026-09-15, decisione di Tid): se chi crea il
+magazzino non indica l'emittente, lo mette il trigger `trg_magazzini_a10_default_emittente_ins`
+— il building block unico [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) in modo
+`SOLLEVA` — con l'emittente di lavoro di chi scrive (attivo di sessione, o assegnato). Un
+super admin in modalità «tutti gli emittenti» deve dichiararlo, o legge
+`E_EMITTENTE_NON_RISOLTO` invece di un errore di vincolo. Il default scatta **prima** del
+guard di scope (ordine alfabetico dei `BEFORE ROW`): riempie, poi lo scope giudica. Fino a
+quel giorno questa riga era un «punto aperto»: dal pannello generico un magazzino senza
+emittente moriva con `23502`. Brief: `brief-db-emittente-di-default-un-bb-solo`.
 
 ---
 

@@ -9,7 +9,7 @@
 >
 > Funzioni correlate:
 > [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk)
-> [vendite.trgfn_contratti_default_emittente](/dbzero/vendite/funzioni/trgfn_contratti_default_emittente)
+> [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — il default (dal 2026-09-15 al posto di `trgfn_contratti_default_emittente`)
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 >
 > Errori:

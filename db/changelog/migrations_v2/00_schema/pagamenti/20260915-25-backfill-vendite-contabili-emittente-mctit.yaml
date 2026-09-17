@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PREGRESSO: L'EMITTENTE SI RICOSTRUISCE DOVE SI PUO', E POI CI SI FERMA — L5a
+#   pagamenti.vendite_contabili.emittente_soggetto_ruolo_id, backfill
+#   Brief: brief-db-distinta-numerata-sul-registro, §2.6 (D6), §4-bis.5
+#
+# ── TRE STRADE, IN ORDINE, OGNUNA SOLO DOVE LA PRECEDENTE NON HA RISPOSTO
+#   1) dal CANALE: canale -> conto -> soggetto_ruolo -> emittente (il conto
+#      ha un solo padrone, ex_src_bancari_conto_incasso_un_solo_soggetto);
+#   2) dal LOTTO di fatturazione (vendite_contabili_lotti), se UNO solo:
+#      fatturazione_lotti.emittente_soggetto_ruolo_id e' NOT NULL;
+#   3) dalla FATTURA delle righe (vendite_contabili_righe.fattura_id ->
+#      fatture.emittente_soggetto_ruolo_id), se UNA sola.
+#   Poi ci si ferma. Sul modello una riga senza emittente ricostruibile NON e'
+#   un dato da inventare: il NOT NULL (20260915-26) ha un cancello a zero
+#   residui, fail-closed, e su quelle righe decide una persona.
+#
+# ── ⛔ COSA NON C'E', E PERCHE' ──────────────────────────────────────────
+#   Nessun «default dell'installazione»: sarebbe il quinto livello che D4
+#   vieta, e nominerebbe un id che esiste solo su questa macchina. Il
+#   pregresso non ricostruibile (misurato il 2026-09-15 su dbdev: due bozze
+#   MANUALE vuote, id 5730 e 5869) lo assegna Tid A MANO, per id, fra il primo
+#   stop di -26 e il secondo lancio del migrate (brief §4-bis.5). E' la regola
+#   di AGENTS §Workflow Safety: prima di un fix software per dati errati, si
+#   correggono a mano.
+#
+# ── ⚠️ I TRIGGER SCATTANO, ED E' GIUSTO ─────────────────────────────────
+#   `UPDATE OF emittente_soggetto_ruolo_id` fa scattare
+#   trg_…_a10_emittente_ins_upd (-23): NEW.emittente e' valorizzato, quindi
+#   livello 0 («e' un emittente»: deriva da un emittente) e livello 1
+#   («coerente col canale»: deriva DAL canale, o il canale non c'e') passano
+#   per costruzione. Gli altri guard BEFORE UPDATE (chiusura, transizione,
+#   validazione) reagiscono solo a un cambio di stato_id: verificato sui corpi.
+#   Liquibase gira come proprietario: la RLS non e' forzata e il backfill
+#   vede tutte le righe.
+#
+# ── ⚠️ FILE SEPARATO DAL NOT NULL, per due ragioni ──────────────────────
+#   * una preCondition si valuta PRIMA del proprio changeSet: il cancello
+#     «zero residui» sul file del backfill sarebbe rosso sempre;
+#   * l'UPDATE lascia eventi trigger in sospeso (i require_attivo sono
+#     CONSTRAINT TRIGGER AFTER): un ALTER TABLE nella stessa transazione
+#     muore con «cannot ALTER TABLE because it has pending trigger events»
+#     (lezione di 20260913-14/-15). Liquibase committa fra un changeSet e
+#     l'altro.
+#
+#   Su un database ricostruito da zero i tre UPDATE toccano zero righe:
+#   innocuo, nessun contesto dati_macchina. Nessun rollback: l'unica riga
+#   scritta e' la colonna che -21 ha creato, e la porta via il suo rollback.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260915-25-backfill-vendite-contabili-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260915-25-backfill-vendite-contabili-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill di pagamenti.vendite_contabili.emittente_soggetto_ruolo_id sul pregresso,
+        in tre strade e in ordine: dal canale di incasso, dal lotto di fatturazione (se uno
+        solo), dalla fattura delle righe (se una sola). Poi si ferma: nessun default
+        dell'installazione, il residuo lo decide una persona (D6, brief
+        distinta-numerata-sul-registro). Su un DB da zero tocca zero righe. File separato
+        dal NOT NULL (-26): una preCondition guarda prima del proprio changeSet, e l'UPDATE
+        lascia eventi trigger in sospeso.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: emittente_soggetto_ruolo_id
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_lotti
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- 1) Dal canale: il conto su cui il denaro e' atterrato ha un solo
+              --    padrone. E' la stessa catena del modo 'ente_incasso' del
+              --    risolutore.
+              UPDATE pagamenti.vendite_contabili c
+                 SET emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                FROM pagamenti.enti_incasso e
+                JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+                  ON src.id = e.soggetto_ruolo_conto_bancario_id
+                JOIN anagrafiche.emittenti_fiscali ef
+                  ON ef.soggetto_ruolo_id = src.soggetto_ruolo_id
+               WHERE e.id = c.ente_incasso_id
+                 AND c.emittente_soggetto_ruolo_id IS NULL;
+
+              -- 2) Dal lotto di fatturazione, se UNO solo: un lotto e' di un
+              --    emittente (NOT NULL), e una distinta di fondi nasce per lotto.
+              UPDATE pagamenti.vendite_contabili c
+                 SET emittente_soggetto_ruolo_id = x.sr
+                FROM (SELECT vcl.contabile_id,
+                             min(l.emittente_soggetto_ruolo_id) AS sr
+                        FROM pagamenti.vendite_contabili_lotti vcl
+                        JOIN vendite.fatturazione_lotti l ON l.id = vcl.lotto_id
+                       GROUP BY vcl.contabile_id
+                      HAVING count(DISTINCT l.emittente_soggetto_ruolo_id) = 1) x
+               WHERE x.contabile_id = c.id
+                 AND c.emittente_soggetto_ruolo_id IS NULL;
+
+              -- 3) Dalla fattura delle righe, se UNA sola: e' l'unico appiglio
+              --    di una distinta manuale senza canale che ha gia' lavorato.
+              UPDATE pagamenti.vendite_contabili c
+                 SET emittente_soggetto_ruolo_id = x.sr
+                FROM (SELECT r.contabile_id,
+                             min(f.emittente_soggetto_ruolo_id) AS sr
+                        FROM pagamenti.vendite_contabili_righe r
+                        JOIN vendite.fatture f ON f.id = r.fattura_id
+                       GROUP BY r.contabile_id
+                      HAVING count(DISTINCT f.emittente_soggetto_ruolo_id) = 1) x
+               WHERE x.contabile_id = c.id
+                 AND c.emittente_soggetto_ruolo_id IS NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Niente da disfare: la colonna la porta via il rollback di
+              -- 20260915-21, e i valori ricostruiti sono fatti, non invenzioni.
+              SELECT 1;

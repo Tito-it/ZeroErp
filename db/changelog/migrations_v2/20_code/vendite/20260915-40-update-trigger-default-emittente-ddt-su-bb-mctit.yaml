@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — LA COPIA DI DDT SI RITIRA: IL TRIGGER PASSA AL BUILDING BLOCK
+#   trg_ddt_a10_default_emittente_ins (vendite.ddt) -> script.trgfn_default_emittente_fiscale('LASCIA_NULL', 'SALTA_CON_SORGENTE')
+#   DROP FUNCTION vendite.trgfn_ddt_default_emittente()
+#   Brief: brief-db-emittente-di-default-un-bb-solo, sezioni 4.3-4.4 e 5 (P-3)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Era la VARIANTE, non una copia, e i due argomenti la replicano ESATTA:
+#   - SALTA_CON_SORGENTE: un DDT da evasione (sorgente_tipo_id + sorgente_uid)
+#     eredita l'emittente dell'ordine in trgfn_ddt_normalize, che fa
+#     COALESCE(NEW, sorgente) — NEW vince, quindi qui NON si riempie, o un
+#     super admin con emittente attivo B che evade un ordine di A farebbe un
+#     DDT di B (e trgfn_ddt_guard_emittente_ba lo rifiuterebbe);
+#   - LASCIA_NULL: GUC vuota o admin globale -> si lascia NULL, e decide il
+#     normalize (fallback dal billing account) o il NOT NULL.
+#   Nessun codice da ritirare: la variante non ne sollevava.
+#   Il pgTAP vendite/test-emittente-ddt-simmetria-v1 asserisce il trigger per
+#   nome e che ordini prima di trg_ddt_normalize_ins_upd: entrambi invariati.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   Il NOME del trigger non cambia: e' per tabella, e i BEFORE ROW scattano in
+#   ordine alfabetico — trg_ddt_a10_default_emittente_ins resta prima di
+#   guard_emittente_ba, guard_emittente_scope e normalize (D5). Si fa DROP +
+#   CREATE con lo stesso nome sulla funzione nuova, POI il DROP FUNCTION della
+#   copia (una funzione con un trigger montato non si droppa). ⛔ DROP secchi,
+#   senza IF EXISTS: sono oggetti scritti a mano (non generati da ci_apply) e
+#   devono esistere — un IF EXISTS nasconderebbe un DB diverso da quello atteso.
+#   La preCondition lo dice prima: la copia e il BB esistono entrambi.
+
+#
+# Dipendenze: 20260915-36 (il BB), che ha numero minore. Verifica:
+#   db/pgtap/script/test-trgfn-default-emittente-fiscale-v1.sql (nessun oggetto
+#   vivo nomina piu' la copia; il trigger esegue il BB; l'ordine alfabetico).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260915-40-update-trigger-default-emittente-ddt-su-bb-mctit.yaml
+
+  - changeSet:
+      id: 20260915-40-update-trigger-default-emittente-ddt-su-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt: trg_ddt_a10_default_emittente_ins passa da vendite.trgfn_ddt_default_emittente a
+        script.trgfn_default_emittente_fiscale('LASCIA_NULL', 'SALTA_CON_SORGENTE'), stesso nome, e la copia si droppa.
+        Variante replicata dai due argomenti. Brief:
+        brief-db-emittente-di-default-un-bb-solo (P-3, D1/D4/D5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_default_emittente_fiscale';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_ddt_default_emittente';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.ddt'::regclass
+                     AND tgname = 'trg_ddt_a10_default_emittente_ins'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_ddt_a10_default_emittente_ins ON vendite.ddt;
+
+              CREATE TRIGGER trg_ddt_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('LASCIA_NULL', 'SALTA_CON_SORGENTE');
+
+              DROP FUNCTION vendite.trgfn_ddt_default_emittente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La copia non si ricrea qui: il ripristino di questo passo e' il ripristino
+              -- dell'intero brief (dal changeSet che la creo'). Si smonta solo il BB.
+              DROP TRIGGER IF EXISTS trg_ddt_a10_default_emittente_ins ON vendite.ddt;

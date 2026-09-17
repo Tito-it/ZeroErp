@@ -3,25 +3,26 @@
 -- pgTAP test per Zero ERP
 -- Test: il perimetro degli incassi — dal CONTO, non dalla fattura
 --
--- Elenco test (plan 18):
+-- Elenco test (plan 19):
 --  1) Riferimenti minimi presenti: due emittenti, due operatori, una fattura
 --  2) L'operatore A vede la propria distinta
 --  3) ...e NON vede quella dell'altro emittente
 --  4) L'operatore B vede la propria e non quella di A
 --  5) ⭐ La riga DA ABBINARE, che fattura non ha, resta visibile al suo emittente
 --  6) ...e invisibile all'altro
---  7) La distinta INTERNA e' visibile a entrambi: non e' di nessuno
---  8) ⭐ ...ma le sue RIGHE no: quelle le filtra la fattura che portano
+--  7) ⭐ La distinta INTERNA e' del suo emittente: B NON la vede (rev 2026-09-15, D3)
+--  8) ⭐ ...e nemmeno la sua RIGA: la testata e' di A, e la fattura pure
 --  9) ⭐ La riga DA_ABBINARE su una distinta MANUALE senza canale si SCRIVE
--- 10) ⚠️ ...e la vede anche l'altro emittente: non porta nessuna attribuzione
--- 11) 🔴 L'operatore B non puo' scrivere una riga sulla distinta di A
--- 12) 🔴 L'operatore B non puo' aprire una distinta sul canale di A
--- 13) Senza ruolo applicativo non si vede niente: il cancello e' quello
--- 14) ⭐ La policy sui CANALI esiste, ed e' FOR ALL
--- 15) Creare un canale sul PROPRIO conto: PASSA — e' la prova che conta
--- 16) 🔴 Sul conto di un ALTRO emittente: rifiutato
--- 17) ...e l'altro emittente non lo vede
--- 18) Assert finale cleanup
+-- 10) ⭐ ...e A la VEDE dalla sola testata: ne' fattura ne' canale, ma l'emittente c'e' (rev 2026-09-15)
+-- 11) ⭐ ...e B NON la vede: quella riga porta l'attribuzione della sua testata (rev 2026-09-15, D3)
+-- 12) 🔴 L'operatore B non puo' scrivere una riga sulla distinta di A
+-- 13) 🔴 L'operatore B non puo' aprire una distinta sul canale di A
+-- 14) Senza ruolo applicativo non si vede niente: il cancello e' quello
+-- 15) ⭐ La policy sui CANALI esiste, ed e' FOR ALL
+-- 16) Creare un canale sul PROPRIO conto: PASSA — e' la prova che conta
+-- 17) 🔴 Sul conto di un ALTRO emittente: rifiutato
+-- 18) ...e l'altro emittente non lo vede
+-- 19) Assert finale cleanup
 --
 -- Scopo:
 --  - collaudare S3-5 e S3-4 dove contano davvero, cioe' come utente
@@ -33,23 +34,33 @@
 --    proprietario, e con il FORCE quella rientrerebbe sotto la policy della
 --    tabella che sta leggendo — una RICORSIONE. Girare come applicazione e'
 --    insieme piu' fedele e l'unico modo che funziona;
---  - ⭐ **dal 2026-08-28 copre anche i CANALI** (test 14-17). `enti_incasso`
+--  - ⭐ **dal 2026-08-28 copre anche i CANALI** (test 15-18). `enti_incasso`
 --    porta il conto su cui atterra il denaro — cioe' di chi sono i soldi prima
 --    che esista una fattura — e fino a quel giorno non aveva row security:
 --    l'elenco dei canali, IBAN compreso, sarebbe stato comune a tutti. ⭐ E il
---    test 15 e' quello che conta davvero: una policy che protegge e impedisce
+--    test 16 e' quello che conta davvero: una policy che protegge e impedisce
 --    di lavorare e' peggio del difetto che chiude;
 --  - ⭐ presidiare i due casi che il perimetro dal conto esiste per servire: la
 --    riga «da abbinare» (test 5), che con un predicato via fattura sarebbe
---    invisibile a TUTTI, e la distinta interna (test 7/8), che e' condivisa
---    nella testata e riservata nelle righe;
+--    invisibile a TUTTI, e la distinta interna (test 7/8);
 --  - 🔴 e presidiare il caso che il lotto 6 ha ROTTO alla prima applicazione
 --    (test 9): la riga DA_ABBINARE sul lotto di lavoro di un operatore, cioe'
 --    una distinta MANUALE senza canale (D12-a). Le prime due strade non la
 --    coprivano e il WITH CHECK la rifiutava con 42501 — un perimetro che
 --    impedisce la lavorazione invece di proteggerla. L'hanno segnalato due
 --    pgTAP gia' verdi, e questo file non lo copriva: e' la ragione per cui i
---    test 9 e 10 esistono. Correzione in avanti: changeSet 20260822-24.
+--    test 9, 10 e 11 esistono. Correzione in avanti: changeSet 20260822-24.
+--
+--  ⭐ REV 2026-09-15 (brief distinta-numerata-sul-registro, D3): LA DISTINTA SA
+--    DI CHI E'. Porta emittente_soggetto_ruolo_id (risolto in una sede sola:
+--    dato, canale, operatore in sessione, o rifiuto) e la policy passa da
+--    quella colonna (20260915-31); il ramo «senza canale = di tutti» e' sparito
+--    dalla testata e dai satelliti (20260915-32). Cosi' i test 7, 8, 10 e 11
+--    hanno CAMBIATO VERSO — non sono stati tolti: una distinta interna e' del
+--    suo emittente come il lotto o l'atto da cui nasce, e le sue righe la
+--    seguono per la sola testata, senza bisogno della fattura. Il perimetro
+--    «dal conto» resta vero per costruzione: il canale deve essere
+--    dell'emittente della riga (livello 1 della sede unica).
 --
 -- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3 S3-4/S3-5 · Decisione: brief madre D5 · lotto 6
@@ -88,7 +99,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- ============================================================
 -- Fixture — due lati: A (l'emittente che ha una fattura) e B (l'altro)
@@ -257,8 +268,9 @@ SELECT (SELECT dist_a FROM tmp_dist), 'PGTAP_PERIM_DA_ABBINARE', 25.00,
        (SELECT stato_da_abbinare FROM tmp_ab),
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti));
 
--- Riga sulla distinta INTERNA, con la fattura di A: e' la fattura a dire di
--- chi e' quel denaro, perche' la distinta interna non e' di nessuno.
+-- Riga sulla distinta INTERNA, con la fattura di A. ⭐ Rev 2026-09-15: la
+-- distinta interna non e' piu' «di nessuno» — e' nata nei panni di A ed e' di
+-- A (livello 3 della sede unica); la fattura e' la seconda strada, non l'unica.
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, importo, stato_id, fattura_id, billing_account_id, meta)
 SELECT (SELECT dist_interna FROM tmp_dist), 'PGTAP_PERIM_INTERNA', 15.00,
@@ -349,30 +361,33 @@ SELECT is(
 );
 
 -- ============================================================
--- 7/8. ⭐ La distinta interna: testata condivisa, righe riservate
+-- 7/8. ⭐ La distinta interna: del suo emittente, testata e righe
 -- ============================================================
+-- ⭐ Rev 2026-09-15 (D3): fino a quel giorno la testata era «di nessuno» e
+--   visibile a tutti (chiave di riuso senza emittente). Ora e' nata nei panni
+--   di A e porta l'emittente di A in colonna: B non la vede, e la riga la
+--   segue — per la testata, prima ancora che per la fattura.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
     (SELECT b_user FROM tmp_ab)); END $ctx$;
 
 SELECT is(
   (SELECT count(*) FROM pagamenti.vendite_contabili c
     WHERE c.id = (SELECT dist_interna FROM tmp_dist)),
-  1::bigint,
-  '7) La distinta INTERNA e'' visibile anche all''altro emittente: non e'' di nessuno'
+  0::bigint,
+  '7) La distinta INTERNA e'' del suo emittente: B non la vede (D3)'
 );
 
--- ⭐ E qui sta la parte che non si eredita: la testata e' condivisa perche' la
---   chiave di riuso non nomina l'emittente, ma il denaro che ci passa dentro ha
---   un padrone — e a dirlo e' la fattura che la riga porta.
+-- Entrambe le strade della riga puntano ad A (testata e fattura): per B e'
+-- invisibile due volte. Il verso «ne' documento ne' canale» e' il test 10/11.
 SELECT is(
   (SELECT count(*) FROM pagamenti.vendite_contabili_righe r
     WHERE r.riferimento_ente = 'PGTAP_PERIM_INTERNA'),
   0::bigint,
-  '8) ...ma la sua RIGA no: quella la filtra la fattura che porta'
+  '8) ...e nemmeno la sua RIGA: la testata e'' di A, e la fattura pure'
 );
 
 -- ============================================================
--- 9/10. ⭐ Ne' documento ne' canale: la riga che si stava perdendo
+-- 9/10/11. ⭐ Ne' documento ne' canale: la riga che si stava perdendo
 -- ============================================================
 -- 🔴 E' il caso che il lotto 6 ha rotto alla prima applicazione. Una riga
 --   `DA_ABBINARE` — che fattura non ha, e' il suo stato — su una distinta
@@ -392,24 +407,31 @@ SELECT lives_ok(
   '9) La riga DA_ABBINARE su una distinta MANUALE senza canale si SCRIVE'
 );
 
--- ⚠️ E si vede da entrambi i lati, ed e' la DECISIONE presa e non un effetto
---   collaterale: una riga senza documento su una distinta senza canale non
---   porta nessuna attribuzione — non c'e' niente in essa che dica di chi sia.
---   Nasconderla a tutti non protegge nessuno e impedisce solo di lavorarla.
---   🔵 L'alternativa — rendere il canale obbligatorio anche sulle distinte
---   manuali — e' annotata nel brief: oggi enti_incasso e' a zero righe.
+-- ⭐ Rev 2026-09-15 (D3): fino a quel giorno questa riga «si vedeva da entrambi
+--   i lati» perche' non portava nessuna attribuzione — ne' fattura ne' canale.
+--   Ora la sua TESTATA sa di chi e' (l'operatore in sessione, livello 3 della
+--   sede unica), e la riga la segue per la strada 1 della policy — la sola
+--   testata, senza fattura. A la vede; B no. La lavorabilita' che il lotto 6
+--   aveva rotto resta intera (test 9), senza il ramo «di tutti».
+SELECT is(
+  (SELECT count(*) FROM pagamenti.vendite_contabili_righe r
+    WHERE r.riferimento_ente = 'PGTAP_PERIM_MANUALE'),
+  1::bigint,
+  '10) ...e A la VEDE dalla sola testata: ne'' fattura ne'' canale, ma l''emittente c''e'''
+);
+
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
     (SELECT b_user FROM tmp_ab)); END $ctx$;
 
 SELECT is(
   (SELECT count(*) FROM pagamenti.vendite_contabili_righe r
     WHERE r.riferimento_ente = 'PGTAP_PERIM_MANUALE'),
-  1::bigint,
-  '10) ...e la vede anche l''altro emittente: non porta nessuna attribuzione'
+  0::bigint,
+  '11) ...e B NON la vede: porta l''attribuzione della sua testata (D3)'
 );
 
 -- ============================================================
--- 11/12. 🔴 La scrittura fuori perimetro viene rifiutata, e lo dice
+-- 12/13. 🔴 La scrittura fuori perimetro viene rifiutata, e lo dice
 -- ============================================================
 -- ⛔ Questo non e' un doppione della policy: la policy fa SPARIRE, il trigger
 --    RIFIUTA E SPIEGA. Un WITH CHECK da solo direbbe «new row violates
@@ -423,7 +445,7 @@ SELECT throws_ok(
   ),
   'P0001',
   NULL,
-  '11) L''operatore B non puo'' scrivere una riga sulla distinta di A'
+  '12) L''operatore B non puo'' scrivere una riga sulla distinta di A'
 );
 
 SELECT throws_like(
@@ -438,11 +460,11 @@ SELECT throws_like(
     (SELECT ente_a FROM tmp_enti)
   ),
   '%scope emittente%',
-  '12) L''operatore B non puo'' aprire una distinta sul canale di A, e il messaggio lo dice'
+  '13) L''operatore B non puo'' aprire una distinta sul canale di A, e il messaggio lo dice'
 );
 
 -- ============================================================
--- 13. Il cancello e' `app.ruolo_applicativo`
+-- 14. Il cancello e' `app.ruolo_applicativo`
 -- ============================================================
 -- ⚠️ NON si svuota `app.current_user_id`: quello non e' fail-closed — con
 --    l'utente nullo le funzioni di scope rispondono come per un job batch. Il
@@ -454,11 +476,11 @@ SELECT is(
     WHERE c.id IN ((SELECT dist_a FROM tmp_dist), (SELECT dist_b FROM tmp_dist_b),
                    (SELECT dist_interna FROM tmp_dist))),
   0::bigint,
-  '13) Senza ruolo applicativo non si vede niente: il cancello e'' fail-closed'
+  '14) Senza ruolo applicativo non si vede niente: il cancello e'' fail-closed'
 );
 
 -- ============================================================
--- 14-17. ⭐ I CANALI DI INCASSO — il perimetro della configurazione
+-- 15-18. ⭐ I CANALI DI INCASSO — il perimetro della configurazione
 -- ============================================================
 -- ⚠️ Si asserisce il comando oltre all'esistenza: una policy FOR SELECT con lo
 --    stesso nome passerebbe un controllo di sola presenza e renderebbe la
@@ -468,7 +490,7 @@ SELECT is(
     WHERE p.schemaname = 'pagamenti' AND p.tablename = 'enti_incasso'
       AND p.policyname = 'rls_enti_incasso_perimetro_incasso'),
   'ALL',
-  '14) La policy sui canali esiste ed e'' FOR ALL, non FOR SELECT'
+  '15) La policy sui canali esiste ed e'' FOR ALL, non FOR SELECT'
 );
 
 -- Il conto di incasso di ciascun lato: e' da li' che il canale prende il suo
@@ -482,9 +504,9 @@ SELECT (SELECT min(src.id) FROM anagrafiche.soggetti_ruoli_conti_bancari src
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
     (SELECT a_user FROM tmp_ab)); END $ctx$;
 
--- ⭐ 15) LA PROVA CHE CONTA: la policy non deve chiudere la scrittura.
+-- ⭐ 16) LA PROVA CHE CONTA: la policy non deve chiudere la scrittura.
 SELECT CASE WHEN (SELECT conto_a FROM tmp_conti) IS NULL
-       THEN skip('15) nessun conto di INCASSO sull''emittente A: caso non misurabile', 1)
+       THEN skip('16) nessun conto di INCASSO sull''emittente A: caso non misurabile', 1)
        ELSE lives_ok(
          format(
            $sql$INSERT INTO pagamenti.enti_incasso
@@ -493,14 +515,14 @@ SELECT CASE WHEN (SELECT conto_a FROM tmp_conti) IS NULL
                 VALUES ('PGTAP_CANALE_A', 'Canale di prova A', 'ALTRO', true, %s, %s, %s)$sql$,
            (SELECT centro_banca FROM tmp_ab), (SELECT a_sr FROM tmp_ab),
            (SELECT conto_a FROM tmp_conti)),
-         '15) Creare un canale sul PROPRIO conto PASSA: la policy protegge senza impedire di lavorare')
+         '16) Creare un canale sul PROPRIO conto PASSA: la policy protegge senza impedire di lavorare')
        END;
 
--- 🔴 16) Sul conto di un altro emittente: rifiutato dalla WITH CHECK.
+-- 🔴 17) Sul conto di un altro emittente: rifiutato dalla WITH CHECK.
 -- ⚠️ 42501 e' insufficient_privilege: e' cosi' che una policy rifiuta una
 --    scrittura, e dichiararlo distingue il rifiuto dal crash di un guard.
 SELECT CASE WHEN (SELECT conto_b FROM tmp_conti) IS NULL
-       THEN skip('16) nessun conto di INCASSO sull''emittente B: caso non misurabile', 1)
+       THEN skip('17) nessun conto di INCASSO sull''emittente B: caso non misurabile', 1)
        ELSE throws_ok(
          format(
            $sql$INSERT INTO pagamenti.enti_incasso
@@ -511,23 +533,23 @@ SELECT CASE WHEN (SELECT conto_b FROM tmp_conti) IS NULL
            (SELECT conto_b FROM tmp_conti)),
          '42501',
          NULL,
-         '16) Un canale sul conto di un ALTRO emittente e'' rifiutato: il perimetro morde in scrittura')
+         '17) Un canale sul conto di un ALTRO emittente e'' rifiutato: il perimetro morde in scrittura')
        END;
 
--- 17) E in lettura l'altro emittente non lo vede.
+-- 18) E in lettura l'altro emittente non lo vede.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
     (SELECT b_user FROM tmp_ab)); END $ctx$;
 
 SELECT is(
   (SELECT count(*) FROM pagamenti.enti_incasso e WHERE e.codice = 'PGTAP_CANALE_A'),
   0::bigint,
-  '17) Il canale di A e'' invisibile a B: l''elenco dei canali non e'' piu'' comune'
+  '18) Il canale di A e'' invisibile a B: l''elenco dei canali non e'' piu'' comune'
 );
 
 -- ============================================================
--- 18. Cleanup
+-- 19. Cleanup
 -- ============================================================
-SELECT ok(true, '18) Cleanup: la transazione viene annullata, nessun residuo');
+SELECT ok(true, '19) Cleanup: la transazione viene annullata, nessun residuo');
 
 SELECT * FROM finish();
 ROLLBACK;

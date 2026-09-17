@@ -2,7 +2,11 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: vendite.trgfn_preventivi_default_emittente (BEFORE INSERT)
+-- Test: trg_preventivi_a10_default_emittente_ins (BEFORE INSERT) — dal
+--   2026-09-15 esegue il building block script.trgfn_default_emittente_fiscale
+--   ('SOLLEVA') al posto della copia vendite.trgfn_preventivi_default_emittente,
+--   ritirata (brief-db-emittente-di-default-un-bb-solo, 20260915-38); il NOME
+--   del trigger e' invariato, ed e' cio' che il test 1 asserisce.
 --   +   vendite.trgfn_preventivi_guard_utility_istanza_coerenza
 -- Riferimento brief preventivi rev2 (sessione 2026-05-01).
 --
@@ -13,7 +17,9 @@
 --    3. Payload con emittente esplicito + GUC valida
 --       -> trigger NON sovrascrive
 --    4. Coppia (istanza, utility) coerente -> INSERT ok (lives_ok)
---    5. GUC vuota + payload senza emittente -> raise P0001
+--    5. GUC vuota + payload senza emittente -> P0001 E_EMITTENTE_NON_RISOLTO
+--       (throws_like sulla FRASE: il codice di dominio E_PREV_EMITTENTE_NON_RISOLTO
+--       e' ritirato con obsoleto_dal dal 2026-09-15)
 --       ⭐ unico punto in cui svuotare app.current_user_id resta legittimo:
 --          la GUC vuota e' il caso in prova, non una scorciatoia (nota al 5)
 --    6. Coppia (istanza, utility) incoerente -> raise P0001
@@ -189,16 +195,18 @@ SELECT lives_ok(
 --   `BEFORE ROW` scattano in ordine ALFABETICO, e su vendite.preventivi
 --     trg_preventivi_a10_default_emittente_ins       <-- primo
 --     trg_preventivi_a10_guard_emittente_scope_ins_upd
---   quindi il default alza `E_PREV_EMITTENTE_NON_RISOLTO` prima che il guard
---   di scope veda la riga. (Verificato su `pg_trigger`, non supposto.)
+--   quindi il default alza `E_EMITTENTE_NON_RISOLTO` prima che il guard
+--   di scope veda la riga. (Verificato su `pg_trigger`, non supposto; dal
+--   2026-09-15 lo asserisce anche il test 8 di
+--   script/test-trgfn-default-emittente-fiscale-v1 su ogni tabella montata.)
 --   ⛔ Se qualcuno rinomina uno dei due, l'ordine si inverte e questo test
---   diventa VERDE SULL'ALTRO ERRORE: entrambi passano da
---   `script.fn_log_and_raise_error`, quindi entrambi sono `P0001`, e
---   `throws_ok` non sa distinguerli. Il messaggio non e' asseribile alla
---   lettera perche' porta dentro il numero, che e' casuale a ogni giro.
+--   diventa rosso sull'ALTRO ERRORE — e lo DICE: dal 2026-09-15 la frase e'
+--   asseribile (`throws_like`), perche' il messaggio del codice unico non
+--   porta piu' il numero del documento nel `%s` (la diagnostica sta nel
+--   context, non a video). Entrambi restano `P0001`: la frase distingue.
 SELECT set_config('app.current_user_id', '', true);
 
-SELECT throws_ok(
+SELECT throws_like(
   format($SQL$
     INSERT INTO vendite.preventivi (
       numero, data, stato_doc_preventivo_id, billing_account_id,
@@ -213,9 +221,8 @@ SELECT throws_ok(
     (SELECT istanza_utility_id FROM _t_ba),
     (SELECT utility_id FROM _t_ba)
   ),
-  'P0001',
-  NULL,
-  '5. GUC vuota + payload senza emittente -> P0001 (E_PREV_EMITTENTE_NON_RISOLTO)'
+  'Nessun emittente fiscale attivo%',
+  '5. GUC vuota + payload senza emittente -> P0001 E_EMITTENTE_NON_RISOLTO (frase del codice unico)'
 );
 
 -- Ripristino GUC valida per test 6 (ha bisogno di emittente per arrivare al guard)

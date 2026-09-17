@@ -37,6 +37,11 @@ BEGIN
     --   e o riescono tutte o non ne resta nessuna. Sta nel
     --   database perche' e' tutto SQL: nessuna orchestrazione
     --   Python, l'atomicita' e' dentro la funzione.
+    --
+    -- Rev 2026-09-15 (brief distinta-numerata-sul-registro, L7):
+    --   la distinta non porta piu' un codice composto qui
+    --   (SIS_…): lo assegna il trigger sul registro DISTINTA
+    --   dell'emittente dell'ATTO, che entra nell'INSERT (D5).
     -- =========================================================
 
     -- ── 1. L'atto, e il lucchetto ───────────────────────────
@@ -243,16 +248,22 @@ BEGIN
         --   CONDIVIDERE: due rimborsi sullo stesso canale nello
         --   stesso giorno riuserebbero la stessa testata, e il
         --   secondo atto sbatterebbe su uq_sistemazioni_contabile con
-        --   un 23505 muto. ⭐ Il codice porta l'id dell'atto: la
-        --   distinta di una sistemazione E' il documento di quell'atto.
+        --   un 23505 muto.
+        -- ⭐ Rev 2026-09-15 (D5): il codice NON si compone qui. Lo
+        --   assegna il trigger sul registro DISTINTA dell'emittente
+        --   dell'ATTO — che entra nell'INSERT: e' NOT NULL su
+        --   sistemazioni ed e' lo stesso valore scritto sul fondo
+        --   nel ramo RIPORTO, una sorgente sola dentro la stessa
+        --   madre. L'atto si ritrova da meta.sistemazione_id e da
+        --   sistemazioni.contabile_id; l'unicita' «una contabile per
+        --   atto» la tiene uq_sistemazioni_contabile.
         INSERT INTO pagamenti.vendite_contabili (
-            codice, centro_riscossione_id, ente_incasso_id,
+            centro_riscossione_id, ente_incasso_id, emittente_soggetto_ruolo_id,
             data_contabile, data_registrazione, stato_id, origine, meta
         ) VALUES (
-            concat('SIS_', v_atto.id, '_',
-                   to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS')),
             v_centro_id,
             CASE WHEN v_atto.destinazione = 'RIMBORSO' THEN p_ente_incasso_id END,
+            v_atto.emittente_soggetto_ruolo_id,
             current_date, current_date, v_stato_bozza_id, 'GENERATA',
             jsonb_build_object('origine', 'SISTEMAZIONE',
                                'sistemazione_id', v_atto.id,
@@ -319,7 +330,7 @@ END
 $function$
 
 COMMENT ON FUNCTION pagamenti.fn_conferma_sistemazione(p_sistemazione_id bigint, p_ente_incasso_id bigint)
-IS 'La MADRE che esegue un atto di sistemazione: sceglie la strada e ci mette sopra il denaro. ⭐ Non inventa nessuna macchina — le tre esistevano gia'' tutte (D15-a): il RIPORTO e'' un fondo fattura con origine MANUALE, il RIMBORSO una distinta a importi negativi (D3-d, «il denaro non ha versi, ha segni»), la COMPENSAZIONE una distinta sul centro dedicato con due righe che sommano a zero. ⭐ Il segno della riga lo da'' il SALDO — sign(saldo) x |importo| — e non un IF sul tipo di documento: la formula non nomina ne'' fatture ne'' note di credito, ed e'' la stessa famiglia della regola di capienza del lotto 5. 🔴 Il controllo dell''eccedenza sta alla CONFERMA e non alla registrazione: fra decidere e confermare puo'' arrivare un altro incasso, e una garanzia data prima e'' una garanzia che scade (stessa forma di D13). ⭐ Ogni atto ha la SUA distinta e non passa da fn_get_or_create_vendite_contabile, che e'' costruita per condividere: due rimborsi lo stesso giorno sbatterebbero su uq_sistemazioni_contabile con un 23505 muto. Il codice della distinta porta l''id dell''atto. ⚠️ Il canale del rimborso e'' un PARAMETRO e non una colonna dell''atto: da quale conto esce il bonifico si decide quando si paga. ⚠️ Distinta e righe si scrivono in due istruzioni separate: padre e figlio nella stessa CTE non passano sotto la row security.';
+IS 'La MADRE che esegue un atto di sistemazione: sceglie la strada e ci mette sopra il denaro. ⭐ Non inventa nessuna macchina — le tre esistevano gia'' tutte (D15-a): il RIPORTO e'' un fondo fattura con origine MANUALE, il RIMBORSO una distinta a importi negativi (D3-d, «il denaro non ha versi, ha segni»), la COMPENSAZIONE una distinta sul centro dedicato con due righe che sommano a zero. ⭐ Il segno della riga lo da'' il SALDO — sign(saldo) x |importo| — e non un IF sul tipo di documento: la formula non nomina ne'' fatture ne'' note di credito, ed e'' la stessa famiglia della regola di capienza del lotto 5. 🔴 Il controllo dell''eccedenza sta alla CONFERMA e non alla registrazione: fra decidere e confermare puo'' arrivare un altro incasso, e una garanzia data prima e'' una garanzia che scade (stessa forma di D13). ⭐ Ogni atto ha la SUA distinta e non passa da fn_get_or_create_vendite_contabile, che e'' costruita per condividere: due rimborsi lo stesso giorno sbatterebbero su uq_sistemazioni_contabile con un 23505 muto. ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, L7): la distinta di una sistemazione prende il numero dal registro DISTINTA dell''emittente dell''ATTO (DIS-<sigla>-<anno>-<progressivo>, assegnato dal trigger a10_gen_codice) e non porta piu'' un codice composto qui (SIS_<atto>_<ts>): l''atto si ritrova da meta.sistemazione_id e da sistemazioni.contabile_id. L''emittente entra nell''INSERT dall''atto — NOT NULL, ed e'' lo stesso valore scritto sul fondo nel ramo RIPORTO. ⚠️ Il canale del rimborso e'' un PARAMETRO e non una colonna dell''atto: da quale conto esce il bonifico si decide quando si paga. ⚠️ Distinta e righe si scrivono in due istruzioni separate: padre e figlio nella stessa CTE non passano sotto la row security.';
 ```
 
 ---

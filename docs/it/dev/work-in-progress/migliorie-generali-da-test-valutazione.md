@@ -676,6 +676,63 @@ collegati, ed è il motivo per cui nessuna lista mentiva).
 
 ---
 
+### 🟠 D14 — La capability di UN DDT paga le partite di TUTTI i DDT, e sotto RLS le paga venti volte
+
+Trovato il 2026-09-17 inseguendo un pgTAP lento
+(`script/test-capability-motivi-e-nessuna-azione-v1.sql`, oltre i 90 s a cui
+`pgtap-baseline.sh` uccide un file). Il test aveva un difetto suo — richiamava
+le stesse funzioni `STABLE` fino a quattro volte per documento — ed è stato
+riscritto perché il blob si calcoli una volta (36 s). Ma il grosso del tempo
+era del **prodotto**, e resta:
+
+* `script.fn_available_actions_ddt(id)` chiama `vendite.fn_list_ddt_da_pushare(p_ddt_id)`
+  **e**, nel ramo dei motivi, `vendite.fn_ddt_push_diagnosi(p_ddt_id)`. Entrambe
+  fanno `JOIN vendite.vw_partite_merce`, e la vista è a CTE **materializzate**
+  (`riga` è letta due volte, `alloc` e `migra` sono finestre sulla popolazione):
+  il predicato sul documento **non entra**, quindi ogni chiamata ricalcola le
+  partite di tutti i DDT. È strutturale, non un caso del planner: la partita di
+  una riga dipende dalle spedizioni **precedenti** della stessa riga d'ordine
+  (greedy di `alloc`), quindi filtrare `riga` per DDT darebbe un numero
+  sbagliato. ⇒ Una funzione «per documento» — quella che alimenta il drawer del
+  DDT a ogni apertura — ha il costo della lista;
+* sotto RLS quel costo si moltiplica: la CTE `sospetto` (`sospetto_duplicato_ordine`)
+  è un `EXISTS` correlato a quattro tabelle che il planner esegue **riga per
+  riga**, e ogni riga scandita paga la sua policy (`fn_scope_ef_whitelist_via_ddt`,
+  `…_via_ordine_riga`, `…_via_ordine`): ~3.500 valutazioni per una lettura.
+
+**Misurato il 2026-09-17 su dbdev** (51 DDT, 36 partite), come `zeroerp_app` con
+contesto operatore, salvo dove scritto: `vw_partite_merce` intera **18 ms da
+owner, 396 ms da app** (di cui 322 nella sola `sospetto`);
+`fn_available_actions_ddt` **33 ms da owner, ~850 ms da app**. Per confronto
+`fn_available_actions_preventivo` ~10 ms e `_ordine` ~29 ms.
+
+⭐ **La leva provata, ancora da decidere.** `sospetto` riscritta *set-based* —
+prima l'insieme delle coppie `(ddt_id, articolo_id)` coperte da un ordine
+collegato al DDT (`DISTINCT`, quindi una riga per coppia e nessuna
+moltiplicazione), poi il `JOIN` delle righe senza fulfillment su quella coppia —
+con **`AS MATERIALIZED`** su entrambe le CTE (senza, il planner la inlina e
+torna al ciclo per riga; la forma è già in uso in tre changeSet). Provata come
+`SELECT` in transazione ritirata: **375 ms → 88 ms**, e `EXCEPT ALL` nei due
+versi a **zero righe**. È equivalente per costruzione, non solo sui dati di
+oggi: l'`EXISTS` vecchio è esattamente «la coppia della riga sta in
+quell'insieme». Il presidio esiste già (`test-vw-partite-merce-v1.sql`, test 11,
+costruisce il caso). Con questa sola mossa la capability del DDT scende a
+~200 ms.
+
+⚠️ **La seconda leva è più profonda**: la capability legge la vista **due
+volte** (lister + diagnosi), e la diagnosi da sola risponde a entrambe le
+domande (`motivo IS NULL` = eleggibile). Va guardata insieme al contratto di
+equivalenza fra le due funzioni, «blindato a pgTAP» — non è una riga da
+cambiare di straforo.
+
+⛔ Non è un problema del solo test: **ogni pgTAP che itera i DDT vivi paga lo
+stesso conto** (`test-capability-annulla-aspetto-e-stato-leggibile-v1.sql`
+chiama la capability su tutti gli otto domini una volta) e lo paga il drawer.
+Decisione aperta per Tid: changeSet su `vw_partite_merce` (ri-specificando
+`security_invoker=on`) con la prima leva, e se aprire un brief per la seconda.
+
+---
+
 ## 4. Cosa NON è un difetto
 
 * ⛔ **`contabilita` vuoto.** Fuori perimetro per decisione: se servirà, sarà un
@@ -808,6 +865,12 @@ D6 e il registro dei rossi in CI.
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno
       (append al CSV dei messaggi, mai un loader nuovo), oppure dichiarare che
       quei codici non raggiungono mai un operatore — e scriverlo nel `note`.
+* [ ] **D14** — (aperto il 2026-09-17) `sospetto` di `vw_partite_merce`
+      set-based + `AS MATERIALIZED` (provata: 375 → 88 ms da app, righe
+      identiche), changeSet con `security_invoker=on` ri-specificato. Poi
+      decidere se la capability del DDT debba leggere la vista **una** volta
+      invece di due (lister + diagnosi). ✅ Il pgTAP che l'ha fatto emergere è
+      già riscritto (blob una volta per documento, >90 s → 36 s).
 
 ### 🟡 Struttura
 

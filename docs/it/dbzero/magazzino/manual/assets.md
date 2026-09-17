@@ -50,6 +50,11 @@ Un operatore vede e scrive gli asset del **proprio emittente** (policy
 (`fn_scope_ef_whitelist_via_asset`). Meccanismo comune:
 [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-security-rls).
 
+Se chi crea l'asset non indica l'emittente, lo mette `trg_assets_a10_default_emittente_ins`
+— il building block [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) in modo `SOLLEVA`,
+dal 2026-09-15 — con l'emittente di lavoro di chi scrive; chi non ne ha uno (admin globale
+in modalità «tutti gli emittenti») lo dichiara, o legge `E_EMITTENTE_NON_RISOLTO`.
+
 Fino al 14-09 la tabella era nel registro del debito RLS («quale delle due chiavi nullable,
 billing account o contratto, porta il perimetro?»): la risposta è stata la terza chiave, e
 la riga di debito è uscita.

@@ -341,7 +341,36 @@ Chi legge quella colonna lo sa:
 registri, passare da «nessuno» a un nome di colonna è un cambio come gli altri,
 e viene rifiutato.
 
-ℹ️ Le cinque famiglie in servizio hanno tutte il billing account: questa
-revisione **apre la porta** al primo documento che non ce l'ha, non lo
-registra. Sarà il cantiere acquisti a farlo. Brief:
+ℹ️ Al 2026-09-14 le cinque famiglie in servizio avevano tutte il billing
+account: questa revisione **apre la porta** al primo documento che non ce
+l'ha, non lo registra. *Diceva «sarà il cantiere acquisti a farlo»: è stata la
+distinta, il giorno dopo (sezione qui sotto).* Brief:
 `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.
+
+### 🔄 rev 2026-09-15 — la sesta famiglia: `DISTINTA`, la prima fuori da `vendite`
+
+La **distinta contabile di incasso** (`pagamenti.vendite_contabili`, colonna
+`codice`) entra nel catalogo (`20260915-33`): è la prima famiglia che vive in
+un altro schema, la prima **senza billing account** in servizio (la porta
+aperta il 14-09 la attraversa per prima lei) e, come la commessa, ha
+l'identità sulla **stringa nuda** — sigla dell'emittente e anno dentro il
+codice: `DIS-<SIGLA>-<ANNO>-<7 cifre>`. Senza serie, `presidia_data_documento`
+falso (la distinta di ieri inserita oggi è un caso normale), prefisso `DIS-`,
+7 cifre, anno nel numero.
+
+I registri `DIS-<sr>` nascono da `vendite.fn_provision_registri_famiglia`
+(`20260915-34`) per gli emittenti esistenti, e dal trigger di provisioning per
+quelli futuri. Il resto — come e quando la distinta prende il numero, e di chi
+è — sta nella scheda di
+[pagamenti.vendite_contabili](/dbzero/pagamenti/manual/vendite_contabili).
+
+⛔ **Vive in un CSV dedicato (`famiglie_documento_distinta.csv`), non in
+`famiglie_documento.csv`**, e non è una preferenza. `20260831-03` (i registri
+per emittente) pretende in `preConditions` **esattamente 4** famiglie attive
+diverse da `FATTURA`, con `HALT`; su un database ricostruito da zero il mirror
+base gira **prima** di quel cancello, quindi una sesta riga nel CSV base
+farebbe morire il migrate **in CI** — e su dev non si vedrebbe mai, perché quel
+changeSet ri-esegue solo se il suo file cambia. ⚠️ **La settima famiglia dovrà
+fare lo stesso**: CSV suo, loader suo, numerato dopo. Il cancello di
+`20260831-03` non si rilassa (è mergiato). Il commento di `20260830-14` che dice
+«una famiglia nuova è un append» è vero **fino** al 31-08.

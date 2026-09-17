@@ -111,6 +111,36 @@
 -- scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e
 -- cambiarlo senza toccare il guard lo renderebbe verde per cecita'.
 -- ------------------------------------------------------------
+-- rev 2026-09-17 — IL BLOB SI CALCOLA UNA VOLTA PER DOCUMENTO.
+-- Il file impiegava piu' di 90 secondi come applicazione, cioe' oltre la
+-- soglia a cui `pgtap-baseline.sh` uccide un file: copertura ZERO, e un
+-- rosso intermittente a seconda del carico della macchina. Il difetto era
+-- del TEST: le stesse funzioni STABLE venivano richiamate piu' volte sullo
+-- stesso documento — fn_available_actions_preventivo e _ordine QUATTRO
+-- volte (_cap_prev/_cap_ord, due colonne di _cap_nota, _cap_vuoti o
+-- _cap_chiusi), fn_available_actions_ddt DUE volte (le due colonne di
+-- _cap_nota).
+--
+-- Misurato il 2026-09-17 su dbdev, come zeroerp_app con contesto operatore,
+-- UNA chiamata: preventivo ~10 ms, ordine ~29 ms, DDT ~850 ms (33 ms come
+-- owner). Il DDT paga vendite.vw_partite_merce: fn_list_ddt_da_pushare e
+-- fn_ddt_push_diagnosi la leggono per INTERO anche a p_ddt_id fissato — le
+-- CTE materializzate della vista non lasciano passare il filtro sul
+-- documento — e sotto RLS la vista costa 22 volte l'owner, perche' la CTE
+-- `sospetto` e' un EXISTS correlato che rivaluta le policy riga per riga.
+-- Quel costo e' del PRODOTTO (lo paga ogni apertura del drawer DDT) e
+-- questo file puo' solo pagarlo una volta invece di due.
+--
+-- ⭐ Ora il blob di ogni documento sta in `_blob`, calcolato UNA volta
+-- dopo aver preso il contesto operatore; tutte le popolazioni (`_cap_*`)
+-- si derivano da li'. NON indebolisce nulla: e' lo stesso valore che le
+-- asserzioni leggevano, letto una volta invece di quattro. Le fn_check_*
+-- (il lato «guard» del confronto) restano chiamate VIVE: sono l'altro
+-- termine del paragone, non una copia del blob.
+-- ⛔ Restano vive anche le chiamate dei test 12 e 13, che vengono DOPO una
+--   mutazione di stato: una copia scattata prima direbbe il mondo di ieri.
+-- Pattern: vendite/test-documento-lineage-v1.sql (2026-09-10).
+-- ------------------------------------------------------------
 
 BEGIN;
 
@@ -182,30 +212,68 @@ SELECT is(
            (SELECT count(DISTINCT dominio) FROM _stati_chiusi)));
 
 -- ------------------------------------------------------------
--- Popolazioni: si calcolano UNA volta, cosi' i conteggi delle asserzioni e
--- quelli degli skip parlano degli stessi soggetti.
+-- ⭐ IL BLOB, UNA VOLTA PER DOCUMENTO (rev 2026-09-17 in testa). Da qui
+-- discendono TUTTE le popolazioni `_cap_*`: i conteggi delle asserzioni e
+-- quelli degli skip parlano degli stessi soggetti, e ogni documento paga
+-- la propria capability una volta sola.
+-- Si popola DOPO il contesto operatore: contiene esattamente cio' che la
+-- RLS lascia vedere a quell'operatore. Le tre FK di stato sono NOT NULL,
+-- quindi il JOIN al catalogo degli stati non restringe la popolazione.
+-- ⛔ Chi aggiunge un'asserzione qui dentro: se legge il blob di un
+--   documento NON mutato, lo prende da `_blob`; se lo legge DOPO averlo
+--   mutato (test 12 e 13), chiama la funzione viva.
+-- ------------------------------------------------------------
+CREATE TEMP TABLE _blob AS
+SELECT 'preventivo'::text                              AS doc,
+       p.id,
+       sdp.id                                          AS stato_id,
+       sdp.codice_interno::text                        AS stato_cod,
+       sdp.fase::text                                  AS fase,
+       sdp.meta->>'nessuna_azione_key'                 AS nota_attesa,
+       script.fn_available_actions_preventivo(p.id)    AS blob
+  FROM vendite.preventivi p
+  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+UNION ALL
+SELECT 'ordine', o.id,
+       sdo.id, sdo.codice_interno::text, sdo.fase::text,
+       sdo.meta->>'nessuna_azione_key',
+       script.fn_available_actions_ordine(o.id)
+  FROM vendite.ordini o
+  JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+UNION ALL
+SELECT 'ddt', d.id,
+       sdd.id, sdd.codice_interno::text, sdd.fase::text,
+       sdd.meta->>'nessuna_azione_key',
+       script.fn_available_actions_ddt(d.id)
+  FROM vendite.ddt d
+  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id;
+
+-- ------------------------------------------------------------
+-- Popolazioni dell'annullamento: il lato «capability» viene dal blob, il
+-- lato «guard» (fn_check_*_annullabile) e' una chiamata VIVA — e' l'altro
+-- termine del confronto dei test 2-5, e una copia non confronterebbe nulla.
 -- ------------------------------------------------------------
 CREATE TEMP TABLE _cap_prev AS
-SELECT p.id,
+SELECT b.id,
        (a->>'enabled')::boolean                                   AS cap_enabled,
        COALESCE(a->'reasons', '[]'::jsonb)                        AS cap_reasons,
        a->>'reason'                                               AS cap_reason,
-       script.fn_check_preventivo_annullabile(p.id)               AS motivi_fn
-  FROM vendite.preventivi p
-  CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_preventivo(p.id)->'available_actions') a
- WHERE a->>'target_state' = 'ANNULLATO';
+       script.fn_check_preventivo_annullabile(b.id)               AS motivi_fn
+  FROM _blob b
+  CROSS JOIN LATERAL jsonb_array_elements(b.blob->'available_actions') a
+ WHERE b.doc = 'preventivo'
+   AND a->>'target_state' = 'ANNULLATO';
 
 CREATE TEMP TABLE _cap_ord AS
-SELECT o.id,
+SELECT b.id,
        (a->>'enabled')::boolean                                   AS cap_enabled,
        COALESCE(a->'reasons', '[]'::jsonb)                        AS cap_reasons,
        a->>'reason'                                               AS cap_reason,
-       script.fn_check_ordine_annullabile(o.id)                   AS motivi_fn
-  FROM vendite.ordini o
-  CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_ordine(o.id)->'available_actions') a
- WHERE a->>'target_state' = 'ANNULLATO';
+       script.fn_check_ordine_annullabile(b.id)                   AS motivi_fn
+  FROM _blob b
+  CROSS JOIN LATERAL jsonb_array_elements(b.blob->'available_actions') a
+ WHERE b.doc = 'ordine'
+   AND a->>'target_state' = 'ANNULLATO';
 
 -- ============================================================
 -- 2) Preventivo: capability == guard, su tutta la popolazione.
@@ -295,33 +363,17 @@ END;
 --   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il
 --   guard lo renderebbe verde per cecita'. Vedi 20260810-04/-05/-06.
 -- ------------------------------------------------------------
+-- ⚠️ rev 2026-09-17: le due colonne che leggevano il blob lo richiamavano
+--   OGNI volta (due chiamate per documento, e sul DDT erano ~1,7 s a riga):
+--   ora leggono `_blob`. La popolazione e' identica — tre domini, tutti i
+--   documenti visibili — e cosi' la semantica delle colonne.
 CREATE TEMP TABLE _cap_nota AS
-SELECT 'preventivo'::text AS doc, p.id, sdp.fase,
-       script.fn_available_actions_preventivo(p.id)->>'stato_info_key'      AS nota,
-       sdp.meta->>'nessuna_azione_key'                                      AS nota_attesa,
-       EXISTS (SELECT 1 FROM jsonb_array_elements(
-                     script.fn_available_actions_preventivo(p.id)->'available_actions') a
+SELECT b.doc, b.id, b.fase,
+       b.blob->>'stato_info_key'                                            AS nota,
+       b.nota_attesa,
+       EXISTS (SELECT 1 FROM jsonb_array_elements(b.blob->'available_actions') a
                 WHERE COALESCE((a->>'enabled')::boolean, true))              AS ha_azioni_vive
-  FROM vendite.preventivi p
-  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
-UNION ALL
-SELECT 'ordine', o.id, sdo.fase,
-       script.fn_available_actions_ordine(o.id)->>'stato_info_key',
-       sdo.meta->>'nessuna_azione_key',
-       EXISTS (SELECT 1 FROM jsonb_array_elements(
-                     script.fn_available_actions_ordine(o.id)->'available_actions') a
-                WHERE COALESCE((a->>'enabled')::boolean, true))
-  FROM vendite.ordini o
-  JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
-UNION ALL
-SELECT 'ddt', d.id, sdd.fase,
-       script.fn_available_actions_ddt(d.id)->>'stato_info_key',
-       sdd.meta->>'nessuna_azione_key',
-       EXISTS (SELECT 1 FROM jsonb_array_elements(
-                     script.fn_available_actions_ddt(d.id)->'available_actions') a
-                WHERE COALESCE((a->>'enabled')::boolean, true))
-  FROM vendite.ddt d
-  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id;
+  FROM _blob b;
 
 -- ============================================================
 -- 6) Ordine: il valore nel blob e' SEMPRE quello dichiarato dallo stato.
@@ -397,19 +449,18 @@ END;
 --    con la sua reason.
 -- ============================================================
 CREATE TEMP TABLE _cap_vuoti AS
-SELECT o.id,
+SELECT b.id,
        (a->>'enabled')::boolean AS cap_enabled,
        a->>'reason'             AS cap_reason
-  FROM vendite.ordini o
-  JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
-  CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_ordine(o.id)->'available_actions') a
+  FROM _blob b
+  CROSS JOIN LATERAL jsonb_array_elements(b.blob->'available_actions') a
   JOIN config.transizioni_stati_ordini t
-       ON t.stato_da_id = o.stato_doc_ordine_id
+       ON t.stato_da_id = b.stato_id
       AND t.meta->>'action_key' = a->>'key'
- WHERE COALESCE((t.meta->>'requires_righe')::boolean, false)
+ WHERE b.doc = 'ordine'
+   AND COALESCE((t.meta->>'requires_righe')::boolean, false)
    AND NOT EXISTS (SELECT 1 FROM vendite.ordini_righe r
-                    WHERE r.ordine_id = o.id AND r.attivo IS TRUE);
+                    WHERE r.ordine_id = b.id AND r.attivo IS TRUE);
 
 SELECT CASE WHEN (SELECT count(*) FROM _cap_vuoti) = 0
   THEN pass('9) SKIP: nessun ordine vuoto con transizione requires_righe')
@@ -452,13 +503,11 @@ END;
 --     piu' tornare qui.
 -- ============================================================
 CREATE TEMP TABLE _cap_chiusi AS
-SELECT p.id, sdp.codice_interno AS stato,
-       c.blob->>'can_push_commessa_reason_key' AS push_key,
-       c.blob->>'can_genera_ordine_reason_key' AS ordine_key
-  FROM vendite.preventivi p
-  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
-  CROSS JOIN LATERAL (SELECT script.fn_available_actions_preventivo(p.id) AS blob) c
- WHERE sdp.fase = 'CHIUSO';
+SELECT b.id, b.stato_cod AS stato,
+       b.blob->>'can_push_commessa_reason_key' AS push_key,
+       b.blob->>'can_genera_ordine_reason_key' AS ordine_key
+  FROM _blob b
+ WHERE b.doc = 'preventivo' AND b.fase = 'CHIUSO';
 
 SELECT CASE WHEN (SELECT count(*) FROM _cap_chiusi) = 0
   THEN pass('11) SKIP: nessun preventivo in fase CHIUSO (ramo non esercitato da nessun soggetto)')

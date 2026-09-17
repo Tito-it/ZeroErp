@@ -272,7 +272,6 @@
 - [trgfn_commesse_guard_emittente_ba](manual/trgfn_commesse_guard_emittente_ba.md) — (latest review 26-08-26)
 - [trgfn_commesse_guard_transizione](manual/trgfn_commesse_guard_transizione.md) — (rev 2026-06-07)
 - [trgfn_commesse_sorgenti_guard_emittente](manual/trgfn_commesse_sorgenti_guard_emittente.md) — (latest review 26-08-26)
-- [trgfn_contratti_default_emittente](manual/trgfn_contratti_default_emittente.md) — (rev 2026-05-26)
 - [trgfn_contratti_default_valuta](manual/trgfn_contratti_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_contratti_freeze_listino_versione](manual/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.
 - [trgfn_contratti_gen_codice](manual/trgfn_contratti_gen_codice.md) — La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticamente `numero` contratto quando il valore non viene fornito.
@@ -287,7 +286,6 @@
 - [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
 - [trgfn_contratti_sync_is_abortito_snapshot](manual/trgfn_contratti_sync_is_abortito_snapshot.md) — (rev 2026-08-21 — funzione rev 2026-06-02)
 - [trgfn_contratti_utilities_guard_tipo_classe](manual/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
-- [trgfn_ddt_default_emittente](manual/trgfn_ddt_default_emittente.md) — (rev 2026-07-13)
 - [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
 - [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
 - [trgfn_ddt_guard_causale_immutabile](manual/trgfn_ddt_guard_causale_immutabile.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice B, decisione D-4)
@@ -336,7 +334,6 @@
 - [trgfn_offerte_commerciali_guard_emittente_ba](manual/trgfn_offerte_commerciali_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_offerte_commerciali_guard_transizione](manual/trgfn_offerte_commerciali_guard_transizione.md) — (rev 2026-08-21 — funzione rev 2026-05-25)
 - [trgfn_offerte_commerciali_revisione](manual/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24)
-- [trgfn_ordini_default_emittente](manual/trgfn_ordini_default_emittente.md) — (rev 2026-06-01)
 - [trgfn_ordini_ful_guard_consistenza](manual/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 - [trgfn_ordini_gen_numero](manual/trgfn_ordini_gen_numero.md) — (rev 2026-08-31, sera)
 - [trgfn_ordini_guard_emittente_ba](manual/trgfn_ordini_guard_emittente_ba.md) — (rev 2026-06-01)
@@ -345,7 +342,6 @@
 - [trgfn_ordini_ricalcola_totali](manual/trgfn_ordini_ricalcola_totali.md) — (latest review 05-06-2026)
 - [trgfn_ordini_righe_componenti_guard_pending](manual/trgfn_ordini_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga ordine ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. Cambi strutturali durante la fase di approvazione renderebbero la decisione ambigua. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ordini_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_ordini_righe_ricalcola_totali](manual/trgfn_ordini_righe_ricalcola_totali.md) — (latest review 05-06-2026)
-- [trgfn_preventivi_default_emittente](manual/trgfn_preventivi_default_emittente.md)
 - [trgfn_preventivi_default_valuta](manual/trgfn_preventivi_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_preventivi_gen_codice](manual/trgfn_preventivi_gen_codice.md) — La trigger function `vendite.trgfn_preventivi_gen_codice()` genera automaticamente `numero` preventivo quando il campo non viene valorizzato.
 - [trgfn_preventivi_guard_annullamento](manual/trgfn_preventivi_guard_annullamento.md) — (rev 2026-08-21 — creata 2026-08-04, brief vie-uscita-operatore §3.1)

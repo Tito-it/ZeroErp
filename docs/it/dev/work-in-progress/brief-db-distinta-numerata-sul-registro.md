@@ -24,13 +24,19 @@
 > **Sede.** Piano DB qui (§4, progetto; §4-bis, sviluppo lotto per lotto). Per BE
 > (§5) e FE (§6) c'è **solo l'elenco**: il piano lo scrivono loro. Il copione di collaudo prende quattro righe (§7).
 >
-> **Stato:** 📝 **brief scritto il 2026-09-15; piano di sviluppo DB scritto e
-> confermato da Tid lo stesso giorno (§4-bis: livello 0, lotto strict e
-> `NOT NULL` sull'UPDATE confermati; 5730/5869 → sr 72 a mano). In attesa
-> del via allo sviluppo.** Nessun changeSet scritto, nessuna migrazione
-> applicata. Le misure sono datate (§1, §2.6) e non sono la
-> ragione di nessuna scelta. ⚠️ Il piano ha **corretto** il brief in otto
-> punti (§4-bis.19): due sono mine di CI che l'analisi non aveva visto.
+> **Stato:** ✅ **DB applicato il 2026-09-17** (changeSet `20260915-21` …
+> `20260915-35`, `databasechangelog` su dbdev: `-21…-25` alle 12:03, stop
+> fail-closed su `-26` con le due residue, `UPDATE` a mano di 5730/5869 → sr 72,
+> `-26…-35` alle 12:06; zero distinte senza emittente; registri `DIS-72` e
+> `DIS-159` con l'anno nel numero) **e pgTAP verdi** — su dbdev come app (la
+> RLS è esercitata: è il verdetto che la prova di §4-bis.18 da owner non poteva
+> dare) e sullo scratch `zeroerp_ci` ricostruito da zero (dove L11 e
+> `20260831-03` si sono incontrati davvero). **Aperti**: BE-1..6 (§5) e FE-1..4
+> (§6), il residuo di `fn_sync_contabili_fondo_fattura` (§4-bis.19, seconda
+> tabella) da decidere, il commit. Le misure sono datate (§1, §2.6) e non sono
+> la ragione di nessuna scelta. ⚠️ Il piano ha **corretto** il brief in otto
+> punti, e la scrittura ne ha aggiunti cinque (§4-bis.19): due sono mine di CI
+> che l'analisi non aveva visto.
 
 ---
 
@@ -387,7 +393,7 @@ costruzione sono tre, non uno (§4-bis.16). Il dettaglio in §4-bis.19.
 
 | Lotto | Cosa | Fase | Dipende da | Sblocca |
 | --- | --- | --- | --- | --- |
-| **L1** | tre colonne (nullable), due FK, due indici, `DROP DEFAULT` su `codice` | `00_schema/pagamenti` | — | tutto |
+| **L1** | tre colonne (nullable), due FK, **un** indice (`registro_id, anno`; nessuno sull'emittente, §4-bis.19), `DROP DEFAULT` su `codice` | `00_schema/pagamenti` | — | tutto |
 | **L2** | `pagamenti.fn_get_emittente_distinta()` — **la sede unica** dei quattro livelli di D4 | `20_code/pagamenti` | L1 (`%TYPE` sulle colonne nuove) | L3, L6 |
 | **L3** | `trgfn_vendite_contabili_emittente()` + trigger `a10_emittente_ins_upd` | `20_code/pagamenti` | L2 | il `NOT NULL` di L5b (riempitore prima del vincolo) |
 | **L4** | `trgfn_vendite_contabili_gen_codice()` + trigger `a10_gen_codice_ins` | `20_code/pagamenti` | L1 | il `DROP DEFAULT` smette di lasciare `codice` vuoto |
@@ -404,7 +410,7 @@ costruzione sono tre, non uno (§4-bis.16). Il dettaglio in §4-bis.19.
 | **L13** | i due codici errore + messaggi (append ai CSV vivi) | `80_data/config` | — | L2 |
 | **L14** | `fk_index_policy` per le due FK nuove | `80_data` | L1 | `vw_fk_con_indice_missing_policy` a zero |
 | **L15** | pgTAP nuovo `pagamenti/test-distinta-numerazione-registro-v1.sql` | `db/pgtap` | tutti | — |
-| **L16** | tre pgTAP rossi per costruzione, due aggiunte nei file delle madri, censimento sui 23 | `db/pgtap` | tutti | baseline che non si muove |
+| **L16** | **quattro** pgTAP rossi per costruzione (§4-bis.19), due aggiunte nei file delle madri, censimento sui 23 | `db/pgtap` | tutti | baseline che non si muove |
 | **L17** | documentazione manuale + guida | `docs/` | tutti | — |
 
 ⚠️ **Perché L3 e L4 stanno PRIMA di L5b, ed è la lezione della commessa**
@@ -457,9 +463,13 @@ ALTER TABLE pagamenti.vendite_contabili
         FOREIGN KEY (registro_id)
         REFERENCES vendite.registri_fatturazione (id);
 
--- La colonna su cui la policy filtra ogni lettura (L9a).
-CREATE INDEX ix_vendite_contabili_emittente_sr
-    ON pagamenti.vendite_contabili (emittente_soggetto_ruolo_id);
+-- ⚠️ NESSUN indice sull'emittente (scritto così in 20260915-21; il brief ne
+--    prevedeva uno «perché la policy filtra ogni lettura»): la policy di L9a
+--    filtra ATTRAVERSO fn_scope_ef_whitelist_via_sr(), non con un confronto
+--    sulla colonna, e il planner non lo userebbe mai; le sorelle
+--    (fk_fatturazione_lotti_emittente_sr, fk_sistemazioni_emittente) non ne
+--    hanno; e un indice col nome canonico accanto alla riga `false` di L14 che
+--    lo nomina verrebbe DROPPATO a ogni corsa del 90_end (apply_fk_index_policy).
 -- Copre la FK sul registro e l'asse del contatore, come ix_commesse_registro_anno.
 CREATE INDEX ix_vendite_contabili_registro_anno
     ON pagamenti.vendite_contabili (registro_id, anno);
@@ -484,7 +494,7 @@ COMMENT ON COLUMN pagamenti.vendite_contabili.anno IS '…';
   `SET CONSTRAINTS ALL IMMEDIATE`) e il `block_deact` su
   `registri_fatturazione`, entrambi col nome **hashato** a 63 caratteri: in
   pgTAP si cercano per funzione + argomenti, mai per nome.
-* `rollback`: DROP degli indici, delle due FK e delle tre colonne, e **ripristino
+* `rollback`: DROP dell'indice, delle due FK e delle tre colonne, e **ripristino
   del DEFAULT** con l'espressione letta dall'auto-gen
   (`concat('VC_', to_char(clock_timestamp(), …), '_', substr(md5(…), 1, 8))`):
   un rollback che lasciasse `codice` senza default e senza trigger romperebbe
@@ -1083,13 +1093,14 @@ mergiano insieme.
 ```csv
 schema_name,table_name,constraint_name,consentito,dll_command,generated_by_script,user_insert,data_insert
 pagamenti,vendite_contabili,fk_vendite_contabili_registro,false,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_registro_id ON pagamenti.vendite_contabili(registro_id);,false,mctit,AAAA-MM-GG 00:00:00+02
-pagamenti,vendite_contabili,fk_vendite_contabili_emittente_sr,false,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_emittente_sr ON pagamenti.vendite_contabili(emittente_soggetto_ruolo_id);,false,mctit,AAAA-MM-GG 00:00:00+02
+pagamenti,vendite_contabili,fk_vendite_contabili_emittente_sr,false,CREATE INDEX IF NOT EXISTS ix_vendite_contabili_emittente_soggetto_ruolo_id ON pagamenti.vendite_contabili(emittente_soggetto_ruolo_id);,false,mctit,AAAA-MM-GG 00:00:00+02
 ```
 
 Forma di `20260831-09`, ma `onFail: HALT` e non `MARK_RAN` (memoria: `MARK_RAN`
-segna senza eseguire). `consentito = false` su entrambe perché l'indice c'è già
-(L1): per il registro lo copre `ix_vendite_contabili_registro_anno`, per
-l'emittente `ix_vendite_contabili_emittente_sr`. ⚠️ `dll_command` **sempre**
+segna senza eseguire). `consentito = false` su entrambe: per il registro
+l'indice c'è già (L1, `ix_vendite_contabili_registro_anno` copre per prefisso);
+per l'emittente **non c'è e non serve** (la policy filtra via funzione; le
+sorelle non ne hanno — §4-bis.19). ⚠️ `dll_command` **sempre**
 valorizzato (`chk_fk_index_policy_dll_command_forma`) e nomina l'indice
 **canonico**, non quello composto: nominare `…registro_anno` farebbe cancellare
 al primo `90_end` l'indice a due colonne.
@@ -1120,32 +1131,35 @@ ciascuno **nel contesto del suo padrone** (calco di
 `CASSA`. Gli emittenti creati dall'helper hanno il registro `DISTINTA` dal
 trigger z90 (⚠️ solo se L11 è applicato: il test 1 lo pretende).
 
-**Asserzioni** (plan 18, tutte nel verso «si costruisce il caso»):
+**Asserzioni** (plan **19** — numerazione del file scritto; tutte nel verso «si costruisce il caso»):
 
 | # | Cosa | Come |
 | --- | --- | --- |
-| 0 | B non è il default dell'installazione | `NOT EXISTS (… is_default AND emittente_soggetto_ruolo_id = B.sr)` |
-| 1 | la famiglia è a catalogo com'è dichiarata | `is(row(schema, tabella, colonna, ba, serie, prefisso, lunghezza, anno, presidia), row('pagamenti','vendite_contabili','codice',NULL,NULL,'DIS-',7,true,false))` |
-| 2 | ogni emittente attivo ha un registro `DISTINTA` con `anno_nel_numero` | conteggio derivato, nessun nome |
-| 3 | manuale **con canale** di B → `codice ~ '^DIS-<sigla B>-<anno>-\d{7}$'`, `registro_id` = il registro DISTINTA di B, `anno` = `vendite.fn_get_anno_registro(data_contabile)` | `matches` + `is` sulle tre colonne |
-| 4 | la seconda distinta di B — stesso canale, `data_contabile` diversa nello stesso anno, così la chiave di riuso **non** la ridà — è `+1` | `is(progressivo, 2)` letto da `right(codice, 7)` |
-| 5 | nel contesto di A, la prima di A è `…0000001` sul **suo** registro: nessuna collisione con B | `is` |
-| 6 | `data_contabile` 31/12 e 2/1 → due `anno`, e il secchio nuovo riparte da 1 | `is` sui due progressivi |
-| 7 | senza canale, come B → l'emittente è B (livello 3) | `is(emittente_soggetto_ruolo_id, B.sr)` |
-| 8 | senza canale e **senza** emittente in sessione (`set_config('app.current_user_id','',true)`, poi rimessa) → `E_CONTABILE_EMITTENTE_OBBLIGATORIO` | `throws_like '%indicare l''emittente%'` su un INSERT diretto. ⭐ Arriva la **nostra** frase e non `E_SCOPE_SENZA_UTENTE` né un 42501: i `BEFORE ROW` scattano prima della `WITH CHECK`, e fra i BEFORE `a10_emittente` precede `a10_guard_emittente_scope` — è l'ordine alfabetico di L3 che qui si misura |
-| 9 | emittente A indicato + canale di B → `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` | `throws_like '%non di %'` |
-| 10 | `codice` fornito (`PGTAP-DIS-KO`) → rispettato, `registro_id`/`anno` `NULL` | `is` |
-| 11 | correzione e sistemazione **non stanno qui**: la fixture di una distinta CHIUSA con righe POSTATE e quella di un'eccedenza vera esistono già nei file di quelle madri, e si asseriscono lì (L16, due aggiunte) | — |
-| 13 | ⭐ **presidio della sede unica**: nessuna funzione in `pg_proc` fa `INSERT INTO pagamenti.vendite_contabili (…)` con `codice` fra le colonne | regex sul `prosrc` delle **tre** madri per nome (perimetro = elenco) |
-| 13-bis | gemello «esiste»: le tre madri contengono quell'INSERT, e **nessun'altra** funzione lo contiene | un quarto scrittore fa rosso: si dichiara aggiungendolo all'elenco |
+| 1 | B non è il default dell'installazione | `NOT EXISTS (… is_default AND emittente_soggetto_ruolo_id = B.sr)` |
+| 2 | la famiglia è a catalogo com'è dichiarata | `is(row(schema, tabella, colonna, ba, serie, prefisso, lunghezza, anno, presidia), row('pagamenti','vendite_contabili','codice',NULL,NULL,'DIS-',7,true,false))` |
+| 3 | ogni emittente attivo ha un registro `DISTINTA` con `anno_nel_numero` | conteggio derivato, nessun nome |
+| 4 | manuale **con canale** di B → `codice ~ '^DIS-<sigla B>-<anno>-\d{7}$'`, `registro_id` = il registro DISTINTA di B, `anno` = `vendite.fn_get_anno_registro(data_contabile)` | `matches` + `is` sulle tre colonne |
+| 5 | la seconda distinta di B — stesso canale, `data_contabile` diversa nello stesso anno, così la chiave di riuso **non** la ridà — è `+1` | `is(progressivo, 2)` letto da `right(codice, 7)` |
+| 6 | nel contesto di A, la prima di A è `…0000001` sul **suo** registro: nessuna collisione con B | `is` |
+| 7 | `data_contabile` 31/12 e 2/1 → due `anno`, e il secchio nuovo riparte da 1 | `is` sui due progressivi |
+| 8 | senza canale, come B → l'emittente è B (livello 3) | `is(emittente_soggetto_ruolo_id, B.sr)` |
+| 9 | senza canale e **senza** emittente in sessione (`set_config('app.current_user_id','',true)`, poi rimessa) → `E_CONTABILE_EMITTENTE_OBBLIGATORIO` | `throws_like '%indicare l''emittente%'` su un INSERT diretto. ⭐ Arriva la **nostra** frase e non `E_SCOPE_SENZA_UTENTE` né un 42501: i `BEFORE ROW` scattano prima della `WITH CHECK`, e fra i BEFORE `a10_emittente` precede `a10_guard_emittente_scope` — è l'ordine alfabetico di L3 che qui si misura |
+| 10 | emittente A indicato + canale di B → `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` | `throws_like '%non di %'` |
+| 11 | `codice` fornito (`PGTAP-DIS-KO`) → rispettato, `registro_id`/`anno` `NULL` | `is` |
+| 12 | ⭐ **presidio della sede unica**: nessuna funzione in `pg_proc` fa `INSERT INTO pagamenti.vendite_contabili (…)` con `codice` fra le colonne | regex sul `prosrc` delle **tre** madri per nome (perimetro = elenco) |
+| 13 | gemello «esiste»: le tre madri contengono quell'INSERT, e **nessun'altra** funzione lo contiene | un quarto scrittore fa rosso: si dichiara aggiungendolo all'elenco |
 | 14 | la composizione si prova sui **valori**: `vendite.fn_componi_numero_documento('DIS-', 'ACME-2026-', 1, 7, NULL) = 'DIS-ACME-2026-0000001'` | `is` |
 | 15 | `UPDATE` che sposta il canale di una distinta di B su un canale di A → rifiuto (livello 1 su UPDATE) | `throws_like` |
-| 16 | `UPDATE … SET emittente_soggetto_ruolo_id = NULL` → `23502` (il NOT NULL parla, il trigger **non** ri-riempie) | `throws_ok(…, '23502')` |
-| 17 | l'operatore di A **non vede** la distinta senza canale di B (D3, il verso di §3.3) | contesto A, `count = 0` |
-| 18 | …e le sue **righe** neppure: il ramo «senza canale = di tutti» non esiste più | contesto A, `count = 0` su `vendite_contabili_righe` |
+| 16 | la colonna è `NOT NULL` — è il **vincolo** che parla su un UPDATE a NULL, non il trigger | `col_not_null` (memoria: sotto RLS il `WITH CHECK` scatta **prima** di `NOT NULL`, quindi come app il rifiuto è `42501`, come owner `23502`: un `throws_ok(…, '23502')` sarebbe rosso proprio nel runner previsto) |
+| 17 | `UPDATE … SET emittente_soggetto_ruolo_id = NULL` → rifiutato, il trigger **non** ri-riempie dalla sessione | `DO` che cattura `not_null_violation OR insufficient_privilege` e scrive `RIFIUTATO:<sqlstate>`, poi `matches('^RIFIUTATO:(23502\|42501)$')` |
+| 18 | l'operatore di A **non vede** la distinta senza canale di B (D3, il verso di §3.3) | contesto A, `count = 0` |
+| 19 | …e le sue **righe** neppure: il ramo «senza canale = di tutti» non esiste più | contesto A, `count = 0` su `vendite_contabili_righe` |
 
-* Test 8: la GUC si salva in una temp table e si **rimette** subito dopo
+* Test 9: la GUC si salva in una temp table e si **rimette** subito dopo
   (transazione unica).
+* Correzione e sistemazione **non stanno qui**: la fixture di una distinta
+  CHIUSA con righe POSTATE e quella di un'eccedenza vera esistono già nei file
+  di quelle madri, e si asseriscono lì (L16, due aggiunte).
 * Nessun test sui trigger **generati** (nome hashato, e su dev arrivano coi
   job pgAgent, non con `db-ci-apply`): sono presidiati per famiglia da
   `test-registri-per-emittente-v1` e non qui.
@@ -1153,11 +1167,12 @@ trigger z90 (⚠️ solo se L11 è applicato: il test 1 lo pretende).
 
 ### 4-bis.16 L16 — I pgTAP che diventano rossi per costruzione, e il censimento
 
-🔴 **Tre file**, non uno (il brief P-12 ne prevedeva uno):
+🔴 **Quattro file**, non uno (il brief P-12 ne prevedeva uno; il piano tre — il quarto è emerso scrivendo, §4-bis.19):
 
 | File | Perché è rosso | Cosa si fa |
 | --- | --- | --- |
-| `rls/test-rls-pagamenti-perimetro.sql` | test **7** (interna visibile a entrambi), **8** (…ma la riga no) e **10** (riga su manuale senza canale visibile all'altro) pinnano il predicato vecchio | si riscrivono nel verso di §3.3: 7 → `0` (B non vede l'interna di A), 8 → A **vede** la riga della propria interna anche senza passare dalla fattura (`count = 1` nel contesto di A), 10 → `0` per B. ⚠️ I titoli cambiano frase: «non è di nessuno» diventa «è del suo emittente». Il test 12 (B su canale di A) **resta verde**: il rifiuto arriva dal guard di scope in modo `soggetto_ruolo` con la stessa frase, e L3 ha risolto l'emittente dal canale via DEFINER prima che il guard giudichi |
+| `rls/test-rls-pagamenti-perimetro.sql` | test **7** (interna visibile a entrambi) e **10** (riga su manuale senza canale visibile all'altro) pinnano il predicato vecchio | si riscrivono nel verso di §3.3 (**plan 19**): 7 → `0` (B non vede l'interna di A); il vecchio 10 diventa **11** → `0` per B, e nasce il **10** nuovo: A **vede** quella riga dalla sola testata (`count = 1` nel contesto di A, né fattura né canale). ⚠️ Il test **8** (B non vede la riga dell'interna di A) **resta verde nel valore** — era già `0` perché la fattura è di A — e cambia solo il titolo: da «…ma la riga no» a «la testata è di A, e la fattura pure». I titoli cambiano frase: «non è di nessuno» diventa «è del suo emittente». Il test 13 (ex 12: B su canale di A) **resta verde**: il rifiuto arriva dal guard di scope in modo `soggetto_ruolo` con la stessa frase, e L3 ha risolto l'emittente dal canale via DEFINER prima che il guard giudichi |
+| `rls/test-rls-vendite-contabili-lotti.sql` | 🔴 **non era nel piano**: la fixture inserisce la distinta INTERNA (`PGTAP-CTBL-INTERNA`, canale `NULL`) **senza emittente e prima di vestire un contesto**: con L3/L5b la sede unica cade al livello 4 e il file **muore in fixture**; e il test **7** (`isnt(manifesto_interna, '0')` letto da B) pinnava il ramo «senza canale = di tutti» | la fixture **dichiara** l'emittente (A, come farebbe la madre dei fondi dal lotto di A); 7 cambia verso (A vede il manifesto della propria interna) e nasce **7-bis** (B → `0`); **plan 11**. Il test 8 (invariante «il satellite non è mai più chiuso della testata») è rimasto identico |
 | `pagamenti/test-fn-crea-distinta-correzione.sql` | test **2** `matches(codice, '^VC_\d{17}_[0-9a-f]{8}$')` | → `'^DIS-[A-Z0-9]{2,10}-\d{4}-\d{7}$'` (la sigla ha `chk_emittenti_fiscali_codice_forma ^[A-Z0-9]{2,10}$`), e il titolo «lo genera il DEFAULT» → «lo assegna il trigger sul registro». ⚠️ Il brief lo dava fra i «nessun cambio»: inserisce direttamente **e** asserisce la forma |
 | `vendite/test-numero-prefisso-registro-v1.sql` | test **6** `'COMMESSA=CMM-, DDT=DDT, ORDINE=ORD, RESO=RESO'` — i registri di un emittente nuovo | → `'COMMESSA=CMM-, DDT=DDT, DISTINTA=DIS-, ORDINE=ORD, RESO=RESO'`. ⚠️ **Fuori dal censimento di §7**, che cercava i nomi della tabella e delle madri: questo pinna il **catalogo delle famiglie**. Il censimento si rifà anche con `grep -l "famiglie_documento\|'COMMESSA'" db/pgtap` |
 
@@ -1207,9 +1222,14 @@ Come in §4 P-13, con tre precisazioni emerse dal piano:
    con `scripts/liquibase5.sh --url=offline:postgresql updateSQL` (le
    preCondition offline non si valutano: si prova la copia senza). Un file solo,
    `BEGIN; … ROLLBACK;`, `psql -v ON_ERROR_STOP=1`, come il **migratore**
-   (`SET ROLE zeroerp` dalla sessione superuser: il proprietario delle DEFINER
-   è chi migra). ⚠️ Lo script si scrive con `Write` e si lancia da file: il
+   (su dbdev è `titodb`, `db/internal.env`: proprietario di tabelle e funzioni,
+   non membro di `zeroerp_app`, non superuser — ⚠️ quindi la RLS **non** è
+   esercitata nella prova: i test che la misurano si leggono solo dopo l'apply,
+   come app). ⚠️ Lo script si scrive con `Write` e si lancia da file: il
    guardrail blocca un heredoc che contiene la parola *rollback*.
+   ⚠️ `ALTER TABLE … SET NOT NULL` (L5b) dopo l'`UPDATE` di L5a con eventi di
+   constraint trigger pendenti fallisce nella stessa transazione: la prova
+   apre con `SET CONSTRAINTS ALL IMMEDIATE`.
 2. **Il seed nella prova**: solo le righe **nuove** dei CSV di `config`
    (`WHERE codice NOT IN (…)`): l'upsert completo di `messaggi_errore` prende un
    lock per chiave e il primo errore su un codice **vecchio** impicca il dblink
@@ -1219,8 +1239,10 @@ Come in §4 P-13, con tre precisazioni emerse dal piano:
 3. **Il pregresso** (dbdev): dopo il backfill di L5a,
    `SELECT id, codice FROM pagamenti.vendite_contabili WHERE
    emittente_soggetto_ruolo_id IS NULL` → l'elenco per Tid. Nella prova le
-   righe residue si **cancellano dentro la transazione** (annullata) per
-   arrivare fino ai pgTAP, e lo si scrive nell'esito: la decisione resta a Tid.
+   righe residue si trattano **dentro la transazione** (annullata) per
+   arrivare fino ai pgTAP, e lo si scrive nell'esito: la decisione resta a Tid
+   (✅ presa: l'`UPDATE` per `id` di 5730/5869 → sr 72, §4-bis.5; nella prova
+   è quello, non un `DELETE`).
 4. **I pgTAP nella stessa transazione**: `SET ROLE zeroerp_app`, poi L15 e i
    tre di L16 **senza** il loro `BEGIN`/`ROLLBACK` (o in `SAVEPOINT`). I
    `WARNING` «dblink … viola fk_error_log_messaggio_errore_id» sui due codici
@@ -1249,6 +1271,17 @@ Come in §4 P-13, con tre precisazioni emerse dal piano:
 | §2.4 | quattro livelli | un SR dato che **non** è un emittente passa la FK | livello **0** (TECNICO, codice esistente) ✅ confermato |
 | §4 P-7a | derivazione dal lotto | un lotto invisibile sotto RLS cadrebbe al livello 3 | lotto **strict** (TECNICO) ✅ confermato |
 | §2.4 | — | un `UPDATE … SET emittente = NULL` verrebbe ri-riempito | su UPDATE il trigger non risolve: parla il `NOT NULL` ✅ confermato |
+
+**Aggiunte scrivendo lo sviluppo (2026-09-15, sera):**
+
+| Dove | Diceva | Verificato | Effetto |
+| --- | --- | --- | --- |
+| §4 P-1/P-10, §4-bis.1 | indice `ix_vendite_contabili_emittente_sr` «perché la policy filtra ogni lettura» | la policy filtra **attraverso** `fn_scope_ef_whitelist_via_sr()` (nessun confronto sulla colonna: il planner non lo userebbe); le sorelle `fk_fatturazione_lotti_emittente_sr` e `fk_sistemazioni_emittente` non ne hanno; e `dbops.apply_fk_index_policy()` **droppa** l'indice che una riga `false` nomina — indice + riga `false` col nome canonico sarebbero in contraddizione a ogni `90_end` | **L1** senza indice sull'emittente; **L14** riga `false` col nome canonico `ix_vendite_contabili_emittente_soggetto_ruolo_id` |
+| §4-bis.16 | tre file rossi | `rls/test-rls-vendite-contabili-lotti.sql` inserisce l'interna **senza emittente e senza contesto** (livello 4 → muore in fixture) e il test 7 pinna «di tutti» | **quarto** file in L16 (plan 11, test 7 cambia verso, 7-bis nuovo) |
+| §4-bis.16 | test **8** del perimetro fra i rossi | il valore era già `0` (la fattura è di A); cambia solo il **significato** | resta verde; nuovo test 10 (A vede la riga dalla sola testata) e plan 19 |
+| §4-bis.15 | test 16 `throws_ok(…, '23502')` | sotto RLS il `WITH CHECK` scatta **prima** di `NOT NULL`: come app arriva `42501`, come owner `23502` (memoria «`col_not_null`, non INSERT») | `col_not_null` + `DO` che accetta i due SQLSTATE (test 16/17, plan 19) |
+| §4-bis.6, §5 BE-2 | `fn_sync_contabili_fondo_fattura` «passa dal lotto» | passa `p_lotto_id => v_lotto_id`, che è **NULL** se la fattura figlia non è in nessun lotto (`fatturazione_lotti_fatture`): la distinta del fondo cade al livello **3** (l'emittente di chi agisce), non a quello della fattura. Per un operatore è lo stesso emittente (la fattura la vede solo se è sua); per l'**admin globale** in modo «tutti» il livello 3 non risolve → `E_CONTABILE_EMITTENTE_OBBLIGATORIO`, e in modo «uno» una fattura di un altro emittente darebbe una distinta attribuita **all'emittente della sessione** | ⚠️ **residuo dichiarato, non cambiato** (fuori dal perimetro del brief): la strada corretta è che la madre dei fondi passi `p_emittente_fiscale_id` dall'emittente della **fattura**; da decidere con Tid |
+| §2.4 D4 livello 3 | — | il BB parallelo `script.trgfn_default_emittente_fiscale` (`20260915-36`, brief `emittente-di-default-un-bb-solo`) risolve dalla **stessa** `script.fn_resolve_emittente_for_user`: la distinta non lo adotta (ha la sede unica con i livelli 0–2 prima), ma la riserva è la stessa funzione — nessun dissenso | nessuno; scritto perché non si aprano due sedi |
 
 ---
 
@@ -1358,6 +1391,8 @@ In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-17** | ✅ **Apply e baseline di Tid.** `make db-migrate` si è fermato su `-26` come previsto («Expected '0' got '2'»: 5730 e 5869, le due manuali senza canale né lotto né riga con fattura — le stesse della prova); `UPDATE … SET emittente_soggetto_ruolo_id = 72 WHERE id IN (5730, 5869)`; secondo `make db-migrate` fino a `-35` (e ai `-36…-46` del BB parallelo). **pgTAP verdi** su dbdev — come app, quindi con la RLS esercitata: i 9 rossi «solo RLS» della prova da owner erano davvero solo quello — e sullo scratch da zero. Sullo scratch un solo rosso ignoto, **non di questo cantiere**: `script/test-trgfn-default-emittente-fiscale-v1.sql` (BB emittente di default) moriva in fixture perché il suo SA era l'**unico** SUPER_ADMIN del database da zero e `fn_change_user_emittenti_scope` rifiuta il cambio di scope all'ultimo SA (`E_PROFILO_ULTIMO_SUPER_ADMIN`); corretto con un secondo SA in fixture (azienda Z, mai attore) — stessa famiglia dei tre `ERRORE_FIXTURE` già a registro nella baseline scratch che chiamano quella funzione. Restano: commit, BE/FE (§5/§6), la decisione sul residuo del fondo fattura |
+| **2026-09-15** (notte) | 🔧 **Sviluppo DB scritto, L1–L17.** ChangeSet `20260915-21` (L1) `-22` (L2) `-23` (L3) `-24` (L4) `-25` (L5a) `-26` (L5b) `-27` (L6) `-28` (L7) `-29` (L8) `-30` (L10) `-31` (L9a) `-32` (L9b) `-33`/`famiglie_documento_distinta.csv` (L11) `-34` (L12) `-35`/`fk_index_policy_vendite_contabili_numerazione.csv` (L14); append ai CSV `codici_errore`/`messaggi_errore` (ids 1072, 1073 — L13); pgTAP nuovo `pagamenti/test-distinta-numerazione-registro-v1.sql` (plan 19, L15) e cinque ritoccati (perimetro 19, correzione 15, sistemazioni 14, lotti 11, prefisso — L16); doc di L17 (scheda `vendite_contabili`, `famiglie_documento`, guida numerazione, tre schede di `script`, guida pagamenti). Il BB parallelo di Tid ha preso `20260915-36…46`: nessuna collisione. **Prova §4-bis.18 fatta** su dbdev come `titodb` (il migratore di dev), tutto in `BEGIN … ROLLBACK`: i 12 changeSet estratti + il render offline di 33/34/35 applicano puliti; il backfill risolve 5720 righe → sr 72, residue **2** (5730, 5869), l'`UPDATE` a mano le chiude → `NOT NULL` passa; registri `DIS-72`/`DIS-159` con `anno_nel_numero`; numerazione `DIS-PGTAPEF202-2026-0000001/2`, secchi 2025/2026 separati, codice fornito rispettato, riuso della madre entro l'emittente, livelli 0/1/4 con le frasi giuste, il risolutore legge la colonna, solo le tre madri inseriscono distinte e nessuna passa `codice`. pgTAP nella stessa transazione, **da owner** (RLS non esercitata): nuovo 17/19 (18/19 = RLS), correzione 15/15, sistemazioni 14/14, lotti 11/11, prefisso 6/6, perimetro 10/19 (i nove rossi sono tutti RLS); con `FORCE ROW LEVEL SECURITY` diagnostico sulle tre tabelle: nuovo **19/19**, perimetro rossi solo artefatti del FORCE. Sei guardrail statici a zero. **Cinque correzioni in più** al brief (§4-bis.19, seconda tabella): niente indice sull'emittente, quarto file rosso (`test-rls-vendite-contabili-lotti`), test 8 del perimetro verde nel valore, test 16 in forma `col_not_null`, **residuo** `fn_sync_contabili_fondo_fattura` con fattura fuori lotto (livello 3 → admin globale «tutti» rifiutato) da decidere con Tid. **Restano a Tid**: `make db-migrate` (si ferma su `-26`) → `UPDATE pagamenti.vendite_contabili SET emittente_soggetto_ruolo_id = 72 WHERE id IN (5730, 5869) AND emittente_soggetto_ruolo_id IS NULL;` → `make db-migrate` → `scripts/pgtap-baseline.sh pagamenti rls vendite`; poi BE-1..6 (rigenerare `error_policies_generated.py` e i messaggi di ripiego per i due codici) e FE-1..4 |
 | **2026-09-15** (sera, chiusura) | ✅ **Tid conferma le tre scelte del piano** come da consiglio: livello 0 (SR non emittente → TECNICO), lotto strict (lotto non leggibile → TECNICO), `UPDATE … SET emittente = NULL` rifiutato dal `NOT NULL`. Il piano è completo; resta il via allo sviluppo. Ordine di scrittura: L1 → L14, L15, L16, L17; poi la prova di §4-bis.18; apply e baseline di Tid |
 | **2026-09-15** (sera, seconda correzione di Tid) | «Anche un processo batch ha sempre un utente, e uno user ha sempre l'emittente»: vero dal 2026-09-05 (R-2, utenti tecnici per processo × azienda). Corrette tre frasi stantie (§3.2 riga del ruolo batch, §4-bis.6, §4 P-12). La derivazione **dal lotto** resta per una ragione del modello e non per la sessione mancante: il giro di massa dell'admin globale in modalità «tutti gli emittenti» produce lotti di N aziende con una sessione che non risolve nessun emittente. Il ramo strict è un `IF` che Tid può togliere (§4-bis.6) |
 | **2026-09-15** (sera, dopo il piano) | **Deciso da Tid**: 5730 e 5869 si assegnano a mano a «Gestore Test pgTAP» (sr 72) con un `UPDATE` per `id` fra il primo stop di L5b e il secondo lancio del migrate (§2.6, §4-bis.5). Il changeSet resta fail-closed. Livello 0 e lotto strict (§4-bis.2, §4-bis.6) spiegati in chat, in attesa di conferma |

@@ -22,7 +22,7 @@ CREATE TRIGGER trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd
   EXECUTE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza();
 ```
 
-* **Fase**: `a10_guard_*` (ordina alfabeticamente DOPO `a10_default_*` → fires dopo `trgfn_preventivi_default_emittente`)
+* **Fase**: `a10_guard_*` (ordina alfabeticamente DOPO `a10_default_*` → fires dopo `trg_preventivi_a10_default_emittente_ins`, che dal 2026-09-15 esegue `script.trgfn_default_emittente_fiscale`)
 * **Eventi**:
     * `INSERT`: sempre validato
     * `UPDATE`: solo se cambiano `istanza_utility_id` o `utility_id` (clausola `UPDATE OF`)
@@ -78,7 +78,7 @@ Se viene cancellato l'unica fonte satellite di una coppia gia' usata in un preve
 
 ## Vedi anche
 
-* [`vendite.trgfn_preventivi_default_emittente`](/dbzero/vendite/funzioni/trgfn_preventivi_default_emittente) — trigger fase `a10_default` che fires PRIMA di questo
+* [`script.trgfn_default_emittente_fiscale`](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — trigger fase `a10_default` che fires PRIMA di questo (fino al 2026-09-15: la copia `trgfn_preventivi_default_emittente`)
 * [`script.fn_check_utility_istanza_coerenza`](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — pure check usato qui
 * [`anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — constraint trigger gemello (stesse 3 fonti)
 * [Tabella vendite.preventivi](/dbzero/vendite/tabelle/preventivi) — sezione "Modello istanza/BA/emittente"

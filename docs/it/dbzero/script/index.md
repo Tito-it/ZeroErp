@@ -147,7 +147,7 @@
 - [fn_scope_ef_whitelist_via_attivita_fatturabile](funzioni/fn_scope_ef_whitelist_via_attivita_fatturabile.md)
 - [fn_scope_ef_whitelist_via_commessa](funzioni/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)
 - [fn_scope_ef_whitelist_via_commessa_attivita](funzioni/fn_scope_ef_whitelist_via_commessa_attivita.md)
-- [fn_scope_ef_whitelist_via_contabile](funzioni/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22)
+- [fn_scope_ef_whitelist_via_contabile](funzioni/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22, corretta il 2026-09-15)
 - [fn_scope_ef_whitelist_via_contratto](funzioni/fn_scope_ef_whitelist_via_contratto.md)
 - [fn_scope_ef_whitelist_via_contratto_riga](funzioni/fn_scope_ef_whitelist_via_contratto_riga.md)
 - [fn_scope_ef_whitelist_via_ddt](funzioni/fn_scope_ef_whitelist_via_ddt.md)
@@ -206,6 +206,7 @@
 - [trgfn_componenti_propaga_qta](funzioni/trgfn_componenti_propaga_qta.md) — Mantiene la quantita dei componenti allineata alla quantita della riga padre in tempo reale. La quantita di un componente non è un valore libero — è sempre derivata dalla quantita padre moltiplicata per il coefficiente di BoM.
 - [trgfn_componenti_ricalcola_padre](funzioni/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
+- [trgfn_default_emittente_fiscale](funzioni/trgfn_default_emittente_fiscale.md) — > Brief: `brief-db-emittente-di-default-un-bb-solo` (decisione di Tid, 2026-09-15). > ChangeSet `20260915-36` (la funzione), `-37 … -40` (le quattro copie di vendite > ritirate), `-42 … -46` (i sette montaggi nuovi).
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:

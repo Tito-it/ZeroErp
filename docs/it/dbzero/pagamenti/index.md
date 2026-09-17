@@ -18,6 +18,7 @@
 - [fn_annulla_sistemazione](funzioni/fn_annulla_sistemazione.md) — (rev 2026-08-22)
 - [fn_conferma_sistemazione](funzioni/fn_conferma_sistemazione.md) — (rev 2026-08-22)
 - [fn_crea_distinta_correzione](funzioni/fn_crea_distinta_correzione.md)
+- [fn_get_emittente_distinta](funzioni/fn_get_emittente_distinta.md)
 - [fn_get_or_create_vendite_contabile](funzioni/fn_get_or_create_vendite_contabile.md) — Recuperare una testata contabile vendite esistente oppure crearne una nuova, con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.
 - [fn_get_saldo_fattura](funzioni/fn_get_saldo_fattura.md) — (latest review 25-08-2026)   La funzione **`pagamenti.fn_get_saldo_fattura()`** risponde a **tre domande diverse su un documento**, e tenerle separate è il motivo per cui esiste:
 - [fn_get_saldo_fattura_contabili](funzioni/fn_get_saldo_fattura_contabili.md) — (latest review 13-02-2026)   La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il saldo contabile di una fattura calcolato sulle sole righe in stato `is_postabile = true`.
@@ -27,6 +28,8 @@
 - [trgfn_enti_incasso_guard_psp](funzioni/trgfn_enti_incasso_guard_psp.md) — Garantire la coerenza applicativa dei record `pagamenti.enti_incasso` quando il canale e` di tipo `PSP`.
 - [trgfn_sistemazioni_guard_dati](funzioni/trgfn_sistemazioni_guard_dati.md) — (rev 2026-08-22)
 - [trgfn_sistemazioni_guard_transizione](funzioni/trgfn_sistemazioni_guard_transizione.md) — (rev 2026-08-22)
+- [trgfn_vendite_contabili_emittente](funzioni/trgfn_vendite_contabili_emittente.md)
+- [trgfn_vendite_contabili_gen_codice](funzioni/trgfn_vendite_contabili_gen_codice.md)
 - [trgfn_vendite_contabili_guard_chiusura](funzioni/trgfn_vendite_contabili_guard_chiusura.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_ente_centro](funzioni/trgfn_vendite_contabili_guard_ente_centro.md) — Validare la coerenza tra `centro_riscossione_id` della testata e `ente_incasso_id` quando presente.
 - [trgfn_vendite_contabili_guard_transizione](funzioni/trgfn_vendite_contabili_guard_transizione.md) — (rev 2026-08-21)

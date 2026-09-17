@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 — IL DEFAULT DELL'EMITTENTE SI MONTA: VENDITE.OFFERTE_COMMERCIALI
+#   trg_offerte_commerciali_a10_default_emittente_ins
+#   -> script.trgfn_default_emittente_fiscale('SOLLEVA')
+#   Brief: brief-db-emittente-di-default-un-bb-solo, sezione 5 (P-5, D2)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   offerte_commerciali era la SORELLA senza default: stessa ancora, stesso
+#   guard BA (trgfn_offerte_commerciali_guard_emittente_ba), stesso scope guard
+#   di preventivi/ordini/contratti — solo il default mancava, perche' il BE lo
+#   passa (offerte_repository, whitelist di creazione) e fn_crea_revisione_offerta
+#   lo copia. Non e' un difetto in esercizio: e' un'asimmetria nello stesso
+#   dominio, e la regola del progetto e' chiuderla subito (PROJECT_CONTEXT,
+#   «Il prossimo cantiere»). Il BE continua a passarlo; il trigger scatta solo
+#   su un NULL che oggi finisce in 23502.
+#   Ordine: trg_offerte_commerciali_a10_default_emittente_ins precede
+#   _a10_default_valuta_ins, _a10_guard_emittente_ba_* e _a10_guard_emittente_scope_*.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   Modo SOLLEVA: un valore esplicito non si tocca; senza valore e senza
+#   nessuno da cui dedurlo -> E_EMITTENTE_NON_RISOLTO (DATO_ERRATO, campo
+#   emittente_fiscale_id). Il nome del trigger segue lo stampo di vendite
+#   (trg_<t>_a10_default_emittente_ins): i BEFORE ROW scattano in ordine
+#   alfabetico e «default_» viene prima di «guard_» — e' l'ordine che serve
+#   (D5), e il pgTAP di P-6 lo asserisce per ogni tabella montata.
+#   preCondition HALT: la colonna esiste e il trigger non c'e' ancora — un
+#   CREATE TRIGGER su un nome gia' presente fermerebbe il migrate con 42710,
+#   e qui si vuole che lo dica prima.
+#
+# Dipendenze: 20260915-36 (il BB). Verifica:
+#   db/pgtap/script/test-trgfn-default-emittente-fiscale-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260915-42-create-trigger-default-emittente-offerte-mctit.yaml
+
+  - changeSet:
+      id: 20260915-42-create-trigger-default-emittente-offerte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.offerte_commerciali: trigger BEFORE INSERT trg_<t>_a10_default_emittente_ins su
+        script.trgfn_default_emittente_fiscale('SOLLEVA') — l'emittente di default dalla
+        sessione, dove oggi mancava (23502). Brief: brief-db-emittente-di-default-un-bb-solo
+        (P-5, D2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_default_emittente_fiscale';
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.offerte_commerciali'::regclass
+                     AND tgname = 'trg_offerte_commerciali_a10_default_emittente_ins';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_offerte_commerciali_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_default_emittente_ins ON vendite.offerte_commerciali;

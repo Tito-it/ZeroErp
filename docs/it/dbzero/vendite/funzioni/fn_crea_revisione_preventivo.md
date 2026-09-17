@@ -68,6 +68,18 @@ BEGIN
   --   della pratica su una rev superata e' del dominio approvazioni (BE),
   --   refactor-prezzi.md 4.7. Non si decide qui.
   --
+  -- NOTE l'ancora si copia (rev 2026-09-15, 20260915-41, D3 di Tid):
+  --   la testata della rev N+1 porta emittente_fiscale_id della rev N.
+  --   Prima NON era nella lista colonne e lo riempiva il trigger di default
+  --   di sessione (la copia per documento di allora, oggi il BB
+  --   script.trgfn_default_emittente_fiscale): per un operatore della
+  --   stessa azienda lo stesso valore; per un super admin con emittente
+  --   attivo B che revisiona un preventivo di A, la rev N+1 prendeva B e
+  --   trgfn_preventivi_guard_emittente_ba la rifiutava — un difetto
+  --   mascherato da un guard. La revisione e' LO STESSO documento: copia
+  --   l'ancora, come fn_crea_revisione_offerta. Trovato censendo chi si
+  --   appoggiava al default senza dirlo (brief-db-emittente-di-default-un-bb-solo, 7.1).
+  --
   --   ⚠️ Colonne che NON si copiano di proposito: natura_vendita_id (la
   --   deriva e la congela il trigger BEFORE INSERT dall'articolo), tx_id
   --   (framework), id/data_insert/data_update (identity e audit). Il
@@ -161,7 +173,7 @@ BEGIN
   -- Totali a 0: il trigger STATEMENT su preventivi_righe li ricalcolera'
   -- dopo l'INSERT bulk delle righe copiate (una sola invocazione).
   INSERT INTO vendite.preventivi (
-    numero, rev,
+    numero, rev, emittente_fiscale_id,
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al,
     totale_imponibile, totale_iva, totale_documento,
@@ -171,7 +183,7 @@ BEGIN
     user_insert, user_update
   )
   SELECT
-    p.numero, v_new_rev,
+    p.numero, v_new_rev, p.emittente_fiscale_id,
     p.billing_account_id, p.istanza_utility_id, p.utility_id,
     p.validita_dal, p.validita_al,
     0, 0, 0,
@@ -279,7 +291,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1.';
+IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1.';
 ```
 
 ---
