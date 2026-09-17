@@ -5,7 +5,7 @@
 -- ------------------------------------------------------------
 -- Indice test
 -- 1) Presenza funzione fn_get_or_create_vendite_contabile
--- 2) Riferimenti minimi presenti (centro/stato/tipo_doc per lotto)
+-- 2) Riferimenti a catalogo (centro/stato/tipo_doc) e lotto costruito dell'azienda
 -- 3) Create contabile senza lotto
 -- 4) Reuse contabile senza lotto (stessi parametri)
 -- 5) Create contabile con lotto e link tabella ponte
@@ -13,9 +13,28 @@
 -- 7) Idempotenza link lotto-contabile (una sola riga ponte)
 -- 8) Guard parametri: blocco centro_riscossione_id non valido
 -- 9) Il rifiuto parla all'operatore: nomina il dato, non il parametro
+--
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-09-17 sera). Fino a quel
+--   giorno il file apriva il contesto su «un operatore qualunque» e prendeva
+--   «l'ultimo lotto» dai dati della macchina: su un database ricostruito dai
+--   changelog (zeroerp_ci, la CI) non c'e' nessun operatore e nessun lotto —
+--   la distinta senza lotto moriva su E_CONTABILE_EMITTENTE_OBBLIGATORIO (la
+--   sede unica non risolve nessun emittente dalla sessione) e il lotto di
+--   ripiego nasceva senza `codice` ne' emittente, entrambi NOT NULL —
+--   ERRORE_FIXTURE in baseline-rossi-ci.tsv. Ora: un'azienda col suo operatore
+--   (dbops.fn_pgtap_crea_emittente_operatore) PRIMA del contesto, e un lotto
+--   di QUELL'emittente scritto dal test — guida pgtap-come-si-scrive-un-test
+--   §«Il mondo si costruisce, non si cerca». Con un emittente nuovo la chiave
+--   di riuso (che dal 2026-09-15 comprende l'emittente) non puo' agganciare una
+--   distinta preesistente della macchina: i test 3-4 e 5-6 misurano DAVVERO
+--   create-poi-reuse.
 -- ------------------------------------------------------------
 
 BEGIN;
+
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 --   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
@@ -30,7 +49,8 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 SELECT plan(9);
 
@@ -131,28 +151,27 @@ WHERE attivo IS TRUE
 ORDER BY id
 LIMIT 1;
 
+-- Il lotto e' dell'azienda costruita: da qui la funzione deriva l'emittente
+-- della distinta (livello 2 della sede unica), e sotto la RLS di
+-- fatturazione_lotti un lotto altrui non si vedrebbe nemmeno.
 CREATE TEMP TABLE tmp_lotto_ref AS
-WITH existing AS (
-  SELECT l.id
-  FROM vendite.fatturazione_lotti l
-  ORDER BY l.id DESC
-  LIMIT 1
-), ins AS (
+WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
+    codice,
     tipo_doc_fiscale_id,
     competenza_mese,
+    emittente_soggetto_ruolo_id,
     meta
   )
   SELECT
+    'PGTAP-GOC-' || m.soggetto_ruolo_id,
     (SELECT id FROM tmp_tipo_doc_ref),
     (SELECT data_contabile FROM tmp_costanti_goc),
+    m.soggetto_ruolo_id,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_goc))
-  WHERE NOT EXISTS (SELECT 1 FROM existing)
-    AND (SELECT id FROM tmp_tipo_doc_ref) IS NOT NULL
+  FROM _mondo m
   RETURNING id
 )
-SELECT id FROM existing
-UNION ALL
 SELECT id FROM ins;
 
 SELECT ok(
@@ -160,7 +179,7 @@ SELECT ok(
   AND (SELECT count(*) = 1 FROM tmp_stato_ref)
   AND (SELECT count(*) = 1 FROM tmp_tipo_doc_ref)
   AND (SELECT count(*) = 1 FROM tmp_lotto_ref),
-  'Riferimenti minimi presenti (centro/stato/tipo_doc per lotto)'
+  'Riferimenti a catalogo (centro/stato/tipo_doc) e lotto costruito dell''azienda'
 );
 
 -- ============================================================

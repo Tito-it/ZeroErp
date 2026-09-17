@@ -66,3 +66,4 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 65,anagrafiche.titolo_iva_movimenti,Registro movimenti di un titolo IVA,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
 66,amm.processi,Processi automatici,dbops,NULL,t,2026-09-05 00:00:00,mctit,f
 67,vendite.lotto_gruppi,Documenti presi in carico dal lotto,vendite,NULL,t,2026-09-06 00:00:00,mctit,f
+68,pagamenti.rate,Rate da incassare,pagamenti,NULL,f,2026-09-17 00:00:00,mctit,f

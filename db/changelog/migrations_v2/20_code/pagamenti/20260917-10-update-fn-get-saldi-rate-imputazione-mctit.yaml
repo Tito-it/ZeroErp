@@ -1,0 +1,305 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Q-A/γ — pagamenti.fn_get_saldi_rate, seconda rev: L'IMPUTAZIONE DERIVATA
+#   Brief: brief-db-distinta-ricerca-rate §4-bis.6 (decisione di Tid, 2026-09-17).
+#
+# -- IL PUNTO CIECO DELLA RATA --------------------------------------------------------
+#   fn_get_saldo_fattura somma i movimenti per fattura_id; la rata sommava solo
+#   quelli che la NOMINANO (scadenza_id). Un incasso registrato «sulla fattura,
+#   senza rata» — il fondo fattura lo scrive SEMPRE cosi' (fn_sync_contabili_fondo_fattura),
+#   e D16 lo ammette per l'operatore («fattura si', rata no») — abbassava il
+#   saldo del documento e non quello delle rate: una fattura a rata unica
+#   pagata senza rata aveva saldo_fattura = 0 e saldo_rata = 100. Finche' la
+#   domanda era «quale fattura?» non lo guardava nessuno; con il picker delle
+#   rate (D19-c) quella rata sarebbe «aperta», e con la rata della nota di
+#   credito (P-5) il credito riportato dal fondo sarebbe contato DUE volte.
+#
+# -- LA REGOLA: i movimenti senza rata si IMPUTANO alle rate, e nessuno scrive ------
+#   E' D2 applicata fino in fondo — «lo stato della rata e' derivato, mai
+#   scritto» — nella forma che uno scadenzario da' a questa domanda da sempre:
+#     · i movimenti attivi del documento SENZA scadenza_id si attribuiscono
+#       alle sue rate in ordine di data_scadenza (poi numero_rata, id), fino
+#       alla capienza di ciascuna al netto dei movimenti DIRETTI; l'ultima rata
+#       assorbe l'eccedenza, cosi' Σ saldi delle rate = saldo del documento,
+#       SEMPRE, per costruzione;
+#     · lo stesso, in un secondo stadio, per le righe postabili senza rata
+#       (in_lavorazione): cosi' il guard di capienza — che legge questo nucleo —
+#       vede lo spazio che il documento sa, anche prima del posting (la riga
+#       del fondo e' in lavorazione finche' non si registra);
+#     · «incassato» segue l'imputazione in proporzione (la quota di cassa dei
+#       movimenti senza rata, distribuita come i movimenti): un'informazione,
+#       non una capienza; arrotondata alla scala della rata (6);
+#     · has_movimenti = movimenti diretti OR quota imputata <> 0.
+#   Il verso e' quello del documento (sign della somma delle rate): su una nota
+#   di credito le rate sono negative e «capienza» e' in valore assoluto — la
+#   forma di D14-c, senza estremi da invertire. Un non-imputato di verso
+#   CONTRARIO al documento (un rimborso senza rata su una fattura positiva)
+#   va tutto sulla PRIMA rata: resta un'anomalia visibile (|saldo| > |importo|
+#   → MOVIMENTO_CONTRARIO), non si nasconde spalmandola.
+#   ⚠️ Un documento le cui rate sommano a ZERO (segno 0) non ha su cosa
+#   imputare: per D-D non ha rate, quindi il caso non si da'.
+#
+# -- ⚠️ L'ORDINE DEI FATTI: cio' che vedi e' cio' che vale ---------------------------
+#   L'imputazione e' calcolata sui fatti che ci sono. Su un piano 30/70, un
+#   acconto di 20 senza rata va sulla rata 1 (FIFO); una riga DIRETTA da 30
+#   sulla rata 1 che arriva DOPO trova 10, e il guard di capienza — che legge
+#   questo stesso nucleo con p_escludi = la riga che sta scrivendo — la
+#   respinge coi numeri («restano 10»). Nell'ordine inverso (prima la diretta,
+#   poi l'acconto) l'acconto scivola sulla rata 2 e nessuno e' respinto.
+#   Non e' un difetto ed e' una scelta: il picker delle rate (D19-c) mostra
+#   ESATTAMENTE i numeri del nucleo, quindi l'operatore vede «10» e il guard
+#   accetta «10» — fare accettare al guard cio' che il picker non mostra
+#   sarebbe la divergenza tooltip/rifiuto che api.md vieta. La forzatura a due
+#   tempi (D14-d) resta la via per il caso vero. Il pgTAP costruisce i due
+#   ordini (test 15, e la fixture in due istruzioni che lo dichiara).
+#
+# -- COSA NON CAMBIA -----------------------------------------------------------------
+#   La firma, le tre porte, i movimenti DIRETTI (identici alla rev 1: e' il
+#   motivo per cui test-abbinamento-rata resta verde), p_escludi_contabile_riga_id
+#   (vale su diretti e su non-imputati, e' la stessa riga). Il nucleo legge
+#   TUTTE le rate dei documenti coinvolti — l'imputazione ha bisogno del piano
+#   intero — e restituisce solo quelle chieste: per questo l'array resta la
+#   sola forma (`docs` = i documenti delle rate chieste, indicizzato).
+#
+# -- PERCHE' UNA SECONDA REV E NON UNA RISCRITTURA DELLA PRIMA ---------------------------
+#   La rev 1 (20260917-07) prova che il CONTENITORE e' fedele alla formula di
+#   ieri; questa prova la regola nuova. Un rosso dice quale delle due ha
+#   sbagliato. pgTAP: test-fn-get-saldi-rate-v1.sql (casi COSTRUITI: fattura a
+#   rata unica pagata senza rata → 0; tre rate con un acconto senza rata →
+#   FIFO; Σ rate = documento; il fondo in lavorazione occupa lo spazio; il
+#   verso contrario resta visibile).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260917-10-update-fn-get-saldi-rate-imputazione-mctit.yaml
+
+  - changeSet:
+      id: 20260917-10-update-fn-get-saldi-rate-imputazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.fn_get_saldi_rate, rev 2: i movimenti e le righe postabili SENZA rata di un
+        documento si imputano alle sue rate per data di scadenza fino a capienza (l'ultima
+        assorbe), con il verso del documento; Σ saldi rate = saldo documento per costruzione.
+        Derivato, mai scritto (D2). Firma e porte invariate. Brief: brief-db-distinta-ricerca-rate
+        §4-bis.6, decisione γ di Tid (2026-09-17).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldi_rate'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldi_rate(
+                  p_scadenza_ids              bigint[],
+                  p_escludi_contabile_riga_id bigint   DEFAULT NULL)
+              RETURNS TABLE(
+                  scadenza_id    bigint,
+                  saldo          numeric,
+                  in_lavorazione numeric,
+                  incassato      numeric,
+                  has_movimenti  boolean)
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              -- Scopo: il nucleo set-based dei saldi delle rate, con l'IMPUTAZIONE
+              --        derivata dei movimenti e delle righe senza rata (Q-A/γ).
+              -- Regole: array obbligatorio; si leggono TUTTE le rate dei documenti
+              --         coinvolti (il piano intero) e si restituiscono le chieste;
+              --         FIFO per data_scadenza fino a capienza, l'ultima assorbe;
+              --         il verso e' quello del documento; nessuna scrittura.
+              WITH
+              -- 1) i documenti delle rate chieste
+              docs AS (
+                  SELECT DISTINCT s.fattura_id
+                    FROM vendite.fatture_scadenze s
+                   WHERE s.id = ANY (p_scadenza_ids)
+              ),
+              -- 2) TUTTE le rate di quei documenti, in ordine di imputazione
+              rate AS (
+                  SELECT s.id, s.fattura_id, s.importo,
+                         row_number() OVER (PARTITION BY s.fattura_id
+                                            ORDER BY s.data_scadenza, s.numero_rata, s.id) AS rn,
+                         count(*)     OVER (PARTITION BY s.fattura_id)                    AS n_rate,
+                         sign(sum(s.importo) OVER (PARTITION BY s.fattura_id))             AS segno
+                    FROM vendite.fatture_scadenze s
+                   WHERE s.fattura_id IN (SELECT d.fattura_id FROM docs d)
+              ),
+              -- 3) cio' che e' REGISTRATO: per rata (scadenza_id) e senza rata (NULL)
+              mov AS (
+                  SELECT m.fattura_id, m.scadenza_id,
+                         SUM(m.importo) AS movimenti,
+                         SUM(m.importo) FILTER (
+                             WHERE c.id IS NOT NULL
+                               AND c.is_fondo_fattura IS FALSE
+                               AND c.is_compensazione IS FALSE) AS incassato,
+                         count(*) AS n
+                    FROM pagamenti.vendite_movimenti m
+                    LEFT JOIN pagamenti.centri_riscossione c ON c.id = m.centro_riscossione_id
+                   WHERE m.attivo IS TRUE
+                     AND m.fattura_id IN (SELECT d.fattura_id FROM docs d)
+                     AND (p_escludi_contabile_riga_id IS NULL
+                          OR m.contabile_riga_id IS DISTINCT FROM p_escludi_contabile_riga_id)
+                   GROUP BY m.fattura_id, m.scadenza_id
+              ),
+              -- 4) cio' che e' DICHIARATO: righe postabili sotto testata non finale
+              lav AS (
+                  SELECT cr.fattura_id, cr.scadenza_id,
+                         SUM(cr.importo) AS in_lavorazione
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                    JOIN pagamenti.vendite_contabili co             ON co.id = cr.contabile_id
+                    JOIN pagamenti.vendite_contabili_stati cs       ON cs.id = co.stato_id
+                   WHERE cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE
+                     AND cs.is_final IS NOT TRUE
+                     AND cr.fattura_id IN (SELECT d.fattura_id FROM docs d)
+                     AND (p_escludi_contabile_riga_id IS NULL
+                          OR cr.id <> p_escludi_contabile_riga_id)
+                   GROUP BY cr.fattura_id, cr.scadenza_id
+              ),
+              -- 5) la base per rata: diretti, non-imputato del documento (in unita'
+              --    positive, col verso del documento), capienza del primo stadio
+              base AS (
+                  SELECT r.id, r.fattura_id, r.importo, r.rn, r.n_rate, r.segno,
+                         COALESCE(mr.movimenti, 0)                AS mov_diretti,
+                         COALESCE(mr.incassato, 0)                AS inc_diretti,
+                         (mr.n IS NOT NULL)                       AS ha_diretti,
+                         COALESCE(lr.in_lavorazione, 0)           AS lav_diretta,
+                         COALESCE(md.movimenti, 0)                AS u_mov_raw,
+                         COALESCE(md.incassato, 0)                AS u_inc_raw,
+                         r.segno * COALESCE(md.movimenti, 0)      AS u_mov,
+                         r.segno * COALESCE(ld.in_lavorazione, 0) AS u_lav,
+                         GREATEST(r.segno * (r.importo - COALESCE(mr.movimenti, 0)), 0) AS cap1
+                    FROM rate r
+                    LEFT JOIN mov mr ON mr.scadenza_id = r.id
+                    LEFT JOIN lav lr ON lr.scadenza_id = r.id
+                    LEFT JOIN mov md ON md.fattura_id = r.fattura_id AND md.scadenza_id IS NULL
+                    LEFT JOIN lav ld ON ld.fattura_id = r.fattura_id AND ld.scadenza_id IS NULL
+              ),
+              -- 6) primo stadio: i movimenti senza rata, FIFO fino a capienza
+              st1 AS (
+                  SELECT b.*,
+                         COALESCE(sum(b.cap1) OVER (PARTITION BY b.fattura_id ORDER BY b.rn
+                                                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS cap1_prima
+                    FROM base b
+              ),
+              st1b AS (
+                  SELECT s.*,
+                         CASE
+                             -- verso contrario al documento: tutto sulla prima, resta visibile
+                             WHEN s.u_mov < 0     THEN CASE WHEN s.rn = 1 THEN s.u_mov ELSE 0 END
+                             -- l'ultima assorbe l'eccedenza: Σ rate = documento
+                             WHEN s.rn = s.n_rate THEN GREATEST(s.u_mov - s.cap1_prima, 0)
+                             ELSE LEAST(GREATEST(s.u_mov - s.cap1_prima, 0), s.cap1)
+                         END AS take1
+                    FROM st1 s
+              ),
+              -- 7) secondo stadio: le righe senza rata, sullo spazio che resta
+              st2 AS (
+                  SELECT s.*,
+                         s.segno * s.take1 AS imputato_mov,
+                         GREATEST(s.segno * (s.importo - s.mov_diretti - s.segno * s.take1 - s.lav_diretta), 0) AS cap2
+                    FROM st1b s
+              ),
+              st2b AS (
+                  SELECT s.*,
+                         COALESCE(sum(s.cap2) OVER (PARTITION BY s.fattura_id ORDER BY s.rn
+                                                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS cap2_prima
+                    FROM st2 s
+              ),
+              st2c AS (
+                  SELECT s.*,
+                         CASE
+                             WHEN s.u_lav < 0     THEN CASE WHEN s.rn = 1 THEN s.u_lav ELSE 0 END
+                             WHEN s.rn = s.n_rate THEN GREATEST(s.u_lav - s.cap2_prima, 0)
+                             ELSE LEAST(GREATEST(s.u_lav - s.cap2_prima, 0), s.cap2)
+                         END AS take2
+                    FROM st2b s
+              )
+              SELECT s.id                                                       AS scadenza_id,
+                     s.importo - s.mov_diretti - s.imputato_mov                 AS saldo,
+                     s.lav_diretta + s.segno * s.take2                          AS in_lavorazione,
+                     s.inc_diretti
+                       + CASE WHEN s.u_mov_raw <> 0
+                              THEN round(s.imputato_mov * s.u_inc_raw / s.u_mov_raw, 6)
+                              ELSE 0 END                                        AS incassato,
+                     (s.ha_diretti OR s.imputato_mov <> 0)                      AS has_movimenti
+                FROM st2c s
+               WHERE s.id = ANY (p_scadenza_ids);
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_saldi_rate(bigint[], bigint)
+              IS 'IL NUCLEO dei saldi delle rate: la formula scritta UNA volta in forma set-based, per N rate. `saldo` = importo della rata meno i movimenti attivi che la NOMINANO meno la quota IMPUTATA dei movimenti del documento senza rata; `in_lavorazione` = righe contabili attive, postabili, sotto distinta non finale, dirette piu'' la quota imputata di quelle senza rata; `incassato` = cassa vera (centro presente, non fondo fattura ne'' compensazione), diretta piu'' la quota imputata in proporzione; `has_movimenti` = movimenti diretti o quota imputata diversa da zero. ⭐ rev 2 del 2026-09-17 — L''IMPUTAZIONE DERIVATA (Q-A/γ, decisione di Tid): i movimenti e le righe SENZA rata di un documento si attribuiscono alle sue rate in ordine di data_scadenza (poi numero_rata, id) fino alla capienza di ciascuna, e l''ultima assorbe l''eccedenza — cosi'' Σ saldi delle rate = saldo del documento SEMPRE, per costruzione; il verso e'' quello del documento (sign della somma delle rate: su una nota di credito le rate sono negative, la capienza e'' in valore assoluto — la forma di D14-c), e un non-imputato di verso contrario va tutto sulla prima rata, dove resta visibile come MOVIMENTO_CONTRARIO. Nessuno scrive niente: e'' D2 («lo stato della rata e'' derivato, mai scritto») fino in fondo. E'' la risposta al PUNTO CIECO della rata: il fondo fattura scrive la propria riga sul documento sorgente senza rata, D16 ammette la riga manuale «fattura si'', rata no», e prima di questa rev una fattura a rata unica pagata cosi'' aveva saldo_fattura 0 e saldo_rata 100 — e la rata della nota di credito (P-5) avrebbe contato il credito riportato due volte. ⚠️ Per imputare servono TUTTE le rate del documento: il nucleo legge il piano intero dei documenti delle rate chieste e restituisce le chieste. p_scadenza_ids e'' OBBLIGATORIO (`= ANY` nudo, indicizzabile in ogni forma; NULL = zero righe: per tutte le rate c''e'' vw_saldi_rate). p_escludi_contabile_riga_id toglie la riga che sta scrivendo, diretta o senza rata. ⭐ TRE PORTE, UNA FORMULA: fn_get_saldo_rata (caso a un elemento, con guard ed E_RATA_NON_TROVATA), vw_saldi_rate (tutte le rate), la chiamata con l''array della pagina dal backend. ⚠️ STABLE e LANGUAGE sql: non solleva mai, INVOKER (somma cio'' che chi legge vede). Brief: brief-db-distinta-ricerca-rate §4-bis.4 e §4-bis.6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della rev 1 (20260917-07): il contenitore senza imputazione.
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldi_rate(
+                  p_scadenza_ids              bigint[],
+                  p_escludi_contabile_riga_id bigint   DEFAULT NULL)
+              RETURNS TABLE(
+                  scadenza_id    bigint,
+                  saldo          numeric,
+                  in_lavorazione numeric,
+                  incassato      numeric,
+                  has_movimenti  boolean)
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              SELECT s.id                                          AS scadenza_id,
+                     s.importo - COALESCE(m.movimenti, 0)          AS saldo,
+                     COALESCE(l.in_lavorazione, 0)                 AS in_lavorazione,
+                     COALESCE(m.incassato, 0)                      AS incassato,
+                     COALESCE(m.has_movimenti, false)              AS has_movimenti
+                FROM vendite.fatture_scadenze s
+                LEFT JOIN (
+                    SELECT m.scadenza_id,
+                           SUM(m.importo) AS movimenti,
+                           SUM(m.importo) FILTER (
+                               WHERE c.id IS NOT NULL
+                                 AND c.is_fondo_fattura IS FALSE
+                                 AND c.is_compensazione IS FALSE) AS incassato,
+                           true AS has_movimenti
+                      FROM pagamenti.vendite_movimenti m
+                      LEFT JOIN pagamenti.centri_riscossione c ON c.id = m.centro_riscossione_id
+                     WHERE m.attivo IS TRUE
+                       AND m.scadenza_id IS NOT NULL
+                       AND m.scadenza_id = ANY (p_scadenza_ids)
+                       AND (p_escludi_contabile_riga_id IS NULL
+                            OR m.contabile_riga_id IS DISTINCT FROM p_escludi_contabile_riga_id)
+                     GROUP BY m.scadenza_id
+                ) m ON m.scadenza_id = s.id
+                LEFT JOIN (
+                    SELECT cr.scadenza_id,
+                           SUM(cr.importo) AS in_lavorazione
+                      FROM pagamenti.vendite_contabili_righe cr
+                      JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                      JOIN pagamenti.vendite_contabili co             ON co.id = cr.contabile_id
+                      JOIN pagamenti.vendite_contabili_stati cs       ON cs.id = co.stato_id
+                     WHERE cr.attivo IS TRUE
+                       AND cr.scadenza_id IS NOT NULL
+                       AND st.is_postabile IS TRUE
+                       AND cs.is_final IS NOT TRUE
+                       AND cr.scadenza_id = ANY (p_scadenza_ids)
+                       AND (p_escludi_contabile_riga_id IS NULL
+                            OR cr.id <> p_escludi_contabile_riga_id)
+                     GROUP BY cr.scadenza_id
+                ) l ON l.scadenza_id = s.id
+               WHERE s.id = ANY (p_scadenza_ids);
+              $function$;

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista flat canonica e self-contained DDT per la lista UI. Nomi canonici. Destinatario via soggetto_ruolo diretto; mittente/vettore nullable. +emittente_fiscale_id/_codice (scope, §15). Campi trasporto per il PDF. Ordine di origine via sorgente_uid. security_invoker=on. Mirror vw_ordini_lista. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e' in ULTIMA posizione perche' CREATE OR REPLACE VIEW puo' solo appendere: non e' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e' `frontiera_tipo_codice`: quel valore e' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l'unico posto dove il guardrail li vede.
+> Vista flat canonica e self-contained DDT per la lista UI. Nomi canonici. Destinatario via soggetto_ruolo diretto; mittente/vettore nullable. +emittente_fiscale_id/_codice (scope, §15). Campi trasporto per il PDF. Ordine di origine via sorgente_uid. security_invoker=on. Mirror vw_ordini_lista. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e' in ULTIMA posizione perche' CREATE OR REPLACE VIEW puo' solo appendere: non e' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e' `frontiera_tipo_codice`: quel valore e' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l'unico posto dove il guardrail li vede. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, Q-E): + registro_codice, registro_descrizione in coda, LEFT JOIN vendite.registri_fatturazione su registro_id (20260831). E' lo stesso blocco appeso a vw_fatture_lista nello stesso giro: le sorelle che un registro ce l'hanno — fatture, ddt, ordini, resi — lo espongono allo stesso modo, cosi' chi scrive l'ottava copia non la copia da una vista senza. ⛔ contratti, preventivi e offerte NON hanno registro_id e non avranno queste colonne: non e' una dimenticanza. Nessun numero_documento qui: su questa vista `numero` e' gia' il numero parlante (varchar).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -74,8 +74,10 @@ SELECT d.id,
     lin.n_discendenti_attivi,
     lin.is_transitato,
     lin.frontiera_natura_doc_codice_interno,
-    lin.frontiera_tipo_codice_interno
-   FROM (((((((((((((((((((vendite.ddt d
+    lin.frontiera_tipo_codice_interno,
+    reg.codice AS registro_codice,
+    reg.descrizione AS registro_descrizione
+   FROM ((((((((((((((((((((vendite.ddt d
      JOIN config.stati_doc_ddt sd ON ((sd.id = d.stato_doc_ddt_id)))
      JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = d.destinatario_soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
@@ -96,7 +98,8 @@ SELECT d.id,
      LEFT JOIN vendite.ordini o_src ON (((o_src.uid = d.sorgente_uid) AND ((src.codice_interno)::text = 'ORDINE_VENDITA'::text))))
      LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
            FROM config.sorgenti
-          WHERE (((sorgenti.codice_interno)::text = 'DDT_VENDITA'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (d.id)::text))));
+          WHERE (((sorgenti.codice_interno)::text = 'DDT_VENDITA'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (d.id)::text))))
+     LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = d.registro_id)));
 ```
 
 
