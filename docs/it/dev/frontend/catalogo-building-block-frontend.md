@@ -387,24 +387,31 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 > `text-red-500`, `text-green-500`, `gap-1`, `justify-content-center`,
 > `ml-025` — a rendering **invariato**, perché non facevano niente; migrati i
 > tre con una casa (`text-color-secondary` → `app-text-muted`, `app-mr-1` →
-> `mr-05`, `app-drawer-footer` → `app-form-footer`). ⚠️ **Restano due
-> famiglie, dichiarate e non toccate**: (1) nomi semantici senza CSS
-> (`form-field-wide` ×5, `bom-readonly-switch__label` ×4, `app-empty` ×3, i
+> `mr-05`, `app-drawer-footer` → `app-form-footer`).
+>
+> ✅ **Seconda passata, lo stesso giorno — le VARIABILI mai definite** (commit
+> dedicato): 60 `var()` negli `<style>` puntavano a nomi di PrimeVue 3
+> (`--surface-border` ×12, `--surface-hover`, `--surface-card`,
+> `--surface-ground`, `--surface-0/50/100`, `--text-color`, `--highlight-bg`,
+> `--p-info-color` ×9, `--p-warn-color`, `--p-content-color-muted`,
+> `--p-border-radius`) o a `--app-*` mai scritti in `theme.css`. ⛔ A
+> differenza delle classi **non erano innocue**: `border: 1px solid
+> var(--surface-border)` con la variabile assente annulla l'intera
+> dichiarazione — i pannelli di `pratiche` erano senza bordi, senza hover e
+> senza la voce selezionata evidenziata. 🔴 **E il body era senza font**:
+> `main.css` scriveva `font-family: var(--p-font-family)`, token che PrimeVue 4
+> non definisce — la dichiarazione era invalida e l'app usava il font di
+> default del browser. Sette token nuovi in `theme.css` (`--app-surface-bg`,
+> `--app-hover-bg`, `--app-highlight-bg`, `--app-border-color`,
+> `--app-border-radius`, `--app-focus-ring`, `--app-space-sm`) più
+> `--app-font-family`, tutti sui semantici di PrimeVue 4 che seguono `.p-dark`
+> da soli; `--p-info-color`/`--p-warn-color` → `--app-severity-info/warn`.
+>
+> ⚠️ **Resta una famiglia, dichiarata e non toccata**: i nomi semantici senza
+> CSS (`form-field-wide` ×5, `bom-readonly-switch__label` ×4, `app-empty` ×3, i
 > root `app-giornale`/`app-matrice-override`/`app-riepilogo-iva`/`pratica-*-tab`/
 > `documento-emissione__*`/`lista-config-*`/`topbar-user-kebab-*`…) — sono
-> identificatori, non utility, e si tolgono o si stilano per decisione; (2)
-> **variabili CSS mai definite** negli `<style>`: `--surface-border` (12),
-> `--surface-hover` (5), `--surface-card` (4), `--surface-ground` (4),
-> `--surface-0/50/100` (7), `--text-color` (3), `--highlight-bg` (1) — PrimeVue 3
-> — e `--app-border-color` (3), `--app-gap-sm`/`--app-space-sm` (2+2),
-> `--app-border-radius`/`--app-radius`, `--app-primary-color`,
-> `--app-text-primary`, `--app-focus-ring`, `--app-row-hover-disabled` (1
-> ciascuna). ⛔ Queste **non sono innocue come le classi**: `border: 1px solid
-> var(--surface-border)` con la variabile assente annulla l'intera
-> dichiarazione — bordi e hover che il codice dichiara e lo schermo non ha.
-> Vanno mappate una per una sui token di PrimeVue 4 (`--p-content-border-color`,
-> `--p-content-hover-background`, …) o su `--app-*` definiti in `theme.css`:
-> passata sua, con decisione.
+> identificatori, non utility, e si tolgono o si stilano per decisione.
 
 ### Pagine auth (`auth-pages.css`)
 

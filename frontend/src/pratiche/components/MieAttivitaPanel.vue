@@ -120,8 +120,8 @@ function toggle() {
   flex: 0 0 auto;
   width: 270px;
   height: 100%;
-  background: var(--surface-card);
-  border-right: 2px solid var(--p-info-color, var(--p-primary-color));
+  background: var(--app-card-bg);
+  border-right: 2px solid var(--app-severity-info);
   overflow: hidden;
   transition: width var(--app-transition-normal, 0.2s);
 }
@@ -136,8 +136,8 @@ function toggle() {
   justify-content: space-between;
   gap: 0.4rem;
   padding: 0.4rem 0.5rem;
-  background: var(--surface-ground);
-  border-bottom: 1px solid var(--surface-border);
+  background: var(--app-content-bg);
+  border-bottom: 1px solid var(--app-border-color);
   flex: 0 0 auto;
 }
 
@@ -153,7 +153,7 @@ function toggle() {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--p-info-color, var(--p-primary-color));
+  color: var(--app-severity-info);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -172,7 +172,7 @@ function toggle() {
 }
 
 .rail-counters-icon {
-  color: var(--p-info-color, var(--p-primary-color));
+  color: var(--app-severity-info);
   font-size: 1rem;
 }
 
@@ -205,7 +205,7 @@ function toggle() {
     width: 100%;
     height: auto;
     border-right: none;
-    border-bottom: 2px solid var(--p-info-color, var(--p-primary-color));
+    border-bottom: 2px solid var(--app-severity-info);
   }
   .rail-counters {
     flex-direction: row;

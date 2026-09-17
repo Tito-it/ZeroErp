@@ -540,7 +540,7 @@ const onClose = useDrawerClose(emit)
 .flusso-actions {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--surface-border);
+  border-top: 1px solid var(--app-border-color);
 }
 
 .flusso-domain-hint {
@@ -551,6 +551,6 @@ const onClose = useDrawerClose(emit)
 
 .form-value {
   font-size: 0.9rem;
-  color: var(--text-color);
+  color: var(--app-text-color);
 }
 </style>

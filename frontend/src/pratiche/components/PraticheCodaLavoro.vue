@@ -103,8 +103,8 @@ function onPrendiInCarico(item, event) {
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
-  border-right: 1px solid var(--surface-border);
-  background: var(--surface-card);
+  border-right: 1px solid var(--app-border-color);
+  background: var(--app-card-bg);
 }
 
 /* Header: titolo verde con sottolineatura corta sotto il testo */
@@ -113,18 +113,18 @@ function onPrendiInCarico(item, event) {
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem 0.4rem;
-  background: var(--surface-ground);
-  border-bottom: 1px solid var(--surface-border);
+  background: var(--app-content-bg);
+  border-bottom: 1px solid var(--app-border-color);
 }
 
 .coda-lavoro-title {
   font-size: 0.82rem;
   font-weight: 700;
-  color: var(--p-info-color, var(--p-primary-color));
+  color: var(--app-severity-info);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding-bottom: 0.2rem;
-  border-bottom: 2px solid var(--p-info-color, var(--p-primary-color));
+  border-bottom: 2px solid var(--app-severity-info);
 }
 
 .coda-lavoro-loading,
@@ -138,7 +138,7 @@ function onPrendiInCarico(item, event) {
 /* Sezioni: separatore verde sottile tra gruppi */
 .coda-section {
   padding: 0;
-  border-bottom: 2px solid var(--p-info-color, var(--p-primary-color));
+  border-bottom: 2px solid var(--app-severity-info);
 }
 
 .coda-section:last-child { border-bottom: none; }
@@ -153,24 +153,24 @@ function onPrendiInCarico(item, event) {
   color: var(--app-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  background: var(--surface-50);
-  border-bottom: 1px solid var(--surface-border);
+  background: var(--app-content-bg);
+  border-bottom: 1px solid var(--app-border-color);
 }
 
 .coda-item {
   padding: 0.4rem 0.75rem;
   cursor: pointer;
-  border-bottom: 1px solid var(--surface-100);
+  border-bottom: 1px solid var(--app-border-color);
   transition: background 0.15s;
 }
 
-.coda-item:hover { background: var(--surface-hover); }
-.coda-item-selected { background: var(--highlight-bg); }
+.coda-item:hover { background: var(--app-hover-bg); }
+.coda-item-selected { background: var(--app-highlight-bg); }
 
 .coda-item-title {
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--text-color);
+  color: var(--app-text-color);
 }
 
 .coda-item-desc {

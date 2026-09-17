@@ -572,13 +572,13 @@ h4:first-child {
 }
 .app-permessi-nota {
   font-size: 0.85rem;
-  color: var(--app-text-secondary, var(--p-text-muted-color));
+  color: var(--app-text-muted);
   margin-bottom: 0.75rem;
 }
 /* La fonte del valore ereditato: sta sotto il livello, non accanto — la
    domanda «quanto» viene prima della domanda «da dove». */
 .app-permessi-fonte {
   display: block;
-  color: var(--app-text-secondary, var(--p-text-muted-color));
+  color: var(--app-text-muted);
 }
 </style>

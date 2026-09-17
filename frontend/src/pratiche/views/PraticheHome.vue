@@ -236,9 +236,9 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--app-border-color);
   border-radius: 8px;
-  background: var(--surface-card);
+  background: var(--app-card-bg);
   overflow: hidden;
 }
 
@@ -247,7 +247,7 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
   align-items: center;
   gap: 0.75rem;
   padding: 0.9rem 1rem;
-  border-bottom: 1px solid var(--surface-border);
+  border-bottom: 1px solid var(--app-border-color);
   flex: 0 0 auto;
 }
 .home-col-head > i {
@@ -309,16 +309,16 @@ const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico()
   align-items: center;
   gap: 0.6rem;
   padding: 0.8rem 0.9rem;
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--app-border-color);
   border-radius: 8px;
-  background: var(--surface-ground);
+  background: var(--app-content-bg);
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 .home-tile:hover {
-  background: var(--surface-hover);
+  background: var(--app-hover-bg);
   border-color: var(--app-icon-color);
 }
 .home-tile > i {

@@ -873,7 +873,7 @@ defineExpose({
 <style scoped>
 /* Gate di perimetro emittente: due righe di testo dentro il Message. */
 .lista-perimetro-gate {
-  padding: var(--app-space-sm, 0.5rem) 0;
+  padding: var(--app-space-sm) 0;
 }
 
 .lista-perimetro-gate__titolo {
@@ -888,7 +888,7 @@ defineExpose({
 /* Gate di troncamento (`paginata: false` con righe incomplete): stessa forma
    del gate di perimetro — si prende il posto della tabella. */
 .lista-troncamento-gate {
-  padding: var(--app-space-sm, 0.5rem) 0;
+  padding: var(--app-space-sm) 0;
 }
 
 .lista-troncamento-gate__titolo {

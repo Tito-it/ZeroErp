@@ -643,7 +643,7 @@ const titolo = computed(() => {
 .app-mini-table th,
 .app-mini-table td {
   padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid var(--app-border-color, var(--p-content-border-color));
+  border-bottom: 1px solid var(--app-border-color);
   text-align: left;
 }
 .app-mini-table th {

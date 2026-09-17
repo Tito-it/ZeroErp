@@ -350,7 +350,7 @@ onBeforeUnmount(revokePreview)
   width: 100%;
   height: 40vh;
   border: 1px solid var(--app-card-border);
-  border-radius: var(--p-border-radius, 6px);
+  border-radius: var(--app-border-radius);
 }
 .documento-emissione__preview-loading {
   display: flex;
@@ -371,7 +371,7 @@ onBeforeUnmount(revokePreview)
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
   border: 1px solid var(--app-card-border);
-  border-radius: var(--p-border-radius, 6px);
+  border-radius: var(--app-border-radius);
 }
 .documento-emissione__file-name {
   flex: 1 1 auto;

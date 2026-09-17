@@ -380,7 +380,7 @@ function isRamoChiuso(step) {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--surface-card);
+  background: var(--app-card-bg);
 }
 
 .percorso-empty,
@@ -400,8 +400,8 @@ function isRamoChiuso(step) {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--app-text-muted);
-  border-bottom: 1px solid var(--surface-border);
-  background: var(--surface-50);
+  border-bottom: 1px solid var(--app-border-color);
+  background: var(--app-content-bg);
   flex-shrink: 0;
 }
 
@@ -450,7 +450,7 @@ function isRamoChiuso(step) {
 
 /* Step evidenziato dal deep-link della coda home: accento a sinistra + fondo. */
 .rac-fatto.is-selected {
-  background: var(--surface-hover);
+  background: var(--app-hover-bg);
   border-left: 3px solid var(--p-primary-color);
   border-radius: 4px;
   padding: 0.15rem 0.4rem;
@@ -494,7 +494,7 @@ function isRamoChiuso(step) {
   padding: 0.75rem;
   border: 1px solid var(--p-primary-color);
   border-radius: 8px;
-  background: var(--surface-0);
+  background: var(--app-surface-bg);
 }
 
 /* Card ADESSO evidenziata dal deep-link della coda home: anello d'accento. */
@@ -563,15 +563,15 @@ function isRamoChiuso(step) {
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--app-border-color);
   border-radius: 6px;
-  background: var(--surface-0);
+  background: var(--app-surface-bg);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .percorso-step:hover {
-  background: var(--surface-hover);
+  background: var(--app-hover-bg);
   border-color: var(--p-primary-color);
 }
 
@@ -579,7 +579,7 @@ function isRamoChiuso(step) {
 .percorso-step-todo { border-style: dashed; }
 .percorso-step-busy { pointer-events: none; opacity: 0.6; }
 .percorso-step-disabled { cursor: not-allowed; opacity: 0.5; }
-.percorso-step-disabled:hover { background: var(--surface-0); border-color: var(--surface-border); }
+.percorso-step-disabled:hover { background: var(--app-surface-bg); border-color: var(--app-border-color); }
 .percorso-step-ramo-chiuso { opacity: 0.5; border-style: dotted; }
 .percorso-step.is-selected {
   border-color: var(--p-primary-color);
@@ -606,7 +606,7 @@ function isRamoChiuso(step) {
 
 .percorso-handler {
   font-size: 0.75rem;
-  color: var(--p-warn-color, #f59e0b);
+  color: var(--app-severity-warn);
   margin-left: 0.2rem;
 }
 

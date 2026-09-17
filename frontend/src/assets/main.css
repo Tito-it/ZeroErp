@@ -9,7 +9,7 @@
 html,
 body {
   height: 100%;
-  font-family: var(--p-font-family);
+  font-family: var(--app-font-family);
   background: var(--app-content-bg);
   color: var(--p-text-color);
   -webkit-font-smoothing: antialiased;
@@ -849,10 +849,10 @@ a {
 /* Hint informativo al posto di un campo (es. valore derivato automaticamente).
  * Stile coerente con .app-field-error ma colore neutro muted. */
 .app-field-hint {
-  color: var(--text-color-secondary, var(--p-content-color-muted, #6b7280));
+  color: var(--app-text-muted);
   font-size: 0.85rem;
   padding: 0.5rem 0.75rem;
-  background: var(--surface-100, var(--p-content-background, transparent));
+  background: var(--app-surface-bg);
   border-radius: 4px;
 }
 
@@ -1007,7 +1007,7 @@ a {
   opacity: 0.85;
 }
 .app-row-readonly:hover {
-  background: var(--app-row-hover-disabled, transparent) !important;
+  background: transparent !important;
 }
 
 /* ===== Livello BLOCCATO (safety net) =====
@@ -1560,7 +1560,7 @@ a {
   color: var(--app-text-muted);
   cursor: pointer;
 }
-.app-collapse-toggle:hover { background: var(--surface-hover); }
+.app-collapse-toggle:hover { background: var(--app-hover-bg); }
 
 /* ===== Responsive: schermi piccoli =====
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
@@ -1681,7 +1681,7 @@ a {
   cursor: pointer;
   padding: 0.1rem 0.3rem;
   margin: 0 -0.3rem;
-  border-radius: var(--app-border-radius, 6px);
+  border-radius: var(--app-border-radius);
 }
 
 .app-donut-legend-row--clickable:hover {
@@ -1693,7 +1693,7 @@ a {
 }
 
 .app-donut-legend-row--clickable:focus-visible {
-  outline: 2px solid var(--app-primary-color, #2563eb);
+  outline: 2px solid var(--app-focus-ring);
   outline-offset: -2px;
 }
 

@@ -377,7 +377,7 @@ function close() {
 <style scoped>
 .asset-file-panel {
   align-items: center;
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--app-border-color);
   border-radius: 6px;
   display: flex;
   gap: 0.75rem;

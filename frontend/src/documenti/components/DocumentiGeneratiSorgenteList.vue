@@ -387,8 +387,8 @@ async function reload() {
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
-  border: 1px solid var(--app-border-color, var(--p-content-border-color));
-  border-radius: var(--app-radius, 6px);
+  border: 1px solid var(--app-border-color);
+  border-radius: var(--app-border-radius);
 }
 .documenti-sorgente-list__file-name {
   flex: 1 1 auto;

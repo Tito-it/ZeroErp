@@ -1978,6 +1978,27 @@ I componenti usano **solo** `--app-*`. Mai `var(--p-*)` direttamente.
 Unico punto di personalizzazione: sidebar, topbar, contenuto, card, drawer, AI widget, transizioni, tipografia.
 Importato prima di `main.css` in `main.js`.
 
+### I token neutri e il font — `theme.css` (2026-09-17)
+
+| Token | Punta a | Per |
+| --- | --- | --- |
+| `--app-font-family` | stack di sistema sans-serif | il `body` (🔴 fino al 17/09 `main.css` scriveva `var(--p-font-family)`, che PrimeVue 4 **non definisce**: dichiarazione invalida, font di default del browser) |
+| `--app-surface-bg` | `--p-content-background` | la superficie di un contenuto (ex `--surface-0`) |
+| `--app-hover-bg` | `--p-content-hover-background` | riga o voce sotto il mouse (ex `--surface-hover`) |
+| `--app-highlight-bg` | `--p-highlight-background` | voce selezionata (ex `--highlight-bg`) |
+| `--app-border-color` | `--p-content-border-color` | il bordo neutro (ex `--surface-border`) |
+| `--app-border-radius` | `--p-border-radius-md` (6px) | raggi neutri |
+| `--app-focus-ring` | `--p-focus-ring-color` | l'anello di fuoco |
+| `--app-space-sm` | `0.5rem` | gap e padding piccoli |
+
+⛔ **I nomi di PrimeVue 3 non esistono più** (`--surface-*`, `--text-color`,
+`--highlight-bg`, `--p-info-color`, `--p-font-family`): un `var()` su un nome
+assente **annulla l'intera dichiarazione**, non solo il colore — un
+`border: 1px solid var(--surface-border)` è un bordo che non c'è. Il
+17/09 erano 60, tutti negli `<style>` di `pratiche` e in pochi altri: sanati
+(catalogo BB, riga `ml-05`). Per i colori semantici (info, warn, danger,
+success) i token sono `--app-severity-*`.
+
 ### Dark/Light mode
 
 Il tema supporta dark e light mode tramite la classe `.p-dark` su `<html>`.
