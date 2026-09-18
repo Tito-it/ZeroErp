@@ -21,7 +21,13 @@ Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.6) · analisi caric
 (articolo, magazzino), con il **valore** totale corrente.
 
 È una **copia ricostruibile** del registro, non una fonte: la tiene aggiornata la primitiva
-di scrittura (Lotto 2) e in qualunque momento si può rifare **ri-sommando** i costi scritti
+di scrittura ([fn_scrivi_movimento](/dbzero/magazzino/funzioni/fn_scrivi_movimento), dal 18-09:
+`valore += round(qta × costo, 6)` a ogni movimento) e in qualunque momento si può rifare
+**ri-sommando** i costi scritti con
+[fn_ricalcola_valore_giacenza](/dbzero/magazzino/funzioni/fn_ricalcola_valore_giacenza); la spia
+[dbops.vw_magazzino_valore_giacenza_divergente](/dbzero/dbops/views/vw_magazzino_valore_giacenza_divergente)
+dice quando copia e registro divergono, cioè quando qualcuno ha scritto fuori dalla porta.
+Dal 18-09 l'applicazione ha **solo lettura** su questa tabella
 sui movimenti — le entrate al costo del documento, le uscite alla media corrente. Non è una
 ri-esecuzione: i costi unitari stanno sul registro, e sommarli basta.
 

@@ -62,7 +62,12 @@ magazzino). Meccanismo comune: [Linee guida SQL — sezione 10](/linee-guida-sql
 La tabella `reservations` è stata **rinominata**, non rifatta, con tutto ciò che portava il
 suo nome: chiave, sequenza, vincoli, indici, trigger. Via il riferimento libero `doc_*`, lo
 stato a quattro valori, `attivo`; dentro la sorgente a catalogo, la causale, il soggetto e la
-nota, lotto e asset. L'indice che serve alla disponibilità (Lotto 2) è **parziale** sulle
+nota, lotto e asset. Dal 18-09 (Lotto 2) i blocchi aperti **in uscita** (`qta < 0`) entrano nella
+disponibilità — [vw_disponibilita](/dbzero/magazzino/views/vw_disponibilita) e
+[fn_check_disponibilita_uscita](/dbzero/script/funzioni/fn_check_disponibilita_uscita), che esclude
+i blocchi della stessa sorgente di chi chiede; un atteso in entrata non è un blocco — e l'app **non
+può cancellarli** (`REVOKE DELETE`): un blocco si chiude, non si cancella. L'indice che serve alla
+disponibilità è **parziale** sulle
 `APERTA`, per articolo e magazzino. Presidio:
 `db/pgtap/magazzino/test-movimenti-attesi-forma-v1.sql`.
 

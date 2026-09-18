@@ -63,6 +63,27 @@ emittente moriva con `23502`. Brief: `brief-db-emittente-di-default-un-bb-solo`.
 * è storicizzato e la sua storia porta il perimetro dell'emittente (mappa
   `dbops.storico_scope_policy`, modo `EF`).
 
+### Le ubicazioni le decide il magazzino (dal 18-09, Lotto 2)
+
+`usa_ubicazioni` (default `false`): con `true` **ogni** movimento — e ogni riga di inventario o
+rettifica — nomina un'ubicazione del magazzino, attiva; con `false` non può nominarne una. Lo
+stesso stampo di `requires_lotto`/`requires_serial` sull'articolo: o sempre o mai. Esiste perché
+un conteggio per ubicazione, su merce a registro senza posizione, avrebbe **raddoppiato** la
+giacenza. Si decide alla nascita e si cambia solo a registro vuoto
+([trgfn_magazzini_guard_usa_ubicazioni](/dbzero/magazzino/funzioni/trgfn_magazzini_guard_usa_ubicazioni)):
+con merce dentro, un magazzino nuovo e un trasferimento. Un'area di ricezione, in un magazzino a
+ubicazioni, **è** un'ubicazione.
+
+Il magazzino è anche l'**ancora del perimetro** del ledger: il guard di scope su `movimenti`,
+`movimenti_attesi` e `valore_giacenza` risale da `magazzino_id` all'emittente (modo `magazzino` di
+[fn_resolve_emittente_fiscale_id](/dbzero/script/funzioni/fn_resolve_emittente_fiscale_id)).
+
+`magazzino.trasferimenti` è il trasferimento **interno** (stesso magazzino fra ubicazioni, o
+magazzini dello stesso emittente, senza trasporto); quello con trasporto è il DDT `TRASFERIMENTO`
+(decisione del 17-09, D-L2-g).
+
+---
+
 ---
 
 {% include-markdown "it/dbzero/magazzino/_dominio-magazzino.md" %}

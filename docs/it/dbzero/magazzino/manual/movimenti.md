@@ -106,8 +106,14 @@ magazzini del **proprio emittente** (policy `rls_movimenti_ef_whitelist`, che ri
 magazzino). Il meccanismo è quello comune a tutto il progetto: vedi
 [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
-⚠️ Finché la primitiva di scrittura non esiste, la tabella resta scrivibile
-dall'applicazione: il perimetro c'è, la porta no.
+⭐ **Dal 18-09 (Lotto 2) la porta c'è.** L'applicazione ha **solo lettura** sul registro: scrive
+soltanto [fn_scrivi_movimento](/dbzero/magazzino/funzioni/fn_scrivi_movimento), che gira con i
+permessi del proprietario ed è l'unica strada — con i quattordici controlli nell'ordine del
+contratto, il lock in uscita, il costo deciso dalla struttura, la copia del valore aggiornata.
+Il perimetro che quella funzione scavalca lo rimette il guard di scope montato qui
+(`trg_movimenti_a10_guard_emittente_scope_ins_upd`, modo `magazzino`), che dal 18-09 si ferma
+anche senza identità in sessione. La postura sta in tre sedi (`90_end/20260918-15`, il loop
+`ci_apply`, il provisioning) e `test-porta-ledger-v1` le tiene allineate.
 
 ---
 
@@ -120,6 +126,9 @@ dall'applicazione: il perimetro c'è, la porta no.
   `ubicazione_id`, `storno_di_movimento_id`, l'identità. Il guard del verso, che questa pagina
   segnalava mancante dal 21-08, è `20260915-13`. Presidio:
   `db/pgtap/magazzino/test-movimenti-vincoli-v2.sql`.
+* 2026-09-18 — la porta (Lotto 2): l'app perde `INSERT/UPDATE/DELETE` (`20260918-15`), il guard
+  di scope entra sul ledger (`20260918-14`), nasce la primitiva (`20260918-18`). `vincoli-v2`
+  passa al runner owner (forma 3); il comportamento sta nei `test-fn-scrivi-movimento-*`.
 
 ---
 

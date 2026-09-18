@@ -184,8 +184,12 @@ WHERE a.uom_id IS NOT NULL
   registrato in `dbops.lock_columns_conditional`, e il drawer lo disabilita via
   `non_editable_fields`. `requires_lotto` è **fuori** da quel guard e da quel registro per
   decisione (analisi carico/scarico §7-quater p.3: una partita non è struttura di
-  composizione): chi lo espone nel drawer **non** deve copiare il lucchetto. Al 2026-09-15
-  `requires_lotto` non è ancora in `vw_articoli_dettaglio` né nel drawer: arriva col Lotto 2.
+  composizione): chi lo espone nel drawer **non** deve copiare il lucchetto. Dal 2026-09-18
+  `requires_lotto` è in `vw_articoli_dettaglio` (in coda, `20260918-10`) e la primitiva di
+  magazzino lo fa rispettare (`E_MAG_LOTTO_OBBLIGATORIO`/`_NON_AMMESSO`); il drawer lo prende
+  con la richiesta BE/FE del Lotto 2. `gestito_a_magazzino` è la prima cosa che la primitiva
+  guarda (`E_MAG_ARTICOLO_NON_GESTITO`, campo `articolo_id`), e la spia
+  `dbops.vw_articoli_a_magazzino_prontezza` dice se almeno un articolo attivo è marcato.
 * **IVA e conti contabili**: applica regole applicative per la coerenza tra `iva_id` e tipo articolo (es. voci esenti).
 * **`meta` JSONB**: usa chiavi stabili (namespace logici: `utility.*`, `ui.*`, `calc.*`) e considera indici GIN se interrogato.
 * **Storicizza** anziché cancellare: usa `attivo=false` e lascia che i trigger di storico fotografino le modifiche.

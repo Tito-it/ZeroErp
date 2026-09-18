@@ -24,8 +24,12 @@ nell'accumulatore, e la vista non poteva dire se i due divergevano dal registro.
 una giacenza senza riga di valore mostra un costo `NULL` — un'anomalia visibile, non un caso
 nascosto.
 
-`NULL` anche a quantità zero: significa **«costo non determinabile»**, non «costo zero», e
-non va trattato come zero in un totale.
+`NULL` a quantità **zero o negativa** (dal 18-09: con `consente_stock_negativo` la giacenza può
+scendere sotto zero e un rapporto fra un valore e una quantità negativa non è un costo):
+significa **«costo non determinabile»**, non «costo zero», e non va trattato come zero in un
+totale. ⭐ È la **sede unica** della «media corrente»: la primitiva
+[fn_scrivi_movimento](/dbzero/magazzino/funzioni/fn_scrivi_movimento) la legge dentro il lock per
+valorizzare ogni uscita e le entrate senza costo — una regola sola, non due.
 
 Fino al 14-09 la vista portava anche `qta` e `valore`: oggi la **situazione** completa
 (quantità, valore, costo) è [vw_giacenza_valorizzata](/dbzero/magazzino/views/vw_giacenza_valorizzata);

@@ -71,6 +71,8 @@
 - [fn_non_editable_fields](manual/fn_non_editable_fields.md)
 - [fn_normalize_indirizzo](manual/fn_normalize_indirizzo.md) — (rev 2026-08-21)
 - [fn_pgtap_cf_libero](manual/fn_pgtap_cf_libero.md) — (rev 2026-08-21)
+- [fn_pgtap_crea_articolo](manual/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_pgtap_crea_magazzino](manual/fn_pgtap_crea_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_soggetto_pg](manual/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](manual/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)
 - [fn_pgtap_piva_libera](manual/fn_pgtap_piva_libera.md) — (rev 2026-08-21)
@@ -94,6 +96,8 @@
 - [fn_seed_automazione_overlap](manual/fn_seed_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna) `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita (`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
 - [fn_seed_fk_index_policy](manual/fn_seed_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_set_gucs_conn](manual/fn_set_gucs_conn.md) — (latest review 29-12-25) La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**. Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
+- [fn_sorgenti_orfane](manual/fn_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_sorgenti_orfane_perimetro](manual/fn_sorgenti_orfane_perimetro.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_storico_arma_scope](manual/fn_storico_arma_scope.md) — (latest review 11-09-2026)
 - [fn_storico_backfill_scope](manual/fn_storico_backfill_scope.md) — (latest review 11-09-2026)
 - [fn_storico_risolvi_scope](manual/fn_storico_risolvi_scope.md) — (latest review 11-09-2026)
@@ -111,6 +115,7 @@
 
 ## 🔍 Views (manuale)
 - [vw_af_senza_giro](manual/vw_af_senza_giro.md) — (latest review 04-09-2026)
+- [vw_articoli_a_magazzino_prontezza](manual/vw_articoli_a_magazzino_prontezza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_audit_log_scrittori_fuori_perimetro](manual/vw_audit_log_scrittori_fuori_perimetro.md) — (latest review 12-09-2026)
 - [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_coda_lavori_da_guardare](manual/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
@@ -126,6 +131,8 @@
 - [vw_function_list](manual/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
 - [vw_indici_ridondanti_prefisso](manual/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_liste_multi_emittente_non_certificate](manual/vw_liste_multi_emittente_non_certificate.md) — (latest review 18-08-26)
+- [vw_magazzino_movimenti_senza_costo](manual/vw_magazzino_movimenti_senza_costo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [vw_magazzino_valore_giacenza_divergente](manual/vw_magazzino_valore_giacenza_divergente.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_non_editable_fields](manual/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_operatori_senza_emittente](manual/vw_operatori_senza_emittente.md) — (latest review 18-08-26)
 - [vw_parameter_fk_surrogate_dangling](manual/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
@@ -141,5 +148,6 @@
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](manual/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)
 - [vw_run_senza_attore](manual/vw_run_senza_attore.md) — (latest review 04-09-2026)
+- [vw_sorgenti_orfane](manual/vw_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_storico_scope_da_dichiarare](manual/vw_storico_scope_da_dichiarare.md) — (latest review 12-09-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 (3 di 4) — IL PERIMETRO IN SCRITTURA SUL LEDGER: tre trigger del BB
+#   trg_movimenti_a10_guard_emittente_scope_ins_upd        (magazzino.movimenti)
+#   trg_movimenti_attesi_a10_guard_emittente_scope_ins_upd (magazzino.movimenti_attesi)
+#   trg_valore_giacenza_a10_guard_emittente_scope_ins_upd  (magazzino.valore_giacenza)
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.1 (D-L2-b, M-6)
+#
+# -- PERCHE' QUI E NON NELLA PRIMITIVA -------------------------------------------------
+#   La primitiva e' SECURITY DEFINER del proprietario: dentro, le policy di
+#   queste tre tabelle non filtrano. Il perimetro si RIMETTE col BB che
+#   vendite usa gia' in scrittura, con il modo 'magazzino' (P-2 1 di 4): il
+#   guard legge le GUC di sessione — dentro la DEFINER sono quelle
+#   dell'operatore — e chiede a fn_check_user_emittente_scope la stessa
+#   domanda della policy. Policy, guard e primitiva non possono divergere.
+#   ⚠️ Senza identita' in sessione: dalla rev 2026-09-18 del guard (P-2 2 di
+#   4) dentro la DEFINER si ferma lo stesso, perche' un movimento HA sempre
+#   un padrone (magazzino_id NOT NULL).
+#
+# -- LO STAMPO, NON UN NOME NUOVO (P-0, sezione 6-ter C5) ------------------------------
+#   24 tabelle montano trg_<t>_a10_guard_emittente_scope_ins_upd su BEFORE
+#   INSERT OR UPDATE (vendite.ordini compreso): stesso nome, stesso evento. Il
+#   brief proponeva `guard_scope` + UPDATE OF magazzino_id — due deviazioni per
+#   niente: il guard salta da solo se la colonna non cambia, e l'ordine
+#   alfabetico fra i BEFORE ROW regge uguale (guard_emittente_scope <
+#   guard_sorgente < guard_verso: lo scope si valuta per primo). Lunghezze
+#   47/54/53, sotto i 63.
+#
+# -- LE TRE TABELLE, NON LE SETTE -----------------------------------------------------
+#   Le testate (inventari, rettifiche, trasferimenti) e le righe le scrive
+#   l'operatore come INVOKER sotto WITH CHECK: gia' coperte. Qui si monta dove
+#   la DEFINER le scavalca: il ledger, gli attesi (che restano scrivibili
+#   dall'app, e che la disponibilita' legge), la copia del valore. Il roll-out
+#   sulle testate e' del cantiere dbops (sezione 9 del brief).
+#
+# -- NIENTE preCondition SUI TRIGGER GENERATI ---------------------------------------------
+#   I trigger di audit/tx_id/storico sulle tre tabelle nascono a ci_apply: qui
+#   non si contano e non si toccano (linee-guida-sql 11.5). Si pretende solo
+#   che il BB e le tabelle esistano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260918-14-create-trigger-guard-emittente-scope-ledger-mctit.yaml
+
+  - changeSet:
+      id: 20260918-14-create-trigger-guard-emittente-scope-ledger
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard di scope in scrittura (script.trgfn_guard_emittente_scope, modo 'magazzino'
+        su magazzino_id) montato su magazzino.movimenti, movimenti_attesi e valore_giacenza,
+        con lo stampo delle altre 24 tabelle (trg_<t>_a10_guard_emittente_scope_ins_upd,
+        BEFORE INSERT OR UPDATE): rimette il perimetro che la primitiva DEFINER scavalca.
+        Brief: brief-db-magazzino-lotto-2-motore, sezione 4.1 (P-2, D-L2-b).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_emittente_scope';
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti
+                columnName: magazzino_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+                columnName: magazzino_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: valore_giacenza
+                columnName: magazzino_id
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_trigger
+                   WHERE tgname IN ('trg_movimenti_a10_guard_emittente_scope_ins_upd',
+                                    'trg_movimenti_attesi_a10_guard_emittente_scope_ins_upd',
+                                    'trg_valore_giacenza_a10_guard_emittente_scope_ins_upd');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_movimenti_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.movimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id');
+
+              CREATE TRIGGER trg_movimenti_attesi_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.movimenti_attesi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id');
+
+              CREATE TRIGGER trg_valore_giacenza_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.valore_giacenza
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_valore_giacenza_a10_guard_emittente_scope_ins_upd ON magazzino.valore_giacenza;
+              DROP TRIGGER IF EXISTS trg_movimenti_attesi_a10_guard_emittente_scope_ins_upd ON magazzino.movimenti_attesi;
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_guard_emittente_scope_ins_upd ON magazzino.movimenti;

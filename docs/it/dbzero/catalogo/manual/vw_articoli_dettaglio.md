@@ -90,5 +90,13 @@ le colonne **per nome**: finché non le aggiunge, a video non arrivano. Per
 questo le tre colonne della lista articoli sono seminate spente. Brief:
 `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezioni 5.2 e 5.5.
 
+### 🔄 rev 2026-09-18 — `requires_lotto`
+
+Una colonna in coda (`20260918-10`, Lotto 2 di magazzino): la primitiva pretende il lotto
+quando è vera, e l'operatore deve poterla vedere e impostare. **Senza il lock BoM** di
+`requires_serial` (il lotto non entra nella distinta): il BE non la mette fra i
+`non_editable_fields`, il drawer non la disabilita. Nessuna `security_invoker`, e non va
+aggiunta. Brief: `brief-db-magazzino-lotto-2-motore`, sezione 4.9.
+
 ---
 {% include-markdown "signature-core.md" %}

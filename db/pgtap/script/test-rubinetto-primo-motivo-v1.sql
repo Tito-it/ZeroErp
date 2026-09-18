@@ -10,7 +10,8 @@
 --  3) ⭐ zero punti NON CLASSIFICATI — un presidio che non sa leggere un sito
 --        deve diventare ROSSO, non saltarlo
 --  4) il debito FUORI perimetro non cresce (soglia 6, puo' solo calare)
---  5) le diciassette funzioni bonificate chiamano davvero l'helper
+--  5) le diciannove funzioni bonificate CHIAMANO davvero l'helper (una
+--        chiamata, non una menzione: i commenti sono fuori dal conteggio)
 --  6) ⚠️ il marcatore non e' troppo LARGO: un codice LETTERALE resta fuori
 --  7) ⭐⭐ la canarina: il marcatore non e' troppo STRETTO
 --
@@ -138,11 +139,22 @@ SELECT cmp_ok(
 -- 5) La bonifica e' arrivata dove diceva: dieci funzioni chiamano l'helper.
 --    ⭐ E' il test che ha morso nella prova per mutazione, quando il 2 non
 --    mordeva: rimessa una coda vecchia, qui il conteggio scende a nove.
+--    🔴 DAL 2026-09-18 SI CONTA UNA CHIAMATA, NON UNA MENZIONE: si tolgono i
+--    commenti `--` e si pretende il nome seguito da `(` — la stessa forma con
+--    cui dbops.vw_punti_primo_motivo riconosce `fn_log_and_raise_error\s*\(`.
+--    Fino a quel giorno il predicato era `prosrc ~ 'fn_raise_primo_motivo_se_presente'`,
+--    cioe' il TESTO: e il 18-09 e' entrata script.fn_check_disponibilita_uscita,
+--    una fn_check_* PURA che nel proprio commento di testa nomina l'helper
+--    come cosa che fa il suo CONSUMATORE. Il predicato vecchio la contava fra
+--    «le funzioni che chiamano l'helper» — 20 invece di 19 — e l'asserzione
+--    avrebbe affermato una cosa falsa aggiornando il numero. E' la lezione gia'
+--    pagata da `_sorgente_senza_commenti` (2026-08-26): un presidio che cerca
+--    una stringa nel sorgente si accende sulla PROSA che la spiega.
 SELECT is(
     (SELECT count(*)::int FROM pg_proc p
-      WHERE p.prosrc ~ 'fn_raise_primo_motivo_se_presente'
+      WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    17,
+    19,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -151,7 +163,14 @@ SELECT is(
     --   sull'helper — pagamenti.trgfn_vendite_contabili_righe_guard_contenuto
     --   (D17, brief riga-manuale-nasce-abbinata-ed-elimina-riga), che solleva
     --   il primo motivo di script.fn_check_riga_contabile_eliminabile.
-    'le diciassette funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-18: da 17 a 19. Due siti NUOVI nati sull'helper col Lotto 2 del
+    --   magazzino (brief-db-magazzino-lotto-2-motore): magazzino.fn_scrivi_movimento
+    --   (20260918-18, due chiamate: fn_check_riga_magazzino e
+    --   fn_check_disponibilita_uscita — si conta la FUNZIONE, non le chiamate)
+    --   e magazzino.fn_posta_inventario (20260918-23, fn_check_riga_magazzino).
+    --   La terza menzione del giorno — fn_check_disponibilita_uscita — e' un
+    --   commento, e da questa rev non conta (vedi sopra).
+    'le diciannove funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

@@ -10,10 +10,12 @@
 --   certe, sezione 7: «un has_column sulle viste non basta»): la fixture
 --   costruisce tre movimenti e una riga di valore, e si confronta cio' che le
 --   viste rispondono con cio' che il registro e la copia contengono.
--- ⚠️ valore_giacenza e' sotto RLS via_magazzino: la scrittura della riga di
---   valore passa perche' l'operatore ha l'emittente del magazzino nel
---   perimetro (helper). E' la prova che la copia e' scrivibile dall'app
---   finche' la primitiva non arriva a chiuderla (Lotto 2).
+-- ⚠️ RI-COLLOCATO col Lotto 2 (brief-db-magazzino-lotto-2-motore, D-L2-b,
+--   sezione 7): la porta del ledger e' chiusa — l'app non scrive movimenti ne'
+--   valore_giacenza. La giacenza e la copia si costruiscono ATTRAVERSO LA
+--   PRIMITIVA (fn_scrivi_movimento), che scrive la copia da sola: e' diventato
+--   un test di comportamento. Il magazzino usa le ubicazioni (D-L2-m: ogni
+--   movimento ne nomina una), l'articolo e' costruito gestito (helper).
 --
 -- Elenco test (plan 12):
 --   La rinomina e' di tutto:
@@ -27,10 +29,10 @@
 --    7) vw_costo_medio = valore / qta con la quantita' dal registro (70 / 7 = 10)
 --    8) vw_giacenza_valorizzata: qta dal registro, valore dalla copia, costo = valore / qta
 --    9) vw_costo_medio_globale somma i magazzini (un solo magazzino qui: 7, 70, 10)
---   10) senza riga di valore, la giacenza si vede e valore/costo sono NULL (anomalia visibile)
+--   10) a giacenza zero (+3 -3 su un secondo articolo) valore 0 e costo NULL (C6: la media pretende qta > 0)
 --   La postura:
 --   11) security_invoker VERA su tutte e cinque (pg_class.reloptions)
---   12) un articolo inesistente su valore_giacenza -> 23503 (la FK che mancava, esercitata)
+--   12) la FK articolo di valore_giacenza esiste (pg_constraint): l'app non puo' piu' esercitarla, la copia la scrive la primitiva
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
@@ -98,8 +100,6 @@ DECLARE
     v_ret magazzino.rettifiche.id%TYPE;
     v_rr  magazzino.rettifiche_righe.id%TYPE;
     v_tipo_ubi config.tipi_ubicazione.id%TYPE;
-    v_cau_inv  magazzino.causali.id%TYPE;
-    v_cau_neg  magazzino.causali.id%TYPE;
     v_src_inv  config.sorgenti.id%TYPE;
     v_src_ret  config.sorgenti.id%TYPE;
 BEGIN
@@ -107,18 +107,18 @@ BEGIN
     -- L'indirizzo si FABBRICA (dato di macchina: zero righe su un DB da zero);
     -- articolo e tipo di ubicazione sono seed di catalogo, presenti per contratto.
     v_ind := dbops.fn_pgtap_crea_indirizzo_dettaglio('valore');
-    SELECT a.id INTO v_art FROM catalogo.articoli a WHERE a.attivo ORDER BY a.id LIMIT 1;
+    -- L'articolo si COSTRUISCE gestito a magazzino (Lotto 2: la primitiva rifiuta un non gestito).
+    v_art := dbops.fn_pgtap_crea_articolo('PGT-VG1-ART', true, false, false);
     SELECT t.id INTO v_tipo_ubi FROM config.tipi_ubicazione t WHERE t.attivo ORDER BY t.id LIMIT 1;
-    IF v_art IS NULL OR v_tipo_ubi IS NULL THEN
-        RAISE EXCEPTION 'fixture: servono un articolo e un tipo di ubicazione attivi (seed di catalogo)';
+    IF v_tipo_ubi IS NULL THEN
+        RAISE EXCEPTION 'fixture: serve un tipo di ubicazione attivo (seed di catalogo)';
     END IF;
-    SELECT id INTO v_cau_inv FROM magazzino.causali WHERE codice_interno = 'INV_INIZIALE';
-    SELECT id INTO v_cau_neg FROM magazzino.causali WHERE codice_interno = 'RETT_NEG';
     SELECT id INTO v_src_inv FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA';
     SELECT id INTO v_src_ret FROM config.sorgenti WHERE codice_interno = 'RETTIFICA_RIGA';
 
-    INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-    VALUES ('PGT-VG1', 'pgTAP valore', v_ind, v_ef) RETURNING id INTO v_mag;
+    -- usa_ubicazioni: i movimenti nominano U1 e U2 (D-L2-m).
+    INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id, usa_ubicazioni)
+    VALUES ('PGT-VG1', 'pgTAP valore', v_ind, v_ef, true) RETURNING id INTO v_mag;
     INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U1', v_tipo_ubi) RETURNING id INTO v_u1;
     INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U2', v_tipo_ubi) RETURNING id INTO v_u2;
 
@@ -127,14 +127,11 @@ BEGIN
     INSERT INTO magazzino.rettifiche (magazzino_id) VALUES (v_mag) RETURNING id INTO v_ret;
     INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta) VALUES (v_ret, v_art, -2) RETURNING id INTO v_rr;
 
-    -- +5 in U1, +4 in U2 (stessa sorgente, tranche diverse), -2 da U1 (rettifica)
-    INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, costo_unitario, sorgente_tipo_id, sorgente_riga, ubicazione_id) VALUES
-        (v_art, v_mag, v_cau_inv,  5, 10, v_src_inv, v_ir, v_u1),
-        (v_art, v_mag, v_cau_inv,  4, 10, v_src_inv, v_ir, v_u2),
-        (v_art, v_mag, v_cau_neg, -2, 10, v_src_ret, v_rr, v_u1);
-
-    -- La copia del valore: (5 + 4 - 2) * 10 = 70.
-    INSERT INTO magazzino.valore_giacenza (articolo_id, magazzino_id, valore) VALUES (v_art, v_mag, 70);
+    -- +5 in U1, +4 in U2 (stessa sorgente, tranche diverse), -2 da U1 (rettifica):
+    -- ATTRAVERSO LA PRIMITIVA, che scrive anche la copia: 50 + 40 - 2 * 10 (media) = 70.
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE',  5, v_src_inv, v_ir, NULL, 10, NULL, NULL, v_u1);
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'INV_INIZIALE',  4, v_src_inv, v_ir, NULL, 10, NULL, NULL, v_u2);
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art, 'RETT_NEG',     -2, v_src_ret, v_rr, NULL, NULL, NULL, NULL, v_u1);
 
     INSERT INTO _fix VALUES (v_mag, v_art, v_u1, v_u2);
 END $fix$;
@@ -180,12 +177,25 @@ SELECT is(
       WHERE g.articolo_id = (SELECT art FROM _fix)),
     '9) vw_costo_medio_globale somma sui magazzini visibili dell''articolo');
 
-DELETE FROM magazzino.valore_giacenza WHERE magazzino_id = (SELECT mag FROM _fix);
+-- Un secondo articolo, +3 e -3: giacenza zero, valore zero, media NULL (C6).
+DO $z$
+DECLARE v_art2 uuid; v_inv bigint; v_ir bigint; v_ret bigint; v_rr bigint; v_mag bigint; v_u1 bigint;
+BEGIN
+    SELECT mag, u1 INTO v_mag, v_u1 FROM _fix;
+    v_art2 := dbops.fn_pgtap_crea_articolo('PGT-VG1-ZERO', true, false, false);
+    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
+    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id) VALUES (v_inv, v_art2, 3, v_u1) RETURNING id INTO v_ir;
+    INSERT INTO magazzino.rettifiche (magazzino_id) VALUES (v_mag) RETURNING id INTO v_ret;
+    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta, ubicazione_id) VALUES (v_ret, v_art2, -3, v_u1) RETURNING id INTO v_rr;
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art2, 'INV_INIZIALE', 3, (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO_RIGA'), v_ir, NULL, 10, NULL, NULL, v_u1);
+    PERFORM magazzino.fn_scrivi_movimento(v_mag, v_art2, 'RETT_NEG',    -3, (SELECT id FROM config.sorgenti WHERE codice_interno = 'RETTIFICA_RIGA'), v_rr, NULL, NULL, NULL, NULL, v_u1);
+END $z$;
 SELECT is(
-    (SELECT v.qta::text || '|' || coalesce(v.valore::text, 'NULL') || '|' || coalesce(v.costo_medio::text, 'NULL')
-       FROM magazzino.vw_giacenza_valorizzata v WHERE v.magazzino_id = (SELECT mag FROM _fix)),
-    '7.000000|NULL|NULL',
-    '10) senza la riga di valore la giacenza si vede e valore/costo sono NULL: l''anomalia e'' visibile, non nascosta');
+    (SELECT trim_scale(v.qta)::text || '|' || trim_scale(v.valore)::text || '|' || coalesce(v.costo_medio::text, 'NULL')
+       FROM magazzino.vw_giacenza_valorizzata v JOIN catalogo.articoli a ON a.id = v.articolo_id
+      WHERE v.magazzino_id = (SELECT mag FROM _fix) AND a.codice = 'PGT-VG1-ZERO'),
+    '0|0|NULL',
+    '10) a giacenza zero: valore 0 e costo medio NULL — la media pretende qta > 0 (C6)');
 
 -- ============================================================
 -- 11..12 La postura
@@ -200,11 +210,10 @@ SELECT is(
     5,
     '11) security_invoker e'' VERA su tutte e cinque le viste (pg_class.reloptions)');
 
-SELECT throws_ok(
-    $$ INSERT INTO magazzino.valore_giacenza (articolo_id, magazzino_id, valore)
-       SELECT gen_random_uuid(), mag, 0 FROM _fix $$,
-    '23503', NULL,
-    '12) un articolo inesistente su valore_giacenza: la FK che mancava, esercitata');
+SELECT is(
+    (SELECT count(*)::int FROM pg_constraint WHERE conrelid = 'magazzino.valore_giacenza'::regclass AND conname = 'fk_mag_valore_giacenza_articolo' AND contype = 'f'),
+    1,
+    '12) la FK articolo della copia esiste; l''app non puo'' piu'' esercitarla (SELECT soltanto: la copia la scrive la primitiva)');
 
 SELECT * FROM finish();
 ROLLBACK;

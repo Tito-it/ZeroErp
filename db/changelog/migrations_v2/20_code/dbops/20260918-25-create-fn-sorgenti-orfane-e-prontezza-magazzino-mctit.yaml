@@ -1,0 +1,266 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-8 — DUE SPIE: gli ORFANI di sorgente e la PRONTEZZA del magazzino
+#   dbops.fn_sorgenti_orfane_perimetro()  RETURNS TABLE (tabella, ...)   — il gemello «esiste»
+#   dbops.fn_sorgenti_orfane()            RETURNS TABLE (tabella, riga_id, sorgente_*, target_table)
+#   dbops.vw_sorgenti_orfane              (natura ZERO, perimetro DEFINER, SETTIMANALE)
+#   dbops.vw_articoli_a_magazzino_prontezza (una riga: MARCATI / NESSUNO_MARCATO)
+#   Brief: brief-db-magazzino-lotto-2-motore, sezioni 4.7 (D-9) e 4.8 (D-L2-k)
+#
+# -- GLI ORFANI: il perimetro si DERIVA dal vincolo, non da un elenco (4.7) ---------------------
+#   Una riga e' orfana quando la sua sorgente (tipo + chiave) punta a un
+#   record che non c'e' piu'. Il guard tipizzato (Lotto 1) impedisce di
+#   INSERIRLA; questa vista trova quelle create DOPO, cancellando il
+#   bersaglio — la FK non c'e' e non puo' esserci (modello A tipizzato). Il
+#   perimetro sono le tabelle con una FK verso config.sorgenti su
+#   sorgente_tipo_id, le due colonne sorgente_riga / sorgente_uid E il guard
+#   tipizzato montato (pg_trigger): e' il guard il contratto del modello A.
+#   Le tabelle di vendite con FK e colonne ma senza guard hanno un'altra
+#   semantica (riga = riga del documento, uid = documento) e davano 112
+#   falsi orfani su dev (18-09): entrano col roll-out D-3. Oggi: le sei di
+#   magazzino. Per ciascuna,
+#   per ogni sorgente_tipo_id presente, un anti-join dinamico verso
+#   target_table (regclass) sulla chiave che key_selector dichiara (id | uid).
+#   Si scrive UNA volta perche' target_table e key_selector stanno a catalogo:
+#   lo stampo di vw_bersagli_non_dichiarati.
+#   SECURITY DEFINER del proprietario, pin pg_catalog/public/pg_temp: un
+#   orfano in una tabella protetta va visto comunque (STABLE: legge e basta).
+#   ⚠️ Il perimetro va reso VISIBILE: fn_sorgenti_orfane_perimetro() elenca
+#   le tabelle esaminate, e il pgTAP asserisce che le sei di magazzino ci
+#   sono — il gemello «esiste» della biforcazione (memoria
+#   presidio_ramo_scelto_da_presenza_colonna): un presidio che esamina zero
+#   tabelle e' verde e muto.
+#
+# -- LA PRONTEZZA: al rilascio nessun articolo e' gestito a magazzino (4.8) -----------------------
+#   articoli.gestito_a_magazzino nasce false su tutti (fail-safe): il
+#   magazzino resterebbe un mobile vuoto senza che nessun rosso lo dica. Una
+#   riga sola, stato = MARCATI se esiste un articolo attivo gestito, altrimenti
+#   NESSUNO_MARCATO; in presidi.csv natura ZERO con colonna_stato = stato e
+#   stato_atteso = MARCATI: fn_conta_presidio conta le righe IS DISTINCT FROM
+#   'MARCATI' — lo zero suona, il pieno tace, senza una natura nuova.
+#   catalogo.articoli non ha RLS: perimetro LIBERO. Cadenza SETTIMANALE
+#   (D-L2-k): una condizione di prontezza, non un incidente — un allarme
+#   quotidiano su una cosa gia' saputa si spegne.
+#   Deciso da Tid il 14-09 (brief modifiche certe, sezione 7): si scrive col
+#   primo carico, non prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260918-25-create-fn-sorgenti-orfane-e-prontezza-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260918-25-create-fn-sorgenti-orfane-e-prontezza-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_sorgenti_orfane_perimetro (le tabelle esaminate: FK verso config.sorgenti +
+        sorgente_riga + sorgente_uid), dbops.fn_sorgenti_orfane (anti-join dinamico verso
+        target_table sulla chiave di key_selector; DEFINER del proprietario, STABLE),
+        dbops.vw_sorgenti_orfane (deve restare vuota), dbops.vw_articoli_a_magazzino_prontezza
+        (una riga MARCATI / NESSUNO_MARCATO). Brief: brief-db-magazzino-lotto-2-motore, sezioni
+        4.7 e 4.8 (P-8).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: sorgenti
+                columnName: key_selector
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: gestito_a_magazzino
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1. Il perimetro, visibile: le tabelle che il presidio esamina.
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane_perimetro()
+              RETURNS TABLE (
+                  tabella   regclass,
+                  col_tipo  name,
+                  col_riga  name,
+                  col_uid   name
+              )
+              LANGUAGE sql
+              STABLE
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+                  -- Scopo: il gemello «esiste» di fn_sorgenti_orfane — le tabelle con una FK
+                  --   verso config.sorgenti sulla colonna del tipo E le due colonne di chiave
+                  --   (modello A tipizzato). Derivato dal catalogo, non da un elenco.
+                  SELECT c.conrelid::regclass      AS tabella,
+                         a.attname                 AS col_tipo,
+                         'sorgente_riga'::name     AS col_riga,
+                         'sorgente_uid'::name      AS col_uid
+                    FROM pg_constraint c
+                    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+                   WHERE c.contype = 'f'
+                     AND c.confrelid = 'config.sorgenti'::regclass
+                     AND array_length(c.conkey, 1) = 1
+                     AND EXISTS (SELECT 1 FROM pg_attribute r
+                                  WHERE r.attrelid = c.conrelid AND r.attname = 'sorgente_riga' AND NOT r.attisdropped)
+                     AND EXISTS (SELECT 1 FROM pg_attribute u
+                                  WHERE u.attrelid = c.conrelid AND u.attname = 'sorgente_uid' AND NOT u.attisdropped)
+                     -- ⭐ E il guard TIPIZZATO montato: e' lui il contratto del modello A
+                     --   («tipo => esattamente una chiave, che punta al bersaglio di
+                     --   key_selector»). Le tabelle di vendite con la stessa FK e le stesse
+                     --   colonne (attivita_fatturabili, fatture_righe, ...) hanno un'altra
+                     --   semantica — riga = la riga del documento, uid = il documento — e
+                     --   senza questo filtro davano 112 falsi orfani su dev (18-09). Entrano
+                     --   quando prendono il guard (roll-out D-3, cantiere dbops).
+                     AND EXISTS (SELECT 1 FROM pg_trigger tg
+                                  JOIN pg_proc tp ON tp.oid = tg.tgfoid
+                                 WHERE tg.tgrelid = c.conrelid
+                                   AND NOT tg.tgisinternal
+                                   AND tp.proname = 'trgfn_guard_sorgente_polimorfa_tipizzata')
+                   ORDER BY 1;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro() IS
+                  'Il PERIMETRO di dbops.fn_sorgenti_orfane, reso visibile: le tabelle con una FK '
+                  'verso config.sorgenti su una colonna sola (sorgente_tipo_id), le due colonne '
+                  'sorgente_riga / sorgente_uid E il guard trgfn_guard_sorgente_polimorfa_tipizzata '
+                  'montato — e'' il guard il contratto del modello A (tipo => una chiave verso il '
+                  'bersaglio di key_selector). Le tabelle di vendite con FK e colonne ma senza guard '
+                  'hanno un''altra semantica e restano fuori finche'' non lo prendono (D-3). Derivato '
+                  'dal catalogo (pg_constraint + pg_trigger), non da un elenco: una tabella nuova '
+                  'con quella forma entra da sola. Il pgTAP asserisce che le sei di magazzino '
+                  'ci sono: un presidio che esamina zero tabelle e'' verde e muto. Brief: '
+                  'brief-db-magazzino-lotto-2-motore, sezione 4.7.';
+
+              -- ============================================================
+              -- 2. Gli orfani: anti-join dinamico verso il bersaglio dichiarato a catalogo.
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane()
+              RETURNS TABLE (
+                  tabella                  regclass,
+                  riga_id                  bigint,
+                  sorgente_tipo_id         config.sorgenti.id%TYPE,
+                  sorgente_codice_interno  config.sorgenti.codice_interno%TYPE,
+                  sorgente_riga            bigint,
+                  sorgente_uid             text,      -- text: nel perimetro convivono uuid e text
+                  target_table             config.sorgenti.target_table%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: le righe la cui sorgente (tipo + chiave) punta a un record del
+              --   target_table che non c'e' piu' (D-9). Il guard tipizzato impedisce di
+              --   INSERIRLE; questa funzione trova quelle rimaste orfane DOPO, cancellando il
+              --   bersaglio — la FK non c'e' e non puo' esserci. Per ogni tabella del
+              --   perimetro e per ogni sorgente_tipo_id presente, un anti-join dinamico
+              --   verso target_table sulla chiave che key_selector dichiara (id | uid).
+              -- DEFINER del PROPRIETARIO (attraversa la RLS: un orfano in una tabella
+              --   protetta va visto comunque), STABLE: legge e basta. I nomi di tabella e
+              --   colonna vengono dal catalogo (regclass, %I): mai da un input.
+              DECLARE
+                  v_t   record;
+                  v_s   record;
+              BEGIN
+                  FOR v_t IN SELECT * FROM dbops.fn_sorgenti_orfane_perimetro() LOOP
+                      -- Per ogni tipo di sorgente presente nella tabella: il bersaglio e la
+                      -- chiave dichiarati a catalogo (regclass e key_selector).
+                      FOR v_s IN
+                          EXECUTE format(
+                              'SELECT DISTINCT s.id AS tipo_id, s.key_selector, s.target_table '
+                              '  FROM %1$s x JOIN config.sorgenti s ON s.id = x.%2$I '
+                              ' WHERE s.target_table IS NOT NULL',
+                              v_t.tabella, v_t.col_tipo)
+                      LOOP
+                          -- La chiave: uid -> t.uid = x.sorgente_uid; altrimenti t.id = x.sorgente_riga.
+                          -- Scelta QUI, non in un CASE SQL: il bersaglio potrebbe non avere uid.
+                          -- Confronto su ::text: non tutte le tabelle del perimetro tipizzano
+                          -- sorgente_uid come uuid (vendite ne ha di text).
+                          RETURN QUERY EXECUTE format(
+                              $q$
+                              SELECT %1$L::regclass, x.id::bigint, s.id, s.codice_interno,
+                                     x.%2$I::bigint, x.%3$I::text, s.target_table
+                                FROM %1$s x
+                                JOIN config.sorgenti s ON s.id = x.%4$I
+                               WHERE x.%4$I = %5$L
+                                 AND x.%6$I IS NOT NULL
+                                 AND NOT EXISTS (SELECT 1 FROM %7$s t WHERE t.%8$I::text = x.%6$I::text)
+                              $q$,
+                              v_t.tabella::text, v_t.col_riga, v_t.col_uid, v_t.col_tipo, v_s.tipo_id,
+                              CASE WHEN v_s.key_selector = 'uid' THEN v_t.col_uid ELSE v_t.col_riga END,
+                              v_s.target_table::text,
+                              CASE WHEN v_s.key_selector = 'uid' THEN 'uid' ELSE 'id' END);
+                      END LOOP;
+                  END LOOP;
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_sorgenti_orfane() IS
+                  'Le righe la cui SORGENTE (sorgente_tipo_id + sorgente_riga | sorgente_uid) punta a '
+                  'un record di config.sorgenti.target_table che non esiste piu'' (D-9, aggancio '
+                  '8-quater). Perimetro derivato dal vincolo (fn_sorgenti_orfane_perimetro: FK verso '
+                  'config.sorgenti + le due colonne di chiave), anti-join dinamico per tabella e per '
+                  'tipo sulla chiave che key_selector dichiara (id | uid). Il guard tipizzato del '
+                  'Lotto 1 impedisce di inserire un orfano; qui si trovano quelli creati dopo, '
+                  'cancellando il bersaglio — la FK non c''e'' e non puo'' esserci. SECURITY DEFINER '
+                  'del PROPRIETARIO, non di un superuser (attraversa la RLS), STABLE. Letta da '
+                  'dbops.vw_sorgenti_orfane, che deve restare vuota. Brief: '
+                  'brief-db-magazzino-lotto-2-motore, sezione 4.7.';
+
+              CREATE OR REPLACE VIEW dbops.vw_sorgenti_orfane AS
+              SELECT o.tabella, o.riga_id, o.sorgente_tipo_id, o.sorgente_codice_interno,
+                     o.sorgente_riga, o.sorgente_uid, o.target_table
+                FROM dbops.fn_sorgenti_orfane() o;
+
+              COMMENT ON VIEW dbops.vw_sorgenti_orfane IS
+                  'Presidio degli ORFANI di sorgente (D-9): SELECT * FROM dbops.fn_sorgenti_orfane(). '
+                  'DEVE RESTARE VUOTA. Una riga = una tabella del perimetro (le sei di magazzino '
+                  'comprese) con una sorgente che punta a un record sparito. Natura ZERO, perimetro '
+                  'DEFINER (la funzione attraversa la RLS), cadenza SETTIMANALE. Il rimedio non e'' '
+                  'cancellare la riga: e'' capire chi ha cancellato il bersaglio. Brief: '
+                  'brief-db-magazzino-lotto-2-motore, sezione 4.7.';
+
+              -- ============================================================
+              -- 3. La prontezza: una riga, due valori.
+              -- ============================================================
+              CREATE OR REPLACE VIEW dbops.vw_articoli_a_magazzino_prontezza AS
+              SELECT CASE WHEN EXISTS (SELECT 1 FROM catalogo.articoli a
+                                        WHERE a.gestito_a_magazzino AND a.attivo)
+                          THEN 'MARCATI'
+                          ELSE 'NESSUNO_MARCATO'
+                     END AS stato,
+                     (SELECT count(*) FROM catalogo.articoli a WHERE a.gestito_a_magazzino AND a.attivo) AS n_marcati;
+
+              COMMENT ON VIEW dbops.vw_articoli_a_magazzino_prontezza IS
+                  'Presidio di PRONTEZZA del magazzino (brief modifiche certe sezione 7, D-L2-k): '
+                  'UNA riga, stato = MARCATI se esiste almeno un articolo attivo con '
+                  'gestito_a_magazzino, altrimenti NESSUNO_MARCATO. Esiste perche'' al rilascio '
+                  'nessun articolo e'' gestito (default false, fail-safe) e senza una spia il '
+                  'magazzino resterebbe un mobile vuoto senza che nessun rosso lo dica. In '
+                  'presidi.csv: natura ZERO, colonna_stato = stato, stato_atteso = MARCATI — '
+                  'fn_conta_presidio conta le righe IS DISTINCT FROM MARCATI: lo zero suona, il '
+                  'pieno tace. catalogo.articoli non ha RLS: perimetro LIBERO. Cadenza '
+                  'SETTIMANALE: una condizione di prontezza, non un incidente. Brief: '
+                  'brief-db-magazzino-lotto-2-motore, sezione 4.8.';
+
+              GRANT SELECT ON dbops.vw_sorgenti_orfane                TO zeroerp_app;
+              GRANT SELECT ON dbops.vw_articoli_a_magazzino_prontezza TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_articoli_a_magazzino_prontezza;
+              DROP VIEW IF EXISTS dbops.vw_sorgenti_orfane;
+              DROP FUNCTION IF EXISTS dbops.fn_sorgenti_orfane();
+              DROP FUNCTION IF EXISTS dbops.fn_sorgenti_orfane_perimetro();

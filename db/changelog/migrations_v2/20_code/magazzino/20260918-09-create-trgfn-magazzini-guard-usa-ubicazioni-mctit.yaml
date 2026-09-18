@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (4 di 5) — usa_ubicazioni SI CAMBIA SOLO A REGISTRO VUOTO
+#   magazzino.trgfn_magazzini_guard_usa_ubicazioni()
+#   trg_magazzini_a10_guard_usa_ubicazioni_upd (magazzino.magazzini)
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-m) e sezione 6 (P-1)
+#
+# -- PERCHE' UN GUARD, E PERCHE' SUL PRIMO MOVIMENTO --------------------------------
+#   usa_ubicazioni decide la GRANA del registro di quel magazzino (ogni
+#   movimento nomina un'ubicazione, o nessuno). Cambiarla con merce a registro
+#   lascerebbe righe scritte con l'altra grana — cioe' esattamente la
+#   convivenza «con e senza ubicazione» che D-L2-m e' nata per rendere
+#   impossibile. Si decide alla nascita, prima del primo movimento; dopo, la
+#   strada e' un magazzino nuovo e un trasferimento (chk_mag_trasferimenti_-
+#   da_a_distinti pretende magazzini diversi: la strada e' sul modello).
+#   La condizione e' «esiste un movimento» — non «giacenza <> 0»: una
+#   giacenza tornata a zero ha comunque righe a registro scritte con la
+#   grana vecchia, e la grana non e' un saldo. Gli attesi non contano: un
+#   blocco e' una promessa, non merce a registro.
+#
+# -- CONFLITTO_STATO, CON IL CAMPO --------------------------------------------------
+#   Chi rimedia e' una persona nel drawer del magazzino: e' lo stato del
+#   registro a vietarglielo, non un dato sbagliato. campo = usa_ubicazioni,
+#   il codice del magazzino nel VARIADIC (la frase la legge l'operatore).
+#   E_MAG_MAGAZZINO_CON_GIACENZA entra a catalogo con P-3.
+#
+# -- LEGGE SOTTO RLS, ED E' COMPLETO ----------------------------------------------
+#   Il guard e' INVOKER e magazzino.movimenti ha la RLS via magazzino: chi
+#   puo' aggiornare questo magazzino (stesso perimetro) vede tutti i suoi
+#   movimenti. Non e' il caso della memoria «un trigger guard legge sotto
+#   RLS»: la lettura e' sullo stesso perimetro della riga scritta.
+#
+# -- UPDATE OF usa_ubicazioni, E IS DISTINCT FROM -------------------------------------
+#   Scatta solo sulla colonna; e un UPDATE che riscrive lo stesso valore non
+#   e' un cambio. Nessuna madre scrive magazzini.usa_ubicazioni oggi (P-0).
+#
+# -- %TYPE nel DECLARE (regola di Tid) --------------------------------------------
+#   v_codice e' il riflesso di magazzini.codice: ancorato. Una trigger
+#   function non ha parametri ne' RETURNS TABLE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260918-09-create-trgfn-magazzini-guard-usa-ubicazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260918-09-create-trgfn-magazzini-guard-usa-ubicazioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.trgfn_magazzini_guard_usa_ubicazioni: rifiuta il cambio di
+        magazzini.usa_ubicazioni se esiste un movimento del magazzino
+        (E_MAG_MAGAZZINO_CON_GIACENZA, CONFLITTO_STATO, campo usa_ubicazioni): la grana
+        del registro si decide prima del primo movimento (D-L2-m). Trigger BEFORE UPDATE OF
+        usa_ubicazioni. Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-m), P-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: magazzini
+                columnName: usa_ubicazioni
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_magazzini_guard_usa_ubicazioni()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_codice magazzino.magazzini.codice%TYPE;
+              BEGIN
+                -- Scopo: la grana del registro (con o senza ubicazioni) si decide alla
+                --   nascita del magazzino, prima del primo movimento (D-L2-m). Con merce
+                --   a registro il flag non si cambia: la strada e' un magazzino nuovo e
+                --   un trasferimento.
+                -- Regole:
+                --   - stesso valore riscritto: non e' un cambio (RETURN NEW);
+                --   - esiste un movimento del magazzino: E_MAG_MAGAZZINO_CON_GIACENZA
+                --     (CONFLITTO_STATO, campo = usa_ubicazioni); contano i movimenti,
+                --     non il saldo, e non gli attesi (una promessa non e' merce).
+                IF NEW.usa_ubicazioni IS NOT DISTINCT FROM OLD.usa_ubicazioni THEN
+                  RETURN NEW;
+                END IF;
+
+                IF EXISTS (SELECT 1
+                             FROM magazzino.movimenti m
+                            WHERE m.magazzino_id = NEW.id) THEN
+                  v_codice := NEW.codice;
+                  PERFORM script.fn_log_and_raise_error(
+                    'magazzino',
+                    'magazzino.trgfn_magazzini_guard_usa_ubicazioni',
+                    'E_MAG_MAGAZZINO_CON_GIACENZA',
+                    jsonb_build_object(
+                      'campo',          'usa_ubicazioni',
+                      'magazzino_id',   NEW.id,
+                      'usa_ubicazioni', NEW.usa_ubicazioni,
+                      'detail',         'cambio di usa_ubicazioni su un magazzino con movimenti a registro'
+                    ),
+                    NEW.tx_id,
+                    v_codice
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_magazzini_guard_usa_ubicazioni() IS
+                  'Guard di D-L2-m: magazzini.usa_ubicazioni si cambia SOLO a registro vuoto. '
+                  'Se esiste un movimento del magazzino rifiuta con E_MAG_MAGAZZINO_CON_GIACENZA '
+                  '(CONFLITTO_STATO, campo usa_ubicazioni, il codice del magazzino nella frase): '
+                  'la grana del registro — ogni movimento con un''ubicazione, o nessuno — si '
+                  'decide prima del primo carico; con merce dentro la strada e'' un magazzino '
+                  'nuovo e un trasferimento. Contano i movimenti (anche a saldo zero le righe '
+                  'hanno la grana vecchia), non gli attesi. Riscrivere lo stesso valore non e'' '
+                  'un cambio. INVOKER: legge movimenti sotto la RLS del magazzino, che e'' lo '
+                  'stesso perimetro della riga scritta. Montata BEFORE UPDATE OF usa_ubicazioni. '
+                  'Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-m).';
+
+              CREATE TRIGGER trg_magazzini_a10_guard_usa_ubicazioni_upd
+                  BEFORE UPDATE OF usa_ubicazioni
+                  ON magazzino.magazzini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION magazzino.trgfn_magazzini_guard_usa_ubicazioni();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_magazzini_a10_guard_usa_ubicazioni_upd ON magazzino.magazzini;
+              DROP FUNCTION IF EXISTS magazzino.trgfn_magazzini_guard_usa_ubicazioni();

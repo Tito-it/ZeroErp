@@ -1,0 +1,345 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — IL CONTROLLO DI DISPONIBILITA' CHE UI E PRIMITIVA CONDIVIDONO
+#   script.fn_check_disponibilita_uscita(...) RETURNS jsonb
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.3 (M-3, D-L2-d)
+#
+# -- UNA FUNZIONE, DUE CHIAMANTI, UN NUMERO SOLO (linee-guida-sql 12.5.2) ------------
+#   La stessa funzione la chiama la primitiva magazzino.fn_scrivi_movimento
+#   (dentro il lock, per rifiutare col primo motivo) e la UI come operatore
+#   (per spegnere il pulsante col motivo): il numero non puo' divergere
+#   perche' la regola sta scritta in un posto solo. PURA: non scrive, non
+#   solleva (tranne il guard di parametro), STABLE, SECURITY INVOKER.
+#   Chiamata da un INVOKER sotto RLS legge il magazzino SE lo vede
+#   (altrimenti zero: e un magazzino che non vede e' un magazzino su cui non
+#   scrivera'); chiamata dalla DEFINER legge tutto il magazzino, che e' di un
+#   emittente (c/s 7-sexies, 6).
+#
+# -- DUE MOTIVI, NELL'ORDINE CHE E' IL CONTRATTO (D-L2-d) --------------------------------
+#   1) E_MAG_GIACENZA_INSUFFICIENTE — il FISICO alla grana PIU' FINE che il
+#      movimento dichiara: asset -> sum(qta) di quell'asset in questo
+#      magazzino; lotto (senza asset) -> sum(qta) di (articolo, magazzino,
+#      lotto); niente -> vw_giacenza (articolo, magazzino). Un'uscita di 5
+#      del lotto L non passa perche' l'articolo ne ha 20 se il lotto L ne
+#      ha 3; un seriale che esce deve essere QUI.
+#   2) E_MAG_MERCE_BLOCCATA — i BLOCCHI stanno alla grana dell'ARTICOLO (una
+#      promessa fatta sull'articolo vale su qualunque scatola):
+#      giacenza(articolo, magazzino) + sum(attesi APERTA ALTRUI) >= richiesta.
+#      «Altrui» = sorgente diversa da quella di chi chiede (tipo + chiave);
+#      un blocco senza sorgente e' sempre altrui; chi chiede senza sorgente
+#      li vede tutti come altrui. Gli attesi entrano FIRMATI (qta < 0 in
+#      uscita): la somma e' negativa e SI SOMMA, mai «meno» (c/s 7-bis).
+#   ⚠️ Un blocco e' un'USCITA attesa (qta < 0). Un atteso in ENTRATA
+#      (qta > 0: merce in arrivo) NON entra nella somma: farebbe uscire merce
+#      promessa da un arrivo non ancora avvenuto, ed e' esattamente la
+#      colonna «in_arrivo» che D-L2-j rinvia al satellite D-17. Precisazione
+#      del 18-09 rispetto alla frase di sezione 4.3, che dava i blocchi per
+#      uscite senza dirlo.
+#   Entrambi i motivi possono comparire: l'array e' ordinato, la madre
+#   solleva il PRIMO (script.fn_raise_primo_motivo_se_presente), il
+#   frontend legge il primo `reason`.
+#
+# -- CHI E' ESONERATO LO DICE LA CAUSALE, E LO PASSA IL CHIAMANTE ------------------------
+#   p_ignora_blocchi = causali.is_rettifica (una rettifica registra un FATTO
+#   sulla merce, un blocco e' una PROMESSA: il fatto vince — il fisico resta);
+#   consente_stock_negativo esonera da tutto e la primitiva NON CHIAMA questa
+#   funzione. La check non legge la causale: non e' affar suo, e cosi' la UI
+#   puo' chiederle la disponibilita' senza avere una causale in mano.
+#
+# -- CONTRATTO DEL MOTIVO (linee-guida-sql 12.5.1) ------------------------------------------
+#   {codice, reason, reason_key, dettaglio, valori}. `reason` SENZA prefisso
+#   E_. Le due reason_key sono un debito verso il FE (sezione 4.10 del brief):
+#   magazzino.disponibilita.blocco.giacenza_insufficiente e
+#   magazzino.disponibilita.blocco.merce_bloccata, in it.json/en.json PRIMA
+#   che la doc auto-gen di questa funzione entri nel repo
+#   (scripts/check_i18n_keys.py, controllo 4). I `valori` seguono i %s del
+#   messaggio a catalogo (P-3): (articolo, magazzino, disponibili, richiesti)
+#   e (articolo, magazzino, disponibili, bloccati, richiesti).
+#
+# -- GUARD DI PARAMETRO: E_MAG_CHIAMATA_NON_VALIDA, TECNICO ----------------------------------
+#   Solo forme che nessuna interfaccia produce (id <= 0, quantita' <= 0, due
+#   chiavi di sorgente insieme). E' l'unica famiglia (PARAMETRO) di quel
+#   codice, per il rubinetto B-7 (sezione 6-ter C4).
+#
+# -- %TYPE in firma, DECLARE e RETURNS (regola di Tid) ------------------------------------
+#   I parametri sono il riflesso delle colonne di magazzino.movimenti; le
+#   variabili delle colonne che leggono. p_ignora_blocchi e' un boolean puro.
+#   RETURNS jsonb: il contratto delle fn_check_*.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260918-11-create-fn-check-disponibilita-uscita-mctit.yaml
+
+  - changeSet:
+      id: 20260918-11-create-fn-check-disponibilita-uscita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_disponibilita_uscita: la fn_check_* pura (STABLE, INVOKER) che UI e
+        primitiva condividono — [] se l'uscita e' ammessa, altrimenti array ORDINATO di
+        {codice, reason, reason_key, dettaglio, valori}: 1) E_MAG_GIACENZA_INSUFFICIENTE
+        sul fisico alla grana dichiarata (asset, lotto, articolo); 2) E_MAG_MERCE_BLOCCATA
+        sulla giacenza dell'articolo piu' i blocchi altrui (attesi APERTA in uscita, firmati),
+        salvo p_ignora_blocchi (is_rettifica). Brief: brief-db-magazzino-lotto-2-motore,
+        sezione 4.3 (P-4, M-3, D-L2-d).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: magazzino
+                viewName: vw_giacenza
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+                columnName: stato
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti
+                columnName: asset_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_disponibilita_uscita(
+                  p_magazzino_id     magazzino.movimenti.magazzino_id%TYPE,
+                  p_articolo_id      magazzino.movimenti.articolo_id%TYPE,
+                  p_qta_uscita       magazzino.movimenti.qta%TYPE,
+                  p_sorgente_tipo_id magazzino.movimenti.sorgente_tipo_id%TYPE DEFAULT NULL,
+                  p_sorgente_riga    magazzino.movimenti.sorgente_riga%TYPE    DEFAULT NULL,
+                  p_sorgente_uid     magazzino.movimenti.sorgente_uid%TYPE     DEFAULT NULL,
+                  p_lotto_id         magazzino.movimenti.lotto_id%TYPE         DEFAULT NULL,
+                  p_asset_id         magazzino.movimenti.asset_id%TYPE         DEFAULT NULL,
+                  p_ignora_blocchi   boolean                                    DEFAULT false
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono un'USCITA di p_qta_uscita
+              --   (positiva, in UoM base) dell'articolo dal magazzino. Funzione PURA
+              --   (fn_check_*): non scrive, non solleva (tranne il guard di parametro).
+              --   Consumatori: magazzino.fn_scrivi_movimento (dentro il lock, solleva il
+              --   primo motivo con fn_raise_primo_motivo_se_presente) e la UI come
+              --   operatore (spegne il pulsante col motivo). Una sede sola: il numero che
+              --   l'operatore vede e' quello con cui la primitiva rifiuta.
+              -- Ritorna: [] se ammessa; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio, valori}.
+              -- Regole (D-L2-d):
+              --   1) FISICO alla grana piu' fine dichiarata: asset -> posizione dell'asset
+              --      in questo magazzino; lotto -> somma del lotto; altrimenti vw_giacenza;
+              --      deve valere >= richiesta, o E_MAG_GIACENZA_INSUFFICIENTE;
+              --   2) BLOCCHI alla grana dell'articolo: giacenza(articolo, magazzino) +
+              --      somma FIRMATA degli attesi APERTA in USCITA (qta < 0) di sorgente
+              --      ALTRUI deve valere >= richiesta, o E_MAG_MERCE_BLOCCATA — salvo
+              --      p_ignora_blocchi (is_rettifica: il fatto vince sulla promessa).
+              --   «Altrui»: sorgente diversa (tipo + chiave) da quella di chi chiede; un
+              --   blocco senza sorgente e' sempre altrui; chi chiede senza sorgente li vede
+              --   tutti come altrui. Un atteso in entrata (in arrivo) non e' un blocco.
+              -- Perimetro: INVOKER sotto RLS — chi non vede il magazzino legge zero.
+              -- I numeri nei `valori` passano da trim_scale(): «11», non «11.000000» — la
+              -- frase la legge una persona; nel `dettaglio` restano numeric pieni.
+              DECLARE
+                  v_motivi         jsonb := '[]'::jsonb;
+                  v_articolo       catalogo.articoli.codice%TYPE;
+                  v_magazzino      magazzino.magazzini.codice%TYPE;
+                  v_grana          text;
+                  v_fisico         magazzino.movimenti.qta%TYPE;
+                  v_giacenza       magazzino.movimenti.qta%TYPE;
+                  v_bloccata       magazzino.movimenti_attesi.qta%TYPE;
+                  v_disponibile    magazzino.movimenti.qta%TYPE;
+                  v_n_blocchi      bigint;
+              BEGIN
+                  -- Guard di parametro: solo forme che nessuna interfaccia produce.
+                  IF p_magazzino_id IS NULL OR p_magazzino_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_disponibilita_uscita',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'magazzino obbligatorio e maggiore di zero',
+                                             'p_magazzino_id', p_magazzino_id),
+                          NULL::uuid,
+                          'script.fn_check_disponibilita_uscita',
+                          'p_magazzino_id (obbligatorio, maggiore di zero)');
+                  END IF;
+                  IF p_articolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_disponibilita_uscita',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'articolo obbligatorio'),
+                          NULL::uuid,
+                          'script.fn_check_disponibilita_uscita',
+                          'p_articolo_id (obbligatorio)');
+                  END IF;
+                  IF p_qta_uscita IS NULL OR p_qta_uscita <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_disponibilita_uscita',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'la quantita'' in uscita e'' positiva',
+                                             'p_qta_uscita', p_qta_uscita),
+                          NULL::uuid,
+                          'script.fn_check_disponibilita_uscita',
+                          'p_qta_uscita (obbligatoria, maggiore di zero: il «quanto» che vorrebbe uscire)');
+                  END IF;
+                  IF (p_lotto_id IS NOT NULL AND p_lotto_id <= 0)
+                     OR (p_asset_id IS NOT NULL AND p_asset_id <= 0)
+                     OR (p_sorgente_tipo_id IS NOT NULL AND p_sorgente_tipo_id <= 0)
+                     OR (p_sorgente_riga IS NOT NULL AND p_sorgente_riga <= 0) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_disponibilita_uscita',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'un identificativo passato vale zero o meno',
+                                             'p_lotto_id', p_lotto_id, 'p_asset_id', p_asset_id,
+                                             'p_sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'p_sorgente_riga', p_sorgente_riga),
+                          NULL::uuid,
+                          'script.fn_check_disponibilita_uscita',
+                          'p_lotto_id / p_asset_id / p_sorgente_tipo_id / p_sorgente_riga (se passati, maggiori di zero)');
+                  END IF;
+                  IF (p_sorgente_tipo_id IS NULL AND (p_sorgente_riga IS NOT NULL OR p_sorgente_uid IS NOT NULL))
+                     OR (p_sorgente_tipo_id IS NOT NULL AND (p_sorgente_riga IS NOT NULL) = (p_sorgente_uid IS NOT NULL)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_disponibilita_uscita',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'sorgente: con il tipo esattamente una chiave, senza il tipo nessuna',
+                                             'p_sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'p_sorgente_riga', p_sorgente_riga,
+                                             'p_sorgente_uid', p_sorgente_uid),
+                          NULL::uuid,
+                          'script.fn_check_disponibilita_uscita',
+                          'p_sorgente_riga / p_sorgente_uid (esattamente una con p_sorgente_tipo_id, nessuna senza)');
+                  END IF;
+
+                  -- I codici per la frase (non per decidere): sotto RLS un magazzino fuori
+                  -- perimetro non si vede, e la frase porta l'id al suo posto.
+                  SELECT a.codice INTO v_articolo FROM catalogo.articoli a WHERE a.id = p_articolo_id;
+                  SELECT m.codice INTO v_magazzino FROM magazzino.magazzini m WHERE m.id = p_magazzino_id;
+                  v_articolo  := COALESCE(v_articolo,  p_articolo_id::text);
+                  v_magazzino := COALESCE(v_magazzino, p_magazzino_id::text);
+
+                  -- ============================================================
+                  -- MOTIVO 1 — il FISICO alla grana piu' fine dichiarata.
+                  -- ============================================================
+                  IF p_asset_id IS NOT NULL THEN
+                      v_grana := 'ASSET';
+                      SELECT COALESCE(sum(m.qta), 0) INTO v_fisico
+                        FROM magazzino.movimenti m
+                       WHERE m.magazzino_id = p_magazzino_id
+                         AND m.articolo_id  = p_articolo_id
+                         AND m.asset_id     = p_asset_id;
+                  ELSIF p_lotto_id IS NOT NULL THEN
+                      v_grana := 'LOTTO';
+                      SELECT COALESCE(sum(m.qta), 0) INTO v_fisico
+                        FROM magazzino.movimenti m
+                       WHERE m.magazzino_id = p_magazzino_id
+                         AND m.articolo_id  = p_articolo_id
+                         AND m.lotto_id     = p_lotto_id;
+                  ELSE
+                      v_grana := 'ARTICOLO';
+                      SELECT COALESCE(g.qta, 0) INTO v_fisico
+                        FROM magazzino.vw_giacenza g
+                       WHERE g.magazzino_id = p_magazzino_id
+                         AND g.articolo_id  = p_articolo_id;
+                      v_fisico := COALESCE(v_fisico, 0);   -- SELECT INTO a zero righe azzera
+                  END IF;
+
+                  IF v_fisico < p_qta_uscita THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_MAG_GIACENZA_INSUFFICIENTE',
+                          'reason',     'GIACENZA_INSUFFICIENTE',
+                          'reason_key', 'magazzino.disponibilita.blocco.giacenza_insufficiente',
+                          'dettaglio',  jsonb_build_object('grana', v_grana,
+                                                           'fisico', v_fisico,
+                                                           'richiesta', p_qta_uscita,
+                                                           'lotto_id', p_lotto_id,
+                                                           'asset_id', p_asset_id),
+                          -- «Giacenza insufficiente per l'articolo %s nel magazzino %s:
+                          --  disponibili %s, richiesti %s.»
+                          'valori',     jsonb_build_array(v_articolo, v_magazzino,
+                                                          trim_scale(v_fisico)::text,
+                                                          trim_scale(p_qta_uscita)::text));
+                  END IF;
+
+                  -- ============================================================
+                  -- MOTIVO 2 — i BLOCCHI alla grana dell'articolo.
+                  -- ============================================================
+                  IF NOT COALESCE(p_ignora_blocchi, false) THEN
+                      SELECT COALESCE(g.qta, 0) INTO v_giacenza
+                        FROM magazzino.vw_giacenza g
+                       WHERE g.magazzino_id = p_magazzino_id
+                         AND g.articolo_id  = p_articolo_id;
+                      v_giacenza := COALESCE(v_giacenza, 0);
+
+                      -- Gli attesi APERTA in USCITA (qta < 0), firmati, di sorgente altrui.
+                      SELECT COALESCE(sum(a.qta), 0), count(*)
+                        INTO v_bloccata, v_n_blocchi
+                        FROM magazzino.movimenti_attesi a
+                       WHERE a.magazzino_id = p_magazzino_id
+                         AND a.articolo_id  = p_articolo_id
+                         AND a.stato        = 'APERTA'
+                         AND a.qta          < 0
+                         AND NOT (    p_sorgente_tipo_id IS NOT NULL
+                                  AND a.sorgente_tipo_id = p_sorgente_tipo_id
+                                  AND a.sorgente_riga IS NOT DISTINCT FROM p_sorgente_riga
+                                  AND a.sorgente_uid  IS NOT DISTINCT FROM p_sorgente_uid);
+
+                      v_disponibile := v_giacenza + v_bloccata;   -- in COLONNE: la somma, mai «meno»
+
+                      IF v_disponibile < p_qta_uscita THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_MAG_MERCE_BLOCCATA',
+                              'reason',     'MERCE_BLOCCATA_PER_ALTRI',
+                              'reason_key', 'magazzino.disponibilita.blocco.merce_bloccata',
+                              'dettaglio',  jsonb_build_object('giacenza', v_giacenza,
+                                                               'bloccata', v_bloccata,
+                                                               'disponibile', v_disponibile,
+                                                               'n_blocchi', v_n_blocchi,
+                                                               'richiesta', p_qta_uscita),
+                              -- «L'articolo %s nel magazzino %s ha %s pezzi disponibili
+                              --  (%s bloccati per altri): richiesti %s.»
+                              'valori',     jsonb_build_array(v_articolo, v_magazzino,
+                                                              trim_scale(v_disponibile)::text,
+                                                              trim_scale(-v_bloccata)::text,
+                                                              trim_scale(p_qta_uscita)::text));
+                      END IF;
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              -- La firma del COMMENT e del DROP e' nei tipi RISOLTI (la firma scioglie i %TYPE):
+              -- bigint, uuid, numeric, bigint, bigint, uuid, bigint, bigint, boolean.
+              COMMENT ON FUNCTION script.fn_check_disponibilita_uscita(
+                  bigint, uuid, numeric, bigint, bigint, uuid, bigint, bigint, boolean) IS
+                  'Il controllo di disponibilita'' che UI e primitiva CONDIVIDONO (M-3, D-L2-d; '
+                  'linee-guida-sql 12.5.2): pura, STABLE, INVOKER — [] se l''uscita di '
+                  'p_qta_uscita (positiva, UoM base) e'' ammessa, altrimenti array ORDINATO di '
+                  '{codice, reason, reason_key, dettaglio, valori}. 1) E_MAG_GIACENZA_INSUFFICIENTE: '
+                  'il fisico alla grana piu'' fine dichiarata (asset -> posizione dell''asset in '
+                  'questo magazzino; lotto -> somma del lotto; altrimenti vw_giacenza) e'' minore '
+                  'della richiesta. 2) E_MAG_MERCE_BLOCCATA: giacenza(articolo, magazzino) + somma '
+                  'FIRMATA degli attesi APERTA in USCITA (qta < 0) di sorgente ALTRUI (tipo + '
+                  'chiave diversi da quelli di chi chiede; senza sorgente = sempre altrui; un '
+                  'atteso in entrata non e'' un blocco) e'' minore della richiesta — salvo '
+                  'p_ignora_blocchi, che la primitiva passa da causali.is_rettifica (il fatto vince '
+                  'sulla promessa; il fisico resta). consente_stock_negativo esonera da tutto: la '
+                  'primitiva non la chiama. Non legge la causale: la UI puo'' chiederla senza averne '
+                  'una. Chiamata da un INVOKER sotto RLS legge il magazzino se lo vede (altrimenti '
+                  'zero); dalla DEFINER legge tutto il magazzino, che e'' di un emittente. Guard di '
+                  'parametro E_MAG_CHIAMATA_NON_VALIDA (TECNICO). Le due reason_key sono chiavi '
+                  'i18n del frontend. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_disponibilita_uscita(bigint, uuid, numeric, bigint, bigint, uuid, bigint, bigint, boolean);

@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-7 — IL NUMERO SU CUI SI DECIDE: quanto c'e', quanto e' promesso, quanto se ne puo' usare
+#   magazzino.vw_disponibilita           (articolo x magazzino)
+#   magazzino.vw_disponibilita_articolo  (articolo, sui magazzini visibili)
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.6 (M-3, D-L2-j)
+#
+# -- LA FORMULA DI M-3, IN COLONNE (c/s 7-bis, correzione del 04-09) --------------------------
+#   giacenza    = vw_giacenza.qta (il registro)
+#   bloccata    = somma FIRMATA degli attesi APERTA in USCITA (qta < 0): negativa
+#   disponibile = giacenza + bloccata — la SOMMA, mai «meno»
+#   n_blocchi   = quanti sono
+#   ⚠️ Lo stesso filtro di fn_check_disponibilita_uscita (P-4): un atteso in
+#   ENTRATA (qta > 0, merce in arrivo) non e' un blocco e non entra — e' la
+#   colonna «in_arrivo» che D-L2-j rinvia al satellite D-17. Qui non c'e'
+#   «chi chiede»: si contano TUTTI i blocchi aperti; la check, chiamata da un
+#   documento, esclude i suoi. Il drill-down e' gratis: sono le righe di
+#   movimenti_attesi APERTA, con soggetto_ruolo_id e nota.
+#
+# -- UN ARTICOLO CON BLOCCHI E SENZA MOVIMENTI DEVE COMPARIRE ------------------------------------
+#   FULL JOIN fra registro e blocchi: giacenza 0, disponibile negativo. Un
+#   LEFT JOIN dal registro l'avrebbe nascosto (sezione 4.6).
+#
+# -- NIENTE impegnata / potenziale / in_arrivo (D-L2-j) ---------------------------------------------
+#   Aspettano il satellite D-17: una colonna a NULL che il nome promette e'
+#   «un campo vuoto che il template afferma». Entreranno con la vista che le
+#   sa riempire; il nome della vista non cambiera'.
+#
+# -- IL NOME: «situazione merce» in vendite e' preso ------------------------------------------------
+#   vw_situazione_merce_ordine risponde a un'altra domanda (quanto e' uscito,
+#   tornato, fatturato di un ordine). Qui e' la DISPONIBILITA'.
+#
+# -- security_invoker: il perimetro lo decide la RLS di movimenti/attesi (via magazzino) ----------
+#   vw_disponibilita_articolo somma sui magazzini VISIBILI: dentro l'emittente
+#   attivo e' tutto (c/s 7-sexies, 6), come vw_costo_medio_globale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260918-24-create-vw-disponibilita-mctit.yaml
+
+  - changeSet:
+      id: 20260918-24-create-vw-disponibilita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.vw_disponibilita (articolo x magazzino: giacenza, bloccata = somma firmata
+        degli attesi APERTA in uscita, disponibile = giacenza + bloccata, n_blocchi; FULL JOIN:
+        un articolo con blocchi e senza movimenti compare) e vw_disponibilita_articolo (somma
+        sui magazzini visibili, n_magazzini). security_invoker. Brief:
+        brief-db-magazzino-lotto-2-motore, sezione 4.6 (P-7, M-3, D-L2-j).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: magazzino
+                viewName: vw_giacenza
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+                columnName: stato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW magazzino.vw_disponibilita
+              WITH (security_invoker = true) AS
+              WITH blocchi AS (
+                  SELECT a.articolo_id, a.magazzino_id,
+                         sum(a.qta) AS bloccata,
+                         count(*)   AS n_blocchi
+                    FROM magazzino.movimenti_attesi a
+                   WHERE a.stato = 'APERTA'
+                     AND a.qta < 0
+                   GROUP BY a.articolo_id, a.magazzino_id
+              )
+              SELECT COALESCE(g.articolo_id,  b.articolo_id)  AS articolo_id,
+                     COALESCE(g.magazzino_id, b.magazzino_id) AS magazzino_id,
+                     COALESCE(g.qta, 0)                       AS giacenza,
+                     COALESCE(b.bloccata, 0)                  AS bloccata,
+                     COALESCE(g.qta, 0) + COALESCE(b.bloccata, 0) AS disponibile,
+                     COALESCE(b.n_blocchi, 0)                 AS n_blocchi
+                FROM magazzino.vw_giacenza g
+                FULL JOIN blocchi b
+                       ON b.articolo_id = g.articolo_id AND b.magazzino_id = g.magazzino_id;
+
+              COMMENT ON VIEW magazzino.vw_disponibilita IS
+                  'La DISPONIBILITA'' per articolo e magazzino (M-3, D-L2-j), la formula in '
+                  'colonne: giacenza (vw_giacenza, il registro), bloccata (somma FIRMATA degli '
+                  'attesi APERTA in USCITA, qta < 0: negativa — un atteso in entrata e'' merce in '
+                  'arrivo, non un blocco, e aspetta il satellite D-17), disponibile = giacenza + '
+                  'bloccata (la somma, mai «meno»), n_blocchi. Lo stesso filtro di '
+                  'script.fn_check_disponibilita_uscita, che pero'' esclude i blocchi di chi '
+                  'chiede: qui si contano tutti. FULL JOIN: un articolo con blocchi e senza '
+                  'movimenti compare (giacenza 0, disponibile negativo). Niente impegnata / '
+                  'potenziale / in_arrivo finche'' non c''e'' chi le riempie. Il drill-down dei '
+                  'blocchi sono le righe di movimenti_attesi APERTA. security_invoker: il '
+                  'perimetro e'' la RLS via magazzino. Brief: brief-db-magazzino-lotto-2-motore, '
+                  'sezione 4.6.';
+
+              CREATE OR REPLACE VIEW magazzino.vw_disponibilita_articolo
+              WITH (security_invoker = true) AS
+              SELECT d.articolo_id,
+                     sum(d.giacenza)                AS giacenza,
+                     sum(d.bloccata)                AS bloccata,
+                     sum(d.disponibile)             AS disponibile,
+                     count(DISTINCT d.magazzino_id) AS n_magazzini
+                FROM magazzino.vw_disponibilita d
+               GROUP BY d.articolo_id;
+
+              COMMENT ON VIEW magazzino.vw_disponibilita_articolo IS
+                  'La disponibilita'' di un articolo su TUTTI i magazzini VISIBILI a chi '
+                  'interroga: dentro l''emittente attivo e'' tutto, ed e'' la RLS di movimenti e '
+                  'attesi (via magazzino) a decidere il perimetro, non un filtro scritto qui (c/s '
+                  '7-sexies, 6 — come vw_costo_medio_globale). giacenza, bloccata, disponibile '
+                  'sommate da vw_disponibilita; n_magazzini = quanti ne concorrono. '
+                  'security_invoker. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.6.';
+
+              GRANT SELECT ON magazzino.vw_disponibilita          TO zeroerp_app;
+              GRANT SELECT ON magazzino.vw_disponibilita_articolo TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS magazzino.vw_disponibilita_articolo;
+              DROP VIEW IF EXISTS magazzino.vw_disponibilita;

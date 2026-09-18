@@ -31,6 +31,8 @@ BEGIN
   --   'contabile'      = la colonna contiene contabile_id, e il
   --                      perimetro si deriva dal CONTO DI INCASSO
   --                      della distinta (D5)
+  --   'listino'        = la colonna contiene listino_id
+  --   'magazzino'      = la colonna contiene magazzino_id (Lotto 2)
   --
   -- Se emittente non risolvibile -> skip (nessun padrone).
   --
@@ -51,6 +53,15 @@ BEGIN
   --   scriveva senza dire chi fosse, e bastava NON impostare una
   --   GUC per aprirla. Adesso passa solo chi bypasserebbe
   --   comunque la RLS.
+  --
+  -- ⛔ Rev 2026-09-18 (magazzino Lotto 2, sezione 6-ter C1).
+  --   row_security_active risponde per il CURRENT_USER, che
+  --   dentro una SECURITY DEFINER e' il proprietario: FALSE
+  --   sempre. Dentro una DEFINER (current_user <> session_user)
+  --   quella risposta non dice niente su chi sta scrivendo: si
+  --   risolve comunque l'emittente e, se la riga ha un padrone,
+  --   ci si ferma. Una riga senza padrone (le email di sistema)
+  --   passa come prima. Provato con fn_accoda_email_sistema.
   -- =========================================================
 
   -- 1. Leggi user_id dalla sessione PG
@@ -70,7 +81,27 @@ BEGIN
     --   bypassrls»: sarebbe una SECONDA scrittura della stessa
     --   regola, e due scritture prima o poi dissentono.
     IF NOT row_security_active(TG_RELID::regclass) THEN
-      RETURN NEW;
+      -- ⚠️ Ma «per QUESTA sessione» vuol dire per il current_user:
+      --   dentro una SECURITY DEFINER e' il proprietario della
+      --   funzione, non chi ha chiamato. Fuori da una DEFINER
+      --   (current_user = session_user) la risposta vale e si passa.
+      IF current_user = session_user THEN
+        RETURN NEW;
+      END IF;
+
+      -- Dentro una DEFINER, senza identita': si guarda la RIGA.
+      -- Nessun padrone -> niente da proteggere, passa (email di
+      -- sistema). Un padrone -> nessuno risponde di questa
+      -- scrittura: si ferma qui sotto.
+      v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+      IF v_col_value IS NULL THEN
+        RETURN NEW;
+      END IF;
+      v_emittente_fiscale_id :=
+          script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+      IF v_emittente_fiscale_id IS NULL THEN
+        RETURN NEW;
+      END IF;
     END IF;
 
     -- Sessione applicativa senza identita': si ferma. Non e'
@@ -86,6 +117,9 @@ BEGIN
         'colonna', v_col_name,
         'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
         'db_user', current_user,
+        'session_user', session_user,
+        'dentro_definer', current_user <> session_user,
+        'emittente_fiscale_id', v_emittente_fiscale_id,
         'operazione', TG_OP
       ),
       NULL::uuid,
@@ -147,7 +181,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
-IS 'Difesa in profondita'': blocca INSERT/UPDATE se l''utente non ha scope sull''emittente fiscale della riga. Modalita'' TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta) | contabile (perimetro della RIGA contabile dalla sua testata) | ente_incasso | listino. ⭐ Rev 2026-08-22: la risoluzione dell''emittente e'' passata a script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER. Prima stava qui, e il guard e'' SECURITY INVOKER: nel modo fattura leggeva vendite.fatture sotto row security, e per un utente fuori perimetro la lettura dava zero righe -> emittente NULL -> ramo «non risolvibile» -> passa. ⛔ Rev 2026-09-04 (fase 6): il ramo «nessun utente in sessione -> passa» e'' chiuso. Passa solo chi bypasserebbe comunque la RLS, e il criterio e'' row_security_active() sulla tabella in gioco — la stessa regola che PostgreSQL applica alle policy, chiesta a lui invece che riscritta. Una sessione applicativa senza app.current_user_id ora alza E_SCOPE_SENZA_UTENTE. ⚠️ Il ramo «emittente non risolvibile» resta e serve per i dati non ancora collegati (una riga senza fattura ne'' canale). ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro): la DISTINTA non ci passa piu'' — porta il suo emittente in colonna, e su pagamenti.vendite_contabili il guard e'' in modo soggetto_ruolo; il modo contabile resta per i satelliti, e una distinta interna risolve il SUO emittente. Brief: brief-db-processi-automatici-identita-e-perimetro §7.';
+IS 'Guard di scrittura del perimetro emittente (BB, montato BEFORE INSERT OR UPDATE su 24+ tabelle con TG_ARGV = modo, colonna): risolve l''emittente della riga con script.fn_resolve_emittente_fiscale_id (DEFINER: legge fuori dalla row security) e chiede a script.fn_check_user_emittente_scope se l''utente in sessione (app.current_user_id) puo'' scriverci — E_SCOPE_EMITTENTE altrimenti. Nessun padrone: passa. Senza utente in sessione passa solo chi la RLS non filtrerebbe comunque (row_security_active: proprietario, superuser, BYPASSRLS), altrimenti E_SCOPE_SENZA_UTENTE (rev 04-09). ⛔ Rev 2026-09-18 (magazzino Lotto 2, C1): dentro una SECURITY DEFINER row_security_active risponde per il proprietario, non per chi chiama — se current_user <> session_user e la riga HA un padrone, senza identita'' si ferma comunque; senza padrone (email di sistema) passa. Provato con fn_accoda_email_sistema. E'' il perimetro della primitiva DEFINER di magazzino, rimesso da una sede sola.';
 ```
 
 ---

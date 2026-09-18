@@ -29,6 +29,14 @@
 
 ## ⚙️ Funzioni
 - [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md) — (rev 2026-08-21)
+- [fn_inventario_piano](funzioni/fn_inventario_piano.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_posta_inventario](funzioni/fn_posta_inventario.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_posta_rettifica](funzioni/fn_posta_rettifica.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_ricalcola_valore_giacenza](funzioni/fn_ricalcola_valore_giacenza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_scrivi_movimento](funzioni/fn_scrivi_movimento.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [trgfn_documento_interno_guard_transizione](funzioni/trgfn_documento_interno_guard_transizione.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [trgfn_documento_interno_righe_guard_testata](funzioni/trgfn_documento_interno_righe_guard_testata.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [trgfn_magazzini_guard_usa_ubicazioni](funzioni/trgfn_magazzini_guard_usa_ubicazioni.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [trgfn_magazzini_normalize](funzioni/trgfn_magazzini_normalize.md) — (rev 2026-08-21)
 - [trgfn_movimenti_guard_verso](funzioni/trgfn_movimenti_guard_verso.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [trgfn_trasferimenti_guard_stesso_emittente](funzioni/trgfn_trasferimenti_guard_stesso_emittente.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
@@ -36,6 +44,8 @@
 ## 🔍 Views
 - [vw_costo_medio](views/vw_costo_medio.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [vw_costo_medio_globale](views/vw_costo_medio_globale.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [vw_disponibilita](views/vw_disponibilita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [vw_disponibilita_articolo](views/vw_disponibilita_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_giacenza](views/vw_giacenza.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [vw_giacenza_ubicazione](views/vw_giacenza_ubicazione.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [vw_giacenza_valorizzata](views/vw_giacenza_valorizzata.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
