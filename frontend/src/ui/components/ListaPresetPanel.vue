@@ -180,15 +180,6 @@ function severityForAmbito(ambito) {
         <template #cell-ambito="{ data }">
           <Tag :value="t(`ui.admin.preset_ambito_${data.ambito}`)" :severity="severityForAmbito(data.ambito)" />
         </template>
-        <template #cell-preset_riferimento="{ data }">
-          <span v-if="data.profilo_accesso_codice">
-            {{ data.profilo_accesso_codice }}
-          </span>
-          <span v-else-if="data.emittente_fiscale_codice">
-            {{ data.emittente_fiscale_codice }}
-          </span>
-          <span v-else class="muted">—</span>
-        </template>
         <template #cell-is_default="{ data }">
           <i v-if="data.is_default" class="pi pi-check" />
         </template>
@@ -226,7 +217,6 @@ function severityForAmbito(ambito) {
 </template>
 
 <style scoped>
-.muted { color: var(--app-text-muted); }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 </style>

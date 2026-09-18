@@ -14,7 +14,7 @@
 // ⚠️ `startsEmpty: false`: il registro è corto e chiuso (una ventina di righe).
 //    Una lista che parte vuota ha senso dove i dati sono tanti e la ricerca è il
 //    filtro; qui l'elenco intero È l'informazione.
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { createListaStore } from '../../core/stores/createListaStore'
 import { listProcessi, getProcessiPresidi } from '../api/amministrazione'
 
@@ -44,6 +44,22 @@ export const useProcessiAutomaticiStore = createListaStore(
       //    senza questo numero la testata resterebbe VERDE mentre non si è
       //    visto niente — cioè direbbe «tutto a posto» proprio perché è cieca.
       const presidiNonLetti = ref(0)
+      // ⭐ LA TESTATA come la consegna il backend (`{totale, con_righe,
+      //    non_letti}`, stessa forma di `presidi/conteggi/`): la leggono la
+      //    testata del pannello e il pallino della topbar, che la ADOTTA quando
+      //    il pannello ricarica. Un getter solo, o si ricompone a mano in due
+      //    posti e le due copie smettono di coincidere al primo campo nuovo.
+      // ⛔ `null` quando l'ultima lettura e' FALLITA: una testata a zeri qui
+      //    direbbe «tutto verde» proprio mentre non si e' visto niente.
+      const presidiTestata = computed(() => (
+        presidiErrore.value
+          ? null
+          : {
+              totale: presidi.value.length,
+              con_righe: presidiConRighe.value,
+              non_letti: presidiNonLetti.value,
+            }
+      ))
 
       async function caricaPresidi() {
         presidiLoading.value = true
@@ -65,7 +81,7 @@ export const useProcessiAutomaticiStore = createListaStore(
 
       return {
         presidi, presidiConRighe, presidiNonLetti, presidiLoading, presidiErrore,
-        caricaPresidi,
+        presidiTestata, caricaPresidi,
       }
     },
   },

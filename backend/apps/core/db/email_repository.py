@@ -644,6 +644,14 @@ class EmailRepository:
             order_by or "data_insert", order_dir or "desc",
             colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert",
         )
+        # `emittente_ragione_sociale` e' la colonna 872 del catalogo (lista
+        # `config.email_log`, D-4 del brief perimetro-emittente-cataloghi-
+        # globali, 2026-09-18): il super admin su «Tutti gli emittenti» vede le
+        # email di tutte le aziende con l'azienda accanto, ed e' cio' che rende
+        # la lista `multi_emittente` certificabile a DB. Ragione sociale del
+        # SOGGETTO dell'emittente, stessa catena di `_PRESET_SELECT_SQL`
+        # (`ui_admin_repository.py`); NULL sulle righe `SISTEMA`, che un
+        # emittente non ce l'hanno.
         sql = f"""
             SELECT el.id, el.destinatario, el.destinatari_cc, el.oggetto,
                    el.stato, el.errore, el.tentativi, el.inviato_at,
@@ -651,10 +659,18 @@ class EmailRepository:
                    el.auth_user_id, el.data_insert,
                    ea.codice AS account_codice,
                    et.codice AS template_codice,
+                   el.emittente_fiscale_id,
+                   s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
                    COUNT(*) OVER() AS total_count
               FROM config.email_log el
               LEFT JOIN config.email_account ea ON ea.id = el.email_account_id
               LEFT JOIN config.email_template et ON et.id = el.email_template_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                     ON ef.id = el.emittente_fiscale_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                     ON sr_ef.id = ef.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s_ef
+                     ON s_ef.id = sr_ef.soggetto_id
              WHERE {where}
              ORDER BY {order_clause}, el.id DESC
              LIMIT %s OFFSET %s

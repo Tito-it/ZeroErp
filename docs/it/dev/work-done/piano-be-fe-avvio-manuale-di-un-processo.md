@@ -623,7 +623,12 @@ drenatore di systemd trovi i segreti nell'ambiente. Lo prova il collaudo di
      stessa (02-09) le nomina come cataloghi globali da dichiarare `false`;
      il registro `_ESENZIONI` del BE lo sa, il seed no. È un seed → brief
      al DB: [brief-db-perimetro-emittente-cataloghi-globali.md](../work-in-progress/brief-db-perimetro-emittente-cataloghi-globali.md).
-     Nel frattempo si entra scegliendo un emittente nella combo.
+     ✅ **Chiuso dal seed il 2026-09-18** (`b655ea6d4`, PR #1612): le sette
+     globali — le sei sopra più `anagrafiche.emittenti_fiscali` (D-1) — hanno
+     `perimetro_emittente = f` nella colonna di `lista_definizione.csv`, e
+     dal 19-09 il registro `_ESENZIONI` e il seed sono legati da un presidio
+     (`test_il_registro_e_il_seed_dicono_la_stessa_cosa_sul_perimetro`). Su
+     «Tutti gli emittenti» si entra.
 6. **Revisione critica del 15-09 sera, seconda passata** (su richiesta di
    Tid, dopo il collaudo). Sistemato: il mirror `const FORMA_TIMER = 'timer'`
    del drawer — l'unica ramificazione del client sul vocabolario del BE —

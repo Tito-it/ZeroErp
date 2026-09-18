@@ -1257,6 +1257,52 @@ curl -H "Authorization: Bearer <token>" \
   "https://host/api/v1/amm-software/processi/presidi/"
 ```
 
+⭐ **Dal 2026-09-18 la risposta porta anche `totale`** (quanti presidi `ZERO`
+sono stati guardati): è la stessa testata di §6.1-bis, calcolata da **una**
+funzione (`_testata_presidi` in `processi_service.py`) per i due lettori.
+
+### 6.1-bis GET /api/v1/amm-software/processi/presidi/conteggi/ — la testata sola, per il pallino
+
+**Scopo.** I tre numeri della testata — `totale`, `con_righe`, `non_letti` —
+**senza** le prime righe. È la sorgente del **pallino dei presidi** in topbar
+(decisione #8 di Tid, 2026-09-18; piano
+`piano-be-fe-osservabilita-pallino-e-superfici.md` §2): un contatore ambientale
+letto ogni cinque minuti da ogni scheda aperta, che non deve pagare le righe di
+esempio.
+
+**Contesto.** Stesso giro di §6.1 (`PresidiRepository.stato_presidi(con_righe=False)`:
+stesse viste `ZERO` dal catalogo, stesso `fn_conta_presidio`, stesso isolamento
+per presidio), stessa porta (`AdminAPIView`). ⛔ È un parametro del repository e
+non un secondo metodo: una copia «senza righe» divergerebbe dalla prima al primo
+campo nuovo, e il pallino direbbe una cosa e il pannello un'altra. Il pannello,
+quando ricarica, **passa i suoi numeri al pallino** (`usePresidiPolling`
+osserva lo store): le due letture non possono raccontare due stati.
+
+**Input.** Nessuno.
+
+**Output.**
+
+```json
+{ "data": { "totale": 20, "con_righe": 1, "non_letti": 0 } }
+```
+
+| Campo | Significato |
+|---|---|
+| `totale` | quanti presidi `ZERO` sono stati guardati (compresi i non letti) |
+| `con_righe` | quanti hanno righe: il numero **rosso** del pallino |
+| `non_letti` | quanti non si sono potuti leggere: il numero **giallo** — cecità, non guasto, e non si somma agli accesi |
+
+**Regole.** Un presidio che non si legge **non è un errore di questa risposta**:
+è `non_letti + 1`, per contratto. Chi non passa la porta riceve 403 e il pallino
+**non compare** (il composable si spegne definitivamente su 403/401, come il
+badge delle code per chi non ha l'area core). ⚠️ La rotta sta sotto
+`processi/`, **prima** di `<str:codice>/` — stessa regola d'ordine di `presidi/`;
+il test `test_processi_presidi_conteggi_api.py` pinna che risolva a questa view
+e non al dettaglio di un processo chiamato «presidi».
+
+**Dipendenze DB.** `dbops.presidi` (catalogo), `dbops.fn_conta_presidio`
+(`SECURITY DEFINER`, attraversa la RLS).
+
 ### 6.2 POST /api/v1/amm-software/processi/{codice}/esegui-ora/ — «Esegui ora» su una sveglia
 
 Accoda **un** lavoro `ESEGUI_PROCESSO` su `dbops.coda_lavori` per la sveglia di

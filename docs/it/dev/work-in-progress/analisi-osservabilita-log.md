@@ -84,7 +84,9 @@
 > decisione**, e B si riduce a due superfici (G ed E). Il **verdetto «lotto
 > fermo» ha oggi una sede sola, in Python**: il presidio di C non la copia a
 > DB, la **sposta** (brief DB P-1). Il canale di C resta il digest; il pallino
-> è la sua faccia in-app.
+> è la sua faccia in-app. ✅ **E la sera stessa Tid ha deciso: «la regola va
+> a DB»** — il verdetto «lotto fermo» diventa una regola del database (D-1 del
+> brief DB), il BE la legge e non la ricalcola.
 >
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
@@ -806,7 +808,9 @@ presidio scritto a DB sarebbe la **seconda sede** dello stesso predicato, e le
 due divergerebbero al primo addendo nuovo — il banner direbbe «fermo» e il
 digest «tutto a posto». Si **sposta** la sede a DB (colonna `fermo` in coda al
 riepilogo, vista dei lotti fermi, presidio `_da_guardare` con soglia di un'ora
-e perimetro `DEFINER`) e il BE la trasporta (pezzo V del piano). ✅ E la #8 è
+e perimetro `DEFINER`) e il BE la trasporta (pezzo V del piano). ✅ **Deciso
+da Tid la sera del 18-09** («la regola va a DB», D-1 del brief DB): da qui in
+poi è lavoro del team DB, non una domanda. ✅ E la #8 è
 decisa: **pallino in-app**, in topbar accanto al badge delle code (pezzo P del
 piano, senza prerequisiti DB).
 

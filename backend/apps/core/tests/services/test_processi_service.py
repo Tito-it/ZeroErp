@@ -22,6 +22,9 @@
 #   8) «processo non trovato» è un 404 vero, non più il ripiego dichiarato
 #   9) `CODA_AUTOMATICA` è un filtro legittimo: ometterlo darebbe 400 sul buono
 #  10) i due verbi dell'utente tecnico pretendono entrambi gli argomenti
+#  11) un presidio NON LETTO si conta a parte: `non_letti`, non `con_righe`
+#  12) la testata del pallino e quella del pannello sono UNA funzione: stesso
+#      elenco → stessi numeri, e la lettura leggera passa `con_righe=False`
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -172,6 +175,36 @@ class ProcessiServicePresidiTests(unittest.TestCase):
         esito = svc.stato_presidi()
         self.assertEqual(esito["con_righe"], 0)
         self.assertEqual(esito["non_letti"], 1)
+
+    # 12. ⭐ Regola del 2 (ok Tid 2026-09-18): `con_righe`/`non_letti` li calcola
+    #     UNA funzione per il pannello e per il pallino. Il test pinna la parita'
+    #     sullo stesso elenco — con un acceso, un non letto e uno a zero — e che
+    #     la lettura del pallino sia quella LEGGERA (`con_righe=False`): se
+    #     qualcuno ricopiasse i due `sum`, la parita' reggerebbe oggi e si
+    #     romperebbe alla prima modifica, e questo test non lo vedrebbe; per
+    #     questo pinna anche il callable, che deve essere lo stesso oggetto.
+    def test_la_testata_e_una_sola_per_pannello_e_pallino(self):
+        from apps.core.services import processi_service
+        righe = [
+            {"vista": "a", "conteggio": 0, "righe": [], "descrizione": "d",
+             "errore": None},
+            {"vista": "b", "conteggio": 3, "righe": [{}], "descrizione": "d",
+             "errore": None},
+            {"vista": "c", "conteggio": None, "righe": [], "descrizione": "d",
+             "errore": "giu'"},
+        ]
+        svc, _repo = _service(stato_presidi=righe)
+        pannello = svc.stato_presidi()
+        pallino = svc.conteggi_presidi()
+        self.assertEqual(pallino, {"totale": 3, "con_righe": 1, "non_letti": 1})
+        self.assertEqual(
+            {k: pannello[k] for k in ("totale", "con_righe", "non_letti")},
+            pallino,
+        )
+        # La funzione e' UNA, ed e' quella di modulo.
+        self.assertEqual(processi_service._testata_presidi(righe), pallino)
+        # Il pallino legge LEGGERO: niente prime righe da ogni scheda aperta.
+        svc._presidi.stato_presidi.assert_any_call(con_righe=False)
 
     # 7. ⛔ Il service NON classifica i presidi. La differenza fra «deve restare
     #    vuota» e «registro di debito che deve calare» la dichiara il database

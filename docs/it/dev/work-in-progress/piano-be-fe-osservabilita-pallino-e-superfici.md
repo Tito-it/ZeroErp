@@ -8,9 +8,9 @@
 > I prerequisiti DB stanno in
 > [brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md)
 > (P-1 … P-3). La #14 **non è qui**: resta il debito dichiarato che è.
-> **Stato:** 🔵 **scritto il 2026-09-18**. Il pezzo **P** non aspetta nessuno;
-> **E** e **G** aspettano gli indici (P-3), **G** anche R-6 (P-2); **V** aspetta
-> il verdetto a DB (P-1). Nessuna riga di codice scritta.
+> **Stato:** 🔵 scritto il 2026-09-18; ✅ **P scritto la notte del 19/09** (BE +
+> FE, non committato — §0-bis). **E** e **G** aspettano gli indici (P-3), **G**
+> anche R-6 (P-2); **V** aspetta il verdetto a DB (P-1).
 >
 > **In una riga.** Il piano dell'osservabilità è a cinque passi su sette; questo
 > documento chiude gli altri due con **quattro pezzi**: un **pallino in topbar**
@@ -36,7 +36,7 @@
 
 | Pezzo | Stato | Prerequisito | Dove |
 | --- | --- | --- | --- |
-| **P** — il pallino dei presidi in topbar (BE + FE) | 🔵 | **nessuno** | §2 |
+| **P** — il pallino dei presidi in topbar (BE + FE) | ✅ **scritto il 19/09 (notte)**, non committato | **nessuno** | §2 · BE: `stato_presidi(con_righe=False)`, `_testata_presidi` + `conteggi_presidi`, `ProcessiPresidiConteggiView` su `processi/presidi/conteggi/` (prima di `<str:codice>/`); FE: `getPresidiConteggi`, `usePresidiPolling` (300 s, 403 → spento, adotta i numeri del pannello), `statoPallino` pura in `core/utils/pallinoPresidi.js` + spec (6), pulsante in `AppTopbar` accanto al badge code + voce kebab mobile, 4 chiavi i18n it/en. Prove: 30 test BE verdi, spec FE verde, eslint e `vite build` verdi, `check_i18n_keys` verde; **chiamata reale su dbdev**: 20 presidi, 1 acceso (`vw_articoli_a_magazzino_prontezza`, atteso), testata identica fra lettura leggera e pannello (~700 ms); rotta viva (401 senza token) e nello schema OpenAPI |
 | **E** — consultazione `error_log` (BE + FE, amministrazione) | ⏳ | P-3 (indici) | §4 |
 | **G** — il giornale degli errori trasversale (BE + FE, vendite) | ⏳ | P-3 (indici) + P-2 (R-6) | §3 |
 | **V** — il verdetto «lotto fermo» letto dal DB (BE) | ⏳ | P-1 | §5 |
@@ -251,8 +251,11 @@ dopo** il pulsante code:
 - icona `NAV_ICONS.PROCESSI_AUTOMATICI` (`pi pi-cog`): è la destinazione del
   click, e il nome dell'icona vive in **una** sede (frontend-standards §«Dove
   vive il NOME di un'icona»);
-- `<Badge>` per segmento, classi `topbar-presidi-badge` gemelle di
-  `topbar-code-badge` (stesso posizionamento, in `main.css` accanto);
+- `<Badge>` per segmento, **le stesse classi** del badge code
+  (`topbar-contatore-btn` / `-badge` / `-badge-alto` / `-badge-basso`, stile
+  scoped di `AppTopbar.vue`). ⚠️ Scritto in origine come «classi gemelle»: la
+  prima stesura le aveva davvero copiate riga per riga, e il 19-09 la copia è
+  rientrata in una famiglia sola;
 - a zero: **un** badge `severity="success"` con `0` — la forma visibile del
   «visto e vuoto»; `v-if="disponibile"` sull'intero pulsante;
 - tooltip `t('amministrazione.processi.presidi_badge_tooltip', {allarmi,
@@ -517,3 +520,5 @@ Tutte e quattro **si annunciano a chat prima di scrivere** e aspettano l'ok.
 | --- | --- |
 | 2026-09-18 | Scritto. #8 decisa da Tid a chat (topbar, accanto al badge code). B6 riconosciuta chiusa dal piano «endpoint senza porta» dell'11-09. Prerequisiti DB in brief separato. Nessun codice. |
 | 2026-09-18 sera | ✅ **D-V1 confermata da Tid** («la regola va a DB»): il pezzo V è definitivo, non più condizionato. |
+| 2026-09-19 (notte) | ✅ **Pezzo P scritto** (BE + FE). Estrazione `_testata_presidi` autorizzata da Tid («ok ora inizia»). Uno scostamento dal §2.3, dichiarato: la resa `statoPallino` **non** sta nel composable ma in `core/utils/pallinoPresidi.js` — la spec, importando il composable, trascinava store → auth → i18n → `localStorage` (assente in vitest); il modulo puro senza import è lo stesso pattern di `ramoBannerLotto.js`. Un secondo scostamento, in meglio: il «rinfresco dal pannello» non passa da una chiamata `refresh()` nella view ma dal composable che **osserva lo store** (`presidiLoading` → finito senza errore ⇒ adotta `con_righe`/`non_letti`/`presidi.length`): zero round-trip in più e nessun accoppiamento della view al pallino. Documentato: manuale amm-software §6.1-bis, api.md, i due cataloghi BB, frontend-standards §Topbar. |
+| 2026-09-19 (revisione) | ⛔ **Trovato al controllo critico**: la testata del pannello «Processi automatici» colorava `con_righe` in **warn** e `non_letti` in **danger** — l'**inverso** del pallino (e di §2.3/D-P1). Due sedi per lo stesso vocabolario, e dicevano il contrario. Rientrato togliendo la copia: il pannello rende i segmenti di `statoPallino`, e la testata «dallo store» è un getter solo (`presidiTestata`, `null` a lettura fallita → nessun tag verde a vuoto) letto dal pannello e adottato dal pallino. Stesso giro: le classi CSS del pallino erano una copia riga per riga di quelle del badge code → una famiglia `topbar-contatore-*`. |
