@@ -869,3 +869,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 869,77,user_insert,Registrato da,,user_insert,informazione,string,,120,160,left,Audit,5,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_user_insert,20
 870,77,data_insert,Registrato il,,data_insert,informazione,datetime,datetime_short,140,170,center,Audit,5,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_data_insert,22
 871,77,id,Id,,id,informazione,numeric,,80,180,right,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_id,10
+872,31,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale per conto del quale la mail e stata inviata (vuoto per le mail di SISTEMA),emittente_ragione_sociale,informazione,string,,160,45,left,,,t,f,t,f,f,f,2026-09-18 00:00:00,mctit,amministrazione.email_emittente,50
+873,58,emittente_fiscale,Emittente,Emittente fiscale a cui il preset si applica (vuoto se globale o di profilo),emittente_ragione_sociale,informazione,string,,200,45,left,,,t,f,t,f,f,t,2026-09-18 00:00:00,mctit,ui.admin.preset_emittente,60

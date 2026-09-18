@@ -6,12 +6,16 @@
 > combo, la lista è sbarrata dal cancello di perimetro («Scegli un emittente
 > per continuare») — su un registro che un emittente non ce l'ha.
 >
-> **In una riga:** sei righe nel CSV
-> `80_data/sql/ui/lista_definizione_perimetro_emittente.csv`, dove oggi ce
-> n'è una sola. Nessuna colonna, nessuna funzione, nessun changeSet nuovo
-> oltre al seed. Più **cinque domande** su liste che una dimensione emittente
-> ce l'hanno (§5) — ✅ **tutte decise da Tid il 2026-09-18**, in §5-bis, con
-> il lavoro che ne discende (§7).
+> **In una riga:** sei liste in più dichiarate `perimetro_emittente = false`
+> nel seed. Nessuna funzione nuova. Più **cinque domande** su liste che una
+> dimensione emittente ce l'hanno (§5) — ✅ **tutte decise da Tid il
+> 2026-09-18**, in §5-bis, con il lavoro che ne discende (§7).
+> ⛔ **E una decisione di metodo, sempre del 18-09 (§3-bis):** il valore NON
+> sta più nel CSV laterale `lista_definizione_perimetro_emittente.csv` — quel
+> tipo di seed è **deprecato**, «il rischio è troppo, si rischia
+> disallineamento con i csv» — ma nella **colonna** di `lista_definizione.csv`,
+> come `multi_emittente`. Il CSV laterale e il suo changeSet `20260902-02`
+> sono **ritirati**.
 
 ---
 
@@ -77,9 +81,10 @@ admin (decisione Tid 2026-08-17, `fn_check_user_emittente_scope` passo 3).
 Il 18-09 la domanda su `anagrafiche.operatori` è stata capita male proprio per
 questo nome, e la §5 di questo brief parlava di *«scope n:m»* — corretto.
 
-## 3. Cosa si chiede — sei righe di seed
+## 3. Cosa si chiede — sei liste in più a `false`
 
-In `80_data/sql/ui/lista_definizione_perimetro_emittente.csv`, accanto a
+Nella colonna `perimetro_emittente` di `80_data/sql/ui/lista_definizione.csv`
+(dal 18-09, §3-bis; fino ad allora nel CSV laterale), accanto a
 `vendite.famiglie_documento`:
 
 | `codice` | `perimetro_emittente` | Perché (verificato sul dbdev il 15-09: nessuna colonna `emittente_fiscale_id`) |
@@ -98,12 +103,78 @@ vanterebbe una capacità che non hanno, e
 `dbops.vw_liste_multi_emittente_non_certificate` le intercetterebbe — è la
 strada breve che il commento della colonna ha già rifiutato.
 
-⭐ Sul rischio di INSERT monco che la preCondition di `20260902-02` difende
-(conta la sola riga di `famiglie_documento`): le sei liste stanno tutte in
-`lista_definizione.csv` (mirror `20260507-06`, id 18, 32, 56, 57, 59, 66), che
-in `80_data` gira **prima** di `20260902-02`. Su un DB da zero le righe
-esistono quando il mirror del perimetro le aggiorna: la preCondition resta
-com'è, sufficiente anche se non completa.
+### 3-bis. Dove si dichiara — una tabella, un CSV (Tid, 2026-09-18)
+
+Il 02-09 il flag era nato in un **CSV laterale** chiavato su `codice`
+(`lista_definizione_perimetro_emittente.csv`, changeSet `20260902-02`), «per
+non toccare il mirror mergiato» — lo stesso pattern di `colonna_serie`
+(`20260901-12`) e `anno_nel_numero` (`20260908-16`) su `famiglie_documento`.
+La prima stesura di questo giro (18-09 sera) ci aveva aggiunto le sei righe.
+
+⛔ **Tid l'ha fermata: quel tipo di seed è deprecato.** Due CSV sulla stessa
+tabella sono due sorgenti di verità sulla stessa riga: chi aggiunge una lista
+in `lista_definizione.csv` non vede il laterale, chi legge il laterale non vede
+la lista, e nessun presidio li confronta — divergono in silenzio. Il
+precedente giusto era già in casa: `multi_emittente` il 18-08 è entrata come
+**colonna** di `lista_definizione.csv` + riga nell'elenco `columns` del mirror
+`20260507-06`, ritoccato dopo il merge (`runOnChange` + `ANY`: il checksum
+non è un vincolo).
+
+Quindi, il 18-09:
+
+* `lista_definizione.csv`: colonna `perimetro_emittente` in coda (`t` su
+  tutte, `f` sulle sette), dichiarata nel mirror `20260507-06`;
+* `20260902-02` e il CSV laterale: **cancellati** (precedente: `20251001-05`
+  + CSV, 15-09). La riga in `databasechangelog` resta orfana, e Liquibase non
+  se ne cura; su un DB da zero non gira mai;
+* il COMMENT vivo della colonna diceva *«il valore si dichiara nel seed
+  (20260902-02)»* → riferimento morto nella sede più letta →
+  **`00_schema/ui/20260918-28`**, solo `COMMENT`, testo **vivo** con una frase
+  sostituita (`20260902-01` è mergiato e non si tocca);
+* ✅ **e `famiglie_documento`, stesso giorno («chiudiamo anche quello»,
+  Tid)**: i laterali erano **cinque**, non due — `formato`
+  (prefisso/lunghezza, `20260902-53-01`, in mezzo a `20260831-53`),
+  `colonna_serie` (`20260901-12`), `regole_fiscali` (`20260902-05`),
+  `anno_nel_numero` (`20260908-16`) e la **riga** `DISTINTA`
+  (`20260915-33`). Tutti rientrati in `famiglie_documento.csv` (18 colonne,
+  6 righe) + mirror `20260830-14`, e cancellati (9 file; il changeSet in
+  mezzo a `20260831-53` sostituito da un commento datato che spiega ancora
+  la terza preCondition del changeSet dopo). ⭐ Il mirror ora si chiava su
+  **`codice_interno`** e l'`id` esce dal CSV: DISTINTA è nata senza id e su
+  dev è **812** (6 da zero) — un CSV che pretendesse `6` la duplicherebbe;
+  nessun seed, pgTAP o backend nomina un id letterale (verificato). Il
+  `setval` resta, innocuo. Ordine su un DB da zero verificato: `20260831-03`
+  (conta per nome le quattro non fiscali) e il terzo changeSet di
+  `20260831-53` (vuole il prefisso) girano **dopo** `20260830-14`, che ora
+  porta già tutto. Prova in `ROLLBACK`: upsert **completo** delle sei righe
+  sul vivo → sei UPDATE, zero INSERT, **zero differenze** su tutte le
+  colonne (id compreso), guard `_a10_` passati sul no-op, NULL dove devono
+  (serie di COMMESSA/RESO/DISTINTA, prefisso FATTURA, BA DISTINTA); ramo
+  INSERT su un clone `LIKE … INCLUDING ALL`: sei righe, id 1..6, DISTINTA =
+  6, valori identici. Nessun dato cambia ⇒ nessun pgTAP da toccare (le
+  asserzioni sui valori restano vere). Una riga di fatto corretta in
+  `20260915-34`; i riferimenti in `00_schema`/`20_code` (`runOnChange:
+  false`) restano come storia.
+  🔴 **Apply del 18-09 sera, rosso al primo colpo — e la prova era verde.**
+  `trg_famiglie_documento_a10_guard_struttura_upd` su COMMESSA: *«le colonne
+  che dicono dove vive il documento non si modificano, ci sono già 2
+  registri»*. Il mirror aveva `nullValue: ""` (mai esercitato: il vecchio CSV
+  non aveva celle vuote) e alla prima cella vuota Liquibase ha scritto `''`,
+  non NULL; il guard fa `IS DISTINCT FROM` su `colonna_serie`. La mia prova
+  non l'ha visto perché le `UPDATE` le avevo **scritte io**, con NULL: per un
+  `loadUpdateData` l'«SQL estratto» è il render del comando di anteprima
+  offline di Liquibase, non una riscrittura. Rimedio: `nullValue: "NULL"` +
+  token letterale `NULL` nel CSV (la convenzione di `lista_definizione.csv` e
+  dei laterali ritirati); riprovato con l'SQL **reso da Liquibase** in
+  transazione ritirata: sei UPDATE, zero differenze, NULL veri (3 serie, 1
+  prefisso, 1 BA), nessuna stringa vuota. La transazione del changeSet era
+  tornata indietro: valori vivi intatti.
+  ✅ La parte `ui` (`20260918-28`, `20260507-06`, `20260806-15`) è **entrata**
+  in quell'apply: 872/873 spente, sette globali, `operatori` multi.
+
+⭐ La preCondition di `20260902-02` («la riga delle famiglie esiste, altrimenti
+INSERT monco») sparisce con lui, e non serve più: il valore viaggia nella
+riga della lista, che il mirror **crea** con tutte le colonne.
 
 ## 4. Cosa NON si chiede
 
@@ -161,22 +232,84 @@ Le sei righe di §1 rilette con lo stesso token senza emittente: le sei di
 `anagrafiche.operatori` (D-3) anche — per il ramo 3, non per il 2. Lato BE,
 dopo l'apply, un presidio piccolo e senza DB in
 `test_perimetro_emittente_copertura`: ogni voce di `_ESENZIONI` la cui ragione
-dichiara «senza perimetro» / «nessun `emittente_fiscale_id`» deve avere la
-riga `false` nel CSV — così registro e seed non possono più dire due cose.
-Lo scrive il backend a seed applicato. ⚠️ E la voce di `_ESENZIONI` per
-`anagrafiche.emittenti_fiscali` («è l'elenco degli emittenti stessi») va
-riscritta come quella di `famiglie_documento`: *catalogo globale
-(`perimetro_emittente = false`)*.
+dichiara «senza perimetro» / «nessun `emittente_fiscale_id`» / «catalogo
+globale» deve avere `perimetro_emittente = f` nella **colonna** di
+`80_data/sql/ui/lista_definizione.csv` (dal 18-09, §3-bis: non più una riga
+nel CSV laterale) — così registro e seed non possono più dire due cose. Lo
+scrive il backend a seed applicato: dettaglio in §8.
 
 ## 7. Il lavoro che discende dalle decisioni — in ordine
 
 Tre giri, perché D-4 e D-5 hanno un vincolo d'ordine che gli altri non hanno.
 
+> ✅ **Giro 1 e giro 2 SCRITTI il 2026-09-18 sera** (`dev/db-tid`, non
+> ancora applicati né committati — apply, pgTAP e commit sono di Tid):
+>
+> * `80_data/sql/ui/lista_definizione.csv`: **colonna nuova
+>   `perimetro_emittente`** (`f` sulle sette di §3, `t` altrove) + colonna
+>   nell'elenco del mirror `20260507-06`; `multi_emittente = t` su
+>   `anagrafiche.operatori` (id 28) — D-3. ⚠️ Seconda stesura: la prima
+>   appendeva sei righe al CSV laterale, ritirato in §3-bis;
+> * **cancellati** `80_data/changelog/20260902-02-…-perimetro-emittente-mctit.yaml`
+>   e `80_data/sql/ui/lista_definizione_perimetro_emittente.csv`;
+> * **nuovo** `00_schema/ui/20260918-28-comment-ui-lista-definizione-perimetro-emittente-seed-nel-csv`:
+>   solo `COMMENT`, dal testo vivo (`col_description`), una frase sostituita;
+> * `80_data/sql/ui/lista_colonna.csv`: **id 872** (lista 31, `email_log`) e
+>   **id 873** (lista 58, `lista_preset`), `codice = emittente_fiscale`,
+>   `campo_sorgente = emittente_ragione_sociale`, **`attivo = f`** — D-4/D-5,
+>   sullo stampo delle sei colonne certificate di `vendite`.
+>   ⚠️ Erano nate come 787/788: mentre il giro era in corso, «Aggiornato csv
+>   lista» (`4a245db9e`, liste `magazzino.*` 75-77) ha portato il CSV a 871.
+>   Tid ha fermato il giro, i CSV sono stati riportati indietro e riscritti
+>   dopo il merge — è il caso della memoria *«il numero libero scade
+>   subito»*, visto in diretta;
+> * **pgTAP** (i tre che pinnano la vista di certificazione erano da rileggere,
+>   due da toccare): `ui/test-lista-definizione-perimetro-emittente-v1` — il
+>   test 6 pinnava «nessun'altra globale oltre le famiglie» (rosso sulla
+>   prima riga giusta: *test che pinna il sintomo*) → riscritto come
+>   **elenco dichiarato** delle sette, sullo stampo del gemello; **nuovo test
+>   8**, derivato: nessuna lista globale espone una colonna attiva
+>   `^emittent` (le due dichiarazioni si escludono — è la trappola di
+>   `email_log`/`lista_preset` resa test). `plan(7) → plan(8)`.
+>   `ui/test-lista-definizione-multi-emittente-v1` test 5: `anagrafiche.
+>   operatori` aggiunta all'elenco, con la riga datata. `vendite/test-viste-
+>   dash-emittente-v1` test 10 lavora su id fissi: non lo vede, invariato;
+> * **prova in transazione ritirata** (SQL **estratto** da `20260918-28` +
+>   seed generato *dai CSV*, non riscritto + corpo dei pgTAP): COMMENT
+>   riscritto, sette globali, otto multi, vista a zero, envelope giusti;
+>   perimetro **7/8 verdi** — il 4 rosso solo per veste
+>   (`titodb` non è membro di `zeroerp_app`: risponde il CHECK 23514 e non il
+>   guard P0001, come il test stesso avverte); multi non leggibile da owner
+>   (i test 3/4 scrivono invece di essere respinti e inquinano 5/6/8) →
+>   provato **isolato**: test 5 = elenco atteso, vista di certificazione a 0,
+>   envelope `operatori.multi_emittente = true`, `amm.processi` ed
+>   `emittenti_fiscali` `perimetro = false`, 872/873 passano il trigger di
+>   `campo_sorgente` e sono spente, nessuna riga viola `perimetro OR NOT
+>   multi`. ⚠️ Il verde vero lo dà la corsa come app, che lancia Tid.
+>
+> * ✅ **D-5 chiusa lato DB nello stesso giro** (18-09 sera): `_PRESET_SELECT_SQL`
+>   (`ui_admin_repository.py`, riga 15) **proiettava già**
+>   `emittente_ragione_sociale` per la colonna calcolata «Riferimento» → la
+>   873 nasce **attiva**, `ui.lista_preset` è `multi_emittente = t` e sta
+>   nell'elenco del test 5. Presidi BE sulle colonne attive verificati
+>   (`ordinabile = f`, non azione, non sensibile, formato vuoto, proiezione
+>   via `list_preset_by_lista`); prova in `ROLLBACK`: vista di certificazione
+>   a 0, nove multi, envelope `true`. Al BE resta solo la chiave i18n (§8).
+> * regola scritta nel meccanismo condiviso: linee-guida-sql **§11.2**
+>   (riga «aggiungere una colonna» + paragrafo «una tabella, UN CSV»; la
+>   vecchia via «CSV dedicato se il file è una mina» **non è più una via**)
+>   e AGENTS.md §«I dati di 80_data si cambiano dal CSV».
+>
+> 🔵 **Resta**: ri-apply (la parte `ui` è già dentro; `famiglie_documento`
+> ha il mirror corretto, `nullValue: "NULL"`) + pgTAP (Tid: i due `ui/`, più
+> `vendite/` per le famiglie) → giro 3 al BE (§7, «Giro 3») → §6.
+
 **Giro 1 — solo seed, un CSV e mezzo (DB).** Chiude §1 e D-1, D-3:
 
-1. `lista_definizione_perimetro_emittente.csv`: le sei righe di §3. Il mirror
-   `20260902-02` è `runOnChange` + `ANY`: riallinea da solo;
-2. `lista_definizione.csv` (mirror `20260507-06`): `multi_emittente = t` sulla
+1. `lista_definizione.csv` (mirror `20260507-06`, `runOnChange` + `ANY`:
+   riallinea da solo): colonna `perimetro_emittente`, `f` sulle sei di §3
+   (§3-bis: non più il CSV laterale);
+2. stesso file: `multi_emittente = t` sulla
    riga `id = 28` (`anagrafiche.operatori`). ⚠️ Solo questa, non `email_log` né
    `lista_preset`: il flag va **dopo** la colonna attiva, o
    `vw_liste_multi_emittente_non_certificate` esce da zero e i tre pgTAP che
@@ -193,12 +326,39 @@ gruppo «Emittente»), **spenta** finché il repository BE non emette il campo
 lista). La chiave i18n dell'etichetta va coniata (`config.email_log.col_emittente`,
 `ui.lista_preset.col_emittente`).
 
-**Giro 3 — BE, poi il flag (DB).** Il backend espone
-`emittente_ragione_sociale` nei due repository (`ui_admin_repository.py`
-per i preset — dove già calcola «Riferimento» — e quello del log email);
-attiva le due colonne; a quel punto `multi_emittente = t` sulle righe `id = 31` e
-`id = 58` di `lista_definizione.csv`, e il presidio le trova certificate. Poi §6.
+**Giro 3 — BE, poi il flag (DB).** Riguarda ormai la sola `config.email_log`
+(D-4): la 873 dei preset è attiva e certificata dal giro 2 (sopra). Il
+backend espone `emittente_ragione_sociale` nella SELECT della lista del log
+email (`apps/core/db/email_repository.py`, ~riga 648) e conia le chiavi i18n;
+attiva la 872 (`attivo = t` nel CSV, **nello stesso commit** della
+proiezione — il cancello `test_lista_proiezione_campo_sorgente` guarda le
+colonne attive); a quel punto `multi_emittente = t` sulla riga `id = 31` di
+`lista_definizione.csv` **e `config.email_log` si aggiunge all'elenco del
+test 5** di `test-lista-definizione-multi-emittente-v1` (è il biglietto).
+Elenco completo e file esatti in §8.
 
 ⚠️ Sui pgTAP: nessuna firma cambia e nessun contratto di vista; i presidi da
 rileggere sono i tre sulla vista di certificazione (devono restare a zero in
 ogni giro) e `test_perimetro_emittente_copertura` lato BE.
+
+## 8. Richieste al BE — in un posto solo (18-09 sera)
+
+Tutto ciò che il DB ha consegnato è nel riquadro di §7. Al backend resta
+questo, in ordine di dipendenza. ⚠️ Nessuna di queste voci è bloccante per
+l'apply DB: le colonne che non hanno ancora la proiezione sono **spente**.
+
+| # | Cosa | Dove | Note |
+| --- | --- | --- | --- |
+| BE-1 | **Presidio §6**: ogni voce di `_ESENZIONI` motivata «senza perimetro» / «nessun `emittente_fiscale_id`» / «catalogo globale» ha `perimetro_emittente = f` in `lista_definizione.csv` (colonna 10, letta col modulo `csv`, senza DB) | `apps/core/tests/test_perimetro_emittente_copertura.py` | Le sette globali: `amm.processi`, `anagrafiche.emittenti_fiscali`, `storico.audit_log`, `ui.lista_definizione`, `ui.lista_colonna`, `ui.lista_colonna_permesso`, `vendite.famiglie_documento` |
+| BE-2 | **Ragioni di `_ESENZIONI` da riscrivere** perché ora il seed le dice: `anagrafiche.emittenti_fiscali` → *catalogo globale (`perimetro_emittente = false`)*, come `famiglie_documento`; `amm.processi` e `storico.audit_log` → aggiungere *(`perimetro_emittente = false`)*; `anagrafiche.operatori` → *`multi_emittente` certificata: colonna «Emittente fiscale» per riga*; `ui.lista_preset` → *`multi_emittente` certificata (colonna 873 `emittente_fiscale`)*, non più «P-2c via Riferimento» | stesso file | ⛔ Non è cosmesi: il registro deve dire la stessa cosa del seed, ed è ciò che BE-1 presidia |
+| BE-3 | **D-4, `config.email_log`**: proiettare `emittente_ragione_sociale` nella SELECT della lista (LEFT JOIN `anagrafiche.emittenti_fiscali ef ON ef.id = el.emittente_fiscale_id` → `soggetti_ruoli` → `soggetti.ragione_sociale_completa`, stessa forma di `_PRESET_SELECT_SQL`; NULL sulle righe `SISTEMA`) | `apps/core/db/email_repository.py` ~648 | `campo_sorgente` della 872 è `emittente_ragione_sociale`: il nome è fissato dal seed |
+| BE-4 | **Accendere la 872** nello stesso commit di BE-3: `attivo = t` sulla riga `872` di `80_data/sql/ui/lista_colonna.csv` | `lista_colonna.csv` | I commit BE toccano già questo CSV (`f915a32a5`); il mirror `20260806-15` è `runOnChange`. ⛔ Non prima di BE-3: `test_lista_proiezione_campo_sorgente` diventa rosso |
+| BE-5 | **Chiavi i18n** (`it.json`, `en.json`): `amministrazione.email_emittente` = «Emittente», `ui.admin.preset_emittente` = «Emittente» | `frontend/src/locales/` | Senza chiave `etichettaColonna` ricade sull'etichetta del seed («Emittente»): non rompe, ma la regola è `$t()` |
+| BE-6 | **«Riferimento» dei preset** (colonna 663, calcolata dal BE): ora c'è la 873 riconosciuta accanto. Decidere se «Riferimento» resta (mostra anche il profilo) o si restringe al profilo | `ui_admin_repository.py` + seed 663 | Scelta BE; il DB non ha una preferenza |
+| BE-7 | **Ordinamento per emittente**, se lo si vuole: `ordinabile = t` su 872/873 **+** il campo nella whitelist di ordinamento del repository — *una modifica, due file* | seed + repository | Oggi `ordinabile = f` su entrambe, di proposito |
+| BE-8 | Chiudere la nota d'origine: *«Nel frattempo si entra scegliendo un emittente nella combo»* | `work-done/piano-be-fe-avvio-manuale-di-un-processo.md` §4.4.2 | Il caso è risolto dal seed |
+
+**Poi torna al DB** (una riga, un pgTAP): a BE-3/BE-4 fatti, `multi_emittente = t`
+sulla riga `id = 31` di `lista_definizione.csv` e `config.email_log` nell'elenco
+del test 5 di `ui/test-lista-definizione-multi-emittente-v1`. Con questo il brief
+va in `work-done/`.

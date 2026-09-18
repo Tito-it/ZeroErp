@@ -1434,7 +1434,25 @@ dopo il loader.
 | --- | --- |
 | cambiare un valore | editi il CSV: il mirror riallinea |
 | aggiungere una riga | append al CSV, mai un `INSERT` a parte |
+| **aggiungere una colonna** | colonna in coda al CSV **principale** + `- column:` nell'elenco del mirror, anche se mergiato (`runOnChange` + `ANY`). ⛔ Mai un secondo CSV |
 | cancellare una riga | `loadUpdateData` non cancella → `DELETE` SQL forward-only. **Unica eccezione** |
+
+⛔ **Una tabella, UN CSV** (Tid, 2026-09-18). Un secondo CSV «per sottoinsieme»
+— chiavato sulla chiave naturale, con un `loadUpdateData` suo, «per non toccare
+il mirror mergiato» — è **deprecato**: due CSV sulla stessa riga sono due
+sorgenti di verità che nessun presidio confronta, e divergono in silenzio. La
+giustificazione era falsa: un mirror `runOnChange` + `validCheckSums: ANY` **si
+ritocca** dopo il merge, ed è fatto apposta (`20260830-14`, colonna
+`presidia_data_documento` del 31-08: «è l'unico caso in cui si tocca un
+changeSet già applicato»). Il 18-09 ne sono stati ritirati **sei**:
+`lista_definizione_perimetro_emittente` (`20260902-02`) e i cinque di
+`famiglie_documento` (`formato`, `colonna_serie`, `regole_fiscali`,
+`anno_nel_numero`, la riga `DISTINTA`), tutti rientrati nel CSV principale.
+⚠️ Il laterale porta con sé anche una `preCondition` obbligata («le righe
+esistono già, altrimenti INSERT monco») che il principale non ha bisogno di
+avere. ⭐ E la chiave del mirror principale è la **chiave naturale**, non
+l'`id` di una identity: una riga nata senza id (DISTINTA, 812 su dev) non è
+raggiungibile per id da un CSV che vale ovunque.
 
 ⚠️ Se un SQL storico sovrascrive un CSV e non si può cancellare perché mergiato,
 **spegnerlo non basta**: su un database nuovo applica comunque una volta, e
@@ -1464,8 +1482,10 @@ mirror non è risvegliabile.
 `dblink` che può restare appeso **tenendo un lock sulla tabella**, e a quel punto
 blocca anche il migrate. Se succede, `pg_terminate_backend`.
 
-⭐ Se il file è una mina e non la si vuole disinnescare adesso, la via è un **CSV
-dedicato** con un loader suo: la sede resta un CSV e il file minato non si sveglia.
+⚠️ Se il file è una mina, si **disinnesca** (la verifica qui sopra dice quale
+riga rifiuta, e perché): fino al 18-09 questa riga offriva come via un «CSV
+dedicato con un loader suo», ed è la porta da cui sono entrati i sei laterali
+ritirati quel giorno. Non è più una via.
 
 ---
 
