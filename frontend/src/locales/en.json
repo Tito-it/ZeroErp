@@ -3969,6 +3969,7 @@
       "col_data_conferma": "Posted at",
       "col_user_conferma": "Posted by",
       "titolo_singolare": "Collection sheet",
+      "del_data": "of {data}",
       "solo_consultazione": "This screen is read-only: opening a sheet, entering lines, matching them to instalments and posting are coming in the next round.",
       "nessuna_distinta": "No collection sheets",
       "nessuna_riga": "This sheet has no lines yet",
@@ -4117,7 +4118,8 @@
       "campo_motivo": "Reason for forcing",
       "motivo_aiuto": "Whoever settles the excess will read it, even weeks later.",
       "forza": "Force anyway",
-      "forzatura_resta_scritta": "The forcing stays recorded on the line"
+      "forzatura_resta_scritta": "The forcing stays recorded on the line",
+      "gia_cosi": "The line is already matched like this: change the document or the instalment to re-match it."
     },
     "rata": {
       "campo": "Instalment",
@@ -4287,6 +4289,29 @@
       "gia_corretta": "Already corrected by sheet {codice}: open that one and work there.",
       "e_la_correzione_di": "This sheet corrects {codice}",
       "e_stata_corretta_da": "This sheet has already been corrected by {codice}"
+    }
+  },
+  "magazzino": {
+    "disponibilita": {
+      "blocco": {
+        "giacenza_insufficiente": "Insufficient stock: the outgoing quantity exceeds what the ledger shows on hand for the item, or for the given lot or serial.",
+        "merce_bloccata": "The goods are there, but part of them is already committed to others: the free quantity does not cover the requested issue."
+      }
+    },
+    "riga": {
+      "blocco": {
+        "articolo_non_gestito": "The item is not stock-managed: no movement can be recorded.",
+        "lotto_obbligatorio": "The item is tracked by lot: specify the lot.",
+        "lotto_non_ammesso": "The item is not tracked by lot: the lot must not be specified.",
+        "lotto_di_altro_articolo": "The lot does not belong to the item, or is no longer active.",
+        "seriale_obbligatorio": "The item is tracked by serial: specify the serial.",
+        "seriale_non_ammesso": "The item is not tracked by serial: the serial must not be specified.",
+        "seriale_di_altro_articolo": "The serial does not belong to the item, or is no longer active.",
+        "seriale_di_altro_emittente": "The serial does not belong to the warehouse's issuer.",
+        "ubicazione_obbligatoria": "The warehouse uses locations: specify the location.",
+        "ubicazione_non_ammessa": "The warehouse does not use locations: the location must not be specified.",
+        "ubicazione_di_altro_magazzino": "The location does not belong to the warehouse, or is no longer active."
+      }
     }
   },
   "dash_mesi": {

@@ -22,6 +22,17 @@
 // ⚠️ E la COERENZA non e' confermabile: «questa rata e' di questa fattura?» e'
 //    un rifiuto secco (400) e resta tale — si conferma la capienza, mai il
 //    legame sbagliato.
+//
+// ⭐ SI APRE SULLA DESTINAZIONE CHE LA RIGA HA GIA' (rilievo in-app di Tid,
+//    2026-09-18). Su una riga gia' abbinata il dialog si apriva VUOTO: chi lo
+//    apriva per vedere o cambiare l'abbinamento si trovava a cercare da capo
+//    un documento che la riga aveva sotto, e «vuoto» si leggeva come «non e'
+//    abbinata». Ora fattura e rata arrivano dalla riga — le stesse colonne
+//    `fattura_*`/`scadenza_*` che il form di modifica gia' legge (D19-b) —
+//    nella forma che `FatturaLookup` e `RataSelect` mostrano; ri-abbinare e'
+//    cambiare documento o rata da li'. ⚠️ Con la destinazione INVARIATA il
+//    verbo resta spento e lo dice: un «Abbina» che riscrive lo stesso legame
+//    non e' un gesto, e' un pulsante che non fa niente.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -55,11 +66,54 @@ const motivoForzatura = ref('')
 const rataSelect = ref(null)
 const caricamento = computed(() => rataSelect.value?.loading === true)
 
-const canSave = computed(() => fattura.value?.id != null)
+// Scopo: la destinazione che la riga porta GIA', nella forma di `FatturaLookup`
+//        (l'oggetto fattura coi campi che il lookup mostra) e di `RataSelect`
+//        (lo `scadenza_id`). `fattura` a `null` = la riga non e' abbinata.
+// ⚠️ Le colonne sono quelle di `_RIGA_COLONNE` del repository (prefisso
+//    `fattura_`/`scadenza_`, il cliente in `billing_account_descrizione`), le
+//    stesse che la lista delle righe (`pagamenti.distinta_righe`) consegna.
+function destinazioneDallaRiga(r) {
+  if (r?.fattura_id == null) return { fattura: null, scadenzaId: null }
+  return {
+    fattura: {
+      id: r.fattura_id,
+      billing_account_id: r.billing_account_id ?? null,
+      numero: r.fattura_numero ?? null,
+      serie: r.fattura_serie ?? null,
+      anno: r.fattura_anno ?? null,
+      numero_documento: r.fattura_numero_documento ?? null,
+      data: r.fattura_data ?? null,
+      totale_doc: r.fattura_totale_doc ?? null,
+      registro_codice: r.fattura_registro_codice ?? null,
+      natura_doc_codice_interno: r.natura_doc_codice_interno ?? null,
+      natura_doc_descrizione: r.natura_doc_descrizione ?? null,
+      ragione_sociale_completa: r.billing_account_descrizione ?? null,
+    },
+    scadenzaId: r.scadenza_id ?? null,
+  }
+}
 
+// ⭐ «Invariata» = stesso documento E stessa rata della riga: il verbo non ha
+//    niente da scrivere. ⚠️ Si confronta con la RIGA, non con cio' che il
+//    dialog ha proposto all'apertura: e' la riga il fatto.
+const invariata = computed(() => {
+  const r = props.riga
+  if (r?.fattura_id == null || fattura.value?.id == null) return false
+  return fattura.value.id === r.fattura_id
+    && (scadenzaId.value ?? null) === (r.scadenza_id ?? null)
+})
+
+const canSave = computed(() => fattura.value?.id != null && !invariata.value)
+
+// Scopo: all'apertura si riparte dalla riga — con la sua destinazione se ce
+//        l'ha, vuoti altrimenti. ⚠️ `scadenzaId` e `fattura` insieme, nello
+//        stesso giro: il watch di `RataSelect` sulla fattura tiene la rata
+//        gia' scelta se e' fra quelle del documento appena caricato (Q-2), e
+//        la trova solo se e' gia' nel `modelValue` quando la fattura cambia.
 function reset() {
-  fattura.value = null
-  scadenzaId.value = null
+  const { fattura: f, scadenzaId: sc } = destinazioneDallaRiga(props.riga)
+  fattura.value = f
+  scadenzaId.value = sc
   motivoForzatura.value = ''
   annulla()
 }
@@ -127,6 +181,12 @@ function chiudiConEsito() {
       <!-- Le rate col saldo, facoltative: il BB di dominio. `v-model` porta
            lo `scadenza_id`, ed e' tutto cio' che il verbo deve mandare. -->
       <RataSelect ref="rataSelect" v-model="scadenzaId" :fattura-id="fattura?.id ?? null" />
+
+      <!-- Perche' «Abbina» e' spento: la riga e' gia' cosi'. Senza questa riga
+           un pulsante grigio su un form compilato si legge come un guasto. -->
+      <Message v-if="invariata" severity="info" :closable="false" size="small">
+        {{ t('pagamenti.abbina.gia_cosi') }}
+      </Message>
 
       <!-- ══ Il secondo tempo: la capienza non basta ══
            ⛔ NON e' un errore: e' una domanda. Il messaggio arriva dal DATABASE
