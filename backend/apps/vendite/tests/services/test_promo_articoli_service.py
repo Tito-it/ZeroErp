@@ -24,6 +24,7 @@ Indice test eseguiti:
 11) test_create_prezzo_fisso_negativo_ko       — PREZZO_FISSO < 0 -> VALIDATION
 12) test_create_percentuale_zero_ko            — PERCENTUALE = 0 -> VALIDATION (no-op)
 12b) test_create_percentuale_negativo_ok       — PERCENTUALE = -10 -> OK (sconto, regressione fix v5)
+12c) test_create_valore_non_numerico_ko        — 2026-09-18: `NaN`/bool/testo/assente -> VALIDATION col campo (il punto che traduce il BB)
 13) test_create_tipo_invalido                  — enum errato -> VALIDATION
 14) test_create_missing_codice                 — codice mancante -> VALIDATION
 15) test_create_missing_articolo               — articolo_id mancante -> VALIDATION
@@ -257,6 +258,23 @@ class TestCreate(TestCase):
         ))
         self.assertEqual(result["id"], 1)
 
+    # Scopo: ⭐ Il punto che traduce (2026-09-18): la coercizione e' del BB
+    #        `PayloadValidator`, ma che il codice del dominio e il CAMPO arrivino
+    #        all'envelope resta scritto qui. `NaN` e' il valore che la copia
+    #        locale lasciava passare: `Decimal("NaN") != 0` e' vero, quindi
+    #        superava anche il guard di dominio e arrivava alla colonna.
+    @patch(_REPO)
+    def test_create_valore_non_numerico_ko(self, mock_repo):
+        for raw in (None, "", "dieci", True, "NaN", "Infinity"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    PromoArticoliService().create_promo(_base_payload(
+                        valore_variazione=raw,
+                    ))
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+                self.assertEqual(ctx.exception.context["field"], "valore_variazione")
+        mock_repo.return_value.create_promo.assert_not_called()
+
     @patch(_REPO)
     def test_create_tipo_invalido(self, mock_repo):
         del mock_repo
@@ -265,6 +283,13 @@ class TestCreate(TestCase):
                 tipo_variazione="NON_VALIDO",
             ))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        # ⭐ Dal 2026-09-18 (BB `require_enum`) il rifiuto NOMINA il campo: la
+        #    copia locale scriveva `{"tipo_variazione": tipo}` e il form non
+        #    accendeva niente. E un tipo non-stringa e' un 400, non un 500.
+        self.assertEqual(ctx.exception.context["field"], "tipo_variazione")
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().create_promo(_base_payload(tipo_variazione=True))
+        self.assertEqual(ctx.exception.context["field"], "tipo_variazione")
 
     @patch(_REPO)
     def test_create_missing_codice(self, mock_repo):

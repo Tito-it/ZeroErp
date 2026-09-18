@@ -9,7 +9,7 @@
 //
 // Nato il 2026-09-12 come `ToggleNascoste` alla seconda occorrenza del solo
 // «mostra i nascosti» («Mostra archiviate» delle code, «Mostra annullati» dei
-// lotti). Il 2026-09-19 (regola del 2, ok Tid) e' diventato il BB di OGNI
+// lotti). Il 2026-09-18 (regola del 2, ok Tid) e' diventato il BB di OGNI
 // interruttore di filtro: lo stesso blocco — `<div style="display:flex…">` +
 // `ToggleSwitch :input-id` + `<label :for style="…">` — era scritto a mano in
 // CINQUE toolbar (offerte, preventivi, pratiche, disponibilita' x2), con lo

@@ -6,7 +6,7 @@
 #        validazione del dominio, l'involucro paginato offset-based, la
 #        validazione dell'ordinamento e la lettura di un `articolo_id`.
 # Note: Stampo `pagamenti/services/_helpers.py`: materiale INTERNO del
-#       dominio, non un building block di progetto. Nato il 2026-09-19 alla
+#       dominio, non un building block di progetto. Nato il 2026-09-18 alla
 #       seconda occorrenza — `_risposta` era scritto in entrambi i service e
 #       il blocco `validate_order_params(order_by, order_dir.lower() …)` era
 #       ripetuto SETTE volte fra i due, con la stessa forma.

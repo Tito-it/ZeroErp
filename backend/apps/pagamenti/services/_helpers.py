@@ -10,7 +10,7 @@
 #       nomi privati di un altro modulo e' un legame che non regge il primo
 #       riordino.
 #       ⭐ La lettura di un importo (`decimal_da_payload`) NON sta piu' qui
-#       (2026-09-19): era la prima di cinque copie nel progetto ed e' diventata
+#       (2026-09-18): era la prima di cinque copie nel progetto ed e' diventata
 #       `PayloadValidator.require_decimal` / `optional_decimal` in core — con
 #       lo stesso rigore (bool e NaN rifiutati), per tutti.
 # ------------------------------------------------------------

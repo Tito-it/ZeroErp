@@ -707,7 +707,7 @@ Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise 
 Un filtro acceso/spento nella toolbar di una lista («Mostra storico», «Solo
 interne», «Solo negativa», «Mostra annullati») è il BB `FiltroToggle`:
 `[switch] Etichetta`. ⛔ Non un `ToggleSwitch` + `<label>` scritti in pagina:
-il 2026-09-19 erano **cinque** copie in quattro file, con lo stile inline
+il 2026-09-18 erano **cinque** copie in quattro file, con lo stile inline
 ricopiato e un id inventato a mano per non collidere fra due schede — il root
 del BB è un `<label>`, e non ha bisogno di nessun id.
 
@@ -736,7 +736,7 @@ La forma è `Etichetta (N)` (decisione di Tid, 2026-09-12), non una frase
 plurale: la chiave i18n è una. Un interruttore che **restringe** non ha niente
 da contare e non passa `count`.
 
-> Fino al 2026-09-19 il BB si chiamava `ToggleNascoste` e copriva il solo
+> Fino al 2026-09-18 il BB si chiamava `ToggleNascoste` e copriva il solo
 > caso col conteggio: le cinque copie senza conteggio erano lo stesso
 > componente, e si è ritirato nel giro che le ha assorbite.
 
@@ -752,10 +752,13 @@ Quando il filtro è un lookup **ricco** (`ArticoloLookup`,
 l'**id**: il legame è `useStoreFilterBindings.bindLookup(storeKey, { idField })`,
 con `onChange` su `@update:model-value` (i lookup ricchi lo emettono su select
 **e** su clear). ⛔ Non un `watch` sul widget con un guard anti-giro-a-vuoto:
-erano due copie identiche (registro e disponibilità di magazzino, 2026-09-19).
-⚠️ Dallo store al widget viaggia **solo l'azzeramento**: un id messo da fuori
-non si rende senza una lettura by-id — limite dichiarato nel BB, da colmare con
-un'opzione `risolvi` il giorno che un deep-link lo chiederà.
+erano due copie identiche (registro e disponibilità di magazzino, 2026-09-18).
+⭐ L'oggetto scelto **si ricorda nello store** (`<storeKey>_obj`, come il
+`_obj` del form per il restore dell'AutoComplete): un widget che rimonta —
+la scheda di un `<Tabs lazy>` — lo ritrova, invece di mostrare un picker
+vuoto sopra una lista filtrata. ⚠️ Un id messo da fuori **senza** l'oggetto
+(deep-link col solo id) non si rende: da colmare con un'opzione `risolvi`
+il giorno che un deep-link lo chiederà.
 
 ### Scorciatoie da tastiera (Keyboard Shortcuts)
 

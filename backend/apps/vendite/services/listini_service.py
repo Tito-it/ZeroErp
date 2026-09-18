@@ -792,7 +792,7 @@ def _extract_riga_payload(
     # (F1-DB-25). Eventuali valori residui nel payload sono ignorati
     # silenziosamente (retrocompatibilita' chiamanti pre-v5).
 
-    # ⚠️ Fino al 2026-09-19 la copia locale sollevava `ValueError` su un prezzo
+    # ⚠️ Fino al 2026-09-18 la copia locale sollevava `ValueError` su un prezzo
     #    non numerico: il middleware lo traduceva in `E_VALIDATION_INPUT`
     #    generico, non nel codice del dominio. Il BB solleva `E_VENDITE_VALIDATION`.
     prezzo = _V.extract_optional_decimal(

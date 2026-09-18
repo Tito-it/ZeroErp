@@ -1352,44 +1352,41 @@ def _coerce_meta_to_dict(value: Any) -> dict[str, Any]:
 #        Chiamata sia da gestisci_riga (create) sia da aggiorna_riga (update).
 #        Salta i campi assenti dal payload: in update non tutti i campi
 #        passano sempre.
+#        ⚠️ La coercizione (da `str`, bool e NaN rifiutati) e' del BB
+#        `PayloadValidator`: fino al 2026-09-18 le due copie inline qui sotto
+#        costruivano `Decimal("NaN")` senza protestare, e `NaN >= 0` solleva
+#        `InvalidOperation` — un 500 al posto del 400 col campo — mentre
+#        `NaN != 0` e' vero, quindi una quantita' NaN passava fino al DB, dove
+#        `NaN > 0` e' vero e il CHECK la lascia entrare. Qui restano i guard
+#        stretti di dominio, con la loro frase.
 def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> None:
-    if "prezzo_unitario" in payload and payload["prezzo_unitario"] is not None:
-        try:
-            prezzo = Decimal(str(payload["prezzo_unitario"]))
-        except Exception:
-            ErrorManager.raise_error(
-                code="E_PREV_VALIDAZIONE",
-                message="Prezzo unitario non numerico.",
-                detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
-                function_name=function_name,
-            )
-            raise AssertionError("unreachable")  # pragma: no cover
+    prezzo = _V_RIGA.optional_decimal(
+        payload, "prezzo_unitario",
+        message="Prezzo unitario non numerico.", function_name=function_name,
+    )
+    if prezzo is not None:
         ErrorManager.require(
             prezzo >= 0,
             code="E_PREV_VALIDAZIONE",
             message="Il prezzo unitario non puo' essere negativo.",
             detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
+            context={"field": "prezzo_unitario"},
             function_name=function_name,
         )
 
     # Sorgente quantita = `qta_operativa` (UoM operativa scelta dall'operatore);
     # `quantita` (base) e' derivata dal trigger DB e non arriva piu' dal FE.
-    if "qta_operativa" in payload and payload["qta_operativa"] is not None:
-        try:
-            qta_operativa = Decimal(str(payload["qta_operativa"]))
-        except Exception:
-            ErrorManager.raise_error(
-                code="E_PREV_VALIDAZIONE",
-                message="Quantita' non numerica.",
-                detail=f"qta_operativa={payload['qta_operativa']!r}",
-                function_name=function_name,
-            )
-            raise AssertionError("unreachable")  # pragma: no cover
+    qta_operativa = _V_RIGA.optional_decimal(
+        payload, "qta_operativa",
+        message="Quantita' non numerica.", function_name=function_name,
+    )
+    if qta_operativa is not None:
         ErrorManager.require(
             qta_operativa != 0,
             code="E_PREV_VALIDAZIONE",
             message="La quantita' deve essere diversa da zero.",
             detail=f"qta_operativa={payload['qta_operativa']!r}",
+            context={"field": "qta_operativa"},
             function_name=function_name,
         )
 

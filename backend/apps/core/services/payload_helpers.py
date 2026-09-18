@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Collection, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -572,7 +572,7 @@ class PayloadValidator:
     # Estrazione decimali (quantita', importi, prezzi, coefficienti)
     # =================================================================
     #
-    # ⭐ Estratti il 2026-09-19 (regola del 2, ok Tid) da OTTO siti in sette
+    # ⭐ Estratti il 2026-09-18 (regola del 2, ok Tid) da OTTO siti in sette
     #    moduli e TRE forme: `decimal_da_payload` di pagamenti e la sua copia in
     #    magazzino (due stati, `obbligatorio`, rifiuto di bool e NaN);
     #    `_extract_decimal` di catalogo e listini (tre stati `MISSING`,
@@ -580,6 +580,20 @@ class PayloadValidator:
     #    sollevava un `ValueError`, cioe' un `E_VALIDATION_INPUT` generico al
     #    posto del codice del suo dominio); `_coerce_decimal` di contratti e i
     #    due blocchi inline di commesse (solo la coercizione del valore).
+    #    ⭐ Stessa sera, alla rilettura critica, altri QUATTRO: `imponibile`
+    #    della forzatura sui titoli IVA, `valore_variazione` di categorie
+    #    clienti/listini e di promo, `payload_prezzo` del gate L1/L2 — che
+    #    accettavano `NaN` o, il primo, un `bool`. ⚠️ E un QUINTO alla
+    #    rilettura della rilettura, sulla stessa strada del gate: i due campi
+    #    di `_validate_riga_economic` di preventivi (`prezzo_unitario`,
+    #    `qta_operativa`), dove `NaN >= 0` era un 500 e una quantita' NaN
+    #    passava fino al DB. Restano FUORI di proposito,
+    #    e non sono copie: i cast best-effort di un PARAMETRO di sistema
+    #    (`parameter_service`, `amm_software`, `views_pricing`: «non parsabile
+    #    = nessuna soglia», nessun campo di form da accendere), il salto
+    #    difensivo sui prezzi negoziati di un'offerta (`ordini_service`) e gli
+    #    override per componente (`_componenti_service_helpers`), che nominano
+    #    il componente nella frase invece di un campo.
     # ⚠️ Il rigore e' quello PIU' ALTO fra le copie, per tutti: si passa da
     #    `str` (`Decimal(0.1)` porta dentro l'errore del float), un `bool` non
     #    e' un numero (`True` sommerebbe come 1 senza che nessuno lo segnali),
@@ -740,6 +754,172 @@ class PayloadValidator:
             return None
         return self._coerce_decimal(
             value, field=key, message=message, min_value=min_value, em=em,
+        )
+
+    # =================================================================
+    # Estrazione enum (un codice a vocabolario chiuso: tipo, ambito, livello)
+    # =================================================================
+    #
+    # ⭐ Estratti il 2026-09-18 (regola del 2, ok Tid) da CINQUE siti in tre
+    #    moduli con la stessa forma — `isinstance(raw, str)` → `.strip().upper()`
+    #    → `in <whitelist>` — e la stessa frase («deve essere uno tra: …»):
+    #    `tipo_variazione` di promo (con un flag `required`) e di categorie
+    #    clienti/listini, `ambito`, `tipo_variazione_globale` e
+    #    `tipo_eccezione` di contratti. ⚠️ Le whitelist restano DEL DOMINIO
+    #    (specchiano `CHECK` diversi: due valori in categorie, tre in promo,
+    #    uno in contratti): il BB unifica la lettura, non il vocabolario.
+    # ⚠️ Il rigore e' quello piu' alto fra le copie, per tutti: un valore che
+    #    non e' una stringa (`True`, `3`) e' un rifiuto e non un `AttributeError`
+    #    su `.strip()`; una stringa VUOTA e' «obbligatorio», non «uno tra»; e il
+    #    `context` porta SEMPRE `field` — quattro copie su cinque, sul valore
+    #    fuori vocabolario, scrivevano `{"tipo_variazione": tipo}` e il form non
+    #    accendeva niente.
+    # ⚠️ Il confronto e' sul valore NORMALIZZATO: la whitelist va scritta in
+    #    maiuscolo, com'e' a catalogo.
+
+    # Scopo: Coerce di un valore SCALARE a codice del vocabolario `allowed` —
+    #        la forma per chi riceve il codice come parametro di firma
+    #        (speculare a `coerce_decimal`). `None` e' «obbligatorio».
+    #        `nota` e' la frase in piu' che il dominio aggiunge al detail del
+    #        rifiuto («VALORE_FISSO non e' ammesso sulla testata: …»).
+    def coerce_enum(
+        self,
+        raw: Any,
+        *,
+        field: str,
+        allowed: Collection[str],
+        message: str | None = None,
+        nota: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str:
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        return self._coerce_enum(
+            raw, field=field, allowed=allowed, message=message, nota=nota, em=em,
+        )
+
+    # Scopo: Il corpo della coercizione, coi kwargs di ErrorManager gia' risolti.
+    def _coerce_enum(
+        self,
+        raw: Any,
+        *,
+        field: str,
+        allowed: Collection[str],
+        message: str | None,
+        nota: str | None,
+        em: dict[str, Any],
+    ) -> str:
+        ammessi = ", ".join(sorted(allowed))
+        ErrorManager.require(
+            isinstance(raw, str),
+            code=self._code,
+            message=message or f"Campo '{field}' deve essere una stringa.",
+            detail=f"{field} deve essere una stringa, non {type(raw).__name__}." if message else None,
+            context={"field": field},
+            **em,
+        )
+        assert isinstance(raw, str)
+        value = raw.strip().upper()
+        ErrorManager.require(
+            value != "",
+            code=self._code,
+            message=message or f"Campo '{field}' obbligatorio.",
+            detail=f"{field} obbligatorio." if message else None,
+            context={"field": field},
+            **em,
+        )
+        ErrorManager.require(
+            value in allowed,
+            code=self._code,
+            message=message or f"Campo '{field}' deve essere uno tra: {ammessi}.",
+            detail=f"{field} deve essere uno tra: {ammessi}." + (f" {nota}" if nota else ""),
+            # Il valore ricevuto sta nel context (al log), MAI nel detail: e' un
+            # codice scritto dall'operatore, non un dato da rimandargli.
+            context={"field": field, field: value},
+            **em,
+        )
+        return value
+
+    # Scopo: Estrae un codice obbligatorio dal payload. Rifiuta None
+    #        esplicito, chiave assente e stringa vuota.
+    def require_enum(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        allowed: Collection[str],
+        message: str | None = None,
+        nota: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str:
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        raw = payload.get(key)
+        if raw is None:
+            ErrorManager.raise_error(
+                code=self._code,
+                message=message or f"Campo '{key}' obbligatorio.",
+                detail=f"{key} obbligatorio." if message else None,
+                context={"field": key},
+                **em,
+            )
+        return self._coerce_enum(
+            raw, field=key, allowed=allowed, message=message, nota=nota, em=em,
+        )
+
+    # Scopo: Estrae un codice opzionale. Ritorna None se chiave assente o
+    #        valore None esplicito; coerce se presente.
+    def optional_enum(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        allowed: Collection[str],
+        message: str | None = None,
+        nota: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str | None:
+        if key not in payload or payload[key] is None:
+            return None
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        return self._coerce_enum(
+            payload[key], field=key, allowed=allowed, message=message, nota=nota, em=em,
+        )
+
+    # Scopo: Estrae un codice opzionale distinguendo 3 stati (per i PATCH),
+    #        come `extract_optional_decimal`:
+    #          - chiave assente   -> MISSING (campo non aggiornato)
+    #          - valore None      -> None se nullable, altrimenti errore
+    #          - valore           -> codice normalizzato e ammesso
+    def extract_optional_enum(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        allowed: Collection[str],
+        nullable: bool = False,
+        message: str | None = None,
+        nota: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str | None | MissingType:
+        if key not in payload:
+            return MISSING
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        value = payload.get(key)
+        if value is None:
+            ErrorManager.require(
+                nullable,
+                code=self._code,
+                message=message or f"Campo '{key}' non puo' essere null.",
+                detail=f"{key} non puo' essere null." if message else None,
+                context={"field": key},
+                **em,
+            )
+            return None
+        return self._coerce_enum(
+            value, field=key, allowed=allowed, message=message, nota=nota, em=em,
         )
 
     # =================================================================

@@ -4,7 +4,7 @@
 // Doc: JavaScript
 // Scopo: Fissa il contratto dei quattro binder di `useStoreFilterBindings` —
 //        il legame fra un widget della toolbar e `store.filters` — scritto il
-//        2026-09-19 insieme ai due binder nuovi (`bindToggle`, `bindLookup`,
+//        2026-09-18 insieme ai due binder nuovi (`bindToggle`, `bindLookup`,
 //        regola del 2): il file non aveva nessun presidio, e i due vecchi
 //        (`bindSelect`, `bindDate`) nascono coperti nello stesso giro.
 //        La disciplina comune ai quattro: `onChange` scrive lo store e
@@ -145,7 +145,7 @@ describe('bindLookup — il widget tiene l\'oggetto, lo store l\'id', () => {
     expect(store.filters.scadenza_id).toBe(7)
   })
 
-  it('lo store azzerato da fuori svuota il widget; un id NON null da fuori non lo tocca', async () => {
+  it('lo store azzerato da fuori svuota il widget; un id da fuori SENZA oggetto non si rende', async () => {
     const { store, chiamate, bindLookup } = fabbrica({ articolo_id: null })
     const { value, onChange } = bindLookup('articolo_id')
     value.value = { id: 'a1b2' }
@@ -159,11 +159,58 @@ describe('bindLookup — il widget tiene l\'oggetto, lo store l\'id', () => {
     store.filters.articolo_id = null
     await nextTick()
     expect(value.value).toBeNull()
-    // un id messo da fuori: il widget non sa renderlo e resta com'e' (limite
-    // dichiarato nel BB, da colmare con un `risolvi` il giorno che servira')
+    // un id messo da fuori SENZA l'oggetto: il widget non sa renderlo e resta
+    // com'e' (limite dichiarato nel BB, da colmare con un `risolvi` il giorno
+    // che servira')
     store.filters.articolo_id = 'zz'
     await nextTick()
     expect(value.value).toBeNull()
     expect(chiamate.n).toBe(1)
+  })
+
+  it('l\'oggetto scelto si ricorda nello store (`<chiave>_obj`) e un widget che RIMONTA lo ritrova', () => {
+    const { store, bindLookup } = fabbrica({ articolo_id: null })
+    const primo = bindLookup('articolo_id')
+    const articolo = { id: 'a1b2', codice: 'ART-1', descrizione: 'Bullone' }
+    primo.value.value = articolo
+    primo.onChange()
+    expect(store.filters.articolo_id_obj).toEqual(articolo)
+    // la scheda di un `<Tabs lazy>` rimonta: un binder nuovo, stesso store
+    const secondo = bindLookup('articolo_id')
+    expect(secondo.value.value).toEqual(articolo)
+    // il clear dal widget rimontato azzera ENTRAMBE le chiavi
+    secondo.value.value = null
+    secondo.onChange()
+    expect(store.filters.articolo_id).toBeNull()
+    expect(store.filters.articolo_id_obj).toBeNull()
+  })
+
+  it('un oggetto ricordato che NON corrisponde all\'id dello store non si rende', async () => {
+    const { store, bindLookup } = fabbrica({ articolo_id: 'altro', articolo_id_obj: { id: 'a1b2' } })
+    const { value } = bindLookup('articolo_id')
+    expect(value.value).toBeNull()
+    // e l'azzeramento da fuori pulisce anche la memoria
+    store.filters.articolo_id = null
+    await nextTick()
+    expect(store.filters.articolo_id_obj).toBeNull()
+  })
+
+  it('un id DIVERSO messo da fuori svuota il widget invece di lasciargli l\'oggetto vecchio', async () => {
+    const { store, bindLookup } = fabbrica({ articolo_id: null })
+    const { value, onChange } = bindLookup('articolo_id')
+    value.value = { id: 'a1b2', codice: 'ART-1' }
+    onChange()
+    await nextTick()
+    // un deep-link (o un altro widget sullo stesso store) scrive un altro id:
+    // il picker NON deve continuare a mostrare ART-1 sopra una lista filtrata
+    // da 'zz' — meglio vuoto che una bugia
+    store.filters.articolo_id = 'zz'
+    await nextTick()
+    expect(value.value).toBeNull()
+    // e se da fuori arriva ANCHE l'oggetto coerente, il widget lo rende
+    store.filters.articolo_id_obj = { id: 'c3', codice: 'ART-3' }
+    store.filters.articolo_id = 'c3'
+    await nextTick()
+    expect(value.value).toEqual({ id: 'c3', codice: 'ART-3' })
   })
 })
