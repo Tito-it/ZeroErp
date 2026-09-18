@@ -1858,10 +1858,21 @@ passata) e `v_fn_riservate` (funzioni a cui l'`EXECUTE` è revocato **a PUBLIC e
 all'app**). Il presidio sta nell'unico posto che avrebbe potuto annullarlo, e
 si dichiara come dato — non come un secondo file che rincorre il primo.
 
-⚠️ **Servono comunque due file.** Su dev `ci_apply` non gira da solo: il
-changeSet `90_end` forward che revoca subito ci vuole, e il loop lo rende
-stabile. Uno senza l'altro è o un REVOKE che muore, o una postura che su dev
-arriva solo quando qualcuno digita `db-ci-apply`.
+⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
+diceva «due file», e la terza era scritta solo nell'intestazione del loop
+(riga «🔴») e in `provision_db_roles.sql` stesso:
+
+| Sede | Perché |
+| --- | --- |
+| il changeSet `90_end` **forward** che revoca subito | su dev `ci_apply` non gira da solo: senza, la postura arriva solo quando qualcuno digita `db-ci-apply` |
+| il **loop** `90_end/ci_apply/20260205-41`, negli elenchi in testa | a ogni passata `ci_apply` rifà i `GRANT`: senza l'eccezione dichiarata lì, il REVOKE muore nello stesso build |
+| **`scripts/sql/provision_db_roles.sql`** | 🔴 **è l'ULTIMA parola**: in `ci-validate.yaml` (passo «Privilegi del ruolo applicativo») e in `ci-local.sh` gira **dopo** `--contexts=ci_apply` e fa `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA …` all'app — riapre in silenzio ciò che il loop ha appena chiuso. Su dev non si vede: il provisioning non si rilancia dopo ogni migrate. Le eccezioni stanno nel blocco «POSTURA DICHIARATA» in coda allo script |
+
+Trovato il 2026-09-11 da `test-registri-append-only-postura-v1.sql` — verde su
+dev, rosso sul database ricostruito da zero — che è il presidio che tiene
+allineate le tre sedi. ⭐ Ogni postura nuova (un registro in sola lettura, una
+tabella senza `DELETE`) si porta dietro il **suo** pgTAP di postura con lo stesso
+stampo: è l'unico modo in cui la terza sede non si dimentica.
 
 ⚠️ **Le funzioni hanno `=X`.** Per default PostgreSQL concede `EXECUTE` a
 PUBLIC su ogni funzione nuova, e un `CREATE OR REPLACE` lo conserva. Revocare

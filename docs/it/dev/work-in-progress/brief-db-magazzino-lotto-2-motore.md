@@ -231,7 +231,11 @@ UPDATE, DELETE`, ramo accanto a `v_registri_append_only`) e `magazzino.movimenti
 in una lista `v_tabelle_senza_delete` (oggi esiste solo per **schemi**,
 `v_schemi_senza_delete`: si aggiunge la forma per tabella), **più** un
 changeSet `90_end` forward che applica subito su dev — `ci_apply` su dev non
-gira da solo. Si asserisce con `has_table_privilege('zeroerp_app', …, 'INSERT')`
+gira da solo — **più `scripts/sql/provision_db_roles.sql`** (blocco «POSTURA
+DICHIARATA»: in CI e in `ci-local.sh` gira **dopo** `ci_apply` e rifà
+`GRANT … ON ALL TABLES IN SCHEMA magazzino` all'app; senza la sua eccezione
+riapre la porta nello stesso build — P-0, §6-ter C2; fino al 18-09 questa riga
+nominava due sedi). Si asserisce con `has_table_privilege('zeroerp_app', …, 'INSERT')`
 = false, **mai** con `role_table_grants` (cieco fuori dal ruolo connesso).
 
 ⚠️ **Due pgTAP del Lotto 1 diventano rossi per costruzione** (`INSERT INTO
@@ -619,6 +623,7 @@ posting **dal piano**, non con una seconda query.
 | guard di scrittura | `trg_movimenti_a10_guard_scope_ins_upd`, `trg_movimenti_attesi_a10_guard_scope_ins_upd`, `trg_valore_giacenza_a10_guard_scope_ins_upd` — `BEFORE INSERT OR UPDATE OF magazzino_id … EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id')`, stampo `vendite.ordini`. ⭐ Alfabeticamente `guard_scope` < `guard_sorgente` < `guard_verso`: lo scope si valuta per primo (memoria «due guard BEFORE ROW: ordine alfabetico») | `20_code/magazzino` |
 | loop dei grant | `90_end/ci_apply/20260205-41` **in place** (`runOnChange`): `v_tabelle_sola_lettura_app := ARRAY['magazzino.movimenti','magazzino.valore_giacenza']` → `GRANT SELECT` + `REVOKE INSERT, UPDATE, DELETE`; `v_tabelle_senza_delete := ARRAY['magazzino.movimenti_attesi']` → `GRANT SELECT, INSERT, UPDATE` + `REVOKE DELETE` (oggi la forma «senza DELETE» esiste solo per schemi: si aggiunge quella per tabella, stesso ramo). ⚠️ Il ramo va **prima** di quello generico, come `v_registri_append_only` | `90_end/ci_apply` |
 | applicazione immediata | un `90_end` forward con gli stessi `REVOKE` (su dev `ci_apply` non gira da solo: `reference_su_dev_db_ci_apply_non_rilancia_le_automazioni`) | `90_end` |
+| **terza sede** (§6-ter C2) | `scripts/sql/provision_db_roles.sql`, blocco «POSTURA DICHIARATA»: le due tabelle in sola lettura (`REVOKE INSERT, UPDATE, DELETE`) e `movimenti_attesi` senza `DELETE`, con lo stesso stampo idempotente (`to_regclass … \gexec`) di `audit_log`/`error_log` — è l'ultima parola in CI | `scripts/sql` |
 
 ### 4.2 La primitiva — `magazzino.fn_scrivi_movimento` (M-2, D-L2-a/b/c/d/e)
 

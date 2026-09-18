@@ -227,9 +227,13 @@ dell'applicazione vengono riallineati a ogni passata `ci_apply` da un loop che l
 concede in blocco su tutte le tabelle: un `REVOKE` isolato sarebbe annullato alla
 passata successiva. La postura più stretta dei registri è **dichiarata dentro
 quel loop** (`90_end/ci_apply/20260205-41`), che concede a questi due solo
-`SELECT, INSERT` e revoca il resto. Chi aggiunge un registro append-only lo
-dichiara lì. Regola e motivazione: [linee-guida-sql](/linee-guida-sql), §11.8
-*«Una postura più stretta per `zeroerp_app` si dichiara nel loop dei grant»*.
+`SELECT, INSERT` e revoca il resto — **e** in `scripts/sql/provision_db_roles.sql`
+(blocco «POSTURA DICHIARATA»), che in CI gira **dopo** quel loop, concede in
+blocco su tutte le tabelle ed è l'ultima parola. Chi aggiunge un registro
+append-only lo dichiara in **entrambi**, più il changeSet `90_end` forward che
+applica subito su dev. Regola e motivazione: [linee-guida-sql](/linee-guida-sql), §11.8
+*«Una postura più stretta per `zeroerp_app` si dichiara nel loop dei grant»*
+(le tre sedi, in tabella).
 
 Presidio: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql` — verifica sia
 i privilegi a catalogo sia ciò che l'applicazione riesce a fare davvero.
