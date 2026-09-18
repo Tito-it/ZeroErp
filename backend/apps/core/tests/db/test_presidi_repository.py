@@ -41,6 +41,10 @@
 7. test_un_presidio_non_letto_diventa_una_riga_che_lo_dice
      ⛔ Non un 500 che spegne la schermata intera, e non uno zero che direbbe
      «tutto a posto» proprio mentre non si e' visto niente.
+8. test_la_lettura_leggera_non_chiede_le_righe
+     ⭐ Il pallino della topbar (2026-09-18): `con_righe=False` fa lo STESSO
+     giro — stesse viste, stessi conteggi, stesso isolamento — e non chiama mai
+     `prime_righe`. E' un parametro e non una copia del giro.
 """
 
 from __future__ import annotations
@@ -254,3 +258,31 @@ class PresidiPannelloTests(SimpleTestCase):
         # questo giro sta dentro una richiesta web.
         finta.close_if_unusable_or_obsolete.assert_called_once()
         finta.close.assert_not_called()
+
+    # 8. ⭐ La lettura leggera: stesso giro, zero `prime_righe`.
+    def test_la_lettura_leggera_non_chiede_le_righe(self) -> None:
+        repo = self._repo(
+            [
+                _riga(vista="dbops.vw_zero", natura="ZERO"),
+                _riga(vista="dbops.vw_cade", natura="ZERO"),
+                _riga(vista="dbops.vw_coda", natura="LAVORAZIONE"),
+            ],
+            {"dbops.vw_zero": 2, "dbops.vw_cade": RuntimeError("giu'"),
+             "dbops.vw_coda": 9},
+            {"dbops.vw_zero": [{"x": 1}]},
+        )
+        chiamate = MagicMock(return_value=[{"x": 1}])
+        repo.prime_righe = chiamate  # type: ignore[method-assign]
+        with patch.object(modulo, "connection", MagicMock()):
+            leggera = repo.stato_presidi(con_righe=False)
+        chiamate.assert_not_called()
+        # Stesse viste (le sole ZERO), stesso conteggio, stessa riga «non letta».
+        self.assertEqual(
+            [(p["vista"], p["conteggio"], bool(p["errore"])) for p in leggera],
+            [("dbops.vw_zero", 2, False), ("dbops.vw_cade", None, True)],
+        )
+        # Senza righe non c'e' niente di «troncato», e le righe sono vuote.
+        acceso = next(p for p in leggera if p["vista"] == "dbops.vw_zero")
+        self.assertEqual(acceso["righe"], [])
+        self.assertFalse(acceso["troncato"])
+        self.assertTrue(acceso["da_guardare"])

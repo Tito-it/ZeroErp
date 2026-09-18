@@ -31,6 +31,8 @@ urlpatterns = [
     #    codice di un processo che si chiama "presidi".
     path("processi/", views.ProcessiListView.as_view(), name="amm-processi-list"),
     path("processi/presidi/", views.ProcessiPresidiView.as_view(), name="amm-processi-presidi"),
+    # La testata sola, per il pallino della topbar: stessa regola d'ordine.
+    path("processi/presidi/conteggi/", views.ProcessiPresidiConteggiView.as_view(), name="amm-processi-presidi-conteggi"),
     path("processi/<str:codice>/", views.ProcessiDetailView.as_view(), name="amm-processi-detail"),
     path("processi/<str:codice>/run/", views.ProcessiRunView.as_view(), name="amm-processi-run"),
     path("processi/<str:codice>/identita/", views.ProcessiIdentitaView.as_view(), name="amm-processi-identita"),

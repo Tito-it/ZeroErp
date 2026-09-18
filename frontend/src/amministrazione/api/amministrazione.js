@@ -97,9 +97,18 @@ export function listProcessi(params = {}) {
   return api.get(`${BASE}/processi/`, { params })
 }
 
-// Scopo: stato dei sei presidi in un round-trip (conteggi + prime righe).
+// Scopo: stato dei presidi in un round-trip (conteggi + prime righe).
+//        ⚠️ QUANTI siano lo dice il catalogo `dbops.presidi`, non questa riga:
+//        fino al 2026-09-18 diceva «sei» ed erano gia' di piu'.
 export function getProcessiPresidi() {
   return api.get(`${BASE}/processi/presidi/`)
+}
+
+// Scopo: la SOLA testata dei presidi — {totale, con_righe, non_letti} — per il
+//        pallino della topbar (`usePresidiPolling`). Stesso giro del pannello
+//        senza le prime righe: lo legge ogni scheda aperta, a cadenza lenta.
+export function getPresidiConteggi() {
+  return api.get(`${BASE}/processi/presidi/conteggi/`)
 }
 
 // Scopo: dettaglio di un processo (bersagli dichiarati + identità tecniche).

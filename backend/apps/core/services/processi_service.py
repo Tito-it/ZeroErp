@@ -84,6 +84,29 @@ _ORDER_AMMESSI = (
 #    giusto senza che nessuno li nomini.
 
 
+# Scopo: LA TESTATA DEI PRESIDI — i tre numeri che si guardano per primi,
+#        letti dalle righe che il repository consegna: quanti presidi, quanti
+#        ACCESI (hanno righe), quanti NON LETTI (hanno un errore).
+#
+# ⭐ E' UNA funzione perche' ha DUE lettori (regola del 2, ok Tid 2026-09-18):
+#    il pannello «Processi automatici» (`stato_presidi`) e il pallino della
+#    topbar (`conteggi_presidi`). Erano due `sum(...)` di una riga ciascuno, e
+#    proprio per questo si sarebbero ricopiati: il predicato «chiede un occhio»
+#    e' la cosa che il pallino e il pannello devono dire IDENTICA, e due copie
+#    smettono di dirla identica alla prima modifica.
+# ⚠️ `con_righe` conta i presidi ACCESI, e un presidio NON LETTO non e' uno di
+#    quelli — ma non e' nemmeno «a posto»: lo conta `non_letti`. Sommarlo agli
+#    accesi direbbe che c'e' un guasto dove c'e' una cecita', e tacerlo sarebbe
+#    peggio.
+def _testata_presidi(presidi: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "totale": len(presidi),
+        # Il numero che si guarda per primo: quanti presidi hanno righe.
+        "con_righe": sum(1 for p in presidi if (p.get("conteggio") or 0) > 0),
+        "non_letti": sum(1 for p in presidi if p.get("errore")),
+    }
+
+
 class ProcessiService:
     """Registro dei processi automatici: letture, utente tecnico, «Esegui ora»."""
 
@@ -275,20 +298,24 @@ class ProcessiService:
     #    `ZERO`), non un elenco nel backend; e che cosa significhi una loro riga
     #    lo dice il commento della vista. Il service non classifica niente: le
     #    due decisioni hanno una sede sola, ed e' il database.
-    # ⚠️ `con_righe` conta i presidi ACCESI, e un presidio NON LETTO non e' uno
-    #    di quelli — ma non e' nemmeno «a posto»: viaggia con il suo `errore` e
-    #    lo conta `non_letti`. Sommarlo agli accesi direbbe che c'e' un guasto
-    #    dove c'e' una cecita', e tacerlo sarebbe peggio.
+    # ⚠️ I tre numeri della testata (`totale`, `con_righe`, `non_letti`) li
+    #    calcola `_testata_presidi`, la stessa funzione del pallino: la regola
+    #    «accesi e non letti non si sommano» sta scritta la', una volta.
     def stato_presidi(self) -> dict[str, Any]:
         presidi = self._presidi.stato_presidi()
-        return {
-            "presidi": presidi,
-            # Il numero che si guarda per primo: quanti presidi hanno righe.
-            "con_righe": sum(
-                1 for p in presidi if (p["conteggio"] or 0) > 0
-            ),
-            "non_letti": sum(1 for p in presidi if p.get("errore")),
-        }
+        return {"presidi": presidi, **_testata_presidi(presidi)}
+
+    # Scopo: La SOLA testata dei presidi, per il pallino della topbar: stesso
+    #        giro del pannello senza le prime righe (piano osservabilita' §2.2).
+    #
+    # ⭐ Non e' un secondo predicato: e' `_testata_presidi` sulle stesse righe
+    #    che il pannello legge, meno le righe di esempio. Il pallino e il
+    #    pannello non possono dire due cose diverse perche' contano con la
+    #    stessa funzione lo stesso elenco.
+    # ⚠️ Un presidio che non si legge NON e' un errore di questo endpoint: e'
+    #    `non_letti + 1`, per contratto — la cecita' si conta, non si solleva.
+    def conteggi_presidi(self) -> dict[str, int]:
+        return _testata_presidi(self._presidi.stato_presidi(con_righe=False))
 
     # Scopo: Crea l'utente tecnico di un processo PER UN EMITTENTE, chiamando la
     #        fabbrica di dominio. Ritorna l'`auth_user_id` creato.

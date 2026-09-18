@@ -393,6 +393,39 @@ class ProcessiPresidiView(AdminAPIView):
         return success_response(ProcessiService().stato_presidi())
 
 
+class ProcessiPresidiConteggiView(AdminAPIView):
+    """GET la SOLA testata dei presidi: quanti, quanti accesi, quanti non letti.
+
+    ⭐ E' il pallino della topbar (decisione #8 di Tid, 2026-09-18 —
+    piano-be-fe-osservabilita-pallino-e-superfici §2.2): lo stesso giro del
+    pannello senza le prime righe, letto ogni cinque minuti da ogni scheda
+    aperta. Per questo esiste un endpoint a parte e non un parametro su
+    `presidi/`: un contatore ambientale non deve pagare le righe di esempio.
+    ⛔ Stessa porta del pannello (`AdminAPIView`): le viste nominano tutte le
+    aziende. Chi non la passa riceve 403 e il pallino NON compare — come il
+    badge delle code per chi non ha l'area core.
+    ⚠️ Un presidio che non si legge non e' un errore di questa risposta: e'
+    `non_letti`, e il pallino lo mostra come «chiede un occhio».
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ProcessiPresidiConteggiResp",
+            fields={"data": inline_serializer(
+                name="ProcessiPresidiConteggiData",
+                fields={
+                    "totale": serializers.IntegerField(),
+                    "con_righe": serializers.IntegerField(),
+                    "non_letti": serializers.IntegerField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: I tre numeri della testata, senza righe.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(ProcessiService().conteggi_presidi())
+
+
 class ProcessiDetailView(AdminAPIView):
     """GET dettaglio di un processo: bersagli dichiarati e identita' tecniche."""
 

@@ -259,8 +259,15 @@ class PresidiRepository:
     #    legge diventa una riga che lo DICE, non un 500 che spegne la schermata
     #    intera. ⚠️ Chiude anche la connessione, perche' un presidio puo' non
     #    limitarsi a fallire: puo' portarsela via.
+    # ⭐ `con_righe=False` e' la lettura LEGGERA per il pallino della topbar
+    #    (piano-be-fe-osservabilita-pallino-e-superfici §2.2, 2026-09-18): stesso
+    #    giro, stesso isolamento, stesse righe — senza `prime_righe`. E' un
+    #    parametro e non un secondo metodo perche' il giro e' UNO: una copia
+    #    «senza righe» divergerebbe dalla prima al primo campo nuovo della riga,
+    #    e il pallino direbbe una cosa e il pannello un'altra.
     def stato_presidi(
         self, *, righe_per_presidio: int = RIGHE_PER_PRESIDIO,
+        con_righe: bool = True,
     ) -> list[dict[str, Any]]:
         esito: list[dict[str, Any]] = []
         for riga in self.list_catalogo():
@@ -270,7 +277,7 @@ class PresidiRepository:
                 conteggio = self.conta(riga)
                 righe = (
                     self.prime_righe(riga, limite=righe_per_presidio)
-                    if conteggio else []
+                    if (con_righe and conteggio) else []
                 )
             except Exception as exc:  # noqa: BLE001 — isolamento per presidio
                 # ⚠️ Solo se e' inutilizzabile: questo giro sta dentro una

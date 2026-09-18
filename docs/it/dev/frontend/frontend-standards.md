@@ -163,9 +163,20 @@ logica di navigazione.
 ### Topbar
 
 - Altezza fissa 48px
-- Profilo utente con badge ruolo (ADMIN/OPERATIVO)
-- Pulsante ricerca universale (Ctrl+K)
-- Sessioni attive con pannello espandibile
+- Selettore dell'emittente attivo, titolo dell'area, chip del contesto globale
+- Iniziali dell'utente (chip `SUPER_ADMIN` per chi lo è) e data
+- ⭐ **Il gruppo «salute del sistema»** (`.topbar-actions-inline`), due contatori
+  ambientali gemelli, entrambi sopra `useRefreshPeriodico`, entrambi spenti su
+  403 per chi non passa la porta: il **badge delle code** (`pi-inbox`, lavori ·
+  stampa, warn se un worker è giù, 60 s, click → drawer code) e, dal 2026-09-18,
+  il **pallino dei presidi** (`NAV_ICONS.PROCESSI_AUTOMATICI`, allarmi · non
+  letti, **verde con lo `0` quando è tutto a posto**, 300 s, click → «Processi
+  automatici»). ⛔ Stanno **qui e non accanto alle iniziali**: parlano del
+  sistema, non «notifiche per te» (decisione #8 di Tid). Catalogo BB:
+  `useQueueCountsPolling`, `usePresidiPolling`
+- Pulsante ricerca universale (Ctrl+K) e assistente AI (se abilitato)
+- Kebab utente (preferiti, lingua, tema; su mobile promuove anche le voci inline)
+  e logout
 
 ### Content Tabs
 
