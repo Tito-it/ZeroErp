@@ -744,7 +744,7 @@ brief DB, chiuso quel giorno.
 > Il rilievo del secondo giro in-app (Tid, 15/09) in una frase: *chi digita un
 > incasso non riconosce il documento da un contatore, e la domanda vera non è
 > «quale fattura?» ma «quale rata?»*. Brief DB:
-> [brief-db-distinta-ricerca-rate.md](../../../dev/work-in-progress/brief-db-distinta-ricerca-rate.md);
+> [brief-db-distinta-ricerca-rate.md](../../../dev/work-done/brief-db-distinta-ricerca-rate.md);
 > piano BE/FE: [piano-be-fe-distinta-ricerca-rate.md](../../../dev/work-in-progress/piano-be-fe-distinta-ricerca-rate.md).
 
 ### `GET /api/v1/pagamenti/rate/`

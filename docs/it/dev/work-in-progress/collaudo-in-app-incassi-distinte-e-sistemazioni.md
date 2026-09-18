@@ -125,6 +125,37 @@ sbagliate. Per questo si guarda, non si assume.
 
 ---
 
+## 2-bis. La distinta cerca le rate — il picker e le righe da rate
+
+> Copione ereditato il **2026-09-18** dalla chiusura di
+> [brief-db-distinta-ricerca-rate.md](../work-done/brief-db-distinta-ricerca-rate.md)
+> (§7). Il picker **singolo** Tid l'ha esercitato lo stesso giorno (quattro
+> rilievi: altezza del dialog, dieci righe, bozze fuori, doppio bordo — tutti
+> chiusi): le righe 2-bis.1 → 2-bis.4 sono un ripasso. Da confermare a video
+> sono la **nota di credito nel picker** (2-bis.5) e le **righe da rate** in
+> modalità multipla col secondo tempo **per riga** (2-bis.6 → 2-bis.13).
+> ⭐ La regola che si sta guardando: *un incasso che copre tre rate resta tre
+> righe; ogni riga è un atto suo, e il foglio è in bozza.*
+
+| | Cosa fare | Cosa deve succedere | Se non succede |
+| --- | --- | --- | --- |
+| **2-bis.1** | Distinta manuale in BOZZA → «Nuova riga» → la **lente** accanto al lookup fattura | Il picker si apre **vuoto** con la frase «Indica il cliente o il numero…»; **nessuna chiamata parte** | Una lista che parte piena sta guardando lo scadenzario, non registrando il pagamento di *questo* cliente |
+| **2-bis.2** | Numero fattura `101` | Compare **solo** la 101 (non la 1010): colonne Documento con il Tag natura, Rata, Scadenza, Residuo, In lavorazione, Incassato — dieci righe per pagina, altezza del dialog uguale vuoto o pieno | Nel picker il numero è un confronto **esatto**; `ILIKE` è la forma del lookup |
+| **2-bis.3** | Click su una rata **esaurita** (residuo = in lavorazione) | Tag «esaurita» in colonna, toast informativo, il picker **resta aperto** | — |
+| **2-bis.4** | Click su una rata aperta | Il picker si chiude; fattura e rata compilate nel form; importo proposto = **spazio** (residuo − in lavorazione); la tendina delle rate mostra la stessa rata scelta | Se propone il residuo intero su una rata già dichiarata in un'altra bozza, il DB la rifiuta al Salva |
+| **2-bis.5** | Stessa cosa su una **nota di credito** (dal 17-09 ha **una** rata) | Natura in Tag, residuo scritto «**da rimborsare**» (non «di troppo»), la rata **si sceglie**, importo proposto **negativo** | Una NC nascosta dall'elenco è il buco che P-5 ha chiuso: si **segnala**, non si esclude |
+| **2-bis.6** | Toolbar righe → «**Righe da rate**» | Dialog con le caselle di selezione, area «Rate scelte» vuota sotto, data pagamento = oggi | L'azione c'è solo in BOZZA e con permesso di scrittura (2-bis.14) |
+| **2-bis.7** | Cliente con più fatture: spunta 2 rate a pagina 1, cambia pagina, spunta 1 rata, torna indietro | Le prime due restano spuntate; l'area elenca **tre** righe con importo = spazio; il pulsante dice «Crea 3 righe» | — |
+| **2-bis.8** | Svuota un importo | Il pulsante si **spegne**; ricompilalo e si riaccende | — |
+| **2-bis.9** | Cestino su una riga dell'area | Sparisce dall'area **e** si stacca la casella nella lista | — |
+| **2-bis.10** | Salva (tre rate buone) | Toast «3 righe create», dialog chiuso, **tre righe** nel foglio con documento e rata, contatori del drawer aggiornati | — |
+| **2-bis.11** | «Righe da rate» di nuovo: una rata aperta con importo = spazio **+ 1**, più una buona | Toast di avviso «1 righe su 2 create», il dialog **resta aperto**: la buona è sparita dall'area, la fuori capienza resta con la **frase del database** (con i numeri a due decimali: «restano 0.00…») e il toggle «Forza comunque» | È l'esito **PARZIALE per riga**: una riga rifiutata non porta via le altre |
+| **2-bis.12** | Accendi «Forza comunque», scrivi il motivo, Salva | Toast «1 riga creata», dialog chiuso, nel foglio la riga con `forzata` e il motivo; la lista **ricarica** (le rate scritte hanno un altro spazio) | Il secondo tempo è **per riga**: conferma e motivo nella macchina, non nel dialog |
+| **2-bis.13** | Spunta una rata, poi **X** del dialog | Conferma «Rate non salvate… chiudere e perderle?»; su «Chiudi» il dialog si chiude e, riaprendo, l'area è vuota | — |
+| **2-bis.14** | Distinta **non** in BOZZA (o senza permesso di scrittura) | L'azione «Righe da rate» **non c'è**; il picker dal form non c'è (il form stesso non c'è) | — |
+
+---
+
 ## 3. L'abbinamento, e il doppio tempo della capienza
 
 | | Cosa fare | Cosa deve succedere | Se non succede |
@@ -208,6 +239,7 @@ due flag portati nel payload della lookup — e **non l'ho scelta da solo**.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-18** | 📥 **§2-bis nuova, dal brief [distinta-ricerca-rate](../work-done/brief-db-distinta-ricerca-rate.md)** (chiuso oggi, §7 del brief): quattordici righe — il picker singolo (2-bis.1 → .4, esercitato da Tid il 18-09 coi quattro rilievi chiusi), la **nota di credito nel picker** (2-bis.5: una rata, «da rimborsare», importo negativo) e le **righe da rate** in modalità multipla (2-bis.6 → .13: tre rate → tre righe, esito PARZIALE per riga, «Forza» per riga, conferma sull'abbandono). Da confermare a video: 2-bis.5 e 2-bis.6 → .13 |
 | **2026-09-17** | 📥 **Quattro righe dal brief [distinta-numerata-sul-registro](../work-done/brief-db-distinta-numerata-sul-registro.md)** (chiuso oggi): §2.4-bis ✅ **provata da Tid** — `DIS-PGTAPEF202-2026-0000001`, il primo numero emesso da un registro `DISTINTA`; §2.4-ter, §2.4-quater e §1.6-bis **da provare**. ⚠️ §2.4-quater è scritta sul modello in vigore (campo in sola lettura, «Apri» spento in «Tutti»), non su quello che il brief immaginava il 15/09 (una tendina) |
 | **2026-09-15** | 📥 **C-2 riceve casa qui.** Il brief nato dal primo giro è **chiuso e archiviato** ([work-done](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)): DB `20260914-04/05/06` applicati e verdi in CI, BE/FE mergiati (PR #1589), Q-H decisa (strada A: il doppio tempo anche in modifica). L'unica cosa che ne esce è la **prova a video**, cioè questo secondo giro: riquadro «C-2» in testa con l'elenco dei punti da spuntare. Prerequisito nuovo: l'apply del seed P-8 (riga di stato della barra) |
 | **2026-09-14** (sera) | ✏️ **Sezioni 2, 3 e 4 riscritte** per D16/D17/D18 (brief DB §7): §2.6 la riga nasce **cercando la fattura**, con l'importo **proposto**; §2.6-ter l'eccezione dichiarata; 🆕 §2.8 **elimina** in bozza e la quadratura che torna; 🆕 §2.9 il contenuto **fermo** sotto VALIDATA e la riga di stato; §3.1–3.3 diventano la prova del **ri-abbinamento** e del recupero dalla coda; 🆕 §4.0 **Porta a VALIDATA** prima di «Registra», con lo stop sul dichiarato sbagliato. Da rieseguire |

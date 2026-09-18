@@ -274,6 +274,27 @@ produzione, non c'è niente da aspettare.*
   `HALT` sul **contenuto**; e riscrivere la nota del guardrail `runOnChange`
   in `ci-validate.yaml`, che nomina `runOnChange` come causa quando la causa è
   `runOnChange` **+ `dbms:`**. Cantiere `dbops`, non di dominio
+- **La scala di `vendite_contabili_righe.importo`** (DB, **P-8**, ereditata il
+  2026-09-18 dalla chiusura di `work-done/brief-db-distinta-ricerca-rate.md`,
+  §4-bis.10): la colonna è `numeric` **senza scala** (`20260213-10`), quindi una
+  riga con quattordici decimali — la sottrazione in virgola mobile di un client —
+  entra com'è, e il guard di capienza la rifiuta su un importo che *era* lo
+  spazio. Il FE arrotonda ai centesimi dal 17-09, ma la regola vale per
+  **qualunque** client. Raccomandazione scritta nel brief: un
+  `CHECK (importo = round(importo, 2))` che **rifiuta** (AGENTS.md: «non
+  normalizzare silenziosamente»), non un typmod `numeric(18,2)` che arrotonda
+  in silenzio; `fatture_scadenze.importo` resta `numeric(18,6)` come i totali di
+  documento. Un changeSet `00_schema` con `expectedResult: 0` sulle righe che
+  non passerebbero. Decisione di Tid
+- **Su quale documento si può registrare un incasso** (DB, **Q-4**, ereditata
+  il 2026-09-18 dallo stesso brief, registro del 18-09): Tid vuole nel picker
+  delle rate «solo le definitive, inviate a SDI — ma faremo poi». È un
+  predicato di **dominio** e la sede è **una**, a DB, letta dalla lista **e**
+  dal guard della riga: oggi `trgfn_vendite_contabili_righe_guard_rata` non
+  chiede lo stato del documento (la rata di una bozza si abbina) e il filtro
+  `solo_numerate` di `GET /pagamenti/rate/` è presentazione, non cancello. Si
+  apre con la **persistenza dell'esito SDI** (voce sotto), che è ciò che
+  «inviata» significa; nessun changeSet chiesto prima
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare

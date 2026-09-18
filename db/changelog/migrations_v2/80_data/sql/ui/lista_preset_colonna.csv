@@ -694,6 +694,7 @@ preset_id,colonna_id,ordine,visibile,fissata
 68,764,150,f,f
 68,765,160,f,f
 52,766,15,f,f
+52,767,18,t,f
 69,768,10,t,f
 69,769,20,t,f
 69,770,30,t,f

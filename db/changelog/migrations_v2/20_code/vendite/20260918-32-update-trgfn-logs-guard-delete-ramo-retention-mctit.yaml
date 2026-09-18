@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEI LOG IMPARA A DISTINGUERE UNA MANOMISSIONE DA UNA SCADENZA
+#   Analisi: analisi-osservabilita-log.md §4 Passo D
+#
+# ── IL DIFETTO CHE QUESTO CHANGESET DISINNESCA ──────────────────────
+#   `vendite.trgfn_logs_guard_delete` (BEFORE DELETE su fatture_log e
+#   fatturazione_lotti_log) rifiutava OGNI cancellazione senza GUC di
+#   manutenzione. Con la colonna cleanup_at (20260918-29) il job settimanale
+#   avrebbe provato il purge e sarebbe stato respinto: dal 2026-08-23
+#   l'orchestratore non muore piu' — salta la tabella e lascia una riga ERROR
+#   in dbops.audit_log (BLOCKED_BY_TABLE) — ma ogni domenica, per sempre.
+#   Era la «mina latente» dichiarata in test-cleanup-framework.sql (13-16),
+#   che la usava proprio come tabella che rifiuta.
+#
+# ── ⭐ IL CRITERIO NON E' CHI CANCELLA MA COSA ───────────────────────
+#   Stessa scelta di trgfn_event_log_append_only (D-8, 2026-08-22):
+#     DELETE con GUC di manutenzione   → ammesso (com'era)
+#     DELETE di riga SCADUTA           → ammesso (nuovo: la retention passa)
+#     DELETE di riga viva              → vietato (com'era)
+#   Cosi' dbops.fn_purge_cleanup_expired funziona com'e', senza propagare
+#   GUC ne' riconoscere ruoli, e senza toccare una funzione condivisa.
+#
+# ── ⚠️ QUI cleanup_at NON E' IMMUTABILE, E VA DETTO ─────────────────
+#   Su event_log il veto sull'UPDATE rende la scadenza immutabile. Queste
+#   due tabelle l'UPDATE lo ammettono (disabilitato, meta, ...): chi puo'
+#   scrivere puo' anche portare cleanup_at nel passato e poi cancellare. Non
+#   e' un buco nuovo: quelle righe erano gia' modificabili, e il guard
+#   proteggeva dalla cancellazione ACCIDENTALE (manual/), non dal dolo. Non
+#   si aggiunge un veto sull'UPDATE di cleanup_at: sarebbe un cancello nuovo
+#   su tabelle che non sono append-only per progetto.
+#
+# ── ⚠️ COSA SI ROMPE E SI SISTEMA NELLA STESSA PASSATA ──────────────
+#   test-cleanup-framework.sql (13-16) montava QUESTO guard sulla sua tabella
+#   di prova con una riga gia' scaduta, per avere «una tabella che rifiuta».
+#   Adesso quella riga passerebbe: il test si fabbrica un veto suo, perche'
+#   in casa non c'e' piu' un guard che rifiuti una riga scaduta — ed e' il
+#   punto. Il resto della suite (test-logs-guard-delete) inserisce righe con
+#   data_ora = now(): la scadenza e' fra 750 giorni, il rifiuto resta.
+#
+# Dipendenze: cleanup_at su entrambe le tabelle (20260918-29).
+#   ⛔ Il corpo legge OLD.cleanup_at: montare questo guard su una tabella
+#   senza la colonna fallisce a runtime — di proposito. Un guard con un ramo
+#   di retention sta su una tabella che ha una scadenza.
+# Verifica: db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql,
+#           db/pgtap/vendite/test-logs-guard-delete.sql (invariato)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260918-32-update-trgfn-logs-guard-delete-ramo-retention-mctit.yaml
+
+  - changeSet:
+      id: 20260918-32-update-trgfn-logs-guard-delete-ramo-retention
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Passo D dell'analisi osservabilita': vendite.trgfn_logs_guard_delete ammette il
+        DELETE di una riga SCADUTA (cleanup_at <= now()), oltre a quello con GUC di
+        manutenzione. Parita' con trgfn_event_log_append_only: il criterio non e' chi
+        cancella ma cosa, e il purge del job passa senza propagare GUC. Senza questo ramo
+        il job sarebbe stato respinto ogni domenica (BLOCKED_BY_TABLE in audit_log).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_log
+                columnName: cleanup_at
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+                columnName: cleanup_at
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_logs_guard_delete';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_logs_guard_delete()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_allow_logs  text;
+                  v_allow_reset text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Proteggere fatture_log e fatturazione_lotti_log dalla
+                  --   cancellazione ACCIDENTALE, distinguendo pero' fra
+                  --   CANCELLARE LA STORIA e RITIRARE CIO' CHE E' SCADUTO.
+                  --
+                  -- Regole:
+                  --   DELETE con GUC manutenzione -> ammesso
+                  --     (zeroerp.maintenance_allow_delete_logs, oppure
+                  --      zeroerp.maintenance_reset_lotto_draft: il reset
+                  --      tecnico di un lotto in bozza)
+                  --   DELETE di riga scaduta      -> ammesso (retention)
+                  --   DELETE di riga viva         -> vietato
+                  --
+                  -- ⭐ Rev 2026-09-18 (Passo D): il ramo della retention.
+                  --   Il criterio non e' CHI cancella ma COSA: cosi'
+                  --   dbops.fn_purge_cleanup_expired funziona com'e', senza
+                  --   propagare GUC ne' riconoscere ruoli — parita' con
+                  --   vendite.trgfn_event_log_append_only.
+                  --
+                  -- ⚠️ cleanup_at NULL = riga senza scadenza (nessuna regola
+                  --   CLEANUP_AT quando e' nata): non si cancella. In dubbio
+                  --   si conserva.
+                  -- =========================================================
+
+                  -- 1. Manutenzione straordinaria e reset tecnico: com'era.
+                  v_allow_logs  := current_setting('zeroerp.maintenance_allow_delete_logs', true);
+                  v_allow_reset := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+
+                  IF COALESCE(lower(v_allow_logs), 'off') IN ('on', 'true', '1')
+                     OR COALESCE(lower(v_allow_reset), 'off') IN ('on', 'true', '1') THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- 2. Retention: la riga ha passato la sua scadenza.
+                  IF OLD.cleanup_at IS NOT NULL AND OLD.cleanup_at <= now() THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- 3. Tutto il resto e' storia viva, e non si cancella.
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite', TG_NAME, 'E_DELETE_NOT_ALLOWED',
+                      jsonb_build_object(
+                          'table',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                          'id',         OLD.id,
+                          'cleanup_at', OLD.cleanup_at
+                      ),
+                      NULL::uuid, TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME, OLD.id::text
+                  );
+
+                  RETURN OLD;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_logs_guard_delete()
+              IS 'BEFORE DELETE su vendite.fatture_log e vendite.fatturazione_lotti_log. Vieta la cancellazione di una riga VIVA; ammette quella con GUC di manutenzione (zeroerp.maintenance_allow_delete_logs / zeroerp.maintenance_reset_lotto_draft) e — rev 2026-09-18, Passo D di analisi-osservabilita-log.md — quella di una riga SCADUTA (cleanup_at <= now()): e'' la retention che passa, con lo stesso criterio di trgfn_event_log_append_only (non CHI cancella ma COSA), cosi'' dbops.fn_purge_cleanup_expired funziona com''e''. ⚠️ cleanup_at NULL = non scade mai. ⛔ Legge OLD.cleanup_at: si monta solo su tabelle che hanno la colonna.';
