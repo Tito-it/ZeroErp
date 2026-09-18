@@ -11,13 +11,18 @@
 // `userScoped: true` → reset al logout (autoResetPlugin): items e filtri di un
 // utente non devono restare al successivo sullo stesso browser
 // (memoria feedback_pinia_userscoped).
+//
+// ⭐ Dal 2026-09-18 la lista e' `useListaStoreCore`, chiamato qui dentro: era
+//    su `useListaEmptyStateFetch` + `buildDocListParams`, la convenzione dei
+//    documenti scritta a parte — che era la STESSA forma del core con due
+//    filtri in piu' aggiunti a mano. Non e' `createListaStore` perche' il
+//    collegamento da soggetti/clienti scrive i filtri in blocco: e' logica di
+//    dominio che sta bene accanto ai filtri, non in un `extend`.
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 
 import { defaultFiltroDataDaString } from '../../core/utils/date'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { buildDocListParams, hasDocListActiveFilters } from '../_shared/listaDocumenti'
+import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import { listFatture } from '../api/fatture'
 
 export const useFattureStore = defineStore('vendite-fatture', () => {
@@ -25,46 +30,40 @@ export const useFattureStore = defineStore('vendite-fatture', () => {
   // mese): regola unica di progetto, non ricalcolata qui.
   const defaultDataDa = defaultFiltroDataDaString()
 
-  const filters = ref({
-    search: '',
-    stato_codice_interno: null,
-    billing_account_id: null,
-    // ⭐ Identificativo fiscale, confronto ESATTO lato server. È il criterio con
-    // cui arriva il collegamento dalla lista SOGGETTI: un soggetto è una
-    // persona giuridica e può avere PIÙ billing account, quindi «le sue
-    // fatture» si raccolgono per codice fiscale / partita IVA, non per conto.
-    id_fiscale: null,
-    utility_id: null,
-    // ⭐ Il filtro proprio del documento fiscale: separa ciò che incassi
-    // (FATTURA) da ciò che restituisci (NOTA_CREDITO).
-    natura_doc_codice: null,
-    data_da: defaultDataDa,
-    data_a: null,
-    limit: 25,
-    offset: 0,
-    // Il più recente in cima, come le sorelle e come il default del backend.
-    order_by: 'data',
-    order_dir: 'desc',
-  })
-
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    // ⚠️ `id_fiscale` va aggiunto qui e non basta il BB: arrivando dal
-    // collegamento il pavimento temporale viene TOLTO (vedi sotto), e senza
-    // questa voce un elenco filtrato per soggetto risulterebbe «senza filtri
-    // attivi» — cioè non verrebbe caricato affatto.
-    hasActiveFilters: (f) =>
-      hasDocListActiveFilters(f, { withUtility: true }) || f.id_fiscale != null,
-    // ⚠️ `natura_doc_codice` non è nella convenzione comune dei documenti
-    // (`buildDocListParams`): è proprio di questo dominio e si aggiunge qui,
-    // invece di allargare il BB per un caso solo.
-    buildParams: (f, searchTerm) => ({
-      ...buildDocListParams(f, searchTerm, { withUtility: true }),
-      ...(f.natura_doc_codice ? { natura_doc_codice: f.natura_doc_codice } : {}),
-      ...(f.id_fiscale ? { id_fiscale: f.id_fiscale } : {}),
-    }),
+  // Lista con guardia empty-state standard: `data_da` col default standard
+  // conta come filtro attivo (`gateKeys`), quindi la lista si popola al mount.
+  // ⚠️ `id_fiscale` e' nei `gateKeys` e non basta il resto: arrivando dal
+  //    collegamento il pavimento temporale viene TOLTO (vedi sotto), e senza
+  //    questa voce un elenco filtrato per soggetto risulterebbe «senza filtri
+  //    attivi» — cioe' non verrebbe caricato affatto.
+  const lista = useListaStoreCore({
     fetchPage: listFatture,
+    filterDefaults: {
+      stato_codice_interno: null,
+      billing_account_id: null,
+      // ⭐ Identificativo fiscale, confronto ESATTO lato server. E' il criterio
+      // con cui arriva il collegamento dalla lista SOGGETTI: un soggetto e' una
+      // persona giuridica e puo' avere PIU' billing account, quindi «le sue
+      // fatture» si raccolgono per codice fiscale / partita IVA, non per conto.
+      id_fiscale: null,
+      utility_id: null,
+      // ⭐ Il filtro proprio del documento fiscale: separa cio' che incassi
+      // (FATTURA) da cio' che restituisci (NOTA_CREDITO).
+      natura_doc_codice: null,
+      data_da: defaultDataDa,
+      data_a: null,
+    },
+    gateKeys: [
+      'stato_codice_interno', 'billing_account_id', 'id_fiscale', 'utility_id',
+      'data_da', 'data_a',
+    ],
+    // Il piu' recente in cima, come le sorelle e come il default del backend;
+    // il ripiego del verso segue.
+    orderBy: 'data',
+    orderDir: 'desc',
+    orderDirDefault: 'desc',
   })
+  const { filters, fetchList } = lista
 
   // Scopo: arrivo da un COLLEGAMENTO (lista soggetti o clienti) — applica il
   //        criterio e ricarica.
@@ -101,7 +100,9 @@ export const useFattureStore = defineStore('vendite-fatture', () => {
   }
 
   return {
-    filters, items, totalRecords, loading, hasSearched, fetchList,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
+    ...lista,
     applicaCollegamento, rimuoviCollegamento,
   }
 }, { userScoped: true })

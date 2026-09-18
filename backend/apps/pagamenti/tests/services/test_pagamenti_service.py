@@ -45,6 +45,9 @@ Indice test eseguiti:
 20) PatchTests.test_riga_non_accetta_abbinamento
 21) PatchTests.test_patch_vuoto_non_scrive
 22) ListaTests.test_ordinamento_fuori_whitelist_rifiutato
+23) ListaTests.test_righe_della_distinta_ordinamento_fuori_whitelist_rifiutato
+24) ListaTests.test_righe_della_distinta_senza_ordinamento_e_un_none_e_un_conteggio_vero
+25) ListaTests.test_il_dettaglio_non_porta_piu_le_righe
 """
 
 from contextlib import nullcontext
@@ -524,3 +527,31 @@ class ListaTests(_ServiceTestCase):
         with self.assertRaises(ServiceError):
             pagamenti_service.list_distinte(order_by="importo_dichiarato; DROP")
         self.repo.list_distinte.assert_not_called()
+
+    # Scopo: Stessa regola sulle righe di una distinta (lista
+    #        `pagamenti.distinta_righe`, 2026-09-18): fuori whitelist e' un 400
+    #        col campo, non un default silenzioso — e non un 500 sull'ORDER BY.
+    def test_righe_della_distinta_ordinamento_fuori_whitelist_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.list_righe(7, limit=25, order_by="meta; DROP")
+        self.repo.list_righe_distinta.assert_not_called()
+
+    # Scopo: «non specificato» e' legittimo e arriva al repository come `None`
+    #        (che apre `id DESC`), e il `count` e' il totale che il repository
+    #        dichiara — non `len(results)`, che fino al 18/09 era un'eco.
+    def test_righe_della_distinta_senza_ordinamento_e_un_none_e_un_conteggio_vero(self):
+        self.repo.list_righe_distinta.return_value = ([{"id": 91}], 340)
+        esito = pagamenti_service.list_righe(7, limit=1, offset=0)
+        self.assertEqual(esito, {"count": 340, "results": [{"id": 91}]})
+        kwargs = self.repo.list_righe_distinta.call_args.kwargs
+        self.assertIsNone(kwargs["order_by"])
+        self.assertIsNone(kwargs["order_dir"])
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (1, 0))
+
+    # Scopo: ⛔ Il dettaglio NON legge piu' le righe (dal 2026-09-18): sono la
+    #        lista paginata. Leggerle qui sarebbe la LATERAL per riga due volte
+    #        a ogni apertura del drawer, per un campo che nessuno legge.
+    def test_il_dettaglio_non_porta_piu_le_righe(self):
+        dettaglio = pagamenti_service.get_distinta(7)
+        self.assertNotIn("righe", dettaglio)
+        self.repo.list_righe.assert_not_called()

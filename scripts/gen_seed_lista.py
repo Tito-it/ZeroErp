@@ -307,6 +307,9 @@ WHITELIST_BE: dict[str, tuple] = {
     #    nello stesso repository.
     "pagamenti.distinte": ("apps/pagamenti/db/pagamenti_repository.py", "DISTINTE_SORT_COLUMNS"),
     "pagamenti.righe": ("apps/pagamenti/db/pagamenti_repository.py", "RIGHE_SORT_COLUMNS"),
+    # Le righe di UNA distinta (lista 69, 2026-09-18): nata col presidio acceso.
+    "pagamenti.distinta_righe": ("apps/pagamenti/db/pagamenti_repository.py",
+                                 "DISTINTA_RIGHE_SORT_COLUMNS"),
     "pagamenti.rate_fuori_capienza": ("apps/pagamenti/db/pagamenti_repository.py",
                                       "RATE_FUORI_CAPIENZA_SORT_COLUMNS"),
     "pagamenti.rate": ("apps/pagamenti/db/pagamenti_repository.py", "RATE_SORT_COLUMNS"),

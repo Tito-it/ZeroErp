@@ -53,6 +53,7 @@ import { motivoFondoDaDecidereSeverity } from '../../core/utils/severity'
 import FatturaDrawer from './FatturaDrawer.vue'
 import { cancellaFondoFattura, exportFondiFatturaDaDecidere } from '../api/fondiFattura'
 import { useFondiFatturaDaDecidereStore } from '../stores/fondiFatturaDaDecidere'
+import { paramsOrdinamento } from '../../core/utils/listParams'
 
 // Vocabolario CHIUSO dei motivi (quattro letterali nei rami della UNION della
 // vista: nessun dato li produce). Vive qui e non in `constants.js` perché è
@@ -84,11 +85,9 @@ const {
   getExportParams: (fmt) => {
     const p = { formato: fmt }
     if (store.filters.motivo) p.motivo = store.filters.motivo
-    if (store.filters.order_by) {
-      p.order_by = store.filters.order_by
-      p.order_dir = store.filters.order_dir || 'desc'
-    }
-    return p
+    // Stessa forma della fetch (`paramsOrdinamento`, ripiego `desc` come
+    // `paramsPagina` nello store).
+    return { ...p, ...paramsOrdinamento(store.filters) }
   },
   // Nessun "Nuovo": una riga di questo elenco non si crea, si risolve.
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },

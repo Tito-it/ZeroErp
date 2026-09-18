@@ -13,11 +13,9 @@
 
 import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 
 import { useTabEvents } from '../../../core/composables/useTabEvents'
-import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
-import { buildDocListParams, hasDocListActiveFilters } from '../../_shared/listaDocumenti'
+import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
 import {
   cambiaStatoDdt,
@@ -42,29 +40,26 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
   // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
   const defaultDataDa = defaultFiltroDataDaString()
 
-  const filters = ref({
-    search: '',
-    stato_codice_interno: null,
-    billing_account_id: null,
-    utility_id: null,
-    data_da: defaultDataDa,
-    data_a: null,
-    limit: 25,
-    offset: 0,
-    // Default `data desc`: DDT con data piu' recente in cima (allineato al
-    // default backend e al defaultSortField della DdtSearchTable).
-    order_by: 'data',
-    order_dir: 'desc',
-  })
-
-  // Lista paginata DDT con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro attivo:
-  // la lista si popola al mount. Il DDT usa limit/offset (non page/page_size).
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    hasActiveFilters: (f) => hasDocListActiveFilters(f, { withUtility: true }),
-    buildParams: (f, searchTerm) => buildDocListParams(f, searchTerm, { withUtility: true }),
+  // Lista con guardia empty-state standard: `data_da` col default standard
+  // conta come filtro attivo (`gateKeys`), quindi la lista si popola al mount.
+  // Convenzione comune dei documenti di vendita: search >= 3, stato, BA,
+  // utility, range date (gemello BE `extract_doc_list_filters`).
+  const lista = useListaStoreCore({
     fetchPage: listDdt,
+    filterDefaults: {
+      stato_codice_interno: null,
+      billing_account_id: null,
+      utility_id: null,
+      data_da: defaultDataDa,
+      data_a: null,
+    },
+    gateKeys: ['stato_codice_interno', 'billing_account_id', 'utility_id', 'data_da', 'data_a'],
+    // Default `data desc`: DDT con data piu' recente in cima (allineato al
+    // default backend e al defaultSortField della DdtSearchTable). Il ripiego
+    // del verso segue.
+    orderBy: 'data',
+    orderDir: 'desc',
+    orderDirDefault: 'desc',
   })
 
   // Scopo: Dettaglio testata DDT + capability (righe_count, can_edit_*,
@@ -157,10 +152,11 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
   }
 
   return {
-    // state
-    items, totalRecords, loading, hasSearched, filters,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
+    ...lista,
     // testata
-    fetchList, fetchDetail, create, update, elimina,
+    fetchDetail, create, update, elimina,
     // transizioni
     emetti, cambiaStato, push,
     // riepilogo IVA

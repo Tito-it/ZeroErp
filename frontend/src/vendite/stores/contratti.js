@@ -1,16 +1,20 @@
 // Store Pinia contratti v5. Lista + detail + CRUD testata + azioni righe/utility + cambio stato.
 // Filtro data obbligatorio (regola standard liste con date): floor `data_da`
 // unico di progetto (oggi-60gg al primo del mese), vedi core/utils/date.
+//
+// ⭐ Dal 2026-09-18 la lista e' `useListaStoreCore`, chiamato qui dentro: era
+//    una copia a mano del suo `buildParams` su `useListaEmptyStateFetch`. Non
+//    passa da una factory perche' lo store e' anche righe, utility, emissione
+//    e cambio stato: la lista e' una parte.
 import { defineStore } from 'pinia'
 import { defaultFiltroDataDaString } from '../../core/utils/date'
-import { ref } from 'vue'
 import {
   listContratti, getContratto, createContratto, updateContratto, cambiaStatoContratto,
   emettiContratto,
   addRigaContratto, updateRigaContratto, deleteRigaContratto, listRighePreviewContratto,
   addUtilityContratto, updateUtilityContratto,
 } from '../api/contratti'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
+import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 
@@ -19,50 +23,28 @@ const defaultDataDa = defaultFiltroDataDaString()
 export const useContrattiStore = defineStore('vendite-contratti', () => {
   const { emitDataChanged } = useTabEvents()
 
-  const filters = ref({
-    search: '',
-    billing_account_id: null,
-    stato_doc_contratto_id: null,
-    utility_id: null,
-    ambito: null,
-    listino_id: null,
-    data_da: defaultDataDa,
-    data_a: null,
-    scadenza_mese: null,
-    limit: 25,
-    offset: 0,
-    order_by: 'valido_dal',
-    order_dir: 'desc',
-  })
-
-  // Lista via BB condiviso (migrazione 2026-08-10): porta con se' la guardia di
-  // versione anti-race, che qui mancava — due fetch in volo e vinceva l'ultima
-  // ARRIVATA, non l'ultima chiesta.
-  // ⚠️ `alwaysFetch: true` conserva il comportamento di prima: questa lista si e'
-  // sempre caricata anche senza filtri (il `fetchList` originale non aveva
-  // guardie di empty-state). Il default `data_da` la popolerebbe comunque, ma
-  // dichiararlo evita che togliendo quel default la lista diventi muta.
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    alwaysFetch: true,
-    buildParams: (f, searchTerm) => {
-      const params = { limit: f.limit, offset: f.offset }
-      if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
-      if (f.stato_doc_contratto_id != null) params.stato_doc_contratto_id = f.stato_doc_contratto_id
-      if (f.utility_id != null) params.utility_id = f.utility_id
-      if (f.ambito) params.ambito = f.ambito
-      if (f.listino_id != null) params.listino_id = f.listino_id
-      if (f.data_da) params.data_da = f.data_da
-      if (f.data_a) params.data_a = f.data_a
-      if (f.scadenza_mese) params.scadenza_mese = f.scadenza_mese
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
-      }
-      return params
-    },
+  // Parte piena: questa lista si e' sempre caricata anche senza filtri (il
+  // `fetchList` originale non aveva guardie di empty-state). Il default
+  // `data_da` la popolerebbe comunque, ma dichiararlo evita che togliendo quel
+  // default la lista diventi muta.
+  const lista = useListaStoreCore({
     fetchPage: listContratti,
+    startsEmpty: false,
+    filterDefaults: {
+      billing_account_id: null,
+      stato_doc_contratto_id: null,
+      utility_id: null,
+      ambito: null,
+      listino_id: null,
+      data_da: defaultDataDa,
+      data_a: null,
+      scadenza_mese: null,
+    },
+    // Il piu' recente in cima. ⚠️ Il ripiego del verso resta `asc` (default
+    // del core), com'era nella copia a mano: e' un ramo dormiente, e
+    // un'estrazione appiana la duplicazione, non le differenze.
+    orderBy: 'valido_dal',
+    orderDir: 'desc',
   })
 
   async function fetchDetail(id) {
@@ -139,8 +121,10 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
   }
 
   return {
-    items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update, cambiaStato, emetti,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
+    ...lista,
+    fetchDetail, create, update, cambiaStato, emetti,
     addRiga, updateRiga, deleteRiga, fetchRighePreview,
     addUtility, updateUtility,
   }

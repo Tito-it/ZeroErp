@@ -148,16 +148,9 @@ const {
   parentId: () => (props.visible ? fatturaId.value : null),
   parentField: 'fatturaId',
   exportFn: (params) => exportSistemazioniFattura(fatturaId.value, params),
-  getExportParams: (formato) => {
-    const p = { formato }
-    // L'export segue l'ordinamento a video: il file che scarichi e' la lista
-    // che stai guardando, non un elenco riordinato per conto suo.
-    if (store.filters.order_by) {
-      p.order_by = store.filters.order_by
-      p.order_dir = store.filters.order_dir || 'asc'
-    }
-    return p
-  },
+  // L'export segue la lista a video — ordinamento compreso — dalla sede unica
+  // dello store (`paramsFiltro`), non da un ripiego ricopiato qui.
+  getExportParams: (formato) => ({ formato, ...store.paramsFiltro() }),
 })
 
 // ⛔ NESSUN «Nuovo» nella barra, e non e' una dimenticanza: qui si registra un

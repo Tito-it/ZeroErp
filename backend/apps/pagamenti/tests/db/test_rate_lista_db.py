@@ -28,6 +28,7 @@ Indice test eseguiti:
 3) RateListaDbTests.test_solo_aperte_toglie_la_rata_esaurita
 4) RateListaDbTests.test_ogni_ordinamento_della_whitelist_esegue
 5) RateListaDbTests.test_la_ricerca_libera_trova_il_cliente_non_il_numero
+5-bis) RateListaDbTests.test_solo_numerate_toglie_la_bozza_in_entrambi_i_rami
 6) RigheDaRateDbTests.test_parziale_poi_il_secondo_tempo_per_riga
 """
 from __future__ import annotations
@@ -267,6 +268,68 @@ class RateListaDbTests(_MondoRateDbTests):
         per_ba, per_numero = self._nel_mondo(_prova)
         self.assertEqual(per_ba, 2)
         self.assertEqual(per_numero, 0)
+
+
+    # Scopo: ⛔ `solo_numerate` toglie la rata della BOZZA (rilievo di Tid,
+    #        18/09) — e la toglie in ENTRAMBI i rami, perche' il predicato sta
+    #        nella funzione dell'alias: senza `solo_aperte` restano le due
+    #        numerate; con `solo_aperte` resta la sola 101 (la 1010 e' saldata
+    #        e la bozza non e' numerata). Senza il filtro la bozza c'e': la
+    #        vista la porta apposta (P-2, «una rata su una bozza compare»).
+    # ⚠️ La bozza si COSTRUISCE qui e non nella fixture condivisa: gli altri
+    #    test contano DUE rate per il cliente, e una terza nella fixture li
+    #    farebbe raccontare un'altra storia.
+    # ⚠️ DUE istruzioni, non una CTE: la policy di `fatture_scadenze` fa
+    #    `EXISTS` sulla testata, e dentro la stessa istruzione la riga scritta
+    #    dalla CTE non e' ancora visibile alla sotto-query della policy — la
+    #    rata viene rifiutata «per riga» su una fattura che c'e' (provato).
+    def test_solo_numerate_toglie_la_bozza_in_entrambi_i_rami(self):
+        def _prova(cur, rate, ba_id):
+            cur.execute(
+                """
+                INSERT INTO vendite.fatture
+                    (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
+                     tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
+                SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id,
+                       r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id,
+                       r.utility_id, 250.00,
+                       '{"test_scope": "be_lista_rate", "n": 3}'::jsonb
+                  FROM _refs r
+                RETURNING id
+                """
+            )
+            row = cur.fetchone()
+            assert row is not None
+            cur.execute(
+                """
+                INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo)
+                VALUES (%s, 1, current_date + 30, 250.00)
+                RETURNING id
+                """,
+                [int(row[0])],
+            )
+            row = cur.fetchone()
+            assert row is not None
+            bozza = int(row[0])
+
+            def _ids(**kw):
+                esito = saldi_service.list_rate(
+                    auth_user_id=None, limit=50, billing_account_id=ba_id, **kw,
+                )
+                return esito["count"], {int(r["scadenza_id"]) for r in esito["results"]}
+
+            return bozza, _ids(), _ids(solo_numerate=True), _ids(solo_aperte=True, solo_numerate=True)
+
+        bozza, senza, numerate, numerate_aperte = self._nel_mondo(_prova)
+        # Senza il filtro la bozza c'e', ed e' senza numero.
+        self.assertEqual(senza[0], 3)
+        self.assertIn(bozza, senza[1])
+        # Col filtro restano le due numerate (ramo senza `solo_aperte`)...
+        self.assertEqual(numerate[0], 2)
+        self.assertNotIn(bozza, numerate[1])
+        # ...e nel ramo del perimetro resta la sola 101.
+        self.assertEqual(numerate_aperte[0], 1)
+        self.assertNotIn(bozza, numerate_aperte[1])
 
 
 class RigheDaRateDbTests(_MondoRateDbTests):

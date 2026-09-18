@@ -1,8 +1,13 @@
 // Pinia store per la gestione pratiche (lista, dettaglio, creazione, azioni).
+//
+// ⭐ Dal 2026-09-18 la lista e' `useListaStoreCore`, chiamato qui dentro: era
+//    una copia a mano del suo `buildParams` su `useListaEmptyStateFetch`. Non
+//    passa da una factory perche' lo store e' anche coda di lavoro, flussi e
+//    pratica selezionata della dashboard: la lista e' una parte.
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
+import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import {
   listPratiche, getPratica, createPratica, updatePratica,
   cambiaStatoPratica, assegnaPratica,
@@ -11,7 +16,7 @@ import {
   fetchCodaLavoro, prendiInCaricoFlusso, listFlussi, fetchPercorso,
 } from '../api/pratiche-api'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import { TAB_ENTITIES } from '../../core/constants'
+import { PAGINATION, TAB_ENTITIES } from '../../core/constants'
 import { useAuthStore } from '../../stores/auth'
 
 export const usePraticheStore = defineStore('pratiche', () => {
@@ -26,82 +31,70 @@ export const usePraticheStore = defineStore('pratiche', () => {
   _dataDa.setMonth(_dataDa.getMonth() - 1)
   const defaultDataDa = `${_dataDa.getFullYear()}-${String(_dataDa.getMonth() + 1).padStart(2, '0')}-01`
 
-  const filters = ref({
-    search: '',
-    // Codice stato (es. 'APERTA'): il BE filtra per codice_interno via param
-    // `stato` (fix 2026-06-12: prima si inviava `stato_id`, ignorato dal BE).
-    stato: null,
-    priorita_id: null,
-    // Filtro tipo prestazione (home launcher: le tile "Comincia" atterrano
-    // sulla dashboard con questo filtro preimpostato via query param).
-    tipo_prestazione_id: null,
-    risorsa_umana_id: null,
-    // Lente di contesto canonica (D1, workflow v2): solo pratiche interne
-    // (senza soggetto). Esclusiva con le lenti ruolo/istanza (usate dalle
-    // viste embedded, non dalla dashboard).
-    solo_interne: false,
-    data_da: defaultDataDa,
-    data_a: null,
-    limit: 10,
-    offset: 0,
-    order_by: 'data_apertura',
-    order_dir: 'desc'
-  })
-
-  // Scopo: Carica lista paginata pratiche con filtri.
   // Lista eager col filtro data SEMPRE attivo (data_da default = inizio mese
   // precedente): carica sempre, senza richiedere una ricerca. La search
   // testuale si applica solo da 3 caratteri; con 1-2 caratteri non rifetcha
-  // (i risultati correnti restano, niente flicker durante la digitazione).
-  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race
-  // + guardia della ricerca corta, che qui era scritta a mano.
-  // `alwaysFetch`: la lista si e' sempre caricata (con l'emittente corrente).
-  // `ricercaCorta: 'ignora'`: qui la ricerca corta e' sempre stata un no-op
-  // (la lista resta com'e', vedi sopra). Svuotare avrebbe anche effetti a
-  // cascata sulla dashboard: `selectedItem` si risolve da `items`, e una lista
-  // svuotata mentre si digita annulla il guard readonly della pratica
-  // terminale selezionata e il contesto cliente del percorso.
-  const { items, totalRecords, loading, hasSearched, fetchList: fetchListBase, svuota } = useListaEmptyStateFetch({
-    filters,
-    alwaysFetch: true,
+  // (`ricercaCorta: 'ignora'`: i risultati correnti restano, niente flicker
+  // durante la digitazione). Svuotare avrebbe anche effetti a cascata sulla
+  // dashboard: `selectedItem` si risolve da `items`, e una lista svuotata
+  // mentre si digita annulla il guard readonly della pratica terminale
+  // selezionata e il contesto cliente del percorso.
+  // ⚠️ Nasce a DIECI righe (`PAGINATION.COMPACT_ROWS`): e' la lista della
+  //    dashboard, che ha il dettaglio a lato — e' l'eccezione dichiarata da
+  //    `useSearchTable` («le liste che nascono a 10 restano eccezioni»).
+  // ⛔ E IL PRESET DICE LO STESSO NUMERO (`lista_preset` 17,
+  //    `pagina_dimensione = 10`): al primo `config-loaded` lo scaffolding
+  //    allinea `filters.limit` alla `pagina_dimensione` del catalogo, che il
+  //    DB risolve sempre (`COALESCE(..., 25)`) — col preset a 25 il `limit`
+  //    di nascita durava fino al primo caricamento (trovato il 18/09 sul
+  //    picker delle rate; frontend-standards §Dialog con una lista dentro).
+  const lista = useListaStoreCore({
+    // Refactor operatore-emittenti: usa emittenteCorrente (1-a-1
+    // dell'operatore), NON `auth.user.emittente.emittente_fiscale_id`
+    // che per admin globale ritornerebbe il "gestore globale" via
+    // cascata 4b di fn_get_user_profile — semantica diversa.
+    // E' contesto, non un filtro: per questo sta nella `fetchPage` e non nei
+    // `filterDefaults`.
+    fetchPage: (params) => listPratiche({ ...params, emittente_fiscale_id: auth.emittenteCorrente?.id }),
+    startsEmpty: false,
     ricercaCorta: 'ignora',
-    buildParams: (f, searchTerm) => {
-      const params = {}
-      // Refactor operatore-emittenti: usa emittenteCorrente (1-a-1
-      // dell'operatore), NON `auth.user.emittente.emittente_fiscale_id`
-      // che per admin globale ritornerebbe il "gestore globale" via
-      // cascata 4b di fn_get_user_profile — semantica diversa.
-      params.emittente_fiscale_id = auth.emittenteCorrente?.id
-      if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.stato) params.stato = f.stato
-      if (f.priorita_id != null) params.priorita_id = f.priorita_id
-      if (f.tipo_prestazione_id != null) params.tipo_prestazione_id = f.tipo_prestazione_id
-      if (f.risorsa_umana_id != null) params.risorsa_umana_id = f.risorsa_umana_id
-      if (f.solo_interne) params.solo_interne = true
-      if (f.data_da) params.data_da = f.data_da
-      if (f.data_a) params.data_a = f.data_a
-      params.limit = f.limit
-      params.offset = f.offset
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'desc'
-      }
-      return params
+    limit: PAGINATION.COMPACT_ROWS,
+    filterDefaults: {
+      // Codice stato (es. 'APERTA'): il BE filtra per codice_interno via param
+      // `stato` (fix 2026-06-12: prima si inviava `stato_id`, ignorato dal BE).
+      stato: null,
+      priorita_id: null,
+      // Filtro tipo prestazione (home launcher: le tile "Comincia" atterrano
+      // sulla dashboard con questo filtro preimpostato via query param).
+      tipo_prestazione_id: null,
+      risorsa_umana_id: null,
+      // Lente di contesto canonica (D1, workflow v2): solo pratiche interne
+      // (senza soggetto). Esclusiva con le lenti ruolo/istanza (usate dalle
+      // viste embedded, non dalla dashboard). ⚠️ Viaggia anche a `false`: il
+      // BE lo legge con `qp_bool_optional(...) or False`, quindi «falso» e
+      // «assente» sono la stessa cosa.
+      solo_interne: false,
+      data_da: defaultDataDa,
+      data_a: null,
     },
-    fetchPage: listPratiche,
+    // Coda di lavoro: la piu' recente in cima, e il ripiego del verso segue.
+    orderBy: 'data_apertura',
+    orderDir: 'desc',
+    orderDirDefault: 'desc',
   })
+  const { fetchList: fetchListBase, svuota } = lista
 
   // Senza emittente corrente non c'e' perimetro: lista vuota, nessuna chiamata.
   // E' stato del chiamante, non un filtro — resta fuori dal BB.
-  async function fetchList() {
+  async function fetchList(opzioni) {
     if (!auth.emittenteCorrente?.id) {
       // `svuota` del BB, non un clear a mano: invalida anche le fetch in volo
       // (una risposta partita con l'emittente ancora impostato non deve
       // ripopolare la lista appena azzerata).
       svuota()
-      return
+      return false
     }
-    await fetchListBase()
+    return fetchListBase(opzioni)
   }
 
   // Scopo: Dettaglio completo pratica.
@@ -213,12 +206,21 @@ export const usePraticheStore = defineStore('pratiche', () => {
   const selectedPraticaId = ref(null)
 
   return {
-    items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`);
+    // `fetchList` e' quello avvolto dal guard sull'emittente, e vince.
+    ...lista, fetchList,
+    fetchDetail, create, update,
     cambiaStato, assegna, sospendi, riattiva,
     loadGiornale, loadSospensioni,
     codaLavoro, codaLoading, loadCodaLavoro,
     prendiInCarico, loadFlussi, loadPercorso,
     selectedPraticaId,
   }
+}, {
+  // Reset automatico al logout (autoResetPlugin): lista, filtri, coda di
+  // lavoro e pratica selezionata sono dell'utente e non devono restare al
+  // successivo sullo stesso browser (`feedback_pinia_userscoped`). Fino al
+  // 2026-09-18 questo store non lo dichiarava.
+  userScoped: true,
 })

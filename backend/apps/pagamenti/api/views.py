@@ -30,6 +30,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.pagamenti.db.pagamenti_repository import (
+    DISTINTA_RIGHE_SORT_COLUMNS,
     RATE_FUORI_CAPIENZA_SORT_COLUMNS,
     RATE_SORT_COLUMNS,
 )
@@ -227,8 +228,9 @@ class ApiDistintaDetail(DomainAPIView):
         operation_id="pagamenti_distinta_detail",
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Restituisce via GET testata, totali derivati, righe e i due
-    #        cataloghi di stato in un round-trip solo.
+    # Scopo: Restituisce via GET testata, totali derivati e i due cataloghi di
+    #        stato in un round-trip solo. ⚠️ Le righe NO (dal 2026-09-18):
+    #        hanno la loro lista paginata in `righe/`.
     def get(self, request: Request, contabile_id: int) -> JsonResponse:
         return success_response(pagamenti_service.get_distinta(contabile_id))
 
@@ -283,18 +285,67 @@ class ApiDistintaStato(DomainAPIView):
 # ══════════════════════════════════════════════════════════════════
 
 
+# I parametri di lista delle righe di una distinta, dichiarati UNA volta: la
+# lista e il suo export accettano lo stesso ordinamento, e due elenchi OpenAPI
+# scritti a mano sono il modo in cui i due si sfilano (stessa ragione di
+# `_PARAM_ESCLUDI_RIGA_ID`).
+_PARAMS_ORDINAMENTO_DISTINTA_RIGHE = [
+    OpenApiParameter(
+        name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=_descrizione_order_by(
+            DISTINTA_RIGHE_SORT_COLUMNS,
+            "Senza: id DESC (l'ultima riga digitata in cima). "
+            "`fattura_numero_documento` ordina per la coppia (numero, serie).",
+        ),
+    ),
+    OpenApiParameter(
+        name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+        description="asc | desc (le colonne data partono DESC).",
+    ),
+]
+
+
 class ApiDistintaRighe(DomainAPIView):
     """GET/POST /api/v1/pagamenti/distinte/<id>/righe/ — le righe della distinta."""
 
     area_funzionale = AREA
+    # ⭐ Lista configurabile dal 2026-09-18 (`pagamenti.distinta_righe`, id 69):
+    #    il cancello di perimetro emittente vale come su ogni altra lista.
+    lista_codice = "pagamenti.distinta_righe"
 
     @extend_schema(
         operation_id="pagamenti_distinta_righe_list",
+        parameters=[
+            *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
+            OpenApiParameter(
+                name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Righe per pagina (default 25, max 200).",
+            ),
+            OpenApiParameter(
+                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
+            ),
+        ],
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Restituisce via GET le righe attive della distinta.
+    # Scopo: Restituisce via GET le righe attive della distinta, paginate.
+    # ⚠️ PAGINATA dal 2026-09-18 (decisione di Tid), come ogni lista
+    #    configurabile: bundle standard `parse_list_params` per `limit`/`offset`.
+    # ⛔ `order_by`/`order_dir` GREZZI e non dal bundle: quello normalizza
+    #    l'assenza di `order_dir` ad `asc`, e il default del repository (`id
+    #    DESC`, le date DESC) non verrebbe mai raggiunto (api.md
+    #    §parse_list_params).
     def get(self, request: Request, contabile_id: int) -> JsonResponse:
-        return success_response(pagamenti_service.list_righe(contabile_id))
+        qp = request.query_params
+        p = parse_list_params(qp)
+        return success_response(
+            pagamenti_service.list_righe(
+                contabile_id,
+                limit=p["limit"],
+                offset=p["offset"],
+                order_by=qp_str(qp.get("order_by")),
+                order_dir=qp_str(qp.get("order_dir")),
+            )
+        )
 
     @extend_schema(
         operation_id="pagamenti_distinta_righe_create",
@@ -330,6 +381,61 @@ class ApiDistintaRighe(DomainAPIView):
             return pagamenti_service.crea_riga(contabile_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiDistintaRigheExport(DomainAPIView):
+    """GET /api/v1/pagamenti/distinte/<id>/righe/export/ — CSV/XLSX delle righe."""
+
+    area_funzionale = AREA
+    # ⭐ LO STESSO `lista_codice` della lista a video, letto da lei e non
+    #    ricopiato: le colonne del file sono quelle che l'operatore VEDE
+    #    (preferenza + preset + permessi), e il cancello di perimetro vale anche
+    #    sulla porta piu' larga (`base_views.lista_codice`). Due letterali
+    #    uguali divergono al primo rename, e l'export scaricherebbe le colonne
+    #    di un'altra lista senza nessun errore.
+    lista_codice = ApiDistintaRighe.lista_codice
+
+    @extend_schema(
+        operation_id="pagamenti_distinta_righe_export",
+        parameters=[
+            OpenApiParameter(
+                name="formato", type=str, location=OpenApiParameter.QUERY,
+                required=True, description="csv | xlsx.",
+            ),
+            *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Il file delle righe di UNA distinta — «la contabile in CSV/Excel».
+    # ⚠️ `limit=EXPORT_MAX_ROWS + 1` e non la pagina a video: l'export esporta
+    #    il DATASET, non la pagina. Il `+1` serve al guard di
+    #    `build_export_response`, che rifiuta PRIMA di serializzare invece di
+    #    consegnare un file troncato in silenzio.
+    # ⚠️ `?formato=`, non `?format=`: quest'ultimo e' un parametro magico di DRF
+    #    e collide col content negotiation (`feedback_drf_format_magic_param`).
+    def get(self, request: Request, contabile_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        dati = pagamenti_service.list_righe(
+            contabile_id,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return build_export_response(
+            request,
+            lista_codice=self.lista_codice,
+            results=dati["results"],
+            total=dati["count"],
+            # ⛔ Nessun filtro da dichiarare: la distinta e' nel path, non e' una
+            #    scelta dell'operatore, e la lista non ha filtri suoi.
+            filtri_applicati=None,
+            fmt=fmt,
+        )
 
 
 class ApiDistintaRigheDaRate(DomainAPIView):
@@ -733,6 +839,15 @@ class ApiRateList(DomainAPIView):
                 ),
             ),
             OpenApiParameter(
+                name="solo_numerate", type=bool, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Solo le rate di documenti NUMERATI (`numero IS NOT NULL`): "
+                    "la bozza non e' un documento fiscale. Il picker lo passa "
+                    "sempre; vale anche sul perimetro di `solo_aperte`."
+                ),
+            ),
+            OpenApiParameter(
                 name="data_scadenza_da", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Scadenza da (ISO).",
             ),
@@ -785,6 +900,7 @@ class ApiRateList(DomainAPIView):
             anno=qp_int_optional(qp.get("anno"), "anno"),
             search=qp_str(qp.get("search")),
             solo_aperte=qp_bool_optional(qp.get("solo_aperte"), "solo_aperte"),
+            solo_numerate=qp_bool_optional(qp.get("solo_numerate"), "solo_numerate"),
             data_scadenza_da=qp_iso_date_optional(
                 qp.get("data_scadenza_da"), "data_scadenza_da"
             ),
@@ -1109,11 +1225,13 @@ class ApiFatturaSistemazioni(DomainAPIView):
 class ApiFatturaSistemazioniExport(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/export/ — CSV/XLSX."""
 
-    # ⭐ Stesso `lista_codice` della lista a video, ed e' il punto dell'export
-    #    configurabile: le colonne del file sono quelle che l'operatore VEDE
-    #    (preferenza + preset + permessi), non un elenco cablato qui che
-    #    diverge alla prima colonna aggiunta a catalogo.
-    lista_codice = "pagamenti.sistemazioni_fattura"
+    # ⭐ LO STESSO `lista_codice` della lista a video, letto da lei e non
+    #    ricopiato (18/09, come `ApiDistintaRigheExport`): le colonne del file
+    #    sono quelle che l'operatore VEDE (preferenza + preset + permessi), non
+    #    un elenco cablato qui che diverge alla prima colonna aggiunta a
+    #    catalogo — e due letterali uguali divergono al primo rename, senza
+    #    nessun errore.
+    lista_codice = ApiFatturaSistemazioni.lista_codice
     # Stessa ragione della lista: la consuma il drawer dell'eccedenza, che vive
     # in `vendite`.
     skip_area_check = True

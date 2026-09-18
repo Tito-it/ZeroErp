@@ -3,7 +3,9 @@
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: La conversione `limit`/`offset` -> `page`/`page_size` delle liste
-//        paginate PAGE-BASED, in un punto solo.
+//        paginate PAGE-BASED, in un punto solo — e, dal 2026-09-18,
+//        l'ORDINAMENTO come lo chiede il backend (`paramsOrdinamento`), che
+//        serve sia alla fetch della lista sia al suo export.
 // Note: ⚠️ Perche' esiste. `useSearchTable` governa `limit`/`offset` — e' la
 //       lingua del building block e della DataTable; una parte degli endpoint
 //       pagina invece con `page`/`page_size`. La traduzione fra le due lingue
@@ -49,13 +51,42 @@ export function paramsPagina(f, {
   orderDirDefault = 'desc',
 } = {}) {
   const pageSize = f.limit > 0 ? f.limit : pageSizeDefault
-  const p = {
+  return {
     page: Math.floor((f.offset || 0) / pageSize) + 1,
     page_size: pageSize,
+    ...paramsOrdinamento(f, { orderDirDefault }),
   }
-  if (f.order_by) {
-    p.order_by = f.order_by
-    p.order_dir = f.order_dir || orderDirDefault
-  }
-  return p
+}
+
+// Scopo: l'ordinamento della lista come lo chiede il backend — `order_by` e
+//        `order_dir` quando un ordinamento c'e', NIENTE altrimenti (mandarlo
+//        vuoto significherebbe chiedere al backend un ordinamento che poi lui
+//        scarta: la cosa giusta per il motivo sbagliato).
+//
+// ⭐ Estratto il 2026-09-18 (regola del 2, ok Tid) alla DODICESIMA copia del
+//    blocco «l'export segue l'ordinamento a video» nei `getExportParams`
+//    (`if (store.filters.order_by) { p.order_by = …; p.order_dir = … || X }`):
+//    lo stesso blocco viveva anche dentro `paramsPagina` qui sopra e nel
+//    `buildParams` di `useListaStoreCore`, che ora chiamano questa funzione.
+//    Il file che scarichi e' la lista che stai guardando, e la forma con cui la
+//    lista chiede l'ordine al backend e' UNA.
+//
+// ⛔ `orderDirDefault` resta un parametro, per la stessa ragione scritta su
+//    `paramsPagina`: le copie NON erano identiche (`asc` sugli store di
+//    `useListaStoreCore`, `desc` sui documenti di vendita). Oggi il ripiego non
+//    scatta — `useSearchTable.onSort` scrive sempre `order_by` e `order_dir`
+//    insieme — ma appianarlo avrebbe cambiato il verso di una lista il giorno
+//    in cui quel ramo si accendesse. Un'estrazione appiana la duplicazione,
+//    non le differenze. ⚠️ Chi scrive l'export di una lista passa lo STESSO
+//    ripiego della fetch di quella lista: e' l'unico modo perche' il file segua
+//    davvero la videata anche in quel ramo (trovato divergente sui lotti, 18/09).
+//
+// @param {object} f - i filtri dello store (`order_by`, `order_dir`).
+// @param {object} [opts]
+// @param {'asc'|'desc'} [opts.orderDirDefault='desc'] - verso di ripiego quando
+//        `order_by` c'e' e `order_dir` no.
+// @returns {{order_by?:string, order_dir?:string}}
+export function paramsOrdinamento(f, { orderDirDefault = 'desc' } = {}) {
+  if (!f?.order_by) return {}
+  return { order_by: f.order_by, order_dir: f.order_dir || orderDirDefault }
 }

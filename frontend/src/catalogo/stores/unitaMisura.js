@@ -1,77 +1,34 @@
 // Store Pinia per la gestione unita' di misura.
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
+//
+// ⭐ Dal 2026-09-18 e' `createCrudStore` e basta: era uno store scritto a mano
+//    su `useListaEmptyStateFetch` con la copia del `buildParams`, e con il CRUD
+//    riscritto per UNA riga — ogni write deve anche INVALIDARE la cache del
+//    lookup (`LookupSelect` con `rel=catalogo.unita_misura` la tiene in
+//    memoria). Quella riga oggi e' `afterWrite`, l'aggancio post-write della
+//    factory, nato qui e nella sorella `uomTipi` (regola del 2).
+import { createCrudStore } from '../../core/stores/createCrudStore'
 import { listUnitaMisura, getUnitaMisura, createUnitaMisura, updateUnitaMisura, disattivaUnitaMisura } from '../api/catalogo'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { useTabEvents } from '../../core/composables/useTabEvents'
 import { invalidateLookup } from '../../core/composables/useGlobalLookup'
 import { TAB_ENTITIES } from '../../core/constants'
 import { CATALOGO_LOOKUP_RELS } from '../constants'
 
-export const useUnitaMisuraStore = defineStore('catalogo-unita-misura', () => {
-  const { emitDataChanged } = useTabEvents()
-
-
-  const filters = ref({
-    search: '',
-    attivo: true,
-    limit: 25,
-    offset: 0,
-    order_by: 'codice',
-    order_dir: 'asc'
-  })
-
-  // Lista via BB condiviso (migrazione 2026-08-10): porta la guardia di versione
-  // anti-race che qui mancava. `ricercaCorta: 'svuota'` conserva ESATTAMENTE l'UX
-  // di prima — parte piena, ma una ricerca sotto i 3 caratteri svuota invece di
-  // lasciare a video righe che non c'entrano con quello che si sta scrivendo.
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    alwaysFetch: true,
-    ricercaCorta: 'svuota',
-    buildParams: (f, searchTerm) => {
-      const params = {}
-      params.limit = f.limit
-      params.offset = f.offset
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
-      }
-      if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.attivo != null) params.attivo = f.attivo
-      return params
-    },
-    fetchPage: listUnitaMisura,
-  })
-
-  async function fetchDetail(id) {
-    const res = await getUnitaMisura(id)
-    return res.data.data
-  }
-
-  async function create(payload) {
-    const res = await createUnitaMisura(payload)
-    invalidateLookup(CATALOGO_LOOKUP_RELS.UNITA_MISURA)
-    emitDataChanged(TAB_ENTITIES.UNITA_MISURA, res.data.data.id)
-    return res.data.data
-  }
-
-  async function update(id, payload) {
-    const res = await updateUnitaMisura(id, payload)
-    invalidateLookup(CATALOGO_LOOKUP_RELS.UNITA_MISURA)
-    emitDataChanged(TAB_ENTITIES.UNITA_MISURA, id)
-    return res.data.data
-  }
-
-  async function disattiva(id) {
-    const res = await disattivaUnitaMisura(id)
-    invalidateLookup(CATALOGO_LOOKUP_RELS.UNITA_MISURA)
-    emitDataChanged(TAB_ENTITIES.UNITA_MISURA, id)
-    return res.data.data
-  }
-
-  return {
-    items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update, disattiva
-  }
+export const useUnitaMisuraStore = createCrudStore('catalogo-unita-misura', {
+  api: {
+    list: listUnitaMisura,
+    detail: getUnitaMisura,
+    create: createUnitaMisura,
+    update: updateUnitaMisura,
+  },
+  tabEntity: TAB_ENTITIES.UNITA_MISURA,
+  extraActions: { disattiva: disattivaUnitaMisura },
+  // Ogni scrittura — create, update, disattiva — rende stantia la cache del
+  // lookup condiviso: si invalida PRIMA che le altre tab ricevano l'evento.
+  afterWrite: () => invalidateLookup(CATALOGO_LOOKUP_RELS.UNITA_MISURA),
+  // Parte piena, ma una ricerca sotto i 3 caratteri SVUOTA invece di lasciare
+  // a video righe che non c'entrano con quello che si sta scrivendo: e' l'UX
+  // che questa lista ha sempre avuto (`ricercaCorta`, migrazione 2026-08-10).
+  startsEmpty: false,
+  ricercaCorta: 'svuota',
+  filterDefaults: { attivo: true },
+  orderBy: 'codice',
 })

@@ -278,8 +278,8 @@ const destinazione = computed(() => {
     return {
       fatturaId: r.fattura_id,
       numeroDocumento: r.fattura_numero_documento ?? null,
-      naturaCodice: r.fattura_natura_doc_codice_interno ?? null,
-      naturaDescrizione: r.fattura_natura_doc_descrizione ?? null,
+      naturaCodice: r.natura_doc_codice_interno ?? null,
+      naturaDescrizione: r.natura_doc_descrizione ?? null,
       registro: r.fattura_registro_codice ?? null,
       data: r.fattura_data ?? null,
       totale: r.fattura_totale_doc ?? null,

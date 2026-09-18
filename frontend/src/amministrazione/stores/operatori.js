@@ -1,10 +1,17 @@
 // Pinia store per la gestione operatori (lista, dettaglio, CRUD, override).
 // I lookup (UO, qualifiche, aree, azioni, emittenti) sono stati spostati
 // nei componenti via useLookup — lo store gestisce solo dati operatori.
+//
+// ⭐ Dal 2026-09-18 la lista e' `useListaStoreCore`, chiamato qui dentro: era
+//    una copia a mano del suo `buildParams` su `useListaEmptyStateFetch`, con
+//    un ripiego del verso scritto `'ASC'` maiuscolo — l'unico nel frontend.
+//    Non passa da una factory perche' lo store e' quasi tutto stato di
+//    dominio (dettaglio corrente, override, scope emittenti): la lista e' una
+//    parte, e la sua casa e' il core.
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
+import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import {
   listOperatori,
   getOperatore,
@@ -28,24 +35,22 @@ import { TAB_ENTITIES } from '../../core/constants'
 const { emitDataChanged } = useTabEvents()
 
 export const useOperatoriStore = defineStore('amm-operatori', () => {
-  // Lista
-
   // Dettaglio/corrente
   const currentOperatore = ref(null)
   const loadingDetail = ref(false)
 
-  // Filtri attivi (sincronizzati con la toolbar).
-  // Multi-face auth (Fase 7): solo is_super_admin + is_active +
-  // unita_organizzativa_id. Il legacy ruolo_sistema e' rimosso.
-  const filters = ref({
-    search: '',
-    is_super_admin: null,
-    unita_organizzativa_id: null,
-    is_active: null,
-    limit: 25,
-    offset: 0,
-    order_by: 'soggetto_cognome',
-    order_dir: 'asc'
+  // Lista (filtri sincronizzati con la toolbar). Multi-face auth (Fase 7):
+  // solo is_super_admin + is_active + unita_organizzativa_id. Il legacy
+  // ruolo_sistema e' rimosso. Parte piena: e' l'anagrafica degli operatori.
+  const lista = useListaStoreCore({
+    fetchPage: listOperatori,
+    startsEmpty: false,
+    filterDefaults: {
+      is_super_admin: null,
+      unita_organizzativa_id: null,
+      is_active: null,
+    },
+    orderBy: 'soggetto_cognome',
   })
 
   // Override corrente
@@ -65,29 +70,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     allowed_scope_modes: ['GLOBAL', 'SINGLE'],
     can_change_scope: true,
     change_scope_reason: null,
-  })
-
-  // Lista via BB condiviso (migrazione 2026-08-10): la guardia di versione
-  // anti-race che qui mancava. `alwaysFetch` conserva il comportamento: questa
-  // lista si e' sempre caricata anche senza filtri.
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    alwaysFetch: true,
-    buildParams: (f, _searchTerm) => {
-      const params = {}
-      if (f.search) params.search = f.search
-      if (f.is_super_admin != null) params.is_super_admin = f.is_super_admin
-      if (f.unita_organizzativa_id != null) params.unita_organizzativa_id = f.unita_organizzativa_id
-      if (f.is_active != null) params.is_active = f.is_active
-      params.limit = f.limit
-      params.offset = f.offset
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'ASC'
-      }
-      return params
-    },
-    fetchPage: listOperatori,
   })
 
   async function fetchDetail(authUserId) {
@@ -187,13 +169,9 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   }
 
   return {
-    // Lista
-    items,
-    totalRecords,
-    loading,
-    hasSearched,
-    filters,
-    fetchList,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
+    ...lista,
 
     // Dettaglio
     currentOperatore,

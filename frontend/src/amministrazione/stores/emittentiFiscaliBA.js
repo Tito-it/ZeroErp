@@ -1,107 +1,78 @@
 // Pinia store per lista paginata mapping BA -> emittente fiscale.
 // Separato dallo store principale emittentiFiscali perche' la lista BA
 // usa useSearchTable (contratto: filters, items, totalRecords, loading, fetchList).
+//
+// ⭐ Dal 2026-09-18 e' `createListaStore` con il padre nel PATH
+//    (`parentField: 'emittenteId'`): era uno store scritto a mano su
+//    `useListaEmptyStateFetch` con la copia del `buildParams` e un wrapper di
+//    `fetchList` che rifaceva a mano il guard «senza padre non si chiama» —
+//    che il core ha gia'. Il tab lo pilota con `useDrawerTabLista`, che scrive
+//    `store.emittenteId` e chiama `reset()` quando il padre sparisce.
 
-import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
+import { createListaStore } from '../../core/stores/createListaStore'
 import {
   listEmittenteBillingAccount,
   createEmittenteBillingAccount,
   deleteEmittenteBillingAccount,
-  getEmittenteBillingAccountSummary
+  getEmittenteBillingAccountSummary,
 } from '../api/emittentiFiscali'
 
-export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba', () => {
+export const useEmittentiFiscaliBAStore = createListaStore('amm-emittenti-fiscali-ba', {
+  fetchPage: (emittenteId, params) => listEmittenteBillingAccount(emittenteId, params),
+  parentField: 'emittenteId',
+  // Parte piena: e' la lista dei mapping di QUESTO emittente.
+  startsEmpty: false,
+  orderBy: 'billing_account_codice',
+  extend: (lista) => {
+    const { emittenteId, fetchList, reset: resetLista } = lista
 
-  // emittenteId corrente — settato dal tab quando cambia prop
-  const emittenteId = ref(null)
+    // Summary BA mapping (has_default + count_specifici): indipendente dalla
+    // pagina corrente. Bypassa il bug della derivazione da `items` con liste
+    // paginate. Aggiornato dopo ogni write + al cambio emittenteId.
+    const hasDefaultMapping = ref(false)
+    const countSpecifici = ref(0)
 
-  // Summary BA mapping (has_default + count_specifici): indipendente dalla
-  // pagina corrente. Bypassa il bug della derivazione da `items` con liste
-  // paginate. Aggiornato dopo ogni write + al cambio emittenteId.
-  const hasDefaultMapping = ref(false)
-  const countSpecifici = ref(0)
-
-  const filters = ref({
-    search: '',
-    limit: 25,
-    offset: 0,
-    order_by: 'billing_account_codice',
-    order_dir: 'asc'
-  })
-
-  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race.
-  // La precondizione sul contesto (`emittenteId`) resta un wrapper sottile e NON
-  // e' un'opzione del BB: e' uno stato del chiamante, non un filtro della lista.
-  const { items, totalRecords, loading, hasSearched, fetchList: fetchListBase, svuota } = useListaEmptyStateFetch({
-    filters,
-    alwaysFetch: true,
-    buildParams: (f) => {
-      const params = {}
-      if (f.search) params.search = f.search
-      params.limit = f.limit
-      params.offset = f.offset
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
+    // Scopo: Carica il summary BA per l'emittente corrente. Best-effort:
+    //        in caso di errore lascia i valori precedenti senza notificare
+    //        (l'interceptor mostra l'errore HTTP, lo stato UX e' coerente).
+    async function fetchSummary() {
+      if (!emittenteId.value) {
+        hasDefaultMapping.value = false
+        countSpecifici.value = 0
+        return
       }
-      return params
-    },
-    fetchPage: (params) => listEmittenteBillingAccount(emittenteId.value, params),
-  })
+      try {
+        const res = await getEmittenteBillingAccountSummary(emittenteId.value)
+        const data = res.data.data
+        hasDefaultMapping.value = !!data.has_default
+        countSpecifici.value = data.count_specifici || 0
+      } catch {
+        // Errore gia' notificato dall'interceptor axios globale.
+      }
+    }
 
-  async function fetchList() {
-    if (!emittenteId.value) return
-    await fetchListBase()
-  }
+    // Scopo: Aggiunge mapping e ricarica la lista + summary.
+    async function addMapping(payload) {
+      const res = await createEmittenteBillingAccount(emittenteId.value, payload)
+      await Promise.all([fetchList(), fetchSummary()])
+      return res.data.data
+    }
 
-  // Scopo: Carica il summary BA per l'emittente corrente. Best-effort:
-  //        in caso di errore lascia i valori precedenti senza notificare
-  //        (l'interceptor mostra l'errore HTTP, lo stato UX e' coerente).
-  async function fetchSummary() {
-    if (!emittenteId.value) {
+    // Scopo: Elimina mapping e ricarica la lista + summary.
+    async function removeMapping(mappingId) {
+      await deleteEmittenteBillingAccount(emittenteId.value, mappingId)
+      await Promise.all([fetchList(), fetchSummary()])
+    }
+
+    // Scopo: il reset del core (lista, padre, filtri) piu' il summary, che il
+    //        core non conosce: e' stato di dominio, e lo azzera chi l'ha scritto.
+    function reset() {
+      resetLista()
       hasDefaultMapping.value = false
       countSpecifici.value = 0
-      return
     }
-    try {
-      const res = await getEmittenteBillingAccountSummary(emittenteId.value)
-      const data = res.data.data
-      hasDefaultMapping.value = !!data.has_default
-      countSpecifici.value = data.count_specifici || 0
-    } catch {
-      // Errore gia' notificato dall'interceptor axios globale.
-    }
-  }
 
-  // Scopo: Aggiunge mapping e ricarica la lista + summary.
-  async function addMapping(payload) {
-    const res = await createEmittenteBillingAccount(emittenteId.value, payload)
-    await Promise.all([fetchList(), fetchSummary()])
-    return res.data.data
-  }
-
-  // Scopo: Elimina mapping e ricarica la lista + summary.
-  async function removeMapping(mappingId) {
-    await deleteEmittenteBillingAccount(emittenteId.value, mappingId)
-    await Promise.all([fetchList(), fetchSummary()])
-  }
-
-  function reset() {
-    // `svuota` del BB, non un clear a mano: invalida anche le fetch in volo
-    // (una risposta dell'emittente precedente non deve ripopolare la lista).
-    svuota()
-    emittenteId.value = null
-    hasDefaultMapping.value = false
-    countSpecifici.value = 0
-    filters.value.search = ''
-    filters.value.offset = 0
-  }
-
-  return {
-    items, totalRecords, loading, hasSearched, filters, emittenteId,
-    hasDefaultMapping, countSpecifici,
-    fetchList, fetchSummary, addMapping, removeMapping, reset
-  }
-}, { userScoped: true })
+    return { hasDefaultMapping, countSpecifici, fetchSummary, addMapping, removeMapping, reset }
+  },
+})

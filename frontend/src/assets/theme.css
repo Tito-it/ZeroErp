@@ -180,6 +180,17 @@
   --app-drawer-section-border: var(--p-surface-700);
   --app-form-footer-border: var(--p-surface-700);
 
+  /* ===== Dialog con una lista dentro ===== */
+  /* L'altezza DEFINITA del blocco lista dentro un dialog (`.app-dialog-lista`,
+   * main.css): il dialog si apre gia' cosi' alto, e resta cosi' quando le
+   * righe arrivano — senza, la lista si rende all'altezza del contenuto e il
+   * dialog salta da «corto a vuoto» ad «alto con le righe» (rilievo di Tid
+   * sul picker delle rate, 2026-09-18). ~32rem = barra filtri + paginatore +
+   * intestazione + DIECI righe, il passo con cui quelle liste nascono
+   * (`PAGINATION.COMPACT_ROWS`); una pagina piu' lunga scorre dentro la
+   * tabella, non allunga il dialog. */
+  --app-dialog-lista-h: 32rem;
+
   /* ===== AI Assistant Widget ===== */
   --app-ai-bg: var(--p-surface-900);
   --app-ai-border: var(--p-surface-700);

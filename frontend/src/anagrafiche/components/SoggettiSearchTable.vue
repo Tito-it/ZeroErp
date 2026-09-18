@@ -53,11 +53,15 @@ const {
 const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio, { immediate: true })
 const tipoFilter = ref(null)
 
+// Params export: la lista che stai guardando, dalla sede unica dello store
+// (`paramsFiltro`: ricerca, filtri di dominio, ORDINAMENTO). ⚠️ Fino al
+// 2026-09-18 questo file si ricostruiva i filtri a mano dai ref della toolbar
+// e non mandava l'ordinamento: il file usciva sempre nell'ordine di default
+// del backend, qualunque colonna l'operatore avesse cliccato. E la ricerca
+// viene dallo store (debounced), non dal ref immediato: e' quella con cui la
+// lista a video e' stata davvero interrogata.
 function buildExportParams(format) {
-  const p = { formato: format }
-  if (searchText.value?.trim()) p.search = searchText.value.trim()
-  if (tipoFilter.value != null) p.tipo_soggetto_dettaglio_id = tipoFilter.value
-  return p
+  return { formato: format, ...store.paramsFiltro() }
 }
 
 function onTipoChange() {

@@ -32,3 +32,11 @@ db/changelog/migrations_v2/changelog-autogen.yaml
 # Cache di ruff (analisi statica backend, dal 2026-09-09). La crea chiunque
 # lanci `ruff check`, anche solo tramite l'hook pre-commit.
 .ruff_cache/
+
+# Bytecode Python: lo produce ogni `import` (test, hook, script) e cambia a
+# ogni corsa. ⚠️ Fino al 2026-09-18 QUATTORDICI `.pyc` erano tracciati
+# (`backend/zeroerp_backend/`, `scripts/`) — con due versioni di CPython
+# affiancate, cioe' binari che si rimodificavano da soli a ogni test lanciato
+# e comparivano in ogni `git status`. Tolti dall'indice quel giorno.
+__pycache__/
+*.pyc

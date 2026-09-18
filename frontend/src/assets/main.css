@@ -1010,6 +1010,34 @@ a {
   overflow: hidden;
 }
 
+/* ===== Lista dentro un DIALOG — altezza definita =====
+ * Il corpo di un `Dialog` (`.p-dialog-content`) non e' una colonna flex e non
+ * ha un'altezza sua: un tab-lista montato li' (`<DrawerTabLista>` dentro
+ * `AppDialog`, il picker delle rate) si rende all'altezza del CONTENUTO —
+ * corto con l'empty-state, alto quando le righe arrivano — e il dialog salta
+ * sotto gli occhi di chi cerca (rilievo di Tid, 2026-09-18).
+ *
+ * Con un'altezza DEFINITA la catena e' quella per cui `scroll-height="flex"`
+ * esiste: `.app-tab-content` (questa classe, altezza fissa) > toolbar filtri
+ * (`flex: 0 1 auto`, alta quanto i suoi controlli) > `.lista-configurabile`
+ * (`height: 100%`, comprimibile perche' `min-height: 0`) > DataTable, che da'
+ * al corpo lo spazio che resta e lo fa scorrere se la pagina e' piu' lunga.
+ * Vuota o piena, la lista e' alta uguale: il dialog si apre gia' alto e non
+ * si muove piu'. ⚠️ Cio' che sta SOTTO la lista nel dialog (l'area temporanea
+ * della modalita' multipla) non entra in questa altezza: il corpo del dialog
+ * scorre per lui, e il tetto e' il `max-height: 90%` del `Dialog`.
+ *
+ * Il numero sta in theme.css (`--app-dialog-lista-h`, ~dieci righe): e' il
+ * passo con cui una lista in dialog nasce (`limit: PAGINATION.COMPACT_ROWS`
+ * nello store), cosi' la pagina di default entra intera senza barra.
+ * `flex: none`: dentro una colonna flex l'altezza definita non si deve
+ * ripartire — e' l'ambiguita' che ha gia' fatto sparire il blocco lista delle
+ * dashboard (vedi `.app-dash-fermi`). */
+.app-dialog-lista {
+  height: var(--app-dialog-lista-h);
+  flex: none;
+}
+
 /* ===== Modalita' sola lettura (pattern protect) =====
  * Overlay CSS ispirato ai formati protect AS/400.
  * Blocca ogni interazione, permette copia testo, feedback visivo.

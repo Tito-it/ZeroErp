@@ -70,21 +70,17 @@ const mostraStorico = computed({
   set: (val) => { store.filters.solo_ultima_revisione = !val },
 })
 
-// Params export: i filtri vivono in store.filters; `search` dal ref immediato.
-// I filtri data BE si chiamano validita_dal_min/validita_dal_max (views_offerte).
+// Scopo: i parametri dell'export = QUELLI DELLA LISTA a video, dalla sede
+//        unica dello store (`paramsFiltro`: ricerca, filtri di dominio col nome
+//        sul filo, ordinamento). ⛔ Fino al 2026-09-18 questo blocco ricostruiva i
+//        filtri a mano, e ne aveva persi due (`billing_account_id`, `listino_id`)
+//        — e ricopiava il nome sul filo delle date (`validita_dal_min/max`), che
+//        ora e' `paramNames` dello store. Un export che se li ricostruisce
+//        esporta un insieme DIVERSO da quello a video appena se ne aggiunge uno,
+//        e nessuno se ne accorge finche' qualcuno non confronta il file con la
+//        schermata.
 function buildExportParams(format) {
-  const p = { formato: format }
-  if (searchText.value?.trim()) p.search = searchText.value.trim()
-  if (store.filters.stato_codice_interno != null) p.stato_codice_interno = store.filters.stato_codice_interno
-  if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
-  if (store.filters.data_da) p.validita_dal_min = store.filters.data_da
-  if (store.filters.data_a) p.validita_dal_max = store.filters.data_a
-  p.solo_ultima_revisione = store.filters.solo_ultima_revisione ? 'true' : 'false'
-  if (store.filters.order_by) {
-    p.order_by = store.filters.order_by
-    p.order_dir = store.filters.order_dir || 'desc'
-  }
-  return p
+  return { formato: format, ...store.paramsFiltro() }
 }
 
 // Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.

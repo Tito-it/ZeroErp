@@ -24,6 +24,17 @@
 // ⛔ Le rate ESAURITE si vedono e non si scelgono (spazio = 0, Q-B): nascondere
 //    una rata saldata e' quello che un picker dei pagamenti NON deve fare — chi
 //    guarda deve poter vedere che quel documento e' a posto.
+// ⛔ I documenti NON NUMERATI invece non si vedono (Tid, rilievo in-app
+//    2026-09-18): una bozza non e' ancora un documento fiscale, e la sua rata
+//    non e' un credito su cui registrare un incasso. Il filtro e' del backend
+//    (`solo_numerate`, `numero IS NOT NULL`) e parte acceso dallo store: qui
+//    non c'e' niente da scrivere. ⏳ La regola di Tid e' piu' stretta — «solo
+//    le definitive, inviate a SDI» — e arrivera' come predicato di dominio, in
+//    una sede sola a DB (piano D19 §8), non come un secondo booleano.
+// ⭐ IL DIALOG E' ALTO DIECI RIGHE, DA SUBITO: la lista nasce a dieci righe
+//    per pagina (`limit` dello store) e il blocco lista ha un'altezza DEFINITA
+//    (`app-dialog-lista`, main.css) — cosi' la pagina vuota e la pagina piena
+//    sono alte uguali, e il dialog non salta quando arrivano le righe.
 // ⭐ La natura si SEGNALA (D19-e): sulla nota di credito — che dal 2026-09-17
 //    ha la sua rata negativa — il residuo si dice «da rimborsare», e la rata
 //    E' selezionabile (spazio ≠ 0, non > 0): il rimborso e' un incasso a segno
@@ -239,8 +250,12 @@ function onVisibleChange(v) {
     @update:visible="onVisibleChange"
     @save="onSalva"
   >
+    <!-- `app-dialog-lista`: l'altezza definita del blocco lista (dieci righe,
+         main.css) — senza, la lista si rende all'altezza del contenuto e il
+         dialog salta quando le righe arrivano. -->
     <DrawerTabLista
       ref="listaRef"
+      class="app-dialog-lista"
       codice="pagamenti.rate"
       data-key="scadenza_id"
       :rows="store.items"
@@ -267,12 +282,17 @@ function onVisibleChange(v) {
           @select="applicaCriteri"
           @clear="applicaCriteri"
         />
+        <!-- ⚠️ `input-style`, non `style`: la larghezza scritta sul wrapper
+             `.p-inputnumber` non arriva all'<input>, che tiene la sua
+             larghezza intrinseca e SBORDA dal wrapper — a video il bordo del
+             numero finiva addosso al campo Serie e si vedevano due bordi
+             (rilievo di Tid, 2026-09-18). Stessa forma di `DdtResoDialog`. -->
         <InputNumber
           v-model="numeroFattura"
           :placeholder="t('pagamenti.rate.filtro_numero')"
           :use-grouping="false"
           :min="1"
-          style="width: 9rem;"
+          input-style="width: 9rem;"
           @update:model-value="applicaCriteri"
         />
         <InputText

@@ -274,7 +274,7 @@ Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
 > `DataTable` a mano: quella decisione la prende la regola zero.
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
-- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25.
+- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25 — e dal 2026-09-18 si dichiarano con l'opzione `limit` di `useListaStoreCore`/`createListaStore` (`limit: PAGINATION.COMPACT_ROWS`), non riscrivendo lo store a mano. Il caso che l'ha fatta nascere: la **lista dentro un dialog**, che è alta dieci righe (vedi §`AppDialog`, «Dialog con una lista dentro»).
 - **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
 - **Font compatto** sul paginator (`0.8rem`)
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
@@ -549,7 +549,22 @@ finche' l'utente non applica una ricerca (min 3 caratteri) o un filtro.
 | `hasSearched` | Nello store Pinia — `ref(false)`, diventa `true` dopo il primo fetch |
 | Guardia in `fetchList()` | Nello store — blocca la chiamata API se non ci sono filtri attivi |
 
-**1. Store — aggiungere `hasSearched` e guardia in `fetchList()`:**
+**1. Store — la guardia la porta il building block, non si riscrive.**
+
+⛔ **Uno store-lista NON si scrive a mano** (dal 2026-09-18): filtri nella forma
+di `useSearchTable`, fetch paginata, guardia empty-state, `hasSearched`,
+`fetchSospesa`, anti-race e `buildParams` (search ≥3, filtri non-null, pagina,
+ordinamento) vivono in **`useListaStoreCore`** — via `createCrudStore` (lista +
+CRUD), `createListaStore` (sola lista, anche col padre nel path) o chiamato
+direttamente dentro il `defineStore` quando lo store è quasi tutto dominio.
+Fino a quel giorno **venti** store tenevano la propria copia del blocco qui
+sotto, ognuna con la sua piccola differenza (un `'ASC'` maiuscolo, un ripiego
+diverso, una ricerca a qualunque lunghezza): la casa di quelle differenze sono
+le opzioni del core (`ricercaCorta`, `orderDirDefault`, `paramNames`), non un
+`fetchList` riscritto. Le liste che partono vuote dichiarano `gateKeys`.
+
+Il blocco che segue è **la regola che il BB applica**, lasciato qui perché si
+legga cosa fa — non un modello da copiare in uno store:
 
 ```js
 const hasSearched = ref(false)
@@ -1238,6 +1253,51 @@ Prop e casi speciali:
 Dialog di **sola conferma** (no form, sì/no su un'azione) restano gestiti da
 `useConfirmAction()` (ConfirmDialog globale, vedi §"Conferme azioni"), NON da
 `AppDialog`: quello serve quando la dialog ha un corpo (campi, tabella, scelta).
+
+#### Dialog con una lista dentro — altezza definita, dieci righe (2026-09-18)
+
+Una lista in un dialog resta una lista (`<ListaConfigurabile>` attraverso
+`useDrawerTabLista` + `<DrawerTabLista>`, come nel picker delle rate), ma il
+corpo di un `Dialog` **non è una colonna flex e non ha un'altezza sua**: il
+blocco lista si rende all'altezza del **contenuto** — corto con l'empty-state,
+alto quando le righe arrivano — e il dialog **salta** sotto gli occhi di chi
+sta cercando (rilievo di Tid sul picker delle rate).
+
+**Regola**: il blocco lista porta la classe **`app-dialog-lista`** (altezza
+**definita**, token `--app-dialog-lista-h` in `theme.css`, ~dieci righe) e lo
+store nasce a **dieci righe per pagina** (`limit: PAGINATION.COMPACT_ROWS`).
+Così la pagina vuota e la pagina piena sono alte uguali, il dialog si apre già
+alto e non si muove più; una pagina più lunga scorre **dentro** la tabella
+(`scroll-height="flex"`, che è esattamente il caso per cui esiste), non
+allunga il dialog.
+
+```html
+<DrawerTabLista ref="listaRef" class="app-dialog-lista" codice="..." ... />
+```
+
+⛔ **E il preset della lista deve dire lo stesso numero** (`ui.lista_preset`,
+`pagina_dimensione = 10`): il `limit` di nascita dello store **non basta**,
+perché al primo `config-loaded` lo scaffolding allinea `filters.limit` alla
+`pagina_dimensione` risolta dal catalogo (§«Paginazione corretta», cascata 2),
+e `fn_resolve_lista_config` la risolve **sempre** (`COALESCE(…, 25)`). Con il
+preset a 25 il picker delle rate mostrava 25 righe in un blocco alto dieci alla
+**prima** apertura e dieci dalla seconda — dopo il `reset()` alla chiusura,
+con l'allineamento già fatto una volta — due aperture, due passi, nessun errore
+(trovato in rilettura il 18/09). ⭐ Vale per **ogni** lista che nasce a 10, non solo
+per i dialog: `pratiche` (17), `listini` (27) e `listini_righe` (37) avevano lo stesso
+scarto da mesi senza che nessuno lo notasse — allineati con 68 lo stesso giorno.
+
+⚠️ Ciò che sta **sotto** la lista (l'area temporanea della modalità multipla
+del picker) non entra in quell'altezza: per lui scorre il corpo del dialog, col
+tetto del `max-height: 90%` del `Dialog`.
+
+⚠️ **`InputNumber` nella barra filtri: la larghezza va sull'`<input>`**
+(`input-style="width: 9rem"`), non sul wrapper (`style`): `.p-inputnumber` è
+un `inline-flex` senza bordo, e l'`<input>` dentro tiene la sua larghezza
+intrinseca — più larga del wrapper — e **sborda** addosso al controllo
+accanto. A video si vedono **due bordi** sul lato destro, e nessun errore
+(rilievo di Tid, stesso giorno). È la forma già in uso in `DdtResoDialog` e
+`ResoRiconsegnaDialog`.
 
 ### Classi CSS form
 
@@ -3049,21 +3109,27 @@ async function update(id, payload) {
 
 Entità **read-only** (es. log immutabili): non emettono mai, e nessun consumer deve ascoltarle.
 
-### Factory `createCrudAdminStore`
+### Factory `createCrudStore`
 
-Per gli store admin CRUD standard (categorie clienti, promo articoli, matrici config) esiste una factory in `core/composables/createCrudAdminStore.js` che gestisce automaticamente emit in create/update. Basta passare `emitKey`:
+Per gli store lista+CRUD (categorie clienti, promo articoli, matrici config,
+clienti, articoli…) la factory `core/stores/createCrudStore.js` emette da sé
+in `create`/`update`/`extraActions`. Basta passare `tabEntity`:
 
 ```js
-export const useCategorieClientiStore = createCrudAdminStore({
-  storeName: 'amm-categorie-clienti',
-  api: { list, get, create, update },
-  defaultOrderBy: 'ordinamento',
-  emitKey: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+export const useCategorieClientiStore = createCrudStore('amm-categorie-clienti', {
+  api: { list, detail, create, update },
+  tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+  orderBy: 'ordinamento',
+  startsEmpty: false,
   // ...
 })
 ```
 
-Nessun `emitDataChanged` manuale necessario nei metodi.
+Nessun `emitDataChanged` manuale necessario nei metodi. ⚠️ Fino al 2026-09-18
+questa sezione descriveva `createCrudAdminStore` in `core/composables/`, con
+`storeName`/`emitKey`/`defaultOrderBy`: quella factory è stata **eliminata il
+2026-06-05** (convergenza B19 in `createCrudStore`), e un documento che nomina
+un file inesistente manda a cercarlo.
 
 ### Aggiungere una nuova entità
 

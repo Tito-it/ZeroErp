@@ -796,6 +796,17 @@ _ESERCIZI: dict[str, Esercizio] = {
             **_ordine(ob, od, "data_pagamento", "DESC"),
         ),
     ),
+    # Le righe di UNA distinta (lista 69, 2026-09-18). ⚠️ `_ID_FINTO`: la
+    # distinta non esiste, la query torna zero righe e le colonne le dichiara
+    # il cursore — e' il caso in cui il presidio serve di piu'.
+    "pagamenti.distinta_righe": Esercizio(
+        dove="pagamenti/db/pagamenti_repository.py::list_righe_distinta",
+        chiama=lambda ob, od: _r(
+            "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
+        ).list_righe_distinta(
+            _ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None),
+        ),
+    ),
     "pagamenti.rate_fuori_capienza": Esercizio(
         dove="pagamenti/db/pagamenti_repository.py::list_rate_fuori_capienza",
         chiama=lambda ob, od: _r(

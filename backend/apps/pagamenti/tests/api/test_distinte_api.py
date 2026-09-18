@@ -68,9 +68,9 @@ _LISTA = {
     "results": [{"id": 7, "codice": "CNT-0001", "origine": "MANUALE"}],
 }
 
+# ⚠️ Niente `righe` (dal 2026-09-18): sono una lista con la sua pagina.
 _DETTAGLIO = {
     "distinta": {"id": 7, "codice": "CNT-0001", "righe_totali": 0},
-    "righe": [],
     "stati_distinta": [],
     "stati_riga": [],
     "stati_richiedibili": ["VALIDATA", "BOZZA", "ANNULLATA"],

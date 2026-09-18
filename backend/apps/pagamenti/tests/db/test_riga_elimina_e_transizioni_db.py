@@ -43,6 +43,7 @@ Indice test eseguiti:
 20) NumerazioneSulRegistroTests.test_con_emittente_esplicito_arriva_com_e_e_riusa
 21) SaldoPrimaDiSeTests.test_il_documento_esclude_la_riga_come_la_rata
 22) SaldoPrimaDiSeTests.test_un_id_di_esclusione_non_positivo_e_un_guasto_dichiarato
+23) LettureTests.test_ogni_ordinamento_delle_righe_della_distinta_esegue_con_la_lateral
 """
 
 from __future__ import annotations
@@ -59,7 +60,11 @@ from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.pagamenti.db import pagamenti_repository as repo_mod
-from apps.pagamenti.db.pagamenti_repository import RIGHE_SORT_COLUMNS, PagamentiRepository
+from apps.pagamenti.db.pagamenti_repository import (
+    DISTINTA_RIGHE_SORT_COLUMNS,
+    RIGHE_SORT_COLUMNS,
+    PagamentiRepository,
+)
 from apps.pagamenti.services import pagamenti_service, saldi_service
 
 _COLONNE_ELIMINA = (
@@ -77,8 +82,10 @@ _COLONNE_DESTINAZIONE = (
     "fattura_data",
     "fattura_totale_doc",
     "fattura_registro_codice",
-    "fattura_natura_doc_codice_interno",
-    "fattura_natura_doc_descrizione",
+    # ⚠️ Senza il prefisso `fattura_` (dal 2026-09-18): e' la gemella che il
+    #    `formato = natura_doc` della lista 69 legge dalla riga.
+    "natura_doc_codice_interno",
+    "natura_doc_descrizione",
     "scadenza_importo",
 )
 
@@ -278,6 +285,26 @@ class LettureTests(_DbTestCase):
                             order_by=colonna, order_dir=verso, limit=1, offset=0,
                         )
                         self.assertIsInstance(total, int)
+            return True
+        self.assertTrue(self._con_operatore(_leggi))
+
+    # Scopo: OGNI ordinamento dichiarato della lista `pagamenti.distinta_righe`
+    #        (2026-09-18), nei due versi E senza — cioe' il ramo di default
+    #        (`id DESC`) — con la LATERAL a bordo. La whitelist mappa
+    #        `fattura_numero_documento` sulla COPPIA `(fattura_numero,
+    #        fattura_serie)`: un alias che la proiezione non porta e' un 500 al
+    #        primo click sull'intestazione, e un mock non lo vede.
+    def test_ogni_ordinamento_delle_righe_della_distinta_esegue_con_la_lateral(self):
+        def _leggi(cur):
+            repo = PagamentiRepository()
+            versi = (None, "asc", "desc")
+            for colonna in (None, *DISTINTA_RIGHE_SORT_COLUMNS):
+                for verso in versi:
+                    with self.subTest(colonna=colonna, verso=verso):
+                        rows, total = repo.list_righe_distinta(
+                            -1, order_by=colonna, order_dir=verso, limit=1, offset=0,
+                        )
+                        self.assertEqual((rows, total), ([], 0))
             return True
         self.assertTrue(self._con_operatore(_leggi))
 
