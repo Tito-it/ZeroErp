@@ -660,7 +660,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 660,58,codice,Codice,,codice,identificatore,string,,180,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_codice,100
 661,58,descrizione,Descrizione,,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_descrizione,90
 662,58,ambito,Ambito,,ambito,informazione,string,,160,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_ambito,80
-663,58,preset_riferimento,Riferimento,Profilo o emittente a cui il preset si applica,,informazione,string,,220,40,left,,,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_riferimento,60
+663,58,profilo_accesso,Profilo di accesso,Profilo di accesso a cui il preset si applica (vuoto se globale o di emittente),profilo_accesso_codice,informazione,string,,220,40,left,,,f,f,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_profilo_accesso,60
 664,58,colonne_count,Colonne,,colonne_count,informazione,numeric,,100,50,right,,,f,f,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_colonne_count,50
 665,58,is_default,Default,,is_default,informazione,boolean,,90,60,center,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_default,70
 666,58,attivo,Attivo,,attivo,informazione,boolean,,90,70,center,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,common.col_attivo,70
@@ -869,5 +869,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 869,77,user_insert,Registrato da,,user_insert,informazione,string,,120,160,left,Audit,5,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_user_insert,20
 870,77,data_insert,Registrato il,,data_insert,informazione,datetime,datetime_short,140,170,center,Audit,5,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_data_insert,22
 871,77,id,Id,,id,informazione,numeric,,80,180,right,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_id,10
-872,31,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale per conto del quale la mail e stata inviata (vuoto per le mail di SISTEMA),emittente_ragione_sociale,informazione,string,,160,45,left,,,t,f,t,f,f,f,2026-09-18 00:00:00,mctit,amministrazione.email_emittente,50
+872,31,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale per conto del quale la mail e stata inviata (vuoto per le mail di SISTEMA),emittente_ragione_sociale,informazione,string,,160,45,left,,,t,f,t,f,f,t,2026-09-18 00:00:00,mctit,amministrazione.email_emittente,50
 873,58,emittente_fiscale,Emittente,Emittente fiscale a cui il preset si applica (vuoto se globale o di profilo),emittente_ragione_sociale,informazione,string,,200,45,left,,,t,f,t,f,f,t,2026-09-18 00:00:00,mctit,ui.admin.preset_emittente,60

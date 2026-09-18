@@ -347,6 +347,43 @@ Tutto ciò che il DB ha consegnato è nel riquadro di §7. Al backend resta
 questo, in ordine di dipendenza. ⚠️ Nessuna di queste voci è bloccante per
 l'apply DB: le colonne che non hanno ancora la proiezione sono **spente**.
 
+> ✅ **BE/FE chiuse il 2026-09-19** (`dev/backend-tid`), con le due decisioni
+> di Tid su BE-6 e BE-7 prese lo stesso giorno accettando la raccomandazione
+> del backend:
+>
+> * **BE-6 → «Riferimento» ristretta al solo profilo.** Con la 873 attiva
+>   l'emittente compariva due volte (codice nella 663 calcolata, ragione
+>   sociale nella 873); toglierla avrebbe perso il profilo, che la 873 non
+>   copre. La 663 è ora una colonna **vera**: `codice = profilo_accesso`,
+>   `campo_sorgente = profilo_accesso_codice` (già in `_PRESET_SELECT_SQL`),
+>   etichetta «Profilo di accesso», chiave `ui.admin.preset_profilo_accesso`
+>   (esisteva); la cella calcolata `#cell-preset_riferimento` di
+>   `ListaPresetPanel.vue` e la chiave `ui.admin.preset_riferimento` sono
+>   **ritirate**. `esportabile = t` come la 873 (era `f` perché calcolata).
+>   ⚠️ Chi aveva `preset_riferimento` nella preferenza personale della lista
+>   58 perde quella colonna in silenzio: non c'è produzione, e la lista è
+>   dell'amministrazione;
+> * **BE-7 → si lascia `ordinabile = f`** su 872/873: spente di proposito dal
+>   DB, nessuno l'ha chiesto, ed è una modifica in due file quando servirà.
+>
+> Il resto, voce per voce: BE-1 → test 5 di
+> `test_perimetro_emittente_copertura` (**nei due versi**: ragione «globale»
+> senza `f` a seed = lista sbarrata; `f` a seed senza ragione = globalità che
+> il registro non conosce); BE-2 → ragioni riscritte, con D-1/D-3/D-5 in
+> commento; BE-3 → `list_logs` proietta `emittente_fiscale_id` +
+> `emittente_ragione_sociale` (catena `ef → soggetti_ruoli → soggetti`, NULL
+> su `SISTEMA`); BE-4 → 872 `attivo = t` nello stesso giro; BE-5 → entrambe
+> le chiavi (`ui.admin.preset_emittente` era già entrata il 18-09 con
+> `8e6422e32`); BE-8 → nota chiusa nel piano. Verificato: guard i18n pulito,
+> `test_lista_proiezione_campo_sorgente` (E2E sul DB vero, catalogo dal CSV)
+> verde con 872 attiva e 663 su `profilo_accesso_codice`, 304 test di
+> `ui`/`amm_software` verdi. ⚠️ Il pgTAP non è lanciabile dal server BE
+> (nessuna credenziale): la lista 31 non è globale, il test 8 non la guarda.
+>
+> 🔵 **Al DB resta l'ultima riga** (sotto): `multi_emittente = t` su `id = 31`
+> + `config.email_log` nel test 5 del pgTAP multi-emittente. Poi
+> `work-done/`.
+
 | # | Cosa | Dove | Note |
 | --- | --- | --- | --- |
 | BE-1 | **Presidio §6**: ogni voce di `_ESENZIONI` motivata «senza perimetro» / «nessun `emittente_fiscale_id`» / «catalogo globale» ha `perimetro_emittente = f` in `lista_definizione.csv` (colonna 10, letta col modulo `csv`, senza DB) | `apps/core/tests/test_perimetro_emittente_copertura.py` | Le sette globali: `amm.processi`, `anagrafiche.emittenti_fiscali`, `storico.audit_log`, `ui.lista_definizione`, `ui.lista_colonna`, `ui.lista_colonna_permesso`, `vendite.famiglie_documento` |
@@ -354,8 +391,8 @@ l'apply DB: le colonne che non hanno ancora la proiezione sono **spente**.
 | BE-3 | **D-4, `config.email_log`**: proiettare `emittente_ragione_sociale` nella SELECT della lista (LEFT JOIN `anagrafiche.emittenti_fiscali ef ON ef.id = el.emittente_fiscale_id` → `soggetti_ruoli` → `soggetti.ragione_sociale_completa`, stessa forma di `_PRESET_SELECT_SQL`; NULL sulle righe `SISTEMA`) | `apps/core/db/email_repository.py` ~648 | `campo_sorgente` della 872 è `emittente_ragione_sociale`: il nome è fissato dal seed |
 | BE-4 | **Accendere la 872** nello stesso commit di BE-3: `attivo = t` sulla riga `872` di `80_data/sql/ui/lista_colonna.csv` | `lista_colonna.csv` | I commit BE toccano già questo CSV (`f915a32a5`); il mirror `20260806-15` è `runOnChange`. ⛔ Non prima di BE-3: `test_lista_proiezione_campo_sorgente` diventa rosso |
 | BE-5 | **Chiavi i18n** (`it.json`, `en.json`): `amministrazione.email_emittente` = «Emittente», `ui.admin.preset_emittente` = «Emittente» | `frontend/src/locales/` | Senza chiave `etichettaColonna` ricade sull'etichetta del seed («Emittente»): non rompe, ma la regola è `$t()` |
-| BE-6 | **«Riferimento» dei preset** (colonna 663, calcolata dal BE): ora c'è la 873 riconosciuta accanto. Decidere se «Riferimento» resta (mostra anche il profilo) o si restringe al profilo | `ui_admin_repository.py` + seed 663 | Scelta BE; il DB non ha una preferenza |
-| BE-7 | **Ordinamento per emittente**, se lo si vuole: `ordinabile = t` su 872/873 **+** il campo nella whitelist di ordinamento del repository — *una modifica, due file* | seed + repository | Oggi `ordinabile = f` su entrambe, di proposito |
+| BE-6 | **«Riferimento» dei preset** (colonna 663, calcolata dal BE): ora c'è la 873 riconosciuta accanto. Decidere se «Riferimento» resta (mostra anche il profilo) o si restringe al profilo | `ui_admin_repository.py` + seed 663 | Scelta BE; il DB non ha una preferenza. ✅ **Tid, 19-09: ristretta al solo profilo** — colonna vera su `profilo_accesso_codice` (riquadro sopra) |
+| BE-7 | **Ordinamento per emittente**, se lo si vuole: `ordinabile = t` su 872/873 **+** il campo nella whitelist di ordinamento del repository — *una modifica, due file* | seed + repository | Oggi `ordinabile = f` su entrambe, di proposito. ✅ **Tid, 19-09: resta `f`** |
 | BE-8 | Chiudere la nota d'origine: *«Nel frattempo si entra scegliendo un emittente nella combo»* | `work-done/piano-be-fe-avvio-manuale-di-un-processo.md` §4.4.2 | Il caso è risolto dal seed |
 
 **Poi torna al DB** (una riga, un pgTAP): a BE-3/BE-4 fatti, `multi_emittente = t`
