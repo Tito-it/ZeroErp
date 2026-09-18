@@ -3969,6 +3969,7 @@
       "col_data_conferma": "Registrata il",
       "col_user_conferma": "Registrata da",
       "titolo_singolare": "Distinta contabile",
+      "del_data": "del {data}",
       "solo_consultazione": "Questa schermata e' di sola consultazione: l'apertura di una distinta, la digitazione delle righe, l'abbinamento alle rate e la registrazione arrivano nel prossimo giro.",
       "nessuna_distinta": "Nessuna distinta contabile",
       "nessuna_riga": "Questa distinta non ha ancora righe",
@@ -4117,7 +4118,8 @@
       "campo_motivo": "Motivo della forzatura",
       "motivo_aiuto": "Lo leggera' chi dovra' sistemare l'eccedenza, anche settimane dopo.",
       "forza": "Forza comunque",
-      "forzatura_resta_scritta": "La forzatura resta scritta sulla riga"
+      "forzatura_resta_scritta": "La forzatura resta scritta sulla riga",
+      "gia_cosi": "La riga e' gia' abbinata cosi': per ri-abbinarla cambia documento o rata."
     },
     "rata": {
       "campo": "Rata",
@@ -4287,6 +4289,29 @@
       "gia_corretta": "Già corretta dalla distinta {codice}: apri quella e lavora lì.",
       "e_la_correzione_di": "Questa distinta corregge la {codice}",
       "e_stata_corretta_da": "Questa distinta è già stata corretta dalla {codice}"
+    }
+  },
+  "magazzino": {
+    "disponibilita": {
+      "blocco": {
+        "giacenza_insufficiente": "Giacenza insufficiente: la quantità in uscita è maggiore di quella che il registro dà come presente per l'articolo, oppure per il lotto o il seriale indicati.",
+        "merce_bloccata": "La merce c'è, ma una parte è già promessa ad altri: la quantità libera non basta a coprire l'uscita richiesta."
+      }
+    },
+    "riga": {
+      "blocco": {
+        "articolo_non_gestito": "L'articolo non è gestito a magazzino: nessun movimento si può registrare.",
+        "lotto_obbligatorio": "L'articolo si movimenta per lotti: indica il lotto.",
+        "lotto_non_ammesso": "L'articolo non si movimenta per lotti: il lotto non va indicato.",
+        "lotto_di_altro_articolo": "Il lotto non è dell'articolo, oppure non è più attivo.",
+        "seriale_obbligatorio": "L'articolo si movimenta per seriale: indica il seriale.",
+        "seriale_non_ammesso": "L'articolo non si movimenta per seriale: il seriale non va indicato.",
+        "seriale_di_altro_articolo": "Il seriale non è dell'articolo, oppure non è più attivo.",
+        "seriale_di_altro_emittente": "Il seriale non appartiene all'emittente del magazzino.",
+        "ubicazione_obbligatoria": "Il magazzino usa le ubicazioni: indica in quale ubicazione.",
+        "ubicazione_non_ammessa": "Il magazzino non usa le ubicazioni: l'ubicazione non va indicata.",
+        "ubicazione_di_altro_magazzino": "L'ubicazione non è del magazzino, oppure non è più attiva."
+      }
     }
   },
   "dash_mesi": {

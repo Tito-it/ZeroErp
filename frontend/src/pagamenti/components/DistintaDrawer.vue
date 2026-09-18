@@ -541,22 +541,21 @@ watch(
 
       <template v-if="contentReady && distinta">
         <DrawerEntityHeader>
-          <Tag :value="distinta.codice" severity="secondary" />
-          <!-- ⭐ DI CHI E', a colpo d'occhio (FE-2 del brief distinta-numerata-
-               sul-registro): la sigla sta gia' dentro il codice nuovo
-               (`DIS-<SIGLA>-…`), ma non nel pregresso `VC_…`, e comunque una
-               sigla non e' un nome. Si mostra la ragione sociale, e si ripiega
-               sulla sigla se il nome non e' arrivato — mai un vuoto che si
-               leggerebbe come «di nessuno». -->
-          <span
-            v-if="distinta.emittente_ragione_sociale || distinta.emittente_fiscale_codice"
-            class="app-drawer-header-muted"
-            v-tooltip.bottom="distinta.emittente_fiscale_codice || undefined"
-          >
-            {{ distinta.emittente_ragione_sociale || distinta.emittente_fiscale_codice }}
-          </span>
+          <!-- ⭐ «DIS-… del 18/09/2026», e basta (decisione di Tid, 2026-09-18).
+               Fino a quel giorno fra codice e data stava la ragione sociale
+               dell'emittente (FE-2 del brief distinta-numerata-sul-registro:
+               «di chi e', a colpo d'occhio»): tolta dalla riga, resta nel
+               tooltip del codice — la sigla e' gia' dentro `DIS-<SIGLA>-…`, e
+               chi vuole il nome intero lo trova senza che occupi la testata.
+               ⚠️ La lista delle distinte non ha una colonna emittente: il
+               tooltip e' l'unico posto del drawer in cui il nome si legge. -->
+          <Tag
+            :value="distinta.codice"
+            severity="secondary"
+            v-tooltip.bottom="distinta.emittente_ragione_sociale || undefined"
+          />
           <span class="app-drawer-header-muted">
-            {{ displayDate(distinta.data_contabile) }}
+            {{ t('pagamenti.distinte.del_data', { data: displayDate(distinta.data_contabile) }) }}
           </span>
           <span v-if="distinta.centro_descrizione">{{ distinta.centro_descrizione }}</span>
           <span v-if="distinta.ente_descrizione" class="app-drawer-header-muted">

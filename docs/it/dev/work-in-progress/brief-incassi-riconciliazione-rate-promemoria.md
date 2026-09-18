@@ -2054,6 +2054,24 @@ lo digita), il form singolo resta documento-first (D16), nessuna seconda sede
 dei saldi, nessun guard nuovo — la riga nata da rata passa dagli stessi
 trigger dell'`INSERT` di D16.
 
+### ⭐ D20 — Il terzo giro in-app: che cosa vuol dire VALIDATA, e il futuro del «resto» (Tid, 2026-09-18)
+
+> Brief: [brief-db-validata-e-registrazione-tardiva.md](brief-db-validata-e-registrazione-tardiva.md)
+> — 🔵 in attesa del team DB. Nasce da quattro rilievi sulla distinta
+> `DIS-PGTAPEF202-2026-0000001`, e uno è un **buco del modello**: registrata
+> la distinta, una `SOSPESA` o una `SCARTATA` rimasta sotto non entra più in
+> nessun conto e non può più diventarlo (4ª mossa del guard di riga + nessun
+> verbo che sposti una riga + correzione che le salta). D3-a diceva «lascia lì
+> il resto»; il resto non aveva strada.
+
+| | Decisione | Il perché, in una riga |
+| --- | --- | --- |
+| **D20-a** | **VALIDATA = «ogni riga è stata guardata»**: nessuna riga attiva in uno stato non lavorato (`DA_ABBINARE`, `IMPORTATA`) — bandiera `lavorata` sul catalogo, `fn_check_contabile_validabile` chiamata dal guard ed esposta come capability. Il dichiarato resta **facoltativo sulla MANUALE** (D12, confermato) | `VALIDATA` è «ho finito di inserire»; una riga che nessuno ha guardato è lavoro non finito, e dopo la registrazione nessuno la guarderebbe più |
+| **D20-b** | **Registrazione tardiva per riga**: una `SOSPESA` sotto una distinta registrata si abbina **e** si registra nello stesso gesto (madre `fn_posta_riga_tardiva`), la distinta resta `CHIUSA`, la quadratura del giorno non cambia. Passa da `ABBINATA` (girano tutti i guard, capienza col doppio tempo compresa) e alla 4ª mossa si presenta con una GUC transazionale, come `app.cessazione_automatica` | ricreare la riga in una distinta di recupero raddoppia l'euro; allentare la 4ª mossa riapre «pronta e mai registrata»; `SOSPESA → POSTATA` diretta salta il guard della capienza |
+| **D20-c** | **`SCARTATA` = «non è nostra», un significato solo.** Resta nella distinta (traccia + quadratura) ma esce dal lavoro: nascosta di default (`Mostra scartate (N)`), mai nelle code; reversibile anche a distinta chiusa, e se risulta nostra si registra tardiva | toglierla dalla distinta romperebbe la quadratura («quel denaro è arrivato», D12-e) e una `CHIUSA` è immutabile |
+| **D20-d** | **«Registrabile» sta nel catalogo** (`is_registrabile` su `vendite_contabili_stati`): la madre legge la bandiera, il dettaglio la porta, «Registra» si spegne col motivo invece di finire in 409 da `BOZZA` | «la domanda si fa al catalogo, non a un elenco nel guard» — come `is_postabile` e `is_final` |
+| **D20-e** | *(Tid, 18/09: strada **b**)* dalla matrice di riga esce **solo** `ABBINATA → DA_ABBINARE`: su una abbinata si **ri-abbina** (il dialogo si apre già sulla destinazione), non si «sgancia». `ABBINATA → SOSPESA` **resta**: una abbinata con un dubbio si parcheggia con un motivo prima di registrare | lo «sgancia» è doppione di «Abbina»; la sospensione no — è l'unico parcheggio di una riga decisa su cui torna un dubbio |
+
 ---
 
 ### La regola pratica per queste slice

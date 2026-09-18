@@ -103,6 +103,17 @@ function slotInoltrati(slots) {
 //    e chiama `openModal()`: le quattro cose viaggiano di rimbalzo.
 // ⚠️ `defineExpose` auto-unwrappa i ref, quindi i computed qui sotto arrivano
 //    al chiamante gia' come valori (`feedback_defineexpose_unwrap`).
+//
+// ⛔ E DI RIMBALZO DEVE VIAGGIARE TUTTO CIO' CHE `useListaAzioni` LEGGE, non
+//    solo cio' che leggeva il giorno dell'estrazione. Il 18/09 e' nata
+//    «Espandi tutte», che legge `haEspansione`/`haRighe`/`tutteEspanse` e
+//    chiama `espandiTutte`/`comprimiTutte`: <ListaConfigurabile> li esponeva,
+//    questo contenitore no — e l'azione restava invisibile (`visible:
+//    haEspansione === true`, su `undefined`) in OGNI lista dentro un drawer o
+//    un dialog, senza nessun errore. Rilievo in-app di Tid sulle righe della
+//    distinta contabile (2026-09-18). E' la forma «un BB unifica la lettura,
+//    non il trasporto» (`feedback_bb_legge_non_trasporta`): il consumatore
+//    leggeva un nome che qui nessuno inoltrava.
 defineExpose({
   config: computed(() => listaInterna.value?.config ?? null),
   dirty: computed(() => listaInterna.value?.dirty ?? false),
@@ -113,6 +124,12 @@ defineExpose({
   reset: (...a) => listaInterna.value?.reset?.(...a),
   applyChange: (...a) => listaInterna.value?.applyChange?.(...a),
   ignorePresetUpdate: (...a) => listaInterna.value?.ignorePresetUpdate?.(...a),
+  // Espansione righe, per l'azione standard «Espandi tutte» di useListaAzioni.
+  haEspansione: computed(() => listaInterna.value?.haEspansione === true),
+  haRighe: computed(() => listaInterna.value?.haRighe === true),
+  tutteEspanse: computed(() => listaInterna.value?.tutteEspanse === true),
+  espandiTutte: (...a) => listaInterna.value?.espandiTutte?.(...a),
+  comprimiTutte: (...a) => listaInterna.value?.comprimiTutte?.(...a),
 })
 </script>
 
