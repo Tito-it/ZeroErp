@@ -18,13 +18,14 @@ import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
-import ToggleSwitch from 'primevue/toggleswitch'
+import FiltroToggle from '../../core/components/FiltroToggle.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click'])
@@ -58,7 +59,12 @@ const prioritaFilter = ref(store.filters.priorita_id ?? null)
 const tipoPrestazioneFilter = ref(store.filters.tipo_prestazione_id ?? null)
 watch(() => store.filters.tipo_prestazione_id, v => { tipoPrestazioneFilter.value = v ?? null })
 // Lente di contesto D1 (workflow v2): solo pratiche interne (senza soggetto).
-const soloInterneFilter = ref(store.filters.solo_interne || false)
+// `off: false` e non il `null` di default: lo store lo dichiara `false` e il
+// BE legge «falso» e «assente» come la stessa cosa (nota nello store).
+// ⚠️ Gli altri filtri di questo file sono ancora `ref` + `onXChange` scritti a
+//    mano (precedono il BB): debito dichiarato, non allargato qui.
+const { bindToggle } = useStoreFilterBindings(store, applyFilters)
+const { value: soloInterneFilter, onChange: onSoloInterneChange } = bindToggle('solo_interne', { off: false })
 
 // Filtro data sempre attivo: default inizio mese precedente (dal store)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
@@ -78,11 +84,6 @@ function onPrioritaChange() {
 
 function onTipoPrestazioneChange() {
   store.filters.tipo_prestazione_id = tipoPrestazioneFilter.value
-  applyFilters()
-}
-
-function onSoloInterneChange() {
-  store.filters.solo_interne = soloInterneFilter.value
   applyFilters()
 }
 
@@ -161,13 +162,11 @@ onMounted(() => { store.fetchList() })
           @date-select="onDataAChange"
           @clear-click="onDataAChange"
         />
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <ToggleSwitch v-model="soloInterneFilter" inputId="pratiche-solo-interne"
-            @change="onSoloInterneChange" />
-          <label for="pratiche-solo-interne" style="font-size: 0.85rem; cursor: pointer;">
-            {{ t('pratiche.filtro_solo_interne') }}
-          </label>
-        </div>
+        <FiltroToggle
+          v-model="soloInterneFilter"
+          :label="t('pratiche.filtro_solo_interne')"
+          @change="onSoloInterneChange"
+        />
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>

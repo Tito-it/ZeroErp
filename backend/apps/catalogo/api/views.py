@@ -85,6 +85,7 @@ def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
         "is_composito": serializers.BooleanField(required=False),
         "is_solo_componente": serializers.BooleanField(required=False),
         "requires_serial": serializers.BooleanField(required=False),
+        "requires_lotto": serializers.BooleanField(required=False),
         "meta": serializers.JSONField(required=False, allow_null=True),
     }
     if for_create:

@@ -212,7 +212,7 @@ famiglie); whitelist di ordinamento = colonne del seed (`test_liste_configurabil
 orderBy: 'data_scadenza', orderDir: 'asc' })`).
 
 - Toolbar: `BillingAccountLookup` (cliente), `InputNumber` numero fattura (+
-  serie facoltativa), `ToggleNascoste`-like «mostra esaurite» ⛔ **no** — le
+  serie facoltativa), `FiltroToggle`-like «mostra esaurite» ⛔ **no** — le
   esaurite si vedono e non si scelgono (residuo `= 0` ⇒ non selezionabile, col
   motivo `pagamenti.rate.esaurita`); nascondere una rata saldata è quello che un
   picker dei pagamenti **non** deve fare.

@@ -41,7 +41,6 @@ from apps.pagamenti.services._helpers import (
     E_FATTURA_NON_TROVATA,
     E_RATA_NON_TROVATA,
     E_VALIDAZIONE,
-    decimal_da_payload as _decimal_da_payload,
     risposta_paginata as _risposta_paginata,
 )
 from apps.pagamenti.db.pagamenti_repository import (
@@ -512,9 +511,7 @@ def crea_distinta(payload: dict[str, Any]) -> dict[str, Any]:
     #    sarebbe un secondo risolutore, e attribuirebbe denaro a un emittente
     #    che nessuno ha scelto.
     emittente_fiscale_id = _PAYLOAD.optional_positive_int(payload, "emittente_fiscale_id")
-    importo_dichiarato = _decimal_da_payload(
-        payload, "importo_dichiarato", obbligatorio=False
-    )
+    importo_dichiarato = _PAYLOAD.optional_decimal(payload, "importo_dichiarato")
 
     repository = PagamentiRepository()
     # 🔴 DUE scritture, e devono essere UNA unita'. Il totale dichiarato non e'
@@ -557,8 +554,8 @@ def aggiorna_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[str, A
             "ente_incasso_id": lambda p: _PAYLOAD.optional_positive_int(
                 p, "ente_incasso_id"
             ),
-            "importo_dichiarato": lambda p: _decimal_da_payload(
-                p, "importo_dichiarato", obbligatorio=False
+            "importo_dichiarato": lambda p: _PAYLOAD.optional_decimal(
+                p, "importo_dichiarato"
             ),
             "meta": lambda p: _meta_json(p),
         },
@@ -668,8 +665,7 @@ def crea_riga(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     _PAYLOAD.validate_allowed_keys(
         payload, allowed=frozenset({*_CAMPI_RIGA_PATCH, *_CAMPI_DESTINAZIONE})
     )
-    importo = _decimal_da_payload(payload, "importo", obbligatorio=True)
-    assert importo is not None
+    importo = _PAYLOAD.require_decimal(payload, "importo")
     destinazione = _destinazione_da_payload(
         payload, obbligatoria=False, function_name=f"{_FN}.crea_riga"
     )
@@ -797,7 +793,7 @@ def _righe_da_rate_da_payload(payload: dict[str, Any], *, function_name: str) ->
             function_name=function_name,
         )
         visti.add(scadenza_id)
-        importo = _decimal_da_payload(riga, "importo", obbligatorio=True)
+        importo = _PAYLOAD.require_decimal(riga, "importo")
         forzata = _PAYLOAD.optional_bool(riga, "forzata") or False
         motivo_forzatura = _PAYLOAD.optional_string(riga, "motivo_forzatura")
         _guard_motivo_con_forzatura(forzata, motivo_forzatura, function_name=function_name)
@@ -946,7 +942,7 @@ def aggiorna_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         payload,
         (*_CAMPI_RIGA_PATCH, *_CAMPI_FORZATURA),
         lettori={
-            "importo": lambda p: _decimal_da_payload(p, "importo", obbligatorio=True),
+            "importo": lambda p: _PAYLOAD.require_decimal(p, "importo"),
             "riferimento_ente": lambda p: _PAYLOAD.optional_string(
                 p, "riferimento_ente"
             ),
@@ -1230,7 +1226,7 @@ def registra_distinta(contabile_id: int, payload: dict[str, Any]) -> RicevutaPos
     #    righe non e' un caso reale, e se lo diventasse con l'import si allarga
     #    qui — un errore parlante, non un troncamento silenzioso.
     righe_attese = _PAYLOAD.optional_smallint(payload, "righe_attese", min_val=0)
-    totale_atteso = _decimal_da_payload(payload, "totale_atteso", obbligatorio=False)
+    totale_atteso = _PAYLOAD.optional_decimal(payload, "totale_atteso")
     ErrorManager.require(
         (righe_attese is None) == (totale_atteso is None),
         code=E_VALIDAZIONE,

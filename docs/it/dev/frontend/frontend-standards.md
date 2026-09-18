@@ -702,24 +702,60 @@ cambiare i 60 giorni e' una riga in `core/utils/date`
 
 Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise da tutte le liste.
 
-### Interruttore «mostra i nascosti» — `ToggleNascoste`
+### Interruttore di filtro — `FiltroToggle` + `bindToggle`
 
-Quando una lista lascia fuori di default degli elementi che **esistono** (righe
-archiviate, lotti annullati) e li rimette dentro a richiesta, l'interruttore è
-il BB `ToggleNascoste`: `[switch] Mostra annullati (3)`, con il **numero** di
-ciò che resta fuori finché è spento. ⛔ Non un `ToggleSwitch` scritto in
-pagina: il 2026-09-12 erano già due copie con due CSS e due chiavi plurali.
+Un filtro acceso/spento nella toolbar di una lista («Mostra storico», «Solo
+interne», «Solo negativa», «Mostra annullati») è il BB `FiltroToggle`:
+`[switch] Etichetta`. ⛔ Non un `ToggleSwitch` + `<label>` scritti in pagina:
+il 2026-09-19 erano **cinque** copie in quattro file, con lo stile inline
+ricopiato e un id inventato a mano per non collidere fra due schede — il root
+del BB è un `<label>`, e non ha bisogno di nessun id.
 
-- il numero lo **dichiara il backend** (`archiviate_count`, `annullati_count`):
-  spento e senza numero, «elenco pulito» e «tre righe messe via» si leggono
-  uguali — è la stessa regola di `ritirate_count` sul giornale;
-- la forma dell'etichetta è `Etichetta (N)` (decisione di Tid, 2026-09-12), non
-  una frase plurale: la chiave i18n è una, quella dell'interruttore;
-- il cambio ricarica **da pagina 1**: la pagina 3 dell'insieme piccolo può non
-  esistere in quello grande, e viceversa.
+Il **legame con lo store** non si scrive nel componente:
+`useStoreFilterBindings.bindToggle(storeKey, { on, off })`. Le stesse cinque
+copie avevano **tre** forme del legame (un `ref` + handler, un `computed`
+invertito, un `computed` che scrive `true | null`): `on`/`off` sono i due
+valori che lo store porta, e coprono tutte e tre.
 
-Consumer: `LottiListView`, `CodaFiltriToolbar`. Dettaglio nel
+- ⚠️ `off` è **`null`** di default, non `false`: il core manda ogni filtro
+  `!= null`, e un `false` sul filo sarebbe un parametro che il backend legge
+  senza che filtri niente. Chi ha `false` come default dello store lo dichiara;
+- il filtro **invertito** («mostra storico» acceso ⇔ `solo_ultima_revisione =
+  false`) si scrive `bindToggle('solo_ultima_revisione', { on: false, off: true })`,
+  non con un `computed` a mano;
+- il cambio ricarica **da pagina 1** (`applyFilters`): la pagina 3
+  dell'insieme piccolo può non esistere in quello grande, e viceversa.
+
+**Quando l'interruttore ALLARGA la lista** — rimette dentro elementi che
+**esistono** e che di default restano fuori (righe archiviate, lotti
+annullati) — porta anche il **numero**: `[switch] Mostra annullati (3)`, prop
+`count`. Il numero lo **dichiara il backend** (`archiviate_count`,
+`annullati_count`): spento e senza numero, «elenco pulito» e «tre righe messe
+via» si leggono uguali — è la stessa regola di `ritirate_count` sul giornale.
+La forma è `Etichetta (N)` (decisione di Tid, 2026-09-12), non una frase
+plurale: la chiave i18n è una. Un interruttore che **restringe** non ha niente
+da contare e non passa `count`.
+
+> Fino al 2026-09-19 il BB si chiamava `ToggleNascoste` e copriva il solo
+> caso col conteggio: le cinque copie senza conteggio erano lo stesso
+> componente, e si è ritirato nel giro che le ha assorbite.
+
+Consumer: `LottiListView`, `CodaFiltriToolbar` (col conteggio);
+`OfferteSearchTable`, `PreventiviList`, `PraticheSearchTable`,
+`DisponibilitaSearchTable`. Dettaglio nel
 [catalogo](catalogo-building-block-frontend.md).
+
+### Filtro con lookup ricco — `bindLookup`
+
+Quando il filtro è un lookup **ricco** (`ArticoloLookup`,
+`BillingAccountLookup`…) il widget tiene l'**oggetto** scelto e lo store
+l'**id**: il legame è `useStoreFilterBindings.bindLookup(storeKey, { idField })`,
+con `onChange` su `@update:model-value` (i lookup ricchi lo emettono su select
+**e** su clear). ⛔ Non un `watch` sul widget con un guard anti-giro-a-vuoto:
+erano due copie identiche (registro e disponibilità di magazzino, 2026-09-19).
+⚠️ Dallo store al widget viaggia **solo l'azzeramento**: un id messo da fuori
+non si rende senza una lettura by-id — limite dichiarato nel BB, da colmare con
+un'opzione `risolvi` il giorno che un deep-link lo chiederà.
 
 ### Scorciatoie da tastiera (Keyboard Shortcuts)
 

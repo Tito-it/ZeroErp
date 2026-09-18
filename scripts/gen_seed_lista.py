@@ -157,6 +157,20 @@ WHITELIST_BE: dict[str, tuple] = {
     # 7° lotto: una whitelist annidata nella classe si svuota quando un test
     # mocka il repository.
     "vendite.registri_numerazione": ("apps/vendite/db/registri_repository.py", "_ORDER_COLS"),
+    # Magazzino, Lotto 2 (2026-09-18): otto liste, sei whitelist — le due
+    # famiglie del documento interno condividono la proiezione di TESTATA;
+    # le righe hanno la loro (la quantita' ha un nome fisico diverso).
+    "magazzino.inventari": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
+    "magazzino.rettifiche": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
+    "magazzino.inventario_righe": ("apps/magazzino/db/magazzino_repository.py",
+                                   "INVENTARIO_RIGHE_SORT_COLUMNS"),
+    "magazzino.rettifica_righe": ("apps/magazzino/db/magazzino_repository.py",
+                                  "RETTIFICA_RIGHE_SORT_COLUMNS"),
+    "magazzino.inventario_piano": ("apps/magazzino/db/magazzino_repository.py", "PIANO_SORT_COLUMNS"),
+    "magazzino.disponibilita": ("apps/magazzino/db/magazzino_repository.py", "DISPONIBILITA_SORT_COLUMNS"),
+    "magazzino.disponibilita_articoli": ("apps/magazzino/db/magazzino_repository.py",
+                                         "DISPONIBILITA_ARTICOLI_SORT_COLUMNS"),
+    "magazzino.movimenti": ("apps/magazzino/db/magazzino_repository.py", "MOVIMENTI_SORT_COLUMNS"),
     "config.utilities_tipi_ruolo": ("apps/config/db/utilities_tipi_ruolo_repository.py", "_ORDER_COLS"),
     "config.tipi_ruolo_tipi_indirizzo": ("apps/config/db/tipi_ruolo_tipi_indirizzo_repository.py",
                                          "_ORDER_COLS"),

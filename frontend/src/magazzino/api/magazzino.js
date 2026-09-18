@@ -1,0 +1,228 @@
+// ------------------------------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Tid (Michele Carlo Titini)
+// Doc: JavaScript
+// Scopo: Client API del dominio MAGAZZINO — le rotte di `/api/v1/magazzino/`:
+//        il documento interno (inventari e rettifiche, STESSA forma sotto due
+//        segmenti), l'anteprima dei motivi di riga, i tre lookup di riga e la
+//        consultazione (disponibilita', movimenti).
+// Note: Piano: docs/it/dev/work-in-progress/piano-be-fe-magazzino-lotto-2-motore.md
+//       ⭐ Le rotte del documento interno prendono la FAMIGLIA come primo
+//       argomento (`'inventari'` | `'rettifiche'`, da `FAMIGLIA` di
+//       `vocabolari.js`): il backend le monta da una sola factory sotto
+//       `<famiglia>/`, e due elenchi di funzioni scritti a mano divergerebbero
+//       al primo verbo nuovo — Q-1 del piano, decisa da Tid il 2026-09-18.
+//       ⚠️ Le liste sono OFFSET-based (`limit`/`offset`, `{count, results}`),
+//       la lingua di `useSearchTable`: nessuna conversione nello store.
+//       ⛔ `POSTED` non si chiede con `stato/`: lo scrive SOLO `registra/`
+//       (il guard risponderebbe con un TECNICO, cioe' un 500 per un pulsante).
+// ------------------------------------------------------------
+
+import api from '../../core/api'
+import { generateIdempotencyKey } from '../../core/utils/idempotency'
+import { FAMIGLIA } from '../vocabolari'
+
+const BASE = '/magazzino'
+
+// Scopo: header di una scrittura. Il backend dichiara `require_idempotency_key`
+//        su tutte le POST/DELETE che muovono stato: senza, rispondono 400.
+function idem() {
+  return { headers: { 'Idempotency-Key': generateIdempotencyKey() } }
+}
+
+// Scopo: il prefisso di una famiglia: `/magazzino/inventari` | `/magazzino/rettifiche`.
+function base(famiglia) {
+  return `${BASE}/${famiglia}`
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Il documento interno — testata
+// ══════════════════════════════════════════════════════════════
+
+// Elenco paginato delle testate. Filtri: `magazzino_id`, `stato`, `data_da`/
+// `data_a` (il floor standard lo applica lo store), `search` (min 3, su
+// descrizione e magazzino). Senza ordinamento: `data DESC, id DESC`.
+export function listDocumenti(famiglia, params = {}) {
+  return api.get(`${base(famiglia)}/`, { params })
+}
+
+// Scopo: export CSV/Excel dell'elenco, con gli stessi filtri e ordinamento.
+// ⚠️ `formato` e non `format`: quest'ultimo e' un parametro magico di DRF e
+//    collide col content negotiation (`feedback_drf_format_magic_param`).
+//    Risposta Blob: errore 422 se il dataset supera il cap.
+export function exportDocumenti(famiglia, params = {}) {
+  return api.get(`${base(famiglia)}/export/`, { params, responseType: 'blob' })
+}
+
+// ⭐ Crea la BOZZA. Il magazzino si sceglie QUI e basta: e' l'ancora del
+//    documento (RLS, ubicazioni delle righe, `qta_sistema` del piano) e il
+//    PATCH non lo accetta. Payload: `magazzino_id` (obbligatorio), `data`
+//    (default oggi, a DB), `descrizione` (solo inventario), `meta`.
+export function creaDocumento(famiglia, payload) {
+  return api.post(`${base(famiglia)}/`, payload, idem())
+}
+
+// Dettaglio: testata + magazzino (`magazzino_codice`, `_descrizione`,
+// `magazzino_usa_ubicazioni`) + `righe_count` + `stato_info_key` e, per
+// l'inventario, `piano_riepilogo`. ⏳ R-1: `capabilities` arrivera' da
+// `fn_available_actions_*`; finche' non c'e', la chiave MANCA — non si finge.
+export function getDocumento(famiglia, docId) {
+  return api.get(`${base(famiglia)}/${docId}/`)
+}
+
+// PATCH della testata: `data`, `descrizione` (solo inventario), `meta`.
+// ⛔ Non lo stato (`stato/`), non il magazzino (si sceglie alla nascita).
+export function aggiornaDocumento(famiglia, docId, payload) {
+  return api.patch(`${base(famiglia)}/${docId}/`, payload)
+}
+
+// Elimina una BOZZA: il DB decide (`E_MAG_DOCUMENTO_NON_ELIMINABILE`, 409
+// fuori da `DRAFT`). ⚠️ Il metodo dice il verbo: niente `/elimina/` nel path.
+// E' una scrittura, quindi porta l'`Idempotency-Key` come le POST.
+export function eliminaDocumento(famiglia, docId) {
+  return api.delete(`${base(famiglia)}/${docId}/`, idem())
+}
+
+// Chiede un cambio di stato fra i RICHIEDIBILI (`CONFIRM` · `CANCEL` · `DRAFT`);
+// la matrice la applica il guard (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`).
+export function cambiaStatoDocumento(famiglia, docId, stato) {
+  return api.post(`${base(famiglia)}/${docId}/stato/`, { stato }, idem())
+}
+
+// ⛔ IL POSTING, l'unico gesto irreversibile del dominio: una `SELECT` sulla
+//    madre (`fn_posta_*`), il DB e' la transazione. Rifiuta non-`CONFIRM`, senza
+//    righe, righe non postabili — TUTTO, lo stato resta `CONFIRM`. Risposta:
+//    `{movimenti: [{movimento_id, riga_id, qta}], n_movimenti, documento}`.
+//    Gate: azione di processo `registra_magazzino` (R-3, fail-closed).
+export function registraDocumento(famiglia, docId) {
+  return api.post(`${base(famiglia)}/${docId}/registra/`, {}, idem())
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Il documento interno — righe e piano
+// ══════════════════════════════════════════════════════════════
+
+// Le righe di UNA testata, paginate (lista `magazzino.<famiglia>_righe`).
+// Senza ordinamento: `id ASC`, l'ordine di digitazione.
+export function listRighe(famiglia, docId, params = {}) {
+  return api.get(`${base(famiglia)}/${docId}/righe/`, { params })
+}
+
+export function exportRighe(famiglia, docId, params = {}) {
+  return api.get(`${base(famiglia)}/${docId}/righe/export/`, { params, responseType: 'blob' })
+}
+
+// La riga: `articolo_id` (uuid), la quantita' col nome FISICO della famiglia
+// (`qta_contata` ≥ 0 | `qta_delta` ≠ 0) + `motivo` (rettifica),
+// `costo_unitario` (≥ 0, nullable: vuoto = alla media corrente),
+// `ubicazione_id` / `lotto_id` / `asset_id` (nullable), `meta`.
+// ⛔ Il backend NON ricalcola la coerenza della riga (Q-3): il DB la accetta in
+//    `DRAFT`, il piano la dichiara `NON_POSTABILE`, il form la MOSTRA con
+//    `motiviRiga`. Solo in `DRAFT`: fuori, `E_MAG_DOCUMENTO_RIGHE_CONGELATE`.
+export function creaRiga(famiglia, docId, payload) {
+  return api.post(`${base(famiglia)}/${docId}/righe/`, payload, idem())
+}
+
+// PATCH parziale della riga; `null` esplicito AZZERA un nullable (togliere il lotto).
+export function aggiornaRiga(famiglia, docId, rigaId, payload) {
+  return api.patch(`${base(famiglia)}/${docId}/righe/${rigaId}/`, payload)
+}
+
+export function eliminaRiga(famiglia, docId, rigaId) {
+  return api.delete(`${base(famiglia)}/${docId}/righe/${rigaId}/`, idem())
+}
+
+// ⭐ IL PIANO dell'inventario (solo `inventari`): che cosa il posting scrivera',
+//    riga per riga, con l'`esito` e — su `NON_POSTABILE` — la coppia
+//    `posting_blocco_reason` / `_reason_key` (famiglia «riga» di api.md
+//    §Capability). Nessun vincolo di stato: in `DRAFT` e' un'anteprima, dopo
+//    `CONFIRM` e' la fotografia contro cui si registra (D-L2-n).
+export function listPiano(docId, params = {}) {
+  return api.get(`${base(FAMIGLIA.INVENTARI)}/${docId}/piano/`, { params })
+}
+
+export function exportPiano(docId, params = {}) {
+  return api.get(`${base(FAMIGLIA.INVENTARI)}/${docId}/piano/export/`, { params, responseType: 'blob' })
+}
+
+// ⭐ L'ANTEPRIMA DEI MOTIVI di una riga: `script.fn_check_riga_magazzino` cosi'
+//    com'e' — la STESSA funzione che il piano e la primitiva usano, quindi «cio'
+//    che si vede e' cio' che verra' scritto». `{motivi: [...]}`, array ordinato
+//    del DB (`codice`, `reason_key`, `dettaglio`…); `[]` = nessun motivo.
+//    ⚠️ Lettura best-effort per il form: non blocca il Salva (Q-3).
+export function motiviRiga(params) {
+  return api.get(`${BASE}/righe/motivi/`, { params })
+}
+
+// ══════════════════════════════════════════════════════════════
+//  I tre lookup di riga — envelope `{"results": [...]}`
+// ══════════════════════════════════════════════════════════════
+
+// Le ubicazioni ATTIVE di un magazzino (solo se `usa_ubicazioni`).
+export function lookupUbicazioni(magazzinoId) {
+  return api.get(`${BASE}/magazzini/${magazzinoId}/ubicazioni/lookup/`)
+}
+
+// I lotti attivi di un articolo (solo se `requires_lotto`), con ricerca sul codice.
+export function lookupLotti(articoloId, search = null) {
+  const params = { articolo_id: articoloId }
+  if (search) params.search = search
+  return api.get(`${BASE}/lotti/lookup/`, { params })
+}
+
+// I seriali attivi di un articolo (solo se `requires_serial`), dell'emittente
+// del magazzino — la RLS su `assets` fa il resto.
+export function lookupAssets(articoloId, magazzinoId) {
+  return api.get(`${BASE}/assets/lookup/`, {
+    params: { articolo_id: articoloId, magazzino_id: magazzinoId },
+  })
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Consultazione — la disponibilita' e il registro
+// ══════════════════════════════════════════════════════════════
+
+// La disponibilita' per (articolo, magazzino) — `vw_disponibilita`, lista
+// `magazzino.disponibilita`. Filtri: `magazzino_id`, `articolo_id`,
+// `solo_negativa` (disponibile < 0: le promesse non piu' mantenibili, D-L2-d),
+// `solo_con_giacenza`, `search` (min 3, su codice e descrizione articolo).
+// ⚠️ La vista e' `security_invoker`: si legge con la connessione dell'utente.
+export function listDisponibilita(params = {}) {
+  return api.get(`${BASE}/disponibilita/`, { params })
+}
+
+export function exportDisponibilita(params = {}) {
+  return api.get(`${BASE}/disponibilita/export/`, { params, responseType: 'blob' })
+}
+
+// La disponibilita' per ARTICOLO (somma sui magazzini visibili, `n_magazzini`)
+// — lista `magazzino.disponibilita_articoli`, colonne sue.
+export function listDisponibilitaArticoli(params = {}) {
+  return api.get(`${BASE}/disponibilita/articoli/`, { params })
+}
+
+export function exportDisponibilitaArticoli(params = {}) {
+  return api.get(`${BASE}/disponibilita/articoli/export/`, { params, responseType: 'blob' })
+}
+
+// I BLOCCHI di (articolo, magazzino): gli attesi `APERTA` in uscita, col
+// soggetto decodificato e la nota — il drill-down di `n_blocchi` (D-L2-j).
+export function listBlocchi(articoloId, magazzinoId) {
+  return api.get(`${BASE}/disponibilita/blocchi/`, {
+    params: { articolo_id: articoloId, magazzino_id: magazzinoId },
+  })
+}
+
+// IL REGISTRO dei movimenti — lista `magazzino.movimenti`, sola lettura per
+// costruzione. Filtri: `magazzino_id`, `articolo_id`, `causale_id`, `data_da`/
+// `data_a` (su `data_mov`), `sorgente_tipo` (`config.sorgenti.codice_interno`),
+// e i due deep-link dal documento POSTED: `inventario_id` / `rettifica_id`
+// (i movimenti nati dalle righe di QUEL documento). Senza ordinamento:
+// `data_mov DESC, id DESC`.
+export function listMovimenti(params = {}) {
+  return api.get(`${BASE}/movimenti/`, { params })
+}
+
+export function exportMovimenti(params = {}) {
+  return api.get(`${BASE}/movimenti/export/`, { params, responseType: 'blob' })
+}

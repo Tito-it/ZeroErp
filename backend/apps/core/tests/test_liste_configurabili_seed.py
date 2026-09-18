@@ -467,6 +467,28 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # paginazione e l'export che la DataTable grezza non aveva.
     ("pagamenti.distinta_righe",
      _da_costante("apps.pagamenti.db.pagamenti_repository", "DISTINTA_RIGHE_SORT_COLUMNS")),
+    # Magazzino, Lotto 2 (2026-09-18, piano-be-fe-magazzino-lotto-2-motore §4.3):
+    # le otto liste del motore, seedate PRIMA del frontend. ⭐ Inventari e
+    # rettifiche condividono la proiezione (una famiglia, Q-1) e quindi la
+    # whitelist; le righe NO — la chiave della quantita' e' fisica e diversa
+    # (`qta_contata` / `qta_delta`), e una whitelist unica dichiarerebbe su
+    # ogni famiglia una colonna che la sua SELECT non ha (un 500 «ammesso»).
+    ("magazzino.inventari",
+     _da_costante("apps.magazzino.db.magazzino_repository", "DOCUMENTI_SORT_COLUMNS")),
+    ("magazzino.rettifiche",
+     _da_costante("apps.magazzino.db.magazzino_repository", "DOCUMENTI_SORT_COLUMNS")),
+    ("magazzino.inventario_righe",
+     _da_costante("apps.magazzino.db.magazzino_repository", "INVENTARIO_RIGHE_SORT_COLUMNS")),
+    ("magazzino.rettifica_righe",
+     _da_costante("apps.magazzino.db.magazzino_repository", "RETTIFICA_RIGHE_SORT_COLUMNS")),
+    ("magazzino.inventario_piano",
+     _da_costante("apps.magazzino.db.magazzino_repository", "PIANO_SORT_COLUMNS")),
+    ("magazzino.disponibilita",
+     _da_costante("apps.magazzino.db.magazzino_repository", "DISPONIBILITA_SORT_COLUMNS")),
+    ("magazzino.disponibilita_articoli",
+     _da_costante("apps.magazzino.db.magazzino_repository", "DISPONIBILITA_ARTICOLI_SORT_COLUMNS")),
+    ("magazzino.movimenti",
+     _da_costante("apps.magazzino.db.magazzino_repository", "MOVIMENTI_SORT_COLUMNS")),
     ("pagamenti.rate_fuori_capienza",
      _da_costante("apps.pagamenti.db.pagamenti_repository", "RATE_FUORI_CAPIENZA_SORT_COLUMNS")),
     ("pagamenti.rate",

@@ -61,6 +61,10 @@ export const CONFIG_TABLES = [
   { schema: 'catalogo', rel: 'catalogo.unita_misura', label: 'Unita\' di Misura', drawer: null },
   // --- magazzino ---
   { schema: 'magazzino', rel: 'magazzino.causali', label: 'Causali', drawer: null },
+  // Un lotto e' `articolo_id` (uuid) + `codice` + `data_arrivo`: senza questa
+  // riga un articolo «per lotti» non ha lotti da scegliere (Lotto 2 §3.1).
+  // ⚠️ Solo qui, non nel lookup generico: la tabella non ha `descrizione`.
+  { schema: 'magazzino', rel: 'magazzino.lotti', label: 'Lotti', drawer: null },
   { schema: 'magazzino', rel: 'magazzino.magazzini', label: 'Magazzini', drawer: null },
   { schema: 'magazzino', rel: 'magazzino.ubicazioni', label: 'Ubicazioni', drawer: null },
   // --- pagamenti ---

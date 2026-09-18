@@ -706,3 +706,53 @@ export const GRAVITA_GIORNALE_MAP = {
 export function gravitaGiornaleSeverity(gravita) {
   return resolveSeverity(GRAVITA_GIORNALE_MAP, gravita)
 }
+
+// --- Stati del DOCUMENTO INTERNO di magazzino (inventario e rettifica: una
+// famiglia, lo stesso `CHECK` `chk_mag_inventari_stato` / `chk_mag_rettifiche_
+// stato` — D-L2-h, «matrice nel guard, non tabella»). Nessuna tabella di
+// stato a DB, quindi niente `stato_descrizione`: l'etichetta e' una chiave i18n
+// del frontend (`magazzino.documenti_interni.stato.*`) e il colore sta qui.
+//   DRAFT   grigio   si sta ancora digitando (le righe si scrivono solo qui)
+//   CONFIRM azzurro  confermato: il piano si legge qui, si aspetta il gesto
+//                    irreversibile («Registra»)
+//   POSTED  verde    registrato: i movimenti sono sul registro
+//   CANCEL  rosso    annullato
+// ⚠️ CONFIRM e' azzurro e non arancio come VALIDATA della distinta: la
+//    conferma di un inventario e' ancora REVERSIBILE (`CONFIRM → DRAFT` riapre
+//    le righe), mentre VALIDATA aspetta la sola registrazione. L'arancio dice
+//    «c'e' qualcosa da fare qui», e qui non e' ancora detto.
+export const STATO_DOCUMENTO_INTERNO_MAP = {
+  DRAFT: 'secondary',
+  CONFIRM: 'info',
+  POSTED: 'success',
+  CANCEL: 'danger',
+}
+export function documentoInternoSeverity(codice) {
+  return resolveSeverity(STATO_DOCUMENTO_INTERNO_MAP, codice)
+}
+
+// --- Esiti del PIANO di un inventario (`magazzino.fn_inventario_piano.esito`):
+// che cosa il posting scrivera' per ogni posizione.
+//   INV_INIZIALE  azzurro  prima giacenza a registro (il primo carico)
+//   RETT_POS      azzurro  la contata supera il registro: si carica
+//   RETT_NEG      azzurro  la contata e' sotto il registro: si scarica
+//   INVARIATA     grigio   conta come a registro: nessun movimento
+//   NON_CONTATA   arancio  a registro c'e' merce che il conteggio NON ha
+//                          nominato — resta com'era, ed e' il caso di Tid
+//                          (D-L2-n): va VISTO prima di confermare
+//   NON_POSTABILE rosso    la riga non passa `fn_check_riga_magazzino`: il
+//                          posting rifiuta TUTTO finche' c'e' (col motivo
+//                          nella coppia `posting_blocco_reason*`)
+// ⛔ Vocabolario del DB: un esito nuovo cade sul grigio e resta visibile col
+//    suo codice, mai nascosto.
+export const ESITO_PIANO_MAP = {
+  INV_INIZIALE: 'info',
+  RETT_POS: 'info',
+  RETT_NEG: 'info',
+  INVARIATA: 'secondary',
+  NON_CONTATA: 'warn',
+  NON_POSTABILE: 'danger',
+}
+export function esitoPianoSeverity(codice) {
+  return resolveSeverity(ESITO_PIANO_MAP, codice)
+}

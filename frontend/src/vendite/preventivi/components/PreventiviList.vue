@@ -6,7 +6,7 @@
 // useListaConfigurabilePage; qui restano filtri custom, slot e azioni di riga.
 // Righe dalla vista canonica `vw_preventivi_lista`: cliente=`ragione_sociale_completa`,
 // id.fiscale=`id_fiscale_univoco_cf_piva` (nomi canonici, niente alias).
-import { computed, ref, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
@@ -18,7 +18,6 @@ import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../co
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
-import ToggleSwitch from 'primevue/toggleswitch'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
@@ -31,6 +30,7 @@ import LineagePraticaCell from '../../_shared/lineage/LineagePraticaCell.vue'
 import LineageFaseTag from '../../_shared/lineage/LineageFaseTag.vue'
 import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
+import FiltroToggle from '../../../core/components/FiltroToggle.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
@@ -53,19 +53,17 @@ const {
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindDate, bindToggle } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
 const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
-// Toggle "mostra storico revisioni": negazione del filtro store
-// (mostraStorico=ON ⇔ solo_ultima_revisione=false). computed get/set per restare
-// allineato al filtro reale anche se cambia altrove (reset, logout,
-// ripristino sessione): single source of truth = store.
-const mostraStorico = computed({
-  get: () => !store.filters.solo_ultima_revisione,
-  set: (val) => { store.filters.solo_ultima_revisione = !val },
-})
+// Toggle «mostra storico revisioni»: la NEGAZIONE del filtro dello store —
+// acceso ⇔ `solo_ultima_revisione = false`, spento ⇔ `true` (il default).
+// `bindToggle` con i due valori dichiarati: il widget resta un booleano.
+const { value: mostraStorico, onChange: onMostraStoricoChange } = bindToggle(
+  'solo_ultima_revisione', { on: false, off: true },
+)
 
 // Scopo: i parametri dell'export = QUELLI DELLA LISTA a video, dalla sede
 //        unica dello store (`paramsFiltro`: ricerca, filtri di dominio col nome
@@ -78,9 +76,6 @@ const mostraStorico = computed({
 function buildExportParams(format) {
   return { formato: format, ...store.paramsFiltro() }
 }
-
-// Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.
-function onMostraStoricoChange() { applyFilters() }
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -160,13 +155,11 @@ onMounted(() => store.fetchList())
           <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
             :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
             @date-select="onDataAlChange" @clear-click="onDataAlChange" />
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <ToggleSwitch v-model="mostraStorico" inputId="prev-mostra-storico"
-              @change="onMostraStoricoChange" />
-            <label for="prev-mostra-storico" style="font-size: 0.85rem; cursor: pointer;">
-              {{ t('vendite.preventivi.filtro_mostra_storico') }}
-            </label>
-          </div>
+          <FiltroToggle
+            v-model="mostraStorico"
+            :label="t('vendite.preventivi.filtro_mostra_storico')"
+            @change="onMostraStoricoChange"
+          />
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>

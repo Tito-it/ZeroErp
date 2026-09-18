@@ -135,7 +135,8 @@ coda «Sospese» e dal drawer di una distinta chiusa. ⛔ Non un job: la tardiva
 **Cosa si fa.** Niente a DB oltre la bandiera di P-1. `SCARTATA` resta *«non è
 nostra»* e resta **nella distinta**. Cambia la **resa** (§6): nel drawer le
 scartate sono nascoste di default con `Mostra scartate (N)` (il BB
-`ToggleNascoste`, come le archiviate delle code) e il pannello di quadratura
+`FiltroToggle` col conteggio — fino al 19/09 `ToggleNascoste` — come le
+archiviate delle code) e il pannello di quadratura
 dice *dichiarato · righe · di cui non nostre*; nelle code non compaiono mai.
 
 **Perché non «togliere la riga dalla distinta»** (l'idea di Tid del 18/09,
@@ -276,7 +277,7 @@ id **non** apre la porta, e che fuori dalla transazione è vuota.
 | --- | --- | --- |
 | **FE-1** | `DistintaDrawer`: «Porta a VALIDATA» apre un **dialog di validazione** (`AppDialog`): dichiarato · totale righe · scarto (i tre esiti) · righe per stato; spento col motivo quando `can_validare = false` (`bloccoMotivo`, prefisso `validazione_blocco`) | non più il confirm generico; «Registra» tiene la sua anteprima |
 | **FE-2** | «Registra» spento col motivo quando `!stato_is_registrabile` (chiave `pagamenti.registra.blocco.stato`) | oggi finisce in 409 |
-| **FE-3** | `Mostra scartate (N)` (`ToggleNascoste`) sopra la lista delle righe; in quadratura la riga «di cui non nostre» da `righe_per_stato` | D20-c |
+| **FE-3** | `Mostra scartate (N)` (`FiltroToggle` con `count`, ex `ToggleNascoste`) sopra la lista delle righe; in quadratura la riga «di cui non nostre» da `righe_per_stato` | D20-c |
 | **FE-4** | `CodaRigheSearchTable`: azioni di riga — **Da abbinare**: Abbina · Sospendi · Scarta; **Sospese**: Abbina (distinta aperta) / **Abbina e registra** (distinta registrata, `contabile_registrata`) · Scarta · Riporta da abbinare (dalla matrice, come oggi nel drawer); da una **scartata** (solo nel drawer, con `Mostra scartate`): Riprendi | `AbbinaRigaDialog` riusato con un modo `registra`: titolo e verbo diversi, avviso «non si torna indietro», stesso doppio tempo |
 | **FE-5** | Kebab del drawer su una riga `ABBINATA`: segue la matrice (P-6) — niente da scrivere | |
 | **FE-6** | i18n it/en; `check_i18n_keys` sulle `reason_key` nuove (`pagamenti.distinte.validazione_reason.*`) | |

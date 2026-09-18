@@ -12,7 +12,7 @@ import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusu
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
-import ToggleNascoste from '../../core/components/ToggleNascoste.vue'
+import FiltroToggle from '../../core/components/FiltroToggle.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
@@ -831,10 +831,10 @@ const azioniPagina = computed(() =>
                  gusci: fuori dal perimetro di default, ma non spariscono in
                  silenzio — il numero dice che ci sono, e l'interruttore li
                  rimette dentro OVUNQUE (lista, chip, calendario, export).
-                 BB `ToggleNascoste`, lo stesso del «Mostra archiviate» delle
-                 code; `app-dash-filter-toggle` gli da' il look dei filtri di
+                 BB `FiltroToggle` col conteggio, lo stesso del «Mostra
+                 archiviate» delle code; `app-dash-filter-toggle` gli da' il look dei filtri di
                  cruscotto che ha accanto. -->
-            <ToggleNascoste
+            <FiltroToggle
               v-model="store.filters.annullati"
               class="app-dash-filter-toggle"
               :label="t('vendite.lotti.filtro_annullati')"

@@ -86,6 +86,11 @@ ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
     "is_composito": "bool",
     "is_solo_componente": "bool",
     "requires_serial": "bool",
+    # Lotto 2 di magazzino (brief §4.9, M-5): l'articolo decide se si
+    # movimenta per PARTITE — o sempre o mai. Gemello di `requires_serial`,
+    # ⛔ ma FUORI dal lock BoM (Lotto 1 §4.3): non entra in
+    # `lock_columns_conditional` ne' nei `non_editable_fields`.
+    "requires_lotto": "bool",
     "listino_tipologia_id": "int",
     "natura_vendita_id": "int",
     # Blocco B del brief modifiche certe (2026-09-13): DA DOVE arriva l'articolo.
@@ -122,6 +127,7 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.is_composito",
     "a.is_solo_componente",
     "a.requires_serial",
+    "a.requires_lotto",
     "a.listino_tipologia_id",
     "a.meta",
     "a.user_insert",
@@ -488,7 +494,14 @@ class CatalogoRepository:
                 a.iva_id,
                 a.iva_codice,
                 a.iva_descrizione,
-                a.iva_aliquota_iva{extra_cols}
+                a.iva_aliquota_iva,
+                -- I flag di MAGAZZINO (Lotto 2, 2026-09-18): il form di riga
+                -- dell'inventario mostra lotto e seriale SOLO se l'articolo li
+                -- pretende, e li legge dalla riga scelta nel picker — mai
+                -- ricalcolati (piano-be-fe-magazzino-lotto-2-motore §5.3).
+                a.gestito_a_magazzino,
+                a.requires_lotto,
+                a.requires_serial{extra_cols}
             FROM catalogo.vw_articoli_dettaglio a
             {join_clause}
             {where_clause}

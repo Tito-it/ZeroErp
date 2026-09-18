@@ -279,6 +279,14 @@ def _r(percorso: str, classe: str) -> Any:
     return getattr(importlib.import_module(percorso), classe)()
 
 
+# Scopo: la configurazione di una famiglia del documento interno di magazzino,
+#        risolta a chiamata (import pigro come `_r`).
+def _famiglia(codice: str) -> Any:
+    import importlib
+
+    return importlib.import_module("apps.magazzino.db.famiglie").FAMIGLIE[codice]
+
+
 # Scopo: traduce l'ordinamento richiesto dal test negli argomenti del metodo.
 #        Senza colonna richiesta lascia decidere il metodo (chiavi omesse), a
 #        meno che la firma non pretenda l'ordinamento: in quel caso l'esercizio
@@ -892,6 +900,69 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.anagrafiche.db.titoli_iva_repository", "TitoliIvaRepository"
         ).list_titoli_sfondati(limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    # ── Magazzino, Lotto 2 (2026-09-18). ⭐ Inventari e rettifiche sono UNA
+    #    implementazione parametrica sulla famiglia (Q-1): l'esercizio passa la
+    #    famiglia, e la proiezione — `descrizione` NULL sulla rettifica,
+    #    `qta_contata`/`qta_sistema` contro `qta_delta`/`motivo` sulle righe —
+    #    e' quella che ogni famiglia dichiara a catalogo.
+    "magazzino.inventari": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_documenti",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_documenti(
+            _famiglia("inventari"), auth_user_id=None, limit=1, offset=0,
+            **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.rettifiche": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_documenti",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_documenti(
+            _famiglia("rettifiche"), auth_user_id=None, limit=1, offset=0,
+            **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.inventario_righe": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_righe",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_righe(
+            _famiglia("inventari"), _ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.rettifica_righe": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_righe",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_righe(
+            _famiglia("rettifiche"), _ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.inventario_piano": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_piano",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_piano(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.disponibilita": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_disponibilita",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_disponibilita(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.disponibilita_articoli": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_disponibilita_articoli",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_disponibilita_articoli(limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.movimenti": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_movimenti",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_movimenti(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
     ),
 }
 

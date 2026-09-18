@@ -19,7 +19,7 @@ Funzioni esposte:
 """
 
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -770,31 +770,12 @@ _ONERE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-# Scopo: Helper — parsing importo onere dal payload (numerico, > 0). Distinto da
+# Scopo: Helper — parsing importo onere (numerico, > 0). Distinto da
 #        `_parse_prezzo` (che parla di `prezzo` ed e` legato agli endpoint N5/N7):
 #        qui il campo si chiama `importo` e il messaggio deve nominarlo.
+#        La coercizione (bool e NaN rifiutati) e' del BB; qui resta il `> 0`.
 def _parse_importo(raw: object, *, function_name: str) -> Decimal:
-    ErrorManager.require(
-        raw is not None,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro obbligatorio mancante.",
-        detail="importo e` obbligatorio.",
-        context={"field": "importo"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        importo = Decimal(str(raw))
-    except (InvalidOperation, TypeError, ValueError):
-        ErrorManager.raise_error(
-            code="E_COMMESSA_VALIDATION",
-            message="Importo non valido.",
-            detail=f"importo deve essere numerico, ricevuto: {raw!r}.",
-            context={"field": "importo"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    assert isinstance(importo, Decimal)
+    importo = _V_TESTATA.coerce_decimal(raw, field="importo", function_name=function_name)
     # Guard applicativo anticipato: il DB rifiuta comunque (`E_ONERE_IMPORTO_NON
     # _VALIDO`, 552), ma un 400 parlante evita il round-trip sul caso banale.
     ErrorManager.require(
@@ -1177,30 +1158,10 @@ def _assert_non_fatturata(
     )
 
 
-# Scopo: Helper — parsing prezzo dal payload.
+# Scopo: Helper — parsing prezzo dal payload: la coercizione e' del BB, il
+#        `> 0` e' di dominio e resta qui con la sua frase.
 def _parse_prezzo(payload: dict[str, Any], *, function_name: str) -> Decimal:
-    raw = payload.get("prezzo")
-    ErrorManager.require(
-        raw is not None,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro obbligatorio mancante.",
-        detail="prezzo e` obbligatorio.",
-        context={"field": "prezzo"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        prezzo = Decimal(str(raw))
-    except (InvalidOperation, TypeError, ValueError):
-        ErrorManager.raise_error(
-            code="E_COMMESSA_VALIDATION",
-            message="Prezzo non valido.",
-            detail=f"prezzo deve essere numerico, ricevuto: {raw!r}.",
-            context={"field": "prezzo"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    assert isinstance(prezzo, Decimal)
+    prezzo = _V_TESTATA.require_decimal(payload, "prezzo", function_name=function_name)
     ErrorManager.require(
         prezzo > 0,
         code="E_COMMESSA_VALIDATION",

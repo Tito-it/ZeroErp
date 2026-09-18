@@ -70,12 +70,13 @@ a {
   width: 200px;
 }
 
-/* «Mostra i nascosti» (BB ToggleNascoste): interruttore + etichetta + «(N)»
- * in linea. `min-height` = altezza dei controlli di form della stessa riga
- * (`.app-form-select.p-select`): un interruttore e' piu' basso di una Select e
- * senza pavimento si disallineerebbe dai vicini. Il numero e' muted perche' e'
- * un'informazione di contorno: cio' che conta e' la parola accanto. */
-.app-toggle-nascoste {
+/* Interruttore di filtro (BB FiltroToggle): interruttore + etichetta in linea,
+ * e «(N)» per quelli che allargano la lista. `min-height` = altezza dei
+ * controlli di form della stessa riga (`.app-form-select.p-select`): un
+ * interruttore e' piu' basso di una Select e senza pavimento si
+ * disallineerebbe dai vicini. Il numero e' muted perche' e' un'informazione di
+ * contorno: cio' che conta e' la parola accanto. */
+.app-filtro-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -86,7 +87,7 @@ a {
 /* `font-weight` esplicito: il root del BB e' un `<label>`, e dentro un
  * `.form-field` erediterebbe il grassetto delle etichette — il numero deve
  * restare di contorno anche li'. */
-.app-toggle-nascoste-count {
+.app-filtro-toggle-count {
   color: var(--p-text-muted-color);
   font-weight: 400;
   white-space: nowrap;
@@ -1465,6 +1466,13 @@ a {
  * la regola globale e' questa, la copia scoped e' stata tolta. */
 .app-text-muted { color: var(--app-text-muted); }
 .font-bold { font-weight: 600; }
+
+/* Un NUMERO che sotto zero e' un allarme (la disponibilita' di magazzino: una
+ * promessa non piu' mantenibile, D-L2-d). Rosso di severita' e in grassetto,
+ * nella cella e basta: non un Tag, che in una colonna di numeri allineati a
+ * destra spezzerebbe la lettura della colonna. Token `--app-severity-danger`,
+ * mai un colore scritto qui (feedback_css_centralizzazione). */
+.app-valore-negativo { color: var(--app-severity-danger); font-weight: 600; }
 
 /* ===== Lookup dropdown multi-riga =====
  * Layout riutilizzabile per voci di AutoComplete/Dropdown con piu' campi
