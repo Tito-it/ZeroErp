@@ -1515,6 +1515,8 @@
     "field_composito": "Composito",
     "field_solo_componente": "Solo Componente",
     "field_requires_serial": "Richiede Seriale",
+    "field_requires_lotto": "Richiede lotto",
+    "hint_requires_lotto": "L'articolo si movimenta per partite: ogni movimento nomina un lotto",
     "field_desc_fattura": "Descrizione Fattura",
     "field_fattore": "Fattore",
     "field_vendita": "Vendita",
@@ -4296,7 +4298,18 @@
       "blocco": {
         "giacenza_insufficiente": "Giacenza insufficiente: la quantità in uscita è maggiore di quella che il registro dà come presente per l'articolo, oppure per il lotto o il seriale indicati.",
         "merce_bloccata": "La merce c'è, ma una parte è già promessa ad altri: la quantità libera non basta a coprire l'uscita richiesta."
-      }
+      },
+      "col_articolo_codice": "Articolo",
+      "col_articolo_descrizione": "Descrizione",
+      "col_magazzino_codice": "Magazzino",
+      "col_magazzino_descrizione": "Descrizione magazzino",
+      "col_giacenza": "Giacenza",
+      "col_bloccata": "Bloccata",
+      "col_disponibile": "Disponibile",
+      "col_n_blocchi": "Blocchi",
+      "col_articolo_requires_lotto": "Per lotti",
+      "col_articolo_requires_serial": "Per seriale",
+      "col_n_magazzini": "Magazzini"
     },
     "riga": {
       "blocco": {
@@ -4312,6 +4325,72 @@
         "ubicazione_non_ammessa": "Il magazzino non usa le ubicazioni: l'ubicazione non va indicata.",
         "ubicazione_di_altro_magazzino": "L'ubicazione non è del magazzino, oppure non è più attiva."
       }
+    },
+    "inventari": {
+      "col_data": "Data",
+      "col_stato": "Stato",
+      "col_magazzino_codice": "Magazzino",
+      "col_magazzino_descrizione": "Descrizione magazzino",
+      "col_descrizione": "Descrizione",
+      "col_righe_count": "Righe",
+      "col_data_insert": "Creato il",
+      "col_user_insert": "Creato da",
+      "col_id": "Id"
+    },
+    "righe": {
+      "col_articolo_codice": "Articolo",
+      "col_articolo_descrizione": "Descrizione",
+      "col_qta_contata": "Contata",
+      "col_qta_sistema": "A sistema",
+      "col_costo_unitario": "Costo unitario",
+      "col_ubicazione_codice": "Ubicazione",
+      "col_lotto_codice": "Lotto",
+      "col_asset_seriale": "Seriale",
+      "col_id": "Id riga",
+      "col_qta_delta": "Delta",
+      "col_motivo": "Motivo"
+    },
+    "piano": {
+      "col_articolo_codice": "Articolo",
+      "col_articolo_descrizione": "Descrizione",
+      "col_ubicazione_codice": "Ubicazione",
+      "col_lotto_codice": "Lotto",
+      "col_asset_seriale": "Seriale",
+      "col_qta_contata": "Contata",
+      "col_qta_sistema": "A sistema",
+      "col_delta": "Differenza",
+      "col_esito": "Esito",
+      "col_causale_codice_interno": "Causale"
+    },
+    "rettifiche": {
+      "col_data": "Data",
+      "col_stato": "Stato",
+      "col_magazzino_codice": "Magazzino",
+      "col_magazzino_descrizione": "Descrizione magazzino",
+      "col_righe_count": "Righe",
+      "col_data_insert": "Creato il",
+      "col_user_insert": "Creato da",
+      "col_id": "Id"
+    },
+    "movimenti": {
+      "col_data_mov": "Data",
+      "col_articolo_codice": "Articolo",
+      "col_articolo_descrizione": "Descrizione",
+      "col_magazzino_codice": "Magazzino",
+      "col_causale_codice": "Causale",
+      "col_causale_descrizione": "Descrizione causale",
+      "col_qta": "Quantita'",
+      "col_costo_unitario": "Costo unitario",
+      "col_ubicazione_codice": "Ubicazione",
+      "col_lotto_codice": "Lotto",
+      "col_asset_seriale": "Seriale",
+      "col_sorgente_codice_interno": "Sorgente",
+      "col_sorgente_riga": "Riga sorgente",
+      "col_magazzino_descrizione": "Descrizione magazzino",
+      "col_storno_di_movimento_id": "Storno di",
+      "col_user_insert": "Registrato da",
+      "col_data_insert": "Registrato il",
+      "col_id": "Id"
     }
   },
   "dash_mesi": {

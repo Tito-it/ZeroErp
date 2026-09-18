@@ -784,3 +784,88 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 784,69,scadenza_importo,Importo rata,Importo della rata abbinata,scadenza_importo,informazione,numeric,currency_eur,120,170,right,Abbinamento,3,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,pagamenti.righe.col_scadenza_importo,26
 785,69,id,Id riga,Identificativo tecnico della riga: e' l'ordine di digitazione (l'ultima in cima),id,informazione,numeric,,90,180,right,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,pagamenti.righe.col_id,10
 786,69,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-18 00:00:00,mctit,common.col_azioni,100
+787,70,data,Data,La data del conteggio / della correzione: decide `data_mov` al posting,data,informazione,date,date_short,110,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_data,100
+788,70,stato,Stato,DRAFT (bozza) · CONFIRM (confermato: il piano si legge qui) · POSTED (registrato) · CANCEL,stato,informazione,string,,120,20,left,Stato,2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_stato,98
+789,70,magazzino_codice,Magazzino,Il magazzino del documento: si sceglie alla nascita e decide il perimetro,magazzino_codice,informazione,string,,130,30,left,Identificazione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_magazzino_codice,95
+790,70,magazzino_descrizione,Descrizione magazzino,,magazzino_descrizione,informazione,string,,200,40,left,Identificazione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_magazzino_descrizione,60
+791,70,descrizione,Descrizione,La descrizione libera del conteggio,descrizione,informazione,string,,240,50,left,Identificazione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_descrizione,85
+792,70,righe_count,Righe,Quante righe porta il documento,righe_count,informazione,numeric,,80,60,right,Dati,3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_righe_count,70
+793,70,data_insert,Creato il,,data_insert,informazione,datetime,datetime_short,140,70,center,Audit,4,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_data_insert,30
+794,70,user_insert,Creato da,,user_insert,informazione,string,,120,80,left,Audit,4,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_user_insert,25
+795,70,id,Id,Identificativo tecnico del documento,id,identificatore,numeric,,80,90,right,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.inventari.col_id,10
+796,70,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-18 00:00:00,mctit,common.col_azioni,100
+797,71,articolo_codice,Articolo,Il codice dell'articolo contato,articolo_codice,identificatore,string,,140,10,left,Posizione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_articolo_codice,100
+798,71,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,240,20,left,Posizione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_articolo_descrizione,90
+799,71,qta_contata,Contata,La quantita' contata a scaffale (UoM base),qta_contata,informazione,numeric,,110,30,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_qta_contata,98
+800,71,qta_sistema,A sistema,La giacenza a registro al momento del posting (la scrive la registrazione),qta_sistema,informazione,numeric,,110,40,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_qta_sistema,80
+801,71,costo_unitario,Costo unitario,Vuoto = alla media corrente del registro,costo_unitario,informazione,numeric,currency_eur,120,50,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_costo_unitario,75
+802,71,ubicazione_codice,Ubicazione,Solo nei magazzini a ubicazioni,ubicazione_codice,informazione,string,,110,60,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_ubicazione_codice,70
+803,71,lotto_codice,Lotto,Solo per gli articoli gestiti per lotti,lotto_codice,informazione,string,,120,70,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_lotto_codice,65
+804,71,asset_seriale,Seriale,Solo per gli articoli serializzati,asset_seriale,informazione,string,,140,80,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_asset_seriale,60
+805,71,id,Id riga,Identificativo tecnico: l'ordine di digitazione,id,informazione,numeric,,80,90,right,Identificazione,9,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_id,10
+806,71,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-18 00:00:00,mctit,common.col_azioni,100
+807,72,articolo_codice,Articolo,,articolo_codice,identificatore,string,,130,10,left,Posizione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_articolo_codice,100
+808,72,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,200,20,left,Posizione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_articolo_descrizione,80
+809,72,ubicazione_codice,Ubicazione,,ubicazione_codice,informazione,string,,100,30,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_ubicazione_codice,70
+810,72,lotto_codice,Lotto,,lotto_codice,informazione,string,,110,40,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_lotto_codice,65
+811,72,asset_seriale,Seriale,,asset_seriale,informazione,string,,130,50,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_asset_seriale,60
+812,72,qta_contata,Contata,Vuota sulle posizioni NON contate,qta_contata,informazione,numeric,,100,60,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_qta_contata,95
+813,72,qta_sistema,A sistema,"La giacenza a registro, alla grana della riga",qta_sistema,informazione,numeric,,100,70,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_qta_sistema,94
+814,72,delta,Differenza,Cio' che il posting scrivera' (contata − sistema),delta,informazione,numeric,,100,80,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_delta,97
+815,72,esito,Esito,INV_INIZIALE · RETT_POS · RETT_NEG · INVARIATA · NON_CONTATA · NON_POSTABILE (col motivo),esito,informazione,string,,180,90,left,Esito,3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_esito,99
+816,72,causale_codice_interno,Causale,La causale che il registro usera',causale_codice_interno,informazione,string,,120,100,left,Esito,3,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.piano.col_causale_codice_interno,50
+817,73,data,Data,La data del conteggio / della correzione: decide `data_mov` al posting,data,informazione,date,date_short,110,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_data,100
+818,73,stato,Stato,DRAFT (bozza) · CONFIRM (confermato: il piano si legge qui) · POSTED (registrato) · CANCEL,stato,informazione,string,,120,20,left,Stato,2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_stato,98
+819,73,magazzino_codice,Magazzino,Il magazzino del documento: si sceglie alla nascita e decide il perimetro,magazzino_codice,informazione,string,,130,30,left,Identificazione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_magazzino_codice,95
+820,73,magazzino_descrizione,Descrizione magazzino,,magazzino_descrizione,informazione,string,,200,40,left,Identificazione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_magazzino_descrizione,60
+821,73,righe_count,Righe,Quante righe porta il documento,righe_count,informazione,numeric,,80,50,right,Dati,3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_righe_count,70
+822,73,data_insert,Creato il,,data_insert,informazione,datetime,datetime_short,140,60,center,Audit,4,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_data_insert,30
+823,73,user_insert,Creato da,,user_insert,informazione,string,,120,70,left,Audit,4,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_user_insert,25
+824,73,id,Id,Identificativo tecnico del documento,id,identificatore,numeric,,80,80,right,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.rettifiche.col_id,10
+825,73,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-18 00:00:00,mctit,common.col_azioni,100
+826,74,articolo_codice,Articolo,Il codice dell'articolo contato,articolo_codice,identificatore,string,,140,10,left,Posizione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_articolo_codice,100
+827,74,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,240,20,left,Posizione,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_articolo_descrizione,90
+828,74,qta_delta,Delta,"La correzione dichiarata: positiva carica, negativa scarica",qta_delta,informazione,numeric,,110,30,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_qta_delta,98
+829,74,motivo,Motivo,"Perche' si corregge (ROTTURA, SMARRIMENTO, …)",motivo,informazione,string,,160,40,left,Quantita',2,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_motivo,85
+830,74,costo_unitario,Costo unitario,Vuoto = alla media corrente del registro,costo_unitario,informazione,numeric,currency_eur,120,50,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_costo_unitario,75
+831,74,ubicazione_codice,Ubicazione,Solo nei magazzini a ubicazioni,ubicazione_codice,informazione,string,,110,60,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_ubicazione_codice,70
+832,74,lotto_codice,Lotto,Solo per gli articoli gestiti per lotti,lotto_codice,informazione,string,,120,70,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_lotto_codice,65
+833,74,asset_seriale,Seriale,Solo per gli articoli serializzati,asset_seriale,informazione,string,,140,80,left,Posizione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_asset_seriale,60
+834,74,id,Id riga,Identificativo tecnico: l'ordine di digitazione,id,informazione,numeric,,80,90,right,Identificazione,9,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.righe.col_id,10
+835,74,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-18 00:00:00,mctit,common.col_azioni,100
+836,75,articolo_codice,Articolo,,articolo_codice,identificatore,string,,130,10,left,Articolo,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_articolo_codice,100
+837,75,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,220,20,left,Articolo,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_articolo_descrizione,90
+838,75,magazzino_codice,Magazzino,,magazzino_codice,informazione,string,,120,30,left,Magazzino,2,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_magazzino_codice,95
+839,75,magazzino_descrizione,Descrizione magazzino,,magazzino_descrizione,informazione,string,,180,40,left,Magazzino,2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_magazzino_descrizione,40
+840,75,giacenza,Giacenza,Il fisico a registro,giacenza,informazione,numeric,,110,50,right,Quantita',3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_giacenza,98
+841,75,bloccata,Bloccata,La somma (negativa) delle promesse aperte in uscita,bloccata,informazione,numeric,,110,60,right,Quantita',3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_bloccata,85
+842,75,disponibile,Disponibile,giacenza + bloccata: negativa = promesse non piu' mantenibili,disponibile,informazione,numeric,,110,70,right,Quantita',3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_disponibile,99
+843,75,n_blocchi,Blocchi,Quante promesse aperte: il numero apre l'elenco,n_blocchi,informazione,numeric,,90,80,right,Quantita',3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_n_blocchi,80
+844,75,articolo_requires_lotto,Per lotti,,articolo_requires_lotto,informazione,boolean,yesno,90,90,center,Articolo,1,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_articolo_requires_lotto,30
+845,75,articolo_requires_serial,Per seriale,,articolo_requires_serial,informazione,boolean,yesno,90,100,center,Articolo,1,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_articolo_requires_serial,28
+846,75,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-18 00:00:00,mctit,common.col_azioni,100
+847,76,articolo_codice,Articolo,,articolo_codice,identificatore,string,,130,10,left,Articolo,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_articolo_codice,100
+848,76,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,240,20,left,Articolo,1,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_articolo_descrizione,90
+849,76,giacenza,Giacenza,Somma sui magazzini visibili,giacenza,informazione,numeric,,110,30,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_giacenza,98
+850,76,bloccata,Bloccata,,bloccata,informazione,numeric,,110,40,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_bloccata,85
+851,76,disponibile,Disponibile,,disponibile,informazione,numeric,,110,50,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_disponibile,99
+852,76,n_magazzini,Magazzini,In quanti magazzini l'articolo ha una posizione,n_magazzini,informazione,numeric,,90,60,right,Quantita',2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.disponibilita.col_n_magazzini,70
+853,76,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-09-18 00:00:00,mctit,common.col_azioni,100
+854,77,data_mov,Data,Quando il movimento vale sul registro,data_mov,informazione,datetime,datetime_short,140,10,center,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_data_mov,100
+855,77,articolo_codice,Articolo,,articolo_codice,identificatore,string,,130,20,left,Posizione,2,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_articolo_codice,99
+856,77,articolo_descrizione,Descrizione,,articolo_descrizione,informazione,string,,200,30,left,Posizione,2,f,t,t,t,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_articolo_descrizione,80
+857,77,magazzino_codice,Magazzino,,magazzino_codice,informazione,string,,110,40,left,Posizione,2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_magazzino_codice,95
+858,77,causale_codice,Causale,,causale_codice,informazione,string,,120,50,left,Movimento,3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_causale_codice,97
+859,77,causale_descrizione,Descrizione causale,,causale_descrizione,informazione,string,,180,60,left,Movimento,3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_causale_descrizione,50
+860,77,qta,Quantita',"Firmata: positiva entra, negativa esce",qta,informazione,numeric,,100,70,right,Movimento,3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_qta,98
+861,77,costo_unitario,Costo unitario,,costo_unitario,informazione,numeric,currency_eur,120,80,right,Movimento,3,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_costo_unitario,75
+862,77,ubicazione_codice,Ubicazione,,ubicazione_codice,informazione,string,,100,90,left,Posizione,2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_ubicazione_codice,70
+863,77,lotto_codice,Lotto,,lotto_codice,informazione,string,,110,100,left,Posizione,2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_lotto_codice,65
+864,77,asset_seriale,Seriale,,asset_seriale,informazione,string,,130,110,left,Posizione,2,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_asset_seriale,60
+865,77,sorgente_codice_interno,Sorgente,"Da quale documento e' nato (INVENTARIO_RIGA, RETTIFICA_RIGA, …)",sorgente_codice_interno,informazione,string,,150,120,left,Sorgente,4,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_sorgente_codice_interno,72
+866,77,sorgente_riga,Riga sorgente,L'id della riga del documento sorgente,sorgente_riga,informazione,numeric,,100,130,right,Sorgente,4,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_sorgente_riga,35
+867,77,magazzino_descrizione,Descrizione magazzino,,magazzino_descrizione,informazione,string,,180,140,left,Posizione,2,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_magazzino_descrizione,30
+868,77,storno_di_movimento_id,Storno di,"Il movimento originale, se questo lo storna",storno_di_movimento_id,informazione,numeric,,100,150,right,Sorgente,4,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_storno_di_movimento_id,25
+869,77,user_insert,Registrato da,,user_insert,informazione,string,,120,160,left,Audit,5,f,f,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_user_insert,20
+870,77,data_insert,Registrato il,,data_insert,informazione,datetime,datetime_short,140,170,center,Audit,5,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_data_insert,22
+871,77,id,Id,,id,informazione,numeric,,80,180,right,Identificazione,1,f,t,t,f,f,t,2026-09-18 00:00:00,mctit,magazzino.movimenti.col_id,10
