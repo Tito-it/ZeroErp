@@ -266,7 +266,7 @@ async function onSospensioneSaved(result) {
 }
 function onAnnullaPratica() {
   confirmAction({
-    title: t('pratiche.azione_annulla'),
+    header: t('pratiche.azione_annulla'),
     message: t('pratiche.conferma_annulla'),
     danger: true,
     onAccept: () => executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.ANNULLATA }))

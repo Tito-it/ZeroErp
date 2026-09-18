@@ -196,6 +196,7 @@ function onSmista() {
   if (!merceIds.length && !serviziIds.length) return
 
   confirmAction({
+    header: t('vendite.preventivi.section_smistamento'),
     message: t('vendite.preventivi.conferma_smistamento', {
       merce: merceIds.length, servizi: serviziIds.length,
     }),

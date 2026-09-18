@@ -831,7 +831,7 @@ const drawerActions = computed(() => {
 //        non esiste un archivio di fatture «estratte» (RD-7).
 function eliminaFattura(row) {
   confirmAction({
-    title: t('vendite.lotti.reset_fattura_header'),
+    header: t('vendite.lotti.reset_fattura_header'),
     // Stesso avviso degli altri due percorsi di reset: la chiave e' una sola.
     message: `${t('vendite.lotti.reset_fattura_conferma')} `
       + t('vendite.lotti.reset_avviso_accrediti'),

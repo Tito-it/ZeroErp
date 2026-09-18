@@ -248,7 +248,7 @@ async function clonaVersione(row) {
 
 function confirmDeleteVersione(row) {
   confirmAction({
-    title: t('common.delete'),
+    header: t('common.delete'),
     message: t('config.modelli_documenti.versioni.confirm_delete', {
       versione: row.versione,
     }),

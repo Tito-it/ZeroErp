@@ -247,7 +247,7 @@ function eseguiOraTooltip(sveglia) {
 //        sta lanciando, non solo su quale riga.
 function chiediEseguiOra(sveglia) {
   confirmAction({
-    title: t('amministrazione.processi.esegui_ora_conferma_titolo'),
+    header: t('amministrazione.processi.esegui_ora_conferma_titolo'),
     message: t('amministrazione.processi.esegui_ora_conferma', {
       unit: sveglia.unit,
       comando: sveglia.comando.join(' '),

@@ -1049,9 +1049,11 @@ a {
   opacity: 0.85;
 }
 
-/* Tasti di uscita — sempre attivi in modalita' protect */
-.app-readonly .p-drawer-close,
-.app-readonly .p-dialog-close,
+/* Tasti di uscita — sempre attivi in modalita' protect.
+ * ⚠️ Solo `.app-escape` (2026-09-18): qui stavano anche `.p-drawer-close` e
+ * `.p-dialog-close`, che in PrimeVue 4 non esistono (`-close-button`) — e non
+ * servivano: `app-readonly` sta sul wrapper del CONTENUTO, la testa del Drawer
+ * con la sua X e' fuori. Il dialog una X non ce l'ha piu' (DIALOG_CHROME). */
 .app-readonly .app-escape {
   pointer-events: auto;
   cursor: pointer;

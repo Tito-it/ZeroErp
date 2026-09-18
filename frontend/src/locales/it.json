@@ -326,6 +326,12 @@
       "rate-fuori-capienza": "Rate fuori capienza",
       "eccedenze": "Eccedenze",
       "canali-incasso": "Canali di incasso"
+    },
+    "magazzino": {
+      "inventari": "Inventari",
+      "rettifiche": "Rettifiche",
+      "disponibilita": "Disponibilità",
+      "movimenti": "Movimenti"
     }
   },
   "config_panel": {
@@ -653,7 +659,8 @@
     "delete_title": "Conferma eliminazione",
     "delete_message": "Sei sicuro di voler eliminare {name}? L'operazione non può essere annullata.",
     "save_title": "Conferma salvataggio",
-    "save_message": "Confermi il salvataggio?"
+    "save_message": "Confermi il salvataggio?",
+    "cambio_stato_title": "Cambio stato"
   },
   "search": {
     "title": "Ricerca universale",
@@ -4309,7 +4316,20 @@
       "col_n_blocchi": "Blocchi",
       "col_articolo_requires_lotto": "Per lotti",
       "col_articolo_requires_serial": "Per seriale",
-      "col_n_magazzini": "Magazzini"
+      "col_n_magazzini": "Magazzini",
+      "tab_magazzini": "Per magazzino",
+      "tab_articoli": "Per articolo",
+      "search_placeholder": "Cerca per codice o descrizione articolo…",
+      "filtro_magazzino": "Magazzino",
+      "filtro_articolo": "Articolo (min 3 caratteri)",
+      "solo_negativa": "Solo negativa",
+      "solo_negativa_hint": "Le promesse non più mantenibili: disponibile sotto zero.",
+      "solo_con_giacenza": "Solo con giacenza",
+      "negativa_tooltip": "Promessa non più mantenibile: la merce impegnata supera quella a registro.",
+      "blocchi_titolo": "Promesse aperte in uscita",
+      "blocchi_entro": "entro il {data}",
+      "blocchi_nessuno": "Nessuna promessa aperta: la disponibilità è cambiata da quando la lista è stata letta.",
+      "blocchi_non_letti": "Non sono riuscito a leggere le promesse aperte."
     },
     "riga": {
       "blocco": {
@@ -4335,7 +4355,14 @@
       "col_righe_count": "Righe",
       "col_data_insert": "Creato il",
       "col_user_insert": "Creato da",
-      "col_id": "Id"
+      "col_id": "Id",
+      "titolo_singolare": "Inventario",
+      "nuovo": "Nuovo inventario",
+      "search_placeholder": "Cerca per descrizione o magazzino…",
+      "aperto": "Inventario aperto",
+      "eliminato": "Inventario eliminato",
+      "conferma_elimina": "Eliminare l'inventario #{id}? Si elimina solo una bozza.",
+      "nessuna_riga": "L'inventario non ha ancora righe: aggiungi le posizioni contate."
     },
     "righe": {
       "col_articolo_codice": "Articolo",
@@ -4360,7 +4387,22 @@
       "col_qta_sistema": "A sistema",
       "col_delta": "Differenza",
       "col_esito": "Esito",
-      "col_causale_codice_interno": "Causale"
+      "col_causale_codice_interno": "Causale",
+      "titolo": "Piano dell'inventario",
+      "apri": "Piano",
+      "aiuto": "È ciò che la registrazione scriverà, posizione per posizione. Le posizioni non contate restano come sono a registro.",
+      "riepilogo": "{con_delta} con differenza · {invariate} invariate · {non_contate} non contate · {non_postabili} non registrabili.",
+      "non_postabili_avviso": "Ci sono righe non registrabili: finché ci sono, la registrazione rifiuta tutto il documento.",
+      "nessuna_riga": "Il piano è vuoto: nessuna posizione contata e niente a registro per questo magazzino.",
+      "non_letto": "Non sono riuscito a leggere il piano.",
+      "esito": {
+        "INV_INIZIALE": "Carico iniziale",
+        "RETT_POS": "Carico",
+        "RETT_NEG": "Scarico",
+        "INVARIATA": "Invariata",
+        "NON_CONTATA": "Non contata",
+        "NON_POSTABILE": "Non registrabile"
+      }
     },
     "rettifiche": {
       "col_data": "Data",
@@ -4370,7 +4412,14 @@
       "col_righe_count": "Righe",
       "col_data_insert": "Creato il",
       "col_user_insert": "Creato da",
-      "col_id": "Id"
+      "col_id": "Id",
+      "titolo_singolare": "Rettifica",
+      "nuovo": "Nuova rettifica",
+      "search_placeholder": "Cerca per magazzino…",
+      "aperto": "Rettifica aperta",
+      "eliminato": "Rettifica eliminata",
+      "conferma_elimina": "Eliminare la rettifica #{id}? Si elimina solo una bozza.",
+      "nessuna_riga": "La rettifica non ha ancora righe: aggiungi le correzioni."
     },
     "movimenti": {
       "col_data_mov": "Data",
@@ -4390,7 +4439,70 @@
       "col_storno_di_movimento_id": "Storno di",
       "col_user_insert": "Registrato da",
       "col_data_insert": "Registrato il",
-      "col_id": "Id"
+      "col_id": "Id",
+      "filtro_magazzino": "Magazzino",
+      "filtro_articolo": "Articolo (min 3 caratteri)",
+      "filtro_causale": "Causale",
+      "filtro_sorgente": "Sorgente",
+      "filtro_documento_inventario": "Movimenti dell'inventario #{id}",
+      "filtro_documento_rettifica": "Movimenti della rettifica #{id}",
+      "filtro_documento_rimuovi": "Togli il filtro",
+      "sorgente": {
+        "INVENTARIO_RIGA": "Inventario",
+        "RETTIFICA_RIGA": "Rettifica"
+      }
+    },
+    "documenti_interni": {
+      "stato": {
+        "DRAFT": "Bozza",
+        "CONFIRM": "Confermato",
+        "POSTED": "Registrato",
+        "CANCEL": "Annullato"
+      },
+      "filtro_magazzino": "Magazzino",
+      "filtro_stato": "Stato",
+      "campo_magazzino": "Magazzino",
+      "campo_magazzino_placeholder": "Scegli il magazzino",
+      "magazzino_aiuto": "Il magazzino si sceglie ora e non si cambia più: decide il perimetro e se le righe chiedono l'ubicazione.",
+      "campo_data": "Data",
+      "data_aiuto": "La data del conteggio o della correzione: decide la data dei movimenti alla registrazione.",
+      "campo_descrizione": "Descrizione",
+      "apri_conferma": "Apri",
+      "del_data": "del {data}",
+      "usa_ubicazioni": "A ubicazioni",
+      "sezione_testata": "Testata",
+      "sezione_righe": "Righe",
+      "testata_salvata": "Testata salvata",
+      "righe_congelate": "Le righe si scrivono solo in bozza: riporta il documento in bozza per modificarle.",
+      "righe_non_lette": "Non sono riuscito a leggere le righe del documento.",
+      "movimenti": "Movimenti",
+      "riga": {
+        "nuova": "Nuova riga",
+        "modifica": "Modifica riga",
+        "campo_articolo": "Articolo",
+        "campo_articolo_placeholder": "Cerca per codice o descrizione (min 3 caratteri)",
+        "articolo_non_gestito": "L'articolo non è gestito a magazzino: la riga si salva, ma non sarà registrabile.",
+        "campo_qta_contata": "Quantità contata",
+        "aiuto_qta_contata": "Quanto c'è a scaffale, nell'unità base. Zero è un dato: la posizione è vuota.",
+        "campo_qta_delta": "Correzione",
+        "aiuto_qta_delta": "Positiva carica, negativa scarica. Non può essere zero.",
+        "campo_motivo": "Motivo",
+        "campo_costo": "Costo unitario",
+        "aiuto_costo": "Vuoto = alla media corrente del registro.",
+        "campo_ubicazione": "Ubicazione",
+        "campo_ubicazione_placeholder": "Scegli l'ubicazione",
+        "campo_lotto": "Lotto",
+        "campo_lotto_placeholder": "Scegli il lotto",
+        "nessun_lotto": "Nessun lotto attivo per questo articolo: si crea da Configurazione → Tabelle → Lotti.",
+        "campo_seriale": "Seriale",
+        "campo_seriale_placeholder": "Scegli il seriale",
+        "nessun_seriale": "Nessun seriale attivo per questo articolo in questo magazzino.",
+        "lookup_non_letto": "Non sono riuscito a leggere l'elenco.",
+        "non_postabile": "Così com'è, la riga non passerà la registrazione: {motivo}",
+        "salvata": "Riga salvata",
+        "eliminata": "Riga eliminata",
+        "conferma_elimina": "Eliminare la riga dell'articolo {articolo}?"
+      }
     }
   },
   "dash_mesi": {

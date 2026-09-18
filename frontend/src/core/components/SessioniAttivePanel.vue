@@ -74,7 +74,7 @@ function confermaRevoca(sessione) {
   const device = parseUserAgent(sessione.user_agent)
   const ip = sessione.ip_address || '—'
   confirmAction({
-    title: t('sessions.revoke_confirm_title'),
+    header: t('sessions.revoke_confirm_title'),
     message: t('sessions.revoke_confirm_message', { device, ip }),
     acceptLabel: t('sessions.revoke'),
     danger: true,
@@ -84,7 +84,7 @@ function confermaRevoca(sessione) {
 
 function confermaRevocaTutte() {
   confirmAction({
-    title: t('sessions.revoke_all_confirm_title'),
+    header: t('sessions.revoke_all_confirm_title'),
     message: t('sessions.revoke_all_confirm_message', { count: sessioni.value.length }),
     acceptLabel: t('sessions.revoke_all'),
     danger: true,

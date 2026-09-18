@@ -140,7 +140,7 @@ async function saveRow(row) {
 
 function removeConfig(row) {
   confirmAction({
-    title: t('common.confirm'),
+    header: t('common.confirm'),
     message: t('amministrazione.emittenti_fiscali.ut_remove_config_confirm', { codice: row.utility_codice }),
     danger: true,
     onAccept: async () => {

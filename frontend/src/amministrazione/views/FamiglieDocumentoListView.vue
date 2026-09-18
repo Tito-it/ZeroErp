@@ -130,6 +130,9 @@ function buildRowActions(data) {
 
 function cambiaAttivo(data) {
   confirmAction({
+    header: data.attivo
+      ? t('amministrazione.famiglie_documento.action_disattiva')
+      : t('amministrazione.famiglie_documento.action_attiva'),
     message: data.attivo
       ? t('amministrazione.famiglie_documento.conferma_disattiva', { codice: data.codice_interno })
       : t('amministrazione.famiglie_documento.conferma_attiva', { codice: data.codice_interno }),

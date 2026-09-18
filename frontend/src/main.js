@@ -12,6 +12,7 @@ import Tooltip from 'primevue/tooltip'
 import Aura from '@primeuix/themes/aura'
 import 'primeicons/primeicons.css'
 import { localeIt } from './core/primevue-locale'
+import { installaEscapeSoloInCima } from './core/utils/escapeSoloInCima'
 import './assets/theme.css'
 import './assets/main.css'
 import './assets/auth-pages.css'
@@ -35,6 +36,11 @@ app.use(i18n)
 app.use(ToastService)
 app.use(ConfirmationService)
 app.directive('tooltip', Tooltip)
+
+// ESC chiude solo l'overlay in cima. ⚠️ QUI, prima del mount: i listener su
+// `document` si eseguono in ordine di registrazione, e questo deve precedere
+// quelli che Drawer e Dialog di PrimeVue agganciano quando si aprono.
+installaEscapeSoloInCima()
 
 // Carica la locale attiva (e il fallback, se diverso) PRIMA del mount: le
 // traduzioni non sono piu' inline nel bundle, quindi il primo paint deve

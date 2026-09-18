@@ -85,6 +85,7 @@ async function onForkSave() {
 // --- Nuova versione / Pubblica: conferma semplice ---
 function onNuovaVersione(data) {
   confirmAction({
+    header: t('amministrazione.definizioni_workflow.azione_nuova_versione'),
     message: t('amministrazione.definizioni_workflow.conferma_nuova_versione'),
     onAccept: async () => {
       const res = await execute(
@@ -98,6 +99,7 @@ function onNuovaVersione(data) {
 
 function onPubblica(data) {
   confirmAction({
+    header: t('amministrazione.definizioni_workflow.azione_pubblica'),
     message: t('amministrazione.definizioni_workflow.conferma_pubblica'),
     onAccept: async () => {
       const res = await execute(

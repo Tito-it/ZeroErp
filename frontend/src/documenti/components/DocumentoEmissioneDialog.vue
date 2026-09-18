@@ -180,7 +180,7 @@ function onSave() {
 function requestClose() {
   if (stagedFiles.value.length > 0) {
     confirmAction({
-      title: t('documenti.emissione.abbandona_titolo'),
+      header: t('documenti.emissione.abbandona_titolo'),
       message: props.advancesState
         ? t('documenti.emissione.abbandona_messaggio_draft')
         : t('documenti.emissione.abbandona_messaggio'),

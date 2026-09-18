@@ -96,7 +96,7 @@ async function addDefaultMapping() {
 
 function removeMapping(row) {
   confirmAction({
-    title: t('common.confirm'),
+    header: t('common.confirm'),
     message: row.is_default
       ? t('amministrazione.emittenti_fiscali.ba_remove_default_confirm')
       : t('amministrazione.emittenti_fiscali.ba_remove_confirm', { codice: row.billing_account_codice || '-' }),

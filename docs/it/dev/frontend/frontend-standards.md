@@ -1196,6 +1196,9 @@ const onClose = useDrawerClose(emit, 'cancelled') // con notifica al parent
 ```
 
 Note: la X in alto del drawer PrimeVue resta come escape rapido (semantica diversa da "Chiudi"): X = dismiss/escape, Chiudi = completion deliberata. Non sono duplicati, vanno tenuti entrambi.
+⚠️ **Vale per il drawer, NON per il dialog** (2026-09-18): nel drawer il footer di
+un form lungo sta sotto il fold e la X in alto ha un ruolo; nel dialog il footer
+è **sempre visibile**, e la X è un doppione — vedi §`AppDialog`, «Chrome».
 
 ### Componente `AppDialog` (OBBLIGATORIO per le dialog modali)
 
@@ -1204,15 +1207,40 @@ esito) DEVE usare il building block `AppDialog` — mai `<Dialog>` PrimeVue grez
 con `<template #footer>` hand-rolled. `AppDialog` è il mirror di `AppDrawer` per
 le Dialog: incapsula chrome uniforme + `FormFooter` integrato.
 
+⛔ `import Dialog from 'primevue/dialog'` è lecito in **un solo file**,
+`core/components/AppDialog.vue` — presidiato da
+`frontend/scripts/check-dialog-chrome.mjs` (`npm run guards`, in CI).
+
 Cosa centralizza:
 
-* **chrome**: `modal`/`closable`/`closeOnEscape`/`dismissableMask` con default
-  sensati (modal+closable=true), override via prop;
+* **chrome**: `modal`/`closable`/`closeOnEscape`/`dismissableMask` con i default
+  di **`DIALOG_CHROME`** (`core/constants.js`) — la sede unica, condivisa con la
+  `ConfirmDialog` globale (vedi §«Chrome» qui sotto e §«Conferma azioni»);
 * **width**: da scala centralizzata `DIALOG_WIDTH` (`sm`/`md`/`lg`/`xl`) — **mai
   più px hardcoded** (`'480px'`, `'90vw'`, ecc.);
 * **footer**: `FormFooter` integrato (icone ←/✓, collapse responsive icon-only
   sotto 1024px, Ctrl+S, readonly-aware);
-* **`v-model:visible`** uniforme.
+* **`v-model:visible`** uniforme;
+* **una via d'uscita sola**: Annulla/Chiudi ed ESC passano dallo **stesso**
+  handler ed emettono `cancel` **e poi** `update:visible=false`. Un consumer
+  che pulisce stato su `@cancel` lo vede da qualunque uscita.
+
+#### Chrome — le regole (decisione di Tid, 2026-09-18)
+
+| Regola | Perché |
+| --- | --- |
+| ⛔ **Niente X in alto** (`closable: false`) | Il footer di un dialog è **sempre visibile** (`max-height: 90%`, footer in coda): ogni dialog ha già Annulla o Chiudi, e la X era un doppione con una semantica sua (chiude senza `cancel`). Nel **drawer** la X resta, per la ragione opposta — il footer di un form lungo sta sotto il fold (§`FormFooter`) |
+| ⭐ **`header` obbligatorio** (prop `required`) | Un `Dialog` PrimeVue senza titolo rende comunque la riga di testa, e con `justify-content: space-between` l'unico figlio — le azioni — finiva **a sinistra**: era la «X a sinistra» vista in-app, non un secondo chrome. Il titolo è un fatto dell'azione, non un ornamento |
+| **ESC = Annulla**, e **si spegne mentre lavora** (`closeOnEscape && !loading`) | La direzione sicura resta aperta da tastiera; a salvataggio in volo il dialog non si chiude sotto la risposta. Era riscritto a mano in due dialog (`ExportDialog`, `AttivaVersioneDialog`): ora lo fa il BB |
+| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue 4 `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue 4 lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. ⏳ Due **drawer** impilati si chiudono ancora insieme: chrome del drawer, fuori da questa regola |
+| **Click fuori non chiude** (`dismissableMask: false`) | Terza via d'uscita accidentale, stessa ragione della X |
+| **Un footer c'è sempre** | Nessuna prop `hide-footer`: senza X, un dialog senza footer non avrebbe **nessuna** uscita visibile. Il caso speciale (wizard, terzo bottone) è lo slot `#footer`, che il chrome lo mantiene |
+
+⚠️ **Un override di chrome è una decisione, e si scrive sopra al tag.** L'unico
+oggi è `EmittenteAttivoDialog` (`:close-on-escape="false"`: la scelta
+dell'emittente non è rimandabile con un tasto). ⛔ Non si rimette `:closable` per
+un dialog «che ce l'aveva»: il default è la regola, e un cambio di layout deve
+restare **una riga in `DIALOG_CHROME`**, non un giro su 48 file.
 
 ```html
 <!-- Dialog standard: conferma/form -->
@@ -1246,9 +1274,10 @@ Prop e casi speciali:
 * **Footer custom** (terzo bottone, wizard): slot `#footer` per sovrascrivere il
   footer mantenendo il chrome `AppDialog`. Es. `ChiudiVersioneDialog` (bottone
   "Rimuovi chiusura" + Annulla/Conferma), `ApplicaVariazioneDialog` (wizard
-  multi-step → usa `hide-footer`).
-* **Solo Chiudi**: `close-only` (dialog informativo/viewer con un solo pulsante).
-* **Nessun footer**: `hide-footer` (viewer puro).
+  multi-step: i bottoni dello step nello slot), `EmittenteAttivoDialog` (tre
+  bottoni: riprova / rimanda / conferma).
+* **Solo Chiudi**: `close-only` (dialog informativo/viewer con un solo pulsante:
+  registri, situazione merce, genealogia, esiti consuntivi).
 
 Dialog di **sola conferma** (no form, sì/no su un'azione) restano gestiti da
 `useConfirmAction()` (ConfirmDialog globale, vedi §"Conferme azioni"), NON da
@@ -1966,13 +1995,32 @@ La schermata di login e' l'unica pagina senza sidebar e topbar.
 
 Qualsiasi azione irreversibile richiede un **dialog di conferma** centrato:
 
-- Titolo + nome dell'elemento coinvolto
+- **Titolo obbligatorio** (`header`), e il titolo è **il nome dell'azione che
+  l'ha aperto**: l'operatore legge la stessa parola sul pulsante e sulla dialog
+  (`azione_push_commessa` → «Invia a commessa», `rinuncia_riapri` → «Annulla la
+  dichiarazione»). Per le eliminazioni `confirm.delete_title`; per i cambi di
+  stato guidati dalle azioni BE `confirm.cambio_stato_title`, uguale in tutti i
+  domini. ⛔ Una conferma senza `header` è la «X a sinistra» vista in-app il
+  2026-09-18: PrimeVue rende la riga di testa anche vuota, e l'unico figlio
+  finisce a sinistra. Presidio: `check-dialog-chrome.mjs` rifiuta ogni
+  `confirmAction({...})` senza `header` — e ogni `title:`, che è la chiave
+  **sbagliata**: fino al 2026-09-18 il composable leggeva `title` mentre
+  `AppDialog` e PrimeVue dicono `header`, e **sette** chiamanti avevano scritto
+  `header` (ignorato in silenzio: JS non avvisa su una chiave sconosciuta). Uno
+  l'aveva persino scoperto e annotato sul sito invece di correggere la sorgente
 - Due pulsanti: **Annulla** (secondario, icona ←) e **Conferma** (primario, icona
   ✓; rosso per distruttive)
-- Il dialog si chiude solo tramite pulsanti — non con ESC o clic fuori
+- **Niente X** (stessa regola di `AppDialog`, §«Chrome»); **ESC = Annulla**
+  (direzione sicura, resta aperta da tastiera); **clic fuori non chiude**.
+  ⚠️ Fino al 2026-09-18 questa riga diceva «né con ESC», ma ESC chiudeva da
+  sempre: la doc descriveva un comportamento che non c'era
 - Gestito da `useConfirmAction()` — mai creare ConfirmDialog custom. Il composable
   applica già le icone standard (`acceptIcon`/`rejectIcon`) e il colore danger
-  (`confirmDelete`, o `confirmAction({ danger: true })`).
+  (`confirmDelete`, o `confirmAction({ danger: true })`) in **un solo punto**
+  (`richiedi`): le tre funzioni pubbliche aggiungono solo ciò che le distingue.
+  ⚠️ `closable` **non è un'opzione di `confirm.require`** (PrimeVue 4 non la
+  inoltra al `Dialog`): sta sul tag `<ConfirmDialog>` in `App.vue`, letto da
+  `DIALOG_CHROME` — è l'unico pezzo di chrome che non può vivere nel composable
 
 **Quando `useConfirmAction` e quando `AppDialog`:**
 
@@ -3003,13 +3051,23 @@ Riferimento: `DdtResoDialog`, `OrdineEvasioneDialog`, `PreventiviSmistamentoDial
 Come F12/F3 sui formati protect AS/400, i **pulsanti di chiusura** restano attivi anche in modalita' protect:
 
 ```css
-.app-readonly :deep(.p-drawer-close),    /* X chiudi drawer */
-.app-readonly :deep(.p-dialog-close),    /* X chiudi dialog */
-.app-readonly :deep(.app-escape) {       /* classe generica uscita */
+.app-readonly .app-escape {       /* classe generica uscita */
   pointer-events: auto;
   cursor: pointer;
 }
 ```
+
+`app-escape` la porta il pulsante Annulla/Chiudi di `FormFooter` e la si mette su
+ogni pannello-azione legittimo dentro un contenitore protect
+([[feedback_app_escape_pannelli_processo]]).
+
+⚠️ **La X del drawer NON ha bisogno di una regola** (verificato 2026-09-18):
+`app-readonly` sta sul wrapper del **contenuto** (`app-drawer-content`), e la
+testa del `Drawer` — con la sua X — è **fuori** da quel wrapper. Fino a quel
+giorno qui stavano due selettori in più, `.p-drawer-close` e `.p-dialog-close`,
+che in PrimeVue 4 non esistono (le classi sono `p-drawer-close-button` /
+`p-dialog-close-button`): CSS morto che descriveva un meccanismo mai attivo. Il
+dialog una X non ce l'ha più (§`AppDialog`, «Chrome»).
 
 Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modificare.
 
@@ -3335,7 +3393,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 1. Ogni componente e' autonomo — logica nei composables di `core/`
 2. Chiamate API passano da `useApiHandler` — mai `api.get/post` nei componenti
 3. Toast via `useNotify()` — mai `useToast()` direttamente
-4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente
+4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente; **sempre con `header`** (il nome dell'azione)
 5. Drawer usano PrimeVue `Drawer` + `FormFooter` — mai pulsanti inline
 6. Testi visibili via `$t()` — mai stringhe hardcoded
 7. Nessun `console.log` in produzione
@@ -3349,6 +3407,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
 16. Azioni processo via `action` su `PageActionsBar`/`FormFooter` — mai `v-if` manuali per permessi
 17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
+18. Dialog modali solo `AppDialog`, con `header`, **senza X** e senza `:closable` sul tag — il chrome è `DIALOG_CHROME`, un cambio di layout è una riga lì (presidio: `npm run guards` → `check-dialog-chrome.mjs`)
 
 ---
 

@@ -1294,7 +1294,7 @@ function onApprovaMese() {
   const card = cardDaApprovare.value
   if (!card) return
   confirmAction({
-    title: t('vendite.dashboard_competenza.approva_mese_header'),
+    header: t('vendite.dashboard_competenza.approva_mese_header'),
     message: t('vendite.dashboard_competenza.approva_mese_conferma', {
       n: card.nAttivita,
       valore: formatCurrency(card.valoreDisplay),
@@ -1882,7 +1882,7 @@ function buildGruppoRowActions(row) {
 //        singola attivita' (che vive nel drawer). Conferma con contatore+codice.
 function onApprovaCommessa(row) {
   confirmAction({
-    title: t('vendite.dashboard_competenza.approva_commessa_header'),
+    header: t('vendite.dashboard_competenza.approva_commessa_header'),
     message: t('vendite.dashboard_competenza.approva_commessa_conferma', {
       n: row.n_attivita,
       commessa: row.commessa_codice ?? `#${row.commessa_id}`,

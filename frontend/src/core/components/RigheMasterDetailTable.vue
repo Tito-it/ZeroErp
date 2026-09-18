@@ -157,6 +157,7 @@ async function onComponentiChanged() {
 
 function onDeleteRiga(riga) {
   confirmAction({
+    header: t('confirm.delete_title'),
     message: t(props.confirmDeleteKey),
     onAccept: async () => {
       const result = await execute(

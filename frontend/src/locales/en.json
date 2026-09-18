@@ -326,6 +326,12 @@
       "rate-fuori-capienza": "Beyond capacity",
       "eccedenze": "Excess amounts",
       "canali-incasso": "Collection channels"
+    },
+    "magazzino": {
+      "inventari": "Stock counts",
+      "rettifiche": "Adjustments",
+      "disponibilita": "Availability",
+      "movimenti": "Movements"
     }
   },
   "config_panel": {
@@ -653,7 +659,8 @@
     "delete_title": "Confirm deletion",
     "delete_message": "Are you sure you want to delete {name}? This action cannot be undone.",
     "save_title": "Confirm save",
-    "save_message": "Confirm save?"
+    "save_message": "Confirm save?",
+    "cambio_stato_title": "Change of state"
   },
   "search": {
     "title": "Universal search",
@@ -4309,7 +4316,20 @@
       "col_n_blocchi": "Blocks",
       "col_articolo_requires_lotto": "By lot",
       "col_articolo_requires_serial": "By serial",
-      "col_n_magazzini": "Warehouses"
+      "col_n_magazzini": "Warehouses",
+      "tab_magazzini": "By warehouse",
+      "tab_articoli": "By item",
+      "search_placeholder": "Search by item code or description…",
+      "filtro_magazzino": "Warehouse",
+      "filtro_articolo": "Item (min 3 characters)",
+      "solo_negativa": "Negative only",
+      "solo_negativa_hint": "Commitments that can no longer be met: available below zero.",
+      "solo_con_giacenza": "With stock only",
+      "negativa_tooltip": "Commitment that can no longer be met: committed goods exceed what is on the ledger.",
+      "blocchi_titolo": "Open outgoing commitments",
+      "blocchi_entro": "by {data}",
+      "blocchi_nessuno": "No open commitment: availability changed since the list was read.",
+      "blocchi_non_letti": "Could not load the open commitments."
     },
     "riga": {
       "blocco": {
@@ -4335,7 +4355,14 @@
       "col_righe_count": "Lines",
       "col_data_insert": "Created on",
       "col_user_insert": "Created by",
-      "col_id": "Id"
+      "col_id": "Id",
+      "titolo_singolare": "Stock count",
+      "nuovo": "New stock count",
+      "search_placeholder": "Search by description or warehouse…",
+      "aperto": "Stock count opened",
+      "eliminato": "Stock count deleted",
+      "conferma_elimina": "Delete stock count #{id}? Only a draft can be deleted.",
+      "nessuna_riga": "The stock count has no lines yet: add the counted positions."
     },
     "righe": {
       "col_articolo_codice": "Item",
@@ -4360,7 +4387,22 @@
       "col_qta_sistema": "On system",
       "col_delta": "Difference",
       "col_esito": "Outcome",
-      "col_causale_codice_interno": "Reason code"
+      "col_causale_codice_interno": "Reason code",
+      "titolo": "Stock count plan",
+      "apri": "Plan",
+      "aiuto": "This is what posting will write, position by position. Uncounted positions stay as they are on the ledger.",
+      "riepilogo": "{con_delta} with a difference · {invariate} unchanged · {non_contate} not counted · {non_postabili} not postable.",
+      "non_postabili_avviso": "There are lines that cannot be posted: while they exist, posting rejects the whole document.",
+      "nessuna_riga": "The plan is empty: no counted position and nothing on the ledger for this warehouse.",
+      "non_letto": "Could not load the plan.",
+      "esito": {
+        "INV_INIZIALE": "Initial load",
+        "RETT_POS": "Receipt",
+        "RETT_NEG": "Issue",
+        "INVARIATA": "Unchanged",
+        "NON_CONTATA": "Not counted",
+        "NON_POSTABILE": "Not postable"
+      }
     },
     "rettifiche": {
       "col_data": "Date",
@@ -4370,7 +4412,14 @@
       "col_righe_count": "Lines",
       "col_data_insert": "Created on",
       "col_user_insert": "Created by",
-      "col_id": "Id"
+      "col_id": "Id",
+      "titolo_singolare": "Adjustment",
+      "nuovo": "New adjustment",
+      "search_placeholder": "Search by warehouse…",
+      "aperto": "Adjustment opened",
+      "eliminato": "Adjustment deleted",
+      "conferma_elimina": "Delete adjustment #{id}? Only a draft can be deleted.",
+      "nessuna_riga": "The adjustment has no lines yet: add the corrections."
     },
     "movimenti": {
       "col_data_mov": "Date",
@@ -4390,7 +4439,70 @@
       "col_storno_di_movimento_id": "Reversal of",
       "col_user_insert": "Created by",
       "col_data_insert": "Created on",
-      "col_id": "Id"
+      "col_id": "Id",
+      "filtro_magazzino": "Warehouse",
+      "filtro_articolo": "Item (min 3 characters)",
+      "filtro_causale": "Reason",
+      "filtro_sorgente": "Source",
+      "filtro_documento_inventario": "Movements of stock count #{id}",
+      "filtro_documento_rettifica": "Movements of adjustment #{id}",
+      "filtro_documento_rimuovi": "Remove filter",
+      "sorgente": {
+        "INVENTARIO_RIGA": "Stock count",
+        "RETTIFICA_RIGA": "Adjustment"
+      }
+    },
+    "documenti_interni": {
+      "stato": {
+        "DRAFT": "Draft",
+        "CONFIRM": "Confirmed",
+        "POSTED": "Posted",
+        "CANCEL": "Cancelled"
+      },
+      "filtro_magazzino": "Warehouse",
+      "filtro_stato": "Status",
+      "campo_magazzino": "Warehouse",
+      "campo_magazzino_placeholder": "Choose the warehouse",
+      "magazzino_aiuto": "The warehouse is chosen now and cannot be changed: it sets the scope and whether lines require a location.",
+      "campo_data": "Date",
+      "data_aiuto": "The date of the count or of the correction: it sets the movement date at posting.",
+      "campo_descrizione": "Description",
+      "apri_conferma": "Open",
+      "del_data": "of {data}",
+      "usa_ubicazioni": "With locations",
+      "sezione_testata": "Header",
+      "sezione_righe": "Lines",
+      "testata_salvata": "Header saved",
+      "righe_congelate": "Lines can only be edited in draft: bring the document back to draft to change them.",
+      "righe_non_lette": "Could not load the document lines.",
+      "movimenti": "Movements",
+      "riga": {
+        "nuova": "New line",
+        "modifica": "Edit line",
+        "campo_articolo": "Item",
+        "campo_articolo_placeholder": "Search by code or description (min 3 characters)",
+        "articolo_non_gestito": "The item is not stock-managed: the line is saved, but it will not be postable.",
+        "campo_qta_contata": "Counted quantity",
+        "aiuto_qta_contata": "What is on the shelf, in the base unit. Zero is a value: the position is empty.",
+        "campo_qta_delta": "Correction",
+        "aiuto_qta_delta": "Positive adds, negative removes. Cannot be zero.",
+        "campo_motivo": "Reason",
+        "campo_costo": "Unit cost",
+        "aiuto_costo": "Empty = at the current ledger average.",
+        "campo_ubicazione": "Location",
+        "campo_ubicazione_placeholder": "Choose the location",
+        "campo_lotto": "Lot",
+        "campo_lotto_placeholder": "Choose the lot",
+        "nessun_lotto": "No active lot for this item: create one from Configuration → Tables → Lots.",
+        "campo_seriale": "Serial",
+        "campo_seriale_placeholder": "Choose the serial",
+        "nessun_seriale": "No active serial for this item in this warehouse.",
+        "lookup_non_letto": "Could not load the list.",
+        "non_postabile": "As it is, the line will not pass posting: {motivo}",
+        "salvata": "Line saved",
+        "eliminata": "Line deleted",
+        "conferma_elimina": "Delete the line for item {articolo}?"
+      }
     }
   },
   "dash_mesi": {

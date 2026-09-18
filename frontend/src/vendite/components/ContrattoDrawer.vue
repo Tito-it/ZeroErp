@@ -680,7 +680,7 @@ function onCambiaStato(action) {
   }
   if (action.requires_confirm) {
     confirmAction({
-      title: t('vendite.contratti.conferma_titolo'),
+      header: t('vendite.contratti.conferma_titolo'),
       message: t('vendite.contratti.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiCambioStato(action.target_state),
     })

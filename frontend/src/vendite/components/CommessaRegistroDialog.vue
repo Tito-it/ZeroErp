@@ -28,9 +28,9 @@
 //    2026-08-28 alla seconda occorrenza, la prima è il giornale delle pratiche).
 //    Qui restano le tre cose che sono di QUESTO dominio: da dove arrivano gli
 //    eventi, come si chiamano, e che forma ha la riga di dettaglio.
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import GiornaleEventi from '../../core/components/GiornaleEventi.vue'
 import { listCommessaRegistro } from '../api/commesse'
 import { eventoRegistroCommessaStyle } from '../../core/utils/severity'
@@ -54,11 +54,6 @@ const loading = ref(false)
 //    riuscita direbbe «non è successo niente» quando invece non lo sappiamo.
 const caricato = ref(false)
 
-
-const dialogVisible = computed({
-  get: () => props.visible,
-  set: (v) => emit('update:visible', v),
-})
 
 // Scopo: l'etichetta dell'evento, con ripiego sul codice grezzo.
 function eventoLabel(evento) {
@@ -122,11 +117,14 @@ watch(
 </script>
 
 <template>
-  <Dialog
-    v-model:visible="dialogVisible"
-    modal
+  <!-- `AppDialog` di sola chiusura (2026-09-18: era l'ultimo `Dialog` grezzo
+       del frontend, con `46rem` fuori scala). `lg` e' la taglia dei registri. -->
+  <AppDialog
+    :visible="visible"
+    @update:visible="v => emit('update:visible', v)"
     :header="t('vendite.commesse.registro_header')"
-    :style="{ width: '46rem', maxWidth: '95vw' }"
+    width="lg"
+    close-only
   >
     <GiornaleEventi
       :eventi="eventi"
@@ -139,5 +137,5 @@ watch(
       :testo-vuoto="t('vendite.commesse.registro_vuoto')"
       :testo-placeholder="t('vendite.commesse.registro_placeholder')"
     />
-  </Dialog>
+  </AppDialog>
 </template>

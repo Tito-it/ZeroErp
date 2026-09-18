@@ -136,13 +136,15 @@ function close() {
 </script>
 
 <template>
+  <!-- ESC spento anche mentre si aggiorna la data inline (`updatingDate`):
+       il `loading` del salvataggio lo copre gia' il BB, questo secondo
+       lavoro in volo e' solo di questo dialog. -->
   <AppDialog
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
     :header="t('vendite.listini.attiva_versione_titolo')"
     width="md"
-    :dismissable-mask="!loading && !updatingDate"
-    :closable="!loading && !updatingDate"
+    :close-on-escape="!updatingDate"
     :save-label="t('vendite.listini.conferma_attivazione')"
     :loading="loading"
     :save-disabled="!preview || !!previewError || updatingDate"

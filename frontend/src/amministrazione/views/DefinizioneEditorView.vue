@@ -97,6 +97,7 @@ function onAllinea() {
   const emittenteId = store.definizione?.emittente_fiscale_id
   if (!d?.preset_corrente_id || !emittenteId) return
   confirmAction({
+    header: t('amministrazione.definizioni_workflow.ed_allinea'),
     message: t('amministrazione.definizioni_workflow.ed_allinea_conferma', { corrente: d.versione_preset_corrente }),
     onAccept: async () => {
       allineaLoading.value = true
@@ -176,6 +177,7 @@ async function onFigliChanged() {
 
 function onDeleteStep(step) {
   confirmAction({
+    header: t('confirm.delete_title'),
     message: t('amministrazione.definizioni_workflow.ed_conferma_elimina_step', { codice: step.codice }),
     onAccept: async () => {
       const res = await execute(() => deleteStep(defId.value, step.id), {

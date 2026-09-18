@@ -101,7 +101,7 @@ function buildRowActions(data) {
 
 function onDelete(data) {
   confirmAction({
-    title: t('ui.admin.colonna_delete_titolo'),
+    header: t('ui.admin.colonna_delete_titolo'),
     message: t('ui.admin.colonna_delete_messaggio', { codice: data.codice }),
     danger: true,
     onAccept: async () => {

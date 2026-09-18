@@ -191,7 +191,7 @@ function buildRowActions(data) {
 // ⚠️ `confirmAction` destrutturato e callback `onAccept` (non `accept`).
 function chiediCancellazione(data) {
   confirmAction({
-    title: t('vendite.fondi_fattura_da_decidere.cancella_titolo'),
+    header: t('vendite.fondi_fattura_da_decidere.cancella_titolo'),
     message: t('vendite.fondi_fattura_da_decidere.cancella_messaggio', {
       // ⚠️ Mai un numero inline: `formatCurrency` è la sede unica, e porta da
       //    sé il placeholder «—» se l'importo mancasse. Scriverlo grezzo

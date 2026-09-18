@@ -331,7 +331,6 @@ function handleCancel() {
         })
       : ''"
     width="xl"
-    :closable="false"
     :save-disabled="!canConfirm"
     @save="handleConfirm"
     @cancel="handleCancel"

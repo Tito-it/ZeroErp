@@ -279,7 +279,7 @@ async function refreshAfterStateChange(result) {
 function onConfirmDisattiva() {
   if (!detail.value) return
   confirmAction({
-    title: t('catalogo.disattiva_dialog_titolo'),
+    header: t('catalogo.disattiva_dialog_titolo'),
     message: t('catalogo.disattiva_dialog_messaggio', { codice: detail.value.codice }),
     acceptLabel: t('catalogo.disattiva_articolo'),
     danger: true,
@@ -296,7 +296,7 @@ function onConfirmDisattiva() {
 function onConfirmRiattiva() {
   if (!detail.value) return
   confirmAction({
-    title: t('catalogo.riattiva_dialog_titolo'),
+    header: t('catalogo.riattiva_dialog_titolo'),
     message: t('catalogo.riattiva_dialog_messaggio', { codice: detail.value.codice }),
     acceptLabel: t('catalogo.riattiva_articolo'),
     onAccept: async () => {

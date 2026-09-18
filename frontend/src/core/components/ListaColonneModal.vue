@@ -149,7 +149,7 @@ function onCancel() {
 //        ricarica la config dalla cascata BE.
 function onReset() {
   confirmAction({
-    title: t('lista_config.reset_confirm_header'),
+    header: t('lista_config.reset_confirm_header'),
     message: t('lista_config.reset_confirm_message'),
     danger: true,
     onAccept: () => {

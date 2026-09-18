@@ -71,7 +71,6 @@ function onSave() {
 <template>
   <AppDialog
     :visible="props.visible"
-    :closable="false"
     :header="t('vendite.preventivi.accetta_titolo')"
     width="sm"
     :readonly="props.readonly"
