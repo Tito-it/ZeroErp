@@ -227,14 +227,24 @@ le eredita, e sono scritte nel riquadro «CHIUSO» di quel brief:**
   **TECNICO** anche quando il dato l'ha scelto una persona: candidato allo split,
   per **tutte** le coppie — cantiere `dbops`, non di dominio.
 
-✅ **Il Lotto 1 di magazzino («il terreno vuoto») è chiuso e mergiato**
-(2026-09-15, PR #1593; brief ancora in `work-in-progress/` per le richieste
-BE — i due `E_MAG_*` da rigenerare sono il rosso di «Django tests» su
-`Tito-dev`). **Prima del Lotto 2** c'è un prerequisito deciso da Tid lo stesso
-giorno: `brief-db-emittente-di-default-un-bb-solo.md` — l'emittente di
-default come **building block unico** in `script`, montato su `magazzini`/
-`assets` e **al posto delle quattro copie di vendite**, che si ritirano nello
-stesso giro. ⭐ La regola che ne discende, e vale per ogni cantiere: *quando
+✅ **Il Lotto 1 di magazzino («il terreno vuoto») è CHIUSO e archiviato**
+(`work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`, 2026-09-17): DB
+mergiato il 15-09 (PR #1593), le richieste BE/FE chiuse lo stesso giorno
+(PR #1595: `E_MAG_*` rigenerati coi ripieghi, `ambito_causale` via da
+`_REL_CONSENTITE`/`CONFIG_TABLES`), CI verde. Il **Lotto 2** («il motore»: primitiva DEFINER + porta sul
+ledger, check di disponibilità condivisa, inventario e rettifica,
+`vw_disponibilita`, orfani, presidio di prontezza, `requires_lotto` in UI) ha
+il suo brief dal **17-09** — `work-in-progress/brief-db-magazzino-lotto-2-motore.md`,
+✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), 🔵 **nessun changeSet: si parte da P-0** — e parte da
+`analisi-db-magazzino-carico-e-scarico.md` §8 e dalle sei lezioni in coda a §5
+del brief del Lotto 1. Il prerequisito deciso da Tid il 15-09 —
+`brief-db-emittente-di-default-un-bb-solo.md`, l'emittente di default come
+**building block unico** in `script`, montato su `magazzini`/`assets` e **al
+posto delle quattro copie di vendite**, ritirate nello stesso giro — è
+**CHIUSO anch'esso il 17-09** (`work-done/brief-db-emittente-di-default-un-bb-solo.md`:
+`20260915-36 → -46` applicati, undici trigger sul BB e zero copie a DB vivo,
+commit `e98cf2469` + PR #1598, BE allineato con `E_EMITTENTE_NON_RISOLTO`).
+⭐ La regola che ne discende, e vale per ogni cantiere: *quando
 emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
 produzione, non c'è niente da aspettare.*
 

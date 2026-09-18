@@ -33,7 +33,14 @@
 > nei due modi, `RataSelect` l'importo, la base dei saldi il «prima di sé»
 > sulla rata. **A** aspetta P-1; **C** e **D** aspettano P-2 e P-4; **P-5** è
 > una decisione che il DB verifica sui due contro-pezzi; **P-6** (17/09) nasce
-> da B: l'esclusione «prima di sé» manca sul documento.
+> da B: l'esclusione «prima di sé» manca sul documento. ✅ **18/09: P-6, P-7 e
+> i sei decimali della capienza scritti** (`20260918-01 … -04`, §4-bis.10),
+> provati con l'SQL estratto su dbdev e `zeroerp_ci`; apply e pgTAP col runner
+> a Tid. 🔵 **P-8** (la scala degli importi) resta una domanda per Tid.
+> ✅ **18/09, dopo l'apply**: un rosso nella baseline **ereditato dalla distinta
+> numerata** — l'ottavo guard di disattivazione su `registri_fatturazione`
+> (`pagamenti.vendite_contabili`) che la check non copriva — chiuso con
+> `20260918-05` + pgTAP a 9 (§9); 📮 una chiave i18n al FE (§6).
 
 ---
 
@@ -46,7 +53,9 @@
 | **P-3** | 🔴 **domanda**: il saldo di N rate in **una** valutazione. Oggi `fn_get_saldo_rata` è plpgsql a tre letture, per rata; su un perimetro filtrato regge, sullo scadenzario intero no. E il filtro «solo aperte» **è** sul residuo | C (il filtro), lo scadenzario | §4.3 |
 | **P-4** | seed `ui.lista_definizione` **`pagamenti.rate`** + colonne | C, D | §4.4 |
 | **P-5** | ⭐ **decisione di Tid da verificare**: la **nota di credito ha UNA rata**. Oggi non ne ha nessuna (`fn_genera_scadenze_fattura`, base < 0 → zero rate) e `fatture_scadenze` porta il CHECK `chk_fatture_scadenze_importo_pos` | C — nel picker la nota di credito va **segnalata, non nascosta**: capita che il cliente la paghi | §4.5 |
-| **P-6** *(17/09, dal pezzo B)* | «prima di sé» anche sul **documento**: `fn_get_saldo_fattura_contabili` prende il solo `p_fattura_id`, mentre `fn_get_saldo_rata` ha `p_escludi_contabile_riga_id`. Chi corregge una riga **senza rata** (fondo fattura) legge un «in lavorazione» che conta la riga stessa — il pannello lo dichiara, non lo sana | B — la modifica di una riga su documento | §4.6 |
+| **P-6** *(17/09, dal pezzo B)* | «prima di sé» anche sul **documento**: `fn_get_saldo_fattura_contabili` prende il solo `p_fattura_id`, mentre `fn_get_saldo_rata` ha `p_escludi_contabile_riga_id`. Chi corregge una riga **senza rata** (fondo fattura) legge un «in lavorazione» che conta la riga stessa — il pannello lo dichiara, non lo sana. ✅ **18/09** | B — la modifica di una riga su documento | §4.6, §4-bis.10 |
+| **P-7** *(17/09 sera, rilievo BE/FE)* | la **natura** del documento su `vw_rate_fuori_capienza`: il vocabolario dei motivi resta a due valori e la sfumatura sulla NC («sovra-rimborsata») è affidata all'etichetta FE — che non aveva il dato. ✅ **18/09** | lista 52 (`pagamenti.rate_fuori_capienza`) | §4-bis.10 |
+| *(sei decimali)* *(17/09 sera, rilievo BE/FE)* | il messaggio di `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` scriveva `restano 500.000000`: `fatture_scadenze.importo` è `numeric(18,6)` e il guard stampava la variabile col `::text`. ✅ **18/09** | B, C, D — ogni rifiuto di capienza | §4-bis.10 |
 
 ---
 
@@ -212,7 +221,7 @@ paga dal **lookup fattura** come riga su documento senza rata — il lookup ricc
 di P-1 la **segnala** già con la natura. Il caso di Tid è coperto oggi; P-5 lo
 porta nell'elenco.
 
-### 4.6 P-6 — `fn_get_saldo_fattura_contabili` con l'esclusione di una riga *(piccolo, dal pezzo B)*
+### 4.6 P-6 — `fn_get_saldo_fattura_contabili` con l'esclusione di una riga *(piccolo, dal pezzo B)* — ✅ scritto il 18/09 (§4-bis.10, con uno scostamento dichiarato: l'esclusione vale anche sul registrato, come nel nucleo)
 
 Stessa forma della sorella: `p_escludi_contabile_riga_id bigint DEFAULT NULL`,
 stesso guard (`<= 0` → `E_PAGAMENTI_CHIAMATA_NON_VALIDA`), la riga esclusa dal
@@ -663,9 +672,9 @@ log — non da qui.
 
 | | Cosa | Perché |
 | --- | --- | --- |
-| **P-6** | `fn_get_saldo_fattura_contabili(p_fattura_id, p_escludi_contabile_riga_id DEFAULT NULL)` — **non consegnato** in questo giro (§4.6) | il pannello lo dichiara «comprende anche questa riga»; BE e FE sono già scritti per riceverlo |
-| **P-7** | `vw_rate_fuori_capienza`: appendere `natura_doc_codice_interno` (e la descrizione) | §4-bis.6 dice *«su una NC `SOVRA_INCASSATA` significa sovra-rimborsata, e a dirlo è l'etichetta FE»* — ma la vista non porta la natura, quindi il FE **non può** dirlo. Il residuo negativo «per natura» oggi vale su tendina, form e picker, non su quella lista |
-| nota | il messaggio di `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` scrive «restano **0.000000** da regolare» (sei decimali nel `%s`) | visto nel test BE sul DB provvisto; un `round(…, 2)` o un cast nel `VARIADIC`. Non blocca |
+| **P-6** ✅ 18/09 | `fn_get_saldo_fattura_contabili(p_fattura_id, p_escludi_contabile_riga_id DEFAULT NULL)` — **non consegnato** in questo giro (§4.6) → `20260918-01/-02` (§4-bis.10: anche `fn_get_saldo_fattura`, che è quella che il BE legge) | il pannello lo dichiara «comprende anche questa riga»; BE e FE sono già scritti per riceverlo |
+| **P-7** ✅ 18/09 | `vw_rate_fuori_capienza`: appendere `natura_doc_codice_interno` (e la descrizione) → `20260918-03` (§4-bis.10) | §4-bis.6 dice *«su una NC `SOVRA_INCASSATA` significa sovra-rimborsata, e a dirlo è l'etichetta FE»* — ma la vista non porta la natura, quindi il FE **non può** dirlo. Il residuo negativo «per natura» oggi vale su tendina, form e picker, non su quella lista |
+| nota ✅ 18/09 | il messaggio di `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` scrive «restano **0.000000** da regolare» (sei decimali nel `%s`) → `20260918-04` (§4-bis.10) | visto nel test BE sul DB provvisto; un `round(…, 2)` o un cast nel `VARIADIC`. Non blocca |
 | **P-8** *(domanda, non urgente)* | `vendite_contabili_righe.importo` (e `fatture_scadenze.importo`) sono `numeric` **senza scala** (`20260213-10`, `type: numeric`): è voluto? | Emerso dalla rilettura BE/FE del 17/09: lo spazio proposto dal FE (`residuo − in_lavorazione`) usciva dalla sottrazione in virgola mobile con quattordici decimali, la colonna li accettava com'erano e il guard (`abs(importo) > abs(spazio)`) rifiutava per capienza un importo che era esattamente lo spazio. Corretto nel FE (centesimi), ma **per qualunque client**: se gli importi del dominio sono a due decimali, una scala a DB fermerebbe il caso **prima** del guard — e i sei decimali della nota sopra sono lo stesso sintomo visto dall'altro lato. Da decidere con Tid; se sì, un changeSet `00_schema` con backfill `round(importo, 2)` |
 
 **Per il BE, in aggiunta al §5** (dalle decisioni Q-A/Q-B e da ciò che il DB
@@ -687,6 +696,55 @@ ha scritto):
   (piano BE/FE §3.4), e il contesto PDF della NC ora riceve una rata negativa
   da `list_fattura_scadenze` — va deciso a parole nel template.
 
+#### 4-bis.10 P-6, P-7, sei decimali — scritti il 2026-09-18 (Tid: «prima i tre changeSet»)
+
+> Tre rilievi del 17-09 sera, dal collaudo del pezzo B (§4-bis.9-ter). Erano
+> **tre**, i file sono **quattro**: P-6 tocca due funzioni. Tutto provato con
+> l'SQL **estratto** dai quattro YAML in `BEGIN … ROLLBACK` su dbdev **e** su
+> `zeroerp_ci` (precondizioni valutate a parte, vere su entrambi), guardrail
+> statici della CI verdi, pgTAP provati come owner con la DDL nella stessa
+> transazione annullata (18/18 · 18/18 · 13/13 su entrambi i database).
+> ⏳ **Apply e pgTAP col runner come app: Tid.**
+
+| # | ChangeSet | Cosa | pgTAP |
+| --- | --- | --- | --- |
+| P-6 (1/2) | `20260918-01-update-fn-get-saldo-fattura-contabili-escludi-riga` | `+ p_escludi_contabile_riga_id DEFAULT NULL` sulla **stessa** funzione: `DROP` della firma `(bigint)` + `CREATE` — un overload accanto alla vecchia renderebbe ambigua (42725) ogni chiamata a un argomento (`fn_get_saldo_fattura`, `fn_saldo_sorgente_fondo`). Nessuna dipendenza dura. Stesso guard TECNICO della sorella su `<= 0` | `test-fn-get-saldo-fattura-tre-numeri` **riscritto sui BB** (era `ERRORE_FIXTURE` in CI: cercava il BA) e 13 → **18**: esclusione sul dichiarato (6), sulla delegata (7), sul registrato (11), i due guard (17, 18) |
+| P-6 (2/2) | `20260918-02-update-fn-get-saldo-fattura-escludi-riga` | lo stesso parametro su `fn_get_saldo_fattura` — la funzione che il BE **legge** — passato alla delegata. ⚠️ `vw_eccedenze_da_sistemare` dipende per OID: vista giù, funzione giù e su, vista su **identica** (`security_invoker`, COMMENT, GRANT) nello stesso changeSet, come `20260825-01`. ⭐ **Scostamento dal §4.6**, dichiarato nel changeSet: l'esclusione vale su **entrambi** i conti — dichiarato **e** movimento della riga esclusa — come nel nucleo `fn_get_saldi_rate` (CTE `mov`/`lav`): lo stesso nome di parametro deve rispondere alla stessa domanda su rata e documento, o il pannello direbbe due cose con le stesse parole | idem (il test 11 è quello che distingue le due semantiche) |
+| P-7 | `20260918-03-update-vw-rate-fuori-capienza-natura` | `natura_doc_codice_interno` + `natura_doc_descrizione` in coda, `JOIN` interno su `config.nature_doc_fiscale` (NOT NULL + FK). Riga CSV **767** su lista 52 (`natura`, `campo_sorgente = natura_doc_descrizione`, `ordinabile = f`: la whitelist BE non la nomina), **`attivo = f`**: la chiave i18n `col_natura` non c'è e `check_i18n_keys` conta le colonne attive — la accende il FE con la chiave (📮 piano) | `test-nc-rata-unica-v1` 12 → **13** |
+| decimali | `20260918-04-update-trgfn-guard-rata-importi-leggibili` | **la causa**: `v_residuo` è `fatture_scadenze.importo%TYPE` = `numeric(18,6)` — ⚠️ non «senza scala» come dice P-8: è la convenzione degli importi di documento, come `fatture.totale_doc` — e usciva col `::text`; c'era da agosto (S2-3) e l'ha reso visibile B. Non è del nucleo (il `round(…, 6)` del `-10` tocca solo `incassato`). Rimedio: `to_char(x, 'FM999999990.00')` su **entrambi** i numeri della frase (residuo e importo), il precedente di `fn_conferma_sistemazione`; ⛔ non la forma `G`/`D`, che dipende da `lc_numeric` (`it_IT` su dbdev, non in CI). Il segno resta; il `context` per `error_log` tiene i grezzi | `test-abbinamento-rata` 5 e `test-nc-rata-unica-v1` 9 passano da `%non ci rientra%` ai **numeri** (`restano 0.00`, `restano -%.__`): provato che erano **rossi** col guard vecchio (`0.000000`, `-90.000000`) |
+
+Doc: `manual/fn_get_saldo_fattura.md`, `manual/fn_get_saldo_fattura_contabili.md`
+(anche la Storia), `manual/vw_rate_fuori_capienza.md`,
+`manual/trgfn_vendite_contabili_righe_guard_rata.md`;
+`guide/gestione-dei-pagamenti.md` §le due funzioni (erano ferme a due colonne e
+al ripiego «o NULL» sullo stato: allineate). ⏳ Alla prossima corsa CI la riga
+`test-fn-get-saldo-fattura-tre-numeri` di `baseline-rossi-ci.tsv` **rientra**:
+la toglie `pgtap-baseline-ci-rientrati.sh`.
+
+**Per il BE/FE** (📮 nel piano gemello, registro 18/09): `saldo_documento`
+accetta `escludi_riga_id` e chiama `fn_get_saldo_fattura(%s, %s)`;
+`useSaldi` accende `esclusione: true` su `DOCUMENTO`; lista 52: chiave i18n
+`pagamenti.rate_fuori_capienza.col_natura` (it/en) e riga 767 `attivo = t`,
+cella «Natura» con `NaturaDocTag`, etichetta del motivo per natura
+(`natura_doc_codice_interno` arriva già con `v.*`). Sui decimali niente da
+fare.
+
+🔵 **P-8, la scala degli importi — per Tid, con una raccomandazione.** Il fatto
+di BE/FE è vero e vale la pena: `vendite_contabili_righe.importo` è `numeric`
+senza scala, e una riga con quattordici decimali (una sottrazione in virgola
+mobile del client) è entrata a DB com'era, e il guard l'ha rifiutata per
+capienza su un importo che *era* lo spazio. Il FE ora arrotonda ai centesimi,
+ma la regola vale **per qualunque client**. Due forme: (a) `numeric(18,2)` —
+la colonna **arrotonda in silenzio** ciò che riceve, e un client che manda
+quattordici decimali non se ne accorge mai; (b) un `CHECK (importo =
+round(importo, 2))` — **rifiuta**, e il client rotto lo scopre al primo
+tentativo. Sul modello la seconda: un importo di riga contabile è denaro a due
+decimali per definizione, e AGENTS.md dice *«non normalizzare silenziosamente»*;
+`fatture_scadenze.importo` resta `numeric(18,6)` come i totali di documento (lo
+scrive il generatore, arrotondato). Un changeSet `00_schema`, con
+`expectedResult: 0` sulle righe che non passerebbero (oggi: da misurare
+all'apply). Aspetta la decisione.
+
 ## 5. Cosa deve fare il backend *(solo l'elenco: il piano è loro)*
 
 - **B** ✅ (17/09): **sette** colonne in `_RIGA_COLONNE` (le cinque previste — `fattura_numero_documento` dalla fn sede unica, `fattura_data`, `fattura_totale_doc`, `fattura_registro_codice`, `scadenza_importo` — più `fattura_natura_doc_codice_interno/descrizione`: la natura si segnala, D19-e) + `LEFT JOIN registri_fatturazione` e `nature_doc_fiscale`; tre presidi sul DB provvisto.
@@ -701,6 +759,7 @@ ha scritto):
 - **C** ✅ (17/09 sera): `RatePickerDialog` (`AppDialog` xl + `DrawerTabLista`/`<ListaConfigurabile codice="pagamenti.rate">`, `dataKey="scadenza_id"`), pulsante accanto al lookup, criterio obbligatorio (gate dello store), modalità singola → compila il form; `RataSelect` tiene la scelta arrivata dal picker (Q-2); proposta e selezionabile = **spazio** (Q-B, `spazioSaldo` nella base dei saldi FE).
 - **D** ✅ (17/09 notte; rilettura 17/09 notte) FE: azione «Righe da rate» nel toolbar delle righe del drawer, picker in `modalita="multipla"`, area temporanea (`useSelezioneLista` + `useSelezioneConValore` composti in `useRigheDaRate`; a video `app-righe-scelte`, **non** una DataTable), fatti comuni, Salva → `da-rate/`, esito parziale → restano le fallite col motivo e «Forza» + motivo **per riga** (conferma e motivo nella macchina, non nel dialog), il giro dopo rimanda solo loro **e la lista ricarica** (le rate scritte hanno un altro spazio); conferma sull'abbandono. Lo spazio si sottrae in **centesimi** (P-8). Q-1 chiusa da Tid (`useSelezioneConValore` in `core`; `useRigheSelezioneQta` non migrato, debito dichiarato).
 - Dopo P-5 ✅: il residuo negativo si dice per **natura** («da rimborsare» su una NC, «di troppo» su una fattura) — tendina, form, picker. Non su `rate_fuori_capienza` (P-7).
+- 📮 **(18/09, eredità della distinta numerata)** chiave i18n `amministrazione.registri_fatturazione.disattiva_blocco.ha_distinte` in `it.json` e `en.json`, accanto alle sette sorelle (`ha_commesse`, `ha_ddt`, …): è la `reason_key` dell'ottavo motivo di `fn_check_registro_disattivabile` (`20260918-05`), parametri `{codice}` e `{quante}` come le altre. Frase: *«Il registro {codice} ha già numerato {quante} distinte di incasso: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati. E una distinta non si cancella, quindi da qui in avanti questo registro non si spegne più.»* Senza, il tooltip del cestino sui registri `DIS-*` mostra la chiave nuda.
 
 ## 7. Il copione di collaudo — righe da aggiungere
 
@@ -738,6 +797,8 @@ Per esteso, sul dev migrato (17/09 notte — è di Tid, io non ho un browser):
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-18** (dopo l'apply) | 🔴→✅ **Un rosso nella baseline che non è di questo cantiere ma della distinta numerata**: `script/test-fn-check-registro-disattivabile-v1` §6 — `have: …,vendite_contabili` / `want: …` senza. È l'**ottavo guard** di disattivazione su `registri_fatturazione`: la FK `fk_vendite_contabili_registro` del `20260915-21` ha fatto montare all'automazione ATTIVO il `block_deact` a `ci_apply` (il brief chiuso lo aveva **previsto** in P-1, ma non la conseguenza: che `fn_check_registro_disattivabile` dovesse impararlo). Su dev è comparso quando le automazioni sono girate dopo l'apply, non al migrate — per questo il rosso arriva il 18 e non il 17. Come dice il test stesso, **prima la check, poi l'elenco atteso**: `20260918-05` (`20_code/script`) aggiunge il motivo `HA_DISTINTE` **ultimo** (i BEFORE ROW scattano per nome, `v` > `t`), ramo `_EXIST` verificato con `fn_col_exists` (la distinta ha `stato_id`, non `attivo`: una annullata blocca come una confermata), quarto `valore` = `pagamenti.vendite_contabili` **con lo schema** — è la prima figlia fuori da `vendite`, e la frase del trigger porta `child_schema.child_table`; `COMMENT` riscritto (diceva ancora «SEI» dal 02-09). pgTAP: elenco atteso a otto **e tre asserzioni nuove che costruiscono il caso** (7: con una distinta collegata `HA_PROGRESSIVI,HA_DISTINTE` nell'ordine dell'array; 8: spento il contatore resta solo `HA_DISTINTE`; 9: il rifiuto nomina `pagamenti.vendite_contabili`) — la distinta si inserisce con `codice` fornito (gen_codice no-op) e `registro_id` scritto a mano. Provato: SQL estratto + pgTAP nella stessa transazione annullata su dbdev come owner → **9/9**; controprova senza changeSet → 7 e 8 rossi, 9 verde (il trigger c'è già). Guardrail statici e render `updateSQL` offline verdi. Doc: `vendite/manual/registri_fatturazione` («otto», con la storia datata e il presidio), `pagamenti/manual/vendite_contabili` (l'effetto della FK nell'altro verso). 📮 **FE**: chiave i18n `amministrazione.registri_fatturazione.disattiva_blocco.ha_distinte` in `it.json`/`en.json` (§6). ⭐ **E la fixture è rifatta sul BB**, perché in `baseline-rossi-ci.tsv` quel file era `ERRORE_FIXTURE`: da zero la fixture pescava «un registro DDT per tutte le utility» fra quelli esistenti e su `zeroerp_ci` ne trovava **zero** (misurato) — quindi il presidio §6 era **muto proprio nell'unico posto dove il guard nasce da zero**. Ora `dbops.fn_pgtap_crea_emittente()` (nudo, senza operatore: si gira da owner) fa nascere l'azienda coi suoi registri e il resto della fixture non cambia; provato con changeSet + pgTAP nella stessa transazione anche su `zeroerp_ci` come `zeroerp`: **9/9**, test 6 compreso (lì l'ottavo guard è già montato). La riga della baseline CI diventa un RIENTRATO alla prossima corsa: la toglie `pgtap-baseline-ci-rientrati.sh`, non si edita a mano. ⏳ Apply e runner: Tid |
+| **2026-09-18** | ✅ **P-6, P-7 e i sei decimali scritti** (`20260918-01 … -04`, §4-bis.10) su richiesta di Tid («prima i 3 changeSet»), dopo il giro di domande del Lotto 2 magazzino. P-6 sono **due** funzioni (`_contabili` e `fn_get_saldo_fattura`, che il BE legge) e la seconda trascina `vw_eccedenze_da_sistemare` come `20260825-01`; l'esclusione vale su dichiarato **e** registrato, come nel nucleo — scostamento dal §4.6 dichiarato. P-7: natura in coda sulla vista + riga 767 spenta (chiave i18n al FE). Decimali: **la causa è `fatture_scadenze.importo numeric(18,6)`** col `::text` nel guard, non il nucleo — e non «senza scala» (P-8 lo dice per la riga contabile, ed è vero lì); `to_char` sui due numeri, pattern pgTAP che pinnano i decimali (rossi col guard vecchio). `test-fn-get-saldo-fattura-tre-numeri` riscritto sui BB (era `ERRORE_FIXTURE` in CI). Provato: SQL estratto su dbdev e `zeroerp_ci`, 18/18 · 18/18 · 13/13 come owner. 🔵 P-8 con raccomandazione (CHECK a due decimali, non typmod). ⏳ Apply e runner: Tid |
 | **2026-09-17** (notte, rilettura) | 🔍 **Rilettura critica di A/C/D (BE+FE)** su richiesta di Tid — dettaglio nel piano §9; §5/§6 aggiornati. Per il DB conta una cosa, registrata come **P-8** in §4-bis.9-ter: lo **spazio** proposto dal FE usciva dalla sottrazione in virgola mobile con quattordici decimali, `importo` è `numeric` **senza scala** e il guard rifiutava per capienza un importo che era esattamente lo spazio. Corretto nel FE (centesimi); la domanda sulla scala resta al DB |
 | **2026-09-17** (notte, D-FE) | ✅ **D-FE scritto** su Q-1 chiusa (piano §0-bis e registro). Il copione per esteso in §7 — 14 righe, la 11-12 sono il secondo tempo per riga. Restano per il DB i residui di §4-bis.9-ter (P-6, P-7, sei decimali) e per Tid tre liste `pagamenti` KO al nucleo (`righe`, `eccedenze`, `canali_incasso`) |
 | **2026-09-17** (notte, BE/FE) | ✅ **A, C e D-BE scritti** sui prerequisiti consegnati (dettaglio nel piano §0-bis e registro). Residui per il DB in §4-bis.9-ter: **P-6** non consegnato, **P-7** la natura su `vw_rate_fuori_capienza`, i sei decimali nel messaggio della capienza. D-FE aspetta Q-1 |

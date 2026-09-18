@@ -1,0 +1,421 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 (2 di 2) — pagamenti.fn_get_saldo_fattura impara a escludere UNA riga
+#   (`p_escludi_contabile_riga_id DEFAULT NULL`) e la passa alla delegata del
+#   dichiarato (20260918-01). E' la funzione che il backend LEGGE per il
+#   pannello a livello documento (pagamenti_repository.get_saldo_documento):
+#   senza questo passo l'esclusione del passo 1 non arriverebbe a nessuno.
+#   Brief: brief-db-distinta-ricerca-rate §4.6 (P-6).
+#
+# -- CHE COSA CAMBIA -----------------------------------------------------------------
+#   Un parametro in piu' SULLA STESSA funzione, con DEFAULT NULL — non un
+#   overload: con (bigint) e (bigint, bigint DEFAULT NULL) accanto, la chiamata
+#   a un argomento di vw_eccedenze_da_sistemare, fn_conferma_sistemazione e
+#   fn_saldo_sorgente_fondo sarebbe AMBIGUA (42725). Quindi DROP + CREATE.
+#   ⭐ L'esclusione vale su ENTRAMBI i conti, come nel nucleo fn_get_saldi_rate
+#   (CTE `mov` e `lav`): la riga esclusa esce dal dichiarato (delegato al passo
+#   1) E il movimento che quella riga ha scritto (`vendite_movimenti.contabile_riga_id`)
+#   esce dal registrato. Il brief §4.6 diceva «dal solo conto dell'in
+#   lavorazione»: qui e' allargato alla forma della sorella, perche' lo STESSO
+#   nome di parametro deve rispondere alla STESSA domanda su rata e documento
+#   — «quanto spazio c'era PRIMA di me», registrato compreso — ed e' cio' che
+#   permette al guard della rata di rileggersi al posting senza contare due
+#   volte (COMMENT del guard: «quando la riga passa a POSTATA il suo movimento
+#   e' gia' scritto ed e' escluso dal conto»). Due sorelle con due semantiche
+#   dello stesso parametro sarebbero il difetto che nessun cancello vede.
+#   RETURNS TABLE (saldo, in_lavorazione, incassato, has_movimenti) invariato;
+#   resta VOLATILE (il ramo d'errore scrive nel registro).
+#
+# -- LA VISTA CHE DIPENDE -------------------------------------------------------------
+#   pagamenti.vw_eccedenze_da_sistemare dipende dalla funzione PER OID
+#   (pg_depend, deptype n): il DROP non passa finche' la vista c'e'. Stesso
+#   giro del precedente 20260825-01: vista giu', funzione giu' e su, vista su
+#   IDENTICA — colonne, `WITH (security_invoker = on)` ri-specificata, COMMENT,
+#   GRANT — nello stesso changeSet, cosi' il database non resta mai senza la
+#   vista nemmeno per un migrate interrotto. ⛔ Mai CASCADE: qui si sa
+#   esattamente che cosa si toglie. La vista chiama la funzione a un
+#   argomento e prende `s.saldo` per nome: la nuova firma la serve senza che
+#   una riga cambi.
+#
+# -- CHI LA CHIAMA, verificato su pg_proc/pg_views il 18-09 --------------------------
+#   pagamenti.vw_eccedenze_da_sistemare (dura), pagamenti.fn_conferma_sistemazione,
+#   vendite.fn_saldo_sorgente_fondo (per nome, un argomento). Backend:
+#   pagamenti_repository.get_saldo_documento — un argomento oggi; il secondo lo
+#   passera' saldi_service.saldo_documento (📮 al BE, piano BE/FE). pgTAP:
+#   test-fn-get-saldo-fattura-tre-numeri (rev), test-sistemazione-annullo-riporto,
+#   test-fn-posta-contabile, vendite/test-fondi-fattura-governo — un argomento.
+#
+# ⚠️ I GRANT si perdono col DROP (funzione E vista): si rimettono identici.
+#    Al ruolo batch NO (linee-guida-sql §11.6: provisioning).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260918-02-update-fn-get-saldo-fattura-escludi-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260918-02-update-fn-get-saldo-fattura-escludi-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.fn_get_saldo_fattura: + p_escludi_contabile_riga_id DEFAULT NULL, passato
+        alla delegata fn_get_saldo_fattura_contabili e applicato anche al movimento della
+        riga esclusa (la forma del nucleo fn_get_saldi_rate: stesso parametro, stessa
+        domanda su rata e documento). DROP + CREATE perche' cambia la firma; la vista
+        vw_eccedenze_da_sistemare, che dipende per OID, si ricrea identica nello stesso
+        changeSet con security_invoker e GRANT. Brief: brief-db-distinta-ricerca-rate §4.6 (P-6, 2 di 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: pagamenti
+                viewName: vw_eccedenze_da_sistemare
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldo_fattura'
+                    AND pg_get_function_identity_arguments(p.oid) = 'p_fattura_id bigint'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldo_fattura_contabili'
+                    AND pg_get_function_identity_arguments(p.oid) = 'p_fattura_id bigint, p_escludi_contabile_riga_id bigint'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ═══════════════════════════════════════════════════════════
+              -- 1) La vista esce di scena: e' l'unica dipendenza dura che
+              --    impedisce il DROP della funzione. ⛔ Mai CASCADE.
+              -- ═══════════════════════════════════════════════════════════
+              DROP VIEW IF EXISTS pagamenti.vw_eccedenze_da_sistemare;
+
+              -- ═══════════════════════════════════════════════════════════
+              -- 2) La funzione: DROP + CREATE, perche' cambia la FIRMA.
+              --    ⚠️ Un parametro in piu' sulla stessa funzione, non un
+              --    secondo overload: la vecchia (bigint) deve sparire.
+              -- ═══════════════════════════════════════════════════════════
+              DROP FUNCTION IF EXISTS pagamenti.fn_get_saldo_fattura(bigint);
+
+              CREATE FUNCTION pagamenti.fn_get_saldo_fattura(
+                  p_fattura_id                vendite.fatture.id%TYPE,
+                  p_escludi_contabile_riga_id pagamenti.vendite_contabili_righe.id%TYPE DEFAULT NULL)
+              RETURNS TABLE(saldo          vendite.fatture.totale_a_pagare%TYPE,
+                            in_lavorazione vendite.fatture.totale_a_pagare%TYPE,
+                            incassato      vendite.fatture.totale_a_pagare%TYPE,
+                            has_movimenti  boolean)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+                  v_movimenti       vendite.fatture.totale_a_pagare%TYPE;
+                  v_incassato       vendite.fatture.totale_a_pagare%TYPE;
+                  v_in_lavorazione  vendite.fatture.totale_a_pagare%TYPE;
+                  v_has_movimenti   boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il saldo di un DOCUMENTO, in tre numeri:
+                  --     saldo          = totale_a_pagare - movimenti attivi
+                  --     in_lavorazione = dichiarato e non ancora registrato
+                  --     incassato      = quanto di registrato e' cassa vera
+                  --
+                  -- Rev 2026-08-25 (S5-1, lotto 8): le due colonne diventano
+                  -- quattro, la stessa forma e lo stesso ordine di
+                  -- fn_get_saldo_rata. Nessun predicato preesistente cambia:
+                  -- `saldo` e `has_movimenti` rispondono esattamente come
+                  -- prima.
+                  --
+                  -- Rev 2026-09-18 (P-6): p_escludi_contabile_riga_id — chi sta
+                  -- scrivendo una riga chiede quanto c'era PRIMA di se'. Esce
+                  -- dal dichiarato (delegato) E dal registrato (il movimento
+                  -- che quella riga ha scritto), come nel nucleo delle rate:
+                  -- stesso parametro, stessa domanda.
+                  -- =========================================================
+
+                  -- Guard di parametro: un id nullo o non positivo non esce da
+                  -- nessuna interfaccia — lo produce solo un chiamante rotto,
+                  -- ed e' per questo che il codice e' TECNICO.
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_saldo_fattura', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object(
+                        'detail', 'fattura_id obbligatoria e maggiore di zero',
+                        'p_fattura_id', p_fattura_id
+                      ),
+                      NULL::uuid,
+                      'pagamenti.fn_get_saldo_fattura', 'p_fattura_id (obbligatorio, maggiore di zero)'
+                    );
+                  END IF;
+
+                  IF p_escludi_contabile_riga_id IS NOT NULL AND p_escludi_contabile_riga_id <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_saldo_fattura', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object(
+                        'detail', 'p_escludi_contabile_riga_id, se fornito, deve essere maggiore di zero',
+                        'p_fattura_id', p_fattura_id,
+                        'p_escludi_contabile_riga_id', p_escludi_contabile_riga_id
+                      ),
+                      NULL::uuid,
+                      'pagamenti.fn_get_saldo_fattura', 'p_escludi_contabile_riga_id, se fornito, deve essere maggiore di zero'
+                    );
+                  END IF;
+
+                  -- Recupera totale_a_pagare da fattura
+                  SELECT f.totale_a_pagare
+                    INTO v_totale_a_pagare
+                    FROM vendite.fatture f
+                   WHERE f.id = p_fattura_id;
+
+                  -- ⚠️ L'id e' valido: e' il documento a non esserci. Codice
+                  --    diverso dal guard di parametro perche' il rimedio e'
+                  --    diverso. E la tabella ha la RLS: «non esiste» e «non la
+                  --    vedi» arrivano qui allo stesso modo, per scelta.
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_saldo_fattura', 'E_FATTURA_NON_TROVATA',
+                      jsonb_build_object('detail','Fattura non trovata', 'fattura_id', p_fattura_id),
+                      NULL::uuid,
+                      p_fattura_id::text
+                    );
+                  END IF;
+
+                  -- =========================================================
+                  -- Cio' che e' REGISTRATO, e quanto di quello e' cassa vera.
+                  -- ⚠️ `incassato` pretende che il centro CI SIA e che non sia
+                  --    ne' fondo fattura ne' compensazione: un movimento senza
+                  --    centro non e' «denaro arrivato», e' un canale non
+                  --    dichiarato. Identico alla sorella della rata.
+                  -- ⭐ Il movimento scritto dalla riga esclusa non conta: e'
+                  --    la stessa condizione della CTE `mov` del nucleo.
+                  -- =========================================================
+                  SELECT COALESCE(SUM(m.importo), 0),
+                         COALESCE(SUM(m.importo) FILTER (
+                             WHERE c.id IS NOT NULL
+                               AND c.is_fondo_fattura IS FALSE
+                               AND c.is_compensazione IS FALSE), 0),
+                         COUNT(*) > 0
+                    INTO v_movimenti, v_incassato, v_has_movimenti
+                    FROM pagamenti.vendite_movimenti m
+                    LEFT JOIN pagamenti.centri_riscossione c
+                      ON c.id = m.centro_riscossione_id
+                   WHERE m.fattura_id = p_fattura_id
+                     AND m.attivo IS TRUE
+                     AND (p_escludi_contabile_riga_id IS NULL
+                          OR m.contabile_riga_id IS DISTINCT FROM p_escludi_contabile_riga_id);
+
+                  -- =========================================================
+                  -- Cio' che e' DICHIARATO e non ancora registrato.
+                  -- ⭐ Si CHIEDE alla funzione che gia' lo sa, non si riscrive
+                  --    il predicato: due sedi per la stessa regola divergono
+                  --    al primo aggiustamento, ed e' il vincolo «una sede sola
+                  --    per i saldi» che il backend costruisce sopra questa.
+                  --    L'esclusione viaggia con la domanda.
+                  -- =========================================================
+                  SELECT sc.saldo_contabile
+                    INTO v_in_lavorazione
+                    FROM pagamenti.fn_get_saldo_fattura_contabili(p_fattura_id, p_escludi_contabile_riga_id) sc;
+
+                  RETURN QUERY SELECT
+                      COALESCE(v_totale_a_pagare, 0) - COALESCE(v_movimenti, 0),
+                      COALESCE(v_in_lavorazione, 0),
+                      COALESCE(v_incassato, 0),
+                      COALESCE(v_has_movimenti, false);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura(vendite.fatture.id%TYPE, pagamenti.vendite_contabili_righe.id%TYPE)
+              IS 'Il saldo di un DOCUMENTO, in tre numeri: `saldo` = totale_a_pagare meno i movimenti attivi; `in_lavorazione` = quanto e'' gia'' dichiarato su righe contabili pronte sotto una testata non finale; `incassato` = quanto di cio'' che e'' registrato e'' DENARO DAVVERO ARRIVATO. ⭐ Rev 2026-09-18 (P-6, brief-db-distinta-ricerca-rate §4.6): + p_escludi_contabile_riga_id DEFAULT NULL — chi sta scrivendo una riga chiede quanto c''era PRIMA di se''. La riga esclusa esce dal dichiarato (delegato a fn_get_saldo_fattura_contabili, che la riceve) E dal registrato (il movimento con quel contabile_riga_id), esattamente come nel nucleo fn_get_saldi_rate: lo stesso nome di parametro risponde alla stessa domanda su rata e documento, o il pannello dei saldi direbbe due cose diverse con le stesse parole. DROP + CREATE perche'' cambia la firma (un overload accanto alla vecchia sarebbe ambiguo), e la vista vw_eccedenze_da_sistemare — che dipende per OID — e'' stata ricreata identica nello stesso changeSet. ⭐ Rev 2026-08-25 (S5-1): fino a ieri rispondeva DUE numeri mentre la sorella fn_get_saldo_rata ne rispondeva tre — cioe'' la distinzione fra registrato e incassato, che il dominio dichiara obbligatoria, esisteva sulla rata e NON sul documento, che e'' il livello guardato per primo e quello su cui nascera'' il saldo CLIENTE. Nessun predicato preesistente e'' cambiato: `saldo` e `has_movimenti` rispondono come prima. ⭐ `in_lavorazione` NON e'' ricalcolato qui: si delega a fn_get_saldo_fattura_contabili, che e'' la sede del dichiarato — riscriverne il predicato avrebbe creato la seconda sede proprio nel passo che costruisce la base unica dei saldi. Quella funzione resta anche perche'' da'' `has_righe_postabili`, che serve a vendite.fn_saldo_sorgente_fondo. ⚠️ `incassato` esclude i centri is_fondo_fattura e is_compensazione — NON SONO CASSA: un movimento li'' salda il documento perche'' il denaro si e'' mosso per trasferimento, ma in banca non e'' entrato niente. E un movimento SENZA centro non ci entra: «canale non dichiarato» non e'' «denaro arrivato», e su una misura di cassa si sta dalla parte prudente. ⚠️ `saldo` e `in_lavorazione` restano DUE colonne e non si sommano, o non si capisce piu'' che cosa si sta guardando. ⚠️ La fattura ha la RLS: «non esiste» e «non la vedi» danno lo stesso E_FATTURA_NON_TROVATA, per scelta. ⚠️ NON e'' dichiarata STABLE: il ramo d''errore scrive nel registro, e promettere stabilita'' su una funzione che in un ramo scrive autorizza il planner a scelte che quel ramo non regge. S5-1 del cantiere incassi, richiesta DB-10 del brief BE/FE.';
+
+              -- ⚠️ I GRANT si perdono col DROP: EXECUTE all'app si rimette. Al
+              --    ruolo batch NO — provisioning (linee-guida-sql §11.6).
+              GRANT EXECUTE ON FUNCTION pagamenti.fn_get_saldo_fattura(vendite.fatture.id%TYPE, pagamenti.vendite_contabili_righe.id%TYPE) TO zeroerp_app;
+
+              -- ═══════════════════════════════════════════════════════════
+              -- 3) La vista torna, IDENTICA nelle colonne che espone (dalla
+              --    definizione viva del 18-09 = 20260825-01): il backend e i
+              --    pgTAP che la leggono non se ne accorgono.
+              --    ⚠️ `security_invoker = on` e' ripetuto apposta.
+              -- ═══════════════════════════════════════════════════════════
+              CREATE OR REPLACE VIEW pagamenti.vw_eccedenze_da_sistemare
+              WITH (security_invoker = on) AS
+              WITH candidate AS (
+                  -- ⚠️ Si parte dai documenti che hanno ALMENO UN MOVIMENTO: senza
+                  --    denaro registrato il residuo coincide col totale e non puo'
+                  --    aver cambiato segno. E' il filtro che evita di chiamare la
+                  --    funzione del saldo su tutte le fatture del sistema.
+                  SELECT f.id                          AS fattura_id,
+                         f.numero,
+                         f.data,
+                         f.totale_a_pagare,
+                         f.emittente_soggetto_ruolo_id,
+                         f.billing_account_id,
+                         ba.soggetto_ruolo_id          AS cliente_soggetto_ruolo_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.billing_account ba
+                      ON ba.id = f.billing_account_id
+                   WHERE f.totale_a_pagare IS NOT NULL
+                     AND f.totale_a_pagare <> 0
+                     AND EXISTS (
+                         SELECT 1
+                           FROM pagamenti.vendite_movimenti m
+                          WHERE m.fattura_id = f.id
+                            AND m.attivo IS TRUE
+                     )
+              ), con_saldo AS (
+                  -- ⭐ Il saldo lo da' la funzione, non una somma riscritta qui:
+                  --    due definizioni della stessa cosa divergono al primo
+                  --    aggiustamento. Stessa scelta di vw_rate_fuori_capienza.
+                  -- ⚠️ Nessuna lista di alias dopo `s`: la vista prende la colonna
+                  --    PER NOME, quindi la funzione puo' crescere senza che questo
+                  --    punto vada riscritto una seconda volta. Un argomento: il
+                  --    secondo (l'esclusione) qui non ha senso, e il DEFAULT lo copre.
+                  SELECT c.*, s.saldo
+                    FROM candidate c
+                    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(c.fattura_id) s
+              )
+              SELECT
+                  cs.fattura_id,
+                  cs.numero                                             AS fattura_numero,
+                  cs.data                                               AS fattura_data,
+                  cs.emittente_soggetto_ruolo_id,
+                  cs.cliente_soggetto_ruolo_id,
+                  cs.billing_account_id,
+                  cs.totale_a_pagare,
+                  cs.saldo                                              AS residuo,
+                  -- Quanto c'e' da sistemare su QUESTO documento, sempre positivo:
+                  -- il verso lo dice `chi_e_in_credito`, non il segno.
+                  abs(cs.saldo)                                         AS eccedenza,
+                  -- ⭐ La colonna che evita l'errore di verso: un saldo negativo su
+                  --    una fattura e uno positivo su una nota di credito sono due
+                  --    situazioni OPPOSTE, e i numeri da soli non lo dicono.
+                  CASE WHEN cs.totale_a_pagare > 0 THEN 'CLIENTE' ELSE 'AZIENDA' END
+                                                                        AS chi_e_in_credito,
+                  -- ⭐ «Per cliente» senza perdere il documento: le colonne di
+                  --    raggruppamento sono calcolate in finestra, e ogni riga resta
+                  --    azionabile (D15-b).
+                  sum(abs(cs.saldo)) OVER (
+                      PARTITION BY cs.cliente_soggetto_ruolo_id, cs.emittente_soggetto_ruolo_id
+                  )                                                     AS eccedenza_cliente,
+                  count(*) OVER (
+                      PARTITION BY cs.cliente_soggetto_ruolo_id, cs.emittente_soggetto_ruolo_id
+                  )                                                     AS documenti_cliente,
+                  -- ⚠️ SEGNALANO, non filtrano: un atto in BOZZA non ha ancora
+                  --    mosso denaro, quindi l'eccedenza c'e' ancora, e toglierla
+                  --    dall'elenco sarebbe nascondere.
+                  (SELECT count(*) FROM pagamenti.sistemazioni s
+                    WHERE s.fattura_origine_id = cs.fattura_id
+                      AND s.stato = 'BOZZA')                            AS sistemazioni_in_bozza,
+                  -- ⚠️ Un atto CONFERMATO ha gia' generato il suo documento, ma
+                  --    l'eccedenza cala solo quando quel documento viene
+                  --    REGISTRATO: fino ad allora la riga resta qui, e questo
+                  --    contatore dice perche'.
+                  (SELECT count(*) FROM pagamenti.sistemazioni s
+                    WHERE s.fattura_origine_id = cs.fattura_id
+                      AND s.stato = 'CONFERMATA')                       AS sistemazioni_confermate
+                FROM con_saldo cs
+               WHERE sign(cs.saldo) = -sign(cs.totale_a_pagare);
+
+              COMMENT ON VIEW pagamenti.vw_eccedenze_da_sistemare IS
+                'L''ELENCO del processo rimborsi: i documenti il cui residuo ha CAMBIATO SEGNO, cioe'' che in valore assoluto hanno incassato piu'' del totale (D15-b). Si accoppia con pagamenti.sistemazioni: la vista dice CHE COSA C''E'' DA FARE, la tabella CHE COSA E'' STATO FATTO. ⭐ La condizione non ha estremi fissi — sign(saldo) = -sign(totale_a_pagare) — quindi vale identica su fatture e note di credito senza nominare ne'' l''una ne'' l''altra: un intervallo 0..totale su un documento a credito diventa vuoto, ed e'' la trappola che questa forma evita per costruzione. Stessa famiglia della regola di capienza del lotto 5. ⭐ Una riga per DOCUMENTO, con le colonne del cliente calcolate in finestra: D15-b chiede di raggruppare per cliente — la compensazione ha senso solo a quel livello — ma l''azione si fa su un documento, e una vista gia'' aggregata avrebbe perso cio'' che serve per agire. ⭐ chi_e_in_credito esiste perche'' un saldo negativo su una fattura e uno positivo su una nota di credito sono situazioni OPPOSTE, e sbagliare il verso significa rimborsare denaro che si deve incassare. ⚠️ I due contatori SEGNALANO e non filtrano: un atto in bozza non ha mosso niente, e nasconderlo sarebbe l''opposto di «la vista presenta, la persona decide». Un atto confermato invece sparisce da solo — i saldi si leggono, non si conservano. ⚠️ security_invoker = on: la vista legge tre tabelle con le policy, e senza girerebbe come proprietario mostrando a ciascuno i documenti dell''altro. ⚠️ Ricreata il 2026-08-25 (S5-1) e di nuovo il 2026-09-18 (P-6) senza cambiare nessuna colonna: la funzione del saldo ha cambiato prima il RETURNS e poi la FIRMA, e per droppare una funzione bisogna prima togliere la vista che la usa. Usa `s.saldo` per nome, senza lista di alias, e chiama la funzione a un argomento, cosi'' che una colonna o un parametro in piu'' non la riguardino una seconda volta.';
+
+              -- ⚠️ I GRANT si perdono col DROP della vista: si rimettono identici
+              --    (INSERT/UPDATE/DELETE sono inerti su una vista non aggiornabile,
+              --    ma e' cio' che il loop di 20260205-41 rimette a ogni ci_apply).
+              GRANT SELECT, INSERT, UPDATE, DELETE ON pagamenti.vw_eccedenze_da_sistemare TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Torna la firma a UN argomento (20260825-01) e la vista identica.
+              DROP VIEW IF EXISTS pagamenti.vw_eccedenze_da_sistemare;
+              DROP FUNCTION IF EXISTS pagamenti.fn_get_saldo_fattura(bigint, bigint);
+
+              CREATE FUNCTION pagamenti.fn_get_saldo_fattura(p_fattura_id bigint)
+              RETURNS TABLE(saldo numeric, in_lavorazione numeric, incassato numeric, has_movimenti boolean)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+                  v_movimenti       vendite.fatture.totale_a_pagare%TYPE;
+                  v_incassato       vendite.fatture.totale_a_pagare%TYPE;
+                  v_in_lavorazione  vendite.fatture.totale_a_pagare%TYPE;
+                  v_has_movimenti   boolean;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_saldo_fattura', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object('detail', 'fattura_id obbligatoria e maggiore di zero', 'p_fattura_id', p_fattura_id),
+                      NULL::uuid,
+                      'pagamenti.fn_get_saldo_fattura', 'p_fattura_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT f.totale_a_pagare INTO v_totale_a_pagare FROM vendite.fatture f WHERE f.id = p_fattura_id;
+                  IF NOT FOUND THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_saldo_fattura', 'E_FATTURA_NON_TROVATA',
+                      jsonb_build_object('detail','Fattura non trovata', 'fattura_id', p_fattura_id),
+                      NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  SELECT COALESCE(SUM(m.importo), 0),
+                         COALESCE(SUM(m.importo) FILTER (
+                             WHERE c.id IS NOT NULL AND c.is_fondo_fattura IS FALSE AND c.is_compensazione IS FALSE), 0),
+                         COUNT(*) > 0
+                    INTO v_movimenti, v_incassato, v_has_movimenti
+                    FROM pagamenti.vendite_movimenti m
+                    LEFT JOIN pagamenti.centri_riscossione c ON c.id = m.centro_riscossione_id
+                   WHERE m.fattura_id = p_fattura_id AND m.attivo IS TRUE;
+
+                  SELECT sc.saldo_contabile INTO v_in_lavorazione
+                    FROM pagamenti.fn_get_saldo_fattura_contabili(p_fattura_id) sc;
+
+                  RETURN QUERY SELECT
+                      COALESCE(v_totale_a_pagare, 0) - COALESCE(v_movimenti, 0),
+                      COALESCE(v_in_lavorazione, 0),
+                      COALESCE(v_incassato, 0),
+                      COALESCE(v_has_movimenti, false);
+              END;
+              $function$;
+
+              GRANT EXECUTE ON FUNCTION pagamenti.fn_get_saldo_fattura(bigint) TO zeroerp_app;
+
+              CREATE OR REPLACE VIEW pagamenti.vw_eccedenze_da_sistemare
+              WITH (security_invoker = on) AS
+              WITH candidate AS (
+                  SELECT f.id AS fattura_id, f.numero, f.data, f.totale_a_pagare,
+                         f.emittente_soggetto_ruolo_id, f.billing_account_id,
+                         ba.soggetto_ruolo_id AS cliente_soggetto_ruolo_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+                   WHERE f.totale_a_pagare IS NOT NULL AND f.totale_a_pagare <> 0
+                     AND EXISTS (SELECT 1 FROM pagamenti.vendite_movimenti m
+                                  WHERE m.fattura_id = f.id AND m.attivo IS TRUE)
+              ), con_saldo AS (
+                  SELECT c.*, s.saldo
+                    FROM candidate c
+                    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(c.fattura_id) s
+              )
+              SELECT cs.fattura_id, cs.numero AS fattura_numero, cs.data AS fattura_data,
+                     cs.emittente_soggetto_ruolo_id, cs.cliente_soggetto_ruolo_id, cs.billing_account_id,
+                     cs.totale_a_pagare, cs.saldo AS residuo, abs(cs.saldo) AS eccedenza,
+                     CASE WHEN cs.totale_a_pagare > 0 THEN 'CLIENTE' ELSE 'AZIENDA' END AS chi_e_in_credito,
+                     sum(abs(cs.saldo)) OVER (PARTITION BY cs.cliente_soggetto_ruolo_id, cs.emittente_soggetto_ruolo_id) AS eccedenza_cliente,
+                     count(*) OVER (PARTITION BY cs.cliente_soggetto_ruolo_id, cs.emittente_soggetto_ruolo_id) AS documenti_cliente,
+                     (SELECT count(*) FROM pagamenti.sistemazioni s WHERE s.fattura_origine_id = cs.fattura_id AND s.stato = 'BOZZA') AS sistemazioni_in_bozza,
+                     (SELECT count(*) FROM pagamenti.sistemazioni s WHERE s.fattura_origine_id = cs.fattura_id AND s.stato = 'CONFERMATA') AS sistemazioni_confermate
+                FROM con_saldo cs
+               WHERE sign(cs.saldo) = -sign(cs.totale_a_pagare);
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON pagamenti.vw_eccedenze_da_sistemare TO zeroerp_app;

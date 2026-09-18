@@ -15,7 +15,23 @@
 > (`feedback_duplicati_si_ritirano_nello_stesso_cantiere`): un refactor rimandato
 > è un debito che nessuno rilegge.
 >
-> **Stato:** ✅ **SCRITTO E PROVATO, in attesa di apply** (2026-09-17). Le
+> **Stato:** ✅ **CHIUSO e archiviato in `work-done/` il 2026-09-17 (sera)**.
+> Letto dalle sorgenti, non supposto: **applicato** su dbdev alle 12:06
+> (`20260915-36 → -46` `EXECUTED`, `databasechangelog`); a DB vivo **undici**
+> tabelle con `trg_<t>_a10_default_emittente_ins` sul BB e **zero** copie in
+> `pg_proc`; **committato** in `e98cf2469` (12:24, con le pagine auto-gen:
+> `script/funzioni/trgfn_default_emittente_fiscale.md` nata, le quattro di
+> vendite via, `commesse` resta) e mergiato su `Tito-dev` con PR #1598 (12:27);
+> la riga B-7 di §14 in `8dcb09d16` (PR #1601, 17:35, **CI-Validate verde**:
+> corsa `35241276981`). pgTAP nella stessa corsa (runner `app`, DB da zero):
+> `script/test-trgfn-default-emittente-fiscale-v1` e `vendite/test-emittente-ddt-simmetria-v1`
+> **verdi** (365 rossi su 652, «ogni rosso era già noto», nessuno dei due);
+> `vendite/test-trgfn-preventivi-default-emittente-e-guard-coerenza` è la riga
+> 341 di `baseline-rossi-ci.tsv` **da prima** (`ASSERZIONE`: pesca la
+> popolazione, §9), non di questo cantiere; su dbdev nessuno dei tre è in
+> baseline. Le **quattro richieste al BE** di §11 verificate sui file di HEAD
+> (`86deea82f`): fatte. Sotto, il testo com'era — «in attesa di apply» — che
+> fino a stasera diceva il vero. Le
 > cinque decisioni di §3 confermate da Tid il 15-09 (*«accetto le tue
 > raccomandazioni»*); P-0 → P-7 fatti (§8): **undici changeSet**
 > (`20260915-36 → -46`), i due CSV in place, un pgTAP nuovo (18) + uno
@@ -526,7 +542,7 @@ parla prima del trigger.
   `fn_crea_revisione_preventivo.md`): la revisione copia l'ancora (D3).
 - `docs/it/dbzero/magazzino/manual/magazzini.md` e `assets.md`: una riga sul
   default dell'emittente (oggi dicono solo dell'ancora e del guard di scope).
-- `docs/it/dev/work-in-progress/brief-db-magazzino-lotto-1-terreno-vuoto.md`
+- `docs/it/dev/work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`
   §4.7: rimando a questo brief (fatto il 15-09).
 - `docs/it/dev/work-in-progress/analisi-db-magazzino-carico-e-scarico.md`
   §8, tabella dei lotti: riga **1-bis** (fatto il 15-09).
@@ -569,26 +585,33 @@ Guardrail statici (`run_on_change`, `precondition_seed`, `ddt_su_trigger_automaz
 `grant_ruolo_batch`, `pgtap_preambolo`) ✅. Su dbdev non è rimasto niente
 (verificato dopo ogni giro: BB assente, copie presenti, 0 magazzini di prova).
 
-**Che cosa resta a Tid** (`AGENTS.md` §Workflow Safety, memoria «no commit autonomo»):
+**Che cosa resta a Tid** (`AGENTS.md` §Workflow Safety, memoria «no commit autonomo») —
+✅ **tutto fatto il 17-09, verificato la sera dalle sorgenti** (`databasechangelog`,
+`pg_trigger`/`pg_proc`, `git log`, log della corsa CI `35241276981`): apply alle 12:06
+(gli undici **insieme** ai `-21 → -35` dell'altro cantiere, nella stessa corsa, come
+scritto sotto); pgTAP: i due file nuovi/riscritti verdi in CI come `app` su DB da zero, il
+terzo è un rosso noto di CI da prima (riga 341, `ASSERZIONE`); auto-gen rigenerate e nel
+commit `e98cf2469` (12:24, PR #1598); la riga B-7 in `8dcb09d16` (PR #1601); BE §11 fatto.
+Sotto, l'elenco com'era:
 
-1. ⏳ **apply** su dbdev (`make db-migrate`): undici changeSet + i due mirror CSV
+1. ✅ **apply** su dbdev (`make db-migrate`): undici changeSet + i due mirror CSV
    (`runOnChange`). ⚠️ Prima, se l'altro cantiere non è ancora applicato, decidere
    l'ordine: i suoi `-21 → -35` hanno numero minore e vanno prima **nella stessa
    corsa** (l'autogen li ordina per numero; nessuna dipendenza fra i due lotti);
-2. ⏳ **pgTAP col runner** (`PGTAP_RUNNER=app`, il default):
+2. ✅ **pgTAP col runner** (`PGTAP_RUNNER=app`, il default):
    `script/test-trgfn-default-emittente-fiscale-v1`,
    `vendite/test-trgfn-preventivi-default-emittente-e-guard-coerenza`,
    `vendite/test-emittente-ddt-simmetria-v1`, poi `scripts/pgtap-baseline.sh vendite script`.
    ⚠️ Il giro da owner non esercita la RLS: è qui che si vede se la fixture a
    tre aziende scrive dove l'app scrive (i 14 test simili di `script/` girano
    così da settimane, la forma è la loro);
-3. ⏳ rigenerare le pagine auto-gen (`scripts/gen_db_docs.py`): le quattro
+3. ✅ rigenerare le pagine auto-gen (`scripts/gen_db_docs.py`): le quattro
    `vendite/funzioni/trgfn_*_default_emittente.md` sono già in `git rm`, nasce
    `script/funzioni/trgfn_default_emittente_fiscale.md`, e le tabelle montate
    cambiano la riga del trigger;
-4. ⏳ il **commit** (⚠️ nella stessa copia ci sono i file non committati dell'altro
+4. ✅ il **commit** (⚠️ nella stessa copia ci sono i file non committati dell'altro
    cantiere: `git add` mirato sui file di §12, non `-a`);
-5. ⏳ le **quattro richieste al BE** (§11) — la prima è bloccante per la CI
+5. ✅ le **quattro richieste al BE** (§11) — la prima è bloccante per la CI
    (`test_il_file_generato_e_allineato_al_catalogo` e
    `test_nessun_codice_nuovo_senza_policy` diventano rossi al merge finché
    `genera_error_policies` non gira).
@@ -619,6 +642,7 @@ Guardrail statici (`run_on_change`, `precondition_seed`, `ddt_su_trigger_automaz
 
 | Data | Cosa |
 | --- | --- |
+| 2026-09-17 (sera, chiusura) | ✅ **CHIUSO, in `work-done/`.** Fino a stasera l'intestazione diceva «in attesa di apply» mentre il `databasechangelog` diceva `EXECUTED` dalle 12:06: il documento era rimasto indietro di un pomeriggio (Tid: *«è già applicata, la vedi anche tu»*). Verificati i cinque punti di §12 e i quattro di §11 dalle loro sorgenti: a DB vivo undici `trg_<t>_a10_default_emittente_ins` su `script.trgfn_default_emittente_fiscale` e zero copie in `pg_proc`; commit `e98cf2469` (PR #1598) con pgTAP e auto-gen, riga B-7 in `8dcb09d16` (PR #1601); corsa CI `35241276981` verde — il file nuovo e `ddt-simmetria` fuori da ogni baseline, i preventivi rosso noto **da prima** (riga 341, `ASSERZIONE`, pesca la popolazione); nel BE `E_EMITTENTE_NON_RISOLTO` a policy e ripiego, i tre vecchi in `CODICI_RITIRATI`, nessun override, i nomi morti solo come «al posto di …». Spostato in `work-done/` con i link relativi ripuntati; lettori per path aggiornati. Nessun commit (decisione di Tid) |
 | 2026-09-17 (sera) | 🔴→✅ **CI-Validate rossa al guardrail B-7 dopo il merge (`813da897d`), decisa come uso legittimo.** «`E_TRIGGER_ARGOMENTI_INVALIDI` — famiglia nuova: `VALORE_ATTESO` (prima: `ECCEZIONE`, 4 punti)». Il punto è la regola 0 di `trgfn_default_emittente_fiscale` (`20260915-36`): `IF TG_OP <> 'INSERT' OR TG_NARGS … OR v_modo NOT IN (…)`. La vista `dbops.vw_codici_errore_forme_condizione` legge la **prima riga** della guardia, e `TG_OP <> 'INSERT'` è un confronto con un letterale ⇒ `VALORE_ATTESO`, la forma delle guardie di *stato*; i due punti storici su `TG_NARGS` (`< 1`, `<> 2`) sono `IGNOTO` solo perché confrontano un numero. **Il significato non si è allargato**: il codice è `TECNICO`, «difetto di MONTAGGIO, se ne accorge chi installa», e `TG_OP` sbagliato è un difetto di montaggio come `TG_NARGS` — stesso rimediatore (chi scrive la `CREATE TRIGGER`), stesso rimedio. Scartati: un codice nuovo (dividerebbe per *cosa* è sbagliato senza un rimediatore diverso) e riordinare l'`IF` per far leggere `IGNOTO` (aggira il sensore). Rimedio: **una riga** in `db/baseline-codici-errore-famiglie.tsv` (`ECCEZIONE` → `ECCEZIONE,VALORE_ATTESO`, 3 → 4 punti), non la rigenerazione: lo scratch da zero e dbdev danno la stessa fotografia, ma la baseline è ferma all'8-09 in modi che non scattano (conteggi, 9 codici nati con una famiglia) e mescolarli nasconderebbe la decisione. Presidio verde su dbdev con la riga nuova. ⭐ Possibile miglioramento del sensore, cantiere `dbops`: una famiglia `MONTAGGIO` per le guardie su `TG_OP`/`TG_NARGS`/`TG_ARGV` (oggi lette come stato o ignote) — tocca la vista **e** le sue due copie (`check_messaggio_vs_condizione.sql`, cancello del terzo lato) |
 | 2026-09-17 | **P-6 e P-7 scritti e provati.** pgTAP nuovo a 18 asserzioni (runner `app`, fixture costruita) + test 5 dei preventivi su `throws_like`; tre pgTAP verdi pre-apply da owner (18/18, 6/6, 12/12). Doc: manual nuovo, quattro ritirati (+ quattro pagine auto-gen), **otto** manuali ripuntati (il censimento §2.4 contava le sole guide: i link stavano anche nei `manual/` dei guard BA e in `preventivi.md`/`ordini.md`), guide, `fn_crea_revisione_preventivo.md`, `magazzini.md`, `assets.md`. Consegna in §12. ⭐ Provando D3 sotto RLS: lo scenario «SA con emittente attivo B revisiona A» non esiste (l'impersonazione restringe la lettura) — il caso vero è il SA in modalità «tutti», che prima **non poteva revisionare nulla** |
 | 2026-09-15 (notte) | **P-1 → P-5 scritti e provati** (`20260915-36 → -46`, CSV in place): SQL estratto con `updateSQL` offline, preCondition + struttura + nove mutazioni in `BEGIN … ROLLBACK`, tutte verdi. Trovato provando: (1) la `NOTE` di `-41` nominava la copia ritirata e rendeva rosso il presidio «nessuna funzione viva le nomina» → riscritta; (2) un DDT in `EMESSO` numera **prima** del normalize (`fn_assegna_numero_documento` vuole l'emittente): la prova di `LASCIA_NULL` si fa su un DDT `DRAFT` — non è un difetto del lotto, era così anche prima; (3) l'id del messaggio è 1074, non 1072: l'altro cantiere ha seminato due codici nel frattempo — riletto prima di scrivere |

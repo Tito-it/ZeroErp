@@ -222,8 +222,12 @@ SELECT throws_like(
          (SELECT billing_account_id FROM tmp_refs),
          (SELECT id FROM tmp_rate WHERE etichetta = 'R1'),
          (SELECT stato_abbinata_id FROM tmp_refs)),
-  '%non ci rientra%',
-  '5) Quello che non ci sta e'' rifiutato, coi numeri'
+  -- ⭐ Dal 2026-09-18 il pattern guarda i NUMERI, a due decimali: v_residuo e'
+  --   fatture_scadenze.importo%TYPE = numeric(18,6), e con ::text la frase
+  --   diceva «restano 0.000000» accanto a «50.00» (20260918-04). Un pattern
+  --   che non guarda i numeri e' verde con qualunque scala.
+  '%restano 0.00 da regolare: un importo di 50.00 non ci rientra%',
+  '5) Quello che non ci sta e'' rifiutato, coi numeri — a due decimali'
 );
 
 -- ⭐ Ma il cliente ha pagato due volte, e questo e' un fatto del mondo.

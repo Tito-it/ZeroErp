@@ -416,10 +416,18 @@ CI muore **nello stesso build**. Trovato il 2026-08-17 (una colonna) e il
 2026-09-11 (`dbops.audit_log`, `dbops.error_log` — il brief diceva *«è una riga
 di REVOKE»*).
 
-⭐ Una postura **più stretta** si **dichiara nel loop**, negli elenchi in testa
-al blocco (`v_registri_append_only`, `v_fn_riservate`), **e** si applica subito
-con un changeSet `90_end` forward — su dev `ci_apply` non gira da solo. Per una
-singola **colonna** il privilegio non sa esprimere l'eccezione: lì è un trigger.
+⭐ Una postura **più stretta** ha **TRE sedi**, e vanno toccate tutte nello
+stesso giro: si **dichiara nel loop**, negli elenchi in testa al blocco
+(`v_registri_append_only`, `v_fn_riservate`, `v_schemi_senza_delete`); si
+applica subito con un changeSet `90_end` **forward** — su dev `ci_apply` non
+gira da solo; **e si ripete in `scripts/sql/provision_db_roles.sql`**, blocco
+«POSTURA DICHIARATA», perché in CI e in `ci-local.sh` quello script gira
+**dopo** `ci_apply` e rifà `GRANT … ON ALL TABLES` all'app — è l'**ultima
+parola**, e senza la sua eccezione riapre in silenzio ciò che il loop ha
+chiuso (trovato l'11-09 dal pgTAP di postura, verde su dev e rosso sul DB da
+zero). ⚠️ Fino al 18-09 questa riga ne nominava due: la terza stava scritta
+solo nell'intestazione del loop. Per una singola **colonna** il privilegio non
+sa esprimere l'eccezione: lì è un trigger.
 ⚠️ Sulle funzioni la revoca va `FROM PUBLIC, zeroerp_app`: hanno `=X` per
 default. Si asserisce con `has_*_privilege(ruolo, …)`, mai con
 `role_table_grants`, che è cieco fuori dal ruolo connesso.

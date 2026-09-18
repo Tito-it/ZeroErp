@@ -4,7 +4,7 @@
 -- Test: la NOTA DI CREDITO ha UNA rata — P-5 / D19-e per intero
 --       (changeSet 20260917-11 · -12 · -13 · -14)
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 13):
 --  1) Riferimenti costruiti (azienda, operatore, cliente, coppia emittente/utility) e a catalogo
 --  2) ⭐ La NC genera UNA rata col segno: importo = totale a pagare (negativo), numero 1
 --  3) ...alla PRIMA data del termine (fine mese di data + 30: Q-C, nessuna seconda regola)
@@ -17,6 +17,7 @@
 -- 10) ...e con la forzatura entra, e dopo il posting l'elenco dice MOVIMENTO_CONTRARIO
 -- 11) Un rimborso oltre il credito (forzato): l'elenco dice SOVRA_INCASSATA — sovra-rimborsata
 -- 12) L'elenco porta numero_documento dalla sede unica (P-1-bis): «numero - serie» sulla NC numerata
+-- 13) ⭐ L'elenco porta la NATURA del documento (P-7): codice_interno NOTA_CREDITO e la descrizione a catalogo
 --
 -- Scopo:
 --  - costruire la nota di credito per intero — righe negative (D-NC-2),
@@ -61,7 +62,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- Fixture
@@ -267,8 +268,11 @@ SELECT throws_like(
          (SELECT billing_account_id FROM tmp_rata_nc),
          (SELECT scadenza_id FROM tmp_rata_nc),
          (SELECT stato_abbinata_id FROM tmp_refs_nc)),
-  '%non ci rientra%',
-  '9) «Il cliente paga la NC» (+15 su un credito): il guard di capienza lo SEGNALA'
+  -- ⭐ Dal 2026-09-18 (20260918-04) il residuo esce col SEGNO e a DUE decimali:
+  --   «restano -N.NN da regolare: un importo di 15.00 non ci rientra». Il `_`
+  --   di LIKE conta i caratteri: con sei decimali il pattern non chiude.
+  '%restano -%.__ da regolare: un importo di 15.00 non ci rientra%',
+  '9) «Il cliente paga la NC» (+15 su un credito): il guard di capienza lo SEGNALA — col segno, a due decimali'
 );
 
 -- 10) ...e con la forzatura entra; registrato, l'elenco lo chiama col nome giusto.
@@ -351,6 +355,21 @@ SELECT ok(
          FROM pagamenti.vw_rate_fuori_capienza v
         WHERE v.scadenza_id = (SELECT scadenza_id FROM tmp_rata_nc_c)),
   '12) L''elenco porta numero_documento dalla sede unica: valorizzato sulla NC numerata, NULL sulla bozza'
+);
+
+-- 13) ⭐ P-7 (20260918-03): la natura viaggia con la riga. Il vocabolario dei
+--    motivi resta a due valori e la sfumatura («sovra-rimborsata») la dice
+--    l'etichetta del frontend — che ramifica su codice_interno (§6c) e
+--    mostra la descrizione. Su TUTTE le righe delle NC costruite.
+SELECT ok(
+  (SELECT count(*) = 2
+      AND bool_and(v.natura_doc_codice_interno = 'NOTA_CREDITO')
+      AND bool_and(v.natura_doc_descrizione = nd.descrizione)
+     FROM pagamenti.vw_rate_fuori_capienza v
+     JOIN config.nature_doc_fiscale nd ON nd.id = (SELECT natura_nc_id FROM tmp_refs_nc)
+    WHERE v.scadenza_id IN ((SELECT scadenza_id FROM tmp_rata_nc),
+                            (SELECT scadenza_id FROM tmp_rata_nc_c))),
+  '13) L''elenco porta la natura del documento: NOTA_CREDITO (codice_interno) e la descrizione a catalogo, sulle due NC'
 );
 
 -- ============================================================

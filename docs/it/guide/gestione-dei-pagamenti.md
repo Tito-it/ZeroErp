@@ -833,9 +833,10 @@ Restituisce il saldo contabile "in lavorazione" per una fattura: la somma degli 
 
 Da un punto di vista tecnico:
 
-| Parametro      | Tipo   | Descrizione               |
-| -------------- | ------ | ------------------------- |
-| `p_fattura_id` | BIGINT | ID fattura (obbligatorio) |
+| Parametro                     | Tipo   | Descrizione               |
+| ----------------------------- | ------ | ------------------------- |
+| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio) |
+| `p_escludi_contabile_riga_id` | BIGINT | facoltativo (dal 18-09-2026): la riga contabile da **non contare** — «quanto era dichiarato *prima* di me», per chi sta scrivendo o correggendo proprio quella riga. Lo stesso parametro di `fn_get_saldo_rata` |
 
 **Restituisce:** `TABLE(saldo_contabile NUMERIC, has_righe_postabili BOOLEAN)`
 
@@ -844,7 +845,8 @@ Da un punto di vista tecnico:
 * Somma `importo` da `vendite_contabili_righe` dove:
   * `fattura_id = p_fattura_id` e `attivo IS TRUE`
   * `stato_id` ha `is_postabile = true` nella lookup stati riga
-  * La testata collegata ha `stato_id` con `is_final = false` (o NULL)
+  * La testata collegata ha `stato_id` con `is_final = false` (lo stato della testata è obbligatorio dal 21-08-2026: non c'è più un ripiego per il NULL)
+  * la riga non è quella esclusa
 * `saldo_contabile`: COALESCE a 0 se nessuna riga
 * `has_righe_postabili`: true se almeno una riga soddisfa i criteri
 
@@ -858,17 +860,20 @@ Restituisce il saldo finanziario effettivo di una fattura: il residuo tra il tot
 
 Da un punto di vista tecnico:
 
-| Parametro      | Tipo   | Descrizione               |
-| -------------- | ------ | ------------------------- |
-| `p_fattura_id` | BIGINT | ID fattura (obbligatorio) |
+| Parametro                     | Tipo   | Descrizione               |
+| ----------------------------- | ------ | ------------------------- |
+| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio) |
+| `p_escludi_contabile_riga_id` | BIGINT | facoltativo (dal 18-09-2026): la riga contabile da **non contare**, né fra i dichiarati né — se è già registrata — col suo movimento. È «quanto c'era *prima* di me» per chi corregge una riga: lo stesso parametro, con la stessa domanda, di `fn_get_saldo_rata` |
 
-**Restituisce:** `TABLE(saldo NUMERIC, has_movimenti BOOLEAN)`
+**Restituisce:** `TABLE(saldo NUMERIC, in_lavorazione NUMERIC, incassato NUMERIC, has_movimenti BOOLEAN)` — dal 25-08-2026 la **stessa forma** della sorella della rata: residuo, dichiarato non ancora registrato, cassa vera.
 
 **Logica di calcolo:**
 
 1. Legge `totale_a_pagare` da `vendite.fatture` (errore se fattura non trovata)
-2. `saldo = COALESCE(totale_a_pagare, 0) - COALESCE(SUM(m.importo), 0)` dai movimenti attivi
-3. `has_movimenti`: true se almeno un movimento esiste per la fattura
+2. `saldo = COALESCE(totale_a_pagare, 0) - COALESCE(SUM(m.importo), 0)` dai movimenti attivi (senza il movimento della riga esclusa, se c'è)
+3. `in_lavorazione`: **delegato** a `fn_get_saldo_fattura_contabili`, che riceve la stessa esclusione — una sede sola per il dichiarato
+4. `incassato`: la somma dei soli movimenti su un centro di **cassa** (né fondo fattura né compensazione, e con un centro dichiarato)
+5. `has_movimenti`: true se almeno un movimento esiste per la fattura
 
 > Documentazione dettagliata: [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura)
 
