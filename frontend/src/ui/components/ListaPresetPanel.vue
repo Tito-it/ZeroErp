@@ -109,7 +109,7 @@ function openComposizione(data) {
 
 function onDelete(data) {
   confirmAction({
-    title: t('ui.admin.preset_delete_titolo'),
+    header: t('ui.admin.preset_delete_titolo'),
     message: t('ui.admin.preset_delete_messaggio', { codice: data.codice }),
     danger: true,
     onAccept: async () => {

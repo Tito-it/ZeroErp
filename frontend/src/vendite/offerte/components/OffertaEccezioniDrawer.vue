@@ -461,10 +461,7 @@ function onDeleteRow(row, event) {
   event?.stopPropagation?.()
   if (isReadonly.value) return
   confirmAction({
-    // `title` (non `header`): la composable useConfirmAction mappa internamente
-    // `title` su `header` del PrimeVue ConfirmDialog. Usare `header:` qui
-    // lasciava il dialog senza titolo.
-    title: t('vendite.offerte.eccezione_elimina_titolo'),
+    header: t('vendite.offerte.eccezione_elimina_titolo'),
     message: t('vendite.offerte.eccezione_elimina_messaggio'),
     danger: true,
     onAccept: async () => {

@@ -294,7 +294,7 @@ function verdettoRunner(res) {
       return
     }
     confirmAction({
-      title: t(verbo.title),
+      header: t(verbo.title),
       // ⚠️ L'avviso si APPENDE qui e non dentro la stringa di conferma: la
       // frase e' la stessa per i tre percorsi di reset (annulla lotto, riporta
       // a draft, elimina la singola fattura) e tre copie divergerebbero — con

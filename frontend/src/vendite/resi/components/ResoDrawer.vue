@@ -179,6 +179,7 @@ function statoDestinazione(action) {
 function onAction(action) {
   if (action.requires_confirm) {
     confirmAction({
+      header: t('confirm.cambio_stato_title'),
       message: t('vendite.resi.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiAzione(action),
     })

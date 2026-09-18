@@ -151,6 +151,7 @@ function onCrea() {
   }
 
   confirmAction({
+    header: t('vendite.resi.crea_titolo'),
     message: t('vendite.resi.crea_conferma', { righe: payloadRighe.length }),
     onAccept: async () => {
       const result = await execute(

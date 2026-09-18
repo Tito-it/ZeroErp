@@ -210,7 +210,7 @@ const esito = ref(null)
 function chiediConferma(righe) {
   const ids = righe.map((r) => r.resi_riga_id)
   confirmAction({
-    title: t('vendite.resi.accredito_conferma_titolo'),
+    header: t('vendite.resi.accredito_conferma_titolo'),
     message: t('vendite.resi.accredito_conferma_messaggio', { n: ids.length }),
     acceptLabel: t('vendite.resi.accredito_conferma_accetta'),
     onAccept: () => eseguiAccredito(ids),

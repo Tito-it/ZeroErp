@@ -477,7 +477,7 @@ function statoDestinazione(action) {
 function approva(righeIds) {
   const n = righeIds ? righeIds.length : (stato.value?.total_non_approvate ?? 0)
   confirmAction({
-    title: t('vendite.commesse.approva_header'),
+    header: t('vendite.commesse.approva_header'),
     message: t('vendite.commesse.approva_conferma', { n }),
     onAccept: async () => {
       const res = await execute(() => approvaCommessaAttivita(props.commessaId, righeIds))
@@ -572,7 +572,7 @@ const stateActions = computed(() => mapAvailableActionsToDrawerActions({
   permission: 'cambia_stato_commessa',
   onAction: (action) => {
     confirmAction({
-      title: t('vendite.commesse.stato_header'),
+      header: t('vendite.commesse.stato_header'),
       message: t('vendite.commesse.stato_conferma', { stato: statoDestinazione(action) }),
       onAccept: async () => {
         const res = await execute(() => cambiaStatoCommessa(props.commessaId, action.target_state))
@@ -766,7 +766,7 @@ async function riallinea(row, conferma) {
   if (res === null) return
   if (res.richiede_conferma && !conferma) {
     confirmAction({
-      title: t('vendite.commesse.riallinea_header'),
+      header: t('vendite.commesse.riallinea_header'),
       message: t('vendite.commesse.riallinea_versione_diversa'),
       onAccept: () => riallinea(row, true),
     })

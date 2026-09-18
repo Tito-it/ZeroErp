@@ -119,7 +119,7 @@ async function _runAction({ apiCall, successKey, errorKey }) {
 // valorizzato, il dialog e' rosso (usato per reinvio e disattivazione).
 function _confirmAndRun({ titleKey, msgKey, msgParams = {}, danger = false, apiCall, successKey, errorKey }) {
   confirmAction({
-    title: t(titleKey),
+    header: t(titleKey),
     message: t(msgKey, msgParams),
     danger,
     onAccept: () => _runAction({ apiCall, successKey, errorKey }),

@@ -94,7 +94,7 @@ export function useCodaArchiviazione({
     const ids = righe.map((r) => r.id)
     if (ids.length === 0) return
     confirmAction({
-      title: t('strumenti.code.archivia_header'),
+      header: t('strumenti.code.archivia_header'),
       message: ids.length === 1
         ? t('strumenti.code.archivia_conferma', { riga: etichettaRiga(righe[0]) })
         : t('strumenti.code.archivia_conferma_multi', { n: ids.length }),

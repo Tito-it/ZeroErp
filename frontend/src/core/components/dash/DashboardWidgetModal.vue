@@ -116,6 +116,7 @@ function onCancel() {
 
 function onReset() {
   confirmAction({
+    header: t('home.personalizza_reset'),
     message: t('home.personalizza_reset_conferma'),
     onAccept: () => {
       emit('update:visible', false)

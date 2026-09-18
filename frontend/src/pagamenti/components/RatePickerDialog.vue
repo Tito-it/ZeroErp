@@ -217,7 +217,7 @@ async function onSalva() {
 function chiudi() {
   if (multipla.value && nScelte.value > 0) {
     confirmAction({
-      title: t('pagamenti.rate.abbandona_titolo'),
+      header: t('pagamenti.rate.abbandona_titolo'),
       message: t('pagamenti.rate.abbandona_msg', { n: nScelte.value }),
       acceptLabel: t('common.close'),
       danger: true,

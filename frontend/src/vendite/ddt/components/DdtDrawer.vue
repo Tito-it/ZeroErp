@@ -480,6 +480,7 @@ async function handleEmissioneConferma({ files }) {
 // risponde 200 anche con esito PARZIALE/ERRORE per riga — gemello ordini).
 function onPush() {
   confirmAction({
+    header: t('vendite.ddt.azione_push_commessa'),
     message: t('vendite.ddt.push_commessa_messaggio'),
     onAccept: async () => {
       const result = await execute(() => store.push(effectiveDdtId.value))
@@ -532,6 +533,7 @@ function onAction(action) {
   if (action.key === 'push_commessa') { onPush(); return }
   if (action.requires_confirm) {
     confirmAction({
+      header: t('confirm.cambio_stato_title'),
       message: t('vendite.ddt.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiCambioStato(action),
     })

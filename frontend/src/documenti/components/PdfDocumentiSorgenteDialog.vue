@@ -38,7 +38,6 @@ const emit = defineEmits(['update:visible'])
     :header="title || t('documenti.lista.title')"
     width="xl"
     close-only
-    dismissable-mask
   >
     <DocumentiGeneratiSorgenteList
       v-if="visible && sorgenteId != null"

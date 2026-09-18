@@ -653,7 +653,8 @@
     "delete_title": "Confirm deletion",
     "delete_message": "Are you sure you want to delete {name}? This action cannot be undone.",
     "save_title": "Confirm save",
-    "save_message": "Confirm save?"
+    "save_message": "Confirm save?",
+    "cambio_stato_title": "Change of state"
   },
   "search": {
     "title": "Universal search",

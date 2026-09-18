@@ -94,7 +94,7 @@ function buildRowActions(data) {
 
 function onDelete(data) {
   confirmAction({
-    title: t('ui.admin.permesso_delete_titolo'),
+    header: t('ui.admin.permesso_delete_titolo'),
     message: t('ui.admin.permesso_delete_messaggio', {
       colonna: data.colonna_etichetta,
       profilo: data.profilo_accesso_codice,

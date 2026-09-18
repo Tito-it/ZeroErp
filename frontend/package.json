@@ -17,6 +17,7 @@
     "guard:icone": "node scripts/check-primeicons-codepoints.mjs",
     "guard:keepalive": "node scripts/check-keepalive-onactivated.mjs",
     "guard:datatable": "node scripts/check-datatable-baseline.mjs",
+    "guard:dialog": "node scripts/check-dialog-chrome.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "verify": "run-s lint guards test:run build",

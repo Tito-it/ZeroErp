@@ -20,6 +20,32 @@ export const DIALOG_WIDTH = {
   xl: 'min(92vw, 1200px)'  // tabelle larghe responsive (componenti BoM compositi)
 }
 
+// Chrome delle dialog modali — LA sede unica (decisione di Tid, 2026-09-18).
+// La leggono `AppDialog` (default delle prop) e il tag `<ConfirmDialog>` di
+// `App.vue`: un cambio di layout e' una riga qui, non un giro sui 48 dialog.
+//   · closable false  — niente X in alto: il footer di un dialog e' SEMPRE
+//                       visibile (max-height 90%, footer in coda), quindi ogni
+//                       dialog ha gia' Annulla o Chiudi e la X era un doppione
+//                       con una semantica sua (chiudeva senza `cancel`). Nel
+//                       DRAWER la X resta, per la ragione opposta: il footer di
+//                       un form lungo sta sotto il fold.
+//   · closeOnEscape   — ESC = Annulla, la direzione sicura resta aperta da
+//                       tastiera (AppDialog la spegne mentre `loading`).
+//                       ⭐ E chiude SOLO il dialog in cima: gestita sulla
+//                       radice del dialog, non col listener `document` di
+//                       PrimeVue che convive con quello del Drawer sotto
+//                       (`core/utils/escapeSoloInCima`).
+//   · dismissableMask — il clic fuori non chiude: terza uscita accidentale,
+//                       stessa ragione della X.
+// ⚠️ `closable` NON e' un'opzione di `confirm.require` (PrimeVue 4 non la
+//    inoltra al Dialog): per la ConfirmDialog va sul tag, in App.vue.
+export const DIALOG_CHROME = Object.freeze({
+  modal: true,
+  closable: false,
+  closeOnEscape: true,
+  dismissableMask: false,
+})
+
 // Durata toast in millisecondi
 export const TOAST_DURATION = {
   SUCCESS: 3000,

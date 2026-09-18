@@ -167,6 +167,7 @@ async function confermaLibero() {
 // ── Rimozione slot impostato ──
 function removeSlot(row) {
   confirmAction({
+    header: t('vendite.indirizzi.rimuovi'),
     message: t('vendite.indirizzi.conferma_rimozione'),
     danger: true,
     onAccept: async () => {

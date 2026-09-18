@@ -110,7 +110,8 @@ function close() {
 // Scopo: esegue una delle due uscite sulla selezione corrente. Le accomuna
 // tutto tranne la chiamata e i messaggi: stessa lista, stessa selezione,
 // stesso payload (`null` = tutta la copertura residua, race-proof).
-async function eseguiSuSelezione({ conferma, azione, successo }) {
+// `titolo` = il nome dell'azione premuta: la conferma lo ripete in testa.
+async function eseguiSuSelezione({ titolo, conferma, azione, successo }) {
   if (!selected.value.length) return
   const usaTutto = coversAllResiduo.value
   const payloadRighe = usaTutto
@@ -123,6 +124,7 @@ async function eseguiSuSelezione({ conferma, azione, successo }) {
   }
 
   confirmAction({
+    header: titolo,
     message: conferma(
       usaTutto ? righeSelezionabili.value.length : payloadRighe.length,
     ),
@@ -140,6 +142,7 @@ async function eseguiSuSelezione({ conferma, azione, successo }) {
 // rifinisce dal tab DDT.
 function onGenera() {
   eseguiSuSelezione({
+    titolo: t('vendite.resi.riconsegna_azione'),
     conferma: (n) => t('vendite.resi.riconsegna_conferma', { righe: n }),
     azione: (righeSel) => store.generaRiconsegna(props.resoId, { righe: righeSel }),
     successo: t('vendite.resi.riconsegna_generato'),
@@ -152,6 +155,7 @@ function onGenera() {
 // dialog che ha una conseguenza contabile, e non e' deducibile dall'etichetta.
 function onRendiDefinitivo() {
   eseguiSuSelezione({
+    titolo: t('vendite.resi.rinuncia_azione'),
     conferma: (n) => t('vendite.resi.rinuncia_conferma', { righe: n }),
     azione: (righeSel) => store.chiudiRiconsegna(props.resoId, { righe: righeSel }),
     successo: t('vendite.resi.rinuncia_chiusa'),
@@ -163,6 +167,7 @@ function onRendiDefinitivo() {
 // dialog: si resta nell'elenco per continuare a lavorarlo.
 function onRiapri(riga) {
   confirmAction({
+    header: t('vendite.resi.rinuncia_riapri'),
     message: t('vendite.resi.rinuncia_riapri_conferma', {
       qta: formatNumber(riga.qta_rinunciata),
     }),

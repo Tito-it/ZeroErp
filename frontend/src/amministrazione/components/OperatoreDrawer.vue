@@ -277,7 +277,7 @@ const canSave = computed(() => isEdit.value ? canSaveEdit.value : canSaveCreate.
 function onInvita() {
   const isReinvio = hasBeenInvited.value
   confirmAction({
-    title: t('amministrazione.invito_confirm_title'),
+    header: t('amministrazione.invito_confirm_title'),
     message: isReinvio ? t('amministrazione.reinvio_confirm_msg') : t('amministrazione.invito_confirm_msg'),
     onAccept: async () => {
       invitaLoading.value = true

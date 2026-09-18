@@ -433,6 +433,7 @@ function ricarica() {
 
 function onCambiaStato(codice, descrizione, terminale) {
   confirmAction({
+    header: t('confirm.cambio_stato_title'),
     message: t('pagamenti.distinte.conferma_stato', { stato: descrizione }),
     // ⭐ Rosso = si va in uno stato TERMINALE, e lo dice il catalogo.
     danger: terminale === true,
@@ -448,6 +449,7 @@ function onCambiaStato(codice, descrizione, terminale) {
 
 function onCambiaStatoRiga(riga, codice, descrizione, terminale) {
   confirmAction({
+    header: t('confirm.cambio_stato_title'),
     // ⚠️ La conferma NOMINA lo stato: «vuoi cambiare stato?» non basta a
     //    decidere, adesso che le transizioni possibili sono piu' di due.
     message: t('pagamenti.righe.conferma_stato_a', { stato: descrizione || codice }),
@@ -470,6 +472,7 @@ function onCambiaStatoRiga(riga, codice, descrizione, terminale) {
 //        non e' piu' in bozza — arriva dal database con la sua frase.
 function onEliminaRiga(riga) {
   confirmAction({
+    header: t('confirm.delete_title'),
     message: t('pagamenti.righe.conferma_elimina', {
       importo: formatCurrency(riga.importo),
       riferimento: riga.riferimento_ente || '—',

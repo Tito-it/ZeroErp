@@ -118,6 +118,7 @@ function onGenera() {
   }
 
   confirmAction({
+    header: t('vendite.ordini.evasione_titolo'),
     message: t('vendite.ordini.evasione_conferma', {
       righe: usaResiduo ? righeEvadibili.value.length : payloadRighe.length,
     }),
