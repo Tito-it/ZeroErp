@@ -793,6 +793,17 @@ mi sembra ci sia tanto»). Cinque changeSet e quattro righe di seed, provati con
 l'SQL estratto in transazione con `ROLLBACK` e con `plpgsql_check` pulito;
 guardrail statici verdi. In attesa di apply e della corsa pgTAP di Tid.
 
+⚠️ ⏱️ *18-09 sera* — **il pgTAP era `ERRORE_FIXTURE` su `zeroerp_ci`** (lo
+scratch da zero, applicati `-29 → -33`): la fixture partiva da
+`script.fn_pgtap_emittente_sr_operatore()`, che l'emittente lo **cerca**, e
+con `anagrafiche` a zero solleva «Nessun emittente fiscale attivo» *prima* di
+qualunque `skip` — zero asserzioni, non «sette su quindici». L'intestazione
+diceva «i test relativi skippano, dichiarandolo» ed era sincera un livello
+troppo in alto. Riscritto sui builder (`dbops.fn_pgtap_crea_emittente_operatore`,
+`fn_pgtap_crea_cliente_ba`, `script.fn_pgtap_registro_fattura`, lotto e
+fattura scritti dal file): gli `skip` sono spariti e i quindici test girano
+identici su dbdev e su un database ricostruito dai changelog. Da rilanciare.
+
 | ChangeSet | Cosa |
 | --- | --- |
 | `00_schema/vendite/20260918-29` | `cleanup_at` sui **quattro** registri |

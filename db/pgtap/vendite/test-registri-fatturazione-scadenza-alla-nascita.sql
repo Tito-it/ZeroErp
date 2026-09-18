@@ -18,10 +18,19 @@
 --   precondizionano (guardrail_precondition_seed). Che ci siano lo dice il
 --   test 4 — e' qui, non in un sqlCheck, che l'invariante si asserisce.
 --
--- ⚠️ Tre fixture dipendono da un lotto e da una fattura dell'emittente
---   dell'operatore: su un database da zero non ci sono e i test relativi
---   skippano, DICHIARANDOLO. commesse_push_log non ha FK ne' RLS: quei test
---   girano ovunque, e sono loro a provare il BB anche in CI.
+-- ⛔ IL MONDO SI COSTRUISCE, NON SI CERCA (rev 2026-09-18 sera). La prima
+--   stesura prometteva «su un database da zero lotto e fattura mancano e i
+--   test relativi skippano, dichiarandolo» — e non era vero un livello piu'
+--   sotto: la fixture partiva da `script.fn_pgtap_emittente_sr_operatore()`,
+--   che l'emittente lo CERCA, e su zeroerp_ci (anagrafiche a zero,
+--   `dati_macchina`) SOLLEVA «Nessun emittente fiscale attivo» PRIMA di
+--   qualunque skip: zero asserzioni, ERRORE_FIXTURE. Ora l'azienda, il suo
+--   operatore, il cliente, la fattura e il lotto li scrive il file
+--   (dbops.fn_pgtap_crea_emittente_operatore, fn_pgtap_crea_cliente_ba,
+--   script.fn_pgtap_registro_fattura) — guida pgtap-come-si-scrive-un-test
+--   §«Il mondo si costruisce, non si cerca» — e i quindici test girano
+--   IDENTICI su dbdev e su un database ricostruito dai changelog: nessuno
+--   skip, nessun «verde per sottrazione».
 --
 -- Elenco test (plan 15):
 --  1) struttura: cleanup_at su tutte e quattro le tabelle
@@ -45,30 +54,77 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+--   Prima del contesto, non dopo: con un operatore gia' in sessione il legame
+--   BA→emittente lo scriverebbe anche il trigger z90 del billing account.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(15);
 
 -- ============================================================
--- Fixture: riferimenti dell'emittente dell'operatore (possono mancare)
+-- Fixture: il lotto e la fattura dell'azienda costruita
 -- ============================================================
+-- Il cliente fatturabile, nel contesto dell'operatore: il legame BA→emittente
+-- lo scrive il trigger z90 verso l'emittente di chi agisce.
+CREATE TEMP TABLE _cli AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('scadenza alla nascita') c;
+
+-- Registro e natura risolti PRIMA degli INSERT: fn_pgtap_registro_fattura crea
+-- il registro se l'emittente nuovo non ne ha, e un verbo non sta dentro un
+-- altro verbo.
+CREATE TEMP TABLE _rif_doc AS
+SELECT m.soggetto_ruolo_id                                   AS emittente_sr_id,
+       c.billing_account_id                                  AS billing_account_id,
+       script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id) AS registro_id,
+       config.fn_get_natura_doc_fiscale_id('FATTURA')        AS natura_fattura_id,
+       (SELECT t.id FROM config.tipi_doc_fiscale t
+         WHERE t.codice_interno = 'BACKOFFICE')              AS tipo_doc_fiscale_id
+  FROM _mondo m, _cli c;
+
+-- Il lotto e' dell'azienda costruita: `codice` ed emittente sono NOT NULL, e
+-- sotto la RLS di fatturazione_lotti_log/task_runs (via lotto) un lotto altrui
+-- non si vedrebbe nemmeno.
+CREATE TEMP TABLE _lotto AS
+WITH ins AS (
+    INSERT INTO vendite.fatturazione_lotti
+        (codice, tipo_doc_fiscale_id, competenza_mese,
+         emittente_soggetto_ruolo_id, meta)
+    SELECT 'PGTAP-SCAD-' || r.emittente_sr_id,
+           r.tipo_doc_fiscale_id,
+           date_trunc('month', CURRENT_DATE)::date,
+           r.emittente_sr_id,
+           jsonb_build_object('test_scope', 'pgtap_scadenza_alla_nascita')
+      FROM _rif_doc r
+    RETURNING id
+)
+SELECT id FROM ins;
+
+-- ⭐ Una fattura NON critica (`critical` nasce false): il test 15 la accende
+--   e la spegne, e deve poter dire che a spegnerla e' stato il purge, non
+--   un'altra riga. L'INSERT sta in una CTE: il RETURNING passa dalla USING
+--   della policy, ed e' il motivo per cui nasce con l'emittente dell'operatore.
+CREATE TEMP TABLE _fattura AS
+WITH ins AS (
+    INSERT INTO vendite.fatture
+        (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
+         tasso_cambio, natura_doc_id, meta)
+    SELECT r.registro_id, CURRENT_DATE, r.emittente_sr_id, r.billing_account_id,
+           1, r.natura_fattura_id,
+           jsonb_build_object('test_scope', 'pgtap_scadenza_alla_nascita')
+      FROM _rif_doc r
+    RETURNING id
+)
+SELECT id FROM ins;
+
 CREATE TEMP TABLE _rif AS
-SELECT script.fn_pgtap_emittente_sr_operatore() AS sr_id,
-       (SELECT l.id
-          FROM vendite.fatturazione_lotti l
-         WHERE l.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore()
-         ORDER BY l.id
-         LIMIT 1) AS lotto_id,
-       -- ⭐ Una fattura NON critica: il test 15 la accende e la spegne, e deve
-       --   poter dire che a spegnerla e' stato il purge, non un'altra riga.
-       (SELECT f.id
-          FROM vendite.fatture f
-         WHERE f.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore()
-           AND f.critical IS NOT TRUE
-         ORDER BY f.id
-         LIMIT 1) AS fattura_id,
+SELECT (SELECT id FROM _lotto)   AS lotto_id,
+       (SELECT id FROM _fattura) AS fattura_id,
        (dbops.fn_cleanup_at_params('vendite', 'fatturazione_lotti_log') ->> 'ttl_days')::integer AS ttl_lotti_log,
        (dbops.fn_cleanup_at_params('vendite', 'fatture_log') ->> 'ttl_days')::integer AS ttl_fatture_log,
        (dbops.fn_cleanup_at_params('vendite', 'fatturazione_lotti_task_runs') ->> 'ttl_days')::integer AS ttl_task_runs,
@@ -179,51 +235,37 @@ WITH ins AS (
     INSERT INTO vendite.fatturazione_lotti_log (lotto_id, data_ora, messaggio, status)
     SELECT r.lotto_id, now(), 'pgTAP scadenza: viva', 'I'
       FROM _rif r
-     WHERE r.lotto_id IS NOT NULL
     RETURNING id, data_ora, cleanup_at
 )
 SELECT * FROM ins;
 
-SELECT CASE
-    WHEN (SELECT lotto_id FROM _rif) IS NULL
-      THEN skip('nessun lotto dell''emittente dell''operatore', 1)
-    ELSE is(
-        (SELECT l.cleanup_at FROM _ll_viva l),
-        (SELECT l.data_ora + make_interval(days => r.ttl_lotti_log) FROM _ll_viva l, _rif r),
-        '9. fatturazione_lotti_log: cleanup_at = data_ora + il TTL della regola 16'
-    )
-END;
+SELECT is(
+    (SELECT l.cleanup_at FROM _ll_viva l),
+    (SELECT l.data_ora + make_interval(days => r.ttl_lotti_log) FROM _ll_viva l, _rif r),
+    '9. fatturazione_lotti_log: cleanup_at = data_ora + il TTL della regola 16'
+);
 
-SELECT CASE
-    WHEN (SELECT lotto_id FROM _rif) IS NULL
-      THEN skip('fixture non costruibile', 1)
-    ELSE throws_like(
-        format('DELETE FROM vendite.fatturazione_lotti_log WHERE id = %s',
-               (SELECT id FROM _ll_viva)),
-        '%Cancellazione non permessa%',
-        '10. DELETE di una riga VIVA rifiutato senza GUC: il guard e'' ancora un guard'
-    )
-END;
+SELECT throws_like(
+    format('DELETE FROM vendite.fatturazione_lotti_log WHERE id = %s',
+           (SELECT id FROM _ll_viva)),
+    '%Cancellazione non permessa%',
+    '10. DELETE di una riga VIVA rifiutato senza GUC: il guard e'' ancora un guard'
+);
 
 CREATE TEMP TABLE _ll_scaduta AS
 WITH ins AS (
     INSERT INTO vendite.fatturazione_lotti_log (lotto_id, data_ora, messaggio, status)
     SELECT r.lotto_id, now() - make_interval(days => r.ttl_lotti_log + 50), 'pgTAP scadenza: scaduta', 'I'
       FROM _rif r
-     WHERE r.lotto_id IS NOT NULL
     RETURNING id, cleanup_at
 )
 SELECT * FROM ins;
 
-SELECT CASE
-    WHEN (SELECT lotto_id FROM _rif) IS NULL
-      THEN skip('fixture non costruibile', 1)
-    ELSE cmp_ok(
-        dbops.fn_purge_cleanup_expired('vendite', 'fatturazione_lotti_log', 'cleanup_at', 5000, true),
-        '>=', 1,
-        '11. il purge (dry-run) vede la riga scaduta: e'' lui che la ritirera'''
-    )
-END;
+SELECT cmp_ok(
+    dbops.fn_purge_cleanup_expired('vendite', 'fatturazione_lotti_log', 'cleanup_at', 5000, true),
+    '>=', 1,
+    '11. il purge (dry-run) vede la riga scaduta: e'' lui che la ritirera'''
+);
 
 -- ⚠️ Il verbo in un'istruzione SEPARATA dall'asserzione.
 CREATE TEMP TABLE _ll_esito AS
@@ -234,15 +276,11 @@ WITH del AS (
 )
 SELECT count(*)::int AS righe FROM del;
 
-SELECT CASE
-    WHEN (SELECT lotto_id FROM _rif) IS NULL
-      THEN skip('fixture non costruibile', 1)
-    ELSE is(
-        (SELECT righe FROM _ll_esito),
-        1,
-        '12. DELETE di una riga SCADUTA ammesso senza GUC: e'' la retention che passa'
-    )
-END;
+SELECT is(
+    (SELECT righe FROM _ll_esito),
+    1,
+    '12. DELETE di una riga SCADUTA ammesso senza GUC: e'' la retention che passa'
+);
 
 -- ============================================================
 -- 13) fatturazione_lotti_task_runs — la quarta sorgente del giornale
@@ -252,20 +290,15 @@ WITH ins AS (
     INSERT INTO vendite.fatturazione_lotti_task_runs (lotto_id, task_code, tentativo, task_stato, started_at, ended_at)
     SELECT r.lotto_id, 'PGTAP_SCADENZA', 1, 'COMPLETATO', now(), now()
       FROM _rif r
-     WHERE r.lotto_id IS NOT NULL
     RETURNING id, started_at, cleanup_at
 )
 SELECT * FROM ins;
 
-SELECT CASE
-    WHEN (SELECT lotto_id FROM _rif) IS NULL
-      THEN skip('fixture non costruibile', 1)
-    ELSE is(
-        (SELECT t.cleanup_at FROM _tr t),
-        (SELECT t.started_at + make_interval(days => r.ttl_task_runs) FROM _tr t, _rif r),
-        '13. fatturazione_lotti_task_runs: cleanup_at = started_at + il TTL della regola 18'
-    )
-END;
+SELECT is(
+    (SELECT t.cleanup_at FROM _tr t),
+    (SELECT t.started_at + make_interval(days => r.ttl_task_runs) FROM _tr t, _rif r),
+    '13. fatturazione_lotti_task_runs: cleanup_at = started_at + il TTL della regola 18'
+);
 
 -- ============================================================
 -- 14-15) fatture_log — l'ordine dei trigger e la conseguenza su critical
@@ -279,20 +312,15 @@ WITH ins AS (
     INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status)
     SELECT r.fattura_id, now(), 'pgTAP scadenza: orario riscritto', 'W'
       FROM _rif r
-     WHERE r.fattura_id IS NOT NULL
     RETURNING id, data_ora, cleanup_at
 )
 SELECT * FROM ins;
 
-SELECT CASE
-    WHEN (SELECT fattura_id FROM _rif) IS NULL
-      THEN skip('nessuna fattura non critica dell''emittente dell''operatore', 1)
-    ELSE is(
-        (SELECT f.cleanup_at - f.data_ora FROM _fl_viva f),
-        (SELECT make_interval(days => r.ttl_fatture_log) FROM _rif r),
-        '14. fatture_log: la scadenza segue l''orario RISCRITTO da a10_orario_reale (fase _m50_)'
-    )
-END;
+SELECT is(
+    (SELECT f.cleanup_at - f.data_ora FROM _fl_viva f),
+    (SELECT make_interval(days => r.ttl_fatture_log) FROM _rif r),
+    '14. fatture_log: la scadenza segue l''orario RISCRITTO da a10_orario_reale (fase _m50_)'
+);
 
 -- Un critico gia' scaduto: si accende fatture.critical, il purge lo spegne.
 CREATE TEMP TABLE _fl_critico AS
@@ -300,7 +328,6 @@ WITH ins AS (
     INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status)
     SELECT r.fattura_id, now() - make_interval(days => r.ttl_fatture_log + 50), 'pgTAP scadenza: critico scaduto', 'C'
       FROM _rif r
-     WHERE r.fattura_id IS NOT NULL
     RETURNING id, cleanup_at
 )
 SELECT * FROM ins;
@@ -319,16 +346,12 @@ SELECT count(*)::int AS righe FROM del;
 CREATE TEMP TABLE _critical_dopo AS
 SELECT f.critical FROM vendite.fatture f WHERE f.id = (SELECT fattura_id FROM _rif);
 
-SELECT CASE
-    WHEN (SELECT fattura_id FROM _rif) IS NULL
-      THEN skip('fixture non costruibile', 1)
-    ELSE ok(
-        (SELECT critical FROM _critical_prima) IS TRUE
-        AND (SELECT righe FROM _fl_esito) = 1
-        AND (SELECT critical FROM _critical_dopo) IS NOT TRUE,
-        '15. il purge di un critico scaduto passa dal guard e spegne fatture.critical: il critico eredita la scadenza del registro'
-    )
-END;
+SELECT ok(
+    (SELECT critical FROM _critical_prima) IS TRUE
+    AND (SELECT righe FROM _fl_esito) = 1
+    AND (SELECT critical FROM _critical_dopo) IS NOT TRUE,
+    '15. il purge di un critico scaduto passa dal guard e spegne fatture.critical: il critico eredita la scadenza del registro'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
