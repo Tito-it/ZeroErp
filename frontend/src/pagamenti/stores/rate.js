@@ -29,9 +29,37 @@
 //       nel picker NON si usa per nascondere le esaurite — quelle si vedono e
 //       non si scelgono (brief §4.2) — ma e' qui perche' e' un filtro della
 //       lista, e lo scadenzario lo accendera'.
+//
+//       ⭐ `solo_numerate: true` DI DEFAULT (Tid, rilievo in-app 2026-09-18):
+//       una rata di un documento NON numerato non e' un credito su cui
+//       registrare un incasso — la bozza non e' ancora un documento fiscale —
+//       e nel picker compariva accanto alle altre. E' un filtro del backend
+//       (`numero IS NOT NULL`, dentro le condizioni della pagina E del
+//       perimetro di `solo_aperte`) e parte acceso per ogni consumatore di
+//       questo store; chi vorra' vedere anche le bozze lo spegne, non lo
+//       riscrive. ⏳ Il predicato di Tid e' piu' stretto — «solo le definitive,
+//       inviate a SDI» — e arrivera' come regola di dominio (una sede a DB),
+//       non come un secondo booleano qui: registrato nel piano D19, §8.
+//
+//       ⭐ NASCE A DIECI RIGHE (`PAGINATION.COMPACT_ROWS`), non a 25: e' la
+//       lista di un DIALOG, e il dialog ha l'altezza di dieci righe
+//       (`app-dialog-lista`, main.css) — cosi' la pagina piena e la pagina
+//       vuota sono alte uguali e il dialog non salta quando arrivano le
+//       righe. `useSearchTable` tratta un limite diverso da 25 come eccezione
+//       dichiarata e non lo adatta al viewport.
+//       ⛔ E IL PRESET DICE LO STESSO NUMERO (`lista_preset` 68,
+//       `pagina_dimensione = 10`), e non e' ridondanza: al primo
+//       `config-loaded` lo scaffolding ALLINEA `filters.limit` alla
+//       `pagina_dimensione` risolta dal catalogo (`useListaConfigurabilePage`),
+//       e il DB la risolve sempre (`COALESCE(..., 25)`). Con il preset a 25 la
+//       prima apertura mostrava 25 righe in un blocco alto dieci, e dalla
+//       seconda — dopo il `reset()` alla chiusura, con l'allineamento gia'
+//       fatto — dieci: due aperture, due passi, nessun errore (rilettura
+//       critica del 18/09).
 // ------------------------------------------------------------
 
 import { createListaStore } from '../../core/stores/createListaStore'
+import { PAGINATION } from '../../core/constants'
 import { listRate } from '../api/pagamenti'
 
 export const useRateStore = createListaStore('pagamenti-rate', {
@@ -41,9 +69,11 @@ export const useRateStore = createListaStore('pagamenti-rate', {
     fattura_numero: null,
     serie: null,
     solo_aperte: null,
+    solo_numerate: true,
   },
   gateKeys: ['billing_account_id', 'fattura_numero'],
   startsEmpty: true,
   orderBy: 'data_scadenza',
   orderDir: 'asc',
+  limit: PAGINATION.COMPACT_ROWS,
 })

@@ -33,6 +33,8 @@ Indice test eseguiti:
 18) Slice3ApiTests.test_coda_filtri_tradotti
 19) Slice3ApiTests.test_saldo_rata_ok
 20) Slice3ApiTests.test_saldo_fattura_ok
+20a) Slice3ApiTests.test_saldo_fattura_escludi_riga_arriva_al_service
+20b) Slice3ApiTests.test_saldo_fattura_escludi_riga_non_numerico_400
 21) Slice5RotteTests.test_le_rotte_delle_sistemazioni_esistono
 22) Slice5ApiTests.test_eccedenze_filtri_tradotti
 23) Slice5ApiTests.test_registrazione_senza_idempotency_key_rifiutata
@@ -66,9 +68,9 @@ _LISTA = {
     "results": [{"id": 7, "codice": "CNT-0001", "origine": "MANUALE"}],
 }
 
+# ⚠️ Niente `righe` (dal 2026-09-18): sono una lista con la sua pagina.
 _DETTAGLIO = {
     "distinta": {"id": 7, "codice": "CNT-0001", "righe_totali": 0},
-    "righe": [],
     "stati_distinta": [],
     "stati_riga": [],
     "stati_richiedibili": ["VALIDATA", "BOZZA", "ANNULLATA"],
@@ -515,6 +517,38 @@ class Slice3ApiTests(JwtMockedApiTest):
         response = self.client.get("/api/v1/pagamenti/fatture/2263/saldo/")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["data"]["incassato"])
+        # Senza il parametro il service riceve `None`, non un'assenza: la firma
+        # e' la stessa della rata.
+        self.assertIsNone(mocked.call_args.kwargs["escludi_riga_id"])
+
+    # Scopo: ⭐ P-6 (2026-09-18): anche il DOCUMENTO sa il «prima di se'». Il
+    #        parametro ha lo stesso nome della rata e arriva al service come
+    #        intero — e' cio' che il pannello «Destinazione» in modifica di una
+    #        riga SENZA rata (il fondo fattura) chiede.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.saldi_service.saldo_documento")
+    def test_saldo_fattura_escludi_riga_arriva_al_service(self, mocked, _auth):
+        mocked.return_value = {"livello": "DOCUMENTO", "residuo": "500.00",
+                               "in_lavorazione": "0", "incassato": "300.00",
+                               "has_movimenti": True}
+        response = self.client.get(
+            "/api/v1/pagamenti/fatture/2263/saldo/?escludi_riga_id=11"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked.call_args.kwargs["escludi_riga_id"], 11)
+
+    # Scopo: ⛔ Un `escludi_riga_id` non numerico e' un 400 col campo, non un
+    #        saldo letto SENZA esclusione: ignorarlo in silenzio farebbe leggere
+    #        un «in lavorazione» che conta la riga che si sta correggendo — cioe'
+    #        esattamente il numero che il parametro esiste per non mostrare.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.saldi_service.saldo_documento")
+    def test_saldo_fattura_escludi_riga_non_numerico_400(self, mocked, _auth):
+        response = self.client.get(
+            "/api/v1/pagamenti/fatture/2263/saldo/?escludi_riga_id=abc"
+        )
+        self.assertEqual(response.status_code, 400)
+        mocked.assert_not_called()
 
 
 class Slice5RotteTests(JwtMockedApiTest):

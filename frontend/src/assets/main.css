@@ -425,7 +425,9 @@ a {
  * colonne mantiene la somma delle larghezze <= contenitore, quindi forzare un
  * min-width reintrodurrebbe lo scroll proprio quando si apre la sidebar — il
  * problema che il ritiro elimina. La tabella resta a `width: max-content;
- * min-width: 100%` (riempie il contenitore senza forzature).
+ * min-width: 100%` (riempie il contenitore senza forzature) — ma con il TETTO
+ * di cella del blocco «liste responsive» qui sotto, senza il quale
+ * `max-content` e' il contenuto vero e la somma del packing non vale.
  */
 .app-datatable:not(.app-datatable--inner):not(.app-datatable--responsive):has(.p-datatable-thead > tr > th:nth-child(8)) .p-datatable-table {
   min-width: max(100%, 1040px) !important;
@@ -437,6 +439,55 @@ a {
 
 .app-datatable:not(.app-datatable--inner):not(.app-datatable--responsive):has(.p-datatable-thead > tr > th:nth-child(12)) .p-datatable-table {
   min-width: max(100%, 1480px) !important;
+}
+
+/* ===== Liste responsive: la larghezza di catalogo e' un TETTO, non un minimo =====
+ * Il packing di useResponsiveColumns somma le larghezze DICHIARATE e ritira
+ * colonne finche' la somma entra nel contenitore. Ma con `width: max-content`
+ * ogni colonna era larga quanto il suo contenuto piu' lungo, e la larghezza di
+ * catalogo (il `width` inline della Column) era solo un minimo: il packing
+ * diceva «entra tutto», il browser rendeva di piu', e la differenza usciva
+ * come scrollbar orizzontale — DI PIU' a sidebar chiusa, perche' con piu'
+ * spazio il packing ritirava meno colonne (rilievo in-app di Tid, 2026-09-18).
+ *
+ * Qui il contenuto di cella e intestazione non puo' superare `--col-w` (la
+ * stessa larghezza che il packing ha contato, passata da ListaConfigurabile):
+ * un testo piu' lungo va in ellissi su una riga, col testo intero nel `title`.
+ * Cosi' la somma resa E' quella dichiarata, la scrollbar non compare per
+ * costruzione e la colonna azioni — alla sua larghezza naturale, mai
+ * tagliata — resta sempre l'ultima a video. Una larghezza di catalogo troppo
+ * stretta smette di essere una scrollbar muta e diventa un'ellissi visibile:
+ * si corregge dall'amministrazione, e' un dato.
+ *
+ * Il tetto e' `--col-w - 2 * padding orizzontale`: `box-sizing: border-box`
+ * (globale) fa includere il padding nel `width` della cella, quindi al
+ * contenuto resta la larghezza netta. Sulle colonne senza `--col-w` (azioni,
+ * expander, selezione) il `calc` e' invalido e la dichiarazione decade da se'.
+ */
+.app-datatable--responsive .p-datatable-tbody > tr > td > .app-lista-cella {
+  max-width: calc(var(--col-w) - 2 * var(--app-table-cell-padding-x));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* L'intestazione ha lo stesso tetto: un titolo lungo in una colonna stretta
+ * allargherebbe la colonna esattamente come un contenuto lungo. Il flex di
+ * PrimeVue (titolo + icona di ordinamento) cede solo sul titolo. */
+.app-datatable--responsive .p-datatable-thead > tr > th > .p-datatable-column-header-content {
+  max-width: calc(var(--col-w) - 2 * var(--app-table-cell-padding-x));
+  min-width: 0;
+}
+
+.app-datatable--responsive .p-datatable-column-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-datatable--responsive .p-datatable-sort-icon {
+  flex-shrink: 0;
 }
 
 .app-datatable .p-datatable-thead > tr > th {
@@ -458,7 +509,10 @@ a {
  * del body PrimeVue puo' risultare qualche pixel troppo corto.
  * Il padding extra sull'ultima riga garantisce visibilita' completa. */
 .app-datatable .p-datatable-tbody > tr:last-child > td {
-  padding-bottom: calc(var(--app-table-cell-padding) + 4px);
+  /* ⚠️ `-y`, non la shorthand: `calc(0.3rem 0.5rem + 4px)` e' invalido e fino
+     al 2026-09-18 questa riga era scartata in silenzio — il fix qui sopra non
+     si applicava a nessuna lista. */
+  padding-bottom: calc(var(--app-table-cell-padding-y) + 4px);
 }
 
 /* Spazio aggiuntivo in fondo al body scrollabile per evitare che
@@ -954,6 +1008,34 @@ a {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* ===== Lista dentro un DIALOG — altezza definita =====
+ * Il corpo di un `Dialog` (`.p-dialog-content`) non e' una colonna flex e non
+ * ha un'altezza sua: un tab-lista montato li' (`<DrawerTabLista>` dentro
+ * `AppDialog`, il picker delle rate) si rende all'altezza del CONTENUTO —
+ * corto con l'empty-state, alto quando le righe arrivano — e il dialog salta
+ * sotto gli occhi di chi cerca (rilievo di Tid, 2026-09-18).
+ *
+ * Con un'altezza DEFINITA la catena e' quella per cui `scroll-height="flex"`
+ * esiste: `.app-tab-content` (questa classe, altezza fissa) > toolbar filtri
+ * (`flex: 0 1 auto`, alta quanto i suoi controlli) > `.lista-configurabile`
+ * (`height: 100%`, comprimibile perche' `min-height: 0`) > DataTable, che da'
+ * al corpo lo spazio che resta e lo fa scorrere se la pagina e' piu' lunga.
+ * Vuota o piena, la lista e' alta uguale: il dialog si apre gia' alto e non
+ * si muove piu'. ⚠️ Cio' che sta SOTTO la lista nel dialog (l'area temporanea
+ * della modalita' multipla) non entra in questa altezza: il corpo del dialog
+ * scorre per lui, e il tetto e' il `max-height: 90%` del `Dialog`.
+ *
+ * Il numero sta in theme.css (`--app-dialog-lista-h`, ~dieci righe): e' il
+ * passo con cui una lista in dialog nasce (`limit: PAGINATION.COMPACT_ROWS`
+ * nello store), cosi' la pagina di default entra intera senza barra.
+ * `flex: none`: dentro una colonna flex l'altezza definita non si deve
+ * ripartire — e' l'ambiguita' che ha gia' fatto sparire il blocco lista delle
+ * dashboard (vedi `.app-dash-fermi`). */
+.app-dialog-lista {
+  height: var(--app-dialog-lista-h);
+  flex: none;
 }
 
 /* ===== Modalita' sola lettura (pattern protect) =====

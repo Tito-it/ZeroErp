@@ -205,8 +205,14 @@ _RIGA_COLONNE = """
         reg.codice         AS fattura_registro_codice,
         -- La natura si SEGNALA, non si nasconde: una nota di credito su una
         -- riga di incasso e' il caso in cui il cliente ce la paga (D19-e).
-        ndf.codice_interno AS fattura_natura_doc_codice_interno,
-        ndf.descrizione    AS fattura_natura_doc_descrizione,
+        -- ⚠️ SENZA il prefisso `fattura_` (dal 2026-09-18): e' il nome con cui
+        --    OGNI proiezione del progetto porta `config.nature_doc_fiscale`, ed
+        --    e' la GEMELLA che il `formato = natura_doc` del catalogo liste
+        --    legge dalla riga (`CellaConfigurabile.CAMPO_GEMELLO_NATURA_DOC`).
+        --    Col prefisso la lista `pagamenti.distinta_righe` avrebbe reso `—`
+        --    su ogni riga, senza errore.
+        ndf.codice_interno AS natura_doc_codice_interno,
+        ndf.descrizione    AS natura_doc_descrizione,
         r.billing_account_id,
         ba.codice          AS billing_account_codice,
         srd.ragione_sociale_completa AS billing_account_descrizione,
@@ -285,6 +291,20 @@ _RIGA_FROM = """
 
 # La riga «nuda», per il dettaglio e per le righe di UNA distinta.
 _RIGA_SELECT = f"SELECT {_RIGA_COLONNE} {_RIGA_FROM}"
+
+# Le righe ATTIVE di una distinta — il perimetro che `list_righe` (l'insieme
+# intero, per l'anteprima di registrazione) e `list_righe_distinta` (la pagina
+# della lista 69) devono condividere: scritto due volte, il giorno in cui uno
+# dei due cambia l'anteprima dice quali righe restano indietro su un insieme
+# diverso da quello che la lista mostra, senza che niente fallisca.
+# ⚠️ Solo le righe ATTIVE, e senza un interruttore per vederle tutte: una riga
+#    disattivata non e' un dato da mostrare con un filtro, e un parametro che
+#    nessuno passa e' superficie che invecchia.
+_RIGHE_DISTINTA_ATTIVE_SQL = f"""
+    {_RIGA_SELECT}
+    WHERE r.contabile_id = %s
+      AND r.attivo IS TRUE
+"""
 
 # 🔴 La riga della CODA porta anche la sua distinta, e non e' un di piu': una
 # riga cross-distinta senza il documento da cui viene non si lavora — chi la
@@ -377,6 +397,41 @@ RIGHE_SORT_COLUMNS: dict[str, str] = {
     "stato_descrizione": "stato_descrizione",
     "contabile_codice": "contabile_codice",
 }
+
+# Colonne ordinabili delle righe di UNA distinta (lista
+# `pagamenti.distinta_righe`, id 69 — 2026-09-18, decisione di Tid: le righe
+# del foglio sono una lista a tutti gli effetti, con paginazione, personalizza
+# ed export, come gli atti di sistemazione dal 02/09). Le chiavi sono i
+# `campo_sorgente` FISICI del seed, i valori gli alias della proiezione
+# `_RIGA_COLONNE` (la clausola si applica FUORI, sul risultato di
+# `_lista_paginata`).
+# ⭐ `fattura_numero_documento` ordina per la COPPIA `(fattura_numero,
+#    fattura_serie)` — il costruttore del numero parlante — e non per il testo
+#    «numero - serie»: ordinando il testo «10 - A» verrebbe prima di «9 - A»
+#    (stessa ragione di `RATE_SORT_COLUMNS`).
+# ⭐ `id` e' ordinabile perche' e' l'ordine di DIGITAZIONE, cioe' l'ordine di
+#    apertura della lista (vedi `list_righe_distinta`): senza, l'operatore non
+#    potrebbe tornarci dopo aver cliccato un'altra intestazione.
+DISTINTA_RIGHE_SORT_COLUMNS: dict[str, str] = {
+    "id": "id",
+    "data_pagamento": "data_pagamento",
+    "data_valuta": "data_valuta",
+    "data_operazione": "data_operazione",
+    "riferimento_ente": "riferimento_ente",
+    "importo": "importo",
+    "billing_account_descrizione": "billing_account_descrizione",
+    "billing_account_codice": "billing_account_codice",
+    "fattura_numero_documento": "(fattura_numero, fattura_serie)",
+    "scadenza_numero_rata": "scadenza_numero_rata",
+    "scadenza_data": "scadenza_data",
+    "stato_descrizione": "stato_descrizione",
+}
+
+# Le colonne DATA della lista 69: verso DESC al primo click senza `order_dir`
+# (regola di Tid del 2026-09-02, come `RATE_SORT_COLONNE_DATA`).
+DISTINTA_RIGHE_SORT_COLONNE_DATA: frozenset[str] = frozenset(
+    {"data_pagamento", "data_valuta", "data_operazione", "scadenza_data"}
+)
 
 # Colonne ordinabili dell'elenco delle rate fuori capienza.
 # ⭐ `numero_documento` (P-1-bis, 2026-09-17): la vista porta il numero
@@ -902,26 +957,62 @@ class PagamentiRepository:
     #  Righe
     # ══════════════════════════════════════════════════════════════
 
-    # Scopo: Le righe di una distinta, ordine stabile.
-    # Nota: nessuna paginazione — le righe sono il dettaglio di UN documento e
-    #       si leggono insieme alla sua testata; la lista cross-distinta (la
-    #       coda del riconciliatore) e' un'altra cosa e ha il suo metodo.
+    # Scopo: TUTTE le righe attive di una distinta, in ordine di digitazione.
+    # ⚠️ Dal 2026-09-18 NON e' piu' cio' che il drawer mostra: la lista a video
+    #    e' `list_righe_distinta` (paginata). Questa lettura serve a chi ha
+    #    bisogno dell'INSIEME intero — l'anteprima di registrazione, che deve
+    #    dire quali righe restano indietro e non puo' farlo su una pagina.
     def list_righe(self, contabile_id: int) -> list[RigaContabileRow]:
         self._guard_canale_sistema("list_righe")
-        # ⚠️ Solo le righe ATTIVE, e senza un interruttore per vederle tutte:
-        # una riga disattivata non e' un dato da mostrare con un filtro, e un
-        # parametro che nessuno passa e' superficie che invecchia. Quando
-        # servira' davvero, si aggiunge con il suo consumatore.
-        sql = f"""
-            {_RIGA_SELECT}
-            WHERE r.contabile_id = %s
-              AND r.attivo IS TRUE
-            ORDER BY r.id
-        """
+        sql = f"{_RIGHE_DISTINTA_ATTIVE_SQL} ORDER BY r.id"
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
         return [self._shape(row) for row in rows]
+
+    # Scopo: Le righe attive di una distinta come LISTA — pagina + totale in
+    #        una valutazione, ordinamento dalla whitelist.
+    # ⭐ 2026-09-18 (decisione di Tid): le righe del foglio hanno paginazione,
+    #    ricarica, «Personalizza colonne» ed export come ogni altra lista
+    #    configurabile. La ragione per cui non le avevano — «le righe di una
+    #    distinta sono limitate per costruzione» — era una previsione sui DATI,
+    #    e una previsione sui dati non decide la forma di una lista (regola
+    #    zero; stessa strada degli atti di sistemazione dal 02/09).
+    # ⭐ Default `id DESC`: l'ULTIMA riga digitata sta in cima. E' la scelta di
+    #    Tid del 02/09 sugli atti di sistemazione, per la stessa ragione: da
+    #    quando la lista impagina, una riga appena scritta in ordine crescente
+    #    finirebbe nell'ULTIMA pagina, e chi l'ha appena digitata non la
+    #    vedrebbe. ⚠️ `default_desc` governa solo il ramo senza `order_by`: chi
+    #    clicca «Id riga» ottiene il verso che chiede.
+    # ⚠️ L'export non chiede «tutto»: chiede `EXPORT_MAX_ROWS + 1` righe, ed e'
+    #    il `+1` a far scattare il guard del tetto PRIMA di serializzare
+    #    (`build_export_response`), come su ogni altra lista.
+    def list_righe_distinta(
+        self,
+        contabile_id: int,
+        *,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[RigaContabileRow], int]:
+        self._guard_canale_sistema("list_righe_distinta")
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=DISTINTA_RIGHE_SORT_COLUMNS,
+            default="id",
+            tiebreak="id",
+            default_desc=True,
+            colonne_desc=DISTINTA_RIGHE_SORT_COLONNE_DATA,
+        )
+        rows, total = self._lista_paginata(
+            select_sql=_RIGHE_DISTINTA_ATTIVE_SQL,
+            params=[int(contabile_id)],
+            order_clause=f"ORDER BY {ordinamento}",
+            limit=limit,
+            offset=offset,
+        )
+        return [self._shape(row) for row in rows], total
 
     # Scopo: Dettaglio di una singola riga contabile ATTIVA.
     # ⚠️ Il filtro su `attivo` e' un cancello, non un dettaglio (D17): questa
@@ -1183,14 +1274,22 @@ class PagamentiRepository:
     #    📮 Se un giorno servira' `has_righe_postabili`, la sede giusta e'
     #    aggiungerlo a `fn_get_saldo_fattura` — che quella funzione la interroga
     #    gia' — non rimettere il join qui.
-    def get_saldo_documento(self, fattura_id: int) -> dict[str, Any] | None:
+    # ⭐ `escludi_riga_id` dal 2026-09-18 (P-6 del brief D19): la stessa
+    #    domanda della rata — «quanto c'era PRIMA di me» — con lo stesso nome
+    #    di parametro, cosi' il pannello dice la stessa cosa ai due livelli.
+    #    ⚠️ Semantica identica alla rata, ed e' una scelta del DB dichiarata nel
+    #    changeSet: la riga esclusa esce dal DICHIARATO e, se e' gia'
+    #    registrata, anche col suo MOVIMENTO — come nel nucleo `fn_get_saldi_rate`.
+    def get_saldo_documento(
+        self, fattura_id: int, *, escludi_riga_id: int | None = None
+    ) -> dict[str, Any] | None:
         self._guard_canale_sistema("get_saldo_documento")
         sql = """
             SELECT f.saldo, f.in_lavorazione, f.incassato, f.has_movimenti
-              FROM pagamenti.fn_get_saldo_fattura(%s) f
+              FROM pagamenti.fn_get_saldo_fattura(%s, %s) f
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
+            cursor.execute(sql, [int(fattura_id), escludi_riga_id])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 
@@ -1285,6 +1384,14 @@ class PagamentiRepository:
     # ⚠️ Lo scope emittente applicativo si SOMMA alla RLS (api.md §Enforcement
     #    RLS), come sulla lista fatture da cui il lookup legge: `v.emittente_fiscale_id`
     #    e' la PK dell'emittente, convenzione `pk`.
+    # ⛔ `solo_numerate` (Tid, rilievo in-app 2026-09-18): la rata di un documento
+    #    NON numerato — una bozza, `numero IS NULL` — non e' un credito su cui
+    #    registrare un incasso, e il picker la mostrava accanto alle altre. Il
+    #    predicato sta in `_condizioni`, quindi vale anche sul PERIMETRO di
+    #    `solo_aperte`: i due insiemi non possono divergere. ⏳ La regola di Tid
+    #    e' piu' stretta — «solo le definitive, inviate a SDI» — ed e' un
+    #    predicato di dominio che va in una sede sola a DB, non un secondo
+    #    booleano qui (piano D19 §8).
     def list_rate_paginata(
         self,
         *,
@@ -1295,6 +1402,7 @@ class PagamentiRepository:
         anno: int | None = None,
         search: str | None = None,
         solo_aperte: bool = False,
+        solo_numerate: bool = False,
         data_scadenza_da: date | None = None,
         data_scadenza_a: date | None = None,
         natura_doc_codice: str | None = None,
@@ -1348,6 +1456,11 @@ class PagamentiRepository:
             if natura_doc_codice is not None:
                 conditions.append(f"{alias}.natura_doc_codice_interno = %s")
                 params.append(natura_doc_codice)
+            # Il numero e' NULL finche' il documento non e' DEFINITIVA: e' il
+            # solo fatto della vista che dice «numerato», e la vista lo porta
+            # apposta accanto a `numero_documento` (P-2).
+            if solo_numerate:
+                conditions.append(f"{alias}.numero IS NOT NULL")
             add_emittente_scope_condition_risolta(
                 conditions, params,
                 scope_ids=scope_ids,

@@ -4,73 +4,38 @@
 // prima i filtri e la paginazione vivevano dentro `AuditLogView.vue`, ma lo
 // scaffolding `useListaConfigurabilePage` vuole uno store che possieda
 // `items`/`totalRecords`/`loading`/`filters`/`fetchList`.
+//
+// ⭐ Dal 2026-09-18 e' `createListaStore` e basta: era l'unico store del
+//    frontend con il ciclo di fetch scritto INTERAMENTE a mano — `items`,
+//    `loading`, un `fetchSeq` anti-race suo, `hasSearched` dichiarato apposta
+//    per `useSearchTable` — piu' la copia del `buildParams`. Tutto cio' che
+//    faceva lo fa il BB, compresa la guardia di versione che qui era un
+//    contatore locale.
+// ⚠️ `search` esiste solo perche' `useSearchTable` ci scrive dentro: il BE
+//    audit NON ha ricerca testuale (`AuditLogView` non mostra la casella, e nel
+//    seed tutte le colonne hanno `ricercabile_full=f`). Il BB la manderebbe
+//    solo da tre caratteri, e da quella pagina non ci arriva mai.
 
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { createListaStore } from '../../core/stores/createListaStore'
 import { getAuditLog } from '../api/amministrazione'
 import { defaultFiltroDataDaString } from '../../core/utils/date'
 
-export const useAuditLogStore = defineStore('amm-audit-log', () => {
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
-
-  // Guard anti-race: la pagina cambia filtro piu' in fretta di quanto torni la
-  // fetch (tre filtri tutti a portata di click). Senza, una risposta vecchia
-  // puo' sovrascrivere una nuova.
-  let fetchSeq = 0
-
-  const filters = ref({
-    // ⚠️ `search` esiste solo perche' `useSearchTable` ci scrive dentro: il
-    // BE audit NON ha ricerca testuale (`AuditLogView` non legge `search`, e
-    // nel seed tutte le colonne hanno `ricercabile_full=f`). Per questo la
-    // pagina non mostra la casella di ricerca e `fetchList` non lo invia.
-    search: '',
+export const useAuditLogStore = createListaStore('amm-audit-log', {
+  fetchPage: getAuditLog,
+  // Parte piena: e' un registro, non una ricerca.
+  startsEmpty: false,
+  filterDefaults: {
     tabella: null,
     // Floor temporale standard delle liste: oggi-60gg riportato al 1° del mese
     // (`feedback_filtro_data_liste`). Sostituisce il "ultimo mese" calcolato a
     // mano che stava nel .vue — stessa intenzione, ma dalla fonte unica.
     data_da: defaultFiltroDataDaString(),
     data_a: null,
-    limit: 25,
-    offset: 0,
-    // Allineato all'`ordinamento_default` del preset `audit_log_default`
-    // (seed `lista_preset`, riga 32): il piu' recente in cima.
-    order_by: 'timestamp',
-    order_dir: 'desc',
-  })
-
-  // Scopo: carica la pagina corrente del log di audit applicando i filtri.
-  async function fetchList() {
-    const seq = ++fetchSeq
-    loading.value = true
-    try {
-      const f = filters.value
-      const params = { limit: f.limit, offset: f.offset }
-      if (f.tabella) params.tabella = f.tabella
-      if (f.data_da) params.data_da = f.data_da
-      if (f.data_a) params.data_a = f.data_a
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'desc'
-      }
-      const res = await getAuditLog(params)
-      if (seq !== fetchSeq) return
-      const data = res.data?.data || {}
-      items.value = data.results || []
-      totalRecords.value = data.count || 0
-      hasSearched.value = true
-    } finally {
-      if (seq === fetchSeq) loading.value = false
-    }
-  }
-
-  // ⚠️ `hasSearched` non serve a questa pagina — che non ha empty-state e parte
-  //    piena — ma lo LEGGE `useSearchTable.onActivated` per decidere il refresh
-  //    al rientro sotto KeepAlive: senza, quel rientro non ricarica niente e non
-  //    lo dice nessuno. Gli store che passano da `useListaEmptyStateFetch` o
-  //    dalle factory lo espongono da se'; questo e' scritto a mano, quindi va
-  //    dichiarato qui.
-  return { items, totalRecords, loading, hasSearched, filters, fetchList }
-}, { userScoped: true })
+  },
+  // Allineato all'`ordinamento_default` del preset `audit_log_default`
+  // (seed `lista_preset`, riga 32): il piu' recente in cima. Il ripiego del
+  // verso segue: e' una lista di eventi, si legge dal piu' recente.
+  orderBy: 'timestamp',
+  orderDir: 'desc',
+  orderDirDefault: 'desc',
+})

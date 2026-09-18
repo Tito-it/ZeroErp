@@ -29,7 +29,6 @@
     "core/components/SearchDrawer.vue",
     "core/components/SessioniAttivePanel.vue",
     "documenti/components/DocumentiGeneratiSorgenteList.vue",
-    "pagamenti/components/DistintaDrawer.vue",
     "pagamenti/components/RegistraDistintaDialog.vue",
     "pratiche/components/PraticaFlussiTab.vue",
     "ui/components/ListaPresetColonneDrawer.vue",

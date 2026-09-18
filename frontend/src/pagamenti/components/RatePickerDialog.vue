@@ -24,6 +24,17 @@
 // ⛔ Le rate ESAURITE si vedono e non si scelgono (spazio = 0, Q-B): nascondere
 //    una rata saldata e' quello che un picker dei pagamenti NON deve fare — chi
 //    guarda deve poter vedere che quel documento e' a posto.
+// ⛔ I documenti NON NUMERATI invece non si vedono (Tid, rilievo in-app
+//    2026-09-18): una bozza non e' ancora un documento fiscale, e la sua rata
+//    non e' un credito su cui registrare un incasso. Il filtro e' del backend
+//    (`solo_numerate`, `numero IS NOT NULL`) e parte acceso dallo store: qui
+//    non c'e' niente da scrivere. ⏳ La regola di Tid e' piu' stretta — «solo
+//    le definitive, inviate a SDI» — e arrivera' come predicato di dominio, in
+//    una sede sola a DB (piano D19 §8), non come un secondo booleano.
+// ⭐ IL DIALOG E' ALTO DIECI RIGHE, DA SUBITO: la lista nasce a dieci righe
+//    per pagina (`limit` dello store) e il blocco lista ha un'altezza DEFINITA
+//    (`app-dialog-lista`, main.css) — cosi' la pagina vuota e la pagina piena
+//    sono alte uguali, e il dialog non salta quando arrivano le righe.
 // ⭐ La natura si SEGNALA (D19-e): sulla nota di credito — che dal 2026-09-17
 //    ha la sua rata negativa — il residuo si dice «da rimborsare», e la rata
 //    E' selezionabile (spazio ≠ 0, non > 0): il rimborso e' un incasso a segno
@@ -61,6 +72,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
+import ResiduoCella from './ResiduoCella.vue'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useNotify } from '../../core/composables/useNotify'
@@ -95,7 +107,7 @@ const { t } = useI18n()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const store = useRateStore()
-const { rata: etichettaRata, residuoNegativo } = useEtichettePagamenti()
+const { rata: etichettaRata } = useEtichettePagamenti()
 const multipla = computed(() => props.modalita === 'multipla')
 
 // ⭐ Il «padre» e' l'apertura: `true` a dialog aperto, `null` a dialog chiuso.
@@ -238,8 +250,12 @@ function onVisibleChange(v) {
     @update:visible="onVisibleChange"
     @save="onSalva"
   >
+    <!-- `app-dialog-lista`: l'altezza definita del blocco lista (dieci righe,
+         main.css) — senza, la lista si rende all'altezza del contenuto e il
+         dialog salta quando le righe arrivano. -->
     <DrawerTabLista
       ref="listaRef"
+      class="app-dialog-lista"
       codice="pagamenti.rate"
       data-key="scadenza_id"
       :rows="store.items"
@@ -266,12 +282,17 @@ function onVisibleChange(v) {
           @select="applicaCriteri"
           @clear="applicaCriteri"
         />
+        <!-- ⚠️ `input-style`, non `style`: la larghezza scritta sul wrapper
+             `.p-inputnumber` non arriva all'<input>, che tiene la sua
+             larghezza intrinseca e SBORDA dal wrapper — a video il bordo del
+             numero finiva addosso al campo Serie e si vedevano due bordi
+             (rilievo di Tid, 2026-09-18). Stessa forma di `DdtResoDialog`. -->
         <InputNumber
           v-model="numeroFattura"
           :placeholder="t('pagamenti.rate.filtro_numero')"
           :use-grouping="false"
           :min="1"
-          style="width: 9rem;"
+          input-style="width: 9rem;"
           @update:model-value="applicaCriteri"
         />
         <InputText
@@ -305,31 +326,21 @@ function onVisibleChange(v) {
         />
       </template>
 
-      <!-- ⭐ La natura si SEGNALA: `sempre`, come nelle liste — e' la colonna
-           che dice «questa e' una nota di credito» prima che la si scelga. -->
-      <template #cell-natura="{ data }">
-        <NaturaDocTag
-          :codice="data.natura_doc_codice_interno"
-          :descrizione="data.natura_doc_descrizione"
-          sempre
-        />
-      </template>
+      <!-- ⭐ La natura si SEGNALA e NON ha slot: il seed dichiara
+           `formato = natura_doc` e `CellaConfigurabile` la rende con
+           `NaturaDocTag sempre` (dal 18/09, come `yesno`) — e' la colonna che
+           dice «questa e' una nota di credito» prima che la si scelga. -->
 
       <!-- ⛔ Il residuo NEGATIVO non si mostra come numero negativo: si dice
-           cosa significa, PER NATURA (una sede: `etichette.js`). La rata
-           esaurita lo dichiara: si vede, e non si sceglie. -->
+           cosa significa, PER NATURA — nel BB `ResiduoCella`, la stessa cella
+           della lista fuori capienza. La rata ESAURITA lo dichiara (si vede, e
+           non si sceglie): il predicato e la frase restano qui, del picker. -->
       <template #cell-residuo="{ data }">
-        <Tag
-          v-if="Number(data.residuo) < 0"
-          :value="residuoNegativo(data.residuo, data.natura_doc_codice_interno)"
-          severity="warn"
+        <ResiduoCella
+          :residuo="data.residuo"
+          :natura-codice="data.natura_doc_codice_interno"
+          :nota="rataEsaurita(data) ? t('pagamenti.rate.esaurita') : null"
         />
-        <Tag
-          v-else-if="rataEsaurita(data)"
-          :value="t('pagamenti.rate.esaurita')"
-          severity="secondary"
-        />
-        <span v-else>{{ formatCurrency(data.residuo) }}</span>
       </template>
 
       <!-- ⭐ Tre frasi diverse per tre stati diversi: «indica un criterio»

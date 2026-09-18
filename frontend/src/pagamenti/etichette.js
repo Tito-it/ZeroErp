@@ -53,8 +53,24 @@ export function useEtichettePagamenti() {
   const destinazione = (v) => etichetta('pagamenti.sistemazioni.destinazione', v)
   const statoSistemazione = (v) => etichetta('pagamenti.sistemazioni.stato', v)
   const origineDistinta = (v) => etichetta('pagamenti.distinte.origine', v)
-  const motivoFuoriCapienza = (v) =>
-    etichetta('pagamenti.rate_fuori_capienza.motivo', v)
+  // Scopo: IL MOTIVO di una rata fuori capienza, letto per NATURA del documento
+  //        (P-7, 2026-09-18): il vocabolario resta a DUE codici — cosi' ha
+  //        deciso il DB — e la sfumatura della nota di credito la dice
+  //        l'etichetta: `SOVRA_INCASSATA` su una NC e' «sovra-rimborsata»
+  //        (rimborsato piu' del credito), `MOVIMENTO_CONTRARIO` e' «entrato
+  //        invece di uscire» (il cliente ha pagato una nota a suo favore).
+  // ⚠️ Senza natura si legge come fattura: e' il default della colonna a DB,
+  //    non un dato mancante — la stessa regola di `residuoNegativo`.
+  // ⛔ Non un `if` sul segno del residuo: il codice e' lo stesso, cambia cosa
+  //    SIGNIFICA, e a dirlo e' la natura. Fail-visible come tutte: una chiave
+  //    mancante mostra il CODICE.
+  const motivoFuoriCapienza = (v, naturaCodice = null) =>
+    etichetta(
+      naturaCodice === NATURA_DOC.NOTA_CREDITO
+        ? 'pagamenti.rate_fuori_capienza.motivo_nota_credito'
+        : 'pagamenti.rate_fuori_capienza.motivo',
+      v,
+    )
   const coda = (v) => etichetta('pagamenti.righe.coda', v)
 
   // Scopo: L'ETICHETTA DI UNA RATA — «Rata 2 · 30/09/2026 · 610,00 € ·
@@ -118,6 +134,9 @@ export function useEtichettePagamenti() {
     opzioniDestinazione: () => opzioni(DESTINAZIONI, destinazione),
     opzioniStatoSistemazione: () => opzioni(STATI_SISTEMAZIONE, statoSistemazione),
     opzioniOrigineDistinta: () => opzioni(ORIGINI_DISTINTA, origineDistinta),
+    // ⚠️ Il FILTRO resta sui due codici letti come fattura (`opzioni` passa il
+    //    solo valore, la natura resta al default): filtra per codice, e la
+    //    frase per natura vive nella cella, dove la riga la natura la ha.
     opzioniMotivoFuoriCapienza: () =>
       opzioni(MOTIVI_FUORI_CAPIENZA, motivoFuoriCapienza),
     // ⭐ Le code si derivano dalle ROTTE, non da un elenco scritto a mano: cosi'

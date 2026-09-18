@@ -1,6 +1,7 @@
-// Scopo: le DUE azioni di utility che accompagnano ogni <ListaConfigurabile>
-// — «Personalizza colonne» e «Esporta» — piu' lo stato che le governa
-// (dirty/colonneNuove/configReady, dialog e download dell'export).
+// Scopo: le TRE azioni di utility che accompagnano ogni <ListaConfigurabile>
+// — «Espandi tutte» (dal 2026-09-18), «Personalizza colonne» e «Esporta» —
+// piu' lo stato che le governa (dirty/colonneNuove/configReady, dialog e
+// download dell'export).
 //
 // Estratto 2026-08-15 alla 5ª occorrenza, non alla 2ª: vivevano dentro
 // `useListaConfigurabilePage`, che pero' e' costruito su `useSearchTable` e
@@ -66,12 +67,41 @@ export function useListaAzioni(
     if (result !== null) exportDialogVisible.value = false
   }
 
-  // Le due azioni, nella forma attesa da PageActionsBar. `export` e'
+  // «Espandi tutte» (2026-09-18, decisione Tid): la TERZA azione standard,
+  // per aprire in un colpo tutte le righe quando il ritiro dinamico ha messo
+  // delle colonne nella riga di espansione — o quando la lista ha un dettaglio
+  // inline (listini). Lo stato e la macchina stanno nella lista
+  // (`haEspansione`/`tutteEspanse`/`espandiTutte`/`comprimiTutte`, esposti da
+  // ListaConfigurabile): qui si legge e si comanda soltanto, cosi' funziona
+  // identica sia con l'espansione della lista sia con quella pilotata dal
+  // caller via `v-model:expanded-rows`.
+  // ⛔ Compare SOLO se c'e' qualcosa da espandere: un pulsante che non fa
+  //    niente e' peggio della sua assenza. Prima viveva come azione locale dei
+  //    listini (`toggle-all-versioni`): questa e' la seconda occorrenza, e la
+  //    prima si e' ritirata nello stesso giro (regola del 2).
+  const haEspansione = computed(() => lista.value?.haEspansione === true)
+  const tutteEspanse = computed(() => lista.value?.tutteEspanse === true)
+  const haRighe = computed(() => lista.value?.haRighe === true)
+
+  // Le tre azioni, nella forma attesa da PageActionsBar. `export` e'
   // condizionata al proprio handler: senza `exportFn` il pulsante aprirebbe un
   // dialog che non scarica niente.
   const azioniLista = computed(() => {
     const personalizzaLabel = t('lista_config.personalizza_colonne')
     const azioni = [
+      {
+        key: 'espandi-tutte',
+        kind: 'utility',
+        label: tutteEspanse.value ? t('common.comprimi_tutte') : t('common.espandi_tutte'),
+        // Toggle: l'icona dice lo stato corrente (§Pattern toggle dinamico).
+        icon: tutteEspanse.value ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
+        visible: haEspansione.value,
+        disabled: !haRighe.value,
+        command: () => {
+          if (tutteEspanse.value) lista.value?.comprimiTutte?.()
+          else lista.value?.espandiTutte?.()
+        },
+      },
       {
         key: 'personalizza-colonne',
         kind: 'utility',

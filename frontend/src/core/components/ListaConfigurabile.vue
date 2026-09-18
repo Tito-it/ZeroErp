@@ -73,6 +73,16 @@
 //     <template #row-expansion="{ data }"> ...tabella figlia... </template>
 // Convive col ritiro dinamico: a riga aperta si vedono prima le colonne
 // ritirate, poi il dettaglio.
+//
+// ⛔ NIENTE SCROLLBAR ORIZZONTALE, per costruzione (2026-09-18, decisione Tid):
+//    in modalita' responsive la larghezza di catalogo e' anche il TETTO della
+//    cella (`--col-w` + `.app-lista-cella`, main.css), quindi la tabella rende la
+//    somma che il packing ha calcolato e la colonna azioni resta sempre
+//    l'ultima a video. Un contenuto piu' lungo va in ellissi col testo intero
+//    nel `title`; le colonne in eccesso stanno nella riga di espansione, e
+//    «Espandi tutte» (useListaAzioni) le apre tutte insieme.
+//    La sola larghezza che il catalogo non conosce e' quella dei pulsanti
+//    inline della colonna azioni: la dichiara il chiamante con `azioni-inline`.
 
 import { computed, ref, onMounted, watch, useSlots } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -83,8 +93,13 @@ import Button from 'primevue/button'
 import { PAGINATION } from '../constants'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { useListaConfig } from '../composables/useListaConfig'
-import { useResponsiveColumns } from '../composables/useResponsiveColumns'
-import CellaConfigurabile from './CellaConfigurabile.vue'
+import {
+  useResponsiveColumns,
+  larghezzaAzioniInline,
+  DEFAULT_COL_WIDTH,
+  DEFAULT_ACTIONS_INLINE_COUNT,
+} from '../composables/useResponsiveColumns'
+import CellaConfigurabile, { testoCella } from './CellaConfigurabile.vue'
 import ListaColonneModal from './ListaColonneModal.vue'
 
 // Default paginator allineato al pattern lista standard
@@ -171,6 +186,16 @@ const props = defineProps({
   // (uniformita' UI). La priorita' di ritiro arriva dal catalogo
   // (`ui.lista_colonna.priorita`, esposta da fn_resolve_lista_config).
   responsive: { type: Boolean, default: true },
+  // Quanti pulsanti INLINE puo' avere al massimo la colonna azioni (la
+  // variante desktop di `RowActionsMenu`, un'icona per azione). E' la riserva
+  // che il packing tiene per quella colonna prima di ritirare colonne dati:
+  // il chiamante e' l'unico a saperlo, perche' e' lui che scrive
+  // `buildRowActions`. Default 4; Clienti ne dichiara 6.
+  // ⚠️ Un numero piu' basso del vero non taglia nulla — la colonna azioni
+  //    resta alla sua larghezza naturale — ma la differenza esce dal
+  //    contenitore come scrollbar orizzontale, che e' esattamente cio' che il
+  //    packing esiste per evitare.
+  azioniInline: { type: Number, default: DEFAULT_ACTIONS_INLINE_COUNT },
   // Stato di espansione PILOTATO dal caller (`v-model:expanded-rows`), per le
   // liste master-detail che devono aprire/chiudere righe da sole (es. listini:
   // "espandi tutte", toggle da azione di riga, fetch lazy del dettaglio).
@@ -420,7 +445,29 @@ const {
   visibleColumns: _responsiveVisible,
   hiddenColumns: _responsiveHidden,
   actionsCompact: _responsiveActionsCompact,
-} = useResponsiveColumns(containerRef, colonneStandard, { hasActions: haAzioni })
+} = useResponsiveColumns(containerRef, colonneStandard, {
+  hasActions: haAzioni,
+  actionsInlineWidth: computed(() => larghezzaAzioniInline(props.azioniInline)),
+  hasSelection: haSelezione,
+  hasRowExpansion: haRowExpansion,
+})
+
+// Larghezza resa di una colonna dati = quella che il packing ha contato
+// (catalogo, o lo stesso fallback). Va come `width` E come `--col-w`, il
+// tetto che main.css applica al contenuto di celle e intestazioni delle liste
+// responsive: senza il tetto il browser rende `max-content` e la larghezza di
+// catalogo e' solo un minimo — il conto del packing non vale piu'.
+function stileColonna(col) {
+  const w = col.larghezza && col.larghezza > 0 ? col.larghezza : DEFAULT_COL_WIDTH
+  return `width: ${w}px; --col-w: ${w}px;`
+}
+
+// `title` della cella: il testo intero quando l'ellissi lo tronca. Solo per le
+// celle di testo (formatter di default); Tag, chip e slot del caller non hanno
+// un testo da ripetere.
+function titoloCella(col, data) {
+  return testoCella(col, data, slots[`cell-${col.codice}`])
+}
 
 // Le azioni di riga si comprimono a kebab quando lo spazio si stringe (prima
 // leva di recupero, prima di ritirare colonne dati). Passato allo slot
@@ -450,6 +497,34 @@ watch(
     if (n === 0 && !haRowExpansion.value) resetExpansionSePropria()
   },
 )
+
+// «Espandi tutte» / «Comprimi tutte» — l'azione standard di testata che
+// `useListaAzioni` monta accanto a Personalizza/Esporta (2026-09-18, ok Tid).
+// Vive QUI, non nel chiamante: passa dal setter di `expandedRows`, quindi
+// funziona sia quando l'espansione e' della lista sia quando e' pilotata dal
+// caller (listini), che riceve `update:expandedRows` come per un chevron.
+// `haEspansione` e' il predicato di VISIBILITA' dell'azione: senza colonne
+// ritirate ne' dettaglio inline non c'e' niente da aprire, e un pulsante che
+// non fa nulla e' peggio della sua assenza.
+const haEspansione = computed(
+  () => colonneRitirate.value.length > 0 || haRowExpansion.value,
+)
+const haRighe = computed(() => props.rows.length > 0)
+const tutteEspanse = computed(() => {
+  if (!haRighe.value) return false
+  const aperte = expandedRows.value || {}
+  return props.rows.every((r) => aperte[r[props.dataKey]])
+})
+
+function espandiTutte() {
+  const map = {}
+  for (const r of props.rows) map[r[props.dataKey]] = true
+  expandedRows.value = map
+}
+
+function comprimiTutte() {
+  expandedRows.value = {}
+}
 
 // Pagina dimensione effettiva. ⭐ CASCATA, e l'ordine e' il punto:
 //   1. quello che il CALLER dichiara (`paginatorOptions.rows`) — e' lo stato con
@@ -649,6 +724,12 @@ defineExpose({
   applyChange,
   openModal,
   ignorePresetUpdate,
+  // Espansione righe, per l'azione standard «Espandi tutte» di useListaAzioni.
+  haEspansione,
+  haRighe,
+  tutteEspanse,
+  espandiTutte,
+  comprimiTutte,
 })
 </script>
 
@@ -796,15 +877,21 @@ defineExpose({
         :frozen="col.fissata"
         :align-frozen="col.fissata ? 'left' : undefined"
         :exportable="col.esportabile"
-        :style="col.larghezza ? `width: ${col.larghezza}px;` : null"
+        :style="stileColonna(col)"
         :body-style="col.allineamento !== 'left' ? `text-align: ${col.allineamento};` : null"
       >
+        <!-- L'involucro `app-lista-cella` e' il tetto della cella (main.css §liste
+             responsive): il contenuto non puo' allargare la colonna oltre la
+             larghezza di catalogo. Il `title` porta il testo intero quando
+             l'ellissi lo tronca. -->
         <template #body="{ data }">
-          <CellaConfigurabile
-            :col="col"
-            :data="data"
-            :cell-slot="$slots[`cell-${col.codice}`]"
-          />
+          <div class="app-lista-cella" :title="titoloCella(col, data)">
+            <CellaConfigurabile
+              :col="col"
+              :data="data"
+              :cell-slot="$slots[`cell-${col.codice}`]"
+            />
+          </div>
         </template>
       </Column>
 

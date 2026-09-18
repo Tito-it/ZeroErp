@@ -16,6 +16,7 @@ from apps.pagamenti.api.views import (
     ApiDistintaRegistra,
     ApiDistintaRighe,
     ApiDistintaRigheDaRate,
+    ApiDistintaRigheExport,
     ApiDistintaStato,
     ApiContiIncasso,
     ApiDistinteList,
@@ -47,6 +48,14 @@ urlpatterns = [
         "distinte/<int:contabile_id>/righe/",
         ApiDistintaRighe.as_view(),
         name="pagamenti-distinta-righe",
+    ),
+    # ⭐ `export/` e' una rotta SORELLA di `righe/` (la forma della famiglia,
+    #    come `fatture/<id>/sistemazioni/export/`): sotto `righe/` non c'e'
+    #    nessun `<int:...>`, quindi l'ordine fra le due non decide niente.
+    path(
+        "distinte/<int:contabile_id>/righe/export/",
+        ApiDistintaRigheExport.as_view(),
+        name="pagamenti-distinta-righe-export",
     ),
     # ⭐ N rate scelte nel picker → N righe in un Salva (D19-d): verbo di
     #    collezione sulle righe della distinta, esito PARZIALE per riga.

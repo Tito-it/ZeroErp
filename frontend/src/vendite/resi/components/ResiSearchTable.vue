@@ -52,20 +52,14 @@ const {
 // Niente "Nuovo": il reso nasce dal DDT consegnato. Non serve filtrare —
 // lo scaffolding include l'azione solo se riceve `onNew`.
 
-// Params export: filtri da store.filters + search dal ref immediato + sort
-// corrente. Il BE rispetta colonne visibili/ordine/permessi (DEF-1).
+// Scopo: i parametri dell'export = QUELLI DELLA LISTA a video, dalla sede
+//        unica dello store (`paramsFiltro`: ricerca, filtri di dominio col nome
+//        sul filo, ordinamento). ⛔ Fino al 2026-09-18 questo blocco ricostruiva i
+//        filtri a mano. Un export che se li ricostruisce esporta un insieme
+//        DIVERSO da quello a video appena se ne aggiunge uno, e nessuno se ne
+//        accorge finche' qualcuno non confronta il file con la schermata.
 function buildExportParams(format) {
-  const p = { formato: format }
-  if (searchText.value?.trim()) p.search = searchText.value.trim()
-  if (store.filters.stato_codice_interno != null) p.stato_codice_interno = store.filters.stato_codice_interno
-  if (store.filters.billing_account_id != null) p.billing_account_id = store.filters.billing_account_id
-  if (store.filters.data_da) p.data_da = store.filters.data_da
-  if (store.filters.data_a) p.data_a = store.filters.data_a
-  if (store.filters.order_by) {
-    p.order_by = store.filters.order_by
-    p.order_dir = store.filters.order_dir || 'desc'
-  }
-  return p
+  return { formato: format, ...store.paramsFiltro() }
 }
 
 // --- Filtri custom (toolbar caller) — binding store via BB ---

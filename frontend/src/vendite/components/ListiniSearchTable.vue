@@ -98,10 +98,11 @@ const attivoOptions = [
 // Stato espansione righe (usato come v-model:expandedRows di PrimeVue).
 // Ogni volta che la lista listini viene ricaricata, espandiamo tutte le righe
 // e pre-carichiamo le versioni in parallelo.
+// ⭐ Il pulsante «Espandi/Comprimi tutte» NON e' piu' qui (2026-09-18): e'
+//    l'azione standard di `useListaAzioni`, che passa dal `v-model` di
+//    `<ListaConfigurabile>` e quindi dallo stesso watch qui sotto. Questa era
+//    la prima copia; ritirata alla seconda (regola del 2).
 const expandedRows = ref({})
-const allRowsExpanded = computed(() =>
-  store.items.length > 0 && store.items.every(it => expandedRows.value[it.id])
-)
 
 function onUtilityChange() {
   store.filters.utility_id = utilityFilter.value
@@ -128,20 +129,6 @@ function expandAllRows() {
   const map = {}
   store.items.forEach(it => { map[it.id] = true })
   expandedRows.value = map
-}
-
-function collapseAllRows() {
-  expandedRows.value = {}
-}
-
-function toggleAllRows() {
-  if (allRowsExpanded.value) {
-    collapseAllRows()
-    return
-  }
-  expandAllRows()
-  // Il caricamento delle versioni mancanti lo fa il watch qui sotto: vale per
-  // QUALUNQUE strada porti una riga ad aprirsi, non solo per questo pulsante.
 }
 
 // Scopo: carica le versioni delle righe appena aperte che non le hanno in
@@ -225,17 +212,6 @@ function onEliminaListino(listino) {
 // prima di "Nuovo". Reload/personalizza/new arrivano da
 // `useListaConfigurabilePage`, che le tiene una volta sola per tutte le liste.
 const extraPageActions = computed(() => [
-  {
-    key: 'toggle-all-versioni',
-    kind: 'utility',
-    label: allRowsExpanded.value
-      ? t('vendite.listini.comprimi_tutte_versioni')
-      : t('vendite.listini.espandi_tutte_versioni'),
-    icon: allRowsExpanded.value ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
-    severity: 'info',
-    disabled: store.items.length === 0,
-    command: toggleAllRows,
-  },
   {
     key: 'test-prezzo',
     kind: 'utility',

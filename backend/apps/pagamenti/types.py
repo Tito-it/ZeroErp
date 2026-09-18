@@ -103,8 +103,11 @@ class RigaContabileRow(TypedDict):
     fattura_data: date | None
     fattura_totale_doc: Decimal | None
     fattura_registro_codice: str | None
-    fattura_natura_doc_codice_interno: str | None
-    fattura_natura_doc_descrizione: str | None
+    # ⚠️ Senza il prefisso `fattura_` (dal 2026-09-18): e' il nome con cui ogni
+    #    proiezione porta la natura, ed e' la gemella che il `formato =
+    #    natura_doc` del catalogo liste legge dalla riga.
+    natura_doc_codice_interno: str | None
+    natura_doc_descrizione: str | None
     billing_account_id: int | None
     billing_account_codice: str | None
     billing_account_descrizione: str | None

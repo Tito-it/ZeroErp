@@ -180,6 +180,17 @@
   --app-drawer-section-border: var(--p-surface-700);
   --app-form-footer-border: var(--p-surface-700);
 
+  /* ===== Dialog con una lista dentro ===== */
+  /* L'altezza DEFINITA del blocco lista dentro un dialog (`.app-dialog-lista`,
+   * main.css): il dialog si apre gia' cosi' alto, e resta cosi' quando le
+   * righe arrivano — senza, la lista si rende all'altezza del contenuto e il
+   * dialog salta da «corto a vuoto» ad «alto con le righe» (rilievo di Tid
+   * sul picker delle rate, 2026-09-18). ~32rem = barra filtri + paginatore +
+   * intestazione + DIECI righe, il passo con cui quelle liste nascono
+   * (`PAGINATION.COMPACT_ROWS`); una pagina piu' lunga scorre dentro la
+   * tabella, non allunga il dialog. */
+  --app-dialog-lista-h: 32rem;
+
   /* ===== AI Assistant Widget ===== */
   --app-ai-bg: var(--p-surface-900);
   --app-ai-border: var(--p-surface-700);
@@ -213,8 +224,16 @@
   /* ===== DataTable liste compatte ===== */
   --app-table-font-size: var(--app-font-size-sm);
   --app-table-header-font-size: var(--app-font-size-sm);
-  --app-table-cell-padding: 0.3rem 0.5rem;
-  --app-table-header-padding: 0.35rem 0.5rem;
+  /* Il padding orizzontale e' un token a se' perche' entra in un `calc`: il
+     tetto di cella delle liste responsive e' `larghezza colonna - 2 * questo`
+     (main.css §liste responsive), e un `calc` su una shorthand a due valori e'
+     una dichiarazione invalida, scartata in silenzio. Deve restare uguale fra
+     cella e intestazione: la colonna e' una. Lo stesso token, in px, e'
+     `ACTIONS_CELL_PADDING_X` in useResponsiveColumns.js. */
+  --app-table-cell-padding-x: 0.5rem;
+  --app-table-cell-padding-y: 0.3rem;
+  --app-table-cell-padding: var(--app-table-cell-padding-y) var(--app-table-cell-padding-x);
+  --app-table-header-padding: 0.35rem var(--app-table-cell-padding-x);
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-700) 30%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
 

@@ -67,3 +67,4 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 66,amm.processi,Processi automatici,dbops,NULL,t,2026-09-05 00:00:00,mctit,f
 67,vendite.lotto_gruppi,Documenti presi in carico dal lotto,vendite,NULL,t,2026-09-06 00:00:00,mctit,f
 68,pagamenti.rate,Rate da incassare,pagamenti,NULL,t,2026-09-17 00:00:00,mctit,f
+69,pagamenti.distinta_righe,Righe di una distinta contabile,pagamenti,NULL,t,2026-09-18 00:00:00,mctit,f

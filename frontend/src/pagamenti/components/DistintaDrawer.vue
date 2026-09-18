@@ -22,25 +22,31 @@
 //    non dedotto dallo stato): sotto VALIDATA il foglio e' «finito» e resta
 //    aperto alle sole DECISIONI (abbina, sospendi, porta a). Su una distinta
 //    FINALE (`stato_is_final`) non si fa piu' niente.
+//
+// ⭐ LE RIGHE SONO UNA LISTA STANDARD (2026-09-18, rilievo in-app di Tid):
+//    `<DrawerTabLista codice="pagamenti.distinta_righe">` su
+//    `useDrawerTabLista`, con paginazione, ricarica, «Personalizza colonne» ed
+//    export CSV/Excel — cioe' «la contabile in un file». Fino a quel giorno
+//    erano una `DataTable` grezza su `dettaglio.righe`, dichiarata «righe di
+//    un documento»; ma le righe contabili hanno endpoint propri, una macchina
+//    a stati propria e una coda propria: sono un'entita' con vita propria,
+//    cioe' la PRIMA domanda del criterio in tre domande (piano PrimeVue 5
+//    §Gruppo B), come i titoli IVA il 02/09. 🔵 Debito dichiarato che RESTA:
+//    la macchina a stati del master-detail (form sotto la lista) e' scritta
+//    qui invece di passare da `RigheMasterDetailTable` (28/08).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
-// ⚠️ DataTable grezza, ed e' l'eccezione ammessa dalla regola zero della lista:
-//    sono le RIGHE DI UN DOCUMENTO dentro il suo master (frontend-standards
-//    §Regola zero). 🔵 Debito dichiarato: la macchina a stati del master-detail
-//    e' scritta qui invece di passare da `RigheMasterDetailTable` (28/08).
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Message from 'primevue/message'
 
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -48,15 +54,18 @@ import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { statoDistintaSeverity, statoRigaContabileSeverity } from '../../core/utils/severity'
-import { cambiaStatoDistinta, cambiaStatoRiga, eliminaRiga, getDistinta } from '../api/pagamenti'
+import {
+  cambiaStatoDistinta, cambiaStatoRiga, eliminaRiga, exportRigheDistinta, getDistinta,
+} from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
-import { useEtichettePagamenti } from '../etichette'
+import { useDistintaRigheStore } from '../stores/distintaRighe'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
 import CorreggiDistintaDialog from './CorreggiDistintaDialog.vue'
 import DistintaRigaForm from './DistintaRigaForm.vue'
@@ -73,7 +82,6 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'cambiata', 'apri-distinta'])
 
 const { t, te } = useI18n()
-const { rata: etichettaRata } = useEtichettePagamenti()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -98,7 +106,6 @@ const correggiVisible = ref(false)
 const righeDaRateVisible = ref(false)
 
 const distinta = computed(() => dettaglio.value?.distinta || null)
-const righe = computed(() => dettaglio.value?.righe || [])
 const statiDistinta = computed(() => dettaglio.value?.stati_distinta || [])
 // ⭐ Il catalogo degli stati di RIGA viaggia nello stesso round-trip, e serve
 //    davvero: porta `is_final`, che il singolo record di riga NON espone — la
@@ -225,7 +232,37 @@ const drawerActions = computed(() => {
   return azioni
 })
 
-const pageActionsRighe = computed(() => [
+// ── la lista delle righe ──────────────────────────────────────────
+// ⚠️ `parentId` porta l'id SOLO a drawer aperto, e il `null` non e' un
+//    dettaglio: e' quello che dice allo scaffolding di chiamare `store.reset()`
+//    alla chiusura. Senza, le righe della distinta precedente resterebbero in
+//    memoria e lampeggerebbero sotto la prossima che si apre — righe vere di un
+//    documento sbagliato, che e' il difetto che non fallisce (la stessa ragione
+//    dell'`invalidate()` sul dettaglio, qui sotto).
+// ⛔ La fetch delle righe NON si scrive piu' in `loadDetail`: il watch dello
+//    scaffolding e' `immediate` e riscrive padre, offset e ricerca nell'ordine
+//    giusto. Un secondo caricamento a mano sarebbe una seconda sede.
+const storeRighe = useDistintaRigheStore()
+
+// ⭐ «Nuova riga» e «Righe da rate» entrano nella barra della lista come azioni
+//    del caller (`extraActions`), accanto a ricarica / personalizza / esporta:
+//    una barra sola, non due. ⚠️ Non passano da `onNew` perche' hanno una
+//    CONDIZIONE (`visible`): il contenuto si scrive solo su una manuale in bozza
+//    e non mentre il form e' aperto, e l'azione standard «Nuovo» non la sa.
+// ⭐ «Righe da rate»: si scelgono le rate dallo scadenzario e ogni rata diventa
+//    una riga (D1 reso a video). Stesso cancello di «Nuova riga»: e' un altro
+//    modo di scriverne, non un altro permesso. Inline (non nel kebab): e' il
+//    gesto principale della distinta manuale, non un'azione rara.
+const azioniRighe = computed(() => [
+  {
+    key: 'righe-da-rate',
+    severity: 'primary',
+    label: t('pagamenti.rate.righe_da_rate'),
+    icon: 'pi pi-list-check',
+    hideWhenReadonly: true,
+    visible: modificabile.value && formMode.value === null,
+    command: () => { righeDaRateVisible.value = true },
+  },
   {
     key: 'nuova-riga',
     kind: 'primary',
@@ -235,21 +272,25 @@ const pageActionsRighe = computed(() => [
     visible: modificabile.value && formMode.value === null,
     command: () => { rigaInModifica.value = null; formMode.value = 'create' },
   },
-  // ⭐ «Righe da rate»: si scelgono le rate dallo scadenzario e ogni rata
-  //    diventa una riga (D1 reso a video). Stesso cancello di «Nuova riga»:
-  //    e' un altro modo di scriverne, non un altro permesso.
-  {
-    key: 'righe-da-rate',
-    // Inline accanto a «Nuova riga» (non nel kebab): e' il gesto principale
-    // della distinta manuale, non un'azione rara.
-    severity: 'primary',
-    label: t('pagamenti.rate.righe_da_rate'),
-    icon: 'pi pi-list-check',
-    hideWhenReadonly: true,
-    visible: modificabile.value && formMode.value === null,
-    command: () => { righeDaRateVisible.value = true },
-  },
 ])
+
+const {
+  onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
+} = useDrawerTabLista(storeRighe, {
+  parentId: () => (props.visible ? props.distintaId : null),
+  parentField: 'contabileId',
+  exportFn: (params) => exportRigheDistinta(props.distintaId, params),
+  // L'export segue la lista a video — ordinamento compreso — dalla sede unica
+  // dello store (`paramsFiltro`), non da un ripiego ricopiato qui.
+  getExportParams: (formato) => ({ formato, ...storeRighe.paramsFiltro() }),
+  extraActions: () => azioniRighe.value,
+  // ⭐ «Ricarica» della barra ricarica anche la TESTATA: totali e quadratura
+  //    dipendono dalle righe, e una barra che riallinea meta' pagina e' peggio
+  //    di nessuna — l'operatore crede di aver riallineato tutto.
+  fetchExtra: () => loadDetail(),
+})
 
 // ── azioni di riga ────────────────────────────────────────────────
 // ⭐ «Permesso ⇒ nascondi, stato ⇒ disabilita col motivo»: qui e' lo STATO a
@@ -378,11 +419,15 @@ async function loadDetail() {
   }
 }
 
-// Scopo: ricarica dopo un gesto e avvisa la lista, che mostra i contatori.
-async function ricarica() {
+// Scopo: ricarica dopo un gesto — testata E righe — e avvisa la lista delle
+//        distinte, che mostra i contatori.
+// ⚠️ `reloadAll` e non `loadDetail`: le righe vivono nel loro store, e un gesto
+//    su una riga (stato, abbinamento, eliminazione) cambia sia la pagina sia i
+//    totali della testata. Ricaricarne una sola lascerebbe l'altra ferma.
+function ricarica() {
   formMode.value = null
   rigaInModifica.value = null
-  await loadDetail()
+  reloadAll()
   emit('cambiata')
 }
 
@@ -442,19 +487,23 @@ function onEliminaRiga(riga) {
 
 // ⚠️ Il click sulla riga apre la MODIFICA solo se il contenuto si lavora: su
 //    una distinta validata o chiusa aprirebbe un form che il database rifiuta.
-function onRigaClick(evento) {
+// ⭐ La firma e' quella del BB: arriva la RIGA, non l'evento PrimeVue.
+function onRigaClick(riga) {
   if (!modificabile.value) return
-  rigaInModifica.value = evento.data
+  rigaInModifica.value = riga
   formMode.value = 'edit'
 }
 
+// ⚠️ Il CARICAMENTO non sta qui: lo fa il watch dello scaffolding della lista
+//    (`useDrawerTabLista`, `fetchExtra`), che ricarica testata e righe insieme
+//    al cambio di distinta. Qui restano il reset del form all'apertura e la
+//    pulizia alla chiusura — due cose che la lista non conosce.
 watch(
   () => [props.visible, props.distintaId],
   ([vis]) => {
     if (vis && props.distintaId) {
       formMode.value = null
       rigaInModifica.value = null
-      loadDetail()
     } else if (!vis) {
       // ⚠️ Si azzera alla CHIUSURA: senza, riaprendo su un'altra distinta si
       //    vedrebbe per un istante quella di prima — e su documenti di denaro
@@ -643,94 +692,83 @@ watch(
           {{ t('pagamenti.distinte.contenuto_fermo') }}
         </Message>
 
-        <div class="app-page-toolbar">
-          <div class="app-page-filters" />
-          <PageActionsBar :actions="pageActionsRighe" />
-        </div>
-
-        <DataTable
-          :value="righe"
-          class="app-datatable app-datatable--inner"
-          data-key="id"
-          scrollable
-          scroll-height="flex"
-          @row-click="onRigaClick"
+        <!-- ⛔ «Non sono riuscito a leggere le righe» non e' «non ce ne sono»:
+             a lista vuota il BB mostrerebbe lo stesso empty-state per entrambi,
+             quindi la distinzione vive qui, sopra la lista, e lo stato lo tiene
+             lo store (`erroreCaricamento`). Su un foglio di denaro «vuoto» e'
+             un'affermazione su cui qualcuno registra. -->
+        <Message
+          v-if="storeRighe.erroreCaricamento"
+          severity="warn"
+          :closable="false"
+          size="small"
         >
-          <Column field="data_pagamento" :header="t('pagamenti.righe.col_data_pagamento')">
-            <template #body="{ data }">{{ displayDate(data.data_pagamento) }}</template>
-          </Column>
-          <Column field="riferimento_ente" :header="t('pagamenti.righe.col_riferimento_ente')">
-            <template #body="{ data }">{{ data.riferimento_ente || '—' }}</template>
-          </Column>
-          <Column
-            field="importo"
-            :header="t('pagamenti.righe.col_importo')"
-            style="text-align: right;"
-          >
-            <template #body="{ data }">{{ formatCurrency(data.importo) }}</template>
-          </Column>
-          <Column
-            field="billing_account_descrizione"
-            :header="t('pagamenti.righe.col_billing_account_descrizione')"
-          >
-            <template #body="{ data }">{{ data.billing_account_descrizione || '—' }}</template>
-          </Column>
-          <!-- ⭐ IL DOCUMENTO, NON IL CONTATORE (D19-b): il numero parlante
-               viene dalla sede unica a DB (`fattura_numero_documento`), e non
-               si compone qui — `fattura_numero` da solo e' ambiguo (una
-               fattura 1 e una nota di credito 1 nello stesso anno). La natura
-               si segnala quando non e' una fattura. -->
-          <Column field="fattura_numero_documento" :header="t('pagamenti.righe.col_documento')">
-            <template #body="{ data }">
-              <template v-if="data.fattura_id != null">
-                <span>{{ data.fattura_numero_documento || t('fattura_lookup.senza_numero') }}</span>
-                <NaturaDocTag
-                  :codice="data.fattura_natura_doc_codice_interno"
-                  :descrizione="data.fattura_natura_doc_descrizione"
-                  class="ml-05"
-                />
-              </template>
-              <template v-else>—</template>
-            </template>
-          </Column>
-          <!-- La rata: «n. · scadenza». Vuota sulla riga senza rata — il fondo
-               fattura e' cosi', non e' un dato perso. -->
-          <Column field="scadenza_numero_rata" :header="t('pagamenti.righe.col_rata')">
-            <template #body="{ data }">
-              <template v-if="data.scadenza_id != null">
-                {{ etichettaRata({ numero_rata: data.scadenza_numero_rata, data_scadenza: data.scadenza_data }) }}
-              </template>
-              <template v-else>—</template>
-            </template>
-          </Column>
-          <Column field="stato_descrizione" :header="t('pagamenti.righe.col_stato')">
-            <template #body="{ data }">
-              <Tag
-                :value="data.stato_descrizione || data.stato_codice"
-                :severity="statoRigaContabileSeverity(data.stato_codice)"
-              />
-              <!-- ⭐ La forzatura resta SCRITTA sulla riga ed e' cio' che
-                   l'elenco delle rate fuori capienza legge: qui si vede, o la
-                   riga racconta meno di quello che e' successo. -->
-              <Tag
-                v-if="data.forzata"
-                :value="t('pagamenti.righe.forzata')"
-                severity="warn"
-              />
-            </template>
-          </Column>
-          <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-            <template #body="{ data }">
-              <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-            </template>
-          </Column>
+          {{ t('pagamenti.distinte.righe_non_lette') }}
+        </Message>
+
+        <!-- ⭐ LISTA STANDARD dal 2026-09-18 (decisione di Tid), col pacchetto
+             intero: pagine, ricarica, «Personalizza colonne», export CSV/Excel.
+             Le colonne vengono dal catalogo (`ui.lista_colonna`, lista 69):
+             qui restano solo gli slot che una cella non sa rendere da sola.
+             ⚠️ Niente `#cell-natura`: e' il `formato = natura_doc` del catalogo
+             (`CellaConfigurabile` → `NaturaDocTag`), come nelle altre quattro
+             liste con la natura. Uno slot qui sarebbe la quinta copia. -->
+        <DrawerTabLista
+          ref="listaRef"
+          codice="pagamenti.distinta_righe"
+          :rows="storeRighe.items"
+          :total="storeRighe.totalRecords"
+          :loading="storeRighe.loading"
+          :paginator-options="paginatorProps"
+          :page="tablePage"
+          :sort-field="paginatorProps.sortField"
+          :sort-order="paginatorProps.sortOrder"
+          :page-actions="pageActions"
+          :dirty="dirty"
+          :perimetro-bloccato="perimetroBloccato"
+          @page="onPage"
+          @sort="onSort"
+          @row-click="onRigaClick"
+          @config-loaded="onConfigLoaded"
+        >
+          <!-- La frase del dominio al posto dell'empty-state generico.
+               ⛔ MA SOLO SE LA LETTURA E' RIUSCITA: con `erroreCaricamento` la
+               tabella e' vuota per un'altra ragione, e «non ha ancora righe»
+               sotto un avviso che dice «non sono riuscito a leggerle» sarebbe
+               una contraddizione. -->
           <template #empty>
-            <div class="app-empty-state">
+            <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
               <i class="pi pi-list" />
               <p>{{ t('pagamenti.distinte.nessuna_riga') }}</p>
             </div>
           </template>
-        </DataTable>
+
+          <!-- ⚠️ I nomi degli slot sono i `codice` delle colonne A CATALOGO, non
+               i `campo_sorgente`: la colonna si chiama `stato` e il campo che
+               legge e' `stato_descrizione`. Uno slot col nome sbagliato non da'
+               nessun errore — la cella ripiega sul testo e il Tag sparisce. -->
+          <template #cell-stato="{ data }">
+            <Tag
+              :value="data.stato_descrizione || data.stato_codice"
+              :severity="statoRigaContabileSeverity(data.stato_codice)"
+            />
+            <!-- ⭐ La forzatura resta SCRITTA sulla riga ed e' cio' che
+                 l'elenco delle rate fuori capienza legge: qui si vede, o la
+                 riga racconta meno di quello che e' successo. (La colonna
+                 `forzata` a catalogo, spenta di default, la porta anche nel
+                 file.) -->
+            <Tag
+              v-if="data.forzata"
+              :value="t('pagamenti.righe.forzata')"
+              severity="warn"
+              class="ml-05"
+            />
+          </template>
+
+          <template #actions="{ data }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+          </template>
+        </DrawerTabLista>
 
         <!-- Master-detail inline: il form vive SOTTO la lista, mai in un drawer
              annidato (pattern di progetto). -->
@@ -752,6 +790,14 @@ watch(
       v-model:visible="abbinaVisible"
       :riga="rigaDaAbbinare"
       @abbinata="ricarica"
+    />
+
+    <!-- «La contabile in CSV/Excel»: il dialog chiede solo il formato, il
+         download lo fa lo scaffolding (`onExportConfirm`). -->
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
     />
     <!-- ⛔ SOLO `apri-distinta`, non anche `cambiata`: chi lo riceve porta il
          drawer sulla distinta nuova E ricarica gia' l'elenco. Emetterli

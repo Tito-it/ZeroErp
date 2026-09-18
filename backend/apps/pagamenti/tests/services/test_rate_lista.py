@@ -19,6 +19,7 @@ Indice test eseguiti:
 4) RateListaTests.test_direzione_normalizzata_in_minuscolo
 5) RateListaTests.test_ricerca_corta_rifiutata
 6) RateListaTests.test_solo_aperte_arriva_come_booleano
+6-bis) RateListaTests.test_solo_numerate_arriva_come_booleano
 7) RateListaTests.test_i_criteri_passano_intatti
 8) RateListaTests.test_natura_normalizzata_in_maiuscolo
 9) WhitelistTests.test_i_saldi_non_sono_ordinabili
@@ -105,6 +106,16 @@ class RateListaTests(SimpleTestCase):
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_aperte"], False)
         saldi_service.list_rate(auth_user_id=5, limit=25, solo_aperte=True)
         self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_aperte"], True)
+
+    # Scopo: `solo_numerate` (rilievo di Tid, 18/09) segue la stessa forma di
+    #        `solo_aperte`: al repository arriva un booleano, `None` vale
+    #        `False`. Il predicato (`numero IS NOT NULL`) si prova sul DB
+    #        provvisto, costruendo la bozza.
+    def test_solo_numerate_arriva_come_booleano(self):
+        saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=None)
+        self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], False)
+        saldi_service.list_rate(auth_user_id=5, limit=25, solo_numerate=True)
+        self.assertIs(self.repo.list_rate_paginata.call_args.kwargs["solo_numerate"], True)
 
     # Scopo: i criteri del picker (cliente, numero ESATTO, serie, anno) e lo
     #        scope dell'operatore passano intatti: il service non li interpreta.

@@ -17,6 +17,13 @@
 //    del dovuto) e movimento contrario (un segno che non torna). Il filtro le
 //    separa; il vocabolario e' chiuso, e un valore sbagliato darebbe una lista
 //    vuota — cioe' «non c'e' niente da sistemare», che qui e' la bugia peggiore.
+//
+// ⭐ E la NATURA del documento cambia cosa i due motivi SIGNIFICANO (P-7,
+//    2026-09-18 — la vista la porta da quel giorno): su una nota di credito
+//    «sovra-incassata» vuol dire rimborsato piu' del credito, e «movimento
+//    contrario» che e' entrato denaro invece di uscire. Il codice resta uno, la
+//    frase la sceglie la natura — in UNA sede (`useEtichettePagamenti`), la
+//    stessa della tendina, del form e del picker.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
@@ -27,11 +34,11 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import ResiduoCella from './ResiduoCella.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useEtichettePagamenti } from '../etichette'
-import { formatCurrency } from '../../core/utils/format'
 import { useRateFuoriCapienzaStore } from '../stores/rateFuoriCapienza'
 
 const emit = defineEmits(['row-click'])
@@ -54,6 +61,9 @@ const { value: motivoFilter, onChange: onMotivoChange } = bindSelect('motivo')
 // ⛔ Vocabolario CHIUSO, e sono DUE mondi diversi: `SOVRA_INCASSATA` (e' entrato
 //    piu' del dovuto) e `MOVIMENTO_CONTRARIO` (un segno che non torna). Due voci
 //    statiche e non un lookup: e' un CHECK del backend, non una tabella.
+// ⭐ Il residuo a parole e' `ResiduoCella`, la stessa cella del picker: fino al
+//    18/09 questa lista aveva la sua copia («di troppo» e basta), che su una
+//    nota di credito avrebbe detto la cosa sbagliata.
 const { motivoFuoriCapienza: etichettaMotivo, opzioniMotivoFuoriCapienza } =
   useEtichettePagamenti()
 const opzioniMotivo = opzioniMotivoFuoriCapienza()
@@ -111,26 +121,29 @@ onMounted(() => store.fetchList())
         <!-- ⭐ Il MOTIVO e' la prima colonna perche' e' la prima domanda: le due
              popolazioni chiedono lavori diversi. Fail-visible: un motivo che il
              database aggiunge e i locales non conoscono si vede come CODICE, non
-             come cella vuota. -->
+             come cella vuota. La frase segue la NATURA della riga (P-7). -->
         <template #cell-motivo="{ data }">
-          <Tag v-if="data.motivo" :value="etichettaMotivo(data.motivo)" severity="warn" />
+          <Tag
+            v-if="data.motivo"
+            :value="etichettaMotivo(data.motivo, data.natura_doc_codice_interno)"
+            severity="warn"
+          />
           <span v-else>—</span>
         </template>
 
-        <!-- ⛔ IL RESIDUO NEGATIVO NON SI MOSTRA COME NUMERO NEGATIVO quando
-             descrive denaro di troppo: «-120,00» si legge come un guasto anche
-             quando racconta correttamente il mondo. Si dice cosa significa.
-             ⚠️ Il segno NON si traduce qui a caso: negativo = e' entrato piu'
-             del dovuto, ed e' esattamente la definizione della lista. -->
+        <!-- ⭐ La NATURA (colonna 767 del seed) NON ha slot: il seed dichiara
+             `formato = natura_doc` e `CellaConfigurabile` la rende con
+             `NaturaDocTag sempre` — una cella vuota su una fattura si
+             leggerebbe come dato perso. -->
+
+        <!-- ⛔ IL RESIDUO NEGATIVO NON SI MOSTRA COME NUMERO NEGATIVO: «-120,00»
+             si legge come un guasto anche quando racconta correttamente il
+             mondo. Si dice cosa significa, e a deciderlo e' la NATURA — nel BB
+             `ResiduoCella`, la stessa cella del picker: su una fattura «di
+             troppo» (e' entrato piu' del dovuto), su una nota di credito «da
+             rimborsare» (il segno e' il verso del documento). -->
         <template #cell-residuo="{ data }">
-          <Tag
-            v-if="Number(data.residuo) < 0"
-            :value="t('pagamenti.rate_fuori_capienza.di_troppo', {
-              importo: formatCurrency(Math.abs(Number(data.residuo))),
-            })"
-            severity="warn"
-          />
-          <span v-else>{{ formatCurrency(data.residuo) }}</span>
+          <ResiduoCella :residuo="data.residuo" :natura-codice="data.natura_doc_codice_interno" />
         </template>
 
         <template #empty>

@@ -67,22 +67,16 @@ const mostraStorico = computed({
   set: (val) => { store.filters.solo_ultima_revisione = !val },
 })
 
-// Params export: i filtri vivono in store.filters (sincronizzati dagli handler
-// onXxxChange); `search` dal ref immediato. Funzione lazy (chiamata solo al
-// click export), puo' riferire `searchText` definito sopra.
+// Scopo: i parametri dell'export = QUELLI DELLA LISTA a video, dalla sede
+//        unica dello store (`paramsFiltro`: ricerca, filtri di dominio col nome
+//        sul filo, ordinamento). ⛔ Fino al 2026-09-18 questo blocco ricostruiva i
+//        filtri a mano, e ne aveva perso uno (`billing_account_id`) — e ricopiava
+//        il nome sul filo della data di fine (`data_al`), che ora e' `paramNames`
+//        dello store. Un export che se li ricostruisce esporta un insieme DIVERSO
+//        da quello a video appena se ne aggiunge uno, e nessuno se ne accorge
+//        finche' qualcuno non confronta il file con la schermata.
 function buildExportParams(format) {
-  const p = { formato: format }
-  if (searchText.value?.trim()) p.search = searchText.value.trim()
-  if (store.filters.stato != null) p.stato = store.filters.stato
-  if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
-  if (store.filters.data_da) p.data_da = store.filters.data_da
-  if (store.filters.data_a) p.data_al = store.filters.data_a
-  p.solo_ultima_revisione = store.filters.solo_ultima_revisione ? 'true' : 'false'
-  if (store.filters.order_by) {
-    p.order_by = store.filters.order_by
-    p.order_dir = store.filters.order_dir || 'desc'
-  }
-  return p
+  return { formato: format, ...store.paramsFiltro() }
 }
 
 // Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.

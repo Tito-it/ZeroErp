@@ -1,8 +1,14 @@
 // Store Pinia per la gestione preventivi vendita (lista, dettaglio, CRUD, azioni stato).
+//
+// ⭐ Dal 2026-09-18 la lista e' `useListaStoreCore`, chiamato qui dentro: era
+//    una copia a mano del suo `buildParams` su `useListaEmptyStateFetch`. La
+//    sola cosa che il core non sapeva dire — e che teneva questa copia in
+//    piedi — era il NOME SUL FILO della data di fine (`data_al`), che ora e'
+//    `paramNames`. Non passa da una factory perche' lo store e' anche righe,
+//    revisioni, smistamento, pratica: la lista e' una parte.
 
 import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
@@ -10,7 +16,7 @@ import {
   pushCommessa, getSmistamento, generaPratica,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
-import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
+import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
 
 export const usePreventiviStore = defineStore('vendite-preventivi', () => {
@@ -20,54 +26,36 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
   const defaultDataDa = defaultFiltroDataDaString()
 
-  const filters = ref({
-    search: '',
-    stato: null,
-    billing_account_id: null,
-    utility_id: null,
-    data_da: defaultDataDa,
-    data_a: null,
-    // Default true: la lista mostra solo l'ultima revisione per numero
-    // (le revisioni superseded restano nello storico DB ma non in UI).
-    // Toggle "Mostra storico revisioni" lo flippa.
-    solo_ultima_revisione: true,
-    limit: 25,
-    offset: 0,
-    order_by: 'data',
-    order_dir: 'desc'
-  })
-
-  // Lista paginata preventivi con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro attivo:
-  // garantisce l'auto-load all'apertura (frontend-standards "Filtro data standard").
-  // Paginazione limit/offset standard (riallineata 2026-06-03: il BE usa ora
-  // parse_list_params, era l'unico dominio su page/page_size).
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    hasActiveFilters: (f) => f.stato != null || f.billing_account_id != null
-      || f.utility_id != null || f.data_a != null || f.data_da != null,
-    buildParams: (f, searchTerm) => {
-      const params = {}
-      if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.stato != null) params.stato = f.stato
-      if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
-      if (f.utility_id != null) params.utility_id = f.utility_id
-      if (f.data_da) params.data_da = f.data_da
-      if (f.data_a) params.data_al = f.data_a
-      // Passa solo_ultima_revisione sempre esplicito: se l'operatore vuole lo storico
-      // (toggle ON => filtro OFF) il BE deve riceverlo come 'false'.
-      params.solo_ultima_revisione = f.solo_ultima_revisione ? 'true' : 'false'
-      // Paginazione standard limit/offset (allineata a offerte/ordini/clienti;
-      // la view BE ora usa parse_list_params, 2026-06-03).
-      params.limit = f.limit || 25
-      params.offset = f.offset || 0
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'desc'
-      }
-      return params
-    },
+  // Lista con guardia empty-state standard: `data_da` col default standard
+  // conta come filtro attivo (`gateKeys`) e garantisce l'auto-load
+  // all'apertura (frontend-standards "Filtro data standard"). Paginazione
+  // limit/offset standard (riallineata 2026-06-03: il BE usa parse_list_params,
+  // era l'unico dominio su page/page_size).
+  const lista = useListaStoreCore({
     fetchPage: listPreventivi,
+    filterDefaults: {
+      stato: null,
+      billing_account_id: null,
+      utility_id: null,
+      data_da: defaultDataDa,
+      data_a: null,
+      // Default true: la lista mostra solo l'ultima revisione per numero
+      // (le revisioni superseded restano nello storico DB ma non in UI).
+      // Toggle "Mostra storico revisioni" lo flippa. ⚠️ Viaggia sempre,
+      // anche a `true`: il BE lo legge con `qp_bool(..., default=True)`, e se
+      // l'operatore vuole lo storico (toggle ON => filtro OFF) deve riceverlo
+      // come `false` esplicito.
+      solo_ultima_revisione: true,
+    },
+    gateKeys: ['stato', 'billing_account_id', 'utility_id', 'data_a', 'data_da'],
+    // Il BE chiama la data di fine `data_al` (preventivi_views.py); nello store
+    // resta `data_a`, che e' il nome che `useSearchTable` azzera sul deep-link
+    // e che `useStoreFilterBindings` lega al DatePicker.
+    paramNames: { data_a: 'data_al' },
+    // Il piu' recente in cima; il ripiego del verso segue.
+    orderBy: 'data',
+    orderDir: 'desc',
+    orderDirDefault: 'desc',
   })
 
   // Scopo: Dettaglio completo preventivo.
@@ -199,8 +187,10 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   }
 
   return {
-    items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update, elimina,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
+    ...lista,
+    fetchDetail, create, update, elimina,
     cambiaStato, emetti, nuovaRevisione, loadRevisioni,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
     inviaACommessa, loadSmistamento,

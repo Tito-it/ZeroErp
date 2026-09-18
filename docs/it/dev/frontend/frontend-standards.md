@@ -274,7 +274,7 @@ Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
 > `DataTable` a mano: quella decisione la prende la regola zero.
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
-- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25.
+- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25 — e dal 2026-09-18 si dichiarano con l'opzione `limit` di `useListaStoreCore`/`createListaStore` (`limit: PAGINATION.COMPACT_ROWS`), non riscrivendo lo store a mano. Il caso che l'ha fatta nascere: la **lista dentro un dialog**, che è alta dieci righe (vedi §`AppDialog`, «Dialog con una lista dentro»).
 - **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
 - **Font compatto** sul paginator (`0.8rem`)
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
@@ -306,6 +306,49 @@ ritirano mai. Le ritirate finiscono nell'expansion row riusando gli slot
 `larghezza_min`: la soglia riusa `larghezza_default`. Le liste responsive sono
 **escluse dalle soglie min-width 8/10/12 colonne** (`.app-datatable--responsive`
 in `main.css`): il packing garantisce già che le colonne entrino.
+
+#### ⛔ La larghezza di catalogo è un TETTO, non un minimo (2026-09-18)
+
+> **Regola**: su una lista responsive **non compare mai una scrollbar
+> orizzontale**, e la colonna azioni è **sempre l'ultima a video**. Le colonne
+> che non entrano stanno nella riga di espansione, e «Espandi tutte» le apre
+> tutte insieme. (Decisione di Tid, rilievo in-app sui preventivi.)
+
+🔴 **Il difetto che questa regola chiude era controintuitivo**: la scrollbar
+compariva a sidebar **chiusa**, non aperta. Il packing somma le larghezze
+**dichiarate**, ma la tabella è `width: max-content` — ogni colonna era larga
+quanto il suo contenuto più lungo, e la larghezza di catalogo era solo un
+**minimo**. A sidebar aperta il ritiro compensava per caso; con più spazio il
+packing diceva «entra tutto» sui numeri dichiarati, il browser rendeva quelli
+veri, e la differenza usciva come scrollbar. *Il packing faceva una promessa che
+il rendering non manteneva.*
+
+**Come si chiude**: `<ListaConfigurabile>` passa la larghezza anche come
+**tetto** della cella e dell'intestazione (`--col-w` + `.app-lista-cella`,
+`main.css` §liste responsive). Un contenuto più lungo va in **ellissi** su una
+riga, col testo intero nel `title`. Così la somma resa **è** quella dichiarata:
+la scrollbar non può comparire, e la colonna azioni — alla sua larghezza
+naturale, mai tagliata — resta l'ultima.
+
+⭐ **Ne discende che una larghezza di catalogo troppo stretta si VEDE** (una
+colonna piena di «…») invece di produrre una scrollbar muta: si corregge
+dall'amministrazione, è un dato di `ui.lista_colonna`, non un intervento sul
+codice.
+
+⚠️ **L'unica larghezza che il catalogo non conosce è quella dei pulsanti inline
+della colonna azioni**, e la dichiara il chiamante: prop `azioni-inline`
+(default 4). Fino a quel giorno era una costante — 130px, «~3-4 pulsanti» —
+che copriva **tre** pulsanti (2rem + 0.25rem di gap): Soggetti, Fornitori e
+CommessaGestione ne hanno quattro, Clienti sei, e la differenza usciva dal
+contenitore senza che il packing lo sapesse. Un numero più basso del vero non
+taglia niente, ma riporta la scrollbar: chi aggiunge una quinta azione di riga
+alza la prop.
+
+⚠️ Nello stesso giro sono entrate nel conto le colonne di **chrome** che il
+packing ignorava: la checkbox di selezione e l'expander sempre presente delle
+liste con dettaglio inline (48px l'una).
+
+Presidio: `useResponsiveColumns.spec.js`.
 
 > **⚠️ DEROGA DOCUMENTATA allo standard "responsive CSS-first, niente JS di
 > detection".** Le media query CSS reagiscono solo a `window.innerWidth`, ma
@@ -506,7 +549,22 @@ finche' l'utente non applica una ricerca (min 3 caratteri) o un filtro.
 | `hasSearched` | Nello store Pinia — `ref(false)`, diventa `true` dopo il primo fetch |
 | Guardia in `fetchList()` | Nello store — blocca la chiamata API se non ci sono filtri attivi |
 
-**1. Store — aggiungere `hasSearched` e guardia in `fetchList()`:**
+**1. Store — la guardia la porta il building block, non si riscrive.**
+
+⛔ **Uno store-lista NON si scrive a mano** (dal 2026-09-18): filtri nella forma
+di `useSearchTable`, fetch paginata, guardia empty-state, `hasSearched`,
+`fetchSospesa`, anti-race e `buildParams` (search ≥3, filtri non-null, pagina,
+ordinamento) vivono in **`useListaStoreCore`** — via `createCrudStore` (lista +
+CRUD), `createListaStore` (sola lista, anche col padre nel path) o chiamato
+direttamente dentro il `defineStore` quando lo store è quasi tutto dominio.
+Fino a quel giorno **venti** store tenevano la propria copia del blocco qui
+sotto, ognuna con la sua piccola differenza (un `'ASC'` maiuscolo, un ripiego
+diverso, una ricerca a qualunque lunghezza): la casa di quelle differenze sono
+le opzioni del core (`ricercaCorta`, `orderDirDefault`, `paramNames`), non un
+`fetchList` riscritto. Le liste che partono vuote dichiarano `gateKeys`.
+
+Il blocco che segue è **la regola che il BB applica**, lasciato qui perché si
+legga cosa fa — non un modello da copiare in uno store:
 
 ```js
 const hasSearched = ref(false)
@@ -1196,6 +1254,51 @@ Dialog di **sola conferma** (no form, sì/no su un'azione) restano gestiti da
 `useConfirmAction()` (ConfirmDialog globale, vedi §"Conferme azioni"), NON da
 `AppDialog`: quello serve quando la dialog ha un corpo (campi, tabella, scelta).
 
+#### Dialog con una lista dentro — altezza definita, dieci righe (2026-09-18)
+
+Una lista in un dialog resta una lista (`<ListaConfigurabile>` attraverso
+`useDrawerTabLista` + `<DrawerTabLista>`, come nel picker delle rate), ma il
+corpo di un `Dialog` **non è una colonna flex e non ha un'altezza sua**: il
+blocco lista si rende all'altezza del **contenuto** — corto con l'empty-state,
+alto quando le righe arrivano — e il dialog **salta** sotto gli occhi di chi
+sta cercando (rilievo di Tid sul picker delle rate).
+
+**Regola**: il blocco lista porta la classe **`app-dialog-lista`** (altezza
+**definita**, token `--app-dialog-lista-h` in `theme.css`, ~dieci righe) e lo
+store nasce a **dieci righe per pagina** (`limit: PAGINATION.COMPACT_ROWS`).
+Così la pagina vuota e la pagina piena sono alte uguali, il dialog si apre già
+alto e non si muove più; una pagina più lunga scorre **dentro** la tabella
+(`scroll-height="flex"`, che è esattamente il caso per cui esiste), non
+allunga il dialog.
+
+```html
+<DrawerTabLista ref="listaRef" class="app-dialog-lista" codice="..." ... />
+```
+
+⛔ **E il preset della lista deve dire lo stesso numero** (`ui.lista_preset`,
+`pagina_dimensione = 10`): il `limit` di nascita dello store **non basta**,
+perché al primo `config-loaded` lo scaffolding allinea `filters.limit` alla
+`pagina_dimensione` risolta dal catalogo (§«Paginazione corretta», cascata 2),
+e `fn_resolve_lista_config` la risolve **sempre** (`COALESCE(…, 25)`). Con il
+preset a 25 il picker delle rate mostrava 25 righe in un blocco alto dieci alla
+**prima** apertura e dieci dalla seconda — dopo il `reset()` alla chiusura,
+con l'allineamento già fatto una volta — due aperture, due passi, nessun errore
+(trovato in rilettura il 18/09). ⭐ Vale per **ogni** lista che nasce a 10, non solo
+per i dialog: `pratiche` (17), `listini` (27) e `listini_righe` (37) avevano lo stesso
+scarto da mesi senza che nessuno lo notasse — allineati con 68 lo stesso giorno.
+
+⚠️ Ciò che sta **sotto** la lista (l'area temporanea della modalità multipla
+del picker) non entra in quell'altezza: per lui scorre il corpo del dialog, col
+tetto del `max-height: 90%` del `Dialog`.
+
+⚠️ **`InputNumber` nella barra filtri: la larghezza va sull'`<input>`**
+(`input-style="width: 9rem"`), non sul wrapper (`style`): `.p-inputnumber` è
+un `inline-flex` senza bordo, e l'`<input>` dentro tiene la sua larghezza
+intrinseca — più larga del wrapper — e **sborda** addosso al controllo
+accanto. A video si vedono **due bordi** sul lato destro, e nessun errore
+(rilievo di Tid, stesso giorno). È la forma già in uso in `DdtResoDialog` e
+`ResoRiconsegnaDialog`.
+
 ### Classi CSS form
 
 | Classe               | Scopo                                                   |
@@ -1596,6 +1699,14 @@ magazzino?»), e il vero è un'informazione — blu, non verde.
 rendeva **testo** e tre liste si erano riscritte il Tag in uno slot — una delle
 tre sopra una colonna che aveva già `yesno`: il formatter aveva perso sul campo.
 Un booleano nuovo in lista è una riga di CSV, non un componente.
+
+⭐ **E dal 2026-09-18 vale anche per la NATURA di un documento fiscale**
+(`formato = natura_doc` → `NaturaDocTag sempre`): lo stesso slot era scritto in
+quattro liste. ⚠️ È il primo formato che legge **due** campi della riga — la
+descrizione (il `campo_sorgente`) e la gemella `natura_doc_codice_interno` —
+e la gemella è presidiata: `test_lista_proiezione_campo_sorgente` pretende che
+ogni lista che dichiara il formato la proietti. La regola generale: *se una
+cella si rende allo stesso modo in due liste, è un `formato`, non uno slot.*
 
 ### Stati pratica
 
@@ -2130,6 +2241,13 @@ Per accordion, expansion row di DataTable, tree e qualsiasi azione che apre/chiu
 contenuto, usare la coppia dinamica `MANAGE_ICONS.EXPAND` (`pi pi-chevron-down`,
 stato collassato — invita ad aprire) e `MANAGE_ICONS.COLLAPSE` (`pi pi-chevron-up`,
 stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
+
+⛔ **Su una `<ListaConfigurabile>` il toggle «espandi tutte» NON si scrive in
+pagina** (2026-09-18): è l'azione standard di `useListaAzioni`, accanto a
+«Personalizza colonne» ed «Esporta», e compare da sé solo quando c'è qualcosa
+da espandere (colonne ritirate o dettaglio inline). L'esempio qui sotto vale per
+le superfici che non sono liste configurabili. I listini avevano il proprio
+`toggle-all-versioni`: era la prima copia, ritirata alla seconda.
 
 ```js
 // In toolbar globale (PageActionsBar) — toggle di tutte le righe
@@ -2991,21 +3109,27 @@ async function update(id, payload) {
 
 Entità **read-only** (es. log immutabili): non emettono mai, e nessun consumer deve ascoltarle.
 
-### Factory `createCrudAdminStore`
+### Factory `createCrudStore`
 
-Per gli store admin CRUD standard (categorie clienti, promo articoli, matrici config) esiste una factory in `core/composables/createCrudAdminStore.js` che gestisce automaticamente emit in create/update. Basta passare `emitKey`:
+Per gli store lista+CRUD (categorie clienti, promo articoli, matrici config,
+clienti, articoli…) la factory `core/stores/createCrudStore.js` emette da sé
+in `create`/`update`/`extraActions`. Basta passare `tabEntity`:
 
 ```js
-export const useCategorieClientiStore = createCrudAdminStore({
-  storeName: 'amm-categorie-clienti',
-  api: { list, get, create, update },
-  defaultOrderBy: 'ordinamento',
-  emitKey: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+export const useCategorieClientiStore = createCrudStore('amm-categorie-clienti', {
+  api: { list, detail, create, update },
+  tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+  orderBy: 'ordinamento',
+  startsEmpty: false,
   // ...
 })
 ```
 
-Nessun `emitDataChanged` manuale necessario nei metodi.
+Nessun `emitDataChanged` manuale necessario nei metodi. ⚠️ Fino al 2026-09-18
+questa sezione descriveva `createCrudAdminStore` in `core/composables/`, con
+`storeName`/`emitKey`/`defaultOrderBy`: quella factory è stata **eliminata il
+2026-06-05** (convergenza B19 in `createCrudStore`), e un documento che nomina
+un file inesistente manda a cercarlo.
 
 ### Aggiungere una nuova entità
 

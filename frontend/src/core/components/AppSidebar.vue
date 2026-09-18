@@ -57,8 +57,10 @@ function onChildNavigate() {
 
     <!-- Footer: toggle collapse (solo inline, non in mobile drawer) -->
     <div v-if="!mobile" class="sidebar-footer">
+      <!-- A sidebar compressa il gesto e' «espandi»: il tooltip dice cosa fa il
+           click, non lo stato attuale (rilievo in-app di Tid, 2026-09-18). -->
       <div class="sidebar-toggle" @click="ui.toggleSidebar()"
-        v-tooltip.right="isCollapsed ? t('nav.collapse') : null"
+        v-tooltip.right="isCollapsed ? t('nav.expand') : null"
       >
         <i :class="isCollapsed ? 'pi pi-angle-double-right' : 'pi pi-angle-double-left'"></i>
         <span v-if="!isCollapsed">{{ t('nav.collapse') }}</span>

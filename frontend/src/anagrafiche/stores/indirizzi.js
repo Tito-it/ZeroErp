@@ -1,59 +1,24 @@
 // Pinia store per la gestione indirizzi dettaglio (lista, CRUD).
+//
+// ⭐ Dal 2026-09-18 e' `createCrudStore` e basta: era uno store scritto a mano
+//    su `useListaEmptyStateFetch` con la copia del `buildParams` (search >= 3,
+//    `comune_id`, limit/offset, ordinamento col ripiego) — la stessa forma che
+//    la factory scrive per tutti. La lista parte VUOTA: richiede una ricerca o
+//    il filtro comune (`gateKeys`), ed e' la regola empty-state standard.
+// ⚠️ L'id dell'indirizzo creato NON si chiama `id`: `createIdField` lo dice
+//    alla factory, che altrimenti notificherebbe le altre tab con `undefined`.
 
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { createCrudStore } from '../../core/stores/createCrudStore'
 import { listIndirizzi, createIndirizzo, updateIndirizzo } from '../api/anagrafiche'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 
-export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
-  const { emitDataChanged } = useTabEvents()
-  const filters = ref({
-    search: '',
-    comune_id: null,
-    limit: 25,
-    offset: 0,
-    order_by: null,
-    order_dir: null
-  })
-
-  // Scopo: Carica lista paginata indirizzi con filtri.
-  // La lista parte vuota: richiede search (min 3 car) o filtro attivo — le tre
-  // guardie di empty-state le porta il BB, che aggiunge anche la guardia di
-  // versione anti-race che qui mancava (migrazione 2026-08-10).
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    hasActiveFilters: (f) => f.comune_id != null,
-    buildParams: (f, searchTerm) => {
-      const params = {}
-      if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.comune_id != null) params.comune_id = f.comune_id
-      params.limit = f.limit
-      params.offset = f.offset
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
-      }
-      return params
-    },
-    fetchPage: listIndirizzi,
-  })
-
-  async function create(payload) {
-    const res = await createIndirizzo(payload)
-    emitDataChanged(TAB_ENTITIES.INDIRIZZO, res.data.data.indirizzo_dettaglio_id)
-    return res.data.data
-  }
-
-  async function update(id, payload) {
-    const res = await updateIndirizzo(id, payload)
-    emitDataChanged(TAB_ENTITIES.INDIRIZZO, id)
-    return res.data.data
-  }
-
-  return {
-    items, totalRecords, loading, hasSearched, filters,
-    fetchList, create, update
-  }
-}, { userScoped: true })
+export const useIndirizziStore = createCrudStore('anagrafiche-indirizzi', {
+  api: { list: listIndirizzi, create: createIndirizzo, update: updateIndirizzo },
+  tabEntity: TAB_ENTITIES.INDIRIZZO,
+  createIdField: 'indirizzo_dettaglio_id',
+  filterDefaults: { comune_id: null },
+  gateKeys: ['comune_id'],
+  // Nessun ordinamento di partenza: lo decide il backend finche' l'operatore
+  // non clicca un'intestazione.
+  orderDir: null,
+})

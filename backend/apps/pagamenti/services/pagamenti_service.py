@@ -45,6 +45,7 @@ from apps.pagamenti.services._helpers import (
     risposta_paginata as _risposta_paginata,
 )
 from apps.pagamenti.db.pagamenti_repository import (
+    DISTINTA_RIGHE_SORT_COLUMNS,
     DISTINTE_SORT_COLUMNS,
     RATE_FUORI_CAPIENZA_SORT_COLUMNS,
     RIGHE_SORT_COLUMNS,
@@ -423,11 +424,16 @@ def _transizioni_richiedibili(
     return ammesse
 
 
-# Scopo: Dettaglio di una distinta: testata, totali derivati, righe, i due
-#        cataloghi di stato e le transizioni ammesse — in un round-trip solo.
+# Scopo: Dettaglio di una distinta: testata, totali derivati, i due cataloghi
+#        di stato e le transizioni ammesse — in un round-trip solo.
 # ⭐ I cataloghi viaggiano col dettaglio e non si cablano nel frontend: quali
 #    stati si possono chiedere e da dove, quali pretendono fattura e cliente,
 #    quali occupano spazio su una rata lo dice il database.
+# ⛔ Le RIGHE non viaggiano piu' qui (dal 2026-09-18): sono una lista
+#    configurabile con la sua pagina (`list_righe`), e portarle anche nel
+#    dettaglio sarebbe leggere due volte la parte piu' costosa (la LATERAL
+#    sulla check di eliminabilita', per riga) a ogni apertura del drawer — per
+#    un campo che nessuno legge piu'.
 def get_distinta(contabile_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
     distinta = _distinta_o_404(repository, contabile_id)
@@ -447,7 +453,6 @@ def get_distinta(contabile_id: int) -> dict[str, Any]:
                 and distinta.get("origine") == ORIGINE_MANUALE
             ),
         },
-        "righe": repository.list_righe(contabile_id),
         "stati_distinta": repository.list_stati_distinta(),
         "stati_riga": repository.list_stati_riga(),
         # ⭐ Le transizioni sono DUE mappe, e servono entrambe: il drawer disegna
@@ -608,12 +613,39 @@ def cambia_stato_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[st
 #  Righe
 # ══════════════════════════════════════════════════════════════════
 
-# Scopo: Le righe di una distinta.
-def list_righe(contabile_id: int) -> dict[str, Any]:
+# Scopo: Le righe di una distinta, PAGINATE — la lista `pagamenti.distinta_righe`.
+# ⭐ Offset-based (`limit`/`offset`, la lingua di `useSearchTable`) e risposta
+#    `{count, results}`, come le due sorelle nate su `<ListaConfigurabile>`
+#    (`fatture/{id}/sistemazioni/`, `rate/`). ⛔ Fino al 2026-09-18 rispondeva
+#    `{"count": len(righe), ...}`: un'eco, non un conteggio (api.md §«Il `count`
+#    non si deriva MAI dalle righe»). Ora il totale viene da `COUNT(*) OVER ()`.
+# ⭐ `nullable=True`: «non specificato» e' legittimo e l'ordine lo decide il
+#    repository (`id DESC`); fuori whitelist e' un 400 col campo, non un 500.
+def list_righe(
+    contabile_id: int,
+    *,
+    limit: int,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+) -> dict[str, Any]:
+    order_by, order_dir = validate_order_params(
+        order_by, order_dir.lower() if order_dir else None,
+        allowed_columns=DISTINTA_RIGHE_SORT_COLUMNS,
+        error_code=E_VALIDAZIONE,
+        function_name=f"{_FN}.list_righe",
+        nullable=True,
+    )
     repository = PagamentiRepository()
     _distinta_o_404(repository, contabile_id)
-    righe = repository.list_righe(contabile_id)
-    return {"count": len(righe), "results": righe}
+    results, total = repository.list_righe_distinta(
+        contabile_id,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+    return {"count": total, "results": results}
 
 
 # Scopo: Aggiunge una riga alla distinta — un importo arrivato, e di chi e'.

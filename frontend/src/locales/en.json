@@ -31,6 +31,8 @@
     "accesso_negato_hint": "Contact your administrator if you believe this is a mistake.",
     "modalita_consultazione": "Read only",
     "altre_azioni": "More actions",
+    "espandi_tutte": "Expand all rows",
+    "comprimi_tutte": "Collapse all rows",
     "azione_non_disponibile_record_inattivo": "Action unavailable on inactive record",
     "action_hint_add": "Add",
     "action_hint_billing_account": "Manage billing accounts",
@@ -242,6 +244,7 @@
     "amm-software": "Admin Software",
     "strumenti": "Tools",
     "collapse": "Collapse",
+    "expand": "Expand",
     "back_home": "Home",
     "set_favorite": "Set as default",
     "remove_favorite": "Remove favorite",
@@ -781,7 +784,8 @@
         "ha_mapping_tipo_doc": "Register {codice} is assigned to {quante} document types: remove the assignment first, otherwise those documents would no longer find a register to be created in.",
         "ha_ordini": "Register {codice} has already numbered {quante} orders: deactivating it would leave those documents without the register that numbered them.",
         "ha_ddt": "Register {codice} has already numbered {quante} delivery notes: deactivating it would leave those documents without the register that numbered them.",
-        "ha_resi": "Register {codice} has already numbered {quante} returns: deactivating it would leave those documents without the register that numbered them."
+        "ha_resi": "Register {codice} has already numbered {quante} returns: deactivating it would leave those documents without the register that numbered them.",
+        "ha_distinte": "Register {codice} has already numbered {quante} collection sheets: deactivating it would leave those documents without the register that numbered them. And a collection sheet is never deleted, so from here on this register can no longer be switched off."
       },
       "forma_blocco": {
         "ha_numerato": "Register {codice} has already issued numbers (last: {ultimo_numero}): the number format can no longer be changed. The counter does not restart when the format changes, it carries on — so the same register would hold two formats with consecutive numbers."
@@ -2753,8 +2757,6 @@
       "col_gestione": "Management",
       "nessuna_versione": "No version",
       "nuova_versione": "New version",
-      "espandi_tutte_versioni": "Expand all versions",
-      "comprimi_tutte_versioni": "Collapse all versions",
       "gestisci_righe": "Manage price rows",
       "clona": "Clone",
       "clona_versione": "Clone version",
@@ -3970,6 +3972,7 @@
       "solo_consultazione": "This screen is read-only: opening a sheet, entering lines, matching them to instalments and posting are coming in the next round.",
       "nessuna_distinta": "No collection sheets",
       "nessuna_riga": "This sheet has no lines yet",
+      "righe_non_lette": "The sheet lines could not be read: reload before working on them.",
       "filtro_stato": "Status",
       "filtro_origine": "Origin",
       "filtro_centro": "Collection centre",
@@ -4033,6 +4036,11 @@
       "col_contabile_data": "Batch date",
       "col_contabile_origine": "Batch origin",
       "col_data_valuta": "Value date",
+      "col_data_operazione": "Operation date",
+      "col_natura": "Nature",
+      "col_billing_account_codice": "Customer code",
+      "col_scadenza_importo": "Instalment amount",
+      "col_id": "Line id",
       "forzata": "Forced",
       "coda_da_abbinare": "To match",
       "coda_sospese": "On hold",
@@ -4060,6 +4068,7 @@
     "rate_fuori_capienza": {
       "col_motivo": "Reason",
       "col_fattura_numero_documento": "Document",
+      "col_natura": "Nature",
       "col_fattura": "Invoice",
       "col_data_scadenza": "Due date",
       "col_residuo": "Balance",
@@ -4075,7 +4084,8 @@
       "filtro_motivo": "Reason",
       "motivo_sovra_incassata": "Over-collected",
       "motivo_movimento_contrario": "Opposite movement",
-      "di_troppo": "{importo} in excess",
+      "motivo_nota_credito_sovra_incassata": "Over-refunded",
+      "motivo_nota_credito_movimento_contrario": "Came in instead of going out",
       "nessuna_rata": "No instalments beyond capacity"
     },
     "eccedenze": {

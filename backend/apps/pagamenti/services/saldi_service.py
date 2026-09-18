@@ -91,12 +91,21 @@ def _saldo(
 #    SENZA rata — il fondo fattura e' esattamente cosi' — e quel denaro non
 #    comparirebbe in nessuna somma di rate. Un numero incompleto che si presenta
 #    come completo e' peggio di un numero assente.
-def saldo_documento(fattura_id: int) -> SaldoRow:
+# ⭐ `escludi_riga_id` dal 2026-09-18 (P-6 del brief D19): «prima di se'» anche
+#    sul documento — la riga senza rata (il fondo fattura e' cosi') che si sta
+#    correggendo non si conta piu' addosso. Fino a quel giorno il pannello lo
+#    DICHIARAVA («comprende anche questa riga») invece di fingere; ora la
+#    funzione lo sa fare e la dichiarazione non serve piu'.
+def saldo_documento(
+    fattura_id: int, *, escludi_riga_id: int | None = None
+) -> SaldoRow:
     repository = PagamentiRepository()
     # ⭐ Una lettura sola per i due numeri: separate leggerebbero due istanti
     #    diversi, e un residuo di prima accanto a un «in lavorazione» di dopo
     #    sono due numeri veri che insieme raccontano una cosa falsa.
-    numeri = repository.get_saldo_documento(fattura_id)
+    numeri = repository.get_saldo_documento(
+        fattura_id, escludi_riga_id=escludi_riga_id
+    )
     # ℹ️ Il 404 di un documento inesistente lo solleva GIA' il database
     #    (`E_FATTURA_NON_TROVATA`) e arriva al client tradotto senza passare di
     #    qui. Questo guard copre l'altro caso — una risposta VUOTA — che
@@ -123,10 +132,10 @@ def saldo_documento(fattura_id: int) -> SaldoRow:
 #  Livello RATA
 # ══════════════════════════════════════════════════════════════════
 
-# Scopo: Il saldo di una rata — l'unico livello che oggi risponde tutti e tre
-#        i numeri.
+# Scopo: Il saldo di una rata.
 # ⚠️ `escludi_riga_id` chiede lo spazio PRIMA DI SE': serve a sapere se una
-#    riga ci sta senza contarsi addosso.
+#    riga ci sta senza contarsi addosso. Dal 2026-09-18 lo sa fare anche il
+#    documento: stesso nome, stessa domanda.
 def saldo_rata(
     scadenza_id: int, *, escludi_riga_id: int | None = None
 ) -> SaldoRow:
@@ -195,6 +204,7 @@ def list_rate(
     anno: int | None = None,
     search: str | None = None,
     solo_aperte: bool | None = None,
+    solo_numerate: bool | None = None,
     data_scadenza_da: date | None = None,
     data_scadenza_a: date | None = None,
     natura_doc_codice: str | None = None,
@@ -229,6 +239,7 @@ def list_rate(
         anno=anno,
         search=search,
         solo_aperte=bool(solo_aperte),
+        solo_numerate=bool(solo_numerate),
         data_scadenza_da=data_scadenza_da,
         data_scadenza_a=data_scadenza_a,
         natura_doc_codice=natura_doc_codice.upper() if natura_doc_codice else None,

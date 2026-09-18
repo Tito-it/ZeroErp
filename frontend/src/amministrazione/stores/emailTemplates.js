@@ -1,69 +1,46 @@
 // Pinia store per la gestione template email (lista, dettaglio, modifica).
+//
+// ⭐ Dal 2026-09-18 la lista e' `createListaStore`: era uno store scritto a mano
+//    su `useListaEmptyStateFetch` con la copia del `buildParams`. Non e'
+//    `createCrudStore` perche' il contratto del dettaglio e' diverso — il
+//    drawer legge `currentTemplate` dallo store, non il valore di ritorno — e
+//    non c'e' `create`: i template nascono dal seed, qui si modificano soltanto.
 
-import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import {
-  listEmailTemplates,
-  getEmailTemplate,
-  updateEmailTemplate
-} from '../api/amministrazione'
+import { createListaStore } from '../../core/stores/createListaStore'
+import { listEmailTemplates, getEmailTemplate, updateEmailTemplate } from '../api/amministrazione'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 
-export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
-  const { emitDataChanged } = useTabEvents()
+export const useEmailTemplatesStore = createListaStore('amm-email-templates', {
+  fetchPage: listEmailTemplates,
+  // Parte piena: e' un catalogo, non una ricerca.
+  startsEmpty: false,
+  orderBy: 'codice',
+  extend: () => {
+    const { emitDataChanged } = useTabEvents()
+    const currentTemplate = ref(null)
+    const loadingDetail = ref(false)
 
-  const currentTemplate = ref(null)
-  const loadingDetail = ref(false)
-
-  const filters = ref({
-    search: '',
-    limit: 25,
-    offset: 0,
-    order_by: 'codice',
-    order_dir: 'asc'
-  })
-
-  // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race.
-  // `alwaysFetch`: questa lista si e' sempre caricata anche senza filtri.
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    alwaysFetch: true,
-    buildParams: (f) => {
-      const params = {}
-      if (f.search) params.search = f.search
-      params.limit = f.limit
-      params.offset = f.offset
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
+    // Scopo: carica il dettaglio nello store (il drawer legge `currentTemplate`).
+    async function fetchDetail(id) {
+      loadingDetail.value = true
+      try {
+        const res = await getEmailTemplate(id)
+        currentTemplate.value = res.data.data
+      } finally {
+        loadingDetail.value = false
       }
-      return params
-    },
-    fetchPage: listEmailTemplates,
-  })
-
-  async function fetchDetail(id) {
-    loadingDetail.value = true
-    try {
-      const res = await getEmailTemplate(id)
-      currentTemplate.value = res.data.data
-    } finally {
-      loadingDetail.value = false
     }
-  }
 
-  async function update(id, payload) {
-    const res = await updateEmailTemplate(id, payload)
-    currentTemplate.value = res.data.data
-    emitDataChanged(TAB_ENTITIES.EMAIL_TEMPLATES, id)
-    return res.data.data
-  }
+    // Scopo: aggiorna il template, riallinea il dettaglio e notifica le tab.
+    async function update(id, payload) {
+      const res = await updateEmailTemplate(id, payload)
+      currentTemplate.value = res.data.data
+      emitDataChanged(TAB_ENTITIES.EMAIL_TEMPLATES, id)
+      return res.data.data
+    }
 
-  return {
-    items, totalRecords, loading, hasSearched, filters, fetchList,
-    currentTemplate, loadingDetail, fetchDetail,
-    update
-  }
-}, { userScoped: true })
+    return { currentTemplate, loadingDetail, fetchDetail, update }
+  },
+})

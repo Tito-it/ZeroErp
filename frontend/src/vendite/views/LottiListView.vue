@@ -50,6 +50,7 @@ import { menuItemClass } from '../../core/utils/rowActions'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
 import { paramsPerimetro, useLottiStore } from '../stores/lotti'
+import { paramsOrdinamento } from '../../core/utils/listParams'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -114,16 +115,18 @@ const {
   perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   exportFn: exportLotti,
-  getExportParams: (fmt) => {
+  getExportParams: (fmt) => ({
     // Il file E' la lista: stesso perimetro (mese, stato, annullati — e
     // l'intestazione del file lo dichiara), stesso ordine.
-    const p = { formato: fmt, ...paramsPerimetro(store.filters) }
-    if (store.filters.order_by) {
-      p.order_by = store.filters.order_by
-      p.order_dir = store.filters.order_dir || 'desc'
-    }
-    return p
-  },
+    // ⚠️ Ripiego `asc` come la FETCH dello store (`lotti.js`, `paramsPagina`
+    //    con `orderDirDefault: 'asc'`): fino al 2026-09-18 qui era `desc`,
+    //    cioe' lista ed export avrebbero letto due versi diversi il giorno in
+    //    cui quel ramo si fosse acceso — l'unica delle dodici copie divergente
+    //    dalla propria lista, trovata estraendo `paramsOrdinamento`.
+    formato: fmt,
+    ...paramsPerimetro(store.filters),
+    ...paramsOrdinamento(store.filters, { orderDirDefault: 'asc' }),
+  }),
 })
 
 // ⭐ LA SCHEDA «RECUPERI DEL MESE»: i lotti di competenza PRECEDENTE che hanno

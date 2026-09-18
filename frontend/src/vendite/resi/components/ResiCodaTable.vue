@@ -53,6 +53,7 @@ import {
   etichettaAccreditoSeverity,
   statoRiconsegnaSeverity,
 } from '../../../core/utils/severity'
+import { paramsOrdinamento } from '../../../core/utils/listParams'
 import { AZIONE_ACCREDITA_RESO, ESITO_ACCREDITO, ETICHETTA_ACCREDITO } from '../constants'
 import { accreditaRighe, exportDaAccreditare, exportDaRiconsegnare } from '../api/resiApi'
 import {
@@ -265,11 +266,9 @@ function buildExportParams(format) {
   if (store.filters.data_da) p.data_da = store.filters.data_da
   if (store.filters.data_a) p.data_a = store.filters.data_a
   if (store.filters.etichetta) p.etichetta = store.filters.etichetta
-  if (store.filters.order_by) {
-    p.order_by = store.filters.order_by
-    p.order_dir = store.filters.order_dir || 'desc'
-  }
-  return p
+  // L'export segue l'ordinamento a video, nella stessa forma della fetch
+  // (`paramsOrdinamento`, ripiego `desc` come lo store).
+  return { ...p, ...paramsOrdinamento(store.filters) }
 }
 
 // `<ListaConfigurabile>` emette `data` direttamente. Apertura reso via reso_id

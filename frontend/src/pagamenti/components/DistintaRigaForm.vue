@@ -278,8 +278,8 @@ const destinazione = computed(() => {
     return {
       fatturaId: r.fattura_id,
       numeroDocumento: r.fattura_numero_documento ?? null,
-      naturaCodice: r.fattura_natura_doc_codice_interno ?? null,
-      naturaDescrizione: r.fattura_natura_doc_descrizione ?? null,
+      naturaCodice: r.natura_doc_codice_interno ?? null,
+      naturaDescrizione: r.natura_doc_descrizione ?? null,
       registro: r.fattura_registro_codice ?? null,
       data: r.fattura_data ?? null,
       totale: r.fattura_totale_doc ?? null,
@@ -343,9 +343,10 @@ const saldoRiferimentoId = computed(() => {
 })
 const saldoKey = computed(() => `${saldoLivello.value}:${saldoRiferimentoId.value}`)
 // ⭐ In modifica il saldo si chiede PRIMA DI SE': senza, «in lavorazione»
-//    conterebbe proprio i soldi che si stanno correggendo. Sul documento il
-//    pannello dichiara che non sa escluderla (la funzione DB non ha il
-//    parametro): si legge sapendolo, non si sana sottraendo.
+//    conterebbe proprio i soldi che si stanno correggendo. Sui due livelli
+//    (dal 2026-09-18 anche il documento, P-6: la riga senza rata del fondo
+//    fattura legge lo stesso «prima di se'» della rata). ⛔ Non si sana
+//    sottraendo nel FE: sarebbe la seconda formula del saldo.
 const saldoEscludiRigaId = computed(() => (isEdit.value ? props.riga?.id ?? null : null))
 
 // ⚠️ `!= null` e non un test di verita': lo ZERO non e' un importo valido qui
