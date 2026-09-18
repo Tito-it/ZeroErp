@@ -317,6 +317,7 @@ Non si va a memoria: ci sono viste che rispondono a una domanda ciascuna, e che
 | [vw_fatture_stampa_coda_da_guardare](/dbzero/dbops/manual/vw_fatture_stampa_coda_da_guardare) | c'è una stampa in coda che si è fermata? (la gemella, per la coda stampa) |
 | [vw_email_da_guardare](/dbzero/dbops/manual/vw_email_da_guardare) | c'è un'email che la coda deve a qualcuno da più di un'ora e nessuno ha preso in mano? |
 | [vw_processi_programmazione_da_guardare](/dbzero/dbops/manual/vw_processi_programmazione_da_guardare) | c'è un processo che doveva farsi vivo e non l'ha fatto — un job pgAgent, o un COMMAND col suo contratto? |
+| [vw_lotti_fermi_da_guardare](/dbzero/dbops/manual/vw_lotti_fermi_da_guardare) | c'è un giro di fatturazione fermo da più di un'ora che nessuno ha rilanciato né sciolto? (dal 19-09-2026: il verdetto «fermo» è quello del banner, letto dalla stessa sede) |
 
 ### ⚠️ Un debito dichiarato non è un allarme
 

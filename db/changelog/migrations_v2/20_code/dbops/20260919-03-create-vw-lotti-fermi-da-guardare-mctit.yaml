@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ P-1 (b) — LA SORGENTE CHE MANCAVA AL PASSO C dell'osservabilita': il
+#   presidio «lotto fermo da troppo tempo che nessuno rilancia ne' scioglie».
+#   Brief: brief-db-osservabilita-lotto-fermo-r6-indici §2.2 (b); analisi
+#   madre analisi-osservabilita-log §4 Passo C.
+#
+# ── E' UN LETTORE, NON UNA SEDE ─────────────────────────────────────
+#   Il verdetto `fermo`, il suo motivo e il suo orologio vengono da
+#   vendite.vw_lotti_segnalazioni_summary (20260919-01), la stessa riga che il
+#   backend legge per il banner. Questa vista NON ricalcola nessun addendo:
+#   applica la spartizione sull'asse pre_fiscale e la soglia. Se domani il
+#   verdetto prende un addendo nuovo, il banner e il digest lo vedono INSIEME
+#   — e' la ragione per cui esiste la sede unica (D-1).
+#
+# ── ⭐ SOLO I LOTTI PRE-FISCALI (vw_lotti_fase.pre_fiscale) ───────────
+#   Un lotto non pre-fiscale non e' mai «fermo» in questo senso: un
+#   DEFINITIVA con un esito ERRORE e' la CONTRADDIZIONE di
+#   vendite.vw_lotti_chiusi_con_gruppi_in_errore, che c'e' gia'. I due presidi
+#   si spartiscono l'asse pre_fiscale senza sovrapporsi: qui «si puo' ancora
+#   agire e nessuno agisce», la' «e' chiuso e non doveva». ⚠️ pre_fiscale e'
+#   fail-closed sull'ignoto (COALESCE a false, COMMENT di vw_lotti_fase): un
+#   lotto senza stato risolvibile non compare qui, e non e' un buco — sul
+#   settimo caso la prudenza dice «non si tocca», e un presidio che dice di
+#   rilanciarlo direbbe la cosa sbagliata.
+#
+# ── ⚠️ UN'ORA: una scelta, non una misura ─────────────────────────────
+#   Il rilancio e' il gesto di una PERSONA, e le tre viste delle code usano
+#   la stessa soglia per la stessa ragione: un lotto fallito due minuti fa e
+#   gia' in rilancio non e' un allarme. L'orologio e' `fermo_da`, il fatto
+#   PIU' RECENTE che lo ferma — un rilancio che fallisce di nuovo lo riparte,
+#   e la domanda torna a essere «da quanto nessuno ci mette le mani». La
+#   soglia sta QUI, come da manuale del catalogo (presidi.md: le soglie stanno
+#   nella vista, non nel catalogo).
+#
+# ── ⛔ PERIMETRO `DEFINER`: le tabelle hanno la RLS ───────────────────
+#   fatturazione_lotti e le sue quattro figlie sono sotto RLS (via lotto, via
+#   fattura) e la sede e' security_invoker: da una sessione senza GUC questa
+#   vista risponde ZERO per CECITA', e «zero righe» e «non ho potuto vedere»
+#   si scrivono uguale. Il digest conta da proprietario con fn_conta_presidio
+#   (test 6 del pgTAP: senza GUC la vista e' vuota E il contatore dice 1); una
+#   persona la legge col proprio perimetro. Sta in dbops e non in vendite:
+#   il test 2 del catalogo dei presidi pretende a catalogo ogni vista degli
+#   schemi che vi compaiono, e vendite porterebbe dentro tutte le vw_*_lista.
+#
+# ── FATTO DATATO (dbdev, 2026-09-19, sola lettura da proprietario) ────
+#   38 lotti `fermo` su 95 (37 CRITICHE, 1 ESITI_IN_ERRORE); 16 pre-fiscali
+#   fermi da oltre un'ora. Il presidio NASCE PIENO su dev: sono giri di prova
+#   lasciati a meta', ed e' esattamente cio' che deve dire. Non si esclude il
+#   pregresso per farlo partire verde (memoria: il ramo che esclude il
+#   pregresso e' il nascondiglio).
+#
+# Verifica: db/pgtap/vendite/test-lotti-fermi-verdetto-a-db-v1.sql
+#   (test 4-6: spartizione, soglia, DEFINER onesto) e
+#   db/pgtap/dbops/test-catalogo-presidi-v1.sql (la riga nel CSV).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260919-03-create-vw-lotti-fermi-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20260919-03-create-vw-lotti-fermi-da-guardare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_lotti_fermi_da_guardare: i lotti PRE-FISCALI che la sede unica
+        dichiara `fermo` da oltre un'ora e che nessuno ha rilanciato ne'
+        sciolto. DEVE restare vuota. Lettore di vw_lotti_segnalazioni_summary
+        (nessun addendo ricalcolato) + vw_lotti_fase (spartizione con
+        vw_lotti_chiusi_con_gruppi_in_errore). Perimetro DEFINER a catalogo:
+        le tabelle hanno la RLS. La sorgente «lotto fermo» del Passo C.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_lotti_segnalazioni_summary
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_lotti_fase
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_lotti_fermi_da_guardare
+              WITH (security_invoker = true) AS
+              SELECT s.lotto_id,
+                     f.lotto_codice,
+                     f.lotto_competenza_mese,
+                     f.stato_codice_interno,
+                     l.emittente_soggetto_ruolo_id,
+                     -- ⭐ Il codice dell'azienda, per chi legge la riga a mano:
+                     --   il digest non elenca le righe DEFINER, una persona si'.
+                     ef.codice                          AS emittente_codice,
+                     -- ⭐ QUALE addendo ferma il lotto e da quando: vengono dalla
+                     --   sede, non si ricalcolano qui.
+                     s.fermo_motivo                     AS motivo,
+                     s.fermo_da,
+                     now() - s.fermo_da                 AS da_quanto,
+                     s.fatture_critical_count + s.lotto_critical_count AS critiche_vive,
+                     s.fatture_stato_esecuzione_errore_count,
+                     s.esiti_stato_esecuzione_errore_count,
+                     s.documenti_bloccanti_count,
+                     s.documenti_presi_in_carico_count
+                FROM vendite.vw_lotti_segnalazioni_summary s
+                JOIN vendite.vw_lotti_fase f          ON f.lotto_id = s.lotto_id
+                JOIN vendite.fatturazione_lotti l     ON l.id = s.lotto_id
+                LEFT JOIN anagrafiche.emittenti_fiscali ef
+                       ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+               WHERE s.fermo
+                 -- ⭐ La spartizione: solo dove si puo' ancora agire. Il lotto
+                 --   chiuso con documenti in ERRORE e' di
+                 --   vendite.vw_lotti_chiusi_con_gruppi_in_errore.
+                 AND f.pre_fiscale
+                 -- ⚠️ Un'ora dal fatto PIU' RECENTE che lo ferma: chi sta
+                 --   rilanciando adesso non e' un allarme.
+                 AND s.fermo_da < now() - interval '60 minutes';
+
+              COMMENT ON VIEW dbops.vw_lotti_fermi_da_guardare IS
+                  'PRESIDIO: i giri di fatturazione PRE-FISCALI che la sede unica '
+                  '(vendite.vw_lotti_segnalazioni_summary) dichiara `fermo` — critiche vive, '
+                  'riga di ponte in ERRORE o esito ERRORE — da OLTRE UN''ORA, e che nessuno ha '
+                  'rilanciato ne'' sciolto. DEVE restare VUOTA. Il banner lo dice a chi apre il '
+                  'lotto; questa riga lo dice a chi non lo apre. ⭐ E'' un LETTORE: nessun addendo '
+                  'e'' ricalcolato qui — `motivo` e `fermo_da` sono le colonne della sede, e un '
+                  'addendo nuovo del verdetto lo vedono insieme il banner, il digest e il pallino '
+                  '(D-1 di Tid, 18-09: una sede a DB, il backend trasporta). ⭐ SOLO PRE-FISCALI '
+                  '(vw_lotti_fase.pre_fiscale): un DEFINITIVA con un esito ERRORE e'' la '
+                  'contraddizione di vendite.vw_lotti_chiusi_con_gruppi_in_errore, che c''e'' '
+                  'gia'' — i due presidi si spartiscono l''asse senza sovrapporsi; sull''ignoto '
+                  'pre_fiscale e'' fail-closed e il lotto non compare, per prudenza dichiarata. '
+                  '⚠️ Un''ora non e'' una misura: il rilancio e'' il gesto di una persona, e le '
+                  'tre viste delle code usano la stessa soglia per la stessa ragione. L''orologio '
+                  'e'' `fermo_da`, il fatto PIU'' RECENTE che ferma il lotto: un rilancio che '
+                  'fallisce di nuovo lo riparte, e la domanda resta «da quanto nessuno ci mette le '
+                  'mani». La soglia sta qui, non nel catalogo. ⛔ Perimetro DEFINER a catalogo: le '
+                  'tabelle sotto hanno la RLS e la vista e'' security_invoker — da una sessione '
+                  'senza GUC risponde zero PER CECITA'', il digest conta da proprietario con '
+                  'fn_conta_presidio, una persona legge col proprio perimetro. Brief: '
+                  'brief-db-osservabilita-lotto-fermo-r6-indici §2; analisi-osservabilita-log §4 '
+                  'Passo C.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_lotti_fermi_da_guardare TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_lotti_fermi_da_guardare;

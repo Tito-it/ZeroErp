@@ -47,7 +47,7 @@ rinegozia, e un registro che non sa riempirne una lascia vuoto.
 | `riga_key` | `text` | La chiave della riga, nella forma `REGISTRO:id`. È l'unica stabile: i quattro registri hanno spazi di identificativi separati e sovrapposti. |
 | `registro` | `text` | Da dove viene la riga: `EVENT_LOG \| LOTTO_LOG \| TASK_RUN \| FATTURA_LOG`. |
 | `riga_id` | `bigint` | L'identificativo **dentro** quel registro — serve ad aprire la riga di origine. |
-| `quando` | `timestamptz` | Il momento in cui è successo. |
+| `quando` | `timestamptz` | Il momento in cui è successo. ⭐ Per un tentativo (`TASK_RUN`) è **quando è nato** (`started_at`), dal 19-09-2026 — vedi la quarta scelta qui sotto. |
 | `entity_type` | `text` | Di che cosa si sta raccontando la storia: `LOTTO`, `FATTURA`… I valori sono quelli di [`config.tipi_entita`](/dbzero/config/tabelle/tipi_entita). |
 | `entity_id` | `bigint` | Quale lotto, quale fattura. |
 | `gravita` | `text` | `INFO \| WARN \| ERROR`. |
@@ -85,10 +85,12 @@ Ogni persona vede **solo il perimetro del proprio emittente**, e il meccanismo
 * `event_log` **si protegge da sé**: porta l'emittente sulla riga e ha la sua
   regola di visibilità. È il registro *polimorfo* — non ha un documento padre a
   cui appoggiarsi — ed è esattamente la ragione per cui quella colonna esiste;
-* gli altri tre una regola propria non ce l'hanno, e si agganciano al documento
-  che li possiede: le due tabelle del lotto al lotto, il registro delle fatture
-  alla fattura. ⛔ L'aggancio **è** il perimetro: se il documento non è tuo, la
-  riga non compare.
+* gli altri tre **dal 10-09-2026 hanno la propria regola** (via lotto, via
+  fattura — il cantiere che ha portato il perimetro fino ai satelliti), e in più
+  si agganciano al documento che li possiede: le due tabelle del lotto al lotto,
+  il registro delle fatture alla fattura. L'aggancio resta come ancora
+  all'entità e seconda difesa. ⚠️ Fino al 19-09 questa riga diceva che «una
+  regola propria non ce l'hanno»: era vero al 24-08, stantio dal 10-09.
 
 > ⚠️ Perché funzioni, la vista deve girare **con i permessi di chi la legge** e
 > non con quelli del proprietario. È una proprietà tecnica (`security_invoker`)
@@ -98,7 +100,7 @@ Ogni persona vede **solo il perimetro del proprio emittente**, e il meccanismo
 
 ---
 
-## Tre scelte da conoscere prima di modificarla
+## Quattro scelte da conoscere prima di modificarla
 
 **1. `vendite.attivita_fatturabili_log` resta fuori — non è una dimenticanza.**
 Né lui né la tabella che lo possiede hanno un filtro di perimetro: quel ramo
@@ -128,6 +130,22 @@ registri usano parole diverse per dire la stessa cosa — `I/W/C` da una parte,
 ⚠️ La traduzione **non ha un ramo «tutto il resto»**: un valore che nessuno ha
 previsto esce **vuoto**, e il test lo segnala. È voluto — un valore nuovo
 sepolto fra quelli innocui è un difetto che nessuno scopre.
+
+**4. La riga di un tentativo è datata alla nascita (R-6, 19-09-2026).** Nel
+ramo `TASK_RUN` `quando` è `started_at`. Fino a quel giorno era
+`COALESCE(ended_at, started_at)`, e il test lo pinnava come «scelta di disegno»
+— *il momento in cui ha preso lo stato che mostra*. Ma `ended_at` lo scrive
+anche la corsa **successiva**: `fn_start_lotto_task_run` chiude come
+`ANNULLATO` il tentativo rimasto aperto, e un task partito il 21 compariva col
+22, in mezzo alle righe del 22 — la Storia del lotto raccontava un ordine che
+non era successo (misurato il 19-09 su dbdev: sui 352 `ANNULLATO` la distanza
+fra i due orari ha mediana un quarto d'ora e massimo quasi due giorni).
+
+⭐ L'argomento che decide: **l'orario di una riga di diario non si muove dopo
+che è stata scritta.** `started_at` si scrive una volta; lo stato mostrato è
+quello corrente, e «il tentativo nato alle 10:00 è finito `ANNULLATO`» non è
+una contraddizione. `ended_at` resta nella tabella: se un giorno servirà al
+lettore, sarà una colonna in più (`fino_a`), non l'orario della riga.
 
 ---
 

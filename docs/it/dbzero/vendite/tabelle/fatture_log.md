@@ -32,6 +32,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_fatture_log_data_ora | `CREATE INDEX ix_fatture_log_data_ora ON vendite.fatture_log USING btree (data_ora)` |
 | ix_fatture_log_fattura_id | `CREATE INDEX ix_fatture_log_fattura_id ON vendite.fatture_log USING btree (fattura_id)` |
 | pk_fatture_log | `CREATE UNIQUE INDEX pk_fatture_log ON vendite.fatture_log USING btree (id)` |
 

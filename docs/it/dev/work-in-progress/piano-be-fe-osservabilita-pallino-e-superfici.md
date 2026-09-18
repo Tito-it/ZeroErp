@@ -6,7 +6,7 @@
 > **C**, **R-6**, la **#8** e il brief della #14; Tid ha chiesto *«un brief
 > apposito con piano di sviluppo»*. La **#8 è decisa** lo stesso giorno (§2.1).
 > I prerequisiti DB stanno in
-> [brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md)
+> [brief-db-osservabilita-lotto-fermo-r6-indici.md](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md)
 > (P-1 … P-3). La #14 **non è qui**: resta il debito dichiarato che è.
 > **Stato:** 🔵 scritto il 2026-09-18; ✅ **P scritto la notte del 19/09** (BE +
 > FE, non committato — §0-bis). **E** e **G** aspettano gli indici (P-3), **G**
@@ -465,7 +465,7 @@ Tutte e quattro **si annunciano a chat prima di scrivere** e aspettano l'ok.
 
 | # | Chi | Cosa | Dopo |
 | --- | --- | --- | --- |
-| 1 | **team DB** | P-1 verdetto + presidio, P-2 R-6, P-3 indici ([brief DB](brief-db-osservabilita-lotto-fermo-r6-indici.md)) | — |
+| 1 | **team DB** | P-1 verdetto + presidio, P-2 R-6, P-3 indici ([brief DB](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md)) | — |
 | 2 | **BE + FE** | **P** — pallino (§2) | subito, in parallelo a 1 |
 | 3 | **BE + FE** | **E** — `error_log` (§4): il più piccolo, chiude il ponte `tx_id` | P-3 applicato + EXPLAIN |
 | 4 | **BE + FE** | **G** — giornale (§3) | P-2 + P-3 applicati + EXPLAIN + test perimetro |

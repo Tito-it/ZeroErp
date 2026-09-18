@@ -14,7 +14,10 @@
 --  7) un tentativo fallito e' ERROR, e il codice errore entra nel «cosa»
 --  8) ⭐ IL CANARINO: nessuna riga con `gravita` vuota, in tutta la vista
 --  9) ⭐ ogni `entity_type` prodotto esiste in config.tipi_entita
--- 10) il `quando` di un tentativo chiuso e' l'ended_at, non lo started_at
+-- 10) il `quando` di un tentativo chiuso e' lo started_at, non l'ended_at
+--     (R-6, 20260919-04: la riga e' la corsa, e la corsa nasce li'; ended_at
+--     lo puo' scrivere la corsa successiva, e una riga di diario non cambia
+--     posto dopo essere nata — fino al 19-09 questo test pinnava il contrario)
 -- 11) ⛔ nessun registro fuori dai quattro dichiarati
 -- 12) una segnalazione RITIRATA resta nel diario: non si filtra
 -- 13) ⭐ ...e si vede che e' ritirata: il flag c'e', accanto a quella viva
@@ -275,7 +278,11 @@ SELECT is(
 -- 10-12) Tre scelte di disegno, rese verificabili
 -- ============================================================
 --   Il tentativo e' stato aperto e poi chiuso: il suo posto nella linea del
---   tempo e' il momento in cui ha preso lo stato che mostra.
+--   tempo e' il momento in cui E' NATO. Lo stato che mostra e' quello corrente
+--   e non c'e' contraddizione: «il tentativo nato alle 10:00 e' finito cosi'».
+--   ⭐ R-6 (20260919-04): fino al 19-09 qui si pinnava l'ended_at come «scelta
+--   di disegno», ma ended_at lo scrive anche la corsa SUCCESSIVA (ANNULLATO)
+--   e una riga di diario non deve cambiare posto dopo essere stata scritta.
 SELECT is(
   (
     SELECT g.quando
@@ -284,11 +291,11 @@ SELECT is(
        AND g.riga_id  = (SELECT task_run_id FROM tmp_run_ge)
   ),
   (
-    SELECT r.ended_at
+    SELECT r.started_at
       FROM vendite.fatturazione_lotti_task_runs r
      WHERE r.id = (SELECT task_run_id FROM tmp_run_ge)
   ),
-  '10. il «quando» di un tentativo chiuso e'' l''ended_at, non lo started_at'
+  '10. il «quando» di un tentativo chiuso e'' lo started_at, non l''ended_at (R-6)'
 );
 
 SELECT is(

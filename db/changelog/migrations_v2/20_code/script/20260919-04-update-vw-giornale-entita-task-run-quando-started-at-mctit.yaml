@@ -1,0 +1,250 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ P-2 / R-6 — la riga TASK_RUN del giornale dice QUANDO E' NATA.
+#   Brief: brief-db-osservabilita-lotto-fermo-r6-indici §3; rilievo R-6 di
+#   analisi-osservabilita-log §3-quater (vero dal 24-08 al 18-09).
+#
+# ── IL DIFETTO, letto sul modello e non sui dati ─────────────────────
+#   `quando = COALESCE(tr.ended_at, tr.started_at)`. `ended_at` lo scrive
+#   fn_set_runtime_task_run_esito, e la chiama anche fn_start_lotto_task_run:
+#   il tentativo SUCCESSIVO chiude come ANNULLATO quello rimasto aperto. Quindi
+#   `ended_at` puo' essere l'orario di un'ALTRA corsa — un task partito il 21
+#   compare col 22, in mezzo alle righe del 22, e la Storia del lotto racconta
+#   un ordine che non e' successo. Fatto datato (dbdev, 19-09): sui 352
+#   ANNULLATO la distanza ended_at - started_at ha mediana 15 minuti e massimo
+#   quasi due giorni; sui COMPLETATO/ERRORE e' sotto il decimo di secondo.
+#
+# ── ⭐ L'ARGOMENTO CHE DECIDE: l'orario di una riga di diario NON SI MUOVE ──
+#   Con ended_at la riga TASK_RUN cambiava posto nella linea del tempo dopo
+#   essere stata scritta (alla chiusura, anche di mano altrui). Una riga di
+#   giornale e' un fatto datato alla nascita: `started_at` si scrive una volta
+#   e non cambia. Lo stato che la riga MOSTRA (task_stato) e' quello corrente,
+#   e non c'e' contraddizione: «il tentativo nato alle 10:00 e' finito
+#   ANNULLATO». Il pgTAP 10 di test-vw-giornale-entita pinnava il contrario
+#   come «scelta di disegno»: e' riscritto insieme a questo changeSet (memoria:
+#   un test che pinna il sintomo diventa rosso sulla riparazione).
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   · Il contratto: stesse tredici colonne, stessi nomi. I due endpoint della
+#     Storia (fattura, lotto) non cambiano; l'ordine migliora da solo.
+#   · `ended_at` NON si perde: sta nella tabella, e quando servira' al lettore
+#     sara' una colonna in piu' (`fino_a`), non l'orario della riga. Non si
+#     aggiunge oggi: nessun lettore la chiede, e una colonna senza lettore e'
+#     un invito a fidarsene.
+#   · Il perimetro: security_invoker RI-SPECIFICATO — CREATE OR REPLACE VIEW
+#     senza la clausola AZZERA l'opzione (memoria e testa della doc auto-gen).
+#     Il corpo e' preso da pg_get_viewdef vivo (19-09), non dallo YAML del
+#     24-08.
+#
+# ── ⚠️ E una frase stantia della COMMENT, corretta nello stesso giro ─────
+#   Diceva «gli altri tre — che una policy non ce l'hanno — si ancorano alla
+#   testata con un JOIN». Dal 2026-09-10 (D2, `20260909-27` ÷ `20260910-33`)
+#   fatturazione_lotti_log, fatturazione_lotti_task_runs e fatture_log hanno
+#   la PROPRIA policy via lotto/fattura. Il JOIN resta — e' l'ancora
+#   all'entita', e a costo zero e' una seconda difesa — ma la ragione scritta
+#   non era piu' vera.
+#
+# Verifica: db/pgtap/script/test-vw-giornale-entita.sql (test 10, riscritto)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260919-04-update-vw-giornale-entita-task-run-quando-started-at-mctit.yaml
+
+  - changeSet:
+      id: 20260919-04-update-vw-giornale-entita-task-run-quando-started-at
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.vw_giornale_entita: nel ramo TASK_RUN `quando` e' started_at e
+        non piu' COALESCE(ended_at, started_at) — ended_at puo' essere scritto
+        dalla corsa successiva (ANNULLATO), e una riga di diario non cambia
+        posto dopo essere nata (R-6, P-2 del brief osservabilita). Stesse
+        tredici colonne, security_invoker ri-specificato, corpo dalla
+        definizione viva. COMMENT aggiornata: i tre registri hanno la propria
+        policy dal 2026-09-10.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: script
+                viewName: vw_giornale_entita
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_task_runs
+                columnName: started_at
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ security_invoker RI-SPECIFICATO: CREATE OR REPLACE VIEW senza la
+              --   clausola azzera l'opzione, e la vista diventerebbe fail-open.
+              CREATE OR REPLACE VIEW script.vw_giornale_entita
+              WITH (security_invoker = true) AS
+              SELECT format('EVENT_LOG:%s', e.id)  AS riga_key,
+                     'EVENT_LOG'::text             AS registro,
+                     e.id                          AS riga_id,
+                     e.event_time                  AS quando,
+                     e.entity_type,
+                     e.entity_id,
+                     e.severity                    AS gravita,
+                     e.event_code                  AS cosa,
+                     e.tx_id,
+                     e.correlation_id,
+                     e.auth_user_id,
+                     e.user_insert,
+                     NULL::boolean                 AS disabilitato
+                FROM vendite.event_log e
+              UNION ALL
+              SELECT format('LOTTO_LOG:%s', ll.id),
+                     'LOTTO_LOG'::text,
+                     ll.id,
+                     ll.data_ora,
+                     'LOTTO'::text,
+                     ll.lotto_id,
+                     CASE ll.status
+                         WHEN 'C' THEN 'ERROR'
+                         WHEN 'W' THEN 'WARN'
+                         WHEN 'I' THEN 'INFO'
+                         ELSE NULL
+                     END,
+                     ll.messaggio,
+                     ll.tx_id,
+                     NULL::uuid,
+                     NULL::bigint,
+                     ll.user_insert,
+                     ll.disabilitato
+                FROM vendite.fatturazione_lotti_log ll
+                JOIN vendite.fatturazione_lotti l ON l.id = ll.lotto_id
+              UNION ALL
+              SELECT format('TASK_RUN:%s', tr.id),
+                     'TASK_RUN'::text,
+                     tr.id,
+                     -- ⭐ R-6 (2026-09-19): la riga e' LA CORSA, e la corsa nasce a
+                     --   started_at. ended_at puo' essere scritto dalla corsa
+                     --   successiva (ANNULLATO): con COALESCE(ended_at, started_at)
+                     --   un tentativo partito il 21 compariva col 22, e una riga di
+                     --   diario cambiava posto dopo essere nata.
+                     tr.started_at,
+                     'LOTTO'::text,
+                     tr.lotto_id,
+                     CASE tr.task_stato
+                         WHEN 'ERRORE'        THEN 'ERROR'
+                         WHEN 'ANNULLATO'     THEN 'WARN'
+                         WHEN 'COMPLETATO'    THEN 'INFO'
+                         WHEN 'IN_ESECUZIONE' THEN 'INFO'
+                         ELSE NULL
+                     END,
+                     concat_ws(' · ', tr.task_code, tr.task_stato,
+                               NULLIF(btrim(tr.error_code::text), '')),
+                     tr.tx_id,
+                     tr.correlation_id,
+                     NULL::bigint,
+                     tr.user_insert,
+                     NULL::boolean
+                FROM vendite.fatturazione_lotti_task_runs tr
+                JOIN vendite.fatturazione_lotti l ON l.id = tr.lotto_id
+              UNION ALL
+              SELECT format('FATTURA_LOG:%s', fl.id),
+                     'FATTURA_LOG'::text,
+                     fl.id,
+                     fl.data_ora,
+                     'FATTURA'::text,
+                     fl.fattura_id,
+                     CASE fl.status
+                         WHEN 'C' THEN 'ERROR'
+                         WHEN 'W' THEN 'WARN'
+                         WHEN 'I' THEN 'INFO'
+                         ELSE NULL
+                     END,
+                     fl.messaggio,
+                     fl.tx_id,
+                     NULL::uuid,
+                     NULL::bigint,
+                     fl.user_insert,
+                     fl.disabilitato
+                FROM vendite.fatture_log fl
+                JOIN vendite.fatture f ON f.id = fl.fattura_id;
+
+              COMMENT ON VIEW script.vw_giornale_entita IS
+                  'La CUCITURA della diagnostica: «che cosa e'' successo a questa entita''», letta '
+                  'dai quattro registri che oggi raccontano un pezzo di storia ciascuno — '
+                  'vendite.event_log, fatturazione_lotti_log, fatturazione_lotti_task_runs, '
+                  'fatture_log. ⭐ Vive in script e NON in vendite di proposito: i registri di '
+                  'eventi del progetto sono sei (ci sono anche pratiche.giornale, '
+                  'documenti.documenti_generati_eventi, magazzino.eventi_assets, '
+                  'vendite.fatture_sdi_eventi) e la domanda «cosa e'' successo a questa pratica» '
+                  'arrivera''. Un ramo nuovo entra con un UNION ALL: la forma normalizzata non si '
+                  'rinegozia, e un registro che non sa riempire una colonna lascia NULL. '
+                  '⭐ security_invoker: ogni ramo si protegge con la policy della propria tabella '
+                  '(event_log sulla colonna di perimetro; gli altri tre via lotto/fattura dal '
+                  '2026-09-10), e il JOIN sulla testata resta come ancora all''entita'' e seconda '
+                  'difesa — fino al 2026-09-19 questa frase diceva che i tre «una policy non ce '
+                  'l''hanno», ed era stantia dal 10-09. ⭐ rev 2026-09-19 (R-6, brief '
+                  'osservabilita P-2): nel ramo TASK_RUN `quando` e'' started_at — la riga e'' la '
+                  'corsa, e la corsa nasce li''. Prima era COALESCE(ended_at, started_at), e '
+                  'ended_at lo puo'' scrivere la corsa SUCCESSIVA (fn_start_lotto_task_run chiude '
+                  'ANNULLATO il tentativo rimasto aperto): un task partito il 21 compariva col 22, '
+                  'e una riga di diario cambiava posto dopo essere nata. ended_at resta in tabella: '
+                  'se servira'' al lettore sara'' una colonna in piu'' (fino_a), non l''orario della '
+                  'riga. ⛔ vendite.attivita_fatturabili_log resta FUORI, e non e'' una dimenticanza: '
+                  'ne'' lui ne'' il suo padre hanno un filtro di perimetro, quindi quel ramo '
+                  'mostrerebbe righe di altri emittenti. Entra quando il padre avra'' la sua policy '
+                  '— non prima, e non per simmetria. ⚠️ La vista NON filtra le segnalazioni '
+                  'ritirate — un diario dice cosa e'' SUCCESSO, non cosa e'' ancora aperto — ma dal '
+                  '2026-08-24 le ESPONE, sulla colonna `disabilitato`. ⭐ Non filtrare e non dire '
+                  'sono due cose diverse: senza quel campo il consumatore non puo'' ne'' marcare '
+                  'ne'' nascondere cio'' che e'' stato ritirato. ⛔ A filtrare e'' il consumatore, che '
+                  'dira'' anche quante righe ha nascosto. ⚠️ La colonna e'' NULL su event_log '
+                  '(append-only: non c''e'' niente da ritirare) e sui task_runs, dove il ritiro '
+                  'esiste ma su un ALTRO asse (`attivo` spegne il record, non il segnale). ⚠️ '
+                  'gravita e'' l''unico posto dove i vocabolari C/W/I e i task_stato si mappano su '
+                  'INFO/WARN/ERROR: se esce NULL, un vincolo si e'' allargato e la mappa e'' rimasta '
+                  'indietro. Brief: brief-db-event-log-scope-e-riga-parlante.md §3.6; '
+                  'brief-db-osservabilita-lotto-fermo-r6-indici §3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Torna alla revisione 2026-08-24 (20260824-14): si riapplica quello
+              -- YAML. Qui si ripristina il solo valore di `quando` nel ramo
+              -- TASK_RUN, ri-specificando security_invoker.
+              CREATE OR REPLACE VIEW script.vw_giornale_entita
+              WITH (security_invoker = true) AS
+              SELECT format('EVENT_LOG:%s', e.id) AS riga_key, 'EVENT_LOG'::text AS registro,
+                     e.id AS riga_id, e.event_time AS quando, e.entity_type, e.entity_id,
+                     e.severity AS gravita, e.event_code AS cosa, e.tx_id, e.correlation_id,
+                     e.auth_user_id, e.user_insert, NULL::boolean AS disabilitato
+                FROM vendite.event_log e
+              UNION ALL
+              SELECT format('LOTTO_LOG:%s', ll.id), 'LOTTO_LOG'::text, ll.id, ll.data_ora,
+                     'LOTTO'::text, ll.lotto_id,
+                     CASE ll.status WHEN 'C' THEN 'ERROR' WHEN 'W' THEN 'WARN' WHEN 'I' THEN 'INFO' ELSE NULL END,
+                     ll.messaggio, ll.tx_id, NULL::uuid, NULL::bigint, ll.user_insert, ll.disabilitato
+                FROM vendite.fatturazione_lotti_log ll
+                JOIN vendite.fatturazione_lotti l ON l.id = ll.lotto_id
+              UNION ALL
+              SELECT format('TASK_RUN:%s', tr.id), 'TASK_RUN'::text, tr.id,
+                     COALESCE(tr.ended_at, tr.started_at), 'LOTTO'::text, tr.lotto_id,
+                     CASE tr.task_stato WHEN 'ERRORE' THEN 'ERROR' WHEN 'ANNULLATO' THEN 'WARN'
+                          WHEN 'COMPLETATO' THEN 'INFO' WHEN 'IN_ESECUZIONE' THEN 'INFO' ELSE NULL END,
+                     concat_ws(' · ', tr.task_code, tr.task_stato, NULLIF(btrim(tr.error_code::text), '')),
+                     tr.tx_id, tr.correlation_id, NULL::bigint, tr.user_insert, NULL::boolean
+                FROM vendite.fatturazione_lotti_task_runs tr
+                JOIN vendite.fatturazione_lotti l ON l.id = tr.lotto_id
+              UNION ALL
+              SELECT format('FATTURA_LOG:%s', fl.id), 'FATTURA_LOG'::text, fl.id, fl.data_ora,
+                     'FATTURA'::text, fl.fattura_id,
+                     CASE fl.status WHEN 'C' THEN 'ERROR' WHEN 'W' THEN 'WARN' WHEN 'I' THEN 'INFO' ELSE NULL END,
+                     fl.messaggio, fl.tx_id, NULL::uuid, NULL::bigint, fl.user_insert, fl.disabilitato
+                FROM vendite.fatture_log fl
+                JOIN vendite.fatture f ON f.id = fl.fattura_id;
