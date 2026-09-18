@@ -69,6 +69,16 @@
 #   ⛔ Niente `UPDATE` SQL su queste due tabelle: creerebbero una seconda sorgente
 #   di verita', e le due divergerebbero fra dev e CI (il mirror e' `runOnChange` e
 #   ri-legge a ogni migrate, l'SQL di solito no).
+#
+# ── ⭐ REV 2026-09-18 — DUE COLONNE IN PIU', UNA PER CATALOGO (D20-a, D20-d) ──
+#   brief-db-validata-e-registrazione-tardiva §4 P-1 e P-2. Il mirror e'
+#   `runOnChange` + `ANY` APPOSTA (AGENTS.md §80_data «colonna nuova»): la
+#   colonna va in coda al CSV principale e qui come `- column:`, anche se il
+#   changeSet e' mergiato. Le due colonne nascono in 00_schema (20260918-34 e
+#   -35) e la preCondition qui sotto le pretende.
+#     · righe:   `lavorata`        — false su IMPORTATA e DA_ABBINARE, true sugli
+#                                     altri: «qualcuno ha guardato questa riga?»
+#     · testata: `is_registrabile` — true SOLO su VALIDATA: «da qui si registra?»
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -87,7 +97,9 @@ databaseChangeLog:
         né richiede_abbinamento, e un loadUpdateData con columns esplicito carica solo
         quelle dichiarate. Porta i dati di S1-2 (STORNATA ritirata con obsoleto_dal,
         non con attivo=false), S1-21 (SCARTATA non è più finale: da lì si torna a
-        SOSPESA) e la bandiera richiede_abbinamento di D14-a.
+        SOSPESA) e la bandiera richiede_abbinamento di D14-a. Rev 2026-09-18: porta
+        anche `lavorata` (righe, D20-a) e `is_registrabile` (testata, D20-d), nate in
+        00_schema 20260918-34/-35 — brief-db-validata-e-registrazione-tardiva.
       preConditions:
         - onFail: HALT
         - and:
@@ -103,6 +115,14 @@ databaseChangeLog:
                 schemaName: pagamenti
                 tableName: vendite_contabili_righe_stati
                 columnName: richiede_abbinamento
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+                columnName: lavorata
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+                columnName: is_registrabile
       changes:
         # ── 1) Il catalogo della DISTINTA ────────────────────────────────
         #   Nessuno stato ritirato: obsoleto_dal e' vuota su tutte e cinque le
@@ -129,6 +149,8 @@ databaseChangeLog:
                   name: meta
                   type: JSON
               - column: { name: obsoleto_dal,   type: DATE }
+              # ⭐ 2026-09-18 (D20-d): true solo su VALIDATA.
+              - column: { name: is_registrabile, type: BOOLEAN }
               - column: { name: data_insert,    type: STRING }
               - column: { name: user_insert,    type: STRING }
               - column: { name: data_update,    type: STRING }
@@ -160,6 +182,8 @@ databaseChangeLog:
                   type: JSON
               - column: { name: obsoleto_dal,         type: DATE }
               - column: { name: richiede_abbinamento, type: BOOLEAN }
+              # ⭐ 2026-09-18 (D20-a): false su IMPORTATA e DA_ABBINARE.
+              - column: { name: lavorata,             type: BOOLEAN }
               - column: { name: data_insert,          type: STRING }
               - column: { name: user_insert,          type: STRING }
               - column: { name: data_update,          type: STRING }

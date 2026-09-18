@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — «LAVORATA»: la quarta bandiera del catalogo degli stati di riga
+#   pagamenti.vendite_contabili_righe_stati.lavorata boolean NOT NULL DEFAULT false
+#   Brief: brief-db-validata-e-registrazione-tardiva §2.1 (D20-a), §4 P-1
+#
+# ── COSA RISPONDE ──────────────────────────────────────────────────
+#   «Qualcuno ha GUARDATO questa riga?». VALIDATA e' «ho finito di inserire»
+#   (D14-a-bis): entrando in VALIDATA una distinta non puo' avere righe attive
+#   in uno stato NON lavorato, perche' dopo la registrazione quella riga non
+#   avrebbe piu' nessuno che la guardi (analisi §1 del brief: sotto una CHIUSA
+#   il resto non ha strada).
+#
+#   false  IMPORTATA, DA_ABBINARE   — lavoro non ancora fatto
+#   true   ABBINATA, SOSPESA, SCARTATA, POSTATA, STORNATA (ritirata)
+#
+#   ⭐ La differenza fra DA_ABBINARE e SOSPESA e' «chi ha guardato» (brief
+#   madre D14 f): la sospesa E' stata guardata — ha un motivo, sta nella coda
+#   «Sospese» e con D20-b ha un futuro (la registrazione tardiva).
+#
+# ── ⭐ PERCHE' UNA BANDIERA E NON UN ELENCO NEL GUARD ───────────────
+#   E' la stessa scelta di `is_postabile`, `is_final` e `richiede_abbinamento`:
+#   la domanda si fa al CATALOGO, e uno stato nuovo nasce con la sua risposta
+#   scritta accanto — non dentro una `IN ('IMPORTATA','DA_ABBINARE')` che nessuno
+#   rilegge. Chi la legge: script.fn_check_contabile_validabile (P-3), che il
+#   guard di validazione chiama e che il dettaglio della distinta espone.
+#
+# ── ⚠️ IL DEFAULT E' false, ED E' FAIL-CLOSED ──────────────────────
+#   Uno stato nuovo che nessuno ha classificato NON lavorato: la validazione lo
+#   rifiuta e lo dice, invece di lasciar passare una riga che poi resta senza
+#   strada. Il valore vero per ogni stato sta nel CSV (una colonna in coda,
+#   letta dal mirror 20260821-30 che e' runOnChange).
+#
+# ── ORDINE ─────────────────────────────────────────────────────────
+#   Questo changeSet (00_schema) gira PRIMA del mirror del CSV (80_data), che
+#   ha la columnExists in preCondition: la colonna deve esistere quando il
+#   loadUpdateData la carica. Nessuna dipendenza a monte.
+#
+# Verifica: db/pgtap/pagamenti/test-stati-contabili-vocabolario.sql (test 7),
+#           db/pgtap/pagamenti/test-contabile-validabile-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260918-34-alter-vendite-contabili-righe-stati-add-lavorata-mctit.yaml
+
+  - changeSet:
+      id: 20260918-34-alter-vendite-contabili-righe-stati-add-lavorata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D20-a (brief-db-validata-e-registrazione-tardiva): la bandiera `lavorata` sul
+        catalogo degli stati di riga contabile — «qualcuno ha guardato questa riga?».
+        IMPORTATA e DA_ABBINARE sono false, gli altri true (valori nel CSV, mirror
+        20260821-30). La legge script.fn_check_contabile_validabile: entrando in
+        VALIDATA nessuna riga attiva puo' essere in uno stato non lavorato. Default
+        false, fail-closed su uno stato nuovo non classificato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+                columnName: richiede_abbinamento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                ADD COLUMN IF NOT EXISTS lavorata boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_righe_stati.lavorata IS
+                'D20-a (2026-09-18): «qualcuno ha guardato questa riga?». false su IMPORTATA e DA_ABBINARE (lavoro non ancora fatto), true su ABBINATA, SOSPESA, SCARTATA, POSTATA. Entrando in VALIDATA — «ho finito di inserire» — una distinta non puo'' avere righe attive in uno stato non lavorato: dopo la registrazione nessuno le guarderebbe piu''. La legge script.fn_check_contabile_validabile, chiamata dal guard di validazione ed esposta dal dettaglio. Quarta bandiera accanto a is_postabile, is_final, richiede_abbinamento: la domanda si fa al catalogo, non a un elenco nel guard. Default false = fail-closed su uno stato nuovo. Valori nel CSV vendite_contabili_righe_stati.csv (mirror 20260821-30). Brief: brief-db-validata-e-registrazione-tardiva §2.1, §4 P-1.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Togliere la colonna rompe script.fn_check_contabile_validabile
+              --    (20260918-36), che la legge: si torna indietro dopo di lei.
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                DROP COLUMN IF EXISTS lavorata;

@@ -27,7 +27,7 @@ con stati diversi e cataloghi diversi.
 ```text
 DA_ABBINARE ──────► ABBINATA ──────► POSTATA   (terminale)
      │  ▲              │  ▲
-     │  └──────────────┘  │
+     │  └ ─ ─ ─ ─ ─ ─ ─┘  │        (ABBINATA → DA_ABBINARE: SPENTA dal 18-09, D20-e)
      ▼                    │
   SOSPESA ────────────────┘
      │  ▲
@@ -39,7 +39,7 @@ DA_ABBINARE ──────► ABBINATA ──────► POSTATA   (term
 | --- | --- | --- |
 | `IMPORTATA` | arrivata dal flusso, nessuno l'ha guardata | *(non ancora seminato)* |
 | `DA_ABBINARE` | va attribuita, non so ancora a chi | `ABBINATA` · `SOSPESA` · `SCARTATA` |
-| `ABBINATA` | so dove va, è pronta | `POSTATA` · `DA_ABBINARE` · `SOSPESA` |
+| `ABBINATA` | so dove va, è pronta | `POSTATA` · `SOSPESA` — ~~`DA_ABBINARE`~~ *spenta* |
 | `SOSPESA` | l'ho guardata e c'è un problema | `ABBINATA` · `DA_ABBINARE` · `SCARTATA` |
 | `SCARTATA` | non è nostra | `SOSPESA` |
 | `POSTATA` | registrata, il movimento esiste | **∅ (unico terminale)** |
@@ -48,6 +48,16 @@ DA_ABBINARE ──────► ABBINATA ──────► POSTATA   (term
 `DA_ABBINARE`. E la differenza fra `DA_ABBINARE` e `SOSPESA` è **chi ha
 guardato** — lavoro non ancora fatto contro lavoro fatto che ha trovato un
 ostacolo: due code per due persone diverse.
+
+⭐ **`ABBINATA → DA_ABBINARE` è spenta dal 18-09-2026** (D20-e, strada b —
+decisione di Tid): su una riga abbinata si **ri-abbina** («Abbina» apre il
+dialogo già sulla destinazione che ha), non si «sgancia». `ABBINATA → SOSPESA`
+**resta**: una abbinata su cui viene un dubbio prima di registrare si parcheggia
+con un motivo, e da lì torna `ABBINATA` (diretta) o va `SCARTATA`. ⚠️ La coppia
+è **seminata con `attivo = false`, non tolta**: l'upsert del seed
+(`20260821-31`) non cancella, e togliere la riga dal `VALUES` l'avrebbe lasciata
+accesa sul database. Il guard la rifiuta (`E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA`)
+e il backend non la propone fra i «Porta a».
 
 ⭐ **`SCARTATA` non è finale**, e da lì si torna a `SOSPESA` per riprendere in
 mano una riga scartata per errore. Il catalogo la marcava finale fino al

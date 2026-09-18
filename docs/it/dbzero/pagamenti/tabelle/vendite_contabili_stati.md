@@ -21,6 +21,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | obsoleto_dal | date | YES |  |
+| is_registrabile | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

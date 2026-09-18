@@ -1,8 +1,8 @@
-codice,codice_interno,descrizione,is_postabile,is_final,ordine,attivo,meta,data_insert,user_insert,data_update,user_update,obsoleto_dal,richiede_abbinamento
-IMPORTATA,IMPORTATA,Riga importata da flusso,false,false,10,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,,false
-DA_ABBINARE,DA_ABBINARE,Riga da abbinare manualmente,false,false,20,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,,false
-ABBINATA,ABBINATA,Riga abbinata a fattura pronta al posting,true,false,30,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,,true
-SOSPESA,SOSPESA,Riga sospesa in attesa di risoluzione,false,false,40,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb,,false
-SCARTATA,SCARTATA,Riga scartata definitivamente,false,false,50,true,{},2025-11-15 9:38:37.879879+8,titodb,2026-01-13 9:38:37.879879+8,titodb,,false
-POSTATA,POSTATA,Riga contabilizzata con generazione movimento,false,true,60,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb,,true
-STORNATA,STORNATA,Riga con movimento stornato,false,true,70,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb,2026-08-21,false
+codice,codice_interno,descrizione,is_postabile,is_final,ordine,attivo,meta,data_insert,user_insert,data_update,user_update,obsoleto_dal,richiede_abbinamento,lavorata
+IMPORTATA,IMPORTATA,Riga importata da flusso,false,false,10,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,,false,false
+DA_ABBINARE,DA_ABBINARE,Riga da abbinare manualmente,false,false,20,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,,false,false
+ABBINATA,ABBINATA,Riga abbinata a fattura pronta al posting,true,false,30,true,{},2025-11-15 10:00:00+01,titodb,2026-01-11 11:01:50.062245+01,titodb,,true,true
+SOSPESA,SOSPESA,Riga sospesa in attesa di risoluzione,false,false,40,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb,,false,true
+SCARTATA,SCARTATA,Riga scartata definitivamente,false,false,50,true,{},2025-11-15 9:38:37.879879+8,titodb,2026-01-13 9:38:37.879879+8,titodb,,false,true
+POSTATA,POSTATA,Riga contabilizzata con generazione movimento,false,true,60,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb,,true,true
+STORNATA,STORNATA,Riga con movimento stornato,false,true,70,true,{},2025-11-15 10:00:00+01,titodb,2026-01-13 9:38:37.879879+8,titodb,2026-08-21,false,true

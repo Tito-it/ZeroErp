@@ -632,7 +632,7 @@ l'handler), header di `install-timers.sh`, `_contratto` in `sveglie.json`.
   divario DB/CSV segnalato alla chiusura è durato quattro ore.
 * Il brief è in `work-done`.
 * **Derivata** (domanda di Tid, stessa sera): il riavvio dei processi da
-  interfaccia — [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md).
+  interfaccia — [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md).
   Non è di questo brief: lo cita perché nasce dal suo ultimo anello umano.
 
 ### 🔴 10.8 · Il primo digest (14-09 07:00) ha contato un MUTO su un listener VIVO — e la §10.3 aveva verificato la colonna sbagliata

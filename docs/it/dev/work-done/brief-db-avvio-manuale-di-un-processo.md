@@ -22,7 +22,7 @@
 > — passi, test e decisioni per esteso; qui solo ciò che tocca il DB.
 > Chi scrive: backend (`dev/backend-tid`), 2026-09-14. Decisione di Tid del
 > 14-09, dopo aver rilanciato a mano le due cadenze del digest.
-> Origine: [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md)
+> Origine: [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
 > §4.1-bis (addendum 14-09) — il verbo **«Esegui ora»** si stacca da «Riavvia»
 > e parte per primo, **senza host**: un timer è un orario attorno a un
 > comando, e il comando si lancia da solo.

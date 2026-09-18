@@ -558,7 +558,7 @@ bash backend/scripts/tests/test-install-timers.sh
 ### 17.6) La riga di comando sta nel JSON — `comando` e `__COMANDO__` (dal 2026-09-14)
 
 ⭐ **Perché.** «Esegui ora» dal drawer dei processi
-([analisi-riavvio-processi-da-interfaccia.md §4.1-bis](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md),
+([analisi-riavvio-processi-da-interfaccia.md §4.1-bis](../work-done/analisi-riavvio-processi-da-interfaccia.md),
 brief [brief-db-avvio-manuale-di-un-processo.md](../work-done/brief-db-avvio-manuale-di-un-processo.md))
 lancia **lo stesso comando del timer, meno l'orario** — e il backend non può
 leggerlo da un file `.service`. Fino al 14-09 la riga viveva **solo** lì

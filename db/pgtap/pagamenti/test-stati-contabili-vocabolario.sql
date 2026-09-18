@@ -12,6 +12,8 @@
 -- 3) 🔴 S1-21: SCARTATA NON è più uno stato finale
 -- 4) richiede_abbinamento è vero SOLO su ABBINATA e POSTATA
 -- 5) ⚠️ richiede_abbinamento non è derivabile da is_final
+-- 7) ⭐ lavorata: non lavorati SOLO IMPORTATA e DA_ABBINARE (D20-a)
+-- 8) ⭐ is_registrabile: SOLO VALIDATA (D20-d)
 -- 6) C-8: codice_interno è obbligatorio su entrambi i cataloghi
 --
 -- Scopo:
@@ -33,7 +35,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+SELECT plan(8);
 
 -- ============================================================
 -- 1) STORNATA: ritirata, ma NON spenta
@@ -105,6 +107,32 @@ SELECT is(
       AND is_nullable = 'NO'),
   2,
   'codice_interno e'' obbligatorio su tutti e due i cataloghi di stato'
+);
+
+-- ============================================================
+-- 7) ⭐ D20-a — `lavorata`: non lavorati SOLO IMPORTATA e DA_ABBINARE
+--   E' la bandiera che la check di validazione legge: uno stato in piu' a
+--   false, o uno in meno, cambia che cosa entra in VALIDATA.
+-- ============================================================
+SELECT is(
+  (SELECT array_agg(codice_interno ORDER BY codice_interno)
+     FROM pagamenti.vendite_contabili_righe_stati
+    WHERE lavorata IS NOT TRUE),
+  ARRAY['DA_ABBINARE', 'IMPORTATA']::text[],
+  'D20-a: sono «non lavorati» solo DA_ABBINARE e IMPORTATA — la sospesa e'' stata guardata'
+);
+
+-- ============================================================
+-- 8) ⭐ D20-d — `is_registrabile`: SOLO VALIDATA
+--   La madre del posting la legge al posto del letterale; il dettaglio la
+--   espone per spegnere «Registra» col motivo.
+-- ============================================================
+SELECT is(
+  (SELECT array_agg(codice_interno ORDER BY codice_interno)
+     FROM pagamenti.vendite_contabili_stati
+    WHERE is_registrabile),
+  ARRAY['VALIDATA']::text[],
+  'D20-d: si registra solo da VALIDATA, e lo dice il catalogo'
 );
 
 SELECT * FROM finish();

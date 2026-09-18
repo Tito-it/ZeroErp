@@ -154,7 +154,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    19,
+    20,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -170,7 +170,11 @@ SELECT is(
     --   e magazzino.fn_posta_inventario (20260918-23, fn_check_riga_magazzino).
     --   La terza menzione del giorno — fn_check_disponibilita_uscita — e' un
     --   commento, e da questa rev non conta (vedi sopra).
-    'le diciannove funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-09-18 (sera): da 19 a 20. Un sito NUOVO nato sull'helper —
+    --   pagamenti.trgfn_vendite_contabili_guard_validazione (20260918-37,
+    --   D20-a, brief-db-validata-e-registrazione-tardiva), che entrando in
+    --   VALIDATA solleva il primo motivo di script.fn_check_contabile_validabile.
+    'le venti funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

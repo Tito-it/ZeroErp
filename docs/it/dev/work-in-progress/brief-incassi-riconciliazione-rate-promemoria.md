@@ -2054,7 +2054,7 @@ lo digita), il form singolo resta documento-first (D16), nessuna seconda sede
 dei saldi, nessun guard nuovo — la riga nata da rata passa dagli stessi
 trigger dell'`INSERT` di D16.
 
-### ⭐ D20 — Il terzo giro in-app: che cosa vuol dire VALIDATA, e il futuro del «resto» (Tid, 2026-09-18)
+### ⭐ D20 — Il terzo giro in-app: che cosa vuol dire VALIDATA, e il futuro del «resto» (Tid, 2026-09-18) — 🟡 DB sviluppato il 18-09 notte, in attesa di apply (brief §4-bis)
 
 > Brief: [brief-db-validata-e-registrazione-tardiva.md](brief-db-validata-e-registrazione-tardiva.md)
 > — 🔵 in attesa del team DB. Nasce da quattro rilievi sulla distinta
