@@ -1,13 +1,59 @@
 # Analisi — Riavviare (o far partire) un processo dall'interfaccia
 
 > **Tipo**: analisi preliminare (nessuna riga di codice scritta) · **Data**: 2026-09-11 ·
-> **Owner**: Tid · **Stato**: 🟠 **DA APPROFONDIRE** — le decisioni sono in §7, e la
-> prima (l'host) viene prima di tutte le altre.
+> **Owner**: Tid · **Stato**: ✅ **CHIUSA e archiviata in `work-done/` il 2026-09-18**
+> (Tid: «credo che questo sia chiuso, ho fatto anche i test»). Il riquadro sotto
+> dice che cosa è consegnato e che cosa resta; il resto del documento è com'era.
+>
+> **✅ CHIUSO — 2026-09-18.** **La domanda ha avuto risposta e il primo incremento è in esercizio.** Dei due
+> verbi del §4.1, **«Esegui ora» è consegnato su tutti i lati e collaudato**;
+> **«Riavvia» non è stato avviato**, per la scelta dichiarata in §9-bis.6 — è il
+> secondo incremento, e sta dietro D1. Letto il 18-09 sul repo e sul dbdev, non
+> dalle parole dei documenti:
+>
+> | Lato | Stato | Dove si legge |
+> | --- | --- | --- |
+> | **DB** | ✅ `dbops.processi` `avvio_manuale` (MANUTENZIONE / CODA, attivo), `dbops.coda_lavori_tipi` `ESEGUI_PROCESSO` **`attivo = t`** (handler `esegui_processo_default`, OPERATORE, 1 tentativo), `config.azioni_processo` id 35 `processo_avvia` (area `strumenti`, pericolosa). Nessun changeSet: tre celle di CSV, mirror `20260905-01` ri-eseguito il 15-09 (`databasechangelog`) | [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md) §8, §9, §11 — chiuso il 15-09 |
+> | **Deploy** | ✅ `comando` in `sveglie.json`, `__COMANDO__` negli otto template, render in `install-timers.sh`, `test-install-timers.sh` 6-7 | §9-bis.2 (14-09) |
+> | **BE** | ✅ `avvio_manuale.py` (predicato `motivi_esegui_ora`, sede unica per capability, endpoint e handler), `esegui_processo_handler.py`, `POST amm-software/processi/<codice>/esegui-ora/`, terna `can_esegui_ora*` sulle sveglie del dettaglio. Test: `test_esegui_processo_handler` (11), `test_processi_esegui_ora` (18), `test_processi_esegui_ora_api` (6), `test_avvio_manuale_tetto`, `tests/db/test_avvio_manuale_catalogo` (4, DB provvisto) | [piano-be-fe-avvio-manuale-di-un-processo.md](piano-be-fe-avvio-manuale-di-un-processo.md) §0-bis — chiuso il 15-09 |
+> | **FE** | ✅ tab «Sveglie» nel `ProcessoDrawer`, «Esegui ora» per unit con `useConfirmAction` e il motivo dell'azione spenta via `bloccoMotivo.js` | idem, §4.4 |
+> | **Collaudo** | ✅ in-app da Tid il 15-09: due «Esegui ora» sul digest settimanale → sul giornale **due run `digest_presidi:settimanale` con `origine = COMMAND` e `auth_user_id = 1`**, due lavori `ESEGUI_PROCESSO` in `FATTO`, email `SENT` e ricevute (riletto su dbdev il 18-09) | piano §4.4, §7.5 |
+> | **pgTAP** | ✅ `dbops/test-coda-tipi-canale-e-run-as.sql` (6) — lanciato da Tid; non pinna `attivo` per scelta (brief §11.2) | brief §8.4 |
+>
+> **Che cosa resta, e dove va — un residuo, con destinazione:**
+>
+> * 🔵 **«Riavvia»** (`systemctl restart` di un servizio: oggi il solo
+>   `listen_cambio_reparto`) — §3, §4.3, §4.4, §5, §7 D1…D8, §9. **Zero righe
+>   scritte, per scelta**: nel repo non esistono `host_target`, `RIAVVIA_UNIT`,
+>   `riavvia_unit_handler`, né un `sudoers` reso. Il cancello è **D1 — che cosa
+>   è un *host* per il modello** (forma A dichiarata + claim filtrato, o B
+>   registro a catalogo): finché non è deciso non si scrive né il payload né il
+>   claim (§5). Non è un lavoro in corso ed è **una decisione di Tid**: sta in
+>   `PROJECT_CONTEXT.md` §Aperto e fra le «Decisioni aperte» della mappa
+>   concentrica, con questo documento come sede dell'analisi. ⚠️ Le
+>   raccomandazioni del §7 restano quelle dell'11-09: **A subito con `host`
+>   obbligatorio**, due tipi, `OPERATORE`, `sudoers` reso, run **non** sotto il
+>   processo riavviato senza escluderlo dal segno di vita (D6), niente riavvio
+>   automatico (D7).
+>
+> **Due scostamenti fra questo documento e com'è andata**, già dichiarati in
+> §9-bis.3 e da tenere presenti rileggendo §4.1-bis: la registrazione del run
+> passa da `registered_job` (non `job_run()`), il tetto del sottoprocesso è
+> **fisso** nell'handler (300 s) e `timeout_minuti` non è entrato; il drenatore
+> **non** apre un run per lavoro (brief §8.2.1), quindi l'audit del gesto è la
+> riga di `dbops.coda_lavori`. E la v1 è **solo `SUPER_ADMIN`** (brief §8.5):
+> `processo_avvia` è a catalogo come sede per dopo, non ancora letta da una
+> `DomainAPIView`.
+>
+> ---
+>
+> *Com'era l'intestazione fino al 18-09:* **Stato**: 🟠 **DA APPROFONDIRE** — le
+> decisioni sono in §7, e la prima (l'host) viene prima di tutte le altre.
 >
 > ✅ **Addendum del 2026-09-14 (§4.1-bis, §7-bis, §9-bis)**: «Esegui ora» si
 > **stacca** da «Riavvia» e parte per primo, senza aspettare l'host. Decisione
 > di Tid del 14-09, dopo aver rilanciato a mano le due cadenze del digest.
-> Brief DB: [brief-db-avvio-manuale-di-un-processo.md](../work-done/brief-db-avvio-manuale-di-un-processo.md).
+> Brief DB: [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md).
 >
 > **Origine.** Domanda di Tid del 2026-09-11, subito dopo aver riavviato a mano il
 > listener (`sudo systemctl restart zeroerp-listen-cambio-reparto`) per spegnere la
@@ -17,17 +63,17 @@
 >
 > **Risposta breve.** Sì — ma **non** nella forma «il web chiama `systemctl`». La
 > forma che regge è la stessa del guardiano del digest
-> ([brief-db-quattro-processi-senza-presidio.md §10.2](../work-done/brief-db-quattro-processi-senza-presidio.md)):
+> ([brief-db-quattro-processi-senza-presidio.md §10.2](brief-db-quattro-processi-senza-presidio.md)):
 > **la UI dichiara una richiesta, un agente sull'host la esegue**. L'agente esiste
 > già (`draina_coda_lavori`); ciò che manca è piccolo lato codice e **grande lato
 > modello**: il sistema oggi non sa che cosa sia un *host*.
 >
-> **Documenti correlati**: [brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md)
+> **Documenti correlati**: [brief-db-quattro-processi-senza-presidio.md](brief-db-quattro-processi-senza-presidio.md)
 > (§9 «niente interfaccia verso systemd», §10.2 il guardiano e il limite su
 > `abilita`, §11.2 il limite processo/corsia) ·
-> [brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md) ·
-> [brief-db-sveglia-dei-processi.md](../work-done/brief-db-sveglia-dei-processi.md) ·
-> [piano-be-fe-processi-automatici-identita-e-perimetro.md](../work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md).
+> [brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md) ·
+> [brief-db-sveglia-dei-processi.md](brief-db-sveglia-dei-processi.md) ·
+> [piano-be-fe-processi-automatici-identita-e-perimetro.md](piano-be-fe-processi-automatici-identita-e-perimetro.md).
 
 ---
 
@@ -353,9 +399,13 @@ claim dipendono da lei.
 
 ### 9-bis — Sequenza per «Esegui ora» (addendum 14-09)
 
-1. **DB** (brief [brief-db-avvio-manuale-di-un-processo.md](../work-done/brief-db-avvio-manuale-di-un-processo.md)):
+1. **DB** — ✅ **fatto il 14-09 (sera), applicato e pgTAP verde** (brief
+   [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md) §8.4):
    processo `avvio_manuale`, tipo `ESEGUI_PROCESSO` con `attivo = false`,
-   azione `processo_avvia`. Nessun host, nessuna colonna nuova.
+   azione `processo_avvia`. Nessun host, nessuna colonna nuova. ⚠️ Con un
+   giro in più non previsto qui — i cinque codici errore del verbo, `E_PROCESSO_*`
+   (brief §9, 15-09) — perché il predicato che rifiuta sta in Python e ogni
+   rifiuto vuole il suo codice a catalogo.
 2. **Deploy** — ✅ **fatto il 14-09** (non dipende dal DB): `comando` in
    `sveglie.json`, `__COMANDO__` negli otto template al posto della riga
    cablata, render in `install-timers.sh`, `test-install-timers.sh` test 6-7
@@ -371,7 +421,7 @@ claim dipendono da lei.
    nessuno è un numero che sembra dichiarato e non lo è. Gli otto `ExecStart`
    resi sono identici a prima. Playbook §17.6.
 3. **BE** — ✅ **fatto il 15-09** (piano
-   [piano-be-fe-avvio-manuale-di-un-processo.md](../work-done/piano-be-fe-avvio-manuale-di-un-processo.md),
+   [piano-be-fe-avvio-manuale-di-un-processo.md](piano-be-fe-avvio-manuale-di-un-processo.md),
    brief §10). ⚠️ Tre cose di questa riga sono scritte diversamente da com'è
    andata: la registrazione run si chiama **`registered_job`** (non
    `job_run()`); il tetto è **fisso** nell'handler (300 s, `avvio_manuale.py`) e
@@ -402,8 +452,12 @@ claim dipendono da lei.
    lavoro accodato e ricarica del dettaglio. ⚠️ Non «refresh del tab Ultimi
    run»: il gesto è asincrono per costruzione e il run del comando compare
    alla riapertura, senza polling in v1. Niente pagine nuove.
-5. **Team DB**: `attivo = true` sul tipo, a release BE avvenuta.
+5. **Team DB** — ✅ **fatto il 15-09**: `attivo = true` sul tipo, a release BE
+   avvenuta — una cella del CSV, il mirror `20260905-01` l'ha riletta al
+   migrate (brief §11). Collaudo in-app la sera stessa (piano §4.4, §7.5).
 6. «Riavvia» resta il secondo incremento, con D1 e il §4.3-4.4 così come sono.
+   🔵 **Non avviato al 18-09**, e l'analisi si chiude senza: D1 è una decisione
+   di Tid e sta in `PROJECT_CONTEXT.md` §Aperto (riquadro «CHIUSO» in testa).
 
 ## 8. Rischi, e come si contengono
 

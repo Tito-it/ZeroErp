@@ -3,7 +3,7 @@
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-15.
 > **Origine:** [brief-db-avvio-manuale-di-un-processo.md](brief-db-avvio-manuale-di-un-processo.md)
 > §8 (risposta DB del 14-09, con le due decisioni di Tid in §8.5) e
-> [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md)
+> [analisi-riavvio-processi-da-interfaccia.md](analisi-riavvio-processi-da-interfaccia.md)
 > §4.1-bis / §7-bis / §9-bis.
 > **Stato:** ✅ **CHIUSO — collaudato in-app da Tid il 2026-09-15 (sera).**
 > Il DB ha acceso `ESEGUI_PROCESSO` (`dev/db-tid`, `a87c744ac`); due «Esegui

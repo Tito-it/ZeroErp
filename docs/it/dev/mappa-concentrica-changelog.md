@@ -126,11 +126,15 @@ propria corsa in esecuzione — e `last_ok` è sostituito da `in_corso` +
 `ultima_conclusa` nelle tre sedi. Aperto: far partire o riavviare un processo
 **dall'interfaccia** — «Esegui ora» passa dalla coda e non aspetta l'host, il
 brief DB è scritto; «Riavvia» resta dietro la decisione su che cosa sia un host.
+✅ *Aggiornamento del 18-09*: «Esegui ora» è **in esercizio dal 15-09** (DB, BE,
+FE e collaudo in-app: due run `origine = COMMAND` sul giornale), l'analisi è
+archiviata in `work-done/`; «Riavvia» non è avviato e la sua D1 (l'host) sta
+fra le «Decisioni aperte» della mappa.
 Vedi
 [brief-db-quattro-processi-senza-presidio.md](work-done/brief-db-quattro-processi-senza-presidio.md),
 [brief-db-stato-email-console-non-e-inviata.md](work-done/brief-db-stato-email-console-non-e-inviata.md),
 [brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md) §13-§14,
-[analisi-riavvio-processi-da-interfaccia.md](work-in-progress/analisi-riavvio-processi-da-interfaccia.md),
+[analisi-riavvio-processi-da-interfaccia.md](work-done/analisi-riavvio-processi-da-interfaccia.md),
 [brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md).
 
 **Anello 0 + 1 — Il software che serviva dati morti.** Nato dalla coda del

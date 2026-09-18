@@ -16,6 +16,7 @@
 -- 8)  Da uno stato finale non si esce
 -- 9)  ⭐ POSTATA è terminale: si chiude C-2 un lotto prima del previsto
 -- 10) L'INSERT NON è vincolato dalla matrice (il sync dei fondi nasce in VALIDATA)
+-- 11) ⭐ D20-e: ABBINATA -> DA_ABBINARE e' SEMINATA ma SPENTA (non tolta)
 --
 -- Scopo:
 --  - i test 1-5 verificano il SEED: un grafo monco è il difetto silenzioso di
@@ -35,7 +36,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- ============================================================
 -- 1) Il grafo della DISTINTA
@@ -60,11 +61,32 @@ SELECT is(
      JOIN pagamenti.vendite_contabili_righe_stati sd ON sd.id = t.stato_da_id
      JOIN pagamenti.vendite_contabili_righe_stati sa ON sa.id = t.stato_a_id
     WHERE t.attivo),
-  ARRAY['ABBINATA->DA_ABBINARE','ABBINATA->POSTATA','ABBINATA->SOSPESA',
+  -- ⭐ Rev 2026-09-18 (D20-e, strada b): ABBINATA->DA_ABBINARE non e' piu'
+  --   fra le ATTIVE — su una abbinata si ri-abbina, non si «sgancia».
+  --   ABBINATA->SOSPESA resta. Il comportamento e' provato in
+  --   test-contabile-validabile-v1 (test 14-15); qui si pinna il seed.
+  ARRAY['ABBINATA->POSTATA','ABBINATA->SOSPESA',
         'DA_ABBINARE->ABBINATA','DA_ABBINARE->SCARTATA','DA_ABBINARE->SOSPESA',
         'SCARTATA->SOSPESA',
         'SOSPESA->ABBINATA','SOSPESA->DA_ABBINARE','SOSPESA->SCARTATA']::text[],
-  'La matrice della riga e'' quella di D14-a, giro manuale'
+  'La matrice della riga e'' quella di D14-a, giro manuale, meno lo «sgancia» di D20-e'
+);
+
+-- ============================================================
+-- 11) ⭐ D20-e — la coppia e' seminata SPENTA, non tolta
+--   L'upsert del seed non cancella: togliere la riga dal VALUES l'avrebbe
+--   lasciata accesa com'era sul database. Il seed la porta a attivo = false,
+--   e questo test la vuole PRESENTE e SPENTA: se sparisse, qualcuno l'ha
+--   tolta dal VALUES credendo di spegnerla.
+-- ============================================================
+SELECT is(
+  (SELECT t.attivo
+     FROM pagamenti.transizioni_stati_contabile_riga t
+     JOIN pagamenti.vendite_contabili_righe_stati sd ON sd.id = t.stato_da_id
+     JOIN pagamenti.vendite_contabili_righe_stati sa ON sa.id = t.stato_a_id
+    WHERE sd.codice_interno = 'ABBINATA' AND sa.codice_interno = 'DA_ABBINARE'),
+  false,
+  'D20-e: ABBINATA -> DA_ABBINARE e'' seminata e spenta (attivo = false), non cancellata'
 );
 
 -- ============================================================

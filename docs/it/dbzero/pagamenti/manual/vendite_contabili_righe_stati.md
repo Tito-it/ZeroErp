@@ -48,13 +48,23 @@ ORDER BY ordine, id;
 
 ---
 
-### Le tre bandiere, e perché sono tre
+### Le quattro bandiere, e perché sono quattro
 
 | Bandiera | Risponde a |
 | --- | --- |
 | `is_postabile` | «questa riga è **pronta** da registrare?» |
 | `is_final` | «da questo stato si va ancora da qualche parte?» |
 | `richiede_abbinamento` *(2026-08-21)* | «questo stato pretende di sapere **a chi** appartiene la riga?» |
+| `lavorata` *(2026-09-18, D20-a)* | «qualcuno ha **guardato** questa riga?» — `false` su `IMPORTATA` e `DA_ABBINARE`, `true` sugli altri |
+
+⭐ **`lavorata` è la bandiera della validazione.** `VALIDATA` è «ho finito di
+inserire»: entrando in `VALIDATA` una distinta non può avere righe attive in uno
+stato non lavorato, perché dopo la registrazione nessuno le guarderebbe più. La
+legge [script.fn_check_contabile_validabile](/dbzero/script/funzioni/fn_check_contabile_validabile),
+chiamata dal guard di validazione ed esposta dal dettaglio. La **sospesa è stata
+guardata** — ha un motivo — e con la registrazione tardiva (D20-b) ha un futuro
+anche sotto una distinta chiusa. Default `false`: uno stato nuovo non
+classificato è fail-closed. ⚠️ Il valore sta nel CSV (mirror `20260821-30`).
 
 ⚠️ **La terza non è derivabile dalle prime due**, ed è la ragione per cui esiste:
 `ABBINATA` pretende fattura e cliente e **non è finale**, quindi una regola

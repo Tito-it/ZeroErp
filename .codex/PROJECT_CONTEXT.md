@@ -295,6 +295,22 @@ produzione, non c'è niente da aspettare.*
   `solo_numerate` di `GET /pagamenti/rate/` è presentazione, non cancello. Si
   apre con la **persistenza dell'esito SDI** (voce sotto), che è ciò che
   «inviata» significa; nessun changeSet chiesto prima
+- **«Riavvia» un servizio dall'interfaccia** (DB + deploy + BE, **decisione
+  D1 di Tid**; ereditata il 2026-09-18 dalla chiusura di
+  `work-done/analisi-riavvio-processi-da-interfaccia.md`): «Esegui ora» è in
+  esercizio dal 15-09 e non aveva bisogno di sapere su quale macchina gira —
+  un timer è un comando che parla col DB. `systemctl restart` di un servizio
+  (oggi il solo `listen_cambio_reparto`) **sì**: senza un *host* nel modello
+  il pulsante riavvia «un host a caso» alla seconda macchina, in silenzio.
+  Cancello: **D1** — forma A (`ZEROERP_HOST` dichiarato in `env.sh`, `host`
+  obbligatorio nella richiesta, claim del drenatore filtrato) o B (registro
+  `dbops.host` + `abilita` per host); l'analisi raccomanda **A subito, con
+  `host` obbligatorio dal primo giorno**. Poi D2…D8 (§7) e la sequenza §9:
+  colonna sul claim, tipo `RIAVVIA_UNIT` (`attivo = false`), azione
+  `unit_riavvia`, `sudoers` **reso** da `sveglie.json` in `install-timers.sh`,
+  handler a lista senza shell, run **non** contato come segno di vita del
+  processo riavviato (D6). Zero righe scritte al 18-09, per scelta. Sta anche
+  fra le «Decisioni aperte» della mappa concentrica
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare

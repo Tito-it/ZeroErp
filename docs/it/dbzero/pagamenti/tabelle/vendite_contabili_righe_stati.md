@@ -23,6 +23,7 @@
 | user_update | text | NO | CURRENT_USER |
 | obsoleto_dal | date | YES |  |
 | richiede_abbinamento | boolean | NO | false |
+| lavorata | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
