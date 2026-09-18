@@ -27,7 +27,10 @@
 > righe): non vuol dire che il caso non esista — il modello lo ammette, e basta
 > una sospesa alla prima registrazione vera. Si progetta sul modello.
 >
-> **Stato:** 🟡 **SVILUPPATO il 2026-09-18 (notte), in attesa dell'APPLY di Tid.**
+> **Stato:** ✅ **LATO DB CHIUSO — APPLICATO su dbdev da Tid il 2026-09-19, pgTAP
+> senza regressioni, autogen rigenerato.** Restano i passi 4-9 di §4-ter: la
+> baseline dei codici, la doc auto-gen, il commit, e poi **BE (§5) e FE (§6)**,
+> che possono partire.
 > **Da leggere per primo: §4-bis** — che cosa c'è, dove, e lo scostamento
 > dichiarato (la firma della check: il dichiarato è un *parametro*); poi §4-ter,
 > che cosa resta a Tid nell'ordine. Sette changeSet `20260918-34 → -40`, due
@@ -284,9 +287,9 @@ check); il rubinetto t.5 passa da 19 a **20** ed è aggiornato con la nota.
 
 | # | Passo | Di chi |
 | --- | --- | --- |
-| 1 | rigenerare `changelog-autogen.yaml` (i sette changeSet sono in `00_schema`/`20_code`, autogen) | Tid |
-| 2 | `make db-migrate` su dbdev: `-34 → -40` `EXECUTED`; i tre mirror runOnChange rileggono (`20260821-30` stati, `20260821-31` matrice, `20260614-08` codici). Verifica: `SELECT codice_interno, lavorata FROM pagamenti.vendite_contabili_righe_stati` e `SELECT t.attivo FROM pagamenti.transizioni_stati_contabile_riga …` sulla coppia `ABBINATA→DA_ABBINARE` → `f` | Tid |
-| 3 | `scripts/pgtap-baseline.sh pagamenti` + `script` (i due nuovi, i sei adeguati, il rubinetto) — come app, con la RLS: la prova qui è girata da owner | Tid |
+| 1 | ✅ **19-09** rigenerare `changelog-autogen.yaml` (i sette changeSet sono in `00_schema`/`20_code`, autogen) | Tid |
+| 2 | ✅ **19-09** `make db-migrate` su dbdev: `-34 → -40` applicati; i tre mirror runOnChange hanno riletto (`20260821-30` stati, `20260821-31` matrice, `20260614-08` codici) | Tid |
+| 3 | ✅ **19-09** pgTAP `pagamenti` + `script` come app: **nessuna regressione** (Tid) | Tid |
 | 4 | `scripts/codici-errore-baseline.sh` — atteso **verde** (nessun accumulo; il render in transazione l'ha detto), eventuali 🔵 RIENTRATO/RISTRETTO da allineare con `--update` e la ragione nel commit | Tid |
 | 5 | doc auto-gen (`docs/it/dbzero/**`) rigenerata | Tid |
 | 6 | commit di `dev/db-tid` (changeSet, CSV, mirror, seed, pgTAP, schede, brief) | Tid |
@@ -369,5 +372,6 @@ Riprendi → idem.
 
 | Quando | Cosa |
 | --- | --- |
+| 2026-09-19 | ✅ **Applicato da Tid**: migrate su dbdev, pgTAP senza regressioni, autogen rigenerato. Lato DB chiuso; restano baseline codici, doc auto-gen, commit (§4-ter 4-6) e BE/FE (§5, §6) |
 | 2026-09-18 (notte) | **Sviluppo DB completo**, §4-bis: sette changeSet `20260918-34 → -40`, CSV + mirror, matrice con la coppia spenta, tre codici (1102-1104), due pgTAP nuovi e sei adeguati, otto schede manuali. Provato con l'SQL estratto in ROLLBACK (11 corse verdi, 3 mutazioni rosse per il motivo giusto, mirror resi da Liquibase). **Uno scostamento**: la check prende il dichiarato come parametro (BEFORE ROW). Niente applicato: resta a Tid, §4-ter |
 | 2026-09-18 | Stesura, dal terzo collaudo in-app. Ordine dei rilievi di Tid: «Registra» in bozza → le regole di VALIDATA → *«un sospeso che non riesco ad abbinare, se lo scarto resta traccia e lo riprendo?»* → *«e se la scartata uscisse dalla contabile?»*. La risposta è cambiata due volte nella giornata: dalla B (sospese bloccano la validazione) alla tardiva per riga, e dal «togliere» al «nascondere». Dichiarato: **com'è** (Tid). D20-e decisa la sera: strada **b** — esce solo lo «sgancia» (`ABBINATA → DA_ABBINARE`), la sospensione di una abbinata resta |
