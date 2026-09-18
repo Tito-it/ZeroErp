@@ -18,7 +18,8 @@
 #   righe dipendono da QUALI emittenti esistono su questa macchina, e un CSV
 #   fotograferebbe questo database creando altrove registri per emittenti
 #   inesistenti — o lasciandone senza. Il catalogo della famiglia, uguale
-#   ovunque, il CSV ce l'ha (20260915-33).
+#   ovunque, il CSV ce l'ha (`famiglie_documento.csv`, mirror 20260830-14 — dal
+#   18-09; era il laterale 20260915-33, ritirato: una tabella, un CSV).
 #
 # ── UNA CHIAMATA ALLA PRIMITIVA, NON UN INSERT RICOPIATO ────────────────
 #   Forma di 20260831-03 (runOnChange + ANY, idempotente sulla COPPIA

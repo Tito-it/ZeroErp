@@ -4,7 +4,7 @@
 > (Tid, 2026-09-15). Rilievo in una frase: *chi digita un incasso non riconosce
 > il documento da un numero nudo, e la domanda vera non è «quale fattura?» ma
 > «quale rata?»*. Da lì quattro pezzi, decisi in chat e riportati nel brief
-> madre come **D19** ([§2-bis](brief-incassi-riconciliazione-rate-promemoria.md)):
+> madre come **D19** ([§2-bis](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)):
 >
 > - **A** · il lookup fattura mostra il **documento** (numero parlante,
 >   registro, data, totale, natura), non il contatore;
@@ -23,24 +23,51 @@
 > i numeri dalla **base unica dei saldi**, e si guarda il **residuo**.
 >
 > **Sede.** Piano DB qui (§4). Per BE e FE **solo l'elenco** (§5, §6): il piano
-> è in [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md).
+> è in [piano-be-fe-distinta-ricerca-rate.md](../work-in-progress/piano-be-fe-distinta-ricerca-rate.md).
 >
-> **Stato:** 📝 **brief scritto il 2026-09-15** (lato BE/FE, su «procedi» di
-> Tid). Nessun changeSet scritto, nessuna migrazione. ✅ **Il pezzo B è scritto
-> e committato il 2026-09-17** (BE + FE, riletto criticamente lo stesso giorno
-> — consuntivo in [piano §0-bis](piano-be-fe-distinta-ricerca-rate.md) e
-> registro): la riga porta il suo documento e la sua rata, il form li mostra
-> nei due modi, `RataSelect` l'importo, la base dei saldi il «prima di sé»
-> sulla rata. **A** aspetta P-1; **C** e **D** aspettano P-2 e P-4; **P-5** è
-> una decisione che il DB verifica sui due contro-pezzi; **P-6** (17/09) nasce
-> da B: l'esclusione «prima di sé» manca sul documento. ✅ **18/09: P-6, P-7 e
-> i sei decimali della capienza scritti** (`20260918-01 … -04`, §4-bis.10),
-> provati con l'SQL estratto su dbdev e `zeroerp_ci`; apply e pgTAP col runner
-> a Tid. 🔵 **P-8** (la scala degli importi) resta una domanda per Tid.
-> ✅ **18/09, dopo l'apply**: un rosso nella baseline **ereditato dalla distinta
-> numerata** — l'ottavo guard di disattivazione su `registri_fatturazione`
-> (`pagamenti.vendite_contabili`) che la check non copriva — chiuso con
-> `20260918-05` + pgTAP a 9 (§9); 📮 una chiave i18n al FE (§6).
+> **Stato:** ✅ **CHIUSO il 2026-09-18** — riquadro «CHIUSO» qui sotto: DB
+> applicato, committato e mergiato con CI verde (suite pgTAP compresa), BE/FE
+> mergiati, i due RIENTRATI tolti dalla baseline CI, la riga preset della 767
+> scritta. Due domande per Tid (**P-8**, **Q-4**) escono con destinazione.
+> La storia del brief (15 → 18/09) è nel registro §9; il §0 e il §4-bis
+> restano com'erano scritti, come fatti datati.
+
+---
+
+> ## ✅ CHIUSO — 2026-09-18 · DB P-1 → P-7 (+ sei decimali, + `ha_distinte`) · BE/FE A → D · archiviato in `work-done/`
+>
+> **Lato DB** (letto su `databasechangelog` di dbdev il 18-09): `20260917-02 → -14`
+> `EXECUTED` (17-09, 15:04 e 15:23) e `20260918-01 → -05` `EXECUTED` (18-09,
+> 09:50 e 10:25). Commit `1077c5566`, PR #1604 mergiata su `Tito-dev`,
+> CI-Validate `35325321803` **verde con la suite pgTAP**: 363 rossi su 652,
+> nessuna regressione, e **due RIENTRATI** — `test-fn-get-saldo-fattura-tre-numeri`
+> e `test-fn-check-registro-disattivabile-v1`, i due riscritti sui BB il 18-09 —
+> tolti oggi da `baseline-rossi-ci.tsv` con `pgtap-baseline-ci-rientrati.sh`
+> (365 → 363). Le sei righe del 17-09 erano già rientrate. Mirror `ui` su dbdev:
+> lista 68 `attivo = t`, colonne 766 e 767 `attivo = t` (migrate di Tid).
+>
+> **Lato BE/FE**: A, B, C, D, P-6, P-7, la chiave `ha_distinte` e i quattro
+> rilievi in-app del 18-09 sono mergiati (PR #1606, #1607, #1608 — CI verde su
+> #1607, #1608 in corsa al momento della chiusura). Il consuntivo per pezzo è nel
+> [piano gemello §0-bis](../work-in-progress/piano-be-fe-distinta-ricerca-rate.md).
+>
+> ✅ **Chiuso nello stesso giro**: la riga in `lista_preset_colonna` per la 767
+> che la 766 aveva e lei no — `52,767,18,t,f`, accanto alla sorella (15) e
+> prima del contatore (20), `visibile = t` come le tre colonne natura gemelle
+> (493, 531, 751); provata in `BEGIN … ROLLBACK` su dbdev. ⏳ Entra col mirror
+> `20260507-09` al prossimo migrate.
+>
+> ⚠️ **Che cosa ESCE dal brief, e dove va** — un residuo senza destinazione è
+> un residuo che nessuno rilegge:
+>
+> | Cosa | Dove va |
+> | --- | --- |
+> | 🔵 **P-8** — la scala di `vendite_contabili_righe.importo` (`numeric` senza scala: una riga con quattordici decimali entra com'è e il guard la rifiuta per capienza su un importo che *era* lo spazio). Raccomandazione scritta in §4-bis.10: **`CHECK (importo = round(importo, 2))`** che rifiuta, non un typmod che arrotonda in silenzio; `fatture_scadenze.importo` resta `numeric(18,6)` come i totali di documento. Un changeSet `00_schema`, `expectedResult: 0` sulle righe che non passerebbero | `.codex/PROJECT_CONTEXT.md` §«Aperto — Media priorità», cantiere DB (`pagamenti`) — decisione di Tid |
+> | 🔵 **Q-4** — «nel picker solo le definitive, inviate a SDI» (Tid, 18-09, «faremo poi»). È un predicato di dominio — *su quale documento si può registrare un incasso?* — e la sede è **una**, a DB, letta dalla lista **e** dal guard della riga: oggi `trgfn_vendite_contabili_righe_guard_rata` non chiede lo stato del documento, la rata di una bozza si abbina, e `solo_numerate` sul BE è presentazione, non cancello (registro §9, 18-09) | `.codex/PROJECT_CONTEXT.md` §«Aperto — Media priorità»; si apre con la persistenza dell'esito SDI, che è ciò che «inviata» significa |
+> | Il copione §7 (14 righe) **non provato per intero a video**: il picker singolo Tid l'ha esercitato il 18-09 (quattro rilievi, tutti chiusi); la NC nel picker (5) e le righe da rate in modalità multipla (6 → 13, col secondo tempo per riga) sono da confermare | [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md) §2-bis, righe scritte oggi |
+> | Lo **scadenzario** (brief madre §3.4): ha ora le due cose che gli mancavano — la rotta `GET /pagamenti/rate/` e i seed — più `vw_saldi_rate` (porta 2) e il filtro «solo aperte» sul perimetro. Resta una **pagina** da montare, non un pezzo di DB | [brief madre](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) §3.4, cantiere suo |
+> | Il piano gemello `piano-be-fe-distinta-ricerca-rate.md` resta in `work-in-progress/`: lo stato in testa dice ancora «A, C, D e l'eredità del 18/09 non committati» mentre sono mergiati. Si chiude **dal suo lato** (`dev/backend-tid`), per non incrociare due rami sullo stesso file (la lezione del 17-09 sulla distinta numerata, `424d3ce89`) | BE/FE |
+> | La voce nel changelog della mappa (fermo al 14-09): tema «incassi — la distinta cerca le rate», con i link ai due brief, insieme ai cantieri chiusi il 17-09 (distinta numerata, BB emittente, magazzino Lotto 1) | `docs/it/dev/mappa-concentrica-changelog.md`, al prossimo giro della mappa |
 
 ---
 
@@ -804,6 +831,7 @@ Per esteso, sul dev migrato (17/09 notte — è di Tid, io non ho un browser):
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-18** (chiusura) | ✅ **CHIUSO e archiviato in `work-done/`** — riquadro in testa. Verificato: `20260917-02…-14` e `20260918-01…-05` `EXECUTED` su dbdev; commit `1077c5566` in PR #1604, CI `35325321803` verde con la suite pgTAP (363/652, nessuna regressione); BE/FE mergiati (PR #1606–1608); mirror `ui` applicato (68, 766, 767 attive). Chiusi nel giro: i due RIENTRATI tolti dalla baseline CI con lo script (365 → 363) e la riga preset `52,767,18,t,f` (provata in ROLLBACK). Escono con destinazione: **P-8** e **Q-4** → `PROJECT_CONTEXT` §Aperto; le righe 5–13 del copione → doc di collaudo §2-bis; lo scadenzario → brief madre §3.4; la chiusura del piano gemello → BE/FE; la voce nel changelog della mappa → prossimo giro. Link ripuntati: piano gemello (3), brief madre (3), `api_pagamenti.md` (1) |
 | **2026-09-18** (BE/FE, rilievi in-app) | ✅ **Quattro rilievi di Tid sul picker** chiusi lato BE/FE (dettaglio nel piano §0-bis e §9): altezza definita del dialog, dieci righe per pagina, **bozze fuori** (`solo_numerate` su `rate/`, `numero IS NOT NULL`, anche sul perimetro di `solo_aperte`), doppio bordo del filtro numero. 📮 **Per il DB, una domanda che non blocca (Q-4 del piano)**: Tid vuole nel picker «solo le definitive, inviate a SDI — ma faremo poi». È un predicato di dominio («su quale documento si può registrare un incasso?») e la sede giusta è **una**, a DB — letta dalla lista e dal guard della riga — non un secondo booleano nel BE. ⚠️ Oggi `trgfn_vendite_contabili_righe_guard_rata` non chiede lo stato del documento: la rata di una bozza si abbina, e il filtro del picker è presentazione, non cancello. Da decidere quando si apre; nessun changeSet chiesto |
 | **2026-09-18** (BE/FE) | ✅ **P-6, P-7 e `ha_distinte` raccolti lato BE/FE** (dettaglio nel piano §0-bis e registro), dopo aver verificato su dbdev che i cinque changeSet fossero applicati e le firme vive. §5/§6 aggiornati. 📮 Per il DB: la riga 767 non ha la sua riga in `lista_preset_colonna` (la 766 sì, `visibile = f`) — asimmetria fra le due sorelle, non un blocco. ⏳ Migrate del mirror `ui` (767 → `t`): Tid |
 | **2026-09-18** (dopo l'apply) | 🔴→✅ **Un rosso nella baseline che non è di questo cantiere ma della distinta numerata**: `script/test-fn-check-registro-disattivabile-v1` §6 — `have: …,vendite_contabili` / `want: …` senza. È l'**ottavo guard** di disattivazione su `registri_fatturazione`: la FK `fk_vendite_contabili_registro` del `20260915-21` ha fatto montare all'automazione ATTIVO il `block_deact` a `ci_apply` (il brief chiuso lo aveva **previsto** in P-1, ma non la conseguenza: che `fn_check_registro_disattivabile` dovesse impararlo). Su dev è comparso quando le automazioni sono girate dopo l'apply, non al migrate — per questo il rosso arriva il 18 e non il 17. Come dice il test stesso, **prima la check, poi l'elenco atteso**: `20260918-05` (`20_code/script`) aggiunge il motivo `HA_DISTINTE` **ultimo** (i BEFORE ROW scattano per nome, `v` > `t`), ramo `_EXIST` verificato con `fn_col_exists` (la distinta ha `stato_id`, non `attivo`: una annullata blocca come una confermata), quarto `valore` = `pagamenti.vendite_contabili` **con lo schema** — è la prima figlia fuori da `vendite`, e la frase del trigger porta `child_schema.child_table`; `COMMENT` riscritto (diceva ancora «SEI» dal 02-09). pgTAP: elenco atteso a otto **e tre asserzioni nuove che costruiscono il caso** (7: con una distinta collegata `HA_PROGRESSIVI,HA_DISTINTE` nell'ordine dell'array; 8: spento il contatore resta solo `HA_DISTINTE`; 9: il rifiuto nomina `pagamenti.vendite_contabili`) — la distinta si inserisce con `codice` fornito (gen_codice no-op) e `registro_id` scritto a mano. Provato: SQL estratto + pgTAP nella stessa transazione annullata su dbdev come owner → **9/9**; controprova senza changeSet → 7 e 8 rossi, 9 verde (il trigger c'è già). Guardrail statici e render `updateSQL` offline verdi. Doc: `vendite/manual/registri_fatturazione` («otto», con la storia datata e il presidio), `pagamenti/manual/vendite_contabili` (l'effetto della FK nell'altro verso). 📮 **FE**: chiave i18n `amministrazione.registri_fatturazione.disattiva_blocco.ha_distinte` in `it.json`/`en.json` (§6). ⭐ **E la fixture è rifatta sul BB**, perché in `baseline-rossi-ci.tsv` quel file era `ERRORE_FIXTURE`: da zero la fixture pescava «un registro DDT per tutte le utility» fra quelli esistenti e su `zeroerp_ci` ne trovava **zero** (misurato) — quindi il presidio §6 era **muto proprio nell'unico posto dove il guard nasce da zero**. Ora `dbops.fn_pgtap_crea_emittente()` (nudo, senza operatore: si gira da owner) fa nascere l'azienda coi suoi registri e il resto della fixture non cambia; provato con changeSet + pgTAP nella stessa transazione anche su `zeroerp_ci` come `zeroerp`: **9/9**, test 6 compreso (lì l'ottavo guard è già montato). La riga della baseline CI diventa un RIENTRATO alla prossima corsa: la toglie `pgtap-baseline-ci-rientrati.sh`, non si edita a mano. ⏳ Apply e runner: Tid |

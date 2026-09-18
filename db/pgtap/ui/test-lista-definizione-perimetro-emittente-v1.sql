@@ -3,18 +3,20 @@
 -- pgTAP test per Zero ERP
 -- Test: il TERZO CASO del perimetro emittente di una lista
 --       ui.lista_definizione.perimetro_emittente   (20260902-01)
---       seed della lista famiglie                  (20260902-02)
+--       seed: colonna `perimetro_emittente` del CSV   (20260507-06, dal 18-09;
+--             il CSV laterale 20260902-02 e' RITIRATO: una tabella, un CSV)
 --       ui.fn_resolve_lista_config                 (20260902-03)
 --       Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.16
 -- ------------------------------------------------------------
--- Elenco test (plan 7):
+-- Elenco test (plan 8):
 -- 1) ⭐ Il risolutore porta la chiave `perimetro_emittente`
 -- 2) ⭐ La lista delle famiglie dichiara di NON avere perimetro
 -- 3) ⭐ ...e resta `multi_emittente = false`, che e' la verita'
 -- 4) ⛔ Dall'APPLICAZIONE quel flag non si scrive affatto: parla il guard
 -- 5) ⛔ ...e dietro il guard c'e' il CHECK, per chi il guard lo attraversa
--- 6) ⭐ Le altre liste non cambiano: il default e' «con perimetro»
+-- 6) ⭐ Le liste globali sono ESATTAMENTE quelle dichiarate qui (elenco, non conteggio)
 -- 7) ⛔⛔ La vista di certificazione resta a ZERO righe
+-- 8) ⭐ Chi dichiara di non avere emittenti non ne mostra uno per riga (derivato)
 --
 -- Scopo:
 --   ⭐ IL TEST CHE CONTA E' IL 7, ed e' il motivo per cui questa colonna
@@ -38,7 +40,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+SELECT plan(8);
 
 -- ============================================================
 -- 1/2/3) La chiave, e cosa dice sulla lista famiglie
@@ -93,19 +95,34 @@ SELECT is(
     '5) ...e dietro il guard c''e'' il CHECK, che vale anche per il migrate');
 
 -- ============================================================
--- 6) ⭐ Le altre non cambiano
+-- 6) ⭐ Le liste globali sono esattamente quelle dichiarate qui
 -- ============================================================
--- ⚠️ Derivato, non un elenco: si contano le liste attive che NON hanno
---   dichiarato la globalita'. Il default e' «con perimetro», quindi una lista
---   nuova nasce come nascevano tutte prima del 2026-09-02.
+-- ⚠️ Fino al 2026-09-18 questo test diceva «nessun'altra oltre le famiglie»,
+--   ed era un conteggio a zero: verde finche' il CSV aveva una riga, rosso
+--   sulla prima riga giusta. Dal 18-09 il CSV ne ha SETTE
+--   (brief-db-perimetro-emittente-cataloghi-globali, §3 e D-1) e il test
+--   prende la forma del gemello `test-lista-definizione-multi-emittente-v1`
+--   test 5: si asserisce l'ELENCO, non il conteggio. Un numero dice «sono
+--   sette» e lascia credere che siano le sette giuste; l'elenco dice QUALI, e
+--   chi dichiara globale una lista deve venire qui a scriverlo. Il default
+--   resta «con perimetro»: una lista nuova che non compare qui nasce come
+--   nascevano tutte prima del 2026-09-02, e se qualcuno la dichiarasse
+--   globale senza passare di qui il test lo dice per nome.
 SELECT is(
-    (SELECT count(*)::int
+    (SELECT COALESCE(array_agg(codice::text ORDER BY codice), '{}'::text[])
        FROM ui.lista_definizione
-      WHERE attivo
-        AND NOT perimetro_emittente
-        AND codice <> 'vendite.famiglie_documento'),
-    0,
-    '6) Nessun''altra lista ha dichiarato di essere globale: il default non si eredita');
+      WHERE NOT perimetro_emittente),
+    ARRAY['amm.processi',
+          -- ⭐ D-1 (Tid, 2026-09-18): la riga non APPARTIENE a un emittente,
+          --   la riga E' l'emittente. Scegliere un emittente per vedere
+          --   l'elenco degli emittenti era una domanda senza risposta.
+          'anagrafiche.emittenti_fiscali',
+          'storico.audit_log',
+          'ui.lista_colonna',
+          'ui.lista_colonna_permesso',
+          'ui.lista_definizione',
+          'vendite.famiglie_documento']::text[],
+    '6) Le liste globali sono esattamente quelle dichiarate qui: il default non si eredita');
 
 -- ============================================================
 -- 7) ⛔⛔ Il prezzo che NON si e' pagato
@@ -114,6 +131,33 @@ SELECT is(
     (SELECT count(*)::int FROM dbops.vw_liste_multi_emittente_non_certificate),
     0,
     '7) La vista di certificazione resta a zero righe: nessun adesivo senza collaudo');
+
+-- ============================================================
+-- 8) ⭐ Chi dichiara di non avere emittenti non ne mostra uno per riga
+-- ============================================================
+-- ⭐ E' il test 7 letto dal lato opposto, e a differenza del 6 e' DERIVATO:
+--   non nomina nessuna lista. `perimetro_emittente = false` dice «nessuna
+--   riga appartiene a un emittente»; una colonna attiva a catalogo che espone
+--   l'emittente della riga (`campo_sorgente ~ '^emittent'`, lo stesso
+--   criterio con cui `vw_liste_multi_emittente_non_certificate` riconosce una
+--   certificazione) dice il contrario. Le due dichiarazioni non possono stare
+--   sulla stessa lista: o la lista e' globale, o sa dire da quale emittente
+--   arriva ogni riga — e allora la strada e' `multi_emittente`, non `false`.
+--   ⚠️ E' la trappola che il brief del 18-09 ha scansato due volte
+--   (`config.email_log`, `ui.lista_preset`: hanno l'emittente, quindi NON
+--   sono in questo CSV). Se un giorno qualcuno la imboccasse «per far
+--   entrare», questo test lo dice.
+SELECT is(
+    (SELECT COALESCE(array_agg(ld.codice::text ORDER BY ld.codice), '{}'::text[])
+       FROM ui.lista_definizione ld
+      WHERE NOT ld.perimetro_emittente
+        AND EXISTS (SELECT 1
+                      FROM ui.lista_colonna lc
+                     WHERE lc.lista_id = ld.id
+                       AND lc.attivo
+                       AND lc.campo_sorgente ~ '^emittent')),
+    '{}'::text[],
+    '8) Nessuna lista globale espone un emittente per riga: le due dichiarazioni si escludono');
 
 SELECT * FROM finish();
 ROLLBACK;

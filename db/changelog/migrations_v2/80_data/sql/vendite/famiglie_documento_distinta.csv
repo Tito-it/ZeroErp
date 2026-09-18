@@ -1,2 +1,0 @@
-codice_interno,descrizione,schema_tabella,nome_tabella,colonna_numero,colonna_billing_account,colonna_serie,attivo,presidia_data_documento,prefisso_default,lunghezza_default,anno_nel_numero_default,ammette_regole_fiscali,meta,data_insert,user_insert,data_update,user_update
-DISTINTA,Distinta contabile di incasso,pagamenti,vendite_contabili,codice,NULL,NULL,true,false,DIS-,7,true,false,{},2026-09-15 00:00:00+02,SEED,2026-09-15 00:00:00+02,SEED

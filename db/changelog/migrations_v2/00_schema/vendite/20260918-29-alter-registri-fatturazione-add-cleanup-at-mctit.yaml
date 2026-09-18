@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I QUATTRO REGISTRI DI FATTURAZIONE E PUSH IMPARANO A SCADERE — Passo D
+#   Analisi: analisi-osservabilita-log.md §4 Passo D, §3 B8
+#
+# ── COSA ────────────────────────────────────────────────────────────
+#   `cleanup_at timestamptz` su:
+#     vendite.fatturazione_lotti_log        (LOTTO_LOG   nel giornale)
+#     vendite.fatture_log                   (FATTURA_LOG nel giornale)
+#     vendite.fatturazione_lotti_task_runs  (TASK_RUN    nel giornale)
+#     vendite.commesse_push_log             (il registro di giro del push)
+#
+# ── ⭐ PERCHE' QUATTRO E NON TRE ─────────────────────────────────────
+#   L'analisi ne contava tre. `script.vw_giornale_entita` legge QUATTRO
+#   registri, e `fatturazione_lotti_task_runs` e' il quarto: la storia di un
+#   lotto e' event_log + lotti_log + task_runs + fatture_log. Se un registro
+#   scade prima degli altri, la timeline di un caso perde un pezzo in
+#   silenzio — la stessa cosa che il pannello del lotto (R-3, R-5) non deve
+#   fare. Scadono insieme, o non ha senso che scadano.
+#   `commesse_push_log` non e' nel giornale ma e' il registro di giro del
+#   ramo push (D-7: il `correlation_id` di event_log punta li'): stesso termine.
+#
+# ── ⭐ LA COLONNA E' NULLABLE, E RESTA NULL FINCHE' NESSUNO LA SCRIVE ─
+#   Chi la scrive:
+#     - le righe NUOVE: `dbops.trgfn_cleanup_at_alla_nascita` (20260918-30/-33),
+#       BEFORE INSERT, dal TTL della regola CLEANUP_AT piu' specifica;
+#     - il PREGRESSO: `dbops.fn_apply_cleanup_at` al primo giro del job
+#       settimanale (UPDATE sulle sole righe a NULL, base_ts_column dalla
+#       regola) — qui l'UPDATE e' ammesso, a differenza di event_log.
+#   NULL = «nessuna regola quando e' nata»: la riga non scade mai. In dubbio
+#   si conserva (parita' con trgfn_event_log_append_only).
+#
+# ── ⚠️ COSA COMPORTA SU fatture_log, E VA SAPUTO ─────────────────────
+#   `trg_fatture_log_z90_sync_critical_ad` ricalcola `fatture.critical` (e
+#   `stato_esecuzione` su lotti_fatture) dopo ogni DELETE. Quindi il purge di
+#   una riga `status = 'C'` non ancora `disabilitato` SPEGNE il critico della
+#   fattura senza che nessuno l'abbia ammesso. Con 750 giorni di termine e'
+#   una fattura ferma da due chiusure annuali: il modello lo ammette, la
+#   scelta e' che `critical` deriva dal registro e ne eredita la scadenza.
+#   Non si e' aggiunta un'eccezione «se e' vivo non scade»: un rifiuto di
+#   riga dentro il batch del purge blocca l'intera tabella per sempre
+#   (cancello su stato persistente), che e' peggio.
+#
+# Dipendenze: nessuna (sola colonna). I trigger e le regole vengono dopo.
+# Verifica: db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260918-29-alter-registri-fatturazione-add-cleanup-at-mctit.yaml
+
+  - changeSet:
+      id: 20260918-29-alter-registri-fatturazione-add-cleanup-at
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Passo D dell'analisi osservabilita': cleanup_at sui quattro registri di
+        fatturazione e push che non ce l'avevano (fatturazione_lotti_log, fatture_log,
+        fatturazione_lotti_task_runs, commesse_push_log). Quattro e non tre: task_runs
+        e' la quarta sorgente del giornale e i registri di un caso scadono insieme.
+        Sola colonna, nullable: la scrive il trigger alla nascita (-30/-33) e il job per
+        il pregresso.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_log
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_task_runs
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_push_log
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_log
+                ADD COLUMN IF NOT EXISTS cleanup_at timestamptz;
+              ALTER TABLE vendite.fatture_log
+                ADD COLUMN IF NOT EXISTS cleanup_at timestamptz;
+              ALTER TABLE vendite.fatturazione_lotti_task_runs
+                ADD COLUMN IF NOT EXISTS cleanup_at timestamptz;
+              ALTER TABLE vendite.commesse_push_log
+                ADD COLUMN IF NOT EXISTS cleanup_at timestamptz;
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_log.cleanup_at IS
+                'Scadenza della riga: data_ora + il TTL della regola CLEANUP_AT di dbops.automation_rules_tbl, scritta alla nascita da dbops.trgfn_cleanup_at_alla_nascita. NULL = nessuna regola quando e'' nata: non scade mai. Il DELETE di una riga scaduta passa da vendite.trgfn_logs_guard_delete senza GUC (ramo retention). Analisi: analisi-osservabilita-log.md, Passo D.';
+              COMMENT ON COLUMN vendite.fatture_log.cleanup_at IS
+                'Scadenza della riga: data_ora + il TTL della regola CLEANUP_AT di dbops.automation_rules_tbl, scritta alla nascita da dbops.trgfn_cleanup_at_alla_nascita. NULL = non scade mai. ⚠️ Il purge di una riga status=C non disabilitata ricalcola fatture.critical (trigger z90_sync_critical_ad): il critico deriva dal registro e ne eredita la scadenza. Analisi: analisi-osservabilita-log.md, Passo D.';
+              COMMENT ON COLUMN vendite.fatturazione_lotti_task_runs.cleanup_at IS
+                'Scadenza della riga: started_at + il TTL della regola CLEANUP_AT di dbops.automation_rules_tbl, scritta alla nascita da dbops.trgfn_cleanup_at_alla_nascita. NULL = non scade mai. Quarta sorgente di script.vw_giornale_entita: scade insieme a event_log, fatturazione_lotti_log e fatture_log. Analisi: analisi-osservabilita-log.md, Passo D.';
+              COMMENT ON COLUMN vendite.commesse_push_log.cleanup_at IS
+                'Scadenza della riga: run_at + il TTL della regola CLEANUP_AT di dbops.automation_rules_tbl, scritta alla nascita da dbops.trgfn_cleanup_at_alla_nascita. NULL = non scade mai. Registro di giro del push (il correlation_id di event_log punta qui, D-7): stesso termine del giornale. Analisi: analisi-osservabilita-log.md, Passo D.';

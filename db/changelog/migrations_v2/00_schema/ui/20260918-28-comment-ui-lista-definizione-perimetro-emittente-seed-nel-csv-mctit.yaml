@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COMMENT ui.lista_definizione.perimetro_emittente — IL SEED HA CAMBIATO SEDE
+#   Brief: brief-db-perimetro-emittente-cataloghi-globali (decisione di Tid,
+#   2026-09-18).
+#
+# ── PERCHE' UN CHANGESET PER UN COMMENTO ──────────────────────────
+#   Il COMMENT vivo (20260902-01) dice «il valore si dichiara nel seed
+#   (20260902-02)». Quel changeSet e il suo CSV laterale
+#   (`lista_definizione_perimetro_emittente.csv`, chiavato su `codice`) sono
+#   RITIRATI il 2026-09-18: il flag si dichiara nella riga della lista, in
+#   `lista_definizione.csv` (mirror 20260507-06), come `multi_emittente`.
+#   Un COMMENT che manda il lettore a un file che non esiste piu' e' un
+#   riferimento morto nella sede piu' letta (la doc auto-gen). 20260902-01 e'
+#   mergiato e non si tocca: si riscrive il COMMENT in avanti.
+#
+# ── ⛔ UNA TABELLA, UN CSV ─────────────────────────────────────────
+#   Due CSV sulla stessa tabella sono due sorgenti di verita' sulla stessa
+#   riga, e divergono in silenzio (Tid: «il rischio e' troppo, si rischia
+#   disallineamento con i csv»). E' il pattern «CSV per sottoinsieme», e con
+#   questo giro non e' piu' quello di casa.
+#
+# ⚠️ Solo il COMMENT cambia: il testo e' quello VIVO (letto da
+#   col_description, non ricopiato dallo YAML del 02-09) con UNA frase
+#   sostituita. Nessun DDL, nessun dato. Il rollback rimette il testo di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260918-28-comment-ui-lista-definizione-perimetro-emittente-seed-nel-csv-mctit.yaml
+
+  - changeSet:
+      id: 20260918-28-comment-ui-lista-definizione-perimetro-emittente-seed-nel-csv
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Riscrive il COMMENT di ui.lista_definizione.perimetro_emittente: il valore si dichiara nella
+        colonna di lista_definizione.csv (mirror 20260507-06), non piu'' nel CSV laterale 20260902-02,
+        ritirato il 18-09 (una tabella, un CSV — Tid). Solo COMMENT, nessun DDL.
+        Brief: brief-db-perimetro-emittente-cataloghi-globali.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: ui
+            tableName: lista_definizione
+            columnName: perimetro_emittente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN ui.lista_definizione.perimetro_emittente IS
+              'Natura del dato: le righe di questa lista appartengono a un emittente fiscale? ⭐ E'' IL TERZO CASO, e senza di lui `multi_emittente` risponde a una domanda che per certe liste non esiste. `multi_emittente` dice «so dire da QUALE emittente arriva ogni riga»; su un catalogo GLOBALE — le famiglie di documento, le liste tecniche di ui, i vocabolari di config — non c''e'' nessun emittente da dire, quindi il suo `false` e'' letteralmente vero e l''effetto e'' sbagliato: la schermata chiede di scegliere un emittente prima di entrare, e sbarra la strada proprio a chi ha lo scope piu'' largo. ⛔ LA STRADA BREVE ERA UN''ALTRA E NON SI E'' PRESA: dichiarare quelle liste `multi_emittente = true` avrebbe vantato una capacita'' che non hanno, e dbops.vw_liste_multi_emittente_non_certificate — che due pgTAP pretendono a zero righe — l''avrebbe intercettato, come deve. Allargare il presidio con un''eccezione avrebbe voluto dire spegnerlo un pezzo alla volta. ⭐ DUE DOMANDE INDIPENDENTI, DUE COLONNE: questa e'' la natura del dato, quella e'' una capacita'' conquistata e certificata; un enum a tre valori le legherebbe, ed e'' il flag che risponde a due domande in AND che poi non si riesce piu'' a invertire. ⚠️ REGOLA PER CHI LEGGE: si entra senza scegliere un emittente quando la lista SA DIRLO (multi_emittente) OPPURE quando non c''e'' niente da dire (perimetro_emittente = false) — due ragioni diverse per lo stesso gesto, da tenere distinte. ⚠️ NON E'' UN PERMESSO: non decide cosa un utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se una schermata e'' leggibile nella condizione in cui sta per essere aperta. ⭐ Default TRUE, che e'' il verso prudente: una lista nuova nasce CON perimetro, e la globalita'' si dichiara invece di ereditarla. Il valore si dichiara nel seed — colonna `perimetro_emittente` di lista_definizione.csv, mirror 20260507-06 — mai da interfaccia. ⛔ Dal 2026-09-18 NON piu'' in un CSV laterale chiavato su codice (20260902-02, ritirato): due CSV sulla stessa tabella sono due sorgenti di verita'' e divergono in silenzio (Tid, brief-db-perimetro-emittente-cataloghi-globali). Sette liste globali al 18-09: le tre tecniche di ui, amm.processi, storico.audit_log, vendite.famiglie_documento, anagrafiche.emittenti_fiscali. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.16.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN ui.lista_definizione.perimetro_emittente IS
+              'Natura del dato: le righe di questa lista appartengono a un emittente fiscale? ⭐ E'' IL TERZO CASO, e senza di lui `multi_emittente` risponde a una domanda che per certe liste non esiste. `multi_emittente` dice «so dire da QUALE emittente arriva ogni riga»; su un catalogo GLOBALE — le famiglie di documento, le liste tecniche di ui, i vocabolari di config — non c''e'' nessun emittente da dire, quindi il suo `false` e'' letteralmente vero e l''effetto e'' sbagliato: la schermata chiede di scegliere un emittente prima di entrare, e sbarra la strada proprio a chi ha lo scope piu'' largo. ⛔ LA STRADA BREVE ERA UN''ALTRA E NON SI E'' PRESA: dichiarare quelle liste `multi_emittente = true` avrebbe vantato una capacita'' che non hanno, e dbops.vw_liste_multi_emittente_non_certificate — che due pgTAP pretendono a zero righe — l''avrebbe intercettato, come deve. Allargare il presidio con un''eccezione avrebbe voluto dire spegnerlo un pezzo alla volta. ⭐ DUE DOMANDE INDIPENDENTI, DUE COLONNE: questa e'' la natura del dato, quella e'' una capacita'' conquistata e certificata; un enum a tre valori le legherebbe, ed e'' il flag che risponde a due domande in AND che poi non si riesce piu'' a invertire. ⚠️ REGOLA PER CHI LEGGE: si entra senza scegliere un emittente quando la lista SA DIRLO (multi_emittente) OPPURE quando non c''e'' niente da dire (perimetro_emittente = false) — due ragioni diverse per lo stesso gesto, da tenere distinte. ⚠️ NON E'' UN PERMESSO: non decide cosa un utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se una schermata e'' leggibile nella condizione in cui sta per essere aperta. ⭐ Default TRUE, che e'' il verso prudente: una lista nuova nasce CON perimetro, e la globalita'' si dichiara invece di ereditarla. Il valore si dichiara nel seed (20260902-02), mai da interfaccia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.16.';

@@ -54,6 +54,20 @@
 > fermo» di C, i tre log senza `cleanup_at` di D, R-6, la #8 di Tid, il brief
 > della #14.
 >
+> ⏱️ **Riletto il 2026-09-18** (quinta passata) contro repo, doc auto-gen,
+> `presidi.csv` e i consumatori FE: al mattino **nessun residuo si era mosso**
+> dal 15-09. Nel pomeriggio, per decisione di Tid («prendiamo il toro per le
+> corna»), ✅ **il Passo D è CHIUSO a DB** — changeSet `20260918-29 → -33` +
+> regole 16-19, in attesa di apply e pgTAP (§4, Passo D). Tre cose che il
+> rigo del 12-09 non sapeva: i registri senza scadenza erano **quattro**, non
+> tre (`fatturazione_lotti_task_runs` è la quarta sorgente del giornale); la
+> sola colonna **non bastava** (il guard sul `DELETE` avrebbe respinto il purge
+> ogni domenica); e il termine si legge da **un BB in `dbops`**, con la copia
+> `fn_event_log_ttl_days` ritirata. ⛔ Restano: **B** intero, la sorgente
+> «lotto fermo» di **C**, **R-6**, la **#8** di Tid, il brief della **#14** —
+> per questi Tid ha chiesto un **brief apposito con piano di sviluppo**, da
+> scrivere.
+>
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
 > `emittente_soggetto_ruolo_id` (non la PK) ~~e il vocabolario è un `CHECK` (non
@@ -298,7 +312,10 @@ errori della dashboard competenza trova 0 record. Da capire se è fisiologico
 i trigger che ne derivano `fatture.critical` sono attivi, quindi il canale
 esiste.
 
-### 1.5 Retention
+### 1.5 ~~Retention~~ — SUPERATA
+
+> ✅ **Superata il 2026-09-18 (Passo D)**: i registri di dominio hanno tutti
+> `cleanup_at`, scritta alla nascita. Il testo resta come storia.
 
 `cleanup_at` + `fn_apply_cleanup_at` + `fn_purge_cleanup_expired` sono lo
 standard di progetto e **funzionano** (job `automations_cleanup`, ultimo giro
@@ -344,7 +361,7 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | ~~B5~~ | ~~Log Python non correlabili~~ ✅ **chiuso** (Passo 2, BE-8) | `request_id` nel formatter di logging |
 | B6 | Endpoint senza UI — 🟡 **parziale** ⏱️ *12-09* | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); restano `job-summary`, `task-registry`, `domini-task`, `task-implementations` — vedi §2 |
 | B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; manca la **sorgente** «lotto fermo in errore» — vedi Passo C |
-| B8 | Retention assente sui log di dominio — 🟡 **parziale** | `event_log` ✅ (decisione 11); `fatturazione_lotti_log`, `fatture_log` e `commesse_push_log` ancora senza `cleanup_at` (⏱️ *12-09*, doc auto-gen) |
+| ~~B8~~ | ~~Retention assente sui log di dominio~~ ✅ **chiuso** (Passo D, ⏱️ *18-09*) | `event_log` (decisione 11) + i **quattro** registri di fatturazione e push — `fatturazione_lotti_log`, `fatture_log`, `fatturazione_lotti_task_runs`, `commesse_push_log` — a 750 giorni, scadenza scritta alla nascita da un BB unico (`20260918-29 → -33`, regole 16-19) |
 | ~~**B9**~~ | ~~**`event_log` non ha scope emittente né RLS**~~ ✅ **chiuso** (Passo 0) | `emittente_soggetto_ruolo_id NOT NULL`, derivata all'`INSERT` da `trgfn_event_log_deriva_scope`, più la policy `rls_event_log_ef_whitelist` (`20260822-46`) |
 | ~~**B10**~~ | ~~**`event_log` è l'unico registro senza `tx_id`**~~ ✅ **chiuso** (Passo 0) | colonna `tx_id` + `trg_event_log_gen_tx_id_ins_upd` montato dall'automazione |
 | ~~**B11**~~ | ~~**`request_log.emittente_attivo_id` e `tx_id` sono colonne morte**~~ ✅ **chiuso** (Passo 2, BE-8) | `emittente_attivo_id` ora si **scrive**; `tx_id` **tolto** dalla tabella (doc auto-gen, ⏱️ *12-09*) |
@@ -383,7 +400,7 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | **A** — la timeline di un caso | ✅ **CHIUSO — fattura e lotto** *(2026-08-24 sera)* | `GET /vendite/fatture/<id>/giornale/` (validato in-app da Tid) e `GET /vendite/lotti/<id>/giornale/` + le due schede «Storia». ⭐ Sono i **due soli consumatori** di `script.vw_giornale_entita`. Sul lotto: il lotto **più le sue fatture**, righe non-INFO, con `entity_type` su ogni riga — e alla prima chiamata vera *il lotto dice che è andata male, la fattura dice perché* (R-3). 🔵 Resta la validazione in-app del pannello lotto |
 | **B** — superfici aggregate | 🔵 aperto — 🟡 **mosso da fuori** ⏱️ *12-09* | `GET /tracciamento/job-runs/` ha il suo primo consumatore: la schermata **«Processi automatici»** (`amm-software`, 05-09), che affianca ai run lo stato dei presidi `ZERO`. ⛔ Non è la vista errori né la consultazione di `error_log`: quelle restano da fare, dietro il permesso del vincolo del Passo A |
 | **C** — notifiche | 🔵 aperto — 🟡 **il canale c'è** ⏱️ *12-09* | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C. ⏱️ *15-09*: la giornaliera è **in esercizio** (corse 14-09 e 15-09 alle 07:00, exit 0 a giornale); a zero righe non spedisce, per scelta — il battito lo porta la settimanale. La sorgente «lotto fermo» **non è a catalogo**: `presidi.csv` non ha nessuna riga sui lotti |
-| **D** — retention sui log di dominio | 🟡 **parziale** — ma la parte difficile è fatta | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⛔ Resta il pezzo meccanico: `fatturazione_lotti_log` e `fatture_log` non hanno `cleanup_at` — ⏱️ *12-09*: confermato sulla doc auto-gen, e nemmeno `commesse_push_log` ce l'ha |
+| **D** — retention sui log di dominio | ✅ **CHIUSO a DB** ⏱️ *18-09* (in attesa di apply e pgTAP) | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⏱️ *12-09*: restavano `fatturazione_lotti_log`, `fatture_log`, `commesse_push_log`. ⏱️ *18-09*: **erano quattro** — anche `fatturazione_lotti_task_runs`, quarta sorgente di `vw_giornale_entita` — e sono chiusi con `20260918-29 → -33` + regole 16-19: colonna, scadenza scritta alla nascita da `dbops.trgfn_cleanup_at_alla_nascita`, ramo retention in `trgfn_logs_guard_delete`, copia `fn_event_log_ttl_days` ritirata. Si verifica su `test-registri-fatturazione-scadenza-alla-nascita.sql` |
 
 ### ✅ R-1 — l'orario ora è quello vero *(chiesto dal BE, scritto dal team DB il 2026-08-24)*
 
@@ -469,7 +486,7 @@ vecchio Passo 3 si divide in **A** (forense) e **B** (aggregato).
 | **A** — la timeline di un caso | backend + frontend | C |
 | **B** — le superfici aggregate | backend + frontend | — |
 | **C** — notifiche | backend | — |
-| **D** — retention sui log di dominio | team DB | — |
+| **D** — retention sui log di dominio | ✅ **chiuso a DB** il 2026-09-18 (`20260918-29 → -33`) | — |
 
 ---
 
@@ -771,6 +788,61 @@ sulla doc auto-gen, nessuna delle tre ce l'ha.
 ⏱️ *2026-09-15*: **invariato**, riverificato sulle tre pagine `dbzero` delle
 tabelle. Il brief non è stato scritto.
 
+✅ ⏱️ *2026-09-18* — **CHIUSO a DB, senza brief separato** (decisione di Tid: «non
+mi sembra ci sia tanto»). Cinque changeSet e quattro righe di seed, provati con
+l'SQL estratto in transazione con `ROLLBACK` e con `plpgsql_check` pulito;
+guardrail statici verdi. In attesa di apply e della corsa pgTAP di Tid.
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `00_schema/vendite/20260918-29` | `cleanup_at` sui **quattro** registri |
+| `20_code/dbops/20260918-30` | il BB: `dbops.fn_cleanup_at_params(schema, tabella)` (la regola `CLEANUP_AT` più specifica, stesso criterio dell'orchestratore) e `dbops.trgfn_cleanup_at_alla_nascita()` (BEFORE INSERT, `base_ts_column + ttl_days`) |
+| `20_code/vendite/20260918-31` | `event_log` passa al BB: `deriva_scope` perde il passo «quando scade», `trg_event_log_m50_cleanup_at_ins`, `fn_event_log_ttl_days` **droppata** — un changeSet solo, nessuna finestra senza scadenza |
+| `20_code/vendite/20260918-32` | `trgfn_logs_guard_delete` impara il ramo **retention** (riga scaduta → passa senza GUC), parità con `trgfn_event_log_append_only` |
+| `20_code/vendite/20260918-33` | `trg_<tabella>_m50_cleanup_at_ins` sui quattro |
+| `80_data` `automation_rules_tbl.csv` righe 16-19 | `CLEANUP_AT` a **750 giorni**, `base_ts_column` = `data_ora` / `data_ora` / `started_at` / `run_at`, priorità 190 |
+
+**Le tre cose che il rigo del 12-09 non sapeva**, e che hanno dato la forma:
+
+1. **Quattro, non tre.** `script.vw_giornale_entita` legge quattro registri e
+   `fatturazione_lotti_task_runs` è il quarto (`TASK_RUN`), senza `cleanup_at`.
+   La storia di un caso non deve perdere un pezzo prima degli altri: scadono
+   insieme, a 750 giorni come `event_log`, o non ha senso che scadano.
+   `commesse_push_log` non è nel giornale ma è il registro di giro del push (il
+   `correlation_id` di `event_log` punta lì, D-7): stesso termine.
+2. **La sola colonna non bastava.** `fatture_log` e `fatturazione_lotti_log`
+   hanno `trgfn_logs_guard_delete`, che rifiutava ogni `DELETE` senza GUC: il
+   purge sarebbe stato respinto ogni domenica — dal 23-08 l'orchestratore non
+   muore, ma scrive `BLOCKED_BY_TABLE` in `audit_log`, per sempre. Era la «mina
+   latente» dichiarata in `test-cleanup-framework.sql` 13-16, che usava proprio
+   quel guard come «tabella che rifiuta»: disinnescata, il test si fabbrica un
+   veto suo.
+3. **Alla nascita, da un BB.** `fn_apply_cleanup_at` valorizza con un `UPDATE`
+   notturno che su un registro riscrive `data_update`/`user_update` di ogni
+   riga fresca (su `fatture_log` `user_update` dice *chi ha ammesso un
+   critico*) e passa dai trigger di `UPDATE`. Il trigger alla nascita è il
+   pattern già scelto per `event_log` — ma lì era cablato in `deriva_scope` con
+   `fn_event_log_ttl_days()` a schema e tabella fissi: regola del 2, BB in
+   `dbops`, copia ritirata nello stesso giro. Il job resta per il pregresso
+   (1225 + 616 + 110 + 19 righe a `NULL` su dev, fotografia del 18-09: le
+   valorizza la prima domenica, una volta).
+
+⚠️ **Una conseguenza dichiarata, non nascosta**: su `fatture_log` il purge
+ricalcola `fatture.critical` (trigger `z90_sync_critical_ad`). Un critico non
+ammesso da 750 giorni si spegne senza che nessuno l'abbia ammesso: `critical`
+deriva dal registro e ne eredita la scadenza. Non si è messo «se è vivo non
+scade»: un rifiuto di riga nel batch del purge blocca l'intera tabella per
+sempre (cancello su stato persistente), che è peggio.
+
+⚠️ **Fuori dal perimetro di questo passo, e va detto**: hanno una colonna di
+tempo e nessun `cleanup_at` anche `maintenance.job_run_log` (che in più **non è
+nello scope** di `automation_scope`: la sola colonna non basterebbe),
+`vendite.commesse_attivita_log`, `config.email_log`, `pratiche.giornale`,
+`documenti.documenti_generati_eventi`, `vendite.fatture_sdi_eventi`,
+`magazzino.eventi_assets`. Sono famiglie diverse con termini diversi (gli
+eventi SDI sono fiscali) e non sono «log di dominio vendite» nel senso di
+questo documento: ciascuna vuole la sua decisione, non un `ALTER` in serie.
+
 ---
 
 ### Binario parallelo — i fallimenti visibili nelle liste
@@ -971,4 +1043,5 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 
 *Analisi WIP — Osservabilità e consultazione dei log (3 agosto 2026;
 piano rivisto il 22 agosto 2026: §0-bis, Passo 0, divisione A/B; riletture
-del 24 agosto, 5, 12 e 15 settembre 2026 — §3-quater).*
+del 24 agosto, 5, 12, 15 e 18 settembre 2026 — §3-quater; Passo D chiuso a DB
+il 18 settembre).*

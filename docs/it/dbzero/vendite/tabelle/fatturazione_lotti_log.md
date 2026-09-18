@@ -25,6 +25,7 @@
 | stato_operativo | text | YES |  |
 | tx_id | uuid | YES |  |
 | gruppo_key | text | YES |  |
+| cleanup_at | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -47,10 +48,11 @@
 | trg_fatturazione_lotti_log_a10_guard_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_logs_guard_delete()` |
 | trg_fatturazione_lotti_log_a10_stati_doc_fiscale_require_48d164 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id', 'id')` |
 | trg_fatturazione_lotti_log_a10_stati_doc_fiscale_require_48d164 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id', 'id')` |
-| trg_fatturazione_lotti_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_log_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_lotti_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_log_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatturazione_lotti_log_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_log_m50_cleanup_at_ins | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()` |
 
 ---
 {% include-markdown "signature-core.md" %}

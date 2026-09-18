@@ -470,6 +470,11 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 - **Modifica di un valore esistente** → si edita il CSV. Il mirror è
   `runOnChange` + `validCheckSums: ANY` apposta: ri-legge e riallinea.
 - **Riga nuova** → append al CSV. Mai un `INSERT` a parte.
+- **Colonna nuova** → colonna in coda al CSV **principale** + `- column:` nel
+  mirror, anche se mergiato (`runOnChange` + `ANY`: si ritocca apposta).
+  ⛔ **Mai un secondo CSV «per sottoinsieme»** con un loader suo (Tid,
+  2026-09-18: «una tabella, un CSV — si rischia disallineamento con i csv»):
+  sei laterali ritirati quel giorno. Regola e casi: linee-guida-sql §11.2.
 - **Cancellazione** → `loadUpdateData` non cancella: lì il `DELETE` SQL
   forward-only è legittimo, ed è l'unica eccezione.
 - Se un SQL storico sovrascrive un CSV e non si può cancellare (mergiato):

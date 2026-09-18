@@ -25,7 +25,14 @@
 --   3. la scadenza non si puo' anticipare: l'UPDATE su cleanup_at e' vietato
 --   4. DELETE di una riga SCADUTA ammesso — e' la retention che passa
 --   5. DELETE con la GUC di manutenzione ammesso — parita' con i log gemelli
---      (script.trgfn_logs_guard_delete su fatture_log e fatturazione_lotti_log)
+--      (vendite.trgfn_logs_guard_delete su fatture_log e fatturazione_lotti_log)
+--
+-- ⏱️ 2026-09-18 (Passo D dell'osservabilita'): la parita' e' diventata completa
+--   nell'altro verso — anche trgfn_logs_guard_delete ammette il DELETE di una
+--   riga SCADUTA (20260918-32), e cleanup_at lo scrive per tutti lo stesso BB,
+--   dbops.trgfn_cleanup_at_alla_nascita (qui montato da 20260918-31 al posto
+--   del passo 4 di deriva_scope). Il comportamento che questo file pinna non
+--   cambia di una virgola.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -59,7 +66,9 @@ SELECT vendite.fn_log_event('COMMESSA',
 CREATE TEMP TABLE _scaduta AS
 WITH ins AS (
     INSERT INTO vendite.event_log (event_time, entity_type, entity_id, event_code)
-    SELECT now() - make_interval(days => COALESCE(vendite.fn_event_log_ttl_days(), 750) + 50),
+    -- ⏱️ 2026-09-18 (Passo D): il TTL si legge dal BB generico, non piu' da
+    --   vendite.fn_event_log_ttl_days, ritirata (20260918-31).
+    SELECT now() - make_interval(days => COALESCE((dbops.fn_cleanup_at_params('vendite', 'event_log') ->> 'ttl_days')::integer, 750) + 50),
            'COMMESSA', r.commessa_id, 'PGTAP_SCADUTA'
       FROM _rif r
      WHERE r.commessa_id IS NOT NULL

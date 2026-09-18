@@ -280,6 +280,11 @@ due cose si assomigliano nel CSV: `perimetro_emittente` **non è una colonna del
 mirror** `20260507-06` (che ne dichiara 9), si scrive nel CSV dedicato
 `lista_definizione_perimetro_emittente.csv` chiavato su `codice`. Non aggiungere
 le quattro righe lì **è** la decisione D-3.
+⚠️ **18-09**: il meccanismo è cambiato, la decisione no. `perimetro_emittente`
+**è** una colonna del mirror `20260507-06` (decima) e il CSV laterale è
+ritirato — «una tabella, un CSV», Tid,
+`brief-db-perimetro-emittente-cataloghi-globali` §3-bis. Le quattro liste
+restano `t`: nel CSV principale è il valore della loro riga.
 
 ⛔ **L'alternativa scartata, e perché non era gratis.** La 62 e la 63 espongono
 `emittente_ragione_sociale` in colonna (688 e 696): avrebbero potuto dichiarare

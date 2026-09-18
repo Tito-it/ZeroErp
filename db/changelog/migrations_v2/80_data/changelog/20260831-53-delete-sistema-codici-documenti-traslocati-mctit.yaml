@@ -161,93 +161,29 @@ databaseChangeLog:
   # ── ⛔ 2026-09-02 — IL SECONDO PASSO MANCANTE, STESSA FAMIGLIA ────────
   #
   #   Sistemato il primo cancello, il changeSet qui sotto e' tornato rosso con
-  #   lo STESSO messaggio — «Expected '0' got '4'» — ma su una preCondition
-  #   DIVERSA: ne ha tre, tutte a zero, e la seconda volta parlava la terza.
-  #   ⚠️ E' il motivo per cui un `onFailMessage` per ogni check vale il suo
-  #   costo: senza, due difetti diversi si presentano con la stessa faccia.
+  #   lo STESSO messaggio — «Expected '0' got '4'» — ma sulla TERZA delle sue
+  #   preCondition: `vendite.famiglie_documento` nasceva SENZA
+  #   `prefisso_default`. `20260831-51` (00_schema) aggiunge la colonna e la
+  #   riempie leggendo `config.sistema_codici`, ma gira in 00_schema e le
+  #   famiglie le semina 80_data, cioe' DOPO: su un database ricostruito da
+  #   zero quell'UPDATE tocca zero righe. ⚠️ E' il motivo per cui un
+  #   `onFailMessage` per ogni check vale il suo costo: senza, due difetti
+  #   diversi si presentano con la stessa faccia.
   #
-  #   Il difetto: `vendite.famiglie_documento` nasce SENZA `prefisso_default`.
-  #   `20260831-51` (00_schema) aggiunge la colonna e la riempie leggendo
-  #   `config.sistema_codici` — ma gira in `00_schema`, e le famiglie le semina
-  #   `80_data`, cioe' DOPO. Su un database ricostruito da zero quell'UPDATE
-  #   tocca ZERO righe, poi il CSV di `famiglie_documento` — che quella colonna
-  #   non la porta — le crea tutte vuote.
-  #   ⭐ Su questa macchina funzionava perche' le famiglie c'erano gia' quando
-  #   il backfill e' passato. E' la stessa forma del passo precedente: il
-  #   changelog descrive un mondo che esiste solo dove qualcuno e' passato prima.
-  #
-  # ── ⭐ IL RIMEDIO E' IL DATO, NON L'ORDINE ────────────────────────────
-  #
-  #   Non si sposta il backfill: si mette il valore dove la sua sede dice che
-  #   deve stare — un CSV di `80_data`. E' la regola di casa («i dati di
-  #   80_data si cambiano dal CSV», AGENTS §80_data), e ha gia' un precedente
-  #   ESATTO: `famiglie_documento_colonna_serie.csv`, un CSV dedicato con un
-  #   loader suo per una colonna che il mirror base non porta.
-  #   ⇒ Da qui in avanti il backfill di `20260831-51` resta e non fa danno:
-  #   su un database nuovo trova zero righe, su uno vecchio trova i valori
-  #   gia' giusti.
-  #
-  #   ⚠️ La preCondition sulle cinque famiglie NON e' prudenza: `loadUpdateData`
-  #   ha `primaryKey: codice_interno`, quindi se il mirror base non fosse ancora
-  #   passato INSERIREBBE righe con i soli tre campi del CSV — monche, contro i
-  #   NOT NULL. Copiata dal precedente, che l'aveva gia' imparata.
+  #   Il rimedio del 02-09 fu un CSV LATERALE (`famiglie_documento_formato.csv`,
+  #   changeSet `20260902-53-01`, qui in mezzo) con prefisso e lunghezza per
+  #   `codice_interno` — «precedente esatto: colonna_serie».
+  #   ⛔ RITIRATO il 2026-09-18 (Tid: una tabella, un CSV): sei CSV sulla
+  #   stessa tabella erano sei sorgenti di verita' che nessun presidio
+  #   confrontava. `prefisso_default` e `lunghezza_default` stanno nel CSV
+  #   principale `famiglie_documento.csv` (mirror 20260830-14), che su un
+  #   database da zero gira PRIMA di questo file: la terza preCondition del
+  #   changeSet qui sotto trova il prefisso gia' scritto, come lo trovava
+  #   quando lo scriveva il laterale. Il backfill di `20260831-51` resta e non
+  #   fa danno: su un database nuovo trova zero righe, su uno vecchio i valori
+  #   gia' giusti. La riga `20260902-53-01` in databasechangelog resta orfana
+  #   (Liquibase non se ne cura).
   # ------------------------------------------------------------
-  - changeSet:
-      id: 20260902-53-01-seed-famiglie-documento-formato
-      author: mctit
-      runOnChange: true
-      validCheckSums:
-        - ANY
-      failOnError: true
-      comment: >
-        Dà a vendite.famiglie_documento il prefisso_default e la lunghezza_default, che il
-        mirror base non porta e che il backfill di 20260831-51 non puo'' scrivere su un database
-        ricostruito da zero: quel changeSet vive in 00_schema e le famiglie le semina 80_data,
-        cioe'' dopo. Senza, i registri del prossimo emittente nascerebbero SENZA prefisso e i
-        numeri uscirebbero nudi, in silenzio. Forma copiata da
-        20260901-12-seed-famiglie-documento-colonna-serie: CSV dedicato, chiave codice_interno.
-      preConditions:
-        - onFail: HALT
-        - and:
-            - columnExists:
-                schemaName: vendite
-                tableName: famiglie_documento
-                columnName: prefisso_default
-            # ⚠️ Le cinque famiglie devono esserci gia': se il mirror base non
-            #    fosse ancora passato, loadUpdateData le INSERIREBBE con i soli
-            #    tre campi del CSV, cioe' righe monche che violano i NOT NULL.
-            - sqlCheck:
-                expectedResult: 5
-                sql: |
-                  SELECT COUNT(*)
-                    FROM vendite.famiglie_documento
-                   WHERE codice_interno IN ('FATTURA', 'DDT', 'ORDINE', 'RESO', 'COMMESSA');
-      changes:
-        - loadUpdateData:
-            relativeToChangelogFile: true
-            file: ../sql/vendite/famiglie_documento_formato.csv
-            tableName: famiglie_documento
-            schemaName: vendite
-            separator: ","
-            encoding: UTF-8
-            # ⚠️ Il token letterale NULL diventa SQL NULL: e' cosi' che la
-            #    FATTURA dichiara di NON avere un prefisso — il suo numero e'
-            #    nudo, e la stringa 'NULL' le metterebbe davanti quattro
-            #    caratteri che nessuno ha chiesto.
-            nullValue: "NULL"
-            primaryKey: "codice_interno"
-            columns:
-              - column: { name: codice_interno,    type: STRING }
-              - column: { name: prefisso_default,  type: STRING }
-              - column: { name: lunghezza_default, type: NUMERIC }
-      rollback:
-        - sql:
-            dbms: postgresql
-            splitStatements: false
-            sql: |
-              -- ⛔ Non si azzera il prefisso: lasciarlo vuoto e' proprio lo
-              --    stato che il changeSet successivo rifiuta.
-              SELECT 1;
 
   - changeSet:
       id: 20260831-53-delete-sistema-codici-documenti-traslocati

@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I QUATTRO REGISTRI SCRIVONO LA SCADENZA ALLA NASCITA — Passo D, ultimo passo
+#   Analisi: analisi-osservabilita-log.md §4 Passo D
+#
+# ── COSA ────────────────────────────────────────────────────────────
+#   `trg_<tabella>_m50_cleanup_at_ins` → dbops.trgfn_cleanup_at_alla_nascita
+#   su: fatturazione_lotti_log, fatture_log, fatturazione_lotti_task_runs,
+#       commesse_push_log.
+#   Da qui ogni riga nuova nasce con cleanup_at = <base> + 750 giorni, dove
+#   base e ttl vengono dalle regole 16-19 di dbops.automation_rules_tbl
+#   (80_data, stesso giro). Su event_log lo stesso trigger e' montato da
+#   20260918-31.
+#
+# ── ⚠️ ORDINE DEI TRIGGER, ED E' IL MOTIVO DELLA FASE _m50_ ─────────
+#   Su fatture_log `trg_fatture_log_a10_orario_reale_ins` RISCRIVE data_ora
+#   con clock_timestamp() quando arriva NULL o = now() (R-1: l'orario di
+#   transazione non e' quello reale). Un trigger `_a10_cleanup_at_ins`
+#   scatterebbe PRIMA ('c' < 'o') e leggerebbe il data_ora che subito dopo
+#   viene sostituito: scadenza calcolata su un orario che la riga non avra'.
+#   `_m50_` viene dopo tutti gli `_a10_` e prima degli `_z90_`. Un data_ora
+#   esplicito e diverso da now() invece resta (e' cosi' che un pgTAP
+#   fabbrica una riga gia' scaduta).
+#
+# ── ⚠️ COSA SUCCEDE AL PREGRESSO ────────────────────────────────────
+#   Le righe nate prima di questo changeSet hanno cleanup_at NULL. Le
+#   valorizza il job settimanale (dbops.fn_apply_cleanup_at, regola
+#   CLEANUP_AT, apply_on_update=false → solo le righe a NULL, una volta):
+#   e' un UPDATE, ammesso su queste tabelle, che passa dai trigger di audit
+#   — data_update/user_update del pregresso diranno il job. Una volta, e
+#   solo sul pregresso: e' il prezzo di non fare un backfill nel changeSet,
+#   che sarebbe la stessa UPDATE scritta una seconda volta fuori dal
+#   framework. Su un database da zero non c'e' pregresso.
+#
+# ── ⛔ NIENTE preCondition SULLE REGOLE ─────────────────────────────
+#   Le regole 16-19 stanno in 80_data, che in CI gira DOPO questo file: un
+#   sqlCheck che le pretendesse morirebbe sulla corsa che le introduce
+#   (AGENTS.md, guardrail_precondition_seed). Il trigger le legge a runtime;
+#   senza regola lascia NULL. Che le regole ci siano lo asserisce il pgTAP.
+#
+# Dipendenze: cleanup_at sulle quattro (20260918-29),
+#             dbops.trgfn_cleanup_at_alla_nascita (20260918-30).
+# Verifica: db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260918-33-create-trigger-cleanup-at-alla-nascita-registri-fatturazione-mctit.yaml
+
+  - changeSet:
+      id: 20260918-33-create-trigger-cleanup-at-alla-nascita-registri-fatturazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Passo D dell'analisi osservabilita': trg_<tabella>_m50_cleanup_at_ins
+        (dbops.trgfn_cleanup_at_alla_nascita) su fatturazione_lotti_log, fatture_log,
+        fatturazione_lotti_task_runs e commesse_push_log. Fase _m50_ perche' su fatture_log
+        l'_a10_orario_reale riscrive data_ora e la scadenza si calcola sull'orario che la
+        riga avra'. Il pregresso a NULL lo copre il job settimanale.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+                columnName: cleanup_at
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_log
+                columnName: cleanup_at
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_task_runs
+                columnName: cleanup_at
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_push_log
+                columnName: cleanup_at
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'trgfn_cleanup_at_alla_nascita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_log_m50_cleanup_at_ins ON vendite.fatturazione_lotti_log;
+              CREATE TRIGGER trg_fatturazione_lotti_log_m50_cleanup_at_ins
+                  BEFORE INSERT ON vendite.fatturazione_lotti_log
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();
+
+              DROP TRIGGER IF EXISTS trg_fatture_log_m50_cleanup_at_ins ON vendite.fatture_log;
+              CREATE TRIGGER trg_fatture_log_m50_cleanup_at_ins
+                  BEFORE INSERT ON vendite.fatture_log
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();
+
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_task_runs_m50_cleanup_at_ins ON vendite.fatturazione_lotti_task_runs;
+              CREATE TRIGGER trg_fatturazione_lotti_task_runs_m50_cleanup_at_ins
+                  BEFORE INSERT ON vendite.fatturazione_lotti_task_runs
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();
+
+              DROP TRIGGER IF EXISTS trg_commesse_push_log_m50_cleanup_at_ins ON vendite.commesse_push_log;
+              CREATE TRIGGER trg_commesse_push_log_m50_cleanup_at_ins
+                  BEFORE INSERT ON vendite.commesse_push_log
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();

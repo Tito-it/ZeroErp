@@ -327,7 +327,7 @@
 - [trgfn_listini_righe_guard_stato](manual/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
 - [trgfn_listini_righe_guard_tipologia](manual/trgfn_listini_righe_guard_tipologia.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_listini_versioni_guard_transizione_stato](manual/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
-- [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (latest review 20-02-2026)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** blocca la cancellazione diretta dei log funzionali (`fatture_log`, `fatturazione_lotti_log`) salvo abilitazione esplicita di manutenzione.
+- [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** protegge i log funzionali (`fatture_log`, `fatturazione_lotti_log`) dalla cancellazione **accidentale**, distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto**.
 - [trgfn_lotto_fatture_guard_stato_coerente](manual/trgfn_lotto_fatture_guard_stato_coerente.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_default_valuta](manual/trgfn_offerte_commerciali_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_offerte_commerciali_gen_codice](manual/trgfn_offerte_commerciali_gen_codice.md) — (rev 2026-08-21)

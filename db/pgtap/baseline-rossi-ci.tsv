@@ -71,7 +71,6 @@ db/pgtap/pagamenti/test-contabili-origine-e-quadratura.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-enti-incasso-psp.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-fn-crea-distinta-correzione.sql	ERRORE_FIXTURE
-db/pgtap/pagamenti/test-fn-get-saldo-fattura-tre-numeri.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-righe-contabili-guard-dati.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-sistemazione-annullo-riporto.sql	ERRORE_FIXTURE
 db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql	ERRORE_FIXTURE
@@ -126,7 +125,6 @@ db/pgtap/script/test-fn-available-actions-preventivo-genera-ordine-v1.sql	ERRORE
 db/pgtap/script/test-fn-available-actions-preventivo-v1.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-check-ddt-emittibile-v1.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-check-operatore-invitabile.sql	ASSERZIONE
-db/pgtap/script/test-fn-check-registro-disattivabile-v1.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-check-ultimo-super-admin-attivo.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-check-user-can-create-ba.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-crea-utente-tecnico.sql	ERRORE_FIXTURE
