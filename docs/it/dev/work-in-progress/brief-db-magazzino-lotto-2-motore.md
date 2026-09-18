@@ -19,11 +19,15 @@
 > ([brief](../work-done/brief-db-emittente-di-default-un-bb-solo.md), 17-09,
 > `20260915-36 → -46` `EXECUTED`).
 >
-> **Stato:** 🔵 **SCRITTO il 2026-09-17 (sera), nessun changeSet.** La §3 porta
-> **dodici decisioni piccole** che il motore richiede e che nessuna analisi ha
-> chiuso (D-L2-a → D-L2-l), ciascuna con una raccomandazione: **si confermano
-> prima di scrivere il passo che le tocca** (§6). Nessuna cambia il perimetro
-> del lotto; due (D-L2-b, D-L2-g) ne cambiano la taglia.
+> **Stato:** ✅ **Le decisioni sono TUTTE prese (Tid, 2026-09-17, una alla
+> volta): quattordici, D-L2-a → D-L2-n.** Le dodici scritte alla nascita più
+> due emerse rileggendole — **D-L2-m** (le ubicazioni le decide il magazzino:
+> `magazzini.usa_ubicazioni`) e **D-L2-n** (il piano dell'inventario si legge
+> prima di confermare, in una funzione sola). Tre modificate nel confermare:
+> D-L2-f perde il suo «angolo» (lo chiude D-L2-m), D-L2-g prende la D su
+> `trasferimenti` (trasferimento interno; quello con trasporto è il DDT
+> `TRASFERIMENTO`), D-L2-h perde lo stato `COUNTING`. 🔵 **Nessun changeSet
+> ancora**: si parte da P-0.
 >
 > **Perimetro:** il **codice che scrive** su `magazzino.movimenti` e su
 > `valore_giacenza` — la primitiva e le due operazioni **senza documento
@@ -132,7 +136,7 @@ con N scrittori potenziali e nessuno che lo sa.
 
 ---
 
-## 3. ⚠️ Le dodici decisioni piccole che il motore richiede
+## 3. ⚠️ Le quattordici decisioni piccole che il motore richiede — ✅ tutte prese il 2026-09-17
 
 > Sono uscite scrivendo la firma della primitiva e il corpo delle operazioni,
 > non le analisi. Ognuna ha una raccomandazione. ⭐ Dove la raccomandazione è
@@ -230,10 +234,10 @@ changeSet `90_end` forward che applica subito su dev — `ci_apply` su dev non
 gira da solo. Si asserisce con `has_table_privilege('zeroerp_app', …, 'INSERT')`
 = false, **mai** con `role_table_grants` (cieco fuori dal ruolo connesso).
 
-⚠️ **Tre pgTAP del Lotto 1 diventano rossi per costruzione** (`INSERT INTO
+⚠️ **Due pgTAP del Lotto 1 diventano rossi per costruzione** (`INSERT INTO
 magazzino.movimenti` diretto, come app: `test-movimenti-vincoli-v2` 14 volte,
-`test-valore-giacenza-forma-v1` 1, `test-movimenti-attesi-forma-v1` sugli
-attesi — che restano scrivibili). Non è un difetto del test né della porta: il
+`test-valore-giacenza-forma-v1` 1; `test-movimenti-attesi-forma-v1` scrive
+**solo attesi**, che restano scrivibili: invariato — P-0, §6-ter C11). Non è un difetto del test né della porta: il
 **soggetto** di `vincoli-v2` sono i vincoli del ledger, che dal Lotto 2 solo
 uno scrittore privilegiato può far scattare — è la **forma 3** del criterio di
 `scripts/testpgtap.sh` (*«il test collauda un guard che solo uno scrittore
@@ -363,7 +367,7 @@ grana diversa dal registro. Va scritto nel `COMMENT` e provato in pgTAP
 (caso costruito); il rimedio, quando servirà, è una riga di conteggio
 *senza* ubicazione che chiuda il residuo — cioè un dato, non codice.
 
-### D-L2-g — Le due operazioni SENZA documento commerciale entrano insieme; il trasferimento no
+### D-L2-g — Le due operazioni SENZA documento commerciale entrano insieme; il trasferimento no — ✅ confermata da Tid il 2026-09-17, **e la D su `trasferimenti` è presa** (sotto)
 
 `fn_posta_rettifica(p_rettifica_id)` ha la **stessa forma** di
 `fn_posta_inventario` con un passo in meno: il delta è **dato**
@@ -375,19 +379,67 @@ al Lotto 3 (lo storno). Due operazioni con la stessa forma sono anche la
 seconda occorrenza che giustifica il telaio comune (§4.5: guard di transizione
 e di immutabilità **parametrici**, uno per famiglia).
 
-⛔ **Il trasferimento resta fuori, e la ragione è una decisione aperta, non il
-tempo.** `trasferimenti` vieta `magazzino_id_from = magazzino_id_to`
-(`chk_mag_trasferimenti_da_a_distinti`) e le sue righe **non portano
-un'ubicazione** — quindi **lo spostamento fra ubicazioni dello stesso
-magazzino**, che c/s §4 modella come coppia OUT/IN, oggi **non ha un
-documento** da cui nascere, e sotto D-6 senza documento non si scrive. O
-`trasferimenti` impara le ubicazioni (from/to sulle righe, e il CHECK
-ammette lo stesso magazzino con ubicazioni diverse), o nasce un documento
-suo. È una D nuova per Tid; fino ad allora il ramo gemella della primitiva
-(D-L2-c) si prova in pgTAP chiamandola due volte con lo stesso
-`transfer_uid`, e il posting del trasferimento va con lo storno (§9).
+⛔ **Il trasferimento resta fuori — e il perché va detto giusto** (riscritto il
+17-09 su rilievo di Tid: la prima stesura diceva che lo spostamento «non ha
+un documento», ed era falso a metà). Verificato su dbdev:
 
-### D-L2-h — La porta `POSTED` si apre solo dall'operazione: GUC transazionale, matrice nel guard
+* il trasferimento **con trasporto** fra due depositi ha già il suo documento:
+  il **DDT con `config.causali_trasporto.TRASFERIMENTO`** («Trasferimento tra
+  depositi», `fatturabile = false`), letto da dieci oggetti di `vendite`
+  (`vw_ddt_lista`, `fn_check_ddt_emittibile`, `vw_partite_merce`, …). La
+  coppia `TRASF_OUT`/`TRASF_IN` fra magazzini nasce **da lì**: OUT dal
+  magazzino di partenza all'emissione, IN in quello di arrivo al ricevimento.
+  ⚠️ Ma il DDT oggi **non sa da quale magazzino parte né dove arriva** —
+  nessuna colonna `magazzino_id` su `vendite.ddt` né su `ddt_righe`. È la
+  stessa cosa che serve allo **scarico da DDT di vendita** (da quale
+  magazzino esce la merce): si decide nel **Lotto 3**, con una seconda
+  colonna di destinazione per la sola causale `TRASFERIMENTO`;
+* `magazzino.trasferimenti` (sorgente `TRASFERIMENTO_RIGA`) le analisi non
+  l'hanno mai messo accanto al DDT. Se il trasferimento con trasporto è il
+  DDT, questo documento ha senso solo come **spostamento interno senza
+  trasporto**: fra ubicazioni dello stesso magazzino (il riordino di
+  scaffale, che con D-L2-m diventa quotidiano) o fra due magazzini dello
+  stesso sito. Oggi però vieta `magazzino_id_from = magazzino_id_to`
+  (`chk_mag_trasferimenti_da_a_distinti`) e le righe **non portano
+  un'ubicazione**: per fare quel mestiere deve imparare `ubicazione_id_da`/
+  `ubicazione_id_a` sulle righe, e il vincolo deve ammettere lo stesso
+  magazzino con ubicazioni diverse.
+
+✅ **DECISO da Tid il 2026-09-17: `magazzino.trasferimenti` è il trasferimento
+merci INTERNO** — dentro lo stesso magazzino (fra ubicazioni) **o** fra
+magazzini diversi **dello stesso emittente**, senza documento di trasporto. Il
+trasferimento con trasporto resta il DDT `TRASFERIMENTO`. Ne discende, **per
+il lotto che ne scriverà il posting** (non questo): `trasferimenti_righe`
+prende `ubicazione_id_da`/`ubicazione_id_a` (obbligatorie o vietate secondo
+`usa_ubicazioni` del rispettivo magazzino, D-L2-m); il CHECK
+`chk_mag_trasferimenti_da_a_distinti` diventa «magazzini diversi **oppure**
+ubicazioni diverse»; un guard pretende che `from` e `to` siano dello stesso
+emittente (M-6: la primitiva non attraversa mai due emittenti, e qui sono due
+chiamate nella stessa transazione); il posting è la coppia `TRASF_OUT`/
+`TRASF_IN` con lo stesso `transfer_uid`, l'entrata al costo dell'uscita
+(D-L2-c). Qui il ramo gemella della primitiva si prova in pgTAP chiamandola due
+volte con lo stesso `transfer_uid`; il posting del DDT `TRASFERIMENTO` va col
+Lotto 3 insieme allo scarico da DDT.
+
+### D-L2-h — La porta `POSTED` si apre solo dall'operazione: GUC transazionale, matrice nel guard — ✅ confermata da Tid il 2026-09-17, **con una modifica: `COUNTING` esce**
+
+✅ **Tid, 17-09: `COUNTING` non serve.** Verificato prima di toglierlo: sta
+**solo** nel `CHECK` dello schema originario (`ck_mag_invetario_stato`) e in
+una riga della doc manuale; nessuna analisi lo motiva, nessun pgTAP, backend,
+seed o frontend lo nomina; `inventari` è a zero righe su dev e per costruzione
+su `zeroerp_ci`. Sul modello non cambia niente di ciò che è permesso — le
+righe si scrivono in `DRAFT` come in `COUNTING`, la fotografia del registro si
+fissa alla **conferma** (D-L2-n), nessun attributo, nessun permesso diverso:
+uno stato che non cambia le regole è un'etichetta, cioè la classe «esiste e
+non è armata». Tolto, le tre famiglie (`inventari`, `rettifiche`,
+`trasferimenti`) hanno la **stessa** matrice — `DRAFT → CONFIRM → POSTED`,
+`DRAFT/CONFIRM → CANCEL`, `POSTED`/`CANCEL` terminali — e il guard di
+transizione è davvero una matrice sola. Se un giorno servirà mostrare
+«conteggio in corso», è un'informazione a video, non uno stato per il guard.
+⇒ In **P-1** (`00_schema`) il `CHECK` si riscrive a quattro valori, e il nome
+si corregge nello stesso gesto: `ck_mag_invetario_stato` (refuso + prefisso
+`ck_`) → **`chk_mag_inventari_stato`**; nessuno pinna il nome vecchio
+(`grep` su `db/pgtap`, `backend`, `80_data` a zero il 17-09).
 
 Un inventario portato a `POSTED` con un `UPDATE` diretto sarebbe un documento
 che dice «contato e registrato» **senza nessun movimento dietro**. La
@@ -399,9 +451,9 @@ già in servizio (memoria
 * `magazzino.trgfn_documento_interno_guard_transizione()` — **una** funzione
   per le famiglie `inventari`/`rettifiche` (`TG_ARGV`: nome della colonna di
   stato, nome della GUC), `BEFORE UPDATE OF <stato>`: la **matrice** degli
-  stati ammessi (`DRAFT → COUNTING → CONFIRM → POSTED`, `DRAFT/COUNTING/CONFIRM
-  → CANCEL` per l'inventario; `DRAFT → CONFIRM → POSTED`, `DRAFT/CONFIRM →
-  CANCEL` per la rettifica; `POSTED` e `CANCEL` terminali), e **`POSTED`
+  stati ammessi — **la stessa per le due famiglie** dal 17-09 (`COUNTING`
+  esce, vedi in testa): `DRAFT → CONFIRM → POSTED`, `DRAFT/CONFIRM → CANCEL`,
+  `POSTED` e `CANCEL` terminali — e **`POSTED`
   ammesso solo se** `current_setting('zeroerp.magazzino_posting_<famiglia>', true)
   = NEW.id::text` — la GUC che l'operazione imposta con `set_config(…, true)`
   (transazionale) e azzera in coda. Altrimenti
@@ -409,7 +461,7 @@ già in servizio (memoria
   produce quell'`UPDATE`);
 * `magazzino.trgfn_documento_interno_righe_guard_testata()` — sulle **righe**,
   `BEFORE INSERT OR UPDATE OR DELETE`: righe modificabili solo con testata in
-  `DRAFT`/`COUNTING` (inventario) o `DRAFT` (rettifica); in `CONFIRM` scrive
+  `DRAFT`; in `CONFIRM` scrive
   solo l'operazione (la stessa GUC: è lei a fissare `qta_sistema`); `POSTED`
   e `CANCEL` **immutabili** — `E_MAG_DOCUMENTO_RIGHE_CONGELATE`
   (`CONFLITTO_STATO`).
@@ -424,7 +476,7 @@ precedente di `pratiche` che c/s §7-septies cita. Se un giorno l'inventario
 avrà bisogno di stati configurabili, la matrice esce dal guard e diventa un
 seed: cambia **dove** sta, non chi la fa rispettare.
 
-### D-L2-i — `causali.sorgente_tipo_id` 1:1 → **NON ora, e la forma proposta è già smentita**
+### D-L2-i — `causali.sorgente_tipo_id` 1:1 → **NON ora, e la forma proposta è già smentita** — ✅ rinvio confermato da Tid il 2026-09-17
 
 Il Lotto 1 §9 la dava *«candidata al Lotto 2, quando la primitiva esiste»*. Ma
 D-L2-f la smentisce prima di nascere: `RETT_POS` viene **da due sorgenti**
@@ -435,7 +487,7 @@ scelgono la causale **da sole**, non la ricevono da un operatore che possa
 sbagliarla. ⇒ Si rinvia al primo scrittore che riceve la causale da fuori,
 con la forma giusta (ponte), non con quella pensata a tavolino.
 
-### D-L2-j — Le viste della disponibilità → **`vw_disponibilita` a due grane, solo le colonne che il lotto sa riempire**
+### D-L2-j — Le viste della disponibilità → **`vw_disponibilita` a due grane, solo le colonne che il lotto sa riempire** — ✅ confermata da Tid il 2026-09-17
 
 Il nome «situazione merce» in vendite è **preso** (`vw_situazione_merce_ordine`
 risponde a un'altra domanda: quanto è uscito, tornato, fatturato di un ordine).
@@ -452,7 +504,7 @@ con la vista che le sa riempire, e il nome della vista non cambierà.
 ⚠️ Il drill-down dei blocchi è **gratis**: sono le righe di `movimenti_attesi
 APERTA` stesse, con `soggetto_ruolo_id` e `nota`.
 
-### D-L2-k — Il presidio di prontezza ha cadenza **SETTIMANALE**
+### D-L2-k — Il presidio di prontezza ha cadenza **SETTIMANALE** — ✅ confermata da Tid il 2026-09-17
 
 Il brief delle modifiche certe §7 ha fissato la forma (vista a una riga,
 `ZERO`, `stato_atteso = MARCATI`) e c/s §8 il momento (*«col passo 2, o suona
@@ -463,7 +515,7 @@ cosa già saputa si spegne (è la lezione del digest). `SETTIMANALE` dice la
 stessa cosa una volta a settimana, cioè quanto basta perché non venga
 dimenticata.
 
-### D-L2-l — `causali.is_installazione_asset` resta, e la sua scadenza si sposta
+### D-L2-l — `causali.is_installazione_asset` resta, e la sua scadenza si sposta — ✅ confermata da Tid il 2026-09-17
 
 Il Lotto 1 §4.1 la teneva perché *«il consumatore nasce col Lotto 2 — se allora
 non lo trova, esce»*. Il consumatore è l'operazione che posta un **evento
@@ -586,7 +638,7 @@ reale dell'applicazione — `VOLATILE`, `%TYPE` ovunque, `RETURNS magazzino.movi
 | 5 | articolo `attivo` e **`gestito_a_magazzino`** | `E_MAG_ARTICOLO_NON_GESTITO` — *«L'articolo %s non è gestito a magazzino: nessun movimento si può registrare.»*, `campo = articolo_id`; soluzione: marcare l'articolo | `DATO_ERRATO` |
 | 6 | lotto: `requires_lotto` ⇒ `p_lotto_id` obbligatorio; `NOT requires_lotto` ⇒ deve essere NULL; il lotto è **dell'articolo** e `attivo` | `E_MAG_LOTTO_OBBLIGATORIO` · `E_MAG_LOTTO_NON_AMMESSO` · `E_MAG_LOTTO_DI_ALTRO_ARTICOLO`, `campo = lotto_id` | `DATO_ERRATO` |
 | 7 | seriale: `requires_serial` ⇒ `p_asset_id` obbligatorio; altrimenti NULL; l'asset è dell'articolo, `attivo`, e **dello stesso emittente del magazzino** | `E_MAG_SERIALE_OBBLIGATORIO` · `E_MAG_SERIALE_NON_AMMESSO` · `E_MAG_ASSET_DI_ALTRO_ARTICOLO` · `E_MAG_ASSET_DI_ALTRO_EMITTENTE`, `campo = asset_id` | `DATO_ERRATO` |
-| 8 | ubicazione: `ubicazioni.magazzino_id = p_magazzino_id`, `attivo` (il controllo cross-tabella che il Lotto 1 §4.4 rinvia qui) | `E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO`, `campo = ubicazione_id` | `DATO_ERRATO` |
+| 8 | ubicazione — **decide il magazzino** (D-L2-m): `magazzini.usa_ubicazioni` ⇒ `p_ubicazione_id` obbligatorio; altrimenti deve essere NULL; se c'è, `ubicazioni.magazzino_id = p_magazzino_id` e `attivo` (il controllo cross-tabella che il Lotto 1 §4.4 rinvia qui) | `E_MAG_UBICAZIONE_OBBLIGATORIA` · `E_MAG_UBICAZIONE_NON_AMMESSA` · `E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO`, `campo = ubicazione_id` | `DATO_ERRATO` |
 | 9 | storno: `p_storno_di_movimento_id` ⇒ l'originale esiste, stesso articolo e magazzino, `sign(p_qta) = −sign(originale.qta)`, `\|p_qta\| = \|originale.qta\|`, la causale è `STORNO_POS`/`STORNO_NEG`, la sorgente è **quella dell'originale** | `E_MAG_STORNO_INCOERENTE` | `TECNICO` |
 | 10 | identità: `SELECT id … WHERE (sorgente_tipo_id, sorgente_riga, sorgente_uid, causale_id, asset_id, lotto_id, ubicazione_id) IS NOT DISTINCT FROM (…)` | `E_MAG_MOVIMENTO_GIA_REGISTRATO` — *«Questa operazione ha già registrato il movimento %s.»*, `dettaglio.movimento_id`; il `UNIQUE` resta la rete | `CONFLITTO_STATO` |
 | 11 | **solo se `segno = −1`**: lock `pg_advisory_xact_lock(hashtext('magazzino.fn_scrivi_movimento'), hashtext(p_magazzino_id::text \|\| ':' \|\| p_articolo_id::text))`, **poi** `script.fn_check_disponibilita_uscita(…)` (§4.3) e `script.fn_raise_primo_motivo_se_presente('magazzino', 'fn_scrivi_movimento', v_motivi, NULL, v_tx_id, jsonb_build_object('magazzino_id', …, 'articolo_id', …))` — ⭐ il codice lo **legge** dall'array, quindi l'helper e non la coda a mano (AGENTS.md §«Due funzioni per sollevare») | i codici della check | `CONFLITTO_STATO` |
@@ -679,7 +731,10 @@ asserisce). Forma comune:
 3. righe: almeno una ⇒ `E_MAG_DOCUMENTO_SENZA_RIGHE` (`NON_ESEGUIBILE`);
 4. `set_config('zeroerp.magazzino_posting_<famiglia>', v_id::text, true)`;
 5. per riga, in ordine di `id`: il delta (D-L2-f) o `qta_delta`, la causale,
-   la primitiva; l'inventario scrive `qta_sistema` sulla riga **prima**;
+   la primitiva; l'inventario **legge il piano da `fn_inventario_piano`**
+   (D-L2-n: una sede sola per UI e posting), scrive `qta_sistema` sulla riga
+   **prima** e posta le righe con `delta <> 0`; le posizioni `NON_CONTATA`
+   restano com'erano;
 6. `UPDATE <testata> SET <stato> = 'POSTED'` — passa il guard perché la GUC
    dice «sono io»;
 7. `set_config(…, '', true)`.
@@ -693,6 +748,19 @@ linee-guida-sql §5b, e il pgTAP lo prova col caso costruito.
 il perimetro giusto (due posting dello stesso documento si serializzano sulla
 riga; il secondo trova `POSTED` e rifiuta). Il lock advisory della primitiva
 copre invece la corsa fra **documenti diversi** sulla stessa merce.
+
+**Il piano dell'inventario** (D-L2-n): `magazzino.fn_inventario_piano(p_inventario_id)`
+`RETURNS TABLE (riga_id, articolo_id, ubicazione_id, lotto_id, asset_id,
+qta_contata, qta_sistema, delta, causale_codice_interno, esito)`, `SECURITY
+INVOKER`, `STABLE`, sotto RLS. Una riga per ogni posizione (articolo ×
+ubicazione × lotto × asset) che il registro **ha** o che il conteggio
+**nomina**, per gli articoli contati: `INV_INIZIALE`/`RETT_POS`/`RETT_NEG`
+(contata con differenza), `INVARIATA` (contata, delta zero), **`NON_CONTATA`**
+(a registro con giacenza, nessuna riga la copre: `riga_id` e `qta_contata`
+NULL). ⛔ Non solleva sulle `NON_CONTATA`: sono informazione. ⚠️ Testata
+fuori perimetro ⇒ zero righe (è INVOKER): il 404 lo dà il BE sulla testata,
+come per ogni satellite. Il guard di parametro (`E_MAG_CHIAMATA_NON_VALIDA`)
+resta.
 
 **I guard di famiglia** (D-L2-h): `trgfn_documento_interno_guard_transizione`
 su `inventari` (`BEFORE UPDATE OF stato_mag_inventario`) e `rettifiche`
@@ -772,7 +840,8 @@ prossimo libero: al 17-09 l'ultimo messaggio è **1074**, si ricontrolla):
 | `E_MAG_ARTICOLO_NON_GESTITO` | `DATO_ERRATO` | chi marca l'articolo · `articolo_id` |
 | `E_MAG_LOTTO_OBBLIGATORIO` · `E_MAG_LOTTO_NON_AMMESSO` · `E_MAG_LOTTO_DI_ALTRO_ARTICOLO` | `DATO_ERRATO` | chi compila la riga · `lotto_id` |
 | `E_MAG_SERIALE_OBBLIGATORIO` · `E_MAG_SERIALE_NON_AMMESSO` · `E_MAG_ASSET_DI_ALTRO_ARTICOLO` · `E_MAG_ASSET_DI_ALTRO_EMITTENTE` | `DATO_ERRATO` | idem · `asset_id` |
-| `E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO` | `DATO_ERRATO` | idem · `ubicazione_id` |
+| `E_MAG_UBICAZIONE_OBBLIGATORIA` · `E_MAG_UBICAZIONE_NON_AMMESSA` · `E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO` | `DATO_ERRATO` | idem · `ubicazione_id` (D-L2-m: gemelli dei lotti) |
+| `E_MAG_MAGAZZINO_CON_GIACENZA` | `CONFLITTO_STATO` | `usa_ubicazioni` si cambia solo senza movimenti (D-L2-m): crearne uno nuovo e trasferire |
 | `E_MAG_ASSET_POSIZIONE_INCOERENTE` | `CONFLITTO_STATO` | stato del registro: il pezzo è altrove / è già dentro |
 | `E_MAG_GIACENZA_INSUFFICIENTE` · `E_MAG_MERCE_BLOCCATA` | `CONFLITTO_STATO` | stato del magazzino; i due della check |
 | `E_MAG_MOVIMENTO_GIA_REGISTRATO` | `CONFLITTO_STATO` | doppio click / rilancio: la frase nomina il movimento esistente |
@@ -811,7 +880,7 @@ la doc auto-gen della check entri nel repo.
 | **Un indice del passato sopravvive sul DB da zero** | nessuna rinomina qui | — (resta scritto perché è la riga che il prossimo lotto con una rinomina dimenticherà) |
 | **Cambiare una riga di CATALOGO = censire i pgTAP che la pinnano** | `presidi.csv` (+4 righe: `test-presidi-catalogo`, `test-presidi-debito-dichiarato` contano?), `codici_errore.csv` (+22), il loop dei grant | `grep -rl <nome> db/pgtap/` per ogni riga di seed toccata; un presidio che conta «quante righe» è una fotografia e si riscrive per nome |
 | **Sette cose verdi in sessione per ragioni sbagliate** (bilancio del 15-09) | tutto | l'SQL estratto (`updateSQL`, offline) in `BEGIN … ROLLBACK` **su `zeroerp_ci`**, non solo su dev; i pgTAP col runner **come app**; `ci-local.sh --fresh --ci-apply` prima di dire «fatto» |
-| **La porta rende rossi tre pgTAP del Lotto 1** (D-L2-b) | `test-movimenti-vincoli-v2`, `test-valore-giacenza-forma-v1`, e `test-rls-magazzino-perimetro-v1` (già owner: invariato) | `vincoli-v2` → `pgtap-runner: owner` con motivo (forma 3 del criterio); `valore-giacenza-forma` → costruisce la giacenza **via primitiva**; ⛔ **nessuna riga in baseline** |
+| **La porta rende rossi due pgTAP del Lotto 1** (D-L2-b, P-0 §6-ter C11) | `test-movimenti-vincoli-v2`, `test-valore-giacenza-forma-v1`; invariati `test-movimenti-attesi-forma-v1` (solo attesi) e `test-rls-magazzino-perimetro-v1` (già owner) | `vincoli-v2` → `pgtap-runner: owner` con motivo (forma 3 del criterio); `valore-giacenza-forma` → costruisce la giacenza **via primitiva**; ⛔ **nessuna riga in baseline** |
 | **Un `REVOKE` in un changeSet normale non tiene** | i tre `REVOKE` di §4.1 | postura nel **loop** (`20260205-41`, in place) **e** forward `90_end`; asserzione con `has_table_privilege`, non `role_table_grants` |
 | **`SECURITY DEFINER` = proprietario della FUNZIONE, che è chi migra** | primitiva, ricalcolo, orfani | pgTAP: `proowner` della funzione = `relowner` delle tabelle in RLS che legge (stampo `test-catalogo-presidi-v1` test 11); `COMMENT` «DEFINER del PROPRIETARIO, non di un superuser» |
 | **Il `search_path` di una DEFINER vale per tutto ciò che chiama** | primitiva → `script.fn_check_*`, `fn_raise_primo_motivo_se_presente` (che ha il suo pin), `fn_log_and_raise_error` | pin **nella definizione** con `public` dentro (`pg_catalog, public, pg_temp`); riscrivendo `fn_resolve_emittente_fiscale_id` il **suo** pin (`pg_catalog, pg_temp`) si ricopia |
@@ -842,13 +911,13 @@ la doc auto-gen della check entri nel repo.
 
 | # | Passo | Fase |
 | --- | --- | --- |
-| **P-0** | **Censimenti**, prima di scrivere una riga: (a) chi scrive oggi `magazzino.movimenti`/`valore_giacenza`/`inventari*`/`rettifiche*` — `pg_proc` (doc auto-gen delle funzioni), `backend/apps`, `db/pgtap` (al 17-09: zero funzioni, BE scheletro, **tre** pgTAP diretti sul ledger); (b) i lettori di `fn_resolve_emittente_fiscale_id` e di `trgfn_guard_emittente_scope` in `db/pgtap` (un test che pinna i modi); (c) le righe di `presidi.csv`, `codici_errore.csv`, `messaggi_errore.csv` (max id) e i pgTAP che ne contano le righe; (d) `pg_trigger` sulle sette tabelle toccate — nomi, lunghezze, ordine alfabetico dei `_a10_`; (e) `has_table_privilege('zeroerp_app', …)` **prima**, su dev e su `zeroerp_ci`, come fotografia datata. ⭐ Il risultato in un riquadro §6-bis, con la data | — |
-| **P-1** | `inventari_righe.costo_unitario` e `rettifiche_righe.costo_unitario` (`numeric`, nullable, `CHECK >= 0`, `COMMENT`: D-L2-c); `catalogo.vw_articoli_dettaglio` + `requires_lotto` in coda (dalla doc auto-gen, senza `security_invoker`) | `00_schema` + `20_code` |
+| **P-0** | ✅ **Fatto il 2026-09-18** — **Censimenti**, prima di scrivere una riga: (a) chi scrive oggi `magazzino.movimenti`/`valore_giacenza`/`inventari*`/`rettifiche*` — `pg_proc` (doc auto-gen delle funzioni), `backend/apps`, `db/pgtap` (zero funzioni, BE scheletro, **due** pgTAP diretti sul ledger + uno sugli attesi); (b) i lettori di `fn_resolve_emittente_fiscale_id` e di `trgfn_guard_emittente_scope` in `db/pgtap` (nessuno pinna i modi); (c) le righe di `presidi.csv`, `codici_errore.csv`, `messaggi_errore.csv` (max id) e i pgTAP che ne contano le righe; (d) `pg_trigger` sulle otto tabelle toccate — nomi, lunghezze, ordine alfabetico dei `_a10_`; (e) `has_table_privilege('zeroerp_app', …)` **prima**, su dev e su `zeroerp_ci`, come fotografia datata. ⭐ Il risultato è il riquadro **§6-bis**; ciò che smentisce il brief è in **§6-ter** (dodici criticità, **C1 e C2 bloccano P-2**). ⛔ **Regole di scrittura per tutti i passi** (Tid, 18-09): `%TYPE` **in firma, in `DECLARE` e in `RETURNS TABLE`** — non solo nei parametri; numerazione dal primo libero **al momento del salvataggio** (`20260918-05` alle 10 del 18-09: `-01…-04` sono di `pagamenti`, non ancora committati) | — |
+| **P-1** | `inventari_righe.costo_unitario` e `rettifiche_righe.costo_unitario` (`numeric`, nullable, `CHECK >= 0`, `COMMENT`: D-L2-c); `magazzini.usa_ubicazioni` (`boolean NOT NULL DEFAULT false`, `COMMENT`: D-L2-m) col guard «si cambia solo senza movimenti»; il `CHECK` degli stati di `inventari` a quattro valori, rinominato `chk_mag_inventari_stato` (D-L2-h); `catalogo.vw_articoli_dettaglio` + `requires_lotto` in coda (dalla doc auto-gen, senza `security_invoker`) | `00_schema` + `20_code` |
 | **P-2** | **La porta**: `fn_resolve_emittente_fiscale_id` con il modo `magazzino` (pin ricopiato); i tre trigger di scope; il loop `20260205-41` in place con le due liste nuove; il `90_end` forward dei `REVOKE` | `20_code` + `90_end` |
 | **P-3** | I codici di §4.10 in `codici_errore.csv` + `messaggi_errore.csv` (`it`, con causa e soluzione) — loader `runOnChange`, in place | `80_data` |
 | **P-4** | `script.fn_check_disponibilita_uscita` (§4.3) | `20_code/script` |
 | **P-5** | `magazzino.fn_scrivi_movimento` (§4.2), `fn_ricalcola_valore_giacenza`, `vw_valore_giacenza_divergente`, `vw_movimenti_senza_costo` (§4.4) | `20_code/magazzino` |
-| **P-6** | `trgfn_documento_interno_guard_transizione` + `trgfn_documento_interno_righe_guard_testata` e i quattro trigger; `fn_posta_inventario`, `fn_posta_rettifica` (§4.5) | `20_code/magazzino` |
+| **P-6** | `trgfn_documento_interno_guard_transizione` + `trgfn_documento_interno_righe_guard_testata` e i quattro trigger; `fn_inventario_piano` (D-L2-n), `fn_posta_inventario`, `fn_posta_rettifica` (§4.5) | `20_code/magazzino` |
 | **P-7** | `vw_disponibilita`, `vw_disponibilita_articolo` (§4.6) | `20_code/magazzino` |
 | **P-8** | `dbops.fn_sorgenti_orfane`, `fn_sorgenti_orfane_perimetro`, `vw_sorgenti_orfane` (§4.7); `dbops.vw_articoli_a_magazzino_prontezza` (§4.8); **quattro** righe in `presidi.csv` (orfani `ZERO`, prontezza `ZERO`, divergenza `ZERO`, senza costo `LAVORAZIONE`) — mirror `runOnChange`, in place | `20_code/dbops` + `80_data` |
 | **P-9** | pgTAP (§7): i nuovi, la ri-collocazione dei due del Lotto 1, provati **in catena** con l'SQL estratto, su dev e su `zeroerp_ci` | `db/pgtap` |
@@ -859,10 +928,178 @@ come `zeroerp_app`, un `INSERT INTO magazzino.movimenti` deve dare `42501` — e
 lo stesso `INSERT` attraverso la primitiva deve passare. È il collaudo che dice
 che la porta è una porta.
 
-### 6-bis — Riquadro P-0: i censimenti
+### 6-bis — Riquadro P-0: i censimenti — ✅ eseguiti il 2026-09-18 (mattina)
 
-*(da compilare eseguendo P-0, con la data; ciò che è già stato letto il 17-09
-scrivendo questo brief sta in §4 come «letto dal catalogo vivo»)*
+> Letti da `pg_proc`/`pg_trigger`/`pg_constraint`/`pg_policy` su **dbdev** e,
+> per proprietario e privilegi, anche su **`zeroerp_ci`**; i seed dai **CSV**
+> (la sede), non dalle tabelle. Sono **struttura**, non popolazione — tranne
+> dove è scritto «fatto datato». Ciò che smentisce il brief è in **§6-ter**.
+
+| # | Censimento | Esito |
+| --- | --- | --- |
+| (a) | chi scrive `movimenti`/`valore_giacenza`/`inventari*`/`rettifiche*` | `pg_proc`: **zero** funzioni; `backend/apps`: zero; `db/pgtap`: **quattro** file scrivono direttamente — `test-movimenti-vincoli-v2` (14 `INSERT` sul ledger), `test-valore-giacenza-forma-v1` (1 ledger + 2 `valore_giacenza`), `test-movimenti-attesi-forma-v1` (8 sugli **attesi**, che restano scrivibili: **non diventa rosso**), `rls/test-rls-magazzino-perimetro-v1` (già `pgtap-runner: owner`: invariato). ⇒ i rossi per costruzione sono **due**, non tre (§5 corretta) |
+| (b) | i lettori dei due BB | 23 pgTAP nominano `fn_resolve_emittente_fiscale_id`/`trgfn_guard_emittente_scope`; **nessuno pinna la frase dei modi** (`sono ammessi` → zero in `db/pgtap`); zero righe nei CSV di `80_data/sql/dbops`. Forma viva del resolver: `STABLE SECURITY DEFINER`, pin `pg_catalog, pg_temp`, **sei modi** — `fiscale`, `soggetto_ruolo`, `fattura`, `ente_incasso`, `contabile`, **`listino`** (dal 05-09; §4.1 ne elencava cinque) — e nel ramo `ELSE` una frase che **elenca i modi**: si riscrive con `magazzino` |
+| (c) | presidi e codici | `presidi.csv`: 37 righe; vocabolari dal `CHECK`: natura ∈ {`ZERO`,`REGISTRO`,`LAVORAZIONE`,`CANCELLO`,`INVENTARIO`}, cadenza ∈ {`GIORNALIERA`,`SETTIMANALE`,`MAI`}, perimetro ∈ {`LIBERO`,`DEFINER`}, `chk_presidi_coppia_stato` (colonna e atteso insieme o nessuno); `fn_conta_presidio` con `colonna_stato` conta `IS DISTINCT FROM $1` ✓; `test-catalogo-presidi-v1` conta **`> 0`**, non una fotografia. `messaggi_errore.csv` max id **1074** ✓; `codici_errore.csv` = `(codice, classe, obsoleto_dal, note)`, senza id. `E_MAG_*` già a catalogo: **due** (`MOVIMENTO_VERSO_INCOERENTE` TECNICO, `TRASFERIMENTO_EMITTENTI_DIVERSI` DATO_ERRATO). Riusati: `E_CONFIG_MANCANTE` TECNICO (baseline B-7: **`NOT_FOUND`** sola), `E_SCOPE_EMITTENTE` NON_PERMESSO, `E_SCOPE_SENZA_UTENTE` TECNICO, `E_VENDITE_CHIAMATA_NON_VALIDA` TECNICO (B-7: `NOT_FOUND,PARAMETRO,VALORE_ATTESO`). ⚠️ Regola B-7 letta nello script: *«un codice NUOVO nasce con 2+ famiglie note → ROSSO»* (§6-ter C4) |
+| (d) | `pg_trigger` e vincoli sulle otto tabelle | 74 trigger vivi. **Stampo del guard di scope** (24 tabelle): `trg_<t>_a10_guard_emittente_scope_ins_upd`, `BEFORE INSERT OR UPDATE`, argomenti `('fiscale','emittente_fiscale_id')` — `guard_scope_<qualifica>` solo dove ce ne sono **due** sulla stessa tabella (`sistemazioni`, `vendite_contabili_righe`). `magazzini` **ha già** il suo (`fiscale`). I tre nuovi: 47/54/53 caratteri. `valore_giacenza` non ha `tx_id` né storico (solo audit). CHECK vivi: `ck_mag_invetario_stato` a **cinque** valori, `chk_mag_rettifiche_stato` a quattro, `uq_mag_movimenti_identita` **`NULLS NOT DISTINCT`** sulle sette colonne del passo 10 ✓, `chk_mag_inventari_righe_asset_qta_unitaria` (`qta_contata ∈ {0,1}`), `qta_contata >= 0` ✓, `chk_mag_trasferimenti_da_a_distinti` ✓. Con lo **stesso refuso** del CHECK: l'indice `uq_mag_invetario_sorgente_fk`. FK righe → testata: **`ON DELETE CASCADE`** su entrambe le famiglie (§6-ter C3). Nessun `delete_block` generato su `magazzino`. `COUNTING`: nominato **solo** da `manual/inventari.md` |
+| (e) | privilegi e postura (fatto datato 18-09) | `zeroerp_app`: `SELECT, INSERT, UPDATE, DELETE` su **tutte** le otto, su dev **e** su `zeroerp_ci`. Proprietario: `titodb` (dev) / `zeroerp` (CI). RLS `ENABLE` **senza `FORCE`** su tutte tranne `causali` e `lotti` (nessuna RLS); policy `FOR ALL` con `ruolo_applicativo = 'OPERATORE'` + `fn_scope_ef_whitelist_via_magazzino`. Il loop `20260205-41`: liste `v_registri_append_only`, `v_fn_riservate`, `v_schemi_senza_delete`, ramo prima del generico ✓ — **ma non è l'ultima parola** (§6-ter C2) |
+| (+) | altro letto per strada | `vw_articoli_dettaglio`: **55** colonne (non 54), `requires_lotto` assente, **nessun** oggetto dipende dalla vista (il `CREATE OR REPLACE` è libero); `articoli.requires_lotto` `boolean NOT NULL` ✓. `consente_stock_negativo = false` su **tutte** le sedici causali (fatto datato): il pgTAP **costruisce** il caso. `fn_raise_primo_motivo_se_presente(p_area, p_funzione, p_motivi, p_campo, p_tx_id, p_context_extra)` ✓ come in §4.2. `fn_pgtap_crea_emittente_operatore()` → `(emittente_fiscale_id, emittente_codice, soggetto_ruolo_id, auth_user_id, identita_id)`. La shadow di storico salva uno **`snapshot` jsonb**: le tre colonne di P-1 non chiedono DDL sulla shadow. **Prova sotto il pin** (owner, `BEGIN…ROLLBACK`, 18-09): un `INSERT` sul ledger con `search_path = pg_catalog, public, pg_temp` attraversa tx_id, audit, storico, guard sorgente (dinamico) e `require_attivo` **senza cecità** — la catena regge il pin di §4.2. Numero libero al momento della scrittura: **`20260918-05`** (`-01…-04` sono di `pagamenti`, non committati; si ricontrolla) |
+
+### 6-ter — ⚠️ Criticità emerse in P-0 — da decidere PRIMA di P-2
+
+> Ognuna smentisce una riga del brief con un fatto di **struttura** (o con
+> una prova in `ROLLBACK`), e propone un rimedio. Le prime due bloccano il
+> lotto così com'è scritto; le altre lo correggono mentre si scrive.
+
+**C1 🔴 D-L2-b — il guard BB è FAIL-OPEN dentro una DEFINER del proprietario.**
+Il brief dice: *«il ramo «utente NULL» del guard passa solo chi
+`row_security_active()` non filtrerebbe comunque … per la primitiva chiamata da
+una sessione senza identità vale la stessa regola di `vendite.ordini`»*. **È
+falso**, e non per un dettaglio: `row_security_active(TG_RELID)` risponde per
+il **`current_user`**, che dentro una `SECURITY DEFINER` è il **proprietario**
+— RLS `ENABLE` senza `FORCE` ⇒ **false** ⇒ `RETURN NEW`. ⭐ **Provato il 18-09
+su dbdev con un precedente già in servizio**, stessa sessione `zeroerp_app`
+**senza GUC**, in `ROLLBACK`: `INSERT` diretto su `config.email_log` →
+`E_SCOPE_SENZA_UTENTE`; la stessa riga via `config.fn_accoda_email_sistema`
+(DEFINER di `titodb`, tabella col guard `fiscale`) → **passa**. Per la
+primitiva vuol dire: un management command, un job senza `processi_identita`,
+qualunque sessione senza identità **scrive sul ledger** — cioè la porta si apre
+proprio per chi la §5 dell'analisi voleva fermare; e `fn_ricalcola_valore_giacenza`
+uguale. ⚠️ `fn_accoda_email_sistema` **conta** su questo passaggio (reset
+password da endpoint non autenticato: *«nessuna sessione, nessuna GUC»*,
+`email_repository.py:495`) — ma scrive `emittente_fiscale_id = NULL`, quindi il
+ramo che la fa passare **non è quello dell'utente**: è il *«nessun padrone»*.
+**Rimedio proposto — nel BB, una sede sola (A′)**: nel ramo «utente NULL»,
+quando `NOT row_security_active(...)` **ma `current_user <> session_user`**
+(si sta dentro una DEFINER), si risolve comunque l'emittente e, **se non è
+NULL**, si solleva `E_SCOPE_SENZA_UTENTE`: una DEFINER che scrive una riga
+*con* un padrone per conto di una sessione che non dice chi è non ha titolo;
+una riga *senza* padrone (le email di sistema) passa come oggi. Censiti: le
+DEFINER che scrivono su tabelle col guard sono **due** (`fn_accoda_email_sistema`,
+`fn_chiudi_email_sistema`), entrambe a emittente NULL ⇒ nessun consumatore
+cambia. pgTAP: caso nuovo in `script/test-guard-emittente-senza-utente.sql`
+(«via DEFINER senza identità e con emittente → rifiuta; con emittente NULL →
+passa») e il caso in `test-porta-ledger-v1` (§7). *Ripiego (B′)*: la primitiva
+pretende la GUC salvo `session_user` esente (owner/superuser/BYPASSRLS) —
+funziona, ma è la **seconda scrittura** della regola di esenzione che il guard
+rifiuta di elencare. ⛔ Finché non è deciso, **P-2 non si scrive**: senza C1 la
+porta è una porta a metà.
+
+**C2 🔴 D-L2-b — la postura ha TRE sedi, non due.** Il loop `20260205-41`
+**non è l'ultima parola** (è scritto nella sua intestazione, riga «🔴»):
+`scripts/sql/provision_db_roles.sql` gira **dopo** `--contexts=ci_apply` in
+`ci-validate.yaml` e in `ci-local.sh`, e fa `GRANT SELECT, INSERT, UPDATE,
+DELETE ON ALL TABLES IN SCHEMA magazzino` all'app — riaprirebbe la porta **in
+CI, nello stesso build**, in silenzio; su dev non si vede. Le eccezioni
+esistenti (`audit_log`/`error_log`, `storico`) stanno **anche lì**
+(`provision_db_roles.sql` righe 167-178). ⇒ P-2 = loop **+** forward `90_end`
+**+** provisioning, e `test-porta-ledger-v1` è il presidio che le tiene
+allineate (stampo: `test-registri-append-only-postura-v1`, che «l'ha detto il
+giorno stesso in cui è nato, sul provisioning»).
+
+**C3 🟠 D-L2-h — `ON DELETE CASCADE` righe → testata: una `POSTED` si cancella,
+e lascia orfani.** `fk_mag_inventario_righe_testata` e
+`fk_mag_rettifiche_righe_testata` sono `ON DELETE CASCADE`; il guard di
+famiglia è `BEFORE UPDATE OF <stato>` sulla testata e `BEFORE INSERT OR UPDATE
+OR DELETE` sulle righe. Un `DELETE FROM magazzino.inventari WHERE id = <POSTED>`
+(l'app ha `DELETE`) cancella la testata, la cascata cancella le righe, e il
+guard delle righe — che legge la testata dalla FK — **non la trova più**
+(l'azione referenziale gira dopo il `DELETE` del padre): se «testata assente»
+passa, i movimenti restano con `INVENTARIO_RIGA:{id}` verso righe sparite —
+esattamente ciò che `vw_sorgenti_orfane` è nata per trovare **dopo**. Se
+invece «assente» blocca, non si cancella più **nemmeno una `DRAFT`** con righe.
+⇒ La porta è la **testata**: `trgfn_documento_interno_guard_transizione` prende
+anche `BEFORE DELETE` (`TG_OP = 'DELETE'`): eliminabile solo in `DRAFT` — oppure
+mai, se l'uscita è `CANCEL` come in vendite (**decisione**). Codice: riuso di
+`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA` con `valori` (stato, «eliminazione»)
+o un `E_MAG_DOCUMENTO_NON_ELIMINABILE` (CONFLITTO_STATO) — il secondo dice il
+verbo. Nel guard delle righe, «testata assente» = cascata già decisa a monte ⇒
+passa (sotto RLS un'app non arriva a una riga la cui testata non vede).
+
+**C4 🟠 §4.10 — il cancello B-7 fa rosso un codice NUOVO nato con due
+famiglie.** `scripts/codici-errore-baseline.sh`: *«un codice NUOVO nasce con 2+
+famiglie note → ROSSO (nasce storto)»*. Così com'è scritto §4.2:
+`E_MAG_CHIAMATA_NON_VALIDA` nasce `PARAMETRO` (passo 1, `p_* IS NULL OR <= 0`)
+**e** `NOT_FOUND` (passo 4, `IF NOT FOUND` sul magazzino) ⇒ rosso. Idem il
+rischio su `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA` (matrice nel guard +
+`v_stato <> 'CONFIRM'` nell'operazione = `VALORE_ATTESO`) e
+`E_MAG_DOCUMENTO_RIGHE_CONGELATE` (`IN ('POSTED','CANCEL')` = `ENUM` +
+`= 'CONFIRM' AND GUC`). ⇒ Il passo 4 prende un codice suo,
+**`E_MAG_MAGAZZINO_NON_VALIDO`** (TECNICO: un id che nessuna interfaccia
+produce — le operazioni lo leggono dalla testata, FK-garantito) e
+`E_MAG_CHIAMATA_NON_VALIDA` resta **solo** guard di parametro; `E_CONFIG_MANCANTE`
+si solleva **solo** dietro un `IF NOT FOUND` (è la sua unica famiglia
+dichiarata). ⭐ Regola operativa per P-5/P-6: **`scripts/codici-errore-baseline.sh`
+su dbdev prima di dire «fatto»**, e le righe dei codici nuovi nella baseline
+con la ragione nel commit — non dopo il primo rosso in CI.
+
+**C5 🟠 §4.1 — i tre trigger di scope devono seguire lo STAMPO, non un nome
+nuovo.** Lo stampo vivo (24 tabelle, `vendite.ordini` compreso) è
+`trg_<t>_a10_guard_emittente_scope_ins_upd` su **`BEFORE INSERT OR UPDATE`**;
+`guard_scope_<qualifica>` esiste solo dove una tabella ne monta **due**. Il
+brief propone `guard_scope` + `UPDATE OF magazzino_id`: due deviazioni per
+niente — il guard **salta da solo** se la colonna non cambia, e l'ordine
+alfabetico regge uguale (`guard_e…` < `guard_so…` < `guard_v…`). ⇒ nomi
+`trg_movimenti_a10_guard_emittente_scope_ins_upd` (47),
+`trg_movimenti_attesi_a10_guard_emittente_scope_ins_upd` (54),
+`trg_valore_giacenza_a10_guard_emittente_scope_ins_upd` (53), argomenti
+`('magazzino', 'magazzino_id')`.
+
+**C6 🟠 D-L2-c — la «media corrente» avrebbe due sedi.** `magazzino.vw_costo_medio`
+esiste già (Lotto 1 §4.8): `valore / qta`, `NULL` a `qta = 0`. D-L2-c dice
+`NULL` a giacenza **`≤ 0`** (con `consente_stock_negativo` la giacenza può
+essere negativa e il rapporto non significa niente). Una regola sola: la
+primitiva **legge `vw_costo_medio` dentro il lock** (è `security_invoker`, e
+dentro la DEFINER legge tutto) e la vista passa a `qta > 0` — un `CREATE OR
+REPLACE` con `security_invoker` **ri-specificato** e la stessa lettura in
+`fn_inventario_piano`/`fn_posta_rettifica` per il costo di ripiego. Da confermare.
+
+**C7 🟡 §4.4 — l'arrotondamento può far suonare la vista di divergenza per
+1e-6.** `valore` e `costo_unitario` sono `numeric(18,6)`, `qta` idem: il
+prodotto ha fino a dodici decimali, la copia lo **arrotonda a ogni passo**
+(scrive `valore + qta × costo` su una colonna a sei decimali), la ri-somma
+arrotonda **una volta sulla somma**. Non coincidono «per costruzione» finché
+il prodotto non è arrotondato **prima** in entrambe le sedi:
+`round(p_qta * v_costo, 6)` nel passo 14 e `sum(round(qta * costo_unitario, 6))`
+nel ricalcolo. Un dettaglio da costruire, non una decisione.
+
+**C8 🟡 D-L2-n contro §12.1 — il piano promette righe che la primitiva
+rifiuterà.** I passi 5-8 (`E_MAG_ARTICOLO_NON_GESTITO`, lotto/seriale/ubicazione
+obbligatori o non ammessi) sono `DATO_ERRATO` con `campo`, cioè *«chi compila
+la riga»* — ma la riga la si compila in `DRAFT`, il piano di `CONFIRM` la
+mostra come `INV_INIZIALE`, e il rifiuto arriva **al posting**, all-or-nothing
+su tutto il documento. È la «terza via» del §12.1 spostata di un passo.
+Due strade, **decisione**: (a) v1 accetta, dichiarato nel `COMMENT` e nel brief
+BE/FE (il rifiuto porta `campo` e l'operatore torna sulla riga); (b) i passi
+5-8 escono in una `script.fn_check_riga_magazzino(p_magazzino_id, p_articolo_id,
+p_lotto_id, p_asset_id, p_ubicazione_id)` pura (motivi ordinati, `campo`),
+**chiamata dalla primitiva** (`fn_raise_primo_motivo_se_presente`) **e dal
+piano** (esito `NON_POSTABILE` + `reason`) — §12.5.2 applicato: una sede.
+Costa una funzione e un pgTAP in più; è la forma che il progetto chiede.
+
+**C9 🟡 §4.1 — `fn_resolve_emittente_fiscale_id` ha sei modi, e la frase
+d'errore li elenca.** Il modo `listino` (05-09) manca nell'elenco del brief;
+copiando **dalla doc auto-gen** entra da solo, ma la frase del ramo `ELSE`
+(*«sono ammessi fiscale, soggetto_ruolo, fattura, listino, ente_incasso e
+contabile»*) va riscritta con `magazzino`. Nessun pgTAP la pinna (censito).
+
+**C10 🟡 D-L2-h — il refuso `invetario` vive anche in un INDICE.** Accanto a
+`ck_mag_invetario_stato` c'è `uq_mag_invetario_sorgente_fk` (parziale, su
+`inventari`). **Non si rinomina qui**: un indice del passato sopravvive sul DB
+da zero (memoria `indice_del_passato_sopravvive_alla_rinomina_sul_db_da_zero`)
+e non è nel perimetro del lotto; si annota in `manual/inventari.md` come debito
+di nome, con la strada (`DROP IF EXISTS` + ricrea, non `RENAME`).
+
+**C11 🟡 §5/§7 — i pgTAP resi rossi dalla porta sono DUE, non tre.**
+`test-movimenti-attesi-forma-v1` scrive **solo attesi** (8 `INSERT`), che
+restano scrivibili: non cambia. Restano `vincoli-v2` (→ owner, forma 3) e
+`valore-giacenza-forma-v1` (→ via primitiva).
+
+**C12 🟡 D-L2-d — `consente_stock_negativo` è falso su tutte le causali.**
+Fatto datato, non premessa: il ramo esiste sul modello e il pgTAP di §7 deve
+**costruire** il caso (`UPDATE magazzino.causali SET consente_stock_negativo`
+in transazione, come app se il privilegio c'è, altrimenti il file dichiara
+perché gira owner) — pescare una causale dal catalogo darebbe un verde per
+sottrazione.
 
 ---
 
@@ -875,13 +1112,13 @@ scrivendo questo brief sta in §4 come «letto dal catalogo vivo»)*
 
 | Test | Che cosa prova |
 | --- | --- |
-| `magazzino/test-fn-scrivi-movimento-controlli-v1` | i quattordici passi di §4.2, **uno per test**, ciascuno col caso costruito: causale sconosciuta, verso incoerente (la frase della madre, non del trigger), articolo non gestito (`campo = articolo_id` nel context), lotto obbligatorio/non ammesso/di altro articolo, seriale idem + altro emittente, ubicazione di altro magazzino, identità già registrata (la frase nomina l'id), costo non ammesso in uscita, gemella assente, storno incoerente; il caso buono torna un id e la riga è **come attesa** (qta firmata, costo, sorgente) |
+| `magazzino/test-fn-scrivi-movimento-controlli-v1` | i quattordici passi di §4.2, **uno per test**, ciascuno col caso costruito: causale sconosciuta, verso incoerente (la frase della madre, non del trigger), articolo non gestito (`campo = articolo_id` nel context), lotto obbligatorio/non ammesso/di altro articolo, seriale idem + altro emittente, ubicazione obbligatoria/non ammessa (D-L2-m: due magazzini costruiti, uno per verso)/di altro magazzino; `usa_ubicazioni` non si cambia su un magazzino con un movimento (`E_MAG_MAGAZZINO_CON_GIACENZA`) e si cambia su uno vuoto, identità già registrata (la frase nomina l'id), costo non ammesso in uscita, gemella assente, storno incoerente; il caso buono torna un id e la riga è **come attesa** (qta firmata, costo, sorgente) |
 | `magazzino/test-fn-scrivi-movimento-disponibilita-v1` | uscita oltre la giacenza → `E_MAG_GIACENZA_INSUFFICIENTE` con i valori nella frase; uscita dentro la giacenza ma oltre i **blocchi altrui** → `E_MAG_MERCE_BLOCCATA`; lo **stesso** blocco con la **stessa sorgente** del movimento non ferma; `consente_stock_negativo` passa sotto zero; `is_rettifica` (`RETT_NEG`) ignora i blocchi ma **non** il fisico; grana **lotto** (articolo 20, lotto 3, uscita 5 dal lotto → rifiuto); l'array della check e il codice sollevato **coincidono** (test che chiama la check da sola, come operatore, e la confronta col rifiuto) |
 | `magazzino/test-fn-scrivi-movimento-seriali-v1` | asset: entrata quando è già dentro → posizione incoerente; uscita da dove non è → idem; entrata poi uscita poi entrata altrove → passa; `\|qta\| = 1` (CHECK) |
 | `magazzino/test-fn-scrivi-movimento-valore-v1` | entrata a 10 € × 5 poi a 20 € × 5 ⇒ valore 150, media 15; uscita di 4 ⇒ `costo_unitario = 15` scritto sul movimento e valore 90; entrata **senza costo** ⇒ costo NULL, valore invariato, riga in `vw_movimenti_senza_costo`; trasferimento OUT/IN con lo stesso `transfer_uid` ⇒ la IN porta il costo della OUT e i due valori si spostano; storno ⇒ costo dell'originale; `fn_ricalcola_valore_giacenza` **coincide** con la copia; una scrittura fuori porta (come owner, `pgtap-runner: owner` in un file **suo**: `test-valore-giacenza-divergenza-owner-v1`) fa comparire la riga in `vw_valore_giacenza_divergente` e il ricalcolo la fa sparire |
-| `magazzino/test-fn-posta-inventario-v1` | primo conteggio su merce mai movimentata ⇒ `INV_INIZIALE` con il costo della riga; conteggio su merce già a registro ⇒ `RETT_POS`/`RETT_NEG` per delta; delta zero ⇒ nessun movimento, `qta_sistema` scritto lo stesso; **grana**: riga con lotto confronta il lotto; riga con ubicazione su merce senza ubicazione **non compensa** (D-L2-f, caso costruito e dichiarato); stato non `CONFIRM` ⇒ transizione non ammessa; senza righe ⇒ `NON_ESEGUIBILE`; **all-or-nothing**: la terza riga fallisce (articolo non gestito) e le prime due non sono a registro, testata ancora `CONFIRM`; posting due volte ⇒ la seconda rifiuta su `POSTED` |
+| `magazzino/test-fn-posta-inventario-v1` | primo conteggio su merce mai movimentata ⇒ `INV_INIZIALE` con il costo della riga; conteggio su merce già a registro ⇒ `RETT_POS`/`RETT_NEG` per delta; delta zero ⇒ nessun movimento, `qta_sistema` scritto lo stesso; **grana**: riga con lotto confronta il lotto; **il piano** (D-L2-n): contata in UY con merce in UX ⇒ una riga `NON_CONTATA` per UX, il posting scrive UY e lascia UX, e `qta_sistema` sulla riga è quello del piano; un magazzino con `usa_ubicazioni` rifiuta la riga senza ubicazione (`E_MAG_UBICAZIONE_OBBLIGATORIA`) e uno senza la rifiuta con (`_NON_AMMESSA`) — D-L2-m; stato non `CONFIRM` ⇒ transizione non ammessa; senza righe ⇒ `NON_ESEGUIBILE`; **all-or-nothing**: la terza riga fallisce (articolo non gestito) e le prime due non sono a registro, testata ancora `CONFIRM`; posting due volte ⇒ la seconda rifiuta su `POSTED` |
 | `magazzino/test-fn-posta-rettifica-v1` | stessa forma: delta dato, causale dal segno, costo dalla riga, `RETT_NEG` oltre la giacenza ⇒ rifiuto fisico, `RETT_NEG` sotto un blocco altrui ⇒ **passa** (il fatto vince) |
-| `magazzino/test-documenti-interni-guard-v1` | la matrice: ogni transizione ammessa passa, ogni vietata dà `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`; `UPDATE … SET stato = 'POSTED'` diretto ⇒ `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE`; righe su `POSTED`/`CANCEL` ⇒ congelate; righe in `CONFIRM` scritte dall'app ⇒ congelate, dall'operazione ⇒ passa |
+| `magazzino/test-documenti-interni-guard-v1` | la matrice (la stessa per le due famiglie, senza `COUNTING`): ogni transizione ammessa passa, ogni vietata dà `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`; `UPDATE … SET stato = 'POSTED'` diretto ⇒ `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE`; righe su `POSTED`/`CANCEL` ⇒ congelate; righe in `CONFIRM` scritte dall'app ⇒ congelate, dall'operazione ⇒ passa; il `CHECK` di `inventari` ha **quattro** valori e si chiama `chk_mag_inventari_stato` |
 | `magazzino/test-porta-ledger-v1` | `has_table_privilege('zeroerp_app', 'magazzino.movimenti', 'INSERT\|UPDATE\|DELETE')` **false**, `SELECT` true; idem `valore_giacenza`; `movimenti_attesi` senza `DELETE`; `INSERT` diretto come app ⇒ `42501`; **la primitiva è DEFINER del proprietario delle tabelle** (`proowner = relowner`, stampo `test-catalogo-presidi-v1` t.11), `proconfig` contiene il pin con `public`; le tre funzioni DEFINER del lotto hanno il pin; il guard di scope è montato sulle tre tabelle e **rifiuta** una scrittura via primitiva su un magazzino di un altro emittente (`E_SCOPE_EMITTENTE`) — due aziende costruite **come app, cambiando contesto operatore** (`fn_pgtap_set_contesto_operatore(auth_user_id)` dell'una e dell'altra: il magazzino B nasce nel contesto di B, il tentativo si fa nel contesto di A), non con l'owner: la DEFINER vede il magazzino B, il guard dice che A non può |
 | `magazzino/test-vw-disponibilita-v1` | giacenza 10, blocco −4 ⇒ `bloccata = −4`, `disponibile = 6`; blocco `CHIUSA` non conta; articolo con blocco e **senza movimenti** compare (disponibile −4); la grana per articolo somma i magazzini; `security_invoker` su entrambe |
 | `dbops/test-sorgenti-orfane-v1` | il perimetro contiene le **sei** tabelle di `magazzino` (gemello «esiste»); zero orfani sul mondo costruito; cancellato il bersaglio di un movimento **come owner** (file suo, `pgtap-runner: owner`: la FK non c'è per definizione, e l'app non cancella righe di inventario postate) ⇒ **una** riga con tabella, id e sorgente; `fn_conta_presidio('dbops.vw_sorgenti_orfane')` = 1 |
@@ -901,14 +1138,14 @@ sessioni `psql` — scrivendo l'esito nel §12.
 
 - `docs/it/dbzero/magazzino/manual/`: **nuovi** `fn_scrivi_movimento.md`,
   `fn_ricalcola_valore_giacenza.md`, `fn_posta_inventario.md`,
-  `fn_posta_rettifica.md`, `trgfn_documento_interno_guard_transizione.md`,
+  `fn_posta_rettifica.md`, `fn_inventario_piano.md`, `trgfn_documento_interno_guard_transizione.md`,
   `trgfn_documento_interno_righe_guard_testata.md`, `vw_disponibilita.md`,
   `vw_disponibilita_articolo.md`, `vw_valore_giacenza_divergente.md`,
   `vw_movimenti_senza_costo.md`; **aggiornati** `movimenti.md` (chi scrive:
   la primitiva; la porta), `valore_giacenza.md`, `movimenti_attesi.md` (chi
   legge i blocchi), `inventari.md`, `inventari_righe.md` (il costo, la grana),
   `rettifiche.md`, `rettifiche_righe.md`, `causali.md` (`is_rettifica` armata),
-  `magazzini.md` (il modo di scope);
+  `magazzini.md` (il modo di scope; `usa_ubicazioni`: decide il magazzino, si cambia solo a registro vuoto; `trasferimenti` = interno, il DDT `TRASFERIMENTO` = con trasporto), `trasferimenti.md` (la D di D-L2-g);
 - `docs/it/dbzero/script/manual/`: `fn_check_disponibilita_uscita.md`,
   `fn_resolve_emittente_fiscale_id.md` (il modo `magazzino`);
 - `docs/it/dbzero/dbops/manual/`: `fn_sorgenti_orfane.md`,
@@ -934,7 +1171,7 @@ non si lancia; l'autogen (`changelog-autogen.yaml`) non si rigenera a mano.
 | --- | --- | --- |
 | lo **scarico da DDT di vendita** (passo 3): l'aggancio a `EMESSO`, il filtro sugli articoli non gestiti, la conversione UoM | Lotto 3 | tocca `vendite.ddt`, che è in esercizio: il primo scrittore deve poter sbagliare da solo (§1). ⚠️ Eredita da qui: la primitiva rifiuta gli articoli non gestiti, quindi l'operazione **filtra** prima |
 | la **utility di storno** (M-8) | Lotto 3 | è un'operazione; il **ramo** della primitiva è qui e provato |
-| il **posting del trasferimento** e lo **spostamento fra ubicazioni** | Lotto 3, **dopo una D di Tid**: `trasferimenti` vieta `from = to` e le righe non hanno ubicazione (D-L2-g) | il documento per la coppia OUT/IN fra ubicazioni non esiste |
+| il **posting del DDT `TRASFERIMENTO`** (con trasporto) e quello di `magazzino.trasferimenti` (interno: stesso magazzino fra ubicazioni, o magazzini dello stesso emittente — D di Tid del 17-09, in D-L2-g) | Lotto 3: il DDT aspetta il `magazzino_id` sul DDT (lo stesso dello scarico da vendita); `trasferimenti` aspetta le ubicazioni sulle righe e il CHECK allargato | il ramo gemella della primitiva è qui e provato; i due documenti si armano con le loro colonne |
 | aprire e **liberare un blocco manuale** (`movimenti_attesi`) | Lotto 3, col DDT (è alla spedizione che il blocco ferma) | qui gli attesi si **leggono** (disponibilità) e restano scrivibili dall'app sotto RLS + guard; il verbo «libera» con la traccia sul documento è di quel lotto |
 | **eventi asset** (`ASSET_INSTALL`/`ASSET_RIENTRO`), `is_installazione_asset`, `assets.stato_id` | lotto suo (D-L2-l) | il pezzo lascia il magazzino e cambia stato: è un documento in più |
 | le colonne **impegnata / potenziale / in arrivo** di `vw_disponibilita` | dopo il satellite **D-17** (analisi acquisti §7) e il Lotto 3 | la soglia dell'impegno è una riga sola per due cicli (c/s §7-bis) |
@@ -986,6 +1223,8 @@ non si lancia; l'autogen (`changelog-autogen.yaml`) non si rigenera a mano.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-09-18 (mattina) | ✅ **P-0 eseguito** (§6-bis, letto dal catalogo vivo di dbdev e da `zeroerp_ci`, seed dai CSV). Ne escono **dodici criticità** in §6-ter, due delle quali **bloccano P-2**: **C1** — il guard BB di scope è **fail-open dentro una DEFINER** (`row_security_active` risponde per il proprietario; **provato in `ROLLBACK`** con `fn_accoda_email_sistema`: la stessa scrittura senza GUC è rifiutata diretta e passa via DEFINER), quindi la frase di D-L2-b «vale la stessa regola di `vendite.ordini`» è falsa — rimedio proposto nel BB (A′: dentro una DEFINER, riga *con* padrone e sessione senza identità → `E_SCOPE_SENZA_UTENTE`), ripiego nella primitiva (B′); **C2** — la postura ha **tre** sedi (loop + forward + `provision_db_roles.sql`, che gira dopo `ci_apply` e riaprirebbe la porta in CI). Poi: C3 `ON DELETE CASCADE` righe→testata (una `POSTED` si cancella con orfani: serve `BEFORE DELETE` sulla testata — decisione DRAFT-only o mai), C4 il cancello B-7 su un codice nuovo con due famiglie (`E_MAG_CHIAMATA_NON_VALIDA` al passo 4 → codice suo `E_MAG_MAGAZZINO_NON_VALIDO`), C5 lo stampo dei trigger di scope (`guard_emittente_scope`, `BEFORE INSERT OR UPDATE`), C6 la media corrente ha già una sede (`vw_costo_medio`, da portare a `qta > 0`), C7 arrotondamento a sei decimali in entrambe le sedi, C8 il piano promette righe che la primitiva rifiuta (§12.1: v1 dichiarato o `fn_check_riga_magazzino` condivisa — decisione), C9 sei modi del resolver e la frase da riscrivere, C10 il refuso anche nell'indice, C11 i rossi sono due non tre, C12 `consente_stock_negativo` falso ovunque (il test costruisce). Corretti §5 e D-L2-b sui «tre pgTAP». Regola di Tid registrata in P-0: `%TYPE` in firma, `DECLARE` e `RETURNS TABLE`; numero libero `20260918-05` da ricontrollare. 🔵 **Nessun changeSet**: si aspettano le decisioni su C1, C3, C6, C8 |
+| 2026-09-17 (sera, poi) | ✅ **Quattordici decisioni prese da Tid, una alla volta** (in chat, esposte in linguaggio semplice). Dodici confermate; tre **modificate confermando**: D-L2-f — l'«angolo» delle ubicazioni era in realtà un **raddoppio della giacenza** da un conteggio giusto, chiuso sul modello da **D-L2-m** (`magazzini.usa_ubicazioni`: decide il magazzino, come `requires_lotto`/`requires_serial` decidono l'articolo; si cambia solo a registro vuoto); D-L2-g — la prima stesura diceva che lo spostamento «non ha un documento» ed era falso a metà: il trasferimento **con trasporto è il DDT `TRASFERIMENTO`** (`config.causali_trasporto`, letto da dieci oggetti di vendite; al DDT manca il `magazzino_id`, Lotto 3), e Tid ha deciso che **`magazzino.trasferimenti` è il trasferimento interno** (stesso magazzino fra ubicazioni, o magazzini dello stesso emittente); D-L2-h — **`COUNTING` esce** (solo nel CHECK, nessun consumatore, nessuna regola diversa): matrice unica per le due famiglie, CHECK rinominato `chk_mag_inventari_stato`. Una nuova da un dubbio di Tid: **D-L2-n**, «contata in UY, a registro in UX» → `fn_inventario_piano`, una funzione per UI e posting, con le posizioni `NON_CONTATA` segnalate e non bloccanti. Ricadute propagate in §4.2 (passo 8), §4.5, §4.10 (+4 codici), §6 (P-1, P-6), §7, §8, §9 |
 | 2026-09-17 (sera) | **Nascita.** Con Lotto 1 e Lotto 1-bis chiusi, il motore: la primitiva coi quattordici passi, la check di disponibilità condivisa, il valore con ricalcolo e divergenza, le due operazioni senza documento commerciale, le viste, gli orfani, la prontezza, la porta. **Dodici decisioni piccole** emerse scrivendo (§3), fra cui tre che l'analisi non aveva visto: l'inventario iniziale **non ha un costo** (D-L2-c → colonna sulle righe), lo spostamento fra ubicazioni **non ha un documento** (D-L2-g → D aperta, trasferimento fuori), `is_rettifica` trova il suo **primo consumatore** (D-L2-d: una rettifica non si ferma su un blocco). Fatti di struttura letti dal catalogo e non presenti nelle analisi: `trgfn_guard_emittente_scope` ha già la forma per proteggere una DEFINER (basta un modo), `E_SCOPE_EMITTENTE`/`E_SCOPE_SENZA_UTENTE`/`E_CONFIG_MANCANTE` esistono e si riusano, tre pgTAP del Lotto 1 scrivono direttamente sul ledger e la porta li rende rossi per costruzione (dichiarato, non in baseline), `vw_articoli_dettaglio` non porta `requires_lotto`. ⛔ Nessun changeSet: le D-L2 si confermano prima |
 
 ---

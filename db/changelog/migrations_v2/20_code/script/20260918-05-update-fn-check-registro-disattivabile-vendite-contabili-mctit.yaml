@@ -1,0 +1,469 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHECK IMPARA L'OTTAVO GUARD: `pagamenti.vendite_contabili`
+#   script.fn_check_registro_disattivabile  (era 20260902-12)
+#
+# ── ⭐ L'HA TROVATO IL PRESIDIO, PER LA SECONDA VOLTA ────────────────
+#
+#   `db/pgtap/script/test-fn-check-registro-disattivabile-v1.sql` §6 confronta
+#   i guard MONTATI (letti da `pg_trigger`) con quelli che la check COPRE. Il
+#   2026-09-18 e' diventato rosso da solo, nella baseline dopo l'apply:
+#
+#       have: commesse,ddt,fatture,ordini,registri_fatturazione_progressivi,resi,tipi_doc_fiscale_registri,vendite_contabili
+#       want: commesse,ddt,fatture,ordini,registri_fatturazione_progressivi,resi,tipi_doc_fiscale_registri
+#
+#   E' la stessa forma del 2026-09-02 (`commesse`, 20260902-12): il test lo
+#   aveva scritto in anticipo — «se ne comparisse un'ottava, questa riga
+#   diventa rossa» — ed e' andata esattamente cosi'.
+#
+# ── ⭐ DA DOVE ARRIVA L'OTTAVO GUARD ─────────────────────────────────
+#
+#   `pagamenti.vendite_contabili` — la DISTINTA contabile di incasso — ha
+#   guadagnato `registro_id` il 2026-09-17 (changeSet `20260915-21`, cantiere
+#   `work-done/brief-db-distinta-numerata-sul-registro.md`: il codice della
+#   distinta passa dalla numerazione standard `DIS-<SIGLA>-<ANNO>-<NNNNNNN>`).
+#   L'automazione ATTIVO monta il guard di disattivazione DA SOLA a partire
+#   dalla FK, alla passata `ci_apply`: il brief lo aveva PREVISTO in P-1 («il
+#   `block_deact` su `registri_fatturazione`») ma non aveva tirato la
+#   conseguenza — che la check dovesse imparare il motivo. Su dev il guard e'
+#   comparso quando le automazioni sono girate dopo l'apply, non al migrate:
+#   e' per questo che il rosso arriva il 18 e non il 17.
+#
+#   ⭐ E' la PRIMA figlia FUORI DALLO SCHEMA `vendite`: le sette precedenti
+#   sono tutte `vendite.*`, questa e' `pagamenti.*`. Il quarto `valore` — la
+#   tabella figlia che il trigger nomina nella frase — porta quindi
+#   `pagamenti.vendite_contabili`, ed e' l'unico punto in cui lo schema conta:
+#   il trigger compone la frase con `child_schema || '.' || child_table`, e il
+#   test 5 del pgTAP confronta proprio quella frase con i `valori` della check.
+#
+# ── ⛔ PERCHE' NON E' «UN TEST DA AGGIORNARE» ────────────────────────
+#
+#   Il difetto e' reale e MUTO: senza questo blocco la check risponde `[]` su
+#   un registro `DIS-<sr>` che ha gia' numerato una distinta, quindi la lista
+#   dei registri accende il cestino, l'operatore preme e il trigger rifiuta
+#   con un P0001. Il tooltip e il rifiuto direbbero cose diverse sullo stesso
+#   registro — precisamente il difetto per cui questa funzione esiste.
+#   ⚠️ E qui capita SUBITO: il registro `DIS-72` ha numerato la prima
+#   distinta il 17-09 (`DIS-PGTAPEF202-2026-0000001`, il collaudo di Tid).
+#
+# ── ⭐ VA ULTIMO, ED E' UN FATTO DEI NOMI ────────────────────────────
+#
+#   I `BEFORE ROW` scattano in ordine ALFABETICO di nome e i guard si chiamano
+#   `trg_registri_fatturazione_a10_<figlia>_…`: `vendite_contabili` viene dopo
+#   `tipi_doc_fiscale_registri` (`v` > `t`), quindi e' il trigger che scatta
+#   per ULTIMO — su un registro che ha anche il contatore vivo il rifiuto
+#   nomina i progressivi, non la distinta. Il motivo va in coda, ottavo.
+#   ⚠️ Il nome del trigger sul DB e' HASHATO a 63 caratteri
+#   (`…_a10_vendite_contabili_block_de_3e2bbe`): l'ordine lo decide il
+#   prefisso, che e' intero; il pgTAP lo cerca per funzione + argomenti, mai
+#   per nome.
+#
+# ── ⚠️ RAMO `_EXIST`, VERIFICATO E NON DEDOTTO ──────────────────────
+#
+#   `pagamenti.vendite_contabili` NON ha la colonna `attivo` (letto il
+#   2026-09-18 con le stesse due funzioni che usa il trigger:
+#   `dbops.fn_col_exists(…, dbops.fn_get_override_col(…, 'ATTIVO_COL', 'attivo'))`
+#   → false), quindi `dbops.trgfn_prevent_deactivate_if_children` cade nel
+#   ramo dell'ESISTENZA e solleva `E_ATTIVO_BLOCK_CHILDREN_EXIST`. La distinta
+#   ha uno stato (`stato_id`: BOZZA, VALIDATA, …) ma non un «attivo»: una
+#   distinta ANNULLATA blocca esattamente come una confermata.
+#
+#   ⛔ CONSEGUENZA DA SAPERE: una distinta numerata non si cancella, quindi
+#   un registro `DIS-*` che ne ha numerata anche UNA sola non si spegne piu'.
+#   Stessa durezza gia' accettata per ddt, ordini, resi e commesse — qui si
+#   rende VISIBILE prima del click, invece che dopo.
+#
+# ── ⚠️ SECURITY DEFINER: si aggiunge una tabella con RLS ─────────────
+#
+#   `pagamenti.vendite_contabili` ha la policy
+#   `rls_vendite_contabili_perimetro_incasso` sulla colonna dell'emittente
+#   (`20260915-31`). La funzione e' gia' DEFINER per le cinque sorelle di
+#   `vendite`; la ragione vale identica per l'ottava: da INVOKER le distinte
+#   di un altro emittente sarebbero invisibili e la check risponderebbe «si
+#   puo' disattivare» PROPRIO nel caso da bloccare.
+#
+# ── 🔧 IL COMMENT ERA STANTIO DAL 02-09 ─────────────────────────────
+#
+#   Il `COMMENT ON FUNCTION` vivo diceva ancora «I GUARD SONO SEI» e «le SEI
+#   reason_key»: `20260902-12` aveva aggiornato il corpo e non il COMMENT. Si
+#   riscrive qui a OTTO, con la storia delle tre date.
+#
+# ── 🔴 DEBITO VERSO IL FRONTEND (§12.3) ──────────────────────────────
+#
+#   La `reason_key` nuova e'
+#   `amministrazione.registri_fatturazione.disattiva_blocco.ha_distinte`, e
+#   nei locales NON C'E' (verificato su `frontend/src/locales/it.json` e
+#   `en.json`, dove le sette sorelle ci sono tutte, `ha_commesse` compresa —
+#   il debito del 02-09 e' stato pagato). Va aggiunta lato FE nello stesso
+#   giro, o il tooltip mostrera' la chiave al posto della frase. Richiesta
+#   scritta nel brief del cantiere (`brief-db-distinta-ricerca-rate.md`).
+#   ⚠️ `scripts/check_i18n_keys.py` non guarda `20_code`, quindi questo file
+#   non lo fa rosso: il debito e' dichiarato qui perche' altrimenti non lo
+#   direbbe nessuno finche' non si rigenera la doc `dbzero`.
+#
+# ⚠️ `CREATE OR REPLACE` e non DROP: la firma e il tipo di ritorno non cambiano
+#   (`(bigint) RETURNS jsonb`), quindi non serve — e un DROP porterebbe via i
+#   privilegi di esecuzione.
+# ⚠️ Corpo copiato dalla doc auto-gen (`docs/it/dbzero/script/funzioni/`), che
+#   riflette `20260902-12` vivo: i sette motivi restano identici, cambia solo
+#   l'ottavo blocco e i commenti di testa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260918-05-update-fn-check-registro-disattivabile-vendite-contabili-mctit.yaml
+
+  - changeSet:
+      id: 20260918-05-update-fn-check-registro-disattivabile-vendite-contabili
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_check_registro_disattivabile impara l''OTTAVO guard, pagamenti.vendite_contabili (la
+        distinta contabile di incasso). ⭐ L''ha trovato il pgTAP §6 per la seconda volta, rosso da solo
+        nella baseline del 18-09: `vendite_contabili` ha guadagnato `registro_id` col changeSet
+        20260915-21 (distinta numerata sul registro) e l''automazione ATTIVO ha montato il guard dalla
+        FK a ci_apply — il brief lo aveva previsto in P-1, non la conseguenza sulla check. ⛔ Non e''
+        un test da aggiornare: senza il blocco la check risponde [] su un registro DIS-* che ha gia''
+        numerato una distinta, il cestino si accende e il trigger poi rifiuta. ⭐ Va ULTIMO perche'' i
+        BEFORE ROW scattano in ordine alfabetico e `vendite_contabili` segue `tipi_doc_fiscale_registri`.
+        ⭐ Prima figlia FUORI da `vendite`: il quarto valore porta `pagamenti.vendite_contabili`, la
+        frase che il trigger compone. ⚠️ Ramo _EXIST verificato con fn_col_exists: la distinta ha uno
+        stato, non un `attivo`. ⚠️ Tabella con RLS: la funzione e'' gia'' DEFINER, la ragione vale
+        anche qui. 🔧 COMMENT riscritto (diceva ancora SEI dal 02-09). 🔴 reason_key `...ha_distinte`
+        da aggiungere ai locales FE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: registro_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_registro_disattivabile(p_registro_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_motivi  jsonb := '[]'::jsonb;
+                  v_codice  vendite.registri_fatturazione.codice%TYPE;
+                  v_n       bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Elencare i motivi che impediscono di DISATTIVARE un
+                  --   registro di numerazione. Funzione PURA (fn_check_*):
+                  --   nessuna scrittura, e nessun raise di dominio.
+                  --   Consumatori: la lista dei registri, che spegne il cestino
+                  --   di riga e dice perche' invece di far scoprire il vincolo
+                  --   sbagliando.
+                  --
+                  -- Ritorna: [] se si puo' disattivare; altrimenti array
+                  --   ORDINATO di {codice, reason, reason_key, dettaglio, valori}
+                  --   (§12.5.1). ⚠️ L'ordine e' il contratto: la superficie
+                  --   mostra il primo.
+                  --
+                  -- ⭐ L'ORDINE E' QUELLO DEI TRIGGER, non uno di comodo. I
+                  --   BEFORE ROW scattano in ordine ALFABETICO di nome, e i
+                  --   guard si chiamano trg_registri_fatturazione_a10_<figlia>_…
+                  --   ⇒ i motivi seguono il NOME DELLA TABELLA FIGLIA, cosi' il
+                  --   primo motivo e' quello che il rifiuto nominerebbe davvero.
+                  --   Un ordine diverso farebbe dire al tooltip «ha fatture» e
+                  --   all'errore «ha DDT», sullo stesso registro.
+                  --
+                  -- ⛔ SU QUESTA TABELLA I GUARD SONO OTTO, ed erano tre fino al
+                  --   2026-08-31, sei fino al 2026-09-02 e sette fino al
+                  --   2026-09-17: ddt, ordini e resi hanno guadagnato
+                  --   `registro_id` col trasloco, `commesse` col changeSet
+                  --   20260902-07, e `pagamenti.vendite_contabili` — la
+                  --   distinta di incasso, PRIMA figlia fuori da `vendite` —
+                  --   col 20260915-21. Ogni volta l'automazione ATTIVO ha
+                  --   montato il guard DA SOLA a partire dalla FK, a ci_apply,
+                  --   senza annunciarlo — a dirlo e' stato il pgTAP §6, che
+                  --   confronta i montati con i coperti.
+                  --   ⚠️ Quello che sorprende resta il contatore: un registro
+                  --   che ha numerato anche UN SOLO documento ha una riga di
+                  --   progressivi viva, quindi non si spegne piu'. Il cestino e'
+                  --   percio' quasi sempre indisponibile — e senza un motivo a
+                  --   video l'operatore lo scopre premendo.
+                  --
+                  -- ⚠️ SECURITY DEFINER: si legge vendite.fatture, vendite.ddt,
+                  --   vendite.ordini, vendite.resi, vendite.commesse e
+                  --   pagamenti.vendite_contabili, che hanno la RLS. Sotto il
+                  --   perimetro di un operatore i documenti di un altro
+                  --   emittente sono invisibili, e la check concluderebbe «si
+                  --   puo' disattivare» PROPRIO nel caso da bloccare.
+                  -- =========================================================
+
+                  -- Guard di parametro: un id assente o non positivo non esce da
+                  -- nessuna interfaccia, lo produce un chiamante rotto.
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_registro_disattivabile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_registro_id',
+                                             'valore', p_registro_id),
+                          NULL::uuid,
+                          'script.fn_check_registro_disattivabile',
+                          'identificativo del registro non valido');
+                  END IF;
+
+                  SELECT r.codice INTO v_codice
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  -- ⚠️ Qui «non esiste» e' davvero «non esiste»: la funzione e'
+                  --   DEFINER, quindi non c'e' il caso «non lo vedo».
+                  -- ⭐ E non si risponde []: sarebbe «si puo' disattivare», che su
+                  --   una riga inesistente e' una frase senza senso. Stesso ramo
+                  --   della gemella script.fn_check_annullo_movimento_titolo_iva.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_registro_disattivabile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          'script.fn_check_registro_disattivabile',
+                          concat('registro ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  -- ---- MOTIVO 1 — ha commesse ------------------------------
+                  -- ⛔ NUOVO dal 2026-09-02, e PRIMO perche' `commesse` precede
+                  --   `ddt` in ordine alfabetico: e' il guard che scatta per
+                  --   primo, quindi e' la frase che l'operatore vedrebbe.
+                  -- ⚠️ «ESISTONO» e non «esistono ATTIVE»: vendite.commesse non
+                  --   ha la colonna `attivo`, quindi il trigger cade nel ramo
+                  --   dell'ESISTENZA (_EXIST). Verificato su pg_attribute, e
+                  --   confermato dal messaggio reale del rifiuto.
+                  -- ⭐ Da qui discende una durezza che conviene sapere: una
+                  --   commessa non si cancella, quindi un registro che ne ha
+                  --   numerata anche una sola non si spegne piu'.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.commesse cm
+                   WHERE cm.registro_id = p_registro_id;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                          'reason',     'HA_COMMESSE',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_commesse',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'vendite.commesse'));
+                  END IF;
+
+                  -- ---- MOTIVO 2 — ha documenti di trasporto ----------------
+                  -- ⛔ NUOVO dal 2026-08-31.
+                  -- ⚠️ «ESISTONO» e non «esistono ATTIVI»: vendite.ddt non ha la
+                  --   colonna `attivo`, quindi il trigger cade nel ramo
+                  --   dell'ESISTENZA (_EXIST). Verificato, non dedotto.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.ddt d
+                   WHERE d.registro_id = p_registro_id;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                          'reason',     'HA_DDT',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_ddt',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'vendite.ddt'));
+                  END IF;
+
+                  -- ---- MOTIVO 3 — ha fatture -------------------------------
+                  -- ⛔ «ESISTONO», non «esistono ATTIVE»: vendite.fatture NON HA
+                  --   la colonna `attivo`, quindi dbops.trgfn_prevent_deactivate_if_children
+                  --   cade nel ramo dell'ESISTENZA e solleva
+                  --   E_ATTIVO_BLOCK_CHILDREN_EXIST. Una check che chiedesse
+                  --   «attive» direbbe «si puo' disattivare» dove il trigger
+                  --   rifiuta: i due divergerebbero in silenzio, ed e' il difetto
+                  --   che questa funzione esiste per non avere.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.fatture f
+                   WHERE f.registro_id = p_registro_id;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                          'reason',     'HA_FATTURE',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_fatture',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          -- ⭐ I quattro valori compongono ESATTAMENTE la frase che il
+                          --   trigger produrrebbe: «Non si puo' disattivare %s (%s = %s):
+                          --   ci sono ancora righe collegate in %s.»
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'vendite.fatture'));
+                  END IF;
+
+                  -- ---- MOTIVO 4 — ha ordini --------------------------------
+                  -- ⛔ NUOVO dal 2026-08-31. _EXIST: vendite.ordini non ha `attivo`.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.ordini o
+                   WHERE o.registro_id = p_registro_id;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                          'reason',     'HA_ORDINI',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_ordini',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'vendite.ordini'));
+                  END IF;
+
+                  -- ---- MOTIVO 5 — ha progressivi ---------------------------
+                  -- ⭐ E' quello che sorprende: basta UN documento numerato perche'
+                  --   esista una riga di contatore, e da li' il registro non si
+                  --   spegne piu'.
+                  -- ⚠️ Qui «ATTIVE» e' corretto — vendite.registri_fatturazione_progressivi
+                  --   la colonna `attivo` ce l'ha — quindi il codice e' _ACTIVE e non
+                  --   _EXIST: i progressivi gia' spenti non bloccano, ed e' il pattern
+                  --   «figli prima, padre poi».
+                  SELECT count(*) INTO v_n
+                    FROM vendite.registri_fatturazione_progressivi p
+                   WHERE p.registro_id = p_registro_id
+                     AND p.attivo IS TRUE;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_ACTIVE',
+                          'reason',     'HA_PROGRESSIVI',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_progressivi',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'vendite.registri_fatturazione_progressivi'));
+                  END IF;
+
+                  -- ---- MOTIVO 6 — ha resi ----------------------------------
+                  -- ⛔ NUOVO dal 2026-08-31. _EXIST: vendite.resi non ha `attivo`.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.resi re
+                   WHERE re.registro_id = p_registro_id;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                          'reason',     'HA_RESI',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_resi',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'vendite.resi'));
+                  END IF;
+
+                  -- ---- MOTIVO 7 — ha mapping tipo documento ----------------
+                  -- ⚠️ Anche qui ESISTENZA e non «attive»: vendite.tipi_doc_fiscale_registri
+                  --   non ha la colonna `attivo`.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.tipi_doc_fiscale_registri m
+                   WHERE m.registro_id = p_registro_id;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                          'reason',     'HA_MAPPING_TIPO_DOC',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_mapping_tipo_doc',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'vendite.tipi_doc_fiscale_registri'));
+                  END IF;
+
+                  -- ---- MOTIVO 8 — ha distinte di incasso -------------------
+                  -- ⛔ NUOVO dal 2026-09-18, e ULTIMO perche' `vendite_contabili`
+                  --   segue `tipi_doc_fiscale_registri` in ordine alfabetico: e'
+                  --   il guard che scatta per ultimo, quindi su un registro che
+                  --   ha anche il contatore vivo il rifiuto nomina i progressivi,
+                  --   non la distinta.
+                  -- ⭐ PRIMA figlia FUORI da `vendite`: la distinta contabile di
+                  --   incasso (`pagamenti.vendite_contabili`) e' numerata sul
+                  --   registro dal 2026-09-17 (20260915-21, famiglia DISTINTA,
+                  --   registri DIS-<sr>). Il quarto valore porta lo schema
+                  --   giusto, perche' e' la frase che il trigger compone con
+                  --   child_schema || '.' || child_table.
+                  -- ⚠️ «ESISTONO» e non «esistono ATTIVE»: pagamenti.vendite_contabili
+                  --   non ha la colonna `attivo` — ha uno `stato_id` (BOZZA,
+                  --   VALIDATA, …), che per il trigger non conta: cade nel ramo
+                  --   dell'ESISTENZA (_EXIST). Verificato con fn_col_exists, le
+                  --   stesse funzioni del trigger.
+                  -- ⭐ Durezza da sapere: una distinta numerata non si cancella,
+                  --   quindi un registro DIS-* che ne ha numerata anche una sola
+                  --   non si spegne piu'.
+                  SELECT count(*) INTO v_n
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.registro_id = p_registro_id;
+
+                  IF v_n > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                          'reason',     'HA_DISTINTE',
+                          'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_distinte',
+                          'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                                           'codice',      v_codice,
+                                                           'quante',      v_n),
+                          'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                                          'id',
+                                                          p_registro_id::text,
+                                                          'pagamenti.vendite_contabili'));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_registro_disattivabile(p_registro_id bigint)
+              IS 'Pure check (§12.5.1): i motivi che impediscono di DISATTIVARE un registro di numerazione. Ritorna [] se si puo'' disattivare, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva (salvo i due guard di chiamata). Consumatore: la lista dei registri, che spegne il cestino di riga e dice PERCHE'' invece di far scoprire il vincolo sbagliando. ⛔ SU vendite.registri_fatturazione I GUARD SONO OTTO — erano TRE fino al 2026-08-31 (col trasloco ddt, ordini e resi hanno guadagnato registro_id), SEI fino al 2026-09-02 (commesse, 20260902-07) e SETTE fino al 2026-09-17 (pagamenti.vendite_contabili, la distinta di incasso, 20260915-21: la PRIMA figlia fuori dallo schema vendite). Ogni volta l''automazione ATTIVO ha montato il guard di disattivazione DA SOLA a partire dalla FK, a ci_apply, senza annunciarlo — e ogni volta l''ha detto il test 6 del pgTAP, che confronta i guard MONTATI (pg_trigger) con quelli COPERTI: e'' il presidio che sostituisce quello del §12.5.2, qui inapplicabile perche'' a rifiutare e'' un trigger GENERICO e non una madre di dominio. ⚠️ Quello che sorprende resta il contatore: un registro che ha numerato anche UN SOLO documento ha una riga di progressivi viva, quindi non si spegne piu'' — il cestino e'' percio'' quasi sempre indisponibile. ⭐ NESSUN CODICE ERRORE NUOVO: la check nomina E_ATTIVO_BLOCK_CHILDREN_EXIST e E_ATTIVO_BLOCK_CHILDREN_ACTIVE, gia'' a catalogo con la loro policy — se per scriverla fosse servito un codice nuovo il difetto sarebbe stato a monte (§12.5.2). ⛔ E LA SCELTA FRA I DUE CODICI NON E'' STILISTICA: dbops.trgfn_prevent_deactivate_if_children guarda se la tabella FIGLIA ha la colonna `attivo` — se ce l''ha blocca sulle sole righe ATTIVE (_ACTIVE), altrimenti sulla loro ESISTENZA (_EXIST). Verificato: commesse, ddt, fatture, ordini, resi, tipi_doc_fiscale_registri e vendite_contabili NON hanno `attivo` (quindi _EXIST — la distinta ha uno stato_id, che per il trigger non conta), vendite.registri_fatturazione_progressivi ce l''ha (quindi _ACTIVE). ⚠️ Una check che avesse chiesto «documenti ATTIVI» avrebbe risposto «si puo'' disattivare» dove il trigger rifiuta: i due sarebbero divergiti in silenzio, che e'' esattamente il difetto per cui questa funzione esiste. ⭐ L''ORDINE DEI MOTIVI E'' QUELLO DEI TRIGGER, non uno di comodo: i BEFORE ROW scattano in ordine ALFABETICO di nome e i guard si chiamano trg_registri_fatturazione_a10_<figlia>_…, quindi i motivi seguono il NOME DELLA TABELLA FIGLIA (commesse, ddt, fatture, ordini, registri_fatturazione_progressivi, resi, tipi_doc_fiscale_registri, vendite_contabili). Un ordine diverso farebbe dire al tooltip «ha fatture» e all''errore «ha DDT», sullo stesso registro. ⭐ I `valori` compongono la STESSA frase che il trigger produrrebbe (tabella padre, colonna, valore, tabella figlia CON LO SCHEMA — per la distinta `pagamenti.vendite_contabili`), cosi'' il tooltip del pulsante e l''errore del rifiuto si leggono uguali. ⛔ L''ELENCO DELLE FIGLIE RESTA SCRITTO A MANO, e derivarlo da pg_trigger sarebbe peggio: ogni motivo porta una reason_key da tradurre, e un elenco derivato inventerebbe una chiave che nessuno ha tradotto — la superficie mostrerebbe la chiave nuda, cioe'' un difetto MUTO in produzione al posto di un test rosso in sviluppo. E'' un elenco parallelo TENUTO da un presidio, che e'' un''altra cosa da un elenco parallelo lasciato a se stesso. ⛔ I `reason` NON portano il prefisso E_, riservato ai codici a catalogo: il guardrail cerca i letterali E_* nei corpi delle funzioni e li leggerebbe come codici senza policy — regola costata un changeSet il 2026-08-31 (E_UN_ANNULLO -> RIGA_DI_ANNULLO). ⚠️ SECURITY DEFINER: si leggono vendite.fatture, ddt, ordini, resi, commesse e pagamenti.vendite_contabili, che hanno la RLS — da INVOKER i documenti di un altro emittente sarebbero invisibili e la risposta sarebbe «si puo'' disattivare» proprio nel caso da bloccare. ⚠️ Registro inesistente: si SOLLEVA E_VENDITE_CHIAMATA_NON_VALIDA invece di rispondere [], perche'' «si puo'' disattivare» su una riga che non esiste e'' una frase senza senso — stesso ramo della gemella script.fn_check_annullo_movimento_titolo_iva. ⚠️ Le OTTO reason_key sono un DEBITO VERSO IL FE (§12.3): sette sono nei locales, `ha_distinte` (2026-09-18) va aggiunta nello stesso giro, o il tooltip mostra la chiave nuda. Richiesta d''origine: brief-db-richieste-aperte-dal-backend-2, voce 2; ottavo guard: brief-db-distinta-numerata-sul-registro (P-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback riporta la check a SETTE motivi, cioe' la rimette
+              --   INDIETRO rispetto ai guard montati: il pgTAP §6 tornerebbe
+              --   rosso, ed e' giusto cosi' — quel rosso e' la segnalazione, non
+              --   l'inconveniente.
+              SELECT 1;

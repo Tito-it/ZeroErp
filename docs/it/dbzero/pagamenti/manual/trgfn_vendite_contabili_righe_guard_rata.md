@@ -108,6 +108,18 @@ quello del ragionamento.
 > uscire niente*, e raccontarne numero e scadenza nel messaggio disferebbe la
 > ragione per cui è fatta così.
 
+> ⭐ **Il messaggio della capienza scrive gli importi a due decimali** (dal
+> 18-09-2026): *«Sulla rata 1 del 30/09/2026 restano 500.00 da regolare: un
+> importo di 600.00 non ci rientra»*. Fino a quel giorno il residuo usciva come
+> `500.000000`: la variabile è dichiarata sul tipo della colonna
+> `fatture_scadenze.importo`, che è `numeric(18,6)` — la scala con cui il
+> progetto conserva gli importi di documento — e il `::text` la portava in una
+> frase per una persona. La scala di stoccaggio non è un dato per chi legge: i
+> due numeri escono con la stessa maschera (`FM999999990.00`, quella di
+> `fn_conferma_sistemazione`), col segno, mentre il `context` per il registro
+> degli errori tiene i valori grezzi. Lo pinnano `test-abbinamento-rata` (5) e
+> `test-nc-rata-unica-v1` (9), che guardano i numeri della frase.
+
 ### ⚠️ E senza l'elenco a valle non basta
 
 Il guard **accetta** la registrazione fuori capienza, purché dichiarata. Senza

@@ -208,11 +208,18 @@ documenti di trasporto, e non c'è modo di tornare indietro.** Non è un ritiro:
 un blocco senza uscita.
 
 ⭐ **Per questo i guard di disattivazione sono la difesa giusta, non un
-impedimento.** Dal 2026-08-31 sono sei — documenti di trasporto, fatture, ordini,
-progressivi, resi, mapping dei tipi documento — e li monta l'automazione da sé a
-partire dalle chiavi esterne. Chi prova a spegnere un registro usato riceve un
-rifiuto; `script.fn_check_registro_disattivabile` lo anticipa, così l'interfaccia
-spegne il cestino **e dice perché**, invece di far scoprire il vincolo premendo.
+impedimento.** Al 2026-09-18 sono **otto** — commesse, documenti di trasporto,
+fatture, ordini, progressivi, resi, mapping dei tipi documento e, dal 17-09, la
+**distinta di incasso** (`pagamenti.vendite_contabili`, la prima figlia fuori
+dallo schema `vendite`) — e li monta l'automazione da sé a partire dalle chiavi
+esterne, senza annunciarlo: erano sei il 31-08 e sette il 02-09. Chi prova a
+spegnere un registro usato riceve un rifiuto;
+`script.fn_check_registro_disattivabile` lo anticipa, così l'interfaccia spegne
+il cestino **e dice perché**, invece di far scoprire il vincolo premendo.
+⚠️ Che la check non resti indietro rispetto ai guard lo presidia il pgTAP
+`script/test-fn-check-registro-disattivabile-v1` (test 6), che confronta i
+trigger montati con i motivi coperti: è diventato rosso da solo tutte e tre le
+volte, ed è la ragione per cui l'elenco qui sopra ha una data.
 
 ⚠️ **Il bisogno vero che stava dietro «ritiro e rifaccio» era cambiare la forma
 del numero**, e oggi si fa senza spegnere niente: `prefisso`, `suffisso` e
@@ -230,7 +237,8 @@ per sbaglio, non per gestire un ciclo di vita.
 La tabella si chiama `registri_fatturazione` e numera anche merce in uscita e
 ordini. **Il nome non si cambia**, e non per pigrizia: rinominarla significa
 rinominare la tabella dei progressivi, i trigger, le funzioni, le viste, i vincoli
-e le colonne `registro_id` di cinque tabelle di documento.
+e le colonne `registro_id` delle tabelle di documento che la portano — sei al
+2026-09-18, in due schemi (`vendite.*` e `pagamenti.vendite_contabili`).
 
 ⭐ È un lavoro che non cambia **nessun** comportamento — cioè esattamente quello
 che non va infilato dentro un cantiere che ne cambia molti, dove un errore di

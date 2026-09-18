@@ -182,6 +182,18 @@ dalla sessione: parla il vincolo.
 `a10_gen_codice` (numera) < `a10_guard_emittente_scope` (giudica). Chi rinomina
 uno dei tre sposta la risoluzione dopo chi la usa.
 
+⚠️ **E la FK sul registro ha un effetto nell'altro verso** (2026-09-18): una
+distinta numerata **blocca la disattivazione del suo registro** `DIS-<sr>`. Il
+guard lo monta l'automazione ATTIVO da sola sulla FK, e — non avendo la distinta
+una colonna `attivo` ma uno `stato_id` — blocca sull'**esistenza**: una distinta
+annullata pesa come una confermata, e una distinta non si cancella. È l'ottavo
+guard su `registri_fatturazione` e il primo fuori da `vendite`;
+`script.fn_check_registro_disattivabile` lo anticipa col motivo `HA_DISTINTE`,
+così il cestino del registro si spegne prima del click (pgTAP
+`script/test-fn-check-registro-disattivabile-v1`, test 6-9). Il perché e il
+meccanismo stanno nella scheda del
+[registro](/dbzero/vendite/manual/registri_fatturazione), non qui.
+
 Brief: [brief-db-distinta-numerata-sul-registro](/dev/work-done/brief-db-distinta-numerata-sul-registro).
 
 ### 🔒 Chi la vede — la RLS del perimetro incassi (2026-08-22, corretta il 2026-09-15)

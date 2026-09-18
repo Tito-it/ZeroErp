@@ -235,7 +235,7 @@ mergiato il 15-09 (PR #1593), le richieste BE/FE chiuse lo stesso giorno
 ledger, check di disponibilità condivisa, inventario e rettifica,
 `vw_disponibilita`, orfani, presidio di prontezza, `requires_lotto` in UI) ha
 il suo brief dal **17-09** — `work-in-progress/brief-db-magazzino-lotto-2-motore.md`,
-🔵 **dodici D-L2 da confermare, nessun changeSet** — e parte da
+✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), 🔵 **nessun changeSet: si parte da P-0** — e parte da
 `analisi-db-magazzino-carico-e-scarico.md` §8 e dalle sei lezioni in coda a §5
 del brief del Lotto 1. Il prerequisito deciso da Tid il 15-09 —
 `brief-db-emittente-di-default-un-bb-solo.md`, l'emittente di default come

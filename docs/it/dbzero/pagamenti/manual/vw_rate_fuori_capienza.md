@@ -2,7 +2,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-09-17)
+(rev 2026-09-18)
 
 L'elenco delle rate il cui residuo è **uscito dalla banda**: ha attraversato lo
 zero, oppure supera l'importo della rata in valore assoluto.
@@ -33,6 +33,14 @@ forzatura, e non in un lotto dopo.
 
 Il vocabolario resta a **due** valori: la sfumatura della nota di credito la
 dice l'etichetta, non un terzo codice.
+
+⭐ **E dal 18-09-2026 l'etichetta ha il dato per dirla**: la riga porta
+`natura_doc_codice_interno` e `natura_doc_descrizione` (in coda, `JOIN` interno
+su `config.nature_doc_fiscale`: la natura del documento è obbligatoria, quindi
+nessuna riga in meno). Il 17-09 la sfumatura era stata *affidata* all'etichetta
+senza darle la natura — una promessa fatta a metà. Il frontend ramifica sul
+`codice_interno` e mostra la descrizione; la lista 52 ha la colonna «Natura»
+(riga 767 del seed, spenta finché la chiave i18n non c'è).
 
 > ⭐ Il piano la chiamava `vw_rate_sovra_incassate`. Sarebbe stato un nome che
 > **dice meno di ciò che l'elenco contiene**: fuori capienza si esce in due
@@ -78,14 +86,16 @@ due incassi legittimi arrivati sullo stesso documento bastano. Per questo
 
 ### Regole principali
 
-* La formula del saldo **non è ricopiata**: la vista chiama
-  `pagamenti.fn_get_saldo_rata` in `LATERAL`. Due copie della regola darebbero
-  prima o poi due risposte diverse, e la divergenza si vedrebbe come *un elenco
-  che segnala ciò che il guard ha lasciato passare*.
-* Il costo si limita **prima** della `LATERAL`: entrano solo le rate che hanno
-  almeno un movimento o una riga forzata. Una rata che nessuno ha toccato ha
-  residuo uguale all'importo, cioè dentro la banda per costruzione — chiederlo a
-  una funzione sarebbe lavoro per una risposta nota.
+* La formula del saldo **non è ricopiata**: la vista chiama il nucleo
+  `pagamenti.fn_get_saldi_rate` in **una** chiamata sull'insieme dei candidati
+  (dal 17-09-2026; prima `fn_get_saldo_rata` in `LATERAL` per rata). Due copie
+  della regola darebbero prima o poi due risposte diverse, e la divergenza si
+  vedrebbe come *un elenco che segnala ciò che il guard ha lasciato passare*.
+* Il costo si limita **prima** del nucleo: entrano solo le rate che hanno
+  almeno un movimento, una riga forzata, o un movimento senza rata sul loro
+  documento. Una rata che nessuno ha toccato ha residuo uguale all'importo, cioè
+  dentro la banda per costruzione — chiederlo a una funzione sarebbe lavoro per
+  una risposta nota.
 * Espone anche i riferimenti del documento (anno, serie, numero, cliente,
   emittente): l'elenco si guarda per **decidere**, e per decidere serve sapere
   di chi si sta parlando.
