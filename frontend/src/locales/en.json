@@ -1515,6 +1515,8 @@
     "field_composito": "Composite",
     "field_solo_componente": "Component only",
     "field_requires_serial": "Requires serial",
+    "field_requires_lotto": "Requires lot",
+    "hint_requires_lotto": "The item is tracked by batches: every movement names a lot",
     "field_desc_fattura": "Invoice description",
     "field_fattore": "Factor",
     "field_vendita": "Sale",
@@ -4296,7 +4298,18 @@
       "blocco": {
         "giacenza_insufficiente": "Insufficient stock: the outgoing quantity exceeds what the ledger shows on hand for the item, or for the given lot or serial.",
         "merce_bloccata": "The goods are there, but part of them is already committed to others: the free quantity does not cover the requested issue."
-      }
+      },
+      "col_articolo_codice": "Item",
+      "col_articolo_descrizione": "Description",
+      "col_magazzino_codice": "Warehouse",
+      "col_magazzino_descrizione": "Warehouse description",
+      "col_giacenza": "On hand",
+      "col_bloccata": "Committed",
+      "col_disponibile": "Available",
+      "col_n_blocchi": "Blocks",
+      "col_articolo_requires_lotto": "By lot",
+      "col_articolo_requires_serial": "By serial",
+      "col_n_magazzini": "Warehouses"
     },
     "riga": {
       "blocco": {
@@ -4312,6 +4325,72 @@
         "ubicazione_non_ammessa": "The warehouse does not use locations: the location must not be specified.",
         "ubicazione_di_altro_magazzino": "The location does not belong to the warehouse, or is no longer active."
       }
+    },
+    "inventari": {
+      "col_data": "Date",
+      "col_stato": "Status",
+      "col_magazzino_codice": "Warehouse",
+      "col_magazzino_descrizione": "Warehouse description",
+      "col_descrizione": "Description",
+      "col_righe_count": "Lines",
+      "col_data_insert": "Created on",
+      "col_user_insert": "Created by",
+      "col_id": "Id"
+    },
+    "righe": {
+      "col_articolo_codice": "Item",
+      "col_articolo_descrizione": "Description",
+      "col_qta_contata": "Counted",
+      "col_qta_sistema": "On system",
+      "col_costo_unitario": "Unit cost",
+      "col_ubicazione_codice": "Location",
+      "col_lotto_codice": "Lot",
+      "col_asset_seriale": "Serial",
+      "col_id": "Id",
+      "col_qta_delta": "Delta",
+      "col_motivo": "Reason"
+    },
+    "piano": {
+      "col_articolo_codice": "Item",
+      "col_articolo_descrizione": "Description",
+      "col_ubicazione_codice": "Location",
+      "col_lotto_codice": "Lot",
+      "col_asset_seriale": "Serial",
+      "col_qta_contata": "Counted",
+      "col_qta_sistema": "On system",
+      "col_delta": "Difference",
+      "col_esito": "Outcome",
+      "col_causale_codice_interno": "Reason code"
+    },
+    "rettifiche": {
+      "col_data": "Date",
+      "col_stato": "Status",
+      "col_magazzino_codice": "Warehouse",
+      "col_magazzino_descrizione": "Warehouse description",
+      "col_righe_count": "Lines",
+      "col_data_insert": "Created on",
+      "col_user_insert": "Created by",
+      "col_id": "Id"
+    },
+    "movimenti": {
+      "col_data_mov": "Date",
+      "col_articolo_codice": "Item",
+      "col_articolo_descrizione": "Description",
+      "col_magazzino_codice": "Warehouse",
+      "col_causale_codice": "Reason",
+      "col_causale_descrizione": "Reason description",
+      "col_qta": "Quantity",
+      "col_costo_unitario": "Unit cost",
+      "col_ubicazione_codice": "Location",
+      "col_lotto_codice": "Lot",
+      "col_asset_seriale": "Serial",
+      "col_sorgente_codice_interno": "Source",
+      "col_sorgente_riga": "Source line",
+      "col_magazzino_descrizione": "Warehouse description",
+      "col_storno_di_movimento_id": "Reversal of",
+      "col_user_insert": "Created by",
+      "col_data_insert": "Created on",
+      "col_id": "Id"
     }
   },
   "dash_mesi": {
