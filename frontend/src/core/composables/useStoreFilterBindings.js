@@ -81,7 +81,7 @@ export function useStoreFilterBindings(store, applyFilters) {
 
   // Filtro INTERRUTTORE (`FiltroToggle`): il widget e' un booleano, lo store
   // porta il valore che il backend legge — e non e' sempre `true`/`false`.
-  // Estratto il 2026-09-19 (regola del 2, ok Tid) da CINQUE siti con TRE forme:
+  // Estratto il 2026-09-18 (regola del 2, ok Tid) da CINQUE siti con TRE forme:
   // un ref + onChange (pratiche), un computed get/set INVERTITO (offerte e
   // preventivi: «mostra storico» acceso ⇔ `solo_ultima_revisione = false`),
   // un computed get/set che scrive `true | null` (disponibilita').
@@ -109,7 +109,7 @@ export function useStoreFilterBindings(store, applyFilters) {
 
   // Filtro LOOKUP RICCO (`ArticoloLookup`, `BillingAccountLookup`…): il
   // widget tiene l'OGGETTO scelto (gli serve per mostrarlo), lo store l'id.
-  // Estratto il 2026-09-19 (regola del 2, ok Tid) dalle due copie identiche
+  // Estratto il 2026-09-18 (regola del 2, ok Tid) dalle due copie identiche
   // del registro e della disponibilita' di magazzino.
   //
   // Verso widget → store: `onChange` alla scelta o al clear (i lookup ricchi
@@ -118,18 +118,40 @@ export function useStoreFilterBindings(store, applyFilters) {
   //    listener nell'ordine in cui sono scritti, e `onChange` legge il ref
   //    che il `v-model` ha appena aggiornato — come per `bindSelect` con
   //    `@update:model-value`.
-  // Verso store → widget: SOLO l'azzeramento. Un id NON null messo da fuori
-  // non si rende: il widget vuole l'oggetto e da un id non lo si ricostruisce
-  // senza una lettura by-id. Oggi nessun deep-link lo fa; il giorno che
-  // servira' e' un'opzione `risolvi(id) -> Promise<obj>` qui, non un watch
-  // nel chiamante.
+  // Verso store → widget: l'azzeramento, e l'OGGETTO scelto quando lo store lo
+  // ricorda. ⭐ L'oggetto si salva accanto all'id (`<storeKey>_obj`, stampo
+  //    `feedback_autocomplete_restore`: il `_obj` nel form per il restore
+  //    dell'AutoComplete): un widget che RIMONTA — la scheda di un `<Tabs lazy>`
+  //    al cambio scheda, la disponibilita' di magazzino (2026-09-18) — rinasce
+  //    con il ref vuoto mentre lo store tiene il filtro attivo, e l'operatore
+  //    vedrebbe una lista filtrata da un articolo che il picker non mostra.
+  //    ⚠️ `<storeKey>_obj` NON e' fra i `filterDefaults`: `paramsFiltro` manda
+  //    solo quelle chiavi, quindi l'oggetto non viaggia mai sul filo, e il
+  //    `reset()` dello store lo fa sparire con tutto il resto.
+  // ⛔ Un id messo da fuori SENZA l'oggetto (un deep-link con il solo id) non si
+  //    rende: da un id non si ricostruisce l'oggetto senza una lettura by-id,
+  //    e per gli articoli quella lettura oggi non esiste. Il giorno che servira'
+  //    e' un'opzione `risolvi(id) -> Promise<obj>` qui, non un watch nel
+  //    chiamante.
   function bindLookup(storeKey, { idField = 'id' } = {}) {
-    const value = ref(null)
+    const chiaveObj = `${storeKey}_obj`
+    const ricordato = () => {
+      const obj = store.filters[chiaveObj]
+      return obj && obj[idField] === store.filters[storeKey] ? obj : null
+    }
+    const value = ref(ricordato())
     watch(() => store.filters[storeKey], (id) => {
-      if (id == null) value.value = null
+      if (id == null) {
+        value.value = null
+        if (chiaveObj in store.filters) store.filters[chiaveObj] = null
+      } else if (value.value?.[idField] !== id) {
+        value.value = ricordato()
+      }
     })
     function onChange() {
-      store.filters[storeKey] = value.value?.[idField] ?? null
+      const obj = value.value ?? null
+      store.filters[storeKey] = obj?.[idField] ?? null
+      store.filters[chiaveObj] = obj
       applyFilters()
     }
     return { value, onChange }

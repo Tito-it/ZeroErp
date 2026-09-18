@@ -35,6 +35,7 @@ from django.db import transaction
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
@@ -285,9 +286,11 @@ def check_limite_variazione_globale(
     try:
         valore_decimal = Decimal(str(valore_variazione))
     except (InvalidOperation, ValueError, TypeError):
-        # Coerce upstream avrebbe gia' bloccato (`_coerce_decimal` nel
-        # `_build_update_data_testata`). Eccezioni piu' generiche
-        # (`Exception`) maschererebbero bug strutturali: restringiamo.
+        # Coerce upstream ha gia' bloccato (`PayloadValidator.optional_decimal`
+        # in `_build_update_data_testata` di contratti, che rifiuta anche NaN:
+        # qui un NaN farebbe sollevare `InvalidOperation` sul `<=` piu' sotto).
+        # Eccezioni piu' generiche (`Exception`) maschererebbero bug
+        # strutturali: restringiamo.
         return None
     if valore_decimal == 0:
         return None  # 0% = nessuna variazione, niente soglia da controllare.
@@ -490,18 +493,15 @@ def resolve_or_check_override_prezzo(
             "prezzo_resolver_context": resolver_context,
         }
 
-    # Confronto: payload numerico atteso. Se non convertibile, errore di
-    # validazione del dominio (codice parametrizzato).
-    try:
-        payload_decimal = Decimal(str(payload_prezzo))
-    except (InvalidOperation, ValueError, TypeError):
-        ErrorManager.raise_error(
-            code=error_code_validazione,
-            message="Prezzo unitario non numerico.",
-            detail=f"prezzo_unitario={payload_prezzo!r}",
-            function_name=function_name,
-        )
-        raise AssertionError("unreachable")  # pragma: no cover
+    # Confronto: payload numerico atteso. La coercizione (da `str`, bool e
+    # NaN rifiutati) e' del BB `PayloadValidator`, col codice del dominio
+    # chiamante e il campo che il form accende.
+    payload_decimal = PayloadValidator(validation_code=error_code_validazione).coerce_decimal(
+        payload_prezzo,
+        field="prezzo_unitario",
+        message="Prezzo unitario non numerico.",
+        function_name=function_name,
+    )
 
     # Confronto con tolleranza 4 decimali (vedi _PRICE_COMPARE_QUANTIZE).
     if prezzo_resolver is not None:

@@ -6,7 +6,7 @@
 #        volta — oggi la descrizione di `order_by`, LETTA dalla whitelist del
 #        repository invece che ricopiata accanto a lei.
 # Note: ⛔ Il file non definisce comportamento: definisce cosa lo schema DICE.
-#       Nato il 2026-09-19 (regola del 2, ok Tid) dalle due copie di
+#       Nato il 2026-09-18 (regola del 2, ok Tid) dalle due copie di
 #       `_descrizione_order_by` in `pagamenti` e `magazzino`, gia' divergenti
 #       nel testo («nome FISICO» contro «nome FISICO della colonna»), e dalle
 #       QUATTRO descrizioni ancora scritte a mano nello stesso file di

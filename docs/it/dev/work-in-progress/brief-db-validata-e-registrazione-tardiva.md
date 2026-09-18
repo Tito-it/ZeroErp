@@ -135,7 +135,7 @@ coda «Sospese» e dal drawer di una distinta chiusa. ⛔ Non un job: la tardiva
 **Cosa si fa.** Niente a DB oltre la bandiera di P-1. `SCARTATA` resta *«non è
 nostra»* e resta **nella distinta**. Cambia la **resa** (§6): nel drawer le
 scartate sono nascoste di default con `Mostra scartate (N)` (il BB
-`FiltroToggle` col conteggio — fino al 19/09 `ToggleNascoste` — come le
+`FiltroToggle` col conteggio — fino al 18/09 `ToggleNascoste` — come le
 archiviate delle code) e il pannello di quadratura
 dice *dichiarato · righe · di cui non nostre*; nelle code non compaiono mai.
 

@@ -23,6 +23,8 @@ Indice test eseguiti:
 13b) update_contratto_rifiuta_categoria_snapshot_non_draft
 14) update_contratto_campi_vuoto_fallisce
 15) update_contratto_ok_variazione
+15b) update_contratto_variazione_none_azzera — `null` sul tipo AZZERA (tre stati del PATCH, BB `extract_optional_enum`)
+15c) create_contratto_ambito_fuori_vocabolario_nomina_il_campo — `ambito` via `require_enum`: campo nel context, non-stringa e' un 400
 16) cambia_stato_codice_sconosciuto
 17) cambia_stato_modalita_C_senza_righe_tradotto
 18) cambia_stato_ok
@@ -991,6 +993,58 @@ class ContrattiServiceTests(TestCase):
         # Verifica messaggio parlante: cita VALORE_FISSO non ammesso + suggerimento OVERRIDE
         self.assertIn("VALORE_FISSO", ctx.exception.detail)
         self.assertIn("OVERRIDE", ctx.exception.detail)
+        # ⭐ Dal 2026-09-18 (BB `extract_optional_enum`) il rifiuto NOMINA il
+        #    campo: la copia locale scriveva `{"tipo_variazione_globale": tipo}`
+        #    e il form non accendeva niente.
+        self.assertEqual(ctx.exception.context["field"], "tipo_variazione_globale")
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_variazione_none_azzera(self, repo_cls):
+        """Tre stati del PATCH: `tipo_variazione_globale: null` AZZERA la
+        variazione (e' una scrittura, non un campo saltato) — il caso che
+        `extract_optional_enum(nullable=True)` deve distinguere da «assente»."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.update_contratto.return_value = True
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+
+        ContrattiService().update_contratto(1, {
+            "tipo_variazione_globale": None,
+            "valore_variazione_globale": None,
+        })
+        args = repo.update_contratto.call_args.args
+        self.assertIn("tipo_variazione_globale", args[1])
+        self.assertIsNone(args[1]["tipo_variazione_globale"])
+
+    @patch("apps.vendite.services.contratti_service.ListiniRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_contratto_ambito_fuori_vocabolario_nomina_il_campo(
+        self, repo_cls, listini_cls,
+    ):
+        """`ambito` (BB `require_enum`, 2026-09-18): il vocabolario resta del
+        dominio, il rifiuto porta il campo — anche quando il valore non e'
+        una stringa, che prima sarebbe stato un `AttributeError` su `.strip()`
+        (cioe' un 500). Stesso payload del caso felice A, con il solo ambito
+        sbagliato."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        listini_cls.return_value.has_versione_attiva.return_value = True
+        base = {
+            "billing_account_id": 10, "istanza_utility_id": 20, "utility_id": 3,
+            "valido_dal": "2026-01-01", "valido_al": "2026-12-31", "listino_id": 100,
+        }
+        for raw in ("RETAIL", "", None, 7):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    ContrattiService().create_contratto({**base, "ambito": raw})
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+                self.assertEqual(ctx.exception.context["field"], "ambito")
+        repo.create_contratto_atomico.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -2210,6 +2264,7 @@ class ContrattiServiceComponentiTests(TestCase):
 # 9) test_resolve_or_check_override_payload_uguale_resolver — no override
 # 10) test_resolve_or_check_override_payload_diverso_no_permesso_blocca_L1
 # 11) test_resolve_or_check_override_richiesta_approvazione_ritorna_violazione_l2
+# 12) test_resolve_or_check_override_prezzo_non_numerico_e_un_400_col_campo — 2026-09-18: la coercizione del BB col codice del dominio E il campo `prezzo_unitario`
 
 
 class ContrattiServiceFonteQuantitaTests(TestCase):
@@ -2720,6 +2775,47 @@ class ContrattiServicePricingGateTests(TestCase):
         # L2 chiamato con accept_for_approval=True
         gate_l2.assert_called_once()
         self.assertTrue(gate_l2.call_args.kwargs["accept_for_approval"])
+
+    @patch(
+        "apps.vendite.services.contratti_service.contratti_suggerisci_prezzo_riga"
+    )
+    @patch(
+        "apps.vendite.services._pricing_gate_helpers."
+        "check_permesso_override_prezzo"
+    )
+    def test_resolve_or_check_override_prezzo_non_numerico_e_un_400_col_campo(
+        self, gate_l1, resolver_fn,
+    ):
+        """⭐ Il punto che traduce (2026-09-18): il gate riceve il prezzo GREZZO
+        del payload (contratti e offerte non lo coercono prima), e la
+        coercizione e' del BB `PayloadValidator` — ma che esca col codice del
+        DOMINIO chiamante (`error_code_validazione`) e col campo che il form
+        accende resta scritto qui. `NaN` e' il valore che la copia locale
+        lasciava passare: sarebbe arrivato al confronto `quantize` e al gate L2.
+        ⚠️ Il rifiuto sta PRIMA di L1: un prezzo che non e' un numero non e' un
+        override da autorizzare."""
+        from apps.vendite.services.contratti_service import (
+            resolve_or_check_override_prezzo_riga_contratto,
+        )
+
+        resolver_fn.return_value = {"prezzo_finale": "30.00", "origine": "LISTINO"}
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
+                   "data": "2026-05-15"}
+
+        for raw in ("", "trenta", True, "NaN", "Infinity"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    resolve_or_check_override_prezzo_riga_contratto(
+                        testata=testata,
+                        articolo_id="abc",
+                        uom_id=5,
+                        payload_prezzo=raw,
+                        auth_user_id=42,
+                        function_name="test",
+                    )
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+                self.assertEqual(ctx.exception.context["field"], "prezzo_unitario")
+        gate_l1.assert_not_called()
 
 
 class ContrattiFatturazioneImmediataTests(TestCase):

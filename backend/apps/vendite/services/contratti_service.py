@@ -2174,26 +2174,10 @@ class ContrattiService:
                 data["meta"] = meta
         return data
 
-    # Scopo: Normalizza ambito a uppercase e valida contro whitelist.
+    # Scopo: Normalizza ambito a uppercase e valida contro whitelist (la
+    #        lettura e' del BB `PayloadValidator`, il vocabolario resta qui).
     def _extract_ambito(self, payload: dict[str, Any]) -> str:
-        raw = payload.get("ambito")
-        ErrorManager.require(
-            isinstance(raw, str) and raw.strip() != "",
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail="ambito deve essere una stringa non vuota.",
-            context={"field": "ambito"},
-        )
-        assert isinstance(raw, str)
-        value = raw.strip().upper()
-        ErrorManager.require(
-            value in _AMBITI_VALIDI,
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail=f"ambito deve essere uno tra: {', '.join(sorted(_AMBITI_VALIDI))}.",
-            context={"ambito": value},
-        )
-        return value
+        return self._v.require_enum(payload, "ambito", allowed=_AMBITI_VALIDI, message=_MESSAGE)
 
     # Scopo: Estrae e applica la coppia (tipo/valore) variazione globale nel
     #        data dict. Coerenza coppia validata da
@@ -2205,32 +2189,18 @@ class ContrattiService:
         valore_present = "valore_variazione_globale" in payload
         tipo = None
         if tipo_present:
-            raw = payload.get("tipo_variazione_globale")
-            if raw is None:
-                data["tipo_variazione_globale"] = None
-            else:
-                ErrorManager.require(
-                    isinstance(raw, str),
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE,
-                    detail="tipo_variazione_globale deve essere una stringa o NULL.",
-                    context={"field": "tipo_variazione_globale"},
-                )
-                tipo = raw.strip().upper()
-                ErrorManager.require(
-                    tipo in _TIPI_VARIAZIONE_GLOBALE_AMMESSI,
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE,
-                    detail=(
-                        f"tipo_variazione_globale deve essere uno tra: "
-                        f"{', '.join(sorted(_TIPI_VARIAZIONE_GLOBALE_AMMESSI))}. "
-                        "VALORE_FISSO non e' ammesso sulla testata contratto: "
-                        "per prezzi fissi su singolo articolo usa una riga "
-                        "OVERRIDE."
-                    ),
-                    context={"tipo_variazione_globale": tipo},
-                )
-                data["tipo_variazione_globale"] = tipo
+            # Tre stati (PATCH): la chiave c'e' — `None` azzera la variazione,
+            # un codice va letto contro il vocabolario (BB `PayloadValidator`).
+            tipo = self._v.extract_optional_enum(
+                payload, "tipo_variazione_globale",
+                allowed=_TIPI_VARIAZIONE_GLOBALE_AMMESSI, nullable=True, message=_MESSAGE,
+                nota=(
+                    "VALORE_FISSO non e' ammesso sulla testata contratto: per "
+                    "prezzi fissi su singolo articolo usa una riga OVERRIDE."
+                ),
+            )
+            assert tipo is not MISSING
+            data["tipo_variazione_globale"] = tipo
         if valore_present:
             data["valore_variazione_globale"] = self._v.optional_decimal(
                 payload, "valore_variazione_globale", message=_MESSAGE,
@@ -2332,35 +2302,10 @@ class ContrattiService:
             data["articolo_id"] = self._v.require_uuid(
                 payload, "articolo_id", message=_MESSAGE_RIGA,
             )
-            # tipo_eccezione obbligatorio in create (NOT NULL nello schema).
-            tipo_eccezione_raw = payload.get("tipo_eccezione")
-            ErrorManager.require(
-                tipo_eccezione_raw is not None,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    "tipo_eccezione obbligatorio: uno tra "
-                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
-                ),
-                context={"field": "tipo_eccezione"},
-            )
-            ErrorManager.require(
-                isinstance(tipo_eccezione_raw, str),
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail="tipo_eccezione deve essere una stringa.",
-                context={"field": "tipo_eccezione"},
-            )
-            tipo_eccezione = tipo_eccezione_raw.strip().upper()
-            ErrorManager.require(
-                tipo_eccezione in _TIPI_ECCEZIONE,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    f"tipo_eccezione deve essere uno tra: "
-                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
-                ),
-                context={"tipo_eccezione": tipo_eccezione},
+            # tipo_eccezione obbligatorio in create (NOT NULL nello schema):
+            # la lettura e' del BB `PayloadValidator`, il vocabolario resta qui.
+            tipo_eccezione = self._v.require_enum(
+                payload, "tipo_eccezione", allowed=_TIPI_ECCEZIONE, message=_MESSAGE_RIGA,
             )
             data["tipo_eccezione"] = tipo_eccezione
 

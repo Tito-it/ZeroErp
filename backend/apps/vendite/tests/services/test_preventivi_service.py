@@ -14,6 +14,8 @@ Indice test eseguiti:
 5) test_gestisci_riga_ok — aggiunta riga in BOZZA con ricalcolo totali
 5b) test_gestisci_riga_padre_composito_prezzo_default_zero — composito senza prezzo → 0 placeholder
 5c) test_gestisci_riga_non_composito_senza_prezzo_solleva — non composito + prezzo None → E_PREV_VALIDAZIONE
+5d) test_gestisci_riga_prezzo_nan_e_un_400_col_campo — 2026-09-18: `NaN` sul prezzo era un 500 (`NaN >= 0` solleva), ora E_PREV_VALIDAZIONE col campo
+5e) test_gestisci_riga_quantita_nan_e_un_400_col_campo — `NaN` sulla quantita' passava fino al DB (`NaN != 0` e' vero), ora E_PREV_VALIDAZIONE col campo
 6) test_gestisci_riga_stato_non_modificabile — guard riga su stato EMESSO
 7) test_gestisci_riga_articolo_mancante — validazione articolo_id obbligatorio
 8) test_elimina_riga_ok — soft delete riga
@@ -873,6 +875,42 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"articolo_id": "uuid-art-1", "qta_operativa": "0"})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: ⭐ Il caso che la copia inline non vedeva (2026-09-18): un JSON puo'
+    #        portare `"NaN"`, `Decimal("NaN")` si costruisce senza protestare e
+    #        `NaN >= 0` solleva `InvalidOperation` — fuori da ogni `except`, cioe'
+    #        un 500 per un valore scritto da una persona. Ora e' un 400 col
+    #        campo, dal BB `PayloadValidator`, e il repository non si tocca.
+    def test_gestisci_riga_prezzo_nan_e_un_400_col_campo(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        for raw in ("NaN", "Infinity", "dieci", True):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    gestisci_riga(1, {"articolo_id": "uuid-art-1", "prezzo_unitario": raw})
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context["field"], "prezzo_unitario")
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: ⭐ L'altra meta', ed e' la peggiore: `NaN != 0` e' VERO, quindi una
+    #        quantita' NaN superava il guard e arrivava al DB, dove `NaN > 0` e'
+    #        vero e il CHECK la lascia entrare. Ora e' un 400 col campo.
+    def test_gestisci_riga_quantita_nan_e_un_400_col_campo(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        for raw in ("NaN", "-Infinity", "tre", False):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    gestisci_riga(1, {"articolo_id": "uuid-art-1", "qta_operativa": raw})
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context["field"], "qta_operativa")
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: Verifica soft delete riga.

@@ -26,7 +26,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from django.db import IntegrityError
@@ -425,52 +425,16 @@ class CategorieClientiListiniService:
     def _extract_variazione_pair(
         self, payload: dict[str, Any]
     ) -> tuple[str | None, Decimal | None]:
-        # Estrazione tipo_variazione: None o stringa enum.
-        tipo: str | None
-        if "tipo_variazione" not in payload or payload["tipo_variazione"] is None:
-            tipo = None
-        else:
-            raw = payload["tipo_variazione"]
-            ErrorManager.require(
-                isinstance(raw, str),
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail="tipo_variazione deve essere una stringa.",
-                context={"field": "tipo_variazione", "value": raw},
-            )
-            tipo = raw.strip().upper()
-            ErrorManager.require(
-                tipo in _TIPI_VARIAZIONE,
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail=f"tipo_variazione deve essere uno tra: {', '.join(sorted(_TIPI_VARIAZIONE))}.",
-                context={"tipo_variazione": tipo},
-            )
+        # Estrazione tipo_variazione: None o codice del vocabolario — la lettura
+        # e' del BB `PayloadValidator`, il vocabolario resta qui (specchio del
+        # CHECK di `categorie_clienti_listini`: due valori, non i tre di promo).
+        tipo = self._v.optional_enum(
+            payload, "tipo_variazione", allowed=_TIPI_VARIAZIONE, message=_MESSAGE,
+        )
 
-        # Estrazione valore_variazione: None o Decimal.
-        valore: Decimal | None
-        if "valore_variazione" not in payload or payload["valore_variazione"] is None:
-            valore = None
-        else:
-            raw = payload["valore_variazione"]
-            ErrorManager.require(
-                not isinstance(raw, bool),
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail="valore_variazione deve essere numerico.",
-                context={"field": "valore_variazione", "value": raw},
-            )
-            try:
-                valore = Decimal(str(raw).strip())
-            except (InvalidOperation, AttributeError) as exc:
-                ErrorManager.raise_error(
-                    code=E_ANAG_VALIDAZIONE,
-                    message=_MESSAGE,
-                    detail="valore_variazione non e' un numero valido.",
-                    context={"field": "valore_variazione", "value": raw},
-                    cause=exc,
-                )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
+        # Estrazione valore_variazione: None o Decimal — la coercizione (bool e
+        # NaN rifiutati) e' del BB `PayloadValidator`.
+        valore = self._v.optional_decimal(payload, "valore_variazione", message=_MESSAGE)
 
         # Coerenza: entrambi None o entrambi valorizzati.
         ErrorManager.require(

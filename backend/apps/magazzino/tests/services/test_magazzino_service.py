@@ -32,7 +32,7 @@ Indice test eseguiti:
 19) RigheTests.test_il_motivo_solo_sulla_rettifica
 20) RigheTests.test_riga_di_un_altro_documento_404
 21) RigheTests.test_il_piano_solo_sull_inventario
-22) ArticoloUuidTests.test_un_articolo_che_non_e_un_uuid_e_un_400_col_campo — 2026-09-19: i lookup e i motivi, non un DataError
+22) ArticoloUuidTests.test_un_articolo_che_non_e_un_uuid_e_un_400_col_campo — 2026-09-18: i lookup e i motivi, non un DataError
 23) ArticoloUuidTests.test_un_filtro_articolo_malformato_e_un_400_col_campo — idem sulle tre liste di consultazione
 24) ArticoloUuidTests.test_l_uuid_arriva_canonico_al_repository
 """

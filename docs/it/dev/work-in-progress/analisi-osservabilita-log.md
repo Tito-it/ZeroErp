@@ -38,7 +38,7 @@
 > digest dei presidi è un canale di notifica in servizio. Le voci #10 e #13
 > delle Aperte erano chiuse dal brief e non marcate; la tabella dei buchi (§3)
 > era ferma a B1. Tutto aggiornato in questa passata, col marcatore ⏱️.
-> L'unica decisione ancora di Tid è la **#8** (§5).
+> L'unica decisione ancora di Tid è la **#8** (§5) — ⏱️ *18-09*: **decisa** (pallino in topbar).
 >
 > ⏱️ **Riletto il 2026-09-15** (quarta passata) contro repo, doc auto-gen e
 > giornale di systemd. **Il quadro del 12-09 regge riga per riga**: nessun
@@ -58,7 +58,8 @@
 > `presidi.csv` e i consumatori FE: al mattino **nessun residuo si era mosso**
 > dal 15-09. Nel pomeriggio, per decisione di Tid («prendiamo il toro per le
 > corna»), ✅ **il Passo D è CHIUSO a DB** — changeSet `20260918-29 → -33` +
-> regole 16-19, in attesa di apply e pgTAP (§4, Passo D). Tre cose che il
+> regole 16-19, ~~in attesa di apply e pgTAP~~ **applicati su dbdev e pgTAP
+> verdi la sera stessa** (§4, Passo D). Tre cose che il
 > rigo del 12-09 non sapeva: i registri senza scadenza erano **quattro**, non
 > tre (`fatturazione_lotti_task_runs` è la quarta sorgente del giornale); la
 > sola colonna **non bastava** (il guard sul `DELETE` avrebbe respinto il purge
@@ -67,6 +68,23 @@
 > «lotto fermo» di **C**, **R-6**, la **#8** di Tid, il brief della **#14** —
 > per questi Tid ha chiesto un **brief apposito con piano di sviluppo**, da
 > scrivere.
+>
+> ⏱️ **18-09 sera — il brief con piano è scritto, e la #8 è decisa.** Due
+> documenti: il piano BE/FE
+> [piano-be-fe-osservabilita-pallino-e-superfici.md](piano-be-fe-osservabilita-pallino-e-superfici.md)
+> (P il pallino dei presidi · G il giornale degli errori · E la consultazione di
+> `error_log` · V il verdetto «lotto fermo» letto dal DB) e i suoi prerequisiti
+> [brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md)
+> (P-1 verdetto + presidio, P-2 R-6, P-3 indici). ✅ **#8 decisa da Tid**: pallino
+> in topbar, accanto al badge delle code (§5). ⚠️ E una voce di **B** era già
+> chiusa da una settimana senza che questo documento lo dicesse: la «UI sugli
+> endpoint orfani» è **decisa l'11-09** in
+> [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
+> — tre sono servizio, `job-summary` è candidato al ritiro. B6 chiude **per
+> decisione**, e B si riduce a due superfici (G ed E). Il **verdetto «lotto
+> fermo» ha oggi una sede sola, in Python**: il presidio di C non la copia a
+> DB, la **sposta** (brief DB P-1). Il canale di C resta il digest; il pallino
+> è la sua faccia in-app.
 >
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
@@ -359,8 +377,8 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | ~~B3~~ | ~~Identità non tracciata sugli eventi~~ ✅ **chiuso** (Passo 0 + decisione 9) | il «chi» sta in `user_insert` (trigger di audit generico) e in `auth_user_id`; `actor` non esiste più |
 | ~~B4~~ | ~~`correlation_id` assente sul ramo push~~ ✅ **chiuso** (D-7 del brief) | è **l'id del giro**: un `uuid` nuovo generato dal runner, su entrambi i rami (§5, #10) |
 | ~~B5~~ | ~~Log Python non correlabili~~ ✅ **chiuso** (Passo 2, BE-8) | `request_id` nel formatter di logging |
-| B6 | Endpoint senza UI — 🟡 **parziale** ⏱️ *12-09* | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); restano `job-summary`, `task-registry`, `domini-task`, `task-implementations` — vedi §2 |
-| B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; manca la **sorgente** «lotto fermo in errore» — vedi Passo C |
+| ~~B6~~ | ~~Endpoint senza UI~~ ✅ **chiuso per decisione** (⏱️ *18-09*, ma deciso l'**11-09**) | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); per gli altri quattro [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) ha risposto: `domini-task`, `task-registry`, `task-implementations` sono **servizio** (nessuna porta), `job-summary` è **candidato al ritiro**. Non resta niente da costruire |
+| B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* → 🔵 **in brief** ⏱️ *18-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; la **sorgente** «lotto fermo» è chiesta al team DB come **P-1** del [brief](brief-db-osservabilita-lotto-fermo-r6-indici.md) — e il verdetto che la alimenta **si sposta** a DB, non si copia; la faccia in-app è il pallino (#8) |
 | ~~B8~~ | ~~Retention assente sui log di dominio~~ ✅ **chiuso** (Passo D, ⏱️ *18-09*) | `event_log` (decisione 11) + i **quattro** registri di fatturazione e push — `fatturazione_lotti_log`, `fatture_log`, `fatturazione_lotti_task_runs`, `commesse_push_log` — a 750 giorni, scadenza scritta alla nascita da un BB unico (`20260918-29 → -33`, regole 16-19) |
 | ~~**B9**~~ | ~~**`event_log` non ha scope emittente né RLS**~~ ✅ **chiuso** (Passo 0) | `emittente_soggetto_ruolo_id NOT NULL`, derivata all'`INSERT` da `trgfn_event_log_deriva_scope`, più la policy `rls_event_log_ef_whitelist` (`20260822-46`) |
 | ~~**B10**~~ | ~~**`event_log` è l'unico registro senza `tx_id`**~~ ✅ **chiuso** (Passo 0) | colonna `tx_id` + `trg_event_log_gen_tx_id_ins_upd` montato dall'automazione |
@@ -398,9 +416,9 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | **1** — rendere nominabili gli errori | ✅ seed applicato (2026-08-07) | resta il **check CI**, come già scritto |
 | **2** — `request_id` nei log Python | ✅ **FATTO** *(consegna BE-8)* | `settings.py`: filtro `request_id` + `req=%(request_id)s` nel formatter. ⭐ **B11 chiuso nello stesso giro, e in due direzioni opposte**: `emittente_attivo_id` ora si **scrive** (si collega in SQL, non passa dal Python), `tx_id` su `request_log` si è **tolto** — quella riga nasce quando l'unità di lavoro ha già chiuso, quindi il suo `tx_id` non esiste più. ⭐ *Una colonna che nessuno scrive si valorizza o si toglie: qui è successo l'uno e l'altro, sulla stessa tabella* |
 | **A** — la timeline di un caso | ✅ **CHIUSO — fattura e lotto** *(2026-08-24 sera)* | `GET /vendite/fatture/<id>/giornale/` (validato in-app da Tid) e `GET /vendite/lotti/<id>/giornale/` + le due schede «Storia». ⭐ Sono i **due soli consumatori** di `script.vw_giornale_entita`. Sul lotto: il lotto **più le sue fatture**, righe non-INFO, con `entity_type` su ogni riga — e alla prima chiamata vera *il lotto dice che è andata male, la fattura dice perché* (R-3). 🔵 Resta la validazione in-app del pannello lotto |
-| **B** — superfici aggregate | 🔵 aperto — 🟡 **mosso da fuori** ⏱️ *12-09* | `GET /tracciamento/job-runs/` ha il suo primo consumatore: la schermata **«Processi automatici»** (`amm-software`, 05-09), che affianca ai run lo stato dei presidi `ZERO`. ⛔ Non è la vista errori né la consultazione di `error_log`: quelle restano da fare, dietro il permesso del vincolo del Passo A |
-| **C** — notifiche | 🔵 aperto — 🟡 **il canale c'è** ⏱️ *12-09* | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C. ⏱️ *15-09*: la giornaliera è **in esercizio** (corse 14-09 e 15-09 alle 07:00, exit 0 a giornale); a zero righe non spedisce, per scelta — il battito lo porta la settimanale. La sorgente «lotto fermo» **non è a catalogo**: `presidi.csv` non ha nessuna riga sui lotti |
-| **D** — retention sui log di dominio | ✅ **CHIUSO a DB** ⏱️ *18-09* (in attesa di apply e pgTAP) | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⏱️ *12-09*: restavano `fatturazione_lotti_log`, `fatture_log`, `commesse_push_log`. ⏱️ *18-09*: **erano quattro** — anche `fatturazione_lotti_task_runs`, quarta sorgente di `vw_giornale_entita` — e sono chiusi con `20260918-29 → -33` + regole 16-19: colonna, scadenza scritta alla nascita da `dbops.trgfn_cleanup_at_alla_nascita`, ramo retention in `trgfn_logs_guard_delete`, copia `fn_event_log_ttl_days` ritirata. Si verifica su `test-registri-fatturazione-scadenza-alla-nascita.sql` |
+| **B** — superfici aggregate | 🔵 aperto — 🟡 **mosso da fuori** ⏱️ *12-09* — 📐 **in piano** ⏱️ *18-09* (G + E del [piano](piano-be-fe-osservabilita-pallino-e-superfici.md); gli «orfani» chiusi per decisione l'11-09) | `GET /tracciamento/job-runs/` ha il suo primo consumatore: la schermata **«Processi automatici»** (`amm-software`, 05-09), che affianca ai run lo stato dei presidi `ZERO`. ⛔ Non è la vista errori né la consultazione di `error_log`: quelle restano da fare, dietro il permesso del vincolo del Passo A |
+| **C** — notifiche | 🔵 aperto — 🟡 **il canale c'è** ⏱️ *12-09* — 📐 **in brief** ⏱️ *18-09* (P-1 del [brief DB](brief-db-osservabilita-lotto-fermo-r6-indici.md); #8 decisa: pallino) | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C. ⏱️ *15-09*: la giornaliera è **in esercizio** (corse 14-09 e 15-09 alle 07:00, exit 0 a giornale); a zero righe non spedisce, per scelta — il battito lo porta la settimanale. La sorgente «lotto fermo» **non è a catalogo**: `presidi.csv` non ha nessuna riga sui lotti |
+| **D** — retention sui log di dominio | ✅ **CHIUSO** ⏱️ *18-09* (applicato su dbdev alle 19:45, pgTAP verdi la sera stessa) | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⏱️ *12-09*: restavano `fatturazione_lotti_log`, `fatture_log`, `commesse_push_log`. ⏱️ *18-09*: **erano quattro** — anche `fatturazione_lotti_task_runs`, quarta sorgente di `vw_giornale_entita` — e sono chiusi con `20260918-29 → -33` + regole 16-19: colonna, scadenza scritta alla nascita da `dbops.trgfn_cleanup_at_alla_nascita`, ramo retention in `trgfn_logs_guard_delete`, copia `fn_event_log_ttl_days` ritirata. Si verifica su `test-registri-fatturazione-scadenza-alla-nascita.sql` |
 
 ### ✅ R-1 — l'orario ora è quello vero *(chiesto dal BE, scritto dal team DB il 2026-08-24)*
 
@@ -466,7 +484,7 @@ incontra tutti:
 | **R-2** | `LOTTO_LOG` e `FATTURA_LOG` hanno `correlation_id` **NULL per costruzione della vista** | Filtrare per «filo» tiene `event_log` + `task_run` e butta via le righe scritte **per una persona**. ⛔ Un filtro per giro nasconderebbe metà del contenuto |
 | **R-4** | Il **perimetro non è mai stato esercitato** su nessuno dei quattro rami | Un solo emittente ha righe. Il fail-closed funziona (senza GUC la vista torna 0), la **discriminazione** no: va collaudata **apposta**, i dati non lo faranno |
 | **R-5** | Due **generazioni di righe** convivono | Le vecchie hanno `tx_id` NULL e per «filo» il lotto; le nuove il giro. A video sono **indistinguibili** — e da R-1 in poi si aggiunge l'orario |
-| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05, il 2026-09-12 e il 2026-09-15*: `script.vw_giornale_entita` usa tuttora `COALESCE(tr.ended_at, tr.started_at) AS quando` | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
+| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05, il 2026-09-12, il 2026-09-15 e il 2026-09-18*: `script.vw_giornale_entita` usa tuttora `COALESCE(tr.ended_at, tr.started_at) AS quando`. 📐 *18-09*: chiesto al team DB come **P-2** (`quando = started_at`) | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
 | **R-7** | **Rumore**: sul 6260, 213 righe, 82 non-INFO — e **81 sono la stessa storia ripetuta otto volte**. L'errore vero è **una riga** | Il filtro non-INFO da solo non basta: nascondere le ritirate ne toglie una parte, il resto è **de-duplicazione**, da guardare col pannello davanti |
 
 ---
@@ -726,6 +744,17 @@ tutte le aziende e non hanno RLS: è il vincolo del Passo A applicato a un
 aggregato. Restano interi il primo punto (vista errori trasversale) e il terzo
 (`error_log` con filtri), più i quattro endpoint ancora orfani (§2).
 
+⏱️ *2026-09-18*: **i quattro orfani non sono più una cosa da fare** — decisi
+l'11-09 in [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
+(tre servizio, uno candidato al ritiro); questa nota li dava ancora aperti per
+una settimana. Il primo e il terzo punto hanno il loro piano: **G** (il giornale
+degli errori, terzo lettore della stessa `vw_giornale_entita`, `DomainAPIView`
+sotto RLS) ed **E** (`error_log` dietro `AdminAPIView`, `context` com'è) in
+[piano-be-fe-osservabilita-pallino-e-superfici.md](piano-be-fe-osservabilita-pallino-e-superfici.md)
+§3 e §4 — entrambi **dopo gli indici** (brief DB P-3): oggi nessuna delle due
+letture ha un indice da cui partire, e un filtro dichiarato senza indice è un
+500 differito.
+
 ⏱️ *2026-09-15*: **invariato**. Nessun `urls.py` espone `error_log`, nessuna
 vista errori trasversale esiste; `job-runs` resta l'unico endpoint aggregato con
 un consumatore.
@@ -769,6 +798,18 @@ pgAgent se il digest tace). ⇒ Il residuo del Passo C è **solo** la sorgente
 «lotto fermo in errore»: `presidi.csv` non ha righe sui lotti, e il canale la
 aspetta.
 
+⏱️ *2026-09-18*: **la sorgente è chiesta, e con una forma precisa** — P-1 di
+[brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md).
+⭐ Il punto che la forma decide: il verdetto «lotto fermo» oggi vive in **Python**
+(`blocks_next_step`, tre addendi da `fn_get_lotto_segnalazioni_summary`); un
+presidio scritto a DB sarebbe la **seconda sede** dello stesso predicato, e le
+due divergerebbero al primo addendo nuovo — il banner direbbe «fermo» e il
+digest «tutto a posto». Si **sposta** la sede a DB (colonna `fermo` in coda al
+riepilogo, vista dei lotti fermi, presidio `_da_guardare` con soglia di un'ora
+e perimetro `DEFINER`) e il BE la trasporta (pezzo V del piano). ✅ E la #8 è
+decisa: **pallino in-app**, in topbar accanto al badge delle code (pezzo P del
+piano, senza prerequisiti DB).
+
 ### Passo D — Retention sui log di dominio
 
 Estendere `cleanup_at` a `event_log` e ai log funzionali, con i termini decisi
@@ -791,7 +832,7 @@ tabelle. Il brief non è stato scritto.
 ✅ ⏱️ *2026-09-18* — **CHIUSO a DB, senza brief separato** (decisione di Tid: «non
 mi sembra ci sia tanto»). Cinque changeSet e quattro righe di seed, provati con
 l'SQL estratto in transazione con `ROLLBACK` e con `plpgsql_check` pulito;
-guardrail statici verdi. In attesa di apply e della corsa pgTAP di Tid.
+guardrail statici verdi. ~~In attesa di apply e della corsa pgTAP di Tid.~~
 
 ⚠️ ⏱️ *18-09 sera* — **il pgTAP era `ERRORE_FIXTURE` su `zeroerp_ci`** (lo
 scratch da zero, applicati `-29 → -33`): la fixture partiva da
@@ -802,7 +843,21 @@ diceva «i test relativi skippano, dichiarandolo» ed era sincera un livello
 troppo in alto. Riscritto sui builder (`dbops.fn_pgtap_crea_emittente_operatore`,
 `fn_pgtap_crea_cliente_ba`, `script.fn_pgtap_registro_fattura`, lotto e
 fattura scritti dal file): gli `skip` sono spariti e i quindici test girano
-identici su dbdev e su un database ricostruito dai changelog. Da rilanciare.
+identici su dbdev e su un database ricostruito dai changelog. ~~Da rilanciare.~~
+
+✅ ⏱️ *18-09 sera, dopo il merge (PR #1610, #1612)* — **applicato e verde**,
+verificato dal BE su dbdev in sola lettura: i cinque changeSet `-29 → -33`
+risultano `EXECUTED` alle 19:45:48, i cinque trigger `*_m50_cleanup_at_ins`
+esistono (quattro registri + `event_log`), le regole 16-19 sono attive a 750
+giorni, `fn_event_log_ttl_days` non c'è più. pgTAP come `zeroerp_app` con RLS:
+`test-registri-fatturazione-scadenza-alla-nascita.sql` (15/15),
+`test-event-log-append-only.sql` e `test-event-log-deriva-scope.sql` **verdi**.
+⚠️ `dbops/test-cleanup-framework.sql` è `pgtap-runner: owner` (fa `CREATE
+TABLE dbops.…`) e dal server backend non gira — «permesso negato per lo schema
+dbops» dopo 3/16 — va lanciato dal server DB con `db/internal.env`: non è un
+rosso del test, è il ruolo sbagliato. **Impatto BE/FE del passo: nessuno** —
+la funzione ritirata non era citata in `backend/` né in `frontend/`, e
+`cleanup_at` lo scrivono i trigger, nessun endpoint lo espone.
 
 | ChangeSet | Cosa |
 | --- | --- |
@@ -924,8 +979,17 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    pregresso a **soglia** (`test_la_misura_non_e_degradata`), che deve calare.
    ⚠️ Il registro oggi conta **502** codici da dichiarare: è un debito misurato,
    non un errore. ⇒ Il Passo 1 è chiuso.
-8. 🔵 **APERTA, e serve una decisione di Tid** — **Notifiche**: canale email o
-   solo badge in-app in prima battuta? (Passo C). ⭐ È l'unica delle voci
+8. ✅ **DECISA da Tid il 2026-09-18** — ~~**Notifiche**: canale email o
+   solo badge in-app in prima battuta? (Passo C).~~ **Entrambi**: il canale email
+   c'è già (digest); **sì al pallino in-app**, e sta in **topbar accanto al badge
+   delle code**, non accanto alle iniziali dell'operatore — è un segnale sul
+   *sistema*, non «notifiche per te». **Sempre visibile** per chi ha il permesso:
+   verde a zero (il «visto e vuoto» che la giornaliera muta non sa dire), rosso col
+   numero; click → «Processi automatici». Lo vede chi vede il pannello (oggi
+   admin; per l'operatore è una decisione di permessi sui presidi, rimandata e
+   dichiarata). Piano: pezzo **P** di
+   [piano-be-fe-osservabilita-pallino-e-superfici.md](piano-be-fe-osservabilita-pallino-e-superfici.md)
+   §2. La storia della domanda resta sotto. ⭐ È l'unica delle voci
    originali che non si è chiusa da sola: le altre le ha chiuse il lavoro, questa
    aspetta una scelta.
    ⏱️ *2026-09-12*: **i fatti hanno orientato la risposta** — il canale email

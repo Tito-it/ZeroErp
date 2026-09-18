@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.6.0
+anthropic==1.7.0
     # via -r ../requirements.in
 anyio==4.15.1
     # via
@@ -86,9 +86,9 @@ packaging==26.3
     # via -r ../requirements.in
 pillow==12.3.0
     # via weasyprint
-psycopg==3.3.5
+psycopg==3.3.6
     # via -r ../requirements.in
-psycopg-binary==3.3.5
+psycopg-binary==3.3.6
     # via -r ../requirements.in
 pycparser==3.0
     # via cffi

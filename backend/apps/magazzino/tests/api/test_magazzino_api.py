@@ -24,7 +24,7 @@ Indice test eseguiti:
 13) DettaglioApiTests.test_stato_e_registra
 14) RigheApiTests.test_righe_lista_e_riga_crud
 15) RigheApiTests.test_motivi_traduce_i_parametri
-16) ExportApiTests.test_i_filtri_del_file_sono_serializzabili — 2026-09-19: una data nel filtro non e' un 500 dell'export
+16) ExportApiTests.test_i_filtri_del_file_sono_serializzabili — 2026-09-18: una data nel filtro non e' un 500 dell'export
 16-bis) ExportApiTests.test_export_chiede_il_dataset_non_la_pagina
 17) LookupApiTests.test_i_lookup_tornano_l_envelope_results
 18) ConsultazioneApiTests.test_disponibilita_filtri_tradotti
