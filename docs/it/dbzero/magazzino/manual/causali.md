@@ -75,7 +75,12 @@ Sotto il guard del verso, il movimento contrario non può portare la causale del
   questa sorgente», la forma è un `sorgente_tipo_id` sulla causale, letto dalla primitiva.
 
 `is_installazione_asset` resta: è la sola marca che lega la causale al ciclo di vita
-dell'asset; il suo consumatore nasce col Lotto 2.
+dell'asset; il suo consumatore nasce con gli eventi asset (un lotto successivo: D-L2-l).
+
+⭐ **Dal 18-09 (Lotto 2)** la primitiva legge la causale per `codice_interno`: `segno` per il verso
+(passo 3), `is_rettifica` per ignorare i blocchi (una rettifica registra un fatto, un blocco è una
+promessa: il fatto vince, il fisico resta), `consente_stock_negativo` per esonerare da tutto. Al
+18-09 nessuna causale del seed consente lo stock negativo: il pgTAP costruisce il caso.
 
 ---
 

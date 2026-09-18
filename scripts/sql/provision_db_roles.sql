@@ -189,6 +189,27 @@ WHERE n.nspname = 'dbops'
   AND p.prokind = 'f'
 \gexec
 
+-- ⭐ LA PORTA DEL LEDGER DI MAGAZZINO (dal 2026-09-18): brief
+--   brief-db-magazzino-lotto-2-motore, sezione 4.1 (D-L2-b) e 6-ter C2.
+--   `magazzino.movimenti` e `magazzino.valore_giacenza` sono in SOLA LETTURA
+--   per l'applicazione: scrive solo la primitiva `magazzino.fn_scrivi_movimento`
+--   (SECURITY DEFINER del proprietario) e il ricalcolo del valore. È la sola
+--   forma in cui «scrive solo la primitiva» è un fatto. `magazzino.movimenti_attesi`
+--   resta scrivibile ma SENZA DELETE: un blocco si chiude, non si cancella.
+--   Stesso elenco delle liste `v_tabelle_sola_lettura_app` e
+--   `v_tabelle_senza_delete` del loop 20260205-41 e del forward 90_end/20260918-15;
+--   chi ne cambia uno cambia gli altri, e `db/pgtap/magazzino/test-porta-ledger-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('magazzino.movimenti'), ('magazzino.valore_giacenza')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+SELECT format('REVOKE DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('magazzino.movimenti_attesi')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ------------------------------------------------------------------
 -- ⭐ ECCEZIONE: `USAGE` — e SOLO `USAGE` — sullo schema `maintenance`.
 --

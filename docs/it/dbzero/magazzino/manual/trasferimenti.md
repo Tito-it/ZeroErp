@@ -53,6 +53,18 @@ Il perimetro poggia sul magazzino di **origine** (`rls_trasferimenti_ef_whitelis
 `magazzino_id_from`); la destinazione la copre il guard. Righe e note risalgono alla testata.
 Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
+### Che cos'è, dal 17-09 (decisione di Tid, D-L2-g)
+
+Il trasferimento **interno**: dentro lo stesso magazzino fra ubicazioni, o fra magazzini diversi
+dello stesso emittente, **senza documento di trasporto**. Il trasferimento con trasporto fra due
+depositi è il DDT con causale `TRASFERIMENTO` (`config.causali_trasporto`), che oggi non sa da quale
+magazzino parte né dove arriva. Ne discende, per il lotto che ne scriverà il posting (non il Lotto
+2): `ubicazione_id_da`/`_a` sulle righe, il CHECK «magazzini diversi **oppure** ubicazioni
+diverse», un guard sullo stesso emittente, la coppia `TRASF_OUT`/`TRASF_IN` con lo stesso
+`transfer_uid` e l'entrata al costo dell'uscita (il ramo gemella della primitiva esiste ed è provato).
+
+---
+
 ---
 
 {% include-markdown "it/dbzero/magazzino/_dominio-magazzino.md" %}

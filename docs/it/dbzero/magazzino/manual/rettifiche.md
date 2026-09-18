@@ -39,6 +39,17 @@ Un operatore vede e scrive le rettifiche dei magazzini del **proprio emittente**
 (`rls_rettifiche_ef_whitelist`, via magazzino); righe e note risalgono alla testata.
 Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
+### Il motore (dal 18-09, Lotto 2)
+
+[fn_posta_rettifica](/dbzero/magazzino/funzioni/fn_posta_rettifica) posta il delta **dato** di ogni
+riga (`RETT_POS`/`RETT_NEG` dal segno), in una transazione; una rettifica negativa ignora i
+blocchi (una promessa) ma non il fisico (`is_rettifica`, primo consumatore). La matrice degli
+stati è la stessa degli inventari, con la porta `POSTED` aperta solo dall'operazione e il
+`DELETE` solo in `DRAFT`
+([trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione)).
+
+---
+
 ---
 
 {% include-markdown "it/dbzero/magazzino/_dominio-magazzino.md" %}

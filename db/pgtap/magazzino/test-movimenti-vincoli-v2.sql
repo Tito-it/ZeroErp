@@ -1,6 +1,17 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: RI-COLLOCATO col Lotto 2 (brief-db-magazzino-lotto-2-motore,
+--   D-L2-b, sezione 7). Il soggetto sono i VINCOLI del ledger (CHECK, UNIQUE,
+--   guard tipizzato, guard del verso), che si fanno scattare con INSERT
+--   DIRETTI su magazzino.movimenti — e dal Lotto 2 l'app ha SELECT soltanto:
+--   scrive solo la primitiva (DEFINER del proprietario). Come app ogni INSERT
+--   darebbe 42501 prima del vincolo: e' la forma 3 del criterio del runner
+--   («il test collauda un guard che solo uno scrittore privilegiato puo' far
+--   scattare»). Le asserzioni sono INVARIATE; il contesto operatore resta
+--   impostato (i guard di scope e le fixture lo vogliono). Il comportamento
+--   della primitiva ha i suoi file (test-fn-scrivi-movimento-*).
 --
 -- Test: i vincoli del ledger magazzino.movimenti nella forma decisa dal
 --   Lotto 1 (brief-db-magazzino-lotto-1-terreno-vuoto, sezioni 4.4, 4.9, 7).
@@ -13,9 +24,10 @@
 --   dall'helper, magazzino con quell'emittente, lotto, asset, un inventario
 --   con una riga (la sorgente INVENTARIO_RIGA) e un trasferimento con una riga
 --   (la sorgente TRASFERIMENTO_RIGA della coppia OUT/IN).
--- ⚠️ Gira come l'applicazione: la RLS di P-10 e' attiva, il guard di scope di
---   magazzini pretende che l'operatore abbia l'emittente nel perimetro — e ce
---   l'ha, perche' e' l'helper a darglielo.
+-- ⚠️ Girava come l'applicazione fino al Lotto 2; ora come owner (vedi il
+--   marcatore in testa). Il contesto operatore e' impostato lo stesso: il
+--   guard di scope di magazzini e del ledger legge le GUC, e l'operatore ha
+--   l'emittente nel perimetro perche' e' l'helper a darglielo.
 --
 -- Elenco test (plan 16):
 --   La sorgente e' obbligatoria e a catalogo (D-1, D-6, D-9):

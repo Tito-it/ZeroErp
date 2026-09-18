@@ -1,0 +1,357 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 (4 di 4) — LE DUE OPERAZIONI SENZA DOCUMENTO COMMERCIALE
+#   magazzino.fn_posta_inventario(p_inventario_id)  RETURNS TABLE (movimento_id, riga_id, qta)
+#   magazzino.fn_posta_rettifica(p_rettifica_id)    RETURNS TABLE (movimento_id, riga_id, qta)
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.5 (D-L2-f, D-L2-g, D-L2-h, D-L2-n)
+#
+# -- DUE LIVELLI (M-2): le operazioni non ricontrollano niente ------------------------------
+#   Leggono e scrivono il DOCUMENTO come l'operatore (SECURITY INVOKER, sotto
+#   RLS), e chiamano la primitiva per ogni riga: i controlli duri stanno li'.
+#   Sono UNA transazione per costruzione (una SELECT fn_posta_*()): se la
+#   riga 7 di 10 fallisce, le prime sei si annullano e il documento resta
+#   CONFIRM — l'all-or-nothing di linee-guida-sql 5b.
+#
+# -- LA FORMA COMUNE (sezione 4.5) -------------------------------------------------------------
+#   1 guard di parametro; 2 la testata FOR UPDATE — fuori perimetro non c'e'
+#   (E_MAG_DOCUMENTO_NON_TROVATO, 404 no-leak), stato CONFIRM
+#   (E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA, valori: stato attuale, POSTED);
+#   3 almeno una riga (E_MAG_DOCUMENTO_SENZA_RIGHE); 4 la GUC transazionale
+#   che apre la porta POSTED e le righe in CONFIRM; 5 per riga in ordine di
+#   id: il delta, la causale, la primitiva; 6 la testata a POSTED (passa il
+#   guard perche' la GUC dice «sono io»); 7 la GUC azzerata.
+#   FOR UPDATE sulla testata, non un advisory lock: due posting dello stesso
+#   documento si serializzano sulla riga, il secondo trova POSTED e rifiuta.
+#   Il lock della primitiva copre la corsa fra documenti DIVERSI sulla stessa
+#   merce.
+#
+# -- L'INVENTARIO POSTA LA DIFFERENZA, DAL PIANO (D-L2-f, D-L2-n) ----------------------------------
+#   Legge fn_inventario_piano: scrive qta_sistema sulla riga PRIMA (e' la
+#   fotografia contro cui il conteggio e' stato posto, e resta — la GUC la
+#   lascia passare in CONFIRM), posta le righe con delta <> 0 con la causale
+#   del piano, sorgente INVENTARIO_RIGA:{riga.id}, costo della riga solo su
+#   un'entrata (su un'uscita il costo lo decide il registro), lotto/asset/
+#   ubicazione della riga, data_mov = inventari.data. Le NON_CONTATA restano
+#   com'erano; una NON_POSTABILE fa rifiutare tutto con il primo motivo della
+#   STESSA check (fn_check_riga_magazzino): il piano l'aveva gia' detto.
+#
+# -- LA RETTIFICA: stessa forma, un passo in meno (D-L2-g) ------------------------------------------
+#   Il delta e' DATO (rettifiche_righe.qta_delta), la causale e' RETT_POS /
+#   RETT_NEG dal segno, la sorgente RETTIFICA_RIGA:{riga.id}, il costo della
+#   riga solo su un'entrata. is_rettifica: la primitiva ignora i blocchi ma
+#   non il fisico (D-L2-d).
+#
+# -- CHE COSA RITORNANO -------------------------------------------------------------------------------
+#   Riga per riga: movimento scritto, riga del documento, quantita' firmata.
+#   E' cio' che il BE mostrera' e che il pgTAP asserisce.
+#
+# -- %TYPE in firma, DECLARE e RETURNS TABLE (regola di Tid). Le colonne di RETURNS TABLE
+#   sono variabili: ogni riferimento nelle query e' qualificato con un alias.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260918-23-create-fn-posta-inventario-e-rettifica-mctit.yaml
+
+  - changeSet:
+      id: 20260918-23-create-fn-posta-inventario-e-rettifica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.fn_posta_inventario e fn_posta_rettifica (SECURITY INVOKER, VOLATILE): la
+        testata FOR UPDATE in CONFIRM sotto RLS, la GUC transazionale, per riga la primitiva
+        (l'inventario dal piano di fn_inventario_piano: qta_sistema scritto prima, delta <> 0
+        postato; la rettifica dal qta_delta dato), la testata a POSTED, la GUC azzerata. Una
+        transazione per costruzione. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.5 (P-6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'magazzino'
+                 AND p.proname IN ('fn_scrivi_movimento', 'fn_inventario_piano');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1. L'inventario: posta la DIFFERENZA, dal piano.
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_inventario(
+                  p_inventario_id magazzino.inventari.id%TYPE
+              )
+              RETURNS TABLE (
+                  movimento_id magazzino.movimenti.id%TYPE,
+                  riga_id      magazzino.inventari_righe.id%TYPE,
+                  qta          magazzino.movimenti.qta%TYPE
+              )
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: registrare un inventario CONFIRM — per ogni riga del piano
+              --   (fn_inventario_piano) scrive qta_sistema e posta il delta con la
+              --   causale del piano attraverso la primitiva; poi porta la testata a
+              --   POSTED. Una transazione: se una riga fallisce non resta niente e il
+              --   documento resta CONFIRM. Ritorna, riga per riga, il movimento scritto.
+              DECLARE
+                  v_magazzino_id magazzino.inventari.magazzino_id%TYPE;
+                  v_data         magazzino.inventari.data%TYPE;
+                  v_stato        magazzino.inventari.stato_mag_inventario%TYPE;
+                  v_n_righe      bigint;
+                  v_sorgente_id  config.sorgenti.id%TYPE;
+                  v_costo        magazzino.inventari_righe.costo_unitario%TYPE;
+                  v_motivi       jsonb;
+                  v_piano        record;
+              BEGIN
+                  -- 1. Parametro
+                  IF p_inventario_id IS NULL OR p_inventario_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'inventario obbligatorio e maggiore di zero', 'p_inventario_id', p_inventario_id),
+                          NULL::uuid, 'magazzino.fn_posta_inventario', 'p_inventario_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata, FOR UPDATE, sotto RLS: fuori perimetro NON C'E'.
+                  SELECT i.magazzino_id, i.data, i.stato_mag_inventario
+                    INTO v_magazzino_id, v_data, v_stato
+                    FROM magazzino.inventari i
+                   WHERE i.id = p_inventario_id
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('inventario_id', p_inventario_id),
+                          NULL::uuid, p_inventario_id::text);
+                  END IF;
+                  IF v_stato <> 'CONFIRM' THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object('detail', 'il posting parte da CONFIRM',
+                                             'inventario_id', p_inventario_id, 'stato', v_stato),
+                          NULL::uuid, v_stato, 'POSTED');
+                  END IF;
+
+                  -- 3. Almeno una riga.
+                  SELECT count(*) INTO v_n_righe FROM magazzino.inventari_righe r WHERE r.inventario_id = p_inventario_id;
+                  IF v_n_righe = 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_DOCUMENTO_SENZA_RIGHE',
+                          jsonb_build_object('inventario_id', p_inventario_id),
+                          NULL::uuid, p_inventario_id::text);
+                  END IF;
+
+                  SELECT s.id INTO v_sorgente_id FROM config.sorgenti s WHERE s.codice_interno = 'INVENTARIO_RIGA' AND s.attivo;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.sorgenti.INVENTARIO_RIGA'),
+                          NULL::uuid, VARIADIC ARRAY['sorgente INVENTARIO_RIGA (config.sorgenti, attiva)']);
+                  END IF;
+
+                  -- 4. La GUC transazionale: apre la porta POSTED e le righe in CONFIRM.
+                  PERFORM set_config('zeroerp.magazzino_posting_inventario', p_inventario_id::text, true);
+
+                  -- 5. Per riga, in ordine di id, DAL PIANO.
+                  FOR v_piano IN
+                      SELECT pi.riga_id, pi.articolo_id, pi.ubicazione_id, pi.lotto_id, pi.asset_id,
+                             pi.qta_sistema, pi.delta, pi.causale_codice_interno, pi.esito
+                        FROM magazzino.fn_inventario_piano(p_inventario_id) pi
+                       WHERE pi.riga_id IS NOT NULL
+                       ORDER BY pi.riga_id
+                  LOOP
+                      -- La fotografia contro cui il conteggio e' stato posto: resta sulla riga.
+                      UPDATE magazzino.inventari_righe r
+                         SET qta_sistema = v_piano.qta_sistema
+                       WHERE r.id = v_piano.riga_id;
+
+                      IF v_piano.esito = 'NON_POSTABILE' THEN
+                          -- Il primo motivo della STESSA check: il piano l'aveva gia' detto.
+                          v_motivi := script.fn_check_riga_magazzino(v_magazzino_id, v_piano.articolo_id,
+                                                                     v_piano.lotto_id, v_piano.asset_id, v_piano.ubicazione_id);
+                          PERFORM script.fn_raise_primo_motivo_se_presente(
+                              'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
+                              jsonb_build_object('inventario_id', p_inventario_id, 'riga_id', v_piano.riga_id));
+                      END IF;
+
+                      CONTINUE WHEN v_piano.delta = 0;     -- INVARIATA: niente da dire
+
+                      -- Il costo della riga vale solo su un'entrata (D-L2-c): un'uscita va alla media.
+                      SELECT CASE WHEN v_piano.delta > 0 THEN r.costo_unitario END INTO v_costo
+                        FROM magazzino.inventari_righe r WHERE r.id = v_piano.riga_id;
+
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_magazzino_id,
+                          p_articolo_id      => v_piano.articolo_id,
+                          p_causale          => v_piano.causale_codice_interno,
+                          p_qta              => v_piano.delta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_riga    => v_piano.riga_id,
+                          p_costo_unitario   => v_costo,
+                          p_lotto_id         => v_piano.lotto_id,
+                          p_asset_id         => v_piano.asset_id,
+                          p_ubicazione_id    => v_piano.ubicazione_id,
+                          p_data_mov         => v_data::timestamptz);
+                      riga_id := v_piano.riga_id;
+                      qta     := v_piano.delta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  -- 6. La testata a POSTED: passa il guard perche' la GUC dice «sono io».
+                  UPDATE magazzino.inventari i
+                     SET stato_mag_inventario = 'POSTED'
+                   WHERE i.id = p_inventario_id;
+
+                  -- 7. La GUC azzerata (e' comunque transazionale).
+                  PERFORM set_config('zeroerp.magazzino_posting_inventario', '', true);
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_posta_inventario(bigint) IS
+                  'Registra un inventario CONFIRM (D-L2-f, D-L2-n): legge il piano '
+                  '(fn_inventario_piano), scrive qta_sistema su ogni riga, posta le righe con '
+                  'delta <> 0 attraverso la primitiva (causale del piano: INV_INIZIALE se '
+                  'l''articolo non ha movimenti nel magazzino, altrimenti RETT_POS/RETT_NEG; '
+                  'sorgente INVENTARIO_RIGA:{riga}; costo della riga solo su un''entrata; '
+                  'data_mov = data dell''inventario), porta la testata a POSTED con la GUC '
+                  'transazionale zeroerp.magazzino_posting_inventario. Le NON_CONTATA restano; una '
+                  'NON_POSTABILE rifiuta tutto col primo motivo di fn_check_riga_magazzino. '
+                  'SECURITY INVOKER: la testata sotto RLS FOR UPDATE — fuori perimetro '
+                  'E_MAG_DOCUMENTO_NON_TROVATO (404 no-leak); non CONFIRM: '
+                  'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA; senza righe: '
+                  'E_MAG_DOCUMENTO_SENZA_RIGHE. UNA transazione per costruzione (5b): se una riga '
+                  'fallisce non resta niente. Ritorna (movimento_id, riga_id, qta) per riga '
+                  'postata. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.5.';
+
+              GRANT EXECUTE ON FUNCTION magazzino.fn_posta_inventario(bigint) TO zeroerp_app;
+
+              -- ============================================================
+              -- 2. La rettifica: stessa forma, il delta e' dato.
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_rettifica(
+                  p_rettifica_id magazzino.rettifiche.id%TYPE
+              )
+              RETURNS TABLE (
+                  movimento_id magazzino.movimenti.id%TYPE,
+                  riga_id      magazzino.rettifiche_righe.id%TYPE,
+                  qta          magazzino.movimenti.qta%TYPE
+              )
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: registrare una rettifica CONFIRM — per ogni riga posta qta_delta
+              --   (dato) con RETT_POS/RETT_NEG dal segno attraverso la primitiva; poi la
+              --   testata a POSTED. Una transazione. Ritorna il movimento per riga.
+              DECLARE
+                  v_magazzino_id magazzino.rettifiche.magazzino_id%TYPE;
+                  v_data         magazzino.rettifiche.data%TYPE;
+                  v_stato        magazzino.rettifiche.stato_mag_rettifiche%TYPE;
+                  v_n_righe      bigint;
+                  v_sorgente_id  config.sorgenti.id%TYPE;
+                  v_riga         magazzino.rettifiche_righe%ROWTYPE;
+              BEGIN
+                  IF p_rettifica_id IS NULL OR p_rettifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'rettifica obbligatoria e maggiore di zero', 'p_rettifica_id', p_rettifica_id),
+                          NULL::uuid, 'magazzino.fn_posta_rettifica', 'p_rettifica_id (obbligatoria, maggiore di zero)');
+                  END IF;
+
+                  SELECT t.magazzino_id, t.data, t.stato_mag_rettifiche
+                    INTO v_magazzino_id, v_data, v_stato
+                    FROM magazzino.rettifiche t
+                   WHERE t.id = p_rettifica_id
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('rettifica_id', p_rettifica_id),
+                          NULL::uuid, p_rettifica_id::text);
+                  END IF;
+                  IF v_stato <> 'CONFIRM' THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object('detail', 'il posting parte da CONFIRM',
+                                             'rettifica_id', p_rettifica_id, 'stato', v_stato),
+                          NULL::uuid, v_stato, 'POSTED');
+                  END IF;
+
+                  SELECT count(*) INTO v_n_righe FROM magazzino.rettifiche_righe r WHERE r.rettifica_id = p_rettifica_id;
+                  IF v_n_righe = 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_DOCUMENTO_SENZA_RIGHE',
+                          jsonb_build_object('rettifica_id', p_rettifica_id),
+                          NULL::uuid, p_rettifica_id::text);
+                  END IF;
+
+                  SELECT s.id INTO v_sorgente_id FROM config.sorgenti s WHERE s.codice_interno = 'RETTIFICA_RIGA' AND s.attivo;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.sorgenti.RETTIFICA_RIGA'),
+                          NULL::uuid, VARIADIC ARRAY['sorgente RETTIFICA_RIGA (config.sorgenti, attiva)']);
+                  END IF;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_rettifica', p_rettifica_id::text, true);
+
+                  FOR v_riga IN
+                      SELECT r.* FROM magazzino.rettifiche_righe r
+                       WHERE r.rettifica_id = p_rettifica_id
+                       ORDER BY r.id
+                  LOOP
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_magazzino_id,
+                          p_articolo_id      => v_riga.articolo_id,
+                          p_causale          => CASE WHEN v_riga.qta_delta > 0 THEN 'RETT_POS' ELSE 'RETT_NEG' END,
+                          p_qta              => v_riga.qta_delta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_riga    => v_riga.id,
+                          p_costo_unitario   => CASE WHEN v_riga.qta_delta > 0 THEN v_riga.costo_unitario END,
+                          p_lotto_id         => v_riga.lotto_id,
+                          p_asset_id         => v_riga.asset_id,
+                          p_ubicazione_id    => v_riga.ubicazione_id,
+                          p_data_mov         => v_data::timestamptz);
+                      riga_id := v_riga.id;
+                      qta     := v_riga.qta_delta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  UPDATE magazzino.rettifiche t
+                     SET stato_mag_rettifiche = 'POSTED'
+                   WHERE t.id = p_rettifica_id;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_rettifica', '', true);
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_posta_rettifica(bigint) IS
+                  'Registra una rettifica CONFIRM (D-L2-g): per ogni riga posta qta_delta (dato, '
+                  'firmato) con RETT_POS/RETT_NEG dal segno attraverso la primitiva (sorgente '
+                  'RETTIFICA_RIGA:{riga}; costo della riga solo su un''entrata; is_rettifica: i '
+                  'blocchi non fermano, il fisico si''), porta la testata a POSTED con la GUC '
+                  'transazionale zeroerp.magazzino_posting_rettifica. SECURITY INVOKER: testata '
+                  'sotto RLS FOR UPDATE (E_MAG_DOCUMENTO_NON_TROVATO, '
+                  'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA, E_MAG_DOCUMENTO_SENZA_RIGHE). UNA '
+                  'transazione: se una riga fallisce non resta niente. Ritorna (movimento_id, '
+                  'riga_id, qta) per riga. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.5.';
+
+              GRANT EXECUTE ON FUNCTION magazzino.fn_posta_rettifica(bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS magazzino.fn_posta_rettifica(bigint);
+              DROP FUNCTION IF EXISTS magazzino.fn_posta_inventario(bigint);

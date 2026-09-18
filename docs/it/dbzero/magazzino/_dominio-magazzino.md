@@ -1,24 +1,28 @@
-### 🏗️ Lo stato del dominio `magazzino` (2026-09-15)
+### 🏗️ Lo stato del dominio `magazzino` (2026-09-18)
 
-⚠️ **Forma decisa, perimetro armato, in attesa della primitiva.** Il modello è stato messo
+⚠️ **Primitiva e prime due operazioni in esercizio, porta chiusa.** Il modello è stato messo
 nella forma stabilita dalle tre analisi di settembre (carico e scarico, aggancio ai
 documenti, commessa e produzione) con il Lotto 1 — `brief-db-magazzino-lotto-1-terreno-vuoto`
-— e **non c'è ancora una riga dentro**: tutte le tabelle operative sono vuote, popolati solo
-i cataloghi da seed (`magazzino.causali`, 16 righe; le sorgenti di magazzino in
-`config.sorgenti`). Non entra né esce merce finché non esiste la **primitiva di scrittura**
-(Lotto 2): le pagine descrivono il ruolo di ciascun oggetto e le regole che il database fa
-già rispettare, non un processo osservato.
+— e con il Lotto 2 — `brief-db-magazzino-lotto-2-motore` — la merce ha **una porta sola**
+per entrare e uscire: `magazzino.fn_scrivi_movimento`. Il registro e la copia del valore
+non sono più scrivibili dall'applicazione (`REVOKE`), l'**inventario** e la **rettifica**
+sono le prime due operazioni che passano dalla porta (`fn_posta_inventario`,
+`fn_posta_rettifica`), la **disponibilità** ha una vista e una check con la stessa formula.
+Le tabelle operative restano vuote fino al primo uso: le pagine descrivono il ruolo di
+ciascun oggetto e le regole che il database fa rispettare, non un processo osservato.
 
 ---
 
 ### Il disegno in una riga
 
 ```
-operazione (riga di bolla, di inventario, di rettifica, di trasferimento, evento di un asset)
-   └─→ registro  magazzino.movimenti   (sorgente a catalogo · qta firmata in UoM base · identità per tranche)
-          ├─→ giacenza       vw_giacenza, vw_giacenza_ubicazione     (somma del registro)
-          └─→ valore         magazzino.valore_giacenza               (copia ricostruibile: ri-somma dei costi)
-                               └─→ vw_costo_medio, vw_costo_medio_globale, vw_giacenza_valorizzata
+operazione (riga di inventario, di rettifica · poi bolla, trasferimento, evento di un asset)
+   └─→ PORTA     magazzino.fn_scrivi_movimento   (l'unica scrittura: controlla, blocca, valorizza)
+          └─→ registro  magazzino.movimenti   (sorgente a catalogo · qta firmata in UoM base · identità per tranche)
+                 ├─→ giacenza       vw_giacenza, vw_giacenza_ubicazione     (somma del registro)
+                 ├─→ valore         magazzino.valore_giacenza               (copia ricostruibile: fn_ricalcola_valore_giacenza)
+                 │                    └─→ vw_costo_medio, vw_costo_medio_globale, vw_giacenza_valorizzata
+                 └─→ disponibilità  vw_disponibilita, vw_disponibilita_articolo   (giacenza + blocchi aperti)
 attese   magazzino.movimenti_attesi   (blocco manuale, prelievo non uscito: ciò che i documenti non dicono)
 ```
 
@@ -29,7 +33,16 @@ nella quantità (firmata, coerente con la causale: un guard lo pretende), la qua
 posizione). Non si spegne: si **storna**, con un movimento contrario legato all'originale.
 
 I due cataloghi che guidano la scrittura: la **causale** (verso, rettifica, stock negativo)
-e l'**articolo** (`gestito_a_magazzino`, `requires_lotto`, `requires_serial`).
+e l'**articolo** (`gestito_a_magazzino`, `requires_lotto`, `requires_serial`), più il
+**magazzino** (`usa_ubicazioni`: la grana del suo registro, decisa alla nascita).
+
+⭐ **La porta** (`fn_scrivi_movimento`, `SECURITY DEFINER`): controlla i parametri, la
+causale, il verso, il magazzino, la **riga** (lotto, seriale, ubicazione: `fn_check_riga_magazzino`),
+lo storno, la **posizione del pezzo serializzato**, l'identità; in uscita prende un lock per
+`(magazzino, articolo)` e rifiuta se manca merce o se è **bloccata per altri**
+(`fn_check_disponibilita_uscita`); valorizza (media corrente in uscita, costo dato o media in
+entrata, la gemella nel trasferimento) e scrive registro e copia in un colpo. Un'operazione
+che genera N movimenti la chiama N volte nella stessa transazione.
 
 ---
 
@@ -40,7 +53,10 @@ e l'**articolo** (`gestito_a_magazzino`, `requires_lotto`, `requires_serial`).
   partita di merce).
 * **Documenti interni** — `inventari`, `rettifiche`, `trasferimenti`, `eventi_assets`,
   ciascuno con le proprie righe: sono le **operazioni** che generano movimenti, e ogni riga
-  ne è la sorgente. La correzione a mano è una rettifica.
+  ne è la sorgente. La correzione a mano è una rettifica. Inventari e rettifiche hanno il
+  ciclo `DRAFT → CONFIRM → POSTED` (o `CANCEL`) fatto rispettare da un guard, `POSTED` lo
+  scrive solo l'operazione (`fn_posta_inventario`, `fn_posta_rettifica`), le righe si
+  congelano con la testata, si cancella solo una bozza.
 * **Registro e derivati** — `movimenti`, `movimenti_attesi`, `valore_giacenza` e le cinque
   viste, tutte `security_invoker`.
 * **Note** — `magazzino.note`, partizionata per famiglia, con il perimetro sul padre e su
@@ -61,13 +77,13 @@ progetto: [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-securit
 
 ### Che cosa manca ancora, e dove sta
 
-* la **primitiva di scrittura** e le operazioni (Lotto 2): finché non c'è, il registro è
-  scrivibile dall'applicazione — il perimetro c'è, la porta no;
-* la **disponibilità** (giacenza meno le attese) e la vista degli **orfani** del catalogo
-  delle sorgenti (Lotto 2);
-* l'**utility di storno** (Lotto 3); il ricevimento e gli ordini di lavoro (Lotti 4 e 5);
-* il **default dell'emittente** su un magazzino creato dal pannello di amministrazione
-  (punto aperto, brief §4.7).
+* le **operazioni** oltre a inventario e rettifica: trasferimento (la gemella è già prevista
+  dalla porta), eventi degli asset, il ricevimento e la bolla (Lotti 3-5);
+* l'**utility di storno** (Lotto 3): la porta sa già scrivere uno storno, manca il verbo che
+  lo chiede dal documento;
+* le colonne «impegnata», «in arrivo» della disponibilità: arrivano con i satelliti che le
+  sanno riempire (acquisti);
+* `requires_lotto` nel **drawer** dell'articolo (BE/FE, richiesta del Lotto 2 §4.9).
 
 ---
 
@@ -80,3 +96,6 @@ progetto: [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-securit
 * 2026-09-14 → 15 — il Lotto 1: il DDL deciso sul terreno vuoto, il guard del verso, il
   perimetro RLS, cinque pgTAP (65 asserzioni). `reservations` → `movimenti_attesi`,
   `costo_medio` → `valore_giacenza`, `ambito_causale` ritirata.
+* 2026-09-18 — il Lotto 2: la porta (`fn_scrivi_movimento`), il `REVOKE` all'app sul registro
+  (tre sedi), inventario e rettifica postati dalla porta, disponibilità, ricalcolo del valore,
+  quattro spie in `dbops.presidi`, 27 codici `E_MAG_*`, dodici pgTAP nuovi.

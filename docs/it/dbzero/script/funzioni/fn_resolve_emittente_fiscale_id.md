@@ -118,6 +118,21 @@ BEGIN
             ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
          WHERE l.id = p_valore;
 
+    ELSIF p_modo = 'magazzino' THEN
+        -- ⭐ Rev 2026-09-18 (brief magazzino Lotto 2, D-L2-b / M-6): un
+        --   MAGAZZINO e' di un emittente (magazzini.emittente_fiscale_id
+        --   NOT NULL, Lotto 1 D-L1-e): un salto solo, come 'fattura'.
+        --   Serve al guard di scope montato su movimenti,
+        --   movimenti_attesi e valore_giacenza, cioe' dove la primitiva
+        --   DEFINER scavalca la RLS: il perimetro si rimette QUI, non con
+        --   un controllo scritto a mano nella primitiva. Si verifica che
+        --   esista: un id che non c'e' vale «nessun padrone», e a fermarlo
+        --   provvede la primitiva (E_MAG_MAGAZZINO_NON_VALIDO) o la FK.
+        SELECT m.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM magazzino.magazzini m
+         WHERE m.id = p_valore;
+
     ELSE
         -- ⛔ Non si restituisce NULL: NULL vuol dire «lascia
         --    passare», e un errore di battitura in un CREATE
@@ -134,7 +149,7 @@ BEGIN
             NULL::uuid,
             format(
                 'il modo di risoluzione dell''emittente «%s» non esiste: '
-                'sono ammessi fiscale, soggetto_ruolo, fattura, listino, ente_incasso e contabile',
+                'sono ammessi fiscale, soggetto_ruolo, fattura, listino, ente_incasso, contabile e magazzino',
                 p_modo
             )
         );
@@ -145,7 +160,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
-IS 'Risolve l''emittente fiscale di una riga FUORI dalla row security, e risponde un id. ⭐ Esiste perche'' il guard di scope in scrittura e'' SECURITY INVOKER e alcune catene passano da tabelle con la RLS accesa (vendite.fatture, pagamenti.vendite_contabili, e dal 2026-09-05 vendite.listini): letta da un utente fuori perimetro la riga non c''e'', l''emittente resta NULL, e il guard interpreta «non risolvibile» come «lascia passare» — cioe'' si spegne esattamente nel caso che esiste per coprire. La domanda di FATTO («di chi e''») e quella di PERMESSO («posso scriverci») sono due domande diverse: qui si risponde solo alla prima. ⚠️ Dipende dal fatto che la RLS sia abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista, come script.fn_check_scadenza_di_fattura. Modi: fiscale | soggetto_ruolo | fattura | listino | ente_incasso | contabile. ⭐ Rev 2026-09-05: aggiunto il modo listino per vendite.listini_versioni, che non porta l''emittente ma lo eredita dal listino padre (brief-db-processi-automatici-residui-be §DB-4). ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, D3): il modo contabile legge pagamenti.vendite_contabili.emittente_soggetto_ruolo_id — una lettura invece della catena per canale — e una distinta INTERNA non risponde piu'' NULL: e'' del suo emittente. ⛔ Un modo sconosciuto SOLLEVA: restituire NULL spegnerebbe il guard in silenzio.';
+IS 'Dice DI CHI E'' una riga: l''id dell''emittente fiscale raggiunto da p_valore secondo p_modo, o NULL se il riferimento non porta a nessun emittente («nessun padrone»: il guard lascia passare). Modi: fiscale (la colonna E'' emittente_fiscale_id), soggetto_ruolo, fattura, listino (dal listino padre della versione), ente_incasso (dal conto su cui atterra il denaro), contabile (la distinta sa di chi e''), magazzino (rev 2026-09-18, Lotto 2 magazzino: magazzini.emittente_fiscale_id — il perimetro del ledger che la primitiva DEFINER scavalca). Un modo sconosciuto SOLLEVA E_PARAMETRO_INVALIDO, non risponde NULL. SECURITY DEFINER del proprietario, perche'' due catene passano da tabelle sotto row security e un guard INVOKER fuori perimetro non troverebbe l''emittente; search_path bloccato. Risponde solo alla domanda di FATTO: il permesso e'' di script.fn_check_user_emittente_scope. Chiamata da script.trgfn_guard_emittente_scope.';
 ```
 
 ---

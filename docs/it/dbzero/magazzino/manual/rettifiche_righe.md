@@ -34,6 +34,15 @@ Con un pezzo serializzato la correzione è di **un** pezzo (`|qta_delta| = 1`).
 Le righe seguono la testata: `rls_rettifiche_righe_ef_whitelist` risale alla rettifica, e
 da lì al magazzino e al suo emittente. Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
+### Dal 18-09 (Lotto 2)
+
+`costo_unitario` (nullable, ≥ 0): il costo che chi compila una rettifica **positiva** (merce
+ritrovata) può conoscere; senza, si valorizza alla media corrente. Su una negativa non conta:
+l'uscita va alla media. Le righe si scrivono con la testata in `DRAFT`; da `CONFIRM` in poi sono
+dell'operazione o congelate.
+
+---
+
 ---
 
 {% include-markdown "it/dbzero/magazzino/_dominio-magazzino.md" %}

@@ -37,6 +37,22 @@ Con un pezzo serializzato il conteggio è `0` o `1`: c'è o non c'è.
 Le righe seguono la testata: `rls_inventari_righe_ef_whitelist` risale all'inventario, e
 da lì al magazzino e al suo emittente. Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
+### Dal 18-09 (Lotto 2)
+
+* `costo_unitario` (nullable, ≥ 0): la **valorizzazione iniziale** che chi conta può conoscere —
+  il primo carico in assoluto non ha un costo, e senza questa colonna entrerebbe senza valore;
+  la primitiva lo usa come primo termine di `COALESCE(costo della riga, media corrente)` su
+  un'entrata. Vuoto non è un errore: la media si diluisce, e la spia
+  [dbops.vw_magazzino_movimenti_senza_costo](/dbzero/dbops/views/vw_magazzino_movimenti_senza_costo) lo mostra.
+* `qta_sistema` lo scrive il **posting dal piano**, prima di postare: è la fotografia contro cui
+  il conteggio è stato posto, e resta.
+* **Una posizione si conta una volta sola** per inventario (`uq_mag_inventari_righe_posizione`,
+  `NULLS NOT DISTINCT` su articolo, ubicazione, lotto, seriale): due righe sulla stessa posizione
+  avrebbero postato due delta contro lo stesso sistema.
+* Le righe si scrivono con la testata in `DRAFT`; in `CONFIRM` scrive solo il posting.
+
+---
+
 ---
 
 {% include-markdown "it/dbzero/magazzino/_dominio-magazzino.md" %}

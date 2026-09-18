@@ -25,13 +25,21 @@ una divergenza si vede.
 
 ⚠️ `valore` e `costo_medio` possono essere `NULL`: una giacenza con movimenti e senza riga di
 valore è un'anomalia da guardare, e `sum(valore)` la ignorerebbe in silenzio. Prima di
-sommare va contato quante righe hanno `valore IS NULL`.
+sommare va contato quante righe hanno `valore IS NULL`. Dal 18-09 (Lotto 2) `costo_medio` è
+`NULL` anche a quantità **negativa**, come in [vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio):
+un rapporto fra un valore e una quantità sotto zero non è un costo. La spia
+`dbops.vw_magazzino_valore_giacenza_divergente` dice se la copia e il registro dissentono.
 
 ### Legge con gli occhi di chi interroga
 
 La vista è `security_invoker`: la RLS del registro e dei magazzini passa attraverso, e un
 operatore vede i magazzini del **proprio emittente**. ⚠️ Fino al 14-09 nessuna delle viste
 di magazzino lo era. Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
+
+### Storia
+
+* 2026-09-15 — nasce con il Lotto 1 (il join fra due fonti).
+* 2026-09-18 — `costo_medio` `NULL` anche a quantità negativa (`20260918-17`, Lotto 2).
 
 ---
 

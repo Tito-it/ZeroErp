@@ -78,10 +78,12 @@
 - [fn_non_editable_fields](funzioni/fn_non_editable_fields.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md) — (rev 2026-08-21)
 - [fn_pgtap_cf_libero](funzioni/fn_pgtap_cf_libero.md) — (rev 2026-08-21)
+- [fn_pgtap_crea_articolo](funzioni/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_cliente_ba](funzioni/fn_pgtap_crea_cliente_ba.md)
 - [fn_pgtap_crea_emittente](funzioni/fn_pgtap_crea_emittente.md)
 - [fn_pgtap_crea_emittente_operatore](funzioni/fn_pgtap_crea_emittente_operatore.md)
 - [fn_pgtap_crea_indirizzo_dettaglio](funzioni/fn_pgtap_crea_indirizzo_dettaglio.md)
+- [fn_pgtap_crea_magazzino](funzioni/fn_pgtap_crea_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_roster_processo](funzioni/fn_pgtap_crea_roster_processo.md)
 - [fn_pgtap_crea_soggetto_pg](funzioni/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](funzioni/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)
@@ -107,6 +109,8 @@
 - [fn_seed_automazione_overlap](funzioni/fn_seed_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna) `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita (`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_set_gucs_conn](funzioni/fn_set_gucs_conn.md) — (latest review 29-12-25) La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**. Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
+- [fn_sorgenti_orfane](funzioni/fn_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_sorgenti_orfane_perimetro](funzioni/fn_sorgenti_orfane_perimetro.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_storico_arma_scope](funzioni/fn_storico_arma_scope.md) — (latest review 11-09-2026)
 - [fn_storico_arma_scope_tutte](funzioni/fn_storico_arma_scope_tutte.md)
 - [fn_storico_backfill_scope](funzioni/fn_storico_backfill_scope.md) — (latest review 11-09-2026)
@@ -127,6 +131,7 @@
 
 ## 🔍 Views
 - [vw_af_senza_giro](views/vw_af_senza_giro.md) — (latest review 04-09-2026)
+- [vw_articoli_a_magazzino_prontezza](views/vw_articoli_a_magazzino_prontezza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_audit_log_scrittori_fuori_perimetro](views/vw_audit_log_scrittori_fuori_perimetro.md) — (latest review 12-09-2026)
 - [vw_bersagli_non_dichiarati](views/vw_bersagli_non_dichiarati.md)
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
@@ -144,6 +149,8 @@
 - [vw_function_list](views/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
 - [vw_indici_ridondanti_prefisso](views/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_liste_multi_emittente_non_certificate](views/vw_liste_multi_emittente_non_certificate.md) — (latest review 18-08-26)
+- [vw_magazzino_movimenti_senza_costo](views/vw_magazzino_movimenti_senza_costo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [vw_magazzino_valore_giacenza_divergente](views/vw_magazzino_valore_giacenza_divergente.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_operatori_senza_emittente](views/vw_operatori_senza_emittente.md) — (latest review 18-08-26)
 - [vw_parameter_fk_surrogate_dangling](views/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
@@ -160,5 +167,6 @@
 - [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](views/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)
 - [vw_run_senza_attore](views/vw_run_senza_attore.md) — (latest review 04-09-2026)
+- [vw_sorgenti_orfane](views/vw_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_storico_scope_da_dichiarare](views/vw_storico_scope_da_dichiarare.md) — (latest review 12-09-2026)
 - [vw_trigger_functions](views/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

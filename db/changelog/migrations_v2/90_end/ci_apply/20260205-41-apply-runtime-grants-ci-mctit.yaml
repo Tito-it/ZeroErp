@@ -48,6 +48,20 @@
 #   Su dev agisce subito `dbops.fn_storico_arma_scope` (changeSet -27, poi il
 #   90_end runAlways -29), che revoca il DELETE shadow per shadow; il pgTAP è
 #   `db/pgtap/storico/test-storico-scope-congelato-v1.sql` (test 22).
+#
+# ── ⭐ LA PORTA DEL LEDGER DI MAGAZZINO (dal 2026-09-18) ────────────────────
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.1 (D-L2-b) e 6-ter C2
+#   `magazzino.movimenti` e `magazzino.valore_giacenza`: all'app SELECT
+#   soltanto — scrive solo la primitiva `fn_scrivi_movimento` (SECURITY
+#   DEFINER del proprietario) e `fn_ricalcola_valore_giacenza`. È la sola
+#   forma in cui «scrive solo la primitiva» è un fatto e non una disciplina.
+#   `magazzino.movimenti_attesi`: SELECT, INSERT, UPDATE — un blocco si
+#   CHIUDE (APERTA -> CHIUSA), non si cancella: REVOKE DELETE. Due liste
+#   nuove, `v_tabelle_sola_lettura_app` e `v_tabelle_senza_delete` (la forma
+#   per TABELLA di `v_schemi_senza_delete`), nei rami prima del generico.
+#   Il changeSet che agisce subito su dev è `90_end/20260918-15`; la terza
+#   sede è il blocco «POSTURA DICHIARATA» di `provision_db_roles.sql`; il
+#   pgTAP che pinna l'esito è `db/pgtap/magazzino/test-porta-ledger-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -104,6 +118,21 @@ databaseChangeLog:
                 v_schemi_senza_delete text[] := ARRAY[
                   'storico'
                 ];
+                -- ⭐ Tabelle in SOLA LETTURA per l'applicazione: il ledger di
+                --   magazzino e la sua copia del valore. Scrive solo la primitiva
+                --   DEFINER (magazzino.fn_scrivi_movimento) e il ricalcolo: è la
+                --   porta di D-L2-b. Voci `schema.tabella`.
+                --   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.1.
+                v_tabelle_sola_lettura_app text[] := ARRAY[
+                  'magazzino.movimenti',
+                  'magazzino.valore_giacenza'
+                ];
+                -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
+                --   di v_schemi_senza_delete): un blocco di magazzino si chiude
+                --   (APERTA -> CHIUSA, D-L1-b), non si cancella.
+                v_tabelle_senza_delete text[] := ARRAY[
+                  'magazzino.movimenti_attesi'
+                ];
                 v_schemas text[] := ARRAY[
                   'acquisti',
                   'anagrafiche',
@@ -152,6 +181,15 @@ databaseChangeLog:
                         EXECUTE format('REVOKE UPDATE, DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
                       ELSIF v_schema = ANY (v_schemi_senza_delete) THEN
                         -- Shadow di storico: si scrive e si chiude, non si cancella.
+                        EXECUTE format('GRANT SELECT, INSERT, UPDATE ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                        EXECUTE format('REVOKE DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
+                      ELSIF v_rel.nome_qualificato = ANY (v_tabelle_sola_lettura_app) THEN
+                        -- Il ledger di magazzino e la sua copia: l'app legge, scrive
+                        -- la primitiva DEFINER. La REVOKE è la postura (D-L2-b).
+                        EXECUTE format('GRANT SELECT ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                        EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
+                      ELSIF v_rel.nome_qualificato = ANY (v_tabelle_senza_delete) THEN
+                        -- Gli attesi di magazzino: si aprono e si chiudono, non si cancellano.
                         EXECUTE format('GRANT SELECT, INSERT, UPDATE ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
                         EXECUTE format('REVOKE DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
                       ELSE

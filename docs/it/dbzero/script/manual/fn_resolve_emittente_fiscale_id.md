@@ -55,7 +55,7 @@ Chiedere entrambe allo stesso lettore fa dare la risposta sbagliata alla prima.
 
 ---
 
-### I cinque modi
+### I sette modi
 
 | Modo | La colonna contiene | Come si risolve |
 | --- | --- | --- |
@@ -65,6 +65,7 @@ Chiedere entrambe allo stesso lettore fa dare la risposta sbagliata alla prima.
 | `listino` | `listino_id` | ⭐ *(dal 2026-09-05)* via `vendite.listini`, per le **versioni di listino** |
 | `ente_incasso` | `ente_incasso_id` | ⭐ via il **conto di incasso** (D5) |
 | `contabile` | `contabile_id` | ⭐ la distinta, che **sa di chi è** *(dal 2026-09-15: la colonna `emittente_soggetto_ruolo_id`; prima, il suo canale)* |
+| `magazzino` | `magazzino_id` | ⭐ *(dal 2026-09-18, Lotto 2 di magazzino)* via `magazzino.magazzini.emittente_fiscale_id`: un salto solo, come `fattura`. È il modo del guard di scope sul **ledger** (`movimenti`, `movimenti_attesi`, `valore_giacenza`), dove la primitiva `SECURITY DEFINER` scavalca la RLS e il perimetro va rimesso da una sede sola |
 
 ⭐ `ente_incasso` è **D5** in una riga: quando il denaro arriva in banca non ha
 ancora una fattura, e il suo padrone lo dice il **conto** su cui il cliente ha

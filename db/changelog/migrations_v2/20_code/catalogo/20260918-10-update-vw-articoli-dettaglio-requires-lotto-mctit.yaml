@@ -1,0 +1,230 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (5 di 5) — catalogo.vw_articoli_dettaglio: + requires_lotto in coda
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.9 (M-5, Lotto 1 sezione 4.3)
+#
+# -- PERCHE' QUI ---------------------------------------------------------------------
+#   La primitiva (P-5, passo 6) pretende il lotto quando articoli.requires_lotto
+#   e' vero: l'operatore deve poterlo VEDERE e IMPOSTARE sull'articolo, e la
+#   vista del drawer (ui.lista_definizione 26) non lo porta — 55 colonne al
+#   18-09, requires_lotto assente, requires_serial presente dal primo giorno.
+#   Il BE proietta ARTICOLI_DETAIL_COLUMNS per nome (api.md, Catalogo): la
+#   colonna nuova non esce finche' il BE non la nomina — richiesta in
+#   sezione 4.9 del brief, stesso giro di PR.
+#
+# -- IN CODA, DALLA DOC AUTO-GEN ---------------------------------------------------------
+#   CREATE OR REPLACE VIEW puo' solo appendere colonne: requires_lotto va dopo
+#   lead_time_giorni. Il corpo e' copiato da
+#   docs/it/dbzero/catalogo/views/vw_articoli_dettaglio.md (l'oggetto vivo,
+#   rev 20260913-19), non da uno YAML. Nessun oggetto dipende dalla vista
+#   (P-0: pg_depend a zero).
+#
+# -- NESSUNA security_invoker, E NON VA AGGIUNTA (Lotto 1 sezione 4.3, correzione 15-09)
+#   catalogo.articoli non ha RLS e la vista non attraversa tabelle protette;
+#   il criterio e' presidiato sul MERITO da
+#   db/pgtap/rls/test-rls-viste-security-invoker.sql. Copiare la reloption
+#   dalle viste di magazzino sarebbe un'imitazione senza un motivo.
+#
+# -- SENZA LOCK BoM (decisione del Lotto 1) ----------------------------------------------
+#   requires_serial e' sotto dbops.lock_columns_conditional (immutabile a
+#   BoM esistente); requires_lotto NO, per decisione: il lotto non entra nella
+#   distinta. Il BE non lo mette fra i non_editable_fields, il FE non lo
+#   disabilita con isFieldLocked (sezione 4.9 del brief).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260918-10-update-vw-articoli-dettaglio-requires-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20260918-10-update-vw-articoli-dettaglio-requires-lotto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_articoli_dettaglio: + a.requires_lotto in coda (CREATE OR REPLACE VIEW
+        puo' solo appendere), dalla doc auto-gen. Nessuna security_invoker: catalogo.articoli
+        non ha RLS. Il BE proietta per nome (richiesta in sezione 4.9). Brief:
+        brief-db-magazzino-lotto-2-motore, sezione 4.9 (P-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: catalogo
+                viewName: vw_articoli_dettaglio
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: requires_lotto
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_attribute
+                   WHERE attrelid = 'catalogo.vw_articoli_dettaglio'::regclass
+                     AND attname = 'requires_lotto' AND NOT attisdropped;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+              SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  (a.is_composito AND (NOT a.is_solo_componente)) AS puo_gestire_bom,
+                      CASE
+                          WHEN (a.is_composito AND (NOT a.is_solo_componente)) THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  (a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto
+                 FROM ((((((((catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
+                   LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
+                   LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))
+                   LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id)))
+                   LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
+                   LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
+                   LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));
+
+              COMMENT ON VIEW catalogo.vw_articoli_dettaglio
+              IS 'Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-18 (P-1, brief-db-magazzino-lotto-2-motore sezione 4.9): + requires_lotto in coda — la primitiva di magazzino pretende il lotto quando e'' vero (passo 6), e l''operatore deve poterlo vedere e impostare; SENZA lock BoM (Lotto 1 sezione 4.3: il lotto non entra nella distinta), quindi ne'' fra i non_editable_fields del BE ne'' disabilitato nel drawer. rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo'' solo appendere). La decodifica e'' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: una colonna nuova non esce finche'' il BE non la nomina.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback e' il DROP + CREATE della forma 20260913-19 (una vista non
+              -- sa perdere una colonna con CREATE OR REPLACE).
+              DROP VIEW IF EXISTS catalogo.vw_articoli_dettaglio;
+              CREATE VIEW catalogo.vw_articoli_dettaglio AS
+              SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  (a.is_composito AND (NOT a.is_solo_componente)) AS puo_gestire_bom,
+                      CASE
+                          WHEN (a.is_composito AND (NOT a.is_solo_componente)) THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  (a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni
+                 FROM ((((((((catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
+                   LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
+                   LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))
+                   LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id)))
+                   LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
+                   LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
+                   LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));
+              GRANT SELECT ON catalogo.vw_articoli_dettaglio TO zeroerp_app;

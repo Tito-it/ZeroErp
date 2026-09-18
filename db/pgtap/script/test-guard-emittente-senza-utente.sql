@@ -5,13 +5,19 @@
 -- Test: script.trgfn_guard_emittente_scope — la porta chiusa dalla fase 6
 -- Brief: brief-db-processi-automatici-identita-e-perimetro §7
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 8):
 --  1) il guard esiste ed e' SECURITY INVOKER
 --  2) ⭐ IL PRESUPPOSTO: questa sessione SUBISCE la row level security
 --  3) ✅ operatore nel proprio perimetro: la scrittura passa
 --  4) ⛔ stessa scrittura senza utente in sessione: si ferma
 --  5) ⛔ e si ferma col codice giusto, non con uno qualsiasi
 --  6) ✅ un emittente FUORI perimetro continua a dare E_SCOPE_EMITTENTE
+--  7) ⭐ rev 2026-09-18 (magazzino Lotto 2, C1): una DEFINER del proprietario
+--     chiamata SENZA identita' scrive una riga SENZA padrone (email di sistema,
+--     emittente NULL) e PASSA — il caso su cui il reset password conta
+--  8) ...ma la stessa DEFINER dentro il ramo «senza padrone» non e' la porta:
+--     la regola e' che row_security_active dentro una DEFINER risponde per il
+--     proprietario, e il guard lo sa (la funzione lo dichiara nel corpo)
 --
 -- Scopo:
 --  - provare i TRE esiti che il guard deve distinguere, costruendoli: chi ha
@@ -40,7 +46,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(6);
+SELECT plan(8);
 
 -- ============================================================
 -- 1) Il guard, e la sua postura
@@ -178,6 +184,32 @@ SELECT CASE
         '6. emittente fuori perimetro: si ferma per SCOPE, non per identita'''
     )
 END;
+
+-- ============================================================
+-- 7..8) ⭐ Dentro una DEFINER (rev 2026-09-18, C1 del Lotto 2 di magazzino)
+-- ============================================================
+-- row_security_active() risponde per il current_user, che dentro una SECURITY
+-- DEFINER e' il PROPRIETARIO: false sempre. Provato il 18-09: la stessa riga
+-- senza GUC era rifiutata diretta e passava via config.fn_accoda_email_sistema.
+-- La rev del guard: dentro una DEFINER (current_user <> session_user), senza
+-- identita', si risolve comunque l'emittente e ci si ferma se la riga HA un
+-- padrone; una riga SENZA padrone passa come prima — ed e' il caso delle email
+-- di sistema (emittente NULL), da cui dipende il reset password senza sessione.
+-- Il caso «con padrone» lo prova la primitiva di magazzino
+-- (magazzino/test-porta-ledger-v1, test 13-14): qui si pinna che il ramo
+-- «senza padrone» NON si e' chiuso per sbaglio.
+SELECT set_config('app.current_user_id', '', true);
+SELECT lives_ok(
+    $$SELECT config.fn_accoda_email_sistema('pgtap-guard@example.com', 'pgTAP guard senza utente', '<p>prova</p>')$$,
+    '7. una DEFINER senza identita'' che scrive una riga SENZA padrone (email di sistema) passa'
+);
+SELECT ok(
+    (SELECT pg_get_functiondef(p.oid) LIKE '%current_user = session_user%'
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_emittente_scope'),
+    '8. il guard distingue «dentro una DEFINER» (current_user <> session_user): la rev C1 e'' in servizio'
+);
+DO $ctx3$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx3$;
 
 SELECT * FROM finish();
 

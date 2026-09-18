@@ -132,6 +132,28 @@ racconta di solito: quel ruolo ha `BYPASSRLS`, quindi è proprio ciò che contin
 a passare. Sarà il **ritiro del ruolo** (nel provisioning) a rendere questo
 cancello efficace anche su di lui.
 
+### ⛔ Dentro una `SECURITY DEFINER` il criterio risponde per la persona sbagliata (rev 2026-09-18)
+
+`row_security_active()` risponde per il `current_user`, e dentro una funzione `SECURITY
+DEFINER` il `current_user` è il **proprietario** della funzione — che qui possiede anche le
+tabelle, con la row level security abilitata ma non forzata: la risposta è **false**, sempre,
+chiunque abbia chiamato. Provato il 18-09 su dbdev, stessa sessione applicativa senza GUC, in
+una transazione annullata: la stessa riga era rifiutata scritta direttamente e **passava** via
+`config.fn_accoda_email_sistema` (DEFINER del proprietario). Per la primitiva di magazzino
+(`fn_scrivi_movimento`, DEFINER per costruzione della porta) sarebbe stata la porta aperta a
+ogni processo senza identità.
+
+⭐ **La rev**: se non c'è utente in sessione, la RLS «non è attiva» **ma** si sta dentro una
+DEFINER (`current_user <> session_user`: `session_user` resta il login role, l'unico nome che
+dice chi scrive davvero), il guard risolve comunque l'emittente della riga e, se la riga **ha
+un padrone**, si ferma con `E_SCOPE_SENZA_UTENTE`; una riga **senza padrone** passa come prima —
+è il caso delle email di sistema (emittente `NULL`), da cui dipende il reset password senza
+sessione. Non è una seconda scrittura della regola di esenzione: il criterio resta
+`row_security_active`, si aggiunge il solo caso in cui quella funzione guarda l'altro.
+Consumatori DEFINER censiti al 18-09: `fn_accoda_email_sistema`, `fn_chiudi_email_sistema`
+(entrambe a emittente `NULL`, invariate). Presidi: `test-guard-emittente-senza-utente.sql`
+(7-8) e `magazzino/test-porta-ledger-v1.sql` (13-14: la primitiva senza identità si ferma).
+
 ⭐ **Gli altri sette trigger che leggono `app.current_user_id` non sono stati
 toccati**, ed è una scelta: i cinque `*_default_emittente` non *concedono*
 niente — riempiono un valore di comodo, e poi è questo guard a decidere se la

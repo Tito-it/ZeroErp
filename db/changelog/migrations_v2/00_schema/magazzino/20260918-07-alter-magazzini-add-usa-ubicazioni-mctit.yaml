@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (2 di 5) — LE UBICAZIONI LE DECIDE IL MAGAZZINO: magazzini.usa_ubicazioni
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-m) e sezione 6 (P-1)
+#
+# -- IL DIFETTO CHE LA FA NASCERE (D-L2-m, Tid 17-09) ------------------------------
+#   Con la sola regola «alla grana della riga» (D-L2-f), un magazzino con 10
+#   pezzi di A SENZA ubicazione a registro e un inventario che conta 10 pezzi
+#   di A in U1 carica altri 10 in U1: a registro 20, a scaffale 10. Un
+#   conteggio giusto raddoppia la giacenza. La causa e' del MODELLO: nello
+#   stesso magazzino puo' convivere merce con e senza ubicazione, perche'
+#   movimenti.ubicazione_id e' nullable e niente lega «questo magazzino usa
+#   le ubicazioni» a «qui ogni movimento ne nomina una». Per lotti e seriali
+#   la domanda l'ha chiusa l'articolo (requires_lotto, requires_serial: o
+#   sempre o mai). Per le ubicazioni mancava chi decide: e' il magazzino.
+#
+# -- LA REGOLA CHE LA PRIMITIVA APPLICA (passo 8, sezione 4.2) -----------------------
+#   usa_ubicazioni = true  -> ogni movimento (e ogni riga di inventario e di
+#                             rettifica) DEVE nominare un'ubicazione di questo
+#                             magazzino, attiva: E_MAG_UBICAZIONE_OBBLIGATORIA;
+#   usa_ubicazioni = false -> NON PUO' nominarne una: E_MAG_UBICAZIONE_NON_AMMESSA.
+#   Cosi' la grana del registro e quella del conteggio coincidono per
+#   costruzione, e l'«angolo» di D-L2-f sparisce invece di essere dichiarato.
+#   Un'area di ricezione, in un magazzino a ubicazioni, E' un'ubicazione.
+#
+# -- DEFAULT false, E SI CAMBIA SOLO A REGISTRO VUOTO ---------------------------------
+#   false e' il fail-safe (come articoli.gestito_a_magazzino): nessun
+#   magazzino esistente cambia comportamento all'apply. Il flag si decide
+#   alla nascita, prima del primo movimento: il guard di P-1 (3 di 5,
+#   trgfn_magazzini_guard_usa_ubicazioni) rifiuta il cambio se esiste un
+#   movimento del magazzino. Un magazzino che «mette gli scaffali» dopo, con
+#   merce dentro, ne crea uno nuovo con le ubicazioni e ci trasferisce la
+#   merce: la strada e' sul modello (trasferimenti fra magazzini diversi).
+#   Oggi il registro e' vuoto: il vincolo non costa niente a nessuno.
+#
+# -- CHI LA LEGGE ----------------------------------------------------------------------
+#   La primitiva (P-5, passo 8), fn_inventario_piano e le due operazioni
+#   (P-6). Nessuna vista di magazzini la espone ancora: e' del brief BE/FE.
+#   NON e' nel lock_columns: il lock e' sul codice (trg_magazzini_a10_lock_columns_upd),
+#   e questo flag e' modificabile finche' il registro e' vuoto — la porta e'
+#   il guard, non il lock. La shadow di storico e' uno snapshot jsonb: prende
+#   la colonna da sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260918-07-alter-magazzini-add-usa-ubicazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260918-07-alter-magazzini-add-usa-ubicazioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.magazzini.usa_ubicazioni boolean NOT NULL DEFAULT false (D-L2-m): decide il
+        magazzino se ogni movimento nomina un'ubicazione (true: obbligatoria, di questo
+        magazzino e attiva) o non puo' nominarne una (false). Lo applica la primitiva al
+        passo 8; si cambia solo a registro vuoto (guard in P-1 3 di 5). Brief:
+        brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-m), P-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: magazzini
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: magazzini
+                    columnName: usa_ubicazioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.magazzini
+                  ADD COLUMN usa_ubicazioni boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN magazzino.magazzini.usa_ubicazioni IS
+                  'Le ubicazioni le decide il magazzino (D-L2-m), sullo stampo di '
+                  'articoli.requires_lotto/requires_serial: true = ogni movimento (e ogni '
+                  'riga di inventario o rettifica) DEVE nominare un''ubicazione di questo '
+                  'magazzino, attiva (E_MAG_UBICAZIONE_OBBLIGATORIA); false = NON PUO'' '
+                  'nominarne una (E_MAG_UBICAZIONE_NON_AMMESSA). Lo applica la primitiva '
+                  'magazzino.fn_scrivi_movimento al passo 8: cosi'' la grana del registro e '
+                  'quella del conteggio coincidono per costruzione, e un inventario per '
+                  'ubicazione non puo'' raddoppiare merce che a registro sta senza posizione. '
+                  'Default false (fail-safe). Si decide alla nascita e si cambia SOLO a '
+                  'registro vuoto: trgfn_magazzini_guard_usa_ubicazioni rifiuta il cambio se '
+                  'esiste un movimento del magazzino (E_MAG_MAGAZZINO_CON_GIACENZA) — con '
+                  'merce dentro, la strada e'' un magazzino nuovo e un trasferimento. '
+                  'Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-m).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.magazzini DROP COLUMN IF EXISTS usa_ubicazioni;

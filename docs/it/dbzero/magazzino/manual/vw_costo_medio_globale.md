@@ -23,15 +23,21 @@ non la media delle medie — pesa un deposito con mille pezzi più di uno con tr
 `security_invoker`, quindi per un operatore è il costo medio dell'articolo sui magazzini del
 proprio emittente. È la RLS a decidere il perimetro, non un filtro scritto qui.
 
-Le stesse avvertenze della vista per magazzino: `NULL` a quantità zero, e un valore anomalo
-su un singolo deposito qui si diluisce — per trovarlo si guarda
-[vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio).
+Le stesse avvertenze della vista per magazzino: `NULL` a quantità **zero o negativa** (dal
+18-09, Lotto 2: la stessa regola di [vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio),
+con `consente_stock_negativo` una somma può scendere sotto zero), e un valore anomalo su un
+singolo deposito qui si diluisce — per trovarlo si guarda la vista per magazzino.
 
 ### Legge con gli occhi di chi interroga
 
 La vista è `security_invoker`: la RLS del registro e dei magazzini passa attraverso, e un
 operatore vede i magazzini del **proprio emittente**. ⚠️ Fino al 14-09 nessuna delle viste
 di magazzino lo era. Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
+
+### Storia
+
+* 2026-09-15 — nasce con il Lotto 1.
+* 2026-09-18 — `NULL` anche a quantità negativa (`20260918-17`, Lotto 2).
 
 ---
 

@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (1 di 5) — LA VALORIZZAZIONE INIZIALE: costo_unitario sulle righe di
+#   inventario e di rettifica
+#   magazzino.inventari_righe.costo_unitario, magazzino.rettifiche_righe.costo_unitario
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-c) e sezione 6 (P-1)
+#
+# -- L'INVENTARIO INIZIALE NON HA UN COSTO, ED E' UNA DOMANDA CHE L'ANALISI NON
+#    SI ERA FATTA (D-L2-c) --------------------------------------------------------
+#   inventari_righe porta qta_contata/qta_sistema e niente altro: il primo
+#   carico in assoluto entrerebbe SENZA valore, e la media resterebbe NULL fino
+#   al primo acquisto. La primitiva (P-5) scrive su un'entrata
+#   COALESCE(p_costo_unitario, media corrente): il documento lo da', il
+#   conteggio PUO' darlo. Questa colonna e' il «puo'»: la valorizzazione
+#   iniziale che chi conta conosce e che nessun altro potrebbe inventare.
+#   Stessa colonna su rettifiche_righe: una rettifica positiva di merce
+#   ritrovata si valorizza alla media, ma chi la compila puo' conoscere un
+#   costo migliore.
+#
+# -- NULLABLE, ED E' IL MODELLO ----------------------------------------------------
+#   Un'entrata senza costo non e' un errore: e' un fatto dichiarato (D-L2-c).
+#   La primitiva scrive costo_unitario = NULL sul movimento, lascia il valore
+#   com'e' e la media si diluisce; lo si VEDE in vw_magazzino_movimenti_senza_costo
+#   (P-5, natura LAVORAZIONE). Non si inventa uno zero: NOT NULL DEFAULT 0
+#   avrebbe scritto un valore falso su ogni conteggio.
+#   CHECK >= 0 (NULL ammesso): un costo negativo non esiste sul modello.
+#
+# -- LO STESSO TIPO DEL LEDGER ------------------------------------------------------
+#   numeric(18,6), come magazzino.movimenti.costo_unitario: la primitiva riceve
+#   p_costo_unitario magazzino.movimenti.costo_unitario%TYPE e le operazioni
+#   gli passano la riga senza cast.
+#
+# -- CHI COPIA LE RIGHE (memoria «colonna nuova di riga = censire le copie») -----
+#   P-0 (brief, sezione 6-bis): nessuna funzione in pg_proc scrive
+#   inventari_righe/rettifiche_righe, il backend e' uno scheletro. Nessuna
+#   copia esplicita da allargare. La shadow di storico salva uno snapshot
+#   jsonb: prende la colonna da sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260918-06-alter-righe-inventario-rettifica-add-costo-unitario-mctit.yaml
+
+  - changeSet:
+      id: 20260918-06-alter-righe-inventario-rettifica-add-costo-unitario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.inventari_righe e magazzino.rettifiche_righe prendono costo_unitario
+        numeric(18,6) nullable, CHECK >= 0: la valorizzazione iniziale che il conteggio
+        (o la rettifica) puo' dare e che la primitiva usa come primo termine del
+        COALESCE(p_costo_unitario, media corrente) su un'entrata. Un'entrata senza costo
+        e' un fatto dichiarato, non un errore. Brief: brief-db-magazzino-lotto-2-motore,
+        sezione 3 (D-L2-c), P-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: inventari_righe
+            - tableExists:
+                schemaName: magazzino
+                tableName: rettifiche_righe
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: inventari_righe
+                    columnName: costo_unitario
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: rettifiche_righe
+                    columnName: costo_unitario
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1. inventari_righe: la valorizzazione iniziale del conteggio.
+              -- ============================================================
+              ALTER TABLE magazzino.inventari_righe
+                  ADD COLUMN costo_unitario numeric(18,6);
+
+              ALTER TABLE magazzino.inventari_righe
+                  ADD CONSTRAINT chk_mag_inventari_righe_costo_non_neg
+                  CHECK (costo_unitario IS NULL OR costo_unitario >= 0);
+
+              COMMENT ON COLUMN magazzino.inventari_righe.costo_unitario IS
+                  'Valorizzazione iniziale della merce contata (D-L2-c): il costo unitario '
+                  'in UoM base che chi conta conosce, facoltativo. La primitiva lo usa come '
+                  'primo termine del COALESCE(costo della riga, media corrente) su un''entrata '
+                  '(INV_INIZIALE o RETT_POS); su una RETT_NEG non conta (l''uscita va alla '
+                  'media). NULL e'' un fatto dichiarato — «caricata senza dire quanto vale» — '
+                  'non un errore: il movimento nasce con costo NULL, il valore resta com''e'' e '
+                  'la media si diluisce; lo mostra vw_magazzino_movimenti_senza_costo. Mai negativo. '
+                  'Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-c).';
+
+              -- ============================================================
+              -- 2. rettifiche_righe: la stessa colonna, stesso significato.
+              -- ============================================================
+              ALTER TABLE magazzino.rettifiche_righe
+                  ADD COLUMN costo_unitario numeric(18,6);
+
+              ALTER TABLE magazzino.rettifiche_righe
+                  ADD CONSTRAINT chk_mag_rettifiche_righe_costo_non_neg
+                  CHECK (costo_unitario IS NULL OR costo_unitario >= 0);
+
+              COMMENT ON COLUMN magazzino.rettifiche_righe.costo_unitario IS
+                  'Costo unitario in UoM base che chi compila la rettifica puo'' conoscere '
+                  '(D-L2-c), facoltativo: su una rettifica positiva (merce ritrovata) e'' il '
+                  'primo termine del COALESCE(costo della riga, media corrente); su una '
+                  'negativa non conta, l''uscita va alla media corrente. NULL = si valorizza '
+                  'alla media, e se non c''e'' una media il movimento nasce senza costo '
+                  '(vw_magazzino_movimenti_senza_costo). Mai negativo. '
+                  'Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-c).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.rettifiche_righe DROP CONSTRAINT IF EXISTS chk_mag_rettifiche_righe_costo_non_neg;
+              ALTER TABLE magazzino.rettifiche_righe DROP COLUMN IF EXISTS costo_unitario;
+              ALTER TABLE magazzino.inventari_righe DROP CONSTRAINT IF EXISTS chk_mag_inventari_righe_costo_non_neg;
+              ALTER TABLE magazzino.inventari_righe DROP COLUMN IF EXISTS costo_unitario;

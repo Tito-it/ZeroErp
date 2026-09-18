@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 (4 di 4) — LA PORTA DEL LEDGER: l'applicazione LEGGE, scrive solo la primitiva
+#   magazzino.movimenti, magazzino.valore_giacenza: SELECT soltanto
+#   magazzino.movimenti_attesi: SELECT, INSERT, UPDATE — senza DELETE
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 4.1 (D-L2-b) e 6-ter C2
+#
+# -- PERCHE' UN GRANT E NON UN VINCOLO (c/s sezione 5) ------------------------------------
+#   «Su magazzino.movimenti scrive solo la primitiva» e' un fatto solo se
+#   l'applicazione NON PUO' scrivere il ledger se non attraverso una funzione
+#   che gira con i permessi del proprietario (fn_scrivi_movimento, SECURITY
+#   DEFINER, P-5). Senza INSERT il registro con un solo scrittore ha davvero
+#   un solo scrittore. valore_giacenza e' la COPIA: la scrive la primitiva
+#   (e fn_ricalcola_valore_giacenza). Gli attesi restano scrivibili
+#   dall'operatore sotto RLS + guard, ma un blocco si CHIUDE (D-L1-b), non si
+#   cancella: via il DELETE.
+#
+# -- TRE SEDI, E QUESTA E' QUELLA CHE AGISCE SUBITO SU DEV ------------------------------
+#   (linee-guida-sql 11.8, AGENTS «Un REVOKE in un changeSet normale NON
+#   tiene»; sezione 6-ter C2 del brief)
+#   1. questo changeSet: applica ORA, su dev, dove ci_apply non gira da solo;
+#   2. il loop 90_end/ci_apply/20260205-41, in place: le liste
+#      v_tabelle_sola_lettura_app e v_tabelle_senza_delete, che a ogni
+#      passata ci_apply rifanno la postura invece di annullarla;
+#   3. scripts/sql/provision_db_roles.sql, blocco «POSTURA DICHIARATA»: e'
+#      l'ULTIMA parola in CI (gira dopo ci_apply) e senza la sua eccezione
+#      riaprirebbe INSERT/UPDATE/DELETE nello stesso build.
+#   Il pgTAP di postura (magazzino/test-porta-ledger-v1, P-9) e' il rosso che
+#   tiene le tre allineate: verde su dev e rosso sul DB da zero e' la forma in
+#   cui la terza sede si dimentica.
+#
+# -- NESSUNA preCondition SUI PRIVILEGI (sezione 5 del brief, MARK_RAN) -----------------
+#   Il REVOKE e' idempotente e non precondiziona su niente che dipenda da
+#   ci_apply o dal provisioning: un GRANT gia' tolto si ritoglie senza errore.
+#   Si pretende solo che le tabelle esistano; il ruolo, se manca (DB parziale),
+#   si salta con un NOTICE come fa il loop.
+#
+# -- I DUE pgTAP DEL LOTTO 1 CHE DIVENTANO ROSSI PER COSTRUZIONE (D-L2-b, C11) -------------
+#   test-movimenti-vincoli-v2 (14 INSERT diretti: -> pgtap-runner: owner,
+#   forma 3 del criterio del runner) e test-valore-giacenza-forma-v1 (-> la
+#   giacenza si costruisce via primitiva). Ri-collocati in P-9, non in
+#   baseline. test-movimenti-attesi-forma-v1 scrive solo attesi: invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260918-15-revoke-app-scrittura-ledger-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260918-15-revoke-app-scrittura-ledger-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta del ledger di magazzino (D-L2-b): a zeroerp_app SELECT soltanto su
+        magazzino.movimenti e magazzino.valore_giacenza (REVOKE INSERT, UPDATE, DELETE:
+        scrive solo la primitiva DEFINER), e niente DELETE su magazzino.movimenti_attesi (un
+        blocco si chiude, non si cancella). Postura resa stabile dalle liste nel loop
+        20260205-41 e dal blocco «POSTURA DICHIARATA» di provision_db_roles.sql. Brief:
+        brief-db-magazzino-lotto-2-motore, sezione 4.1 (P-2), 6-ter C2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti
+            - tableExists:
+                schemaName: magazzino
+                tableName: valore_giacenza
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti_attesi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta del ledger.';
+                      RETURN;
+                  END IF;
+
+                  -- Il ledger e la sua copia: l'applicazione legge, scrive la primitiva.
+                  GRANT  SELECT                 ON TABLE magazzino.movimenti       TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE magazzino.movimenti       FROM zeroerp_app;
+                  GRANT  SELECT                 ON TABLE magazzino.valore_giacenza TO   zeroerp_app;
+                  REVOKE INSERT, UPDATE, DELETE ON TABLE magazzino.valore_giacenza FROM zeroerp_app;
+
+                  -- Gli attesi: si aprono e si chiudono (APERTA -> CHIUSA), non si cancellano.
+                  GRANT  SELECT, INSERT, UPDATE ON TABLE magazzino.movimenti_attesi TO   zeroerp_app;
+                  REVOKE DELETE                 ON TABLE magazzino.movimenti_attesi FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre la porta (la postura del Lotto 1). ⚠️ Senza togliere le liste dal loop
+              -- 20260205-41 e dal provisioning la passata ci_apply successiva la richiude.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE magazzino.movimenti        TO zeroerp_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE magazzino.valore_giacenza  TO zeroerp_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE magazzino.movimenti_attesi TO zeroerp_app;
