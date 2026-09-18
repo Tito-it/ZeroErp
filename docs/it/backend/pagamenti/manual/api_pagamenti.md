@@ -370,7 +370,9 @@ importo per sapere **su che cosa** lo corregge, e alla natura per **segnalare**
 una nota di credito su una riga di incasso (D19-e). Le sette colonne viaggiano
 anche sulla coda (`GET /righe/`), che condivide il frammento. Il residuo **non**
 sta sulla riga: si legge dalla base dei saldi (§5) col livello giusto — e in
-modifica con `escludi_riga_id`, che solo la rata sa applicare.
+modifica con `escludi_riga_id`, che dal 18/09 (P-6) sanno applicare **entrambi**
+i livelli (fino a quel giorno solo la rata, e sul documento il pannello lo
+dichiarava).
 
 ### `POST /api/v1/pagamenti/distinte/{contabile_id}/righe/`
 
@@ -676,19 +678,34 @@ fuori vocabolario è un `400`, non una lista vuota.
 Colonne: `motivo`, `scadenza_id`, `fattura_id`, `anno`, `serie`,
 `fattura_numero`, `billing_account_id`, `emittente_soggetto_ruolo_id`,
 `numero_rata`, `data_scadenza`, `importo_rata`, `registrato`, `residuo`,
-`incassato`, `in_lavorazione`, `righe_forzate`, `motivi_forzatura` e — dal
+`incassato`, `in_lavorazione`, `righe_forzate`, `motivi_forzatura`, — dal
 17/09 (P-1-bis) — **`numero_documento`**, il numero parlante dalla sede unica
 `fn_numero_documento_fattura` (la colonna 766 della lista 52: il contatore nudo
-era ambiguo fra fattura e nota di credito). `righe_forzate` e `motivi_forzatura`
+era ambiguo fra fattura e nota di credito) e — dal 18/09 (P-7) —
+**`natura_doc_codice_interno`** e **`natura_doc_descrizione`** (la colonna 767,
+«Natura», `formato = natura_doc`: la rende `CellaConfigurabile` con
+`NaturaDocTag sempre`, e la gemella `codice_interno` è presidiata sulla
+proiezione). `righe_forzate` e `motivi_forzatura`
 sono ciò che la forzatura ha lasciato scritto: **è così che resta onesta**.
+
+⭐ **La natura cambia cosa i due motivi SIGNIFICANO**, e il vocabolario resta a
+due codici per decisione del DB: su una nota di credito `SOVRA_INCASSATA` è
+«sovra-rimborsata» (rimborsato più del credito) e `MOVIMENTO_CONTRARIO` è
+«entrato invece di uscire» (il cliente ha pagato una nota a suo favore). La
+frase la sceglie il frontend ramificando su `natura_doc_codice_interno`
+(`useEtichettePagamenti().motivoFuoriCapienza(codice, natura)`), e il residuo
+negativo si dice per natura con la stessa sede di tendina, form e picker
+(`residuoNegativo`): «di troppo» sulla fattura, «da rimborsare» sulla NC. Il
+**filtro** `motivo` resta sui due codici letti come fattura: filtra per codice.
 
 Ordinamento (`order_by`, whitelist `RATE_FUORI_CAPIENZA_SORT_COLUMNS`):
 `data_scadenza` (default, DESC) · `motivo` · `residuo` · `importo_rata` ·
 `fattura_numero` · `numero_documento` — quest'ultimo ordina per la **coppia**
 `(fattura_numero, serie)`, non per il testo («10 - A» verrebbe prima di
-«9 - A»). ⚠️ La vista **non porta la natura** del documento (residuo **P-7**
-del brief DB): su questa lista il frontend non può dire «da rimborsare» su una
-nota di credito finché la colonna non c'è.
+«9 - A»). ⚠️ La natura **non** è ordinabile (non è nella whitelist, e la riga
+767 del seed lo dichiara con `ordinabile = f`). Fino al 18/09 questa riga
+diceva *«la vista non porta la natura»* — era vero, ed era il residuo P-7 del
+brief DB, chiuso quel giorno.
 
 ## 4-bis. Le rate — il picker e lo scadenzario (D19, 2026-09-17)
 
@@ -864,11 +881,23 @@ una riga contabile può avere fattura senza rata (il fondo fattura è
 esattamente così), e quel denaro non comparirebbe in nessuna somma di rate. Un
 numero incompleto che si presenta come completo è peggio di un numero assente.
 
-⚠️ Residuo e «in lavorazione» escono da **una** lettura (`CROSS JOIN` fra le
-due funzioni): letti separati sarebbero due istanti diversi, e un residuo di
-prima accanto a un «in lavorazione» di dopo sono due numeri veri che insieme
-raccontano una cosa falsa. `404 E_FATTURA_NON_TROVATA` — lo solleva il
-database.
+⭐ **Dal 18/09 (P-6) anche qui `escludi_riga_id`**, con lo stesso nome e la
+stessa domanda della rata — «quanto c'era **prima di me**» — per chi corregge
+una riga **senza** rata (il fondo fattura): fino a quel giorno la funzione DB
+non aveva il parametro e il pannello «Destinazione» lo *dichiarava*
+(«comprende anche questa riga») invece di fingere. ⚠️ Semantica identica alla
+rata, dichiarata dal DB nel changeSet: la riga esclusa esce dal **dichiarato**
+e, se è già registrata, col suo **movimento** — come nel nucleo
+`fn_get_saldi_rate`. Un valore non numerico è un `400` col campo, un id `≤ 0`
+è un guasto del chiamante (`E_PAGAMENTI_CHIAMATA_NON_VALIDA`, TECNICO): il
+backend passa e non normalizza a «nessuna esclusione».
+
+⚠️ Residuo e «in lavorazione» escono da **una** lettura — `fn_get_saldo_fattura`
+sola, che la sorella `_contabili` la chiama al suo interno (fino al 29/08 c'era
+un `CROSS JOIN` fra le due, che faceva girare la seconda due volte): letti
+separati sarebbero due istanti diversi, e un residuo di prima accanto a un «in
+lavorazione» di dopo sono due numeri veri che insieme raccontano una cosa
+falsa. `404 E_FATTURA_NON_TROVATA` — lo solleva il database.
 
 ### `GET /api/v1/pagamenti/fatture/{fattura_id}/rate/`
 
@@ -1192,7 +1221,7 @@ li solleva più nessuno.
 | `pagamenti.fn_get_emittente_distinta` · `trgfn_vendite_contabili_emittente` · `trgfn_vendite_contabili_gen_codice` | la sede unica dei quattro livelli di risoluzione dell'emittente, il trigger che la applica a ogni scrittura e il numeratore sul registro `DISTINTA` (dal 2026-09-17) |
 | `pagamenti.fn_posta_contabile(p_contabile_id, p_righe_attese, p_totale_atteso)` | ⭐ **la madre della registrazione**: atomica, non solleva su `NULLA_DA_POSTARE`, porta la distinta a `CHIUSA` |
 | `pagamenti.fn_crea_distinta_correzione` | la correzione guidata: la distinta a segno opposto |
-| `pagamenti.fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)` · `fn_get_saldo_fattura` · `fn_get_saldo_fattura_contabili` | i tre numeri, letti **solo** da `saldi_service` |
+| `pagamenti.fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)` · `fn_get_saldo_fattura(p_fattura_id, p_escludi_contabile_riga_id)` · `fn_get_saldo_fattura_contabili(idem)` | i tre numeri, letti **solo** da `saldi_service`. Il secondo parametro sul documento dal 18/09 (P-6, `20260918-01/-02`) |
 | `pagamenti.fn_get_saldi_rate(p_scadenza_ids bigint[], p_escludi)` | ⭐ **il nucleo** dei saldi di rata (dal 17/09, P-3): la «porta 3» del backend — una chiamata con l'**array della pagina** (`get_saldi_rate`), mai `LATERAL` per riga e mai `NULL` per «tutte» (per quello c'è `vw_saldi_rate`). Una rata fuori perimetro è **zero righe**, non un errore |
 | `vendite.vw_fatture_scadenze_lista` | la sorgente di `rate/` (una riga per rata col documento, `security_invoker`): la lista 68 la pagina, i saldi arrivano dopo dal nucleo |
 | `vendite.fn_numero_documento_fattura(numero, serie)` | la **sede unica** del numero parlante: `_RIGA_COLONNE` lo legge da lì (`fattura_numero_documento`), la vista rate e `vw_rate_fuori_capienza` pure — nessuna composizione in Python o nel FE |

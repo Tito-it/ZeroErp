@@ -1640,6 +1640,14 @@ rendeva **testo** e tre liste si erano riscritte il Tag in uno slot — una dell
 tre sopra una colonna che aveva già `yesno`: il formatter aveva perso sul campo.
 Un booleano nuovo in lista è una riga di CSV, non un componente.
 
+⭐ **E dal 2026-09-18 vale anche per la NATURA di un documento fiscale**
+(`formato = natura_doc` → `NaturaDocTag sempre`): lo stesso slot era scritto in
+quattro liste. ⚠️ È il primo formato che legge **due** campi della riga — la
+descrizione (il `campo_sorgente`) e la gemella `natura_doc_codice_interno` —
+e la gemella è presidiata: `test_lista_proiezione_campo_sorgente` pretende che
+ogni lista che dichiara il formato la proietti. La regola generale: *se una
+cella si rende allo stesso modo in due liste, è un `formato`, non uno slot.*
+
 ### Stati pratica
 
 | Stato | Severity | Colore |

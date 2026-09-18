@@ -3,10 +3,11 @@
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: Fissa il contratto di `useSaldi` sul «prima di se'» (D19-b,
-//        2026-09-17): `escludiRigaId` arriva al lettore della RATA come
-//        `escludi_riga_id`, e sul DOCUMENTO non arriva — e il composable lo
-//        DICHIARA (`esclusioneSupportata`), invece di lasciar credere che il
-//        saldo escluda una riga che il database ha contato.
+//        2026-09-17): `escludiRigaId` arriva ai lettori di RATA e — dal
+//        2026-09-18, P-6 — di DOCUMENTO come `escludi_riga_id`, e un livello
+//        che non lo sa fare lo DICHIARA (`esclusioneSupportata`), invece di
+//        lasciar credere che il saldo escluda una riga che il database ha
+//        contato. Fino al 18/09 il documento era quel livello.
 // Note: si mockano il client API e `useApiHandler`: qui si prova la base dei
 //        saldi, non l'envelope.
 // ------------------------------------------------------------
@@ -56,14 +57,16 @@ describe('useSaldi — «prima di se\'»', () => {
     expect(saldo.value.riferimento_id).toBe(1301)
   })
 
-  it('sul DOCUMENTO non arriva, e `esclusioneSupportata` e\' false', async () => {
-    const { leggi, esclusioneSupportata } = useSaldi(LIVELLO.DOCUMENTO)
-    expect(esclusioneSupportata).toBe(false)
+  // ⭐ P-6 (2026-09-18): il documento ha imparato il parametro. Fino a quel
+  //    giorno questo test asseriva il contrario — `opzioni: undefined` — ed era
+  //    la cosa giusta: un `escludi_riga_id` ignorato dal server sarebbe
+  //    sembrato applicato.
+  it('sul DOCUMENTO arriva come sulla rata, e il livello lo dichiara', async () => {
+    const { leggi, esclusioneSupportata, saldo } = useSaldi(LIVELLO.DOCUMENTO)
+    expect(esclusioneSupportata).toBe(true)
     await leggi(820, { escludiRigaId: 91 })
-    // Il lettore del documento non inoltra NIENTE al client: la rotta non ha
-    // il parametro, e un `escludi_riga_id` ignorato dal server sembrerebbe
-    // applicato.
-    expect(chiamate.fattura).toEqual([{ id: 820, opzioni: undefined }])
+    expect(chiamate.fattura).toEqual([{ id: 820, opzioni: { escludiRigaId: 91 } }])
+    expect(saldo.value.riferimento_id).toBe(820)
   })
 
   it('senza opzione il lettore riceve opzioni vuote, non `undefined`', async () => {

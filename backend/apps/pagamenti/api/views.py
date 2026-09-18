@@ -54,6 +54,28 @@ def _descrizione_order_by(colonne: dict[str, str], nota: str) -> str:
     return f"Whitelist (nome FISICO): {' | '.join(colonne)}. {nota}"
 
 
+# ⭐ `escludi_riga_id` — «prima di se'» — e' LO STESSO parametro sulla rata e
+#    sul documento (dal 2026-09-18, P-6): una dichiarazione sola, cosi' la
+#    frase che il client legge in OpenAPI non puo' divergere fra i due livelli.
+_PARAM_ESCLUDI_RIGA_ID = OpenApiParameter(
+    name="escludi_riga_id", type=int, location=OpenApiParameter.QUERY,
+    required=False,
+    description=(
+        "Esclude una riga contabile dal conto: serve a chiedere lo "
+        "spazio PRIMA DI SE', cioe' a sapere se quella riga ci sta "
+        "senza contarsi addosso."
+    ),
+)
+
+
+# Scopo: legge `escludi_riga_id` dalla query string, strict (400 se non numerico).
+# ⚠️ Il nome si prende dal parametro dichiarato, non si riscrive: due letterali
+#    per la stessa chiave sono il modo in cui OpenAPI e parsing si sfilano.
+def _escludi_riga_id(request: Request) -> int | None:
+    nome = _PARAM_ESCLUDI_RIGA_ID.name
+    return qp_int_optional(request.query_params.get(nome), nome)
+
+
 # Risposta generica: il contenuto e' documentato per endpoint nel service, e
 # gli schemi di dettaglio arriveranno col consolidamento OpenAPI del dominio.
 _RISPOSTA_GENERICA = inline_serializer(
@@ -850,27 +872,14 @@ class ApiRataSaldo(DomainAPIView):
 
     @extend_schema(
         operation_id="pagamenti_rata_saldo",
-        parameters=[
-            OpenApiParameter(
-                name="escludi_riga_id", type=int, location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Esclude una riga contabile dal conto: serve a chiedere lo "
-                    "spazio PRIMA DI SE', cioe' a sapere se quella riga ci sta "
-                    "senza contarsi addosso."
-                ),
-            ),
-        ],
+        parameters=[_PARAM_ESCLUDI_RIGA_ID],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET residuo, in lavorazione e incassato di una rata.
     def get(self, request: Request, scadenza_id: int) -> JsonResponse:
         return success_response(
             saldi_service.saldo_rata(
-                scadenza_id,
-                escludi_riga_id=qp_int_optional(
-                    request.query_params.get("escludi_riga_id"), "escludi_riga_id"
-                ),
+                scadenza_id, escludi_riga_id=_escludi_riga_id(request),
             )
         )
 
@@ -896,14 +905,22 @@ class ApiFatturaSaldo(DomainAPIView):
 
     @extend_schema(
         operation_id="pagamenti_fattura_saldo",
+        parameters=[_PARAM_ESCLUDI_RIGA_ID],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET residuo, in lavorazione e incassato di una fattura.
     # ⭐ Tutti e tre dal 2026-08-29 (DB-10 atterrata il 25/08): fino ad allora
     #    `incassato` era `null`. ⛔ Resta il divieto: NON si somma dalle rate (una
     #    riga puo' avere fattura senza rata: il fondo fattura e' cosi').
+    # ⭐ `escludi_riga_id` dal 2026-09-18 (P-6): lo stesso «prima di se'» della
+    #    rata — la riga SENZA rata che si sta correggendo non si conta piu'
+    #    addosso, e il pannello smette di dichiarare che non sa escluderla.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
-        return success_response(saldi_service.saldo_documento(fattura_id))
+        return success_response(
+            saldi_service.saldo_documento(
+                fattura_id, escludi_riga_id=_escludi_riga_id(request),
+            )
+        )
 
 
 class ApiFatturaRateSaldo(DomainAPIView):

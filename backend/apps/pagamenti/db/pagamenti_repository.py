@@ -1183,14 +1183,22 @@ class PagamentiRepository:
     #    📮 Se un giorno servira' `has_righe_postabili`, la sede giusta e'
     #    aggiungerlo a `fn_get_saldo_fattura` — che quella funzione la interroga
     #    gia' — non rimettere il join qui.
-    def get_saldo_documento(self, fattura_id: int) -> dict[str, Any] | None:
+    # ⭐ `escludi_riga_id` dal 2026-09-18 (P-6 del brief D19): la stessa
+    #    domanda della rata — «quanto c'era PRIMA di me» — con lo stesso nome
+    #    di parametro, cosi' il pannello dice la stessa cosa ai due livelli.
+    #    ⚠️ Semantica identica alla rata, ed e' una scelta del DB dichiarata nel
+    #    changeSet: la riga esclusa esce dal DICHIARATO e, se e' gia'
+    #    registrata, anche col suo MOVIMENTO — come nel nucleo `fn_get_saldi_rate`.
+    def get_saldo_documento(
+        self, fattura_id: int, *, escludi_riga_id: int | None = None
+    ) -> dict[str, Any] | None:
         self._guard_canale_sistema("get_saldo_documento")
         sql = """
             SELECT f.saldo, f.in_lavorazione, f.incassato, f.has_movimenti
-              FROM pagamenti.fn_get_saldo_fattura(%s) f
+              FROM pagamenti.fn_get_saldo_fattura(%s, %s) f
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
+            cursor.execute(sql, [int(fattura_id), escludi_riga_id])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 

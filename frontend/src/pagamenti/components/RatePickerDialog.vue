@@ -61,6 +61,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
+import ResiduoCella from './ResiduoCella.vue'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useNotify } from '../../core/composables/useNotify'
@@ -95,7 +96,7 @@ const { t } = useI18n()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const store = useRateStore()
-const { rata: etichettaRata, residuoNegativo } = useEtichettePagamenti()
+const { rata: etichettaRata } = useEtichettePagamenti()
 const multipla = computed(() => props.modalita === 'multipla')
 
 // ⭐ Il «padre» e' l'apertura: `true` a dialog aperto, `null` a dialog chiuso.
@@ -305,31 +306,21 @@ function onVisibleChange(v) {
         />
       </template>
 
-      <!-- ⭐ La natura si SEGNALA: `sempre`, come nelle liste — e' la colonna
-           che dice «questa e' una nota di credito» prima che la si scelga. -->
-      <template #cell-natura="{ data }">
-        <NaturaDocTag
-          :codice="data.natura_doc_codice_interno"
-          :descrizione="data.natura_doc_descrizione"
-          sempre
-        />
-      </template>
+      <!-- ⭐ La natura si SEGNALA e NON ha slot: il seed dichiara
+           `formato = natura_doc` e `CellaConfigurabile` la rende con
+           `NaturaDocTag sempre` (dal 18/09, come `yesno`) — e' la colonna che
+           dice «questa e' una nota di credito» prima che la si scelga. -->
 
       <!-- ⛔ Il residuo NEGATIVO non si mostra come numero negativo: si dice
-           cosa significa, PER NATURA (una sede: `etichette.js`). La rata
-           esaurita lo dichiara: si vede, e non si sceglie. -->
+           cosa significa, PER NATURA — nel BB `ResiduoCella`, la stessa cella
+           della lista fuori capienza. La rata ESAURITA lo dichiara (si vede, e
+           non si sceglie): il predicato e la frase restano qui, del picker. -->
       <template #cell-residuo="{ data }">
-        <Tag
-          v-if="Number(data.residuo) < 0"
-          :value="residuoNegativo(data.residuo, data.natura_doc_codice_interno)"
-          severity="warn"
+        <ResiduoCella
+          :residuo="data.residuo"
+          :natura-codice="data.natura_doc_codice_interno"
+          :nota="rataEsaurita(data) ? t('pagamenti.rate.esaurita') : null"
         />
-        <Tag
-          v-else-if="rataEsaurita(data)"
-          :value="t('pagamenti.rate.esaurita')"
-          severity="secondary"
-        />
-        <span v-else>{{ formatCurrency(data.residuo) }}</span>
       </template>
 
       <!-- ⭐ Tre frasi diverse per tre stati diversi: «indica un criterio»

@@ -784,7 +784,8 @@
         "ha_mapping_tipo_doc": "Il registro {codice} e' assegnato a {quante} tipi di documento: si toglie prima l'assegnazione, altrimenti quei documenti non troverebbero piu' un registro dove nascere.",
         "ha_ordini": "Il registro {codice} ha gia' numerato {quante} ordini: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
         "ha_ddt": "Il registro {codice} ha gia' numerato {quante} DDT: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
-        "ha_resi": "Il registro {codice} ha gia' numerato {quante} resi: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati."
+        "ha_resi": "Il registro {codice} ha gia' numerato {quante} resi: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
+        "ha_distinte": "Il registro {codice} ha già numerato {quante} distinte di incasso: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati. E una distinta non si cancella, quindi da qui in avanti questo registro non si spegne più."
       },
       "forma_blocco": {
         "ha_numerato": "Il registro {codice} ha gia' consegnato dei numeri (ultimo: {ultimo_numero}): la forma del numero non si puo' piu' cambiare. Il contatore non riparte quando cambia la forma, prosegue — quindi sullo stesso sezionale convivrebbero due forme con numeri consecutivi."
@@ -4061,6 +4062,7 @@
     "rate_fuori_capienza": {
       "col_motivo": "Motivo",
       "col_fattura_numero_documento": "Documento",
+      "col_natura": "Natura",
       "col_fattura": "Fattura",
       "col_data_scadenza": "Scadenza",
       "col_residuo": "Residuo",
@@ -4076,7 +4078,8 @@
       "filtro_motivo": "Motivo",
       "motivo_sovra_incassata": "Sovra-incassata",
       "motivo_movimento_contrario": "Movimento contrario",
-      "di_troppo": "{importo} di troppo",
+      "motivo_nota_credito_sovra_incassata": "Sovra-rimborsata",
+      "motivo_nota_credito_movimento_contrario": "Entrato invece di uscire",
       "nessuna_rata": "Nessuna rata fuori capienza"
     },
     "eccedenze": {

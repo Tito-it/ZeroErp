@@ -26,7 +26,6 @@ import Select from 'primevue/select'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
@@ -269,16 +268,11 @@ onMounted(() => {
              invece che come stato del processo. -->
         <template #cell-numero="{ data }">{{ data.numero || '—' }}</template>
 
-        <!-- ⚠️ La nota di credito non è un'anomalia: severity neutra, mai
-             `danger`. Il totale negativo si mostra com'è, perché è il documento
-             a essere di segno opposto. -->
-        <template #cell-natura_doc_descrizione="{ data }">
-          <NaturaDocTag
-            :codice="data.natura_doc_codice_interno"
-            :descrizione="data.natura_doc_descrizione"
-            sempre
-          />
-        </template>
+        <!-- ⚠️ La natura NON ha slot: il seed dichiara `formato = natura_doc` e
+             `CellaConfigurabile` la rende con `NaturaDocTag` (dal 18/09, come
+             `yesno`). La nota di credito non è un'anomalia: severity neutra, mai
+             `danger` — e il totale negativo si mostra com'è, perché è il
+             documento a essere di segno opposto. -->
 
         <template #cell-stato_descrizione="{ data }">
           <Tag

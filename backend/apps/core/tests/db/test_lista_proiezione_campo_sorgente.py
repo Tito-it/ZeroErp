@@ -77,6 +77,16 @@
    query PARTE. Sono difetti diversi: la' un nome che il frontend manda e il
    backend non riconosce (400), qui una colonna che il backend riconosce e
    l'SQL non ha (**500**).
+
+1-ter. (dentro il test 1) le GEMELLE di un `formato` — la colonna in piu' che
+   un formato pretende nella riga oltre al `campo_sorgente` (`natura_doc` →
+   `natura_doc_codice_interno`, dal 2026-09-18) — contano come campi
+   dichiarati: senza, il Tag renderebbe `—` su ogni riga e nessuno lo direbbe.
+
+5. test_le_gemelle_di_formato_esistono_nella_vista
+   Lo stesso per le liste CON vista, che il test 1 non esercita: il trigger DB
+   valida il solo `campo_sorgente` contro la vista, non la gemella. Si chiede
+   al catalogo PG se la vista la proietta.
 """
 
 from __future__ import annotations
@@ -95,6 +105,7 @@ from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
     _colonne_attive,
     _seed,
+    campi_gemelli_per_formato,
     ORDINAMENTO_LOCALE,
 )
 
@@ -147,15 +158,40 @@ def _liste_senza_vista() -> set[str]:
 # ⛔ Fuori restano le stesse due categorie che salta il trigger DB: le colonne
 #    di tipo `azione` (non hanno sorgente per disegno) e quelle con
 #    `campo_sorgente` vuoto (colonna calcolata interamente dal frontend).
+# ⭐ Dal 2026-09-18 anche le GEMELLE di un formato: `natura_doc` rende il Tag
+#    con la descrizione (il `campo_sorgente`) E il `codice_interno`, che il
+#    frontend legge da una colonna gemella della riga. Se la lista non la
+#    proietta il Tag esce `—` su ogni riga — un difetto che si vede ma che
+#    nessuno attribuirebbe alla causa. Il nome della gemella si legge dal
+#    sorgente FE (`campi_gemelli_per_formato`), non si ricopia qui.
 def _campi_dichiarati(codice: str) -> set[str]:
     campi = set()
+    gemelle = campi_gemelli_per_formato()
     for riga in _colonne_attive(codice):
         if riga["tipo_colonna"] == "azione":
             continue
         campo = (riga["campo_sorgente"] or "").strip()
         if campo and campo.upper() != "NULL":
             campi.add(campo)
+        campi.update(gemelle.get((riga["formato"] or "").strip(), ()))
     return campi
+
+
+# Scopo: le liste CON vista e, per ciascuna, le gemelle che le sue colonne
+#        attive pretendono — `{(codice, schema, vista): {gemelle}}`.
+def _gemelle_delle_liste_con_vista() -> dict[tuple[str, str, str], set[str]]:
+    gemelle = campi_gemelli_per_formato()
+    esito: dict[tuple[str, str, str], set[str]] = {}
+    for definizione in _seed("lista_definizione.csv"):
+        vista = (definizione["vista_sql"] or "").strip()
+        if definizione["attivo"] != "t" or not vista or vista.upper() == "NULL":
+            continue
+        attese: set[str] = set()
+        for riga in _colonne_attive(definizione["codice"]):
+            attese.update(gemelle.get((riga["formato"] or "").strip(), ()))
+        if attese:
+            esito[(definizione["codice"], definizione["schema_dati"], vista)] = attese
+    return esito
 
 
 # I nomi con cui i repository chiamano la lista dentro un dict di ritorno.
@@ -984,6 +1020,40 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
             [],
             "liste che ORA hanno una vista: le presidia il trigger DB, e la "
             "riga qui va tolta (o il presidio guarda la cosa sbagliata)",
+        )
+
+    # 5. Le gemelle di formato sulle liste CON vista: il trigger DB valida il
+    #    `campo_sorgente` contro la vista, la gemella no — e il test 1 quelle
+    #    liste non le esercita (le presidia il trigger). Si chiede al catalogo.
+    # ⚠️ Se nessuna lista con vista dichiara un formato con gemella, il test lo
+    #    DICE con uno skip: un giro su zero liste non e' un verde.
+    def test_le_gemelle_di_formato_esistono_nella_vista(self) -> None:
+        attese = _gemelle_delle_liste_con_vista()
+        if not attese:
+            self.skipTest("nessuna lista con vista dichiara un formato con gemella")
+        mancanti: dict[str, list[str]] = {}
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                for (codice, schema, vista), gemelle in sorted(attese.items()):
+                    cur.execute(
+                        """
+                        SELECT column_name FROM information_schema.columns
+                         WHERE table_schema = %s AND table_name = %s
+                        """,
+                        [schema, vista],
+                    )
+                    colonne = {r[0] for r in cur.fetchall()}
+                    self.assertTrue(
+                        colonne, f"la vista {schema}.{vista} della lista '{codice}' non esiste",
+                    )
+                    assenti = sorted(gemelle - colonne)
+                    if assenti:
+                        mancanti[codice] = assenti
+            transaction.set_rollback(True)
+        self.assertEqual(
+            mancanti, {},
+            "gemella di formato che la VISTA non proietta: il Tag renderebbe "
+            "`—` su ogni riga, senza errore",
         )
 
     # 4. Ogni ordinamento dichiarato produce SQL valido — per intero, non a

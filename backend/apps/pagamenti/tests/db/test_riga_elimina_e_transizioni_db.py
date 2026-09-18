@@ -41,6 +41,8 @@ Indice test eseguiti:
 18) ColonneTests.test_la_madre_accetta_l_emittente
 19) NumerazioneSulRegistroTests.test_senza_emittente_la_distinta_e_della_sessione_e_numerata
 20) NumerazioneSulRegistroTests.test_con_emittente_esplicito_arriva_com_e_e_riusa
+21) SaldoPrimaDiSeTests.test_il_documento_esclude_la_riga_come_la_rata
+22) SaldoPrimaDiSeTests.test_un_id_di_esclusione_non_positivo_e_un_guasto_dichiarato
 """
 
 from __future__ import annotations
@@ -50,14 +52,15 @@ import unittest
 from datetime import date
 from decimal import Decimal
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
+from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.pagamenti.db import pagamenti_repository as repo_mod
 from apps.pagamenti.db.pagamenti_repository import RIGHE_SORT_COLUMNS, PagamentiRepository
-from apps.pagamenti.services import pagamenti_service
+from apps.pagamenti.services import pagamenti_service, saldi_service
 
 _COLONNE_ELIMINA = (
     "elimina_blocco_reason",
@@ -394,16 +397,32 @@ _FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
 )
 
 
+# Scopo: monta la fixture (il mondo di `_FIXTURE_MONDO` piu' cliente, fattura,
+#        rata da 400, distinta in BOZZA e UNA riga ABBINATA da 400) e consegna
+#        i tre id `(fattura_id, scadenza_id, riga_id)`. Le TEMP TABLE muoiono
+#        col rollback. ⭐ Una sede per le due classi che la usano: la seconda
+#        l'aveva ricopiata per leggere gli altri due id.
+def _monta_riga_piena(cur) -> tuple[int, int, int]:
+    for passo in _FIXTURE_PASSI:
+        cur.execute(passo)
+    row = cur.fetchone()
+    assert row is not None
+    riga_id = int(row[0])
+    cur.execute("SELECT fattura_id FROM _fat_bst")
+    row = cur.fetchone()
+    assert row is not None
+    fattura_id = int(row[0])
+    cur.execute("SELECT scadenza_id FROM _rata_bst")
+    row = cur.fetchone()
+    assert row is not None
+    scadenza_id = int(row[0])
+    return fattura_id, scadenza_id, riga_id
+
+
 class ModificaSecondoTempoTests(_DbTestCase):
-    # Scopo: monta la fixture (il mondo di `_FIXTURE_MONDO` piu' cliente,
-    #        fattura, rata, distinta e riga) e consegna l'id della riga. Le
-    #        TEMP TABLE muoiono col rollback.
+    # Scopo: l'id della riga piena, dalla fixture condivisa.
     def _riga_piena(self, cur) -> int:
-        for passo in _FIXTURE_PASSI:
-            cur.execute(passo)
-        row = cur.fetchone()
-        assert row is not None
-        return int(row[0])
+        return _monta_riga_piena(cur)[2]
 
     # Scopo: 🔴 Il PATCH di un importo che non rientra e' rifiutato dal guard
     #        vero — col codice della capienza, che risale con
@@ -526,3 +545,49 @@ class NumerazioneSulRegistroTests(_DbTestCase):
         self.assertEqual(prima["emittente_fiscale_id"], ef_id)
         self.assertEqual(prima["id"], seconda["id"])
         self.assertEqual(prima["codice"], seconda["codice"])
+
+
+class SaldoPrimaDiSeTests(_DbTestCase):
+    """⭐ P-6 (2026-09-18): il «prima di se'» sul DOCUMENTO, provato contro la
+    funzione vera e non contro un mock — i mock non vedono il binding
+    `fn_get_saldo_fattura(%s, %s)`: una firma sbagliata e' un 500 sul pannello
+    «Destinazione» di ogni riga in modifica, non un test rosso."""
+
+    # Scopo: 🔴 La riga in BOZZA e' «in lavorazione» per 400 sui DUE livelli;
+    #        con `escludi_riga_id` sparisce dai due allo stesso modo. E' il
+    #        contratto che il pannello legge: stesso nome, stessa domanda,
+    #        stessa risposta su rata e documento — prima del 18/09 il documento
+    #        non aveva il parametro e il pannello DICHIARAVA di non saperla
+    #        escludere.
+    def test_il_documento_esclude_la_riga_come_la_rata(self):
+        def _prova(cur):
+            fattura_id, scadenza_id, riga_id = _monta_riga_piena(cur)
+            doc = saldi_service.saldo_documento(fattura_id)
+            doc_prima = saldi_service.saldo_documento(fattura_id, escludi_riga_id=riga_id)
+            rata = saldi_service.saldo_rata(scadenza_id)
+            rata_prima = saldi_service.saldo_rata(scadenza_id, escludi_riga_id=riga_id)
+            return doc, doc_prima, rata, rata_prima
+        doc, doc_prima, rata, rata_prima = self._con_operatore(_prova)
+        self.assertEqual(doc["in_lavorazione"], Decimal("400.00"))
+        self.assertEqual(doc_prima["in_lavorazione"], Decimal("0"))
+        self.assertEqual(rata["in_lavorazione"], Decimal("400.00"))
+        self.assertEqual(rata_prima["in_lavorazione"], Decimal("0"))
+        # ⭐ La forma non cambia con l'opzione: gli stessi campi, lo stesso livello.
+        self.assertEqual(set(doc), set(doc_prima))
+        self.assertEqual(doc_prima["livello"], "DOCUMENTO")
+
+    # Scopo: ⛔ Un id di esclusione non positivo non esce da nessuna
+    #        interfaccia: il database lo rifiuta come guasto del chiamante
+    #        (`E_PAGAMENTI_CHIAMATA_NON_VALIDA`, TECNICO) e il backend lo passa
+    #        cosi' com'e' — NON lo normalizza a «nessuna esclusione», che
+    #        farebbe leggere un saldo con la riga dentro a chi ha chiesto di
+    #        toglierla. ⚠️ La base dei saldi non traduce: il `DatabaseError`
+    #        arriva nudo al middleware, che legge il codice dal campo
+    #        strutturato — e' la strada di `E_FATTURA_NON_TROVATA`, la stessa.
+    def test_un_id_di_esclusione_non_positivo_e_un_guasto_dichiarato(self):
+        def _prova(cur):
+            fattura_id, _scadenza_id, _riga_id = _monta_riga_piena(cur)
+            with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+                saldi_service.saldo_documento(fattura_id, escludi_riga_id=0)
+            return structured_db_error_code(ctx.exception)
+        self.assertEqual(self._con_operatore(_prova), "E_PAGAMENTI_CHIAMATA_NON_VALIDA")

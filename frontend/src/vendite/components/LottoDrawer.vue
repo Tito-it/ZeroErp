@@ -33,7 +33,6 @@ import SelectButton from 'primevue/selectbutton'
 import SelectButtonGravita from '../../core/components/SelectButtonGravita.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
-import NaturaDocTag from '../../core/components/NaturaDocTag.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
@@ -1395,15 +1394,11 @@ function fatturaNumero(row) {
                      restano diversi di proposito — `numero` e' il campo su cui
                      si ORDINA, il numero documento e' quello che si LEGGE. -->
                 <template #cell-numero="{ data }">{{ fatturaNumero(data) }}</template>
-                <!-- ⚠️ La nota di credito non e' un'anomalia: severity neutra,
-                     mai `danger` — e il totale negativo si mostra com'e',
+                <!-- ⚠️ La natura NON ha slot: il seed dichiara `formato = natura_doc`
+                     e `CellaConfigurabile` la rende con `NaturaDocTag` (dal 18/09,
+                     come `yesno`). La nota di credito non e' un'anomalia: severity
+                     neutra, mai `danger` — e il totale negativo si mostra com'e',
                      perche' e' il documento a essere di segno opposto. -->
-                <template #cell-natura_doc_descrizione="{ data }">
-                  <NaturaDocTag
-                    :codice="data.natura_doc_codice_interno"
-                    :descrizione="data.natura_doc_descrizione"
-                    sempre />
-                </template>
                 <template #cell-stato_doc_fiscale_descrizione="{ data }">
                   <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
                 </template>

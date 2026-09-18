@@ -37,9 +37,10 @@ const props = defineProps({
   },
   riferimentoId: { type: [Number, null], default: null },
   // ⭐ «Prima di se'» (D19-b): la riga contabile da NON contare, per chi la sta
-  //    correggendo. Solo la rata la sa applicare; sul documento il pannello lo
-  //    DICE invece di fingere — un «in lavorazione» che include la riga che si
-  //    sta cambiando non e' sbagliato, e' un numero che va letto sapendolo.
+  //    correggendo. Rata e — dal 2026-09-18, P-6 — documento la sanno
+  //    applicare; dove un livello non la sa fare il pannello lo DICE invece di
+  //    fingere: un «in lavorazione» che include la riga che si sta cambiando
+  //    non e' sbagliato, e' un numero che va letto sapendolo.
   escludiRigaId: { type: [Number, null], default: null },
   // ⭐ Quali numeri accendere. Il default e' quello del documento (Q-6): chi ne
   //    vuole altri lo dichiara — ⛔ non li rinomina.
@@ -69,6 +70,10 @@ const {
 } = useSaldi(livelloMontato)
 
 // L'esclusione e' stata CHIESTA e il livello non la sa fare: si dichiara.
+// ⭐ Dal 2026-09-18 nessun livello vivo ci finisce piu' (P-6: anche il
+//    documento esclude). ⛔ Il ramo resta, come `incassatoNonDisponibile`: e' la
+//    risposta a un caso che il modello ammette — il CLIENTE, che nascera'
+//    sommando documenti — non a uno che oggi capita.
 const esclusioneNonApplicata = computed(
   () => props.escludiRigaId != null && !esclusioneSupportata,
 )

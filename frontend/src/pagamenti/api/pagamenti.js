@@ -221,19 +221,28 @@ export function listRate(params = {}) {
 // i giri interni. Una rata coperta da una compensazione è regolata anche se in
 // banca non è entrato niente.
 
+// Scopo: i query param del «prima di se'», uguali sui due livelli — cosi' il
+//        nome del parametro non puo' divergere fra rata e documento.
+function paramsEsclusione({ escludiRigaId = null } = {}) {
+  return escludiRigaId != null ? { escludi_riga_id: escludiRigaId } : undefined
+}
+
 // ⭐ `escludiRigaId` chiede lo spazio PRIMA DI SE' (il backend lo accetta dal
 //    lotto 5): serve a chi sta CORREGGENDO una riga, perche' senza, il saldo
 //    conta fra gli «in lavorazione» proprio i soldi che sta cambiando.
-export function getSaldoRata(scadenzaId, { escludiRigaId = null } = {}) {
-  const params = escludiRigaId != null ? { escludi_riga_id: escludiRigaId } : undefined
-  return api.get(`${BASE}/rate/${scadenzaId}/saldo/`, { params })
+export function getSaldoRata(scadenzaId, opzioni = {}) {
+  return api.get(`${BASE}/rate/${scadenzaId}/saldo/`, { params: paramsEsclusione(opzioni) })
 }
 
 // ⚠️ Vive in `pagamenti` con `skip_area_check` e non in `vendite`: `api.md`
 // vieta le chiamate laterali fra moduli di pari livello (correzione a Q-8).
 // Lo consuma il drawer fattura, che sta in `vendite`.
-export function getSaldoFattura(fatturaId) {
-  return api.get(`${BASE}/fatture/${fatturaId}/saldo/`)
+// ⭐ `escludiRigaId` anche qui dal 2026-09-18 (P-6 del brief D19): lo stesso
+//    «prima di se'» della rata, per chi corregge una riga SENZA rata (il fondo
+//    fattura e' cosi'). Fino a quel giorno il pannello dichiarava di non
+//    saperla escludere.
+export function getSaldoFattura(fatturaId, opzioni = {}) {
+  return api.get(`${BASE}/fatture/${fatturaId}/saldo/`, { params: paramsEsclusione(opzioni) })
 }
 
 // Le rate di una fattura COL LORO SALDO, in un giro solo: un elenco di rate

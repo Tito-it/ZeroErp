@@ -33,6 +33,7 @@ Indice test eseguiti:
 18) SaldiTests.test_documento_inesistente_404
 19) SaldiTests.test_rata_inesistente_404
 20) SaldiTests.test_escludi_riga_arriva_al_database
+20b) SaldiTests.test_escludi_riga_arriva_al_database_anche_sul_documento
 20a) SaldiTests.test_i_numeri_del_documento_da_una_lettura_sola
 21) RifiutoConfermabileTests.test_la_capienza_ha_la_sua_ui_action
 """
@@ -303,6 +304,22 @@ class SaldiTests(_Base):
         saldi_service.saldo_rata(900, escludi_riga_id=11)
         self.assertEqual(
             self.repo.get_saldo_rata.call_args.kwargs["escludi_riga_id"], 11
+        )
+
+    # Scopo: ⭐ P-6 (2026-09-18): lo stesso «prima di se'» sul DOCUMENTO, con lo
+    #        stesso nome — chi corregge una riga senza rata (il fondo fattura)
+    #        legge il saldo senza contarsi addosso. Fino a quel giorno il
+    #        pannello lo dichiarava come non applicato.
+    def test_escludi_riga_arriva_al_database_anche_sul_documento(self):
+        saldi_service.saldo_documento(2263, escludi_riga_id=11)
+        self.assertEqual(
+            self.repo.get_saldo_documento.call_args.kwargs["escludi_riga_id"], 11
+        )
+        # E senza opzione il repository riceve `None`, non un'assenza: la
+        # firma e' una sola nei due versi.
+        saldi_service.saldo_documento(2263)
+        self.assertIsNone(
+            self.repo.get_saldo_documento.call_args.kwargs["escludi_riga_id"]
         )
 
 

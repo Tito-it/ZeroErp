@@ -11,7 +11,24 @@
 import { h } from 'vue'
 import { displayDate, displayTimestamp } from '../utils/date'
 import { formatCurrency, formatNumber } from '../utils/format'
+import NaturaDocTag from './NaturaDocTag.vue'
 import SiNoTag from './SiNoTag.vue'
+
+// ⭐ `natura_doc` (2026-09-18, ok Tid — regola del 2 alla QUARTA lista): la
+//    colonna «Natura» di un documento fiscale e' il BB `NaturaDocTag` in modo
+//    `sempre`, come `yesno` e' `SiNoTag`. Lo stesso slot
+//    `<NaturaDocTag :codice :descrizione sempre>` era scritto in quattro liste
+//    (fatture, documenti del lotto, picker delle rate, rate fuori capienza):
+//    *una natura in lista e' una riga di CSV, non uno slot*.
+// ⚠️ Il Tag vuole DUE campi della riga: la descrizione e' il `campo_sorgente`
+//    della colonna (il valore), il codice e' la GEMELLA `natura_doc_codice_interno`
+//    — il nome con cui OGNI vista e funzione del DB proietta
+//    `config.nature_doc_fiscale.codice_interno`. Non e' una stringa magica: e'
+//    il contratto della colonna, e lo presidia `test_lista_proiezione_campo_sorgente`
+//    (che LEGGE questa costante dal sorgente, via `campi_gemelli_per_formato`)
+//    sulla proiezione di ogni lista che dichiara questo formato. Se la riga non la porta, il BB rende `—` su
+//    ogni riga: un difetto che si VEDE, non una natura inventata.
+const CAMPO_GEMELLO_NATURA_DOC = 'natura_doc_codice_interno'
 
 // Formatter built-in da `formato` del catalogo. Il caller puo' sovrascrivere
 // completamente via slot `cell-{codice}` (prop `cellSlot`).
@@ -24,9 +41,17 @@ import SiNoTag from './SiNoTag.vue'
 //    cadeva su `String(value)`, cioe' «true»/«false» grezzi a video (la
 //    `is_scaduta` delle offerte lo faceva davvero). Il `formato=yesno` nel
 //    seed resta la dichiarazione; questo e' il ripiego per chi non l'ha scritta.
-function formatValue(value, formato, tipoDato) {
+// ⚠️ `data` (la riga) serve al solo `natura_doc`, che legge la gemella.
+function formatValue(value, formato, tipoDato, data = null) {
   if (formato === 'yesno' || (!formato && tipoDato === 'boolean')) {
     return h(SiNoTag, { value })
+  }
+  if (formato === 'natura_doc') {
+    return h(NaturaDocTag, {
+      codice: data?.[CAMPO_GEMELLO_NATURA_DOC] ?? null,
+      descrizione: value ?? null,
+      sempre: true,
+    })
   }
   if (value == null) return ''
   switch (formato) {
@@ -54,6 +79,8 @@ function formatValue(value, formato, tipoDato) {
 export function testoCella(col, data, cellSlot = null) {
   if (cellSlot) return null
   if (col.formato === 'yesno' || (!col.formato && col.tipo_dato === 'boolean')) return null
+  // Un Tag, non testo: come `yesno`.
+  if (col.formato === 'natura_doc') return null
   const value = data?.[col.campo_sorgente]
   if (value == null) return null
   const testo = formatValue(value, col.formato, col.tipo_dato)
@@ -77,7 +104,7 @@ export default {
       if (props.cellSlot) {
         return props.cellSlot({ data: props.data, value, col: props.col })
       }
-      return formatValue(value, props.col.formato, props.col.tipo_dato)
+      return formatValue(value, props.col.formato, props.col.tipo_dato, props.data)
     }
   },
 }

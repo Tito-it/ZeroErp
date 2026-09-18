@@ -100,15 +100,21 @@ export function spazioSaldo(saldo) {
 // ⭐ «Prima di se'» (D19-b, 2026-09-17): chi CORREGGE una riga vuole il saldo
 //    senza contarsi addosso — altrimenti «in lavorazione» conta proprio i soldi
 //    che sta cambiando. Il database lo sa fare sulla rata
-//    (`fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)`) e non
-//    sul documento (`fn_get_saldo_fattura_contabili` ha un parametro solo —
-//    brief D19, P-6): il suo lettore NON inoltra le opzioni, e `esclusione`
-//    lo dichiara nella stessa riga, cosi' non c'e' una seconda tabella da
-//    tenere allineata alla prima.
+//    (`fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)`) e, dal
+//    2026-09-18 (P-6 del brief D19), anche sul documento
+//    (`fn_get_saldo_fattura(p_fattura_id, p_escludi_contabile_riga_id)`):
+//    stesso nome di parametro, stessa domanda — e stessa semantica, dichiarata
+//    dal DB nel changeSet: la riga esclusa esce dal dichiarato E, se e' gia'
+//    registrata, col suo movimento.
+// ⭐ `esclusione` resta accanto al lettore nella STESSA riga: e' la capacita'
+//    del livello, e il pannello la legge per DICHIARARE quando un livello non
+//    la sa applicare — oggi nessuno dei due vivi, ma il CLIENTE nascera'
+//    sommando documenti e una riga non la sapra' escludere. Il ramo e' la
+//    risposta a un caso che il modello ammette, non a uno che oggi capita.
 // ⛔ Non si «sana» nel frontend sottraendo l'importo della riga: sarebbe la
 //    seconda formula del saldo. Si dichiara, e il pannello lo dice.
 const LETTORE = {
-  [LIVELLO.DOCUMENTO]: { leggi: (id) => getSaldoFattura(id), esclusione: false },
+  [LIVELLO.DOCUMENTO]: { leggi: (id, opzioni) => getSaldoFattura(id, opzioni), esclusione: true },
   [LIVELLO.RATA]: { leggi: (id, opzioni) => getSaldoRata(id, opzioni), esclusione: true },
 }
 

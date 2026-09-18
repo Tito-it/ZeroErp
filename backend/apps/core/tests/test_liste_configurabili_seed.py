@@ -71,6 +71,20 @@
    eccezioni: una lista rientrata va tolta, o il debito residuo risulta piu'
    grande del vero e l'eccezione diventa permanente.
 
+9. test_ogni_formato_del_seed_e_reso_dal_frontend
+   Ogni `formato` scritto nel seed e' uno che `CellaConfigurabile.formatValue`
+   conosce. Un formato sconosciuto NON da' errore: cade su `String(value)` e la
+   colonna esce come testo grezzo — su `natura_doc` la descrizione senza Tag, su
+   un `yesno` scritto male «true»/«false». Il vocabolario si LEGGE dal `.vue`,
+   non si ricopia qui.
+
+9-bis. test_la_gemella_di_un_formato_si_legge_dal_frontend
+   Il verso che arma `campi_gemelli_per_formato` (letto da
+   `test_lista_proiezione_campo_sorgente`): il nome della colonna gemella che
+   `natura_doc` pretende nella riga arriva dal sorgente FE, e se il FE lo
+   rinomina senza che questa lettura lo trovi il test fa rosso — non verde a
+   vuoto.
+
 ⚠️ I test 1-3 girano su `_liste_allineate()`, cioe' tutte tranne il debito noto.
 I test 4-6 girano su TUTTE: valgono a prescindere dalla chiave della whitelist.
 """
@@ -579,6 +593,55 @@ def _colonne_con_grant() -> set[str]:
         return {r["colonna_id"] for r in csv.DictReader(fh)}
 
 
+_CELLA_VUE = repo_root() / "frontend/src/core/components/CellaConfigurabile.vue"
+
+
+# Scopo: i `formato` che il frontend sa RENDERE, letti dal sorgente di
+#        `CellaConfigurabile` (i `case '...'` dello switch e i confronti
+#        `formato === '...'`), non ricopiati qui: due elenchi dello stesso
+#        vocabolario ne hanno sempre uno stantio.
+# ⛔ Se la lettura non trova nulla SOLLEVA: un insieme vuoto renderebbe verde
+#    per sottrazione il test che lo consuma.
+@lru_cache(maxsize=1)
+def _formati_resi_dal_frontend() -> frozenset[str]:
+    sorgente = _senza_commenti(_CELLA_VUE.read_text(encoding="utf-8"))
+    trovati = set(re.findall(r"case '([a-z0-9_]+)':", sorgente))
+    trovati |= set(re.findall(r"formato === '([a-z0-9_]+)'", sorgente))
+    if not trovati:
+        raise AssertionError(
+            f"nessun formato letto da {_CELLA_VUE.name}: la lettura e' rotta, "
+            "non il catalogo"
+        )
+    return frozenset(trovati)
+
+
+# Scopo: per ogni `formato` che pretende una SECONDA colonna nella riga oltre
+#        al `campo_sorgente`, il nome di quella gemella — letto dal sorgente FE
+#        (`CAMPO_GEMELLO_NATURA_DOC` in `CellaConfigurabile`), che e' l'unica
+#        sede in cui il nome decide qualcosa.
+# ⭐ Oggi il solo `natura_doc`: il Tag della natura vuole il `codice_interno`
+#    accanto alla descrizione. Un formato nuovo con una gemella si aggiunge qui
+#    E nel `.vue`, e il 9-bis pretende che le due letture si trovino.
+# ⛔ Non e' un dizionario scritto a mano con il nome dentro: se il FE rinomina la
+#    costante e questa lettura non la trova piu', la funzione SOLLEVA — un
+#    presidio che perde la sua fonte deve dirlo, non tornare vuoto.
+@lru_cache(maxsize=1)
+def _gemelle_per_formato() -> dict[str, tuple[str, ...]]:
+    sorgente = _senza_commenti(_CELLA_VUE.read_text(encoding="utf-8"))
+    m = re.search(r"const CAMPO_GEMELLO_NATURA_DOC = '([a-z0-9_]+)'", sorgente)
+    if m is None:
+        raise AssertionError(
+            f"`CAMPO_GEMELLO_NATURA_DOC` non trovato in {_CELLA_VUE.name}: il "
+            "presidio sulla gemella di `natura_doc` ha perso la sua fonte"
+        )
+    return {"natura_doc": (m.group(1),)}
+
+
+# Il nome pubblico che `test_lista_proiezione_campo_sorgente` importa.
+def campi_gemelli_per_formato() -> dict[str, tuple[str, ...]]:
+    return _gemelle_per_formato()
+
+
 class ListeConfigurabiliSeedTests(unittest.TestCase):
     """Il contratto seed <-> whitelist, che nessun altro test copre.
 
@@ -897,3 +960,36 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                     "lista senza configurazione di partenza, due la rendono "
                     "non deterministica.",
                 )
+
+    # 9. Un `formato` che il frontend non conosce non fa errore: la colonna esce
+    #    come testo grezzo. Il precedente e' `yesno` (frontend-standards §Si'/No):
+    #    tre liste si erano riscritte il Tag in uno slot, una sopra una colonna
+    #    che il formato ce l'aveva gia' — e con `natura_doc` (2026-09-18) la
+    #    strada «una riga di CSV, non uno slot» vale per una seconda resa.
+    def test_ogni_formato_del_seed_e_reso_dal_frontend(self) -> None:
+        conosciuti = _formati_resi_dal_frontend()
+        self.assertIn("yesno", conosciuti)
+        self.assertIn("natura_doc", conosciuti)
+        sconosciuti = sorted({
+            (r["formato"], r["id"], r["codice"])
+            for r in _seed("lista_colonna.csv")
+            if r["attivo"] == "t" and (r["formato"] or "").strip()
+            and r["formato"].strip() not in conosciuti
+        })
+        self.assertEqual(
+            sconosciuti, [],
+            "formato a catalogo che `CellaConfigurabile` non rende: a video "
+            "uscirebbe `String(value)`, senza nessun errore",
+        )
+
+    # 9-bis. La gemella si legge dal FE: se la lettura si rompe, il presidio
+    #        della proiezione (test DB) smetterebbe di chiedere la colonna e
+    #        sarebbe verde a vuoto — qui lo si dice PRIMA, senza database.
+    def test_la_gemella_di_un_formato_si_legge_dal_frontend(self) -> None:
+        gemelle = campi_gemelli_per_formato()
+        self.assertEqual(set(gemelle), {"natura_doc"})
+        self.assertEqual(gemelle["natura_doc"], ("natura_doc_codice_interno",))
+        # E ogni formato con una gemella e' anche un formato reso: le due
+        # letture guardano lo stesso file e devono trovarsi.
+        for formato in gemelle:
+            self.assertIn(formato, _formati_resi_dal_frontend())
