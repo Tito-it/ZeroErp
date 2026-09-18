@@ -14,7 +14,7 @@ import TieredMenu from 'primevue/tieredmenu'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
-import { NAV_ICONS, resolveTabLabel } from '../navigation'
+import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
 import { MANAGE_ICONS } from '../constants'
@@ -40,8 +40,28 @@ defineProps({
 })
 const emit = defineEmits(['toggle-menu'])
 
-const areaTitle = computed(() => {
-  return resolveTabLabel(route.meta, t) || ''
+// Scopo: il titolo al centro della topbar e' L'AREA (il dominio della rotta),
+//        con la sua icona — non la pagina.
+// ⭐ Decisione di Tid, 2026-09-19: fino a quel giorno qui stava
+//    `resolveTabLabel(route.meta)`, cioe' la stessa etichetta della scheda
+//    attiva e dell'ultimo segmento del breadcrumb — «Contratti» tre volte in
+//    verticale, e la topbar era l'unica delle tre che non aggiungeva niente.
+//    Il dominio invece risponde a «in quale area sono», che a sidebar chiusa
+//    (o su mobile) non lo dice nessun altro pezzo: topbar = area, scheda =
+//    pagina, breadcrumb = il percorso intero.
+// ⚠️ Segue la `route`, cioe' il pannello PRIMARIO: in split view il secondario
+//    puo' essere di un altro dominio, e questo titolo — come il breadcrumb —
+//    non lo racconta. E' coerenza, non dimenticanza.
+// ⚠️ `home` (compresi «non trovato» e «vietato», che sono rotte di `home`) e
+//    un `domain` assente danno «Home» con l'icona di casa: la chiave `nav.home`
+//    esiste, e un titolo vuoto in cima sembrerebbe un errore di caricamento.
+const areaDominio = computed(() => {
+  const key = route.meta.domain || 'home'
+  const dominio = DOMAINS.find(d => d.key === key)
+  return {
+    label: t(`nav.${key}`),
+    icon: dominio?.icon ?? NAV_ICONS.HOME,
+  }
 })
 
 // Il nome dell'emittente non e' piu' un computed di questo componente: dal
@@ -253,7 +273,10 @@ onMounted(async () => {
     </div>
 
     <div class="topbar-center">
-      <span class="topbar-area-title">{{ areaTitle }}</span>
+      <span class="topbar-area-title">
+        <i :class="areaDominio.icon" class="topbar-area-icon" aria-hidden="true"></i>
+        {{ areaDominio.label }}
+      </span>
     </div>
 
     <div class="topbar-right">
@@ -428,10 +451,17 @@ onMounted(async () => {
 }
 
 .topbar-area-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-size: var(--app-font-size-base);
   font-weight: 500;
   color: var(--app-topbar-breadcrumb-active-color);
   white-space: nowrap;
+}
+.topbar-area-icon {
+  font-size: 0.95em;
+  opacity: 0.85;
 }
 
 .topbar-right {

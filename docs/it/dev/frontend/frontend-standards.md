@@ -163,7 +163,9 @@ logica di navigazione.
 ### Topbar
 
 - Altezza fissa 48px
-- Selettore dell'emittente attivo, titolo dell'area, chip del contesto globale
+- Selettore dell'emittente attivo, **titolo dell'area** (il dominio della rotta
+  con la sua icona — non la pagina: quella la dicono già la scheda e il
+  breadcrumb; decisione di Tid 2026-09-19), chip del contesto globale
 - Iniziali dell'utente (chip `SUPER_ADMIN` per chi lo è) e data
 - ⭐ **Il gruppo «salute del sistema»** (`.topbar-actions-inline`), due contatori
   ambientali gemelli, entrambi sopra `useRefreshPeriodico`, entrambi spenti su
