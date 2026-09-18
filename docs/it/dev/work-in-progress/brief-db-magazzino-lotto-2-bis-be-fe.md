@@ -130,9 +130,25 @@ form (`fn_check_riga_magazzino`) lo dice comunque.
 
 ---
 
+## R-6 🟡 (opzionale, 18-09 notte) — `E_MAGAZZINO_VALIDATION`
+
+Il codice di validazione del payload del dominio (`DATO_ERRATO`), gemello di
+`E_PAGAMENTI_VALIDATION`: oggi il BE usa il generico `E_VALIDATION_INPUT`, ed è
+**una riga** da cambiare (`magazzino_service.E_VALIDAZIONE`). Il BE non conia.
+
+## R-7 🟡 (opzionale, 18-09 notte) — `E_MAG_DOCUMENTO_RIGA_NON_TROVATA`
+
+La coppia (documento, riga) è la risorsa dell'URL
+(`inventari/<id>/righe/<rid>/`): una riga di un altro documento «non c'è», e
+oggi risponde `E_MAG_DOCUMENTO_NON_TROVATO` con la frase del BE («Riga non
+trovata nel documento»). Un codice suo (`NON_TROVATO`) dice *quale* delle due
+manca; è un candidato allo split, non un difetto.
+
+---
+
 ## Ai team, per chiudere
 
-- 🔵 DB: R-1 (con le chiavi i18n dichiarate), R-2, R-3; R-4/R-5 a discrezione.
+- 🔵 DB: R-1 (con le chiavi i18n dichiarate), R-2, R-3; R-4/R-5/R-6/R-7 a discrezione.
   In `_dominio-magazzino.md` §«Che cosa manca» la riga di `requires_lotto`
   esce quando il Pezzo 0 del piano è mergiato.
 - 🔵 BE/FE: le chiavi di R-1 nei locales **prima** che la doc auto-gen delle

@@ -486,6 +486,12 @@ si ordina per il suo **alias** — PostgreSQL lo ammette in `ORDER BY` — e non
 riscrivendo l'espressione: una copia riscritta può divergere dall'originale, e
 la lista si ordinerebbe diversamente da come si legge.
 
+⭐ **E la frase nello schema OpenAPI si LEGGE dalla whitelist**, non si ricopia
+accanto a lei: `descrizione_order_by(SORT_COLUMNS, nota)` di
+`apps/core/api/openapi_params.py` (2026-09-19). Un elenco scritto a mano nella
+`description` di `order_by` è già divergente il giorno in cui la mappa prende
+una colonna — ed era successo due volte in pagamenti prima del BB.
+
 ### Ricerca e throttling
 
 * `is_search_endpoint = True` sulla view abilita `SearchBurstRateThrottle`

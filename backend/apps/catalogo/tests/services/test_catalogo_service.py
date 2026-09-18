@@ -845,12 +845,15 @@ class CatalogoServiceTests(TestCase):
         fn_update_articolo(
             "019bbee2-5f6a-704f-bbd0-34ed84db252d",
             {"modo_approvvigionamento_id": 2, "gestito_a_magazzino": True,
-             "lead_time_giorni": 0},
+             "lead_time_giorni": 0, "requires_lotto": True},
         )
         _, data = repo.update_articolo.call_args.args
         self.assertEqual(data["modo_approvvigionamento_id"], 2)
         self.assertIs(data["gestito_a_magazzino"], True)
         self.assertEqual(data["lead_time_giorni"], 0)
+        # Lotto 2 di magazzino (brief §4.9): `requires_lotto` e' un flag come
+        # `gestito_a_magazzino` — passa, e fuori dal lock BoM.
+        self.assertIs(data["requires_lotto"], True)
 
         # E il NULL del lead time e' un'informazione («non si applica»): passa.
         repo.update_articolo.reset_mock()

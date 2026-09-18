@@ -159,6 +159,24 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 #   has_obsoleto       → la tabella ha obsoleto_dal (filtro includi_obsoleti,
 #                        stessa semantica della fn generica: esclude
 #                        obsoleto_dal <= CURRENT_DATE quando false)
+# ⭐ Le tabelle che il PANNELLO CONFIG gestisce (CRUD metadata-driven): la
+#    whitelist della lookup PIU' quelle che il lookup generico non puo'
+#    servire. Fino al 2026-09-18 le due whitelist erano lo stesso insieme, e
+#    la prima tabella senza `descrizione` — `magazzino.lotti` (Lotto 2 del
+#    magazzino: un lotto e' `articolo_id` + `codice` + `data_arrivo`) — le ha
+#    separate: `dbops.fn_get_lookup_codici` PRETENDE la colonna `descrizione`
+#    e rifiuterebbe la rel, quindi metterla in `_REL_CONSENTITE` dichiarerebbe
+#    ammesso un valore che a runtime esplode (`feedback_contratto_dichiarato_
+#    provalo_intero`). Il pannello legge `information_schema` e non ne ha
+#    bisogno. ⛔ Una rel qui e non in `_REL_CONSENTITE` NON si monta con
+#    `<LookupSelect rel=…>`: per i lotti c'e' il lookup dedicato
+#    `GET /magazzino/lotti/lookup/?articolo_id=`.
+CONFIG_TABLES: frozenset[str] = _REL_CONSENTITE | frozenset(
+    {
+        "magazzino.lotti",
+    }
+)
+
 _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
     "catalogo.unita_misura": {
         # tipo_uom_id: usato dal FE per filtrare conversioni same-type.

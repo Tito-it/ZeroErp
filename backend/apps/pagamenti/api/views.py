@@ -28,11 +28,16 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
 )
+from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.success_responses import success_response
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTA_RIGHE_SORT_COLUMNS,
+    DISTINTE_SORT_COLUMNS,
+    ECCEDENZE_SORT_COLUMNS,
+    ENTI_INCASSO_SORT_COLUMNS,
     RATE_FUORI_CAPIENZA_SORT_COLUMNS,
     RATE_SORT_COLUMNS,
+    RIGHE_SORT_COLUMNS,
 )
 from apps.pagamenti.services import (
     enti_incasso_service,
@@ -44,15 +49,6 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 AREA = "pagamenti"
-
-
-# Scopo: la frase «Whitelist (nome FISICO): …» di un `order_by`, LETTA dalla
-#        whitelist del repository e non ricopiata: la prima stesura della lista
-#        rate ne elencava sette su nove, e quella delle rate fuori capienza
-#        aveva perso la colonna aggiunta il 17/09 — due elenchi scritti a mano
-#        accanto alla mappa che li smentiva.
-def _descrizione_order_by(colonne: dict[str, str], nota: str) -> str:
-    return f"Whitelist (nome FISICO): {' | '.join(colonne)}. {nota}"
 
 
 # ⭐ `escludi_riga_id` — «prima di se'» — e' LO STESSO parametro sulla rata e
@@ -148,10 +144,8 @@ class ApiDistinteList(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO della colonna, come la lista lo espone): "
-                    "data_contabile (default) | codice | stato_descrizione | "
-                    "origine | centro_descrizione | totale_righe."
+                description=descrizione_order_by(
+                    DISTINTE_SORT_COLUMNS, "Senza: data_contabile.",
                 ),
             ),
             OpenApiParameter(
@@ -292,7 +286,7 @@ class ApiDistintaStato(DomainAPIView):
 _PARAMS_ORDINAMENTO_DISTINTA_RIGHE = [
     OpenApiParameter(
         name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
-        description=_descrizione_order_by(
+        description=descrizione_order_by(
             DISTINTA_RIGHE_SORT_COLUMNS,
             "Senza: id DESC (l'ultima riga digitata in cima). "
             "`fattura_numero_documento` ordina per la coppia (numero, serie).",
@@ -749,9 +743,8 @@ class ApiRigheCoda(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO): data_pagamento (default) | importo | "
-                    "stato_descrizione | contabile_codice."
+                description=descrizione_order_by(
+                    RIGHE_SORT_COLUMNS, "Senza: data_pagamento.",
                 ),
             ),
             OpenApiParameter(
@@ -863,7 +856,7 @@ class ApiRateList(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=_descrizione_order_by(
+                description=descrizione_order_by(
                     RATE_SORT_COLUMNS,
                     "Senza: data_scadenza ASC (e' una coda). I tre saldi non ordinano: "
                     "arrivano dal nucleo DOPO la pagina.",
@@ -946,7 +939,7 @@ class ApiRateFuoriCapienza(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=_descrizione_order_by(
+                description=descrizione_order_by(
                     RATE_FUORI_CAPIENZA_SORT_COLUMNS, "Senza: data_scadenza.",
                 ),
             ),
@@ -1089,12 +1082,10 @@ class ApiEccedenze(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO): eccedenza_cliente (default) | "
-                    "cliente_ragione_sociale | eccedenza | fattura_data | "
-                    "fattura_numero. ⭐ Il default è per "
-                    "CLIENTE, non per documento: la decisione si prende "
-                    "guardando il cliente."
+                description=descrizione_order_by(
+                    ECCEDENZE_SORT_COLUMNS,
+                    "Senza: eccedenza_cliente. ⭐ Il default è per CLIENTE, non "
+                    "per documento: la decisione si prende guardando il cliente.",
                 ),
             ),
             OpenApiParameter(
@@ -1361,9 +1352,8 @@ class ApiEntiIncasso(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO): codice (default) | descrizione | tipo | "
-                    "centro_descrizione."
+                description=descrizione_order_by(
+                    ENTI_INCASSO_SORT_COLUMNS, "Senza: codice.",
                 ),
             ),
             OpenApiParameter(

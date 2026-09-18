@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID
 
@@ -52,6 +52,8 @@ _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
     "is_composito",
     "is_solo_componente",
     "requires_serial",
+    # Lotto 2 di magazzino (brief §4.9): «per lotti», deciso dall'articolo.
+    "requires_lotto",
     # NOT NULL DEFAULT false a DB (fail-safe: nessun articolo movimenta giacenza
     # per distrazione). Brief modifiche certe, Blocco B.
     "gestito_a_magazzino",
@@ -388,64 +390,6 @@ def _extract_meta(
         log_to_db=True,
     )
     return value
-
-
-# Scopo: Converte e valida un valore numerico decimale opzionale.
-def _extract_decimal(
-    payload: dict[str, Any],
-    key: str,
-    *,
-    function_name: str,
-    nullable: bool,
-    min_value: Decimal | None = None,
-    message: str = "Payload catalogo non valido.",
-) -> Decimal | None | _MissingType:
-    if key not in payload:
-        return _MISSING
-    value = payload.get(key)
-    if value is None:
-        ErrorManager.require(
-            nullable,
-            code="E_CATALOGO_VALIDATION",
-            message=message,
-            detail=f"{key} non puo' essere null.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        return None
-    ErrorManager.require(
-        not isinstance(value, bool),
-        code="E_CATALOGO_VALIDATION",
-        message=message,
-        detail=f"{key} deve essere numerico.",
-        context={"field": key},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        decimal_value = Decimal(str(value).strip())
-    except (InvalidOperation, AttributeError) as exc:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message=message,
-            detail=f"{key} deve essere numerico.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    if min_value is not None:
-        ErrorManager.require(
-            decimal_value >= min_value,
-            code="E_CATALOGO_VALIDATION",
-            message=message,
-            detail=f"{key} deve essere >= {min_value}.",
-            context={"field": key, "min_value": str(min_value)},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    return decimal_value
 
 
 # Scopo: Estrae data ISO opzionale dal payload JSON.
@@ -843,7 +787,7 @@ def _extract_uom_operativa_payload(
         "factor_to_base": Decimal("0.000001"),
         "qty_step": Decimal("0.000001"),
     }.items():
-        field_value = _extract_decimal(
+        field_value = _V.extract_optional_decimal(
             payload,
             field_name,
             function_name=function_name,
@@ -1014,7 +958,7 @@ def _extract_componente_payload(
         )
         data["componente_id"] = componente_id
 
-    coeff_qta = _extract_decimal(
+    coeff_qta = _V.extract_optional_decimal(
         payload,
         "coeff_qta",
         function_name=function_name,
@@ -2343,7 +2287,7 @@ def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
         function_name=function_name,
         log_to_db=True,
     )
-    fattore = _extract_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
+    fattore = _V.extract_optional_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
     ErrorManager.require(
         fattore is not _MISSING,
         code="E_CATALOGO_VALIDATION",
@@ -2382,7 +2326,7 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
     _validate_payload_keys(payload, allowed_keys=_CONV_UPDATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
 
     data: dict[str, Any] = {}
-    fattore = _extract_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
+    fattore = _V.extract_optional_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
     if fattore is not _MISSING:
         data["fattore"] = fattore
     valido_dal = _extract_payload_date(payload, "valido_dal", function_name=function_name, nullable=True, message="Payload conversione non valido.")

@@ -50,6 +50,15 @@ export const NAV_ICONS = Object.freeze({
   RATE_FUORI_CAPIENZA: 'pi pi-exclamation-triangle',
   ECCEDENZE: 'pi pi-money-bill',
   CANALI_INCASSO: 'pi pi-building-columns',
+  // Dominio MAGAZZINO (Lotto 2, 2026-09-18). ⚠️ Nessuna e' l'icona del
+  // dominio (`pi-warehouse`), per la stessa ragione degli incassi.
+  // L'inventario e' il CONTEGGIO a scaffale (la lista spuntata); la rettifica
+  // e' una correzione in piu' o in meno (le due frecce); la disponibilita' e'
+  // «quanto c'e'» (l'indicatore); il registro dei movimenti e' il libro.
+  INVENTARI: 'pi pi-list-check',
+  RETTIFICHE: 'pi pi-sort-alt',
+  DISPONIBILITA: 'pi pi-gauge',
+  MOVIMENTI: 'pi pi-book',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
@@ -224,7 +233,17 @@ export const DOMAIN_MENUS = {
     }
   ],
   'acquisti': [],
-  'magazzino': [],
+  // ⭐ Dominio MAGAZZINO. L'ordine e' il PERCORSO DELLA MERCE, non l'alfabeto:
+  //    il primo carico in assoluto si fa dall'inventario, una rettifica
+  //    corregge quello che l'inventario ha scritto, la disponibilita' e' cio'
+  //    che ne risulta, e il registro dei movimenti e' la storia di tutto —
+  //    come per gli incassi, che seguono il percorso del denaro.
+  'magazzino': [
+    { key: 'inventari', icon: NAV_ICONS.INVENTARI, to: '/magazzino/inventari' },
+    { key: 'rettifiche', icon: NAV_ICONS.RETTIFICHE, to: '/magazzino/rettifiche' },
+    { key: 'disponibilita', icon: NAV_ICONS.DISPONIBILITA, to: '/magazzino/disponibilita' },
+    { key: 'movimenti', icon: NAV_ICONS.MOVIMENTI, to: '/magazzino/movimenti' },
+  ],
   // ⭐ Dominio INCASSI. L'ordine e' il PERCORSO del denaro, non l'alfabeto: si
   // apre una distinta, si abbinano le sue righe alle rate, e quello che non
   // torna finisce nei due elenchi in fondo.

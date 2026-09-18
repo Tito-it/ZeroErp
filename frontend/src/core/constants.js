@@ -525,6 +525,10 @@ export const READONLY_DOMAINS = {
   CATALOGO: 'catalogo',
   CONFIG: 'config',
   DOCUMENTI: 'documenti',
+  // Area del dominio magazzino (Lotto 2, 2026-09-18): il documento interno
+  // (inventari, rettifiche) e la consultazione (disponibilita', movimenti).
+  // Permesso di AREA: il dominio non ha un livello oggetto a catalogo.
+  MAGAZZINO: 'magazzino',
   // Area dedicata del dominio Strumenti (code di lavoro; l'area `core` resta
   // all'infra tracciamento, non si apre agli operatori per le code).
   STRUMENTI: 'strumenti',
@@ -583,6 +587,9 @@ export const TAB_ENTITIES = {
   EMITTENTE_FISCALE: 'emittente-fiscale',
   FORNITORE: 'fornitore',
   INDIRIZZO: 'indirizzo',
+  // Le due famiglie del documento interno di magazzino (Lotto 2): producer =
+  // i verbi degli store `documentiInterni`, consumer = le due liste.
+  INVENTARIO: 'inventario',
   LISTINO: 'listino',
   OFFERTA_COMMERCIALE: 'offerta_commerciale',
   OPERATORE: 'operatore',
@@ -593,6 +600,7 @@ export const TAB_ENTITIES = {
   PROMO_ARTICOLI: 'promo_articoli',
   PROVINCIA: 'provincia',
   REGIONE: 'regione',
+  RETTIFICA: 'rettifica',
   SOGGETTO: 'soggetto',
   STATO: 'stato',
   TEMPLATE_ASSET_DOCUMENTI: 'template_asset_documenti',

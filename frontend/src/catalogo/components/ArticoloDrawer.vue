@@ -83,6 +83,9 @@ function defaultForm() {
     conto_contabile_vendita_id: null, conto_contabile_acquisto_id: null,
     is_composito: false, is_solo_componente: false,
     requires_serial: false,
+    // Lotto 2 di magazzino (brief §4.9, M-5): «per lotti», deciso dall'articolo
+    // come `requires_serial` — ⛔ ma FUORI dal lock BoM (nessun `isFieldLocked`).
+    requires_lotto: false,
     // Blocco B (brief-db-modifiche-certe-ciclo-vendita-e-articolo): DA DOVE
     // arriva l'articolo. `modo_approvvigionamento_id` NOT NULL a DB con
     // DEFAULT ACQUISTO (null = «lascia decidere il default», come la natura);
@@ -162,6 +165,7 @@ async function loadDetail() {
     is_composito: data.is_composito || false,
     is_solo_componente: data.is_solo_componente || false,
     requires_serial: data.requires_serial || false,
+    requires_lotto: data.requires_lotto || false,
     modo_approvvigionamento_id: data.modo_approvvigionamento_id,
     gestito_a_magazzino: data.gestito_a_magazzino || false,
     lead_time_giorni: data.lead_time_giorni ?? null,
@@ -219,6 +223,7 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
+      requires_lotto: f.requires_lotto,
       // NOT NULL a DB: in EDIT il valore arriva sempre dal detail, mai null.
       modo_approvvigionamento_id: f.modo_approvvigionamento_id,
       gestito_a_magazzino: f.gestito_a_magazzino,
@@ -248,6 +253,7 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
+      requires_lotto: f.requires_lotto,
       // NOT NULL a DB con DEFAULT ACQUISTO: si invia solo se scelto esplicitamente.
       ...(f.modo_approvvigionamento_id != null
         ? { modo_approvvigionamento_id: f.modo_approvvigionamento_id } : {}),
@@ -437,7 +443,7 @@ const drawerActions = computed(() => {
           </div>
         </div>
 
-        <div class="form-grid-3col">
+        <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_composito') }}</label>
             <ToggleSwitch v-model="form.is_composito"
@@ -448,10 +454,23 @@ const drawerActions = computed(() => {
             <ToggleSwitch v-model="form.is_solo_componente"
               :disabled="isFieldLocked('is_solo_componente')" />
           </div>
+        </div>
+
+        <!-- La GRANA del registro di magazzino, decisa dall'articolo (M-5): per
+             seriale e/o per lotti, «o sempre o mai». `requires_serial` entra
+             nel lock BoM; ⛔ `requires_lotto` NO (Lotto 1 §4.3: il lotto non
+             entra nella distinta) — niente `isFieldLocked`, chi copia il
+             gemello a occhi chiusi eredita un lucchetto che non esiste. -->
+        <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_requires_serial') }}</label>
             <ToggleSwitch v-model="form.requires_serial"
               :disabled="isFieldLocked('requires_serial')" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_requires_lotto') }}</label>
+            <ToggleSwitch v-model="form.requires_lotto" />
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_requires_lotto') }}</small>
           </div>
         </div>
 

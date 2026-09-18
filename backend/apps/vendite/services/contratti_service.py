@@ -36,7 +36,7 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
@@ -2204,7 +2204,6 @@ class ContrattiService:
         tipo_present = "tipo_variazione_globale" in payload
         valore_present = "valore_variazione_globale" in payload
         tipo = None
-        valore = None
         if tipo_present:
             raw = payload.get("tipo_variazione_globale")
             if raw is None:
@@ -2233,12 +2232,9 @@ class ContrattiService:
                 )
                 data["tipo_variazione_globale"] = tipo
         if valore_present:
-            raw = payload.get("valore_variazione_globale")
-            if raw is None:
-                data["valore_variazione_globale"] = None
-            else:
-                valore = self._coerce_decimal(raw, field="valore_variazione_globale")
-                data["valore_variazione_globale"] = valore
+            data["valore_variazione_globale"] = self._v.optional_decimal(
+                payload, "valore_variazione_globale", message=_MESSAGE,
+            )
 
     # Scopo: Gate L2 sulla variazione globale del contratto al PATCH testata
     #        (refactor 2026-05-15 §3-bis-E). Wrapper sottile sul BB condiviso
@@ -2412,16 +2408,12 @@ class ContrattiService:
                 )
                 # Placeholder: il trigger DB lo sovrascrive a SUM componenti.
                 payload = {**payload, "prezzo_unitario": Decimal("0")}
-        # Numeric opzionali.
+        # Numeric opzionali: `null` esplicito azzera, chiave assente non tocca.
         for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
             if field in payload:
-                raw = payload[field]
-                if raw is None:
-                    data[field] = None
-                else:
-                    data[field] = self._coerce_decimal(
-                        raw, field=field, message=_MESSAGE_RIGA,
-                    )
+                data[field] = self._v.optional_decimal(
+                    payload, field, message=_MESSAGE_RIGA,
+                )
         self._apply_optional_positive_int(
             payload, data, "uom_operativa_id", message=_MESSAGE_RIGA,
         )
@@ -2589,13 +2581,8 @@ class ContrattiService:
                 payload, data, fk_field, message=_MESSAGE_UTILITY,
             )
         if "param_1_num" in payload:
-            raw = payload["param_1_num"]
-            data["param_1_num"] = (
-                None
-                if raw is None
-                else self._coerce_decimal(
-                    raw, field="param_1_num", message=_MESSAGE_UTILITY,
-                )
+            data["param_1_num"] = self._v.optional_decimal(
+                payload, "param_1_num", message=_MESSAGE_UTILITY,
             )
         if "param_2_txt" in payload:
             raw = payload["param_2_txt"]
@@ -2620,32 +2607,6 @@ class ContrattiService:
     # =================================================================
     # Helpers privati — numeri e DB errors
     # =================================================================
-
-    # Scopo: Converte valore in Decimal rifiutando bool e stringhe non numeriche.
-    #        `message` e' il titolo mostrato al frontend e deve riflettere la
-    #        sub-entita' chiamante (contratto / riga / utility) per una UX
-    #        coerente col form di provenienza.
-    def _coerce_decimal(
-        self, raw: Any, *, field: str, message: str = _MESSAGE
-    ) -> Decimal:
-        ErrorManager.require(
-            not isinstance(raw, bool),
-            code=E_VENDITE_VALIDATION,
-            message=message,
-            detail=f"{field} deve essere numerico.",
-            context={"field": field, "value": raw},
-        )
-        try:
-            return Decimal(str(raw).strip())
-        except (InvalidOperation, AttributeError) as exc:
-            ErrorManager.raise_error(
-                code=E_VENDITE_VALIDATION,
-                message=message,
-                detail=f"{field} non e' un numero valido.",
-                context={"field": field, "value": raw},
-                cause=exc,
-            )
-            raise AssertionError("unreachable") from exc  # pragma: no cover
 
     # Scopo: Helper per campi int opzionali nullable. Estrae dal payload,
     #        accetta None esplicito, valida positivita' altrimenti. Applica
