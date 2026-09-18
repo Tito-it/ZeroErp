@@ -511,21 +511,165 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LOTTO_NON_RIUTILIZZABILE": "Lotto non riutilizzabile.",
     "E_LOTTO_NON_TROVATO": "Lotto non trovato.",
     "E_LOTTO_PARAMETRO_NON_COERENTE": "Parametri lotto non coerenti.",
-    # Magazzino, Lotto 1 (brief-db-magazzino-lotto-1-terreno-vuoto §4.7, §4.9):
-    # i due guard del terreno vuoto. A catalogo portano causale, segno, quantita'
-    # e i due magazzini: qui la frase senza. Il primo e' TECNICO (il verso lo
-    # compone l'operazione, non una persona), il secondo DATO_ERRATO (la
-    # destinazione la sceglie l'operatore nel form).
+    # Magazzino — 29 codici, in ordine alfabetico. Due sono del Lotto 1
+    # (brief-db-magazzino-lotto-1-terreno-vuoto §4.7, §4.9: i guard del terreno
+    # vuoto, `MOVIMENTO_VERSO_INCOERENTE` e `TRASFERIMENTO_EMITTENTI_DIVERSI`),
+    # ventisette del Lotto 2 (brief-db-magazzino-lotto-2-motore §4.10, id
+    # 1075-1101: la primitiva `fn_scrivi_movimento`, le due check condivise, i
+    # documenti interni). A catalogo portano codici di articolo, magazzino,
+    # lotto e seriale, quantita' e stati: qui la frase senza. La forma segue
+    # la classe — sui TECNICO chiude con «segnalare al supporto» (il lettore e'
+    # chi sviluppa), sui DATO_ERRATO nomina il campo da correggere, sui
+    # CONFLITTO_STATO dice di rileggere lo stato.
+    "E_MAG_ARTICOLO_NON_GESTITO": (
+        "L'articolo non e' gestito a magazzino, oppure non e' attivo: nessun "
+        "movimento si puo' registrare. Attivare «gestito a magazzino» nella "
+        "sua scheda, oppure togliere la riga dal documento."
+    ),
+    "E_MAG_ASSET_DI_ALTRO_ARTICOLO": (
+        "Il seriale indicato non e' dell'articolo della riga, oppure non e' "
+        "piu' attivo: scegliere un seriale attivo dell'articolo, o correggere "
+        "l'articolo."
+    ),
+    "E_MAG_ASSET_DI_ALTRO_EMITTENTE": (
+        "Il seriale indicato non appartiene all'emittente del magazzino: "
+        "scegliere un seriale dell'emittente del magazzino, oppure un "
+        "magazzino dello stesso emittente del seriale."
+    ),
+    "E_MAG_ASSET_POSIZIONE_INCOERENTE": (
+        "Il seriale non puo' fare questo movimento: a registro risulta gia' "
+        "dentro un magazzino (non puo' entrare di nuovo) oppure non risulta "
+        "in questo (non puo' uscirne). Verificare dove si trova nel registro "
+        "dei movimenti e registrare prima il movimento mancante."
+    ),
+    "E_MAG_CHIAMATA_NON_VALIDA": (
+        "Chiamata non valida a una funzione di magazzino: un valore che "
+        "nessuna interfaccia produce. Non c'e' niente da correggere a video: "
+        "segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_COSTO_NON_AMMESSO": (
+        "Costo unitario non ammesso su questo movimento: lo decide il "
+        "registro (uno storno va al costo dell'originale, l'entrata di un "
+        "trasferimento al costo dell'uscita gemella, ogni uscita alla media "
+        "corrente). Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_NON_ELIMINABILE": (
+        "Il documento non si puo' eliminare: solo una bozza si elimina. Per "
+        "chiudere un documento confermato, annullarlo; un documento "
+        "registrato si corregge con una rettifica. Rileggere lo stato."
+    ),
+    "E_MAG_DOCUMENTO_NON_TROVATO": (
+        "Documento di magazzino non trovato: non esiste, oppure non e' "
+        "accessibile con i permessi di chi sta operando. Verificare "
+        "l'identificativo e l'emittente selezionato."
+    ),
+    "E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE": (
+        "Il documento non si porta a registrato con un aggiornamento diretto "
+        "dello stato: ci passa solo l'operazione di registrazione, che scrive "
+        "i movimenti. Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_RIGHE_CONGELATE": (
+        "Le righe del documento non si modificano piu': si scrivono solo in "
+        "bozza. Per correggere un documento confermato riportarlo in bozza o "
+        "annullarlo e rifarlo; uno registrato si corregge con una rettifica. "
+        "Rileggere lo stato."
+    ),
+    "E_MAG_DOCUMENTO_SENZA_RIGHE": (
+        "Il documento non ha righe: niente da registrare. Aggiungere le "
+        "righe (riportandolo in bozza, se serve) e ripetere, oppure "
+        "annullarlo."
+    ),
+    "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA": (
+        "Il passaggio di stato richiesto non e' ammesso dallo stato in cui il "
+        "documento si trova: la registrazione parte da un documento "
+        "confermato, una bozza va prima confermata, un documento registrato o "
+        "annullato non cambia piu'. Rileggere lo stato."
+    ),
+    "E_MAG_GEMELLA_NON_TROVATA": (
+        "L'entrata di un trasferimento non trova l'uscita gemella da cui "
+        "ereditare il costo: ordine delle due scritture invertito, oppure "
+        "identificativo sbagliato. Segnalare al supporto citando il "
+        "request_id."
+    ),
+    "E_MAG_GIACENZA_INSUFFICIENTE": (
+        "Giacenza insufficiente: la quantita' in uscita e' maggiore di quella "
+        "che il registro da' come presente per l'articolo (o per il lotto o "
+        "il seriale indicati). Ridurre la quantita', scegliere un altro lotto "
+        "o magazzino, oppure registrare prima il carico mancante."
+    ),
+    "E_MAG_LOTTO_DI_ALTRO_ARTICOLO": (
+        "Il lotto indicato non e' dell'articolo della riga, oppure non e' "
+        "piu' attivo: scegliere un lotto attivo dell'articolo, o correggere "
+        "l'articolo."
+    ),
+    "E_MAG_LOTTO_NON_AMMESSO": (
+        "L'articolo non si movimenta per lotti: il lotto sulla riga non va "
+        "indicato. Toglierlo, oppure attivare «per lotti» nella scheda "
+        "dell'articolo prima di registrare."
+    ),
+    "E_MAG_LOTTO_OBBLIGATORIO": (
+        "L'articolo si movimenta per lotti: indicare il lotto sulla riga "
+        "(crearlo prima, se e' nuovo)."
+    ),
+    "E_MAG_MAGAZZINO_CON_GIACENZA": (
+        "Il magazzino ha gia' movimenti a registro: l'uso delle ubicazioni "
+        "si decide prima del primo carico e non si cambia piu'. Se serve un "
+        "magazzino organizzato diversamente, crearne uno nuovo e trasferirci "
+        "la merce."
+    ),
+    "E_MAG_MAGAZZINO_NON_VALIDO": (
+        "Magazzino inesistente o non attivo: le operazioni lo leggono dalla "
+        "testata del documento, quindi un valore che non risolve e' un "
+        "difetto del programma. Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_MERCE_BLOCCATA": (
+        "La merce c'e', ma una parte e' gia' promessa ad altri: la quantita' "
+        "libera non copre l'uscita richiesta. Ridurre la quantita' alla parte "
+        "disponibile, oppure attendere che il blocco venga chiuso."
+    ),
+    "E_MAG_MOVIMENTO_GIA_REGISTRATO": (
+        "Questa operazione ha gia' registrato il movimento: rilancio o doppio "
+        "click. Non c'e' niente da ripetere, aggiornare la vista per vederlo."
+    ),
     "E_MAG_MOVIMENTO_VERSO_INCOERENTE": (
         "Movimento di magazzino con verso incoerente: la quantita' non ha il "
         "segno della causale (entrata positiva, uscita negativa) oppure vale "
         "zero. Non e' un dato da correggere nel form: segnalare al supporto."
+    ),
+    "E_MAG_SERIALE_NON_AMMESSO": (
+        "L'articolo non si movimenta per seriale: il seriale sulla riga non "
+        "va indicato. Toglierlo, oppure attivare «per seriale» nella scheda "
+        "dell'articolo prima di registrare."
+    ),
+    "E_MAG_SERIALE_OBBLIGATORIO": (
+        "L'articolo si movimenta per seriale: indicare il seriale sulla riga "
+        "(registrare prima l'asset, se e' nuovo), con quantita' 1."
+    ),
+    "E_MAG_STORNO_INCOERENTE": (
+        "Storno incoerente col movimento originale: articolo o magazzino "
+        "diversi, quantita' non opposta, causale non di storno, sorgente "
+        "diversa, oppure originale inesistente. Segnalare al supporto "
+        "citando il request_id."
     ),
     "E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI": (
         "Il magazzino di destinazione non appartiene allo stesso emittente "
         "fiscale del magazzino di origine, oppure non e' visibile nel tuo "
         "perimetro: un trasferimento sposta merce solo fra magazzini dello "
         "stesso emittente."
+    ),
+    "E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO": (
+        "L'ubicazione indicata non e' del magazzino del documento, oppure "
+        "non e' piu' attiva: scegliere un'ubicazione attiva di quel "
+        "magazzino."
+    ),
+    "E_MAG_UBICAZIONE_NON_AMMESSA": (
+        "Il magazzino non usa le ubicazioni: l'ubicazione sulla riga non va "
+        "indicata. Toglierla; l'uso delle ubicazioni si decide nella scheda "
+        "del magazzino prima del primo movimento."
+    ),
+    "E_MAG_UBICAZIONE_OBBLIGATORIA": (
+        "Il magazzino usa le ubicazioni: indicare sulla riga in quale "
+        "ubicazione (un'ubicazione attiva di quel magazzino)."
     ),
     # ⭐ `E_MESSAGGIO_NON_DEFINITO` — RINOMINATO dal team DB il 2026-08-07 (era
     # `MESSAGGIO_NON_DEFINITO`, senza prefisso). E' l'ULTIMA riga del registro dei
