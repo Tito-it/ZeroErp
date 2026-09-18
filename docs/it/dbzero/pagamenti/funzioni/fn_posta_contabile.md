@@ -16,6 +16,7 @@ DECLARE
     v_stato_id           pagamenti.vendite_contabili_stati.id%TYPE;
     v_stato              pagamenti.vendite_contabili_stati.codice_interno%TYPE;
     v_stato_label        pagamenti.vendite_contabili_stati.descrizione%TYPE;
+    v_registrabile       pagamenti.vendite_contabili_stati.is_registrabile%TYPE;
     v_codice             pagamenti.vendite_contabili.codice%TYPE;
     v_centro_id          pagamenti.centri_riscossione.id%TYPE;
     v_data_contabile     pagamenti.vendite_contabili.data_contabile%TYPE;
@@ -83,10 +84,10 @@ BEGIN
     --    UPDATE OF c: si blocca la sola testata, non la lookup
     --    degli stati che le sta accanto nella JOIN.
     -- =========================================================
-    SELECT c.stato_id, s.codice_interno, s.descrizione, c.codice,
+    SELECT c.stato_id, s.codice_interno, s.descrizione, s.is_registrabile, c.codice,
            c.centro_riscossione_id, c.data_contabile, c.data_registrazione,
            c.importo_dichiarato
-      INTO v_stato_id, v_stato, v_stato_label, v_codice,
+      INTO v_stato_id, v_stato, v_stato_label, v_registrabile, v_codice,
            v_centro_id, v_data_contabile, v_data_registrazione,
            v_importo_dichiarato
       FROM pagamenti.vendite_contabili c
@@ -105,12 +106,18 @@ BEGIN
 
     -- =========================================================
     -- 3) GUARD DI STATO
-    --    Si registra SOLO da VALIDATA: è il gesto «ho finito di
-    --    inserire» (D14-a-bis). Da BOZZA la distinta potrebbe
-    --    cambiare mentre la si registra; da CHIUSA o ANNULLATA
-    --    il lavoro è finito.
+    --    Si registra SOLO da uno stato REGISTRABILE — oggi la sola
+    --    VALIDATA: è il gesto «ho finito di inserire» (D14-a-bis).
+    --    Da BOZZA la distinta potrebbe cambiare mentre la si
+    --    registra; da CHIUSA o ANNULLATA il lavoro è finito.
+    -- ⭐ Rev 2026-09-18 (D20-d): la domanda si fa al CATALOGO
+    --    (vendite_contabili_stati.is_registrabile), non al letterale
+    --    'VALIDATA'. Stesso codice, stessa frase: cambia CHI lo dice.
+    --    Il dettaglio della distinta porta la stessa bandiera, così
+    --    «Registra» si spegne col motivo invece di finire qui in 409.
+    --    Fail-closed: uno stato nuovo non classificato non si registra.
     -- =========================================================
-    IF v_stato IS DISTINCT FROM 'VALIDATA' THEN
+    IF v_registrabile IS NOT TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'pagamenti.fn_posta_contabile',
             'E_CONTABILE_NON_REGISTRABILE',
@@ -376,7 +383,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pagamenti.fn_posta_contabile(p_contabile_id bigint, p_righe_attese integer, p_totale_atteso numeric)
-IS 'LA MADRE DEL POSTING (S1-10 del cantiere incassi, 2026-08-22): trasforma in movimenti contabili le righe PRONTE di una distinta e la chiude. ⭐ E'' il punto in cui nasce il primo movimento del progetto: da qui pagamenti.fn_get_saldo_fattura smette di rispondere «residuo = totale» per costruzione. Una sola SELECT per il chiamante — atomica per costruzione, linee-guida-sql §5b — ma DUE STATEMENT dentro: prima l''INSERT dei movimenti, poi l''UPDATE delle righe a POSTATA. 🔴 Non e'' eleganza mancata: con la RLS attiva padre e figlio nella stessa snapshot non si vedono e il WITH CHECK nega fail-closed. ⚠️ E i due statement sono legati da un ARRAY DI ID, non dal ripetere il predicato: fra l''uno e l''altro un''altra sessione puo'' aggiungere una riga alla distinta, e ripetere il predicato la porterebbe a POSTATA senza il suo movimento. ⭐ FIRMA: p_righe_attese e p_totale_atteso sono la DICHIARAZIONE di chi conferma (D13) — facoltativi ma legati, o tutti e due o nessuno. Valorizzati, la funzione rifiuta se la distinta e'' cambiata, PRIMA di scrivere: la registrazione non si torna indietro. Assenti, si registra cio'' che c''e'' — la strada dei processi automatici, che non hanno un operatore che guarda. ⚠️ DUE controlli che sembrano uno: la QUADRATURA (959) confronta tutte le righe con importo_dichiarato («ho letto tutto quello che e'' arrivato?»), la DICHIARAZIONE (963) confronta le righe pronte adesso con quelle che l''operatore ha contato («sto registrando quello che mi hanno approvato?»). ⭐ NIENTE DA REGISTRARE NON E'' UN ERRORE (Q-7, opzione B): la funzione non solleva, dichiara l''esito — POSTATA oppure NULLA_DA_POSTARE. Il database scrive nel registro errori PRIMA di sollevare, quindi un pulsante premuto due volte avrebbe lasciato un errore che errore non e''; il messaggio «l''hai gia'' fatto» lo mette il frontend leggendo l''esito. ⭐ LA CHIUSURA E'' UNA CONSEGUENZA, non una scelta (decisione di Tid, 2026-08-22): registrato, la distinta va a CHIUSA. ⚠️ Ha un prezzo pagato nello stesso lotto — una riga rimasta DA_ABBINARE sotto una distinta chiusa non deve poter diventare pronta, e lo impedisce la quarta mossa di trgfn_vendite_contabili_righe_guard_distinta_finale (20260822-01). ⭐ data_conferma / user_conferma esistevano e non le scriveva nessuno (D9-c): le scrive qui, col COALESCE che tiene la prima volta — la conferma e'' l''atto di registrare. ⛔ Cio'' che NON fa: non crea, non modifica e non annulla fondi fattura (i fatti si aggiungono, i saldi si leggono, le decisioni le prende una persona) — ma il fondo se ne accorge lo stesso, perche'' portare la riga a POSTATA fa scattare il trigger che porta l''atto a ESEGUITO; non tocca le rate, che nel modello dell''abbinamento non esistono ancora (slice 2); non scrive in error_log di suo.';
+IS 'LA MADRE DEL POSTING (S1-10 del cantiere incassi, 2026-08-22): trasforma in movimenti contabili le righe PRONTE di una distinta e la chiude. ⭐ E'' il punto in cui nasce il primo movimento del progetto: da qui pagamenti.fn_get_saldo_fattura smette di rispondere «residuo = totale» per costruzione. Una sola SELECT per il chiamante — atomica per costruzione, linee-guida-sql §5b — ma DUE STATEMENT dentro: prima l''INSERT dei movimenti, poi l''UPDATE delle righe a POSTATA. 🔴 Non e'' eleganza mancata: con la RLS attiva padre e figlio nella stessa snapshot non si vedono e il WITH CHECK nega fail-closed. ⚠️ E i due statement sono legati da un ARRAY DI ID, non dal ripetere il predicato: fra l''uno e l''altro un''altra sessione puo'' aggiungere una riga alla distinta, e ripetere il predicato la porterebbe a POSTATA senza il suo movimento. ⭐ FIRMA: p_righe_attese e p_totale_atteso sono la DICHIARAZIONE di chi conferma (D13) — facoltativi ma legati, o tutti e due o nessuno. Valorizzati, la funzione rifiuta se la distinta e'' cambiata, PRIMA di scrivere: la registrazione non si torna indietro. Assenti, si registra cio'' che c''e'' — la strada dei processi automatici, che non hanno un operatore che guarda. ⚠️ DUE controlli che sembrano uno: la QUADRATURA (959) confronta tutte le righe con importo_dichiarato («ho letto tutto quello che e'' arrivato?»), la DICHIARAZIONE (963) confronta le righe pronte adesso con quelle che l''operatore ha contato («sto registrando quello che mi hanno approvato?»). ⭐ NIENTE DA REGISTRARE NON E'' UN ERRORE (Q-7, opzione B): la funzione non solleva, dichiara l''esito — POSTATA oppure NULLA_DA_POSTARE. Il database scrive nel registro errori PRIMA di sollevare, quindi un pulsante premuto due volte avrebbe lasciato un errore che errore non e''; il messaggio «l''hai gia'' fatto» lo mette il frontend leggendo l''esito. ⭐ LA CHIUSURA E'' UNA CONSEGUENZA, non una scelta (decisione di Tid, 2026-08-22): registrato, la distinta va a CHIUSA. ⚠️ Ha un prezzo pagato nello stesso lotto — una riga rimasta DA_ABBINARE sotto una distinta chiusa non deve poter diventare pronta, e lo impedisce la quarta mossa di trgfn_vendite_contabili_righe_guard_distinta_finale (20260822-01). ⭐ data_conferma / user_conferma esistevano e non le scriveva nessuno (D9-c): le scrive qui, col COALESCE che tiene la prima volta — la conferma e'' l''atto di registrare. ⛔ Cio'' che NON fa: non crea, non modifica e non annulla fondi fattura (i fatti si aggiungono, i saldi si leggono, le decisioni le prende una persona) — ma il fondo se ne accorge lo stesso, perche'' portare la riga a POSTATA fa scattare il trigger che porta l''atto a ESEGUITO; non tocca le rate, che nel modello dell''abbinamento non esistono ancora (slice 2); non scrive in error_log di suo. ⭐ rev 2026-09-18 (20260918-38, D20-d): il guard 3 legge vendite_contabili_stati.is_registrabile al posto del letterale ''VALIDATA'' — stesso codice E_CONTABILE_NON_REGISTRABILE, stessa frase, cambia chi lo dice: il catalogo, che il dettaglio della distinta espone (stato_is_registrabile) per spegnere «Registra» col motivo invece di rispondere 409. Fail-closed su uno stato nuovo. Brief: brief-db-validata-e-registrazione-tardiva §2.4, §4 P-2.';
 ```
 
 ---

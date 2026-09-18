@@ -73,6 +73,19 @@
 #   ⭐ `POSTATA` non ha uscite: e' l'unico stato dopo il quale **esiste un fatto**
 #   (il movimento contabile). Ed e' cio' che chiude il difetto C-2.
 #   ⛔ `STORNATA` non compare: e' ritirata (S1-2).
+#
+# ── ⭐ REV 2026-09-18 — `ABBINATA -> DA_ABBINARE` SI SPEGNE (D20-e, strada b) ──
+#   brief-db-validata-e-registrazione-tardiva §2.5, §4 P-6. Decisione di Tid del
+#   18-09 sera: su una riga abbinata si RI-ABBINA («Abbina» apre il dialogo gia'
+#   sulla destinazione che ha), non si «sgancia». `ABBINATA -> SOSPESA` RESTA:
+#   una abbinata su cui viene un dubbio si parcheggia con un motivo, e da li'
+#   torna ABBINATA (diretta) o va SCARTATA.
+#   ⚠️ La coppia resta SEMINATA con `attivo = false`, non tolta dal `VALUES`:
+#   l'upsert non cancella, e togliere la riga la lascerebbe accesa com'era sul
+#   database. Spenta, il guard la rifiuta (E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA)
+#   e il backend non la propone. Il guard del seed conta le righe SEMINATE, non
+#   le attive: da questa rev sono dieci di cui una spenta.
+#   La matrice della DISTINTA non cambia.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -97,6 +110,8 @@ databaseChangeLog:
         pieno di righe irraggiungibili insegna cose false. meta = {"manuale": false}:
         non «automatica», ma «non ancora esposta come pulsante» — il frontend di
         pagamenti non esiste e una label_key dichiarata qui farebbe fallire la CI.
+        Rev 2026-09-18 (D20-e): ABBINATA -> DA_ABBINARE seminata SPENTA (attivo = false) —
+        su una abbinata si ri-abbina, non si sgancia; ABBINATA -> SOSPESA resta.
       preConditions:
         - onFail: HALT
         - and:
@@ -132,22 +147,27 @@ databaseChangeLog:
 
               -- ============================================================
               -- 2) La matrice della RIGA
+              --    ⭐ Rev 2026-09-18 (D20-e): ogni coppia porta il proprio
+              --    `attivo`. ABBINATA -> DA_ABBINARE e' seminata SPENTA: su una
+              --    abbinata si ri-abbina, non si sgancia. Resta nel VALUES
+              --    perche' l'upsert non cancella: togliere la riga la
+              --    lascerebbe accesa com'era sul database.
               -- ============================================================
-              WITH coppie(da, a) AS (
-                  VALUES ('DA_ABBINARE','ABBINATA'),
-                         ('DA_ABBINARE','SOSPESA'),
-                         ('DA_ABBINARE','SCARTATA'),
-                         ('ABBINATA','POSTATA'),
-                         ('ABBINATA','DA_ABBINARE'),
-                         ('ABBINATA','SOSPESA'),
-                         ('SOSPESA','ABBINATA'),
-                         ('SOSPESA','DA_ABBINARE'),
-                         ('SOSPESA','SCARTATA'),
-                         ('SCARTATA','SOSPESA')
+              WITH coppie(da, a, attiva) AS (
+                  VALUES ('DA_ABBINARE','ABBINATA',    true),
+                         ('DA_ABBINARE','SOSPESA',     true),
+                         ('DA_ABBINARE','SCARTATA',    true),
+                         ('ABBINATA','POSTATA',        true),
+                         ('ABBINATA','DA_ABBINARE',    false),   -- D20-e: spenta il 2026-09-18
+                         ('ABBINATA','SOSPESA',        true),
+                         ('SOSPESA','ABBINATA',        true),
+                         ('SOSPESA','DA_ABBINARE',     true),
+                         ('SOSPESA','SCARTATA',        true),
+                         ('SCARTATA','SOSPESA',        true)
               )
               INSERT INTO pagamenti.transizioni_stati_contabile_riga
                      (stato_da_id, stato_a_id, attivo, meta)
-              SELECT sd.id, sa.id, true, '{"manuale": false}'::jsonb
+              SELECT sd.id, sa.id, c.attiva, '{"manuale": false}'::jsonb
                 FROM coppie c
                 JOIN pagamenti.vendite_contabili_righe_stati sd ON sd.codice_interno = c.da
                 JOIN pagamenti.vendite_contabili_righe_stati sa ON sa.codice_interno = c.a
@@ -158,19 +178,26 @@ databaseChangeLog:
               -- codice_interno rinominato, un catalogo non seminato — le righe
               -- entrano in MENO del previsto e il grafo nasce monco IN SILENZIO.
               -- Meglio fermare il migrate che avere una matrice a meta'.
+              -- ⚠️ Rev 2026-09-18: si contano le righe SEMINATE (attive o spente),
+              -- non le attive — da D20-e una delle dieci della riga e' spenta di
+              -- proposito, e un conteggio sulle attive la scambierebbe per un
+              -- JOIN che non ha risolto.
               DO $seed$
               DECLARE
                 v_testata integer;
                 v_riga    integer;
+                v_spente  integer;
               BEGIN
-                SELECT count(*) INTO v_testata FROM pagamenti.transizioni_stati_contabile WHERE attivo;
-                SELECT count(*) INTO v_riga    FROM pagamenti.transizioni_stati_contabile_riga WHERE attivo;
+                SELECT count(*) INTO v_testata FROM pagamenti.transizioni_stati_contabile;
+                SELECT count(*), count(*) FILTER (WHERE NOT attivo)
+                  INTO v_riga, v_spente
+                  FROM pagamenti.transizioni_stati_contabile_riga;
                 IF v_testata < 5 OR v_riga < 10 THEN
                   RAISE EXCEPTION
                     'Seed transizioni contabili incompleto: testata % (attese >= 5), riga % (attese >= 10). Un codice_interno non ha risolto.',
                     v_testata, v_riga;
                 END IF;
-                RAISE NOTICE 'Transizioni contabili: % sulla distinta, % sulla riga.', v_testata, v_riga;
+                RAISE NOTICE 'Transizioni contabili: % sulla distinta, % sulla riga (di cui % spente).', v_testata, v_riga, v_spente;
               END $seed$;
 
       rollback:

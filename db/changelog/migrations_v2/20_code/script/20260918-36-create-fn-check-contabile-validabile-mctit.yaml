@@ -1,0 +1,259 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — CHE COSA DEVE ESSERE VERO PER VALIDARE: una sede sola
+#   script.fn_check_contabile_validabile(p_contabile_id, p_importo_dichiarato)
+#   RETURNS jsonb — STABLE, INVOKER, forma di fn_check_riga_contabile_eliminabile
+#   Brief: brief-db-validata-e-registrazione-tardiva §2.1 (D20-a), §4 P-3
+#
+# ── COSA RISPONDE ──────────────────────────────────────────────────
+#   [] se la distinta si puo' portare a VALIDATA, altrimenti l'array ORDINATO
+#   dei motivi {codice, reason, reason_key, dettaglio, valori}:
+#     1) RIGHE_NON_LAVORATE  — righe attive in uno stato con `lavorata = false`
+#                              (IMPORTATA, DA_ABBINARE): VALIDATA e' «ho finito
+#                              di inserire», e una riga che nessuno ha guardato
+#                              e' lavoro non finito. Codice NUOVO
+#                              E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE.
+#     2) TOTALE_NON_QUADRA   — solo se la distinta DICHIARA un totale, e la somma
+#                              delle righe attive (SCARTATA compresa: quel denaro
+#                              e' arrivato) non corrisponde. RIUSO di
+#                              E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA con gli
+#                              STESSI valori di prima (codice, dichiarato, somma).
+#   L'ordine e' il contratto: prima il lavoro non finito, poi i conti. Chi
+#   solleva prende il primo.
+#
+# ── CHI LA LEGGE ───────────────────────────────────────────────────
+#   · pagamenti.trgfn_vendite_contabili_guard_validazione (20260918-37): entrando
+#     in VALIDATA la chiama e solleva il primo motivo con
+#     script.fn_raise_primo_motivo_se_presente — il guard SMETTE di calcolare la
+#     quadratura in proprio;
+#   · il backend, nel dettaglio della distinta: `can_validare` +
+#     `validazione_blocco_reason / _reason_key / _dettaglio` (BE-1), cosi'
+#     «Porta a VALIDATA» si spegne col motivo invece di finire in 409.
+#   Tooltip e rifiuto non «coincidono oggi»: non possono divergere (§12.5.2).
+#
+# ── ⭐ PERCHE' IL DICHIARATO E' UN PARAMETRO, E NON SI RILEGGE PER ID ──
+#   Il guard gira BEFORE ROW: quando chiama la check, il valore che sta ENTRANDO
+#   nella riga non e' ancora nella tabella. Con `UPDATE … SET importo_dichiarato
+#   = 200, stato_id = VALIDATA` in un'istruzione sola — ed e' cosi' che il
+#   collaudo e i pgTAP la scrivono — una check che rileggesse il dichiarato per
+#   id verificherebbe il totale di IERI: passerebbe un dichiarato sbagliato
+#   scritto nello stesso gesto, senza nessun errore. ⇒ Chi chiama passa il
+#   dichiarato che VEDE: il guard `NEW.importo_dichiarato`, il backend
+#   `c.importo_dichiarato`. Nessun DEFAULT, di proposito: NULL e' un valore
+#   legittimo («questa distinta non dichiara niente», D12 sulla MANUALE) e
+#   dimenticare il parametro deve non compilare, non voler dire «nessun totale».
+#   E' la forma di fn_check_scadenza_di_fattura e di fn_check_riga_magazzino:
+#   una check si scrive sui VALORI che le interessano, e legge dalla tabella il
+#   resto.
+#
+# ── ⚠️ SECURITY INVOKER, sotto la row security ─────────────────────
+#   Legge la testata e le sue righe con la RLS del perimetro incassi. Una
+#   distinta che non si legge — inesistente o di un altro — solleva
+#   E_CONTABILE_NON_TROVATA (404, no-leak): rispondere [] sarebbe «si puo'
+#   validare» detto di una cosa che non si vede, un fail-open silenzioso.
+#
+# ── CODICI ─────────────────────────────────────────────────────────
+#   E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE  CONFLITTO_STATO  nuovo (P-7)
+#   E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA    DATO_ERRATO      riuso, stessi valori
+#   E_CONTABILE_NON_TROVATA                     NON_TROVATO      riuso
+#   E_PAGAMENTI_CHIAMATA_NON_VALIDA             TECNICO          guard di parametro
+#   ⛔ Le reason_key pagamenti.distinte.validazione_reason.* sono un DEBITO
+#      verso il frontend (FE-6): senza la voce nei locales il pulsante spento
+#      mostra il codice macchina.
+#
+# Dipendenze: 20260918-34 (lavorata). Verifica: test-contabile-validabile-v1.sql.
+# Presidi trasversali attraversati: riferimenti-morti t.2 (plpgsql_check a
+# zero errori, provato in transazione ritirata) — il rubinetto t.5 non la conta:
+# non chiama l'helper, lo chiama il guard.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260918-36-create-fn-check-contabile-validabile-mctit.yaml
+
+  - changeSet:
+      id: 20260918-36-create-fn-check-contabile-validabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_contabile_validabile(p_contabile_id, p_importo_dichiarato): la
+        fn_check_* pura (STABLE, INVOKER) di «Porta a VALIDATA». [] se si puo',
+        altrimenti array ORDINATO: (1) righe attive non lavorate (lavorata = false, D20-a,
+        codice nuovo E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE), (2) quadratura col
+        dichiarato quando c'e' (riuso E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA, stessi
+        valori). Il dichiarato e' un parametro perche' il guard gira BEFORE ROW e il
+        valore che entra non e' ancora nella tabella. Letta dal guard di validazione e
+        dal dettaglio (can_validare). Brief: brief-db-validata-e-registrazione-tardiva
+        §2.1, §4 P-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+                columnName: lavorata
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script' AND p.proname = 'fn_log_and_raise_error'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_contabile_validabile(
+                  p_contabile_id       bigint,
+                  p_importo_dichiarato numeric
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono di portare una distinta
+              --        contabile a VALIDATA — «ho finito di inserire» (D14-a-bis).
+              --        Funzione PURA (fn_check_*): nessuna scrittura, nessun raise di
+              --        dominio (salvo i due guard di chiamata).
+              -- Consumatori: pagamenti.trgfn_vendite_contabili_guard_validazione
+              --        (solleva il codice del PRIMO motivo entrando in VALIDATA) e il
+              --        backend, nel dettaglio della distinta (can_validare /
+              --        validazione_blocco_reason / _reason_key / _dettaglio).
+              -- Ritorna: [] se si puo' validare, altrimenti array ORDINATO di
+              --        {codice, reason, reason_key, dettaglio, valori}.
+              -- ⭐ p_importo_dichiarato e' un PARAMETRO e non si rilegge per id: il
+              --    guard gira BEFORE ROW e il valore che sta entrando non e' ancora
+              --    nella tabella. Chi chiama passa quello che vede (il guard
+              --    NEW.importo_dichiarato, il backend c.importo_dichiarato). NULL =
+              --    «non dichiara niente»: e' un valore legittimo, quindi nessun
+              --    DEFAULT — dimenticarlo deve non compilare.
+              -- Brief: brief-db-validata-e-registrazione-tardiva §2.1 (D20-a), §4 P-3.
+              DECLARE
+                  v_motivi       jsonb := '[]'::jsonb;
+                  v_codice       pagamenti.vendite_contabili.codice%TYPE;
+                  v_non_lavorate integer;
+                  -- Gli id delle righe non lavorate: elemento di un jsonb costruito
+                  -- qui, non una colonna — resta nudo.
+                  v_righe_ids    jsonb;
+                  v_somma        pagamenti.vendite_contabili_righe.importo%TYPE;
+              BEGIN
+                  -- ⛔ Guard di PARAMETRO, e solleva: un id assente o <= 0 non lo
+                  --    produce nessuna interfaccia — e' il chiamante a essere rotto.
+                  --    TECNICO, e non E_PARAMETRO_INVALIDO, che e' un debito e non
+                  --    una sede (AGENTS.md).
+                  IF p_contabile_id IS NULL OR p_contabile_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_contabile_validabile',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_contabile_id',
+                                             'valore',    p_contabile_id),
+                          NULL::uuid,
+                          'script.fn_check_contabile_validabile',
+                          'identificativo della distinta contabile non valido');
+                  END IF;
+
+                  -- La testata, per il codice che entra nelle frasi. ⚠️ Sotto la row
+                  -- security: «non trovata» vuol dire «non esiste» oppure «non e'
+                  -- tua», e le due risposte devono restare indistinguibili.
+                  SELECT c.codice
+                    INTO v_codice
+                    FROM pagamenti.vendite_contabili c
+                   WHERE c.id = p_contabile_id;
+
+                  -- ⛔ Non si risponde [] su una distinta che non si legge: sarebbe
+                  --    «si puo' validare» detto di una cosa che non si vede, cioe'
+                  --    un fail-open silenzioso. Stesso codice e stessa frase della
+                  --    madre del posting.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_contabile_validabile',
+                          'E_CONTABILE_NON_TROVATA',
+                          jsonb_build_object('contabile_id', p_contabile_id),
+                          NULL::uuid,
+                          p_contabile_id::text);
+                  END IF;
+
+                  -- MOTIVO 1 — righe attive che nessuno ha ancora guardato.
+                  -- ⭐ Quali stati siano «non lavorati» lo dice il CATALOGO
+                  --    (vendite_contabili_righe_stati.lavorata, D20-a), non un elenco
+                  --    scritto qui: IMPORTATA e DA_ABBINARE sono false. La sospesa
+                  --    E' stata guardata — ha un motivo, e con D20-b ha un futuro.
+                  -- ⚠️ `IS NOT TRUE` e non `= false`: uno stato nuovo con la
+                  --    bandiera a NULL non esiste (NOT NULL), ma se esistesse
+                  --    cadrebbe nel rifiuto, non nel silenzio.
+                  -- ℹ️ Il dettaglio porta gli id e non la chiave `campo`: non c'e'
+                  --    UN campo da accendere, ci sono N righe.
+                  SELECT COUNT(*)::integer,
+                         jsonb_agg(cr.id ORDER BY cr.id)
+                    INTO v_non_lavorate, v_righe_ids
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE
+                     AND st.lavorata IS NOT TRUE;
+
+                  IF v_non_lavorate > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE',
+                          'reason',     'RIGHE_NON_LAVORATE',
+                          'reason_key', 'pagamenti.distinte.validazione_reason.righe_non_lavorate',
+                          'dettaglio',  jsonb_build_object(
+                                            'contabile_id',        p_contabile_id,
+                                            'quante',              v_non_lavorate,
+                                            'contabile_righe_ids', v_righe_ids),
+                          'valori',     jsonb_build_array(v_codice, v_non_lavorate::text));
+                  END IF;
+
+                  -- MOTIVO 2 — la quadratura col dichiarato, quando c'e' (D12-e).
+                  -- ⚠️ TUTTE le righe attive, SCARTATA compresa: quel denaro e'
+                  --    arrivato. Se le scartate uscissero dalla somma, il primo
+                  --    scarto romperebbe una distinta sana.
+                  -- ⭐ Riuso di E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA con gli
+                  --    STESSI tre valori del guard che lo sollevava prima: e' la
+                  --    stessa condizione, spostata nella sede unica. Il dettaglio
+                  --    porta `campo`: qui UN campo da accendere c'e'.
+                  IF p_importo_dichiarato IS NOT NULL THEN
+                      SELECT COALESCE(SUM(cr.importo), 0)
+                        INTO v_somma
+                        FROM pagamenti.vendite_contabili_righe cr
+                       WHERE cr.contabile_id = p_contabile_id
+                         AND cr.attivo IS TRUE;
+
+                      IF v_somma IS DISTINCT FROM p_importo_dichiarato THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA',
+                              'reason',     'TOTALE_NON_QUADRA',
+                              'reason_key', 'pagamenti.distinte.validazione_reason.totale_non_quadra',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',              'importo_dichiarato',
+                                                'contabile_id',       p_contabile_id,
+                                                'importo_dichiarato', p_importo_dichiarato,
+                                                'somma_righe',        v_somma),
+                              'valori',     jsonb_build_array(
+                                                v_codice,
+                                                p_importo_dichiarato::text,
+                                                v_somma::text));
+                      END IF;
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_contabile_validabile(bigint, numeric)
+              IS 'Pure check (§12.5.1): i motivi che impediscono di portare una distinta contabile a VALIDATA — «ho finito di inserire» (D14-a-bis). Ritorna [] se si puo'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva (salvo i due guard di chiamata). ⭐ SEDE UNICA del predicato: pagamenti.trgfn_vendite_contabili_guard_validazione la CHIAMA entrando in VALIDATA e solleva il codice del primo motivo con fn_raise_primo_motivo_se_presente; il backend la legge nel dettaglio della distinta (can_validare, validazione_blocco_*) per spegnere «Porta a VALIDATA» col perche'' — cosi'' tooltip e rifiuto non possono divergere (§12.5.2). ⚠️ L''ORDINE e'' il contratto: (1) RIGHE_NON_LAVORATE — righe attive in uno stato con lavorata = false (IMPORTATA, DA_ABBINARE: la domanda si fa al catalogo, D20-a), codice E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE, dettaglio con quante e gli id; (2) TOTALE_NON_QUADRA — solo se p_importo_dichiarato non e'' NULL e la somma delle righe attive (SCARTATA compresa) non corrisponde: riuso di E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA con gli stessi tre valori di prima, dettaglio con campo = importo_dichiarato. ⭐ Il dichiarato e'' un PARAMETRO e non si rilegge per id: il guard gira BEFORE ROW e il valore che sta entrando non e'' ancora nella tabella — una check che lo rileggesse verificherebbe il totale di ieri. Chi chiama passa quello che vede (NEW.importo_dichiarato nel guard, c.importo_dichiarato nel backend). Nessun DEFAULT: NULL e'' «non dichiara niente» (D12), un valore legittimo, e dimenticarlo deve non compilare. ⚠️ SECURITY INVOKER sotto la row security: una distinta che non si legge — inesistente o di un altro — solleva E_CONTABILE_NON_TROVATA (404, no-leak); rispondere [] sarebbe un fail-open. ⛔ Guard di parametro su E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO). ⛔ Il reason non porta il prefisso E_. ⚠️ Le reason_key pagamenti.distinte.validazione_reason.* sono un DEBITO VERSO IL FE (FE-6). Brief: brief-db-validata-e-registrazione-tardiva §2.1 (D20-a), §4 P-3.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Prima di toglierla va ripristinato il guard di validazione
+              --    (20260918-37) che la chiama.
+              DROP FUNCTION IF EXISTS script.fn_check_contabile_validabile(bigint, numeric);

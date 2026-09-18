@@ -36,6 +36,17 @@ BEGIN
     --    dalla quarta mossa in poi, impedirebbe di DIRE che cosa
     --    ne e' stato di quel denaro (sospenderla, scartarla),
     --    che e' l'unica cosa che resta da fare.
+    --
+    -- ⭐ Rev 2026-09-18 (D20-b): la quarta mossa ha UNA porta, e
+    --    la apre solo pagamenti.fn_posta_riga_tardiva. Una SOSPESA
+    --    sotto una distinta REGISTRATA si abbina e si registra
+    --    nello stesso gesto: la madre si presenta con la GUC
+    --    transazionale app.registrazione_tardiva_riga_id = <id>,
+    --    e questo guard lascia passare SOLO quella riga, SOLO in
+    --    quella transazione, SOLO nel ramo del cambio di stato.
+    --    Le altre tre mosse non la leggono: la tardiva non fa
+    --    nascere, non riattiva, non sposta. Precedente:
+    --    app.cessazione_automatica in vendite.
     -- =========================================================
 
     v_da_guardare := CASE
@@ -66,6 +77,22 @@ BEGIN
          WHERE s.id = NEW.stato_id;
 
         v_da_guardare := COALESCE(v_diventa_pronta, false);
+
+        -- ⭐ LA PORTA DELLA TARDIVA (D20-b). Si apre per UNA riga —
+        --    quella nominata dalla GUC — e si richiude col ROLLBACK
+        --    o il COMMIT, perche' set_config(..., true) e'
+        --    transazionale. ⚠️ current_setting(name, true) risponde
+        --    NULL se la GUC non e' mai stata impostata nella sessione
+        --    e '' se lo e' stata in una transazione gia' chiusa:
+        --    NULLIF le tratta uguali, e nessuna delle due apre.
+        -- ⛔ La GUC settata su un ALTRO id non apre: e' la
+        --    condizione che il pgTAP prova per prima.
+        IF v_da_guardare
+           AND NULLIF(current_setting('app.registrazione_tardiva_riga_id', true), '')
+               = NEW.id::text
+        THEN
+            v_da_guardare := false;
+        END IF;
     END IF;
 
     IF NOT v_da_guardare THEN
@@ -108,7 +135,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()
-IS 'Porta d''INGRESSO del difetto C-5: nessuna riga contabile utile sotto una distinta in stato finale (CHIUSA o ANNULLATA), dove non entrerebbe in nessun conto e non verrebbe mai registrata. ⚠️ QUATTRO mosse: nascere li'', esserci RIATTIVATA, esserci SPOSTATA da un''altra distinta, e — dal 2026-08-22, lotto 4 — DIVENTARCI PRONTA DA REGISTRARE restando dov''e''. ⭐ La quarta e'' nata con la madre del posting: la madre chiude la distinta appena ha registrato (la chiusura e'' la conseguenza del registrare, decisione di Tid), e sotto possono restare righe DA_ABBINARE — che il guard di chiusura NON considera un ostacolo, deliberatamente, o la distinta non si chiuderebbe mai. Abbinarne una il giorno dopo produrrebbe denaro dichiarato e pronto sotto una distinta che il posting rifiuta perche'' finale. ⚠️ Si vieta SOLO l''ingresso in uno stato is_postabile: sospendere, scartare o correggere il motivo di una riga che sta li'' resta possibile, ed e'' deliberato — dire che cosa ne e'' stato di quel denaro deve restare l''ultima cosa che si puo'' fare. ⚠️ Non blocca il posting per due ragioni indipendenti: POSTATA non e'' uno stato postabile, e la distinta e'' ancora VALIDATA quando la madre muove le righe. ⚠️ La domanda «questo stato e'' pronto?» si fa al catalogo (is_postabile) e non a un elenco scritto dentro il guard. Gemello d''uscita: pagamenti.trgfn_vendite_contabili_guard_chiusura (E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE).';
+IS 'Porta d''INGRESSO del difetto C-5: nessuna riga contabile utile sotto una distinta in stato finale (CHIUSA o ANNULLATA), dove non entrerebbe in nessun conto e non verrebbe mai registrata. ⚠️ QUATTRO mosse: nascere li'', esserci RIATTIVATA, esserci SPOSTATA da un''altra distinta, e — dal 2026-08-22, lotto 4 — DIVENTARCI PRONTA DA REGISTRARE restando dov''e''. ⭐ La quarta e'' nata con la madre del posting: la madre chiude la distinta appena ha registrato (la chiusura e'' la conseguenza del registrare, decisione di Tid), e sotto possono restare righe DA_ABBINARE — che il guard di chiusura NON considera un ostacolo, deliberatamente, o la distinta non si chiuderebbe mai. Abbinarne una il giorno dopo produrrebbe denaro dichiarato e pronto sotto una distinta che il posting rifiuta perche'' finale. ⚠️ Si vieta SOLO l''ingresso in uno stato is_postabile: sospendere, scartare o correggere il motivo di una riga che sta li'' resta possibile, ed e'' deliberato — dire che cosa ne e'' stato di quel denaro deve restare l''ultima cosa che si puo'' fare. ⚠️ Non blocca il posting per due ragioni indipendenti: POSTATA non e'' uno stato postabile, e la distinta e'' ancora VALIDATA quando la madre muove le righe. ⚠️ La domanda «questo stato e'' pronto?» si fa al catalogo (is_postabile) e non a un elenco scritto dentro il guard. Gemello d''uscita: pagamenti.trgfn_vendite_contabili_guard_chiusura (E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE). ⭐ rev 2026-09-18 (20260918-39, D20-b): la quarta mossa ha UNA porta — la GUC transazionale app.registrazione_tardiva_riga_id = <id>, che imposta SOLO pagamenti.fn_posta_riga_tardiva (set_config con is_local = true) — e lascia passare SOLO quella riga, SOLO in quella transazione, SOLO nel ramo del cambio di stato: una SOSPESA sotto una distinta REGISTRATA si abbina e si registra nello stesso gesto, quindi non esiste piu'' il momento in cui sta pronta ad aspettare. Le altre tre mosse non leggono la GUC. Precedente: app.cessazione_automatica. Brief: brief-db-validata-e-registrazione-tardiva §2.2, §4.1.';
 ```
 
 ---

@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — «REGISTRABILE» sta nel catalogo, non nel letterale della madre
+#   pagamenti.vendite_contabili_stati.is_registrabile boolean NOT NULL DEFAULT false
+#   Brief: brief-db-validata-e-registrazione-tardiva §2.4 (D20-d), §4 P-2
+#
+# ── IL RILIEVO CHE LA FA NASCERE (terzo collaudo in-app, Tid, 18-09) ─
+#   «Registra» era ACCESO anche su una distinta in BOZZA, e il database lo
+#   rifiutava con E_CONTABILE_NON_REGISTRABILE: un pulsante che finisce in
+#   errore. La regola «si registra solo da VALIDATA» viveva in un LETTERALE
+#   dentro pagamenti.fn_posta_contabile (guard 3), che il backend non puo'
+#   leggere: per spegnere il pulsante col motivo avrebbe dovuto copiarla.
+#
+# ── COSA RISPONDE ──────────────────────────────────────────────────
+#   «Da questo stato si puo' registrare?». true SOLO su VALIDATA (valore nel
+#   CSV vendite_contabili_stati.csv, mirror 20260821-30). La madre del posting
+#   la legge al posto del letterale (20260918-38, stesso codice e stessa
+#   frase) e il dettaglio della distinta la porta come `stato_is_registrabile`:
+#   «Registra» si spegne col motivo invece di rispondere 409.
+#
+# ── ⭐ PERCHE' UNA BANDIERA E NON UNA fn_check ──────────────────────
+#   Il motivo per cui NON si registra e' UNO e statico — lo stato — e sotto
+#   VALIDATA il lavoro non finito non esiste piu' (D20-a). Una check con un
+#   motivo solo sarebbe una macchina per una riga. E' la stessa scelta di
+#   `is_postabile` sulle righe e di `is_final` sulle testate: «la domanda si fa
+#   al catalogo, non a un elenco scritto nel guard» (commento della 4ª mossa).
+#
+# ── ⚠️ DEFAULT false, FAIL-CLOSED ──────────────────────────────────
+#   Uno stato nuovo non classificato NON si registra: il posting rifiuta e lo
+#   dice. Registrare e' irreversibile — in dubbio si chiude.
+#
+# Verifica: db/pgtap/pagamenti/test-stati-contabili-vocabolario.sql (test 8),
+#           db/pgtap/pagamenti/test-fn-posta-contabile.sql (test 3)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260918-35-alter-vendite-contabili-stati-add-is-registrabile-mctit.yaml
+
+  - changeSet:
+      id: 20260918-35-alter-vendite-contabili-stati-add-is-registrabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D20-d (brief-db-validata-e-registrazione-tardiva): la bandiera `is_registrabile`
+        sul catalogo degli stati della distinta contabile, true solo su VALIDATA (CSV,
+        mirror 20260821-30). La madre del posting la legge al posto del letterale
+        'VALIDATA' e il dettaglio la porta: «Registra» si spegne col motivo invece di
+        finire in 409. Default false, fail-closed su uno stato nuovo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+                columnName: is_final
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_stati
+                ADD COLUMN IF NOT EXISTS is_registrabile boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_stati.is_registrabile IS
+                'D20-d (2026-09-18): «da questo stato si puo'' registrare?». true SOLO su VALIDATA (CSV vendite_contabili_stati.csv, mirror 20260821-30). La legge pagamenti.fn_posta_contabile (guard 3) al posto del letterale ''VALIDATA'' — stesso codice E_CONTABILE_NON_REGISTRABILE, stessa frase — e il dettaglio della distinta la espone (stato_is_registrabile) per spegnere «Registra» col motivo invece di rispondere 409. Una bandiera e non una fn_check: il motivo e'' uno e statico, lo stato. Default false = fail-closed su uno stato nuovo. Brief: brief-db-validata-e-registrazione-tardiva §2.4, §4 P-2.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Togliere la colonna rompe pagamenti.fn_posta_contabile
+              --    (20260918-38), che la legge: si torna indietro dopo di lei.
+              ALTER TABLE pagamenti.vendite_contabili_stati
+                DROP COLUMN IF EXISTS is_registrabile;

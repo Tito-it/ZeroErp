@@ -147,28 +147,32 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_origine               => 'MANUALE'
   ) AS contabile_id;
 
--- Tre righe: due pronte (100 + 50), una sospesa (30) e una da abbinare (20).
--- ⚠️ La riga DA_ABBINARE porta comunque fattura e cliente: serve al test 17,
---   dove l'unico guard che deve poter rifiutare e' quello sulla distinta
---   finale. Senza, rifiuterebbe prima il guard sull'abbinamento e il test
---   direbbe verde per la ragione sbagliata.
+-- Quattro righe: due pronte (100 + 50) e due sospese (30 + 20).
+-- ⚠️ La riga D porta comunque fattura e cliente: serve al test 17, dove
+--   l'unico guard che deve poter rifiutare e' quello sulla distinta finale.
+--   Senza, rifiuterebbe prima il guard sull'abbinamento e il test direbbe
+--   verde per la ragione sbagliata.
+-- ⭐ Rev 2026-09-18 (D20-a): D era DA_ABBINARE ed e' SOSPESA. Da quel giorno
+--   una distinta con righe non lavorate non entra in VALIDATA — e' la regola
+--   che entra, non una regressione — e la quarta mossa (test 17) si prova
+--   dalla sospesa, che e' l'unico stato che puo' davvero restare indietro.
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, data_valuta, importo,
-     fattura_id, billing_account_id, stato_id, meta)
+     fattura_id, billing_account_id, stato_id, motivo_sospeso, meta)
 SELECT (SELECT contabile_id FROM tmp_contabile), v.rif, current_date, current_date, v.importo,
        (SELECT id FROM tmp_fattura), r.billing_account_id, v.stato_id,
+       CASE WHEN v.stato_id = r.stato_sospesa_id THEN 'da capire' END,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_refs r,
        (VALUES ('PGTAP_A', 100.00, 'ABBINATA'),
                ('PGTAP_B',  50.00, 'ABBINATA'),
                ('PGTAP_C',  30.00, 'SOSPESA'),
-               ('PGTAP_D',  20.00, 'DA_ABBINARE')) AS raw(rif, importo, stato)
+               ('PGTAP_D',  20.00, 'SOSPESA')) AS raw(rif, importo, stato)
        CROSS JOIN LATERAL (
          SELECT raw.rif, raw.importo,
                 CASE raw.stato
                   WHEN 'ABBINATA'    THEN r.stato_abbinata_id
-                  WHEN 'SOSPESA'     THEN r.stato_sospesa_id
-                  ELSE                    r.stato_da_abbinare_id
+                  ELSE                    r.stato_sospesa_id
                 END AS stato_id) v;
 
 SELECT is(
@@ -322,6 +326,9 @@ SELECT throws_ok(
 -- dichiarato che non si registrera' mai.
 -- ⚠️ `throws_like` e non `throws_ok`: qui il discriminante e' la frase — P0001
 --   direbbe solo «errore di dominio», non QUALE.
+-- ⭐ Dal 2026-09-18 la porta esiste, ma la apre solo pagamenti.fn_posta_riga_tardiva
+--   (D20-b): un UPDATE a mano resta rifiutato. La tardiva e' collaudata in
+--   test-posta-riga-tardiva-v1.
 SELECT throws_like(
   format('UPDATE pagamenti.vendite_contabili_righe SET stato_id = %s WHERE riferimento_ente = ''PGTAP_D''',
          (SELECT stato_abbinata_id FROM tmp_refs)),

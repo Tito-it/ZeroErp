@@ -58,6 +58,23 @@ ancora `VALIDATA` quando la madre muove le righe.
 (`is_postabile`), non a un elenco di stati scritto dentro il guard: è la stessa
 scelta del guard gemello sui dati (`richiede_abbinamento`).
 
+### ⭐ La quarta mossa ha UNA porta (dal 18-09-2026, D20-b)
+
+Una `SOSPESA` sotto una distinta **registrata** ha un futuro:
+[pagamenti.fn_posta_riga_tardiva](/dbzero/pagamenti/funzioni/fn_posta_riga_tardiva)
+la abbina e la registra nello stesso gesto. Per farlo la porta ad `ABBINATA` —
+così girano tutti i guard dell'abbinamento — e a **questo** guard si presenta con
+la GUC transazionale `app.registrazione_tardiva_riga_id = <id>`: la quarta mossa
+lascia passare **solo** quella riga, **solo** in quella transazione, **solo**
+nel ramo del cambio di stato. Le altre tre mosse non leggono la GUC: la tardiva
+non fa nascere, non riattiva, non sposta.
+
+⛔ Un `UPDATE` a mano di una sospesa verso uno stato pronto resta rifiutato; la
+GUC settata su un **altro** id non apre; dopo la madre la porta è richiusa
+(`test-posta-riga-tardiva-v1` 16-18). La regola resta vera: sotto una chiusa
+nessuna riga *«pronta e mai registrata»* — perché non esiste più il momento in
+cui sta pronta ad aspettare. Precedente della forma: `app.cessazione_automatica`.
+
 ### Le porte sono due
 Questa è la porta d'**ingresso**. La porta d'**uscita** — *chiudere* una distinta
 che ha ancora righe registrabili — è la strada che capita davvero, e la chiude

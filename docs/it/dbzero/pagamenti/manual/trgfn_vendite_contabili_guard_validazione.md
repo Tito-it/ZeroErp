@@ -18,7 +18,27 @@ nell'altro, senza capire quale dei due mente.
 
 ---
 
-### ⭐ 1) La quadratura scatta al gesto «ho finito», non alla registrazione
+### ⭐ 1) Entrando in `VALIDATA`: la check decide, il guard solleva (dal 18-09-2026)
+
+> **D20-a** — `VALIDATA` = *«ogni riga è stata guardata»*. Entrando in
+> `VALIDATA` il guard chiama
+> [script.fn_check_contabile_validabile](/dbzero/script/funzioni/fn_check_contabile_validabile)`(NEW.id, NEW.importo_dichiarato)`
+> e solleva il codice del **primo** motivo con `fn_raise_primo_motivo_se_presente`:
+>
+> 1. **righe non lavorate** — righe attive in uno stato con `lavorata = false`
+>    (`IMPORTATA`, `DA_ABBINARE`): `E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE`,
+>    con quante e gli id. La sospesa è stata guardata e passa;
+> 2. **la quadratura** qui sotto, com'era — stesso codice, stessi valori.
+>
+> Il guard **non fa più i conti da sé**: la stessa check la legge il dettaglio
+> della distinta (`can_validare`), così «Porta a VALIDATA» si spegne col motivo
+> e il pulsante e il rifiuto non possono divergere. ⚠️ `NEW.importo_dichiarato`,
+> non una rilettura: il guard gira `BEFORE ROW`, e il dichiarato che sta
+> entrando non è ancora nella tabella — per questo la check lo prende come
+> parametro. Fino al 18-09 si validava con righe `DA_ABBINARE` sotto, che alla
+> chiusura restavano senza strada (brief §1).
+
+#### La quadratura scatta al gesto «ho finito», non alla registrazione
 
 È una decisione, non un dettaglio: se hai dichiarato 1.500 € e ne hai digitati
 1.480, te lo dice **lì**, mentre sei ancora nel flusso di inserimento — invece che
@@ -51,6 +71,9 @@ copia di un file ed è immutabile; una **generata** non si corregge, si rigenera
 * `BEFORE UPDATE OF stato_id` su `pagamenti.vendite_contabili`.
 
 ### ⚠️ Error handling
+* `E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE` (`CONFLITTO_STATO`, 409) — dal
+  18-09-2026, motivo 1 della check: il messaggio dice **quante** righe nessuno ha
+  ancora lavorato, il dettaglio porta gli id;
 * `E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA` (`DATO_ERRATO`, 400) — il messaggio
   dice **quanto** è stato dichiarato e **quanto** sommano le righe;
 * `E_CONTABILE_RIAPERTURA_NON_MANUALE` (`CONFLITTO_STATO`, 409) — il messaggio

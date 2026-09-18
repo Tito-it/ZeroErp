@@ -133,6 +133,17 @@ SELECT lives_ok(
 --   ⚠️ Sta prima dei test 5 e 6 perché quelli hanno bisogno di una distinta
 --   GIÀ chiusa, e per chiuderla vanno prima tolte le righe pronte.
 -- ============================================================
+-- ⭐ Rev 2026-09-18 (D20-a): la riga DA_ABBINARE del test 1 va guardata prima
+--   di validare — una riga non lavorata non entra in VALIDATA. Si sospende:
+--   il test 1 resta sull'INSERT, la regola nuova ha il suo presidio in
+--   test-contabile-validabile-v1.
+UPDATE pagamenti.vendite_contabili_righe
+   SET stato_id = (SELECT id FROM pagamenti.vendite_contabili_righe_stati
+                    WHERE codice_interno = 'SOSPESA'),
+       motivo_sospeso = 'guardata, in attesa'
+ WHERE contabile_id = (SELECT aperta FROM tmp_rcgd_dist)
+   AND stato_id = (SELECT st_da_abbinare FROM tmp_rcgd);
+
 UPDATE pagamenti.vendite_contabili
    SET stato_id = (SELECT st_validata FROM tmp_rcgd)
  WHERE id = (SELECT aperta FROM tmp_rcgd_dist);

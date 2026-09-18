@@ -37,8 +37,12 @@ SELECT plan(8);
 CREATE TEMP TABLE tmp_coq AS
 SELECT
   (SELECT c.id FROM pagamenti.centri_riscossione c WHERE c.codice_interno = 'BANCA') AS centro_id,
+  -- ⭐ Rev 2026-09-18 (D20-a): le righe della fixture sono SOSPESE, non piu'
+  --   DA_ABBINARE — una riga non lavorata non entra in VALIDATA, e qui la
+  --   posta e' la QUADRATURA, non il lavoro non finito. Quel motivo ha il suo
+  --   presidio in test-contabile-validabile-v1.
   (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
-    WHERE s.codice_interno = 'DA_ABBINARE')                                          AS st_da_abbinare,
+    WHERE s.codice_interno = 'SOSPESA')                                              AS st_sospesa,
   (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
     WHERE s.codice_interno = 'SCARTATA')                                             AS st_scartata,
   (SELECT s.id FROM pagamenti.vendite_contabili_stati s
@@ -108,8 +112,8 @@ WITH ins AS (
 )
 SELECT id AS contabile_id FROM ins;
 
-INSERT INTO pagamenti.vendite_contabili_righe (contabile_id, importo, stato_id, meta)
-SELECT d.contabile_id, 60.00, c.st_da_abbinare, '{"test_scope":"pgtap_contabili_origine"}'::jsonb
+INSERT INTO pagamenti.vendite_contabili_righe (contabile_id, importo, stato_id, motivo_sospeso, meta)
+SELECT d.contabile_id, 60.00, c.st_sospesa, 'in attesa', '{"test_scope":"pgtap_contabili_origine"}'::jsonb
   FROM tmp_coq_dist d, tmp_coq c;
 
 -- ============================================================
@@ -155,8 +159,8 @@ WITH ins AS (
 )
 SELECT id AS contabile_id FROM ins;
 
-INSERT INTO pagamenti.vendite_contabili_righe (contabile_id, importo, stato_id, meta)
-SELECT d.contabile_id, 7.00, c.st_da_abbinare, '{"test_scope":"pgtap_contabili_origine"}'::jsonb
+INSERT INTO pagamenti.vendite_contabili_righe (contabile_id, importo, stato_id, motivo_sospeso, meta)
+SELECT d.contabile_id, 7.00, c.st_sospesa, 'in attesa', '{"test_scope":"pgtap_contabili_origine"}'::jsonb
   FROM tmp_coq_libera d, tmp_coq c;
 
 SELECT lives_ok(

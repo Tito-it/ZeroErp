@@ -88,7 +88,7 @@ SELECT * FROM pagamenti.fn_posta_contabile(
 ### L'ordine delle cose, e perché è quello
 
 1. **si blocca la distinta** (`FOR UPDATE`), per non registrare due volte in parallelo;
-2. **si controlla lo stato**: si registra **solo** da `VALIDATA`, che è il gesto «ho finito di inserire». Da bozza la distinta potrebbe cambiare mentre la si registra; da chiusa o annullata il lavoro è finito;
+2. **si controlla lo stato**: si registra **solo** da uno stato **registrabile** — `is_registrabile` sul catalogo, oggi la sola `VALIDATA`, che è il gesto «ho finito di inserire». Da bozza la distinta potrebbe cambiare mentre la si registra; da chiusa o annullata il lavoro è finito. ⭐ Dal 18-09-2026 (D20-d) la domanda si fa al **catalogo** e non al letterale `'VALIDATA'`: stesso codice, stessa frase, e il dettaglio espone la stessa bandiera per spegnere «Registra» col motivo;
 3. **si quadra la distinta**, se dichiara un totale: tutte le righe attive contro `importo_dichiarato`;
 4. **si verifica la dichiarazione** di chi conferma;
 5. **si rifiuta parlando** se una riga pronta non dice a quale fattura e a quale cliente appartiene;
@@ -144,7 +144,7 @@ successo non si riscrive.
 | --- | --- |
 | `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (TECNICO) | id nullo o non positivo, o mezza dichiarazione: valori che nessuna interfaccia produce |
 | `E_CONTABILE_NON_TROVATA` (NON_TROVATO) | la distinta non esiste |
-| `E_CONTABILE_NON_REGISTRABILE` (CONFLITTO_STATO) | la distinta non è validata |
+| `E_CONTABILE_NON_REGISTRABILE` (CONFLITTO_STATO) | la distinta non è in uno stato registrabile (`is_registrabile`, oggi solo `VALIDATA`) |
 | `E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA` (DATO_ERRATO) | le righe non sommano al totale dichiarato |
 | `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE` (CONFLITTO_STATO) | la distinta è cambiata da quando chi conferma l'ha vista |
 | `E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO` (DATO_ERRATO) | una riga pronta non dice a quale fattura e cliente appartiene |
@@ -162,6 +162,17 @@ successo non si riscrive.
   la slice 2 del cantiere;
 * **non scrive nel registro degli errori di suo**: lo fa l'helper quando
   solleva.
+
+### ⭐ E il «resto»? — la registrazione tardiva (dal 18-09-2026)
+
+Le righe che restano indietro (`righe_saltate`) dopo il 18-09 possono essere solo
+**sospese** e **scartate**: D20-a impedisce di validare con righe non lavorate
+sotto. Una sospesa sotto la distinta chiusa **non è più senza strada**: si
+registra in ritardo, per riga, con
+[pagamenti.fn_posta_riga_tardiva](/dbzero/pagamenti/funzioni/fn_posta_riga_tardiva)
+(D20-b) — movimento suo, riga a «registrata», distinta che resta chiusa con la
+conferma di questa madre. Una scartata resta «non nostra», dentro la quadratura e
+fuori dal lavoro (D20-c); se poi risulta nostra, «Riprendi» e tardiva.
 
 ### Presidio
 
