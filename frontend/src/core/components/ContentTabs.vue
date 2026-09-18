@@ -1,5 +1,8 @@
 <script setup>
 // Scopo: barra content tabs tipo browser — ogni pagina aperta diventa una tab.
+// Le tab si restringono in proporzione quando non entrano (icona e chiusura
+// fisse, cede solo il titolo); i controlli della barra stanno fuori dalla
+// striscia che scorre, cosi' non escono mai dallo schermo.
 // Su mobile la barra diventa un dropdown Select.
 // Include bottone "Affianca" per split view read-only (solo desktop >= 1280px).
 import { ref, computed, watch } from 'vue'
@@ -101,75 +104,85 @@ function handlePinTab(tab) {
 
 <template>
   <div v-if="tabs.tabs.length > 0" class="content-tabs">
-    <!-- Desktop/Tablet: barra tab orizzontale -->
+    <!-- Desktop/Tablet: barra a due zone. La striscia delle tab e' l'unica
+         parte che puo' scorrere; i controlli della barra (contatore, Affianca)
+         stanno fuori da essa, cosi' restano a video qualunque sia il numero
+         di tab aperte. -->
     <div v-if="ui.layoutMode !== 'mobile'" class="content-tabs-bar">
-      <div
-        v-for="tab in tabs.tabs"
-        :key="tab.id"
-        class="content-tab"
-        :class="{
-          active: tabs.activeTabId === tab.id,
-          pinned: tabs.isSplit && tabs.pinnedTab?.id === tab.id
-        }"
-        @click="handleTabClick(tab)"
-      >
-        <i v-if="tab.icon" :class="tab.icon" class="tab-icon"></i>
-        <!-- Indicatore tab pinnata -->
-        <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="pi pi-thumbtack tab-pin-icon"></i>
-        <span class="tab-label">{{ tabLabel(tab) }}</span>
-        <!-- Indicatore dirty -->
-        <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('tabs.close_confirm_title')"></span>
-        <!-- Indicatore contesto attivo -->
-        <span
-          v-else-if="tab.contextAware && context.hasContext"
-          class="tab-context-dot"
-          v-tooltip.top="t('context.filtered_by', { name: context.contextLabel })"
-        ></span>
-        <!-- Pulsante chiusura -->
-        <i
-          class="pi pi-times tab-close"
-          @click="handleCloseTab(tab, $event)"
-          v-tooltip.top="t('tabs.close')"
-        ></i>
+      <div class="content-tabs-strip">
+        <div
+          v-for="tab in tabs.tabs"
+          :key="tab.id"
+          class="content-tab"
+          :class="{
+            active: tabs.activeTabId === tab.id,
+            pinned: tabs.isSplit && tabs.pinnedTab?.id === tab.id
+          }"
+          @click="handleTabClick(tab)"
+        >
+          <i v-if="tab.icon" :class="tab.icon" class="tab-icon"></i>
+          <!-- Indicatore tab pinnata -->
+          <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="pi pi-thumbtack tab-pin-icon"></i>
+          <!-- Il titolo e' l'unica parte della tab che si restringe: quando e'
+               troncato il nome intero sta nel tooltip. Il delay evita che il
+               tooltip compaia a ogni passaggio per cliccare una tab. -->
+          <span
+            class="tab-label"
+            v-tooltip.top="{ value: tabLabel(tab), showDelay: 600 }"
+          >{{ tabLabel(tab) }}</span>
+          <!-- Indicatore dirty -->
+          <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('tabs.close_confirm_title')"></span>
+          <!-- Indicatore contesto attivo -->
+          <span
+            v-else-if="tab.contextAware && context.hasContext"
+            class="tab-context-dot"
+            v-tooltip.top="t('context.filtered_by', { name: context.contextLabel })"
+          ></span>
+          <!-- Pulsante chiusura -->
+          <i
+            class="pi pi-times tab-close"
+            @click="handleCloseTab(tab, $event)"
+            v-tooltip.top="t('tabs.close')"
+          ></i>
+        </div>
       </div>
 
-      <!-- Contatore schede rimanenti -->
-      <span
-        v-if="remainingTabs <= 5"
-        class="tab-remaining"
-        :class="remainingClass"
-        v-tooltip.top="t('tabs.remaining', { count: remainingTabs })"
-      >{{ remainingTabs }}</span>
+      <div class="content-tabs-controls">
+        <!-- Contatore schede rimanenti -->
+        <span
+          v-if="remainingTabs <= 5"
+          class="tab-remaining"
+          :class="remainingClass"
+          v-tooltip.top="t('tabs.remaining', { count: remainingTabs })"
+        >{{ remainingTabs }}</span>
 
-      <!-- Spacer per spingere il bottone Affianca a destra -->
-      <div class="content-tabs-spacer"></div>
+        <!-- Bottone Affianca / Chiudi split — icona verde coerente con app-action-btn -->
+        <button
+          v-if="canSplit"
+          class="split-toggle-btn"
+          :class="{ 'split-active': tabs.isSplit }"
+          @click="toggleSplitPopover"
+          v-tooltip.top="tabs.isSplit ? t('tabs.split_close') : t('tabs.split_open')"
+        >
+          <i :class="tabs.isSplit ? 'pi pi-times' : 'pi pi-objects-column'"></i>
+        </button>
 
-      <!-- Bottone Affianca / Chiudi split — icona verde coerente con app-action-btn -->
-      <button
-        v-if="canSplit"
-        class="split-toggle-btn"
-        :class="{ 'split-active': tabs.isSplit }"
-        @click="toggleSplitPopover"
-        v-tooltip.top="tabs.isSplit ? t('tabs.split_close') : t('tabs.split_open')"
-      >
-        <i :class="tabs.isSplit ? 'pi pi-times' : 'pi pi-objects-column'"></i>
-      </button>
-
-      <!-- Popover con lista tab da affiancare -->
-      <Popover ref="splitPopover" class="split-popover">
-        <div class="split-popover-header">{{ t('tabs.split_select') }}</div>
-        <div class="split-popover-list">
-          <div
-            v-for="tab in tabs.splittableTabs"
-            :key="tab.id"
-            class="split-popover-item"
-            @click="handlePinTab(tab)"
-          >
-            <i v-if="tab.icon" :class="tab.icon" class="split-popover-icon"></i>
-            <span>{{ tabLabel(tab) }}</span>
+        <!-- Popover con lista tab da affiancare -->
+        <Popover ref="splitPopover" class="split-popover">
+          <div class="split-popover-header">{{ t('tabs.split_select') }}</div>
+          <div class="split-popover-list">
+            <div
+              v-for="tab in tabs.splittableTabs"
+              :key="tab.id"
+              class="split-popover-item"
+              @click="handlePinTab(tab)"
+            >
+              <i v-if="tab.icon" :class="tab.icon" class="split-popover-icon"></i>
+              <span>{{ tabLabel(tab) }}</span>
+            </div>
           </div>
-        </div>
-      </Popover>
+        </Popover>
+      </div>
     </div>
 
     <!-- Mobile: dropdown -->
@@ -196,16 +209,47 @@ function handlePinTab(tab) {
 .content-tabs-bar {
   display: flex;
   align-items: stretch;
-  gap: 1px;
   padding: 0 0.5rem;
+}
+
+/* Striscia delle tab: l'unica zona che scorre, e solo come rete di sicurezza
+   (quando N tab al pavimento non entrano). `min-width: 0` e' obbligatorio:
+   senza, un flex item con figli nowrap non si restringe sotto il contenuto e
+   la striscia spingerebbe fuori i controlli. */
+.content-tabs-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
   overflow-x: auto;
   scrollbar-width: thin;
 }
 
+/* Controlli della barra (contatore, Affianca): fuori dalla striscia, quindi
+   sempre a video qualunque sia il numero di tab aperte. */
+.content-tabs-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-left: 0.5rem;
+}
+
+/* Le tab si restringono in proporzione alla loro larghezza naturale
+   (flex-basis auto): un titolo lungo cede piu' di uno corto. Il pavimento e'
+   un valore esplicito e non `auto`: per un flex item `min-width: auto` vale
+   il min-content, che include il titolo intero — la tab non si stringerebbe
+   mai. 5.5rem = parti fisse (~3.75rem: padding, icona, gap, chiusura) piu'
+   ~4 caratteri di titolo; sotto, la striscia scorre. `overflow: hidden`
+   garantisce che, in caso di pin + pallino insieme, niente sbordi sulla tab
+   accanto. */
 .content-tab {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  flex: 0 1 auto;
+  min-width: 5.5rem;
+  overflow: hidden;
   padding: 0.45rem 0.6rem;
   font-size: var(--app-font-size-sm);
   color: var(--app-topbar-breadcrumb-color);
@@ -213,6 +257,16 @@ function handlePinTab(tab) {
   white-space: nowrap;
   border-bottom: 2px solid transparent;
   transition: background var(--app-transition-fast), color var(--app-transition-fast), border-color var(--app-transition-fast);
+}
+
+/* Icona, pin, pallini e chiusura non si restringono mai: e' il titolo l'unica
+   parte che cede. */
+.tab-icon,
+.tab-pin-icon,
+.tab-dirty-dot,
+.tab-context-dot,
+.tab-close {
+  flex-shrink: 0;
 }
 
 .content-tab:hover {
@@ -239,7 +293,11 @@ function handlePinTab(tab) {
   border-left: 1px solid color-mix(in srgb, var(--p-primary-color) 35%, transparent);
 }
 
+/* Il titolo: tetto a 150px come prima, e `min-width: 0` perche' possa cedere
+   fino al pavimento della tab (con ellissi). */
 .tab-label {
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -250,7 +308,6 @@ function handlePinTab(tab) {
   height: 6px;
   border-radius: 50%;
   background: var(--p-orange-400);
-  flex-shrink: 0;
 }
 
 .tab-context-dot {
@@ -258,7 +315,6 @@ function handlePinTab(tab) {
   height: 6px;
   border-radius: 50%;
   background: var(--p-blue-400);
-  flex-shrink: 0;
 }
 
 .tab-close {
@@ -316,12 +372,6 @@ function handlePinTab(tab) {
 .tab-remaining.remaining-red {
   color: #fff;
   background: var(--p-red-500);
-}
-
-/* Spacer tra tab e bottone Affianca */
-.content-tabs-spacer {
-  flex: 1;
-  min-width: 1rem;
 }
 
 /* Bottone Affianca / Chiudi split — icona verde, sfondo neutro (come app-action-btn) */

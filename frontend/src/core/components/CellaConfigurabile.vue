@@ -46,6 +46,20 @@ function formatValue(value, formato, tipoDato) {
   }
 }
 
+// Scopo: il testo della cella cosi' come il formatter di default lo rende,
+//        oppure `null` quando la cella non e' testo (booleano → Tag, slot del
+//        caller). Serve a `ListaConfigurabile` per il `title` delle celle
+//        troncate in ellissi: la stessa funzione del rendering, cosi' il
+//        tooltip non puo' dire una cosa diversa da quella a video.
+export function testoCella(col, data, cellSlot = null) {
+  if (cellSlot) return null
+  if (col.formato === 'yesno' || (!col.formato && col.tipo_dato === 'boolean')) return null
+  const value = data?.[col.campo_sorgente]
+  if (value == null) return null
+  const testo = formatValue(value, col.formato, col.tipo_dato)
+  return typeof testo === 'string' && testo !== '' ? testo : null
+}
+
 export default {
   name: 'CellaConfigurabile',
   props: {

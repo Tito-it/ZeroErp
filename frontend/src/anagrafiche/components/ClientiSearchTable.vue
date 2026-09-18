@@ -196,6 +196,7 @@ onMounted(() => {
         ref="listaRef"
         v-show="mostraLista"
         codice="anagrafiche.clienti"
+        :azioni-inline="6"
         :rows="store.items"
         :total="store.totalRecords"
         :loading="store.loading"

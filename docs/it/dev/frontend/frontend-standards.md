@@ -307,6 +307,49 @@ ritirano mai. Le ritirate finiscono nell'expansion row riusando gli slot
 **escluse dalle soglie min-width 8/10/12 colonne** (`.app-datatable--responsive`
 in `main.css`): il packing garantisce già che le colonne entrino.
 
+#### ⛔ La larghezza di catalogo è un TETTO, non un minimo (2026-09-18)
+
+> **Regola**: su una lista responsive **non compare mai una scrollbar
+> orizzontale**, e la colonna azioni è **sempre l'ultima a video**. Le colonne
+> che non entrano stanno nella riga di espansione, e «Espandi tutte» le apre
+> tutte insieme. (Decisione di Tid, rilievo in-app sui preventivi.)
+
+🔴 **Il difetto che questa regola chiude era controintuitivo**: la scrollbar
+compariva a sidebar **chiusa**, non aperta. Il packing somma le larghezze
+**dichiarate**, ma la tabella è `width: max-content` — ogni colonna era larga
+quanto il suo contenuto più lungo, e la larghezza di catalogo era solo un
+**minimo**. A sidebar aperta il ritiro compensava per caso; con più spazio il
+packing diceva «entra tutto» sui numeri dichiarati, il browser rendeva quelli
+veri, e la differenza usciva come scrollbar. *Il packing faceva una promessa che
+il rendering non manteneva.*
+
+**Come si chiude**: `<ListaConfigurabile>` passa la larghezza anche come
+**tetto** della cella e dell'intestazione (`--col-w` + `.app-lista-cella`,
+`main.css` §liste responsive). Un contenuto più lungo va in **ellissi** su una
+riga, col testo intero nel `title`. Così la somma resa **è** quella dichiarata:
+la scrollbar non può comparire, e la colonna azioni — alla sua larghezza
+naturale, mai tagliata — resta l'ultima.
+
+⭐ **Ne discende che una larghezza di catalogo troppo stretta si VEDE** (una
+colonna piena di «…») invece di produrre una scrollbar muta: si corregge
+dall'amministrazione, è un dato di `ui.lista_colonna`, non un intervento sul
+codice.
+
+⚠️ **L'unica larghezza che il catalogo non conosce è quella dei pulsanti inline
+della colonna azioni**, e la dichiara il chiamante: prop `azioni-inline`
+(default 4). Fino a quel giorno era una costante — 130px, «~3-4 pulsanti» —
+che copriva **tre** pulsanti (2rem + 0.25rem di gap): Soggetti, Fornitori e
+CommessaGestione ne hanno quattro, Clienti sei, e la differenza usciva dal
+contenitore senza che il packing lo sapesse. Un numero più basso del vero non
+taglia niente, ma riporta la scrollbar: chi aggiunge una quinta azione di riga
+alza la prop.
+
+⚠️ Nello stesso giro sono entrate nel conto le colonne di **chrome** che il
+packing ignorava: la checkbox di selezione e l'expander sempre presente delle
+liste con dettaglio inline (48px l'una).
+
+Presidio: `useResponsiveColumns.spec.js`.
+
 > **⚠️ DEROGA DOCUMENTATA allo standard "responsive CSS-first, niente JS di
 > detection".** Le media query CSS reagiscono solo a `window.innerWidth`, ma
 > l'apertura della sidebar **non cambia la larghezza della finestra** — restringe
@@ -2130,6 +2173,13 @@ Per accordion, expansion row di DataTable, tree e qualsiasi azione che apre/chiu
 contenuto, usare la coppia dinamica `MANAGE_ICONS.EXPAND` (`pi pi-chevron-down`,
 stato collassato — invita ad aprire) e `MANAGE_ICONS.COLLAPSE` (`pi pi-chevron-up`,
 stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
+
+⛔ **Su una `<ListaConfigurabile>` il toggle «espandi tutte» NON si scrive in
+pagina** (2026-09-18): è l'azione standard di `useListaAzioni`, accanto a
+«Personalizza colonne» ed «Esporta», e compare da sé solo quando c'è qualcosa
+da espandere (colonne ritirate o dettaglio inline). L'esempio qui sotto vale per
+le superfici che non sono liste configurabili. I listini avevano il proprio
+`toggle-all-versioni`: era la prima copia, ritirata alla seconda.
 
 ```js
 // In toolbar globale (PageActionsBar) — toggle di tutte le righe
