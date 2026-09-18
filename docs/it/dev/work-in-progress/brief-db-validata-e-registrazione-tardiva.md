@@ -28,8 +28,9 @@
 > una sospesa alla prima registrazione vera. Si progetta sul modello.
 >
 > **Stato:** 🔵 **scritto il 2026-09-18, in attesa del team DB.** BE e FE
-> **aspettano** l'apply (`feedback_be_fe_attende_prerequisiti_db`). ⏳ Una
-> decisione è **da confermare** da Tid prima di P-6: **D20-e** (§2.5).
+> **aspettano** l'apply (`feedback_be_fe_attende_prerequisiti_db`). Tutte e
+> cinque le decisioni sono **prese** (D20-e decisa da Tid la sera stessa:
+> strada **b**, §2.5).
 
 ---
 
@@ -41,7 +42,7 @@
 | **D20-b** | **Il resto ha un futuro: la registrazione TARDIVA per riga.** Una `SOSPESA` sotto una distinta **registrata** si abbina **e si registra nello stesso gesto**: una madre sua, riga → `POSTATA` col suo movimento, distinta che resta `CHIUSA`, quadratura intatta (la riga era già contata). La 4ª mossa del guard di riga resta vera — sotto una chiusa nessuna riga «pronta e mai registrata» — perché non esiste più il momento in cui sta pronta ad aspettare | §2.2 · §4 P-5 |
 | **D20-c** | **`SCARTATA` tiene un significato solo: «non è nostra».** Resta nella distinta (è lei la traccia, e conta nella quadratura: «quel denaro è arrivato») ma **esce dal lavoro**: nascosta di default nel drawer, mai in nessuna coda. Reversibile (`→ SOSPESA`) anche a distinta chiusa; se poi risulta nostra, si registra tardiva. ⛔ **Non si toglie dalla distinta** (§2.3: romperebbe la quadratura, e una `CHIUSA` è immutabile) | §2.3 · §6 |
 | **D20-d** | **«Registrabile» sta nel catalogo**, non nel letterale `'VALIDATA'` della madre: bandiera `is_registrabile` su `vendite_contabili_stati`, letta dalla madre e portata nel dettaglio — così «Registra» si spegne **col motivo** invece di finire in 409 | §2.4 · §4 P-2 |
-| **D20-e** ⏳ | *(da confermare da Tid)* Dalla matrice di riga escono `ABBINATA → DA_ABBINARE` e `ABBINATA → SOSPESA`: su una riga abbinata si **ri-abbina** (il dialogo si apre già sulla destinazione, FE del 18/09), non si «sgancia». ⚠️ Conseguenza: una abbinata non si parcheggia — in `BOZZA` si elimina, sotto `VALIDATA` si torna in bozza | §2.5 · §4 P-6 |
+| **D20-e** ✅ | *(Tid, 18/09: strada **b**)* Dalla matrice di riga esce **solo** `ABBINATA → DA_ABBINARE`: su una riga abbinata si **ri-abbina** (il dialogo si apre già sulla destinazione, FE del 18/09), non si «sgancia». `ABBINATA → SOSPESA` **resta**: una abbinata su cui viene un dubbio si parcheggia con un motivo, prima di registrare | §2.5 · §4 P-6 |
 | **BE** | `stato_is_registrabile` + `can_validare`/`validazione_blocco_*` nel dettaglio; `righe_per_stato`; `POST /righe/{id}/registra/` (la tardiva, col doppio tempo); le code con le azioni di riga; scartate fuori di default + `scartate_count` | §5 |
 | **FE** | «Porta a VALIDATA» con i numeri (dialog, non confirm generico) e spento col motivo; «Registra» spento col motivo; `Mostra scartate (N)`; «di cui non nostre» in quadratura; le code con Abbina / **Abbina e registra** / Sospendi / Scarta / Riprendi | §6 |
 
@@ -165,24 +166,27 @@ guard»* (commento della 4ª mossa).
 esiste più (D20-a). Una check con un motivo solo sarebbe una macchina per una
 riga.
 
-### 2.5 ⏳ D20-e — I «Porta a» da ABBINATA (da confermare)
+### 2.5 ✅ D20-e — I «Porta a» da ABBINATA: esce lo «sgancia», resta la sospensione
 
-**Richiesta di Tid (18/09)**: su una riga abbinata, «Porta a Da abbinare» e
-«Porta a Sospesa» devono essere attivi *«solo se la riga non è abbinata»*. Le
-due voci vengono dalla **matrice** (D14-a: `ABBINATA → DA_ABBINARE` è il
-«ri-abbinamento» del collaudo §3.1), quindi la sede del cambiamento è la
-matrice (P-6), non un `if` nel drawer.
+**Richiesta di Tid (18/09, mattina)**: su una riga abbinata, «Porta a Da
+abbinare» e «Porta a Sospesa» devono essere attivi *«solo se la riga non è
+abbinata»*. Le due voci vengono dalla **matrice** (D14-a: `ABBINATA →
+DA_ABBINARE` è il «ri-abbinamento» del collaudo §3.1), quindi la sede del
+cambiamento è la matrice (P-6), non un `if` nel drawer.
 
-**Che cosa cambia se entra.** Il ri-abbinamento diventa «Abbina» sulla riga già
-abbinata — il dialogo dal 18/09 si apre già sulla destinazione e resta spento
-finché non si cambia documento o rata. Una abbinata **non si parcheggia** più:
-in `BOZZA` si elimina; sotto `VALIDATA` (contenuto fermo) si torna in bozza e
-si elimina. Con D20-a, `ABBINATA → SOSPESA` non serve nemmeno per «tenere fuori
-una riga dalla registrazione»: si ri-abbina o si torna in bozza.
+**Decisione (Tid, 18/09, sera — strada b).** Esce **solo** `ABBINATA →
+DA_ABBINARE`: lo «sgancia» non serve più, perché «Abbina» su una riga già
+abbinata **è** il ri-abbinamento — il dialogo si apre già sulla destinazione
+che ha e resta spento finché non si cambia documento o rata. **Resta**
+`ABBINATA → SOSPESA`: una riga abbinata su cui viene un dubbio prima di
+registrare si **parcheggia con un motivo**, e da lì torna `ABBINATA` (matrice:
+`SOSPESA → ABBINATA` diretta) o va `SCARTATA`. ⚠️ La fattura sulla riga
+sospesa resta scritta ma non conta — è già così oggi, e con D20-b una sospesa
+sotto una distinta registrata si registra tardiva.
 
-⏳ **Tid conferma** (a) entrambe fuori — la richiesta com'è; oppure (b) fuori
-solo `ABBINATA → DA_ABBINARE`, tenendo la sospensione di una abbinata. P-6 si
-scrive dopo la risposta; il resto del brief non dipende da lei.
+**Che cosa cambia a video.** Sul kebab di una riga `ABBINATA` restano Abbina ·
+Porta a Sospesa · Elimina. Il collaudo §3.1 va riscritto: il ri-abbinamento
+passa da «Abbina», non da «Porta a DA_ABBINARE» (§7).
 
 ---
 
@@ -214,7 +218,7 @@ scrive dopo la risposta; il resto del brief non dipende da lei.
 | **P-3** | `script.fn_check_contabile_validabile(p_contabile_id bigint) RETURNS jsonb`, STABLE, forma di `fn_check_riga_contabile_eliminabile`: `[]` se si può validare, altrimenti motivi **ordinati** | **motivo 1** `E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE` (`CONFLITTO_STATO`, nuovo): righe attive con `lavorata = false`; `dettaglio = {quante, contabile_righe_ids}`, `valori = [codice distinta, quante]`. **motivo 2** `E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA` (riuso, **stessi valori** di oggi): solo se `importo_dichiarato IS NOT NULL` e ≠ Σ righe attive. Guard di parametro e «non trovata» come nella gemella (`E_PAGAMENTI_CHIAMATA_NON_VALIDA` / `E_CONTABILE_NON_TROVATA`) |
 | **P-4** | `trgfn_vendite_contabili_guard_validazione`: entrando in `VALIDATA` chiama la check e solleva con `script.fn_raise_primo_motivo_se_presente`; il blocco (1) della quadratura **esce** dal guard (è nella check). Il blocco (2), la riapertura solo `MANUALE`, resta com'è | ⛔ Il codice letto dall'array → `fn_raise_primo_motivo_se_presente`, non la coda a mano (AGENTS.md §«due funzioni per sollevare») |
 | **P-5** | `pagamenti.fn_posta_riga_tardiva(p_riga_id, p_fattura_id, p_billing_account_id, p_scadenza_id DEFAULT NULL, p_forzata DEFAULT false, p_motivo_forzatura DEFAULT NULL) RETURNS TABLE(movimento_id, riga_id, importo, esito)` | vedi §4.1 |
-| **P-6** ⏳ | Matrice di riga (`20260821-31` è `runOnChange` con `ON CONFLICT … SET attivo`): le due coppie `ABBINATA → DA_ABBINARE` e `ABBINATA → SOSPESA` a `attivo = false` — **dopo la conferma di D20-e** | ⚠️ Togliere la coppia dal `VALUES` **non** la spegne (l'upsert non cancella): serve la riga esplicita a `false`, o un `DELETE`. La matrice della distinta non cambia |
+| **P-6** | Matrice di riga (`20260821-31` è `runOnChange` con `ON CONFLICT … SET attivo`): la sola coppia `ABBINATA → DA_ABBINARE` a `attivo = false` (D20-e, strada b). `ABBINATA → SOSPESA` **resta attiva** | ⚠️ Togliere la coppia dal `VALUES` **non** la spegne (l'upsert non cancella): serve la riga esplicita a `false`, o un `DELETE`. La matrice della distinta non cambia. pgTAP della matrice: la coppia spenta rifiutata con `E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA`, `ABBINATA → SOSPESA` ancora ammessa |
 | **P-7** | Codici a catalogo (`codici_errore.csv`, con la classe): `E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE`, `E_RIGA_CONTABILE_TARDIVA_STATO` (la riga non è `SOSPESA`), `E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` (la distinta non è registrata: annullata, o ancora aperta — «usa il giro normale»); messaggi in `messaggi_errore` con `soluzione` | tutti `CONFLITTO_STATO`. ⚠️ Nel `VARIADIC` valori, mai nomi di parametro |
 | **P-8** | pgTAP: `test-contabile-validabile-v1.sql` (check + guard: rifiuta con una `DA_ABBINARE`, passa con `SOSPESA`/`SCARTATA`, quadratura ancora lì, messaggio con `throws_like`) e `test-posta-riga-tardiva-v1.sql` (§4.2); i pgTAP di P-0 adeguati; `test-rls-pagamenti-perimetro` se la madre tocca le policy | ⛔ Casi **costruiti**, non letti dai dati |
 | **P-9** | Doc auto-gen + schede manuali (`script/manual/fn_check_contabile_validabile`, `pagamenti/manual/fn_posta_riga_tardiva`, i due cataloghi); riquadro D20 nel brief madre §2-bis (già scritto insieme a questo brief) | |
@@ -281,8 +285,8 @@ id **non** apre la porta, e che fuori dalla transazione è vuota.
 
 In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-distinte-e-sistemazioni.md):
 **§3.1** (il ri-abbinamento passa da «Abbina» sulla riga abbinata, non da «Porta
-a DA_ABBINARE» — se D20-e entra); **§2.9** («abbina e sospendi restano» sotto
-`VALIDATA`: sospendere una **abbinata** no); **§4.0** (la validazione ora si
+a DA_ABBINARE», che non c'è più); **§2.9** resta com'è («abbina e sospendi
+restano» sotto `VALIDATA`, anche su una abbinata); **§4.0** (la validazione ora si
 ferma **anche** su una riga da abbinare, con la frase che le conta);
 **nuove §3.8–3.10**: una sospesa sotto una distinta registrata → coda «Sospese»
 → «Abbina e registra» → il movimento c'è, la distinta è ancora chiusa, la
@@ -293,4 +297,4 @@ Riprendi → idem.
 
 | Quando | Cosa |
 | --- | --- |
-| 2026-09-18 | Stesura, dal terzo collaudo in-app. Ordine dei rilievi di Tid: «Registra» in bozza → le regole di VALIDATA → *«un sospeso che non riesco ad abbinare, se lo scarto resta traccia e lo riprendo?»* → *«e se la scartata uscisse dalla contabile?»*. La risposta è cambiata due volte nella giornata: dalla B (sospese bloccano la validazione) alla tardiva per riga, e dal «togliere» al «nascondere». Dichiarato: **com'è** (Tid). D20-e in attesa di conferma |
+| 2026-09-18 | Stesura, dal terzo collaudo in-app. Ordine dei rilievi di Tid: «Registra» in bozza → le regole di VALIDATA → *«un sospeso che non riesco ad abbinare, se lo scarto resta traccia e lo riprendo?»* → *«e se la scartata uscisse dalla contabile?»*. La risposta è cambiata due volte nella giornata: dalla B (sospese bloccano la validazione) alla tardiva per riga, e dal «togliere» al «nascondere». Dichiarato: **com'è** (Tid). D20-e decisa la sera: strada **b** — esce solo lo «sgancia» (`ABBINATA → DA_ABBINARE`), la sospensione di una abbinata resta |
