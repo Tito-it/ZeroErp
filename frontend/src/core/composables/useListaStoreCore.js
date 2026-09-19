@@ -81,6 +81,14 @@ import { paramsOrdinamento } from '../utils/listParams'
 //       `data_a`, perche' sono i nomi che `useSearchTable` azzera sul deep-link
 //       e che `useStoreFilterBindings` lega ai DatePicker. ⚠️ E' una mappa di
 //       nomi, non un hook: la FORMA del parametro resta quella del BB.
+//   - onPayload(payload): l'hook per i campi EXTRA che l'endpoint mette
+//       ACCANTO a `results`/`count` (`scartate_count`, un catalogo, una
+//       matrice). E' la STESSA opzione, con lo stesso nome e lo stesso
+//       contratto, di `useListaEmptyStateFetch` — passata tal quale, dopo il
+//       guard di versione: le risposte scartate non la vedono. Omessa =
+//       comportamento invariato (2026-09-19, regola del 2: le righe della
+//       distinta ne avevano bisogno e lo store era sul core, dove l'hook non
+//       arrivava).
 //   - limit: righe per pagina di PARTENZA. Default `PAGINATION.DEFAULT_ROWS`
 //       (25), che `useSearchTable` tratta come «lista standard» e adatta al
 //       viewport (10 sotto il tablet). ⭐ Una lista che nasce a un altro
@@ -103,6 +111,7 @@ export function useListaStoreCore({
   orderDirDefault = 'asc',
   paramNames = {},
   limit = PAGINATION.DEFAULT_ROWS,
+  onPayload = null,
 } = {}) {
   // L'id del padre, quando la lista ne ha uno. `null` = nessun padre scelto.
   const parentId = ref(null)
@@ -177,6 +186,7 @@ export function useListaStoreCore({
     fetchPage: (params) => (
       parentField ? fetchPage(parentId.value, params) : fetchPage(params)
     ),
+    onPayload,
   })
 
   // ⛔ Senza padre non si chiama: l'id sta nel PATH dell'endpoint, e una fetch

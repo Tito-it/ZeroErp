@@ -4021,12 +4021,20 @@
       "stato_cambiato": "Sheet status updated.",
       "foglio_chiuso": "This sheet is in a final state: lines can no longer be changed.",
       "contenuto_fermo": "Batch validated: its content is frozen. A line can still be matched or suspended; to add, correct or delete, reopen the batch to draft.",
+      "mostra_scartate": "Show discarded",
+      "mostra_scartate_hint": "Discarded lines (“not ours”) stay in the batch and in the reconciliation, but leave the work queue: hidden by default.",
+      "di_cui_non_nostre": "Of which not ours",
+      "non_nostre_valore": "{n} discarded lines for {importo}",
       "stato_info": {
         "bozza": "Draft: being entered. Lines can be added, corrected and deleted.",
         "validata": "Validated: ready to be posted. The money is not posted yet — balances show it as “in progress”.",
         "chiusa": "Posted: the movements exist and balances have changed. There is no way back; correct it with a batch of opposite sign.",
         "annullata": "Cancelled: nothing was touched.",
         "importata": "Imported: loaded from a file, not yet reviewed."
+      },
+      "validazione_reason": {
+        "righe_non_lavorate": "The batch has {quante} lines nobody has worked yet: it is validated only once every line has been reviewed — matched, suspended with a reason or discarded.",
+        "totale_non_quadra": "Declared {importo_dichiarato}, but the lines add up to {somma_righe}: either a line is missing, an amount was mistyped, or the declared total was wrong. If not needed, the declared total can be left empty."
       }
     },
     "righe": {
@@ -4068,6 +4076,10 @@
       "stato_cambiato": "Line status updated.",
       "gia_registrata": "The line is already posted: it cannot be changed.",
       "porta_a": "Move to {stato}",
+      "verbo_sospendi": "Suspend",
+      "verbo_scarta": "Discard",
+      "verbo_riporta_da_abbinare": "Back to unmatched",
+      "verbo_riprendi": "Resume",
       "conferma_stato_a": "Move the line to «{stato}»?",
       "elimina_reason": {
         "distinta_finale": "The batch is closed or cancelled: its lines can no longer be worked.",
@@ -4133,7 +4145,13 @@
       "motivo_aiuto": "Whoever settles the excess will read it, even weeks later.",
       "forza": "Force anyway",
       "forzatura_resta_scritta": "The forcing stays recorded on the line",
-      "gia_cosi": "The line is already matched like this: change the document or the instalment to re-match it."
+      "gia_cosi": "The line is already matched like this: change the document or the instalment to re-match it.",
+      "e_registra": "Match and post",
+      "titolo_registra": "Match and post late",
+      "conferma_registra": "Match and post",
+      "registra_irreversibile": "The batch is already posted: this line is matched and posted now, with a movement of its own. There is no way back.",
+      "registrata": "Line posted late: movement of {importo} written, the batch stays closed.",
+      "non_da_questo_stato": "The line cannot be matched from this status: take it back first (“Resume”)."
     },
     "rata": {
       "campo": "Instalment",
@@ -4198,7 +4216,17 @@
       "restano_indietro": "{n} lines stay behind",
       "anteprima_non_letta": "The preview could not be read: you cannot post from here, because posting without seeing what you post is the leap in the dark this window exists to prevent.",
       "fatto_con_numeri": "Posted: {righe} lines for {totale}.",
-      "nulla_da_postare": "Nothing was posted: this sheet had no ready lines."
+      "nulla_da_postare": "Nothing was posted: this sheet had no ready lines.",
+      "blocco": {
+        "stato": "Only a validated batch can be posted: move it to Validated first (“I have finished entering”)."
+      }
+    },
+    "valida": {
+      "titolo": "Move to {stato}",
+      "conferma": "Validate",
+      "spiegazione": "Validating means “I have finished entering”: every line has been reviewed — matched, suspended with a reason or discarded — and the batch is ready to be posted. The money is not posted yet.",
+      "righe_per_stato": "Lines by status",
+      "righe_e_importo": "{n} lines · {importo}"
     },
     "canali": {
       "nuovo": "New channel",

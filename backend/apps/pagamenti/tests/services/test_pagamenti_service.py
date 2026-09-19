@@ -47,6 +47,7 @@ Indice test eseguiti:
 22) ListaTests.test_ordinamento_fuori_whitelist_rifiutato
 23) ListaTests.test_righe_della_distinta_ordinamento_fuori_whitelist_rifiutato
 24) ListaTests.test_righe_della_distinta_senza_ordinamento_e_un_none_e_un_conteggio_vero
+24a) ListaTests.test_le_scartate_sono_fuori_di_default_e_contate
 25) ListaTests.test_il_dettaglio_non_porta_piu_le_righe
 """
 
@@ -541,12 +542,41 @@ class ListaTests(_ServiceTestCase):
     #        dichiara — non `len(results)`, che fino al 18/09 era un'eco.
     def test_righe_della_distinta_senza_ordinamento_e_un_none_e_un_conteggio_vero(self):
         self.repo.list_righe_distinta.return_value = ([{"id": 91}], 340)
+        self.repo.count_righe_in_stato.return_value = 2
         esito = pagamenti_service.list_righe(7, limit=1, offset=0)
-        self.assertEqual(esito, {"count": 340, "results": [{"id": 91}]})
+        self.assertEqual(
+            esito, {"count": 340, "results": [{"id": 91}], "scartate_count": 2}
+        )
         kwargs = self.repo.list_righe_distinta.call_args.kwargs
         self.assertIsNone(kwargs["order_by"])
         self.assertIsNone(kwargs["order_dir"])
         self.assertEqual((kwargs["limit"], kwargs["offset"]), (1, 0))
+
+    # Scopo: ⭐ BE-2 (D20-c): di default le SCARTATA restano FUORI dalla lista —
+    #        il repository riceve lo stato da escludere — e la risposta dichiara
+    #        quante ne nasconde, contate sullo stesso perimetro. A interruttore
+    #        acceso non si esclude niente e il conteggio non si paga.
+    def test_le_scartate_sono_fuori_di_default_e_contate(self):
+        self.repo.list_righe_distinta.return_value = ([], 0)
+        self.repo.count_righe_in_stato.return_value = 3
+        esito = pagamenti_service.list_righe(7, limit=25)
+        self.assertEqual(
+            self.repo.list_righe_distinta.call_args.kwargs["escludi_stato_codice"],
+            pagamenti_service.STATO_RIGA_SCARTATA,
+        )
+        self.repo.count_righe_in_stato.assert_called_once_with(
+            7, pagamenti_service.STATO_RIGA_SCARTATA
+        )
+        self.assertEqual(esito["scartate_count"], 3)
+
+        self.repo.reset_mock()
+        self.repo.list_righe_distinta.return_value = ([], 0)
+        esito = pagamenti_service.list_righe(7, limit=25, scartate=True)
+        self.assertIsNone(
+            self.repo.list_righe_distinta.call_args.kwargs["escludi_stato_codice"]
+        )
+        self.repo.count_righe_in_stato.assert_not_called()
+        self.assertEqual(esito["scartate_count"], 0)
 
     # Scopo: ⛔ Il dettaglio NON legge piu' le righe (dal 2026-09-18): sono la
     #        lista paginata. Leggerle qui sarebbe la LATERAL per riga due volte

@@ -44,6 +44,10 @@ Indice test eseguiti:
 27) CorrezioneApiTests.test_senza_idempotency_key_rifiutata
 28) CorrezioneApiTests.test_nulla_da_correggere_risale_intatto
 29) CorrezioneApiTests.test_creata_porta_la_distinta_nuova
+30) TardivaApiTests.test_la_rotta_esiste_e_non_e_intercettata
+31) TardivaApiTests.test_senza_idempotency_key_rifiutata
+32) TardivaApiTests.test_il_payload_arriva_al_service_e_la_ricevuta_risale
+33) TardivaApiTests.test_lo_stesso_cancello_della_registrazione
 """
 
 from datetime import date
@@ -631,3 +635,61 @@ class Slice5ApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["sistemazione"]["stato"], "ANNULLATA")
+
+
+class TardivaApiTests(JwtMockedApiTest):
+    """D20-b — la rotta della registrazione TARDIVA di una riga."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    # ⛔ La rotta sta PRIMA di `righe/<id>/`, come `abbina/` e `stato/`.
+    def test_la_rotta_esiste_e_non_e_intercettata(self):
+        self.assertEqual(
+            reverse("pagamenti-riga-registra", args=[11]),
+            "/api/v1/pagamenti/righe/11/registra/",
+        )
+
+    # ⚠️ Scrive un MOVIMENTO: senza chiave di idempotenza un doppio invio
+    #    tenterebbe due volte lo stesso posting.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.registra_riga_tardiva")
+    def test_senza_idempotency_key_rifiutata(self, mocked, _auth):
+        response = self.client.post(
+            "/api/v1/pagamenti/righe/11/registra/",
+            data={"fattura_id": 2263},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        mocked.assert_not_called()
+
+    # Scopo: il payload e' quello di `abbina` e arriva al service com'e'; la
+    #        ricevuta (movimento, importo, esito, riga) risale nell'envelope.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.registra_riga_tardiva")
+    def test_il_payload_arriva_al_service_e_la_ricevuta_risale(self, mocked, _auth):
+        mocked.return_value = {
+            "movimento_id": 501, "riga_id": 11, "importo": "60.00",
+            "esito": "POSTATA", "riga": {"id": 11, "stato_codice": "POSTATA"},
+        }
+        response = self.client.post(
+            "/api/v1/pagamenti/righe/11/registra/",
+            data={"fattura_id": 2263, "scadenza_id": 5},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-tardiva-1",
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked.assert_called_once_with(11, {"fattura_id": 2263, "scadenza_id": 5})
+        dati = response.json()["data"]
+        self.assertEqual(dati["esito"], "POSTATA")
+        self.assertEqual(dati["movimento_id"], 501)
+        self.assertEqual(dati["riga"]["stato_codice"], "POSTATA")
+
+    # Scopo: 🔴 Un verbo che scrive un movimento ha LO STESSO cancello della
+    #        registrazione della distinta — non una porta piu' larga.
+    def test_lo_stesso_cancello_della_registrazione(self):
+        from apps.pagamenti.api.views import ApiDistintaRegistra, ApiRigaRegistra
+        self.assertEqual(ApiRigaRegistra.post_permission, "registra_distinta")
+        self.assertEqual(ApiRigaRegistra.post_permission, ApiDistintaRegistra.post_permission)

@@ -1487,6 +1487,42 @@ sarebbe il test di §10.10, quello che tiene fuori il dato il giorno che arriva.
 
 ---
 
+### 10.13 ⭐ Il seguito del terzo collaudo — D20 *(2026-09-19, sera)*
+
+> Il piano sta nel brief DB
+> ([§5, §6](brief-db-validata-e-registrazione-tardiva.md)); qui il consuntivo.
+> Scritto su «bisogna farlo» di Tid, dopo che il lato DB era stato applicato la
+> mattina. Due estrazioni **dichiarate prima e decise da Tid** nel giro.
+
+| Lato | Cosa esiste adesso | Dove |
+| --- | --- | --- |
+| **core/db** | ⭐ **`sql_lateral_primo_motivo(check_sql, alias)`** — la `LEFT JOIN LATERAL` del primo motivo di una `fn_check_*` (Q-G, residuo del 15/09): era scritta in **quattro** repository, la validazione della distinta chiedeva la quinta. Montato su tutti e cinque; `anagrafiche` estrae `dettaglio -> 'storia'` in proiezione, `vendite` proietta solo `reason`/`reason_key` | `apps/core/db/_helpers.py` |
+| **BE** | `get_distinta`: `stato_is_registrabile` (D20-d, catalogo — anche su `stati_distinta[]`); la terna **`validazione_blocco_*` + `can_validare`** dalla check a **due argomenti** (`c.id, c.importo_dichiarato`) innestata sull'alias `q` fuori dalla proiezione condivisa con la lista; **azzerata dal service** dove `VALIDATA` non è fra le uscite; `righe_per_stato` (jsonb ordinato dal catalogo) e da lì `righe_scartate`/`totale_scartate` con `STATO_RIGA_SCARTATA` | `pagamenti_repository.py` · `pagamenti_service.py` |
+| **BE** | `list_righe`: `scartate` (default `false` ⇒ `SCARTATA` fuori, `IS DISTINCT FROM` perché `rs` è LEFT) + `scartate_count` con `conta_con_perimetro` sul perimetro minimo `_RIGA_STATO_FROM`; lista ed export leggono lo stesso `_PARAM_SCARTATE` | idem · `views.py` |
+| **BE** | **`POST righe/{id}/registra/`** → `registra_riga_tardiva` → una `SELECT` su `fn_posta_riga_tardiva`; payload di `abbina` (`_destinazione_da_payload`), cliente dalla fattura, `post_permission = registra_distinta`, `Idempotency-Key`. ⛔ Zero verifiche di stato nel service (presidio statico). Risposta `{movimento_id, riga_id, importo, esito, riga}` | `views.py` · `pagamenti_service.py` · `pagamenti_repository.py` |
+| **BE** | Coda: `contabile_stato_codice_interno`, `contabile_is_final`, `contabile_registrata`; **e** `stati_riga` + `transizioni_riga` nell'envelope (il kebab della coda si costruisce dalla matrice, dalla stessa lettura delle righe) | `_RIGA_CODA_SELECT` · `list_coda_righe` |
+| **BE** | Policy rigenerate (solo i tre codici, DB e git allineati) + tre ripieghi | `error_policies_generated.py` · `error_messages_fallback.py` |
+| **BE · test** | **+12 a mock** (`test_validata_e_tardiva.py`), **+9 sul DB provvisto** (`test_validata_e_tardiva_db.py`: la fixture costruita come il pgTAP, la **tardiva per intero** dal service — validata, registrata, sospesa registrata tardi, distinta ancora CHIUSA con conferma e somma invariate, terna azzerata sulla CHIUSA; il guard e la terna che dicono lo stesso codice; sotto una VALIDATA il rifiuto 409 senza scrivere), **+4 API**, **+2** sui presidi esistenti (scartate, coda con matrice). Il test DB della matrice ora pretende `SOSPESA` e non `DA_ABBINARE` da `ABBINATA` (D20-e). Suite pagamenti **276 verdi**; core+anagrafiche 1902, vendite 2043 | `apps/pagamenti/tests/` |
+| **FE** | ⭐ **`useAzioniRigaContabile`** (composable di dominio, 2ª occorrenza del builder del drawer): matrice + catalogo + fatti della testata → voci del kebab; «Abbina» acceso da dove la matrice ammette `ABBINATA` e da `ABBINATA` stessa, spento da `SCARTATA` con «prima Riprendi»; sotto una distinta **registrata** diventa **«Abbina e registra»** (`MODO_ABBINA.REGISTRA`, `action: registra_distinta`), sotto una finale non registrata tutto spento con «foglio chiuso»; i **verbi** (`VERBO_TRANSIZIONE_RIGA`: Sospendi · Scarta · Riporta da abbinare · Riprendi per `SCARTATA>SOSPESA`) al posto di «Porta a …». Spec 11 test sui locales veri (le chiavi della mappa sono punto cieco di `check_i18n_keys`) | `pagamenti/composables/` |
+| **FE** | `ValidaDistintaDialog` (FE-1): quadratura nei tre esiti, righe per stato, spento col motivo del DB (`bloccoMotivo`, prefisso `validazione_blocco`); il drawer lo apre sulla transizione verso lo stato **`is_registrabile`** del catalogo, non su un nome. «Registra» spento con `pagamenti.registra.blocco.stato` quando `!stato_is_registrabile` (FE-2). `FiltroToggle` «Mostra scartate (N)» sopra le righe, legato con `bindToggle('scartate')`, e «di cui non nostre» in quadratura (FE-3). `AbbinaRigaDialog` prop `modo` (titolo, verbo rosso, avviso irreversibile, `registraRigaTardiva`) | `DistintaDrawer.vue` · `ValidaDistintaDialog.vue` · `AbbinaRigaDialog.vue` |
+| **FE** | `CodaRigheSearchTable`: slot `#actions` col kebab dal composable, `AbbinaRigaDialog` nei due modi; lo store legge `stati_riga`/`transizioni_riga` con `onPayload`. ⭐ `useListaStoreCore` ha guadagnato **`onPayload`** (stesso contratto di `useListaEmptyStateFetch`) e `distintaRighe.js` è passato a `useListaStoreCore` dentro il `defineStore` per `scartateCount`. `MANAGE_ICONS.REGISTRA` (era un letterale con un lettore; ora due) | `CodaRigheSearchTable.vue` · `codaRighe.js` · `distintaRighe.js` · `useListaStoreCore.js` |
+| **FE · i18n** | `pagamenti.valida.*`, `pagamenti.abbina.{e_registra, titolo_registra, conferma_registra, registra_irreversibile, registrata, non_da_questo_stato}`, `pagamenti.righe.verbo_*`, `pagamenti.registra.blocco.stato`, `pagamenti.distinte.{mostra_scartate, mostra_scartate_hint, di_cui_non_nostre, non_nostre_valore}`, e le due `validazione_reason.*` della mattina. `check_i18n_keys` pulito | locales |
+| **Seed** | 📮 Colonna **`azioni`** sulla lista 51 `pagamenti.righe` (`lista_colonna.csv` id 874, `lista_preset_colonna.csv`): senza, il kebab della coda non si rende e non dà errore. Mirror `runOnChange`: **apply di Tid** | `80_data/sql/ui/` |
+| **Docs** | `api_pagamenti.md` (rotta nuova, dettaglio, `scartate`, coda, codici); catalogo BB backend (`sql_lateral_primo_motivo`) e frontend (composable, dialog, `onPayload`, consumer di `FiltroToggle`); brief DB §5/§6/§4-ter chiusi | |
+
+⚠️ **Tre cose viste scrivendo.** (1) 🔴 Il presidio `test_naming_codice_interno_python`
+(§6c) ha bocciato due alias nuovi — `contabile_stato_codice`,
+`stato_codice` dentro `righe_per_stato` — perché un `codice_interno` va in
+`*_codice_interno`: rinominati, e il FE con loro. Il vecchio `stato_codice`
+della riga resta nel registro del debito. (2) Nella coda il catalogo e la
+matrice viaggiano nell'**envelope** e non in un endpoint loro: pulsanti e
+righe dalla stessa lettura, la forma di `stati` sul registro lotti — una
+lettura in più per pagina su due tabelle di catalogo. (3) Sotto una distinta
+**annullata** il composable spegne tutto («foglio chiuso») anche se la
+matrice ammetterebbe `SOSPESA ↔ SCARTATA`: sotto una «mai successa» non c'è
+niente da lavorare, ed è una scelta di resa, dichiarata nel composable — non
+una regola riscritta (il DB non la rifiuterebbe).
+
 ## 11. Registro delle revisioni
 
 | Data | Cosa |

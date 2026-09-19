@@ -32,6 +32,7 @@ from apps.pagamenti.api.views import (
     ApiRateList,
     ApiRigaAbbina,
     ApiRigaDetail,
+    ApiRigaRegistra,
     ApiRigaStato,
     ApiRigheCoda,
     ApiSistemazioneAnnulla,
@@ -105,6 +106,14 @@ urlpatterns = [
         "righe/<int:riga_id>/stato/",
         ApiRigaStato.as_view(),
         name="pagamenti-riga-stato",
+    ),
+    # ⭐ La registrazione TARDIVA (D20-b): «abbina e registra» una sospesa sotto
+    #    una distinta gia' registrata. Verbo di dominio, ultimo segmento, stesso
+    #    cancello della registrazione.
+    path(
+        "righe/<int:riga_id>/registra/",
+        ApiRigaRegistra.as_view(),
+        name="pagamenti-riga-registra",
     ),
     path("righe/<int:riga_id>/", ApiRigaDetail.as_view(), name="pagamenti-riga-detail"),
     # --- Rate ---

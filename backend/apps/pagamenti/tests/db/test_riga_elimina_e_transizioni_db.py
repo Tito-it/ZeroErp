@@ -337,13 +337,19 @@ class MatriciTests(_DbTestCase):
     # Scopo: Il caso del collaudo, contro la matrice VERA: da `ABBINATA` non si
     #        propone `SCARTATA` (D14-a: si scarta cio' che non e' nostro, e una
     #        riga abbinata ha gia' un nome).
+    # ⭐ Dal 2026-09-19 (D20-e, strada b, P-6 applicato) da ABBINATA esce SOLO
+    #    la sospensione: lo «sgancia» (`ABBINATA → DA_ABBINARE`) e' spento in
+    #    matrice — su una riga abbinata si RI-ABBINA, il dialogo si apre gia'
+    #    sulla destinazione. Fino a quel giorno questo test pretendeva
+    #    `DA_ABBINARE` fra le uscite: era la matrice di allora.
     def test_il_difetto_del_collaudo_non_e_piu_offerto(self):
         _, riga = self._matrici()
         ammesse = pagamenti_service._transizioni_richiedibili(
             riga, pagamenti_service.STATI_RIGA_RICHIEDIBILI
         )
         self.assertNotIn("SCARTATA", ammesse.get("ABBINATA", []))
-        self.assertIn("DA_ABBINARE", ammesse.get("ABBINATA", []))
+        self.assertNotIn("DA_ABBINARE", ammesse.get("ABBINATA", []))
+        self.assertIn("SOSPESA", ammesse.get("ABBINATA", []))
 
 
 # La fixture del secondo tempo, COSTRUITA (regola zero: non si pesca): la

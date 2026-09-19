@@ -15,6 +15,7 @@ from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
+    sql_lateral_primo_motivo,
     sql_order_clause,
     sql_order_direction,
     sql_tiebreak_direction,
@@ -347,6 +348,21 @@ class EmittentiFiscaliBillingAccountRepository:
         # ordina): in quel caso l'unica chiave e' la sua, con la sua direzione.
         order_prefix = "" if order_col == "m.is_default" else "m.is_default DESC, "
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        # ⭐ Il frammento e' il BB `sql_lateral_primo_motivo` (core/db): il
+        #    «dopo» passato alla check e' l'emittente della riga `is_default`
+        #    ESCLUSA questa — lo specchio esatto di
+        #    `trgfn_efba_guard_storia_emittente`. Qui si legge il `dettaglio`
+        #    intero e la proiezione ne estrae `storia`.
+        lateral_blocco = sql_lateral_primo_motivo(
+            """script.fn_check_ba_cambio_emittente(
+                                 m.billing_account_id,
+                                 m.emittente_soggetto_ruolo_id,
+                                 (SELECT d.emittente_soggetto_ruolo_id
+                                    FROM anagrafiche.emittenti_fiscali_billing_account d
+                                   WHERE d.is_default IS TRUE
+                                     AND d.id <> m.id))""",
+            "blocco",
+        )
         sql = f"""
             SELECT m.id,
                    m.billing_account_id,
@@ -376,7 +392,7 @@ class EmittentiFiscaliBillingAccountRepository:
                    -- ⚠️ Niente graffe nei commenti di questo SQL: e' un
                    --    f-string, e una parentesi graffa viene valutata come
                    --    espressione Python.
-                   blocco.storia               AS rimozione_blocco_storia,
+                   blocco.dettaglio -> 'storia' AS rimozione_blocco_storia,
                    COUNT(*) OVER ()            AS total_count
               FROM anagrafiche.emittenti_fiscali_billing_account m
               LEFT JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id
@@ -411,24 +427,7 @@ class EmittentiFiscaliBillingAccountRepository:
               --    grandezza piu' caro. Se un giorno questa pagina rallenta,
               --    la risposta e' impaginare PRIMA di arricchire, e riguarda
               --    tutta la query: non questo pezzo.
-              LEFT JOIN LATERAL (
-                  SELECT motivo.value ->> 'reason'     AS reason,
-                         motivo.value ->> 'reason_key' AS reason_key,
-                         motivo.value -> 'dettaglio' -> 'storia' AS storia
-                    FROM jsonb_array_elements(
-                             script.fn_check_ba_cambio_emittente(
-                                 m.billing_account_id,
-                                 m.emittente_soggetto_ruolo_id,
-                                 (SELECT d.emittente_soggetto_ruolo_id
-                                    FROM anagrafiche.emittenti_fiscali_billing_account d
-                                   WHERE d.is_default IS TRUE
-                                     AND d.id <> m.id))
-                         ) WITH ORDINALITY AS motivo(value, ord)
-                   -- L'ORDINE E' IL CONTRATTO: la madre solleva il primo
-                   -- motivo, e il tooltip deve mostrare quello stesso.
-                   ORDER BY motivo.ord
-                   LIMIT 1
-              ) blocco ON TRUE
+              {lateral_blocco}
              WHERE m.emittente_soggetto_ruolo_id = %s
                AND (%s::text IS NULL OR (
                        ba.codice ILIKE %s

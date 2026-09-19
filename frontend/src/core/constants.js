@@ -443,6 +443,12 @@ export const MANAGE_ICONS = {
   // per di piu' l'unica azione a video ERA questa e veniva letta come il
   // cestino di eliminazione. Elimina toglie una riga; questo disfa un effetto.
   UNDO: 'pi pi-undo',
+  // La REGISTRAZIONE di un incasso — il gesto irreversibile che scrive un
+  // movimento. Era un letterale nel solo «Registra» del drawer della distinta;
+  // dal 2026-09-19 lo legge anche «Abbina e registra» (la tardiva per riga,
+  // D20-b), e due lettori vogliono un nome (frontend-standards §«dove vive il
+  // nome di un'icona»).
+  REGISTRA: 'pi pi-lock',
   // ═══ I DUE SEGNI CHE SI CONFONDONO, e vanno tenuti separati ═══════════
   //
   // ⭐ ERRORE — «qualcosa è andato storto». Era già lo standard DI FATTO in una

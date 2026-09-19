@@ -4021,12 +4021,20 @@
       "stato_cambiato": "Stato della distinta aggiornato.",
       "foglio_chiuso": "Questa distinta e' in uno stato finale: le righe non si modificano piu'.",
       "contenuto_fermo": "Distinta validata: il contenuto è fermo. Si può ancora abbinare o sospendere una riga; per aggiungere, correggere o eliminare, riportala in bozza.",
+      "mostra_scartate": "Mostra scartate",
+      "mostra_scartate_hint": "Le righe scartate («non è nostra») restano nella distinta e nella quadratura, ma escono dal lavoro: di default sono nascoste.",
+      "di_cui_non_nostre": "Di cui non nostre",
+      "non_nostre_valore": "{n} righe scartate per {importo}",
       "stato_info": {
         "bozza": "Bozza: si digita. Le righe si aggiungono, si correggono e si eliminano.",
         "validata": "Validata: pronta da registrare. Il denaro non è ancora registrato — i saldi lo vedono «in lavorazione».",
         "chiusa": "Registrata: i movimenti esistono e i saldi sono cambiati. Da qui non si torna indietro; si corregge con una distinta di segno opposto.",
         "annullata": "Annullata: non ha toccato niente.",
         "importata": "Importata: arrivata da un file, non ancora guardata."
+      },
+      "validazione_reason": {
+        "righe_non_lavorate": "La distinta ha {quante} righe che nessuno ha ancora lavorato: si valida solo quando ogni riga è stata guardata — abbinata, sospesa con un motivo o scartata.",
+        "totale_non_quadra": "Dichiarato {importo_dichiarato}, ma le righe sommano {somma_righe}: o manca una riga, o un importo è digitato male, o il totale dichiarato era sbagliato. Se non serve, il dichiarato si può lasciare vuoto."
       }
     },
     "righe": {
@@ -4068,6 +4076,10 @@
       "stato_cambiato": "Stato della riga aggiornato.",
       "gia_registrata": "La riga e' gia' registrata: non si tocca piu'.",
       "porta_a": "Porta a {stato}",
+      "verbo_sospendi": "Sospendi",
+      "verbo_scarta": "Scarta",
+      "verbo_riporta_da_abbinare": "Riporta da abbinare",
+      "verbo_riprendi": "Riprendi",
       "conferma_stato_a": "Vuoi portare la riga a «{stato}»?",
       "elimina_reason": {
         "distinta_finale": "La distinta è chiusa o annullata: le sue righe non si lavorano più.",
@@ -4133,7 +4145,13 @@
       "motivo_aiuto": "Lo leggera' chi dovra' sistemare l'eccedenza, anche settimane dopo.",
       "forza": "Forza comunque",
       "forzatura_resta_scritta": "La forzatura resta scritta sulla riga",
-      "gia_cosi": "La riga e' gia' abbinata cosi': per ri-abbinarla cambia documento o rata."
+      "gia_cosi": "La riga e' gia' abbinata cosi': per ri-abbinarla cambia documento o rata.",
+      "e_registra": "Abbina e registra",
+      "titolo_registra": "Abbina e registra in ritardo",
+      "conferma_registra": "Abbina e registra",
+      "registra_irreversibile": "La distinta è già registrata: questa riga si abbina e si registra adesso, con un movimento suo. Da qui non si torna indietro.",
+      "registrata": "Riga registrata in ritardo: movimento da {importo} scritto, la distinta resta chiusa.",
+      "non_da_questo_stato": "Da questo stato la riga non si abbina: prima riprendila in mano («Riprendi»)."
     },
     "rata": {
       "campo": "Rata",
@@ -4198,7 +4216,17 @@
       "restano_indietro": "Restano indietro {n} righe",
       "anteprima_non_letta": "Non è stato possibile leggere l'anteprima: da qui non si registra, perché registrare senza vedere che cosa si registra è il salto nel buio che questa finestra esiste per evitare.",
       "fatto_con_numeri": "Registrata: {righe} righe per {totale}.",
-      "nulla_da_postare": "Non è stato registrato niente: questa distinta non aveva righe pronte."
+      "nulla_da_postare": "Non è stato registrato niente: questa distinta non aveva righe pronte.",
+      "blocco": {
+        "stato": "Si registra solo una distinta validata: prima portala a Validata («ho finito di inserire»)."
+      }
+    },
+    "valida": {
+      "titolo": "Porta a {stato}",
+      "conferma": "Valida",
+      "spiegazione": "Validare vuol dire «ho finito di inserire»: ogni riga è stata guardata — abbinata, sospesa con un motivo o scartata — e la distinta è pronta da registrare. Il denaro non è ancora registrato.",
+      "righe_per_stato": "Righe per stato",
+      "righe_e_importo": "{n} righe · {importo}"
     },
     "canali": {
       "nuovo": "Nuovo canale",

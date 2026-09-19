@@ -27,7 +27,9 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    conta_con_perimetro,
     fetch_paged_with_total,
+    sql_lateral_primo_motivo,
     sql_order_clause,
     jsonb_out,
     rows_to_list,
@@ -41,8 +43,10 @@ from apps.core.db.emittente_scope_helpers import (
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.pagamenti.types import (
+    DistintaDettaglioRow,
     DistintaRow,
     RicevutaPosting,
+    RicevutaTardiva,
     RigaCodaRow,
     RigaContabileRow,
     StatoCatalogoRow,
@@ -99,6 +103,11 @@ _DISTINTA_SELECT = """
         st.codice_interno  AS stato_codice,
         st.descrizione     AS stato_descrizione,
         st.is_final        AS stato_is_final,
+        -- ⭐ «Registrabile» sta nel CATALOGO (D20-d, 2026-09-18): la bandiera
+        --    che la madre del posting legge al posto del letterale `VALIDATA`.
+        --    Il frontend la porta per spegnere «Registra» COL MOTIVO invece di
+        --    lasciarlo finire in 409 — e non deduce niente dal nome dello stato.
+        st.is_registrabile AS stato_is_registrabile,
         -- ⭐ La riga «dove sono» del drawer (FE-9): la chiave i18n vive nel
         --    `meta` dello STATO, come negli otto domini che usano
         --    `DrawerActionsBar :info-key`. Il backend la TRASPORTA: un `CASE`
@@ -244,12 +253,9 @@ _RIGA_COLONNE = """
         (elimina.reason IS NULL)   AS can_eliminare
 """
 
-# ⚠️ `LEFT JOIN LATERAL ... ON TRUE` e non `CROSS JOIN`: la check risponde `[]`
-#    quando l'azione e' ammessa, e `jsonb_array_elements` su un array vuoto non
-#    produce righe — con un CROSS JOIN sparirebbero dalla lista proprio le
-#    righe che si possono eliminare. Forma di `registri_repository._LATERAL_BLOCCHI`.
-# ⚠️ L'ORDINE E' IL CONTRATTO: il guard solleva il PRIMO motivo, e il tooltip
-#    deve mostrare quello stesso. Da qui `ORDER BY ord LIMIT 1`.
+# ⭐ La LATERAL del PRIMO motivo e' il BB `sql_lateral_primo_motivo` (core/db,
+#    2026-09-19): LEFT JOIN … ON TRUE (le righe eliminabili non devono sparire)
+#    e `ORDER BY ord LIMIT 1` (lo stesso motivo che il guard solleva).
 # ⚠️ COSTO, letto sul piano: nella coda paginata (`_lista_paginata`, con
 #    `COUNT(*) OVER ()`) la LATERAL gira per ogni riga FILTRATA, non per riga
 #    di pagina. La check e' due ricerche su indice sotto RLS (riga + testata),
@@ -261,7 +267,10 @@ _RIGA_COLONNE = """
 #    una specie nuova. Se un giorno pesera', la coda si ristruttura «pagina
 #    prima, motivo dopo»: e' una decisione da prendere col piano in mano.
 #    Presidio: `tests/db/test_riga_elimina_e_transizioni_db.py`.
-_RIGA_FROM = """
+_LATERAL_ELIMINA = sql_lateral_primo_motivo(
+    "script.fn_check_riga_contabile_eliminabile(r.id)", "elimina"
+)
+_RIGA_FROM = f"""
       FROM pagamenti.vendite_contabili_righe r
       LEFT JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
       LEFT JOIN vendite.fatture f            ON f.id = r.fattura_id
@@ -277,20 +286,22 @@ _RIGA_FROM = """
       LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
              ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
       LEFT JOIN vendite.fatture_scadenze sc  ON sc.id = r.scadenza_id
-      LEFT JOIN LATERAL (
-          SELECT m.value ->> 'reason'     AS reason,
-                 m.value ->> 'reason_key' AS reason_key,
-                 m.value -> 'dettaglio'   AS dettaglio
-            FROM jsonb_array_elements(
-                     script.fn_check_riga_contabile_eliminabile(r.id)
-                 ) WITH ORDINALITY AS m(value, ord)
-           ORDER BY m.ord
-           LIMIT 1
-      ) elimina ON TRUE
+      {_LATERAL_ELIMINA}
 """
 
 # La riga «nuda», per il dettaglio e per le righe di UNA distinta.
 _RIGA_SELECT = f"SELECT {_RIGA_COLONNE} {_RIGA_FROM}"
+
+# Il perimetro MINIMO «riga + suo stato», per i conteggi che non hanno bisogno
+# dei display field ne' della LATERAL (`conta_con_perimetro`): contare quante
+# righe SCARTATA la lista nasconde non deve pagare la check di eliminabilita'
+# su ognuna. ⚠️ Le condizioni che ci si applicano sono le stesse della lista
+# (`r.contabile_id`, `r.attivo`, `rs.codice_interno`), quindi il perimetro
+# coincide — e' la regola del BB.
+_RIGA_STATO_FROM = """
+      FROM pagamenti.vendite_contabili_righe r
+      JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+"""
 
 # Le righe ATTIVE di una distinta — il perimetro che `list_righe` (l'insieme
 # intero, per l'anteprima di registrazione) e `list_righe_distinta` (la pagina
@@ -310,13 +321,23 @@ _RIGHE_DISTINTA_ATTIVE_SQL = f"""
 # riga cross-distinta senza il documento da cui viene non si lavora — chi la
 # guarda deve poterci tornare. ⚠️ Ed e' anche la colonna su cui il contratto
 # dichiara di saper ordinare: senza, `order_by=distinta` sarebbe un 500.
+# ⭐ E porta i FATTI della testata che decidono il verbo (BE-4, D20-b): lo
+#    stato in cui la distinta si trova e se e' REGISTRATA (`data_conferma`
+#    scritta dal posting). Dalla coda «Sospese» una riga sotto una distinta
+#    registrata si «abbina e registra» (la tardiva), sotto una aperta si
+#    abbina e basta: il frontend sceglie il verbo da un fatto, non ricalcola
+#    una regola.
 _RIGA_CODA_SELECT = f"""
     SELECT {_RIGA_COLONNE},
         c.codice          AS contabile_codice,
         c.data_contabile  AS contabile_data,
-        c.origine         AS contabile_origine
+        c.origine         AS contabile_origine,
+        cst.codice_interno AS contabile_stato_codice_interno,
+        cst.is_final       AS contabile_is_final,
+        (c.data_conferma IS NOT NULL) AS contabile_registrata
     {_RIGA_FROM}
       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
+      LEFT JOIN pagamenti.vendite_contabili_stati cst ON cst.id = c.stato_id
 """
 
 # L'INSERT della riga, coi fatti E la destinazione (D16). A costante di modulo
@@ -364,6 +385,70 @@ _RIGA_DISATTIVA = """
        SET attivo = false
      WHERE id = %s
        AND attivo IS TRUE
+"""
+
+# ⭐ IL VERBO «VALIDA» E IL SUO MOTIVO (D20-a, BE-1 — linee-guida-sql §12.5):
+#    la terna del primo motivo di `script.fn_check_contabile_validabile` — la
+#    STESSA check che `trgfn_vendite_contabili_guard_validazione` chiama per
+#    rifiutare l'ingresso in VALIDATA — piu' il flag `can_validare`. Cosi' il
+#    pulsante «Porta a VALIDATA» spento nel drawer e il 409 del database non
+#    «coincidono oggi»: non possono divergere.
+# ⚠️ DUE ARGOMENTI, e il secondo non e' un di piu' (brief §4-bis): il guard
+#    gira BEFORE ROW e legge `NEW.importo_dichiarato`, che non e' ancora in
+#    tabella; qui si passa `c.importo_dichiarato`, cioe' il dichiarato che la
+#    distinta HA. Chi chiama passa quello che vede — e' la forma della check.
+# ⚠️ SOLO SUL DETTAGLIO, non sulla lista: la check legge righe e stati della
+#    distinta, e sull'elenco girerebbe per ogni riga filtrata per un campo che
+#    la lista non mostra.
+# ⚠️ E' scritta contro l'alias `q` della sottoquery del dettaglio, non contro
+#    `c`: la LATERAL si innesta FUORI dalla proiezione condivisa
+#    (`_DISTINTA_SELECT`), che resta la stessa della lista.
+_LATERAL_VALIDAZIONE = sql_lateral_primo_motivo(
+    "script.fn_check_contabile_validabile(q.id, q.importo_dichiarato)", "valida"
+)
+
+# ⭐ LE RIGHE PER STATO (BE-1): quante righe attive e per che importo, stato
+#    per stato — la fotografia che il dialog di validazione mostra e da cui la
+#    quadratura legge «di cui non nostre». Un array jsonb ORDINATO dal catalogo
+#    (`ordine`), vuoto — non NULL — su una distinta senza righe.
+# ⚠️ Le righe ATTIVE, SCARTATA compresa: e' lo stesso perimetro di
+#    `_TOTALI_LATERAL` e della quadratura.
+_RIGHE_PER_STATO_LATERAL = """
+      LEFT JOIN LATERAL (
+          SELECT COALESCE(jsonb_agg(
+                     jsonb_build_object(
+                         'stato_codice_interno', g.stato_codice_interno,
+                         'stato_descrizione', g.stato_descrizione,
+                         'righe',             g.righe,
+                         'importo',           g.importo)
+                     ORDER BY g.ordine NULLS LAST, g.stato_id), '[]'::jsonb) AS righe_per_stato
+            FROM (
+                SELECT rs.id AS stato_id, rs.codice_interno AS stato_codice_interno,
+                       rs.descrizione AS stato_descrizione, rs.ordine,
+                       count(*)::int AS righe, COALESCE(sum(r.importo), 0) AS importo
+                  FROM pagamenti.vendite_contabili_righe r
+                  JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+                 WHERE r.contabile_id = q.id
+                   AND r.attivo IS TRUE
+                 GROUP BY rs.id, rs.codice_interno, rs.descrizione, rs.ordine
+            ) g
+      ) rps ON TRUE
+"""
+
+# La chiamata alla madre della registrazione TARDIVA (D20-b, P-5), a costante
+# di modulo come `_RIGA_INSERT`: il presidio sul DB provvisto la pianifica con
+# `EXPLAIN`, cosi' un parametro rinominato e' un test rosso e non un 500 sul
+# primo «Abbina e registra».
+_POSTA_RIGA_TARDIVA = """
+    SELECT movimento_id, riga_id, importo, esito
+      FROM pagamenti.fn_posta_riga_tardiva(
+           p_riga_id            := %s,
+           p_fattura_id         := %s,
+           p_billing_account_id := %s,
+           p_scadenza_id        := %s,
+           p_forzata            := %s,
+           p_motivo_forzatura   := %s
+      )
 """
 
 # 🔴 LE CHIAVI SONO IL `campo_sorgente` DEL SEED, NON IL `codice` LOGICO — e la
@@ -624,7 +709,12 @@ ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
 # ⚠️ `elimina_blocco_dettaglio` e' l'oggetto coi NOMI dei parametri della frase
 #    i18n del cestino spento: servito come stringa non fallisce — il frontend
 #    si limita a non trovarci le chiavi, e la frase esce coi segnaposto dentro.
-_JSONB_COLS = ("meta", "elimina_blocco_dettaglio")
+# ⚠️ Idem per `validazione_blocco_dettaglio` e `righe_per_stato` (il dettaglio
+#    della distinta): il primo riempie la frase del «Porta a VALIDATA» spento,
+#    il secondo e' l'array che il dialog di validazione elenca.
+_JSONB_COLS = (
+    "meta", "elimina_blocco_dettaglio", "validazione_blocco_dettaglio", "righe_per_stato",
+)
 
 # 🔴 Le colonne che questo repository accetta di aggiornare, e non e' una
 # ripetizione della whitelist del service: quella dice che cosa il CONTRATTO
@@ -711,9 +801,13 @@ class PagamentiRepository:
     # Scopo: Il vocabolario degli stati della distinta, coi suoi flag.
     # Nota: `obsoleto_dal` filtra i valori RITIRATI — che restano leggibili
     #       sui documenti vecchi ma non si propongono piu' a nessuno.
+    # ⭐ `is_registrabile` (D20-d): e' la bandiera con cui il frontend riconosce
+    #    lo stato «pronta da registrare» — quello in cui si entra VALIDANDO —
+    #    senza confrontare il nome dello stato con un letterale.
     def list_stati_distinta(self) -> list[StatoCatalogoRow]:
         sql = f"""
-            SELECT id, codice, codice_interno, descrizione, is_final, ordine
+            SELECT id, codice, codice_interno, descrizione, is_final, ordine,
+                   is_registrabile
               FROM pagamenti.vendite_contabili_stati
              WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
@@ -816,12 +910,29 @@ class PagamentiRepository:
     # Scopo: Dettaglio di una distinta (testata + display + totali derivati).
     # Risultato: None se non esiste — o se il perimetro non la lascia vedere,
     #        e i due casi sono volutamente indistinguibili al chiamante.
-    def get_distinta(self, contabile_id: int) -> DistintaRow | None:
+    # ⭐ Porta anche cio' che SOLO il dettaglio ha (BE-1, D20-a): la terna del
+    #    verbo «valida» + `can_validare` dalla check del database, e le righe
+    #    per stato. Sono innestate FUORI dalla proiezione condivisa con la
+    #    lista, sull'alias `q`: la lista non le paga.
+    # ⚠️ La terna si legge SEMPRE qui; e' il SERVICE a lasciarla a `null` quando
+    #    lo stato corrente non ammette VALIDATA fra le uscite (la matrice la
+    #    legge gia' lui): un motivo su un verbo che non si propone e' rumore.
+    def get_distinta(self, contabile_id: int) -> DistintaDettaglioRow | None:
         self._guard_canale_sistema("get_distinta")
         sql = f"""
-            {_DISTINTA_SELECT}
-            {_TOTALI_LATERAL}
-            WHERE c.id = %s
+            SELECT q.*,
+                   valida.reason              AS validazione_blocco_reason,
+                   valida.reason_key          AS validazione_blocco_reason_key,
+                   valida.dettaglio           AS validazione_blocco_dettaglio,
+                   (valida.reason IS NULL)    AS can_validare,
+                   rps.righe_per_stato
+              FROM (
+                {_DISTINTA_SELECT}
+                {_TOTALI_LATERAL}
+                WHERE c.id = %s
+              ) q
+              {_LATERAL_VALIDAZIONE}
+              {_RIGHE_PER_STATO_LATERAL}
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
@@ -987,10 +1098,15 @@ class PagamentiRepository:
     # ⚠️ L'export non chiede «tutto»: chiede `EXPORT_MAX_ROWS + 1` righe, ed e'
     #    il `+1` a far scattare il guard del tetto PRIMA di serializzare
     #    (`build_export_response`), come su ogni altra lista.
+    # ⭐ `escludi_stato_codice` (BE-2, D20-c): lo stato che la lista NASCONDE di
+    #    default — le SCARTATA, «non e' nostra», fuori dal lavoro ma dentro la
+    #    distinta e dentro la quadratura. Il codice lo nomina il service
+    #    (`STATO_RIGA_SCARTATA`), qui e' un filtro. `None` = tutte le attive.
     def list_righe_distinta(
         self,
         contabile_id: int,
         *,
+        escludi_stato_codice: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -1005,14 +1121,37 @@ class PagamentiRepository:
             default_desc=True,
             colonne_desc=DISTINTA_RIGHE_SORT_COLONNE_DATA,
         )
+        select_sql = _RIGHE_DISTINTA_ATTIVE_SQL
+        params: list[Any] = [int(contabile_id)]
+        if escludi_stato_codice is not None:
+            # ⚠️ `IS DISTINCT FROM` e non `<>`: `rs` e' in LEFT JOIN, e una riga
+            #    con uno stato che non risolve a catalogo (NULL) deve restare
+            #    a video, non sparire come se fosse scartata.
+            select_sql = f"{select_sql} AND rs.codice_interno IS DISTINCT FROM %s"
+            params.append(escludi_stato_codice)
         rows, total = self._lista_paginata(
-            select_sql=_RIGHE_DISTINTA_ATTIVE_SQL,
-            params=[int(contabile_id)],
+            select_sql=select_sql,
+            params=params,
             order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
         )
         return [self._shape(row) for row in rows], total
+
+    # Scopo: QUANTE righe attive di una distinta stanno in uno stato — il numero
+    #        accanto a «Mostra scartate (N)» (BE-2, la forma di
+    #        `archiviate_count`/`annullati_count`).
+    # ⛔ Non e' derivabile dalla lista: quelle righe il suo `WHERE` le ha gia'
+    #    escluse. E' il caso per cui esiste il BB `conta_con_perimetro`, sul
+    #    perimetro minimo «riga + stato» — le condizioni sono le stesse della
+    #    lista, senza pagare display field e LATERAL per un numero.
+    def count_righe_in_stato(self, contabile_id: int, stato_codice: str) -> int:
+        self._guard_canale_sistema("count_righe_in_stato")
+        return conta_con_perimetro(
+            _RIGA_STATO_FROM,
+            ["r.contabile_id = %s", "r.attivo IS TRUE", "rs.codice_interno = %s"],
+            [int(contabile_id), stato_codice],
+        )
 
     # Scopo: Dettaglio di una singola riga contabile ATTIVA.
     # ⚠️ Il filtro su `attivo` e' un cancello, non un dettaglio (D17): questa
@@ -2136,6 +2275,54 @@ class PagamentiRepository:
             message="La registrazione non ha prodotto nessuna ricevuta.",
             detail="pagamenti.fn_posta_contabile non ha restituito righe.",
             function_name=f"{_FN}.posta_contabile",
+        )
+        return rows[0]  # type: ignore[return-value]
+
+    # Scopo: La registrazione TARDIVA di una riga (D20-b, P-5): una `SOSPESA`
+    #        sotto una distinta gia' registrata si abbina E si registra nello
+    #        stesso gesto — movimento scritto, riga a `POSTATA`, distinta che
+    #        resta `CHIUSA`.
+    # ⭐ UNA SOLA `SELECT` sulla madre, come per il posting: i tre statement
+    #    (riga → ABBINATA coi guard dell'abbinamento, movimento, riga → POSTATA)
+    #    e la porta della quarta mossa (GUC transazionale) stanno DENTRO la
+    #    funzione. ⛔ Nessun `abbina_riga` + `set_stato_riga` da qui: sotto una
+    #    CHIUSA il secondo verrebbe rifiutato, e il primo resterebbe scritto.
+    # ⚠️ `forzata` e' il SECONDO TEMPO della capienza, intatto: il primo
+    #    tentativo arriva senza, il guard della rata rifiuta con
+    #    `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` (`confirm_and_retry`), e la
+    #    conferma torna qui come `forzata = true`.
+    # ⛔ Nessun `NULLA_DA_POSTARE`: una tardiva su una riga che non si puo'
+    #    registrare e' un RIFIUTO della madre (`E_RIGA_CONTABILE_TARDIVA_*`),
+    #    non un esito — chi preme ha identificato quel denaro.
+    def posta_riga_tardiva(
+        self,
+        *,
+        riga_id: int,
+        fattura_id: int,
+        billing_account_id: int,
+        scadenza_id: int | None,
+        forzata: bool,
+        motivo_forzatura: str | None,
+    ) -> RicevutaTardiva:
+        self._guard_canale_sistema("posta_riga_tardiva")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                _POSTA_RIGA_TARDIVA,
+                [
+                    int(riga_id), int(fattura_id), int(billing_account_id),
+                    scadenza_id, bool(forzata), motivo_forzatura,
+                ],
+            )
+            rows = rows_to_list(cursor)
+        # La madre risponde SEMPRE una riga, o solleva: senza righe il contratto
+        # e' cambiato sotto, e tacere su un gesto che ha scritto un movimento e'
+        # la cosa peggiore.
+        ErrorManager.require(
+            bool(rows),
+            code=_E_CHIAMATA,
+            message="La registrazione tardiva non ha prodotto nessuna ricevuta.",
+            detail="pagamenti.fn_posta_riga_tardiva non ha restituito righe.",
+            function_name=f"{_FN}.posta_riga_tardiva",
         )
         return rows[0]  # type: ignore[return-value]
 

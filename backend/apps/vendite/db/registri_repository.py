@@ -35,6 +35,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     sql_order_clause,
+    sql_lateral_primo_motivo,
     extract_paginated,
     jsonb_out,
     row_to_dict,
@@ -153,34 +154,13 @@ _CAMPI_UPDATE: tuple[str, ...] = (
 #    che ha numerato sono spenti ENTRAMBI, per motivi diversi — riusare una
 #    colonna per l'altra domanda mostra la frase sbagliata senza che niente
 #    fallisca (api.md §12.5.4).
-# ⚠️ `LEFT JOIN LATERAL ... ON TRUE` e non `CROSS JOIN`: la check risponde `[]`
-#    quando l'azione e' ammessa, e `jsonb_array_elements` su un array vuoto non
-#    produce righe. Con un CROSS JOIN quelle righe uscirebbero dalla LISTA —
-#    cioe' sparirebbero proprio i registri senza problemi.
-# ⚠️ L'ORDINE E' IL CONTRATTO: la madre solleva il PRIMO motivo, e il tooltip
-#    deve mostrare quello stesso. Da qui `ORDER BY ord LIMIT 1`.
-_LATERAL_BLOCCHI = """
-              LEFT JOIN LATERAL (
-                  SELECT m.value ->> 'reason'     AS reason,
-                         m.value ->> 'reason_key' AS reason_key,
-                         m.value -> 'dettaglio'   AS dettaglio
-                    FROM jsonb_array_elements(
-                             script.fn_check_registro_disattivabile(r.id)
-                         ) WITH ORDINALITY AS m(value, ord)
-                   ORDER BY m.ord
-                   LIMIT 1
-              ) rimozione ON TRUE
-              LEFT JOIN LATERAL (
-                  SELECT m.value ->> 'reason'     AS reason,
-                         m.value ->> 'reason_key' AS reason_key,
-                         m.value -> 'dettaglio'   AS dettaglio
-                    FROM jsonb_array_elements(
-                             script.fn_check_registro_forma_modificabile(r.id)
-                         ) WITH ORDINALITY AS m(value, ord)
-                   ORDER BY m.ord
-                   LIMIT 1
-              ) forma ON TRUE
-"""
+# ⭐ Il frammento e' il BB `sql_lateral_primo_motivo` (core/db, 2026-09-19):
+#    LEFT JOIN … ON TRUE (non CROSS: le righe ammesse non devono sparire) e
+#    `ORDER BY ord LIMIT 1` (il PRIMO motivo, lo stesso che la madre solleva).
+_LATERAL_BLOCCHI = (
+    sql_lateral_primo_motivo("script.fn_check_registro_disattivabile(r.id)", "rimozione")
+    + sql_lateral_primo_motivo("script.fn_check_registro_forma_modificabile(r.id)", "forma")
+)
 
 _PROIEZIONE = """
                    r.id,

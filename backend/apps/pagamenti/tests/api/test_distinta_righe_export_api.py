@@ -24,6 +24,7 @@
  5) test_export_csv_envelope_ok — 200 CSV + filename dal renderer
  6) test_export_chiede_il_dataset_non_la_pagina — limit = EXPORT_MAX_ROWS + 1
  7) test_lista_passa_pagina_e_ordinamento_grezzi — `order_dir` non normalizzato
+ 7a) test_scartate_arriva_al_service_su_lista_ed_export — `scartate` letto uguale dalle due porte
  8) test_lista_senza_ordinamento_lascia_decidere_al_repository — None, non 'asc'
 """
 
@@ -150,6 +151,7 @@ class TestDistintaRigheExportApi(JwtMockedApiTest):
             offset=0,
             order_by="importo",
             order_dir="desc",
+            scartate=False,
         )
 
     # Scopo: la lista a video passa pagina e ordinamento COM'E': `order_dir`
@@ -164,7 +166,21 @@ class TestDistintaRigheExportApi(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 200)
         mock_list.assert_called_once_with(
             7, limit=10, offset=20, order_by="data_pagamento", order_dir="desc",
+            scartate=False,
         )
+
+    # Scopo: ⭐ `scartate=1` arriva al service come `True` (BE-2, D20-c) e
+    #        l'EXPORT lo legge dallo stesso parametro della lista: il file segue
+    #        la videata, interruttore compreso. Assente = nascoste.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_LIST)
+    def test_scartate_arriva_al_service_su_lista_ed_export(self, mock_list, _auth) -> None:
+        mock_list.return_value = {"results": [], "count": 0, "scartate_count": 0}
+        self.client.get(f"{_URL_LISTA}?scartate=1")
+        self.assertIs(mock_list.call_args.kwargs["scartate"], True)
+        mock_list.reset_mock()
+        self.client.get(f"{_URL_LISTA}?scartate=0")
+        self.assertIs(mock_list.call_args.kwargs["scartate"], False)
 
     # Scopo: senza `order_by` al service arriva `None` (non `"descrizione"`, il
     #        default del bundle, e non `"asc"`): il verso di apertura — `id

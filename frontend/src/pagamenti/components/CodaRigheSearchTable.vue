@@ -12,7 +12,17 @@
 // ⚠️ La colonna «Distinta» non e' decorazione: qui le righe arrivano da
 //    distinte DIVERSE, e una riga senza il documento da cui viene non si
 //    lavora.
-import { computed, onActivated, onMounted, watch } from 'vue'
+//
+// ⭐ DALLA CODA SI LAVORA (FE-4, D20 — 2026-09-19): il kebab di riga porta
+//    Abbina · Sospendi · Scarta · Riporta da abbinare, e sulle sospese di una
+//    distinta gia' REGISTRATA «Abbina e registra» — la tardiva (D20-b), l'unica
+//    strada del denaro rimasto indietro. Le voci vengono dalla MATRICE e dal
+//    catalogo, che arrivano accanto alle righe (`stati_riga`,
+//    `transizioni_riga`), e le costruisce il composable di dominio
+//    `useAzioniRigaContabile` — la stessa sede del drawer. ⛔ Niente «Elimina»
+//    qui: il contenuto si lavora nel drawer della distinta, e la coda mostra
+//    solo righe da lavorare.
+import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import Tag from 'primevue/tag'
@@ -24,14 +34,17 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
-import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { DATE_FORMAT } from '../../core/constants'
 import { statoRigaContabileSeverity } from '../../core/utils/severity'
+import { MODO_ABBINA, useAzioniRigaContabile } from '../composables/useAzioniRigaContabile'
 import { useEtichettePagamenti } from '../etichette'
 import { useCodaRigheStore } from '../stores/codaRighe'
 import { CODE, ROTTA_PER_CODA } from '../vocabolari'
+import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
 
 const props = defineProps({
   // La coda che questa porta apre. ⚠️ Arriva dalla ROTTA, non da uno stato
@@ -44,6 +57,12 @@ const { t } = useI18n()
 const router = useRouter()
 const store = useCodaRigheStore()
 const isBlocked = useInjectBlocked()
+const isReadonly = useInjectReadonly()
+
+// Il dialogo di abbinamento, nei suoi due modi.
+const abbinaVisible = ref(false)
+const rigaDaAbbinare = ref(null)
+const modoAbbina = ref(MODO_ABBINA.ABBINA)
 
 const {
   onPage, onSort, applyFilters, paginatorProps, tablePage,
@@ -82,6 +101,28 @@ const codaCorrente = computed({
 })
 
 function onRowClick(data) { emit('row-click', data) }
+
+// ── azioni di riga ────────────────────────────────────────────────
+// I fatti della testata arrivano SULLA RIGA (BE-4: `contabile_is_final`,
+// `contabile_registrata`), perche' qui ogni riga viene da una distinta
+// diversa e non c'e' un dettaglio da cui leggerli.
+const { buildRowActions } = useAzioniRigaContabile({
+  statiRiga: () => store.statiRiga,
+  transizioniRiga: () => store.transizioniRiga,
+  testataDi: (riga) => ({
+    finale: riga.contabile_is_final === true,
+    registrata: riga.contabile_registrata === true,
+  }),
+  readonly: () => isReadonly.value,
+  onAbbina: (riga, modo) => {
+    rigaDaAbbinare.value = riga
+    modoAbbina.value = modo
+    abbinaVisible.value = true
+  },
+  // Dopo un gesto la riga cambia coda o sparisce dalla coda: si rilegge la
+  // pagina corrente (idempotente, come al rientro nella scheda).
+  ricarica: () => store.fetchList(),
+})
 
 // Scopo: allinea lo store alla coda della ROTTA, e ricarica.
 // Note: ⚠️ Idempotente di proposito. Se la coda e' gia' quella giusta NON si
@@ -184,6 +225,13 @@ onActivated(() => sincronizzaConLaRotta())
           <span v-else>{{ data.scadenza_numero_rata }}</span>
         </template>
 
+        <!-- ⚠️ Lo slot si chiama `#actions` e la colonna deve essere a catalogo
+             (`tipo_colonna = azione`): col nome sbagliato, o senza la colonna,
+             il kebab non si rende e non da' nessun errore. -->
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
+
         <template #empty>
           <div class="app-empty-state">
             <i class="pi pi-check-circle" />
@@ -191,6 +239,15 @@ onActivated(() => sincronizzaConLaRotta())
           </div>
         </template>
       </ListaConfigurabile>
+
+      <!-- ⭐ Un dialogo, due modi: «abbina» sotto una distinta aperta, «abbina e
+           registra» (la tardiva) sotto una registrata. -->
+      <AbbinaRigaDialog
+        v-model:visible="abbinaVisible"
+        :riga="rigaDaAbbinare"
+        :modo="modoAbbina"
+        @abbinata="store.fetchList()"
+      />
     </template>
   </div>
 </template>
