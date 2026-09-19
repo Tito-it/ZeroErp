@@ -255,7 +255,7 @@ const pageActions = computed(() => [
                 </div>
               </template>
               <template v-else>
-                <span v-if="!isReadonly" class="fattore-cell" @click="startEditFattore(data)">
+                <span v-if="!isReadonly" class="app-mono fattore-cell" @click="startEditFattore(data)">
                   {{ data.fattore }}
                   <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
                 </span>
@@ -329,7 +329,6 @@ const pageActions = computed(() => [
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  font-family: monospace;
 }
 .fattore-cell:hover {
   color: var(--p-primary-color);

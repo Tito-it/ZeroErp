@@ -698,7 +698,9 @@ non discrimina.
 | **Diagnostica del lotto** | Vendite → Lotti → clic sulla riga | Scheda **Task-run** (tentativo, esito, codice e messaggio d'errore) e scheda **Segnalazioni** con severità; da qui si fa ripartire uno step fallito |
 | **Errori vivi di fatturazione** | Vendite → Dashboard competenza, pannello errori | Task in errore non ancora superati da un ritentativo, più le fatture critiche; il codice del lotto è cliccabile e porta alla diagnostica |
 | **Esiti dei giri** | Vendite → Lotti, pannello in fondo | Riassunto delle esecuzioni per corsia e stato della coda di stampa |
+| **Giornale degli eventi** (dal 19-09-2026) | Vendite → Giornale eventi | «Cosa è andato storto, su tutto, nell'ultimo periodo»: la Storia di tutte le entità insieme, filtrata per gravità (default solo `ERROR`, che include la gravità vuota), registro, tipo di entità, date e **filo** (`tx_id`/`correlation_id`). Dal kebab «Apri …» si salta al lotto o al documento, dove la scheda **Storia** ha anche gli appunti forensi che qui non ci sono. Sotto il perimetro emittente della vista: si vede quello che si può vedere, e il totale è quello visto |
 | **Audit delle modifiche** | Amm. Software → Audit log | Chi ha cambiato cosa (riservato agli amministratori) |
+| **Errori tecnici** (dal 19-09-2026) | Amm. Software → Errori tecnici | La consultazione di `dbops.error_log`: quale funzione ha sollevato quale codice, quando, in quale transazione — con frase, causa, soluzione e **classe** dal catalogo (guasto o rifiuto legittimo) e il `context` **com'è** nel dettaglio. Filtri per area, funzione (prefisso), codice, `tx_id`, date; dal kebab «Giornale di questa transazione» si passa al giornale degli eventi con lo stesso `tx_id` (riservato agli amministratori) |
 | **Log email** | Amm. Software → Email log | Esiti di invio, tentativi, errore (riservato agli amministratori) |
 
 ### Log applicativi Python

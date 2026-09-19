@@ -86,7 +86,7 @@ function cella(valore) {
     <template v-else>
       <div v-for="p in daGuardare" :key="p.vista" class="app-presidio">
         <div class="app-presidio-testa">
-          <span class="app-presidio-nome">{{ p.vista }}</span>
+          <span class="app-mono app-presidio-nome">{{ p.vista }}</span>
           <!-- ⛔ «NON LETTO» NON È «ZERO RIGHE», ed è l'unica differenza che
                conta su una schermata dove il verde vuol dire «tutto a posto»:
                un presidio che non si è potuto interrogare arriva col conteggio
@@ -155,7 +155,7 @@ function cella(valore) {
   padding: 0.75rem;
 }
 .app-presidio-testa { display: flex; align-items: center; gap: 0.5rem; }
-.app-presidio-nome { font-weight: 600; font-family: monospace; }
+.app-presidio-nome { font-weight: 600; }
 .app-presidio-troncato { font-size: 0.8rem; opacity: 0.7; }
 .app-presidio-desc { margin: 0.4rem 0 0.6rem; font-size: 0.85rem; opacity: 0.85; }
 /* Il motivo per cui un presidio non si è letto: si legge, non si attenua. */

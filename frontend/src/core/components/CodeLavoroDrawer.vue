@@ -258,7 +258,7 @@ function apriCoda(tab) {
         <div v-if="sez.righe.length" class="app-code-jobs">
           <div v-for="riga in sez.righe" :key="riga.id" class="app-code-job">
             <Tag :value="riga.stato" :severity="sez.severity(riga.stato)" />
-            <span class="app-code-job-tipo">{{ riga.testo }}</span>
+            <span class="app-mono app-code-job-tipo">{{ riga.testo }}</span>
             <span class="app-text-muted">
               {{ riga.quando ? displayTimestamp(riga.quando) : '—' }}
             </span>
@@ -315,7 +315,6 @@ function apriCoda(tab) {
   gap: 0.5rem;
 }
 .app-code-job-tipo {
-  font-family: monospace;
   font-size: 0.85em;
 }
 .app-code-recenti-titolo,

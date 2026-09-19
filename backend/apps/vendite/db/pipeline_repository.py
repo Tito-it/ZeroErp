@@ -67,6 +67,21 @@ _ORIGINE_SEGNALAZIONE_BE = "BE_PIPELINE"
 # confonderli significa o una pagina enorme o un file troncato in silenzio.
 _DRAWER_EXPORT_MAX_ROWS = 10_000
 
+# Le colonne del riepilogo segnalazioni che NON sono conteggi: oggi il solo
+# verdetto `fermo` (`20260919-02`). Il riepilogo si legge per nome e si
+# tipizza per chiave, cosi' un booleano non finisce a video come `1`/`0` e il
+# ripiego a riga assente risponde `false`, non zero.
+_SUMMARY_CHIAVI_BOOL: frozenset[str] = frozenset({"fermo"})
+
+
+# Scopo: tipizza un valore del riepilogo segnalazioni per chiave — `bool` sul
+#        verdetto, `int` sui conteggi; con `None` (riga assente) il neutro del
+#        tipo (`False` / 0).
+def _valore_summary(chiave: str, valore: Any) -> bool | int:
+    if chiave in _SUMMARY_CHIAVI_BOOL:
+        return bool(valore)
+    return int(valore or 0)
+
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
 # Chiave nel `meta` jsonb del lotto che porta la corsia (filtro fatturazione_immediata)
@@ -491,6 +506,11 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     # e, dal 2026-09-12, il decimo numero `esiti_stato_esecuzione_errore_count`
     # (`20260912-16`, D2): i documenti presi in carico il cui ultimo esito e'
     # `ERRORE`, che entra nel verdetto del lotto.
+    # ⭐ E dal 2026-09-19 l'UNDICESIMA colonna, `fermo` (`20260919-02`, D-V1 di
+    #    Tid: «la regola va a DB»): il VERDETTO del lotto, calcolato in una
+    #    sede sola — `vendite.vw_lotti_segnalazioni_summary`, la stessa che
+    #    legge il presidio `dbops.vw_lotti_fermi_da_guardare`. Il backend lo
+    #    LEGGE (`LottoSegnalazioniService`) e non lo ricalcola dai tre addendi.
     # ⭐ LE CHIAVI VIVONO IN UNA SEDE SOLA: la SELECT. Fino al 2026-09-12 erano
     #    scritte TRE volte — SELECT, ripiego a riga assente, mapping `row[N]` —
     #    e la decima colonna e' entrata in tutte e tre a mano, cioe' nella forma
@@ -534,17 +554,32 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     --    (`LottoSegnalazioniService.is_error`): un lotto con un
                     --    documento in ERRORE non e' a posto per sottrazione.
                     --    `ESCLUSO` non conta — e' la via d'uscita.
-                    esiti_stato_esecuzione_errore_count
+                    esiti_stato_esecuzione_errore_count,
+                    -- ⭐ IL VERDETTO (`20260919-02`, D-V1): `fermo` e' vero
+                    --    quando (fatture_critical + lotto_critical) > 0, o
+                    --    fatture_stato_esecuzione_errore > 0, o
+                    --    esiti_stato_esecuzione_errore > 0 — ma la formula
+                    --    NON sta qui: sta nella vista, e qui si legge. Un
+                    --    addendo nuovo entra nella vista e il banner, il
+                    --    runner, il digest e il pallino lo vedono insieme.
+                    fermo
                 FROM vendite.fn_get_lotto_segnalazioni_summary(%s)
                 """,
                 [lotto_id],
             )
             riga = row_to_dict(cursor)
             # Riga assente (difensivo: la funzione risponde sempre una riga):
-            # tutti i conteggi a zero, con gli STESSI nomi della SELECT.
+            # tutti i conteggi a zero e il verdetto a `false`, con gli STESSI
+            # nomi della SELECT.
             if riga is None:
-                return cast(LottoSegnalazioniSummary, {c.name: 0 for c in cursor.description})
-        return cast(LottoSegnalazioniSummary, {chiave: int(valore) for chiave, valore in riga.items()})
+                return cast(
+                    LottoSegnalazioniSummary,
+                    {c.name: _valore_summary(c.name, None) for c in cursor.description},
+                )
+        return cast(
+            LottoSegnalazioniSummary,
+            {chiave: _valore_summary(chiave, valore) for chiave, valore in riga.items()},
+        )
 
     # Scopo: L'ELENCO delle segnalazioni del lotto — quello che il riepilogo
     #        conta soltanto.

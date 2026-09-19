@@ -17,6 +17,7 @@ Indice test eseguiti:
 8) VenditePipelineRepositoryUnitTests.test_is_lotto_in_errore_returns_true_when_stato_is_errore
 9) VenditePipelineRepositoryUnitTests.test_is_lotto_in_errore_returns_false_when_lotto_not_found
 10) VenditePipelineRepositoryUnitTests.test_get_lotto_segnalazioni_summary_maps_counts
+10-bis) VenditePipelineRepositoryUnitTests.test_get_lotto_segnalazioni_summary_ripiego_a_riga_assente
 11) VenditePipelineRepositoryUnitTests.test_get_pipeline_id_for_step_returns_id_when_found
 12) VenditePipelineRepositoryUnitTests.test_get_pipeline_id_for_step_returns_none_when_not_found
 13) VenditePipelineRepositoryUnitTests.test_task_policy_exists_returns_true_when_policy_active
@@ -240,9 +241,10 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 "fatture_stato_esecuzione_errore_count",
                 "documenti_bloccanti_count", "documenti_presi_in_carico_count",
                 "critiche_giro_count", "esiti_stato_esecuzione_errore_count",
+                "fermo",
             )
         ]
-        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7, 2, 4, 1, 3)
+        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7, 2, 4, 1, 3, True)
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
@@ -266,14 +268,41 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 # ⭐ Il DECIMO (D2, `20260912-16`): tre documenti presi in carico
                 #    il cui ultimo esito e' ERRORE. Questo entra nel verdetto.
                 "esiti_stato_esecuzione_errore_count": 3,
+                # ⭐ L'UNDICESIMA (D-V1, `20260919-02`): il verdetto, letto e
+                #    non ricalcolato. Resta un booleano: `int(True)` a video
+                #    sarebbe un «1» sotto il nome sbagliato.
+                "fermo": True,
             },
         )
+        self.assertIs(result["fermo"], True)
         execute_sql, execute_params = cursor.execute.call_args.args
         self.assertIn("fn_get_lotto_segnalazioni_summary", execute_sql)
         # ⛔ La colonna si chiede PER NOME: un lettore posizionale sbagliato non
         #    protesta, mostra numeri plausibili e falsi.
         self.assertIn("esiti_stato_esecuzione_errore_count", execute_sql)
+        self.assertIn("fermo", execute_sql)
         self.assertEqual(execute_params, [10])
+
+    # Scopo: a riga assente (difensivo: la funzione risponde sempre una riga)
+    #        il ripiego e' zero sui conteggi e `False` sul verdetto — non uno
+    #        zero intero sotto la chiave booleana.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_get_lotto_segnalazioni_summary_ripiego_a_riga_assente(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.description = [
+            SimpleNamespace(name=nome) for nome in (
+                "fatture_critical_count", "esiti_stato_esecuzione_errore_count", "fermo",
+            )
+        ]
+        cursor.fetchone.return_value = None
+        mocked_cursor_factory.return_value = cursor
+
+        result = VenditePipelineRepository().get_lotto_segnalazioni_summary(10)
+
+        self.assertEqual(result["fatture_critical_count"], 0)
+        self.assertEqual(result["esiti_stato_esecuzione_errore_count"], 0)
+        self.assertIs(result["fermo"], False)
 
     # Scopo: Verifica il caso `test_get_pipeline_id_for_step_returns_id_when_found`.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")

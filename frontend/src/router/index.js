@@ -216,6 +216,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'audit-log' }
         },
         {
+          path: 'amm-software/error-log',
+          name: 'amm-software-error-log',
+          component: () => import('../amministrazione/views/ErrorLogListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'error-log' }
+        },
+        {
           path: 'amm-software/email-accounts',
           name: 'amm-software-email-accounts',
           component: () => import('../amministrazione/views/EmailAccountsListView.vue'),
@@ -353,6 +359,12 @@ const router = createRouter({
           name: 'vendite-lotti',
           component: () => import('../vendite/views/LottiListView.vue'),
           meta: { domain: 'vendite', menuKey: 'lotti' }
+        },
+        {
+          path: 'vendite/giornale',
+          name: 'vendite-giornale',
+          component: () => import('../vendite/views/GiornaleListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'giornale' }
         },
         {
           // Tool della fatturazione: contenitore a tab degli elenchi che il

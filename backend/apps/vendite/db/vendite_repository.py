@@ -12,6 +12,7 @@ import json
 import logging
 import re
 from datetime import date
+from collections.abc import Sequence
 from typing import Any
 
 from django.db import DatabaseError, connection, transaction
@@ -107,10 +108,25 @@ _LOTTO_EXPORT_MAX_ROWS = EXPORT_MAX_ROWS
 # ⚠️ Il valore `rango` non e' una colonna della vista: e' il rango calcolato
 # nella CTE, perche' il vocabolario e' testuale e in ordine alfabetico ERROR
 # verrebbe PRIMA di INFO e WARN — una scala che non e' una scala.
-_GIORNALE_SORT_COLUMNS: dict[str, str] = {
+# ⭐ Pubblica dal 2026-09-19 (pezzo G): la legge il presidio delle liste
+#    configurabili (`test_liste_configurabili_seed._LISTE`) per la lista
+#    `vendite.giornale`, e la view per la descrizione OpenAPI di `order_by`.
+#    Le chiavi sono i `campo_sorgente` del catalogo: le due colonne che
+#    ordinano davvero. Un nome solo, non un alias: due nomi per lo stesso dict
+#    sono la forma in cui uno dei due smette di essere quello letto.
+GIORNALE_SORT_COLUMNS: dict[str, str] = {
     "gravita": "rango",
     "quando": "quando",
 }
+
+# I quattro registri che la vista cuce, nel suo vocabolario. ⚠️ Un ramo nuovo
+# della vista (pratiche, documenti) entra qui con la sua UNION ALL: il filtro
+# `registro` del giornale trasversale lo valida contro questo insieme.
+GIORNALE_REGISTRI: frozenset[str] = frozenset({"EVENT_LOG", "LOTTO_LOG", "TASK_RUN", "FATTURA_LOG"})
+# Le tre gravita' normalizzate della vista. ⚠️ `NULL` non e' una quarta: e' il
+# segnale di «un vincolo si e' allargato e la mappa e' rimasta indietro», e
+# viaggia INSIEME a `ERROR` (pesa come un ERROR, vedi `rango_gravita`).
+GIORNALE_GRAVITA: tuple[str, ...] = ("ERROR", "WARN", "INFO")
 
 
 # Scopo: la clausola `ORDER BY` del giornale di un'entita', a partire dalla
@@ -121,7 +137,7 @@ _GIORNALE_SORT_COLUMNS: dict[str, str] = {
 #    `sql_order_direction`, che i NULL li porta gia' con se' (BB di casa).
 def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
     direzione = sql_order_direction(sort_dir, default_desc=True)
-    if _GIORNALE_SORT_COLUMNS.get(sort_by or "", "rango") == "rango":
+    if GIORNALE_SORT_COLUMNS.get(sort_by or "", "rango") == "rango":
         # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
         #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
         #    recenti» resta la lettura utile anche guardando dal meno grave.
@@ -5062,6 +5078,140 @@ class VenditeRepository:
             sort_by=sort_by,
             sort_dir=sort_dir,
         )
+
+    # Scopo: il GIORNALE TRASVERSALE — «cosa e' andato storto, su tutto,
+    #        nell'ultimo periodo»: la Storia di tutte le entita' insieme,
+    #        filtrata per gravita' (pezzo G del piano BE/FE dell'osservabilita',
+    #        2026-09-19 — la meta' «vista errori» del Passo B).
+    #
+    # ⭐ TERZO LETTORE della stessa vista e dello STESSO corpo (`_list_giornale`):
+    #    non un aggregato nuovo. Il perimetro qui non e' un'entita' ma un
+    #    insieme di filtri — ed e' la ragione per cui `_list_giornale` riceve il
+    #    perimetro come SQL + parametri: serve «una riga», «un lotto e le sue
+    #    fatture» e «tutto cio' che passa questi filtri» con lo stesso corpo.
+    #    Regole di gravita', conteggi e ordinamento restano in una sede sola.
+    # ⭐ Al TERZO consumatore il lettore del giornale dovrebbe uscire da
+    #    `vendite_repository` — «al SECONDO dominio va spostato in `core`». Il
+    #    dominio e' ancora `vendite` (tre lettori, un dominio), quindi non
+    #    ancora: si dichiara qui perche' il prossimo (pratiche) lo sposta.
+    #
+    # I filtri, tutti in whitelist e tutti nei `params`:
+    #   `gravita`    sottoinsieme di `GIORNALE_GRAVITA`. ⚠️ Con `ERROR` si
+    #                INCLUDE il `NULL` — la riga che dichiara un difetto (stessa
+    #                regola del pannello lotto e del `rango_gravita`).
+    #   `registri`   sottoinsieme di `GIORNALE_REGISTRI`, `None` = tutti.
+    #   `entity_type` codice di `config.tipi_entita`, esatto.
+    #   `data_da`/`data_a` su `quando`, `[da, a + 1 giorno)`: il floor lo mette
+    #                il frontend (e' consultazione, non coda di lavoro).
+    #                ⭐ E' il predicato che gli indici per tempo di P-3
+    #                (`20260919-05`) servono, spinto dentro i quattro rami.
+    #   `filo`       uuid: `tx_id` OPPURE `correlation_id` (R-2: filtrare per
+    #                filo tiene `EVENT_LOG` + `TASK_RUN` e butta le righe
+    #                scritte per una persona — il default NON filtra per filo).
+    #   `solo_vive`  esclude le segnalazioni ritirate (`ritirate` dice quante).
+    # ⛔ Niente `context`/`payload`: espone le stesse colonne della Storia. Gli
+    #    appunti forensi restano nella Storia dell'entita' (vincolo del Passo A).
+    # ⚠️ La vista e' `security_invoker`: il perimetro emittente lo applica la
+    #    connessione di chi legge, riga per riga e nei CONTEGGI (la CTE conta
+    #    sulla vista gia' filtrata). Fuori scope la riga non c'e', e il totale
+    #    dice il numero VISTO — presidiato sul DB vero con due emittenti
+    #    costruiti (`test_giornale_trasversale_perimetro`).
+    def list_giornale_trasversale(
+        self,
+        *,
+        gravita: Sequence[str],
+        registri: Sequence[str] | None = None,
+        entity_type: str | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
+        filo: str | None = None,
+        solo_vive: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str = "quando",
+        sort_dir: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int, int, int]:
+        gravita_valide = [g for g in gravita if g in GIORNALE_GRAVITA]
+        registri_validi = (
+            [r for r in registri if r in GIORNALE_REGISTRI] if registri is not None else None
+        )
+        righe, vive, ritirate, info_vive = self._list_giornale(
+            perimetro_sql="""
+                (gravita = ANY(%s::text[]) OR (gravita IS NULL AND 'ERROR' = ANY(%s::text[])))
+                AND (%s::text[] IS NULL OR registro = ANY(%s::text[]))
+                AND (%s::text IS NULL OR entity_type = %s)
+                AND (%s::date IS NULL OR quando >= %s::date)
+                AND (%s::date IS NULL OR quando < %s::date + interval '1 day')
+                AND (%s::uuid IS NULL OR tx_id = %s::uuid OR correlation_id = %s::uuid)
+            """,
+            perimetro_params=[
+                gravita_valide, gravita_valide,
+                registri_validi, registri_validi,
+                entity_type, entity_type,
+                data_da, data_da,
+                data_a, data_a,
+                filo, filo, filo,
+            ],
+            limit=limit,
+            offset=offset,
+            escludi_ritirate=solo_vive,
+            escludi_info=False,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
+        self._aggiungi_entita_display(righe)
+        return righe, vive, ritirate, info_vive
+
+    # Scopo: `entita_display` sulle righe di UNA pagina — il codice del lotto,
+    #        «serie/numero» del documento — risolto qui nel backend (memoria:
+    #        liste API → display via JOIN, mai lookup client-side).
+    # ⭐ UNA query sulla pagina e NON un JOIN dentro `_list_giornale`: la' il
+    #    JOIN starebbe PRIMA di `LIMIT`, cioe' su tutto il perimetro (che con
+    #    un intervallo largo sono migliaia di righe per una pagina di 25), e
+    #    peserebbe anche sui due lettori per entita', che il display non lo
+    #    chiedono. Qui costa una lettura per chiave sulla pagina.
+    # ⚠️ I due JOIN attraversano tabelle in RLS: fuori scope darebbero `NULL` —
+    #    ma fuori scope la riga del giornale NON c'e' (la vista e'
+    #    `security_invoker`), quindi un `NULL` qui e' un'entita' cancellata, non
+    #    una nascosta. Coerente, e nel test di perimetro.
+    # ⚠️ `TASK_RUN` e gli altri tipi restano `None`: il display e' un'offerta.
+    def _aggiungi_entita_display(self, righe: list[dict[str, Any]]) -> None:
+        lotti = sorted({int(r["entity_id"]) for r in righe
+                        if r["entity_type"] == "LOTTO" and r["entity_id"] is not None})
+        fatture = sorted({int(r["entity_id"]) for r in righe
+                          if r["entity_type"] == "FATTURA" and r["entity_id"] is not None})
+        display: dict[tuple[str, int], str] = {}
+        if lotti or fatture:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 'LOTTO', l.id, l.codice::text
+                      FROM vendite.fatturazione_lotti l
+                     WHERE l.id = ANY(%s::bigint[])
+                    UNION ALL
+                    SELECT 'FATTURA', f.id,
+                           -- ⭐ Il numero parlante dalla SEDE UNICA a DB
+                           --    (`fn_numero_documento_fattura`, NULL sulla non
+                           --    numerata, mai la stringa vuota), come gli altri
+                           --    quattro lettori di questo file: composto qui a
+                           --    mano era una forma diversa («serie/numero») e
+                           --    con `concat_ws` la bozza usciva '' invece di
+                           --    cadere sul ripiego. L'id fra parentesi finche'
+                           --    la bozza non ha un numero.
+                           COALESCE(
+                               vendite.fn_numero_documento_fattura(f.numero, f.serie),
+                               '(' || f.id::text || ')'
+                           )
+                      FROM vendite.fatture f
+                     WHERE f.id = ANY(%s::bigint[])
+                    """,
+                    [lotti, fatture],
+                )
+                for tipo, entity_id, testo in cursor.fetchall():
+                    display[(str(tipo), int(entity_id))] = str(testo)
+        for r in righe:
+            chiave = (r["entity_type"], r["entity_id"])
+            r["entita_display"] = display.get(chiave) if r["entity_id"] is not None else None
 
     # Scopo: il corpo unico del giornale — CTE dei conteggi, rango di gravita',
     #        filtri, ordinamento e mappatura delle righe. Cambia SOLO il

@@ -9,10 +9,10 @@
 # Service layer: valida parametri, delega ai repository, restituisce dict paginati.
 
 from apps.core.api.payload_validators import paginated_envelope
-from apps.core.db.dbops_repository import DbopsRepository
+from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS, DbopsRepository
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_pagination
+from apps.core.services.list_helpers import validate_order_params, validate_pagination
 
 _STATUS_VALIDI: frozenset[str] = frozenset({"SUCCESS", "FAILED", "WARNING"})
 
@@ -66,6 +66,67 @@ def fn_list_audit_logs(
         offset=offset,
     )
     return paginated_envelope(results, total_count, page, page_size)
+
+
+# ------------------------------------------------------------------
+# Error Log — la consultazione dei tecnici (pezzo E, 2026-09-19)
+# ------------------------------------------------------------------
+
+# Scopo: la lista paginata di `dbops.error_log` col catalogo dei messaggi,
+#        nella forma dell'audit log qui sopra. I filtri arrivano gia'
+#        normalizzati dalla view (date ISO, `tx_id` uuid, testi strip):
+#        qui si valida la pagina e si delega.
+# ⚠️ `limit`/`offset` e non `page`/`page_size`: e' la lingua con cui gli
+#    store-lista del frontend chiedono una pagina (`useListaStoreCore`),
+#    la stessa del log email della stessa schermata. L'envelope resta quello
+#    paginato standard, con la pagina derivata.
+def fn_list_error_logs(
+    *,
+    area: str | None = None,
+    function_name: str | None = None,
+    codice: str | None = None,
+    tx_id: str | None = None,
+    data_da: str | None = None,
+    data_a: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+) -> dict:
+    fn = "core.tracciamento_service.fn_list_error_logs"
+    ErrorManager.require(
+        int(limit) > 0 and int(offset) >= 0,
+        code="E_CORE_VALIDATION",
+        message="Parametri di paginazione non validi.",
+        detail=f"limit={limit}, offset={offset}",
+        function_name=fn,
+    )
+    # ⛔ Un `order_by` fuori whitelist e' un 400, non un ripiego muto: il
+    #    repository ripiegherebbe sulla data senza dirlo, e una lista ordinata
+    #    diversamente da come e' stata chiesta non solleva niente. `nullable`:
+    #    senza parametro l'ordine lo decide il default dichiarato a catalogo.
+    validate_order_params(
+        order_by,
+        order_dir.lower() if order_dir is not None else None,
+        allowed_columns=ERROR_LOG_SORT_COLUMNS,
+        error_code="E_CORE_VALIDATION",
+        function_name=fn,
+        nullable=True,
+    )
+    results, total_count = DbopsRepository().list_error_logs(
+        area=area,
+        function_name=function_name,
+        codice=codice,
+        tx_id=tx_id,
+        data_da=data_da,
+        data_a=data_a,
+        limit=limit,
+        offset=offset,
+        order_by=order_by,
+        order_dir=order_dir,
+    )
+    page = int(offset) // int(limit) + 1
+    return paginated_envelope(results, total_count, page, int(limit))
 
 
 # ------------------------------------------------------------------

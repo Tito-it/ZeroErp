@@ -101,24 +101,24 @@ onMounted(() => store.fetchList())
 
       <Column field="code" :header="t('config.impostazioni.col_code')" sortable style="width: 220px;">
         <template #body="{ data }">
-          <span class="font-mono">{{ data.code }}</span>
+          <span class="app-mono">{{ data.code }}</span>
         </template>
       </Column>
       <Column field="description" :header="t('config.impostazioni.col_description')" style="min-width: 250px;" />
       <Column field="default_value" :header="t('config.impostazioni.col_default')" style="width: 130px;">
         <template #body="{ data }">
-          <span class="font-mono text-muted">{{ data.default_value ?? '—' }}</span>
+          <span class="app-mono text-muted">{{ data.default_value ?? '—' }}</span>
         </template>
       </Column>
       <Column field="emittente_value" :header="t('config.impostazioni.col_emittente')" style="width: 130px;">
         <template #body="{ data }">
-          <span v-if="data.emittente_value != null" class="font-mono">{{ data.emittente_value }}</span>
+          <span v-if="data.emittente_value != null" class="app-mono">{{ data.emittente_value }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
       <Column field="group_value" :header="t('config.impostazioni.col_group')" style="width: 130px;">
         <template #body="{ data }">
-          <span v-if="data.group_value != null" class="font-mono">{{ data.group_value }}</span>
+          <span v-if="data.group_value != null" class="app-mono">{{ data.group_value }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
@@ -128,20 +128,20 @@ onMounted(() => store.fetchList())
            o billing_account_id; altrimenti '—'. -->
       <Column field="categoria_cliente_value" :header="t('config.impostazioni.col_categoria_cliente')" style="width: 130px;">
         <template #body="{ data }">
-          <span v-if="data.categoria_cliente_value != null" class="font-mono">{{ data.categoria_cliente_value }}</span>
+          <span v-if="data.categoria_cliente_value != null" class="app-mono">{{ data.categoria_cliente_value }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
       <Column field="user_value" :header="t('config.impostazioni.col_user')" style="width: 130px;">
         <template #body="{ data }">
-          <span v-if="data.user_value != null" class="font-mono">{{ data.user_value }}</span>
+          <span v-if="data.user_value != null" class="app-mono">{{ data.user_value }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
       <Column field="resolved_value" :header="t('config.impostazioni.col_resolved')" style="width: 160px;">
         <template #body="{ data }">
           <span class="parameter-resolved">
-            <span class="font-mono font-bold">{{ data.resolved_value ?? '—' }}</span>
+            <span class="app-mono font-bold">{{ data.resolved_value ?? '—' }}</span>
             <Tag :value="levelLabel(resolveParameterLevel(data))" :severity="parameterLevelSeverity(resolveParameterLevel(data))"
               class="parameter-level-tag" />
           </span>
@@ -158,7 +158,6 @@ onMounted(() => store.fetchList())
 </template>
 
 <style scoped>
-.font-mono { font-family: monospace; }
 .text-muted { color: var(--p-text-muted-color); }
 .parameter-resolved {
   display: inline-flex;

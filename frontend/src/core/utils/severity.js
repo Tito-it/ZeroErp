@@ -756,3 +756,30 @@ export const ESITO_PIANO_MAP = {
 export function esitoPianoSeverity(codice) {
   return resolveSeverity(ESITO_PIANO_MAP, codice)
 }
+
+// --- Classe di un codice errore (`config.classi_errore`, api.md §Tassonomia) ---
+// Il dato che distingue un GUASTO da un RIFIUTO LEGITTIMO nella consultazione
+// di `dbops.error_log` (pezzo E dell'osservabilita', 2026-09-19):
+//   TECNICO / ERRORE_ESTERNO      rosso    l'operatore non puo' farci niente
+//   CONFLITTO_STATO / NON_ESEGUIBILE / NON_PERMESSO / NON_AUTENTICATO
+//                                 arancio  un rifiuto, con una ragione
+//   DATO_ERRATO / NON_TROVATO     azzurro  la richiesta era sbagliata
+//   NON_DISPONIBILE               grigio   funzione presente e spenta
+//   AVVISO                        grigio   non e' un rifiuto
+// ⛔ Vocabolario del DB: una classe nuova cade sul grigio e resta visibile
+//    col suo codice, mai nascosta.
+export const CLASSE_ERRORE_MAP = {
+  TECNICO: 'danger',
+  ERRORE_ESTERNO: 'danger',
+  CONFLITTO_STATO: 'warn',
+  NON_ESEGUIBILE: 'warn',
+  NON_PERMESSO: 'warn',
+  NON_AUTENTICATO: 'warn',
+  DATO_ERRATO: 'info',
+  NON_TROVATO: 'info',
+  NON_DISPONIBILE: 'secondary',
+  AVVISO: 'secondary',
+}
+export function classeErroreSeverity(classe) {
+  return resolveSeverity(CLASSE_ERRORE_MAP, classe)
+}

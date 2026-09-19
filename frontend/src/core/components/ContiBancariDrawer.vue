@@ -180,7 +180,7 @@ const onClose = useDrawerClose(emit)
                 <Tag v-if="c.bloccato" :value="t('anagrafiche.conti_bancari.bloccato')" severity="danger" />
                 <Tag v-if="c.verificato && !c.bloccato" :value="t('anagrafiche.conti_bancari.verificato')" severity="info" />
               </div>
-              <div class="conto-card-iban">
+              <div class="app-mono conto-card-iban">
                 <i v-if="c.predefinito" class="pi pi-check-circle conto-predefinito" v-tooltip.top="t('anagrafiche.conti_bancari.predefinito')" />
                 {{ c.iban }}
               </div>
@@ -272,7 +272,6 @@ const onClose = useDrawerClose(emit)
 .conto-card-iban {
   font-size: 0.85rem;
   font-weight: 600;
-  font-family: monospace;
   color: var(--p-text-color);
   margin-bottom: 0.15rem;
 }

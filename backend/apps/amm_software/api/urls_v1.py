@@ -26,6 +26,12 @@ urlpatterns = [
     # Riepilogo permessi e audit
     path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
     path("audit-log/", views.AuditLogView.as_view(), name="amm-audit-log"),
+    # La consultazione di `dbops.error_log` (pezzo E dell'osservabilita'):
+    # stessa porta dei due diari accanto. `export/` PRIMA — e' una rotta
+    # sorella della lista, con lo stesso `lista_codice` (presidio
+    # `test_export_lista_codice_pari`).
+    path("error-log/", views.ErrorLogListView.as_view(), name="amm-error-log"),
+    path("error-log/export/", views.ErrorLogExportView.as_view(), name="amm-error-log-export"),
     # Processi automatici (registro + presidi + utenti tecnici).
     # ⚠️ `presidi/` PRIMA di `<str:codice>/`, o Django lo leggerebbe come il
     #    codice di un processo che si chiama "presidi".

@@ -275,6 +275,7 @@
       "definizioni-workflow": "Definizioni workflow",
       "matrice-categorie-listini": "Matrice Categorie/Listini",
       "audit-log": "Audit Log",
+      "error-log": "Errori tecnici",
       "email-accounts": "Account Email",
       "email-templates": "Template Email",
       "email-log": "Log Email",
@@ -303,6 +304,7 @@
       "dashboard-competenza": "Competenza fatturazione",
       "dashboard-backlog": "Backlog fatturazione",
       "lotti": "Lotti fatturazione",
+      "giornale": "Giornale eventi",
       "preventivi": "Preventivi",
       "offerte": "Offerte commerciali",
       "ordini": "Ordini di vendita",
@@ -1379,6 +1381,27 @@
         "non_abilitata": "La sveglia è spenta su questa installazione: si accende dal deploy, non da qui.",
         "gia_in_coda": "È già in coda (lavoro #{job_id}): si potrà premere di nuovo quando quel lavoro sarà finito."
       }
+    },
+    "error_log": {
+      "titolo": "Registro degli errori tecnici",
+      "col_quando": "Quando",
+      "col_area": "Area",
+      "col_funzione": "Funzione",
+      "col_codice": "Codice",
+      "col_classe": "Classe",
+      "col_messaggio": "Messaggio",
+      "col_tx_id": "Transazione",
+      "col_causa": "Causa",
+      "col_soluzione": "Soluzione",
+      "filtro_funzione": "Funzione (prefisso)",
+      "azione_dettaglio": "Dettaglio",
+      "azione_giornale": "Giornale di questa transazione",
+      "azione_copia_tx_id": "Copia tx_id",
+      "tx_id_copiato": "tx_id copiato negli appunti",
+      "tx_id_non_copiato": "Impossibile copiare negli appunti",
+      "dettaglio_titolo": "Errore {codice}",
+      "dettaglio_context": "Contesto (appunti tecnici)",
+      "dettaglio_context_vuoto": "Nessun contesto registrato"
     }
   },
   "indirizzi": {
@@ -3964,6 +3987,23 @@
       "blocco_reason": {
         "trattenuto_da_lotto": "È già preso in carico dal lotto che lo trattiene: per fatturarlo a parte va prima tolto da quel giro."
       }
+    },
+    "giornale": {
+      "col_quando": "Quando",
+      "col_gravita": "Gravità",
+      "col_registro": "Registro",
+      "col_entita": "Entità",
+      "col_riferimento": "Riferimento",
+      "col_cosa": "Cosa",
+      "col_chi": "Chi",
+      "col_tx_id": "Transazione",
+      "col_correlation_id": "Correlazione",
+      "filtro_solo_errori": "Solo errori",
+      "filtro_solo_errori_hint": "Acceso: solo le righe ERROR (e quelle senza gravità). Spento: anche gli avvisi.",
+      "filtro_registro_tutti": "Tutti i registri",
+      "filtro_entita_tutte": "Tutte le entità",
+      "filtro_filo": "Filo (tx_id o correlation_id)",
+      "ritirate_nascoste": "{n} segnalazioni ritirate nascoste"
     }
   },
   "pagamenti": {

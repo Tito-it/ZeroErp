@@ -837,7 +837,14 @@ I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un D
 - **Verifica locale pre-push**: eseguire `./manage-test.sh -v 2` per confermare che tutti i test passano. Per simulare l'ambiente CI (senza DB), usare:
 
   ```bash
-  DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret \
+  DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp_app DB_PASSWORD=secret-app \
   DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 \
   .venv/bin/python manage.py test -v 2
   ```
+
+  ⚠️ `DB_USER=zeroerp_app`, non `zeroerp`: in CI l'owner degli oggetti (`zeroerp`,
+  l'utente di Liquibase e di `manage.py migrate`) e' solo del passo di migrazione;
+  lo step «Django tests» connette il ruolo applicativo, come `.env.systemd` in
+  sviluppo. L'owner SALTA la RLS (niente `FORCE ROW LEVEL SECURITY`, per scelta)
+  e un test no-leak sul DB vero con lui va rosso — successo il 2026-09-19. Il
+  presidio e' `richiedi_ruolo_soggetto_a_rls` in `apps/core/tests/db_e2e.py`.

@@ -40,7 +40,7 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import richiedi_db_provvisto, richiedi_ruolo_soggetto_a_rls
 from apps.magazzino.db.magazzino_repository import (
     DOCUMENTI_SORT_COLUMNS,
     MOVIMENTI_SORT_COLUMNS,
@@ -102,6 +102,10 @@ class DocumentoInternoDbTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         richiedi_db_provvisto()
+        # ⛔ Il 404 no-leak (f) si prova solo con un ruolo che la RLS vede: come
+        #    owner (in CI `DB_USER: zeroerp` fino al 2026-09-19) passerebbe
+        #    tutto e il rosso accuserebbe la RLS invece del ruolo.
+        richiedi_ruolo_soggetto_a_rls("magazzino.inventari")
 
     # Scopo: esegue `azione(cur, mondo)` nel mondo costruito, in una
     #        transazione SEMPRE annullata.

@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -30,11 +32,16 @@ from apps.core.api.payload_validators import (
     optional_int,
     optional_iso_date,
     optional_uuid,
+    parse_list_params,
+    qp_bool_optional,
     qp_int_strict,
     qp_int_optional,
     qp_iso_date_optional,
     qp_str,
+    qp_str_upper,
 )
+from apps.core.api.openapi_params import descrizione_order_by
+from apps.vendite.db.vendite_repository import GIORNALE_GRAVITA, GIORNALE_REGISTRI, GIORNALE_SORT_COLUMNS
 from apps.core.api.success_responses import success_response
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
@@ -85,6 +92,7 @@ from apps.vendite.services.vendite_service import (
     fn_list_lotto_gruppi,
     fn_lotti_mensile,
     get_lotto_giornale,
+    get_giornale_trasversale,
 )
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
@@ -1413,6 +1421,185 @@ class ApiLottoGruppiExport(DomainAPIView):
 # Commesse — push orchestrator + stato + attivita                     #
 # ================================================================== #
 
+
+
+# I filtri del giornale trasversale, dichiarati UNA volta per la lista e per
+# il suo export.
+_PARAMS_FILTRI_GIORNALE = [
+    OpenApiParameter(
+        name="gravita", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=(
+            f"Gravita' (csv) fra {' | '.join(GIORNALE_GRAVITA)}; default `ERROR`. "
+            "⚠️ Con `ERROR` si INCLUDE la gravita' NULL — la riga che dichiara "
+            "un difetto. Fuori vocabolario -> 400."
+        ),
+    ),
+    OpenApiParameter(
+        name="registro", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=f"Registro (csv) fra {' | '.join(sorted(GIORNALE_REGISTRI))}; default tutti.",
+    ),
+    OpenApiParameter(
+        name="entity_type", type=str, location=OpenApiParameter.QUERY, required=False,
+        description="Codice di `config.tipi_entita` (LOTTO, FATTURA, COMMESSA, TASK_RUN, ...), esatto.",
+    ),
+    OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False,
+                     description="Data inizio (YYYY-MM-DD) su `quando`."),
+    OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False,
+                     description="Data fine inclusa (YYYY-MM-DD) su `quando`."),
+    OpenApiParameter(
+        name="filo", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=(
+            "UUID del FILO: `tx_id` oppure `correlation_id`. Tiene `EVENT_LOG` e "
+            "`TASK_RUN` e butta le righe scritte per una persona (R-2): il "
+            "default non filtra per filo."
+        ),
+    ),
+    OpenApiParameter(
+        name="solo_vive", type=bool, location=OpenApiParameter.QUERY, required=False,
+        description="Default true: esclude le segnalazioni RITIRATE; `ritirate_count` dice quante.",
+    ),
+    OpenApiParameter(
+        name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=descrizione_order_by(
+            GIORNALE_SORT_COLUMNS,
+            "Default `quando DESC`; `gravita` ordina il rango e, dentro, il tempo dal piu' recente.",
+        ),
+    ),
+    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+                     description="asc | desc."),
+]
+
+
+# Scopo: i filtri del giornale trasversale dalla query string, normalizzati:
+#        csv -> liste, date ISO strict (400 se malformate), `filo` uuid (400 se
+#        non lo e'), `solo_vive` bool. Una sede per la lista e per l'export.
+def _filtri_giornale(qp) -> dict[str, object]:
+    def _csv(raw: str | None) -> list[str] | None:
+        valori = [v.strip().upper() for v in (raw or "").split(",") if v.strip()]
+        return valori or None
+
+    filo = optional_uuid({"filo": qp_str(qp.get("filo"))}, "filo")
+    return {
+        "gravita": _csv(qp.get("gravita")),
+        "registri": _csv(qp.get("registro")),
+        "entity_type": qp_str_upper(qp.get("entity_type")),
+        "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
+        "data_a": qp_iso_date_optional(qp.get("data_a"), "data_a"),
+        "filo": str(filo) if filo is not None else None,
+        # ⛔ Strict, come ogni bool opzionale dal 2026-06-04 (api.md §Query
+        #    params): `?solo_vive=banana` e' un 400, non un `True` per caso.
+        #    Assente = `True` (le ritirate si nascondono di default).
+        "solo_vive": qp_bool_optional(qp.get("solo_vive"), "solo_vive") is not False,
+    }
+
+
+class ApiGiornale(DomainAPIView):
+    """GET /api/v1/vendite/giornale/ — il GIORNALE TRASVERSALE degli eventi.
+
+    «Cosa e' andato storto, su tutto, nell'ultimo periodo»: la Storia di tutte
+    le entita' insieme, filtrata per gravita' — la «vista errori trasversale,
+    con salto al lotto e al documento» del Passo B dell'osservabilita' (pezzo
+    G, 2026-09-19). Terzo lettore di `script.vw_giornale_entita`, sullo STESSO
+    corpo dei due lettori per entita': non un aggregato nuovo.
+
+    ⛔ Niente `context`/`payload`: espone le colonne della Storia e basta. Gli
+    appunti forensi restano nella Storia dell'entita' (vincolo del Passo A).
+    ⚠️ Il perimetro emittente lo applica la vista (`security_invoker`) riga per
+    riga e nei conteggi; la lista sta dietro il cancello di perimetro
+    (`lista_codice`), come ogni lista di dominio.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.giornale"
+
+    @extend_schema(
+        parameters=[
+            *_PARAMS_FILTRI_GIORNALE,
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeGiornaleResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeGiornaleData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "ritirate_count": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il giornale trasversale, paginato.
+    # ⛔ `order_dir` GREZZO e non dal bundle: `parse_list_params` normalizza
+    #    l'assenza ad `asc`, e il default `quando DESC` non verrebbe mai
+    #    raggiunto (api.md §parse_list_params).
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="quando")
+        return success_response(get_giornale_trasversale(
+            **_filtri_giornale(qp),
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
+
+
+class ApiGiornaleExport(DomainAPIView):
+    """GET /api/v1/vendite/giornale/export/ — CSV/XLSX del giornale trasversale."""
+
+    area_funzionale = "vendite"
+    # ⭐ LO STESSO `lista_codice` della lista, letto da lei: colonne del file =
+    #    colonne a video, e il cancello di perimetro vale anche sulla porta
+    #    larga (`test_export_lista_codice_pari`).
+    lista_codice = ApiGiornale.lista_codice
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY,
+                             required=True, description="csv | xlsx."),
+            *_PARAMS_FILTRI_GIORNALE,
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Il file del giornale, con gli stessi filtri della lista.
+    # ⚠️ `limit=EXPORT_MAX_ROWS + 1`: l'export esporta il DATASET, e il `+1`
+    #    fa scattare il guard di `build_export_response` prima di serializzare.
+    def get(self, request: Request) -> HttpResponse:
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        filtri = _filtri_giornale(qp)
+        dati = get_giornale_trasversale(
+            **filtri,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return build_export_response(
+            request,
+            lista_codice=self.lista_codice,
+            results=dati["results"],
+            total=dati["count"],
+            filtri_applicati={
+                k: (v.isoformat() if isinstance(v, date) else v)
+                for k, v in filtri.items() if v is not None
+            } or None,
+            fmt=fmt,
+        )
 
 
 class ApiLottoGiornale(DomainAPIView):

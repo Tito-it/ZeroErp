@@ -54,12 +54,12 @@ function toggle(event) {
     v-tooltip.top="t('amministrazione.processi.presidi_vedi_descrizione')"
     @click="toggle"
   >
-    <span class="app-presidio-chip-nome">{{ presidio.vista }}</span>
+    <span class="app-mono app-presidio-chip-nome">{{ presidio.vista }}</span>
     <Tag :value="String(presidio.conteggio)" severity="success" />
   </Button>
 
   <Popover ref="popover" :style="{ width: '460px' }">
-    <h4 class="app-presidio-chip-titolo">{{ presidio.vista }}</h4>
+    <h4 class="app-mono app-presidio-chip-titolo">{{ presidio.vista }}</h4>
     <!-- ⭐ La descrizione è quella che il team DB ha scritto sulla vista. Se
          manca lo si dice, e si dice DOVE va scritta: un popover vuoto
          sembrerebbe un caricamento mancato. -->
@@ -77,7 +77,7 @@ function toggle(event) {
   border: 1px solid var(--p-content-border-color);
   border-radius: var(--p-content-border-radius);
 }
-.app-presidio-chip-nome { font-family: monospace; font-size: 0.8rem; }
-.app-presidio-chip-titolo { margin: 0 0 0.5rem; font-family: monospace; }
+.app-presidio-chip-nome { font-size: 0.8rem; }
+.app-presidio-chip-titolo { margin: 0 0 0.5rem; }
 .app-presidio-chip-desc { margin: 0; font-size: 0.85rem; line-height: 1.45; }
 </style>

@@ -176,6 +176,21 @@ export function getAuditLog(params = {}) {
   return api.get(`${BASE}/audit-log/`, { params })
 }
 
+// --- Registro degli errori tecnici (`dbops.error_log`, pezzo E) ---
+
+// Scopo: la consultazione paginata di `dbops.error_log` col catalogo dei
+//        messaggi (codice, classe, frase, causa, soluzione) e il `context`.
+export function listErrorLogs(params = {}) {
+  return api.get(`${BASE}/error-log/`, { params })
+}
+
+// Scopo: export CSV/Excel della consultazione, stessi filtri della lista.
+// ⚠️ `formato` e non `format` (parametro magico di DRF); risposta Blob, senza
+//    `useApiHandler` (`feedback_blob_download_no_useapihandler`).
+export function exportErrorLogs(params = {}) {
+  return api.get(`${BASE}/error-log/export/`, { params, responseType: 'blob' })
+}
+
 // --- Reparti e profili ---
 
 export function listReparti() {

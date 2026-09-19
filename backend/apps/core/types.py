@@ -27,6 +27,28 @@ class AuditLogRow(TypedDict):
     result: dict[str, Any] | None
 
 
+# --- Error Log (dbops.error_log) — la consultazione dei tecnici (pezzo E) ---
+
+class ErrorLogRow(TypedDict):
+    id: int
+    occurred_at: str
+    area: str
+    function_name: str
+    # Dal catalogo (`config.messaggi_errore` + `config.codici_errore`), per JOIN:
+    # la frase e la soluzione A CATALOGO, non ricostruite.
+    codice: str
+    classe: str | None
+    messaggio: str
+    causa: str | None
+    soluzione: str | None
+    # NOT NULL a DB (`trgfn_tx_id_managed` lo garantisce): e' il ponte verso il
+    # giornale di dominio della stessa transazione.
+    tx_id: str
+    # ⚠️ Gli appunti del tecnico, com'erano: niente pulizia, niente riscrittura
+    #    (vincolo del Passo A dell'osservabilita'). NOT NULL DEFAULT '{}' a DB.
+    context: dict[str, Any]
+
+
 # --- Task Registry (dbops.domini_task / pipeline_task_registry / pipeline_task_registry_impl) ---
 
 class DominioTaskRow(TypedDict):

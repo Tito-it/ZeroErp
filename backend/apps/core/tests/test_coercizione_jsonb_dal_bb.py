@@ -70,7 +70,11 @@ _FORME_VIETATE = (
     # A) `dict(riga[0])` — il difetto vero: su una str itera i caratteri.
     ("A", re.compile(r"\bdict\(\s*\w+\[\d+\]\s*\)")),
     # B) `x if isinstance(x, dict) else json.loads(x)` — `jsonb_out` a mano.
-    ("B", re.compile(r"isinstance\([^)]*,\s*dict\s*\)\s*else\s+json\.loads")),
+    #    ⚠️ Con una parentesi facoltativa dopo `else`: `else (json.loads(x) if x
+    #    else None)` e' la stessa forma, e fino al 2026-09-19 passava — due
+    #    copie in `dbops_repository.list_audit_logs` sono vissute sotto un
+    #    cancello a registro zero.
+    ("B", re.compile(r"isinstance\([^)]*,\s*dict\s*\)\s*else\s+\(?\s*json\.loads")),
     # C) `json.loads(x) if isinstance(x, str) else x` — lo stesso, al contrario.
     ("C", re.compile(r"json\.loads\([^)]*\)\s*if\s+isinstance\([^)]*,\s*str\s*\)")),
 )

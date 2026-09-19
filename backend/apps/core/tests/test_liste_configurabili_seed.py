@@ -568,6 +568,18 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # `ProcessiRepository.list_processi` con le sue colonne derivate, e la
     # whitelist di ordinamento e' la costante di modulo del repository.
     ("amm.processi", _da_costante("apps.core.db.processi_repository", "_ORDER_COLS_PROCESSI")),
+    # La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
+    # 2026-09-19): il diario degli errori tecnici col catalogo dei messaggi per
+    # JOIN. Le frasi (`messaggio`, `causa`, `soluzione`) sono `ordinabile = f`
+    # a catalogo e fuori whitelist, di proposito.
+    ("dbops.error_log", _da_costante("apps.core.db.dbops_repository", "ERROR_LOG_SORT_COLUMNS")),
+    # Il giornale trasversale degli eventi (pezzo G, 2026-09-19): terzo lettore
+    # di `script.vw_giornale_entita`, stesse due colonne ordinabili della
+    # Storia di un'entita' (`gravita` = il rango, `quando`). ⚠️ Non passa da
+    # `sql_order_clause`: l'ordine per gravita' porta il tempo DESC dentro di
+    # se' (`_giornale_order_clause`), che e' uno dei dodici casi dichiarati fuori
+    # dal BB — il test 10 non lo vede, e non finge.
+    ("vendite.giornale", _da_costante("apps.vendite.db.vendite_repository", "GIORNALE_SORT_COLUMNS")),
 )
 
 
