@@ -1490,7 +1490,7 @@ sarebbe il test di §10.10, quello che tiene fuori il dato il giorno che arriva.
 ### 10.13 ⭐ Il seguito del terzo collaudo — D20 *(2026-09-19, sera)*
 
 > Il piano sta nel brief DB
-> ([§5, §6](brief-db-validata-e-registrazione-tardiva.md)); qui il consuntivo.
+> ([§5, §6](../work-done/brief-db-validata-e-registrazione-tardiva.md)); qui il consuntivo.
 > Scritto su «bisogna farlo» di Tid, dopo che il lato DB era stato applicato la
 > mattina. Due estrazioni **dichiarate prima e decise da Tid** nel giro.
 

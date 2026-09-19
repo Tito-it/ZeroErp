@@ -13,7 +13,7 @@
 >
 > **Approfondimento tabelle:** [vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) · [vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)
 >
-> **Piano:** [brief-db-validata-e-registrazione-tardiva](/dev/work-in-progress/brief-db-validata-e-registrazione-tardiva) §2.2 (D20-b), §4 P-5, §4.1
+> **Piano:** [brief-db-validata-e-registrazione-tardiva](/dev/work-done/brief-db-validata-e-registrazione-tardiva) §2.2 (D20-b), §4 P-5, §4.1
 
 ---
 

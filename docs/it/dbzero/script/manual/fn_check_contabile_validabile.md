@@ -15,7 +15,7 @@
 >
 > **La gemella:** [script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile) · la regola: [linee-guida-sql §12.5](/linee-guida-sql)
 >
-> **Piano:** [brief-db-validata-e-registrazione-tardiva](/dev/work-in-progress/brief-db-validata-e-registrazione-tardiva) §2.1 (D20-a), §4 P-3
+> **Piano:** [brief-db-validata-e-registrazione-tardiva](/dev/work-done/brief-db-validata-e-registrazione-tardiva) §2.1 (D20-a), §4 P-3
 
 ---
 

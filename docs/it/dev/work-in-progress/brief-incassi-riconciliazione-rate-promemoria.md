@@ -2054,10 +2054,10 @@ lo digita), il form singolo resta documento-first (D16), nessuna seconda sede
 dei saldi, nessun guard nuovo — la riga nata da rata passa dagli stessi
 trigger dell'`INSERT` di D16.
 
-### ⭐ D20 — Il terzo giro in-app: che cosa vuol dire VALIDATA, e il futuro del «resto» (Tid, 2026-09-18) — ✅ DB applicato il 19-09, pgTAP verdi; BE/FE possono partire (brief §4-bis, §5, §6)
+### ⭐ D20 — Il terzo giro in-app: che cosa vuol dire VALIDATA, e il futuro del «resto» (Tid, 2026-09-18) — ✅ CHIUSO il 19-09: DB applicato e committato, BE/FE mergiati (`6dc60ab05`), brief in `work-done/`; resta la prova a video nel copione
 
-> Brief: [brief-db-validata-e-registrazione-tardiva.md](brief-db-validata-e-registrazione-tardiva.md)
-> — 🔵 in attesa del team DB. Nasce da quattro rilievi sulla distinta
+> Brief: [brief-db-validata-e-registrazione-tardiva.md](../work-done/brief-db-validata-e-registrazione-tardiva.md)
+> — ✅ **chiuso e archiviato il 19-09** (righe del copione §3.1, §4.0, §4.0-bis, §3.8–3.10 da provare a video). Nasce da quattro rilievi sulla distinta
 > `DIS-PGTAPEF202-2026-0000001`, e uno è un **buco del modello**: registrata
 > la distinta, una `SOSPESA` o una `SCARTATA` rimasta sotto non entra più in
 > nessun conto e non può più diventarlo (4ª mossa del guard di riga + nessun

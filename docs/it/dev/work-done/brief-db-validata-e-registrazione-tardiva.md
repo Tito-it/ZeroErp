@@ -17,30 +17,61 @@
 >
 > **Sede.** Le **decisioni di dominio** (D20-a…e) stanno qui e sono riportate in
 > sintesi nel brief madre
-> ([brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md)
+> ([brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
 > §2-bis), che resta la sede unica. Il **piano DB** è qui (§4). Per BE e FE qui
 > c'è **solo l'elenco di cosa fare** (§5, §6): il piano lo scrivono loro in
-> [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md).
+> [brief-be-fe-posting-e-abbinamento-rata.md](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md).
 >
 > ⛔ **Niente misure come motivo.** Al 2026-09-18 su dev non c'è nessuna riga
 > viva sotto una `CHIUSA` in uno stato diverso da `POSTATA`/`SCARTATA` (zero
 > righe): non vuol dire che il caso non esista — il modello lo ammette, e basta
 > una sospesa alla prima registrazione vera. Si progetta sul modello.
 >
-> **Stato:** ✅ **LATO DB CHIUSO — APPLICATO su dbdev da Tid il 2026-09-19, pgTAP
-> senza regressioni, autogen rigenerato.** ✅ **BE (§5) e FE (§6) consegnati la
-> sera stessa** (consuntivo: brief BE/FE §10.13). Restano a Tid l'apply del seed
-> della colonna `azioni` della coda (§4-ter 8-bis) e il copione di collaudo §7.
+> ## ✅ CHIUSO il 2026-09-19 (pomeriggio) — archiviato in `work-done/`
+>
+> **Che cosa è entrato.** DB: sette changeSet `20260918-34 → -40` (`lavorata`,
+> `is_registrabile`, `script.fn_check_contabile_validabile` a **due** parametri,
+> guard di validazione sulla check, madre su `is_registrabile`, porta GUC della
+> 4ª mossa, `pagamenti.fn_posta_riga_tardiva`), due CSV di catalogo + mirror,
+> matrice con `ABBINATA → DA_ABBINARE` seminata spenta, codici 1102-1104, due
+> pgTAP nuovi (36 asserzioni) e sei adeguati — **applicato su dbdev alle 00:01
+> del 19-09** (`EXECUTED`, mirror `RERAN`), pgTAP senza regressioni (Tid),
+> doc auto-gen rigenerata, committato in `4fb076312` (00:11 — ⚠️ il messaggio
+> del commit nomina l'analisi del riavvio, ma porta anche questo lotto), PR
+> #1614. BE (§5) e FE (§6): `6dc60ab05`, PR #1618 → Tito-dev, PR #1619;
+> consuntivo nel brief BE/FE §10.13; due BB estratti nel giro
+> (`core/db.sql_lateral_primo_motivo`, `pagamenti/composables/useAzioniRigaContabile`).
+> Seed della colonna `azioni` (id 874 + preset) applicato alle 10:29.
+> `codici-errore-baseline.sh` verde: nessun accumulo.
+>
+> **Perché chiude ora e non dopo la prova a video** — lo stesso criterio del
+> brief D16/D17/D18 (chiuso il 15/09): il brief chiude sul **percorso**;
+> l'**esito** lo prova solo il copione, che si tiene aperto accanto all'app.
+> Le righe sono **scritte** (19-09, §7): §3.1, §4.0, 🆕 §4.0-bis, 🆕 §3.8–3.10 di
+> [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
+> Se la prova trova un rilievo, apre un brief **nuovo**: questo non si riapre.
+>
+> 🔵 **Residui con destinazione:**
+>
+> 1. **La prova a video** (Tid): copione §3.1, §4.0, §4.0-bis, §3.8–3.10 —
+>    registro del copione, riga del 19-09;
+> 2. ⚠️ **CI-Validate rossa sul merge** (`2628616a1`, run `35431646818`) per
+>    **un solo test, di `magazzino`**:
+>    `test_documento_interno_db.test_un_altro_emittente_non_vede_il_documento`
+>    («atteso un rifiuto, è passato»), nato in `c2f69db6b` (lotto 2-bis BE/FE)
+>    **dopo** l'ultimo verde (`491c2cb5b`, 18-09 16:43): le corse intermedie
+>    morivano al pre-commit, quindi in CI quel test non è mai stato verde. I
+>    5046 test Django girano e `pagamenti` è tutto verde. **Non è di questo
+>    cantiere**: va al brief di magazzino 2-bis;
+> 3. il 🔵 RISTRETTO della baseline codici (`E_DELETE_NOT_ALLOWED` perde
+>    `ENUM`) è del guard dei log `20260918-32` (osservabilità): l'`--update`
+>    con la ragione va nel commit di **quel** cantiere.
+>
 > **Da leggere per primo: §4-bis** — che cosa c'è, dove, e lo scostamento
-> dichiarato (la firma della check: il dichiarato è un *parametro*); poi §4-ter,
-> che cosa resta a Tid nell'ordine. Sette changeSet `20260918-34 → -40`, due
-> CSV di catalogo + il mirror, la matrice seminata con la coppia spenta, tre
-> codici a catalogo, due pgTAP nuovi (36 asserzioni) e sei adeguati: **tutto
-> provato con l'SQL estratto in transazione ritirata** — 11 corse verdi, tre
-> mutazioni rosse per il motivo giusto, i due mirror resi da Liquibase offline
-> ed eseguiti. Nessuna riga applicata al dbdev. BE e FE **aspettano** l'apply
-> (`feedback_be_fe_attende_prerequisiti_db`). Tutte e cinque le decisioni sono
-> **prese** (D20-e decisa da Tid la sera stessa: strada **b**, §2.5).
+> dichiarato (la firma della check: il dichiarato è un *parametro*,
+> `reference_check_chiamata_da_before_row_prende_i_valori_nuovi_come_parametri`).
+> Tutte e cinque le decisioni sono **prese** (D20-e da Tid la sera del 18-09:
+> strada **b**, §2.5).
 
 ---
 
@@ -234,7 +265,7 @@ passa da «Abbina», non da «Porta a DA_ABBINARE» (§7).
 | **P-8** ✅ 16 + 20 asserzioni | pgTAP: `test-contabile-validabile-v1.sql` (check + guard: rifiuta con una `DA_ABBINARE`, passa con `SOSPESA`/`SCARTATA`, quadratura ancora lì, messaggio con `throws_like`) e `test-posta-riga-tardiva-v1.sql` (§4.2); i pgTAP di P-0 adeguati; `test-rls-pagamenti-perimetro` se la madre tocca le policy | ⛔ Casi **costruiti**, non letti dai dati |
 | **P-9** ✅ schede (auto-gen: Tid) | Doc auto-gen + schede manuali (`script/manual/fn_check_contabile_validabile`, `pagamenti/manual/fn_posta_riga_tardiva`, i due cataloghi); riquadro D20 nel brief madre §2-bis (già scritto insieme a questo brief) | |
 
-### 4-bis ✅ Che cosa c'è — sviluppato il 2026-09-18 (notte), NON applicato
+### 4-bis ✅ Che cosa c'è — sviluppato il 2026-09-18 (notte), applicato e committato il 19-09
 
 | Pezzo | Dove | Note |
 | --- | --- | --- |
@@ -290,13 +321,13 @@ check); il rubinetto t.5 passa da 19 a **20** ed è aggiornato con la nota.
 | 1 | ✅ **19-09** rigenerare `changelog-autogen.yaml` (i sette changeSet sono in `00_schema`/`20_code`, autogen) | Tid |
 | 2 | ✅ **19-09** `make db-migrate` su dbdev: `-34 → -40` applicati; i tre mirror runOnChange hanno riletto (`20260821-30` stati, `20260821-31` matrice, `20260614-08` codici) | Tid |
 | 3 | ✅ **19-09** pgTAP `pagamenti` + `script` come app: **nessuna regressione** (Tid) | Tid |
-| 4 | `scripts/codici-errore-baseline.sh` — atteso **verde** (nessun accumulo; il render in transazione l'ha detto), eventuali 🔵 RIENTRATO/RISTRETTO da allineare con `--update` e la ragione nel commit | Tid |
-| 5 | doc auto-gen (`docs/it/dbzero/**`) rigenerata | Tid |
-| 6 | commit di `dev/db-tid` (changeSet, CSV, mirror, seed, pgTAP, schede, brief) | Tid |
+| 4 | ✅ **19-09** `scripts/codici-errore-baseline.sh` **verde**: 169 presidiati, nessun accumulo, nessun rientrato. ⚠️ Un 🔵 RISTRETTO **non di questo brief** (`E_DELETE_NOT_ALLOWED` non copre più `ENUM`: guard dei log `20260918-32`, osservabilità) — l'`--update` con la ragione va nel commit di **quel** cantiere | Tid |
+| 5 | ✅ **19-09** doc auto-gen (`docs/it/dbzero/**`) rigenerata (`fn_posta_riga_tardiva`, `fn_check_contabile_validabile`, `lavorata`/`is_registrabile` nelle schede tabella) | Tid |
+| 6 | ✅ **19-09** commit `4fb076312` (00:11) su `dev/db-tid`: changeSet, CSV, mirror, seed, pgTAP, schede, brief — mergiato con PR #1619 | Tid |
 | 7 | ✅ **19-09** BE (§5): `genera_error_policies` + tre ripieghi; `stato_is_registrabile` e la terna `validazione_blocco_*` **passando `c.importo_dichiarato` alla check**; il verbo `righe/{id}/registra/`; le code | backend |
 | 8 | ✅ **19-09** FE (§6): le `reason_key` nei locales, e tutto il resto di §6 | frontend |
-| 8-bis | 📮 **apply del seed** della colonna `azioni` sulla lista `pagamenti.righe` (`lista_colonna.csv` id 874 + preset): `make db-migrate` — i mirror sono `runOnChange` | Tid |
-| 9 | copione di collaudo §7 | Tid, a BE/FE consegnati |
+| 8-bis | ✅ **19-09** seed della colonna `azioni` sulla lista `pagamenti.righe` (`lista_colonna.csv` id 874 + preset) **applicato**: migrate delle 10:29, riga e preset su dbdev | Tid |
+| 9 | ✏️ **righe scritte il 19-09** nel doc di collaudo (§7 qui: §3.1, §4.0, 🆕 §4.0-bis, 🆕 §3.8–3.10) — ⏳ **esecuzione a video** | Tid, a BE/FE consegnati ✅ |
 
 ### 4.1 La madre della tardiva, passo per passo
 
@@ -359,7 +390,7 @@ id **non** apre la porta, e che fuori dalla transazione è vuota.
 
 ## 7. Il copione di collaudo — righe da riscrivere
 
-In [collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-distinte-e-sistemazioni.md):
+✅ **Riscritte il 19-09 (pomeriggio)** in [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md), con le etichette **prese dal FE consegnato** (`it.json`): §3.1, §4.0, 🆕 §4.0-bis («Registra» spento in BOZZA col motivo — il rilievo §1 di questo brief non aveva una riga sua), 🆕 §3.8–3.10, riquadro C-2 e registro. Da eseguire a video (Tid). L'elenco che segue è quello di partenza:
 **§3.1** (il ri-abbinamento passa da «Abbina» sulla riga abbinata, non da «Porta
 a DA_ABBINARE», che non c'è più); **§2.9** resta com'è («abbina e sospendi
 restano» sotto `VALIDATA`, anche su una abbinata); **§4.0** (la validazione ora si
@@ -373,6 +404,8 @@ Riprendi → idem.
 
 | Quando | Cosa |
 | --- | --- |
+| 2026-09-19 (pomeriggio) | ✅ **CHIUSO e archiviato in `work-done/`**, sul criterio del brief D16/D17/D18: il brief chiude sul percorso, l'esito lo prova il copione (righe scritte). Link ripuntati (brief madre §2-bis, brief BE/FE §10.13, copione, le due schede manuali). Residui nel riquadro in testa: prova a video, CI rossa su un test di magazzino (non nostro), RISTRETTO di osservabilità |
+| 2026-09-19 (pomeriggio, verifica) | 🔎 **Stato verificato contro repo e dbdev** dopo il push BE: `6dc60ab05` è mergiato (PR #1618/#1619) e i tre rami sono allineati; il lato DB era già committato in `4fb076312` (doc auto-gen compresa); il seed `azioni` è **entrato** (migrate 10:29, riga 874 + preset); `codici-errore-baseline.sh` verde con un RISTRETTO di un altro cantiere. ⚠️ Il riquadro «Stato» diceva ancora «nessuna riga applicata, BE e FE aspettano» accanto a «APPLICATO»: riscritto. ✏️ **§7 fatto**: le righe del copione sono nel doc di collaudo (§3.1, §4.0, 4.0-bis, 3.8–3.10). **Resta solo la prova a video** (Tid); poi `work-done/` |
 | 2026-09-19 (sera) | ✅ **BE (§5) e FE (§6) consegnati** — consuntivo in `brief-be-fe-posting-e-abbinamento-rata.md` §10.13. Due estrazioni decise da Tid nel giro: `core/db.sql_lateral_primo_motivo` (Q-G, montato sui 4 repository) e `pagamenti/composables/useAzioniRigaContabile` (drawer + coda). Suite: pagamenti 276 verdi (9 sul DB provvisto, fra cui la tardiva per intero), core+anagrafiche 1902, vendite 2043, vitest 178, `check_i18n_keys` pulito. ⚠️ Un presidio ha corretto due nomi: `codice_interno` va in alias `*_codice_interno` (§6c) — `contabile_stato_codice_interno`, `righe_per_stato[].stato_codice_interno`. **Resta a Tid**: l'apply del seed della colonna `azioni` (§4-ter 8-bis) e il copione §7 |
 | 2026-09-19 | FE-6 chiuso (le due `validazione_reason.*` in `it`/`en`): era l'unico rosso di `check_i18n_keys` in CI — la doc auto-gen dichiara le chiavi dal momento dell'apply, il FE non le aveva. Il resto di §5/§6 è ancora da fare |
 | 2026-09-19 | ✅ **Applicato da Tid**: migrate su dbdev, pgTAP senza regressioni, autogen rigenerato. Lato DB chiuso; restano baseline codici, doc auto-gen, commit (§4-ter 4-6) e BE/FE (§5, §6) |
