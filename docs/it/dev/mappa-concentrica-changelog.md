@@ -185,7 +185,7 @@ log della corsa, non una mano. Lato applicazione, D15: `skip_area_check` era
 scrivevano senza permesso — e le famiglie hanno deciso quale delle due parole
 vale; le due vulnerabilità npm e `weasyprint 70` sanate senza dipendenze nuove.
 Vedi
-[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-in-progress/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
 [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
 [migliorie-generali-BE-FE-da-test-valutazione.md](work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
 

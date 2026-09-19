@@ -365,7 +365,14 @@ prossimo pezzo di D6 (registro e sync riservati al migratore). ⚠️ La forma
 pg_temp`, perché la catena tocca `dblink` che vive in `public` e il path di una
 DEFINER vale per tutto ciò che chiama. L'`EXECUTE` a PUBLIC su
 `fn_sync_functions_owner` è **valutato e non ritirato**: il migratore in CI ce
-l'ha solo via PUBLIC (brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §3).
+l'ha solo via PUBLIC (brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §3,
+archiviato in `work-done/` il 19-09).
+⭐ **Dal 19-09 il pezzo che resta ha un brief suo**,
+`work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md`,
+con due fatti letti dal vivo che cambiano la forma: l'app ha sulla sync anche
+un `EXECUTE` **esplicito** (`zeroerp_app=X/postgres`, dal loop dei grant —
+quindi la difesa sta nel corpo, non nell'ACL), e dentro una DEFINER
+`current_user` è il proprietario: la guardia legge **`session_user`**.
 
 ⚠️ Seconda faccia, meno visibile: le `SECURITY DEFINER` proprie sono **38** e il
 `search_path` ha **cinque forme diverse**:
@@ -502,8 +509,10 @@ vuoto). Riscritti: **20 verdi su dbdev e su `zeroerp_ci`**, committati il 12-09 
 baseline di sviluppo senza regressioni; il ventunesimo
 (`test-role-batch-fatturazione-postura`) era un'altra classe — in CI il ruolo
 batch non veniva provisionato — e ha avuto il passo in `ci-validate.yaml`.
-Brief: `brief-db-fixture-che-costruiscono-d7-d6-d4.md`. Il registro scenderà
-alla prima corsa della CI; le righe si tolgono a mano quando lo dice lei.
+Brief: `brief-db-fixture-che-costruiscono-d7-d6-d4.md` (archiviato in
+`work-done/` il 19-09). ✅ La CI ha detto la sua: i 21 sono usciti dal
+registro (14-09), e i rientrati li toglie
+`scripts/pgtap-baseline-ci-rientrati.sh`, non una mano.
 
 ---
 
@@ -848,14 +857,17 @@ D6 e il registro dei rossi in CI.
 * [~] **D6** — ✅ pin applicati il 12-09 (`-39/-40/-41`, forma `pg_catalog,
       public, pg_temp`). ⛔ Resta il pezzo nuovo: registro `sec_functions_owner`
       e `fn_sync_functions_owner` riservati al migratore (oggi
-      scrivibili/eseguibili da `zeroerp_app`) — brief §3, stima ≈ mezza giornata. `EXECUTE` a PUBLIC su
-      `fn_sync_functions_owner`: valutato, resta — il migratore in CI lo ha
-      solo via PUBLIC (brief §3).
-      🔴 **PRIMA, una riga obbligatoria**: qualificare `public.dblink(...)` in
-      `fn_get_or_create_session_tx_id`. Senza, il `search_path` stretto spegne il
-      tracciamento `tx_id` su ~305 trigger **in silenzio** — il `dblink` è dentro
-      un `EXCEPTION WHEN OTHERS` che torna la sentinella e logga un `WARNING`.
-      Vedi l'avvertimento in fondo a D6.
+      scrivibili/eseguibili da `zeroerp_app`) — dal 19-09 brief suo,
+      `work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md`
+      (forma in §2, tre decisioni per Tid in §6), stima ≈ mezza giornata.
+      `EXECUTE` a PUBLIC su `fn_sync_functions_owner`: valutato, resta — e
+      resta anche la voce esplicita dell'app (loop dei grant): la sync si
+      difende da sola, con `session_user`.
+      ✅ La «riga obbligatoria» su `public.dblink(...)` in
+      `fn_get_or_create_session_tx_id` **non serve più così com'era scritta**:
+      il pin applicato il 12-09 include `public`, quindi il `dblink` si
+      risolve. Vale ancora come vincolo di D6-bis (sotto): se un giorno quel
+      pin si stringesse, prima la qualifica.
 * [ ] **D6-bis** — scegliere **una** forma canonica di `search_path` per le
       `SECURITY DEFINER` (`pg_catalog, <schemi necessari>, pg_temp`, con
       `pg_temp` sempre ultimo ed esplicito) e allineare le 18 che oggi non
