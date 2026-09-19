@@ -26,7 +26,7 @@
 >   **non urgente** (§10, pezzo G).
 > * 🔵 **`REGISTRI` nella view del giornale è una seconda sede dichiarata**
 >   fino a `config.registri_giornale`:
->   [brief-db-registri-giornale-catalogo.md](../work-in-progress/brief-db-registri-giornale-catalogo.md)
+>   [brief-db-registri-giornale-catalogo.md](brief-db-registri-giornale-catalogo.md)
 >   (già in `PROJECT_CONTEXT`).
 > * 🔵 **Il test transitorio di parità di V** (tre addendi Python ⇔ `fermo` a
 >   DB) si toglie con la PR successiva, come scritto in §5.

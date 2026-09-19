@@ -99,7 +99,9 @@ config `_LOOKUP_SPECIALIZZATE` in `dbops_repository.py` — regola del 2,
 |--------------------------------|---------------------------|----------------------------------------------|
 | `catalogo.unita_misura`        | `tipo_uom_id`             | Filtro conversioni same-type (`filterField`) |
 | `config.esiti_flussi_pratiche` | `selezionabile_operatore` | Filtro Select esiti FlussoDrawer             |
+| `config.tipi_titolo_iva`       | `ha_plafond`              | Mostra il campo plafond solo dove un tetto esiste (D10 titoli IVA) |
 | `pratiche.tipi_prestazione`    | `categoria`               | Raggruppamento tile della home pratiche      |
+| `config.registri_giornale`     | `etichetta_key`           | Tendina e colonna «Registro» del giornale trasversale: l'indirizzo i18n **dichiarato dal DB**, reso con `labelOrCode` (2026-09-19). ⚠️ **Senza `attivo`** (`has_attivo: False`): `attivo` arriva `NULL` e `attivo_only` non filtra — un consumatore che filtrasse `attivo === true` non vedrebbe niente |
 
 Il nome API della colonna extra può differire dalla colonna fisica
 (`extra_expr`): es. `selezionabile_operatore` è derivato da `is_verdetto`
@@ -108,7 +110,18 @@ Il nome API della colonna extra può differire dalla colonna fisica
 
 Per aggiungere una relazione specializzata: una riga di config in
 `_LOOKUP_SPECIALIZZATE` (`extra_col`, opz. `extra_expr`, `has_codice_interno`,
-`has_obsoleto`) — niente nuovo SQL.
+`has_obsoleto`, opz. `has_attivo` — default `True`) — niente nuovo SQL.
+
+⚠️ **`has_attivo` esiste dal 2026-09-19, e prima il contratto mentiva**:
+l'handler scriveva `t.attivo` fisso, quindi una tabella senza quella colonna
+— `config.registri_giornale`, un vocabolario che nessuno «assegna» e che si
+ritira con `obsoleto_dal`, come `tipi_entita` ed `eventi_dominio` — sarebbe
+stata un **500** alla prima chiamata con la rel dichiarata in whitelist. A
+`False` il payload porta `attivo = NULL`, la stessa cosa che
+`dbops.fn_get_lookup_codici` fa sul percorso generico. ⭐ E **nessun test
+attraversava le specializzate sul database**: `core/tests/db/test_lookup_specializzate.py`
+ora le prova **tutte** sul DB provvisto (il contratto dichiarato si prova per
+intero), oltre alla composizione con e senza il flag.
 
 ## Lookup a matrice — endpoint dedicati
 

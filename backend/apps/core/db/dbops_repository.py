@@ -60,6 +60,12 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.priorita_pratiche",
         "config.profili_accesso",
         "config.qualifiche",
+        # I registri che `script.vw_giornale_entita` cuce (brief-db-registri-
+        # giornale-catalogo, 2026-09-19): la tendina «Registro» del giornale
+        # trasversale li legge da qui, e il filtro `registro` del backend li
+        # valida contro la stessa tabella. ⚠️ Senza `attivo` (D3 del brief) e
+        # con `etichetta_key`: e' una specializzata, vedi `_LOOKUP_SPECIALIZZATE`.
+        "config.registri_giornale",
         "config.sistema_codici",
         "config.sorgenti",
         "config.stati",
@@ -161,6 +167,17 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 #   has_obsoleto       → la tabella ha obsoleto_dal (filtro includi_obsoleti,
 #                        stessa semantica della fn generica: esclude
 #                        obsoleto_dal <= CURRENT_DATE quando false)
+#   has_attivo         → (opzionale, default True) la tabella ha `attivo`.
+#                        A False il payload porta `attivo = NULL` e
+#                        `attivo_only` non filtra — la stessa cosa che fa
+#                        `dbops.fn_get_lookup_codici` su una tabella senza la
+#                        colonna (`NULL::boolean AS attivo`). ⛔ Fino al
+#                        2026-09-19 l'handler scriveva `t.attivo` fisso: la
+#                        prima specializzata senza il flag —
+#                        `config.registri_giornale`, un vocabolario che nessuno
+#                        «assegna» e che si ritira con `obsoleto_dal` — sarebbe
+#                        stata un 500 alla prima chiamata, con la rel dichiarata
+#                        ammessa (`feedback_contratto_dichiarato_provalo_intero`).
 # ⭐ Le tabelle che il PANNELLO CONFIG gestisce (CRUD metadata-driven): la
 #    whitelist della lookup PIU' quelle che il lookup generico non puo'
 #    servire. Fino al 2026-09-18 le due whitelist erano lo stesso insieme, e
@@ -214,6 +231,20 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "extra_col": "categoria",
         "has_codice_interno": True,
         "has_obsoleto": True,
+    },
+    "config.registri_giornale": {
+        # etichetta_key: l'INDIRIZZO i18n che il DB dichiara riga per riga
+        # (`config.registri_giornale.<codice_interno minuscolo>`, pinnato dal
+        # pgTAP del catalogo, test 8). Il frontend lo rende con `labelOrCode`
+        # — la tendina «Registro» del giornale e la sua colonna. ⭐ Qui e non
+        # ricostruito nel FE dalla convenzione (brief §8.4): la chiave la
+        # dichiara il database, come per `tipi_entita` ed `eventi_dominio`.
+        # ⚠️ Niente `attivo` (D3): il ritiro di un registro ha un asse solo,
+        #    `obsoleto_dal`, e le righe vecchie del diario restano leggibili.
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": True,
+        "has_attivo": False,
     },
 }
 
@@ -284,6 +315,13 @@ class DbopsRepository:
         codice_interno_sql = (
             "t.codice_interno" if spec["has_codice_interno"] else "NULL::text"
         )
+        # Senza la colonna `attivo` il payload la porta NULL e `attivo_only`
+        # non ha niente su cui filtrare: e' il contratto della fn generica.
+        has_attivo = spec.get("has_attivo", True)
+        attivo_sql = "t.attivo" if has_attivo else "NULL::boolean"
+        attivo_pred = (
+            "(%(attivo_only)s IS FALSE OR t.attivo = true)" if has_attivo else "TRUE"
+        )
         obsoleto_pred = (
             "AND (%(includi_obsoleti)s IS TRUE"
             " OR t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)"
@@ -303,11 +341,11 @@ class DbopsRepository:
                     t.codice,
                     {codice_interno_sql} AS codice_interno,
                     t.descrizione,
-                    t.attivo,
+                    {attivo_sql} AS attivo,
                     {extra_expr} AS {spec["extra_col"]},
                     COUNT(*) OVER () AS total_count
                   FROM {rel} t
-                 WHERE (%(attivo_only)s IS FALSE OR t.attivo = true)
+                 WHERE {attivo_pred}
                    {obsoleto_pred}
                    AND (
                        %(search)s::text IS NULL

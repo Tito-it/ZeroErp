@@ -45,7 +45,7 @@
 >   vista — richiesta DB **non urgente**, dichiarata nel piano §10.
 > * 🔵 **Il catalogo dei registri del giornale**: la tendina «Registro» è una
 >   seconda sede FE finché non c'è `config.registri_giornale` —
->   [brief-db-registri-giornale-catalogo.md](../work-in-progress/brief-db-registri-giornale-catalogo.md),
+>   [brief-db-registri-giornale-catalogo.md](brief-db-registri-giornale-catalogo.md),
 >   già in `PROJECT_CONTEXT` «Aperto».
 > * 🔵 **Roadmap #6 «alerting sui dati»** aveva casa qui: il lotto fermo è
 >   coperto (C), la query generica su `event_log` per severità/finestra **con

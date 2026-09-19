@@ -22,10 +22,18 @@
 > pronti. Ciò che fa appena il seed è a DB è al §5, ed è poca roba.
 >
 > ✅ **Lato DB CHIUSO il 19-09 — applicato su dbdev, pgTAP verdi come app
-> (13/13 e 15/15), nessuna regressione nella suite.** Da leggere per primo:
-> §8 (as-built) e §6 (le tre risposte del team DB, una delle quali cambia il
-> §4.1: niente `attivo`). Resta il commit su `dev/db-tid`. **Ora tocca al
-> §5 (BE/FE)**, con le quattro note del §8.4 che il DB ha trovato per strada.
+> (13/13 e 15/15), nessuna regressione nella suite**, mergiato con PR #1626.
+> Da leggere per primo: §8 (as-built) e §6 (le tre risposte del team DB, una
+> delle quali cambia il §4.1: niente `attivo`).
+>
+> ✅ **BE/FE CHIUSI la sera del 19-09** (§5, as-done nel §5.1): la costante
+> `GIORNALE_REGISTRI` è **uscita** dal backend (il filtro legge il catalogo),
+> `config.registri_giornale` è in whitelist come lookup **specializzato** con
+> `etichetta_key` (e il primo senza `attivo`: l'handler ha imparato
+> `has_attivo`), l'array `REGISTRI` del frontend è **sparito**, tendina e
+> colonna «Registro» portano l'etichetta, otto chiavi i18n, e il guard
+> `check_i18n_keys.py` legge la colonna `etichetta_key` dei CSV. **Brief
+> chiuso: le tre sedi sono una.**
 
 ---
 
@@ -93,9 +101,10 @@ rosso, una riga senza il suo ramo fa rosso.
 - Nessuna FK da `vw_giornale_entita` (è una vista) né dalle quattro tabelle
   sorgente: il legame lo tiene il pgTAP, come per i `CHECK` che `valori_check`
   specchia lato Python.
-- `GIORNALE_REGISTRI` nel backend **resta** finché il seed non è a DB; dopo, o
+- ~~`GIORNALE_REGISTRI` nel backend **resta** finché il seed non è a DB; dopo, o
   si legge dal catalogo (§5) o si pinna al catalogo con un test — come
-  `_CLASSI`/`_CANALI` di `processi_service` sono pinnate ai loro `CHECK`.
+  `_CLASSI`/`_CANALI` di `processi_service` sono pinnate ai loro `CHECK`.~~
+  ✅ **Letta dal catalogo** (19-09 sera, §5.1): la costante è uscita.
 
 ## 4. La richiesta
 
@@ -188,6 +197,55 @@ nessun `GRANT` nel changeSet. Niente RLS (vocabolario globale, come
 - Locales: nove chiavi (`config.registri_giornale.*`, it/en), e la parola
   «Registro» sulla tendina resta.
 
+### 5.1 ✅ Com'è andata (19-09 sera) — le scelte lasciate aperte
+
+- **`GIORNALE_REGISTRI`: letta dal catalogo, non pinnata.** Il criterio non è
+  il costo (una `SELECT` da quattro righe, e solo quando il filtro `registro`
+  è presente): è che una costante pinnata è **una sede in più** con un
+  presidio che la tiene allineata, mentre il catalogo è **la** sede. Il
+  giorno del quinto registro il backend non cambia di una riga — che è
+  esattamente ciò che la strada A del §2 prometteva («il quinto registro = una
+  riga di CSV»). `VenditeRepository.registri_giornale_ammessi()` legge
+  **tutte** le righe, ritirate comprese (§8.4): un deep-link scritto ieri non
+  diventa un 400 domani.
+- **Il lookup: `_LOOKUP_SPECIALIZZATE`, con `etichetta_key`** (la seconda
+  strada del §8.4, «la chiave la dichiara il DB»). ⚠️ E ha trovato un difetto
+  che il contratto non mostrava: l'handler scriveva `t.attivo` **fisso** —
+  `config.registri_giornale` sarebbe stata un **500** alla prima chiamata con
+  la rel dichiarata ammessa (`feedback_contratto_dichiarato_provalo_intero`).
+  Ora la spec ha `has_attivo` (default `True`), e a `False` il payload porta
+  `attivo = NULL` come fa `fn_get_lookup_codici` — e **nessun test attraversava
+  le specializzate sul DB**: ora `test_lookup_specializzate` le prova tutte e
+  cinque sul DB provvisto.
+- **La tendina non è un `<LookupSelect>`**, scostamento dal §5 dichiarato:
+  `LookupSelect` rende `descrizione`, non un'etichetta i18n, e il punto del
+  brief (§1.1) è proprio l'etichetta. La tendina «Registro» ha la forma della
+  gemella «Entità» — `useGlobalLookup` + opzioni calcolate con `labelOrCode`,
+  chiave di cache `config.registri_giornale::no-obsoleti` (la stessa che
+  `LookupSelect` userebbe per quell'insieme, così i due non possono mai
+  disaccordarsi sulla stessa chiave). ✅ **Regola del 2 applicata** (ok Tid,
+  la sera stessa): è la **seconda** tendina che rende un lookup con
+  `etichetta_key` → BB `core/composables/useLookupEtichettato.js`
+  (`etichetta(codice)` + `opzioni` con la voce «tutti», sopra
+  `useGlobalLookup`; spec 5/5), adottato da entrambe le tendine del giornale.
+  ⚠️ **E alla rilettura critica (stessa sera) la chiave `::no-obsoleti` era
+  una QUARTA copia**: la coppia «chiave + `lookupCodici(rel, { page_size:
+  200, includi_obsoleti: false })`» stava identica in `LookupSelect`,
+  `PraticaDrawer`, `PraticheHome` e nella view — la promessa «stessa chiave
+  del `LookupSelect`» era tenuta a mano. → BB `useLookupCodici`
+  (`chiaveLookupCodici`/`fetchLookupCodici`/`LOOKUP_CODICI_PAGE_SIZE`),
+  adottato in sette siti; `useLookupEtichettato` prende `{ rel }` e la
+  compone da lì. Restano dichiarati i siti che chiamano `lookupCodici(rel)`
+  senza `page_size` (pagina 50: tendina troncabile in silenzio) — da
+  rivedere uno per uno, non adozione meccanica.
+- **Solo i vivi in tendina** (`includi_obsoleti=false`): un registro ritirato
+  non ha più ramo (pgTAP test 4/5), e in tendina sarebbe una scelta vuota. La
+  colonna «Registro» ripiega sul codice grezzo se una riga vecchia portasse un
+  registro non più vivo: fail-visible, mai una cella vuota.
+- **Le chiavi i18n**: `config.registri_giornale.{event_log,lotto_log,task_run,fattura_log}`,
+  it/en; «Registro» sulla tendina resta. Testi corti per una tendina da 170px
+  («Eventi di dominio», «Log del lotto», «Giri dei task», «Log della fattura»).
+
 ## 6. Domande aperte al team DB — ✅ risposte il 19-09
 
 - **D1.** `sorgente` come `regclass` (si rompe se la tabella viene rinominata:
@@ -237,6 +295,7 @@ nessun `GRANT` nel changeSet. Niente RLS (vocabolario globale, come
 | --- | --- |
 | 2026-09-19 | Brief scritto. Backend in attesa; la tendina «Registro» del giornale resta sulla costante FE, dichiarata come seconda sede nel commento della view. |
 | 2026-09-19 (ore 18) | ✅ **Lato DB CHIUSO**: migrazione applicata da Tid, automazioni montate (lock + audit), pgTAP 13/13 come app, suite senza regressioni. Resta il commit; poi il §5. |
+| 2026-09-19 (sera) | ✅ **BE/FE CHIUSI** (DB mergiato con PR #1626). BE: `config.registri_giornale` in `_REL_CONSENTITE` + `_LOOKUP_SPECIALIZZATE` (`etichetta_key`, **`has_attivo: False`** — flag nuovo dell'handler, che scriveva `t.attivo` fisso e avrebbe risposto 500); `GIORNALE_REGISTRI` **ritirata** da repository, service e view — il filtro `registro` si valida con `VenditeRepository.registri_giornale_ammessi()` (tutte le righe, ritirate comprese), letto solo quando il filtro c'è; OpenAPI di `registro` riscritta sul catalogo. Test: `test_giornale_trasversale_api` (5) sul vocabolario letto dal repository + «senza filtro il catalogo non si legge»; `test_giornale_trasversale_perimetro` (4, DB vero) lettore = catalogo, ogni registro attraversa il service, uno ignoto è `E_VENDITE_VALIDATION` con `field`; **nuovo** `core/tests/db/test_lookup_specializzate` (composizione con e senza `has_attivo` + **ogni** specializzata attraversata sul DB provvisto, contratto intero). FE: `REGISTRI` **sparito** da `GiornaleListView`, tendina e colonna «Registro» su `useGlobalLookup('config.registri_giornale::no-obsoleti')` + `labelOrCode` (fabbrica locale `etichettaDaCatalogo` per i due vocabolari); otto chiavi `config.registri_giornale.*`; `check_i18n_keys.py` legge la colonna `etichetta_key` dei CSV (**provato rosso** togliendo una chiave, poi verde). Build Vite ok, eslint pulito, i18n guard pulito. **Regola del 2 (ok Tid)**: BB `useLookupEtichettato` estratto dalle due tendine + spec. **Rilettura critica**: la chiave `::no-obsoleti` + fetch era una quarta copia → BB `useLookupCodici` (7 siti, spec 3), indice `Map` nell'etichettato; suite vitest 186/186. Doc: `api_lookup_codici.md` (tabella specializzate + `has_attivo`, e `config.tipi_titolo_iva` che mancava), `api_giornale.md`, `api.md`, catalogo BB BE/FE, collaudo §3.6-3.7, PROJECT_CONTEXT. **Brief chiuso → `work-done/`.** |
 | 2026-09-19 (pomeriggio) | ✅ **Lato DB scritto** (Tid: «ok procedi»): `00_schema/config/20260919-08` (tabella), `80_data/changelog/20260919-09` + `sql/config/registri_giornale.csv` (seed, con resync della sequence), pgTAP `script/test-giornale-registri-catalogo-v1.sql` (13 test), i due presidi di `test-vw-giornale-entita.sql` che elencavano i quattro nomi (2, 11) **riscritti sul catalogo** — la quarta copia ritirata nello stesso giro —, descrizione della colonna `registro` in `ui/lista_colonna.csv` (887), manuale `config/manual/registri_giornale.md`, rimando nel manuale della vista. Tre risposte al §6 (D1 `text`, D2 regex + CHECK + test-guard, **D3 niente `attivo`**). Provato con l'SQL estratto (`updateSQL` offline) in `BEGIN…ROLLBACK`: 12/13 (il 13 è il lock di `ci_apply`), 13/13 col lock montato, mirror idempotente alla seconda passata, e **cinque mutazioni** che accendono l'asserzione giusta (§8.3). Per strada: il `check_i18n_keys.py` **non** legge `etichetta_key` (§4.2), le sorelle **non** sono «solo SELECT» (§4.4), e un INSERT senza `id` collideva con la PK del seed — da cui il resync nel `-09` e gli id espliciti nei test negativi. |
 
 ## 8. As-built DB (19-09-2026)
