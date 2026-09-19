@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 894, di cui 92 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 897, di cui 92 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -299,6 +299,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA": "DATO_ERRATO",
     # pagamenti.trgfn_vendite_contabili_guard_transizione: si sta cambiando lo stato di una distinta contabile con un passaggio che pagamenti.transizioni_stati_contabile non ammette. La matrice e' quella di D14-a-bis del brief incassi: BOZZA -> VALIDATA|ANNULLATA, VALIDATA -> CHIUSA|BOZZA|ANNULLATA, e CHIUSA/ANNULLATA sono terminali. Fino al 2026-08-21 pagamenti era l'unico dominio con degli stati e NESSUNA regola su come ci si passa: qualunque salto era ammesso, compreso uscire da uno stato dichiarato finale. Gemello di E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA (955), che presidia la riga: due codici e non uno perche' i due percorsi hanno stati diversi e il rimedio si legge sul documento sbagliato se il messaggio non dice quale dei due e'.
     "E_CONTABILE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # script.fn_check_contabile_validabile, motivo 1 (RIGHE_NON_LAVORATE), sollevato da pagamenti.trgfn_vendite_contabili_guard_validazione via fn_raise_primo_motivo_se_presente entrando in VALIDATA. La distinta ha righe attive in uno stato con lavorata = false (IMPORTATA, DA_ABBINARE: la bandiera sta nel catalogo, D20-a). VALIDATA e' «ho finito di inserire»: una riga che nessuno ha guardato e' lavoro non finito, e dopo la registrazione non avrebbe piu' nessuno che la guardi. CONFLITTO_STATO: il rimedio e' decidere che cosa sono quelle righe (abbinare, sospendere, scartare), non correggere un campo. Il dettaglio porta quante e gli id. Nasce il 2026-09-18 col terzo collaudo in-app (brief-db-validata-e-registrazione-tardiva §2.1).
+    "E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE": "CONFLITTO_STATO",
     "E_CONTATTO_INCOMPLETO": "DATO_ERRATO",
     "E_CONTO_BANCARIO": "DATO_ERRATO",
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "NON_ESEGUIBILE",
@@ -1055,6 +1057,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RIGA_CONTABILE_RATA_INCOERENTE": "DATO_ERRATO",
     # pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga: la riga contabile esiste ma non ha fattura_id o billing_account_id, cioe' non e' abbinata a nulla, e da una riga non abbinata non si puo' derivare un movimento. E' il rifiuto che il brief madre (B-2) dava per mancante: il guard c'era gia' dal 2026-02-13, ma sollevava E_GENERICO, quindi la condizione piu' importante del posting non aveva un nome. CONFLITTO_STATO perche' non e' un dato malformato: e' una riga che sta in un momento sbagliato del proprio percorso. ATTENZIONE: il guard scatta SOLO se il movimento porta contabile_riga_id; un movimento inserito senza riga (la colonna e' nullable) non lo incontra e sbatte sulla NOT NULL - non e' il percorso del posting, e' il percorso di chi scrive a mano.
     "E_RIGA_CONTABILE_SENZA_ABBINAMENTO": "CONFLITTO_STATO",
+    # pagamenti.fn_posta_riga_tardiva, passo 4: la distinta della riga non e' REGISTRATA (= stato finale con data_conferma). Sotto ANNULLATA niente si registra («non e' mai successa»); una CHIUSA senza conferma non ha registrato niente; sotto BOZZA o VALIDATA c'e' il giro normale — abbinare la riga e registrare la distinta — e la frase lo dice. CONFLITTO_STATO: e' lo stato della distinta a non ammettere il gesto. Valori: codice distinta, frase sullo stato. Nasce il 2026-09-18 (brief-db-validata-e-registrazione-tardiva §4.1).
+    "E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA": "CONFLITTO_STATO",
+    # pagamenti.fn_posta_riga_tardiva, passo 3: la riga non e' attiva o non e' SOSPESA. La registrazione tardiva e' la strada della riga rimasta sospesa sotto una distinta gia' registrata (D20-b): da SCARTATA si passa prima da «Riprendi» (-> SOSPESA, in matrice), da DA_ABBINARE non si arriva qui (D20-a: sotto una registrata non ce ne sono), da POSTATA il movimento c'e' gia'. CONFLITTO_STATO: e' lo stato della riga a non ammettere il gesto. Valori: id riga, codice distinta, descrizione dello stato dal catalogo (o «eliminata»). Nasce il 2026-09-18 (brief-db-validata-e-registrazione-tardiva §4.1).
+    "E_RIGA_CONTABILE_TARDIVA_STATO": "CONFLITTO_STATO",
     # pagamenti.trgfn_vendite_contabili_righe_guard_transizione: passaggio di stato non ammesso su una riga contabile. Matrice di D14-a: DA_ABBINARE -> ABBINATA|SOSPESA|SCARTATA, ABBINATA -> POSTATA|DA_ABBINARE|SOSPESA, SOSPESA -> ABBINATA|DA_ABBINARE|SCARTATA, SCARTATA -> SOSPESA, POSTATA terminale. ⚠️ Le transizioni in USCITA da IMPORTATA non sono seminate: quello stato lo produce solo l'import da flusso, che non esiste ancora, e un catalogo pieno di righe irraggiungibili insegna cose false (la lezione pagata con STORNATA). ⭐ Effetto collaterale voluto: POSTATA e' terminale, quindi questo guard chiude per costruzione il difetto C-2 (il sync dei fondi che riportava una riga registrata ad ABBINATA) prima ancora che il quarto stato del fondo arrivi col lotto 3.
     "E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_RIGA_GIA_FATTURATA": "CONFLITTO_STATO",

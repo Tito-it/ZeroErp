@@ -19,9 +19,10 @@
 //
 // ⭐ NON E' SCRITTO A MANO. Il corpo — filtri, fetch paginata, cancello
 //    empty-state, sospensione, reset, e la distinzione fra «vuota» e «non
-//    letta» — vive in `createListaStore` / `useListaStoreCore`. Qui restano
-//    solo le tre cose che sono DI QUESTA lista: quale endpoint, come si chiama
-//    il padre, e come si legge.
+//    letta» — vive in `useListaStoreCore`, chiamato qui dentro il `defineStore`
+//    (la forma ammessa da frontend-standards quando lo store ha stato SUO):
+//    restano quale endpoint, come si chiama il padre, come si legge, e
+//    l'interruttore delle scartate.
 //
 // ⭐ IL PADRE E' NELLO STORE, NON NEI FILTRI: `contabileId` e' il contesto
 //    (arriva dal path dell'endpoint), i filtri sono le scelte dell'operatore —
@@ -34,17 +35,48 @@
 //    nell'ultima pagina e chi l'ha appena digitata non la vedrebbe. Scrivere
 //    qui una colonna cambierebbe l'ordine di apertura senza che nessuno
 //    l'abbia chiesto, e lo farebbe divergere dal default del backend.
-import { createListaStore } from '../../core/stores/createListaStore'
+//
+// ⭐ «MOSTRA SCARTATE (N)» (D20-c, 2026-09-19): la riga SCARTATA — «non e'
+//    nostra» — resta nella distinta e nella quadratura ma esce dal lavoro:
+//    nascosta di DEFAULT, e il backend dichiara quante ne nasconde
+//    (`scartate_count`, la forma di `archiviate_count`). Il filtro e'
+//    `scartate: null | true` — `null` e non `false`, perche' il core manda ogni
+//    filtro `!= null` e un `false` sul filo sarebbe un parametro letto per
+//    niente (regola di `bindToggle`). L'export segue la lista: `paramsFiltro`
+//    lo porta come ogni altro filtro.
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import { listRigheDistinta } from '../api/pagamenti'
 
-export const useDistintaRigheStore = createListaStore(
+export const useDistintaRigheStore = defineStore(
   'pagamenti-distinta-righe',
-  {
-    fetchPage: listRigheDistinta,
-    parentField: 'contabileId',
-    // La distinta e' gia' scelta quando il drawer si apre: non e' una lista che
-    // parte vuota in attesa di una ricerca.
-    startsEmpty: false,
-    orderDir: null,
+  () => {
+    // Quante scartate il perimetro corrente sta NASCONDENDO. A interruttore
+    // acceso vale 0: non c'e' niente di nascosto.
+    const scartateCount = ref(0)
+
+    const base = useListaStoreCore({
+      fetchPage: listRigheDistinta,
+      parentField: 'contabileId',
+      // La distinta e' gia' scelta quando il drawer si apre: non e' una lista
+      // che parte vuota in attesa di una ricerca.
+      startsEmpty: false,
+      orderDir: null,
+      filterDefaults: { scartate: null },
+      onPayload: (payload) => { scartateCount.value = payload.scartate_count ?? 0 },
+    })
+
+    // ⚠️ Il reset del core non conosce lo stato di dominio: al cambio di
+    //    distinta il numero delle scartate di quella prima non deve restare a
+    //    video sotto la prossima.
+    function reset() {
+      base.reset()
+      scartateCount.value = 0
+    }
+
+    return { ...base, reset, scartateCount }
   },
+  { userScoped: true },
 )

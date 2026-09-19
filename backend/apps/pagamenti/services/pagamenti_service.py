@@ -22,6 +22,7 @@
 import json
 import logging
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
@@ -50,7 +51,12 @@ from apps.pagamenti.db.pagamenti_repository import (
     RIGHE_SORT_COLUMNS,
     PagamentiRepository,
 )
-from apps.pagamenti.types import DistintaRow, RicevutaPosting, RigaContabileRow
+from apps.pagamenti.types import (
+    DistintaDettaglioRow,
+    RicevutaPosting,
+    RicevutaTardiva,
+    RigaContabileRow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +141,16 @@ STATO_RIGA_SENZA_DESTINAZIONE = "DA_ABBINARE"
 # Lo stato in cui l'abbinamento porta la riga — alla nascita come dopo: e' lo
 # stesso gesto, non due.
 STATO_RIGA_ABBINATA = "ABBINATA"
+# ⭐ «Non e' nostra» (D20-c, 2026-09-18): la riga SCARTATA resta nella distinta
+#    — e' lei la traccia, e conta nella quadratura («quel denaro e' arrivato»)
+#    — ma ESCE DAL LAVORO: nascosta di default fra le righe del drawer, mai in
+#    nessuna coda. Si nomina qui, per codice, come gli altri due: la lista la
+#    filtra e la quadratura la conta «di cui non nostre».
+STATO_RIGA_SCARTATA = "SCARTATA"
+# ⭐ Lo stato in cui si ENTRA validando (D20-a/D20-d): e' quello che il catalogo
+#    marca `is_registrabile`. Si nomina per il solo cancello della terna del
+#    verbo «valida» (`_transizione_verso_validata`): il resto lo legge dal flag.
+STATO_DISTINTA_VALIDATA = "VALIDATA"
 # ⭐ L'origine e lo stato della distinta sotto cui il CONTENUTO delle righe si
 #    lavora (D17/D18): righe nuove, fatti modificati, eliminazioni. ⚠️ E' una
 #    COPIA DICHIARATA del motivo 3 di `script.fn_check_riga_contabile_eliminabile`
@@ -216,7 +232,7 @@ def _meta_json(payload: dict[str, Any]) -> str:
 # ⚠️ «Non esiste» e «non la vedi» danno la stessa risposta, ed e' voluto: dire
 #    «esiste ma non e' tua» racconterebbe a un operatore fuori perimetro che
 #    quel documento c'e'.
-def _distinta_o_404(repository: PagamentiRepository, contabile_id: int) -> DistintaRow:
+def _distinta_o_404(repository: PagamentiRepository, contabile_id: int) -> DistintaDettaglioRow:
     distinta = repository.get_distinta(contabile_id)
     ErrorManager.require(
         distinta is not None,
@@ -433,13 +449,47 @@ def _transizioni_richiedibili(
 #    dettaglio sarebbe leggere due volte la parte piu' costosa (la LATERAL
 #    sulla check di eliminabilita', per riga) a ogni apertura del drawer — per
 #    un campo che nessuno legge piu'.
+# ⭐ E porta il verbo «valida» COL MOTIVO (BE-1, D20-a): la terna
+#    `validazione_blocco_*` + `can_validare`, letta dalla STESSA check che il
+#    guard chiama per rifiutare. ⚠️ Viaggia SOLO se lo stato corrente ammette
+#    VALIDATA fra le uscite (la matrice, gia' letta qui): su una CHIUSA o su
+#    una ANNULLATA il verbo non si propone, e un motivo per un pulsante che
+#    non c'e' sarebbe rumore — si azzera a `null`, non si inventa.
+# ⭐ `righe_per_stato` e i due numeri «di cui non nostre» (`righe_scartate`,
+#    `totale_scartate`): la quadratura li mostra accanto al totale, perche'
+#    «dichiarato 1000 · righe 1000» con 200 di scartate dentro si legge come
+#    «tutto nostro» — e non lo e'. Derivati QUI dall'array, con lo stesso
+#    codice che la lista usa per nasconderle: una sede, non due letterali.
 def get_distinta(contabile_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
     distinta = _distinta_o_404(repository, contabile_id)
     grafo_distinta, grafo_riga = repository.list_transizioni()
+    transizioni_distinta = _transizioni_richiedibili(
+        grafo_distinta, STATI_DISTINTA_RICHIEDIBILI
+    )
+    if not _transizione_verso_validata(transizioni_distinta, distinta.get("stato_codice")):
+        distinta = {
+            **distinta,
+            "validazione_blocco_reason": None,
+            "validazione_blocco_reason_key": None,
+            "validazione_blocco_dettaglio": None,
+            "can_validare": None,
+        }
+    scartate = [
+        r for r in (distinta.get("righe_per_stato") or [])
+        if r.get("stato_codice_interno") == STATO_RIGA_SCARTATA
+    ]
     return {
         "distinta": {
             **distinta,
+            "righe_scartate": sum(int(r.get("righe") or 0) for r in scartate),
+            # ⚠️ Parte da `Decimal("0")`, non dallo `0` di `sum`: un importo che
+            #    esce come numero JSON senza scartate e come stringa (`"5.00"`,
+            #    la forma di ogni Decimal) con una sola cambierebbe TIPO coi
+            #    dati — `totale_righe` accanto e' sempre una stringa.
+            "totale_scartate": sum(
+                (Decimal(str(r.get("importo") or 0)) for r in scartate), Decimal("0")
+            ),
             # ⭐ D17/D18: il CONTENUTO (righe nuove, fatti, eliminazioni) si
             #    lavora solo su una manuale in bozza. Il flag viaggia perche'
             #    il frontend non ricalcoli la regola: e' una copia dichiarata
@@ -461,12 +511,23 @@ def get_distinta(contabile_id: int) -> dict[str, Any]:
         # cio' che offriva coincideva con la matrice sulla testata PER CASO e
         # non coincideva sulla riga. Adesso non puo' divergere: si legge.
         "transizioni": {
-            "distinta": _transizioni_richiedibili(
-                grafo_distinta, STATI_DISTINTA_RICHIEDIBILI
-            ),
+            "distinta": transizioni_distinta,
             "riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
         },
     }
+
+
+# Scopo: «dallo stato corrente si puo' chiedere VALIDATA?» — letto dalla
+#        matrice ristretta ai richiedibili, la stessa che il frontend riceve.
+# ⚠️ Serve al solo cancello della terna del verbo «valida»: il frontend
+#    riconosce il pulsante dal flag `is_registrabile` del catalogo, e qui non
+#    si offre ne' si toglie nessuna transizione.
+def _transizione_verso_validata(
+    transizioni: dict[str, list[str]], stato_codice: str | None
+) -> bool:
+    if stato_codice is None:
+        return False
+    return STATO_DISTINTA_VALIDATA in transizioni.get(stato_codice, [])
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -618,6 +679,12 @@ def cambia_stato_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[st
 #    non si deriva MAI dalle righe»). Ora il totale viene da `COUNT(*) OVER ()`.
 # ⭐ `nullable=True`: «non specificato» e' legittimo e l'ordine lo decide il
 #    repository (`id DESC`); fuori whitelist e' un 400 col campo, non un 500.
+# ⭐ `scartate` (BE-2, D20-c): le SCARTATA — «non e' nostra» — sono FUORI di
+#    default, e la risposta dice quante ne sta nascondendo (`scartate_count`,
+#    la forma di `archiviate_count`): spento e senza numero, «elenco pulito» e
+#    «tre righe messe via» si leggerebbero uguali. A interruttore acceso non
+#    c'e' niente di nascosto e il conteggio non si paga. L'export segue la
+#    lista a video, interruttore compreso.
 def list_righe(
     contabile_id: int,
     *,
@@ -625,6 +692,7 @@ def list_righe(
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
+    scartate: bool = False,
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
         order_by, order_dir.lower() if order_dir else None,
@@ -637,12 +705,16 @@ def list_righe(
     _distinta_o_404(repository, contabile_id)
     results, total = repository.list_righe_distinta(
         contabile_id,
+        escludi_stato_codice=None if scartate else STATO_RIGA_SCARTATA,
         order_by=order_by,
         order_dir=order_dir,
         limit=limit,
         offset=offset,
     )
-    return {"count": total, "results": results}
+    scartate_count = 0 if scartate else repository.count_righe_in_stato(
+        contabile_id, STATO_RIGA_SCARTATA
+    )
+    return {"count": total, "results": results, "scartate_count": scartate_count}
 
 
 # Scopo: Aggiunge una riga alla distinta — un importo arrivato, e di chi e'.
@@ -1060,6 +1132,44 @@ def abbina_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     return {"riga": _riga_o_404(repository, riga_id)}
 
 
+# Scopo: La registrazione TARDIVA (D20-b): una riga `SOSPESA` sotto una
+#        distinta gia' registrata si abbina E si registra nello stesso gesto.
+# ⭐ Il payload e' quello di `abbina` (`_CAMPI_DESTINAZIONE`), letto dalla
+#    stessa funzione e con le stesse regole — il cliente, se manca, e' quello
+#    della fattura. E' un verbo suo e non un `abbina` + `stato`: sotto una
+#    CHIUSA il secondo verrebbe rifiutato dalla quarta mossa, e il primo
+#    resterebbe scritto. La madre passa da ABBINATA (girano tutti i guard
+#    dell'abbinamento) e alla quarta mossa si presenta con la GUC.
+# 🔴 Il doppio tempo della capienza passa INTATTO: primo tentativo senza
+#    `forzata`, 409 `confirm_and_retry`, secondo con `forzata = true`. Il
+#    backend non decide che cosa sia forzabile.
+# ⛔ Nessuna verifica di stato qui («e' SOSPESA?», «la distinta e' registrata?»):
+#    sono i guard della madre (`E_RIGA_CONTABILE_TARDIVA_*`), e riscriverli
+#    sarebbe la seconda sede. Il 404 di dominio PRIMA della madre, come per
+#    tutti i verbi: «non esiste» e «non la vedi» restano indistinguibili.
+def registra_riga_tardiva(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset(_CAMPI_DESTINAZIONE))
+    destinazione = _destinazione_da_payload(
+        payload, obbligatoria=True, function_name=f"{_FN}.registra_riga_tardiva"
+    )
+    fattura_id = destinazione["fattura_id"]
+    assert fattura_id is not None
+
+    repository = PagamentiRepository()
+    _riga_o_404(repository, riga_id)
+    if destinazione["billing_account_id"] is None:
+        destinazione["billing_account_id"] = _billing_account_della_fattura(
+            repository, fattura_id, function_name=f"{_FN}.registra_riga_tardiva"
+        )
+    with _db_errors("registra_riga_tardiva"):
+        ricevuta: RicevutaTardiva = repository.posta_riga_tardiva(
+            riga_id=riga_id, **destinazione
+        )
+    # La riga com'e' adesso — POSTATA, col movimento scritto — accanto alla
+    # ricevuta: chi ha premuto vede il fatto, non solo un id.
+    return {**ricevuta, "riga": _riga_o_404(repository, riga_id)}
+
+
 # ══════════════════════════════════════════════════════════════════
 #  Le due code, e l'elenco che rende onesta la forzatura
 # ══════════════════════════════════════════════════════════════════
@@ -1112,7 +1222,19 @@ def list_coda_righe(
         limit=page_size,
         offset=offset,
     )
-    return _risposta_paginata(results, total, page, page_size)
+    # ⭐ Il catalogo degli stati di riga e le uscite richiedibili DA OGNI STATO
+    #    viaggiano ACCANTO alle righe (FE-4, D20): dalla coda si lavora — abbina,
+    #    sospendi, scarta, riporta — e le voci del kebab si costruiscono dalla
+    #    MATRICE, come nel drawer. ⛔ Non un elenco cablato nel frontend, e non
+    #    un endpoint suo: pulsanti e righe vengono dalla stessa lettura, quindi
+    #    non possono raccontare due istanti diversi (la forma di `stati` sul
+    #    registro lotti).
+    _grafo_distinta, grafo_riga = repository.list_transizioni()
+    return {
+        **_risposta_paginata(results, total, page, page_size),
+        "stati_riga": repository.list_stati_riga(),
+        "transizioni_riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
+    }
 
 
 # Scopo: Le rate uscite dalla banda di capienza.

@@ -35,6 +35,10 @@ class DistintaRow(TypedDict):
     stato_codice: str | None
     stato_descrizione: str | None
     stato_is_final: bool | None
+    # ⭐ «Registrabile» sta nel catalogo (D20-d): la bandiera che la madre del
+    #   posting legge al posto del letterale. Il frontend spegne «Registra» col
+    #   motivo quando e' falsa, invece di lasciarlo finire in 409.
+    stato_is_registrabile: bool | None
     # La chiave i18n della riga «dove sono» del drawer, dal `meta` dello stato
     # (`nessuna_azione_key`, lo stesso campo degli otto domini con
     # `DrawerActionsBar :info-key`). NULL finche' il seed non c'e'.
@@ -71,6 +75,35 @@ class DistintaRow(TypedDict):
     totale_righe: Decimal
     totale_registrabile: Decimal
     scarto_dichiarato: Decimal | None
+
+
+# ⭐ La riga per STATO (BE-1): quante righe attive e per che importo in uno
+#   stato del catalogo — la fotografia del dialog di validazione, e la sorgente
+#   di «di cui non nostre» in quadratura. L'array e' ORDINATO dal catalogo.
+class RigaPerStato(TypedDict):
+    stato_codice_interno: str
+    stato_descrizione: str | None
+    righe: int
+    # ⚠️ Un `float`, non un `Decimal`: l'array lo costruisce il database con
+    #   `jsonb_build_object` e `jsonb_out` lo decodifica con `json.loads`, che
+    #   rende i numeri JSON come float (la stessa forma dei `dettaglio` delle
+    #   check). Chi somma passa da `Decimal(str(...))`, mai dal float.
+    importo: float
+
+
+# ⭐ Il DETTAGLIO della distinta: la riga di lista piu' cio' che solo il
+#   dettaglio porta — il verbo «valida» col suo motivo (D20-a, la terna di
+#   §12.5 con prefisso `validazione_blocco`, dalla STESSA check che il guard
+#   chiama per rifiutare) e le righe per stato.
+# ⚠️ La terna e `can_validare` sono `None` quando lo stato corrente non ammette
+#   VALIDATA fra le uscite (lo decide il service dalla matrice): un motivo su un
+#   verbo che non si propone e' rumore, non informazione.
+class DistintaDettaglioRow(DistintaRow):
+    validazione_blocco_reason: str | None
+    validazione_blocco_reason_key: str | None
+    validazione_blocco_dettaglio: Any
+    can_validare: bool | None
+    righe_per_stato: list[RigaPerStato]
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -145,6 +178,14 @@ class RigaCodaRow(RigaContabileRow):
     contabile_codice: str
     contabile_data: date
     contabile_origine: str
+    # ── I fatti della testata che decidono il verbo (BE-4, D20-b) ───────────
+    # Lo stato in cui la distinta si trova, se e' finale, e se e' REGISTRATA
+    # (`data_conferma IS NOT NULL`, scritta dal posting). Da una «Sospesa» sotto
+    # una distinta registrata si «abbina e registra» (la tardiva); sotto una
+    # aperta si abbina e basta. Il frontend sceglie da un fatto, non ricalcola.
+    contabile_stato_codice_interno: str | None
+    contabile_is_final: bool | None
+    contabile_registrata: bool
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -154,7 +195,10 @@ class RigaCodaRow(RigaContabileRow):
 # ⭐ I flag viaggiano col catalogo e NON si cablano nel frontend: quali stati
 #   pretendono fattura e cliente lo dice `richiede_abbinamento`, quali occupano
 #   spazio su una rata lo dice `is_postabile`.
-class StatoCatalogoRow(TypedDict):
+# Le colonne che i DUE cataloghi (testata e riga) hanno in comune: la forma di
+# ogni tabella di stato del dominio. ⚠️ Scritte una volta: i flag propri di
+# ciascuno stanno nei due tipi sotto, non qui.
+class _StatoCatalogoBase(TypedDict):
     id: int
     codice: str
     codice_interno: str
@@ -163,7 +207,17 @@ class StatoCatalogoRow(TypedDict):
     ordine: int | None
 
 
-class StatoRigaCatalogoRow(StatoCatalogoRow):
+# Il catalogo degli stati della DISTINTA.
+class StatoCatalogoRow(_StatoCatalogoBase):
+    # ⭐ Solo sulla TESTATA (D20-d): `true` sullo stato da cui si registra —
+    #   quello in cui si entra validando. Il frontend lo usa per riconoscere
+    #   «Porta a VALIDATA» senza confrontare il nome con un letterale.
+    is_registrabile: bool
+
+
+# Il catalogo degli stati della RIGA. ⚠️ Non ha `is_registrabile` (e' una
+#   bandiera della testata): eredita la base, non `StatoCatalogoRow`.
+class StatoRigaCatalogoRow(_StatoCatalogoBase):
     is_postabile: bool
     richiede_abbinamento: bool
 
@@ -180,6 +234,17 @@ class RicevutaPosting(TypedDict):
     righe_postate: int
     righe_saltate: int
     totale_postato: Decimal
+    esito: str
+
+
+# ⭐ La ricevuta della registrazione TARDIVA di una riga (D20-b): il movimento
+#   nato, la riga registrata e il suo importo. `esito` e' sempre `POSTATA`:
+#   una tardiva che non si puo' fare e' un RIFIUTO della madre, non un esito
+#   (niente `NULLA_DA_POSTARE` qui, ed e' una differenza voluta).
+class RicevutaTardiva(TypedDict):
+    movimento_id: int
+    riga_id: int
+    importo: Decimal
     esito: str
 
 

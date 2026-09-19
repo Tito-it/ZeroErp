@@ -411,6 +411,55 @@ def extract_paginated(cursor) -> tuple[list[dict[str, Any]], int]:
     return results, total_count
 
 
+def sql_lateral_primo_motivo(check_sql: str, alias: str) -> str:
+    """Il frammento `LEFT JOIN LATERAL` che legge il PRIMO motivo di una
+    `script.fn_check_*` — la terna `reason / reason_key / dettaglio` — come
+    colonne di riga (linee-guida-sql §12.5, api.md §«Capability di riga»).
+
+    Il chiamante lo innesta nel proprio `FROM` e proietta cio' che gli serve
+    (`<alias>.reason AS <verbo>_blocco_reason`, `(<alias>.reason IS NULL) AS
+    can_<verbo>`, …): il nome del verbo lo decide lui, il frammento no.
+
+    ⚠️ `LEFT JOIN … ON TRUE` e non `CROSS JOIN`: la check risponde `[]` quando
+    l'azione e' ammessa, e `jsonb_array_elements` su un array vuoto non produce
+    righe — con un CROSS JOIN sparirebbero dalla lista proprio le righe su cui
+    l'azione si puo' fare.
+    ⚠️ L'ORDINE E' IL CONTRATTO: la madre solleva il PRIMO motivo con
+    `fn_raise_primo_motivo_se_presente`, e il tooltip deve mostrare quello
+    stesso — da qui `WITH ORDINALITY … ORDER BY ord LIMIT 1`.
+    ⚠️ COSTO: la check gira PER RIGA del perimetro (sotto una `COUNT(*) OVER ()`
+    e' per riga filtrata, non per riga di pagina), accanto ai predicati RLS che
+    gia' girano per riga. Chi la innesta su una lista lo sa e lo misura con
+    `EXPLAIN` sul DB provvisto (tests/db).
+
+    ⛔ `check_sql` e `alias` sono SQL DEL CHIAMANTE — la chiamata alla check
+    coi suoi argomenti (`script.fn_check_x(r.id)`) e l'alias del blocco — e
+    vengono da costanti di modulo, MAI da input: finiscono interpolati.
+    ⚠️ L'alias INTERNO della funzione e' `motivo`, non una lettera: `check_sql`
+    nomina le colonne della riga esterna (`m.billing_account_id`, `r.id`) e
+    PostgreSQL le risolve PRIMA di mettere in scope l'alias della funzione —
+    un alias corto qui (`m`) avrebbe la stessa lettera di una tabella esterna
+    (e' il caso del mapping BA degli emittenti) e leggerebbe giusto solo per
+    ordine di parsing: chi legge lo crede sbagliato, e una forma che regge
+    per caso e' fragile. Nessun chiamante deve aliasare `motivo`.
+
+    Regola del 2 (2026-09-19, ok Tid — residuo Q-G del brief BE/FE incassi): la
+    stessa LATERAL era scritta in QUATTRO repository nella stessa forma
+    (`registri` ×2, `anagrafiche` ×1, `vendite` ×1, `pagamenti` ×1) e la
+    validazione della distinta ne chiedeva la quinta.
+    """
+    return f"""
+      LEFT JOIN LATERAL (
+          SELECT motivo.value ->> 'reason'     AS reason,
+                 motivo.value ->> 'reason_key' AS reason_key,
+                 motivo.value -> 'dettaglio'   AS dettaglio
+            FROM jsonb_array_elements({check_sql}) WITH ORDINALITY AS motivo(value, ord)
+           ORDER BY motivo.ord
+           LIMIT 1
+      ) {alias} ON TRUE
+"""
+
+
 def conta_con_perimetro(
     from_sql: str, conditions: list[str], params: list[Any],
 ) -> int:

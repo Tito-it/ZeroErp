@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Client API del dominio INCASSI — le 27 rotte di `/api/v1/pagamenti/`.
+// Scopo: Client API del dominio INCASSI — le 28 rotte di `/api/v1/pagamenti/`.
 // Note: Brief: docs/it/dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md
 //       ⭐ Sul filo la risorsa si chiama `distinte`, non `contabili`: e' la
 //       parola che l'operatore legge sulla schermata (§4 del brief). La tabella
@@ -149,6 +149,17 @@ export function cambiaStatoRiga(rigaId, nuovoStato, motivoSospeso = null) {
 // registrare.
 export function abbinaRiga(rigaId, payload) {
   return api.post(`${BASE}/righe/${rigaId}/abbina/`, payload, idem())
+}
+
+// ⭐ LA REGISTRAZIONE TARDIVA (D20-b): una riga SOSPESA sotto una distinta
+// già REGISTRATA si abbina E si registra nello stesso gesto — movimento
+// scritto, riga POSTATA, distinta che resta CHIUSA. Il payload è quello di
+// `abbinaRiga`, col suo stesso doppio tempo della capienza (`confirm_and_retry`
+// → `forzata: true` + motivo). Stesso cancello di `registraDistinta`.
+// ⛔ Non è un esito «nulla da postare»: una tardiva che non si può fare è un
+// 409 con la sua frase (`E_RIGA_CONTABILE_TARDIVA_*`).
+export function registraRigaTardiva(rigaId, payload) {
+  return api.post(`${BASE}/righe/${rigaId}/registra/`, payload, idem())
 }
 
 // ══════════════════════════════════════════════════════════════

@@ -26,6 +26,7 @@ from apps.core.db._helpers import (
     query_paged_view,
     row_to_dict,
     rows_to_list,
+    sql_lateral_primo_motivo,
     sql_order_direction,
     sql_tiebreak_direction,
 )
@@ -3490,18 +3491,13 @@ class VenditeRepository:
         # parametro gli id arrivano da una FK, e i suoi due «non trovato» sono
         # irraggiungibili perche' la lista fa `INNER JOIN vendite.fatture` —
         # una fattura fuori scope RLS non produce nemmeno la riga.
-        reset_lateral = """
-            LEFT JOIN LATERAL (
-                SELECT m.value ->> 'reason'     AS reason,
-                       m.value ->> 'reason_key' AS reason_key
-                  FROM jsonb_array_elements(
-                           script.fn_check_fattura_eliminabile_da_lotto(
-                               fllf.lotto_id, fllf.fattura_id)
-                       ) WITH ORDINALITY AS m(value, ord)
-                 ORDER BY m.ord
-                 LIMIT 1
-            ) reset_cap ON TRUE
-        """
+        # Il frammento e' il BB `sql_lateral_primo_motivo` (core/db): qui si
+        # proiettano solo `reason` e `reason_key`, il `dettaglio` resta nel
+        # blocco e non viaggia.
+        reset_lateral = sql_lateral_primo_motivo(
+            "script.fn_check_fattura_eliminabile_da_lotto(fllf.lotto_id, fllf.fattura_id)",
+            "reset_cap",
+        )
 
         # ⭐ LA SEGNALAZIONE ATTACCATA ALLA RIGA (D-6 del brief liste drawer
         # lotto, 2026-08-22). La colonna `stato_esecuzione` dice CHE la fattura

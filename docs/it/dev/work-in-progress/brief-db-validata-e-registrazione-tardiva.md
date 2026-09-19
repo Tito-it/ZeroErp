@@ -28,9 +28,9 @@
 > una sospesa alla prima registrazione vera. Si progetta sul modello.
 >
 > **Stato:** ✅ **LATO DB CHIUSO — APPLICATO su dbdev da Tid il 2026-09-19, pgTAP
-> senza regressioni, autogen rigenerato.** Restano i passi 4-9 di §4-ter: la
-> baseline dei codici, la doc auto-gen, il commit, e poi **BE (§5) e FE (§6)**,
-> che possono partire.
+> senza regressioni, autogen rigenerato.** ✅ **BE (§5) e FE (§6) consegnati la
+> sera stessa** (consuntivo: brief BE/FE §10.13). Restano a Tid l'apply del seed
+> della colonna `azioni` della coda (§4-ter 8-bis) e il copione di collaudo §7.
 > **Da leggere per primo: §4-bis** — che cosa c'è, dove, e lo scostamento
 > dichiarato (la firma della check: il dichiarato è un *parametro*); poi §4-ter,
 > che cosa resta a Tid nell'ordine. Sette changeSet `20260918-34 → -40`, due
@@ -293,8 +293,9 @@ check); il rubinetto t.5 passa da 19 a **20** ed è aggiornato con la nota.
 | 4 | `scripts/codici-errore-baseline.sh` — atteso **verde** (nessun accumulo; il render in transazione l'ha detto), eventuali 🔵 RIENTRATO/RISTRETTO da allineare con `--update` e la ragione nel commit | Tid |
 | 5 | doc auto-gen (`docs/it/dbzero/**`) rigenerata | Tid |
 | 6 | commit di `dev/db-tid` (changeSet, CSV, mirror, seed, pgTAP, schede, brief) | Tid |
-| 7 | 📮 BE (§5): `genera_error_policies` + tre ripieghi; `stato_is_registrabile` e la terna `validazione_blocco_*` **passando `c.importo_dichiarato` alla check**; il verbo `righe/{id}/registra/`; le code | backend |
-| 8 | 📮 FE (§6): le `reason_key` `pagamenti.distinte.validazione_reason.{righe_non_lavorate,totale_non_quadra}` nei locales — sono un **debito** finché non ci sono | frontend |
+| 7 | ✅ **19-09** BE (§5): `genera_error_policies` + tre ripieghi; `stato_is_registrabile` e la terna `validazione_blocco_*` **passando `c.importo_dichiarato` alla check**; il verbo `righe/{id}/registra/`; le code | backend |
+| 8 | ✅ **19-09** FE (§6): le `reason_key` nei locales, e tutto il resto di §6 | frontend |
+| 8-bis | 📮 **apply del seed** della colonna `azioni` sulla lista `pagamenti.righe` (`lista_colonna.csv` id 874 + preset): `make db-migrate` — i mirror sono `runOnChange` | Tid |
 | 9 | copione di collaudo §7 | Tid, a BE/FE consegnati |
 
 ### 4.1 La madre della tardiva, passo per passo
@@ -338,23 +339,23 @@ id **non** apre la porta, e che fuori dalla transazione è vuota.
 
 | | Cosa | Note |
 | --- | --- | --- |
-| **BE-1** | `get_distinta`: `stato_is_registrabile` dalla proiezione; `can_validare` + `validazione_blocco_reason` / `_reason_key` / `_dettaglio` dalla check (la terna di §12.5, prefisso `validazione_blocco`) — ⚠️ **la check vuole due argomenti**: `script.fn_check_contabile_validabile(c.id, c.importo_dichiarato)` (§4-bis); `righe_per_stato: [{stato_codice, stato_descrizione, righe, importo}]` sulle righe attive | la terna viaggia **solo** se lo stato corrente ammette `VALIDATA` fra le uscite; altrimenti `null` |
-| **BE-2** | `list_righe_distinta`: `scartate` (`qp_bool_optional`, default `false` ⇒ le `SCARTATA` **fuori**) + `scartate_count` con `conta_con_perimetro` — la forma di `archiviate_count` | lo stato si nomina per `codice_interno` come `STATO_RIGA_ABBINATA`; l'export segue la lista a video |
-| **BE-3** | `POST /pagamenti/righe/{id}/registra/` → `fn_posta_riga_tardiva`, payload = quello di `abbina` (`_CAMPI_DESTINAZIONE`), `Idempotency-Key`, `post_permission = registra_distinta` (lo stesso cancello della registrazione: rovescia denaro), cliente derivato dalla fattura se assente | il doppio tempo passa **intatto**: `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` con `confirm_and_retry` |
-| **BE-4** | Code (`list_righe_coda`): `contabile_stato_codice`, `contabile_registrata` (= `data_conferma IS NOT NULL`, fatto della testata) | il FE sceglie il verbo da un **fatto**, non ricalcola una regola |
-| **BE-5** | `genera_error_policies` per i tre codici + ripieghi in `error_messages_fallback.py` | `feedback_ripiego_ogni_codice_vivo` |
-| **BE-6** | `api_pagamenti.md`; test service (mock) + `tests/db/` sul DB provvisto per la madre e per la check (EXPLAIN della proiezione, come per `_RIGA_INSERT`) | |
+| **BE-1** ✅ | `get_distinta`: `stato_is_registrabile` dalla proiezione; `can_validare` + `validazione_blocco_reason` / `_reason_key` / `_dettaglio` dalla check (la terna di §12.5, prefisso `validazione_blocco`) — ⚠️ **la check vuole due argomenti**: `script.fn_check_contabile_validabile(c.id, c.importo_dichiarato)` (§4-bis); `righe_per_stato: [{stato_codice, stato_descrizione, righe, importo}]` sulle righe attive | la terna viaggia **solo** se lo stato corrente ammette `VALIDATA` fra le uscite; altrimenti `null` |
+| **BE-2** ✅ | `list_righe_distinta`: `scartate` (`qp_bool_optional`, default `false` ⇒ le `SCARTATA` **fuori**) + `scartate_count` con `conta_con_perimetro` — la forma di `archiviate_count` | lo stato si nomina per `codice_interno` come `STATO_RIGA_ABBINATA`; l'export segue la lista a video |
+| **BE-3** ✅ | `POST /pagamenti/righe/{id}/registra/` → `fn_posta_riga_tardiva`, payload = quello di `abbina` (`_CAMPI_DESTINAZIONE`), `Idempotency-Key`, `post_permission = registra_distinta` (lo stesso cancello della registrazione: rovescia denaro), cliente derivato dalla fattura se assente | il doppio tempo passa **intatto**: `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` con `confirm_and_retry` |
+| **BE-4** ✅ | Code (`list_righe_coda`): `contabile_stato_codice_interno` (⚠️ non `_codice`: presidio §6c sul naming), `contabile_is_final`, `contabile_registrata` (= `data_conferma IS NOT NULL`, fatto della testata); **e** `stati_riga` + `transizioni_riga` accanto alle righe, per il kebab della coda | il FE sceglie il verbo da un **fatto**, non ricalcola una regola |
+| **BE-5** ✅ | `genera_error_policies` per i tre codici + ripieghi in `error_messages_fallback.py` | `feedback_ripiego_ogni_codice_vivo` |
+| **BE-6** ✅ | `api_pagamenti.md`; test service (mock) + `tests/db/` sul DB provvisto per la madre e per la check (EXPLAIN della proiezione, come per `_RIGA_INSERT`) | 12 a mock (`test_validata_e_tardiva.py`), 9 sul DB provvisto (`test_validata_e_tardiva_db.py`: la **tardiva per intero** dal service, il guard e la terna che dicono la stessa cosa, le scartate fuori e contate), 4 API. ⭐ Nel giro e' nato il BB `core/db.sql_lateral_primo_motivo` (Q-G del brief BE/FE, 5ª occorrenza → estratto, ok Tid) montato sui 4 repository esistenti |
 
 ## 6. Cosa fa il FE (elenco — dopo BE)
 
 | | Cosa | Note |
 | --- | --- | --- |
-| **FE-1** | `DistintaDrawer`: «Porta a VALIDATA» apre un **dialog di validazione** (`AppDialog`): dichiarato · totale righe · scarto (i tre esiti) · righe per stato; spento col motivo quando `can_validare = false` (`bloccoMotivo`, prefisso `validazione_blocco`) | non più il confirm generico; «Registra» tiene la sua anteprima |
-| **FE-2** | «Registra» spento col motivo quando `!stato_is_registrabile` (chiave `pagamenti.registra.blocco.stato`) | oggi finisce in 409 |
-| **FE-3** | `Mostra scartate (N)` (`FiltroToggle` con `count`, ex `ToggleNascoste`) sopra la lista delle righe; in quadratura la riga «di cui non nostre» da `righe_per_stato` | D20-c |
-| **FE-4** | `CodaRigheSearchTable`: azioni di riga — **Da abbinare**: Abbina · Sospendi · Scarta; **Sospese**: Abbina (distinta aperta) / **Abbina e registra** (distinta registrata, `contabile_registrata`) · Scarta · Riporta da abbinare (dalla matrice, come oggi nel drawer); da una **scartata** (solo nel drawer, con `Mostra scartate`): Riprendi | `AbbinaRigaDialog` riusato con un modo `registra`: titolo e verbo diversi, avviso «non si torna indietro», stesso doppio tempo |
-| **FE-5** | Kebab del drawer su una riga `ABBINATA`: segue la matrice (P-6) — niente da scrivere | |
-| **FE-6** | i18n it/en; `check_i18n_keys` sulle `reason_key` nuove (`pagamenti.distinte.validazione_reason.*`) | |
+| **FE-1** ✅ | `DistintaDrawer`: «Porta a VALIDATA» apre un **dialog di validazione** (`AppDialog`): dichiarato · totale righe · scarto (i tre esiti) · righe per stato; spento col motivo quando `can_validare = false` (`bloccoMotivo`, prefisso `validazione_blocco`) | non più il confirm generico; «Registra» tiene la sua anteprima |
+| **FE-2** ✅ | «Registra» spento col motivo quando `!stato_is_registrabile` (chiave `pagamenti.registra.blocco.stato`) | oggi finisce in 409 |
+| **FE-3** ✅ | `Mostra scartate (N)` (`FiltroToggle` con `count`, ex `ToggleNascoste`) sopra la lista delle righe; in quadratura la riga «di cui non nostre» da `righe_per_stato` | D20-c |
+| **FE-4** ✅ | `CodaRigheSearchTable`: azioni di riga — **Da abbinare**: Abbina · Sospendi · Scarta; **Sospese**: Abbina (distinta aperta) / **Abbina e registra** (distinta registrata, `contabile_registrata`) · Scarta · Riporta da abbinare (dalla matrice, come oggi nel drawer); da una **scartata** (solo nel drawer, con `Mostra scartate`): Riprendi | `AbbinaRigaDialog` riusato con un modo `registra`: titolo e verbo diversi, avviso «non si torna indietro», stesso doppio tempo. ⭐ Le voci le costruisce il composable `useAzioniRigaContabile` (2ª occorrenza del builder del drawer → estratto, ok Tid), con i verbi al posto di «Porta a …». ⚠️ **Serve la colonna `azioni` sulla lista 51** (`pagamenti.righe`): seed appeso a `lista_colonna.csv` (id 874) + `lista_preset_colonna.csv` — mirror `runOnChange`, **apply di Tid** (`make db-migrate`); senza, il kebab non si rende e non da' errore |
+| **FE-5** ✅ | Kebab del drawer su una riga `ABBINATA`: segue la matrice (P-6) — niente da scrivere | il test DB `test_il_difetto_del_collaudo_non_e_piu_offerto` ora pretende `SOSPESA` e **non** `DA_ABBINARE` fra le uscite |
+| **FE-6** ✅ | i18n it/en; `check_i18n_keys` sulle `reason_key` nuove (`pagamenti.distinte.validazione_reason.*`) | fatto il 19-09 **prima** di BE-1/FE-1: la CI era rossa sul cancello i18n dal momento in cui la doc auto-gen ha dichiarato le due chiavi. Le frasi leggono `dettaglio` (`{quante}`; `{importo_dichiarato}`/`{somma_righe}`), come `elimina_reason.*` |
 
 ## 7. Il copione di collaudo — righe da riscrivere
 
@@ -372,6 +373,8 @@ Riprendi → idem.
 
 | Quando | Cosa |
 | --- | --- |
+| 2026-09-19 (sera) | ✅ **BE (§5) e FE (§6) consegnati** — consuntivo in `brief-be-fe-posting-e-abbinamento-rata.md` §10.13. Due estrazioni decise da Tid nel giro: `core/db.sql_lateral_primo_motivo` (Q-G, montato sui 4 repository) e `pagamenti/composables/useAzioniRigaContabile` (drawer + coda). Suite: pagamenti 276 verdi (9 sul DB provvisto, fra cui la tardiva per intero), core+anagrafiche 1902, vendite 2043, vitest 178, `check_i18n_keys` pulito. ⚠️ Un presidio ha corretto due nomi: `codice_interno` va in alias `*_codice_interno` (§6c) — `contabile_stato_codice_interno`, `righe_per_stato[].stato_codice_interno`. **Resta a Tid**: l'apply del seed della colonna `azioni` (§4-ter 8-bis) e il copione §7 |
+| 2026-09-19 | FE-6 chiuso (le due `validazione_reason.*` in `it`/`en`): era l'unico rosso di `check_i18n_keys` in CI — la doc auto-gen dichiara le chiavi dal momento dell'apply, il FE non le aveva. Il resto di §5/§6 è ancora da fare |
 | 2026-09-19 | ✅ **Applicato da Tid**: migrate su dbdev, pgTAP senza regressioni, autogen rigenerato. Lato DB chiuso; restano baseline codici, doc auto-gen, commit (§4-ter 4-6) e BE/FE (§5, §6) |
 | 2026-09-18 (notte) | **Sviluppo DB completo**, §4-bis: sette changeSet `20260918-34 → -40`, CSV + mirror, matrice con la coppia spenta, tre codici (1102-1104), due pgTAP nuovi e sei adeguati, otto schede manuali. Provato con l'SQL estratto in ROLLBACK (11 corse verdi, 3 mutazioni rosse per il motivo giusto, mirror resi da Liquibase). **Uno scostamento**: la check prende il dichiarato come parametro (BEFORE ROW). Niente applicato: resta a Tid, §4-ter |
 | 2026-09-18 | Stesura, dal terzo collaudo in-app. Ordine dei rilievi di Tid: «Registra» in bozza → le regole di VALIDATA → *«un sospeso che non riesco ad abbinare, se lo scarto resta traccia e lo riprendo?»* → *«e se la scartata uscisse dalla contabile?»*. La risposta è cambiata due volte nella giornata: dalla B (sospese bloccano la validazione) alla tardiva per riga, e dal «togliere» al «nascondere». Dichiarato: **com'è** (Tid). D20-e decisa la sera: strada **b** — esce solo lo «sgancia» (`ABBINATA → DA_ABBINARE`), la sospensione di una abbinata resta |

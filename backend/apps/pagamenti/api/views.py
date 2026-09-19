@@ -73,6 +73,25 @@ def _escludi_riga_id(request: Request) -> int | None:
     return qp_int_optional(request.query_params.get(nome), nome)
 
 
+# ⭐ `scartate` — l'interruttore «Mostra scartate (N)» delle righe di una
+#    distinta (BE-2, D20-c): UNA dichiarazione per la lista e per il suo export,
+#    come `escludi_riga_id` sui due livelli del saldo.
+_PARAM_SCARTATE = OpenApiParameter(
+    name="scartate", type=bool, location=OpenApiParameter.QUERY, required=False,
+    description=(
+        "`1` mostra anche le righe SCARTATA («non e' nostra»). Default: "
+        "nascoste — lista ed export insieme — e la risposta dichiara quante "
+        "sono in `scartate_count`."
+    ),
+)
+
+
+# Scopo: legge `scartate` dalla query string; assente = nascoste.
+def _scartate(request: Request) -> bool:
+    nome = _PARAM_SCARTATE.name
+    return qp_bool_optional(request.query_params.get(nome), nome) is True
+
+
 # Risposta generica: il contenuto e' documentato per endpoint nel service, e
 # gli schemi di dettaglio arriveranno col consolidamento OpenAPI del dominio.
 _RISPOSTA_GENERICA = inline_serializer(
@@ -311,6 +330,7 @@ class ApiDistintaRighe(DomainAPIView):
         operation_id="pagamenti_distinta_righe_list",
         parameters=[
             *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
+            _PARAM_SCARTATE,
             OpenApiParameter(
                 name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
                 description="Righe per pagina (default 25, max 200).",
@@ -338,6 +358,7 @@ class ApiDistintaRighe(DomainAPIView):
                 offset=p["offset"],
                 order_by=qp_str(qp.get("order_by")),
                 order_dir=qp_str(qp.get("order_dir")),
+                scartate=_scartate(request),
             )
         )
 
@@ -397,6 +418,7 @@ class ApiDistintaRigheExport(DomainAPIView):
                 required=True, description="csv | xlsx.",
             ),
             *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
+            _PARAM_SCARTATE,
         ],
         responses={
             (200, "text/csv"): bytes,
@@ -413,21 +435,24 @@ class ApiDistintaRigheExport(DomainAPIView):
     def get(self, request: Request, contabile_id: int) -> HttpResponse:
         fmt = parse_export_format(request)
         qp = request.query_params
+        scartate = _scartate(request)
         dati = pagamenti_service.list_righe(
             contabile_id,
             limit=EXPORT_MAX_ROWS + 1,
             offset=0,
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
+            scartate=scartate,
         )
         return build_export_response(
             request,
             lista_codice=self.lista_codice,
             results=dati["results"],
             total=dati["count"],
-            # ⛔ Nessun filtro da dichiarare: la distinta e' nel path, non e' una
-            #    scelta dell'operatore, e la lista non ha filtri suoi.
-            filtri_applicati=None,
+            # ⭐ L'UNICO filtro della lista e' l'interruttore delle scartate, e si
+            #    dichiara nel file solo quando e' acceso: la distinta e' nel path,
+            #    non e' una scelta dell'operatore.
+            filtri_applicati={"scartate": True} if scartate else None,
             fmt=fmt,
         )
 
@@ -700,6 +725,45 @@ class ApiRigaAbbina(DomainAPIView):
     def post(self, request: Request, riga_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return pagamenti_service.abbina_riga(riga_id, dict(payload))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiRigaRegistra(DomainAPIView):
+    """POST /api/v1/pagamenti/righe/<id>/registra/ — la registrazione tardiva."""
+
+    area_funzionale = AREA
+    # 🔴 LO STESSO CANCELLO DELLA REGISTRAZIONE (`registra_distinta`), e per la
+    #    stessa ragione: questo verbo scrive un movimento — rovescia denaro — e
+    #    non puo' avere una porta piu' larga di quella che chiude la distinta.
+    post_permission = "registra_distinta"
+
+    @extend_schema(
+        operation_id="pagamenti_riga_registra",
+        request=inline_serializer(
+            name="PagamentiRigaRegistra",
+            fields={
+                "fattura_id": serializers.IntegerField(),
+                "billing_account_id": serializers.IntegerField(required=False),
+                "scadenza_id": serializers.IntegerField(required=False),
+                "forzata": serializers.BooleanField(required=False),
+                "motivo_forzatura": serializers.CharField(required=False),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Abbina E registra via POST una riga `SOSPESA` sotto una distinta
+    #        gia' registrata (D20-b): una sola `SELECT` sulla madre
+    #        `fn_posta_riga_tardiva`. Movimento scritto, riga `POSTATA`,
+    #        distinta che resta `CHIUSA`.
+    # ⚠️ Il payload e' quello di `abbina` — e' lo stesso gesto, con la
+    #    registrazione dentro. Il doppio tempo della capienza passa intatto:
+    #    409 `confirm_and_retry`, poi `forzata = true`.
+    # ⛔ Non un esito «nulla da postare»: una tardiva che non si puo' fare e' un
+    #    rifiuto (`E_RIGA_CONTABILE_TARDIVA_*`, 409) con la sua frase.
+    def post(self, request: Request, riga_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return pagamenti_service.registra_riga_tardiva(riga_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 

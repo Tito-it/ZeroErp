@@ -62,7 +62,7 @@ Tutte sotto `/api/v1/pagamenti/`. ✅ = `Idempotency-Key` obbligatoria.
 | `GET`/`POST` | `distinte/` | elenco paginato · apre (o ritrova) la distinta manuale | ✅ su POST | area |
 | `GET`/`PATCH` | `distinte/{contabile_id}/` | dettaglio con cataloghi e transizioni (⚠️ **senza righe** dal 18/09) · i campi compilabili | — | area |
 | `POST` | `distinte/{contabile_id}/stato/` | il percorso della distinta: `VALIDATA` · `BOZZA` · `ANNULLATA` | ✅ | area |
-| `GET`/`POST` | `distinte/{contabile_id}/righe/` | le righe, **paginate** (lista `pagamenti.distinta_righe`, dal 18/09) · un importo arrivato, **e di chi è** (D16) | ✅ su POST | area |
+| `GET`/`POST` | `distinte/{contabile_id}/righe/` | le righe, **paginate** (lista `pagamenti.distinta_righe`, dal 18/09), **scartate fuori di default** (`?scartate=1`, dal 19/09) · un importo arrivato, **e di chi è** (D16) | ✅ su POST | area |
 | `GET` | `distinte/{contabile_id}/righe/export/` | ⭐ **la contabile in CSV/Excel** (dal 18/09): le colonne sono quelle che l'operatore vede | — | area |
 | `GET` | `distinte/{contabile_id}/anteprima-registrazione/` | la fotografia di ciò che succede se si registra adesso | — | area |
 | `POST` | `distinte/{contabile_id}/registra/` | ⭐ **la madre**: registra, una sola `SELECT` | ✅ | `registra_distinta` |
@@ -70,6 +70,7 @@ Tutte sotto `/api/v1/pagamenti/`. ✅ = `Idempotency-Key` obbligatoria.
 | `PATCH`/`DELETE` | `righe/{riga_id}/` | i **fatti** della riga (come è arrivato il denaro) · **elimina** la riga (D17, `attivo = false`) | ✅ su DELETE | area |
 | `POST` | `righe/{riga_id}/stato/` | il percorso della riga | ✅ | area |
 | `POST` | `righe/{riga_id}/abbina/` | fattura + cliente + rata, e la **forzatura a due tempi** | ✅ | area |
+| `POST` | `righe/{riga_id}/registra/` | ⭐ **la registrazione TARDIVA** (D20-b, dal 19/09): una `SOSPESA` sotto una distinta registrata si abbina **e** si registra, stesso payload di `abbina/` | ✅ | `registra_distinta` |
 | `POST` | `distinte/{contabile_id}/righe/da-rate/` | ⭐ **N rate scelte → N righe** in un Salva (D19-d), esito **per riga** | ✅ | area |
 | `GET` | `righe/` | la coda del riconciliatore, cross-distinta (`?coda=`) | — | area |
 | `GET` | `rate/` | ⭐ **l'elenco delle rate col saldo** (lista `pagamenti.rate`, D19-c): la sorgente del picker e dello scadenzario | — | area |
@@ -260,12 +261,20 @@ round-trip:
 ```json
 { "data": {
     "distinta": { …DistintaRow…, "stato_info_key": "pagamenti.distinte.stato_info.bozza",
-                  "contenuto_modificabile": true },
-    "stati_distinta": [ {"id", "codice", "codice_interno", "descrizione", "is_final", "ordine"} ],
+                  "stato_is_registrabile": false,
+                  "contenuto_modificabile": true,
+                  "can_validare": false,
+                  "validazione_blocco_reason": "RIGHE_NON_LAVORATE",
+                  "validazione_blocco_reason_key": "pagamenti.distinte.validazione_reason.righe_non_lavorate",
+                  "validazione_blocco_dettaglio": { "quante": 2, "contabile_righe_ids": [11, 12] },
+                  "righe_per_stato": [ { "stato_codice_interno": "ABBINATA", "stato_descrizione": "…",
+                                         "righe": 3, "importo": 300.00 }, … ],
+                  "righe_scartate": 1, "totale_scartate": "5.00" },
+    "stati_distinta": [ {"id", "codice", "codice_interno", "descrizione", "is_final", "ordine", "is_registrabile"} ],
     "stati_riga":     [ {…, "is_postabile", "richiede_abbinamento"} ],
     "transizioni": { "distinta": { "BOZZA": ["VALIDATA", "ANNULLATA"], "VALIDATA": ["BOZZA", "ANNULLATA"] },
                      "riga":     { "DA_ABBINARE": ["ABBINATA", "SOSPESA", "SCARTATA"],
-                                   "ABBINATA": ["DA_ABBINARE", "SOSPESA"], … } }
+                                   "ABBINATA": ["SOSPESA"], … } }
 } }
 ```
 
@@ -279,6 +288,38 @@ toglieva lo stato corrente e proponeva `SCARTATA` su una riga `ABBINATA`, che
 la matrice non ammette — il difetto del primo collaudo in-app. Uno stato senza
 uscite ha la lista vuota, non la chiave assente; gli stati ritirati
 (`obsoleto_dal`) escono da entrambi i lati.
+
+⭐ **Il verbo «valida» col suo motivo** (BE-1, D20-a — dal 2026-09-19): la
+terna `validazione_blocco_reason` / `_reason_key` / `_dettaglio` + il flag
+`can_validare`, dal **primo motivo** di `script.fn_check_contabile_validabile(c.id,
+c.importo_dichiarato)` — la **stessa** check che
+`trgfn_vendite_contabili_guard_validazione` chiama per rifiutare l'ingresso in
+`VALIDATA`. Il drawer spegne «Porta a VALIDATA» col motivo, e tooltip e 409
+non possono divergere (api.md §«Capability di riga»). ⚠️ La check vuole
+**due** argomenti: il dichiarato è un parametro, non si rilegge per id (brief
+§4-bis). ⚠️ La terna viaggia **solo se lo stato corrente ammette `VALIDATA`
+fra le uscite** (la matrice, letta qui): su una `CHIUSA` o una `ANNULLATA` è
+`null` — un motivo su un verbo che non si propone è rumore. Il `dettaglio`
+porta i **nomi** dei parametri della frase i18n (`quante`; `importo_dichiarato`,
+`somma_righe`).
+
+⭐ **`stato_is_registrabile`** (D20-d): la bandiera del catalogo
+(`vendite_contabili_stati.is_registrabile`, `true` sulla sola `VALIDATA`) che
+la madre del posting legge al posto del letterale. Il frontend spegne
+«Registra» col motivo quando è falsa, e riconosce lo stato «in cui si entra
+validando» dal flag nel catalogo (`stati_distinta[].is_registrabile`), non dal
+nome.
+
+⭐ **`righe_per_stato`** (BE-1): quante righe attive e per che importo, stato
+per stato — l'array **ordinato dal catalogo**, `[]` su una distinta senza
+righe. ⚠️ Qui `importo` è un **numero JSON**, non la stringa con cui viaggia
+ogni `Decimal` (`totale_righe`, `totale_scartate`): l'array lo costruisce il
+database con `jsonb_build_object`, la stessa forma dei `dettaglio` delle
+check (`importo_dichiarato`, `somma_righe`) — chi lo legge passa da `Number()`
+come per quelli. È la fotografia del dialog di validazione. Da lì il service deriva
+**`righe_scartate` / `totale_scartate`** («di cui non nostre», D20-c) con lo
+stesso codice con cui la lista le nasconde (`STATO_RIGA_SCARTATA`): una sede,
+non due letterali.
 
 ⭐ **`contenuto_modificabile`** (D17/D18): `true` solo su una distinta
 `MANUALE` in `BOZZA`. Governa il **contenuto** — righe nuove, fatti,
@@ -351,8 +392,18 @@ per un campo che nessuno legge più.
 
 Le righe attive della distinta, **paginate** — la lista configurabile
 `pagamenti.distinta_righe` (id 69, dal 2026-09-18): `{ "count": N, "results":
-[ …RigaContabileRow… ] }`, offset-based (`limit`/`offset`, default 25) con
-`order_by`/`order_dir` sulla whitelist della tabella sopra.
+[ …RigaContabileRow… ], "scartate_count": K }`, offset-based (`limit`/`offset`,
+default 25) con `order_by`/`order_dir` sulla whitelist della tabella sopra.
+
+⭐ **Le `SCARTATA` sono FUORI di default** (BE-2, D20-c — dal 2026-09-19):
+«non è nostra» resta nella distinta e nella quadratura ma esce dal lavoro.
+`?scartate=1` le rimette dentro; spento, `scartate_count` dice **quante ne
+nasconde** — contate sullo **stesso perimetro** della lista con il BB
+`conta_con_perimetro` (la forma di `archiviate_count`), perché «elenco pulito»
+e «tre righe messe via» non si leggano uguali. Acceso, il conteggio è 0 e non
+si paga. L'export (`righe/export/`) legge lo stesso parametro: il file segue la
+videata, interruttore compreso. Lo stato si nomina nel service per
+`codice_interno` (`STATO_RIGA_SCARTATA`), come `STATO_RIGA_ABBINATA`.
 
 ⚠️ Fino al 18/09 questa riga diceva *«Non paginata: le righe di una distinta
 sono limitate per costruzione»* — una **previsione sui dati**, e le previsioni
@@ -672,6 +723,42 @@ l'eccezione: si registra il fatto, l'eccedenza si vede nell'elenco (§6) e la
 decisione la prende una persona con un atto di sistemazione. Nessuno spezza
 niente.
 
+### `POST /api/v1/pagamenti/righe/{riga_id}/registra/`
+
+⭐ **La registrazione TARDIVA** (D20-b, brief validata-e-tardiva §2.2 — dal
+2026-09-19): una riga **`SOSPESA`** sotto una distinta **già registrata**
+(`CHIUSA` con `data_conferma`) si abbina **e** si registra nello stesso gesto.
+Una sola `SELECT` sulla madre `pagamenti.fn_posta_riga_tardiva`: la riga passa
+da `ABBINATA` (girano **tutti** i guard dell'abbinamento — transizione, dati,
+rata con capienza e coerenza, scope), alla quarta mossa si presenta con la GUC
+transazionale, poi il movimento (`meta.origine = POSTING_TARDIVO`, registrato
+**oggi**), poi `POSTATA`. La distinta **resta `CHIUSA`** e non tocca
+`data_conferma`/`user_conferma`; la quadratura del giorno regge (la riga era
+già contata).
+
+Payload = quello di `abbina/` (`fattura_id` obbligatorio, `billing_account_id`
+letto dalla fattura se manca, `scadenza_id` facoltativo, `forzata` +
+`motivo_forzatura`), letto dalla **stessa** funzione (`_destinazione_da_payload`).
+Risposta: `{ "movimento_id", "riga_id", "importo", "esito": "POSTATA", "riga": {…} }`.
+
+🔴 **Il doppio tempo passa intatto**: primo tentativo senza `forzata`, 409
+`E_RIGA_CONTABILE_CAPIENZA_SUPERATA` con `confirm_and_retry`, secondo con
+`forzata = true`. Il backend non decide che cosa sia forzabile.
+
+⛔ **Nessun esito «nulla da postare»**: una tardiva su una riga che non si può
+registrare è un **rifiuto** della madre — `E_RIGA_CONTABILE_TARDIVA_STATO` (la
+riga non è `SOSPESA`: da `SCARTATA` si passa prima da «Riprendi»),
+`E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` (annullata, o ancora aperta:
+«usa il giro normale») — 409 con la sua frase. Il backend **non** verifica né
+lo stato della riga né quello della distinta: sono i guard della madre, e
+riscriverli sarebbe la seconda sede (presidio statico in
+`test_validata_e_tardiva`).
+
+🔴 **Lo stesso cancello della registrazione** (`post_permission =
+registra_distinta`): scrive un movimento. Chi la chiama: la coda «Sospese» e il
+drawer di una distinta chiusa («Abbina e registra»). ⛔ Mai un job: la tardiva
+è una decisione di chi ha identificato il denaro.
+
 ### `GET /api/v1/pagamenti/righe/`
 
 La coda del riconciliatore: le righe **di tutte le distinte** in uno degli
@@ -692,6 +779,21 @@ cross-distinta senza il documento da cui viene non si lavora, chi la guarda
 deve poterci tornare. ⚠️ Ed è la colonna su cui si ordina (`contabile_codice`):
 la prima stesura la dichiarava ordinabile e non la proiettava, e ordinare per
 distinta era un **500**.
+
+⭐ **E i fatti della testata che decidono il verbo** (BE-4, D20-b — dal
+2026-09-19): `contabile_stato_codice_interno`, `contabile_is_final`,
+`contabile_registrata` (= `data_conferma IS NOT NULL`, scritta dal posting). Da
+una «Sospesa» sotto una distinta **registrata** si «abbina e registra» (la
+tardiva); sotto una aperta si abbina e basta. Il frontend sceglie da un fatto,
+non ricalcola una regola.
+
+⭐ **La risposta porta anche il catalogo e la matrice di riga** (FE-4):
+`stati_riga` e `transizioni_riga` (`{ stato_da: [stato_a…] }`, ristretta ai
+richiedibili come nel dettaglio), **accanto** a `results`/`count`. Dalla coda
+si lavora — abbina, sospendi, scarta, riporta — e le voci del kebab si
+costruiscono dalla matrice come nel drawer; vengono dalla stessa lettura delle
+righe, quindi non possono raccontare due istanti diversi (la forma di `stati`
+sul registro lotti).
 
 ### `GET /api/v1/pagamenti/rate/fuori-capienza/`
 
@@ -1233,6 +1335,8 @@ arrivano dai guard e dalle madri, e il backend li fa passare intatti.
 | `E_CONTABILE_EMITTENTE_OBBLIGATORIO` · `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` | 400 | `fn_get_emittente_distinta` (dal 2026-09-17) | nessun emittente risolvibile per una distinta senza canale (campo `emittente_fiscale_id`); il canale scelto è di un altro emittente (campo `ente_incasso_id`) |
 | `E_CONTABILE_RIAPERTURA_NON_MANUALE` · `E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE` · `E_CONTABILE_NON_REGISTRABILE` · `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE` · `E_CONTABILE_CORREZIONE_NON_REGISTRATA` · `E_CONTABILE_GIA_CORRETTA` · `E_CONTABILE_SISTEMAZIONE_CON_LOTTO` | 409 | guard e madri DB | lo stato della distinta non ammette il gesto |
 | `E_RIGA_CONTABILE_DISTINTA_FINALE` · `E_RIGA_CONTABILE_SENZA_ABBINAMENTO` | 409 | guard DB | la riga non si lavora più, o non ha di che postare |
+| `E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE` | 409 | `fn_check_contabile_validabile` via guard di validazione (D20-a, dal 19/09) | si entra in `VALIDATA` con righe attive in uno stato `lavorata = false` (`DA_ABBINARE`, `IMPORTATA`). È il **primo motivo** della check, lo stesso che il dettaglio porta in `validazione_blocco_*` |
+| `E_RIGA_CONTABILE_TARDIVA_STATO` · `E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` | 409 | `fn_posta_riga_tardiva` (D20-b, dal 19/09) | la riga non è `SOSPESA` · la distinta non è registrata (annullata, o ancora aperta: «usa il giro normale») |
 | `E_RIGA_CONTABILE_DISTINTA_NON_MANUALE` · `E_RIGA_CONTABILE_DISTINTA_VALIDATA` | 409 | guard DB (`guard_contenuto`, dal 14/09) | non si elimina una riga di una generata/automatica · sotto una manuale validata il contenuto è fermo (righe nuove, fatti, eliminazioni). Sono i motivi 2 e 3 di `fn_check_riga_contabile_eliminabile`, gli stessi che spengono il cestino in lista |
 | `E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO` · `E_RIGA_CONTABILE_RATA_INCOERENTE` | 400 | guard DB | `ABBINATA` senza fattura/cliente · la rata non è di quella fattura |
 | `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` | 409 · `confirm_and_retry` | guard DB | non c'è spazio sulla rata: **confermabile** col secondo tempo |

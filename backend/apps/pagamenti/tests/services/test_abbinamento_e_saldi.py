@@ -23,6 +23,7 @@ Indice test eseguiti:
 9)  CodeTests.test_da_abbinare_filtra_un_solo_stato
 10) CodeTests.test_sospese_filtra_un_solo_stato
 11) CodeTests.test_tutte_le_prende_entrambe
+11a) CodeTests.test_la_coda_porta_catalogo_e_matrice_di_riga
 12) CodeTests.test_coda_inventata_rifiutata
 13) CodeTests.test_ordinamento_fuori_whitelist_rifiutato
 14) RateFuoriCapienzaTests.test_motivo_fuori_vocabolario_rifiutato
@@ -61,6 +62,10 @@ def _repo() -> MagicMock:
     repo.get_riga.return_value = dict(_RIGA)
     repo.abbina_riga.return_value = 1
     repo.list_righe_coda.return_value = ([], 0)
+    # ⭐ La coda porta catalogo e matrice di riga accanto alle righe (FE-4):
+    #    il finto risponde la forma, vuota.
+    repo.list_transizioni.return_value = ([], [])
+    repo.list_stati_riga.return_value = []
     repo.list_rate_fuori_capienza.return_value = ([], 0)
     repo.get_saldo_rata.return_value = {
         "saldo": Decimal("1000.00"),
@@ -205,6 +210,26 @@ class CodeTests(_Base):
             self.repo.list_righe_coda.call_args.kwargs["stati"],
             ("DA_ABBINARE", "SOSPESA"),
         )
+
+    # Scopo: ⭐ La coda porta ACCANTO alle righe il catalogo degli stati di riga
+    #        e le uscite richiedibili da ogni stato (FE-4): le voci del kebab
+    #        si costruiscono dalla MATRICE anche qui, come nel drawer — e dalla
+    #        stessa lettura delle righe, non da un endpoint suo.
+    def test_la_coda_porta_catalogo_e_matrice_di_riga(self):
+        self.repo.list_transizioni.return_value = (
+            [("BOZZA", "VALIDATA")],
+            [("SOSPESA", "SCARTATA"), ("SOSPESA", "ABBINATA"), ("SOSPESA", "DA_ABBINARE")],
+        )
+        self.repo.list_stati_riga.return_value = [{"codice_interno": "SOSPESA"}]
+        esito = pagamenti_service.list_coda_righe(coda="SOSPESE")
+        self.assertEqual(esito["stati_riga"], [{"codice_interno": "SOSPESA"}])
+        # L'ordine di offerta e' quello del vocabolario dei richiedibili, e la
+        # matrice della TESTATA non ci finisce dentro.
+        self.assertEqual(
+            esito["transizioni_riga"],
+            {"SOSPESA": ["DA_ABBINARE", "ABBINATA", "SCARTATA"]},
+        )
+        self.assertNotIn("BOZZA", esito["transizioni_riga"])
 
     # Scopo: Una coda inventata e' un 400, non una lista vuota: su un
     #        vocabolario chiuso «nessun risultato» e' indistinguibile da

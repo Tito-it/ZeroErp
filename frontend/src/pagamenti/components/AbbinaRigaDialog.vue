@@ -33,6 +33,15 @@
 //    cambiare documento o rata da li'. ⚠️ Con la destinazione INVARIATA il
 //    verbo resta spento e lo dice: un «Abbina» che riscrive lo stesso legame
 //    non e' un gesto, e' un pulsante che non fa niente.
+//
+// ⭐ DUE MODI, UN DIALOGO (FE-4, D20-b — 2026-09-19). In modo `registra` e' la
+//    TARDIVA: una riga SOSPESA sotto una distinta gia' registrata si abbina E
+//    si registra nello stesso gesto — movimento scritto, riga POSTATA, la
+//    distinta resta CHIUSA. Cambiano il titolo, il verbo del pulsante (rosso:
+//    non si torna indietro) e l'endpoint (`registraRigaTardiva`); restano la
+//    stessa domanda «quale documento, quale rata» e lo stesso doppio tempo
+//    della capienza. ⚠️ «Invariata» non spegne niente qui: registrare E'
+//    sempre un gesto, anche sulla destinazione che la riga porta gia'.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -44,18 +53,23 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import FatturaLookup from '../../core/components/FatturaLookup.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { displayDate } from '../../core/utils/date'
-import { abbinaRiga } from '../api/pagamenti'
+import { abbinaRiga, registraRigaTardiva } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
+import { MODO_ABBINA } from '../composables/useAzioniRigaContabile'
 import RataSelect from './RataSelect.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   riga: { type: [Object, null], default: null },
+  // `MODO_ABBINA.ABBINA` (default) | `MODO_ABBINA.REGISTRA` (la tardiva).
+  modo: { type: String, default: MODO_ABBINA.ABBINA },
 })
 const emit = defineEmits(['update:visible', 'abbinata'])
 
 const { t } = useI18n()
 const { esegui, conferma, annulla, richiestaConferma, loading } = useForzaturaConfermata()
+
+const registra = computed(() => props.modo === MODO_ABBINA.REGISTRA)
 
 const fattura = ref(null)
 const scadenzaId = ref(null)
@@ -103,7 +117,9 @@ const invariata = computed(() => {
     && (scadenzaId.value ?? null) === (r.scadenza_id ?? null)
 })
 
-const canSave = computed(() => fattura.value?.id != null && !invariata.value)
+const canSave = computed(
+  () => fattura.value?.id != null && (registra.value || !invariata.value),
+)
 
 // Scopo: all'apertura si riparte dalla riga — con la sua destinazione se ce
 //        l'ha, vuoti altrimenti. ⚠️ `scadenzaId` e `fattura` insieme, nello
@@ -128,10 +144,17 @@ async function onAbbina() {
       : {}),
     ...(scadenzaId.value != null ? { scadenza_id: scadenzaId.value } : {}),
   }
-  const esito = await esegui(
-    (extra) => abbinaRiga(props.riga.id, { ...base, ...extra }),
-    { successMessage: t('pagamenti.abbina.fatto') },
-  )
+  // ⭐ Il verbo lo sceglie il MODO: stesso payload, due endpoint. La tardiva
+  //    dice nel toast QUANTO ha registrato: «fatto» senza il numero non dice
+  //    se il movimento e' di sessanta o di seicento.
+  const chiamata = registra.value
+    ? (extra) => registraRigaTardiva(props.riga.id, { ...base, ...extra })
+    : (extra) => abbinaRiga(props.riga.id, { ...base, ...extra })
+  const esito = await esegui(chiamata, {
+    successMessage: registra.value
+      ? t('pagamenti.abbina.registrata', { importo: formatCurrency(props.riga.importo) })
+      : t('pagamenti.abbina.fatto'),
+  })
   if (esito !== null) chiudiConEsito()
 }
 
@@ -150,16 +173,24 @@ function chiudiConEsito() {
 <template>
   <AppDialog
     :visible="visible"
-    :header="t('pagamenti.abbina.titolo')"
+    :header="registra ? t('pagamenti.abbina.titolo_registra') : t('pagamenti.abbina.titolo')"
     width="md"
     :loading="loading || caricamento"
     :save-disabled="!canSave || richiestaConferma !== null"
-    :save-label="t('pagamenti.abbina.conferma')"
+    :save-label="registra ? t('pagamenti.abbina.conferma_registra') : t('pagamenti.abbina.conferma')"
+    :save-severity="registra ? 'danger' : null"
     @update:visible="(v) => emit('update:visible', v)"
     @save="onAbbina"
     @cancel="emit('update:visible', false)"
   >
     <div class="form-grid">
+      <!-- ⛔ Nella tardiva si dice che non si torna indietro, e si dice PRIMA:
+           e' la stessa frase della registrazione della distinta, perche' e'
+           lo stesso fatto — un movimento che nasce. -->
+      <Message v-if="registra" severity="warn" :closable="false">
+        {{ t('pagamenti.abbina.registra_irreversibile') }}
+      </Message>
+
       <!-- Che cosa si sta abbinando: senza, si sceglie una fattura al buio. -->
       <Message v-if="riga" severity="secondary" :closable="false" size="small">
         {{ t('pagamenti.abbina.contesto', {
@@ -183,8 +214,10 @@ function chiudiConEsito() {
       <RataSelect ref="rataSelect" v-model="scadenzaId" :fattura-id="fattura?.id ?? null" />
 
       <!-- Perche' «Abbina» e' spento: la riga e' gia' cosi'. Senza questa riga
-           un pulsante grigio su un form compilato si legge come un guasto. -->
-      <Message v-if="invariata" severity="info" :closable="false" size="small">
+           un pulsante grigio su un form compilato si legge come un guasto.
+           ⚠️ Non nella tardiva: li' il verbo e' acceso anche sulla stessa
+           destinazione, perche' registrare e' comunque un gesto. -->
+      <Message v-if="invariata && !registra" severity="info" :closable="false" size="small">
         {{ t('pagamenti.abbina.gia_cosi') }}
       </Message>
 

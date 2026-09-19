@@ -56,12 +56,27 @@ export const useCodaRigheStore = defineStore(
       order_dir: 'desc',
     })
 
+    // ⭐ Il CATALOGO degli stati di riga e le uscite richiedibili DA OGNI STATO
+    //    (`transizioni_riga`, dalla matrice del database) arrivano ACCANTO alle
+    //    righe (FE-4, 2026-09-19): dalla coda si lavora — abbina, sospendi,
+    //    scarta, riporta — e le voci del kebab si costruiscono dalla matrice,
+    //    come nel drawer. ⛔ Non un elenco cablato qui: il giorno che nasce uno
+    //    stato nuovo, una copia nel frontend lo nasconderebbe senza dirlo.
+    const statiRiga = ref([])
+    const transizioniRiga = ref({})
+
     const { items, totalRecords, loading, hasSearched, fetchList } =
       useListaEmptyStateFetch({
         filters,
         buildParams,
         fetchPage: listCodaRighe,
         alwaysFetch: true,
+        // Dopo il guard di versione: una risposta scartata perche' stantia non
+        // riscrive il catalogo sotto quella piu' recente.
+        onPayload: (payload) => {
+          statiRiga.value = payload.stati_riga ?? []
+          transizioniRiga.value = payload.transizioni_riga ?? {}
+        },
       })
 
     // Scopo: la voce di menu sceglie la coda e ricarica.
@@ -74,7 +89,10 @@ export const useCodaRigheStore = defineStore(
       return fetchList()
     }
 
-    return { items, totalRecords, loading, hasSearched, filters, fetchList, apriCoda }
+    return {
+      items, totalRecords, loading, hasSearched, filters, fetchList, apriCoda,
+      statiRiga, transizioniRiga,
+    }
   },
   { userScoped: true },
 )
