@@ -18,8 +18,8 @@ documenti che non si sovrappongono e a cui questa pagina **non si sostituisce**:
 | Documento | Che cosa contiene |
 | --- | --- |
 | [brief-incassi-riconciliazione-rate-promemoria.md](../../../dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) | le **decisioni di dominio** (D1…D15) col loro perché |
-| [brief-db-posting-e-abbinamento-rata.md](../../../dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md) | il lato **database**: sette lotti, 15 guard, 2 matrici di transizione, la RLS |
-| [brief-be-fe-posting-e-abbinamento-rata.md](../../../dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | il piano **BE/FE**, le nove domande chiuse, lo stato di sviluppo |
+| [brief-db-posting-e-abbinamento-rata.md](../../../dev/work-done/brief-db-posting-e-abbinamento-rata.md) | il lato **database**: sette lotti, 15 guard, 2 matrici di transizione, la RLS |
+| [brief-be-fe-posting-e-abbinamento-rata.md](../../../dev/work-done/brief-be-fe-posting-e-abbinamento-rata.md) | il piano **BE/FE**, le nove domande chiuse, lo stato di sviluppo |
 
 Qui c'è **il contratto**: che cosa si chiama, che cosa si manda, che cosa
 torna, e quale codice esce quando non si può.

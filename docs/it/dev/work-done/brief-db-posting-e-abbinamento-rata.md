@@ -1,7 +1,7 @@
 # Brief DB — posting contabile e abbinamento alla rata
 
 > **Cos'è.** Il **piano di sviluppo lato database** del cantiere descritto in
-> [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md).
+> [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md).
 > Quel documento contiene la **misura del terreno e le decisioni** (D1…D9); questo
 > contiene **l'analisi critica di quelle decisioni al 2026-08-21** e i **passi**
 > che le realizzano, changeSet per changeSet.
@@ -50,6 +50,47 @@
 > lista. ⚠️ E la rimisura del terreno ha trovato **tre cose che il brief BE/FE dà
 > per vere e il database smentisce**, la più cara delle quali è **DATO-1: non è
 > configurato**, quindi la loro slice 4 non è sbloccata. Tutto in **§3-bis**.
+>
+> ## ✅ CHIUSO il 2026-09-19 — archiviato in `work-done/`
+>
+> **Che cosa è entrato, in tutto.** Dieci lotti: i **sette del modello**
+> (21-22/08, 71 changeSet, 14 pgTAP), l'**ottavo** della consegna (25/08:
+> `fn_get_saldo_fattura` a tre numeri, il cancello `registra_distinta`,
+> `E_PAGAMENTI_VALIDATION`), il **nono** (27/08: quattro seed di lista, il 404
+> dei canali, la seconda porta del conto) e il **decimo** (28/08: RLS su
+> `enti_incasso`, la correzione guidata — `20260828-11 → -14`). Tutto applicato,
+> mergiato e verde in CI; la regressione in CI del 02-09 (`-25`, trigger di
+> automazione) corretta in avanti. I seguiti dei collaudi in-app (D16-D20)
+> hanno avuto ciascuno un brief DB **proprio**, già in `work-done/`.
+>
+> **Perché chiude ora.** Il file diceva di restare aperto *«perché restano
+> BE/FE e S3-3»*: **S3-3/DATO-1 è chiuso dal 28/08** (i due conti `INCASSO`
+> configurati in-app e verificati sul database — §10.8 del brief BE/FE, §6.15 qui) e
+> il **brief BE/FE chiude oggi**, nello stesso giro
+> ([brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md)).
+> Non c'è più un lotto da scrivere né una richiesta in coda.
+>
+> 🔵 **Residui con destinazione:**
+>
+> 1. **DATO-2 — `registra_distinta` assegnata a un profilo**: configurazione
+>    d'**esercizio** (il seed crea l'azione, non la concede). Fatto datato,
+>    19-09 su dbdev: zero profili, un override utente. Regola in
+>    `api_pagamenti.md`; non tiene aperto nessun brief;
+> 2. **La distinta del fondo fattura fuori lotto** (`fn_sync_contabili_fondo_fattura`
+>    passa `p_lotto_id = NULL` → livello 3 dell'emittente di distinta): già in
+>    `PROJECT_CONTEXT.md` §Aperto dal 17-09, un changeSet da decidere con Tid.
+>    Non nasce da questo brief, ma lo attraversa: il fondo è la sorgente di
+>    riga del lotto 3;
+> 3. **Q-4 «su quale documento si registra un incasso»**: decisa da Tid il
+>    18-09 — si aspetta **SDI**; il buco (la rata di una bozza è abbinabile per
+>    vie diverse dal picker) è dichiarato in `PROJECT_CONTEXT.md` §Aperto;
+> 4. la **prova a video** vive nel
+>    [copione](../work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md);
+>    un rilievo apre un brief nuovo, non riapre questo.
+>
+> 📌 Le decisioni di dominio **D1…D20** restano nel brief madre
+> [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md),
+> che resta in WIP come registro: qui non se ne aggiorna nessuna.
 
 ---
 
@@ -65,7 +106,7 @@
 | ⭐ **Il piano, operativo** | **Sette lotti** — che cosa si scrive, si prova e si applica insieme. Non coincidono con le slice | §6 |
 | ✅ **Stato** | 🎉 **TUTTI E SETTE I LOTTI CHIUSI** — 71 changeSet applicati (`20260821-11`…`-34`, `20260821-48`…`-55`, `20260822-01`…`-39`), 14 pgTAP nuovi, doc manuale completa. ⭐ `pagamenti` ha un **vocabolario, due matrici e quindici guard**; il fondo fattura ha il suo **quarto stato**; C-1…C-8 sono **tutti chiusi**. ⭐ **Il primo movimento esiste**, ⭐ **sa a quale RATA appartiene**, ⭐ **sa DI CHI È**, ⭐ **e adesso il denaro di troppo ha un elenco e un registro**. 📮 Resta **S3-3**, che è **dato** e non codice | §6.7 · §6.9 · §6.10 · §6.11 · §6.12 · §6.13 · §6.14 |
 | ✅ **Slice 5 — la consegna** *(nuova e CHIUSA il 25/08)* | **Tre porte** che il backend non può aprire da solo: `fn_get_saldo_fattura` a **tre numeri** (DB-10) · il **cancello** `registra_distinta` + il ritiro di `approva_rimessa` (DB-11) · il codice `E_PAGAMENTI_VALIDATION`. ✅ **Applicato alle 11:26** (in due migrate: il primo si è fermato su DATO-3): un changeSet, cinque righe di CSV, 13 asserzioni nuove, **0 rossi su 15** col runner vero. ✅ **CHIUSA il 27/08 col lotto 9**: i quattro seed di lista (53 colonne, 4 preset, 53 chiavi i18n), il 404 dei canali e la **seconda porta** del conto di incasso. ⭐ Con quello il database aveva finito. 🔴 **Poi il 28/08 il BE ha rimandato indietro due cose** — un **difetto di perimetro** su `enti_incasso` e la **madre della correzione** — ed è la **slice 6**: ⭐ **scritta e provata in giornata**, quattro changeSet e due pgTAP, ⛔ non applicata | §2.3-ter · §2.3-quater · §6.15…§6.17 |
-| 🔴 **Due cose da fare a mano** | **DATO-1** (il conto `INCASSO` dei due emittenti: mai configurato) · **DATO-2** (assegnare `registra_distinta` a un profilo, o non registra nessuno). ✅ **DATO-3 risolto il 25/08** — ma solo dopo che il migrate ci era morto sopra | §3-bis · §6.15 |
+| ~~🔴 **Due cose da fare a mano**~~ | ✅ **DATO-1 chiuso il 28/08** (due conti `INCASSO` a livello ruolo, verificati sul DB — brief BE/FE §10.8) · **DATO-2** è configurazione d'esercizio, non un residuo di brief (riquadro CHIUSO, punto 1; fatto datato 19-09: zero profili, un override utente) · ✅ **DATO-3 risolto il 25/08** | riquadro CHIUSO · §3-bis |
 | 🔴 **Il terreno, rimisurato il 25/08** | **DATO-1 NON è configurato** (i due IBAN esistono, il legame no: gli emittenti non hanno nessun conto) · la RLS è su **4 tabelle su 12**, non dodici · le distinte esistenti sono **zero**. ✅ In compenso: `vw_fk_senza_indice` a 0 e **BE-1 chiusa davvero** (0 codici senza policy) | §3-bis |
 | ✅ **Domande aperte** | **Zero** — tutte e nove chiuse il 21/08, tre **senza essere decise**. Resta il solo dettaglio **D15-e** | §5 |
 
@@ -1358,7 +1399,7 @@ service (`E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"`,
 ### 2.3-quater Slice 6 — Il perimetro dei canali, e la correzione guidata
 
 > 📮 **Aperta il 2026-08-28** da una richiesta del backend:
-> [brief-db-perimetro-canali-e-correzione-guidata.md](../work-done/brief-db-perimetro-canali-e-correzione-guidata.md).
+> [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md).
 > Due cose che si consegnano insieme e non sono la stessa: **un difetto di
 > perimetro** trovato dal passo E-4, e la **madre della correzione** (Q-7), che
 > era differita per scelta e adesso è dovuta.
@@ -1659,10 +1700,10 @@ perché non possa essere un changeSet.
 
 | Cosa | Dove |
 | --- | --- |
-| Le decisioni di dominio | [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md) §2-bis |
+| Le decisioni di dominio | [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) §2-bis |
 | Il modello pagamenti in prosa | [gestione-dei-pagamenti.md](/guide/gestione-dei-pagamenti) |
 | Le rate: struttura e cosa NON sono | [dbzero/vendite/manual/fatture_scadenze.md](/dbzero/vendite/manual/fatture_scadenze) |
-| Il cantiere fondi (chiuso tranne la Fase D) | [brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
+| Il cantiere fondi (chiuso tranne la Fase D) | [brief-db-fondo-fattura-ricalcolo-e-governo.md](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
 | Il vincolo difettoso di C-1 | `db/changelog/migrations_v2/00_schema/pagamenti/20260211-14-create-centri-riscossione-mctit.yaml` |
 | Le due funzioni da correggere | `vendite.fn_sync_contabili_fondo_fattura` · `vendite.fn_saldo_sorgente_fondo` |
 | Il modello di una matrice di transizioni | `vendite.transizioni_stati_commessa` + `vendite.trgfn_commesse_guard_transizione` |
@@ -2074,7 +2115,7 @@ decisione che si riapre dopo.*
 La prima stesura mandava **tutti e sei** i guard di parametro di
 `fn_get_or_create_vendite_contabile` su `E_PARAMETRO_INVALIDO`, appoggiandosi alla
 tabella «Regola operativa» di
-[correzione-e-generico.md](../work-done/correzione-e-generico.md) — il brief che
+[correzione-e-generico.md](correzione-e-generico.md) — il brief che
 *ha combattuto* la battaglia contro `E_GENERICO` — che per «parametro obbligatorio
 mancante o non valido» prescrive proprio quel codice.
 
@@ -2108,7 +2149,7 @@ La prima correzione lasciava i sei guard di chiamata su `E_PARAMETRO_INVALIDO`.
 *«esiste ancora perché il BE deve gestire vecchie funzioni che non sono riuscito a
 correggere»* — cioè **è un debito, non una sede**.
 
-* **D11** di [brief-db-be-classe-codici-errore](../work-done/brief-db-be-classe-codici-errore.md):
+* **D11** di [brief-db-be-classe-codici-errore](brief-db-be-classe-codici-errore.md):
   *«`E_PARAMETRO_INVALIDO` **no** — denominatore sicuro + `note`, e **cantiere
   suo**»*: uno **split rimandato**, con una classe di compromesso;
 * **§9.1**: *«la regola che chiude il **rubinetto** — vietare **nuovi** codici
@@ -3382,7 +3423,7 @@ backend.
 
 > 📮 Aperto il **2026-08-28** dalla richiesta del backend. ⛔ Niente scritto e
 > niente applicato: questo è il piano. Le risposte alle sette domande stanno in
-> [brief-db-perimetro-canali-e-correzione-guidata.md](../work-done/brief-db-perimetro-canali-e-correzione-guidata.md) §5.
+> [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md) §5.
 
 **Quattro changeSet, due righe di CSV e due pgTAP.** ⛔ Niente applicato: il
 migrate lo chiede Tid.
@@ -3533,6 +3574,7 @@ tocca ogni percorso batch del progetto, ed è un cantiere suo.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-09-19** (chiusura) | ✅ **CHIUSO e archiviato in `work-done/`**, nello stesso giro del brief BE/FE. La ragione dichiarata per restare in WIP («restano BE/FE e S3-3») è caduta: S3-3/DATO-1 chiuso il 28/08, BE/FE chiuso oggi. Dieci lotti applicati e mergiati; i seguiti D16-D20 hanno brief propri già archiviati. Riquadro in testa con i residui e la loro sede (DATO-2 → esercizio; fondo fuori lotto e Q-4 → `PROJECT_CONTEXT.md` §Aperto; prova a video → copione). Solo documentazione: nessun changeSet |
 | 2026-09-02 | 🔴 **Il `-25` ha ucciso il migrate in CI, e la ragione era scritta nella sua stessa intestazione.** `ERROR: trigger "trg_compensazioni_audit_data_user_upd" for table "sistemazioni" does not exist`. I trigger di audit e `tx_id` li genera il framework con `--contexts=ci_apply`, cioè la **seconda** invocazione di Liquibase: durante la prima passata la tabella — creata poche centinaia di changeSet prima, nella stessa corsa — non li ha ancora. In sviluppo esistono da settimane e il rename passa. ⭐ Il fatto era già scritto due paragrafi sopra il difetto (*«una tabella nuova non ha i trigger di audit e `tx_id` finché non passa `ci_apply`»*): **sapere la regola non basta**, mentre si scrive la rinomina si guarda il database che si ha davanti. ⭐ E in quel mondo l'operazione **non serviva**: le automazioni lavorano per pattern, quindi genereranno già `trg_sistemazioni_*` — il rischio dei due audit esiste solo dove il nome vecchio c'è già. ⇒ L'operazione è **condizionale**, e ora sta nei changeSet `-25-01`/`-25-02`, **uno per trigger** (sono oggetti indipendenti: un unico changeSet con «esistono entrambi?» salterebbe in silenzio anche uno stato a metà), con `onFail: MARK_RAN` + `sqlCheck` su `pg_trigger`. ⛔ **Non** una preCondition sul changeSet intero: `HALT` sposta solo il punto in cui la CI si ferma, `MARK_RAN` salterebbe anche la rinomina della **tabella** lasciando il database sul nome vecchio in silenzio. ⭐ L'esito resta presidiato dove va presidiato — test 3 di `test-sistemazioni-registro.sql`, che gira a `ci_apply` avvenuto (12/12 verde). Provato sul DB in transazione annullata **nei due mondi**: con i nomi nuovi la preCondition dà 0 (→ MARK_RAN), riportati indietro dà 1 e il rename esegue lasciando zero residui. Nuovo cancello `scripts/guardrail_ddl_su_trigger_automazione.py` (verde ora, e sulla versione di HEAD accusa esattamente quelle due istruzioni), regola in `linee-guida-sql.md` §11.5 e in `.codex/AGENTS.md`. ⚠️ Scansione dell'intero changelog: era **l'unico** caso della classe — gli altri `ALTER TRIGGER` o sono sui trigger della vecchia storia, o sono dentro un commento |
 | **2026-08-28** (apply e regressioni) | ⚠️ **LOTTO 10 APPLICATO da Tid (15:51), e ha portato DUE REGRESSIONI: la prova era insufficiente.** ⛔ La policy l'avevo provata sui due file che stavo toccando, e non ho rilanciato i pgTAP che **scrivono quella tabella per altre ragioni**. Li ha trovati Tid. ⭐ **La regola che resta**: una policy nuova su una tabella si prova rilanciando TUTTI i test che quella tabella la scrivono — un grep del nome nella cartella dei test costa dieci secondi. 🔴 **La prima e' un difetto VERO, non una fixture**: la policy COPRIVA il `NOT NULL` del conto — un canale creato senza conto veniva rifiutato con 42501 invece che 23502, cioe' **403 invece di 400**, «non ti e' consentito» al posto di «manca un campo». ⭐ E' il modo peggiore in cui una policy puo' sbagliare: non lascia passare niente di troppo, ma toglie la parola a un controllo che sapeva spiegarsi meglio di lei. Corretta in avanti con `20260828-20` (ramo `IS NULL`, che non e' un buco perche' la colonna e' NOT NULL). ⭐ **La seconda e' la trappola RLS + CTE**, la STESSA che avevo corretto nella proposta del backend: un test creava conto, legame e canale in un'istruzione sola, e la WITH CHECK non vede il legame che quella istruzione sta scrivendo. Spezzata in due — ⚠️ e capitera' identica al backend, che e' scritto nella richiesta. ✅ Stato dopo la correzione: `pagamenti` 15 su 16 (l'unico rosso e' il test che aspetta `-20`), `rls` 0 su 16 col perimetro esteso a **18 su 18**, `anagrafiche` verde |
 | **2026-08-28** (lotto 10, scritto) | ⭐ **LOTTO 10 SCRITTO E PROVATO** — quattro changeSet (`20260828-11`…`-14`), due righe di CSV e due pgTAP (14 nuove asserzioni + il perimetro da 14 a 18). ⛔ Niente applicato. 🔴 **La decisione C-1 e' stata CAMBIATA DA UNA MISURA, e la prima risposta era mia e sbagliata**: avevo scritto «le righe nascono gia' abbinate, il guard le regge per costruzione». Provato: una riga di segno opposto su una rata **saldata dal movimento che si sta correggendo** viene RIFIUTATA — con residuo zero non c'e' spazio in nessuna direzione, e il commento del guard lo diceva. Nascere gia' ABBINATA avrebbe preteso `forzata = true` scritta dalla madre, cioe' **forzare al posto dell'operatore**: l'opposto del doppio tempo di D14-d. ⭐ La prova ha trovato la strada giusta, che nessuno dei due brief aveva visto: fattura e rata **gia' compilate** ma stato **DA_ABBINARE** — il guard esamina la capienza solo sulle righe che occupano spazio, quindi passa, e l'ultimo clic resta di una persona. ⭐ **E il `codice` torna sulla colonna**: la madre non puo' usare il get-or-create (chiave di riuso con l'operatore: le righe finirebbero nella distinta di oggi) e riscrivere l'espressione sarebbe stata una seconda sede, quindi il DEFAULT va sulla colonna e il calcolo inline esce dalla funzione **nello stesso lotto che lo rende morto** — 245 righe riscritte senza trascriverne una: corpo ESTRATTO dall'auto-gen, tre tagli, e il `diff` a dimostrare che non e' cambiato altro (firma dall'ultimo YAML, che i `%TYPE` li ha). 🔴 **Corretta anche la policy proposta dal BE**: `FOR ALL` senza `WITH CHECK` usa la `USING` anche per le righe nuove, e quella `USING` rilegge `enti_incasso` per il proprio id — dentro il comando che inserisce la riga non e' ancora visibile, quindi **ogni INSERT sarebbe stato rifiutato**. Il predicato sta sul CONTO, identico in lettura e scrittura. ⭐ Effetto collaterale della forma giusta: la policy si e' potuta provare **col FORCE** (il lotto 6 non poteva — il suo predicato rilegge la tabella protetta e ricorrerebbe). ✅ **Prove**: 14 su 14 sulla madre, 5 su 5 sulla policy (e la prima e' che **la scrittura passa**: una policy che impedisce di lavorare e' peggio del difetto), 18 su 18 il perimetro col lotto iniettato. 🔴 **La policy ha rotto una fixture** — il pgTAP creava i due canali in un INSERT solo sotto un contesto qualunque — e la fixture e' stata adeguata nello stesso lotto: ogni canale si crea nel contesto del suo padrone. ⚠️ Due scoperte dichiarate: `NULLA_DA_CORREGGERE` **non si raggiunge dal percorso normale** (una CHIUSA ha sempre una riga postata, e quella riga non si spegne finche' ha un movimento attivo) ed e' quindi un ramo difensivo; e il guard del canale legge **sotto RLS**, quindi con la policy accesa «non lo vedo» diventa «non esiste» — il comportamento e' giusto, la frase mente, e portarlo a SECURITY DEFINER e' una voce a parte |

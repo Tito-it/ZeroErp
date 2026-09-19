@@ -20,7 +20,7 @@
 > ([brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
 > §2-bis), che resta la sede unica. Il **piano DB** è qui (§4). Per BE e FE qui
 > c'è **solo l'elenco di cosa fare** (§5, §6): il piano lo scrivono loro in
-> [brief-be-fe-posting-e-abbinamento-rata.md](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md).
+> [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md).
 >
 > ⛔ **Niente misure come motivo.** Al 2026-09-18 su dev non c'è nessuna riga
 > viva sotto una `CHIUSA` in uno stato diverso da `POSTATA`/`SCARTATA` (zero

@@ -19,7 +19,7 @@
 > ([brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
 > §2-bis), che resta la sede unica. Il **piano DB** è qui (§4). Per BE e FE
 > qui c'è **solo l'elenco di cosa fare** (§5, §6): il piano lo scrivono loro
-> in [brief-be-fe-posting-e-abbinamento-rata.md](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md).
+> in [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md).
 >
 > ✅ **Applicato su dev il 2026-09-14 alle 15:49** (`databasechangelog`:
 > `20260914-04`, `-05`, `-06`), pgTAP verdi col runner come applicazione
@@ -88,7 +88,7 @@
 > `Tito-dev` (`3fd99cc0b` → PR #1589, `62426b8c7`), `api_pagamenti.md` compresa;
 > al consuntivo 217 test backend verdi (DB e2e compresi), build · lint · i18n
 > verdi. Il consuntivo per voce sta in
-> [brief-be-fe §10.12](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md).
+> [brief-be-fe §10.12](brief-be-fe-posting-e-abbinamento-rata.md).
 >
 > **Il copione (C-1) è riscritto. C-2 — la prova a video — ESCE dal brief** e
 > vive nel documento che si tiene aperto accanto all'applicazione:
@@ -108,7 +108,7 @@
 > | 3 | §8: i **fatti** di una riga sotto una distinta **finale** restano modificabili da SQL — sotto `CHIUSA` la porta 2 tace di proposito (la sede è `guard_distinta_finale`, che lascia «le altre scritture su una riga già lì»); nessun verbo BE lo fa | **DB**, decisione — brief madre [§2-bis D16-D18, «residui di modello»](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) | è una decisione (fatti immutabili sotto una finale, per ogni origine), non un passo |
 > | 4 | §10.2-2: sulle due matrici `meta` è `{"manuale": false}` ovunque (`20260821-31`) e «chi può chiedere» vive nel BE (`STATI_*_RICHIEDIBILI`); seminare `manuale`/`action_key`/`label_key` porterebbe il vocabolario dove il modello l'ha previsto | **DB**, decisione — brief madre §2-bis | è il modello della matrice, non di questo giro; BE-5 legge la matrice così com'è |
 > | 5 | A-5: `contenuto_modificabile` è una **copia dichiarata** del motivo 3, scritto tre volte (check, guard porta 2 sull'`INSERT`, BE) e legato da test; una `fn_check_contabile_contenuto_modificabile(p_contabile_id)` darebbe una sede sola | **DB**, decisione — brief madre §2-bis | BE-7 è deciso come derivata; cambiarlo è un giro suo |
-> | 6 | Q-G: la `LATERAL` «primo motivo» è scritta in **quattro** repository nella stessa forma (`registri` ×2, `vendite` ×1, `pagamenti` ×1) | **BE**, «in un giro suo» — [brief BE/FE §10.12](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | estrarre un BB `core/db` è trasversale ai domini |
+> | 6 | Q-G: la `LATERAL` «primo motivo» è scritta in **quattro** repository nella stessa forma (`registri` ×2, `vendite` ×1, `pagamenti` ×1) | **BE**, «in un giro suo» — [brief BE/FE §10.12](brief-be-fe-posting-e-abbinamento-rata.md) | estrarre un BB `core/db` è trasversale ai domini |
 > | 7 | Q-C: il markup «richiesta di conferma» della forzatura (Message + motivo + «Forza») è alla **seconda** occorrenza, dichiarata e non estratta | **FE** — brief BE/FE §10.12 | il composable è già condiviso; il markup nel dialogo sta nel footer, nel form è inline |
 > | 8 | La `DataTable` grezza delle righe nel drawer (eccezione ammessa: righe di un documento nel suo master; debito verso `RigheMasterDetailTable`) | `frontend/scripts/datatable.baseline.json` + il commento sopra l'import | debito pre-esistente (28/08), dichiarato dove il presidio lo conta |
 >
@@ -522,7 +522,7 @@ non è ancora stata fatta**.
 ## 10. Analisi e piano BE/FE *(2026-09-14, scritto dal lato BE/FE; eseguito la sera stessa — stato per voce in §10.1 e per passo in §10.3)*
 
 > **Perché sta qui e non nel piano BE/FE.** La sede naturale sarebbe
-> [brief-be-fe-posting-e-abbinamento-rata.md](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md)
+> [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md)
 > (la sua riga di registro del 14/09 dice *«il piano lo scrive questo
 > documento»*): Tid ha chiesto di scriverlo **qui**, accanto alle decisioni. Il
 > consuntivo, quando si costruirà, andrà nel §10 di quel documento — questa
@@ -536,7 +536,7 @@ non è ancora stata fatta**.
 > ✅ **Sviluppo BE/FE scritto il 2026-09-14 (sera), su «procedi» di Tid** —
 > Q-A estrazione **sì**, Q-D **strada B**, le altre cinque come proposte in
 > §10.4. Consuntivo nel piano BE/FE
-> ([§10.12](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md)); qui resta il piano e
+> ([§10.12](brief-be-fe-posting-e-abbinamento-rata.md)); qui resta il piano e
 > lo stato per voce. Verdi: **217** test backend (DB e2e compresi, 11 nuovi sul
 > DB provvisto + 25 a mock), build · eslint · oxlint · `check_i18n_keys.py`.
 > 📮 Al team DB restava **P-8** (seed, per FE-9): ✅ **scritto il 15/09**,

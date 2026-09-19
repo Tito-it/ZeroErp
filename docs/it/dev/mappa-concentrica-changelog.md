@@ -459,8 +459,8 @@ emittenti.
 ⛔ **Ma di questo dominio è stato provato il percorso, mai l'esito**: lo schema
 ha ancora zero righe, nessuno ha aperto una distinta o abbinato un incasso, e il
 collaudo in-app è **aperto**. Vedi
-[brief-db-posting-e-abbinamento-rata.md](work-in-progress/brief-db-posting-e-abbinamento-rata.md),
-[brief-be-fe-posting-e-abbinamento-rata.md](work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md),
+[brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
+[brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
 [collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
 
 **Anello 3 (vendite) — Il lavoro che non torna indietro.** Le tre porte di reset

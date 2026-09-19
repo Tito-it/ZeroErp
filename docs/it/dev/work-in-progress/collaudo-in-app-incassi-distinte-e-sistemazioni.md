@@ -2,7 +2,7 @@
 
 > **Cos'è.** Il copione della validazione a video: si tiene aperto accanto
 > all'applicazione e si spunta. Non è il brief — il *perché* di ogni scelta sta
-> in [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md);
+> in [brief-be-fe-posting-e-abbinamento-rata.md](../work-done/brief-be-fe-posting-e-abbinamento-rata.md);
 > qui c'è solo **cosa fare, cosa deve succedere, e cosa fare se non succede**.
 >
 > **Perché esiste, ed è la ragione più forte di tutto il cantiere.** Il codice è

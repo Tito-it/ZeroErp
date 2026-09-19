@@ -256,7 +256,7 @@ Un centro non puo essere contemporaneamente di compensazione e di fondo fattura.
 > lo crea era annidato dentro l'elenco delle colonne di un `addColumn`, e li
 > dentro non viene eseguito. La colonna era nata, il vincolo no.
 > Rimesso in piedi dal passo **P-1** di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata),
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-done/brief-db-posting-e-abbinamento-rata),
 > applicato il 21-08-2026 insieme ai due indici unici **parziali** che rendono
 > unico ciascuno dei due ruoli (prima uno dei due era un unico **totale** su un
 > booleano, e teneva la tabella a due righe in tutto).
@@ -296,7 +296,7 @@ Da un punto di vista tecnico:
 > e scritto su un `addUniqueConstraint`, che quell'attributo **non prevede** — e
 > lo ha ignorato in silenzio. Sostituito da due indici unici **parziali** (uno
 > per flag) al passo **P-1** di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-done/brief-db-posting-e-abbinamento-rata)
 > — ⛔ **non ancora applicato**.
 >
 > ⚠️ E `is_fondo_fattura` oggi non ha **nessun** vincolo di unicita: i centri

@@ -11,7 +11,7 @@
 > • [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) — quella che, da adesso, smette di dire sempre la stessa cosa
 > • [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile) — da dove la distinta viene
 >
-> **Piano:** [brief-db-posting-e-abbinamento-rata](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata) §2.1 S1-10
+> **Piano:** [brief-db-posting-e-abbinamento-rata](/dev/work-done/brief-db-posting-e-abbinamento-rata) §2.1 S1-10
 
 ---
 
