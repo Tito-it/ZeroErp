@@ -1,0 +1,187 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CATALOGO DEI REGISTRI DEL GIORNALE
+#   config.registri_giornale
+#   Brief: brief-db-registri-giornale-catalogo, sezione 4.1
+#
+# -- IL BUCO ---------------------------------------------------
+#   script.vw_giornale_entita cuce quattro registri (EVENT_LOG, LOTTO_LOG,
+#   TASK_RUN, FATTURA_LOG) e ogni ramo scrive il proprio nome come LETTERALE.
+#   Quel vocabolario vive in tre sedi che non si conoscono — i rami della
+#   vista, una costante del backend, un array del frontend — e nessuna porta
+#   l'etichetta: la tendina «Registro» mostra EVENT_LOG grezzo. Il quinto
+#   ramo entrera' con un UNION ALL (lo dice il commento della vista) e le
+#   altre due sedi non fallirebbero: il filtro risponderebbe 400, la tendina
+#   non lo mostrerebbe. E' gia' successo alla tendina gemella «Entita'»
+#   (sette codici a mano contro nove in config.tipi_entita).
+#
+# -- PERCHE' UN CATALOGO E NON LE ALTERNATIVE -------------------
+#   E' la forma che il progetto ha gia' scelto due volte per lo stesso genere
+#   di dato: config.tipi_entita e config.eventi_dominio, i vocabolari che la
+#   vista porta in colonna, dichiarano entrambi l'etichetta_key. Il lookup
+#   generico (dbops.fn_get_lookup_codici) legge la tabella senza codice nuovo,
+#   e il quinto registro diventa una riga di CSV. ⭐ A rendere il catalogo una
+#   SEDE e non una quarta copia e' il pgTAP che lega vista e catalogo nei due
+#   versi (db/pgtap/script/test-giornale-registri-catalogo-v1.sql): un ramo
+#   senza la sua riga fa rosso, una riga senza il suo ramo fa rosso.
+#
+# -- COSA NON FA -----------------------------------------------
+#   ⛔ La vista NON fa JOIN su questa tabella: il registro resta un letterale
+#   nel ramo (e' l'identita' del ramo, non un dato da risolvere) e il catalogo
+#   lo DESCRIVE. Nessuna FK dalle quattro tabelle sorgente: il legame lo tiene
+#   il pgTAP.
+#   ⛔ NIENTE colonna `attivo`, come su tipi_entita ed eventi_dominio, e non e'
+#   una dimenticanza: un registro non si «assegna» a niente, le righe vecchie
+#   del diario restano leggibili, e il ritiro di un ramo ha gia' il suo asse
+#   (obsoleto_dal). Un secondo flag sarebbe una domanda senza risposta — e il
+#   lookup generico tratta `attivo` come opzionale. Il brief la chiedeva
+#   (sezione 4.1): risposta del team DB nella sezione 6, D3.
+#   ⭐ `sorgente` e' TEXT e non regclass (D1 del brief): regclass memorizza
+#   l'OID, quindi SEGUE una rinomina in silenzio e, se la tabella sparisce,
+#   stampa un numero senza errore — il contrario del pregio che gli si
+#   attribuiva. Il pgTAP fa il lavoro giusto: il nome si risolve
+#   (to_regclass) ED e' fra le dipendenze vive della vista (pg_depend).
+#
+# -- CHE COSA NASCE DA SOLO, E CHE COSA NO ----------------------
+#   ⭐ Il lock su codice_interno NON si semina: e' IMPLICITO per la sola
+#   presenza della colonna (dbops.fn_run_automations_lock_columns,
+#   linee-guida-sql 6b). ⚠️ Tabella NUOVA: audit e lock arrivano con
+#   `--contexts=ci_apply` (in CI) o col job pgAgent delle 21:00 (su dev), non
+#   da qui. Niente DDL ne' preCondition sui loro nomi (linee-guida-sql 11.5).
+#   Le colonne di audit nascono coi propri DEFAULT perche' il seed di 80_data
+#   funzioni comunque. Niente tx_id: e' un vocabolario, non un registro.
+#   ⚠️ Nessun GRANT: le ALTER DEFAULT PRIVILEGES del loop di 90_end
+#   (20260205-41) coprono tabella e sequence gia' alla creazione, come per le
+#   sorelle — che hanno la postura standard dell'app (SELECT/INSERT/UPDATE/
+#   DELETE), non «solo SELECT» come diceva il brief. Il seed e' il
+#   20260919-09 (80_data).
+#
+# -- CATALOGO, NON MACCHINA ------------------------------------
+#   Nessuna FK verso anagrafiche.*: il vocabolario e' parte del contratto
+#   del software e vale identico su ogni installazione. Nessun `context`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260919-08-create-config-registri-giornale-mctit.yaml
+
+  - changeSet:
+      id: 20260919-08-create-config-registri-giornale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CREATE TABLE config.registri_giornale: il catalogo dei registri che
+        script.vw_giornale_entita cuce (EVENT_LOG, LOTTO_LOG, TASK_RUN,
+        FATTURA_LOG), nella forma del lookup generico piu' etichetta_key,
+        sorgente e obsoleto_dal — stesso stampo di config.tipi_entita e
+        config.eventi_dominio. Senza `attivo` (asse unico: obsoleto_dal).
+        Lock su codice_interno e audit arrivano da ci_apply. Il legame con la
+        vista lo tiene il pgTAP test-giornale-registri-catalogo-v1. Brief:
+        brief-db-registri-giornale-catalogo, sezione 4.1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: SELECT count(*) FROM pg_namespace WHERE nspname = 'config';
+            - not:
+                - tableExists:
+                    schemaName: config
+                    tableName: registri_giornale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE config.registri_giornale (
+                  id              BIGINT GENERATED BY DEFAULT AS IDENTITY
+                                  CONSTRAINT pk_registri_giornale PRIMARY KEY,
+                  codice_interno  TEXT         NOT NULL,
+                  codice          TEXT         NOT NULL,
+                  descrizione     TEXT         NOT NULL,
+                  etichetta_key   TEXT         NOT NULL,
+                  sorgente        TEXT         NOT NULL,
+                  obsoleto_dal    DATE,
+                  data_insert     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                  user_insert     TEXT         NOT NULL DEFAULT CURRENT_USER,
+                  data_update     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                  user_update     TEXT         NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT uq_registri_giornale_codice
+                      UNIQUE (codice),
+                  CONSTRAINT uq_registri_giornale_codice_interno
+                      UNIQUE (codice_interno),
+                  -- E' il valore che la vista EMETTE in `registro`: lo stesso
+                  -- alfabeto che il pgTAP estrae da pg_get_viewdef con la regex
+                  -- '([A-Z][A-Z0-9_]*)'::text AS registro. Un codice fuori da
+                  -- questa forma non verrebbe mai riconosciuto come ramo.
+                  CONSTRAINT chk_registri_giornale_codice_interno_forma
+                      CHECK (codice_interno ~ '^[A-Z][A-Z0-9_]*$'),
+                  CONSTRAINT chk_registri_giornale_codice_non_vuoto
+                      CHECK (btrim(codice) <> ''),
+                  -- Il patto con il frontend: l'indirizzo i18n sta nel namespace
+                  -- della tabella, come config.tipi_entita.<codice minuscolo>.
+                  CONSTRAINT chk_registri_giornale_etichetta_key_namespace
+                      CHECK (etichetta_key ~ '^config\.registri_giornale\.[a-z][a-z0-9_]*$'),
+                  -- schema.tabella, qualificata: e' cio' che to_regclass risolve
+                  -- e cio' che il pgTAP confronta con le dipendenze della vista.
+                  CONSTRAINT chk_registri_giornale_sorgente_qualificata
+                      CHECK (sorgente ~ '^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$')
+              );
+
+              COMMENT ON TABLE config.registri_giornale IS
+                  'Catalogo dei REGISTRI che script.vw_giornale_entita cuce: una riga '
+                  'per ramo UNION ALL della vista (EVENT_LOG, LOTTO_LOG, TASK_RUN, '
+                  'FATTURA_LOG). E'' la sede del vocabolario che la vista emette in '
+                  '`registro`, che il backend valida nel filtro e che il frontend '
+                  'mostra nella tendina — fino al 2026-09-19 tre copie che non si '
+                  'conoscevano, e nessuna con l''etichetta. ⛔ La vista NON fa JOIN '
+                  'qui: il registro resta un letterale nel ramo (e'' l''identita'' '
+                  'del ramo) e il catalogo lo DESCRIVE. Il legame lo tiene il pgTAP '
+                  'test-giornale-registri-catalogo-v1 nei due versi: ogni letterale '
+                  'della vista e'' a catalogo e vivo, ogni riga viva ha il suo ramo. '
+                  '⇒ Una riga NON si aggiunge dall''applicazione: nasce col ramo, '
+                  'nel CSV del seed. ⛔ Senza colonna attivo, come tipi_entita ed '
+                  'eventi_dominio: un registro non si assegna a niente e le righe '
+                  'vecchie del diario restano leggibili; il ritiro di un ramo e'' '
+                  'obsoleto_dal. Stessa forma del lookup generico '
+                  '(dbops.fn_get_lookup_codici). Brief: '
+                  'brief-db-registri-giornale-catalogo, sezione 4.';
+              COMMENT ON COLUMN config.registri_giornale.codice_interno IS
+                  'Il valore che la vista EMETTE nella colonna `registro` e su cui il '
+                  'backend valida il filtro: chiave stabile, immutabile via '
+                  'script.trgfn_lock_columns (provisionato da ci_apply per la sola '
+                  'presenza della colonna). Maiuscolo, cifre e underscore: e'' '
+                  'l''alfabeto che il pgTAP estrae dalla definizione della vista.';
+              COMMENT ON COLUMN config.registri_giornale.codice IS
+                  'Etichetta breve modificabile dall''operatore; alla nascita uguale a '
+                  'codice_interno. Mai usato in logica (linee-guida-sql 6c).';
+              COMMENT ON COLUMN config.registri_giornale.etichetta_key IS
+                  'Indirizzo i18n dichiarato dal DB, che il frontend risolve con '
+                  'labelOrCode: config.registri_giornale.<codice_interno minuscolo>. '
+                  'Le chiavi nei locales le porta il frontend (scripts/check_i18n_keys.py '
+                  'NON legge questa colonna: vede solo le chiavi JSON dentro i CSV).';
+              COMMENT ON COLUMN config.registri_giornale.sorgente IS
+                  'La tabella che il ramo legge (schema.tabella). Documenta il ramo e '
+                  'serve al pgTAP: deve risolversi (to_regclass) ed essere fra le '
+                  'dipendenze vive della vista. TEXT e non regclass di proposito: '
+                  'regclass segue una rinomina in silenzio e stampa un numero se la '
+                  'tabella sparisce.';
+              COMMENT ON COLUMN config.registri_giornale.obsoleto_dal IS
+                  'Ritiro di un ramo senza cancellare la riga: NULL = il ramo c''e'' '
+                  '(e il pgTAP lo pretende nella vista); valorizzato = il ramo e'' '
+                  'uscito dalla vista e la riga resta per dare un nome al codice '
+                  'negli export e nei dati vecchi. Selezione «per il nuovo»: '
+                  'p_includi_obsoleti => false nel lookup generico.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS config.registri_giornale;

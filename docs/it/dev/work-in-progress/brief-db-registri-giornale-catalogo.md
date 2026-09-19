@@ -20,6 +20,12 @@
 >
 > ⛔ **Il backend si ferma qui e aspetta**: BE/FE solo con prerequisiti DB
 > pronti. Ciò che fa appena il seed è a DB è al §5, ed è poca roba.
+>
+> ✅ **Lato DB CHIUSO il 19-09 — applicato su dbdev, pgTAP verdi come app
+> (13/13 e 15/15), nessuna regressione nella suite.** Da leggere per primo:
+> §8 (as-built) e §6 (le tre risposte del team DB, una delle quali cambia il
+> §4.1: niente `attivo`). Resta il commit su `dev/db-tid`. **Ora tocca al
+> §5 (BE/FE)**, con le quattro note del §8.4 che il DB ha trovato per strada.
 
 ---
 
@@ -95,6 +101,11 @@ rosso, una riga senza il suo ramo fa rosso.
 
 ### 4.1 Tabella `config.registri_giornale` (`00_schema`)
 
+> ⚠️ **Tabella richiesta, non as-built.** Tre scostamenti, decisi dal team DB
+> e motivati al §6/§8: **niente `attivo`** (D3), `sorgente` **`text`** (D1),
+> `id` **`bigint`** come tutte le sorelle di `config` (`smallint` non
+> comprava niente su quattro righe e rompeva l'uniformità della forma).
+
 Nella forma che `dbops.fn_get_lookup_codici` pretende — `id` intero,
 `codice`, `codice_interno`, `descrizione`, `attivo` — più `etichetta_key` e
 `obsoleto_dal` come le due sorelle:
@@ -122,7 +133,13 @@ Nella forma che `dbops.fn_get_lookup_codici` pretende — `id` intero,
 
 ⚠️ `codice` = `codice_interno` alla nascita, come nelle sorelle. Le
 `etichetta_key` le porta il frontend nei locales nello stesso giro del §5
-(`check_i18n_keys.py` le trova nel CSV da sé: scandisce ogni CSV di `80_data`).
+~~(`check_i18n_keys.py` le trova nel CSV da sé: scandisce ogni CSV di `80_data`)~~
+— ⛔ **falso, verificato il 19-09 leggendo lo script**: `RE_SEED_KEY` legge
+solo le chiavi JSON *dentro* le celle (`""label_key"": ""…""`), non una
+colonna `etichetta_key`. Le chiavi di `tipi_entita` sono nei locales perché
+il cantiere FE le ha scritte a mano. ⇒ Nel §5 le otto chiavi vanno scritte
+**e** il guard va insegnato a leggere la colonna (§8.4), o la prossima riga
+di catalogo resterà senza testo in silenzio.
 
 ### 4.3 Il presidio (pgTAP, `db/pgtap/script/test-giornale-registri-catalogo-v1.sql`)
 
@@ -145,8 +162,14 @@ sarebbe la strada D con una tabella al posto della funzione.
 
 ### 4.4 Postura
 
-Solo `SELECT` all'app, come le sorelle; niente RLS (vocabolario globale, come
-`tipi_entita`). Nessun `GRANT` a ruoli batch nel changeSet (AGENTS.md §privilegi).
+~~Solo `SELECT` all'app, come le sorelle~~ — ⚠️ **le sorelle non sono «solo
+SELECT»**: il loop di `90_end/20260205-41` dà all'app `SELECT/INSERT/UPDATE/DELETE`
+su ogni tabella di `config` (verificato il 19-09 con `has_table_privilege` su
+`tipi_entita`, `eventi_dominio`, `modi_approvvigionamento`), e una postura più
+stretta costa tre sedi (AGENTS.md §REVOKE) per un vocabolario di quattro
+righe che l'amministrazione potrebbe voler rietichettare. Postura **standard**,
+nessun `GRANT` nel changeSet. Niente RLS (vocabolario globale, come
+`tipi_entita`). Nessun `GRANT` a ruoli batch (AGENTS.md §privilegi).
 
 ## 5. Cosa fa il backend appena il seed è a DB (nello stesso giro)
 
@@ -165,11 +188,21 @@ Solo `SELECT` all'app, come le sorelle; niente RLS (vocabolario globale, come
 - Locales: nove chiavi (`config.registri_giornale.*`, it/en), e la parola
   «Registro» sulla tendina resta.
 
-## 6. Domande aperte al team DB
+## 6. Domande aperte al team DB — ✅ risposte il 19-09
 
 - **D1.** `sorgente` come `regclass` (si rompe se la tabella viene rinominata:
   è un pregio, dice subito che il ramo è da rivedere) o `text` (inerte)? Propongo
   `regclass`.
+  ✅ **`text`.** Il pregio attribuito a `regclass` non esiste: `regclass`
+  memorizza l'**OID**, quindi **segue** una rinomina in silenzio (stampa il
+  nome nuovo) e, se la tabella sparisce, stampa un **numero** senza nessun
+  errore — il contrario di «dice subito che il ramo è da rivedere». In più un
+  OID in un CSV di seed e nella gemella `storico` è un corpo estraneo. Il
+  lavoro che si voleva da `regclass` lo fa il pgTAP, e lo fa meglio (test 6):
+  `to_regclass(sorgente) IS NOT NULL` **e** la tabella è fra le dipendenze
+  vive della vista (`pg_rewrite` → `pg_depend`). Una sorgente sostituita in
+  un ramo o una tabella che non esiste più fanno rosso lì. Provato con due
+  mutazioni (§8.3).
 - **D2.** Il pgTAP legge `pg_get_viewdef` con una regex sui letterali
   `'…'::text AS registro`: è la forma con cui la vista è scritta oggi. Se il
   team DB preferisce, la vista può esporre i registri in un **commento
@@ -177,9 +210,116 @@ Solo `SELECT` all'app, come le sorelle; niente RLS (vocabolario globale, come
   stessi (`registro := 'EVENT_LOG'` → la funzione garantisce che sia a
   catalogo). Propongo la regex: non tocca la vista, e la vista è già stata
   riscritta due volte questo mese.
+  ✅ **La regex**, con due cinture: un `CHECK` su `codice_interno`
+  (`^[A-Z][A-Z0-9_]*$`) che tiene catalogo e regex sullo stesso alfabeto, e
+  il **test 3** del pgTAP, che pretende almeno un letterale estratto — senza,
+  una riscrittura della vista in una forma che la regex non legge renderebbe
+  i due versi verdi su insiemi vuoti (verde per sottrazione). `pg_get_viewdef`
+  stampa `'EVENT_LOG'::text AS registro` (verificato su dbdev il 19-09), e
+  `riga_key` (`format('EVENT_LOG:%s'…)`) non collide col pattern.
+- **D3 (non posta dal brief, decisa dal team DB): niente colonna `attivo`.**
+  Il §4.1 la chiedeva «come ogni tabella config» e il §4.3 voleva un test
+  «`attivo`/`obsoleto_dal` coerenti» senza dire cosa fosse coerente — segno
+  che il flag non aveva una domanda sua. Per un registro non c'è: nessuno
+  «assegna» un registro a una riga (lo decide la vista), le righe vecchie del
+  diario devono restare leggibili anche a ramo ritirato, e il ritiro ha già il
+  suo asse (`obsoleto_dal`, che è quello su cui i due versi del pgTAP
+  ragionano). Un secondo flag sarebbe un «flag con due domande» — e le due
+  sorelle che il brief chiama *stampo*, `tipi_entita` ed `eventi_dominio`,
+  non ce l'hanno per lo stesso motivo. `fn_get_lookup_codici` tratta `attivo`
+  come opzionale (`NULL::boolean AS attivo` se manca): il lookup generico
+  funziona lo stesso, verificato dal test 7. Il pgTAP **pinna l'assenza**
+  (test 2, `hasnt_column`).
 
 ## 7. Registro
 
 | Data | Cosa |
 | --- | --- |
 | 2026-09-19 | Brief scritto. Backend in attesa; la tendina «Registro» del giornale resta sulla costante FE, dichiarata come seconda sede nel commento della view. |
+| 2026-09-19 (ore 18) | ✅ **Lato DB CHIUSO**: migrazione applicata da Tid, automazioni montate (lock + audit), pgTAP 13/13 come app, suite senza regressioni. Resta il commit; poi il §5. |
+| 2026-09-19 (pomeriggio) | ✅ **Lato DB scritto** (Tid: «ok procedi»): `00_schema/config/20260919-08` (tabella), `80_data/changelog/20260919-09` + `sql/config/registri_giornale.csv` (seed, con resync della sequence), pgTAP `script/test-giornale-registri-catalogo-v1.sql` (13 test), i due presidi di `test-vw-giornale-entita.sql` che elencavano i quattro nomi (2, 11) **riscritti sul catalogo** — la quarta copia ritirata nello stesso giro —, descrizione della colonna `registro` in `ui/lista_colonna.csv` (887), manuale `config/manual/registri_giornale.md`, rimando nel manuale della vista. Tre risposte al §6 (D1 `text`, D2 regex + CHECK + test-guard, **D3 niente `attivo`**). Provato con l'SQL estratto (`updateSQL` offline) in `BEGIN…ROLLBACK`: 12/13 (il 13 è il lock di `ci_apply`), 13/13 col lock montato, mirror idempotente alla seconda passata, e **cinque mutazioni** che accendono l'asserzione giusta (§8.3). Per strada: il `check_i18n_keys.py` **non** legge `etichetta_key` (§4.2), le sorelle **non** sono «solo SELECT» (§4.4), e un INSERT senza `id` collideva con la PK del seed — da cui il resync nel `-09` e gli id espliciti nei test negativi. |
+
+## 8. As-built DB (19-09-2026)
+
+### 8.1 Che cosa c'è
+
+| Pezzo | File |
+| --- | --- |
+| Tabella | `db/changelog/migrations_v2/00_schema/config/20260919-08-create-config-registri-giornale-mctit.yaml` |
+| Seed (mirror `loadUpdateData` + `setval`) | `80_data/changelog/20260919-09-seed-registri-giornale-mctit.yaml`, `80_data/sql/config/registri_giornale.csv` |
+| Presidio vista ⇄ catalogo | `db/pgtap/script/test-giornale-registri-catalogo-v1.sql` (plan 13) |
+| Copie ritirate | `db/pgtap/script/test-vw-giornale-entita.sql` test 2 e 11 (ora leggono `config.registri_giornale`); `ui/lista_colonna.csv` riga 887 (la descrizione non elenca più i quattro nomi) |
+| Doc | `docs/it/dbzero/config/manual/registri_giornale.md` (nuovo), `docs/it/dbzero/script/manual/vw_giornale_entita.md` (colonna `registro` → catalogo) |
+
+Forma della tabella: `id bigint IDENTITY`, `codice_interno text` UNIQUE +
+`CHECK ^[A-Z][A-Z0-9_]*$`, `codice text` UNIQUE non vuoto, `descrizione text
+NOT NULL`, `etichetta_key text` `CHECK ^config\.registri_giornale\.[a-z][a-z0-9_]*$`,
+`sorgente text` `CHECK schema.tabella`, `obsoleto_dal date NULL`, audit. Niente
+`attivo`, niente `tx_id`, niente `meta`/`ordine`. Lock su `codice_interno` e
+audit da `ci_apply` (o job pgAgent delle 21:00 su dev).
+
+### 8.2 I tredici test, in una riga ciascuno
+
+1-2 forma (colonne del contratto; **assenza** di `attivo`) · 3 la regex
+legge almeno un letterale (guard del metro) · **4** ogni letterale della
+vista è a catalogo e vivo · **5** ogni riga viva ha il suo ramo · **6** ogni
+`sorgente` si risolve ed è dipendenza della vista · 7 il lookup generico
+restituisce esattamente i vivi · 8 `etichetta_key` = namespace + codice
+minuscolo · 9-11 i tre `CHECK` · 12 l'UNIQUE · 13 il lock (**`ci_apply`**).
+
+### 8.3 Come è stato provato, e cosa ha trovato
+
+✅ **Esito finale (Tid, 19-09 ore 18): migrazione applicata, automazioni
+passate (`trg_registri_giornale_a10_lock_columns_upd` e
+`…_audit_data_user_upd` montati), `test-giornale-registri-catalogo-v1`
+13/13 come `zeroerp_app`, suite senza regressioni.** La prima corsa, prima
+delle automazioni, dava 12/13 col test 13 rosso *per assenza* del lock —
+esattamente come scritto nell'intestazione del file.
+
+SQL **estratto** con `updateSQL --url=offline:postgresql` su copie senza
+`preConditions`, poi `BEGIN; DDL; seed; corpo del pgTAP; ROLLBACK;` come owner
+su dbdev. Base: 12/13, il 13 rosso *per assenza* del lock. Col lock montato a
+mano come farebbe `ci_apply` (`trgfn_lock_columns('codice_interno',
+'E_CODICE_NON_MODIFICABILE')`) e il mirror eseguito **due volte**: 13/13 — il
+lock lascia passare l'`UPDATE` a valore uguale della seconda passata.
+Mutazioni, ciascuna accende **solo** ciò che deve:
+
+| Mutazione | Rosso |
+| --- | --- |
+| riga a catalogo senza ramo (`PRATICHE_GIORNALE`, `pratiche.giornale`) | 5, 6 |
+| `obsoleto_dal = oggi` su `EVENT_LOG` (ramo con riga ritirata) | 4, 7 |
+| `sorgente` di una tabella esistente ma non letta dalla vista | 6 |
+| `sorgente` inesistente | 6 |
+| `INSERT` senza `id` (prima del resync) | ⛔ `23505` sulla **PK**: gli id fissi del seed non avanzano la sequence. Da qui il `setval` nel `-09` e l'`id` esplicito (999999) nei test 9-12, che altrimenti sarebbero stati verdi per il vincolo sbagliato |
+
+`test-vw-giornale-entita.sql` riprovato nella stessa transazione: 15/15.
+Guardrail statici (runOnChange, precondition-seed, ddl-trigger, grant-batch,
+letterali, preambolo pgTAP): tutti verdi. Il verde **come app** è stato preso
+dopo l'apply con `scripts/testpgtap.sh` (vedi in testa a questa sezione).
+⚠️ Numerazione: lo stesso giorno esiste anche `90_end/20260919-08-grant-app-select-job-run-log`
+(cantiere privilegio job_run_log): due `-08` con id diversi, innocuo per
+Liquibase ma fuori dalla convenzione NN globale per data. Non rinominati:
+già in `databasechangelog`. Il prossimo numero libero del 19-09 è `-10`.
+
+### 8.4 Cosa eredita il §5 (BE/FE), oltre a quanto già scritto
+
+- **Il guard i18n non vede `etichetta_key`** (§4.2): scrivendo le otto chiavi
+  (`config.registri_giornale.{event_log,lotto_log,task_run,fattura_log}`,
+  it/en), insegnare a `scripts/check_i18n_keys.py` a leggere la colonna
+  `etichetta_key` dei CSV di `80_data` — è la stessa classe di buco delle
+  intestazioni di colonna (`etichetta_i18n_key`, 22-08), e `tipi_entita`
+  ed `eventi_dominio` oggi passano solo perché qualcuno le ha scritte a mano.
+- **Il lookup generico non porta `etichetta_key`** (`id, codice,
+  codice_interno, descrizione, attivo, codice_stabile`): o il FE compone la
+  chiave dal `codice_interno` con la convenzione (che il test 8 pinna), o
+  `config.registri_giornale` entra in `_LOOKUP_SPECIALIZZATE` con
+  `etichetta_key` come colonna extra — è esattamente il caso «una colonna in
+  più» per cui la variante esiste (api.md §Lookup). La seconda è la forma
+  giusta: la chiave la dichiara il DB, il FE non la ricostruisce.
+- `attivo` nel payload del lookup arriva **`NULL`** (la colonna non c'è): un
+  consumatore che filtrasse `attivo === true` lato FE non vedrebbe niente.
+- `GIORNALE_REGISTRI`: la scelta fra «pinnata al catalogo con un test su DB
+  provvisto» e «letta dal catalogo» resta al BE (§5); il DB non ha
+  preferenze, ma con `obsoleto_dal` il filtro dovrebbe accettare **anche** i
+  registri ritirati (le righe vecchie si leggono), cioè `codice_interno` di
+  tutte le righe, non dei soli vivi.

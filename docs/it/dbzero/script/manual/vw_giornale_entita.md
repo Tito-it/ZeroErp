@@ -18,6 +18,13 @@ guardarli uno per uno:
 La vista **non aggiunge nessun dato**: mette in fila cronologica ciò che già
 esiste, con le stesse parole per tutti.
 
+⭐ Dal 19-09-2026 i quattro registri hanno un **catalogo**,
+[`config.registri_giornale`](/dbzero/config/manual/registri_giornale): una riga
+per ramo, con descrizione ed etichetta. La vista non lo interroga — il nome del
+registro resta scritto nel ramo — ma il test
+`test-giornale-registri-catalogo-v1.sql` pretende che i due coincidano: un ramo
+nuovo entra **insieme** alla sua riga, o il test è rosso.
+
 > **Vedi anche**
 >
 > - [event_log](/dbzero/vendite/tabelle/event_log) — il registro polimorfo, l'unico che porta il perimetro sulla riga
@@ -45,7 +52,7 @@ rinegozia, e un registro che non sa riempirne una lascia vuoto.
 | Colonna | Tipo | Significato |
 |---|---|---|
 | `riga_key` | `text` | La chiave della riga, nella forma `REGISTRO:id`. È l'unica stabile: i quattro registri hanno spazi di identificativi separati e sovrapposti. |
-| `registro` | `text` | Da dove viene la riga: `EVENT_LOG \| LOTTO_LOG \| TASK_RUN \| FATTURA_LOG`. |
+| `registro` | `text` | Da dove viene la riga. I valori sono quelli di [`config.registri_giornale`](/dbzero/config/tabelle/registri_giornale) (`codice_interno`): dal 19-09-2026 è il catalogo a dare il nome, la descrizione e l'etichetta a video di ogni registro, e un test tiene vista e catalogo allineati nei due versi. |
 | `riga_id` | `bigint` | L'identificativo **dentro** quel registro — serve ad aprire la riga di origine. |
 | `quando` | `timestamptz` | Il momento in cui è successo. ⭐ Per un tentativo (`TASK_RUN`) è **quando è nato** (`started_at`), dal 19-09-2026 — vedi la quarta scelta qui sotto. |
 | `entity_type` | `text` | Di che cosa si sta raccontando la storia: `LOTTO`, `FATTURA`… I valori sono quelli di [`config.tipi_entita`](/dbzero/config/tabelle/tipi_entita). |

@@ -249,6 +249,26 @@ emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
 produzione, non c'è niente da aspettare.*
 
 ### Aperto — Media priorità
+- **`zeroerp_log` in CI non ha `USAGE` su `dbops`: ogni test Django lavora con
+  `tx_id = uuid_nil`** (DB+CI, ereditata il 2026-09-19 dalla chiusura di
+  `work-done/brief-db-privilegio-app-job-run-log.md`, §5). La sede del
+  privilegio esiste — `scripts/sql/provision_dblink_log_channel.sql` — ma la CI
+  non la esegue: il changeSet che la incarna (`90_end/20260205-42`) è
+  `context: disabled`, il bootstrap di `ci-validate.yaml` crea il ruolo e il
+  DSN senza concedergli niente su `dbops`, e `90_end/20260905-38` gli dà
+  `maintenance`, non `dbops`. Su dev il grant c'è, a mano (§11.9, stessa
+  forma). Effetto: `fn_get_or_create_session_tx_id` ripiega su `uuid_nil`
+  (progettato apposta, non fa fallire nulla), quindi ogni asserzione sul
+  `tx_id` reale in CI è verde per sottrazione e l'audit non correla. Fatto
+  datato: 16 114 righe `permission denied for schema dbops` nel log Postgres
+  della corsa verde `35451924195`. Due strade, **decisione a Tid**: un passo
+  in `ci-validate.yaml` che lancia `provision_dblink_log_channel.sql` dopo il
+  bootstrap, oppure un changeSet `90_end` gemello di `20260905-38` per
+  `dbops`. Tocca il workflow, condiviso BE/DB. In coda allo stesso brief due
+  code minori: `maintenance.test_pgagent_log` con `zeroerp_app=r` a mano su
+  dev e senza lettore (§3.3, `REVOKE` + pin nel pgTAP, o un lettore da
+  trovare) e `check_db_role_access.sql` che esclude `maintenance` per intero
+  (§3.4, da verificare)
 - **La distinta del fondo fattura fuori lotto** (DB, ereditata il 2026-09-17
   dalla chiusura di `work-done/brief-db-distinta-numerata-sul-registro.md`,
   §4-bis.19): `fn_sync_contabili_fondo_fattura` passa `p_lotto_id = NULL` se la
@@ -335,8 +355,15 @@ produzione, non c'è niente da aspettare.*
   in una costante BE e in un array FE, e nessuna sede porta l'etichetta — la
   tendina «Registro» mostra `EVENT_LOG` grezzo. Richiesta: `config.registri_giornale`
   nella forma del lookup generico + pgTAP che lega vista e catalogo nei due
-  versi. Il BE aspetta; la tendina gemella «Entità» è già sul catalogo
-  (`GET /core/lookup/tipi-entita/`, stesso giorno)
+  versi. ✅ **Lato DB CHIUSO il 19-09** (`20260919-08` tabella, `-09` seed,
+  pgTAP `script/test-giornale-registri-catalogo-v1` 13/13 come app, i due
+  presidi sul catalogo nel pgTAP della vista; **senza `attivo`**, `sorgente`
+  come `text` — risposte D1/D2/D3 nel brief §6): applicato su dbdev, suite
+  senza regressioni, da committare; poi tocca al BE (§5 del brief:
+  `_REL_CONSENTITE`, `GIORNALE_REGISTRI` pinnata o letta dal catalogo,
+  `REGISTRI` FE ritirato, otto chiavi i18n, e le note del §8.4 — fra cui:
+  `etichetta_key` esce dal lookup generico solo via `_LOOKUP_SPECIALIZZATE`).
+  La tendina gemella «Entità» è già sul catalogo (`GET /core/lookup/tipi-entita/`)
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
