@@ -20,7 +20,7 @@
 > ⚠️ Oggi la tabella ha esattamente due righe, quindi il primo vincolo è **saturo
 > e indistinguibile da uno rispettato**: aggiungere il centro banca fallisce.
 > Rimessi in piedi dal passo **P-1** di
-> `docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md`.
+> `docs/it/dev/work-done/brief-db-posting-e-abbinamento-rata.md`.
 > ⛔ **Non ancora applicato.**
 
 ### 🎯 Scopo Principale

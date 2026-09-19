@@ -258,7 +258,7 @@ legittime**.
 **normale** — la chiusura dei documenti di un emittente cessato — diventa rumore,
 e un presidio che tutti ignorano è peggio di uno che non c'è. Il posto di quel
 presidio è sul documento, ed è materia di
-[analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md).
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 
 **Come si realizza, senza combattere con l'automazione.** Il lucchetto
 `require_attivo` lo genera `dbops.fn_run_automations_attivo`, che gira su
@@ -1425,7 +1425,7 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 | **Un `trgfn_guard_emittente_scope` su questa tabella** | D-10 |
 | **Estendere `script.fn_resolve_emittente_fiscale_id`** | Con la colonna SR la derivazione è una **copia** dal padre: nasce il gemello `fn_resolve_emittente_sr_id` e la funzione esistente **non si tocca** (D-1) |
 | **Seedare `LOTTO` in `config.sorgenti`** | Serviva alla FK, che non c'è più (D-9). Se un domani il lineage vorrà il lotto come nodo, sarà una decisione sua |
-| **Segnalare come anomalia un evento su un padre disattivato** | L'avviso scatterebbe sul caso **normale** (la chiusura dei documenti di un emittente cessato) e diventerebbe rumore. Il presidio giusto sta **sul documento** — [analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md) |
+| **Segnalare come anomalia un evento su un padre disattivato** | L'avviso scatterebbe sul caso **normale** (la chiusura dei documenti di un emittente cessato) e diventerebbe rumore. Il presidio giusto sta **sul documento** — [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md) |
 
 ---
 
@@ -1487,7 +1487,7 @@ critica irrisolta.
 > ⚠️ **Il rilievo di Q-4/Q-5 vale oltre questo cantiere.** «Chi continua a
 > scrivere su una riga annullata» è un'anomalia da **presidiare sul documento**,
 > non da nascondere spegnendo il suo diario. È materia di
-> [analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md), e il
+> [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md), e il
 > diario — una volta leggibile — è ciò che permette di **accorgersene**.
 
 ---

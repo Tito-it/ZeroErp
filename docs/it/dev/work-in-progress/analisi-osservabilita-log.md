@@ -143,7 +143,7 @@ prerequisito anche di qui, e il suo **endpoint diagnostico** consumerà i
 registri che qui si tratta di rendere leggibili.
 
 ⭐ **E c'è un terzo vicino, che è la leva opposta** (aperto il 2026-08-22):
-[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
+[analisi-presidi-percorso-storto.md](../work-done/analisi-presidi-percorso-storto.md).
 Questo documento serve a **capire in fretta** un caso già rotto; quello a
 **evitare che esca**. Un log si consulta quando già sai che qualcosa non va, un
 cancello ti ferma quando non lo sai ancora: il primo riduce il tempo per

@@ -1,16 +1,40 @@
 # Analisi — Presidi sul percorso storto
 
+> 🟢 **CHIUSA e archiviata il 2026-09-19** (decisione di Tid: *«fai sia C1 che
+> C2 […] così chiudiamo l'analisi e abbiamo i brief su cui lavorare»*).
+>
+> **Che cosa ne esce, in una riga per candidato:**
+>
+> | | Esito | Dove continua |
+> | --- | --- | --- |
+> | **C1** stato previsto e mai scritto | 🔵 **brief aperto** | [brief-db-presidio-stati-mai-scritti.md](../work-in-progress/brief-db-presidio-stati-mai-scritti.md) — registro + vista che classifica + pgTAP + riga `CANCELLO` in `dbops.presidi`; la metà Python al BE |
+> | **C2** promessa all'interfaccia | 🔵 **brief aperto** | [brief-be-presidio-ui-action-e-canale-campi.md](../work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md) — coerenza `highlight_form_fields` ↔ canale `fields`, con la decisione di Tid del 09-09 come premessa |
+> | **C3** liste che non sanno dire perché | ✅ chiuso da solo | 20 liste su 77 col motivo (§3-quater); non serve un cancello |
+> | **C4** registri scritti e mai letti | ✅ chiuso | `event_log` ha i suoi lettori (§3-bis) |
+> | **C5** numero a mano | ⛔ escluso | si corregge quando si tocca il file |
+>
+> ⭐ **La lezione, ed è il motivo per cui si chiude invece di rimisurare una
+> quarta volta:** in quattro settimane e tre rimisure nessun presidio è nato da
+> questo documento — C3 e C4 li ha chiusi il lavoro ordinario, C2 l'ha sbloccato
+> una decisione che stava in un altro file. *I presidi del percorso storto non
+> nascono da soli, e un'analisi non li sostituisce: li sostituisce un brief.*
+> Il §2 resta vero e vale come premessa dei due brief.
+>
 > **Destinatari:** Tid, backend, frontend, team DB
 >
 > **Tipo:** analisi + catalogo di candidati. Non è un piano di cantiere: è
 > l'inventario di una leva che il progetto usa bene su metà del suo perimetro.
 >
 > **Stato:** WIP — inventario misurato il 2026-08-22, **rimisurato il 2026-09-05**
-> (§3-bis) **e il 2026-09-15** (§3-ter). Nessun candidato è stato scritto; due
-> si sono chiusi o quasi **da soli**, uno è peggiorato in silenzio.
+> (§3-bis), **il 2026-09-15** (§3-ter) **e il 2026-09-19** (§3-quater, da
+> leggere per primo). Nessun candidato è stato scritto; due si sono chiusi o
+> quasi **da soli**, uno è peggiorato in silenzio.
 > ⏱️ *15-09*: **C2 ha il suo primo consumatore**, arrivato da fuori (28-08) —
-> la decisione 3 del §6 è presa **di fatto** e il presidio C2 ora si può
-> scrivere. Le altre tre decisioni restano aperte.
+> la decisione 3 del §6 è presa e il presidio C2 ora si può scrivere.
+> ⏱️ *19-09*: ⚠️ **quella decisione non era «di fatto»: era di Tid, del
+> 2026-09-09, ed è scritta in `api.md`** — questo documento l'aveva persa per
+> dieci giorni (§3-quater). Ne discende anche la **forma** del presidio C2. Le
+> altre tre decisioni del §6 restano aperte.
 >
 > **Origine:** discussione con Tid del 2026-08-22, nata da un'altra domanda
 > («l'osservabilità ci fa trovare i bug più in fretta?»). La risposta ha fatto
@@ -18,7 +42,7 @@
 > ne presidia sistematicamente uno solo.
 >
 > **Cosa NON è.** Non è
-> [analisi-osservabilita-log.md](analisi-osservabilita-log.md): quella risponde a
+> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md): quella risponde a
 > «come capisco in fretta un caso già rotto», questa a «come evito che il caso
 > rotto esca». Sono leve opposte e vanno tenute in due documenti — vedi §1.
 
@@ -33,7 +57,7 @@ Sotto la frase «trovare bug» ci stanno due mestieri con strumenti diversi:
 | Strumento | cancelli, presidi, smoke su chiamate reali | log, timeline, `correlation_id` |
 | Quando agisce | mentre scrivi, prima che esca | dopo, quando il danno è visibile |
 | Effetto | **meno** difetti | **meno tempo** per difetto |
-| Documento | questo | [analisi-osservabilita-log.md](analisi-osservabilita-log.md) |
+| Documento | questo | [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) |
 
 **La prova che in questo repo la colonna sinistra rende di più** è di questa
 settimana, e non è un'opinione:
@@ -44,7 +68,7 @@ settimana, e non è un'opinione:
   **prova reale** — il `DELETE` mancante al ruolo worker su `vendite.note`, che
   rompeva il rollback **solo** dal canale batch e che nessun test coglieva,
   perché i mock non vedono i grant
-  ([brief-db-grant-batch-cleanup-note.md](../work-done/brief-db-grant-batch-cleanup-note.md));
+  ([brief-db-grant-batch-cleanup-note.md](brief-db-grant-batch-cleanup-note.md));
 * nessuno è stato trovato leggendo un registro.
 
 Un log si consulta quando **già sai** che qualcosa non va. Un cancello ti ferma
@@ -90,7 +114,7 @@ lo stesso perimetro dove un gestionale passa molta della sua vita in esercizio.
 
 Tutti i numeri sotto sono letti da **git** — codice, seed, catalogo — non dal
 database di sviluppo. Reggono indipendentemente dai dati (la ragione sta nel
-§0-bis di [analisi-osservabilita-log.md](analisi-osservabilita-log.md)).
+§0-bis di [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md)).
 
 ### C1 — Uno stato di fallimento previsto dal modello e mai scritto 🔴
 
@@ -161,7 +185,7 @@ usa già.
 
 `vendite.event_log` è scritto da due repository e non ha **nessun** endpoint di
 lettura. Il piano per chiuderlo è in
-[analisi-osservabilita-log.md](analisi-osservabilita-log.md) e non si duplica
+[analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) e non si duplica
 qui; quello che riguarda **questo** documento è la classe: una tabella-registro
 con scrittori e zero lettori è una condizione dichiarabile e verificabile.
 
@@ -282,6 +306,91 @@ ragione**, non un elenco nel test.
 
 ---
 
+## 3-quater. ⏱️ Rimisurato il 2026-09-19 — il documento aveva perso una decisione
+
+> Quattro giorni dopo. Stesse sorgenti (git, seed, catalogo). **Nessun presidio
+> candidato è stato scritto.** La notizia non sta nei numeri, che si muovono
+> poco: sta in una riga di `api.md` che la rimisura del 15-09 non ha letto.
+
+| Candidato | 2026-09-15 | 2026-09-19 | |
+| --- | --- | --- | --- |
+| **C1** stato di fallimento mai scritto | 🔴 | 🔴 **invariato** | nessun presidio generico, nessun registro di esenzioni. I tre pgTAP che parlano di «mai scritto» presidiano **un** caso ciascuno (snapshot fattura, importi di riga, chiave a tre specchi): sono la forma per-caso, non la classe |
+| **C2** promessa all'interfaccia | 🟡 | 🟡 **la decisione era già presa, e scritta** | vedi sotto. Catalogo **897** codici (+40; 92 ritirati, 805 vivi), override **182** (=), `highlight_form_fields` **129** (⚠️ non 131: vedi la correzione sotto). **Secondo lettore** di `ui_action`: `pagamenti/composables/useRigheDaRate.js` (17-09), sull'errore per-riga dell'esito PARZIALE di `righe/da-rate/` — stessa costante `CONFERMA_E_RIPETI`, stesso unico valore |
+| **C3** liste che non sanno dire perché | 🟢 | 🟢 **cresce da solo** | **77** liste (+10); **9** con colonna errore/esito (+1: `magazzino.inventario_piano`), **20** includendo `motivo` (+3: `magazzino.rettifica_righe`, `pagamenti.distinta_righe`, …). `ErroreRigaInfo.vue`: **4** consumatori (+1: `PresidioChip.vue`, il pannello dei presidi). ⚠️ Criterio dichiarato, perché il 15-09 non lo era: `codice`+`campo_sorgente` di `lista_colonna.csv` che contengono `errore\|error\|stato_esecuzione\|esito` (stretto) o anche `motivo` (largo). Sul seed del 15-09 dà 8/17 contro il 7/16 scritto in §3-ter: la grana è la stessa, la soglia era di una lista |
+| **C4** registri scritti e mai letti | ✅ | ✅ | — |
+| **C5** numero a mano | ⛔ | ⛔ **fermo** | l'intestazione dice ancora «176» e «482 su 658»; le voci sono **182** e i codici **897** |
+
+### ⚠️ La decisione 3 del §6 non era «di fatto»: era di Tid, del 09-09
+
+`api.md` §«Cosa cambia davvero lo status, lato client» porta, con data:
+
+> ⭐ **DECISIONE (Tid, 2026-09-09): le altre sei `ui_action` sono SERVITE, non
+> ignorate — e la voce si chiude dichiarandolo.** Il default del client copre
+> l'intero vocabolario tranne `confirm_and_retry`, che è l'unico a chiedere un
+> comportamento che il default non sa produrre. […] ⚠️ E la condizione per
+> accendere il settimo resta quella già scritta: le **176 righe di override**
+> vanno riguardate **prima**, non dopo.
+
+La §3-ter, scritta **sei giorni dopo**, dice che la decisione «l'ha presa il
+primo cantiere che aveva bisogno di un'`ui_action`» — cioè attribuisce a un
+consumatore arrivato per caso (28-08) una scelta che Tid aveva già messo per
+iscritto, in un documento di lettura obbligatoria. ⛔ **È il §C5 applicato a
+questo stesso documento**: una rimisura che rilegge le *proprie* sorgenti e
+non quelle accanto invecchia esattamente come un numero in un commento.
+
+**Che cosa cambia per C2, ed è più della paternità della decisione.** La
+decisione dice **come** ogni `ui_action` viene servita — `highlight_form_fields`
+da `campiErrati`, `redirect_login` dallo status 401, le altre quattro dal toast
+— quindi il «secondo strato» del §3 (*la promessa e il comportamento viaggiano
+su due binari*) non è più un'osservazione: è il **contratto**. Il presidio C2
+ha allora una forma sola, e non è un presidio sul consumo:
+
+> per ogni codice con override `highlight_form_fields`, esiste **un** punto di
+> sollevamento che valorizza il canale `fields` (`context={"field": …}` in
+> Python, `RAISE … USING COLUMN` in PL/pgSQL); e nessun codice con un'altra
+> `ui_action` lo valorizza — con il registro delle esenzioni motivate per i
+> casi in cui il campo esiste ma il banner è la resa scelta (precedente:
+> `E_EMITTENTE_NON_RISOLTO`, 15-09, dichiarato in `error_ui_overrides.py`).
+
+⭐ **Ed è esattamente la «rilettura delle 176 righe» che `api.md` mette come
+condizione**: non un giro a mano una volta, ma un cancello che la rifà a ogni
+PR. Le sorgenti sono tutte in git — l'override, i `context` dei `ServiceError`,
+i corpi delle funzioni nella doc auto-generata — e il repertorio del §4 le
+copre. ⚠️ Un presidio di **consumo** («quanti leggono `azioneUi`») invece
+misurerebbe ancora la grana sbagliata: il consumatore giusto dei sei valori è
+il default, e il default non si conta.
+
+### ⚠️ Due misure di questo documento erano sbagliate, e si correggono qui
+
+* **`highlight_form_fields` = 131 (05-09, 15-09) era un `grep -c`** che contava
+  anche le righe di commento che nominano il valore. Contando i **valori**
+  dell'override, il 15-09 erano già **129** — il numero che `api.md` scrive
+  dallo stesso giorno. Due documenti, due numeri per lo stesso fatto: la
+  lezione di `AGENTS.md` sulle versioni del frontend, in piccolo.
+* **L'inventario del §2 diceva «dodici» il 15-09: erano quindici.** Mancavano
+  `test_idempotency_key_contratto_fe_be` (08-09),
+  `test_archiviazione_code_non_e_un_annullo` (09-09) e
+  `test_coercizione_jsonb_dal_bb` (09-09). Oggi sono **sedici**:
+  `test_export_lista_codice_pari` (18-09) — le coppie lista/export devono
+  dichiarare lo stesso `lista_codice`. ⚠️ Percorso felice tutti e quattro:
+  l'osservazione del §2 regge, e regge **meglio** con un conteggio giusto.
+  (`test_logging_filters` resta fuori dal conto: è un test unitario di un
+  filtro, non un presidio trasversale.)
+
+### ⭐ Il vicino cresce: `dbops.presidi` ha un destinatario a video
+
+Dal 18-09 il catalogo runtime (**42** viste: 21 `ZERO`, 9 `LAVORAZIONE`,
+7 `INVENTARIO`, 4 `CANCELLO`, 1 `REGISTRO`) non parla più solo per posta: il
+**pallino dei presidi** in topbar (`usePresidiPolling`, decisione #8 di Tid) e
+il pannello «Processi automatici» rendono la stessa testata, e
+`PresidioChip.vue` riusa `ErroreRigaInfo` — il quarto consumatore contato in
+C3. ⚠️ Vale la stessa nota della §3-ter: è il lato **dati in esercizio**, non
+chiude C1 né C2. Ma la forma «una riga di catalogo con la ragione» oggi ha
+anche una superficie che la legge, e quando C1 si scriverà quella riga avrà già
+un posto dove comparire.
+
+---
+
 ## 4. La forma tecnica: perché costano poco
 
 I candidati C1-C4 sono tutti test che **contano cose in git**, non nel database.
@@ -335,6 +444,11 @@ Sono documentati, tutti e tre, da cose successe qui.
    ⏱️ *2026-09-15*: **presa di fatto — si consuma** (§3-ter:
    `useForzaturaConfermata` + `azioniGestite`). Il presidio C2 ha il suo
    prerequisito.
+   ⏱️ *2026-09-19*: ⚠️ **era già presa da Tid il 2026-09-09, in `api.md`**
+   (§3-quater): si continua a produrla, sei valori su sette li serve il
+   default, e le righe di override vanno riguardate **prima** di un secondo
+   consumatore. ⇒ Il presidio C2 non è più «consumarla o no»: è la coerenza
+   `highlight_form_fields` ↔ canale `fields`, con esenzioni motivate.
 4. **Chi decide le esenzioni.** Il registro con la ragione scritta funziona solo
    se la ragione la scrive chi conosce il dominio, non chi scrive il test.
 
@@ -344,12 +458,12 @@ Sono documentati, tutti e tre, da cose successe qui.
 
 | Documento | Rapporto |
 | --- | --- |
-| [analisi-osservabilita-log.md](analisi-osservabilita-log.md) | **La leva opposta** (§1). Là: capire in fretta un caso rotto. Qui: evitare che esca. Il suo «binario parallelo» sulle liste è il candidato **C3** di questo documento |
-| [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md) | Da lì viene la frase del §5 punto 2 («un controllo che protegge per caso non è un presidio»). La roadmap resta il documento di dominio |
-| [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) | Cita due presidi esistenti come precedenti per un check CI: stessa tecnica, altro scopo |
+| [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) | **La leva opposta** (§1). Là: capire in fretta un caso rotto. Qui: evitare che esca. Il suo «binario parallelo» sulle liste è il candidato **C3** di questo documento |
+| [fatturazione-roadmap.md](fatturazione-roadmap.md) | Da lì viene la frase del §5 punto 2 («un controllo che protegge per caso non è un presidio»). La roadmap resta il documento di dominio |
+| [analisi-diagnostica-produzione-senza-accesso-db.md](../work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md) | Cita due presidi esistenti come precedenti per un check CI: stessa tecnica, altro scopo |
 | [api.md](../api.md) | La convenzione dei codici errore e dell'envelope — il terreno su cui si misura **C2** |
 
 ---
 
-*Analisi WIP — Presidi sul percorso storto (22 agosto 2026; rimisure del 5 e
-del 15 settembre 2026 — §3-bis, §3-ter).*
+*Analisi WIP — Presidi sul percorso storto (22 agosto 2026; rimisure del 5, del
+15 e del 19 settembre 2026 — §3-bis, §3-ter, §3-quater).*

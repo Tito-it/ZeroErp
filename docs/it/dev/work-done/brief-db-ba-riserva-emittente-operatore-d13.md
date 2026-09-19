@@ -2,7 +2,7 @@
 
 > **Da leggere per primo: §7 — cosa resta.**
 > Origine: [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md) §D13
-> e [brief-db-fixture-che-costruiscono-d7-d6-d4.md](../work-in-progress/brief-db-fixture-che-costruiscono-d7-d6-d4.md) §4,
+> e [brief-db-fixture-che-costruiscono-d7-d6-d4.md](brief-db-fixture-che-costruiscono-d7-d6-d4.md) §4,
 > dove il difetto è stato trovato il 2026-09-12 «strada facendo».
 > Decisione di Tid, 2026-09-12: **opzione 1**, nessuna bonifica dei dati.
 >

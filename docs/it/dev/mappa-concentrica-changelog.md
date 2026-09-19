@@ -185,7 +185,7 @@ log della corsa, non una mano. Lato applicazione, D15: `skip_area_check` era
 scrivevano senza permesso — e le famiglie hanno deciso quale delle due parole
 vale; le due vulnerabilità npm e `weasyprint 70` sanate senza dipendenze nuove.
 Vedi
-[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-in-progress/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
 [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
 [migliorie-generali-BE-FE-da-test-valutazione.md](work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
 
@@ -459,8 +459,8 @@ emittenti.
 ⛔ **Ma di questo dominio è stato provato il percorso, mai l'esito**: lo schema
 ha ancora zero righe, nessuno ha aperto una distinta o abbinato un incasso, e il
 collaudo in-app è **aperto**. Vedi
-[brief-db-posting-e-abbinamento-rata.md](work-in-progress/brief-db-posting-e-abbinamento-rata.md),
-[brief-be-fe-posting-e-abbinamento-rata.md](work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md),
+[brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
+[brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
 [collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
 
 **Anello 3 (vendite) — Il lavoro che non torna indietro.** Le tre porte di reset

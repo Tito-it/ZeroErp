@@ -12,7 +12,7 @@
 > • `pagamenti.trgfn_vendite_contabili_righe_guard_rata` — per sapere quanto spazio c'è
 > • [pagamenti.vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) — per l'elenco di quelle uscite dalla banda
 >
-> **Piano:** [brief-db-posting-e-abbinamento-rata](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata) §2.2 S2-6
+> **Piano:** [brief-db-posting-e-abbinamento-rata](/dev/work-done/brief-db-posting-e-abbinamento-rata) §2.2 S2-6
 
 ---
 

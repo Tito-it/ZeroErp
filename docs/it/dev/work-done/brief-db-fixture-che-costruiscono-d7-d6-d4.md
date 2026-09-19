@@ -1,16 +1,25 @@
 # Brief DB — Le fixture costruiscono il mondo (D7), il pin delle DEFINER (D6), shop.ricevute (D4)
 
-> **Da leggere per primo: §6 — cosa resta** (CI, D13, il pezzo nuovo di D6).
-> Origine: [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md),
+> **Da leggere per primo: §6 — cosa resta**, che al 19-09 è **una voce sola**,
+> e ha un brief suo.
+> Origine: [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md),
 > decisione di Tid del 2026-09-12: *«fai 1 e 2, poi D4»*.
 >
-> ✅ **Stato 2026-09-12, tardi: APPLICATO e COMMITTATO da Tid** (`35cadf9bb`):
-> changeSet 38-43 sul database di sviluppo, i 21 pgTAP riscritti, la baseline
-> di sviluppo **senza regressioni**, doc auto-gen rigenerate. Restano: la prima
-> corsa della CI (§1.3 e le righe da togliere dalla baseline CI) e il pezzo
-> nuovo di D6 (§3, in coda). ✅ D13 (§4) è **chiuso il 13-09** nel suo brief
-> (`brief-db-ba-riserva-emittente-operatore-d13.md`). 🔴 §3: due stesure dei
-> pin erano sbagliate di sede, corrette dopo due apply falliti.
+> ✅ **CHIUSO e archiviato il 2026-09-19.** Applicato e committato da Tid il
+> 12-09 (`35cadf9bb`): changeSet 38-43, i 21 pgTAP riscritti, baseline di
+> sviluppo senza regressioni, doc auto-gen rigenerate. **La CI ha detto la
+> sua** (§6.2): i 21 file di §1.1 sono usciti da `baseline-rossi-ci.tsv`
+> (commit `f8c1c2707`, `47f9712c2`, `8454f7cbd`) e
+> `test-role-batch-fatturazione-postura` non è in nessuna delle due baseline.
+> ✅ D13 (§4) chiuso il 13-09 nel suo brief
+> (`work-done/brief-db-ba-riserva-emittente-operatore-d13.md`, verificato
+> contro CI il 14-09). 🔵 **Il pezzo nuovo di D6** (§3, §6.4) è l'unico
+> lavoro vivo e dal 19-09 sta in
+> [brief-db-registro-owner-e-sync-riservati-al-migratore.md](../work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md),
+> con due fatti in più letti dal vivo che cambiano la forma (l'`EXECUTE`
+> esplicito dell'app sulla sync; `session_user`, non `current_user`).
+> 🔴 §3: due stesure dei pin erano sbagliate di sede, corrette dopo due apply
+> falliti.
 
 ---
 
@@ -252,6 +261,8 @@ frattempo `fn_get_ba_emittente_sr_id` ricade sul **default** — un'altra aziend
 - `80_data/changelog/20260912-43-delete-debito-rls-shop-ricevute`: `DELETE`
   delle righe **75** e **92** del registro (`loadUpdateData` non cancella) +
   righe tolte da `80_data/sql/dbops/rls_perimetro_debito.csv` (10 → 8).
+  ⚠️ Numero datato al 12-09: al 19-09 il CSV ha **7** righe — un cantiere
+  successivo ne ha estinta un'altra. Il registro si legge dal CSV, non da qui.
 - `acquisti.ddt` / `acquisti.ordini` **restano a registro**: policy di sola
   veste `FORNITORE_PORTALE` e nessuna colonna emittente — è D8, non D4.
 
@@ -267,10 +278,14 @@ registro a 8, `vw_rls_perimetro_scoperto` con soli `DEBITO_DICHIARATO=8`
 1. ✅ **Apply e pgTAP — fatti da Tid il 12-09**: changeSet 38-43 applicati con
    `../scripts/liquibase5.sh update`, baseline di sviluppo senza regressioni,
    doc auto-gen rigenerate, commit `35cadf9bb`.
-2. **CI**: la prima corsa di `ci-validate` con il passo nuovo dirà lo stato di
-   `test-role-batch-fatturazione-postura` e degli altri file che guardano il
-   ruolo batch. I file rientrati (i 21 di §1.1) vanno tolti a mano da
-   `baseline-rossi-ci.tsv` — regola: lo dice la CI, non lo scratch.
+2. ✅ **CI — fatto, verificato il 19-09** (fino a quel giorno questa riga lo
+   dava aperto: era già chiuso e nessuno l'aveva scritto). I 21 file di §1.1
+   sono usciti da `baseline-rossi-ci.tsv` in tre commit (`f8c1c2707`,
+   `47f9712c2`, `8454f7cbd`), e non «a mano»: dal 14-09 i rientrati li toglie
+   `scripts/pgtap-baseline-ci-rientrati.sh` leggendo il log della corsa.
+   `test-role-batch-fatturazione-postura` (§1.3) non è in nessuna delle due
+   baseline: il passo «Provision ruolo batch fatturazione» in
+   `ci-validate.yaml` ha fatto quello che doveva.
 3. **D13** (§4): ✅ deciso — opzione 1, nessuna bonifica dati — e ✅ **chiuso
    il 13-09** nel brief suo, `brief-db-ba-riserva-emittente-operatore-d13.md`:
    tre changeSet (`20260913-01/02/03`) applicati, baseline senza regressioni.
@@ -278,9 +293,16 @@ registro a 8, `vw_rls_perimetro_scoperto` con soli `DEBITO_DICHIARATO=8`
    perché leggendo i chiamanti è emersa una seconda copia della regola
    (`fn_get_emittente_fiscale_pk`) e il `PARALLEL SAFE` andava tolto anche
    alla chiamante — il perché sta nel brief, §4.
-4. **Il pezzo nuovo di D6** (§3, in coda): registro `dbops.sec_functions_owner`
-   e `fn_sync_functions_owner` riservati al migratore. Stima ≈ **mezza
-   giornata**, con la forma già decisa dal vincolo tecnico:
+4. 🔵 **Il pezzo nuovo di D6** (§3) — dal 19-09 ha un brief suo:
+   [brief-db-registro-owner-e-sync-riservati-al-migratore.md](../work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md).
+   ⚠️ Le righe qui sotto sono la forma pensata il 12-09 e **due punti sono
+   superati** da lì: `pg_has_role(current_user, …)` non funziona dentro una
+   DEFINER (`current_user` è il proprietario — si usa `session_user`), e la
+   «lista nuova sola lettura» esiste già (`v_tabelle_sola_lettura_app`, nata
+   il 18-09 per il ledger). Restano qui come storia della decisione.
+   Registro `dbops.sec_functions_owner` e `fn_sync_functions_owner` riservati
+   al migratore. Stima ≈ **mezza giornata**, con la forma già decisa dal
+   vincolo tecnico:
    - ⛔ **non** con GRANT/REVOKE sulla sync: la funzione è di `postgres`, e un
      privilegio dato al migratore mentre la possiede in prestito **non
      sopravvive** alla restituzione (`ALTER … OWNER` rimappa le voci ACL del
