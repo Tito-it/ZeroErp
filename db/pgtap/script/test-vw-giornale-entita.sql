@@ -6,7 +6,7 @@
 -- ------------------------------------------------------------
 -- Indice test (plan 15):
 --  1) ⛔ la vista e' security_invoker — senza, tutto il perimetro cade
---  2) la fixture arriva nella vista da tutti e quattro i registri
+--  2) la fixture arriva nella vista da OGNI registro vivo di config.registri_giornale
 --  3) `riga_key` e' unica: i quattro spazi di id non si sovrappongono
 --  4) il ramo event_log porta il filo del giro e il numero di chi ha agito
 --  5) ⭐ il task run porta il correlation_id passato all'apertura (changeSet 67)
@@ -18,7 +18,7 @@
 --     (R-6, 20260919-04: la riga e' la corsa, e la corsa nasce li'; ended_at
 --     lo puo' scrivere la corsa successiva, e una riga di diario non cambia
 --     posto dopo essere nata — fino al 19-09 questo test pinnava il contrario)
--- 11) ⛔ nessun registro fuori dai quattro dichiarati
+-- 11) ⛔ nessun registro fuori dal catalogo config.registri_giornale
 -- 12) una segnalazione RITIRATA resta nel diario: non si filtra
 -- 13) ⭐ ...e si vede che e' ritirata: il flag c'e', accanto a quella viva
 -- 14) event_log ha `disabilitato` NULL: il concetto non esiste
@@ -29,11 +29,18 @@
 --    quattro posti. Il presidio serve su due cose che si rompono in silenzio —
 --    la MAPPA della gravita' (tre vocabolari chiusi che entrano in uno) e
 --    l'ASSE delle entita' (che deve restare il catalogo, non un elenco locale).
---  - ⭐ La 8 e la 9 sono canarini: non collaudano la vista di oggi, si
+--  - ⭐ La 8, la 9 e la 11 sono canarini: non collaudano la vista di oggi, si
 --    accendono il giorno che un CHECK si allarga o che un tipo nuovo entra in
 --    un registro senza passare dal catalogo. E' la lezione del lotto L5 —
 --    due elenchi che possono dissentire vanno fatti gridare — applicata prima
 --    che il danno accada.
+--  - ⭐ Dal 19-09 (20260919-08) anche l'asse dei REGISTRI e' un catalogo,
+--    config.registri_giornale: la 2 e la 11 lo leggono da li', e l'elenco
+--    dei quattro nomi scritto qui dentro e' stato ritirato — era la stessa
+--    quarta copia che il catalogo nasce per togliere. Il legame fra vista e
+--    catalogo nei due versi (sulla DEFINIZIONE, non sulle righe) sta in
+--    test-giornale-registri-catalogo-v1.sql; qui si guarda che le RIGHE non
+--    escano dal vocabolario (11) e che la fixture li tocchi tutti (2).
 --
 -- ⚠️ **Cosa questo file NON verifica, dichiarato**: la separazione fra
 --    emittenti. Per farlo servirebbe un lotto o una fattura di un ALTRO
@@ -179,14 +186,21 @@ SELECT ok(
 );
 
 -- ============================================================
--- 2-3) I quattro registri, e la chiave della riga
+-- 2-3) Ogni registro vivo, e la chiave della riga
 -- ============================================================
+--   ⭐ Il termine di confronto e' il CATALOGO, non un elenco scritto qui: un
+--   quinto ramo che entra nella vista (e nel catalogo, o l'altro presidio fa
+--   rosso) senza una riga di fixture in questo file fa rosso QUI — e' il
+--   modo in cui questo test chiede di essere esteso, invece di restare verde
+--   guardando quattro rami su cinque.
 SELECT set_eq(
   $$ SELECT DISTINCT g.registro
        FROM script.vw_giornale_entita g
       WHERE g.cosa LIKE 'pgtap%' OR g.cosa LIKE 'PGTAP%' $$,
-  ARRAY['EVENT_LOG', 'LOTTO_LOG', 'TASK_RUN', 'FATTURA_LOG'],
-  '2. la fixture arriva nella vista da tutti e quattro i registri'
+  $$ SELECT rg.codice_interno
+       FROM config.registri_giornale rg
+      WHERE rg.obsoleto_dal IS NULL $$,
+  '2. la fixture arriva nella vista da ogni registro vivo di config.registri_giornale'
 );
 
 SELECT is(
@@ -298,14 +312,19 @@ SELECT is(
   '10. il «quando» di un tentativo chiuso e'' lo started_at, non l''ended_at (R-6)'
 );
 
+--   ⚠️ Gemella della 9 sull'altro asse: l'elenco dei registri e'
+--   config.registri_giornale, non quattro nomi scritti qui (ritirati il 19-09).
+--   Il verso «ogni riga del catalogo ha il suo ramo» e' nell'altro presidio.
 SELECT is(
   (
     SELECT count(*)::int
       FROM script.vw_giornale_entita g
-     WHERE g.registro NOT IN ('EVENT_LOG', 'LOTTO_LOG', 'TASK_RUN', 'FATTURA_LOG')
+     WHERE NOT EXISTS (
+             SELECT 1 FROM config.registri_giornale rg
+              WHERE rg.codice_interno = g.registro)
   ),
   0,
-  '11. nessun registro fuori dai quattro dichiarati'
+  '11. nessun registro fuori dal catalogo config.registri_giornale'
 );
 
 --   ⛔ Un diario dice cosa e' SUCCESSO, non cosa e' ancora aperto: la riga

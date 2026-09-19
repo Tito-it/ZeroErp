@@ -8,9 +8,36 @@
 > `maintenance` (2026-09-09), lo schema `django` (2026-09-13) e i registri
 > append-only (2026-09-11).
 >
-> **Stato:** 🔴 CI rossa su PR #1620 (`dev/backend-tid` → `Tito-dev`), corsa
-> `35436621558` del 2026-09-19, passo «Django tests»: **16 errori, tutti con la
-> stessa causa**. Nessun changeSet ancora.
+> **Stato:** ✅ **CHIUSO e archiviato in `work-done/` il 2026-09-19 (sera)**.
+> Letto dalle sorgenti, non supposto. §3.1 fatto: blocco `maintenance` in
+> fondo a `scripts/sql/provision_db_roles.sql` (`USAGE` + solo `SELECT` su
+> `job_run_log` e `vw_job_run_da_guardare`, `to_regclass`), e i due commenti
+> corretti; in più — oltre il brief, e con la ragione scritta nel file —
+> il changeSet gemello `90_end/20260919-08` per i database già provisionati
+> (`EXECUTED` su dbdev alle 16:46, `databasechangelog`). §3.2 fatto:
+> `db/pgtap/maintenance/test-app-postura-job-run-log-v1.sql` (plan 10: postura
+> con `has_*_privilege`, la porta DEFINER, `lives_ok`/`throws_ok 42501` come
+> app). Tutto in `5d8331f94` (17:09, con `linee-guida-sql` §11.9 «quarta
+> volta» e il manuale di `job_run_log`), mergiato fino a `main` (PR #1623).
+> **§6 verificato** sulla corsa `35451924195` (`Tito-dev`, verde): «Django
+> tests» `Ran 5076 tests … OK (skipped=46)`, **zero** `permission denied for
+> table job_run_log` nel log del container; il pgTAP nuovo verde su DB da
+> zero; e `maintenance/test-job-run-registrazione.sql` — l'`ERRORE_FIXTURE`
+> in `baseline-rossi-ci.tsv` con la causa mai letta — dichiarato **RIENTRATO**
+> dalla CI, tolto con `scripts/pgtap-baseline-ci-rientrati.sh` (363 → 362).
+>
+> ⚠️ **Tre code, che l'archiviazione non chiude:**
+> **§3.3** `maintenance.test_pgagent_log` ha ancora `zeroerp_app=r` su dbdev,
+> a mano, senza lettore; il presidio non lo pinna né sì né no — resta la
+> decisione (`REVOKE` a mano su dev + riga nel pgTAP, o un lettore che non ho
+> trovato). **§3.4** `check_db_role_access.sql` esclude ancora `maintenance`
+> per intero: non è stato verificato. **§5** è **aperto e cresce**: nella
+> corsa verde `35451924195` le righe `permission denied for schema dbops` di
+> `zeroerp_log` sono **16 114** (erano 861 nella corsa rossa del mattino —
+> fatto datato, non motivo: da quando i test girano come app attraversano più
+> DB). Portato in `PROJECT_CONTEXT.md` «Aperto» perché non resti sepolto qui.
+> Sotto, il testo com'era — «CI rossa, nessun changeSet» — che al mattino
+> diceva il vero.
 >
 > **Origine:** Tid, 2026-09-19 — *«problema CI GitHub»*, con il traceback di
 > `test_processi_vuole_identita`.
