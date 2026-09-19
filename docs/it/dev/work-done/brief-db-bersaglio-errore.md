@@ -1183,7 +1183,7 @@ prodotto e non consumato — 126 codici promettono «evidenzia il campo» e ness
 componente legge `azioneUi`. Un errore che porta un bersaglio è il primo pezzo di
 frontend che ha una **ragione** per leggere quel canale, e rende scrivibile il
 presidio **C2** di
-[analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md).
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 
 ### B-1 · Backend — dal canale all'envelope ✅ **eseguibile**
 
@@ -1285,7 +1285,7 @@ per non offrire un pulsante che porta nel vuoto.
 «evidenzia il campo» e nessun componente legge `azioneUi`. Un errore che porta
 un bersaglio è il primo pezzo di frontend che ha una **ragione** per leggere quel
 canale, e rende scrivibile il presidio **C2** di
-[analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md).
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 
 ## 7-bis. Il piano di sviluppo BE/FE *(scritto il 2026-08-24)*
 
