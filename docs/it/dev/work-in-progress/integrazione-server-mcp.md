@@ -12,7 +12,7 @@
 >
 > **Documenti correlati:**
 > [integrazione-ai.md](/dev/work-done/integrazione-ai) — architettura AI Assistant interno (implementato, Anello 4) ·
-> [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) — **documento padre** per tutto ciò che riguarda il canale diagnostico (§6.1) e il profilo supporto (§6.3)
+> [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md) — **documento padre** per tutto ciò che riguarda il canale diagnostico (§6.1) e il profilo supporto (§6.3)
 
 ---
 
@@ -228,7 +228,7 @@ Il vantaggio sul "SQL a mano" è l'**iterazione autonoma**: Claude esegue una qu
 **Tool di investigazione proposti.** Questi sono tool **di sola lettura**, distinti dai tool operativi del §5, con accesso privilegiato ai dati di audit.
 
 > ⚠️ **Sono consumatori, non un secondo canale.** Dal 2026-07-25 il canale diagnostico è progettato in
-> [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md):
+> [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md):
 > l'artefatto è un **endpoint diagnostico** (Fase 1, §5.3 di quel documento) che aggrega stato, azioni
 > ammesse, storico, contesto permessi e correlazione `request_id`/`tx_id`. I tool `investigazione_*`
 > **devono chiamare quell'endpoint**, non leggere `dbops.*` per conto proprio: due strade verso gli stessi
@@ -305,7 +305,7 @@ Questo è l'esempio più chiaro del principio "il server MCP può anche essere u
 Il caso d'uso §6.1 richiede un profilo utente che oggi non esiste in ZeroERP. Va definito prima di implementare i tool di investigazione.
 
 > **La modellazione non è più una questione aperta qui.** È decisa in
-> [analisi-diagnostica-produzione-senza-accesso-db.md §5.6](analisi-diagnostica-produzione-senza-accesso-db.md):
+> [analisi-diagnostica-produzione-senza-accesso-db.md §5.6](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md):
 > il profilo si costruisce come **alias di connessione DB a un ruolo dedicato read-only**, coerente con
 > `system_process_context` ([system_context.py](../../../../backend/apps/core/services/system_context.py)),
 > **non** come livello applicativo accanto a `TUTTO`/`LETTURA`/`BLOCCATO`. Il requisito «nessuna scrittura»

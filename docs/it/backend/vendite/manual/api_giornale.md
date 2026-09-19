@@ -5,9 +5,9 @@
 «**Cosa è andato storto, su tutto, nell'ultimo periodo**»: la Storia di tutte
 le entità insieme, filtrata per gravità, con il salto al lotto e al documento.
 È la «vista errori trasversale (non legata al mese di competenza)» del Passo B
-di [analisi-osservabilita-log](../../../dev/work-in-progress/analisi-osservabilita-log.md),
+di [analisi-osservabilita-log](../../../dev/work-done/analisi-osservabilita-log.md),
 scritta come pezzo **G** del
-[piano BE/FE dell'osservabilità](../../../dev/work-in-progress/piano-be-fe-osservabilita-pallino-e-superfici.md) §3.
+[piano BE/FE dell'osservabilità](../../../dev/work-done/piano-be-fe-osservabilita-pallino-e-superfici.md) §3.
 
 ## Contesto
 

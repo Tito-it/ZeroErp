@@ -42,7 +42,7 @@
 > ne presidia sistematicamente uno solo.
 >
 > **Cosa NON è.** Non è
-> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md): quella risponde a
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md): quella risponde a
 > «come capisco in fretta un caso già rotto», questa a «come evito che il caso
 > rotto esca». Sono leve opposte e vanno tenute in due documenti — vedi §1.
 
@@ -57,7 +57,7 @@ Sotto la frase «trovare bug» ci stanno due mestieri con strumenti diversi:
 | Strumento | cancelli, presidi, smoke su chiamate reali | log, timeline, `correlation_id` |
 | Quando agisce | mentre scrivi, prima che esca | dopo, quando il danno è visibile |
 | Effetto | **meno** difetti | **meno tempo** per difetto |
-| Documento | questo | [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) |
+| Documento | questo | [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) |
 
 **La prova che in questo repo la colonna sinistra rende di più** è di questa
 settimana, e non è un'opinione:
@@ -114,7 +114,7 @@ lo stesso perimetro dove un gestionale passa molta della sua vita in esercizio.
 
 Tutti i numeri sotto sono letti da **git** — codice, seed, catalogo — non dal
 database di sviluppo. Reggono indipendentemente dai dati (la ragione sta nel
-§0-bis di [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md)).
+§0-bis di [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md)).
 
 ### C1 — Uno stato di fallimento previsto dal modello e mai scritto 🔴
 
@@ -185,7 +185,7 @@ usa già.
 
 `vendite.event_log` è scritto da due repository e non ha **nessun** endpoint di
 lettura. Il piano per chiuderlo è in
-[analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) e non si duplica
+[analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) e non si duplica
 qui; quello che riguarda **questo** documento è la classe: una tabella-registro
 con scrittori e zero lettori è una condizione dichiarabile e verificabile.
 
@@ -458,9 +458,9 @@ Sono documentati, tutti e tre, da cose successe qui.
 
 | Documento | Rapporto |
 | --- | --- |
-| [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) | **La leva opposta** (§1). Là: capire in fretta un caso rotto. Qui: evitare che esca. Il suo «binario parallelo» sulle liste è il candidato **C3** di questo documento |
+| [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) | **La leva opposta** (§1). Là: capire in fretta un caso rotto. Qui: evitare che esca. Il suo «binario parallelo» sulle liste è il candidato **C3** di questo documento |
 | [fatturazione-roadmap.md](fatturazione-roadmap.md) | Da lì viene la frase del §5 punto 2 («un controllo che protegge per caso non è un presidio»). La roadmap resta il documento di dominio |
-| [analisi-diagnostica-produzione-senza-accesso-db.md](../work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md) | Cita due presidi esistenti come precedenti per un check CI: stessa tecnica, altro scopo |
+| [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md) | Cita due presidi esistenti come precedenti per un check CI: stessa tecnica, altro scopo |
 | [api.md](../api.md) | La convenzione dei codici errore e dell'envelope — il terreno su cui si misura **C2** |
 
 ---

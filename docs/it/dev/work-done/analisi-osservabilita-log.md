@@ -1,11 +1,65 @@
 # Analisi — Osservabilità: consultare i log dall'applicazione
 
+> **Stato:** ✅ **CHIUSA e archiviata in `work-done/` il 2026-09-19** (Tid:
+> «oramai questo documento dovrebbe essere chiuso»). Il riquadro sotto dice che
+> cosa è consegnato e che cosa resta, con la destinazione; il resto del
+> documento è com'era — compresa la riga «non committati» del §3-quater, che
+> da `9c11a485b` (PR #1620) non è più vera.
+>
+> **✅ CHIUSO — 2026-09-19.** Il piano è a **sette passi su sette a codice**, su
+> tutti i lati. Letto il 19-09 sul repo e su dbdev, non dalle parole del
+> documento:
+>
+> | Passo | Stato | Dove si legge |
+> | --- | --- | --- |
+> | **0** — la riga dice chi, per chi, in che giro | ✅ DB + 12 consegne BE | [brief Passo 0](brief-db-event-log-scope-e-riga-parlante.md) |
+> | **1** — errori nominabili | ✅ seed + check CI | §5 #7 |
+> | **2** — `request_id` nei log Python | ✅ | `settings.py`, `logging_filters.py` |
+> | **A** — la timeline di un caso | ✅ Storia di fattura e lotto | `api_fattura_giornale.md`, `api_giornale.md` |
+> | **B** — superfici aggregate | ✅ **E** «Errori tecnici» (`amm-software/error-log`) e **G** «Giornale eventi» (`vendite/giornale`), BE + FE, mergiati in `9c11a485b`; seed delle due liste applicato su dbdev | [piano BE/FE](piano-be-fe-osservabilita-pallino-e-superfici.md) §3-§4 |
+> | **C** — notifiche | ✅ digest + pallino in topbar (**P**) + sorgente «lotto fermo» a DB, letta dal BE (**V**) | piano §2 e §5, [brief DB lotto fermo/R-6/indici](brief-db-osservabilita-lotto-fermo-r6-indici.md) |
+> | **D** — retention | ✅ `cleanup_at` + purge, 18-09 | §4 Passo D |
+> | **R-1, R-6** | ✅ chiusi a DB | §3-quater |
+> | **Collaudo in-app** | ✏️ **da fare** — copione scritto oggi | [collaudo-in-app-osservabilita-giornale-errori-pallino.md](../work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md) |
+>
+> ⚠️ **La stessa sera, dal commit che chiude B, due rossi in CI** — entrambi
+> presidi che hanno funzionato, entrambi chiusi lato DB e da committare: la
+> lista `dbops.error_log` era entrata nel CSV come globale senza dichiararsi
+> nell'elenco del pgTAP; e i test Django, passati a girare come `zeroerp_app`,
+> hanno trovato che il `SELECT` su `maintenance.job_run_log` esisteva **solo su
+> dev** (linee-guida-sql §11.9, quarta occorrenza). Dettaglio nella nota ⏱️
+> del 19-09 sera qui sotto.
+>
+> **Che cosa resta, e dove va:**
+>
+> * 🔵 **#14 — il brief di `E_PARAMETRO_INVALIDO`**: mai nato, debito
+>   dichiarato (D11 del brief classi, cantiere `dbops`). Non era di questo
+>   cantiere e non lo diventa chiudendolo.
+> * 🔵 **R-2, R-4, R-5, R-7** — i rilievi «da guardare col pannello davanti»:
+>   R-4 è coperto **per il Giornale eventi** dal test di perimetro del pezzo G
+>   (righe costruite per due emittenti); R-2, R-5 e R-7 sono **dichiarati nel
+>   copione di collaudo** (§5) e restano com'erano. Se il collaudo li trova
+>   insopportabili, aprono un brief nuovo, non riaprono questo.
+> * 🔵 **Il Giornale eventi non è multi-emittente** (su «Tutti» chiede un
+>   emittente): serve `emittente_soggetto_ruolo_id` nei quattro rami della
+>   vista — richiesta DB **non urgente**, dichiarata nel piano §10.
+> * 🔵 **Il catalogo dei registri del giornale**: la tendina «Registro» è una
+>   seconda sede FE finché non c'è `config.registri_giornale` —
+>   [brief-db-registri-giornale-catalogo.md](../work-in-progress/brief-db-registri-giornale-catalogo.md),
+>   già in `PROJECT_CONTEXT` «Aperto».
+> * 🔵 **Roadmap #6 «alerting sui dati»** aveva casa qui: il lotto fermo è
+>   coperto (C), la query generica su `event_log` per severità/finestra **con
+>   un canale d'uscita** no — il Giornale eventi la offre a video, non per
+>   email. Resta in `PROJECT_CONTEXT`, senza più questa casa.
+>
+> ---
+>
 > **Destinatari:** Tid, backend, team DB
 >
 > **Tipo:** analisi di stato + piano. È il documento **principale** per il
 > lavoro sull'osservabilità operativa.
 >
-> **Stato:** WIP — stato misurato il 2026-08-03, **piano rivisto il 2026-08-22**:
+> **Stato (storico):** ~~WIP~~ — stato misurato il 2026-08-03, **piano rivisto il 2026-08-22**:
 > i log servono prima a *trovare* un problema (§0-bis), lo scope emittente
 > smette di essere una decisione rinviata e diventa il **Passo 0** (§4).
 > ⭐ **Sempre il 2026-08-22, seconda passata:** lo stato è stato **riletto sul
@@ -19,7 +73,7 @@
 > per accedere velocemente ai log, specialmente a quelli della fatturazione»*.
 >
 > ⭐ **Il brief del Passo 0 è scritto** (2026-08-22):
-> [brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
+> [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
 > — **18 decisioni chiuse, zero domande aperte**. ✅ **L1, L2 e L4 APPLICATI E
 > VERDI il 2026-08-22**: 18 changeSet, 5 CSV, 33 asserzioni pgTAP con zero skip.
 > ⭐ **La riga del giornale è parlante e i suoi vocabolari sono governati**:
@@ -74,12 +128,12 @@
 > [piano-be-fe-osservabilita-pallino-e-superfici.md](piano-be-fe-osservabilita-pallino-e-superfici.md)
 > (P il pallino dei presidi · G il giornale degli errori · E la consultazione di
 > `error_log` · V il verdetto «lotto fermo» letto dal DB) e i suoi prerequisiti
-> [brief-db-osservabilita-lotto-fermo-r6-indici.md](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md)
+> [brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md)
 > (P-1 verdetto + presidio, P-2 R-6, P-3 indici). ✅ **#8 decisa da Tid**: pallino
 > in topbar, accanto al badge delle code (§5). ⚠️ E una voce di **B** era già
 > chiusa da una settimana senza che questo documento lo dicesse: la «UI sugli
 > endpoint orfani» è **decisa l'11-09** in
-> [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
+> [piano-be-fe-endpoint-senza-porta.md](../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
 > — tre sono servizio, `job-summary` è candidato al ritiro. B6 chiude **per
 > decisione**, e B si riduce a due superfici (G ed E). Il **verdetto «lotto
 > fermo» ha oggi una sede sola, in Python**: il presidio di C non la copia a
@@ -104,7 +158,29 @@
 > (quattro per tempo sul giornale, quattro su `error_log`, più l'indice FK di
 > `fatturazione_lotti_log` che mancava). ⚠️ Due cose per il BE di E: `LIKE`
 > non `ILIKE`, e `_` è un jolly da escapare. Dettagli e verifica critica:
-> [brief DB §1-bis](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md).
+> [brief DB §1-bis](brief-db-osservabilita-lotto-fermo-r6-indici.md).
+>
+> ⏱️ **19-09 sera — due rossi in CI dal commit `9c11a485b`, entrambi presidi
+> che hanno funzionato, entrambi chiusi lato DB.** (1) Il pgTAP
+> `ui/test-lista-definizione-perimetro-emittente-v1` test 6 asserisce
+> l'**elenco** per nome delle liste globali, e la lista `dbops.error_log`
+> (pezzo E, `perimetro_emittente = f`) vi era entrata dal CSV senza dichiararsi:
+> aggiunta all'elenco, la scelta «globale» è giusta sul modello (nessuna
+> colonna emittente, gemella di `storico.audit_log`). (2) Da quel commit i
+> **test Django in CI si connettono come `zeroerp_app`** (per esercitare la
+> RLS), e **sedici** sono morti su `permission denied for table job_run_log`
+> sotto `list_processi`/`list_job_runs`: il backend legge
+> `maintenance.job_run_log` come app in cinque punti, ma il `SELECT` esisteva
+> **solo su dev, dato a mano** — il provisioning lasciava `maintenance` fuori
+> whitelist dicendo «l'app non ne legge né scrive le tabelle». Chiuso con il
+> solo `SELECT` (la scrittura resta `DEFINER`) in **due sedi che dicono la
+> stessa cosa** — blocco `maintenance` di `provision_db_roles.sql` e
+> `90_end/20260919-08` — più il pgTAP
+> `maintenance/test-app-postura-job-run-log-v1` che pinna sì e no. Rientra
+> anche `maintenance/test-job-run-registrazione.sql`, in `baseline-rossi-ci`
+> come `ERRORE_FIXTURE` per la stessa causa mai letta. Regola:
+> [linee-guida-sql §11.9](../../linee-guida-sql.md), quarta occorrenza.
+> ⚠️ Non applicato su dbdev (dove il grant a mano c'è già) e non committato.
 >
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
@@ -127,7 +203,7 @@
 
 Esiste un documento vicino che è **un'altra cosa**, e vale la pena dirlo subito
 per non farne un contenitore unico:
-[analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md).
+[analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md).
 
 | | Questo documento | Diagnostica di produzione |
 | --- | --- | --- |
@@ -143,7 +219,7 @@ prerequisito anche di qui, e il suo **endpoint diagnostico** consumerà i
 registri che qui si tratta di rendere leggibili.
 
 ⭐ **E c'è un terzo vicino, che è la leva opposta** (aperto il 2026-08-22):
-[analisi-presidi-percorso-storto.md](../work-done/analisi-presidi-percorso-storto.md).
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 Questo documento serve a **capire in fretta** un caso già rotto; quello a
 **evitare che esca**. Un log si consulta quando già sai che qualcosa non va, un
 cancello ti ferma quando non lo sai ancora: il primo riduce il tempo per
@@ -303,7 +379,7 @@ visualizzatore costruito oggi mostrerebbe in maggioranza righe che non sanno
 dire cosa rappresentano.
 
 ➡️ Prerequisito, già scritto:
-[brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md)
+[brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md)
 (207 codici, proposta SQL validata e idempotente).
 
 ⚠️ **Due precisazioni del 2026-08-22.** La **percentuale** qui sopra non regge
@@ -397,8 +473,8 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | ~~B3~~ | ~~Identità non tracciata sugli eventi~~ ✅ **chiuso** (Passo 0 + decisione 9) | il «chi» sta in `user_insert` (trigger di audit generico) e in `auth_user_id`; `actor` non esiste più |
 | ~~B4~~ | ~~`correlation_id` assente sul ramo push~~ ✅ **chiuso** (D-7 del brief) | è **l'id del giro**: un `uuid` nuovo generato dal runner, su entrambi i rami (§5, #10) |
 | ~~B5~~ | ~~Log Python non correlabili~~ ✅ **chiuso** (Passo 2, BE-8) | `request_id` nel formatter di logging |
-| ~~B6~~ | ~~Endpoint senza UI~~ ✅ **chiuso per decisione** (⏱️ *18-09*, ma deciso l'**11-09**) | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); per gli altri quattro [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) ha risposto: `domini-task`, `task-registry`, `task-implementations` sono **servizio** (nessuna porta), `job-summary` è **candidato al ritiro**. Non resta niente da costruire |
-| B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* → 🔵 **in brief** ⏱️ *18-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; la **sorgente** «lotto fermo» è chiesta al team DB come **P-1** del [brief](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md) — e il verdetto che la alimenta **si sposta** a DB, non si copia; la faccia in-app è il pallino (#8) |
+| ~~B6~~ | ~~Endpoint senza UI~~ ✅ **chiuso per decisione** (⏱️ *18-09*, ma deciso l'**11-09**) | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); per gli altri quattro [piano-be-fe-endpoint-senza-porta.md](../work-in-progress/piano-be-fe-endpoint-senza-porta.md) ha risposto: `domini-task`, `task-registry`, `task-implementations` sono **servizio** (nessuna porta), `job-summary` è **candidato al ritiro**. Non resta niente da costruire |
+| B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* → 🔵 **in brief** ⏱️ *18-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; la **sorgente** «lotto fermo» è chiesta al team DB come **P-1** del [brief](brief-db-osservabilita-lotto-fermo-r6-indici.md) — e il verdetto che la alimenta **si sposta** a DB, non si copia; la faccia in-app è il pallino (#8) |
 | ~~B8~~ | ~~Retention assente sui log di dominio~~ ✅ **chiuso** (Passo D, ⏱️ *18-09*) | `event_log` (decisione 11) + i **quattro** registri di fatturazione e push — `fatturazione_lotti_log`, `fatture_log`, `fatturazione_lotti_task_runs`, `commesse_push_log` — a 750 giorni, scadenza scritta alla nascita da un BB unico (`20260918-29 → -33`, regole 16-19) |
 | ~~**B9**~~ | ~~**`event_log` non ha scope emittente né RLS**~~ ✅ **chiuso** (Passo 0) | `emittente_soggetto_ruolo_id NOT NULL`, derivata all'`INSERT` da `trgfn_event_log_deriva_scope`, più la policy `rls_event_log_ef_whitelist` (`20260822-46`) |
 | ~~**B10**~~ | ~~**`event_log` è l'unico registro senza `tx_id`**~~ ✅ **chiuso** (Passo 0) | colonna `tx_id` + `trg_event_log_gen_tx_id_ins_upd` montato dall'automazione |
@@ -489,7 +565,7 @@ lotto · WARN» e **non contengono il motivo**, che sta sulla fattura.
 ➡️ **Con R-1 applicato e il perimetro deciso, il pannello del lotto è stato
 scritto** la sera stessa — ✅ e con lui il Passo A si chiude. Il racconto sta nel
 §12 di
-[brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md);
+[brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md);
 il manuale dell'endpoint è `api_lotto_giornale.md`.
 
 ### ⚠️ I rilievi della ricognizione ancora vivi
@@ -619,7 +695,7 @@ non da progettare.
   con un ruolo proprio. Una RLS che non
   contempla quel canale rompe la scrittura **solo da lì**: è esattamente il
   difetto già capitato con `vendite.note`
-  ([brief-db-grant-batch-cleanup-note.md](../work-done/brief-db-grant-batch-cleanup-note.md)),
+  ([brief-db-grant-batch-cleanup-note.md](brief-db-grant-batch-cleanup-note.md)),
   e fu trovato per caso da una prova reale, non da un test.)* Il guard DDT skippa
   quando `app.current_user_id` non è settato: **quel ramo va deciso**, non
   ereditato per copia — ed è la parte di questo punto che resta viva;
@@ -660,7 +736,7 @@ defense-in-depth e si sommano»*.
 ### Passo 1 — Rendere nominabili gli errori *(prerequisito del solo Passo B)*
 
 Applicare il seed dei 207 codici
-([brief](../work-done/brief-db-seed-messaggi-errore-mancanti.md), già pronto e validato) e
+([brief](brief-db-seed-messaggi-errore-mancanti.md), già pronto e validato) e
 decidere il check CI che impedisca il ripetersi del disallineamento fra
 `error_policies.py` e il catalogo DB.
 
@@ -721,7 +797,7 @@ Approda dove il caso si guarda già: la diagnostica del lotto e il pannello
 «Passaggi» della fattura.
 
 > ⛔ **VINCOLO DECISO DA TID IL 2026-08-24, e arriva da un altro cantiere**
-> ([brief-db-bersaglio-errore.md](../work-done/brief-db-bersaglio-errore.md) §8.3): **un
+> ([brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) §8.3): **un
 > diario tecnico non diventa una superficie per tutti.** Se una schermata mostra
 > `dbops.error_log` — o qualunque altro registro di appunti tecnici — nasce
 > **dietro un permesso dichiarato**, per i tecnici, non visibile a chiunque apra
@@ -757,7 +833,7 @@ successo leggendo il §1.
 ⏱️ *2026-09-12* — **cosa è arrivato da fuori.** Il secondo punto è in parte
 pagato: `GET /tracciamento/job-runs/` è consumato dalla schermata «Processi
 automatici» (`amm-software`, 05-09 —
-[piano-be-fe-processi-automatici-identita-e-perimetro.md](../work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md)),
+[piano-be-fe-processi-automatici-identita-e-perimetro.md](piano-be-fe-processi-automatici-identita-e-perimetro.md)),
 che affianca ai run lo **stato dei presidi `ZERO`** letto dal catalogo
 `dbops.presidi`. ⛔ Sta dietro `AdminAPIView` perché quelle viste nominano
 tutte le aziende e non hanno RLS: è il vincolo del Passo A applicato a un
@@ -765,7 +841,7 @@ aggregato. Restano interi il primo punto (vista errori trasversale) e il terzo
 (`error_log` con filtri), più i quattro endpoint ancora orfani (§2).
 
 ⏱️ *2026-09-18*: **i quattro orfani non sono più una cosa da fare** — decisi
-l'11-09 in [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
+l'11-09 in [piano-be-fe-endpoint-senza-porta.md](../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
 (tre servizio, uno candidato al ritiro); questa nota li dava ancora aperti per
 una settimana. Il primo e il terzo punto hanno il loro piano: **G** (il giornale
 degli errori, terzo lettore della stessa `vw_giornale_entita`, `DomainAPIView`
@@ -800,8 +876,8 @@ accoda un avviso se il digest stesso tace. Le **code ferme** sono già presidi
 `vw_fatture_stampa_coda_da_guardare`). ⇒ Il Passo C si riduce a **una
 sorgente**: un presidio «lotto fermo in errore da troppo tempo» iscritto al
 catalogo — canale, cadenza e destinatario sono decisi altrove
-([brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md),
-[brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md)).
+([brief-db-quattro-processi-senza-presidio.md](brief-db-quattro-processi-senza-presidio.md),
+[brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md)).
 ⚠️ Resta di Tid la #8: se al canale email va affiancato un **badge in-app** per
 l'operatore, o se per lui basta il binario parallelo (fallimenti nelle liste).
 
@@ -811,7 +887,7 @@ l'operatore, o se per lui basta il binario parallelo (fallimenti nelle liste).
 due verdetti secondo il ruolo che la legge, non il perimetro; corretta il giorno
 stesso (`20260914-01`, verdetto `SESSIONE` sull'esistenza della riga). Giornaliera
 del 15-09: zero righe, **nessun invio** — e va saputo che è così per scelta
-([brief](../work-done/brief-db-un-destinatario-per-i-presidi.md): un messaggio
+([brief](brief-db-un-destinatario-per-i-presidi.md): un messaggio
 al giorno che dice «niente da segnalare» è la posta che si impara ad archiviare;
 il battito «sono vivo» lo porta la settimanale del lunedì, più il guardiano
 pgAgent se il digest tace). ⇒ Il residuo del Passo C è **solo** la sorgente
@@ -819,7 +895,7 @@ pgAgent se il digest tace). ⇒ Il residuo del Passo C è **solo** la sorgente
 aspetta.
 
 ⏱️ *2026-09-18*: **la sorgente è chiesta, e con una forma precisa** — P-1 di
-[brief-db-osservabilita-lotto-fermo-r6-indici.md](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md).
+[brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md).
 ⭐ Il punto che la forma decide: il verdetto «lotto fermo» oggi vive in **Python**
 (`blocks_next_step`, tre addendi da `fn_get_lotto_segnalazioni_summary`); un
 presidio scritto a DB sarebbe la **seconda sede** dello stesso predicato, e le
@@ -938,7 +1014,7 @@ questo documento: ciascuna vuole la sua decisione, non un `ALTER` in serie.
 Non è un passo di questo piano e **non va messo in coda a nessuno di questi**:
 non dipende da `event_log`. È lo stesso bisogno visto dal lato dell'operatore —
 *«questa riga è ferma, ed ecco perché»* — e vive nella
-[roadmap di fatturazione](../work-done/fatturazione-roadmap.md).
+[roadmap di fatturazione](fatturazione-roadmap.md).
 
 Stato misurato il 2026-08-22, **dal seed, non dai dati**: su **47 liste**
 registrate, due hanno una colonna che parli di errore — `config.email_log` (che
@@ -982,7 +1058,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    righe da quattro registri** — di cui solo 12 vengono da `event_log`. ⭐ È la
    conferma di ciò che motivava la vista: il Passo A sul solo diario avrebbe
    consegnato l'1,6% della storia. Dettagli nel
-   [brief del Passo 0](../work-done/brief-db-event-log-scope-e-riga-parlante.md) §3.6 e §4.
+   [brief del Passo 0](brief-db-event-log-scope-e-riga-parlante.md) §3.6 e §4.
 6. ✅ **`FORCE` sulla policy** — non è un bivio: parità con la famiglia
    (`ENABLE`, no `FORCE`) più filtro applicativo. Vedi la rettifica nel Passo 0
    (V1). *(era la #5)*
@@ -1024,7 +1100,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    in-app direbbe la prima cosa a chi non legge la posta di sistema. È un
    argomento, non una decisione.
 > ✅ **Le voci 9, 10, 11, 12 e 13 sono state decise il 2026-08-22 e sono
-> confluite nel [brief del Passo 0](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
+> confluite nel [brief del Passo 0](brief-db-event-log-scope-e-riga-parlante.md)
 > come D-6 (`actor`/`source` via), D-7 (il giro), D-8 (retention),
 > D-9 (`entity_type` → `config.sorgenti`) e D-10 (niente guard). Restano qui
 > in forma abbreviata come storia; le motivazioni complete stanno nel brief,
@@ -1088,7 +1164,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
     ragione e resta valida**: per il giornale `entity_id` è la PK `id`, sempre;
     la chiave `uid` serve a chi *punta* a un'entità da fuori — il **bersaglio**
     di un errore — e il catalogo la dichiarerà per quello
-    ([brief-db-bersaglio-errore](../work-done/brief-db-bersaglio-errore.md) §6, changeSet 63).
+    ([brief-db-bersaglio-errore](brief-db-bersaglio-errore.md) §6, changeSet 63).
     ~~**`entity_type`: vocabolario libero, `CHECK`, o `config.sorgenti`?** Oggi è
     `text` senza vincolo.~~ Il progetto **ha già** un registro polimorfo,
     `config.sorgenti` (15 voci, con `target_table` e `key_selector`), che però
@@ -1130,10 +1206,10 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 | Documento | Rapporto |
 | --- | --- |
 | [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) | La guida **stabile**: modello di scrittura + mappa di consultazione. Quando un passo di qui atterra, la guida si aggiorna e qui resta la storia |
-| [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) | Altro mestiere (§0). Ne condividiamo la **Fase 0** (Passo 2) e ne siamo il fornitore per la Fase 1 |
-| [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md) | I suoi item **#5 vista errori**, **#6 alerting**, **#7 correlation_id** sono qui dentro. La roadmap resta il documento di dominio, questo quello trasversale |
-| [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md) — *binario parallelo* | I **fallimenti visibili nelle liste** restano di là: stesso bisogno, altra persona (operatore, non chi ripara) e **nessuna dipendenza** da questo piano — vedi §4 |
-| [brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md) | Il Passo 1, già scritto |
+| [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md) | Altro mestiere (§0). Ne condividiamo la **Fase 0** (Passo 2) e ne siamo il fornitore per la Fase 1 |
+| [fatturazione-roadmap.md](fatturazione-roadmap.md) | I suoi item **#5 vista errori**, **#6 alerting**, **#7 correlation_id** sono qui dentro. La roadmap resta il documento di dominio, questo quello trasversale |
+| [fatturazione-roadmap.md](fatturazione-roadmap.md) — *binario parallelo* | I **fallimenti visibili nelle liste** restano di là: stesso bisogno, altra persona (operatore, non chi ripara) e **nessuna dipendenza** da questo piano — vedi §4 |
+| [brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md) | Il Passo 1, già scritto |
 | [audit-e-tracciabilita.md](../../guide/audit-e-tracciabilita.md) | Il suo §8 «Pianificato» chiede già `GET /core/request-log/` e una «dashboard anomalie»: stesso bisogno, arrivato prima |
 
 ---

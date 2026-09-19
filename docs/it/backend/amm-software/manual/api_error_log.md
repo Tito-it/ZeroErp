@@ -6,8 +6,8 @@ Esporre via HTTP, ai tecnici, il registro degli errori: **quale funzione ha
 sollevato quale codice, quando, in quale transazione** — con la frase, la
 causa e la soluzione **a catalogo** e gli appunti (`context`) **com'erano**.
 È il pezzo **E** del piano BE/FE dell'osservabilità
-([piano-be-fe-osservabilita-pallino-e-superfici](../../../dev/work-in-progress/piano-be-fe-osservabilita-pallino-e-superfici.md) §4),
-l'altra metà del Passo B di [analisi-osservabilita-log](../../../dev/work-in-progress/analisi-osservabilita-log.md).
+([piano-be-fe-osservabilita-pallino-e-superfici](../../../dev/work-done/piano-be-fe-osservabilita-pallino-e-superfici.md) §4),
+l'altra metà del Passo B di [analisi-osservabilita-log](../../../dev/work-done/analisi-osservabilita-log.md).
 
 ## Contesto
 

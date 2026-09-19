@@ -1679,7 +1679,7 @@ in documenti `.md`, che un `git mv` romperebbe in silenzio:
 ```text
 docs/it/mappa-concentrica.md                                          (2 punti: §165 e §436)
 docs/it/dev/mappa-concentrica-changelog.md
-docs/it/dev/work-in-progress/analisi-osservabilita-log.md
+docs/it/dev/work-done/analisi-osservabilita-log.md
 docs/it/dev/work-in-progress/migliorie-generali-da-test-valutazione.md
 docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md
 docs/it/dev/work-in-progress/analisi-riavvio-processi-da-interfaccia.md

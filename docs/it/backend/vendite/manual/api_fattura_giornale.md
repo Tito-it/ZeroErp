@@ -16,7 +16,7 @@ conteggio per periodo: quelli hanno prerequisiti loro.
 ## Contesto
 
 È il **Passo A** del filone osservabilità
-([analisi-osservabilita-log.md](../../../dev/work-in-progress/analisi-osservabilita-log.md)),
+([analisi-osservabilita-log.md](../../../dev/work-done/analisi-osservabilita-log.md)),
 e il **primo consumatore** di `script.vw_giornale_entita` — la vista che cuce i
 registri di evento del progetto in una forma normalizzata (lotto L3 del
 [brief event_log](../../../dev/work-done/brief-db-event-log-scope-e-riga-parlante.md)).

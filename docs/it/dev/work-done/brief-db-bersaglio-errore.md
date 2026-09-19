@@ -194,7 +194,7 @@ distinte dalla colonna `modo_risoluzione_emittente` — è nel §3.7 dell'altro 
 Riusarlo vale più di quanto sembri: significa **una tabella di rotte sola** —
 «portami a questa cosa» diventa una funzione unica, condivisa fra il bersaglio
 di un errore e la futura timeline per entità
-([analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md), Passo A). Se il
+([analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md), Passo A). Se il
 bersaglio portasse il nome della tabella, servirebbe una seconda mappa
 tabella → schermata: la stessa conoscenza in due posti, cioè il modo in cui
 divergono.
@@ -230,7 +230,7 @@ seconda avvertenza aveva ragione, e il coordinamento è mancato lo stesso.
 * le righe già scritte in `event_log` vanno controllate contro il catalogo: un
   CHECK/FK su valori storici fuori vocabolario non si applica. ⚠️ Il valore di
   quelle righe è comunque discutibile (§0-bis di
-  [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md)), e su quel
+  [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md)), e su quel
   cantiere è già in discussione se azzerare la tabella: **decidere lì, non qui**;
 * 🔴 **`event_log` è toccato anche dal Passo 0** di quel piano (colonna
   emittente + RLS + `correlation_id` + `actor` + `entity_id` reale). Sono
@@ -653,7 +653,7 @@ pulsante, ma è quello su cui poggiano tutti gli altri.
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| **01** | `alter-config-tipi-entita-key-selector` | `00_schema/config` | La colonna della **chiave dell'entità** (Q-C): `key_selector text NOT NULL` con `CHECK (IN ('id','uid'))`. ⭐ **Stesso nome che porta `config.sorgenti`**, di proposito: è la stessa convenzione, e chi cerca l'una trova l'altra. ⚠️ **Nasce con `DEFAULT 'id'` e il default si toglie nello stesso changeSet**: serve a riempire le 4 righe esistenti — che sono tutte a chiave numerica — senza lasciare a chi semina un valore che eredita in silenzio. ⛔ **E non tocca il giornale**: per `event_log` l'`entity_id` resta **la PK `id`, sempre** — la colonna serve a chi *punta* a un'entità da fuori, che è il bersaglio. La distinzione l'aveva già scritta l'[analisi](../work-in-progress/analisi-osservabilita-log.md) alla sua domanda 12 |
+| **01** | `alter-config-tipi-entita-key-selector` | `00_schema/config` | La colonna della **chiave dell'entità** (Q-C): `key_selector text NOT NULL` con `CHECK (IN ('id','uid'))`. ⭐ **Stesso nome che porta `config.sorgenti`**, di proposito: è la stessa convenzione, e chi cerca l'una trova l'altra. ⚠️ **Nasce con `DEFAULT 'id'` e il default si toglie nello stesso changeSet**: serve a riempire le 4 righe esistenti — che sono tutte a chiave numerica — senza lasciare a chi semina un valore che eredita in silenzio. ⛔ **E non tocca il giornale**: per `event_log` l'`entity_id` resta **la PK `id`, sempre** — la colonna serve a chi *punta* a un'entità da fuori, che è il bersaglio. La distinzione l'aveva già scritta l'[analisi](../work-done/analisi-osservabilita-log.md) alla sua domanda 12 |
 | — | `config/tipi_entita.csv` + il changeSet **55** | `80_data` (CSV) | La colonna nuova nel CSV **e** nella lista `columns:` del mirror. ⛔ **Non nasce un loader nuovo**: il 55 è `runOnChange`, si estende in place e alla prossima passata rilegge il file |
 | **02** | `update-fn-log-and-raise-error-bersaglio` | `20_code/script` | ⭐ **Il cuore.** `script.fn_log_and_raise_error` legge `p_context->'bersaglio'`, ne compone la forma compatta e la fa uscire sulla casella strutturata. **La firma non cambia** (§4.4): i 1.093 punti di sollevamento vivi non si toccano |
 | — | `config/codici_errore.csv` + `messaggi_errore.csv` | `80_data` (CSV) | **+1 codice** `W_BERSAGLIO_MALFORMATO` (classe `AVVISO`, gemello di `W_MESSAGGIO_ARITA`) e **+1 messaggio** (id **982**, il primo libero). ⚠️ Solo append: i mirror `runOnChange` esistenti li ripescano |
@@ -1253,7 +1253,7 @@ perché `target` là dentro è già occupata da altro); il campo dell'envelope �
 Una **tabella sola** `type → rotta`, e il pulsante *«Vai al documento»*.
 
 ⭐ **È la stessa tabella della futura timeline per entità**
-([analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md), Passo A): i due
+([analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md), Passo A): i due
 consumatori condividono il vocabolario `config.tipi_entita`, quindi la mappa si
 scrive **una volta**. Se nascesse due volte, divergerebbe — ed è la ragione per
 cui il `tipo` è logico e non è mai un nome di tabella (§4.2).
@@ -1810,7 +1810,7 @@ che ci si appoggiano — su tutte `primo_bloccante`, che il `T-3b` ha tolto dall
 frase e **lasciato nel contesto**. Era la decisione giusta e resta tale.
 
 ⚠️ La domanda gemella resta al **Passo A** di
-[analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md), ma ci arriva
+[analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md), ma ci arriva
 **decisa**: lì si progetta una timeline per chi indaga, non una vetrina.
 *(Riferimento aggiornato il 2026-08-24: era «Passo 3», che dal 22/08 è diviso in
 **A** forense e **B** aggregato.)*

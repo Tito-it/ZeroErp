@@ -657,7 +657,7 @@ nell'applicazione.
 
 > Questa è la mappa **stabile**. Lo stato di avanzamento — quali strumenti
 > mancano ancora, quali registri non sono esposti, il piano per colmarli — vive
-> in [analisi-osservabilita-log.md](/dev/work-in-progress/analisi-osservabilita-log),
+> in [analisi-osservabilita-log.md](/dev/work-done/analisi-osservabilita-log),
 > che si aggiorna con lo sviluppo. Qui si dice *cosa esiste e come si usa*, non
 > *cosa manca*: è la distinzione che tiene una guida leggibile a distanza di mesi.
 

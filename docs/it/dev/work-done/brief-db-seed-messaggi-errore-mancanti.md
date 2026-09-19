@@ -40,7 +40,7 @@
 > rollback e idempotente:
 > [`backend/scripts/db-proposals/PROPOSTA_seed_messaggi_errore_mancanti.sql`](../../../../backend/scripts/db-proposals/PROPOSTA_seed_messaggi_errore_mancanti.sql).
 > **Correlati:** [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) ·
-> [analisi-diagnostica-produzione-senza-accesso-db.md](../work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md) (Fase 0)
+> [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md) (Fase 0)
 
 ---
 

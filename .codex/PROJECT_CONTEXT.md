@@ -319,6 +319,15 @@ produzione, non c'è niente da aspettare.*
   handler a lista senza shell, run **non** contato come segno di vita del
   processo riavviato (D6). Zero righe scritte al 18-09, per scelta. Sta anche
   fra le «Decisioni aperte» della mappa concentrica
+- **Il Giornale eventi non è multi-emittente** (DB, **non urgente**, ereditata
+  il 2026-09-19 dalla chiusura di `work-done/piano-be-fe-osservabilita-pallino-e-superfici.md`,
+  §10 pezzo G): `vendite.giornale` è `multi_emittente = false` perché
+  `script.vw_giornale_entita` non proietta l'emittente della riga — su «Tutti
+  gli emittenti» la lista chiede di sceglierne uno (422), come `Fatture`. Per
+  certificarla serve `emittente_soggetto_ruolo_id` nei **quattro rami** della
+  vista (le tabelle lo hanno o lo raggiungono) + la colonna a catalogo. Il
+  collaudo in-app dell'osservabilità (`work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
+  scritto il 19-09, **da eseguire**) lo dichiara al §3.15
 - **Il catalogo dei registri del giornale** (DB, brief scritto il
   2026-09-19: `work-in-progress/brief-db-registri-giornale-catalogo.md`,
   decisione di Tid dello stesso giorno): i quattro registri che
@@ -350,7 +359,7 @@ lezione della §Nota di metodo di quel file):
 
 - **Esercizio fiscale come entità** (roadmap #3): zero occorrenze di `esercizio`/`anno_fiscale` in `migrations_v2` e nel backend; l'esercizio è l'anno solare derivato da `fatture.data`. Serve al primo **bilancio**, non al primo ciclo — la numerazione con reset annuale è coperta
 - **Vista push** (roadmap #5): `vendite.commesse_push_log` non ha una UI di lista/ultimo run per sorgente; i contatori `created/updated/skipped/errors` esistono nel payload e nessuno li rende — l'operatore riceve un `push_log_id` in un toast e non ha modo di aprirlo
-- **Alerting sui dati** (roadmap #6): la vitalità dei **processi** è coperta (sveglia, `dbops.processi`, digest); manca la query su `vendite.event_log` per severity/finestra con un canale d'uscita — casa: `work-in-progress/analisi-osservabilita-log.md`
+- **Alerting sui dati** (roadmap #6): la vitalità dei **processi** è coperta (sveglia, `dbops.processi`, digest) e dal 19-09 anche il **lotto fermo** (presidio a catalogo → digest e pallino) e la consultazione **a video** (`vendite/giornale`, «Giornale eventi»); manca ancora un **canale d'uscita** (email) per la query generica su `vendite.event_log` per severità/finestra. ⚠️ Non ha più una casa: `analisi-osservabilita-log.md` è **chiusa e archiviata** il 2026-09-19 (`work-done/`), e questa voce è uno dei residui dichiarati nel suo riquadro
 - **Diagrammi di stato** (roadmap #8): zero `stateDiagram-v2` nel repo per lotto e task_run; la sostanza è già in prosa in `guide/fatturazione.md` — è trasposizione, non analisi
 - **Preview di fatturazione del contratto** (roadmap #10): non esiste il punto in cui l'operatore veda *«su questa competenza fatturerà queste righe, per X»*; il dato lo produce `fn_list_contratti_da_pushare`. ⚠️ Non è `/contratti/<id>/righe-preview/`, che è la preview di **pricing**
 

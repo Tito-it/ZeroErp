@@ -1,10 +1,53 @@
 # Analisi — Diagnostica di produzione senza accesso al database
 
+> **Stato:** ✅ **CHIUSA e archiviata in `work-done/` il 2026-09-19** (Tid:
+> «credo che anche questo sia chiudibile»). ⚠️ **Chiusa senza costruire**: non
+> è la chiusura di un lavoro fatto, è l'archiviazione di un'analisi che **non
+> ha mai avuto la validazione che chiedeva** (§11) e il cui terreno — una
+> produzione da diagnosticare — oggi non esiste. Il riquadro sotto dice che
+> cosa ne è uscito e che cosa resta, con la destinazione; il resto del
+> documento è com'era (25 luglio, rivalutato il 24 agosto).
+>
+> **✅ CHIUSA — 2026-09-19.** Letto sul repo, non dalle parole del documento:
+>
+> | Parte | Stato | Dove si legge |
+> | --- | --- | --- |
+> | **La metà delegata** (§3.1, osservabilità) | ✅ **tutta consegnata**: giornale per entità e trasversale, `error_log` consultabile dietro permesso, `request_id` nei log, `cleanup_at` anche su `fatturazione_lotti_log` e `fatture_log` (Passo D, 18-09 — l'ultimo «🟡 parziale» del §0-bis), R-1 chiuso a DB | [analisi-osservabilita-log.md](analisi-osservabilita-log.md), chiusa lo stesso giorno |
+> | **La decisione del 24-08** («un diario tecnico non diventa una superficie per tutti: se si mostra, è per i tecnici e dietro un permesso») | ✅ **è diventata una regola applicata**: `error_log` sta dietro `AdminAPIView` | piano BE/FE, D-E1 |
+> | **La metà sua** — classificare i dati dello schema, mascherare, riprodurre un caso altrove, profilo di supporto, perimetro AI (§5.4–§5.6, §6, §7) | ⛔ **zero righe di codice, zero brief**, e le **sei domande del §10.2 ferme dal 24-08** (otto settimane dalla stesura). Nessuno l'ha usata: la citano la mappa e tre archivi | `git log`: ultimo contenuto 24-08 |
+>
+> ⭐ **La lezione, ed è la stessa della sua §0-bis.** Un'analisi che aspetta una
+> validazione senza data invecchia *senza dirlo*: qui era scritto (il 67% smentito
+> il giorno dopo) ed è successo di nuovo al documento intero. Le fondamenta che
+> inventaria sono vere e restano; il piano in cinque fasi **non è stato
+> rifiutato** — è stato **superato dal tempo** e va riscritto **da una
+> produzione reale**, se e quando ci sarà, non aggiornato da qui.
+>
+> **Che cosa resta, e dove va:**
+>
+> * 🧭 **Le sei decisioni del §10.2** (provider AI in produzione; staging C o D;
+>   profilo supporto — bypass RLS o GUC controllato; error tracker esterno;
+>   classi di dato; chi risponde dei pacchetti) → **una riga** in
+>   [mappa-concentrica.md](../../mappa-concentrica.md) §«Decisioni aperte»,
+>   che le tiene come decisione, non come lavoro. La prima precede tutto il
+>   resto, com'era scritto.
+> * 🔵 **Le eccezioni non gestite non finiscono in `error_log`**
+>   (`ApiExceptionMiddleware`, Fase 0 seconda di tre): l'unico pezzo concreto e
+>   piccolo. Non ha un cantiere; è del BE, e sta scritto qui perché chi aprirà
+>   `error_log` e non ci troverà un 500 sappia perché.
+> * 📌 [integrazione-server-mcp.md](../work-in-progress/integrazione-server-mcp.md)
+>   la chiama «documento padre» per il canale diagnostico e il profilo supporto:
+>   è dello stesso luglio e nello stesso stato («non ancora pianificato»). Il
+>   link è ripuntato; se e quando quel documento si muoverà, ripartirà da una
+>   produzione, non da questa analisi.
+>
+> ---
+>
 > **Destinatari:** Tid, team DB, sviluppatori backend/frontend
 >
 > **Tipo:** analisi + base di sviluppo (non è ancora un piano operativo per-fase)
 >
-> **Stato:** WIP — proposta da validare prima della progettazione tecnica.
+> **Stato (storico):** ~~WIP~~ — proposta da validare prima della progettazione tecnica.
 > ⚠️ **Perimetro ristretto il 2026-08-24**: la parte di osservabilità è stata
 > **delegata** ai documenti che la possiedono (§3.1). Qui restano
 > classificazione dei dati, mascheratura, riproduzione, profilo di accesso e
@@ -79,7 +122,7 @@ materiale.
 ### Tre cose nuove che l'analisi non poteva sapere
 
 1. ⭐ **Un errore adesso dice su QUALE cosa** è successo (cantiere del bersaglio,
-   chiuso: [brief-db-bersaglio-errore.md](../work-done/brief-db-bersaglio-errore.md)).
+   chiuso: [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md)).
    Per il **report diagnostico** è materiale gratis: l'entità da guardare non va
    dedotta dalla prosa, viaggia su un canale suo;
 2. ⛔ **Decisione di Tid del 2026-08-24 che vincola il §5.3 e il §5.6**: un
@@ -112,10 +155,10 @@ sei mesi ci sono tre progetti che si contraddicono.
 
 | Documento | Stato | Rapporto con questa analisi |
 |---|---|---|
-| [integrazione-server-mcp.md](integrazione-server-mcp.md) §6.1 (investigazione bug erratici), §6.3 (profilo «supporto») | WIP | **Sovrapposizione forte.** Descrive già il canale diagnostico, i tool `investigazione_*`, il profilo supporto e il vincolo «lettura cross-org ⇒ bypass RLS a livello DB». Da qui in poi: **MCP è un *consumatore*** del canale definito in questo documento, non il progettista del canale. Il §6.3 va sostituito da un rimando al §5.5 di qui. |
-| [integrazione-ai-sviluppo-v2.md](integrazione-ai-sviluppo-v2.md) | WIP | Evoluzione tool/RAG/rendering dell'assistente. **Nessuna sovrapposizione** salvo il punto «audit `ai_initiated`», che qui diventa rilevante (§7.3). |
-| [analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md) | Chiuso (Step 1+2 applicati) | Fornisce il **framing di sicurezza già validato**: difese vere = permessi + RLS + conferma umana + assenza esfiltrazione + audit affidabile; free-text = dato ostile (P3). Questa analisi lo eredita, non lo rinegozia. |
-| [framework-automazione-db-migliorie.md](framework-automazione-db-migliorie.md) | WIP | La Fase 2 (§5.3) è una **nuova regola dentro quel framework**, non un sottosistema separato. Il §3.1 «Report stato automazioni» di quel documento e il check di classificazione sono lo stesso mestiere. |
+| [integrazione-server-mcp.md](../work-in-progress/integrazione-server-mcp.md) §6.1 (investigazione bug erratici), §6.3 (profilo «supporto») | WIP | **Sovrapposizione forte.** Descrive già il canale diagnostico, i tool `investigazione_*`, il profilo supporto e il vincolo «lettura cross-org ⇒ bypass RLS a livello DB». Da qui in poi: **MCP è un *consumatore*** del canale definito in questo documento, non il progettista del canale. Il §6.3 va sostituito da un rimando al §5.5 di qui. |
+| [integrazione-ai-sviluppo-v2.md](../work-in-progress/integrazione-ai-sviluppo-v2.md) | WIP | Evoluzione tool/RAG/rendering dell'assistente. **Nessuna sovrapposizione** salvo il punto «audit `ai_initiated`», che qui diventa rilevante (§7.3). |
+| [analisi-sicurezza-aggiornata.md](analisi-sicurezza-aggiornata.md) | Chiuso (Step 1+2 applicati) | Fornisce il **framing di sicurezza già validato**: difese vere = permessi + RLS + conferma umana + assenza esfiltrazione + audit affidabile; free-text = dato ostile (P3). Questa analisi lo eredita, non lo rinegozia. |
+| [framework-automazione-db-migliorie.md](../work-in-progress/framework-automazione-db-migliorie.md) | WIP | La Fase 2 (§5.3) è una **nuova regola dentro quel framework**, non un sottosistema separato. Il §3.1 «Report stato automazioni» di quel documento e il check di classificazione sono lo stesso mestiere. |
 
 Documenti di riferimento (non modificati da questa analisi, ma presupposti):
 [audit-e-tracciabilita.md](../../guide/audit-e-tracciabilita.md) ·
@@ -191,9 +234,9 @@ della Fase 1, e quel problema è stato **chiuso il giorno dopo**.
 | Cosa | Documento |
 | --- | --- |
 | Stato dei registri, i passi, cosa manca | [analisi-osservabilita-log.md](analisi-osservabilita-log.md) — il **piano**, §3-quater per lo stato |
-| `event_log`: scope emittente, RLS, `auth_user_id`, `tx_id`, `correlation_id`, `cleanup_at` | [brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md) |
+| `event_log`: scope emittente, RLS, `auth_user_id`, `tx_id`, `correlation_id`, `cleanup_at` | [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md) |
 | Errori nominabili — seed, segnaposti, classi, presidi | **dieci brief chiusi** in `work-done`, dal 2026-08-04 al 19 (`brief-db-seed-messaggi-errore-mancanti`, `-round-2`, `brief-db-segnaposti-messaggi-errore`, `brief-db-be-classe-codici-errore`, `brief-db-be-terzo-lato-presidio-codici`, `brief-db-codice-errore-strutturato`, …) |
-| «Su QUALE entità è successo» — il bersaglio dell'errore | [brief-db-bersaglio-errore.md](../work-done/brief-db-bersaglio-errore.md) *(chiuso)* |
+| «Su QUALE entità è successo» — il bersaglio dell'errore | [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) *(chiuso)* |
 
 ➡️ **Cosa questo documento continua a chiedere all'osservabilità**, e sono due
 cose sole:
@@ -409,7 +452,7 @@ risulta nelle migrazioni `migrations_v2` — se non esiste più, la fonte è la 
 
 ### 5.6 Trasversale — Profilo diagnostico e perimetro AI
 
-**Profilo «supporto» (assorbe [integrazione-server-mcp.md](integrazione-server-mcp.md) §6.3).**
+**Profilo «supporto» (assorbe [integrazione-server-mcp.md](../work-in-progress/integrazione-server-mcp.md) §6.3).**
 Va costruito come **alias di connessione DB a un ruolo dedicato read-only**, coerente con
 `system_process_context`, e **non** come quarto livello accanto a `TUTTO`/`LETTURA`/`BLOCCATO`.
 Requisiti: nessuna scrittura (privilegio negato dal DB, non dall'app); lettura
@@ -423,7 +466,7 @@ ordinario, e `dbops.ai_query_log.input_text` conserva le domande in chiaro. Prog
 minimizzazione sul canale diagnostico mentre resta aperto quello ordinario è
 incoerente: la decisione «quale provider gira in produzione» (self-hosted / EU / DPA col
 fornitore) **precede** il pacchetto riproduttivo. Il documento di riferimento per il
-framing di sicurezza resta [analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md).
+framing di sicurezza resta [analisi-sicurezza-aggiornata.md](analisi-sicurezza-aggiornata.md).
 
 ---
 
@@ -490,8 +533,8 @@ dalla finestra dopo essere stati mascherati alla porta. I log **non entrano nel
 pacchetto**; entrano, se serve, come estratti separati e classificati.
 
 **Free-text come dato ostile.** Confermata la regola già fissata in
-[integrazione-server-mcp.md](integrazione-server-mcp.md) §6.1 e
-[analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md) (P3): se un
+[integrazione-server-mcp.md](../work-in-progress/integrazione-server-mcp.md) §6.1 e
+[analisi-sicurezza-aggiornata.md](analisi-sicurezza-aggiornata.md) (P3): se un
 contenuto free-text viene passato a un modello, va delimitato ed etichettato come dato non
 fidato. Vale a maggior ragione nel contesto diagnostico, che gira con i privilegi più alti.
 
@@ -500,7 +543,7 @@ fidato. Vale a maggior ragione nel contesto diagnostico, che gira con i privileg
 Ogni estrazione è un accesso a dati personali: va registrata (chi, quando, entità, livello
 di mascheratura, motivo) e il pacchetto va eliminato a chiusura del caso, con TTL tecnico
 su `cleanup_at` (§3.6). Se e quando si introduce il marker `ai_initiated`
-([integrazione-ai-sviluppo-v2.md](integrazione-ai-sviluppo-v2.md)), la stessa logica serve
+([integrazione-ai-sviluppo-v2.md](../work-in-progress/integrazione-ai-sviluppo-v2.md)), la stessa logica serve
 a distinguere le estrazioni fatte tramite agente.
 
 ### 7.4 Perimetro normativo
@@ -580,7 +623,7 @@ Nessuna azione DB parte da qui. Da mettere in un brief dedicato su `dev/db-tid`:
 
 Validare l'impostazione (in particolare §4 opzione C, §5.6 perimetro AI, §10.2). Alla
 validazione seguono, nell'ordine: (a) aggiornamento di
-[integrazione-server-mcp.md](integrazione-server-mcp.md) §6.3 con rimando a questo
+[integrazione-server-mcp.md](../work-in-progress/integrazione-server-mcp.md) §6.3 con rimando a questo
 documento; (b) brief DB §10.3; (c) piano operativo della Fase 0.
 
 ---
