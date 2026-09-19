@@ -300,7 +300,7 @@ Queste garanzie sono esplicite nel system prompt e nell'architettura:
 ordinario, e `dbops.ai_query_log.input_text` conserva in chiaro le domande degli operatori. La scelta del
 provider di produzione (esterno con DPA, opzione EU, o modello self-hosted) e le sue implicazioni di
 trattamento vanno decise **prima** della prima installazione, non dopo: e' il requisito R7 di
-[analisi-diagnostica-produzione-senza-accesso-db.md](../dev/work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md)
+[analisi-diagnostica-produzione-senza-accesso-db.md](../dev/work-done/analisi-diagnostica-produzione-senza-accesso-db.md)
 (§5.6), che osserva come non abbia senso progettare la minimizzazione sul canale diagnostico lasciando
 aperto quello ordinario. Non e' un'evoluzione facoltativa come le voci sotto.
 

@@ -203,7 +203,7 @@
 
 Esiste un documento vicino che è **un'altra cosa**, e vale la pena dirlo subito
 per non farne un contenitore unico:
-[analisi-diagnostica-produzione-senza-accesso-db.md](../work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md).
+[analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md).
 
 | | Questo documento | Diagnostica di produzione |
 | --- | --- | --- |
@@ -1206,7 +1206,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 | Documento | Rapporto |
 | --- | --- |
 | [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) | La guida **stabile**: modello di scrittura + mappa di consultazione. Quando un passo di qui atterra, la guida si aggiorna e qui resta la storia |
-| [analisi-diagnostica-produzione-senza-accesso-db.md](../work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md) | Altro mestiere (§0). Ne condividiamo la **Fase 0** (Passo 2) e ne siamo il fornitore per la Fase 1 |
+| [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md) | Altro mestiere (§0). Ne condividiamo la **Fase 0** (Passo 2) e ne siamo il fornitore per la Fase 1 |
 | [fatturazione-roadmap.md](fatturazione-roadmap.md) | I suoi item **#5 vista errori**, **#6 alerting**, **#7 correlation_id** sono qui dentro. La roadmap resta il documento di dominio, questo quello trasversale |
 | [fatturazione-roadmap.md](fatturazione-roadmap.md) — *binario parallelo* | I **fallimenti visibili nelle liste** restano di là: stesso bisogno, altra persona (operatore, non chi ripara) e **nessuna dipendenza** da questo piano — vedi §4 |
 | [brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md) | Il Passo 1, già scritto |
