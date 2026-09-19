@@ -1,7 +1,7 @@
 # Brief DB — `event_log`: la riga dice *chi*, *per chi*, *in che giro*
 
 > **Cos'è.** Il **piano di sviluppo lato database** del **Passo 0** di
-> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md): rendere parlante la
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md): rendere parlante la
 > riga di `vendite.event_log` — perimetro emittente, `tx_id`, identità del giro,
 > entità reale — e metterla sotto RLS, **prima** che esista qualunque endpoint.
 >
@@ -24,7 +24,7 @@
 >
 > | Cosa c'era | Dov'è ora |
 > | --- | --- |
-> | Il **Passo A** (timeline di un caso) e i rilievi della ricognizione | [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) §3-quater — è il **piano**, ed è lì che il Passo A vive |
+> | Il **Passo A** (timeline di un caso) e i rilievi della ricognizione | [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) §3-quater — è il **piano**, ed è lì che il Passo A vive |
 > | **R-1** — l'orario di transazione, chiesto al team DB e **risolto** (`clock_timestamp()`, changeSet `20260824-16/17`) | idem, §3-quater |
 > | Il **prezzo non negoziato** dentro un push riuscito, annotato come «fuori cantiere» | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md), che tratta già quel codice |
 >
@@ -58,7 +58,7 @@
 > registro del 2026-08-23.
 >
 > **Correlati:**
-> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) (il documento madre) ·
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) (il documento madre) ·
 > [brief-db-rls-commesse.md](brief-db-rls-commesse.md) (il cantiere
 > gemello: 3 changeSet + 1 pgTAP) ·
 > [brief-db-grant-batch-cleanup-note.md](brief-db-grant-batch-cleanup-note.md)
@@ -1089,7 +1089,7 @@ dicono di evitare.
 
 ⚠️ **Cosa NON è stato assorbito, e perché** — portare qui anche il bersaglio
 farebbe di questo documento il contenitore di due mestieri: è esattamente ciò
-che il §0 di [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) dice
+che il §0 di [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) dice
 di non fare con la diagnostica di produzione, e la ragione è la stessa.
 
 ### Cosa questo cantiere REGALA all'altro, senza costo
@@ -2530,7 +2530,7 @@ mandare senza criterio avrebbe consegnato le fatture di tutti.
 
 > **Perché sta in questo brief e non in quello del Passo A.** Il Passo A non è
 > materia di questo cantiere — è il §498 di
-> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md). Ma **questo**
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md). Ma **questo**
 > cantiere è ciò che lo ha reso possibile, e chi riparte lo fa da qui: la nota
 > serve a non dover ricostruire il ragionamento da capo.
 

@@ -33,7 +33,7 @@
 > è la misura sotto che va rifatta.
 >
 > 📌 Il documento più vicino a questo è
-> [analisi-osservabilita-log.md](analisi-osservabilita-log.md), che ha lo stato
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md), che ha lo stato
 > passo per passo (§3-quater): quello è il piano, questo è il perché.
 
 ### Cosa è cambiato — e cosa ne è seguito
@@ -190,7 +190,7 @@ della Fase 1, e quel problema è stato **chiuso il giorno dopo**.
 
 | Cosa | Documento |
 | --- | --- |
-| Stato dei registri, i passi, cosa manca | [analisi-osservabilita-log.md](analisi-osservabilita-log.md) — il **piano**, §3-quater per lo stato |
+| Stato dei registri, i passi, cosa manca | [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) — il **piano**, §3-quater per lo stato |
 | `event_log`: scope emittente, RLS, `auth_user_id`, `tx_id`, `correlation_id`, `cleanup_at` | [brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md) |
 | Errori nominabili — seed, segnaposti, classi, presidi | **dieci brief chiusi** in `work-done`, dal 2026-08-04 al 19 (`brief-db-seed-messaggi-errore-mancanti`, `-round-2`, `brief-db-segnaposti-messaggi-errore`, `brief-db-be-classe-codici-errore`, `brief-db-be-terzo-lato-presidio-codici`, `brief-db-codice-errore-strutturato`, …) |
 | «Su QUALE entità è successo» — il bersaglio dell'errore | [brief-db-bersaglio-errore.md](../work-done/brief-db-bersaglio-errore.md) *(chiuso)* |

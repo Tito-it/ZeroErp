@@ -1,8 +1,8 @@
 # Brief DB — Osservabilità, tre cose per l'ultimo miglio: il verdetto «lotto fermo» e il suo presidio, R-6, gli indici delle letture trasversali
 
 > **Cos'è.** I prerequisiti DB del piano
-> [piano-be-fe-osservabilita-pallino-e-superfici.md](../work-in-progress/piano-be-fe-osservabilita-pallino-e-superfici.md),
-> che chiude i residui di [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md)
+> [piano-be-fe-osservabilita-pallino-e-superfici.md](../work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
+> che chiude i residui di [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md)
 > dopo il Passo D (18-09). Tre richieste, in ordine di peso:
 >
 > - **P-1 · il verdetto «lotto fermo» nasce a DB, e da lì il presidio** — è la
@@ -33,7 +33,7 @@
 > archiviato in `work-done/` il 2026-09-19** (decisione di Tid): la parte DB è
 > finita; le consegne BE/FE — V (legge `fermo`), E (`LIKE` con `_` escapato),
 > G (`EXPLAIN` sui quattro rami) — stanno in §6 e nel
-> [piano BE/FE](../work-in-progress/piano-be-fe-osservabilita-pallino-e-superfici.md),
+> [piano BE/FE](../work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
 > che resta in WIP. ⚠️ Finché V non è fatto, il verdetto vive in due posti
 > (Python e DB), uguali per costruzione: è la finestra dichiarata in §1-bis.
 > Il commit è di Tid.
@@ -412,7 +412,7 @@ quindi fuori da `fk_index_policy`. Dove metterli (`00_schema`) e con quale
 ## 6. Cosa fa il BE/FE dopo l'apply
 
 Piano completo in
-[piano-be-fe-osservabilita-pallino-e-superfici.md](../work-in-progress/piano-be-fe-osservabilita-pallino-e-superfici.md).
+[piano-be-fe-osservabilita-pallino-e-superfici.md](../work-done/piano-be-fe-osservabilita-pallino-e-superfici.md).
 ⏱️ *19-09, dal team DB* — le consegne, precise:
 
 | Pezzo | Cosa cambia per il BE |

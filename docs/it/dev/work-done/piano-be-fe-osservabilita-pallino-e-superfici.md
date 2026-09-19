@@ -1,14 +1,58 @@
 # Piano BE/FE — Osservabilità, l'ultimo miglio: il pallino dei presidi, il giornale degli errori, la consultazione di `error_log`
 
+> **Stato:** ✅ **CHIUSO e archiviato in `work-done/` il 2026-09-19**, insieme
+> all'analisi madre [analisi-osservabilita-log.md](analisi-osservabilita-log.md).
+> Il riquadro sotto dice che cosa è consegnato e che cosa resta; il resto del
+> documento è com'era — compreso «non committati» nel §0-bis, che da
+> `9c11a485b` (PR #1620, mergiata) non è più vero.
+>
+> **✅ CHIUSO — 2026-09-19.** I **quattro pezzi sono a codice, mergiati e con i
+> loro presidi**; gli scostamenti dal piano sono tutti dichiarati nel §10, e i
+> sette rilievi della rilettura critica sono rientrati nello stesso giro:
+>
+> | Pezzo | Stato | Dove si legge |
+> | --- | --- | --- |
+> | **P** — pallino dei presidi in topbar | ✅ `processi/presidi/conteggi/`, `usePresidiPolling`, `pallinoPresidi.js`; testata del pannello riallineata al pallino | §2, §10 |
+> | **E** — Errori tecnici | ✅ `GET amm-software/error-log/`, `ErrorLogListView`, lista `dbops.error_log` a catalogo, `JsonBlocco` estratto | §4, §10 |
+> | **G** — Giornale eventi | ✅ `GET vendite/giornale/`, `GiornaleListView`, lista `vendite.giornale` a catalogo, test di perimetro a due emittenti, lookup `tipi-entita` dal catalogo | §3, §10 |
+> | **V** — verdetto «lotto fermo» letto dal DB | ✅ `fermo` chiesto per nome nel riepilogo; il BE trasporta | §5 |
+> | **Collaudo in-app** | ✏️ **da fare** — copione | [collaudo-in-app-osservabilita-giornale-errori-pallino.md](../work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md) |
+>
+> **Che cosa resta, e dove va:**
+>
+> * 🔵 **Il Giornale eventi è `multi_emittente = false`**: su «Tutti» chiede
+>   un emittente. Per certificarlo multi serve una colonna in più nella vista
+>   (`emittente_soggetto_ruolo_id` nei quattro rami) — richiesta al team DB,
+>   **non urgente** (§10, pezzo G).
+> * 🔵 **`REGISTRI` nella view del giornale è una seconda sede dichiarata**
+>   fino a `config.registri_giornale`:
+>   [brief-db-registri-giornale-catalogo.md](../work-in-progress/brief-db-registri-giornale-catalogo.md)
+>   (già in `PROJECT_CONTEXT`).
+> * 🔵 **Il test transitorio di parità di V** (tre addendi Python ⇔ `fermo` a
+>   DB) si toglie con la PR successiva, come scritto in §5.
+> * 🔵 **D-P3 — il pallino per l'operatore**: decisione di permessi sui
+>   presidi, rimandata e dichiarata (§8).
+> * 📌 `vendite.fatturazione_lotti_log` con **17.223 pagine per 1.225 righe**
+>   dopo la retention del 18-09 (fatto datato, `EXPLAIN ANALYZE`): un `VACUUM`
+>   lo dirà — per il team DB, fuori da questo piano.
+>
+> ⚠️ **Dallo stesso commit, due rossi in CI** chiusi lato DB la sera del 19-09:
+> l'elenco delle liste globali nel pgTAP (`dbops.error_log` non si era
+> dichiarata) e il `SELECT` di `zeroerp_app` su `maintenance.job_run_log` che
+> esisteva solo su dev, emerso perché i test Django in CI girano ora come
+> l'applicazione. Nota ⏱️ 19-09 sera dell'analisi madre.
+>
+> ---
+>
 > **Chi scrive:** backend/frontend (`dev/backend-tid`), 2026-09-18.
 > **Origine:** [analisi-osservabilita-log.md](analisi-osservabilita-log.md) — a
 > Passo D chiuso (18-09) restavano **B** intero, la sorgente «lotto fermo» di
 > **C**, **R-6**, la **#8** e il brief della #14; Tid ha chiesto *«un brief
 > apposito con piano di sviluppo»*. La **#8 è decisa** lo stesso giorno (§2.1).
 > I prerequisiti DB stanno in
-> [brief-db-osservabilita-lotto-fermo-r6-indici.md](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md)
+> [brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md)
 > (P-1 … P-3). La #14 **non è qui**: resta il debito dichiarato che è.
-> **Stato:** 🔵 scritto il 2026-09-18; ✅ **P scritto la notte del 19/09**, ✅
+> **Stato (storico):** 🔵 scritto il 2026-09-18; ✅ **P scritto la notte del 19/09**, ✅
 > **V, E e G scritti il 19/09** (BE + FE, non committati — §0-bis): i quattro
 > pezzi sono tutti a codice. ⚠️ Le due liste nuove (`dbops.error_log`,
 > `vendite.giornale`) sono **seed CSV**: sul DB di sviluppo compaiono al
@@ -145,7 +189,7 @@ direbbe «fermo» e il digest «tutto a posto», o il contrario. La forma giusta
 
 Il §4 Passo B del brief madre elenca «UI sugli endpoint orfani (`job-runs`,
 `job-summary`)» e la nota ⏱️ 12-09 «più i quattro endpoint ancora orfani». Ma
-[piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
+[piano-be-fe-endpoint-senza-porta.md](../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
 (decisione di Tid, **2026-09-11**) ha già risposto per ciascuno: `domini-task`,
 `task-registry`, `task-implementations` sono **servizio** (configurazione del
 motore, nessuna porta); `job-summary` è **candidato al ritiro** — la stessa
@@ -470,7 +514,7 @@ Tutte e quattro **si annunciano a chat prima di scrivere** e aspettano l'ok.
 
 | # | Chi | Cosa | Dopo |
 | --- | --- | --- | --- |
-| 1 | **team DB** | P-1 verdetto + presidio, P-2 R-6, P-3 indici ([brief DB](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md)) | — |
+| 1 | **team DB** | P-1 verdetto + presidio, P-2 R-6, P-3 indici ([brief DB](brief-db-osservabilita-lotto-fermo-r6-indici.md)) | — |
 | 2 | **BE + FE** | **P** — pallino (§2) | subito, in parallelo a 1 |
 | 3 | **BE + FE** | **E** — `error_log` (§4): il più piccolo, chiude il ponte `tx_id` | P-3 applicato + EXPLAIN |
 | 4 | **BE + FE** | **G** — giornale (§3) | P-2 + P-3 applicati + EXPLAIN + test perimetro |

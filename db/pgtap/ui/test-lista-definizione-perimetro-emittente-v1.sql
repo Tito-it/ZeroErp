@@ -100,7 +100,8 @@ SELECT is(
 -- ⚠️ Fino al 2026-09-18 questo test diceva «nessun'altra oltre le famiglie»,
 --   ed era un conteggio a zero: verde finche' il CSV aveva una riga, rosso
 --   sulla prima riga giusta. Dal 18-09 il CSV ne ha SETTE
---   (brief-db-perimetro-emittente-cataloghi-globali, §3 e D-1) e il test
+--   (brief-db-perimetro-emittente-cataloghi-globali, §3 e D-1), OTTO dal
+--   19-09 con `dbops.error_log` (analisi-osservabilita-log), e il test
 --   prende la forma del gemello `test-lista-definizione-multi-emittente-v1`
 --   test 5: si asserisce l'ELENCO, non il conteggio. Un numero dice «sono
 --   sette» e lascia credere che siano le sette giuste; l'elenco dice QUALI, e
@@ -117,6 +118,11 @@ SELECT is(
           --   la riga E' l'emittente. Scegliere un emittente per vedere
           --   l'elenco degli emittenti era una domanda senza risposta.
           'anagrafiche.emittenti_fiscali',
+          -- ⭐ Diario tecnico di sistema (analisi-osservabilita-log, pezzo E,
+          --   2026-09-19): come `storico.audit_log`, la riga non ha nessuna
+          --   dimensione emittente. Arrivata nel CSV da un cantiere BE senza
+          --   passare di qui: e' il rosso che questo elenco esiste per dare.
+          'dbops.error_log',
           'storico.audit_log',
           'ui.lista_colonna',
           'ui.lista_colonna_permesso',

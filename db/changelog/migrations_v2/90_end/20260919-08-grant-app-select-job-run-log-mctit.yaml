@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# analisi-osservabilita-log — il SELECT di zeroerp_app sul giornale dei job.
+#
+# ⛔ IL DIFETTO: il backend legge `maintenance.job_run_log` direttamente come
+#   ruolo applicativo in cinque punti (lista dei processi automatici e corse di
+#   un processo, riepilogo giri e liveness, esiti delle corsie di
+#   fatturazione), ma il privilegio SELECT esisteva SOLO sul database di
+#   sviluppo, dato a mano (`zeroerp_app=r/titodb`): nessun changeSet lo
+#   concedeva e `scripts/sql/provision_db_roles.sql` lasciava `maintenance`
+#   fuori whitelist con un commento che affermava il contrario del contratto
+#   («l'app non ne legge né scrive le tabelle»).
+#
+# ⭐ COME È SALTATO FUORI, il 2026-09-19: da `9c11a485b` i test Django in CI
+#   si connettono come `zeroerp_app` invece che come owner (per esercitare la
+#   RLS: ci-validate.yaml, passo «Django tests»). La CI è l'unica macchina
+#   senza il grant a mano, quindi mostra la postura vera: SEDICI test rossi su
+#   «permission denied for table job_run_log», tutti sotto
+#   `list_processi`/`list_job_runs`. I test rossi sono il presidio che ha
+#   funzionato, non il difetto. Lo stesso rosso stava da giorni in
+#   `baseline-rossi-ci.tsv` come ERRORE_FIXTURE di
+#   `maintenance/test-job-run-registrazione.sql`, con la causa mai letta.
+#   Regola (linee-guida-sql §11.9, quarta occorrenza): un privilegio che
+#   esiste su una sola macchina è un ricordo, non una configurazione.
+#
+# ⭐ LA POSTURA, e perché è SOLO SELECT: il giornale dei job non si scrive
+#   dall'applicazione. La porta è `script.fn_job_run_start/end` (SECURITY
+#   DEFINER); il canale fuori transazione scrive come `zeroerp_log` (INSERT,
+#   `20260905-38`). Per questo `maintenance` NON entra nella whitelist del
+#   provisioning, che concede SIUD pieno: qui si concede la sola lettura.
+#
+# ⚠️ DUE SEDI, e dicono la stessa cosa. `provision_db_roles.sql` (blocco
+#   `maintenance` in fondo) è la sede dichiarata ed è l'ultima parola in CI e
+#   in ci-local.sh; questo changeSet porta lo stesso grant sui database già
+#   provisionati prima del 19-09, dove nessuno rilancia lo script a ogni
+#   migrate. Additivo, idempotente: dove il grant c'è già non cambia nulla.
+#   ⚠️ La vista `maintenance.vw_job_run_da_guardare` ha già il suo grant nel
+#   changeSet che la crea (`20260905-39`): qui non si ripete.
+#
+# Presidio: db/pgtap/maintenance/test-app-postura-job-run-log-v1.sql —
+#   postura (SELECT sì, INSERT/UPDATE/DELETE no) e comportamento come app.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260919-08-grant-app-select-job-run-log-mctit.yaml
+
+  - changeSet:
+      id: 20260919-08-grant-app-select-job-run-log
+      author: mctit
+      # ⚠️ Nessun `dbms:` sui change: con `runOnChange` + `validCheckSums: ANY`,
+      #    Liquibase 5.0.4 lascia un change `dbms:` FUORI dal checksum quando
+      #    decide se ri-eseguire — una ri-esecuzione spuria alla corsa dopo (in
+      #    CI la seconda invocazione, fuori ordine) e poi un checksum «vuoto»
+      #    cieco alle modifiche. linee-guida-sql §11.1.
+      runOnChange: true
+      comment: >
+        GRANT SELECT a zeroerp_app su maintenance.job_run_log: l'app LEGGE il
+        giornale dei job (processi, corse, riepiloghi, esiti fatturazione) e
+        non lo scrive. Idempotente e difensivo (skip se il ruolo o la tabella
+        mancano).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: maintenance, tableName: job_run_log }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $grant$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                      RETURN;
+                  END IF;
+                  -- ⭐ Il minimo che serve: leggere UNA tabella. Niente
+                  --   INSERT/UPDATE/DELETE (la porta di scrittura è DEFINER),
+                  --   niente sequenza (l'app non fa nextval qui).
+                  GRANT SELECT ON TABLE maintenance.job_run_log TO zeroerp_app;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⚠️ Riporta la CI (e ogni installazione nuova) a sedici test
+              --   Django rossi: `list_processi`/`list_job_runs` come app.
+              DO $revoke$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+                  IF to_regclass('maintenance.job_run_log') IS NOT NULL THEN
+                      REVOKE SELECT ON TABLE maintenance.job_run_log FROM zeroerp_app;
+                  END IF;
+              END
+              $revoke$;

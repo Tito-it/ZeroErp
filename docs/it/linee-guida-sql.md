@@ -1981,6 +1981,34 @@ un oggetto, il privilegio deve stare in una sede che una **installazione nuova**
 attraversa — il provisioning, o un changeSet — e lo scratch deve **riceverlo da
 lì**, mai copiarlo.
 
+⚠️ **Quarta volta, 2026-09-19 — e stavolta a scoprirlo sono stati i test
+Django, non i pgTAP.** Il backend legge `maintenance.job_run_log` direttamente
+come ruolo applicativo in cinque punti (processi automatici e corse, riepilogo
+giri e liveness, esiti delle corsie di fatturazione), ma il `SELECT` esisteva
+solo su dev, dato a mano: nessun changeSet, e il provisioning lasciava
+`maintenance` fuori whitelist con un commento che affermava il contrario del
+contratto («l'app non ne legge né scrive le tabelle»). Nessuno lo vedeva per
+tre motivi che si sommavano: i pgTAP che leggono il giornale come app stavano
+in `baseline-rossi-ci.tsv` come `ERRORE_FIXTURE` con la causa mai letta
+(`maintenance/test-job-run-registrazione.sql`); i test Django in CI si
+connettevano come **owner**, che possiede la tabella; lo scratch riceve i
+privilegi dal provisioning, che il `SELECT` non lo dava. Il giorno in cui i
+test Django sono passati a `zeroerp_app` (`9c11a485b`, per esercitare la RLS)
+sono morti in **sedici** su `permission denied for table job_run_log`. *I test
+rossi sono il presidio che ha funzionato, non il difetto.*
+
+⭐ **E la sede giusta NON era la whitelist.** `maintenance` resta fuori: la
+whitelist concede SIUD pieno, e il giornale dei job **non si scrive**
+dall'applicazione (la porta è `script.fn_job_run_start/end`, `SECURITY
+DEFINER`; il canale fuori transazione è `zeroerp_log`). Il blocco `maintenance`
+del provisioning concede `USAGE` + il **solo `SELECT`** sul giornale e sulla
+sua vista di presidio; `90_end/20260919-08` porta lo stesso grant sui database
+già provisionati. Presidio:
+`db/pgtap/maintenance/test-app-postura-job-run-log-v1.sql`, che pinna il **no**
+(INSERT/UPDATE/DELETE) quanto il sì. ⚠️ Corollario: un `ERRORE_FIXTURE` in
+baseline con «permesso negato» va **letto**, non registrato — è quasi sempre
+questa regola.
+
 ---
 
 ---

@@ -1206,7 +1206,7 @@ dal **rifiuto legittimo**. Oggi non può: un 500 tecnico e un «non puoi annulla
 un ordine con DDT» sono la stessa riga con testo diverso.
 
 Sono due buchi aperti di
-[analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md):
+[analisi-osservabilita-log](../work-done/analisi-osservabilita-log.md):
 
 * **B1** — *«il 67% di `error_log` non è attribuibile: qualunque strumento di
   consultazione mostra soprattutto rumore»*. Filtrare per `classe = 'TECNICO'`
@@ -1478,7 +1478,7 @@ un requisito che vive in due posti si dimentica in uno dei due.
   §3 — le alternative già pesate, incluso lo SQLSTATE custom
 * [api.md](../api.md) — §Tassonomia errori, gli status in uso, il denominatore sicuro
 * [Presidi e registri del debito](../../guide/presidi-e-registri-del-debito.md) §3.3
-* [analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md) — B1 e B7, §12
+* [analisi-osservabilita-log](../work-done/analisi-osservabilita-log.md) — B1 e B7, §12
 * [`scripts/sql/guardrail_codice_errore_strutturato.sql`](../../../../scripts/sql/guardrail_codice_errore_strutturato.sql)
   — i controlli in servizio
 * [`scripts/sql/check_messaggio_vs_condizione.sql`](../../../../scripts/sql/check_messaggio_vs_condizione.sql)

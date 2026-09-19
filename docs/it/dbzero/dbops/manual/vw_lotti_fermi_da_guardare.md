@@ -26,7 +26,7 @@ che nessuno ha rilanciato né sciolto. Deve restare vuota.
 
 Il banner lo dice a chi **apre** il lotto; questa riga lo dice a chi **non lo
 apre**: è la sorgente «lotto fermo» che mancava al Passo C dell'osservabilità
-([analisi-osservabilita-log](/dev/work-in-progress/analisi-osservabilita-log)),
+([analisi-osservabilita-log](/dev/work-done/analisi-osservabilita-log)),
 e da qui arriva al digest dei presidi, al pannello «Processi automatici» e al
 pallino della topbar.
 
