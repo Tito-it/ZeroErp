@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ P-3 (giornale) — un indice PER TEMPO sulle quattro sorgenti di
+#   script.vw_giornale_entita. Brief: brief-db-osservabilita-lotto-fermo-r6-indici
+#   §4.1; piano BE/FE pezzo G (il giornale trasversale «per finestra e gravita'»).
+#
+# ── ⛔ IL MOTIVO NON E' IL VOLUME: E' IL CONTRATTO ──────────────────
+#   Il backend dichiarera' una whitelist di filtri in cui `data_da`/`data_a`
+#   e' il filtro SEMPRE presente (floor standard), con ORDER BY quando DESC e
+#   LIMIT. Oggi le quattro tabelle hanno indici PER ENTITA' (event_log:
+#   entity/correlation; fatture_log: fattura_id; task_runs: la UNIQUE su
+#   lotto_id; lotti_log: NESSUNO — vedi 20260919-07) e nessuno per tempo:
+#   una lettura «tutti gli errori dell'ultimo mese» non ha da dove partire e
+#   scandisce quattro registri interi. Un filtro dichiarato senza indice e' un
+#   500 differito, non una lista lenta.
+#
+# ── ⭐ UN INDICE SEMPLICE, non (gravita, tempo) ──────────────────────
+#   La gravita' ha tre valori e la finestra e' il filtro portante: un btree
+#   sul solo tempo serve `quando >= a AND quando < b ORDER BY quando DESC` su
+#   ogni ramo, e sopra il UNION ALL il planner puo' fare un Merge Append
+#   ordinato invece di ordinare tutto. Un composto (severity, event_time)
+#   servirebbe SOLO le letture che filtrano per gravita', e la lettura di
+#   default (ERROR + NULL) non e' un'uguaglianza: il filtro sulla gravita' si
+#   applica scorrendo il tempo. Se l'EXPLAIN del backend, dopo l'apply,
+#   mostrera' un piano che non lo usa, e' un fatto da registrare nel brief —
+#   ma su un ramo non si indicizza una previsione.
+#
+# ── Niente DESC nell'indice ──────────────────────────────────────────
+#   Un btree a colonna singola si legge in entrambi i versi: `DESC` cambia
+#   qualcosa solo nei composti a direzioni miste. Il nome resta
+#   ix_<tabella>_<colonna> (linee-guida-sql §8).
+#
+# ── Non sono indici di FK ────────────────────────────────────────────
+#   Fuori da dbops.fk_index_policy: nessuna delle quattro colonne e' una FK.
+#   L'indice FK che manca a fatturazione_lotti_log (lotto_id) e' un'altra
+#   cosa e passa dalla policy: 20260919-07.
+#
+# Verifica: db/pgtap/dbops/test-indici-letture-trasversali-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260919-05-create-ix-registri-giornale-per-tempo-mctit.yaml
+
+  - changeSet:
+      id: 20260919-05-create-ix-registri-giornale-per-tempo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Un indice per tempo su ciascuna delle quattro sorgenti del giornale
+        (event_log.event_time, fatture_log.data_ora,
+        fatturazione_lotti_log.data_ora, fatturazione_lotti_task_runs.started_at):
+        la lettura trasversale «per finestra» del pezzo G ha oggi solo indici
+        per entita'. Semplici, senza DESC (un btree si legge in entrambi i
+        versi), fuori dalla policy FK. P-3 del brief osservabilita.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: event_log }
+            - tableExists: { schemaName: vendite, tableName: fatture_log }
+            - tableExists: { schemaName: vendite, tableName: fatturazione_lotti_log }
+            - tableExists: { schemaName: vendite, tableName: fatturazione_lotti_task_runs }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Le quattro colonne di `quando` di script.vw_giornale_entita,
+              -- una per ramo (task_runs: started_at, dal 20260919-04).
+              CREATE INDEX IF NOT EXISTS ix_event_log_event_time
+                  ON vendite.event_log (event_time);
+
+              CREATE INDEX IF NOT EXISTS ix_fatture_log_data_ora
+                  ON vendite.fatture_log (data_ora);
+
+              CREATE INDEX IF NOT EXISTS ix_fatturazione_lotti_log_data_ora
+                  ON vendite.fatturazione_lotti_log (data_ora);
+
+              CREATE INDEX IF NOT EXISTS ix_fatturazione_lotti_task_runs_started_at
+                  ON vendite.fatturazione_lotti_task_runs (started_at);
+
+              COMMENT ON INDEX vendite.ix_event_log_event_time IS
+                  'La lettura PER TEMPO del giornale (script.vw_giornale_entita, ramo EVENT_LOG): finestra data_da/data_a con ORDER BY quando. Gli altri due indici della tabella sono per entita'' e per filo. P-3 di brief-db-osservabilita-lotto-fermo-r6-indici (2026-09-19).';
+              COMMENT ON INDEX vendite.ix_fatture_log_data_ora IS
+                  'La lettura PER TEMPO del giornale (ramo FATTURA_LOG). ix_fatture_log_fattura_id serve la lettura per documento. P-3 di brief-db-osservabilita-lotto-fermo-r6-indici (2026-09-19).';
+              COMMENT ON INDEX vendite.ix_fatturazione_lotti_log_data_ora IS
+                  'La lettura PER TEMPO del giornale (ramo LOTTO_LOG). La lettura per lotto la serve l''indice della policy FK (ix_fatturazione_lotti_log_lotto_id, acceso il 2026-09-19). P-3 di brief-db-osservabilita-lotto-fermo-r6-indici.';
+              COMMENT ON INDEX vendite.ix_fatturazione_lotti_task_runs_started_at IS
+                  'La lettura PER TEMPO del giornale (ramo TASK_RUN): dal 2026-09-19 `quando` e'' started_at. La lettura per lotto la serve il prefisso della UNIQUE (lotto_id, ...). P-3 di brief-db-osservabilita-lotto-fermo-r6-indici.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_event_log_event_time;
+              DROP INDEX IF EXISTS vendite.ix_fatture_log_data_ora;
+              DROP INDEX IF EXISTS vendite.ix_fatturazione_lotti_log_data_ora;
+              DROP INDEX IF EXISTS vendite.ix_fatturazione_lotti_task_runs_started_at;

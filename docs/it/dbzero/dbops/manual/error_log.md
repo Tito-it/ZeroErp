@@ -105,6 +105,42 @@ Regola: [linee-guida-sql](/linee-guida-sql) §11.8; motivazione: guida
 
 ---
 
+### 🔎 Gli indici della consultazione (dal 19-09-2026)
+
+La consultazione dei tecnici — «quale funzione ha sollevato quale codice,
+quando, in quale transazione» (pezzo E del piano BE/FE dell'osservabilità) —
+dichiara una whitelist di filtri, e **ogni filtro dichiarato ha un indice da cui
+partire** (P-3 del brief `brief-db-osservabilita-lotto-fermo-r6-indici`,
+changeSet `20260919-06`):
+
+| Indice | Serve a |
+| --- | --- |
+| `ix_error_log_occurred_at` | la finestra `data_da`/`data_a`, il filtro sempre presente, e la prima pagina (`ORDER BY occurred_at DESC LIMIT n`) |
+| `ix_error_log_area_occurred_at` | `area` (esatto), ordinato nel tempo dentro l'area |
+| `ix_error_log_function_name_occurred_at` | `function_name`, esatto o a **prefisso** — con `text_pattern_ops` |
+| `ix_error_log_tx_id` | il **ponte** dal giornale (`script.vw_giornale_entita.tx_id`) agli appunti tecnici della stessa transazione |
+
+`codice` sta sul catalogo, non qui: si risolve prima `codice → messaggio_errore_id`
+e si entra dall'indice che c'è già.
+
+⛔ **Due cose da sapere sul prefisso di `function_name`**, verificate con
+`EXPLAIN` il 19-09:
+
+1. la collation del database è `it_IT.UTF-8`: un btree ordinario **non serve**
+   `LIKE 'x%'`. L'indice ha `text_pattern_ops`, che serve `=` e `LIKE 'x%'` —
+   e **mai** `ILIKE`. Il backend filtri con `LIKE`: i nomi di funzione sono
+   minuscoli per convenzione;
+2. **`_` è un jolly di `LIKE`**, e i nomi di funzione ne sono pieni:
+   `LIKE 'fn_get_lotto%'` ha come prefisso fisso solo `fn`, e il planner torna
+   a scandire la tabella. Il prefisso va **escapato** (`fn\_get\_lotto%`) — che
+   è anche l'unica forma corretta: senza, `fn_get` combacerebbe con `fnXget`.
+
+⚠️ Il costo sta in scrittura, ed è dichiarato: la tabella si scrive a ogni
+errore, e quattro indici in più sono quattro scritture in più sul ramo che sta
+già fallendo. È il posto giusto per pagarli.
+
+---
+
 ### 🧹 Pulizia programmata (`cleanup_at`)
 
 Il campo **`cleanup_at`** è usato esclusivamente per **gestire job di pulizia** dei log storici.  

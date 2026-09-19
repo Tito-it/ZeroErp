@@ -155,7 +155,7 @@
 - [fn_get_contratto_attivo](manual/fn_get_contratto_attivo.md) — (latest review 30-08-2026)
 - [fn_get_data_minima_numerabile_lotto](manual/fn_get_data_minima_numerabile_lotto.md) — **Da quale data in poi TUTTE le fatture non ancora numerate di questo lotto possono prendere un numero.**
 - [fn_get_limite_emissione_default](manual/fn_get_limite_emissione_default.md) — **Il valore di un limite di emissione dal catalogo dei parametri, come numero.**
-- [fn_get_lotto_segnalazioni_summary](manual/fn_get_lotto_segnalazioni_summary.md) — (latest review 23-02-2026)   La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto, unificando:
+- [fn_get_lotto_segnalazioni_summary](manual/fn_get_lotto_segnalazioni_summary.md) — (latest review 19-09-2026)   La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto, unificando:
 - [fn_get_lotto_task_last_run](manual/fn_get_lotto_task_last_run.md) — Restituisce l'ultimo task run disponibile per lotto/step/task.
 - [fn_get_next_progressivo](manual/fn_get_next_progressivo.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_next_progressivo`** restituisce il prossimo numero di registro, con **lock della riga** progressivi per evitare doppioni.
 - [fn_get_or_create_commessa](manual/fn_get_or_create_commessa.md) — (latest review 26-02-2026)   Recupera una commessa riusabile, coerente con il contesto BA/utility e parametri funzionali, oppure ne crea una nuova in modo sicuro anche con chiamate concorrenti.
@@ -401,6 +401,7 @@
 - [vw_lotti_fase](manual/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
 - [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)
 - [vw_lotti_gruppi_serviti](manual/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
+- [vw_lotti_segnalazioni_summary](manual/vw_lotti_segnalazioni_summary.md) — (latest review 19-09-2026)
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](manual/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)

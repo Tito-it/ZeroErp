@@ -29,7 +29,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 28,anagrafiche.operatori,Operatori,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit,t,t
 29,config.email_account,Account email,config,NULL,t,2026-08-01 00:00:00,mctit,f,t
 30,config.email_template,Template email,config,NULL,t,2026-08-01 00:00:00,mctit,f,t
-31,config.email_log,Log invii email,config,NULL,t,2026-08-01 00:00:00,mctit,f,t
+31,config.email_log,Log invii email,config,NULL,t,2026-08-01 00:00:00,mctit,t,t
 32,storico.audit_log,Log di audit,storico,NULL,t,2026-08-01 00:00:00,mctit,f,f
 33,anagrafiche.categorie_clienti_listini,Listini per categoria cliente,anagrafiche,NULL,t,2026-08-01 00:00:00,mctit,f,t
 34,dbops.coda_lavori,Coda lavori,dbops,NULL,t,2026-08-02 00:00:00,mctit,f,t

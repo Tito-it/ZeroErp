@@ -38,6 +38,7 @@
 |------|-------------|
 | ix_event_log_corr_time | `CREATE INDEX ix_event_log_corr_time ON vendite.event_log USING btree (correlation_id, event_time DESC)` |
 | ix_event_log_entity_time | `CREATE INDEX ix_event_log_entity_time ON vendite.event_log USING btree (entity_type, entity_id, event_time DESC)` |
+| ix_event_log_event_time | `CREATE INDEX ix_event_log_event_time ON vendite.event_log USING btree (event_time)` |
 | pk_event_log | `CREATE UNIQUE INDEX pk_event_log ON vendite.event_log USING btree (id)` |
 
 ## 🚨 Trigger

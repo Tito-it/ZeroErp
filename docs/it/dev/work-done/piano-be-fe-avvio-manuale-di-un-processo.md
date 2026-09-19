@@ -622,7 +622,7 @@ drenatore di systemd trovi i segreti nell'ambiente. Lo prova il collaudo di
      quattro `ui.*` e `storico.audit_log`, mentre il commento della colonna
      stessa (02-09) le nomina come cataloghi globali da dichiarare `false`;
      il registro `_ESENZIONI` del BE lo sa, il seed no. È un seed → brief
-     al DB: [brief-db-perimetro-emittente-cataloghi-globali.md](../work-in-progress/brief-db-perimetro-emittente-cataloghi-globali.md).
+     al DB: [brief-db-perimetro-emittente-cataloghi-globali.md](brief-db-perimetro-emittente-cataloghi-globali.md).
      ✅ **Chiuso dal seed il 2026-09-18** (`b655ea6d4`, PR #1612): le sette
      globali — le sei sopra più `anagrafiche.emittenti_fiscali` (D-1) — hanno
      `perimetro_emittente = f` nella colonna di `lista_definizione.csv`, e

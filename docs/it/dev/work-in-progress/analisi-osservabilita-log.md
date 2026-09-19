@@ -74,7 +74,7 @@
 > [piano-be-fe-osservabilita-pallino-e-superfici.md](piano-be-fe-osservabilita-pallino-e-superfici.md)
 > (P il pallino dei presidi · G il giornale degli errori · E la consultazione di
 > `error_log` · V il verdetto «lotto fermo» letto dal DB) e i suoi prerequisiti
-> [brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md)
+> [brief-db-osservabilita-lotto-fermo-r6-indici.md](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md)
 > (P-1 verdetto + presidio, P-2 R-6, P-3 indici). ✅ **#8 decisa da Tid**: pallino
 > in topbar, accanto al badge delle code (§5). ⚠️ E una voce di **B** era già
 > chiusa da una settimana senza che questo documento lo dicesse: la «UI sugli
@@ -87,6 +87,20 @@
 > è la sua faccia in-app. ✅ **E la sera stessa Tid ha deciso: «la regola va
 > a DB»** — il verdetto «lotto fermo» diventa una regola del database (D-1 del
 > brief DB), il BE la legge e non la ricalcola.
+>
+> ⏱️ **19-09 — il brief DB è SCRITTO e APPLICATO** (`20260919-01 → -07`,
+> `EXECUTED` su dbdev alle 01:34, **pgTAP verdi senza regressioni** — lato DB
+> chiuso, restano V/E/G del piano BE/FE): la sorgente «lotto fermo» di **C** nasce da
+> una **sede unica** a DB (`vendite.vw_lotti_segnalazioni_summary`: dieci
+> conteggi + `fermo`/`fermo_motivo`/`fermo_da`, una riga per lotto) letta dalla
+> funzione del banner (`fermo` undicesima) e dal presidio
+> `dbops.vw_lotti_fermi_da_guardare` (pre-fiscali fermi da oltre un'ora,
+> `DEFINER`, a catalogo); **R-6** chiuso a DB (`quando = started_at`: l'orario
+> di una riga di diario non si muove dopo che è nata); gli **indici** di B
+> (quattro per tempo sul giornale, quattro su `error_log`, più l'indice FK di
+> `fatturazione_lotti_log` che mancava). ⚠️ Due cose per il BE di E: `LIKE`
+> non `ILIKE`, e `_` è un jolly da escapare. Dettagli e verifica critica:
+> [brief DB §1-bis](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md).
 >
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
@@ -380,7 +394,7 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | ~~B4~~ | ~~`correlation_id` assente sul ramo push~~ ✅ **chiuso** (D-7 del brief) | è **l'id del giro**: un `uuid` nuovo generato dal runner, su entrambi i rami (§5, #10) |
 | ~~B5~~ | ~~Log Python non correlabili~~ ✅ **chiuso** (Passo 2, BE-8) | `request_id` nel formatter di logging |
 | ~~B6~~ | ~~Endpoint senza UI~~ ✅ **chiuso per decisione** (⏱️ *18-09*, ma deciso l'**11-09**) | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); per gli altri quattro [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) ha risposto: `domini-task`, `task-registry`, `task-implementations` sono **servizio** (nessuna porta), `job-summary` è **candidato al ritiro**. Non resta niente da costruire |
-| B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* → 🔵 **in brief** ⏱️ *18-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; la **sorgente** «lotto fermo» è chiesta al team DB come **P-1** del [brief](brief-db-osservabilita-lotto-fermo-r6-indici.md) — e il verdetto che la alimenta **si sposta** a DB, non si copia; la faccia in-app è il pallino (#8) |
+| B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* → 🔵 **in brief** ⏱️ *18-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; la **sorgente** «lotto fermo» è chiesta al team DB come **P-1** del [brief](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md) — e il verdetto che la alimenta **si sposta** a DB, non si copia; la faccia in-app è il pallino (#8) |
 | ~~B8~~ | ~~Retention assente sui log di dominio~~ ✅ **chiuso** (Passo D, ⏱️ *18-09*) | `event_log` (decisione 11) + i **quattro** registri di fatturazione e push — `fatturazione_lotti_log`, `fatture_log`, `fatturazione_lotti_task_runs`, `commesse_push_log` — a 750 giorni, scadenza scritta alla nascita da un BB unico (`20260918-29 → -33`, regole 16-19) |
 | ~~**B9**~~ | ~~**`event_log` non ha scope emittente né RLS**~~ ✅ **chiuso** (Passo 0) | `emittente_soggetto_ruolo_id NOT NULL`, derivata all'`INSERT` da `trgfn_event_log_deriva_scope`, più la policy `rls_event_log_ef_whitelist` (`20260822-46`) |
 | ~~**B10**~~ | ~~**`event_log` è l'unico registro senza `tx_id`**~~ ✅ **chiuso** (Passo 0) | colonna `tx_id` + `trg_event_log_gen_tx_id_ins_upd` montato dall'automazione |
@@ -418,8 +432,8 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | **1** — rendere nominabili gli errori | ✅ seed applicato (2026-08-07) | resta il **check CI**, come già scritto |
 | **2** — `request_id` nei log Python | ✅ **FATTO** *(consegna BE-8)* | `settings.py`: filtro `request_id` + `req=%(request_id)s` nel formatter. ⭐ **B11 chiuso nello stesso giro, e in due direzioni opposte**: `emittente_attivo_id` ora si **scrive** (si collega in SQL, non passa dal Python), `tx_id` su `request_log` si è **tolto** — quella riga nasce quando l'unità di lavoro ha già chiuso, quindi il suo `tx_id` non esiste più. ⭐ *Una colonna che nessuno scrive si valorizza o si toglie: qui è successo l'uno e l'altro, sulla stessa tabella* |
 | **A** — la timeline di un caso | ✅ **CHIUSO — fattura e lotto** *(2026-08-24 sera)* | `GET /vendite/fatture/<id>/giornale/` (validato in-app da Tid) e `GET /vendite/lotti/<id>/giornale/` + le due schede «Storia». ⭐ Sono i **due soli consumatori** di `script.vw_giornale_entita`. Sul lotto: il lotto **più le sue fatture**, righe non-INFO, con `entity_type` su ogni riga — e alla prima chiamata vera *il lotto dice che è andata male, la fattura dice perché* (R-3). 🔵 Resta la validazione in-app del pannello lotto |
-| **B** — superfici aggregate | 🔵 aperto — 🟡 **mosso da fuori** ⏱️ *12-09* — 📐 **in piano** ⏱️ *18-09* (G + E del [piano](piano-be-fe-osservabilita-pallino-e-superfici.md); gli «orfani» chiusi per decisione l'11-09) | `GET /tracciamento/job-runs/` ha il suo primo consumatore: la schermata **«Processi automatici»** (`amm-software`, 05-09), che affianca ai run lo stato dei presidi `ZERO`. ⛔ Non è la vista errori né la consultazione di `error_log`: quelle restano da fare, dietro il permesso del vincolo del Passo A |
-| **C** — notifiche | 🔵 aperto — 🟡 **il canale c'è** ⏱️ *12-09* — 📐 **in brief** ⏱️ *18-09* (P-1 del [brief DB](brief-db-osservabilita-lotto-fermo-r6-indici.md); #8 decisa: pallino) | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C. ⏱️ *15-09*: la giornaliera è **in esercizio** (corse 14-09 e 15-09 alle 07:00, exit 0 a giornale); a zero righe non spedisce, per scelta — il battito lo porta la settimanale. La sorgente «lotto fermo» **non è a catalogo**: `presidi.csv` non ha nessuna riga sui lotti |
+| **B** — superfici aggregate | 🔵 aperto — 🟡 **mosso da fuori** ⏱️ *12-09* — 📐 **in piano** ⏱️ *18-09* (G + E del [piano](piano-be-fe-osservabilita-pallino-e-superfici.md); gli «orfani» chiusi per decisione l'11-09) — ✅ *19-09* **gli indici (P-3) sono applicati** (`20260919-05/-06/-07`, pgTAP verdi): il DB non blocca più niente, G ed E sono lavoro BE/FE | `GET /tracciamento/job-runs/` ha il suo primo consumatore: la schermata **«Processi automatici»** (`amm-software`, 05-09), che affianca ai run lo stato dei presidi `ZERO`. ⛔ Non è la vista errori né la consultazione di `error_log`: quelle restano da fare, dietro il permesso del vincolo del Passo A |
+| **C** — notifiche | ✅ **CHIUSO a DB** ⏱️ *19-09*: il canale c'era (digest, *12-09*), la sorgente «lotto fermo» è `dbops.vw_lotti_fermi_da_guardare` a catalogo (lettore della sede unica, applicato alle 01:34, pgTAP verdi), la faccia in-app è il pallino (#8, pezzo P committato). Resta al BE il pezzo V (legge `fermo` invece di ricalcolarlo) | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C. ⏱️ *15-09*: la giornaliera è **in esercizio** (corse 14-09 e 15-09 alle 07:00, exit 0 a giornale); a zero righe non spedisce, per scelta — il battito lo porta la settimanale. La sorgente «lotto fermo» **non è a catalogo**: `presidi.csv` non ha nessuna riga sui lotti |
 | **D** — retention sui log di dominio | ✅ **CHIUSO** ⏱️ *18-09* (applicato su dbdev alle 19:45, pgTAP verdi la sera stessa) | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⏱️ *12-09*: restavano `fatturazione_lotti_log`, `fatture_log`, `commesse_push_log`. ⏱️ *18-09*: **erano quattro** — anche `fatturazione_lotti_task_runs`, quarta sorgente di `vw_giornale_entita` — e sono chiusi con `20260918-29 → -33` + regole 16-19: colonna, scadenza scritta alla nascita da `dbops.trgfn_cleanup_at_alla_nascita`, ramo retention in `trgfn_logs_guard_delete`, copia `fn_event_log_ttl_days` ritirata. Si verifica su `test-registri-fatturazione-scadenza-alla-nascita.sql` |
 
 ### ✅ R-1 — l'orario ora è quello vero *(chiesto dal BE, scritto dal team DB il 2026-08-24)*
@@ -486,7 +500,7 @@ incontra tutti:
 | **R-2** | `LOTTO_LOG` e `FATTURA_LOG` hanno `correlation_id` **NULL per costruzione della vista** | Filtrare per «filo» tiene `event_log` + `task_run` e butta via le righe scritte **per una persona**. ⛔ Un filtro per giro nasconderebbe metà del contenuto |
 | **R-4** | Il **perimetro non è mai stato esercitato** su nessuno dei quattro rami | Un solo emittente ha righe. Il fail-closed funziona (senza GUC la vista torna 0), la **discriminazione** no: va collaudata **apposta**, i dati non lo faranno |
 | **R-5** | Due **generazioni di righe** convivono | Le vecchie hanno `tx_id` NULL e per «filo» il lotto; le nuove il giro. A video sono **indistinguibili** — e da R-1 in poi si aggiunge l'orario |
-| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05, il 2026-09-12, il 2026-09-15 e il 2026-09-18*: `script.vw_giornale_entita` usa tuttora `COALESCE(tr.ended_at, tr.started_at) AS quando`. 📐 *18-09*: chiesto al team DB come **P-2** (`quando = started_at`) | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
+| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05, il 2026-09-12, il 2026-09-15 e il 2026-09-18*: `script.vw_giornale_entita` usa tuttora `COALESCE(tr.ended_at, tr.started_at) AS quando`. 📐 *18-09*: chiesto al team DB come **P-2** (`quando = started_at`). ✅ *19-09*: **CHIUSO** (`20260919-04`, applicato alle 01:34, pgTAP verdi) — e il meccanismo è a verbale: `ended_at` lo scrive la corsa **successiva** che chiude `ANNULLATO` il tentativo aperto (mediana 15 min, massimo ~2 giorni sui 352 ANNULLATO di dev) | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
 | **R-7** | **Rumore**: sul 6260, 213 righe, 82 non-INFO — e **81 sono la stessa storia ripetuta otto volte**. L'errore vero è **una riga** | Il filtro non-INFO da solo non basta: nascondere le ritirate ne toglie una parte, il resto è **de-duplicazione**, da guardare col pannello davanti |
 
 ---
@@ -801,7 +815,7 @@ pgAgent se il digest tace). ⇒ Il residuo del Passo C è **solo** la sorgente
 aspetta.
 
 ⏱️ *2026-09-18*: **la sorgente è chiesta, e con una forma precisa** — P-1 di
-[brief-db-osservabilita-lotto-fermo-r6-indici.md](brief-db-osservabilita-lotto-fermo-r6-indici.md).
+[brief-db-osservabilita-lotto-fermo-r6-indici.md](../work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md).
 ⭐ Il punto che la forma decide: il verdetto «lotto fermo» oggi vive in **Python**
 (`blocks_next_step`, tre addendi da `fn_get_lotto_segnalazioni_summary`); un
 presidio scritto a DB sarebbe la **seconda sede** dello stesso predicato, e le
@@ -1123,4 +1137,5 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 *Analisi WIP — Osservabilità e consultazione dei log (3 agosto 2026;
 piano rivisto il 22 agosto 2026: §0-bis, Passo 0, divisione A/B; riletture
 del 24 agosto, 5, 12, 15 e 18 settembre 2026 — §3-quater; Passo D chiuso a DB
-il 18 settembre).*
+il 18 settembre; sorgente di C, R-6 e indici di B chiusi a DB il 19 settembre —
+applicati alle 01:34, pgTAP senza regressioni; restano V/E/G lato BE/FE).*

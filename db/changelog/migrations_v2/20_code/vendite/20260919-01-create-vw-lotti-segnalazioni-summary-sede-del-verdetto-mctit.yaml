@@ -1,0 +1,256 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ P-1 (a) — LA SEDE UNICA del riepilogo segnalazioni di un lotto, e del
+#   verdetto «fermo». Brief: brief-db-osservabilita-lotto-fermo-r6-indici §2
+#   (D-1 di Tid, 2026-09-18: «la regola va a DB»).
+#
+# ── PERCHE' UNA VISTA, E NON UNA COLONNA IN PIU' NELLA FUNZIONE ────────
+#   Il brief chiede due lettori dello stesso predicato: il backend (per UN
+#   lotto, via fn_get_lotto_segnalazioni_summary) e il presidio (per TUTTI i
+#   lotti pre-fiscali, dbops.vw_lotti_fermi_da_guardare). Se la funzione
+#   tenesse i propri aggregati e la vista del presidio ne scrivesse una copia
+#   set-based, il predicato avrebbe DUE sedi — dentro il database invece che
+#   fra Python e database, ma due — e le due divergerebbero al primo addendo
+#   nuovo, che e' esattamente il difetto che D-1 chiude.
+#   ⇒ Gli aggregati vivono QUI, una riga per lotto. La funzione diventa il
+#   lettore per un lotto (20260919-02), il presidio il lettore per i
+#   pre-fiscali fermi da oltre un'ora (20260919-03). Un addendo nuovo si
+#   aggiunge in un posto e lo vedono tutti e due.
+#
+# ── ⭐ IL CORPO E' LA TRASPOSIZIONE FEDELE DELLA FUNZIONE VIVA ───────────
+#   Le quattro CTE per-lotto di fn_get_lotto_segnalazioni_summary (doc
+#   auto-gen, rev 2026-09-12) diventano quattro sottoquery GROUP BY lotto_id
+#   con gli STESSI filtri: `disabilitato IS FALSE`, il NOT EXISTS su ESCLUSO
+#   nel canale lotto (che con gruppo_key NULL e' vero e la riga CONTA — la
+#   critica del giro ferma il giro), il denominatore sugli ESITI e non sul
+#   perimetro. Provata in ROLLBACK il 19-09 contro la funzione viva: 95 lotti
+#   su 95 con la stessa riga (fatto datato, dbdev).
+#   ⚠️ Sottoquery e non CTE: una CTE riferita una volta viene inlinata, ma
+#   una sottoquery in FROM non lascia il dubbio, e il PUSHDOWN di
+#   `lotto_id = $1` dentro le GROUP BY e' cio' che rende la lettura per un
+#   lotto quattro index scan e non quattro scansioni — verificato con EXPLAIN.
+#
+# ── ⭐ IL VERDETTO, letto dal Python e ricopiato UNA volta per non doverlo
+#   ricopiare mai piu' (LottoSegnalazioniService.evaluate_lotto_status) ──
+#     fermo = (fatture_critical + lotto_critical) > 0
+#          OR fatture_stato_esecuzione_errore > 0
+#          OR esiti_stato_esecuzione_errore > 0
+#   ⚠️ E' il verdetto su OGNI lotto, qualunque sia il suo stato fiscale: un
+#   DEFINITIVA con un esito ERRORE e' `fermo` qui come lo era per il Python —
+#   la spartizione con vw_lotti_chiusi_con_gruppi_in_errore la fa il PRESIDIO
+#   sull'asse pre_fiscale, non questa vista. Una sede risponde a una domanda.
+#
+# ── ⭐ fermo_motivo e fermo_da: cio' che il presidio deve dire ──────────
+#   `fermo_motivo` = QUALE addendo, con la precedenza del banner (critiche,
+#   poi la riga di ponte in ERRORE, poi l'esito ERRORE). Vocabolario chiuso
+#   di TRE valori scritto nel COMMENT: e' una colonna di vista, un CHECK non
+#   ce lo puo' avere. `fermo_da` = il PIU' RECENTE dei fatti che lo fermano
+#   (data_ora della critica viva, data_update della riga di ponte in ERRORE,
+#   errore_quando dell'esito — con data_update a ripiego: il CHECK sugli
+#   esiti pretende codice o messaggio, non l'orario). Il piu' recente e non
+#   il piu' vecchio, ed e' la domanda giusta: il presidio chiede «da quanto
+#   NESSUNO lo rilancia ne' lo scioglie», e un rilancio che fallisce di nuovo
+#   scrive un fatto nuovo e riparte l'orologio. NOT NULL quando `fermo`: ogni
+#   addendo porta una colonna di tempo NOT NULL.
+#
+# ── security_invoker ────────────────────────────────────────────────
+#   Le quattro tabelle sono sotto RLS (via lotto, via fattura): una persona
+#   legge il riepilogo dei SUOI lotti; il presidio in dbops la attraversa da
+#   proprietario con fn_conta_presidio. Un lotto fuori perimetro NON e' nella
+#   vista — e la funzione lettrice risponde zeri, come oggi (fail-closed).
+#
+# Verifica: db/pgtap/vendite/test-lotti-fermi-verdetto-a-db-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260919-01-create-vw-lotti-segnalazioni-summary-sede-del-verdetto-mctit.yaml
+
+  - changeSet:
+      id: 20260919-01-create-vw-lotti-segnalazioni-summary-sede-del-verdetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_segnalazioni_summary: la SEDE UNICA del riepilogo
+        segnalazioni (i dieci conteggi di fn_get_lotto_segnalazioni_summary,
+        una riga per lotto, set-based) e del verdetto «fermo» — critiche vive
+        OR riga di ponte in ERRORE OR esito ERRORE — con fermo_motivo (quale
+        addendo) e fermo_da (il fatto piu' recente che lo ferma). D-1 di Tid
+        (18-09): la regola va a DB, il backend la legge. La funzione e il
+        presidio diventano due lettori di questa vista.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: fatturazione_lotti }
+            - tableExists: { schemaName: vendite, tableName: fatturazione_lotti_log }
+            - tableExists: { schemaName: vendite, tableName: fatturazione_lotti_fatture }
+            - tableExists: { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+            - tableExists: { schemaName: vendite, tableName: fatture_log }
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_esiti
+                columnName: errore_quando
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_segnalazioni_summary
+              WITH (security_invoker = true) AS
+              SELECT l.id                                   AS lotto_id,
+                     -- I sei conteggi storici, nell'ordine della funzione.
+                     COALESCE(fa.fc, 0)::bigint             AS fatture_critical_count,
+                     COALESCE(fa.fw, 0)::bigint             AS fatture_warning_count,
+                     COALESCE(la.lc, 0)::bigint             AS lotto_critical_count,
+                     COALESCE(la.lw, 0)::bigint             AS lotto_warning_count,
+                     COALESCE(la.li, 0)::bigint             AS lotto_info_count,
+                     COALESCE(pa.pe, 0)::bigint             AS fatture_stato_esecuzione_errore_count,
+                     -- I tre del banner (2026-09-08): GESTI, non allarmi.
+                     COALESCE(la.docs_bloccanti, 0)::bigint AS documenti_bloccanti_count,
+                     COALESCE(ea.dt, 0)::bigint             AS documenti_presi_in_carico_count,
+                     COALESCE(la.critiche_giro, 0)::bigint  AS critiche_giro_count,
+                     -- Il decimo (2026-09-12, D2): entra nel verdetto.
+                     COALESCE(ea.de, 0)::bigint             AS esiti_stato_esecuzione_errore_count,
+                     -- ⭐ IL VERDETTO. Era LottoSegnalazioniService.evaluate_lotto_status:
+                     --   critical_count = fatture_critical + lotto_critical;
+                     --   is_error = critical_count > 0 OR ponte ERRORE > 0 OR esiti ERRORE > 0.
+                     --   Da qui in poi il Python lo LEGGE (colonna `fermo` della funzione).
+                     (COALESCE(fa.fc, 0) + COALESCE(la.lc, 0) > 0
+                      OR COALESCE(pa.pe, 0) > 0
+                      OR COALESCE(ea.de, 0) > 0)            AS fermo,
+                     -- ⭐ QUALE addendo, con la precedenza del banner: le critiche
+                     --   prima di tutto (hanno una frase e un gesto), poi la riga di
+                     --   ponte, poi l'esito. NULL se non e' fermo.
+                     CASE
+                         WHEN COALESCE(fa.fc, 0) + COALESCE(la.lc, 0) > 0 THEN 'CRITICHE'
+                         WHEN COALESCE(pa.pe, 0) > 0                     THEN 'FATTURE_IN_ERRORE'
+                         WHEN COALESCE(ea.de, 0) > 0                     THEN 'ESITI_IN_ERRORE'
+                         ELSE NULL
+                     END                                    AS fermo_motivo,
+                     -- ⭐ Il PIU' RECENTE dei fatti che lo fermano: il presidio chiede
+                     --   «da quanto nessuno lo rilancia ne' lo scioglie», e un
+                     --   rilancio fallito di nuovo e' un fatto nuovo. GREATEST ignora
+                     --   i NULL: e' NOT NULL ogni volta che `fermo` e' vero.
+                     GREATEST(fa.ultima_critica, la.ultima_critica,
+                              pa.ultimo_errore,  ea.ultimo_errore)    AS fermo_da
+                FROM vendite.fatturazione_lotti l
+                -- ── Canale FATTURA: le segnalazioni delle fatture del lotto, via ponte.
+                --    Non si tocca (2026-09-08): la bozza cancellata porta via la riga
+                --    di ponte e questo conteggio scende da se'.
+                LEFT JOIN (
+                      SELECT lf.lotto_id,
+                             COUNT(*) FILTER (WHERE fl.status = 'C')          AS fc,
+                             COUNT(*) FILTER (WHERE fl.status = 'W')          AS fw,
+                             MAX(fl.data_ora) FILTER (WHERE fl.status = 'C')  AS ultima_critica
+                        FROM vendite.fatturazione_lotti_fatture lf
+                        JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                       WHERE fl.disabilitato IS FALSE
+                       GROUP BY lf.lotto_id
+                     ) fa ON fa.lotto_id = l.id
+                -- ── Canale LOTTO: le segnalazioni del giro, dove vive la gruppo_key.
+                LEFT JOIN (
+                      SELECT ll.lotto_id,
+                             COUNT(*) FILTER (WHERE ll.status = 'C')          AS lc,
+                             COUNT(*) FILTER (WHERE ll.status = 'W')          AS lw,
+                             COUNT(*) FILTER (WHERE ll.status = 'I')          AS li,
+                             -- QUANTI DOCUMENTI, non quante segnalazioni: DISTINCT
+                             -- sulla chiave, e solo dove la chiave c'e'.
+                             COUNT(DISTINCT ll.gruppo_key)
+                                 FILTER (WHERE ll.status = 'C'
+                                           AND ll.gruppo_key IS NOT NULL)      AS docs_bloccanti,
+                             -- E le critiche del GIRO (gruppo_key NULL): bloccano e
+                             -- non hanno niente da togliere.
+                             COUNT(*) FILTER (WHERE ll.status = 'C'
+                                                AND ll.gruppo_key IS NULL)      AS critiche_giro,
+                             MAX(ll.data_ora) FILTER (WHERE ll.status = 'C')  AS ultima_critica
+                        FROM vendite.fatturazione_lotti_log ll
+                       WHERE ll.disabilitato IS FALSE
+                         -- La segnalazione di un documento USCITO non conta piu':
+                         -- non e' ritirata, e' che il suo documento non e' in gioco.
+                         -- ⚠️ Con gruppo_key NULL il NOT EXISTS e' vero e la riga
+                         -- CONTA: la critica del giro ferma il giro.
+                         AND NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.fatturazione_lotti_esiti e
+                              WHERE e.lotto_id         = ll.lotto_id
+                                AND e.gruppo_key       = ll.gruppo_key
+                                AND e.stato_esecuzione = 'ESCLUSO')
+                       GROUP BY ll.lotto_id
+                     ) la ON la.lotto_id = l.id
+                -- ── ESITI: il denominatore (documenti PRESI IN CARICO, non il
+                --    perimetro, che e' vuoto sui giri di massa) e gli ERRORE.
+                --    ESCLUSO non conta: e' la via d'uscita dichiarata.
+                LEFT JOIN (
+                      SELECT e.lotto_id,
+                             COUNT(*)                                                 AS dt,
+                             COUNT(*) FILTER (WHERE e.stato_esecuzione = 'ERRORE')    AS de,
+                             -- errore_quando a ripiego su data_update: il CHECK
+                             -- «errore parlante» pretende codice o messaggio, non
+                             -- l'orario.
+                             MAX(COALESCE(e.errore_quando, e.data_update))
+                                 FILTER (WHERE e.stato_esecuzione = 'ERRORE')         AS ultimo_errore
+                        FROM vendite.fatturazione_lotti_esiti e
+                       GROUP BY e.lotto_id
+                     ) ea ON ea.lotto_id = l.id
+                -- ── PONTE: lo stato tecnico del legame lotto-fattura.
+                LEFT JOIN (
+                      SELECT lf.lotto_id,
+                             COUNT(*) FILTER (WHERE lf.stato_esecuzione = 'ERRORE')       AS pe,
+                             MAX(lf.data_update) FILTER (WHERE lf.stato_esecuzione = 'ERRORE') AS ultimo_errore
+                        FROM vendite.fatturazione_lotti_fatture lf
+                       GROUP BY lf.lotto_id
+                     ) pa ON pa.lotto_id = l.id;
+
+              COMMENT ON VIEW vendite.vw_lotti_segnalazioni_summary IS
+                  'SEDE UNICA del riepilogo segnalazioni di un lotto e del verdetto «fermo» '
+                  '(D-1 di Tid, 2026-09-18: «la regola va a DB»). Una riga per lotto con i '
+                  'DIECI conteggi che fn_get_lotto_segnalazioni_summary restituiva dalle '
+                  'proprie CTE — sei storici (segnalazioni C/W/I per canale fattura e lotto, '
+                  'righe di ponte in ERRORE), tre del banner (documenti bloccanti, presi in '
+                  'carico, critiche del giro), il decimo (esiti ERRORE) — piu'' TRE colonne '
+                  'nuove. ⭐ fermo = (fatture_critical + lotto_critical) > 0 OR '
+                  'fatture_stato_esecuzione_errore > 0 OR esiti_stato_esecuzione_errore > 0: '
+                  'era LottoSegnalazioniService.evaluate_lotto_status, ricopiato qui UNA '
+                  'volta per non doverlo ricopiare mai piu'' — il backend lo LEGGE '
+                  '(undicesima colonna della funzione). ⚠️ E'' il verdetto su OGNI lotto, '
+                  'qualunque sia lo stato fiscale: la spartizione con '
+                  'vw_lotti_chiusi_con_gruppi_in_errore sull''asse pre_fiscale la fa il '
+                  'presidio (dbops.vw_lotti_fermi_da_guardare), non questa vista. '
+                  '⭐ fermo_motivo: vocabolario chiuso CRITICHE | FATTURE_IN_ERRORE | '
+                  'ESITI_IN_ERRORE, con la precedenza del banner; NULL se non fermo. '
+                  '⭐ fermo_da: il PIU'' RECENTE dei fatti che lo fermano (data_ora della '
+                  'critica viva, data_update della riga di ponte in ERRORE, errore_quando '
+                  'dell''esito con data_update a ripiego) — il presidio chiede «da quanto '
+                  'nessuno lo rilancia ne'' lo scioglie», e un rilancio fallito di nuovo '
+                  'riparte l''orologio; NOT NULL ogni volta che fermo e'' vero. ⛔ Gli '
+                  'aggregati vivono SOLO qui: la funzione e il presidio sono due lettori, e '
+                  'un addendo nuovo si aggiunge in un posto solo. Gli stessi filtri della '
+                  'funzione: disabilitato IS FALSE, il NOT EXISTS su ESCLUSO nel canale '
+                  'lotto (con gruppo_key NULL la riga CONTA: la critica del giro ferma il '
+                  'giro), il denominatore sugli ESITI e non sul perimetro. security_invoker: '
+                  'una persona legge i propri lotti; un lotto fuori perimetro NON e'' nella '
+                  'vista. Brief: brief-db-osservabilita-lotto-fermo-r6-indici §2.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON vendite.vw_lotti_segnalazioni_summary TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_lotti_segnalazioni_summary;

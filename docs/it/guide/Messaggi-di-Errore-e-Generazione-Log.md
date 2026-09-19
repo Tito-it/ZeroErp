@@ -676,11 +676,14 @@ c'è la risposta dell'altro.
 | «Cos'è successo a questo lotto/fattura, in ordine di tempo?» | `vendite.event_log` | Timeline append-only per dominio ed entità, con `severity` |
 | «Perché questo lotto non avanza?» | `vendite.fatturazione_lotti_log` + `fatturazione_lotti_task_runs` | Il primo dà fase ed esito, il secondo il **tentativo per tentativo** con `error_code`/`error_message` |
 | «Perché questa fattura è bloccata?» | `vendite.fatture_log` | Warning e critici del singolo documento. I critici **bloccano numerazione e invio** finché non sono disabilitati |
+| «Questo lotto è fermo? e quali lotti sono fermi adesso?» | `vendite.vw_lotti_segnalazioni_summary` | La **sede unica** del verdetto «fermo» (dal 19-09-2026): `fermo`, `fermo_motivo`, `fermo_da` su ogni lotto. La legge il backend per il banner e la legge il presidio `dbops.vw_lotti_fermi_da_guardare` (pre-fiscali fermi da oltre un'ora) per il digest e il pallino — una riga, tre lettori |
 | «Il lavoro che ho lanciato a che punto è?» | `dbops.coda_lavori` | Stato, tentativi, `ultimo_errore`, backoff |
 | «Com'era questo record prima?» | schema `storico.*` | Snapshot JSONB completo a ogni UPDATE/DELETE — non è un log eventi, è la storia del dato |
 
 **Il filo che li lega.** `tx_id` attraversa i registri scritti nella stessa
-transazione; `request_id` lega la richiesta HTTP a ciò che ne è seguito;
+transazione (dal 19-09-2026 `dbops.error_log` ha l'indice su `tx_id`: dal
+giornale di dominio agli appunti tecnici della stessa transazione si passa
+senza scandire il registro); `request_id` lega la richiesta HTTP a ciò che ne è seguito;
 `run_uuid` lega un job al suo dettaglio di dominio; `correlation_id` lega gli
 eventi di una stessa operazione in `event_log`. Quando si indaga, si parte da
 uno di questi quattro — non dal timestamp, che con più operazioni in parallelo

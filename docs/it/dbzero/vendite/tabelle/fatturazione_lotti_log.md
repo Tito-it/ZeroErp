@@ -40,6 +40,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_fatturazione_lotti_log_data_ora | `CREATE INDEX ix_fatturazione_lotti_log_data_ora ON vendite.fatturazione_lotti_log USING btree (data_ora)` |
+| ix_fatturazione_lotti_log_lotto_id | `CREATE INDEX ix_fatturazione_lotti_log_lotto_id ON vendite.fatturazione_lotti_log USING btree (lotto_id)` |
 | pk_fatturazione_lotti_log | `CREATE UNIQUE INDEX pk_fatturazione_lotti_log ON vendite.fatturazione_lotti_log USING btree (id)` |
 
 ## 🚨 Trigger

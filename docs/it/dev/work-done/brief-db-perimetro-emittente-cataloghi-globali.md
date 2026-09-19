@@ -1,7 +1,7 @@
 # Brief DB — I cataloghi globali che il seed non dichiara: `perimetro_emittente = false` manca a cinque liste
 
 > Chi scrive: backend (`dev/backend-tid`), 2026-09-15.
-> Origine: collaudo in-app di «Esegui ora» ([piano-be-fe-avvio-manuale-di-un-processo.md](../work-done/piano-be-fe-avvio-manuale-di-un-processo.md)
+> Origine: collaudo in-app di «Esegui ora» ([piano-be-fe-avvio-manuale-di-un-processo.md](piano-be-fe-avvio-manuale-di-un-processo.md)
 > §4.4.2). Aprendo *Processi automatici* con **«Tutti gli emittenti»** nella
 > combo, la lista è sbarrata dal cancello di perimetro («Scegli un emittente
 > per continuare») — su un registro che un emittente non ce l'ha.
@@ -16,6 +16,34 @@
 > disallineamento con i csv» — ma nella **colonna** di `lista_definizione.csv`,
 > come `multi_emittente`. Il CSV laterale e il suo changeSet `20260902-02`
 > sono **ritirati**.
+>
+> **Stato:** ✅ **CHIUSO e archiviato in `work-done/` il 2026-09-19.**
+> Tre giri, tutti consegnati: **giro 1-2 (DB)** il 18-09 — sette globali a
+> `perimetro_emittente = f` nella **colonna** di `lista_definizione.csv`,
+> `operatori` e `lista_preset` certificate `multi_emittente`, colonne 872/873
+> a catalogo, laterale ritirato, `20260918-28`, i sei laterali di
+> `famiglie_documento` rientrati nel CSV unico (`b655ea6d4`, PR #1612);
+> **giro 3 (BE/FE)** il 19-09 — `list_logs` proietta
+> `emittente_ragione_sociale`, 872 accesa, «Riferimento» dei preset ristretta
+> al profilo, i18n, presidio BE-1 nei due versi (`ecbff9efa`, PR #1616/#1617);
+> **l'ultima riga DB** il 19-09 — `config.email_log` `multi_emittente = t` +
+> elenco del test 5, provata con l'SQL reso da Liquibase dei due mirror e la
+> mutazione «flag prima della colonna» (§8). **Applicato su dbdev e pgTAP
+> verdi** (Tid, 19-09): i due `ui/` e `vendite/test-viste-dash-emittente-v1`.
+> Il commit dell'ultima riga è di Tid.
+>
+> ⭐ **Cosa ne resta, da leggere altrove:** (1) la regola **«una tabella, un
+> CSV»** è nel meccanismo condiviso — linee-guida-sql §11.2 e AGENTS.md §«I
+> dati di `80_data` si cambiano dal CSV» — non qui; (2) l'ordine
+> **colonna → flag** per certificare una lista `multi_emittente` è ora scritto
+> nel test 5 del pgTAP, dove chi accende il flag deve venire a dichiararlo.
+>
+> 🔵 **Eredità, una riga BE non bloccante:** la ragione di `config.email_log`
+> in `_ESENZIONI` (`test_perimetro_emittente_copertura.py`) dice ancora
+> *«diario tecnico di sistema»* mentre il seed la certifica `multi_emittente`;
+> va riscritta sullo stampo di `operatori`/`lista_preset` (§8, riquadro).
+> Coerenza del registro, non un rosso: nessun cantiere da aprire, si fa al
+> prossimo passaggio su quel file.
 
 ---
 
@@ -124,8 +152,8 @@ Quindi, il 18-09:
 
 * `lista_definizione.csv`: colonna `perimetro_emittente` in coda (`t` su
   tutte, `f` sulle sette), dichiarata nel mirror `20260507-06`;
-* `20260902-02` e il CSV laterale: **cancellati** (precedente: `20251001-05`
-  + CSV, 15-09). La riga in `databasechangelog` resta orfana, e Liquibase non
+* `20260902-02` e il CSV laterale: **cancellati** (precedente:
+  `20251001-05` + CSV, 15-09). La riga in `databasechangelog` resta orfana, e Liquibase non
   se ne cura; su un DB da zero non gira mai;
 * il COMMENT vivo della colonna diceva *«il valore si dichiara nel seed
   (20260902-02)»* → riferimento morto nella sede più letta →
@@ -300,9 +328,13 @@ Tre giri, perché D-4 e D-5 hanno un vincolo d'ordine che gli altri non hanno.
 >   vecchia via «CSV dedicato se il file è una mina» **non è più una via**)
 >   e AGENTS.md §«I dati di 80_data si cambiano dal CSV».
 >
-> 🔵 **Resta**: ri-apply (la parte `ui` è già dentro; `famiglie_documento`
-> ha il mirror corretto, `nullValue: "NULL"`) + pgTAP (Tid: i due `ui/`, più
-> `vendite/` per le famiglie) → giro 3 al BE (§7, «Giro 3») → §6.
+> ✅ **Giro 3 chiuso il 2026-09-19** — la parte BE con `ecbff9efa`
+> (PR #1616/#1617, già su `dev/db-tid`), la riga DB nel riquadro di §8.
+> 🔵 **Resta a Tid**: apply (porta insieme i due mirror `ui`: `20260507-06`
+> con la 31 multi, `20260806-15` con la 872 accesa e la 663 su
+> `profilo_accesso_codice` — su dbdev entrambi sono fermi al `RERAN` del
+> 18/19-09 notte, **prima** del commit BE) + pgTAP (i due `ui/` sul perimetro
+> e sul multi, `vendite/test-viste-dash-emittente-v1`) + commit → `work-done/`.
 
 **Giro 1 — solo seed, un CSV e mezzo (DB).** Chiude §1 e D-1, D-3:
 
@@ -380,9 +412,42 @@ l'apply DB: le colonne che non hanno ancora la proiezione sono **spente**.
 > `ui`/`amm_software` verdi. ⚠️ Il pgTAP non è lanciabile dal server BE
 > (nessuna credenziale): la lista 31 non è globale, il test 8 non la guarda.
 >
-> 🔵 **Al DB resta l'ultima riga** (sotto): `multi_emittente = t` su `id = 31`
-> + `config.email_log` nel test 5 del pgTAP multi-emittente. Poi
-> `work-done/`.
+> ✅ **L'ultima riga DB è scritta il 2026-09-19** (`dev/db-tid`, non
+> applicata né committata):
+>
+> * `lista_definizione.csv`, riga `id = 31`: `multi_emittente = t` — la 872
+>   è attiva nel CSV dal commit BE, quindi il flag arriva **dopo** la colonna,
+>   come voleva l'ordine di §7;
+> * `ui/test-lista-definizione-multi-emittente-v1` test 5: `config.email_log`
+>   nell'elenco, con la riga datata (D-4) e l'avvertenza sull'ordine;
+>   intestazione del test aggiornata. `plan(9)` invariato: cambia l'elenco,
+>   non il numero di asserzioni. Gli altri due presidi sulla vista
+>   (`perimetro` test 7/8, `dash` test 10/11) non nominano la lista e
+>   restano com'erano;
+> * **prova in transazione ritirata**, con l'SQL **reso da Liquibase**
+>   (`updateSQL` offline) di **entrambi** i mirror `ui` — non del solo
+>   `lista_definizione`, perché la certificazione dipende dalla 872 che a DB
+>   vivo è ancora spenta: `EXCEPT` prima/dopo = una differenza su
+>   `lista_definizione` (la 31, `f → t`) e due su `lista_colonna` (663 e 872,
+>   entrambe del commit BE), zero INSERT; elenco del test 5 identico
+>   all'atteso (dieci liste); vista di certificazione a **zero**; test 8 del
+>   perimetro a `{}`; le sette globali intatte; nessuna riga viola `perimetro
+>   OR NOT multi`; envelope di `fn_resolve_lista_config('config.email_log')`
+>   → `multi_emittente = true`. ⭐ **Mutazione**: con il solo mirror di
+>   `lista_definizione` (il flag prima della colonna, cioè lo stato del DB
+>   vivo se si applicasse a metà) la vista esce da zero con `31 |
+>   config.email_log` — il presidio vede l'ordine sbagliato. ⚠️ Il verde
+>   vero lo dà la corsa come app, che lancia Tid.
+>
+> ⚠️ **Una riga BE, non bloccante** (stessa regola di BE-2: il registro dice
+> ciò che il seed dice): in `_ESENZIONI` la ragione di `config.email_log` è
+> ancora *«diario tecnico di sistema»*, mentre da oggi il seed la certifica
+> `multi_emittente` — sullo stampo di `operatori`/`lista_preset`:
+> *`multi_emittente` certificata (colonna 872 `emittente_fiscale`)*. Il test
+> BE-1 non la vede (guarda solo le globali): è coerenza del registro, non un
+> rosso.
+>
+> ✅ **Applicato e pgTAP verdi il 2026-09-19** (Tid); archiviato in `work-done/` lo stesso giorno.
 
 | # | Cosa | Dove | Note |
 | --- | --- | --- | --- |
@@ -397,5 +462,6 @@ l'apply DB: le colonne che non hanno ancora la proiezione sono **spente**.
 
 **Poi torna al DB** (una riga, un pgTAP): a BE-3/BE-4 fatti, `multi_emittente = t`
 sulla riga `id = 31` di `lista_definizione.csv` e `config.email_log` nell'elenco
-del test 5 di `ui/test-lista-definizione-multi-emittente-v1`. Con questo il brief
-va in `work-done/`.
+del test 5 di `ui/test-lista-definizione-multi-emittente-v1`. ✅ **Fatto il
+2026-09-19** (riquadro sopra). Con l'apply e i pgTAP di Tid il brief va in
+`work-done/`.

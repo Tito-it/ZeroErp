@@ -151,6 +151,7 @@
 - [vw_function_list](views/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
 - [vw_indici_ridondanti_prefisso](views/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_liste_multi_emittente_non_certificate](views/vw_liste_multi_emittente_non_certificate.md) — (latest review 18-08-26)
+- [vw_lotti_fermi_da_guardare](views/vw_lotti_fermi_da_guardare.md) — (latest review 19-09-2026)
 - [vw_magazzino_movimenti_senza_costo](views/vw_magazzino_movimenti_senza_costo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_magazzino_valore_giacenza_divergente](views/vw_magazzino_valore_giacenza_divergente.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
