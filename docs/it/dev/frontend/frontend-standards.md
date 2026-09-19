@@ -2266,6 +2266,7 @@ in `:root:not(.p-dark)` (light).
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
 | `app-text-muted`     | Testo sottotono (`--app-text-muted`): hint sotto i campi, note. ⛔ Non `text-color-secondary`: PrimeFlex non è installato, e fino al 17/09 nemmeno questa regola esisteva — 135 siti di testo «sottotono» erano testo normale |
 | `font-bold`          | `font-weight: 600` (globale dal 17/09; prima viveva in uno `<style scoped>` e altrove non faceva niente) |
+| `app-mono`           | `font-family: monospace` per un identificativo tecnico (codice, `tx_id`, IBAN). Globale dal 19/09: prima era scritta in 15 `<style scoped>`, tre come `.font-mono` di PrimeFlex |
 | `mt-025`/`mt-05`/`mt-1` · `ml-05`/`mr-05` | Le sole utility di spaziatura. ⛔ `mt-3`, `mb-3`, `w-full`, `flex`, `gap-2`… sono PrimeFlex: non esistono qui e sono state tolte da ~115 template il 17/09 |
 
 ⭐ **Una classe che non sta in nessun foglio non fa niente, e non lo dice.**

@@ -340,7 +340,7 @@ const onClose = useDrawerClose(emit)
           </Column>
           <Column field="factor_to_base" :header="t('catalogo.col_fattore')" style="width: 70px;">
             <template #body="{ data }">
-              <span class="font-mono">{{ data.factor_to_base }}</span>
+              <span class="app-mono">{{ data.factor_to_base }}</span>
             </template>
           </Column>
           <Column :header="t('catalogo.field_logistica')" style="width: 40px;">
@@ -482,7 +482,6 @@ const onClose = useDrawerClose(emit)
 </template>
 
 <style scoped>
-.font-mono { font-family: monospace; }
 .app-drawer-section {
   margin-top: 1rem;
   padding-bottom: 0.25rem;

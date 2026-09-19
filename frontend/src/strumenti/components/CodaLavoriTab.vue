@@ -192,7 +192,7 @@ const loadingAzione = computed(() => azioneLoading.value || archiviazioneLoading
     :on-archivia-selezione="archiviaRighe"
   >
     <template #cell-job_type="{ data }">
-      <span class="app-code-tipo">{{ data.job_type }}</span>
+      <span class="app-mono">{{ data.job_type }}</span>
     </template>
     <template #cell-proprietario="{ data }">
       <span>
@@ -222,8 +222,3 @@ const loadingAzione = computed(() => azioneLoading.value || archiviazioneLoading
   </CodaTabBase>
 </template>
 
-<style scoped>
-.app-code-tipo {
-  font-family: monospace;
-}
-</style>

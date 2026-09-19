@@ -94,7 +94,12 @@ _ESENZIONI: dict[str, str] = {
     #    riga per azienda servita), non in questa lista.
     "amm.processi": "AdminAPIView — registro di catalogo, senza perimetro emittente (perimetro_emittente = false)",
     "config.email_account": "AdminAPIView — configurazione tecnica",
-    "config.email_log": "AdminAPIView — diario tecnico di sistema",
+    "config.email_log": "AdminAPIView — diario tecnico di sistema; `multi_emittente` certificata (colonna 872 `emittente_fiscale`)",
+    # ⭐ La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
+    #    2026-09-19): il diario degli errori TECNICI, letto dalla stessa porta
+    #    dei due accanto. Un errore sollevato da una funzione non ha un'azienda
+    #    da cui arrivare: `perimetro_emittente = false` a catalogo.
+    "dbops.error_log": "AdminAPIView — diario tecnico di sistema, senza perimetro emittente (perimetro_emittente = false)",
     # ⭐ La schermata che monta questa lista e' `/amm-software/audit-log/`
     #    (`amm_software.AuditLogView`, AdminAPIView): il diario delle MODIFICHE
     #    ai dati. ⛔ Fino al 2026-09-02 il presidio la considerava «coperta»

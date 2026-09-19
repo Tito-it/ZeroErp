@@ -9,6 +9,8 @@
 from django.urls import include, path
 
 from apps.vendite.api.views import (
+    ApiGiornale,
+    ApiGiornaleExport,
     ApiCommessaAttivita,
     ApiCommessaRegistro,
     ApiCommessaAttivitaAnnulla,
@@ -345,6 +347,11 @@ urlpatterns = [
         ApiLottoGruppiList.as_view(),
         name="vendite-lotto-gruppi-list",
     ),
+    # Il GIORNALE TRASVERSALE (pezzo G dell'osservabilita', 2026-09-19): la
+    # Storia di tutte le entita' insieme, filtrata per gravita'. `export/`
+    # prima della lista, per convenzione.
+    path("giornale/export/", ApiGiornaleExport.as_view(), name="vendite-giornale-export"),
+    path("giornale/", ApiGiornale.as_view(), name="vendite-giornale"),
     # La STORIA del lotto (Passo A, seconda meta'): il lotto piu' le sue
     # fatture, righe non-INFO. ⛔ Da non confondere con `segnalazioni/`, che
     # elenca i problemi APERTI: qui c'e' anche cio' che e' andato bene.

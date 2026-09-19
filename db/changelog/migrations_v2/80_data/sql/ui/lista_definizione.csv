@@ -76,3 +76,5 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 75,magazzino.disponibilita,Disponibilita' per articolo e magazzino,magazzino,NULL,t,2026-09-18 00:00:00,mctit,f,t
 76,magazzino.disponibilita_articoli,Disponibilita' per articolo,magazzino,NULL,t,2026-09-18 00:00:00,mctit,f,t
 77,magazzino.movimenti,Registro dei movimenti di magazzino,magazzino,NULL,t,2026-09-18 00:00:00,mctit,f,t
+78,dbops.error_log,Registro degli errori tecnici,dbops,NULL,t,2026-09-19 00:00:00,mctit,f,f
+79,vendite.giornale,Giornale degli eventi (trasversale),vendite,NULL,t,2026-09-19 00:00:00,mctit,f,t

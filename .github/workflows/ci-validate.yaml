@@ -651,6 +651,22 @@ jobs:
       - name: Django tests
         working-directory: ./backend
         env:
+          # ⭐ I TEST GIRANO COME L'APPLICAZIONE, non come l'owner. L'env del job
+          # dice `DB_USER: zeroerp` perche' e' l'utente di Liquibase e di
+          # `manage.py migrate` — l'OWNER degli oggetti — e l'owner di una
+          # tabella SALTA la RLS finche' non c'e' `FORCE ROW LEVEL SECURITY`
+          # (che il repo rifiuta apposta, vedi 20260829-27). Con quel ruolo un
+          # test end-to-end che prova il 404 no-leak dell'altro emittente
+          # (apps/magazzino/tests/db/test_documento_interno_db) vede TUTTO e
+          # va rosso — «atteso un rifiuto, e' passato», 2026-09-19 — mentre in
+          # sviluppo, dove `.env.systemd` connette `zeroerp_app`, e' verde.
+          # E' la stessa scelta del runner pgTAP (PGTAP_RUNNER=app, default dal
+          # 2026-08-07): la RLS si esercita solo con un ruolo NON owner e
+          # NOBYPASSRLS. Il ruolo e i suoi privilegi arrivano dai passi
+          # «DB bootstrap» e «Privilegi del ruolo applicativo», entrambi prima
+          # di questo. La password e' il letterale del ruolo creato li'.
+          DB_USER: zeroerp_app
+          DB_PASSWORD: secret-app
           DJANGO_REQUEST_LOG_ENABLED: "0"
           # Allineato a manage-test.sh: neutralizza SearchBurstRateThrottle
           # (default 30/min). La LocMemCache non viene resettata tra

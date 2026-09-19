@@ -240,6 +240,42 @@ class LookupContiContabiliView(DomainAPIView):
         return success_response({"results": results})
 
 
+class LookupTipiEntitaView(DomainAPIView):
+    """GET /api/v1/core/lookup/tipi-entita/ — il vocabolario di `config.tipi_entita`.
+
+    Lookup dedicato (api.md §Lookup dedicato): la tabella ha PK `codice` testo
+    e nessun `id`/`descrizione`, quindi il generico non la serve; e cio' che
+    il client vuole e' l'`etichetta_key` che il DB DICHIARA per ogni tipo, non
+    una descrizione — l'etichetta si risolve nei locales (`labelOrCode`).
+    ⭐ Nasce il 2026-09-19 perche' la tendina «Entita'» del giornale
+    trasversale si era ricopiata sette codici a mano, e il catalogo ne aveva
+    gia' nove: un vocabolario del DB si legge, non si specchia.
+    Cross-dominio (`skip_area_check`): lo consumano vendite, amm-software e,
+    in prospettiva, il resolver dei bersagli di `core`.
+    """
+    skip_area_check = True
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="TipiEntitaLookupResponse",
+            fields={"data": inline_serializer(
+                name="TipiEntitaLookupData",
+                fields={"results": serializers.ListField(child=inline_serializer(
+                    name="TipoEntitaLookupRow",
+                    fields={
+                        "codice": serializers.CharField(),
+                        "etichetta_key": serializers.CharField(),
+                        "key_selector": serializers.CharField(),
+                    },
+                ))},
+            )},
+        )},
+    )
+    # Scopo: Restituisce i tipi di entita' vivi, con l'indirizzo i18n dichiarato dal DB.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response({"results": LookupRepository().list_tipi_entita()})
+
+
 class LookupSistemaCodiciView(DomainAPIView):
     """GET verifica configurazione sistema codici per schema/tabella/colonna."""
     skip_area_check = True

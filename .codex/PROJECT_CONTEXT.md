@@ -319,6 +319,15 @@ produzione, non c'è niente da aspettare.*
   handler a lista senza shell, run **non** contato come segno di vita del
   processo riavviato (D6). Zero righe scritte al 18-09, per scelta. Sta anche
   fra le «Decisioni aperte» della mappa concentrica
+- **Il catalogo dei registri del giornale** (DB, brief scritto il
+  2026-09-19: `work-in-progress/brief-db-registri-giornale-catalogo.md`,
+  decisione di Tid dello stesso giorno): i quattro registri che
+  `script.vw_giornale_entita` cuce vivono come letterali nei rami `UNION ALL`,
+  in una costante BE e in un array FE, e nessuna sede porta l'etichetta — la
+  tendina «Registro» mostra `EVENT_LOG` grezzo. Richiesta: `config.registri_giornale`
+  nella forma del lookup generico + pgTAP che lega vista e catalogo nei due
+  versi. Il BE aspetta; la tendina gemella «Entità» è già sul catalogo
+  (`GET /core/lookup/tipi-entita/`, stesso giorno)
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare

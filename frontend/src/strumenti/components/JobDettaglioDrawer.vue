@@ -9,6 +9,7 @@ import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import FormFooter from '../../core/components/FormFooter.vue'
+import JsonBlocco from '../../core/components/JsonBlocco.vue'
 import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
@@ -56,15 +57,9 @@ async function load() {
 
 watch(() => [props.visible, props.jobId], ([v]) => { if (v) load() })
 
-// Scopo: pretty-print di un jsonb (payload/result/errore) per il blocco <pre>.
-function pretty(value) {
-  if (value == null) return null
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
+// Il pretty-print dei tre jsonb (errore/esito/payload) e' il BB `JsonBlocco`
+// (2026-09-19, regola del 2 alla seconda occorrenza: il `context` di
+// `dbops.error_log`) — la copia locale e' stata ritirata.
 </script>
 
 <template>
@@ -80,7 +75,7 @@ function pretty(value) {
       <template v-if="job">
         <!-- Testata -->
         <div class="app-job-testata">
-          <span class="app-job-tipo">{{ job.job_type }}</span>
+          <span class="app-mono app-job-tipo">{{ job.job_type }}</span>
           <Tag :value="job.stato" :severity="statoCodaLavoriSeverity(job.stato)" />
         </div>
         <div class="form-grid-2col">
@@ -123,19 +118,19 @@ function pretty(value) {
         <!-- Ultimo errore -->
         <div v-if="job.ultimo_errore" class="form-field">
           <label>{{ t('strumenti.code.dettaglio_errore') }}</label>
-          <pre class="app-job-json app-job-json-errore">{{ pretty(job.ultimo_errore) }}</pre>
+          <JsonBlocco :value="job.ultimo_errore" errore />
         </div>
 
         <!-- Esito -->
         <div v-if="job.result" class="form-field">
           <label>{{ t('strumenti.code.dettaglio_esito') }}</label>
-          <pre class="app-job-json">{{ pretty(job.result) }}</pre>
+          <JsonBlocco :value="job.result" />
         </div>
 
         <!-- Payload -->
         <div v-if="job.payload" class="form-field">
           <label>{{ t('strumenti.code.dettaglio_payload') }}</label>
-          <pre class="app-job-json">{{ pretty(job.payload) }}</pre>
+          <JsonBlocco :value="job.payload" />
         </div>
       </template>
 
@@ -151,7 +146,6 @@ function pretty(value) {
   gap: 0.75rem;
 }
 .app-job-tipo {
-  font-family: monospace;
   font-weight: 600;
 }
 .app-job-timeline {
@@ -160,18 +154,5 @@ function pretty(value) {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-}
-.app-job-json {
-  margin: 0;
-  padding: 0.5rem;
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
-  border-radius: 6px;
-  font-size: 0.8em;
-  overflow-x: auto;
-  max-height: 240px;
-}
-.app-job-json-errore {
-  border-color: var(--p-red-500);
 }
 </style>

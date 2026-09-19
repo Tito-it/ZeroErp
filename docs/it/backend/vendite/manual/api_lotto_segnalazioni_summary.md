@@ -48,7 +48,8 @@ View in `apps/vendite/api/views.py`:
       "documenti_bloccanti_count": 0,
       "documenti_presi_in_carico_count": 2,
       "critiche_giro_count": 0,
-      "esiti_stato_esecuzione_errore_count": 0
+      "esiti_stato_esecuzione_errore_count": 0,
+      "fermo": false
     },
     "livello": "C",
     "segnalazioni": [
@@ -118,13 +119,26 @@ niente. Sulle segnalazioni di LOTTO sono `null` e il consumer mostra `fase`.
 - `critical_count` = somma `fatture_critical_count` + `lotto_critical_count`.
 - `warning_count` = somma `fatture_warning_count` + `lotto_warning_count`.
 - `attention_count` = `lotto_info_count` (livello "I" — info operativa).
-- `is_error = true` se **uno** dei tre addendi è > 0: `critical_count`,
-  `summary.fatture_stato_esecuzione_errore_count`,
-  `summary.esiti_stato_esecuzione_errore_count` (il terzo dal 2026-09-12, D2 —
-  vedi sotto).
-- `blocks_next_step = true` se `is_error = true` (nessun avanzamento pipeline ammesso).
+- `is_error = blocks_next_step = summary.fermo` — ⭐ **dal 2026-09-19 il
+  verdetto nasce a DB** (changeSet `20260919-01/-02`, decisione D-V1 di Tid
+  «la regola va a DB», brief `brief-db-osservabilita-lotto-fermo-r6-indici`
+  P-1): `fermo` è l'**undicesima** colonna di `fn_get_lotto_segnalazioni_summary`,
+  che dal 19-09 è un lettore di `vendite.vw_lotti_segnalazioni_summary` — la
+  **sede unica** dei dieci conteggi e del verdetto, letta anche dal presidio
+  `dbops.vw_lotti_fermi_da_guardare` (digest, pannello «Processi automatici»,
+  pallino della topbar). La formula è la stessa di prima — `(fatture_critical +
+  lotto_critical) > 0 OR fatture_stato_esecuzione_errore > 0 OR
+  esiti_stato_esecuzione_errore > 0` — ma il backend **la legge e non la
+  ricalcola**: fino a quel giorno `LottoSegnalazioniService` la sommava in
+  Python, cioè due sedi per un verdetto, e al primo addendo nuovo banner e
+  digest avrebbero detto cose diverse senza che nessun test lo vedesse. Un
+  addendo nuovo si aggiunge **nella vista**, e arriva qui da solo.
   ⚠️ Il **rilancio dello stesso step** resta ammesso: è la via d'uscita, e per
   il terzo addendo è l'unica (il pull rivede il documento e scrive l'esito nuovo).
+  ⚠️ I dieci conteggi restano per la **frase** (banner, `detail` del rifiuto
+  `E_PIPELINE_LOTTO_CRITICAL`, payload di `PIPELINE_COMPLETED`), non per la
+  decisione. Su un lotto fuori perimetro: zeri e `fermo = false` — ma il
+  cancello è la testata (404), quegli zeri non arrivano a video.
 - `summary.fatture_stato_esecuzione_errore_count` — conteggio fatture del lotto con `stato_esecuzione = 'ERRORE'`; restituito direttamente da `fn_get_lotto_segnalazioni_summary` (6ª colonna).
 - `summary.documenti_bloccanti_count` · `documenti_presi_in_carico_count` ·
   `critiche_giro_count` — i tre numeri del **banner** (2026-09-08): contano
@@ -152,10 +166,22 @@ niente. Sulle segnalazioni di LOTTO sono `null` e il consumer mostra `fase`.
 
 ## Dipendenze DB
 
-- `vendite.fn_get_lotto_segnalazioni_summary` (funzione SQL)
+- `vendite.fn_get_lotto_segnalazioni_summary` (funzione SQL, lettrice di
+  `vendite.vw_lotti_segnalazioni_summary` dal `20260919-02`)
+- `vendite.vw_lotti_segnalazioni_summary` (la sede dei conteggi e del verdetto
+  `fermo`, una riga per lotto, `security_invoker`)
 - `vendite.fatture_log` (sorgente segnalazioni fattura)
 - `apps.vendite.services.lotto_segnalazioni_service.LottoSegnalazioniService`
 
 ## Note di migrazione
 
 - Endpoint introdotto per supporto UI nella visualizzazione stato segnalazioni prima di avanzare step pipeline.
+- 2026-09-19 (pezzo V di `piano-be-fe-osservabilita-pallino-e-superfici`):
+  `summary.fermo` in coda e `is_error`/`blocks_next_step` letti da lì. Nessun
+  cambio per il client: `scegliRamoBanner` legge `blocks_next_step` come prima.
+  Presidi: `test_lotto_segnalazioni_service` (il service non ricalcola),
+  `test_pipeline_repository` (la colonna per nome, il tipo booleano),
+  `test_discovery_riceve_l_identita_del_giro` test 4 (la colonna esiste sulla
+  funzione vera). Il collaudo di parità DB ⇔ vecchia somma Python
+  (`test_parita_verdetto_lotto_fermo_transitorio.py`) è **transitorio** e si
+  toglie con la PR successiva.

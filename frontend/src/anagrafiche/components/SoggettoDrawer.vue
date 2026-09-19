@@ -565,7 +565,7 @@ async function handleSave() {
           <div v-if="contiBancariRiepilogo.length > 0" class="riepilogo-list">
             <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="riepilogo-item">
               <Tag :value="cb.uso" severity="info" />
-              <span class="riepilogo-detail" style="font-family: monospace;">{{ cb.iban }}</span>
+              <span class="riepilogo-detail app-mono">{{ cb.iban }}</span>
               <span v-if="cb.filiale_nome" class="riepilogo-detail">{{ cb.filiale_nome }}</span>
             </div>
           </div>

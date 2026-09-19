@@ -423,6 +423,13 @@ pgAgent come script shell.
 
 - **API di consultazione**: endpoint `GET /api/v1/core/users/{id}/sessioni/`
   e `GET /api/v1/core/request-log/` per ADMIN, con filtri per data/path/status.
+  ✅ Il registro degli **errori** ha la sua dal 19-09-2026 —
+  `GET /api/v1/amm-software/error-log/` (+ `export/`), schermata «Errori
+  tecnici», [api_error_log.md](/backend/amm-software/manual/api_error_log) —
+  e il giornale degli eventi di dominio la sua, trasversale,
+  `GET /api/v1/vendite/giornale/` ([api_giornale.md](/backend/vendite/manual/api_giornale)):
+  il `tx_id` è il ponte fra i due. `request-log` e le sessioni restano
+  pianificati.
 
 - **Dashboard anomalie**: vista operativa che segnala pattern inusuali —
   login da IP multipli, volume request anomalo, token revocati riutilizzati.

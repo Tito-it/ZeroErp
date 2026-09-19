@@ -63,7 +63,7 @@ const levels = computed(() => {
       :class="{ 'parameter-level-active': resolvedLevel === level.key }"
     >
       <span class="parameter-level-label">{{ level.label }}</span>
-      <span class="parameter-level-value" :class="{ 'parameter-level-empty': level.value == null }">
+      <span class="app-mono" :class="{ 'parameter-level-empty': level.value == null }">
         {{ level.value ?? '—' }}
       </span>
     </div>
@@ -100,9 +100,6 @@ const levels = computed(() => {
   min-width: 80px;
   color: var(--p-text-muted-color);
   font-size: 0.8rem;
-}
-.parameter-level-value {
-  font-family: monospace;
 }
 .parameter-level-empty {
   color: var(--p-text-muted-color);

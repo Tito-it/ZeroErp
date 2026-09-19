@@ -520,6 +520,15 @@ export const MANAGE_ICONS = {
   // prestito il nome di un'altra idea e' il modo in cui due gesti diversi
   // finiscono per sembrare lo stesso.
   CORREZIONE: 'pi pi-replay',
+  // Il GIORNALE degli eventi (osservabilita', 2026-09-19): l'azione «Giornale
+  // di questa transazione» dal registro degli errori tecnici e la «Storia» di
+  // un'entita' dal giornale trasversale. Stessa icona della voce di
+  // navigazione `NAV_ICONS.GIORNALE`, ripetuta per la stessa ragione di
+  // FATTURE e FAMIGLIA_DOCUMENTO: chi clicca deve ritrovare «quella li'».
+  GIORNALE: 'pi pi-book',
+  // Copia negli appunti (un identificativo tecnico: `tx_id`, `correlation_id`).
+  // ⛔ Non CLONE (`pi-copy`): quello nel progetto duplica un RECORD.
+  COPIA: 'pi pi-clipboard',
 }
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.

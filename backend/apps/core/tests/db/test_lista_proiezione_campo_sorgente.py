@@ -549,7 +549,29 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.core.db.processi_repository", "ProcessiRepository"
         ).list_processi(limit=1, offset=0, **_ordine(ob, od)),
     ),
+    # La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
+    # 2026-09-19): il catalogo dei messaggi arriva per JOIN nella stessa SELECT.
+    "dbops.error_log": Esercizio(
+        dove="core/db/dbops_repository.py::list_error_logs",
+        chiama=lambda ob, od: _r(
+            "apps.core.db.dbops_repository", "DbopsRepository"
+        ).list_error_logs(limit=1, offset=0, **_ordine(ob, od)),
+    ),
     # ---------- vendite ----------
+    # Il giornale trasversale degli eventi (pezzo G): terzo lettore della vista
+    # cucita. ⚠️ `entita_display` (codice del lotto, «serie/numero» del
+    # documento) si risolve in Python sulla pagina, con una query a parte:
+    # e' una chiave della riga, non una colonna della SELECT del giornale.
+    "vendite.giornale": Esercizio(
+        dove="vendite/db/vendite_repository.py::list_giornale_trasversale",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.vendite_repository", "VenditeRepository"
+        ).list_giornale_trasversale(
+            gravita=["ERROR", "WARN", "INFO"], limit=1, offset=0,
+            **_ordine(ob, od, chiavi=("sort_by", "sort_dir")),
+        ),
+        campi_da_python=frozenset({"entita_display"}),
+    ),
     "vendite.lotti": Esercizio(
         dove="vendite/db/vendite_repository.py::list_lotti",
         chiama=lambda ob, od: _r(

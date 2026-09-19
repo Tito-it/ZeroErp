@@ -154,6 +154,19 @@ class LottoSegnalazioniSummary(TypedDict):
     # che aggiunge e' quello con ZERO critiche vive, ed e' l'unico che prima
     # non vedeva nessuno.
     esiti_stato_esecuzione_errore_count: int
+    # ═══ L'UNDICESIMA COLONNA (2026-09-19, D-V1 di Tid: «la regola va a DB») —
+    # IL VERDETTO ═══
+    # `fermo` = (fatture_critical + lotto_critical) > 0 OR
+    #           fatture_stato_esecuzione_errore > 0 OR
+    #           esiti_stato_esecuzione_errore > 0
+    # — ma la formula vive in `vendite.vw_lotti_segnalazioni_summary`, la sede
+    # unica letta anche dal presidio `dbops.vw_lotti_fermi_da_guardare`, e qui
+    # si TRASPORTA. Fino a quel giorno `LottoSegnalazioniService` la ricalcolava
+    # dai tre addendi: due sedi per lo stesso verdetto, e la divergenza sarebbe
+    # stata muta — un banner verde su un lotto che il digest chiama fermo.
+    # ⚠️ I dieci conteggi sopra restano per la FRASE del banner, non per la
+    # decisione. Su un lotto fuori perimetro: zeri e `fermo = false`.
+    fermo: bool
 
 
 class LottoSegnalazioneRow(TypedDict):

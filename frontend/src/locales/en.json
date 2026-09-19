@@ -275,6 +275,7 @@
       "definizioni-workflow": "Workflow definitions",
       "matrice-categorie-listini": "Categories/Price Lists Matrix",
       "audit-log": "Audit Log",
+      "error-log": "Technical errors",
       "email-accounts": "Email Accounts",
       "email-templates": "Email Templates",
       "email-log": "Email Log",
@@ -303,6 +304,7 @@
       "dashboard-competenza": "Invoicing accrual",
       "dashboard-backlog": "Invoicing backlog",
       "lotti": "Invoicing batches",
+      "giornale": "Event journal",
       "preventivi": "Quotes",
       "offerte": "Commercial offers",
       "ordini": "Sales orders",
@@ -1379,6 +1381,27 @@
         "non_abilitata": "The schedule is disabled on this installation: it is enabled from the deployment, not from here.",
         "gia_in_coda": "Already queued (job #{job_id}): it can be pressed again once that job has finished."
       }
+    },
+    "error_log": {
+      "titolo": "Technical error log",
+      "col_quando": "When",
+      "col_area": "Area",
+      "col_funzione": "Function",
+      "col_codice": "Code",
+      "col_classe": "Class",
+      "col_messaggio": "Message",
+      "col_tx_id": "Transaction",
+      "col_causa": "Cause",
+      "col_soluzione": "Solution",
+      "filtro_funzione": "Function (prefix)",
+      "azione_dettaglio": "Details",
+      "azione_giornale": "Journal of this transaction",
+      "azione_copia_tx_id": "Copy tx_id",
+      "tx_id_copiato": "tx_id copied to clipboard",
+      "tx_id_non_copiato": "Could not copy to clipboard",
+      "dettaglio_titolo": "Error {codice}",
+      "dettaglio_context": "Context (technical notes)",
+      "dettaglio_context_vuoto": "No context recorded"
     }
   },
   "indirizzi": {
@@ -3964,6 +3987,23 @@
       "blocco_reason": {
         "trattenuto_da_lotto": "A live batch is already holding this document: to invoice it separately, remove it from that run first."
       }
+    },
+    "giornale": {
+      "col_quando": "When",
+      "col_gravita": "Severity",
+      "col_registro": "Register",
+      "col_entita": "Entity",
+      "col_riferimento": "Reference",
+      "col_cosa": "What",
+      "col_chi": "Who",
+      "col_tx_id": "Transaction",
+      "col_correlation_id": "Correlation",
+      "filtro_solo_errori": "Errors only",
+      "filtro_solo_errori_hint": "On: ERROR rows only (and rows without severity). Off: warnings too.",
+      "filtro_registro_tutti": "All registers",
+      "filtro_entita_tutte": "All entities",
+      "filtro_filo": "Thread (tx_id or correlation_id)",
+      "ritirate_nascoste": "{n} withdrawn signals hidden"
     }
   },
   "pagamenti": {

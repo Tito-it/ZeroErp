@@ -99,6 +99,7 @@ class PipelineServiceTests(SimpleTestCase):
             "documenti_presi_in_carico_count": 2,
             "critiche_giro_count": 0,
             "esiti_stato_esecuzione_errore_count": 2,
+            "fermo": True,
         }
         with patch(
             "apps.vendite.services.lotto_segnalazioni_service.VenditePipelineRepository"
@@ -110,5 +111,10 @@ class PipelineServiceTests(SimpleTestCase):
         # Il verdetto con ZERO critiche: e' il caso D2, e il client deve
         # leggerlo da qui e non ricalcolarlo da `critical_count`.
         self.assertEqual(data["critical_count"], 0)
+        # ⭐ E dal 2026-09-19 il verdetto e' `summary["fermo"]` letto dal DB:
+        #    `is_error`/`blocks_next_step` lo trasportano.
+        self.assertTrue(data["is_error"])
+        self.assertTrue(data["blocks_next_step"])
+        self.assertIs(data["summary"]["fermo"], True)
         self.assertTrue(data["is_error"])
         self.assertTrue(data["blocks_next_step"])

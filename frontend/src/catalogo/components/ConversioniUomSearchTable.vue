@@ -75,7 +75,7 @@ onMounted(() => store.fetchList())
       @config-loaded="onConfigLoaded"
     >
       <template #cell-fattore="{ data }">
-        <span class="font-mono">{{ data.fattore }}</span>
+        <span class="app-mono">{{ data.fattore }}</span>
       </template>
       <template #cell-attivo="{ data }">
         <AttivoTag :active="data.attivo" />
@@ -86,5 +86,4 @@ onMounted(() => store.fetchList())
 </template>
 
 <style scoped>
-.font-mono { font-family: monospace; }
 </style>
