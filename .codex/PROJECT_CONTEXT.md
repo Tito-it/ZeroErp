@@ -102,7 +102,7 @@ ZeroErp/
 | `dbops` | Strumenti DBA, registry task, FK policy |
 | `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
-| `public` | Oggetti pubblici. ⚠️ `version_info` **esiste** (verificato 2026-09-12): una riga, **zero lettori** in BE/FE/pgTAP — la nomina solo il resync delle sequence per escluderla. Per la versione applicata usare `DATABASECHANGELOG`. La decisione se ha un mestiere (allora un lettore e un manuale) o no (allora `DROP`) è di Tid: analisi-software-per-dati-morti §2.6 |
+| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`), **nessuna tabella**. ⛔ `version_info` — una riga, zero lettori — è stata **droppata il 2026-09-12** (decisione Tid, `90_end/20260912-29`, nel provisioning perché lì era nata). Per la versione applicata usare `DATABASECHANGELOG`. Fino a quel giorno questa riga la dava «esiste, decisione aperta»: analisi-software-per-dati-morti §2.6 |
 
 ## Struttura App Django (pattern per ogni dominio)
 
@@ -209,10 +209,148 @@ che nessuno rilegge.
 (schema DB vuoto, verificato 01-09-2026): non sono la stessa cosa e non vanno
 letti insieme ai due sopra.
 
+✅ **Il prerequisito è consegnato** (2026-09-14, brief chiuso in
+`work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): le date di
+consegna sulle righe (vendite **e** acquisti), `config.modi_approvvigionamento`,
+`articoli.gestito_a_magazzino`/`lead_time_giorni`, la commessa leggibile,
+`famiglie_documento` senza BA obbligatorio — DB, BE e FE. **Tre cose il cantiere
+le eredita, e sono scritte nel riquadro «CHIUSO» di quel brief:**
+
+- 🔴 il **presidio di prontezza** su `articoli.gestito_a_magazzino` (vista
+  `dbops` a una riga `MARCATI`/`NESSUNO_MARCATO`, `ZERO`, `stato_atteso =
+  MARCATI` in `presidi.csv`) — deciso da Tid il 14-09: si scrive **qui**, col
+  primo carico (analisi carico e scarico §8), non prima: al rilascio tutti gli
+  articoli sono `false` e nessun rosso lo dice;
+- le due date di `acquisti.ordini_righe` sono a DB **senza consumatore**
+  (nessun repository di righe, nessuna chiave i18n);
+- `E_ATTIVO_REQUIRE`, il codice del require generato dal framework ATTIVO, è
+  **TECNICO** anche quando il dato l'ha scelto una persona: candidato allo split,
+  per **tutte** le coppie — cantiere `dbops`, non di dominio.
+
+✅ **Il Lotto 1 di magazzino («il terreno vuoto») è CHIUSO e archiviato**
+(`work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`, 2026-09-17): DB
+mergiato il 15-09 (PR #1593), le richieste BE/FE chiuse lo stesso giorno
+(PR #1595: `E_MAG_*` rigenerati coi ripieghi, `ambito_causale` via da
+`_REL_CONSENTITE`/`CONFIG_TABLES`), CI verde. Il **Lotto 2** («il motore»: primitiva DEFINER + porta sul
+ledger, check di disponibilità condivisa, inventario e rettifica,
+`vw_disponibilita`, orfani, presidio di prontezza, `requires_lotto` in UI) ha
+il suo brief dal **17-09** — `work-in-progress/brief-db-magazzino-lotto-2-motore.md`,
+✅ **quattordici D-L2 tutte decise da Tid il 17-09** (fra cui `magazzini.usa_ubicazioni`, `trasferimenti` = trasferimento interno, via `COUNTING`), 🔵 **nessun changeSet: si parte da P-0** — e parte da
+`analisi-db-magazzino-carico-e-scarico.md` §8 e dalle sei lezioni in coda a §5
+del brief del Lotto 1. Il prerequisito deciso da Tid il 15-09 —
+`brief-db-emittente-di-default-un-bb-solo.md`, l'emittente di default come
+**building block unico** in `script`, montato su `magazzini`/`assets` e **al
+posto delle quattro copie di vendite**, ritirate nello stesso giro — è
+**CHIUSO anch'esso il 17-09** (`work-done/brief-db-emittente-di-default-un-bb-solo.md`:
+`20260915-36 → -46` applicati, undici trigger sul BB e zero copie a DB vivo,
+commit `e98cf2469` + PR #1598, BE allineato con `E_EMITTENTE_NON_RISOLTO`).
+⭐ La regola che ne discende, e vale per ogni cantiere: *quando
+emerge un BB generico, i duplicati esistenti si ritirano subito — non c'è
+produzione, non c'è niente da aspettare.*
+
 ### Aperto — Media priorità
+- **La distinta del fondo fattura fuori lotto** (DB, ereditata il 2026-09-17
+  dalla chiusura di `work-done/brief-db-distinta-numerata-sul-registro.md`,
+  §4-bis.19): `fn_sync_contabili_fondo_fattura` passa `p_lotto_id = NULL` se la
+  fattura non è in nessun lotto, e la distinta del fondo cade al **livello 3**
+  di `fn_get_emittente_distinta` (l'emittente di chi agisce) invece che a
+  quello della fattura — per l'admin globale in «tutti» è un
+  `E_CONTABILE_EMITTENTE_OBBLIGATORIO` in mezzo alla pipeline. La strada è che
+  la madre dei fondi passi `p_emittente_fiscale_id` dall'emittente della
+  **fattura**. Da decidere con Tid, un changeSet
+- **`runOnChange` + `dbms:` in `80_data`/`90_end`: la ri-esecuzione una-tantum**
+  (DB, ereditata il 2026-09-17 dalla chiusura di
+  `work-done/brief-db-distinta-numerata-sul-registro.md`, §9 riga del 17-09
+  pomeriggio): in Liquibase 5.0.4 un `runOnChange` con un change `dbms:` viene
+  ri-eseguito **una volta** all'update successivo alla prima esecuzione — il
+  filtro ricalcola il checksum senza `Database` nello `Scope` e salta il
+  change, quindi il checksum salvato non torna (`exectype = RERAN`, poi
+  stabile). In CI cade nella **seconda** invocazione (`ci_apply`), **fuori
+  ordine** rispetto a `80_data`: è così che `20260831-03` è morto dopo il
+  merge di PR #1598 (corretto: cancello per nome, `237ea2939`). Sono 28
+  changeSet in `80_data`/`90_end`, tolleranti tranne quel cancello. Da
+  decidere: togliere `dbms:` dai 28 (checksum deterministico, niente
+  ri-esecuzione) o accettare la ri-esecuzione e censire ogni `sqlCheck` con
+  `HALT` sul **contenuto**; e riscrivere la nota del guardrail `runOnChange`
+  in `ci-validate.yaml`, che nomina `runOnChange` come causa quando la causa è
+  `runOnChange` **+ `dbms:`**. Cantiere `dbops`, non di dominio
+- **La scala di `vendite_contabili_righe.importo`** (DB, **P-8**, ereditata il
+  2026-09-18 dalla chiusura di `work-done/brief-db-distinta-ricerca-rate.md`,
+  §4-bis.10): la colonna è `numeric` **senza scala** (`20260213-10`), quindi una
+  riga con quattordici decimali — la sottrazione in virgola mobile di un client —
+  entra com'è, e il guard di capienza la rifiuta su un importo che *era* lo
+  spazio. Il FE arrotonda ai centesimi dal 17-09, ma la regola vale per
+  **qualunque** client. Raccomandazione scritta nel brief: un
+  `CHECK (importo = round(importo, 2))` che **rifiuta** (AGENTS.md: «non
+  normalizzare silenziosamente»), non un typmod `numeric(18,2)` che arrotonda
+  in silenzio; `fatture_scadenze.importo` resta `numeric(18,6)` come i totali di
+  documento. Un changeSet `00_schema` con `expectedResult: 0` sulle righe che
+  non passerebbero. ✅ **DECISA da Tid il 2026-09-18 sera: strada A, il
+  `CHECK` che rifiuta.** Da domanda a lavoro del team DB (`pagamenti`,
+  un changeSet); nessun impatto BE/FE — il FE arrotonda già ai centesimi
+- **Su quale documento si può registrare un incasso** (DB, **Q-4**, ereditata
+  il 2026-09-18 dallo stesso brief, registro del 18-09): Tid vuole nel picker
+  delle rate «solo le definitive, inviate a SDI — ma faremo poi». È un
+  predicato di **dominio** e la sede è **una**, a DB, letta dalla lista **e**
+  dal guard della riga: oggi `trgfn_vendite_contabili_righe_guard_rata` non
+  chiede lo stato del documento (la rata di una bozza si abbina) e il filtro
+  `solo_numerate` di `GET /pagamenti/rate/` è presentazione, non cancello. Si
+  apre con la **persistenza dell'esito SDI** (voce sotto), che è ciò che
+  «inviata» significa; nessun changeSet chiesto prima. ✅ **DECISA da Tid il
+  2026-09-18 sera: si aspetta SDI** («a breve farò lo sviluppo SDI») — niente
+  passo intermedio «solo numerati» a DB; il filtro BE sulle bozze resta
+  presentazione, e il buco (la rata di una bozza è abbinabile per vie diverse
+  dal picker) è **dichiarato**, non dimenticato: si chiude nel cantiere SDI
+  con la regola intera «definitiva e inviata», in una sede, letta da lista e
+  guard
+- **«Riavvia» un servizio dall'interfaccia** (DB + deploy + BE, **decisione
+  D1 di Tid**; ereditata il 2026-09-18 dalla chiusura di
+  `work-done/analisi-riavvio-processi-da-interfaccia.md`): «Esegui ora» è in
+  esercizio dal 15-09 e non aveva bisogno di sapere su quale macchina gira —
+  un timer è un comando che parla col DB. `systemctl restart` di un servizio
+  (oggi il solo `listen_cambio_reparto`) **sì**: senza un *host* nel modello
+  il pulsante riavvia «un host a caso» alla seconda macchina, in silenzio.
+  Cancello: **D1** — forma A (`ZEROERP_HOST` dichiarato in `env.sh`, `host`
+  obbligatorio nella richiesta, claim del drenatore filtrato) o B (registro
+  `dbops.host` + `abilita` per host); l'analisi raccomanda **A subito, con
+  `host` obbligatorio dal primo giorno**. Poi D2…D8 (§7) e la sequenza §9:
+  colonna sul claim, tipo `RIAVVIA_UNIT` (`attivo = false`), azione
+  `unit_riavvia`, `sudoers` **reso** da `sveglie.json` in `install-timers.sh`,
+  handler a lista senza shell, run **non** contato come segno di vita del
+  processo riavviato (D6). Zero righe scritte al 18-09, per scelta. Sta anche
+  fra le «Decisioni aperte» della mappa concentrica
+- **Il Giornale eventi non è multi-emittente** (DB, **non urgente**, ereditata
+  il 2026-09-19 dalla chiusura di `work-done/piano-be-fe-osservabilita-pallino-e-superfici.md`,
+  §10 pezzo G): `vendite.giornale` è `multi_emittente = false` perché
+  `script.vw_giornale_entita` non proietta l'emittente della riga — su «Tutti
+  gli emittenti» la lista chiede di sceglierne uno (422), come `Fatture`. Per
+  certificarla serve `emittente_soggetto_ruolo_id` nei **quattro rami** della
+  vista (le tabelle lo hanno o lo raggiungono) + la colonna a catalogo. Il
+  collaudo in-app dell'osservabilità (`work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
+  scritto il 19-09, **da eseguire**) lo dichiara al §3.15
+- **Il catalogo dei registri del giornale** (DB, brief scritto il
+  2026-09-19: `work-in-progress/brief-db-registri-giornale-catalogo.md`,
+  decisione di Tid dello stesso giorno): i quattro registri che
+  `script.vw_giornale_entita` cuce vivono come letterali nei rami `UNION ALL`,
+  in una costante BE e in un array FE, e nessuna sede porta l'etichetta — la
+  tendina «Registro» mostra `EVENT_LOG` grezzo. Richiesta: `config.registri_giornale`
+  nella forma del lookup generico + pgTAP che lega vista e catalogo nei due
+  versi. Il BE aspetta; la tendina gemella «Entità» è già sul catalogo
+  (`GET /core/lookup/tipi-entita/`, stesso giorno)
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
+- **La promessa di consegna dopo la conferma** (BE, decisione di Tid; ereditata
+  il 2026-09-14 dal brief «modifiche certe», voce 1-bis): le righe d'ordine si
+  scrivono solo in `DRAFT` (`_STATI_RIGHE_MODIFICABILI`), ma
+  `data_consegna_confermata` si decide **alla conferma** e può cambiare dopo. Il
+  DB non mette guard di stato di proposito: serve un verbo suo (stampo: gli
+  override di prezzo) o il dialog di conferma che la raccolga
+- **Pratica di approvazione prezzo su revisione superata** (BE,
+  `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
+  2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1
+  ricopia `stato_approvazione_prezzo` e la pratica 1:1, e una riga `PENDING`
+  può trovarsi con la pratica già chiusa sulla rev N
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di
@@ -221,7 +359,7 @@ lezione della §Nota di metodo di quel file):
 
 - **Esercizio fiscale come entità** (roadmap #3): zero occorrenze di `esercizio`/`anno_fiscale` in `migrations_v2` e nel backend; l'esercizio è l'anno solare derivato da `fatture.data`. Serve al primo **bilancio**, non al primo ciclo — la numerazione con reset annuale è coperta
 - **Vista push** (roadmap #5): `vendite.commesse_push_log` non ha una UI di lista/ultimo run per sorgente; i contatori `created/updated/skipped/errors` esistono nel payload e nessuno li rende — l'operatore riceve un `push_log_id` in un toast e non ha modo di aprirlo
-- **Alerting sui dati** (roadmap #6): la vitalità dei **processi** è coperta (sveglia, `dbops.processi`, digest); manca la query su `vendite.event_log` per severity/finestra con un canale d'uscita — casa: `work-in-progress/analisi-osservabilita-log.md`
+- **Alerting sui dati** (roadmap #6): la vitalità dei **processi** è coperta (sveglia, `dbops.processi`, digest) e dal 19-09 anche il **lotto fermo** (presidio a catalogo → digest e pallino) e la consultazione **a video** (`vendite/giornale`, «Giornale eventi»); manca ancora un **canale d'uscita** (email) per la query generica su `vendite.event_log` per severità/finestra. ⚠️ Non ha più una casa: `analisi-osservabilita-log.md` è **chiusa e archiviata** il 2026-09-19 (`work-done/`), e questa voce è uno dei residui dichiarati nel suo riquadro
 - **Diagrammi di stato** (roadmap #8): zero `stateDiagram-v2` nel repo per lotto e task_run; la sostanza è già in prosa in `guide/fatturazione.md` — è trasposizione, non analisi
 - **Preview di fatturazione del contratto** (roadmap #10): non esiste il punto in cui l'operatore veda *«su questa competenza fatturerà queste righe, per X»*; il dato lo produce `fn_list_contratti_da_pushare`. ⚠️ Non è `/contratti/<id>/righe-preview/`, che è la preview di **pricing**
 

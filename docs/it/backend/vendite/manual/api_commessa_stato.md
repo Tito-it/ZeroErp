@@ -61,6 +61,10 @@ View: `ApiCommessaStato` (`apps.vendite.api.views`) — `def get` + `def post` s
     "total_non_emesse": 5,
     "total_prezzo_da_riallineare": 0,
     "last_update": "2026-06-15T10:00:00",
+    "descrizione": "Impianto sede di Verona",
+    "data_apertura": "2026-09-01",
+    "responsabile_risorsa_umana_id": 7,
+    "responsabile_display": "Bianchi Anna",
     "capabilities": {
       "available_actions": [
         {"key": "chiudi", "target_state": "CHIUSA", "label_key": "vendite.commesse.azione_chiudi",
@@ -99,6 +103,16 @@ espone, non più i soli 3 contatori. In dettaglio:
   `total_approvate` / `total_non_approvate`, `total_emesse` / `total_non_emesse`,
   `total_prezzo_da_riallineare`.
 - `last_update` (ISO 8601, nullable): max tra update testata e ultima riga.
+- **Testata leggibile** (2026-09-14, Blocco C di
+  `brief-db-modifiche-certe-ciclo-vendita-e-articolo`): `descrizione` (nullable,
+  max 255), `data_apertura` (ISO, mai `null`: la scrive il default
+  `script.fn_data_operativa()` alla nascita), `responsabile_risorsa_umana_id` +
+  `responsabile_display` (nome della persona, dalla vista modello
+  `anagrafiche.vw_risorse_umane_dettaglio` — la stessa del lookup, così picker e
+  dettaglio la chiamano nello stesso modo; entrambi `null` senza responsabile). ⚠️ Non escono da `fn_get_commessa_stato`: il repository li
+  legge da `vendite.commesse` (`get_commessa_testata`) e il service li fonde
+  nello stesso payload — un secondo endpoint sarebbe una seconda chiamata per tre
+  colonne della stessa riga. Si scrivono con il `PATCH` qui sotto.
 - `capabilities` (2026-06-16): blob data-driven da `script.fn_available_actions_commessa`
   (pattern gemello di ordini/preventivi/offerte/contratti):
   - `available_actions`: array delle **azioni di stato utente** ammesse dallo stato
@@ -113,6 +127,40 @@ I campi nullable possono valere `null` (es. `priorita_operativa`, `last_update`)
 
 - `400`: `commessa_id` non valido (`E_COMMESSA_VALIDATION`)
 - `404`: commessa non trovata (`E_COMMESSA_NOT_FOUND`)
+
+---
+
+## PATCH `/api/v1/vendite/commesse/<id>/` — La testata leggibile
+
+Scrive `descrizione` e `responsabile_risorsa_umana_id` (2026-09-14, Blocco C del
+brief modifiche certe). **PATCH parziale**: si scrive solo ciò che il payload
+porta; `null` esplicito **azzera** (togliere il responsabile è un gesto
+legittimo). Risponde con il dettaglio aggiornato — lo stesso payload del `GET
+/stato/`. Permesso: livello d'area `vendite` (`change`), come le testate degli
+altri documenti; nessuna `Idempotency-Key` (aggiornamento parziale, api.md
+§PATCH).
+
+```json
+{ "descrizione": "Impianto sede di Verona", "responsabile_risorsa_umana_id": 7 }
+```
+
+Regole:
+
+- `data_apertura` **non** si scrive: la mette il default alla nascita, e una
+  chiave estranea è un `400` (`E_COMMESSA_VALIDATION`, whitelist chiusa).
+- Il responsabile deve essere una **risorsa umana attiva**: il service lo
+  verifica prima dell'`UPDATE` e risponde `400` col campo
+  (`fields: ["responsabile_risorsa_umana_id"]`). ⚠️ A DB lo rifiuterebbe
+  comunque il require sul figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`,
+  nato da `ci_apply`) — ma con `E_ATTIVO_REQUIRE`, che è di classe `TECNICO`
+  (500) e parla di trigger: non è una frase per l'operatore. Il guard DB resta
+  l'autorità, il service è il messaggio.
+- Nessun guard di **stato**: il DB non ne mette, di proposito — la descrizione
+  di una commessa chiusa si può correggere.
+- Zero righe toccate (commessa inesistente **o fuori scope RLS**) → `404`
+  `E_COMMESSA_NOT_FOUND`, come ogni dettaglio by-id.
+- Il picker del responsabile è `GET /anagrafiche/risorse-umane/lookup/`
+  (cross-dominio, `skip_area_check`; envelope `{"results": [...]}`).
 
 ---
 

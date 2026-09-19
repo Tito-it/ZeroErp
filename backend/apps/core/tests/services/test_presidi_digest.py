@@ -31,14 +31,20 @@
 15. test_le_due_composizioni_nominano_le_stesse_viste
 16. test_il_nome_della_corsia_viene_dalla_cadenza_non_dalla_riga_di_comando
 17. test_una_corsia_mai_girata_non_sparisce_dal_battito   ⭐
+18. test_una_corsia_in_corso_si_dice_in_corso_e_la_conclusa_sta_a_parte   ⭐ 14-09
+19. test_l_esito_viaggia_con_la_sua_data_anche_quando_e_fallito   ⭐ 14-09, il lunedi'
+20. test_le_date_delle_corse_sono_in_ora_locale_come_la_testata   14-09, cosmesi
+21. test_una_corsa_conclusa_senza_esito_scritto_si_dice
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
+from django.utils import timezone
 
 from apps.core.db.presidi_repository import (
     CADENZA_GIORNALIERA,
@@ -137,6 +143,35 @@ class _ProcessiFinto:
         return self._tolleranza
 
 
+# Scopo: una corsia nella forma di `job_liveness` (2026-09-14) — la riga piu'
+#        recente come segno di vita e l'ultima CONCLUSA a parte, con la sua
+#        data e il suo esito insieme. Due costruttori perche' sono due casi:
+#        - `_corsa_chiusa`: la riga piu' recente e' chiusa, quindi E' l'ultima
+#          conclusa (una data sola);
+#        - `_corsa_aperta`: la riga piu' recente sta girando, e la conclusa e'
+#          un'ALTRA corsa (o non c'e').
+# ⛔ Costruire qui un dict con `last_ok` sarebbe una forma che il repository
+#    non emette piu': il test resterebbe verde provando un messaggio che in
+#    esercizio non si compone mai (il difetto del test 18 fino al 14-09).
+def _corsa_chiusa(quando: str, *, attivo: bool = True, ok: bool | None = True) -> dict[str, Any]:
+    return {
+        "last_run_at": quando, "attivo": attivo, "in_corso": False,
+        "ultima_conclusa": {"started_at": quando, "ended_at": quando, "ok": ok},
+    }
+
+
+def _corsa_aperta(
+    avviata: str, *, conclusa: tuple[str, bool | None] | None, attivo: bool = True,
+) -> dict[str, Any]:
+    return {
+        "last_run_at": avviata, "attivo": attivo, "in_corso": True,
+        "ultima_conclusa": (
+            {"started_at": conclusa[0], "ended_at": conclusa[0], "ok": conclusa[1]}
+            if conclusa else None
+        ),
+    }
+
+
 class PresidiDigestTests(SimpleTestCase):
     """La forma del digest: cosa entra, cosa si spedisce, cosa si dichiara."""
 
@@ -216,10 +251,7 @@ class PresidiDigestTests(SimpleTestCase):
             [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
             {"dbops.vw_zero": 0},
         )
-        corse = {"digest_presidi:giornaliera": {
-            "last_run_at": "2026-09-10T07:00:00+02:00", "attivo": True,
-            "last_ok": True,
-        }}
+        corse = {"digest_presidi:giornaliera": _corsa_chiusa("2026-09-10T07:00:00+02:00")}
         digest = calcola_digest(
             CADENZA_SETTIMANALE, repo=repo, maintenance=_MaintenanceFinto(corse),
             # Il contratto del seed (`processi.csv`): 11520 minuti.
@@ -365,14 +397,10 @@ class PresidiDigestTests(SimpleTestCase):
             {"dbops.vw_zero": 0},
         )
         giornale = _MaintenanceFinto({
-            "digest_presidi:giornaliera": {
-                "last_run_at": "2026-09-03T07:00:00+02:00",
-                "attivo": False, "last_ok": True,
-            },
-            "digest_presidi:settimanale": {
-                "last_run_at": "2026-09-10T07:30:00+02:00",
-                "attivo": True, "last_ok": True,
-            },
+            "digest_presidi:giornaliera": _corsa_chiusa(
+                "2026-09-03T07:00:00+02:00", attivo=False,
+            ),
+            "digest_presidi:settimanale": _corsa_chiusa("2026-09-10T07:30:00+02:00"),
         })
         catalogo = _ProcessiFinto(1560)
         digest = calcola_digest(
@@ -405,10 +433,9 @@ class PresidiDigestTests(SimpleTestCase):
             {"dbops.vw_zero": 0},
         )
         giornale = _MaintenanceFinto({
-            "digest_presidi:giornaliera": {
-                "last_run_at": "2026-09-03T07:00:00+02:00",
-                "attivo": False, "last_ok": True,
-            },
+            "digest_presidi:giornaliera": _corsa_chiusa(
+                "2026-09-03T07:00:00+02:00", attivo=False,
+            ),
         })
         catalogo = _ProcessiFinto(None)
         digest = calcola_digest(
@@ -478,10 +505,7 @@ class PresidiDigestTests(SimpleTestCase):
         # Il giornale conosce SOLO la settimanale: la giornaliera non e' mai
         # partita.
         giornale = _MaintenanceFinto({
-            "digest_presidi:settimanale": {
-                "last_run_at": "2026-09-10T07:30:00+02:00",
-                "attivo": True, "last_ok": True,
-            },
+            "digest_presidi:settimanale": _corsa_chiusa("2026-09-10T07:30:00+02:00"),
         })
         catalogo = _ProcessiFinto(11520)
         digest = calcola_digest(
@@ -502,3 +526,148 @@ class PresidiDigestTests(SimpleTestCase):
             digest.riepilogo()["corsie_mai_girate"],
             ["digest_presidi:giornaliera"],
         )
+
+    # 18. ⛔ LA RIGA DI UNA CORSIA NON CUCE DUE CORSE. Per la corsia che sta
+    #     componendo la mail la riga piu' recente e' SEMPRE aperta, e l'esito e'
+    #     sempre di un'altra corsa. Fino al 2026-09-14 (sera) la mail scriveva
+    #     «09:47:32 (ok)»: l'ora della corsa 122445 in esecuzione, l'ok di
+    #     quella delle 07:30 (nota del team DB). Da qui: «in corso (avviata …)
+    #     — ultima conclusa … (ok)», con la data di CIASCUNA accanto al suo fatto.
+    # ⚠️ Fino a quel giorno questo test costruiva `last_ok: None` per la corsia
+    #     in corso — una forma che il repository (gia' corretto la mattina) non
+    #     emetteva piu': verde, provando un messaggio che non si componeva mai.
+    #     Ora la corsia si costruisce nella forma vera: riga aperta + conclusa a
+    #     parte, ed e' la forma che `test_job_liveness_due_chiavi` fabbrica sul
+    #     database con `fn_job_run_start`.
+    def test_una_corsia_in_corso_si_dice_in_corso_e_la_conclusa_sta_a_parte(self) -> None:
+        repo = _RepoFinto(
+            [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
+            {"dbops.vw_zero": 0},
+        )
+        giornale = _MaintenanceFinto({
+            "digest_presidi:giornaliera": _corsa_chiusa("2026-09-14T07:00:12+02:00"),
+            # La corsia che sta girando ADESSO (09:47), con la precedente
+            # conclusa alle 07:30.
+            "digest_presidi:settimanale": _corsa_aperta(
+                "2026-09-14T09:47:32+02:00",
+                conclusa=("2026-09-14T07:30:49+02:00", True),
+            ),
+        })
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=_ProcessiFinto(11520),
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        # ⚠️ L'esito si legge SULLA RIGA della corsia: la finestra si chiude al
+        #    primo a capo (testo) o al `</li>` (HTML, una riga sola), cosi' uno
+        #    scambio fra le due corsie non passa. Il `</code>` opzionale e'
+        #    l'unica differenza fra le due rese.
+        for corpo in (testo, html):
+            self.assertNotIn("FALLITA", corpo)
+            riga = re.search(
+                r"digest_presidi:settimanale(?:</code>)?:(.*?)(?:</li>|$)", corpo, re.M,
+            )
+            assert riga is not None
+            riga_settimanale = riga.group(1)
+            # In corso, con l'ora dell'avvio; e la conclusa a parte, con la SUA.
+            self.assertIn("in corso (avviata 14-09-2026 09:47:32)", riga_settimanale)
+            self.assertIn("ultima conclusa 14-09-2026 07:30:49 (ok)", riga_settimanale)
+            # ⛔ La cucitura: l'ora della corsa in esecuzione seguita da un esito.
+            self.assertNotIn("09:47:32 (ok)", riga_settimanale)
+            self.assertRegex(
+                corpo, r"digest_presidi:giornaliera(?:</code>)?: 14-09-2026 07:00:12 \(ok\)",
+            )
+
+    # 19. ⭐ IL LUNEDI' DEL TEAM DB: la settimanale precedente e' finita male, e
+    #     la mail in mano la sta scrivendo la corsa nuova. La riga deve dire
+    #     «in corso» adesso e «FALLITA» sulla corsa di UNA SETTIMANA FA, con la
+    #     sua data — non «<adesso> (FALLITA)», che e' la frase che il team DB
+    #     ha previsto e che questo test rende impossibile.
+    def test_l_esito_viaggia_con_la_sua_data_anche_quando_e_fallito(self) -> None:
+        repo = _RepoFinto(
+            [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
+            {"dbops.vw_zero": 0},
+        )
+        giornale = _MaintenanceFinto({
+            "digest_presidi:settimanale": _corsa_aperta(
+                "2026-09-21T07:30:12+02:00",
+                conclusa=("2026-09-14T07:30:49+02:00", False),
+            ),
+        })
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=_ProcessiFinto(11520),
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        self.assertIn(
+            "in corso (avviata 21-09-2026 07:30:12) — ultima conclusa "
+            "14-09-2026 07:30:49 (FALLITA)",
+            testo,
+        )
+        self.assertNotIn("07:30:12 (FALLITA)", testo)
+        # In HTML il fallimento e' marcato, e resta accanto alla SUA data.
+        self.assertIn("14-09-2026 07:30:49 (<strong>FALLITA</strong>)", html)
+        # ⚠️ E una corsia che gira per la PRIMA volta non ha niente da
+        #    raccontare sul passato, e lo dice: non inventa un esito.
+        giornale_prima = _MaintenanceFinto({
+            "digest_presidi:settimanale": _corsa_aperta(
+                "2026-09-21T07:30:12+02:00", conclusa=None,
+            ),
+        })
+        digest_prima = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale_prima,
+            processi=_ProcessiFinto(11520),
+        )
+        _oggetto, testo_prima, _html = componi_messaggio(digest_prima)
+        self.assertIn("in corso (avviata 21-09-2026 07:30:12) — nessuna corsa conclusa", testo_prima)
+        self.assertNotIn("(ok)", testo_prima)
+        self.assertNotIn("FALLITA", testo_prima)
+
+    # 20. La testata era in ora locale e le corse in UTC («cosmesi» nella nota
+    #     del team DB): il giornale risponde nel fuso della connessione, cioe'
+    #     UTC. Ora tutte le date del messaggio passano dallo stesso punto, nel
+    #     fuso di `TIME_ZONE` — non in quello dell'host, che su un'unit systemd
+    #     puo' mancare.
+    @override_settings(TIME_ZONE="Europe/Rome")
+    def test_le_date_delle_corse_sono_in_ora_locale_come_la_testata(self) -> None:
+        repo = _RepoFinto(
+            [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
+            {"dbops.vw_zero": 0},
+        )
+        giornale = _MaintenanceFinto({
+            # Come le consegna il repository: `isoformat()` di un timestamptz
+            # letto da una connessione in UTC.
+            "digest_presidi:giornaliera": _corsa_chiusa("2026-09-14T05:00:12+00:00"),
+        })
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=_ProcessiFinto(11520),
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        for corpo in (testo, html):
+            self.assertIn("14-09-2026 07:00:12 (ok)", corpo)
+            self.assertNotIn("05:00:12", corpo)
+        # E la testata: stesso fuso, senza secondi (e' un'ora di lettura, non
+        # una corsa da distinguere).
+        testata = timezone.localtime(digest.quando).strftime("%d-%m-%Y %H:%M")
+        self.assertIn(testata, testo)
+
+    # 21. `job_run_log.ok` e' nullable e nessun CHECK lo lega a `ended_at`: una
+    #     corsa chiusa senza esito scritto e' un caso che il modello ammette.
+    #     Si dice com'e' — ne' «ok» ne' «FALLITA» sarebbero veri.
+    def test_una_corsa_conclusa_senza_esito_scritto_si_dice(self) -> None:
+        repo = _RepoFinto(
+            [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
+            {"dbops.vw_zero": 0},
+        )
+        giornale = _MaintenanceFinto({
+            "digest_presidi:giornaliera": _corsa_chiusa("2026-09-14T07:00:12+02:00", ok=None),
+        })
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=_ProcessiFinto(11520),
+        )
+        _oggetto, testo, _html = componi_messaggio(digest)
+        self.assertIn("14-09-2026 07:00:12 (esito non scritto)", testo)
+        self.assertNotIn("(ok)", testo)
+        self.assertNotIn("FALLITA", testo)

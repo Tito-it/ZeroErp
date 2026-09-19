@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — LE CAUSALI NELLA FORMA DECISA, E L'AMBITO SE NE VA
+#   magazzino.causali: otto colonne via, il segno diventa un verso, l'ambito
+#   sparisce (colonna, FK, indice, tabella magazzino.ambito_causale + shadow)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.1 (M-1, M-4,
+#   M-5, D-8, D-L1-g)
+#
+# -- IL SEGNO E' UN VERSO: -1 O +1, MAI 0 (M-1) --------------------------------
+#   La quantita' del movimento e' FIRMATA e il guard di P-9 pretende
+#   sign(qta) = causali.segno. Uno 0 «neutro, definito dalla qta» era il
+#   terzo modo di scrivere il verso (analisi carico e scarico, sezione 4):
+#   esce dal CHECK, e con lui il DEFAULT 0 — un default che il CHECK vieta
+#   e' una contraddizione scritta. Nessuna riga a catalogo lo usava.
+#
+# -- LE OTTO COLONNE CHE NESSUNO LEGGE ------------------------------------------
+#   impatto_valorizzazione (+ chk_magazzino_causali_imp_val)  -> M-4: la
+#     valorizzazione e' UNA (media ponderata, ri-somma dei costo_unitario
+#     scritti), non una regola per causale; TRASF_OUT/TRASF_IN perdono `none`
+#     perche' il trasferimento VALORIZZA.
+#   richiede_lotto, richiede_seriale, richiede_magazzino_dest -> M-5: lotto e
+#     seriale li pretende l'ARTICOLO (requires_lotto/requires_serial), non la
+#     causale; la destinazione non e' una colonna del movimento (coppia OUT/IN).
+#   abilita_billing, richiede_odl, contabilizza_cdc -> D-8: dichiarate,
+#     seminate, lette da nessuno (P-0: zero lettori in pg_proc, backend, FE).
+#   ambito_causale_id (+ fk_mag_causali_ambito, ix_magazzino_causali_ambito_causale_id)
+#     -> D-8: la primitiva e' guidata da due cataloghi (causale, articolo) e
+#     l'ambito non e' fra questi; nel progetto ci sono gia' quattro assi
+#     chiamati «ambito». Se un giorno servira' «questa causale accetta solo
+#     questa sorgente», la forma e' causali.sorgente_tipo_id 1:1 (Lotto 2).
+#   ⚠️ CHECK, FK e indice cadono CON le colonne (dipendenza in pg_depend);
+#   non si nominano.
+#
+# -- I TRIGGER GENERATI, UNO PER UNO (P-0, sezione 6-bis del brief) ------------
+#   trg_causali_a10_ambito_causale_require_attivo_ins_upd porta
+#   ambito_causale_id in UPDATE OF: e' LUI a bloccare il DROP COLUMN
+#   (provato in transazione annullata). DROP TRIGGER IF EXISTS prima del
+#   DROP, senza preCondition (linee-guida-sql 11.5: su un DB da zero non
+#   esiste ancora, IF EXISTS basta). Non si rigenera: la FK non c'e' piu'.
+#   trg_ambito_causale_a10_causali_block_deact_upd sta SULLA tabella che
+#   sparisce: cade con lei. trg_causali_a10_movimenti_block_deact_upd resta.
+#
+# -- L'AMBITO SE NE VA ORA, CON DUE LETTORI VIVI FUORI DAL DB (D-L1-g) ----------
+#   backend/apps/core/db/dbops_repository.py (_REL_CONSENTITE) e
+#   frontend/src/core/config-tables.js (CONFIG_TABLES) nominano ancora
+#   magazzino.ambito_causale. Decisione di Tid (2026-09-15): si droppa ora e
+#   la voce «Ambito Causale» del pannello admin risponde 500 (42P01) finche'
+#   BE e FE non tolgono le due righe — richiesta scritta nel brief, D-L1-g.
+#   storico.ambito_causale: 0 righe al 14-09, proprietario = migratore,
+#   nessuna policy; IF EXISTS perche' su un DB da zero la shadow nasce a
+#   ci_apply, cioe' dopo.
+#   ⚠️ Il loader 80_data/changelog/20251001-05 (onFail HALT + tableExists)
+#   e' CANCELLATO nello stesso commit, col suo CSV: su un DB da zero
+#   girerebbe dopo questo DROP e fermerebbe il migrate. Le righe di registro
+#   (fk_index_policy, storico_scope_policy) le toglie 20260915-03 in 80_data.
+#
+# -- CHE COSA RESTA, E PERCHE' ---------------------------------------------------
+#   is_rettifica, consente_stock_negativo, ordine, codice, codice_interno,
+#   descrizione, attivo: li legge (o li leggera') la primitiva.
+#   is_installazione_asset: non censita da nessuna analisi e letta da nessuno
+#   (P-0); resta perche' e' la sola marca che lega la causale al ciclo di vita
+#   dell'asset (ASSET_INSTALL) e il consumatore nasce col Lotto 2 — se allora
+#   non lo trova, esce.
+#   Il seed (causali.csv, mirror 20251001-51) perde le otto colonne e prende
+#   le sei causali nuove (23-28): CARICO_RESO_VEN, SCARICO_RESO_ACQ,
+#   ODL_VERSAMENTO_PF, INV_INIZIALE, STORNO_POS, STORNO_NEG.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-02-alter-causali-forma-decisa-mctit.yaml
+
+  - changeSet:
+      id: 20260915-02-alter-causali-forma-decisa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.causali nella forma decisa: via impatto_valorizzazione, richiede_lotto,
+        richiede_seriale, richiede_magazzino_dest, abilita_billing, richiede_odl,
+        contabilizza_cdc, ambito_causale_id (con CHECK, FK, indice e il require_attivo
+        generato che bloccava il DROP); segno IN (-1, 1) senza DEFAULT (il verso sta
+        nella quantita', M-1); DROP TABLE magazzino.ambito_causale + shadow (D-8,
+        D-L1-g: decisione di Tid del 15-09, i due lettori BE/FE seguono). Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.1 (P-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: causali
+            - columnExists:
+                schemaName: magazzino
+                tableName: causali
+                columnName: ambito_causale_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Il require_attivo generato porta ambito_causale_id in UPDATE OF
+              --    e blocca il DROP COLUMN. IF EXISTS: su un DB da zero non c'e'.
+              DROP TRIGGER IF EXISTS trg_causali_a10_ambito_causale_require_attivo_ins_upd
+                  ON magazzino.causali;
+
+              -- 2. Le otto colonne. chk_magazzino_causali_imp_val, fk_mag_causali_ambito
+              --    e ix_magazzino_causali_ambito_causale_id cadono con le loro colonne.
+              ALTER TABLE magazzino.causali
+                  DROP COLUMN impatto_valorizzazione,
+                  DROP COLUMN richiede_lotto,
+                  DROP COLUMN richiede_seriale,
+                  DROP COLUMN richiede_magazzino_dest,
+                  DROP COLUMN abilita_billing,
+                  DROP COLUMN richiede_odl,
+                  DROP COLUMN contabilizza_cdc,
+                  DROP COLUMN ambito_causale_id;
+
+              -- 3. Il segno e' un verso: -1 o +1. Il DEFAULT 0 sarebbe vietato dal
+              --    CHECK stesso: si toglie.
+              ALTER TABLE magazzino.causali
+                  DROP CONSTRAINT chk_magazzino_causali_segno;
+              ALTER TABLE magazzino.causali
+                  ADD CONSTRAINT chk_magazzino_causali_segno
+                  CHECK (segno IN (-1, 1));
+              ALTER TABLE magazzino.causali
+                  ALTER COLUMN segno DROP DEFAULT;
+
+              COMMENT ON COLUMN magazzino.causali.segno IS
+                  'Il VERSO della causale: +1 entrata, -1 uscita. Non esiste una causale '
+                  'neutra: la quantita'' del movimento e'' firmata e il guard '
+                  'magazzino.trgfn_movimenti_guard_verso pretende sign(qta) = segno '
+                  '(E_MAG_MOVIMENTO_VERSO_INCOERENTE). Lo storno di un movimento porta '
+                  'una causale di verso opposto (STORNO_POS/STORNO_NEG), non quella '
+                  'dell''originale. Senza DEFAULT: chi crea una causale dice il verso. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.1 (M-1).';
+              COMMENT ON COLUMN magazzino.causali.is_installazione_asset IS
+                  'Se true, la causale lega il movimento al ciclo di vita di un asset '
+                  '(ASSET_INSTALL). Non e'' letta da nessuna funzione al 14-09-2026: il '
+                  'consumatore nasce col Lotto 2; se allora non lo trova, esce.';
+              COMMENT ON TABLE magazzino.causali IS
+                  'Catalogo delle causali di movimento: il VERSO (segno), se e'' una '
+                  'rettifica, se ammette stock negativo. Dal 2026-09-15 non porta piu'' '
+                  'ne'' regole di valorizzazione (la valorizzazione e'' una, M-4) ne'' gli '
+                  'obblighi di lotto/seriale (li dice l''articolo, M-5) ne'' un ambito '
+                  '(D-8): la primitiva di scrittura e'' guidata da due cataloghi, la '
+                  'causale e l''articolo. Vocabolario, uguale per tutti gli emittenti: '
+                  'fuori dal perimetro RLS. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, '
+                  'sezione 4.1.';
+
+              -- 4. L'ambito se ne va: prima la shadow (IF EXISTS: su un DB da zero
+              --    nasce a ci_apply), poi la tabella. Il suo block_deact cade con lei.
+              DROP TABLE IF EXISTS storico.ambito_causale;
+              DROP TABLE magazzino.ambito_causale;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della sola FORMA (la tabella ambito_causale torna vuota:
+              -- i dati stavano nel CSV cancellato con questo cantiere).
+              CREATE TABLE IF NOT EXISTS magazzino.ambito_causale (
+                  id             BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                  codice         VARCHAR(50)  NOT NULL UNIQUE,
+                  codice_interno VARCHAR(50)  NOT NULL UNIQUE,
+                  descrizione    VARCHAR(160) NOT NULL,
+                  ordine         SMALLINT     NOT NULL DEFAULT 0,
+                  attivo         BOOLEAN      NOT NULL DEFAULT true,
+                  meta           JSONB        NOT NULL DEFAULT '{}'::jsonb,
+                  tx_id          UUID,
+                  user_insert    TEXT,
+                  user_update    TEXT,
+                  data_insert    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                  data_update    TIMESTAMPTZ,
+                  storicizza     BOOLEAN      NOT NULL DEFAULT false
+              );
+              ALTER TABLE magazzino.causali
+                  ALTER COLUMN segno SET DEFAULT 0;
+              ALTER TABLE magazzino.causali
+                  DROP CONSTRAINT IF EXISTS chk_magazzino_causali_segno;
+              ALTER TABLE magazzino.causali
+                  ADD CONSTRAINT chk_magazzino_causali_segno
+                  CHECK (segno IN (-1, 0, 1));
+              ALTER TABLE magazzino.causali
+                  ADD COLUMN IF NOT EXISTS impatto_valorizzazione VARCHAR(10) NOT NULL DEFAULT 'cmp',
+                  ADD COLUMN IF NOT EXISTS richiede_lotto BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN IF NOT EXISTS richiede_seriale BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN IF NOT EXISTS richiede_magazzino_dest BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN IF NOT EXISTS abilita_billing BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN IF NOT EXISTS richiede_odl BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN IF NOT EXISTS contabilizza_cdc BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN IF NOT EXISTS ambito_causale_id BIGINT;
+              ALTER TABLE magazzino.causali
+                  ADD CONSTRAINT chk_magazzino_causali_imp_val
+                  CHECK (impatto_valorizzazione IN ('cmp', 'fifo', 'none'));
+              ALTER TABLE magazzino.causali
+                  ADD CONSTRAINT fk_mag_causali_ambito
+                  FOREIGN KEY (ambito_causale_id) REFERENCES magazzino.ambito_causale (id);

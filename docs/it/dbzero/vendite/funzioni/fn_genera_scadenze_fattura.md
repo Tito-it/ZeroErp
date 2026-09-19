@@ -17,8 +17,9 @@ AS $function$
 -- Regole: LEGGE e non risolve (C-13); formula a ramo unico
 --         (C-5); DELETE+INSERT quindi idempotente; la
 --         quadratura va sull'ultima rata; i tre casi della base
---         seguono D-D (NULL errore, zero e negativo sono
---         documenti legittimi senza rate).
+--         seguono D-D (NULL errore, zero senza rate) — e dal
+--         2026-09-17 (P-5, D19-e) la base NEGATIVA ha UNA rata
+--         col segno del documento, alla prima data del termine.
 DECLARE
     v_data           vendite.fatture.data%TYPE;
     v_base           vendite.fatture.totale_a_pagare%TYPE;
@@ -176,16 +177,24 @@ BEGIN
         RETURN;
     END IF;
 
-    -- D-D caso 3: saldo a favore del cliente. Nessuna rata (il CHECK
-    -- vieta importi negativi) ma una nota NON critica: a volte e'
-    -- corretto, a volte e' un fondo configurato male, e la differenza
-    -- la vede una persona.
+    -- D-D caso 3, riscritto il 2026-09-17 (P-5, D19-e — Tid: «la nota di
+    -- credito ha una rata sola»): saldo a favore del cliente → UNA rata,
+    -- importo = la base col suo segno, data = la PRIMA del termine (Q-C:
+    -- primo_offset e fine_mese come per ogni documento, nessuna seconda
+    -- regola). ⭐ Si ottiene senza un secondo ramo: v_num_rate := 1 e il
+    -- loop sotto fa il resto — data dal termine, snapshot, quadratura
+    -- esatta (n = v_num_rate → v_importo = v_base). Il CHECK che vietava
+    -- il negativo e' stato tolto nello stesso giro (20260917-11): la
+    -- coerenza di segno la presidia la numerazione (somma rate = totale).
+    -- ⚠️ La nota NON critica resta (Q-D): a volte e' corretto, a volte e'
+    -- un fondo configurato male, e la differenza la vede una persona.
     IF v_base < 0 THEN
+        v_num_rate := 1;
         INSERT INTO vendite.fatture_log (
                     fattura_id, data_ora, messaggio,
                     status, disabilitato, meta)
         VALUES (p_fattura_id, now(),
-                format('Totale a pagare negativo (%s): nessun piano rate generato.', v_base),
+                format('Totale a pagare negativo (%s): generata una rata unica di credito.', v_base),
                 'W', FALSE,
                 jsonb_build_object(
                     'task',              'genera_scadenze_lotto',
@@ -196,9 +205,8 @@ BEGIN
                     --    solleva — si registra e il giro prosegue.
                     'error_code',        'W_SCADENZE_TOTALE_NEGATIVO',
                     'totale_a_pagare',   v_base,
-                    'termine_pagamento_id', v_termine_id));
-        RETURN QUERY SELECT v_deleted, 0;
-        RETURN;
+                    'termine_pagamento_id', v_termine_id,
+                    'rata_unica_credito', true));
     END IF;
 
     -- Snapshot del termine: i VALORI, con l'id accanto come
@@ -219,7 +227,11 @@ BEGIN
         'arrotondamento_metodo',   v_metodo,
         'arrotondamento_decimali', v_decimali,
         'modalita_pagamento_id',   v_modalita_id,
-        'modalita_codice',         v_modalita_cod));
+        'modalita_codice',         v_modalita_cod,
+        -- P-5: sulla nota di credito il piano e' UNA rata, qualunque
+        -- numero_rate dica il termine: lo snapshot lo dichiara (NULL
+        -- sui documenti positivi, e jsonb_strip_nulls lo toglie).
+        'rata_unica_credito',      CASE WHEN v_base < 0 THEN true END));
 
     -- La quota nominale, arrotondata una volta sola con il building
     -- block unico del modello (script.fn_arrotonda_importo).
@@ -245,10 +257,11 @@ BEGIN
             -- la somma delle rate e' ESATTAMENTE la base.
             v_importo := v_base - v_erogato;
 
-            IF v_importo < 0 THEN
-                -- Vedi la nota in testa al file: sarebbe una violazione
-                -- di chk_fatture_scadenze_importo_pos a meta' giro. La
-                -- diagnosi vera e' il termine, non la fattura.
+            -- ⚠️ Solo sulla base POSITIVA: sulla negativa (una rata sola,
+            --    P-5) v_importo = v_base per costruzione. Prima del
+            --    2026-09-17 qui si parlava del CHECK sull'importo, che non
+            --    c'e' piu': la diagnosi vera resta il termine, non la fattura.
+            IF v_base > 0 AND v_importo < 0 THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_genera_scadenze_fattura', 'E_SCADENZE_TERMINE_INVALIDO',
                     jsonb_build_object('fattura_id', p_fattura_id,
@@ -267,7 +280,8 @@ BEGIN
         VALUES (p_fattura_id, n, v_data_rata, v_importo,
                 jsonb_strip_nulls(jsonb_build_object(
                     'modalita_codice',        v_modalita_cod,
-                    'termine_codice_interno', v_codice_interno)));
+                    'termine_codice_interno', v_codice_interno,
+                    'rata_unica_credito',     CASE WHEN v_base < 0 THEN true END)));
         v_inserted := v_inserted + 1;
     END LOOP;
 
@@ -281,7 +295,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_scadenze_fattura(p_fattura_id bigint)
-IS 'Fase 4.1 — (ri)genera il piano rate di una fattura. LEGGE il termine dalla testata e non lo risolve (C-13: la catena unica e'' fn_resolve_termini_pagamento, e il termine arriva qui passando dalla chiave). Formula a ramo unico dopo la riforma D-E: data = fattura.data + primo_offset_giorni + (n-1)*intervallo, in giorni, con spostamento a fine mese se richiesto; importo = base/numero_rate arrotondato con script.fn_arrotonda_importo (building block unico) e quadratura sull''ULTIMA rata, cosi'' la somma e'' esattamente la base. DELETE+INSERT: rieseguire ricostruisce lo stesso piano invece di sommarcisi, e la DELETE precede i casi a base non positiva perche'' una fattura diventata interamente coperta da acconti deve PERDERE le rate che aveva. I tre casi della base seguono D-D: NULL = passo fuori ordine (E_SCADENZE_BASE_NON_PRONTA), zero = coperta da acconti (zero rate, nessun log), negativa = saldo a favore del cliente (zero rate, log NON critico). Oltre la soglia DRAFT/EMESSA solleva E_SCADENZE_FATTURA_BLOCCATA (D-F): il filtro «salta senza fallire» spetta al wrapper di lotto. Scrive in testata termine_pagamento_snapshot con i VALORI del termine e non il solo id, perche'' una fattura emessa deve continuare a spiegare le proprie rate anche se il catalogo cambia. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-5): la nota di avviso sul totale a pagare negativo dichiara W_SCADENZE_TOTALE_NEGATIVO in meta->>''error_code''. ⚠️ Cambia specie rispetto ai tre changeSet gemelli dello stesso giro (fn_log_pipeline_fase, fn_snapshot_fattura_lotto, fn_genera_scadenze_lotto): quelli CATTURANO un errore altrui in un ramo EXCEPTION e ne prendono il codice da CONSTRAINT_NAME, qui non c''e'' niente da catturare — la condizione la vede questa funzione, e il codice si DICHIARA. E'' un W_ perche'' non si solleva mai: si registra e il giro prosegue (un W_ sollevato sarebbe un HTTP 500). ⛔ Il codice NON ha una entry in config.messaggi_errore, di proposito e per decisione: questo punto scrive la frase direttamente in vendite.fatture_log.messaggio e non passa da script.fn_log_and_raise_error, quindi un messaggio a catalogo sarebbe una seconda copia della stessa frase che nessuno compone. La forma e'' prevista dal disegno: la FK va da messaggi_errore verso codici_errore, quindi un codice senza figli e'' legittimo mentre un messaggio senza padre no. ⭐ rev 2026-08-24: i due rifiuti del piano rate (E_SCADENZE_TERMINE_MANCANTE, E_SCADENZE_BASE_NON_PRONTA) portano il BERSAGLIO sulla fattura. Si arriva qui dentro il giro di lotto, e la fattura da sistemare non e'' quella che l''operatore ha davanti. Brief: brief-db-bersaglio-errore.md §6 L6.';
+IS 'Fase 4.1 — (ri)genera il piano rate di una fattura. LEGGE il termine dalla testata e non lo risolve (C-13: la catena unica e'' fn_resolve_termini_pagamento, e il termine arriva qui passando dalla chiave). Formula a ramo unico dopo la riforma D-E: data = fattura.data + primo_offset_giorni + (n-1)*intervallo, in giorni, con spostamento a fine mese se richiesto; importo = base/numero_rate arrotondato con script.fn_arrotonda_importo (building block unico) e quadratura sull''ULTIMA rata, cosi'' la somma e'' esattamente la base. DELETE+INSERT: rieseguire ricostruisce lo stesso piano invece di sommarcisi, e la DELETE precede i casi a base non positiva perche'' una fattura diventata interamente coperta da acconti deve PERDERE le rate che aveva. I tre casi della base seguono D-D: NULL = passo fuori ordine (E_SCADENZE_BASE_NON_PRONTA), zero = coperta da acconti (zero rate, nessun log), negativa = saldo a favore del cliente (zero rate, log NON critico). Oltre la soglia DRAFT/EMESSA solleva E_SCADENZE_FATTURA_BLOCCATA (D-F): il filtro «salta senza fallire» spetta al wrapper di lotto. Scrive in testata termine_pagamento_snapshot con i VALORI del termine e non il solo id, perche'' una fattura emessa deve continuare a spiegare le proprie rate anche se il catalogo cambia. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-5): la nota di avviso sul totale a pagare negativo dichiara W_SCADENZE_TOTALE_NEGATIVO in meta->>''error_code''. ⚠️ Cambia specie rispetto ai tre changeSet gemelli dello stesso giro (fn_log_pipeline_fase, fn_snapshot_fattura_lotto, fn_genera_scadenze_lotto): quelli CATTURANO un errore altrui in un ramo EXCEPTION e ne prendono il codice da CONSTRAINT_NAME, qui non c''e'' niente da catturare — la condizione la vede questa funzione, e il codice si DICHIARA. E'' un W_ perche'' non si solleva mai: si registra e il giro prosegue (un W_ sollevato sarebbe un HTTP 500). ⛔ Il codice NON ha una entry in config.messaggi_errore, di proposito e per decisione: questo punto scrive la frase direttamente in vendite.fatture_log.messaggio e non passa da script.fn_log_and_raise_error, quindi un messaggio a catalogo sarebbe una seconda copia della stessa frase che nessuno compone. La forma e'' prevista dal disegno: la FK va da messaggi_errore verso codici_errore, quindi un codice senza figli e'' legittimo mentre un messaggio senza padre no. ⭐ rev 2026-08-24: i due rifiuti del piano rate (E_SCADENZE_TERMINE_MANCANTE, E_SCADENZE_BASE_NON_PRONTA) portano il BERSAGLIO sulla fattura. Si arriva qui dentro il giro di lotto, e la fattura da sistemare non e'' quella che l''operatore ha davanti. Brief: brief-db-bersaglio-errore.md §6 L6. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.6, P-5 / D19-e, decisione di Tid): la base NEGATIVA genera UNA rata col segno del documento (importo = totale_a_pagare), alla prima data del termine (primo_offset e fine_mese come per ogni documento: nessuna seconda regola, Q-C); si ottiene con v_num_rate := 1 e il loop di sempre. Il CHECK chk_fatture_scadenze_importo_pos e'''' stato tolto nello stesso giro (20260917-11): la coerenza di segno la presidia la numerazione (somma rate = totale a pagare, condizioni 3-4 di fn_assign_numero_fattura riscritte sul <> 0). La nota W_SCADENZE_TOTALE_NEGATIVO RESTA, riformulata (Q-D). Perche'''': una riga contabile SENZA rata non incontra nessuna capienza (il guard esce su scadenza_id IS NULL) — finche'''' la nota di credito non aveva una rata, pagarla o compensarla entrava in silenzio; con la rata passa dal guard di D14-c come tutto il resto. Lo snapshot in testata e il meta della rata dichiarano rata_unica_credito = true.';
 ```
 
 ---

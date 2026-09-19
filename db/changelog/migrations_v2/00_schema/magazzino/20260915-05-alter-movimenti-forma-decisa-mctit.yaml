@@ -1,0 +1,351 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — IL LEDGER NELLA FORMA DECISA
+#   magazzino.movimenti
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.4
+#   (D-1, D-4, D-6, M-1, M-5, M-8, D-L1-a, D-L1-c)
+#
+# -- LE QUATTRO REGOLE CHE UN LETTORE DEVE SAPERE PRIMA DI SCRIVERE ------------
+#   1. La SORGENTE e' obbligatoria e a catalogo (D-1, D-6): sorgente_tipo_id
+#      NOT NULL verso config.sorgenti, esattamente una chiave fra
+#      sorgente_riga (bigint, key_selector 'id') e sorgente_uid (uuid, 'uid').
+#      Il riferimento libero doc_schema/doc_table/doc_id/doc_riga_id se ne va:
+#      era un nome di tabella scritto a mano, che nessun vincolo controllava.
+#      Il guard tipizzato script.trgfn_guard_sorgente_polimorfa_tipizzata
+#      verifica che il record esista davvero (D-3, D-9): e' il PRIMO montaggio
+#      di quella funzione (finora solo la sorella _testuale era in servizio).
+#   2. Il VERSO sta nella quantita' (M-1): qta firmata, sign(qta) = causali.segno.
+#      Il guard e' magazzino.trgfn_movimenti_guard_verso (P-9, 20_code); qui
+#      resta il CHECK qta <> 0, che il guard BEFORE ROW oscura (sezione 4.9).
+#   3. La quantita' e' in UoM BASE dell'articolo (D-L1-a): uom_id se ne va.
+#      Come l'operatore l'ha digitata sta sulla riga di documento
+#      (uom_operativa_id + factor_to_base), raggiungibile dalla sorgente; la
+#      conversione la fa l'operazione prima di chiamare la primitiva.
+#   4. L'IDENTITA' e' l'operazione-per-tranche (D-4, D-L1-c):
+#      (sorgente_tipo_id, sorgente_riga, sorgente_uid, causale_id, asset_id,
+#      lotto_id, ubicazione_id) UNIQUE con NULLS NOT DISTINCT. La causale e'
+#      il verbo (TRASF_OUT e TRASF_IN sono due righe; lo storno ha causali
+#      sue), asset/lotto/ubicazione sono la tranche. Due righe uguali senza
+#      lotto ne' seriale ne' ubicazione COLLIDONO: e' il senso del NULLS NOT
+#      DISTINCT (PG15+), e il motivo per cui e' SQL esplicito e non
+#      addUniqueConstraint (che lo perderebbe).
+#
+# -- M-5: LOTTO E SERIALE SONO CHIAVI, NON TESTO -------------------------------
+#   lotto varchar -> lotto_id (magazzino.lotti, P-1); seriale varchar ->
+#   asset_id (magazzino.assets). Con un seriale la quantita' e' UNA (CHECK
+#   |qta| = 1). Una sola posizione per riga: ubicazione_id; le coppie
+#   magazzino_id_dest / ubicazione_id_from / ubicazione_id_to se ne vanno con
+#   i loro due CHECK — un trasferimento sono due righe, non una riga con due
+#   estremi. ⚠️ «l'ubicazione appartiene a magazzino_id» e' cross-tabella: lo
+#   controlla la primitiva (Lotto 2), non un CHECK.
+#
+# -- M-8: UN LEDGER NON SI SPEGNE, SI STORNA ------------------------------------
+#   attivo se ne va: un movimento sbagliato si annulla con un movimento
+#   contrario, che lo nomina in storno_di_movimento_id (UNIQUE: un movimento
+#   si storna una volta). L'utility di storno e' Lotto 3.
+#
+# -- I TRIGGER GENERATI, UNO PER UNO (P-0, sezione 6-bis del brief) -------------
+#   Bloccano il DROP COLUMN (portano la colonna in UPDATE OF), provato in
+#   transazione annullata:
+#     attivo  -> trg_movimenti_a10_{articoli,causali,magazzini,unita_misura}_require_attivo_ins_upd
+#                + trg_movimenti_a10_note_movimento_block_deact_upd
+#     uom_id  -> lo stesso trg_movimenti_a10_unita_misura_require_attivo_ins_upd
+#   Non bloccano ma MORIREBBERO a runtime, perche' leggono una colonna che
+#   sparisce con il nome scritto negli argomenti:
+#     trg_note_movimento_a10_movimenti_require_attivo_ins_upd (su note_movimento:
+#       SELECT attivo FROM magazzino.movimenti -> 42703 a ogni nota)
+#     trg_unita_misura_a10_movimenti_block_deact_upd (su catalogo.unita_misura:
+#       cerca movimenti.uom_id in pg_attribute -> E_ATTIVO_BLOCK_FKCOL_NOT_FOUND)
+#   Tutti DROP TRIGGER IF EXISTS, senza preCondition (linee-guida-sql 11.5).
+#   ci_apply rigenera i tre require_attivo superstiti senza `attivo` in
+#   UPDATE OF, piu' quelli nuovi verso sorgenti, lotti, assets, ubicazioni, e i
+#   block_deact sui padri nuovi; NON rigenera i due block_deact di movimenti e
+#   note_movimento (una tabella senza attivo non ha niente da bloccare) ne' il
+#   require verso unita_misura (la FK non c'e' piu').
+#   ✅ I block_deact di causali, magazzini e catalogo.articoli verso movimenti
+#   NON si toccano: trgfn_prevent_deactivate_if_children cerca l'attivo della
+#   figlia a runtime (fn_col_exists) e, se manca, conta tutte le righe — per un
+#   ledger e' gia' il comportamento giusto.
+#
+# -- ⚠️ uq_mag_movimenti_docref ESISTE SOLO SU DEV: IF EXISTS, E NON PER I TRIGGER -
+#   Trovato il 15-09 su zeroerp_ci (scripts/ci-local.sh): «il vincolo
+#   uq_mag_movimenti_docref non esiste». Non c'entra ci_apply: e' la trappola del
+#   MARK_RAN nel file che lo crea (00_schema/magazzino/20251005-11). Li' i quattro
+#   changeSet -11/-12/-13/-14 hanno TUTTI la stessa preCondition
+#   `not columnExists doc_schema` con onFail: MARK_RAN — ma e' -12 a CREARE
+#   doc_schema (rename da sorgente_schema), quindi -13 (NOT NULL) e -14 (indice
+#   + UNIQUE docref) su un DB ricostruito da zero sono SEMPRE MARK_RAN: segnati
+#   senza eseguire. Su dev il vincolo c'e' perche' quel file giro' una prima
+#   volta sotto 00_schema/vendite/ (EXECUTED, orderexecuted 2024-2026) e poi,
+#   spostato in magazzino/, fu ri-registrato MARK_RAN: l'unica forma nel repo e'
+#   la seconda. Il file e' mergiato e non si tocca (checksum); il debito che
+#   lascia — doc_* nullable e non unique su un DB nuovo — evapora qui col
+#   DROP COLUMN, che il vincolo lo porta via da se' dove c'e'. IF EXISTS e'
+#   la forma onesta: dice che l'oggetto e' un ricordo di una macchina, non una
+#   struttura. Le altre due DROP CONSTRAINT restano secche: nascono senza
+#   preCondition (20251004-03 + 20260821-10, 20251005-30) ed esistono ovunque.
+#   Stessa mina, stessa cura, in 20260915-07 su uq_mag_reservations_docref
+#   (20251005-17/-18).
+#
+# -- CHE COSA RESTA ------------------------------------------------------------
+#   transfer_uid + ix_mag_mov_transfer_uid: raggruppano la coppia di un
+#   trasferimento, non identificano. costo_unitario: tre significati (M-4),
+#   nel COMMENT. data_mov, meta, tx_id, storicizza, audit: invariati.
+#
+# -- CHE COSA NON E' QUI ----------------------------------------------------------
+#   Il guard del verso (P-9), le policy RLS (P-10), la primitiva e i GRANT che
+#   chiudono la tabella alla sola primitiva (Lotto 2). Le righe di
+#   dbops.fk_index_policy stanno nel CSV del lotto (20260914-17) e le quattro
+#   da ritirare nel DELETE di fine lotto; la riga 76 di storico_scope_policy
+#   passa a PADRE via magazzino_id nel CSV della mappa.
+#
+# -- PRECONDIZIONE «ZERO RIGHE» ------------------------------------------------
+#   sorgente_tipo_id nasce NOT NULL senza default: su una tabella con righe
+#   l'ADD COLUMN fallirebbe. Al 14-09 movimenti ha zero righe su dev e nasce
+#   vuota in CI; se qualcuno avesse scritto a mano, il migrate si ferma DICENDO
+#   perche' (sqlCheck = 0, la forma ammessa da linee-guida-sql 11.4) e il dato
+#   si sistema a mano, non con una migration (AGENTS.md, Workflow Safety).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260915-05-alter-movimenti-forma-decisa-mctit.yaml
+
+  - changeSet:
+      id: 20260915-05-alter-movimenti-forma-decisa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.movimenti nella forma decisa: via il riferimento libero doc_* con
+        uq_mag_movimenti_docref, lotto/seriale testo, magazzino_id_dest e le due
+        ubicazioni from/to coi loro CHECK, attivo (M-8) e uom_id (D-L1-a); entrano
+        sorgente_tipo_id NOT NULL + sorgente_riga/sorgente_uid (esattamente una) col
+        guard tipizzato, lotto_id, asset_id (|qta| = 1), ubicazione_id,
+        storno_di_movimento_id UNIQUE; identita' dell'operazione-per-tranche come
+        UNIQUE INDEX NULLS NOT DISTINCT. Sette DROP TRIGGER IF EXISTS sui generati che
+        bloccano il DROP o morirebbero a runtime. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.4 (P-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti
+            - tableExists:
+                schemaName: magazzino
+                tableName: lotti
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti
+                columnName: doc_schema
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: movimenti
+                    columnName: sorgente_tipo_id
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.movimenti;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. I generati che bloccano il DROP COLUMN (attivo, uom_id in UPDATE OF)
+              --    o che morirebbero a runtime. IF EXISTS: su un DB da zero non ci sono.
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_articoli_require_attivo_ins_upd      ON magazzino.movimenti;
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_causali_require_attivo_ins_upd       ON magazzino.movimenti;
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_magazzini_require_attivo_ins_upd     ON magazzino.movimenti;
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_unita_misura_require_attivo_ins_upd  ON magazzino.movimenti;
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_note_movimento_block_deact_upd       ON magazzino.movimenti;
+              DROP TRIGGER IF EXISTS trg_note_movimento_a10_movimenti_require_attivo_ins_upd ON magazzino.note_movimento;
+              DROP TRIGGER IF EXISTS trg_unita_misura_a10_movimenti_block_deact_upd         ON catalogo.unita_misura;
+
+              -- 2. Via il riferimento libero, le coppie, lo stato, la UoM.
+              --    FK e indici delle colonne cadono con esse. IF EXISTS sul docref:
+              --    su un DB da zero non nasce mai (20251005-14 e' MARK_RAN, vedi sopra).
+              ALTER TABLE magazzino.movimenti
+                  DROP CONSTRAINT IF EXISTS uq_mag_movimenti_docref,
+                  DROP CONSTRAINT chk_mag_movimenti_da_destinazione_distinti,
+                  DROP CONSTRAINT chk_mag_movimenti_ubi_from_to_diff;
+              ALTER TABLE magazzino.movimenti
+                  DROP COLUMN doc_schema,
+                  DROP COLUMN doc_table,
+                  DROP COLUMN doc_id,
+                  DROP COLUMN doc_riga_id,
+                  DROP COLUMN lotto,
+                  DROP COLUMN seriale,
+                  DROP COLUMN magazzino_id_dest,
+                  DROP COLUMN ubicazione_id_from,
+                  DROP COLUMN ubicazione_id_to,
+                  DROP COLUMN attivo,
+                  DROP COLUMN uom_id;
+
+              -- 3. La sorgente a catalogo, la tranche, lo storno.
+              ALTER TABLE magazzino.movimenti
+                  ADD COLUMN sorgente_tipo_id       BIGINT NOT NULL,
+                  ADD COLUMN sorgente_riga          BIGINT,
+                  ADD COLUMN sorgente_uid           UUID,
+                  ADD COLUMN lotto_id               BIGINT,
+                  ADD COLUMN asset_id               BIGINT,
+                  ADD COLUMN ubicazione_id          BIGINT,
+                  ADD COLUMN storno_di_movimento_id BIGINT;
+
+              ALTER TABLE magazzino.movimenti
+                  ADD CONSTRAINT fk_mag_movimenti_sorgente_tipo
+                      FOREIGN KEY (sorgente_tipo_id) REFERENCES config.sorgenti (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_lotto
+                      FOREIGN KEY (lotto_id) REFERENCES magazzino.lotti (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_asset
+                      FOREIGN KEY (asset_id) REFERENCES magazzino.assets (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_ubicazione
+                      FOREIGN KEY (ubicazione_id) REFERENCES magazzino.ubicazioni (id)
+                      ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_movimenti_storno_di
+                      FOREIGN KEY (storno_di_movimento_id) REFERENCES magazzino.movimenti (id)
+                      ON UPDATE CASCADE,
+                  -- Un movimento si storna una volta. I NULL non collidono.
+                  ADD CONSTRAINT uq_mag_movimenti_storno_di
+                      UNIQUE (storno_di_movimento_id),
+                  -- Esattamente una chiave: id (sorgente_riga) O uid (sorgente_uid).
+                  ADD CONSTRAINT chk_mag_movimenti_sorgente_chiave
+                      CHECK ((sorgente_riga IS NOT NULL) <> (sorgente_uid IS NOT NULL)),
+                  -- Con un seriale la quantita' e' uno, in entrata o in uscita.
+                  ADD CONSTRAINT chk_mag_movimenti_asset_qta_unitaria
+                      CHECK (asset_id IS NULL OR abs(qta) = 1);
+
+              -- 4. L'identita' dell'operazione-per-tranche. SQL esplicito: e' il
+              --    NULLS NOT DISTINCT a fare la regola, e addUniqueConstraint lo perde.
+              CREATE UNIQUE INDEX uq_mag_movimenti_identita
+                  ON magazzino.movimenti (sorgente_tipo_id, sorgente_riga, sorgente_uid,
+                                          causale_id, asset_id, lotto_id, ubicazione_id)
+                  NULLS NOT DISTINCT;
+
+              -- 5. Il guard tipizzato: la sorgente esiste davvero nella tabella che
+              --    config.sorgenti dichiara (stampo: commesse_sorgenti, variante testuale).
+              CREATE TRIGGER trg_movimenti_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid
+                  ON magazzino.movimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              -- 6. Le regole, scritte dove si leggono.
+              COMMENT ON TABLE magazzino.movimenti IS
+                  'Il registro dei movimenti di magazzino (ledger): una riga per ogni '
+                  'entrata o uscita di un articolo da un magazzino. Quattro regole. '
+                  '(1) La SORGENTE e'' obbligatoria e a catalogo: sorgente_tipo_id verso '
+                  'config.sorgenti piu'' esattamente una chiave fra sorgente_riga e '
+                  'sorgente_uid, e il record deve esistere (guard tipizzato) — non '
+                  'esiste un movimento senza operazione a monte: la correzione a mano E'' '
+                  'una rettifica. (2) Il VERSO sta nella quantita'': qta firmata, '
+                  'sign(qta) = causali.segno (guard trgfn_movimenti_guard_verso). '
+                  '(3) qta e'' in UoM BASE dell''articolo: la conversione la fa '
+                  'l''operazione, non il registro. (4) L''IDENTITA'' e'' '
+                  'l''operazione-per-tranche (uq_mag_movimenti_identita). Un ledger non '
+                  'si spegne ne'' si corregge: si storna con un movimento contrario '
+                  '(storno_di_movimento_id, causali STORNO_POS/STORNO_NEG). Giacenza = '
+                  'sum(qta) per articolo e magazzino (vw_giacenza). Perimetro: '
+                  'l''emittente del magazzino (RLS via_magazzino). Scrive la primitiva '
+                  'di Lotto 2. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.4.';
+              COMMENT ON COLUMN magazzino.movimenti.qta IS
+                  'Quantita'' FIRMATA, in UoM BASE dell''articolo (catalogo.articoli.uom_id): '
+                  '+ entrata, - uscita, mai 0. Il segno deve coincidere con causali.segno '
+                  '(E_MAG_MOVIMENTO_VERSO_INCOERENTE). Come l''operatore l''ha digitata '
+                  '(10 scatole da 12) sta sulla riga di documento (uom_operativa_id, '
+                  'factor_to_base), raggiungibile dalla sorgente; la conversione la fa '
+                  'l''operazione prima di scrivere qui. Con asset_id vale 1 in modulo.';
+              COMMENT ON COLUMN magazzino.movimenti.costo_unitario IS
+                  'Costo unitario del movimento, con TRE significati (M-4): in ENTRATA da '
+                  'documento e'' un input (il prezzo della riga d''acquisto, il costo di '
+                  'produzione); in USCITA e'' un output = la media ponderata corrente '
+                  'dell''articolo nel magazzino al momento del movimento; nella riga IN di '
+                  'un trasferimento e'' ereditato dalla riga OUT gemella. '
+                  'valore_giacenza e'' la ri-somma di questi valori, non una ri-esecuzione.';
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_tipo_id IS
+                  'Il TIPO di record che ha generato il movimento (config.sorgenti: '
+                  'DDT_VENDITA_RIGA, INVENTARIO_RIGA, RETTIFICA_RIGA, TRASFERIMENTO_RIGA, '
+                  'EVENTO_ASSET, ...). NOT NULL: ogni movimento ha un''operazione a monte '
+                  '(D-6). Con sorgente_riga o sorgente_uid identifica il record, che il '
+                  'guard tipizzato verifica esistere.';
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_riga IS
+                  'Chiave del record sorgente quando config.sorgenti.key_selector = id '
+                  '(bigint). Esattamente una fra sorgente_riga e sorgente_uid.';
+              COMMENT ON COLUMN magazzino.movimenti.sorgente_uid IS
+                  'Chiave del record sorgente quando config.sorgenti.key_selector = uid '
+                  '(uuid). Esattamente una fra sorgente_riga e sorgente_uid.';
+              COMMENT ON COLUMN magazzino.movimenti.lotto_id IS
+                  'La partita (magazzino.lotti) a cui il movimento appartiene. Obbligatoria '
+                  'quando catalogo.articoli.requires_lotto: lo pretende la primitiva, non '
+                  'un CHECK (e'' cross-tabella). Parte dell''identita'' (tranche).';
+              COMMENT ON COLUMN magazzino.movimenti.asset_id IS
+                  'Il pezzo serializzato (magazzino.assets) che il movimento sposta. '
+                  'Obbligatorio quando catalogo.articoli.requires_serial: lo pretende la '
+                  'primitiva. Con un asset |qta| = 1 (CHECK). Parte dell''identita''.';
+              COMMENT ON COLUMN magazzino.movimenti.ubicazione_id IS
+                  'La posizione nel magazzino (magazzino.ubicazioni), una sola per riga: '
+                  'uno spostamento fra ubicazioni sono due righe (OUT dall''una, IN '
+                  'nell''altra). Deve appartenere a magazzino_id: lo controlla la '
+                  'primitiva. Parte dell''identita'' (tranche).';
+              COMMENT ON COLUMN magazzino.movimenti.storno_di_movimento_id IS
+                  'Il movimento che questa riga annulla (M-8): stessa quantita'' in '
+                  'modulo, verso opposto, causale STORNO_POS o STORNO_NEG. UNIQUE: un '
+                  'movimento si storna una volta sola. Un ledger non ha attivo.';
+              COMMENT ON COLUMN magazzino.movimenti.transfer_uid IS
+                  'Chiave di accoppiamento delle due righe (OUT e IN) di un trasferimento. '
+                  'Raggruppa, non identifica: l''identita'' e'' uq_mag_movimenti_identita, '
+                  'dove le due righe si distinguono per causale (TRASF_OUT / TRASF_IN).';
+              COMMENT ON INDEX magazzino.uq_mag_movimenti_identita IS
+                  'L''identita'' del movimento e'' l''OPERAZIONE-PER-TRANCHE: (sorgente, '
+                  'chiave del record sorgente, causale, asset, lotto, ubicazione). NULLS NOT '
+                  'DISTINCT: due righe uguali senza lotto, seriale e ubicazione collidono '
+                  '(la stessa operazione scritta due volte); le due righe OUT/IN di un '
+                  'trasferimento no (causali diverse); N tranche dello stesso ricevimento '
+                  'no (lotti o asset diversi). E'' GLOBALE, non per magazzino: la sorgente '
+                  'e'' nella chiave. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, '
+                  'sezione 4.4 (D-4, D-L1-c).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_guard_sorgente_ins_upd ON magazzino.movimenti;
+              DROP INDEX IF EXISTS magazzino.uq_mag_movimenti_identita;
+              ALTER TABLE magazzino.movimenti
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_asset_qta_unitaria,
+                  DROP CONSTRAINT IF EXISTS chk_mag_movimenti_sorgente_chiave,
+                  DROP CONSTRAINT IF EXISTS uq_mag_movimenti_storno_di,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_storno_di,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_ubicazione,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_asset,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_lotto,
+                  DROP CONSTRAINT IF EXISTS fk_mag_movimenti_sorgente_tipo;
+              ALTER TABLE magazzino.movimenti
+                  DROP COLUMN IF EXISTS storno_di_movimento_id,
+                  DROP COLUMN IF EXISTS ubicazione_id,
+                  DROP COLUMN IF EXISTS asset_id,
+                  DROP COLUMN IF EXISTS lotto_id,
+                  DROP COLUMN IF EXISTS sorgente_uid,
+                  DROP COLUMN IF EXISTS sorgente_riga,
+                  DROP COLUMN IF EXISTS sorgente_tipo_id;
+              ALTER TABLE magazzino.movimenti
+                  ADD COLUMN IF NOT EXISTS doc_schema VARCHAR(63) NOT NULL DEFAULT '',
+                  ADD COLUMN IF NOT EXISTS doc_table VARCHAR(63) NOT NULL DEFAULT '',
+                  ADD COLUMN IF NOT EXISTS doc_id BIGINT NOT NULL DEFAULT 0,
+                  ADD COLUMN IF NOT EXISTS doc_riga_id BIGINT,
+                  ADD COLUMN IF NOT EXISTS lotto VARCHAR(64),
+                  ADD COLUMN IF NOT EXISTS seriale VARCHAR(64),
+                  ADD COLUMN IF NOT EXISTS magazzino_id_dest BIGINT REFERENCES magazzino.magazzini (id),
+                  ADD COLUMN IF NOT EXISTS ubicazione_id_from BIGINT REFERENCES magazzino.ubicazioni (id),
+                  ADD COLUMN IF NOT EXISTS ubicazione_id_to BIGINT REFERENCES magazzino.ubicazioni (id),
+                  ADD COLUMN IF NOT EXISTS attivo BOOLEAN NOT NULL DEFAULT true,
+                  ADD COLUMN IF NOT EXISTS uom_id BIGINT REFERENCES catalogo.unita_misura (id);

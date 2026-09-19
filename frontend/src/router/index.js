@@ -7,6 +7,7 @@ import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
 import { CODE } from '../pagamenti/vocabolari'
+import { FAMIGLIA } from '../magazzino/vocabolari'
 import { UOM_TABS } from '../catalogo/constants'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
@@ -44,7 +45,7 @@ function resolvePathNamespace(path) {
 
 // Genera rotte placeholder per domini senza pagine dedicate
 function domainPlaceholderRoutes() {
-  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'pagamenti', 'pratiche', 'strumenti', 'vendite'])
+  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'magazzino', 'pagamenti', 'pratiche', 'strumenti', 'vendite'])
   return DOMAINS
     .filter(d => !domainsWithRoutes.has(d.key))
     .map(d => ({
@@ -215,6 +216,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'audit-log' }
         },
         {
+          path: 'amm-software/error-log',
+          name: 'amm-software-error-log',
+          component: () => import('../amministrazione/views/ErrorLogListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'error-log' }
+        },
+        {
           path: 'amm-software/email-accounts',
           name: 'amm-software-email-accounts',
           component: () => import('../amministrazione/views/EmailAccountsListView.vue'),
@@ -354,6 +361,12 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'lotti' }
         },
         {
+          path: 'vendite/giornale',
+          name: 'vendite-giornale',
+          component: () => import('../vendite/views/GiornaleListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'giornale' }
+        },
+        {
           // Tool della fatturazione: contenitore a tab degli elenchi che il
           // giro automatico lascia a una persona. Prima voce: i fondi fattura
           // da decidere. Sta sotto `vendite` e non sotto `strumenti` perche' i
@@ -435,6 +448,39 @@ const router = createRouter({
           name: 'pagamenti-canali-incasso',
           component: () => import('../pagamenti/views/CanaliIncassoView.vue'),
           meta: { domain: 'pagamenti', menuKey: 'canali-incasso' }
+        },
+        // ── Magazzino ─────────────────────────────────────────────
+        // ⭐ Due rotte, UNA vista per il documento interno: la famiglia che si
+        //    apre la dice `meta.famiglia` (Q-1: inventario e rettifica sono una
+        //    implementazione con due configurazioni, `FAMIGLIE` di
+        //    `magazzino/vocabolari.js`). Le due porte restano deep-linkabili e
+        //    distinguibili nel tab, come le due code degli incassi.
+        {
+          path: 'magazzino/inventari',
+          name: 'magazzino-inventari',
+          component: () => import('../magazzino/views/DocumentiInterniListView.vue'),
+          meta: { domain: 'magazzino', menuKey: 'inventari', famiglia: FAMIGLIA.INVENTARI }
+        },
+        {
+          path: 'magazzino/rettifiche',
+          name: 'magazzino-rettifiche',
+          component: () => import('../magazzino/views/DocumentiInterniListView.vue'),
+          meta: { domain: 'magazzino', menuKey: 'rettifiche', famiglia: FAMIGLIA.RETTIFICHE }
+        },
+        {
+          path: 'magazzino/disponibilita',
+          name: 'magazzino-disponibilita',
+          component: () => import('../magazzino/views/DisponibilitaView.vue'),
+          meta: { domain: 'magazzino', menuKey: 'disponibilita' }
+        },
+        {
+          // Il registro: sola lettura per costruzione (la porta e' la primitiva
+          // del DB). Accetta il deep-link `?inventario_id=` / `?rettifica_id=`
+          // dal documento POSTED.
+          path: 'magazzino/movimenti',
+          name: 'magazzino-movimenti',
+          component: () => import('../magazzino/views/MovimentiView.vue'),
+          meta: { domain: 'magazzino', menuKey: 'movimenti' }
         },
         {
           path: 'vendite/ddt',

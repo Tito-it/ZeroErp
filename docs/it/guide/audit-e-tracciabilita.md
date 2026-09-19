@@ -351,6 +351,35 @@ in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a 
 Le altre tabelle con `cleanup_at` (es. `error_log`, `audit_log`,
 `idempotency_keys`) usano il TTL default di 30 giorni (regola id=11).
 
+#### ⭐ I registri di dominio: la scadenza si scrive alla nascita
+
+Dal 2026-08-22 (`event_log`) e dal 2026-09-18 (Passo D di
+`analisi-osservabilita-log.md`) i **registri** di vendite non aspettano il batch:
+`cleanup_at` lo scrive **all'`INSERT`** il trigger generico
+[`dbops.trgfn_cleanup_at_alla_nascita`](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita)
+(`trg_<tabella>_m50_cleanup_at_ins`), leggendo termine **e colonna base** dalla stessa
+regola che userebbe il job, via
+[`dbops.fn_cleanup_at_params`](/dbzero/dbops/funzioni/fn_cleanup_at_params).
+Su un registro l'UPDATE notturno riscriverebbe `data_update`/`user_update` di ogni riga
+fresca e passerebbe dai trigger di `UPDATE`; alla nascita la riga sa già quando scade. Il
+batch resta per il **pregresso** (righe a `NULL`), una volta.
+
+| Tabella | Retention | Colonna base | Regola |
+| --- | --- | --- | --- |
+| `vendite.event_log` | 750 giorni | `event_time` | id=15 |
+| `vendite.fatturazione_lotti_log` | 750 giorni | `data_ora` | id=16 |
+| `vendite.fatture_log` | 750 giorni | `data_ora` | id=17 |
+| `vendite.fatturazione_lotti_task_runs` | 750 giorni | `started_at` | id=18 |
+| `vendite.commesse_push_log` | 750 giorni | `run_at` | id=19 |
+
+750 e non 30: sono i quattro registri che `script.vw_giornale_entita` legge insieme (più
+il registro di giro del push, a cui punta il `correlation_id` di `event_log`) e la storia
+di un caso non deve perdere un pezzo prima degli altri — due chiusure annuali. I guard
+sul `DELETE` di quei registri (`trgfn_event_log_append_only`, `trgfn_logs_guard_delete`)
+lasciano passare la riga **scaduta** senza GUC: il criterio non è *chi* cancella ma *cosa*.
+⚠️ Su `fatture_log` il purge ricalcola `fatture.critical`: il critico deriva dal registro e
+ne eredita la scadenza.
+
 ### Framework cleanup automatico
 
 La manutenzione è gestita dal framework generico di automazione tramite
@@ -394,6 +423,13 @@ pgAgent come script shell.
 
 - **API di consultazione**: endpoint `GET /api/v1/core/users/{id}/sessioni/`
   e `GET /api/v1/core/request-log/` per ADMIN, con filtri per data/path/status.
+  ✅ Il registro degli **errori** ha la sua dal 19-09-2026 —
+  `GET /api/v1/amm-software/error-log/` (+ `export/`), schermata «Errori
+  tecnici», [api_error_log.md](/backend/amm-software/manual/api_error_log) —
+  e il giornale degli eventi di dominio la sua, trasversale,
+  `GET /api/v1/vendite/giornale/` ([api_giornale.md](/backend/vendite/manual/api_giornale)):
+  il `tx_id` è il ponte fra i due. `request-log` e le sessioni restano
+  pianificati.
 
 - **Dashboard anomalie**: vista operativa che segnala pattern inusuali —
   login da IP multipli, volume request anomalo, token revocati riutilizzati.

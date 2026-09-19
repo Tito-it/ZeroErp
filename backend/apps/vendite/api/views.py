@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -5,16 +7,19 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import (
+    get_scope_user_id,
+    handle_detail_patch,
+    handle_post_json,
+)
 from apps.core.services.coda_lavori.repository import (
     ORIGINE_API,
     RUN_AS_OPERATORE,
     CodaLavoriRepository,
 )
-from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
-from apps.core.services.auth_helpers import (
-    extract_emittente_attivo_from_request,
-    extract_identita_id_from_request,
+from apps.core.services.coda_lavori.scope import (
+    scope_key_da_emittenti,
+    scope_operatore_da_request,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
@@ -27,11 +32,16 @@ from apps.core.api.payload_validators import (
     optional_int,
     optional_iso_date,
     optional_uuid,
+    parse_list_params,
+    qp_bool_optional,
     qp_int_strict,
     qp_int_optional,
     qp_iso_date_optional,
     qp_str,
+    qp_str_upper,
 )
+from apps.core.api.openapi_params import descrizione_order_by
+from apps.vendite.db.vendite_repository import GIORNALE_GRAVITA, GIORNALE_REGISTRI, GIORNALE_SORT_COLUMNS
 from apps.core.api.success_responses import success_response
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
@@ -44,6 +54,7 @@ from apps.vendite.services._fatturazione_job_helpers import (
     parse_gruppi,
 )
 from apps.vendite.services.commesse_service import (
+    aggiorna_commessa_testata,
     aggiungi_onere_commessa,
     annulla_attivita_manuale,
     approva_attivita_competenza,
@@ -81,6 +92,7 @@ from apps.vendite.services.vendite_service import (
     fn_list_lotto_gruppi,
     fn_lotti_mensile,
     get_lotto_giornale,
+    get_giornale_trasversale,
 )
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
@@ -1411,6 +1423,185 @@ class ApiLottoGruppiExport(DomainAPIView):
 
 
 
+# I filtri del giornale trasversale, dichiarati UNA volta per la lista e per
+# il suo export.
+_PARAMS_FILTRI_GIORNALE = [
+    OpenApiParameter(
+        name="gravita", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=(
+            f"Gravita' (csv) fra {' | '.join(GIORNALE_GRAVITA)}; default `ERROR`. "
+            "⚠️ Con `ERROR` si INCLUDE la gravita' NULL — la riga che dichiara "
+            "un difetto. Fuori vocabolario -> 400."
+        ),
+    ),
+    OpenApiParameter(
+        name="registro", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=f"Registro (csv) fra {' | '.join(sorted(GIORNALE_REGISTRI))}; default tutti.",
+    ),
+    OpenApiParameter(
+        name="entity_type", type=str, location=OpenApiParameter.QUERY, required=False,
+        description="Codice di `config.tipi_entita` (LOTTO, FATTURA, COMMESSA, TASK_RUN, ...), esatto.",
+    ),
+    OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False,
+                     description="Data inizio (YYYY-MM-DD) su `quando`."),
+    OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False,
+                     description="Data fine inclusa (YYYY-MM-DD) su `quando`."),
+    OpenApiParameter(
+        name="filo", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=(
+            "UUID del FILO: `tx_id` oppure `correlation_id`. Tiene `EVENT_LOG` e "
+            "`TASK_RUN` e butta le righe scritte per una persona (R-2): il "
+            "default non filtra per filo."
+        ),
+    ),
+    OpenApiParameter(
+        name="solo_vive", type=bool, location=OpenApiParameter.QUERY, required=False,
+        description="Default true: esclude le segnalazioni RITIRATE; `ritirate_count` dice quante.",
+    ),
+    OpenApiParameter(
+        name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=descrizione_order_by(
+            GIORNALE_SORT_COLUMNS,
+            "Default `quando DESC`; `gravita` ordina il rango e, dentro, il tempo dal piu' recente.",
+        ),
+    ),
+    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+                     description="asc | desc."),
+]
+
+
+# Scopo: i filtri del giornale trasversale dalla query string, normalizzati:
+#        csv -> liste, date ISO strict (400 se malformate), `filo` uuid (400 se
+#        non lo e'), `solo_vive` bool. Una sede per la lista e per l'export.
+def _filtri_giornale(qp) -> dict[str, object]:
+    def _csv(raw: str | None) -> list[str] | None:
+        valori = [v.strip().upper() for v in (raw or "").split(",") if v.strip()]
+        return valori or None
+
+    filo = optional_uuid({"filo": qp_str(qp.get("filo"))}, "filo")
+    return {
+        "gravita": _csv(qp.get("gravita")),
+        "registri": _csv(qp.get("registro")),
+        "entity_type": qp_str_upper(qp.get("entity_type")),
+        "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
+        "data_a": qp_iso_date_optional(qp.get("data_a"), "data_a"),
+        "filo": str(filo) if filo is not None else None,
+        # ⛔ Strict, come ogni bool opzionale dal 2026-06-04 (api.md §Query
+        #    params): `?solo_vive=banana` e' un 400, non un `True` per caso.
+        #    Assente = `True` (le ritirate si nascondono di default).
+        "solo_vive": qp_bool_optional(qp.get("solo_vive"), "solo_vive") is not False,
+    }
+
+
+class ApiGiornale(DomainAPIView):
+    """GET /api/v1/vendite/giornale/ — il GIORNALE TRASVERSALE degli eventi.
+
+    «Cosa e' andato storto, su tutto, nell'ultimo periodo»: la Storia di tutte
+    le entita' insieme, filtrata per gravita' — la «vista errori trasversale,
+    con salto al lotto e al documento» del Passo B dell'osservabilita' (pezzo
+    G, 2026-09-19). Terzo lettore di `script.vw_giornale_entita`, sullo STESSO
+    corpo dei due lettori per entita': non un aggregato nuovo.
+
+    ⛔ Niente `context`/`payload`: espone le colonne della Storia e basta. Gli
+    appunti forensi restano nella Storia dell'entita' (vincolo del Passo A).
+    ⚠️ Il perimetro emittente lo applica la vista (`security_invoker`) riga per
+    riga e nei conteggi; la lista sta dietro il cancello di perimetro
+    (`lista_codice`), come ogni lista di dominio.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.giornale"
+
+    @extend_schema(
+        parameters=[
+            *_PARAMS_FILTRI_GIORNALE,
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeGiornaleResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeGiornaleData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "ritirate_count": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il giornale trasversale, paginato.
+    # ⛔ `order_dir` GREZZO e non dal bundle: `parse_list_params` normalizza
+    #    l'assenza ad `asc`, e il default `quando DESC` non verrebbe mai
+    #    raggiunto (api.md §parse_list_params).
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="quando")
+        return success_response(get_giornale_trasversale(
+            **_filtri_giornale(qp),
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
+
+
+class ApiGiornaleExport(DomainAPIView):
+    """GET /api/v1/vendite/giornale/export/ — CSV/XLSX del giornale trasversale."""
+
+    area_funzionale = "vendite"
+    # ⭐ LO STESSO `lista_codice` della lista, letto da lei: colonne del file =
+    #    colonne a video, e il cancello di perimetro vale anche sulla porta
+    #    larga (`test_export_lista_codice_pari`).
+    lista_codice = ApiGiornale.lista_codice
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY,
+                             required=True, description="csv | xlsx."),
+            *_PARAMS_FILTRI_GIORNALE,
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Il file del giornale, con gli stessi filtri della lista.
+    # ⚠️ `limit=EXPORT_MAX_ROWS + 1`: l'export esporta il DATASET, e il `+1`
+    #    fa scattare il guard di `build_export_response` prima di serializzare.
+    def get(self, request: Request) -> HttpResponse:
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        filtri = _filtri_giornale(qp)
+        dati = get_giornale_trasversale(
+            **filtri,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return build_export_response(
+            request,
+            lista_codice=self.lista_codice,
+            results=dati["results"],
+            total=dati["count"],
+            filtri_applicati={
+                k: (v.isoformat() if isinstance(v, date) else v)
+                for k, v in filtri.items() if v is not None
+            } or None,
+            fmt=fmt,
+        )
+
+
 class ApiLottoGiornale(DomainAPIView):
     """La STORIA di un lotto: il lotto PIU' le sue fatture, righe non-INFO.
 
@@ -1697,6 +1888,42 @@ class ApiCommessaStato(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ApiCommessaDetail(DomainAPIView):
+    """PATCH /api/v1/vendite/commesse/<id>/ — la testata leggibile.
+
+    `descrizione` e `responsabile_risorsa_umana_id` (Blocco C di
+    brief-db-modifiche-certe-ciclo-vendita-e-articolo); `data_apertura` e' in
+    sola lettura e viaggia nel dettaglio. ⚠️ Il DETTAGLIO resta su `/stato/`
+    (`ApiCommessaStato.get`), che e' la rotta storica del drawer e porta gia'
+    anche questi tre campi: qui c'e' il solo verbo di scrittura, sulla risorsa
+    come vuole la grammatica URL (PATCH /{risorsa}/{id}/). Permesso = livello
+    d'area `vendite` (`change`), come le testate degli altri documenti.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="VenditeCommessaTestataRequest",
+            fields={
+                "descrizione": serializers.CharField(
+                    required=False, allow_null=True, max_length=255,
+                ),
+                "responsabile_risorsa_umana_id": serializers.IntegerField(
+                    required=False, allow_null=True,
+                    help_text="Risorsa umana ATTIVA; null toglie il responsabile.",
+                ),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="VenditeCommessaTestataResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Aggiorna via PATCH la testata leggibile e risponde col dettaglio
+    #        aggiornato (lo stesso payload di `/stato/`).
+    def patch(self, request: Request, commessa_id: int) -> JsonResponse:
+        return handle_detail_patch(request, aggiorna_commessa_testata, commessa_id)
 
 
 class ApiCommessaRegistro(DomainAPIView):
@@ -2459,30 +2686,18 @@ def _accoda_job_fatturazione(
     # Normalizza al 1° del mese PRIMA di comporre payload+chiave business: la
     # dedup dei job vivi è per-MESE, non per-giorno.
     competenza = competenza.replace(day=1)
-    # Identità dell'operatore che accoda: id VERO (`user.id`, anche per
-    # superuser — NON `get_scope_user_id`, che per superuser è None e
-    # bloccherebbe l'admin globale) + username + identita_id dal JWT.
-    user = request.user
-    identita_id = extract_identita_id_from_request(request)
-    ErrorManager.require(
-        identita_id is not None,
-        code="E_VALIDATION_INPUT",
-        message="Identità operatore non risolta dal token.",
-    )
-    # Emittente ATTIVO congelato ora: il worker esegue minuti dopo, senza
-    # token, e senza questo valore girerebbe in modalità globale — un giro
-    # chiesto «dentro A» toccherebbe anche B. Va catturato PRIMA dello scope,
-    # perché lo scope stesso ne risente: dal 2026-08-04 le funzioni di scope
-    # intersecano con l'emittente attivo, quindi `emittente_ids` (e con esso
-    # `scope_key`, che governa dedup e ownership del polling) riflette già
-    # l'impersonazione. Le due cose devono raccontare la stessa storia.
-    emittente_attivo_id = extract_emittente_attivo_from_request(request)
-    # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
-    # DB run_as↔scope, all'idempotenza di business e all'audit.
-    emittente_ids = PermissionResolver.get_emittenti_pk_ids(user)
-    # Chiave canonica dello scope (BB core `coda_lavori.scope` — fonte unica
-    # del formato, condivisa con polling/liste/badge della UI code).
-    scope_key = scope_key_da_emittenti(emittente_ids)
+    # Lo scope dell'operatore che accoda — terna dal JWT, emittente attivo
+    # congelato, whitelist e `scope_key` — catturato dal BB `coda_lavori.scope`
+    # (dal 2026-09-15 e' la sede unica: la stessa cattura serve a «Esegui ora»
+    # dal drawer dei processi). ⚠️ Senza `identita_id` rifiuta PRIMA di
+    # accodare, con lo stesso codice che il drenatore solleverebbe un minuto
+    # dopo (`E_CODA_SCOPE_OPERATORE_INVALIDO`): fino a quel giorno qui era
+    # `E_VALIDATION_INPUT` — stesso 400, ma un codice che non diceva DI CHE
+    # COSA fosse l'errore.
+    scope = scope_operatore_da_request(request)
+    # Whitelist e chiave dello scope servono anche QUI, alla chiave di
+    # business: dedup dei job vivi per (competenza, scope[, perimetro]).
+    scope_key = str(scope["scope_key"])
     job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
     for key in extra_payload_keys:
         value = payload.get(key)
@@ -2536,16 +2751,7 @@ def _accoda_job_fatturazione(
         job_type=job_type,
         payload=job_payload,
         run_as=RUN_AS_OPERATORE,
-        scope={
-            "auth_user_id": int(user.id),
-            "username": str(user.username),
-            "identita_id": identita_id,
-            "emittente_attivo_id": emittente_attivo_id,
-            "emittente_ids": emittente_ids,
-            # Token di ownership del polling: scope-based (chi condivide lo
-            # scope vede il job condiviso via dedup). Vedi scope_key_da_emittenti.
-            "scope_key": scope_key,
-        },
+        scope=scope,
         idempotency_key=idempotency_key,
         origine=ORIGINE_API,
     )

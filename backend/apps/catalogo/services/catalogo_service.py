@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID
 
@@ -52,6 +52,11 @@ _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
     "is_composito",
     "is_solo_componente",
     "requires_serial",
+    # Lotto 2 di magazzino (brief §4.9): «per lotti», deciso dall'articolo.
+    "requires_lotto",
+    # NOT NULL DEFAULT false a DB (fail-safe: nessun articolo movimenta giacenza
+    # per distrazione). Brief modifiche certe, Blocco B.
+    "gestito_a_magazzino",
 )
 # Scopo: Campi int nullable di articolo (escluso uom_id che e' NOT NULL e immutabile).
 # Vedi DDL catalogo.articoli e trigger trg_articoli_a10_protect_uom_id_upd.
@@ -63,6 +68,20 @@ _ARTICOLO_INT_FIELDS: tuple[str, ...] = (
     "conto_contabile_vendita_id",
     "conto_contabile_acquisto_id",
     "listino_tipologia_id",
+    # Nullable per scelta di modello: per una prestazione non significa niente,
+    # e `0` non e' «non si applica». Il CHECK `>= 0` e' anticipato nel service
+    # con messaggio parlante (vedi `_validate_articolo_payload`).
+    "lead_time_giorni",
+)
+# Scopo: FK NOT NULL a DB con DEFAULT: (chiave, dettaglio dell'errore se
+#        arriva null). Il valore si puo' cambiare, mai azzerare — assente nel
+#        payload = «lascia decidere il default».
+_ARTICOLO_FK_NOT_NULL: tuple[tuple[str, str], ...] = (
+    ("natura_vendita_id", "natura_vendita_id non puo' essere null: indica una natura valida."),
+    (
+        "modo_approvvigionamento_id",
+        "modo_approvvigionamento_id non puo' essere null: indica un modo valido.",
+    ),
 )
 _ARTICOLO_NULLABLE_FIELDS: frozenset[str] = frozenset({
     "descrizione_breve",
@@ -299,6 +318,33 @@ def _extract_nullable_int(
         )
 
 
+# Scopo: Estrae una FK NOT NULL a DB con DEFAULT (`_ARTICOLO_FK_NOT_NULL`):
+#        chiave assente -> _MISSING (il DB applica il default), presente ->
+#        int > 0, altrimenti 400 col campo. Un `null` esplicito e' un errore,
+#        non un azzeramento: la colonna non ammette «non lo so».
+def _extract_fk_not_null(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    detail: str,
+    function_name: str,
+) -> int | _MissingType:
+    value = _extract_nullable_int(payload, key, function_name=function_name)
+    if value is _MISSING:
+        return _MISSING
+    ErrorManager.require(
+        isinstance(value, int) and value > 0,
+        code="E_CATALOGO_VALIDATION",
+        message="Payload articolo non valido.",
+        detail=detail,
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    assert isinstance(value, int)
+    return value
+
+
 # Scopo: Estrae booleano solo se esplicitamente presente nel payload.
 def _extract_present_bool(
     payload: dict[str, Any],
@@ -344,64 +390,6 @@ def _extract_meta(
         log_to_db=True,
     )
     return value
-
-
-# Scopo: Converte e valida un valore numerico decimale opzionale.
-def _extract_decimal(
-    payload: dict[str, Any],
-    key: str,
-    *,
-    function_name: str,
-    nullable: bool,
-    min_value: Decimal | None = None,
-    message: str = "Payload catalogo non valido.",
-) -> Decimal | None | _MissingType:
-    if key not in payload:
-        return _MISSING
-    value = payload.get(key)
-    if value is None:
-        ErrorManager.require(
-            nullable,
-            code="E_CATALOGO_VALIDATION",
-            message=message,
-            detail=f"{key} non puo' essere null.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        return None
-    ErrorManager.require(
-        not isinstance(value, bool),
-        code="E_CATALOGO_VALIDATION",
-        message=message,
-        detail=f"{key} deve essere numerico.",
-        context={"field": key},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        decimal_value = Decimal(str(value).strip())
-    except (InvalidOperation, AttributeError) as exc:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message=message,
-            detail=f"{key} deve essere numerico.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-            cause=exc,
-        )
-    if min_value is not None:
-        ErrorManager.require(
-            decimal_value >= min_value,
-            code="E_CATALOGO_VALIDATION",
-            message=message,
-            detail=f"{key} deve essere >= {min_value}.",
-            context={"field": key, "min_value": str(min_value)},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    return decimal_value
 
 
 # Scopo: Estrae data ISO opzionale dal payload JSON.
@@ -667,25 +655,32 @@ def _extract_articolo_payload(
         if field_value is not _MISSING:
             data[field_name] = field_value
 
-    # natura_vendita_id e' NOT NULL a livello DDL (DEFAULT 1 = MERCE): opzionale
-    # nel payload, ma se presente deve essere un id valido (> 0), mai null —
-    # decide l'instradamento post-accettazione (ordine/commessa/contratto).
-    natura_value = _extract_nullable_int(
-        payload,
-        "natura_vendita_id",
-        function_name=function_name,
-    )
-    if natura_value is not _MISSING:
+    # Le due FK NOT NULL con DEFAULT a DB — natura_vendita_id (MERCE, decide
+    # l'instradamento post-accettazione) e modo_approvvigionamento_id (ACQUISTO,
+    # Blocco B del brief modifiche certe, deciso 2026-09-02): opzionali nel
+    # payload, ma se presenti devono essere un id valido, mai null. Un NULL
+    # significherebbe «non lo so», cioe' lo stato che la colonna esiste per
+    # abolire (brief §3.3). Stessa regola, una sede sola.
+    for fk_key, fk_detail in _ARTICOLO_FK_NOT_NULL:
+        fk_value = _extract_fk_not_null(
+            payload, fk_key, detail=fk_detail, function_name=function_name,
+        )
+        if fk_value is not _MISSING:
+            data[fk_key] = fk_value
+
+    # lead_time_giorni: anticipa il CHECK `chk_articoli_lead_time_giorni_non_negativo`
+    # con un messaggio che nomina il campo. Il NULL e' ammesso (e' un'informazione).
+    lead_time = data.get("lead_time_giorni")
+    if lead_time is not None:
         ErrorManager.require(
-            isinstance(natura_value, int) and natura_value > 0,
+            lead_time >= 0,
             code="E_CATALOGO_VALIDATION",
             message="Payload articolo non valido.",
-            detail="natura_vendita_id non puo' essere null: indica una natura valida.",
-            context={"field": "natura_vendita_id"},
+            detail="lead_time_giorni non puo' essere negativo.",
+            context={"field": "lead_time_giorni"},
             function_name=function_name,
             log_to_db=True,
         )
-        data["natura_vendita_id"] = natura_value
 
     meta = _extract_meta(payload, function_name=function_name)
     if meta is not _MISSING:
@@ -792,7 +787,7 @@ def _extract_uom_operativa_payload(
         "factor_to_base": Decimal("0.000001"),
         "qty_step": Decimal("0.000001"),
     }.items():
-        field_value = _extract_decimal(
+        field_value = _V.extract_optional_decimal(
             payload,
             field_name,
             function_name=function_name,
@@ -963,7 +958,7 @@ def _extract_componente_payload(
         )
         data["componente_id"] = componente_id
 
-    coeff_qta = _extract_decimal(
+    coeff_qta = _V.extract_optional_decimal(
         payload,
         "coeff_qta",
         function_name=function_name,
@@ -2292,7 +2287,7 @@ def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
         function_name=function_name,
         log_to_db=True,
     )
-    fattore = _extract_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
+    fattore = _V.extract_optional_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
     ErrorManager.require(
         fattore is not _MISSING,
         code="E_CATALOGO_VALIDATION",
@@ -2331,7 +2326,7 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
     _validate_payload_keys(payload, allowed_keys=_CONV_UPDATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
 
     data: dict[str, Any] = {}
-    fattore = _extract_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
+    fattore = _V.extract_optional_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
     if fattore is not _MISSING:
         data["fattore"] = fattore
     valido_dal = _extract_payload_date(payload, "valido_dal", function_name=function_name, nullable=True, message="Payload conversione non valido.")

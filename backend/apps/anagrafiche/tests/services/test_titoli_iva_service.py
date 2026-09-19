@@ -113,6 +113,25 @@ class TitoliIvaMovimentiTests(TestCase):
         self.assertEqual(kwargs["imponibile"], Decimal("-50.00"))
         self.assertIsInstance(kwargs["imponibile"], Decimal)
 
+    @patch(REPO)
+    def test_forzatura_imponibile_non_numerico_e_un_400_col_campo(self, repo_cls):
+        """⭐ Il punto che traduce (2026-09-18): la coercizione e' del BB
+        `PayloadValidator`, ma che il codice del dominio e il CAMPO arrivino
+        all'envelope resta scritto qui. `True` e `NaN` sono i due valori che la
+        copia locale lasciava passare — un bool sarebbe entrato come 1, un NaN
+        sarebbe arrivato fino alla colonna `numeric` di un registro fiscale."""
+        repo_cls.return_value.get_titolo.return_value = _titolo()
+        from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+        for raw in (None, "", "cento", True, "NaN"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    TitoliIvaService().create_forzatura(SOGG, 7, {
+                        "imponibile": raw, "data_movimento": "2026-08-29", "motivo": "x",
+                    })
+                self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context["field"], "imponibile")
+        repo_cls.return_value.create_forzatura.assert_not_called()
+
 
 # =================================================================
 # Q6 — si elimina solo un titolo che non ha consumato niente

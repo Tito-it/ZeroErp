@@ -1,0 +1,222 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SCADENZA SI SCRIVE ALLA NASCITA, E IL TERMINE STA IN UNA SEDE SOLA
+#   Analisi: analisi-osservabilita-log.md §4 Passo D
+#
+# ── DUE FUNZIONI, UN BUILDING BLOCK ─────────────────────────────────
+#   dbops.fn_cleanup_at_params(schema, tabella) → jsonb
+#     i `params` della regola CLEANUP_AT piu' specifica che copre la tabella
+#     (priority, poi id; fallback alla *all) — LO STESSO criterio con cui
+#     dbops.fn_run_automations_cleanup sceglie la regola da applicare.
+#     NULL = nessuna regola con ttl_days.
+#
+#   dbops.trgfn_cleanup_at_alla_nascita() → trigger, BEFORE INSERT
+#     scrive NEW.cleanup_at = <colonna base> + ttl_days, dove la colonna base
+#     e' `base_ts_column` della regola (fallback now()). Se non c'e' regola
+#     lascia NULL: la riga non scade mai, in dubbio si conserva.
+#
+# ── ⭐ PERCHE' UN BB IN dbops E NON UN'ALTRA COPIA ──────────────────
+#   `vendite.fn_event_log_ttl_days()` faceva esattamente questo per UNA
+#   tabella, con schema e nome cablati. Il Passo D porta a cinque le tabelle
+#   che scrivono la scadenza alla nascita: la regola del 2 dice che e' un BB,
+#   e la copia si ritira nello stesso giro (20260918-31), non «dopo».
+#
+# ── ⭐ PERCHE' ALLA NASCITA E NON CON L'UPDATE DEL JOB ──────────────
+#   Il framework standard valorizza `cleanup_at` con un UPDATE notturno
+#   (dbops.fn_apply_cleanup_at). Su un REGISTRO quell'UPDATE:
+#     - riscrive `data_update`/`user_update` su ogni riga fresca — e su
+#       fatture_log `user_update` dice CHI ha ammesso un critico;
+#     - passa dai trigger di UPDATE (su fatture_log il resync di critical);
+#     - lascia la scadenza modificabile dal job.
+#   Alla nascita la riga sa gia' quando scade, e nessun trigger di UPDATE si
+#   sveglia. Il job resta per il PREGRESSO (le righe nate prima del trigger,
+#   a NULL): `apply_on_update=false` tocca solo quelle, una volta.
+#
+# ── ⚠️ LA COLONNA BASE SI LEGGE DALLA REGOLA, NON SI INDOVINA ───────
+#   `fn_apply_cleanup_at` (il job, per il pregresso) usa `base_ts_column`
+#   della regola. Se il trigger usasse un'altra colonna, pregresso e nuove
+#   righe avrebbero due scadenze calcolate su due orari diversi per la
+#   stessa regola. Si legge `($1).<colonna>` con EXECUTE ... USING NEW: nessun
+#   passaggio da jsonb, nessuna serializzazione dell'orario.
+#
+# ── ⚠️ SOVRASCRIVE, NON COMPLETA ────────────────────────────────────
+#   Non c'e' `IF NEW.cleanup_at IS NULL`: un diario non lascia scegliere al
+#   chiamante quando scade (parita' con trgfn_event_log_deriva_scope). Chi
+#   deve produrre una riga gia' scaduta — un pgTAP — retrodata la colonna
+#   base, e il trigger fa il resto.
+#
+# ── FASE DEL TRIGGER: _m50_ ─────────────────────────────────────────
+#   E' una derivazione, non un guard: va DOPO gli _a10_ (in particolare
+#   trg_fatture_log_a10_orario_reale_ins, che riscrive un data_ora NULL o
+#   = now() con clock_timestamp()) e prima degli _z90_. Chi lo monta:
+#   20260918-31 (event_log) e -33 (i quattro).
+#
+# Dipendenze: dbops.automation_rules_tbl, dbops.fn_schema_match.
+# Verifica: db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260918-30-create-fn-cleanup-at-params-e-trgfn-cleanup-at-alla-nascita-mctit.yaml
+
+  - changeSet:
+      id: 20260918-30-create-fn-cleanup-at-params-e-trgfn-cleanup-at-alla-nascita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Passo D dell'analisi osservabilita': il BB che scrive cleanup_at alla nascita.
+        dbops.fn_cleanup_at_params(schema, tabella) risponde i params della regola
+        CLEANUP_AT piu' specifica (stesso criterio dell'orchestratore);
+        dbops.trgfn_cleanup_at_alla_nascita (BEFORE INSERT) scrive
+        base_ts_column + ttl_days. Generalizza vendite.fn_event_log_ttl_days, che
+        20260918-31 ritira.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automation_rules_tbl
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_schema_match';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1) La regola che copre una tabella ─────────────────────
+              CREATE OR REPLACE FUNCTION dbops.fn_cleanup_at_params(
+                  p_schema text,
+                  p_table  text
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_params jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rispondere con quale regola CLEANUP_AT una tabella
+                  --   scade, leggendola DALLA STESSA sorgente che usa il job
+                  --   settimanale: dbops.automation_rules_tbl.
+                  --
+                  -- ⭐ Esiste per non avere due termini di retention che
+                  --   divergono: quello scritto alla nascita dal trigger e
+                  --   quello applicato dal job al pregresso. La regola piu'
+                  --   specifica vince (priority, poi id), con fallback alla
+                  --   *all — stesso criterio di dbops.fn_run_automations_cleanup.
+                  --
+                  -- ⚠️ NULL = nessuna regola con ttl_days corrisponde. Il
+                  --   chiamante lascia allora cleanup_at a NULL e la riga
+                  --   non scade mai: in dubbio non si cancella.
+                  --
+                  -- Regole:
+                  --   - torna l'intero jsonb `params`: ttl_days, base_ts_column,
+                  --     cleanup_column, apply_on_update
+                  --   - schema o tabella vuoti → NULL, cioe' «nessuna regola».
+                  --     ⚠️ Non un raise: la funzione e' STABLE (un lookup, chiamato
+                  --     per riga da un trigger) e fn_log_and_raise_error SCRIVE
+                  --     una riga di log — plpgsql_check lo segnala. Senza il ramo,
+                  --     `*all` coprirebbe anche una tabella senza nome e la
+                  --     risposta sarebbe il default: qui invece «non so di che
+                  --     tabella parli» vale «non scade mai», in dubbio si conserva.
+                  -- =========================================================
+                  IF NULLIF(btrim(p_schema), '') IS NULL
+                     OR NULLIF(btrim(p_table), '') IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT r.params
+                    INTO v_params
+                    FROM dbops.automation_rules_tbl r
+                   WHERE r.enabled
+                     AND upper(btrim(r.rule_type)) = 'CLEANUP_AT'
+                     AND dbops.fn_schema_match(r.target_schema, p_schema)
+                     AND (upper(r.target_table) = '*ALL' OR p_table ILIKE r.target_table)
+                     AND (r.params ->> 'ttl_days') IS NOT NULL
+                   ORDER BY r.priority, r.id
+                   LIMIT 1;
+
+                  RETURN v_params;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_cleanup_at_params(text, text)
+              IS 'I params (ttl_days, base_ts_column, ...) della regola CLEANUP_AT piu'' specifica di dbops.automation_rules_tbl che copre la tabella: priority, poi id, fallback alla *all — lo stesso criterio di dbops.fn_run_automations_cleanup. ⭐ Esiste perche'' il termine sta in UNA sede sola: il trigger che scrive cleanup_at alla nascita e il job che lo applica al pregresso devono leggere lo stesso numero. Generalizza vendite.fn_event_log_ttl_days (ritirata). ⚠️ NULL = nessuna regola: la riga non scade mai (in dubbio non si cancella). Analisi: analisi-osservabilita-log.md, Passo D.';
+
+              -- ── 2) Il trigger che scrive la scadenza alla nascita ──────
+              CREATE OR REPLACE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ Niente %TYPE: il trigger e' generico, non riflette
+                  --    una colonna di UNA tabella. cleanup_at e la base sono
+                  --    timestamptz per contratto del framework.
+                  v_params   jsonb;
+                  v_ttl_days integer;
+                  v_base_col text;
+                  v_base_ts  timestamptz;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere NEW.cleanup_at = <colonna base> + ttl_days
+                  --   ALL'INSERT, leggendo termine e colonna base dalla
+                  --   regola CLEANUP_AT che copre la tabella.
+                  --
+                  -- Regole:
+                  --   - nessuna regola → cleanup_at resta NULL (non scade mai)
+                  --   - colonna base = params->>'base_ts_column'; se assente,
+                  --     o NULL sulla riga, la base e' now()
+                  --   - SOVRASCRIVE cio' che passa il chiamante: un diario
+                  --     non lascia scegliere quando scade. Per produrre una
+                  --     riga gia' scaduta (pgTAP) si retrodata la colonna base
+                  --
+                  -- ⭐ Perche' alla nascita e non con l'UPDATE del job: su un
+                  --   registro l'UPDATE notturno riscriverebbe data_update e
+                  --   user_update di ogni riga fresca e passerebbe dai trigger
+                  --   di UPDATE. Il job resta per il pregresso (righe a NULL).
+                  -- =========================================================
+                  v_params := dbops.fn_cleanup_at_params(TG_TABLE_SCHEMA::text, TG_TABLE_NAME::text);
+
+                  IF v_params IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_ttl_days := (v_params ->> 'ttl_days')::integer;
+                  IF v_ttl_days IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La colonna base si legge dalla riga in arrivo per nome:
+                  -- la stessa che dbops.fn_apply_cleanup_at usera' sul pregresso.
+                  v_base_col := NULLIF(btrim(v_params ->> 'base_ts_column'), '');
+                  IF v_base_col IS NOT NULL
+                     AND dbops.fn_col_exists(TG_TABLE_SCHEMA::text, TG_TABLE_NAME::text, v_base_col) THEN
+                      EXECUTE format('SELECT ($1).%I::timestamptz', v_base_col)
+                         INTO v_base_ts
+                        USING NEW;
+                  END IF;
+
+                  NEW.cleanup_at := COALESCE(v_base_ts, now())
+                                    + make_interval(days => v_ttl_days);
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_cleanup_at_alla_nascita()
+              IS 'BEFORE INSERT generico: scrive NEW.cleanup_at = base_ts_column + ttl_days leggendo la regola CLEANUP_AT che copre la tabella (dbops.fn_cleanup_at_params). Nessuna regola → NULL, la riga non scade mai. ⭐ Alla nascita e non con l''UPDATE del job perche'' su un registro quell''UPDATE riscriverebbe data_update/user_update e passerebbe dai trigger di UPDATE; il job resta per il pregresso. ⚠️ Sovrascrive cio'' che passa il chiamante: un diario non lascia scegliere quando scade. Fase _m50_: dopo gli _a10_ che riscrivono l''orario. Montato su vendite.event_log e sui quattro registri di fatturazione e push. Analisi: analisi-osservabilita-log.md, Passo D.';
+
+              GRANT EXECUTE ON FUNCTION dbops.fn_cleanup_at_params(text, text) TO zeroerp_app;

@@ -12,11 +12,16 @@ SELECT :'app_role' AS app_role, current_database() AS db_name;
 -- USAGE su tutti gli schemi non di sistema: mostra cosa vede e cosa non vede.
 -- Non ha bisogno di una lista hardcoded: copre automaticamente tutti gli schemi
 -- presenti nel DB, inclusi quelli aggiunti di recente come ui, documenti, pratiche.
+-- ⭐ `django` NON e' escluso, dal 2026-09-13: e' lo schema in testa al
+--    search_path del ruolo applicativo e sedici funzioni INVOKER attraversano
+--    `django.auth_user`. Escluderlo qui e nel provisioning e' il modo in cui
+--    quel privilegio e' rimasto per mesi un GRANT dato a mano su dev
+--    (vedi scripts/sql/provision_db_roles.sql, blocco della whitelist).
 SELECT n.nspname                                                  AS schema_name,
        has_schema_privilege(:'app_role', n.nspname, 'USAGE')     AS can_use_schema
 FROM pg_namespace n
 WHERE n.nspname NOT LIKE 'pg_%'
-  AND n.nspname NOT IN ('information_schema', 'django', 'maintenance')
+  AND n.nspname NOT IN ('information_schema', 'maintenance')
 ORDER BY n.nspname;
 
 -- SELECT su una tabella campione per ogni schema applicativo presente.
@@ -31,7 +36,7 @@ FROM (
     JOIN pg_namespace n2 ON n2.oid = c2.relnamespace
     WHERE c2.relkind = 'r'
       AND n2.nspname NOT LIKE 'pg_%'
-      AND n2.nspname NOT IN ('information_schema', 'django', 'maintenance')
+      AND n2.nspname NOT IN ('information_schema', 'maintenance')
     ORDER BY n2.nspname, c2.relname
 ) c
 JOIN pg_namespace n ON n.nspname = c.nspname

@@ -13,11 +13,17 @@
 //    da un seed, non da questa schermata. `FormFooter close-only`: non c'è
 //    niente da salvare, e un pulsante «Salva» che non salva niente è peggio di
 //    nessun pulsante.
-// ⚠️ Le tre schede sono `Tabs` PrimeVue 4 e NON `useDrawerTabLista`: quello
-//    serve a una lista PAGINATA con endpoint proprio e filtri. Qui bersagli e
-//    identità sono elenchi CHIUSI dal modello (un pugno di righe, consegnate
-//    col dettaglio in un round-trip) e le corse sono le ultime N. Montarci un
-//    paginator sarebbe cerimoniale.
+// ⚠️ Le quattro schede sono `Tabs` PrimeVue 4 e NON `useDrawerTabLista`:
+//    quello serve a una lista PAGINATA con endpoint proprio e filtri. Qui
+//    bersagli, identità e sveglie sono elenchi CHIUSI dal modello (un pugno di
+//    righe, consegnate col dettaglio in un round-trip) e le corse sono le
+//    ultime N. Montarci un paginator sarebbe cerimoniale.
+// ⭐ Dal 2026-09-15 il drawer ha anche un VERBO sulle sveglie: «Esegui ora»
+//    (piano-be-fe-avvio-manuale-di-un-processo.md §2.6). Il web NON esegue
+//    niente: accoda un lavoro con l'identità di chi preme e il drenatore lancia
+//    il comando alla corsa successiva. Il gesto è asincrono per costruzione, la
+//    UI lo dice, e NON c'è polling: la corsa si vedrà fra le «Ultime corse»
+//    alla riapertura, con `origine = COMMAND` e lo username — la colonna c'è già.
 // ⛔ La lista delle CORSE è l'unica che potrebbe crescere: è limitata a 50 dal
 //    backend e lo dice a video. Se un giorno servisse scorrerla tutta, allora sì
 //    diventa una lista vera con `useDrawerTabLista` — non prima.
@@ -35,16 +41,20 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { bloccoAttivo, motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import {
   getProcesso,
   listProcessoRun,
   creaUtenteTecnico,
   riattivaUtenteTecnico,
+  eseguiOraProcesso,
 } from '../api/amministrazione'
 import { displayTimestamp } from '../../core/utils/date'
 
@@ -66,10 +76,11 @@ const emit = defineEmits(['update:visible', 'identita-creata'])
 //    divergono al primo che si tocca.
 const CORSE_MOSTRATE = 50
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { execute } = useApiHandler()
 const notify = useNotify()
 const onClose = useDrawerClose(emit)
+const { confirmAction } = useConfirmAction()
 
 const dettaglio = ref(null)
 const corse = ref([])
@@ -77,6 +88,23 @@ const caricamento = ref(false)
 const tabAttiva = ref('bersagli')
 const emittenteScelto = ref(null)
 const creazioneInCorso = ref(false)
+// La unit il cui «Esegui ora» è in volo: mostra la rotellina su QUELLA riga e
+// spegne il pulsante su TUTTE finché la risposta non torna — il dettaglio si
+// ricarica subito dopo, e un secondo click nel frattempo partirebbe da
+// capability già vecchie.
+const eseguiInCorso = ref(null)
+
+// ⭐ Le sveglie di deploy arrivano col dettaglio (piano §2.5): zero, una o
+//    più righe per processo, ognuna con la propria terna `can_esegui_ora*`.
+//    ⚠️ `?? []` copre il solo caso in cui il campo manchi: un processo senza
+//    sveglie (pgAgent) riceve una LISTA VUOTA, non un'assenza.
+const sveglie = computed(() => dettaglio.value?.sveglie ?? [])
+
+// ⛔ Il vocabolario delle forme è del BACKEND (`sveglie.py`: FORMA_TIMER,
+//    FORMA_SERVIZIO). Qui si nomina il solo valore su cui il template
+//    RAMIFICA — «Esegui ora» compare sui timer e non sui servizi (è natura,
+//    non stato: brief §8.5 punto 2) — e non si ridichiara l'enum.
+const FORMA_TIMER = 'timer'
 // ⭐ L'azienda per cui la fabbrica ha detto «c'è già, ed è spento». Si tiene il
 //    CODICE e non un booleano: cambiando scelta nella tendina il pulsante di
 //    riattivazione deve sparire, o resterebbe acceso su un'altra azienda.
@@ -96,17 +124,23 @@ const emittentiScoperti = computed(
   })),
 )
 
-// ⚠️ Un processo su canale CODA non VUOLE un utente tecnico: gira con
-//    l'identità di chi lo accoda. Dirlo evita che l'assenza sembri un difetto.
-const vuoleIdentita = computed(
-  () => dettaglio.value
-    && dettaglio.value.classe === 'DOMINIO'
-    && ['PGAGENT', 'COMMAND'].includes(dettaglio.value.canale),
-)
+// ⛔ «Questo processo vuole un utente tecnico?» NON si calcola qui: arriva dal
+//    dettaglio come `vuole_identita`, dalla stessa espressione che la lista
+//    legge da sempre. Fino al 2026-09-15 il drawer rifaceva il conto da sé con
+//    `classe === 'DOMINIO' && ['PGAGENT', 'COMMAND'].includes(canale)` — una
+//    copia della regola del database senza nessun test che la guardasse — ed è
+//    rimasta indietro quando il DB ha aggiunto il canale `CODA_AUTOMATICA`
+//    (05-09): su `chiusura_scadenze_daily` diceva «non gli serve» mentre ne usa
+//    uno per azienda, e nascondeva l'avviso delle aziende scoperte. Il difetto
+//    non dava nessun errore. La regola ha una sede sola, e non è questa.
 
 // Scopo: carica dettaglio + corse del processo aperto.
+// ⚠️ Anche il guard su `visible`: le ricariche dopo un verbo (`eseguiOra`,
+//    `creaIdentita`) arrivano al ritorno di una chiamata, e se nel frattempo
+//    il drawer è stato chiuso ridisegnerebbero un dettaglio che il watch di
+//    chiusura ha appena azzerato.
 async function carica() {
-  if (!props.codice) return
+  if (!props.visible || !props.codice) return
   caricamento.value = true
   try {
     const [det, run] = await Promise.all([
@@ -186,13 +220,83 @@ async function riattivaIdentita() {
     creazioneInCorso.value = false
   }
 }
+
+// Scopo: «questa sveglia si può lanciare adesso?» — letto dalla capability
+//        del backend, mai ricalcolato qui. La terna `can_esegui_ora` /
+//        `_reason` / `_reason_key` / `_dettaglio` la produce lo STESSO
+//        predicato con cui l'endpoint rifiuta (`motivi_esegui_ora`): così il
+//        tooltip e il 4xx non possono dire due cose diverse (api.md
+//        §Capability di riga, «il backend trasporta, non deduce»).
+// ⛔ Non si guarda `abilita` né `avvio_manuale` per decidere: sono dati da
+//    MOSTRARE, e la regola che li combina ha una sede sola, nel backend.
+function eseguiOraBloccato(sveglia) {
+  return bloccoAttivo(sveglia, 'can_esegui_ora', 'can_esegui_ora')
+}
+
+// Scopo: il testo del tooltip sul pulsante: il MOTIVO se spento, cosa fa se
+//        acceso. Fail-visible: senza chiave si vede il codice macchina.
+function eseguiOraTooltip(sveglia) {
+  return eseguiOraBloccato(sveglia)
+    ? motivoBloccoRiga(t, te, sveglia, 'can_esegui_ora')
+    : t('amministrazione.processi.esegui_ora_tooltip')
+}
+
+// Scopo: conferma, poi accoda. L'azione è `pericolosa = true` a catalogo
+//        (`config.azioni_processo`, brief D-D): la conferma è il minimo, e il
+//        messaggio nomina unit E comando — chi preme deve leggere che cosa
+//        sta lanciando, non solo su quale riga.
+function chiediEseguiOra(sveglia) {
+  confirmAction({
+    header: t('amministrazione.processi.esegui_ora_conferma_titolo'),
+    message: t('amministrazione.processi.esegui_ora_conferma', {
+      unit: sveglia.unit,
+      comando: sveglia.comando.join(' '),
+    }),
+    acceptLabel: t('amministrazione.processi.esegui_ora'),
+    acceptIcon: MANAGE_ICONS.PLAY,
+    onAccept: () => eseguiOra(sveglia),
+  })
+}
+
+// Scopo: accoda il lavoro e RICARICA il dettaglio, così la riga passa a «già
+//        in coda» e il pulsante si spegne da sé — dalla capability, non da uno
+//        stato locale che direbbe «in coda» anche dopo che il lavoro è finito.
+// ⚠️ Nessun polling: il gesto è asincrono per costruzione e il toast lo dice.
+//    La corsa comparirà fra le «Ultime corse» alla riapertura, con
+//    `origine = COMMAND` e lo username di chi ha premuto.
+// ⚠️ Il rifiuto (422/409/501) arriva dal toast di `execute`, con la frase a
+//    catalogo: non c'è niente da tradurre qui. ⛔ Ma si RICARICA anche su
+//    rifiuto: un 409 «già in coda» o un 501 «spenta» dicono che la schermata
+//    era invecchiata, e lasciarla com'è terrebbe acceso un pulsante che il
+//    backend ha appena rifiutato — l'operatore lo ripremerebbe per leggere lo
+//    stesso toast.
+async function eseguiOra(sveglia) {
+  eseguiInCorso.value = sveglia.unit
+  try {
+    const res = await execute(() => eseguiOraProcesso(props.codice, sveglia.unit))
+    if (res !== null) {
+      notify.success(
+        t('amministrazione.processi.esegui_ora_accodato', { job_id: res?.job_id ?? '?' }),
+      )
+    }
+  } finally {
+    eseguiInCorso.value = null
+    await carica()
+  }
+}
 </script>
 
 <template>
+  <!-- ⚠️ WIDE_PLUS e non COMPLEX (rilievo di Tid, 2026-09-15): a 800 px il tab
+       «Sveglie» sforava — la tabella voleva 983 px su `run_fatturazione_batch`
+       — e «Esegui ora», ultima colonna, finiva oltre la barra di scorrimento.
+       La larghezza da sola non basta, perché unit e comando sono testo libero
+       del deploy: le due colonne vanno anche a capo (`app-proc-wrap`), così il
+       pulsante resta in vista qualunque riga dichiari domani `sveglie.json`. -->
   <Drawer
     :visible="visible"
     position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
     @update:visible="v => emit('update:visible', v)"
     @after-show="onAfterShow"
   >
@@ -229,6 +333,9 @@ async function riattivaIdentita() {
             </Tab>
             <Tab value="run">
               {{ t('amministrazione.processi.tab_run') }} ({{ corse.length }})
+            </Tab>
+            <Tab value="sveglie">
+              {{ t('amministrazione.processi.tab_sveglie') }} ({{ sveglie.length }})
             </Tab>
           </TabList>
 
@@ -269,7 +376,7 @@ async function riattivaIdentita() {
 
             <TabPanel value="identita">
               <p class="app-proc-help">
-                {{ vuoleIdentita
+                {{ dettaglio.vuole_identita
                   ? t('amministrazione.processi.identita_help')
                   : t('amministrazione.processi.identita_non_serve') }}
               </p>
@@ -291,7 +398,7 @@ async function riattivaIdentita() {
               <!-- ⭐ Il numero che rompe il silenzio: senza questo blocco, «due
                    identità» si legge come «tutto a posto» anche quando la terza
                    azienda non viene servita e il suo lavoro non parte. -->
-              <template v-if="vuoleIdentita && emittentiScoperti.length">
+              <template v-if="dettaglio.vuole_identita && emittentiScoperti.length">
                 <Message severity="warn" :closable="false">
                   {{ t('amministrazione.processi.aziende_scoperte', { n: emittentiScoperti.length }) }}
                 </Message>
@@ -371,6 +478,82 @@ async function riattivaIdentita() {
                 {{ t('amministrazione.processi.run_nessuno') }}
               </p>
             </TabPanel>
+
+            <TabPanel value="sveglie">
+              <!-- ⚠️ È il DICHIARATO di deploy (`sveglie.json`), non lo stato
+                   di questo host: cosa sta girando davvero lo dicono le corse. -->
+              <p class="app-proc-help">
+                {{ t('amministrazione.processi.sveglie_help') }}
+              </p>
+              <table v-if="sveglie.length" class="app-proc-tabella">
+                <thead>
+                  <tr>
+                    <th>{{ t('amministrazione.processi.col_unit') }}</th>
+                    <th>{{ t('amministrazione.processi.col_forma') }}</th>
+                    <th>{{ t('amministrazione.processi.col_cadenza') }}</th>
+                    <th>{{ t('amministrazione.processi.col_abilita') }}</th>
+                    <th>{{ t('amministrazione.processi.col_comando') }}</th>
+                    <th>{{ t('common.col_azioni') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in sveglie" :key="s.unit">
+                    <td class="app-proc-wrap">{{ s.unit }}</td>
+                    <td>
+                      <Tag
+                        :value="s.forma === FORMA_TIMER
+                          ? t('amministrazione.processi.forma_timer')
+                          : t('amministrazione.processi.forma_servizio')"
+                        :severity="s.forma === FORMA_TIMER ? 'info' : 'secondary'"
+                      />
+                    </td>
+                    <td>
+                      <code v-if="s.oncalendar" class="app-proc-mono">{{ s.oncalendar }}</code>
+                      <span v-else>{{ t('amministrazione.processi.sveglia_sempre_accesa') }}</span>
+                    </td>
+                    <!-- «Spenta» è una scelta del deploy, non un guasto: grigio,
+                         non arancio. Il perché sta nella nota della voce. -->
+                    <td>
+                      <AttivoTag
+                        :active="s.abilita"
+                        :active-label="t('amministrazione.processi.sveglia_abilitata')"
+                        :inactive-label="t('amministrazione.processi.sveglia_spenta')"
+                        inactive-severity="secondary"
+                      />
+                    </td>
+                    <td class="app-proc-wrap"><code class="app-proc-mono">{{ s.comando.join(' ') }}</code></td>
+                    <td>
+                      <!-- ⭐ Solo sui TIMER: su un servizio sempre acceso non
+                           c'è una corsa da lanciare — non è un candidato, non
+                           è uno stato, quindi il pulsante NON compare (invece
+                           di comparire spento). Sul timer dichiarato non
+                           candidato compare spento COL MOTIVO.
+                           ⚠️ Il tooltip sta sull'INVOLUCRO: un `<button
+                           disabled>` non emette eventi del mouse, e a pulsante
+                           spento è proprio quando il motivo serve. -->
+                      <span
+                        v-if="s.forma === FORMA_TIMER"
+                        class="app-action-tooltip-wrap"
+                        v-tooltip.left="eseguiOraTooltip(s)"
+                      >
+                        <Button
+                          :label="t('amministrazione.processi.esegui_ora')"
+                          :icon="MANAGE_ICONS.PLAY"
+                          size="small"
+                          outlined
+                          :disabled="eseguiOraBloccato(s) || eseguiInCorso !== null"
+                          :loading="eseguiInCorso === s.unit"
+                          @click="chiediEseguiOra(s)"
+                        />
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="app-proc-help">
+                {{ t('amministrazione.processi.sveglie_nessuna') }}
+              </p>
+            </TabPanel>
           </TabPanels>
         </Tabs>
       </template>
@@ -392,5 +575,15 @@ async function riattivaIdentita() {
   text-align: left; padding: 0.25rem 0.5rem; white-space: nowrap;
 }
 .app-proc-tabella th { opacity: 0.7; font-weight: 500; }
+/* Le celle di TESTO LIBERO del deploy (unit, comando) vanno a capo: la loro
+ * lunghezza non la decide questa schermata, e con `nowrap` spingerebbero
+ * l'ultima colonna — il pulsante — oltre la barra di scorrimento. Le altre
+ * restano `nowrap`: sono tag, date e codici corti. `anywhere` spezza dentro
+ * un token solo se non c'è un punto di rottura naturale (spazio, trattino). */
+.app-proc-tabella td.app-proc-wrap { white-space: normal; overflow-wrap: anywhere; }
 .app-proc-crea { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
+/* Cadenza e comando si LEGGONO come sono scritti nel deploy: il `<code>` dà
+ * già il monospace, qui solo la taglia — senza sfondo (è un dato, non un
+ * pulsante). */
+.app-proc-mono { font-size: 0.8rem; }
 </style>

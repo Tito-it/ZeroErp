@@ -23,6 +23,7 @@ Indice test (0..N):
  2. test_nessun_lista_codice_punta_a_una_lista_inesistente
  3. test_lista_ed_export_stanno_o_cadono_insieme
  4. test_il_codice_citato_dal_frontend_esiste_a_catalogo
+ 5. test_il_registro_e_il_seed_dicono_la_stessa_cosa_sul_perimetro
 
 🕳️ **Buco dichiarato, e vale la pena saperlo**: qui NON c'e' un presidio che
    leghi la riga di catalogo al MAPPING del repository — «la colonna emittente
@@ -73,17 +74,32 @@ _ESENZIONI: dict[str, str] = {
     "anagrafiche.categorie_clienti": "AdminAPIView — configurazione anagrafica",
     "anagrafiche.categorie_clienti_listini": "AdminAPIView — configurazione pricing",
     "anagrafiche.emittente_billing_account": "AdminAPIView — configura la mappatura BA→emittente",
-    "anagrafiche.emittenti_fiscali": "AdminAPIView — e' l'elenco degli emittenti stessi",
-    "anagrafiche.operatori": "AdminAPIView — gestione utenti",
+    # ⭐ D-1 (Tid, 2026-09-18): l'elenco degli emittenti e' un registro
+    #    GLOBALE — la riga non appartiene a un'azienda, la riga E' l'azienda.
+    #    Non c'e' niente da scegliere prima di entrare, e dal 18-09 il seed lo
+    #    DICE (`perimetro_emittente = false`), come `famiglie_documento`.
+    "anagrafiche.emittenti_fiscali": "AdminAPIView — catalogo globale (perimetro_emittente = false)",
+    # ⭐ D-3 (Tid, 2026-09-18): ogni operatore ha UN emittente e la lista ne
+    #    mescola di aziende diverse — e lo sa dire per riga, con la colonna
+    #    attiva «Emittente fiscale» (`emittenti_descrizione`). E' il caso
+    #    `multi_emittente = true`: il super admin su «Tutti» le vede tutte,
+    #    con l'azienda accanto. ⚠️ L'OPERATORE resta mono-emittente: il flag
+    #    e' della lista, non di chi la guarda.
+    "anagrafiche.operatori": "AdminAPIView — gestione utenti; `multi_emittente` certificata: colonna «Emittente fiscale» per riga",
     # ⭐ Il registro dei processi automatici e' CATALOGO: descrive il software,
     #    non i dati di un'azienda. Le sue righe valgono identiche su ogni
     #    installazione e non hanno un emittente da cui arrivare — chiedere «da
     #    quale azienda viene questa riga?» sarebbe una domanda senza risposta.
     #    ⚠️ Le IDENTITA' un emittente ce l'hanno, ma stanno nel DETTAGLIO (una
     #    riga per azienda servita), non in questa lista.
-    "amm.processi": "AdminAPIView — registro di catalogo, senza perimetro emittente",
+    "amm.processi": "AdminAPIView — registro di catalogo, senza perimetro emittente (perimetro_emittente = false)",
     "config.email_account": "AdminAPIView — configurazione tecnica",
-    "config.email_log": "AdminAPIView — diario tecnico di sistema",
+    "config.email_log": "AdminAPIView — diario tecnico di sistema; `multi_emittente` certificata (colonna 872 `emittente_fiscale`)",
+    # ⭐ La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
+    #    2026-09-19): il diario degli errori TECNICI, letto dalla stessa porta
+    #    dei due accanto. Un errore sollevato da una funzione non ha un'azienda
+    #    da cui arrivare: `perimetro_emittente = false` a catalogo.
+    "dbops.error_log": "AdminAPIView — diario tecnico di sistema, senza perimetro emittente (perimetro_emittente = false)",
     # ⭐ La schermata che monta questa lista e' `/amm-software/audit-log/`
     #    (`amm_software.AuditLogView`, AdminAPIView): il diario delle MODIFICHE
     #    ai dati. ⛔ Fino al 2026-09-02 il presidio la considerava «coperta»
@@ -92,7 +108,7 @@ _ESENZIONI: dict[str, str] = {
     #    che con questo catalogo non hanno una colonna in comune. La
     #    dichiarazione e' stata tolta di la' e l'esenzione scritta qui, che e'
     #    il posto in cui e' vera.
-    "storico.audit_log": "AdminAPIView — diario delle modifiche ai dati",
+    "storico.audit_log": "AdminAPIView — diario delle modifiche ai dati, senza perimetro emittente (perimetro_emittente = false)",
     "config.email_template": "AdminAPIView — configurazione tecnica",
     "config.tipi_ruolo_tipi_indirizzo": "AdminAPIView — matrice di configurazione",
     "config.utilities_tipi_ruolo": "AdminAPIView — matrice di configurazione",
@@ -121,14 +137,17 @@ _ESENZIONI: dict[str, str] = {
     "ui.lista_colonna_permesso": "grant per colonna/profilo — nessun `emittente_fiscale_id` in tabella",
     # ⚠️ Questa e' l'ECCEZIONE fra le quattro, e va letta: `ui.lista_preset` HA
     #    `emittente_fiscale_id` (un preset puo' essere d'emittente). L'ambiguita'
-    #    che il cancello previene esiste quindi davvero — ed e' gia' sciolta a
-    #    video dalla colonna «Riferimento», che mostra il profilo o l'emittente
-    #    di ogni riga. E' la seconda via che la regola stessa ammette
-    #    (P-2c: «su una lista l'etichetta non basta, serve la colonna o il
-    #    blocco»): qui c'e' la colonna.
-    # ⛔ Se un giorno quella colonna sparisse dal preset di default della lista,
-    #    questa esenzione andrebbe TOLTA, non aggiornata.
-    "ui.lista_preset": "ha emittente_fiscale_id, ma la colonna «Riferimento» lo mostra per riga (P-2c)",
+    #    che il cancello previene esiste quindi davvero — ed e' sciolta a video
+    #    per riga. ⭐ D-5 (Tid, 2026-09-18): fino a quel giorno lo faceva la
+    #    colonna «Riferimento», CALCOLATA dal backend (`campo_sorgente` vuoto)
+    #    e quindi invisibile a `dbops.vw_liste_multi_emittente_non_certificate`;
+    #    ora lo fa la colonna 873 `emittente_fiscale` (`campo_sorgente =
+    #    emittente_ragione_sociale`), che il presidio a DB riconosce, e la
+    #    lista e' `multi_emittente = true` a catalogo. «Riferimento» e' rimasta
+    #    al solo profilo (BE-6, 2026-09-19).
+    # ⛔ Se un giorno la 873 venisse spenta, `multi_emittente` a DB tornerebbe
+    #    una vanteria e questa esenzione andrebbe TOLTA, non aggiornata.
+    "ui.lista_preset": "`multi_emittente` certificata (colonna 873 `emittente_fiscale`)",
 }
 
 
@@ -357,6 +376,77 @@ class PerimetroEmittenteCoperturaTests(unittest.TestCase):
             "codici soppressi dal frontend che non esistono in "
             "config/codici_errore.csv.",
         )
+
+    def test_il_registro_e_il_seed_dicono_la_stessa_cosa_sul_perimetro(self) -> None:
+        """Una lista «senza perimetro» qui lo e' anche a catalogo — e viceversa.
+
+        Il cancello del PANNELLO non lo calcola questo registro: lo calcola
+        `richiede_scelta_emittente(...)` dai flag del seed
+        (`ui.lista_definizione.perimetro_emittente`, ramo 2: «la lista non ha
+        un perimetro → non c'e' niente da scegliere»). Fino al 2026-09-18 il
+        registro diceva «senza perimetro» di `amm.processi` e delle tre `ui.*`
+        mentre il seed le lasciava al default `true`: due sedi, due verita', e
+        il super admin doveva scegliere un emittente per vedere l'ELENCO DEGLI
+        EMITTENTI (brief-db-perimetro-emittente-cataloghi-globali §1-2).
+
+        I due versi non sono simmetrici nel danno, e vanno tenuti entrambi:
+        1. ragione «globale» qui, seed `true` → la lista e' SBARRATA su «Tutti
+           gli emittenti», e questo file racconta che non lo e';
+        2. seed `false`, nessuna ragione qui → il seed apre una lista che
+           questo registro non conosce come globale: o manca l'esenzione, o
+           qualcuno ha spento il perimetro a una lista di dominio.
+        Legge il CSV col modulo `csv`, senza DB: gira in CI come gli altri.
+        """
+        colonna = {
+            r["codice"]: r["perimetro_emittente"]
+            for r in _seed("lista_definizione.csv")
+        }
+        self.assertTrue(
+            all(v in ("t", "f") for v in colonna.values()),
+            "`perimetro_emittente` in lista_definizione.csv deve valere `t` o "
+            "`f` su ogni riga: e' la colonna che il cancello legge.",
+        )
+        dichiarate_qui = _esenzioni_senza_perimetro()
+        dichiarate_a_seed = {c for c, v in colonna.items() if v == "f"}
+
+        sbarrate = sorted(c for c in dichiarate_qui if colonna.get(c) != "f")
+        self.assertEqual(
+            sbarrate, [],
+            "esenzioni motivate «senza perimetro» che il seed lascia a "
+            "`perimetro_emittente = t`: a video la lista E' sbarrata su «Tutti "
+            "gli emittenti». Si corregge il CSV (una tabella, un CSV), non la "
+            "ragione.",
+        )
+        senza_ragione = sorted(dichiarate_a_seed - dichiarate_qui)
+        self.assertEqual(
+            senza_ragione, [],
+            "liste globali a seed (`perimetro_emittente = f`) senza una ragione "
+            "«senza perimetro» / «nessun `emittente_fiscale_id`» / «catalogo "
+            "globale» in `_ESENZIONI`: il registro deve dire la stessa cosa "
+            "del seed.",
+        )
+
+
+# Le ragioni di `_ESENZIONI` che affermano «questa lista non ha un perimetro»:
+# ognuna e' una promessa sul SEED (`ui.lista_definizione.perimetro_emittente`),
+# e il test 5 la riscuote. Sono le tre forme usate nel registro, non un
+# pattern «intelligente»: una ragione scritta in una quarta forma non passa
+# per caso, resta fuori dall'elenco e il test la vede come lista globale a
+# seed senza ragione nel registro (verso 2).
+_RAGIONI_SENZA_PERIMETRO = (
+    "senza perimetro",
+    "nessun `emittente_fiscale_id`",
+    "catalogo globale",
+)
+
+
+# Scopo: le esenzioni la cui ragione dichiara la lista GLOBALE.
+def _esenzioni_senza_perimetro() -> set[str]:
+    return {
+        codice
+        for codice, ragione in _ESENZIONI.items()
+        if any(marca in ragione for marca in _RAGIONI_SENZA_PERIMETRO)
+    }
 
 
 # Scopo: righe di un CSV di seed della cartella `config` (i codici errore).

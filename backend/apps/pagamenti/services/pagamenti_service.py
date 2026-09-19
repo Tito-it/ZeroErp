@@ -22,11 +22,14 @@
 import json
 import logging
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_translator import ErrorTranslator
+from apps.core.services.fan_out import run_fan_out
 from apps.core.services.list_helpers import (
     validate_order_params,
     validate_pagination,
@@ -36,17 +39,24 @@ from apps.core.services.payload_helpers import (
     make_db_errors_translator,
 )
 from apps.pagamenti.services._helpers import (
+    E_FATTURA_NON_TROVATA,
+    E_RATA_NON_TROVATA,
     E_VALIDAZIONE,
-    decimal_da_payload as _decimal_da_payload,
     risposta_paginata as _risposta_paginata,
 )
 from apps.pagamenti.db.pagamenti_repository import (
+    DISTINTA_RIGHE_SORT_COLUMNS,
     DISTINTE_SORT_COLUMNS,
     RATE_FUORI_CAPIENZA_SORT_COLUMNS,
     RIGHE_SORT_COLUMNS,
     PagamentiRepository,
 )
-from apps.pagamenti.types import DistintaRow, RicevutaPosting, RigaContabileRow
+from apps.pagamenti.types import (
+    DistintaDettaglioRow,
+    RicevutaPosting,
+    RicevutaTardiva,
+    RigaContabileRow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +69,9 @@ _FN = "pagamenti.pagamenti_service"
 # restano volutamente indistinguibili).
 E_DISTINTA_NON_TROVATA = "E_CONTABILE_NON_TROVATA"
 E_RIGA_NON_TROVATA = "E_RIGA_CONTABILE_NON_TROVATA"
+# La fattura di destinazione che non c'e' (`E_FATTURA_NON_TROVATA`) e' lo
+# stesso codice di `saldi_service` e `sistemazioni_service`: importato da
+# `_helpers`, non riscritto.
 # Lo stato chiesto non risolve a catalogo (assente o non attivo). ⭐ TECNICO e
 # non «dato sbagliato»: chi ha fatto la richiesta non puo' rimediare — manca
 # una riga di configurazione, e la mette chi amministra il database.
@@ -115,12 +128,37 @@ ORIGINE_MANUALE = "MANUALE"
 
 # Gli stati in cui i due oggetti NASCONO. Sono codici di catalogo, non id: gli
 # id sono seminati e non si scrivono a mano da nessuna parte.
-# ⭐ La riga nasce `DA_ABBINARE` perche' quando il denaro arriva non si sa
-#    ancora di chi sia, e quello stato dice esattamente questo.
 STATO_DISTINTA_INIZIALE = "BOZZA"
-STATO_RIGA_INIZIALE = "DA_ABBINARE"
-# Lo stato in cui l'abbinamento porta la riga: e' lo stesso gesto, non due.
+# ⭐ La riga MANUALE nasce con la destinazione (D16, 2026-09-14): chi digita un
+#    incasso da una contabile sa chi ha pagato, quindi la riga nasce gia'
+#    `ABBINATA` — fattura, cliente e (facoltativa) rata nello stesso INSERT.
+# ⚠️ `DA_ABBINARE` e' lo stato di un importo arrivato SENZA NOME: sulla manuale
+#    e' l'ECCEZIONE che l'operatore dichiara («non ho trovato il documento»),
+#    non il default di un form. Fino al 14/09 era il default, col commento
+#    «quando il denaro arriva non si sa ancora di chi sia» — vero per l'import,
+#    falso per chi digita: il default aveva scelto il flusso sbagliato.
+STATO_RIGA_SENZA_DESTINAZIONE = "DA_ABBINARE"
+# Lo stato in cui l'abbinamento porta la riga — alla nascita come dopo: e' lo
+# stesso gesto, non due.
 STATO_RIGA_ABBINATA = "ABBINATA"
+# ⭐ «Non e' nostra» (D20-c, 2026-09-18): la riga SCARTATA resta nella distinta
+#    — e' lei la traccia, e conta nella quadratura («quel denaro e' arrivato»)
+#    — ma ESCE DAL LAVORO: nascosta di default fra le righe del drawer, mai in
+#    nessuna coda. Si nomina qui, per codice, come gli altri due: la lista la
+#    filtra e la quadratura la conta «di cui non nostre».
+STATO_RIGA_SCARTATA = "SCARTATA"
+# ⭐ Lo stato in cui si ENTRA validando (D20-a/D20-d): e' quello che il catalogo
+#    marca `is_registrabile`. Si nomina per il solo cancello della terna del
+#    verbo «valida» (`_transizione_verso_validata`): il resto lo legge dal flag.
+STATO_DISTINTA_VALIDATA = "VALIDATA"
+# ⭐ L'origine e lo stato della distinta sotto cui il CONTENUTO delle righe si
+#    lavora (D17/D18): righe nuove, fatti modificati, eliminazioni. ⚠️ E' una
+#    COPIA DICHIARATA del motivo 3 di `script.fn_check_riga_contabile_eliminabile`
+#    e della porta 2 di `trgfn_vendite_contabili_righe_guard_contenuto` — il
+#    database stesso lo scrive due volte (brief §4 P-5) perche' sull'INSERT non
+#    c'e' una riga da passare alla check. Il presidio e' il pgTAP del guard piu'
+#    `test_gli_stati_iniziali_esistono_a_catalogo`: il rifiuto vero arriva
+#    comunque dal DB (409), questo flag serve solo a NON PROPORRE.
 
 # ⭐ Le due code del riconciliatore, e sono DUE MESTIERI (D12-f): `DA_ABBINARE`
 #    e' lavoro non ancora fatto, `SOSPESA` e' lavoro fatto che ha trovato un
@@ -147,7 +185,9 @@ _CAMPI_DISTINTA_PATCH: tuple[str, ...] = (
 
 # I FATTI di una riga (come sono arrivati i soldi) e le decisioni che non sono
 # un'azione di dominio. ⛔ `fattura_id`, `billing_account_id` e `scadenza_id`
-# NON sono qui: abbinare e' un verbo, e porta con se' la forzatura.
+# NON sono qui: abbinare e' un verbo, e porta con se' la destinazione. ⭐ Alla
+# NASCITA invece la destinazione viaggia coi fatti (D16): una riga che nasce
+# non ha uno stato da proteggere — R-6 vale per la modifica.
 _CAMPI_RIGA_PATCH: tuple[str, ...] = (
     "importo",
     "riferimento_ente",
@@ -156,6 +196,25 @@ _CAMPI_RIGA_PATCH: tuple[str, ...] = (
     "data_operazione",
     "motivo_sospeso",
     "meta",
+)
+
+# ⭐ IL SECONDO TEMPO: la conferma di una scrittura che il guard della rata
+#    rifiuterebbe. Viaggia con OGNI verbo che quel guard incontra — nascita,
+#    abbinamento e, dal 2026-09-15 (decisione di Tid, brief D16/D17 Q-H),
+#    anche la MODIFICA dell'importo: il guard gira sull'`UPDATE` come
+#    sull'`INSERT`, e un 409 «confermabile» su un verbo che non sa raccogliere
+#    la conferma e' una domanda a cui nessuno puo' rispondere. ⛔ Non e' la
+#    destinazione: R-6 protegge `fattura_id`/`billing_account_id`/`scadenza_id`
+#    e resta intero.
+_CAMPI_FORZATURA: tuple[str, ...] = ("forzata", "motivo_forzatura")
+
+# La DESTINAZIONE di una riga: le chiavi che `abbina` e `crea` leggono allo
+# stesso modo (una lettura sola, `_destinazione_da_payload`).
+_CAMPI_DESTINAZIONE: tuple[str, ...] = (
+    "fattura_id",
+    "billing_account_id",
+    "scadenza_id",
+    *_CAMPI_FORZATURA,
 )
 
 
@@ -173,7 +232,7 @@ def _meta_json(payload: dict[str, Any]) -> str:
 # ⚠️ «Non esiste» e «non la vedi» danno la stessa risposta, ed e' voluto: dire
 #    «esiste ma non e' tua» racconterebbe a un operatore fuori perimetro che
 #    quel documento c'e'.
-def _distinta_o_404(repository: PagamentiRepository, contabile_id: int) -> DistintaRow:
+def _distinta_o_404(repository: PagamentiRepository, contabile_id: int) -> DistintaDettaglioRow:
     distinta = repository.get_distinta(contabile_id)
     ErrorManager.require(
         distinta is not None,
@@ -198,6 +257,97 @@ def _riga_o_404(repository: PagamentiRepository, riga_id: int) -> RigaContabileR
     )
     assert riga is not None
     return riga
+
+
+# Scopo: «Il motivo si scrive solo insieme alla forzatura» — la regola vale
+#        identica ovunque la forzatura entri: nascita, abbinamento, modifica.
+# ⚠️ Un motivo senza forzatura e' una nota che nessuno leggera' mai: la
+#    colonna esiste per spiegare una forzatura, e scriverla su una riga non
+#    forzata lascerebbe a registro una spiegazione di un gesto mai fatto.
+def _guard_motivo_con_forzatura(
+    forzata: bool, motivo_forzatura: str | None, *, function_name: str
+) -> None:
+    ErrorManager.require(
+        forzata or motivo_forzatura is None,
+        code=E_VALIDAZIONE,
+        message="Il motivo si scrive solo insieme alla forzatura.",
+        detail="motivo_forzatura richiede forzata = true.",
+        context={"field": "motivo_forzatura"},
+        function_name=function_name,
+    )
+
+
+# Scopo: Legge la DESTINAZIONE di una riga dal payload — fattura, cliente,
+#        rata facoltativa e la forzatura col suo motivo — con le regole che
+#        valgono sia per `abbina` sia per la nascita della riga (D16).
+# Note: ⭐ Una lettura sola per i due verbi: la regola «il motivo si scrive solo
+#       insieme alla forzatura» e quella «rata e forzatura pretendono una
+#       fattura» stavano per nascere due volte, e due copie divergono alla
+#       prima correzione.
+#       ⚠️ `obbligatoria=False` e' la nascita: senza `fattura_id` la riga nasce
+#       senza destinazione (l'eccezione dichiarata), e allora rata, cliente e
+#       forzatura non hanno niente a cui riferirsi — un valore li' e' un
+#       errore del chiamante, non un dato da ignorare in silenzio.
+#       ⚠️ `billing_account_id` puo' mancare: lo deriva chi chiama, dalla
+#       fattura (`get_riferimenti_fattura`). Qui si legge, non si risolve.
+def _destinazione_da_payload(
+    payload: dict[str, Any], *, obbligatoria: bool, function_name: str
+) -> dict[str, Any]:
+    if obbligatoria:
+        fattura_id: int | None = _PAYLOAD.require_positive_int(
+            payload, "fattura_id", message="La fattura e' obbligatoria per abbinare."
+        )
+    else:
+        fattura_id = _PAYLOAD.optional_positive_int(payload, "fattura_id")
+    billing_account_id = _PAYLOAD.optional_positive_int(payload, "billing_account_id")
+    scadenza_id = _PAYLOAD.optional_positive_int(payload, "scadenza_id")
+    forzata = _PAYLOAD.optional_bool(payload, "forzata") or False
+    motivo_forzatura = _PAYLOAD.optional_string(payload, "motivo_forzatura")
+    _guard_motivo_con_forzatura(forzata, motivo_forzatura, function_name=function_name)
+    # ⚠️ Senza fattura non c'e' destinazione: una rata, un cliente o una
+    #    forzatura «orfani» non sono un'eccezione dichiarata — sono un payload
+    #    rotto, e si dice quale campo.
+    if fattura_id is None:
+        for campo, valore in (
+            ("scadenza_id", scadenza_id),
+            ("billing_account_id", billing_account_id),
+            ("forzata", forzata or None),
+        ):
+            ErrorManager.require(
+                valore is None,
+                code=E_VALIDAZIONE,
+                message="Senza fattura la riga non ha una destinazione.",
+                detail=f"{campo} richiede fattura_id.",
+                context={"field": campo},
+                function_name=function_name,
+            )
+    return {
+        "fattura_id": fattura_id,
+        "billing_account_id": billing_account_id,
+        "scadenza_id": scadenza_id,
+        "forzata": forzata,
+        "motivo_forzatura": motivo_forzatura,
+    }
+
+
+# Scopo: Risolve il cliente della riga quando il chiamante non lo passa: e' il
+#        billing account della fattura scelta, letto dal documento.
+# ⚠️ Il 404 di una fattura inesistente (o fuori perimetro) esce di qui col
+#    codice di dominio, prima dell'INSERT — e nomina il campo.
+def _billing_account_della_fattura(
+    repository: PagamentiRepository, fattura_id: int, *, function_name: str
+) -> int:
+    riferimenti = repository.get_riferimenti_fattura(fattura_id)
+    ErrorManager.require(
+        riferimenti is not None,
+        code=E_FATTURA_NON_TROVATA,
+        message="Fattura non trovata.",
+        detail=f"fattura_id={fattura_id}",
+        context={"field": "fattura_id"},
+        function_name=function_name,
+    )
+    assert riferimenti is not None
+    return int(riferimenti["billing_account_id"])
 
 
 # Scopo: Compone i campi da aggiornare leggendo SOLO le chiavi presenti nel
@@ -263,28 +413,121 @@ def list_distinte(
     return _risposta_paginata(results, total, page, page_size)
 
 
-# Scopo: Dettaglio di una distinta: testata, totali derivati, righe e i due
-#        cataloghi di stato — in un round-trip solo.
+# Scopo: Le transizioni che una PERSONA puo' chiedere, stato per stato, lette
+#        dalla MATRICE del database e ristrette al vocabolario dei richiedibili.
+# ⭐ E' il pezzo che mancava (BE-5, collaudo del 14/09): il vocabolario dice
+#    che cosa si puo' chiedere IN GENERALE, la matrice dice DA DOVE. Offrire il
+#    vocabolario intero meno lo stato corrente proponeva `SCARTATA` su una riga
+#    `ABBINATA`, che il database rifiuta — un pulsante che finisce in errore.
+# ⚠️ `stato_a` ristretto ai richiedibili, `stato_da` no: `POSTATA` e `CHIUSA`
+#    non si chiedono (li scrive la registrazione) ma da `IMPORTATA` — quando
+#    l'import ci sara' — si chiede eccome. La forma e' `{stato_da: [stato_a…]}`
+#    per entrambe le macchine, e uno stato senza uscite richiedibili ha la
+#    lista vuota, non la chiave assente.
+def _transizioni_richiedibili(
+    grafo: list[tuple[str, str]], richiedibili: tuple[str, ...]
+) -> dict[str, list[str]]:
+    ammesse: dict[str, list[str]] = {}
+    for stato_da, stato_a in grafo:
+        ammesse.setdefault(stato_da, [])
+        if stato_a in richiedibili and stato_a not in ammesse[stato_da]:
+            ammesse[stato_da].append(stato_a)
+    # L'ordine di offerta e' quello del vocabolario, non quello della matrice:
+    # e' stabile fra una lettura e l'altra e non dipende dagli id seminati.
+    for stato_da, uscite in ammesse.items():
+        ammesse[stato_da] = sorted(uscite, key=richiedibili.index)
+    return ammesse
+
+
+# Scopo: Dettaglio di una distinta: testata, totali derivati, i due cataloghi
+#        di stato e le transizioni ammesse — in un round-trip solo.
 # ⭐ I cataloghi viaggiano col dettaglio e non si cablano nel frontend: quali
-#    stati si possono chiedere, quali pretendono fattura e cliente, quali
-#    occupano spazio su una rata lo dice il database.
+#    stati si possono chiedere e da dove, quali pretendono fattura e cliente,
+#    quali occupano spazio su una rata lo dice il database.
+# ⛔ Le RIGHE non viaggiano piu' qui (dal 2026-09-18): sono una lista
+#    configurabile con la sua pagina (`list_righe`), e portarle anche nel
+#    dettaglio sarebbe leggere due volte la parte piu' costosa (la LATERAL
+#    sulla check di eliminabilita', per riga) a ogni apertura del drawer — per
+#    un campo che nessuno legge piu'.
+# ⭐ E porta il verbo «valida» COL MOTIVO (BE-1, D20-a): la terna
+#    `validazione_blocco_*` + `can_validare`, letta dalla STESSA check che il
+#    guard chiama per rifiutare. ⚠️ Viaggia SOLO se lo stato corrente ammette
+#    VALIDATA fra le uscite (la matrice, gia' letta qui): su una CHIUSA o su
+#    una ANNULLATA il verbo non si propone, e un motivo per un pulsante che
+#    non c'e' sarebbe rumore — si azzera a `null`, non si inventa.
+# ⭐ `righe_per_stato` e i due numeri «di cui non nostre» (`righe_scartate`,
+#    `totale_scartate`): la quadratura li mostra accanto al totale, perche'
+#    «dichiarato 1000 · righe 1000» con 200 di scartate dentro si legge come
+#    «tutto nostro» — e non lo e'. Derivati QUI dall'array, con lo stesso
+#    codice che la lista usa per nasconderle: una sede, non due letterali.
 def get_distinta(contabile_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
     distinta = _distinta_o_404(repository, contabile_id)
+    grafo_distinta, grafo_riga = repository.list_transizioni()
+    transizioni_distinta = _transizioni_richiedibili(
+        grafo_distinta, STATI_DISTINTA_RICHIEDIBILI
+    )
+    if not _transizione_verso_validata(transizioni_distinta, distinta.get("stato_codice")):
+        distinta = {
+            **distinta,
+            "validazione_blocco_reason": None,
+            "validazione_blocco_reason_key": None,
+            "validazione_blocco_dettaglio": None,
+            "can_validare": None,
+        }
+    scartate = [
+        r for r in (distinta.get("righe_per_stato") or [])
+        if r.get("stato_codice_interno") == STATO_RIGA_SCARTATA
+    ]
     return {
-        "distinta": distinta,
-        "righe": repository.list_righe(contabile_id),
+        "distinta": {
+            **distinta,
+            "righe_scartate": sum(int(r.get("righe") or 0) for r in scartate),
+            # ⚠️ Parte da `Decimal("0")`, non dallo `0` di `sum`: un importo che
+            #    esce come numero JSON senza scartate e come stringa (`"5.00"`,
+            #    la forma di ogni Decimal) con una sola cambierebbe TIPO coi
+            #    dati — `totale_righe` accanto e' sempre una stringa.
+            "totale_scartate": sum(
+                (Decimal(str(r.get("importo") or 0)) for r in scartate), Decimal("0")
+            ),
+            # ⭐ D17/D18: il CONTENUTO (righe nuove, fatti, eliminazioni) si
+            #    lavora solo su una manuale in bozza. Il flag viaggia perche'
+            #    il frontend non ricalcoli la regola: e' una copia dichiarata
+            #    (vedi `STATO_RIGA_SENZA_DESTINAZIONE`), e il rifiuto vero
+            #    resta quello del database. ⚠️ Le DECISIONI (abbinare,
+            #    sospendere, cambiare stato) non passano di qui: sotto una
+            #    validata si abbina, non si digita.
+            "contenuto_modificabile": (
+                distinta.get("stato_codice") == STATO_DISTINTA_INIZIALE
+                and distinta.get("origine") == ORIGINE_MANUALE
+            ),
+        },
         "stati_distinta": repository.list_stati_distinta(),
         "stati_riga": repository.list_stati_riga(),
-        # ⭐ Gli elenchi sono DUE, e servono entrambi: il drawer disegna il
-        # percorso della testata e quello della riga nella stessa schermata.
-        # Prima ne viaggiava uno solo, e il form della riga sarebbe finito a
-        # cablarsi il proprio — cioe' a tenere una copia del vocabolario.
-        "stati_richiedibili": {
-            "distinta": list(STATI_DISTINTA_RICHIEDIBILI),
-            "riga": list(STATI_RIGA_RICHIEDIBILI),
+        # ⭐ Le transizioni sono DUE mappe, e servono entrambe: il drawer disegna
+        # il percorso della testata e quello della riga nella stessa
+        # schermata. ⛔ Fino al 14/09 viaggiava il solo vocabolario
+        # (`stati_richiedibili`), e il frontend toglieva lo stato corrente:
+        # cio' che offriva coincideva con la matrice sulla testata PER CASO e
+        # non coincideva sulla riga. Adesso non puo' divergere: si legge.
+        "transizioni": {
+            "distinta": transizioni_distinta,
+            "riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
         },
     }
+
+
+# Scopo: «dallo stato corrente si puo' chiedere VALIDATA?» — letto dalla
+#        matrice ristretta ai richiedibili, la stessa che il frontend riceve.
+# ⚠️ Serve al solo cancello della terna del verbo «valida»: il frontend
+#    riconosce il pulsante dal flag `is_registrabile` del catalogo, e qui non
+#    si offre ne' si toglie nessuna transizione.
+def _transizione_verso_validata(
+    transizioni: dict[str, list[str]], stato_codice: str | None
+) -> bool:
+    if stato_codice is None:
+        return False
+    return STATO_DISTINTA_VALIDATA in transizioni.get(stato_codice, [])
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -304,7 +547,7 @@ def crea_distinta(payload: dict[str, Any]) -> dict[str, Any]:
         payload,
         allowed=frozenset(
             {"centro_riscossione_id", "data_contabile", "ente_incasso_id",
-             "importo_dichiarato", "meta"}
+             "emittente_fiscale_id", "importo_dichiarato", "meta"}
         ),
     )
     centro_riscossione_id = _PAYLOAD.require_positive_int(
@@ -318,9 +561,18 @@ def crea_distinta(payload: dict[str, Any]) -> dict[str, Any]:
         message="La data contabile e' obbligatoria per aprire una distinta.",
     )
     ente_incasso_id = _PAYLOAD.optional_positive_int(payload, "ente_incasso_id")
-    importo_dichiarato = _decimal_da_payload(
-        payload, "importo_dichiarato", obbligatorio=False
-    )
+    # ⭐ L'EMITTENTE E' FACOLTATIVO QUI, E OBBLIGATORIO A DATABASE (D4, brief
+    #    distinta-numerata-sul-registro, 2026-09-17). Il backend lo TRASPORTA e
+    #    non lo deduce: se manca, lo risolve `fn_get_emittente_distinta` dal
+    #    canale o dall'operatore in sessione — la stessa `fn_resolve_emittente_
+    #    for_user` che legge l'emittente attivo scelto in topbar. E se non lo
+    #    trova rifiuta con `E_CONTABILE_EMITTENTE_OBBLIGATORIO` (400, campo
+    #    `emittente_fiscale_id`): e' il super admin in «tutti gli emittenti» su
+    #    CASSA, che deve scegliere. ⛔ Un default dal profilo scritto qui
+    #    sarebbe un secondo risolutore, e attribuirebbe denaro a un emittente
+    #    che nessuno ha scelto.
+    emittente_fiscale_id = _PAYLOAD.optional_positive_int(payload, "emittente_fiscale_id")
+    importo_dichiarato = _PAYLOAD.optional_decimal(payload, "importo_dichiarato")
 
     repository = PagamentiRepository()
     # 🔴 DUE scritture, e devono essere UNA unita'. Il totale dichiarato non e'
@@ -335,6 +587,7 @@ def crea_distinta(payload: dict[str, Any]) -> dict[str, Any]:
             centro_riscossione_id=centro_riscossione_id,
             data_contabile=data_contabile,
             ente_incasso_id=ente_incasso_id,
+            emittente_fiscale_id=emittente_fiscale_id,
             origine=ORIGINE_MANUALE,
             codice_stato_interno=STATO_DISTINTA_INIZIALE,
             meta=_meta_json(payload),
@@ -362,8 +615,8 @@ def aggiorna_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[str, A
             "ente_incasso_id": lambda p: _PAYLOAD.optional_positive_int(
                 p, "ente_incasso_id"
             ),
-            "importo_dichiarato": lambda p: _decimal_da_payload(
-                p, "importo_dichiarato", obbligatorio=False
+            "importo_dichiarato": lambda p: _PAYLOAD.optional_decimal(
+                p, "importo_dichiarato"
             ),
             "meta": lambda p: _meta_json(p),
         },
@@ -418,59 +671,350 @@ def cambia_stato_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[st
 #  Righe
 # ══════════════════════════════════════════════════════════════════
 
-# Scopo: Le righe di una distinta.
-def list_righe(contabile_id: int) -> dict[str, Any]:
-    repository = PagamentiRepository()
-    _distinta_o_404(repository, contabile_id)
-    righe = repository.list_righe(contabile_id)
-    return {"count": len(righe), "results": righe}
-
-
-# Scopo: Aggiunge una riga alla distinta — un importo arrivato.
-# ⭐ Nasce `DA_ABBINARE`: quando il denaro arriva non si sa ancora di chi sia,
-#    e quello stato dice esattamente questo. Chi sa gia' la fattura la abbina
-#    subito dopo, col verbo dell'abbinamento.
-def crea_riga(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    _PAYLOAD.validate_allowed_keys(
-        payload,
-        allowed=frozenset(
-            {"importo", "riferimento_ente", "data_pagamento", "data_valuta",
-             "data_operazione", "motivo_sospeso", "meta"}
-        ),
+# Scopo: Le righe di una distinta, PAGINATE — la lista `pagamenti.distinta_righe`.
+# ⭐ Offset-based (`limit`/`offset`, la lingua di `useSearchTable`) e risposta
+#    `{count, results}`, come le due sorelle nate su `<ListaConfigurabile>`
+#    (`fatture/{id}/sistemazioni/`, `rate/`). ⛔ Fino al 2026-09-18 rispondeva
+#    `{"count": len(righe), ...}`: un'eco, non un conteggio (api.md §«Il `count`
+#    non si deriva MAI dalle righe»). Ora il totale viene da `COUNT(*) OVER ()`.
+# ⭐ `nullable=True`: «non specificato» e' legittimo e l'ordine lo decide il
+#    repository (`id DESC`); fuori whitelist e' un 400 col campo, non un 500.
+# ⭐ `scartate` (BE-2, D20-c): le SCARTATA — «non e' nostra» — sono FUORI di
+#    default, e la risposta dice quante ne sta nascondendo (`scartate_count`,
+#    la forma di `archiviate_count`): spento e senza numero, «elenco pulito» e
+#    «tre righe messe via» si leggerebbero uguali. A interruttore acceso non
+#    c'e' niente di nascosto e il conteggio non si paga. L'export segue la
+#    lista a video, interruttore compreso.
+def list_righe(
+    contabile_id: int,
+    *,
+    limit: int,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    scartate: bool = False,
+) -> dict[str, Any]:
+    order_by, order_dir = validate_order_params(
+        order_by, order_dir.lower() if order_dir else None,
+        allowed_columns=DISTINTA_RIGHE_SORT_COLUMNS,
+        error_code=E_VALIDAZIONE,
+        function_name=f"{_FN}.list_righe",
+        nullable=True,
     )
-    importo = _decimal_da_payload(payload, "importo", obbligatorio=True)
-    assert importo is not None
+    repository = PagamentiRepository()
+    _distinta_o_404(repository, contabile_id)
+    results, total = repository.list_righe_distinta(
+        contabile_id,
+        escludi_stato_codice=None if scartate else STATO_RIGA_SCARTATA,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+    scartate_count = 0 if scartate else repository.count_righe_in_stato(
+        contabile_id, STATO_RIGA_SCARTATA
+    )
+    return {"count": total, "results": results, "scartate_count": scartate_count}
+
+
+# Scopo: Aggiunge una riga alla distinta — un importo arrivato, e di chi e'.
+# ⭐ D16 (2026-09-14): la riga MANUALE nasce con la destinazione. Con
+#    `fattura_id` nasce `ABBINATA` — fattura, cliente, rata facoltativa e la
+#    forzatura viaggiano nello STESSO `INSERT` dei fatti, atomico per
+#    costruzione. Senza, nasce `DA_ABBINARE`: e' l'eccezione che l'operatore
+#    dichiara («non ho trovato il documento»), e si recupera dalla coda.
+# ⛔ Non due scritture (`create` + `abbina`): i guard di riga — dati richiesti
+#    dallo stato, coerenza rata/fattura, capienza, perimetro emittente — sono
+#    `BEFORE INSERT OR UPDATE`, e sull'INSERT fanno esattamente cio' che fanno
+#    sull'UPDATE. Il doppio tempo della capienza (D14-d) vale anche qui, e il
+#    backend NON lo interpreta: primo tentativo senza `forzata`, 409
+#    confermabile, secondo con `forzata = true` che resta scritto sulla riga.
+# ⚠️ `billing_account_id` assente ⇒ e' quello della fattura (letto, non
+#    dedotto): il guard lo pretende comunque su `ABBINATA`.
+def crea_riga(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    # I FATTI sono gli stessi del PATCH (una lista sola, non una ricopiata),
+    # piu' la destinazione che alla nascita viaggia con loro.
+    _PAYLOAD.validate_allowed_keys(
+        payload, allowed=frozenset({*_CAMPI_RIGA_PATCH, *_CAMPI_DESTINAZIONE})
+    )
+    importo = _PAYLOAD.require_decimal(payload, "importo")
+    destinazione = _destinazione_da_payload(
+        payload, obbligatoria=False, function_name=f"{_FN}.crea_riga"
+    )
 
     repository = PagamentiRepository()
     _distinta_o_404(repository, contabile_id)
+    fattura_id = destinazione["fattura_id"]
+    if fattura_id is not None and destinazione["billing_account_id"] is None:
+        destinazione["billing_account_id"] = _billing_account_della_fattura(
+            repository, fattura_id, function_name=f"{_FN}.crea_riga"
+        )
+    # Lo stato lo decide la presenza della destinazione, non un parametro: una
+    # riga che sa a chi appartiene nasce abbinata, una che non lo sa nasce da
+    # abbinare. Non c'e' un terzo caso da chiedere all'operatore.
+    stato_iniziale = (
+        STATO_RIGA_ABBINATA if fattura_id is not None else STATO_RIGA_SENZA_DESTINAZIONE
+    )
     with _db_errors("crea_riga"):
         riga_id = repository.create_riga(
             contabile_id=contabile_id,
             importo=importo,
-            codice_stato_interno=STATO_RIGA_INIZIALE,
+            codice_stato_interno=stato_iniziale,
             riferimento_ente=_PAYLOAD.optional_string(payload, "riferimento_ente"),
             data_pagamento=_PAYLOAD.optional_date(payload, "data_pagamento"),
             data_valuta=_PAYLOAD.optional_date(payload, "data_valuta"),
             data_operazione=_PAYLOAD.optional_date(payload, "data_operazione"),
             motivo_sospeso=_PAYLOAD.optional_string(payload, "motivo_sospeso"),
             meta=_meta_json(payload),
+            **destinazione,
         )
     return {"riga": _riga_o_404(repository, riga_id)}
 
 
-# Scopo: Aggiorna i FATTI di una riga.
-# ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata e la
-#    forzatura, e perche' un abbinamento e' una decisione — non la correzione
-#    di un dato che era stato digitato male.
+# I FATTI COMUNI di «righe da rate»: valgono per tutte le righe del giro. Sono i
+# fatti della riga MENO l'importo, che e' per rata, e meno `motivo_sospeso`, che
+# non ha senso su una riga che nasce ABBINATA.
+_CAMPI_DA_RATE_COMUNI: tuple[str, ...] = (
+    "riferimento_ente",
+    "data_pagamento",
+    "data_valuta",
+    "data_operazione",
+    "meta",
+)
+
+
+# Scopo: Legge i fatti comuni UNA volta, PRIMA del giro, con gli stessi lettori
+#        che `crea_riga` usa per riga — e li restituisce gia' letti, cosi' che
+#        per riga non ci sia piu' niente da rifiutare su di loro.
+# 🔴 Senza questa lettura una data malformata — un fatto della RICHIESTA, non
+#    di una rata — veniva rifiutata dentro il savepoint di OGNI riga: la
+#    risposta era un 200 con esito `ERRORE` e N fallite identiche, e il
+#    frontend avrebbe mostrato la stessa frase su ogni rata dell'area senza
+#    accendere il campo in testa. Un fatto comune sbagliato e' un 400 col
+#    campo, come su `POST righe/`.
+# ⚠️ Non e' una seconda regola: i lettori sono quelli di `_PAYLOAD`, e
+#    `crea_riga` li riapplica a valori gia' letti (una `date` resta una
+#    `date`, un `dict` resta un `dict`) — stesso esito, nessun secondo parere.
+def _fatti_comuni_da_rate(payload: dict[str, Any], *, function_name: str) -> dict[str, Any]:
+    comuni: dict[str, Any] = {}
+    for chiave in _CAMPI_DA_RATE_COMUNI:
+        if chiave not in payload:
+            continue
+        if chiave == "meta":
+            comuni[chiave] = _PAYLOAD.optional_meta(payload, chiave, function_name=function_name)
+        elif chiave.startswith("data_"):
+            comuni[chiave] = _PAYLOAD.optional_date(payload, chiave, function_name=function_name)
+        else:
+            comuni[chiave] = _PAYLOAD.optional_string(payload, chiave, function_name=function_name)
+    return comuni
+# Per riga: la rata, il suo importo e il secondo tempo.
+_CAMPI_DA_RATE_RIGA: tuple[str, ...] = ("scadenza_id", "importo", *_CAMPI_FORZATURA)
+# Il tetto delle rate in un giro. ⭐ Lo stesso 200 dei verbi di massa delle code
+#    (`archivia/`): un elenco piu' lungo e' un import, non un gesto.
+MAX_RIGHE_DA_RATE = 200
+
+
+# Scopo: Legge l'elenco delle rate scelte, con la regola che un elenco spedito
+#        da un picker rispetta per costruzione — e che, se non rispetta, e' un
+#        difetto del client da dire, non da aggiustare.
+# ⛔ `scadenza_id` DUPLICATO = 400 col campo: deduplicare in silenzio butterebbe
+#    via un importo, e non c'e' modo di sapere quale dei due voleva l'operatore.
+# ⚠️ Elenco VUOTO = 400: «zero righe da rate» non e' un giro a esito
+#    COMPLETATO, e' un payload che non chiede niente.
+def _righe_da_rate_da_payload(payload: dict[str, Any], *, function_name: str) -> list[dict[str, Any]]:
+    righe = payload.get("righe")
+    ErrorManager.require(
+        isinstance(righe, list) and len(righe) > 0,
+        code=E_VALIDAZIONE,
+        message="Indicare almeno una rata.",
+        context={"field": "righe"},
+        function_name=function_name,
+    )
+    assert isinstance(righe, list)
+    ErrorManager.require(
+        len(righe) <= MAX_RIGHE_DA_RATE,
+        code=E_VALIDAZIONE,
+        message=f"Al massimo {MAX_RIGHE_DA_RATE} rate per giro.",
+        detail=f"ricevute {len(righe)}",
+        context={"field": "righe"},
+        function_name=function_name,
+    )
+    letti: list[dict[str, Any]] = []
+    visti: set[int] = set()
+    for indice, riga in enumerate(righe):
+        ErrorManager.require(
+            isinstance(riga, dict),
+            code=E_VALIDAZIONE,
+            message="Ogni riga deve indicare la rata e l'importo.",
+            detail=f"righe[{indice}] non e' un oggetto",
+            context={"field": "righe"},
+            function_name=function_name,
+        )
+        assert isinstance(riga, dict)
+        _PAYLOAD.validate_allowed_keys(riga, allowed=frozenset(_CAMPI_DA_RATE_RIGA))
+        scadenza_id = _PAYLOAD.require_positive_int(
+            riga, "scadenza_id", message="La rata e' obbligatoria su ogni riga."
+        )
+        assert scadenza_id is not None
+        ErrorManager.require(
+            scadenza_id not in visti,
+            code=E_VALIDAZIONE,
+            message="La stessa rata compare due volte nell'elenco.",
+            detail=f"scadenza_id={scadenza_id} (righe[{indice}])",
+            context={"field": "righe", "scadenza_id": scadenza_id},
+            function_name=function_name,
+        )
+        visti.add(scadenza_id)
+        importo = _PAYLOAD.require_decimal(riga, "importo")
+        forzata = _PAYLOAD.optional_bool(riga, "forzata") or False
+        motivo_forzatura = _PAYLOAD.optional_string(riga, "motivo_forzatura")
+        _guard_motivo_con_forzatura(forzata, motivo_forzatura, function_name=function_name)
+        letti.append({
+            "scadenza_id": scadenza_id,
+            "importo": importo,
+            "forzata": forzata,
+            "motivo_forzatura": motivo_forzatura,
+        })
+    return letti
+
+
+# Scopo: N RATE → N RIGHE in un Salva (D19-d, 2026-09-17): le rate scelte nel
+#        picker diventano righe della distinta, ognuna con la propria
+#        destinazione — e' D1 reso a video (*«un incasso che copre tre rate
+#        resta tre righe»*).
+# ⭐ NESSUNA SECONDA STRADA DI INSERIMENTO: per ogni rata si risolve la
+#    fattura (sotto RLS) e si chiama `crea_riga` cosi' com'e' — BA dalla
+#    fattura, stato `ABBINATA`, i guard del database di coerenza rata/fattura e
+#    di capienza sull'`INSERT`. Il backend non decide niente in piu' di quello
+#    che decide per una riga sola.
+# ⭐ ESITO PARZIALE PER RIGA (`run_fan_out`, un savepoint per riga): le riuscite
+#    ENTRANO, le rifiutate tornano al chiamante col loro errore INTERO —
+#    `ErrorTranslator.to_api_error`, la sede unica delle politiche
+#    dell'envelope (hint tolto sui tecnici, bersaglio solo dove c'e' un gesto).
+#    Cosi' la capienza di una rata che non regge risale con
+#    `ui_action = confirm_and_retry` PER QUELLA RIGA, e il secondo tempo e'
+#    per riga: venti righe buone non si perdono per una.
+# ⚠️ Lo status HTTP e' 200 anche su `PARZIALE`/`ERRORE`: chi legge guarda
+#    `esito` e `falliti[]`, come per l'archiviazione delle code.
+# ⚠️ L'idempotenza copre il GIRO (la chiave e' della richiesta): il secondo
+#    tempo e' un giro NUOVO con le sole righe rimaste, e ha una chiave nuova.
+def crea_righe_da_rate(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    fn = f"{_FN}.crea_righe_da_rate"
+    _PAYLOAD.validate_allowed_keys(
+        payload, allowed=frozenset({*_CAMPI_DA_RATE_COMUNI, "righe"})
+    )
+    righe = _righe_da_rate_da_payload(payload, function_name=fn)
+    # I fatti comuni si leggono UNA volta, qui — un 400 col campo se sono
+    # sbagliati — e viaggiano gia' letti su ogni riga.
+    comuni = _fatti_comuni_da_rate(payload, function_name=fn)
+
+    repository = PagamentiRepository()
+    _distinta_o_404(repository, contabile_id)
+
+    # Scopo: UNA riga: risolve la fattura dalla rata e chiama la nascita. Solleva
+    #        su rifiuto — e' cosi' che il fan-out distingue riuscite e fallite,
+    #        e l'eccezione la tiene il BB (`FanOutItemErrore.eccezione`).
+    def _process(voce: tuple[int, dict[str, Any]]) -> dict[str, Any]:
+        indice, riga = voce
+        fattura_id = repository.get_fattura_id_di_rata(riga["scadenza_id"])
+        ErrorManager.require(
+            fattura_id is not None,
+            code=E_RATA_NON_TROVATA,
+            message="Rata non trovata.",
+            detail=f"scadenza_id={riga['scadenza_id']}",
+            context={"field": "scadenza_id"},
+            function_name=fn,
+        )
+        esito_riga = crea_riga(
+            contabile_id,
+            {
+                **comuni,
+                "importo": str(riga["importo"]),
+                "fattura_id": fattura_id,
+                "scadenza_id": riga["scadenza_id"],
+                "forzata": riga["forzata"],
+                **(
+                    {"motivo_forzatura": riga["motivo_forzatura"]}
+                    if riga["motivo_forzatura"] is not None else {}
+                ),
+            },
+        )
+        return {"indice": indice, "scadenza_id": riga["scadenza_id"], "riga": esito_riga["riga"]}
+
+    esito = run_fan_out(list(enumerate(righe)), _process)
+    return {
+        "esito": esito.esito,
+        "richieste": esito.totale,
+        "riuscite": esito.ok,
+        "creati": esito.risultati,
+        "falliti": [
+            {
+                "indice": e.indice,
+                "scadenza_id": righe[e.indice]["scadenza_id"],
+                # ⭐ L'errore INTERO, nella forma dell'envelope e con le sue
+                #    politiche — non un `code` + `message` a mano: il frontend
+                #    ramifica su `ui_action` e mostra `hint`, come su un rifiuto
+                #    arrivato da solo. L'eccezione la porta il BB, anche quando
+                #    nasce FUORI da `_process` (il savepoint stesso): li' e' un
+                #    GUASTO e `to_api_error` lo rende come errore tecnico
+                #    (messaggio della policy, niente `hint` grezzo).
+                "errore": ErrorTranslator.to_api_error(e.eccezione).to_dict(),
+            }
+            for e in esito.errori
+        ],
+    }
+
+
+# Scopo: Elimina una riga di una distinta MANUALE in BOZZA — `attivo = false`.
+# ⭐ D17 (2026-09-14): una riga digitata male su una bozza non e' un fatto — non
+#    e' denaro arrivato, e' un errore di battitura — e si toglie. «Scarta» dice
+#    un'altra cosa (denaro arrivato, non nostro) e CONTA nella quadratura: con
+#    un totale dichiarato, scartare la riga sbagliata non ha via d'uscita.
+# ⛔ Nessuna copia del predicato in Python: i motivi li da' il database
+#    (`script.fn_check_riga_contabile_eliminabile`, la stessa funzione che
+#    alimenta il cestino spento in lista) e il guard rifiuta con
+#    `E_RIGA_CONTABILE_DISTINTA_*` (409), tradotto come ogni altro.
+# ⚠️ Una riga eliminata non e' piu' raggiungibile da nessun verbo: `get_riga`
+#    filtra `attivo`, quindi un secondo DELETE — come un PATCH o un abbina —
+#    risponde «non trovata», che e' la stessa risposta di «non la vedi». Il
+#    doppio invio lo copre l'`Idempotency-Key`, non un ramo «gia' eliminata».
+def elimina_riga(riga_id: int) -> dict[str, Any]:
+    repository = PagamentiRepository()
+    _riga_o_404(repository, riga_id)
+    with _db_errors("elimina_riga"):
+        toccate = repository.disattiva_riga(riga_id)
+    # La riga c'era un istante fa (l'abbiamo letta ATTIVA): zero righe toccate
+    # vuol dire che qualcun altro l'ha eliminata nel frattempo. Per chi chiede
+    # e' la stessa cosa di «non c'e'», ed e' quello che si risponde.
+    ErrorManager.require(
+        toccate > 0,
+        code=E_RIGA_NON_TROVATA,
+        message="Riga contabile non trovata.",
+        detail=f"riga_id={riga_id}",
+        function_name=f"{_FN}.elimina_riga",
+    )
+    return {"riga_id": int(riga_id), "eliminata": True}
+
+
+# Scopo: Aggiorna i FATTI di una riga — e, se serve, il SECONDO TEMPO.
+# ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata, e
+#    perche' un abbinamento e' una decisione — non la correzione di un dato che
+#    era stato digitato male (R-6).
+# ⭐ `forzata` + `motivo_forzatura` SI' (decisione di Tid, 2026-09-15 — Q-H):
+#    correggere un importo puo' incontrare il guard della rata esattamente
+#    come inserirlo, e il rifiuto arriva «confermabile». Senza questa porta il
+#    verbo riceveva una domanda a cui non sapeva rispondere, e il rimedio era
+#    eliminare la riga e ricrearla. Stessa regola della nascita: il motivo solo
+#    con la forzatura, e il backend NON decide che cosa sia forzabile.
 def aggiorna_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repository = PagamentiRepository()
     _riga_o_404(repository, riga_id)
 
     campi = _campi_presenti(
         payload,
-        _CAMPI_RIGA_PATCH,
+        (*_CAMPI_RIGA_PATCH, *_CAMPI_FORZATURA),
         lettori={
-            "importo": lambda p: _decimal_da_payload(p, "importo", obbligatorio=True),
+            "importo": lambda p: _PAYLOAD.require_decimal(p, "importo"),
             "riferimento_ente": lambda p: _PAYLOAD.optional_string(
                 p, "riferimento_ente"
             ),
@@ -479,7 +1023,17 @@ def aggiorna_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             "data_operazione": lambda p: _PAYLOAD.optional_date(p, "data_operazione"),
             "motivo_sospeso": lambda p: _PAYLOAD.optional_string(p, "motivo_sospeso"),
             "meta": lambda p: _meta_json(p),
+            # `null` su una colonna NOT NULL vale «torna al default»: falso.
+            "forzata": lambda p: _PAYLOAD.optional_bool(p, "forzata") or False,
+            "motivo_forzatura": lambda p: _PAYLOAD.optional_string(
+                p, "motivo_forzatura"
+            ),
         },
+    )
+    _guard_motivo_con_forzatura(
+        campi.get("forzata", False),
+        campi.get("motivo_forzatura"),
+        function_name=f"{_FN}.aggiorna_riga",
     )
     if campi:
         with _db_errors("aggiorna_riga"):
@@ -547,47 +1101,26 @@ def cambia_stato_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 #    torna con `forzata = true`. ⛔ Il backend non decide che cosa sia
 #    forzabile — se lo facesse, sarebbe una seconda sede della regola.
 def abbina_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    _PAYLOAD.validate_allowed_keys(
-        payload,
-        allowed=frozenset(
-            {"fattura_id", "billing_account_id", "scadenza_id", "forzata",
-             "motivo_forzatura"}
-        ),
+    _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset(_CAMPI_DESTINAZIONE))
+    destinazione = _destinazione_da_payload(
+        payload, obbligatoria=True, function_name=f"{_FN}.abbina_riga"
     )
-    fattura_id = _PAYLOAD.require_positive_int(
-        payload, "fattura_id", message="La fattura e' obbligatoria per abbinare."
-    )
-    billing_account_id = _PAYLOAD.require_positive_int(
-        payload,
-        "billing_account_id",
-        message="Il cliente e' obbligatorio per abbinare.",
-    )
-    scadenza_id = _PAYLOAD.optional_positive_int(payload, "scadenza_id")
-    forzata = _PAYLOAD.optional_bool(payload, "forzata") or False
-    motivo_forzatura = _PAYLOAD.optional_string(payload, "motivo_forzatura")
-    # ⚠️ Un motivo senza forzatura e' una nota che nessuno leggera' mai: la
-    #    colonna esiste per spiegare una forzatura, e scriverla su una riga non
-    #    forzata lascerebbe a registro una spiegazione di un gesto mai fatto.
-    ErrorManager.require(
-        forzata or motivo_forzatura is None,
-        code=E_VALIDAZIONE,
-        message="Il motivo si scrive solo insieme alla forzatura.",
-        detail="motivo_forzatura richiede forzata = true.",
-        context={"field": "motivo_forzatura"},
-        function_name=f"{_FN}.abbina_riga",
-    )
+    fattura_id = destinazione["fattura_id"]
+    assert fattura_id is not None
 
     repository = PagamentiRepository()
     _riga_o_404(repository, riga_id)
+    # Il cliente, se non lo dice chi chiama, e' quello della fattura — come
+    # alla nascita della riga: stessa regola, stessa lettura.
+    if destinazione["billing_account_id"] is None:
+        destinazione["billing_account_id"] = _billing_account_della_fattura(
+            repository, fattura_id, function_name=f"{_FN}.abbina_riga"
+        )
     with _db_errors("abbina_riga"):
         toccate = repository.abbina_riga(
             riga_id=riga_id,
-            fattura_id=fattura_id,
-            billing_account_id=billing_account_id,
-            scadenza_id=scadenza_id,
-            forzata=forzata,
-            motivo_forzatura=motivo_forzatura,
             codice_stato_interno=STATO_RIGA_ABBINATA,
+            **destinazione,
         )
     ErrorManager.require(
         toccate > 0,
@@ -597,6 +1130,44 @@ def abbina_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.abbina_riga",
     )
     return {"riga": _riga_o_404(repository, riga_id)}
+
+
+# Scopo: La registrazione TARDIVA (D20-b): una riga `SOSPESA` sotto una
+#        distinta gia' registrata si abbina E si registra nello stesso gesto.
+# ⭐ Il payload e' quello di `abbina` (`_CAMPI_DESTINAZIONE`), letto dalla
+#    stessa funzione e con le stesse regole — il cliente, se manca, e' quello
+#    della fattura. E' un verbo suo e non un `abbina` + `stato`: sotto una
+#    CHIUSA il secondo verrebbe rifiutato dalla quarta mossa, e il primo
+#    resterebbe scritto. La madre passa da ABBINATA (girano tutti i guard
+#    dell'abbinamento) e alla quarta mossa si presenta con la GUC.
+# 🔴 Il doppio tempo della capienza passa INTATTO: primo tentativo senza
+#    `forzata`, 409 `confirm_and_retry`, secondo con `forzata = true`. Il
+#    backend non decide che cosa sia forzabile.
+# ⛔ Nessuna verifica di stato qui («e' SOSPESA?», «la distinta e' registrata?»):
+#    sono i guard della madre (`E_RIGA_CONTABILE_TARDIVA_*`), e riscriverli
+#    sarebbe la seconda sede. Il 404 di dominio PRIMA della madre, come per
+#    tutti i verbi: «non esiste» e «non la vedi» restano indistinguibili.
+def registra_riga_tardiva(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset(_CAMPI_DESTINAZIONE))
+    destinazione = _destinazione_da_payload(
+        payload, obbligatoria=True, function_name=f"{_FN}.registra_riga_tardiva"
+    )
+    fattura_id = destinazione["fattura_id"]
+    assert fattura_id is not None
+
+    repository = PagamentiRepository()
+    _riga_o_404(repository, riga_id)
+    if destinazione["billing_account_id"] is None:
+        destinazione["billing_account_id"] = _billing_account_della_fattura(
+            repository, fattura_id, function_name=f"{_FN}.registra_riga_tardiva"
+        )
+    with _db_errors("registra_riga_tardiva"):
+        ricevuta: RicevutaTardiva = repository.posta_riga_tardiva(
+            riga_id=riga_id, **destinazione
+        )
+    # La riga com'e' adesso — POSTATA, col movimento scritto — accanto alla
+    # ricevuta: chi ha premuto vede il fatto, non solo un id.
+    return {**ricevuta, "riga": _riga_o_404(repository, riga_id)}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -651,7 +1222,19 @@ def list_coda_righe(
         limit=page_size,
         offset=offset,
     )
-    return _risposta_paginata(results, total, page, page_size)
+    # ⭐ Il catalogo degli stati di riga e le uscite richiedibili DA OGNI STATO
+    #    viaggiano ACCANTO alle righe (FE-4, D20): dalla coda si lavora — abbina,
+    #    sospendi, scarta, riporta — e le voci del kebab si costruiscono dalla
+    #    MATRICE, come nel drawer. ⛔ Non un elenco cablato nel frontend, e non
+    #    un endpoint suo: pulsanti e righe vengono dalla stessa lettura, quindi
+    #    non possono raccontare due istanti diversi (la forma di `stati` sul
+    #    registro lotti).
+    _grafo_distinta, grafo_riga = repository.list_transizioni()
+    return {
+        **_risposta_paginata(results, total, page, page_size),
+        "stati_riga": repository.list_stati_riga(),
+        "transizioni_riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
+    }
 
 
 # Scopo: Le rate uscite dalla banda di capienza.
@@ -765,7 +1348,7 @@ def registra_distinta(contabile_id: int, payload: dict[str, Any]) -> RicevutaPos
     #    righe non e' un caso reale, e se lo diventasse con l'import si allarga
     #    qui — un errore parlante, non un troncamento silenzioso.
     righe_attese = _PAYLOAD.optional_smallint(payload, "righe_attese", min_val=0)
-    totale_atteso = _decimal_da_payload(payload, "totale_atteso", obbligatorio=False)
+    totale_atteso = _PAYLOAD.optional_decimal(payload, "totale_atteso")
     ErrorManager.require(
         (righe_attese is None) == (totale_atteso is None),
         code=E_VALIDAZIONE,

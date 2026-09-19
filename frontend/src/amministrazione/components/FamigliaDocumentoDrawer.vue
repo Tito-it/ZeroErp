@@ -219,7 +219,6 @@ const titolo = computed(() => (isEdit.value
             v-model="form.codice_interno"
             :maxlength="FIELD_LENGTH.FAMIGLIA_CODICE_MAX"
             :disabled="isReadonly || isEdit"
-            class="w-full"
           />
           <small v-if="isEdit" class="app-field-hint">
             {{ t('amministrazione.famiglie_documento.codice_immutabile') }}
@@ -231,12 +230,11 @@ const titolo = computed(() => (isEdit.value
             v-model="form.descrizione"
             :maxlength="FIELD_LENGTH.FAMIGLIA_DESCRIZIONE_MAX"
             :disabled="isReadonly"
-            class="w-full"
           />
         </div>
       </div>
 
-      <h4 class="mt-3">{{ t('amministrazione.famiglie_documento.sezione_dove_vive') }}</h4>
+      <h4>{{ t('amministrazione.famiglie_documento.sezione_dove_vive') }}</h4>
       <!-- ⭐ Il motivo si LEGGE, non si deduce dal campo grigio. -->
       <Message v-if="strutturaBloccata" severity="info" :closable="false">
         {{ motivoStruttura }}
@@ -247,7 +245,6 @@ const titolo = computed(() => (isEdit.value
           <InputText
             v-model="form.schema_tabella"
             :disabled="isReadonly || strutturaBloccata"
-            class="w-full"
           />
         </div>
         <div class="form-field">
@@ -255,7 +252,6 @@ const titolo = computed(() => (isEdit.value
           <InputText
             v-model="form.nome_tabella"
             :disabled="isReadonly || strutturaBloccata"
-            class="w-full"
           />
           <small class="app-field-hint">{{ tabellaCompleta }}</small>
         </div>
@@ -264,23 +260,28 @@ const titolo = computed(() => (isEdit.value
           <InputText
             v-model="form.colonna_numero"
             :disabled="isReadonly || strutturaBloccata"
-            class="w-full"
           />
         </div>
         <div class="form-field">
-          <label>{{ t('vendite.famiglie_documento.col_colonna_billing_account') }} *</label>
+          <!-- Dal 2026-09-14 (P-9 di brief-db-modifiche-certe-ciclo-vendita-e-
+               articolo) NON e' piu' obbligatoria: vuota = NULL = «questa
+               famiglia non ha un billing account», la forma dell'ordine di
+               acquisto (controparte = soggetto_ruolo). Stessa disciplina di
+               `colonna_serie`: e' il backend a normalizzare il vuoto a NULL. -->
+          <label>{{ t('vendite.famiglie_documento.col_colonna_billing_account') }}</label>
           <InputText
             v-model="form.colonna_billing_account"
             :disabled="isReadonly || strutturaBloccata"
-            class="w-full"
           />
+          <small class="app-field-hint">
+            {{ t('amministrazione.famiglie_documento.billing_account_hint') }}
+          </small>
         </div>
         <div class="form-field">
           <label>{{ t('vendite.famiglie_documento.col_colonna_serie') }}</label>
           <InputText
             v-model="form.colonna_serie"
             :disabled="isReadonly || strutturaBloccata"
-            class="w-full"
           />
           <!-- ⚠️ Vuota non è «non compilata»: è un'informazione. E il database
                pretende che, se c'è, quella colonna distingua il numero. -->
@@ -290,7 +291,7 @@ const titolo = computed(() => (isEdit.value
         </div>
       </div>
 
-      <h4 class="mt-3">{{ t('amministrazione.famiglie_documento.sezione_forma') }}</h4>
+      <h4>{{ t('amministrazione.famiglie_documento.sezione_forma') }}</h4>
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('vendite.famiglie_documento.col_prefisso_default') }}</label>
@@ -298,7 +299,6 @@ const titolo = computed(() => (isEdit.value
             v-model="form.prefisso_default"
             :maxlength="FIELD_LENGTH.FAMIGLIA_PREFISSO_MAX"
             :disabled="isReadonly"
-            class="w-full"
           />
         </div>
         <div class="form-field">
@@ -308,7 +308,6 @@ const titolo = computed(() => (isEdit.value
             :min="REGISTRO_CIFRE_MIN"
             :max="REGISTRO_CIFRE_MAX"
             :disabled="isReadonly"
-            class="w-full"
           />
         </div>
       </div>
@@ -322,7 +321,7 @@ const titolo = computed(() => (isEdit.value
 
       <!-- Sola lettura: ciò che la famiglia È, e che da qui non si cambia. -->
       <template v-if="isEdit && dettaglio">
-        <h4 class="mt-3">{{ t('amministrazione.famiglie_documento.sezione_stato') }}</h4>
+        <h4>{{ t('amministrazione.famiglie_documento.sezione_stato') }}</h4>
         <div class="form-grid">
           <!-- ⚠️ IL CONTEGGIO E' SU TUTTI GLI EMITTENTI, e va detto: questa
                schermata e' globale, ma chi ci arriva dal mondo dei registri —

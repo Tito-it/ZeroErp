@@ -10,8 +10,10 @@
 -- 4) Lotto inesistente: lotto_info_count = 0
 -- 5) Lotto inesistente: fatture_stato_esecuzione_errore_count = 0
 -- 6) Nuova colonna fatture_stato_esecuzione_errore_count presente in output
--- 7) Colonna esiti_stato_esecuzione_errore_count (D2, 2026-09-12) presente,
---    DECIMA e ultima: il backend legge la riga per posizione
+-- 7) Colonna `fermo` (D-1, 2026-09-19) presente, UNDICESIMA e ultima: il
+--    backend legge la riga per posizione. Fino al 19-09 l'ultima era la decima,
+--    esiti_stato_esecuzione_errore_count (D2, 2026-09-12): il pin si sposta con
+--    la colonna, la ragione resta.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -87,18 +89,20 @@ SELECT ok(
   'Nuova colonna fatture_stato_esecuzione_errore_count presente in output'
 );
 
--- 7) D2 (brief-db-rilancio-step-non-rivede-le-proprie-commesse, changeSet
---    20260912-16): il decimo conteggio esiste ed e' in CODA. La posizione non
---    e' estetica: il backend mappa la riga per posizione, e una colonna in
---    mezzo farebbe scivolare le altre senza che niente protesti.
+-- 7) D-1 (brief-db-osservabilita-lotto-fermo-r6-indici, changeSet
+--    20260919-02): il verdetto `fermo` esiste ed e' in CODA, undicesimo, dopo
+--    il decimo conteggio (D2, 20260912-16). La posizione non e' estetica: il
+--    backend mappa la riga per posizione, e una colonna in mezzo farebbe
+--    scivolare le altre senza che niente protesti.
 SELECT is(
   (
-    SELECT a.proargnames[array_upper(a.proargnames, 1)]
+    SELECT a.proargnames[array_upper(a.proargnames, 1) - 1] || ' < ' ||
+           a.proargnames[array_upper(a.proargnames, 1)]
       FROM pg_proc a JOIN pg_namespace n ON n.oid = a.pronamespace
      WHERE n.nspname = 'vendite' AND a.proname = 'fn_get_lotto_segnalazioni_summary'
   ),
-  'esiti_stato_esecuzione_errore_count',
-  'Colonna esiti_stato_esecuzione_errore_count presente in output, decima e ULTIMA'
+  'esiti_stato_esecuzione_errore_count < fermo',
+  'Colonna fermo presente in output, undicesima e ULTIMA, dopo esiti_stato_esecuzione_errore_count'
 );
 
 SELECT * FROM finish();

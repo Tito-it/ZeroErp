@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from django.db import DatabaseError
 
+from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
@@ -27,6 +28,9 @@ from apps.core.services.partitioned_note_service import PartitionedNoteService
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
+    GIORNALE_GRAVITA,
+    GIORNALE_REGISTRI,
+    GIORNALE_SORT_COLUMNS,
     LOTTO_FATTURE_SORT_COLUMNS,
     LOTTO_GRUPPI_SORT_COLUMNS,
     MOTIVO_NON_FATTURATA_RESIDUO,
@@ -2134,6 +2138,90 @@ def get_lotto_giornale(
         "info_count": 0 if includi_info else info_vive,
         "results": righe,
     }
+
+
+_FN_GIORNALE = "vendite.vendite_service.get_giornale_trasversale"
+
+
+# Scopo: il GIORNALE TRASVERSALE — la Storia di tutte le entita' insieme,
+#        filtrata per gravita' (pezzo G dell'osservabilita', 2026-09-19):
+#        valida i vocabolari, delega al terzo lettore della vista e compone
+#        l'envelope paginato standard piu' `ritirate_count`.
+# ⛔ NESSUN cancello di testata: qui non c'e' UNA entita' da autorizzare prima
+#    di leggere — il perimetro lo applica la vista (`security_invoker`) riga
+#    per riga e nei conteggi, e la lista sta dietro il cancello di perimetro
+#    emittente della view (`lista_codice = "vendite.giornale"`). Fuori scope la
+#    riga non c'e', e `count` dice il numero VISTO.
+# ⚠️ `gravita`/`registro` fuori vocabolario -> 400: e' un contratto dichiarato,
+#    e un valore ignoto che rispondesse «zero righe» sarebbe un errore educato
+#    che nessuno vede.
+def get_giornale_trasversale(
+    *,
+    gravita: list[str] | None = None,
+    registri: list[str] | None = None,
+    entity_type: str | None = None,
+    data_da: date | None = None,
+    data_a: date | None = None,
+    filo: str | None = None,
+    solo_vive: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+) -> dict[str, object]:
+    gravita_richiesta = [g.upper() for g in (gravita or []) if g] or ["ERROR"]
+    ErrorManager.require(
+        all(g in GIORNALE_GRAVITA for g in gravita_richiesta),
+        code="E_VENDITE_VALIDATION",
+        message="Parametro gravita non valido.",
+        detail=f"gravita={gravita_richiesta}, ammessi={list(GIORNALE_GRAVITA)}",
+        context={"field": "gravita"},
+        function_name=_FN_GIORNALE,
+    )
+    registri_richiesti = [r.upper() for r in (registri or []) if r] or None
+    ErrorManager.require(
+        registri_richiesti is None or all(r in GIORNALE_REGISTRI for r in registri_richiesti),
+        code="E_VENDITE_VALIDATION",
+        message="Parametro registro non valido.",
+        detail=f"registro={registri_richiesti}, ammessi={sorted(GIORNALE_REGISTRI)}",
+        context={"field": "registro"},
+        function_name=_FN_GIORNALE,
+    )
+    ErrorManager.require(
+        int(limit) > 0 and int(offset) >= 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri di paginazione non validi.",
+        detail=f"limit={limit}, offset={offset}",
+        function_name=_FN_GIORNALE,
+    )
+    # ⛔ Un `order_by` fuori whitelist e' un 400: `_giornale_order_clause`
+    #    ripiegherebbe sull'ordine per GRAVITA' senza dirlo — una lista
+    #    ordinata diversamente da come e' stata chiesta non solleva niente.
+    _valida_ordinamento(order_by, order_dir, whitelist=GIORNALE_SORT_COLUMNS, function_name=_FN_GIORNALE)
+    righe, vive, ritirate, _info_vive = VenditeRepository().list_giornale_trasversale(
+        gravita=gravita_richiesta,
+        registri=registri_richiesti,
+        entity_type=entity_type.upper() if entity_type else None,
+        data_da=data_da,
+        data_a=data_a,
+        filo=filo,
+        solo_vive=solo_vive,
+        limit=limit,
+        offset=offset,
+        # ⭐ Il default e' il TEMPO, dal piu' recente (non la gravita' come sulla
+        #    Storia di un'entita'): qui la gravita' e' gia' un FILTRO, e la
+        #    domanda che resta e' «cosa e' successo per ultimo».
+        sort_by=order_by or "quando",
+        sort_dir=(order_dir or "desc").lower(),
+    )
+    # ⚠️ Il totale e' quello che l'elenco MOSTRA: le vive, piu' le ritirate se
+    #    le si e' chieste. `info_vive` qui non entra: le INFO non sono mai
+    #    nascoste da un filtro implicito (o si chiedono con `gravita`, o no).
+    total_count = vive + (0 if solo_vive else ritirate)
+    page = int(offset) // int(limit) + 1
+    envelope = paginated_envelope(righe, total_count, page, int(limit))
+    envelope["ritirate_count"] = ritirate if solo_vive else 0
+    return envelope
 
 
 # Scopo: Restituisce l'elenco paginato dei fondi fattura «da decidere»

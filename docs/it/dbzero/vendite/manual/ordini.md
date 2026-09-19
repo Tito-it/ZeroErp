@@ -60,7 +60,7 @@ crea l'ordine, allineata a preventivi/contratti/offerte. Serve allo scope
 RLS operatore (convenzione PK).
 
 * **Valorizzazione**: trigger `trg_ordini_a10_default_emittente_ins`
-  ([trgfn_ordini_default_emittente](/dbzero/vendite/funzioni/trgfn_ordini_default_emittente)),
+  ([script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale), il building block unico dal 2026-09-15),
   via GUC `app.current_user_id` → `fn_resolve_emittente_for_user`. Skip se
   già valorizzato nel payload (admin globale / push).
 * **Coerenza BA**: guard `trg_ordini_a10_guard_emittente_ba_ins_upd`

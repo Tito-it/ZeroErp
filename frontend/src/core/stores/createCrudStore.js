@@ -37,28 +37,41 @@ import { useListaStoreCore } from '../composables/useListaStoreCore'
 // Params:
 //   - api: { list, detail?, create, update } — fn che ritornano response axios
 //   - tabEntity: chiave tab event bus per emitDataChanged (TAB_ENTITIES.X o stringa)
-//   - filterDefaults: chiavi filtro di dominio con default (no search/limit/offset/order_*).
-//       I filtri sempre-inviati-ma-non-gate (es. `attivo: true`) stanno qui e NON in gateKeys.
-//   - gateKeys: sottoinsieme di filterDefaults che conta per hasFilters (gate lista-vuota).
-//       Irrilevante quando startsEmpty:false.
-//   - startsEmpty: true (default) → lista parte vuota (gate empty-state);
-//       false → lista parte piena (always-fetch, es. admin/geo).
-//   - orderBy / orderDir: ordinamento default
 //   - createIdField: campo id dell'entita creata, per emitDataChanged (default 'id')
 //   - extraActions: { nome: fn(id) } azioni extra (es. disattiva/riattiva), wrappate con emit
+//   - afterWrite: (id, azione) => void — l'aggancio post-write, chiamato dopo
+//       OGNI scrittura riuscita (`create`, `update`, ogni `extraActions`) e
+//       PRIMA di `emitDataChanged`: chi ascolta l'evento e ricarica deve
+//       trovare gia' invalidato cio' che va invalidato. `azione` e' il nome
+//       (`'create'`, `'update'`, o quello dell'azione extra). ⭐ Nasce il
+//       2026-09-18 alla SECONDA occorrenza (regola del 2, ok Tid): `unitaMisura`
+//       e `uomTipi` dovevano invalidare la cache del lookup (`LookupSelect` con
+//       `rel=catalogo.*` la tiene in memoria) e per quella sola riga tenevano
+//       il CRUD scritto a mano — tre metodi identici alla factory piu' una
+//       chiamata. ⚠️ E' un aggancio, non un `extend`: l'extend AGGIUNGE, questo
+//       si infila nel giro di scrittura che la factory gia' possiede.
+//   - extend: (ctx) => oggetto — escape-hatch per stato/metodi custom, mergiato
+//       sopra l'esposto. `ctx` e' il core INTERO (`useListaStoreCore`) piu'
+//       `emitDataChanged`: quindi anche `svuota`, `reset`, `paramsFiltro`… e
+//       il `fetchList` del core, che l'extend puo' avvolgere e ri-esporre col
+//       suo nome (listini: il preload delle versioni dopo la pagina).
 //   - options: passthrough a defineStore (default { userScoped: true })
+//   - ...core: TUTTE le altre opzioni vanno a `useListaStoreCore` tal quali
+//       (`filterDefaults`, `gateKeys`, `startsEmpty`, `ricercaCorta`, `orderBy`,
+//       `orderDir`, `orderDirDefault`, `paramNames`, `limit`).
+//       ⚠️ Passthrough e non un elenco: fino al 2026-09-18 la factory
+//       ricopiava sei nomi a mano, e `limit` — nato nel core la mattina stessa —
+//       qui NON arrivava. Un'opzione del core che la factory non conosce e'
+//       un'opzione che lo store scrive e il BB ignora, senza nessun errore.
 export function createCrudStore(storeId, {
   api,
   tabEntity,
-  filterDefaults = {},
-  gateKeys = [],
-  startsEmpty = true,
-  orderBy = null,
-  orderDir = 'asc',
   createIdField = 'id',
   extraActions = {},
+  afterWrite = null,
   extend = null,
   options = {},
+  ...core
 } = {}) {
   return defineStore(storeId, () => {
     const { emitDataChanged } = useTabEvents()
@@ -67,15 +80,7 @@ export function createCrudStore(storeId, {
     //    (regola del 2, ok Tid): filtri, fetch paginata, cancello empty-state,
     //    sospensione e reset erano scritti qui e ricopiati a mano da tre store
     //    che il CRUD non ce l'hanno. Qui resta solo cio' che e' CRUD.
-    const lista = useListaStoreCore({
-      fetchPage: api.list,
-      filterDefaults,
-      gateKeys,
-      startsEmpty,
-      orderBy,
-      orderDir,
-    })
-    const { items, totalRecords, loading, hasSearched, filters, fetchList } = lista
+    const lista = useListaStoreCore({ fetchPage: api.list, ...core })
 
     // Scopo: Dettaglio completo dell'entita.
     async function fetchDetail(id) {
@@ -83,25 +88,33 @@ export function createCrudStore(storeId, {
       return res.data.data
     }
 
+    // Scopo: il giro comune di ogni scrittura riuscita — l'aggancio post-write
+    //        (se dichiarato) e POI la notifica alle altre tab, in quest'ordine:
+    //        chi riceve l'evento e ricarica deve trovare la cache gia' pulita.
+    function dopoScrittura(id, azione) {
+      if (typeof afterWrite === 'function') afterWrite(id, azione)
+      emitDataChanged(tabEntity, id)
+    }
+
     // Scopo: Crea l'entita e notifica le altre tab.
     async function create(payload) {
       const res = await api.create(payload)
-      emitDataChanged(tabEntity, res.data.data[createIdField])
+      dopoScrittura(res.data.data[createIdField], 'create')
       return res.data.data
     }
 
     // Scopo: Aggiorna l'entita e notifica le altre tab.
     async function update(id, payload) {
       const res = await api.update(id, payload)
-      emitDataChanged(tabEntity, id)
+      dopoScrittura(id, 'update')
       return res.data.data
     }
 
     // ⚠️ Si riespone TUTTO il core (`fetchSospesa`, `erroreCaricamento`,
-    //    `svuota`, `reset`) e non un sottoinsieme scelto a mano: un'esposizione
-    //    parziale e' il modo in cui `fetchSospesa` era sparita dalle tre copie
-    //    scritte a mano — senza rompere niente, perche' chi la legge lo fa con
-    //    un guard `'fetchSospesa' in store`.
+    //    `svuota`, `reset`, `paramsFiltro`) e non un sottoinsieme scelto a
+    //    mano: un'esposizione parziale e' il modo in cui `fetchSospesa` era
+    //    sparita dalle tre copie scritte a mano — senza rompere niente, perche'
+    //    chi la legge lo fa con un guard `'fetchSospesa' in store`.
     const exposed = { ...lista, create }
     // update e fetchDetail esposti solo se l'api relativa esiste (es. comuni
     // e' create-only → niente update).
@@ -111,21 +124,22 @@ export function createCrudStore(storeId, {
     if (typeof api.detail === 'function') {
       exposed.fetchDetail = fetchDetail
     }
-    // Azioni extra (es. disattiva/riattiva): wrap uniforme con emitDataChanged.
+    // Azioni extra (es. disattiva/riattiva): stesso giro di scrittura di
+    // create/update (aggancio post-write + emitDataChanged).
     for (const [name, fn] of Object.entries(extraActions)) {
       exposed[name] = async (id) => {
         const res = await fn(id)
-        emitDataChanged(tabEntity, id)
+        dopoScrittura(id, name)
         return res.data.data
       }
     }
     // Escape-hatch: stato/metodi custom (sub-resource, usage, ...) con accesso
-    // allo stato interno + emitDataChanged. Mergiati nell'exposed. Usato dagli
-    // store admin con sotto-risorse (es. emittentiFiscali BA/utilities).
+    // al core intero + emitDataChanged. Mergiati nell'exposed: chi ri-espone
+    // una chiave del core (es. `fetchList` avvolto) lo fa apposta. Usato dagli
+    // store admin con sotto-risorse (es. emittentiFiscali BA/utilities) e da
+    // `listini` (cache versioni + preload dopo la pagina).
     if (typeof extend === 'function') {
-      Object.assign(exposed, extend({
-        emitDataChanged, filters, items, totalRecords, loading, hasSearched, fetchList,
-      }) || {})
+      Object.assign(exposed, extend({ ...lista, emitDataChanged }) || {})
     }
     return exposed
   }, { userScoped: true, ...options })

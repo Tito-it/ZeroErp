@@ -193,7 +193,6 @@ async function onValidaPIVA() {
         option-value="id"
         :placeholder="t('common.select_tipo_soggetto')"
         :disabled="disabled"
-        class="w-full"
       />
     </div>
 
@@ -201,25 +200,25 @@ async function onValidaPIVA() {
     <template v-if="isPF">
       <div class="form-field">
         <label>{{ t('common.cognome') }} *</label>
-        <InputText v-model="form.cognome" :disabled="disabled" class="w-full"
+        <InputText v-model="form.cognome" :disabled="disabled"
           @blur="form.cognome = capitalizeWords(form.cognome)" />
       </div>
       <div class="form-field">
         <label>{{ t('common.nome') }} *</label>
-        <InputText v-model="form.nome" :disabled="disabled" class="w-full"
+        <InputText v-model="form.nome" :disabled="disabled"
           @blur="form.nome = capitalizeWords(form.nome)" />
       </div>
       <div class="form-row-inline">
         <div class="form-field" style="flex: 0 0 8rem;">
           <label>{{ t('common.sesso') }}</label>
           <Select v-model="form.sesso" :options="sessoOptions"
-            option-label="label" option-value="value" :disabled="disabled" class="w-full" />
+            option-label="label" option-value="value" :disabled="disabled" />
         </div>
         <div class="form-field" style="flex: 1;">
           <label>{{ t('common.data_nascita') }}</label>
-          <InputText v-if="disabled" :model-value="displayDate(form.data_nascita)" disabled class="w-full" />
+          <InputText v-if="disabled" :model-value="displayDate(form.data_nascita)" disabled />
           <DatePicker v-else v-model="form.data_nascita" :dateFormat="DATE_FORMAT"
-            show-icon icon-display="input" show-button-bar :manual-input="true" class="w-full" />
+            show-icon icon-display="input" show-button-bar :manual-input="true" />
         </div>
       </div>
       <div class="form-field">
@@ -233,7 +232,7 @@ async function onValidaPIVA() {
     <template v-else>
       <div class="form-field">
         <label>{{ t('common.ragione_sociale') }} *</label>
-        <InputText v-model="form.ragione_sociale" :disabled="disabled" class="w-full"
+        <InputText v-model="form.ragione_sociale" :disabled="disabled"
           @blur="form.ragione_sociale = capitalizeFirst(form.ragione_sociale)" />
       </div>
     </template>
@@ -243,7 +242,7 @@ async function onValidaPIVA() {
       <div class="form-field">
         <label>{{ t('common.codice_fiscale') }} *</label>
         <div class="app-input-with-action">
-          <InputText v-model="form.codice_fiscale" :disabled="disabled || cfDisabled" class="w-full"
+          <InputText v-model="form.codice_fiscale" :disabled="disabled || cfDisabled"
             :invalid="campiErrati.includes('codice_fiscale') || cfHaErrore"
             @blur="onValidaCF"
             @keypress="blockNonAlphanumeric"
@@ -268,7 +267,7 @@ async function onValidaPIVA() {
 
       <div v-if="showPartitaIva" class="form-field">
         <label>{{ t('common.partita_iva') }} *</label>
-        <InputText v-model="form.partita_iva" :disabled="disabled || pivaDisabled" class="w-full"
+        <InputText v-model="form.partita_iva" :disabled="disabled || pivaDisabled"
           :invalid="campiErrati.includes('partita_iva')"
           @blur="onValidaPIVA" />
         <Message v-for="(msg, i) in pivaMessages" :key="i" :severity="msg.severity" size="small" class="mt-1">

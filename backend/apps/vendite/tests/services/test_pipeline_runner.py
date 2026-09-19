@@ -167,6 +167,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 "lotto_info_count": 0,
                 "fatture_stato_esecuzione_errore_count": 0,
                 "esiti_stato_esecuzione_errore_count": 0,
+                # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                #    dichiara coerente con gli addendi, come fa la vista.
+                "fermo": False,
             }
 
         # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
@@ -745,6 +748,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": True,
                 }
 
         # D-Q p.1: il blocco vale per l'AVANZAMENTO. Lotto ESISTENTE (non in
@@ -783,6 +789,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "documenti_presi_in_carico_count": 2,
                     "critiche_giro_count": 0,
                     "esiti_stato_esecuzione_errore_count": 2,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": True,
                 }
 
         # Lotto ESISTENTE che tenterebbe l'avanzamento allo step 2 (come i due
@@ -813,6 +822,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 2,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": True,
                 }
 
         # Come sopra: lotto ESISTENTE che tenterebbe l'avanzamento allo step 2.
@@ -847,6 +859,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": True,
                 }
 
         repo = _ErroreRerunRepo()
@@ -880,6 +895,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": errore,
                 }
 
         repo = _ErroreDuranteStepRepo()
@@ -922,6 +940,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": False,
                 }
 
         repo = _OnlyWarningsRepo()
@@ -1334,6 +1355,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": True,
                 }
 
         repo = _CriticalRepo()
@@ -1379,6 +1403,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": errore,
                 }
 
         repo = _ErroreDuranteStepStatefulRepo()
@@ -1423,6 +1450,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
                     "esiti_stato_esecuzione_errore_count": 0,
+                    # ⭐ Il verdetto lo dice il DB (D-V1, 2026-09-19): il fake lo
+                    #    dichiara coerente con gli addendi, come fa la vista.
+                    "fermo": errore,
                 }
 
         repo = _RilancioRiuscitoRepo()

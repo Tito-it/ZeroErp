@@ -193,9 +193,11 @@ if [[ -z "$PREV_PAYLOAD" ]]; then
     log_info "Suggerimento: verifica che l'utente smoke abbia un emittente con almeno un BA valido (utility+istanza)."
     exit 1
 fi
-# L'operatore smoke puo' non avere emittente assegnato (E_PREV_EMITTENTE_NON_RISOLTO
-# dal trigger default trgfn_preventivi_default_emittente): inietta un emittente
-# esplicito nel payload (default 32, override EMITTENTE_ID), come fa lo smoke 1a.
+# L'operatore smoke puo' non avere emittente assegnato (E_EMITTENTE_NON_RISOLTO
+# dal trigger default script.trgfn_default_emittente_fiscale, BB unico dal
+# 2026-09-15 al posto della copia trgfn_preventivi_default_emittente): inietta un
+# emittente esplicito nel payload (default 32, override EMITTENTE_ID), come fa lo
+# smoke 1a.
 EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
 PREV_PAYLOAD=$(echo "$PREV_PAYLOAD" | python3 -c "
 import sys, json

@@ -28,6 +28,7 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | correlation_id | uuid | YES |  |
+| cleanup_at | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,6 +44,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_fatturazione_lotti_task_runs_started_at | `CREATE INDEX ix_fatturazione_lotti_task_runs_started_at ON vendite.fatturazione_lotti_task_runs USING btree (started_at)` |
 | ix_task_runs_correlation | `CREATE INDEX ix_task_runs_correlation ON vendite.fatturazione_lotti_task_runs USING btree (correlation_id) WHERE (correlation_id IS NOT NULL)` |
 | pk_fatturazione_lotti_task_runs | `CREATE UNIQUE INDEX pk_fatturazione_lotti_task_runs ON vendite.fatturazione_lotti_task_runs USING btree (id)` |
 | uq_fatt_lotti_task_runs_lotto_step_task_try | `CREATE UNIQUE INDEX uq_fatt_lotti_task_runs_lotto_step_task_try ON vendite.fatturazione_lotti_task_runs USING btree (lotto_id, stato_doc_fiscale_id, task_code, tentativo)` |
@@ -54,10 +56,11 @@
 | trg_fatturazione_lotti_task_runs_a10_fatturazione_pipeli_7a7b94 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'fatturazione_pipeline', 'attivo', 'pipeline_id', 'id')` |
 | trg_fatturazione_lotti_task_runs_a10_stati_doc_fiscale_r_564554 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id', 'id')` |
 | trg_fatturazione_lotti_task_runs_a10_stati_doc_fiscale_r_564554 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id', 'id')` |
-| trg_fatturazione_lotti_task_runs_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_task_runs_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_fatturazione_lotti_task_runs_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_task_runs_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_task_runs_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_task_runs_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_task_runs_m50_cleanup_at_ins | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()` |
 
 ---
 {% include-markdown "signature-core.md" %}

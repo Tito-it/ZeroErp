@@ -18,8 +18,8 @@ documenti che non si sovrappongono e a cui questa pagina **non si sostituisce**:
 | Documento | Che cosa contiene |
 | --- | --- |
 | [brief-incassi-riconciliazione-rate-promemoria.md](../../../dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) | le **decisioni di dominio** (D1…D15) col loro perché |
-| [brief-db-posting-e-abbinamento-rata.md](../../../dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md) | il lato **database**: sette lotti, 15 guard, 2 matrici di transizione, la RLS |
-| [brief-be-fe-posting-e-abbinamento-rata.md](../../../dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | il piano **BE/FE**, le nove domande chiuse, lo stato di sviluppo |
+| [brief-db-posting-e-abbinamento-rata.md](../../../dev/work-done/brief-db-posting-e-abbinamento-rata.md) | il lato **database**: sette lotti, 15 guard, 2 matrici di transizione, la RLS |
+| [brief-be-fe-posting-e-abbinamento-rata.md](../../../dev/work-done/brief-be-fe-posting-e-abbinamento-rata.md) | il piano **BE/FE**, le nove domande chiuse, lo stato di sviluppo |
 
 Qui c'è **il contratto**: che cosa si chiama, che cosa si manda, che cosa
 torna, e quale codice esce quando non si può.
@@ -60,16 +60,20 @@ Tutte sotto `/api/v1/pagamenti/`. ✅ = `Idempotency-Key` obbligatoria.
 | Metodo | Path | Cosa | Idem-Key | Gate |
 | --- | --- | --- | :---: | --- |
 | `GET`/`POST` | `distinte/` | elenco paginato · apre (o ritrova) la distinta manuale | ✅ su POST | area |
-| `GET`/`PATCH` | `distinte/{contabile_id}/` | dettaglio con righe e cataloghi · i campi compilabili | — | area |
+| `GET`/`PATCH` | `distinte/{contabile_id}/` | dettaglio con cataloghi e transizioni (⚠️ **senza righe** dal 18/09) · i campi compilabili | — | area |
 | `POST` | `distinte/{contabile_id}/stato/` | il percorso della distinta: `VALIDATA` · `BOZZA` · `ANNULLATA` | ✅ | area |
-| `GET`/`POST` | `distinte/{contabile_id}/righe/` | le righe · un importo arrivato | ✅ su POST | area |
+| `GET`/`POST` | `distinte/{contabile_id}/righe/` | le righe, **paginate** (lista `pagamenti.distinta_righe`, dal 18/09), **scartate fuori di default** (`?scartate=1`, dal 19/09) · un importo arrivato, **e di chi è** (D16) | ✅ su POST | area |
+| `GET` | `distinte/{contabile_id}/righe/export/` | ⭐ **la contabile in CSV/Excel** (dal 18/09): le colonne sono quelle che l'operatore vede | — | area |
 | `GET` | `distinte/{contabile_id}/anteprima-registrazione/` | la fotografia di ciò che succede se si registra adesso | — | area |
 | `POST` | `distinte/{contabile_id}/registra/` | ⭐ **la madre**: registra, una sola `SELECT` | ✅ | `registra_distinta` |
 | `POST` | `distinte/{contabile_id}/correggi/` | la **correzione guidata**: una distinta nuova a segno opposto | ✅ | `registra_distinta` |
-| `PATCH` | `righe/{riga_id}/` | i **fatti** della riga (come è arrivato il denaro) | — | area |
+| `PATCH`/`DELETE` | `righe/{riga_id}/` | i **fatti** della riga (come è arrivato il denaro) · **elimina** la riga (D17, `attivo = false`) | ✅ su DELETE | area |
 | `POST` | `righe/{riga_id}/stato/` | il percorso della riga | ✅ | area |
 | `POST` | `righe/{riga_id}/abbina/` | fattura + cliente + rata, e la **forzatura a due tempi** | ✅ | area |
+| `POST` | `righe/{riga_id}/registra/` | ⭐ **la registrazione TARDIVA** (D20-b, dal 19/09): una `SOSPESA` sotto una distinta registrata si abbina **e** si registra, stesso payload di `abbina/` | ✅ | `registra_distinta` |
+| `POST` | `distinte/{contabile_id}/righe/da-rate/` | ⭐ **N rate scelte → N righe** in un Salva (D19-d), esito **per riga** | ✅ | area |
 | `GET` | `righe/` | la coda del riconciliatore, cross-distinta (`?coda=`) | — | area |
+| `GET` | `rate/` | ⭐ **l'elenco delle rate col saldo** (lista `pagamenti.rate`, D19-c): la sorgente del picker e dello scadenzario | — | area |
 | `GET` | `rate/fuori-capienza/` | le rate uscite dalla banda: l'elenco che rende onesta la forzatura | — | area |
 | `GET` | `rate/{scadenza_id}/saldo/` | la base dei saldi, livello **rata** | — | area |
 | `GET` | `fatture/{fattura_id}/saldo/` | la base dei saldi, livello **documento** | — | ⚠️ `skip_area_check` |
@@ -87,8 +91,10 @@ Tutte sotto `/api/v1/pagamenti/`. ✅ = `Idempotency-Key` obbligatoria.
 
 ⚠️ **L'ordine in `urlpatterns` conta**: le azioni (`righe/`, `stato/`,
 `registra/`, `correggi/`, …) stanno **prima** del dettaglio `distinte/{id}/`,
-`rate/fuori-capienza/` prima di `rate/{id}/saldo/`. Non è un dettaglio del
-file: è la ragione per cui `fuori-capienza` non viene letto come un id.
+`righe/da-rate/` prima di `righe/` (che è `GET`/`POST` sulla collezione),
+`rate/` e `rate/fuori-capienza/` prima di `rate/{id}/saldo/`. Non è un
+dettaglio del file: è la ragione per cui `fuori-capienza` non viene letto come
+un id.
 
 ⭐ **Perché quattro rotte su `fatture/…` stanno qui e hanno `skip_area_check`.**
 Le consuma il drawer **fattura**, che vive in `vendite`: senza, per vedere se
@@ -104,13 +110,13 @@ quindi `vendite` non può chiedere un saldo a `pagamenti`.
 | Regola | Dettaglio |
 | --- | --- |
 | Envelope | `{"data": …, "meta": {"request_id"}}`; errori nell'envelope standard di [api.md](../../../dev/api.md) |
-| Paginazione | **page-based**: `page` (default 1), `page_size` (default 50, max 200). Risposta `{count, page, page_size, total_pages, results}`. ⛔ `count` viene da `COUNT(*) OVER ()` nella stessa valutazione, mai da `len(results)` |
+| Paginazione | **page-based**: `page` (default 1), `page_size` (default 50, max 200). Risposta `{count, page, page_size, total_pages, results}`. ⛔ `count` viene da `COUNT(*) OVER ()` nella stessa valutazione, mai da `len(results)`. ⚠️ Le tre liste nate su `<ListaConfigurabile>` con `createListaStore` — `fatture/{id}/sistemazioni/` (02/09), `rate/` (17/09) e `distinte/{id}/righe/` (18/09) — sono **offset-based** (`limit`/`offset`, la lingua di `useSearchTable`) e rispondono `{count, results}`: la conversione per le altre la fa lo store, in un posto solo (`paramsPagina`) |
 | Ordinamento | `order_by` su una **whitelist per lista** (tabella sotto) — il nome è quello **fisico** della colonna, come la lista lo espone; `order_dir` `asc\|desc`. Fuori whitelist → `400 E_PAGAMENTI_VALIDATION` |
 | Query param opzionali | contratto degli helper `qp_*_optional`: vuoto = assente, malformato = `400` |
 | Vocabolari a `CHECK` | `stato`, `origine`, `coda`, `motivo`, `chi_e_in_credito`, `tipo`, `destinazione`: un valore fuori vocabolario è un **400**, mai una lista vuota — su due valori possibili una lista vuota è indistinguibile da «non c'è niente», cioè dalla risposta più rassicurante |
 | `Idempotency-Key` | obbligatoria su **ogni** `POST` (creazioni, verbi, cambi di stato). ⚠️ Sui `PATCH` no: passano da `request.data`, non da `handle_post_json` |
 | 404 | «non esiste» e «non lo vedi» (RLS) danno la **stessa** risposta, di proposito: dire «esiste ma non è tuo» racconterebbe a chi è fuori perimetro che quel documento c'è |
-| Cancello di perimetro emittente | le liste con `lista_codice` (`pagamenti.distinte`, `.righe`, `.rate_fuori_capienza`, `.eccedenze`, `.sistemazioni_fattura`, `.canali_incasso`) passano dal cancello di [`perimetro_emittente`](../../ui/manual/api_export_liste.md): un operatore **multi-emittente** senza emittente scelto riceve `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`. Non è un permesso: è «scegli prima da dove guardi» |
+| Cancello di perimetro emittente | le liste con `lista_codice` (`pagamenti.distinte`, `.righe`, `.distinta_righe` — lista **ed** export —, `.rate`, `.rate_fuori_capienza`, `.eccedenze`, `.sistemazioni_fattura`, `.canali_incasso`) passano dal cancello di [`perimetro_emittente`](../../ui/manual/api_export_liste.md): un operatore **multi-emittente** senza emittente scelto riceve `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`. Non è un permesso: è «scegli prima da dove guardi» |
 | `?format=` | ⛔ mai: è un parametro magico di DRF e la richiesta muore con **404** prima di arrivare alla view. Il parametro dell'export si chiama **`formato`** |
 
 **Le whitelist di ordinamento**, con il default e il suo verso:
@@ -119,7 +125,9 @@ quindi `vendite` non può chiedere un saldo a `pagamenti`.
 | --- | --- | --- |
 | `distinte/` | `data_contabile` · `codice` · `stato_descrizione` · `origine` · `centro_descrizione` · `totale_righe` | `data_contabile` DESC |
 | `righe/` | `data_pagamento` · `importo` · `stato_descrizione` · `contabile_codice` | `data_pagamento` DESC |
-| `rate/fuori-capienza/` | `data_scadenza` · `motivo` · `residuo` · `importo_rata` · `fattura_numero` | `data_scadenza` DESC |
+| `distinte/{id}/righe/` (+ `export/`) | `id` · `data_pagamento` · `data_valuta` · `data_operazione` · `riferimento_ente` · `importo` · `billing_account_descrizione` · `billing_account_codice` · `fattura_numero_documento` (coppia `(fattura_numero, fattura_serie)`, non il testo) · `scadenza_numero_rata` · `scadenza_data` · `stato_descrizione` | `id` **DESC** — ⭐ **l'ultima riga digitata in cima** (decisione di Tid del 02/09 sugli atti di sistemazione, stessa ragione: da quando la lista impagina, una riga appena scritta in ordine crescente finirebbe nell'ultima pagina); le quattro date partono DESC al primo click |
+| `rate/fuori-capienza/` | `data_scadenza` · `motivo` · `residuo` · `importo_rata` · `fattura_numero` · `numero_documento` (dal 17/09: ordina per la coppia `(fattura_numero, serie)`, non per il testo) | `data_scadenza` DESC |
+| `rate/` | `numero_documento` (coppia `(numero, serie)`) · `data` · `ragione_sociale_completa` · `ba_codice` · `numero_rata` · `data_scadenza` · `importo` · `totale_doc` · `stato_descrizione` — ⛔ **non** i tre saldi: non stanno nella vista, arrivano dopo la pagina | `data_scadenza` **ASC** — è una **coda**, la rata più vecchia prima; le due date hanno verso naturale DESC quando le si chiede senza `order_dir` |
 | `eccedenze/` | `eccedenza_cliente` · `cliente_ragione_sociale` · `eccedenza` · `fattura_data` · `fattura_numero` | `eccedenza_cliente` DESC — ⭐ **per cliente, non per documento**: la decisione si prende guardando il cliente |
 | `fatture/{id}/sistemazioni/` | `destinazione` · `importo` · `stato` · `motivo` · `data_esecuzione` | quello del repository (`data_esecuzione` DESC) |
 | `enti-incasso/` | `codice` · `descrizione` · `tipo` · `centro_descrizione` | `codice` ASC |
@@ -144,12 +152,16 @@ Ogni riga è una `DistintaRow`:
 
 ```json
 {
-  "id": 12, "codice": "DST-0000012",
+  "id": 12, "codice": "DIS-ACME-2026-0000012",
   "centro_riscossione_id": 3, "centro_codice": "BNK", "centro_descrizione": "Banca",
   "ente_incasso_id": 7, "ente_codice": "BNK-01", "ente_descrizione": "Conto incassi",
   "data_contabile": "2026-09-01", "data_registrazione": "2026-09-01",
   "stato_id": 41, "stato_codice": "BOZZA", "stato_descrizione": "Bozza", "stato_is_final": false,
-  "origine": "MANUALE", "importo_dichiarato": "1500.00",
+  "origine": "MANUALE",
+  "emittente_soggetto_ruolo_id": 72, "emittente_fiscale_id": 32,
+  "emittente_fiscale_codice": "ACME", "emittente_ragione_sociale": "ACME S.r.l.",
+  "registro_id": 91, "anno": 2026,
+  "importo_dichiarato": "1500.00",
   "data_conferma": null, "user_conferma": null,
   "lotti_ids": null, "meta": {},
   "righe_totali": 3, "righe_registrabili": 2,
@@ -169,18 +181,54 @@ dichiarato).
 appartenere a più lotti; letta come valore singolo, la riga compariva **due
 volte** nell'elenco e il conteggio con lei — senza nessun errore.
 
+⭐ **Il codice viene dal registro, e la distinta sa di chi è (dal 2026-09-17,
+[brief distinta-numerata-sul-registro](../../../dev/work-done/brief-db-distinta-numerata-sul-registro.md)).**
+`codice` è `DIS-<SIGLA>-<ANNO>-<7 cifre>`: lo assegna il trigger sul registro
+`DISTINTA` dell'emittente alla **creazione**, con l'anno dalla `data_contabile`
+e il reset a Capodanno — la sesta famiglia di `vendite.famiglie_documento`, la
+prima fuori da `vendite` e la prima senza billing account. La testata porta
+l'emittente in **tre forme** — `emittente_soggetto_ruolo_id` (la chiave del
+database), `emittente_fiscale_id` + `emittente_fiscale_codice` +
+`emittente_ragione_sociale` (i nomi che `EmittenteFiscaleField` legge in
+edit, gli stessi dei documenti di vendite) — più i due assi del contatore,
+`registro_id` e `anno`. ⚠️ Sul **pregresso** (`VC_…`, numerato prima del
+trasloco) `registro_id` e `anno` sono `null`: non è un buco, è un documento
+che non ha mai avuto un registro; la forma diversa lo tiene separato dai
+nuovi. ⛔ **Il codice non si parsa**: sigla e anno stanno anche nelle colonne.
+🔒 **E la RLS passa dalla colonna**: una distinta senza canale non è più «di
+tutti» — è del suo emittente, come il lotto da cui nasce. `list_distinte` non
+aggiunge filtri applicativi.
+
 ### `POST /api/v1/pagamenti/distinte/`
 
 Apre — o **ritrova** — la distinta manuale dell'operatore.
 
 ```json
 { "centro_riscossione_id": 3, "data_contabile": "2026-09-01",
-  "ente_incasso_id": 7, "importo_dichiarato": "1500.00", "meta": {} }
+  "ente_incasso_id": 7, "emittente_fiscale_id": 32,
+  "importo_dichiarato": "1500.00", "meta": {} }
 ```
 
 `centro_riscossione_id` e `data_contabile` obbligatori; `ente_incasso_id`,
-`importo_dichiarato`, `meta` facoltativi. Nasce `origine = MANUALE`, stato
-`BOZZA`.
+`emittente_fiscale_id`, `importo_dichiarato`, `meta` facoltativi. Nasce
+`origine = MANUALE`, stato `BOZZA`.
+
+⭐ **`emittente_fiscale_id` (PK) è facoltativo qui e obbligatorio a database**
+(D4 del brief). Il backend lo **trasporta e non lo deduce**: se manca, lo
+risolve `pagamenti.fn_get_emittente_distinta` in un ordine solo — dato dal
+chiamante → dal **canale** (il conto su cui atterra il denaro ha un solo
+padrone) → dall'**operatore in sessione** (`fn_resolve_emittente_for_user`,
+che legge l'emittente attivo scelto in topbar) → altrimenti **rifiuto**
+`E_CONTABILE_EMITTENTE_OBBLIGATORIO` (400, `fields: ["emittente_fiscale_id"]`):
+è il super admin in «tutti gli emittenti» che apre una manuale su CASSA e
+deve scegliere. Se emittente **e** canale sono entrambi indicati e
+dissentono: `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` (400, `fields:
+["ente_incasso_id"]`, la frase nomina il canale e le due sigle). ⛔ Nessun
+ripiego sul «default dell'installazione», né a database né qui: dichiarare di
+un emittente il denaro di un altro è l'attribuzione che la numerazione per
+emittente esiste per impedire. ⚠️ La **chiave di riuso** del *get or create*
+comprende l'emittente: la manuale è il lotto di lavoro di un operatore **per
+un emittente**.
 
 ⭐ **È un *get or create*** (`fn_get_or_create_vendite_contabile`): se
 l'operatore riapre con gli stessi dati — stessa giornata, stesso centro,
@@ -190,7 +238,7 @@ ciò che rende inutile qualunque lock. Da cui la risposta:
 
 ```json
 { "data": { "distinta": {…}, "righe": […], "stati_distinta": […], "stati_riga": […],
-            "stati_richiedibili": {…}, "gia_popolata": true } }
+            "transizioni": {…}, "gia_popolata": true } }
 ```
 
 È il dettaglio (sotto) più **`gia_popolata`**: `true` se la distinta
@@ -207,18 +255,84 @@ il controllo esisterebbe e non direbbe niente.
 
 ### `GET /api/v1/pagamenti/distinte/{contabile_id}/`
 
-Testata, righe e **i due cataloghi di stato** in un round-trip:
+Testata, **i due cataloghi di stato** e **le transizioni ammesse** in un
+round-trip:
 
 ```json
 { "data": {
-    "distinta": { …DistintaRow… },
-    "righe": [ …RigaContabileRow… ],
-    "stati_distinta": [ {"id", "codice", "codice_interno", "descrizione", "is_final", "ordine"} ],
+    "distinta": { …DistintaRow…, "stato_info_key": "pagamenti.distinte.stato_info.bozza",
+                  "stato_is_registrabile": false,
+                  "contenuto_modificabile": true,
+                  "can_validare": false,
+                  "validazione_blocco_reason": "RIGHE_NON_LAVORATE",
+                  "validazione_blocco_reason_key": "pagamenti.distinte.validazione_reason.righe_non_lavorate",
+                  "validazione_blocco_dettaglio": { "quante": 2, "contabile_righe_ids": [11, 12] },
+                  "righe_per_stato": [ { "stato_codice_interno": "ABBINATA", "stato_descrizione": "…",
+                                         "righe": 3, "importo": 300.00 }, … ],
+                  "righe_scartate": 1, "totale_scartate": "5.00" },
+    "stati_distinta": [ {"id", "codice", "codice_interno", "descrizione", "is_final", "ordine", "is_registrabile"} ],
     "stati_riga":     [ {…, "is_postabile", "richiede_abbinamento"} ],
-    "stati_richiedibili": { "distinta": ["VALIDATA", "BOZZA", "ANNULLATA"],
-                            "riga": ["DA_ABBINARE", "ABBINATA", "SOSPESA", "SCARTATA"] }
+    "transizioni": { "distinta": { "BOZZA": ["VALIDATA", "ANNULLATA"], "VALIDATA": ["BOZZA", "ANNULLATA"] },
+                     "riga":     { "DA_ABBINARE": ["ABBINATA", "SOSPESA", "SCARTATA"],
+                                   "ABBINATA": ["SOSPESA"], … } }
 } }
 ```
+
+⭐ **`transizioni` (dal 2026-09-14, BE-5)** sostituisce `stati_richiedibili`:
+per ogni stato di partenza, gli stati di arrivo che una **persona** può
+chiedere — letti dalle due **matrici** del database
+(`pagamenti.transizioni_stati_contabile`, `…_riga`) e ristretti al vocabolario
+dei richiedibili sull'arrivo (`POSTATA` e `CHIUSA` non compaiono mai). Il
+vocabolario nudo diceva *che cosa* si può chiedere, non *da dove*: il frontend
+toglieva lo stato corrente e proponeva `SCARTATA` su una riga `ABBINATA`, che
+la matrice non ammette — il difetto del primo collaudo in-app. Uno stato senza
+uscite ha la lista vuota, non la chiave assente; gli stati ritirati
+(`obsoleto_dal`) escono da entrambi i lati.
+
+⭐ **Il verbo «valida» col suo motivo** (BE-1, D20-a — dal 2026-09-19): la
+terna `validazione_blocco_reason` / `_reason_key` / `_dettaglio` + il flag
+`can_validare`, dal **primo motivo** di `script.fn_check_contabile_validabile(c.id,
+c.importo_dichiarato)` — la **stessa** check che
+`trgfn_vendite_contabili_guard_validazione` chiama per rifiutare l'ingresso in
+`VALIDATA`. Il drawer spegne «Porta a VALIDATA» col motivo, e tooltip e 409
+non possono divergere (api.md §«Capability di riga»). ⚠️ La check vuole
+**due** argomenti: il dichiarato è un parametro, non si rilegge per id (brief
+§4-bis). ⚠️ La terna viaggia **solo se lo stato corrente ammette `VALIDATA`
+fra le uscite** (la matrice, letta qui): su una `CHIUSA` o una `ANNULLATA` è
+`null` — un motivo su un verbo che non si propone è rumore. Il `dettaglio`
+porta i **nomi** dei parametri della frase i18n (`quante`; `importo_dichiarato`,
+`somma_righe`).
+
+⭐ **`stato_is_registrabile`** (D20-d): la bandiera del catalogo
+(`vendite_contabili_stati.is_registrabile`, `true` sulla sola `VALIDATA`) che
+la madre del posting legge al posto del letterale. Il frontend spegne
+«Registra» col motivo quando è falsa, e riconosce lo stato «in cui si entra
+validando» dal flag nel catalogo (`stati_distinta[].is_registrabile`), non dal
+nome.
+
+⭐ **`righe_per_stato`** (BE-1): quante righe attive e per che importo, stato
+per stato — l'array **ordinato dal catalogo**, `[]` su una distinta senza
+righe. ⚠️ Qui `importo` è un **numero JSON**, non la stringa con cui viaggia
+ogni `Decimal` (`totale_righe`, `totale_scartate`): l'array lo costruisce il
+database con `jsonb_build_object`, la stessa forma dei `dettaglio` delle
+check (`importo_dichiarato`, `somma_righe`) — chi lo legge passa da `Number()`
+come per quelli. È la fotografia del dialog di validazione. Da lì il service deriva
+**`righe_scartate` / `totale_scartate`** («di cui non nostre», D20-c) con lo
+stesso codice con cui la lista le nasconde (`STATO_RIGA_SCARTATA`): una sede,
+non due letterali.
+
+⭐ **`contenuto_modificabile`** (D17/D18): `true` solo su una distinta
+`MANUALE` in `BOZZA`. Governa il **contenuto** — righe nuove, fatti,
+eliminazioni — non le decisioni (abbinare, sospendere, cambiare stato), che
+sotto `VALIDATA` restano ammesse. È una **copia dichiarata** del motivo 3 di
+`script.fn_check_riga_contabile_eliminabile` (il database stesso lo scrive due
+volte, perché sull'`INSERT` non c'è una riga da passare alla check): serve a
+**non proporre**, il rifiuto vero resta il 409 del guard.
+
+⭐ **`stato_info_key`** (FE-9): la chiave i18n della riga «dove sono» del
+drawer, letta dal `meta.nessuna_azione_key` dello stato — lo stesso campo
+degli otto domini con `DrawerActionsBar :info-key`. `null` finché il seed non
+è applicato; il backend la **trasporta**, non la deriva dal codice.
 
 ⭐ **I cataloghi viaggiano col dettaglio e non si cablano nel frontend.** Quali
 stati pretendono fattura e cliente lo dice `richiede_abbinamento`; quali
@@ -267,40 +381,118 @@ diventa tre righe sotto la stessa distinta. ⛔ Non si «spezza» una riga per
 gestire un importo sbagliato (D1-ter): quello si **registra** e poi si
 **sistema** (§6).
 
+⛔ **Le righe non viaggiano più nel dettaglio (dal 2026-09-18)**: fino a quel
+giorno c'era `"righe": [ …RigaContabileRow… ]`, e il drawer le disegnava con una
+`DataTable` grezza. Ora sono la lista `pagamenti.distinta_righe` (sotto), con la
+sua pagina e il suo export — e portarle anche qui sarebbe leggere due volte la
+`LATERAL` sulla check di eliminabilità, per riga, a ogni apertura del drawer,
+per un campo che nessuno legge più.
+
 ### `GET /api/v1/pagamenti/distinte/{contabile_id}/righe/`
 
-Le righe attive della distinta: `{ "count": N, "results": [ …RigaContabileRow… ] }`.
-Non paginata: le righe di una distinta sono limitate per costruzione.
+Le righe attive della distinta, **paginate** — la lista configurabile
+`pagamenti.distinta_righe` (id 69, dal 2026-09-18): `{ "count": N, "results":
+[ …RigaContabileRow… ], "scartate_count": K }`, offset-based (`limit`/`offset`,
+default 25) con `order_by`/`order_dir` sulla whitelist della tabella sopra.
+
+⭐ **Le `SCARTATA` sono FUORI di default** (BE-2, D20-c — dal 2026-09-19):
+«non è nostra» resta nella distinta e nella quadratura ma esce dal lavoro.
+`?scartate=1` le rimette dentro; spento, `scartate_count` dice **quante ne
+nasconde** — contate sullo **stesso perimetro** della lista con il BB
+`conta_con_perimetro` (la forma di `archiviate_count`), perché «elenco pulito»
+e «tre righe messe via» non si leggano uguali. Acceso, il conteggio è 0 e non
+si paga. L'export (`righe/export/`) legge lo stesso parametro: il file segue la
+videata, interruttore compreso. Lo stato si nomina nel service per
+`codice_interno` (`STATO_RIGA_SCARTATA`), come `STATO_RIGA_ABBINATA`.
+
+⚠️ Fino al 18/09 questa riga diceva *«Non paginata: le righe di una distinta
+sono limitate per costruzione»* — una **previsione sui dati**, e le previsioni
+sui dati non decidono la forma di una lista (regola zero; è la stessa frase
+caduta sugli atti di sistemazione il 02/09). E il `count` era `len(righe)`: un'eco,
+non un conteggio (api.md §«Il `count` non si deriva MAI dalle righe»). Ora viene
+da `COUNT(*) OVER ()` nella stessa valutazione della pagina.
+
+### `GET /api/v1/pagamenti/distinte/{contabile_id}/righe/export/?formato=csv|xlsx`
+
+⭐ **La contabile in un file.** Stesso `lista_codice` della lista a video: le
+colonne sono quelle che l'operatore **vede** (preferenza + preset + permessi),
+risolte da `build_export_response`; `order_by`/`order_dir` come la lista (il
+file segue l'ordinamento a video). Chiede `EXPORT_MAX_ROWS + 1` righe, non la
+pagina: il `+1` è ciò che fa scattare `422 E_UI_EXPORT_LIMIT_EXCEEDED` prima di
+serializzare, invece di consegnare un file troncato in silenzio. Nessun filtro
+dichiarato nell'intestazione: la distinta è nel path, non una scelta.
 
 ```json
 { "id": 91, "contabile_id": 12, "importo": "500.00",
   "riferimento_ente": "TRN 2026…", "data_pagamento": "2026-08-30",
   "data_valuta": null, "data_operazione": null,
   "fattura_id": 820, "fattura_numero": 815, "fattura_anno": 2026, "fattura_serie": "A",
+  "fattura_numero_documento": "815 - A", "fattura_data": "2026-09-12", "fattura_totale_doc": "1220.00",
+  "fattura_registro_codice": "REG-01",
+  "natura_doc_codice_interno": "FATTURA", "natura_doc_descrizione": "Fattura",
   "billing_account_id": 44, "billing_account_codice": "BA-000044", "billing_account_descrizione": "…",
-  "scadenza_id": 1301, "scadenza_numero_rata": 2, "scadenza_data": "2026-09-30",
+  "scadenza_id": 1301, "scadenza_numero_rata": 2, "scadenza_data": "2026-09-30", "scadenza_importo": "610.00",
   "forzata": false, "motivo_forzatura": null,
   "stato_id": 52, "stato_codice": "ABBINATA", "stato_descrizione": "Abbinata",
   "stato_is_postabile": true, "stato_richiede_abbinamento": true,
   "motivo_sospeso": null, "fondo_source_id": null, "attivo": true, "meta": {} }
 ```
 
-⚠️ `fattura_numero` è un **bigint**, non una stringa: è il progressivo, e la
-forma leggibile (serie/anno/numero) la compone chi la mostra.
+⚠️ `fattura_numero` è un **bigint**, non una stringa: è il progressivo.
+⭐ **Dal 2026-09-17 la forma leggibile NON la compone più chi la mostra**
+(D19-b): `fattura_numero_documento` arriva dalla sede unica
+`vendite.fn_numero_documento_fattura` («numero - serie», `NULL` sulla non
+numerata — il ripiego lo sceglie chi rende), insieme a data, totale, registro,
+natura del documento e importo della rata. ⚠️ La natura viaggia come
+`natura_doc_codice_interno` / `natura_doc_descrizione` — **senza** il prefisso
+`fattura_` dal 18/09: è il nome con cui ogni proiezione porta
+`config.nature_doc_fiscale`, ed è la gemella che il `formato = natura_doc` del
+catalogo liste legge dalla riga (con il prefisso la colonna «Natura» della lista
+69 avrebbe reso `—` su ogni riga, senza errore). È ciò che serve a chi corregge un
+importo per sapere **su che cosa** lo corregge, e alla natura per **segnalare**
+una nota di credito su una riga di incasso (D19-e). Le sette colonne viaggiano
+anche sulla coda (`GET /righe/`), che condivide il frammento. Il residuo **non**
+sta sulla riga: si legge dalla base dei saldi (§5) col livello giusto — e in
+modifica con `escludi_riga_id`, che dal 18/09 (P-6) sanno applicare **entrambi**
+i livelli (fino a quel giorno solo la rata, e sul documento il pannello lo
+dichiarava).
 
 ### `POST /api/v1/pagamenti/distinte/{contabile_id}/righe/`
 
 ```json
 { "importo": "500.00", "riferimento_ente": "TRN …", "data_pagamento": "2026-08-30",
-  "data_valuta": null, "data_operazione": null, "motivo_sospeso": null, "meta": {} }
+  "data_valuta": null, "data_operazione": null, "motivo_sospeso": null, "meta": {},
+  "fattura_id": 820, "billing_account_id": 44, "scadenza_id": 1301,
+  "forzata": false, "motivo_forzatura": null }
 ```
 
 Solo `importo` obbligatorio. Risponde `{ "riga": {…} }`.
 
-⭐ **Nasce `DA_ABBINARE`**: quando il denaro arriva non si sa ancora di chi sia,
-e quello stato dice esattamente questo. Chi sa già la fattura la abbina subito
-dopo, col verbo dell'abbinamento (§4). Su una distinta in stato finale il
-database rifiuta (`E_RIGA_CONTABILE_DISTINTA_FINALE`, 409).
+⭐ **La riga MANUALE nasce con la destinazione (D16, 2026-09-14).** Con
+`fattura_id` nasce **`ABBINATA`** — fattura, cliente, rata e forzatura entrano
+nello **stesso `INSERT`** dei fatti, atomico per costruzione: i guard di riga
+(dati richiesti dallo stato, coerenza rata/fattura, capienza, scope emittente)
+sono `BEFORE INSERT OR UPDATE` e sull'`INSERT` parlano come sull'`UPDATE`.
+Senza `fattura_id` nasce **`DA_ABBINARE`**: sulla manuale è l'**eccezione che
+l'operatore dichiara** («non ho trovato il documento»), non il default — fino
+al 14/09 lo era, e faceva passare chi ha il nome sotto gli occhi per il flusso
+dell'importo arrivato senza nome. Si recupera dalla coda (§4).
+
+- `billing_account_id` assente ⇒ è quello della **fattura**, letto dal
+  documento (`E_FATTURA_NON_TROVATA` 404 se non c'è o non si vede);
+- `scadenza_id`, `billing_account_id`, `forzata` **senza** `fattura_id` ⇒ 400
+  (`E_PAGAMENTI_VALIDATION`, con `fields`): senza fattura non c'è destinazione;
+- `motivo_forzatura` senza `forzata` ⇒ 400 (la stessa regola di `abbina`, ed è
+  la **stessa lettura**: `_destinazione_da_payload`);
+- il **doppio tempo della capienza** vale anche qui: primo tentativo senza
+  `forzata`, 409 `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` con `ui_action =
+  confirm_and_retry` (chiavato sul codice, non sull'endpoint), secondo con
+  `forzata = true` che resta scritto sulla riga.
+
+Su una distinta in stato finale il database rifiuta
+(`E_RIGA_CONTABILE_DISTINTA_FINALE`, 409); su una **manuale validata**
+rifiuta con `E_RIGA_CONTABILE_DISTINTA_VALIDATA` (D18: il contenuto è fermo
+finché non torna in bozza).
 
 ⚠️ **Un importo è un `Decimal` esatto letto dalla forma testuale** — `NaN` e
 `Infinity` sono rifiutati, e un booleano non è un importo: ogni somma che
@@ -311,14 +503,63 @@ come un campo vuoto.
 
 I **fatti** della riga — come è arrivato il denaro: `importo`,
 `riferimento_ente`, `data_pagamento`, `data_valuta`, `data_operazione`,
-`motivo_sospeso`, `meta`. ⛔ **Non l'abbinamento**: `fattura_id`,
+`motivo_sospeso`, `meta` — e, dal **2026-09-15**, il **secondo tempo**:
+`forzata`, `motivo_forzatura`. ⛔ **Non l'abbinamento**: `fattura_id`,
 `billing_account_id`, `scadenza_id` non sono accettati qui — abbinare è un
-verbo, perché porta con sé la rata e la forzatura, ed è una decisione, non la
-correzione di un dato digitato male. Risponde `{ "riga": {…} }`.
+verbo, perché porta con sé la rata, ed è una decisione, non la correzione di
+un dato digitato male (R-6). Risponde `{ "riga": {…} }`.
 
 ⭐ Le righe sono indirizzate **per id proprio**, non sotto la distinta: una
 riga si lavora anche dalla coda del riconciliatore, dove la distinta di
 appartenenza non è il contesto.
+
+⚠️ Sotto una manuale `VALIDATA` i **fatti** non si toccano (D18):
+`E_RIGA_CONTABILE_DISTINTA_VALIDATA` (409). Le decisioni — stato, abbinamento
+— sì.
+
+⭐ **Il doppio tempo della capienza vale anche qui** (decisione di Tid,
+2026-09-15 — brief D16/D17 §10.4 Q-H). Il guard della rata gira sull'`UPDATE`
+di `importo` come sull'`INSERT`: un importo corretto oltre il residuo prende
+il 409 `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` con `confirm_and_retry`, e il
+secondo tentativo con `forzata = true` (+ `motivo_forzatura`, facoltativo ma
+**solo** con la forzatura — la stessa regola e la stessa funzione della
+nascita e di `abbina`) passa e resta scritto sulla riga. ⚠️ Fino a quel
+giorno il PATCH non accettava `forzata`: il codice prometteva una conferma
+che il verbo non sapeva raccogliere, e il rimedio era eliminare la riga e
+ricrearla. ⛔ R-6 resta intero: protegge la **destinazione**, non la
+conferma di una scrittura. Provato per intero contro il guard vero:
+`tests/db/test_riga_elimina_e_transizioni_db.py` (12-13).
+
+### `DELETE /api/v1/pagamenti/righe/{riga_id}/`
+
+Elimina la riga: **`attivo = false`** (D17, 2026-09-14). Risponde
+`{ "riga_id": 91, "eliminata": true }`. `Idempotency-Key` obbligatoria; il
+corpo è vuoto e viene ignorato.
+
+⭐ **Il metodo dice il verbo** (§Grammatica URL): niente `/elimina/` nel path.
+Ammesso **solo** su una distinta `MANUALE` in `BOZZA` — e a dirlo è il
+database, con i tre motivi ordinati di
+[`script.fn_check_riga_contabile_eliminabile`](/dbzero/script/manual/fn_check_riga_contabile_eliminabile):
+`E_RIGA_CONTABILE_DISTINTA_FINALE` · `E_RIGA_CONTABILE_DISTINTA_NON_MANUALE` ·
+`E_RIGA_CONTABILE_DISTINTA_VALIDATA` (tutti 409). ⛔ Nessuna copia del
+predicato in Python: la **stessa** check alimenta le colonne
+`elimina_blocco_reason` · `elimina_blocco_reason_key` ·
+`elimina_blocco_dettaglio` · `can_eliminare` della riga in lista e nella coda
+(`LATERAL`, primo motivo), così il cestino spento e il rifiuto non possono
+dire due cose diverse.
+
+⚠️ **Una riga eliminata non è più raggiungibile da nessun verbo**: `get_riga`
+filtra `attivo`, quindi `PATCH`, `stato/`, `abbina/` e un secondo `DELETE`
+rispondono `E_RIGA_CONTABILE_NON_TROVATA` (404) — la stessa risposta di «non
+la vedi», e coerente con le liste, che le eliminate non le mostrano. Il doppio
+invio lo copre l'`Idempotency-Key`, non un ramo «già eliminata». Non esiste un
+verbo di riattivazione: D18 la classifica come contenuto, e nessuna schermata
+la offre.
+
+⚠️ «Scarta» **non** è un'eliminazione: `SCARTATA` vuol dire «denaro arrivato,
+non nostro» e **conta nella quadratura** (D12-e). Una riga digitata male su
+una bozza si **elimina**; scartare una riga sbagliata su una distinta col
+totale dichiarato la lascia senza via d'uscita.
 
 ### `POST /api/v1/pagamenti/righe/{riga_id}/stato/`
 
@@ -447,7 +688,10 @@ gesto**.
   "forzata": false, "motivo_forzatura": null }
 ```
 
-`fattura_id` e `billing_account_id` obbligatori. ⚠️ **La rata resta
+`fattura_id` obbligatorio; `billing_account_id` **facoltativo** dal 2026-09-14:
+se manca è quello della fattura, **letto** dal documento (`E_FATTURA_NON_TROVATA`
+404 se non c'è o non si vede) — la stessa regola, e la stessa lettura
+(`_destinazione_da_payload`), della nascita della riga (§2, `POST …/righe/`). ⚠️ **La rata resta
 facoltativa** anche su una riga abbinata: la riga del fondo fattura ha fattura
 sì e rata no, ed è un caso normale. `motivo_forzatura` senza `forzata = true`
 è un `400`: sarebbe una nota che nessuno leggerà mai. Risponde `{ "riga": {…} }`.
@@ -479,6 +723,42 @@ l'eccezione: si registra il fatto, l'eccedenza si vede nell'elenco (§6) e la
 decisione la prende una persona con un atto di sistemazione. Nessuno spezza
 niente.
 
+### `POST /api/v1/pagamenti/righe/{riga_id}/registra/`
+
+⭐ **La registrazione TARDIVA** (D20-b, brief validata-e-tardiva §2.2 — dal
+2026-09-19): una riga **`SOSPESA`** sotto una distinta **già registrata**
+(`CHIUSA` con `data_conferma`) si abbina **e** si registra nello stesso gesto.
+Una sola `SELECT` sulla madre `pagamenti.fn_posta_riga_tardiva`: la riga passa
+da `ABBINATA` (girano **tutti** i guard dell'abbinamento — transizione, dati,
+rata con capienza e coerenza, scope), alla quarta mossa si presenta con la GUC
+transazionale, poi il movimento (`meta.origine = POSTING_TARDIVO`, registrato
+**oggi**), poi `POSTATA`. La distinta **resta `CHIUSA`** e non tocca
+`data_conferma`/`user_conferma`; la quadratura del giorno regge (la riga era
+già contata).
+
+Payload = quello di `abbina/` (`fattura_id` obbligatorio, `billing_account_id`
+letto dalla fattura se manca, `scadenza_id` facoltativo, `forzata` +
+`motivo_forzatura`), letto dalla **stessa** funzione (`_destinazione_da_payload`).
+Risposta: `{ "movimento_id", "riga_id", "importo", "esito": "POSTATA", "riga": {…} }`.
+
+🔴 **Il doppio tempo passa intatto**: primo tentativo senza `forzata`, 409
+`E_RIGA_CONTABILE_CAPIENZA_SUPERATA` con `confirm_and_retry`, secondo con
+`forzata = true`. Il backend non decide che cosa sia forzabile.
+
+⛔ **Nessun esito «nulla da postare»**: una tardiva su una riga che non si può
+registrare è un **rifiuto** della madre — `E_RIGA_CONTABILE_TARDIVA_STATO` (la
+riga non è `SOSPESA`: da `SCARTATA` si passa prima da «Riprendi»),
+`E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` (annullata, o ancora aperta:
+«usa il giro normale») — 409 con la sua frase. Il backend **non** verifica né
+lo stato della riga né quello della distinta: sono i guard della madre, e
+riscriverli sarebbe la seconda sede (presidio statico in
+`test_validata_e_tardiva`).
+
+🔴 **Lo stesso cancello della registrazione** (`post_permission =
+registra_distinta`): scrive un movimento. Chi la chiama: la coda «Sospese» e il
+drawer di una distinta chiusa («Abbina e registra»). ⛔ Mai un job: la tardiva
+è una decisione di chi ha identificato il denaro.
+
 ### `GET /api/v1/pagamenti/righe/`
 
 La coda del riconciliatore: le righe **di tutte le distinte** in uno degli
@@ -500,6 +780,21 @@ deve poterci tornare. ⚠️ Ed è la colonna su cui si ordina (`contabile_codic
 la prima stesura la dichiarava ordinabile e non la proiettava, e ordinare per
 distinta era un **500**.
 
+⭐ **E i fatti della testata che decidono il verbo** (BE-4, D20-b — dal
+2026-09-19): `contabile_stato_codice_interno`, `contabile_is_final`,
+`contabile_registrata` (= `data_conferma IS NOT NULL`, scritta dal posting). Da
+una «Sospesa» sotto una distinta **registrata** si «abbina e registra» (la
+tardiva); sotto una aperta si abbina e basta. Il frontend sceglie da un fatto,
+non ricalcola una regola.
+
+⭐ **La risposta porta anche il catalogo e la matrice di riga** (FE-4):
+`stati_riga` e `transizioni_riga` (`{ stato_da: [stato_a…] }`, ristretta ai
+richiedibili come nel dettaglio), **accanto** a `results`/`count`. Dalla coda
+si lavora — abbina, sospendi, scarta, riporta — e le voci del kebab si
+costruiscono dalla matrice come nel drawer; vengono dalla stessa lettura delle
+righe, quindi non possono raccontare due istanti diversi (la forma di `stati`
+sul registro lotti).
+
 ### `GET /api/v1/pagamenti/rate/fuori-capienza/`
 
 Le rate uscite dalla banda di capienza, da `vw_rate_fuori_capienza`. Filtri:
@@ -517,8 +812,169 @@ fuori vocabolario è un `400`, non una lista vuota.
 Colonne: `motivo`, `scadenza_id`, `fattura_id`, `anno`, `serie`,
 `fattura_numero`, `billing_account_id`, `emittente_soggetto_ruolo_id`,
 `numero_rata`, `data_scadenza`, `importo_rata`, `registrato`, `residuo`,
-`incassato`, `in_lavorazione`, `righe_forzate`, `motivi_forzatura`. Le ultime
-due sono ciò che la forzatura ha lasciato scritto: **è così che resta onesta**.
+`incassato`, `in_lavorazione`, `righe_forzate`, `motivi_forzatura`, — dal
+17/09 (P-1-bis) — **`numero_documento`**, il numero parlante dalla sede unica
+`fn_numero_documento_fattura` (la colonna 766 della lista 52: il contatore nudo
+era ambiguo fra fattura e nota di credito) e — dal 18/09 (P-7) —
+**`natura_doc_codice_interno`** e **`natura_doc_descrizione`** (la colonna 767,
+«Natura», `formato = natura_doc`: la rende `CellaConfigurabile` con
+`NaturaDocTag sempre`, e la gemella `codice_interno` è presidiata sulla
+proiezione). `righe_forzate` e `motivi_forzatura`
+sono ciò che la forzatura ha lasciato scritto: **è così che resta onesta**.
+
+⭐ **La natura cambia cosa i due motivi SIGNIFICANO**, e il vocabolario resta a
+due codici per decisione del DB: su una nota di credito `SOVRA_INCASSATA` è
+«sovra-rimborsata» (rimborsato più del credito) e `MOVIMENTO_CONTRARIO` è
+«entrato invece di uscire» (il cliente ha pagato una nota a suo favore). La
+frase la sceglie il frontend ramificando su `natura_doc_codice_interno`
+(`useEtichettePagamenti().motivoFuoriCapienza(codice, natura)`), e il residuo
+negativo si dice per natura con la stessa sede di tendina, form e picker
+(`residuoNegativo`): «di troppo» sulla fattura, «da rimborsare» sulla NC. Il
+**filtro** `motivo` resta sui due codici letti come fattura: filtra per codice.
+
+Ordinamento (`order_by`, whitelist `RATE_FUORI_CAPIENZA_SORT_COLUMNS`):
+`data_scadenza` (default, DESC) · `motivo` · `residuo` · `importo_rata` ·
+`fattura_numero` · `numero_documento` — quest'ultimo ordina per la **coppia**
+`(fattura_numero, serie)`, non per il testo («10 - A» verrebbe prima di
+«9 - A»). ⚠️ La natura **non** è ordinabile (non è nella whitelist, e la riga
+767 del seed lo dichiara con `ordinabile = f`). Fino al 18/09 questa riga
+diceva *«la vista non porta la natura»* — era vero, ed era il residuo P-7 del
+brief DB, chiuso quel giorno.
+
+## 4-bis. Le rate — il picker e lo scadenzario (D19, 2026-09-17)
+
+> Il rilievo del secondo giro in-app (Tid, 15/09) in una frase: *chi digita un
+> incasso non riconosce il documento da un contatore, e la domanda vera non è
+> «quale fattura?» ma «quale rata?»*. Brief DB:
+> [brief-db-distinta-ricerca-rate.md](../../../dev/work-done/brief-db-distinta-ricerca-rate.md);
+> piano BE/FE: [piano-be-fe-distinta-ricerca-rate.md](../../../dev/work-in-progress/piano-be-fe-distinta-ricerca-rate.md).
+
+### `GET /api/v1/pagamenti/rate/`
+
+**L'elenco paginato delle rate col saldo** — la quarta lettura della base dei
+saldi (`saldi_service.list_rate`), sorgente della lista `pagamenti.rate` (id 68)
+e quindi del **picker** della distinta e, domani, dello **scadenzario**.
+
+Una riga per rata di `vendite.vw_fatture_scadenze_lista` (rata · documento
+com'è scritto · cliente · emittente) **più** `residuo · in_lavorazione ·
+incassato · has_movimenti` dalla base unica. La chiave della riga è
+**`scadenza_id`** (il vocabolario di `pagamenti`, `dataKey` della lista).
+
+| Param | Forma | Note |
+| --- | --- | --- |
+| `billing_account_id` | int | il cliente — uno dei due criteri del picker |
+| `fattura_numero` | int | il numero del documento, confronto **ESATTO**: 101 non porta 1010 (nel lookup sì, ed è giusto lì). `serie` e `anno` per disambiguare |
+| `search` | str, min 3 | ragione sociale · codice BA · id fiscale del **cliente** — mai il numero |
+| `solo_aperte` | bool | solo le rate con `residuo <> 0` (Q-B). ⚠️ Il filtro sta nel `WHERE`, quindi chiede il saldo di **tutto il perimetro** — è il costo onesto di quel filtro, non della lista |
+| `solo_numerate` | bool | solo le rate di documenti **numerati** (`numero IS NOT NULL`; dal 18/09, rilievo in-app di Tid): una bozza non è un documento fiscale e la sua rata non è un credito su cui registrare un incasso. Il picker lo passa **sempre** (default dello store); vale anche sul perimetro di `solo_aperte`, perché sta nella stessa funzione dell'alias. ⏳ La regola di Tid è più stretta — «solo le definitive, inviate a SDI» — ed è un predicato di dominio che arriverà in **una** sede a DB, non come un secondo booleano (piano D19 §8) |
+| `data_scadenza_da` / `_a` | date ISO | |
+| `natura_doc_codice` | str | per lo scadenzario; il picker non lo passa. Il maiuscolo lo mette il **service** (una sede); il vocabolario è del catalogo ed è **aperto**, quindi un codice inesistente dà una lista vuota, non un 400 |
+| `limit` / `offset` | int | offset-based (la lingua di `useSearchTable`): `limit` default **25**, max 200. ⚠️ Il picker chiede **10**: è la lista di un dialog alto dieci righe (`app-dialog-lista`), e lo store nasce a `PAGINATION.COMPACT_ROWS` |
+| `order_by` / `order_dir` | str | whitelist `RATE_SORT_COLUMNS` (nomi **fisici** del seed 68): `numero_documento` (ordina per la coppia `(numero, serie)`, non per il testo) · `data` · `ragione_sociale_completa` · `ba_codice` · `numero_rata` · `data_scadenza` · `importo` · `totale_doc` · `stato_descrizione`. ⛔ I tre saldi **non** ordinano (arrivano dal nucleo *dopo* la pagina; il seed li dichiara `ordinabile = f`). Fuori whitelist = 400 col campo. `order_dir` **grezzo**: senza `order_by` la lista parte `data_scadenza ASC` (è una coda); con `order_by` su una data e senza verso il verso naturale è DESC (regola del 02/09) |
+
+⚠️ **Nessun criterio è obbligatorio qui**: lo pretende il picker (cliente o
+numero, D19-c), non la rotta — lo scadenzario la chiama senza. Lo scope
+emittente applicativo (`v.emittente_fiscale_id`, convenzione `pk`) si somma alla
+RLS di `fatture_scadenze` (via testata).
+
+⭐ **Pagina prima, saldo dopo** (brief DB §8): la query pagina la **vista**
+(`COUNT(*) OVER ()`), poi i saldi si chiedono al nucleo
+`pagamenti.fn_get_saldi_rate(ARRAY[…ids della pagina])` in **una** chiamata —
+non in `LATERAL` per riga (EXPLAIN del team DB: con `ARRAY[sc.id]` il filtro non
+si piega e diventa una scansione dei movimenti per rata), e mai nella stessa
+query del `COUNT(*) OVER ()`, che girerebbe sul perimetro. Con `solo_aperte`
+l'eccezione è obbligata: «aperta» è un predicato sul saldo, sta nel `WHERE`, e
+il nucleo si chiama sull'array del perimetro (`ARRAY(SELECT … stesse
+condizioni)`), coi saldi che escono dalla stessa query. Le due `FROM`+`WHERE`
+sono **una funzione** con l'alias come parametro: non possono divergere.
+
+```json
+{ "data": { "count": 2, "results": [
+    { "scadenza_id": 1301, "fattura_id": 77, "numero_rata": 1, "data_scadenza": "2026-09-30",
+      "importo": "610.00", "numero_documento": "101 - A", "registro_codice": "REG-01",
+      "data": "2026-09-01", "natura_doc_codice_interno": "FATTURA", "totale_doc": "1220.00",
+      "ragione_sociale_completa": "Rossi Mario SRL", "ba_codice": "BA-000123",
+      "residuo": "400.00", "in_lavorazione": "0.00", "incassato": "210.00", "has_movimenti": true },
+    … ] } }
+```
+
+⭐ **Selezionabile e importo proposto = `residuo − in_lavorazione`** (lo
+*spazio*, Q-B di Tid), calcolato dal client (`spazioSaldo`, una sede): non è una
+quarta colonna, e non lo sarà. Su una **nota di credito** (che dal 17/09 ha la
+sua rata **negativa**, P-5) il residuo è negativo e la rata **si sceglie**: il
+predicato è `≠ 0`, non `> 0` — il rimborso è un incasso a segno invertito.
+🔴 **La sottrazione è in centesimi**, ed è una regola del contratto e non un
+dettaglio del client: `importo` su `vendite_contabili_righe` è `numeric` **senza
+scala** e il guard di capienza confronta `abs(importo) > abs(spazio)` sui numeri
+com'è — un importo con i residui della virgola mobile (`0.29999999999999716`
+per `100.30 − 100.00`) viene **rifiutato per capienza** pur essendo esattamente
+lo spazio. Chi propone un importo da questa lista lo calcola in centesimi
+(rilettura del 17/09; domanda al DB nel brief §4-bis.9-ter).
+
+Presidi: `tests/services/test_rate_lista.py` (envelope, whitelist, ricerca
+corta, criteri intatti) · `tests/db/test_rate_lista_db.py` sul DB provvisto, col
+mondo **costruito** (101 e 1010 nella stessa serie): il numero è un `=`, i saldi
+arrivano per ogni rata della pagina, `solo_aperte` toglie la saldata, ogni
+colonna della whitelist ordina nei due versi e nei due rami, e `solo_numerate`
+toglie la **bozza** — costruita nel test, non nella fixture — in entrambi i
+rami (rosso alla controprova col filtro spento). Seed:
+`gen_seed_lista.py --verifica-ordinamento pagamenti.rate` verde.
+
+### `POST /api/v1/pagamenti/distinte/{contabile_id}/righe/da-rate/`
+
+⭐ **N rate scelte → N righe in un Salva** (D19-d): è D1 reso a video — *«un
+incasso che copre tre rate resta tre righe, cambia solo quando si scrivono»*.
+Verbo di **collezione** sulle righe (il nome dice **cosa**: le righe nate dalle
+rate scelte), `Idempotency-Key` obbligatoria, gate `add` d'area come `POST
+righe/`.
+
+```json
+{ "data_pagamento": "2026-09-17", "data_valuta": null, "riferimento_ente": "TRN 2026…",
+  "righe": [ { "scadenza_id": 1301, "importo": "500.00" },
+             { "scadenza_id": 1302, "importo": "620.00", "forzata": true, "motivo_forzatura": "…" } ] }
+```
+
+- i **fatti comuni** (`data_pagamento`, `data_valuta`, `data_operazione`,
+  `riferimento_ente`, `meta`) valgono per tutte; per riga solo `scadenza_id`,
+  `importo`, `forzata`, `motivo_forzatura` (il motivo solo con la forzatura, come
+  ovunque). Tetto **200**; `scadenza_id` **duplicato = 400** con `fields`: da un
+  picker è un difetto del client, e deduplicare in silenzio butterebbe via un
+  importo;
+- 🔴 **un fatto comune sbagliato è un 400 col campo, prima del giro** (rilettura
+  del 17/09): si legge **una volta**, con gli stessi lettori di `crea_riga`, e
+  viaggia già letto su ogni riga. Nella prima stesura una data malformata veniva
+  rifiutata dentro il savepoint di **ogni** riga — un 200 `ERRORE` con N fallite
+  identiche, la stessa frase su ogni rata dell'area e nessun campo acceso in
+  testa;
+- ⛔ **nessuna seconda strada di inserimento**: per ogni rata si risolve la
+  fattura (sotto RLS: assente ⇒ `E_RATA_NON_TROVATA` per **quella** riga) e si
+  chiama `crea_riga` così com'è — BA dalla fattura, stato `ABBINATA`, guard DB di
+  coerenza e capienza sull'`INSERT`;
+- `run_fan_out`, un savepoint per riga: le riuscite **entrano**, le rifiutate
+  tornano col loro errore **intero**.
+
+```json
+{ "esito": "PARZIALE", "richieste": 3, "riuscite": 2,
+  "creati": [ { "indice": 0, "scadenza_id": 1301, "riga": { …RigaContabileRow… } }, … ],
+  "falliti": [ { "indice": 1, "scadenza_id": 1302,
+                 "errore": { "code": "E_RIGA_CONTABILE_CAPIENZA_SUPERATA", "message": "…",
+                             "hint": "…", "ui_action": "confirm_and_retry", "fields": [], "targets": [] } } ] }
+```
+
+⭐ `errore` è `ErrorTranslator.to_api_error(exc).to_dict()`, la sede unica delle
+politiche dell'envelope (hint tolto sui tecnici, bersaglio solo dove c'è un
+gesto): la capienza che non regge risale «confermabile» **per riga**, e il
+frontend ramifica su `ui_action`, cieco ai codici. **Lo status è 200 anche su
+`PARZIALE`/`ERRORE`**: chi legge guarda `esito`, `creati[]`, `falliti[]`.
+⚠️ L'idempotenza copre il **giro**: il secondo tempo è un giro **nuovo** con le
+sole righe rimaste (chiave nuova).
+
+Presidi: `tests/services/test_righe_da_rate.py` (elenco, duplicati, tetto,
+fatto comune malformato = 400, composizione per riga, tre esiti, indice giusto) ·
+`tests/db/test_rate_lista_db.py::RigheDaRateDbTests` sul DB provvisto, per
+intero: due rate, la seconda oltre la banda ⇒ `PARZIALE`, la prima scritta, la
+seconda in `falliti` con `confirm_and_retry`; poi il secondo giro con `forzata`
+che la fa entrare e resta scritta.
 
 ## 5. La base dei saldi
 
@@ -562,11 +1018,23 @@ una riga contabile può avere fattura senza rata (il fondo fattura è
 esattamente così), e quel denaro non comparirebbe in nessuna somma di rate. Un
 numero incompleto che si presenta come completo è peggio di un numero assente.
 
-⚠️ Residuo e «in lavorazione» escono da **una** lettura (`CROSS JOIN` fra le
-due funzioni): letti separati sarebbero due istanti diversi, e un residuo di
-prima accanto a un «in lavorazione» di dopo sono due numeri veri che insieme
-raccontano una cosa falsa. `404 E_FATTURA_NON_TROVATA` — lo solleva il
-database.
+⭐ **Dal 18/09 (P-6) anche qui `escludi_riga_id`**, con lo stesso nome e la
+stessa domanda della rata — «quanto c'era **prima di me**» — per chi corregge
+una riga **senza** rata (il fondo fattura): fino a quel giorno la funzione DB
+non aveva il parametro e il pannello «Destinazione» lo *dichiarava*
+(«comprende anche questa riga») invece di fingere. ⚠️ Semantica identica alla
+rata, dichiarata dal DB nel changeSet: la riga esclusa esce dal **dichiarato**
+e, se è già registrata, col suo **movimento** — come nel nucleo
+`fn_get_saldi_rate`. Un valore non numerico è un `400` col campo, un id `≤ 0`
+è un guasto del chiamante (`E_PAGAMENTI_CHIAMATA_NON_VALIDA`, TECNICO): il
+backend passa e non normalizza a «nessuna esclusione».
+
+⚠️ Residuo e «in lavorazione» escono da **una** lettura — `fn_get_saldo_fattura`
+sola, che la sorella `_contabili` la chiama al suo interno (fino al 29/08 c'era
+un `CROSS JOIN` fra le due, che faceva girare la seconda due volte): letti
+separati sarebbero due istanti diversi, e un residuo di prima accanto a un «in
+lavorazione» di dopo sono due numeri veri che insieme raccontano una cosa
+falsa. `404 E_FATTURA_NON_TROVATA` — lo solleva il database.
 
 ### `GET /api/v1/pagamenti/fatture/{fattura_id}/rate/`
 
@@ -574,7 +1042,7 @@ Le rate della fattura, **ciascuna col suo saldo**, in un giro solo:
 
 ```json
 { "data": { "count": 3, "results": [
-    { "scadenza_id": 1301, "numero_rata": 1, "data_scadenza": "2026-08-31", "importo": "500.00",
+    { "scadenza_id": 1301, "fattura_id": 77, "numero_rata": 1, "data_scadenza": "2026-08-31", "importo": "500.00",
       "residuo": "0.00", "in_lavorazione": "0.00", "incassato": "500.00", "has_movimenti": true },
     … ] } }
 ```
@@ -582,7 +1050,10 @@ Le rate della fattura, **ciascuna col suo saldo**, in un giro solo:
 È la risposta a «su quale rata metto questi soldi?», e la consuma il form
 dell'abbinamento: N chiamate per disegnare un menu sono N modi di essere
 lenti. ⚠️ Nessun 404 sulla fattura: una fattura senza rate risponde
-`count: 0`.
+`count: 0`. ⭐ Dal 17/09 la rata porta **`fattura_id`**: il form della riga tiene
+«una rata resta scelta solo se è del documento scelto» (il picker consegna
+fattura e rata insieme), e per dirlo la rata deve sapere di chi è — la stessa
+chiave della riga di `rate/`, così le due sorgenti hanno la stessa forma.
 
 ## 6. Le sistemazioni — che cosa si fa del denaro di troppo
 
@@ -853,16 +1324,20 @@ arrivano dai guard e dalle madri, e il backend li fa passare intatti.
 
 | Codice | HTTP | Chi lo solleva | Quando |
 | --- | --- | --- | --- |
-| `E_PAGAMENTI_VALIDATION` | 400 | backend | payload malformato, chiave fuori whitelist, vocabolario, importo non valido, dichiarazione a metà, motivo senza forzatura, FK violata (tradotta con la frase del campo) |
-| `E_CONTABILE_NON_TROVATA` · `E_RIGA_CONTABILE_NON_TROVATA` · `E_SISTEMAZIONE_NON_TROVATA` · `E_ENTE_INCASSO_NON_TROVATO` · `E_RATA_NON_TROVATA` · `E_FATTURA_NON_TROVATA` | 404 | backend (fattura: anche il DB) | l'oggetto non c'è, **o il perimetro non lo lascia vedere** |
+| `E_PAGAMENTI_VALIDATION` | 400 | backend | payload malformato, chiave fuori whitelist, vocabolario, importo non valido, dichiarazione a metà, motivo senza forzatura, rata/cliente/forzatura senza fattura alla nascita della riga, FK violata (tradotta con la frase del campo); su `da-rate/`: elenco vuoto, oltre 200, `scadenza_id` duplicato, **fatto comune** malformato — tutti **prima** del giro; su `rate/`: `order_by` fuori whitelist, `search` sotto i 3 caratteri |
+| `E_CONTABILE_NON_TROVATA` · `E_RIGA_CONTABILE_NON_TROVATA` · `E_SISTEMAZIONE_NON_TROVATA` · `E_ENTE_INCASSO_NON_TROVATO` · `E_RATA_NON_TROVATA` · `E_FATTURA_NON_TROVATA` | 404 | backend (fattura: anche il DB) | l'oggetto non c'è, **o il perimetro non lo lascia vedere**. ⚠️ Su `da-rate/` la rata assente non è un 404 della richiesta: è l'errore di **quella riga** dentro `falliti[]`, con status 200 |
 | `E_CONTABILE_STATO_NON_CONFIGURATO` | 500 | backend | il codice di stato chiesto non risolve a catalogo: `UPDATE` a zero righe su un oggetto che esiste |
 | `E_PAGAMENTI_CHIAMATA_NON_VALIDA` | 500 | backend | la madre della conferma non ha risposto nessuna riga |
 | `E_SCOPE_EMITTENTE` | 403 | repository | `conti-incasso/` su un soggetto fuori perimetro |
 | `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` | 422 | cancello di perimetro | lista con `lista_codice` chiesta da un multi-emittente senza emittente scelto |
 | `E_CONTABILE_TRANSIZIONE_NON_AMMESSA` · `E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA` · `E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA` | 409 | matrici DB | il passaggio di stato non è ammesso da dove si è |
 | `E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA` · `E_CONTABILE_DATI_OBBLIGATORI` · `E_CONTABILE_CENTRO_ENTE_INCOERENTE` | 400 | guard DB | la distinta non quadra, o i suoi dati non stanno insieme |
+| `E_CONTABILE_EMITTENTE_OBBLIGATORIO` · `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` | 400 | `fn_get_emittente_distinta` (dal 2026-09-17) | nessun emittente risolvibile per una distinta senza canale (campo `emittente_fiscale_id`); il canale scelto è di un altro emittente (campo `ente_incasso_id`) |
 | `E_CONTABILE_RIAPERTURA_NON_MANUALE` · `E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE` · `E_CONTABILE_NON_REGISTRABILE` · `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE` · `E_CONTABILE_CORREZIONE_NON_REGISTRATA` · `E_CONTABILE_GIA_CORRETTA` · `E_CONTABILE_SISTEMAZIONE_CON_LOTTO` | 409 | guard e madri DB | lo stato della distinta non ammette il gesto |
 | `E_RIGA_CONTABILE_DISTINTA_FINALE` · `E_RIGA_CONTABILE_SENZA_ABBINAMENTO` | 409 | guard DB | la riga non si lavora più, o non ha di che postare |
+| `E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE` | 409 | `fn_check_contabile_validabile` via guard di validazione (D20-a, dal 19/09) | si entra in `VALIDATA` con righe attive in uno stato `lavorata = false` (`DA_ABBINARE`, `IMPORTATA`). È il **primo motivo** della check, lo stesso che il dettaglio porta in `validazione_blocco_*` |
+| `E_RIGA_CONTABILE_TARDIVA_STATO` · `E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` | 409 | `fn_posta_riga_tardiva` (D20-b, dal 19/09) | la riga non è `SOSPESA` · la distinta non è registrata (annullata, o ancora aperta: «usa il giro normale») |
+| `E_RIGA_CONTABILE_DISTINTA_NON_MANUALE` · `E_RIGA_CONTABILE_DISTINTA_VALIDATA` | 409 | guard DB (`guard_contenuto`, dal 14/09) | non si elimina una riga di una generata/automatica · sotto una manuale validata il contenuto è fermo (righe nuove, fatti, eliminazioni). Sono i motivi 2 e 3 di `fn_check_riga_contabile_eliminabile`, gli stessi che spengono il cestino in lista |
 | `E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO` · `E_RIGA_CONTABILE_RATA_INCOERENTE` | 400 | guard DB | `ABBINATA` senza fattura/cliente · la rata non è di quella fattura |
 | `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` | 409 · `confirm_and_retry` | guard DB | non c'è spazio sulla rata: **confermabile** col secondo tempo |
 | `E_SISTEMAZIONE_NON_CONFERMABILE` · `…_ECCEDENZA_INSUFFICIENTE` · `…_RIPORTO_NON_POSSIBILE` · `…_IMMUTABILE` · `…_ANNULLO_NON_AMMESSO` | 409 | guard e madre DB | l'atto non è nello stato per quel verbo, o il mondo è cambiato sotto. `ANNULLO_NON_AMMESSO` nomina l'alternativa (la correzione guidata) |
@@ -882,9 +1357,13 @@ li solleva più nessuno.
 | Oggetto | Ruolo |
 | --- | --- |
 | `pagamenti.fn_get_or_create_vendite_contabile` | l'apertura della distinta manuale (*get or create*, l'operatore lo mette la funzione) |
+| `pagamenti.fn_get_emittente_distinta` · `trgfn_vendite_contabili_emittente` · `trgfn_vendite_contabili_gen_codice` | la sede unica dei quattro livelli di risoluzione dell'emittente, il trigger che la applica a ogni scrittura e il numeratore sul registro `DISTINTA` (dal 2026-09-17) |
 | `pagamenti.fn_posta_contabile(p_contabile_id, p_righe_attese, p_totale_atteso)` | ⭐ **la madre della registrazione**: atomica, non solleva su `NULLA_DA_POSTARE`, porta la distinta a `CHIUSA` |
 | `pagamenti.fn_crea_distinta_correzione` | la correzione guidata: la distinta a segno opposto |
-| `pagamenti.fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)` · `fn_get_saldo_fattura` · `fn_get_saldo_fattura_contabili` | i tre numeri, letti **solo** da `saldi_service` |
+| `pagamenti.fn_get_saldo_rata(p_scadenza_id, p_escludi_contabile_riga_id)` · `fn_get_saldo_fattura(p_fattura_id, p_escludi_contabile_riga_id)` · `fn_get_saldo_fattura_contabili(idem)` | i tre numeri, letti **solo** da `saldi_service`. Il secondo parametro sul documento dal 18/09 (P-6, `20260918-01/-02`) |
+| `pagamenti.fn_get_saldi_rate(p_scadenza_ids bigint[], p_escludi)` | ⭐ **il nucleo** dei saldi di rata (dal 17/09, P-3): la «porta 3» del backend — una chiamata con l'**array della pagina** (`get_saldi_rate`), mai `LATERAL` per riga e mai `NULL` per «tutte» (per quello c'è `vw_saldi_rate`). Una rata fuori perimetro è **zero righe**, non un errore |
+| `vendite.vw_fatture_scadenze_lista` | la sorgente di `rate/` (una riga per rata col documento, `security_invoker`): la lista 68 la pagina, i saldi arrivano dopo dal nucleo |
+| `vendite.fn_numero_documento_fattura(numero, serie)` | la **sede unica** del numero parlante: `_RIGA_COLONNE` lo legge da lì (`fattura_numero_documento`), la vista rate e `vw_rate_fuori_capienza` pure — nessuna composizione in Python o nel FE |
 | `pagamenti.fn_conferma_sistemazione(p_sistemazione_id, p_ente_incasso_id)` · `fn_annulla_sistemazione(p_sistemazione_id, p_motivo)` | i due verbi dell'atto |
 | `pagamenti.vw_rate_fuori_capienza` · `vw_eccedenze_da_sistemare` | le due liste che «rendono onesta» la forzatura e presentano il denaro di troppo — `security_invoker` |
 | `pagamenti.vendite_contabili_stati` · `vendite_contabili_righe_stati` | i due cataloghi di stato coi flag `is_final`, `is_postabile`, `richiede_abbinamento` |
@@ -906,6 +1385,6 @@ decisioni nella guida [gestione-dei-pagamenti](../../../guide/gestione-dei-pagam
   parametri** esistano nel catalogo di PostgreSQL.
 - **Collaudo a video**: [collaudo-in-app-incassi-distinte-e-sistemazioni.md](../../../dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md)
   — non parte finché `registra_distinta` non è assegnata a un profilo.
-- **Frontend**: `frontend/src/pagamenti/` (6 pagine, 3 drawer, 4 dialoghi);
+- **Frontend**: `frontend/src/pagamenti/` (5 view, 3 drawer, 6 dialoghi — dal 17/09 il picker delle rate `RatePickerDialog`, singolo dal form e multiplo dalla toolbar delle righe);
   i vocabolari copiati nel FE sono **solo** quelli senza catalogo
   (`vocabolari.js`); gli stati arrivano dal dettaglio.

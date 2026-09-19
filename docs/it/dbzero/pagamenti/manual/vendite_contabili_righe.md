@@ -85,6 +85,37 @@ e riferimenti di abbinamento (fattura, billing account).
 
 ---
 
+### ✂️ Eliminare una riga, e quando il contenuto si ferma (dal 14-09-2026)
+
+Una riga si **elimina** con `attivo = false` — e dallo stesso giorno anche il
+`DELETE` fisico passa dalla stessa regola — **solo** se la sua distinta è
+**`MANUALE` in `BOZZA`** (D17). Non è uno stato: `SCARTATA` resta, ma dice
+un'altra cosa — *denaro arrivato, non nostro* — e **conta nella quadratura**;
+una riga digitata male su una bozza non è un fatto, e si toglie.
+
+Sotto una `MANUALE` **validata** il contenuto è **fermo** (D18): niente righe
+nuove, niente modifiche ai **fatti** (importo, le tre date, riferimento),
+niente eliminazioni né spostamenti, finché non torna in bozza. Le
+**decisioni** — stato, abbinamento, forzatura, motivi — restano libere: non
+toccano la quadratura, e il posting muove lo stato a distinta ancora validata.
+
+Il predicato dell'eliminazione ha **una sede sola**,
+[script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile)
+(tre motivi ordinati: distinta finale, non manuale, validata), e il guard che la
+chiama è
+[trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto)
+— che porta anche il congelamento. Il backend legge lo stesso elenco per
+spegnere il cestino col perché: tooltip e rifiuto non possono divergere.
+
+> ⚠️ Il `DELETE` ha **un** passaggio legittimo: il giro dei fondi
+> (`vendite.fn_cancella_fondo_fattura`) cancella le righe del suo atto sotto una
+> `GENERATA`, e lo dichiara con la GUC transazionale
+> `zeroerp.allow_contabile_riga_delete_override`. Non è un permesso: è la madre
+> che dice «sono io», dopo aver letto il suo criterio. Il resto sta nella scheda
+> del guard.
+
+---
+
 ### 🔒 Chi la vede — la RLS del perimetro incassi (2026-08-22)
 
 Policy `rls_vendite_contabili_righe_perimetro_incasso`, **`FOR ALL`**, gate

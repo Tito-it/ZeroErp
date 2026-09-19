@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — IL GUARD DI VALIDAZIONE CHIAMA LA CHECK, e smette di fare i conti da se'
+#   pagamenti.trgfn_vendite_contabili_guard_validazione()
+#   Brief: brief-db-validata-e-registrazione-tardiva §2.1 (D20-a), §4 P-4
+#
+# ── COSA CAMBIA ────────────────────────────────────────────────────
+#   Entrando in VALIDATA il guard chiama script.fn_check_contabile_validabile
+#   (20260918-36) e solleva il codice del PRIMO motivo con
+#   script.fn_raise_primo_motivo_se_presente. Il blocco (1) — la quadratura
+#   calcolata qui dentro — ESCE: sta nella check, come secondo motivo, con lo
+#   stesso codice e gli stessi tre valori. Il blocco (2) — la riapertura
+#   VALIDATA -> BOZZA solo se MANUALE — resta com'era.
+#
+#   ⭐ L'effetto nuovo e' il primo motivo: una distinta con righe attive in uno
+#   stato NON lavorato (IMPORTATA, DA_ABBINARE) non entra in VALIDATA, e la
+#   frase dice quante sono. Fino a oggi si validava — e si registrava — con
+#   righe DA_ABBINARE sotto, che alla chiusura restavano senza strada (§1 del
+#   brief).
+#
+# ── ⛔ IL CODICE LETTO DALL'ARRAY → fn_raise_primo_motivo_se_presente ────
+#   AGENTS.md §«Due funzioni per sollevare»: il codice non e' un letterale, si
+#   legge da `motivi -> 0`. Nessuna coda a mano. `p_campo` resta NULL: il
+#   campo, quando c'e' (importo_dichiarato sul motivo 2), viaggia nel
+#   `dettaglio` della check e l'helper lo fonde nel contesto; sul motivo 1 non
+#   c'e' un campo da accendere, ci sono N righe.
+#
+# ── ⭐ NEW.importo_dichiarato, NON una rilettura ───────────────────
+#   Il guard gira BEFORE ROW: il dichiarato che sta entrando non e' ancora
+#   nella tabella. Si passa NEW, come il guard faceva gia' nel blocco (1).
+#
+# ── PRESIDI TRASVERSALI ────────────────────────────────────────────
+#   · script/test-rubinetto-primo-motivo-v1.sql t.5: le funzioni che CHIAMANO
+#     l'helper passano da 19 a 20 (questa). Aggiornato nello stesso giro.
+#   · dbops/test-riferimenti-morti-v1.sql t.2: plpgsql_check a zero errori,
+#     provato in transazione ritirata.
+#
+# Dipendenze: 20260918-36. Verifica: test-contabile-validabile-v1.sql;
+# adeguati test-fn-posta-contabile.sql, test-contabili-origine-e-quadratura.sql,
+# test-righe-contabili-guard-dati.sql (P-0: SOSPESA al posto di DA_ABBINARE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260918-37-update-trgfn-vendite-contabili-guard-validazione-check-mctit.yaml
+
+  - changeSet:
+      id: 20260918-37-update-trgfn-vendite-contabili-guard-validazione-check
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D20-a: entrando in VALIDATA il guard chiama script.fn_check_contabile_validabile
+        e solleva il primo motivo con fn_raise_primo_motivo_se_presente — righe non
+        lavorate prima, quadratura poi. La quadratura esce dal guard (sta nella check,
+        stesso codice e stessi valori). La riapertura solo MANUALE resta. Rubinetto t.5:
+        19 -> 20. Brief: brief-db-validata-e-registrazione-tardiva §4 P-4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script' AND p.proname = 'fn_check_contabile_validabile'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script' AND p.proname = 'fn_raise_primo_motivo_se_presente'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_validazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_da  pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_stato_a   pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Le CONDIZIONI su una transizione che la matrice
+                  --   (stato_da, stato_a) non puo' portare, perche' dipendono da
+                  --   colonne della riga o dalle righe figlie:
+                  --
+                  --   1) entrando in VALIDATA — «ho finito di inserire»: nessuna
+                  --      riga attiva non lavorata (IMPORTATA, DA_ABBINARE), e se
+                  --      la distinta DICHIARA un totale la somma delle righe deve
+                  --      corrispondere. ⭐ Rev 2026-09-18 (D20-a): i due motivi
+                  --      stanno in script.fn_check_contabile_validabile, in
+                  --      quest'ordine; qui si chiama la check e si solleva il
+                  --      primo. Il guard non fa piu' i conti da se': la stessa
+                  --      check la legge il dettaglio della distinta, e cosi'
+                  --      il pulsante spento e il rifiuto non possono divergere;
+                  --   2) uscendo da VALIDATA verso BOZZA — solo se e' MANUALE.
+                  --
+                  -- ⚠️ La quadratura NON puo' stare in un trigger di riga: la
+                  --    somma torna solo alla fine del caricamento. Qui il
+                  --    momento e' dichiarato dall'operatore.
+                  -- =========================================================
+
+                  IF NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN s.id = OLD.stato_id THEN s.codice_interno END),
+                      max(CASE WHEN s.id = NEW.stato_id THEN s.codice_interno END)
+                    INTO v_stato_da, v_stato_a
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.id IN (OLD.stato_id, NEW.stato_id);
+
+                  -- ── 1) Entrando in VALIDATA: la check decide, il guard solleva
+                  -- ⭐ NEW.importo_dichiarato e non una rilettura: BEFORE ROW, il
+                  --    valore che sta entrando non e' ancora nella tabella.
+                  -- ⛔ Il codice si legge dall'array → fn_raise_primo_motivo_se_presente
+                  --    (AGENTS.md §«Due funzioni per sollevare»). p_campo NULL: il
+                  --    campo, quando c'e', viaggia nel dettaglio della check.
+                  IF v_stato_a = 'VALIDATA' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_guard_validazione',
+                          script.fn_check_contabile_validabile(NEW.id, NEW.importo_dichiarato),
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'contabile_id', NEW.id,
+                              'codice',       NEW.codice,
+                              'origine',      NEW.origine));
+                  END IF;
+
+                  -- ── 2) La riapertura e' solo della MANUALE
+                  IF v_stato_da = 'VALIDATA' AND v_stato_a = 'BOZZA'
+                     AND NEW.origine IS DISTINCT FROM 'MANUALE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_guard_validazione',
+                          'E_CONTABILE_RIAPERTURA_NON_MANUALE',
+                          jsonb_build_object(
+                              'contabile_id', NEW.id,
+                              'codice',       NEW.codice,
+                              'origine',      NEW.origine
+                          ),
+                          NEW.tx_id,
+                          NEW.codice,
+                          CASE NEW.origine
+                              WHEN 'AUTOMATICA' THEN 'arrivata da un file'
+                              WHEN 'GENERATA'   THEN 'prodotta dal sistema'
+                              ELSE NEW.origine
+                          END
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_validazione()
+              IS 'Le condizioni su una transizione che la MATRICE non sa esprimere, perche'' dipendono da colonne della riga o dalle righe figlie. (1) Entrando in VALIDATA — «ho finito di inserire» (D14-a-bis) — chiama script.fn_check_contabile_validabile(NEW.id, NEW.importo_dichiarato) e solleva il codice del PRIMO motivo con fn_raise_primo_motivo_se_presente: prima le righe attive NON LAVORATE (lavorata = false sul catalogo: IMPORTATA, DA_ABBINARE — E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE, D20-a), poi la quadratura col dichiarato quando c''e'' (E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA, SCARTATA compresa: quel denaro e'' arrivato). ⭐ Rev 2026-09-18: il guard non calcola piu'' la quadratura in proprio — la check e'' la sede unica, letta anche dal dettaglio della distinta (can_validare), cosi'' pulsante spento e rifiuto non possono divergere. NEW.importo_dichiarato e non una rilettura: BEFORE ROW, il valore che entra non e'' ancora nella tabella. ⚠️ Non puo'' stare in un trigger di riga, dove la somma torna solo alla fine. (2) VALIDATA -> BOZZA solo se origine = MANUALE: l''automatica e'' la copia di un file ed e'' immutabile, la generata si rifa''. ⚠️ Chi legge la sola matrice non vede queste due regole. Brief: brief-db-validata-e-registrazione-tardiva §4 P-4.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si riapplica il corpo precedente (20260821-33 e successive
+              -- revisioni, vedi docs/it/dbzero/pagamenti/funzioni). Nessun DROP:
+              -- il trigger trg_vendite_contabili_a10_guard_validazione_upd la monta.
+              SELECT 1;

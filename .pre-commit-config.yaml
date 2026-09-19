@@ -57,6 +57,22 @@ repos:
         pass_filenames: false
         files: '^(frontend/src/.*\.(vue|js|json)|docs/it/dbzero/.*\.md|db/changelog/migrations_v2/80_data/sql/.*\.csv|scripts/check_i18n_keys\.py)$'
 
+      # ⭐ Le CLASSI MORTE del frontend (2026-09-17): un token in `class="..."`
+      #    che nessun foglio definisce non fa niente e non lo dice. Trovate in
+      #    tre passate: 21 utility PrimeFlex mai installate (`w-full` ×245),
+      #    due classi del progetto mai scritte (`app-text-muted`,
+      #    `form-field-wide`), 26 identificatori orfani. Il conto va tenuto a
+      #    ZERO, e questo cancello e' l'unico modo perche' resti tale: il
+      #    difetto TOGLIE un colore o un bordo, non aggiunge un errore.
+      #    GLOBALE come il guard i18n: una classe muore quando cambia il foglio,
+      #    non solo il template che la cita.
+      - id: check-classi-morte
+        name: Controlla classi CSS morte
+        entry: python3 scripts/check_classi_morte.py
+        language: system
+        pass_filenames: false
+        files: '^(frontend/src/.*\.(vue|css)|scripts/check_classi_morte\.py)$'
+
   # ⭐ La PRIMA analisi statica del backend (2026-09-09). Fino a quel giorno su
   #    258.000 righe di Python non girava nessun linter, nessun type checker e
   #    nessun formattatore — mentre il frontend ne aveva gia' due.

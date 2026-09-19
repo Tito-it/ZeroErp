@@ -97,6 +97,7 @@ function onAllinea() {
   const emittenteId = store.definizione?.emittente_fiscale_id
   if (!d?.preset_corrente_id || !emittenteId) return
   confirmAction({
+    header: t('amministrazione.definizioni_workflow.ed_allinea'),
     message: t('amministrazione.definizioni_workflow.ed_allinea_conferma', { corrente: d.versione_preset_corrente }),
     onAccept: async () => {
       allineaLoading.value = true
@@ -176,6 +177,7 @@ async function onFigliChanged() {
 
 function onDeleteStep(step) {
   confirmAction({
+    header: t('confirm.delete_title'),
     message: t('amministrazione.definizioni_workflow.ed_conferma_elimina_step', { codice: step.codice }),
     onAccept: async () => {
       const res = await execute(() => deleteStep(defId.value, step.id), {
@@ -262,7 +264,7 @@ watch(defId, loadDettaglio)
       </div>
     </div>
 
-    <Message v-if="store.lastError" severity="error" :closable="false" class="mb-3">
+    <Message v-if="store.lastError" severity="error" :closable="false">
       {{ t('amministrazione.definizioni_workflow.ed_caricamento_errore') }}
     </Message>
 
@@ -290,11 +292,11 @@ watch(defId, loadDettaglio)
         </p>
       </div>
 
-      <Message v-if="editorReadonly" severity="info" :closable="false" size="small" class="mb-2">
+      <Message v-if="editorReadonly" severity="info" :closable="false" size="small">
         {{ t('amministrazione.definizioni_workflow.ed_readonly_hint') }}
       </Message>
 
-      <Message v-if="drift" severity="warn" :closable="false" class="mb-3">
+      <Message v-if="drift" severity="warn" :closable="false">
         <div class="editor-drift">
           <span>
             {{ t('amministrazione.definizioni_workflow.ed_drift_banner', {
@@ -333,7 +335,7 @@ watch(defId, loadDettaglio)
         selection-mode="single"
         data-key="id"
         striped-rows
-        class="app-datatable mb-3"
+        class="app-datatable"
         :sort-field="'sequenza'"
         :sort-order="1"
       >
@@ -381,7 +383,7 @@ watch(defId, loadDettaglio)
         <h2 class="editor-section-title">
           {{ t('amministrazione.definizioni_workflow.ed_step_dettaglio', { codice: selectedStep.codice }) }}
         </h2>
-        <Tabs value="canali" class="mb-3">
+        <Tabs value="canali">
           <TabList>
             <Tab value="canali">{{ t('amministrazione.definizioni_workflow.ed_tab_canali') }}</Tab>
             <Tab value="handler">{{ t('amministrazione.definizioni_workflow.ed_tab_handler_eventi') }}</Tab>
@@ -434,7 +436,7 @@ watch(defId, loadDettaglio)
           </TabPanels>
         </Tabs>
       </template>
-      <Message v-else severity="secondary" :closable="false" size="small" class="mb-3">
+      <Message v-else severity="secondary" :closable="false" size="small">
         {{ t('amministrazione.definizioni_workflow.ed_step_seleziona') }}
       </Message>
 

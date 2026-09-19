@@ -12,6 +12,20 @@ import Toast from 'primevue/toast'
 import Button from 'primevue/button'
 import ConfirmDialog from 'primevue/confirmdialog'
 import DocumentoDrawerHost from './vendite/_shared/documenti/DocumentoDrawerHost.vue'
+import { DIALOG_CHROME } from './core/constants'
+
+// Scopo: ESC sulla radice della ConfirmDialog — ferma la risalita e chiude la
+//        sola conferma (`instance.close()` = la via di PrimeVue: `onHide`).
+//        Dentro una conferma non ci sono tendine: nessun controllo da fare.
+const confirmDialogPt = {
+  root: ({ instance }) => ({
+    onKeydown: (event) => {
+      if (event.code !== 'Escape') return
+      event.stopPropagation()
+      if (DIALOG_CHROME.closeOnEscape) instance.close()
+    },
+  }),
+}
 import {
   bersaglioDrawerVisible,
   bersaglioDrawerTipo,
@@ -71,7 +85,17 @@ function eseguiAzione(azione, chiudi) {
     </template>
   </Toast>
 
-  <ConfirmDialog />
+  <!-- La ConfirmDialog globale (unica: `useConfirmAction` e' l'unico che la
+       apre). ⚠️ `closable` sta QUI e non nel composable: PrimeVue 4 non la
+       inoltra da `confirm.require` al Dialog, ma la ConfirmDialog eredita gli
+       attributi (`inheritAttrs`) e li passa al Dialog radice — e' l'unico
+       pezzo di chrome che vive sul tag. Il valore e' quello di DIALOG_CHROME:
+       niente X, come su ogni AppDialog (decisione Tid, 2026-09-18).
+       ⭐ ESC si gestisce sulla RADICE (`pt.root`), come in AppDialog: chiude
+       solo la conferma e non arriva a `document`, dove il Drawer sotto si
+       chiuderebbe insieme (rilievo di Tid, stesso giorno). `instance` e' il
+       Dialog di PrimeVue che la ConfirmDialog renderizza. -->
+  <ConfirmDialog :closable="DIALOG_CHROME.closable" :pt="confirmDialogPt" />
   <router-view />
 
   <!-- L'ospite del bersaglio: uno per tutta l'applicazione. -->
@@ -90,7 +114,7 @@ function eseguiAzione(azione, chiudi) {
 .app-toast-azioni {
   display: flex;
   flex-direction: column;
-  gap: var(--app-gap-sm, 0.5rem);
+  gap: var(--app-space-sm);
   width: 100%;
 }
 
@@ -116,6 +140,6 @@ function eseguiAzione(azione, chiudi) {
 .app-toast-azioni-pulsanti {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--app-gap-sm, 0.5rem);
+  gap: var(--app-space-sm);
 }
 </style>

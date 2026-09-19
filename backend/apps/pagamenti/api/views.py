@@ -18,7 +18,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     parse_list_params,
     qp_bool_optional,
@@ -28,7 +28,17 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
 )
+from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.success_responses import success_response
+from apps.pagamenti.db.pagamenti_repository import (
+    DISTINTA_RIGHE_SORT_COLUMNS,
+    DISTINTE_SORT_COLUMNS,
+    ECCEDENZE_SORT_COLUMNS,
+    ENTI_INCASSO_SORT_COLUMNS,
+    RATE_FUORI_CAPIENZA_SORT_COLUMNS,
+    RATE_SORT_COLUMNS,
+    RIGHE_SORT_COLUMNS,
+)
 from apps.pagamenti.services import (
     enti_incasso_service,
     pagamenti_service,
@@ -39,6 +49,48 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 AREA = "pagamenti"
+
+
+# ⭐ `escludi_riga_id` — «prima di se'» — e' LO STESSO parametro sulla rata e
+#    sul documento (dal 2026-09-18, P-6): una dichiarazione sola, cosi' la
+#    frase che il client legge in OpenAPI non puo' divergere fra i due livelli.
+_PARAM_ESCLUDI_RIGA_ID = OpenApiParameter(
+    name="escludi_riga_id", type=int, location=OpenApiParameter.QUERY,
+    required=False,
+    description=(
+        "Esclude una riga contabile dal conto: serve a chiedere lo "
+        "spazio PRIMA DI SE', cioe' a sapere se quella riga ci sta "
+        "senza contarsi addosso."
+    ),
+)
+
+
+# Scopo: legge `escludi_riga_id` dalla query string, strict (400 se non numerico).
+# ⚠️ Il nome si prende dal parametro dichiarato, non si riscrive: due letterali
+#    per la stessa chiave sono il modo in cui OpenAPI e parsing si sfilano.
+def _escludi_riga_id(request: Request) -> int | None:
+    nome = _PARAM_ESCLUDI_RIGA_ID.name
+    return qp_int_optional(request.query_params.get(nome), nome)
+
+
+# ⭐ `scartate` — l'interruttore «Mostra scartate (N)» delle righe di una
+#    distinta (BE-2, D20-c): UNA dichiarazione per la lista e per il suo export,
+#    come `escludi_riga_id` sui due livelli del saldo.
+_PARAM_SCARTATE = OpenApiParameter(
+    name="scartate", type=bool, location=OpenApiParameter.QUERY, required=False,
+    description=(
+        "`1` mostra anche le righe SCARTATA («non e' nostra»). Default: "
+        "nascoste — lista ed export insieme — e la risposta dichiara quante "
+        "sono in `scartate_count`."
+    ),
+)
+
+
+# Scopo: legge `scartate` dalla query string; assente = nascoste.
+def _scartate(request: Request) -> bool:
+    nome = _PARAM_SCARTATE.name
+    return qp_bool_optional(request.query_params.get(nome), nome) is True
+
 
 # Risposta generica: il contenuto e' documentato per endpoint nel service, e
 # gli schemi di dettaglio arriveranno col consolidamento OpenAPI del dominio.
@@ -111,10 +163,8 @@ class ApiDistinteList(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO della colonna, come la lista lo espone): "
-                    "data_contabile (default) | codice | stato_descrizione | "
-                    "origine | centro_descrizione | totale_righe."
+                description=descrizione_order_by(
+                    DISTINTE_SORT_COLUMNS, "Senza: data_contabile.",
                 ),
             ),
             OpenApiParameter(
@@ -159,6 +209,9 @@ class ApiDistinteList(DomainAPIView):
                 "centro_riscossione_id": serializers.IntegerField(),
                 "data_contabile": serializers.DateField(),
                 "ente_incasso_id": serializers.IntegerField(required=False),
+                # Facoltativo: senza, lo risolve il DB dal canale o dalla
+                # sessione; se non puo', 400 `E_CONTABILE_EMITTENTE_OBBLIGATORIO`.
+                "emittente_fiscale_id": serializers.IntegerField(required=False),
                 "importo_dichiarato": serializers.DecimalField(
                     max_digits=18, decimal_places=2, required=False
                 ),
@@ -188,8 +241,9 @@ class ApiDistintaDetail(DomainAPIView):
         operation_id="pagamenti_distinta_detail",
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Restituisce via GET testata, totali derivati, righe e i due
-    #        cataloghi di stato in un round-trip solo.
+    # Scopo: Restituisce via GET testata, totali derivati e i due cataloghi di
+    #        stato in un round-trip solo. ⚠️ Le righe NO (dal 2026-09-18):
+    #        hanno la loro lista paginata in `righe/`.
     def get(self, request: Request, contabile_id: int) -> JsonResponse:
         return success_response(pagamenti_service.get_distinta(contabile_id))
 
@@ -244,18 +298,69 @@ class ApiDistintaStato(DomainAPIView):
 # ══════════════════════════════════════════════════════════════════
 
 
+# I parametri di lista delle righe di una distinta, dichiarati UNA volta: la
+# lista e il suo export accettano lo stesso ordinamento, e due elenchi OpenAPI
+# scritti a mano sono il modo in cui i due si sfilano (stessa ragione di
+# `_PARAM_ESCLUDI_RIGA_ID`).
+_PARAMS_ORDINAMENTO_DISTINTA_RIGHE = [
+    OpenApiParameter(
+        name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
+        description=descrizione_order_by(
+            DISTINTA_RIGHE_SORT_COLUMNS,
+            "Senza: id DESC (l'ultima riga digitata in cima). "
+            "`fattura_numero_documento` ordina per la coppia (numero, serie).",
+        ),
+    ),
+    OpenApiParameter(
+        name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+        description="asc | desc (le colonne data partono DESC).",
+    ),
+]
+
+
 class ApiDistintaRighe(DomainAPIView):
     """GET/POST /api/v1/pagamenti/distinte/<id>/righe/ — le righe della distinta."""
 
     area_funzionale = AREA
+    # ⭐ Lista configurabile dal 2026-09-18 (`pagamenti.distinta_righe`, id 69):
+    #    il cancello di perimetro emittente vale come su ogni altra lista.
+    lista_codice = "pagamenti.distinta_righe"
 
     @extend_schema(
         operation_id="pagamenti_distinta_righe_list",
+        parameters=[
+            *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
+            _PARAM_SCARTATE,
+            OpenApiParameter(
+                name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Righe per pagina (default 25, max 200).",
+            ),
+            OpenApiParameter(
+                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
+            ),
+        ],
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Restituisce via GET le righe attive della distinta.
+    # Scopo: Restituisce via GET le righe attive della distinta, paginate.
+    # ⚠️ PAGINATA dal 2026-09-18 (decisione di Tid), come ogni lista
+    #    configurabile: bundle standard `parse_list_params` per `limit`/`offset`.
+    # ⛔ `order_by`/`order_dir` GREZZI e non dal bundle: quello normalizza
+    #    l'assenza di `order_dir` ad `asc`, e il default del repository (`id
+    #    DESC`, le date DESC) non verrebbe mai raggiunto (api.md
+    #    §parse_list_params).
     def get(self, request: Request, contabile_id: int) -> JsonResponse:
-        return success_response(pagamenti_service.list_righe(contabile_id))
+        qp = request.query_params
+        p = parse_list_params(qp)
+        return success_response(
+            pagamenti_service.list_righe(
+                contabile_id,
+                limit=p["limit"],
+                offset=p["offset"],
+                order_by=qp_str(qp.get("order_by")),
+                order_dir=qp_str(qp.get("order_dir")),
+                scartate=_scartate(request),
+            )
+        )
 
     @extend_schema(
         operation_id="pagamenti_distinta_righe_create",
@@ -269,13 +374,23 @@ class ApiDistintaRighe(DomainAPIView):
                 "data_operazione": serializers.DateField(required=False),
                 "motivo_sospeso": serializers.CharField(required=False),
                 "meta": serializers.DictField(required=False),
+                # ⭐ D16: la destinazione viaggia coi fatti. Con `fattura_id` la
+                #    riga nasce ABBINATA; senza, DA_ABBINARE (l'eccezione
+                #    dichiarata). `billing_account_id` assente = quello della
+                #    fattura. La forzatura e' il SECONDO tempo della capienza.
+                "fattura_id": serializers.IntegerField(required=False),
+                "billing_account_id": serializers.IntegerField(required=False),
+                "scadenza_id": serializers.IntegerField(required=False),
+                "forzata": serializers.BooleanField(required=False),
+                "motivo_forzatura": serializers.CharField(required=False),
             },
         ),
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Aggiunge via POST una riga — un importo arrivato.
-    # ⭐ Nasce `DA_ABBINARE`: quando il denaro arriva non si sa ancora di chi
-    #    sia, e quello stato dice esattamente questo.
+    # Scopo: Aggiunge via POST una riga — un importo arrivato, e di chi e'.
+    # ⭐ Con la fattura nasce `ABBINATA` in un INSERT solo (D16); senza nasce
+    #    `DA_ABBINARE`, che sulla manuale e' l'eccezione che l'operatore
+    #    dichiara, non il default.
     def post(self, request: Request, contabile_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return pagamenti_service.crea_riga(contabile_id, dict(payload))
@@ -283,8 +398,114 @@ class ApiDistintaRighe(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ApiDistintaRigheExport(DomainAPIView):
+    """GET /api/v1/pagamenti/distinte/<id>/righe/export/ — CSV/XLSX delle righe."""
+
+    area_funzionale = AREA
+    # ⭐ LO STESSO `lista_codice` della lista a video, letto da lei e non
+    #    ricopiato: le colonne del file sono quelle che l'operatore VEDE
+    #    (preferenza + preset + permessi), e il cancello di perimetro vale anche
+    #    sulla porta piu' larga (`base_views.lista_codice`). Due letterali
+    #    uguali divergono al primo rename, e l'export scaricherebbe le colonne
+    #    di un'altra lista senza nessun errore.
+    lista_codice = ApiDistintaRighe.lista_codice
+
+    @extend_schema(
+        operation_id="pagamenti_distinta_righe_export",
+        parameters=[
+            OpenApiParameter(
+                name="formato", type=str, location=OpenApiParameter.QUERY,
+                required=True, description="csv | xlsx.",
+            ),
+            *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
+            _PARAM_SCARTATE,
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Il file delle righe di UNA distinta — «la contabile in CSV/Excel».
+    # ⚠️ `limit=EXPORT_MAX_ROWS + 1` e non la pagina a video: l'export esporta
+    #    il DATASET, non la pagina. Il `+1` serve al guard di
+    #    `build_export_response`, che rifiuta PRIMA di serializzare invece di
+    #    consegnare un file troncato in silenzio.
+    # ⚠️ `?formato=`, non `?format=`: quest'ultimo e' un parametro magico di DRF
+    #    e collide col content negotiation (`feedback_drf_format_magic_param`).
+    def get(self, request: Request, contabile_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        scartate = _scartate(request)
+        dati = pagamenti_service.list_righe(
+            contabile_id,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            scartate=scartate,
+        )
+        return build_export_response(
+            request,
+            lista_codice=self.lista_codice,
+            results=dati["results"],
+            total=dati["count"],
+            # ⭐ L'UNICO filtro della lista e' l'interruttore delle scartate, e si
+            #    dichiara nel file solo quando e' acceso: la distinta e' nel path,
+            #    non e' una scelta dell'operatore.
+            filtri_applicati={"scartate": True} if scartate else None,
+            fmt=fmt,
+        )
+
+
+class ApiDistintaRigheDaRate(DomainAPIView):
+    """POST /api/v1/pagamenti/distinte/<id>/righe/da-rate/ — N rate scelte, N righe."""
+
+    # Stesso gate di `POST righe/` (`add` d'area): e' la stessa nascita, in
+    # elenco. ⚠️ Verbo di COLLEZIONE sulle righe della distinta: le righe nate
+    # dalle rate scelte — un nome che dice COSA, non come (api.md).
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_distinta_righe_da_rate",
+        request=inline_serializer(
+            name="PagamentiRigheDaRate",
+            fields={
+                # I fatti COMUNI, uguali per tutte le righe del giro.
+                "riferimento_ente": serializers.CharField(required=False),
+                "data_pagamento": serializers.DateField(required=False),
+                "data_valuta": serializers.DateField(required=False),
+                "data_operazione": serializers.DateField(required=False),
+                "meta": serializers.DictField(required=False),
+                # Per riga: la rata, il suo importo e il secondo tempo.
+                "righe": serializers.ListField(
+                    child=inline_serializer(
+                        name="PagamentiRigaDaRata",
+                        fields={
+                            "scadenza_id": serializers.IntegerField(),
+                            "importo": serializers.DecimalField(
+                                max_digits=18, decimal_places=2
+                            ),
+                            "forzata": serializers.BooleanField(required=False),
+                            "motivo_forzatura": serializers.CharField(required=False),
+                        },
+                    ),
+                ),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Crea via POST una riga per ogni rata scelta, con esito PER RIGA.
+    # ⚠️ Lo status e' 200 anche su `PARZIALE`/`ERRORE`: chi legge guarda `esito`
+    #    e `falliti[]`, ciascuno col suo errore intero (`ui_action` compresa).
+    def post(self, request: Request, contabile_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return pagamenti_service.crea_righe_da_rate(contabile_id, dict(payload))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class ApiRigaDetail(DomainAPIView):
-    """PATCH /api/v1/pagamenti/righe/<id>/ — i fatti della riga."""
+    """PATCH/DELETE /api/v1/pagamenti/righe/<id>/ — i fatti della riga, e la sua eliminazione."""
 
     area_funzionale = AREA
 
@@ -302,17 +523,47 @@ class ApiRigaDetail(DomainAPIView):
                 "data_operazione": serializers.DateField(required=False),
                 "motivo_sospeso": serializers.CharField(required=False),
                 "meta": serializers.DictField(required=False),
+                # ⭐ Il SECONDO TEMPO della capienza, anche in modifica (Tid,
+                #    2026-09-15): un importo corretto oltre il residuo della
+                #    rata prende il 409 confermabile, e qui si conferma.
+                "forzata": serializers.BooleanField(required=False),
+                "motivo_forzatura": serializers.CharField(required=False),
             },
         ),
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Aggiorna via PATCH i FATTI di una riga (com'e' arrivato il denaro).
-    # ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata e
-    #    la forzatura, e perche' e' una decisione — non la correzione di un
-    #    dato digitato male.
+    # Scopo: Aggiorna via PATCH i FATTI di una riga (com'e' arrivato il denaro)
+    #        e, se il guard della rata ha chiesto conferma, la forzatura.
+    # ⛔ Non l'abbinamento: quello e' un verbo, perche' porta con se' la rata,
+    #    e perche' e' una decisione — non la correzione di un dato digitato
+    #    male.
     def patch(self, request: Request, riga_id: int) -> JsonResponse:
         return success_response(
             pagamenti_service.aggiorna_riga(riga_id, dict(request.data))
+        )
+
+    @extend_schema(
+        operation_id="pagamenti_riga_delete",
+        responses={200: inline_serializer(
+            name="PagamentiRigaDelete",
+            fields={
+                "riga_id": serializers.IntegerField(),
+                "eliminata": serializers.BooleanField(),
+            },
+        )},
+    )
+    # Scopo: Elimina via DELETE una riga di una distinta manuale in bozza
+    #        (`attivo = false`, D17). Il metodo dice il verbo; i motivi per cui
+    #        non si puo' li da' il database (409 `E_RIGA_CONTABILE_DISTINTA_*`).
+    # ⚠️ `handle_post_json` e non una chiamata diretta: e' la sede unica del
+    #    controllo `Idempotency-Key` e del replay in strong mode. Il corpo di un
+    #    DELETE e' vuoto, e il payload viene ignorato di proposito — quello che
+    #    serve e' nel path (stessa forma di `DELETE /vendite/fondi-fattura/{id}/`).
+    def delete(self, request: Request, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda _payload: pagamenti_service.elimina_riga(riga_id),
+            require_idempotency_key=True,
         )
 
 
@@ -478,6 +729,45 @@ class ApiRigaAbbina(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ApiRigaRegistra(DomainAPIView):
+    """POST /api/v1/pagamenti/righe/<id>/registra/ — la registrazione tardiva."""
+
+    area_funzionale = AREA
+    # 🔴 LO STESSO CANCELLO DELLA REGISTRAZIONE (`registra_distinta`), e per la
+    #    stessa ragione: questo verbo scrive un movimento — rovescia denaro — e
+    #    non puo' avere una porta piu' larga di quella che chiude la distinta.
+    post_permission = "registra_distinta"
+
+    @extend_schema(
+        operation_id="pagamenti_riga_registra",
+        request=inline_serializer(
+            name="PagamentiRigaRegistra",
+            fields={
+                "fattura_id": serializers.IntegerField(),
+                "billing_account_id": serializers.IntegerField(required=False),
+                "scadenza_id": serializers.IntegerField(required=False),
+                "forzata": serializers.BooleanField(required=False),
+                "motivo_forzatura": serializers.CharField(required=False),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Abbina E registra via POST una riga `SOSPESA` sotto una distinta
+    #        gia' registrata (D20-b): una sola `SELECT` sulla madre
+    #        `fn_posta_riga_tardiva`. Movimento scritto, riga `POSTATA`,
+    #        distinta che resta `CHIUSA`.
+    # ⚠️ Il payload e' quello di `abbina` — e' lo stesso gesto, con la
+    #    registrazione dentro. Il doppio tempo della capienza passa intatto:
+    #    409 `confirm_and_retry`, poi `forzata = true`.
+    # ⛔ Non un esito «nulla da postare»: una tardiva che non si puo' fare e' un
+    #    rifiuto (`E_RIGA_CONTABILE_TARDIVA_*`, 409) con la sua frase.
+    def post(self, request: Request, riga_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return pagamenti_service.registra_riga_tardiva(riga_id, dict(payload))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class ApiRigheCoda(DomainAPIView):
     """GET /api/v1/pagamenti/righe/ — la coda del riconciliatore."""
 
@@ -517,9 +807,8 @@ class ApiRigheCoda(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO): data_pagamento (default) | importo | "
-                    "stato_descrizione | contabile_codice."
+                description=descrizione_order_by(
+                    RIGHE_SORT_COLUMNS, "Senza: data_pagamento.",
                 ),
             ),
             OpenApiParameter(
@@ -555,6 +844,136 @@ class ApiRigheCoda(DomainAPIView):
         return success_response(data)
 
 
+class ApiRateList(DomainAPIView):
+    """GET /api/v1/pagamenti/rate/ — l'elenco delle rate col saldo, la sorgente del picker."""
+
+    area_funzionale = AREA
+    is_search_endpoint = True
+    # ⭐ La lista `pagamenti.rate` (id 68): nasce per il picker della distinta
+    #    (D19-c) ed e' la rotta che lo scadenzario riusera' (brief madre §3.4).
+    # ⛔ Niente `skip_area_check`: la consumano schermate di `pagamenti` — a
+    #    differenza delle quattro `fatture/<id>/…`, che servono il drawer
+    #    fattura di `vendite`.
+    lista_codice = "pagamenti.rate"
+
+    @extend_schema(
+        operation_id="pagamenti_rate_list",
+        parameters=[
+            OpenApiParameter(
+                name="billing_account_id", type=int,
+                location=OpenApiParameter.QUERY, required=False,
+                description="Il cliente: uno dei due criteri del picker.",
+            ),
+            OpenApiParameter(
+                name="fattura_numero", type=int, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Il numero del documento, confronto ESATTO (101 non porta "
+                    "1010): l'altro criterio del picker. `serie` e `anno` "
+                    "facoltativi per disambiguare."
+                ),
+            ),
+            OpenApiParameter(
+                name="serie", type=str, location=OpenApiParameter.QUERY, required=False,
+            ),
+            OpenApiParameter(
+                name="anno", type=int, location=OpenApiParameter.QUERY, required=False,
+            ),
+            OpenApiParameter(
+                name="search", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Ricerca libera (min 3) su ragione sociale, codice BA, id "
+                    "fiscale del CLIENTE — non sul numero, che e' esatto."
+                ),
+            ),
+            OpenApiParameter(
+                name="solo_aperte", type=bool, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Solo le rate con residuo diverso da zero (Q-B): il filtro "
+                    "sta nel WHERE e chiede il saldo di tutto il perimetro."
+                ),
+            ),
+            OpenApiParameter(
+                name="solo_numerate", type=bool, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Solo le rate di documenti NUMERATI (`numero IS NOT NULL`): "
+                    "la bozza non e' un documento fiscale. Il picker lo passa "
+                    "sempre; vale anche sul perimetro di `solo_aperte`."
+                ),
+            ),
+            OpenApiParameter(
+                name="data_scadenza_da", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="Scadenza da (ISO).",
+            ),
+            OpenApiParameter(
+                name="data_scadenza_a", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="Scadenza a (ISO).",
+            ),
+            OpenApiParameter(
+                name="natura_doc_codice", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description="Natura del documento (codice interno), per lo scadenzario.",
+            ),
+            OpenApiParameter(
+                name="order_by", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description=descrizione_order_by(
+                    RATE_SORT_COLUMNS,
+                    "Senza: data_scadenza ASC (e' una coda). I tre saldi non ordinano: "
+                    "arrivano dal nucleo DOPO la pagina.",
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="asc | desc.",
+            ),
+            OpenApiParameter(
+                name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Righe per pagina (default 25, max 200).",
+            ),
+            OpenApiParameter(
+                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
+            ),
+        ],
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET le rate del perimetro, ciascuna col suo saldo.
+    # ⚠️ `order_dir` GREZZO e non `p["order_dir"]`: il bundle lo normalizza ad
+    #    `asc`, e sulle colonne data il verso naturale (DESC) non arriverebbe
+    #    mai (api.md §parse_list_params).
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        p = parse_list_params(qp)
+        data = saldi_service.list_rate(
+            auth_user_id=get_scope_user_id(request),
+            billing_account_id=qp_int_optional(
+                qp.get("billing_account_id"), "billing_account_id"
+            ),
+            fattura_numero=qp_int_optional(qp.get("fattura_numero"), "fattura_numero"),
+            serie=qp_str(qp.get("serie")),
+            anno=qp_int_optional(qp.get("anno"), "anno"),
+            search=qp_str(qp.get("search")),
+            solo_aperte=qp_bool_optional(qp.get("solo_aperte"), "solo_aperte"),
+            solo_numerate=qp_bool_optional(qp.get("solo_numerate"), "solo_numerate"),
+            data_scadenza_da=qp_iso_date_optional(
+                qp.get("data_scadenza_da"), "data_scadenza_da"
+            ),
+            data_scadenza_a=qp_iso_date_optional(
+                qp.get("data_scadenza_a"), "data_scadenza_a"
+            ),
+            # Il maiuscolo lo mette il service (una sede, provata dal suo test).
+            natura_doc_codice=qp_str(qp.get("natura_doc_codice")),
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return success_response(data)
+
+
 class ApiRateFuoriCapienza(DomainAPIView):
     """GET /api/v1/pagamenti/rate/fuori-capienza/ — l'elenco che rende onesta la forzatura."""
 
@@ -584,9 +1003,8 @@ class ApiRateFuoriCapienza(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO): data_scadenza (default) | motivo | residuo | "
-                    "importo_rata | fattura_numero."
+                description=descrizione_order_by(
+                    RATE_FUORI_CAPIENZA_SORT_COLUMNS, "Senza: data_scadenza.",
                 ),
             ),
             OpenApiParameter(
@@ -627,27 +1045,14 @@ class ApiRataSaldo(DomainAPIView):
 
     @extend_schema(
         operation_id="pagamenti_rata_saldo",
-        parameters=[
-            OpenApiParameter(
-                name="escludi_riga_id", type=int, location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Esclude una riga contabile dal conto: serve a chiedere lo "
-                    "spazio PRIMA DI SE', cioe' a sapere se quella riga ci sta "
-                    "senza contarsi addosso."
-                ),
-            ),
-        ],
+        parameters=[_PARAM_ESCLUDI_RIGA_ID],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET residuo, in lavorazione e incassato di una rata.
     def get(self, request: Request, scadenza_id: int) -> JsonResponse:
         return success_response(
             saldi_service.saldo_rata(
-                scadenza_id,
-                escludi_riga_id=qp_int_optional(
-                    request.query_params.get("escludi_riga_id"), "escludi_riga_id"
-                ),
+                scadenza_id, escludi_riga_id=_escludi_riga_id(request),
             )
         )
 
@@ -673,14 +1078,22 @@ class ApiFatturaSaldo(DomainAPIView):
 
     @extend_schema(
         operation_id="pagamenti_fattura_saldo",
+        parameters=[_PARAM_ESCLUDI_RIGA_ID],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET residuo, in lavorazione e incassato di una fattura.
     # ⭐ Tutti e tre dal 2026-08-29 (DB-10 atterrata il 25/08): fino ad allora
     #    `incassato` era `null`. ⛔ Resta il divieto: NON si somma dalle rate (una
     #    riga puo' avere fattura senza rata: il fondo fattura e' cosi').
+    # ⭐ `escludi_riga_id` dal 2026-09-18 (P-6): lo stesso «prima di se'» della
+    #    rata — la riga SENZA rata che si sta correggendo non si conta piu'
+    #    addosso, e il pannello smette di dichiarare che non sa escluderla.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
-        return success_response(saldi_service.saldo_documento(fattura_id))
+        return success_response(
+            saldi_service.saldo_documento(
+                fattura_id, escludi_riga_id=_escludi_riga_id(request),
+            )
+        )
 
 
 class ApiFatturaRateSaldo(DomainAPIView):
@@ -733,12 +1146,10 @@ class ApiEccedenze(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO): eccedenza_cliente (default) | "
-                    "cliente_ragione_sociale | eccedenza | fattura_data | "
-                    "fattura_numero. ⭐ Il default è per "
-                    "CLIENTE, non per documento: la decisione si prende "
-                    "guardando il cliente."
+                description=descrizione_order_by(
+                    ECCEDENZE_SORT_COLUMNS,
+                    "Senza: eccedenza_cliente. ⭐ Il default è per CLIENTE, non "
+                    "per documento: la decisione si prende guardando il cliente.",
                 ),
             ),
             OpenApiParameter(
@@ -869,11 +1280,13 @@ class ApiFatturaSistemazioni(DomainAPIView):
 class ApiFatturaSistemazioniExport(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/export/ — CSV/XLSX."""
 
-    # ⭐ Stesso `lista_codice` della lista a video, ed e' il punto dell'export
-    #    configurabile: le colonne del file sono quelle che l'operatore VEDE
-    #    (preferenza + preset + permessi), non un elenco cablato qui che
-    #    diverge alla prima colonna aggiunta a catalogo.
-    lista_codice = "pagamenti.sistemazioni_fattura"
+    # ⭐ LO STESSO `lista_codice` della lista a video, letto da lei e non
+    #    ricopiato (18/09, come `ApiDistintaRigheExport`): le colonne del file
+    #    sono quelle che l'operatore VEDE (preferenza + preset + permessi), non
+    #    un elenco cablato qui che diverge alla prima colonna aggiunta a
+    #    catalogo — e due letterali uguali divergono al primo rename, senza
+    #    nessun errore.
+    lista_codice = ApiFatturaSistemazioni.lista_codice
     # Stessa ragione della lista: la consuma il drawer dell'eccedenza, che vive
     # in `vendite`.
     skip_area_check = True
@@ -1003,9 +1416,8 @@ class ApiEntiIncasso(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description=(
-                    "Whitelist (nome FISICO): codice (default) | descrizione | tipo | "
-                    "centro_descrizione."
+                description=descrizione_order_by(
+                    ENTI_INCASSO_SORT_COLUMNS, "Senza: codice.",
                 ),
             ),
             OpenApiParameter(

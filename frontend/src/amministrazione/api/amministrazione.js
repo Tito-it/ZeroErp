@@ -97,9 +97,18 @@ export function listProcessi(params = {}) {
   return api.get(`${BASE}/processi/`, { params })
 }
 
-// Scopo: stato dei sei presidi in un round-trip (conteggi + prime righe).
+// Scopo: stato dei presidi in un round-trip (conteggi + prime righe).
+//        ⚠️ QUANTI siano lo dice il catalogo `dbops.presidi`, non questa riga:
+//        fino al 2026-09-18 diceva «sei» ed erano gia' di piu'.
 export function getProcessiPresidi() {
   return api.get(`${BASE}/processi/presidi/`)
+}
+
+// Scopo: la SOLA testata dei presidi — {totale, con_righe, non_letti} — per il
+//        pallino della topbar (`usePresidiPolling`). Stesso giro del pannello
+//        senza le prime righe: lo legge ogni scheda aperta, a cadenza lenta.
+export function getPresidiConteggi() {
+  return api.get(`${BASE}/processi/presidi/conteggi/`)
 }
 
 // Scopo: dettaglio di un processo (bersagli dichiarati + identità tecniche).
@@ -142,8 +151,44 @@ export function riattivaUtenteTecnico(codice, emittenteCodice) {
   return postIdentita(codice, 'riattiva/', emittenteCodice)
 }
 
+// Scopo: «Esegui ora» su una SVEGLIA di deploy di un processo. Il web non
+//        esegue niente: ACCODA un lavoro `ESEGUI_PROCESSO` con l'identità di
+//        chi preme, e il drenatore lancia il comando alla corsa successiva
+//        (piano-be-fe-avvio-manuale-di-un-processo.md §1).
+// ⛔ Si manda la UNIT, mai un comando: l'argv lo risolve il backend dal
+//    dichiarato di deploy (`sveglie.json`), che è la whitelist. Un client che
+//    potesse dire «lancia questo» sarebbe una shell remota con un altro nome.
+// ⚠️ `require_idempotency_key`: senza header 400. Questa è la chiave HTTP del
+//    doppio submit; quella di BUSINESS («una per unit sui lavori vivi») la
+//    mette il backend, ed è quella che fa dire «già in coda» alla capability.
+// Risposta: `{job_id, stato: 'PENDING', unit}` — la forma del giro di
+// fatturazione. ⚠️ A tipo di coda spento risponde 501 `E_JOB_TYPE_NON_ATTIVO`:
+// è il cancello voluto finché l'handler non è in servizio, e il toast lo dice.
+export function eseguiOraProcesso(codice, unit) {
+  return api.post(
+    `${BASE}/processi/${encodeURIComponent(codice)}/esegui-ora/`,
+    { unit },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 export function getAuditLog(params = {}) {
   return api.get(`${BASE}/audit-log/`, { params })
+}
+
+// --- Registro degli errori tecnici (`dbops.error_log`, pezzo E) ---
+
+// Scopo: la consultazione paginata di `dbops.error_log` col catalogo dei
+//        messaggi (codice, classe, frase, causa, soluzione) e il `context`.
+export function listErrorLogs(params = {}) {
+  return api.get(`${BASE}/error-log/`, { params })
+}
+
+// Scopo: export CSV/Excel della consultazione, stessi filtri della lista.
+// ⚠️ `formato` e non `format` (parametro magico di DRF); risposta Blob, senza
+//    `useApiHandler` (`feedback_blob_download_no_useapihandler`).
+export function exportErrorLogs(params = {}) {
+  return api.get(`${BASE}/error-log/export/`, { params, responseType: 'blob' })
 }
 
 // --- Reparti e profili ---

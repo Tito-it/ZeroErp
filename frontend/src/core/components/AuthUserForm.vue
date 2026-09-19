@@ -42,11 +42,11 @@ function clearEmailInvalid() {
   <div class="form-grid">
     <div class="form-field">
       <label>{{ t('common.username') }} *</label>
-      <InputText v-model="form.username" :disabled="disabled" class="w-full" />
+      <InputText v-model="form.username" :disabled="disabled" />
     </div>
     <div class="form-field">
       <label>{{ t('common.email') }} *</label>
-      <InputText v-model="form.email" type="email" :disabled="disabled" class="w-full"
+      <InputText v-model="form.email" type="email" :disabled="disabled"
         :invalid="emailInvalid"
         @blur="validateEmail(form)"
         @input="clearEmailInvalid" />
@@ -58,12 +58,12 @@ function clearEmailInvalid() {
       <div class="form-field" style="flex: 1;">
         <label>{{ t('common.password') }} *</label>
         <Password v-model="form.password" :disabled="disabled"
-          :feedback="false" toggleMask class="w-full" />
+          :feedback="false" toggleMask />
       </div>
       <div class="form-field" style="flex: 1;">
         <label>{{ t('common.password_confirm') }} *</label>
         <Password v-model="form.password_confirm" :disabled="disabled"
-          :feedback="false" toggleMask class="w-full"
+          :feedback="false" toggleMask 
           :invalid="!passwordMatch" />
         <small v-if="!passwordMatch" class="p-error">
           {{ t('common.password_mismatch') }}

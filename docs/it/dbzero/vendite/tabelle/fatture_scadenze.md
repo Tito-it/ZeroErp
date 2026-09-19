@@ -24,7 +24,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_fatture_scadenze_importo_pos |  |
 | FOREIGN KEY | fk_fatture_scadenze_fattura | fattura_id |
 | PRIMARY KEY | pk_fatture_scadenze | id |
 

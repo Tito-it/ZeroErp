@@ -15,6 +15,11 @@
 #     5. format_datetime_default_no_seconds
 #     6. format_datetime_with_seconds
 #     7. format_datetime_da_iso_con_tz
+#   il fuso e' parte del formato (Tid, 2026-09-14)
+#    24. un_istante_aware_si_scrive_in_ora_locale
+#    25. un_istante_naive_non_si_tocca
+#    26. il_giorno_di_un_datetime_e_quello_locale
+#    27. l_export_scrive_l_ora_locale   ⭐ il percorso degli export
 #   format_bool
 #     8. format_bool_true_si
 #     9. format_bool_false_no
@@ -38,10 +43,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from apps.core.services.locale_formatters import (
     format_bool,
@@ -49,6 +54,7 @@ from apps.core.services.locale_formatters import (
     format_datetime,
     format_for_export,
     format_number,
+    in_ora_locale,
 )
 
 
@@ -88,13 +94,71 @@ class FormatDatetimeTests(SimpleTestCase):
             "10-05-2026 17:30:45",
         )
 
+    @override_settings(TIME_ZONE="Europe/Rome")
     def test_format_datetime_da_iso_con_tz(self) -> None:
-        # ISO con offset esplicito: il parsing rispetta TZ ma il
-        # formato output e' "naive" (senza TZ visibile).
+        # ISO con offset esplicito: si scrive in ora LOCALE, senza TZ
+        # visibile. A maggio Roma e' +02:00, quindi l'offset del valore e'
+        # gia' quello locale e l'ora non cambia.
         self.assertEqual(
             format_datetime("2026-05-10T17:30:00+02:00"),
             "10-05-2026 17:30",
         )
+
+
+@override_settings(TIME_ZONE="Europe/Rome")
+class FusoLocaleTests(SimpleTestCase):
+    """Il fuso e' parte del formato (decisione di Tid, 2026-09-14).
+
+    ⛔ Fino a quel giorno i formattatori scrivevano l'ora nel fuso che il
+    valore PORTAVA, e con `USE_TZ` la connessione consegna UTC: ogni export
+    stampava ore UTC mentre le liste a video le mostravano giuste. Emerso sul
+    digest dei presidi (testata locale, corse UTC).
+    """
+
+    # 24. Un istante aware — com'e' ogni timestamptz letto dal DB — si scrive
+    #     nell'ora di `TIME_ZONE`, non in quella che porta. A settembre Roma
+    #     e' +02:00: le 09:47 UTC sono le 11:47.
+    def test_un_istante_aware_si_scrive_in_ora_locale(self) -> None:
+        istante = datetime(2026, 9, 14, 9, 47, 32, tzinfo=UTC)
+        self.assertEqual(format_datetime(istante), "14-09-2026 11:47")
+        self.assertEqual(
+            format_datetime(istante, with_seconds=True), "14-09-2026 11:47:32",
+        )
+        # Anche da stringa ISO, che e' la forma in cui i repository consegnano
+        # `isoformat()` di un timestamptz.
+        self.assertEqual(
+            format_datetime("2026-09-14T09:47:32+00:00", with_seconds=True),
+            "14-09-2026 11:47:32",
+        )
+
+    # 25. Un naive non porta un fuso: non c'e' niente da convertire, e
+    #     `localtime` su un naive solleverebbe. Resta com'e'.
+    def test_un_istante_naive_non_si_tocca(self) -> None:
+        naive = datetime(2026, 9, 14, 9, 47, 32)
+        self.assertIs(in_ora_locale(naive), naive)
+        self.assertEqual(format_datetime(naive), "14-09-2026 09:47")
+        self.assertEqual(format_datetime("2026-09-14T09:47:32"), "14-09-2026 09:47")
+
+    # 26. Da un datetime si prende il GIORNO locale: le 23:30 UTC del 14 sono
+    #     gia' il 15 a Roma. Vale per `format_date` e per il dispatcher.
+    def test_il_giorno_di_un_datetime_e_quello_locale(self) -> None:
+        a_cavallo = datetime(2026, 9, 14, 23, 30, tzinfo=UTC)
+        self.assertEqual(format_date(a_cavallo), "15-09-2026")
+        self.assertEqual(format_date("2026-09-14T23:30:00+00:00"), "15-09-2026")
+        self.assertEqual(format_for_export(a_cavallo, tipo_dato="date"), "15-09-2026")
+        # Una `date` pura non ha un'ora e non si sposta.
+        self.assertEqual(format_date(date(2026, 9, 14)), "14-09-2026")
+
+    # 27. ⭐ Il percorso degli EXPORT: `format_for_export` con il `tipo_dato`
+    #     dichiarato a catalogo e, senza, per isinstance. E' la riga che
+    #     finisce nel CSV/XLSX.
+    def test_l_export_scrive_l_ora_locale(self) -> None:
+        istante = datetime(2026, 9, 14, 9, 47, 32, tzinfo=UTC)
+        self.assertEqual(
+            format_for_export(istante, tipo_dato="datetime"), "14-09-2026 11:47",
+        )
+        self.assertEqual(format_for_export(istante), "14-09-2026 11:47")
+        self.assertNotIn("09:47", format_for_export(istante))
 
 
 class FormatBoolTests(SimpleTestCase):

@@ -97,7 +97,7 @@ function apri(riga) {
 //    qui sarebbe un settimo elenco che diverge in silenzio.
 function cambiaAttivo(riga, attivo) {
   confirmAction({
-    title: t('common.confirm'),
+    header: t('common.confirm'),
     message: attivo
       ? t('amministrazione.registri_numerazione.riattiva_confirm', { codice: riga.codice })
       : t('amministrazione.registri_numerazione.disattiva_confirm', { codice: riga.codice }),
@@ -262,7 +262,7 @@ function motivoForma(data) {
       </template>
 
       <template #empty>
-        <div class="app-empty">{{ t('amministrazione.registri_numerazione.vuota') }}</div>
+        <div class="app-empty-state">{{ t('amministrazione.registri_numerazione.vuota') }}</div>
       </template>
     </DrawerTabLista>
 

@@ -8,14 +8,16 @@
 
 # Accesso SQL a funzioni dello schema dbops riusabili da tutti i domini applicativi.
 
-import json
+from typing import cast
 
 from django.db import connection
 
+from apps.core.db._helpers import escape_ilike, fetch_paged_with_total, jsonb_out, sql_order_clause
 from apps.core.services.service_errors import ServiceError
 from apps.core.types import (
     AuditLogRow,
     DominioTaskRow,
+    ErrorLogRow,
     TaskRegistryImplRow,
     TaskRegistryRow,
 )
@@ -46,6 +48,12 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.listini_tipologie",
         "config.modalita_addebito_trasporto",
         "config.modalita_pagamento",
+        # Modo di approvvigionamento dell'articolo (brief-db-modifiche-certe-
+        # ciclo-vendita-e-articolo, Blocco B). ⭐ Una riga qui e non un endpoint:
+        # e' un vocabolario codice/descrizione come `config.nature_vendita`, il
+        # suo modello dichiarato, e il drawer articolo lo monta con
+        # `<LookupSelect rel="config.modi_approvvigionamento">`.
+        "config.modi_approvvigionamento",
         "config.nature_doc_fiscale",
         "config.nature_vendita",
         "config.note_stili",
@@ -98,7 +106,6 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "documenti.tipi_documento_output",
         "documenti.tipi_file_documento",
         # --- magazzino ---
-        "magazzino.ambito_causale",
         "magazzino.causali",
         "magazzino.magazzini",
         "magazzino.ubicazioni",
@@ -154,6 +161,24 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 #   has_obsoleto       → la tabella ha obsoleto_dal (filtro includi_obsoleti,
 #                        stessa semantica della fn generica: esclude
 #                        obsoleto_dal <= CURRENT_DATE quando false)
+# ⭐ Le tabelle che il PANNELLO CONFIG gestisce (CRUD metadata-driven): la
+#    whitelist della lookup PIU' quelle che il lookup generico non puo'
+#    servire. Fino al 2026-09-18 le due whitelist erano lo stesso insieme, e
+#    la prima tabella senza `descrizione` — `magazzino.lotti` (Lotto 2 del
+#    magazzino: un lotto e' `articolo_id` + `codice` + `data_arrivo`) — le ha
+#    separate: `dbops.fn_get_lookup_codici` PRETENDE la colonna `descrizione`
+#    e rifiuterebbe la rel, quindi metterla in `_REL_CONSENTITE` dichiarerebbe
+#    ammesso un valore che a runtime esplode (`feedback_contratto_dichiarato_
+#    provalo_intero`). Il pannello legge `information_schema` e non ne ha
+#    bisogno. ⛔ Una rel qui e non in `_REL_CONSENTITE` NON si monta con
+#    `<LookupSelect rel=…>`: per i lotti c'e' il lookup dedicato
+#    `GET /magazzino/lotti/lookup/?articolo_id=`.
+CONFIG_TABLES: frozenset[str] = _REL_CONSENTITE | frozenset(
+    {
+        "magazzino.lotti",
+    }
+)
+
 _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
     "catalogo.unita_misura": {
         # tipo_uom_id: usato dal FE per filtrare conversioni same-type.
@@ -191,6 +216,41 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "has_obsoleto": True,
     },
 }
+
+
+# Ordinamenti ammessi sulla consultazione di `dbops.error_log` (pezzo E del
+# piano BE/FE dell'osservabilita', 2026-09-19).
+# ⛔ Le chiavi sono i `campo_sorgente` FISICI del catalogo `dbops.error_log`
+#    (`ui.lista_colonna`): il frontend manda quelli (api.md §whitelist).
+# ⚠️ `codice` ordina sul catalogo (JOIN): e' la colonna che si vede.
+# ⛔ `messaggio`, `context`, `causa`, `soluzione` NON sono ordinabili: mettere
+#    in ordine alfabetico delle frasi non risponde a nessuna domanda, e le
+#    loro righe a catalogo sono `ordinabile = f` (test_liste_configurabili_seed).
+ERROR_LOG_SORT_COLUMNS: dict[str, str] = {
+    "occurred_at": "e.occurred_at",
+    "area": "e.area",
+    "function_name": "e.function_name",
+    "codice": "m.codice",
+    "classe": "ce.classe",
+    "tx_id": "e.tx_id",
+}
+# Le colonne DATA della whitelist: ripiego DESC senza `order_dir` (regola di
+# Tid del 2026-09-02, letta dal test 10 del presidio delle liste).
+_ERROR_LOG_COLONNE_DESC: frozenset[str] = frozenset({"occurred_at"})
+
+
+# Scopo: il prefisso di `function_name` reso sicuro per un `LIKE 'x%'` che
+#        usi l'indice `text_pattern_ops`: `\`, `%` e `_` escapati.
+# ⛔ `_` E' UN JOLLY DI `LIKE`, e i nomi di funzione ne sono pieni (P-3 del
+#    brief osservabilita', verificato con EXPLAIN il 19-09): senza escape
+#    `LIKE 'fn_get_lotto%'` ha come prefisso fisso solo `fn` e il planner torna
+#    a scandire la tabella — e `fn_get` combacerebbe con `fnXget`, che e' anche
+#    la risposta sbagliata. Con l'escape il prefisso e' letterale.
+# ⭐ L'escape e' quello del BB `escape_ilike` (stessi tre metacaratteri, stesso
+#    ordine — il backslash per primo): qui si aggiunge solo il `%` di coda.
+#    Riscriverlo era la copia numero quattro dello stesso `replace` a catena.
+def _prefisso_like(valore: str) -> str:
+    return escape_ilike(valore) + "%"
 
 
 class DbopsRepository:
@@ -629,9 +689,114 @@ class DbopsRepository:
                 executed_at=r[3], status=r[4], message=r[5],
                 duration_ms=r[6], tx_id=r[7], exec_mode=r[8],
                 rule_type=r[9], dry_run=r[10], rows_affected=r[11],
-                params=r[12] if isinstance(r[12], dict) else (json.loads(r[12]) if r[12] else None),
-                result=r[13] if isinstance(r[13], dict) else (json.loads(r[13]) if r[13] else None),
+                # ⛔ `jsonb_out` e non una decodifica a mano (2026-09-19): la
+                #    forma precedente era il BB riscritto, con una parentesi in
+                #    piu' che il presidio `test_coercizione_jsonb_dal_bb` non vedeva.
+                params=jsonb_out(r[12]),
+                result=jsonb_out(r[13]),
             )
             for r in rows
         ]
         return results, total_count
+
+    # Scopo: la CONSULTAZIONE di `dbops.error_log` per i tecnici — «quale
+    #        funzione ha sollevato quale codice, quando, in quale transazione»
+    #        (pezzo E del piano BE/FE dell'osservabilita', 2026-09-19). Righe
+    #        paginate col totale in UNA valutazione + il catalogo per JOIN.
+    #
+    # ⭐ Sta ACCANTO a `list_audit_logs` e nella sua forma: due diari tecnici
+    #    dello stesso schema, letti dalla stessa porta (`AdminAPIView`).
+    # ⭐ `codice`, `classe`, `messaggio`, `causa`, `soluzione` arrivano dal
+    #    catalogo (`config.messaggi_errore` → `config.codici_errore`), non
+    #    ricostruiti: la frase e la soluzione hanno UNA sede, e `classe` e' il
+    #    dato che distingue un GUASTO da un RIFIUTO LEGITTIMO — la domanda che
+    #    questo registro, letto da solo, non sapeva fare.
+    # ⚠️ `context` si espone COM'E': qui il lettore e' il tecnico e quegli sono
+    #    i suoi appunti («non va ripulito o riscritto per renderlo
+    #    presentabile», vincolo del Passo A). Nessun tentativo di renderlo
+    #    leggibile — e' il loop che il vincolo esiste per spezzare.
+    #
+    # Filtri, tutti in whitelist e ognuno con l'indice da cui partire (P-3,
+    # `20260919-06`, manuale `dbops/manual/error_log.md` §indici):
+    #   `area`          esatto            → `ix_error_log_area_occurred_at`
+    #   `function_name` PREFISSO, `LIKE`  → `ix_error_log_function_name_occurred_at`
+    #                   (`text_pattern_ops`: serve `=` e `LIKE 'x%'`, MAI `ILIKE`;
+    #                   i nomi sono minuscoli per convenzione; `_` escapato)
+    #   `codice`        esatto, risolto PRIMA a `messaggio_errore_id` (tutte le
+    #                   lingue del codice) → `ix_dbops_error_log_messaggio_errore_id`
+    #   `tx_id`         esatto            → `ix_error_log_tx_id` (il PONTE dal
+    #                   giornale agli appunti tecnici della stessa transazione)
+    #   `data_da`/`data_a` su `occurred_at` (`[da, a + 1 giorno)`) → `ix_error_log_occurred_at`
+    # ⚠️ I valori viaggiano nei `params`; l'SQL e' costante e l'ordinamento
+    #    passa da `sql_order_clause` sulla whitelist.
+    def list_error_logs(
+        self,
+        *,
+        area: str | None = None,
+        function_name: str | None = None,
+        codice: str | None = None,
+        tx_id: str | None = None,
+        data_da: str | None = None,
+        data_a: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> tuple[list[ErrorLogRow], int]:
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=ERROR_LOG_SORT_COLUMNS,
+            colonne_desc=_ERROR_LOG_COLONNE_DESC,
+            default="e.occurred_at",
+            default_desc=True,
+            tiebreak="e.id",
+        )
+        prefisso = _prefisso_like(function_name.strip()) if function_name and function_name.strip() else None
+        righe, totale = fetch_paged_with_total(
+            f"""
+            SELECT e.id, e.occurred_at, e.area, e.function_name,
+                   m.codice, ce.classe, m.messaggio, m.causa, m.soluzione,
+                   e.tx_id::text AS tx_id, e.context,
+                   COUNT(*) OVER () AS total_count
+              FROM dbops.error_log e
+              JOIN config.messaggi_errore m ON m.id = e.messaggio_errore_id
+              -- ⚠️ LEFT: un messaggio il cui codice fosse uscito dal catalogo dei
+              --    codici non deve far sparire la riga dal diario.
+              LEFT JOIN config.codici_errore ce ON ce.codice = m.codice
+             WHERE (%s::text IS NULL OR e.area = %s)
+               AND (%s::text IS NULL OR e.function_name LIKE %s)
+               AND (%s::text IS NULL OR e.messaggio_errore_id IN (
+                        SELECT mm.id FROM config.messaggi_errore mm WHERE mm.codice = %s))
+               AND (%s::uuid IS NULL OR e.tx_id = %s::uuid)
+               AND (%s::date IS NULL OR e.occurred_at >= %s::date)
+               AND (%s::date IS NULL OR e.occurred_at < %s::date + interval '1 day')
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+            """,
+            [
+                area, area,
+                prefisso, prefisso,
+                codice, codice,
+                tx_id, tx_id,
+                data_da, data_da,
+                data_a, data_a,
+                limit, offset,
+            ],
+            offset=offset,
+        )
+        risultato: list[ErrorLogRow] = [
+            cast(ErrorLogRow, {
+                **r,
+                # `occurred_at` e' NOT NULL a DB: niente ramo per il None.
+                "occurred_at": r["occurred_at"].isoformat(),
+                # ⛔ `jsonb_out`, non una decodifica a mano: il backend Django per
+                #    psycopg 3 consegna i jsonb come `str` fuori dall'ORM, e il
+                #    BB li decodifica PRESERVANDO il valore com'e' (un decode
+                #    error su una colonna `jsonb` e' un bug da far esplodere).
+                #    La colonna e' NOT NULL DEFAULT '{}', quindi qui arriva
+                #    sempre un oggetto — gli appunti del tecnico, intatti.
+                "context": jsonb_out(r["context"]),
+            })
+            for r in righe
+        ]
+        return risultato, totale

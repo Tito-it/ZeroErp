@@ -196,6 +196,7 @@ function onSmista() {
   if (!merceIds.length && !serviziIds.length) return
 
   confirmAction({
+    header: t('vendite.preventivi.section_smistamento'),
     message: t('vendite.preventivi.conferma_smistamento', {
       merce: merceIds.length, servizi: serviziIds.length,
     }),
@@ -313,7 +314,7 @@ function onSmista() {
           </template>
         </Column>
       </DataTable>
-      <div v-else-if="!loadingSmistamento" style="color: var(--text-color-secondary); font-style: italic;">
+      <div v-else-if="!loadingSmistamento" style="color: var(--app-text-muted); font-style: italic;">
         {{ t('vendite.preventivi.smistamento_non_disponibile') }}
       </div>
     </div>
@@ -329,6 +330,6 @@ function onSmista() {
 .smistamento-doc-rif {
   margin-left: 0.4rem;
   font-size: 0.85rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 </style>

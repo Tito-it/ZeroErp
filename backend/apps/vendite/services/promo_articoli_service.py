@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from django.db import IntegrityError
@@ -395,36 +395,19 @@ class PromoArticoliService:
     # =================================================================
 
     # Scopo: Estrae e valida tipo_variazione contro whitelist. `required=True`
-    #        lo rende obbligatorio; `False` accetta None.
+    #        lo rende obbligatorio; `False` accetta None. La lettura (stringa,
+    #        `strip().upper()`, vocabolario) e' del BB `PayloadValidator`; il
+    #        vocabolario resta qui, specchio del CHECK di `promo_articoli`.
     def _extract_tipo_variazione(
         self, payload: dict[str, Any], *, required: bool
     ) -> str | None:
-        if "tipo_variazione" not in payload or payload["tipo_variazione"] is None:
-            if required:
-                ErrorManager.raise_error(
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE,
-                    detail="tipo_variazione obbligatorio.",
-                    context={"field": "tipo_variazione"},
-                )
-            return None
-        raw = payload["tipo_variazione"]
-        ErrorManager.require(
-            isinstance(raw, str),
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail="tipo_variazione deve essere una stringa.",
-            context={"field": "tipo_variazione", "value": raw},
+        if required:
+            return self._v.require_enum(
+                payload, "tipo_variazione", allowed=_TIPI_VARIAZIONE, message=_MESSAGE,
+            )
+        return self._v.optional_enum(
+            payload, "tipo_variazione", allowed=_TIPI_VARIAZIONE, message=_MESSAGE,
         )
-        value = raw.strip().upper()
-        ErrorManager.require(
-            value in _TIPI_VARIAZIONE,
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail=f"tipo_variazione deve essere uno tra: {', '.join(sorted(_TIPI_VARIAZIONE))}.",
-            context={"tipo_variazione": value},
-        )
-        return value
 
     # Scopo: Estrae e valida valore_variazione come Decimal con CHECK
     #        coerenza su tipo: PERC/VAL_FISSO > 0, PREZZO_FISSO >= 0.
@@ -435,34 +418,14 @@ class PromoArticoliService:
         required: bool,
         tipo: str | None,
     ) -> Decimal | None:
-        if "valore_variazione" not in payload or payload["valore_variazione"] is None:
-            if required:
-                ErrorManager.raise_error(
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE,
-                    detail="valore_variazione obbligatorio.",
-                    context={"field": "valore_variazione"},
-                )
-            return None
-        raw = payload["valore_variazione"]
-        ErrorManager.require(
-            not isinstance(raw, bool),
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail="valore_variazione deve essere numerico.",
-            context={"field": "valore_variazione", "value": raw},
-        )
-        try:
-            value = Decimal(str(raw).strip())
-        except (InvalidOperation, AttributeError) as exc:
-            ErrorManager.raise_error(
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="valore_variazione non e' un numero valido.",
-                context={"field": "valore_variazione", "value": raw},
-                cause=exc,
-            )
-            raise AssertionError("unreachable") from exc  # pragma: no cover
+        # La coercizione (bool e NaN rifiutati) e' del BB `PayloadValidator`;
+        # qui resta la coerenza col tipo, che e' di dominio.
+        if required:
+            value = self._v.require_decimal(payload, "valore_variazione", message=_MESSAGE)
+        else:
+            value = self._v.optional_decimal(payload, "valore_variazione", message=_MESSAGE)
+            if value is None:
+                return None
 
         # Coerenza con tipo. Convenzione firmata coerente col resolver DB
         # fn_resolve_prezzo_listino_v2: `base * (1 + valore/100)` e

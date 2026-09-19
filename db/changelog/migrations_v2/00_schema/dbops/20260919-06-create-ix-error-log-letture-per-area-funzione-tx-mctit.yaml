@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ P-3 (error_log) — gli indici della consultazione di dbops.error_log
+#   «per area / funzione / codice / tx_id» (pezzo E del piano BE/FE).
+#   Brief: brief-db-osservabilita-lotto-fermo-r6-indici §4.2.
+#
+# ── ⛔ IL MOTIVO E' IL CONTRATTO, non i 146k righe di oggi ─────────────
+#   Il backend dichiarera' una whitelist: finestra su occurred_at (sempre),
+#   `area` (esatto), `function_name` (PREFISSO), `codice` (esatto, risolto
+#   prima a messaggio_errore_id: l'indice c'e' gia'), `tx_id` (esatto), ORDER
+#   BY occurred_at DESC. Oggi la tabella ha pk, messaggio_errore_id e
+#   cleanup_at: nessun filtro della whitelist ha da dove partire.
+#
+# ── ⭐ QUATTRO INDICI, e non il composto (area, function_name, occurred_at)
+#   proposto dal brief — per due ragioni lette sul modello ─────────────
+#   1. Un composto che comincia per `area` serve `area` da sola e
+#      `area + function_name`, NON `function_name` da sola — e «quale
+#      funzione ha sollevato» e' la domanda del tecnico, che spesso non sa
+#      (o non ha bisogno di dire) l'area. Due indici (area, occurred_at) e
+#      (function_name, occurred_at) servono ogni combinazione della
+#      whitelist, ciascuno con il tempo in coda per l'ORDER BY.
+#   2. ⛔ La collation del database e' it_IT.UTF-8: su un btree ordinario
+#      `function_name LIKE 'fn_x%'` NON usa l'indice (PostgreSQL lo usa solo
+#      con collation C). Il filtro a PREFISSO vuole `text_pattern_ops`, che
+#      serve `=` e `LIKE 'x%'`. ⚠️ ILIKE non lo usa mai: il backend filtri
+#      con LIKE — i nomi di funzione sono minuscoli per convenzione (8 righe
+#      su 146k con una maiuscola, fatto datato 19-09: sono chiamanti Python
+#      con un nome di classe, e si trovano con `lower()` lato client). Va
+#      scritto nel brief, perche' un ILIKE «per sicurezza» sarebbe un seq
+#      scan silenzioso su un filtro dichiarato indicizzato.
+#
+# ── (occurred_at) da sola ────────────────────────────────────────────
+#   La finestra e' il filtro SEMPRE presente e la lettura senza altri filtri
+#   e' la prima pagina della schermata: senza questo indice ordinerebbe
+#   l'intera tabella per servire un LIMIT 50.
+#
+# ── (tx_id) ──────────────────────────────────────────────────────────
+#   Il PONTE dal giornale: dal tx_id di una riga della Storia agli appunti
+#   tecnici della stessa transazione, e dal pezzo E al pezzo G. Esatto, NOT
+#   NULL, un solo valore per lettura.
+#
+# ── Non sono indici di FK ────────────────────────────────────────────
+#   Fuori da dbops.fk_index_policy: la sola FK (messaggio_errore_id) ha gia'
+#   il suo indice. Nome ix_<tabella>_<colonne> (linee-guida-sql §8); il
+#   prefisso `ix_dbops_` dell'indice storico non si imita.
+#
+# ── ⚠️ Il costo sta in scrittura, ed e' dichiarato ─────────────────────
+#   error_log si scrive a ogni errore (script.fn_log_and_raise_error): quattro
+#   indici in piu' sono quattro scritture in piu' sul ramo che sta gia'
+#   fallendo. E' il posto giusto per pagarli — meglio del ramo che legge.
+#
+# Verifica: db/pgtap/dbops/test-indici-letture-trasversali-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260919-06-create-ix-error-log-letture-per-area-funzione-tx-mctit.yaml
+
+  - changeSet:
+      id: 20260919-06-create-ix-error-log-letture-per-area-funzione-tx
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Quattro indici su dbops.error_log per la consultazione dei tecnici
+        (pezzo E): (occurred_at) la finestra; (area, occurred_at) e
+        (function_name text_pattern_ops, occurred_at) i due filtri di
+        dominio, ciascuno anche da solo — text_pattern_ops perche' con la
+        collation it_IT un LIKE a prefisso non usa un btree ordinario; (tx_id)
+        il ponte dal giornale. P-3 del brief osservabilita.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: error_log }
+            - columnExists: { schemaName: dbops, tableName: error_log, columnName: occurred_at }
+            - columnExists: { schemaName: dbops, tableName: error_log, columnName: tx_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La finestra: il filtro sempre presente, e la prima pagina.
+              CREATE INDEX IF NOT EXISTS ix_error_log_occurred_at
+                  ON dbops.error_log (occurred_at);
+
+              -- Per area, ordinato nel tempo dentro l'area.
+              CREATE INDEX IF NOT EXISTS ix_error_log_area_occurred_at
+                  ON dbops.error_log (area, occurred_at);
+
+              -- ⛔ text_pattern_ops: collation it_IT.UTF-8, un LIKE 'x%' non usa
+              --   un btree ordinario. Serve `=` e `LIKE 'x%'`; ILIKE mai.
+              CREATE INDEX IF NOT EXISTS ix_error_log_function_name_occurred_at
+                  ON dbops.error_log (function_name text_pattern_ops, occurred_at);
+
+              -- Il ponte dal giornale: tx_id esatto.
+              CREATE INDEX IF NOT EXISTS ix_error_log_tx_id
+                  ON dbops.error_log (tx_id);
+
+              COMMENT ON INDEX dbops.ix_error_log_occurred_at IS
+                  'La finestra data_da/data_a della consultazione di error_log (pezzo E): il filtro sempre presente e la prima pagina (ORDER BY occurred_at DESC LIMIT n). P-3 di brief-db-osservabilita-lotto-fermo-r6-indici (2026-09-19).';
+              COMMENT ON INDEX dbops.ix_error_log_area_occurred_at IS
+                  'Filtro `area` (esatto) della consultazione di error_log, con il tempo in coda per l''ORDER BY. Da solo o insieme a function_name (il planner sceglie il piu'' selettivo). P-3 di brief-db-osservabilita-lotto-fermo-r6-indici (2026-09-19).';
+              COMMENT ON INDEX dbops.ix_error_log_function_name_occurred_at IS
+                  'Filtro `function_name` della consultazione di error_log, esatto o a PREFISSO. ⛔ text_pattern_ops: la collation del database e'' it_IT.UTF-8 e un btree ordinario non serve `LIKE ''x%''`; serve `=` e `LIKE ''x%''`, MAI ILIKE — il backend filtri con LIKE (i nomi di funzione sono minuscoli per convenzione). P-3 di brief-db-osservabilita-lotto-fermo-r6-indici (2026-09-19).';
+              COMMENT ON INDEX dbops.ix_error_log_tx_id IS
+                  'Il PONTE dal giornale (script.vw_giornale_entita.tx_id) agli appunti tecnici della stessa transazione: lettura esatta, tx_id NOT NULL. P-3 di brief-db-osservabilita-lotto-fermo-r6-indici (2026-09-19).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS dbops.ix_error_log_occurred_at;
+              DROP INDEX IF EXISTS dbops.ix_error_log_area_occurred_at;
+              DROP INDEX IF EXISTS dbops.ix_error_log_function_name_occurred_at;
+              DROP INDEX IF EXISTS dbops.ix_error_log_tx_id;

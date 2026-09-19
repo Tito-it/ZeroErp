@@ -265,7 +265,7 @@ function close() {
               :placeholder="t('config.modelli_documenti.filter_tipo_output')"
               :disabled="isEdit || isReadOnlyEffective"
             />
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ t('config.modelli_documenti.field_immutable_after_create') }}
             </small>
           </div>
@@ -287,7 +287,7 @@ function close() {
             :is-edit="isEdit"
             :disabled="isReadOnlyEffective"
           />
-          <small class="text-color-secondary">
+          <small class="app-text-muted">
             {{ t('config.modelli_documenti.field_emittente_hint') }}
           </small>
         </div>
@@ -324,7 +324,7 @@ function close() {
               fluid
               :invalid="campiErrati.includes('file_name_pattern')"
             />
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ t('config.modelli_documenti.field_file_name_pattern_hint') }}
             </small>
           </div>
@@ -336,7 +336,7 @@ function close() {
             <ToggleSwitch v-model="form.is_default" :disabled="isReadOnlyEffective"
               :invalid="campiErrati.includes('is_default')"
             />
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ t('config.modelli_documenti.field_is_default_hint') }}
             </small>
           </div>

@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 (1 di 3) — LA MEDIA CORRENTE HA UNA SEDE SOLA: la vista, con «NULL se qta <= 0»
+#   magazzino.vw_costo_medio, vw_giacenza_valorizzata, vw_costo_medio_globale
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 6-ter C6 (decisione di Tid
+#   del 2026-09-18), sezione 3 (D-L2-c)
+#
+# -- IL DIFETTO (C6) --------------------------------------------------------------------
+#   D-L2-c dice: la media corrente e' valore / giacenza, NULL se la giacenza e'
+#   <= 0. Le tre viste del Lotto 1 rispondevano NULL solo a qta = 0: con
+#   causali.consente_stock_negativo la giacenza puo' essere negativa, e un
+#   rapporto fra un valore e una quantita' negativa non e' un costo — e' un
+#   numero. Se la primitiva avesse calcolato la media da sola con la regola
+#   giusta, le viste avrebbero mostrato un'altra: due sedi, due regole.
+#   Deciso: UNA regola, nella vista; la primitiva LEGGE vw_costo_medio dentro
+#   il lock (security_invoker, e dentro la DEFINER legge tutto il magazzino).
+#
+# -- CREATE OR REPLACE, STESSE COLONNE, security_invoker RI-SPECIFICATA ------------------------
+#   Cambia solo la condizione del CASE (qta > 0). Nessuna colonna aggiunta o
+#   tolta. ⛔ WITH (security_invoker = true) riscritta in ciascuna: un CREATE
+#   OR REPLACE VIEW senza la reloption la azzera in silenzio (memoria
+#   security_invoker_si_azzera_su_create_or_replace); il pgTAP del Lotto 1
+#   sulle reloptions e' la rete.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260918-17-update-viste-costo-medio-regola-qta-positiva-mctit.yaml
+
+  - changeSet:
+      id: 20260918-17-update-viste-costo-medio-regola-qta-positiva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.vw_costo_medio, vw_giacenza_valorizzata, vw_costo_medio_globale: il costo
+        medio e' NULL quando la quantita' e' <= 0 (non solo = 0) — la regola di D-L2-c in una
+        sede sola, che la primitiva legge dentro il lock (C6). Stesse colonne,
+        security_invoker ri-specificata. Brief: brief-db-magazzino-lotto-2-motore, sezione
+        6-ter C6 (P-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: magazzino
+                viewName: vw_costo_medio
+            - viewExists:
+                schemaName: magazzino
+                viewName: vw_giacenza_valorizzata
+            - viewExists:
+                schemaName: magazzino
+                viewName: vw_costo_medio_globale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW magazzino.vw_costo_medio
+              WITH (security_invoker = true) AS
+              SELECT g.articolo_id,
+                     g.magazzino_id,
+                     CASE WHEN g.qta > 0::numeric THEN vg.valore / g.qta
+                          ELSE NULL::numeric
+                     END AS costo_medio
+                FROM magazzino.vw_giacenza g
+                LEFT JOIN magazzino.valore_giacenza vg
+                       ON vg.articolo_id = g.articolo_id AND vg.magazzino_id = g.magazzino_id;
+
+              COMMENT ON VIEW magazzino.vw_costo_medio IS
+                  'Il COSTO MEDIO (un tasso) per articolo e magazzino: valore_giacenza.valore / '
+                  'vw_giacenza.qta. La quantita'' viene dal REGISTRO e il valore dalla COPIA '
+                  'ricostruibile (M-4): due fonti, non una letta due volte. ⭐ rev 2026-09-18 '
+                  '(Lotto 2, C6): NULL quando la quantita'' e'' <= 0 — non solo a zero: con '
+                  'consente_stock_negativo la giacenza puo'' essere negativa e il rapporto non e'' '
+                  'un costo — oppure senza riga di valore. E'' la SEDE UNICA della «media corrente» '
+                  'di D-L2-c: la primitiva magazzino.fn_scrivi_movimento la legge dentro il lock '
+                  'per valorizzare ogni uscita e le entrate senza costo. security_invoker. Brief: '
+                  'brief-db-magazzino-lotto-2-motore, sezione 6-ter C6.';
+
+              CREATE OR REPLACE VIEW magazzino.vw_giacenza_valorizzata
+              WITH (security_invoker = true) AS
+              SELECT g.articolo_id,
+                     g.magazzino_id,
+                     g.qta,
+                     vg.valore,
+                     CASE WHEN g.qta > 0::numeric THEN vg.valore / g.qta
+                          ELSE NULL::numeric
+                     END AS costo_medio
+                FROM magazzino.vw_giacenza g
+                LEFT JOIN magazzino.valore_giacenza vg
+                       ON vg.articolo_id = g.articolo_id AND vg.magazzino_id = g.magazzino_id;
+
+              COMMENT ON VIEW magazzino.vw_giacenza_valorizzata IS
+                  'La SITUAZIONE della giacenza: quantita'' dal registro (vw_giacenza), valore '
+                  'dalla copia (valore_giacenza), costo medio = valore / qta — con la stessa '
+                  'regola di vw_costo_medio (rev 2026-09-18, C6: NULL se qta <= 0 o senza riga '
+                  'di valore). Fino al 2026-09-15 era tautologica (qta * (valore / qta) = valore, '
+                  'con qta nell''accumulatore): ora il join e'' fra due fonti e una divergenza si '
+                  'vede — valore NULL su una giacenza con movimenti e'' un''anomalia da guardare '
+                  '(vw_magazzino_valore_giacenza_divergente), non un caso da nascondere. security_invoker. '
+                  'Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8; Lotto 2, C6.';
+
+              CREATE OR REPLACE VIEW magazzino.vw_costo_medio_globale
+              WITH (security_invoker = true) AS
+              SELECT g.articolo_id,
+                     sum(g.qta)    AS qta_tot,
+                     sum(vg.valore) AS valore_tot,
+                     CASE WHEN sum(g.qta) > 0::numeric THEN sum(vg.valore) / sum(g.qta)
+                          ELSE NULL::numeric
+                     END AS costo_medio_globale
+                FROM magazzino.vw_giacenza g
+                LEFT JOIN magazzino.valore_giacenza vg
+                       ON vg.articolo_id = g.articolo_id AND vg.magazzino_id = g.magazzino_id
+               GROUP BY g.articolo_id;
+
+              COMMENT ON VIEW magazzino.vw_costo_medio_globale IS
+                  'Il costo medio di un articolo su TUTTI i magazzini VISIBILI a chi interroga: '
+                  '«globale» = i magazzini dell''emittente in sessione, ed e'' la RLS di magazzini '
+                  '(via movimenti e valore_giacenza) a decidere il perimetro, non un filtro scritto '
+                  'qui (7-sexies, 6). qta_tot dal registro, valore_tot dalla copia; stessa regola '
+                  'di vw_costo_medio (rev 2026-09-18, C6: NULL se la quantita'' totale e'' <= 0). '
+                  'security_invoker. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La forma del Lotto 1 (20260915-17, qta <> 0) torna rieseguendo quel changeSet.
+              SELECT 1;

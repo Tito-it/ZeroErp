@@ -19,6 +19,7 @@ Indice test eseguiti:
 9) TestMaintenanceJobSummary.test_list_job_summary_ok — riepilogo
 """
 
+from datetime import UTC, datetime
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -189,15 +190,26 @@ class TestMaintenanceJobSummary(TestCase):
     def test_list_job_summary_ok(self, mock_conn):
         from apps.core.db.maintenance_repository import MaintenanceRepository
 
+        avvio = datetime(2026, 3, 1, 10, 0, tzinfo=UTC)
+        fine = datetime(2026, 3, 1, 10, 0, 5, tzinfo=UTC)
         _mock_cursor(mock_conn, [
+            # jobname, total, ok, fail, last_run_at::text, in_corso,
+            # conclusa.started_at, conclusa.ended_at, conclusa.ok, total_count
             ("apply_storicizza_weekly", 10, 9, 1,
-             "2026-03-01 10:00:00+00", True, 1),
+             "2026-03-01 10:00:00+00", False, avvio, fine, True, 1),
         ])
         repo = MaintenanceRepository()
         results, count = repo.list_job_summary(limit=50, offset=0)
         self.assertEqual(count, 1)
         self.assertEqual(results[0]["total_runs"], 10)
         self.assertEqual(results[0]["ok_count"], 9)
+        # La forma delle corse (2026-09-14): `in_corso` dalla riga piu'
+        # recente, l'ultima conclusa con data ED esito insieme, in ISO-8601.
+        self.assertFalse(results[0]["in_corso"])
+        self.assertEqual(
+            results[0]["ultima_conclusa"],
+            {"started_at": avvio.isoformat(), "ended_at": fine.isoformat(), "ok": True},
+        )
 
     # Scopo: senza filtri nessuna condizione aggiunta e soli limit/offset come
     #        parametri (comportamento storico invariato). NB: non si asserisce
@@ -214,6 +226,10 @@ class TestMaintenanceJobSummary(TestCase):
         self.assertNotIn("jobname LIKE", sql)
         self.assertNotIn("meta ->>", sql)
         self.assertEqual(params, [50, 0])
+        # ⚠️ E senza condizioni la CTE `conclusa` deve restare un `WHERE` valido:
+        #    e' l'unica delle tre con una condizione propria.
+        self.assertIn("WHERE ended_at IS NOT NULL", sql)
+        self.assertNotIn("WHERE  AND", sql)
 
     # Scopo: filtri opzionali → WHERE su jobname (LIKE prefisso) e sul mese
     #        ATTRIBUITO al run, con i VALORI parametrizzati (mai interpolati).
@@ -239,8 +255,14 @@ class TestMaintenanceJobSummary(TestCase):
         # Il filtro è PRIMA del GROUP BY: i conteggi sono relativi ai soli run
         # che matchano, non al totale del job.
         self.assertLess(sql.index("WHERE"), sql.index("GROUP BY"))
+        # ⚠️ Le condizioni compaiono TRE volte (summary, recente, conclusa) e i
+        #    valori seguono, nello stesso ordine, prima di limit/offset: un
+        #    valore in meno qui non fallisce — filtra una CTE sulla cosa
+        #    sbagliata e la riga cuce corse di job diversi.
+        self.assertEqual(sql.count("jobname LIKE %s"), 3)
         self.assertEqual(
-            params, ["run_fatturazione_batch%", "2026-07-01", 10, 0],
+            params,
+            ["run_fatturazione_batch%", "2026-07-01"] * 3 + [10, 0],
         )
 
     # Scopo: la CHIAVE di meta_month_equals finisce nell'SQL come letterale (non

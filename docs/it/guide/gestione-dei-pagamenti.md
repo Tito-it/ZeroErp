@@ -88,11 +88,14 @@ vede.*
 * [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) — saldo finanziario effettivo
 * [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — ⭐ **la registrazione**: le righe pronte diventano movimenti, e la distinta si chiude
 * [pagamenti.fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) — il saldo per **rata**, che distingue il registrato dal dichiarato e l'incassato dal postato
+* [pagamenti.fn_get_saldi_rate](/dbzero/pagamenti/funzioni/fn_get_saldi_rate) — ⭐ dal 17-09-2026 **il nucleo** dei saldi: la formula scritta una volta per N rate, con l'**imputazione** dei movimenti senza rata; `fn_get_saldo_rata` ne è la porta a un elemento
 * [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura) — «questa rata e' di questa fattura?», chiesto **fuori** dalla row security
 
 **Viste:**
 
 * [pagamenti.vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) — le rate il cui residuo e' uscito dalla banda: l'elenco senza il quale la forzatura sarebbe un modo di nascondere denaro
+* [pagamenti.vw_saldi_rate](/dbzero/pagamenti/views/vw_saldi_rate) — il saldo di **tutte** le rate in un passaggio: la porta dello scadenzario
+* [vendite.vw_fatture_scadenze_lista](/dbzero/vendite/views/vw_fatture_scadenze_lista) — l'identità delle rate col loro documento, **senza** saldi: la sorgente della lista rate e del picker della distinta
 
 ---
 
@@ -168,7 +171,9 @@ riferirsi a una scadenza precisa, e quella del fondo fattura e' il caso vivo
 | **Questa rata e' stata pagata?** | ✅ `pagamenti.fn_get_saldo_rata` — e distingue il **registrato** dal **dichiarato** |
 | Quanto di quel che risulta pagato e' **denaro davvero arrivato**? | ✅ la colonna `incassato`: i centri interni (fondo fattura, compensazione) non sono cassa |
 | Quali rate hanno incassato piu' del dovuto? | ✅ [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) |
-| Quali rate sono scadute o insolute? | 🟠 **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca |
+| Quali rate sono scadute o insolute? | 🟠 **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca. ⭐ Dal 17-09-2026 i due pezzi DB ci sono: `vw_fatture_scadenze_lista` (chi e' la rata) + `vw_saldi_rate` (quanto resta), e «solo aperte» e' `WHERE saldo <> 0` |
+| **Un incasso registrato «sulla fattura, senza rata» — dove finisce?** | ✅ dal 17-09-2026 si **imputa** alle rate per data di scadenza, fino a capienza, e l'ultima assorbe: la somma dei saldi delle rate e' sempre il saldo del documento. Nessuno lo scrive: e' un calcolo del nucleo `fn_get_saldi_rate` |
+| **La nota di credito ha rate?** | ✅ dal 17-09-2026 **una**, negativa, alla prima data del termine: cosi' un pagamento o una compensazione sulla nota passa dal guard di capienza come tutto il resto |
 
 ### ⭐ Le due domande che il database tiene separate
 
@@ -188,6 +193,32 @@ modo opposto:
 >
 > ⚠️ Ed e' per questo che esiste l'elenco a valle: **una forzatura senza un
 > elenco e' un modo per nascondere, non per registrare**.
+
+### ⭐ Il punto cieco della rata, e come e' stato chiuso (17-09-2026)
+
+Il saldo di una fattura somma **tutti** i suoi incassi; il saldo di una rata
+sommava solo quelli che la **nominano**. Un incasso registrato «sulla fattura,
+senza rata» — il fondo fattura lo scrive sempre cosi', e l'operatore puo' farlo
+dal lookup — abbassava il saldo della fattura e non quello delle rate: una
+fattura a rata unica pagata senza rata diceva «saldata» come documento e
+«restano 100» come rata. Finche' si guardava la fattura non si notava; con il
+picker delle rate della distinta quella rata sarebbe comparsa aperta, e con la
+rata della nota di credito il credito riportato dal fondo sarebbe stato contato
+**due volte**.
+
+La risposta e' l'**imputazione derivata**: nel nucleo dei saldi gli incassi
+senza rata si attribuiscono alle rate del documento in ordine di scadenza, fino
+a capienza, e l'ultima assorbe l'eccedenza. Nessuno scrive niente sulle righe —
+e' un calcolo, come lo stato della rata e' sempre stato un calcolo — e la somma
+dei saldi delle rate torna sempre uguale al saldo del documento. Il guard di
+capienza legge lo stesso nucleo, quindi vede lo spazio che il documento sa,
+anche prima della registrazione.
+
+⚠️ **L'ordine dei fatti conta.** Un acconto senza rata gia' imputato alla prima
+rata occupa il suo spazio: una riga diretta sulla stessa rata che arriva dopo
+trova quel che resta, e il guard lo dice coi numeri. Non e' un difetto: il
+picker mostra esattamente i numeri del nucleo, e il guard accetta esattamente
+cio' che il picker mostra. La forzatura resta la via per il caso vero.
 
 ### ⚠️ Due avvertenze che restano valide
 
@@ -225,7 +256,7 @@ Un centro non puo essere contemporaneamente di compensazione e di fondo fattura.
 > lo crea era annidato dentro l'elenco delle colonne di un `addColumn`, e li
 > dentro non viene eseguito. La colonna era nata, il vincolo no.
 > Rimesso in piedi dal passo **P-1** di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata),
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-done/brief-db-posting-e-abbinamento-rata),
 > applicato il 21-08-2026 insieme ai due indici unici **parziali** che rendono
 > unico ciascuno dei due ruoli (prima uno dei due era un unico **totale** su un
 > booleano, e teneva la tabella a due righe in tutto).
@@ -265,7 +296,7 @@ Da un punto di vista tecnico:
 > e scritto su un `addUniqueConstraint`, che quell'attributo **non prevede** — e
 > lo ha ignorato in silenzio. Sostituito da due indici unici **parziali** (uno
 > per flag) al passo **P-1** di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-done/brief-db-posting-e-abbinamento-rata)
 > — ⛔ **non ancora applicato**.
 >
 > ⚠️ E `is_fondo_fattura` oggi non ha **nessun** vincolo di unicita: i centri
@@ -346,7 +377,7 @@ Da un punto di vista tecnico:
 | Colonna                 | Tipo               | Nullable | Descrizione                                                         |
 | ----------------------- | ------------------ | :------: | ------------------------------------------------------------------- |
 | `id`                    | BIGINT, PK         |    no    | Chiave primaria                                                     |
-| `codice`                | VARCHAR, UNIQUE    |    no    | Codice univoco (auto-generato: `VC_<timestamp>_<random8>`)          |
+| `codice`                | VARCHAR, UNIQUE    |    no    | Numero dal registro `DISTINTA` dell'emittente (`DIS-<SIGLA>-<ANNO>-<7 cifre>`, dal 2026-09-15): come nasce lo dice la scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
 | `centro_riscossione_id` | BIGINT, FK         |    no    | Centro di riscossione                                               |
 | `ente_incasso_id`       | BIGINT, FK         |    si    | Ente di incasso (opzionale)                                         |
 | `data_contabile`        | DATE               |    no    | Data contabile dell'operazione                                      |
@@ -379,7 +410,21 @@ Ogni testata contabile contiene una o piu righe, ciascuna riferita a una fattura
 
 Lo stato della riga e gestito dalla lookup `vendite_contabili_righe_stati`, che include il flag `is_postabile`: solo le righe in stato postabile possono generare movimenti effettivi tramite il processo di posting.
 
-La disattivazione di una riga (`attivo = false`) e bloccata se esistono movimenti collegati.
+⭐ **Una riga si elimina, e c'e' un momento in cui il contenuto si ferma** (dal
+14-09-2026, D17/D18). Una riga digitata male su una distinta **compilata a mano e
+ancora in bozza** non e' un fatto — non e' denaro arrivato, e' un errore di
+battitura — e si **elimina** (`attivo = false`; anche il `DELETE` fisico segue la
+stessa regola). Non si «scarta»: `SCARTATA` vuol dire *denaro arrivato, non
+nostro* e **conta nella quadratura** — scartare la riga sbagliata renderebbe la
+distinta invalidabile. Quando la distinta viene **validata** («ho finito di
+inserire»), il suo contenuto e' **fermo**: niente righe nuove, niente modifiche a
+importo e date, niente eliminazioni, finche' non torna in bozza. Le decisioni —
+abbinare, sospendere, scartare — restano possibili. Il perche' di ogni rifiuto lo
+dice il database con una regola sola, la stessa che spegne il cestino a video:
+[script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile);
+il guard e'
+[trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto).
+Sotto una distinta **registrata** o generata dal sistema non si elimina niente.
 
 Da un punto di vista tecnico:
 
@@ -411,7 +456,7 @@ Da un punto di vista tecnico:
 
 **Vincoli CHECK:** `chk_vendite_contabili_righe_importo_non_zero` — l'importo non puo essere zero.
 
-**Protezione disattivazione:** trigger `trgfn_prevent_deactivate_if_children` blocca la disattivazione se esistono movimenti con `contabile_riga_id` che referenziano la riga.
+**Protezione disattivazione:** trigger `trgfn_prevent_deactivate_if_children` blocca la disattivazione se esistono movimenti con `contabile_riga_id` che referenziano la riga. ⚠️ Dal 14-09-2026 non e' piu' lui a parlare per primo: una riga registrata sta sotto una distinta chiusa, e il guard del contenuto la ferma prima, col messaggio della distinta finale.
 
 > Documentazione dettagliata: [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)
 
@@ -764,6 +809,7 @@ Da un punto di vista tecnico:
 | `p_lotto_id`              | BIGINT | NULL           | Lotto di fatturazione                     |
 | `p_codice_stato_interno`  | TEXT   | `'BOZZA'`      | Codice interno dello stato iniziale       |
 | `p_meta`                  | JSONB  | `'{}'`         | Metadati                                  |
+| `p_emittente_fiscale_id`  | BIGINT | NULL           | Emittente della distinta (dal 2026-09-15): se manca, lo dice il lotto o il canale — regole nella scheda [`vendite_contabili`](../dbzero/pagamenti/manual/vendite_contabili.md) |
 
 **Restituisce:** `BIGINT` — l'ID della testata (esistente o appena creata).
 
@@ -772,7 +818,7 @@ Da un punto di vista tecnico:
 1. ⛔ *(rimosso il 2026-08-22)* Se `p_compensazione_id` era valorizzato: cercava per `compensazione_id` (relazione 1:1 UNIQUE). Se trovata, verifica coerenza dei parametri.
 2. Se `p_lotto_id` e NULL: cerca per combinazione `(centro, ente, data_contabile, data_registrazione, stato)` senza compensazione.
 3. Se `p_lotto_id` e valorizzato: cerca tramite JOIN su `vendite_contabili_lotti` con la stessa combinazione.
-4. Se non trovata: INSERT con codice auto-generato `VC_<timestamp>_<random8>`.
+4. Se non trovata: INSERT senza `codice` — il numero lo assegna il registro `DISTINTA` dell'emittente (dal 2026-09-15; prima era `VC_<timestamp>_<random8>`).
 5. Se `p_lotto_id` e valorizzato: INSERT in `vendite_contabili_lotti` con `ON CONFLICT DO NOTHING`.
 
 **Vincolo di mutua esclusione:** ⛔ *(non piu' applicabile dal 2026-08-22, il primo parametro non esiste)* `p_compensazione_id` e `p_lotto_id` erano mutuamente esclusivi (errore se entrambi valorizzati).
@@ -787,9 +833,10 @@ Restituisce il saldo contabile "in lavorazione" per una fattura: la somma degli 
 
 Da un punto di vista tecnico:
 
-| Parametro      | Tipo   | Descrizione               |
-| -------------- | ------ | ------------------------- |
-| `p_fattura_id` | BIGINT | ID fattura (obbligatorio) |
+| Parametro                     | Tipo   | Descrizione               |
+| ----------------------------- | ------ | ------------------------- |
+| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio) |
+| `p_escludi_contabile_riga_id` | BIGINT | facoltativo (dal 18-09-2026): la riga contabile da **non contare** — «quanto era dichiarato *prima* di me», per chi sta scrivendo o correggendo proprio quella riga. Lo stesso parametro di `fn_get_saldo_rata` |
 
 **Restituisce:** `TABLE(saldo_contabile NUMERIC, has_righe_postabili BOOLEAN)`
 
@@ -798,7 +845,8 @@ Da un punto di vista tecnico:
 * Somma `importo` da `vendite_contabili_righe` dove:
   * `fattura_id = p_fattura_id` e `attivo IS TRUE`
   * `stato_id` ha `is_postabile = true` nella lookup stati riga
-  * La testata collegata ha `stato_id` con `is_final = false` (o NULL)
+  * La testata collegata ha `stato_id` con `is_final = false` (lo stato della testata è obbligatorio dal 21-08-2026: non c'è più un ripiego per il NULL)
+  * la riga non è quella esclusa
 * `saldo_contabile`: COALESCE a 0 se nessuna riga
 * `has_righe_postabili`: true se almeno una riga soddisfa i criteri
 
@@ -812,17 +860,20 @@ Restituisce il saldo finanziario effettivo di una fattura: il residuo tra il tot
 
 Da un punto di vista tecnico:
 
-| Parametro      | Tipo   | Descrizione               |
-| -------------- | ------ | ------------------------- |
-| `p_fattura_id` | BIGINT | ID fattura (obbligatorio) |
+| Parametro                     | Tipo   | Descrizione               |
+| ----------------------------- | ------ | ------------------------- |
+| `p_fattura_id`                | BIGINT | ID fattura (obbligatorio) |
+| `p_escludi_contabile_riga_id` | BIGINT | facoltativo (dal 18-09-2026): la riga contabile da **non contare**, né fra i dichiarati né — se è già registrata — col suo movimento. È «quanto c'era *prima* di me» per chi corregge una riga: lo stesso parametro, con la stessa domanda, di `fn_get_saldo_rata` |
 
-**Restituisce:** `TABLE(saldo NUMERIC, has_movimenti BOOLEAN)`
+**Restituisce:** `TABLE(saldo NUMERIC, in_lavorazione NUMERIC, incassato NUMERIC, has_movimenti BOOLEAN)` — dal 25-08-2026 la **stessa forma** della sorella della rata: residuo, dichiarato non ancora registrato, cassa vera.
 
 **Logica di calcolo:**
 
 1. Legge `totale_a_pagare` da `vendite.fatture` (errore se fattura non trovata)
-2. `saldo = COALESCE(totale_a_pagare, 0) - COALESCE(SUM(m.importo), 0)` dai movimenti attivi
-3. `has_movimenti`: true se almeno un movimento esiste per la fattura
+2. `saldo = COALESCE(totale_a_pagare, 0) - COALESCE(SUM(m.importo), 0)` dai movimenti attivi (senza il movimento della riga esclusa, se c'è)
+3. `in_lavorazione`: **delegato** a `fn_get_saldo_fattura_contabili`, che riceve la stessa esclusione — una sede sola per il dichiarato
+4. `incassato`: la somma dei soli movimenti su un centro di **cassa** (né fondo fattura né compensazione, e con un centro dichiarato)
+5. `has_movimenti`: true se almeno un movimento esiste per la fattura
 
 > Documentazione dettagliata: [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura)
 
@@ -926,8 +977,8 @@ denaro, sarebbe diventata un varco che **non produce nessun errore visibile**.
 | Le sue **righe** | gli stessi — anche quelle non ancora abbinate a una fattura |
 | Una riga gia' abbinata a una **fattura** | anche chi ha quella fattura, se e' di un'altra azienda ⚠️ |
 | I **movimenti** (il denaro registrato) | chi ha la fattura che quel movimento paga |
-| Le distinte **interne** del sistema (fondi fattura, compensazioni) | tutti — non sono di nessuno |
-| Le **righe** di quelle distinte interne | solo chi ha la fattura che la riga porta |
+| Le distinte **interne** del sistema (fondi fattura, compensazioni) | chi lavora per l'azienda emittente della distinta (dal 2026-09-15 ogni distinta ha un emittente, anche senza canale) |
+| Le **righe** di quelle distinte interne | chi vede la testata, piu' chi ha la fattura che la riga porta |
 
 ⚠️ **La terza riga della tabella non e' una svista.** Se una riga finisce per
 sbaglio sulla distinta dell'azienda sbagliata, chi possiede la fattura **deve
@@ -987,6 +1038,12 @@ Questo trigger (BEFORE INSERT/UPDATE su `vendite_movimenti`) garantisce la coere
 
 ---
 
+### Il contenuto della distinta: `trgfn_vendite_contabili_righe_guard_contenuto`
+
+Questo trigger (BEFORE INSERT / UPDATE dei fatti / DELETE su `vendite_contabili_righe`) custodisce **chi puo' togliere, aggiungere o cambiare una riga, e quando**: una riga si elimina solo su una distinta **manuale in bozza**, e sotto una manuale **validata** il contenuto e' fermo finche' non torna in bozza. Il predicato dell'eliminazione sta in una funzione sola, `script.fn_check_riga_contabile_eliminabile`, che il guard chiama e il backend legge per spegnere il cestino col perche'. Il `DELETE` del giro dei fondi passa perche' la sua madre lo dichiara. Tutto il resto — le due porte, l'ordine dei motivi, il residuo dichiarato — sta nella scheda: [trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto).
+
+---
+
 ### Mutua esclusione lotto/sistemazione: `trgfn_vendite_contabili_lotti_guard_sistemazione`
 
 Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata **nata da una sistemazione** — la domanda si fa all'atto, non piu' alla testata — ~~con `compensazione_id IS NOT NULL` venga associata a un lotto. Lavora in coppia con il blocco 2 del guard ente/centro per applicare la mutua esclusione da entrambi i lati.
@@ -994,6 +1051,16 @@ Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che
 ---
 
 ## Flusso logico del pagamento
+
+⭐ **Validare non e' registrare.** Una distinta manuale passa per tre momenti:
+in **bozza** si digita, si corregge, si elimina; **validata** vuol dire «ho
+finito di inserire, e' pronta da registrare» — la quadratura col totale
+dichiarato e' verificata e il contenuto e' fermo, ma **il denaro non e' ancora
+registrato**; **registrata** (`fn_posta_contabile`, solo da validata) nascono i
+movimenti, le righe vanno a `POSTATA`, la distinta si chiude — ed e'
+irreversibile. Il saldo della fattura resta invariato fino alla validazione,
+mostra le righe come «in lavorazione» da validata, e cambia davvero solo alla
+registrazione.
 
 ```mermaid
 flowchart TD
@@ -1032,7 +1099,7 @@ flowchart TD
 
 7. **Posting condizionato da stato**: solo le righe il cui stato ha `is_postabile = true` e la cui testata non e in stato `is_final = true` sono candidate alla generazione di movimenti.
 
-8. **Protezione disattivazione**: centri, enti, stati e righe non possono essere disattivati se referenziati da record figli attivi.
+8. **Protezione disattivazione**: centri, enti, stati e righe non possono essere disattivati se referenziati da record figli attivi. ⭐ Per le **righe** la regola dal 14-09-2026 e' piu' precisa: si eliminano (`attivo = false`, e `DELETE`) solo su una distinta **manuale in bozza**; sotto una manuale **validata** il contenuto (righe nuove, importi, date, eliminazioni) e' fermo finche' non torna in bozza, mentre le decisioni restano libere (guard: `trgfn_vendite_contabili_righe_guard_contenuto`).
 
 9. **Validazione PSP**: gli enti di incasso con `tipo = PSP` richiedono un `soggetto_ruolo_id` con ruolo `PSP` e un record attivo in `anagrafiche.psp`.
 

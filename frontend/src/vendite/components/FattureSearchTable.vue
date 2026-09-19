@@ -39,7 +39,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { DATE_FORMAT, TAB_ENTITIES, TIPO_RUOLO } from '../../core/constants'
-import { naturaDocSeverity, statoDocFiscaleSeverity } from '../../core/utils/severity'
+import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { exportFatture } from '../api/fatture'
 import { useFattureStore } from '../stores/fatture'
 
@@ -76,23 +76,15 @@ const opzioniNatura = [
   { value: 'NOTA_DEBITO', label: t('vendite.fatture.natura_nota_debito') },
 ]
 
-// Params export: i filtri vivono in `store.filters`, `search` dal ref immediato.
-// ⚠️ Il file È la lista: ogni filtro a video deve arrivare anche qui, o si
-// consegna a qualcuno un elenco più largo di quello che stava guardando.
+// Scopo: i parametri dell'export = QUELLI DELLA LISTA a video, dalla sede
+//        unica dello store (`paramsFiltro`: ricerca, filtri di dominio col nome
+//        sul filo, ordinamento). ⛔ Fino al 2026-09-18 questo blocco ricostruiva i
+//        filtri a mano, e ne aveva perso uno: `id_fiscale`, il criterio del
+//        collegamento dai soggetti. Un export che se li ricostruisce esporta un
+//        insieme DIVERSO da quello a video appena se ne aggiunge uno, e nessuno
+//        se ne accorge finche' qualcuno non confronta il file con la schermata.
 function buildExportParams(format) {
-  const p = { formato: format }
-  if (searchText.value?.trim()) p.search = searchText.value.trim()
-  if (store.filters.stato_codice_interno != null) p.stato_codice_interno = store.filters.stato_codice_interno
-  if (store.filters.natura_doc_codice != null) p.natura_doc_codice = store.filters.natura_doc_codice
-  if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
-  if (store.filters.billing_account_id != null) p.billing_account_id = store.filters.billing_account_id
-  if (store.filters.data_da) p.data_da = store.filters.data_da
-  if (store.filters.data_a) p.data_a = store.filters.data_a
-  if (store.filters.order_by) {
-    p.order_by = store.filters.order_by
-    p.order_dir = store.filters.order_dir || 'desc'
-  }
-  return p
+  return { formato: format, ...store.paramsFiltro() }
 }
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
@@ -268,17 +260,11 @@ onMounted(() => {
              invece che come stato del processo. -->
         <template #cell-numero="{ data }">{{ data.numero || '—' }}</template>
 
-        <!-- ⚠️ La nota di credito non è un'anomalia: severity neutra, mai
-             `danger`. Il totale negativo si mostra com'è, perché è il documento
-             a essere di segno opposto. -->
-        <template #cell-natura_doc_descrizione="{ data }">
-          <Tag
-            v-if="data.natura_doc_codice_interno"
-            :value="data.natura_doc_descrizione || data.natura_doc_codice_interno"
-            :severity="naturaDocSeverity(data.natura_doc_codice_interno)"
-          />
-          <span v-else>—</span>
-        </template>
+        <!-- ⚠️ La natura NON ha slot: il seed dichiara `formato = natura_doc` e
+             `CellaConfigurabile` la rende con `NaturaDocTag` (dal 18/09, come
+             `yesno`). La nota di credito non è un'anomalia: severity neutra, mai
+             `danger` — e il totale negativo si mostra com'è, perché è il
+             documento a essere di segno opposto. -->
 
         <template #cell-stato_descrizione="{ data }">
           <Tag

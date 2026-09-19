@@ -21,6 +21,7 @@
 | user_update | text | NO | CURRENT_USER |
 | correlation_id | uuid | YES |  |
 | tx_id | uuid | YES |  |
+| cleanup_at | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,6 +44,7 @@
 | trg_commesse_push_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_commesse_push_log_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_commesse_push_log_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_commesse_push_log_m50_cleanup_at_ins | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()` |
 
 ---
 {% include-markdown "signature-core.md" %}

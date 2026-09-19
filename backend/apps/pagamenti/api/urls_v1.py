@@ -15,6 +15,8 @@ from apps.pagamenti.api.views import (
     ApiDistintaCorreggi,
     ApiDistintaRegistra,
     ApiDistintaRighe,
+    ApiDistintaRigheDaRate,
+    ApiDistintaRigheExport,
     ApiDistintaStato,
     ApiContiIncasso,
     ApiDistinteList,
@@ -27,8 +29,10 @@ from apps.pagamenti.api.views import (
     ApiFatturaSaldo,
     ApiRataSaldo,
     ApiRateFuoriCapienza,
+    ApiRateList,
     ApiRigaAbbina,
     ApiRigaDetail,
+    ApiRigaRegistra,
     ApiRigaStato,
     ApiRigheCoda,
     ApiSistemazioneAnnulla,
@@ -45,6 +49,21 @@ urlpatterns = [
         "distinte/<int:contabile_id>/righe/",
         ApiDistintaRighe.as_view(),
         name="pagamenti-distinta-righe",
+    ),
+    # ⭐ `export/` e' una rotta SORELLA di `righe/` (la forma della famiglia,
+    #    come `fatture/<id>/sistemazioni/export/`): sotto `righe/` non c'e'
+    #    nessun `<int:...>`, quindi l'ordine fra le due non decide niente.
+    path(
+        "distinte/<int:contabile_id>/righe/export/",
+        ApiDistintaRigheExport.as_view(),
+        name="pagamenti-distinta-righe-export",
+    ),
+    # ⭐ N rate scelte nel picker → N righe in un Salva (D19-d): verbo di
+    #    collezione sulle righe della distinta, esito PARZIALE per riga.
+    path(
+        "distinte/<int:contabile_id>/righe/da-rate/",
+        ApiDistintaRigheDaRate.as_view(),
+        name="pagamenti-distinta-righe-da-rate",
     ),
     path(
         "distinte/<int:contabile_id>/stato/",
@@ -88,8 +107,19 @@ urlpatterns = [
         ApiRigaStato.as_view(),
         name="pagamenti-riga-stato",
     ),
+    # ⭐ La registrazione TARDIVA (D20-b): «abbina e registra» una sospesa sotto
+    #    una distinta gia' registrata. Verbo di dominio, ultimo segmento, stesso
+    #    cancello della registrazione.
+    path(
+        "righe/<int:riga_id>/registra/",
+        ApiRigaRegistra.as_view(),
+        name="pagamenti-riga-registra",
+    ),
     path("righe/<int:riga_id>/", ApiRigaDetail.as_view(), name="pagamenti-riga-detail"),
     # --- Rate ---
+    # ⭐ `rate/` e' l'ELENCO delle rate col saldo (lista `pagamenti.rate`, D19-c):
+    #    la sorgente del picker della distinta e dello scadenzario.
+    path("rate/", ApiRateList.as_view(), name="pagamenti-rate-list"),
     # ⚠️ `fuori-capienza/` PRIMA di `<int:scadenza_id>/`, o il pattern generico
     #     se la mangia (non e' un intero, ma l'ordine e' la regola: la prossima
     #     rotta di elenco potrebbe esserlo).

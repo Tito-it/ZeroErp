@@ -77,6 +77,16 @@
    query PARTE. Sono difetti diversi: la' un nome che il frontend manda e il
    backend non riconosce (400), qui una colonna che il backend riconosce e
    l'SQL non ha (**500**).
+
+1-ter. (dentro il test 1) le GEMELLE di un `formato` — la colonna in piu' che
+   un formato pretende nella riga oltre al `campo_sorgente` (`natura_doc` →
+   `natura_doc_codice_interno`, dal 2026-09-18) — contano come campi
+   dichiarati: senza, il Tag renderebbe `—` su ogni riga e nessuno lo direbbe.
+
+5. test_le_gemelle_di_formato_esistono_nella_vista
+   Lo stesso per le liste CON vista, che il test 1 non esercita: il trigger DB
+   valida il solo `campo_sorgente` contro la vista, non la gemella. Si chiede
+   al catalogo PG se la vista la proietta.
 """
 
 from __future__ import annotations
@@ -95,6 +105,7 @@ from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
     _colonne_attive,
     _seed,
+    campi_gemelli_per_formato,
     ORDINAMENTO_LOCALE,
 )
 
@@ -147,15 +158,40 @@ def _liste_senza_vista() -> set[str]:
 # ⛔ Fuori restano le stesse due categorie che salta il trigger DB: le colonne
 #    di tipo `azione` (non hanno sorgente per disegno) e quelle con
 #    `campo_sorgente` vuoto (colonna calcolata interamente dal frontend).
+# ⭐ Dal 2026-09-18 anche le GEMELLE di un formato: `natura_doc` rende il Tag
+#    con la descrizione (il `campo_sorgente`) E il `codice_interno`, che il
+#    frontend legge da una colonna gemella della riga. Se la lista non la
+#    proietta il Tag esce `—` su ogni riga — un difetto che si vede ma che
+#    nessuno attribuirebbe alla causa. Il nome della gemella si legge dal
+#    sorgente FE (`campi_gemelli_per_formato`), non si ricopia qui.
 def _campi_dichiarati(codice: str) -> set[str]:
     campi = set()
+    gemelle = campi_gemelli_per_formato()
     for riga in _colonne_attive(codice):
         if riga["tipo_colonna"] == "azione":
             continue
         campo = (riga["campo_sorgente"] or "").strip()
         if campo and campo.upper() != "NULL":
             campi.add(campo)
+        campi.update(gemelle.get((riga["formato"] or "").strip(), ()))
     return campi
+
+
+# Scopo: le liste CON vista e, per ciascuna, le gemelle che le sue colonne
+#        attive pretendono — `{(codice, schema, vista): {gemelle}}`.
+def _gemelle_delle_liste_con_vista() -> dict[tuple[str, str, str], set[str]]:
+    gemelle = campi_gemelli_per_formato()
+    esito: dict[tuple[str, str, str], set[str]] = {}
+    for definizione in _seed("lista_definizione.csv"):
+        vista = (definizione["vista_sql"] or "").strip()
+        if definizione["attivo"] != "t" or not vista or vista.upper() == "NULL":
+            continue
+        attese: set[str] = set()
+        for riga in _colonne_attive(definizione["codice"]):
+            attese.update(gemelle.get((riga["formato"] or "").strip(), ()))
+        if attese:
+            esito[(definizione["codice"], definizione["schema_dati"], vista)] = attese
+    return esito
 
 
 # I nomi con cui i repository chiamano la lista dentro un dict di ritorno.
@@ -241,6 +277,14 @@ def _r(percorso: str, classe: str) -> Any:
     import importlib
 
     return getattr(importlib.import_module(percorso), classe)()
+
+
+# Scopo: la configurazione di una famiglia del documento interno di magazzino,
+#        risolta a chiamata (import pigro come `_r`).
+def _famiglia(codice: str) -> Any:
+    import importlib
+
+    return importlib.import_module("apps.magazzino.db.famiglie").FAMIGLIE[codice]
 
 
 # Scopo: traduce l'ordinamento richiesto dal test negli argomenti del metodo.
@@ -505,7 +549,29 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.core.db.processi_repository", "ProcessiRepository"
         ).list_processi(limit=1, offset=0, **_ordine(ob, od)),
     ),
+    # La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
+    # 2026-09-19): il catalogo dei messaggi arriva per JOIN nella stessa SELECT.
+    "dbops.error_log": Esercizio(
+        dove="core/db/dbops_repository.py::list_error_logs",
+        chiama=lambda ob, od: _r(
+            "apps.core.db.dbops_repository", "DbopsRepository"
+        ).list_error_logs(limit=1, offset=0, **_ordine(ob, od)),
+    ),
     # ---------- vendite ----------
+    # Il giornale trasversale degli eventi (pezzo G): terzo lettore della vista
+    # cucita. ⚠️ `entita_display` (codice del lotto, «serie/numero» del
+    # documento) si risolve in Python sulla pagina, con una query a parte:
+    # e' una chiave della riga, non una colonna della SELECT del giornale.
+    "vendite.giornale": Esercizio(
+        dove="vendite/db/vendite_repository.py::list_giornale_trasversale",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.vendite_repository", "VenditeRepository"
+        ).list_giornale_trasversale(
+            gravita=["ERROR", "WARN", "INFO"], limit=1, offset=0,
+            **_ordine(ob, od, chiavi=("sort_by", "sort_dir")),
+        ),
+        campi_da_python=frozenset({"entita_display"}),
+    ),
     "vendite.lotti": Esercizio(
         dove="vendite/db/vendite_repository.py::list_lotti",
         chiama=lambda ob, od: _r(
@@ -760,12 +826,37 @@ _ESERCIZI: dict[str, Esercizio] = {
             **_ordine(ob, od, "data_pagamento", "DESC"),
         ),
     ),
+    # Le righe di UNA distinta (lista 69, 2026-09-18). ⚠️ `_ID_FINTO`: la
+    # distinta non esiste, la query torna zero righe e le colonne le dichiara
+    # il cursore — e' il caso in cui il presidio serve di piu'.
+    "pagamenti.distinta_righe": Esercizio(
+        dove="pagamenti/db/pagamenti_repository.py::list_righe_distinta",
+        chiama=lambda ob, od: _r(
+            "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
+        ).list_righe_distinta(
+            _ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None),
+        ),
+    ),
     "pagamenti.rate_fuori_capienza": Esercizio(
         dove="pagamenti/db/pagamenti_repository.py::list_rate_fuori_capienza",
         chiama=lambda ob, od: _r(
             "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
         ).list_rate_fuori_capienza(
             limit=1, offset=0, **_ordine(ob, od, "data_scadenza", "DESC")
+        ),
+    ),
+    # ⭐ I tre saldi arrivano da una SECONDA query (il nucleo `fn_get_saldi_rate`
+    #    sugli id della pagina) e su una pagina vuota non c'e' nessuna riga su
+    #    cui appoggiarli: qui si passa `solo_aperte=True`, dove i saldi escono
+    #    dalla STESSA query e le colonne le dichiara il cursore anche a zero
+    #    righe. L'altro ramo lo prova `test_rate_lista_db` sul caso costruito.
+    "pagamenti.rate": Esercizio(
+        dove="pagamenti/db/pagamenti_repository.py::list_rate_paginata",
+        chiama=lambda ob, od: _r(
+            "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
+        ).list_rate_paginata(
+            auth_user_id=None, solo_aperte=True, limit=1, offset=0,
+            **_ordine(ob, od, None),
         ),
     ),
     "pagamenti.eccedenze": Esercizio(
@@ -831,6 +922,69 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.anagrafiche.db.titoli_iva_repository", "TitoliIvaRepository"
         ).list_titoli_sfondati(limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    # ── Magazzino, Lotto 2 (2026-09-18). ⭐ Inventari e rettifiche sono UNA
+    #    implementazione parametrica sulla famiglia (Q-1): l'esercizio passa la
+    #    famiglia, e la proiezione — `descrizione` NULL sulla rettifica,
+    #    `qta_contata`/`qta_sistema` contro `qta_delta`/`motivo` sulle righe —
+    #    e' quella che ogni famiglia dichiara a catalogo.
+    "magazzino.inventari": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_documenti",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_documenti(
+            _famiglia("inventari"), auth_user_id=None, limit=1, offset=0,
+            **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.rettifiche": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_documenti",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_documenti(
+            _famiglia("rettifiche"), auth_user_id=None, limit=1, offset=0,
+            **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.inventario_righe": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_righe",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_righe(
+            _famiglia("inventari"), _ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.rettifica_righe": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_righe",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_righe(
+            _famiglia("rettifiche"), _ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None),
+        ),
+    ),
+    "magazzino.inventario_piano": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_piano",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_piano(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.disponibilita": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_disponibilita",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_disponibilita(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.disponibilita_articoli": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_disponibilita_articoli",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_disponibilita_articoli(limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.movimenti": Esercizio(
+        dove="magazzino/db/magazzino_repository.py::list_movimenti",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
+        ).list_movimenti(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
     ),
 }
 
@@ -970,6 +1124,40 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
             [],
             "liste che ORA hanno una vista: le presidia il trigger DB, e la "
             "riga qui va tolta (o il presidio guarda la cosa sbagliata)",
+        )
+
+    # 5. Le gemelle di formato sulle liste CON vista: il trigger DB valida il
+    #    `campo_sorgente` contro la vista, la gemella no — e il test 1 quelle
+    #    liste non le esercita (le presidia il trigger). Si chiede al catalogo.
+    # ⚠️ Se nessuna lista con vista dichiara un formato con gemella, il test lo
+    #    DICE con uno skip: un giro su zero liste non e' un verde.
+    def test_le_gemelle_di_formato_esistono_nella_vista(self) -> None:
+        attese = _gemelle_delle_liste_con_vista()
+        if not attese:
+            self.skipTest("nessuna lista con vista dichiara un formato con gemella")
+        mancanti: dict[str, list[str]] = {}
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                for (codice, schema, vista), gemelle in sorted(attese.items()):
+                    cur.execute(
+                        """
+                        SELECT column_name FROM information_schema.columns
+                         WHERE table_schema = %s AND table_name = %s
+                        """,
+                        [schema, vista],
+                    )
+                    colonne = {r[0] for r in cur.fetchall()}
+                    self.assertTrue(
+                        colonne, f"la vista {schema}.{vista} della lista '{codice}' non esiste",
+                    )
+                    assenti = sorted(gemelle - colonne)
+                    if assenti:
+                        mancanti[codice] = assenti
+            transaction.set_rollback(True)
+        self.assertEqual(
+            mancanti, {},
+            "gemella di formato che la VISTA non proietta: il Tag renderebbe "
+            "`—` su ogni riga, senza errore",
         )
 
     # 4. Ogni ordinamento dichiarato produce SQL valido — per intero, non a

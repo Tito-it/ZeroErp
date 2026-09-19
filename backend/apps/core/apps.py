@@ -29,6 +29,16 @@ class CoreConfig(AppConfig):
         )
         register_notifica_digest_muto()
 
+        # Handler del job ESEGUI_PROCESSO (2026-09-15): «Esegui ora» su una
+        # sveglia di deploy — lo accoda il verbo `processi/<codice>/esegui-ora/`
+        # con l'identita' di chi preme, lo esegue il drenatore come
+        # sottoprocesso `run-command.sh <comando>`. Il tipo di coda e' seedato
+        # spento finche' questa riga non e' in release (brief §10.4).
+        from apps.core.services.coda_lavori.esegui_processo_handler import (
+            register as register_esegui_processo,
+        )
+        register_esegui_processo()
+
         # Estensioni drf-spectacular: si registrano per IMPORT, alla definizione
         # della sottoclasse. Senza questa riga lo schema OpenAPI non dichiara
         # nessuno `securityScheme` e descrive l'intera API come anonima

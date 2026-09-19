@@ -27,9 +27,14 @@ Indice test eseguiti:
 15) Slice3RotteTests.test_le_rotte_della_slice_3_esistono
 16) Slice3ApiTests.test_abbina_senza_idempotency_key_rifiutato
 17) Slice3ApiTests.test_abbina_ok
+17a) Slice3ApiTests.test_elimina_senza_idempotency_key_rifiutato
+17b) Slice3ApiTests.test_elimina_ok
+17c) Slice3ApiTests.test_crea_riga_con_destinazione_passa_al_service
 18) Slice3ApiTests.test_coda_filtri_tradotti
 19) Slice3ApiTests.test_saldo_rata_ok
 20) Slice3ApiTests.test_saldo_fattura_ok
+20a) Slice3ApiTests.test_saldo_fattura_escludi_riga_arriva_al_service
+20b) Slice3ApiTests.test_saldo_fattura_escludi_riga_non_numerico_400
 21) Slice5RotteTests.test_le_rotte_delle_sistemazioni_esistono
 22) Slice5ApiTests.test_eccedenze_filtri_tradotti
 23) Slice5ApiTests.test_registrazione_senza_idempotency_key_rifiutata
@@ -39,6 +44,10 @@ Indice test eseguiti:
 27) CorrezioneApiTests.test_senza_idempotency_key_rifiutata
 28) CorrezioneApiTests.test_nulla_da_correggere_risale_intatto
 29) CorrezioneApiTests.test_creata_porta_la_distinta_nuova
+30) TardivaApiTests.test_la_rotta_esiste_e_non_e_intercettata
+31) TardivaApiTests.test_senza_idempotency_key_rifiutata
+32) TardivaApiTests.test_il_payload_arriva_al_service_e_la_ricevuta_risale
+33) TardivaApiTests.test_lo_stesso_cancello_della_registrazione
 """
 
 from datetime import date
@@ -63,9 +72,9 @@ _LISTA = {
     "results": [{"id": 7, "codice": "CNT-0001", "origine": "MANUALE"}],
 }
 
+# ⚠️ Niente `righe` (dal 2026-09-18): sono una lista con la sua pagina.
 _DETTAGLIO = {
     "distinta": {"id": 7, "codice": "CNT-0001", "righe_totali": 0},
-    "righe": [],
     "stati_distinta": [],
     "stati_riga": [],
     "stati_richiedibili": ["VALIDATA", "BOZZA", "ANNULLATA"],
@@ -434,6 +443,50 @@ class Slice3ApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(mocked.call_args.args[1]["forzata"])
 
+    # Scopo: ⭐ D17 — `DELETE /righe/{id}/` e' una scrittura (attivo = false):
+    #        senza chiave di idempotenza un doppio invio non e' distinguibile.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.elimina_riga")
+    def test_elimina_senza_idempotency_key_rifiutato(self, mocked, _auth):
+        response = self.client.delete("/api/v1/pagamenti/righe/11/")
+        self.assertEqual(response.json()["error"]["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
+        mocked.assert_not_called()
+
+    # Scopo: Il metodo dice il verbo (api.md §Grammatica URL): niente
+    #        `/elimina/` nel path, e la risposta risale intatta.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.elimina_riga")
+    def test_elimina_ok(self, mocked, _auth):
+        mocked.return_value = {"riga_id": 11, "eliminata": True}
+        response = self.client.delete(
+            "/api/v1/pagamenti/righe/11/",
+            HTTP_IDEMPOTENCY_KEY="test-key-0011",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"], {"riga_id": 11, "eliminata": True})
+        mocked.assert_called_once_with(11)
+
+    # Scopo: ⭐ D16 — la destinazione viaggia col POST della riga, e arriva al
+    #        service INTATTA: e' lui a decidere lo stato di nascita.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.crea_riga")
+    def test_crea_riga_con_destinazione_passa_al_service(self, mocked, _auth):
+        mocked.return_value = {"riga": {"id": 11, "stato_codice": "ABBINATA"}}
+        payload = {
+            "importo": "400.00", "data_pagamento": "2026-09-14",
+            "fattura_id": 2263, "scadenza_id": 900,
+        }
+        response = self.client.post(
+            "/api/v1/pagamenti/distinte/7/righe/",
+            data=payload,
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-0012",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked.call_args.args[0], 7)
+        self.assertEqual(mocked.call_args.args[1]["fattura_id"], 2263)
+        self.assertEqual(mocked.call_args.args[1]["scadenza_id"], 900)
+
     @_AUTH
     @patch("apps.pagamenti.api.views.pagamenti_service.list_coda_righe")
     def test_coda_filtri_tradotti(self, mocked, _auth):
@@ -468,6 +521,38 @@ class Slice3ApiTests(JwtMockedApiTest):
         response = self.client.get("/api/v1/pagamenti/fatture/2263/saldo/")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["data"]["incassato"])
+        # Senza il parametro il service riceve `None`, non un'assenza: la firma
+        # e' la stessa della rata.
+        self.assertIsNone(mocked.call_args.kwargs["escludi_riga_id"])
+
+    # Scopo: ⭐ P-6 (2026-09-18): anche il DOCUMENTO sa il «prima di se'». Il
+    #        parametro ha lo stesso nome della rata e arriva al service come
+    #        intero — e' cio' che il pannello «Destinazione» in modifica di una
+    #        riga SENZA rata (il fondo fattura) chiede.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.saldi_service.saldo_documento")
+    def test_saldo_fattura_escludi_riga_arriva_al_service(self, mocked, _auth):
+        mocked.return_value = {"livello": "DOCUMENTO", "residuo": "500.00",
+                               "in_lavorazione": "0", "incassato": "300.00",
+                               "has_movimenti": True}
+        response = self.client.get(
+            "/api/v1/pagamenti/fatture/2263/saldo/?escludi_riga_id=11"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked.call_args.kwargs["escludi_riga_id"], 11)
+
+    # Scopo: ⛔ Un `escludi_riga_id` non numerico e' un 400 col campo, non un
+    #        saldo letto SENZA esclusione: ignorarlo in silenzio farebbe leggere
+    #        un «in lavorazione» che conta la riga che si sta correggendo — cioe'
+    #        esattamente il numero che il parametro esiste per non mostrare.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.saldi_service.saldo_documento")
+    def test_saldo_fattura_escludi_riga_non_numerico_400(self, mocked, _auth):
+        response = self.client.get(
+            "/api/v1/pagamenti/fatture/2263/saldo/?escludi_riga_id=abc"
+        )
+        self.assertEqual(response.status_code, 400)
+        mocked.assert_not_called()
 
 
 class Slice5RotteTests(JwtMockedApiTest):
@@ -550,3 +635,61 @@ class Slice5ApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["sistemazione"]["stato"], "ANNULLATA")
+
+
+class TardivaApiTests(JwtMockedApiTest):
+    """D20-b — la rotta della registrazione TARDIVA di una riga."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    # ⛔ La rotta sta PRIMA di `righe/<id>/`, come `abbina/` e `stato/`.
+    def test_la_rotta_esiste_e_non_e_intercettata(self):
+        self.assertEqual(
+            reverse("pagamenti-riga-registra", args=[11]),
+            "/api/v1/pagamenti/righe/11/registra/",
+        )
+
+    # ⚠️ Scrive un MOVIMENTO: senza chiave di idempotenza un doppio invio
+    #    tenterebbe due volte lo stesso posting.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.registra_riga_tardiva")
+    def test_senza_idempotency_key_rifiutata(self, mocked, _auth):
+        response = self.client.post(
+            "/api/v1/pagamenti/righe/11/registra/",
+            data={"fattura_id": 2263},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        mocked.assert_not_called()
+
+    # Scopo: il payload e' quello di `abbina` e arriva al service com'e'; la
+    #        ricevuta (movimento, importo, esito, riga) risale nell'envelope.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.registra_riga_tardiva")
+    def test_il_payload_arriva_al_service_e_la_ricevuta_risale(self, mocked, _auth):
+        mocked.return_value = {
+            "movimento_id": 501, "riga_id": 11, "importo": "60.00",
+            "esito": "POSTATA", "riga": {"id": 11, "stato_codice": "POSTATA"},
+        }
+        response = self.client.post(
+            "/api/v1/pagamenti/righe/11/registra/",
+            data={"fattura_id": 2263, "scadenza_id": 5},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-tardiva-1",
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked.assert_called_once_with(11, {"fattura_id": 2263, "scadenza_id": 5})
+        dati = response.json()["data"]
+        self.assertEqual(dati["esito"], "POSTATA")
+        self.assertEqual(dati["movimento_id"], 501)
+        self.assertEqual(dati["riga"]["stato_codice"], "POSTATA")
+
+    # Scopo: 🔴 Un verbo che scrive un movimento ha LO STESSO cancello della
+    #        registrazione della distinta — non una porta piu' larga.
+    def test_lo_stesso_cancello_della_registrazione(self):
+        from apps.pagamenti.api.views import ApiDistintaRegistra, ApiRigaRegistra
+        self.assertEqual(ApiRigaRegistra.post_permission, "registra_distinta")
+        self.assertEqual(ApiRigaRegistra.post_permission, ApiDistintaRegistra.post_permission)

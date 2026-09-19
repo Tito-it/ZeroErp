@@ -103,7 +103,8 @@ $$, '%non si imposta dall%',
 
 -- 5) Il registro di debito. ⭐ Rev 2026-08-18: non e' piu' «zero». Sono le SEI
 --    liste del perimetro emittente, accese per decisione di Tid nello stesso
---    giorno (brief §13-ter.5 e §13-ter.7).
+--    giorno (brief §13-ter.5 e §13-ter.7); poi una il 27-08, due il 18-09 e
+--    una il 19-09, ciascuna con la sua riga datata nell'elenco qui sotto.
 --
 --    ⚠️ E va detto qui, perche' e' qui che si legge: sulla PILOTA il flag ha
 --    dietro il giro completo (vista + repository + i18n); sulle altre cinque
@@ -128,7 +129,34 @@ SELECT is(
     (SELECT COALESCE(array_agg(ld.codice::text ORDER BY ld.codice), '{}'::text[])
        FROM ui.lista_definizione ld
       WHERE ld.multi_emittente),
-    ARRAY['vendite.dash_aperto_documenti',
+    ARRAY[
+          -- ⭐ 2026-09-18 — D-3 di Tid, brief-db-perimetro-emittente-cataloghi-
+          --   globali: ogni operatore ha UN emittente, ma la lista ne mescola
+          --   di aziende diverse quando il super admin la apre su «Tutti», e
+          --   la colonna attiva `emittenti_descrizione` («Emittente fiscale»)
+          --   dice per ogni riga a quale azienda appartiene — c'era gia',
+          --   quindi il biglietto (test 6) era gia' pagato e mancava solo la
+          --   dichiarazione. ⚠️ Il flag e' della LISTA, non dell'operatore:
+          --   l'unico attore multi-emittente resta il super admin.
+          'anagrafiche.operatori',
+          -- ⭐ 2026-09-19 — D-4 di Tid, stesso brief: ogni email e' spedita per
+          --   conto di UN emittente (o di nessuno: le righe `SISTEMA`, cella
+          --   vuota), e su «Tutti» il super admin ne vede di aziende diverse.
+          --   Qui il biglietto e' stato pagato nell'ordine giusto: colonna 872
+          --   (`emittente_fiscale`, campo_sorgente `emittente_ragione_sociale`)
+          --   nata SPENTA il 18-09, accesa dal backend il 19-09 nello stesso
+          --   commit della proiezione (`email_repository.list_logs`, BE-3/BE-4),
+          --   e SOLO DOPO il flag — ⚠️ mai il flag prima della colonna, o il
+          --   test 6 esce da zero.
+          'config.email_log',
+          -- ⭐ 2026-09-18 — D-5 di Tid, stesso brief: un preset PUO' essere di
+          --   un'azienda (`ambito = emittente_fiscale`), e la colonna «Emittente»
+          --   (id 873, campo_sorgente `emittente_ragione_sociale`) e' attiva dal
+          --   18-09 — il repository `_PRESET_SELECT_SQL` la proiettava gia'
+          --   per la colonna calcolata «Riferimento», quindi il biglietto era
+          --   gia' pagato e mancava la colonna che il presidio riconosce.
+          'ui.lista_preset',
+          'vendite.dash_aperto_documenti',
           'vendite.dash_backlog_documenti',
           'vendite.dash_competenza_commesse',
           'vendite.dash_competenza_errori',

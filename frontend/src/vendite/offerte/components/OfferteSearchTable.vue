@@ -7,12 +7,11 @@
 // Righe dalla vista canonica self-contained `vw_offerte_commerciali_lista`:
 // cliente=`ragione_sociale_completa`, id.fiscale=`id_fiscale_univoco_cf_piva`,
 // listino_codice + listino_versione_codice + is_scaduta materializzati in vista.
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
-import ToggleSwitch from 'primevue/toggleswitch'
 
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
@@ -26,6 +25,7 @@ import LineagePraticaCell from '../../_shared/lineage/LineagePraticaCell.vue'
 import LineageFaseTag from '../../_shared/lineage/LineageFaseTag.vue'
 import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
+import FiltroToggle from '../../../core/components/FiltroToggle.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
@@ -56,39 +56,30 @@ const {
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
-const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindDate, bindToggle } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice_interno')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
 const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
-// Toggle "mostra storico revisioni" (negazione del filtro store).
-// mostraStorico=ON ⇔ solo_ultima_revisione=false. computed get/set per restare
-// allineato al filtro reale anche se cambia altrove (reset, logout): single
-// source of truth = store.
-const mostraStorico = computed({
-  get: () => !store.filters.solo_ultima_revisione,
-  set: (val) => { store.filters.solo_ultima_revisione = !val },
-})
+// Toggle «mostra storico revisioni»: la NEGAZIONE del filtro dello store —
+// acceso ⇔ `solo_ultima_revisione = false`, spento ⇔ `true` (il default).
+// `bindToggle` con i due valori dichiarati: il widget resta un booleano.
+const { value: mostraStorico, onChange: onMostraStoricoChange } = bindToggle(
+  'solo_ultima_revisione', { on: false, off: true },
+)
 
-// Params export: i filtri vivono in store.filters; `search` dal ref immediato.
-// I filtri data BE si chiamano validita_dal_min/validita_dal_max (views_offerte).
+// Scopo: i parametri dell'export = QUELLI DELLA LISTA a video, dalla sede
+//        unica dello store (`paramsFiltro`: ricerca, filtri di dominio col nome
+//        sul filo, ordinamento). ⛔ Fino al 2026-09-18 questo blocco ricostruiva i
+//        filtri a mano, e ne aveva persi due (`billing_account_id`, `listino_id`)
+//        — e ricopiava il nome sul filo delle date (`validita_dal_min/max`), che
+//        ora e' `paramNames` dello store. Un export che se li ricostruisce
+//        esporta un insieme DIVERSO da quello a video appena se ne aggiunge uno,
+//        e nessuno se ne accorge finche' qualcuno non confronta il file con la
+//        schermata.
 function buildExportParams(format) {
-  const p = { formato: format }
-  if (searchText.value?.trim()) p.search = searchText.value.trim()
-  if (store.filters.stato_codice_interno != null) p.stato_codice_interno = store.filters.stato_codice_interno
-  if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
-  if (store.filters.data_da) p.validita_dal_min = store.filters.data_da
-  if (store.filters.data_a) p.validita_dal_max = store.filters.data_a
-  p.solo_ultima_revisione = store.filters.solo_ultima_revisione ? 'true' : 'false'
-  if (store.filters.order_by) {
-    p.order_by = store.filters.order_by
-    p.order_dir = store.filters.order_dir || 'desc'
-  }
-  return p
+  return { formato: format, ...store.paramsFiltro() }
 }
-
-// Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.
-function onMostraStoricoChange() { applyFilters() }
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -175,13 +166,11 @@ onMounted(() => store.fetchList())
           <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
             :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
             @date-select="onDataAlChange" @clear-click="onDataAlChange" />
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <ToggleSwitch v-model="mostraStorico" inputId="off-mostra-storico"
-              @change="onMostraStoricoChange" />
-            <label for="off-mostra-storico" style="font-size: 0.85rem; cursor: pointer;">
-              {{ t('vendite.offerte.filtro_mostra_storico') }}
-            </label>
-          </div>
+          <FiltroToggle
+            v-model="mostraStorico"
+            :label="t('vendite.offerte.filtro_mostra_storico')"
+            @change="onMostraStoricoChange"
+          />
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>

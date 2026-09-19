@@ -11,7 +11,8 @@
 
 """
 Indice test eseguiti:
-1)  AbbinamentoTests.test_fattura_e_cliente_obbligatori
+1)  AbbinamentoTests.test_fattura_obbligatoria_cliente_derivato
+1a) AbbinamentoTests.test_cliente_dichiarato_non_si_rilegge
 2)  AbbinamentoTests.test_la_rata_resta_facoltativa
 3)  AbbinamentoTests.test_porta_la_riga_ad_abbinata
 4)  AbbinamentoTests.test_forzatura_passa_intatta_al_database
@@ -22,6 +23,7 @@ Indice test eseguiti:
 9)  CodeTests.test_da_abbinare_filtra_un_solo_stato
 10) CodeTests.test_sospese_filtra_un_solo_stato
 11) CodeTests.test_tutte_le_prende_entrambe
+11a) CodeTests.test_la_coda_porta_catalogo_e_matrice_di_riga
 12) CodeTests.test_coda_inventata_rifiutata
 13) CodeTests.test_ordinamento_fuori_whitelist_rifiutato
 14) RateFuoriCapienzaTests.test_motivo_fuori_vocabolario_rifiutato
@@ -32,6 +34,7 @@ Indice test eseguiti:
 18) SaldiTests.test_documento_inesistente_404
 19) SaldiTests.test_rata_inesistente_404
 20) SaldiTests.test_escludi_riga_arriva_al_database
+20b) SaldiTests.test_escludi_riga_arriva_al_database_anche_sul_documento
 20a) SaldiTests.test_i_numeri_del_documento_da_una_lettura_sola
 21) RifiutoConfermabileTests.test_la_capienza_ha_la_sua_ui_action
 """
@@ -59,6 +62,10 @@ def _repo() -> MagicMock:
     repo.get_riga.return_value = dict(_RIGA)
     repo.abbina_riga.return_value = 1
     repo.list_righe_coda.return_value = ([], 0)
+    # ⭐ La coda porta catalogo e matrice di riga accanto alle righe (FE-4):
+    #    il finto risponde la forma, vuota.
+    repo.list_transizioni.return_value = ([], [])
+    repo.list_stati_riga.return_value = []
     repo.list_rate_fuori_capienza.return_value = ([], 0)
     repo.get_saldo_rata.return_value = {
         "saldo": Decimal("1000.00"),
@@ -78,6 +85,11 @@ def _repo() -> MagicMock:
         "has_movimenti": True,
     }
     repo.list_rate_con_saldo.return_value = []
+    # Il cliente della fattura, per quando il chiamante non lo passa.
+    repo.get_riferimenti_fattura.return_value = {
+        "fattura_id": 2263, "billing_account_id": 41,
+        "emittente_soggetto_ruolo_id": 32, "cliente_soggetto_ruolo_id": 9,
+    }
     return repo
 
 
@@ -96,13 +108,25 @@ class _Base(TestCase):
 class AbbinamentoTests(_Base):
     _OK = {"fattura_id": 2263, "billing_account_id": 41}
 
-    # Scopo: Senza fattura e cliente non c'e' abbinamento — e lo stesso lo
-    #        pretende il guard sui dati, che parla dopo di noi.
-    def test_fattura_e_cliente_obbligatori(self):
-        with self.assertRaises(ServiceError):
-            pagamenti_service.abbina_riga(11, {"fattura_id": 2263})
+    # Scopo: Senza fattura non c'e' abbinamento — e lo stesso lo pretende il
+    #        guard sui dati, che parla dopo di noi. ⭐ Il cliente invece si puo'
+    #        omettere (dal 14/09, stessa regola della nascita della riga): e'
+    #        quello della fattura, LETTO dal documento e passato al database —
+    #        il guard lo pretende comunque su ABBINATA.
+    def test_fattura_obbligatoria_cliente_derivato(self):
         with self.assertRaises(ServiceError):
             pagamenti_service.abbina_riga(11, {"billing_account_id": 41})
+        self.repo.abbina_riga.assert_not_called()
+        pagamenti_service.abbina_riga(11, {"fattura_id": 2263})
+        self.repo.get_riferimenti_fattura.assert_called_once_with(2263)
+        self.assertEqual(self.repo.abbina_riga.call_args.kwargs["billing_account_id"], 41)
+
+    # Scopo: Se il cliente arriva dal chiamante, non si rilegge dalla fattura:
+    #        e' un dato dichiarato, e il database lo verifichera'.
+    def test_cliente_dichiarato_non_si_rilegge(self):
+        pagamenti_service.abbina_riga(11, dict(self._OK))
+        self.repo.get_riferimenti_fattura.assert_not_called()
+        self.assertEqual(self.repo.abbina_riga.call_args.kwargs["billing_account_id"], 41)
 
     # Scopo: ⚠️ La rata resta FACOLTATIVA anche su una riga abbinata: la riga
     #        del fondo fattura ha fattura si' e rata no, ed e' un caso normale.
@@ -186,6 +210,26 @@ class CodeTests(_Base):
             self.repo.list_righe_coda.call_args.kwargs["stati"],
             ("DA_ABBINARE", "SOSPESA"),
         )
+
+    # Scopo: ⭐ La coda porta ACCANTO alle righe il catalogo degli stati di riga
+    #        e le uscite richiedibili da ogni stato (FE-4): le voci del kebab
+    #        si costruiscono dalla MATRICE anche qui, come nel drawer — e dalla
+    #        stessa lettura delle righe, non da un endpoint suo.
+    def test_la_coda_porta_catalogo_e_matrice_di_riga(self):
+        self.repo.list_transizioni.return_value = (
+            [("BOZZA", "VALIDATA")],
+            [("SOSPESA", "SCARTATA"), ("SOSPESA", "ABBINATA"), ("SOSPESA", "DA_ABBINARE")],
+        )
+        self.repo.list_stati_riga.return_value = [{"codice_interno": "SOSPESA"}]
+        esito = pagamenti_service.list_coda_righe(coda="SOSPESE")
+        self.assertEqual(esito["stati_riga"], [{"codice_interno": "SOSPESA"}])
+        # L'ordine di offerta e' quello del vocabolario dei richiedibili, e la
+        # matrice della TESTATA non ci finisce dentro.
+        self.assertEqual(
+            esito["transizioni_riga"],
+            {"SOSPESA": ["DA_ABBINARE", "ABBINATA", "SCARTATA"]},
+        )
+        self.assertNotIn("BOZZA", esito["transizioni_riga"])
 
     # Scopo: Una coda inventata e' un 400, non una lista vuota: su un
     #        vocabolario chiuso «nessun risultato» e' indistinguibile da
@@ -285,6 +329,22 @@ class SaldiTests(_Base):
         saldi_service.saldo_rata(900, escludi_riga_id=11)
         self.assertEqual(
             self.repo.get_saldo_rata.call_args.kwargs["escludi_riga_id"], 11
+        )
+
+    # Scopo: ⭐ P-6 (2026-09-18): lo stesso «prima di se'» sul DOCUMENTO, con lo
+    #        stesso nome — chi corregge una riga senza rata (il fondo fattura)
+    #        legge il saldo senza contarsi addosso. Fino a quel giorno il
+    #        pannello lo dichiarava come non applicato.
+    def test_escludi_riga_arriva_al_database_anche_sul_documento(self):
+        saldi_service.saldo_documento(2263, escludi_riga_id=11)
+        self.assertEqual(
+            self.repo.get_saldo_documento.call_args.kwargs["escludi_riga_id"], 11
+        )
+        # E senza opzione il repository riceve `None`, non un'assenza: la
+        # firma e' una sola nei due versi.
+        saldi_service.saldo_documento(2263)
+        self.assertIsNone(
+            self.repo.get_saldo_documento.call_args.kwargs["escludi_riga_id"]
         )
 
 

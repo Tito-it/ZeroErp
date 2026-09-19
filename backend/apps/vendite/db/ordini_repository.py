@@ -330,6 +330,13 @@ class OrdiniRepository(
                 r.meta,
                 r.data_insert,
                 r.data_update,
+                -- Le due date di consegna (brief-db-modifiche-certe-ciclo-vendita-
+                -- e-articolo, Blocco A): la RICHIESTA e' del cliente, la
+                -- CONFERMATA e' la nostra promessa (D-16: non marcato = nostro).
+                -- Proiezione ESPLICITA: una colonna che nessuno nomina non
+                -- esiste per il frontend.
+                r.data_consegna_richiesta_cliente,
+                r.data_consegna_confermata,
                 EXISTS (
                     SELECT 1
                       FROM vendite.ordini_righe_componenti rc
@@ -376,6 +383,8 @@ class OrdiniRepository(
                 r.iva_id,
                 iva.codice              AS iva_codice,
                 r.meta,
+                r.data_consegna_richiesta_cliente,
+                r.data_consegna_confermata,
                 EXISTS (
                     SELECT 1
                       FROM vendite.ordini_righe_componenti rc
@@ -605,14 +614,18 @@ class OrdiniRepository(
         sconto_percentuale: str | None = None,
         iva_id: int | None = None,
         meta: dict[str, Any] | None = None,
+        data_consegna_richiesta_cliente: date | None = None,
+        data_consegna_confermata: date | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO vendite.ordini_righe (
                 ordine_id, riga_nr, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
-                prezzo_unitario, sconto_percentuale, iva_id, meta
+                prezzo_unitario, sconto_percentuale, iva_id, meta,
+                data_consegna_richiesta_cliente, data_consegna_confermata
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
+                %s, %s
             )
             RETURNING id
         """
@@ -622,6 +635,7 @@ class OrdiniRepository(
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
                 prezzo_unitario, sconto_percentuale, iva_id,
                 json.dumps(meta or {}),
+                data_consegna_richiesta_cliente, data_consegna_confermata,
             ])
             result = row_to_dict(cursor)
             assert result is not None

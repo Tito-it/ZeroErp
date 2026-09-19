@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 (passo 3 di 3) — SET DEFAULT ACQUISTO + SET NOT NULL
+#   catalogo.articoli.modo_approvvigionamento_id
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezioni 3.3 e 4-bis
+#
+# -- PERCHE' NOT NULL, SUL MODELLO ---------------------------------
+#   Il valore si puo' sempre dare, e un NULL significherebbe «non lo so»,
+#   cioe' esattamente lo stato che questa colonna esiste per abolire.
+#   ⚠️ E' la forma finale decisa il 2026-09-02; nasce in tre passi solo
+#   perche' 00_schema gira prima del seed di 80_data (20260913-05, header).
+#
+# -- PERCHE' ANCHE UN DEFAULT ---------------------------------------
+#   Il BE che crea articoli, il mirror articoli.csv (che non porta la
+#   colonna) e i pgTAP che inseriscono articoli senza modo devono continuare
+#   a funzionare: senza DEFAULT il NOT NULL li romperebbe tutti. Con
+#   DEFAULT ACQUISTO un articolo nuovo parte da «si compra» e si classifica
+#   esplicitamente.
+#   ⚠️ Il DEFAULT e' un id LETTERALE scritto dal blocco DO (risolto per
+#   codice_interno al momento dell'apply): una colonna non ammette una
+#   sottoquery come DEFAULT. E' l'eccezione di linee-guida-sql 6b (FK fisica
+#   reale), la stessa di natura_vendita_id; un reseed del vocabolario con id
+#   diversi va riallineato qui.
+#
+# -- TRANSAZIONE SEPARATA DAL BACKFILL (20260913-10) --------------------
+#   Vedi l'header del -10: l'UPDATE lascia eventi trigger in sospeso e un
+#   ALTER TABLE nella stessa transazione muore. Liquibase fa commit fra i
+#   due changeSet. Se il -10 avesse lasciato NULL residui, il SET NOT NULL
+#   qui fallisce fail-fast, che e' cio' che si vuole.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260913-11-alter-articoli-modo-approvvigionamento-default-notnull-mctit.yaml
+
+  - changeSet:
+      id: 20260913-11-alter-articoli-modo-approvvigionamento-default-notnull
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        SET DEFAULT ACQUISTO (id risolto a runtime per codice_interno) e SET NOT NULL su
+        catalogo.articoli.modo_approvvigionamento_id. Transazione separata dal backfill
+        20260913-10 (eventi trigger in sospeso). Idempotente. Brief:
+        brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezioni 3.3 e 4-bis (P-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: modo_approvvigionamento_id
+            - tableExists:
+                schemaName: config
+                tableName: modi_approvvigionamento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $DDL$
+              DECLARE
+                  v_acquisto_id config.modi_approvvigionamento.id%TYPE;
+              BEGIN
+                  -- Id di ACQUISTO risolto a runtime per codice_interno (no hardcode).
+                  SELECT id INTO v_acquisto_id
+                    FROM config.modi_approvvigionamento
+                   WHERE codice_interno = 'ACQUISTO'
+                     AND attivo IS TRUE;
+
+                  IF v_acquisto_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'Modo ACQUISTO non trovato in config.modi_approvvigionamento: '
+                          'seed 20260913-09 non applicato o ACQUISTO non attivo.';
+                  END IF;
+
+                  -- 1) DEFAULT ACQUISTO: un articolo nuovo parte da «si compra»
+                  --    finche' non si classifica. Idempotente.
+                  EXECUTE format(
+                      'ALTER TABLE catalogo.articoli ALTER COLUMN modo_approvvigionamento_id SET DEFAULT %s',
+                      v_acquisto_id
+                  );
+
+                  -- 2) NOT NULL: ogni articolo dichiara da dove arriva. Idempotente
+                  --    (no-op se gia' NOT NULL). Fail-fast se il backfill 20260913-10
+                  --    ha lasciato NULL residui.
+                  EXECUTE 'ALTER TABLE catalogo.articoli ALTER COLUMN modo_approvvigionamento_id SET NOT NULL';
+              END
+              $DDL$;
+
+              COMMENT ON COLUMN catalogo.articoli.modo_approvvigionamento_id IS
+                  'Da dove arriva la merce di questo articolo '
+                  '(config.modi_approvvigionamento: ACQUISTO | PRODUZIONE | STOCK | '
+                  'NON_APPLICABILE). NOT NULL DEFAULT ACQUISTO (decisione di Tid, '
+                  '2026-09-02): il valore si puo'' sempre dare, e un NULL direbbe «non lo '
+                  'so», che e'' lo stato che la colonna esiste per abolire; il default e'' '
+                  'l''id risolto per codice_interno all''apply di 20260913-11. Rende '
+                  'ponibile «questa riga richiede produzione?» e dice se l''articolo si '
+                  'compra. NON e'' derivabile da is_composito (fatturazione), '
+                  'natura_vendita_id (destinazione della riga) ne'' da '
+                  'nature_vendita.e_cessione_beni (fiscale). Brief: '
+                  'brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli ALTER COLUMN modo_approvvigionamento_id DROP NOT NULL;
+              ALTER TABLE catalogo.articoli ALTER COLUMN modo_approvvigionamento_id DROP DEFAULT;

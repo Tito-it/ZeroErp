@@ -74,19 +74,15 @@ const ambitoOptions = computed(() => [
   { value: 'COMMERCIO', label: t('vendite.contratti.ambito_commercio') },
 ])
 
-// Params export: i filtri vivono in store.filters (sincronizzati dagli handler
-// onXxxChange); `search` dal ref immediato. Funzione lazy (chiamata solo al
-// click export), quindi puo' riferire `searchText` definito sopra.
+// Params export: la lista che stai guardando, dalla sede unica dello store
+// (`paramsFiltro`: ricerca, filtri di dominio, ORDINAMENTO). ⚠️ Fino al
+// 2026-09-18 questo file si ricostruiva i filtri a mano dai ref della toolbar
+// e non mandava l'ordinamento: il file usciva sempre nell'ordine di default
+// del backend, qualunque colonna l'operatore avesse cliccato. E la ricerca
+// viene dallo store (debounced), non dal ref immediato: e' quella con cui la
+// lista a video e' stata davvero interrogata.
 function buildExportParams(format) {
-  const p = { formato: format }
-  if (searchText.value?.trim()) p.search = searchText.value.trim()
-  if (store.filters.stato_doc_contratto_id != null) p.stato_doc_contratto_id = store.filters.stato_doc_contratto_id
-  if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
-  if (store.filters.ambito != null) p.ambito = store.filters.ambito
-  if (store.filters.data_da) p.data_da = store.filters.data_da
-  if (store.filters.data_a) p.data_a = store.filters.data_a
-  if (store.filters.scadenza_mese) p.scadenza_mese = store.filters.scadenza_mese
-  return p
+  return { formato: format, ...store.paramsFiltro() }
 }
 
 function onScadenzaMeseChange(val) {

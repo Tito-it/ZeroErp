@@ -598,14 +598,14 @@ onUnmounted(() => {
   padding: 0.35rem 0.75rem;
   font-size: 0.8rem;
   font-weight: 600;
-  background: var(--surface-ground);
-  border-top: 2px solid var(--p-info-color, var(--p-primary-color));
+  background: var(--app-content-bg);
+  border-top: 2px solid var(--app-severity-info);
   flex: 0 0 auto;
 }
 
 /* La label occupa lo spazio libero → i pulsanti (tecnico, collassa) vanno a destra. */
 .flussi-context-label {
-  color: var(--p-info-color, var(--p-primary-color));
+  color: var(--app-severity-info);
   display: flex;
   align-items: center;
   gap: 0.4rem;

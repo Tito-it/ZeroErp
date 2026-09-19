@@ -1,14 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultima revisione**: 22 agosto 2026 — nota in §3.1: il **termine di pagamento
-> determina quante fatture nascono** (raggruppamento a valle). Revisione
-> precedente (14 giugno): modello completo — ordine come documento
-> del ciclo attivo (testata + righe + componenti BoM), nascita per **conversione**
-> da preventivo (smistamento merce riga-per-riga, 1:N) o da offerta (1:1, in mutua
-> esclusività con il contratto) oppure manuale, azioni **data-driven** via
-> `fn_available_actions_ordine` con matrice transizioni in `config.transizioni_stati_ordini`,
-> conferma = emissione documentale (`/emetti/`), push a commessa per la fatturazione
-> (che a esito completato porta l'ordine a `EVASO`), cliente immutabile dopo la creazione.
+> **Ultimo aggiornamento**: 14 settembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -19,6 +11,7 @@
 > * [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment) / [vendite.ordini_indirizzi](/dbzero/vendite/tabelle/ordini_indirizzi) / [vendite.note_ordini](/dbzero/vendite/tabelle/note_ordini)
 > * [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini) / [config.transizioni_stati_ordini](/dbzero/config/tabelle/transizioni_stati_ordini)
 > * [vendite.vw_ordini_lista](/dbzero/vendite/manual/vw_ordini_lista) / [vendite.vw_ordini_riepilogo_iva_dettaglio](/dbzero/vendite/manual/vw_ordini_riepilogo_iva_dettaglio)
+> * [vendite.vw_situazione_merce_ordine](/dbzero/vendite/manual/vw_situazione_merce_ordine) — per riga: ordinato, spedito, reso, fatturato, residuo e **ritardo**
 > * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — BoM versionata immutabile
 >
 > **Vedi anche** — funzioni e trigger DB:
@@ -31,7 +24,7 @@
 > * [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.fn_ricalcola_totali_ordine](/dbzero/vendite/funzioni/fn_ricalcola_totali_ordine) — totali di testata e riepilogo IVA per aliquota
 > * [vendite.trgfn_ordini_gen_numero](/dbzero/vendite/funzioni/trgfn_ordini_gen_numero) — numero ordine auto-generato e immutabile
-> * [vendite.trgfn_ordini_default_emittente](/dbzero/vendite/funzioni/trgfn_ordini_default_emittente) / [vendite.trgfn_ordini_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ordini_guard_emittente_ba) — emittente fiscale di default e coerenza con il cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [vendite.trgfn_ordini_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ordini_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15) e coerenza con il cliente
 >
 > **Vedi anche** — API e service backend:
 >
@@ -39,6 +32,7 @@
 > * [API Preventivi](/backend/vendite/manual/api_preventivi) — conversione preventivo → ordine (§6c smistamento)
 > * [API Offerte](/backend/vendite/manual/api_offerte) — conversione offerta → ordine
 > * [API Pricing (resolver + limiti L2)](/backend/vendite/manual/api_pricing)
+> * [API Situazione merce](/backend/vendite/manual/api_situazione_merce) — il pannello «quanto è uscito, tornato, fatturato, cosa resta», con le date di consegna e il ritardo per riga
 >
 > **Vedi anche** — guide correlate:
 >
@@ -189,13 +183,13 @@ Contiene il contesto del documento:
   trigger.
 
 > ⚠️ **Il termine di pagamento non è solo un dato di testata: decide anche
-> quante fatture nascono.** Dal luglio 2026 le condizioni di pagamento fanno
-> parte dei criteri con cui il lavoro si raggruppa a valle: un ordine con un
-> termine diverso **non riusa la commessa** degli altri documenti dello stesso
-> cliente, ne apre una nuova, e a fine mese produce una **fattura separata**.
-> Non è un difetto — una fattura sola non potrebbe portare due scadenzari — ma è
-> un cambio di conseguenze: se ci si aspettava un documento solo e ne arrivano
-> due, la prima cosa da guardare è il termine sui documenti di partenza.
+> quante fatture nascono.** Le condizioni di pagamento fanno parte dei criteri
+> con cui il lavoro si raggruppa a valle: un ordine con un termine diverso
+> **non riusa la commessa** degli altri documenti dello stesso cliente, ne apre
+> una nuova, e a fine mese produce una **fattura separata**. Non è un difetto —
+> una fattura sola non potrebbe portare due scadenzari — ma va saputo: se ci si
+> aspettava un documento solo e ne arrivano due, la prima cosa da guardare è il
+> termine sui documenti di partenza.
 > Dettaglio in [Termini di pagamento §4](/guide/termini-di-pagamento).
 
 ### 3.2 Righe `ordini_righe`
@@ -211,6 +205,9 @@ Ogni riga è una voce da consegnare/fatturare:
 - **`preventivo_riga_id`** — il legame con la riga del preventivo da cui è nata
   (presente solo per gli ordini da smistamento); è ciò che garantisce
   l'idempotenza di riga.
+- **le due date di consegna** — `data_consegna_richiesta_cliente` (quando il
+  cliente la vuole) e `data_consegna_confermata` (quando **noi** ci impegniamo a
+  darla). Vedi §3.5.
 
 Vincoli per l'operatore: **quantità > 0** e **prezzo ≥ 0** (un omaggio è quantità
 positiva con prezzo zero).
@@ -228,10 +225,68 @@ inserisce a mano. La composizione (quali componenti, in quali proporzioni) è
 L'ordine supporta le **note partizionate** (di testata o di singola riga), con lo
 stesso comportamento di preventivi, offerte e contratti.
 
-> **Nota sull'ambito attuale.** Entrambe le tabelle sono ora **gestite**:
-> `ordini_indirizzi` alimenta la sezione indirizzi del documento (UX v2), e
+> `ordini_indirizzi` alimenta la sezione indirizzi del documento, e
 > `ordini_righe_fulfillment` registra l'**evasione** dell'ordine in uno o più
 > **DDT** (residuo per riga, append-only). Vedi [Gestione DDT](/guide/gestione-ddt).
+
+### 3.5 Le date di consegna, e il ritardo
+
+Le date di consegna stanno **sulla riga**, non sulla testata: una riga può
+essere pronta e un'altra no («il pezzo grosso arriva a marzo, il resto subito»).
+Sono due, e la differenza fra loro *è* la promessa:
+
+| Colonna | Che cosa dice | Chi la esprime |
+|---|---|---|
+| `data_consegna_richiesta_cliente` | quando il cliente la vuole | il cliente |
+| `data_consegna_confermata` | quando ci impegniamo a darla | **noi** |
+
+La convenzione dei nomi è quella di `numero` / `numero_fornitore`: *non marcato
+= nostro, marcato = della controparte*. Sull'ordine d'acquisto vale ribaltata
+(`data_consegna_richiesta` la chiediamo noi, `data_consegna_confermata_fornitore`
+la conferma lui).
+
+Entrambe sono **facoltative** e si scrivono con la riga (in `DRAFT`); nel form
+di riga sono due selettori di data, e la tabella delle righe mostra la
+**promessa** e, in sua assenza, la richiesta in tono attenuato. Una data
+malformata è un errore di validazione sul campo, non un errore del database.
+
+⛔ **Nessun vincolo fra le due date, ed è una scelta**: si può confermare
+*prima* di quanto chiesto, ed è una buona notizia. E nessun vincolo contro la
+data dell'ordine: la retrodatazione è un caso d'uso vivo.
+
+⛔ **Nessuna colonna di testata.** La data «dell'ordine» è il minimo delle
+richieste sulle righe attive, e una colonna sarebbe una seconda verità che va
+fuori sincrono al primo cambio di riga. Dove serve — la lista ordini — la
+espone la vista (`data_consegna_richiesta_cliente_min`, §11).
+
+**Da dove arriva.** Se l'ordine nasce dallo smistamento di un preventivo, la
+data richiesta dal cliente **viaggia con la riga** (`fn_push_preventivo_a_ordine`
+la porta avanti); la confermata nasce vuota, perché sul preventivo non c'era
+niente da confermare.
+
+**Il ritardo.** Lo calcola il pannello *Situazione merce* dell'ordine
+(`vw_situazione_merce_ordine`, colonna `giorni_ritardo`), e sta lì e non altrove
+perché il ritardo non è «oggi > data richiesta»: è «oggi > data di riferimento
+**e** resta merce da spedire», e il residuo con la soglia dell'impegno vive già
+in quella vista. La data di riferimento è la **promessa** se c'è, altrimenti la
+richiesta del cliente. Tre valori, e non si appiattiscono:
+
+| `giorni_ritardo` | Significato |
+|---|---|
+| vuoto | il conto non si applica: niente da spedire, oppure nessuna data dichiarata |
+| `0` | c'è da spedire e **non** è tardi |
+| `N > 0` | giorni di ritardo |
+
+Nel pannello la colonna «Ritardo» è un'etichetta: verde «In tempo» sullo zero,
+rossa «N gg di ritardo» sopra.
+
+> ⚠️ **Un fatto di modello dichiarato e non ancora deciso.** Le righe si
+> scrivono solo in `DRAFT`, ma la promessa si decide **alla conferma** e può
+> cambiare dopo (il fornitore ritarda). Il database, di proposito, non mette
+> nessun guard di stato su `data_consegna_confermata`; oggi però, con la
+> modifica righe limitata alla bozza, la promessa si scrive solo prima di
+> confermare. Serve un verbo suo per la data confermata su ordine
+> `CONFERMATO`, o un dialog di conferma che la raccolga: è un cantiere a sé.
 
 ---
 
@@ -329,8 +384,8 @@ Dal preventivo accettato, l'operatore apre il *Pannello Smistamento*, seleziona 
 righe **merce** e lancia lo smistamento. Il sistema:
 
 1. crea un ordine in `DRAFT` copiando il contesto dal preventivo;
-2. copia **solo** le righe selezionate di natura merce, con i loro prezzi e i
-   componenti BoM;
+2. copia **solo** le righe selezionate di natura merce, con i loro prezzi, i
+   componenti BoM e la **data di consegna richiesta dal cliente** (§3.5);
 3. registra su ogni riga il legame con la riga di preventivo di origine
    (idempotenza);
 4. valorizza l'origine documentale come `PREVENTIVO`.
@@ -380,8 +435,10 @@ backend sia, in modo autoritativo, dal database.
 ### 7.2 Emittente fiscale
 
 Se l'operatore **non** indica un emittente fiscale, lo imposta automaticamente il
-trigger `trgfn_ordini_default_emittente`, in base all'emittente associato
-all'utente che sta operando. Inoltre, se l'ordine ha un cliente, l'emittente deve
+trigger di default dell'emittente (`trg_ordini_a10_default_emittente_ins`, che dal
+2026-09-15 esegue il meccanismo condiviso `script.trgfn_default_emittente_fiscale` —
+lo stesso per preventivi, contratti, DDT, offerte, magazzini e altre tabelle), in base
+all'emittente associato all'utente che sta operando. Inoltre, se l'ordine ha un cliente, l'emittente deve
 essere **coerente** con quel cliente: a questo pensa il trigger
 `trgfn_ordini_guard_emittente_ba`, che rifiuta combinazioni incoerenti. In pratica
 l'operatore raramente deve preoccuparsene, ma se l'utente non ha un emittente
@@ -483,7 +540,10 @@ ri-pusha più. Se invece il push è **parziale** o **fallisce**, l'ordine **rest
 La lista ordini è una **lista configurabile** (l'utente può scegliere colonne e
 ordinamento). Mostra di norma numero, data, cliente, utility, totale, stato e
 trigger di fatturazione; sono disponibili in opzione colonne aggiuntive (importi di
-dettaglio, pagamento, emittente, origine documentale, agente, ecc.).
+dettaglio, pagamento, emittente, origine documentale, agente, ecc.) e la **data di
+consegna richiesta** dell'ordine — il minimo sulle righe attive, calcolato dalla
+vista `vw_ordini_lista` (`data_consegna_richiesta_cliente_min`): si accende da
+«Personalizza colonne», non è nella vista standard.
 
 Filtri principali: ricerca testuale (numero, ragione sociale, codice cliente, codice
 fiscale/P.IVA), stato, cliente, utility, intervallo di date. La lista rispetta
@@ -602,12 +662,13 @@ database; anche bypassandolo, il database rifiuta comunque le operazioni scorret
 | **`fatturazione_trigger`** | Quando l'ordine pusha a commessa (oggi: `CONFERMATO`) |
 | **Cliente immutabile** | Il cliente non si cambia dopo la creazione: "cambiare cliente = nuovo ordine" |
 | **Matrice transizioni** | `config.transizioni_stati_ordini`: fonte unica di verità per UI ed enforcement |
+| **Date di consegna** | Sulla riga: `data_consegna_richiesta_cliente` (del cliente) e `data_consegna_confermata` (nostra). Nessun vincolo fra le due; la testata non ne ha una |
+| **Ritardo** | `giorni_ritardo` nel pannello Situazione merce: vuoto = non si applica, `0` = in tempo, `N` = giorni oltre la promessa (o la richiesta, se non c'è promessa) con merce ancora da spedire |
 
 ---
 
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi la
 [documentazione API Ordini](/backend/vendite/manual/api_ordini). Le decisioni di
 modello sono raccolte negli addendum di sviluppo (`dev/work-done/db-brief-ordini-vendita.md`,
-`brief-ordini-stampa.md`, `db-brief-ordini-lock-cliente.md`, `brief-preventivi-ordini.md`).*
-</content>
-</invoke>
+`brief-ordini-stampa.md`, `db-brief-ordini-lock-cliente.md`, `brief-preventivi-ordini.md`;
+le date di consegna in `brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`).*

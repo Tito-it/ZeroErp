@@ -9,6 +9,8 @@
 from django.urls import include, path
 
 from apps.vendite.api.views import (
+    ApiGiornale,
+    ApiGiornaleExport,
     ApiCommessaAttivita,
     ApiCommessaRegistro,
     ApiCommessaAttivitaAnnulla,
@@ -19,6 +21,7 @@ from apps.vendite.api.views import (
     ApiCommessaAttivitaVariazionePrezzoEccezionale,
     ApiCommessaOneri,
     ApiCommessePushLog,
+    ApiCommessaDetail,
     ApiCommessaStato,
     ApiEscludiDocumentiDaGiro,
     ApiFatturazioneApprovaCompetenza,
@@ -344,6 +347,11 @@ urlpatterns = [
         ApiLottoGruppiList.as_view(),
         name="vendite-lotto-gruppi-list",
     ),
+    # Il GIORNALE TRASVERSALE (pezzo G dell'osservabilita', 2026-09-19): la
+    # Storia di tutte le entita' insieme, filtrata per gravita'. `export/`
+    # prima della lista, per convenzione.
+    path("giornale/export/", ApiGiornaleExport.as_view(), name="vendite-giornale-export"),
+    path("giornale/", ApiGiornale.as_view(), name="vendite-giornale"),
     # La STORIA del lotto (Passo A, seconda meta'): il lotto piu' le sue
     # fatture, righe non-INFO. ⛔ Da non confondere con `segnalazioni/`, che
     # elenca i problemi APERTI: qui c'e' anche cio' che e' andato bene.
@@ -435,6 +443,13 @@ urlpatterns = [
         "commesse/<int:commessa_id>/stato/",
         ApiCommessaStato.as_view(),
         name="vendite-commessa-stato",
+    ),
+    # Testata leggibile (descrizione + responsabile): il solo verbo di
+    # scrittura; il dettaglio resta su `/stato/` (rotta storica del drawer).
+    path(
+        "commesse/<int:commessa_id>/",
+        ApiCommessaDetail.as_view(),
+        name="vendite-commessa-detail",
     ),
     # Genealogia/lineage commessa (Fase C): sorgenti che l'hanno generata
     # (indietro) + fatture a valle (avanti). Consumato dal drawer leggero

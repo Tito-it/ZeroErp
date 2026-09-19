@@ -96,7 +96,7 @@ function apriDettaglio(row) {
 // Scopo: annulla un job PENDING proprio (conferma esplicita, poi reload).
 function annullaJob(row) {
   confirmAction({
-    title: t('strumenti.code.annulla_header'),
+    header: t('strumenti.code.annulla_header'),
     message: t('strumenti.code.annulla_conferma', { id: row.id, tipo: row.job_type }),
     danger: true,
     onAccept: async () => {
@@ -112,7 +112,7 @@ function annullaJob(row) {
 // Scopo: requeue/sblocco di un job IN_CORSO o ERRORE (alza max_tentativi).
 function requeueJob(row) {
   confirmAction({
-    title: t('strumenti.code.requeue_header'),
+    header: t('strumenti.code.requeue_header'),
     message: t('strumenti.code.requeue_conferma', { id: row.id, tipo: row.job_type }),
     onAccept: async () => {
       const res = await execute(() => requeueCodaLavoro(row.id))
@@ -192,7 +192,7 @@ const loadingAzione = computed(() => azioneLoading.value || archiviazioneLoading
     :on-archivia-selezione="archiviaRighe"
   >
     <template #cell-job_type="{ data }">
-      <span class="app-code-tipo">{{ data.job_type }}</span>
+      <span class="app-mono">{{ data.job_type }}</span>
     </template>
     <template #cell-proprietario="{ data }">
       <span>
@@ -222,8 +222,3 @@ const loadingAzione = computed(() => azioneLoading.value || archiviazioneLoading
   </CodaTabBase>
 </template>
 
-<style scoped>
-.app-code-tipo {
-  font-family: monospace;
-}
-</style>

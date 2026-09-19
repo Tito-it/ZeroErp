@@ -78,14 +78,13 @@ function onConfirm() {
 <template>
   <!-- Pilota building block AppDialog (chrome + FormFooter integrato).
        width='sm' = DIALOG_WIDTH.sm (480px, invariato). Il cancel chiude via
-       update:visible propagato da AppDialog. -->
+       update:visible propagato da AppDialog. ESC spento durante l'export lo
+       fa il BB da `loading` (2026-09-18): qui non si riscrive. -->
   <AppDialog
     :visible="visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="t('export_dialog.title')"
     width="sm"
-    :closable="!loading"
-    :close-on-escape="!loading"
     :loading="loading"
     :save-label="t('export_dialog.scarica')"
     @save="onConfirm"

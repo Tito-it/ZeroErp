@@ -118,6 +118,7 @@ function onGenera() {
   }
 
   confirmAction({
+    header: t('vendite.ordini.evasione_titolo'),
     message: t('vendite.ordini.evasione_conferma', {
       righe: usaResiduo ? righeEvadibili.value.length : payloadRighe.length,
     }),
@@ -161,7 +162,7 @@ function onGenera() {
     @cancel="close"
   >
     <div class="form-grid">
-      <p style="margin: 0; font-size: 0.85rem; color: var(--text-color-secondary);">
+      <p style="margin: 0; font-size: 0.85rem; color: var(--app-text-muted);">
         {{ t('vendite.ordini.evasione_intro') }}
       </p>
 
@@ -211,7 +212,7 @@ function onGenera() {
           </template>
         </Column>
       </DataTable>
-      <div v-else-if="!loadingRighe" style="color: var(--text-color-secondary); font-style: italic;">
+      <div v-else-if="!loadingRighe" style="color: var(--app-text-muted); font-style: italic;">
         {{ t('vendite.ordini.evasione_nessuna_riga') }}
       </div>
     </div>

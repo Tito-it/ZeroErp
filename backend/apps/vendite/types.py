@@ -154,6 +154,19 @@ class LottoSegnalazioniSummary(TypedDict):
     # che aggiunge e' quello con ZERO critiche vive, ed e' l'unico che prima
     # non vedeva nessuno.
     esiti_stato_esecuzione_errore_count: int
+    # ═══ L'UNDICESIMA COLONNA (2026-09-19, D-V1 di Tid: «la regola va a DB») —
+    # IL VERDETTO ═══
+    # `fermo` = (fatture_critical + lotto_critical) > 0 OR
+    #           fatture_stato_esecuzione_errore > 0 OR
+    #           esiti_stato_esecuzione_errore > 0
+    # — ma la formula vive in `vendite.vw_lotti_segnalazioni_summary`, la sede
+    # unica letta anche dal presidio `dbops.vw_lotti_fermi_da_guardare`, e qui
+    # si TRASPORTA. Fino a quel giorno `LottoSegnalazioniService` la ricalcolava
+    # dai tre addendi: due sedi per lo stesso verdetto, e la divergenza sarebbe
+    # stata muta — un banner verde su un lotto che il digest chiama fermo.
+    # ⚠️ I dieci conteggi sopra restano per la FRASE del banner, non per la
+    # decisione. Su un lotto fuori perimetro: zeri e `fermo = false`.
+    fermo: bool
 
 
 class LottoSegnalazioneRow(TypedDict):
@@ -651,6 +664,19 @@ class CommessaStatoResult(TypedDict):
     cliente_display: str | None
 
 
+class CommessaTestataRow(TypedDict):
+    # La testata LEGGIBILE della commessa (Blocco C di brief-db-modifiche-certe-
+    # ciclo-vendita-e-articolo): cio' che `fn_get_commessa_stato` non espone e
+    # `CommesseRepository.get_commessa_testata` legge da `vendite.commesse`.
+    descrizione: str | None
+    # NOT NULL a DB (default `script.fn_data_operativa()`): mai None.
+    data_apertura: date
+    responsabile_risorsa_umana_id: int | None
+    # Nome della persona da `anagrafiche.vw_risorse_umane_dettaglio`; None
+    # senza responsabile.
+    responsabile_display: str | None
+
+
 class CommessaPushLogRow(TypedDict):
     id: int
     run_at: str
@@ -800,6 +826,9 @@ class PreventivoRigaRow(TypedDict):
     importo_iva_riga: str | None
     meta: dict[str, Any]
     is_composito_caso_a: bool
+    # Data di consegna richiesta dal cliente (Blocco A del brief modifiche
+    # certe): sul preventivo c'e' solo la richiesta, la conferma nasce sull'ordine.
+    data_consegna_richiesta_cliente: str | None
 
 
 class PreventivoRigaComponenteRow(TypedDict):

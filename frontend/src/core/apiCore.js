@@ -63,6 +63,14 @@ export function lookupContiContabili(tipo) {
   return api.get(`${BASE}/lookup/conti-contabili/`, { params })
 }
 
+// Scopo: il vocabolario di `config.tipi_entita` — codice, `etichetta_key`
+//        (l'indirizzo i18n che il DB dichiara), `key_selector` — solo i tipi
+//        vivi. Lookup dedicato: la tabella non ha `id`/`descrizione` e il
+//        generico non la serve. Envelope `{"results": [...]}`.
+export function lookupTipiEntita() {
+  return api.get(`${BASE}/lookup/tipi-entita/`)
+}
+
 // --- Sistema codici ---
 
 export function lookupSistemaCodici(schema, tabella, colonna = 'codice') {
@@ -152,6 +160,19 @@ export function lookupBillingAccount(params = {}) {
 //        Backend: GET /api/v1/anagrafiche/billing-account/{id}/lookup/
 export function getBillingAccountLookupById(id) {
   return api.get(`/anagrafiche/billing-account/${id}/lookup/`)
+}
+
+// --- Risorse umane lookup (picker «chi governa»: responsabile commessa) ---
+
+// Scopo: Le risorse umane ATTIVE per un picker di selezione, con ricerca
+//        libera opzionale (min 3 caratteri). Envelope `{"results": [...]}`,
+//        righe `{id, display, attivo, qualifica_descrizione,
+//        unita_organizzativa_descrizione}`.
+//        Backend: GET /api/v1/anagrafiche/risorse-umane/lookup/ (cross-dominio,
+//        skip_area_check). Nasce per il responsabile della commessa
+//        (brief-db-modifiche-certe-ciclo-vendita-e-articolo §5.5 voce 4).
+export function lookupRisorseUmane(params = {}) {
+  return api.get('/anagrafiche/risorse-umane/lookup/', { params })
 }
 
 // --- Istanze utility lookup (preventivi prospect senza BA, future utility-aware flows) ---

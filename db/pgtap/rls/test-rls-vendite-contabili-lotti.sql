@@ -9,14 +9,15 @@
 -- pgTAP test FUNZIONALE RLS — pagamenti.vendite_contabili_lotti
 --   Slice 20260910-18..20, brief brief-db-perimetro-emittente-righe-documento.md §11.10
 --
--- Elenco test (plan 10):
+-- Elenco test (plan 11):
 --   1) struttura: la policy c'e'
 --   2) struttura: e la RLS e' ACCESA
 --   3) ⭐ LA DECISIONE: risale da `contabile_id` e NON nomina `lotto_id`
 --   4) e passa dall'adattatore gia' in servizio, non da uno nuovo
 --   5) l'operatore A vede il manifesto della PROPRIA distinta
 --   6) ⛔ e non quello di B — la riparazione
---   7) ⭐ IL RAMO CHE HO AGGIUNTO: il manifesto di una distinta INTERNA si vede
+--   7) ⭐ il manifesto di una distinta INTERNA lo vede il SUO emittente (rev 2026-09-15, D3)
+--   7-bis) ⭐ ...e non l'altro: la distinta interna non e' piu' di tutti (rev 2026-09-15, D3)
 --   8) ⭐ L'INVARIANTE: il satellite non e' mai piu' CHIUSO della sua testata
 --   9) ⛔ SCRITTURA: A non puo' appendere al manifesto della distinta di B
 --  10) ⛔ senza veste applicativa: fail-closed
@@ -30,21 +31,23 @@
 --   ⭐ Comanda la DISTINTA (decisione di Tid, 2026-09-10): la riga dice **quali
 --   lotti una distinta raccoglie**, quindi e' il manifesto della distinta.
 --
--- ⭐ IL TEST 7 E 8 SONO IL CUORE, e provano la parte scritta a mano.
---   L'adattatore `fn_scope_ef_whitelist_via_contabile` era gia' in servizio e
---   gia' provato: risolve l'emittente dal **canale di incasso**. Ma su una
---   distinta **interna** (fondo fattura, compensazione) canale non ce n'e',
---   l'emittente resta NULL e la funzione risponde `false` — mentre la TESTATA
---   di quella distinta e' visibile, perche' la sua policy ammette
---   esplicitamente `ente_incasso_id IS NULL`.
---   ⇒ Con il solo adattatore il manifesto di una distinta interna sarebbe
---     invisibile a tutti mentre la distinta si vede: un satellite **piu'
---     chiuso** della propria testata, cioe' un pannello vuoto senza
---     spiegazione. Il secondo ramo della policy esiste per questo, ed e' la
---     stessa forma che la sorella `vendite_contabili_righe` ha gia'.
+-- ⭐ IL TEST 7 E 8 SONO IL CUORE.
+--   ⭐ REV 2026-09-15 (brief distinta-numerata-sul-registro, D3): LA DISTINTA
+--   SA DI CHI E'. Fino a quel giorno l'adattatore
+--   `fn_scope_ef_whitelist_via_contabile` risolveva l'emittente dal **canale
+--   di incasso**, una distinta **interna** (senza canale) rispondeva `false` a
+--   tutti mentre la sua TESTATA era visibile a tutti (`ente_incasso_id IS
+--   NULL`), e questa policy portava un secondo ramo scritto a mano per non
+--   essere piu' chiusa della testata. Ora la testata porta
+--   `emittente_soggetto_ruolo_id` (NOT NULL, risolto in una sede sola), il
+--   risolutore legge quella colonna (20260915-30), la policy della testata
+--   passa di li' (20260915-31) e il secondo ramo e' sparito da questa policy
+--   (20260915-32): una distinta interna e' del suo emittente, come il lotto da
+--   cui nasce. Il test 7 ha CAMBIATO VERSO — A vede il manifesto della
+--   propria interna, B no (7-bis) — e la fixture la crea DICHIARANDO di chi e'.
 --   ⚠️ Il test 8 lo dice come invariante e non come caso: *niente che si veda
 --     dalla testata resta nascosto nel manifesto*. Cosi' regge anche il giorno
---     in cui nasce un terzo tipo di distinta.
+--     in cui nasce un terzo tipo di distinta — ed e' rimasto identico.
 --
 -- ⚠️ LA FIXTURE COSTRUISCE TUTTA LA CATENA DEL CANALE, e non e' pigrizia:
 --   `anagrafiche.bank_branches` **non ha un seed** in `80_data` (una riga sola
@@ -59,7 +62,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- ============================================================
 -- I due mondi, con il loro canale di incasso
@@ -192,15 +195,18 @@ BEGIN
 END
 $costruisci$;
 
--- ⭐ La distinta INTERNA: nessun canale, quindi nessun emittente risolvibile.
---   E' il caso che il secondo ramo della policy esiste per coprire.
+-- ⭐ La distinta INTERNA: nessun canale. ⭐ Rev 2026-09-15 (D3): sa di chi e' —
+--   qui si dichiara di A, come farebbe la madre dei fondi dal lotto di A. Senza
+--   emittente e senza utente in sessione la sede unica rifiuterebbe (livello
+--   4): non esiste piu' una distinta «di nessuno».
 CREATE TEMP TABLE _interna AS
 WITH d AS (
     INSERT INTO pagamenti.vendite_contabili
         (codice, centro_riscossione_id, data_contabile, data_registrazione,
-         stato_id, ente_incasso_id, origine)
+         stato_id, ente_incasso_id, emittente_soggetto_ruolo_id, origine)
     SELECT 'PGTAP-CTBL-INTERNA', c.centro_fondo, CURRENT_DATE, CURRENT_DATE,
-           c.stato_bozza, NULL, 'GENERATA'
+           c.stato_bozza, NULL, (SELECT m.soggetto_ruolo_id FROM _mondi m WHERE m.lato = 'A'),
+           'GENERATA'
       FROM _catalogo c
     RETURNING id
 )
@@ -280,7 +286,7 @@ BEGIN
      WHERE x.contabile_id = v_b.distinta_id;
     PERFORM set_config('pgtap.manifesto_b', v_n::text, true);
 
-    -- ⭐ Il ramo scritto a mano: la distinta interna.
+    -- ⭐ La distinta interna e' di A: A ne vede il manifesto.
     SELECT count(*) INTO v_n FROM pagamenti.vendite_contabili_lotti x
      WHERE x.contabile_id = v_int;
     PERFORM set_config('pgtap.manifesto_interna', v_n::text, true);
@@ -313,6 +319,14 @@ BEGIN
         PERFORM set_config('pgtap.scrittura', 'RIFIUTATA', true);
     END;
 
+    -- ⭐ Rev 2026-09-15 (D3): dai panni di B la distinta interna di A — e il suo
+    --   manifesto — non si vedono piu'. Prima era «di tutti».
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT m.auth_user_id FROM _mondi m WHERE m.lato = 'B'));
+    SELECT count(*) INTO v_n FROM pagamenti.vendite_contabili_lotti x
+     WHERE x.contabile_id = v_int;
+    PERFORM set_config('pgtap.manifesto_interna_b', v_n::text, true);
+
     -- ⛔ Nessuna veste: fail-closed.
     PERFORM set_config('app.ruolo_applicativo', '', true);
     SELECT count(*) INTO v_n FROM pagamenti.vendite_contabili_lotti;
@@ -330,7 +344,10 @@ SELECT is(current_setting('pgtap.manifesto_b', true), '0',
           '6. e non quello della distinta di B: la riparazione');
 
 SELECT isnt(current_setting('pgtap.manifesto_interna', true), '0',
-            '7. il manifesto di una distinta INTERNA si vede, come la sua testata: il secondo ramo regge');
+            '7. il manifesto di una distinta INTERNA lo vede il SUO emittente: la testata sa di chi e'' (D3)');
+
+SELECT is(current_setting('pgtap.manifesto_interna_b', true), '0',
+          '7-bis. ...e non l''altro emittente: la distinta interna non e'' piu'' di tutti (D3)');
 
 SELECT is(current_setting('pgtap.piu_chiuso', true), '0',
           '8. nessuna distinta visibile ha un manifesto nascosto: il satellite non e'' piu'' chiuso della testata');

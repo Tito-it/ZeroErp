@@ -416,13 +416,44 @@ CI muore **nello stesso build**. Trovato il 2026-08-17 (una colonna) e il
 2026-09-11 (`dbops.audit_log`, `dbops.error_log` — il brief diceva *«è una riga
 di REVOKE»*).
 
-⭐ Una postura **più stretta** si **dichiara nel loop**, negli elenchi in testa
-al blocco (`v_registri_append_only`, `v_fn_riservate`), **e** si applica subito
-con un changeSet `90_end` forward — su dev `ci_apply` non gira da solo. Per una
-singola **colonna** il privilegio non sa esprimere l'eccezione: lì è un trigger.
+⭐ Una postura **più stretta** ha **TRE sedi**, e vanno toccate tutte nello
+stesso giro: si **dichiara nel loop**, negli elenchi in testa al blocco
+(`v_registri_append_only`, `v_fn_riservate`, `v_schemi_senza_delete`); si
+applica subito con un changeSet `90_end` **forward** — su dev `ci_apply` non
+gira da solo; **e si ripete in `scripts/sql/provision_db_roles.sql`**, blocco
+«POSTURA DICHIARATA», perché in CI e in `ci-local.sh` quello script gira
+**dopo** `ci_apply` e rifà `GRANT … ON ALL TABLES` all'app — è l'**ultima
+parola**, e senza la sua eccezione riapre in silenzio ciò che il loop ha
+chiuso (trovato l'11-09 dal pgTAP di postura, verde su dev e rosso sul DB da
+zero). ⚠️ Fino al 18-09 questa riga ne nominava due: la terza stava scritta
+solo nell'intestazione del loop. Per una singola **colonna** il privilegio non
+sa esprimere l'eccezione: lì è un trigger.
 ⚠️ Sulle funzioni la revoca va `FROM PUBLIC, zeroerp_app`: hanno `=X` per
 default. Si asserisce con `has_*_privilege(ruolo, …)`, mai con
 `role_table_grants`, che è cieco fuori dal ruolo connesso.
+
+### ⛔ Un privilegio che esiste su UNA macchina è un ricordo, non una configurazione
+
+Regola estesa: [linee-guida-sql.md §11.9](../docs/it/linee-guida-sql.md).
+
+Lo schema `django` lo crea `manage.py migrate` — il **secondo** migratore — e
+fino al 2026-09-13 era escluso dal provisioning come *«gestito da Django»*.
+Django gestisce il DDL, **non i privilegi**: `zeroerp_app` non aveva nessuna
+sede che gli desse `django.auth_user`, che **sedici** funzioni `INVOKER`
+attraversano (ogni creazione di operatore). Su dev il GRANT c'era, **dato a
+mano**; in CI ogni pgTAP come app moriva con `permission denied for table
+auth_user` — 47 volte in una corsa, **23 file**, in baseline come
+`ERRORE_FIXTURE` senza che nessuno leggesse la causa.
+
+⭐ **E lo scratch locale non lo vedeva perché COPIAVA le ACL di dev** insieme
+allo schema (`pg_dump --schema-only` le emette): un metro che copia la risposta
+dalla macchina che misura. Dal 13-09 `django` è nella whitelist di
+`provision_db_roles.sql`, il passo in `ci-validate.yaml` sta **dopo
+`manage.py migrate`** (dopo *entrambi* i migratori), la copia è `--no-acl`, e
+`db/pgtap/dbops/test-app-postura-schema-django-v1.sql` lo pinna.
+⚠️ **Dove leggere l'errore vero di un pgTAP in CI**: la baseline stampa solo
+l'etichetta; il messaggio sta nel **log del container Postgres**, che GitHub
+scarica nel passo «Stop containers» (`gh run view <id> --job <job> --log`).
 
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 
@@ -439,6 +470,11 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 - **Modifica di un valore esistente** → si edita il CSV. Il mirror è
   `runOnChange` + `validCheckSums: ANY` apposta: ri-legge e riallinea.
 - **Riga nuova** → append al CSV. Mai un `INSERT` a parte.
+- **Colonna nuova** → colonna in coda al CSV **principale** + `- column:` nel
+  mirror, anche se mergiato (`runOnChange` + `ANY`: si ritocca apposta).
+  ⛔ **Mai un secondo CSV «per sottoinsieme»** con un loader suo (Tid,
+  2026-09-18: «una tabella, un CSV — si rischia disallineamento con i csv»):
+  sei laterali ritirati quel giorno. Regola e casi: linee-guida-sql §11.2.
 - **Cancellazione** → `loadUpdateData` non cancella: lì il `DELETE` SQL
   forward-only è legittimo, ed è l'unica eccezione.
 - Se un SQL storico sovrascrive un CSV e non si può cancellare (mergiato):
@@ -736,6 +772,11 @@ anche il ramo di scambio BE/DB: 107 commit su 656 negli ultimi 30gg toccano solo
 quello di sviluppo ha dati veri, quindi i rossi sono popolazioni diverse. **Un
 rosso in CI non e` automaticamente un rosso da te**: guarda quale baseline lo
 conosce prima di inseguirlo.
+⭐ **E quel file si aggiorna DALLA CI**: `--update` fuori da GitHub e` un
+cancello. I RIENTRATI che la corsa stampa li toglie
+`scripts/pgtap-baseline-ci-rientrati.sh`, leggendo il log della corsa con `gh`
+(dal 14-09: trentuno righe erano rimaste nel registro per due giorni perche` il
+passo era «a mano»). Le regressioni le stampa e basta: entrano solo per decisione.
 
 ⚠️ La baseline e` un **registro di debito, non una lista di eccezioni**: deve
 calare. Un file che fallisce nel *fixture* non esegue **nessuna** asserzione — la
@@ -796,7 +837,14 @@ I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un D
 - **Verifica locale pre-push**: eseguire `./manage-test.sh -v 2` per confermare che tutti i test passano. Per simulare l'ambiente CI (senza DB), usare:
 
   ```bash
-  DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret \
+  DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp_app DB_PASSWORD=secret-app \
   DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 \
   .venv/bin/python manage.py test -v 2
   ```
+
+  ⚠️ `DB_USER=zeroerp_app`, non `zeroerp`: in CI l'owner degli oggetti (`zeroerp`,
+  l'utente di Liquibase e di `manage.py migrate`) e' solo del passo di migrazione;
+  lo step «Django tests» connette il ruolo applicativo, come `.env.systemd` in
+  sviluppo. L'owner SALTA la RLS (niente `FORCE ROW LEVEL SECURITY`, per scelta)
+  e un test no-leak sul DB vero con lui va rosso — successo il 2026-09-19. Il
+  presidio e' `richiedi_ruolo_soggetto_a_rls` in `apps/core/tests/db_e2e.py`.

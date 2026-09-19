@@ -14,7 +14,7 @@
 • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)   
 >
 ### 🎯 Scopo Principale
-(latest review 23-02-2026)  
+(latest review 19-09-2026)  
 La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce
 un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto,
 unificando:
@@ -22,6 +22,43 @@ unificando:
 * log fattura (`vendite.fatture_log`) tramite legame lotto-fatture;
 * log lotto (`vendite.fatturazione_lotti_log`).
 * stato tecnico del ponte lotto-fatture (`vendite.fatturazione_lotti_fatture.stato_esecuzione`).
+
+---
+
+### ⭐⭐ Dal 19-09-2026 è un LETTORE, e porta il verdetto: `fermo` (undicesima colonna)
+
+**La sede degli aggregati non è più qui.** I dieci conteggi si calcolano in
+[`vendite.vw_lotti_segnalazioni_summary`](/dbzero/vendite/manual/vw_lotti_segnalazioni_summary)
+— una riga per lotto — e questa funzione ne legge **una riga** (`WHERE lotto_id
+= p_lotto_id`, spinto dentro le `GROUP BY` della vista). Un addendo nuovo si
+aggiunge nella vista, **non** qui: la legge anche il presidio
+[`dbops.vw_lotti_fermi_da_guardare`](/dbzero/dbops/manual/vw_lotti_fermi_da_guardare),
+ed è la ragione per cui la sede è una.
+
+**`fermo`** — undicesima colonna, in coda — è il verdetto che fino a quel giorno
+il backend calcolava da solo (`LottoSegnalazioniService.evaluate_lotto_status`:
+`is_error = blocks_next_step`):
+
+```
+fermo = (fatture_critical_count + lotto_critical_count) > 0
+     OR fatture_stato_esecuzione_errore_count > 0
+     OR esiti_stato_esecuzione_errore_count > 0
+```
+
+⛔ **Decisione di Tid (D-1, 18-09-2026): «la regola va a DB».** Il backend lo
+**legge** e non lo ricalcola; i dieci conteggi restano per la **frase** del
+banner. Fino al 19-09 questa pagina — e la `COMMENT` della funzione — dicevano
+*«`blocks_next_step` resta in Python»*: non più.
+
+⚠️ **Una riga sempre.** Su un lotto inesistente, o fuori dal perimetro di chi
+legge (la vista è `security_invoker`), la risposta è zeri e `fermo = false` —
+com'era prima. Il backend legge la testata **prima** e risponde 404: questi zeri
+non arrivano a una persona come «tutto a posto».
+
+⚠️ **Finché il backend non legge l'undicesima colonna** (pezzo V del piano
+BE/FE), la sua copia in Python e questo valore coincidono per costruzione: la
+vista è la trasposizione fedele del predicato Python. È la finestra in cui un
+test di parità ha senso — e poi si toglie.
 
 ---
 
@@ -67,12 +104,14 @@ scommettere.
 
 #### ⚠️ Sono in coda, e la posizione è portante
 
-Il backend legge questa riga per **posizione** (`row[0]`..`row[5]`). Infilare i
-numeri nuovi in mezzo farebbe scivolare i sei esistenti — e una lettura
-posizionale sbagliata **non protesta**: mostrerebbe numeri plausibili e falsi.
+Il backend legge questa riga per **posizione**. Infilare i numeri nuovi in
+mezzo farebbe scivolare gli esistenti — e una lettura posizionale sbagliata
+**non protesta**: mostrerebbe numeri plausibili e falsi. Per questo `fermo`
+(19-09) è l'undicesima, dopo il decimo.
 
-⛔ `blocks_next_step` resta in Python e non deve sapere niente di questi tre:
-sono per la **frase**, non per la decisione.
+⛔ ~~`blocks_next_step` resta in Python~~ — **superato il 19-09-2026**: il
+verdetto è la colonna `fermo`, a DB. Questi tre restano per la **frase**, non
+per la decisione: su questo niente è cambiato.
 
 ---
 
@@ -99,10 +138,10 @@ giusta: **«Togli dal giro»** porta l'esito a `ESCLUSO`, cioè l'operatore
 **dichiara** che quel documento non fa più parte del lavoro. `ESCLUSO` non conta
 in questo numero: è l'altro stato della stessa riga.
 
-⚠️ Finché il backend non legge il decimo numero, il conteggio c'è e non decide
-niente: il cambio di verdetto arriva con quella riga
+✅ Il backend legge il decimo numero dal 12-09-2026
 (`LottoSegnalazioniService.evaluate_lotto_status`). Decisione di Tid, 12-09-2026,
-brief `brief-db-rilancio-step-non-rivede-le-proprie-commesse` (D2).
+brief `brief-db-rilancio-step-non-rivede-le-proprie-commesse` (D2). ⭐ E dal
+19-09-2026 quella somma la fa il database: è la colonna `fermo`.
 
 ---
 
@@ -168,7 +207,8 @@ La funzione ritorna una sola riga con:
 * `lotto_info_count`
 * `fatture_stato_esecuzione_errore_count`
 * `documenti_bloccanti_count`, `documenti_presi_in_carico_count`, `critiche_giro_count` (banner, 2026-09-08)
-* `esiti_stato_esecuzione_errore_count` (verdetto, 2026-09-12) — decimo e ultimo
+* `esiti_stato_esecuzione_errore_count` (verdetto, 2026-09-12) — decimo
+* `fermo` (il verdetto stesso, 2026-09-19) — undicesimo e **ultimo**: il backend legge per posizione
 
 ---
 

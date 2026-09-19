@@ -387,7 +387,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <h4>{{ t('anagrafiche.clienti.section_soggetto') }}</h4>
         <!-- Creazione: SoggettoResolver -->
         <template v-if="!isEdit">
-          <div v-if="soggettoSelezionato" class="mb-3">
+          <div v-if="soggettoSelezionato">
             <SoggettoMessageBanner
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
               :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.piva"
@@ -397,11 +397,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
           <div v-else>
             <Button :label="t('resolver.open')" icon="pi pi-search"
-              outlined class="w-full" @click="resolverVisible = true" />
+              outlined @click="resolverVisible = true" />
           </div>
         </template>
         <!-- Visualizzazione: banner soggetto -->
-        <div v-if="isEdit && detail" class="mb-3">
+        <div v-if="isEdit && detail">
           <SoggettoMessageBanner
             :ragione-sociale="detail.ragione_sociale_completa"
             :id-fiscale="detail.codice_fiscale || detail.partita_iva"
@@ -412,7 +412,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <template v-if="isEdit || soggettoSelezionato">
 
         <!-- === Servizio === -->
-        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_servizio') }}</h4>
+        <h4>{{ t('anagrafiche.clienti.section_servizio') }}</h4>
         <!-- Banner refactor operatore-emittenti (solo creazione) -->
         <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false" class="mt-05">
           {{ t('anagrafiche.clienti.banner_admin_globale_no_create') }}
@@ -425,7 +425,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <div class="form-field" style="flex: 2;">
             <label>{{ t('anagrafiche.clienti.field_utility') }} <span v-if="!isEdit">*</span></label>
             <Select v-model="form.utility_id" :options="utilityOptions" :loading="utilityLoading"
-              option-label="descrizione" option-value="id" class="w-full" :placeholder="t('anagrafiche.clienti.select_utility')"
+              option-label="descrizione" option-value="id" :placeholder="t('anagrafiche.clienti.select_utility')"
               :disabled="isEdit"
               :invalid="campiErrati.includes('utility_id')"
             />
@@ -445,35 +445,35 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <div class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('anagrafiche.clienti.field_ba_codice') }}</label>
-              <InputText :model-value="detail.ba_codice" disabled class="w-full" />
+              <InputText :model-value="detail.ba_codice" disabled />
             </div>
             <div class="form-field">
               <label>{{ t('anagrafiche.clienti.field_istanza_codice') }}</label>
-              <InputText :model-value="detail.istanza_codice" disabled class="w-full" />
+              <InputText :model-value="detail.istanza_codice" disabled />
             </div>
           </div>
           <div class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('anagrafiche.clienti.col_data_attivazione') }}</label>
-              <InputText :model-value="displayDate(detail.data_attivazione)" disabled class="w-full" />
+              <InputText :model-value="displayDate(detail.data_attivazione)" disabled />
             </div>
             <div v-if="detail.data_chiusura" class="form-field">
               <label>{{ t('anagrafiche.clienti.field_data_chiusura') }}</label>
-              <InputText :model-value="displayDate(detail.data_chiusura)" disabled class="w-full" />
+              <InputText :model-value="displayDate(detail.data_chiusura)" disabled />
             </div>
           </div>
           <div v-if="eventoStatoDetail" class="form-field">
             <label>{{ eventoStatoDetail.label }}</label>
-            <InputText :model-value="displayDate(eventoStatoDetail.date)" disabled class="w-full" />
+            <InputText :model-value="displayDate(eventoStatoDetail.date)" disabled />
           </div>
           <div v-if="detail.pdp_id" class="form-field">
             <label>{{ t('anagrafiche.clienti.field_pdp') }}</label>
-            <InputText :model-value="detail.pdp_id" disabled class="w-full" />
+            <InputText :model-value="detail.pdp_id" disabled />
           </div>
         </template>
 
         <!-- === Pagamento === -->
-        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_pagamento') }}</h4>
+        <h4>{{ t('anagrafiche.clienti.section_pagamento') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>
@@ -481,7 +481,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
               <span v-if="!isEdit">*</span>
             </label>
             <LookupSelect v-model="form.ba_categoria_cliente_id"
-              rel="anagrafiche.categorie_clienti" class="w-full"
+              rel="anagrafiche.categorie_clienti"
               :placeholder="t('anagrafiche.clienti.select_categoria_cliente')"
               :disabled="isEdit" />
           </div>
@@ -489,12 +489,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('anagrafiche.clienti.field_modalita_pagamento') }}</label>
-            <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento" class="w-full"
+            <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento"
               :placeholder="t('anagrafiche.clienti.select_modalita')" show-clear />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.clienti.field_termine_pagamento') }}</label>
-            <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento" class="w-full"
+            <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento"
               :placeholder="t('anagrafiche.clienti.select_termine')" show-clear />
           </div>
         </div>
@@ -513,16 +513,16 @@ const onClose = useDrawerClose(emit, 'cancelled')
              nemmeno un modo di essere notato. -->
 
         <!-- === Garanzia === -->
-        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_garanzia') }}</h4>
+        <h4>{{ t('anagrafiche.clienti.section_garanzia') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('anagrafiche.clienti.field_garanzia_tipo') }}</label>
             <Select v-model="form.garanzia_tipo" :options="garanziaTipoOptions"
-              option-label="label" option-value="value" class="w-full" />
+              option-label="label" option-value="value" />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.clienti.field_garanzia_importo') }}</label>
-            <InputNumber v-model="form.garanzia_importo" class="w-full" :min="0"
+            <InputNumber v-model="form.garanzia_importo" :min="0"
               mode="decimal" :min-fraction-digits="2" />
           </div>
         </div>

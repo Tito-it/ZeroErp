@@ -13,20 +13,17 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_deriva_scope()
 AS $function$
 DECLARE
     -- ⚠️ %TYPE su tutto cio' che riflette una colonna
-    --    (linee-guida-sql §5). `v_modo` e `v_ttl_days` no: il
-    --    primo e' un letterale di dispatch, il secondo esce da
-    --    un jsonb (params->>'ttl_days') e non ha una colonna.
+    --    (linee-guida-sql §5). `v_modo` no: e' un letterale
+    --    di dispatch.
     v_modo         text;
     v_sr_id        vendite.event_log.emittente_soggetto_ruolo_id%TYPE;
     v_auth_user_id vendite.event_log.auth_user_id%TYPE;
-    v_ttl_days     integer;
     v_ammessi      text;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Compilare da se' le cose che il database sa e il
-    --   chiamante no: DI CHI e' la riga, CHI l'ha scritta, e
-    --   quando scade.
+    --   chiamante no: DI CHI e' la riga e CHI l'ha scritta.
     --
     -- ⭐ LA REGOLA (D-12):
     --   il diario rifiuta una riga SOLO quando non riesce a dire
@@ -37,8 +34,15 @@ BEGIN
     --   disattivato e' gia' bloccata sui documenti.
     --
     -- ⚠️ Non si fida di cio' che passa il chiamante su nessuno
-    --   dei tre campi: sono fatti del database, e la logica non
+    --   dei due campi: sono fatti del database, e la logica non
     --   si duplica in Python.
+    --
+    -- ⭐ Rev 2026-09-18 (Passo D): QUANDO SCADE non si calcola
+    --   piu' qui. Lo scrive `dbops.trgfn_cleanup_at_alla_nascita`
+    --   (trigger _m50_, dopo questo), che legge termine e
+    --   colonna base dalla regola CLEANUP_AT: lo stesso BB dei
+    --   quattro registri di fatturazione e push. La copia
+    --   `vendite.fn_event_log_ttl_days` e' ritirata.
     -- =========================================================
 
     -- 1. Da che parte si guarda.
@@ -131,23 +135,12 @@ BEGIN
     )::bigint;
     NEW.auth_user_id := v_auth_user_id;
 
-    -- 4. Quando scade. ⭐ Si valorizza QUI e non con
-    --    dbops.fn_apply_cleanup_at, che userebbe un UPDATE —
-    --    vietato su questa tabella. Effetto voluto: il veto
-    --    sull'UPDATE rende la scadenza immutabile.
-    v_ttl_days := vendite.fn_event_log_ttl_days();
-
-    IF v_ttl_days IS NOT NULL THEN
-        NEW.cleanup_at := COALESCE(NEW.event_time, now())
-                          + make_interval(days => v_ttl_days);
-    END IF;
-
     RETURN NEW;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_event_log_deriva_scope()
-IS 'BEFORE INSERT su vendite.event_log: deriva il perimetro dall''entita'' (script.fn_resolve_emittente_sr_id), scrive auth_user_id dalla GUC e cleanup_at dal TTL di dbops.automation_rules_tbl. ⭐ LA REGOLA: il diario rifiuta una riga SOLO quando non riesce a dire di chi e''. Un emittente disattivato o un documento annullato si registrano lo stesso. Due rifiuti, due codici, perche'' il rimedio e'' diverso: E_EVENT_LOG_ENTITY_TYPE_IGNOTO (tipo fuori vocabolario) ed E_EVENT_LOG_SCOPE_NON_RISOLTO (entita'' inesistente). ⚠️ Rev 2026-08-22 (20260822-47): il primo ramo mancava e ci si affidava al CHECK sulla colonna — ma i BEFORE ROW girano PRIMA dei CHECK, e l''errore usciva come E_PARAMETRO_INVALIDO «il modo di risoluzione «» non esiste», che nomina un concetto interno al database invece del dato passato.';
+IS 'BEFORE INSERT su vendite.event_log: deriva il perimetro dall''entita'' (script.fn_resolve_emittente_sr_id) e scrive auth_user_id dalla GUC. ⭐ LA REGOLA: il diario rifiuta una riga SOLO quando non riesce a dire di chi e''. Un emittente disattivato o un documento annullato si registrano lo stesso. Due rifiuti, due codici, perche'' il rimedio e'' diverso: E_EVENT_LOG_ENTITY_TYPE_IGNOTO (tipo fuori vocabolario) ed E_EVENT_LOG_SCOPE_NON_RISOLTO (entita'' inesistente). ⚠️ Rev 2026-08-22 (20260822-47): il primo ramo mancava e ci si affidava al CHECK sulla colonna — ma i BEFORE ROW girano PRIMA dei CHECK, e l''errore usciva come E_PARAMETRO_INVALIDO «il modo di risoluzione «» non esiste», che nomina un concetto interno al database invece del dato passato. ⭐ Rev 2026-09-18 (Passo D, analisi-osservabilita-log.md): cleanup_at non si calcola piu'' qui — lo scrive dbops.trgfn_cleanup_at_alla_nascita (trigger _m50_, dopo questo), lo stesso BB dei quattro registri di fatturazione e push; vendite.fn_event_log_ttl_days e'' ritirata.';
 ```
 
 ---

@@ -27,18 +27,26 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    conta_con_perimetro,
     fetch_paged_with_total,
+    sql_lateral_primo_motivo,
     sql_order_clause,
     jsonb_out,
     rows_to_list,
     sql_order_direction,
     sql_tiebreak_direction,
 )
+from apps.core.db.emittente_scope_helpers import (
+    add_emittente_scope_condition_risolta,
+    fetch_emittenti_scope_ids,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.pagamenti.types import (
+    DistintaDettaglioRow,
     DistintaRow,
     RicevutaPosting,
+    RicevutaTardiva,
     RigaCodaRow,
     RigaContabileRow,
     StatoCatalogoRow,
@@ -95,7 +103,36 @@ _DISTINTA_SELECT = """
         st.codice_interno  AS stato_codice,
         st.descrizione     AS stato_descrizione,
         st.is_final        AS stato_is_final,
+        -- ⭐ «Registrabile» sta nel CATALOGO (D20-d, 2026-09-18): la bandiera
+        --    che la madre del posting legge al posto del letterale `VALIDATA`.
+        --    Il frontend la porta per spegnere «Registra» COL MOTIVO invece di
+        --    lasciarlo finire in 409 — e non deduce niente dal nome dello stato.
+        st.is_registrabile AS stato_is_registrabile,
+        -- ⭐ La riga «dove sono» del drawer (FE-9): la chiave i18n vive nel
+        --    `meta` dello STATO, come negli otto domini che usano
+        --    `DrawerActionsBar :info-key`. Il backend la TRASPORTA: un `CASE`
+        --    sul codice qui sarebbe la stessa regola scritta due volte.
+        --    ⚠️ NULL finche' il seed (brief §4 P-8) non e' applicato: il
+        --    frontend non mostra niente, non una chiave grezza.
+        st.meta ->> 'nessuna_azione_key' AS stato_info_key,
         c.origine,
+        -- ⭐ LA DISTINTA SA DI CHI E' (D3, brief distinta-numerata-sul-registro,
+        --    2026-09-17): l'emittente e' una COLONNA della riga, non piu' una
+        --    catena per canale — e il codice `DIS-<SIGLA>-<ANNO>-<7 cifre>` lo
+        --    porta dentro. Si espongono il soggetto-ruolo (la chiave che il DB
+        --    usa), la PK con sigla e ragione sociale (cio' che il frontend
+        --    conosce: `EmittenteFiscaleField` in edit legge
+        --    `emittente_fiscale_id/_codice` + `emittente_ragione_sociale`, gli
+        --    stessi nomi dei documenti di vendite), e i due assi del contatore.
+        -- ⚠️ `registro_id` e `anno` sono NULL sul pregresso `VC_…` (numerato
+        --    prima del trasloco): non e' un buco, e' un documento che non ha
+        --    mai avuto un registro.
+        c.emittente_soggetto_ruolo_id,
+        ef.id              AS emittente_fiscale_id,
+        ef.codice          AS emittente_fiscale_codice,
+        sre.ragione_sociale_completa AS emittente_ragione_sociale,
+        c.registro_id,
+        c.anno,
         c.importo_dichiarato,
         c.data_conferma,
         c.user_conferma,
@@ -125,6 +162,14 @@ _DISTINTA_SELECT = """
       JOIN pagamenti.centri_riscossione cr        ON cr.id = c.centro_riscossione_id
       LEFT JOIN pagamenti.enti_incasso ei         ON ei.id = c.ente_incasso_id
       LEFT JOIN pagamenti.vendite_contabili_stati st ON st.id = c.stato_id
+      -- L'emittente della distinta: LEFT per simmetria con le sorelle, ma la
+      -- colonna e' NOT NULL. `uq_emittenti_fiscali_ruolo` e' UNIQUE su
+      -- `soggetto_ruolo_id`: il join non puo' duplicare la riga (e il totale).
+      -- La ragione sociale viene dalla vista di dettaglio, la sede unica del
+      -- nome di un soggetto-ruolo — come per il billing account delle righe.
+      LEFT JOIN anagrafiche.emittenti_fiscali ef  ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+      LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio sre
+             ON sre.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
       -- Il documento da cui questa correzione nasce.
       LEFT JOIN pagamenti.vendite_contabili orig     ON orig.id = c.contabile_corretta_id
       -- ⚠️ E la correzione di QUESTO documento, se c'e'. E' un LEFT JOIN
@@ -156,12 +201,34 @@ _RIGA_COLONNE = """
         f.numero           AS fattura_numero,
         f.anno             AS fattura_anno,
         f.serie            AS fattura_serie,
+        -- ⭐ IL DOCUMENTO, NON IL CONTATORE (D19-b, 2026-09-17): chi corregge
+        --    un importo deve sapere su che cosa lo corregge. Il numero
+        --    parlante si LEGGE dalla sede unica (`fn_numero_documento_fattura`,
+        --    IMMUTABLE — si inlinea), mai composto qui: `fattura_numero` da
+        --    solo e' ambiguo per costruzione (una fattura 1 e una nota di
+        --    credito 1 nello stesso anno). NULL sulla non numerata: il ripiego
+        --    lo sceglie chi rende.
+        vendite.fn_numero_documento_fattura(f.numero, f.serie) AS fattura_numero_documento,
+        f.data             AS fattura_data,
+        f.totale_doc       AS fattura_totale_doc,
+        reg.codice         AS fattura_registro_codice,
+        -- La natura si SEGNALA, non si nasconde: una nota di credito su una
+        -- riga di incasso e' il caso in cui il cliente ce la paga (D19-e).
+        -- ⚠️ SENZA il prefisso `fattura_` (dal 2026-09-18): e' il nome con cui
+        --    OGNI proiezione del progetto porta `config.nature_doc_fiscale`, ed
+        --    e' la GEMELLA che il `formato = natura_doc` del catalogo liste
+        --    legge dalla riga (`CellaConfigurabile.CAMPO_GEMELLO_NATURA_DOC`).
+        --    Col prefisso la lista `pagamenti.distinta_righe` avrebbe reso `—`
+        --    su ogni riga, senza errore.
+        ndf.codice_interno AS natura_doc_codice_interno,
+        ndf.descrizione    AS natura_doc_descrizione,
         r.billing_account_id,
         ba.codice          AS billing_account_codice,
         srd.ragione_sociale_completa AS billing_account_descrizione,
         r.scadenza_id,
         sc.numero_rata     AS scadenza_numero_rata,
         sc.data_scadenza   AS scadenza_data,
+        sc.importo         AS scadenza_importo,
         r.forzata,
         r.motivo_forzatura,
         r.stato_id,
@@ -172,13 +239,46 @@ _RIGA_COLONNE = """
         r.motivo_sospeso,
         r.fondo_source_id,
         r.attivo,
-        r.meta
+        r.meta,
+        -- ⭐ IL VERBO «ELIMINA» E IL SUO MOTIVO (D17, linee-guida-sql §12.5):
+        --    la terna `reason / reason_key / dettaglio` + il flag, letti dalla
+        --    STESSA check che il guard chiama per rifiutare. Cosi' il cestino
+        --    spento in lista e il 409 del database non «coincidono oggi»: non
+        --    possono divergere. ⛔ Il nome dice QUALE verbo: su una riga ce ne
+        --    sono altri (abbina, sospendi), e un `blocco_reason` generico li
+        --    confonderebbe al primo che si aggiunge.
+        elimina.reason             AS elimina_blocco_reason,
+        elimina.reason_key         AS elimina_blocco_reason_key,
+        elimina.dettaglio          AS elimina_blocco_dettaglio,
+        (elimina.reason IS NULL)   AS can_eliminare
 """
 
-_RIGA_FROM = """
+# ⭐ La LATERAL del PRIMO motivo e' il BB `sql_lateral_primo_motivo` (core/db,
+#    2026-09-19): LEFT JOIN … ON TRUE (le righe eliminabili non devono sparire)
+#    e `ORDER BY ord LIMIT 1` (lo stesso motivo che il guard solleva).
+# ⚠️ COSTO, letto sul piano: nella coda paginata (`_lista_paginata`, con
+#    `COUNT(*) OVER ()`) la LATERAL gira per ogni riga FILTRATA, non per riga
+#    di pagina. La check e' due ricerche su indice sotto RLS (riga + testata),
+#    e il frammento e' UNO per le tre letture: si e' scelto di pagarlo qui
+#    piuttosto che tenere due frammenti gemelli. ⭐ Fatto datato (EXPLAIN del
+#    2026-09-14, contesto operatore): la `Function Scan` sta nel Nested Loop
+#    SOTTO la `WindowAgg`, accanto ai predicati RLS che gia' girano per riga
+#    (`fn_scope_ef_whitelist_via_fattura`, ...) — stessa specie di costo, non
+#    una specie nuova. Se un giorno pesera', la coda si ristruttura «pagina
+#    prima, motivo dopo»: e' una decisione da prendere col piano in mano.
+#    Presidio: `tests/db/test_riga_elimina_e_transizioni_db.py`.
+_LATERAL_ELIMINA = sql_lateral_primo_motivo(
+    "script.fn_check_riga_contabile_eliminabile(r.id)", "elimina"
+)
+_RIGA_FROM = f"""
       FROM pagamenti.vendite_contabili_righe r
       LEFT JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
       LEFT JOIN vendite.fatture f            ON f.id = r.fattura_id
+      -- Registro e natura del documento: LEFT come tutto il resto — una riga
+      -- senza fattura (DA_ABBINARE) e una fattura in bozza senza registro
+      -- devono comparire, non sparire.
+      LEFT JOIN vendite.registri_fatturazione reg ON reg.id = f.registro_id
+      LEFT JOIN config.nature_doc_fiscale ndf     ON ndf.id = f.natura_doc_id
       LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
       -- Il nome del cliente non sta sul billing account: la vista di dettaglio
       -- e' la sede unica della ragione sociale (persone fisiche e giuridiche
@@ -186,22 +286,169 @@ _RIGA_FROM = """
       LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
              ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
       LEFT JOIN vendite.fatture_scadenze sc  ON sc.id = r.scadenza_id
+      {_LATERAL_ELIMINA}
 """
 
 # La riga «nuda», per il dettaglio e per le righe di UNA distinta.
 _RIGA_SELECT = f"SELECT {_RIGA_COLONNE} {_RIGA_FROM}"
 
+# Il perimetro MINIMO «riga + suo stato», per i conteggi che non hanno bisogno
+# dei display field ne' della LATERAL (`conta_con_perimetro`): contare quante
+# righe SCARTATA la lista nasconde non deve pagare la check di eliminabilita'
+# su ognuna. ⚠️ Le condizioni che ci si applicano sono le stesse della lista
+# (`r.contabile_id`, `r.attivo`, `rs.codice_interno`), quindi il perimetro
+# coincide — e' la regola del BB.
+_RIGA_STATO_FROM = """
+      FROM pagamenti.vendite_contabili_righe r
+      JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+"""
+
+# Le righe ATTIVE di una distinta — il perimetro che `list_righe` (l'insieme
+# intero, per l'anteprima di registrazione) e `list_righe_distinta` (la pagina
+# della lista 69) devono condividere: scritto due volte, il giorno in cui uno
+# dei due cambia l'anteprima dice quali righe restano indietro su un insieme
+# diverso da quello che la lista mostra, senza che niente fallisca.
+# ⚠️ Solo le righe ATTIVE, e senza un interruttore per vederle tutte: una riga
+#    disattivata non e' un dato da mostrare con un filtro, e un parametro che
+#    nessuno passa e' superficie che invecchia.
+_RIGHE_DISTINTA_ATTIVE_SQL = f"""
+    {_RIGA_SELECT}
+    WHERE r.contabile_id = %s
+      AND r.attivo IS TRUE
+"""
+
 # 🔴 La riga della CODA porta anche la sua distinta, e non e' un di piu': una
 # riga cross-distinta senza il documento da cui viene non si lavora — chi la
 # guarda deve poterci tornare. ⚠️ Ed e' anche la colonna su cui il contratto
 # dichiara di saper ordinare: senza, `order_by=distinta` sarebbe un 500.
+# ⭐ E porta i FATTI della testata che decidono il verbo (BE-4, D20-b): lo
+#    stato in cui la distinta si trova e se e' REGISTRATA (`data_conferma`
+#    scritta dal posting). Dalla coda «Sospese» una riga sotto una distinta
+#    registrata si «abbina e registra» (la tardiva), sotto una aperta si
+#    abbina e basta: il frontend sceglie il verbo da un fatto, non ricalcola
+#    una regola.
 _RIGA_CODA_SELECT = f"""
     SELECT {_RIGA_COLONNE},
         c.codice          AS contabile_codice,
         c.data_contabile  AS contabile_data,
-        c.origine         AS contabile_origine
+        c.origine         AS contabile_origine,
+        cst.codice_interno AS contabile_stato_codice_interno,
+        cst.is_final       AS contabile_is_final,
+        (c.data_conferma IS NOT NULL) AS contabile_registrata
     {_RIGA_FROM}
       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
+      LEFT JOIN pagamenti.vendite_contabili_stati cst ON cst.id = c.stato_id
+"""
+
+# L'INSERT della riga, coi fatti E la destinazione (D16). A costante di modulo
+# perche' il presidio sul DB provvisto lo pianifica con `EXPLAIN` senza
+# scrivere niente: un nome di colonna sbagliato qui e' un 500 sul primo
+# incasso digitato, non un test rosso.
+_RIGA_INSERT = """
+    INSERT INTO pagamenti.vendite_contabili_righe (
+        contabile_id, importo, stato_id, riferimento_ente,
+        data_pagamento, data_valuta, data_operazione,
+        motivo_sospeso, meta,
+        fattura_id, billing_account_id, scadenza_id,
+        forzata, motivo_forzatura
+    )
+    SELECT
+        %s, %s, st.id, %s,
+        %s, %s, %s,
+        %s, %s::jsonb,
+        %s, %s, %s,
+        %s, %s
+      FROM pagamenti.vendite_contabili_righe_stati st
+     WHERE st.codice_interno = %s
+       AND st.attivo IS TRUE
+    RETURNING id
+"""
+
+# Scopo: Il predicato «questo stato si propone ancora» — attivo e non
+#        RITIRATO (`obsoleto_dal`) — per le due tabelle di stato del dominio.
+# ⚠️ `alias` e' un identificatore scelto dal codice (mai da input): finisce
+#    interpolato nell'SQL. Vuoto = colonne non qualificate.
+# ⭐ Era scritto sei volte fra i cataloghi e le matrici: uno stato ritirato
+#    che restava proponibile in UNA delle sei copie non avrebbe dato errore —
+#    avrebbe offerto un pulsante che il guard rifiuta.
+def _sql_stato_vivo(alias: str = "") -> str:
+    p = f"{alias}." if alias else ""
+    return (
+        f"{p}attivo IS TRUE"
+        f" AND ({p}obsoleto_dal IS NULL OR {p}obsoleto_dal > CURRENT_DATE)"
+    )
+
+
+# L'eliminazione (D17): `attivo = false`, solo su una riga ancora attiva.
+_RIGA_DISATTIVA = """
+    UPDATE pagamenti.vendite_contabili_righe
+       SET attivo = false
+     WHERE id = %s
+       AND attivo IS TRUE
+"""
+
+# ⭐ IL VERBO «VALIDA» E IL SUO MOTIVO (D20-a, BE-1 — linee-guida-sql §12.5):
+#    la terna del primo motivo di `script.fn_check_contabile_validabile` — la
+#    STESSA check che `trgfn_vendite_contabili_guard_validazione` chiama per
+#    rifiutare l'ingresso in VALIDATA — piu' il flag `can_validare`. Cosi' il
+#    pulsante «Porta a VALIDATA» spento nel drawer e il 409 del database non
+#    «coincidono oggi»: non possono divergere.
+# ⚠️ DUE ARGOMENTI, e il secondo non e' un di piu' (brief §4-bis): il guard
+#    gira BEFORE ROW e legge `NEW.importo_dichiarato`, che non e' ancora in
+#    tabella; qui si passa `c.importo_dichiarato`, cioe' il dichiarato che la
+#    distinta HA. Chi chiama passa quello che vede — e' la forma della check.
+# ⚠️ SOLO SUL DETTAGLIO, non sulla lista: la check legge righe e stati della
+#    distinta, e sull'elenco girerebbe per ogni riga filtrata per un campo che
+#    la lista non mostra.
+# ⚠️ E' scritta contro l'alias `q` della sottoquery del dettaglio, non contro
+#    `c`: la LATERAL si innesta FUORI dalla proiezione condivisa
+#    (`_DISTINTA_SELECT`), che resta la stessa della lista.
+_LATERAL_VALIDAZIONE = sql_lateral_primo_motivo(
+    "script.fn_check_contabile_validabile(q.id, q.importo_dichiarato)", "valida"
+)
+
+# ⭐ LE RIGHE PER STATO (BE-1): quante righe attive e per che importo, stato
+#    per stato — la fotografia che il dialog di validazione mostra e da cui la
+#    quadratura legge «di cui non nostre». Un array jsonb ORDINATO dal catalogo
+#    (`ordine`), vuoto — non NULL — su una distinta senza righe.
+# ⚠️ Le righe ATTIVE, SCARTATA compresa: e' lo stesso perimetro di
+#    `_TOTALI_LATERAL` e della quadratura.
+_RIGHE_PER_STATO_LATERAL = """
+      LEFT JOIN LATERAL (
+          SELECT COALESCE(jsonb_agg(
+                     jsonb_build_object(
+                         'stato_codice_interno', g.stato_codice_interno,
+                         'stato_descrizione', g.stato_descrizione,
+                         'righe',             g.righe,
+                         'importo',           g.importo)
+                     ORDER BY g.ordine NULLS LAST, g.stato_id), '[]'::jsonb) AS righe_per_stato
+            FROM (
+                SELECT rs.id AS stato_id, rs.codice_interno AS stato_codice_interno,
+                       rs.descrizione AS stato_descrizione, rs.ordine,
+                       count(*)::int AS righe, COALESCE(sum(r.importo), 0) AS importo
+                  FROM pagamenti.vendite_contabili_righe r
+                  JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+                 WHERE r.contabile_id = q.id
+                   AND r.attivo IS TRUE
+                 GROUP BY rs.id, rs.codice_interno, rs.descrizione, rs.ordine
+            ) g
+      ) rps ON TRUE
+"""
+
+# La chiamata alla madre della registrazione TARDIVA (D20-b, P-5), a costante
+# di modulo come `_RIGA_INSERT`: il presidio sul DB provvisto la pianifica con
+# `EXPLAIN`, cosi' un parametro rinominato e' un test rosso e non un 500 sul
+# primo «Abbina e registra».
+_POSTA_RIGA_TARDIVA = """
+    SELECT movimento_id, riga_id, importo, esito
+      FROM pagamenti.fn_posta_riga_tardiva(
+           p_riga_id            := %s,
+           p_fattura_id         := %s,
+           p_billing_account_id := %s,
+           p_scadenza_id        := %s,
+           p_forzata            := %s,
+           p_motivo_forzatura   := %s
+      )
 """
 
 # 🔴 LE CHIAVI SONO IL `campo_sorgente` DEL SEED, NON IL `codice` LOGICO — e la
@@ -236,14 +483,94 @@ RIGHE_SORT_COLUMNS: dict[str, str] = {
     "contabile_codice": "contabile_codice",
 }
 
+# Colonne ordinabili delle righe di UNA distinta (lista
+# `pagamenti.distinta_righe`, id 69 — 2026-09-18, decisione di Tid: le righe
+# del foglio sono una lista a tutti gli effetti, con paginazione, personalizza
+# ed export, come gli atti di sistemazione dal 02/09). Le chiavi sono i
+# `campo_sorgente` FISICI del seed, i valori gli alias della proiezione
+# `_RIGA_COLONNE` (la clausola si applica FUORI, sul risultato di
+# `_lista_paginata`).
+# ⭐ `fattura_numero_documento` ordina per la COPPIA `(fattura_numero,
+#    fattura_serie)` — il costruttore del numero parlante — e non per il testo
+#    «numero - serie»: ordinando il testo «10 - A» verrebbe prima di «9 - A»
+#    (stessa ragione di `RATE_SORT_COLUMNS`).
+# ⭐ `id` e' ordinabile perche' e' l'ordine di DIGITAZIONE, cioe' l'ordine di
+#    apertura della lista (vedi `list_righe_distinta`): senza, l'operatore non
+#    potrebbe tornarci dopo aver cliccato un'altra intestazione.
+DISTINTA_RIGHE_SORT_COLUMNS: dict[str, str] = {
+    "id": "id",
+    "data_pagamento": "data_pagamento",
+    "data_valuta": "data_valuta",
+    "data_operazione": "data_operazione",
+    "riferimento_ente": "riferimento_ente",
+    "importo": "importo",
+    "billing_account_descrizione": "billing_account_descrizione",
+    "billing_account_codice": "billing_account_codice",
+    "fattura_numero_documento": "(fattura_numero, fattura_serie)",
+    "scadenza_numero_rata": "scadenza_numero_rata",
+    "scadenza_data": "scadenza_data",
+    "stato_descrizione": "stato_descrizione",
+}
+
+# Le colonne DATA della lista 69: verso DESC al primo click senza `order_dir`
+# (regola di Tid del 2026-09-02, come `RATE_SORT_COLONNE_DATA`).
+DISTINTA_RIGHE_SORT_COLONNE_DATA: frozenset[str] = frozenset(
+    {"data_pagamento", "data_valuta", "data_operazione", "scadenza_data"}
+)
+
 # Colonne ordinabili dell'elenco delle rate fuori capienza.
+# ⭐ `numero_documento` (P-1-bis, 2026-09-17): la vista porta il numero
+#    parlante e la colonna 766 lo mostra; si ordina per la coppia
+#    `(fattura_numero, serie)` come sulla lista rate, non per il testo.
 RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
     "data_scadenza": "data_scadenza",
     "motivo": "motivo",
     "residuo": "residuo",
     "importo_rata": "importo_rata",
     "fattura_numero": "fattura_numero",
+    "numero_documento": "(fattura_numero, serie)",
 }
+
+# Colonne ordinabili dell'elenco delle RATE (lista `pagamenti.rate`, id 68 —
+# D19-c, 2026-09-17): le chiavi sono i `campo_sorgente` FISICI del seed
+# (`ordinabile = t`), i valori le espressioni sulla vista
+# `vendite.vw_fatture_scadenze_lista` (alias della sottoquery, non `v.`: la
+# clausola si applica FUORI, sul risultato paginato).
+# ⭐ `numero_documento` si ordina per la COPPIA `(numero, serie)` — il
+#    costruttore di riga — e non per il testo «numero - serie»: ordinando il
+#    testo, «10 - A» verrebbe prima di «9 - A». E' la ragione scritta nel brief
+#    DB (§4-bis.9). ⚠️ Provato con EXPLAIN sul DB vero il 2026-09-17:
+#    `Sort Key: (ROW(f.numero, f.serie)) DESC NULLS LAST`, sintassi accettata
+#    da PostgreSQL 18.
+# ⛔ I tre saldi (`residuo`, `in_lavorazione`, `incassato`) NON ci sono, ed e'
+#    il seed a dichiararli `ordinabile = f`: non stanno nella vista — arrivano
+#    dal nucleo `fn_get_saldi_rate` DOPO la pagina — e una whitelist che li
+#    nominasse produrrebbe un 500 sul primo click.
+#    ⭐ `stato_descrizione` e `ba_codice` ordinano perche' lo pretende il NUCLEO
+#    (regola di dominio di Tid, 2026-07-31, presidiata da
+#    `gen_seed_lista.py --verifica-ordinamento`): stato e billing account
+#    ordinano sempre, quando la lista ce li ha. Il brief DB le dava
+#    `ordinabile = f`; la regola vince.
+RATE_SORT_COLUMNS: dict[str, str] = {
+    "numero_documento": "(numero, serie)",
+    "data": "data",
+    "ragione_sociale_completa": "ragione_sociale_completa",
+    "ba_codice": "ba_codice",
+    "numero_rata": "numero_rata",
+    "data_scadenza": "data_scadenza",
+    "importo": "importo",
+    "totale_doc": "totale_doc",
+    "stato_descrizione": "stato_descrizione",
+}
+
+# Le colonne DATA della lista 68, per il verso DESC quando il chiamante non ne
+# indica uno (regola di Tid del 2026-09-02). ⚠️ NON e' il default della lista:
+# senza `order_by` la lista si apre `data_scadenza ASC` — e' una CODA, la rata
+# piu' vecchia e' quella che un pagamento piu' probabilmente salda (stessa
+# ragione dei residui di competenza). Il primo click dell'operatore
+# sull'intestazione resta DESC per la regola generale, e lo decide il catalogo
+# (`tipo_dato = date`) nel frontend.
+RATE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data", "data_scadenza"})
 
 # Colonne ordinabili dell'elenco delle eccedenze da sistemare.
 # ⭐ Il default e' per CLIENTE, non per documento: la decisione si prende
@@ -379,7 +706,15 @@ ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
 }
 
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
-_JSONB_COLS = ("meta",)
+# ⚠️ `elimina_blocco_dettaglio` e' l'oggetto coi NOMI dei parametri della frase
+#    i18n del cestino spento: servito come stringa non fallisce — il frontend
+#    si limita a non trovarci le chiavi, e la frase esce coi segnaposto dentro.
+# ⚠️ Idem per `validazione_blocco_dettaglio` e `righe_per_stato` (il dettaglio
+#    della distinta): il primo riempie la frase del «Porta a VALIDATA» spento,
+#    il secondo e' l'array che il dialog di validazione elenca.
+_JSONB_COLS = (
+    "meta", "elimina_blocco_dettaglio", "validazione_blocco_dettaglio", "righe_per_stato",
+)
 
 # 🔴 Le colonne che questo repository accetta di aggiornare, e non e' una
 # ripetizione della whitelist del service: quella dice che cosa il CONTRATTO
@@ -466,12 +801,15 @@ class PagamentiRepository:
     # Scopo: Il vocabolario degli stati della distinta, coi suoi flag.
     # Nota: `obsoleto_dal` filtra i valori RITIRATI — che restano leggibili
     #       sui documenti vecchi ma non si propongono piu' a nessuno.
+    # ⭐ `is_registrabile` (D20-d): e' la bandiera con cui il frontend riconosce
+    #    lo stato «pronta da registrare» — quello in cui si entra VALIDANDO —
+    #    senza confrontare il nome dello stato con un letterale.
     def list_stati_distinta(self) -> list[StatoCatalogoRow]:
-        sql = """
-            SELECT id, codice, codice_interno, descrizione, is_final, ordine
+        sql = f"""
+            SELECT id, codice, codice_interno, descrizione, is_final, ordine,
+                   is_registrabile
               FROM pagamenti.vendite_contabili_stati
-             WHERE attivo IS TRUE
-               AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE)
+             WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
         """
         with connection.cursor() as cursor:
@@ -482,12 +820,11 @@ class PagamentiRepository:
     #        l'interfaccia — `is_postabile` (occupa spazio, si puo' registrare)
     #        e `richiede_abbinamento` (pretende fattura e cliente).
     def list_stati_riga(self) -> list[StatoRigaCatalogoRow]:
-        sql = """
+        sql = f"""
             SELECT id, codice, codice_interno, descrizione, is_final, ordine,
                    is_postabile, richiede_abbinamento
               FROM pagamenti.vendite_contabili_righe_stati
-             WHERE attivo IS TRUE
-               AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE)
+             WHERE {_sql_stato_vivo()}
              ORDER BY ordine NULLS LAST, id
         """
         with connection.cursor() as cursor:
@@ -500,9 +837,14 @@ class PagamentiRepository:
 
     # Scopo: Elenco paginato delle distinte contabili con i display field in
     #        JOIN e i totali derivati.
-    # Perimetro: la RLS della testata; nessun filtro applicativo aggiuntivo
-    #        (le policy passano dal canale e dalla fattura, non da una colonna
-    #        emittente su questa tabella).
+    # Perimetro: la RLS della testata, che dal 2026-09-17 (D3 del brief
+    #        distinta-numerata-sul-registro) passa dalla COLONNA
+    #        `emittente_soggetto_ruolo_id` — la forma di
+    #        `rls_fatturazione_lotti_ef_whitelist`. Nessun filtro applicativo
+    #        aggiuntivo. ⚠️ Fino a quel giorno questa riga diceva «le policy
+    #        passano dal canale e dalla fattura, non da una colonna emittente»,
+    #        ed era vero: una distinta senza canale era «di tutti». Non lo e'
+    #        piu': e' del suo emittente, come il lotto da cui nasce.
     def list_distinte(
         self,
         *,
@@ -568,12 +910,29 @@ class PagamentiRepository:
     # Scopo: Dettaglio di una distinta (testata + display + totali derivati).
     # Risultato: None se non esiste — o se il perimetro non la lascia vedere,
     #        e i due casi sono volutamente indistinguibili al chiamante.
-    def get_distinta(self, contabile_id: int) -> DistintaRow | None:
+    # ⭐ Porta anche cio' che SOLO il dettaglio ha (BE-1, D20-a): la terna del
+    #    verbo «valida» + `can_validare` dalla check del database, e le righe
+    #    per stato. Sono innestate FUORI dalla proiezione condivisa con la
+    #    lista, sull'alias `q`: la lista non le paga.
+    # ⚠️ La terna si legge SEMPRE qui; e' il SERVICE a lasciarla a `null` quando
+    #    lo stato corrente non ammette VALIDATA fra le uscite (la matrice la
+    #    legge gia' lui): un motivo su un verbo che non si propone e' rumore.
+    def get_distinta(self, contabile_id: int) -> DistintaDettaglioRow | None:
         self._guard_canale_sistema("get_distinta")
         sql = f"""
-            {_DISTINTA_SELECT}
-            {_TOTALI_LATERAL}
-            WHERE c.id = %s
+            SELECT q.*,
+                   valida.reason              AS validazione_blocco_reason,
+                   valida.reason_key          AS validazione_blocco_reason_key,
+                   valida.dettaglio           AS validazione_blocco_dettaglio,
+                   (valida.reason IS NULL)    AS can_validare,
+                   rps.righe_per_stato
+              FROM (
+                {_DISTINTA_SELECT}
+                {_TOTALI_LATERAL}
+                WHERE c.id = %s
+              ) q
+              {_LATERAL_VALIDAZIONE}
+              {_RIGHE_PER_STATO_LATERAL}
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
@@ -591,6 +950,15 @@ class PagamentiRepository:
     #    governarla non si costruisce.
     # ⛔ L'operatore NON si passa: lo mette la funzione dall'identita' della
     #    connessione. Passarlo dal backend sarebbe una seconda verita'.
+    # ⛔ E l'EMITTENTE NON SI RISOLVE QUI (D4 del brief distinta-numerata-sul-
+    #    registro, 2026-09-17): `p_emittente_fiscale_id` (PK) e' cio' che il
+    #    chiamante SA — la scelta di un form — e viaggia com'e', `NULL`
+    #    compreso. I quattro livelli (dato → canale → operatore in sessione →
+    #    rifiuto `E_CONTABILE_EMITTENTE_OBBLIGATORIO`) vivono in
+    #    `pagamenti.fn_get_emittente_distinta`, e sono la CHIAVE DI RIUSO della
+    #    madre prima ancora dell'INSERT: un secondo risolutore in Python
+    #    sarebbe la seconda sede della stessa regola, e la manuale smetterebbe
+    #    di essere il lotto di lavoro dell'operatore.
     # ⚠️ Il valore di ritorno e' il solo `id`: «creata» e «riaperta» non si
     #    distinguono dalla chiamata — si leggono dal dettaglio (ha righe o no).
     def get_or_create_distinta(
@@ -600,6 +968,7 @@ class PagamentiRepository:
         data_contabile: date,
         data_registrazione: date | None = None,
         ente_incasso_id: int | None = None,
+        emittente_fiscale_id: int | None = None,
         codice_stato_interno: str = "BOZZA",
         origine: str = "MANUALE",
         meta: str = "{}",
@@ -610,6 +979,7 @@ class PagamentiRepository:
                 p_data_contabile        := %s,
                 p_data_registrazione    := COALESCE(%s, CURRENT_DATE),
                 p_ente_incasso_id       := %s,
+                p_emittente_fiscale_id  := %s,
                 p_codice_stato_interno  := %s,
                 p_meta                  := %s::jsonb,
                 p_origine               := %s
@@ -623,6 +993,7 @@ class PagamentiRepository:
                     data_contabile,
                     data_registrazione,
                     ente_incasso_id,
+                    emittente_fiscale_id,
                     codice_stato_interno,
                     meta,
                     origine,
@@ -697,42 +1068,120 @@ class PagamentiRepository:
     #  Righe
     # ══════════════════════════════════════════════════════════════
 
-    # Scopo: Le righe di una distinta, ordine stabile.
-    # Nota: nessuna paginazione — le righe sono il dettaglio di UN documento e
-    #       si leggono insieme alla sua testata; la lista cross-distinta (la
-    #       coda del riconciliatore) e' un'altra cosa e ha il suo metodo.
+    # Scopo: TUTTE le righe attive di una distinta, in ordine di digitazione.
+    # ⚠️ Dal 2026-09-18 NON e' piu' cio' che il drawer mostra: la lista a video
+    #    e' `list_righe_distinta` (paginata). Questa lettura serve a chi ha
+    #    bisogno dell'INSIEME intero — l'anteprima di registrazione, che deve
+    #    dire quali righe restano indietro e non puo' farlo su una pagina.
     def list_righe(self, contabile_id: int) -> list[RigaContabileRow]:
         self._guard_canale_sistema("list_righe")
-        # ⚠️ Solo le righe ATTIVE, e senza un interruttore per vederle tutte:
-        # una riga disattivata non e' un dato da mostrare con un filtro, e un
-        # parametro che nessuno passa e' superficie che invecchia. Quando
-        # servira' davvero, si aggiunge con il suo consumatore.
-        sql = f"""
-            {_RIGA_SELECT}
-            WHERE r.contabile_id = %s
-              AND r.attivo IS TRUE
-            ORDER BY r.id
-        """
+        sql = f"{_RIGHE_DISTINTA_ATTIVE_SQL} ORDER BY r.id"
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
         return [self._shape(row) for row in rows]
 
-    # Scopo: Dettaglio di una singola riga contabile.
+    # Scopo: Le righe attive di una distinta come LISTA — pagina + totale in
+    #        una valutazione, ordinamento dalla whitelist.
+    # ⭐ 2026-09-18 (decisione di Tid): le righe del foglio hanno paginazione,
+    #    ricarica, «Personalizza colonne» ed export come ogni altra lista
+    #    configurabile. La ragione per cui non le avevano — «le righe di una
+    #    distinta sono limitate per costruzione» — era una previsione sui DATI,
+    #    e una previsione sui dati non decide la forma di una lista (regola
+    #    zero; stessa strada degli atti di sistemazione dal 02/09).
+    # ⭐ Default `id DESC`: l'ULTIMA riga digitata sta in cima. E' la scelta di
+    #    Tid del 02/09 sugli atti di sistemazione, per la stessa ragione: da
+    #    quando la lista impagina, una riga appena scritta in ordine crescente
+    #    finirebbe nell'ULTIMA pagina, e chi l'ha appena digitata non la
+    #    vedrebbe. ⚠️ `default_desc` governa solo il ramo senza `order_by`: chi
+    #    clicca «Id riga» ottiene il verso che chiede.
+    # ⚠️ L'export non chiede «tutto»: chiede `EXPORT_MAX_ROWS + 1` righe, ed e'
+    #    il `+1` a far scattare il guard del tetto PRIMA di serializzare
+    #    (`build_export_response`), come su ogni altra lista.
+    # ⭐ `escludi_stato_codice` (BE-2, D20-c): lo stato che la lista NASCONDE di
+    #    default — le SCARTATA, «non e' nostra», fuori dal lavoro ma dentro la
+    #    distinta e dentro la quadratura. Il codice lo nomina il service
+    #    (`STATO_RIGA_SCARTATA`), qui e' un filtro. `None` = tutte le attive.
+    def list_righe_distinta(
+        self,
+        contabile_id: int,
+        *,
+        escludi_stato_codice: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[RigaContabileRow], int]:
+        self._guard_canale_sistema("list_righe_distinta")
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=DISTINTA_RIGHE_SORT_COLUMNS,
+            default="id",
+            tiebreak="id",
+            default_desc=True,
+            colonne_desc=DISTINTA_RIGHE_SORT_COLONNE_DATA,
+        )
+        select_sql = _RIGHE_DISTINTA_ATTIVE_SQL
+        params: list[Any] = [int(contabile_id)]
+        if escludi_stato_codice is not None:
+            # ⚠️ `IS DISTINCT FROM` e non `<>`: `rs` e' in LEFT JOIN, e una riga
+            #    con uno stato che non risolve a catalogo (NULL) deve restare
+            #    a video, non sparire come se fosse scartata.
+            select_sql = f"{select_sql} AND rs.codice_interno IS DISTINCT FROM %s"
+            params.append(escludi_stato_codice)
+        rows, total = self._lista_paginata(
+            select_sql=select_sql,
+            params=params,
+            order_clause=f"ORDER BY {ordinamento}",
+            limit=limit,
+            offset=offset,
+        )
+        return [self._shape(row) for row in rows], total
+
+    # Scopo: QUANTE righe attive di una distinta stanno in uno stato — il numero
+    #        accanto a «Mostra scartate (N)» (BE-2, la forma di
+    #        `archiviate_count`/`annullati_count`).
+    # ⛔ Non e' derivabile dalla lista: quelle righe il suo `WHERE` le ha gia'
+    #    escluse. E' il caso per cui esiste il BB `conta_con_perimetro`, sul
+    #    perimetro minimo «riga + stato» — le condizioni sono le stesse della
+    #    lista, senza pagare display field e LATERAL per un numero.
+    def count_righe_in_stato(self, contabile_id: int, stato_codice: str) -> int:
+        self._guard_canale_sistema("count_righe_in_stato")
+        return conta_con_perimetro(
+            _RIGA_STATO_FROM,
+            ["r.contabile_id = %s", "r.attivo IS TRUE", "rs.codice_interno = %s"],
+            [int(contabile_id), stato_codice],
+        )
+
+    # Scopo: Dettaglio di una singola riga contabile ATTIVA.
+    # ⚠️ Il filtro su `attivo` e' un cancello, non un dettaglio (D17): questa
+    #    lettura e' il `_riga_o_404` di ogni verbo — PATCH, stato, abbina,
+    #    elimina. Senza, una riga eliminata (che nessuna lista mostra) restava
+    #    modificabile e abbinabile dall'API, in silenzio. Prima del 14/09 non
+    #    c'era modo di produrne una dall'app; adesso c'e'.
     def get_riga(self, riga_id: int) -> RigaContabileRow | None:
         self._guard_canale_sistema("get_riga")
         sql = f"""
             {_RIGA_SELECT}
             WHERE r.id = %s
+              AND r.attivo IS TRUE
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id)])
             rows = rows_to_list(cursor)
         return self._shape(rows[0]) if rows else None
 
-    # Scopo: Crea una riga sotto una distinta.
+    # Scopo: Crea una riga sotto una distinta — coi fatti E la destinazione.
     # ⚠️ Lo stato si risolve dal catalogo per codice: gli id sono smallint
     #    seminati e non si scrivono a mano da nessuna parte (mai id cablati).
+    # ⭐ D16: fattura, cliente, rata e forzatura entrano nello STESSO INSERT dei
+    #    fatti. ⛔ Fino al 14/09 questi parametri erano stati TOLTI come «seconda
+    #    porta per scrivere l'abbinamento aggirando il verbo»: la ragione decade
+    #    perche' la nascita abbinata E' il verbo, e i guard che lo governano
+    #    (dati richiesti dallo stato, coerenza rata/fattura, capienza, scope
+    #    emittente) sono `BEFORE INSERT OR UPDATE` — sull'INSERT parlano uguale.
+    #    Lo STATO lo sceglie il service in base alla destinazione; qui non si
+    #    decide niente.
     def create_riga(
         self,
         *,
@@ -745,34 +1194,21 @@ class PagamentiRepository:
         data_operazione: date | None = None,
         motivo_sospeso: str | None = None,
         meta: str = "{}",
+        fattura_id: int | None = None,
+        billing_account_id: int | None = None,
+        scadenza_id: int | None = None,
+        forzata: bool = False,
+        motivo_forzatura: str | None = None,
     ) -> int:
-        # ⛔ Niente `fattura_id`, `billing_account_id`, `scadenza_id` qui: una
-        # riga NASCE senza destinazione (`DA_ABBINARE`), e l'abbinamento e' un
-        # verbo con le sue regole — la coerenza rata/fattura e la capienza. Dei
-        # parametri accettati qui e mai passati sarebbero una seconda porta per
-        # scriverli, che aggirerebbe quel verbo senza dirlo.
-        sql = """
-            INSERT INTO pagamenti.vendite_contabili_righe (
-                contabile_id, importo, stato_id, riferimento_ente,
-                data_pagamento, data_valuta, data_operazione,
-                motivo_sospeso, meta
-            )
-            SELECT
-                %s, %s, st.id, %s,
-                %s, %s, %s,
-                %s, %s::jsonb
-              FROM pagamenti.vendite_contabili_righe_stati st
-             WHERE st.codice_interno = %s
-               AND st.attivo IS TRUE
-            RETURNING id
-        """
         with connection.cursor() as cursor:
             cursor.execute(
-                sql,
+                _RIGA_INSERT,
                 [
                     int(contabile_id), importo, riferimento_ente,
                     data_pagamento, data_valuta, data_operazione,
                     motivo_sospeso, meta,
+                    fattura_id, billing_account_id, scadenza_id,
+                    bool(forzata), motivo_forzatura,
                     codice_stato_interno,
                 ],
             )
@@ -869,6 +1305,58 @@ class PagamentiRepository:
             )
             return cursor.rowcount
 
+    # Scopo: Elimina una riga — `attivo = false` (D17).
+    # ⭐ E' la porta che il modello aveva gia' aperto: tutti i lettori (saldi,
+    #    posting, quadratura, viste, e qui `list_righe`) filtrano `attivo`.
+    #    Resta la traccia di chi ha tolto cosa (`user_update`/`data_update`).
+    # ⛔ Nessun predicato qui: chi puo' e chi no lo dice
+    #    `trgfn_vendite_contabili_righe_guard_contenuto`, leggendo la stessa
+    #    check che alimenta `elimina_blocco_*` in lista.
+    # ⚠️ `AND attivo IS TRUE`: su una riga gia' eliminata non si scrive niente
+    #    (zero righe, e il service lo traduce in «non trovata»), e il guard non
+    #    viene nemmeno svegliato per un `false -> false`.
+    def disattiva_riga(self, riga_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(_RIGA_DISATTIVA, [int(riga_id)])
+            return cursor.rowcount
+
+    # Scopo: Le due matrici di transizione — testata e riga — come coppie di
+    #        codici `(stato_da, stato_a)`, in una lettura sola.
+    # ⭐ Sono catalogo (BE-5): il frontend costruisce le voci «Porta a …» da
+    #    qui, ristrette dal service a cio' che una PERSONA puo' chiedere. Prima
+    #    offriva il vocabolario intero meno lo stato corrente, e su una riga
+    #    `ABBINATA` proponeva `SCARTATA`, che il guard rifiuta.
+    # ⚠️ Gli stati RITIRATI (`obsoleto_dal`) escono da entrambi i lati: una
+    #    transizione verso uno stato che non si propone piu' non e' un'uscita.
+    # ⚠️ `UNION ALL` con una colonna discriminante e non due query: una
+    #    lettura, e le due mappe non possono descrivere due istanti diversi.
+    def list_transizioni(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+        sql = f"""
+            SELECT 'distinta' AS macchina, sd.codice_interno AS stato_da, sa.codice_interno AS stato_a
+              FROM pagamenti.transizioni_stati_contabile t
+              JOIN pagamenti.vendite_contabili_stati sd ON sd.id = t.stato_da_id
+              JOIN pagamenti.vendite_contabili_stati sa ON sa.id = t.stato_a_id
+             WHERE t.attivo IS TRUE
+               AND {_sql_stato_vivo("sd")}
+               AND {_sql_stato_vivo("sa")}
+            UNION ALL
+            SELECT 'riga', sd.codice_interno, sa.codice_interno
+              FROM pagamenti.transizioni_stati_contabile_riga t
+              JOIN pagamenti.vendite_contabili_righe_stati sd ON sd.id = t.stato_da_id
+              JOIN pagamenti.vendite_contabili_righe_stati sa ON sa.id = t.stato_a_id
+             WHERE t.attivo IS TRUE
+               AND {_sql_stato_vivo("sd")}
+               AND {_sql_stato_vivo("sa")}
+             ORDER BY 1, 2, 3
+        """
+        distinta: list[tuple[str, str]] = []
+        riga: list[tuple[str, str]] = []
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            for macchina, stato_da, stato_a in cursor.fetchall():
+                (distinta if macchina == "distinta" else riga).append((stato_da, stato_a))
+        return distinta, riga
+
     # ══════════════════════════════════════════════════════════════
     #  I saldi — le tre letture, e nient'altro le chiama
     # ══════════════════════════════════════════════════════════════
@@ -925,14 +1413,22 @@ class PagamentiRepository:
     #    📮 Se un giorno servira' `has_righe_postabili`, la sede giusta e'
     #    aggiungerlo a `fn_get_saldo_fattura` — che quella funzione la interroga
     #    gia' — non rimettere il join qui.
-    def get_saldo_documento(self, fattura_id: int) -> dict[str, Any] | None:
+    # ⭐ `escludi_riga_id` dal 2026-09-18 (P-6 del brief D19): la stessa
+    #    domanda della rata — «quanto c'era PRIMA di me» — con lo stesso nome
+    #    di parametro, cosi' il pannello dice la stessa cosa ai due livelli.
+    #    ⚠️ Semantica identica alla rata, ed e' una scelta del DB dichiarata nel
+    #    changeSet: la riga esclusa esce dal DICHIARATO e, se e' gia'
+    #    registrata, anche col suo MOVIMENTO — come nel nucleo `fn_get_saldi_rate`.
+    def get_saldo_documento(
+        self, fattura_id: int, *, escludi_riga_id: int | None = None
+    ) -> dict[str, Any] | None:
         self._guard_canale_sistema("get_saldo_documento")
         sql = """
             SELECT f.saldo, f.in_lavorazione, f.incassato, f.has_movimenti
-              FROM pagamenti.fn_get_saldo_fattura(%s) f
+              FROM pagamenti.fn_get_saldo_fattura(%s, %s) f
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
+            cursor.execute(sql, [int(fattura_id), escludi_riga_id])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 
@@ -943,9 +1439,15 @@ class PagamentiRepository:
     #    laterali fra moduli di pari livello non sono ammesse (api.md).
     def list_rate_con_saldo(self, fattura_id: int) -> list[dict[str, Any]]:
         self._guard_canale_sistema("list_rate_con_saldo")
+        # ⭐ `fattura_id` viaggia con la rata (2026-09-17, D19-c): il form della
+        #    riga tiene «una rata resta scelta solo se e' del documento scelto»,
+        #    e per dirlo la rata deve sapere di chi e' — la stessa chiave che
+        #    porta la riga della lista rate (`vw_fatture_scadenze_lista`), cosi'
+        #    le due sorgenti hanno la stessa forma.
         sql = """
             SELECT
                 sc.id                AS scadenza_id,
+                sc.fattura_id,
                 sc.numero_rata,
                 sc.data_scadenza,
                 sc.importo,
@@ -961,6 +1463,216 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
             return rows_to_list(cursor)
+
+    # Scopo: I saldi di UN INSIEME di rate in una chiamata — la «porta 3» del
+    #        nucleo `pagamenti.fn_get_saldi_rate` (brief DB distinta-ricerca-rate,
+    #        §4-bis.4): `{scadenza_id: {residuo, in_lavorazione, incassato,
+    #        has_movimenti}}`.
+    # ⛔ UNA chiamata con l'ARRAY, non una `LATERAL` per riga: provato dal team
+    #    DB con EXPLAIN (§4-bis.9), `ARRAY[sc.id]` in `LATERAL` non piega il
+    #    filtro dentro gli aggregati e diventa una scansione dei movimenti PER
+    #    RATA. Con l'array costante della pagina il nucleo si inlinea e va a
+    #    indice sui due parziali. ⚠️ E l'array e' OBBLIGATORIO: `NULL` non vuol
+    #    dire «tutte» — per lo scadenzario c'e' `vw_saldi_rate`.
+    # ⚠️ Il nucleo e' `security_invoker`: una rata fuori perimetro e' ZERO righe,
+    #    non un errore — il chiamante confronta il numero delle risposte con
+    #    quello delle domande. Una rata SENZA movimenti torna lo stesso (LEFT nel
+    #    nucleo), con `has_movimenti = false`.
+    # ⭐ Le chiavi escono col NOME della base dei saldi (`residuo`, non `saldo`):
+    #    e' il vocabolario di `saldi_service.CAMPI_SALDO`, e chi consuma la
+    #    riga della lista legge lo stesso nome del pannello.
+    def get_saldi_rate(self, scadenza_ids: list[int]) -> dict[int, dict[str, Any]]:
+        self._guard_canale_sistema("get_saldi_rate")
+        if not scadenza_ids:
+            return {}
+        sql = """
+            SELECT scadenza_id,
+                   saldo AS residuo,
+                   in_lavorazione,
+                   incassato,
+                   has_movimenti
+              FROM pagamenti.fn_get_saldi_rate(%s::bigint[])
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [[int(i) for i in scadenza_ids]])
+            righe = rows_to_list(cursor)
+        return {int(r.pop("scadenza_id")): r for r in righe}
+
+    # Scopo: L'ELENCO PAGINATO DELLE RATE (lista `pagamenti.rate`, id 68 — D19-c,
+    #        2026-09-17): una riga per rata di `vendite.vw_fatture_scadenze_lista`
+    #        col documento, il cliente e i tre saldi dalla base unica.
+    # ⭐ PAGINA PRIMA, SALDO DOPO (brief DB §8): la query pagina la VISTA
+    #    (`COUNT(*) OVER ()` nella stessa valutazione) e i saldi si chiedono al
+    #    nucleo in una SECONDA query, sugli id della pagina. ⛔ Non nella stessa
+    #    query del `COUNT(*) OVER ()`: girerebbe sul perimetro intero e non
+    #    sulla pagina — il costo gia' letto sul piano della coda righe (EXPLAIN
+    #    del 14/09 per la `LATERAL` dei motivi).
+    # ⚠️ L'ECCEZIONE E' `solo_aperte`, e non puo' essere altrimenti: «aperta» =
+    #    `saldo <> 0` (Q-B, Tid 2026-09-17) e' un predicato sul SALDO, quindi sta
+    #    nel `WHERE` — e un `WHERE` non puo' aspettare la pagina. Li' il nucleo
+    #    si chiama sul PERIMETRO (l'array delle rate che passano i filtri,
+    #    `ARRAY(SELECT …)`) e i saldi escono dalla stessa query: e' il costo
+    #    onesto che il brief DB ha accettato per quel filtro (§4.3 «col filtro
+    #    solo aperte, di ogni rata del perimetro, perche' il filtro sta nel
+    #    WHERE»). ⚠️ Sullo scadenzario intero (nessun criterio) e' il costo di
+    #    `vw_saldi_rate`; sul perimetro di un cliente regge.
+    # ⛔ `fattura_numero` e' un confronto ESATTO, non un `ILIKE`: nel lookup 101
+    #    porta anche 1010 e 2101, ed e' giusto la'; qui chi digita un numero
+    #    vuole QUEL documento (brief §8). `search` invece cerca il CLIENTE —
+    #    ragione sociale, codice BA, id fiscale — mai il numero.
+    # ⚠️ Lo scope emittente applicativo si SOMMA alla RLS (api.md §Enforcement
+    #    RLS), come sulla lista fatture da cui il lookup legge: `v.emittente_fiscale_id`
+    #    e' la PK dell'emittente, convenzione `pk`.
+    # ⛔ `solo_numerate` (Tid, rilievo in-app 2026-09-18): la rata di un documento
+    #    NON numerato — una bozza, `numero IS NULL` — non e' un credito su cui
+    #    registrare un incasso, e il picker la mostrava accanto alle altre. Il
+    #    predicato sta in `_condizioni`, quindi vale anche sul PERIMETRO di
+    #    `solo_aperte`: i due insiemi non possono divergere. ⏳ La regola di Tid
+    #    e' piu' stretta — «solo le definitive, inviate a SDI» — ed e' un
+    #    predicato di dominio che va in una sede sola a DB, non un secondo
+    #    booleano qui (piano D19 §8).
+    def list_rate_paginata(
+        self,
+        *,
+        auth_user_id: int | None,
+        billing_account_id: int | None = None,
+        fattura_numero: int | None = None,
+        serie: str | None = None,
+        anno: int | None = None,
+        search: str | None = None,
+        solo_aperte: bool = False,
+        solo_numerate: bool = False,
+        data_scadenza_da: date | None = None,
+        data_scadenza_a: date | None = None,
+        natura_doc_codice: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_rate_paginata")
+
+        # Il perimetro emittente si risolve UNA volta: con `solo_aperte` la
+        # stessa condizione entra due volte (pagina e perimetro del nucleo), e
+        # risolverla per ogni entrata sarebbe una query in piu' per niente.
+        scope_ids = (
+            fetch_emittenti_scope_ids(auth_user_id, convention="pk")
+            if auth_user_id is not None else None
+        )
+
+        # Scopo: le condizioni della lista su un ALIAS dato — la stessa funzione
+        #        per la pagina (`v`) e per il perimetro del nucleo (`p`), cosi'
+        #        i due insiemi non possono divergere.
+        def _condizioni(alias: str) -> tuple[list[str], list[Any]]:
+            conditions: list[str] = []
+            params: list[Any] = []
+            if billing_account_id is not None:
+                conditions.append(f"{alias}.billing_account_id = %s")
+                params.append(billing_account_id)
+            if fattura_numero is not None:
+                conditions.append(f"{alias}.numero = %s")
+                params.append(fattura_numero)
+            if serie is not None:
+                conditions.append(f"{alias}.serie = %s")
+                params.append(serie)
+            if anno is not None:
+                conditions.append(f"{alias}.anno = %s")
+                params.append(anno)
+            if search and len(search) >= 3:
+                conditions.append(
+                    f"({alias}.ragione_sociale_completa ILIKE %s "
+                    f"OR {alias}.ba_codice ILIKE %s "
+                    f"OR {alias}.id_fiscale_univoco_cf_piva ILIKE %s)"
+                )
+                like = f"%{search}%"
+                params.extend([like, like, like])
+            if data_scadenza_da is not None:
+                conditions.append(f"{alias}.data_scadenza >= %s")
+                params.append(data_scadenza_da)
+            if data_scadenza_a is not None:
+                conditions.append(f"{alias}.data_scadenza <= %s")
+                params.append(data_scadenza_a)
+            if natura_doc_codice is not None:
+                conditions.append(f"{alias}.natura_doc_codice_interno = %s")
+                params.append(natura_doc_codice)
+            # Il numero e' NULL finche' il documento non e' DEFINITIVA: e' il
+            # solo fatto della vista che dice «numerato», e la vista lo porta
+            # apposta accanto a `numero_documento` (P-2).
+            if solo_numerate:
+                conditions.append(f"{alias}.numero IS NOT NULL")
+            add_emittente_scope_condition_risolta(
+                conditions, params,
+                scope_ids=scope_ids,
+                column=f"{alias}.emittente_fiscale_id",
+            )
+            return conditions, params
+
+        conditions, params = _condizioni("v")
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        # ⚠️ `default_desc=False` e' la scelta, non l'omissione: e' una coda
+        #    (vedi `RATE_SORT_COLONNE_DATA`). Il tiebreak `scadenza_id` e' la
+        #    chiave della vista — la PK della rata.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=RATE_SORT_COLUMNS,
+            default="data_scadenza",
+            tiebreak="scadenza_id",
+            colonne_desc=RATE_SORT_COLONNE_DATA,
+        )
+
+        if solo_aperte:
+            # Il perimetro e' la STESSA `FROM`+`WHERE` della pagina: l'array del
+            # nucleo e la lista che lo legge devono parlare dello stesso insieme.
+            cond_p, params_p = _condizioni("p")
+            where_p = ("WHERE " + " AND ".join(cond_p)) if cond_p else ""
+            perimetro_sql = (
+                f"SELECT p.scadenza_id FROM vendite.vw_fatture_scadenze_lista p {where_p}"
+            )
+            select_sql = f"""
+                SELECT v.*,
+                       s.saldo AS residuo,
+                       s.in_lavorazione,
+                       s.incassato,
+                       s.has_movimenti
+                  FROM vendite.vw_fatture_scadenze_lista v
+                  JOIN pagamenti.fn_get_saldi_rate(ARRAY({perimetro_sql})::bigint[]) s
+                    ON s.scadenza_id = v.scadenza_id
+                 {where}{" AND" if where else " WHERE"} s.saldo <> 0
+            """  # noqa: S608
+            return self._lista_paginata(
+                select_sql=select_sql,
+                # Prima i parametri del perimetro (l'`ARRAY(...)` sta nella
+                # `FROM`), poi quelli del `WHERE` della pagina: l'ordine e'
+                # quello in cui psycopg incontra i `%s`.
+                params=[*params_p, *params],
+                order_clause=f"ORDER BY {ordinamento}",
+                limit=limit,
+                offset=offset,
+            )
+
+        rows, total = self._lista_paginata(
+            select_sql=f"SELECT v.* FROM vendite.vw_fatture_scadenze_lista v {where}",  # noqa: S608
+            params=params,
+            order_clause=f"ORDER BY {ordinamento}",
+            limit=limit,
+            offset=offset,
+        )
+        saldi = self.get_saldi_rate([int(r["scadenza_id"]) for r in rows])
+        # Il nucleo risponde per OGNI rata visibile (LEFT sulle senza
+        # movimenti): una rata della pagina senza saldo e' un contratto rotto,
+        # non un dato da riempire con dei NULL — e va detto, non nascosto.
+        mancanti = [int(r["scadenza_id"]) for r in rows if int(r["scadenza_id"]) not in saldi]
+        ErrorManager.require(
+            not mancanti,
+            code=_E_CHIAMATA,
+            message="Il saldo di una rata della pagina non e' stato restituito.",
+            detail=f"pagamenti.fn_get_saldi_rate senza riga per scadenza_id={mancanti}",
+            function_name=f"{_FN}.list_rate_paginata",
+        )
+        for r in rows:
+            r.update(saldi[int(r["scadenza_id"])])
+        return rows, total
 
     # ══════════════════════════════════════════════════════════════
     #  Le due code di lavoro
@@ -1337,6 +2049,21 @@ class PagamentiRepository:
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 
+    # Scopo: Di quale documento e' una rata — la sola cosa che il verbo
+    #        «righe da rate» (D19-d) deve risolvere prima di chiamare la nascita
+    #        della riga, che vuole la fattura.
+    # ⚠️ Sotto RLS: una rata fuori perimetro e' `None`, indistinguibile da una
+    #    inesistente — ed e' voluto, come per ogni lettura per id del dominio.
+    def get_fattura_id_di_rata(self, scadenza_id: int) -> int | None:
+        self._guard_canale_sistema("get_fattura_id_di_rata")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT fattura_id FROM vendite.fatture_scadenze WHERE id = %s",
+                [int(scadenza_id)],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Registra l'atto di sistemazione.
     # ⭐ Un `INSERT`, non una funzione madre: una scrittura sola non ha bisogno
     #    di una madre, e inventarne una avrebbe aggiunto un oggetto che non
@@ -1548,6 +2275,54 @@ class PagamentiRepository:
             message="La registrazione non ha prodotto nessuna ricevuta.",
             detail="pagamenti.fn_posta_contabile non ha restituito righe.",
             function_name=f"{_FN}.posta_contabile",
+        )
+        return rows[0]  # type: ignore[return-value]
+
+    # Scopo: La registrazione TARDIVA di una riga (D20-b, P-5): una `SOSPESA`
+    #        sotto una distinta gia' registrata si abbina E si registra nello
+    #        stesso gesto — movimento scritto, riga a `POSTATA`, distinta che
+    #        resta `CHIUSA`.
+    # ⭐ UNA SOLA `SELECT` sulla madre, come per il posting: i tre statement
+    #    (riga → ABBINATA coi guard dell'abbinamento, movimento, riga → POSTATA)
+    #    e la porta della quarta mossa (GUC transazionale) stanno DENTRO la
+    #    funzione. ⛔ Nessun `abbina_riga` + `set_stato_riga` da qui: sotto una
+    #    CHIUSA il secondo verrebbe rifiutato, e il primo resterebbe scritto.
+    # ⚠️ `forzata` e' il SECONDO TEMPO della capienza, intatto: il primo
+    #    tentativo arriva senza, il guard della rata rifiuta con
+    #    `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` (`confirm_and_retry`), e la
+    #    conferma torna qui come `forzata = true`.
+    # ⛔ Nessun `NULLA_DA_POSTARE`: una tardiva su una riga che non si puo'
+    #    registrare e' un RIFIUTO della madre (`E_RIGA_CONTABILE_TARDIVA_*`),
+    #    non un esito — chi preme ha identificato quel denaro.
+    def posta_riga_tardiva(
+        self,
+        *,
+        riga_id: int,
+        fattura_id: int,
+        billing_account_id: int,
+        scadenza_id: int | None,
+        forzata: bool,
+        motivo_forzatura: str | None,
+    ) -> RicevutaTardiva:
+        self._guard_canale_sistema("posta_riga_tardiva")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                _POSTA_RIGA_TARDIVA,
+                [
+                    int(riga_id), int(fattura_id), int(billing_account_id),
+                    scadenza_id, bool(forzata), motivo_forzatura,
+                ],
+            )
+            rows = rows_to_list(cursor)
+        # La madre risponde SEMPRE una riga, o solleva: senza righe il contratto
+        # e' cambiato sotto, e tacere su un gesto che ha scritto un movimento e'
+        # la cosa peggiore.
+        ErrorManager.require(
+            bool(rows),
+            code=_E_CHIAMATA,
+            message="La registrazione tardiva non ha prodotto nessuna ricevuta.",
+            detail="pagamenti.fn_posta_riga_tardiva non ha restituito righe.",
+            function_name=f"{_FN}.posta_riga_tardiva",
         )
         return rows[0]  # type: ignore[return-value]
 

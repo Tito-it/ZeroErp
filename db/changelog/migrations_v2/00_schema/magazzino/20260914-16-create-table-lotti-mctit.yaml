@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (passo 2 di 2) — LA PARTITA DI MERCE
+#   magazzino.lotti
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3 (M-5)
+#
+# -- CHE COSA E' -----------------------------------------------------------
+#   Una partita di un articolo: «questi pezzi sono arrivati (o sono stati
+#   prodotti) insieme, il giorno X, con la scadenza Y». E' l'unita' della
+#   tracciabilita' (FIFO fisico, richiamo di un lotto difettoso) e la
+#   dimensione che movimenti.lotto_id e movimenti_attesi.lotto_id
+#   nomineranno (P-4, P-5) e che le righe di inventario, rettifica e
+#   trasferimento porteranno (P-8). Fino a oggi il lotto era un varchar
+#   libero su movimenti e sulle righe: due scritture diverse dello stesso
+#   codice erano due lotti (analisi carico e scarico, sezione 7-quater).
+#
+# -- LA CHIAVE E' (articolo_id, codice), NON codice ---------------------------
+#   Lo stesso codice di lotto su due articoli diversi e' legittimo: due
+#   fornitori numerano ciascuno per conto suo, e «L2026-001» del reagente A
+#   non e' «L2026-001» del reagente B. L'UNIQUE lo dice; un UNIQUE sul solo
+#   codice avrebbe imposto una numerazione globale che nessuno possiede.
+#
+# -- data_arrivo E' LA DATA DA CUI SI CONTA -------------------------------
+#   Arrivo o produzione: quella da cui parte la rotazione. NOT NULL perche'
+#   una partita senza data non si ordina; senza default perche' la dice chi
+#   la carica, non il momento in cui la registra. data_scadenza NULLABLE
+#   (non tutto scade) e mai prima dell'arrivo (CHECK).
+#
+# -- storicizza DEFAULT true, E NON E' UN DETTAGLIO ---------------------------
+#   Il brief (sezione 4.3) scriveva `DEFAULT false`, la forma delle tabelle
+#   ad alto volume (reservations). Qui vale il contrario: la tabella ESISTE
+#   per la tracciabilita', e «chi ha spostato la scadenza di questo lotto, e
+#   quando» e' una domanda che si fa. DEFAULT true = storicizzazione
+#   permanente, la forma delle anagrafiche (magazzini, causali):
+#   proc_sync_storico_set_storicizza la registra da sola. Registrato nel
+#   brief come scostamento, con questa ragione.
+#
+# -- FUORI DAL PERIMETRO RLS, PER COSTRUZIONE ---------------------------------
+#   E' una definizione: non ha magazzino_id ne' emittente, e la sua unica FK
+#   punta a catalogo.articoli, che non e' in RLS. dbops.vw_rls_perimetro_scoperto
+#   non la chiede (sezione 7-sexies, correzione del 04-09). Niente policy.
+#
+# -- CHE COSA NASCE DA SOLO, E CHE COSA NO ------------------------------------
+#   ⚠️ Tabella NUOVA: audit, tx_id, storico (ha `storicizza`) e — perche' ha
+#   `attivo` — la coppia ATTIVO con chi la punta (block sul lotto, require su
+#   movimenti/righe: P-4, P-5, P-8) arrivano con `--contexts=ci_apply`, non
+#   da qui. Niente DDL ne' preCondition sui loro nomi (linee-guida-sql 11.5).
+#   Le colonne di audit nascono coi propri DEFAULT.
+#   ⚠️ Nessun GRANT: le ALTER DEFAULT PRIVILEGES del loop di 90_end
+#   (20260205-41) coprono tabella e sequence gia' alla creazione.
+#   ⚠️ Nessun lock su `codice`: non e' un codice_interno (nessun codice
+#   confronta su di esso) e un refuso su un lotto appena creato si corregge;
+#   i movimenti lo puntano per id.
+#   L'indice su articolo_id e' governato da dbops.fk_index_policy
+#   (20260914-17, consentito=false: l'UNIQUE (articolo_id, codice) lo copre
+#   gia', e un indice dedicato sarebbe la ridondanza bonificata il 27-07).
+#   La riga di dbops.storico_scope_policy (NESSUNO) sta nel CSV della mappa.
+#
+# -- CATALOGO O MACCHINA? NE' L'UNO NE' L'ALTRO ------------------------------
+#   E' una tabella di ESERCIZIO: nessun seed. Le righe nascono dal primo
+#   carico (Lotto 2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260914-16-create-table-lotti-mctit.yaml
+
+  - changeSet:
+      id: 20260914-16-create-table-lotti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CREATE TABLE magazzino.lotti: la partita di merce di un articolo (codice,
+        data di arrivo o produzione, scadenza), chiave (articolo_id, codice) perche'
+        lo stesso codice su articoli diversi e' legittimo. Storicizzazione permanente
+        (e' tracciabilita'). Fuori dal perimetro RLS: definizione senza magazzino.
+        Audit, tx_id, storico e coppia ATTIVO arrivano da ci_apply. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3 (P-1, M-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: SELECT count(*) FROM pg_namespace WHERE nspname = 'magazzino';
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+            - not:
+                - tableExists:
+                    schemaName: magazzino
+                    tableName: lotti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE magazzino.lotti (
+                  id              BIGINT GENERATED BY DEFAULT AS IDENTITY
+                                  CONSTRAINT pk_mag_lotti PRIMARY KEY,
+                  articolo_id     UUID         NOT NULL,
+                  codice          VARCHAR(64)  NOT NULL,
+                  data_arrivo     DATE         NOT NULL,
+                  data_scadenza   DATE,
+                  attivo          BOOLEAN      NOT NULL DEFAULT true,
+                  meta            JSONB        NOT NULL DEFAULT '{}'::jsonb,
+                  tx_id           UUID,
+                  storicizza      BOOLEAN      NOT NULL DEFAULT true,
+                  data_insert     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                  user_insert     TEXT         NOT NULL DEFAULT CURRENT_USER,
+                  data_update     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                  user_update     TEXT         DEFAULT CURRENT_USER,
+                  CONSTRAINT fk_mag_lotti_articolo
+                      FOREIGN KEY (articolo_id)
+                      REFERENCES catalogo.articoli (id)
+                      ON UPDATE CASCADE
+                      ON DELETE NO ACTION,
+                  -- Lo stesso codice su articoli diversi e' legittimo: la chiave
+                  -- naturale e' la coppia, non il codice.
+                  CONSTRAINT uq_mag_lotti_articolo_codice
+                      UNIQUE (articolo_id, codice),
+                  -- Un codice '' passerebbe l'UNIQUE una volta e non
+                  -- identificherebbe niente.
+                  CONSTRAINT chk_mag_lotti_codice_non_vuoto
+                      CHECK (btrim(codice) <> ''),
+                  -- Non tutto scade; cio' che scade non scade prima di arrivare.
+                  CONSTRAINT chk_mag_lotti_scadenza_dopo_arrivo
+                      CHECK (data_scadenza IS NULL OR data_scadenza >= data_arrivo)
+              );
+
+              COMMENT ON TABLE magazzino.lotti IS
+                  'Partita di merce di un articolo: i pezzi arrivati (o prodotti) '
+                  'insieme, con la data da cui si conta la rotazione e l''eventuale '
+                  'scadenza. E'' l''unita'' della tracciabilita'' (FIFO fisico, richiamo '
+                  'di un lotto) e la dimensione che movimenti.lotto_id e le righe di '
+                  'inventario/rettifica/trasferimento nominano, quando '
+                  'catalogo.articoli.requires_lotto lo pretende. Chiave naturale '
+                  '(articolo_id, codice): lo stesso codice su due articoli e'' legittimo, '
+                  'una numerazione globale non la possiede nessuno. Fuori dal perimetro '
+                  'RLS (definizione senza magazzino ne'' emittente). Storicizzazione '
+                  'permanente: «chi ha cambiato la scadenza di questo lotto» e'' una '
+                  'domanda della tracciabilita''. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3 (M-5).';
+              COMMENT ON COLUMN magazzino.lotti.codice IS
+                  'Il codice della partita come lo scrive chi la produce o la consegna. '
+                  'Unico PER ARTICOLO, non globale. Non e'' un codice_interno: nessuna '
+                  'logica confronta su di esso, i movimenti puntano l''id.';
+              COMMENT ON COLUMN magazzino.lotti.data_arrivo IS
+                  'Data di arrivo o di produzione: quella da cui si conta la rotazione '
+                  '(FIFO fisico). NOT NULL senza default: la dice chi carica, non il '
+                  'momento in cui la registra.';
+              COMMENT ON COLUMN magazzino.lotti.data_scadenza IS
+                  'Scadenza della partita, se scade (NULL = non scade). Mai prima di '
+                  'data_arrivo (CHECK).';
+              COMMENT ON COLUMN magazzino.lotti.attivo IS
+                  'Un lotto spento non si assegna a un movimento nuovo (require_attivo '
+                  'sulle tabelle che lo puntano, generato da ci_apply) e non si spegne '
+                  'finche'' un movimento lo nomina (block_deact, idem: il ledger non ha '
+                  'attivo, quindi conta tutte le righe).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS storico.lotti;
+              DROP TABLE IF EXISTS magazzino.lotti;

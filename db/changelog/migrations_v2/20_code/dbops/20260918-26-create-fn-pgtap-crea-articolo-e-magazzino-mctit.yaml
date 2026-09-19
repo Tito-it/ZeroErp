@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 (fixture) — DUE HELPER pgTAP: l'articolo e il magazzino si COSTRUISCONO
+#   dbops.fn_pgtap_crea_articolo(p_codice, p_gestito, p_requires_lotto, p_requires_serial)
+#   dbops.fn_pgtap_crea_magazzino(p_codice, p_usa_ubicazioni)
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 5 (le trappole) e sezione 7
+#
+# -- PERCHE' (regola zero, corollario sui test; sezione 5 del brief) -------------------
+#   «Una fixture che CERCA un dato di macchina muore sul DB da zero» e
+#   «pescare il primo attivo dal catalogo darebbe un articolo NON gestito,
+#   cioe' un E_MAG_ARTICOLO_NON_GESTITO che sembra un test rosso». I flag
+#   dell'articolo (gestito, lotto, seriale) LI SCEGLIE IL TEST; il magazzino
+#   e' dell'emittente dell'operatore in sessione (fn_pgtap_emittente_operatore)
+#   con un indirizzo fabbricato (fn_pgtap_crea_indirizzo_dettaglio) e il flag
+#   usa_ubicazioni scelto dal test (D-L2-m).
+#
+# -- DUE HELPER E NON DIECI COPIE (regola del 2) --------------------------------------------
+#   I dodici pgTAP di P-9 avrebbero ripetuto le stesse due INSERT: la copia
+#   si estrae PRIMA di scriverle, non dopo. Stampo:
+#   dbops.fn_pgtap_crea_indirizzo_dettaglio (20260915-19).
+#   INVOKER: girano come l'app nel runner, e scrivono dove l'app scrive
+#   (catalogo.articoli non ha RLS; magazzini sotto RLS con il guard di scope,
+#   che passa perche' l'emittente e' quello dell'operatore).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260918-26-create-fn-pgtap-crea-articolo-e-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20260918-26-create-fn-pgtap-crea-articolo-e-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_articolo (un articolo con i flag gestito_a_magazzino / requires_lotto /
+        requires_serial scelti dal test) e dbops.fn_pgtap_crea_magazzino (un magazzino
+        dell'emittente dell'operatore in sessione, con usa_ubicazioni scelto dal test): le
+        fixture dei pgTAP del Lotto 2 costruiscono, non cercano. Brief:
+        brief-db-magazzino-lotto-2-motore, sezione 5 (P-9).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: magazzini
+                columnName: usa_ubicazioni
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE (n.nspname, p.proname) IN (('script', 'fn_pgtap_emittente_operatore'),
+                                                    ('dbops',  'fn_pgtap_crea_indirizzo_dettaglio'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_articolo(
+                  p_codice          catalogo.articoli.codice%TYPE,
+                  p_gestito         catalogo.articoli.gestito_a_magazzino%TYPE DEFAULT true,
+                  p_requires_lotto  catalogo.articoli.requires_lotto%TYPE      DEFAULT false,
+                  p_requires_serial catalogo.articoli.requires_serial%TYPE     DEFAULT false
+              )
+              RETURNS catalogo.articoli.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un articolo COSTRUITO con i flag che il
+              --   test sceglie (gestito a magazzino, per lotti, per seriale): pescarne uno
+              --   dal catalogo darebbe un articolo non gestito, cioe' un rifiuto che
+              --   sembra un test rosso. UoM: la prima attiva del seed (una vale l'altra).
+              -- Uso: v_art := dbops.fn_pgtap_crea_articolo('PGT-A', true, true, false);
+              DECLARE
+                  v_uom catalogo.unita_misura.id%TYPE;
+                  v_id  catalogo.articoli.id%TYPE;
+              BEGIN
+                  SELECT u.id INTO v_uom FROM catalogo.unita_misura u WHERE u.attivo ORDER BY u.id LIMIT 1;
+                  IF v_uom IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_articolo: catalogo.unita_misura e'' vuoto — e'' un seed di 80_data';
+                  END IF;
+                  INSERT INTO catalogo.articoli (codice, descrizione, uom_id,
+                                                 gestito_a_magazzino, requires_lotto, requires_serial)
+                  VALUES (p_codice, 'Fixture pgTAP: ' || p_codice, v_uom,
+                          COALESCE(p_gestito, true), COALESCE(p_requires_lotto, false), COALESCE(p_requires_serial, false))
+                  RETURNING id INTO v_id;
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_articolo(character varying, boolean, boolean, boolean) IS
+                  'Fixture pgTAP: un articolo COSTRUITO con i flag scelti dal test (gestito_a_magazzino, '
+                  'requires_lotto, requires_serial), UoM la prima attiva del seed. Pescare un articolo '
+                  'dal catalogo darebbe uno non gestito e un E_MAG_ARTICOLO_NON_GESTITO che sembra un '
+                  'test rosso (brief magazzino Lotto 2, sezione 5). Solo per i pgTAP.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_magazzino(
+                  p_codice         magazzino.magazzini.codice%TYPE,
+                  p_usa_ubicazioni magazzino.magazzini.usa_ubicazioni%TYPE DEFAULT false
+              )
+              RETURNS magazzino.magazzini.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un magazzino dell'EMITTENTE DELL'OPERATORE
+              --   in sessione (script.fn_pgtap_emittente_operatore: il guard di scope lo
+              --   pretende), con un indirizzo fabbricato e usa_ubicazioni scelto dal test
+              --   (D-L2-m). Da chiamare DOPO fn_pgtap_set_contesto_operatore.
+              -- Uso: v_mag := dbops.fn_pgtap_crea_magazzino('PGT-MAG-A', true);
+              DECLARE
+                  v_ef  magazzino.magazzini.emittente_fiscale_id%TYPE;
+                  v_ind magazzino.magazzini.indirizzo_dettaglio_id%TYPE;
+                  v_id  magazzino.magazzini.id%TYPE;
+              BEGIN
+                  v_ef := script.fn_pgtap_emittente_operatore();
+                  IF v_ef IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_magazzino: nessun emittente per l''operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
+                  END IF;
+                  v_ind := dbops.fn_pgtap_crea_indirizzo_dettaglio(p_codice);
+                  INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id, usa_ubicazioni)
+                  VALUES (p_codice, 'Fixture pgTAP: ' || p_codice, v_ind, v_ef, COALESCE(p_usa_ubicazioni, false))
+                  RETURNING id INTO v_id;
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_magazzino(character varying, boolean) IS
+                  'Fixture pgTAP: un magazzino dell''emittente dell''operatore in sessione '
+                  '(script.fn_pgtap_emittente_operatore), indirizzo fabbricato, usa_ubicazioni scelto '
+                  'dal test (D-L2-m). Da chiamare dopo fn_pgtap_set_contesto_operatore. Solo per i '
+                  'pgTAP (brief magazzino Lotto 2, sezione 5).';
+
+              GRANT EXECUTE ON FUNCTION dbops.fn_pgtap_crea_articolo(character varying, boolean, boolean, boolean) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION dbops.fn_pgtap_crea_magazzino(character varying, boolean) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_magazzino(character varying, boolean);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_articolo(character varying, boolean, boolean, boolean);

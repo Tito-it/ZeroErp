@@ -1,7 +1,6 @@
 # Schema `storico`
 
 ## 📚 Tabelle (manuale)
-- [ambito_causale](manual/ambito_causale.md)
 - [articoli](manual/articoli.md)
 - [articoli_componenti](manual/articoli_componenti.md)
 - [articoli_uom_operativa](manual/articoli_uom_operativa.md)
@@ -71,7 +70,6 @@
 - [regole_generazione](manual/regole_generazione.md)
 - [render_engine_documento](manual/render_engine_documento.md)
 - [resellers](manual/resellers.md)
-- [reservations](manual/reservations.md)
 - [resi](manual/resi.md)
 - [resi_righe](manual/resi_righe.md)
 - [resi_righe_accrediti](manual/resi_righe_accrediti.md)
@@ -111,4 +109,6 @@
 - [vettori](manual/vettori.md)
 
 ## 📘 Altri contenuti manuali
+- [ambito_causale](manual/ambito_causale.md)
 - [fatturazione_lotti_attivita](manual/fatturazione_lotti_attivita.md)
+- [reservations](manual/reservations.md)

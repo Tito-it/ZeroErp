@@ -20,6 +20,9 @@ Indice test eseguiti:
 4)  CreaDistintaTests.test_gia_popolata_quando_la_distinta_ha_righe
 5)  CreaDistintaTests.test_centro_obbligatorio
 6)  CreaDistintaTests.test_data_contabile_obbligatoria
+6a) CreaDistintaTests.test_emittente_scelto_viene_trasportato
+6b) CreaDistintaTests.test_senza_emittente_passa_none_e_non_deduce
+6c) CreaDistintaTests.test_emittente_non_positivo_rifiutato
 7)  StatoDistintaTests.test_chiusa_non_e_richiedibile
 8)  StatoDistintaTests.test_annullata_e_richiedibile
 9)  StatoDistintaTests.test_distinta_inesistente_404
@@ -42,6 +45,10 @@ Indice test eseguiti:
 20) PatchTests.test_riga_non_accetta_abbinamento
 21) PatchTests.test_patch_vuoto_non_scrive
 22) ListaTests.test_ordinamento_fuori_whitelist_rifiutato
+23) ListaTests.test_righe_della_distinta_ordinamento_fuori_whitelist_rifiutato
+24) ListaTests.test_righe_della_distinta_senza_ordinamento_e_un_none_e_un_conteggio_vero
+24a) ListaTests.test_le_scartate_sono_fuori_di_default_e_contate
+25) ListaTests.test_il_dettaglio_non_porta_piu_le_righe
 """
 
 from contextlib import nullcontext
@@ -102,6 +109,14 @@ def _repo(**over) -> MagicMock:
     repo.set_stato_riga.return_value = 1
     repo.update_distinta.return_value = 1
     repo.update_riga.return_value = 1
+    repo.disattiva_riga.return_value = 1
+    # Le due matrici, come coppie di codici: vuote qui, la forma e' provata in
+    # `test_riga_nasce_abbinata_ed_elimina`.
+    repo.list_transizioni.return_value = ([], [])
+    repo.get_riferimenti_fattura.return_value = {
+        "fattura_id": 2263, "billing_account_id": 41,
+        "emittente_soggetto_ruolo_id": 32, "cliente_soggetto_ruolo_id": 9,
+    }
     for chiave, valore in over.items():
         getattr(repo, chiave).return_value = valore
     return repo
@@ -181,6 +196,32 @@ class CreaDistintaTests(_ServiceTestCase):
     def test_data_contabile_obbligatoria(self):
         with self.assertRaises(ServiceError):
             pagamenti_service.crea_distinta({"centro_riscossione_id": 39})
+
+    # Scopo: ⭐ L'emittente scelto nel form arriva alla madre COM'E' (D4 del
+    #        brief distinta-numerata-sul-registro): e' la PK, cio' che il
+    #        frontend conosce; la traduzione in soggetto-ruolo e' del database.
+    def test_emittente_scelto_viene_trasportato(self):
+        pagamenti_service.crea_distinta({**self._PAYLOAD, "emittente_fiscale_id": 32})
+        kwargs = self.repo.get_or_create_distinta.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 32)
+
+    # Scopo: ⛔ Senza emittente nel payload il backend passa `None` e NON lo
+    #        deduce dal profilo: i quattro livelli (canale → sessione →
+    #        rifiuto) vivono in `fn_get_emittente_distinta`, e un secondo
+    #        risolutore qui sarebbe la seconda sede della stessa regola.
+    def test_senza_emittente_passa_none_e_non_deduce(self):
+        pagamenti_service.crea_distinta(dict(self._PAYLOAD))
+        kwargs = self.repo.get_or_create_distinta.call_args.kwargs
+        self.assertIn("emittente_fiscale_id", kwargs)
+        self.assertIsNone(kwargs["emittente_fiscale_id"])
+
+    # Scopo: Un emittente non positivo e' un dato sbagliato, e lo dice il
+    #        backend prima di chiamare il database.
+    def test_emittente_non_positivo_rifiutato(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pagamenti_service.crea_distinta({**self._PAYLOAD, "emittente_fiscale_id": 0})
+        self.assertEqual(ctx.exception.code, pagamenti_service.E_VALIDAZIONE)
+        self.repo.get_or_create_distinta.assert_not_called()
 
 
 class StatoDistintaTests(_ServiceTestCase):
@@ -487,3 +528,60 @@ class ListaTests(_ServiceTestCase):
         with self.assertRaises(ServiceError):
             pagamenti_service.list_distinte(order_by="importo_dichiarato; DROP")
         self.repo.list_distinte.assert_not_called()
+
+    # Scopo: Stessa regola sulle righe di una distinta (lista
+    #        `pagamenti.distinta_righe`, 2026-09-18): fuori whitelist e' un 400
+    #        col campo, non un default silenzioso — e non un 500 sull'ORDER BY.
+    def test_righe_della_distinta_ordinamento_fuori_whitelist_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.list_righe(7, limit=25, order_by="meta; DROP")
+        self.repo.list_righe_distinta.assert_not_called()
+
+    # Scopo: «non specificato» e' legittimo e arriva al repository come `None`
+    #        (che apre `id DESC`), e il `count` e' il totale che il repository
+    #        dichiara — non `len(results)`, che fino al 18/09 era un'eco.
+    def test_righe_della_distinta_senza_ordinamento_e_un_none_e_un_conteggio_vero(self):
+        self.repo.list_righe_distinta.return_value = ([{"id": 91}], 340)
+        self.repo.count_righe_in_stato.return_value = 2
+        esito = pagamenti_service.list_righe(7, limit=1, offset=0)
+        self.assertEqual(
+            esito, {"count": 340, "results": [{"id": 91}], "scartate_count": 2}
+        )
+        kwargs = self.repo.list_righe_distinta.call_args.kwargs
+        self.assertIsNone(kwargs["order_by"])
+        self.assertIsNone(kwargs["order_dir"])
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (1, 0))
+
+    # Scopo: ⭐ BE-2 (D20-c): di default le SCARTATA restano FUORI dalla lista —
+    #        il repository riceve lo stato da escludere — e la risposta dichiara
+    #        quante ne nasconde, contate sullo stesso perimetro. A interruttore
+    #        acceso non si esclude niente e il conteggio non si paga.
+    def test_le_scartate_sono_fuori_di_default_e_contate(self):
+        self.repo.list_righe_distinta.return_value = ([], 0)
+        self.repo.count_righe_in_stato.return_value = 3
+        esito = pagamenti_service.list_righe(7, limit=25)
+        self.assertEqual(
+            self.repo.list_righe_distinta.call_args.kwargs["escludi_stato_codice"],
+            pagamenti_service.STATO_RIGA_SCARTATA,
+        )
+        self.repo.count_righe_in_stato.assert_called_once_with(
+            7, pagamenti_service.STATO_RIGA_SCARTATA
+        )
+        self.assertEqual(esito["scartate_count"], 3)
+
+        self.repo.reset_mock()
+        self.repo.list_righe_distinta.return_value = ([], 0)
+        esito = pagamenti_service.list_righe(7, limit=25, scartate=True)
+        self.assertIsNone(
+            self.repo.list_righe_distinta.call_args.kwargs["escludi_stato_codice"]
+        )
+        self.repo.count_righe_in_stato.assert_not_called()
+        self.assertEqual(esito["scartate_count"], 0)
+
+    # Scopo: ⛔ Il dettaglio NON legge piu' le righe (dal 2026-09-18): sono la
+    #        lista paginata. Leggerle qui sarebbe la LATERAL per riga due volte
+    #        a ogni apertura del drawer, per un campo che nessuno legge.
+    def test_il_dettaglio_non_porta_piu_le_righe(self):
+        dettaglio = pagamenti_service.get_distinta(7)
+        self.assertNotIn("righe", dettaglio)
+        self.repo.list_righe.assert_not_called()

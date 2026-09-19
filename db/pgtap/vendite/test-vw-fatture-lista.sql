@@ -9,7 +9,7 @@
 --   due si vede a occhio: una fattura che sparisce non lascia traccia, e una
 --   fattura duplicata sembra un dato sbagliato.
 --
--- Elenco test (plan 8):
+-- Elenco test (plan 11):
 -- 1) la vista esiste ed e' `security_invoker=on`
 --    ⛔ E' l'asserzione piu' importante del file. La reloption NON sta nel
 --    corpo della vista: un `CREATE OR REPLACE VIEW` che non la ripete la
@@ -24,6 +24,14 @@
 -- 7) e ci compare con cliente ed emittente fiscale risolti
 -- 8) la vista non fa scope per conto suo: le righe sono esattamente quelle
 --    che l'operatore vede su vendite.fatture
+-- ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, P-1 / Q-E):
+-- 9) numero_documento c'e' ed e' NULL sulla bozza NON numerata — mai la
+--    stringa vuota — mentre il registro (che la bozza ha: registro_id e' NOT
+--    NULL) e' gia' risolto
+-- 10) su una fattura NUMERATA (costruita) numero_documento e' «numero - serie»,
+--     dalla sede unica fn_numero_documento_fattura, e il registro e' risolto
+-- 11) le sorelle: registro_codice sta ESATTAMENTE su fatture, ddt, ordini, resi —
+--     le quattro con registro_id — e su nessun'altra vw_*_lista
 --
 -- Scopo:
 --  - la fattura era l'unico documento del ciclo attivo senza vista canonica;
@@ -39,17 +47,31 @@
 --   ma per esercitarlo servirebbe un secondo perimetro emittente e una sessione
 --   fuori scope, cioe' una fixture a due perimetri che e' un file a se'.
 --   Il ramo resta presidiato dalla FORMA del codice (test 5) e da questa riga.
+--
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-09-17 sera). Fino a quel
+--   giorno il file pescava «un billing account con emittente» fra i dati
+--   esistenti: su un database ricostruito dai changelog (zeroerp_ci, la CI) le
+--   anagrafiche sono a ZERO, la fixture usciva vuota e i test 6-7 e 9-10
+--   confrontavano NULL — ASSERZIONE in baseline-rossi-ci.tsv, con i test 3 e
+--   8 verdi a vuoto (0 = 0). E la stessa fixture, ricopiata, ha fatto nascere
+--   rosso test-vw-fatture-scadenze-lista-v1. Ora: un'azienda col suo operatore
+--   (dbops.fn_pgtap_crea_emittente_operatore) PRIMA del contesto, e un cliente
+--   fatturabile (dbops.fn_pgtap_crea_cliente_ba) NEL contesto — guida
+--   pgtap-come-si-scrive-un-test §«Il mondo si costruisce, non si cerca».
 -- ------------------------------------------------------------
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
+SELECT plan(11);
 
 -- ============================================================
 -- 1) ⭐ security_invoker: la reloption che sparisce da sola
@@ -157,16 +179,18 @@ SELECT is(
 -- ⚠️ Il documento si crea con l'emittente dell'operatore: la RLS e' attiva e
 --    una fixture che scrive fuori perimetro non passa la WITH CHECK.
 -- ============================================================
+-- Il cliente fatturabile, nel contesto dell'operatore: il legame BA -> emittente
+-- lo scrive il trigger z90 verso l'emittente di chi agisce.
+CREATE TEMP TABLE tmp_cli_vfl AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('vw fatture lista') c;
+
 CREATE TEMP TABLE tmp_refs_vfl AS
 SELECT
-  ba.id                                    AS billing_account_id,
-  script.fn_pgtap_emittente_sr_operatore() AS emittente_sr_id,
-  script.fn_pgtap_registro_fattura()      AS registro_id,
+  (SELECT billing_account_id FROM tmp_cli_vfl)         AS billing_account_id,
+  m.soggetto_ruolo_id                                  AS emittente_sr_id,
+  script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id) AS registro_id,
   config.fn_get_natura_doc_fiscale_id('FATTURA')       AS natura_fattura_id
-FROM anagrafiche.billing_account ba
-WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+FROM _mondo m;
 
 -- ⚠️ L'INSERT sta in una CTE e non in un `CREATE TABLE AS INSERT`, che non
 --    esiste: il `RETURNING` va comunque letto attraverso la `USING` della
@@ -224,6 +248,65 @@ SELECT is(
    ) d),
   0,
   '8) nessuna fattura visibile all''operatore manca dalla vista'
+);
+
+-- ============================================================
+-- 9-10) ⭐ numero_documento e registro (P-1, 20260917-02)
+--    Il numero parlante ha UNA sede (fn_numero_documento_fattura) e la lista
+--    deve portarlo: un contatore nudo e' ambiguo (fattura 1 e nota di credito 1
+--    nello stesso anno). NULL sulla non numerata, mai '' — il consumatore ha il
+--    suo ripiego. ⚠️ fatture.registro_id e' NOT NULL: il registro c'e' anche
+--    sulla bozza, e la vista lo risolve da subito (il LEFT e' forma, non caso).
+-- ============================================================
+SELECT is(
+  (SELECT (v.numero_documento IS NULL)::text || '|' ||
+          (v.registro_codice IS NOT NULL)::text || '|' ||
+          (v.registro_descrizione IS NOT NULL)::text
+     FROM vendite.vw_fatture_lista v
+    WHERE v.id = (SELECT id FROM tmp_fatt_nuda)),
+  'true|true|true',
+  '9) sulla bozza non numerata numero_documento e'' NULL (non stringa vuota) e il registro e'' gia'' risolto'
+);
+
+-- Una fattura NUMERATA, costruita: numero e serie scritti dalla fixture su una
+-- bozza (nessun guard di numerazione sull'UPDATE diretto: e' la fixture, non il
+-- verbo), col registro della fixture.
+UPDATE vendite.fatture
+   SET numero = 4242, serie = 'PG', anno = 2026
+ WHERE id = (SELECT id FROM tmp_fatt_nuda);
+
+SELECT is(
+  (SELECT v.numero_documento || '|' || coalesce(v.registro_codice, '<NULL>')
+     FROM vendite.vw_fatture_lista v
+    WHERE v.id = (SELECT id FROM tmp_fatt_nuda)),
+  (SELECT '4242 - PG|' || r.codice
+     FROM vendite.registri_fatturazione r
+    WHERE r.id = (SELECT registro_id FROM tmp_refs_vfl)),
+  '10) sulla numerata numero_documento e'' «numero - serie» dalla sede unica, e il registro e'' risolto'
+);
+
+-- ============================================================
+-- 11) ⭐ LE SORELLE (Q-E, Tid 2026-09-17): lo stesso blocco registro_* sta su
+--     tutte le viste che un registro ce l'hanno — e solo su quelle. Si
+--     asserisce l'INSIEME, nei due versi: una sorella in piu' (contratti,
+--     preventivi, offerte non hanno registro_id) o una in meno fa rosso.
+-- ============================================================
+SELECT is(
+  (SELECT string_agg(c.relname, ',' ORDER BY c.relname)
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'vendite' AND c.relkind = 'v' AND c.relname LIKE 'vw\_%\_lista'
+      -- ⚠️ vw_fatture_scadenze_lista porta il registro del DOCUMENTO della rata:
+      --    non e' una sorella (una riga per rata, nessun `id`), sta fuori dal conto.
+      AND c.relname <> 'vw_fatture_scadenze_lista'
+      AND EXISTS (SELECT 1 FROM pg_attribute a
+                   WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                     AND a.attname = 'registro_codice')
+      AND EXISTS (SELECT 1 FROM pg_attribute a
+                   WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                     AND a.attname = 'registro_descrizione')),
+  'vw_ddt_lista,vw_fatture_lista,vw_ordini_lista,vw_resi_lista',
+  '11) registro_codice/descrizione stanno esattamente sulle quattro sorelle con registro_id'
 );
 
 SELECT * FROM finish();

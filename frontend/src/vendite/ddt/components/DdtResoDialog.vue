@@ -151,6 +151,7 @@ function onCrea() {
   }
 
   confirmAction({
+    header: t('vendite.resi.crea_titolo'),
     message: t('vendite.resi.crea_conferma', { righe: payloadRighe.length }),
     onAccept: async () => {
       const result = await execute(
@@ -187,7 +188,7 @@ function onCrea() {
     @cancel="close"
   >
     <div class="form-grid">
-      <p style="margin: 0; font-size: 0.85rem; color: var(--text-color-secondary);">
+      <p style="margin: 0; font-size: 0.85rem; color: var(--app-text-muted);">
         {{ t('vendite.resi.crea_intro') }}
       </p>
 
@@ -246,7 +247,7 @@ function onCrea() {
           </template>
         </Column>
       </DataTable>
-      <div v-else-if="!loadingRighe" style="color: var(--text-color-secondary); font-style: italic;">
+      <div v-else-if="!loadingRighe" style="color: var(--app-text-muted); font-style: italic;">
         {{ t('vendite.resi.crea_nessuna_riga') }}
       </div>
     </div>

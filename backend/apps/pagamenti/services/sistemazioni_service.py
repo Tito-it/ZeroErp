@@ -29,8 +29,8 @@ from apps.pagamenti.db.pagamenti_repository import (
     PagamentiRepository,
 )
 from apps.pagamenti.services._helpers import (
+    E_FATTURA_NON_TROVATA,
     E_VALIDAZIONE,
-    decimal_da_payload,
     risposta_paginata,
 )
 
@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 _FN = "pagamenti.sistemazioni_service"
 
 E_SISTEMAZIONE_NON_TROVATA = "E_SISTEMAZIONE_NON_TROVATA"
-E_FATTURA_NON_TROVATA = "E_FATTURA_NON_TROVATA"
 
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 
@@ -180,8 +179,7 @@ def crea_sistemazione(payload: dict[str, Any]) -> dict[str, Any]:
         context={"field": "destinazione", "destinazione": destinazione},
         function_name=f"{_FN}.crea_sistemazione",
     )
-    importo = decimal_da_payload(payload, "importo", obbligatorio=True)
-    assert importo is not None
+    importo = _PAYLOAD.require_decimal(payload, "importo")
     fattura_destinazione_id = _PAYLOAD.optional_positive_int(
         payload, "fattura_destinazione_id"
     )

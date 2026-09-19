@@ -1,0 +1,217 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 (3 di 5) — la storia emittente (si'/no) salta le famiglie senza billing account
+#   anagrafiche.fn_ba_ha_storia_emittente
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3-bis
+#
+# -- CHE COSA CAMBIA, e dove ------------------------------------------------------
+#   La query che SCEGLIE le famiglie del giro prende una condizione in piu':
+#   `COALESCE(btrim(fd.colonna_billing_account), '') <> ''`. Una famiglia senza
+#   billing account non puo' contribuire alla storia di nessun billing account,
+#   ed e' corretto per costruzione escluderla. Il corpo del loop — il format()
+#   con %I e i valori da USING — non cambia di una riga.
+#
+# -- PERCHE' NELLA QUERY E NON DENTRO LA COMPOSIZIONE ---------------------------
+#   format('%I', NULL) solleva («i valori vuoti non possono essere formattati
+#   come un identificativo SQL»): un errore di PostgreSQL, senza codice di
+#   dominio, senza contesto, in un movimento di mapping emittente-BA che con le
+#   famiglie non c'entra. E format('%s', NULL) tace, producendo stringa vuota.
+#   Si salta PRIMA per non arrivarci (brief 3-bis, correzione del 02-09).
+#
+# -- CORPO DALLA FUNZIONE VIVA -----------------------------------------------------
+#   pg_get_functiondef, identica alla doc auto-gen (verificato il 2026-09-14):
+#   rev 2026-08-31 (C2-16). SECURITY DEFINER e search_path blindato restano
+#   com'erano: tutte le tabelle sono qualificate.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260914-09-update-fn-ba-ha-storia-emittente-salta-famiglie-senza-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260914-09-update-fn-ba-ha-storia-emittente-salta-famiglie-senza-ba
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_ba_ha_storia_emittente: la query che sceglie le famiglie esclude quelle senza
+        colonna_billing_account (NULL o vuota, opzionale dal 20260914-07). Il salto sta
+        nella scelta, non nel format(). Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo,
+        sezione 3-bis (P-9).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_ba_ha_storia_emittente' AND p.pronargs = 1
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.famiglie_documento'::regclass
+                     AND a.attname = 'colonna_billing_account' AND NOT a.attnotnull
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_ba_ha_storia_emittente(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_famiglia record;
+                  v_trovato  boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rispondere alla SOLA domanda che serve al guard: questo
+                  --   billing account ha gia' un documento numerato su un
+                  --   registro? Si esce al PRIMO che si trova.
+                  --
+                  -- ⭐ Esiste separata dal conteggio perche' il guard gira su
+                  --   OGNI movimento di un mapping, e li' cinque count(*)
+                  --   sarebbero il prezzo di un'informazione che non si usa:
+                  --   quanto grande sia la storia interessa solo alla frase
+                  --   del rifiuto, cioe' quando si e' gia' deciso di rifiutare.
+                  --
+                  -- ⚠️ SECURITY DEFINER: fatture e commesse hanno la RLS. Da
+                  --   INVOKER la storia di un ALTRO emittente sarebbe
+                  --   invisibile e la risposta sarebbe «nessuna storia» proprio
+                  --   nel caso da bloccare.
+                  -- =========================================================
+                  IF p_billing_account_id IS NULL THEN
+                      -- La riga senza billing account e' quella del gestore
+                      -- globale: non e' un cliente, e la guarda
+                      -- anagrafiche.fn_guard_ba_gestore_globale_storia.
+                      RETURN false;
+                  END IF;
+
+                  FOR v_famiglia IN
+                      SELECT fd.schema_tabella,
+                             fd.nome_tabella,
+                             fd.colonna_numero,
+                             fd.colonna_billing_account
+                        FROM vendite.famiglie_documento fd
+                       WHERE fd.attivo
+                         -- ⭐ Solo le famiglie che HANNO un billing account (dal
+                         --   20260914-07 la colonna e' opzionale): una famiglia senza
+                         --   BA non puo' contribuire alla storia di nessun BA. Il
+                         --   salto sta QUI, nella query che sceglie, e non dentro il
+                         --   format(): %I con NULL solleva un errore di PostgreSQL
+                         --   senza codice di dominio, e %s con NULL tace.
+                         AND COALESCE(btrim(fd.colonna_billing_account), '') <> ''
+                       ORDER BY fd.id
+                  LOOP
+                      -- ⚠️ Identificatori da %I, valori da USING: il catalogo
+                      --   e' dato, non codice.
+                      EXECUTE format(
+                          'SELECT EXISTS (SELECT 1 FROM %I.%I d'
+                          || ' WHERE d.%I = $1'
+                          || '   AND d.%I IS NOT NULL'
+                          || '   AND btrim(d.%I::text) <> $2)',
+                          v_famiglia.schema_tabella,
+                          v_famiglia.nome_tabella,
+                          v_famiglia.colonna_billing_account,
+                          v_famiglia.colonna_numero,
+                          v_famiglia.colonna_numero)
+                        INTO v_trovato
+                       USING p_billing_account_id, ''::text;
+
+                      IF v_trovato THEN
+                          RETURN true;
+                      END IF;
+                  END LOOP;
+
+                  RETURN false;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_ba_ha_storia_emittente(anagrafiche.billing_account.id%TYPE)
+              IS 'Questo billing account ha gia'' un documento NUMERATO su un registro? E'' il percorso felice del presidio sul cambio emittente del BA: si esce al PRIMO documento trovato, e le famiglie da guardare si leggono da vendite.famiglie_documento. ⭐ Esiste separata da anagrafiche.fn_get_storia_emittente_ba, e non e'' duplicazione: il guard gira su OGNI movimento di un mapping emittente-BA, e li'' cinque count(*) sarebbero il prezzo di un''informazione che non si usa — quanto grande sia la storia interessa solo alla frase del rifiuto, cioe'' quando si e'' gia'' deciso di rifiutare. E'' lo stesso schema di vendite.fn_get_next_progressivo, dove il bersaglio si compone dopo il no. ⭐ Il predicato e'' DERIVATO e non elencato: la regola decisa il 2026-08-30 e'' che ogni famiglia con un registro e'' per costruzione per-emittente, quindi e'' candidata a bloccare lo spostamento — e il sesto documento entra nella regola il giorno in cui si registra la sua famiglia, senza nessun elenco parallelo da tenere allineato. ⚠️ «Numerato» e non «esistente»: una bozza non ha congelato niente. Ne discende che una FATTURA IN BOZZA non blocca piu'' — prima si contava, perche'' il conteggio non guardava il numero — ed e'' voluto: e'' esattamente il caso per cui la finestra di correzione esiste, il cliente nato sotto l''emittente sbagliato prima che ci passi del lavoro vero. ⚠️ SQL DINAMICO: gli identificatori vengono dal catalogo e passano da %I, i valori da USING. Una riga di catalogo sbagliata romperebbe qui a runtime, ed e'' la ragione del guard vendite.trgfn_famiglie_documento_guard_riferimenti. ⚠️ SECURITY DEFINER: fatture e commesse hanno la RLS accesa, e da SECURITY INVOKER la storia di un ALTRO emittente sarebbe invisibile — la risposta sarebbe «nessuna storia, si puo'' spostare» proprio nel caso che deve bloccare. ℹ️ Input NULL -> false: la riga senza billing account e'' quella del gestore globale, e la guarda anagrafiche.fn_guard_ba_gestore_globale_storia. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-16. ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): famiglie_documento.colonna_billing_account e'' opzionale, e una famiglia senza billing account (l''ordine di acquisto) NON entra nel giro: il salto sta nella query che SCEGLIE le famiglie, non dentro il format() — un %I con NULL solleverebbe un errore di PostgreSQL senza codice di dominio, e un %s con NULL produrrebbe stringa vuota senza fiatare. Il predicato resta derivato dal catalogo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_ba_ha_storia_emittente(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_famiglia record;
+                  v_trovato  boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rispondere alla SOLA domanda che serve al guard: questo
+                  --   billing account ha gia' un documento numerato su un
+                  --   registro? Si esce al PRIMO che si trova.
+                  --
+                  -- ⭐ Esiste separata dal conteggio perche' il guard gira su
+                  --   OGNI movimento di un mapping, e li' cinque count(*)
+                  --   sarebbero il prezzo di un'informazione che non si usa:
+                  --   quanto grande sia la storia interessa solo alla frase
+                  --   del rifiuto, cioe' quando si e' gia' deciso di rifiutare.
+                  --
+                  -- ⚠️ SECURITY DEFINER: fatture e commesse hanno la RLS. Da
+                  --   INVOKER la storia di un ALTRO emittente sarebbe
+                  --   invisibile e la risposta sarebbe «nessuna storia» proprio
+                  --   nel caso da bloccare.
+                  -- =========================================================
+                  IF p_billing_account_id IS NULL THEN
+                      -- La riga senza billing account e' quella del gestore
+                      -- globale: non e' un cliente, e la guarda
+                      -- anagrafiche.fn_guard_ba_gestore_globale_storia.
+                      RETURN false;
+                  END IF;
+
+                  FOR v_famiglia IN
+                      SELECT fd.schema_tabella,
+                             fd.nome_tabella,
+                             fd.colonna_numero,
+                             fd.colonna_billing_account
+                        FROM vendite.famiglie_documento fd
+                       WHERE fd.attivo
+                       ORDER BY fd.id
+                  LOOP
+                      -- ⚠️ Identificatori da %I, valori da USING: il catalogo
+                      --   e' dato, non codice.
+                      EXECUTE format(
+                          'SELECT EXISTS (SELECT 1 FROM %I.%I d'
+                          || ' WHERE d.%I = $1'
+                          || '   AND d.%I IS NOT NULL'
+                          || '   AND btrim(d.%I::text) <> $2)',
+                          v_famiglia.schema_tabella,
+                          v_famiglia.nome_tabella,
+                          v_famiglia.colonna_billing_account,
+                          v_famiglia.colonna_numero,
+                          v_famiglia.colonna_numero)
+                        INTO v_trovato
+                       USING p_billing_account_id, ''::text;
+
+                      IF v_trovato THEN
+                          RETURN true;
+                      END IF;
+                  END LOOP;
+
+                  RETURN false;
+              END;
+              $function$;
+              COMMENT ON FUNCTION anagrafiche.fn_ba_ha_storia_emittente(anagrafiche.billing_account.id%TYPE)
+              IS 'Questo billing account ha gia'' un documento NUMERATO su un registro? E'' il percorso felice del presidio sul cambio emittente del BA: si esce al PRIMO documento trovato, e le famiglie da guardare si leggono da vendite.famiglie_documento. ⭐ Esiste separata da anagrafiche.fn_get_storia_emittente_ba, e non e'' duplicazione: il guard gira su OGNI movimento di un mapping emittente-BA, e li'' cinque count(*) sarebbero il prezzo di un''informazione che non si usa — quanto grande sia la storia interessa solo alla frase del rifiuto, cioe'' quando si e'' gia'' deciso di rifiutare. E'' lo stesso schema di vendite.fn_get_next_progressivo, dove il bersaglio si compone dopo il no. ⭐ Il predicato e'' DERIVATO e non elencato: la regola decisa il 2026-08-30 e'' che ogni famiglia con un registro e'' per costruzione per-emittente, quindi e'' candidata a bloccare lo spostamento — e il sesto documento entra nella regola il giorno in cui si registra la sua famiglia, senza nessun elenco parallelo da tenere allineato. ⚠️ «Numerato» e non «esistente»: una bozza non ha congelato niente. Ne discende che una FATTURA IN BOZZA non blocca piu'' — prima si contava, perche'' il conteggio non guardava il numero — ed e'' voluto: e'' esattamente il caso per cui la finestra di correzione esiste, il cliente nato sotto l''emittente sbagliato prima che ci passi del lavoro vero. ⚠️ SQL DINAMICO: gli identificatori vengono dal catalogo e passano da %I, i valori da USING. Una riga di catalogo sbagliata romperebbe qui a runtime, ed e'' la ragione del guard vendite.trgfn_famiglie_documento_guard_riferimenti. ⚠️ SECURITY DEFINER: fatture e commesse hanno la RLS accesa, e da SECURITY INVOKER la storia di un ALTRO emittente sarebbe invisibile — la risposta sarebbe «nessuna storia, si puo'' spostare» proprio nel caso che deve bloccare. ℹ️ Input NULL -> false: la riga senza billing account e'' quella del gestore globale, e la guarda anagrafiche.fn_guard_ba_gestore_globale_storia. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-16.';

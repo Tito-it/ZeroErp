@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE TREDICI RIGHE DI dbops.fk_index_policy CHE IL LOTTO 1 RENDE MORTE
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezioni 4.4 → 4.7, 5
+#
+#   Ogni riga nomina una FK che non esiste piu': o e' caduta con la sua
+#   colonna (P-4, P-7, P-8), o ha cambiato nome con la tabella (P-5, P-6) e la
+#   riga col nome nuovo sta nel CSV del lotto (20260914-17). Le righe stanno
+#   nel mirror base fk_index_policy.csv, che e' di gennaio e NON si sveglia
+#   (linee-guida-sql 11.2): il file le tiene, il database no.
+#
+#   Sono innocue — apply_fk_index_policy() salta una riga `t` la cui FK non
+#   e' piu' in vw_fk_senza_indice e fa DROP INDEX IF EXISTS a vuoto su una
+#   `f` — ma un registro che nomina vincoli inesistenti e' un registro sporco,
+#   e la quattordicesima (fk_mag_causali_ambito) e' gia' uscita col 20260915-03.
+#   In CI: il mirror base le inserisce, questo DELETE le toglie subito dopo
+#   (20260915 > 20260116). Su dev: tutte trovate.
+#   Forma: per coordinate complete (schema, tabella, vincolo), come la PK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260915-12-delete-fk-index-policy-righe-ritirate-lotto1-mctit.yaml
+
+  - changeSet:
+      id: 20260915-12-delete-fk-index-policy-righe-ritirate-lotto1
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.fk_index_policy le tredici righe rese morte dal Lotto 1 di
+        magazzino (FK cadute con le colonne o rinominate con le tabelle): reservations
+        x3, movimenti x4, costo_medio, note_costo_medio, assets x2, trasferimenti x2. Il
+        mirror base e' dormiente e non cancella. Brief:
+        brief-db-magazzino-lotto-1-terreno-vuoto.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE (schema_name, table_name, constraint_name) IN (
+                   ('magazzino', 'reservations',  'fk_mag_reservations_articolo'),
+                   ('magazzino', 'reservations',  'fk_mag_reservations_magazzino'),
+                   ('magazzino', 'reservations',  'fk_mag_reservations_ubicazione'),
+                   ('magazzino', 'movimenti',     'fk_mag_movimenti_magazzino_dest'),
+                   ('magazzino', 'movimenti',     'fk_mag_movimenti_ubicazione_from'),
+                   ('magazzino', 'movimenti',     'fk_mag_movimenti_ubicazione_to'),
+                   ('magazzino', 'movimenti',     'fk_mag_movimenti_uom'),
+                   ('magazzino', 'costo_medio',   'fk_mag_costo_medio_magazzino'),
+                   ('magazzino', 'note_costo_medio', 'fk_note_costo_medio_testata'),
+                   ('magazzino', 'assets',        'fk_mag_assets_magazzino'),
+                   ('magazzino', 'assets',        'fk_mag_assets_ubicazione'),
+                   ('magazzino', 'trasferimenti', 'fk_mag_rettifiche_sorgenti_tipo'),
+                   ('magazzino', 'trasferimenti', 'fk_mag_trasferimenti_sorgenti_tipo')
+               );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le righe tornano dal mirror base al suo prossimo risveglio. Nessun INSERT qui.
+              SELECT 1;

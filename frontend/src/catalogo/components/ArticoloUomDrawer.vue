@@ -340,7 +340,7 @@ const onClose = useDrawerClose(emit)
           </Column>
           <Column field="factor_to_base" :header="t('catalogo.col_fattore')" style="width: 70px;">
             <template #body="{ data }">
-              <span class="font-mono">{{ data.factor_to_base }}</span>
+              <span class="app-mono">{{ data.factor_to_base }}</span>
             </template>
           </Column>
           <Column :header="t('catalogo.field_logistica')" style="width: 40px;">
@@ -385,7 +385,7 @@ const onClose = useDrawerClose(emit)
           <div class="form-field">
             <label>{{ t('catalogo.field_fattore') }} *</label>
             <InputNumber v-model="form.factor_to_base" :min="0" :min-fraction-digits="2"
-              :max-fraction-digits="6" class="w-full" :disabled="form.is_base"
+              :max-fraction-digits="6" :disabled="form.is_base"
               :invalid="campiErrati.includes('factor_to_base')"
             />
           </div>
@@ -422,14 +422,14 @@ const onClose = useDrawerClose(emit)
           <div class="form-field">
             <label>{{ t('catalogo.field_qty_step') }}</label>
             <InputNumber v-model="form.qty_step" :min="0.000001" :min-fraction-digits="0"
-              :max-fraction-digits="6" class="w-full" :disabled="form.forbid_fraction"
+              :max-fraction-digits="6" :disabled="form.forbid_fraction"
               :invalid="campiErrati.includes('qty_step')"
             />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_max_decimals') }}</label>
             <InputNumber v-model="form.max_decimals" :min="0" :max="6"
-              class="w-full" :disabled="form.forbid_fraction"
+              :disabled="form.forbid_fraction"
               :invalid="campiErrati.includes('max_decimals')"
             />
           </div>
@@ -482,11 +482,10 @@ const onClose = useDrawerClose(emit)
 </template>
 
 <style scoped>
-.font-mono { font-family: monospace; }
 .app-drawer-section {
   margin-top: 1rem;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid var(--app-border-color, #e0e0e0);
+  border-bottom: 1px solid var(--app-border-color);
 }
 .app-drawer-section h4 {
   margin: 0;

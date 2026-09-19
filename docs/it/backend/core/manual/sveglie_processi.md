@@ -2,9 +2,12 @@
 
 ## Scopo
 
-Dire **chi sveglia ogni processo automatico del backend**, con quale cadenza, e
-entro quanto il suo ultimo run vale ancora come segno di vita — da una sede
-sola, leggibile da due programmi.
+Dire **chi sveglia ogni processo automatico del backend**, con quale cadenza e
+**con quale riga di comando** — da una sede sola, leggibile da due programmi.
+
+⚠️ Fino al 2026-09-11 questa riga diceva anche *«entro quanto il suo ultimo run
+vale ancora come segno di vita»*: la tolleranza è il **contratto** del processo
+e vive in `dbops.processi.tolleranza_minuti`, non qui (vedi Regole).
 
 ## Contesto
 
@@ -38,10 +41,17 @@ per processo: `run_fatturazione_batch` ne ha due, una per corsia.
 | `unit` | string | nome dell'unit systemd, senza estensione |
 | `processo_codice` | string | `dbops.processi.codice` — l'attore che comparirà sul giornale dei run |
 | `forma` | `timer` \| `servizio` | un timer ha una cadenza; un servizio è sempre acceso |
+| `comando` | string[] | **dal 2026-09-14** — l'argv dopo `bin/run-command.sh` (`["digest_presidi", "--cadenza", "settimanale"]`), reso nel template come `__COMANDO__`. **Obbligatorio per ogni forma**, una lista non vuota, primo token = nome di un management command |
 | `oncalendar` | string \| null | cadenza default (`null` per i servizi) |
 | `abilita` | bool | se l'installer lo accende — **obbligatorio** |
-| `tolleranza_minuti` | int \| null | entro quanto l'ultimo run vale «vivo»; `null` = non si presidia da qui |
+| `avvio_manuale` | bool | **dal 2026-09-15** — «Esegui ora» è un gesto sensato su questa sveglia? **Obbligatorio** (anche sui servizi, dove vale `false` per natura e un `true` è rifiutato). ⛔ Non è `abilita`: quella dice se il *timer* è acceso su questa installazione, questa se il *pulsante* ha senso — un comando lungo per natura resta `false` anche il giorno in cui il suo timer si accende |
 | `nota` | string | il perché delle scelte, mostrato dall'installer per gli spenti |
+
+⛔ **`tolleranza_minuti` non è un campo**, e se compare il caricamento
+**fallisce**: dal 2026-09-11 il contratto di liveness vive in
+`dbops.processi.tolleranza_minuti` (seed `80_data/sql/dbops/processi.csv`) e lo
+legge `ProcessiRepository.contratti_liveness`. Fino a quel giorno la riga stava
+in questa tabella.
 
 ## Output
 
@@ -49,15 +59,30 @@ per processo: `run_fatturazione_batch` ne ha due, una per corsia.
 from apps.core.services.sveglie import (
     carica_sveglie,        # tuple[Sveglia, ...] — tutto il dichiarato, validato
     sveglie_di_processo,   # (processo_codice) -> tuple[Sveglia, ...]
-    tolleranza_minuti,     # (processo_codice) -> int | None
+    DEPLOY_DIR,            # backend/deploy/
     TEMPLATE_DIR,          # backend/deploy/systemd/
+    RUN_COMMAND,           # backend/bin/run-command.sh — il wrapper che systemd
+                           # esegue e che «Esegui ora» lancia come sottoprocesso
 )
 ```
 
-Consumer: `coda_lavori.gestione_service._liveness_worker` (la soglia del badge
-code) e — dall'altro lato — `backend/bin/install-timers.sh`, che dallo stesso
-file prende l'`OnCalendar` da sostituire nei template e la lista di cosa
-abilitare.
+`Sveglia` porta `unit`, `processo_codice`, `forma`, **`comando`**
+(`tuple[str, ...]`), `oncalendar`, `abilita`, **`avvio_manuale`**, `nota` e la
+proprietà `e_timer`.
+⚠️ `tolleranza_minuti(...)` **non esiste più** dal 2026-09-11 (sopra).
+
+Consumer: `notifica_digest_muto_handler` (le unit del processo muto, per la
+mail), `test_contratto_liveness_vs_deploy` (la cadenza contro il contratto) e —
+dall'altro lato — `backend/bin/install-timers.sh`, che dallo stesso file prende
+l'`OnCalendar` **e il comando** da sostituire nei template e la lista di cosa
+abilitare. ⭐ **Dal 2026-09-15 `comando` ha il consumer per cui è nato**:
+`esegui_processo_handler` (il drenatore) lancia `[RUN_COMMAND, *comando]` come
+sottoprocesso — la stessa riga del timer, per costruzione — e
+`avvio_manuale.py` legge `forma`, `avvio_manuale` e `abilita` per il predicato
+«si può lanciare a mano?» (capability `can_esegui_ora` nel dettaglio del
+processo, rifiuto dell'endpoint `esegui-ora/`, ricontrollo dell'handler).
+Brief [brief-db-avvio-manuale-di-un-processo](../../../dev/work-done/brief-db-avvio-manuale-di-un-processo.md),
+piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-done/piano-be-fe-avvio-manuale-di-un-processo.md).
 
 ## Regole
 
@@ -70,11 +95,37 @@ abilitare.
 - ⛔ **`abilita` si dichiara, non si omette.** Con un default il silenzio
   varrebbe «spento» — cioè un processo che non parte, il guasto-per-assenza per
   cui questo file esiste, reintrodotto dalla porta di servizio.
-- ⚠️ **`tolleranza_minuti: null` non è zero**: significa «non si presidia la
-  liveness da qui», e il lettore lo distingue con `is None` (un `or` li
-  confonderebbe). Per un processo con più sveglie si prende la tolleranza **più
-  larga**: basta che una corsia abbia girato perché il processo sia vivo, e la
-  più stretta darebbe un falso allarme.
+- ⛔ **La tolleranza NON sta qui** (dal 2026-09-11, brief
+  `brief-db-quattro-processi-senza-presidio.md` D5). Cadenza e tolleranza sono
+  due fatti: la cadenza è *come il deploy onora* il processo e resta nel JSON;
+  la tolleranza è il *contratto* del processo, uguale su ogni installazione, e
+  il lettore che ne ha più bisogno è il database (`vw_processi_programmazione`,
+  il guardiano pgAgent). `carica_sveglie` **rifiuta** il campo se ricompare.
+  Il confronto fra la cadenza di qui e quel contratto è
+  `test_contratto_liveness_vs_deploy`.
+- ⭐ **La riga di comando sta qui, e il template porta `__COMANDO__`** (dal
+  2026-09-14). Il motivo è «Esegui ora»: il pulsante lancia **lo stesso**
+  comando del timer, meno l'orario, e il backend non può leggerlo da un file
+  `.service`. Una sede sola: la riga che il timer esegue *è* quella che il
+  pulsante esegue, e non possono divergere. ⛔ Un `comando` ricopiato nel JSON
+  *accanto* a una riga cablata nel template sarebbe la seconda sede — quella
+  che resta indietro, e qui «indietro» vuol dire un pulsante che lancia una
+  cosa diversa dal timer. Lo prova `test-install-timers.sh` (test 6: nessun
+  `ExecStart` cablato; test 7: l'unit reso porta l'argv del JSON).
+  - **Una lista di token, mai una stringa**: systemd spezza l'`ExecStart`
+    sugli spazi, `subprocess` passa ogni token intero — «come si spezza»
+    sarebbe una regola scritta due volte.
+  - **Whitelist stretta sui token** (`_ARGOMENTO_AMMESSO`): niente spazi,
+    quote, `%` (specifier systemd), `$` (ambiente), `|`/`&`/`\` (il `sed`
+    dell'installer). Si allarga quando un comando *vero* ne ha bisogno: un
+    cancello che boccia un carattere di troppo si vede in CI, uno che ne
+    lascia passare uno di meno si vede sull'host.
+  - **Il primo token è un management command che esiste** nel backend
+    (`test_sveglie.py`, test 13): un refuso non fallirebbe in CI ma sull'host,
+    alla prima corsa, con un `Unknown command` nel journal che nessuno legge.
+  - **Obbligatorio anche per `forma = servizio`**: ogni `.service` ha un
+    `ExecStart`, e una regola con un'eccezione sono due regole. Che «Esegui
+    ora» valga solo per i timer lo decide chi rende il pulsante, sulla `forma`.
 - ⚠️ **Il dichiarato è il default di progetto, non lo stato di un host.** Un host
   può avere un `OnCalendar` diverso o un timer spento a mano: per sapere cosa
   gira davvero c'è `maintenance.job_run_log`. Il valore sta nel **confronto** —
@@ -105,8 +156,13 @@ abilitare.
 | `test_ogni_processo_del_backend_ha_una_sveglia` | ⭐ un processo che il backend dichiara di eseguire e che **nessun unit fa partire** — nomina il processo scoperto |
 | `test_nessun_template_orfano` | un unit su disco che il dichiarato non nomina: non lo installa nessuno |
 | `test_cartella_template_esiste_e_non_e_vuota` | che i due sopra passino **a vuoto** se il layout cambia |
-| `test_worker_del_badge_hanno_una_tolleranza` | che il ripiego da 10 minuti diventi la strada normale in silenzio |
-| `scripts/tests/test-install-timers.sh` | che si accendano unit diversi da quelli dichiarati (vedi sotto) |
+| `test_worker_del_badge_hanno_un_contratto` | che il ripiego da 10 minuti diventi la strada normale in silenzio (legge il seed `processi.csv`) |
+| `test_comando_obbligatorio_lista_non_vuota` · `test_comando_con_spazi_o_metacaratteri_e_rifiutato` | un `comando` assente, stringa, o con token che systemd e `subprocess` leggerebbero in due modi |
+| `test_il_comando_dichiarato_esiste_nel_backend` | ⭐ un `comando` che nomina un management command inesistente: fallirebbe sull'host, non in CI |
+| `test_avvio_manuale_obbligatorio_e_bool` · `test_un_servizio_non_si_avvia_a_mano` · `test_il_drenatore_non_e_candidato_e_almeno_un_timer_si` (`test_sveglie.py` 14-16) | «Esegui ora» dal drenatore, o su un servizio, nato da una dimenticanza: `avvio_manuale` si dichiara, e la unit del drenatore si legge da `sveglie_di_processo`, non ricopiata |
+| `test_avvio_manuale_tetto` | un tetto del sottoprocesso più largo della metà della tolleranza del drenatore o della soglia del reaper: `MUTO` a video, o un lavoro in `ERRORE` mentre il comando sta finendo |
+| `scripts/tests/test-install-timers.sh` (test 0-5) | che si accendano unit diversi da quelli dichiarati (vedi sotto) |
+| `scripts/tests/test-install-timers.sh` (test 6-7) | una **seconda sede** del comando: un template con `ExecStart` cablato, o un unit reso che non porta l'argv del JSON |
 | `systemd-analyze verify` (CI) | un unit sintatticamente invalido |
 
 ⭐ **Le ultime due sono due metà distinte**: `systemd-analyze verify` dice che
@@ -138,9 +194,27 @@ Nessuna: è un file di progetto, e il modulo non apre connessioni.
 
 ## Note di migrazione
 
-- **Aggiungere una sveglia** = una voce in `sveglie.json` + la coppia di
-  template in `deploy/systemd/` (solo il `.service` per un servizio sempre
-  acceso) + `sudo backend/bin/install-timers.sh`. Niente altro.
+- **Aggiungere una sveglia** = una voce in `sveglie.json` (con il suo
+  `comando`) + la coppia di template in `deploy/systemd/` (solo il `.service`
+  per un servizio sempre acceso; l'`ExecStart` è
+  `__APP_DIR__/bin/run-command.sh __COMANDO__`, mai la riga scritta a mano) +
+  `sudo backend/bin/install-timers.sh`. Niente altro.
+- **2026-09-14 — `comando` nel JSON, `__COMANDO__` nei template.** Gli otto
+  `ExecStart` resi sono **identici** a prima (il campo è nato dalla riga che
+  ogni template eseguiva): sugli host cambia il template, non l'unit
+  installato. Prerequisito di deploy di «Esegui ora» (analisi
+  `analisi-riavvio-processi-da-interfaccia.md` §9-bis, punto 2); l'handler,
+  `registered_job` con origine e attore dall'ambiente, l'endpoint e il
+  pulsante sono arrivati il 15-09 (voce sotto).
+- **2026-09-15 — `avvio_manuale` nel JSON, `RUN_COMMAND` nel modulo, e i
+  consumer di `comando` in servizio.** Otto voci: `false` su drenatore
+  (`zeroerp-coda-lavori`: «Esegui ora» lo esegue lui), sui due giri di
+  fatturazione (lunghi per natura: terrebbero fermo il drenatore, decisione 2a
+  di Tid — brief §8.5) e sul listener (servizio); `true` su digest ×2,
+  `send-pending-emails`, `coda-stampa`. `install-timers.sh` **non** legge il
+  campo — non è un fatto di systemd — e `test-install-timers.sh` non cambia.
+  Chi lo legge: `avvio_manuale.py` (predicato), `esegui_processo_handler`
+  (drenatore), `ProcessiService` (capability nel dettaglio, verbo).
 - `WORKER_ATTIVO_SOGLIA_MINUTI` **non esiste più**: era pubblico nel modulo
   `gestione_service` e non aveva altri consumatori. Il numero a video non
   cambia — 10 minuti per entrambi i drainer — cambia chi lo dichiara.

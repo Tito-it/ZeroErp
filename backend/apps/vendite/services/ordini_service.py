@@ -26,7 +26,7 @@ from django.db import DatabaseError, transaction
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
-from apps.core.services.payload_helpers import make_db_errors_translator
+from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -132,11 +132,32 @@ _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
+    "data_consegna_richiesta_cliente", "data_consegna_confermata",
 })
 _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
+    "data_consegna_richiesta_cliente", "data_consegna_confermata",
 })
+# Le due date di consegna della riga (brief-db-modifiche-certe-ciclo-vendita-e-
+# articolo, Blocco A): la RICHIESTA e' del cliente, la CONFERMATA e' la nostra
+# promessa. Entrambe nullable: ometterle resta legittimo, e in PATCH un `null`
+# esplicito AZZERA (semantica dei documenti vendite, come per `meta`).
+# ⛔ Nessun CHECK fra le due, ed e' una scelta del modello (brief §2.3): si puo'
+#    confermare PRIMA di quanto chiesto. Qui si controlla solo la FORMA — una
+#    data malformata e' un 400 col campo acceso, non un 500 dal DB.
+# ⚠️ `data_consegna_confermata` e' «quando ci si impegna», cioe' si decide alla
+#    conferma e puo' cambiare dopo; ma le righe si scrivono solo in DRAFT
+#    (`_STATI_RIGHE_MODIFICABILI`). Il DB non mette nessun guard di stato su
+#    questa colonna, di proposito: il limite alla bozza e' solo di qui, ed e'
+#    dichiarato nel brief (§5.5, 1-bis) come fatto da decidere — non da questo
+#    cantiere.
+_DATE_RIGA: tuple[str, ...] = (
+    "data_consegna_richiesta_cliente", "data_consegna_confermata",
+)
+# Validator delle date di riga: `optional_date` solleva `E_ORD_VALIDAZIONE` con
+# `context.field` = la chiave, cosi' l'input si accende (`campiErrati`).
+_V_RIGA = PayloadValidator(validation_code="E_ORD_VALIDAZIONE")
 
 
 # ══════════════════════════════════════════════════════════
@@ -867,6 +888,7 @@ def gestisci_riga(
     )
 
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RIGA}
+    _parse_date_riga(data, function_name=f"{_FN}.gestisci_riga")
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
         articolo_id is not None and str(articolo_id).strip() != "",
@@ -921,6 +943,8 @@ def gestisci_riga(
             sconto_percentuale=data.get("sconto_percentuale"),
             iva_id=iva_id_riga,
             meta=meta_riga,
+            data_consegna_richiesta_cliente=data.get("data_consegna_richiesta_cliente"),
+            data_consegna_confermata=data.get("data_consegna_confermata"),
         )
         riga_id = int(created["id"])
 
@@ -967,6 +991,7 @@ def aggiorna_riga(
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )
+    _parse_date_riga(data, function_name=f"{_FN}.aggiorna_riga")
     with _db_errors("aggiorna_riga"):
         repo.update_riga(riga_id, **data)
     return {"ordine_id": ordine_id, "riga_id": riga_id, "updated": True}
@@ -1286,6 +1311,17 @@ def _data_riferimento(testata: dict[str, Any]) -> date:
         function_name=f"{_FN}._data_riferimento",
     )
     return date.fromisoformat(str(raw))
+
+
+# Scopo: Converte IN LOCO le date di consegna presenti in `data` (gia'
+#        normalizzato con `empty_to_none`): stringa ISO -> `date`, `None`
+#        invariato (assente o azzeramento). Malformata -> 400 col campo.
+def _parse_date_riga(data: dict[str, Any], *, function_name: str) -> None:
+    for chiave in _DATE_RIGA:
+        if chiave in data:
+            data[chiave] = _V_RIGA.optional_date(
+                data, chiave, function_name=function_name,
+            )
 
 
 # Scopo: Risolve il prezzo unitario riga via PricingService (BB condiviso,

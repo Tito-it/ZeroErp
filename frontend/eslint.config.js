@@ -36,6 +36,22 @@ export default defineConfig([
   js.configs.recommended,
   ...pluginVue.configs['flat/essential'],
 
+  {
+    // ⛔ Un nome usato nel TEMPLATE e non dichiarato nello `<script setup>`
+    //    non e' un errore di compilazione: diventa `_ctx.<nome>` = undefined, e
+    //    solleva nel render della prima riga che lo tocca — cioe' solo con i
+    //    dati che lo raggiungono. Successo il 2026-09-17 su `LottiLista.vue`:
+    //    `MANAGE_ICONS.ERRORE` senza import, lista bianca SOLO sulla scheda che
+    //    aveva un lotto in ERRORE, conteggio corretto nell'etichetta accanto.
+    //    Ne' la build ne' `flat/essential` lo vedono. Questa regola si':
+    //    accesa il 2026-09-17 a zero segnalazioni sul codebase.
+    name: 'app/template-nomi-non-dichiarati',
+    files: ['**/*.vue'],
+    rules: {
+      'vue/no-undef-properties': 'error',
+    },
+  },
+
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
 
   skipFormatting,

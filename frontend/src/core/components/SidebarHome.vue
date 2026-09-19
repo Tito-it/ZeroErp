@@ -46,7 +46,6 @@ function handleHomeClick() {
     <SidebarItem
       :icon="HOME_ITEM.icon"
       :label="t('nav.home')"
-      class="home-link"
       @click="handleHomeClick"
     />
 

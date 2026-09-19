@@ -176,7 +176,7 @@ export function useDrawerAutosaveBozza({
       return
     }
     confirmAction({
-      title: messages.abbandonoTitolo,
+      header: messages.abbandonoTitolo,
       message: messages.abbandonoMessage,
       acceptLabel: messages.abbandonoConferma,
       danger: true,

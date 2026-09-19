@@ -22,11 +22,22 @@
 //       ⚠️ Handler PROPRIO e non quello del chiamante: cosi' una lista che si
 //       ricarica non azzera i `campiErrati` del form accanto, che e' il rosso
 //       sui campi che l'operatore sta correggendo.
+//
+//       🔴 GUARD DI VERSIONE (2026-09-14): due `carica` in volo sullo stesso
+//       lettore — l'operatore cambia fattura mentre le rate della prima non
+//       sono ancora arrivate — possono tornare in ordine inverso, e la
+//       risposta STANTIA sovrascriverebbe quella giusta: a video le rate (o il
+//       saldo, o i canali) di un ALTRO documento, senza nessun errore. E'
+//       esattamente il caso 2 di `useFetchVersion`: ogni `carica` marca la
+//       propria chiamata, e al ritorno scrive solo se e' ancora l'ultima.
+//       `azzera` invalida quelle in volo — un reset non deve farsi ripopolare
+//       da una risposta partita prima.
 // ------------------------------------------------------------
 
 import { ref } from 'vue'
 
 import { useApiHandler } from './useApiHandler'
+import { useFetchVersion } from './useFetchVersion'
 
 // @param fetcher  (...args) => Promise<response axios>
 // @param estrai   trasforma il payload in cio' che serve (default: identita')
@@ -35,6 +46,7 @@ import { useApiHandler } from './useApiHandler'
 // @returns {{dati, caricati, errore, loading, carica, azzera}}
 export function useLetturaTreStati(fetcher, { estrai = (d) => d, vuoto = null } = {}) {
   const { execute, loading } = useApiHandler()
+  const versione = useFetchVersion()
 
   const dati = ref(vuoto)
   // ⭐ I DUE flag insieme dicono i tre stati:
@@ -46,14 +58,21 @@ export function useLetturaTreStati(fetcher, { estrai = (d) => d, vuoto = null } 
   const errore = ref(false)
 
   function azzera() {
+    versione.invalidate()
     dati.value = vuoto
     caricati.value = false
     errore.value = false
   }
 
+  // Scopo: legge, e scrive l'esito SOLO se nel frattempo non e' partita una
+  //        lettura piu' nuova (o un `azzera`). Una risposta scartata torna
+  //        `null` e non tocca niente: lo stato resta quello della lettura
+  //        corrente, che arrivera' per conto suo.
   async function carica(...args) {
     azzera()
+    const mia = versione.tag()
     const risposta = await execute(() => fetcher(...args))
+    if (!versione.isCurrent(mia)) return null
     // ⛔ `=== null` e non un test di verita': `useApiHandler` risponde `null`
     //    SOLO in caso di errore, e uno `0` o un array vuoto legittimi non
     //    devono leggersi come un fallimento.

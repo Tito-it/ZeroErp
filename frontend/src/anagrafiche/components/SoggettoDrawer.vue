@@ -518,13 +518,13 @@ async function handleSave() {
           <div class="form-field">
             <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
             <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
-              option-label="label" option-value="value" class="w-full"
+              option-label="label" option-value="value"
               :disabled="isReadonly" />
           </div>
           <div class="form-field">
             <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
             <Select v-model="soggetto.form.split_payment" :options="paOptions"
-              option-label="label" option-value="value" class="w-full"
+              option-label="label" option-value="value"
               :disabled="isReadonly" />
           </div>
         </div>
@@ -535,7 +535,7 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
-        <div class="indirizzi-riepilogo">
+        <div>
           <div v-if="indirizziRiepilogo.length > 0" class="indirizzi-riepilogo-list">
             <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="indirizzi-riepilogo-item">
               <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
@@ -565,7 +565,7 @@ async function handleSave() {
           <div v-if="contiBancariRiepilogo.length > 0" class="riepilogo-list">
             <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="riepilogo-item">
               <Tag :value="cb.uso" severity="info" />
-              <span class="riepilogo-detail" style="font-family: monospace;">{{ cb.iban }}</span>
+              <span class="riepilogo-detail app-mono">{{ cb.iban }}</span>
               <span v-if="cb.filiale_nome" class="riepilogo-detail">{{ cb.filiale_nome }}</span>
             </div>
           </div>

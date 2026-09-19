@@ -154,7 +154,6 @@ const areaColumns = computed(() =>
           <Tag
             :value="getLivelloLabel(t, data[col.field])"
             :severity="getLivelloSeverity(data[col.field])"
-            class="w-full"
           />
         </template>
       </Column>

@@ -29,6 +29,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.services._smistamento_gate_helpers import (
     transiziona_a_evaso_se_smistato,
@@ -61,6 +62,23 @@ _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
+# La data di consegna RICHIESTA dal cliente sulla riga (brief-db-modifiche-certe-
+# ciclo-vendita-e-articolo, Blocco A). Sul preventivo c'e' solo la richiesta:
+# la conferma nasce sull'ordine, e `fn_push_preventivo_a_ordine` porta avanti
+# questa. Nullable: ometterla resta legittimo; in PATCH `null` esplicito azzera.
+# Solo la FORMA si controlla qui (una data malformata e' un 400 col campo
+# acceso, non un 500 dal DB): nessun CHECK di dominio, per scelta (brief §2.3).
+_CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
+_V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
+
+
+# Scopo: La data di consegna richiesta dal payload di riga: `None` se assente,
+#        vuota o `null`; `date` se ISO valida; 400 col campo se malformata.
+def _data_consegna_da_payload(payload: dict[str, Any], *, function_name: str) -> date | None:
+    normalizzato = {_CHIAVE_DATA_CONSEGNA: empty_to_none(payload.get(_CHIAVE_DATA_CONSEGNA))}
+    return _V_RIGA.optional_date(
+        normalizzato, _CHIAVE_DATA_CONSEGNA, function_name=function_name,
+    )
 
 
 # ══════════════════════════════════════════════════════════
@@ -347,7 +365,10 @@ def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
 #    parlante. Defense-in-depth: il trigger DB
 #    trgfn_preventivi_guard_utility_istanza_coerenza applica la stessa regola.
 #  - emittente_fiscale_id: opzionale nel payload. Se None il trigger DB
-#    trgfn_preventivi_default_emittente lo valorizza da GUC app.current_user_id.
+#    script.trgfn_default_emittente_fiscale (BB unico dal 2026-09-15; la copia
+#    trgfn_preventivi_default_emittente e' droppata) lo valorizza da GUC
+#    app.current_user_id, e senza sessione risolvibile solleva
+#    E_EMITTENTE_NON_RISOLTO.
 #    Specificarlo esplicito solo per admin globale (utente senza emittente
 #    assegnato che sceglie l'emittente del documento).
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
@@ -863,6 +884,15 @@ def gestisci_riga(
     # Validazione vincoli economici (prezzo >= 0, quantita > 0) prima del
     # resolver: anticipa i CHECK DB con messaggio parlante.
     _validate_riga_economic(payload, function_name=f"{_FN}.gestisci_riga")
+    # La FORMA della data di consegna si controlla QUI, con le altre
+    # validazioni di payload, e non al momento dell'INSERT: fra i due punti
+    # stanno il resolver del prezzo, il gate L2 e la richiesta L3, che crea
+    # una pratica e MANDA UN'EMAIL (side-effect fuori dalla transazione) — una
+    # data malformata scoperta dopo avrebbe spedito l'avviso di una pratica
+    # poi annullata dal rollback.
+    data_consegna_richiesta = _data_consegna_da_payload(
+        payload, function_name=f"{_FN}.gestisci_riga",
+    )
 
     # Gating L1 sui componenti_overrides (form atomic 2026-05-12): se il
     # payload contiene overrides ma l'operatore non ha l'azione
@@ -964,6 +994,7 @@ def gestisci_riga(
         meta=merged_meta or None,
         stato_approvazione_prezzo=stato_approvazione,
         pratica_approvazione_prezzo_id=pratica_id_l3,
+        data_consegna_richiesta_cliente=data_consegna_richiesta,
     )
     # L3: registra riga_id nel meta della pratica per permettere all'approver
     # di risalire alla riga dalla coda (UI ApprovazioniPrezzoListView).
@@ -1120,6 +1151,12 @@ def aggiorna_riga(
     ):
         if key in payload:
             update_fields[key] = payload[key]
+    # La data di consegna richiesta: presente nel payload -> si scrive (anche
+    # `null`, che azzera); assente -> non si tocca.
+    if _CHIAVE_DATA_CONSEGNA in payload:
+        update_fields[_CHIAVE_DATA_CONSEGNA] = _data_consegna_da_payload(
+            payload, function_name=f"{_FN}.aggiorna_riga",
+        )
 
     pratica_id_l3: int | None = None
 
@@ -1315,44 +1352,41 @@ def _coerce_meta_to_dict(value: Any) -> dict[str, Any]:
 #        Chiamata sia da gestisci_riga (create) sia da aggiorna_riga (update).
 #        Salta i campi assenti dal payload: in update non tutti i campi
 #        passano sempre.
+#        ⚠️ La coercizione (da `str`, bool e NaN rifiutati) e' del BB
+#        `PayloadValidator`: fino al 2026-09-18 le due copie inline qui sotto
+#        costruivano `Decimal("NaN")` senza protestare, e `NaN >= 0` solleva
+#        `InvalidOperation` — un 500 al posto del 400 col campo — mentre
+#        `NaN != 0` e' vero, quindi una quantita' NaN passava fino al DB, dove
+#        `NaN > 0` e' vero e il CHECK la lascia entrare. Qui restano i guard
+#        stretti di dominio, con la loro frase.
 def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> None:
-    if "prezzo_unitario" in payload and payload["prezzo_unitario"] is not None:
-        try:
-            prezzo = Decimal(str(payload["prezzo_unitario"]))
-        except Exception:
-            ErrorManager.raise_error(
-                code="E_PREV_VALIDAZIONE",
-                message="Prezzo unitario non numerico.",
-                detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
-                function_name=function_name,
-            )
-            raise AssertionError("unreachable")  # pragma: no cover
+    prezzo = _V_RIGA.optional_decimal(
+        payload, "prezzo_unitario",
+        message="Prezzo unitario non numerico.", function_name=function_name,
+    )
+    if prezzo is not None:
         ErrorManager.require(
             prezzo >= 0,
             code="E_PREV_VALIDAZIONE",
             message="Il prezzo unitario non puo' essere negativo.",
             detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
+            context={"field": "prezzo_unitario"},
             function_name=function_name,
         )
 
     # Sorgente quantita = `qta_operativa` (UoM operativa scelta dall'operatore);
     # `quantita` (base) e' derivata dal trigger DB e non arriva piu' dal FE.
-    if "qta_operativa" in payload and payload["qta_operativa"] is not None:
-        try:
-            qta_operativa = Decimal(str(payload["qta_operativa"]))
-        except Exception:
-            ErrorManager.raise_error(
-                code="E_PREV_VALIDAZIONE",
-                message="Quantita' non numerica.",
-                detail=f"qta_operativa={payload['qta_operativa']!r}",
-                function_name=function_name,
-            )
-            raise AssertionError("unreachable")  # pragma: no cover
+    qta_operativa = _V_RIGA.optional_decimal(
+        payload, "qta_operativa",
+        message="Quantita' non numerica.", function_name=function_name,
+    )
+    if qta_operativa is not None:
         ErrorManager.require(
             qta_operativa != 0,
             code="E_PREV_VALIDAZIONE",
             message="La quantita' deve essere diversa da zero.",
             detail=f"qta_operativa={payload['qta_operativa']!r}",
+            context={"field": "qta_operativa"},
             function_name=function_name,
         )
 

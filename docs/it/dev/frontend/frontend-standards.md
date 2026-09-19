@@ -163,9 +163,22 @@ logica di navigazione.
 ### Topbar
 
 - Altezza fissa 48px
-- Profilo utente con badge ruolo (ADMIN/OPERATIVO)
-- Pulsante ricerca universale (Ctrl+K)
-- Sessioni attive con pannello espandibile
+- Selettore dell'emittente attivo, **titolo dell'area** (il dominio della rotta
+  con la sua icona — non la pagina: quella la dicono già la scheda e il
+  breadcrumb; decisione di Tid 2026-09-19), chip del contesto globale
+- Iniziali dell'utente (chip `SUPER_ADMIN` per chi lo è) e data
+- ⭐ **Il gruppo «salute del sistema»** (`.topbar-actions-inline`), due contatori
+  ambientali gemelli, entrambi sopra `useRefreshPeriodico`, entrambi spenti su
+  403 per chi non passa la porta: il **badge delle code** (`pi-inbox`, lavori ·
+  stampa, warn se un worker è giù, 60 s, click → drawer code) e, dal 2026-09-18,
+  il **pallino dei presidi** (`NAV_ICONS.PROCESSI_AUTOMATICI`, allarmi · non
+  letti, **verde con lo `0` quando è tutto a posto**, 300 s, click → «Processi
+  automatici»). ⛔ Stanno **qui e non accanto alle iniziali**: parlano del
+  sistema, non «notifiche per te» (decisione #8 di Tid). Catalogo BB:
+  `useQueueCountsPolling`, `usePresidiPolling`
+- Pulsante ricerca universale (Ctrl+K) e assistente AI (se abilitato)
+- Kebab utente (preferiti, lingua, tema; su mobile promuove anche le voci inline)
+  e logout
 
 ### Content Tabs
 
@@ -274,7 +287,7 @@ Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
 > `DataTable` a mano: quella decisione la prende la regola zero.
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
-- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25.
+- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25 — e dal 2026-09-18 si dichiarano con l'opzione `limit` di `useListaStoreCore`/`createListaStore` (`limit: PAGINATION.COMPACT_ROWS`), non riscrivendo lo store a mano. Il caso che l'ha fatta nascere: la **lista dentro un dialog**, che è alta dieci righe (vedi §`AppDialog`, «Dialog con una lista dentro»).
 - **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
 - **Font compatto** sul paginator (`0.8rem`)
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
@@ -306,6 +319,49 @@ ritirano mai. Le ritirate finiscono nell'expansion row riusando gli slot
 `larghezza_min`: la soglia riusa `larghezza_default`. Le liste responsive sono
 **escluse dalle soglie min-width 8/10/12 colonne** (`.app-datatable--responsive`
 in `main.css`): il packing garantisce già che le colonne entrino.
+
+#### ⛔ La larghezza di catalogo è un TETTO, non un minimo (2026-09-18)
+
+> **Regola**: su una lista responsive **non compare mai una scrollbar
+> orizzontale**, e la colonna azioni è **sempre l'ultima a video**. Le colonne
+> che non entrano stanno nella riga di espansione, e «Espandi tutte» le apre
+> tutte insieme. (Decisione di Tid, rilievo in-app sui preventivi.)
+
+🔴 **Il difetto che questa regola chiude era controintuitivo**: la scrollbar
+compariva a sidebar **chiusa**, non aperta. Il packing somma le larghezze
+**dichiarate**, ma la tabella è `width: max-content` — ogni colonna era larga
+quanto il suo contenuto più lungo, e la larghezza di catalogo era solo un
+**minimo**. A sidebar aperta il ritiro compensava per caso; con più spazio il
+packing diceva «entra tutto» sui numeri dichiarati, il browser rendeva quelli
+veri, e la differenza usciva come scrollbar. *Il packing faceva una promessa che
+il rendering non manteneva.*
+
+**Come si chiude**: `<ListaConfigurabile>` passa la larghezza anche come
+**tetto** della cella e dell'intestazione (`--col-w` + `.app-lista-cella`,
+`main.css` §liste responsive). Un contenuto più lungo va in **ellissi** su una
+riga, col testo intero nel `title`. Così la somma resa **è** quella dichiarata:
+la scrollbar non può comparire, e la colonna azioni — alla sua larghezza
+naturale, mai tagliata — resta l'ultima.
+
+⭐ **Ne discende che una larghezza di catalogo troppo stretta si VEDE** (una
+colonna piena di «…») invece di produrre una scrollbar muta: si corregge
+dall'amministrazione, è un dato di `ui.lista_colonna`, non un intervento sul
+codice.
+
+⚠️ **L'unica larghezza che il catalogo non conosce è quella dei pulsanti inline
+della colonna azioni**, e la dichiara il chiamante: prop `azioni-inline`
+(default 4). Fino a quel giorno era una costante — 130px, «~3-4 pulsanti» —
+che copriva **tre** pulsanti (2rem + 0.25rem di gap): Soggetti, Fornitori e
+CommessaGestione ne hanno quattro, Clienti sei, e la differenza usciva dal
+contenitore senza che il packing lo sapesse. Un numero più basso del vero non
+taglia niente, ma riporta la scrollbar: chi aggiunge una quinta azione di riga
+alza la prop.
+
+⚠️ Nello stesso giro sono entrate nel conto le colonne di **chrome** che il
+packing ignorava: la checkbox di selezione e l'expander sempre presente delle
+liste con dettaglio inline (48px l'una).
+
+Presidio: `useResponsiveColumns.spec.js`.
 
 > **⚠️ DEROGA DOCUMENTATA allo standard "responsive CSS-first, niente JS di
 > detection".** Le media query CSS reagiscono solo a `window.innerWidth`, ma
@@ -506,7 +562,22 @@ finche' l'utente non applica una ricerca (min 3 caratteri) o un filtro.
 | `hasSearched` | Nello store Pinia — `ref(false)`, diventa `true` dopo il primo fetch |
 | Guardia in `fetchList()` | Nello store — blocca la chiamata API se non ci sono filtri attivi |
 
-**1. Store — aggiungere `hasSearched` e guardia in `fetchList()`:**
+**1. Store — la guardia la porta il building block, non si riscrive.**
+
+⛔ **Uno store-lista NON si scrive a mano** (dal 2026-09-18): filtri nella forma
+di `useSearchTable`, fetch paginata, guardia empty-state, `hasSearched`,
+`fetchSospesa`, anti-race e `buildParams` (search ≥3, filtri non-null, pagina,
+ordinamento) vivono in **`useListaStoreCore`** — via `createCrudStore` (lista +
+CRUD), `createListaStore` (sola lista, anche col padre nel path) o chiamato
+direttamente dentro il `defineStore` quando lo store è quasi tutto dominio.
+Fino a quel giorno **venti** store tenevano la propria copia del blocco qui
+sotto, ognuna con la sua piccola differenza (un `'ASC'` maiuscolo, un ripiego
+diverso, una ricerca a qualunque lunghezza): la casa di quelle differenze sono
+le opzioni del core (`ricercaCorta`, `orderDirDefault`, `paramNames`), non un
+`fetchList` riscritto. Le liste che partono vuote dichiarano `gateKeys`.
+
+Il blocco che segue è **la regola che il BB applica**, lasciato qui perché si
+legga cosa fa — non un modello da copiare in uno store:
 
 ```js
 const hasSearched = ref(false)
@@ -644,24 +715,63 @@ cambiare i 60 giorni e' una riga in `core/utils/date`
 
 Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise da tutte le liste.
 
-### Interruttore «mostra i nascosti» — `ToggleNascoste`
+### Interruttore di filtro — `FiltroToggle` + `bindToggle`
 
-Quando una lista lascia fuori di default degli elementi che **esistono** (righe
-archiviate, lotti annullati) e li rimette dentro a richiesta, l'interruttore è
-il BB `ToggleNascoste`: `[switch] Mostra annullati (3)`, con il **numero** di
-ciò che resta fuori finché è spento. ⛔ Non un `ToggleSwitch` scritto in
-pagina: il 2026-09-12 erano già due copie con due CSS e due chiavi plurali.
+Un filtro acceso/spento nella toolbar di una lista («Mostra storico», «Solo
+interne», «Solo negativa», «Mostra annullati») è il BB `FiltroToggle`:
+`[switch] Etichetta`. ⛔ Non un `ToggleSwitch` + `<label>` scritti in pagina:
+il 2026-09-18 erano **cinque** copie in quattro file, con lo stile inline
+ricopiato e un id inventato a mano per non collidere fra due schede — il root
+del BB è un `<label>`, e non ha bisogno di nessun id.
 
-- il numero lo **dichiara il backend** (`archiviate_count`, `annullati_count`):
-  spento e senza numero, «elenco pulito» e «tre righe messe via» si leggono
-  uguali — è la stessa regola di `ritirate_count` sul giornale;
-- la forma dell'etichetta è `Etichetta (N)` (decisione di Tid, 2026-09-12), non
-  una frase plurale: la chiave i18n è una, quella dell'interruttore;
-- il cambio ricarica **da pagina 1**: la pagina 3 dell'insieme piccolo può non
-  esistere in quello grande, e viceversa.
+Il **legame con lo store** non si scrive nel componente:
+`useStoreFilterBindings.bindToggle(storeKey, { on, off })`. Le stesse cinque
+copie avevano **tre** forme del legame (un `ref` + handler, un `computed`
+invertito, un `computed` che scrive `true | null`): `on`/`off` sono i due
+valori che lo store porta, e coprono tutte e tre.
 
-Consumer: `LottiListView`, `CodaFiltriToolbar`. Dettaglio nel
+- ⚠️ `off` è **`null`** di default, non `false`: il core manda ogni filtro
+  `!= null`, e un `false` sul filo sarebbe un parametro che il backend legge
+  senza che filtri niente. Chi ha `false` come default dello store lo dichiara;
+- il filtro **invertito** («mostra storico» acceso ⇔ `solo_ultima_revisione =
+  false`) si scrive `bindToggle('solo_ultima_revisione', { on: false, off: true })`,
+  non con un `computed` a mano;
+- il cambio ricarica **da pagina 1** (`applyFilters`): la pagina 3
+  dell'insieme piccolo può non esistere in quello grande, e viceversa.
+
+**Quando l'interruttore ALLARGA la lista** — rimette dentro elementi che
+**esistono** e che di default restano fuori (righe archiviate, lotti
+annullati) — porta anche il **numero**: `[switch] Mostra annullati (3)`, prop
+`count`. Il numero lo **dichiara il backend** (`archiviate_count`,
+`annullati_count`): spento e senza numero, «elenco pulito» e «tre righe messe
+via» si leggono uguali — è la stessa regola di `ritirate_count` sul giornale.
+La forma è `Etichetta (N)` (decisione di Tid, 2026-09-12), non una frase
+plurale: la chiave i18n è una. Un interruttore che **restringe** non ha niente
+da contare e non passa `count`.
+
+> Fino al 2026-09-18 il BB si chiamava `ToggleNascoste` e copriva il solo
+> caso col conteggio: le cinque copie senza conteggio erano lo stesso
+> componente, e si è ritirato nel giro che le ha assorbite.
+
+Consumer: `LottiListView`, `CodaFiltriToolbar` (col conteggio);
+`OfferteSearchTable`, `PreventiviList`, `PraticheSearchTable`,
+`DisponibilitaSearchTable`. Dettaglio nel
 [catalogo](catalogo-building-block-frontend.md).
+
+### Filtro con lookup ricco — `bindLookup`
+
+Quando il filtro è un lookup **ricco** (`ArticoloLookup`,
+`BillingAccountLookup`…) il widget tiene l'**oggetto** scelto e lo store
+l'**id**: il legame è `useStoreFilterBindings.bindLookup(storeKey, { idField })`,
+con `onChange` su `@update:model-value` (i lookup ricchi lo emettono su select
+**e** su clear). ⛔ Non un `watch` sul widget con un guard anti-giro-a-vuoto:
+erano due copie identiche (registro e disponibilità di magazzino, 2026-09-18).
+⭐ L'oggetto scelto **si ricorda nello store** (`<storeKey>_obj`, come il
+`_obj` del form per il restore dell'AutoComplete): un widget che rimonta —
+la scheda di un `<Tabs lazy>` — lo ritrova, invece di mostrare un picker
+vuoto sopra una lista filtrata. ⚠️ Un id messo da fuori **senza** l'oggetto
+(deep-link col solo id) non si rende: da colmare con un'opzione `risolvi`
+il giorno che un deep-link lo chiederà.
 
 ### Scorciatoie da tastiera (Keyboard Shortcuts)
 
@@ -1138,6 +1248,9 @@ const onClose = useDrawerClose(emit, 'cancelled') // con notifica al parent
 ```
 
 Note: la X in alto del drawer PrimeVue resta come escape rapido (semantica diversa da "Chiudi"): X = dismiss/escape, Chiudi = completion deliberata. Non sono duplicati, vanno tenuti entrambi.
+⚠️ **Vale per il drawer, NON per il dialog** (2026-09-18): nel drawer il footer di
+un form lungo sta sotto il fold e la X in alto ha un ruolo; nel dialog il footer
+è **sempre visibile**, e la X è un doppione — vedi §`AppDialog`, «Chrome».
 
 ### Componente `AppDialog` (OBBLIGATORIO per le dialog modali)
 
@@ -1146,15 +1259,40 @@ esito) DEVE usare il building block `AppDialog` — mai `<Dialog>` PrimeVue grez
 con `<template #footer>` hand-rolled. `AppDialog` è il mirror di `AppDrawer` per
 le Dialog: incapsula chrome uniforme + `FormFooter` integrato.
 
+⛔ `import Dialog from 'primevue/dialog'` è lecito in **un solo file**,
+`core/components/AppDialog.vue` — presidiato da
+`frontend/scripts/check-dialog-chrome.mjs` (`npm run guards`, in CI).
+
 Cosa centralizza:
 
-* **chrome**: `modal`/`closable`/`closeOnEscape`/`dismissableMask` con default
-  sensati (modal+closable=true), override via prop;
+* **chrome**: `modal`/`closable`/`closeOnEscape`/`dismissableMask` con i default
+  di **`DIALOG_CHROME`** (`core/constants.js`) — la sede unica, condivisa con la
+  `ConfirmDialog` globale (vedi §«Chrome» qui sotto e §«Conferma azioni»);
 * **width**: da scala centralizzata `DIALOG_WIDTH` (`sm`/`md`/`lg`/`xl`) — **mai
   più px hardcoded** (`'480px'`, `'90vw'`, ecc.);
 * **footer**: `FormFooter` integrato (icone ←/✓, collapse responsive icon-only
   sotto 1024px, Ctrl+S, readonly-aware);
-* **`v-model:visible`** uniforme.
+* **`v-model:visible`** uniforme;
+* **una via d'uscita sola**: Annulla/Chiudi ed ESC passano dallo **stesso**
+  handler ed emettono `cancel` **e poi** `update:visible=false`. Un consumer
+  che pulisce stato su `@cancel` lo vede da qualunque uscita.
+
+#### Chrome — le regole (decisione di Tid, 2026-09-18)
+
+| Regola | Perché |
+| --- | --- |
+| ⛔ **Niente X in alto** (`closable: false`) | Il footer di un dialog è **sempre visibile** (`max-height: 90%`, footer in coda): ogni dialog ha già Annulla o Chiudi, e la X era un doppione con una semantica sua (chiude senza `cancel`). Nel **drawer** la X resta, per la ragione opposta — il footer di un form lungo sta sotto il fold (§`FormFooter`) |
+| ⭐ **`header` obbligatorio** (prop `required`) | Un `Dialog` PrimeVue senza titolo rende comunque la riga di testa, e con `justify-content: space-between` l'unico figlio — le azioni — finiva **a sinistra**: era la «X a sinistra» vista in-app, non un secondo chrome. Il titolo è un fatto dell'azione, non un ornamento |
+| **ESC = Annulla**, e **si spegne mentre lavora** (`closeOnEscape && !loading`) | La direzione sicura resta aperta da tastiera; a salvataggio in volo il dialog non si chiude sotto la risposta. Era riscritto a mano in due dialog (`ExportDialog`, `AttivaVersioneDialog`): ora lo fa il BB |
+| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue 4 `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue 4 lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. ⏳ Due **drawer** impilati si chiudono ancora insieme: chrome del drawer, fuori da questa regola |
+| **Click fuori non chiude** (`dismissableMask: false`) | Terza via d'uscita accidentale, stessa ragione della X |
+| **Un footer c'è sempre** | Nessuna prop `hide-footer`: senza X, un dialog senza footer non avrebbe **nessuna** uscita visibile. Il caso speciale (wizard, terzo bottone) è lo slot `#footer`, che il chrome lo mantiene |
+
+⚠️ **Un override di chrome è una decisione, e si scrive sopra al tag.** L'unico
+oggi è `EmittenteAttivoDialog` (`:close-on-escape="false"`: la scelta
+dell'emittente non è rimandabile con un tasto). ⛔ Non si rimette `:closable` per
+un dialog «che ce l'aveva»: il default è la regola, e un cambio di layout deve
+restare **una riga in `DIALOG_CHROME`**, non un giro su 48 file.
 
 ```html
 <!-- Dialog standard: conferma/form -->
@@ -1188,13 +1326,59 @@ Prop e casi speciali:
 * **Footer custom** (terzo bottone, wizard): slot `#footer` per sovrascrivere il
   footer mantenendo il chrome `AppDialog`. Es. `ChiudiVersioneDialog` (bottone
   "Rimuovi chiusura" + Annulla/Conferma), `ApplicaVariazioneDialog` (wizard
-  multi-step → usa `hide-footer`).
-* **Solo Chiudi**: `close-only` (dialog informativo/viewer con un solo pulsante).
-* **Nessun footer**: `hide-footer` (viewer puro).
+  multi-step: i bottoni dello step nello slot), `EmittenteAttivoDialog` (tre
+  bottoni: riprova / rimanda / conferma).
+* **Solo Chiudi**: `close-only` (dialog informativo/viewer con un solo pulsante:
+  registri, situazione merce, genealogia, esiti consuntivi).
 
 Dialog di **sola conferma** (no form, sì/no su un'azione) restano gestiti da
 `useConfirmAction()` (ConfirmDialog globale, vedi §"Conferme azioni"), NON da
 `AppDialog`: quello serve quando la dialog ha un corpo (campi, tabella, scelta).
+
+#### Dialog con una lista dentro — altezza definita, dieci righe (2026-09-18)
+
+Una lista in un dialog resta una lista (`<ListaConfigurabile>` attraverso
+`useDrawerTabLista` + `<DrawerTabLista>`, come nel picker delle rate), ma il
+corpo di un `Dialog` **non è una colonna flex e non ha un'altezza sua**: il
+blocco lista si rende all'altezza del **contenuto** — corto con l'empty-state,
+alto quando le righe arrivano — e il dialog **salta** sotto gli occhi di chi
+sta cercando (rilievo di Tid sul picker delle rate).
+
+**Regola**: il blocco lista porta la classe **`app-dialog-lista`** (altezza
+**definita**, token `--app-dialog-lista-h` in `theme.css`, ~dieci righe) e lo
+store nasce a **dieci righe per pagina** (`limit: PAGINATION.COMPACT_ROWS`).
+Così la pagina vuota e la pagina piena sono alte uguali, il dialog si apre già
+alto e non si muove più; una pagina più lunga scorre **dentro** la tabella
+(`scroll-height="flex"`, che è esattamente il caso per cui esiste), non
+allunga il dialog.
+
+```html
+<DrawerTabLista ref="listaRef" class="app-dialog-lista" codice="..." ... />
+```
+
+⛔ **E il preset della lista deve dire lo stesso numero** (`ui.lista_preset`,
+`pagina_dimensione = 10`): il `limit` di nascita dello store **non basta**,
+perché al primo `config-loaded` lo scaffolding allinea `filters.limit` alla
+`pagina_dimensione` risolta dal catalogo (§«Paginazione corretta», cascata 2),
+e `fn_resolve_lista_config` la risolve **sempre** (`COALESCE(…, 25)`). Con il
+preset a 25 il picker delle rate mostrava 25 righe in un blocco alto dieci alla
+**prima** apertura e dieci dalla seconda — dopo il `reset()` alla chiusura,
+con l'allineamento già fatto una volta — due aperture, due passi, nessun errore
+(trovato in rilettura il 18/09). ⭐ Vale per **ogni** lista che nasce a 10, non solo
+per i dialog: `pratiche` (17), `listini` (27) e `listini_righe` (37) avevano lo stesso
+scarto da mesi senza che nessuno lo notasse — allineati con 68 lo stesso giorno.
+
+⚠️ Ciò che sta **sotto** la lista (l'area temporanea della modalità multipla
+del picker) non entra in quell'altezza: per lui scorre il corpo del dialog, col
+tetto del `max-height: 90%` del `Dialog`.
+
+⚠️ **`InputNumber` nella barra filtri: la larghezza va sull'`<input>`**
+(`input-style="width: 9rem"`), non sul wrapper (`style`): `.p-inputnumber` è
+un `inline-flex` senza bordo, e l'`<input>` dentro tiene la sua larghezza
+intrinseca — più larga del wrapper — e **sborda** addosso al controllo
+accanto. A video si vedono **due bordi** sul lato destro, e nessun errore
+(rilievo di Tid, stesso giorno). È la forma già in uso in `DdtResoDialog` e
+`ResoRiconsegnaDialog`.
 
 ### Classi CSS form
 
@@ -1581,6 +1765,30 @@ Le mappe sono centralizzate in `core/utils/severity.js` — un solo punto di mod
      :severity="data.attivo ? 'success' : 'warn'" />
 ```
 
+(BB: `<AttivoTag :active="data.attivo" />`.)
+
+### Sì / No — un booleano che è un DATO, non uno stato
+
+`info` sul vero, `secondary` sul falso, **vuoto** sul `null`: `<SiNoTag :value="x" />`.
+⛔ Non è «attivo/non attivo»: quello è la salute di un record e colora
+verde/arancio; questo è un fatto («partecipa alle promo?», «gestito a
+magazzino?»), e il vero è un'informazione — blu, non verde.
+
+⭐ **In una `<ListaConfigurabile>` non si scrive lo slot**: la colonna dichiara
+`formato = yesno` (o anche solo `tipo_dato = boolean`) in `ui.lista_colonna` e
+`CellaConfigurabile` la rende con `SiNoTag`. Fino al 2026-09-14 il formatter
+rendeva **testo** e tre liste si erano riscritte il Tag in uno slot — una delle
+tre sopra una colonna che aveva già `yesno`: il formatter aveva perso sul campo.
+Un booleano nuovo in lista è una riga di CSV, non un componente.
+
+⭐ **E dal 2026-09-18 vale anche per la NATURA di un documento fiscale**
+(`formato = natura_doc` → `NaturaDocTag sempre`): lo stesso slot era scritto in
+quattro liste. ⚠️ È il primo formato che legge **due** campi della riga — la
+descrizione (il `campo_sorgente`) e la gemella `natura_doc_codice_interno` —
+e la gemella è presidiata: `test_lista_proiezione_campo_sorgente` pretende che
+ogni lista che dichiara il formato la proietti. La regola generale: *se una
+cella si rende allo stesso modo in due liste, è un `formato`, non uno slot.*
+
 ### Stati pratica
 
 | Stato | Severity | Colore |
@@ -1839,13 +2047,32 @@ La schermata di login e' l'unica pagina senza sidebar e topbar.
 
 Qualsiasi azione irreversibile richiede un **dialog di conferma** centrato:
 
-- Titolo + nome dell'elemento coinvolto
+- **Titolo obbligatorio** (`header`), e il titolo è **il nome dell'azione che
+  l'ha aperto**: l'operatore legge la stessa parola sul pulsante e sulla dialog
+  (`azione_push_commessa` → «Invia a commessa», `rinuncia_riapri` → «Annulla la
+  dichiarazione»). Per le eliminazioni `confirm.delete_title`; per i cambi di
+  stato guidati dalle azioni BE `confirm.cambio_stato_title`, uguale in tutti i
+  domini. ⛔ Una conferma senza `header` è la «X a sinistra» vista in-app il
+  2026-09-18: PrimeVue rende la riga di testa anche vuota, e l'unico figlio
+  finisce a sinistra. Presidio: `check-dialog-chrome.mjs` rifiuta ogni
+  `confirmAction({...})` senza `header` — e ogni `title:`, che è la chiave
+  **sbagliata**: fino al 2026-09-18 il composable leggeva `title` mentre
+  `AppDialog` e PrimeVue dicono `header`, e **sette** chiamanti avevano scritto
+  `header` (ignorato in silenzio: JS non avvisa su una chiave sconosciuta). Uno
+  l'aveva persino scoperto e annotato sul sito invece di correggere la sorgente
 - Due pulsanti: **Annulla** (secondario, icona ←) e **Conferma** (primario, icona
   ✓; rosso per distruttive)
-- Il dialog si chiude solo tramite pulsanti — non con ESC o clic fuori
+- **Niente X** (stessa regola di `AppDialog`, §«Chrome»); **ESC = Annulla**
+  (direzione sicura, resta aperta da tastiera); **clic fuori non chiude**.
+  ⚠️ Fino al 2026-09-18 questa riga diceva «né con ESC», ma ESC chiudeva da
+  sempre: la doc descriveva un comportamento che non c'era
 - Gestito da `useConfirmAction()` — mai creare ConfirmDialog custom. Il composable
   applica già le icone standard (`acceptIcon`/`rejectIcon`) e il colore danger
-  (`confirmDelete`, o `confirmAction({ danger: true })`).
+  (`confirmDelete`, o `confirmAction({ danger: true })`) in **un solo punto**
+  (`richiedi`): le tre funzioni pubbliche aggiungono solo ciò che le distingue.
+  ⚠️ `closable` **non è un'opzione di `confirm.require`** (PrimeVue 4 non la
+  inoltra al `Dialog`): sta sul tag `<ConfirmDialog>` in `App.vue`, letto da
+  `DIALOG_CHROME` — è l'unico pezzo di chrome che non può vivere nel composable
 
 **Quando `useConfirmAction` e quando `AppDialog`:**
 
@@ -1962,6 +2189,27 @@ I componenti usano **solo** `--app-*`. Mai `var(--p-*)` direttamente.
 Unico punto di personalizzazione: sidebar, topbar, contenuto, card, drawer, AI widget, transizioni, tipografia.
 Importato prima di `main.css` in `main.js`.
 
+### I token neutri e il font — `theme.css` (2026-09-17)
+
+| Token | Punta a | Per |
+| --- | --- | --- |
+| `--app-font-family` | stack di sistema sans-serif | il `body` (🔴 fino al 17/09 `main.css` scriveva `var(--p-font-family)`, che PrimeVue 4 **non definisce**: dichiarazione invalida, font di default del browser) |
+| `--app-surface-bg` | `--p-content-background` | la superficie di un contenuto (ex `--surface-0`) |
+| `--app-hover-bg` | `--p-content-hover-background` | riga o voce sotto il mouse (ex `--surface-hover`) |
+| `--app-highlight-bg` | `--p-highlight-background` | voce selezionata (ex `--highlight-bg`) |
+| `--app-border-color` | `--p-content-border-color` | il bordo neutro (ex `--surface-border`) |
+| `--app-border-radius` | `--p-border-radius-md` (6px) | raggi neutri |
+| `--app-focus-ring` | `--p-focus-ring-color` | l'anello di fuoco |
+| `--app-space-sm` | `0.5rem` | gap e padding piccoli |
+
+⛔ **I nomi di PrimeVue 3 non esistono più** (`--surface-*`, `--text-color`,
+`--highlight-bg`, `--p-info-color`, `--p-font-family`): un `var()` su un nome
+assente **annulla l'intera dichiarazione**, non solo il colore — un
+`border: 1px solid var(--surface-border)` è un bordo che non c'è. Il
+17/09 erano 60, tutti negli `<style>` di `pratiche` e in pochi altri: sanati
+(catalogo BB, riga `ml-05`). Per i colori semantici (info, warn, danger,
+success) i token sono `--app-severity-*`.
+
 ### Dark/Light mode
 
 Il tema supporta dark e light mode tramite la classe `.p-dark` su `<html>`.
@@ -2010,15 +2258,40 @@ in `:root:not(.p-dark)` (light).
 | `app-datatable`      | DataTable compatta (font ridotto, padding, stripe, hover) |
 | `app-drawer-content` | Wrapper contenuto drawer (gap via `--app-drawer-gap`)     |
 | `app-drawer-section` | Separatore sezione nei drawer (bordo da theme.css)        |
-| `app-drawer-footer`  | Footer drawer Annulla/Salva (flex, justify-end)           |
+| `app-form-footer`    | Footer Annulla/Salva (flex, justify-end). ⚠️ Fino al 2026-09-17 questa riga diceva `app-drawer-footer`, una classe che **non esiste** in nessun foglio: `ResoRigaForm` l'aveva copiata da qui e il suo footer non era allineato a destra. Il nome vero è quello di `FormFooter.vue` |
 | `form-grid`          | Contenitore campi form (flex column, gap)                 |
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
+| `form-field-wide`    | Il campo a **tutta riga** dentro una griglia a 2/3 colonne (`grid-column: 1 / -1`). ⚠️ Scritta in cinque template dal 2026-05, definita solo dal 17/09 |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
+| `app-text-muted`     | Testo sottotono (`--app-text-muted`): hint sotto i campi, note. ⛔ Non `text-color-secondary`: PrimeFlex non è installato, e fino al 17/09 nemmeno questa regola esisteva — 135 siti di testo «sottotono» erano testo normale |
+| `font-bold`          | `font-weight: 600` (globale dal 17/09; prima viveva in uno `<style scoped>` e altrove non faceva niente) |
+| `app-mono`           | `font-family: monospace` per un identificativo tecnico (codice, `tx_id`, IBAN). Globale dal 19/09: prima era scritta in 15 `<style scoped>`, tre come `.font-mono` di PrimeFlex |
+| `mt-025`/`mt-05`/`mt-1` · `ml-05`/`mr-05` | Le sole utility di spaziatura. ⛔ `mt-3`, `mb-3`, `w-full`, `flex`, `gap-2`… sono PrimeFlex: non esistono qui e sono state tolte da ~115 template il 17/09 |
+
+⭐ **Una classe che non sta in nessun foglio non fa niente, e non lo dice.**
+Prima di dire che una view è finita, il censimento delle classi statiche non
+definite deve restare a **zero** (dal 2026-09-17, dopo tre passate: utility
+PrimeFlex, variabili CSS di PrimeVue 3, identificatori orfani):
+`python3 scripts/check_classi_morte.py` (dalla root del repo; stampa l'elenco
+e esce 1 se ne trova).
+
+⛔ **E un NOME usato nel template ma non dichiarato nello `<script setup>` è
+peggio di una classe morta: non fa niente finché i dati non lo toccano, poi
+SOLLEVA.** Il compilatore lo traduce in `_ctx.<nome>` = `undefined`, la build
+è verde, e `undefined.QUALCOSA` esplode nel render della prima riga che entra
+in quel ramo — Vue svuota il sottoalbero e a video resta una lista bianca,
+senza un errore per l'operatore. Successo il 2026-09-17 su `LottiLista.vue`:
+`MANAGE_ICONS.ERRORE` senza import, dal 09/09; la scheda «Lotti del mese» si
+rendeva e la scheda «Recuperi» no, perché solo lì c'era un lotto con
+`ha_errori_gravi`, e l'etichetta accanto contava correttamente le righe che la
+tabella non mostrava. Presidio: `vue/no-undef-properties` in `eslint.config.js`
+(`npm run lint`, in CI), acceso quel giorno a zero segnalazioni.
 
 **Nota responsive sotto 1024px**: i pulsanti del `FormFooter` (Annulla,
 Chiudi, Salva) collassano automaticamente a icon-only via la classe
-`app-drawer-footer-btn` (stessa logica di `.app-page-action`). Il componente
+`app-form-footer-btn` (stessa logica di `.app-page-action`; ⚠️ fino al 17/09
+questa riga scriveva `app-drawer-footer-btn`, che non esiste). Il componente
 imposta `v-tooltip.top` con la label per garantire l'accessibilita'. La
 modifica e' centralizzata in [`FormFooter.vue`](../../../frontend/src/core/components/FormFooter.vue):
 qualsiasi pulsante Annulla/Salva sparso fuori dal componente NON eredita
@@ -2069,6 +2342,13 @@ Per accordion, expansion row di DataTable, tree e qualsiasi azione che apre/chiu
 contenuto, usare la coppia dinamica `MANAGE_ICONS.EXPAND` (`pi pi-chevron-down`,
 stato collassato — invita ad aprire) e `MANAGE_ICONS.COLLAPSE` (`pi pi-chevron-up`,
 stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
+
+⛔ **Su una `<ListaConfigurabile>` il toggle «espandi tutte» NON si scrive in
+pagina** (2026-09-18): è l'azione standard di `useListaAzioni`, accanto a
+«Personalizza colonne» ed «Esporta», e compare da sé solo quando c'è qualcosa
+da espandere (colonne ritirate o dettaglio inline). L'esempio qui sotto vale per
+le superfici che non sono liste configurabili. I listini avevano il proprio
+`toggle-all-versioni`: era la prima copia, ritirata alla seconda.
 
 ```js
 // In toolbar globale (PageActionsBar) — toggle di tutte le righe
@@ -2824,13 +3104,23 @@ Riferimento: `DdtResoDialog`, `OrdineEvasioneDialog`, `PreventiviSmistamentoDial
 Come F12/F3 sui formati protect AS/400, i **pulsanti di chiusura** restano attivi anche in modalita' protect:
 
 ```css
-.app-readonly :deep(.p-drawer-close),    /* X chiudi drawer */
-.app-readonly :deep(.p-dialog-close),    /* X chiudi dialog */
-.app-readonly :deep(.app-escape) {       /* classe generica uscita */
+.app-readonly .app-escape {       /* classe generica uscita */
   pointer-events: auto;
   cursor: pointer;
 }
 ```
+
+`app-escape` la porta il pulsante Annulla/Chiudi di `FormFooter` e la si mette su
+ogni pannello-azione legittimo dentro un contenitore protect
+([[feedback_app_escape_pannelli_processo]]).
+
+⚠️ **La X del drawer NON ha bisogno di una regola** (verificato 2026-09-18):
+`app-readonly` sta sul wrapper del **contenuto** (`app-drawer-content`), e la
+testa del `Drawer` — con la sua X — è **fuori** da quel wrapper. Fino a quel
+giorno qui stavano due selettori in più, `.p-drawer-close` e `.p-dialog-close`,
+che in PrimeVue 4 non esistono (le classi sono `p-drawer-close-button` /
+`p-dialog-close-button`): CSS morto che descriveva un meccanismo mai attivo. Il
+dialog una X non ce l'ha più (§`AppDialog`, «Chrome»).
 
 Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modificare.
 
@@ -2930,21 +3220,27 @@ async function update(id, payload) {
 
 Entità **read-only** (es. log immutabili): non emettono mai, e nessun consumer deve ascoltarle.
 
-### Factory `createCrudAdminStore`
+### Factory `createCrudStore`
 
-Per gli store admin CRUD standard (categorie clienti, promo articoli, matrici config) esiste una factory in `core/composables/createCrudAdminStore.js` che gestisce automaticamente emit in create/update. Basta passare `emitKey`:
+Per gli store lista+CRUD (categorie clienti, promo articoli, matrici config,
+clienti, articoli…) la factory `core/stores/createCrudStore.js` emette da sé
+in `create`/`update`/`extraActions`. Basta passare `tabEntity`:
 
 ```js
-export const useCategorieClientiStore = createCrudAdminStore({
-  storeName: 'amm-categorie-clienti',
-  api: { list, get, create, update },
-  defaultOrderBy: 'ordinamento',
-  emitKey: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+export const useCategorieClientiStore = createCrudStore('amm-categorie-clienti', {
+  api: { list, detail, create, update },
+  tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+  orderBy: 'ordinamento',
+  startsEmpty: false,
   // ...
 })
 ```
 
-Nessun `emitDataChanged` manuale necessario nei metodi.
+Nessun `emitDataChanged` manuale necessario nei metodi. ⚠️ Fino al 2026-09-18
+questa sezione descriveva `createCrudAdminStore` in `core/composables/`, con
+`storeName`/`emitKey`/`defaultOrderBy`: quella factory è stata **eliminata il
+2026-06-05** (convergenza B19 in `createCrudStore`), e un documento che nomina
+un file inesistente manda a cercarlo.
 
 ### Aggiungere una nuova entità
 
@@ -3150,7 +3446,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 1. Ogni componente e' autonomo — logica nei composables di `core/`
 2. Chiamate API passano da `useApiHandler` — mai `api.get/post` nei componenti
 3. Toast via `useNotify()` — mai `useToast()` direttamente
-4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente
+4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente; **sempre con `header`** (il nome dell'azione)
 5. Drawer usano PrimeVue `Drawer` + `FormFooter` — mai pulsanti inline
 6. Testi visibili via `$t()` — mai stringhe hardcoded
 7. Nessun `console.log` in produzione
@@ -3164,6 +3460,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
 16. Azioni processo via `action` su `PageActionsBar`/`FormFooter` — mai `v-if` manuali per permessi
 17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
+18. Dialog modali solo `AppDialog`, con `header`, **senza X** e senza `:closable` sul tag — il chrome è `DIALOG_CHROME`, un cambio di layout è una riga lì (presidio: `npm run guards` → `check-dialog-chrome.mjs`)
 
 ---
 

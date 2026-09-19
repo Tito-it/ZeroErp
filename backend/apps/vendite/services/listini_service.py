@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -279,45 +279,6 @@ def _extract_meta(
         log_to_db=True,
     )
     return value
-
-
-# Scopo: Estrae e valida un Decimal da payload, consentendo NULL se richiesto.
-def _extract_decimal(
-    payload: dict[str, Any],
-    key: str,
-    *,
-    function_name: str,
-    nullable: bool,
-    message: str,
-) -> Decimal | None | _MissingType:
-    if key not in payload:
-        return _MISSING
-    value = payload.get(key)
-    if value is None:
-        ErrorManager.require(
-            nullable,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail=f"{key} non puo' essere null.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        return None
-    ErrorManager.require(
-        not isinstance(value, bool),
-        code="E_VENDITE_VALIDATION",
-        message=message,
-        detail=f"{key} deve essere numerico.",
-        context={"field": key},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        normalized = Decimal(str(value).strip())
-    except (InvalidOperation, AttributeError) as exc:
-        raise ValueError(f"{key}_invalid") from exc
-    return normalized
 
 
 # Scopo: Estrae e valida una data ISO da payload.
@@ -831,7 +792,10 @@ def _extract_riga_payload(
     # (F1-DB-25). Eventuali valori residui nel payload sono ignorati
     # silenziosamente (retrocompatibilita' chiamanti pre-v5).
 
-    prezzo = _extract_decimal(
+    # ⚠️ Fino al 2026-09-18 la copia locale sollevava `ValueError` su un prezzo
+    #    non numerico: il middleware lo traduceva in `E_VALIDATION_INPUT`
+    #    generico, non nel codice del dominio. Il BB solleva `E_VENDITE_VALIDATION`.
+    prezzo = _V.extract_optional_decimal(
         payload,
         "prezzo",
         function_name=function_name,
@@ -1692,28 +1656,9 @@ def fn_rettifica_controllata_riga(
     riga = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
 
     # --- Parsing payload ---
-    raw_prezzo = payload.get("prezzo")
-    ErrorManager.require(
-        raw_prezzo is not None,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro obbligatorio mancante.",
-        detail="prezzo e` obbligatorio.",
-        context={"field": "prezzo"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        nuovo_prezzo = Decimal(str(raw_prezzo))
-    except (InvalidOperation, TypeError, ValueError):
-        ErrorManager.raise_error(
-            code="E_VENDITE_VALIDATION",
-            message="Prezzo non valido.",
-            detail=f"prezzo deve essere numerico, ricevuto: {raw_prezzo!r}.",
-            context={"field": "prezzo"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    assert isinstance(nuovo_prezzo, Decimal)
+    # Le frasi sono quelle del BB: «obbligatorio» se manca, «deve essere un
+    # numero» se non lo e' — due casi, due frasi, senza un titolo unico.
+    nuovo_prezzo = _V.require_decimal(payload, "prezzo", function_name=function_name)
 
     ErrorManager.require(
         nuovo_prezzo > 0,
@@ -1827,28 +1772,9 @@ def fn_applica_variazione_percentuale(
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
 
     # --- Parsing e validazione payload ---
-    raw_pct = payload.get("variazione_percentuale")
-    ErrorManager.require(
-        raw_pct is not None,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro obbligatorio mancante.",
-        detail="variazione_percentuale e` obbligatoria.",
-        context={"field": "variazione_percentuale"},
-        function_name=function_name,
-        log_to_db=True,
+    variazione_pct = _V.require_decimal(
+        payload, "variazione_percentuale", function_name=function_name,
     )
-    try:
-        variazione_pct = Decimal(str(raw_pct))
-    except (InvalidOperation, TypeError, ValueError):
-        ErrorManager.raise_error(
-            code="E_VENDITE_VALIDATION",
-            message="Parametro non valido.",
-            detail=f"variazione_percentuale deve essere un numero, ricevuto: {raw_pct!r}.",
-            context={"field": "variazione_percentuale", "value": str(raw_pct)},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    assert isinstance(variazione_pct, Decimal)
 
     ErrorManager.require(
         _VARIAZIONE_PCT_MIN <= variazione_pct <= _VARIAZIONE_PCT_MAX,

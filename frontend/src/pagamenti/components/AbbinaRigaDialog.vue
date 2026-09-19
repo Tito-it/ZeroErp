@@ -22,73 +22,114 @@
 // ⚠️ E la COERENZA non e' confermabile: «questa rata e' di questa fattura?» e'
 //    un rifiuto secco (400) e resta tale — si conferma la capienza, mai il
 //    legame sbagliato.
+//
+// ⭐ SI APRE SULLA DESTINAZIONE CHE LA RIGA HA GIA' (rilievo in-app di Tid,
+//    2026-09-18). Su una riga gia' abbinata il dialog si apriva VUOTO: chi lo
+//    apriva per vedere o cambiare l'abbinamento si trovava a cercare da capo
+//    un documento che la riga aveva sotto, e «vuoto» si leggeva come «non e'
+//    abbinata». Ora fattura e rata arrivano dalla riga — le stesse colonne
+//    `fattura_*`/`scadenza_*` che il form di modifica gia' legge (D19-b) —
+//    nella forma che `FatturaLookup` e `RataSelect` mostrano; ri-abbinare e'
+//    cambiare documento o rata da li'. ⚠️ Con la destinazione INVARIATA il
+//    verbo resta spento e lo dice: un «Abbina» che riscrive lo stesso legame
+//    non e' un gesto, e' un pulsante che non fa niente.
+//
+// ⭐ DUE MODI, UN DIALOGO (FE-4, D20-b — 2026-09-19). In modo `registra` e' la
+//    TARDIVA: una riga SOSPESA sotto una distinta gia' registrata si abbina E
+//    si registra nello stesso gesto — movimento scritto, riga POSTATA, la
+//    distinta resta CHIUSA. Cambiano il titolo, il verbo del pulsante (rosso:
+//    non si torna indietro) e l'endpoint (`registraRigaTardiva`); restano la
+//    stessa domanda «quale documento, quale rata» e lo stesso doppio tempo
+//    della capienza. ⚠️ «Invariata» non spegne niente qui: registrare E'
+//    sempre un gesto, anche sulla destinazione che la riga porta gia'.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
-import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
 import AppDialog from '../../core/components/AppDialog.vue'
 import FatturaLookup from '../../core/components/FatturaLookup.vue'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
-import { RISULTATI, useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { displayDate } from '../../core/utils/date'
-import { abbinaRiga, listRateFattura } from '../api/pagamenti'
+import { abbinaRiga, registraRigaTardiva } from '../api/pagamenti'
 import { formatCurrency } from '../../core/utils/format'
+import { MODO_ABBINA } from '../composables/useAzioniRigaContabile'
+import RataSelect from './RataSelect.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   riga: { type: [Object, null], default: null },
+  // `MODO_ABBINA.ABBINA` (default) | `MODO_ABBINA.REGISTRA` (la tardiva).
+  modo: { type: String, default: MODO_ABBINA.ABBINA },
 })
 const emit = defineEmits(['update:visible', 'abbinata'])
 
 const { t } = useI18n()
 const { esegui, conferma, annulla, richiestaConferma, loading } = useForzaturaConfermata()
 
+const registra = computed(() => props.modo === MODO_ABBINA.REGISTRA)
+
 const fattura = ref(null)
 const scadenzaId = ref(null)
 const motivoForzatura = ref('')
-// ⚠️ «La fattura non ha rate» e «non sono riuscito a leggerle» si vedono uguali
-//    — un Select vuoto — e portano a due conclusioni diverse. I tre stati li
-//    tiene il BB.
-const {
-  dati: rate,
-  caricati: rateCaricate,
-  errore: erroreRate,
-  loading: caricamento,
-  carica: caricaRate,
-  azzera: azzeraRate,
-} = useLetturaTreStati((id) => listRateFattura(id), { estrai: RISULTATI, vuoto: [] })
+// ⭐ Le rate COL SALDO, i tre stati e la nota «facoltativa» stanno in
+//    `RataSelect` (estratto il 14/09 alla seconda occorrenza: la nascita
+//    della riga con la destinazione fa la stessa domanda). Qui resta il verbo.
+const rataSelect = ref(null)
+const caricamento = computed(() => rataSelect.value?.loading === true)
 
-const canSave = computed(() => fattura.value?.id != null)
-
-// Scopo: scelta la fattura, si caricano le sue rate COL SALDO.
-// Note: ⭐ Le rate arrivano gia' col saldo (`residuo · in_lavorazione ·
-//       incassato`): un elenco di rate senza saldo non risponde alla domanda per
-//       cui lo si apre — «dove ci sta questo incasso?».
-watch(fattura, async (f) => {
-  scadenzaId.value = null
-  azzeraRate()
-  if (!f?.id) return
-  await caricaRate(f.id)
-})
-
-// ⚠️ Il residuo NEGATIVO su una rata significa «e' gia' entrato piu' del
-//    dovuto»: si dice a parole, mai come «-120,00», che si legge come un guasto.
-function etichettaRata(r) {
-  const residuo = Number(r.residuo ?? 0)
-  const stato = residuo < 0
-    ? t('pagamenti.abbina.rata_di_troppo', { importo: formatCurrency(Math.abs(residuo)) })
-    : t('pagamenti.abbina.rata_residuo', { importo: formatCurrency(residuo) })
-  return `${t('pagamenti.abbina.rata_n', { n: r.numero_rata })} · ${displayDate(r.data_scadenza)} · ${stato}`
+// Scopo: la destinazione che la riga porta GIA', nella forma di `FatturaLookup`
+//        (l'oggetto fattura coi campi che il lookup mostra) e di `RataSelect`
+//        (lo `scadenza_id`). `fattura` a `null` = la riga non e' abbinata.
+// ⚠️ Le colonne sono quelle di `_RIGA_COLONNE` del repository (prefisso
+//    `fattura_`/`scadenza_`, il cliente in `billing_account_descrizione`), le
+//    stesse che la lista delle righe (`pagamenti.distinta_righe`) consegna.
+function destinazioneDallaRiga(r) {
+  if (r?.fattura_id == null) return { fattura: null, scadenzaId: null }
+  return {
+    fattura: {
+      id: r.fattura_id,
+      billing_account_id: r.billing_account_id ?? null,
+      numero: r.fattura_numero ?? null,
+      serie: r.fattura_serie ?? null,
+      anno: r.fattura_anno ?? null,
+      numero_documento: r.fattura_numero_documento ?? null,
+      data: r.fattura_data ?? null,
+      totale_doc: r.fattura_totale_doc ?? null,
+      registro_codice: r.fattura_registro_codice ?? null,
+      natura_doc_codice_interno: r.natura_doc_codice_interno ?? null,
+      natura_doc_descrizione: r.natura_doc_descrizione ?? null,
+      ragione_sociale_completa: r.billing_account_descrizione ?? null,
+    },
+    scadenzaId: r.scadenza_id ?? null,
+  }
 }
 
+// ⭐ «Invariata» = stesso documento E stessa rata della riga: il verbo non ha
+//    niente da scrivere. ⚠️ Si confronta con la RIGA, non con cio' che il
+//    dialog ha proposto all'apertura: e' la riga il fatto.
+const invariata = computed(() => {
+  const r = props.riga
+  if (r?.fattura_id == null || fattura.value?.id == null) return false
+  return fattura.value.id === r.fattura_id
+    && (scadenzaId.value ?? null) === (r.scadenza_id ?? null)
+})
+
+const canSave = computed(
+  () => fattura.value?.id != null && (registra.value || !invariata.value),
+)
+
+// Scopo: all'apertura si riparte dalla riga — con la sua destinazione se ce
+//        l'ha, vuoti altrimenti. ⚠️ `scadenzaId` e `fattura` insieme, nello
+//        stesso giro: il watch di `RataSelect` sulla fattura tiene la rata
+//        gia' scelta se e' fra quelle del documento appena caricato (Q-2), e
+//        la trova solo se e' gia' nel `modelValue` quando la fattura cambia.
 function reset() {
-  fattura.value = null
-  azzeraRate()
-  scadenzaId.value = null
+  const { fattura: f, scadenzaId: sc } = destinazioneDallaRiga(props.riga)
+  fattura.value = f
+  scadenzaId.value = sc
   motivoForzatura.value = ''
   annulla()
 }
@@ -103,10 +144,17 @@ async function onAbbina() {
       : {}),
     ...(scadenzaId.value != null ? { scadenza_id: scadenzaId.value } : {}),
   }
-  const esito = await esegui(
-    (extra) => abbinaRiga(props.riga.id, { ...base, ...extra }),
-    { successMessage: t('pagamenti.abbina.fatto') },
-  )
+  // ⭐ Il verbo lo sceglie il MODO: stesso payload, due endpoint. La tardiva
+  //    dice nel toast QUANTO ha registrato: «fatto» senza il numero non dice
+  //    se il movimento e' di sessanta o di seicento.
+  const chiamata = registra.value
+    ? (extra) => registraRigaTardiva(props.riga.id, { ...base, ...extra })
+    : (extra) => abbinaRiga(props.riga.id, { ...base, ...extra })
+  const esito = await esegui(chiamata, {
+    successMessage: registra.value
+      ? t('pagamenti.abbina.registrata', { importo: formatCurrency(props.riga.importo) })
+      : t('pagamenti.abbina.fatto'),
+  })
   if (esito !== null) chiudiConEsito()
 }
 
@@ -125,16 +173,24 @@ function chiudiConEsito() {
 <template>
   <AppDialog
     :visible="visible"
-    :header="t('pagamenti.abbina.titolo')"
+    :header="registra ? t('pagamenti.abbina.titolo_registra') : t('pagamenti.abbina.titolo')"
     width="md"
     :loading="loading || caricamento"
     :save-disabled="!canSave || richiestaConferma !== null"
-    :save-label="t('pagamenti.abbina.conferma')"
+    :save-label="registra ? t('pagamenti.abbina.conferma_registra') : t('pagamenti.abbina.conferma')"
+    :save-severity="registra ? 'danger' : null"
     @update:visible="(v) => emit('update:visible', v)"
     @save="onAbbina"
     @cancel="emit('update:visible', false)"
   >
     <div class="form-grid">
+      <!-- ⛔ Nella tardiva si dice che non si torna indietro, e si dice PRIMA:
+           e' la stessa frase della registrazione della distinta, perche' e'
+           lo stesso fatto — un movimento che nasce. -->
+      <Message v-if="registra" severity="warn" :closable="false">
+        {{ t('pagamenti.abbina.registra_irreversibile') }}
+      </Message>
+
       <!-- Che cosa si sta abbinando: senza, si sceglie una fattura al buio. -->
       <Message v-if="riga" severity="secondary" :closable="false" size="small">
         {{ t('pagamenti.abbina.contesto', {
@@ -153,29 +209,17 @@ function chiudiConEsito() {
         <FatturaLookup v-model="fattura" />
       </div>
 
-      <div class="form-field">
-        <label>{{ t('pagamenti.abbina.campo_rata') }}</label>
-        <Select
-          v-model="scadenzaId"
-          :options="rate"
-          :option-label="etichettaRata"
-          option-value="scadenza_id"
-          :placeholder="t('pagamenti.abbina.campo_rata_placeholder')"
-          :disabled="!fattura || !rate.length"
-          show-clear
-        />
-        <!-- ⭐ La rata e' FACOLTATIVA, e va detto: senza, l'operatore crede di
-             dover per forza sceglierne una e su un fondo fattura si blocca. -->
-        <!-- ⛔ Tre casi, non due: rate presenti · nessuna rata · non lette.
-             L'ultimo NON si spaccia per il secondo. -->
-        <small v-if="erroreRate" class="app-text-muted">
-          {{ t('pagamenti.abbina.rate_non_lette') }}
-        </small>
-        <small v-else-if="rateCaricate && !rate.length" class="app-text-muted">
-          {{ t('pagamenti.abbina.nessuna_rata') }}
-        </small>
-        <small v-else class="app-text-muted">{{ t('pagamenti.abbina.rata_facoltativa') }}</small>
-      </div>
+      <!-- Le rate col saldo, facoltative: il BB di dominio. `v-model` porta
+           lo `scadenza_id`, ed e' tutto cio' che il verbo deve mandare. -->
+      <RataSelect ref="rataSelect" v-model="scadenzaId" :fattura-id="fattura?.id ?? null" />
+
+      <!-- Perche' «Abbina» e' spento: la riga e' gia' cosi'. Senza questa riga
+           un pulsante grigio su un form compilato si legge come un guasto.
+           ⚠️ Non nella tardiva: li' il verbo e' acceso anche sulla stessa
+           destinazione, perche' registrare e' comunque un gesto. -->
+      <Message v-if="invariata && !registra" severity="info" :closable="false" size="small">
+        {{ t('pagamenti.abbina.gia_cosi') }}
+      </Message>
 
       <!-- ══ Il secondo tempo: la capienza non basta ══
            ⛔ NON e' un errore: e' una domanda. Il messaggio arriva dal DATABASE

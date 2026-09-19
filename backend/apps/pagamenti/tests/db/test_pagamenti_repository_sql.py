@@ -145,7 +145,7 @@ class CataloghiTests(TestCase):
             _catalogo("vendite_contabili_stati.csv"),
         )
         self.assertIn(
-            pagamenti_service.STATO_RIGA_INIZIALE,
+            pagamenti_service.STATO_RIGA_SENZA_DESTINAZIONE,
             _catalogo("vendite_contabili_righe_stati.csv"),
         )
 
@@ -268,15 +268,23 @@ class OrdinamentiDichiaratiTests(TestCase):
     # ⚠️ Questo controllo e' piu' debole degli altri due: cerca il nome nel
     #    testo della vista, quindi prende i refusi (il caso vero) ma non un
     #    nome che esiste in un altro punto della definizione.
+    # ⭐ Un valore della whitelist puo' essere un COSTRUTTORE DI RIGA —
+    #    `(fattura_numero, serie)` per il numero parlante (P-1-bis, 2026-09-17):
+    #    si ordina per la coppia, non per il testo. Il presidio lo scompone e
+    #    cerca OGNI colonna: escludere l'espressione lo renderebbe cieco proprio
+    #    sul valore piu' facile da scrivere male.
     def test_le_colonne_delle_rate_esistono_nella_vista(self):
         vista = (
             Path(__file__).resolve().parents[5]
             / "docs/it/dbzero/pagamenti/views/vw_rate_fuori_capienza.md"
         ).read_text(encoding="utf-8")
+        colonne = {
+            parte.strip()
+            for espressione in RATE_FUORI_CAPIENZA_SORT_COLUMNS.values()
+            for parte in espressione.strip("()").split(",")
+        }
         mancanti = sorted(
-            col
-            for col in RATE_FUORI_CAPIENZA_SORT_COLUMNS.values()
-            if not re.search(rf"\b{re.escape(col)}\b", vista)
+            col for col in colonne if not re.search(rf"\b{re.escape(col)}\b", vista)
         )
         self.assertEqual(mancanti, [], "colonne assenti dalla vista")
 

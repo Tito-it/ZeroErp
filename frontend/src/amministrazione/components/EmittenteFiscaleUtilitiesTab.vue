@@ -140,7 +140,7 @@ async function saveRow(row) {
 
 function removeConfig(row) {
   confirmAction({
-    title: t('common.confirm'),
+    header: t('common.confirm'),
     message: t('amministrazione.emittenti_fiscali.ut_remove_config_confirm', { codice: row.utility_codice }),
     danger: true,
     onAccept: async () => {
@@ -216,11 +216,11 @@ watch(() => props.emittenteId, async (id) => {
 
 <template>
   <div class="app-tab-content">
-    <Message severity="info" :closable="false" class="mb-3">
+    <Message severity="info" :closable="false">
       {{ t('amministrazione.emittenti_fiscali.ut_help_matrix') }}
     </Message>
 
-    <Message v-if="!emittenteAttivo" severity="warn" :closable="false" class="mb-3">
+    <Message v-if="!emittenteAttivo" severity="warn" :closable="false">
       {{ t('amministrazione.emittenti_fiscali.ut_parent_inactive_warn') }}
     </Message>
 
@@ -361,7 +361,7 @@ watch(() => props.emittenteId, async (id) => {
       </Column>
 
       <template #empty>
-        <div class="app-empty ut-empty">
+        <div class="app-empty-state">
           <i class="pi pi-info-circle ut-empty-icon" />
           <div class="ut-empty-msg">{{ t('amministrazione.emittenti_fiscali.ut_empty_matrix') }}</div>
           <div class="ut-empty-hint">{{ t('amministrazione.emittenti_fiscali.ut_empty_matrix_hint') }}</div>
@@ -399,14 +399,8 @@ watch(() => props.emittenteId, async (id) => {
 .ut-matrix-table :deep(.ut-cell-input.p-inputnumber) {
   flex-wrap: nowrap;
 }
-.ut-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1.5rem 1rem;
-  text-align: center;
-}
+/* Il contenitore e' `app-empty-state` (main.css): fino al 17/09 qui c'era una
+ * copia identica, `.ut-empty`, accanto a un `app-empty` che non esisteva. */
 .ut-empty-icon {
   font-size: 2rem;
   color: var(--app-text-muted);

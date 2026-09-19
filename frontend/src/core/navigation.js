@@ -50,6 +50,22 @@ export const NAV_ICONS = Object.freeze({
   RATE_FUORI_CAPIENZA: 'pi pi-exclamation-triangle',
   ECCEDENZE: 'pi pi-money-bill',
   CANALI_INCASSO: 'pi pi-building-columns',
+  // Dominio MAGAZZINO (Lotto 2, 2026-09-18). ⚠️ Nessuna e' l'icona del
+  // dominio (`pi-warehouse`), per la stessa ragione degli incassi.
+  // L'inventario e' il CONTEGGIO a scaffale (la lista spuntata); la rettifica
+  // e' una correzione in piu' o in meno (le due frecce); la disponibilita' e'
+  // «quanto c'e'» (l'indicatore); il registro dei movimenti e' il libro.
+  INVENTARI: 'pi pi-list-check',
+  RETTIFICHE: 'pi pi-sort-alt',
+  DISPONIBILITA: 'pi pi-gauge',
+  MOVIMENTI: 'pi pi-book',
+  // Osservabilita' (2026-09-19): il registro degli errori tecnici (Amm.
+  // Software) e il giornale trasversale degli eventi (Vendite ›
+  // Fatturazione). ⚠️ Il giornale ripete `pi-book` dei movimenti di
+  // magazzino: sono entrambi un REGISTRO che si legge in ordine di tempo, e la
+  // voce sta in un altro dominio.
+  ERROR_LOG: 'pi pi-exclamation-triangle',
+  GIORNALE: 'pi pi-book',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
@@ -167,6 +183,9 @@ export const DOMAIN_MENUS = {
     { key: 'matrici', icon: NAV_ICONS.TABELLE, to: '/amm-software/matrici' },
     { key: 'processi-automatici', icon: NAV_ICONS.PROCESSI_AUTOMATICI, to: '/amm-software/processi-automatici' },
     { key: 'audit-log', icon: NAV_ICONS.HISTORY, to: '/amm-software/audit-log' },
+    // Il registro degli errori tecnici (`dbops.error_log`): stessa famiglia
+    // dei due diari accanto (audit e email).
+    { key: 'error-log', icon: NAV_ICONS.ERROR_LOG, to: '/amm-software/error-log' },
     { key: 'email-accounts', icon: NAV_ICONS.AT, to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: NAV_ICONS.FILE_EDIT, to: '/amm-software/email-templates' },
     { key: 'email-log', icon: NAV_ICONS.ENVELOPE, to: '/amm-software/email-log' },
@@ -201,6 +220,10 @@ export const DOMAIN_MENUS = {
     { key: 'dashboard-competenza', icon: NAV_ICONS.DASHBOARD_COMPETENZA, to: '/vendite/dashboard-competenza' },
     { key: 'dashboard-backlog', icon: NAV_ICONS.DASHBOARD_BACKLOG, to: '/vendite/dashboard-backlog' },
     { key: 'lotti', icon: NAV_ICONS.LOTTI, to: '/vendite/lotti' },
+    // Il giornale trasversale degli eventi (osservabilita', pezzo G): accanto
+    // ai lotti perche' e' lo stesso mestiere visto dagli errori — «cosa e'
+    // andato storto, su tutto», con il salto al lotto e al documento.
+    { key: 'giornale', icon: NAV_ICONS.GIORNALE, to: '/vendite/giornale' },
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
     { key: 'offerte', icon: NAV_ICONS.OFFERTE, to: '/vendite/offerte' },
     { key: 'ordini', icon: NAV_ICONS.ORDINI, to: '/vendite/ordini' },
@@ -224,7 +247,17 @@ export const DOMAIN_MENUS = {
     }
   ],
   'acquisti': [],
-  'magazzino': [],
+  // ⭐ Dominio MAGAZZINO. L'ordine e' il PERCORSO DELLA MERCE, non l'alfabeto:
+  //    il primo carico in assoluto si fa dall'inventario, una rettifica
+  //    corregge quello che l'inventario ha scritto, la disponibilita' e' cio'
+  //    che ne risulta, e il registro dei movimenti e' la storia di tutto —
+  //    come per gli incassi, che seguono il percorso del denaro.
+  'magazzino': [
+    { key: 'inventari', icon: NAV_ICONS.INVENTARI, to: '/magazzino/inventari' },
+    { key: 'rettifiche', icon: NAV_ICONS.RETTIFICHE, to: '/magazzino/rettifiche' },
+    { key: 'disponibilita', icon: NAV_ICONS.DISPONIBILITA, to: '/magazzino/disponibilita' },
+    { key: 'movimenti', icon: NAV_ICONS.MOVIMENTI, to: '/magazzino/movimenti' },
+  ],
   // ⭐ Dominio INCASSI. L'ordine e' il PERCORSO del denaro, non l'alfabeto: si
   // apre una distinta, si abbinano le sue righe alle rate, e quello che non
   // torna finisce nei due elenchi in fondo.

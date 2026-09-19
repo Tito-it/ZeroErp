@@ -108,22 +108,21 @@ async function conferma() {
 </script>
 
 <template>
-  <!-- `closable=false` + `closeOnEscape=false`: non e' una scelta rimandabile
-       con un click distratto. La rinuncia esiste, ma e' un pulsante esplicito
-       in footer che dichiara la conseguenza (sola lettura).
+  <!-- `closeOnEscape=false` (override di chrome, l'unico): non e' una scelta
+       rimandabile con un tasto distratto. La rinuncia esiste, ma e' un pulsante
+       esplicito in footer che dichiara la conseguenza (sola lettura).
        AppDialog (BB obbligatorio per le dialog modali) con footer custom:
        tre bottoni — riprova / rimanda / conferma — fuori dal contratto
        Annulla/Salva del FormFooter integrato. -->
   <AppDialog
     :visible="visibile"
     width="sm"
-    :closable="false"
     :close-on-escape="false"
     :header="t('core.emittente_attivo.scelta_titolo')"
   >
-    <p class="mb-1">{{ t('core.emittente_attivo.scelta_messaggio') }}</p>
+    <p>{{ t('core.emittente_attivo.scelta_messaggio') }}</p>
 
-    <div v-if="caricamento" class="flex justify-content-center p-2">
+    <div v-if="caricamento" class="p-2">
       <ProgressSpinner style="width: 2.5rem; height: 2.5rem" />
     </div>
 
@@ -138,7 +137,6 @@ async function conferma() {
       option-label="label"
       option-value="value"
       :placeholder="t('core.emittente_attivo.aria')"
-      class="w-full"
       :disabled="inCorso"
     />
 

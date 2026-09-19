@@ -28,9 +28,12 @@ import { useL2SaveFlow } from '../../_shared/pricing/useL2SaveFlow'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { DATE_FORMAT } from '../../../core/constants'
+import { parseIsoDate, toDateString } from '../../../core/utils/date'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -69,6 +72,10 @@ const form = ref({
   iva_id: null,
   uom_operativa_id: null,
   ordine: null,
+  // La data di consegna RICHIESTA dal cliente (Blocco A del brief modifiche
+  // certe): sul preventivo c'e' solo la richiesta — la conferma nasce
+  // sull'ordine, e `fn_push_preventivo_a_ordine` porta avanti questa.
+  data_consegna_richiesta_cliente: null,
 })
 
 // L2 autorizzazioni prezzi: cattura dettaglio errore per banner inline.
@@ -209,6 +216,7 @@ watch(() => props.riga, (riga) => {
       iva_id: riga.iva_id || null,
       uom_operativa_id: riga.uom_operativa_id || null,
       ordine: riga.ordine || null,
+      data_consegna_richiesta_cliente: parseIsoDate(riga.data_consegna_richiesta_cliente),
     }
     articoloObj.value = riga.articolo_id ? { id: riga.articolo_id, codice: riga.articolo_codice, descrizione: riga.articolo_descrizione } : null
     // Bootstrap riferimento "Prezzo listino" in EDIT: priorita' al meta
@@ -224,7 +232,7 @@ watch(() => props.riga, (riga) => {
       suggerisciPrezzo()
     }
   } else {
-    form.value = { articolo_id: null, descrizione: '', qta_operativa: 1, prezzo_unitario: null, sconto_percentuale: 0, iva_id: null, uom_operativa_id: null, ordine: null }
+    form.value = { articolo_id: null, descrizione: '', qta_operativa: 1, prezzo_unitario: null, sconto_percentuale: 0, iva_id: null, uom_operativa_id: null, ordine: null, data_consegna_richiesta_cliente: null }
     articoloObj.value = null
     _resolverPriceLive.value = null
     resetUomOptions()
@@ -382,10 +390,14 @@ const canSave = computed(() => {
 //        Centralizza la build payload usata da handleSave + handleRichiediApprovazione.
 function buildRigaPayload(extras = {}) {
   const f = form.value
+  // ISO o `null` (DatePicker vuoto): il `null` esplicito AZZERA in PATCH,
+  // quindi svuotare il DatePicker toglie la data.
+  const dataConsegna = toDateString(f.data_consegna_richiesta_cliente)
   if (isEdit.value) {
     const base = {
       qta_operativa: f.qta_operativa,
       sconto_percentuale: f.sconto_percentuale,
+      data_consegna_richiesta_cliente: dataConsegna,
     }
     // Refactor componenti 2026-05-11: per riga CASO A il prezzo padre e'
     // calcolato dai trigger DB come SUM(componenti × coeff_qta). Inviarlo
@@ -410,6 +422,7 @@ function buildRigaPayload(extras = {}) {
     sconto_percentuale: f.sconto_percentuale,
     uom_operativa_id: f.uom_operativa_id,
     ordine: f.ordine,
+    data_consegna_richiesta_cliente: dataConsegna,
     ...extras,
   }
   // Articolo composito CREATE: il prezzo padre e' SUM(componenti) via
@@ -476,7 +489,7 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
           :min-fraction-digits="6" :max-fraction-digits="6"
           :disabled="isPadreComposito" />
-        <small class="text-color-secondary">{{ limitiPricingText }}</small>
+        <small class="app-text-muted">{{ limitiPricingText }}</small>
       </div>
       <!-- Prezzo listino: cella visibile accanto al prezzo editabile.
            Sorgente: resolver vivo (cambio articolo/uom) o meta denormalizzato.
@@ -548,6 +561,18 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
       <div class="form-field">
         <label>{{ t('vendite.preventivi.riga_ordine') }}</label>
         <InputNumber v-model="form.ordine" :use-grouping="false" />
+      </div>
+    </div>
+
+    <!-- La data di consegna richiesta dal cliente (Blocco A): sul preventivo
+         solo la richiesta, la conferma nasce sull'ordine. Il push la porta
+         avanti: e' il punto in cui il documento cambia natura, e perderla li'
+         e' il punto in cui gli utenti smetterebbero di fidarsene. -->
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.preventivi.riga_data_consegna_richiesta_cliente') }}</label>
+        <DatePicker v-model="form.data_consegna_richiesta_cliente"
+          :date-format="DATE_FORMAT" show-icon show-button-bar />
       </div>
     </div>
 

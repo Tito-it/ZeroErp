@@ -20,9 +20,19 @@ databaseChangeLog:
   - changeSet:
       id: 20260415-01-backfill-articoli-listino-tipologia-post-seed
       author: mctit
-      runOnChange: true
-      validCheckSum:
+      # ⛔ Una tantum (spento il 2026-09-17): e' il backfill POST-SEED dell'aprile
+      #    2026, non una regola del modello. Con `runOnChange: true` una
+      #    ri-esecuzione — e Liquibase 5.0.4 ne fa una spuria per ogni runOnChange
+      #    con `dbms:` + `validCheckSums: ANY`, in CI nella seconda invocazione —
+      #    riclassificherebbe PRODOTTI ogni articolo nato dopo senza tipologia:
+      #    misurati 221 su dbdev il 2026-09-17. `validCheckSums: ANY` perche' il
+      #    checksum salvato dalla ri-esecuzione spuria e' quello della stringa
+      #    vuota e con runOnChange:false tornerebbe vincolante. linee-guida §11.1.
+      runOnChange: false
+      validCheckSums:
         - ANY
+      # ⚠️ Fino al 2026-09-17 qui c'era `validCheckSum` SINGOLARE: chiave che
+      #    Liquibase ignora, quindi quell'ANY non valeva niente.
       comment: >
         Post-seed: popola listino_tipologia_id sugli articoli non-utility
         ancora NULL, usando la tipologia PRODOTTI dal seed listini_tipologie.

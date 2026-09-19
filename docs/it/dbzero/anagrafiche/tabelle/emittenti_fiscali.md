@@ -54,6 +54,7 @@
 |------|--------|--------|--------|
 | trg_emittenti_fiscali_a05_guard_codice_forma_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma()` |
 | trg_emittenti_fiscali_a05_guard_codice_forma_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma()` |
+| trg_emittenti_fiscali_a10_assets_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'assets', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_contratti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_default_bootstrap_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` |
@@ -64,6 +65,7 @@
 | trg_emittenti_fiscali_a10_emittenti_fiscali_billing_acco_b98811 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'emittenti_fiscali_billing_account', 'emittente_soggetto_ruolo_id', 'soggetto_ruolo_id', 'attivo')` |
 | trg_emittenti_fiscali_a10_emittenti_fiscali_utilities_bl_fafe8a | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'emittenti_fiscali_utilities', 'emittente_soggetto_ruolo_id', 'soggetto_ruolo_id', 'attivo')` |
 | trg_emittenti_fiscali_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
+| trg_emittenti_fiscali_a10_magazzini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'magazzini', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_offerte_commerciali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_parameter_overrides_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'parameter_overrides', 'emittente_fiscale_id', 'id', 'attivo')` |
@@ -82,10 +84,10 @@
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
-| trg_emittenti_fiscali_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
 | trg_emittenti_fiscali_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
-| trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
+| trg_emittenti_fiscali_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
 | trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
+| trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
 | trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 | trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 

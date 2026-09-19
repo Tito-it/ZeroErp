@@ -36,7 +36,7 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
@@ -131,7 +131,9 @@ _TIPI_VARIAZIONE_GLOBALE_AMMESSI: frozenset[str] = frozenset({"PERCENTUALE"})
 _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # Post brief simmetria 2026-05-26: `emittente_fiscale_id` ora e' colonna
     # nativa di `vendite.contratti` (NOT NULL). Pattern duale al trigger
-    # `trgfn_contratti_default_emittente`: se il payload lo specifica il
+    # `script.trgfn_default_emittente_fiscale` (BB unico dal 2026-09-15, la
+    # copia `trgfn_contratti_default_emittente` e' droppata): se il payload lo
+    # specifica il
     # trigger salta; se NULL il trigger lo deriva da
     # `script.fn_resolve_emittente_for_user(GUC app.current_user_id)`.
     # Il FE invia sempre il valore pre-popolato da `defaultEmittenteId`
@@ -1994,7 +1996,7 @@ class ContrattiService:
             "valido_dal": self._v.require_date(payload, "valido_dal", message=_MESSAGE),
         }
         # emittente_fiscale_id opzionale: se presente passa al DB e il trigger
-        # `trgfn_contratti_default_emittente` lo lascia (skip su IS NOT NULL);
+        # `script.trgfn_default_emittente_fiscale` lo lascia (skip su IS NOT NULL);
         # se assente il trigger lo deriva via `fn_resolve_emittente_for_user`
         # dalla GUC `app.current_user_id`. Il guard `guard_emittente_ba`
         # rifiuta in ogni caso divergenze BA<->EF.
@@ -2172,26 +2174,10 @@ class ContrattiService:
                 data["meta"] = meta
         return data
 
-    # Scopo: Normalizza ambito a uppercase e valida contro whitelist.
+    # Scopo: Normalizza ambito a uppercase e valida contro whitelist (la
+    #        lettura e' del BB `PayloadValidator`, il vocabolario resta qui).
     def _extract_ambito(self, payload: dict[str, Any]) -> str:
-        raw = payload.get("ambito")
-        ErrorManager.require(
-            isinstance(raw, str) and raw.strip() != "",
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail="ambito deve essere una stringa non vuota.",
-            context={"field": "ambito"},
-        )
-        assert isinstance(raw, str)
-        value = raw.strip().upper()
-        ErrorManager.require(
-            value in _AMBITI_VALIDI,
-            code=E_VENDITE_VALIDATION,
-            message=_MESSAGE,
-            detail=f"ambito deve essere uno tra: {', '.join(sorted(_AMBITI_VALIDI))}.",
-            context={"ambito": value},
-        )
-        return value
+        return self._v.require_enum(payload, "ambito", allowed=_AMBITI_VALIDI, message=_MESSAGE)
 
     # Scopo: Estrae e applica la coppia (tipo/valore) variazione globale nel
     #        data dict. Coerenza coppia validata da
@@ -2202,41 +2188,23 @@ class ContrattiService:
         tipo_present = "tipo_variazione_globale" in payload
         valore_present = "valore_variazione_globale" in payload
         tipo = None
-        valore = None
         if tipo_present:
-            raw = payload.get("tipo_variazione_globale")
-            if raw is None:
-                data["tipo_variazione_globale"] = None
-            else:
-                ErrorManager.require(
-                    isinstance(raw, str),
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE,
-                    detail="tipo_variazione_globale deve essere una stringa o NULL.",
-                    context={"field": "tipo_variazione_globale"},
-                )
-                tipo = raw.strip().upper()
-                ErrorManager.require(
-                    tipo in _TIPI_VARIAZIONE_GLOBALE_AMMESSI,
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE,
-                    detail=(
-                        f"tipo_variazione_globale deve essere uno tra: "
-                        f"{', '.join(sorted(_TIPI_VARIAZIONE_GLOBALE_AMMESSI))}. "
-                        "VALORE_FISSO non e' ammesso sulla testata contratto: "
-                        "per prezzi fissi su singolo articolo usa una riga "
-                        "OVERRIDE."
-                    ),
-                    context={"tipo_variazione_globale": tipo},
-                )
-                data["tipo_variazione_globale"] = tipo
+            # Tre stati (PATCH): la chiave c'e' — `None` azzera la variazione,
+            # un codice va letto contro il vocabolario (BB `PayloadValidator`).
+            tipo = self._v.extract_optional_enum(
+                payload, "tipo_variazione_globale",
+                allowed=_TIPI_VARIAZIONE_GLOBALE_AMMESSI, nullable=True, message=_MESSAGE,
+                nota=(
+                    "VALORE_FISSO non e' ammesso sulla testata contratto: per "
+                    "prezzi fissi su singolo articolo usa una riga OVERRIDE."
+                ),
+            )
+            assert tipo is not MISSING
+            data["tipo_variazione_globale"] = tipo
         if valore_present:
-            raw = payload.get("valore_variazione_globale")
-            if raw is None:
-                data["valore_variazione_globale"] = None
-            else:
-                valore = self._coerce_decimal(raw, field="valore_variazione_globale")
-                data["valore_variazione_globale"] = valore
+            data["valore_variazione_globale"] = self._v.optional_decimal(
+                payload, "valore_variazione_globale", message=_MESSAGE,
+            )
 
     # Scopo: Gate L2 sulla variazione globale del contratto al PATCH testata
     #        (refactor 2026-05-15 §3-bis-E). Wrapper sottile sul BB condiviso
@@ -2334,35 +2302,10 @@ class ContrattiService:
             data["articolo_id"] = self._v.require_uuid(
                 payload, "articolo_id", message=_MESSAGE_RIGA,
             )
-            # tipo_eccezione obbligatorio in create (NOT NULL nello schema).
-            tipo_eccezione_raw = payload.get("tipo_eccezione")
-            ErrorManager.require(
-                tipo_eccezione_raw is not None,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    "tipo_eccezione obbligatorio: uno tra "
-                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
-                ),
-                context={"field": "tipo_eccezione"},
-            )
-            ErrorManager.require(
-                isinstance(tipo_eccezione_raw, str),
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail="tipo_eccezione deve essere una stringa.",
-                context={"field": "tipo_eccezione"},
-            )
-            tipo_eccezione = tipo_eccezione_raw.strip().upper()
-            ErrorManager.require(
-                tipo_eccezione in _TIPI_ECCEZIONE,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    f"tipo_eccezione deve essere uno tra: "
-                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
-                ),
-                context={"tipo_eccezione": tipo_eccezione},
+            # tipo_eccezione obbligatorio in create (NOT NULL nello schema):
+            # la lettura e' del BB `PayloadValidator`, il vocabolario resta qui.
+            tipo_eccezione = self._v.require_enum(
+                payload, "tipo_eccezione", allowed=_TIPI_ECCEZIONE, message=_MESSAGE_RIGA,
             )
             data["tipo_eccezione"] = tipo_eccezione
 
@@ -2410,16 +2353,12 @@ class ContrattiService:
                 )
                 # Placeholder: il trigger DB lo sovrascrive a SUM componenti.
                 payload = {**payload, "prezzo_unitario": Decimal("0")}
-        # Numeric opzionali.
+        # Numeric opzionali: `null` esplicito azzera, chiave assente non tocca.
         for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
             if field in payload:
-                raw = payload[field]
-                if raw is None:
-                    data[field] = None
-                else:
-                    data[field] = self._coerce_decimal(
-                        raw, field=field, message=_MESSAGE_RIGA,
-                    )
+                data[field] = self._v.optional_decimal(
+                    payload, field, message=_MESSAGE_RIGA,
+                )
         self._apply_optional_positive_int(
             payload, data, "uom_operativa_id", message=_MESSAGE_RIGA,
         )
@@ -2587,13 +2526,8 @@ class ContrattiService:
                 payload, data, fk_field, message=_MESSAGE_UTILITY,
             )
         if "param_1_num" in payload:
-            raw = payload["param_1_num"]
-            data["param_1_num"] = (
-                None
-                if raw is None
-                else self._coerce_decimal(
-                    raw, field="param_1_num", message=_MESSAGE_UTILITY,
-                )
+            data["param_1_num"] = self._v.optional_decimal(
+                payload, "param_1_num", message=_MESSAGE_UTILITY,
             )
         if "param_2_txt" in payload:
             raw = payload["param_2_txt"]
@@ -2618,32 +2552,6 @@ class ContrattiService:
     # =================================================================
     # Helpers privati — numeri e DB errors
     # =================================================================
-
-    # Scopo: Converte valore in Decimal rifiutando bool e stringhe non numeriche.
-    #        `message` e' il titolo mostrato al frontend e deve riflettere la
-    #        sub-entita' chiamante (contratto / riga / utility) per una UX
-    #        coerente col form di provenienza.
-    def _coerce_decimal(
-        self, raw: Any, *, field: str, message: str = _MESSAGE
-    ) -> Decimal:
-        ErrorManager.require(
-            not isinstance(raw, bool),
-            code=E_VENDITE_VALIDATION,
-            message=message,
-            detail=f"{field} deve essere numerico.",
-            context={"field": field, "value": raw},
-        )
-        try:
-            return Decimal(str(raw).strip())
-        except (InvalidOperation, AttributeError) as exc:
-            ErrorManager.raise_error(
-                code=E_VENDITE_VALIDATION,
-                message=message,
-                detail=f"{field} non e' un numero valido.",
-                context={"field": field, "value": raw},
-                cause=exc,
-            )
-            raise AssertionError("unreachable") from exc  # pragma: no cover
 
     # Scopo: Helper per campi int opzionali nullable. Estrae dal payload,
     #        accetta None esplicito, valida positivita' altrimenti. Applica

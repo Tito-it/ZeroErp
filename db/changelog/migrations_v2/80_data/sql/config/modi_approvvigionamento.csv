@@ -1,0 +1,5 @@
+id,codice_interno,codice,descrizione,attivo,ordine,meta
+1,ACQUISTO,ACQUISTO,"Si compra: la merce arriva da un fornitore",true,10,{}
+2,PRODUZIONE,PRODUZIONE,"Si produce: la merce nasce da un ordine di lavoro",true,20,{}
+3,STOCK,STOCK,"Si preleva: la merce e' gia' a magazzino",true,30,{}
+4,NON_APPLICABILE,NON_APPL,"Non si applica: prestazione, nessuna merce da approvvigionare",true,40,{}

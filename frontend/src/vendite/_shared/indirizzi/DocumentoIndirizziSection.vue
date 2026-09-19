@@ -81,7 +81,7 @@ async function onChanged() {
 </script>
 
 <template>
-  <div v-if="docId && tipoDefault" class="app-drawer-section indirizzi-section">
+  <div v-if="docId && tipoDefault" class="app-drawer-section">
     <h4>{{ t('vendite.indirizzi.titolo') }}</h4>
 
     <div class="indirizzi-section-row">

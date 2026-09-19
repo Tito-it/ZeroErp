@@ -198,6 +198,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    segnaposto qui resterebbe a video come tale.
     "E_CONTABILE_CORREZIONE_NON_REGISTRATA": "La distinta non e' registrata: finche' non ha prodotto movimenti non c'e' niente da correggere.",
     "E_CONTABILE_GIA_CORRETTA": "Questa distinta ha gia' la sua correzione: aprila e lavora li'.",
+    # Distinta numerata sul registro (2026-09-17): il catalogo nomina canale e
+    # sigle con tre `%s`; qui la frase senza argomenti.
+    "E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE": "Il canale di incasso scelto e' di un altro emittente: scegliere un canale dell'emittente indicato, oppure cambiare emittente.",
+    "E_CONTABILE_EMITTENTE_OBBLIGATORIO": "Per aprire una distinta senza canale bisogna indicare l'emittente.",
     "E_CONTABILE_CENTRO_ENTE_INCOERENTE": "Il centro di riscossione della testata non e' quello dell'ente di incasso indicato.",
     "E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE": "La distinta contabile ha ancora righe pronte da registrare: non si puo' chiudere.",
     "E_CONTABILE_DATI_OBBLIGATORI": "Per aprire una distinta contabile mancano dei dati obbligatori.",
@@ -209,6 +213,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CONTABILE_STATO_NON_CONFIGURATO": "Stato contabile non configurato: non esiste, oppure non e' attivo.",
     "E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA": "Il totale dichiarato sulla distinta contabile non quadra con la somma delle sue righe.",
     "E_CONTABILE_TRANSIZIONE_NON_AMMESSA": "La distinta contabile non puo' passare a quello stato.",
+    "E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE": "La distinta contabile ha righe che nessuno ha ancora lavorato: si valida solo quando ogni riga e' stata guardata.",
     "E_CONTATTO_INCOMPLETO": "Contatto incompleto: hai inserito qualche dato ma mancano i campi obbligatori (nominativo e tipo contatto). Completa il contatto oppure svuota tutti i campi.",
     "E_CONTO_BANCARIO": "Il conto bancario indicato non e' utilizzabile.",
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "L'articolo e' gia' presente nel listino di riferimento: usare OVERRIDE per modificarne il prezzo, non AGGIUNTA.",
@@ -323,6 +328,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EMITTENTE_DEFAULT_SINGLETON": "Un solo emittente fiscale puo' essere impostato come default.",
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "Impossibile disattivare l'emittente fiscale: esistono entita' collegate.",
     "E_EMITTENTE_NON_MODIFICABILE": "L'emittente fiscale di un operatore e' immutabile. Per cambiare l'associazione disattivare l'utente e crearne uno nuovo per l'altro emittente.",
+    # BB emittente di default (2026-09-17): sostituisce E_ORDINE_/E_PREV_/
+    # E_CONTRATTO_EMITTENTE_NON_RISOLTO, che restano qui perche' ritirati, non
+    # cancellati. Stessa frase dei ripieghi delle sorelle.
+    "E_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "Il conto indicato per questo canale di incasso non e' un conto di incasso.",
     "E_ENTE_INCASSO_NON_TROVATO": "Il canale di incasso indicato non esiste, oppure appartiene a un emittente fuori dal tuo perimetro.",
     "E_ENTE_INCASSO_PSP_NON_CENSITO": "Il soggetto-ruolo ha il ruolo PSP ma non risulta censito e attivo fra i PSP.",
@@ -503,6 +512,166 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LOTTO_NON_RIUTILIZZABILE": "Lotto non riutilizzabile.",
     "E_LOTTO_NON_TROVATO": "Lotto non trovato.",
     "E_LOTTO_PARAMETRO_NON_COERENTE": "Parametri lotto non coerenti.",
+    # Magazzino — 29 codici, in ordine alfabetico. Due sono del Lotto 1
+    # (brief-db-magazzino-lotto-1-terreno-vuoto §4.7, §4.9: i guard del terreno
+    # vuoto, `MOVIMENTO_VERSO_INCOERENTE` e `TRASFERIMENTO_EMITTENTI_DIVERSI`),
+    # ventisette del Lotto 2 (brief-db-magazzino-lotto-2-motore §4.10, id
+    # 1075-1101: la primitiva `fn_scrivi_movimento`, le due check condivise, i
+    # documenti interni). A catalogo portano codici di articolo, magazzino,
+    # lotto e seriale, quantita' e stati: qui la frase senza. La forma segue
+    # la classe — sui TECNICO chiude con «segnalare al supporto» (il lettore e'
+    # chi sviluppa), sui DATO_ERRATO nomina il campo da correggere, sui
+    # CONFLITTO_STATO dice di rileggere lo stato.
+    "E_MAG_ARTICOLO_NON_GESTITO": (
+        "L'articolo non e' gestito a magazzino, oppure non e' attivo: nessun "
+        "movimento si puo' registrare. Attivare «gestito a magazzino» nella "
+        "sua scheda, oppure togliere la riga dal documento."
+    ),
+    "E_MAG_ASSET_DI_ALTRO_ARTICOLO": (
+        "Il seriale indicato non e' dell'articolo della riga, oppure non e' "
+        "piu' attivo: scegliere un seriale attivo dell'articolo, o correggere "
+        "l'articolo."
+    ),
+    "E_MAG_ASSET_DI_ALTRO_EMITTENTE": (
+        "Il seriale indicato non appartiene all'emittente del magazzino: "
+        "scegliere un seriale dell'emittente del magazzino, oppure un "
+        "magazzino dello stesso emittente del seriale."
+    ),
+    "E_MAG_ASSET_POSIZIONE_INCOERENTE": (
+        "Il seriale non puo' fare questo movimento: a registro risulta gia' "
+        "dentro un magazzino (non puo' entrare di nuovo) oppure non risulta "
+        "in questo (non puo' uscirne). Verificare dove si trova nel registro "
+        "dei movimenti e registrare prima il movimento mancante."
+    ),
+    "E_MAG_CHIAMATA_NON_VALIDA": (
+        "Chiamata non valida a una funzione di magazzino: un valore che "
+        "nessuna interfaccia produce. Non c'e' niente da correggere a video: "
+        "segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_COSTO_NON_AMMESSO": (
+        "Costo unitario non ammesso su questo movimento: lo decide il "
+        "registro (uno storno va al costo dell'originale, l'entrata di un "
+        "trasferimento al costo dell'uscita gemella, ogni uscita alla media "
+        "corrente). Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_NON_ELIMINABILE": (
+        "Il documento non si puo' eliminare: solo una bozza si elimina. Per "
+        "chiudere un documento confermato, annullarlo; un documento "
+        "registrato si corregge con una rettifica. Rileggere lo stato."
+    ),
+    "E_MAG_DOCUMENTO_NON_TROVATO": (
+        "Documento di magazzino non trovato: non esiste, oppure non e' "
+        "accessibile con i permessi di chi sta operando. Verificare "
+        "l'identificativo e l'emittente selezionato."
+    ),
+    "E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE": (
+        "Il documento non si porta a registrato con un aggiornamento diretto "
+        "dello stato: ci passa solo l'operazione di registrazione, che scrive "
+        "i movimenti. Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_RIGHE_CONGELATE": (
+        "Le righe del documento non si modificano piu': si scrivono solo in "
+        "bozza. Per correggere un documento confermato riportarlo in bozza o "
+        "annullarlo e rifarlo; uno registrato si corregge con una rettifica. "
+        "Rileggere lo stato."
+    ),
+    "E_MAG_DOCUMENTO_SENZA_RIGHE": (
+        "Il documento non ha righe: niente da registrare. Aggiungere le "
+        "righe (riportandolo in bozza, se serve) e ripetere, oppure "
+        "annullarlo."
+    ),
+    "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA": (
+        "Il passaggio di stato richiesto non e' ammesso dallo stato in cui il "
+        "documento si trova: la registrazione parte da un documento "
+        "confermato, una bozza va prima confermata, un documento registrato o "
+        "annullato non cambia piu'. Rileggere lo stato."
+    ),
+    "E_MAG_GEMELLA_NON_TROVATA": (
+        "L'entrata di un trasferimento non trova l'uscita gemella da cui "
+        "ereditare il costo: ordine delle due scritture invertito, oppure "
+        "identificativo sbagliato. Segnalare al supporto citando il "
+        "request_id."
+    ),
+    "E_MAG_GIACENZA_INSUFFICIENTE": (
+        "Giacenza insufficiente: la quantita' in uscita e' maggiore di quella "
+        "che il registro da' come presente per l'articolo (o per il lotto o "
+        "il seriale indicati). Ridurre la quantita', scegliere un altro lotto "
+        "o magazzino, oppure registrare prima il carico mancante."
+    ),
+    "E_MAG_LOTTO_DI_ALTRO_ARTICOLO": (
+        "Il lotto indicato non e' dell'articolo della riga, oppure non e' "
+        "piu' attivo: scegliere un lotto attivo dell'articolo, o correggere "
+        "l'articolo."
+    ),
+    "E_MAG_LOTTO_NON_AMMESSO": (
+        "L'articolo non si movimenta per lotti: il lotto sulla riga non va "
+        "indicato. Toglierlo, oppure attivare «per lotti» nella scheda "
+        "dell'articolo prima di registrare."
+    ),
+    "E_MAG_LOTTO_OBBLIGATORIO": (
+        "L'articolo si movimenta per lotti: indicare il lotto sulla riga "
+        "(crearlo prima, se e' nuovo)."
+    ),
+    "E_MAG_MAGAZZINO_CON_GIACENZA": (
+        "Il magazzino ha gia' movimenti a registro: l'uso delle ubicazioni "
+        "si decide prima del primo carico e non si cambia piu'. Se serve un "
+        "magazzino organizzato diversamente, crearne uno nuovo e trasferirci "
+        "la merce."
+    ),
+    "E_MAG_MAGAZZINO_NON_VALIDO": (
+        "Magazzino inesistente o non attivo: le operazioni lo leggono dalla "
+        "testata del documento, quindi un valore che non risolve e' un "
+        "difetto del programma. Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_MERCE_BLOCCATA": (
+        "La merce c'e', ma una parte e' gia' promessa ad altri: la quantita' "
+        "libera non copre l'uscita richiesta. Ridurre la quantita' alla parte "
+        "disponibile, oppure attendere che il blocco venga chiuso."
+    ),
+    "E_MAG_MOVIMENTO_GIA_REGISTRATO": (
+        "Questa operazione ha gia' registrato il movimento: rilancio o doppio "
+        "click. Non c'e' niente da ripetere, aggiornare la vista per vederlo."
+    ),
+    "E_MAG_MOVIMENTO_VERSO_INCOERENTE": (
+        "Movimento di magazzino con verso incoerente: la quantita' non ha il "
+        "segno della causale (entrata positiva, uscita negativa) oppure vale "
+        "zero. Non e' un dato da correggere nel form: segnalare al supporto."
+    ),
+    "E_MAG_SERIALE_NON_AMMESSO": (
+        "L'articolo non si movimenta per seriale: il seriale sulla riga non "
+        "va indicato. Toglierlo, oppure attivare «per seriale» nella scheda "
+        "dell'articolo prima di registrare."
+    ),
+    "E_MAG_SERIALE_OBBLIGATORIO": (
+        "L'articolo si movimenta per seriale: indicare il seriale sulla riga "
+        "(registrare prima l'asset, se e' nuovo), con quantita' 1."
+    ),
+    "E_MAG_STORNO_INCOERENTE": (
+        "Storno incoerente col movimento originale: articolo o magazzino "
+        "diversi, quantita' non opposta, causale non di storno, sorgente "
+        "diversa, oppure originale inesistente. Segnalare al supporto "
+        "citando il request_id."
+    ),
+    "E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI": (
+        "Il magazzino di destinazione non appartiene allo stesso emittente "
+        "fiscale del magazzino di origine, oppure non e' visibile nel tuo "
+        "perimetro: un trasferimento sposta merce solo fra magazzini dello "
+        "stesso emittente."
+    ),
+    "E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO": (
+        "L'ubicazione indicata non e' del magazzino del documento, oppure "
+        "non e' piu' attiva: scegliere un'ubicazione attiva di quel "
+        "magazzino."
+    ),
+    "E_MAG_UBICAZIONE_NON_AMMESSA": (
+        "Il magazzino non usa le ubicazioni: l'ubicazione sulla riga non va "
+        "indicata. Toglierla; l'uso delle ubicazioni si decide nella scheda "
+        "del magazzino prima del primo movimento."
+    ),
+    "E_MAG_UBICAZIONE_OBBLIGATORIA": (
+        "Il magazzino usa le ubicazioni: indicare sulla riga in quale "
+        "ubicazione (un'ubicazione attiva di quel magazzino)."
+    ),
     # ⭐ `E_MESSAGGIO_NON_DEFINITO` — RINOMINATO dal team DB il 2026-08-07 (era
     # `MESSAGGIO_NON_DEFINITO`, senza prefisso). E' l'ULTIMA riga del registro dei
     # codici fuori convenzione `dbops.messaggi_errore_codici_legacy`, che con
@@ -672,12 +841,35 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.",
     "E_PRICING_SCONTO_ECCESSIVO": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
+    # «Esegui ora» su una sveglia (brief-db-avvio-manuale-di-un-processo §9):
+    # i tre motivi del predicato e i due esiti dell'handler. A catalogo portano
+    # unit, id del lavoro, secondi ed exit code: qui la frase senza.
+    "E_PROCESSO_AVVIO_FALLITO": (
+        "Il comando della sveglia e' uscito con un errore: il dettaglio e' nel "
+        "giornale del processo eseguito."
+    ),
+    "E_PROCESSO_AVVIO_GIA_IN_CODA": (
+        "Un avvio di questa sveglia e' gia' in coda: attendi che finisca prima "
+        "di chiederne un altro."
+    ),
+    "E_PROCESSO_AVVIO_TROPPO_LUNGO": (
+        "Il comando della sveglia non e' finito entro il tempo massimo: e' troppo "
+        "lungo per «Esegui ora» ed e' stato interrotto."
+    ),
     "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": (
         "Questo processo non puo' avere un utente tecnico: ne serve uno solo ai "
         "processi che fanno il lavoro di un'azienda senza che nessuno li avvii."
     ),
     "E_PROCESSO_NON_TROVATO": (
         "Il processo indicato non esiste nel registro dei processi automatici."
+    ),
+    "E_PROCESSO_SVEGLIA_NON_ABILITATA": (
+        "La sveglia non e' abilitata su questa installazione: il comando non "
+        "parte ne' dal timer ne' a mano."
+    ),
+    "E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO": (
+        "La sveglia non e' avviabile a mano: e' un servizio sempre acceso oppure "
+        "un comando dichiarato non candidato a «Esegui ora»."
     ),
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "Binding non coerente con il tipo del profilo di accesso.",
     "E_PROFILO_ACCESSO_NON_TROVATO": "Profilo di accesso non trovato.",
@@ -733,9 +925,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO": "L'abbinamento della riga contabile e' incompleto: mancano dei dati per portarla a quello stato.",
     "E_RIGA_CONTABILE_CAPIENZA_SUPERATA": "L'importo non rientra in quanto resta da regolare sulla rata.",
     "E_RIGA_CONTABILE_DISTINTA_FINALE": "La distinta contabile e' in uno stato finale: non accetta altre righe, e quelle che ha non si lavorano piu'.",
+    "E_RIGA_CONTABILE_DISTINTA_NON_MANUALE": "La distinta contabile non e' compilata a mano: le sue righe non si eliminano da qui.",
+    "E_RIGA_CONTABILE_DISTINTA_VALIDATA": "La distinta contabile e' validata: le sue righe non si aggiungono, non si modificano e non si eliminano finche' non torna in bozza.",
     "E_RIGA_CONTABILE_NON_TROVATA": "Riga contabile non trovata.",
     "E_RIGA_CONTABILE_RATA_INCOERENTE": "La rata non appartiene alla fattura di questa riga contabile.",
     "E_RIGA_CONTABILE_SENZA_ABBINAMENTO": "La riga contabile non e' registrabile: manca l'abbinamento a una fattura e a un billing account.",
+    "E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA": "La distinta contabile non e' registrata: una riga si registra in ritardo solo sotto una distinta gia' registrata.",
+    "E_RIGA_CONTABILE_TARDIVA_STATO": "La riga contabile non e' sospesa: in ritardo si registra solo una riga sospesa.",
     "E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA": "La riga contabile non puo' passare a quello stato.",
     "E_RIGA_GIA_FATTURATA": "Riga gia' fatturata.",
     "E_RIGA_LISTINO_PROPAGATA": "Riga listino gia' propagata a valle: operazione non ammessa.",

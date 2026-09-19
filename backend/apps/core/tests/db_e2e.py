@@ -92,6 +92,62 @@ def richiedi_db_provvisto(sonda: str = SONDA_SCHEMA_LIQUIBASE) -> None:
         )
 
 
+# Scopo: prerequisito dei test che provano che la RLS NASCONDE qualcosa (il
+#        404 no-leak dell'altro emittente, la lista vuota): il ruolo con cui il
+#        test e' connesso deve essere SOGGETTO alla RLS su `tabella`. Fallisce
+#        parlando — non salta — quando non lo e'.
+#
+# ⛔ PERCHE' ESISTE. L'owner di una tabella e un ruolo `BYPASSRLS` (o superuser)
+#    SALTANO la RLS finche' non c'e' `FORCE ROW LEVEL SECURITY`, che il repo
+#    rifiuta apposta (20260829-27). Con quel ruolo un test no-leak non prova
+#    niente e va rosso con «atteso un rifiuto, e' passato» — che non dice
+#    PERCHE'. Successo il 2026-09-19: in CI lo step «Django tests» ereditava
+#    `DB_USER: zeroerp` (l'owner, l'utente di Liquibase e di `manage.py
+#    migrate`), mentre in sviluppo `.env.systemd` connette `zeroerp_app`. Il
+#    test era verde da una parte e rosso dall'altra, e il messaggio del rosso
+#    accusava la RLS invece del ruolo.
+#
+# ⚠️ FALLISCE, non salta, ed e' una scelta diversa da `richiedi_db_provvisto`:
+#    li' la condizione mancante e' d'ambiente e il test non ha senso; qui il
+#    database c'e' ed e' provvisto, e' la CONFIGURAZIONE del passo di test a
+#    essere sbagliata — uno skip la nasconderebbe e il no-leak resterebbe
+#    non provato con la suite verde (verde per sottrazione).
+#
+# ⚠️ `pg_has_role(..., 'USAGE')` e non `relowner = current_user`: PostgreSQL
+#    riconosce come owner anche chi EREDITA il ruolo owner, e salta la RLS per
+#    lui allo stesso modo.
+def richiedi_ruolo_soggetto_a_rls(tabella: str) -> None:
+    from django.db import connection
+
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT current_user,
+                   r.rolsuper,
+                   r.rolbypassrls,
+                   pg_has_role(current_user, c.relowner, 'USAGE') AS e_owner,
+                   c.relrowsecurity
+              FROM pg_class c
+              JOIN pg_roles r ON r.rolname = current_user
+             WHERE c.oid = %s::regclass
+            """,
+            [tabella],
+        )
+        riga = cur.fetchone()
+    assert riga is not None, f"tabella {tabella} assente"
+    ruolo, superuser, bypassrls, e_owner, rls_attiva = riga
+    assert rls_attiva, f"{tabella} non ha la RLS attiva: questo test la presuppone"
+    motivi = [m for m, v in (("superuser", superuser), ("BYPASSRLS", bypassrls), (f"owner di {tabella}", e_owner)) if v]
+    if motivi:
+        raise AssertionError(
+            f"il ruolo di connessione `{ruolo}` e' {', '.join(motivi)}: SALTA la "
+            f"RLS su {tabella} e questo test non puo' provare che qualcosa resti "
+            "nascosto. I test sul DB vero girano come l'applicazione "
+            "(`zeroerp_app`, NOBYPASSRLS e non owner): DB_USER nel passo di test "
+            "— vedi ci-validate.yaml «Django tests» e .env.systemd."
+        )
+
+
 # Scopo: apre il CONTESTO OPERATORE su un cursore, cioe' le due GUC senza le
 #        quali ogni tabella sotto RLS risponde ZERO RIGHE. Torna l'id
 #        dell'utente su cui il contesto e' stato aperto.

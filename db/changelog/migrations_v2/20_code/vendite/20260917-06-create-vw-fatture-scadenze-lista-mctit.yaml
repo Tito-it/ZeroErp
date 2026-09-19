@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — vendite.vw_fatture_scadenze_lista: la sorgente della lista RATE
+#   Brief: brief-db-distinta-ricerca-rate §4.2 e §4-bis.3 (D19-c).
+#
+# -- UNA RIGA PER RATA, L'IDENTITA' E BASTA ---------------------------------
+#   La rata (scadenza_id, fattura_id, numero_rata, data_scadenza, importo) col
+#   suo documento (numero parlante dalla sede unica, registro, date, natura,
+#   tipo, stato, totali, valuta), il cliente e l'emittente. NESSUN SALDO: il
+#   residuo e' di pagamenti e vive nel nucleo pagamenti.fn_get_saldi_rate
+#   (P-3, 20260917-07). ⛔ Niente colonne «scaduta»/«insoluta»: sono derivate
+#   dal residuo (brief madre §3.4), e il residuo non sta qui.
+#
+# -- I JOIN SONO SCRITTI, NON EREDITATI DA vw_fatture_lista ------------------
+#   Il piano di `fatture_scadenze JOIN vw_fatture_lista` trascina la CTE
+#   ricorsiva di vw_documento_lineage (Append su preventivi, offerte, ordini,
+#   ddt, resi, fatture) anche senza proiettare una colonna di lineage: il
+#   planner rimuove un LEFT JOIN solo su una relazione con chiave unica, e una
+#   vista non ce l'ha. I nomi canonici li tiene il pgTAP, non l'impilamento.
+#
+# -- DUE INNER DIMOSTRABILI, IL RESTO E' LEFT ---------------------------------
+#   · vendite.fatture: fatture_scadenze.fattura_id e' NOT NULL con FK, e la
+#     policy della rata (rls_fatture_scadenze_ef_whitelist) e' lo STESSO
+#     EXISTS sulla testata che protegge vendite.fatture: una rata visibile ha
+#     sempre la sua testata visibile, l'inner non puo' togliere righe.
+#   · config.nature_doc_fiscale: natura_doc_id NOT NULL con FK (come la sorella).
+#   Tutto il resto e' LEFT per la regola di forma: una rata su una bozza senza
+#   stato, registro o numero deve comparire senza, non sparire. In particolare
+#   anagrafiche.billing_account ha una RLS risolta da un'altra funzione
+#   (fn_scope_ef_whitelist_via_efba): un inner farebbe sparire una rata che la
+#   sua policy lascia passare, senza nessun segnale.
+#
+# -- LA CHIAVE SI CHIAMA scadenza_id -----------------------------------------
+#   E' il vocabolario di pagamenti (vw_rate_fuori_capienza, list_rate_con_saldo,
+#   il context di E_RATA_NON_TROVATA, il modelValue di RataSelect).
+#   <ListaConfigurabile> ha dataKey di default `id`: il FE passa
+#   dataKey="scadenza_id", non si duplica la colonna.
+#
+# -- numero E numero_documento ----------------------------------------------
+#   `numero` (il contatore, bigint) resta perche' il picker filtra per numero
+#   ESATTO (101 non porta 1010); `numero_documento` e' il parlante dalla sede
+#   unica vendite.fn_numero_documento_fattura, NULL sulla non numerata.
+#
+# -- security_invoker=on ------------------------------------------------------
+#   La vista non filtra e non fa scope: a mordere e' la RLS di
+#   fatture_scadenze — due policy, OPERATORE (ef_whitelist via testata) e
+#   CLIENTE_PORTALE (ba_ownership via testata): la stessa vista serve anche il
+#   portale (brief madre §3.3). Va RI-SPECIFICATA a ogni CREATE OR REPLACE.
+#
+# -- INDICI: nessuno a priori -------------------------------------------------
+#   Per cliente: ix_fatture_ba_data (billing_account_id, data). Per rata:
+#   uq_fatture_scadenze_nr copre fattura_id in testa. ⚠️ Per numero esatto NON
+#   c'e' un indice (uq_fatture_numero parte da registro_id): e' una scansione
+#   di fatture, una riga per documento. Se il piano di C dira' il contrario,
+#   un indice parziale su (numero) e' una riga, e si aggiunge ALLORA.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260917-06-create-vw-fatture-scadenze-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260917-06-create-vw-fatture-scadenze-lista
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Vista d'identita' delle rate (una riga per rata, documento/cliente/emittente
+        denormalizzati, nessun saldo), security_invoker=on, JOIN scritti e non ereditati
+        da vw_fatture_lista. Sorgente della lista ui pagamenti.rate e del picker degli
+        incassi (D19-c). Brief: brief-db-distinta-ricerca-rate §4-bis.3 (P-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_scadenze
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture
+                columnName: registro_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_numero_documento_fattura'
+            - sqlCheck:
+                expectedResult: 0
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                  WHERE schemaname = 'vendite' AND viewname = 'vw_fatture_scadenze_lista'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_fatture_scadenze_lista
+              WITH (security_invoker=on) AS
+              SELECT
+                  -- la rata
+                  sc.id                                                  AS scadenza_id,
+                  sc.fattura_id,
+                  sc.numero_rata,
+                  sc.data_scadenza,
+                  sc.importo,
+                  -- il documento
+                  f.numero,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  reg.codice                                             AS registro_codice,
+                  reg.descrizione                                        AS registro_descrizione,
+                  ndf.codice_interno                                     AS natura_doc_codice_interno,
+                  ndf.descrizione                                        AS natura_doc_descrizione,
+                  tdf.codice_interno                                     AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione                                        AS tipo_doc_fiscale_descrizione,
+                  sdf.codice_interno                                     AS stato_codice_interno,
+                  sdf.descrizione                                        AS stato_descrizione,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  v_val.codice                                           AS valuta_codice,
+                  -- il cliente
+                  f.billing_account_id,
+                  ba.codice                                              AS ba_codice,
+                  s_cli.id                                               AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  -- l'emittente
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id                                                  AS emittente_fiscale_id,
+                  ef.codice                                              AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa                          AS emittente_ragione_sociale
+                FROM vendite.fatture_scadenze sc
+                JOIN vendite.fatture f                    ON f.id = sc.fattura_id
+                JOIN config.nature_doc_fiscale ndf        ON ndf.id = f.natura_doc_id
+                LEFT JOIN config.stati_doc_fiscale sdf    ON sdf.id = f.stato_doc_fiscale_id
+                LEFT JOIN config.tipi_doc_fiscale tdf     ON tdf.id = f.tipo_doc_fiscale_id
+                LEFT JOIN vendite.registri_fatturazione reg ON reg.id = f.registro_id
+                LEFT JOIN anagrafiche.billing_account ba  ON ba.id = f.billing_account_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON sr_cli.id = ba.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s_cli      ON s_cli.id = sr_cli.soggetto_id
+                LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = f.emittente_soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s_ef       ON s_ef.id = sr_ef.soggetto_id
+                LEFT JOIN config.valute v_val             ON v_val.id = f.valuta_id;
+
+              COMMENT ON VIEW vendite.vw_fatture_scadenze_lista
+              IS 'Vista d''IDENTITA'' delle rate: una riga per rata di vendite.fatture_scadenze col suo documento (numero parlante dalla sede unica fn_numero_documento_fattura, registro, date, natura, tipo, stato, totali, valuta), il cliente e l''emittente denormalizzati. NESSUN SALDO: il residuo e'' di pagamenti e vive nel nucleo pagamenti.fn_get_saldi_rate (P-3) — chi legge fa JOIN LATERAL sulla pagina o passa da pagamenti.vw_saldi_rate. ⛔ Niente «scaduta»/«insoluta»: sono derivate dal residuo. ⭐ La chiave si chiama scadenza_id, il vocabolario di pagamenti; `numero` (il contatore) resta accanto a `numero_documento` perche'' il picker filtra per numero ESATTO. ⛔ security_invoker=on: la vista non filtra e non fa scope, a mordere e'' la RLS di fatture_scadenze (OPERATORE via ef_whitelist e CLIENTE_PORTALE via ba_ownership, entrambe via testata): la stessa vista serve il picker degli incassi, lo scadenzario e il portale. Va RI-SPECIFICATA a ogni CREATE OR REPLACE. ⛔ DUE inner dimostrabili — vendite.fatture (FK NOT NULL, e la policy della rata e'' lo stesso EXISTS sulla testata) e config.nature_doc_fiscale (FK NOT NULL) — tutto il resto e'' LEFT: una rata su una bozza senza stato, registro o numero compare senza, non sparisce. ⚠️ I JOIN sono SCRITTI e non ereditati da vw_fatture_lista: impilarsi su quella vista trascina la CTE ricorsiva del lineage in ogni lettura delle rate (il planner non rimuove un LEFT JOIN su una vista). Nasce il 2026-09-17 per D19-c (brief-db-distinta-ricerca-rate §4-bis.3, P-2): il picker delle rate della distinta e'' il primo consumatore dello scadenzario.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_fatture_scadenze_lista;

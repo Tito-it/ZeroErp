@@ -162,22 +162,30 @@ BEGIN
         v_motivi := array_append(v_motivi, 'riepilogo IVA assente');
     END IF;
 
-    -- 3) Documento da incassare: il piano rate deve esserci e quadrare.
-    --    L'uguaglianza e' esatta perche' il generatore quadra per
-    --    costruzione (l'ultima rata assorbe la differenza) e i tipi
-    --    sono NUMERIC, non floating point.
-    IF v_tot_pagare > 0 AND v_n_rate = 0 THEN
+    -- 3) Documento da REGOLARE (totale diverso da zero, col segno): il
+    --    piano rate deve esserci e quadrare. ⭐ rev 2026-09-17 (P-5): vale
+    --    anche sulla nota di credito, che ha UNA rata negativa uguale al
+    --    totale — «> 0» e' diventato «<> 0», e la somma col segno e'
+    --    ANCHE il presidio di coerenza di segno che prima faceva il CHECK
+    --    sull'importo (tolto nel 20260917-11): una rata di segno sbagliato
+    --    rompe l'uguaglianza. L'uguaglianza e' esatta perche' il generatore
+    --    quadra per costruzione e i tipi sono NUMERIC, non floating point.
+    IF v_tot_pagare <> 0 AND v_n_rate = 0 THEN
         v_motivi := array_append(v_motivi, 'piano rate assente');
-    ELSIF v_tot_pagare > 0 AND v_sum_rate <> v_tot_pagare THEN
+    ELSIF v_tot_pagare <> 0 AND v_sum_rate <> v_tot_pagare THEN
         v_motivi := array_append(v_motivi, format(
             'somma delle rate (%s) diversa dal totale a pagare (%s)',
             v_sum_rate, v_tot_pagare));
     END IF;
 
-    -- 4) D-D allo specchio: un documento non positivo non si rateizza.
-    IF v_tot_pagare IS NOT NULL AND v_tot_pagare <= 0 AND v_n_rate > 0 THEN
+    -- 4) D-D allo specchio: un documento a totale ZERO non si rateizza.
+    --    ⭐ rev 2026-09-17 (P-5): era «non positivo»; il negativo ora ha
+    --    il suo piano come il positivo, e D-D resta vera nel merito —
+    --    zero e negativo sono documenti legittimi, solo che il negativo
+    --    da regolare ha una rata.
+    IF v_tot_pagare IS NOT NULL AND v_tot_pagare = 0 AND v_n_rate > 0 THEN
         v_motivi := array_append(v_motivi, format(
-            'presenti %s rate su un totale a pagare non positivo (%s)',
+            'presenti %s rate su un totale a pagare zero (%s)',
             v_n_rate, v_tot_pagare));
     END IF;
 
@@ -289,7 +297,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
-IS 'Assegna anno, serie e numero a una fattura, dopo il guard D-K di coerenza del documento. Il guard gira SEMPRE prima di consumare il progressivo, perche'' un numero fiscale valido su un documento invalido si ripara solo con una nota di variazione. rev 2026-08-18 (brief-design-note-credito-resi N11): SETTIMA condizione — natura = NOTA_CREDITO <=> totale_a_pagare <= 0. ⭐ Trasforma la scelta «il segno vive nel numero, non in un''etichetta» da convenzione a invariante VERIFICATO, e chiude il cerchio con la FatturaPA dove lo stesso invariante si legge TipoDocumento = TD04 <=> totale_doc < 0. ⚠️ Lo zero e'' ammesso da entrambe le parti: si presidia il SEGNO, non l''importo. ⚠️ La seconda meta'' dice «diverso da NOTA_CREDITO» e non «uguale a FATTURA»: copre anche NOTA_DEBITO senza nominarla. ⭐ rev 2026-08-25: E_FATTURA_SENZA_RIGHE porta il BERSAGLIO sulla fattura; si passa p_fattura_id a fn_get_next_progressivo, che ne ha bisogno per il bersaglio del cancello; `mese` esce dal RETURNS TABLE, e con lui l''ultima lettura di reset_policy. ⭐ rev 2026-08-26 (cantiere limite-emissione, DB-14): si legge f.competenza_mese e la si passa al cancello, che la usa per il LIMITE DI EMISSIONE. ⭐ Costa UNA COLONNA IN UNA SELECT CHE C''E'' GIA'' — quella con FOR UPDATE OF f — e la RLS lavora nel verso giusto: se questa riga non e'' visibile non si numera affatto, quindi nessun fail-open. ⛔ E'' il motivo per cui la competenza sta sulla FATTURA e non si va a prendere dal lotto: vendite.fatturazione_lotti ha la RLS, e leggerlo da dentro una SECURITY INVOKER renderebbe fail-open l''unico presidio non aggirabile. ℹ️ NULL e'' ammesso (fatture nate prima del 2026-08-26) e significa «non la so»: il cancello ripiega sul mese della data. ⭐ Il guard di parametro passa da E_PARAMETRO_INVALIDO — che portava `p_fattura_id obbligatorio e > 0` nella frase letta da una persona — a E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO). ℹ️ Firma e tipo di ritorno NON cambiano: i %TYPE risolvono agli stessi tipi di prima, quindi CREATE OR REPLACE basta — a cambiare firma e'' la funzione chiamata. ⛔ Il JOIN su registri_fatturazione RESTA: porta serie_default, cioe'' il punto in cui la SERIE di un documento si risolve davvero — ed e'' la stessa risoluzione, COALESCE(f.serie, r.serie_default, ''''), che devono usare fn_get_pavimento_sequenza e il backfill di ultima_data; se una delle tre diverge, cerca una riga di contatore che non esiste e risponde «nessun vincolo». ℹ️ Prima del numero ci sono DUE cose: il D-K (il documento merita un numero?) e il cancello dentro fn_get_next_progressivo (la data puo'' stare in fondo alla sequenza, ed e'' ancora emettibile?). Il secondo e'' sotto l''advisory lock, il primo no — e va bene: il D-K guarda la fattura, non la sequenza. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-14.';
+IS 'Assegna anno, serie e numero a una fattura, dopo il guard D-K di coerenza del documento. Il guard gira SEMPRE prima di consumare il progressivo, perche'' un numero fiscale valido su un documento invalido si ripara solo con una nota di variazione. rev 2026-08-18 (brief-design-note-credito-resi N11): SETTIMA condizione — natura = NOTA_CREDITO <=> totale_a_pagare <= 0. ⭐ Trasforma la scelta «il segno vive nel numero, non in un''etichetta» da convenzione a invariante VERIFICATO, e chiude il cerchio con la FatturaPA dove lo stesso invariante si legge TipoDocumento = TD04 <=> totale_doc < 0. ⚠️ Lo zero e'' ammesso da entrambe le parti: si presidia il SEGNO, non l''importo. ⚠️ La seconda meta'' dice «diverso da NOTA_CREDITO» e non «uguale a FATTURA»: copre anche NOTA_DEBITO senza nominarla. ⭐ rev 2026-08-25: E_FATTURA_SENZA_RIGHE porta il BERSAGLIO sulla fattura; si passa p_fattura_id a fn_get_next_progressivo, che ne ha bisogno per il bersaglio del cancello; `mese` esce dal RETURNS TABLE, e con lui l''ultima lettura di reset_policy. ⭐ rev 2026-08-26 (cantiere limite-emissione, DB-14): si legge f.competenza_mese e la si passa al cancello, che la usa per il LIMITE DI EMISSIONE. ⭐ Costa UNA COLONNA IN UNA SELECT CHE C''E'' GIA'' — quella con FOR UPDATE OF f — e la RLS lavora nel verso giusto: se questa riga non e'' visibile non si numera affatto, quindi nessun fail-open. ⛔ E'' il motivo per cui la competenza sta sulla FATTURA e non si va a prendere dal lotto: vendite.fatturazione_lotti ha la RLS, e leggerlo da dentro una SECURITY INVOKER renderebbe fail-open l''unico presidio non aggirabile. ℹ️ NULL e'' ammesso (fatture nate prima del 2026-08-26) e significa «non la so»: il cancello ripiega sul mese della data. ⭐ Il guard di parametro passa da E_PARAMETRO_INVALIDO — che portava `p_fattura_id obbligatorio e > 0` nella frase letta da una persona — a E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO). ℹ️ Firma e tipo di ritorno NON cambiano: i %TYPE risolvono agli stessi tipi di prima, quindi CREATE OR REPLACE basta — a cambiare firma e'' la funzione chiamata. ⛔ Il JOIN su registri_fatturazione RESTA: porta serie_default, cioe'' il punto in cui la SERIE di un documento si risolve davvero — ed e'' la stessa risoluzione, COALESCE(f.serie, r.serie_default, ''''), che devono usare fn_get_pavimento_sequenza e il backfill di ultima_data; se una delle tre diverge, cerca una riga di contatore che non esiste e risponde «nessun vincolo». ℹ️ Prima del numero ci sono DUE cose: il D-K (il documento merita un numero?) e il cancello dentro fn_get_next_progressivo (la data puo'' stare in fondo alla sequenza, ed e'' ancora emettibile?). Il secondo e'' sotto l''advisory lock, il primo no — e va bene: il D-K guarda la fattura, non la sequenza. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-14. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.6, P-5 / D19-e): le condizioni 3 e 4 del guard D-K sono riscritte col segno — «documento da regolare» e'''' totale_a_pagare <> 0 (il piano rate deve esserci e quadrare, anche sulla nota di credito, che ha UNA rata negativa uguale al totale) e «non si rateizza» e'''' totale = 0. Prima erano > 0 e <= 0, e una nota di credito con la sua rata non si numerava. La somma col segno e'''' anche il presidio di coerenza di segno che faceva chk_fatture_scadenze_importo_pos, tolto nello stesso giro (20260917-11). La settima condizione (natura NOTA_CREDITO <=> totale <= 0) non cambia.';
 ```
 
 ---

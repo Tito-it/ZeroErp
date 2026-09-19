@@ -316,3 +316,78 @@ comandava anche l'altra.
 dichiarato: il registro della fattura si sceglie per tipo documento e natura, per
 una strada tutta sua.
 
+### 🔄 rev 2026-09-14 — una famiglia può **non avere** un billing account
+
+`colonna_billing_account` diventa facoltativa (`20260914-07`): il vuoto è la
+dichiarazione che **quella famiglia di documenti non ha un cliente** — la
+controparte di un ordine d'acquisto è un fornitore, un ruolo di soggetto, non
+un billing account. È la stessa forma di `colonna_serie`, due righe sopra.
+
+Chi legge quella colonna lo sa:
+
+* il controllo dei riferimenti (`trgfn_famiglie_documento_guard_riferimenti`)
+  verifica che la colonna esista **solo se è dichiarata**; tabella e colonna
+  del numero restano obbligatorie;
+* le due funzioni della storia dell'emittente
+  ([fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente),
+  [fn_get_storia_emittente_ba](/dbzero/anagrafiche/funzioni/fn_get_storia_emittente_ba))
+  **saltano** le famiglie senza billing account già quando scelgono su quali
+  famiglie girare — una famiglia senza cliente non può contribuire alla storia
+  di nessun cliente;
+* la funzione che crea una famiglia (`fn_crea_famiglia_documento`) non la
+  pretende più e trasforma il campo vuoto in «nessuno».
+
+⚠️ Il controllo di struttura **non cambia**: su una famiglia che ha già dei
+registri, passare da «nessuno» a un nome di colonna è un cambio come gli altri,
+e viene rifiutato.
+
+ℹ️ Al 2026-09-14 le cinque famiglie in servizio avevano tutte il billing
+account: questa revisione **apre la porta** al primo documento che non ce
+l'ha, non lo registra. *Diceva «sarà il cantiere acquisti a farlo»: è stata la
+distinta, il giorno dopo (sezione qui sotto).* Brief:
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.
+
+### 🔄 rev 2026-09-15 — la sesta famiglia: `DISTINTA`, la prima fuori da `vendite`
+
+La **distinta contabile di incasso** (`pagamenti.vendite_contabili`, colonna
+`codice`) entra nel catalogo (`20260915-33`): è la prima famiglia che vive in
+un altro schema, la prima **senza billing account** in servizio (la porta
+aperta il 14-09 la attraversa per prima lei) e, come la commessa, ha
+l'identità sulla **stringa nuda** — sigla dell'emittente e anno dentro il
+codice: `DIS-<SIGLA>-<ANNO>-<7 cifre>`. Senza serie, `presidia_data_documento`
+falso (la distinta di ieri inserita oggi è un caso normale), prefisso `DIS-`,
+7 cifre, anno nel numero.
+
+I registri `DIS-<sr>` nascono da `vendite.fn_provision_registri_famiglia`
+(`20260915-34`) per gli emittenti esistenti, e dal trigger di provisioning per
+quelli futuri. Il resto — come e quando la distinta prende il numero, e di chi
+è — sta nella scheda di
+[pagamenti.vendite_contabili](/dbzero/pagamenti/manual/vendite_contabili).
+
+⭐ **Vive in un CSV dedicato (`famiglie_documento_distinta.csv`), non in
+`famiglie_documento.csv`**: una riga sola con **tutte** le colonne, e un loader
+numerato dopo i quattro mirror laterali, così la famiglia nasce col catalogo
+già completo (formato, serie, anno nel numero) invece di nascere monca e farsi
+completare dopo; il passo dei registri (`20260915-34`) la segue subito. ⚠️ **La
+settima famiglia fa lo stesso**: CSV suo, loader suo, numerato dopo, poi il suo
+passo che chiama `fn_provision_registri_famiglia`. Il commento di `20260830-14`
+che dice «una famiglia nuova è un append» è vero **fino** al 31-08.
+
+🔄 **rev 2026-09-17 — il cancello di `20260831-03` conta per nome.** Fino a
+quel giorno il passo dei registri per emittente pretendeva in `preConditions`
+**esattamente 4** famiglie attive diverse da `FATTURA` (`HALT`): una fotografia
+del catalogo del 31-08, che la sesta famiglia ha smentito. Sulla carta il CSV
+dedicato bastava (su un DB da zero `20260831-03` gira prima di `20260915-33`),
+ma **in CI il migrate è morto lo stesso** («Expected '4' got '5'»): in
+Liquibase 5.0.4 un changeSet `runOnChange` che contiene un change con `dbms:`
+viene ri-eseguito **una volta** all'update successivo alla sua prima
+esecuzione — il filtro che decide se ri-eseguire calcola il checksum senza il
+Database nello Scope e il change `dbms:` ne esce, quindi il checksum non torna
+— e in CI quell'update è la seconda invocazione (`--contexts=ci_apply`), che
+riparte **dopo** il seed della distinta. Da allora il cancello pretende che le
+**quattro famiglie per cui è nato** esistano (`IN ('DDT','ORDINE','COMMESSA',
+'RESO')`), come fanno i laterali, e il corpo chiama
+`fn_provision_registri_famiglia` invece di un INSERT ricopiato. Il fatto
+Liquibase vale per tutti i seed `runOnChange` con `dbms:`: un cancello su
+quanto c'è *oggi* in una tabella di catalogo è una mina che scoppia alla
+riga dopo, non un presidio.

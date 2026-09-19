@@ -4,11 +4,18 @@
 -- Test: vendite.vw_situazione_merce_ordine — l'aggregato PARLANTE per riga
 --       d'ordine, per il pannello situazione merce.
 --       (brief-db-situazione-merce-ordine-aggregato.md, changeSet 20260817-15)
+--       ⚠️ Il contratto e' a 21 colonne dal 20260913-18 (P-6 di
+--       brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2): le tre
+--       in coda — le due date di consegna e giorni_ritardo — hanno il loro
+--       gemello, test-situazione-merce-ritardo-v1. Qui restano il residuo e
+--       gli stati. Fino al 2026-09-14 il test 3 inchiodava le 18 e il changeSet
+--       aveva censito solo il gemello nuovo, non questo file: un contratto che
+--       cambia si censisce anche nei pgTAP che GIA' lo pinnano.
 --
--- Elenco test (plan 11):
+-- Elenco test (plan 17):
 --   1) la vista esiste
 --   2) e' security_invoker=on
---   3) espone le colonne del contratto
+--   3) espone le 21 colonne del contratto (insieme, non ordine)
 --   4) riga d'ordine MAI SPEDITA: c'e', partite_merce 0, differenza NULL,
 --      stato NON_SPEDITA
 --   5) riga mai spedita: da_spedire = ordinato
@@ -99,12 +106,16 @@ SELECT ok(
     WHERE n.nspname = 'vendite' AND c.relname = 'vw_situazione_merce_ordine'),
   '2) vw_situazione_merce_ordine e'' security_invoker=on');
 
+-- ⚠️ `columns_are` confronta INSIEMI, non l'ordine: questa e' la sede del
+--    contratto (quali colonne), la posizione delle tre in coda la pinna il
+--    gemello test-situazione-merce-ritardo-v1 (test 1 e 2), non due volte qui.
 SELECT columns_are('vendite', 'vw_situazione_merce_ordine',
   ARRAY['ordine_riga_id','ordine_id','riga_nr','articolo_id','ordinato',
         'consegnato','reso','in_riconsegna','tenuti','fatturato_merce',
         'fatturato_da_ordine','fatturato','fatturato_anticipato','da_spedire',
-        'partite_merce','misurabile','differenza','stato'],
-  '3) espone le 18 colonne del contratto');
+        'partite_merce','misurabile','differenza','stato',
+        'data_consegna_richiesta_cliente','data_consegna_confermata','giorni_ritardo'],
+  '3) espone le 21 colonne del contratto (18 del 2026-08 + le tre del 20260913-18)');
 
 -- ============================================================
 -- Riferimenti

@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TRIGGER CHE APPLICA LA SEDE UNICA A OGNI SCRITTURA — L3
+#   pagamenti.trgfn_vendite_contabili_emittente()
+#   trg_vendite_contabili_a10_emittente_ins_upd
+#   Brief: brief-db-distinta-numerata-sul-registro, §2.4 (D4), §4-bis.3
+#
+# ── COSA FA, IN TRE RIGHE ───────────────────────────────────────────────
+#   INSERT:  NEW.emittente := fn_get_emittente_distinta(NEW.emittente, NEW.canale)
+#            — i quattro livelli di D4, anche per gli INSERT diretti (pgTAP,
+#            SQL a mano): la regola non dipende da quale madre scrive.
+#   UPDATE con NEW.emittente NULL: RETURN NEW SENZA risolvere. ✅ Scelta
+#            confermata da Tid il 2026-09-15: un `UPDATE … SET emittente = NULL`
+#            deve essere rifiutato dal NOT NULL (23502, con column_name che
+#            arriva al client), NON ri-riempito in silenzio dalla sessione di
+#            chi lo fa — sarebbe un cambio di emittente che nessuno ha chiesto.
+#   UPDATE con entrambi: PERFORM della stessa funzione — solo i livelli 0-1,
+#            cioe' la COERENZA fra il canale nuovo e l'emittente della riga
+#            (§2.4: cambiare canale verso un canale di un altro -> rifiuto).
+#
+# ── ⚠️ L'ORDINE DEI BEFORE ROW REGGE SUL NOME ────────────────────────────
+#   PostgreSQL esegue i trigger BEFORE … FOR EACH ROW in ordine alfabetico:
+#     trg_vendite_contabili_a10_emittente_ins_upd             <- L3, risolve   (e)
+#     trg_vendite_contabili_a10_gen_codice_ins                <- L4, numera    (ge)
+#     trg_vendite_contabili_a10_guard_chiusura_upd            (esistente)      (gu)
+#     trg_vendite_contabili_a10_guard_emittente_scope_ins_upd <- L9a, giudica lo scope
+#     trg_vendite_contabili_a10_guard_ente_centro_ins_upd
+#     …
+#   L'emittente e' risolto PRIMA che il numeratore lo chieda e PRIMA che il
+#   guard di scope lo giudichi. ⛔ Chi rinomina uno dei tre sposta la
+#   risoluzione dopo il numeratore: e' scritto nel COMMENT del trigger.
+#   I generati dell'automazione (require_att…, _stati_requir…) sono AFTER e
+#   non entrano nell'ordine.
+#
+# ── ⚠️ IL BACKFILL DEL PREGRESSO (20260915-25) PASSA DI QUI ─────────────
+#   `UPDATE OF emittente_soggetto_ruolo_id` scatta: NEW.emittente e'
+#   valorizzato, quindi livelli 0 e 1 — «e' un emittente» (deriva da un
+#   emittente) e «coerente col canale» (deriva DAL canale, o il canale non
+#   c'e') — passano per costruzione.
+#
+# Verifica: db/pgtap/pagamenti/test-distinta-numerazione-registro-v1.sql
+#   (test 7, 8, 9, 15, 16)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260915-23-create-trgfn-vendite-contabili-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260915-23-create-trgfn-vendite-contabili-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.trgfn_vendite_contabili_emittente + trigger a10_emittente_ins_upd
+        (BEFORE INSERT OR UPDATE OF ente_incasso_id, emittente_soggetto_ruolo_id): applica
+        pagamenti.fn_get_emittente_distinta a ogni scrittura. In INSERT risolve i quattro
+        livelli di D4; in UPDATE con emittente NULL non risolve (parla il NOT NULL); in
+        UPDATE con entrambi verifica solo la coerenza canale-emittente. Il nome «emittente»
+        precede alfabeticamente «gen_codice» e «guard_…»: l'ordine dei BEFORE ROW regge sul
+        nome.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'fn_get_emittente_distinta';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_emittente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Applicare a ogni scrittura la SEDE UNICA che dice di chi
+                  --   e' una distinta (pagamenti.fn_get_emittente_distinta,
+                  --   D4). Qui NON c'e' il predicato: c'e' l'applicazione.
+                  --
+                  -- Uso: BEFORE INSERT OR UPDATE OF ente_incasso_id,
+                  --      emittente_soggetto_ruolo_id FOR EACH ROW
+                  -- ⚠️ Il nome del trigger deve precedere alfabeticamente
+                  --   a10_gen_codice (numera) e a10_guard_emittente_scope
+                  --   (giudica): l'emittente va risolto PRIMA di entrambi.
+                  -- =========================================================
+
+                  IF TG_OP = 'INSERT' THEN
+                      -- I quattro livelli: dato (coerente col canale), dal
+                      -- canale, dalla sessione, altrimenti rifiuto parlante.
+                      NEW.emittente_soggetto_ruolo_id :=
+                          pagamenti.fn_get_emittente_distinta(
+                              NEW.emittente_soggetto_ruolo_id, NEW.ente_incasso_id);
+                      RETURN NEW;
+                  END IF;
+
+                  -- UPDATE. ⭐ Un emittente messo a NULL NON si ri-riempie:
+                  --   parla il NOT NULL (23502, con column_name per il client).
+                  --   Ri-risolverlo dalla sessione sarebbe un cambio di
+                  --   emittente che nessuno ha chiesto (scelta confermata da
+                  --   Tid il 2026-09-15).
+                  IF NEW.emittente_soggetto_ruolo_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Entrambi valorizzati: solo i livelli 0-1, cioe' la COERENZA
+                  -- fra il canale (nuovo) e l'emittente della riga. Spostare
+                  -- una distinta sul canale di un altro emittente e' un rifiuto.
+                  PERFORM pagamenti.fn_get_emittente_distinta(
+                              NEW.emittente_soggetto_ruolo_id, NEW.ente_incasso_id);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_emittente() IS
+                'Applica a ogni scrittura su pagamenti.vendite_contabili la sede unica che dice di chi e'' la distinta (pagamenti.fn_get_emittente_distinta, D4 del brief distinta-numerata-sul-registro). In INSERT scrive NEW.emittente_soggetto_ruolo_id con i quattro livelli (dato e coerente col canale / dal canale / dall''operatore in sessione / rifiuto parlante); in UPDATE con l''emittente a NULL NON risolve — parla il NOT NULL, perche'' ri-riempirlo dalla sessione sarebbe un cambio di emittente che nessuno ha chiesto (scelta di Tid, 2026-09-15); in UPDATE con entrambi verifica solo la coerenza fra il canale nuovo e l''emittente della riga. ⚠️ Qui non c''e'' il predicato: c''e'' la sua applicazione. Il predicato sta nella funzione, che la madre fn_get_or_create_vendite_contabile chiama anche per la chiave di riuso. ⚠️ L''ORDINE DEI BEFORE ROW REGGE SUL NOME: trg_…_a10_emittente_ins_upd precede a10_gen_codice_ins (che numera sul registro dell''emittente) e a10_guard_emittente_scope_ins_upd (che giudica lo scope su questa colonna). Rinominare uno dei tre sposta la risoluzione dopo chi la usa. Rev 2026-09-15.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_emittente_ins_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE OF ente_incasso_id, emittente_soggetto_ruolo_id
+                  ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_emittente();
+
+              COMMENT ON TRIGGER trg_vendite_contabili_a10_emittente_ins_upd
+                  ON pagamenti.vendite_contabili IS
+                'Risolve di chi e'' la distinta a ogni INSERT e verifica la coerenza canale-emittente a ogni UPDATE dei due (pagamenti.fn_get_emittente_distinta, D4). ⛔ IL NOME NON SI CAMBIA A CASO: i BEFORE ROW girano in ordine alfabetico, e «a10_emittente» deve precedere «a10_gen_codice» (il numeratore chiede il registro dell''emittente) e «a10_guard_emittente_scope» (il guard giudica lo scope sulla colonna che questo trigger riempie). Rev 2026-09-15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_emittente_ins_upd
+                  ON pagamenti.vendite_contabili;
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_emittente();

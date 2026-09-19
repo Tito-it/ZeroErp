@@ -13,7 +13,8 @@ from typing import Any
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import call_jsonb_fn
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
 from apps.vendite.db.vendite_repository import DASH_STADIO_DA_APPROVARE
@@ -23,6 +24,7 @@ from apps.vendite.types import (
     CommessaPushLogRow,
     CommessaRegistroEventoRow,
     CommessaStatoResult,
+    CommessaTestataRow,
     GruppoDiagnosi,
     GruppoEsitoGiro,
 )
@@ -880,6 +882,53 @@ class CommesseRepository(EventLogRepositoryMixin):
     #        (commessa inesistente — il caller verifica a monte con get_commessa_stato).
     def get_capabilities(self, commessa_id: int) -> dict[str, Any]:
         return call_jsonb_fn("script.fn_available_actions_commessa", commessa_id)
+
+    # Scopo: La TESTATA LEGGIBILE della commessa (Blocco C di brief-db-modifiche-
+    #        certe-ciclo-vendita-e-articolo, P-4): `descrizione`, `data_apertura`
+    #        e il responsabile — id + nome della persona. Separata da
+    #        `get_commessa_stato` perche' quella e' `fn_get_commessa_stato`, che
+    #        le tre colonne non le espone: il service le fonde nello stesso payload.
+    # ⭐ Il nome della persona viene dalla VISTA MODELLO
+    #        `anagrafiche.vw_risorse_umane_dettaglio`, la stessa del lookup
+    #        (`AnagraficheRepository._risorse_umane_lookup`): la catena
+    #        risorsa -> soggetto vive nella vista, e il picker e il dettaglio
+    #        chiamano la persona nello stesso modo per costruzione.
+    # ⚠️ Legge `vendite.commesse`, che ha la RLS: fuori scope risponde None
+    #        come `get_commessa_stato`, e il service ha gia' detto 404 prima.
+    def get_commessa_testata(self, commessa_id: int) -> CommessaTestataRow | None:
+        sql = """
+            SELECT c.descrizione,
+                   c.data_apertura,
+                   c.responsabile_risorsa_umana_id,
+                   ru.ragione_sociale_completa AS responsabile_display
+              FROM vendite.commesse c
+              LEFT JOIN anagrafiche.vw_risorse_umane_dettaglio ru
+                     ON ru.risorsa_umana_id = c.responsabile_risorsa_umana_id
+             WHERE c.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [commessa_id])
+            row = row_to_dict(cursor)
+            return CommessaTestataRow(**row) if row else None
+
+    # Colonne di testata scrivibili dall'operatore. ⛔ `data_apertura` NON c'e':
+    # la scrive il default (`script.fn_data_operativa()`) alla nascita, e a
+    # video e' in sola lettura (brief §5.5, voce 4).
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "descrizione", "responsabile_risorsa_umana_id",
+    })
+
+    # Scopo: Aggiorna i campi di testata della commessa (whitelist sopra).
+    #        `None` AZZERA (PATCH dei documenti vendite): togliere il
+    #        responsabile e' un gesto legittimo. Ritorna True se ha toccato
+    #        una riga; il require sul padre attivo (`trg_commesse_a10_risorse_
+    #        umane_require_attivo_ins_upd`, nato da ci_apply) rifiuta una
+    #        persona disattivata — il service traduce e passa.
+    def update_commessa_testata(self, commessa_id: int, dati: dict[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "vendite.commesse", commessa_id, dati,
+            allowed=self.TESTATA_UPDATE_COLUMNS,
+        )
 
     # --- Gruppo 2: Attività commessa ---
 

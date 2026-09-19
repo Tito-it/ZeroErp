@@ -48,7 +48,17 @@ openpyxl>=3.1
 
 # Generazione PDF documenti (motore documentale, Decisione 73)
 # Richiede librerie native Pango/Cairo/HarfBuzz/PixBuf — vedi Dockerfile.
-weasyprint>=68,<70
+# ⚠️ Il tetto e' `<71` dal 2026-09-13: la 70.0 (8-09) e' la security release di
+#    CVE-2026-55073 (`write_pdf` ignorava un `url_fetcher` restrittivo per
+#    `stylesheets=[url]` e `xmp_metadata=[url]`). Il nostro uso passa solo
+#    stringhe (`HTML(string)`, `CSS(string)`) e non e' esposto, ma l'avviso
+#    Dependabot resta finche' la versione non sale. Provata sulla fattura vera
+#    (smoke render-stampa): stesso esito della 69, check per check.
+# ⚠️ Dalla 70 WeasyPrint avvisa che il ripiego su fontTools per il subsetting
+#    dei font «will be unsupported in future versions»: `libharfbuzz-subset0` e'
+#    nel Dockerfile dal 2026-09-13, e va installato anche sulle macchine di
+#    sviluppo (`apt install libharfbuzz-subset0`), o l'avviso resta li'.
+weasyprint>=68,<71
 
 # Template engine documenti (Jinja2 stile, Decisione 4 sviluppo-documenti).
 # StrictUndefined per fail-fast su variabili context mancanti nel render.

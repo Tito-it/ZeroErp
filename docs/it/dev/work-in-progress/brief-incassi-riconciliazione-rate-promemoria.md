@@ -39,7 +39,7 @@
 > ---
 >
 > ⭐ **Dal 2026-08-21 il PIANO DB sta altrove**:
-> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md).
+> [brief-db-posting-e-abbinamento-rata.md](../work-done/brief-db-posting-e-abbinamento-rata.md).
 > **Questo documento resta la sede delle decisioni di dominio**; là stanno i
 > passi, le misure aggiornate e le domande aperte prima dello sviluppo.
 > ⚠️ **Divisione del lavoro, per non far divergere le due sedi**: una decisione
@@ -206,7 +206,7 @@ campi dalla riga al movimento: postare una riga non abbinata produrrebbe una
 **Il requisito resta, cambiando forma**: il posting deve rifiutare *prima*, con
 un codice suo — ma non è «aggiungere un guard che manca», è **dare un nome** a un
 rifiuto che già esiste e **bonificare i vicini**. Passi P-6 e P-7 del
-[piano DB](brief-db-posting-e-abbinamento-rata.md).
+[piano DB](../work-done/brief-db-posting-e-abbinamento-rata.md).
 
 🔴 **E non esiste alcun vincolo che leghi lo stato ai dati.** Oggi si può
 scrivere `ABBINATA` con `fattura_id` NULL, o `DA_ABBINARE` con la fattura già
@@ -739,7 +739,7 @@ questo riquadro: è **il lotto di lavoro di un operatore** (manuale) o **il file
 (automatica). Vedi **D12** qui sopra.
 
 ℹ️ Misure e riformulazione in
-[brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+[brief-db-posting-e-abbinamento-rata.md](../work-done/brief-db-posting-e-abbinamento-rata.md)
 §1.4 C-4 e **Q-3**.
 
 #### 🔴 (d) La correzione non è un tipo di documento: è un importo di segno opposto
@@ -918,7 +918,7 @@ riproducibilità.*
 > piedi **tre**: i due indici unici parziali (`WHERE is_compensazione` e il
 > gemello su `is_fondo_fattura`, che non ha mai avuto unicità) e il CHECK mai
 > nato. Dettaglio, SQL e lezione in
-> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+> [brief-db-posting-e-abbinamento-rata.md](../work-done/brief-db-posting-e-abbinamento-rata.md)
 > §1.4 C-1/C-1-bis; passi **P-0** e **P-1** del piano.
 >
 > ⭐ **Due vincoli su tre persi nello stesso file, lo stesso giorno, per la stessa
@@ -1197,6 +1197,24 @@ ancora da fare — la **rotta scadenze paginata** (il cantiere incassi apre solo
 **lookup** delle rate di *una* fattura, che è un'altra cosa) e i suoi seed di
 lista.
 
+> ⭐ **2026-09-15 — la rotta rate paginata e il seed nascono con D19** (§2-bis):
+> il picker delle rate della distinta è il **primo consumatore** dello
+> scadenzario, e il brief [brief-db-distinta-ricerca-rate.md](../work-done/brief-db-distinta-ricerca-rate.md)
+> chiede al DB la vista d'identità delle rate (P-2), il seed `pagamenti.rate`
+> (P-4) e — **domanda aperta** — il saldo di N rate in una valutazione (P-3),
+> che è ciò che il filtro «solo aperte» e lo scadenzario intero pretendono. Le
+> due avvertenze qui sotto sono scritte nel brief come regole del picker.
+>
+> ✅ **2026-09-17 — la rotta c'è.** `GET /api/v1/pagamenti/rate/`
+> (`saldi_service.list_rate`, la quarta lettura della base unica) e la lista
+> `pagamenti.rate` (68) sono in esercizio col picker della distinta; P-3 è
+> consegnata in **terza forma** (nucleo `fn_get_saldi_rate` + tre porte) e il
+> filtro «solo aperte» = `residuo <> 0` esiste. ⚠️ Lo scadenzario non è
+> ancora una **schermata**: gli manca solo la view (nessun criterio
+> obbligatorio lato rotta, `natura_doc_codice` e `data_scadenza_da/a` già
+> accettati). Le due avvertenze sotto **valgono già** nel codice: i numeri
+> escono dal nucleo, e «aperta» guarda il residuo, non l'incassato.
+
 ##### ⚠️ Le due avvertenze da portarsi dietro quando si aprirà
 
 | | Avvertenza |
@@ -1469,7 +1487,7 @@ domanda aperta sparisce:
 
 ℹ️ Passi, SQL e trappole di scrittura (l'ordine obbligato, la FK nel reset a CTE
 singola, il trigger che scrive da `pagamenti` verso `vendite`) in
-[brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+[brief-db-posting-e-abbinamento-rata.md](../work-done/brief-db-posting-e-abbinamento-rata.md)
 §2.1, passi **S1-14 … S1-17**.
 
 ⚠️ **Questa decisione cambia un modello di un altro cantiere**: la matrice degli
@@ -1966,6 +1984,96 @@ dell'atto, e la compensazione resta uno dei tre centri non-cassa.
 
 ---
 
+### ✅ D16 · D17 · D18 — Il primo collaudo in-app: la riga manuale, e la bozza (Tid, 2026-09-14)
+
+> Nate caricando **la prima contabile**. Le decisioni per esteso, col piano DB e
+> l'elenco di cosa devono fare BE e FE, stanno in
+> [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md).
+> Qui la sintesi, perché questa resta la sede. ✅ **Il brief figlio è chiuso il
+> 2026-09-15** (DB applicato e verde in CI, BE/FE mergiati, copione riscritto):
+> la prova a video è nel copione di collaudo (riquadro «C-2»), e i **tre residui
+> di modello** che ne escono stanno nella tabella in fondo a questa sezione.
+
+| | Decisione | Il perché, in una riga |
+| --- | --- | --- |
+| **D16** ✅ | La riga **manuale** nasce **con la destinazione** (fattura, cliente, rata facoltativa), direttamente `ABBINATA`. La riga **senza** destinazione è un'**eccezione che l'operatore dichiara** («non identificato»), nasce `DA_ABBINARE` e si recupera dalla coda «Da abbinare» | `DA_ABBINARE` è *«non so a chi»* — lo stato dell'import, non di chi ha il nome sotto gli occhi; e D1-ter dice che le righe manuali si scrivono giuste **fin dall'inizio**. ⭐ Il DB non cambia: i guard girano sull'`INSERT`, la matrice è solo su `UPDATE`, il pgTAP dell'abbinamento inserisce già in `ABBINATA`. R-6 resta per la **modifica** (fatti) e `abbina` resta il verbo del ri-abbinamento |
+| **D17** ✅ | Una riga di una distinta **`MANUALE` in `BOZZA`** si **elimina** (`attivo = false`); un guard con predicato `script.fn_check_riga_contabile_eliminabile` (tre motivi ordinati) chiude la disattivazione **e** il `DELETE`. `SCARTATA` **resta** ma non è un'eliminazione e **perde il cestino**. ⚠️ Il `DELETE` ha **un** passaggio legittimo, il giro dei fondi: la sua madre lo dichiara con una GUC transazionale (brief figlio, §4 P-2) | D9-c scala alla riga: prima della conferma non è successo niente. `SCARTATA` racconta *«denaro arrivato, non nostro»* e **conta nella quadratura** (D12-e): «scartare» una riga digitata male su una manuale con totale dichiarato **la rende invalidabile**. Tutti i lettori filtrano già `attivo` |
+| **D18** ✅ | *(confermata il 2026-09-14)* Sotto `VALIDATA` il **contenuto** della manuale si congela — niente righe nuove, fatti immutabili, niente eliminazioni, niente riattivazioni né spostamenti — finché non torna in `BOZZA`. Le **decisioni** (stato, fattura, rata, forzatura) restano libere | D14-a-bis lo dichiarava dal 21/08 e **nessun guard lo faceva**; la quadratura reggeva perché il posting la rifà. ⛔ Solo su `MANUALE`: le `GENERATA` nascono `VALIDATA` e ricevono le righe dopo. Guard: `pagamenti.trgfn_vendite_contabili_righe_guard_contenuto` (porta 2), stesso changeSet di D17 |
+
+⚠️ **E una risposta che va scritta dove si legge**: *validare non è
+registrare*. I movimenti nascono in `fn_posta_contabile`, **solo da
+`VALIDATA`**; fino a lì il denaro è dichiarato, non registrato. Il copione di
+collaudo passava da §2.7 a «Registra» **senza** il passo «Porta a VALIDATA» e
+sarebbe fallito per costruzione — riscritto il 14/09 (§4.0).
+
+**Residui di modello ereditati dal brief figlio alla sua chiusura** (15/09):
+sono **decisioni**, non passi, e stanno qui perché questa è la sede delle
+decisioni — si prendono quando un cantiere le incontra, non prima.
+
+| | Residuo | Cosa c'è oggi | La decisione da prendere |
+| --- | --- | --- | --- |
+| **R-16.1** | I **fatti** di una riga sotto una distinta **finale** restano modificabili da SQL | Sotto `CHIUSA`/`ANNULLATA` il guard del contenuto (porta 2) **tace di proposito**: la sede è `guard_distinta_finale`, che ferma stato e nuove righe ma lascia «le altre scritture su una riga già lì». Quindi l'`importo` di una riga `POSTATA` — col suo movimento — si cambia da SQL. Nessun verbo del BE lo fa | Fatti immutabili sotto una finale, **per ogni origine**? È la stessa classe di D12-d (immutabile ha tre porte) portata sui fatti della riga. Brief figlio §8 |
+| **R-16.2** | «Chi può chiedere» una transizione vive nel BE, non nella matrice | Le due matrici (`transizioni_stati_contabile{,_riga}`, seed `20260821-31`) hanno `meta = {"manuale": false}` su ogni riga; il vocabolario dei richiedibili sta in `STATI_*_RICHIEDIBILI` (Python) e BE-5 lo interseca con la matrice | Seminare `manuale`, `action_key`, `label_key` (il `CHECK ck_transizioni_*_meta_ui` è già pronto) e far leggere al BE **solo** la matrice — la forma degli otto domini con `fn_available_actions_*`. Brief figlio §10.2-2 |
+| **R-16.3** | Il motivo 3 («contenuto fermo sotto `VALIDATA`») è scritto **tre volte** | `fn_check_riga_contabile_eliminabile` (motivo 3), `trgfn_vendite_contabili_righe_guard_contenuto` porta 2 (sull'`INSERT` non c'è una riga da passare alla check) e `contenuto_modificabile` nel BE (`BOZZA ∧ MANUALE`). Copie **dichiarate** e legate da test (pgTAP 7 vs 9-10; presidio BE sui codici) | Una `script.fn_check_contabile_contenuto_modificabile(p_contabile_id)` come sede unica, che check, guard e BE **leggono**. Brief figlio §10.3 A-5 |
+
+---
+
+### ⭐ D19 — Il secondo giro in-app: la distinta cerca le RATE (Tid, 2026-09-15)
+
+> Nata sul drawer della distinta, alla seconda contabile: *chi digita un
+> incasso non riconosce il documento da un contatore, e la domanda vera non è
+> «quale fattura?» ma «quale rata?»*. Per esteso — fatti verificati,
+> prerequisiti DB e piano — in
+> [brief-db-distinta-ricerca-rate.md](../work-done/brief-db-distinta-ricerca-rate.md) (DB,
+> P-1…P-5) e [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md)
+> (BE/FE, pezzi A…D). Qui la sintesi, perché questa resta la sede.
+> ✅ **Il pezzo B (D19-b) è scritto e committato il 2026-09-17**; A, C, D
+> aspettano i prerequisiti DB (P-1, P-2, P-4).
+> ✅ **2026-09-17 sera/notte — tutti e quattro i pezzi sono scritti**, sul DB
+> consegnato lo stesso giorno (P-1…P-5, 13 changeSet, applicati su dev):
+> A (lookup a tre righe con `NaturaDocTag`), C (`GET /pagamenti/rate/` +
+> `RatePickerDialog` singolo), D (`da-rate/` + picker multiplo con area
+> temporanea). **D19-e è verificata e consegnata**: la nota di credito ha la
+> sua rata **negativa**, nel picker si segnala e si sceglie, il residuo si dice
+> «da rimborsare». Riletti criticamente la stessa notte (piano §9: un bug sul
+> modello nello spazio proposto, due sul contratto, un BB di core allargato —
+> `FanOutItemErrore.eccezione`). A/C/D **non committati**; resta il collaudo a
+> video (copione §7 del brief DB, 14 righe). Residui per il DB: P-6, P-7,
+> P-8 (§4-bis.9-ter).
+
+| | Decisione | Il perché, in una riga |
+| --- | --- | --- |
+| **D19-a** | Il **lookup fattura** mostra il **documento** — numero parlante (`fn_numero_documento_fattura`), registro, data, totale, natura, cliente — non il contatore | un contatore nudo è ambiguo per costruzione (fattura 1 e nota di credito 1 nello stesso anno); la vista porta già data e totale, le manca il numero parlante e il registro (**P-1**) |
+| **D19-b** | La **destinazione di una riga si vede sempre**, anche in modifica: fattura, rata, scadenza, importo rata, residuo (dalla base unica, `SaldoPanel`) | R-6 protegge la **scrittura** della destinazione, non la lettura: chi corregge un importo deve sapere su che cosa lo corregge. Solo BE/FE |
+| **D19-c** | Nasce la **lista rate paginata** (`GET /pagamenti/rate/`) col saldo dalla base unica, montata da un **picker** accanto al lookup; nel picker un criterio (cliente **o** numero fattura, **esatto**) è obbligatorio | è il primo consumatore dello **scadenzario** (§3.4: «possibile e non fatto» dal 24/08 — la rotta paginata e i seed nascono qui, **P-2 … P-4**); il costo del saldo per rata è sul perimetro, e si sta registrando il pagamento di *questo* cliente |
+| **D19-d** | N rate scelte → **N righe** in un Salva (`POST …/righe/da-rate/`), con esito **PARZIALE** per riga: le riuscite entrano, le rifiutate restano nell'area temporanea col motivo del database, il secondo tempo della capienza è **per riga** | è **D1** reso a video («tre rate restano tre righe, cambia solo *quando* si scrivono»); ogni riga è un atto suo e il foglio è in bozza — la forma dell'archiviazione delle code (`run_fan_out`) |
+| **D19-e** ⭐ | *(Tid: «propendo per»; verificata e consegnata dal DB il 17/09, P-5)* La **nota di credito ha una rata sola**, e nel picker si **segnala** con la natura, non si esclude | «ci sono anche casi in cui il cliente paga la nota di credito». Oggi una NC **non ha rate** (`fn_genera_scadenze_fattura`, base < 0 → zero rate) e `fatture_scadenze` ha il CHECK sull'importo positivo: due contro-pezzi per il DB. Finché non c'è, la NC si paga dal lookup fattura come riga senza rata — il caso è già ammesso (D14-c, verso sbagliato ⇒ segnala ⇒ forza) |
+
+⚠️ **Che cosa resta com'è**: il lookup resta un autocomplete (chi ha il numero
+lo digita), il form singolo resta documento-first (D16), nessuna seconda sede
+dei saldi, nessun guard nuovo — la riga nata da rata passa dagli stessi
+trigger dell'`INSERT` di D16.
+
+### ⭐ D20 — Il terzo giro in-app: che cosa vuol dire VALIDATA, e il futuro del «resto» (Tid, 2026-09-18) — ✅ CHIUSO il 19-09: DB applicato e committato, BE/FE mergiati (`6dc60ab05`), brief in `work-done/`; resta la prova a video nel copione
+
+> Brief: [brief-db-validata-e-registrazione-tardiva.md](../work-done/brief-db-validata-e-registrazione-tardiva.md)
+> — ✅ **chiuso e archiviato il 19-09** (righe del copione §3.1, §4.0, §4.0-bis, §3.8–3.10 da provare a video). Nasce da quattro rilievi sulla distinta
+> `DIS-PGTAPEF202-2026-0000001`, e uno è un **buco del modello**: registrata
+> la distinta, una `SOSPESA` o una `SCARTATA` rimasta sotto non entra più in
+> nessun conto e non può più diventarlo (4ª mossa del guard di riga + nessun
+> verbo che sposti una riga + correzione che le salta). D3-a diceva «lascia lì
+> il resto»; il resto non aveva strada.
+
+| | Decisione | Il perché, in una riga |
+| --- | --- | --- |
+| **D20-a** | **VALIDATA = «ogni riga è stata guardata»**: nessuna riga attiva in uno stato non lavorato (`DA_ABBINARE`, `IMPORTATA`) — bandiera `lavorata` sul catalogo, `fn_check_contabile_validabile` chiamata dal guard ed esposta come capability. Il dichiarato resta **facoltativo sulla MANUALE** (D12, confermato) | `VALIDATA` è «ho finito di inserire»; una riga che nessuno ha guardato è lavoro non finito, e dopo la registrazione nessuno la guarderebbe più |
+| **D20-b** | **Registrazione tardiva per riga**: una `SOSPESA` sotto una distinta registrata si abbina **e** si registra nello stesso gesto (madre `fn_posta_riga_tardiva`), la distinta resta `CHIUSA`, la quadratura del giorno non cambia. Passa da `ABBINATA` (girano tutti i guard, capienza col doppio tempo compresa) e alla 4ª mossa si presenta con una GUC transazionale, come `app.cessazione_automatica` | ricreare la riga in una distinta di recupero raddoppia l'euro; allentare la 4ª mossa riapre «pronta e mai registrata»; `SOSPESA → POSTATA` diretta salta il guard della capienza |
+| **D20-c** | **`SCARTATA` = «non è nostra», un significato solo.** Resta nella distinta (traccia + quadratura) ma esce dal lavoro: nascosta di default (`Mostra scartate (N)`), mai nelle code; reversibile anche a distinta chiusa, e se risulta nostra si registra tardiva | toglierla dalla distinta romperebbe la quadratura («quel denaro è arrivato», D12-e) e una `CHIUSA` è immutabile |
+| **D20-d** | **«Registrabile» sta nel catalogo** (`is_registrabile` su `vendite_contabili_stati`): la madre legge la bandiera, il dettaglio la porta, «Registra» si spegne col motivo invece di finire in 409 da `BOZZA` | «la domanda si fa al catalogo, non a un elenco nel guard» — come `is_postabile` e `is_final` |
+| **D20-e** | *(Tid, 18/09: strada **b**)* dalla matrice di riga esce **solo** `ABBINATA → DA_ABBINARE`: su una abbinata si **ri-abbina** (il dialogo si apre già sulla destinazione), non si «sgancia». `ABBINATA → SOSPESA` **resta**: una abbinata con un dubbio si parcheggia con un motivo prima di registrare | lo «sgancia» è doppione di «Abbina»; la sospensione no — è l'unico parcheggio di una riga decisa su cui torna un dubbio |
+
+---
+
 ### La regola pratica per queste slice
 
 > **Nessun automatismo tocca il fondo in base agli incassi.** Il fondo esistente
@@ -2296,7 +2404,7 @@ tampone va **con lui**, non aspetta il suo turno.~~
 > entrambi vanno nella slice 1 insieme alla madre: il sync dei fondi
 > **riscriverebbe righe già postate**, e un fondo interamente postato **si
 > auto-annullerebbe**. Misure e passi in
-> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+> [brief-db-posting-e-abbinamento-rata.md](../work-done/brief-db-posting-e-abbinamento-rata.md)
 > §1.4 C-2 e C-3.
 
 ⚠️ **La slice 1 non tocca le rate**, e va bene così: è il gradino sotto tutto il
@@ -2327,9 +2435,13 @@ stub vuoti.
 
 | Data | Cosa è cambiato |
 | --- | --- |
+| **2026-09-17** (notte) | ✅ **D19 scritta per intero** (§2-bis): DB consegnato e applicato (P-1…P-5, terza forma di P-3 col nucleo `fn_get_saldi_rate`), BE/FE A-C-D scritti sui prerequisiti (B già committato). D19-e non è più «da verificare»: la NC ha una rata negativa. §3.4: lo scadenzario ha la sua rotta (`rate/`) e gli manca solo la view. Rilettura critica della stessa notte nel piano §9 (lo spazio in centesimi, i fatti comuni = 400, la lista che ricarica su PARZIALE, `FanOutItemErrore.eccezione` con l'ok di Tid). Residui DB: P-6 (esclusione sul saldo documento), P-7 (natura su `vw_rate_fuori_capienza`), P-8 (scala di `importo`) |
+| **2026-09-15** (2) | ⭐ **D19 — la distinta cerca le rate** (§2-bis): secondo giro in-app di Tid sul drawer della distinta; quattro pezzi (lookup fattura ricco · destinazione visibile sulla riga · picker delle rate = primo consumatore dello scadenzario · N rate → N righe con esito parziale) e la decisione sulla **nota di credito con una rata** (D19-e, da verificare). Brief DB [brief-db-distinta-ricerca-rate.md](../work-done/brief-db-distinta-ricerca-rate.md) (P-1…P-5) e piano [piano-be-fe-distinta-ricerca-rate.md](piano-be-fe-distinta-ricerca-rate.md). §3.4 annotata: la rotta rate paginata nasce qui. Nessun codice |
+| **2026-09-15** | ✅ **Il brief figlio di D16-D18 è chiuso e archiviato** ([work-done](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)): DB applicato (14/09) e verde in CI, BE/FE mergiati (PR #1589) con la Q-H decisa (il doppio tempo della capienza anche in modifica), copione riscritto. La prova a video (C-2) vive nel copione di collaudo. Qui entrano i **tre residui di modello** in §2-bis D16-D18 (R-16.1 fatti sotto una finale, R-16.2 `meta` delle matrici, R-16.3 sede unica del motivo 3): decisioni, non passi |
+| **2026-09-14** | ⭐ **Il primo collaudo in-app, e tre decisioni** (§2-bis, D16-D18; per esteso in [brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](../work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md)). Caricando la prima contabile Tid ha trovato che l'interfaccia diceva **il contrario del modello**: la riga nasceva `DA_ABBINARE` per default (lo stato dell'ignoto, cioè dell'import) mentre D1-ter dice che chi digita scrive già la riga giusta — **D16**: nasce con la destinazione, l'eccezione si **dichiara**; nessun gesto di eliminazione esisteva e l'unico offerto era `SCARTATA` **col cestino**, che sulla manuale **rompe la quadratura** (D12-e conta anche le scartate) — **D17**: `attivo = false` su manuale in bozza, check + guard su disattivazione e `DELETE`; e **niente** presidiava «finché è validata il contenuto non cambia» (D14-a-bis) — **D18**, proposta. Risposta a «il pagamento si scrive con la validazione?»: **no, con la registrazione** — e il copione di collaudo salta il passo di validazione (§4.1). ⭐ Lato DB D16 costa zero: il contratto era già pinnato dal pgTAP dell'abbinamento |
 | **2026-08-24** (2) | ⭐ **Nota nuova in §3.4: il vincolo che teneva chiuso lo scadenzario è caduto** — emersa parlando con Tid mentre si chiudeva Q-8 del piano BE/FE, e **nessuno l'aveva messa a piano**. §3.4 diceva che lo scadenzario richiede la 3.1 *«perché senza stato di pagamento ogni sua colonna sarebbe falsa»*: la 3.1 adesso c'è (posting dal lotto 4, rata dal lotto 5, `fn_get_saldo_rata` per singola rata), quindi «scaduto» e «insoluto» sono **derivabili** e lo scadenzario è passato da **impossibile** a **possibile e non fatto**. ⛔ Resta fuori dal cantiere incassi — è un cantiere suo, e gli mancano ancora la rotta scadenze **paginata** (qui nasce solo un *lookup* delle rate di una fattura) e i suoi seed. ⚠️ Due avvertenze scritte per quando si aprirà: i numeri devono venire dalla **base unica dei saldi** e mai da una query propria (uno scadenzario è la porta dei solleciti: un numero sbagliato lì diventa una telefonata a chi ha già pagato), e **«incassato» non è «a posto»** — una rata coperta da un giro interno è regolata anche se in banca non è entrato niente, quindi si guarda il **residuo** |
 | **2026-08-24** | ✅ **D1-ter — il pagamento di una rata NON si spezza** (decisione di Tid). ⭐ Toglie un equivoco che stava in **D1-bis** dal 9 agosto: là la spezzatura era la strada *preferibile* per il sovra-incasso, ma su una rata **identificata** l'atto del cliente è **uno solo con un importo sbagliato** — spezzarlo inventerebbe due allocazioni dove il cliente ne ha voluta una, e deciderebbe **al posto suo** dove vanno i soldi di troppo. 🔴 **E la ragione per cui cade non è che fosse sbagliata allora**: D1-bis preferiva spezzare perché *«l'eccedenza resta denaro identificato invece di sparire dentro una rata che non la giustifica»*, e il **9 agosto era vero** — le sistemazioni non esistevano. Il **lotto 7 del 22/08** le ha costruite (elenco + registro + tre destinazioni), quindi l'eccedenza **non sparisce più**: la preferenza cade perché il problema che la giustificava è stato risolto altrove. ⭐ La strada ordinaria diventa **una sola a tre tempi**: si registra il fatto (forzata, con motivo) → l'eccedenza si vede negli elenchi → qualcuno **decide** (riporto/rimborso/compensazione, a registro e annullabile). La forzatura smette di essere un ripiego e diventa il primo tempo di un processo chiuso. ⛔ **Che cosa NON cade**: **D1 regge intatta** — un incasso che copre tre rate resta tre righe; cambia solo **quando** si scrivono (subito, digitandole) invece che ricavandole spezzando. 📮 Ne discende: nel piano BE/FE **cade il verbo «spezza»**, la slice dedicata **sparisce** e `fn_spezza_riga_contabile` esce dalle richieste al team DB (il piano DB non ne risente: non l'aveva in nessun lotto). ⚠️ Potrà tornare **solo con l'import** (D6), dove la riga arriva già fatta da fuori e non si può digitare |
-| 2026-08-21 | ⭐ **Estratto il piano DB in un brief suo**: [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md). Qui restano le **decisioni di dominio**, là i **passi e le misure** — con la regola esplicita di quale sede si aggiorna per cosa, perché due documenti sullo stesso cantiere aperto divergono al primo aggiornamento (lezione già pagata dal cantiere fondi). 🔴 **Tre punti di questo brief corretti perché parlavano al presente di cose non più vere**: `fn_sync_pagamento_fondo_fattura` **non esiste più** (ritirata il 15/08); **B-2 era sbagliato a metà** — il trigger di mirror ha **già** il guard e solleva `P0001`, e il difetto vero è che tutte e quattro le funzioni di `pagamenti` sollevano `E_GENERICO`; il riquadro sulla **scadenza della metà «fondi»** è chiuso, perché quella metà è **fatta** (Fasi A/B/C/E/F applicate il 15-16/08) e **la dipendenza si è invertita** — la Fase D del cantiere fondi aspetta il processo rimborsi di `pagamenti`, cioè la **D8 (b)** di §4-bis. 🔴 **Cinque difetti nuovi misurati** e scritti là, tre bloccanti: `centri_riscossione` **non può contenere più di due righe** (il `where:` su `addUniqueConstraint` fu ignorato: il passo 3 di D9-d-1 oggi non è eseguibile, annotato in loco); `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate**; un fondo interamente postato **si auto-annullerebbe**. ⭐ La lezione trasversale ai due: *verificare che un'identità algebrica si conservi non è verificare che i consumatori la usino ancora bene* — §1-bis prova che «la bilancia regge da sé» ed è vero, ma il codice che quei termini li **riscrive** non regge |
+| 2026-08-21 | ⭐ **Estratto il piano DB in un brief suo**: [brief-db-posting-e-abbinamento-rata.md](../work-done/brief-db-posting-e-abbinamento-rata.md). Qui restano le **decisioni di dominio**, là i **passi e le misure** — con la regola esplicita di quale sede si aggiorna per cosa, perché due documenti sullo stesso cantiere aperto divergono al primo aggiornamento (lezione già pagata dal cantiere fondi). 🔴 **Tre punti di questo brief corretti perché parlavano al presente di cose non più vere**: `fn_sync_pagamento_fondo_fattura` **non esiste più** (ritirata il 15/08); **B-2 era sbagliato a metà** — il trigger di mirror ha **già** il guard e solleva `P0001`, e il difetto vero è che tutte e quattro le funzioni di `pagamenti` sollevano `E_GENERICO`; il riquadro sulla **scadenza della metà «fondi»** è chiuso, perché quella metà è **fatta** (Fasi A/B/C/E/F applicate il 15-16/08) e **la dipendenza si è invertita** — la Fase D del cantiere fondi aspetta il processo rimborsi di `pagamenti`, cioè la **D8 (b)** di §4-bis. 🔴 **Cinque difetti nuovi misurati** e scritti là, tre bloccanti: `centri_riscossione` **non può contenere più di due righe** (il `where:` su `addUniqueConstraint` fu ignorato: il passo 3 di D9-d-1 oggi non è eseguibile, annotato in loco); `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate**; un fondo interamente postato **si auto-annullerebbe**. ⭐ La lezione trasversale ai due: *verificare che un'identità algebrica si conservi non è verificare che i consumatori la usino ancora bene* — §1-bis prova che «la bilancia regge da sé» ed è vero, ma il codice che quei termini li **riscrive** non regge |
 | 2026-08-15 (sera) | 🔴 **Il tampone di D1-bis era sbagliato, e l'ha smontato Tid spiegando cosa sono davvero le due soglie.** *«Il verso opposto non è un fondo»* è **falso**: `minimo_soglia_min` e `minimo_soglia_max` sono i **due capi di una banda che contiene lo zero** (esempio reale: `−500 / +10`), e il capo inferiore esiste **apposta** per riportare avanti i **crediti**. Un filtro `importo_target > 0` avrebbe spento metà del meccanismo, in silenzio. Il controllo giusto è la **corrispondenza col documento** (stesso segno del totale della sorgente, non superiore in valore assoluto), in un **guard trigger** perché un CHECK non può leggere `vendite.fatture`. 🔴 Seconda scoperta: **«soglia non impostata = meccanismo spento» vale solo a metà** — se manca il *massimo* la condizione diventa vera per tutti e **ogni** fattura diventa di minimo: configurazione incompleta = meccanismo **spalancato**. Deciso da Tid: dev'essere un errore di configurazione (CHECK «entrambe o nessuna»). Ritirata la trappola *«un automatismo tarato su un verso»* di §5, che era essa stessa l'errore, e sostituita con le due lezioni vere: **leggere la configurazione prima di dedurre l'intenzione**, e **un difetto e un comportamento voluto possono avere lo stesso sintomo**. ✅ Confermato il perimetro del processo rimborsi (in `pagamenti`, tre uscite, passaggio **passivo**: se le va a cercare da sé) |
 | 2026-08-15 | 🔴 **Rimisurata la tabella delle «due serrature» di D1-bis: sbagliata su entrambe le righe.** Il fondo si genera sulla **differenza** `saldo − saldo_contabile` e il secondo termine non dipende dai movimenti: la seconda serratura **non è la slice 1**, è **l'assenza di scrittori di righe contabili** (il guard di quadratura è la slice **2**), e si apre col primo altro scrittore — import del flusso, correzione a mano, o slice 1. E `minimo` non è una configurazione: lo **riscrive** `fn_ricalcola_totali_fattura` dal confronto fra totale e soglie dell'emittente, quindi si accende da solo. La conclusione operativa non cambia (il limite inferiore resta nella slice 1), cambia la **scadenza**. 🔴 Aggiunto che **il limite inferiore da solo peggiora le cose**: senza l'`ANNULLATO` automatico un fondo non più dovuto resta `DISPONIBILE` e viene comunque **applicato** — serve nello stesso lotto il guard che rilegge la capienza al momento dell'atto. ✅ Chiusa la domanda lasciata aperta in D1-bis (fondo esistente con target negativo: **si lascia com'è**) e decisa F-4 (`fn_sync_pagamento_fondo_fattura` si **ritira**). ⭐ Verificato che con un posting **atomico** la bilancia di B-1 **regge da sé** (i due termini si scambiano lo stesso importo): il rischio è tutto nella non-atomicità. ⚠️ Nuovo limite di dominio in §4: «incassato» ≠ «postato» — le misure di cassa devono **escludere i centri non-cassa** (`is_fondo_fattura`, `is_compensazione`), perché il fondo diventerà un movimento vero ma per **trasferimento**. Quattro trappole nuove in §5. Fonte: il piano del cantiere fondi, [brief-db-fondo-fattura…](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
 | 2026-08-02 | Stesura originale alla chiusura del cantiere satelliti fattura |

@@ -56,9 +56,17 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
   giusto bisognava aprire l'`OnCalendar` in un altro file, che nessuno
   rileggeva. Due scritture dello stesso fatto, e la divergenza sarebbe stata
   **muta** — un pallino verde su un worker fermo.
-- ⚠️ Il contratto della risposta **non cambia**: `{last_run_at, attivo,
-  last_ok}` per worker, e un worker mai girato resta `{attivo: false}`
-  esplicito.
+- ⚠️ Il contratto della risposta per worker è `{last_run_at, attivo, in_corso,
+  ultima_conclusa}` (dal 2026-09-14; fino a quel giorno `{last_run_at, attivo,
+  last_ok}`), e un worker mai girato resta `{attivo: false}` esplicito.
+  ⛔ **`last_ok` non c'è più, ed è una scelta**: era l'esito dell'ultima corsa
+  *conclusa* accanto alla data della corsa *più recente* — due corse in una
+  riga. Ora la riga più recente è il segno di vita (`last_run_at`, `attivo`,
+  `in_corso` = è ancora aperta) e l'esito viaggia **con la sua data** in
+  `ultima_conclusa = {started_at, ended_at, ok}` (`null` se nessuna corsa è
+  mai stata chiusa; `ok` può essere `null`: la colonna è nullable e nessun
+  CHECK la lega a `ended_at`). Il badge rende solo `attivo` e `last_run_at`;
+  il digest dei presidi e il pannello degli esiti rendono anche il resto.
 - ⚠️ Se un worker arrivasse senza tolleranza dichiarata il service ripiega su 10
   minuti per non spegnere il badge, ma è una configurazione incompleta e la CI
   la rifiuta (`test_worker_del_badge_hanno_una_tolleranza`).
@@ -277,8 +285,13 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
     "coda_lavori": { "pending": 2, "in_corso": 1 },
     "coda_stampa": { "pending": 0, "in_corso": 0 },
     "worker": {
-      "coda_lavori": { "last_run_at": "2026-07-21 22:47:07+02", "attivo": true, "last_ok": true },
-      "coda_stampa": { "last_run_at": null, "attivo": false, "last_ok": null }
+      "coda_lavori": {
+        "last_run_at": "2026-07-21T22:47:07+02:00", "attivo": true, "in_corso": false,
+        "ultima_conclusa": { "started_at": "2026-07-21T22:47:07+02:00",
+                             "ended_at": "2026-07-21T22:47:08+02:00", "ok": true }
+      },
+      "coda_stampa": { "last_run_at": null, "attivo": false, "in_corso": false,
+                       "ultima_conclusa": null }
     }
 } }
 ```

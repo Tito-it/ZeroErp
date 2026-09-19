@@ -1,6 +1,7 @@
-id,codice_interno,descrizione,schema_tabella,nome_tabella,colonna_numero,colonna_billing_account,attivo,presidia_data_documento,meta,data_insert,user_insert,data_update,user_update
-1,FATTURA,Fattura di vendita,vendite,fatture,numero,billing_account_id,true,true,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
-2,DDT,Documento di trasporto,vendite,ddt,numero,billing_account_id,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
-3,ORDINE,Ordine di vendita,vendite,ordini,numero,billing_account_id,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
-4,COMMESSA,Commessa,vendite,commesse,codice,billing_account_id,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
-5,RESO,Reso di vendita,vendite,resi,numero,billing_account_id,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
+codice_interno,descrizione,schema_tabella,nome_tabella,colonna_numero,colonna_billing_account,colonna_serie,attivo,presidia_data_documento,prefisso_default,lunghezza_default,anno_nel_numero_default,ammette_regole_fiscali,meta,data_insert,user_insert,data_update,user_update
+FATTURA,Fattura di vendita,vendite,fatture,numero,billing_account_id,serie,true,true,NULL,7,false,true,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
+DDT,Documento di trasporto,vendite,ddt,numero,billing_account_id,serie,true,false,DDT,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
+ORDINE,Ordine di vendita,vendite,ordini,numero,billing_account_id,serie,true,false,ORD,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
+COMMESSA,Commessa,vendite,commesse,codice,billing_account_id,NULL,true,false,CMM-,9,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
+RESO,Reso di vendita,vendite,resi,numero,billing_account_id,NULL,true,false,RESO,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED
+DISTINTA,Distinta contabile di incasso,pagamenti,vendite_contabili,codice,NULL,NULL,true,false,DIS-,7,true,false,{},2026-09-15 00:00:00+02,SEED,2026-09-15 00:00:00+02,SEED

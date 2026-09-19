@@ -23,7 +23,7 @@
 #        ⚠️ E la colonna `perimetro` dice un'ALTRA cosa: se chi legge puo' anche
 #        ELENCARE le righe. Su `DEFINER` il conteggio si mostra e le righe no.
 #
-#        Brief: work-in-progress/brief-db-un-destinatario-per-i-presidi.md §8.2.
+#        Brief: work-done/brief-db-un-destinatario-per-i-presidi.md §8.2.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -259,8 +259,15 @@ class PresidiRepository:
     #    legge diventa una riga che lo DICE, non un 500 che spegne la schermata
     #    intera. ⚠️ Chiude anche la connessione, perche' un presidio puo' non
     #    limitarsi a fallire: puo' portarsela via.
+    # ⭐ `con_righe=False` e' la lettura LEGGERA per il pallino della topbar
+    #    (piano-be-fe-osservabilita-pallino-e-superfici §2.2, 2026-09-18): stesso
+    #    giro, stesso isolamento, stesse righe — senza `prime_righe`. E' un
+    #    parametro e non un secondo metodo perche' il giro e' UNO: una copia
+    #    «senza righe» divergerebbe dalla prima al primo campo nuovo della riga,
+    #    e il pallino direbbe una cosa e il pannello un'altra.
     def stato_presidi(
         self, *, righe_per_presidio: int = RIGHE_PER_PRESIDIO,
+        con_righe: bool = True,
     ) -> list[dict[str, Any]]:
         esito: list[dict[str, Any]] = []
         for riga in self.list_catalogo():
@@ -270,7 +277,7 @@ class PresidiRepository:
                 conteggio = self.conta(riga)
                 righe = (
                     self.prime_righe(riga, limite=righe_per_presidio)
-                    if conteggio else []
+                    if (con_righe and conteggio) else []
                 )
             except Exception as exc:  # noqa: BLE001 — isolamento per presidio
                 # ⚠️ Solo se e' inutilizzabile: questo giro sta dentro una
@@ -285,6 +292,9 @@ class PresidiRepository:
                     "troncato": False,
                     "elencabili": riga["perimetro"] == PERIMETRO_LIBERO,
                     "errore": str(exc),
+                    # ⛔ Non letto = chiede un occhio, sempre: il verde qui vuol
+                    #    dire «visto e vuoto», e questo non e' stato visto.
+                    "da_guardare": True,
                 })
                 continue
             esito.append({
@@ -308,6 +318,12 @@ class PresidiRepository:
                 #    `dbops.fn_conta_presidio`.
                 "elencabili": riga["perimetro"] == PERIMETRO_LIBERO,
                 "errore": None,
+                # ⭐ «Chiede un occhio?» si decide QUI, nella riga, e il client
+                #    lo legge: e' la stessa domanda che la testata conta
+                #    (`con_righe` + `non_letti`), e un predicato ricopiato nel
+                #    pannello (com'era il 2026-09-15) sarebbe la seconda sede —
+                #    la scheda e il numero potrebbero dire due cose.
+                "da_guardare": conteggio > 0,
             })
         return esito
 

@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 (3 di 5) — GLI STATI DELL'INVENTARIO SONO QUATTRO: COUNTING esce, il CHECK
+#   prende il nome giusto
+#   magazzino.inventari: ck_mag_invetario_stato -> chk_mag_inventari_stato
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h) e sezione 6 (P-1)
+#
+# -- COUNTING NON SERVE (Tid, 17-09) -----------------------------------------------
+#   Verificato prima di toglierlo (P-0, sezione 6-bis): sta SOLO nel CHECK dello
+#   schema originario (20251003-01) e in una riga di manual/inventari.md;
+#   nessuna analisi lo motiva, nessun pgTAP, backend, seed o frontend lo
+#   nomina. Sul modello non cambia niente di cio' che e' permesso — le righe
+#   si scrivono in DRAFT come in COUNTING, la fotografia del registro si fissa
+#   alla CONFERMA (D-L2-n), nessun attributo, nessun permesso diverso: uno
+#   stato che non cambia le regole e' un'etichetta. Tolto, le tre famiglie
+#   (inventari, rettifiche, trasferimenti) hanno la STESSA matrice —
+#   DRAFT -> CONFIRM -> POSTED, DRAFT/CONFIRM -> CANCEL, POSTED e CANCEL
+#   terminali — e il guard di transizione di P-6 e' davvero una matrice sola.
+#   Se un giorno servira' mostrare «conteggio in corso», e' un'informazione a
+#   video, non uno stato per il guard.
+#
+# -- IL NOME: refuso + prefisso ----------------------------------------------------
+#   ck_mag_invetario_stato ha il refuso (invetario) e il prefisso ck_ invece
+#   del chk_ di tutti gli altri CHECK di magazzino. Si corregge nello stesso
+#   gesto: DROP + ADD, non RENAME, perche' cambia anche il contenuto. Nessuno
+#   pinna il nome vecchio (grep su db/pgtap, backend, 80_data a zero il
+#   17-09 e il 18-09). ⚠️ Lo stesso refuso vive nell'indice parziale
+#   uq_mag_invetario_sorgente_fk: NON si tocca qui (un indice del passato
+#   sopravvive sul DB da zero, e non e' nel perimetro del lotto) — e' annotato
+#   come debito di nome in manual/inventari.md (brief, sezione 6-ter C10).
+#
+# -- LA preCondition SUI DATI E' LECITA: expectedResult 0 -----------------------------
+#   «nessuna riga in COUNTING» e' la forma «nessuna riga cattiva» di
+#   linee-guida-sql 11.4: un database vuoto la soddisfa, e il senso e' proprio
+#   quello — il CHECK nuovo non deve trovare una riga che rifiuterebbe. Sul
+#   dev sono zero (fatto datato 18-09), su zeroerp_ci per costruzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260918-08-alter-inventari-chk-stato-senza-counting-mctit.yaml
+
+  - changeSet:
+      id: 20260918-08-alter-inventari-chk-stato-senza-counting
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.inventari: il CHECK degli stati passa a quattro valori (DRAFT, CONFIRM,
+        POSTED, CANCEL — COUNTING esce, D-L2-h) e prende il nome chk_mag_inventari_stato
+        (refuso «invetario» e prefisso ck_ corretti). Stessa matrice delle rettifiche.
+        Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h), P-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: inventari
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conrelid = 'magazzino.inventari'::regclass
+                     AND conname = 'ck_mag_invetario_stato';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM magazzino.inventari
+                   WHERE stato_mag_inventario NOT IN ('DRAFT', 'CONFIRM', 'POSTED', 'CANCEL');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.inventari
+                  DROP CONSTRAINT ck_mag_invetario_stato;
+
+              ALTER TABLE magazzino.inventari
+                  ADD CONSTRAINT chk_mag_inventari_stato
+                  CHECK (stato_mag_inventario IN ('DRAFT', 'CONFIRM', 'POSTED', 'CANCEL'));
+
+              COMMENT ON COLUMN magazzino.inventari.stato_mag_inventario IS
+                  'Stato dell''inventario, CHECK a valori chiusi (chk_mag_inventari_stato): '
+                  'DRAFT (si compilano le righe) -> CONFIRM (il piano e'' letto, si posta) -> '
+                  'POSTED (registrato: i movimenti sono a registro), oppure DRAFT/CONFIRM -> '
+                  'CANCEL; POSTED e CANCEL sono terminali. La stessa matrice di rettifiche e '
+                  'trasferimenti; la fa rispettare trgfn_documento_interno_guard_transizione, '
+                  'e POSTED si raggiunge SOLO dall''operazione (fn_posta_inventario, GUC '
+                  'transazionale). COUNTING e'' uscito il 2026-09-17 (D-L2-h): uno stato che '
+                  'non cambiava nessuna regola. Brief: brief-db-magazzino-lotto-2-motore, '
+                  'sezione 3 (D-L2-h).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.inventari DROP CONSTRAINT IF EXISTS chk_mag_inventari_stato;
+              ALTER TABLE magazzino.inventari
+                  ADD CONSTRAINT ck_mag_invetario_stato
+                  CHECK (stato_mag_inventario IN ('DRAFT', 'COUNTING', 'CONFIRM', 'POSTED', 'CANCEL'));

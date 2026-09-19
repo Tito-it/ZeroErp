@@ -488,6 +488,27 @@ class LookupRepository:
             cursor.execute(sql, [tipo, tipo])
             return rows_to_list(cursor)
 
+    # Scopo: IL VOCABOLARIO DEI TIPI DI ENTITA' (`config.tipi_entita`), per i
+    #        filtri e i picker che nominano «su quale cosa» e' successo qualcosa
+    #        (il giornale trasversale; domani il resolver dei bersagli).
+    # ⛔ Lookup dedicato e non generico: la tabella ha PK `codice` (testo) e
+    #    nessun `id`/`descrizione` — `fn_get_lookup_codici` pretende un id
+    #    intero. Cio' che serve al client e' l'INDIRIZZO i18n che il DB dichiara
+    #    (`etichetta_key`) e la chiave con cui si raggiunge l'entita'
+    #    (`key_selector`), non una descrizione.
+    # ⚠️ Solo i tipi VIVI (`obsoleto_dal IS NULL`): un tipo ritirato resta a
+    #    catalogo per leggere il diario, non per essere scelto in un filtro.
+    def list_tipi_entita(self) -> list[dict[str, Any]]:
+        sql = """
+            SELECT codice, etichetta_key, key_selector
+              FROM config.tipi_entita
+             WHERE obsoleto_dal IS NULL
+             ORDER BY codice
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            return rows_to_list(cursor)
+
     # Scopo: Ricerca vie su stradario_generale (senza comune/CAP) per autocomplete via nuova.
     # Chiama script.fn_search_stradario_generale(p_search, p_toponomastica_id, p_limit).
     # Restituisce stradario_generale_id, toponomastica_id, toponimo, denominazione, indirizzo_normalizzato.

@@ -83,6 +83,30 @@ storico: le righe vecchie hanno l'autore vuoto per sempre e non sono sanabili.
   attorno a un corpo job **Python**. `SECURITY DEFINER` (i ruoli batch headless non hanno
   DML diretto sulla tabella, solo `EXECUTE`). Advisory lock di sessione opzionale per
   anti-overlap fra run dello stesso job (per `lock_key`).
+* **Canale fuori transazione** (il run che fallisce) → `zeroerp_log`, che ha il
+  solo `INSERT` (`90_end/20260905-38`).
+
+### Chi legge, chi scrive — la postura di `zeroerp_app` *(rev 2026-09-19)*
+
+Il ruolo applicativo **legge** questo giornale e **non lo scrive**:
+
+| Privilegio | `zeroerp_app` | Perché |
+| --- | --- | --- |
+| `USAGE` sullo schema | sì | risolvere i nomi (e il presidio dei riferimenti morti) |
+| `SELECT` sulla tabella e su `vw_job_run_da_guardare` | sì | lista dei processi automatici e corse di un processo, riepilogo giri e liveness, esiti delle corsie di fatturazione, `job_liveness` nel digest — cinque lettori nel backend |
+| `INSERT`, `UPDATE`, `DELETE` | **no** | la porta di scrittura sono le due funzioni `SECURITY DEFINER` qui sopra; un giornale non si cancella |
+
+Sede: `scripts/sql/provision_db_roles.sql` (blocco `maintenance`, in fondo) e il
+changeSet gemello `90_end/20260919-08` per i database già provisionati.
+`maintenance` **non** entra nella whitelist del provisioning, che darebbe SIUD
+pieno. Presidio: `db/pgtap/maintenance/test-app-postura-job-run-log-v1.sql`.
+
+⚠️ Fino al 2026-09-19 il `SELECT` esisteva **solo sul database di sviluppo**,
+dato a mano, e il provisioning diceva «l'app non ne legge né scrive le
+tabelle». È emerso quando i test Django in CI sono passati a connettersi come
+`zeroerp_app`: sedici rossi su `list_processi`/`list_job_runs`. Regola:
+[linee-guida-sql §11.9](/linee-guida-sql) — un privilegio che esiste su una
+sola macchina è un ricordo, non una configurazione.
 
 ### Considerazioni di Progettazione
 

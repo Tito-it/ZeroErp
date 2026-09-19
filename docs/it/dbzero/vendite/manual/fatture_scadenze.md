@@ -11,6 +11,11 @@
 >
 > • [vendite.fn_genera_scadenze_fattura](/dbzero/vendite/funzioni/fn_genera_scadenze_fattura) — per una fattura
 > • [vendite.fn_genera_scadenze_lotto](/dbzero/vendite/funzioni/fn_genera_scadenze_lotto) — wrapper di lotto
+>
+> **Chi la legge per la lista e per i saldi:**
+>
+> • [vendite.vw_fatture_scadenze_lista](/dbzero/vendite/views/vw_fatture_scadenze_lista) — una riga per rata col suo documento, **senza** saldi
+> • [pagamenti.fn_get_saldi_rate](/dbzero/pagamenti/funzioni/fn_get_saldi_rate) — il nucleo dei saldi (residuo · in lavorazione · incassato), con l'imputazione dei movimenti senza rata
 
 ---
 ### 🎯 Scopo Principale
@@ -85,7 +90,7 @@ sulla prima».
 
 ---
 
-### ⚖️ Tre casi in cui zero rate è la risposta giusta
+### ⚖️ I tre casi della base — e dal 17-09-2026 il negativo ha UNA rata
 
 Una fattura **senza rate non è una fattura difettosa**. Su questi casi non va
 costruito nessun allarme:
@@ -93,8 +98,26 @@ costruito nessun allarme:
 | Base (`totale_a_pagare`) | Esito | Perché |
 | --- | --- | --- |
 | `= 0` | zero rate, **nessun log** | documento interamente coperto da acconti: è normale |
-| `< 0` | zero rate, **log non critico** | saldo a favore del cliente. Il `CHECK (importo >= 0)` aveva già deciso che un documento a credito non si rateizza; il log c'è perché a volte è un fondo configurato male, e la differenza la vede una persona |
+| `< 0` | **una rata**, importo = la base **col segno**, alla **prima data del termine**; **log non critico** | è la **nota di credito** (P-5, decisione di Tid del 17-09-2026). Fino a quel giorno: zero rate, e un `CHECK (importo >= 0)` che lo vietava. Il log resta perché a volte un totale negativo è un fondo configurato male, e la differenza la vede una persona |
 | `IS NULL` | **errore** `E_SCADENZE_BASE_NON_PRONTA` | non è un documento particolare: sono i passi eseguiti fuori ordine |
+
+⭐ **Perché la nota di credito ha una rata.** Una riga contabile *senza* rata
+non incontra nessuna capienza: il guard della rata esce subito su
+`scadenza_id IS NULL`, e un guard a livello documento non esiste. Finché la nota
+di credito non aveva una rata, «il cliente paga la nota di credito» (un +15 su
+un credito di −20, verso sbagliato) o la rimessa che compensa (100 sulla
+fattura, −20 sulla nota) entravano **in silenzio**. Con la rata passano dal
+guard di D14-c come tutte le altre righe: il verso giusto entra, quello
+sbagliato si **segnala** e si forza. Non è un allargamento del modello: è un
+buco chiuso.
+
+⚠️ **Una rata, qualunque cosa dica il termine.** Un termine a due rate su una
+nota di credito produce comunque una rata sola, alla data della *prima*
+(`primo_offset_giorni`, `fine_mese` compresi): il legame con la fattura
+rettificata è lineage, non piano rate. Lo snapshot in testata e il `meta` della
+rata portano `rata_unica_credito = true`; nello snapshot `numero_rate` vale 1 —
+descrive il piano **applicato** — e il termine d'origine resta leggibile da
+`termine_pagamento_id` e `codice_interno`.
 
 ---
 
@@ -103,7 +126,10 @@ costruito nessun allarme:
 * `fattura_id` → FK alla testata, `ON DELETE CASCADE`.
 * `numero_rata` → progressivo da 1, **univoco per fattura**.
 * `data_scadenza` → data di esigibilità della rata.
-* `importo` → quanto si paga a quella data (`>= 0`).
+* `importo` → quanto si regola a quella data, **col segno del documento**:
+  positivo su una fattura, negativo sulla rata unica di una nota di credito.
+  Lo zero è ammesso (raggiungibile per arrotondamento su un micro-documento a
+  più rate).
 * `meta` → estensioni JSONB; oggi la generazione vi scrive `modalita_codice` e
   `termine_codice_interno`, cioè con che cosa e in base a quale regola è nata.
 
@@ -112,8 +138,12 @@ costruito nessun allarme:
 ### 🔒 Vincoli e congelamento
 
 * **PK** `id`; **FK** `fattura_id` con `ON DELETE CASCADE`;
-  **UNIQUE** `(fattura_id, numero_rata)`; **CHECK** `importo >= 0`;
-  indice su `data_scadenza`.
+  **UNIQUE** `(fattura_id, numero_rata)`; indice su `data_scadenza`.
+  ⛔ Fino al 17-09-2026 c'era un **CHECK** `importo >= 0`: tolto, perché la
+  regola vera — *il segno della rata è il segno del documento* — non sta in un
+  vincolo di tabella ma nella **numerazione** (`fn_assign_numero_fattura`:
+  somma delle rate = totale a pagare, col segno) e nell'**unico scrittore**,
+  che il segno lo prende dalla base.
 * **Congelamento oltre la soglia fiscale.** Un trigger di guard impedisce
   `INSERT`/`UPDATE`/`DELETE` sulle rate di una fattura che ha superato
   DRAFT/EMESSA: da lì in poi il documento è uno snapshot fiscale e il suo piano
@@ -130,7 +160,9 @@ costruito nessun allarme:
 Insieme alle rate, la generazione scrive in testata
 `vendite.fatture.termine_pagamento_snapshot`: i **valori** del termine usato —
 rate, offset, intervallo, fine mese, arrotondamento — con l'`id` accanto come sola
-provenienza.
+provenienza. Sulla nota di credito lo snapshot dice `numero_rate = 1` e
+`rata_unica_credito = true`: descrive il piano **applicato**, e spiega perché
+differisce dal termine.
 
 È la ragione per cui non serve risalire al catalogo per capire un documento
 emesso: se domani il termine cambia, quella fattura continua a spiegare le rate

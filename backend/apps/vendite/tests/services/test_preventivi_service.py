@@ -14,6 +14,8 @@ Indice test eseguiti:
 5) test_gestisci_riga_ok — aggiunta riga in BOZZA con ricalcolo totali
 5b) test_gestisci_riga_padre_composito_prezzo_default_zero — composito senza prezzo → 0 placeholder
 5c) test_gestisci_riga_non_composito_senza_prezzo_solleva — non composito + prezzo None → E_PREV_VALIDAZIONE
+5d) test_gestisci_riga_prezzo_nan_e_un_400_col_campo — 2026-09-18: `NaN` sul prezzo era un 500 (`NaN >= 0` solleva), ora E_PREV_VALIDAZIONE col campo
+5e) test_gestisci_riga_quantita_nan_e_un_400_col_campo — `NaN` sulla quantita' passava fino al DB (`NaN != 0` e' vero), ora E_PREV_VALIDAZIONE col campo
 6) test_gestisci_riga_stato_non_modificabile — guard riga su stato EMESSO
 7) test_gestisci_riga_articolo_mancante — validazione articolo_id obbligatorio
 8) test_elimina_riga_ok — soft delete riga
@@ -92,6 +94,7 @@ TestNormalizeComponentiAttivazioni:
 """
 
 import unittest
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -872,6 +875,42 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"articolo_id": "uuid-art-1", "qta_operativa": "0"})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: ⭐ Il caso che la copia inline non vedeva (2026-09-18): un JSON puo'
+    #        portare `"NaN"`, `Decimal("NaN")` si costruisce senza protestare e
+    #        `NaN >= 0` solleva `InvalidOperation` — fuori da ogni `except`, cioe'
+    #        un 500 per un valore scritto da una persona. Ora e' un 400 col
+    #        campo, dal BB `PayloadValidator`, e il repository non si tocca.
+    def test_gestisci_riga_prezzo_nan_e_un_400_col_campo(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        for raw in ("NaN", "Infinity", "dieci", True):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    gestisci_riga(1, {"articolo_id": "uuid-art-1", "prezzo_unitario": raw})
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context["field"], "prezzo_unitario")
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: ⭐ L'altra meta', ed e' la peggiore: `NaN != 0` e' VERO, quindi una
+    #        quantita' NaN superava il guard e arrivava al DB, dove `NaN > 0` e'
+    #        vero e il CHECK la lascia entrare. Ora e' un 400 col campo.
+    def test_gestisci_riga_quantita_nan_e_un_400_col_campo(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        for raw in ("NaN", "-Infinity", "tre", False):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ServiceError) as ctx:
+                    gestisci_riga(1, {"articolo_id": "uuid-art-1", "qta_operativa": raw})
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context["field"], "qta_operativa")
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: Verifica soft delete riga.
@@ -2735,3 +2774,79 @@ class TestPreventiviRepository(unittest.TestCase):
         sql, params = cursor.execute.call_args.args
         self.assertIn("attivo IS TRUE", sql)
         self.assertEqual(params, [40])
+
+
+# Scopo: La DATA DI CONSEGNA RICHIESTA sulla riga di preventivo (Blocco A di
+#        brief-db-modifiche-certe-ciclo-vendita-e-articolo). Sul preventivo
+#        c'e' solo la richiesta: la conferma nasce sull'ordine. Si prova il
+#        trasporto intero — arriva a `create_riga` come `date`, una malformata
+#        e' 400 col campo, in PATCH `null` azzera e l'assenza non tocca.
+#
+# Indice:
+#  1. test_la_data_richiesta_arriva_a_create_riga_come_date
+#  2. test_data_richiesta_malformata_e_400_col_campo
+#  3. test_in_patch_null_azzera_e_assenza_non_tocca
+class TestPreventiviRigaDataConsegna(unittest.TestCase):
+    def setUp(self):
+        self.repo_patcher = patch(
+            "apps.vendite.services.preventivi_service.PreventiviRepository"
+        )
+        self.mock_repo = self.repo_patcher.start().return_value
+        self.addCleanup(self.repo_patcher.stop)
+        self.iva_patcher = patch(
+            "apps.vendite.services.preventivi_service._risolvi_iva_riga",
+            return_value=(None, {}),
+        )
+        self.iva_patcher.start()
+        self.addCleanup(self.iva_patcher.stop)
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "emittente_fiscale_id": 3, "data": "2026-08-31",
+            "billing_account_id": 100, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 10}
+        self.mock_repo.update_riga.return_value = True
+
+    def test_la_data_richiesta_arriva_a_create_riga_come_date(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        gestisci_riga(1, {
+            "articolo_id": "uuid-art-1", "prezzo_unitario": "1",
+            "data_consegna_richiesta_cliente": "2026-11-15",
+        })
+        scritta = self.mock_repo.create_riga.call_args.kwargs
+        self.assertEqual(scritta["data_consegna_richiesta_cliente"], date(2026, 11, 15))
+
+    def test_data_richiesta_malformata_e_400_col_campo(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        # ⭐ La forma della data si controlla PRIMA del resolver del prezzo (e
+        #    quindi prima del gate L2 e della richiesta L3, che manda un'email
+        #    fuori dalla transazione): un 400 sul payload non deve aver mosso
+        #    niente. Senza questo mock il test resterebbe verde anche con la
+        #    validazione in fondo, perche' `create_riga` e' comunque mockata.
+        with patch(
+            "apps.vendite.services.preventivi_service._resolve_or_check_override_prezzo"
+        ) as resolver, self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {
+                "articolo_id": "uuid-art-1", "prezzo_unitario": "1",
+                "data_consegna_richiesta_cliente": "15/11/2026",
+            })
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("field"), "data_consegna_richiesta_cliente")
+        resolver.assert_not_called()
+        self.mock_repo.create_riga.assert_not_called()
+
+    def test_in_patch_null_azzera_e_assenza_non_tocca(self):
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+
+        aggiorna_riga(1, 10, {"descrizione": "x", "data_consegna_richiesta_cliente": None})
+        campi = self.mock_repo.update_riga.call_args.kwargs
+        self.assertIn("data_consegna_richiesta_cliente", campi)
+        self.assertIsNone(campi["data_consegna_richiesta_cliente"])
+
+        self.mock_repo.update_riga.reset_mock()
+        aggiorna_riga(1, 10, {"descrizione": "y"})
+        self.assertNotIn(
+            "data_consegna_richiesta_cliente", self.mock_repo.update_riga.call_args.kwargs,
+        )

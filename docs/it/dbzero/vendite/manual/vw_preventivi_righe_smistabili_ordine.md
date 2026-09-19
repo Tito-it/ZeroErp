@@ -34,3 +34,13 @@ Una riga e' eleggibile se:
 * `security_invoker = on` (policy RLS).
 * I servizi (`COMMESSA`) sono esclusi: il loro predicato e'
   `vw_preventivi_righe_smistabili_commessa`.
+
+### 🔄 rev 2026-09-13 — porta anche la data richiesta dal cliente
+
+Colonna in coda: `data_consegna_richiesta_cliente` (`20260913-16`). È da questa
+vista che `fn_push_preventivo_a_ordine` copia le righe, con un elenco esplicito
+di colonne: senza, la data che il cliente ha chiesto sul preventivo si perdeva
+nel passaggio all'ordine. Un secondo lettore delle righe dentro la funzione
+sarebbe stato una seconda sede dello stesso predicato — che questa vista esiste
+per evitare. Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`,
+sezione 5.2.

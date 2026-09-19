@@ -28,11 +28,23 @@
 //    chiamata costruisce il proprio stato. Esportare un'istanza per
 //    de-duplicare sembrerebbe funzionare col primo consumatore e romperebbe il
 //    secondo in silenzio (`feedback_estrarre_non_condividere_stato`).
-//    Lo consumano `createCrudStore` (che ci aggiunge il CRUD) e
-//    `createListaStore` (che lo impacchetta e basta).
+//    Lo consumano `createCrudStore` (che ci aggiunge il CRUD),
+//    `createListaStore` (che lo impacchetta e basta) e — dal 2026-09-18 — gli
+//    store di dominio che hanno TROPPO stato proprio per una factory
+//    (`pratiche`, `operatori`, `contratti`, i documenti di vendita…), che lo
+//    chiamano direttamente dentro il proprio `defineStore`.
+//
+// ⭐ IL 2026-09-18 SONO ENTRATI QUI I VENTI STORE SCRITTI A MANO che tenevano
+//    una copia del `buildParams` (`search >= 3`, filtri non-null con lo stesso
+//    nome, `limit`/`offset`, il blocco dell'ordinamento col suo ripiego). Erano
+//    la STESSA forma di questo file, riscritta venti volte con tre differenze
+//    che il BB non sapeva ancora esprimere — e che ora sono tre opzioni:
+//    `ricercaCorta`, `orderDirDefault`, `paramNames`. Nessuna e' un'invenzione:
+//    ognuna e' una divergenza che esisteva gia' in almeno due copie.
 import { ref } from 'vue'
 import { useListaEmptyStateFetch } from './useListaEmptyStateFetch'
 import { PAGINATION } from '../constants'
+import { paramsOrdinamento } from '../utils/listParams'
 
 // Params:
 //   - fetchPage: (params) => Promise<response axios>. Con `parentField`, la
@@ -46,15 +58,60 @@ import { PAGINATION } from '../constants'
 //       per il cancello empty-state. Irrilevante con startsEmpty:false.
 //   - startsEmpty: true → la lista parte vuota in attesa di una ricerca;
 //       false → parte piena (always-fetch).
+//   - ricercaCorta: cosa fa una lista che parte PIENA quando nella casella ci
+//       sono 1-2 caratteri — `'fetch'` (default: si fetcha comunque, la lista
+//       resta piena), `'svuota'`, `'ignora'`. E' il parametro omonimo di
+//       `useListaEmptyStateFetch`, passato tal quale: le tre UX convivono nel
+//       prodotto e la scelta e' dello store, non del BB.
 //   - orderBy / orderDir: ordinamento di partenza.
+//   - orderDirDefault: il RIPIEGO del verso quando `order_by` c'e' e
+//       `order_dir` no (`paramsOrdinamento`). Default `'asc'`, che e' quello
+//       che questo BB ha sempre avuto. ⛔ E' un parametro e non si deriva da
+//       `orderDir`: nelle venti copie il ripiego NON coincideva sempre col
+//       verso di apertura (`contratti` e `conversioniUom` aprono `desc` e
+//       ripiegano `asc`), e il ramo oggi e' dormiente — `useSearchTable.onSort`
+//       scrive sempre i due campi insieme — quindi appianarlo sarebbe stato
+//       invisibile E avrebbe cambiato il verso di una lista il giorno in cui
+//       il ramo si accendesse. Un'estrazione appiana la duplicazione, non le
+//       differenze.
+//   - paramNames: il NOME SUL FILO di un filtro, quando diverge da quello nello
+//       store — `{ data_a: 'data_al' }`. Serve ai due documenti di vendita il
+//       cui endpoint chiama le date a modo suo (offerte `validita_dal_min/max`,
+//       preventivi `data_al`) mentre nello store devono restare `data_da`/
+//       `data_a`, perche' sono i nomi che `useSearchTable` azzera sul deep-link
+//       e che `useStoreFilterBindings` lega ai DatePicker. ⚠️ E' una mappa di
+//       nomi, non un hook: la FORMA del parametro resta quella del BB.
+//   - onPayload(payload): l'hook per i campi EXTRA che l'endpoint mette
+//       ACCANTO a `results`/`count` (`scartate_count`, un catalogo, una
+//       matrice). E' la STESSA opzione, con lo stesso nome e lo stesso
+//       contratto, di `useListaEmptyStateFetch` — passata tal quale, dopo il
+//       guard di versione: le risposte scartate non la vedono. Omessa =
+//       comportamento invariato (2026-09-19, regola del 2: le righe della
+//       distinta ne avevano bisogno e lo store era sul core, dove l'hook non
+//       arrivava).
+//   - limit: righe per pagina di PARTENZA. Default `PAGINATION.DEFAULT_ROWS`
+//       (25), che `useSearchTable` tratta come «lista standard» e adatta al
+//       viewport (10 sotto il tablet). ⭐ Una lista che nasce a un altro
+//       numero — `PAGINATION.COMPACT_ROWS` per una lista dentro un dialog,
+//       dove l'altezza e' quella di dieci righe — resta a quel numero: e'
+//       l'eccezione che `useSearchTable` gia' dichiara («le liste che nascono
+//       a 10 restano eccezioni»), e prima di questa opzione si poteva
+//       scrivere solo negli store a mano (`listini`, `pratiche`).
+//       ⚠️ Vale anche per `reset()`: uno store che rinasce a 25 dopo essere
+//       nato a 10 cambierebbe passo alla seconda apertura.
 export function useListaStoreCore({
   fetchPage,
   parentField = null,
   filterDefaults = {},
   gateKeys = [],
   startsEmpty = true,
+  ricercaCorta = 'fetch',
   orderBy = null,
   orderDir = 'asc',
+  orderDirDefault = 'asc',
+  paramNames = {},
+  limit = PAGINATION.DEFAULT_ROWS,
+  onPayload = null,
 } = {}) {
   // L'id del padre, quando la lista ne ha uno. `null` = nessun padre scelto.
   const parentId = ref(null)
@@ -67,17 +124,53 @@ export function useListaStoreCore({
   //    dominio: vale per ogni lista, e finora nessuna delle tre poteva farla.
   const erroreCaricamento = ref(false)
 
-  const filters = ref({
-    // ⚠️ `search` c'e' SEMPRE, anche sulle liste che non cercano: fa parte del
-    //    contratto di `useSearchTable`, che la scrive sul deep-link `?search=`.
-    //    Dichiararla e' meglio che farla nascere per assegnazione.
-    search: '',
-    ...filterDefaults,
-    limit: PAGINATION.DEFAULT_ROWS,
-    offset: 0,
-    order_by: orderBy,
-    order_dir: orderDir,
-  })
+  // Scopo: i filtri di partenza — una funzione e non un letterale perche' li
+  //        scrive sia la nascita sia `reset()`, e due letterali divergono.
+  function filtriDiPartenza() {
+    return {
+      // ⚠️ `search` c'e' SEMPRE, anche sulle liste che non cercano: fa parte del
+      //    contratto di `useSearchTable`, che la scrive sul deep-link `?search=`.
+      //    Dichiararla e' meglio che farla nascere per assegnazione.
+      search: '',
+      ...filterDefaults,
+      limit,
+      offset: 0,
+      order_by: orderBy,
+      order_dir: orderDir,
+    }
+  }
+
+  const filters = ref(filtriDiPartenza())
+
+  // Scopo: i parametri che decidono QUALI righe — ricerca, filtri di dominio,
+  //        ordinamento — senza la paginazione. E' la sede unica per la fetch
+  //        della lista E per il suo export: un export che si ricostruisce i
+  //        filtri a mano esporta un insieme DIVERSO da quello a video appena
+  //        se ne aggiunge uno, e nessuno se ne accorge finche' qualcuno non
+  //        confronta il file con la schermata (la lezione di
+  //        `famiglieDocumento`, che l'aveva gia' scritta nel proprio store).
+  // ⚠️ La ricerca parte da TRE caratteri, ed e' la policy di progetto
+  //    (`api.md` §Ricerca): un termine piu' corto non si manda, e la lista
+  //    fa cio' che `ricercaCorta` dice.
+  // ⚠️ Il confronto e' `!= null`, non un truthy-check: `false` e `0` sono
+  //    filtri legittimi («solo i disattivati»), e un `if (f.attivo)` li
+  //    tratterebbe come «nessun filtro», mostrando anche gli attivi.
+  function paramsFiltro(f = filters.value) {
+    const searchTerm = (f.search || '').trim()
+    const params = {}
+    if (searchTerm.length >= 3) params.search = searchTerm
+    // Ogni filtro di dominio valorizzato, anche quelli non-gate (es.
+    // `attivo: true`: default valorizzato, inviato sempre). Sul filo va col
+    // nome che l'endpoint si aspetta (`paramNames`), che di norma e' lo stesso.
+    for (const k of Object.keys(filterDefaults)) {
+      if (f[k] != null) params[paramNames[k] ?? k] = f[k]
+    }
+    // ⚠️ L'ordinamento si manda solo se c'e', ed e' la STESSA forma che
+    //    l'export della lista usa (`paramsOrdinamento`, dal 2026-09-18): il
+    //    file segue la videata perche' i due chiedono l'ordine allo stesso
+    //    modo, non perche' due copie coincidono.
+    return { ...params, ...paramsOrdinamento(f, { orderDirDefault }) }
+  }
 
   const {
     items, totalRecords, loading, hasSearched, sospesa: fetchSospesa,
@@ -85,29 +178,15 @@ export function useListaStoreCore({
   } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: !startsEmpty,
+    ricercaCorta,
     hasActiveFilters: (f) => gateKeys.some((k) => f[k] != null),
-    buildParams: (f, searchTerm) => {
-      const params = {}
-      if (searchTerm.length >= 3) params.search = searchTerm
-      // Ogni filtro di dominio valorizzato, anche quelli non-gate (es.
-      // `attivo: true`: default valorizzato, inviato sempre).
-      for (const k of Object.keys(filterDefaults)) {
-        if (f[k] != null) params[k] = f[k]
-      }
-      params.limit = f.limit
-      params.offset = f.offset
-      // ⚠️ L'ordinamento si manda solo se c'e': mandarlo vuoto significherebbe
-      //    chiedere al backend un ordinamento che poi lui scarta — la cosa
-      //    giusta per il motivo sbagliato.
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
-      }
-      return params
-    },
+    // ⚠️ La paginazione e' l'UNICA cosa che la lista aggiunge ai filtri:
+    //    l'export non la manda, il suo limite lo impone il backend.
+    buildParams: (f) => ({ ...paramsFiltro(f), limit: f.limit, offset: f.offset }),
     fetchPage: (params) => (
       parentField ? fetchPage(parentId.value, params) : fetchPage(params)
     ),
+    onPayload,
   })
 
   // ⛔ Senza padre non si chiama: l'id sta nel PATH dell'endpoint, e una fetch
@@ -144,14 +223,7 @@ export function useListaStoreCore({
     svuota()
     parentId.value = null
     erroreCaricamento.value = false
-    filters.value = {
-      search: '',
-      ...filterDefaults,
-      limit: PAGINATION.DEFAULT_ROWS,
-      offset: 0,
-      order_by: orderBy,
-      order_dir: orderDir,
-    }
+    filters.value = filtriDiPartenza()
   }
 
   const esposto = {
@@ -162,6 +234,7 @@ export function useListaStoreCore({
     fetchSospesa,
     erroreCaricamento,
     fetchList, svuota, reset,
+    paramsFiltro,
   }
   // ⭐ Il padre si espone COL SUO NOME (`soggettoId`, `fatturaId`), non come
   //    `parentId`: e' il nome che il caller scrive in `parentField` di

@@ -36,6 +36,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { labelOrCode } from '../../../core/utils/i18nLabel'
 import { statoMerceSeverity } from '../../../core/utils/severity'
+import { displayDate } from '../../../core/utils/date'
 import { CONTESTO_MERCE, ETICHETTA_ACCREDITO_MERCE, STATO_MERCE } from './situazioneMerceCostanti'
 import {
   compitiSituazioneMerce,
@@ -118,6 +119,24 @@ function etichettaAccredito(riga) {
 function etichettaSeverity(riga) {
   return riga.etichetta === ETICHETTA_ACCREDITO_MERCE.DOVUTA ? 'warn' : 'secondary'
 }
+
+// Scopo: IL RITARDO DELLA RIGA, come lo dichiara la vista (brief-db-modifiche-
+//        certe-ciclo-vendita-e-articolo, P-6): `giorni_ritardo` NULL = «non si
+//        applica» (niente da spedire, o nessuna data) → nessuna etichetta;
+//        0 = c'e' da spedire e non e' tardi; N > 0 = giorni di ritardo rispetto
+//        alla PROMESSA (o, senza promessa, alla richiesta del cliente).
+// ⛔ Il verso NON si ricalcola qui («oggi > data»): lo fa la vista con il
+//        residuo e la soglia dell'impegno, e ricalcolarlo sarebbe una seconda
+//        verita' sul residuo. Qui si sceglie solo frase e colore.
+function ritardo(riga) {
+  const n = riga.giorni_ritardo
+  if (n == null) return null
+  const giorni = Number(n)
+  if (giorni > 0) {
+    return { severity: 'danger', label: t('vendite.situazione_merce.ritardo_giorni', { n: giorni }) }
+  }
+  return { severity: 'success', label: t('vendite.situazione_merce.ritardo_in_tempo') }
+}
 </script>
 
 <template>
@@ -177,6 +196,23 @@ function etichettaSeverity(riga) {
         </Column>
         <Column :header="t('vendite.situazione_merce.col_da_spedire')" style="width: 100px;">
           <template #body="{ data }">{{ qta(data.da_spedire) }}</template>
+        </Column>
+        <!-- Le date di consegna della riga (Blocco A): la richiesta del cliente
+             e la nostra promessa. Due colonne e non una, perche' la differenza
+             fra le due E' la promessa — e il ritardo si misura sulla seconda. -->
+        <Column :header="t('vendite.situazione_merce.col_data_consegna_richiesta_cliente')" style="width: 105px;">
+          <template #body="{ data }">{{ displayDate(data.data_consegna_richiesta_cliente) }}</template>
+        </Column>
+        <Column :header="t('vendite.situazione_merce.col_data_consegna_confermata')" style="width: 105px;">
+          <template #body="{ data }">{{ displayDate(data.data_consegna_confermata) }}</template>
+        </Column>
+        <!-- Il ritardo: e' IL POSTO per cui `giorni_ritardo` esiste. Vuoto
+             quando il conto non si applica — «in tempo» e «niente da
+             spedire» sono due cose diverse, e la vista non le confonde. -->
+        <Column :header="t('vendite.situazione_merce.col_giorni_ritardo')" style="width: 100px;">
+          <template #body="{ data }">
+            <Tag v-if="ritardo(data)" :severity="ritardo(data).severity" :value="ritardo(data).label" />
+          </template>
         </Column>
       </DataTable>
     </template>

@@ -747,6 +747,7 @@ function onCambiaStato(action) {
   }
   if (action.requires_confirm) {
     confirmAction({
+      header: t('confirm.cambio_stato_title'),
       message: t('vendite.preventivi.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiCambioStato(action.target_state),
     })
@@ -786,6 +787,7 @@ async function eseguiCambioStato(nuovoStato, extras = {}) {
 // Scopo: Crea nuova revisione del preventivo.
 function onNuovaRevisione() {
   confirmAction({
+    header: t('vendite.preventivi.azione_crea_revisione'),
     message: t('vendite.preventivi.conferma_revisione'),
     onAccept: async () => {
       const result = await execute(
@@ -1067,7 +1069,7 @@ const drawerActions = computed(() => {
 
           <!-- ====================== TAB REVISIONI ====================== -->
           <TabPanel value="revisioni">
-            <p class="text-color-secondary mt-1">
+            <p class="app-text-muted mt-1">
               {{ t('vendite.preventivi.revisioni_intro') }}
             </p>
             <div v-if="!revisioni.length" class="app-empty-state">

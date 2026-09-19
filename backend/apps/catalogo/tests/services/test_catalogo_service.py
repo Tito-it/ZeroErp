@@ -56,6 +56,9 @@ Indice test eseguiti:
 51) CatalogoServiceTests.test_fn_get_articolo_form_defaults_ok
 52) CatalogoServiceTests.test_fn_get_articolo_form_defaults_missing_param
 53) CatalogoServiceTests.test_fn_get_articolo_form_defaults_malformed_param
+54) CatalogoServiceTests.test_fn_update_articolo_approvvigionamento_propagato (Blocco B)
+55) CatalogoServiceTests.test_fn_update_articolo_modo_approvvigionamento_null_invalid
+56) CatalogoServiceTests.test_fn_update_articolo_lead_time_negativo_invalid
 """
 
 from unittest import TestCase
@@ -817,6 +820,74 @@ class CatalogoServiceTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertIn("natura_vendita_id", ctx.exception.detail or "")
+
+    # Scopo: Blocco B di brief-db-modifiche-certe-ciclo-vendita-e-articolo —
+    #        i tre campi «da dove arriva l'articolo» arrivano al repository con
+    #        il loro tipo: il modo come id, il flag come bool, il lead time come
+    #        int (0 e' un valore, non «non si applica»; NULL si').
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_update_articolo_approvvigionamento_propagato(
+        self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls
+    ):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        repo = mock_repo_cls.return_value
+        repo.update_articolo.return_value = True
+        repo.get_articolo.return_value = {
+            "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001",
+        }
+        mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
+
+        fn_update_articolo(
+            "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+            {"modo_approvvigionamento_id": 2, "gestito_a_magazzino": True,
+             "lead_time_giorni": 0, "requires_lotto": True},
+        )
+        _, data = repo.update_articolo.call_args.args
+        self.assertEqual(data["modo_approvvigionamento_id"], 2)
+        self.assertIs(data["gestito_a_magazzino"], True)
+        self.assertEqual(data["lead_time_giorni"], 0)
+        # Lotto 2 di magazzino (brief §4.9): `requires_lotto` e' un flag come
+        # `gestito_a_magazzino` — passa, e fuori dal lock BoM.
+        self.assertIs(data["requires_lotto"], True)
+
+        # E il NULL del lead time e' un'informazione («non si applica»): passa.
+        repo.update_articolo.reset_mock()
+        fn_update_articolo(
+            "019bbee2-5f6a-704f-bbd0-34ed84db252d", {"lead_time_giorni": None},
+        )
+        _, data = repo.update_articolo.call_args.args
+        self.assertIsNone(data["lead_time_giorni"])
+
+    # Scopo: `modo_approvvigionamento_id` e' NOT NULL a DB (DEFAULT ACQUISTO):
+    #        si puo' cambiare, mai azzerare — stessa regola di natura_vendita_id.
+    def test_fn_update_articolo_modo_approvvigionamento_null_invalid(self):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_articolo(
+                "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+                {"modo_approvvigionamento_id": None},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "modo_approvvigionamento_id")
+
+    # Scopo: il CHECK `>= 0` sul lead time e' anticipato con un 400 che nomina
+    #        il campo, invece del «violazione vincoli articolo» generico.
+    def test_fn_update_articolo_lead_time_negativo_invalid(self):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_articolo(
+                "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+                {"lead_time_giorni": -1},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "lead_time_giorni")
 
     # Scopo: create componente con esposto_in_fattura -> flag propagato al repo (BoM v5).
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")

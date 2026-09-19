@@ -380,7 +380,9 @@ Dopo i GRANT del ruolo batch:  `sudo systemctl enable --now zeroerp-coda-stampa.
 Gli unit **non si scrivono più a mano**: i template sono versionati in
 [`backend/deploy/systemd/`](../../../../backend/deploy/systemd/) —
 `zeroerp-coda-lavori.service|.timer` e `zeroerp-coda-stampa.service|.timer` — con
-placeholder per-host `__APP_DIR__` / `__APP_USER__` / `__ONCALENDAR__`.
+placeholder per-host `__APP_DIR__` / `__APP_USER__` / `__ONCALENDAR__` e, dal
+2026-09-14, `__COMANDO__` (la riga di comando, campo `comando` di `sveglie.json`
+— §17.6).
 `install-timers.sh` (§16.0) li renderizza (sostituzione placeholder) e li copia in
 `/etc/systemd/system`. Per cambiare un unit si **edita il template** e si ri-lancia
 l'installer: le modifiche passano da PR come qualsiasi codice, e la CI
@@ -427,8 +429,8 @@ la **sede unica** del dichiarato di deploy. Lo leggono in due:
 
 | Chi | Cosa ne prende |
 | --- | --- |
-| `backend/bin/install-timers.sh` | l'`OnCalendar` da sostituire nei template e la lista di cosa abilitare |
-| `apps.core.services.sveglie` (backend) | la `tolleranza_minuti`, cioè entro quanto l'ultimo run di un processo vale ancora come segno di vita |
+| `backend/bin/install-timers.sh` | l'`OnCalendar` **e il comando** (`__COMANDO__`, dal 2026-09-14) da sostituire nei template, e la lista di cosa abilitare |
+| `apps.core.services.sveglie` (backend) | le unit di ogni processo (per la mail del guardiano del digest), la cadenza da confrontare col contratto (`test_contratto_liveness_vs_deploy`), il `comando` che «Esegui ora» lancia come sottoprocesso (§17.6) e `avvio_manuale` (§17.7). ⚠️ Fino al 2026-09-11 qui c'era «la `tolleranza_minuti`»: il contratto di liveness vive in `dbops.processi`, e il JSON **rifiuta** il campo |
 
 ⛔ **Perché è cambiato.** Prima le cadenze erano cablate in quattro chiamate
 dentro l'installer, e la tolleranza di liveness degli stessi processi era un
@@ -507,9 +509,11 @@ confronto `GIRA_E_NON_REGISTRA` su quel job — cioè il rilevatore di R-12, che
 ### 17.4) Aggiungere una sveglia
 
 1. una voce in `deploy/sveglie.json` (il **perché** delle scelte va nel template,
-   qui il valore — due programmi devono poterlo leggere);
+   qui il valore — due programmi devono poterlo leggere), **con il suo
+   `comando`** (l'argv dopo `run-command.sh`, come lista di token — §17.6);
 2. la coppia `deploy/systemd/<unit>.{service,timer}` — solo il `.service` se è un
-   servizio sempre acceso;
+   servizio sempre acceso; l'`ExecStart` è
+   `__APP_DIR__/bin/run-command.sh __COMANDO__`, **mai** la riga scritta a mano;
 3. `sudo backend/bin/install-timers.sh`.
 
 ⚠️ **Modifiche agli unit si fanno sui template**, mai in `/etc/systemd/system`:
@@ -550,3 +554,82 @@ bash backend/scripts/tests/test-install-timers.sh
 ```
 
 ⚠️ Resta scoperto il caso «`systemctl enable` fallisce»: lo stub esce sempre `0`.
+
+### 17.6) La riga di comando sta nel JSON — `comando` e `__COMANDO__` (dal 2026-09-14)
+
+⭐ **Perché.** «Esegui ora» dal drawer dei processi
+([analisi-riavvio-processi-da-interfaccia.md §4.1-bis](../work-done/analisi-riavvio-processi-da-interfaccia.md),
+brief [brief-db-avvio-manuale-di-un-processo.md](../work-done/brief-db-avvio-manuale-di-un-processo.md))
+lancia **lo stesso comando del timer, meno l'orario** — e il backend non può
+leggerlo da un file `.service`. Fino al 14-09 la riga viveva **solo** lì
+(`ExecStart=… run-command.sh digest_presidi --cadenza settimanale`).
+
+⇒ Ogni voce di `sveglie.json` porta `comando` (l'argv dopo `run-command.sh`,
+come **lista** di token) e ogni template `.service` porta
+`ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__`, che l'installer rende
+come già `__ONCALENDAR__`. **Una sede sola**: la riga che il timer esegue *è*
+quella che il pulsante eseguirà, e non possono divergere.
+
+⛔ Un `comando` nel JSON *accanto* a una riga cablata nel template sarebbe la
+seconda sede — quella che resta indietro, e qui «indietro» vuol dire un pulsante
+che lancia una cosa diversa dal timer, **senza che nessuna delle due fallisca**.
+Lo presidia `test-install-timers.sh`: test 6 (nessun template con `ExecStart`
+cablato) e test 7 (l'unit reso porta esattamente l'argv del JSON).
+
+| Regola | Perché |
+| --- | --- |
+| lista di token, mai una stringa | systemd spezza l'`ExecStart` sugli spazi, `subprocess` passa il token intero: «come si spezza» sarebbe una regola scritta due volte |
+| whitelist stretta sui token (niente spazi, quote, `%`, `$`, `\|`, `&`) | `%x` è uno specifier systemd, `$VAR` si espande, `\|`/`&` sono del `sed` dell'installer; si allarga quando un comando **vero** ne ha bisogno |
+| il primo token è un management command **che esiste** | un refuso non fallisce in CI ma sull'host, alla prima corsa (`test_sveglie.py`, test 13) |
+| obbligatorio anche per `forma = servizio` | ogni `.service` ha un `ExecStart`; una regola con un'eccezione sono due regole |
+
+⚠️ Sugli host **non cambia niente**: gli otto `ExecStart` resi sono identici a
+prima, perché il campo è nato dalla riga che ogni template eseguiva. Cambia il
+template, non l'unit installato — un re-install lo riscrive uguale.
+
+⛔ `timeout_minuti` (D-B dell'analisi) **non è un campo, per decisione**
+(Tid, 15-09, piano §3.2 e brief §8.5): il tetto del sottoprocesso è **unico**
+e sta nell'handler (`TETTO_SOTTOPROCESSO_SECONDI = 300`, `avvio_manuale.py`),
+pinnato da `test_avvio_manuale_tetto` sotto la metà della tolleranza del
+drenatore e sotto la soglia del reaper. Un tetto per sveglia non avrebbe un
+lettore che lo distingua: chi supera il tetto unico **non è candidato**, e
+quella è la riga sotto.
+
+### 17.7) `avvio_manuale` accanto ad `abilita` — e come si vede a video un run lanciato a mano (dal 2026-09-15)
+
+⭐ **Due campi, due domande.** `abilita` dice se il **timer** è acceso su questa
+installazione; `avvio_manuale` dice se il **pulsante** «Esegui ora» ha senso su
+questa sveglia. Sono indipendenti per modello: i due giri di fatturazione sono
+`abilita: false` oggi per un'altra ragione (SDI sospeso) e restano
+`avvio_manuale: false` anche il giorno in cui si accendono — un giro di
+fatturazione è lungo per natura e terrebbe fermo il drenatore, che mentre
+aspetta il sottoprocesso non drena altro (decisione 2a di Tid, brief §8.5).
+Il drenatore stesso è `false` («Esegui ora» lo esegue lui); il listener è
+`false` per natura (servizio: non c'è una corsa da lanciare, e un `true` è
+rifiutato). **Obbligatorio** su ogni voce, come `abilita`: con un default il
+silenzio varrebbe qualcosa. L'installer **non** lo legge — non è un fatto di
+systemd.
+
+**Chi lo legge**: `avvio_manuale.motivi_esegui_ora` (il predicato «si può
+lanciare a mano?»), che risponde alla capability `can_esegui_ora` nel dettaglio
+del processo, al rifiuto di `POST processi/<codice>/esegui-ora/` e al
+ricontrollo dell'handler nel drenatore — **una sede, tre lettori**, così il
+tooltip del pulsante spento e il 4xx non possono dire due cose diverse.
+
+**Come si vede a video un run lanciato a mano**, e dove guardare se non torna:
+
+| Dove | Che cosa si vede |
+| --- | --- |
+| *Amministrazione → Processi automatici → drawer → «Sveglie»* | la riga della sveglia col pulsante **spento e il motivo** finché il lavoro è vivo («già in coda, lavoro #id»); si riaccende da sé alla riapertura, quando il lavoro è finito |
+| *Strumenti → Code di lavoro* | il lavoro `ESEGUI_PROCESSO` con la chiave `esegui:<unit>`: `PENDING` → `IN_CORSO` → `FATTO` (result con `exit_code`, `durata_ms`, `coda_output`) oppure `ERRORE` terminale (`E_PROCESSO_AVVIO_FALLITO` con l'exit code, `E_PROCESSO_AVVIO_TROPPO_LUNGO` oltre i 300 s) |
+| *drawer del processo ESEGUITO → «Ultime corse»* | il run del **comando**, con `origine = COMMAND` e lo **username di chi ha premuto** (`registered_job` li legge dall'ambiente del sottoprocesso: `ZEROERP_JOB_ORIGINE`, `ZEROERP_JOB_AUTH_USER_ID`) — non `CRON`, che è la corsa del timer |
+| panorama `dbops.vw_processi_programmazione` | `avvio_manuale \| SU_RICHIESTA \| f`: il processo del gesto non ha una cadenza e non ha un run suo (§8.2.1 del brief: l'audit del gesto è la riga di coda) |
+
+⚠️ **Un run a mano mentre il timer sta girando** produce una riga di *skip* nel
+giornale del comando (il lock di `fn_job_run_start`), non due corse: il lavoro
+esce `FATTO` con exit 0. È ciò che succede oggi a chi lancia da shell.
+
+⛔ **Finché il tipo `ESEGUI_PROCESSO` è `attivo = false`** il verbo risponde
+`E_JOB_TYPE_NON_ATTIVO` (501): è il cancello voluto (regola del binding), non
+un difetto. L'accensione la chiede il BE a handler in servizio, ed è una riga
+del CSV `coda_lavori_tipi` a carico del team DB (brief §10.4).

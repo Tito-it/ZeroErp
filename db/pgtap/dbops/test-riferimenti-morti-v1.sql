@@ -5,7 +5,7 @@
 -- Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §5
 --
 -- Pezzi del presidio (nessuno duplica la logica di un altro):
---   dbops.fn_check_funzioni_riferimenti_morti()   la misura      (20260804-62)
+--   dbops.fn_check_funzioni_riferimenti_morti()   la misura      (20260804-62 … 20260914-02)
 --   dbops.riferimenti_morti_esenzioni             il registro    (20260804-63)
 --   dbops.vw_riferimenti_morti_da_sanare          i difetti aperti
 --   dbops.vw_riferimenti_morti_rientrati          le voci di troppo (20260804-64)
@@ -13,7 +13,7 @@
 --   scripts/sql/guardrail_riferimenti_morti.sql        il gate della CI
 --   questo file                                        il gate della suite
 --
--- Indice test (7 asserzioni):
+-- Indice test (9 asserzioni):
 --   1. l'estensione plpgsql_check c'e' (senza, i test 2 e 3 fanno skip)
 --   1-bis. plpgsql_check ha potuto controllare OGNI funzione (NON_MISURATO)
 --   2. nessun difetto REALE/ORFANA fuori dal registro del debito
@@ -21,7 +21,21 @@
 --   4. ogni voce del registro ha un motivo scritto
 --   5. nessun riferimento morto nei DATI di configurazione
 --   6. il conteggio che legge il DIGEST concorda con la misura diretta
+--   7. ⛔ un 42501 dentro una SECURITY DEFINER di un ALTRO proprietario non e'
+--      mai REALE: e' FP_DEFINER_PRIVILEGIO (20260914-02) — skip dichiarato
+--      dove questo ruolo non ne misura nessuno (proprietario, superuser, CI)
+--   8. ⭐ l'esenzione «pgAgent» del registro c'e' SE E SOLO SE pgagent.pga_job
+--      manca su questa macchina (90_end/20260914-03: un registro descrive una
+--      macchina alla volta)
 --
+-- ── ⚠️ I TEST 2 E 3 SONO IL PRESIDIO VERO DEL 20260914-02, E LO SONO DA OGNI
+--   RUOLO. Il primo digest settimanale (14-09) ha dato «rientrati: 1» sulla
+--   riga pgAgent: come zeroerp_app il 42501 usciva REALE e la riga serviva,
+--   come titodb (fn_conta_presidio e' DEFINER) non usciva niente e la riga era
+--   di troppo — la stessa riga, la stessa macchina. Con la classe nuova e la
+--   convergenza del -03, il 2 e il 3 rispondono uguale da app e da
+--   proprietario; senza la classe, tolta la riga, il 2 e' rosso come app.
+-- ------------------------------------------------------------
 -- ── PERCHE' ESISTE ──────────────────────────────────────────────────────
 --   Il 2026-03-31 due funzioni morte furono **viste**, e lasciate li' con
 --   un changeSet che diceva «Da verificare se la funzione va rimossa dal
@@ -53,7 +67,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(9);
 
 -- ============================================================
 -- 1. L'estensione c'e'?
@@ -252,6 +266,68 @@ SELECT CASE
     'il conteggio che legge il digest (fn_conta_presidio) concorda con la misura diretta'
   )
 END;
+
+-- ============================================================
+-- 7. ⛔ Un 42501 in una DEFINER altrui non e' mai REALE
+--
+-- Il corpo di una SECURITY DEFINER gira coi privilegi del PROPRIETARIO:
+-- «il chiamante puo' risolvere il riferimento?» non dice niente della
+-- funzione. Questo ruolo (l'app) prende un 42501 su fn_get_pgagent_job_stato
+-- perche' non vede pgagent.*; fino al 20260914-02 usciva REALE.
+-- ⚠️ Il caso si PRESENTA solo dove chi misura non e' proprietario e c'e' uno
+--   schema che non vede: come proprietario, come superuser (CI) o dove ogni
+--   schema e' visibile, non c'e' nessun 42501 da classificare — e allora si
+--   DICHIARA, non si finge di aver verificato.
+-- ============================================================
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'plpgsql_check')
+    THEN skip('plpgsql_check assente: misura non eseguibile', 1)
+  WHEN NOT EXISTS (SELECT 1 FROM misura m WHERE m.esito ~ '^error:42501:')
+    THEN skip('nessun 42501 misurato da ' || current_user || ': il caso non si presenta da questo ruolo', 1)
+  ELSE is(
+    COALESCE((
+      SELECT string_agg(m.classe || ' ' || m.schema_nome || '.' || m.funzione, ', ' ORDER BY m.funzione)
+        FROM misura m
+       WHERE m.esito ~ '^error:42501:'
+         AND m.classe <> 'FP_DEFINER_PRIVILEGIO'
+         AND EXISTS (
+               SELECT 1
+                 FROM pg_proc p
+                 JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = m.schema_nome
+                  AND p.proname = m.funzione
+                  AND pg_get_function_identity_arguments(p.oid) = m.argomenti
+                  AND p.prosecdef
+                  AND NOT pg_has_role(current_user, p.proowner, 'MEMBER'))
+    ), ''),
+    '',
+    'ogni 42501 dentro una SECURITY DEFINER di un altro proprietario e'' FP_DEFINER_PRIVILEGIO, mai REALE'
+  )
+END;
+
+-- ============================================================
+-- 8. ⭐ L'esenzione «pgAgent» segue la macchina
+--
+-- Il 20260906-16 ha scritto la regola («un registro di debito descrive lo
+-- stato di UNA macchina alla volta»); il 90_end/20260914-03 la esegue a ogni
+-- migrate: la riga c'e' dove pgagent.pga_job manca (in CI: 42P01 per chiunque)
+-- e non c'e' dove esiste (dev: nessun occhio trova piu' quel difetto).
+-- ⚠️ La presenza si legge dal CATALOGO, non con to_regclass: quella solleva
+--   42501 a chi non ha USAGE sullo schema — e questo test gira come app.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)
+     FROM dbops.riferimenti_morti_esenzioni e
+    WHERE e.schema_nome = 'dbops'
+      AND e.funzione    = 'fn_get_pgagent_job_stato'
+      AND e.esito_like  = '%:RETURN QUERY:%pgagent%'),
+  CASE WHEN EXISTS (SELECT 1
+                      FROM pg_class c
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE n.nspname = 'pgagent' AND c.relname = 'pga_job' AND c.relkind = 'r')
+       THEN 0::bigint ELSE 1::bigint END,
+  'l''esenzione pgAgent del registro c''e'' se e solo se pgagent.pga_job manca su questa macchina'
+);
 
 SELECT * FROM finish();
 

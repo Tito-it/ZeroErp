@@ -58,7 +58,7 @@ from apps.core.tests.test_liste_configurabili_seed import _seed, _senza_commenti
 #    nato qui in copia locale il 2026-08-29 ed e' durato un'ora — la terza
 #    occorrenza della stessa esigenza («togli i commenti prima di cercare») ha
 #    trovato una sede vera invece di diventare la terza copia.
-from apps.core.tests.test_naming_codice_interno_python import _sorgente_senza_commenti
+from apps.core.tests._repo import sorgente_senza_commenti
 
 from apps.vendite.db import (
     contratti_repository,
@@ -133,7 +133,7 @@ class LineageListeFrontieraDecodeTests(TestCase):
     def test_nessuna_lista_ridecodifica_il_tipo_della_frontiera(self):
         for nome, (modulo, _wl) in _WHITELISTS.items():
             with self.subTest(lista=nome):
-                sorgente = _sorgente_senza_commenti(inspect.getsource(modulo))
+                sorgente = sorgente_senza_commenti(inspect.getsource(modulo))
                 # ⚠️ Il join si cerca col suo alias `v` (la vista di lista) e con
                 #    gli spazi liberi: `preventivi_repository` ha altri join
                 #    LEGITTIMI a `config.sorgenti` — le sorgenti della pratica —

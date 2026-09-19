@@ -125,6 +125,14 @@ export const STATO_SISTEMAZIONE_BOZZA = 'BOZZA'
 //    posto solo, dove si vede.
 export const STATO_SISTEMAZIONE_CONFERMATA = 'CONFERMATA'
 
+// ⭐ L'AZIONE DI PROCESSO che apre la registrazione — il codename di
+//    `config.azioni_processo` che il backend dichiara come `post_permission`
+//    su OGNI verbo che scrive un movimento: «Registra» la distinta e «Abbina e
+//    registra» la riga (la tardiva, D20-b). ⛔ Un solo nome: tre letterali in
+//    due file divergono al primo rename senza nessun errore, e il pulsante
+//    resterebbe visibile a chi il backend rifiuta.
+export const AZIONE_REGISTRA_DISTINTA = 'registra_distinta'
+
 // ⭐ Gli esiti della REGISTRAZIONE — vocabolario chiuso della funzione madre
 //    (`fn_posta_contabile`), senza tabella di catalogo. ⛔ `NULLA_DA_POSTARE`
 //    NON e' un errore: e' la risposta vera di una distinta che non aveva righe

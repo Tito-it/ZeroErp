@@ -11,7 +11,7 @@ import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import SelectButton from 'primevue/selectbutton'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
-import ToggleNascoste from '../../core/components/ToggleNascoste.vue'
+import FiltroToggle from '../../core/components/FiltroToggle.vue'
 
 // Stato filtri del padre via defineModel: il figlio muta `filtri.xxx`
 // (oggetto reactive condiviso per riferimento, pattern ContattoForm), senza
@@ -85,13 +85,13 @@ const { t } = useI18n()
           @update:model-value="$emit('change')"
         />
       </div>
-      <!-- «Mostra archiviate (N)»: BB ToggleNascoste, lo stesso del «Mostra
-           annullati» della lista Lotti. Uno solo, qui: le due schede lo
+      <!-- «Mostra archiviate (N)»: BB FiltroToggle col conteggio, lo stesso
+           del «Mostra annullati» della lista Lotti. Uno solo, qui: le due schede lo
            ereditano dal telaio. Nessuna etichetta sopra — il testo sta
            nell'interruttore — e il campo si allinea in basso, alla riga dei
            controlli dei vicini. -->
       <div class="form-field app-coda-filtri-toggle">
-        <ToggleNascoste
+        <FiltroToggle
           v-model="filtri.archiviate"
           :label="t('strumenti.code.filtro_archiviate')"
           :hint="t('strumenti.code.filtro_archiviate_hint')"

@@ -26,15 +26,24 @@ urlpatterns = [
     # Riepilogo permessi e audit
     path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
     path("audit-log/", views.AuditLogView.as_view(), name="amm-audit-log"),
+    # La consultazione di `dbops.error_log` (pezzo E dell'osservabilita'):
+    # stessa porta dei due diari accanto. `export/` PRIMA — e' una rotta
+    # sorella della lista, con lo stesso `lista_codice` (presidio
+    # `test_export_lista_codice_pari`).
+    path("error-log/", views.ErrorLogListView.as_view(), name="amm-error-log"),
+    path("error-log/export/", views.ErrorLogExportView.as_view(), name="amm-error-log-export"),
     # Processi automatici (registro + presidi + utenti tecnici).
     # ⚠️ `presidi/` PRIMA di `<str:codice>/`, o Django lo leggerebbe come il
     #    codice di un processo che si chiama "presidi".
     path("processi/", views.ProcessiListView.as_view(), name="amm-processi-list"),
     path("processi/presidi/", views.ProcessiPresidiView.as_view(), name="amm-processi-presidi"),
+    # La testata sola, per il pallino della topbar: stessa regola d'ordine.
+    path("processi/presidi/conteggi/", views.ProcessiPresidiConteggiView.as_view(), name="amm-processi-presidi-conteggi"),
     path("processi/<str:codice>/", views.ProcessiDetailView.as_view(), name="amm-processi-detail"),
     path("processi/<str:codice>/run/", views.ProcessiRunView.as_view(), name="amm-processi-run"),
     path("processi/<str:codice>/identita/", views.ProcessiIdentitaView.as_view(), name="amm-processi-identita"),
     path("processi/<str:codice>/identita/riattiva/", views.ProcessiIdentitaRiattivaView.as_view(), name="amm-processi-identita-riattiva"),
+    path("processi/<str:codice>/esegui-ora/", views.ProcessiEseguiOraView.as_view(), name="amm-processi-esegui-ora"),
     # Setup status (refactor operatore-emittenti)
     path("setup-status/", views.SetupStatusView.as_view(), name="amm-setup-status"),
     # Reparti e profili

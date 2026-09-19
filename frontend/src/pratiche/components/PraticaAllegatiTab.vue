@@ -53,19 +53,19 @@ watch(() => props.praticaId, (id) => {
 </script>
 
 <template>
-  <div class="pratica-allegati-tab">
+  <div>
     <!-- Placeholder upload (futuro) -->
     <div v-if="!isReadonly" class="allegati-placeholder">
       <i class="pi pi-cloud-upload allegati-placeholder-icon"></i>
-      <span class="text-color-secondary">{{ t('pratiche.allegati_upload_futuro') }}</span>
+      <span class="app-text-muted">{{ t('pratiche.allegati_upload_futuro') }}</span>
     </div>
 
     <!-- Lista allegati -->
-    <div v-if="loading" class="text-center text-color-secondary p-3">
+    <div v-if="loading" class="text-center app-text-muted p-3">
       <i class="pi pi-spin pi-spinner"></i>
     </div>
 
-    <div v-else-if="allegati.length === 0" class="text-center text-color-secondary p-3">
+    <div v-else-if="allegati.length === 0" class="text-center app-text-muted p-3">
       {{ t('pratiche.allegati_vuoti') }}
     </div>
 

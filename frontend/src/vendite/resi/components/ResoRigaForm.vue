@@ -128,7 +128,7 @@ async function handleSave() {
         option-label="label" option-value="value"
         :loading="righeDdtLoading"
         :placeholder="t('vendite.resi.riga_ddt_riga_placeholder')" />
-      <small v-if="rigaDdtSelezionata" style="color: var(--text-color-secondary);">
+      <small v-if="rigaDdtSelezionata" style="color: var(--app-text-muted);">
         {{ t('vendite.resi.riga_residuo_hint', {
           residuo: formatNumber(residuoOperativo),
           uom: rigaDdtSelezionata.uom_codice || '',
@@ -161,7 +161,7 @@ async function handleSave() {
       </div>
     </div>
 
-    <div class="app-drawer-footer">
+    <div class="app-form-footer">
       <Button :label="t('common.cancel')" text severity="secondary"
         icon="pi pi-arrow-left" @click="emit('cancel')" />
       <Button :label="t('common.save')" icon="pi pi-check"

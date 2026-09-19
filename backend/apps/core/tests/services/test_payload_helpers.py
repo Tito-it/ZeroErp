@@ -66,13 +66,32 @@ Indice test eseguiti:
 55) test_validate_order_by_invalid              — nuovo helper V6-B2 review
 56) test_reject_keys_empty_ok                   — nuovo helper V6-B2 review
 57) test_reject_keys_presente                   — nuovo helper V6-B2 review
+58) test_require_decimal_ok_int_float_str        — 2026-09-18: int, float e stringa passano da `str` (Decimal esatto)
+59) test_require_decimal_missing                 — assente o None -> VALIDATION col campo
+60) test_require_decimal_bool                    — True non e' un numero (sommerebbe come 1)
+61) test_require_decimal_non_numerico            — "dieci" -> VALIDATION, valore nel detail
+62) test_require_decimal_nan_infinity            — NaN/Infinity (stringa e float) rifiutati: non arrivano alla colonna numeric
+63) test_require_decimal_min_value_inclusivo     — min_value e' `>=`: il limite passa, sotto no
+64) test_optional_decimal_absent_none            — assente o None -> None
+65) test_optional_decimal_present                — presente -> Decimal, stesso rigore
+66) test_extract_optional_decimal_tre_stati      — assente -> MISSING; None nullable -> None; None non nullable -> VALIDATION
+67) test_coerce_decimal_scalare                  — la forma per un parametro di firma; None e' obbligatorio
+68) test_require_enum_normalizza                 — 2026-09-18 (regola del 2 su cinque siti): " percentuale " -> PERCENTUALE
+69) test_require_enum_missing_o_vuoto            — assente, None o "" -> VALIDATION col campo («obbligatorio», non «uno tra»)
+70) test_require_enum_non_stringa                — True / 3 -> VALIDATION col campo, non un AttributeError su .strip()
+71) test_require_enum_fuori_vocabolario          — il detail elenca gli ammessi (+ la `nota` del dominio), il valore sta nel context e NON nel detail
+72) test_optional_enum                           — assente o None -> None; presente -> stesso rigore
+73) test_extract_optional_enum_tre_stati         — assente -> MISSING; None nullable -> None; None non nullable -> VALIDATION
+74) test_coerce_enum_scalare                     — la forma per un parametro di firma; None e' obbligatorio
 """
 
+from decimal import Decimal
 from unittest import TestCase
 
 from django.db import IntegrityError
 
 from apps.core.services.payload_helpers import (
+    MISSING,
     PayloadValidator,
     map_integrity_error,
 )
@@ -245,6 +264,145 @@ class TestOptionalBool(_Base):
     def test_optional_bool_int(self):
         with self.assertRaisesValidation():
             self.v.optional_bool({"attivo": 1}, "attivo")
+
+
+class TestDecimal(_Base):
+    """I tre metodi decimal (2026-09-18, regola del 2 su otto siti): il rigore
+    e' quello piu' alto fra le copie che hanno sostituito, per tutti."""
+
+    def test_require_decimal_ok_int_float_str(self):
+        self.assertEqual(self.v.require_decimal({"q": 10}, "q"), Decimal("10"))
+        # Da `str`, non dal float: 0.1 resta 0.1, non 0.1000000000000000055…
+        self.assertEqual(self.v.require_decimal({"q": 0.1}, "q"), Decimal("0.1"))
+        self.assertEqual(self.v.require_decimal({"q": " 12.50 "}, "q"), Decimal("12.50"))
+        self.assertEqual(self.v.require_decimal({"q": "-5"}, "q"), Decimal("-5"))
+
+    def test_require_decimal_missing(self):
+        for payload in ({}, {"q": None}):
+            with self.assertRaisesValidation() as ctx:
+                self.v.require_decimal(payload, "q")
+            self.assertEqual(ctx.exception.code, _CODE)
+            self.assertEqual(ctx.exception.context["field"], "q")
+
+    def test_require_decimal_bool(self):
+        with self.assertRaisesValidation() as ctx:
+            self.v.require_decimal({"q": True}, "q")
+        self.assertEqual(ctx.exception.context["field"], "q")
+
+    def test_require_decimal_non_numerico(self):
+        with self.assertRaisesValidation() as ctx:
+            self.v.require_decimal({"q": "dieci"}, "q")
+        self.assertEqual(ctx.exception.context["field"], "q")
+        self.assertIn("'dieci'", ctx.exception.detail or "")
+
+    def test_require_decimal_nan_infinity(self):
+        for raw in ("NaN", "Infinity", "-Infinity", float("nan"), float("inf")):
+            with self.assertRaisesValidation() as ctx:
+                self.v.require_decimal({"q": raw}, "q")
+            self.assertEqual(ctx.exception.context["field"], "q")
+
+    def test_require_decimal_min_value_inclusivo(self):
+        self.assertEqual(
+            self.v.require_decimal({"q": "0"}, "q", min_value=Decimal("0")), Decimal("0"),
+        )
+        with self.assertRaisesValidation() as ctx:
+            self.v.require_decimal({"q": "-0.01"}, "q", min_value=Decimal("0"))
+        self.assertEqual(ctx.exception.context["min_value"], "0")
+
+    def test_optional_decimal_absent_none(self):
+        self.assertIsNone(self.v.optional_decimal({}, "q"))
+        self.assertIsNone(self.v.optional_decimal({"q": None}, "q"))
+
+    def test_optional_decimal_present(self):
+        self.assertEqual(self.v.optional_decimal({"q": "7"}, "q"), Decimal("7"))
+        with self.assertRaisesValidation():
+            self.v.optional_decimal({"q": "NaN"}, "q")
+
+    def test_extract_optional_decimal_tre_stati(self):
+        self.assertIs(self.v.extract_optional_decimal({}, "q"), MISSING)
+        self.assertIsNone(self.v.extract_optional_decimal({"q": None}, "q", nullable=True))
+        with self.assertRaisesValidation() as ctx:
+            self.v.extract_optional_decimal({"q": None}, "q", nullable=False)
+        self.assertEqual(ctx.exception.context["field"], "q")
+        self.assertEqual(
+            self.v.extract_optional_decimal({"q": "1.5"}, "q", min_value=Decimal("1")),
+            Decimal("1.5"),
+        )
+
+    def test_coerce_decimal_scalare(self):
+        self.assertEqual(self.v.coerce_decimal("3.25", field="importo"), Decimal("3.25"))
+        with self.assertRaisesValidation() as ctx:
+            self.v.coerce_decimal(None, field="importo")
+        self.assertEqual(ctx.exception.context["field"], "importo")
+        with self.assertRaisesValidation():
+            self.v.coerce_decimal(False, field="importo")
+
+
+_TIPI = frozenset({"PERCENTUALE", "VALORE_FISSO"})
+
+
+class TestEnum(_Base):
+    """I quattro metodi enum (2026-09-18, regola del 2 su cinque siti): la
+    lettura e' una, il vocabolario resta del dominio."""
+
+    def test_require_enum_normalizza(self):
+        self.assertEqual(
+            self.v.require_enum({"t": " percentuale "}, "t", allowed=_TIPI), "PERCENTUALE",
+        )
+
+    def test_require_enum_missing_o_vuoto(self):
+        for payload in ({}, {"t": None}, {"t": ""}, {"t": "   "}):
+            with self.assertRaisesValidation() as ctx:
+                self.v.require_enum(payload, "t", allowed=_TIPI, message="M")
+            self.assertEqual(ctx.exception.code, _CODE)
+            self.assertEqual(ctx.exception.context["field"], "t")
+            self.assertIn("obbligatorio", ctx.exception.detail or "")
+
+    def test_require_enum_non_stringa(self):
+        for raw in (True, 3, ["PERCENTUALE"]):
+            with self.assertRaisesValidation() as ctx:
+                self.v.require_enum({"t": raw}, "t", allowed=_TIPI)
+            self.assertEqual(ctx.exception.context["field"], "t")
+
+    def test_require_enum_fuori_vocabolario(self):
+        with self.assertRaisesValidation() as ctx:
+            self.v.require_enum(
+                {"t": "prezzo_fisso"}, "t", allowed=_TIPI, message="M", nota="Per i prezzi fissi usa una riga.",
+            )
+        self.assertEqual(ctx.exception.context["field"], "t")
+        self.assertEqual(ctx.exception.context["t"], "PREZZO_FISSO")
+        detail = ctx.exception.detail or ""
+        self.assertIn("PERCENTUALE, VALORE_FISSO", detail)
+        self.assertIn("usa una riga", detail)
+        # il valore scritto dall'operatore non torna indietro nel detail
+        self.assertNotIn("PREZZO_FISSO", detail)
+
+    def test_optional_enum(self):
+        self.assertIsNone(self.v.optional_enum({}, "t", allowed=_TIPI))
+        self.assertIsNone(self.v.optional_enum({"t": None}, "t", allowed=_TIPI))
+        self.assertEqual(
+            self.v.optional_enum({"t": "valore_fisso"}, "t", allowed=_TIPI), "VALORE_FISSO",
+        )
+        with self.assertRaisesValidation():
+            self.v.optional_enum({"t": ""}, "t", allowed=_TIPI)
+
+    def test_extract_optional_enum_tre_stati(self):
+        self.assertIs(self.v.extract_optional_enum({}, "t", allowed=_TIPI), MISSING)
+        self.assertIsNone(
+            self.v.extract_optional_enum({"t": None}, "t", allowed=_TIPI, nullable=True),
+        )
+        with self.assertRaisesValidation() as ctx:
+            self.v.extract_optional_enum({"t": None}, "t", allowed=_TIPI)
+        self.assertEqual(ctx.exception.context["field"], "t")
+        self.assertEqual(
+            self.v.extract_optional_enum({"t": "percentuale"}, "t", allowed=_TIPI), "PERCENTUALE",
+        )
+
+    def test_coerce_enum_scalare(self):
+        self.assertEqual(self.v.coerce_enum("commodity", field="ambito", allowed=("COMMODITY",)), "COMMODITY")
+        with self.assertRaisesValidation() as ctx:
+            self.v.coerce_enum(None, field="ambito", allowed=("COMMODITY",))
+        self.assertEqual(ctx.exception.context["field"], "ambito")
 
 
 class TestOptionalMeta(_Base):

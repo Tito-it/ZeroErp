@@ -27,7 +27,7 @@
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
 > * [vendite.trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) — eredità dal contesto (BA/utility/valuta/emittente)
-> * [vendite.trgfn_ddt_default_emittente](/dbzero/vendite/funzioni/trgfn_ddt_default_emittente) / [vendite.trgfn_ddt_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ddt_guard_emittente_ba) — emittente fiscale di default e coerenza col cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [vendite.trgfn_ddt_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ddt_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
 > * [vendite.fn_ddt_riga_componenti_init](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_init) / [vendite.fn_ddt_riga_componenti_preview](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_preview) — componenti BoM
 >
 > **Vedi anche** — API e service backend:
@@ -318,8 +318,12 @@ dell'operatore** (l'admin globale lo sceglie da un elenco) e lo invia col
 documento. La colonna resta **memorizzata** sul DDT (con scope RLS per
 emittente). Reti di sicurezza a DB:
 
-- se l'operatore non lo indica, lo imposta `trgfn_ddt_default_emittente`
-  (dal contesto utente; per i DDT da evasione è **ereditato dall'ordine**);
+- se l'operatore non lo indica, lo imposta il trigger di default dell'emittente
+  (`trg_ddt_a10_default_emittente_ins`, che dal 2026-09-15 esegue il meccanismo
+  condiviso `script.trgfn_default_emittente_fiscale`) dal contesto utente; per i
+  DDT da evasione il default **non scatta** e l'emittente è **ereditato
+  dall'ordine** da `trgfn_ddt_normalize`; senza contesto utente non solleva e
+  lascia decidere al `normalize` (dal cliente) o al vincolo;
 - se il DDT ha un cliente, l'emittente deve essere **coerente** con esso:
   `trgfn_ddt_guard_emittente_ba` rifiuta le combinazioni incoerenti.
 

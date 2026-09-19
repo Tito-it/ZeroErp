@@ -41,6 +41,10 @@
 7. test_un_presidio_non_letto_diventa_una_riga_che_lo_dice
      ⛔ Non un 500 che spegne la schermata intera, e non uno zero che direbbe
      «tutto a posto» proprio mentre non si e' visto niente.
+8. test_la_lettura_leggera_non_chiede_le_righe
+     ⭐ Il pallino della topbar (2026-09-18): `con_righe=False` fa lo STESSO
+     giro — stesse viste, stessi conteggi, stesso isolamento — e non chiama mai
+     `prime_righe`. E' un parametro e non una copia del giro.
 """
 
 from __future__ import annotations
@@ -218,6 +222,9 @@ class PresidiPannelloTests(SimpleTestCase):
         # Una riga su due: `troncato` lo dice, o «una» si leggerebbe come «tutte».
         self.assertTrue(stato[0]["troncato"])
         self.assertIsNone(stato[0]["errore"])
+        # ⭐ «Chiede un occhio» viaggia nella riga: il pannello lo LEGGE, non
+        #    lo ricalcola (2026-09-15).
+        self.assertTrue(stato[0]["da_guardare"])
 
     # 7. ⛔ Un presidio che non si legge e' una riga che LO DICE.
     def test_un_presidio_non_letto_diventa_una_riga_che_lo_dice(self) -> None:
@@ -241,8 +248,41 @@ class PresidiPannelloTests(SimpleTestCase):
         #    schermata lo zero e' il verde.
         self.assertIsNone(caduta["conteggio"])
         self.assertIn("connessione persa", caduta["errore"])
+        # Non letto = da guardare; i due letti a zero no.
+        self.assertTrue(caduta["da_guardare"])
+        self.assertFalse(
+            next(p for p in stato if p["vista"] == "dbops.vw_prima")["da_guardare"],
+        )
         self.assertEqual(len(stato), 3, "gli altri due presidi restano guardati")
         # E la connessione si rimette a posto, ma solo se e' inutilizzabile:
         # questo giro sta dentro una richiesta web.
         finta.close_if_unusable_or_obsolete.assert_called_once()
         finta.close.assert_not_called()
+
+    # 8. ⭐ La lettura leggera: stesso giro, zero `prime_righe`.
+    def test_la_lettura_leggera_non_chiede_le_righe(self) -> None:
+        repo = self._repo(
+            [
+                _riga(vista="dbops.vw_zero", natura="ZERO"),
+                _riga(vista="dbops.vw_cade", natura="ZERO"),
+                _riga(vista="dbops.vw_coda", natura="LAVORAZIONE"),
+            ],
+            {"dbops.vw_zero": 2, "dbops.vw_cade": RuntimeError("giu'"),
+             "dbops.vw_coda": 9},
+            {"dbops.vw_zero": [{"x": 1}]},
+        )
+        chiamate = MagicMock(return_value=[{"x": 1}])
+        repo.prime_righe = chiamate  # type: ignore[method-assign]
+        with patch.object(modulo, "connection", MagicMock()):
+            leggera = repo.stato_presidi(con_righe=False)
+        chiamate.assert_not_called()
+        # Stesse viste (le sole ZERO), stesso conteggio, stessa riga «non letta».
+        self.assertEqual(
+            [(p["vista"], p["conteggio"], bool(p["errore"])) for p in leggera],
+            [("dbops.vw_zero", 2, False), ("dbops.vw_cade", None, True)],
+        )
+        # Senza righe non c'e' niente di «troncato», e le righe sono vuote.
+        acceso = next(p for p in leggera if p["vista"] == "dbops.vw_zero")
+        self.assertEqual(acceso["righe"], [])
+        self.assertFalse(acceso["troncato"])
+        self.assertTrue(acceso["da_guardare"])

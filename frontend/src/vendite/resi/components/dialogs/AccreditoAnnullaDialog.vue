@@ -89,7 +89,7 @@ async function salva() {
     @save="salva"
     @cancel="emit('update:visible', false)"
   >
-    <p class="text-color-secondary" style="margin-top: 0;">
+    <p class="app-text-muted" style="margin-top: 0;">
       {{ t('vendite.resi.annullo_conferma') }}
     </p>
     <Message severity="warn" :closable="false" size="small">

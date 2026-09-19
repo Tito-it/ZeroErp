@@ -26,7 +26,9 @@
 - [fn_check_commessa_annullabile](funzioni/fn_check_commessa_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_chiudibile](funzioni/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
+- [fn_check_contabile_validabile](funzioni/fn_check_contabile_validabile.md) — (scritta il 18-09-2026)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_disponibilita_uscita](funzioni/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_famiglia_documento_disattivabile](funzioni/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](funzioni/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
@@ -45,6 +47,8 @@
 - [fn_check_registro_disattivabile](funzioni/fn_check_registro_disattivabile.md)
 - [fn_check_registro_forma_modificabile](funzioni/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_registro_serie_ammessa](funzioni/fn_check_registro_serie_ammessa.md)
+- [fn_check_riga_contabile_eliminabile](funzioni/fn_check_riga_contabile_eliminabile.md) — (scritta il 14-09-2026)
+- [fn_check_riga_magazzino](funzioni/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_rinuncia_reversibile](funzioni/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_scadenza_di_fattura](funzioni/fn_check_scadenza_di_fattura.md) — (rev 2026-08-22)
 - [fn_check_sorgente_chiudibile](funzioni/fn_check_sorgente_chiudibile.md) — (latest review 26-08-2026)
@@ -61,7 +65,7 @@
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_auth_user_id_for_risorsa_umana](funzioni/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
 - [fn_get_auth_user_stato](funzioni/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
-- [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
+- [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
 - [fn_get_billing_account_by_istanza](funzioni/fn_get_billing_account_by_istanza.md)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
@@ -142,10 +146,11 @@
 - [fn_scope_cliente_ownership_via_ordine](funzioni/fn_scope_cliente_ownership_via_ordine.md)
 - [fn_scope_cliente_ownership_via_ordine_riga](funzioni/fn_scope_cliente_ownership_via_ordine_riga.md)
 - [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
+- [fn_scope_ef_whitelist_via_asset](funzioni/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_attivita_fatturabile](funzioni/fn_scope_ef_whitelist_via_attivita_fatturabile.md)
 - [fn_scope_ef_whitelist_via_commessa](funzioni/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)
 - [fn_scope_ef_whitelist_via_commessa_attivita](funzioni/fn_scope_ef_whitelist_via_commessa_attivita.md)
-- [fn_scope_ef_whitelist_via_contabile](funzioni/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22)
+- [fn_scope_ef_whitelist_via_contabile](funzioni/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22, corretta il 2026-09-15)
 - [fn_scope_ef_whitelist_via_contratto](funzioni/fn_scope_ef_whitelist_via_contratto.md)
 - [fn_scope_ef_whitelist_via_contratto_riga](funzioni/fn_scope_ef_whitelist_via_contratto_riga.md)
 - [fn_scope_ef_whitelist_via_ddt](funzioni/fn_scope_ef_whitelist_via_ddt.md)
@@ -153,12 +158,16 @@
 - [fn_scope_ef_whitelist_via_documento_generato](funzioni/fn_scope_ef_whitelist_via_documento_generato.md)
 - [fn_scope_ef_whitelist_via_efba](funzioni/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
 - [fn_scope_ef_whitelist_via_ente_incasso](funzioni/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
+- [fn_scope_ef_whitelist_via_evento_asset](funzioni/fn_scope_ef_whitelist_via_evento_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_fattura](funzioni/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_fattura_sdi](funzioni/fn_scope_ef_whitelist_via_fattura_sdi.md)
 - [fn_scope_ef_whitelist_via_flusso](funzioni/fn_scope_ef_whitelist_via_flusso.md)
+- [fn_scope_ef_whitelist_via_inventario](funzioni/fn_scope_ef_whitelist_via_inventario.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_listino](funzioni/fn_scope_ef_whitelist_via_listino.md) — (latest review 05-09-2026)
 - [fn_scope_ef_whitelist_via_listino_versione](funzioni/fn_scope_ef_whitelist_via_listino_versione.md)
 - [fn_scope_ef_whitelist_via_lotto](funzioni/fn_scope_ef_whitelist_via_lotto.md)
+- [fn_scope_ef_whitelist_via_magazzino](funzioni/fn_scope_ef_whitelist_via_magazzino.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [fn_scope_ef_whitelist_via_movimento](funzioni/fn_scope_ef_whitelist_via_movimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_offerta](funzioni/fn_scope_ef_whitelist_via_offerta.md)
 - [fn_scope_ef_whitelist_via_offerta_eccezione](funzioni/fn_scope_ef_whitelist_via_offerta_eccezione.md)
 - [fn_scope_ef_whitelist_via_ordine](funzioni/fn_scope_ef_whitelist_via_ordine.md)
@@ -168,11 +177,14 @@
 - [fn_scope_ef_whitelist_via_preventivo_riga](funzioni/fn_scope_ef_whitelist_via_preventivo_riga.md)
 - [fn_scope_ef_whitelist_via_reso](funzioni/fn_scope_ef_whitelist_via_reso.md)
 - [fn_scope_ef_whitelist_via_reso_riga](funzioni/fn_scope_ef_whitelist_via_reso_riga.md)
+- [fn_scope_ef_whitelist_via_rettifica](funzioni/fn_scope_ef_whitelist_via_rettifica.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_trasferimento](funzioni/fn_scope_ef_whitelist_via_trasferimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_scope_identita_processo](funzioni/fn_scope_identita_processo.md) — (latest review 05-09-2026)
 - [fn_scope_note_cliente](funzioni/fn_scope_note_cliente.md)
 - [fn_scope_note_ef_whitelist](funzioni/fn_scope_note_ef_whitelist.md)
+- [fn_scope_note_magazzino_ef_whitelist](funzioni/fn_scope_note_magazzino_ef_whitelist.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_note_shop](funzioni/fn_scope_note_shop.md)
 - [fn_scope_shop_via_ba](funzioni/fn_scope_shop_via_ba.md)
 - [fn_scope_shop_via_ordine](funzioni/fn_scope_shop_via_ordine.md)
@@ -197,6 +209,7 @@
 - [trgfn_componenti_propaga_qta](funzioni/trgfn_componenti_propaga_qta.md) — Mantiene la quantita dei componenti allineata alla quantita della riga padre in tempo reale. La quantita di un componente non è un valore libero — è sempre derivata dalla quantita padre moltiplicata per il coefficiente di BoM.
 - [trgfn_componenti_ricalcola_padre](funzioni/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
+- [trgfn_default_emittente_fiscale](funzioni/trgfn_default_emittente_fiscale.md) — > Brief: `brief-db-emittente-di-default-un-bb-solo` (decisione di Tid, 2026-09-15). > ChangeSet `20260915-36` (la funzione), `-37 … -40` (le quattro copie di vendite > ritirate), `-42 … -46` (i sette montaggi nuovi).
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:

@@ -24,7 +24,9 @@
 - [fn_check_commessa_annullabile](manual/fn_check_commessa_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_chiudibile](manual/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_pronta_fatturazione](manual/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
+- [fn_check_contabile_validabile](manual/fn_check_contabile_validabile.md) — (scritta il 18-09-2026)
 - [fn_check_ddt_emittibile](manual/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_disponibilita_uscita](manual/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](manual/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_famiglia_documento_disattivabile](manual/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](manual/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
@@ -40,6 +42,8 @@
 - [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
 - [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_check_registro_forma_modificabile](manual/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
+- [fn_check_riga_contabile_eliminabile](manual/fn_check_riga_contabile_eliminabile.md) — (scritta il 14-09-2026)
+- [fn_check_riga_magazzino](manual/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_rinuncia_reversibile](manual/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_scadenza_di_fattura](manual/fn_check_scadenza_di_fattura.md) — (rev 2026-08-22)
 - [fn_check_sorgente_chiudibile](manual/fn_check_sorgente_chiudibile.md) — (latest review 26-08-2026)
@@ -56,7 +60,7 @@
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_auth_user_id_for_risorsa_umana](manual/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
 - [fn_get_auth_user_stato](manual/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
-- [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
+- [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
 - [fn_get_billing_account_by_istanza](manual/fn_get_billing_account_by_istanza.md)
 - [fn_get_catasto_source_by_istanza](manual/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contatti](manual/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
@@ -130,15 +134,23 @@
 - [fn_scope_ba_ownership_via_fattura](manual/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership](manual/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
 - [fn_scope_ef_whitelist](manual/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
+- [fn_scope_ef_whitelist_via_asset](manual/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_commessa](manual/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)
-- [fn_scope_ef_whitelist_via_contabile](manual/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22)
+- [fn_scope_ef_whitelist_via_contabile](manual/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22, corretta il 2026-09-15)
 - [fn_scope_ef_whitelist_via_efba](manual/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
 - [fn_scope_ef_whitelist_via_ente_incasso](manual/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
+- [fn_scope_ef_whitelist_via_evento_asset](manual/fn_scope_ef_whitelist_via_evento_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_fattura](manual/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_inventario](manual/fn_scope_ef_whitelist_via_inventario.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_listino](manual/fn_scope_ef_whitelist_via_listino.md) — (latest review 05-09-2026)
+- [fn_scope_ef_whitelist_via_magazzino](manual/fn_scope_ef_whitelist_via_magazzino.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [fn_scope_ef_whitelist_via_movimento](manual/fn_scope_ef_whitelist_via_movimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [fn_scope_ef_whitelist_via_rettifica](manual/fn_scope_ef_whitelist_via_rettifica.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_sr](manual/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_trasferimento](manual/fn_scope_ef_whitelist_via_trasferimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_fornitore_ownership](manual/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_scope_identita_processo](manual/fn_scope_identita_processo.md) — (latest review 05-09-2026)
+- [fn_scope_note_magazzino_ef_whitelist](manual/fn_scope_note_magazzino_ef_whitelist.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_search_soggetti_universale](manual/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](manual/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](manual/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
@@ -159,6 +171,7 @@
 - [trgfn_componenti_propaga_qta](manual/trgfn_componenti_propaga_qta.md) — Mantiene la quantita dei componenti allineata alla quantita della riga padre in tempo reale. La quantita di un componente non è un valore libero — è sempre derivata dalla quantita padre moltiplicata per il coefficiente di BoM.
 - [trgfn_componenti_ricalcola_padre](manual/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](manual/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
+- [trgfn_default_emittente_fiscale](manual/trgfn_default_emittente_fiscale.md) — > Brief: `brief-db-emittente-di-default-un-bb-solo` (decisione di Tid, 2026-09-15). > ChangeSet `20260915-36` (la funzione), `-37 … -40` (le quattro copie di vendite > ritirate), `-42 … -46` (i sette montaggi nuovi).
 - [trgfn_delete_block_by_guc](manual/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](manual/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:

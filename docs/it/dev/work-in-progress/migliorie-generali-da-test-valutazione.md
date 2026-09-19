@@ -365,7 +365,14 @@ prossimo pezzo di D6 (registro e sync riservati al migratore). ⚠️ La forma
 pg_temp`, perché la catena tocca `dblink` che vive in `public` e il path di una
 DEFINER vale per tutto ciò che chiama. L'`EXECUTE` a PUBLIC su
 `fn_sync_functions_owner` è **valutato e non ritirato**: il migratore in CI ce
-l'ha solo via PUBLIC (brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §3).
+l'ha solo via PUBLIC (brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §3,
+archiviato in `work-done/` il 19-09).
+⭐ **Dal 19-09 il pezzo che resta ha un brief suo**,
+`work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md`,
+con due fatti letti dal vivo che cambiano la forma: l'app ha sulla sync anche
+un `EXECUTE` **esplicito** (`zeroerp_app=X/postgres`, dal loop dei grant —
+quindi la difesa sta nel corpo, non nell'ACL), e dentro una DEFINER
+`current_user` è il proprietario: la guardia legge **`session_user`**.
 
 ⚠️ Seconda faccia, meno visibile: le `SECURITY DEFINER` proprie sono **38** e il
 `search_path` ha **cinque forme diverse**:
@@ -502,8 +509,10 @@ vuoto). Riscritti: **20 verdi su dbdev e su `zeroerp_ci`**, committati il 12-09 
 baseline di sviluppo senza regressioni; il ventunesimo
 (`test-role-batch-fatturazione-postura`) era un'altra classe — in CI il ruolo
 batch non veniva provisionato — e ha avuto il passo in `ci-validate.yaml`.
-Brief: `brief-db-fixture-che-costruiscono-d7-d6-d4.md`. Il registro scenderà
-alla prima corsa della CI; le righe si tolgono a mano quando lo dice lei.
+Brief: `brief-db-fixture-che-costruiscono-d7-d6-d4.md` (archiviato in
+`work-done/` il 19-09). ✅ La CI ha detto la sua: i 21 sono usciti dal
+registro (14-09), e i rientrati li toglie
+`scripts/pgtap-baseline-ci-rientrati.sh`, non una mano.
 
 ---
 
@@ -666,9 +675,94 @@ spezzati in «in sessione / senza sessione».
 ⚠️ **Il prezzo, dichiarato**: un BA che *resta* senza legame (seed, migrazione)
 è ora, in sessione, di chiunque lo guardi — dato anomalo che il modello ammette.
 Restano in coda, come decisioni e non come lavoro: la forma «emittente come
-colonna del BA» (opzione 3) e un presidio `ZERO` sui BA senza legame. E per il
-team BE: tre copie inline della regola vecchia in `clienti_repository` e
-`soggetti_repository` da far delegare al check (brief §6.2).
+colonna del BA» (opzione 3) e un presidio `ZERO` sui BA senza legame.
+✅ **Team BE, chiuso il 2026-09-13**: le tre copie inline della regola vecchia
+(`clienti_repository.list_clienti`, `soggetti_repository` ×2) delegano ora a
+`fn_check_ba_visible_for_emittenti` — un frammento solo, usato in tre punti —
+con un presidio a registro zero sulla forma (`test_scope_ba_delega_alla_fn.py`).
+Risultati identici prima/dopo su 5 perimetri × 4 query (oggi tutti i BA sono
+collegati, ed è il motivo per cui nessuna lista mentiva).
+
+---
+
+### 🟠 D14 — La capability di UN DDT paga le partite di TUTTI i DDT, e sotto RLS le paga venti volte
+
+Trovato il 2026-09-17 inseguendo un pgTAP lento
+(`script/test-capability-motivi-e-nessuna-azione-v1.sql`, oltre i 90 s a cui
+`pgtap-baseline.sh` uccide un file). Il test aveva un difetto suo — richiamava
+le stesse funzioni `STABLE` fino a quattro volte per documento — ed è stato
+riscritto perché il blob si calcoli una volta (36 s). Ma il grosso del tempo
+era del **prodotto**, e resta:
+
+* `script.fn_available_actions_ddt(id)` chiama `vendite.fn_list_ddt_da_pushare(p_ddt_id)`
+  **e**, nel ramo dei motivi, `vendite.fn_ddt_push_diagnosi(p_ddt_id)`. Entrambe
+  fanno `JOIN vendite.vw_partite_merce`, e la vista è a CTE **materializzate**
+  (`riga` è letta due volte, `alloc` e `migra` sono finestre sulla popolazione):
+  il predicato sul documento **non entra**, quindi ogni chiamata ricalcola le
+  partite di tutti i DDT. È strutturale, non un caso del planner: la partita di
+  una riga dipende dalle spedizioni **precedenti** della stessa riga d'ordine
+  (greedy di `alloc`), quindi filtrare `riga` per DDT darebbe un numero
+  sbagliato. ⇒ Una funzione «per documento» — quella che alimenta il drawer del
+  DDT a ogni apertura — ha il costo della lista;
+* sotto RLS quel costo si moltiplica: la CTE `sospetto` (`sospetto_duplicato_ordine`)
+  è un `EXISTS` correlato a quattro tabelle che il planner esegue **riga per
+  riga**, e ogni riga scandita paga la sua policy (`fn_scope_ef_whitelist_via_ddt`,
+  `…_via_ordine_riga`, `…_via_ordine`): ~3.500 valutazioni per una lettura.
+
+**Misurato il 2026-09-17 su dbdev** (51 DDT, 36 partite), come `zeroerp_app` con
+contesto operatore, salvo dove scritto: `vw_partite_merce` intera **18 ms da
+owner, 396 ms da app** (di cui 322 nella sola `sospetto`);
+`fn_available_actions_ddt` **33 ms da owner, ~850 ms da app**. Per confronto
+`fn_available_actions_preventivo` ~10 ms e `_ordine` ~29 ms.
+
+⭐ **La leva provata, ancora da decidere.** `sospetto` riscritta *set-based* —
+prima l'insieme delle coppie `(ddt_id, articolo_id)` coperte da un ordine
+collegato al DDT (`DISTINCT`, quindi una riga per coppia e nessuna
+moltiplicazione), poi il `JOIN` delle righe senza fulfillment su quella coppia —
+con **`AS MATERIALIZED`** su entrambe le CTE (senza, il planner la inlina e
+torna al ciclo per riga; la forma è già in uso in tre changeSet). Provata come
+`SELECT` in transazione ritirata: **375 ms → 88 ms**, e `EXCEPT ALL` nei due
+versi a **zero righe**. È equivalente per costruzione, non solo sui dati di
+oggi: l'`EXISTS` vecchio è esattamente «la coppia della riga sta in
+quell'insieme». Il presidio esiste già (`test-vw-partite-merce-v1.sql`, test 11,
+costruisce il caso). Con questa sola mossa la capability del DDT scende a
+~200 ms.
+
+⚠️ **La seconda leva è più profonda**: la capability legge la vista **due
+volte** (lister + diagnosi), e la diagnosi da sola risponde a entrambe le
+domande (`motivo IS NULL` = eleggibile). Va guardata insieme al contratto di
+equivalenza fra le due funzioni, «blindato a pgTAP» — non è una riga da
+cambiare di straforo.
+
+⛔ Non è un problema del solo test: **ogni pgTAP che itera i DDT vivi paga lo
+stesso conto** (`test-capability-annulla-aspetto-e-stato-leggibile-v1.sql`
+chiamava la capability su tutti gli otto domini una volta: ~49 s, di cui 43
+sui 51 DDT — senza chiamate duplicate) e lo paga il drawer.
+✅ **Applicato il 2026-09-17 alle 12:39**: capability DDT 850 → **230 ms**,
+quel file 49 → 11 s. ⭐ E poi, decisione di Tid lo stesso giorno, quel file è
+passato da «tutti i documenti» a **un documento per (dominio, stato)** — non un
+campionamento sui dati ma il perimetro giusto per una misura sulla **forma**
+delle azioni: le transizioni le produce `t.stato_da_id`, quindi il secondo
+documento nello stesso stato ripete il ramo del primo; le azioni applicative
+sono oggetti costanti nel codice, coperti se il rappresentante le esercita
+(e non era garantito nemmeno prima). Risultato: 8/8 in **2 s**, 35 stati
+attraversati, dichiarati nel messaggio del test 8.
+
+✅ **Prima leva scritta il 2026-09-17 (decisione di Tid, stesso giorno):
+`20_code/vendite/20260917-01-update-vw-partite-merce-sospetto-set-based`**,
+`security_invoker=on` ri-specificato, COMMENT della vista con la rev, manuale
+aggiornato. Provato con l'**SQL estratto** dallo YAML in transazione ritirata
+(owner): `reloptions` intatte, `EXCEPT ALL` con la definizione viva a zero nei
+due versi, e nella stessa transazione **verdi** `test-vw-partite-merce-v1`
+(11/11, compreso il test 11 che costruisce il caso — il dato vivo ha zero
+sospetti, quindi l'equivalenza sulle righe da sola non proverebbe il ramo),
+`test-vw-partite-merce-riconsegna-dopo-nc-v1` (8/8),
+`test-fn-list-ddt-da-pushare-contatore-v1` (7/7),
+`test-fn-available-actions-ddt-reason-catch-all-v1` (8/8);
+`test-vw-situazione-merce-ordine-v1` 16/17 con il solo test 11 rosso, che è
+l'asserzione di **scope** e come owner è rossa anche senza il changeSet. Cancelli
+statici della CI verdi. ⏳ **In attesa di apply e della corsa come app.**
+La seconda leva (una lettura invece di due nella capability) resta aperta.
 
 ---
 
@@ -763,14 +857,17 @@ D6 e il registro dei rossi in CI.
 * [~] **D6** — ✅ pin applicati il 12-09 (`-39/-40/-41`, forma `pg_catalog,
       public, pg_temp`). ⛔ Resta il pezzo nuovo: registro `sec_functions_owner`
       e `fn_sync_functions_owner` riservati al migratore (oggi
-      scrivibili/eseguibili da `zeroerp_app`) — brief §3, stima ≈ mezza giornata. `EXECUTE` a PUBLIC su
-      `fn_sync_functions_owner`: valutato, resta — il migratore in CI lo ha
-      solo via PUBLIC (brief §3).
-      🔴 **PRIMA, una riga obbligatoria**: qualificare `public.dblink(...)` in
-      `fn_get_or_create_session_tx_id`. Senza, il `search_path` stretto spegne il
-      tracciamento `tx_id` su ~305 trigger **in silenzio** — il `dblink` è dentro
-      un `EXCEPTION WHEN OTHERS` che torna la sentinella e logga un `WARNING`.
-      Vedi l'avvertimento in fondo a D6.
+      scrivibili/eseguibili da `zeroerp_app`) — dal 19-09 brief suo,
+      `work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md`
+      (forma in §2, tre decisioni per Tid in §6), stima ≈ mezza giornata.
+      `EXECUTE` a PUBLIC su `fn_sync_functions_owner`: valutato, resta — e
+      resta anche la voce esplicita dell'app (loop dei grant): la sync si
+      difende da sola, con `session_user`.
+      ✅ La «riga obbligatoria» su `public.dblink(...)` in
+      `fn_get_or_create_session_tx_id` **non serve più così com'era scritta**:
+      il pin applicato il 12-09 include `public`, quindi il `dblink` si
+      risolve. Vale ancora come vincolo di D6-bis (sotto): se un giorno quel
+      pin si stringesse, prima la qualifica.
 * [ ] **D6-bis** — scegliere **una** forma canonica di `search_path` per le
       `SECURITY DEFINER` (`pg_catalog, <schemi necessari>, pg_temp`, con
       `pg_temp` sempre ultimo ed esplicito) e allineare le 18 che oggi non
@@ -796,14 +893,24 @@ D6 e il registro dei rossi in CI.
       apply e della corsa CI.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
-      `brief-db-ba-riserva-emittente-operatore-d13.md`. Restano fuori
-      perimetro: le tre copie Python della regola vecchia (team BE, brief
-      §6.2) e due decisioni di modello in coda (§3.4).
+      `brief-db-ba-riserva-emittente-operatore-d13.md`. ✅ Le tre copie
+      Python della regola vecchia sono delegate al check dal 13-09 (team BE,
+      brief §6.2). Restano due decisioni di modello in coda (§3.4).
 * [ ] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
       quanto, entro quando), o dichiararlo congelato con il motivo.
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno
       (append al CSV dei messaggi, mai un loader nuovo), oppure dichiarare che
       quei codici non raggiungono mai un operatore — e scriverlo nel `note`.
+* [~] **D14** — (aperto il 2026-09-17) ✅ changeSet `20260917-01` **applicato**
+      lo stesso giorno (`sospetto` set-based + `AS MATERIALIZED`, vista
+      375 → 88 ms da app, capability DDT 850 → 230 ms). ✅ I due pgTAP lenti:
+      `capability-motivi` >90 s → 36 s (blob una volta per documento),
+      `annulla-aspetto` 49 → 11 → **2 s** (un documento per stato, decisione
+      di Tid). ⏳ Resta aperta la seconda leva: la capability del DDT legge la
+      vista **due** volte (lister + diagnosi) — derivare `push_ok` dalla
+      diagnosi la dimezzerebbe, ma è una scelta di contratto e vuole un brief.
+      Terza leva possibile, semantica invariata: `vw_af_merce_per_riga` letta
+      quattro volte dentro la vista (~12 ms l'una), una CTE condivisa.
 
 ### 🟡 Struttura
 

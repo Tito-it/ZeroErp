@@ -175,7 +175,11 @@ class TestListJobSummary(TestCase):
         mock_repo.list_job_summary.return_value = (
             [{"jobname": "apply_storicizza_weekly", "total_runs": 10,
               "ok_count": 9, "fail_count": 1,
-              "last_run_at": "2026-03-01T10:00:00+00:00", "last_ok": True}],
+              "last_run_at": "2026-03-01T10:00:00+00:00", "in_corso": False,
+              "ultima_conclusa": {
+                  "started_at": "2026-03-01T10:00:00+00:00",
+                  "ended_at": "2026-03-01T10:00:05+00:00", "ok": True,
+              }}],
             1,
         )
         result = fn_list_job_summary(page=1, page_size=50)

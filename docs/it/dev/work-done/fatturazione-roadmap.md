@@ -34,7 +34,7 @@
 > vive in **una riga ciascuna** in `.codex/PROJECT_CONTEXT.md` §«Aperto», che è
 > il posto letto a ogni sessione. Le voci sono: **#3** esercizio fiscale,
 > **#5** vista push, **#6** alerting sui dati (casa:
-> [analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md)), **#8** diagrammi di
+> [analisi-osservabilita-log](../work-done/analisi-osservabilita-log.md)), **#8** diagrammi di
 > stato, **#9** builder SDI (già lì), **#10** preview di fatturazione del
 > contratto.
 
@@ -60,7 +60,7 @@
 | 3 | Multi-company / multi-esercizio | P2 | 🟡 numerazione e isolamento ✅; **esercizio fiscale 🔴** (zero occorrenze) | PROJECT_CONTEXT §Aperto |
 | 4 | Audit trail formale | P0 «una riga» | ✅ **chiuso** dal Passo 0 dell'osservabilità: identità = `user_insert` (D-6), retention `cleanup_at` (D-8), append-only ✅ | — |
 | 5 | Dashboard operative | P3 | 🟢 fatto, salvo la **vista push** (`commesse_push_log` senza UI) 🔴; «reset a step» superato dal modello (ritorno a DRAFT + «Riprova step» + «Togli dal giro») | PROJECT_CONTEXT §Aperto (vista push) |
-| 6 | Alerting e monitoring | P3 | 🟡 vitalità dei **processi** ✅ (07-09); **alerting sui dati** 🔴 | [analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md) |
+| 6 | Alerting e monitoring | P3 | 🟡 vitalità dei **processi** ✅ (07-09); **alerting sui dati** 🔴 | [analisi-osservabilita-log](../work-done/analisi-osservabilita-log.md) |
 | 7 | `correlation_id` | P0 | ✅ **chiuso**: pipeline, push e `task_runs` | — |
 | 8 | Diagrammi di stato | P2 | 🔴 zero `stateDiagram-v2` (riverificato 12-09) | PROJECT_CONTEXT §Aperto |
 | 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione**; raccoglie `EsigibilitaIVA`, `DatiContratto`, righe spezzate dal plafond | PROJECT_CONTEXT §Aperto (già lì) |
@@ -93,7 +93,7 @@ ciò che serve alla richiesta di uno **strumento di consultazione dei log**
 (Tid, 2026-08-03).
 
 ➡️ **Il tema è trattato per intero in
-[analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md)**, che è il
+[analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md)**, che è il
 documento principale dell'osservabilità: gli item **#5 (vista errori)**,
 **#6 (alerting)** e **#7 (correlation_id)** di questa roadmap vivono lì come
 passi di un piano unico, insieme al prerequisito

@@ -19,13 +19,19 @@
 > scritto, niente applicato. Le decisioni stanno in §8 e vanno prese **prima**
 > che si scriva la prima riga di `magazzino`.
 >
+> ✅ **2026-09-14 — sette delle nove decisioni sono PRESE da Tid** (D-1, D-2,
+> D-3, D-4, D-6, D-7, D-8, D-9; resta aperta la sola **D-5**, rinviata di
+> proposito con la §7 dell'analisi commessa). Il verbale è in **§8-quater**, la
+> tabella di §8 porta l'esito riga per riga, e il primo pezzo eseguibile è
+> [brief-db-magazzino-lotto-1-terreno-vuoto.md](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md).
+>
 > 📌 **Declassato ad analisi il 2026-09-01** (decisione di Tid), e rinominato da
 > `brief-db-…` a `analisi-db-…`: ⭐ è la stessa distinzione già usata dal cantiere
 > numerazione, dove l'**analisi** dice *perché* e il **brief** dice *cosa si fa*.
 > ⛔ **Di questo documento non esce nessuna modifica certa**, ed è il suo esito
 > vero: ogni voce qui dentro è agganciata a una delle D-1 → D-9. Il piano
 > operativo delle sole modifiche **certe** vive in
-> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
+> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
 > e sta quasi tutto su `vendite` e `catalogo`.
 >
 > ⚠️ **Perimetro di questa analisi:** solo l'**aggancio al documento di origine** e
@@ -248,20 +254,21 @@ si fa quando il dominio ha un ciclo di vita che il magazzino non deve conoscere.
 
 ## 8. Le decisioni da prendere — prima di scrivere
 
-> Nessuna di queste è stata presa. Sono qui perché il cantiere non parta
-> assumendo la risposta.
+> Sono qui perché il cantiere non parta assumendo la risposta. ✅ **Il
+> 2026-09-14 sono state prese tutte tranne la D-5** — la colonna «Esito» dice
+> come, e §8-quater dice perché.
 
-| # | Decisione | Perché non la decide un piano |
-| --- | --- | --- |
-| **D-1** | **Un modello solo o due?** `movimenti`/`reservations` passano alla sorgente a catalogo, oppure `doc_schema/doc_table/doc_id` resta ed è **il** modello del ledger — e allora sono le quattro testate a doversi allineare a lui. ⛔ Quello che non regge è **tenerli entrambi senza una regola** | è una scelta di architettura del dominio, e vale anche per `acquisti`, che ha lo stesso doppio |
-| **D-2** | **Le quattro testate prendono `sorgente_riga`?** Se sì, diventano capaci di riferire le otto sorgenti `id` e il guard tipizzato ha finalmente dove agganciarsi. Se no, va scritto **quali sorgenti sono ammesse** e presidiato | dipende da D-1 |
-| **D-3** | **Si aggancia il guard tipizzato** alle tabelle del modello A, in `magazzino` e altrove? ⭐ Oggi non presidia niente: o trova i suoi consumatori o è codice morto | il roll-out tocca 15 tabelle: è un perimetro, non una riga |
-| **D-4** | **`uq_mag_movimenti_docref`: che cosa deve vincolare davvero?** Le tre forme sono: toglierlo, renderlo `NULLS NOT DISTINCT` con dentro `causale_id` o `transfer_uid`, oppure spostare l'unicità su una **chiave dell'operazione**. ⭐ La terza è scritta per intero — con le due condizioni senza cui non funziona — in [analisi-db-magazzino-carico-e-scarico §6](analisi-db-magazzino-carico-e-scarico.md). ⚠️ *Fino al 2026-09-02 questo puntatore diceva «§8-quater», sezione che nel frattempo è stata traslocata: era un riferimento morto* | ⛔ oggi il vincolo dice due cose opposte a seconda di un NULL: qualunque scelta è meglio, ma va scelta. ⚠️ E toglierlo porta via anche una protezione buona non dichiarata (il doppio scarico): la sostituzione si decide **insieme** alla rimozione |
-| **D-5** | **L'ODL è una sorgente o un anello?** (§7). Da questa discende se `config.sorgenti` cresce di 1 riga o se nasce uno schema `produzione` | è la decisione di dominio, e la prende Tid |
-| **D-6** | **Il movimento senza documento è ammesso?** Se sì, `doc_*` smette di essere NOT NULL e serve una regola su chi può ometterlo; se no, ogni movimento deve avere un documento **che esiste**, e allora serve il catalogo | ⚠️ oggi la risposta è «obbligatorio, ma non verificato»: il peggiore dei tre mondi |
-| **D-7** | **Acquisti entra nel catalogo delle sorgenti?** `CARICO_ACQ` è la prima causale del seed e il DDT di acquisto non è una sorgente registrata | tocca `acquisti`, che è un altro dominio fermo |
-| **D-8** | **`causali.ambito_causale_id` si valorizza** (e allora l'ambito serve a qualcosa) **o l'ambito si ritira?** ⛔ Oggi la colonna è **vuota in tutte e dieci le causali**: il vocabolario dei sei ambiti esiste e non è collegato a niente | ⛔ un vocabolario collegato a zero righe è debito che **sembra** struttura — e chi legge lo scambia per un pezzo funzionante (§8-ter) |
-| **D-9** | **I due presidi che compensano il polimorfismo** (§8-bis): il tipo di sorgente vincolato al catalogo, e una **vista dei riferimenti orfani che deve restare vuota**. ⚠️ Sul ledger **non sono aggiungibili da soli**: presuppongono D-1 | il pattern è già di casa e si riusa; ma la parte sul ledger *è* la decisione D-1, non un'aggiunta sopra |
+| # | Decisione | Perché non la decide un piano | Esito (2026-09-14) |
+| --- | --- | --- | --- |
+| **D-1** | **Un modello solo o due?** `movimenti`/`reservations` passano alla sorgente a catalogo, oppure `doc_schema/doc_table/doc_id` resta ed è **il** modello del ledger — e allora sono le quattro testate a doversi allineare a lui. ⛔ Quello che non regge è **tenerli entrambi senza una regola** | è una scelta di architettura del dominio, e vale anche per `acquisti`, che ha lo stesso doppio | ✅ **CATALOGO.** `sorgente_tipo_id` + `sorgente_riga`/`sorgente_uid` su `movimenti` e `movimenti_attesi`; le tre `doc_*` **si tolgono**, non convivono |
+| **D-2** | **Le quattro testate prendono `sorgente_riga`?** Se sì, diventano capaci di riferire le otto sorgenti `id` e il guard tipizzato ha finalmente dove agganciarsi. Se no, va scritto **quali sorgenti sono ammesse** e presidiato | dipende da D-1 | ✅ **SÌ**, nel Lotto 1 (terreno vuoto). ⚠️ Emerso rileggendo il DDL il 14-09: `rettifiche.sorgente_tipo_id` **non ha la FK** verso `config.sorgenti` (le altre tre ce l'hanno), e `trasferimenti` porta la coppia **due volte** — `sorgenti_tipo_id`/`sorgenti_uid` (refuso, con **due** FK, una chiamata `fk_mag_rettifiche_sorgenti_tipo`) accanto a `sorgente_tipo_id`/`sorgente_uid`. Si sanano nello stesso passo |
+| **D-3** | **Si aggancia il guard tipizzato** alle tabelle del modello A, in `magazzino` e altrove? ⭐ Oggi non presidia niente: o trova i suoi consumatori o è codice morto | il roll-out tocca 15 tabelle: è un perimetro, non una riga | ✅ **SÌ, per le sei di `magazzino`** (quattro testate + ledger + attesi). ⛔ Le altre nove restano un cantiere `dbops`, non di questo brief |
+| **D-4** | **`uq_mag_movimenti_docref`: che cosa deve vincolare davvero?** Le tre forme sono: toglierlo, renderlo `NULLS NOT DISTINCT` con dentro `causale_id` o `transfer_uid`, oppure spostare l'unicità su una **chiave dell'operazione**. ⭐ La terza è scritta per intero — con le due condizioni senza cui non funziona — in [analisi-db-magazzino-carico-e-scarico §6](analisi-db-magazzino-carico-e-scarico.md). ⚠️ *Fino al 2026-09-02 questo puntatore diceva «§8-quater», sezione che nel frattempo è stata traslocata: era un riferimento morto* | ⛔ oggi il vincolo dice due cose opposte a seconda di un NULL: qualunque scelta è meglio, ma va scelta. ⚠️ E toglierlo porta via anche una protezione buona non dichiarata (il doppio scarico): la sostituzione si decide **insieme** alla rimozione | ✅ **La terza forma, com'è scritta in §6 di carico/scarico**, col discriminante fisico. Il «progressivo di occorrenza» **non serve**: un'operazione parziale è un record per tranche (condizione 1 di quella sezione) — va nel `COMMENT` del vincolo, non in una colonna. ⚠️ Il brief propone un affinamento — **il verbo è la causale** — da confermare lì (D-L1-c) |
+| **D-5** | **L'ODL è una sorgente o un anello?** (§7). Da questa discende se `config.sorgenti` cresce di 1 riga o se nasce uno schema `produzione` | è la decisione di dominio, e la prende Tid | ⏸️ **APERTA di proposito**: serve solo al passo 5 (produzione) e si decide con la §7 dell'analisi commessa. Nessun lotto 1-4 la presuppone |
+| **D-6** | **Il movimento senza documento è ammesso?** Se sì, `doc_*` smette di essere NOT NULL e serve una regola su chi può ometterlo; se no, ogni movimento deve avere un documento **che esiste**, e allora serve il catalogo | ⚠️ oggi la risposta è «obbligatorio, ma non verificato»: il peggiore dei tre mondi | ✅ **NO: ogni movimento ha una sorgente, `NOT NULL`** (sul ledger; su `movimenti_attesi` resta nullable, perché il blocco manuale non ha un documento). Ragione in §8-quater: **nessuno scriverebbe senza** — la correzione a mano è una `rettifica`, che è un documento. ⚠️ Rovescia la riga «resta tutto nullable» di carico/scarico §6, corretta lo stesso giorno |
+| **D-7** | **Acquisti entra nel catalogo delle sorgenti?** `CARICO_ACQ` è la prima causale del seed e il DDT di acquisto non è una sorgente registrata | tocca `acquisti`, che è un altro dominio fermo | ✅ **SÌ, ed è più largo**: il catalogo registra le **operazioni** di magazzino (`INVENTARIO_RIGA`, `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`, `EVENTO_ASSET`, `RESO_VENDITA_RIGA` nel Lotto 1; il ricevimento nel Lotto 4; `ODL_*` nel 5), con uno `scope` proprio. 🔴 E le cinque `*_RIGA` di vendite che §6 di carico/scarico dava «già a catalogo» **esistono solo sul DB di sviluppo** (§8-quater): entrano nel CSV nel Lotto 1 |
+| **D-8** | **`causali.ambito_causale_id` si valorizza** (e allora l'ambito serve a qualcosa) **o l'ambito si ritira?** ⛔ Oggi la colonna è **vuota in tutte e dieci le causali**: il vocabolario dei sei ambiti esiste e non è collegato a niente | ⛔ un vocabolario collegato a zero righe è debito che **sembra** struttura — e chi legge lo scambia per un pezzo funzionante (§8-ter) | ✅ **SI RITIRA**, insieme ai tre flag morti (`richiede_odl`, `contabilizza_cdc`, `abilita_billing`). La primitiva è guidata da due cataloghi e l'ambito non è fra i suoi controlli; ed è il quinto asse chiamato «ambito» (analisi acquisti §7). Se un giorno servirà «questa causale accetta solo questa sorgente», la forma è un `causali.sorgente_tipo_id` 1:1, non un ambito |
+| **D-9** | **I due presidi che compensano il polimorfismo** (§8-bis): il tipo di sorgente vincolato al catalogo, e una **vista dei riferimenti orfani che deve restare vuota**. ⚠️ Sul ledger **non sono aggiungibili da soli**: presuppongono D-1 | il pattern è già di casa e si riusa; ma la parte sul ledger *è* la decisione D-1, non un'aggiunta sopra | ✅ **SÌ**, discende da D-1: FK + guard tipizzato sul ledger (Lotto 1); la vista degli orfani, generica su `config.sorgenti`, nel Lotto 2 con i suoi pgTAP |
 
 ---
 
@@ -334,6 +341,140 @@ solo, e il secondo non si ritrovava perché nessun titolo lo nominava.
 
 ---
 
+## 8-quater. ✅ Le decisioni del 2026-09-14 — il verbale
+
+> Prese da Tid il 2026-09-14 in una seduta sola, su proposta motivata, dopo
+> aver constatato che carico/scarico aveva **tutte le M chiuse** e che ciò che
+> bloccava la prima riga erano **queste** D, che quel documento presuppone
+> senza possederle. La D-5 è rimasta aperta **per scelta**, non per dimenticanza.
+
+### D-1 — catalogo, e le `doc_*` si tolgono
+
+Tre cose già decise altrove **richiedono** il catalogo, e nessuna funziona col
+testo libero: l'identità del movimento di carico/scarico §6 (sorgente,
+chiave e verbo), il conteggio di M-3 *«guidato da `config.sorgenti`»*, e la
+vista degli orfani di D-9, che si scrive una volta sola perché `target_table`
+e `key_selector` stanno a catalogo. Il testo libero non ha un argomento a
+favore oltre a «c'è già». ⛔ E non convivono: le tre `doc_*` **cadono** — due
+modelli sulla stessa tabella sono esattamente ciò che questo documento
+contesta dal §2.
+
+### D-6 — no: ogni movimento ha una sorgente, ed è `NOT NULL`
+
+> ⚠️ È la decisione che **rovescia una riga scritta** (carico/scarico §6,
+> *«perché resta tutto nullable, e non è pigrizia»*), e per questo va motivata
+> per intero.
+
+**L'argomento è una domanda sola: chi scriverebbe davvero un movimento senza
+sorgente?** Nessuno. Ogni modo di far entrare o uscire merce è un'operazione,
+e ogni operazione **è già un record**:
+
+| Chi muove la merce | Il record che è la sorgente |
+| --- | --- |
+| inventario (iniziale o periodico) | `inventari_righe` |
+| ⭐ **correzione a mano** | `rettifiche_righe` — esiste apposta, con `qta_delta`, `motivo`, stato `DRAFT → CONFIRM → POSTED → CANCEL` |
+| trasferimento | `trasferimenti_righe` |
+| installazione / rientro di un asset | `eventi_assets` |
+| bolla di vendita, reso del cliente | `ddt_righe`, `resi_righe` |
+| ricevimento, reso al fornitore | il record di ricevimento (Lotto 4) |
+| prelievo / versamento di produzione | il record dell'ODL (Lotto 5) |
+| storno | eredita la sorgente del movimento che corregge |
+
+⭐ **Il dubbio di Tid** — *«nel caso si vogliano caricare delle righe di
+rettifica al magazzino, dobbiamo passare per qualche procedura che ne
+specifichi la provenienza; comunque deve essere permessa la rettifica»* — ha la
+risposta nella seconda riga: la rettifica **resta possibile ed è lei stessa la
+provenienza**. L'operatore compila la rettifica (magazzino, articolo, delta,
+motivo — dati che dovrebbe compilare comunque), la porta a `POSTED`, e la
+transizione chiama la primitiva con `RETTIFICA_RIGA:{id}`. Non «specifica la
+provenienza»: la conosce l'operazione, perché è il proprio record.
+
+**La libertà che si voleva tenere vive un livello più su**, dov'è giusta:
+`rettifiche.sorgente_tipo_id` — *da dove nasce la rettifica* (un inventario, o
+niente) — resta **nullable**. Obbligatoria è la provenienza del **movimento**,
+non quella del documento.
+
+**L'argomento del nullable era contro il testo libero**, e sotto D-1 non vale
+più: *«chi non ha una sorgente se la inventa»* era vero con tre stringhe senza
+FK; con FK a catalogo, guard tipizzato e vista degli orfani, una sorgente non
+si inventa. ⛔ E un ramo `NULL` che nessuno dovrebbe percorrere, lasciato
+aperto, è la classe «esiste e non è armata» che questi documenti inseguono.
+
+**Che cosa si guadagna, e non è poco:**
+
+- il `UNIQUE` di carico/scarico §6 diventa **pieno**, non parziale ⇒ il
+  doppio storno è impedito **ovunque**, e cade il caveat di §7-quinquies («sui
+  movimenti senza sorgente lo impedisce solo la funzione»);
+- la rettifica-documento porta **il perché** (`motivo`, data, autore, stato):
+  esattamente ciò che §7-quinquies rimprovera all'annullo;
+- la rettifica ha `magazzino_id` ⇒ il perimetro di M-6 la copre da sé.
+
+⚠️ **Ne discende un pezzo che carico/scarico non trattava**: `rettifiche_righe`,
+`inventari_righe` e `trasferimenti_righe` portano `lotto`/`seriale` come
+**testo**. Se il movimento nasce da quelle righe, la riga deve avere
+`lotto_id`/`asset_id` da passare alla primitiva — M-5 va **propagata alle righe
+delle testate**, nello stesso lotto. La rettifica è il caso che lo rende
+obbligatorio, non opzionale.
+
+⚠️ Su **`movimenti_attesi`** la sorgente resta invece **nullable**: il blocco
+manuale («tieni da parte 10 pezzi per Rossi») non ha un documento per
+definizione — è l'unica cosa che quella tabella conserva che non si deriva.
+
+### D-4 — la terza forma, e il progressivo non serve
+
+Adottata l'identità di carico/scarico §6 così com'è scritta, discriminante
+fisico compreso. Il «caso scoperto» (stesso prelievo in due riprese senza
+niente che le distingua) **non esiste** se vale la condizione 1 di quella
+sezione — *la chiave la compone l'operazione, non il documento*: un'operazione
+parziale è **un record per tranche**, e due riprese sono due record. Va nel
+`COMMENT` del vincolo, perché è la frase che fra sei mesi qualcuno cercherà.
+
+### D-7 — sì, e il catalogo registra le OPERAZIONI
+
+Non «acquisti entra»: **entrano le operazioni di magazzino**, perché sotto D-6
+ogni movimento nomina il proprio record e il catalogo deve conoscerlo. Nel
+Lotto 1: `INVENTARIO_RIGA`, `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`,
+`EVENTO_ASSET`, `RESO_VENDITA_RIGA`; il ricevimento col Lotto 4; `ODL_*` col 5.
+Con uno `scope` proprio (`chk_sorgenti_scope` è un elenco chiuso: si estende
+come per `REVERSE_FLOW`).
+
+🔴 **E un fatto di struttura trovato scrivendo il verbale**: le cinque sorgenti
+di riga di vendite — `PREVENTIVO_RIGA`, `CONTRATTO_RIGA`, `ORDINE_VENDITA_RIGA`,
+`DDT_VENDITA_RIGA`, `FATTURA_RIGA` (id 3, 5, 7, 9, 11) — **non sono nel CSV**
+`80_data/sql/config/sorgenti.csv` (10 righe; il DB di sviluppo ne ha 15).
+Registrato nell'intestazione di `20260820-03` e mai sanato. Su un database
+ricostruito da zero **non esistono**: lo scarico da DDT del Lotto 3 sarebbe
+verde su dev e rosso in CI. ⇒ Entrano nel CSV nel Lotto 1, con i loro id.
+
+### D-8 — l'ambito si ritira, con i tre flag morti
+
+La primitiva di M-2 è guidata da **due** cataloghi — la causale (verso,
+stock negativo) e l'articolo (lotto, seriale, gestito a magazzino) — e
+`ambito_causale_id` non è in quella tabella: **non ha un consumatore**, e
+l'analisi acquisti §7 ha già contato **quattro** assi diversi chiamati
+«ambito» nel progetto. Stessa sorte per `richiede_odl`, `contabilizza_cdc`
+(punta a un centro di costo che non esiste) e `abilita_billing`: dichiarati,
+seminati, letti da nessuno.
+
+⭐ **Se un giorno servisse** la regola *«questa causale accetta solo questa
+sorgente»* — `SCARICO_VEN` solo da `DDT_VENDITA_RIGA` — la forma giusta è un
+`causali.sorgente_tipo_id` nullable, 1:1, che la primitiva legge subito. Non
+un ambito, che è più grosso di ciò che il controllo chiede (`ODL_USCITA_MAT` e
+`ODL_ENTRATA_MAT` sono entrambe `ODL` e vanno da sorgenti diverse). Candidata
+al Lotto 2, quando la primitiva esiste.
+
+### D-2, D-3, D-9 — discendono, e si fanno nel Lotto 1
+
+Le quattro testate prendono `sorgente_riga` e il guard tipizzato si monta su
+**sei** tabelle di `magazzino`; la vista degli orfani nasce nel Lotto 2 col
+suo pgTAP. ⚠️ Rileggendo il DDL per scriverlo: `rettifiche.sorgente_tipo_id`
+è **senza FK** (le altre tre l'hanno), e `trasferimenti` porta la coppia
+**due volte** (`sorgenti_*` refuso con due FK, più `sorgente_*`). Si sanano
+nello stesso passo: sono la stessa classe del §4 — un presidio che sembra
+esserci.
+
+---
+
 ## 9. Che cosa NON è di questo brief
 
 Concordato con Tid: qui c'è **solo l'aggancio al documento di origine**. Resta
@@ -366,6 +507,8 @@ l'aggancio al documento di origine.
 - ⛔ **Niente è stato applicato**, e niente va applicato prima che D-1 → D-9
   abbiano una risposta: **cambiare il modello dopo** costerebbe più che deciderlo
   adesso, ed è l'unico momento in cui non c'è una riga da bonificare.
+  ✅ *Dal 2026-09-14 la risposta c'è per tutte tranne la D-5, che nessun lotto
+  prima della produzione presuppone: il cantiere può partire* (§8-quater).
 - **Lato BE/FE non si chiede nulla in questa fase**: `backend/apps/magazzino`
   segue il dominio, non lo precede.
 - ⭐ **Il vantaggio da non sprecare**: tutte le tabelle operative di `magazzino`
@@ -390,3 +533,13 @@ l'aggancio al documento di origine.
   [brief-db-bonifica-pgtap-sorgente-polimorfa.md](../work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md)
 - Stato del dominio nella mappa: [mappa-concentrica.md](../../mappa-concentrica.md)
   § Anello 3
+
+---
+
+## 12. Registro delle revisioni
+
+| Data | Cosa |
+| --- | --- |
+| 2026-09-01 | Prima stesura, declassata ad analisi lo stesso giorno. D-1 → D-9 poste, nessuna presa |
+| 2026-09-02 | §8-ter traslocato in carico/scarico; D-4 punta alla sua risposta (§6 di là); `reservations` → `movimenti_attesi` annotato in §2 |
+| 2026-09-14 | ✅ **Sette decisioni prese da Tid in una seduta** (verbale in **§8-quater**, esito riga per riga in §8): **D-1** catalogo e `doc_*` via; **D-6** sorgente **obbligatoria** sul ledger — rovescia la riga «resta tutto nullable» di carico/scarico §6, perché ogni scrittore è un'operazione con un record (la correzione a mano è una `rettifica`) e l'argomento del nullable valeva contro il testo libero; **D-4** la terza forma senza progressivo; **D-7** il catalogo registra le **operazioni**, e 🔴 le cinque `*_RIGA` di vendite esistono **solo sul DB di sviluppo** (id 3-11, fuori dal CSV: verde su dev, rosso in CI); **D-8** ambito e tre flag morti **ritirati**; D-2/D-3/D-9 discendono e si fanno nel Lotto 1 — dove si sanano anche `rettifiche` **senza FK** sulla sorgente e la coppia `sorgenti_*` **duplicata** su `trasferimenti`. ⏸️ **D-5 resta aperta di proposito**. Primo pezzo eseguibile: `brief-db-magazzino-lotto-1-terreno-vuoto.md` |

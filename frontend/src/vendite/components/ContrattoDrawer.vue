@@ -680,7 +680,7 @@ function onCambiaStato(action) {
   }
   if (action.requires_confirm) {
     confirmAction({
-      title: t('vendite.contratti.conferma_titolo'),
+      header: t('vendite.contratti.conferma_titolo'),
       message: t('vendite.contratti.conferma_cambio_stato', { stato: statoDestinazione(action) }),
       onAccept: () => eseguiCambioStato(action.target_state),
     })
@@ -843,11 +843,11 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
              modifica valido_al (programma cessazione) + cambio stato.
              Coerente con Profilo A whitelist BE. -->
         <Message v-if="isContractLocked && detail.stato_codice_interno !== 'CESSATO'"
-          severity="info" :closable="false" size="small" class="mt-2">
+          severity="info" :closable="false" size="small">
           {{ t('vendite.contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
         </Message>
         <Message v-else-if="isContractLocked && detail.stato_codice_interno === 'CESSATO'"
-          severity="warn" :closable="false" size="small" class="mt-2">
+          severity="warn" :closable="false" size="small">
           {{ t('vendite.contratti.banner_locked_cessato') }}
         </Message>
       </template>
@@ -857,7 +857,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
            Operatore con EF assegnato -> read-only auto-popolato dal profilo;
            admin globale (multi-EF) -> Select sugli EF disponibili.
            In edit mostra codice + ragione sociale denormalizzati dal record. -->
-      <h4 class="mt-3">{{ t('vendite.contratti.section_emittente') }}</h4>
+      <h4>{{ t('vendite.contratti.section_emittente') }}</h4>
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
@@ -871,9 +871,9 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
       </div>
 
       <!-- === Cliente (BA + utility) + badge utility/PDP === -->
-      <h4 class="mt-3">
+      <h4>
         {{ t('vendite.contratti.section_cliente') }}
-        <Tag v-if="baBadgeLabel" :value="baBadgeLabel" severity="info" class="ml-2" />
+        <Tag v-if="baBadgeLabel" :value="baBadgeLabel" severity="info" class="ml-05" />
       </h4>
       <div class="form-grid-2col">
         <div class="form-field">
@@ -889,7 +889,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             @update:model-value="onBaSelected"
             :placeholder="t('vendite.contratti.select_billing_account')"
           />
-          <InputText v-else :model-value="detail?.ba_ragione_sociale" disabled class="w-full" />
+          <InputText v-else :model-value="detail?.ba_ragione_sociale" disabled />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_utility') }} <span v-if="!isEdit">*</span></label>
@@ -914,14 +914,13 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_ambito') }} <span v-if="!isEdit">*</span></label>
           <AmbitoContrattoSelect v-model="form.ambito"
-            class="w-full" :disabled="isEdit && isLocked('ambito')" />
+            :disabled="isEdit && isLocked('ambito')" />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_categoria_cliente_snapshot') }}</label>
           <LookupSelect
             v-model="form.categoria_cliente_id_snapshot"
             rel="anagrafiche.categorie_clienti"
-            class="w-full"
             :placeholder="t('vendite.contratti.select_categoria_cliente')"
             show-clear
             :disabled="isEdit && isLocked('categoria_cliente_id_snapshot')"
@@ -943,7 +942,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
               v-model="form.fatturazione_immediata"
               :disabled="(isEdit && isLocked('fatturazione_immediata')) || isReadonly"
               :invalid="campiErrati.includes('fatturazione_immediata')" />
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ t('vendite.contratti.fatturazione_immediata_hint') }}
             </small>
           </div>
@@ -965,25 +964,25 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
            ⭐ Editabili anche a contratto ATTIVO (Q1): il CIG di una gara arriva
            quando arriva. -->
       <template>
-        <h4 class="mt-3">{{ t('vendite.contratti.section_riferimenti_atto') }}</h4>
+        <h4>{{ t('vendite.contratti.section_riferimenti_atto') }}</h4>
         <div class="form-grid-3col">
           <div class="form-field">
             <label>{{ t('vendite.contratti.field_codice_cig') }}</label>
-            <InputText v-model="form.codice_cig" class="w-full"
+            <InputText v-model="form.codice_cig"
               :maxlength="CODICI_ATTO_MAX_LEN.cig"
               :disabled="!codiciAttoEditabili"
               :invalid="campiErrati.includes('codice_cig')" />
           </div>
           <div class="form-field">
             <label>{{ t('vendite.contratti.field_codice_cup') }}</label>
-            <InputText v-model="form.codice_cup" class="w-full"
+            <InputText v-model="form.codice_cup"
               :maxlength="CODICI_ATTO_MAX_LEN.cup"
               :disabled="!codiciAttoEditabili"
               :invalid="campiErrati.includes('codice_cup')" />
           </div>
           <div class="form-field">
             <label>{{ t('vendite.contratti.field_codice_commessa') }}</label>
-            <InputText v-model="form.codice_commessa" class="w-full"
+            <InputText v-model="form.codice_commessa"
               :maxlength="CODICI_ATTO_MAX_LEN.commessa"
               :disabled="!codiciAttoEditabili"
               :invalid="campiErrati.includes('codice_commessa')" />
@@ -992,21 +991,21 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
       </template>
 
       <!-- === Validità === -->
-      <h4 class="mt-3">{{ t('vendite.contratti.section_validita') }}</h4>
+      <h4>{{ t('vendite.contratti.section_validita') }}</h4>
       <div class="form-grid-3col">
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_data') }} *</label>
           <DatePicker :model-value="parseIsoDate(form.data)"
             @update:model-value="form.data = toIsoDate($event)"
             :disabled="isEdit && isLocked('data')"
-            date-format="dd/mm/yy" show-icon class="w-full" />
+            date-format="dd/mm/yy" show-icon />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_valido_dal') }} *</label>
           <DatePicker :model-value="parseIsoDate(form.valido_dal)"
             @update:model-value="form.valido_dal = toIsoDate($event)"
             :disabled="isEdit && isLocked('valido_dal')"
-            date-format="dd/mm/yy" show-icon class="w-full" />
+            date-format="dd/mm/yy" show-icon />
         </div>
         <!-- Campo valido_al condizionale per stato:
              - DRAFT: editabile come "Fine validita' (opz.)"
@@ -1031,7 +1030,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           <DatePicker :model-value="parseIsoDate(form.valido_al)"
             @update:model-value="form.valido_al = toIsoDate($event)"
             :disabled="isEdit && isLocked('valido_al')"
-            date-format="dd/mm/yy" show-icon show-button-bar class="w-full" />
+            date-format="dd/mm/yy" show-icon show-button-bar />
         </div>
       </div>
 
@@ -1040,7 +1039,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
            (listino + variazione globale). La "forma" derivata e' un badge
            informativo readonly mostrato sopra in detail (composable
            `formaDerivata`). -->
-      <h4 class="mt-3">{{ t('vendite.contratti.section_pricing') }}</h4>
+      <h4>{{ t('vendite.contratti.section_pricing') }}</h4>
 
       <!-- Badge forma derivata: visibile in EDIT come audit visivo del path. -->
       <Message
@@ -1062,7 +1061,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           :option-label="formatListinoOption"
           option-value="id"
           :loading="listiniLookup.loading.value"
-          class="w-full"
           :placeholder="t('vendite.contratti.select_listino_opzionale')"
           :invalid="campiErrati.includes('listino_id')"
           show-clear
@@ -1074,7 +1072,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           <i :class="MANAGE_ICONS.ERRORE" />
           {{ t('vendite.contratti.hint_listino_lock_righe', { n: righeCount }) }}
         </small>
-        <small v-else class="text-color-secondary">
+        <small v-else class="app-text-muted">
           {{ t('vendite.contratti.hint_listino_opzionale') }}
         </small>
       </div>
@@ -1085,18 +1083,17 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           <TipoVariazioneSelect v-model="form.tipo_variazione_globale"
             scope="contratto"
             show-clear
-            class="w-full"
             :disabled="isEdit && isLocked('tipo_variazione_globale')" />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_valore_variazione') }}</label>
-          <InputNumber v-model="form.valore_variazione_globale" class="w-full"
+          <InputNumber v-model="form.valore_variazione_globale"
             :min-fraction-digits="0" :max-fraction-digits="4" showButtons
             @update:model-value="onValoreVariazioneChange"
             :disabled="isEdit && isLocked('valore_variazione_globale')"
             :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
             :invalid="campiErrati.includes('valore_variazione_globale')" />
-          <small class="text-color-secondary">{{ t('vendite.contratti.hint_valore_variazione') }}</small>
+          <small class="app-text-muted">{{ t('vendite.contratti.hint_valore_variazione') }}</small>
         </div>
       </div>
 
@@ -1106,7 +1103,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_valuta') }}</label>
-          <LookupSelect v-model="form.valuta_id" rel="config.valute" class="w-full"
+          <LookupSelect v-model="form.valuta_id" rel="config.valute"
             :placeholder="t('vendite.contratti.field_valuta')"
             :disabled="isEdit"
             show-clear />
@@ -1114,17 +1111,17 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
       </div>
 
       <!-- === Tipo/Classe utenza (editabile in BOZZA, readonly dopo) === -->
-      <h4 class="mt-3">{{ t('vendite.contratti.section_utenza') }}</h4>
+      <h4>{{ t('vendite.contratti.section_utenza') }}</h4>
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_tipo_utenza') }}</label>
-          <LookupSelect v-model="form.utility_tipo_utenza_id" rel="config.tipi_utenze" class="w-full"
+          <LookupSelect v-model="form.utility_tipo_utenza_id" rel="config.tipi_utenze"
             :placeholder="t('vendite.contratti.select_tipo_utenza')" show-clear
             :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
         </div>
         <div class="form-field">
           <label>{{ t('vendite.contratti.field_classe_utenza') }}</label>
-          <LookupSelect v-model="form.utility_classe_utenza_id" rel="config.classi_utenze" class="w-full"
+          <LookupSelect v-model="form.utility_classe_utenza_id" rel="config.classi_utenze"
             :placeholder="t('vendite.contratti.select_classe_utenza')" show-clear
             :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
         </div>

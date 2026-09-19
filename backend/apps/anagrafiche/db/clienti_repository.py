@@ -230,10 +230,16 @@ class ClientiRepository:
     #        agli emittenti autorizzati per l'utente chiamante (refactor
     #        operatore-emittenti, follow-up BE-3.5). `emittente_ids=None`
     #        bypassa il filtro (superuser, admin globale, "0 emittenti");
-    #        lista vuota ⇒ nessun risultato. Semantica identica alla fn
-    #        canonica `script.fn_check_ba_visible_for_emittenti` (mapping
-    #        specifico, oppure gestore default SOLO se il BA non ha alcun
-    #        mapping), qui inline per lasciare al planner il semi-join.
+    #        lista vuota ⇒ nessun risultato.
+    # ⛔ Lo scope DELEGA a `script.fn_check_ba_visible_for_emittenti`, come
+    #    gia' `billing_account_repository` e `istanze_utility_repository`.
+    #    Fino al 2026-09-13 la regola stava qui INLINE («mapping specifico,
+    #    altrimenti default se il BA non ha mapping», per lasciare al planner
+    #    il semi-join) e il commento la dichiarava «identica alla fn canonica»:
+    #    dal changeSet `20260913-01` (D13) la regola del DB ha TRE livelli — in
+    #    sessione un BA senza legame e' dell'operatore che sta agendo, non del
+    #    default — e la copia inline sarebbe rimasta alla vecchia, in silenzio.
+    #    Una regola, un posto: brief-db-ba-riserva-emittente-operatore-d13 §6.2.
     def list_clienti(
         self, *, search: str | None = None,
         utility_id: int | None = None,
@@ -288,28 +294,7 @@ class ClientiRepository:
                AND (%s::integer IS NULL OR cl.stato_cliente_id = %s)
                AND (
                      %s::bigint[] IS NULL
-                  OR EXISTS (
-                       -- Mapping specifico: BA collegato a uno degli emittenti autorizzati
-                       SELECT 1
-                         FROM anagrafiche.emittenti_fiscali_billing_account efba
-                        WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                          AND efba.billing_account_id = ba.id
-                     )
-                  OR (
-                       -- Fallback default: emittente autorizzato ha is_default=true
-                       -- E il BA non ha nessun mapping specifico su nessun emittente
-                       EXISTS (
-                           SELECT 1
-                             FROM anagrafiche.emittenti_fiscali_billing_account efba
-                            WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                              AND efba.is_default = true
-                       )
-                       AND NOT EXISTS (
-                           SELECT 1
-                             FROM anagrafiche.emittenti_fiscali_billing_account efba2
-                            WHERE efba2.billing_account_id = ba.id
-                       )
-                     )
+                  OR script.fn_check_ba_visible_for_emittenti(ba.id, %s::bigint[])
                    )
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
@@ -319,7 +304,7 @@ class ClientiRepository:
             search_pattern, search_pattern, search_pattern,
             utility_id, utility_id,
             stato_cliente_id, stato_cliente_id,
-            emittente_ids, emittente_ids, emittente_ids,
+            emittente_ids, emittente_ids,
             limit, offset,
         ]
         with connection.cursor() as cursor:

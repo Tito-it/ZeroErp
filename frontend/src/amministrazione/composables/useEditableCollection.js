@@ -65,6 +65,7 @@ export function useEditableCollection({ create, update, del, messages, confirmDe
 
   function remove(row) {
     confirmAction({
+      header: t('confirm.delete_title'),
       message: confirmDelete(row),
       onAccept: async () => {
         const res = await execute(() => del(row.id), { successMessage: messages.deleted })

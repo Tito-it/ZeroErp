@@ -55,7 +55,7 @@ const attivo = computed(() => info.value?.attivo ?? null)
 
 <template>
   <div class="coda-worker-stato">
-    <span class="text-color-secondary">
+    <span class="app-text-muted">
       {{ t('strumenti.code.worker_ultimo_giro') }}:
       {{ ultimoGiro ?? t('strumenti.code.worker_mai_eseguito') }}
     </span>

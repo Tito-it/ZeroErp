@@ -14,7 +14,7 @@
 --       lock su codice_interno                               (20260901-21)
 --       Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11
 -- ------------------------------------------------------------
--- Elenco test (plan 24):
+-- Elenco test (plan 28):
 --  1) ⭐ Il trigger dei riferimenti NOMINA colonna_serie nella lista UPDATE OF
 --  2) ⛔ Una colonna_serie che non esiste sul documento e' rifiutata
 --  3) ⛔ ...e una che esiste ma NON discrimina il numero pure, con codice suo
@@ -39,6 +39,13 @@
 -- 22) ⭐⭐ DERIVATO: `ammette_regole_fiscali` e' vera esattamente sulla FATTURA
 -- 23) ⭐⭐ ...e i DUE check che lo decidono nominano lo stesso letterale
 -- 24) ⛔ La dichiarazione e' rifiutata su una famiglia non fiscale
+-- 25) ⭐ rev 2026-09-14 (P-9): la madre ACCETTA una famiglia senza billing account e la
+--     salva NULL — l'ordine di acquisto, la cui controparte non e' un cliente
+-- 26) ⭐ ...e normalizza la stringa vuota a NULL, come per la serie
+-- 27) ⭐ le due funzioni della storia emittente REGGONO una famiglia senza BA: la
+--     saltano nella query che sceglie, e il format() non vede mai un NULL
+-- 28) ⛔ ...e il guard di struttura la conta ancora fra le colonne immutabili:
+--     NULL -> valore su una famiglia con registri e' un cambio, e viene rifiutato
 --
 -- Scopo:
 --   ⭐ IL TEST CHE CONTA E' IL 19, ed e' DERIVATO. Gli altri provano un
@@ -65,7 +72,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(24);
+SELECT plan(28);
 
 -- ============================================================
 -- Fixture
@@ -362,6 +369,82 @@ SELECT throws_ok(
     'dichiara_ddt_fiscale', '23514',
     NULL,
     '24) Una famiglia non fiscale non puo'' dichiarare di ammettere le regole fiscali');
+
+-- ============================================================
+-- 25-28) ⭐ P-9 — la famiglia SENZA billing account (20260914-07 → -11)
+-- ============================================================
+-- ⛔ Il primo documento senza billing account e' l'ordine di acquisto: la sua
+--   controparte e' un soggetto_ruolo. Fino al 14-09 la madre lo rifiutava con
+--   E_VENDITE_VALIDATION e campo = colonna_billing_account, e il guard cercava
+--   su pg_attribute una colonna che non deve esistere. La forma e' quella di
+--   colonna_serie: il vuoto e' una dichiarazione.
+-- ⚠️ La tabella e' quella VERA del caso d'uso e non ha ancora una famiglia
+--   attiva (uq_famiglie_documento_tabella_attiva). Il provisioning dei
+--   registri parte come per ogni famiglia: qui non e' il soggetto, e il
+--   ROLLBACK lo disfa.
+CREATE TEMP TABLE _fam_noba AS
+SELECT famiglia_id, codice_interno, registri_creati
+  FROM vendite.fn_crea_famiglia_documento(
+       p_codice_interno        => 'PGTAP-ACQ',
+       p_descrizione           => 'Ordine di acquisto (pgTAP, senza billing account)',
+       p_schema_tabella        => 'acquisti',
+       p_nome_tabella          => 'ordini',
+       p_colonna_numero        => 'numero',
+       p_colonna_billing_account => NULL);
+
+SELECT is(
+    (SELECT f.colonna_billing_account IS NULL AND f.attivo
+       FROM vendite.famiglie_documento f
+      WHERE f.id = (SELECT famiglia_id FROM _fam_noba)),
+    true,
+    '25) La madre accetta una famiglia SENZA billing account e la salva NULL (l''ordine di acquisto)');
+
+-- ⚠️ Spenta, per non collidere sulla tabella con la 25: qui il soggetto e' la
+--   normalizzazione, non il guard (che una famiglia spenta non attraversa).
+-- ⚠️ In due istruzioni: una riga scritta da una funzione nello stesso
+--   statement non e' visibile alla scansione di quello statement.
+CREATE TEMP TABLE _fam_vuota AS
+SELECT famiglia_id
+  FROM vendite.fn_crea_famiglia_documento(
+           'PGTAP-ACQ-VUOTA', 'Stessa cosa, con la stringa vuota', 'acquisti', 'ordini',
+           'numero', '   ', NULL, NULL, 7, false);
+
+SELECT is(
+    (SELECT f.colonna_billing_account IS NULL
+       FROM vendite.famiglie_documento f
+      WHERE f.id = (SELECT famiglia_id FROM _fam_vuota)),
+    true,
+    '26) ...e normalizza la stringa vuota a NULL, come per la serie: un '''' salvato sarebbe una colonna che si chiama cosi''');
+
+-- ⭐ Il punto in cui il difetto avrebbe morso: le due funzioni compongono SQL
+--   dinamico con %I, e format('%I', NULL) solleva un errore di PostgreSQL senza
+--   codice di dominio. Con la famiglia senza BA ATTIVA nel catalogo, il giro
+--   della storia deve passarci sopra senza fiatare. Il BA e' un id qualunque:
+--   il giro e' sulle famiglie, non sui documenti.
+SELECT lives_ok(
+    $$SELECT anagrafiche.fn_ba_ha_storia_emittente(
+            (SELECT COALESCE(max(id), 1) FROM anagrafiche.billing_account)),
+            count(*)
+       FROM anagrafiche.fn_get_storia_emittente_ba(
+            (SELECT COALESCE(max(id), 1) FROM anagrafiche.billing_account))$$,
+    '27) fn_ba_ha_storia_emittente e fn_get_storia_emittente_ba reggono una famiglia attiva senza billing account');
+
+-- ⛔ La famiglia della 25 ha appena ricevuto i suoi registri (ne ha uno per
+--   emittente): cambiare colonna_billing_account da NULL a un valore e' un
+--   cambio di struttura a registri vivi, e il guard lo rifiuta con IS DISTINCT
+--   FROM. Un guard che confrontasse con `=` lascerebbe passare il NULL.
+PREPARE noba_cambia_struttura AS
+UPDATE vendite.famiglie_documento
+   SET colonna_billing_account = 'soggetto_ruolo_id'
+ WHERE id = (SELECT famiglia_id FROM _fam_noba)
+   AND (SELECT registri_creati FROM _fam_noba) > 0;
+
+SELECT CASE
+    WHEN (SELECT registri_creati FROM _fam_noba) > 0
+    THEN throws_ok('EXECUTE noba_cambia_struttura', 'P0001', NULL,
+         '28) NULL -> valore su una famiglia con registri e'' un cambio di struttura, e viene rifiutato')
+    ELSE skip('28) nessun emittente: la famiglia non ha registri e il guard di struttura non ha niente da difendere', 1)
+END;
 
 SELECT * FROM finish();
 ROLLBACK;

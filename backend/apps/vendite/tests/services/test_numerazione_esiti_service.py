@@ -147,15 +147,22 @@ class EsitiFatturazioneTests(SimpleTestCase):
         summary = [
             # last_run_at nel formato TESTO PG (spazio, non 'T'): il service lo
             # normalizza a ISO-8601 per il parse Date() cross-browser del FE.
+            # `ultima_conclusa` arriva gia' in ISO-8601 dal repository
+            # (2026-09-14) e passa cosi' com'e'.
             {
                 "jobname": "run_fatturazione_batch:differita",
-                "last_ok": True,
                 "last_run_at": "2026-07-20 10:00:00.123+00",
+                "in_corso": True,
+                "ultima_conclusa": {
+                    "started_at": "2026-07-19T10:00:00+00:00",
+                    "ended_at": "2026-07-19T10:02:00+00:00", "ok": True,
+                },
             },
             {
                 "jobname": "run_fatturazione_batch:immediata",
-                "last_ok": True,
                 "last_run_at": None,
+                "in_corso": False,
+                "ultima_conclusa": None,
             },
         ]
         with patch(
@@ -193,6 +200,19 @@ class EsitiFatturazioneTests(SimpleTestCase):
             "2026-07-20T10:00:00.123+00:00",
         )
         self.assertIsNone(by_name["run_fatturazione_batch:immediata"]["last_run_at"])
+        # ⛔ `in_corso` e `ultima_conclusa` attraversano il service INTATTI: e'
+        #    il punto di trasporto fra il repository e il pannello, e un campo
+        #    perso qui riporterebbe il pannello a leggere un esito senza data.
+        differita = by_name["run_fatturazione_batch:differita"]
+        self.assertTrue(differita["in_corso"])
+        self.assertEqual(
+            differita["ultima_conclusa"],
+            {
+                "started_at": "2026-07-19T10:00:00+00:00",
+                "ended_at": "2026-07-19T10:02:00+00:00", "ok": True,
+            },
+        )
+        self.assertIsNone(by_name["run_fatturazione_batch:immediata"]["ultima_conclusa"])
         self.assertEqual(result["coda_stampa"], {"PENDING": 2, "FATTO": 5})
         # La coda è letta con lo scope emittente dell'operatore (brief §5);
         # senza competenza esplicita resta cumulativa.
@@ -222,14 +242,22 @@ class EsitiFatturazioneTests(SimpleTestCase):
                 {
                     "jobname": "FATTURAZIONE_GIRO", "total_runs": 13,
                     "ok_count": 10, "fail_count": 1, "mio_count": 5,
-                    "last_run_at": "2026-07-23 00:43:24+00", "last_ok": True,
+                    "last_run_at": "2026-07-23 00:43:24+00", "in_corso": False,
+                    "ultima_conclusa": {
+                        "started_at": "2026-07-23T00:43:00+00:00",
+                        "ended_at": "2026-07-23T00:43:24+00:00", "ok": True,
+                    },
                 },
             ]
             MaintRepo.return_value.list_job_summary.return_value = ([
                 {
                     "jobname": "run_fatturazione_batch:differita",
                     "total_runs": 24, "ok_count": 23, "fail_count": 1,
-                    "last_run_at": "2026-06-20 00:31:09+00", "last_ok": True,
+                    "last_run_at": "2026-06-20 00:31:09+00", "in_corso": False,
+                    "ultima_conclusa": {
+                        "started_at": "2026-06-20T00:31:00+00:00",
+                        "ended_at": "2026-06-20T00:31:09+00:00", "ok": True,
+                    },
                 },
             ], 1)
             PipeRepo.return_value.count_coda_stampa_per_stato.return_value = {}

@@ -28,7 +28,11 @@
 |------|-------------|
 | error_log_pkey | `CREATE UNIQUE INDEX error_log_pkey ON dbops.error_log USING btree (id)` |
 | ix_dbops_error_log_messaggio_errore_id | `CREATE INDEX ix_dbops_error_log_messaggio_errore_id ON dbops.error_log USING btree (messaggio_errore_id)` |
+| ix_error_log_area_occurred_at | `CREATE INDEX ix_error_log_area_occurred_at ON dbops.error_log USING btree (area, occurred_at)` |
 | ix_error_log_cleanup_at | `CREATE INDEX ix_error_log_cleanup_at ON dbops.error_log USING btree (cleanup_at)` |
+| ix_error_log_function_name_occurred_at | `CREATE INDEX ix_error_log_function_name_occurred_at ON dbops.error_log USING btree (function_name text_pattern_ops, occurred_at)` |
+| ix_error_log_occurred_at | `CREATE INDEX ix_error_log_occurred_at ON dbops.error_log USING btree (occurred_at)` |
+| ix_error_log_tx_id | `CREATE INDEX ix_error_log_tx_id ON dbops.error_log USING btree (tx_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

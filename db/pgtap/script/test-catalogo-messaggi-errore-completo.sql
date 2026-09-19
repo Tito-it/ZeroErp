@@ -52,6 +52,17 @@
 --    aggancia, non che ci fosse un guasto.
 --    Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (P-0)
 --
+-- ⭐ rev 2026-09-17 — DA ~30 s A ~1 s, STESSE RIGHE MISURATE. Tre cose, tutte
+--    spiegate accanto al codice: (1) gli scanner giravano SEI volte perche'
+--    `_arita` era una VIEW — ora TEMP TABLE, una passata; (2) i cicli a
+--    caratteri sono diventati cicli a token (4,8 s -> 0,26 s), con due
+--    invarianti che SOLLEVANO invece di contare storto; (3) lo stripper dei
+--    commenti toglie anche i `/* ... */`, dove un apostrofo tronco invertiva
+--    lo stato stringa/codice. Verificato: le 1.217 righe (funzione, codice,
+--    n_valori) e i 67 motivi sono IDENTICI a quelli dello scanner precedente,
+--    EXCEPT ALL nei due versi a zero. Il costo era struttura (pg_proc), non
+--    dati: il guadagno vale uguale in CI.
+--
 -- PERCHE' LEGGE IL DATABASE E NON I FILE. Il gemello lato BE analizza l'AST
 -- del codice Python; qui la fonte e' pg_proc.prosrc, cioe' la funzione VIVA.
 -- Non e' un dettaglio: al primo giro questo test ha trovato
@@ -126,11 +137,22 @@ SELECT DISTINCT
 --    Con gli argomenti scritti a capo (la forma normale qui dentro) il terzo
 --    argomento resta "\n            'E_...'" e non somiglia piu' a un
 --    letterale: lo scanner perdeva meta' dei punti in silenzio.
+--
+-- ⚠️ rev 2026-09-17: VIA ANCHE I COMMENTI A BLOCCO `/* ... */`. Fino a oggi lo
+--    stripper conosceva solo il `--`, e un apostrofo tronco dentro un blocco
+--    («puo' essere una UNIQUE», dbops.trgfn_child_requires_active_parent)
+--    invertiva lo stato dentro/fuori stringa da li' in poi. Lo scanner
+--    vecchio non se ne accorgeva PER CASO — ripartiva da zero a ogni
+--    chiamata — ma una lista di argomenti con dentro un blocco cosi'
+--    l'avrebbe contata male in silenzio. Sono 24 funzioni con un `/* */`,
+--    13 con una chiamata dentro (misura del 2026-09-17). Nessun `/*` sta
+--    dentro una stringa; se un giorno ci stesse, l'asserzione sugli apici
+--    pari in testa agli scanner lo dice.
 CREATE FUNCTION pg_temp.fn_senza_commenti(p_src text) RETURNS text
 LANGUAGE plpgsql IMMUTABLE AS $fn$
 DECLARE v_riga text; v_out text := ''; v_from int; v_p int; v_abs int; v_pre text;
 BEGIN
-    FOREACH v_riga IN ARRAY string_to_array(p_src, E'\n') LOOP
+    FOREACH v_riga IN ARRAY string_to_array(regexp_replace(p_src, '/\*.*?\*/', '', 'g'), E'\n') LOOP
         v_from := 1;
         LOOP
             v_p := position('--' IN substr(v_riga, v_from));
@@ -149,30 +171,75 @@ BEGIN
     RETURN v_out;
 END $fn$;
 
+-- ============================================================
+-- ⭐ rev 2026-09-17 — GLI SCANNER CAMMINANO SUI TOKEN, NON SUI CARATTERI.
+--   Fino a oggi tre cicli PL/pgSQL leggevano il sorgente un carattere alla
+--   volta (`substr(src, i, 1)`, poi IF sullo stato stringa/parentesi): non e'
+--   `substr` a costare — misurato, e' costante anche a fondo corpo — ma il
+--   NUMERO di istruzioni interpretate: 1.217 punti × qualche centinaio di
+--   caratteri × una decina di istruzioni l'uno, ~4,8 s per una passata su
+--   2,1 MB di sorgente. E il costo e' la STRUTTURA (pg_proc), non i dati:
+--   identico in CI.
+--   Ora `fn_token` spezza il testo UNA volta con una regexp in token —
+--   una stringa SQL intera (apici raddoppiati compresi), una parentesi,
+--   una virgola, un blocco di tutto il resto — e i cicli camminano sui
+--   token: ~8 volte meno iterazioni, e lo stato «dentro una stringa»
+--   sparisce, perche' la stringa e' un token solo. Misurato: 4,9 s -> 0,25 s,
+--   con le STESSE 1.217 righe (funzione, codice, n_valori) del vecchio
+--   scanner, EXCEPT ALL nei due versi a zero, una volta corretto lo stripper
+--   dei commenti a blocco (vedi sopra).
+--
+-- ⛔ L'INVARIANTE CHE RENDE LECITA LA SCORCIATOIA: ogni carattere del testo
+--   sta in ESATTAMENTE un token (le quattro alternative della regexp coprono
+--   qualunque carattere, e l'apice orfano e' l'ultima). Ogni consumatore lo
+--   verifica — `concat(token) = testo` — e se non regge SOLLEVA: un testo che
+--   il tokenizzatore non sa leggere non si misura a meta'.
+-- ⛔ E LA SECONDA: dopo la pulizia dei commenti gli apici sono PARI. Con un
+--   numero dispari le stringhe e il codice si scambiano di posto e ogni
+--   conteggio che segue e' falso; lo scanner lo dice invece di contare.
+-- ============================================================
+CREATE FUNCTION pg_temp.fn_token(p_testo text) RETURNS text[]
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT coalesce(array_agg(t.m[1] ORDER BY t.ord), ARRAY[]::text[])
+    FROM regexp_matches(p_testo,
+           '(''(?:[^'']|'''')*''|[()\[\],]|[^''()\[\],]+|'')', 'g')
+         WITH ORDINALITY AS t(m, ord)
+$fn$;
+
+-- Il sorgente di una funzione, pulito e tokenizzato, con i due invarianti
+-- verificati. E' l'unico punto da cui gli scanner leggono un corpo.
+CREATE FUNCTION pg_temp.fn_token_corpo(p_fn text, p_src text) RETURNS text[]
+LANGUAGE plpgsql IMMUTABLE AS $fn$
+DECLARE v_src text := pg_temp.fn_senza_commenti(p_src); v_tok text[];
+BEGIN
+    IF (length(v_src) - length(replace(v_src, '''', ''))) % 2 = 1 THEN
+        RAISE EXCEPTION 'scanner: apici DISPARI in % dopo la pulizia dei commenti — '
+                        'lo stripper non conosce una forma di commento o di stringa '
+                        'di questo corpo, e da qui in poi conterebbe il falso', p_fn;
+    END IF;
+    v_tok := pg_temp.fn_token(v_src);
+    IF array_to_string(v_tok, '') IS DISTINCT FROM v_src THEN
+        RAISE EXCEPTION 'scanner: fn_token ha perso caratteri in %', p_fn;
+    END IF;
+    RETURN v_tok;
+END $fn$;
+
 -- Spezza una lista di argomenti sulle virgole di primo livello.
 CREATE FUNCTION pg_temp.fn_argomenti(p_lista text) RETURNS text[]
 LANGUAGE plpgsql IMMUTABLE AS $fn$
-DECLARE v_i int := 1; v_n int := length(p_lista); v_c text; v_d int := 0;
-        v_q boolean := false; v_buf text := ''; v_out text[] := ARRAY[]::text[];
+DECLARE v_t text; v_d int := 0; v_buf text := ''; v_out text[] := ARRAY[]::text[];
+        v_tok text[] := pg_temp.fn_token(p_lista);
 BEGIN
-    WHILE v_i <= v_n LOOP
-        v_c := substr(p_lista, v_i, 1);
-        IF v_q THEN
-            IF v_c = '''' THEN
-                IF substr(p_lista, v_i + 1, 1) = '''' THEN
-                    v_buf := v_buf || ''''''; v_i := v_i + 2; CONTINUE;
-                END IF;
-                v_q := false;
-            END IF;
-            v_buf := v_buf || v_c; v_i := v_i + 1; CONTINUE;
+    IF array_to_string(v_tok, '') IS DISTINCT FROM p_lista THEN
+        RAISE EXCEPTION 'scanner: fn_token ha perso caratteri in «%»', left(p_lista, 200);
+    END IF;
+    FOREACH v_t IN ARRAY v_tok LOOP
+        IF v_t IN ('(', '[') THEN v_d := v_d + 1;
+        ELSIF v_t IN (')', ']') THEN v_d := v_d - 1;
+        ELSIF v_t = ',' AND v_d = 0 THEN
+            v_out := v_out || btrim(v_buf, E' \t\r\n'); v_buf := ''; CONTINUE;
         END IF;
-        IF v_c = '''' THEN v_q := true;
-        ELSIF v_c IN ('(', '[') THEN v_d := v_d + 1;
-        ELSIF v_c IN (')', ']') THEN v_d := v_d - 1;
-        ELSIF v_c = ',' AND v_d = 0 THEN
-            v_out := v_out || btrim(v_buf, E' \t\r\n'); v_buf := ''; v_i := v_i + 1; CONTINUE;
-        END IF;
-        v_buf := v_buf || v_c; v_i := v_i + 1;
+        v_buf := v_buf || v_t;
     END LOOP;
     RETURN v_out || btrim(v_buf, E' \t\r\n');
 END $fn$;
@@ -183,8 +250,8 @@ CREATE FUNCTION pg_temp.fn_punti_sollevamento()
 RETURNS TABLE(funzione text, codice text, n_valori int)
 LANGUAGE plpgsql AS $fn$
 DECLARE
-    r record; v_src text; v_n int; v_i int; v_c text; v_d int; v_q boolean;
-    v_buf text; v_args text[]; v_p int; v_code text; v_tail text;
+    r record; v_tok text[]; v_n int; v_i int; v_d int;
+    v_buf text; v_args text[]; v_code text; v_tail text;
 BEGIN
     FOR r IN
         SELECT n.nspname || '.' || p.proname AS fn, p.prosrc AS src
@@ -195,39 +262,33 @@ BEGIN
            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
            AND p.prosrc LIKE '%fn_log_and_raise_error%'
     LOOP
-        v_src := pg_temp.fn_senza_commenti(r.src);
-        v_n := length(v_src);
+        v_tok := pg_temp.fn_token_corpo(r.fn, r.src);
+        v_n := coalesce(array_length(v_tok, 1), 0);
         v_i := 1;
-        LOOP
-            v_p := position('fn_log_and_raise_error' IN substr(v_src, v_i));
-            EXIT WHEN v_p = 0;
-            v_i := v_i + v_p - 1 + length('fn_log_and_raise_error');
-            v_p := position('(' IN substr(v_src, v_i));
-            EXIT WHEN v_p = 0;
-            v_i := v_i + v_p;                        -- primo carattere dopo la parentesi
-            v_d := 0; v_q := false; v_buf := '';
-            WHILE v_i <= v_n LOOP
-                v_c := substr(v_src, v_i, 1);
-                IF v_q THEN
-                    IF v_c = '''' THEN
-                        IF substr(v_src, v_i + 1, 1) = '''' THEN
-                            v_buf := v_buf || ''''''; v_i := v_i + 2; CONTINUE;
-                        END IF;
-                        v_q := false;
+        WHILE v_i < v_n LOOP
+            -- Una chiamata e' un token di TESTO che finisce col nome, seguito
+            -- dalla parentesi aperta. Il nome dentro una stringa (una
+            -- p_funzione passata a un altro logger) non e' una chiamata: lo
+            -- scanner a caratteri l'avrebbe rincorsa fino alla prima `(`
+            -- successiva e contato una lista di argomenti che non era sua.
+            IF left(v_tok[v_i], 1) <> '''' AND v_tok[v_i] ~ 'fn_log_and_raise_error\s*$'
+               AND v_tok[v_i + 1] = '(' THEN
+                v_i := v_i + 2; v_d := 0; v_buf := '';
+                WHILE v_i <= v_n LOOP
+                    IF v_tok[v_i] IN ('(', '[') THEN v_d := v_d + 1;
+                    ELSIF v_tok[v_i] = ']' THEN v_d := v_d - 1;
+                    ELSIF v_tok[v_i] = ')' THEN
+                        EXIT WHEN v_d = 0;            -- chiusura della chiamata
+                        v_d := v_d - 1;
                     END IF;
-                    v_buf := v_buf || v_c; v_i := v_i + 1; CONTINUE;
-                END IF;
-                IF v_c = '''' THEN v_q := true;
-                ELSIF v_c IN ('(', '[') THEN v_d := v_d + 1;
-                ELSIF v_c = ']' THEN v_d := v_d - 1;
-                ELSIF v_c = ')' THEN
-                    EXIT WHEN v_d = 0;                -- chiusura della chiamata
-                    v_d := v_d - 1;
-                END IF;
-                v_buf := v_buf || v_c; v_i := v_i + 1;
-            END LOOP;
-            v_args := pg_temp.fn_argomenti(v_buf);
-            v_i := v_i + 1;
+                    v_buf := v_buf || v_tok[v_i]; v_i := v_i + 1;
+                END LOOP;
+                v_args := pg_temp.fn_argomenti(v_buf);
+                v_i := v_i + 1;
+            ELSE
+                v_i := v_i + 1;
+                CONTINUE;
+            END IF;
             CONTINUE WHEN coalesce(array_length(v_args, 1), 0) < 3;
             v_code := (regexp_match(v_args[3], '^''(E_[A-Z0-9_]{3,})''$'))[1];
             -- ⭐ P-0, 2026-09-08 — QUI C'ERA UN `CONTINUE WHEN v_code IS NULL`,
@@ -287,8 +348,8 @@ CREATE FUNCTION pg_temp.fn_motivi_con_valori()
 RETURNS TABLE(funzione text, codice text, n_valori int)
 LANGUAGE plpgsql AS $fn$
 DECLARE
-    r record; v_src text; v_n int; v_i int; v_j int; v_p int;
-    v_c text; v_d int; v_q boolean; v_buf text; v_code text; v_next int;
+    r record; v_tok text[]; v_n int; v_i int; v_j int; v_k int;
+    v_d int; v_buf text; v_code text; v_next int;
 BEGIN
     FOR r IN
         SELECT n.nspname || '.' || p.proname AS fn, p.prosrc AS src
@@ -299,63 +360,77 @@ BEGIN
            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
            AND p.prosrc LIKE '%''codice''%'
     LOOP
-        v_src := pg_temp.fn_senza_commenti(r.src);
-        v_n := length(v_src);
+        v_tok := pg_temp.fn_token_corpo(r.fn, r.src);
+        v_n := coalesce(array_length(v_tok, 1), 0);
         v_i := 1;
-        LOOP
-            -- il prossimo motivo: "'codice'" seguito da un letterale E_...
-            v_p := position('''codice''' IN substr(v_src, v_i));
-            EXIT WHEN v_p = 0;
-            v_i := v_i + v_p - 1 + length('''codice''');
-            v_code := (regexp_match(substr(v_src, v_i, 80), '^\s*,\s*''(E_[A-Z0-9_]{3,})'''))[1];
-            CONTINUE WHEN v_code IS NULL;   -- non e' un motivo: e' un'altra chiave
+        WHILE v_i <= v_n LOOP
+            -- il prossimo motivo: il token "'codice'" seguito — spazi a parte,
+            -- che sono token di testo — da una virgola e da un letterale E_...
+            IF v_tok[v_i] <> '''codice''' THEN v_i := v_i + 1; CONTINUE; END IF;
+            v_j := v_i + 1;
+            WHILE v_j <= v_n AND v_tok[v_j] ~ '^\s+$' LOOP v_j := v_j + 1; END LOOP;
+            IF v_j > v_n OR v_tok[v_j] <> ',' THEN v_i := v_i + 1; CONTINUE; END IF;
+            v_j := v_j + 1;
+            WHILE v_j <= v_n AND v_tok[v_j] ~ '^\s+$' LOOP v_j := v_j + 1; END LOOP;
+            v_code := CASE WHEN v_j <= v_n
+                           THEN (regexp_match(v_tok[v_j], '^''(E_[A-Z0-9_]{3,})''$'))[1] END;
+            IF v_code IS NULL THEN v_i := v_i + 1; CONTINUE; END IF;   -- non e' un motivo: e' un'altra chiave
             funzione := r.fn; codice := v_code; n_valori := NULL;
             -- il `valori` di QUESTO motivo sta prima del prossimo `'codice'`
-            v_next := position('''codice''' IN substr(v_src, v_i));
-            IF v_next = 0 THEN v_next := v_n - v_i + 1; END IF;
-            v_p := position('''valori''' IN substr(v_src, v_i, v_next));
-            IF v_p > 0 THEN
-                v_j := v_i + v_p - 1;
-                v_p := position('jsonb_build_array(' IN substr(v_src, v_j, v_next));
-                IF v_p > 0 THEN
-                    v_j := v_j + v_p - 1 + length('jsonb_build_array(');
+            v_next := v_i + 1;
+            WHILE v_next <= v_n AND v_tok[v_next] <> '''codice''' LOOP v_next := v_next + 1; END LOOP;
+            v_k := v_i + 1;
+            WHILE v_k < v_next AND v_tok[v_k] <> '''valori''' LOOP v_k := v_k + 1; END LOOP;
+            IF v_k < v_next THEN
+                -- `jsonb_build_array(`: un token di testo che finisce col nome,
+                -- seguito dalla parentesi aperta
+                WHILE v_k < v_next
+                  AND NOT (left(v_tok[v_k], 1) <> '''' AND v_tok[v_k] ~ 'jsonb_build_array$'
+                           AND v_tok[v_k + 1] = '(') LOOP
+                    v_k := v_k + 1;
+                END LOOP;
+                IF v_k < v_next THEN
                     -- estrazione BILANCIATA: gli argomenti hanno parentesi
                     -- annidate (COALESCE(...), cast, jsonb_build_object(...))
-                    v_d := 0; v_q := false; v_buf := '';
-                    WHILE v_j <= v_n LOOP
-                        v_c := substr(v_src, v_j, 1);
-                        IF v_q THEN
-                            IF v_c = '''' THEN
-                                IF substr(v_src, v_j + 1, 1) = '''' THEN
-                                    v_buf := v_buf || ''''''; v_j := v_j + 2; CONTINUE;
-                                END IF;
-                                v_q := false;
-                            END IF;
-                            v_buf := v_buf || v_c; v_j := v_j + 1; CONTINUE;
-                        END IF;
-                        IF v_c = '''' THEN v_q := true;
-                        ELSIF v_c IN ('(', '[') THEN v_d := v_d + 1;
-                        ELSIF v_c = ']' THEN v_d := v_d - 1;
-                        ELSIF v_c = ')' THEN
+                    v_k := v_k + 2; v_d := 0; v_buf := '';
+                    WHILE v_k <= v_n LOOP
+                        IF v_tok[v_k] IN ('(', '[') THEN v_d := v_d + 1;
+                        ELSIF v_tok[v_k] = ']' THEN v_d := v_d - 1;
+                        ELSIF v_tok[v_k] = ')' THEN
                             EXIT WHEN v_d = 0;
                             v_d := v_d - 1;
                         END IF;
-                        v_buf := v_buf || v_c; v_j := v_j + 1;
+                        v_buf := v_buf || v_tok[v_k]; v_k := v_k + 1;
                     END LOOP;
                     n_valori := CASE WHEN btrim(v_buf, E' \t\r\n') = '' THEN 0
                                      ELSE coalesce(array_length(pg_temp.fn_argomenti(v_buf), 1), 0) END;
                 END IF;
             END IF;
             RETURN NEXT;
+            v_i := v_i + 1;
         END LOOP;
     END LOOP;
 END $fn$;
 
-CREATE TEMP VIEW _arita AS
+-- ============================================================
+-- ⭐ GLI SCANNER GIRANO UNA VOLTA SOLA — rev 2026-09-17.
+--   `_arita` era una TEMP VIEW che nominava `fn_punti_sollevamento()` due
+--   volte (rami A e B) ed era letta dai test 4, 5 e 7: SEI esecuzioni di uno
+--   scanner che costa ~4,8 s l'una (misura del 2026-09-17: 1.217 punti in
+--   478 funzioni, 2,1 MB di sorgente), cioe' ~30 s di file — su dbdev come
+--   in CI, perche' il costo e' la STRUTTURA (pg_proc), non i dati.
+--   Ora i due scanner si eseguono una volta in due TEMP TABLE e `_arita` e'
+--   una TABLE derivata: le asserzioni leggono lo stesso identico risultato,
+--   calcolato una volta invece di sei.
+-- ============================================================
+CREATE TEMP TABLE _punti  AS SELECT * FROM pg_temp.fn_punti_sollevamento();
+CREATE TEMP TABLE _motivi AS SELECT * FROM pg_temp.fn_motivi_con_valori();
+
+CREATE TEMP TABLE _arita AS
 -- Ramo A — il codice e' un LETTERALE sulla riga della chiamata.
 SELECT DISTINCT 'A'::text AS ramo, s.funzione, s.codice, m.lingua, s.n_valori,
        (length(m.messaggio) - length(replace(m.messaggio, '%s', ''))) / 2 AS n_segnaposto
-  FROM pg_temp.fn_punti_sollevamento() s
+  FROM _punti s
   JOIN config.messaggi_errore m ON m.codice = s.codice
  WHERE s.n_valori IS NOT NULL
 UNION ALL
@@ -371,7 +446,7 @@ UNION ALL
 --   frase da dati SUOI, cioe' dove sbagliare e' piu' facile.
 SELECT DISTINCT 'B'::text AS ramo, s.funzione, v.codice, m.lingua, s.n_valori,
        (length(m.messaggio) - length(replace(m.messaggio, '%s', ''))) / 2 AS n_segnaposto
-  FROM pg_temp.fn_punti_sollevamento() s
+  FROM _punti s
   JOIN dbops.vw_punti_primo_motivo v ON v.funzione = s.funzione
   JOIN config.messaggi_errore m ON m.codice = v.codice
  WHERE s.codice IS NULL
@@ -386,7 +461,7 @@ UNION ALL
 --   insieme, senza l'unione pessimista del ramo B.
 SELECT DISTINCT 'C'::text AS ramo, m.funzione, m.codice, e.lingua, m.n_valori,
        (length(e.messaggio) - length(replace(e.messaggio, '%s', ''))) / 2 AS n_segnaposto
-  FROM pg_temp.fn_motivi_con_valori() m
+  FROM _motivi m
   JOIN config.messaggi_errore e ON e.codice = m.codice
  WHERE m.n_valori IS NOT NULL;
 

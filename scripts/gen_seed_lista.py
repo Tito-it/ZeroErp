@@ -157,6 +157,20 @@ WHITELIST_BE: dict[str, tuple] = {
     # 7° lotto: una whitelist annidata nella classe si svuota quando un test
     # mocka il repository.
     "vendite.registri_numerazione": ("apps/vendite/db/registri_repository.py", "_ORDER_COLS"),
+    # Magazzino, Lotto 2 (2026-09-18): otto liste, sei whitelist — le due
+    # famiglie del documento interno condividono la proiezione di TESTATA;
+    # le righe hanno la loro (la quantita' ha un nome fisico diverso).
+    "magazzino.inventari": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
+    "magazzino.rettifiche": ("apps/magazzino/db/magazzino_repository.py", "DOCUMENTI_SORT_COLUMNS"),
+    "magazzino.inventario_righe": ("apps/magazzino/db/magazzino_repository.py",
+                                   "INVENTARIO_RIGHE_SORT_COLUMNS"),
+    "magazzino.rettifica_righe": ("apps/magazzino/db/magazzino_repository.py",
+                                  "RETTIFICA_RIGHE_SORT_COLUMNS"),
+    "magazzino.inventario_piano": ("apps/magazzino/db/magazzino_repository.py", "PIANO_SORT_COLUMNS"),
+    "magazzino.disponibilita": ("apps/magazzino/db/magazzino_repository.py", "DISPONIBILITA_SORT_COLUMNS"),
+    "magazzino.disponibilita_articoli": ("apps/magazzino/db/magazzino_repository.py",
+                                         "DISPONIBILITA_ARTICOLI_SORT_COLUMNS"),
+    "magazzino.movimenti": ("apps/magazzino/db/magazzino_repository.py", "MOVIMENTI_SORT_COLUMNS"),
     "config.utilities_tipi_ruolo": ("apps/config/db/utilities_tipi_ruolo_repository.py", "_ORDER_COLS"),
     "config.tipi_ruolo_tipi_indirizzo": ("apps/config/db/tipi_ruolo_tipi_indirizzo_repository.py",
                                          "_ORDER_COLS"),
@@ -298,6 +312,26 @@ WHITELIST_BE: dict[str, tuple] = {
                                        "DASH_COMPETENZA_ERRORI_SORT_COLUMNS", "class VenditeRepository"),
     "vendite.dash_competenza_gruppi": ("apps/vendite/db/vendite_repository.py",
                                        "DASH_COMPETENZA_GRUPPI_SORT_COLUMNS", "class VenditeRepository"),
+    # ⭐ Le sette liste di `pagamenti` (2026-09-17). Fino a quel giorno NESSUNA
+    #    era mappata: `--verifica-ordinamento` le saltava come «NON MAPPATA», cioe'
+    #    il controllo su di loro non era mai stato fatto — e questo registro dice
+    #    di se' che «una lista saltata in silenzio e' come non aver fatto il
+    #    controllo». Trovate registrando `pagamenti.rate` (lista 68, D19-c),
+    #    l'unica delle sette nata col presidio acceso. Tutte costanti di MODULO
+    #    nello stesso repository.
+    "pagamenti.distinte": ("apps/pagamenti/db/pagamenti_repository.py", "DISTINTE_SORT_COLUMNS"),
+    "pagamenti.righe": ("apps/pagamenti/db/pagamenti_repository.py", "RIGHE_SORT_COLUMNS"),
+    # Le righe di UNA distinta (lista 69, 2026-09-18): nata col presidio acceso.
+    "pagamenti.distinta_righe": ("apps/pagamenti/db/pagamenti_repository.py",
+                                 "DISTINTA_RIGHE_SORT_COLUMNS"),
+    "pagamenti.rate_fuori_capienza": ("apps/pagamenti/db/pagamenti_repository.py",
+                                      "RATE_FUORI_CAPIENZA_SORT_COLUMNS"),
+    "pagamenti.rate": ("apps/pagamenti/db/pagamenti_repository.py", "RATE_SORT_COLUMNS"),
+    "pagamenti.eccedenze": ("apps/pagamenti/db/pagamenti_repository.py", "ECCEDENZE_SORT_COLUMNS"),
+    "pagamenti.sistemazioni_fattura": ("apps/pagamenti/db/pagamenti_repository.py",
+                                       "SISTEMAZIONI_SORT_COLUMNS"),
+    "pagamenti.canali_incasso": ("apps/pagamenti/db/pagamenti_repository.py",
+                                 "ENTI_INCASSO_SORT_COLUMNS"),
     "vendite.dash_competenza_commesse": ("apps/vendite/db/vendite_repository.py",
                                          "DASH_COMPETENZA_COMMESSE_SORT_COLUMNS", "class VenditeRepository"),
 }

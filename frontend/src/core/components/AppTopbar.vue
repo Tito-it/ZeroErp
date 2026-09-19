@@ -14,7 +14,7 @@ import TieredMenu from 'primevue/tieredmenu'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
-import { resolveTabLabel } from '../navigation'
+import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
 import { MANAGE_ICONS } from '../constants'
@@ -25,6 +25,8 @@ import EmittenteAttivoSelect from './EmittenteAttivoSelect.vue'
 import { menuItemClass } from '../utils/rowActions'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { useQueueCountsPolling } from '../composables/useQueueCountsPolling'
+import { usePresidiPolling } from '../composables/usePresidiPolling'
+import { displayTime } from '../utils/date'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -38,8 +40,28 @@ defineProps({
 })
 const emit = defineEmits(['toggle-menu'])
 
-const areaTitle = computed(() => {
-  return resolveTabLabel(route.meta, t) || ''
+// Scopo: il titolo al centro della topbar e' L'AREA (il dominio della rotta),
+//        con la sua icona — non la pagina.
+// ⭐ Decisione di Tid, 2026-09-19: fino a quel giorno qui stava
+//    `resolveTabLabel(route.meta)`, cioe' la stessa etichetta della scheda
+//    attiva e dell'ultimo segmento del breadcrumb — «Contratti» tre volte in
+//    verticale, e la topbar era l'unica delle tre che non aggiungeva niente.
+//    Il dominio invece risponde a «in quale area sono», che a sidebar chiusa
+//    (o su mobile) non lo dice nessun altro pezzo: topbar = area, scheda =
+//    pagina, breadcrumb = il percorso intero.
+// ⚠️ Segue la `route`, cioe' il pannello PRIMARIO: in split view il secondario
+//    puo' essere di un altro dominio, e questo titolo — come il breadcrumb —
+//    non lo racconta. E' coerenza, non dimenticanza.
+// ⚠️ `home` (compresi «non trovato» e «vietato», che sono rotte di `home`) e
+//    un `domain` assente danno «Home» con l'icona di casa: la chiave `nav.home`
+//    esiste, e un titolo vuoto in cima sembrerebbe un errore di caricamento.
+const areaDominio = computed(() => {
+  const key = route.meta.domain || 'home'
+  const dominio = DOMAINS.find(d => d.key === key)
+  return {
+    label: t(`nav.${key}`),
+    icon: dominio?.icon ?? NAV_ICONS.HOME,
+  }
 })
 
 // Il nome dell'emittente non e' piu' un computed di questo componente: dal
@@ -100,6 +122,32 @@ const {
   disponibile: codeDisponibile,
 } = useQueueCountsPolling()
 
+// Il pallino dei presidi (decisione #8 di Tid, 2026-09-18): accanto al badge
+// code perche' e' lo stesso genere di segnale — contatore ambientale sul
+// SISTEMA, non «notifiche per te». Sempre visibile per chi passa la porta,
+// verde a zero (la giornaliera muta non sa dirlo), rosso col numero; click →
+// «Processi automatici». Cadenza e politica sugli errori nel composable.
+const {
+  pallino: presidiPallino,
+  lettoAlle: presidiLettoAlle,
+  disponibile: presidiDisponibile,
+} = usePresidiPolling()
+
+const presidiTooltip = computed(() => {
+  const p = presidiPallino.value
+  if (!p) return t('amministrazione.processi.presidi_badge_attesa')
+  const ora = displayTime(presidiLettoAlle.value)
+  return p.ok
+    ? t('amministrazione.processi.presidi_badge_tooltip_ok', { ora })
+    : t('amministrazione.processi.presidi_badge_tooltip', {
+        allarmi: p.allarmi, non_letti: p.nonLetti, ora,
+      })
+})
+
+function apriProcessiAutomatici() {
+  router.push({ name: 'amm-software-processi-automatici' })
+}
+
 // Scopo: classe CSS standard per le voci del kebab topbar. Tutte neutre/
 // preferenze (preferiti/lingua/dark + search/AI quando mobile) -> nessuna
 // severity esplicita, fallback "action" (verde) coerente col colore dei
@@ -154,6 +202,14 @@ const userKebabItems = computed(() => {
         icon: 'pi pi-inbox',
         class: TOPBAR_MENU_CLASS,
         command: () => ui.openCodeDrawer(),
+      })
+    }
+    if (presidiDisponibile.value) {
+      items.push({
+        label: t('amministrazione.processi.presidi_badge_menu'),
+        icon: NAV_ICONS.PROCESSI_AUTOMATICI,
+        class: TOPBAR_MENU_CLASS,
+        command: apriProcessiAutomatici,
       })
     }
     if (ui.aiAvailable) {
@@ -217,7 +273,10 @@ onMounted(async () => {
     </div>
 
     <div class="topbar-center">
-      <span class="topbar-area-title">{{ areaTitle }}</span>
+      <span class="topbar-area-title">
+        <i :class="areaDominio.icon" class="topbar-area-icon" aria-hidden="true"></i>
+        {{ areaDominio.label }}
+      </span>
     </div>
 
     <div class="topbar-right">
@@ -257,7 +316,7 @@ onMounted(async () => {
              (area core). Click → drawer rapido. -->
         <button
           v-if="codeDisponibile"
-          class="topbar-icon-btn topbar-code-btn"
+          class="topbar-icon-btn topbar-contatore-btn"
           v-tooltip.bottom="workerOk === false
             ? t('strumenti.code.badge_worker_giu')
             : t('strumenti.code.badge_tooltip')"
@@ -268,13 +327,35 @@ onMounted(async () => {
             v-if="lavoriVivi > 0"
             :value="lavoriVivi"
             severity="info"
-            class="topbar-code-badge topbar-code-badge-lavori"
+            class="topbar-contatore-badge topbar-contatore-badge-alto"
           />
           <Badge
             v-if="stampaVive > 0"
             :value="stampaVive"
             severity="warn"
-            class="topbar-code-badge topbar-code-badge-stampa"
+            class="topbar-contatore-badge topbar-contatore-badge-basso"
+          />
+        </button>
+
+        <!-- Pallino dei presidi (#8): sempre visibile per chi passa la porta,
+             ANCHE a zero (verde con lo 0 = «visto e vuoto»). Un segmento per
+             allarmi (danger) e uno per non letti (warn), stesse classi del
+             badge code (`topbar-contatore-*`). Click → «Processi automatici»,
+             che c'e' gia'. -->
+        <button
+          v-if="presidiDisponibile"
+          class="topbar-icon-btn topbar-contatore-btn"
+          v-tooltip.bottom="presidiTooltip"
+          @click="apriProcessiAutomatici"
+        >
+          <i :class="NAV_ICONS.PROCESSI_AUTOMATICI"></i>
+          <Badge
+            v-for="(seg, i) in presidiPallino?.segmenti ?? []"
+            :key="seg.chiave"
+            :value="seg.valore"
+            :severity="seg.severity"
+            class="topbar-contatore-badge"
+            :class="i === 0 ? 'topbar-contatore-badge-alto' : 'topbar-contatore-badge-basso'"
           />
         </button>
 
@@ -302,14 +383,14 @@ onMounted(async () => {
            Standard di kebab (stessa palette `app-menu-item-action`).
            Sempre visibile, subito prima del logout. -->
       <button
-        class="topbar-icon-btn topbar-user-kebab-btn"
+        class="topbar-icon-btn"
         v-tooltip.bottom="t('common.altre_azioni')"
         aria-haspopup="true"
         @click="toggleUserKebab"
       >
         <i :class="MANAGE_ICONS.KEBAB"></i>
       </button>
-      <TieredMenu ref="userKebabMenu" :model="userKebabItems" popup class="topbar-user-kebab-menu" />
+      <TieredMenu ref="userKebabMenu" :model="userKebabItems" popup />
 
       <!-- Logout -->
       <button
@@ -370,10 +451,17 @@ onMounted(async () => {
 }
 
 .topbar-area-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-size: var(--app-font-size-base);
   font-weight: 500;
   color: var(--app-topbar-breadcrumb-active-color);
   white-space: nowrap;
+}
+.topbar-area-icon {
+  font-size: 0.95em;
+  opacity: 0.85;
 }
 
 .topbar-right {
@@ -458,23 +546,27 @@ onMounted(async () => {
   color: var(--p-orange-500);
 }
 
-/* Badge code di lavoro — due segmenti overlay sull'icona (pattern
-   AlertScadenzeWidget): lavori in alto a destra, stampa in basso a destra. */
-.topbar-code-btn {
+/* Contatori ambientali della topbar (badge code, pallino presidi): stessa
+   geometria per tutti — pulsante relativo, segmento «alto» in alto a destra
+   (lavori · allarmi, o lo zero verde), segmento «basso» in basso a destra
+   (stampa · non letti); pattern AlertScadenzeWidget. ⛔ UNA famiglia di
+   classi: fino al 2026-09-19 il pallino ne aveva una copia identica riga per
+   riga con un altro nome. */
+.topbar-contatore-btn {
   position: relative;
 }
-.topbar-code-badge {
+.topbar-contatore-badge {
   position: absolute;
   font-size: 0.6rem;
   min-width: 1rem;
   height: 1rem;
   line-height: 1rem;
 }
-.topbar-code-badge-lavori {
+.topbar-contatore-badge-alto {
   top: -4px;
   right: -6px;
 }
-.topbar-code-badge-stampa {
+.topbar-contatore-badge-basso {
   bottom: -4px;
   right: -6px;
 }

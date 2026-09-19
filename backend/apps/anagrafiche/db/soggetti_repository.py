@@ -45,13 +45,22 @@ _SOGGETTI_ORDER_COLS: dict[str, str] = {
 }
 
 # Scopo: clausola scope emittente sul ruolo CL (regola del 2: usata da
-#        get_soggetto_ruoli e search_ruoli_lookup; una terza variante inline
-#        vive nella jsonb_agg di list_soggetti). Un ruolo CL e' visibile a un
-#        operatore scoped solo se il soggetto ha un cliente il cui BA e'
-#        agganciato a uno dei suoi emittenti, o al gestore default per BA
-#        senza aggancio esplicito. Richiede alias `sr` (soggetti_ruoli) e
-#        `tr` (tipi_ruoli) nel contesto chiamante. 3 parametri posizionali:
-#        emittente_ids, emittente_ids, emittente_ids (NULL = bypass admin).
+#        list_soggetti, get_soggetto_ruoli e search_ruoli_lookup). Un ruolo CL
+#        e' visibile a un operatore scoped solo se il soggetto ha un cliente il
+#        cui BA e' visibile per i suoi emittenti. Richiede alias `sr`
+#        (soggetti_ruoli) e `tr` (tipi_ruoli) nel contesto chiamante.
+#        2 parametri posizionali: emittente_ids, emittente_ids (NULL = bypass).
+# ⛔ «BA visibile» lo decide `script.fn_check_ba_visible_for_emittenti`, come
+#    gia' `billing_account_repository` e `istanze_utility_repository`. Fino
+#    al 2026-09-13 la regola stava qui INLINE — «mapping specifico, altrimenti
+#    default se il BA non ha mapping» — in TRE copie (questa e una ricopiata
+#    dentro la jsonb_agg di list_soggetti): dal changeSet `20260913-01` (D13)
+#    la regola del DB ha tre livelli (in sessione un BA senza legame e'
+#    dell'operatore che sta agendo) e le copie sarebbero rimaste alla vecchia,
+#    in silenzio. Una regola, un posto: brief-db-ba-riserva-emittente-operatore-d13 §6.2.
+# ⚠️ Il `JOIN billing_account` RESTA anche se la fn riceve l'id: `clienti` e
+#    `billing_account` hanno entrambe la RLS e i filtri si sommano (api.md
+#    §Enforcement RLS) — togliere il JOIN toglierebbe un cancello in silenzio.
 _RUOLO_CL_SCOPE_SQL = """(
                  %s::bigint[] IS NULL
                  OR COALESCE(tr.codice_interno, tr.codice) != 'CL'
@@ -61,27 +70,7 @@ _RUOLO_CL_SCOPE_SQL = """(
                        JOIN anagrafiche.billing_account ba
                          ON ba.id = cl.billing_account_id
                       WHERE cl.soggetto_ruolo_id = sr.id
-                        AND (
-                              EXISTS (
-                                  SELECT 1
-                                    FROM anagrafiche.emittenti_fiscali_billing_account efba
-                                   WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                                     AND efba.billing_account_id = ba.id
-                              )
-                           OR (
-                                EXISTS (
-                                    SELECT 1
-                                      FROM anagrafiche.emittenti_fiscali_billing_account efba
-                                     WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                                       AND efba.is_default = true
-                                )
-                                AND NOT EXISTS (
-                                    SELECT 1
-                                      FROM anagrafiche.emittenti_fiscali_billing_account efba2
-                                     WHERE efba2.billing_account_id = ba.id
-                                )
-                              )
-                            )
+                        AND script.fn_check_ba_visible_for_emittenti(ba.id, %s::bigint[])
                  )
                )"""
 
@@ -167,44 +156,7 @@ class SoggettiRepository:
                     FROM anagrafiche.soggetti_ruoli sr
                     JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
                    WHERE sr.soggetto_id = s.id
-                     AND (
-                       -- Nessun filtro emittente: mostra tutti i ruoli
-                       %s::bigint[] IS NULL
-                       -- Ruoli non-CL: sempre visibili
-                       OR COALESCE(tr.codice_interno, tr.codice) != 'CL'
-                       -- Ruolo CL: visibile solo se almeno un cliente
-                       -- del soggetto e' nello scope emittente dell'operatore
-                       OR EXISTS (
-                           SELECT 1
-                             FROM anagrafiche.clienti cl
-                             JOIN anagrafiche.billing_account ba
-                               ON ba.id = cl.billing_account_id
-                            WHERE cl.soggetto_ruolo_id = sr.id
-                              AND (
-                                    -- Mapping specifico
-                                    EXISTS (
-                                        SELECT 1
-                                          FROM anagrafiche.emittenti_fiscali_billing_account efba
-                                         WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                                           AND efba.billing_account_id = ba.id
-                                    )
-                                 OR (
-                                      -- Fallback default, solo BA senza mapping specifico
-                                      EXISTS (
-                                          SELECT 1
-                                            FROM anagrafiche.emittenti_fiscali_billing_account efba
-                                           WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                                             AND efba.is_default = true
-                                      )
-                                      AND NOT EXISTS (
-                                          SELECT 1
-                                            FROM anagrafiche.emittenti_fiscali_billing_account efba2
-                                           WHERE efba2.billing_account_id = ba.id
-                                      )
-                                    )
-                                  )
-                       )
-                     )
+                     AND {_RUOLO_CL_SCOPE_SQL}
                    ) AS ruoli,
                    COUNT(*) OVER () AS total_count
               FROM anagrafiche.soggetti s
@@ -220,7 +172,7 @@ class SoggettiRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params = [
-            emittente_ids, emittente_ids, emittente_ids,
+            emittente_ids, emittente_ids,
             search_pattern, search_pattern, search_pattern, search_pattern,
             tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id,
             limit, offset,
@@ -742,7 +694,7 @@ class SoggettiRepository:
              ORDER BY tr.descrizione
         """  # noqa: S608
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id, emittente_ids, emittente_ids, emittente_ids])
+            cursor.execute(sql, [soggetto_id, emittente_ids, emittente_ids])
             return rows_to_list(cursor)
 
     # Scopo: Lookup ricco per la selezione contesto pratica — una riga per
@@ -799,7 +751,7 @@ class SoggettiRepository:
         where_params = [
             search_pattern, search_pattern, search_pattern,
             tipo_ruolo, tipo_ruolo,
-            emittente_ids, emittente_ids, emittente_ids,
+            emittente_ids, emittente_ids,
             search_pattern, search_pattern, search_pattern,
             tipo_ruolo,
         ]

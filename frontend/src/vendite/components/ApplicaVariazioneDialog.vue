@@ -101,7 +101,7 @@ function backToInput() {
 
     <!-- Step 1: Input -->
     <template v-if="step === 'input'">
-      <Message severity="info" :closable="false" class="mb-1">
+      <Message severity="info" :closable="false">
         {{ t('vendite.listini.variazione_pct_help') }}
       </Message>
 
@@ -125,7 +125,7 @@ function backToInput() {
 
     <!-- Step 2: Preview + conferma -->
     <template v-if="step === 'preview'">
-      <Message severity="warn" :closable="false" class="mb-1">
+      <Message severity="warn" :closable="false">
         {{ t('vendite.listini.variazione_pct_righe_coinvolte', { count: previewCount }) }}
       </Message>
 

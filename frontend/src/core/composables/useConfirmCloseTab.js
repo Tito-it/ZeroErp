@@ -25,7 +25,7 @@ export function useConfirmCloseTab() {
 
     if (tab.dirty) {
       confirmAction({
-        title: t('tabs.close_confirm_title'),
+        header: t('tabs.close_confirm_title'),
         message: t('tabs.close_confirm_message'),
         acceptLabel: t('tabs.close_confirm_accept'),
         onAccept: () => closeTabAndNavigate(tab),

@@ -180,7 +180,7 @@ function onSave() {
 function requestClose() {
   if (stagedFiles.value.length > 0) {
     confirmAction({
-      title: t('documenti.emissione.abbandona_titolo'),
+      header: t('documenti.emissione.abbandona_titolo'),
       message: props.advancesState
         ? t('documenti.emissione.abbandona_messaggio_draft')
         : t('documenti.emissione.abbandona_messaggio'),
@@ -221,7 +221,7 @@ onBeforeUnmount(revokePreview)
   >
     <div class="documento-emissione">
       <!-- Riepilogo di dominio (listino/versione/eccezioni per l'offerta). -->
-      <div v-if="$slots.riepilogo" class="documento-emissione__riepilogo">
+      <div v-if="$slots.riepilogo" >
         <slot name="riepilogo" />
       </div>
 
@@ -231,7 +231,7 @@ onBeforeUnmount(revokePreview)
            - append mode: upload immediato al pick (no staging, nessun
              bottone Conferma da cliccare — il file e' caricato subito,
              il documento esiste gia'). -->
-      <div class="documento-emissione__allegati">
+      <div>
         <div class="documento-emissione__allegati-head">
           <span class="documento-emissione__allegati-title">
             {{ t('documenti.emissione.allegati_titolo') }}
@@ -290,7 +290,7 @@ onBeforeUnmount(revokePreview)
       <!-- Anteprima del documento che verra' generato (solo draft mode).
            Sta sotto allegati per non spingere il bottone graffetta fuori
            dal viewport visibile del dialog. -->
-      <div v-if="advancesState" class="documento-emissione__preview">
+      <div v-if="advancesState" >
         <div class="documento-emissione__preview-head">
           <span class="documento-emissione__preview-title">
             {{ t('documenti.emissione.anteprima_titolo') }}
@@ -350,7 +350,7 @@ onBeforeUnmount(revokePreview)
   width: 100%;
   height: 40vh;
   border: 1px solid var(--app-card-border);
-  border-radius: var(--p-border-radius, 6px);
+  border-radius: var(--app-border-radius);
 }
 .documento-emissione__preview-loading {
   display: flex;
@@ -371,7 +371,7 @@ onBeforeUnmount(revokePreview)
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
   border: 1px solid var(--app-card-border);
-  border-radius: var(--p-border-radius, 6px);
+  border-radius: var(--app-border-radius);
 }
 .documento-emissione__file-name {
   flex: 1 1 auto;

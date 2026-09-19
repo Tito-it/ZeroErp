@@ -11,7 +11,7 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 15-05-2026)
+(latest review 14-09-2026)
 `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione**
 di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi.
 L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato
@@ -41,6 +41,56 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
   DRAFT (non-abortita) rende automaticamente non-attiva la rev precedente.
 * **Righe copiate**: solo attive con `quantita > 0`, `ORDER BY ordine, id`
   (ordinamento deterministico necessario per il remap FK componenti).
+  ⚠️ **La copia ha un elenco ESPLICITO di colonne**: una colonna nuova sulla
+  riga **non passa** finché qualcuno non la nomina qui. È il punto in cui una
+  colonna si perde senza errore — successo con la data di consegna.
+* **`data_consegna_richiesta_cliente` copiata** (rev 2026-09-14, `20260914-13`):
+  la data che il cliente ha chiesto è un **input della controparte**, non una
+  promessa nostra da rinegoziare — la rev N+1 la eredita come eredita
+  articolo e quantità, e chi vuole cambiarla la cambia sulla riga. ⚠️ Fino a
+  quel giorno la revisione nasceva con la data a `NULL`: P-5 del brief
+  (`20260913-20`) aveva coperto il passaggio preventivo→ordine, non
+  rev N→N+1, e nessun pgTAP lo pinnava (segnalazione del BE). Presidio:
+  `db/pgtap/vendite/test-date-consegna-ordine-v1.sql`, test 11-13 (fixture
+  costruita: misura la stessa cosa su dbdev e in CI).
+* **L'ancora si copia** (rev 2026-09-15, `20260915-41`, D3 di Tid): la **testata** della
+  rev N+1 porta `emittente_fiscale_id` della rev N. Fino a quel giorno non era nell'elenco
+  esplicito delle colonne e lo riempiva il **trigger di default di sessione**: per un
+  operatore della stessa azienda lo stesso valore, ma per un super admin senza emittente
+  attivo la revisione **sollevava** (`E_…_EMITTENTE_NON_RISOLTO`) e con un emittente attivo
+  diverso nasceva incoerente col BA e la fermava `trgfn_preventivi_guard_emittente_ba` —
+  un difetto mascherato da un guard, quindi mai un dato sbagliato a terra, solo una
+  revisione impossibile. La revisione è **lo stesso documento**: copia l'ancora, come già
+  [fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta). Trovato
+  censendo chi si appoggiava al default senza dirlo, nel ritiro delle copie
+  (`brief-db-emittente-di-default-un-bb-solo`, sezione 7.1). Presidio: test 18 di
+  `db/pgtap/script/test-trgfn-default-emittente-fiscale-v1.sql`.
+* **Marche di approvazione prezzo copiate 1:1** (rev 2026-09-14, `20260914-14`,
+  decisione di Tid): `stato_approvazione_prezzo` e
+  `pratica_approvazione_prezzo_id` passano sulla riga della rev N+1 come già
+  sui **componenti** di questa funzione e come in
+  [fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta)
+  (rev2 2026-06-01). La ragione è la stessa: i gate L3 scattano sull'**edit**,
+  non alla revisione, quindi lo stato è l'unico marcatore persistente che un
+  prezzo fuori policy è autorizzato o in attesa — azzerarlo faceva nascere la
+  rev N+1 con lo stesso prezzo e **senza marca** (com'era dal 2026-04-22:
+  colonne arrivate dopo la funzione, nominate dal rewrite del 15-05 solo per i
+  componenti). Una riga `PENDING` copiata resta congelata da
+  [trgfn_righe_guard_pending](/dbzero/script/funzioni/trgfn_righe_guard_pending).
+  ⚠️ **Caveat, lo stesso dell'offerta e non deciso qui**: la pratica resta
+  agganciata per id a **entrambe** le righe (rev N e N+1) e il suo `meta`
+  nomina la riga della rev N — chi approva dalla coda agisce su quella. Il
+  ciclo di vita della pratica su una revisione superata è del dominio
+  approvazioni (BE): `refactor-prezzi.md` §4.7.
+* **Colonne di riga che NON si copiano, e perché** — ⭐ **elenco presidiato**
+  da `db/pgtap/vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.sql`
+  (test 1-2): ogni colonna di `preventivi_righe` deve essere o nominata nella
+  copia o dichiarata esclusa lì con la ragione, altrimenti il test è rosso —
+  la prossima colonna di riga non può più perdersi in silenzio.
+  `natura_vendita_id` — la deriva e la **congela** dall'articolo il trigger
+  `BEFORE INSERT` (`trgfn_preventivi_righe_set_natura_vendita`): nominarla
+  scriverebbe un valore che viene sovrascritto; `tx_id` — framework;
+  `id`, `data_insert`, `data_update` — identity e audit.
 * **Componenti BoM copiati** (15-05-2026): le righe `preventivi_righe_componenti`
   vengono copiate con FK remap `old_riga_id → new_riga_id` tramite
   `ROW_NUMBER() OVER (ORDER BY ordine, id)`. Solo componenti con `attivo IS TRUE`.
@@ -66,6 +116,13 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
 | `p_preventivo_id` | `vendite.preventivi.id%TYPE` | ID del preventivo da revisionare. Obbligatorio, > 0. |
 | `p_user` | `vendite.preventivi.user_update%TYPE` | Utente che esegue l'operazione. |
 
+⚠️ La firma e la `RETURNS TABLE` sono ancorate con `%TYPE` **negli ultimi
+changeSet** (`20260914-13` e `-14`, com'erano in `20260515-04` e `20260628-21`):
+`20260805-25` le aveva ricopiate sciolte dal corpo vivo, che risolve i `%TYPE`
+al `CREATE`. L'identità della funzione non cambia (`bigint, text`). La funzione
+è dichiarata `SECURITY INVOKER` esplicito: madre a più scritture, gira come
+l'operatore che la chiama (RLS e scope emittente restano i suoi).
+
 ---
 
 ### 📦 Output
@@ -80,11 +137,14 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
 
 ### Codici errore
 
+(prefisso `E_` dal `20260805-25`; i nomi senza prefisso restano a catalogo
+ritirati con `obsoleto_dal` — fino al 14-09-2026 questa tabella li citava ancora)
+
 | Codice | Quando |
 | --- | --- |
-| `PREV_REVISIONE_STATO_NON_AMMESSO` | Stato corrente diverso da `EMESSO` (rev 03-05-2026: `ACCETTATO` non piu' ammesso) |
-| `PREV_REVISIONE_BOZZA_ESISTENTE` | Esiste gia' una revisione DRAFT per lo stesso numero |
-| `PREV_STATO_CORRENTE_NON_TROVATO` | Preventivo non trovato |
+| `E_PREV_REVISIONE_STATO_NON_AMMESSO` | Stato corrente diverso da `EMESSO` (rev 03-05-2026: `ACCETTATO` non piu' ammesso) |
+| `E_PREV_REVISIONE_BOZZA_ESISTENTE` | Esiste gia' una revisione DRAFT per lo stesso numero |
+| `E_PREV_STATO_CORRENTE_NON_TROVATO` | Preventivo non trovato |
 | `E_CONFIG_MANCANTE` | Stato DRAFT non configurato/attivo in config.stati_doc_preventivi |
 | `E_PARAMETRO_INVALIDO` | p_preventivo_id NULL o <= 0 |
 

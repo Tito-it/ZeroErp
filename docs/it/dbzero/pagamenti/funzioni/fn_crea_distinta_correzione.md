@@ -15,6 +15,7 @@ DECLARE
     v_stato_codice     pagamenti.vendite_contabili_stati.codice_interno%TYPE;
     v_centro_id        pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
     v_ente_id          pagamenti.vendite_contabili.ente_incasso_id%TYPE;
+    v_emittente_sr     pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
     v_codice_origine   pagamenti.vendite_contabili.codice%TYPE;
     v_gia_corretta     pagamenti.vendite_contabili.codice%TYPE;
     v_stato_bozza_id   pagamenti.vendite_contabili_stati.id%TYPE;
@@ -45,9 +46,12 @@ BEGIN
     -- passare nessun altro.
     -- ⚠️ Sotto RLS «non esiste» e «non la vedi» arrivano qui allo
     --    stesso modo, ed e' la scelta di tutto lo schema.
+    -- ⭐ Rev 2026-09-15: si legge anche l'EMITTENTE — la correzione
+    --    nasce dello stesso emittente, quindi sullo stesso registro.
     -- =========================================================
-    SELECT st.codice_interno, c.centro_riscossione_id, c.ente_incasso_id, c.codice
-      INTO v_stato_codice, v_centro_id, v_ente_id, v_codice_origine
+    SELECT st.codice_interno, c.centro_riscossione_id, c.ente_incasso_id,
+           c.emittente_soggetto_ruolo_id, c.codice
+      INTO v_stato_codice, v_centro_id, v_ente_id, v_emittente_sr, v_codice_origine
       FROM pagamenti.vendite_contabili c
       JOIN pagamenti.vendite_contabili_stati st ON st.id = c.stato_id
      WHERE c.id = p_contabile_id
@@ -137,18 +141,23 @@ BEGIN
     END IF;
 
     -- =========================================================
-    -- La distinta NUOVA: stesso centro, stesso canale, in bozza.
-    -- ⛔ `codice` non si passa: lo mette il DEFAULT della colonna.
+    -- La distinta NUOVA: stesso centro, stesso canale, STESSO
+    -- EMITTENTE, in bozza.
+    -- ⛔ `codice` non si passa: lo assegna il trigger sul registro
+    --    DISTINTA dell'emittente (rev 2026-09-15, D5) — stesso
+    --    emittente, stesso registro, il PROSSIMO del sezionale.
     -- ⛔ E non si usa il get-or-create: la sua chiave di riuso
     --    comprende l'operatore, e queste righe finirebbero nella
     --    distinta di lavoro di oggi.
     -- =========================================================
     INSERT INTO pagamenti.vendite_contabili (
-        centro_riscossione_id, ente_incasso_id, data_contabile,
-        data_registrazione, stato_id, origine, contabile_corretta_id, meta)
+        centro_riscossione_id, ente_incasso_id, emittente_soggetto_ruolo_id,
+        data_contabile, data_registrazione, stato_id, origine,
+        contabile_corretta_id, meta)
     VALUES (
-        v_centro_id, v_ente_id, p_data_contabile,
-        CURRENT_DATE, v_stato_bozza_id, 'MANUALE', p_contabile_id,
+        v_centro_id, v_ente_id, v_emittente_sr,
+        p_data_contabile, CURRENT_DATE, v_stato_bozza_id, 'MANUALE',
+        p_contabile_id,
         jsonb_strip_nulls(jsonb_build_object(
             'correzione_di', v_codice_origine,
             'motivo_correzione', NULLIF(btrim(COALESCE(p_motivo, '')), ''))))
@@ -187,7 +196,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pagamenti.fn_crea_distinta_correzione(p_contabile_id bigint, p_data_contabile date, p_motivo text)
-IS 'La CORREZIONE GUIDATA (Q-7): da una distinta registrata apre una distinta NUOVA, in bozza, con le righe di segno opposto gia'' dentro. ⛔ Si chiama correzione e mai «storno»: STORNATA e'' stata ritirata dal catalogo il 2026-08-21. ⛔ E non e'' una sistemazione — quella decide che fare di un''eccedenza VERA, questa rimedia a una registrazione SBAGLIATA: confonderle significherebbe registrare come credito del cliente un errore di battitura. ⭐ E'' una MADRE e non un ciclo nel backend perche'' N righe dentro una testata nuova sono un atto solo: un ciclo che si rompe a meta'' lascia una distinta a meta'', cioe'' il documento che nessuno sa piu'' leggere. 🔴 Le righe nascono con fattura e rata GIA'' COMPILATE ma in stato DA_ABBINARE, e la ragione e'' una MISURA: una riga di segno opposto su una rata saldata dal movimento che si sta correggendo viene RIFIUTATA dal guard della capienza (con residuo zero non c''e'' spazio in nessuna direzione), quindi nascere gia'' ABBINATA pretenderebbe forzata = true — cioe'' forzare al posto dell''operatore, l''opposto del doppio tempo di D14-d. In DA_ABBINARE la riga non occupa spazio e il guard non la esamina: la correzione guida tutto tranne l''ultimo clic. ⭐ Le righe NON postate si saltano e l''esito le conta (`righe_saltate`), con lo stesso vocabolario di fn_posta_contabile: un secondo verbo che risponde come il primo si impara una volta sola. ⭐ «Niente da correggere» e'' un ESITO (`NULLA_DA_CORREGGERE`) e non un errore, come NULLA_DA_POSTARE. ⛔ NON usa fn_get_or_create_vendite_contabile: la sua chiave di riuso su MANUALE comprende giornata + canale + OPERATORE, quindi le righe di correzione finirebbero nella distinta di lavoro di oggi — questa e'' un documento proprio. ⛔ E non registra niente: nasce in BOZZA e la registra una persona, guardandola. Precompilare e'' un aiuto, non una decisione. S6-4 del cantiere incassi.';
+IS 'La CORREZIONE GUIDATA (Q-7): da una distinta registrata apre una distinta NUOVA, in bozza, con le righe di segno opposto gia'' dentro. ⛔ Si chiama correzione e mai «storno»: STORNATA e'' stata ritirata dal catalogo il 2026-08-21. ⛔ E non e'' una sistemazione — quella decide che fare di un''eccedenza VERA, questa rimedia a una registrazione SBAGLIATA: confonderle significherebbe registrare come credito del cliente un errore di battitura. ⭐ E'' una MADRE e non un ciclo nel backend perche'' N righe dentro una testata nuova sono un atto solo: un ciclo che si rompe a meta'' lascia una distinta a meta'', cioe'' il documento che nessuno sa piu'' leggere. 🔴 Le righe nascono con fattura e rata GIA'' COMPILATE ma in stato DA_ABBINARE, e la ragione e'' una MISURA: una riga di segno opposto su una rata saldata dal movimento che si sta correggendo viene RIFIUTATA dal guard della capienza (con residuo zero non c''e'' spazio in nessuna direzione), quindi nascere gia'' ABBINATA pretenderebbe forzata = true — cioe'' forzare al posto dell''operatore, l''opposto del doppio tempo di D14-d. In DA_ABBINARE la riga non occupa spazio e il guard non la esamina: la correzione guida tutto tranne l''ultimo clic. ⭐ Le righe NON postate si saltano e l''esito le conta (`righe_saltate`), con lo stesso vocabolario di fn_posta_contabile: un secondo verbo che risponde come il primo si impara una volta sola. ⭐ «Niente da correggere» e'' un ESITO (`NULLA_DA_CORREGGERE`) e non un errore, come NULLA_DA_POSTARE. ⛔ NON usa fn_get_or_create_vendite_contabile: la sua chiave di riuso su MANUALE comprende giornata + canale + OPERATORE, quindi le righe di correzione finirebbero nella distinta di lavoro di oggi — questa e'' un documento proprio. ⛔ E non registra niente: nasce in BOZZA e la registra una persona, guardandola. Precompilare e'' un aiuto, non una decisione. ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, L8): la correzione COPIA l''emittente della distinta che corregge — stesso emittente, stesso registro DISTINTA, e il codice (assegnato dal trigger a10_gen_codice, non piu'' dal DEFAULT di colonna) e'' il PROSSIMO del sezionale; meta.correzione_di continua a portare il codice dell''originale, che per il pregresso e'' un VC_… ed e'' giusto cosi''. S6-4 del cantiere incassi.';
 ```
 
 ---

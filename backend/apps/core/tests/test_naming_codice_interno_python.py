@@ -50,7 +50,7 @@
 import re
 from collections import Counter
 from unittest import TestCase
-from apps.core.tests._repo import repo_root
+from apps.core.tests._repo import repo_root, sorgente_senza_commenti
 
 
 # Scopo: sorgente Python (e SQL dentro le sue stringhe) ripulito dai COMMENTI.
@@ -62,9 +62,6 @@ from apps.core.tests._repo import repo_root
 #    rimosso lo scrive per esteso.
 # ⚠️ Due forme, perche' in questi file convivono: `#` (Python) e `--` (SQL dentro
 #    le stringhe della query). Solo a inizio riga, che e' come sono scritte qui.
-def _sorgente_senza_commenti(testo: str) -> str:
-    senza_py = re.sub(r"^[ \t]*#.*$", "", testo, flags=re.M)
-    return re.sub(r"^[ \t]*--.*$", "", senza_py, flags=re.M)
 
 
 # Percorso del guardrail SQL di cui questo file e' il gemello.
@@ -133,7 +130,7 @@ def _violazioni() -> list[tuple[str, str, str, int]]:
     trovate: list[tuple[str, str, str, int]] = []
     for percorso in sorted(radice.rglob("*.py")):
         rel = percorso.relative_to(radice.parent).as_posix()
-        testo = _sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
+        testo = sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
         for numero, riga in enumerate(testo.splitlines(), 1):
             for nome, rx in _REGOLE:
                 m = rx.search(riga)

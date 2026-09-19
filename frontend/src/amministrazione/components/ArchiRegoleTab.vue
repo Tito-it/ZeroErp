@@ -153,7 +153,7 @@ function onSave() {
     <template #form>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_origine') }} *</label>
-        <Select v-model="form.template_flusso_origine_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <Select v-model="form.template_flusso_origine_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_tipo_dest') }} *</label>
@@ -161,16 +161,16 @@ function onSave() {
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_dest') }}</label>
-        <Select v-model="form.template_flusso_dest_id" :options="stepOptions" option-label="label" option-value="value" filter show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <Select v-model="form.template_flusso_dest_id" :options="stepOptions" option-label="label" option-value="value" filter show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
       </div>
       <div class="form-field form-field--wide">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_descrizione') }}</label>
         <InputText v-model="form.descrizione"
-        :invalid="campiErrati.includes('descrizione')" class="w-full" />
+        :invalid="campiErrati.includes('descrizione')" />
       </div>
       <div class="form-field form-field--toggle">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_auto') }}</label>

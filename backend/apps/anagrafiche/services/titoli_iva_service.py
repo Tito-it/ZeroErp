@@ -23,7 +23,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
@@ -31,9 +30,11 @@ from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import require_found
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.service_errors import ServiceError
+from apps.core.services.payload_helpers import PayloadValidator
 
 _MESSAGE = "Payload titolo IVA non valido."
+# Validator del dominio per i campi del payload (`imponibile` della forzatura).
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 # Tetto dichiarato della lista di presidio dei titoli sfondati (Q4).
 # ⛔ Il cap a 500 e' stato RIMOSSO il 2026-09-02: la lista e' paginata, e un
@@ -318,24 +319,11 @@ class TitoliIvaService:
             context={"field": "tipo_movimento"},
         )
 
-        imponibile = payload.get("imponibile")
-        ErrorManager.require(
-            imponibile is not None and str(imponibile).strip() != "",
-            code=E_ANAG_VALIDAZIONE, message=_MESSAGE,
-            detail="imponibile obbligatorio.", context={"field": "imponibile"},
-        )
         # ⚠️ `Decimal` e non `float`: e' un importo fiscale, e il binario
         #    d'arrivo e' una colonna `numeric`. Un float introdurrebbe un errore
         #    di rappresentazione proprio sul numero che l'Agenzia delle Entrate
-        #    verifica.
-        try:
-            valore = Decimal(str(imponibile))
-        except (InvalidOperation, TypeError, ValueError) as exc:
-            raise ServiceError(
-                code=E_ANAG_VALIDAZIONE, message=_MESSAGE,
-                detail="imponibile deve essere un numero.",
-                context={"field": "imponibile"},
-            ) from exc
+        #    verifica. La coercizione (da `str`, bool e NaN rifiutati) e' del BB.
+        valore = _V.require_decimal(payload, "imponibile", message=_MESSAGE)
         # ⚠️ Il segno lo lascia decidere il chiamante (una forzatura corregge in
         #    entrambe le direzioni), ma lo ZERO no: `chk_stiva_movimenti_segno`
         #    lo rifiuta, e un movimento che non muove niente non e' una

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import fetchone_scalar
+from apps.core.db._helpers import fetchone_scalar, rows_to_list
 
 
 class AnagraficheRepository:
@@ -58,3 +58,68 @@ class AnagraficheRepository:
     def _auth_user_attivi(cursor) -> set[int]:
         cursor.execute("SELECT id FROM django.auth_user WHERE is_active = true")
         return {int(row[0]) for row in cursor.fetchall()}
+
+    # Scopo: Le RISORSE UMANE per un lookup di selezione («chi governa questa
+    #        cosa»): id + nome della persona, con qualifica e reparto per
+    #        distinguere due omonimi. Non c'e' `codice`/`descrizione` sulla
+    #        tabella, ed e' il motivo per cui il lookup generico non serve.
+    # ⭐ Nasce per il responsabile della commessa (brief-db-modifiche-certe-
+    #        ciclo-vendita-e-articolo, §5.5 voce 4, D-A): l'unico lookup in
+    #        servizio era `/pratiche/operatori/`, che e' PER REPARTO. Qui si
+    #        elencano tutte le attive, con ricerca libera opzionale.
+    # ⚠️ `solo_attive=True` e' il default del picker: una persona disattivata
+    #        non si assegna (il require sul figlio la rifiuterebbe a DB). Chi
+    #        deve MOSTRARE un'assegnazione gia' fatta a una persona poi spenta
+    #        legge il display dal proprio dettaglio, non da qui.
+    def list_risorse_umane_lookup(
+        self, *, search: str | None = None, solo_attive: bool = True,
+    ) -> list[dict]:
+        condizioni: list[str] = []
+        params: list[object] = []
+        if solo_attive:
+            condizioni.append("v.risorsa_umana_attivo = true")
+        if search:
+            condizioni.append("v.ragione_sociale_completa ILIKE %s")
+            params.append(f"%{search}%")
+        return self._risorse_umane_lookup(condizioni, params)
+
+    # Scopo: Una risorsa umana per id, nella stessa forma del lookup, o None.
+    #        Serve al guard applicativo «il responsabile e' una persona attiva»
+    #        prima dell'UPDATE (il DB lo rifiuta comunque, ma con un codice
+    #        TECNICO — `E_ATTIVO_REQUIRE` — che l'operatore non puo' leggere).
+    def get_risorsa_umana_lookup(self, risorsa_umana_id: int) -> dict | None:
+        righe = self._risorse_umane_lookup(
+            ["v.risorsa_umana_id = %s"], [risorsa_umana_id],
+        )
+        return righe[0] if righe else None
+
+    # Scopo: LA query del lookup, una sola per l'elenco e per il singolo id.
+    #        Legge la VISTA MODELLO `anagrafiche.vw_risorse_umane_dettaglio`
+    #        (risorsa + soggetto + qualifica + unita' organizzativa): il nome
+    #        della persona e' la `ragione_sociale_completa` del soggetto, e la
+    #        catena che ce lo porta vive nella vista, non qui — riscriverla
+    #        per join in ogni lettore e' il modo in cui due picker della
+    #        stessa persona finiscono per chiamarla in due modi.
+    # ⚠️ La vista legge il soggetto da `risorse_umane.soggetto_id`, che
+    #        `trgfn_risorse_umane_guard_ruolo` tiene uguale a quello del
+    #        `soggetto_ruolo`: e' la stessa persona per costruzione, senza
+    #        passare da `soggetti_ruoli`.
+    # ⚠️ `condizioni` sono letterali di questa classe, i VALORI viaggiano in
+    #        `params`: la forma di `conta_con_perimetro`.
+    def _risorse_umane_lookup(
+        self, condizioni: list[str], params: list[object],
+    ) -> list[dict]:
+        where = f"WHERE {' AND '.join(condizioni)}" if condizioni else ""
+        sql = f"""
+            SELECT v.risorsa_umana_id            AS id,
+                   v.ragione_sociale_completa    AS display,
+                   v.risorsa_umana_attivo        AS attivo,
+                   v.qualifica_descrizione,
+                   v.unita_organizzativa_descrizione
+              FROM anagrafiche.vw_risorse_umane_dettaglio v
+             {where}
+             ORDER BY v.ragione_sociale_completa, v.risorsa_umana_id
+        """  # noqa: S608 — condizioni da letterali della classe, valori in params
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return rows_to_list(cursor)

@@ -10,6 +10,7 @@
 --
 -- Test: dbops.vw_processi_programmazione — la programmazione e l'ultima corsa
 -- ChangeSet: 20260906-03 / -04 / -05 / -06 · 20260907-01 / -06 · 20260911-13 / -14
+--            · 20260914-01 (il verdetto SESSIONE poggia sull'esistenza)
 --
 -- Elenco test (plan 19):
 --  1) la colonna `jobname_pgagent` c'e', ed e' nullable
@@ -32,6 +33,24 @@
 --     installato, visto dal database (presidi §11.5)
 -- 17) ⭐ SESSIONE viva in pg_stat_activity: OK — il segno di vita e' un FATTO
 -- 18) ⛔ SESSIONE assente: MUTO, e da_guardare
+-- 19) ⛔ SESSIONE di un ALTRO utente, MASCHERATA a questo lettore (19a: la
+--     precondizione — backend_start e' NULL da qui), e il panorama la da' OK
+--     lo stesso (19b) — il verdetto poggia sull'esistenza, rev 20260914-01
+--
+-- ⛔ IL TEST 19 E' LA RAGIONE DEL 20260914-01, e il 17 non poteva vederla.
+--   pg_stat_activity mostra a tutti la RIGA di ogni sessione, ma MASCHERA
+--   backend_start (e state, query…) a chi non e' lo stesso utente ne'
+--   pg_read_all_stats — e una vista non cambia l'utente che
+--   pg_stat_get_activity() guarda. Il 17 usa la sessione del test stesso:
+--   stesso utente, niente mascheramento, verde con il difetto dentro. Il 14-09
+--   il primo digest ha contato MUTO su listen_cambio_reparto vivo da 31 ore:
+--   contava come titodb (fn_conta_presidio e' DEFINER) e la sessione era di
+--   zeroerp_app. Il 19 costruisce QUEL caso: una sessione di un altro utente,
+--   aperta con dblink sul DSN del canale di log.
+--   ⚠️ E lo DICHIARA quando non puo': su dev il DSN e' `service=` e un
+--   non-superuser non lo apre; sullo scratch il DSN e' dello stesso utente del
+--   runner (nessun mascheramento). In CI il DSN e' di zeroerp_log e il caso si
+--   costruisce davvero. Dove salta, il presidio cross-ruolo resta il digest.
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ IL TEST 5 E' LA RAGIONE PER CUI LA VISTA ESISTE.
@@ -80,7 +99,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(19);
+SELECT plan(21);
 
 -- ============================================================
 -- 1..3. La colonna e i suoi cancelli
@@ -489,7 +508,8 @@ BEGIN
         (9902, 'PGTAP-CONTRATTO-MUTO',    'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
         (9903, 'PGTAP-CONTRATTO-MAI',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
         (9904, 'PGTAP-SESSIONE-VIVA',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE'),
-        (9905, 'PGTAP-SESSIONE-ASSENTE',  'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE');
+        (9905, 'PGTAP-SESSIONE-ASSENTE',  'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE'),
+        (9906, 'PGTAP-SESSIONE-ALTRUI',   'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE');
 
     -- corsa di dieci minuti fa: dentro la tolleranza di trenta
     INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)
@@ -549,6 +569,87 @@ SELECT is(
 );
 
 SET application_name = 'pgtap';
+
+-- ============================================================
+-- 19. Una sessione di un ALTRO utente: mascherata, eppure viva
+-- ============================================================
+-- ⛔ Il caso si COSTRUISCE aprendo una seconda connessione con dblink sul DSN
+--   del canale di log (myapp.dblink_log_connection), che si presenta col codice
+--   del processo. Se quella connessione e' di un altro utente, da qui la sua
+--   backend_start e' NULL — ed e' esattamente cio' che vedeva il definer del
+--   digest sul listener. Dove il caso non si puo' costruire, lo si DICHIARA.
+CREATE TEMP TABLE _t_altrui ON COMMIT DROP AS
+SELECT false AS connessa, ''::text AS motivo;
+
+DO $altrui$
+DECLARE
+    v_dsn     text := current_setting('myapp.dblink_log_connection', true);
+    v_usename name;
+BEGIN
+    IF pg_has_role(current_user, 'pg_read_all_stats', 'MEMBER')
+       OR (SELECT r.rolsuper FROM pg_roles r WHERE r.rolname = current_user) THEN
+        UPDATE _t_altrui SET motivo = 'il lettore vede tutto (superuser o pg_read_all_stats): '
+                                   || 'nessun mascheramento, il caso non si distingue';
+        RETURN;
+    END IF;
+    IF v_dsn IS NULL OR btrim(v_dsn) = '' THEN
+        UPDATE _t_altrui SET motivo = 'myapp.dblink_log_connection non impostata: '
+                                   || 'nessun DSN con cui aprire una sessione altrui';
+        RETURN;
+    END IF;
+    BEGIN
+        PERFORM dblink_connect('pgtap_sessione_altrui',
+                               v_dsn || ' application_name=PGTAP-SESSIONE-ALTRUI');
+    EXCEPTION WHEN OTHERS THEN
+        UPDATE _t_altrui SET motivo = 'dblink_connect rifiutato (' || SQLSTATE || '): ' || SQLERRM
+                                      || ' — su dev il DSN e'' service= e un non-superuser non lo apre';
+        RETURN;
+    END;
+    PERFORM pg_stat_clear_snapshot();
+    SELECT a.usename INTO v_usename
+      FROM pg_stat_activity a
+     WHERE a.application_name = 'PGTAP-SESSIONE-ALTRUI' AND a.datname = current_database()
+     ORDER BY a.pid LIMIT 1;
+    IF v_usename IS NOT DISTINCT FROM current_user THEN
+        PERFORM dblink_disconnect('pgtap_sessione_altrui');
+        UPDATE _t_altrui SET motivo = 'il DSN e'' dello STESSO utente del runner (' || current_user
+                                      || '): nessun mascheramento, il caso non si distingue';
+        RETURN;
+    END IF;
+    UPDATE _t_altrui SET connessa = true;
+END $altrui$;
+
+SELECT pg_stat_clear_snapshot();
+
+-- 19a. La precondizione, asserita: senza mascheramento il 19b sarebbe verde
+--      per sottrazione, come il 17.
+SELECT CASE WHEN (SELECT connessa FROM _t_altrui) THEN
+    is(
+        (SELECT (a.backend_start IS NULL)::text || '/' || (a.usename <> current_user)::text
+           FROM pg_stat_activity a
+          WHERE a.application_name = 'PGTAP-SESSIONE-ALTRUI' AND a.datname = current_database()
+          ORDER BY a.pid LIMIT 1),
+        'true/true',
+        '19a. la sessione altrui e'' viva ma MASCHERATA a questo lettore: backend_start NULL, utente diverso'
+    )
+ELSE
+    skip('19a. sessione altrui non costruibile: ' || (SELECT motivo FROM _t_altrui))
+END;
+
+-- 19b. Il verdetto: esiste ⇒ OK, anche se «da quando» non e' dato vederlo.
+SELECT CASE WHEN (SELECT connessa FROM _t_altrui) THEN
+    is(
+        (SELECT stato || '/' || da_guardare::text || '/' || (ultimo_segno_di_vita IS NULL)::text
+           FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-SESSIONE-ALTRUI'),
+        'OK/false/true',
+        '19b. SESSIONE di un altro utente: OK e non da guardare — il verdetto poggia sull''esistenza; ultimo_segno_di_vita resta NULL per chi non puo'' leggerlo'
+    )
+ELSE
+    skip('19b. sessione altrui non costruibile: ' || (SELECT motivo FROM _t_altrui))
+END;
+
+-- La connessione altrui NON e' transazionale: si chiude a mano.
+SELECT CASE WHEN connessa THEN dblink_disconnect('pgtap_sessione_altrui') END FROM _t_altrui;
 
 -- ⛔ Si toglie il seminato: nessun processo di prova deve sopravvivere al file.
 DELETE FROM maintenance.job_run_log WHERE processo_codice LIKE 'PGTAP-CONTRATTO-%';

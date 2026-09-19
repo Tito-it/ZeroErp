@@ -9,7 +9,7 @@
 html,
 body {
   height: 100%;
-  font-family: var(--p-font-family);
+  font-family: var(--app-font-family);
   background: var(--app-content-bg);
   color: var(--p-text-color);
   -webkit-font-smoothing: antialiased;
@@ -70,12 +70,13 @@ a {
   width: 200px;
 }
 
-/* «Mostra i nascosti» (BB ToggleNascoste): interruttore + etichetta + «(N)»
- * in linea. `min-height` = altezza dei controlli di form della stessa riga
- * (`.app-form-select.p-select`): un interruttore e' piu' basso di una Select e
- * senza pavimento si disallineerebbe dai vicini. Il numero e' muted perche' e'
- * un'informazione di contorno: cio' che conta e' la parola accanto. */
-.app-toggle-nascoste {
+/* Interruttore di filtro (BB FiltroToggle): interruttore + etichetta in linea,
+ * e «(N)» per quelli che allargano la lista. `min-height` = altezza dei
+ * controlli di form della stessa riga (`.app-form-select.p-select`): un
+ * interruttore e' piu' basso di una Select e senza pavimento si
+ * disallineerebbe dai vicini. Il numero e' muted perche' e' un'informazione di
+ * contorno: cio' che conta e' la parola accanto. */
+.app-filtro-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -86,7 +87,7 @@ a {
 /* `font-weight` esplicito: il root del BB e' un `<label>`, e dentro un
  * `.form-field` erediterebbe il grassetto delle etichette — il numero deve
  * restare di contorno anche li'. */
-.app-toggle-nascoste-count {
+.app-filtro-toggle-count {
   color: var(--p-text-muted-color);
   font-weight: 400;
   white-space: nowrap;
@@ -425,7 +426,9 @@ a {
  * colonne mantiene la somma delle larghezze <= contenitore, quindi forzare un
  * min-width reintrodurrebbe lo scroll proprio quando si apre la sidebar — il
  * problema che il ritiro elimina. La tabella resta a `width: max-content;
- * min-width: 100%` (riempie il contenitore senza forzature).
+ * min-width: 100%` (riempie il contenitore senza forzature) — ma con il TETTO
+ * di cella del blocco «liste responsive» qui sotto, senza il quale
+ * `max-content` e' il contenuto vero e la somma del packing non vale.
  */
 .app-datatable:not(.app-datatable--inner):not(.app-datatable--responsive):has(.p-datatable-thead > tr > th:nth-child(8)) .p-datatable-table {
   min-width: max(100%, 1040px) !important;
@@ -437,6 +440,55 @@ a {
 
 .app-datatable:not(.app-datatable--inner):not(.app-datatable--responsive):has(.p-datatable-thead > tr > th:nth-child(12)) .p-datatable-table {
   min-width: max(100%, 1480px) !important;
+}
+
+/* ===== Liste responsive: la larghezza di catalogo e' un TETTO, non un minimo =====
+ * Il packing di useResponsiveColumns somma le larghezze DICHIARATE e ritira
+ * colonne finche' la somma entra nel contenitore. Ma con `width: max-content`
+ * ogni colonna era larga quanto il suo contenuto piu' lungo, e la larghezza di
+ * catalogo (il `width` inline della Column) era solo un minimo: il packing
+ * diceva «entra tutto», il browser rendeva di piu', e la differenza usciva
+ * come scrollbar orizzontale — DI PIU' a sidebar chiusa, perche' con piu'
+ * spazio il packing ritirava meno colonne (rilievo in-app di Tid, 2026-09-18).
+ *
+ * Qui il contenuto di cella e intestazione non puo' superare `--col-w` (la
+ * stessa larghezza che il packing ha contato, passata da ListaConfigurabile):
+ * un testo piu' lungo va in ellissi su una riga, col testo intero nel `title`.
+ * Cosi' la somma resa E' quella dichiarata, la scrollbar non compare per
+ * costruzione e la colonna azioni — alla sua larghezza naturale, mai
+ * tagliata — resta sempre l'ultima a video. Una larghezza di catalogo troppo
+ * stretta smette di essere una scrollbar muta e diventa un'ellissi visibile:
+ * si corregge dall'amministrazione, e' un dato.
+ *
+ * Il tetto e' `--col-w - 2 * padding orizzontale`: `box-sizing: border-box`
+ * (globale) fa includere il padding nel `width` della cella, quindi al
+ * contenuto resta la larghezza netta. Sulle colonne senza `--col-w` (azioni,
+ * expander, selezione) il `calc` e' invalido e la dichiarazione decade da se'.
+ */
+.app-datatable--responsive .p-datatable-tbody > tr > td > .app-lista-cella {
+  max-width: calc(var(--col-w) - 2 * var(--app-table-cell-padding-x));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* L'intestazione ha lo stesso tetto: un titolo lungo in una colonna stretta
+ * allargherebbe la colonna esattamente come un contenuto lungo. Il flex di
+ * PrimeVue (titolo + icona di ordinamento) cede solo sul titolo. */
+.app-datatable--responsive .p-datatable-thead > tr > th > .p-datatable-column-header-content {
+  max-width: calc(var(--col-w) - 2 * var(--app-table-cell-padding-x));
+  min-width: 0;
+}
+
+.app-datatable--responsive .p-datatable-column-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-datatable--responsive .p-datatable-sort-icon {
+  flex-shrink: 0;
 }
 
 .app-datatable .p-datatable-thead > tr > th {
@@ -458,7 +510,10 @@ a {
  * del body PrimeVue puo' risultare qualche pixel troppo corto.
  * Il padding extra sull'ultima riga garantisce visibilita' completa. */
 .app-datatable .p-datatable-tbody > tr:last-child > td {
-  padding-bottom: calc(var(--app-table-cell-padding) + 4px);
+  /* ⚠️ `-y`, non la shorthand: `calc(0.3rem 0.5rem + 4px)` e' invalido e fino
+     al 2026-09-18 questa riga era scartata in silenzio — il fix qui sopra non
+     si applicava a nessuna lista. */
+  padding-bottom: calc(var(--app-table-cell-padding-y) + 4px);
 }
 
 /* Spazio aggiuntivo in fondo al body scrollabile per evitare che
@@ -588,6 +643,15 @@ a {
 .form-grid-2col > *,
 .form-grid-3col > * {
   min-width: 0;
+}
+/* Il campo che occupa TUTTA la riga dentro una griglia a 2/3 colonne (un file
+ * da caricare, un HTML da editare). ⚠️ La classe era scritta in cinque
+ * template dal 2026-05 e non esisteva in nessun foglio: i campi stavano in
+ * una colonna sola. Dal 2026-09-17 e' questa, e sostituisce anche lo
+ * `style="grid-column: 1 / -1"` inline che faceva la stessa cosa altrove.
+ * Fuori da una griglia e' innocua (grid-column non fa niente). */
+.form-field-wide {
+  grid-column: 1 / -1;
 }
 
 /* Input con bottone azione affiancato (es. genera CF) */
@@ -849,10 +913,10 @@ a {
 /* Hint informativo al posto di un campo (es. valore derivato automaticamente).
  * Stile coerente con .app-field-error ma colore neutro muted. */
 .app-field-hint {
-  color: var(--text-color-secondary, var(--p-content-color-muted, #6b7280));
+  color: var(--app-text-muted);
   font-size: 0.85rem;
   padding: 0.5rem 0.75rem;
-  background: var(--surface-100, var(--p-content-background, transparent));
+  background: var(--app-surface-bg);
   border-radius: 4px;
 }
 
@@ -947,6 +1011,34 @@ a {
   overflow: hidden;
 }
 
+/* ===== Lista dentro un DIALOG — altezza definita =====
+ * Il corpo di un `Dialog` (`.p-dialog-content`) non e' una colonna flex e non
+ * ha un'altezza sua: un tab-lista montato li' (`<DrawerTabLista>` dentro
+ * `AppDialog`, il picker delle rate) si rende all'altezza del CONTENUTO —
+ * corto con l'empty-state, alto quando le righe arrivano — e il dialog salta
+ * sotto gli occhi di chi cerca (rilievo di Tid, 2026-09-18).
+ *
+ * Con un'altezza DEFINITA la catena e' quella per cui `scroll-height="flex"`
+ * esiste: `.app-tab-content` (questa classe, altezza fissa) > toolbar filtri
+ * (`flex: 0 1 auto`, alta quanto i suoi controlli) > `.lista-configurabile`
+ * (`height: 100%`, comprimibile perche' `min-height: 0`) > DataTable, che da'
+ * al corpo lo spazio che resta e lo fa scorrere se la pagina e' piu' lunga.
+ * Vuota o piena, la lista e' alta uguale: il dialog si apre gia' alto e non
+ * si muove piu'. ⚠️ Cio' che sta SOTTO la lista nel dialog (l'area temporanea
+ * della modalita' multipla) non entra in questa altezza: il corpo del dialog
+ * scorre per lui, e il tetto e' il `max-height: 90%` del `Dialog`.
+ *
+ * Il numero sta in theme.css (`--app-dialog-lista-h`, ~dieci righe): e' il
+ * passo con cui una lista in dialog nasce (`limit: PAGINATION.COMPACT_ROWS`
+ * nello store), cosi' la pagina di default entra intera senza barra.
+ * `flex: none`: dentro una colonna flex l'altezza definita non si deve
+ * ripartire — e' l'ambiguita' che ha gia' fatto sparire il blocco lista delle
+ * dashboard (vedi `.app-dash-fermi`). */
+.app-dialog-lista {
+  height: var(--app-dialog-lista-h);
+  flex: none;
+}
+
 /* ===== Modalita' sola lettura (pattern protect) =====
  * Overlay CSS ispirato ai formati protect AS/400.
  * Blocca ogni interazione, permette copia testo, feedback visivo.
@@ -958,9 +1050,11 @@ a {
   opacity: 0.85;
 }
 
-/* Tasti di uscita — sempre attivi in modalita' protect */
-.app-readonly .p-drawer-close,
-.app-readonly .p-dialog-close,
+/* Tasti di uscita — sempre attivi in modalita' protect.
+ * ⚠️ Solo `.app-escape` (2026-09-18): qui stavano anche `.p-drawer-close` e
+ * `.p-dialog-close`, che in PrimeVue 4 non esistono (`-close-button`) — e non
+ * servivano: `app-readonly` sta sul wrapper del CONTENUTO, la testa del Drawer
+ * con la sua X e' fuori. Il dialog una X non ce l'ha piu' (DIALOG_CHROME). */
 .app-readonly .app-escape {
   pointer-events: auto;
   cursor: pointer;
@@ -1007,7 +1101,7 @@ a {
   opacity: 0.85;
 }
 .app-row-readonly:hover {
-  background: var(--app-row-hover-disabled, transparent) !important;
+  background: transparent !important;
 }
 
 /* ===== Livello BLOCCATO (safety net) =====
@@ -1328,6 +1422,10 @@ a {
   padding: 1.5rem 1rem;
   color: var(--p-text-muted-color);
   font-size: 0.85rem;
+  /* Anche il testo su piu' righe resta centrato: `align-items` centra le
+   * scatole, non le righe dentro. (Dal 17/09: era nella copia locale
+   * `.ut-empty` della matrice utility, e valeva per tutti.) */
+  text-align: center;
 }
 
 .app-empty-state > i.pi {
@@ -1350,6 +1448,38 @@ a {
 .mt-025 { margin-top: 0.25rem; }
 .mt-05  { margin-top: 0.5rem; }
 .mt-1   { margin-top: 1rem; }
+/* Margin-left, stessa famiglia: un Tag o uno span accanto a un testo (la natura
+ * del documento accanto al numero, il badge utility accanto al cliente).
+ * ⚠️ Fino al 2026-09-17 sei siti scrivevano `ml-1`/`ml-2`, che non esistono in
+ * nessun foglio: residui di PrimeFlex, che non e' installato. Sanati qui; il
+ * censimento delle altre classi morte della stessa famiglia (`w-full`, `flex`,
+ * `mb-3`…) e' nel piano D19, registro del 17/09. */
+.ml-05  { margin-left: 0.5rem; }
+.mr-05  { margin-right: 0.5rem; }
+
+/* ===== Testo utility =====
+ * ⭐ `app-text-muted` esisteva solo come VARIABILE (`--app-text-muted`, in
+ * theme.css) e come classe in 34 template: la REGOLA non c'era, e il testo
+ * sottotono era testo normale. Stessa sorte di `text-color-secondary`
+ * (PrimeFlex, 101 siti), migrata qui il 2026-09-17: una classe sola, la nostra.
+ * `font-bold` stava in uno <style scoped> ed era usata in altri otto file:
+ * la regola globale e' questa, la copia scoped e' stata tolta. */
+.app-text-muted { color: var(--app-text-muted); }
+.font-bold { font-weight: 600; }
+/* ⭐ `app-mono` (2026-09-19, regola del 2 — ok Tid): il testo a spaziatura
+ * fissa di un identificativo tecnico (codice job, tx_id, IBAN, fattore, nome
+ * di funzione o di vista). Era `font-family: monospace` scritto in QUINDICI
+ * <style scoped> (piu' uno inline), tre dei quali sotto il nome `.font-mono`
+ * di PrimeFlex — che qui non esiste. Una regola sola; la taglia e il peso
+ * restano al chiamante, che li dichiara nella sua classe. */
+.app-mono { font-family: monospace; }
+
+/* Un NUMERO che sotto zero e' un allarme (la disponibilita' di magazzino: una
+ * promessa non piu' mantenibile, D-L2-d). Rosso di severita' e in grassetto,
+ * nella cella e basta: non un Tag, che in una colonna di numeri allineati a
+ * destra spezzerebbe la lettura della colonna. Token `--app-severity-danger`,
+ * mai un colore scritto qui (feedback_css_centralizzazione). */
+.app-valore-negativo { color: var(--app-severity-danger); font-weight: 600; }
 
 /* ===== Lookup dropdown multi-riga =====
  * Layout riutilizzabile per voci di AutoComplete/Dropdown con piu' campi
@@ -1434,6 +1564,70 @@ a {
 .app-lookup-option__meta > span > i.pi {
   font-size: 0.7rem;
   margin-right: 0.2rem;
+}
+
+/* ===== Area temporanea «righe scelte» (RatePickerDialog multipla) =====
+ * L'ANTEPRIMA di cio' che un Salva scrivera' in N righe: una riga per rata
+ * scelta, con documento, importo modificabile, esito dell'ultimo giro e
+ * cestino. ⛔ Non e' una DataTable (ne' grezza, ne' configurabile): e' un
+ * elenco di righe a griglia, come le card delle sotto-entita' nei drawer.
+ * Quattro zone su una riga larga, che a schermo stretto vanno a capo:
+ *   __doc     → documento · natura · cliente · rata · spazio (testo)
+ *   __importo → il campo (form-field, etichetta sopra)
+ *   __esito   → la frase del database e il secondo tempo («Forza» + motivo)
+ *   __azioni  → il cestino
+ * `--fallita` sottolinea la riga rimasta dopo un esito parziale. */
+.app-righe-scelte {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.app-righe-scelte__riga {
+  display: grid;
+  grid-template-columns: minmax(14rem, 2fr) minmax(10rem, 1fr) minmax(12rem, 2fr) auto;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--app-drawer-section-border);
+  border-radius: var(--p-border-radius-md, 6px);
+}
+
+.app-righe-scelte__riga--fallita {
+  border-color: var(--p-orange-400);
+}
+
+.app-righe-scelte__doc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  line-height: 1.25;
+  font-size: 0.9rem;
+}
+
+.app-righe-scelte__importo {
+  margin: 0;
+}
+
+.app-righe-scelte__esito {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.app-righe-scelte__azioni {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .app-righe-scelte__riga {
+    grid-template-columns: 1fr auto;
+  }
+  .app-righe-scelte__esito {
+    grid-column: 1 / -1;
+  }
 }
 
 /* ===== Row expansion contenitore =====
@@ -1542,7 +1736,7 @@ a {
   color: var(--app-text-muted);
   cursor: pointer;
 }
-.app-collapse-toggle:hover { background: var(--surface-hover); }
+.app-collapse-toggle:hover { background: var(--app-hover-bg); }
 
 /* ===== Responsive: schermi piccoli =====
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
@@ -1663,7 +1857,7 @@ a {
   cursor: pointer;
   padding: 0.1rem 0.3rem;
   margin: 0 -0.3rem;
-  border-radius: var(--app-border-radius, 6px);
+  border-radius: var(--app-border-radius);
 }
 
 .app-donut-legend-row--clickable:hover {
@@ -1675,7 +1869,7 @@ a {
 }
 
 .app-donut-legend-row--clickable:focus-visible {
-  outline: 2px solid var(--app-primary-color, #2563eb);
+  outline: 2px solid var(--app-focus-ring);
   outline-offset: -2px;
 }
 

@@ -66,19 +66,18 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 66,documenti,tipi_asset_documento,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
 67,documenti,tipi_documento_output,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
 68,documenti,tipi_file_documento,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-69,magazzino,ambito_causale,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-70,magazzino,assets,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
+70,magazzino,assets,EF,emittente_fiscale_id,NULL,NULL,NULL,2026-09-15
 71,magazzino,causali,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-72,magazzino,eventi_assets,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-73,magazzino,inventari,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-74,magazzino,inventari_righe,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-75,magazzino,magazzini,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-76,magazzino,movimenti,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-77,magazzino,reservations,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-78,magazzino,rettifiche,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-79,magazzino,rettifiche_righe,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-80,magazzino,trasferimenti,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
-81,magazzino,trasferimenti_righe,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
+72,magazzino,eventi_assets,PADRE,asset_id,magazzino,assets,NULL,2026-09-15
+73,magazzino,inventari,PADRE,magazzino_id,magazzino,magazzini,NULL,2026-09-15
+74,magazzino,inventari_righe,PADRE,inventario_id,magazzino,inventari,NULL,2026-09-15
+75,magazzino,magazzini,EF,emittente_fiscale_id,NULL,NULL,NULL,2026-09-15
+76,magazzino,movimenti,PADRE,magazzino_id,magazzino,magazzini,NULL,2026-09-15
+77,magazzino,movimenti_attesi,PADRE,magazzino_id,magazzino,magazzini,NULL,2026-09-15
+78,magazzino,rettifiche,PADRE,magazzino_id,magazzino,magazzini,NULL,2026-09-15
+79,magazzino,rettifiche_righe,PADRE,rettifica_id,magazzino,rettifiche,NULL,2026-09-15
+80,magazzino,trasferimenti,PADRE,magazzino_id_from,magazzino,magazzini,NULL,2026-09-15
+81,magazzino,trasferimenti_righe,PADRE,trasferimento_id,magazzino,trasferimenti,NULL,2026-09-15
 82,pagamenti,sepa_mandati,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
 83,pratiche,competenze_flussi,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
 84,pratiche,flussi,PADRE,pratica_id,pratiche,pratiche,NULL,2026-09-11
@@ -119,3 +118,4 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 119,vendite,resi_righe_accrediti,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-11
 120,vendite,resi_righe_riconsegne,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-11
 121,vendite,resi_righe_rinunce,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-11
+122,magazzino,lotti,NESSUNO,NULL,NULL,NULL,"Definizione senza magazzino_id ne' emittente: fuori dal perimetro RLS per costruzione (brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3). La storia di un lotto e' la stessa per tutti gli emittenti, come quella di un articolo.",2026-09-14

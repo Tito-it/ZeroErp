@@ -20,6 +20,32 @@ export const DIALOG_WIDTH = {
   xl: 'min(92vw, 1200px)'  // tabelle larghe responsive (componenti BoM compositi)
 }
 
+// Chrome delle dialog modali — LA sede unica (decisione di Tid, 2026-09-18).
+// La leggono `AppDialog` (default delle prop) e il tag `<ConfirmDialog>` di
+// `App.vue`: un cambio di layout e' una riga qui, non un giro sui 48 dialog.
+//   · closable false  — niente X in alto: il footer di un dialog e' SEMPRE
+//                       visibile (max-height 90%, footer in coda), quindi ogni
+//                       dialog ha gia' Annulla o Chiudi e la X era un doppione
+//                       con una semantica sua (chiudeva senza `cancel`). Nel
+//                       DRAWER la X resta, per la ragione opposta: il footer di
+//                       un form lungo sta sotto il fold.
+//   · closeOnEscape   — ESC = Annulla, la direzione sicura resta aperta da
+//                       tastiera (AppDialog la spegne mentre `loading`).
+//                       ⭐ E chiude SOLO il dialog in cima: gestita sulla
+//                       radice del dialog, non col listener `document` di
+//                       PrimeVue che convive con quello del Drawer sotto
+//                       (`core/utils/escapeSoloInCima`).
+//   · dismissableMask — il clic fuori non chiude: terza uscita accidentale,
+//                       stessa ragione della X.
+// ⚠️ `closable` NON e' un'opzione di `confirm.require` (PrimeVue 4 non la
+//    inoltra al Dialog): per la ConfirmDialog va sul tag, in App.vue.
+export const DIALOG_CHROME = Object.freeze({
+  modal: true,
+  closable: false,
+  closeOnEscape: true,
+  dismissableMask: false,
+})
+
 // Durata toast in millisecondi
 export const TOAST_DURATION = {
   SUCCESS: 3000,
@@ -417,6 +443,12 @@ export const MANAGE_ICONS = {
   // per di piu' l'unica azione a video ERA questa e veniva letta come il
   // cestino di eliminazione. Elimina toglie una riga; questo disfa un effetto.
   UNDO: 'pi pi-undo',
+  // La REGISTRAZIONE di un incasso — il gesto irreversibile che scrive un
+  // movimento. Era un letterale nel solo «Registra» del drawer della distinta;
+  // dal 2026-09-19 lo legge anche «Abbina e registra» (la tardiva per riga,
+  // D20-b), e due lettori vogliono un nome (frontend-standards §«dove vive il
+  // nome di un'icona»).
+  REGISTRA: 'pi pi-lock',
   // ═══ I DUE SEGNI CHE SI CONFONDONO, e vanno tenuti separati ═══════════
   //
   // ⭐ ERRORE — «qualcosa è andato storto». Era già lo standard DI FATTO in una
@@ -488,6 +520,15 @@ export const MANAGE_ICONS = {
   // prestito il nome di un'altra idea e' il modo in cui due gesti diversi
   // finiscono per sembrare lo stesso.
   CORREZIONE: 'pi pi-replay',
+  // Il GIORNALE degli eventi (osservabilita', 2026-09-19): l'azione «Giornale
+  // di questa transazione» dal registro degli errori tecnici e la «Storia» di
+  // un'entita' dal giornale trasversale. Stessa icona della voce di
+  // navigazione `NAV_ICONS.GIORNALE`, ripetuta per la stessa ragione di
+  // FATTURE e FAMIGLIA_DOCUMENTO: chi clicca deve ritrovare «quella li'».
+  GIORNALE: 'pi pi-book',
+  // Copia negli appunti (un identificativo tecnico: `tx_id`, `correlation_id`).
+  // ⛔ Non CLONE (`pi-copy`): quello nel progetto duplica un RECORD.
+  COPIA: 'pi pi-clipboard',
 }
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.
@@ -499,6 +540,10 @@ export const READONLY_DOMAINS = {
   CATALOGO: 'catalogo',
   CONFIG: 'config',
   DOCUMENTI: 'documenti',
+  // Area del dominio magazzino (Lotto 2, 2026-09-18): il documento interno
+  // (inventari, rettifiche) e la consultazione (disponibilita', movimenti).
+  // Permesso di AREA: il dominio non ha un livello oggetto a catalogo.
+  MAGAZZINO: 'magazzino',
   // Area dedicata del dominio Strumenti (code di lavoro; l'area `core` resta
   // all'infra tracciamento, non si apre agli operatori per le code).
   STRUMENTI: 'strumenti',
@@ -557,6 +602,9 @@ export const TAB_ENTITIES = {
   EMITTENTE_FISCALE: 'emittente-fiscale',
   FORNITORE: 'fornitore',
   INDIRIZZO: 'indirizzo',
+  // Le due famiglie del documento interno di magazzino (Lotto 2): producer =
+  // i verbi degli store `documentiInterni`, consumer = le due liste.
+  INVENTARIO: 'inventario',
   LISTINO: 'listino',
   OFFERTA_COMMERCIALE: 'offerta_commerciale',
   OPERATORE: 'operatore',
@@ -567,6 +615,7 @@ export const TAB_ENTITIES = {
   PROMO_ARTICOLI: 'promo_articoli',
   PROVINCIA: 'provincia',
   REGIONE: 'regione',
+  RETTIFICA: 'rettifica',
   SOGGETTO: 'soggetto',
   STATO: 'stato',
   TEMPLATE_ASSET_DOCUMENTI: 'template_asset_documenti',

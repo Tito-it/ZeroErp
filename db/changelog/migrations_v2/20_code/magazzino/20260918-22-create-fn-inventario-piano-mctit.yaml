@@ -1,0 +1,229 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 (3 di 4) — IL PIANO DELL'INVENTARIO: cio' che l'operatore vede e' cio' che verra' scritto
+#   magazzino.fn_inventario_piano(p_inventario_id) RETURNS TABLE (...)
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-f, D-L2-n), 6-ter C8
+#
+# -- UNA FUNZIONE SOLA PER UI E POSTING (D-L2-n, 12.5.2 applicato all'inventario) ----------------
+#   Il caso di Tid: l'articolo A sta in UX a registro, l'inventario lo conta
+#   in UY. La riga (A, UY) trova sistema 0 e carica; UX resta com'e'. Puo'
+#   essere giusto (spostato senza documento) ma QUALCUNO DEVE SAPERLO PRIMA
+#   DI CONFERMARE. Il numero lo da' il DB, in una funzione che il drawer legge
+#   al passaggio a CONFIRM e che fn_posta_inventario legge per postare: non
+#   c'e' una seconda sede del calcolo, qta_sistema lo scrive il posting DAL
+#   PIANO.
+#
+# -- UNA RIGA PER POSIZIONE, alla grana della riga (D-L2-f) --------------------------------------
+#   Posizione = (articolo, ubicazione, lotto, asset), confrontata con
+#   IS NOT DISTINCT FROM (una riga senza lotto confronta la merce senza lotto).
+#   Per gli articoli contati, una riga per ogni posizione che il registro HA
+#   (giacenza <> 0) o che il conteggio NOMINA:
+#     INV_INIZIALE  riga contata, delta > 0, nessun movimento dell'articolo in
+#                   questo magazzino: e' il primo carico in assoluto (c/s 3);
+#     RETT_POS / RETT_NEG  riga contata con differenza: verra' postata cosi';
+#     INVARIATA     riga contata, differenza zero: nessun movimento;
+#     NON_CONTATA   posizione a registro con giacenza che nessuna riga copre
+#                   (riga_id e qta_contata NULL): resta com'e'. Informazione,
+#                   NON blocco: «potrebbe essere giusta»;
+#     NON_POSTABILE (C8) riga che la primitiva rifiuterebbe — articolo non
+#                   gestito, lotto/seriale/ubicazione mancanti o non ammessi —
+#                   con posting_blocco_reason / _reason_key dal PRIMO motivo di
+#                   script.fn_check_riga_magazzino: la stessa funzione che la
+#                   primitiva chiama. Il piano non promette cio' che il posting
+#                   rifiuta (12.1).
+#   «Iniziale» si DERIVA dallo stato del registro (D-L2-f): un inventario che
+#   conta articoli mai movimentati E articoli gia' in giacenza scrive causali
+#   diverse per righe diverse.
+#
+# -- INVOKER, STABLE, SOTTO RLS ----------------------------------------------------------------
+#   Testata fuori perimetro => zero righe: il 404 lo da' il BE sulla testata,
+#   come per ogni satellite. Il guard di parametro resta.
+#
+# -- %TYPE in firma, DECLARE e RETURNS TABLE (regola di Tid); esito e reason sono text ------------
+#   (vocabolari, non colonne). Le colonne di RETURNS TABLE sono variabili
+#   PL/pgSQL: dentro la query ogni riferimento e' qualificato con un alias.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260918-22-create-fn-inventario-piano-mctit.yaml
+
+  - changeSet:
+      id: 20260918-22-create-fn-inventario-piano
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.fn_inventario_piano: una riga per posizione (articolo, ubicazione, lotto,
+        asset) che il registro ha o che il conteggio nomina, con qta_sistema, delta, la causale
+        che verra' usata e l'esito (INV_INIZIALE, RETT_POS, RETT_NEG, INVARIATA, NON_CONTATA,
+        NON_POSTABILE + reason da fn_check_riga_magazzino). INVOKER, STABLE, sotto RLS: la stessa
+        funzione che fn_posta_inventario legge. Brief: brief-db-magazzino-lotto-2-motore,
+        sezione 3 (D-L2-n), 6-ter C8 (P-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: inventari_righe
+                columnName: costo_unitario
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_riga_magazzino';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_inventario_piano(
+                  p_inventario_id magazzino.inventari.id%TYPE
+              )
+              RETURNS TABLE (
+                  riga_id                   magazzino.inventari_righe.id%TYPE,
+                  articolo_id               magazzino.inventari_righe.articolo_id%TYPE,
+                  ubicazione_id             magazzino.inventari_righe.ubicazione_id%TYPE,
+                  lotto_id                  magazzino.inventari_righe.lotto_id%TYPE,
+                  asset_id                  magazzino.inventari_righe.asset_id%TYPE,
+                  qta_contata               magazzino.inventari_righe.qta_contata%TYPE,
+                  qta_sistema               magazzino.inventari_righe.qta_sistema%TYPE,
+                  delta                     magazzino.movimenti.qta%TYPE,
+                  causale_codice_interno    magazzino.causali.codice_interno%TYPE,
+                  esito                     text,
+                  posting_blocco_reason     text,
+                  posting_blocco_reason_key text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: il PIANO di un inventario (D-L2-n) — che cosa il posting scrivera',
+              --   riga per riga e posizione per posizione — letto dal drawer al passaggio a
+              --   CONFIRM e da fn_posta_inventario per postare: una sede sola. Vedi il
+              --   COMMENT per il vocabolario di `esito`.
+              DECLARE
+                  v_magazzino_id magazzino.inventari.magazzino_id%TYPE;
+              BEGIN
+                  IF p_inventario_id IS NULL OR p_inventario_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_inventario_piano',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'inventario obbligatorio e maggiore di zero', 'p_inventario_id', p_inventario_id),
+                          NULL::uuid, 'magazzino.fn_inventario_piano', 'p_inventario_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- La testata, sotto RLS: fuori perimetro non c'e' => zero righe.
+                  SELECT i.magazzino_id INTO v_magazzino_id
+                    FROM magazzino.inventari i
+                   WHERE i.id = p_inventario_id;
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  WITH righe AS (
+                      SELECT r.id, r.articolo_id, r.ubicazione_id, r.lotto_id, r.asset_id,
+                             r.qta_contata
+                        FROM magazzino.inventari_righe r
+                       WHERE r.inventario_id = p_inventario_id
+                  ),
+                  -- Le posizioni a registro degli articoli contati, in questo magazzino.
+                  registro AS (
+                      SELECT m.articolo_id, m.ubicazione_id, m.lotto_id, m.asset_id,
+                             sum(m.qta) AS qta_sistema
+                        FROM magazzino.movimenti m
+                       WHERE m.magazzino_id = v_magazzino_id
+                         AND m.articolo_id IN (SELECT x.articolo_id FROM righe x)
+                       GROUP BY m.articolo_id, m.ubicazione_id, m.lotto_id, m.asset_id
+                  ),
+                  -- Gli articoli che in questo magazzino non hanno NESSUN movimento:
+                  -- per loro un delta > 0 e' il primo carico in assoluto (INV_INIZIALE).
+                  mai_movimentati AS (
+                      SELECT DISTINCT x.articolo_id
+                        FROM righe x
+                       WHERE NOT EXISTS (SELECT 1 FROM magazzino.movimenti m
+                                          WHERE m.magazzino_id = v_magazzino_id
+                                            AND m.articolo_id  = x.articolo_id)
+                  ),
+                  unione AS (
+                      SELECT r.id                                   AS riga_id,
+                             COALESCE(r.articolo_id,   g.articolo_id)   AS articolo_id,
+                             COALESCE(r.ubicazione_id, g.ubicazione_id) AS ubicazione_id,
+                             COALESCE(r.lotto_id,      g.lotto_id)      AS lotto_id,
+                             COALESCE(r.asset_id,      g.asset_id)      AS asset_id,
+                             r.qta_contata,
+                             COALESCE(g.qta_sistema, 0)             AS qta_sistema,
+                             CASE WHEN r.id IS NULL THEN NULL
+                                  ELSE r.qta_contata - COALESCE(g.qta_sistema, 0) END AS delta,
+                             CASE WHEN r.id IS NULL THEN '[]'::jsonb
+                                  ELSE script.fn_check_riga_magazzino(v_magazzino_id, r.articolo_id,
+                                                                      r.lotto_id, r.asset_id, r.ubicazione_id) END AS motivi
+                        FROM righe r
+                        FULL JOIN registro g
+                          ON  g.articolo_id   = r.articolo_id
+                          AND g.ubicazione_id IS NOT DISTINCT FROM r.ubicazione_id
+                          AND g.lotto_id      IS NOT DISTINCT FROM r.lotto_id
+                          AND g.asset_id      IS NOT DISTINCT FROM r.asset_id
+                       WHERE r.id IS NOT NULL OR g.qta_sistema <> 0
+                  )
+                  SELECT u.riga_id,
+                         u.articolo_id,
+                         u.ubicazione_id,
+                         u.lotto_id,
+                         u.asset_id,
+                         u.qta_contata,
+                         u.qta_sistema,
+                         u.delta,
+                         CASE
+                             WHEN u.riga_id IS NULL OR jsonb_array_length(u.motivi) > 0 OR u.delta = 0 THEN NULL
+                             WHEN u.delta > 0 AND EXISTS (SELECT 1 FROM mai_movimentati mm WHERE mm.articolo_id = u.articolo_id)
+                                  THEN 'INV_INIZIALE'::character varying
+                             WHEN u.delta > 0 THEN 'RETT_POS'::character varying
+                             ELSE 'RETT_NEG'::character varying
+                         END                                          AS causale_codice_interno,
+                         CASE
+                             WHEN u.riga_id IS NULL                   THEN 'NON_CONTATA'
+                             WHEN jsonb_array_length(u.motivi) > 0    THEN 'NON_POSTABILE'
+                             WHEN u.delta = 0                         THEN 'INVARIATA'
+                             WHEN u.delta > 0 AND EXISTS (SELECT 1 FROM mai_movimentati mm WHERE mm.articolo_id = u.articolo_id)
+                                                                      THEN 'INV_INIZIALE'
+                             WHEN u.delta > 0                         THEN 'RETT_POS'
+                             ELSE                                          'RETT_NEG'
+                         END                                          AS esito,
+                         u.motivi -> 0 ->> 'reason'                   AS posting_blocco_reason,
+                         u.motivi -> 0 ->> 'reason_key'               AS posting_blocco_reason_key
+                    FROM unione u
+                   ORDER BY u.riga_id NULLS LAST, u.articolo_id, u.ubicazione_id, u.lotto_id, u.asset_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_inventario_piano(bigint) IS
+                  'Il PIANO di un inventario (D-L2-n): una riga per ogni posizione (articolo, '
+                  'ubicazione, lotto, asset — IS NOT DISTINCT FROM) che il registro del magazzino '
+                  'HA (giacenza <> 0) o che il conteggio NOMINA, per gli articoli contati, con '
+                  'qta_contata, qta_sistema (letto alla grana della riga, D-L2-f), delta, la '
+                  'causale che verra'' usata e l''esito: INV_INIZIALE (delta > 0 e nessun movimento '
+                  'dell''articolo in questo magazzino: primo carico), RETT_POS / RETT_NEG (contata '
+                  'con differenza), INVARIATA (delta zero: nessun movimento), NON_CONTATA (a '
+                  'registro, nessuna riga la copre: riga_id e qta_contata NULL, resta com''e'' — '
+                  'informazione, non blocco), NON_POSTABILE (C8: la primitiva la rifiuterebbe — '
+                  'posting_blocco_reason / _reason_key dal primo motivo di '
+                  'script.fn_check_riga_magazzino, la stessa funzione che la primitiva chiama). '
+                  'Una sede sola per UI e posting: fn_posta_inventario scrive qta_sistema DAL PIANO '
+                  'e posta le righe con delta <> 0. INVOKER, STABLE, sotto RLS: testata fuori '
+                  'perimetro = zero righe (il 404 lo da'' il BE sulla testata). Brief: '
+                  'brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-n), 6-ter C8.';
+
+              GRANT EXECUTE ON FUNCTION magazzino.fn_inventario_piano(bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS magazzino.fn_inventario_piano(bigint);

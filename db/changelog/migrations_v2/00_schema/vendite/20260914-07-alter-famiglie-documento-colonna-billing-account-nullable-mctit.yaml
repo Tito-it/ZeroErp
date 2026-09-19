@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 (1 di 5) — vendite.famiglie_documento.colonna_billing_account: da NOT NULL a NULL
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3-bis
+#   (confermata da Tid il 2026-09-14)
+#
+# -- IL FATTO -------------------------------------------------------------------
+#   famiglie_documento dichiara, per ogni documento che prende il numero da un
+#   registro, DOVE VIVE: schema, tabella e il nome di tre colonne. La colonna
+#   del billing account era NOT NULL, e il guard dei riferimenti pretendeva
+#   che esistesse sulla tabella. E' corretto per le cinque famiglie in
+#   servizio: un billing account ce l'hanno tutte.
+#   Diventa sbagliato al PRIMO documento che non ce l'ha — e il primo e'
+#   l'ordine di acquisto, la cui controparte e' un soggetto_ruolo, non un BA.
+#   Registrare quella famiglia oggi fallirebbe con
+#   E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE.
+#
+# -- LA FORMA: quella di colonna_serie, nella stessa tabella -------------------
+#   colonna_serie e' nullable e il vuoto NON e' un dato mancante: e' la
+#   dichiarazione che «questa famiglia una serie non ce l'ha» (reso, commessa).
+#   Stessa forma qui: NULL = «questa famiglia non ha un billing account».
+#   ⚠️ E i lettori la reggono nello stesso punto in cui reggono la serie: il
+#   guard salta il controllo su pg_attribute (20260914-08) e le due funzioni
+#   della storia emittente saltano la famiglia NELLA QUERY CHE LA SCEGLIE
+#   (-09, -10), non dentro la composizione — un %I con NULL solleva un errore
+#   di PostgreSQL senza codice di dominio, e un %s con NULL produce stringa
+#   vuota senza fiatare (brief 3-bis, correzione del 02-09). La madre smette
+#   di pretenderla (-11).
+#
+# -- PERCHE' ADESSO ---------------------------------------------------------------
+#   Costo minimo: nessun consumatore acquisto, nessun registro vivo di
+#   acquisto. Dopo, si toccherebbe una tabella con registri in esercizio e il
+#   guard in servizio. La riga di destra della sezione 3-bis (una colonna
+#   nullable che per mesi non avra' NULL) resta vera: e' stata pesata, e Tid
+#   ha deciso il 14-09.
+#
+# -- CHE COSA NON CAMBIA -------------------------------------------------------
+#   Il trasloco del motore fuori da vendite NON e' di questo brief. Il guard di
+#   struttura (trgfn_famiglie_documento_guard_struttura +
+#   fn_check_famiglia_documento_struttura_modificabile) resta com'e': confronta
+#   con IS DISTINCT FROM, quindi NULL <-> valore e' comunque un cambio, e viene
+#   rifiutato a registri vivi. vw_famiglie_documento_lista la espone com'e'.
+#   Nessun DEFAULT: il NULL si dichiara, non si eredita.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260914-07-alter-famiglie-documento-colonna-billing-account-nullable-mctit.yaml
+
+  - changeSet:
+      id: 20260914-07-alter-famiglie-documento-colonna-billing-account-nullable
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.famiglie_documento.colonna_billing_account da NOT NULL a NULL: NULL = «questa
+        famiglia non ha un billing account» (l'ordine d'acquisto, la cui controparte e' un
+        soggetto_ruolo). Stessa forma di colonna_serie. I lettori la saltano dove scelgono
+        le famiglie (20260914-08/-09/-10) e la madre smette di pretenderla (-11). Brief:
+        brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3-bis (P-9).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: colonna_billing_account
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                  ALTER COLUMN colonna_billing_account DROP NOT NULL;
+
+              COMMENT ON COLUMN vendite.famiglie_documento.colonna_billing_account IS
+                  'Nome della colonna in cui i documenti di questa famiglia portano il '
+                  'billing account; su ddt/ordini/resi quella colonna e'' nullable, e il '
+                  'predicato della storia deve reggerlo. ⭐ NULL (dal 20260914-07) = '
+                  '«questa famiglia NON ha un billing account»: la controparte non e'' un '
+                  'cliente — l''ordine di acquisto, che ha un soggetto_ruolo. E'' la stessa '
+                  'forma di colonna_serie: il vuoto e'' una dichiarazione, non un dato '
+                  'mancante. ⚠️ Chi la legge la salta nel punto in cui SCEGLIE le '
+                  'famiglie, non dentro la composizione: il guard dei riferimenti non '
+                  'cerca la colonna su pg_attribute, e fn_ba_ha_storia_emittente / '
+                  'fn_get_storia_emittente_ba escludono la famiglia dal loro giro — una '
+                  'famiglia senza BA non puo'' contribuire alla storia di nessun BA. Il '
+                  'guard di struttura la conta comunque fra le colonne immutabili a '
+                  'registri vivi (NULL <-> valore e'' un cambio). Nessun DEFAULT. Brief: '
+                  'brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3-bis.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Fail-fast se nel frattempo e' nata una famiglia senza billing account.
+              ALTER TABLE vendite.famiglie_documento
+                  ALTER COLUMN colonna_billing_account SET NOT NULL;
+              COMMENT ON COLUMN vendite.famiglie_documento.colonna_billing_account IS
+                  'Colonna che porta il billing account. Serve al predicato derivato del presidio storia; su ddt/ordini/resi e'' nullable, e il predicato deve reggerlo.';

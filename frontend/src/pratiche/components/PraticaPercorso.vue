@@ -380,7 +380,7 @@ function isRamoChiuso(step) {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--surface-card);
+  background: var(--app-card-bg);
 }
 
 .percorso-empty,
@@ -389,7 +389,7 @@ function isRamoChiuso(step) {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
 }
 
@@ -399,9 +399,9 @@ function isRamoChiuso(step) {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--text-color-secondary);
-  border-bottom: 1px solid var(--surface-border);
-  background: var(--surface-50);
+  color: var(--app-text-muted);
+  border-bottom: 1px solid var(--app-border-color);
+  background: var(--app-content-bg);
   flex-shrink: 0;
 }
 
@@ -420,7 +420,7 @@ function isRamoChiuso(step) {
 }
 
 .rac-vuoto {
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 0.85rem;
   padding: 0.5rem 0;
 }
@@ -437,7 +437,7 @@ function isRamoChiuso(step) {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.82rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 .rac-fatto-icon {
@@ -450,7 +450,7 @@ function isRamoChiuso(step) {
 
 /* Step evidenziato dal deep-link della coda home: accento a sinistra + fondo. */
 .rac-fatto.is-selected {
-  background: var(--surface-hover);
+  background: var(--app-hover-bg);
   border-left: 3px solid var(--p-primary-color);
   border-radius: 4px;
   padding: 0.15rem 0.4rem;
@@ -494,7 +494,7 @@ function isRamoChiuso(step) {
   padding: 0.75rem;
   border: 1px solid var(--p-primary-color);
   border-radius: 8px;
-  background: var(--surface-0);
+  background: var(--app-surface-bg);
 }
 
 /* Card ADESSO evidenziata dal deep-link della coda home: anello d'accento. */
@@ -534,13 +534,13 @@ function isRamoChiuso(step) {
   align-items: center;
   gap: 0.3rem;
   font-size: 0.8rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 /* POI */
 .rac-poi {
   font-size: 0.82rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   line-height: 1.4;
 }
 .rac-poi-label { font-weight: 600; }
@@ -563,15 +563,15 @@ function isRamoChiuso(step) {
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--app-border-color);
   border-radius: 6px;
-  background: var(--surface-0);
+  background: var(--app-surface-bg);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .percorso-step:hover {
-  background: var(--surface-hover);
+  background: var(--app-hover-bg);
   border-color: var(--p-primary-color);
 }
 
@@ -579,7 +579,7 @@ function isRamoChiuso(step) {
 .percorso-step-todo { border-style: dashed; }
 .percorso-step-busy { pointer-events: none; opacity: 0.6; }
 .percorso-step-disabled { cursor: not-allowed; opacity: 0.5; }
-.percorso-step-disabled:hover { background: var(--surface-0); border-color: var(--surface-border); }
+.percorso-step-disabled:hover { background: var(--app-surface-bg); border-color: var(--app-border-color); }
 .percorso-step-ramo-chiuso { opacity: 0.5; border-style: dotted; }
 .percorso-step.is-selected {
   border-color: var(--p-primary-color);
@@ -595,7 +595,7 @@ function isRamoChiuso(step) {
 .percorso-step-seq {
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 .percorso-step-title {
@@ -606,13 +606,13 @@ function isRamoChiuso(step) {
 
 .percorso-handler {
   font-size: 0.75rem;
-  color: var(--p-warn-color, #f59e0b);
+  color: var(--app-severity-warn);
   margin-left: 0.2rem;
 }
 
 .percorso-step-esito {
   font-size: 0.74rem;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
 }
 
 .percorso-step-action {
@@ -624,7 +624,7 @@ function isRamoChiuso(step) {
   gap: 0.25rem;
 }
 
-.percorso-ramo-chiuso { color: var(--text-color-secondary); }
+.percorso-ramo-chiuso { color: var(--app-text-muted); }
 
 .percorso-attivita {
   margin-top: 0.3rem;
@@ -644,7 +644,7 @@ function isRamoChiuso(step) {
 
 .percorso-arrow {
   align-self: center;
-  color: var(--text-color-secondary);
+  color: var(--app-text-muted);
   font-size: 1rem;
   flex-shrink: 0;
 }

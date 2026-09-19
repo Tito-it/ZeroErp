@@ -10,13 +10,14 @@
 --  4) Un RIMBORSO confermato senza canale e' rifiutato
 --  5) ...con il canale genera la sua distinta
 --  6) ⭐ E la riga ha il SEGNO giusto: negativa su una fattura sovra-incassata
+--  6-bis) ⭐ La distinta del rimborso e' numerata sul registro DISTINTA dell'emittente dell'ATTO, non SIS_… (rev 2026-09-15)
 --  7) Riconfermare un atto gia' eseguito e' rifiutato
 --  8) Modificare un atto terminale e' rifiutato
 --  9) 🔴 La distinta di una sistemazione non si aggancia a un lotto
 -- 10) ⭐ La COMPENSAZIONE genera DUE righe che sommano a ZERO
 -- 11) Un importo maggiore dell'eccedenza e' rifiutato ALLA CONFERMA
 -- 12) L'annullamento lascia l'atto a registro, e su uno inesistente rifiuta
--- 13) Assert finale cleanup
+-- 14) Assert finale cleanup
 --
 -- Scopo:
 --  - collaudare la slice 4 per intero: la vista presenta, la persona decide,
@@ -46,7 +47,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(13);
+SELECT plan(14);
 
 -- ============================================================
 -- Fixture — due fatture di uno stesso cliente, la prima sovra-incassata
@@ -200,6 +201,24 @@ SELECT is(
   '6) La riga ha il SEGNO giusto: negativa su una fattura sovra-incassata'
 );
 
+-- ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, D5/L7): la distinta
+--   di una sistemazione non porta piu' un codice composto dalla madre (SIS_…):
+--   la numera il trigger sul registro DISTINTA dell'emittente dell'ATTO, che
+--   entra nella riga; l'aggancio all'atto resta in meta.sistemazione_id.
+SELECT is(
+  (SELECT concat_ws('|',
+              c.codice ~ ('^DIS-' || ef.codice || '-\d{4}-\d{7}$'),
+              c.emittente_soggetto_ruolo_id = a.emittente_soggetto_ruolo_id,
+              c.registro_id IS NOT NULL,
+              (c.meta->>'sistemazione_id')::bigint = a.id)
+     FROM pagamenti.vendite_contabili c
+     JOIN pagamenti.sistemazioni a ON a.id = (SELECT atto_rimborso FROM tmp_atto)
+     JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = a.emittente_soggetto_ruolo_id
+    WHERE c.id = (SELECT contabile_id FROM tmp_esito)),
+  't|t|t|t',
+  '6-bis) La distinta del rimborso e'' DIS-<sigla dell''emittente dell''atto>-…, non SIS_…, e meta.sistemazione_id resta l''aggancio'
+);
+
 -- ============================================================
 -- 7/8/9. Cio' che dopo non si puo' piu' fare
 -- ============================================================
@@ -314,7 +333,7 @@ SELECT is(
 -- ============================================================
 -- 13. Cleanup
 -- ============================================================
-SELECT ok(true, '13) Cleanup: la transazione viene annullata, nessun residuo');
+SELECT ok(true, '14) Cleanup: la transazione viene annullata, nessun residuo');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -188,7 +188,7 @@ function onKeydown(event) {
 }
 
 .kpi-card.is-clickable:focus-visible {
-  outline: 2px solid var(--app-focus-ring, var(--p-primary-color));
+  outline: 2px solid var(--app-focus-ring);
   outline-offset: 2px;
 }
 

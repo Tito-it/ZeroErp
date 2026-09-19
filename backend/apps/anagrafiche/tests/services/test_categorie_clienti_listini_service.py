@@ -244,6 +244,13 @@ class TestCreate(TestCase):
                 valore_variazione="1.0",
             ))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        # ⭐ Dal 2026-09-18 (BB `optional_enum`) il rifiuto NOMINA il campo: la
+        #    copia locale scriveva `{"tipo_variazione": tipo}` e il form non
+        #    accendeva niente. E un tipo non-stringa e' un 400, non un 500.
+        self.assertEqual(ctx.exception.context["field"], "tipo_variazione")
+        with self.assertRaises(ServiceError) as ctx:
+            svc.create_matrice(_base_payload(tipo_variazione=3, valore_variazione="1.0"))
+        self.assertEqual(ctx.exception.context["field"], "tipo_variazione")
 
     @patch(_REPO_PATH)
     def test_create_tipo_senza_valore(self, mock_repo_cls):

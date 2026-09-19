@@ -1379,7 +1379,7 @@ matrici era infondato — sono entrambi dettaglio, non slot/override.
 | `pagamenti/components/SistemazioneDrawer.vue` | `listSistemazioniFattura(fatturaId)` → envelope `results` | **Gruppo A** |
 | `anagrafiche/components/TitoliIvaSoggettoDrawer.vue` | endpoint suo (`results`), e il singolo titolo ha un **drawer autonomo** | **Gruppo A** |
 | `anagrafiche/views/TitoliIvaSfondatiView.vue` | endpoint suo (`results`), è una view di presidio | **Gruppo A** |
-| `pagamenti/components/DistintaDrawer.vue` | `dettaglio.righe` — sono le **righe della distinta** | Gruppo B |
+| `pagamenti/components/DistintaDrawer.vue` | `dettaglio.righe` — sono le **righe della distinta** | ~~Gruppo B~~ → **Gruppo A** (18-09, rilievo in-app di Tid: «mancano tutte le caratteristiche di una lista standard»): le righe arrivavano dal dettaglio, ma le righe contabili hanno endpoint propri (`righe/<id>/…`), una macchina a stati propria e una coda propria (`pagamenti.righe`) — la **prima** domanda risponde sì, come per `TitoloIvaDrawer`. **Convertita il 18-09**: lista `pagamenti.distinta_righe` (69), `GET distinte/<id>/righe/` paginato + `export/`, `useDrawerTabLista` + `<DrawerTabLista>`. Resta il debito dichiarato del master-detail (form sotto la lista, non `RigheMasterDetailTable`) |
 | `anagrafiche/components/TitoloIvaDrawer.vue` | `ambiti` + `movimenti` **del titolo** che il drawer mostra | ~~Gruppo B~~ → **Gruppo A** (02-09 sera): le righe arrivavano dal dettaglio, ma i due endpoint esistevano già e il registro **cresce**. Convertito col lotto 3 |
 | `vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue` | 4 tabelle di **dettaglio** della stessa situazione | Gruppo B |
 | `pagamenti/components/RegistraDistintaDialog.vue` | `anteprima.righe_non_registrabili` | Gruppo B — **anteprima in dialog** (eccezione dichiarata) |
@@ -1388,7 +1388,8 @@ matrici era infondato — sono entrambi dettaglio, non slot/override.
 | `vendite/components/LottoDrawer.vue` | residuo dichiarato in commento, lista **già convertita** | non è un bersaglio |
 
 ⇒ **4 al Gruppo A, 5 al Gruppo B (di cui 2 sono l'eccezione anteprima), 2 non
-sono bersagli.**
+sono bersagli.** ⚠️ Dal 18-09 `DistintaDrawer` è passato al Gruppo A ed è
+convertito (riga sopra): il Gruppo B di questa conciliazione conta **4**.
 
 ⭐ **Il segnale che decide è UNO, ed è ripetibile**: `grep -oE ':value="[^"]+"'`
 sul `.vue`, poi si risale alla variabile. Se viene da un `dettaglio.righe` o da

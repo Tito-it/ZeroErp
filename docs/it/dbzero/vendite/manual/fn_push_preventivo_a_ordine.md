@@ -73,3 +73,15 @@ vendite.fn_push_preventivo_a_ordine(
   `transiziona_a_evaso_se_smistato` dal percorso ordine-standalone (ora
   ridondante — la funzione transita già; il re-push è bloccato dal guard *stato*
   perché il preventivo diventa EVASO, non più da «nessuna riga»).
+
+### 🔄 rev 2026-09-13 — la data di consegna sopravvive al push
+
+`20260913-20`: la **data richiesta dal cliente** sulla riga di preventivo passa
+sulla riga d'ordine. La funzione la legge dalla vista-predicato
+`vw_preventivi_righe_smistabili_ordine` (che dal `20260913-16` la espone), non
+con una lettura sua delle righe. La **data confermata** resta vuota: è la
+promessa nostra, e si decide alla conferma dell'ordine — su un preventivo non
+c'è ancora niente da confermare. Tolto dal commento del passo 4 il nome di una
+funzione che non esiste più: il numero dell'ordine lo assegna
+`trgfn_ordini_gen_numero`, dal motore dei registri. Brief:
+`brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 2.4.

@@ -26,12 +26,31 @@
 -- la PRESENZA della chiave (`a ? 'outlined'`) separatamente dal suo
 -- valore: sono due difetti diversi e devono dare due rossi diversi.
 --
--- COME SONO SCRITTE LE ASSERZIONI. Non su un documento scelto a mano ma
--- sulla POPOLAZIONE: «quanti violano la regola, su quanti esistono». Una
--- fixture costruita apposta puo' confermare un ramo morto; un conteggio di
--- violazioni su tutti i documenti reali no. Il test 8 e' il guardiano
--- contro il verde vacuo: se la popolazione fosse vuota, i sette verdi
--- sopra non direbbero nulla e questo diventa rosso.
+-- COME SONO SCRITTE LE ASSERZIONI. Non su un documento scelto a mano ma su
+-- UN DOCUMENTO PER OGNI STATO IN USO, in ciascuno degli 8 domini: «quanti
+-- violano la regola, su quanti rami esistono». Il test 8 e' il guardiano
+-- contro il verde vacuo: se la popolazione fosse vuota, i sette verdi sopra
+-- non direbbero nulla e questo diventa rosso.
+--
+-- ⚠️ rev 2026-09-17 — PERCHE' «UNO PER STATO» E NON «TUTTI I DOCUMENTI».
+-- Fino a oggi la popolazione erano TUTTI i documenti degli 8 domini (~49 s
+-- come applicazione, di cui 43 sui 51 DDT: D14 di
+-- migliorie-generali-da-test-valutazione.md). Il taglio non e' un
+-- campionamento sui dati, e' il perimetro giusto per cio' che questo file
+-- misura, cioe' la FORMA delle azioni emesse:
+--   * le transizioni le produce `t.stato_da_id = <stato del documento>`:
+--     due documenti nello stesso stato emettono le STESSE righe di matrice,
+--     con la stessa forma. Il secondo ripete il ramo del primo;
+--   * le azioni applicative (push, crea_revisione, ristampa) sono oggetti
+--     COSTANTI nel codice della funzione: la loro forma non dipende dal
+--     documento, dipende solo dal fatto che compaiano. Compaiono se il
+--     documento scelto le esercita — e questo NON e' garantito, ne' lo era
+--     prima: sulla popolazione intera comparivano «se qualche documento le
+--     esercitava». Il test 7 le misura dove le trova; un presidio sulla loro
+--     forma che non dipenda dai dati si scrive con una fixture, non
+--     allargando la popolazione.
+-- Il documento rappresentante di uno stato si sceglie in modo DETERMINISTICO
+-- (`ORDER BY stato, id`): un `LIMIT` senza ordine scommette.
 --
 -- Indice test (1..8):
 --   1) Il DATO: ogni riga `annulla` delle 8 matrici ha outlined=true e
@@ -117,9 +136,60 @@ SELECT is(
            (SELECT count(*) FROM _seed_annulla)));
 
 -- ------------------------------------------------------------
--- La popolazione del percorso: OGNI azione emessa da OGNI documento degli
--- 8 domini, con accanto la descrizione che la tabella di stato dichiara
--- per la destinazione. Si calcola UNA volta sola, cosi' i conteggi delle
+-- Il CAMPIONE: un documento per ogni (dominio, stato) in uso — vedi la rev
+-- 2026-09-17 in testa. `DISTINCT ON (stato) ... ORDER BY stato, id`: il
+-- rappresentante e' il documento piu' vecchio di quello stato, sempre lo
+-- stesso a parita' di dati. Si popola DOPO il contesto operatore: contiene
+-- solo cio' che la RLS lascia vedere.
+-- ⚠️ `fatturazione_lotti.stato_doc_fiscale_id` e' NULLABLE per modello: un
+--   lotto senza stato e' un gruppo a se' (`DISTINCT ON` tratta i NULL come un
+--   valore), e la sua capability entra nella misura come ogni altra.
+-- ------------------------------------------------------------
+CREATE TEMP TABLE _campione AS
+SELECT * FROM (SELECT DISTINCT ON (p.stato_doc_preventivo_id)
+                      'preventivo'::text AS dominio, p.id, p.stato_doc_preventivo_id AS stato_id
+                 FROM vendite.preventivi p
+                ORDER BY p.stato_doc_preventivo_id, p.id) x
+UNION ALL
+SELECT * FROM (SELECT DISTINCT ON (o.stato_doc_offerta_id)
+                      'offerta', o.id, o.stato_doc_offerta_id
+                 FROM vendite.offerte_commerciali o
+                ORDER BY o.stato_doc_offerta_id, o.id) x
+UNION ALL
+SELECT * FROM (SELECT DISTINCT ON (o.stato_doc_ordine_id)
+                      'ordine', o.id, o.stato_doc_ordine_id
+                 FROM vendite.ordini o
+                ORDER BY o.stato_doc_ordine_id, o.id) x
+UNION ALL
+SELECT * FROM (SELECT DISTINCT ON (d.stato_doc_ddt_id)
+                      'ddt', d.id, d.stato_doc_ddt_id
+                 FROM vendite.ddt d
+                ORDER BY d.stato_doc_ddt_id, d.id) x
+UNION ALL
+SELECT * FROM (SELECT DISTINCT ON (r.stato_doc_reso_id)
+                      'reso', r.id, r.stato_doc_reso_id
+                 FROM vendite.resi r
+                ORDER BY r.stato_doc_reso_id, r.id) x
+UNION ALL
+SELECT * FROM (SELECT DISTINCT ON (c.stato_doc_contratto_id)
+                      'contratto', c.id, c.stato_doc_contratto_id
+                 FROM vendite.contratti c
+                ORDER BY c.stato_doc_contratto_id, c.id) x
+UNION ALL
+SELECT * FROM (SELECT DISTINCT ON (c.stato_commessa_id)
+                      'commessa', c.id, c.stato_commessa_id
+                 FROM vendite.commesse c
+                ORDER BY c.stato_commessa_id, c.id) x
+UNION ALL
+SELECT * FROM (SELECT DISTINCT ON (fl.stato_doc_fiscale_id)
+                      'lotto', fl.id, fl.stato_doc_fiscale_id
+                 FROM vendite.fatturazione_lotti fl
+                ORDER BY fl.stato_doc_fiscale_id, fl.id) x;
+
+-- ------------------------------------------------------------
+-- La popolazione del percorso: OGNI azione emessa da OGNI documento del
+-- campione, con accanto la descrizione che la tabella di stato dichiara per
+-- la destinazione. Si calcola UNA volta sola, cosi' i conteggi delle
 -- asserzioni parlano tutti degli stessi soggetti.
 --
 -- `descr_attesa` si risolve per codice_interno (non per id): e' la stessa
@@ -128,51 +198,51 @@ SELECT is(
 -- ------------------------------------------------------------
 CREATE TEMP TABLE _cap_azioni AS
 SELECT 'preventivo'::text AS dominio, a, s.descrizione AS descr_attesa
-  FROM vendite.preventivi p
+  FROM (SELECT id FROM _campione WHERE dominio = 'preventivo') c
   CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_preventivo(p.id)->'available_actions') a
+         script.fn_available_actions_preventivo(c.id)->'available_actions') a
   LEFT JOIN config.stati_doc_preventivi s ON s.codice_interno = a->>'target_state'
 UNION ALL
 SELECT 'offerta', a, s.descrizione
-  FROM vendite.offerte_commerciali o
+  FROM (SELECT id FROM _campione WHERE dominio = 'offerta') c
   CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_offerta(o.id)->'available_actions') a
+         script.fn_available_actions_offerta(c.id)->'available_actions') a
   LEFT JOIN config.stati_doc_offerte s ON s.codice_interno = a->>'target_state'
 UNION ALL
 SELECT 'ordine', a, s.descrizione
-  FROM vendite.ordini o
+  FROM (SELECT id FROM _campione WHERE dominio = 'ordine') c
   CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_ordine(o.id)->'available_actions') a
+         script.fn_available_actions_ordine(c.id)->'available_actions') a
   LEFT JOIN config.stati_doc_ordini s ON s.codice_interno = a->>'target_state'
 UNION ALL
 SELECT 'ddt', a, s.descrizione
-  FROM vendite.ddt d
+  FROM (SELECT id FROM _campione WHERE dominio = 'ddt') c
   CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_ddt(d.id)->'available_actions') a
+         script.fn_available_actions_ddt(c.id)->'available_actions') a
   LEFT JOIN config.stati_doc_ddt s ON s.codice_interno = a->>'target_state'
 UNION ALL
 SELECT 'reso', a, s.descrizione
-  FROM vendite.resi r
+  FROM (SELECT id FROM _campione WHERE dominio = 'reso') c
   CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_reso(r.id)->'available_actions') a
+         script.fn_available_actions_reso(c.id)->'available_actions') a
   LEFT JOIN config.stati_doc_reso s ON s.codice_interno = a->>'target_state'
 UNION ALL
 SELECT 'contratto', a, s.descrizione
-  FROM vendite.contratti c
+  FROM (SELECT id FROM _campione WHERE dominio = 'contratto') c
   CROSS JOIN LATERAL jsonb_array_elements(
          script.fn_available_actions_contratto(c.id)->'available_actions') a
   LEFT JOIN config.stati_doc_contratti s ON s.codice_interno = a->>'target_state'
 UNION ALL
 SELECT 'commessa', a, s.descrizione
-  FROM vendite.commesse c
+  FROM (SELECT id FROM _campione WHERE dominio = 'commessa') c
   CROSS JOIN LATERAL jsonb_array_elements(
          script.fn_available_actions_commessa(c.id)->'available_actions') a
   LEFT JOIN vendite.stati_commessa s ON s.codice_interno = a->>'target_state'
 UNION ALL
 SELECT 'lotto', a, s.descrizione
-  FROM vendite.fatturazione_lotti fl
+  FROM (SELECT id FROM _campione WHERE dominio = 'lotto') c
   CROSS JOIN LATERAL jsonb_array_elements(
-         script.fn_available_actions_lotto(fl.id)->'available_actions') a
+         script.fn_available_actions_lotto(c.id)->'available_actions') a
   LEFT JOIN config.stati_doc_fiscale s ON s.codice_interno = a->>'target_state';
 
 -- ============================================================
@@ -268,16 +338,23 @@ END;
 -- ============================================================
 -- 8) Anti-vacuita'. I sette verdi sopra valgono solo se qualcosa e' stato
 --    davvero misurato. Il messaggio elenca i domini che hanno prodotto
---    azioni: un dominio assente non e' un rosso (il DB di sviluppo puo'
---    non avere quei documenti), ma deve VEDERSI, perche' su di lui la
---    copertura di questo file e' zero — non "parziale".
+--    azioni e, per ciascuno, quanti STATI il campione ha attraversato: un
+--    dominio assente non e' un rosso (il DB di sviluppo puo' non avere quei
+--    documenti), ma deve VEDERSI, perche' su di lui la copertura di questo
+--    file e' zero — non "parziale". E dal 2026-09-17 il numero che conta e'
+--    quello degli stati, perche' e' quello il perimetro della misura.
 -- ============================================================
 SELECT cmp_ok(
     (SELECT count(DISTINCT dominio)::int FROM _cap_azioni),
     '>', 0,
-    format('8) misurati %s domini su 8: %s',
+    format('8) misurati %s domini su 8, %s stati in tutto: %s',
            (SELECT count(DISTINCT dominio) FROM _cap_azioni),
-           COALESCE((SELECT string_agg(DISTINCT dominio, ', ' ORDER BY dominio) FROM _cap_azioni),
+           (SELECT count(*) FROM _campione),
+           COALESCE((SELECT string_agg(d.dominio || ' (' || d.n || ')', ', ' ORDER BY d.dominio)
+                       FROM (SELECT c.dominio, count(*) AS n
+                               FROM _campione c
+                              WHERE c.dominio IN (SELECT DISTINCT dominio FROM _cap_azioni)
+                              GROUP BY c.dominio) d),
                     'NESSUNO')));
 
 SELECT * FROM finish();

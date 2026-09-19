@@ -16,7 +16,7 @@
 >
 
 ### 🎯 Scopo Principale
-(latest review 04-09-2026)
+(latest review 14-09-2026)
 
 `dbops.processi` è l'**anagrafica di tutto ciò che il sistema fa da solo**: i
 lavori notturni, i comandi lanciati a mano, i job messi in coda. Una riga per
@@ -67,19 +67,37 @@ ha un padrone, il processo è di dominio.
 
 ---
 
-### I tre canali
+### I quattro canali
 
 | canale | Chi lo fa partire |
 | --- | --- |
 | `PGAGENT` | lo scheduler del database, di notte, da solo |
 | `COMMAND` | una persona o un cron che lancia un comando |
-| `CODA` | un operatore che accoda un lavoro dall'applicazione |
+| `CODA` | **una persona** che accoda un lavoro dall'applicazione |
+| `CODA_AUTOMATICA` | **una macchina** (un job pgAgent che sveglia e non lavora) che accoda un lavoro eseguito dal drenatore — dal 2026-09-05, correzione R-E |
 
 ⭐ **Il canale `CODA` è quello che cambia le regole**, e va capito bene: un
 lavoro accodato porta con sé **l'identità di chi l'ha chiesto**. Non gli serve
 un utente tecnico, e dargliene uno cancellerebbe il nome della persona che ha
 premuto il pulsante. Per questo i presidi che cercano gli utenti tecnici
 **escludono** i processi di coda.
+
+⚠️ **`CODA_AUTOMATICA` non è un terzo caso: è la correzione del modello.** Un
+lavoro che passa dalla coda ma lo accoda una **sveglia** non ha un nome da
+prestare — vuole l'identità tecnica come i `PGAGENT` e i `COMMAND`, e i presidi
+lo contano fra quelli. Fino al 05-09 questa tabella ne elencava tre e
+`chiusura_scadenze_daily` sarebbe apparso «non ne vuole» mentre ne usava una
+(brief `brief-db-processi-automatici-residui-be` §1-quater).
+
+⭐ **Un `CODA` può essere anche di `MANUTENZIONE`**, e non è una contraddizione:
+`avvio_manuale` (dal 2026-09-14) è il gesto «Esegui ora» su una sveglia di
+deploy — lo accoda una persona, quindi `CODA`; non tocca i dati di nessuna
+azienda, quindi `MANUTENZIONE`. Nel panorama è `SU_RICHIESTA` come gli altri
+`CODA`, e sotto di lui **non si scrive nessun run**: l'audit del gesto è la riga
+di [coda_lavori](/dbzero/dbops/manual/coda_lavori), l'audit dell'esecuzione è
+il run che il comando lanciato scrive sotto il **proprio** processo (origine
+`COMMAND`, `auth_user_id` di chi ha premuto). Il tipo che ospita è
+`ESEGUI_PROCESSO` — brief `brief-db-avvio-manuale-di-un-processo` §8.
 
 ---
 
@@ -158,8 +176,9 @@ corsie), `listen_cambio_reparto` `SESSIONE`, `run_fatturazione_batch` `NULL`.
 2. Se è di **dominio**, una riga in
    [processi_bersagli](/dbzero/dbops/manual/processi_bersagli) per ogni tabella
    che tocca, con il percorso che porta all'emittente.
-3. Se è di dominio **e non ha un operatore che lo lancia** (canali `PGAGENT` e
-   `COMMAND`), un utente tecnico per ogni emittente che deve servire —
+3. Se è di dominio **e non ha un operatore che lo lancia** (canali `PGAGENT`,
+   `COMMAND` e `CODA_AUTOMATICA`), un utente tecnico per ogni emittente che deve
+   servire —
    [fn_crea_utente_tecnico](/dbzero/script/manual/fn_crea_utente_tecnico).
 
 ⇒ I presidi lo dicono da soli se un passo è stato saltato: le viste

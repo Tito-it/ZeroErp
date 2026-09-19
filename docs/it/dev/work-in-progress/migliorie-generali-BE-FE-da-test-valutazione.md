@@ -207,6 +207,16 @@ verde dica su quanti file.
   vulnerabilità, è che nessuno lancia `npm audit` — oggi il registro è a zero,
   cioè l'unico momento in cui un cancello nasce senza arretrato
   (`npm audit --audit-level=high` nel job `ci-frontend`).
+  ⭐ **E il quarto avviso Dependabot era del backend**: `weasyprint 69.0`
+  (`< 70.0`, SSRF su `url_fetcher`, CVE-2026-55073). L'11-09 non si poteva
+  sanare — la 70.0 era uscita l'8-09 e il pin `<70` la escludeva. Chiuso il
+  2026-09-13: tetto a `<71`, `pip-compile --upgrade-package weasyprint` (una
+  riga nel lock), nessun altro pin mosso, fattura vera stampata con la 70
+  **identica** check per check alla 69, `apps.documenti` 252 e suite 4.652
+  verdi. ⚠️ **Residuo dichiarato**: la 70 avvisa che il ripiego su fontTools
+  per il subsetting dei font *«will be unsupported in future versions»* —
+  `libharfbuzz-subset0` manca nel `Dockerfile` e sulle macchine di sviluppo,
+  e va aggiunto **prima** della 71 (INFRA-2).
 
 ### D2 — 258.000 righe di Python senza analisi statica
 
@@ -423,7 +433,7 @@ applicato dal team DB (`20260910-35..37`), il backend ha ritirato la riga di
 debito (`_IN_ATTESA_DI_CATALOGO` a zero, e il test di ritiro è diventato rosso in
 CI nominandola — il meccanismo che fa il suo mestiere), i due timer girano
 (`digest-presidi-giornaliero` 07:00, `settimanale` lunedì 07:30). Brief:
-[brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md).
+[brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md).
 ⚠️ **Aperto, da portare al team DB**: la prima notizia del digest è stata
 rumore — `sync_auth_user_active`, processo **ritirato** il 09-07, con 31
 fallimenti storici in finestra (registrato nel brief §9.5). *Un presidio che
@@ -577,9 +587,15 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D1-e** — ✅ 2026-09-09: `check_license.py` in modalità range per la CI.
 * [ ] **D1-d-bis** — il primo test di **componente** su `ListaConfigurabile`
       (`@vue/test-utils` + `jsdom`, da aggiungere quel giorno).
-* [~] **D1-f** — ✅ 2026-09-13: le due vulnerabilità sanate nel lock, `npm audit`
-      a zero. Aperta la decisione se `npm audit --audit-level=high` entra nel
-      job — ora nascerebbe a zero.
+* [~] **D1-f** — ✅ 2026-09-13: le due vulnerabilità FE sanate nel lock
+      (`npm audit` a zero) e `weasyprint` a 70.0 nel backend. Aperta la
+      decisione se `npm audit --audit-level=high` entra nel job — ora
+      nascerebbe a zero.
+* [x] **INFRA-2** — ✅ 2026-09-13: `libharfbuzz-subset0` nel `Dockerfile` (una
+      riga, con il perché) e installato da Tid sulla macchina di sviluppo.
+      Verificato: gli avvisi di WeasyPrint nel log dello smoke render-stampa
+      da **3 a 0**, PDF identico check per check. ⚠️ Su una macchina di
+      sviluppo nuova va rifatto a mano: la riga è nel `requirements.in`.
 
 ### 🔴 Il backend
 
@@ -627,6 +643,31 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D13-bis** — ✅ 2026-09-11 su entrambi i lati: catalogo `dbops.presidi`, digest attivo.
 * [ ] **D13-quater** — il rumore del primo digest (`sync_auth_user_active`,
       processo ritirato in finestra): da portare al team DB (brief §9.5).
+* [x] **D13-quinquies** — ✅ 2026-09-14, dalla nota DB del 14-09: il digest
+      chiamava «FALLITA» la **propria** corsa in corso — `last_ok` era la riga
+      più recente, cioè quella aperta (`ok` NULL). Ora `last_ok` è l'ultima
+      corsa **conclusa** in entrambe le sedi (`job_liveness`,
+      `list_job_summary`), `None` è reso «in corso», il messaggio del perimetro
+      nomina le due cause (riga di catalogo **o** vista che risponde diverso
+      per ruolo), cinque puntatori al brief spostato in `work-done/` sanati.
+      Test: la corsa aperta **costruita** sul DB vero con `fn_job_run_start`,
+      più la resa; tre mutazioni, tre rossi.
+      🔴 **Il seguito, stesso giorno (sera), dal DB**: quella correzione
+      lasciava la **data** sulla riga più recente e prendeva l'**esito**
+      dall'ultima conclusa — «`09:47:32 (ok)`», l'ora della corsa 122445 in
+      esecuzione con l'ok di quella delle 07:30. Vero per i dati di oggi; sul
+      modello, con la precedente fallita, lunedì «`<adesso> (FALLITA)`» con la
+      mail in mano. E il test 18 era **verde per sottrazione**: costruiva un
+      `last_ok: None` che il repository non emetteva più. ✅ Chiuso: `last_ok`
+      **non esiste più** in nessuna delle tre sedi (`job_liveness`,
+      `list_job_summary`, `summary_per_job_type`) — al suo posto `in_corso` +
+      `ultima_conclusa = {started_at, ended_at, ok}` (BB `corsa_conclusa`),
+      letti da righe **intere** (`DISTINCT ON`). La riga del digest dice «in
+      corso (avviata …) — ultima conclusa … (ok)»; il pannello esiti rende il
+      giro in corso a parte e l'esito con la sua data (e un `IN_CORSO` non è
+      più «Errore»); le date del messaggio sono tutte in `TIME_ZONE`. Test: il
+      caso costruito sul DB vero in **tre** sedi, il lunedì del team DB, il
+      fuso, il `null` di `ok`.
 * [x] **INFRA-1** — ✅ 2026-09-09/11: la chiave Tailscale di `dbdev` scaduta
       aveva fermato il DB di sviluppo (e gunicorn in `SYN-SENT`, senza avvisi);
       `KeyExpiry: None` su tutti i nodi di sviluppo, verificato l'11-09.

@@ -36,6 +36,12 @@ const props = defineProps({
     validator: (v) => Object.values(LIVELLO).includes(v),
   },
   riferimentoId: { type: [Number, null], default: null },
+  // ⭐ «Prima di se'» (D19-b): la riga contabile da NON contare, per chi la sta
+  //    correggendo. Rata e — dal 2026-09-18, P-6 — documento la sanno
+  //    applicare; dove un livello non la sa fare il pannello lo DICE invece di
+  //    fingere: un «in lavorazione» che include la riga che si sta cambiando
+  //    non e' sbagliato, e' un numero che va letto sapendolo.
+  escludiRigaId: { type: [Number, null], default: null },
   // ⭐ Quali numeri accendere. Il default e' quello del documento (Q-6): chi ne
   //    vuole altri lo dichiara — ⛔ non li rinomina.
   // ⚠️ Il `validator` non e' pignoleria: un nome sbagliato qui non da' errore,
@@ -58,8 +64,19 @@ const { t } = useI18n()
 //    montaggio e non cambia. Chi deve cambiarlo rimonta il componente con
 //    `:key="livello"`.
 const livelloMontato = props.livello
-const { saldo, caricato, errore, loading, leggi, azzera, livelloSupportato, senzaMovimenti } =
-  useSaldi(livelloMontato)
+const {
+  saldo, caricato, errore, loading, leggi, azzera,
+  livelloSupportato, esclusioneSupportata, senzaMovimenti,
+} = useSaldi(livelloMontato)
+
+// L'esclusione e' stata CHIESTA e il livello non la sa fare: si dichiara.
+// ⭐ Dal 2026-09-18 nessun livello vivo ci finisce piu' (P-6: anche il
+//    documento esclude). ⛔ Il ramo resta, come `incassatoNonDisponibile`: e' la
+//    risposta a un caso che il modello ammette — il CLIENTE, che nascera'
+//    sommando documenti — non a uno che oggi capita.
+const esclusioneNonApplicata = computed(
+  () => props.escludiRigaId != null && !esclusioneSupportata,
+)
 
 // ⛔ E se il prop cambia SENZA `:key`, il pannello si spegne invece di mostrare
 //    i numeri del livello vecchio. Fino a oggi quel caso era solo scritto in un
@@ -92,9 +109,14 @@ const incassatoNonDisponibile = computed(
     && saldo.value?.incassato == null,
 )
 
+// ⚠️ Anche `escludiRigaId` fa rileggere: e' parte della domanda, non un
+//    dettaglio della risposta.
 watch(
-  () => props.riferimentoId,
-  (id) => { if (id == null) azzera(); else leggi(id) },
+  () => [props.riferimentoId, props.escludiRigaId],
+  ([id, escludiRigaId]) => {
+    if (id == null) azzera()
+    else leggi(id, { escludiRigaId })
+  },
   { immediate: true },
 )
 </script>
@@ -155,6 +177,13 @@ watch(
            facilmente col residuo pieno: nessuno ha ancora pagato niente. -->
       <small v-if="senzaMovimenti" class="app-text-muted">
         {{ t('core.saldi.nessun_movimento') }}
+      </small>
+
+      <!-- ⚠️ Chiesto di non contarsi addosso, e il livello non lo sa fare:
+           lo si dice, perche' «in lavorazione» qui comprende la riga che
+           l'operatore sta guardando. -->
+      <small v-if="esclusioneNonApplicata" class="app-text-muted">
+        {{ t('core.saldi.include_riga_corrente') }}
       </small>
     </template>
   </div>

@@ -19,7 +19,7 @@ Funzioni esposte:
 """
 
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -28,7 +28,12 @@ from django.db import DatabaseError, transaction
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
-from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.payload_helpers import (
+    MISSING as _MISSING,
+    PayloadValidator,
+    translate_db_errors,
+)
+from apps.anagrafiche.services.anagrafiche_service import AnagraficheService
 from apps.vendite.db.commesse_repository import (
     ATTIVITA_SORT_COLUMNS,
     TIPO_MOVIMENTO_RETTIFICA,
@@ -451,6 +456,13 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
     # da `script.fn_available_actions_commessa`, stesso pattern di ordini/preventivi/
     # offerte/contratti. Espone anche `stato_codice` (= sc.codice_interno).
     capabilities = repo.get_capabilities(commessa_id)
+    # La TESTATA LEGGIBILE (Blocco C del brief modifiche certe): descrizione,
+    # data di apertura, responsabile. `fn_get_commessa_stato` non le espone,
+    # e il drawer le legge dallo STESSO payload — un secondo endpoint sarebbe
+    # una seconda chiamata per tre colonne della stessa riga.
+    # ⚠️ Puo' essere None solo se la commessa e' sparita fra le due letture:
+    #    `get_commessa_stato` ha gia' risposto, quindi il 404 e' gia' passato.
+    testata = repo.get_commessa_testata(commessa_id)
     return {
         "commessa_id": commessa_id,
         # `stato_codice_interno` (contratto smoke/FE: esito ponte emittibilità senza
@@ -458,8 +470,123 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
         # round-trip dedicato `get_commessa_stato_codice`, gemello di `stato_codice`).
         "stato_codice_interno": capabilities.get("stato_codice"),
         **dict(stato),
+        "descrizione": testata["descrizione"] if testata else None,
+        # ISO, mai None a testata letta: `data_apertura` e' NOT NULL a DB.
+        "data_apertura": testata["data_apertura"].isoformat() if testata else None,
+        "responsabile_risorsa_umana_id": (
+            testata["responsabile_risorsa_umana_id"] if testata else None
+        ),
+        "responsabile_display": testata["responsabile_display"] if testata else None,
         "capabilities": capabilities,
     }
+
+
+# I campi di testata che l'operatore puo' scrivere. ⛔ `data_apertura` NON c'e':
+# la scrive il default `script.fn_data_operativa()` alla nascita ed e' in sola
+# lettura a video (brief modifiche certe §5.5, voce 4).
+_TESTATA_KEYS: frozenset[str] = frozenset({
+    "descrizione", "responsabile_risorsa_umana_id",
+})
+_DESCRIZIONE_MAX = 255  # varchar(255) a DB: anticipato con messaggio parlante.
+_V_TESTATA = PayloadValidator(validation_code="E_COMMESSA_VALIDATION", log_to_db=True)
+# Il vincolo DB che nomina il responsabile: tradotto col campo, cosi' l'input
+# si accende (`campiErrati`) invece di un «FK violata» anonimo.
+_TESTATA_FK_CONSTRAINTS: dict[str, tuple] = {
+    "fk_commesse_risorse_umane": (
+        "E_VENDITE_FK",
+        "Responsabile non valido.",
+        "responsabile_risorsa_umana_id",
+    ),
+}
+
+
+# Scopo: Aggiorna la testata leggibile della commessa — `descrizione` e
+#        `responsabile_risorsa_umana_id` (Blocco C, brief modifiche certe).
+#        PATCH parziale: si scrive solo cio' che il payload porta; `null`
+#        esplicito AZZERA (togliere il responsabile e' un gesto legittimo).
+#        Nessun guard di STATO: il DB non ne mette, di proposito — la
+#        descrizione di una commessa chiusa si puo' correggere.
+# ⭐ Il responsabile deve essere una persona ATTIVA, e lo si dice QUI con un
+#        400 che nomina il campo: a DB lo rifiuterebbe comunque il require sul
+#        figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), ma
+#        con `E_ATTIVO_REQUIRE`, che e' di classe TECNICO (500) e parla di
+#        trigger — non e' una frase per l'operatore. Il guard DB resta
+#        l'autorita'; questo e' il messaggio.
+def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict:
+    function_name = "vendite.commesse_service.aggiorna_commessa_testata"
+    _guard_commessa_id(commessa_id, function_name=function_name)
+    _V_TESTATA.validate_allowed_keys(
+        payload, allowed=_TESTATA_KEYS,
+        message="Payload commessa non valido.", function_name=function_name,
+    )
+    dati: dict[str, Any] = {}
+
+    descrizione = _V_TESTATA.extract_optional_string(
+        payload, "descrizione", nullable=True, function_name=function_name,
+    )
+    if descrizione is not _MISSING:
+        ErrorManager.require(
+            descrizione is None or len(descrizione) <= _DESCRIZIONE_MAX,
+            code="E_COMMESSA_VALIDATION",
+            message=f"La descrizione non puo' superare {_DESCRIZIONE_MAX} caratteri.",
+            context={"field": "descrizione", "commessa_id": commessa_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        dati["descrizione"] = descrizione
+
+    if "responsabile_risorsa_umana_id" in payload:
+        responsabile_id = _V_TESTATA.optional_positive_int(
+            payload, "responsabile_risorsa_umana_id", function_name=function_name,
+        )
+        if responsabile_id is not None:
+            persona = AnagraficheService().get_risorsa_umana_lookup(responsabile_id)
+            ErrorManager.require(
+                persona is not None and bool(persona.get("attivo")),
+                code="E_COMMESSA_VALIDATION",
+                message=(
+                    "Il responsabile deve essere una risorsa umana attiva."
+                    if persona is not None else "Responsabile non trovato."
+                ),
+                context={
+                    "field": "responsabile_risorsa_umana_id",
+                    "commessa_id": commessa_id,
+                    "responsabile_risorsa_umana_id": responsabile_id,
+                },
+                function_name=function_name,
+                log_to_db=True,
+            )
+        dati["responsabile_risorsa_umana_id"] = responsabile_id
+
+    ErrorManager.require(
+        bool(dati),
+        code="E_COMMESSA_VALIDATION",
+        message="Nessun campo aggiornabile nel payload commessa.",
+        context={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    repo = CommesseRepository()
+    with translate_db_errors(
+        context={"op": "aggiorna_commessa_testata", "commessa_id": commessa_id},
+        fallback_code="E_COMMESSA_VALIDATION",
+        fallback_message="Testata commessa non aggiornata: dati non validi.",
+        fk_constraints=_TESTATA_FK_CONSTRAINTS,
+    ):
+        toccata = repo.update_commessa_testata(commessa_id, dati)
+    # Zero righe = commessa inesistente O fuori scope (RLS): stesso 404, come
+    # ogni dettaglio by-id (api.md §Enforcement RLS).
+    ErrorManager.require(
+        toccata,
+        code="E_COMMESSA_NOT_FOUND",
+        message="Commessa non trovata.",
+        detail=f"Nessuna commessa con id={commessa_id}",
+        context={"commessa_id": commessa_id},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return fn_get_commessa_stato(commessa_id=commessa_id)
 
 
 # Scopo: Azione di stato utente sulla testata commessa (chiudi/riapri/annulla).
@@ -643,31 +770,12 @@ _ONERE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-# Scopo: Helper — parsing importo onere dal payload (numerico, > 0). Distinto da
+# Scopo: Helper — parsing importo onere (numerico, > 0). Distinto da
 #        `_parse_prezzo` (che parla di `prezzo` ed e` legato agli endpoint N5/N7):
 #        qui il campo si chiama `importo` e il messaggio deve nominarlo.
+#        La coercizione (bool e NaN rifiutati) e' del BB; qui resta il `> 0`.
 def _parse_importo(raw: object, *, function_name: str) -> Decimal:
-    ErrorManager.require(
-        raw is not None,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro obbligatorio mancante.",
-        detail="importo e` obbligatorio.",
-        context={"field": "importo"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        importo = Decimal(str(raw))
-    except (InvalidOperation, TypeError, ValueError):
-        ErrorManager.raise_error(
-            code="E_COMMESSA_VALIDATION",
-            message="Importo non valido.",
-            detail=f"importo deve essere numerico, ricevuto: {raw!r}.",
-            context={"field": "importo"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    assert isinstance(importo, Decimal)
+    importo = _V_TESTATA.coerce_decimal(raw, field="importo", function_name=function_name)
     # Guard applicativo anticipato: il DB rifiuta comunque (`E_ONERE_IMPORTO_NON
     # _VALIDO`, 552), ma un 400 parlante evita il round-trip sul caso banale.
     ErrorManager.require(
@@ -1050,30 +1158,10 @@ def _assert_non_fatturata(
     )
 
 
-# Scopo: Helper — parsing prezzo dal payload.
+# Scopo: Helper — parsing prezzo dal payload: la coercizione e' del BB, il
+#        `> 0` e' di dominio e resta qui con la sua frase.
 def _parse_prezzo(payload: dict[str, Any], *, function_name: str) -> Decimal:
-    raw = payload.get("prezzo")
-    ErrorManager.require(
-        raw is not None,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro obbligatorio mancante.",
-        detail="prezzo e` obbligatorio.",
-        context={"field": "prezzo"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    try:
-        prezzo = Decimal(str(raw))
-    except (InvalidOperation, TypeError, ValueError):
-        ErrorManager.raise_error(
-            code="E_COMMESSA_VALIDATION",
-            message="Prezzo non valido.",
-            detail=f"prezzo deve essere numerico, ricevuto: {raw!r}.",
-            context={"field": "prezzo"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    assert isinstance(prezzo, Decimal)
+    prezzo = _V_TESTATA.require_decimal(payload, "prezzo", function_name=function_name)
     ErrorManager.require(
         prezzo > 0,
         code="E_COMMESSA_VALIDATION",

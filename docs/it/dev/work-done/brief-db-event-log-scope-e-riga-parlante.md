@@ -1,7 +1,7 @@
 # Brief DB — `event_log`: la riga dice *chi*, *per chi*, *in che giro*
 
 > **Cos'è.** Il **piano di sviluppo lato database** del **Passo 0** di
-> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md): rendere parlante la
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md): rendere parlante la
 > riga di `vendite.event_log` — perimetro emittente, `tx_id`, identità del giro,
 > entità reale — e metterla sotto RLS, **prima** che esista qualunque endpoint.
 >
@@ -24,7 +24,7 @@
 >
 > | Cosa c'era | Dov'è ora |
 > | --- | --- |
-> | Il **Passo A** (timeline di un caso) e i rilievi della ricognizione | [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) §3-quater — è il **piano**, ed è lì che il Passo A vive |
+> | Il **Passo A** (timeline di un caso) e i rilievi della ricognizione | [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) §3-quater — è il **piano**, ed è lì che il Passo A vive |
 > | **R-1** — l'orario di transazione, chiesto al team DB e **risolto** (`clock_timestamp()`, changeSet `20260824-16/17`) | idem, §3-quater |
 > | Il **prezzo non negoziato** dentro un push riuscito, annotato come «fuori cantiere» | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md), che tratta già quel codice |
 >
@@ -58,7 +58,7 @@
 > registro del 2026-08-23.
 >
 > **Correlati:**
-> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) (il documento madre) ·
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) (il documento madre) ·
 > [brief-db-rls-commesse.md](brief-db-rls-commesse.md) (il cantiere
 > gemello: 3 changeSet + 1 pgTAP) ·
 > [brief-db-grant-batch-cleanup-note.md](brief-db-grant-batch-cleanup-note.md)
@@ -258,7 +258,7 @@ legittime**.
 **normale** — la chiusura dei documenti di un emittente cessato — diventa rumore,
 e un presidio che tutti ignorano è peggio di uno che non c'è. Il posto di quel
 presidio è sul documento, ed è materia di
-[analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md).
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 
 **Come si realizza, senza combattere con l'automazione.** Il lucchetto
 `require_attivo` lo genera `dbops.fn_run_automations_attivo`, che gira su
@@ -1089,7 +1089,7 @@ dicono di evitare.
 
 ⚠️ **Cosa NON è stato assorbito, e perché** — portare qui anche il bersaglio
 farebbe di questo documento il contenitore di due mestieri: è esattamente ciò
-che il §0 di [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) dice
+che il §0 di [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md) dice
 di non fare con la diagnostica di produzione, e la ragione è la stessa.
 
 ### Cosa questo cantiere REGALA all'altro, senza costo
@@ -1425,7 +1425,7 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 | **Un `trgfn_guard_emittente_scope` su questa tabella** | D-10 |
 | **Estendere `script.fn_resolve_emittente_fiscale_id`** | Con la colonna SR la derivazione è una **copia** dal padre: nasce il gemello `fn_resolve_emittente_sr_id` e la funzione esistente **non si tocca** (D-1) |
 | **Seedare `LOTTO` in `config.sorgenti`** | Serviva alla FK, che non c'è più (D-9). Se un domani il lineage vorrà il lotto come nodo, sarà una decisione sua |
-| **Segnalare come anomalia un evento su un padre disattivato** | L'avviso scatterebbe sul caso **normale** (la chiusura dei documenti di un emittente cessato) e diventerebbe rumore. Il presidio giusto sta **sul documento** — [analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md) |
+| **Segnalare come anomalia un evento su un padre disattivato** | L'avviso scatterebbe sul caso **normale** (la chiusura dei documenti di un emittente cessato) e diventerebbe rumore. Il presidio giusto sta **sul documento** — [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md) |
 
 ---
 
@@ -1487,7 +1487,7 @@ critica irrisolta.
 > ⚠️ **Il rilievo di Q-4/Q-5 vale oltre questo cantiere.** «Chi continua a
 > scrivere su una riga annullata» è un'anomalia da **presidiare sul documento**,
 > non da nascondere spegnendo il suo diario. È materia di
-> [analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md), e il
+> [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md), e il
 > diario — una volta leggibile — è ciò che permette di **accorgersene**.
 
 ---
@@ -2530,7 +2530,7 @@ mandare senza criterio avrebbe consegnato le fatture di tutti.
 
 > **Perché sta in questo brief e non in quello del Passo A.** Il Passo A non è
 > materia di questo cantiere — è il §498 di
-> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md). Ma **questo**
+> [analisi-osservabilita-log.md](../work-done/analisi-osservabilita-log.md). Ma **questo**
 > cantiere è ciò che lo ha reso possibile, e chi riparte lo fa da qui: la nota
 > serve a non dover ricostruire il ragionamento da capo.
 

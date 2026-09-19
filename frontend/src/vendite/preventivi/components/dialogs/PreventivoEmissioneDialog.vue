@@ -45,7 +45,7 @@ const { t } = useI18n()
           {{ preventivo.billing_account_ragione_sociale || preventivo.billing_account_codice }}
           <span
             v-if="preventivo.billing_account_codice && preventivo.billing_account_ragione_sociale"
-            class="text-color-secondary"
+            class="app-text-muted"
           >
             · {{ preventivo.billing_account_codice }}
           </span>

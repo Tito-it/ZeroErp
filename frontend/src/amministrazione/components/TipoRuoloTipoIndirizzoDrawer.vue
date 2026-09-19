@@ -220,28 +220,28 @@ function close() {
             :invalid="campiErrati.includes('attivo')"
           />
         </div>
-        <Message v-if="isEdit" severity="info" :closable="false" class="mt-2">
+        <Message v-if="isEdit" severity="info" :closable="false">
           {{ t('amministrazione.matrice_indirizzi_ruoli.fk_immutable_hint') }}
         </Message>
         <template v-if="isEdit && detail">
           <div class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_dal') }}</label>
-              <InputText :model-value="displayDate(detail.valido_dal)" disabled class="w-full" />
+              <InputText :model-value="displayDate(detail.valido_dal)" disabled />
             </div>
             <div class="form-field">
               <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_al') }}</label>
-              <InputText :model-value="displayDate(detail.valido_al)" disabled class="w-full" />
+              <InputText :model-value="displayDate(detail.valido_al)" disabled />
             </div>
           </div>
           <div class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('common.data_insert') }}</label>
-              <InputText :model-value="displayDate(detail.data_insert)" disabled class="w-full" />
+              <InputText :model-value="displayDate(detail.data_insert)" disabled />
             </div>
             <div class="form-field">
               <label>{{ t('common.data_update') }}</label>
-              <InputText :model-value="displayDate(detail.data_update)" disabled class="w-full" />
+              <InputText :model-value="displayDate(detail.data_update)" disabled />
             </div>
           </div>
         </template>

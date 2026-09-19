@@ -331,13 +331,12 @@ function handleCancel() {
         })
       : ''"
     width="xl"
-    :closable="false"
     :save-disabled="!canConfirm"
     @save="handleConfirm"
     @cancel="handleCancel"
   >
     <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-      <small class="text-color-secondary">{{ t(localizedKey('dialog_hint')) }}</small>
+      <small class="app-text-muted">{{ t(localizedKey('dialog_hint')) }}</small>
 
       <div v-if="loading" style="padding: 1rem; text-align: center;">
         <i class="pi pi-spin pi-spinner" style="margin-right: 0.5rem;" />
@@ -476,7 +475,7 @@ function handleCancel() {
             total: formatCurrency(summaryTotale.total),
           }) }}
         </span>
-        <span v-else class="text-color-secondary">
+        <span v-else class="app-text-muted">
           {{ t(localizedKey('summary_zero')) }}
         </span>
       </div>

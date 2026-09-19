@@ -104,7 +104,7 @@ Con il livello 2 la riserva dice in anticipo ciò che il trigger sta per
 scrivere, e il `RETURNING` vede la riga. Le tre risposte possibili alla domanda
 *«un BA appena scritto, ancora senza legame, di chi è?»* — e perché è stata
 scelta questa — sono nel brief
-[brief-db-ba-riserva-emittente-operatore-d13](/dev/work-in-progress/brief-db-ba-riserva-emittente-operatore-d13).
+[brief-db-ba-riserva-emittente-operatore-d13](/dev/work-done/brief-db-ba-riserva-emittente-operatore-d13).
 
 ⚠️ **Il prezzo, dichiarato.** Un BA che *resta* senza legame — creato senza
 sessione: un seed, una migrazione, un'installazione «0 emittenti» — era «del

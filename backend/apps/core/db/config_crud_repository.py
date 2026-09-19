@@ -13,7 +13,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db.config_metadata_repository import ConfigMetadataRepository
-from apps.core.db.dbops_repository import _REL_CONSENTITE
+from apps.core.db.dbops_repository import CONFIG_TABLES
 
 _metadata = ConfigMetadataRepository()
 
@@ -78,7 +78,7 @@ class ConfigCrudRepository:
     @staticmethod
     def list_available_tables() -> list[dict[str, str]]:
         result = []
-        for rel in sorted(_REL_CONSENTITE):
+        for rel in sorted(CONFIG_TABLES):
             schema, table = rel.split(".", 1)
             result.append({"schema": schema, "table": table, "rel": rel})
         return result

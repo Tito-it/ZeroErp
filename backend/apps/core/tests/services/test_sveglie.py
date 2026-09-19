@@ -27,6 +27,25 @@
 #   8. `abilita` è obbligatorio: il silenzio non vale «spento»
 #   9. i worker del badge code hanno un contratto nel seed del catalogo
 #  10. un nome di unit con una barra è rifiutato (finisce in un percorso)
+#  11. `comando` è obbligatorio, per ogni forma, ed è una lista non vuota
+#  12. un token con spazi o metacaratteri è rifiutato (systemd ≠ subprocess)
+#  13. il primo token di ogni `comando` dichiarato è un management command
+#      che esiste nel backend                                               ⭐
+#  14. `avvio_manuale` è obbligatorio e booleano: il silenzio non decide
+#  15. un servizio sempre acceso non può dichiararsi avviabile a mano
+#  16. il drenatore NON è candidato a «Esegui ora» (letto dal JSON per
+#      processo, non ricopiato) — e almeno un timer lo è
+#
+#  ⭐ Dal 2026-09-15 il JSON porta `avvio_manuale`: la sede in cui si dice
+#     quali sveglie hanno il pulsante «Esegui ora» (solo comandi brevi —
+#     decisione 2a del brief §8.5, piano §3.2). Non è `abilita`.
+#
+#  ⭐ Dal 2026-09-14 il JSON porta anche il `comando` (l'argv dopo
+#     `run-command.sh`), reso nel template come `__COMANDO__`: è la riga che
+#     «Esegui ora» lancia, e deve essere LA STESSA del timer. Che il template
+#     non abbia più una riga cablata e che l'unit reso porti l'argv del JSON lo
+#     prova `scripts/tests/test-install-timers.sh` (test 6 e 7): qui si prova
+#     il CONTRATTO del campo, là il rendering.
 #
 #  ⭐ Dal 2026-09-11 la TOLLERANZA non sta più qui: è il contratto del processo
 #     (`dbops.processi.tolleranza_minuti`, brief
@@ -54,6 +73,28 @@ from apps.core.tests._contratto_processi import leggi_contratti_dal_seed
 #    zero file e i test 2 e 4 passerebbero **a vuoto**. Su un presidio che deve
 #    accorgersi di ciò che MANCA, è il difetto peggiore possibile.
 _TEMPLATE_DIR = sveglie.TEMPLATE_DIR
+
+# La cartella `apps/` del backend, per il test 13: un management command vive
+# in `apps/<app>/management/commands/<nome>.py`. Derivata dallo stesso layout
+# del modulo (`DEPLOY_DIR` è `backend/deploy`), per la ragione scritta sopra.
+_APPS_DIR = sveglie.DEPLOY_DIR.parent / "apps"
+
+
+# Scopo: una voce VALIDA del dichiarato, con la possibilità di romperne un
+#        pezzo. Ogni test negativo qui sotto rompe UNA cosa: una fixture rotta
+#        in due modi proverebbe solo che il primo controllo in ordine di codice
+#        scatta, non quello sotto prova.
+_ASSENTE = object()
+
+
+def _voce(**override: object) -> dict:
+    base: dict = {
+        "unit": "x", "processo_codice": "p", "forma": "timer",
+        "comando": ["p"], "oncalendar": "*:0/1", "abilita": True,
+        "avvio_manuale": True,
+    }
+    base.update(override)
+    return {k: v for k, v in base.items() if v is not _ASSENTE}
 
 
 # Scopo: i codici dei processi che il BACKEND avvia, letti dal modulo che li
@@ -101,6 +142,8 @@ class SveglieDichiarateTests(SimpleTestCase):
             with self.subTest(unit=s.unit):
                 self.assertIn(s.forma, (sveglie.FORMA_TIMER, sveglie.FORMA_SERVIZIO))
                 self.assertTrue(s.processo_codice)
+                self.assertIsInstance(s.comando, tuple)
+                self.assertTrue(s.comando, "una sveglia senza comando non sveglia niente")
                 if s.e_timer:
                     self.assertTrue(s.oncalendar, "un timer senza cadenza non è un timer")
                 else:
@@ -162,14 +205,12 @@ class SveglieDichiarateTests(SimpleTestCase):
     #    peggio di un errore — è la seconda sede che il cantiere ha tolto.
     def test_tolleranza_nel_json_e_rifiutata(self) -> None:
         self._assert_dichiarato_rifiutato(
-            {"unit": "x", "processo_codice": "p", "forma": "timer",
-             "oncalendar": "*:0/1", "abilita": True, "tolleranza_minuti": 10},
+            _voce(tolleranza_minuti=10),
             "dbops.processi",
         )
         # E vale anche a `null`: la chiave stessa è la seconda sede.
         self._assert_dichiarato_rifiutato(
-            {"unit": "x", "processo_codice": "p", "forma": "timer",
-             "oncalendar": "*:0/1", "abilita": True, "tolleranza_minuti": None},
+            _voce(tolleranza_minuti=None),
             "dbops.processi",
         )
 
@@ -177,8 +218,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     #    meglio» darebbe una sveglia in meno senza dirlo.
     def test_forma_non_ammessa_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
-            {"unit": "x", "processo_codice": "p", "forma": "cron",
-             "oncalendar": "*:0/1", "abilita": True},
+            _voce(forma="cron"),
             "forma",
         )
 
@@ -186,8 +226,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     #    scoprirebbe l'host invece della CI.
     def test_timer_senza_cadenza_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
-            {"unit": "x", "processo_codice": "p", "forma": "timer",
-             "oncalendar": None, "abilita": True},
+            _voce(oncalendar=None),
             "oncalendar",
         )
 
@@ -196,8 +235,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     #    questo file esiste per togliere, reintrodotto dalla porta di servizio.
     def test_abilita_omesso_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
-            {"unit": "x", "processo_codice": "p", "forma": "servizio",
-             "oncalendar": None},
+            _voce(forma="servizio", oncalendar=None, abilita=_ASSENTE, avvio_manuale=False),
             "abilita",
         )
 
@@ -225,10 +263,65 @@ class SveglieDichiarateTests(SimpleTestCase):
     #     `/etc/systemd/system` senza che niente lo dica.
     def test_unit_con_barra_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
-            {"unit": "../../etc/cattivo", "processo_codice": "p",
-             "forma": "servizio", "oncalendar": None, "abilita": True},
+            _voce(unit="../../etc/cattivo", forma="servizio", oncalendar=None, avvio_manuale=False),
             "non ammesso",
         )
+
+    # 11. ⛔ `comando` è obbligatorio, ed è una LISTA non vuota — per ogni
+    #     forma. Senza, l'installer scriverebbe `ExecStart=… run-command.sh ` e
+    #     lo scoprirebbe l'host; e «Esegui ora» non avrebbe niente da lanciare.
+    #     Una stringa è rifiutata anche se «sembra giusta»: come si spezza sugli
+    #     spazi sarebbe una regola scritta due volte (qui e in systemd).
+    def test_comando_obbligatorio_lista_non_vuota(self) -> None:
+        self._assert_dichiarato_rifiutato(_voce(comando=_ASSENTE), "comando")
+        self._assert_dichiarato_rifiutato(_voce(comando=[]), "comando")
+        self._assert_dichiarato_rifiutato(_voce(comando="p --x"), "comando")
+        # Vale anche per un servizio sempre acceso: ha un ExecStart pure lui.
+        self._assert_dichiarato_rifiutato(
+            _voce(forma="servizio", oncalendar=None, comando=_ASSENTE), "comando",
+        )
+
+    # 12. ⛔ Un token con uno spazio o un metacarattere è rifiutato. Lo stesso
+    #     argv finisce in DUE lettori che lo trattano in modo diverso: systemd
+    #     spezza l'`ExecStart` sugli spazi ed espande `%x`/`$VAR`, `subprocess`
+    #     passa il token intero. Con `"--cadenza settimanale"` in un token il
+    #     timer lancerebbe due argomenti e il pulsante uno — e nessuno dei due
+    #     fallirebbe in modo parlante.
+    def test_comando_con_spazi_o_metacaratteri_e_rifiutato(self) -> None:
+        for cattivo in (
+            ["p", "--cadenza settimanale"],   # spazio: systemd ≠ subprocess
+            ["p", "%i"],                       # specifier systemd
+            ["p", "$HOME"],                    # espansione d'ambiente
+            ["p", "a|b"],                      # delimitatore del sed dell'installer
+            ["p", "a&b"],                      # `&` nel replacement di sed
+            ["p", "'x'"],                      # quote
+            ["p", ""],                         # token vuoto
+            ["Digest presidi"],                # il command non è un identificatore
+            ["../manage"],                     # un percorso non è un command
+        ):
+            with self.subTest(comando=cattivo):
+                self._assert_dichiarato_rifiutato(_voce(comando=cattivo), "comando")
+
+    # 13. ⭐ IL PRIMO TOKEN È UN MANAGEMENT COMMAND CHE ESISTE. È la metà del
+    #     contratto che il rendering non può provare: `test-install-timers.sh`
+    #     dice che l'unit esegue l'argv del JSON, questo dice che quell'argv
+    #     nomina un comando che il backend HA. Un refuso qui non fallisce in
+    #     CI: fallisce sull'host, alla prima corsa del timer, con un
+    #     `Unknown command` nel journal che nessuno legge.
+    def test_il_comando_dichiarato_esiste_nel_backend(self) -> None:
+        self.assertTrue(_APPS_DIR.is_dir(), f"layout inatteso: {_APPS_DIR}")
+        comandi_esistenti = {
+            p.stem for p in _APPS_DIR.glob("*/management/commands/*.py")
+            if p.stem != "__init__"
+        }
+        self.assertTrue(comandi_esistenti, "nessun management command trovato: il test passerebbe a vuoto")
+        for s in sveglie.carica_sveglie():
+            with self.subTest(unit=s.unit):
+                self.assertIn(
+                    s.comando[0], comandi_esistenti,
+                    f"{s.unit} dichiara il comando {s.comando[0]!r}, che non è un "
+                    f"management command del backend",
+                )
 
     # Scopo: scrive un dichiarato rotto in un file temporaneo, punta il modulo
     #        lì e verifica che il caricamento fallisca nominando il difetto.
@@ -243,3 +336,42 @@ class SveglieDichiarateTests(SimpleTestCase):
                 with self.assertRaises(ValueError) as ctx:
                     sveglie.carica_sveglie()
         self.assertIn(atteso, str(ctx.exception))
+
+    # 14. ⛔ `avvio_manuale` SI DICHIARA. Con un default a `false` una sveglia
+    #     nuova non avrebbe mai il pulsante senza che nessuno l'abbia deciso;
+    #     con un default a `true` un comando lungo lo avrebbe. Nessun silenzio
+    #     è una decisione — la stessa ragione del test 8.
+    def test_avvio_manuale_omesso_o_non_booleano_solleva(self) -> None:
+        self._assert_dichiarato_rifiutato(_voce(avvio_manuale=_ASSENTE), "avvio_manuale")
+        self._assert_dichiarato_rifiutato(_voce(avvio_manuale="si"), "avvio_manuale")
+        self._assert_dichiarato_rifiutato(_voce(avvio_manuale=None), "avvio_manuale")
+
+    # 15. Un servizio sempre acceso non ha una corsa da lanciare: dichiararlo
+    #     avviabile a mano è una contraddizione, e si ferma qui, non nel drawer.
+    def test_servizio_avviabile_a_mano_solleva(self) -> None:
+        self._assert_dichiarato_rifiutato(
+            _voce(forma="servizio", oncalendar=None, avvio_manuale=True),
+            "servizio sempre acceso",
+        )
+
+    # 16. ⭐ Il drenatore NON è candidato: «Esegui ora» lo esegue lui, e un
+    #     lavoro che lancia il drenatore dal drenatore non ha senso (brief
+    #     §8.2.3). L'unit si legge dal dichiarato PER PROCESSO, non ricopiata
+    #     qui: il nome è un fatto del JSON. E almeno un timer deve essere
+    #     candidato, o il pulsante non comparirebbe mai e il cantiere sarebbe
+    #     verde a vuoto.
+    def test_il_drenatore_non_e_candidato_e_almeno_un_timer_lo_e(self) -> None:
+        drenatore = sveglie.sveglie_di_processo(processi.PROCESSO_DRAINA_CODA_LAVORI)
+        self.assertTrue(drenatore, "il drenatore non ha una sveglia dichiarata")
+        for s in drenatore:
+            with self.subTest(unit=s.unit):
+                self.assertFalse(
+                    s.avvio_manuale,
+                    f"{s.unit}: «Esegui ora» dal drenatore non ha senso — avvio_manuale dev'essere false",
+                )
+        candidati = [s.unit for s in sveglie.carica_sveglie() if s.avvio_manuale]
+        self.assertTrue(candidati, "nessuna sveglia candidata a «Esegui ora»: il pulsante non comparirebbe mai")
+        for s in sveglie.carica_sveglie():
+            with self.subTest(unit=s.unit):
+                if not s.e_timer:
+                    self.assertFalse(s.avvio_manuale, f"{s.unit}: un servizio non si avvia a mano")

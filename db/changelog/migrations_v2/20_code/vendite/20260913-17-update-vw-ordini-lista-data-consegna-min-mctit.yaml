@@ -1,0 +1,256 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 (2 di 4) — vendite.vw_ordini_lista: + data_consegna_richiesta_cliente_min
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2
+#
+# -- LA DATA DELLA TESTATA E' UN min(), NON UNA COLONNA ---------------------
+#   La data di consegna sta SULLA RIGA (brief 2.2): una riga puo' essere
+#   pronta e un'altra no. La testata la espone come min() delle righe ATTIVE,
+#   qui e non in una colonna di vendite.ordini: una colonna sarebbe una
+#   seconda sorgente di verita' che va fuori sincrono al primo cambio di riga.
+#   NULL = nessuna riga attiva la dichiara.
+#
+# -- IL NOME: D-16, deciso da Tid il 2026-09-02 ----------------------------
+#   `data_consegna_richiesta_cliente_min` e' lungo, ed e' il prezzo giusto:
+#   dice DI CHI e' la data senza che si debba risalire alla tabella (su
+#   acquisti la richiesta e' nostra e la conferma del fornitore). La chiave
+#   i18n la segue: vendite.ordini.col_data_consegna_richiesta_cliente_min.
+#
+# -- COME SI CALCOLA: LEFT JOIN LATERAL per riga di testata ----------------
+#   Un aggregato correlato sull'ordine, servito dall'indice uq_ordrig_riga_nr
+#   (ordine_id, riga_nr) per prefisso. Non un GROUP BY su tutte le righe: la
+#   vista serve anche il DETTAGLIO per id, e li' si vuole leggere un ordine
+#   solo. Le righe sono sotto RLS (20260909-35) e la vista e' security_invoker:
+#   il min() vede le righe che vede chi legge, cioe' le stesse della testata.
+#
+# -- CREATE OR REPLACE: colonna in ULTIMA posizione ---------------------------
+#   PostgreSQL consente solo di appendere; e' gia' dichiarato nel COMMENT
+#   della vista. Chi consuma per posizione si romperebbe: si consuma per nome.
+#
+# -- security_invoker=on RI-SPECIFICATA ------------------------------------
+#   Senza, CREATE OR REPLACE VIEW la azzera e la vista smette di rispettare
+#   la RLS di chi legge. Presidiato sul merito da
+#   db/pgtap/rls/test-rls-viste-security-invoker.sql.
+#
+# -- CHI LA LEGGE ----------------------------------------------------------
+#   ordini_repository fa SELECT v.* (lista e dettaglio): la colonna arriva al
+#   backend da sola. La riga di lista e' ui.lista_colonna 746 (P-7), attiva,
+#   ordinabile=f finche' _ORDER_COLS_ORDINI non la porta (brief 5.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260913-17-update-vw-ordini-lista-data-consegna-min-mctit.yaml
+
+  - changeSet:
+      id: 20260913-17-update-vw-ordini-lista-data-consegna-min
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_ordini_lista: + data_consegna_richiesta_cliente_min (min delle righe
+        attive, LEFT JOIN LATERAL per testata) in coda. Nome da D-16. security_invoker=on
+        ri-specificata. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo,
+        sezione 5.2 (P-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_ordini_lista
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini_righe
+                columnName: data_consegna_richiesta_cliente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ordini_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  o.soggetto_ruolo_id,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  o.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.tasso_cambio,
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa AS agente_denominazione,
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                      CASE o.documento_origine_tipo
+                          WHEN 'PREVENTIVO'::text THEN pv.numero
+                          WHEN 'OFFERTA'::text THEN oc.codice::character varying
+                          ELSE NULL::character varying
+                      END AS documento_origine_codice,
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update,
+                  sd.pdf_mode,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  -- rev 2026-09-13 (P-6): la data di consegna della TESTATA e' min() delle
+                  -- righe attive, non una colonna: una colonna sarebbe una seconda sorgente
+                  -- di verita' che va fuori sincrono al primo cambio di riga (brief 2.2).
+                  -- Il suffisso _cliente dice DI CHI e' la data (D-12/D-16).
+                  dcr.data_consegna_richiesta_cliente_min
+                 FROM vendite.ordini o
+                   JOIN config.stati_doc_ordini sd ON sd.id = o.stato_doc_ordine_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = o.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN config.modalita_pagamento mp ON mp.id = o.modalita_pagamento_id
+                   LEFT JOIN config.termini_pagamento tp ON tp.id = o.termine_pagamento_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON sr_ag.id = o.agente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ag ON s_ag.id = sr_ag.soggetto_id
+                   LEFT JOIN vendite.preventivi pv ON pv.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'PREVENTIVO'::text
+                   LEFT JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'OFFERTA'::text
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'ORDINE_VENDITA'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = o.id::text
+                   LEFT JOIN LATERAL ( SELECT min(orr.data_consegna_richiesta_cliente) AS data_consegna_richiesta_cliente_min
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.ordine_id = o.id AND orr.attivo IS TRUE) dcr ON true;
+
+              COMMENT ON VIEW vendite.vw_ordini_lista
+              IS 'Vista canonica lista/dettaglio ordini vendita: testata + decodifiche denormalizzate (stato, cliente, billing/emittente/utility, pagamento, valuta, agente, documento origine) + pdf_mode (modalita'' bottone PDF per-riga, data-driven). Sola denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). rev 2026-07-11: +pdf_mode. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede. ⭐ rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + data_consegna_richiesta_cliente_min, la prima data di consegna chiesta dal cliente sulle righe ATTIVE dell''ordine. E'' un min() calcolato dalle righe e non una colonna di testata, perche'' una colonna sarebbe una seconda sorgente di verita'' che va fuori sincrono al primo cambio di riga; il suffisso _cliente dice di chi e'' la data (D-16: non marcato = nostro, marcato = della controparte). NULL = nessuna riga attiva la dichiara. In ultima posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere. Serve la lista (ui.lista_colonna 746) e il drawer di testata, che leggono SELECT v.*.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ordini_lista;
+              CREATE VIEW vendite.vw_ordini_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  o.soggetto_ruolo_id,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  o.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.tasso_cambio,
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa AS agente_denominazione,
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                      CASE o.documento_origine_tipo
+                          WHEN 'PREVENTIVO'::text THEN pv.numero
+                          WHEN 'OFFERTA'::text THEN oc.codice::character varying
+                          ELSE NULL::character varying
+                      END AS documento_origine_codice,
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update,
+                  sd.pdf_mode,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.ordini o
+                   JOIN config.stati_doc_ordini sd ON sd.id = o.stato_doc_ordine_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = o.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN config.modalita_pagamento mp ON mp.id = o.modalita_pagamento_id
+                   LEFT JOIN config.termini_pagamento tp ON tp.id = o.termine_pagamento_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON sr_ag.id = o.agente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ag ON s_ag.id = sr_ag.soggetto_id
+                   LEFT JOIN vendite.preventivi pv ON pv.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'PREVENTIVO'::text
+                   LEFT JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'OFFERTA'::text
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'ORDINE_VENDITA'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = o.id::text;
+              COMMENT ON VIEW vendite.vw_ordini_lista
+              IS 'Vista canonica lista/dettaglio ordini vendita: testata + decodifiche denormalizzate (stato, cliente, billing/emittente/utility, pagamento, valuta, agente, documento origine) + pdf_mode (modalita'' bottone PDF per-riga, data-driven). Sola denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). rev 2026-07-11: +pdf_mode. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';

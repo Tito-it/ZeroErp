@@ -266,7 +266,7 @@ async function onSospensioneSaved(result) {
 }
 function onAnnullaPratica() {
   confirmAction({
-    title: t('pratiche.azione_annulla'),
+    header: t('pratiche.azione_annulla'),
     message: t('pratiche.conferma_annulla'),
     danger: true,
     onAccept: () => executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.ANNULLATA }))
@@ -410,10 +410,10 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <h4>{{ t('pratiche.section_soggetto') }}</h4>
           <div class="form-field">
             <label>{{ t('pratiche.field_contesto') }}</label>
-            <SoggettoRuoloLookup v-model="contestoSelezionato" class="w-full" />
-            <small class="text-color-secondary">{{ t('pratiche.soggetto_opzionale') }}</small>
+            <SoggettoRuoloLookup v-model="contestoSelezionato" />
+            <small class="app-text-muted">{{ t('pratiche.soggetto_opzionale') }}</small>
           </div>
-          <div class="mb-3">
+          <div>
             <Button :label="t('pratiche.nuovo_soggetto')" icon="pi pi-user-plus"
               text size="small" @click="resolverVisible = true" />
           </div>
@@ -434,7 +434,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             />
             <!-- Hint contestuale: per il cliente multi-istanza la scelta
                  della fornitura e' il punto, non un opzionale generico. -->
-            <small class="text-color-secondary">
+            <small class="app-text-muted">
               {{ contestoSelezionato.ruolo_codice === TIPO_RUOLO_CLIENTE
                 ? t('pratiche.istanza_scegli_fornitura', { n: contestoSelezionato.n_istanze })
                 : t('pratiche.istanza_hint') }}
@@ -449,14 +449,14 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
 
           <!-- Dati pratica -->
-          <h4 class="mt-3">{{ t('pratiche.section_dati') }}</h4>
+          <h4>{{ t('pratiche.section_dati') }}</h4>
           <div class="form-field">
             <label>{{ t('pratiche.col_tipo_prestazione') }} *</label>
             <LookupSelect
               v-model="form.tipo_prestazione_id"
               rel="pratiche.tipi_prestazione"
               :includi-obsoleti="false"
-              class="w-full" :placeholder="t('pratiche.select_tipo_prestazione')"
+              :placeholder="t('pratiche.select_tipo_prestazione')"
             />
           </div>
           <div class="form-field">
@@ -464,21 +464,21 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <LookupSelect
               v-model="form.priorita_id"
               rel="config.priorita_pratiche"
-              class="w-full" :placeholder="t('pratiche.select_priorita')"
+              :placeholder="t('pratiche.select_priorita')"
             />
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.field_descrizione') }}</label>
-            <Textarea v-model="form.descrizione" class="w-full" rows="3" auto-resize
+            <Textarea v-model="form.descrizione" rows="3" auto-resize
               :invalid="campiErrati.includes('descrizione')"
             />
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.col_data_scadenza') }}</label>
-            <DatePicker v-model="form.data_scadenza" class="w-full" date-format="dd/mm/yy" show-icon />
+            <DatePicker v-model="form.data_scadenza" date-format="dd/mm/yy" show-icon />
           </div>
         </div>
-        <div class="flex justify-end mt-4">
+        <div>
           <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
 
@@ -532,46 +532,46 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <!-- Soggetto (se presente) -->
             <div v-if="detail.soggetto_display" class="form-field">
               <label>{{ t('pratiche.col_soggetto') }}</label>
-              <InputText :model-value="detail.soggetto_display" disabled class="w-full" />
+              <InputText :model-value="detail.soggetto_display" disabled />
             </div>
 
             <!-- Form dati editabili -->
             <div class="form-grid">
               <div class="form-field">
                 <label>{{ t('pratiche.col_tipo_prestazione') }}</label>
-                <InputText :model-value="detail.tipo_prestazione_descrizione" disabled class="w-full" />
+                <InputText :model-value="detail.tipo_prestazione_descrizione" disabled />
               </div>
               <div class="form-field">
                 <label>{{ t('pratiche.col_priorita') }}</label>
                 <LookupSelect
                   v-model="form.priorita_id"
                   rel="config.priorita_pratiche"
-                  class="w-full" :placeholder="t('pratiche.select_priorita')" show-clear
+                  :placeholder="t('pratiche.select_priorita')" show-clear
                 />
               </div>
               <div class="form-field">
                 <label>{{ t('pratiche.field_descrizione') }}</label>
-                <Textarea v-model="form.descrizione" class="w-full" rows="3" auto-resize
+                <Textarea v-model="form.descrizione" rows="3" auto-resize
                   :invalid="campiErrati.includes('descrizione')"
                 />
               </div>
               <div class="form-grid-2col">
                 <div class="form-field">
                   <label>{{ t('pratiche.col_data_scadenza') }}</label>
-                  <DatePicker v-model="form.data_scadenza" class="w-full" date-format="dd/mm/yy" show-icon />
+                  <DatePicker v-model="form.data_scadenza" date-format="dd/mm/yy" show-icon />
                 </div>
                 <div class="form-field">
                   <label>{{ t('pratiche.col_data_apertura') }}</label>
-                  <InputText :model-value="displayDate(detail.data_apertura)" disabled class="w-full" />
+                  <InputText :model-value="displayDate(detail.data_apertura)" disabled />
                 </div>
               </div>
               <div v-if="detail.risorsa_umana_display" class="form-field">
                 <label>{{ t('pratiche.col_assegnata_a') }}</label>
-                <InputText :model-value="detail.risorsa_umana_display" disabled class="w-full" />
+                <InputText :model-value="detail.risorsa_umana_display" disabled />
               </div>
             </div>
 
-            <div class="flex justify-end mt-4">
+            <div>
               <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
             </div>
           </TabPanel>

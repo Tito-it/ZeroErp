@@ -13,11 +13,9 @@
 
 import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 
 import { useTabEvents } from '../../../core/composables/useTabEvents'
-import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
-import { buildDocListParams, hasDocListActiveFilters } from '../../_shared/listaDocumenti'
+import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
 import {
   annullaReso,
@@ -43,28 +41,25 @@ export const useResiStore = defineStore('vendite-resi', () => {
   // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
   const defaultDataDa = defaultFiltroDataDaString()
 
-  const filters = ref({
-    search: '',
-    stato_codice_interno: null,
-    billing_account_id: null,
-    data_da: defaultDataDa,
-    data_a: null,
-    limit: 25,
-    offset: 0,
-    // Default `data desc`: resi con data piu' recente in cima (allineato al
-    // default backend e al defaultSortField della ResiSearchTable).
-    order_by: 'data',
-    order_dir: 'desc',
-  })
-
-  // Lista paginata resi con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro
-  // attivo: la lista si popola al mount. limit/offset come DDT/ordini.
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    hasActiveFilters: (f) => hasDocListActiveFilters(f),
-    buildParams: (f, searchTerm) => buildDocListParams(f, searchTerm),
+  // Lista con guardia empty-state standard: `data_da` col default standard
+  // conta come filtro attivo (`gateKeys`), quindi la lista si popola al mount.
+  // Convenzione comune dei documenti di vendita: search >= 3, stato, BA,
+  // range date — i resi non hanno utility (gemello BE `extract_doc_list_filters`).
+  const lista = useListaStoreCore({
     fetchPage: listResi,
+    filterDefaults: {
+      stato_codice_interno: null,
+      billing_account_id: null,
+      data_da: defaultDataDa,
+      data_a: null,
+    },
+    gateKeys: ['stato_codice_interno', 'billing_account_id', 'data_da', 'data_a'],
+    // Default `data desc`: resi con data piu' recente in cima (allineato al
+    // default backend e al defaultSortField della ResiSearchTable). Il ripiego
+    // del verso segue.
+    orderBy: 'data',
+    orderDir: 'desc',
+    orderDirDefault: 'desc',
   })
 
   // Scopo: Dettaglio testata reso + capability (righe_count, can_edit_*,
@@ -174,10 +169,11 @@ export const useResiStore = defineStore('vendite-resi', () => {
 
 
   return {
-    // state
-    items, totalRecords, loading, hasSearched, filters,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
+    ...lista,
     // testata
-    fetchList, fetchDetail, create, update, elimina,
+    fetchDetail, create, update, elimina,
     // azioni di dominio
     conferma, annulla, generaRiconsegna, chiudiRiconsegna, riapriRiconsegna,
     // righe

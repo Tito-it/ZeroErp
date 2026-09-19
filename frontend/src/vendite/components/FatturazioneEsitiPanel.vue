@@ -88,6 +88,23 @@ function etichettaOrigine(origine) {
     : t('vendite.fatturazione.origine_batch')
 }
 
+// Esito dell'ULTIMO GIRO CONCLUSO di una corsia: etichetta + severità dal
+// solo `ultima_conclusa` — data ed esito arrivano insieme, dalla stessa corsa
+// (2026-09-14). ⛔ Prima il Tag leggeva `last_ok` e la data `last_run_at`, che
+// erano due corse diverse: durante un giro in esecuzione il pannello mostrava
+// l'ora del giro in corso con l'esito del precedente; e sulle righe «app» un
+// job IN_CORSO usciva «Errore». Ora «in corso» è un Tag a parte (`in_corso`)
+// e l'esito ha tre facce: ok, errore, e «esito non scritto» — `ok` è nullable
+// sul giornale dei run, e un null reso come «Errore» sarebbe un'invenzione.
+// Chiavi i18n ESPLICITE (mai costruite), come le altre mappe di questo file.
+function esitoGiro(g) {
+  const c = g.ultima_conclusa
+  if (!c) return { label: t('vendite.fatturazione.giro_mai_concluso'), severity: 'secondary' }
+  if (c.ok === true) return { label: t('vendite.fatturazione.giro_ok'), severity: 'success' }
+  if (c.ok === false) return { label: t('vendite.fatturazione.giro_ko'), severity: 'danger' }
+  return { label: t('vendite.fatturazione.giro_esito_non_scritto'), severity: 'warn' }
+}
+
 async function load() {
   try {
     const res = await getFatturazioneEsiti(props.competenzaMese)
@@ -130,7 +147,7 @@ defineExpose({ refresh: load })
     <div class="app-esiti-body">
       <!-- Stato coda stampa: conteggi per stato. -->
       <div class="app-esiti-coda">
-        <span class="text-color-secondary">{{ t('vendite.fatturazione.coda_stampa') }}:</span>
+        <span class="app-text-muted">{{ t('vendite.fatturazione.coda_stampa') }}:</span>
         <template v-for="s in CODA_STATI" :key="s.key">
           <Tag
             v-if="(codaStampa[s.key] ?? 0) > 0"
@@ -138,7 +155,7 @@ defineExpose({ refresh: load })
             :severity="statoCodaStampaSeverity(s.key)"
           />
         </template>
-        <span v-if="codaVuota" class="text-color-secondary">
+        <span v-if="codaVuota" class="app-text-muted">
           {{ competenzaMese
             ? t('vendite.fatturazione.coda_vuota_mese')
             : t('vendite.fatturazione.coda_vuota') }}
@@ -148,9 +165,13 @@ defineExpose({ refresh: load })
       <!-- Giri delle corsie di fatturazione per il mese selezionato. -->
       <div v-if="giri.length" class="app-esiti-giri">
         <div v-for="g in giri" :key="`${g.origine}:${g.jobname}`" class="app-esiti-giro">
+          <Tag :value="esitoGiro(g).label" :severity="esitoGiro(g).severity" />
+          <!-- Un giro che sta girando ADESSO non è un esito: si dice a parte,
+               e l'esito accanto resta quello dell'ultimo giro concluso. -->
           <Tag
-            :value="g.last_ok ? t('vendite.fatturazione.giro_ok') : t('vendite.fatturazione.giro_ko')"
-            :severity="g.last_ok ? 'success' : 'danger'"
+            v-if="g.in_corso"
+            :value="t('vendite.fatturazione.giro_in_corso')"
+            severity="info"
           />
           <span class="app-esiti-giro-label">{{ etichettaGiro(g.jobname) }}</span>
           <!-- Da DOVE è partito il lavoro: le due strade convivono e vanno
@@ -160,13 +181,16 @@ defineExpose({ refresh: load })
             severity="secondary"
             class="app-esiti-origine"
           />
-          <span class="text-color-secondary">
-            {{ g.last_run_at ? displayTimestamp(g.last_run_at) : '—' }}
+          <!-- La data del giro CONCLUSO a cui l'esito appartiene, non l'ultimo
+               segno di vita: quella sta in `last_run_at` e, quando differisce,
+               è il giro in corso — già detto dal Tag qui sopra. -->
+          <span class="app-text-muted">
+            {{ g.ultima_conclusa?.started_at ? displayTimestamp(g.ultima_conclusa.started_at) : '—' }}
           </span>
           <!-- Esecuzioni riuscite sul totale, RELATIVE al mese filtrato.
                L'etichetta è esplicita: "(23/24)" da solo si legge come un
                conteggio di fatture, che non è. -->
-          <span class="text-color-secondary">
+          <span class="app-text-muted">
             {{ t('vendite.fatturazione.giro_esecuzioni', {
               ok: g.ok_count, tot: g.total_runs,
             }) }}
@@ -175,14 +199,14 @@ defineExpose({ refresh: load })
                distingue il proprio lavoro dentro il totale complessivo. Sempre
                visibile, anche a split «0 tuoi»: l'assenza dello split è
                proprio l'ambiguità che nascondeva il lavoro altrui. -->
-          <span v-if="g.mio_count !== undefined" class="text-color-secondary">
+          <span v-if="g.mio_count !== undefined" class="app-text-muted">
             {{ t('vendite.fatturazione.giro_miei_altri', {
               mie: g.mio_count, altri: g.altri_count,
             }) }}
           </span>
         </div>
       </div>
-      <div v-else-if="caricato" class="text-color-secondary">
+      <div v-else-if="caricato" class="app-text-muted">
         {{ competenzaMese
           ? t('vendite.fatturazione.nessun_giro_mese')
           : t('vendite.fatturazione.nessun_giro') }}

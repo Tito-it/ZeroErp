@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -17,16 +17,25 @@ from apps.amm_software.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.payload_validators import (
     optional_int,
+    optional_uuid,
+    parse_list_params,
     qp_bool_optional,
     qp_int,
+    qp_iso_date_optional,
     qp_str,
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS
+from apps.core.services.coda_lavori.scope import scope_operatore_da_request
 from apps.core.services.processi_service import ProcessiService
+from apps.core.services.tracciamento_service import fn_list_error_logs
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 
 # Scopo: Decodifica query param a bool opzionale. Valori True: 1|true|yes|on
@@ -392,6 +401,39 @@ class ProcessiPresidiView(AdminAPIView):
         return success_response(ProcessiService().stato_presidi())
 
 
+class ProcessiPresidiConteggiView(AdminAPIView):
+    """GET la SOLA testata dei presidi: quanti, quanti accesi, quanti non letti.
+
+    ⭐ E' il pallino della topbar (decisione #8 di Tid, 2026-09-18 —
+    piano-be-fe-osservabilita-pallino-e-superfici §2.2): lo stesso giro del
+    pannello senza le prime righe, letto ogni cinque minuti da ogni scheda
+    aperta. Per questo esiste un endpoint a parte e non un parametro su
+    `presidi/`: un contatore ambientale non deve pagare le righe di esempio.
+    ⛔ Stessa porta del pannello (`AdminAPIView`): le viste nominano tutte le
+    aziende. Chi non la passa riceve 403 e il pallino NON compare — come il
+    badge delle code per chi non ha l'area core.
+    ⚠️ Un presidio che non si legge non e' un errore di questa risposta: e'
+    `non_letti`, e il pallino lo mostra come «chiede un occhio».
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ProcessiPresidiConteggiResp",
+            fields={"data": inline_serializer(
+                name="ProcessiPresidiConteggiData",
+                fields={
+                    "totale": serializers.IntegerField(),
+                    "con_righe": serializers.IntegerField(),
+                    "non_letti": serializers.IntegerField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: I tre numeri della testata, senza righe.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(ProcessiService().conteggi_presidi())
+
+
 class ProcessiDetailView(AdminAPIView):
     """GET dettaglio di un processo: bersagli dichiarati e identita' tecniche."""
 
@@ -493,6 +535,52 @@ class ProcessiIdentitaRiattivaView(AdminAPIView):
         return _post_verbo_identita(request, codice, ProcessiService().riattiva_utente_tecnico)
 
 
+class ProcessiEseguiOraView(AdminAPIView):
+    """POST «Esegui ora» su una SVEGLIA di deploy di un processo.
+
+    Il web non esegue niente: ACCODA un lavoro `ESEGUI_PROCESSO` su
+    `dbops.coda_lavori` con lo scope di chi preme (`run_as = OPERATORE`), e il
+    drenatore lancia `run-command.sh <comando>` — la stessa riga del timer,
+    meno l'orario — alla corsa successiva. Risposta: l'handle del lavoro
+    (`job_id`, `stato`, `unit`), la stessa forma del giro di fatturazione.
+    Il corpo porta la sola `unit`: il comando si risolve dal dichiarato di
+    deploy (`sveglie.json`), che e' la whitelist — mai dal client.
+
+    ⚠️ LA SEDE DELLA FIDUCIA E' `AdminAPIView` (decisione 1 di brief §8.5: v1
+    solo `SUPER_ADMIN`). L'azione `processo_avvia` esiste a catalogo
+    (`config.azioni_processo`, id 35) ma NON e' dichiarata qui come
+    `post_permission`: `AdminAPIView` non la leggerebbe, e un attributo che
+    sembra un cancello e non lo e' sarebbe peggio di nessun attributo. Il
+    giorno in cui il verbo si aprira' agli operatori, la view cambia base e
+    quell'azione diventa il permesso — con la stessa riga di catalogo.
+    """
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(
+            name="ProcessiEseguiOraReq", fields={"unit": serializers.CharField()},
+        ),
+        responses={200: inline_serializer(
+            name="ProcessiEseguiOraResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Accoda «Esegui ora» sulla sveglia indicata, con lo scope di chi
+    #        preme catturato dalla richiesta (terna rifiutata PRIMA di accodare).
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            # Lo scope si cattura QUI, dalla richiesta, con il BB della coda:
+            # e' cio' con cui il drenatore ripropone l'identita' di chi ha
+            # premuto, minuti dopo e senza token. Senza `identita_id` il BB
+            # rifiuta con `E_CODA_SCOPE_OPERATORE_INVALIDO` — 400 adesso, a chi
+            # puo' fare qualcosa, invece di un lavoro che muore nel drenatore.
+            scope = scope_operatore_da_request(request)
+            return ProcessiService().esegui_ora(
+                codice, unit=payload.get("unit"), scope=scope,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class AuditLogView(AdminAPIView):
     """GET audit log globale modifiche permessi."""
 
@@ -521,6 +609,148 @@ class AuditLogView(AdminAPIView):
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
         )
         return success_response({"count": total_count, "results": events})
+
+
+# I filtri della consultazione di `dbops.error_log`, dichiarati UNA volta per
+# la lista e per il suo export (stessa whitelist, stesso file).
+_PARAMS_FILTRI_ERROR_LOG = [
+    OpenApiParameter(name="area", type=str, required=False,
+                     description="Area funzionale, esatta (catalogo `config.aree_funzionali`)."),
+    OpenApiParameter(name="function_name", type=str, required=False,
+                     description="PREFISSO del nome funzione (`LIKE 'x%'`, `_` letterale, "
+                                 "case-sensitive: i nomi sono minuscoli per convenzione)."),
+    OpenApiParameter(name="codice", type=str, required=False,
+                     description="Codice errore esatto (`config.codici_errore`)."),
+    OpenApiParameter(name="tx_id", type=str, required=False,
+                     description="UUID di transazione esatto: il ponte dal giornale di dominio."),
+    OpenApiParameter(name="data_da", type=str, required=False, description="Data inizio (YYYY-MM-DD)."),
+    OpenApiParameter(name="data_a", type=str, required=False, description="Data fine inclusa (YYYY-MM-DD)."),
+    OpenApiParameter(
+        name="order_by", type=str, required=False,
+        description=descrizione_order_by(
+            ERROR_LOG_SORT_COLUMNS,
+            "Default `occurred_at DESC`; le frasi (`messaggio`, `causa`, `soluzione`) e "
+            "`context` non ordinano.",
+        ),
+    ),
+    OpenApiParameter(name="order_dir", type=str, required=False, description="asc | desc."),
+]
+
+
+# Scopo: i filtri della consultazione di `error_log`, letti dalla query string
+#        e NORMALIZZATI: date ISO strict (400 se malformate), `tx_id` uuid
+#        (400 se non lo e' — un `%s::uuid` su una stringa qualunque sarebbe
+#        un 500), testi strip. Una sede per la lista e per l'export.
+def _filtri_error_log(qp) -> dict[str, object]:
+    tx_id = optional_uuid({"tx_id": qp_str(qp.get("tx_id"))}, "tx_id")
+    data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
+    data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
+    return {
+        "area": qp_str(qp.get("area")),
+        "function_name": qp_str(qp.get("function_name")),
+        "codice": qp_str_upper(qp.get("codice")),
+        "tx_id": str(tx_id) if tx_id is not None else None,
+        "data_da": data_da.isoformat() if data_da else None,
+        "data_a": data_a.isoformat() if data_a else None,
+    }
+
+
+# Il codice di lista della consultazione (`ui.lista_definizione`): lo legge il
+# solo EXPORT, per risolvere le colonne che l'operatore vede.
+# ⛔ NON e' un attributo `lista_codice` sulle view, ed e' una scelta: quello e'
+#    il cancello di perimetro emittente di `DomainAPIView`, che su
+#    `AdminAPIView` NON esiste — dichiararlo direbbe al presidio
+#    `test_perimetro_emittente_copertura` «lista coperta» su un cancello
+#    inerte. La lista `dbops.error_log` e' ESENTE (un errore tecnico non ha
+#    un'azienda da cui arrivare) e l'esenzione e' scritta la', con la ragione.
+#    Stessa forma di `_LISTA_CODICE` dell'export delle famiglie documento
+#    (`vendite/api/views_famiglie.py`), l'altro export su `AdminAPIView`.
+_LISTA_CODICE_ERROR_LOG = "dbops.error_log"
+
+
+class ErrorLogListView(AdminAPIView):
+    """GET /api/v1/amm-software/error-log/ — la consultazione di `dbops.error_log`."""
+
+    # ⭐ `AdminAPIView` (vincolo del Passo A dell'osservabilita', D-E1): oggi il
+    #    permesso dei tecnici e' questo, come per `audit-log/` ed `email-log/`.
+    #    Il giorno che nascera' un livello «tecnici», si sposta con quelli.
+    # ⛔ Nessun `lista_codice`: vedi `_LISTA_CODICE_ERROR_LOG` qui sopra.
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            *_PARAMS_FILTRI_ERROR_LOG,
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+        ],
+        responses={200: inline_serializer(name="ErrorLogListResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Restituisce via GET l'elenco paginato degli errori tecnici col
+    #        catalogo dei messaggi (codice, classe, frase, causa, soluzione) e
+    #        il `context` com'e'.
+    # ⛔ `order_dir` GREZZO e non dal bundle: `parse_list_params` normalizza
+    #    l'assenza ad `asc`, e il ripiego DESC della data non verrebbe mai
+    #    raggiunto (api.md §parse_list_params).
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        p = parse_list_params(
+            qp, default_order="occurred_at",
+            default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT,
+        )
+        return success_response(fn_list_error_logs(
+            **_filtri_error_log(qp),
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
+
+
+class ErrorLogExportView(AdminAPIView):
+    """GET /api/v1/amm-software/error-log/export/ — CSV/XLSX della consultazione."""
+
+    # ⭐ Il codice di lista e' UNO, `_LISTA_CODICE_ERROR_LOG`: le colonne del
+    #    file sono quelle che l'operatore VEDE (preferenza + preset + permessi).
+    #    ⚠️ Su `AdminAPIView` la coppia lista/export non ha un `lista_codice`
+    #    da cui il presidio `test_export_lista_codice_pari` possa leggerla: e'
+    #    fuori dal suo perimetro per costruzione, come `famiglie/`, ed e' la
+    #    ragione della costante unica — non c'e' un secondo letterale da
+    #    tenere allineato.
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=True, description="csv | xlsx."),
+            *_PARAMS_FILTRI_ERROR_LOG,
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Il file della consultazione, con gli stessi filtri della lista.
+    # ⚠️ `limit=EXPORT_MAX_ROWS + 1`: l'export esporta il DATASET, non la
+    #    pagina, e il `+1` fa scattare il guard di `build_export_response`
+    #    PRIMA di serializzare, invece di consegnare un file troncato.
+    # ⚠️ `?formato=`, non `?format=` (parametro magico di DRF).
+    def get(self, request: Request) -> HttpResponse:
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        filtri = _filtri_error_log(qp)
+        dati = fn_list_error_logs(
+            **filtri,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_ERROR_LOG,
+            results=dati["results"],
+            total=dati["count"],
+            filtri_applicati={k: v for k, v in filtri.items() if v is not None} or None,
+            fmt=fmt,
+        )
 
 
 class PermessiRiepilogoView(AdminAPIView):

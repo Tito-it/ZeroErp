@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-11 — LE CINQUE VISTE, TUTTE security_invoker
+#   magazzino.vw_giacenza              (corpo invariato, COMMENT e security_invoker)
+#   magazzino.vw_giacenza_ubicazione   (NUOVA: per posizione)
+#   magazzino.vw_costo_medio           (rifatta: il TASSO, valore / qta)
+#   magazzino.vw_costo_medio_globale   (rifatta: il tasso per articolo, tutti i magazzini visibili)
+#   magazzino.vw_giacenza_valorizzata  (rifatta: la SITUAZIONE, qta + valore + costo medio)
+#   Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8 (M-1, M-4, M-5, M-6)
+#
+# -- vw_giacenza: PERCHE' E' CORRETTA SENZA JOIN ALLE CAUSALI (M-1) ------------------
+#   La quantita' del registro e' FIRMATA (sign(qta) = causali.segno, guard
+#   P-9): sum(qta) e' gia' la giacenza. Un join alle causali per applicare il
+#   segno lo applicherebbe DUE volte — un carico +5 con segno +1 resta +5, ma
+#   uno scarico -5 con segno -1 diventerebbe +5. Il corpo non cambia; cambia
+#   cio' che e' scritto accanto, e security_invoker.
+#
+# -- vw_giacenza_ubicazione: NUOVA (M-5, 7-quater punto 5) -----------------------------
+#   Uno spostamento fra ubicazioni e' una coppia OUT/IN sul registro con la
+#   stessa sorgente e due ubicazione_id: senza una vista per posizione quella
+#   coppia non significa niente (in vw_giacenza si annulla). ubicazione_id
+#   NULL = «senza posizione»: e' un gruppo come gli altri.
+#
+# -- LE TRE SUL VALORE: NON PIU' TAUTOLOGICHE (M-4, rilievo del 04-09) --------------
+#   Con qta dentro costo_medio, vw_giacenza_valorizzata calcolava
+#   qta * (valore / qta) = valore: la stessa cifra letta due volte. Ora la
+#   quantita' viene dal REGISTRO (vw_giacenza) e il valore dalla COPIA
+#   (valore_giacenza): il join e' fra due fonti, e una divergenza si VEDE.
+#   ⚠️ Il brief le descriveva entrambe come «join vw_giacenza × valore_giacenza
+#   (qta, valore, costo_medio)»: sarebbero state IDENTICHE. Si distinguono per
+#   domanda, e' la differenza che le tiene in vita:
+#     vw_costo_medio           -> il TASSO: (articolo, magazzino, costo_medio)
+#     vw_costo_medio_globale   -> il tasso per articolo su tutti i magazzini
+#                                 VISIBILI (= dell'emittente in sessione: e'
+#                                 la RLS su magazzini a decidere il perimetro,
+#                                 non un filtro nella vista — 7-sexies, 6)
+#     vw_giacenza_valorizzata  -> la SITUAZIONE: qta, valore, costo medio
+#   Registrato nel brief. Nessun lettore delle colonne vecchie (P-0).
+#   LEFT JOIN dal registro: una (articolo, magazzino) con movimenti e senza
+#   riga di valore mostra valore NULL — un'anomalia visibile, non nascosta.
+#   costo_medio e' NULL a quantita' zero (o negativa non e' vietata: e' un
+#   tasso, e la divisione vale).
+#
+# -- security_invoker = true, RI-SPECIFICATA (7-sexies, 5) ------------------------------
+#   Le viste leggono coi diritti di chi interroga: la RLS di magazzini,
+#   movimenti e valore_giacenza (P-10) passa attraverso. ⚠️ La reloption si
+#   azzera a ogni CREATE OR REPLACE VIEW senza WITH: va scritta OGNI volta
+#   (P-6 del brief modifiche certe l'ha pagato). Al 14-09 nessuna delle
+#   quattro viste esistenti la aveva: erano security definer di fatto.
+#
+# -- ORDINE ------------------------------------------------------------------------------
+#   P-6 (00_schema, -08) ha eliminato le tre viste sul valore e tolto qta:
+#   qui rinascono. vw_giacenza esiste e si rimpiazza (stesse colonne).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260915-17-update-viste-giacenza-e-valore-mctit.yaml
+
+  - changeSet:
+      id: 20260915-17-update-viste-giacenza-e-valore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le cinque viste di magazzino, tutte security_invoker: vw_giacenza (corpo invariato,
+        COMMENT su M-1), vw_giacenza_ubicazione (nuova, per posizione), vw_costo_medio (il
+        tasso), vw_costo_medio_globale (il tasso per articolo sui magazzini visibili),
+        vw_giacenza_valorizzata (la situazione: quantita' dal registro, valore dalla
+        copia). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8 (P-11).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: valore_giacenza
+            - columnExists:
+                schemaName: magazzino
+                tableName: movimenti
+                columnName: ubicazione_id
+            - not:
+                - viewExists:
+                    schemaName: magazzino
+                    viewName: vw_costo_medio
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. La giacenza: sum(qta) firmata, per articolo e magazzino.
+              CREATE OR REPLACE VIEW magazzino.vw_giacenza
+              WITH (security_invoker = true) AS
+              SELECT m.articolo_id,
+                     m.magazzino_id,
+                     sum(m.qta) AS qta
+                FROM magazzino.movimenti m
+               GROUP BY m.articolo_id, m.magazzino_id;
+
+              COMMENT ON VIEW magazzino.vw_giacenza IS
+                  'La GIACENZA: somma delle quantita'' del registro per articolo e '
+                  'magazzino. E'' corretta SENZA join alle causali perche'' la quantita'' '
+                  'del registro e'' gia'' firmata (sign(qta) = causali.segno, guard '
+                  'trgfn_movimenti_guard_verso, M-1): applicare il segno qui lo '
+                  'applicherebbe due volte e trasformerebbe ogni uscita in un''entrata. '
+                  'Una sola fonte, il registro: valore_giacenza non porta quantita''. '
+                  'security_invoker: la RLS di movimenti passa attraverso, l''operatore '
+                  'vede i magazzini del suo emittente. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.';
+
+              -- 2. La giacenza per posizione.
+              CREATE OR REPLACE VIEW magazzino.vw_giacenza_ubicazione
+              WITH (security_invoker = true) AS
+              SELECT m.articolo_id,
+                     m.magazzino_id,
+                     m.ubicazione_id,
+                     sum(m.qta) AS qta
+                FROM magazzino.movimenti m
+               GROUP BY m.articolo_id, m.magazzino_id, m.ubicazione_id;
+
+              COMMENT ON VIEW magazzino.vw_giacenza_ubicazione IS
+                  'La giacenza per POSIZIONE: sum(qta) per articolo, magazzino e '
+                  'ubicazione (NULL = senza posizione, un gruppo come gli altri). Uno '
+                  'spostamento fra ubicazioni e'' una coppia OUT/IN sul registro con la '
+                  'stessa sorgente: in vw_giacenza si annulla, qui si vede (M-5, '
+                  '7-quater). security_invoker. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.';
+
+              -- 3. Il tasso: costo medio per articolo e magazzino.
+              CREATE OR REPLACE VIEW magazzino.vw_costo_medio
+              WITH (security_invoker = true) AS
+              SELECT g.articolo_id,
+                     g.magazzino_id,
+                     CASE WHEN g.qta <> 0 THEN vg.valore / g.qta END AS costo_medio
+                FROM magazzino.vw_giacenza g
+                LEFT JOIN magazzino.valore_giacenza vg
+                       ON vg.articolo_id = g.articolo_id
+                      AND vg.magazzino_id = g.magazzino_id;
+
+              COMMENT ON VIEW magazzino.vw_costo_medio IS
+                  'Il COSTO MEDIO (un tasso) per articolo e magazzino: valore_giacenza.valore '
+                  '/ vw_giacenza.qta. La quantita'' viene dal REGISTRO e il valore dalla '
+                  'COPIA ricostruibile (M-4): due fonti, non una letta due volte. NULL a '
+                  'quantita'' zero o senza riga di valore. Fino al 2026-09-15 portava anche '
+                  'qta e valore dall''accumulatore: oggi la situazione (quantita'', valore, '
+                  'tasso) e'' vw_giacenza_valorizzata. security_invoker. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.';
+
+              -- 4. Il tasso per articolo, su tutti i magazzini VISIBILI.
+              CREATE OR REPLACE VIEW magazzino.vw_costo_medio_globale
+              WITH (security_invoker = true) AS
+              SELECT g.articolo_id,
+                     sum(g.qta)     AS qta_tot,
+                     sum(vg.valore) AS valore_tot,
+                     CASE WHEN sum(g.qta) <> 0 THEN sum(vg.valore) / sum(g.qta) END AS costo_medio_globale
+                FROM magazzino.vw_giacenza g
+                LEFT JOIN magazzino.valore_giacenza vg
+                       ON vg.articolo_id = g.articolo_id
+                      AND vg.magazzino_id = g.magazzino_id
+               GROUP BY g.articolo_id;
+
+              COMMENT ON VIEW magazzino.vw_costo_medio_globale IS
+                  'Il costo medio di un articolo su TUTTI i magazzini VISIBILI a chi '
+                  'interroga: «globale» = i magazzini dell''emittente in sessione, ed e'' '
+                  'la RLS di magazzini (via movimenti e valore_giacenza) a decidere il '
+                  'perimetro, non un filtro scritto qui (7-sexies, 6). qta_tot dal '
+                  'registro, valore_tot dalla copia. security_invoker. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.';
+
+              -- 5. La situazione: quantita', valore, tasso.
+              CREATE OR REPLACE VIEW magazzino.vw_giacenza_valorizzata
+              WITH (security_invoker = true) AS
+              SELECT g.articolo_id,
+                     g.magazzino_id,
+                     g.qta,
+                     vg.valore,
+                     CASE WHEN g.qta <> 0 THEN vg.valore / g.qta END AS costo_medio
+                FROM magazzino.vw_giacenza g
+                LEFT JOIN magazzino.valore_giacenza vg
+                       ON vg.articolo_id = g.articolo_id
+                      AND vg.magazzino_id = g.magazzino_id;
+
+              COMMENT ON VIEW magazzino.vw_giacenza_valorizzata IS
+                  'La SITUAZIONE della giacenza: quantita'' dal registro (vw_giacenza), '
+                  'valore dalla copia (valore_giacenza), costo medio = valore / qta. Fino '
+                  'al 2026-09-15 era tautologica (qta * (valore / qta) = valore, con qta '
+                  'nell''accumulatore): ora il join e'' fra due fonti e una divergenza si '
+                  'vede — valore NULL su una giacenza con movimenti e'' un''anomalia da '
+                  'guardare, non un caso da nascondere. security_invoker. Brief: '
+                  'brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS magazzino.vw_giacenza_valorizzata;
+              DROP VIEW IF EXISTS magazzino.vw_costo_medio_globale;
+              DROP VIEW IF EXISTS magazzino.vw_costo_medio;
+              DROP VIEW IF EXISTS magazzino.vw_giacenza_ubicazione;
+              -- vw_giacenza resta: il corpo e' quello di prima.

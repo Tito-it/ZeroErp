@@ -48,7 +48,6 @@
 | trg_unita_misura_a10_fatture_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture_righe', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_guard_tipo_uom_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update()` |
 | trg_unita_misura_a10_listini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe', 'uom_id', 'id', 'attivo')` |
-| trg_unita_misura_a10_movimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'movimenti', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_offerte_commerciali_eccezioni_block_ce1c7b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_offerte_commerciali_eccezioni_compo_1ae18e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni_componenti', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'uom_id', 'id', 'attivo')` |

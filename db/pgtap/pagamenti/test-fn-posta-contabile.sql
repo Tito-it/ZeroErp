@@ -4,7 +4,7 @@
 -- Test: la MADRE DEL POSTING — pagamenti.fn_posta_contabile
 --
 -- Elenco test (plan 20):
---  1) Riferimenti minimi presenti
+--  1) Riferimenti costruiti (azienda, operatore, cliente) e a catalogo
 --  2) La distinta nasce in BOZZA con le sue tre righe
 --  3) Una distinta non VALIDATA non si registra
 --  4) Una dichiarazione che non corrisponde viene RIFIUTATA
@@ -39,14 +39,32 @@
 --
 -- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.1 S1-10, §2.4 casi 1, 2, 3, 5, 13 · lotto 4
+--
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-09-17 sera). Fino a quel
+--   giorno il file pescava «l'ultimo billing account per data_insert» e ne
+--   deduceva l'emittente: su un database ricostruito dai changelog (zeroerp_ci,
+--   la CI) le anagrafiche sono a ZERO, tmp_refs usciva vuota e il file moriva
+--   nel fixture — ERRORE_FIXTURE in baseline-rossi-ci.tsv, e il PRIMO
+--   MOVIMENTO del progetto era collaudato solo su dbdev. Ora: un'azienda col
+--   suo operatore (dbops.fn_pgtap_crea_emittente_operatore) PRIMA del
+--   contesto, un cliente fatturabile (dbops.fn_pgtap_crea_cliente_ba) NEL
+--   contesto — guida pgtap-come-si-scrive-un-test §«Il mondo si costruisce,
+--   non si cerca». Con un emittente nuovo la chiave di riuso di
+--   fn_get_or_create_vendite_contabile (che dal 2026-09-15 comprende
+--   l'emittente) non puo' agganciare una distinta preesistente della macchina.
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE.
 BEGIN;
 
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore.
+CREATE TEMP TABLE _mondo AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
 -- ⚠️ 2. CONTESTO APPLICATIVO: si gira come gira l'applicazione (OPERATORE +
 --   RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 -- ⚠️ 3. VINCOLI DIFFERITI: senza, non verrebbero mai esercitati (si chiude in
 --   ROLLBACK) e il file sarebbe verde per sottrazione.
@@ -60,27 +78,22 @@ SELECT plan(20);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_posta_contabile'::text AS test_scope;
 
+-- Il cliente fatturabile, nel contesto dell'operatore: il legame BA -> emittente
+-- lo scrive il trigger z90 verso l'emittente di chi agisce.
+CREATE TEMP TABLE tmp_cli AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('posta contabile') c;
+
 -- ⚠️ Il centro NON si fabbrica: dal 2026-08-21 i cinque centri sono seminati e
 --   i due ruoli interni sono unici per vincolo. Un test che se li crea da solo
 --   non verifica il seed: lo nasconde.
 -- ⭐ E si prende BANCA, non FONDI_FATTURA: qui si registra denaro ARRIVATO.
 CREATE TEMP TABLE tmp_refs AS
-WITH ba AS (
-  SELECT b.id, b.utility_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-       ba.id                                                                        AS billing_account_id,
-       ba.utility_id                                                                AS utility_id,
+SELECT script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id)                       AS registro_id,
+       (SELECT billing_account_id FROM tmp_cli)                                      AS billing_account_id,
+       (SELECT utility_id FROM tmp_cli)                                              AS utility_id,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1)                           AS valuta_id,
-       (SELECT m.emittente_soggetto_ruolo_id
-          FROM anagrafiche.emittenti_fiscali_billing_account m
-         WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-         ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id
-         LIMIT 1)                                                                   AS emittente_soggetto_ruolo_id,
+       m.soggetto_ruolo_id                                                          AS emittente_soggetto_ruolo_id,
        (SELECT c.id FROM pagamenti.centri_riscossione c
          WHERE c.attivo IS TRUE AND c.codice_interno = 'BANCA'
          ORDER BY c.id LIMIT 1)                                                     AS centro_banca_id,
@@ -92,7 +105,7 @@ SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(
          WHERE s.codice_interno = 'DA_ABBINARE' ORDER BY s.id LIMIT 1)              AS stato_da_abbinare_id,
        (SELECT s.id FROM pagamenti.vendite_contabili_stati s
          WHERE s.codice_interno = 'VALIDATA' ORDER BY s.id LIMIT 1)                 AS stato_validata_id
-  FROM ba;
+  FROM _mondo m;
 
 SELECT ok(
   (SELECT registro_id IS NOT NULL
@@ -106,7 +119,7 @@ SELECT ok(
       AND stato_da_abbinare_id IS NOT NULL
       AND stato_validata_id IS NOT NULL
      FROM tmp_refs),
-  '1) Riferimenti minimi presenti (centro BANCA e stati compresi)'
+  '1) Riferimenti costruiti (azienda, operatore, cliente, registro) e a catalogo (centro BANCA, stati)'
 );
 
 -- La fattura da incassare: 300, di cui se ne registrano 150.
@@ -134,28 +147,32 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_origine               => 'MANUALE'
   ) AS contabile_id;
 
--- Tre righe: due pronte (100 + 50), una sospesa (30) e una da abbinare (20).
--- ⚠️ La riga DA_ABBINARE porta comunque fattura e cliente: serve al test 17,
---   dove l'unico guard che deve poter rifiutare e' quello sulla distinta
---   finale. Senza, rifiuterebbe prima il guard sull'abbinamento e il test
---   direbbe verde per la ragione sbagliata.
+-- Quattro righe: due pronte (100 + 50) e due sospese (30 + 20).
+-- ⚠️ La riga D porta comunque fattura e cliente: serve al test 17, dove
+--   l'unico guard che deve poter rifiutare e' quello sulla distinta finale.
+--   Senza, rifiuterebbe prima il guard sull'abbinamento e il test direbbe
+--   verde per la ragione sbagliata.
+-- ⭐ Rev 2026-09-18 (D20-a): D era DA_ABBINARE ed e' SOSPESA. Da quel giorno
+--   una distinta con righe non lavorate non entra in VALIDATA — e' la regola
+--   che entra, non una regressione — e la quarta mossa (test 17) si prova
+--   dalla sospesa, che e' l'unico stato che puo' davvero restare indietro.
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, data_valuta, importo,
-     fattura_id, billing_account_id, stato_id, meta)
+     fattura_id, billing_account_id, stato_id, motivo_sospeso, meta)
 SELECT (SELECT contabile_id FROM tmp_contabile), v.rif, current_date, current_date, v.importo,
        (SELECT id FROM tmp_fattura), r.billing_account_id, v.stato_id,
+       CASE WHEN v.stato_id = r.stato_sospesa_id THEN 'da capire' END,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_refs r,
        (VALUES ('PGTAP_A', 100.00, 'ABBINATA'),
                ('PGTAP_B',  50.00, 'ABBINATA'),
                ('PGTAP_C',  30.00, 'SOSPESA'),
-               ('PGTAP_D',  20.00, 'DA_ABBINARE')) AS raw(rif, importo, stato)
+               ('PGTAP_D',  20.00, 'SOSPESA')) AS raw(rif, importo, stato)
        CROSS JOIN LATERAL (
          SELECT raw.rif, raw.importo,
                 CASE raw.stato
                   WHEN 'ABBINATA'    THEN r.stato_abbinata_id
-                  WHEN 'SOSPESA'     THEN r.stato_sospesa_id
-                  ELSE                    r.stato_da_abbinare_id
+                  ELSE                    r.stato_sospesa_id
                 END AS stato_id) v;
 
 SELECT is(
@@ -309,6 +326,9 @@ SELECT throws_ok(
 -- dichiarato che non si registrera' mai.
 -- ⚠️ `throws_like` e non `throws_ok`: qui il discriminante e' la frase — P0001
 --   direbbe solo «errore di dominio», non QUALE.
+-- ⭐ Dal 2026-09-18 la porta esiste, ma la apre solo pagamenti.fn_posta_riga_tardiva
+--   (D20-b): un UPDATE a mano resta rifiutato. La tardiva e' collaudata in
+--   test-posta-riga-tardiva-v1.
 SELECT throws_like(
   format('UPDATE pagamenti.vendite_contabili_righe SET stato_id = %s WHERE riferimento_ente = ''PGTAP_D''',
          (SELECT stato_abbinata_id FROM tmp_refs)),
@@ -369,6 +389,12 @@ SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
 DELETE FROM pagamenti.vendite_movimenti
  WHERE fattura_id = (SELECT id FROM tmp_fattura);
 
+-- ⚠️ Dal 2026-09-14 (D17) il DELETE di una riga contabile passa dal guard del
+--    contenuto della distinta: sotto una CHIUSA o una GENERATA e' rifiutato.
+--    Questo cleanup e' un passaggio tecnico e lo dichiara con la stessa GUC
+--    che usa la madre del giro dei fondi (fn_cancella_fondo_fattura); il
+--    ROLLBACK farebbe comunque il lavoro.
+SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
 DELETE FROM pagamenti.vendite_contabili_righe
  WHERE contabile_id IN (SELECT contabile_id FROM tmp_contabile
                         UNION ALL SELECT contabile_id FROM tmp_contabile_vuota);

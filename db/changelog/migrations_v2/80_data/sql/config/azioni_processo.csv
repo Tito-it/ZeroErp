@@ -33,3 +33,4 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 32,7,registra_distinta,Registra la distinta contabile (crea i movimenti: irreversibile),t,t,{},2026-08-25 00:00:00+02,mctit,2026-08-25 00:00:00+02,mctit
 33,2,riporta_da_emettere,Riporta da emettere le attivita fatturabili residue,f,t,{},2026-08-26 00:00:00+02,mctit,2026-08-26 00:00:00+02,mctit
 34,2,governa_fondo_fattura,Governa il fondo fattura (cancella un atto non ancora eseguito: irreversibile),t,t,{},2026-08-31 00:00:00+02,mctit,2026-08-31 00:00:00+02,mctit
+35,13,processo_avvia,Avvio manuale di un processo dall interfaccia (Esegui ora su una sveglia di deploy: avvia un giro adesso),t,t,{},2026-09-14 00:00:00+02,mctit,2026-09-14 00:00:00+02,mctit

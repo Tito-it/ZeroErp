@@ -36,6 +36,11 @@ databaseChangeLog:
   - changeSet:
       id: 20260707-07-grant-guida-reconcile-app
       author: mctit
+      # ⚠️ Nessun `dbms:` sui change (tolto il 2026-09-17): con `runOnChange` +
+      #    `validCheckSums: ANY`, Liquibase 5.0.4 lascia un change `dbms:` FUORI
+      #    dal checksum quando decide se ri-eseguire — una ri-esecuzione spuria
+      #    alla corsa dopo (in CI la seconda invocazione, fuori ordine) e poi un
+      #    checksum «vuoto» cieco alle modifiche. linee-guida-sql §11.1.
       runOnChange: true
       comment: >
         GRANT zeroerp_app: SELECT su pratiche.template_flussi_avanzamento_proiezione
@@ -43,7 +48,6 @@ databaseChangeLog:
         (log best-effort). Fix del finding smoke E2E GUIDA (percorso HTTP/app).
       changes:
         - sql:
-            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
@@ -70,7 +74,6 @@ databaseChangeLog:
 
       rollback:
         - sql:
-            dbms: postgresql
             splitStatements: false
             sql: |
               DO $$

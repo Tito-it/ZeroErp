@@ -38,11 +38,12 @@ segnalato come tale.
 
 ---
 
-### ⚠️ Le classi sono SETTE, e tre chiedono attenzione
+### ⚠️ Le classi sono OTTO, e tre chiedono attenzione
 
 > ⚠️ **Corretto il 2026-09-12**: questa sezione diceva «due su **cinque**» ed elencava cinque
 > classi. Ne mancavano **due** — `FP_VARIADIC` (dal 2026-08-05) e `NON_MISURATO` (dal
 > 2026-09-10) — e la seconda è proprio quella che decide se la misura vale qualcosa.
+> ⭐ **Ottava dal 2026-09-14**: `FP_DEFINER_PRIVILEGIO` (`20260914-02`).
 
 | Classe | Significato | Nelle viste a valle |
 |---|---|---|
@@ -53,6 +54,7 @@ segnalato come tale.
 | `FP_RAMO_ALTRA_TABELLA` | falso positivo — ramo che vale per un'altra tabella agganciata | no |
 | `FP_SQL_DINAMICO` | falso positivo — `EXECUTE` con SQL costruito | no |
 | `FP_VARIADIC` | falso positivo — chiamata `VARIADIC` | no |
+| `FP_DEFINER_PRIVILEGIO` | falso positivo — `42501` dentro una `SECURITY DEFINER` misurata da chi **non** ne è il proprietario (né membro): il corpo gira coi privilegi del proprietario, la domanda giusta la fanno gli altri occhi (`fn_conta_presidio` come proprietario, il guardrail in CI da superuser). Chi è proprietario e prende un `42501` resta `REALE` | no |
 
 ⛔ **`NON_MISURATO` non è un difetto e non è un falso positivo: è l'assenza di una misura**, e
 va trattata **come un rosso**. È la differenza fra «non ho trovato difetti» e «non ho potuto
@@ -71,6 +73,14 @@ Misura al 2026-08-21: 14 `FP_RAMO_ALTRA_TABELLA`, 5 `FP_TRANSITION_TABLE`, 1 `FP
 **1 `ORFANA`**, zero `REALE`.
 Rimisurata il 2026-09-12: 16 · 5 · 1 · **1 `ORFANA`** (coperta dal registro), zero `REALE` —
 e da entrambi i percorsi di lettura, che prima non era vero (vedi il `search_path` qui sotto).
+
+⛔ **E il 2026-09-14 la misura si è rivelata dipendente dal RUOLO**, sulla stessa
+macchina: `dbops.fn_get_pgagent_job_stato` (`SECURITY DEFINER`, legge `pgagent.*`)
+usciva `REALE 42501` come `zeroerp_app` e non usciva affatto come `titodb` — e la
+riga 7 del registro risultava insieme necessaria (app) e di troppo (proprietario,
+cioè il digest). Da lì `FP_DEFINER_PRIVILEGIO`, e la riga «pgAgent» del registro
+che **segue la macchina** (`90_end/20260914-03`: c'è solo dove `pgagent.pga_job`
+manca, cioè in CI). Brief: [un destinatario per i presidi §14](/dev/work-done/brief-db-un-destinatario-per-i-presidi).
 
 ---
 

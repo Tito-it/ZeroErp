@@ -27,6 +27,39 @@
 #
 # ℹ️ La sede resta il CSV: 80_data/sql/vendite/famiglie_documento.csv. Una
 #   famiglia nuova e' un append, mai un INSERT SQL a parte.
+#
+# ── ⛔ UNA TABELLA, UN CSV (Tid, 2026-09-18) ────────────────────────
+#   Fra il 31-08 e il 15-09 questa tabella aveva preso CINQUE seed laterali,
+#   ognuno con un CSV suo chiavato su `codice_interno` — `formato`
+#   (prefisso/lunghezza, 20260902-53-01), `colonna_serie` (20260901-12),
+#   `regole_fiscali` (20260902-05), `anno_nel_numero` (20260908-16) e la riga
+#   DISTINTA (20260915-33) — tutti con la stessa giustificazione: «il mirror
+#   base e' mergiato e non si tocca». Non era vero: questo file e'
+#   runOnChange + ANY, e il checksum non e' un vincolo. Sei CSV sulla stessa
+#   tabella sono sei sorgenti di verita' sulla stessa riga, e divergono in
+#   silenzio (nessun presidio le confronta). Il 18-09 sono stati RITIRATI e
+#   le loro colonne/righe sono entrate qui.
+#
+# ⭐ CHIAVE `codice_interno`, NON PIU' `id`. L'id e' IDENTITY: i cinque del
+#   30-08 sono 1..5 ovunque, ma DISTINTA e' nata SENZA id (15-09) e su questo
+#   database ha preso 812 — un CSV che pretendesse `6` la duplicherebbe
+#   (UNIQUE su codice_interno) invece di aggiornarla. Il codice interno e'
+#   la chiave naturale (§6b), gia' usata da tutti i laterali; nessun seed,
+#   pgTAP o backend nomina un id letterale (verificato 18-09). Il setval in
+#   coda resta: e' innocuo e riallinea comunque la sequenza al massimo.
+#
+# ⚠️ Ogni migrate riscrive TUTTE le colonne di TUTTE le righe: i guard
+#   `_a10_` di questa tabella (struttura, riferimenti, disattivazione)
+#   escono sul no-op quando i VALORI non cambiano — e' la condizione scritta
+#   in 20260901-17 per cui i mirror possono restare accesi. `nullValue:
+#   "NULL"`: il token letterale NULL e' SQL NULL (colonna_serie di
+#   COMMESSA/RESO/DISTINTA, il prefisso della FATTURA, il billing account
+#   della DISTINTA) — una cella VUOTA sarebbe '' e il guard la vedrebbe come
+#   un cambio.
+#
+# ⚠️ ORDINE su un DB da zero: 20260831-03 (registri per emittente) e il
+#   terzo changeSet di 20260831-53 (vuole prefisso_default sulle quattro non
+#   fiscali) girano DOPO questo file, che ora porta gia' tutto.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -35,12 +68,20 @@ databaseChangeLog:
   - changeSet:
       id: 20260830-14-seed-vendite-famiglie-documento
       author: mctit
+      # ⚠️ Nessun `dbms:` sui change (tolto il 2026-09-17): con `runOnChange` +
+      #    `validCheckSums: ANY`, Liquibase 5.0.4 lascia un change `dbms:` FUORI
+      #    dal checksum quando decide se ri-eseguire — una ri-esecuzione spuria
+      #    alla corsa dopo (in CI la seconda invocazione, fuori ordine) e poi un
+      #    checksum «vuoto» cieco alle modifiche. linee-guida-sql §11.1.
       runOnChange: true
       validCheckSums:
         - ANY
       failOnError: true
       comment: >
-        Semina le cinque famiglie di documento numerabile: FATTURA, DDT, ORDINE, COMMESSA, RESO.
+        Semina le famiglie di documento numerabile: FATTURA, DDT, ORDINE, COMMESSA, RESO e (dal
+        15-09) DISTINTA — dal 18-09 in QUESTO solo CSV, con tutte le colonne, chiave codice_interno:
+        i cinque seed laterali (formato, colonna_serie, regole_fiscali, anno_nel_numero, distinta)
+        sono ritirati (una tabella, un CSV — Tid).
         ⭐ Nascono tutte insieme perche'' il catalogo esiste per essere ITERATO — il presidio del
         cambio emittente del BA e la risoluzione del registro leggono di qui, e una famiglia
         mancante non e'' una riga in meno ma un documento che il presidio non guarda. ⚠️ La riga che
@@ -62,16 +103,27 @@ databaseChangeLog:
             schemaName: vendite
             separator: ","
             encoding: UTF-8
-            nullValue: ""
-            primaryKey: "id"
+            # ⛔ Il token letterale NULL e' SQL NULL. Fino al 18-09 c'era
+            #    `nullValue: ""`, mai esercitato (nessuna cella vuota): alla
+            #    prima cella vuota Liquibase ha scritto '' e non NULL, e il guard
+            #    di struttura (IS DISTINCT FROM su colonna_serie) ha fermato il
+            #    migrate su COMMESSA — apply del 18-09 sera, rosso al primo
+            #    colpo. E' la convenzione di lista_definizione.csv e di tutti i
+            #    laterali ritirati: il NULL si SCRIVE, non si lascia vuoto.
+            nullValue: "NULL"
+            # ⭐ Chiave naturale, non id (identity: DISTINTA e' 812 qui, 6 da
+            #    zero). Vedi intestazione.
+            primaryKey: "codice_interno"
             columns:
-              - column: { name: id, type: STRING }
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
               - column: { name: schema_tabella, type: STRING }
               - column: { name: nome_tabella, type: STRING }
               - column: { name: colonna_numero, type: STRING }
               - column: { name: colonna_billing_account, type: STRING }
+              # ex 20260901-12: la colonna della serie sul documento (NULL dove
+              # la famiglia non la registra).
+              - column: { name: colonna_serie, type: STRING }
               - column: { name: attivo, type: BOOLEAN }
               # ⭐ Aggiunta il 2026-08-31 (C2-9): false sul solo ORDINE, che si
               #   numera all'INSERT e per cui il cancello di monotonia sarebbe
@@ -80,6 +132,15 @@ databaseChangeLog:
               #   piu' — ⚠️ ed e' l'unico caso in cui si tocca un changeSet
               #   gia' applicato: e' fatto apposta per ri-leggere il CSV.
               - column: { name: presidia_data_documento, type: BOOLEAN }
+              # ex 20260902-53-01: prefisso e lunghezza di default dei registri
+              # (FATTURA senza prefisso: numero nudo).
+              - column: { name: prefisso_default, type: STRING }
+              - column: { name: lunghezza_default, type: NUMERIC }
+              # ex 20260908-16: l'anno DENTRO la stringa del numero.
+              - column: { name: anno_nel_numero_default, type: BOOLEAN }
+              # ex 20260902-05: solo la FATTURA (CHECK
+              # chk_famiglie_documento_regole_fiscali_solo_fattura).
+              - column: { name: ammette_regole_fiscali, type: BOOLEAN }
               - column:
                   name: meta
                   type: JSON
@@ -90,14 +151,15 @@ databaseChangeLog:
               - column: { name: user_update, type: STRING }
 
         - sql:
-            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
-              -- ⚠️ La PK e' IDENTITY BY DEFAULT e il CSV forza gli id 1..5: la
-              --   sequenza resta a 1 e la prima famiglia inserita da
-              --   un'interfaccia sbatterebbe sulla PK. Si riallinea, come fanno
-              --   i resync di 90_end per le altre tabelle a seed.
+              -- ⚠️ La PK e' IDENTITY BY DEFAULT. Fino al 18-09 il CSV forzava gli
+              --   id 1..5 e la sequenza restava a 1: la prima famiglia inserita
+              --   da un'interfaccia sbatteva sulla PK. Oggi il CSV non porta piu'
+              --   l'id (chiave codice_interno) e la sequenza avanza da sola; il
+              --   resync resta, innocuo, come fanno i 90_end per le altre
+              --   tabelle a seed.
               SELECT setval(
                   pg_get_serial_sequence('vendite.famiglie_documento', 'id'),
                   GREATEST((SELECT COALESCE(MAX(id), 0) FROM vendite.famiglie_documento), 1),

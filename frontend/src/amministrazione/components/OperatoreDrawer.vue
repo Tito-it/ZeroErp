@@ -277,7 +277,7 @@ const canSave = computed(() => isEdit.value ? canSaveEdit.value : canSaveCreate.
 function onInvita() {
   const isReinvio = hasBeenInvited.value
   confirmAction({
-    title: t('amministrazione.invito_confirm_title'),
+    header: t('amministrazione.invito_confirm_title'),
     message: isReinvio ? t('amministrazione.reinvio_confirm_msg') : t('amministrazione.invito_confirm_msg'),
     onAccept: async () => {
       invitaLoading.value = true
@@ -328,7 +328,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <h4>{{ t('amministrazione.section_persona') }}</h4>
 
         <!-- Modifica: banner soggetto sola lettura -->
-        <div v-if="isEdit && form.soggetto_id" class="mb-3">
+        <div v-if="isEdit && form.soggetto_id">
           <SoggettoMessageBanner
             :ragione-sociale="form.ragione_sociale || `${form.cognome} ${form.nome}`.trim()"
             :id-fiscale="form.codice_fiscale || form.partita_iva"
@@ -337,7 +337,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
         <!-- Creazione: resolver soggetto -->
         <template v-if="!isEdit">
-          <div v-if="soggettoSelezionato" class="mb-3">
+          <div v-if="soggettoSelezionato">
             <SoggettoMessageBanner
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
               :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.piva"
@@ -347,13 +347,13 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
           <div v-else>
             <Button :label="`${t('resolver.open')} *`" icon="pi pi-search"
-              outlined class="w-full" @click="resolverVisible = true" />
+              outlined @click="resolverVisible = true" />
           </div>
         </template>
 
         <!-- === Sezione Auth (solo creazione) === -->
         <template v-if="!isEdit">
-          <h4 class="mt-3">{{ t('amministrazione.section_accesso') }}</h4>
+          <h4>{{ t('amministrazione.section_accesso') }}</h4>
           <AuthUserForm
             :form="auth.form"
             :password-match="auth.passwordMatch.value"
@@ -361,17 +361,17 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </template>
 
         <!-- === Sezione Dati anagrafici + Collocazione === -->
-        <h4 v-if="!isEdit" class="mt-3">{{ t('amministrazione.section_collocazione') }}</h4>
+        <h4 v-if="!isEdit">{{ t('amministrazione.section_collocazione') }}</h4>
         <div class="form-grid">
           <!-- Username + Emittente su stessa riga (solo modifica, sola lettura) -->
           <div v-if="isEdit" class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('common.username') }}</label>
-              <InputText :model-value="form.username" disabled class="w-full" />
+              <InputText :model-value="form.username" disabled />
             </div>
             <div class="form-field">
               <label>{{ t('amministrazione.field_emittente') }}</label>
-              <InputText :model-value="form.emittenti_descrizione || '—'" disabled class="w-full" />
+              <InputText :model-value="form.emittenti_descrizione || '—'" disabled />
             </div>
           </div>
 
@@ -380,18 +380,18 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('common.cognome') }}</label>
-                <InputText v-model="form.cognome" class="w-full"
+                <InputText v-model="form.cognome"
                   @blur="form.cognome = capitalizeWords(form.cognome)" />
               </div>
               <div class="form-field">
                 <label>{{ t('common.nome') }}</label>
-                <InputText v-model="form.nome" class="w-full"
+                <InputText v-model="form.nome"
                   @blur="form.nome = capitalizeWords(form.nome)" />
               </div>
             </div>
             <div class="form-field">
               <label>{{ t('common.email') }} *</label>
-              <InputText v-model="form.email" class="w-full"
+              <InputText v-model="form.email"
                 :invalid="emailEditInvalid"
                 @blur="validateEditEmail"
                 @input="clearEditEmailInvalid" />
@@ -441,7 +441,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <label>{{ t('amministrazione.field_qualifica') }} *</label>
             <LookupSelect v-model="form.qualifica_id"
               rel="config.qualifiche"
-              class="w-full" :placeholder="t('amministrazione.select_qualifica')" />
+              :placeholder="t('amministrazione.select_qualifica')" />
           </div>
 
           <div class="form-field">
@@ -450,7 +450,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
               :options="unitaOrg.items.value"
               :loading="unitaOrg.loading.value"
               option-label="descrizione" option-value="id"
-              class="w-full" :placeholder="t('amministrazione.select_reparto')" />
+              :placeholder="t('amministrazione.select_reparto')" />
           </div>
 
           <!-- Validita' (solo modifica, sola lettura informativa) -->
@@ -458,18 +458,18 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('amministrazione.field_valido_dal') }}</label>
-                <InputText :model-value="form.valido_dal ? displayDate(form.valido_dal) : '—'" disabled class="w-full" />
+                <InputText :model-value="form.valido_dal ? displayDate(form.valido_dal) : '—'" disabled />
               </div>
               <div class="form-field">
                 <label>{{ t('amministrazione.field_valido_al') }}</label>
-                <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amministrazione.valido_al_illimitato')" disabled class="w-full" />
+                <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amministrazione.valido_al_illimitato')" disabled />
               </div>
             </div>
           </template>
         </div>
 
         <!-- Invito operatore (solo modifica, mai loggato) -->
-        <div v-if="canInvite" class="mt-3">
+        <div v-if="canInvite">
           <Button
             :label="hasBeenInvited ? t('amministrazione.reinvia_invito') : t('amministrazione.invita_operatore')"
             icon="pi pi-envelope"
@@ -479,7 +479,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </div>
 
         <!-- Footer Salva/Annulla -->
-        <div class="flex justify-end mt-4">
+        <div>
           <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
       </TabPanel>

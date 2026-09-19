@@ -215,7 +215,7 @@
 > compensazione, riporto a fondo) *hanno già tutte il loro meccanismo*, e mancano
 > soltanto **una vista** e **un registro**. Da lì è nata la
 > **slice 4 — «le sistemazioni»**, che è il **lotto 7** del piano DB:
-> [brief-db-posting-e-abbinamento-rata.md §2.3-bis](../work-in-progress/brief-db-posting-e-abbinamento-rata.md).
+> [brief-db-posting-e-abbinamento-rata.md §2.3-bis](brief-db-posting-e-abbinamento-rata.md).
 >
 > | | |
 > | --- | --- |
@@ -1054,7 +1054,7 @@ ANNULLATO    →  ∅   (terminale)
 > Decisione **D11** in
 > [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
 > §3-bis; passi **S1-14 … S1-17** in
-> [brief-db-posting-e-abbinamento-rata.md](../work-in-progress/brief-db-posting-e-abbinamento-rata.md)
+> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
 
 ⚠️ **E la matrice è INCOMPLETA, non sbagliata — rilievo del 2026-08-29.** Dice
 da quale stato si passa a quale, e **non dice niente su quale stato si possa

@@ -20,7 +20,7 @@
 // ⚠️ Niente `useReadonlyMode`: in `amm-software` non c'è un livello d'area da
 //    risolvere — o sei super admin e vedi tutto, o non arrivi alla pagina. Un
 //    terzo cancello che non decide niente sarebbe rumore.
-import { ref, onMounted, onActivated } from 'vue'
+import { computed, ref, onMounted, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -35,9 +35,19 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ProcessoDrawer from '../components/ProcessoDrawer.vue'
 import PresidiProcessiPanel from '../components/PresidiProcessiPanel.vue'
 import { displayTimestamp } from '../../core/utils/date'
+import { SEGMENTO_NON_LETTI, statoPallino } from '../../core/utils/pallinoPresidi'
 
 const { t } = useI18n()
 const store = useProcessiAutomaticiStore()
+
+// ⭐ La testata dei presidi si COLORA con la stessa funzione del pallino in
+//    topbar (`statoPallino`): accesi = danger, non letti = warn («cecita', non
+//    guasto»), tutto a zero = un verde con lo `0`. Fino al 2026-09-19 i due
+//    colori qui erano INVERTITI rispetto al pallino (warn sugli accesi, danger
+//    sui non letti): due sedi per lo stesso vocabolario, e dicevano il
+//    contrario. ⚠️ `null` (lettura fallita) = nessun tag: il verde vuol dire
+//    «visto e vuoto», e qui non si e' visto niente — lo dice il pannello sotto.
+const testataPresidi = computed(() => statoPallino(store.presidiTestata))
 
 // ⛔ Nessun `onNew` e nessun `exportFn`: lo scaffolding omette da sé le azioni
 //    che non gli si passano. Il registro è catalogo — non si crea un processo
@@ -197,25 +207,28 @@ function onIdentitaCreata() {
     <section class="app-proc-presidi">
       <h3 class="app-proc-presidi-titolo">
         {{ t('amministrazione.processi.presidi_titolo') }}
-        <Tag
-          :value="String(store.presidiConRighe)"
-          :severity="store.presidiConRighe === 0 ? 'success' : 'warn'"
-        />
-        <!-- ⛔ Un controllo NON LETTO non è uno zero: senza questo tag la
+        <!-- ⛔ Un controllo NON LETTO non è uno zero: senza il suo segmento la
              testata resterebbe verde mentre non si è visto niente, che su una
-             schermata nata per dire «va tutto bene» è il difetto peggiore. -->
+             schermata nata per dire «va tutto bene» è il difetto peggiore.
+             I segmenti (e i colori) sono quelli di `statoPallino`, gli stessi
+             del pallino in topbar. -->
         <Tag
-          v-if="store.presidiNonLetti > 0"
-          :value="t('amministrazione.processi.presidi_non_letti_conteggio', { n: store.presidiNonLetti })"
-          severity="danger"
+          v-for="seg in testataPresidi?.segmenti ?? []"
+          :key="seg.chiave"
+          :value="seg.chiave === SEGMENTO_NON_LETTI
+            ? t('amministrazione.processi.presidi_non_letti_conteggio', { n: seg.valore })
+            : String(seg.valore)"
+          :severity="seg.severity"
         />
       </h3>
       <p class="app-proc-help">{{ t('amministrazione.processi.presidi_help') }}</p>
-      <PresidiProcessiPanel
-        :presidi="store.presidi"
-        :loading="store.presidiLoading"
-        :errore="store.presidiErrore"
-      />
+      <div class="app-proc-presidi-corpo">
+        <PresidiProcessiPanel
+          :presidi="store.presidi"
+          :loading="store.presidiLoading"
+          :errore="store.presidiErrore"
+        />
+      </div>
     </section>
 
     <ProcessoDrawer
@@ -229,7 +242,24 @@ function onIdentitaCreata() {
 
 <style scoped>
 .app-proc-na { opacity: 0.55; }
-.app-proc-presidi { margin-top: 1.25rem; }
+/* ⛔ La sezione dei presidi ha un TETTO e scrolla dentro di sé. La pagina non
+   scrolla (`.app-page` è `overflow: hidden`) e la lista può schiacciarsi
+   (`min-height: 0`): un pannello senza limite prende tutta l'altezza e la
+   lista — il contenuto principale — finisce a ZERO pixel, senza nessun
+   errore. È successo il 2026-09-15 con 17 presidi a catalogo: il numero e la
+   lunghezza li decide il DB, non questa pagina, quindi il limite sta qui.
+   ⚠️ `vh` e non `%`: una percentuale che non riesce a risolversi vale `none`,
+   cioè torna il difetto in silenzio. `flex: 0 0 auto`: la sezione non cede
+   spazio alla lista oltre il tetto, ma nemmeno glielo ruba. */
+.app-proc-presidi {
+  margin-top: 1.25rem;
+  flex: 0 0 auto;
+  max-height: 40vh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.app-proc-presidi-corpo { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .app-proc-presidi-titolo {
   display: flex; align-items: center; gap: 0.5rem;
   font-size: 1rem; margin: 0 0 0.25rem;

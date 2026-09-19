@@ -1,6 +1,8 @@
 {
   "_scopo": "SEDE UNICA del DICHIARATO di deploy: chi sveglia ogni processo automatico del backend e con quale cadenza. Letto dall'installer degli unit (backend/bin/install-timers.sh) E dal backend (apps.core.services.sveglie). Il PERCHE' di ogni scelta sta nel template dell'unit; qui c'e' il VALORE, perche' due programmi devono poterlo leggere.",
-  "_forma": "unit = nome systemd senza estensione. processo_codice = dbops.processi.codice (l'attore che comparira' su maintenance.job_run_log). forma = timer|servizio. oncalendar = cadenza default, null per i servizi sempre accesi. abilita = se l'installer lo accende.",
+  "_forma": "unit = nome systemd senza estensione. processo_codice = dbops.processi.codice (l'attore che comparira' su maintenance.job_run_log). forma = timer|servizio. comando = l'argv DOPO bin/run-command.sh, come lista di token (vedi _comando). oncalendar = cadenza default, null per i servizi sempre accesi. abilita = se l'installer lo accende.",
+  "_comando": "DAL 2026-09-14 LA RIGA DI COMANDO STA QUI, e il template .service porta il segnaposto __COMANDO__ che l'installer rende come gia' __ONCALENDAR__. Perche': il pulsante «Esegui ora» del drawer dei processi (analisi-riavvio-processi-da-interfaccia.md §4.1-bis, brief-db-avvio-manuale-di-un-processo.md) lancia lo STESSO comando del timer, meno l'orario — e il backend non puo' leggerlo da un file .service. Una sede sola: la riga che il timer esegue E' la riga che il pulsante esegue, e non possono divergere. Un comando ricopiato qui ACCANTO a una riga cablata nel template sarebbe la seconda sede, quella che resta indietro — e qui indietro vuol dire un pulsante che lancia una cosa diversa dal timer. Lo prova backend/scripts/tests/test-install-timers.sh (nessun template con ExecStart cablato; l'unit reso porta l'argv di qui). FORMA: una lista di token, mai una stringa — systemd la spezza sugli spazi e subprocess no, quindi un token con uno spazio darebbe due esecuzioni diverse; carica_sveglie() rifiuta spazi e metacaratteri (%, $, |, quote...). Il primo token e' il nome del management command e deve esistere nel backend (test_sveglie.py). Obbligatorio anche per forma=servizio: ogni .service ha un ExecStart, e una regola con un'eccezione sono due regole.",
+  "_avvio_manuale": "DAL 2026-09-15 ogni voce dichiara anche avvio_manuale (true|false, obbligatorio): e' «Esegui ora» un gesto sensato su questa sveglia? Decisione di Tid (piano-be-fe-avvio-manuale-di-un-processo.md §3.2, brief-db-avvio-manuale-di-un-processo.md §8.5 punto 2): il drenatore ASPETTA il sottoprocesso e intanto non drena altro, quindi a mano si lanciano solo comandi BREVI (tetto nell'handler). Un comando lungo per natura (i due giri di fatturazione) e il drenatore stesso NON sono candidati, e questo campo e' la sede in cui lo si dice. NON e' abilita: quella dice se il TIMER e' acceso su questa installazione, questa se il PULSANTE ha senso — i due di fatturazione sono spenti oggi per un'altra ragione (SDI sospeso) e il giorno che si accendono il pulsante deve restare spento. Obbligatorio anche su forma=servizio (dove vale false per natura: una regola con un'eccezione sono due regole). L'installer NON lo legge: non e' un fatto di systemd. Lo legge il backend (capability nel dettaglio del processo, rifiuto del verbo, ricontrollo dell'handler).",
   "_contratto": "QUI NON C'E' LA TOLLERANZA, ed e' una scelta (Tid, 2026-09-11 — brief-db-quattro-processi-senza-presidio.md D5). La cadenza e' COME il deploy onora un processo e sta qui; la tolleranza di liveness e' il CONTRATTO del processo («se sto bene lascio un segno almeno ogni N minuti»), uguale su ogni installazione, e vive in dbops.processi.tolleranza_minuti (seed 80_data/sql/dbops/processi.csv) insieme a segno_di_vita (GIORNALE|SESSIONE): la legge il panorama dbops.vw_processi_programmazione, il guardiano pgAgent del digest e il backend via ProcessiRepository.contratti_liveness. Se il campo tolleranza_minuti ricompare in una voce, carica_sveglie() rifiuta il file. Il deploy puo' violare il contratto (timer piu' lento della tolleranza): lo presidia test_contratto_liveness_vs_deploy, che confronta gli oncalendar di qui col seed del catalogo. LIMITE ACCETTATO: il contratto ha la grana del processo, il giornale quella della corsia — su un processo con due corsie (digest_presidi) vale la tolleranza piu' larga, e la morte della sola corsia stretta si legge dal battito per corsia, non dal contratto.",
   "_regola": "Un processo puo' avere PIU' sveglie (run_fatturazione_batch ne ha due, una per corsia): la chiave e' l'unit, non il processo. Aggiungere una sveglia = una voce qui + la coppia di template in deploy/systemd/. Niente altro.",
   "_ritirate": "UN'ASSENZA DECISA, scritta qui perche' altrimenti si legge come una dimenticanza. zeroerp-sync-auth-user-active e' stata TOLTA il 2026-09-07 (unit, voce e costante PROCESSO_*, insieme): la riga 23 di dbops.processi e' ritirata a favore del gemello pgAgent sync_auth_user_expired_daily. Il management command resta come attrezzo a mano e non registra piu' un run. Il perche' per esteso sta in apps/core/services/processi.py; il brief e' work-in-progress/brief-db-sveglia-dei-processi.md §8.5.",
@@ -9,65 +11,81 @@
       "unit": "zeroerp-coda-lavori",
       "processo_codice": "draina_coda_lavori",
       "forma": "timer",
+      "comando": ["draina_coda_lavori"],
       "oncalendar": "*:0/1",
       "abilita": true,
-      "nota": "Drenaggio della coda generica: a coda vuota non fa nulla, quindi si accende su ogni host. Tunable a *:*:0/30 (ogni 30 SECONDI) per una UI piu' reattiva."
+      "avvio_manuale": false,
+      "nota": "Drenaggio della coda generica: a coda vuota non fa nulla, quindi si accende su ogni host. Tunable a *:*:0/30 (ogni 30 SECONDI) per una UI piu' reattiva. avvio_manuale=false: «Esegui ora» lo ESEGUE il drenatore — un lavoro che lancia il drenatore dal drenatore non ha senso (brief §8.2.3)."
     },
     {
       "unit": "zeroerp-coda-stampa",
       "processo_codice": "draina_coda_stampa",
       "forma": "timer",
+      "comando": ["draina_coda_stampa"],
       "oncalendar": "*:0/2",
       "abilita": true,
+      "avvio_manuale": true,
       "nota": "Drenaggio della coda stampa. Stessa natura del gemello: coda vuota = nessun effetto."
     },
     {
       "unit": "zeroerp-fatturazione-immediata",
       "processo_codice": "run_fatturazione_batch",
       "forma": "timer",
+      "comando": ["run_fatturazione_batch", "--modalita", "immediata"],
       "oncalendar": "*:0/2",
       "abilita": false,
-      "nota": "SCRITTO E SPENTO (decisione di Tid, 2026-08-16): emette documenti, e accenderlo di riflesso vorrebbe dire fatturare su un host che nessuno ha dichiarato pronto. Prerequisito prima di accenderlo: DB_SYSTEM_FATTURAZIONE_* in .env.systemd, senza cui il run fallisce rumorosamente (nessun ripiego su zeroerp_app). A catalogo il processo NON ha contratto (tolleranza NULL): un timer spento non ha una liveness da presidiare, e il giorno in cui si accende e' una release, non un tweak."
+      "avvio_manuale": false,
+      "nota": "avvio_manuale=false: un giro di fatturazione e' lungo per natura e terrebbe fermo il drenatore (piano §3.2); resta fuori dal pulsante anche il giorno in cui il timer si accende. SCRITTO E SPENTO (decisione di Tid, 2026-08-16): emette documenti, e accenderlo di riflesso vorrebbe dire fatturare su un host che nessuno ha dichiarato pronto. Prerequisito prima di accenderlo: DB_SYSTEM_FATTURAZIONE_* in .env.systemd, senza cui il run fallisce rumorosamente (nessun ripiego su zeroerp_app). A catalogo il processo NON ha contratto (tolleranza NULL): un timer spento non ha una liveness da presidiare, e il giorno in cui si accende e' una release, non un tweak."
     },
     {
       "unit": "zeroerp-fatturazione-differita",
       "processo_codice": "run_fatturazione_batch",
       "forma": "timer",
+      "comando": ["run_fatturazione_batch", "--modalita", "differita"],
       "oncalendar": "*-*-01 02:00",
       "abilita": false,
-      "nota": "Seconda corsia dello stesso processo, mensile su competenza. Stessa ragione dello spento e stesso prerequisito DB_SYSTEM_FATTURAZIONE_* del gemello immediata."
+      "avvio_manuale": false,
+      "nota": "avvio_manuale=false, come la corsia immediata e per la stessa ragione. Seconda corsia dello stesso processo, mensile su competenza. Stessa ragione dello spento e stesso prerequisito DB_SYSTEM_FATTURAZIONE_* del gemello immediata."
     },
     {
       "unit": "zeroerp-send-pending-emails",
       "processo_codice": "send_pending_emails",
       "forma": "timer",
+      "comando": ["send_pending_emails"],
       "oncalendar": "*:0/5",
       "abilita": true,
+      "avvio_manuale": true,
       "nota": "Nato il 2026-09-06: prima questo processo non aveva NESSUN artefatto di deploy, ed e' quello che il brief della sveglia usa come esempio del guasto-per-assenza. Cadenza piu' lenta dei due drainer perche' le email di SISTEMA partono gia' in sincrono (brief email §1): questo giro e' il ripiego e il ritentativo, non la strada principale."
     },
     {
       "unit": "zeroerp-digest-presidi-giornaliero",
       "processo_codice": "digest_presidi",
       "forma": "timer",
+      "comando": ["digest_presidi", "--cadenza", "giornaliera"],
       "oncalendar": "*-*-* 07:00",
       "abilita": true,
+      "avvio_manuale": true,
       "nota": "Gli ALLARMI: le viste che il catalogo dbops.presidi marca cadenza GIORNALIERA. Alle 07:00 perche' un lavoro fallito stanotte va visto stamattina, non stanotte. QUALI viste si guardino non sta qui: lo dice il catalogo. E la tolleranza NON sta qui (vedi _contratto): il contratto del processo digest_presidi a catalogo e' 11520 minuti, cioe' quello della corsia settimanale — la piu' larga delle due. La morte di QUESTA corsia da sola si legge nel battito per corsia («mai girata»/«ferma»), non dal contratto: limite accettato (brief §11.2)."
     },
     {
       "unit": "zeroerp-digest-presidi-settimanale",
       "processo_codice": "digest_presidi",
       "forma": "timer",
+      "comando": ["digest_presidi", "--cadenza", "settimanale"],
       "oncalendar": "Mon *-*-* 07:30",
       "abilita": true,
+      "avvio_manuale": true,
       "nota": "I REGISTRI e le tendenze (cadenza SETTIMANALE a catalogo) piu' il BATTITO: questa corsa parte e si fa viva anche quando non ha niente da dire, perche' un digest muto e un digest morto si scrivono uguale. Lunedi' 07:30, mezz'ora dopo la giornaliera per non accavallarsi. Il contratto a catalogo (11520 minuti = 8 giorni) e' quello di QUESTA corsia, la piu' larga delle due: la morte della sola giornaliera si legge nell'elenco per corsia del battito, non dal contratto (limite accettato, brief §11.2). ⭐ SPENTA il 2026-09-10 e RIACCESA lo stesso giorno, e la storia va tenuta perche' spiega il numero che questa corsa riporta. Era stata spenta perche' leggere la famiglia `riferimenti_morti` faceva morire il backend PostgreSQL (tre occorrenze in un'ora sul dbdev, cluster in modalita' di ripristino). Il team DB ha poi cambiato la diagnosi (brief brief-db-un-destinatario-per-i-presidi.md §10): quelle letture morivano sul percorso INVOKER, che le due righe non hanno piu' — sono passate a perimetro DEFINER, quindi il backend le conta e non le elenca. Riaccesa dopo aver provato la corsa a mano (--secco) il 2026-09-10 alle 23:32: ha girato intera, il cluster e' rimasto in piedi e il postmaster non e' ripartito. ⚠️ La causa dei segfault resta APERTA (pressione di memoria della macchina, §10.4): se ricapita, il fatto si vedra' qui il lunedi' mattina, che e' il momento in cui qualcuno guarda. ⚠️ E DA SAPERE che spegnerla di nuovo NON toglierebbe quel rischio: il pannello dei presidi legge tutte le viste di natura ZERO comprese le settimanali, quindi quel percorso e' gia' vivo a ogni apertura della schermata — spegnere questa corsia toglie 13 viste dallo sguardo e il BATTITO, cioe' l'unica cosa che rende visibile la morte del digest stesso, non il pericolo."
     },
     {
       "unit": "zeroerp-listen-cambio-reparto",
       "processo_codice": "listen_cambio_reparto",
       "forma": "servizio",
+      "comando": ["listen_cambio_reparto"],
       "oncalendar": null,
       "abilita": true,
-      "nota": "NON e' un timer: e' un listener LISTEN/NOTIFY sempre acceso. Non ha una cadenza da dichiarare. Scrive UN SOLO run — quello di avvio (decisione di Tid, 2026-09-05): «e' vivo adesso?» e' una domanda diversa e ha una sede sua, ed e' pg_stat_activity — a catalogo segno_di_vita = SESSIONE, e la connessione si presenta con application_name = processo_codice (notify_listener._get_conninfo). Se il processo muore la sessione sparisce; se sta riconnettendo non c'e'; ed e' vero."
+      "avvio_manuale": false,
+      "nota": "avvio_manuale=false per natura (e' un servizio: non c'e' una corsa da lanciare; «Riavvia» e' un altro cantiere, analisi §4.3). NON e' un timer: e' un listener LISTEN/NOTIFY sempre acceso. Non ha una cadenza da dichiarare. Scrive UN SOLO run — quello di avvio (decisione di Tid, 2026-09-05): «e' vivo adesso?» e' una domanda diversa e ha una sede sua, ed e' pg_stat_activity — a catalogo segno_di_vita = SESSIONE, e la connessione si presenta con application_name = processo_codice (notify_listener._get_conninfo). Se il processo muore la sessione sparisce; se sta riconnettendo non c'e'; ed e' vero."
     }
   ]
 }

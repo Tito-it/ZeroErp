@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 (1 di 4) — UNA POSIZIONE SI CONTA UNA VOLTA SOLA PER INVENTARIO
+#   magazzino.inventari_righe: uq_mag_inventari_righe_posizione
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 6-ter C14 (emerso scrivendo P-6)
+#
+# -- IL DIFETTO CHE CHIUDE ----------------------------------------------------------------
+#   Il piano (D-L2-n) e il posting (D-L2-f) lavorano alla grana della riga:
+#   (articolo, ubicazione, lotto, asset). Due righe dello stesso inventario
+#   sulla STESSA posizione avrebbero letto lo stesso qta_sistema e postato
+#   DUE delta contro di esso — con sorgenti diverse (INVENTARIO_RIGA:{id}),
+#   quindi identita' diverse sul ledger: nessuna rete le avrebbe fermate, e
+#   la giacenza sarebbe raddoppiata da un conteggio doppio. Sul modello una
+#   posizione, in un inventario, ha UN conteggio: e' un UNIQUE, non un caso
+#   da gestire nel piano.
+#   NULLS NOT DISTINCT: «senza lotto» e' una posizione come le altre (la
+#   stessa forma di uq_mag_movimenti_identita).
+#   Le rettifiche NON lo prendono: due righe sullo stesso articolo sono due
+#   delta dati, non due letture dello stesso registro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260918-20-alter-inventari-righe-unique-posizione-mctit.yaml
+
+  - changeSet:
+      id: 20260918-20-alter-inventari-righe-unique-posizione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.inventari_righe: UNIQUE NULLS NOT DISTINCT (inventario_id, articolo_id,
+        ubicazione_id, lotto_id, asset_id) — una posizione si conta una volta sola per
+        inventario; due righe sulla stessa posizione posterebbero due delta contro lo stesso
+        qta_sistema. Brief: brief-db-magazzino-lotto-2-motore, sezione 6-ter C14 (P-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: inventari_righe
+                columnName: asset_id
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM (
+                    SELECT 1 FROM magazzino.inventari_righe
+                     GROUP BY inventario_id, articolo_id, ubicazione_id, lotto_id, asset_id
+                    HAVING count(*) > 1) d;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.inventari_righe
+                  ADD CONSTRAINT uq_mag_inventari_righe_posizione
+                  UNIQUE NULLS NOT DISTINCT (inventario_id, articolo_id, ubicazione_id, lotto_id, asset_id);
+
+              COMMENT ON CONSTRAINT uq_mag_inventari_righe_posizione ON magazzino.inventari_righe IS
+                  'Una posizione (articolo, ubicazione, lotto, asset) si conta UNA volta per '
+                  'inventario: il piano e il posting leggono qta_sistema a quella grana, e due '
+                  'righe sulla stessa posizione posterebbero due delta contro lo stesso sistema '
+                  '(NULLS NOT DISTINCT: «senza lotto» e'' una posizione come le altre). Brief: '
+                  'brief-db-magazzino-lotto-2-motore, sezione 6-ter C14.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.inventari_righe DROP CONSTRAINT IF EXISTS uq_mag_inventari_righe_posizione;

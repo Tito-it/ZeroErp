@@ -19,19 +19,29 @@
 #       riapre per aggiungerlo.
 # ------------------------------------------------------------
 
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
+from apps.core.services.list_helpers import validate_order_params
+from apps.pagamenti.db.pagamenti_repository import (
+    RATE_SORT_COLUMNS,
+    PagamentiRepository,
+)
+from apps.pagamenti.services._helpers import (
+    E_FATTURA_NON_TROVATA,
+    E_RATA_NON_TROVATA,
+    E_VALIDAZIONE,
+)
 from apps.pagamenti.types import SaldoRow
 
 _FN = "pagamenti.saldi_service"
 
-# Codici gia' a catalogo: il documento o la rata non esistono (o il perimetro
-# non li lascia vedere, e i due restano indistinguibili).
-E_FATTURA_NON_TROVATA = "E_FATTURA_NON_TROVATA"
-E_RATA_NON_TROVATA = "E_RATA_NON_TROVATA"
+# `E_RATA_NON_TROVATA` e `E_FATTURA_NON_TROVATA` vengono da `_helpers`, la sede
+# condivisa coi service che li sollevano allo stesso modo (dal 2026-09-17 la
+# rata la solleva anche «righe da rate»). Restano importati qui perche' i test
+# e i chiamanti li leggono da questo modulo.
 
 # ⭐ IL VOCABOLARIO, e vale a ogni livello. Una schermata sceglie QUALI numeri
 #    accendere; ⛔ nessuna li rinomina e nessuna li ricalcola.
@@ -81,12 +91,21 @@ def _saldo(
 #    SENZA rata — il fondo fattura e' esattamente cosi' — e quel denaro non
 #    comparirebbe in nessuna somma di rate. Un numero incompleto che si presenta
 #    come completo e' peggio di un numero assente.
-def saldo_documento(fattura_id: int) -> SaldoRow:
+# ⭐ `escludi_riga_id` dal 2026-09-18 (P-6 del brief D19): «prima di se'» anche
+#    sul documento — la riga senza rata (il fondo fattura e' cosi') che si sta
+#    correggendo non si conta piu' addosso. Fino a quel giorno il pannello lo
+#    DICHIARAVA («comprende anche questa riga») invece di fingere; ora la
+#    funzione lo sa fare e la dichiarazione non serve piu'.
+def saldo_documento(
+    fattura_id: int, *, escludi_riga_id: int | None = None
+) -> SaldoRow:
     repository = PagamentiRepository()
     # ⭐ Una lettura sola per i due numeri: separate leggerebbero due istanti
     #    diversi, e un residuo di prima accanto a un «in lavorazione» di dopo
     #    sono due numeri veri che insieme raccontano una cosa falsa.
-    numeri = repository.get_saldo_documento(fattura_id)
+    numeri = repository.get_saldo_documento(
+        fattura_id, escludi_riga_id=escludi_riga_id
+    )
     # ℹ️ Il 404 di un documento inesistente lo solleva GIA' il database
     #    (`E_FATTURA_NON_TROVATA`) e arriva al client tradotto senza passare di
     #    qui. Questo guard copre l'altro caso — una risposta VUOTA — che
@@ -113,10 +132,10 @@ def saldo_documento(fattura_id: int) -> SaldoRow:
 #  Livello RATA
 # ══════════════════════════════════════════════════════════════════
 
-# Scopo: Il saldo di una rata — l'unico livello che oggi risponde tutti e tre
-#        i numeri.
+# Scopo: Il saldo di una rata.
 # ⚠️ `escludi_riga_id` chiede lo spazio PRIMA DI SE': serve a sapere se una
-#    riga ci sta senza contarsi addosso.
+#    riga ci sta senza contarsi addosso. Dal 2026-09-18 lo sa fare anche il
+#    documento: stesso nome, stessa domanda.
 def saldo_rata(
     scadenza_id: int, *, escludi_riga_id: int | None = None
 ) -> SaldoRow:
@@ -148,6 +167,88 @@ def saldi_rate_documento(fattura_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
     rate = repository.list_rate_con_saldo(fattura_id)
     return {"count": len(rate), "results": rate}
+
+
+# Scopo: L'ELENCO PAGINATO DELLE RATE col saldo dalla base unica — la quarta
+#        lettura di questo modulo (D19-c, 2026-09-17): la sorgente del picker
+#        della distinta e, domani, dello scadenzario.
+# ⭐ Sta QUI e non in `pagamenti_service` perche' la domanda e' «quanto resta su
+#    ogni rata», e a rispondere e' la base dei saldi: le tre colonne della
+#    risposta (`residuo · in_lavorazione · incassato`) sono `CAMPI_SALDO`, con
+#    gli stessi nomi del pannello — una schermata sceglie quali accendere,
+#    nessuna li rinomina.
+# ⚠️ Offset-based (`limit`/`offset`), come `fatture/{id}/sistemazioni/`: e' la
+#    lingua di `useSearchTable` e di `createListaStore`, e la lista e' montata
+#    su `<ListaConfigurabile>`. Le liste piu' vecchie del dominio sono
+#    page-based; la conversione la fa lo store, in un posto solo.
+# ⛔ `order_dir` arriva GREZZO dalla view (non dal bundle
+#    `parse_list_params`, che lo normalizza ad `asc`): senza verso esplicito
+#    decide il repository — e su una colonna DATA il verso naturale e' DESC.
+# ⚠️ NESSUN criterio e' obbligatorio QUI: il picker lo pretende nel frontend
+#    (cliente o numero fattura, D19-c), lo scadenzario no — e' la stessa rotta.
+# ⚠️ `solo_aperte` e' SUPPORTATO dal 2026-09-17 (P-3 consegnata): «aperta» =
+#    `residuo <> 0` (Q-B di Tid). Il piano lo dava «accettato e dichiarato non
+#    supportato finche' P-3 non c'e'»; P-3 c'e'.
+# ⭐ `natura_doc_codice`: il vocabolario e' del catalogo
+#    (`config.nature_doc_fiscale.codice_interno`) ed e' APERTO — le nature si
+#    seminano — quindi qui si accetta qualunque codice e un valore inesistente
+#    da' una lista vuota, che e' la risposta giusta: un elenco cablato sarebbe
+#    una seconda sede. Il maiuscolo lo mette QUESTO service, com'e' scritto a
+#    catalogo — la view lo passa com'e'.
+def list_rate(
+    *,
+    auth_user_id: int | None,
+    billing_account_id: int | None = None,
+    fattura_numero: int | None = None,
+    serie: str | None = None,
+    anno: int | None = None,
+    search: str | None = None,
+    solo_aperte: bool | None = None,
+    solo_numerate: bool | None = None,
+    data_scadenza_da: date | None = None,
+    data_scadenza_a: date | None = None,
+    natura_doc_codice: str | None = None,
+    limit: int,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+) -> dict[str, Any]:
+    # ⭐ `nullable=True`: «non specificato» e' legittimo e l'ordine lo decide il
+    #    repository (il default a catalogo, `data_scadenza ASC`). Fuori
+    #    whitelist e' un 400 col campo, non un 500 sul `ORDER BY`.
+    order_by, order_dir = validate_order_params(
+        order_by, order_dir.lower() if order_dir else None,
+        allowed_columns=RATE_SORT_COLUMNS,
+        error_code=E_VALIDAZIONE,
+        function_name=f"{_FN}.list_rate",
+        nullable=True,
+    )
+    ErrorManager.require(
+        search is None or len(search) >= 3,
+        code=E_VALIDAZIONE,
+        message="La ricerca richiede almeno 3 caratteri.",
+        context={"field": "search"},
+        function_name=f"{_FN}.list_rate",
+    )
+    repository = PagamentiRepository()
+    results, total = repository.list_rate_paginata(
+        auth_user_id=auth_user_id,
+        billing_account_id=billing_account_id,
+        fattura_numero=fattura_numero,
+        serie=serie,
+        anno=anno,
+        search=search,
+        solo_aperte=bool(solo_aperte),
+        solo_numerate=bool(solo_numerate),
+        data_scadenza_da=data_scadenza_da,
+        data_scadenza_a=data_scadenza_a,
+        natura_doc_codice=natura_doc_codice.upper() if natura_doc_codice else None,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+    return {"count": total, "results": results}
 
 
 # ══════════════════════════════════════════════════════════════════

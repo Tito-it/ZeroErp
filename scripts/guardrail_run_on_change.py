@@ -15,16 +15,34 @@
 # lo superano» — che e' falso. Due bonifiche a mano dopo, il divieto e' scritto
 # e questo lo tiene.
 #
-# IL MECCANISMO che rende `runOnChange` pericoloso qui: la CI invoca Liquibase
-# DUE volte sullo stesso changelog (`--contexts="!provision"`, poi
-# `--contexts=ci_apply`). Nella seconda passata un `runOnChange` ri-esegue
-# FUORI dall'ordine di timeline e riscrive il proprio corpo SOPRA le revisioni
-# piu' recenti, che sono spente e non ri-eseguono. Su un DB di sviluppo
-# l'invocazione e' una sola: il difetto e' invisibile fino alla CI.
+# IL MECCANISMO che rende `runOnChange` pericoloso qui: un `runOnChange`
+# ri-esegue al migrate SUCCESSIVO a un edit, cioe' FUORI dall'ordine di
+# timeline, e riscrive il proprio corpo SOPRA le revisioni piu' recenti, che
+# sono spente e non ri-eseguono. La CI lo rende visibile perche' invoca
+# Liquibase DUE volte sullo stesso changelog (`--contexts="!provision"`, poi
+# `--contexts=ci_apply`): un changeSet che nella seconda passata risulta
+# «cambiato» riparte li', dopo tutto il resto.
 #
-# DOVE RESTA LECITO e percio' non e' controllato: `80_data` (mirror CSV
-# loadData/loadUpdateData), `85_pgagent` (job), `90_end` (resync, grant). La'
-# la ri-esecuzione e' il comportamento voluto.
+# ⛔ SECONDA REGOLA (2026-09-17): dove `runOnChange` resta lecito, i change
+# NON portano `dbms:`. In Liquibase 5.0.4 un `runOnChange` con
+# `validCheckSums: ANY` e un change `dbms: postgresql` viene ri-eseguito UNA
+# VOLTA senza che nessuno l'abbia toccato: con ANY la validazione non calcola
+# il checksum, e il filtro che decide se ri-eseguire lo calcola SENZA il
+# Database nello Scope (ChangeLogIterator lo mette solo attorno alla visit) —
+# e senza Database un change `dbms:` viene ESCLUSO dal checksum
+# (ChangeSet.generateCheckSum → DatabaseList.definitionMatches, shortName
+# "null"). Il checksum salvato alla prima esecuzione non torna: RERAN, e da
+# li' resta salvato «il checksum di niente», quindi un edit dell'SQL non
+# ri-esegue MAI piu'. Il 2026-09-17 la CI e' morta cosi' (`20260831-03`,
+# ripartito in ci_apply dopo il seed della sesta famiglia); su dbdev 175 righe
+# RERAN portano l'MD5 della stringa vuota. In ZeroErp il database e' sempre
+# PostgreSQL: `dbms:` non decide niente, e su un runOnChange costa questo.
+#
+# DOVE `runOnChange` RESTA LECITO (e vale la seconda regola): `80_data`
+# (mirror CSV loadData/loadUpdateData, seed convergenti), `85_pgagent` (job),
+# `90_end` (resync, grant). La' la ri-esecuzione e' il comportamento voluto —
+# e proprio per questo il corpo deve reggere una ri-esecuzione DOPO changeSet
+# piu' recenti: idempotente, precondizioni per NOME, mai «quante righe ci sono».
 #
 # Uso (read-only, nessun database):
 #   python scripts/guardrail_run_on_change.py
@@ -49,6 +67,8 @@ from _yaml_veloce import carica as carica_yaml
 ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / "db" / "changelog" / "migrations_v2"
 FASI_VIETATE = ("00_schema", "20_code")
+# Fasi dove runOnChange e' lecito: li' vale la seconda regola (niente dbms:).
+FASI_LECITE = ("80_data", "85_pgagent", "90_end")
 FILENAME_RE = re.compile(r"^\d{8}-\d{2}.*\.(ya?ml)$", re.IGNORECASE)
 
 
@@ -79,13 +99,73 @@ def trova_violazioni() -> list[tuple[str, str]]:
     return fuori
 
 
+# Scopo: i change con `dbms:` dentro un changeSet runOnChange delle fasi lecite
+#   (file, id del changeSet, tipo del change).
+def trova_dbms_su_run_on_change() -> list[tuple[str, str, str]]:
+    fuori: list[tuple[str, str, str]] = []
+    for fase in FASI_LECITE:
+        radice = BASE / fase
+        if not radice.is_dir():
+            continue
+        for p in sorted(radice.rglob("*")):
+            if not p.is_file() or not FILENAME_RE.match(p.name):
+                continue
+            try:
+                doc = carica_yaml(p.read_text(encoding="utf-8"))
+            except yaml.YAMLError as exc:
+                print(f"⚠️  YAML non parsabile, saltato: {p} ({exc})", file=sys.stderr)
+                continue
+            if not isinstance(doc, dict):
+                continue
+            for blocco in doc.get("databaseChangeLog", []) or []:
+                if not isinstance(blocco, dict) or "changeSet" not in blocco:
+                    continue
+                cs = blocco["changeSet"] or {}
+                if cs.get("runOnChange") is not True:
+                    continue
+                for change in cs.get("changes") or []:
+                    if not isinstance(change, dict):
+                        continue
+                    for tipo, corpo in change.items():
+                        if isinstance(corpo, dict) and corpo.get("dbms"):
+                            rel = p.relative_to(ROOT).as_posix()
+                            fuori.append((rel, str(cs.get("id", "<senza id>")), tipo))
+    return fuori
+
+
 # Scopo: eseguire il controllo e tradurre l'esito in exit code per la CI.
 def main() -> int:
     violazioni = trova_violazioni()
-    if not violazioni:
+    con_dbms = trova_dbms_su_run_on_change()
+    if not violazioni and not con_dbms:
         print("✅ guardrail runOnChange: nessun changeSet con runOnChange:true "
-              f"in {' / '.join(FASI_VIETATE)}")
+              f"in {' / '.join(FASI_VIETATE)}; nessun change `dbms:` in un "
+              f"runOnChange di {' / '.join(FASI_LECITE)}")
         return 0
+
+    if con_dbms:
+        print("❌ un changeSet runOnChange NON porta `dbms:` sui change\n", file=sys.stderr)
+        for rel, cs_id, tipo in con_dbms:
+            print(f"  {rel}\n      changeSet: {cs_id}  (change: {tipo})", file=sys.stderr)
+        print(
+            "\nIn Liquibase 5.0.4 un runOnChange con validCheckSums: ANY e un change\n"
+            "`dbms:` viene ri-eseguito UNA volta senza che nessuno l'abbia toccato\n"
+            "(il filtro calcola il checksum senza Database nello Scope e il change\n"
+            "`dbms:` ne esce), in CI nella SECONDA invocazione (--contexts=ci_apply),\n"
+            "fuori ordine; poi salva «il checksum di niente» e un edit dell'SQL non\n"
+            "ri-esegue mai piu'. Il 2026-09-17 la CI e' morta cosi' (20260831-03).\n"
+            "\n"
+            "COSA FARE: togli la riga `dbms: postgresql` dai change (e dal rollback):\n"
+            "il database di ZeroErp e' sempre PostgreSQL, quella riga non decide niente.\n"
+            "Se invece il changeSet era una tantum (un backfill), spegnilo:\n"
+            "runOnChange: false + validCheckSums: - ANY (il checksum salvato dalla\n"
+            "ri-esecuzione spuria e' quello vuoto e tornerebbe vincolante).\n"
+            "\n"
+            "Regola: linee-guida-sql.md §11.1 (seconda regola).\n",
+            file=sys.stderr,
+        )
+        if not violazioni:
+            return 1
 
     print("❌ runOnChange: true VIETATO in 00_schema e 20_code\n", file=sys.stderr)
     for rel, cs_id in violazioni:

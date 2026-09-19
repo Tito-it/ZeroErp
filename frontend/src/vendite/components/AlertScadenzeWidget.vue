@@ -56,7 +56,7 @@ onMounted(load)
     </Button>
 
     <Popover ref="op" :style="{ width: '550px' }">
-      <h4 class="mt-0 mb-05">{{ t('vendite.listini.alert_scadenze_titolo') }}</h4>
+      <h4>{{ t('vendite.listini.alert_scadenze_titolo') }}</h4>
       <DataTable :value="items" striped-rows class="app-datatable" data-key="versione_id"
         scrollable scroll-height="250px">
         <Column field="listino_codice" :header="t('vendite.listini.col_codice')" style="width: 120px;" />
@@ -66,7 +66,7 @@ onMounted(load)
         </Column>
         <Column :header="t('vendite.listini.col_stato')" style="width: 110px;">
           <template #body="{ data }">
-            <span v-if="data.giorni_rimanenti <= 0" class="text-red-500 font-bold">
+            <span v-if="data.giorni_rimanenti <= 0" class="font-bold">
               {{ t('vendite.listini.alert_scadenze_scaduto') }}
             </span>
             <span v-else>

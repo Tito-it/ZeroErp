@@ -10,13 +10,19 @@
 // `_upsert_utility_inline`). Nessuna action dedicata nello store:
 // l'esposizione separata (POST/PATCH `/utility/`) resta come endpoint BE
 // per smoke test e consumer esterni, ma il drawer FE non la usa.
+//
+// ⭐ Dal 2026-09-18 la lista e' `useListaStoreCore`, chiamato qui dentro: era
+//    una copia a mano del suo `buildParams` su `useListaEmptyStateFetch`. La
+//    sola cosa che il core non sapeva dire — e che teneva questa copia in
+//    piedi — era il NOME SUL FILO delle due date (`validita_dal_min/max`), che
+//    ora e' `paramNames`. Non passa da una factory perche' lo store e' anche
+//    transizioni, revisioni, push a contratto, eccezioni: la lista e' una parte.
 
 import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 
 import { useTabEvents } from '../../../core/composables/useTabEvents'
-import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
+import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
 import {
   annullaOfferta,
@@ -45,65 +51,44 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
   // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
   const defaultDataDa = defaultFiltroDataDaString()
 
-  const filters = ref({
-    search: '',
-    stato_codice_interno: null,
-    billing_account_id: null,
-    utility_id: null,
-    listino_id: null,
-    data_da: defaultDataDa,
-    data_a: null,
-    // Filtro revisione attiva (mirror preventivi): default true = mostra solo
-    // l'ultima revisione viva per lineage. Toggle "Mostra storico revisioni"
-    // lo nega (false) per vedere tutte le revisioni incluse SUPERATA/ANNULLATA.
-    solo_ultima_revisione: true,
-    limit: 25,
-    offset: 0,
+  // Lista con guardia empty-state standard: `data_da` col default standard
+  // conta come filtro attivo (`gateKeys`), quindi la lista si popola al mount.
+  const lista = useListaStoreCore({
+    fetchPage: listOfferte,
+    filterDefaults: {
+      stato_codice_interno: null,
+      billing_account_id: null,
+      utility_id: null,
+      listino_id: null,
+      data_da: defaultDataDa,
+      data_a: null,
+      // Filtro revisione attiva (mirror preventivi): default true = mostra solo
+      // l'ultima revisione viva per lineage. Toggle "Mostra storico revisioni"
+      // lo nega (false) per vedere tutte le revisioni incluse SUPERATA/ANNULLATA.
+      // ⚠️ Viaggia sempre, anche a `true`: il BE lo legge con
+      //    `qp_bool(..., default=True)`, quindi «vero» e «assente» sono la
+      //    stessa cosa, e «falso» esplicito e' cio' che serve al toggle.
+      solo_ultima_revisione: true,
+    },
+    gateKeys: [
+      'stato_codice_interno', 'billing_account_id', 'utility_id', 'listino_id',
+      'data_a', 'data_da',
+    ],
+    // I filtri data BE si chiamano validita_dal_min / validita_dal_max (vedi
+    // views_offerte.py): si applicano sul `validita_dal` della testata. Nello
+    // store restano `data_da`/`data_a`, che sono i nomi che `useSearchTable`
+    // azzera sul deep-link e che `useStoreFilterBindings` lega ai DatePicker.
+    paramNames: { data_da: 'validita_dal_min', data_a: 'validita_dal_max' },
     // Default coerente con `OfferteSearchTable.useSearchTable.defaultSortField`:
     // entrambi devono puntare a una colonna visibile e sortable, altrimenti
     // PrimeVue genera un sort-indicator "fantasma" (underline anomala
     // sotto le label) sulla riga header. Allineare se si cambia uno dei due.
     // Default `validita_dal desc`: offerte con inizio validita' piu' recente
-    // in cima (allineato al pattern preventivi/contratti).
-    order_by: 'validita_dal',
-    order_dir: 'desc',
-  })
-
-  // Lista paginata offerte con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro attivo:
-  // la lista si popola al mount. Offerte usa limit/offset + filtri validita_dal_*.
-  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
-    filters,
-    hasActiveFilters: (f) => f.stato_codice_interno != null
-      || f.billing_account_id != null
-      || f.utility_id != null
-      || f.listino_id != null
-      || f.data_a != null
-      || f.data_da != null,
-    buildParams: (f, searchTerm) => {
-      const params = {}
-      if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.stato_codice_interno != null) params.stato_codice_interno = f.stato_codice_interno
-      if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
-      if (f.utility_id != null) params.utility_id = f.utility_id
-      if (f.listino_id != null) params.listino_id = f.listino_id
-      // I filtri data BE si chiamano validita_dal_min / validita_dal_max
-      // (vedi views_offerte.py): si applicano sul `validita_dal` della testata.
-      if (f.data_da) params.validita_dal_min = f.data_da
-      if (f.data_a) params.validita_dal_max = f.data_a
-      // Passa sempre solo_ultima_revisione esplicito (false = mostra storico). Default
-      // BE e' true: lo allineamento esplicito FE→BE evita ambiguita' se
-      // l'operatore disattiva il toggle "Mostra storico revisioni".
-      if (f.solo_ultima_revisione === false) params.solo_ultima_revisione = false
-      params.limit = f.limit || 25
-      params.offset = f.offset || 0
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'desc'
-      }
-      return params
-    },
-    fetchPage: listOfferte,
+    // in cima (allineato al pattern preventivi/contratti); il ripiego del verso
+    // segue.
+    orderBy: 'validita_dal',
+    orderDir: 'desc',
+    orderDirDefault: 'desc',
   })
 
   // Scopo: Dettaglio completo offerta (testata + eccezioni + utility 1:1).
@@ -236,10 +221,11 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
   }
 
   return {
-    // state
-    items, totalRecords, loading, hasSearched, filters,
+    // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
+    // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
+    ...lista,
     // testata (utility 1:1 atomica via payload.utility inline)
-    fetchList, fetchDetail, create, update, elimina,
+    fetchDetail, create, update, elimina,
     // transizioni
     emetti, registraEsito, annulla, creaRevisione, loadRevisioni, pushAContratto,
     generaOrdine,

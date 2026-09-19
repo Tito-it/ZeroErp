@@ -14,7 +14,7 @@
 > • [pagamenti.fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili)  
 >
 ### 🎯 Scopo Principale
-(latest review 25-08-2026)  
+(latest review 18-09-2026)  
 La funzione **`pagamenti.fn_get_saldo_fattura()`** risponde a **tre domande
 diverse su un documento**, e tenerle separate è il motivo per cui esiste:
 
@@ -69,6 +69,17 @@ sta guardando.
 * `p_fattura_id` obbligatorio (`> 0`); se manca o non è positivo l'errore è
   **tecnico**: quel valore non esce da nessuna interfaccia, lo produce un
   chiamante rotto.
+* ⭐ `p_escludi_contabile_riga_id` (facoltativo, dal 18-09-2026): **«quanto c'era
+  prima di me»**. Chi sta correggendo una riga contabile chiede il saldo del
+  documento *senza* quella riga — altrimenti si confronterebbe con sé stesso e
+  leggerebbe come «già dichiarato» l'importo che sta cambiando. La riga esclusa
+  esce da **entrambi** i conti: dal dichiarato (è la delegata a toglierla, non
+  una seconda esclusione scritta qui) e dal registrato (il movimento che quella
+  riga ha scritto, se è già stata registrata). È la stessa forma e lo stesso
+  parametro della sorella
+  [`fn_get_saldo_rata`](/dbzero/pagamenti/funzioni/fn_get_saldo_rata): lo stesso
+  nome deve rispondere alla stessa domanda su rata e documento. Se è fornito e
+  non positivo, l'errore è tecnico come per il primo parametro.
 * La fattura deve esistere. ⚠️ La tabella ha la **RLS**: «non esiste» e «non la
   vedi» danno lo **stesso** errore, per scelta — chi ha bisogno della differenza
   la chiede a una funzione che gira fuori dalla row security.
@@ -100,12 +111,25 @@ rata rispondono con lo stesso vocabolario, ed è la base su cui nascerà il sald
 ```sql
 SELECT *
 FROM pagamenti.fn_get_saldo_fattura(123);
+
+-- Il pannello dei saldi mentre si corregge la riga contabile 4567:
+-- i suoi 500 non compaiono fra gli «in lavorazione».
+SELECT *
+FROM pagamenti.fn_get_saldo_fattura(123, 4567);
 ```
 
 ---
 
 ### 🕘 Storia
 
+* **18-09-2026** — `p_escludi_contabile_riga_id` (P-6 di
+  `brief-db-distinta-ricerca-rate`): l'esclusione «prima di sé» esisteva solo
+  sulla rata, e chi correggeva una riga **senza rata** (fondo fattura, riga
+  manuale «fattura sì, rata no») leggeva un dichiarato che contava la riga
+  stessa. Cambia la firma, quindi `DROP` + `CREATE` — e la vista
+  `vw_eccedenze_da_sistemare`, che dipende dalla funzione, è stata ricreata
+  identica nello stesso changeSet (`20260918-02`). Nessun numero cambia per chi
+  chiama a un argomento.
 * **25-08-2026** — da due colonne a quattro (S5-1 del cantiere incassi). Fino a
   qui la distinzione fra *registrato* e *incassato* esisteva sulla **rata** e non
   sul **documento**, cioè mancava proprio al livello che si guarda per primo.

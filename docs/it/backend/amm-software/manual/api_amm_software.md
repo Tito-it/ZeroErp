@@ -1172,11 +1172,12 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
-## 6. Processi automatici — i presidi
+## 6. Processi automatici — i presidi e «Esegui ora»
 
-⚠️ **Di questa famiglia qui c'e' solo l'endpoint dei presidi.** Le altre cinque
-rotte (`GET processi/`, `GET processi/{codice}/`, `POST processi/{codice}/run/`,
-`GET|POST processi/{codice}/identita/`, `POST .../identita/riattiva/`) esistono e
+⚠️ **Di questa famiglia qui ci sono due endpoint su sette**: i presidi (§6.1) e
+«Esegui ora» (§6.2), con la parte del dettaglio che lo alimenta (§6.3). Le altre
+rotte (`GET processi/`, `GET processi/{codice}/`, `GET processi/{codice}/run/`,
+`POST processi/{codice}/identita/`, `POST .../identita/riattiva/`) esistono e
 **non sono documentate**: e' un debito dichiarato, non un'omissione da leggere
 come «non ci sono». Contratto vivo: `/api/docs/`.
 
@@ -1192,9 +1193,12 @@ di DEBITO che deve CALARE»*, e il backend lo consegna in `descrizione` leggendo
 con `obj_description`. ⛔ Un elenco di eccezioni scritto nel backend o nel
 frontend sarebbe la seconda sede della stessa decisione, e la seconda diverge.
 
-⛔ **Quante siano non è scritto da nessuna parte, ed è una scelta.** L'elenco è
-`PRESIDI_PROCESSI` in `apps/core/db/processi_repository.py`, qualificato collo
-schema (ci sono viste di `dbops` **e** di `maintenance`). Un numero copiato
+⛔ **Quante siano non è scritto da nessuna parte, ed è una scelta.** Dal
+2026-09-10 l'elenco è il **catalogo** `dbops.presidi` (natura `ZERO`), letto da
+`PresidiRepository.stato_presidi`; fino a quel giorno era la costante
+`PRESIDI_PROCESSI` di `processi_repository.py`, oggi rimossa. Il nome della vista
+esce qualificato collo schema (ci sono viste di `dbops` **e** di `maintenance`).
+Un numero copiato
 accanto a un elenco che cresce invecchia in silenzio: fino al 2026-09-07 il
 docstring della view diceva «i SEI presidi» e alla stessa data l'elenco ne
 contava dieci.
@@ -1211,10 +1215,14 @@ per primo.
         "descrizione": "PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa non tornano. DEVE restare VUOTA. …",
         "conteggio": 1,
         "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "…": "…" } ],
-        "troncato": false
+        "troncato": false,
+        "elencabili": true,
+        "errore": null,
+        "da_guardare": true
       }
     ],
-    "con_righe": 4
+    "con_righe": 4,
+    "non_letti": 0
   }
 }
 ```
@@ -1226,6 +1234,9 @@ per primo.
 | `conteggio` | `count(*)` **senza filtro e prima delle righe**: dice quanto sta fuori dalle prime consegnate |
 | `righe` | le prime N righe, con le colonne che la vista ha (forme diverse per vista) |
 | `troncato` | le righe mostrate non sono tutte — senza, venti su duecento si leggerebbero come «sono venti» |
+| `elencabili` | `false` sulle viste con perimetro (`security_invoker`): il conteggio arriva da `fn_conta_presidio`, le righe **no**, per contratto — «non elencabile» e «niente da elencare» vanno distinti |
+| `errore` | il presidio **non si è potuto leggere**: `conteggio` è `null` e qui c'è il perché. ⛔ Non è uno zero: il verde vuol dire «visto e vuoto» |
+| `da_guardare` | `true` se ha righe **oppure** non è stato letto. È la stessa domanda che la testata conta (`con_righe` + `non_letti`), decisa **nella riga** dal repository: il pannello la legge e non la ricalcola (2026-09-15, tolta la copia in `PresidiProcessiPanel.vue`) |
 
 ⚠️ **Le colonne di `righe` non sono un contratto fisso**: ogni presidio ha la sua
 forma e il client le rende leggendo le chiavi che trova
@@ -1245,6 +1256,152 @@ giornale): il suo stesso `COMMENT` lo dichiara e dice quando va tolto. Brief:
 curl -H "Authorization: Bearer <token>" \
   "https://host/api/v1/amm-software/processi/presidi/"
 ```
+
+⭐ **Dal 2026-09-18 la risposta porta anche `totale`** (quanti presidi `ZERO`
+sono stati guardati): è la stessa testata di §6.1-bis, calcolata da **una**
+funzione (`_testata_presidi` in `processi_service.py`) per i due lettori.
+
+### 6.1-bis GET /api/v1/amm-software/processi/presidi/conteggi/ — la testata sola, per il pallino
+
+**Scopo.** I tre numeri della testata — `totale`, `con_righe`, `non_letti` —
+**senza** le prime righe. È la sorgente del **pallino dei presidi** in topbar
+(decisione #8 di Tid, 2026-09-18; piano
+`piano-be-fe-osservabilita-pallino-e-superfici.md` §2): un contatore ambientale
+letto ogni cinque minuti da ogni scheda aperta, che non deve pagare le righe di
+esempio.
+
+**Contesto.** Stesso giro di §6.1 (`PresidiRepository.stato_presidi(con_righe=False)`:
+stesse viste `ZERO` dal catalogo, stesso `fn_conta_presidio`, stesso isolamento
+per presidio), stessa porta (`AdminAPIView`). ⛔ È un parametro del repository e
+non un secondo metodo: una copia «senza righe» divergerebbe dalla prima al primo
+campo nuovo, e il pallino direbbe una cosa e il pannello un'altra. Il pannello,
+quando ricarica, **passa i suoi numeri al pallino** (`usePresidiPolling`
+osserva lo store): le due letture non possono raccontare due stati.
+
+**Input.** Nessuno.
+
+**Output.**
+
+```json
+{ "data": { "totale": 20, "con_righe": 1, "non_letti": 0 } }
+```
+
+| Campo | Significato |
+|---|---|
+| `totale` | quanti presidi `ZERO` sono stati guardati (compresi i non letti) |
+| `con_righe` | quanti hanno righe: il numero **rosso** del pallino |
+| `non_letti` | quanti non si sono potuti leggere: il numero **giallo** — cecità, non guasto, e non si somma agli accesi |
+
+**Regole.** Un presidio che non si legge **non è un errore di questa risposta**:
+è `non_letti + 1`, per contratto. Chi non passa la porta riceve 403 e il pallino
+**non compare** (il composable si spegne definitivamente su 403/401, come il
+badge delle code per chi non ha l'area core). ⚠️ La rotta sta sotto
+`processi/`, **prima** di `<str:codice>/` — stessa regola d'ordine di `presidi/`;
+il test `test_processi_presidi_conteggi_api.py` pinna che risolva a questa view
+e non al dettaglio di un processo chiamato «presidi».
+
+**Dipendenze DB.** `dbops.presidi` (catalogo), `dbops.fn_conta_presidio`
+(`SECURITY DEFINER`, attraversa la RLS).
+
+### 6.2 POST /api/v1/amm-software/processi/{codice}/esegui-ora/ — «Esegui ora» su una sveglia
+
+Accoda **un** lavoro `ESEGUI_PROCESSO` su `dbops.coda_lavori` per la sveglia di
+deploy indicata, con lo scope di chi preme (`run_as = OPERATORE`); il drenatore
+(`draina_coda_lavori`, ogni minuto) lancia `bin/run-command.sh <comando>` come
+sottoprocesso — **la stessa riga del timer, meno l'orario** — e il comando
+registra il suo run sotto il proprio processo con `origine = COMMAND` e
+l'utente di chi ha premuto. **Il web non esegue niente.** Brief:
+`work-done/brief-db-avvio-manuale-di-un-processo.md`; piano
+`piano-be-fe-avvio-manuale-di-un-processo.md`.
+
+⚠️ **Porta**: `AdminAPIView` (v1 solo `SUPER_ADMIN`, decisione di Tid del
+14-09). L'azione `processo_avvia` e' a catalogo ma **non** e' dichiarata sulla
+view — `AdminAPIView` non la leggerebbe, e un attributo che sembra un cancello
+e non lo e' sarebbe peggio di nessun attributo.
+
+**Header obbligatorio**: `Idempotency-Key` (400 senza). E' la chiave HTTP del
+doppio submit; quella di **business** («una per unit sui lavori vivi»,
+`esegui:<unit>`) la scrive il backend, ed e' quella che fa dire «gia' in coda».
+
+**Request body**:
+
+```json
+{ "unit": "zeroerp-digest-presidi-giornaliero" }
+```
+
+⛔ Si manda la **unit**, mai un comando: l'argv si risolve dal dichiarato di
+deploy (`backend/deploy/sveglie.json`), che e' la whitelist.
+
+**Response** (200) — la forma del giro di fatturazione:
+
+```json
+{ "data": { "job_id": 4321, "stato": "PENDING", "unit": "zeroerp-digest-presidi-giornaliero" } }
+```
+
+**Rifiuti, nell'ordine in cui si valutano — tutti PRIMA di accodare:**
+
+| Status | Codice | Quando |
+| --- | --- | --- |
+| 400 | `E_CODA_SCOPE_OPERATORE_INVALIDO` | il JWT non porta l'`identita_id`: lo stesso codice che il drenatore solleverebbe un minuto dopo, detto adesso a chi puo' fare qualcosa |
+| 400 | `E_VALIDATION_INPUT` (`fields: ["unit"]`) | `unit` assente / non stringa, oppure non fra le sveglie **di quel** processo |
+| 404 | `E_PROCESSO_NON_TROVATO` | il codice non e' nel registro |
+| 422 | `E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO` | `forma = servizio`, o `avvio_manuale = false` nel dichiarato: non e' un candidato (natura, non stato) |
+| 501 | `E_PROCESSO_SVEGLIA_NON_ABILITATA` | `abilita = false` su questa installazione: si accende dal deploy, non da qui |
+| 409 | `E_PROCESSO_AVVIO_GIA_IN_CODA` | esiste un lavoro `ESEGUI_PROCESSO` vivo (`PENDING`/`IN_CORSO`) con la stessa chiave; il `context` porta `job_id` |
+| 501 | `E_JOB_TYPE_NON_ATTIVO` | il tipo di coda e' ancora `attivo = false` (regola del binding): e' il cancello voluto finche' l'handler non e' in release |
+
+⚠️ I tre motivi 422/501/409 sono gli stessi — nello stesso ordine — della
+capability `can_esegui_ora` del dettaglio (§6.3): li produce **lo stesso
+predicato** (`avvio_manuale.motivi_esegui_ora`), quindi il tooltip del pulsante
+spento e il rifiuto non possono dire due cose diverse.
+
+**Gli esiti dell'esecuzione non passano da qui**: `E_PROCESSO_AVVIO_FALLITO`
+(exit ≠ 0) ed `E_PROCESSO_AVVIO_TROPPO_LUNGO` (oltre il tetto di 300 s, figlio
+ucciso) finiscono in `coda_lavori.ultimo_errore`, terminali, e si leggono in
+*Strumenti → Code di lavoro*; la diagnosi del comando sta nel run del
+processo eseguito (tab «Ultime corse» del suo drawer).
+
+**Esempio curl:**
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -H "Idempotency-Key: $(uuidgen)" -H "Content-Type: application/json" \
+  -d '{"unit":"zeroerp-digest-presidi-giornaliero"}' \
+  "https://host/api/v1/amm-software/processi/digest_presidi/esegui-ora/"
+```
+
+### 6.3 `sveglie[]` nel dettaglio — `GET processi/{codice}/`
+
+Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
+(zero, una o piu'): il **dichiarato** di deploy (cio' che il client mostra) e la
+**capability** (cio' su cui decide), nella famiglia 1 dei nomi di `api.md`
+§Capability di riga (motivo e chiave discendono dal flag).
+
+```json
+{
+  "unit": "zeroerp-digest-presidi-settimanale", "forma": "timer",
+  "comando": ["digest_presidi", "--cadenza", "settimanale"],
+  "oncalendar": "Mon *-*-* 07:30", "abilita": true, "avvio_manuale": true,
+  "nota": "…",
+  "can_esegui_ora": false,
+  "can_esegui_ora_reason": "E_PROCESSO_AVVIO_GIA_IN_CODA",
+  "can_esegui_ora_reason_key": "amministrazione.processi.esegui_ora_blocco.gia_in_coda",
+  "can_esegui_ora_dettaglio": {"job_id": 4321}
+}
+```
+
+| Campo | Significato |
+| --- | --- |
+| `can_esegui_ora` | **derivato** dal motivo (`reason is None`), mai calcolato a parte |
+| `can_esegui_ora_reason` | il codice macchina del **primo** motivo, o `null` |
+| `can_esegui_ora_reason_key` | la chiave i18n del tooltip — una per motivo, fissata nei locales del client |
+| `can_esegui_ora_dettaglio` | i parametri **con nome** della frase (`{job_id}`), o `null` |
+
+⭐ Il client la legge con `bloccoAttivo(riga, 'can_esegui_ora',
+'can_esegui_ora')` / `motivoBloccoRiga(...)` (`ProcessoDrawer.vue`, tab
+«Sveglie»); il test `test_processi_esegui_ora` (17-18) pinna che i nomi emessi
+siano quelli letti e che le tre chiavi esistano in `it.json` e `en.json`. I
+lavori vivi si leggono con **una** query per tutte le unit del processo.
 
 ---
 

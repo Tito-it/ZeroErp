@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 (3 di 3) — LE DATE DI CONSEGNA SULLA RIGA D'ORDINE DI ACQUISTO
+#   acquisti.ordini_righe.data_consegna_richiesta              (nostra)
+#   acquisti.ordini_righe.data_consegna_confermata_fornitore   (del fornitore)
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 2.2
+#
+# -- L'ATTORE E' INVERTITO, E I NOMI LO DICONO (D-16) -------------------
+#   Su vendite la richiesta e' del cliente e la conferma nostra; qui la
+#   richiesta e' NOSTRA e la conferma e' del FORNITORE. Regola D-12 «non
+#   marcato = nostro, marcato = della controparte». Il posto in cui un nome
+#   neutro avrebbe morso e' la vista «effettiva / impegnata / in arrivo»
+#   (analisi carico e scarico 7-bis), che legge le due tabelle INSIEME: li'
+#   il nome della tabella sparisce e resta il suffisso a dire di chi e' la
+#   promessa.
+#
+# -- E' L'INFORMAZIONE CHE OGGI MANCA PER LA MERCE IN ARRIVO -----------
+#   «Ne arrivano 40» non risponde a «faccio in tempo a promettere la
+#   consegna di giovedi'?». Senza la data confermata dal fornitore la
+#   proiezione di disponibilita' (M-3) si puo' fare a meta': questa colonna
+#   e' passata da utile a NECESSARIA il 2026-09-02.
+#
+# -- IL CANTIERE ACQUISTO TOCCHERA' ANCORA QUESTA TABELLA ---------------
+#   D-9 (righe componenti), D-12 (numero del fornitore), la ricezione
+#   (analisi acquisto 8): queste due colonne entrano ADESSO perche' nessuna
+#   di quelle decisioni le cambia, e perche' la vista di 7-bis le vuole
+#   prima che acquisti abbia un form. Nessun CHECK, per le stesse ragioni
+#   di 20260913-06.
+#   ⚠️ acquisti.ordini_righe NON ha ancora la RLS (D-2 del cantiere
+#   acquisto, «si arma»): non e' di qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20260913-08-alter-acquisti-ordini-righe-add-date-consegna-mctit.yaml
+
+  - changeSet:
+      id: 20260913-08-alter-acquisti-ordini-righe-add-date-consegna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        acquisti.ordini_righe: data_consegna_richiesta (quando la chiediamo al fornitore)
+        e data_consegna_confermata_fornitore (quando lui la conferma), entrambe date NULL.
+        Nomi da D-16: attore invertito rispetto a vendite, e la vista della merce in
+        arrivo le legge insieme. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo,
+        sezione 2.2 (P-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: acquisti
+                tableName: ordini_righe
+            - not:
+                - columnExists:
+                    schemaName: acquisti
+                    tableName: ordini_righe
+                    columnName: data_consegna_richiesta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE acquisti.ordini_righe
+                  ADD COLUMN data_consegna_richiesta            DATE NULL,
+                  ADD COLUMN data_consegna_confermata_fornitore DATE NULL;
+
+              COMMENT ON COLUMN acquisti.ordini_righe.data_consegna_richiesta IS
+                  'Quando NOI chiediamo al fornitore la merce di questa riga. Non '
+                  'marcata per la regola D-12 (non marcato = nostro): su '
+                  'vendite.ordini_righe la richiesta e'' del cliente e porta il suffisso. '
+                  'NULL = non dichiarata. Nessun CHECK contro la data confermata ne'' '
+                  'contro la data documento. Brief: '
+                  'brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 2.2.';
+              COMMENT ON COLUMN acquisti.ordini_righe.data_consegna_confermata_fornitore IS
+                  'Quando il FORNITORE conferma di consegnare questa riga: e'' la data '
+                  'della merce IN ARRIVO, quella senza cui «ne arrivano 40» non risponde '
+                  'a «faccio in tempo a promettere giovedi''?». La vista di '
+                  'disponibilita'' (analisi carico e scarico 7-bis) la legge accanto a '
+                  'vendite.ordini_righe.data_consegna_confermata, che e'' la promessa '
+                  'NOSTRA al cliente: il suffisso e'' l''unica cosa che le distingue '
+                  'quando il nome della tabella sparisce. NULL = non ancora confermata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ordini_righe
+                  DROP COLUMN IF EXISTS data_consegna_confermata_fornitore,
+                  DROP COLUMN IF EXISTS data_consegna_richiesta;

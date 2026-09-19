@@ -9,6 +9,13 @@
 # Seed ui.lista_definizione — catalogo delle liste configurabili.
 # Prima riga: 'anagrafiche.clienti' con sorgente vw_clienti_lista.
 # runOnChange: aggiungere nuove liste al CSV e Liquibase le applica.
+# ⛔ UNA TABELLA, UN CSV (Tid, 2026-09-18): una colonna nuova di questa tabella
+#   si dichiara aggiungendola QUI (CSV + elenco `columns` qui sotto), come per
+#   `multi_emittente` (18-08) e `perimetro_emittente` (18-09). Un CSV laterale
+#   «per sottoinsieme» chiavato su `codice` e' una seconda sorgente di verita'
+#   sulla stessa riga, e diverge in silenzio: e' il pattern con cui era nato
+#   `perimetro_emittente` (20260902-02), ritirato lo stesso giorno in cui e'
+#   servito per davvero.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -50,3 +57,13 @@ databaseChangeLog:
               # trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd, che
               # ammette la scrittura solo dal proprietario della tabella (il migrate).
               - column: { name: multi_emittente, type: BOOLEAN }
+              # Il TERZO CASO (2026-09-02, colonna da 20260902-01): la natura del
+              # dato — le righe di questa lista appartengono a un emittente? —
+              # `false` sui cataloghi globali. ⭐ Dal 2026-09-18 si dichiara QUI,
+              # nella riga della lista, e non piu' in un CSV laterale chiavato su
+              # `codice` (`lista_definizione_perimetro_emittente.csv`, changeSet
+              # 20260902-02, ritirati): due CSV sulla stessa tabella sono due
+              # sorgenti di verita', e divergono in silenzio — decisione di Tid,
+              # brief-db-perimetro-emittente-cataloghi-globali. Sette liste a
+              # `f`; tutte le altre `t`, che e' il default della colonna.
+              - column: { name: perimetro_emittente, type: BOOLEAN }

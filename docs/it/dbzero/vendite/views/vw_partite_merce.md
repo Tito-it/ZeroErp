@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> La PARTITA DI MERCE: una riga per riga di DDT attiva su documento EMESSO in poi, con la riga d'ordine come ORIGINE nullable. rev 2026-08-18 (N6): il `fatturato` somma anche le RETTIFICHE della corsia DDT (colonna `rettificato`, negativa o zero) — e' cio' che chiude il contratto del S2 del brief nota di credito, senza il quale una NC sarebbe invisibile al contatore e la coda continuerebbe a chiedere l'accredito per sempre. La rettifica si legge SEMPRE sulla corsia DDT anche quando a fatturare e' stata la corsia ORD (D-NC-1): nel serbatoio d'ordine la greedy la scaricherebbe sull'ULTIMA spedizione invece che su quella da cui la merce e' tornata, con il totale giusto e la ripartizione falsa. rev 2026-08-18 (N7, D-NC-4): «una ri-consegna e' merce nuova SOLO per la parte accreditata». La quota accreditata sulla partita d'origine si versa greedy oldest-first nelle spedizioni nuove (`riconsegna_quota_nuova`), che diventano partite vere con un segmento vergine — quindi LIBERA per fn_get_stato_push_segment, quindi ri-fatturabili dal giro normale, senza allentare la cintura che impedisce di ri-spingere una riga gia' fatturata. Senza nota di credito la regola e' INERTE: nessun pezzo cambia casa e ogni numero resta quello di prima. security_invoker=on ri-specificato (la reloption non si vede in pg_get_viewdef e un CREATE OR REPLACE la azzera: qui significa bypass della RLS, regressione V-1).
+> La PARTITA DI MERCE: una riga per riga di DDT attiva su documento EMESSO in poi, con la riga d'ordine come ORIGINE nullable. rev 2026-08-18 (N6): il `fatturato` somma anche le RETTIFICHE della corsia DDT (colonna `rettificato`, negativa o zero) — e' cio' che chiude il contratto del S2 del brief nota di credito, senza il quale una NC sarebbe invisibile al contatore e la coda continuerebbe a chiedere l'accredito per sempre. La rettifica si legge SEMPRE sulla corsia DDT anche quando a fatturare e' stata la corsia ORD (D-NC-1): nel serbatoio d'ordine la greedy la scaricherebbe sull'ULTIMA spedizione invece che su quella da cui la merce e' tornata, con il totale giusto e la ripartizione falsa. rev 2026-08-18 (N7, D-NC-4): «una ri-consegna e' merce nuova SOLO per la parte accreditata». La quota accreditata sulla partita d'origine si versa greedy oldest-first nelle spedizioni nuove (`riconsegna_quota_nuova`), che diventano partite vere con un segmento vergine — quindi LIBERA per fn_get_stato_push_segment, quindi ri-fatturabili dal giro normale, senza allentare la cintura che impedisce di ri-spingere una riga gia' fatturata. Senza nota di credito la regola e' INERTE: nessun pezzo cambia casa e ogni numero resta quello di prima. rev 2026-09-17 (D14): la CTE `sospetto` (sospetto_duplicato_ordine) non e' piu' un EXISTS correlato valutato per partita ma un insieme calcolato una volta — le coppie (DDT, articolo) coperte da un ordine collegato al DDT, `articoli_ordinati_per_ddt` — e un JOIN, entrambe AS MATERIALIZED (senza, il planner le inlina e torna al ciclo per riga). Stesse righe e stesso significato; cambia quante volte si pagano le policy RLS: la vista intera come applicazione passa da ~375 a ~88 ms (dbdev, 2026-09-17), la lettura di una riga sola sale di ~12 ms perche' l'insieme si calcola intero. Chi la legge intera e' la capability del DDT (lister + diagnosi), cioe' il drawer. security_invoker=on ri-specificato (la reloption non si vede in pg_get_viewdef e un CREATE OR REPLACE la azzera: qui significa bypass della RLS, regressione V-1).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -91,17 +91,21 @@ WITH soglia AS (
             min(f.ordine_riga_id) AS ordine_riga_id
            FROM vendite.ordini_righe_fulfillment f
           GROUP BY f.ddt_riga_id
-        ), sospetto AS (
+        ), articoli_ordinati_per_ddt AS MATERIALIZED (
+         SELECT DISTINCT dr2.ddt_id,
+            orr_ord.articolo_id
+           FROM (((vendite.ddt_righe dr2
+             JOIN vendite.ordini_righe_fulfillment f2 ON ((f2.ddt_riga_id = dr2.id)))
+             JOIN vendite.ordini_righe orr_ful ON ((orr_ful.id = f2.ordine_riga_id)))
+             JOIN vendite.ordini_righe orr_ord ON ((orr_ord.ordine_id = orr_ful.ordine_id)))
+          WHERE ((dr2.attivo IS TRUE) AND (orr_ord.attivo IS TRUE))
+        ), sospetto AS MATERIALIZED (
          SELECT dr.id AS ddt_riga_id
-           FROM vendite.ddt_righe dr
-          WHERE ((NOT (EXISTS ( SELECT 1
+           FROM (vendite.ddt_righe dr
+             JOIN articoli_ordinati_per_ddt k ON (((k.ddt_id = dr.ddt_id) AND (k.articolo_id = dr.articolo_id))))
+          WHERE (NOT (EXISTS ( SELECT 1
                    FROM vendite.ordini_righe_fulfillment f
-                  WHERE (f.ddt_riga_id = dr.id)))) AND (EXISTS ( SELECT 1
-                   FROM (((vendite.ddt_righe dr2
-                     JOIN vendite.ordini_righe_fulfillment f2 ON ((f2.ddt_riga_id = dr2.id)))
-                     JOIN vendite.ordini_righe orr_ful ON ((orr_ful.id = f2.ordine_riga_id)))
-                     JOIN vendite.ordini_righe orr_ord ON ((orr_ord.ordine_id = orr_ful.ordine_id)))
-                  WHERE ((dr2.ddt_id = dr.ddt_id) AND (dr2.attivo IS TRUE) AND (orr_ord.attivo IS TRUE) AND (orr_ord.articolo_id = dr.articolo_id)))))
+                  WHERE (f.ddt_riga_id = dr.id))))
         ), res AS (
          SELECT e.ddt_riga_id,
             sum(e.quantita) AS reso

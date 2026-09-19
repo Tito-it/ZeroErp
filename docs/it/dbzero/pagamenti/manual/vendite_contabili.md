@@ -20,7 +20,13 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 
 ### Campi chiave (semantica)
 
-* `codice`: identificativo testata contabile.
+* `codice`: identificativo testata contabile. ⭐ **Dal 2026-09-15 è un numero
+  di registro** — `DIS-<SIGLA>-<ANNO>-<7 cifre>` — non più un'etichetta da
+  DEFAULT (`VC_…`): vedi la sezione «Il codice viene dal registro» qui sotto.
+* `emittente_soggetto_ruolo_id` (`NOT NULL`, dal 2026-09-15): **di chi è** la
+  distinta. È l'input del numeratore e la colonna su cui passa la RLS.
+* `registro_id` / `anno`: il sezionale e l'anno su cui il codice è stato
+  numerato, scritti insieme al codice; `NULL` sul pregresso `VC_…`.
 * `centro_riscossione_id`: riferimento principale al centro riscossione.
 * `ente_incasso_id`: ente/canale specifico (opzionale).
 * `stato_id`: stato della testata contabile.
@@ -34,7 +40,8 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 
 ### Regole principali
 
-* `codice` univoco.
+* `codice` univoco: l'identità della distinta è la **stringa nuda**, come per la
+  commessa (sigla e anno stanno dentro il codice).
 * Ogni testata e` collegata a un solo centro riscossione.
 * Se `ente_incasso_id` e` valorizzato, deve essere coerente con
   `centro_riscossione_id` della testata (guard applicativa).
@@ -123,7 +130,85 @@ conferma la distinta si annulla, dopo no — una testata *senza* stato non sareb
 né l'uno né l'altro, e passerebbe i filtri di entrambi. Dal 2026-08-21 la colonna
 è `NOT NULL` con default `BOZZA`.
 
-### 🔒 Chi la vede — la RLS del perimetro incassi (2026-08-22)
+### 🔢 Il codice viene dal registro, e la distinta sa di chi è (2026-09-15)
+
+Fino al 2026-09-15 il `codice` nasceva da un **DEFAULT di colonna**
+(`VC_<timestamp>_<md5>`) e, sulla strada delle sistemazioni, da una seconda
+composizione (`SIS_<atto>_<timestamp>`): un'etichetta unica, non un numero.
+Da quel giorno la distinta entra nella **numerazione standard** — il meccanismo
+è quello della [guida](/guide/numerazione-documenti-e-codici): famiglia
+`DISTINTA` in `vendite.famiglie_documento`, **un registro per emittente**
+(`DIS-<sr>`, prefisso `DIS-`, 7 cifre, reset annuale, anno nel numero), e il
+trigger `trg_vendite_contabili_a10_gen_codice_ins` che chiama
+`vendite.fn_assegna_numero_documento` **alla creazione**, come ordine e commessa.
+
+| Cosa | Com'è |
+| --- | --- |
+| forma | `DIS-<SIGLA>-<ANNO>-<NNNNNNN>`, es. `DIS-ACME-2026-0000001` — la sigla è `emittenti_fiscali.codice`, passata come corpo (come la commessa) |
+| identità | la stringa nuda: `uq_vendite_contabili_codice` resta com'è; con un registro per emittente la sigla è ciò che distingue due `…-2026-0000001` |
+| momento | `BEFORE INSERT`: il codice è la maniglia con cui si lavora la distinta da subito; i buchi da bozza annullata sono accettati, come per l'ordine |
+| anno | da `data_contabile`: una distinta datata 31/12 e inserita il 2/1 è dell'anno vecchio. `presidia_data_documento = false`: la distinta di ieri inserita oggi è un caso normale |
+| codice fornito | rispettato (no-op), per le fixture. ⛔ Non è una porta per le madri: `test-distinta-numerazione-registro-v1` (test 12/13) pretende che nessuna funzione viva passi `codice` |
+| pregresso | le righe `VC_…` restano così, con `registro_id` e `anno` `NULL` (guida §6.6): forma diversa, non collidono |
+
+⭐ **Un registro appartiene a un emittente, e la distinta era l'unico documento
+numerabile che non dichiarava il proprio.** Da qui le tre colonne: l'emittente
+(l'input), `registro_id` e `anno` (l'output). L'emittente si risolve in **una
+sede sola**, `pagamenti.fn_get_emittente_distinta`, applicata dal trigger
+`trg_vendite_contabili_a10_emittente_ins_upd` a ogni INSERT e chiamata dalla
+madre `fn_get_or_create_vendite_contabile` per la **chiave di riuso** (che ora
+comprende l'emittente):
+
+| Livello | Se… | Allora |
+| --- | --- | --- |
+| 0 | l'emittente dato non è un emittente fiscale | `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (TECNICO) |
+| 1 | è dato; se c'è anche il canale, deve essere il suo | altrimenti `E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE` (campo `ente_incasso_id`) |
+| 2 | c'è solo il canale | il suo emittente (canale → conto → soggetto-ruolo → emittente); un canale che non porta a un emittente è `E_CONFIG_MANCANTE` |
+| 3 | c'è un operatore in sessione | `script.fn_resolve_emittente_for_user` (la riserva è di chi agisce; legge prima l'emittente attivo) |
+| 4 | niente | `E_CONTABILE_EMITTENTE_OBBLIGATORIO` (campo `emittente_fiscale_id`): il super admin sceglie nel form |
+
+⛔ **Nessun «default dell'installazione»**: dichiarare di un emittente il denaro
+di un altro è l'attribuzione che la numerazione per emittente esiste per
+impedire. La madre `fn_get_or_create_vendite_contabile` ha un parametro in coda
+`p_emittente_fiscale_id` (la PK, ciò che backend e frontend conoscono) e, se
+manca, deriva l'emittente dal **lotto** — la distinta di un fondo è
+dell'emittente del lotto, chiunque lanci il giro; un lotto invisibile è TECNICO,
+non si cade sulla sessione. La sistemazione lo prende dall'**atto**, la
+correzione lo **copia** dalla distinta corretta (stesso registro, progressivo
+successivo). Su `UPDATE … SET emittente = NULL` il trigger **non** ri-riempie
+dalla sessione: parla il vincolo.
+
+⚠️ **L'ordine dei `BEFORE ROW` regge sul nome**: `a10_emittente` (risolve) <
+`a10_gen_codice` (numera) < `a10_guard_emittente_scope` (giudica). Chi rinomina
+uno dei tre sposta la risoluzione dopo chi la usa.
+
+⚠️ **E la FK sul registro ha un effetto nell'altro verso** (2026-09-18): una
+distinta numerata **blocca la disattivazione del suo registro** `DIS-<sr>`. Il
+guard lo monta l'automazione ATTIVO da sola sulla FK, e — non avendo la distinta
+una colonna `attivo` ma uno `stato_id` — blocca sull'**esistenza**: una distinta
+annullata pesa come una confermata, e una distinta non si cancella. È l'ottavo
+guard su `registri_fatturazione` e il primo fuori da `vendite`;
+`script.fn_check_registro_disattivabile` lo anticipa col motivo `HA_DISTINTE`,
+così il cestino del registro si spegne prima del click (pgTAP
+`script/test-fn-check-registro-disattivabile-v1`, test 6-9). Il perché e il
+meccanismo stanno nella scheda del
+[registro](/dbzero/vendite/manual/registri_fatturazione), non qui.
+
+Brief: [brief-db-distinta-numerata-sul-registro](/dev/work-done/brief-db-distinta-numerata-sul-registro).
+
+### 🔒 Chi la vede — la RLS del perimetro incassi (2026-08-22, corretta il 2026-09-15)
+
+> ⭐ **Dal 2026-09-15 il perimetro è la colonna `emittente_soggetto_ruolo_id`**
+> (`20260915-31`), nella forma di `rls_fatturazione_lotti_ef_whitelist`: il
+> ramo «senza canale = di tutti» descritto qui sotto **non esiste più**, né
+> sulla testata né sui satelliti (`20260915-32`: righe `20260822-24` e
+> manifesto dei lotti `20260910-18`, che portavano lo stesso ramo). Una
+> distinta interna è del suo emittente, come il lotto o l'atto da cui nasce;
+> le sue righe la seguono per la sola testata, senza bisogno della fattura. Il
+> guard di scrittura è in modo `soggetto_ruolo` sulla stessa colonna. Il testo
+> del 22-08 resta sotto perché spiega **perché** il perimetro nacque dal conto
+> e perché è `FOR ALL`: quelle due ragioni valgono ancora.
+
 
 Policy `rls_vendite_contabili_perimetro_incasso`, **`FOR ALL`**, gate
 `OPERATORE` fail-closed. Il perimetro viene dal **conto di incasso** e non dalla
@@ -138,7 +223,8 @@ vendite_contabili.ente_incasso_id
             → emittenti_fiscali → whitelist dell'operatore
 ```
 
-⭐ **La distinta senza canale (`ente_incasso_id IS NULL`) resta visibile a tutti**,
+⭐ **La distinta senza canale (`ente_incasso_id IS NULL`) resta visibile a tutti**
+*(⚠️ vero fino al 2026-09-15: vedi il riquadro in testa alla sezione)*,
 e la condizione sta **in chiaro nel predicato**, non dentro una funzione: chi
 legge la policy deve vedere l'eccezione. Non è generosità, è la **verità del
 modello** — le distinte interne (fondo fattura, compensazione) le fabbrica il
@@ -165,25 +251,30 @@ non è solo «più avanti»: il risolutore che regge il predicato è `SECURITY
 DEFINER` e gira come proprietario, quindi con il `FORCE` rientrerebbe sotto la
 policy della tabella che sta leggendo e nascerebbe una **ricorsione**.
 
-⚠️ `zeroerp_batch_fatturazione` ha `BYPASSRLS`: i percorsi batch non cambiano.
+⚠️ `zeroerp_batch_fatturazione` ha `BYPASSRLS`, ma dal 2026-09-05 nessun
+processo lo usa: ogni giro corre con un utente tecnico per (processo × azienda),
+dentro il proprio perimetro — il livello 3 della sede unica risolve anche per lui.
 
 ⭐ **La policy nasconde, il trigger rifiuta.** Il guard di scrittura
-`trg_vendite_contabili_a10_guard_emittente_scope_ins_upd` (modo `ente_incasso`)
+`trg_vendite_contabili_a10_guard_emittente_scope_ins_upd` (modo `ente_incasso`
+fino al 2026-09-15, poi `soggetto_ruolo` sulla colonna emittente)
 impedisce di **aprire una distinta sul canale di un altro emittente** e lo
 **spiega**; un `WITH CHECK` da solo direbbe «new row violates row-level security
 policy», che è vero e inservibile.
 
 ---
 
-### I cinque guard che la difendono
+### I guard che la difendono
 
 | Guard | Impedisce |
 | --- | --- |
+| `trgfn_vendite_contabili_emittente` *(2026-09-15)* | che una distinta nasca **senza sapere di chi è**, o con un canale di un altro emittente: applica la sede unica `fn_get_emittente_distinta` |
+| `trgfn_vendite_contabili_gen_codice` *(2026-09-15)* | non un guard: il **numeratore** sul registro `DISTINTA` dell'emittente |
 | `trgfn_vendite_contabili_guard_transizione` | i salti di stato che la matrice non ammette |
 | `trgfn_vendite_contabili_guard_chiusura` | di **chiudere** una distinta che ha ancora righe pronte |
 | `trgfn_vendite_contabili_guard_validazione` | di validare con un totale che non quadra, e di riaprire una distinta non manuale |
 | `trgfn_vendite_contabili_guard_ente_centro` | le incoerenze fra **centro** ed **ente** *(dal 2026-08-22 non guarda più le sistemazioni: la colonna che le nominava non esiste)* |
-| `script.trgfn_guard_emittente_scope('ente_incasso','ente_incasso_id')` | di **aprire una distinta sul canale di un altro emittente** *(2026-08-22)* |
+| `script.trgfn_guard_emittente_scope('soggetto_ruolo','emittente_soggetto_ruolo_id')` | di **scrivere una distinta di un emittente fuori dal proprio perimetro** *(dal 2026-09-15; fino ad allora in modo `ente_incasso` sul canale)* |
 
 ---
 

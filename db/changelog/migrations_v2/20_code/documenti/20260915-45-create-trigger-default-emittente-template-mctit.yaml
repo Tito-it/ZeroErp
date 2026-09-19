@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-5 — IL DEFAULT DELL'EMITTENTE SI MONTA: DOCUMENTI.TEMPLATE_DOCUMENTI, DOCUMENTI.TEMPLATE_ASSET
+#   trg_template_documenti_a10_default_emittente_ins · trg_template_asset_a10_default_emittente_ins
+#   -> script.trgfn_default_emittente_fiscale('SOLLEVA')
+#   Brief: brief-db-emittente-di-default-un-bb-solo, sezione 5 (P-5, D2)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Candidate di D2, confermate da Tid (15-09). L'emittente e' parte della
+#   chiave logica del template e dell'asset, e lo sceglie un amministratore
+#   nel form (template_asset_admin_service lo verifica in scope in Python):
+#   il trigger scatta solo su un NULL che oggi finisce in 23502, e un super
+#   admin senza emittente attivo legge E_EMITTENTE_NON_RISOLTO invece di un
+#   errore di vincolo. Nessuno scope guard su queste due (non e' materia di
+#   questo brief: chi VEDE e' un'altra domanda), nessun altro BEFORE ROW
+#   con cui ordinare.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   Modo SOLLEVA: un valore esplicito non si tocca; senza valore e senza
+#   nessuno da cui dedurlo -> E_EMITTENTE_NON_RISOLTO (DATO_ERRATO, campo
+#   emittente_fiscale_id). Il nome del trigger segue lo stampo di vendite
+#   (trg_<t>_a10_default_emittente_ins): i BEFORE ROW scattano in ordine
+#   alfabetico e «default_» viene prima di «guard_» — e' l'ordine che serve
+#   (D5), e il pgTAP di P-6 lo asserisce per ogni tabella montata.
+#   preCondition HALT: la colonna esiste e il trigger non c'e' ancora — un
+#   CREATE TRIGGER su un nome gia' presente fermerebbe il migrate con 42710,
+#   e qui si vuole che lo dica prima.
+#
+# Dipendenze: 20260915-36 (il BB). Verifica:
+#   db/pgtap/script/test-trgfn-default-emittente-fiscale-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260915-45-create-trigger-default-emittente-template-mctit.yaml
+
+  - changeSet:
+      id: 20260915-45-create-trigger-default-emittente-template
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.template_documenti, documenti.template_asset: trigger BEFORE INSERT trg_<t>_a10_default_emittente_ins su
+        script.trgfn_default_emittente_fiscale('SOLLEVA') — l'emittente di default dalla
+        sessione, dove oggi mancava (23502). Brief: brief-db-emittente-di-default-un-bb-solo
+        (P-5, D2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_default_emittente_fiscale';
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'documenti.template_documenti'::regclass
+                     AND tgname = 'trg_template_documenti_a10_default_emittente_ins';
+            - columnExists:
+                schemaName: documenti
+                tableName: template_asset
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'documenti.template_asset'::regclass
+                     AND tgname = 'trg_template_asset_a10_default_emittente_ins';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_template_documenti_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON documenti.template_documenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');
+
+              CREATE TRIGGER trg_template_asset_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON documenti.template_asset
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_a10_default_emittente_ins ON documenti.template_documenti;
+              DROP TRIGGER IF EXISTS trg_template_asset_a10_default_emittente_ins ON documenti.template_asset;

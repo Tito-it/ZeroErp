@@ -879,7 +879,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             severity="warn"
             :closable="false"
             size="small"
-            class="mt-2"
           >
             {{ t('vendite.offerte.banner_stato_terminale', { stato: detail.stato_descrizione }) }}
           </Message>
@@ -888,7 +887,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             severity="info"
             :closable="false"
             size="small"
-            class="mt-2"
           >
             {{ t('vendite.offerte.banner_locked_post_bozza', { stato: detail.stato_descrizione }) }}
           </Message>
@@ -950,7 +948,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                 </div>
               </div>
 
-              <h4 class="mt-3">{{ t('vendite.offerte.section_cliente') }}</h4>
+              <h4>{{ t('vendite.offerte.section_cliente') }}</h4>
               <div class="form-field">
                 <label>{{ t('vendite.offerte.field_billing_account') }} <span v-if="!isEdit">*</span></label>
                 <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
@@ -968,11 +966,10 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   v-else
                   :model-value="detail?.billing_account_display"
                   disabled
-                  class="w-full"
                 />
               </div>
 
-              <h4 class="mt-3">{{ t('vendite.offerte.section_listino') }}</h4>
+              <h4>{{ t('vendite.offerte.section_listino') }}</h4>
               <div class="form-field">
                 <label>{{ t('vendite.offerte.field_listino') }} <span v-if="!isEdit">*</span></label>
                 <Select
@@ -981,7 +978,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   :option-label="formatListinoOption"
                   option-value="id"
                   :loading="listiniLookup.loading.value"
-                  class="w-full"
                   :placeholder="t('vendite.offerte.select_listino')"
                   show-clear
                   filter
@@ -990,7 +986,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   :invalid="campiErrati.includes('listino_id')"
                 />
                 <small v-if="isEdit && detail?.listino_versione_codice"
-                  class="text-color-secondary">
+                  class="app-text-muted">
                   {{ t('vendite.offerte.hint_versione_fissata', { codice: detail.listino_versione_codice }) }}
                 </small>
               </div>
@@ -1002,7 +998,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                     v-model="form.tipo_variazione_globale"
                     scope="contratto"
                     show-clear
-                    class="w-full"
                     :disabled="isReadonly"
                   />
                 </div>
@@ -1010,7 +1005,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   <label>{{ t('vendite.offerte.field_valore_variazione') }}</label>
                   <InputNumber
                     v-model="form.valore_variazione_globale"
-                    class="w-full"
                     :min-fraction-digits="0"
                     :max-fraction-digits="4"
                     show-buttons
@@ -1031,7 +1025,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   <LookupSelect
                     v-model="form.valuta_id"
                     rel="config.valute"
-                    class="w-full"
                     :placeholder="t('vendite.offerte.field_valuta')"
                     :disabled="isReadonly || isEdit"
                     show-clear
@@ -1039,7 +1032,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                 </div>
               </div>
 
-              <h4 class="mt-3">{{ t('vendite.offerte.section_validita') }}</h4>
+              <h4>{{ t('vendite.offerte.section_validita') }}</h4>
               <div class="form-grid-2col">
                 <div class="form-field">
                   <label>{{ t('vendite.offerte.field_validita_dal') }} <span v-if="!isEdit">*</span></label>
@@ -1048,7 +1041,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                     :disabled="isReadonly"
                     date-format="dd/mm/yy"
                     show-icon
-                    class="w-full"
                     @update:model-value="form.validita_dal = toIsoDate($event)"
                   />
                 </div>
@@ -1060,21 +1052,19 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                     date-format="dd/mm/yy"
                     show-icon
                     show-button-bar
-                    class="w-full"
                     @update:model-value="form.validita_al = toIsoDate($event)"
                   />
                 </div>
               </div>
 
               <!-- === Utility inline (mirror ContrattoDrawer) === -->
-              <h4 class="mt-3">{{ t('vendite.offerte.section_utenza') }}</h4>
+              <h4>{{ t('vendite.offerte.section_utenza') }}</h4>
               <div class="form-grid-2col">
                 <div class="form-field">
                   <label>{{ t('vendite.offerte.field_tipo_utenza') }}</label>
                   <LookupSelect
                     v-model="form.utility_tipo_utenza_id"
                     rel="config.tipi_utenze"
-                    class="w-full"
                     :placeholder="t('vendite.offerte.select_tipo_utenza')"
                     show-clear
                     :disabled="isReadonly"
@@ -1085,7 +1075,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   <LookupSelect
                     v-model="form.utility_classe_utenza_id"
                     rel="config.classi_utenze"
-                    class="w-full"
                     :placeholder="t('vendite.offerte.select_classe_utenza')"
                     show-clear
                     :disabled="isReadonly"
@@ -1097,7 +1086,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   <label>{{ t('vendite.offerte.field_param_1_num') }}</label>
                   <InputNumber
                     v-model="form.utility_param_1_num"
-                    class="w-full"
                     :min-fraction-digits="0"
                     :max-fraction-digits="6"
                     :disabled="isReadonly"
@@ -1107,7 +1095,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                   <label>{{ t('vendite.offerte.field_param_2_txt') }}</label>
                   <InputText
                     v-model="form.utility_param_2_txt"
-                    class="w-full"
                     :disabled="isReadonly"
                   />
                 </div>
@@ -1126,7 +1113,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
               <!-- Motivazione (sola lettura, valorizzata su RIFIUTATA/ANNULLATA) -->
               <template v-if="isEdit && detail?.motivazione_rifiuto">
-                <h4 class="mt-3">{{ t('vendite.offerte.section_motivazione') }}</h4>
+                <h4>{{ t('vendite.offerte.section_motivazione') }}</h4>
                 <Message severity="warn" :closable="false" size="small">
                   {{ detail.motivazione_rifiuto }}
                 </Message>
@@ -1137,7 +1124,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
             <!-- ====================== TAB REVISIONI ====================== -->
             <TabPanel value="revisioni">
-              <p class="text-color-secondary mt-1">
+              <p class="app-text-muted mt-1">
                 {{ t('vendite.offerte.revisioni_intro') }}
               </p>
               <div v-if="!revisioni.length" class="app-empty-state">

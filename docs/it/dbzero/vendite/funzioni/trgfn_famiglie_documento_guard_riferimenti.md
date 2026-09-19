@@ -20,7 +20,8 @@ BEGIN
     -- Scopo:
     --   Una riga di vendite.famiglie_documento deve nominare
     --   oggetti che ESISTONO: la tabella, la colonna del numero,
-    --   quella del billing account e - dal 2026-09-01 - quella
+    --   quella del billing account SE DICHIARATA (dal 2026-09-14
+    --   e' opzionale come la serie) e - dal 2026-09-01 - quella
     --   della serie, che in piu' deve DISCRIMINARE il numero.
     --
     -- ⛔ Perche' serve: il presidio sul cambio emittente del BA
@@ -55,7 +56,15 @@ BEGIN
         v_mancante := format('%I.%I.%I',
             NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_numero);
 
-    ELSIF NOT EXISTS (
+    -- ⭐ Il billing account e' OPZIONALE (20260914-07): il vuoto e'
+    --   la dichiarazione che questa famiglia non ne ha uno — la
+    --   controparte non e' un cliente (l'ordine di acquisto). Si
+    --   guarda il VALORE e non solo il NULL, come per la serie:
+    --   un form che non compila il campo manda la stringa vuota.
+    --   Il salto sta QUI, prima di comporre: un %I con NULL
+    --   solleverebbe un errore di PostgreSQL senza codice di dominio.
+    ELSIF COALESCE(btrim(NEW.colonna_billing_account), '') <> ''
+          AND NOT EXISTS (
         SELECT 1 FROM pg_attribute a
          WHERE a.attrelid = v_relid
            AND a.attname  = NEW.colonna_billing_account
@@ -149,7 +158,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
-IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1).';
+IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1). ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): la colonna del billing account e'' OPZIONALE come la serie — NULL o vuota = «questa famiglia non ha un billing account» (l''ordine di acquisto, la cui controparte e'' un soggetto_ruolo) — e il controllo su pg_attribute si salta PRIMA di comporre, non dentro: un %I con NULL solleverebbe un errore di PostgreSQL senza codice di dominio. Il numero e la tabella restano obbligatori.';
 ```
 
 ---

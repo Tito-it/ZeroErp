@@ -91,6 +91,13 @@ _ORDER_COLS_PROCESSI: dict[str, str] = {
 #    come carente insegnerebbe a ignorare l'avviso.
 # ⛔ Se un giorno la regola cambia, cambia LA'; questa riga la segue, non la
 #    decide. E' lo stesso patto di `_STATI_FLUSSO_TERMINALI` in `pratiche`.
+# ⛔ E IL FRONTEND NON NE TIENE UNA COPIA (dal 2026-09-15). Fino a quel giorno
+#    `ProcessoDrawer.vue` rifaceva il conto da se' con `['PGAGENT', 'COMMAND']`
+#    — la lista leggeva `vuole_identita` dal backend, il drawer no — e nessun
+#    test la guardava: sul drawer di `chiusura_scadenze_daily` diceva «non gli
+#    serve un utente tecnico» mentre ne usa uno per azienda, e nascondeva
+#    l'avviso delle aziende scoperte. ⇒ Il dettaglio proietta lo stesso
+#    `vuole_identita` della lista (`_SQL_VUOLE_IDENTITA`) e il client lo legge.
 _CLASSE_CON_IDENTITA = "DOMINIO"
 # ⚠️ `CODA_AUTOMATICA` e' entrato il 2026-09-05 con la decisione R-E, e NON e'
 #    un terzo caso: e' la correzione del modello. Un processo di coda accodato
@@ -102,6 +109,22 @@ _CLASSE_CON_IDENTITA = "DOMINIO"
 #    dedotto dal nome: fosse rimasto a due, `chiusura_scadenze_daily` sarebbe
 #    apparso a video come «non ne vuole» proprio mentre ne usa una.
 _CANALI_CON_IDENTITA = ("PGAGENT", "COMMAND", "CODA_AUTOMATICA")
+
+# ⭐ L'ESPRESSIONE «questo processo vuole un utente tecnico», scritta UNA volta
+#    per le due letture che la proiettano — la lista e il dettaglio. Alias `p`
+#    della tabella `dbops.processi`, valori del mirror come PARAMETRI (mai
+#    interpolati), nell'ordine che `_params_vuole_identita` restituisce.
+# ⚠️ Due query con la stessa espressione ricopiata sono il modo in cui lista e
+#    drawer arrivano a dire due cose diverse dello stesso processo: e' successo
+#    col client (vedi sopra), e una seconda sede qui lo rifarebbe lato server.
+_SQL_VUOLE_IDENTITA = "(p.classe = %s AND p.canale = ANY(%s))"
+
+
+# Scopo: i parametri di `_SQL_VUOLE_IDENTITA`, nell'ordine dei segnaposto.
+#        Lista NUOVA a ogni chiamata: chi la riceve la estende con i propri.
+def _params_vuole_identita() -> list[Any]:
+    return [_CLASSE_CON_IDENTITA, list(_CANALI_CON_IDENTITA)]
+
 
 class ProcessiRepository:
     """Lettura del registro dei processi automatici e del loro roster."""
@@ -228,7 +251,7 @@ class ProcessiRepository:
         #    nella SELECT, cioe' PRIMA delle condizioni del WHERE. L'ordine dei
         #    segnaposto e' posizionale, e sbagliarlo non da' errore di sintassi
         #    — da' un filtro applicato al valore sbagliato.
-        params = [_CLASSE_CON_IDENTITA, list(_CANALI_CON_IDENTITA), *params]
+        params = [*_params_vuole_identita(), *params]
         data_sql = f"""
             SELECT p.id,
                    p.codice,
@@ -239,10 +262,9 @@ class ProcessiRepository:
                    p.obsoleto_dal::text AS obsoleto_dal,
                    -- ⭐ Un processo di CODA non deve avere un utente tecnico:
                    --    gira con l'identita' di chi lo accoda. Dirlo qui evita
-                   --    che a video sembri «manca qualcosa».
-                   -- ⚠️ Mirror della regola del DB (vedi `_CLASSE_CON_IDENTITA`):
-                   --    i valori arrivano come PARAMETRI, non interpolati.
-                   (p.classe = %s AND p.canale = ANY(%s)) AS vuole_identita,
+                   --    che a video sembri «manca qualcosa». Stessa espressione
+                   --    del dettaglio (`_SQL_VUOLE_IDENTITA`), di proposito.
+                   {_SQL_VUOLE_IDENTITA} AS vuole_identita,
                    (SELECT count(*) FROM dbops.processi_identita pi
                      WHERE pi.processo_id = p.id AND pi.attivo) AS identita_attive,
                    (SELECT count(*) FROM dbops.processi_bersagli b
@@ -320,15 +342,20 @@ class ProcessiRepository:
     #        scrivere e con quale percorso raggiungono l'emittente, e le IDENTITA'
     #        con cui lavora. `None` se il codice non esiste.
     def get_processo(self, codice: str) -> dict[str, Any] | None:
+        # ⭐ `vuole_identita` viaggia col dettaglio come con la lista, dalla
+        #    STESSA espressione: e' il dato con cui il drawer decide se mostrare
+        #    gli utenti tecnici e l'avviso delle aziende scoperte, e fino al
+        #    2026-09-15 il client lo ricalcolava da se' — male.
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT id, codice, descrizione, classe, canale, attivo,
-                       obsoleto_dal::text AS obsoleto_dal, meta
-                  FROM dbops.processi
-                 WHERE codice = %s
-                """,
-                [codice],
+                f"""
+                SELECT p.id, p.codice, p.descrizione, p.classe, p.canale, p.attivo,
+                       p.obsoleto_dal::text AS obsoleto_dal, p.meta,
+                       {_SQL_VUOLE_IDENTITA} AS vuole_identita
+                  FROM dbops.processi p
+                 WHERE p.codice = %s
+                """,  # noqa: S608 — frammento costante di modulo, valori in params
+                [*_params_vuole_identita(), codice],
             )
             testa = row_to_dict(cursor)
         if testa is None:

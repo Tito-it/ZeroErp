@@ -103,3 +103,13 @@ risposta deve fermare l'operazione.
   documento nuovo;
 * il messaggio di rifiuto dice dove guardare, invece di mandare a cercare a mano
   in cinque posti.
+
+### 🔄 rev 2026-09-14 — le famiglie senza billing account restano fuori dal giro
+
+Dal `20260914-09/-10` la funzione gira solo sulle famiglie che **dichiarano**
+una colonna del billing account (`vendite.famiglie_documento.colonna_billing_account`
+è facoltativa da quel giorno). Il salto sta nella query che sceglie le famiglie,
+**non** dentro la composizione dell'SQL: un nome vuoto lì dentro avrebbe
+prodotto un errore tecnico senza codice, o — peggio — un'interrogazione muta.
+Una famiglia senza cliente non può contribuire alla storia di nessun cliente.
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.

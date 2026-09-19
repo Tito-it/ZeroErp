@@ -34,6 +34,7 @@
 #   1. test_la_discovery_lega_sulla_firma_a_otto_con_l_identita
 #   2. test_la_firma_della_discovery_e_una_sola
 #   3. test_il_riepilogo_legge_il_decimo_numero_dalla_funzione_vera
+#   4. test_il_riepilogo_legge_il_verdetto_dalla_funzione_vera (D-V1, 2026-09-19)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -120,6 +121,25 @@ class DiscoveryRiceveLIdentitaDelGiro(TestCase):
             transaction.set_rollback(True)
         self.assertIn("esiti_stato_esecuzione_errore_count", summary)
         self.assertEqual(summary["esiti_stato_esecuzione_errore_count"], 0)
-        # E le dieci chiavi del contratto Python sono TUTTE nella risposta della
-        # funzione vera: e' la giuntura che ne' il pgTAP ne' il mock vedono.
+        # E le undici chiavi del contratto Python sono TUTTE nella risposta
+        # della funzione vera: e' la giuntura che ne' il pgTAP ne' il mock
+        # vedono.
         self.assertEqual(set(summary), set(LottoSegnalazioniSummary.__annotations__))
+
+    # Scopo: ⭐ D-V1 (2026-09-19, `20260919-02`) — l'UNDICESIMA colonna `fermo`
+    #        c'e' davvero, con quel nome, ed e' un BOOLEANO: su un lotto che
+    #        non esiste la funzione risponde `false` (il ripiego «zeri e
+    #        fermo=false» della sua COMMENT), e il repository lo consegna come
+    #        `False`, non come `0`. Stessa forma del test 3: l'id e' quello che
+    #        per costruzione non c'e'.
+    def test_il_riepilogo_legge_il_verdetto_dalla_funzione_vera(self):
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute("SELECT COALESCE(max(id), 0) + 1 FROM vendite.fatturazione_lotti")
+                riga = cur.fetchone()
+            assert riga is not None
+            summary = VenditePipelineRepository().get_lotto_segnalazioni_summary(int(riga[0]))
+            transaction.set_rollback(True)
+        self.assertIn("fermo", summary)
+        self.assertIs(summary["fermo"], False)

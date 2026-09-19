@@ -1,0 +1,1726 @@
+# Brief DB — le modifiche certe: le date di consegna, il modo di approvvigionamento, la commessa leggibile
+
+> **Destinatario:** team DB (`dev/db-tid`) per l'esecuzione, **e team BE/FE come
+> lettori** — ⭐ **questo documento è l'unica comunicazione che BE e FE
+> riceveranno su questo lavoro.** Decisione di Tid, 2026-09-01: *«non faremo
+> documentazione BE/FE, manderemo solo questo nuovo brief con tutta l'attività
+> fatta»*. Quindi la §5 non è un'appendice: è la parte che va letta dall'altro
+> lato, e deve bastare da sola.
+>
+> **Origine.** Le due analisi del 2026-09-01 su commessa e magazzino. Tid:
+> *«da questi dobbiamo estrarre quali potrebbero essere le modifiche necessarie,
+> quelle che sicuramente servono, tenendo fuori quelle collegate a decisioni da
+> prendere»*.
+>
+> ⭐ **Terza origine, aggiunta il 2026-09-01 a sera**:
+> [analisi-simmetria-ordini-acquisto.md](../work-in-progress/analisi-simmetria-ordini-acquisto.md),
+> scritta lo stesso giorno. Ha prodotto **tre** voci che passano lo stesso filtro
+> (§3-bis, §7, §8) e ha allargato la motivazione del Blocco B — vedi §1.
+>
+> **Stato:** ✅ **CHIUSO il 2026-09-14** — riquadro «CHIUSO» qui sotto: che cosa
+> è consegnato, come è stato provato, e le **sei** cose che escono dal brief con
+> la loro destinazione. La storia passo per passo è in §11.
+>
+> 🔴 **Verificato il 2026-09-12 contro il DB vivo (doc auto-gen) e contro ciò che
+> è entrato in esercizio fra il 01-09 e il 12-09.** I tre blocchi reggono —
+> nessuna colonna, nullabilità o vista cambia — ma **le premesse operative sono
+> cambiate in dodici punti**, due dei quali avrebbero fatto fallire il migrate
+> (P-2) o lasciato tre colonne vuote a video senza nessun rosso (lista articoli
+> e pannello situazione merce). ⭐ **Da leggere per
+> primo: §10**, che li elenca; le sezioni toccate portano ciascuna la propria
+> correzione datata. Le **tre decisioni** che ne uscivano sono state prese da
+> Tid lo stesso giorno (§10.3): **il brief è eseguibile, il piano è la §6.**
+>
+> ⚠️ **Perimetro:** solo ciò che **nessuna decisione aperta può cambiare**. Il
+> criterio è dichiarato in §1 ed è l'unica ragione per cui una voce sta qui.
+
+---
+
+> ## ✅ CHIUSO — 2026-09-14 · DB P-1 → P-11 · BE/FE §5.5 · archiviato in `work-done/`
+>
+> **Lato DB**: tutti i changeSet `EXECUTED` in `databasechangelog` —
+> `20260913-04 → -20` (13-09) e `20260914-07 → -14` (14-09; il `-14`, P-11,
+> alle 16:15 — *fino al trasloco l'intestazione lo dava «DA APPLICARE»*: letto
+> dal `databasechangelog` perché lo stato non era stato riportato). Quattro
+> pgTAP nuovi (§7) e tre estesi (`famiglie-documento-crud` 24→28,
+> `famiglie-documento-guard-riferimenti` 7→9, `vw-situazione-merce-ordine`
+> test 3 a 21 colonne): i tre di P-8 e i tre estesi lanciati col runner da Tid;
+> quello di P-11 provato 8/8 con l'SQL estratto e committato da Tid con
+> «Eseguiti test» (`7598dce86`). I file sono **immutabili**: un cambio va in un
+> changeSet nuovo. Come sono stati provati: §6-bis → §6-quinquies.
+>
+> **Lato BE/FE**: le sette voci di §5.5 e le tredici chiavi di §5.4 sono
+> **mergiate** su `Tito-dev` (`22096e6a0`, `eeed40be8` → PR #1586), doc API e
+> cataloghi BB compresi. L'osservazione su `api.md` (§10.3, ultima riga) non era
+> più un residuo: corretta il 12-09, §«Enforcement RLS».
+>
+> ⚠️ **Che cosa ESCE dal brief, e dove va** — censito alla chiusura, perché un
+> residuo senza destinazione è la classe del §7 (*«esiste e non è collegata a
+> niente»*):
+>
+> | # | Residuo | Dove va | Perché non resta qui |
+> | --- | --- | --- | --- |
+> | 1 | 🔴 **Il presidio di prontezza su `gestito_a_magazzino`** (§7): vista a una riga `MARCATI`/`NESSUNO_MARCATO`, natura `ZERO`, `stato_atteso = MARCATI` in `presidi.csv`. **Non è stato scritto**: non stava in nessun passo di §6, e nessuno dei riquadri di §7 l'aveva promosso a P-* | ✅ **Deciso da Tid il 14-09: cantiere `magazzino`**, con la forma di §7 già fissata — agganciato in [analisi carico e scarico §8](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) | la §7 del 01-09 lo teneva qui *«perché non si può delegare a un cantiere che forse non parte»*: quella premessa è caduta l'11-09 (`magazzino` **è** il prossimo cantiere) ed è lì che nasce il lettore della colonna (primitiva M-2). ⭐ E un allarme che deve suonare per mesi prima che qualcuno possa agire viene ignorato — è l'argomento di AGENTS.md sul presidio che blocca tutto e viene spento |
+> | 2 | ⚠️ Sul DB di **sviluppo** le righe 747-749 di `ui.lista_colonna` sono ancora `attivo = f` e 327/748 senza `formato = yesno`: il mirror `20260806-15` ha girato l'ultima volta il 13-09 alle 09:35, **prima** del commit BE che ha cambiato il CSV | un `db-migrate` di Tid; il CSV in albero è già giusto (`3 3` + `4 4` di §5.3/§5.5) | è stato di macchina, non di progetto: in CI il mirror ri-esegue da solo |
+> | 3 | Voce **1-bis** di §5.5: `data_consegna_confermata` si scrive solo in `DRAFT` (`_STATI_RIGHE_MODIFICABILI`), ma la promessa si decide **alla conferma** e può cambiare dopo — serve un verbo suo (stampo: gli override di prezzo) o il dialog di conferma che la raccolga | **BE**, decisione di Tid; registrata in `.codex/PROJECT_CONTEXT.md` | è una decisione di modello lato applicativo; il DB non mette guard di stato **di proposito** (provato in P-6) |
+> | 4 | `E_ATTIVO_REQUIRE` del require generato dal framework ATTIVO è **TECNICO** (500) anche quando il dato l'ha scelto una persona (§5.5, nota 2) — candidato allo split, vale per **tutte** le coppie ATTIVO | **DB**, cantiere suo (`dbops`, framework delle automazioni); intanto il BE pre-verifica e risponde 400 col campo | riguarda un codice generato per ogni coppia, non questa colonna |
+> | 5 | Ciclo di vita della **pratica di approvazione prezzo** quando la sua revisione viene superata — con P-11 riguarda anche i preventivi (§6-quinquies) | **BE**, `refactor-prezzi.md` §4.7, aperta dal 2026-06-01 | dominio approvazioni, non di questo brief |
+> | 6 | Le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun repository di righe, nessuna chiave i18n) | cantiere **acquisti** | l'app non ha ancora endpoint di riga (§5.5, nota 5) |
+>
+> Nessun residuo resta senza casa. Il trasloco in `work-done/` chiude il brief:
+> i link relativi alle quattro analisi sono riscritti (`../work-in-progress/`),
+> la voce del 14-09 in `mappa-concentrica-changelog.md` punta alla sede nuova,
+> e il residuo 1 è scritto **nel documento che lo riceve**, non solo qui.
+
+---
+
+## 1. Il filtro, ed è tutto il valore di questo documento
+
+Le due analisi contengono molto più di quanto sta qui. La domanda che ha separato
+le voci è **una sola**:
+
+> **Se le decisioni aperte venissero prese in un modo o nell'altro, questa voce
+> cambierebbe?** Se sì, non è in questo brief.
+
+Le decisioni aperte sono le **D-1 → D-9** dell'[analisi
+magazzino](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md) §8 (*fino al
+2026-09-12 qui c'era scritto «D-8»: è lo stesso off-by-one che la revisione
+incrociata del 02-09 aveva corretto negli altri tre documenti e non in questo*)
+e la **§7**
+dell'[analisi commessa](../work-in-progress/analisi-db-commessa-e-produzione-predisposizione.md) —
+cioè: se l'ODL è una sorgente o un anello proprio, se il ledger di magazzino usa
+il catalogo delle sorgenti o il riferimento testuale, e se la commessa di
+produzione è `vendite.commesse` o un'entità sua.
+
+⚠️ **Il filtro NON è «serve anche se la produzione non si farà mai».** La
+produzione non è una delle decisioni aperte: Tid l'ha data per assunta — *«siamo
+vicini a iniziare lo sviluppo, e anche se ora non c'è dobbiamo prevederlo»*. È
+aperta la sua **forma**, non la sua esistenza.
+
+### ⭐ Il risultato del filtro, ed è la cosa più utile che è emersa
+
+**Tutte le voci certe stanno su `vendite` e `catalogo`. Tutte le decisioni aperte
+stanno su `magazzino` e sulla forma dell'ODL.**
+
+Le due analisi sembravano contigue e in realtà **non si bloccano a vicenda**: il
+lavoro di questo brief si può fare adesso, sulle tabelle in esercizio, mentre
+`magazzino` aspetta le sue decisioni. Non c'è un ordine da rispettare fra i due.
+
+> ⚠️ **Aggiornamento del 2026-09-12: un ordine adesso C'È, ed è questo brief per
+> primo.** Due fatti nuovi: (1) `acquisti` e `magazzino` sono **il prossimo
+> cantiere** (decisione di Tid dell'11-09, in `.codex/PROJECT_CONTEXT.md`);
+> (2) l'[analisi carico e scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) ha
+> **chiuso** M-1, M-2, M-3, M-4, M-5, M-6, M-8 e M-9 fra il 02-09 e il 04-09, e
+> tre di quelle decisioni **leggono colonne che nascono qui**: la primitiva di
+> scrittura (M-2) è guidata da `catalogo.articoli.gestito_a_magazzino`; la vista
+> «effettiva / impegnata / in arrivo» (§7-bis) legge
+> `acquisti.ordini_righe.data_consegna_confermata_fornitore` e
+> `vendite.ordini_righe.data_consegna_confermata`; e M-5 aggiunge
+> `catalogo.articoli.requires_lotto` accanto alle tre colonne del Blocco B (§8).
+> ⇒ Il filtro della §1 non cambia — nessuna di quelle decisioni **modifica** una
+> voce di qui — ma il brief smette di essere «parallelo e indipendente»: è il
+> **prerequisito** del cantiere che viene dopo, e la sua priorità sale.
+
+### ⭐ E il Blocco B serve a due cantieri, non a uno (2026-09-01)
+
+Il Blocco B è motivato qui dalla **produzione** — «questa riga richiede
+produzione?». L'analisi acquisto mostra che risponde anche a una seconda domanda,
+che nessuna decisione aperta tocca: **«questo articolo si compra?»**. Il valore
+`ACQUISTO` è il default del vocabolario, ed è il perno da cui parte qualunque
+proposta d'acquisto.
+
+⇒ Non cambia una riga del blocco: ne **rinforza la certezza**. Un blocco che
+serve a due cantieri indipendenti non dipende dalla forma di nessuno dei due.
+
+---
+
+## 2. Blocco A — Le date di consegna
+
+### 2.1 Che cosa manca, e perché è la prima
+
+⛔ **Non esiste alcuna data di consegna in tutto il database.** Cercata su
+`vendite`, `acquisti` e `magazzino` il 2026-09-01: l'unica data di previsione
+dell'intero modello è `magazzino.reservations.data_prevista` (dal 2026-09-02 decisa come `magazzino.movimenti_attesi`), in uno schema che
+non è in esercizio.
+
+⚠️ **Nessuna delle date esistenti serve, e vanno nominate per non farsele
+proporre di nuovo:**
+
+| Colonna | Perché non è quella |
+| --- | --- |
+| `vendite.ordini.data` | è la **data documento**, e governa numerazione, anno e pavimenti |
+| `commesse.competenza_dal/al` | è **competenza fiscale**: riusarla farebbe dissentire due domande sulla stessa colonna |
+| `data_insert` | è quando la riga è stata scritta, non quando la merce è attesa |
+
+⭐ **E serve anche senza produzione**: senza una data di consegna non esiste la
+nozione di **ritardo**. `vw_situazione_merce_ordine` sa dire *quanto* resta da
+spedire e non saprà mai dire *se è tardi*. Nessun sollecito, nessuna priorità di
+evasione, nessun indicatore di puntualità.
+
+### 2.2 Le colonne
+
+| Tabella | Colonna | Tipo | Null |
+| --- | --- | --- | --- |
+| `vendite.ordini_righe` | `data_consegna_richiesta_cliente` | `date` | sì |
+| `vendite.ordini_righe` | `data_consegna_confermata` | `date` | sì |
+| `vendite.preventivi_righe` | `data_consegna_richiesta_cliente` | `date` | sì |
+| `acquisti.ordini_righe` | `data_consegna_richiesta` | `date` | sì |
+| `acquisti.ordini_righe` | `data_consegna_confermata_fornitore` | `date` | sì |
+
+**Le due date sono due cose diverse** e la differenza fra loro *è* la promessa:
+la prima è quando il cliente la vuole, la seconda quando ci si impegna a darla.
+Sull'ordine d'acquisto lo stesso, ribaltato: quando la si chiede al fornitore e
+quando lui conferma — ed è l'informazione che oggi manca per sapere se la merce
+arriverà in tempo per una consegna già promessa.
+
+⛔ **Sulla RIGA, non sulla testata**, e non è un dettaglio: una riga può essere
+pronta e un'altra no. È esattamente il caso «questa riga richiede produzione», ed
+è anche il caso banale «il pezzo grosso arriva a marzo, il resto subito».
+
+⛔ **Niente colonna di testata.** La data della testata è
+`min(data_consegna_richiesta_cliente)` sulle righe attive: una colonna sarebbe una
+**seconda sorgente di verità** che va fuori sincrono al primo cambio di riga.
+Dove serve come dato — la lista ordini — si espone dalla vista (§5.2), non dalla
+tabella.
+
+⚠️ **`vendite.preventivi_righe` ha solo la richiesta**, non la confermata: su un
+preventivo non c'è ancora niente da confermare.
+
+⛔ **`vendite.offerte_commerciali` NON entra**: non ha righe articolo (ha
+utilities ed eccezioni), quindi non c'è la riga a cui la data apparterrebbe.
+
+> ✅ **I NOMI seguono la convenzione D-12 — DECISO da Tid il 2026-09-02.**
+> `data_consegna_confermata` sarebbe nata **su due tabelle con l'attore invertito**: su
+> vendite la promessa è **nostra**, su acquisti è del **fornitore**. E la proprietà è
+> pure **incrociata**, perché la data *richiesta* su vendite la esprime il **cliente**
+> mentre su acquisti la esprimiamo **noi**.
+>
+> ⛔ Il posto dove il difetto sarebbe morso è la vista di [carico e scarico
+> §7-bis](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md), che legge **entrambe** per comporre
+> impegnato e in-arrivo: lì il nome della tabella sparisce e restano due omonime che
+> promettono cose di soggetti diversi.
+>
+> **Regola applicata** — *non marcato = nostro, marcato = della controparte*, la stessa
+> di `numero` / `numero_fornitore`:
+>
+> | Tabella | Nostra | Della controparte |
+> | --- | --- | --- |
+> | `vendite.ordini_righe` | `data_consegna_confermata` | `data_consegna_richiesta_cliente` |
+> | `vendite.preventivi_righe` | — | `data_consegna_richiesta_cliente` |
+> | `acquisti.ordini_righe` | `data_consegna_richiesta` | `data_consegna_confermata_fornitore` |
+>
+> ⚠️ **Ricadono anche i nomi derivati**: la colonna di testata della vista diventa
+> `data_consegna_richiesta_cliente_min`, e con lei la chiave i18n (§5.2, §5.4). ⭐ È
+> lunga, ed è il prezzo giusto: dice **di chi è la data** senza che si debba risalire
+> alla tabella.
+>
+> ⭐ **Decisa prima di P-3**, cioè quando nessuna delle colonne esisteva: dopo sarebbero
+> state quattro colonne in esercizio, due viste e una comunicazione già partita verso
+> BE/FE. Origine: [analisi acquisti §6, D-12 e D-16](../work-in-progress/analisi-simmetria-ordini-acquisto.md).
+
+### 2.3 ⛔ Nessun CHECK fra le due date, ed è una scelta
+
+La tentazione è `data_consegna_confermata >= data_consegna_richiesta_cliente`. **È
+falsa**: si può confermare *prima* di quanto chiesto, ed è una buona notizia, non
+un errore.
+
+E nemmeno un CHECK contro `ordini.data`: la **retrodatazione è un caso d'uso
+vivo** in questo progetto — è la lezione già pagata dal cantiere numerazione, dove
+un cancello sulla data era stato motivato con «la sceglie una persona» mentre è
+proprio per questo che va lasciata scegliere.
+
+⭐ La regola applicata: *un vincolo si mette dove il modello lo richiede, non
+dove sembra ordinato.*
+
+### 2.4 Il passaggio preventivo → ordine
+
+`vendite.fn_push_preventivo_a_ordine` deve **portare avanti** la data richiesta,
+altrimenti si perde nel punto in cui il documento cambia natura, ed è il punto in
+cui gli utenti smetteranno di fidarsene.
+
+⚠️ Toccando quella funzione si incontra un residuo già noto: nel corpo cita in un
+commento `trgfn_ordini_gen_codice`, funzione che non esiste più. ⭐ È dichiarato
+nel brief archiviato del prefisso sul registro (§6.3) come *«si fa alla prossima
+occasione in cui la si tocca»*: **questa è quell'occasione**, e costa una riga.
+
+---
+
+## 3. Blocco B — Da dove arriva un articolo
+
+### 3.1 Il buco, e le tre risposte sbagliate
+
+⛔ **Oggi niente, in nessuna tabella, sa rispondere a «questa riga richiede
+produzione?»** — e neppure a «questo articolo movimenta giacenza?», che serve a
+`magazzino` a prescindere dall'ODL.
+
+⚠️ **Le tre colonne che sembrano rispondere già, e non rispondono** — vanno
+nominate perché sono la scorciatoia che qualcuno proporrà:
+
+| Colonna | A che domanda risponde davvero |
+| --- | --- |
+| `articoli.is_composito` | *l'articolo ha componenti da esporre in fattura* (pricing v5, `esposto_in_fattura`). Un assemblato può essere comprato finito |
+| `articoli.natura_vendita_id` | *dove va la riga venduta* (`destinazione_tipo`: ORDINE / COMMESSA / CONTRATTO). Dice la destinazione, non la provenienza |
+| `nature_vendita.e_cessione_beni` | è **fiscale**: lo consuma `fn_resolve_iva_riga_guscio`. Riusarlo farebbe rispondere a un dato due domande in AND |
+
+### 3.2 Il vocabolario `config.modi_approvvigionamento` (tabella nuova)
+
+Colonne, sulla forma già usata da `config.nature_vendita`:
+
+| Colonna | Note |
+| --- | --- |
+| `id` | identity |
+| `codice_interno` | UNIQUE, **immutabile** (lock column) — è ciò su cui il codice confronta |
+| `codice`, `descrizione` | mutabili, per l'operatore |
+| `attivo`, `ordine`, `meta` | come tutti i vocabolari |
+
+Seed: `ACQUISTO`, `PRODUZIONE`, `STOCK`, `NON_APPLICABILE`.
+
+⭐ **Perché una tabella e non un CHECK su varchar**, ed è una scelta fatta qui
+(revocabile, ma motivata): il modo di approvvigionamento è una **dimensione
+dell'articolo** come la natura di vendita, e la natura di vendita è una tabella.
+Il FE ha bisogno di una **select con etichetta** e la lista di un valore
+**decodificabile**; un CHECK non dà né l'una né l'altro, e ogni consumatore
+finirebbe per riscriversi le quattro stringhe a mano. ⚠️ E il giorno in cui la
+produzione esiste, quel vocabolario avrà **attributi** (per esempio «richiede
+ODL»): un CHECK non li può portare.
+
+⚠️ **Tabella nuova = ciclo delle automazioni.** Audit, `tx_id` e storico non
+esistono finché non gira `ci_apply`. E serve la riga in
+`dbops.fk_index_policy` per la FK che nasce (⚠️ `dll_command` **sempre
+valorizzato**, anche a `consentito = false`).
+
+> 🔴 **Corretto il 2026-09-12 — verificato su `dbops.fn_run_automations_lock_columns`.**
+> Fino a quel giorno questo paragrafo diceva che il lock su `codice_interno`
+> *«va seminato in `dbops.automation_lock_columns` … DROP + rigenera»*. ⛔ **È
+> falso, e avrebbe fatto seminare una riga che non serve**: il lock su
+> `codice_interno` è **implicito** — la funzione lo monta per la sola presenza
+> della colonna (*«codice_interno e' implicito: non si configura nella tabella di
+> setup»*, riga 41 del corpo), ed è la regola già scritta in
+> [linee-guida-sql §6b](../../linee-guida-sql.md). Prova: `config.nature_vendita`,
+> il modello dichiarato di questa tabella, **non ha** nessuna riga in
+> `automation_lock_columns.csv` e il lock ce l'ha. Il «DROP + rigenera» vale per
+> le colonne **extra** (`natura_vendita_id` su `preventivi_righe` è il
+> precedente), non per questa.
+>
+> ⭐ **E l'automazione che invece NASCE davvero, e nessuno l'aveva scritta**: il
+> vocabolario ha `attivo`, quindi la FK da `catalogo.articoli` fa generare a
+> `ci_apply` la coppia ATTIVO — sul **padre**
+> `trg_modi_approvvigionamento_a10_articoli_block_deact_upd` (BEFORE UPDATE OF
+> attivo: non si spegne un modo usato da articoli attivi) e sul **figlio**
+> `trg_articoli_a10_modi_approvvigionamento_require_attivo_ins_upd` (constraint
+> trigger AFTER, DEFERRABLE: un articolo non punta a un modo spento) — 🔴
+> *2026-09-14, letto su `pg_trigger` a `ci_apply` avvenuto*: **il nome vero è
+> `trg_articoli_a10_modi_approvvigionamento_require_attivo__1ad7bd`**. Il nome
+> pieno fa esattamente 63 caratteri e il framework lo tronca e lo hasha; il
+> changeSet `20260913-05` lo nomina per esteso e si sbaglia. ⇒ Il pgTAP di P-8
+> lo cerca per **funzione e argomenti**, mai per nome (memoria *un presidio
+> dinamico non si trova per nome*). ⚠️ È
+> **questo** trigger a rendere vera l'asserzione «un articolo non può puntare a
+> una riga spenta» del pgTAP di §7 — e nasce a `ci_apply`, non da un changeSet:
+> su un `--fresh` senza `--ci-apply` quel test è rosso per assenza, non per
+> difetto (memoria `pgtap verde su dbdev non dice niente sulla CI`).
+
+### 3.3 Le colonne su `catalogo.articoli`
+
+| Colonna | Tipo | Null | Default |
+| --- | --- | --- | --- |
+| `modo_approvvigionamento_id` | `bigint` FK → `config.modi_approvvigionamento` | **no** | `ACQUISTO` |
+| `gestito_a_magazzino` | `boolean` | **no** | `false` |
+| `lead_time_giorni` | `integer` (CHECK `>= 0`) | **sì** | — |
+
+⭐ **Perché queste nullabilità e non altre**, applicando la regola del progetto
+(*un `NOT NULL` va dove il dato si può fornire*):
+
+* **`modo_approvvigionamento_id` NOT NULL**: il valore si può sempre dare, e un
+  NULL significherebbe «non lo so» — cioè esattamente lo stato che questa colonna
+  esiste per abolire. Il default `ACQUISTO` è il caso comune e non inventa niente.
+* **`gestito_a_magazzino` NOT NULL DEFAULT `false`**: il default è **fail-safe** —
+  nessun articolo comincia a movimentare giacenza per distrazione. ⚠️ Ne discende
+  che al rilascio *tutti* sono `false` e la merce va marcata: è un lavoro di dato,
+  ed è il momento giusto per farlo, perché `magazzino` non è in esercizio.
+* **`lead_time_giorni` NULLABLE**: per una prestazione non significa niente, e
+  `0` non è «non si applica». Qui il NULL è un'informazione.
+
+⚠️ **`gestito_a_magazzino` non si deriva da `natura_vendita = MERCE`**: una merce
+può essere venduta senza passare da giacenza (consegna diretta dal fornitore).
+Sono due domande, e vanno tenute separate anche quando oggi le risposte
+coincidono.
+
+> 🔴 **Il `NOT NULL DEFAULT ACQUISTO` NON si scrive in un changeSet solo, e non
+> per prudenza sui dati — per la TIMELINE delle fasi (2026-09-12).** Il default
+> è l'`id` di una riga che nasce dal seed CSV di `80_data` (P-1), e `80_data`
+> gira **dopo** tutto `00_schema`. Quindi un `ADD COLUMN … NOT NULL DEFAULT <id>`
+> con la sua FK, scritto in `00_schema`:
+>
+> * su **dev** muore subito: `catalogo.articoli` ha righe, la FK si valida
+>   all'`ADD CONSTRAINT`, e `config.modi_approvvigionamento` a quel punto è
+>   ancora **vuota**;
+> * in **CI** muore poco dopo: il mirror `articoli.csv` è ancorato a
+>   `20260114-06`, cioè a gennaio, e in `80_data` inserisce gli articoli
+>   **prima** del seed del vocabolario (numerato settembre) — con il default a
+>   un id che non esiste ancora.
+>
+> ⭐ **La forma è già scritta, sulla stessa tabella**: `natura_vendita_id` è
+> nata così — `20260608-43` (`00_schema`: colonna **nullable** + FK),
+> `20260608-42` (`80_data`: seed), `20260609-04` (`80_data`, numerato **dopo** il
+> seed: risolve l'id di `MERCE` **per `codice_interno` a runtime**, backfill,
+> `SET DEFAULT`, `SET NOT NULL`). Si ricalca quella, non si inventa. ⛔ E il
+> `DEFAULT` finale resta un id letterale come su `natura_vendita_id`: è
+> l'eccezione ammessa da §6b (*FK fisica reale*), da motivare nel changeSet.
+>
+> ⚠️ **E l'header di `articoli.csv` non prende le colonne nuove**: quel mirror
+> è di gennaio, e una colonna con FK aggiunta a un mirror vecchio lo manda a
+> scrivere prima del bersaglio (memoria `colonna FK su mirror vecchio`). Se un
+> giorno servirà seminarle, `type: SKIP` sul vecchio + mirror ri-ancorato.
+>
+> Le altre due colonne — `gestito_a_magazzino` e `lead_time_giorni` — non hanno
+> FK e stanno in un passo solo, in `00_schema`. Vedi §4-bis, corretta di
+> conseguenza.
+
+---
+
+## 3-bis. Blocco B-bis — `famiglie_documento`: la colonna del billing account
+
+> ⚠️ **Voce da confermare, ed è l'unica di questo brief che non si autogiustifica.**
+> Passa il filtro della §1 — nessuna decisione aperta la cambia — ma **non è
+> richiesta da nulla che stia qui dentro**: la chiede il cantiere acquisto. Sta in
+> questo brief per una ragione sola, di costo, ed è Tid a decidere se accettarla.
+
+`vendite.famiglie_documento` è l'elenco dei tipi di documento che prendono il
+numero da un registro. Dichiara, per ognuno, **dove vive**: schema, tabella, e il
+nome di tre colonne — `colonna_numero`, `colonna_serie`, `colonna_billing_account`.
+
+⛔ **`colonna_billing_account` è `NOT NULL`**, e il guard
+`trgfn_famiglie_documento_guard_riferimenti` verifica su `pg_attribute` che la
+colonna nominata **esista davvero** sulla tabella. È corretto oggi: tutte e cinque
+le famiglie in servizio un billing account ce l'hanno.
+
+Diventa sbagliato al **primo documento che non ce l'ha** — e il primo è l'ordine
+di acquisto, la cui controparte è un `soggetto_ruolo`, non un BA. Registrare
+quella famiglia, oggi, fallisce con
+`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE`.
+
+⭐ **La correzione non è da inventare: sta già nella stessa tabella.**
+`colonna_serie` è **nullable**, e il vuoto non è un dato mancante — è la
+dichiarazione che *quella famiglia una serie non ce l'ha* (reso e commessa). Stessa
+forma per il billing account:
+
+| Oggetto | Cosa |
+| --- | --- |
+| `famiglie_documento.colonna_billing_account` | da `NOT NULL` a **nullable**: `NULL` = «questa famiglia non ha un billing account» |
+| `trgfn_famiglie_documento_guard_riferimenti` | salta il controllo `pg_attribute` quando è `NULL` |
+| `anagrafiche.fn_ba_ha_storia_emittente` · `fn_get_storia_emittente_ba` | **saltano** le famiglie con colonna `NULL` — corretto per costruzione: un documento senza BA non può contribuire alla storia di nessun BA |
+
+⚠️ **Il dettaglio che decide se funziona**: le due funzioni compongono SQL dinamico
+con `%I`, e il salto va scritto nella query che **sceglie** le famiglie, non dentro
+la composizione.
+
+> 🔴 **I lettori sono più di tre — censimento del 2026-09-12** (memoria
+> *cancellare una fonte = censire i lettori*). La tabella qui sopra fotografa il
+> 01-09 mattina; lo stesso giorno il cantiere CRUD delle famiglie
+> (`20260901-15/-17/-19/-20`) e poi l'08-09 (`20260908-24/-25`) hanno aggiunto
+> **quattro** lettori DB e due applicativi, e P-9 li deve toccare tutti o resta a
+> metà:
+>
+> | Lettore | Che cosa fa oggi con la colonna | Che cosa cambia |
+> | --- | --- | --- |
+> | `vendite.fn_crea_famiglia_documento` | ⛔ **la pretende non vuota** (riga 56: `COALESCE(btrim(p_colonna_billing_account), '') = ''` → rifiuto) | diventa opzionale come `p_colonna_serie` |
+> | `vendite.trgfn_famiglie_documento_guard_struttura` + `script.fn_check_famiglia_documento_struttura_modificabile` | la contano fra le cinque colonne **immutabili** a registri vivi (`IS DISTINCT FROM`) | nulla: `NULL ↔ valore` è comunque un cambio, e va rifiutato |
+> | `vendite.vw_famiglie_documento_lista` | la espone | nulla |
+> | `backend/apps/vendite/services/famiglie_service.py` | ⛔ `_OBBLIGATORI_CREATE`: *«La colonna che porta il cliente è obbligatoria»* | esce dall'elenco, come `colonna_serie` che già non c'è — ✅ **fatto il 14-09** (+ schema OpenAPI di creazione `required=False, allow_null=True`) |
+> | il form FE delle famiglie | campo obbligatorio | opzionale — ✅ **fatto il 14-09** (`FamigliaDocumentoDrawer.vue`: niente asterisco, hint «vuota = nessun billing account») |
+> | `db/pgtap/vendite/test-famiglie-documento-crud-v1.sql` · `test-famiglie-documento-guard-riferimenti.sql` | fixture con la colonna sempre valorizzata | un caso in più: famiglia senza BA |
+>
+> ⇒ La riga «cinque righe» della tabella qui sotto **non è più vera**: sono
+> quattro oggetti DB, un service, un form e due pgTAP. Resta piccolo, ma non è
+> più *«nessun consumatore»* — ed è un'altra ragione per cui la voce va decisa e
+> non fatta di straforo.
+
+🔴 **Correzione del 2026-09-02, verificata sul database.** La prima stesura
+motivava la regola dicendo che *«un `NULL` passato a `format('%I')` non solleva un
+errore parlante»*. **È falso**: `%I` con `NULL` solleva eccome —
+`i valori vuoti non possono essere formattati come un identificativo SQL`.
+⭐ La regola resta la stessa e il motivo diventa **migliore**: comporre e poi
+fallire significa che un operatore vede un errore **di PostgreSQL** — nessun codice
+di dominio, nessun `context`, nessun campo da accendere — al posto di una funzione
+che semplicemente non considera quella famiglia. Si salta *prima* per non arrivarci.
+⚠️ **E il pericolo del silenzio esiste, ma vive su `%s`**: `format('%s', NULL)`
+produce **stringa vuota** senza fiatare. Se in quelle due funzioni una parte del
+comando si compone con `%s`, il ramo muto è lì, non su `%I`.
+
+### Perché proporla adesso, e perché potresti dire di no
+
+| Per farla ora | Per rimandarla |
+| --- | --- |
+| è il momento di **costo minimo**: cinque righe, nessun consumatore acquisto, nessun registro vivo di acquisto | non serve a **niente** di ciò che sta in questo brief |
+| dopo si tocca una tabella con registri in esercizio e il guard in servizio | il cantiere acquisto ha i suoi lotti, e questa è roba sua |
+| la forma è **certa** e ha il precedente identico accanto | ⚠️ farla ora significa una colonna nullable che per mesi non ha nessun `NULL` — e questo brief altrove **contesta** proprio le strutture senza funzione |
+
+⛔ **Non la decido io.** La riga di destra è un argomento vero, ed è lo stesso che
+in §8 tiene fuori altre voci. ⇒ **P-9 è marcata come opzionale** in §6: si esegue
+solo se Tid la conferma.
+
+> ✅ **Confermata da Tid il 2026-09-14, scritta e provata lo stesso giorno (§6-quater).**
+> La forma è esattamente quella di `colonna_serie`: `NULL` = «questa famiglia non
+> ha un billing account». Il salto sta **nella query che sceglie le famiglie**
+> (le due `fn_*_storia_emittente`) e **prima del confronto su `pg_attribute`**
+> (il guard), mai dentro il `format()`; la madre normalizza `''` a `NULL` e
+> smette di pretenderla, con **firma a posizioni e tipi invariati** — il backend
+> passa gli argomenti per posizione (`_CAMPI_CREATE`). Il guard di struttura non
+> cambia: `IS DISTINCT FROM` tratta `NULL ↔ valore` come un cambio, e il test 28
+> del CRUD lo pinna.
+
+⚠️ E comunque **il trasloco del motore fuori da `vendite` NON è di questo brief**:
+l'analisi acquisto lo ha rimandato di proposito al giorno in cui il primo ordine
+d'acquisto prende davvero un numero — la regola del 2 non si applica a un secondo
+consumatore che non esiste ancora.
+
+---
+
+## 4. Blocco C — La commessa leggibile
+
+⛔ Oggi `vendite.commesse` ha `codice` e **nient'altro di parlante**: in una lista
+non si capisce che cosa sia.
+
+| Colonna | Tipo | Null | Note |
+| --- | --- | --- | --- |
+| `descrizione` | `varchar(255)` | sì | l'oggetto della commessa, in parole |
+| `data_apertura` | `date` | **no**, default `script.fn_data_operativa()` | ⛔ **mai `now()` nudo**: è la convenzione del progetto |
+| `responsabile_risorsa_umana_id` | `bigint` FK → `anagrafiche.risorse_umane` | sì | chi la governa. ✅ **DECISO da Tid il 2026-09-12 (D-A)**: era `responsabile_soggetto_ruolo_id → soggetti_ruoli`; la convenzione di casa per una persona interna è `risorsa_umana_id` (le tre tabelle di `pratiche`) — riquadro sotto |
+
+⭐ **Perché sono certe**: servono alla commessa **così com'è oggi**, cioè al
+contenitore di fatturazione. Valgono identiche in tutti e due gli esiti della §7 —
+se domani la commessa diventasse anche la testata di produzione, queste tre
+resterebbero e se ne aggiungerebbero altre.
+
+> 🔴 **Il paragrafo che seguiva è stato RITIRATO il 2026-09-12: poggiava su una
+> premessa falsa, verificata sulla doc auto-gen.** Diceva: *«la FK nuova genera
+> un trigger BEFORE ROW di parent attivo … su commesse ce ne sono già tre a mano
+> … va verificato che il generato non oscuri uno di quelli»*. Tre cose non
+> tornano:
+>
+> 1. `anagrafiche.soggetti_ruoli` **non ha la colonna `attivo`** ⇒
+>    `dbops.fn_run_automations_attivo` salta la coppia (`PARENT_NO_ATTIVO`) e
+>    **non genera niente** per questa FK — come già non genera niente per
+>    `emittente_soggetto_ruolo_id`, che punta alla stessa tabella;
+> 2. anche dove genera, il trigger sul **figlio** (`…_require_attivo_ins_upd`) è
+>    un constraint trigger **AFTER**, non `BEFORE ROW`: non può oscurare nessun
+>    guard di riga. L'ordine alfabetico morde sul **padre**, fra
+>    `prevent_deactivate_if_children` generati e guard a mano — è il caso della
+>    memoria, ed è un altro caso;
+> 3. i `BEFORE ROW` a mano su `commesse` sono **quattro**, non tre: c'è anche
+>    `trg_commesse_a10_default_emittente_ins`.
+>
+> ✅ **Quello che invece serve, e mancava**: la riga in `dbops.fk_index_policy`
+> per la FK nuova (`consentito` deciso e `dll_command` valorizzato — è la stessa
+> regola di P-1, e P-4 non la nominava).
+>
+> ⚠️ **E una domanda di modello che il brief aveva chiuso senza porla —
+> decisione per Tid (§10.3, D-A).** Il progetto ha già una convenzione per «una
+> persona interna che governa o è assegnata»: `risorsa_umana_id → anagrafiche.risorse_umane`
+> (`pratiche.pratiche`, `pratiche.flussi`, `pratiche.competenze_flussi` — tutte e
+> tre; e `risorse_umane` ha `attivo` e la finestra di validità). Un FK verso
+> `soggetti_ruoli` ammette come responsabile **qualunque ruolo**, un cliente o un
+> fornitore compresi. Le due forme costano diverso:
+>
+> | | `responsabile_soggetto_ruolo_id → soggetti_ruoli` | `responsabile_risorsa_umana_id → risorse_umane` |
+> | --- | --- | --- |
+> | coerenza col progetto | ⛔ una quarta forma per lo stesso concetto | ✅ la convenzione di `pratiche` |
+> | chi può essere responsabile | chiunque abbia un ruolo | solo una risorsa umana |
+> | automazione ATTIVO | nessuna (il padre non ha `attivo`) | ⚠️ **nasce**: il blocco sul padre impedirebbe di disattivare una persona finché è responsabile di **qualunque** commessa — anche chiusa, perché `commesse` non ha `attivo` e il generato conta *tutti* i figli (memoria *cancello su stato persistente = blocca per sempre*). ⛔ E **non si esclude per coppia**: lo scope dell'automazione è per tabella. ⭐ Ma è esattamente la situazione in cui `risorse_umane` **già vive**: porta tre block identici da `pratiche`, `flussi` e `competenze_flussi`, e nessuna delle tre figlie ha `attivo`. Il quarto non cambia la natura del cancello |
+>
+> ✅ **DECISO (Tid, 2026-09-12): la seconda — `responsabile_risorsa_umana_id →
+> anagrafiche.risorse_umane`.** Ne discende, e va scritto nel changeSet di P-4:
+>
+> * a `ci_apply` nascono **due** trigger che nessun changeSet scrive —
+>   `trg_risorse_umane_a10_commesse_block_deact_upd` sul padre (BEFORE UPDATE OF
+>   `attivo`) e `trg_commesse_a10_risorse_umane_require_attivo_ins_upd` sul figlio
+>   (AFTER, DEFERRABLE). ⛔ Niente DDL né `preCondition` su quei nomi
+>   (linee-guida §11.5); l'esistenza si asserisce nel pgTAP di §7, che gira a
+>   `ci_apply` avvenuto;
+> * il block sul padre è il **quarto** della sua specie su `risorse_umane`
+>   (`pratiche`, `flussi`, `competenze_flussi`): una persona responsabile di una
+>   commessa — anche chiusa — non si disattiva finché lo è. Dichiarato, non
+>   corretto: è la postura che quella tabella ha già;
+> * `fk_index_policy`: riga per `fk_commesse_risorse_umane`, `consentito = false`
+>   con `dll_command` valorizzato — nessuna query dell'applicazione entra oggi
+>   da quella colonna (§8.7 delle linee guida: si decide sulla query, non sulla
+>   FK).
+
+---
+
+## 4-bis. I default che AFFERMANO — e perché resta una domanda di modello
+
+> 🔴 **Riscritta il 2026-09-02.** La prima stesura trattava questo come un problema
+> di **migrazione dati**: backfill obbligatorio, sequenza in tre passi per non
+> scrivere mai il valore falso. ⛔ **Era cerimonia da produzione, e produzione non
+> ce n'è.** Tid: *«i dati sono solo di test, possiamo fare quello che vogliamo»* —
+> è la regola già in vigore nel progetto (breaking secchi ammessi, nessun fallback
+> transitorio), e qui non l'avevo applicata.
+>
+> ⭐ **Ma la domanda che resta non è sui dati: è sul modello.** Ed è per questo che
+> la sezione non sparisce, si accorcia.
+
+### Quel che cade
+
+⛔ Niente sequenza `nullable → backfill → SET NOT NULL`, niente `UPDATE` di
+bonifica obbligatorio, niente precauzioni sull'ordine dei changeSet. Con dati
+usa-e-getta si scrive la forma finale e, se le righe di prova danno fastidio, si
+rifanno. **Non è un rischio: è una comodità che abbiamo.**
+
+> 🔴 **Corretto il 2026-09-12: il paragrafo qui sopra vale per DUE colonne su
+> tre, e sulla terza avrebbe fatto morire il migrate.** La sequenza
+> `nullable → seed → backfill → SET NOT NULL` era stata tolta perché letta come
+> cautela sui *dati*. Su `modo_approvvigionamento_id` **non è quella la ragione
+> per cui esiste**: il `DEFAULT` è l'id di una riga di `80_data`, e `00_schema`
+> gira prima — su dev la FK non si valida, in CI il mirror di gennaio degli
+> articoli inserisce prima del seed (§3.3, riquadro). ⇒ **La sequenza resta,
+> nella forma del precedente `natura_vendita_id`** (`20260608-43` → `-42` →
+> `20260609-04`). ⭐ La regola generale è la memoria *«il NOT NULL va dopo tutto
+> `80_data`»*: non è cerimonia da produzione, è l'ordine in cui Liquibase legge
+> le cartelle.
+>
+> Restano vere le due righe sotto: `gestito_a_magazzino` (nessuna FK) e
+> `data_apertura` (default da funzione, che esiste già) stanno in un passo solo.
+> ⚠️ Su `data_apertura` l'`UPDATE` di comodo da `data_insert` attraversa i
+> trigger di `commesse` — audit, `tx_id` e **storico**: ogni commessa esistente
+> riceve una versione shadow. Su dati di test è indifferente, ma va saputo
+> leggendo `storico.commesse` dopo l'apply.
+>
+> 🔴 **Corretto il 2026-09-13 scrivendo P-4: FALSO anche per `data_apertura`,
+> ed è il tredicesimo punto (§10.2).** La funzione esiste; è il suo
+> **parametro** a non esistere ancora. `script.fn_data_operativa()` è
+> fail-loud su `SYSTEM_FUSO_ORARIO`, che è un seed di `80_data`
+> (`20260825-12`) — e PostgreSQL **valuta il `DEFAULT` di un `ADD COLUMN` al
+> momento dell'ALTER**: per un'espressione non volatile lo calcola una volta e
+> lo scrive in `pg_attribute.attmissingval`, **anche a zero righe**. Provato
+> sul DB di sviluppo su una tabella temporanea: una funzione `STABLE` che
+> solleva fa morire l'`ADD COLUMN`; un `SET DEFAULT` successivo non la chiama.
+> ⇒ In CI, in `00_schema`, il migrate sarebbe morto con `E_CONFIG_MANCANTE`
+> prima che il fuso esistesse; su dev il parametro c'è da agosto e non si vede.
+> **Forma applicata, la stessa di `modo_approvvigionamento_id`**: colonna nuda
+> in `00_schema` (`20260913-13`), valore iniziale da `data_insert` **nel fuso
+> dell'azienda** in `80_data` (`-14`, dopo il seed del fuso per nome), poi
+> `SET DEFAULT` + `SET NOT NULL` (`-15`, transazione separata: i
+> `require_attivo` di `commesse` sono constraint trigger `AFTER` e l'UPDATE
+> lascia eventi in sospeso). ⭐ Il precedente era già scritto: `20260825-08` su
+> `vendite.fatture.data` fa `SET DEFAULT`, non `ADD COLUMN … DEFAULT`.
+> ⚠️ E il cast di `data_insert` **non è `::date` nudo**: è
+> `AT TIME ZONE <SYSTEM_FUSO_ORARIO>`, letto come lo legge `fn_data_operativa`
+> (default nudo, non la cascata di override) — altrimenti la data iniziale
+> avrebbe seguito il fuso della sessione di Liquibase, cioè il difetto che quella
+> funzione chiude (DB-2 del brief numerazione). Misurato sulla prova: 49 shadow
+> su 66 commesse, perché 17 hanno `storicizza = false`.
+
+### Quel che resta, ed è la parte che i dati non risolvono
+
+`NOT NULL` è un'**affermazione strutturale**: *«ogni riga di questa tabella ha
+questo dato, e lo sappiamo»*. Se esiste un caso in cui la risposta onesta è «non lo
+so», allora `NOT NULL` è la scelta sbagliata **sul modello** — e resta sbagliata
+anche con zero righe, perché il caso si ripresenta il giorno in cui arriva un
+import, un percorso di creazione che non valorizza la colonna, o una commessa
+generata da un flusso che quella data non ce l'ha.
+
+⇒ Le tre `NOT NULL` con default vanno guardate **una per una**, e non sono la
+stessa cosa:
+
+| Colonna | Che cosa afferma il default | Verdetto sul modello |
+| --- | --- | --- |
+| `articoli.gestito_a_magazzino = false` | «non movimenta giacenza» | ✅ **fail-safe**: dice *nel dubbio non fare*, ed è sempre una risposta legittima. `NOT NULL` è corretto. ⚠️ Resta il registro del §7, che non è una bonifica ma un **presidio**: la colonna a `false` ovunque è indistinguibile da «nessuno l'ha ancora marcata» |
+| `articoli.modo_approvvigionamento_id = ACQUISTO` | «questo articolo si compra» | ✅ **DECISO `ACQUISTO`** (Tid, 2026-09-02). Afferma un fatto positivo, e per una prestazione è falso — ma il vocabolario è **modificabile dall'operatore** e la marcatura è un lavoro di dato che si fa comunque (come per `gestito_a_magazzino`). `NON_APPLICABILE` non avrebbe mentito, ma avrebbe reso *obbligatoria* la marcatura di ogni articolo prima di poterlo comprare |
+| `commesse.data_apertura` | «questa commessa è stata aperta oggi» | ✅ **DECISO: `NOT NULL`, con valore iniziale da `data_insert`** (Tid, 2026-09-02) — non da «oggi». ⭐ La colonna nasce per essere letta in lista, e un `NULL` lì sarebbe una cella vuota per sempre; `data_insert` non è la data di apertura *reale* ma è **un fatto**, non un'invenzione |
+
+✅ **Entrambe decise il 2026-09-02.** Su `data_apertura` il valore iniziale si prende
+da `commesse.data_insert`, che esiste ed è `NOT NULL` per convenzione. ⚠️ È un `UPDATE`
+di **comodo**, non una bonifica: si fa perché «quando la riga è stata scritta» è più
+utile di «oggi», non perché ci siano dati da salvare — quelli sono di test.
+
+⚠️ **E il `DEFAULT fn_data_operativa()` resta**, perché serve alle commesse **future**,
+dove è la risposta giusta. Quello che non doveva fare è rispondere anche per il passato.
+
+## 5. ⭐ La predisposizione BE/FE — la parte che va letta dall'altro lato
+
+> ⛔ **Non ci sarà altra documentazione.** Questa sezione è la richiesta a BE e FE,
+> e dichiara **tutto ciò che il DB consegna già pronto**, così che dall'altro lato
+> non serva nessun lavoro di scoperta.
+
+### 5.1 Che cosa il DB consegna, in una riga
+
+**Le colonne nuove escono già dalle viste canoniche e sono già configurate come
+colonne di lista.** BE e FE non devono aggiungere una vista, né una riga di
+configurazione: devono **consumare** e, sul FE, tradurre le chiavi i18n.
+
+### 5.2 Le viste che cambiano
+
+| Vista | Colonne aggiunte | A cosa serve |
+| --- | --- | --- |
+| `vendite.vw_ordini_lista` | `data_consegna_richiesta_cliente_min` | ⭐ è la vista **canonica lista *e* dettaglio** degli ordini: la stessa colonna serve la lista e il drawer di testata |
+| `vendite.vw_situazione_merce_ordine` | `data_consegna_richiesta_cliente`, `data_consegna_confermata`, `giorni_ritardo` | è la vista **per riga** che già tiene ordinato / consegnato / `da_spedire` con la soglia dell'impegno |
+| `catalogo.vw_articoli_dettaglio` | `modo_approvvigionamento_id`, `modo_approvvigionamento_codice_interno`, `modo_approvvigionamento_descrizione`, `gestito_a_magazzino`, `lead_time_giorni` | è la vista della lista **e** del drawer articolo (lista `catalogo.articoli`, id 26) |
+| 🔴 `vendite.vw_preventivi_righe_smistabili_ordine` *(aggiunta il 2026-09-12)* | `data_consegna_richiesta_cliente` | ⛔ **è la vista da cui `fn_push_preventivo_a_ordine` legge le righe** (cursore `FOR v_riga IN … FROM vendite.vw_preventivi_righe_smistabili_ordine`), con proiezione **esplicita** di 12 colonne: senza questa colonna P-5 non ha da dove copiare la data. Un `JOIN` sulla tabella dentro la funzione sarebbe una seconda sede della stessa lista di righe |
+
+⭐ **`giorni_ritardo` sta lì e non altrove**, ed è la scelta che evita un difetto:
+il ritardo non è «oggi > data richiesta», è «oggi > data richiesta **e** resta
+merce da spedire». Il residuo e la soglia dell'impegno vivono in
+`vw_situazione_merce_ordine`, che li calcola già; metterlo altrove significherebbe
+ricalcolarli, cioè creare una seconda verità sul residuo. ⛔ **NULL quando
+`da_spedire` è NULL o zero**: «non è in ritardo» e «non c'è niente da spedire»
+sono due cose diverse, e quella vista ha già la disciplina di non confonderle.
+
+> ✅ **Scritto il 2026-09-13 (`20260913-18`), con due scelte da dichiarare —
+> una delle quali il brief non aveva deciso.**
+>
+> 1. **Contro quale data si misura il ritardo.** Qui sopra c'è scritto «oggi >
+>    data richiesta»; il `COMMENT` di `data_consegna_confermata` (`20260913-06`,
+>    già applicato) dice che è *lei*, col residuo, a dare il ritardo. Le due
+>    frasi dissentono, e si conciliano sul modello: **si è in ritardo rispetto
+>    a ciò a cui ci si è impegnati** — se a una richiesta per il 1° abbiamo
+>    risposto «il 15», il 10 non siamo in ritardo — e finché non ci si è
+>    impegnati l'unica attesa è quella del cliente. ⇒ La data di riferimento è
+>    `COALESCE(data_consegna_confermata, data_consegna_richiesta_cliente)`.
+>    ✅ **DECISO (Tid, 2026-09-14): questa regola** — «prima la promessa,
+>    altrimenti la richiesta». Il pgTAP di P-8 la inchioda così.
+> 2. **La polarità, con un valore in più.** `NULL` = non si applica
+>    (`da_spedire` NULL o zero, oppure nessuna data dichiarata); **`0` = c'è da
+>    spedire e non è tardi**; `N > 0` = giorni di ritardo. Senza lo zero, «in
+>    tempo» e «niente da spedire» si sarebbero letti uguali.
+>
+> ⭐ **Una sola verità sul residuo, davvero.** `giorni_ritardo` legge
+> `da_spedire`, e in una select list una colonna non può leggerne un'altra:
+> la formula del residuo è passata in una `CROSS JOIN LATERAL (… ) ds` — come
+> già `v.misurabile` e `imp.impegnata` — e le **due** colonne leggono la stessa
+> espressione. `da_spedire` resta identica per posizione, nome e tipo.
+>
+> ⚠️ `CURRENT_DATE`, non `script.fn_data_operativa()`: è un indicatore calcolato
+> e non persistito, come `anzianita_giorni` di `vw_dash_backlog_documenti` e
+> `is_scaduta` di `vw_offerte_commerciali_lista`; la convenzione «mai `now()`
+> nudo» è per le date documento che si **scrivono**. In una vista la funzione
+> sarebbe una chiamata plpgsql per riga (legge `config.parameters`), per uno
+> scarto di un giorno fra le 00:00 e le 02:00 locali su un contatore di giorni.
+> Dichiarato nel `COMMENT` della vista.
+>
+> ⭐ Sulla lista ordini il `min()` della testata è un **`LEFT JOIN LATERAL`**
+> per riga (`20260913-17`), servito da `uq_ordrig_riga_nr (ordine_id, riga_nr)`
+> per prefisso — non un `GROUP BY` su tutte le righe: la vista serve anche il
+> dettaglio per id. Provato con un caso costruito: due righe, `min` = la più
+> bassa; spenta quella, il `min` sale — le righe non attive non contano.
+
+⚠️ **Due trappole tecniche su queste viste, entrambe verificate:**
+
+1. **`CREATE OR REPLACE VIEW` può solo APPENDERE**: le colonne nuove finiscono
+   **in ultima posizione**. Non è disordine da sistemare, ed è già dichiarato nel
+   commento di `vw_ordini_lista`. Chi consuma per posizione si romperebbe: si
+   consuma per nome.
+2. **`security_invoker=on` va RI-SPECIFICATA** in ogni `CREATE OR REPLACE VIEW`,
+   altrimenti PostgreSQL la azzera e la vista smette di rispettare l'RLS di chi
+   la legge. È la reloption di tutte e tre.
+
+   > 🔴 **Corretto il 2026-09-12: NON è la reloption di tutte e tre.**
+   > `catalogo.vw_articoli_dettaglio` **non ce l'ha** (verificato sulla doc
+   > auto-gen), e non deve prenderla per imitazione: `catalogo.articoli` non ha
+   > RLS e la vista non tocca dati protetti. Dal 07-09 il criterio è presidiato
+   > sul **merito** e non sui nomi — `db/pgtap/rls/test-rls-viste-security-invoker.sql`
+   > fa rosso su qualunque vista che attraversa una tabella protetta senza
+   > l'interruttore, anche attraverso altre viste
+   > ([brief-db-viste-security-invoker-criterio](brief-db-viste-security-invoker-criterio.md)).
+   > ⇒ La trappola resta vera per le **tre** viste di `vendite` (le due della
+   > tabella più la smistabili), e adesso ha una rete: dimenticarla è un rosso,
+   > non un buco silenzioso.
+   >
+   > ⚠️ **E dal 09-09 le righe sono sotto RLS.** `vendite.ordini_righe` e
+   > `vendite.preventivi_righe` (con i loro satelliti) hanno le policy armate da
+   > `20260909-30` e `-35` (`brief-db-perimetro-emittente-righe-documento`):
+   > per le viste non cambia niente — erano già `security_invoker` — ma per i
+   > pgTAP di §7 sì, vedi là.
+
+⛔ **E un nome che il guardrail CI respinge**: `codice_interno AS *_codice` è
+**vietato** (`linee-guida-sql` §6c, presidiato da
+`scripts/sql/check_naming_stato_codice.sql`). Per questo la colonna decodificata
+si chiama `modo_approvvigionamento_codice_interno` e **non** `..._codice`: quel
+valore viene dalla colonna immutabile, e un consumatore che confronta contro un
+`*_codice` si aspetta invece quella mutabile.
+
+### 5.3 Le colonne di lista — sono **dato**, non DDL
+
+La configurazione delle liste è una riga in `ui.lista_colonna` per colonna,
+appesa al CSV `db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv`.
+
+| Lista | `lista_id` | Colonne nuove |
+| --- | --- | --- |
+| `vendite.ordini` | **7** | `data_consegna_richiesta_cliente_min` |
+| `catalogo.articoli` | **26** | `modo_approvvigionamento`, `gestito_a_magazzino`, `lead_time_giorni` |
+
+Per ogni riga vanno dati: `codice`, `etichetta`, `campo_sorgente` (il nome della
+colonna **nella vista**), `tipo_colonna = informazione`, `tipo_dato`
+(`date` / `boolean` / `numero`), `formato` (`date_short` per le date),
+`larghezza_default`, `ordine_default`, `allineamento`, `gruppo`,
+`filtrabile` / `ordinabile` / `esportabile`, `etichetta_i18n_key`, `priorita`.
+
+⛔ **`sensibile` resta `f`.** Non è un'etichetta: è un **cancello** — a `t`, senza
+il grant corrispondente, la colonna diventa **invisibile** e nessuno capisce
+perché.
+
+⚠️ **Il CSV si appende a mano.** `csv.writer` di Python pianta un CRLF e ri-quota
+tutto il file: dopo l'append, `git diff --numstat` deve dare **`1 1`** e non un
+rewrite di centinaia di righe.
+
+⭐ **Non c'è niente da aspettare, sul FE.** Le liste si montano già con
+`<ListaConfigurabile>`: una colonna nuova **compare come dato**, senza toccare un
+componente. L'unica cosa che serve dall'altro lato sono le **traduzioni**.
+
+> 🔴 **Vero per la lista 7, FALSO per la lista 26 — verificato sui repository il
+> 2026-09-12.** `ordini_repository` fa `SELECT v.* FROM vendite.vw_ordini_lista`
+> (lista **e** dettaglio): lì la colonna arriva da sola. `catalogo_repository`
+> invece proietta una **lista esplicita** (`ARTICOLI_DETAIL_COLUMNS`) da
+> `vw_articoli_dettaglio`: le tre colonne nuove **non escono** finché il BE non
+> le aggiunge. ⛔ E il difetto è **muto due volte**: il trigger DB
+> `ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente` è verde (la colonna
+> nella vista c'è), e il cancello Django `test_lista_proiezione_campo_sorgente`
+> **salta le liste che hanno una vista** — è nato per le 39 senza. Cella vuota,
+> export con l'intestazione e niente dentro, colonna accendibile in
+> «Personalizza» che non mostra niente.
+> ⇒ Le tre righe della lista 26 si seminano **`attivo = f`** e le accende il BE
+> nello stesso commit in cui estende la proiezione (memoria *colonna con
+> `campo_sorgente`: `attivo=f` fino al BE*). La riga della lista 7 nasce attiva.
+> ✅ **Accese il 14-09** nel commit BE che estende `ARTICOLI_DETAIL_COLUMNS`
+> (`git diff --numstat` = `3 3`). ⚠️ Sul DB di sviluppo restano `f` finché il
+> mirror `20260806-15` (`runOnChange`) non ri-esegue: al prossimo `db-migrate`,
+> di Tid.
+>
+> ⚠️ **`ordinabile = t` è una modifica in due file.** La whitelist di ordinamento
+> vive nel repository (`_ORDER_COLS_ORDINI`, `ARTICOLI_ORDER_COLUMNS`) e
+> `scripts/gen_seed_lista.py --verifica-ordinamento <codice>` confronta le due
+> sedi: una colonna `ordinabile=t` fuori whitelist è *una freccia che non
+> ordina*. Chi semina `t` lo scrive nella §5.5 come voce BE, o semina `f`.
+>
+> ✅ **Seminate il 2026-09-13 (P-7): righe `746` → `749` di `lista_colonna.csv`,
+> append a mano, `git diff --numstat` = `4 0`.** Il mirror `20260806-15`
+> (`runOnChange`) le carica: provato rieseguendo l'upsert su **tutte** le 748
+> righe in transazione annullata — nessuna riga irriscrivibile, il trigger che
+> valida `campo_sorgente` contro la vista le ha accettate.
+>
+> | id | lista | `codice` | `campo_sorgente` | `attivo` | `ordinabile` | chiave i18n |
+> | --- | --- | --- | --- | --- | --- | --- |
+> | 746 | 7 | `data_consegna_richiesta_cliente_min` | idem | **t** | f | `vendite.ordini.col_data_consegna_richiesta_cliente_min` |
+> | 747 | 26 | `modo_approvvigionamento` | `modo_approvvigionamento_descrizione` | **f** | f | `catalogo.col_modo_approvvigionamento` |
+> | 748 | 26 | `gestito_a_magazzino` | idem | **f** | f | `catalogo.col_gestito_a_magazzino` |
+> | 749 | 26 | `lead_time_giorni` | idem | **f** | f | `catalogo.col_lead_time_giorni` |
+>
+> * `ordinabile = f` su **tutte e quattro**: nessuna è in whitelist
+>   (`_ORDER_COLS_ORDINI`, `ARTICOLI_ORDER_COLUMNS` — che oggi non ordina
+>   nemmeno tipologia o gruppo). `--verifica-ordinamento` è verde su entrambe le
+>   liste. Accenderla è la modifica in due file della nota qui sopra.
+> * `filtrabile = f` sulla 746: la lista ordini filtra per data **documento**
+>   (`data_da`/`data_a` nel BE), non per questa. Il flag oggi non è letto da
+>   nessun componente FE (solo dal drawer di amministrazione), quindi è
+>   dichiarativo — ma un `t` prometterebbe un filtro che il BE non ha.
+> * **Il preset di default non è stato toccato** (`lista_preset_colonna.csv`):
+>   `ui.fn_resolve_lista_config` fonde le colonne nuove del catalogo con
+>   `visibile = false`, quindi la 746 compare in «Personalizza colonne» e
+>   l'operatore la accende. Metterla nella vista standard di tutti è una scelta
+>   di UX (di Tid), non un fatto del DB.
+> * 🔴 **`scripts/check_i18n_keys.py` è rosso su `746` finché il FE non aggiunge
+>   la chiave** (le tre a `attivo = f` non le conta). Prima dell'append il
+>   cancello era verde; dopo, `[X] 1 INTESTAZIONI DI COLONNA senza traduzione`.
+>   La CI frontend (`ci-frontend.yaml`) gira solo su path `frontend/**`, quindi
+>   una PR solo-DB non la vede — la **prima PR FE** sì. È lo stesso meccanismo
+>   con cui il §12.3 delle linee guida fa arrivare le `reason_key` al FE, ed è il
+>   precedente del 09-08 (`col_riferimento`, 745): CSV e `it.json`/`en.json`
+>   nello **stesso** commit, ma quello era un commit FE. Non l'ho fatto io:
+>   `frontend/` è fuori perimetro del ramo DB.
+>   ✅ **DECISO (Tid, 2026-09-14): resta al FE** — e il FE l'ha **già fatto**:
+>   su `origin/Tito-dev` (commit `f3f011edc`, «Aggiornamento BE lista colonne»)
+>   `it.json` ed `en.json` portano `col_data_consegna_richiesta_cliente_min`.
+>   Alla merge del ramo DB il cancello torna verde da solo. Le altre dodici
+>   chiavi di §5.4 non ci sono ancora: arrivano con il lavoro BE/FE di §5.5.
+>   ✅ **Arrivate il 14-09**: `check_i18n_keys.py` verde con le tre righe 747-749
+>   accese e quindi contate.
+
+### 5.4 Le chiavi i18n dichiarate qui
+
+Le chiavi seguono la convenzione già in uso (`vendite.contratti.col_data`,
+`vendite.ordini.col_data`). Sono queste, e il FE deve solo aggiungere il testo:
+
+```text
+vendite.ordini.col_data_consegna_richiesta_cliente_min
+vendite.ordini_righe.col_data_consegna_richiesta_cliente
+vendite.ordini_righe.col_data_consegna_confermata
+catalogo.articoli.col_modo_approvvigionamento
+catalogo.articoli.col_gestito_a_magazzino
+catalogo.articoli.col_lead_time_giorni
+config.modi_approvvigionamento.acquisto
+config.modi_approvvigionamento.produzione
+config.modi_approvvigionamento.stock
+config.modi_approvvigionamento.non_applicabile
+```
+
+> 🔴 **Sette chiavi su dieci non seguono i VICINI — verificato in `it.json` il
+> 2026-09-12.** L'elenco sopra era scritto a regola (`<area>.<entità>.*`) senza
+> guardare come sono già battezzate le colonne **della stessa lista** e dello
+> stesso form:
+>
+> | Chiave proposta | Che cosa c'è già accanto | Forma coerente |
+> | --- | --- | --- |
+> | `catalogo.articoli.col_*` | la lista 26 usa `catalogo.col_codice`, `catalogo.col_uom`, `catalogo.col_composito`… — `catalogo` è **piatto**, non esiste `catalogo.articoli` | `catalogo.col_modo_approvvigionamento`, `catalogo.col_gestito_a_magazzino`, `catalogo.col_lead_time_giorni` |
+> | `vendite.ordini_righe.col_*` | non esiste il ramo `ordini_righe`: i campi di riga vivono in `vendite.ordini.riga_articolo`, `riga_quantita`, `riga_prezzo`… | `vendite.ordini.riga_data_consegna_richiesta_cliente`, `vendite.ordini.riga_data_consegna_confermata` (e i gemelli in `vendite.preventivi.riga_*`) |
+> | `config.modi_approvvigionamento.*` | ⛔ **non servono**: `config.nature_vendita` — il modello dichiarato — non ha nessuna chiave; la select mostra la `descrizione` del DB via `LookupSelect rel="config.nature_vendita"`, e la colonna di lista espone `modo_approvvigionamento_descrizione` | nessuna |
+> | `vendite.ordini.col_data_consegna_richiesta_cliente_min` | ✅ coerente con `vendite.ordini.col_data` | invariata |
+> | *(mancava)* `giorni_ritardo` sul pannello | il pannello ha il suo ramo, `vendite.situazione_merce.*` | `vendite.situazione_merce.col_giorni_ritardo` + le due date |
+>
+> ⚠️ È una decisione di **forma** e non di sostanza (D-C in §10.3): la regola di
+> `frontend-standards` ammette entrambe — «l'indirizzo parte dall'area» — e il
+> presidio `scripts/check_i18n_keys.py` passa in tutti e due i casi. Il criterio
+> che consiglio è quello dei vicini: **una lista con due grammatiche di chiave
+> è la forma in cui la terza nasce sbagliata**.
+>
+> ✅ **DECISO (Tid, 2026-09-12): i vicini.** L'elenco che il FE deve tradurre,
+> e che sostituisce quello in cima alla sezione, è:
+>
+> ```text
+> vendite.ordini.col_data_consegna_richiesta_cliente_min
+> vendite.ordini.riga_data_consegna_richiesta_cliente
+> vendite.ordini.riga_data_consegna_confermata
+> vendite.preventivi.riga_data_consegna_richiesta_cliente
+> vendite.situazione_merce.col_data_consegna_richiesta_cliente
+> vendite.situazione_merce.col_data_consegna_confermata
+> vendite.situazione_merce.col_giorni_ritardo
+> catalogo.col_modo_approvvigionamento
+> catalogo.col_gestito_a_magazzino
+> catalogo.col_lead_time_giorni
+> vendite.commesse.field_descrizione
+> vendite.commesse.field_data_apertura
+> vendite.commesse.field_responsabile
+> ```
+>
+> ✅ **Tutte e tredici in `it.json`/`en.json` dal 14-09**, più le chiavi di
+> servizio dei form nuovi (`vendite.ordini.riga_data_consegna`,
+> `vendite.situazione_merce.ritardo_giorni`/`ritardo_in_tempo`,
+> `catalogo.field_*`/`select_*`/`hint_*` dell'approvvigionamento,
+> `vendite.commesse.select_responsabile`/`responsabile_non_attivo`/
+> `testata_salva`/`testata_salvata`, `amministrazione.famiglie_documento.billing_account_hint`).
+>
+> ⚠️ Le tre di `vendite.commesse.*` non c'erano nell'elenco originale: il drawer
+> commessa ha tre campi nuovi e le sue chiavi vivono in quel ramo, che esiste.
+> Le due di `acquisti` (`riga_data_consegna_richiesta`,
+> `riga_data_consegna_confermata_fornitore`) arrivano con il cantiere acquisto,
+> che oggi non ha un form di riga. `etichetta_i18n_key` in `lista_colonna.csv`
+> porta le chiavi `col_*` di questo elenco.
+
+### 5.5 Che cosa deve fare il BE
+
+1. ✅ **Righe d'ordine — scrittura**: gli endpoint di creazione/aggiornamento riga
+   (vendite e acquisti) devono accettare e persistere le due date. Sono
+   nullable: ometterle resta legittimo. *(14-09: vendite sì; `acquisti` non ha
+   ancora endpoint di riga — vedi la voce 1 del riquadro sotto.)*
+2. ✅ **Drawer articolo — scrittura**: i tre campi nuovi nel payload del drawer, con
+   il modo di approvvigionamento come **lookup** sul vocabolario.
+3. ✅ **Lookup nuovo**: `config.modi_approvvigionamento` va esposto come le altre
+   decodifiche (attivi, ordinati per `ordine`). *(14-09: come le altre = per
+   `descrizione`, che è il contratto del lookup generico — nota 4 sotto.)*
+4. ✅ **Drawer commessa**: `descrizione` e `responsabile` in scrittura,
+   `data_apertura` in sola lettura (la scrive il default).
+5. ✅ **Niente da fare per la lista**: le colonne arrivano dalla configurazione.
+   *(vero per la lista 7; per la 26 e il pannello situazione merce no — riquadro sotto.)*
+
+> 🔴 **L'elenco qui sopra è INCOMPLETO, e la §5.5 «deve bastare da sola» —
+> riscritto il 2026-09-12 dopo aver letto i repository, non i documenti.** La
+> frase *«consumare e basta»* è vera in **un** punto (la lista ordini legge
+> `SELECT v.*`); ovunque altrove il backend **proietta colonne per nome**, e una
+> colonna nuova che nessuno nomina non esiste per il frontend. Voce per voce:
+>
+> | # | Superficie | Che cosa c'è da fare, davvero | Dove |
+> | --- | --- | --- | --- |
+> | 1 | **Righe ordine/preventivo/ordine d'acquisto — lettura** | `list_righe` e `get_riga` proiettano colonne esplicite: le due date vanno **aggiunte alla SELECT**, o il form di riga non le vede mai | `vendite/db/ordini_repository.py`, `preventivi_repository.py`, l'omologo di `acquisti` |
+> | 1-bis | **Righe — scrittura** | `create_riga` ha l'`INSERT` con l'elenco colonne; `update_riga` passa da `execute_dynamic_update` (whitelist del chiamante); nel service il parsing con `optional_iso_date` — una data malformata è un `400`, non un `500`. 🔴 **E c'è un fatto di modello da decidere lato BE** (*letto il 13-09 in `ordini_service`*): `_STATI_RIGHE_MODIFICABILI = {"DRAFT"}` — le righe si scrivono **solo in bozza**. `data_consegna_confermata` è «quando ci si impegna», cioè si decide **alla conferma** (carico e scarico §5-bis) e può cambiare **dopo** (il fornitore ritarda). Il DB non mette nessun guard di stato su questa colonna, di proposito; ma con `update_riga` com'è oggi la promessa si scrive solo prima di confermare. ⇒ O il dialog di conferma raccoglie le date nello stesso atto della transizione, o serve un **verbo suo** per la data confermata su ordine `CONFERMATO` (stampo: gli override di prezzo). Non è di questo brief: è dichiarato perché non venga scoperto in collaudo. ✅ *Verificato il 13-09 nella prova di P-6*: l'`UPDATE` delle due date su una riga di ordine **impegnato** (riga 21, `NON_SPEDITA`) passa a DB — nessun guard di stato le ferma, com'è voluto; il limite alla bozza è solo del BE | stessi file + `*_service.py` |
+> | 1-ter | **Form di riga (FE)** | due `DatePicker` nel form della riga (`RigheMasterDetailTable` dei tre domini), chiavi i18n di §5.4 | `vendite/components/*RigheDrawer*`, acquisti |
+> | 2 | **Articolo — lettura** | ⛔ `ARTICOLI_DETAIL_COLUMNS` è una tupla esplicita di 49 nomi: **le tre colonne nuove non escono** finché non ci sono (§5.3, riquadro). Poi `ARTICOLI_CREATE_COLUMNS` (da cui `_UPDATE_COLUMNS` deriva) per la scrittura e, se `ordinabile=t`, `ARTICOLI_ORDER_COLUMNS` | `catalogo/db/catalogo_repository.py` |
+> | 3 | **Lookup** | ⭐ **non è un endpoint**: è **una riga** in `_REL_CONSENTITE` (`core/db/dbops_repository.py`, la whitelist del lookup generico) + `<LookupSelect rel="config.modi_approvvigionamento">` nel drawer — esattamente com'è fatto `config.nature_vendita` | `dbops_repository.py`, `ArticoloDrawer.vue` |
+> | 4 | **Commessa** | come scritto sopra. ✅ D-A decisa: il campo è `responsabile_risorsa_umana_id` → `anagrafiche.risorse_umane`. ⚠️ **Serve un lookup di risorse umane**, e oggi l'unico in servizio è `GET /pratiche/operatori/` (per reparto, area `pratiche`): il lookup generico non serve, `risorse_umane` non ha `codice`/`descrizione`. O si libera quello con `skip_area_check` (pattern *lookup cross-dominio* del catalogo BB) o nasce `/anagrafiche/risorse-umane/lookup/` — lo decide il BE; in entrambi i casi envelope `{"results": [...]}` | `commesse_service.py`, drawer commessa |
+> | 5 | **Lista ordini (7)** | ✅ davvero niente: `SELECT v.*` in lista e dettaglio | — |
+> | 5-bis | **Lista articoli (26)** | ⛔ vedi la voce 2: le righe di `ui.lista_colonna` nascono `attivo=f` e le accende il BE **nello stesso commit** della proiezione | `lista_colonna.csv` + `catalogo_repository.py` |
+> | 6 | **Pannello situazione merce** *(mancava del tutto)* | la SELECT su `vw_situazione_merce_ordine` in `vendite_repository` proietta **22 colonne per nome**: `data_consegna_richiesta_cliente`, `data_consegna_confermata` e `giorni_ritardo` vanno aggiunte, e il BB FE `situazioneMerce` deve **renderle** (una colonna «ritardo» nella sezione per riga) — è il posto per cui `giorni_ritardo` esiste | `vendite_repository.py` (≈ r. 4775), `src/vendite/_shared/situazioneMerce/` |
+> | 7 | **P-9 — confermata il 14-09** | `famiglie_service._OBBLIGATORI_CREATE` perde la voce `colonna_billing_account` (il DB non la pretende più: `20260914-11`); `views_famiglie.py` il `CharField` di **creazione** (r. 125) diventa `required=False` come già quello di update; `test_famiglie_service.py` perde il caso «BA obbligatorio» e ne prende uno «BA vuoto → NULL»; il drawer FE `FamigliaDocumentoDrawer.vue` toglie l'asterisco a r. 271 e manda `null`/`''` senza bloccare. ⚠️ Finché non lo fanno, il BE rifiuta **prima** della madre: nessun difetto, una capacità del DB non ancora esposta. ⚠️ La firma della madre **non cambia** (posizioni e tipi): `_CAMPI_CREATE` resta com'è | `famiglie_service.py`, `views_famiglie.py`, `test_famiglie_service.py`, `FamigliaDocumentoDrawer.vue` |
+>
+> ⚠️ **Un criterio per non scoprirne un'ottava fra sei mesi**: prima di dire che
+> una colonna «arriva dalla vista», cercare **`SELECT` con l'asterisco** nel
+> repository che la serve. Se la SELECT elenca i nomi, la colonna è un lavoro BE.
+
+> ✅ **Esecuzione BE/FE — 2026-09-14, `dev/backend-tid`.** Voce per voce, con
+> ciò che il codice fa davvero e i tre fatti emersi facendolo:
+>
+> | # | Fatto | Dove |
+> | --- | --- | --- |
+> | 1 · 1-bis | Le due date escono da `list_righe`/`get_riga` (ordini) e la richiesta da quelli dei preventivi (proiezione esplicita); entrano in `create_riga` e nelle whitelist di `update_riga`. ⭐ Il parsing è il BB **già esistente** `PayloadValidator.optional_date` (nessun BB nuovo): malformata → 400 col campo (`E_ORD_VALIDAZIONE` / `E_PREV_VALIDAZIONE`), `null` esplicito azzera in PATCH, `""` è un'assenza. `PreventivoRigaRow` porta la chiave. **`acquisti`: niente** — l'app ha 23 righe Python e nessun repository di righe; le sue due date entrano col cantiere acquisti, come già detto in §5.4 | `ordini_repository/service`, `preventivi_repository/service`, `preventivi_views` (schema), `types.py` |
+> | 1-ter | Due `DatePicker` in `OrdiniRigaForm`, uno in `PreventiviRigaForm` (ISO ↔ `Date` con `toDateString`/`parseIsoDate`, `null` mandato sempre così lo svuotamento azzera); una colonna nella tabella righe di ciascuno — sull'ordine mostra la **promessa** e, in sua assenza, la richiesta in tono muted col tooltip che dice quale delle due si legge | `OrdiniRigaForm/RigheTable`, `PreventiviRigaForm/RigheTable` |
+> | 2 | `ARTICOLI_DETAIL_COLUMNS` + le cinque colonne della vista; `ARTICOLI_CREATE_COLUMNS` (→ `_UPDATE`) + le tre scrivibili. Nel service: `modo_approvvigionamento_id` sulla forma di `natura_vendita_id` (mai `null` esplicito), `gestito_a_magazzino` fra i flag, `lead_time_giorni` fra gli int nullable con il `>= 0` **anticipato** col campo (il fallback dell'`IntegrityError` direbbe «violazione vincoli» senza dire quale). `ARTICOLI_ORDER_COLUMNS` invariata (`ordinabile = f`) | `catalogo_repository.py`, `catalogo_service.py` |
+> | 3 | Una riga in `_REL_CONSENTITE` + `<LookupSelect rel="config.modi_approvvigionamento">` nel drawer, con `ToggleSwitch` e `InputNumber min 0` accanto. ⚠️ **Ordinato per `descrizione`**, non per `ordine`: è il contratto di `dbops.fn_get_lookup_codici` per tutti i vocabolari (`ORDER BY codice \| descrizione`), `nature_vendita` compresa — «come le altre decodifiche» vale così | `dbops_repository.py`, `ArticoloDrawer.vue` |
+> | 4 | `fn_get_commessa_stato` porta anche `descrizione`, `data_apertura` (ISO), `responsabile_risorsa_umana_id`, `responsabile_display` (`get_commessa_testata`: `fn_get_commessa_stato` non le espone, il service le fonde). **`PATCH /commesse/<id>/`** (`aggiorna_commessa_testata`, whitelist chiusa, `null` azzera, 404 su zero righe = inesistente o fuori scope). ⭐ **Lookup nuovo** `GET /anagrafiche/risorse-umane/lookup/` (`skip_area_check`, envelope `results`): `/pratiche/operatori/` è per reparto e sull'area `pratiche`, non serviva. 🔴 **Fatto emerso**: il require sul figlio nato da `ci_apply` rifiuta una persona disattivata con `E_ATTIVO_REQUIRE`, che è di classe **TECNICO** (500) e parla di trigger — lo stesso codice del montaggio sbagliato. Il service pre-verifica «attiva» e risponde 400 col campo; il guard DB resta l'autorità. Nessun guard di stato, come il DB. Drawer: sezione testata sotto l'header (descrizione, responsabile con la persona **disattivata** aggiunta come voce non selezionabile, data in sola lettura, «Salva testata» acceso solo su modifica vera) | `commesse_repository/service`, `views.py`, `urls_v1.py`, `anagrafiche_service.py` (nuovo), `views_risorse_umane.py` (nuovo), `CommessaGestioneDrawer.vue`, `apiCore.js`, `api/commesse.js` |
+> | 5-bis | Righe 747-749 **accese** (`attivo = t`) nello stesso commit della proiezione. ~~La 748 (boolean) si rende con uno slot `#cell-gestito_a_magazzino` come il vicino `is_solo_componente`~~ 🔴 **Rivisto il 14-09 sera (ok Tid)**: quello slot era la **terza copia** dello stesso Tag sì/no (327, 748 e la 220 delle categorie clienti — che aveva **già** `formato=yesno` a catalogo e lo slot sopra, perché il formatter rendeva testo). ⇒ BB `SiNoTag` in `core/components`, `CellaConfigurabile` rende `yesno` (e `tipo_dato=boolean` senza formato) con quello, i tre slot spariti, righe **327 e 748** con `formato=yesno` nel seed; `git diff --numstat` del CSV = `4 4`. Un booleano in lista torna a essere una riga di CSV, come §5.3 promette | `lista_colonna.csv`, `SiNoTag.vue`, `CellaConfigurabile.vue`, `ArticoliSearchTable.vue`, `CategorieClientiSearchTable.vue` |
+> | 6 | Le tre colonne nella proiezione (22 → 25 nomi); nel pannello due colonne data e una colonna «Ritardo» a Tag: vuota se `null`, verde «In tempo» se `0`, rossa «N gg di ritardo» se `> 0`. Il verso **non** si ricalcola nel FE | `vendite_repository.py`, `SituazioneMerceContenuto.vue` |
+> | 7 | `_OBBLIGATORI_CREATE` senza il BA; lo schema OpenAPI di creazione `required=False, allow_null=True`; il test «BA obbligatorio» sostituito da «BA vuoto/assente → NULL alla madre» (tre forme); il drawer senza asterisco e con l'hint. `_CAMPI_CREATE` invariata (posizioni e tipi della madre) | `famiglie_service.py`, `views_famiglie.py`, `test_famiglie_service.py`, `FamigliaDocumentoDrawer.vue` |
+> | §5.4 | Le dodici chiavi mancanti in `it.json`/`en.json` (i vicini, D-C) + le chiavi di servizio dei form nuovi (select/hint/salva). `check_i18n_keys.py` verde, con le tre righe della lista 26 ora attive e quindi contate | locales |
+>
+> Presidi scritti: date di consegna (3 + 3 test, ordini/preventivi), Blocco B
+> (3, catalogo), testata commessa (9 service + 3 API), lookup risorse umane
+> (5, forma della risposta compresa), famiglie (2-bis). ⭐ Il binding reale
+> delle query nuove è stato provato **sul DB di sviluppo** in transazione
+> annullata, con contesto operatore (RLS attiva): i mock non lo vedono.
+> Verifiche complessive: suite backend **4751** test verdi con
+> `ZEROERP_TEST_DB_E2E=1` (zero skip); frontend lint, guard, 44 test e build
+> verdi; `check_i18n_keys.py` verde; ruff verde. Documentazione aggiornata:
+> `api_ordini.md`, `api_preventivi.md`, `api_commessa_stato.md`,
+> `api_situazione_merce.md`, `api_catalogo.md`, `api.md` (inventario endpoint +
+> lookup dedicati), i due cataloghi BB.
+>
+> **Note dell'esecuzione — fatti emersi e ciò che resta a Tid (2026-09-14):**
+>
+> 1. ⚠️ **Il DB di sviluppo non mostra ancora le tre colonne della lista 26.**
+>    Le righe 747-749 sono `attivo = t` nel CSV, ma il mirror `20260806-15` è
+>    `runOnChange` e le ricarica solo al prossimo `db-migrate` — che non lancia
+>    l'agent. Fino ad allora la lista 26 le tiene spente (la proiezione BE le
+>    porta già, la colonna «Personalizza» non le offre).
+> 2. 🔴 **Un codice che dice due cose, candidato allo split per il team DB.**
+>    Il require sul figlio nato da `ci_apply`
+>    (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`) rifiuta un
+>    responsabile **disattivato** con `E_ATTIVO_REQUIRE`, che è di classe
+>    **TECNICO** (500) perché lo stesso codice copre il trigger *montato male*
+>    (`TG_NARGS`, colonne inesistenti). Per l'operatore è un dato sbagliato, non
+>    un guasto. Il BE pre-verifica «persona attiva» (`AnagraficheService.
+>    get_risorsa_umana_lookup`) e risponde 400 col campo; il guard DB resta
+>    l'autorità. È la stessa regola di AGENTS.md («chi può rimediare decide la
+>    classe»), applicata a un codice generato dal framework delle automazioni:
+>    vale per **tutte** le coppie ATTIVO, non solo per questa.
+> 3. ⚠️ **La voce 1-bis resta dichiarata e non decisa.** Le righe d'ordine si
+>    scrivono solo in `DRAFT`, ma `data_consegna_confermata` è «quando ci si
+>    impegna», cioè si decide alla conferma e può cambiare dopo. Il BE non ha
+>    inventato niente: serve un verbo suo (stampo: gli override di prezzo) o il
+>    dialog di conferma che la raccolga. Decisione di Tid, cantiere suo.
+> 4. ℹ️ **«Ordinati per `ordine`» non è vero per nessun vocabolario del lookup
+>    generico**: `dbops.fn_get_lookup_codici` ordina per `codice` o
+>    `descrizione` (whitelist di `order_col`), `nature_vendita` compresa. Il
+>    modo di approvvigionamento segue il suo modello dichiarato; se un giorno
+>    l'ordine di presentazione conterà, è un'estensione del lookup generico,
+>    non un endpoint dedicato.
+> 5. ℹ️ **`acquisti` non ha endpoint di riga** (23 righe Python, nessun
+>    repository): le sue due date (`data_consegna_richiesta`,
+>    `data_consegna_confermata_fornitore`) sono a DB e senza consumatore, e lo
+>    prendono col cantiere acquisti — come già scritto in §5.4 per le chiavi.
+> 6. ℹ️ **Nessun BB nuovo**: il parsing delle date di riga è
+>    `PayloadValidator.optional_date`, già a catalogo (400 col campo per
+>    costruzione). Le due cose nuove sono un lookup dedicato
+>    (`RisorseUmaneLookupView`, pattern «lookup top-level liberato») e un verbo
+>    (`PATCH /commesse/<id>/`), entrambi registrati nei cataloghi e in `api.md`.
+> 7. ℹ️ **Nessun commit**: tutto in working tree su `dev/backend-tid`, allineato
+>    a `origin/Tito-dev` con fast-forward. Gunicorn ricaricato (HUP) per la
+>    prova in-app.
+> 8. 🔴 **Revisione critica del 14-09 (sera), su richiesta di Tid — sei
+>    correzioni sul lavoro del mattino, tutte in working tree.** Due bug:
+>    (a) nel drawer commessa il responsabile **attivo** compariva come «non
+>    più attivo» in sola lettura e mentre il lookup caricava (`items` di
+>    `useGlobalLookup` parte vuoto: «assente dalle attive» si dice solo a
+>    `loaded`); (b) su `preventivi.gestisci_riga` la data si validava dentro la
+>    chiamata a `create_riga`, cioè **dopo** la richiesta L3 che crea la pratica
+>    e manda un'email fuori transazione — ora in testa con le altre validazioni,
+>    e il test pretende che il resolver non sia chiamato. Quattro fragilità:
+>    la catena `risorse_umane → soggetti_ruoli → soggetti` scritta tre volte
+>    quando esiste la vista modello `anagrafiche.vw_risorse_umane_dettaglio`
+>    (ora una query privata nel repository anagrafiche + `LEFT JOIN` sulla vista
+>    in `get_commessa_testata`, `CommessaTestataRow` tipizzata); il blocco
+>    `natura_vendita_id`/`modo_approvvigionamento_id` byte-identico in
+>    `catalogo_service` (helper locale `_extract_fk_not_null`); il form di
+>    testata senza `useDrawerFormPreserve` (ogni `reloadAll` cancellava la
+>    descrizione non salvata); e la voce 5-bis qui sopra. Binding delle query
+>    riscritte provato sul DB di sviluppo in transazione annullata, **col caso
+>    del responsabile valorizzato costruito** (nessuna commessa in dev ne ha
+>    uno) e col rifiuto DB `E_ATTIVO_REQUIRE` forzato `IMMEDIATE`.
+> 9. 🔴 **Emerso il 14-09 (sera) aggiornando le guide — per il team DB.**
+>    `vendite.fn_crea_revisione_preventivo` copia le righe attive con un
+>    `INSERT` a **elenco esplicito di colonne** (doc auto-gen, riga 161) e
+>    **non porta `data_consegna_richiesta_cliente`** sulla nuova revisione:
+>    P-5 ha coperto il passaggio preventivo → ordine, non quello rev N → rev
+>    N+1, e nessun pgTAP lo pinna. È la stessa classe del §2.4 («si perde nel
+>    punto in cui il documento cambia») su un percorso che il brief non aveva
+>    censito. Dichiarato nelle guide come comportamento corrente
+>    (`gestione-preventivi` §2.2 e §4.2); la correzione è un changeSet di
+>    `20_code` + un caso nel pgTAP delle revisioni, di `dev/db-tid`.
+
+⚠️ **Sulla commessa, un fatto che eviterà una ricerca a vuoto: non esiste una
+lista configurata `vendite.commesse`.** In `ui.lista_definizione` ci sono
+`vendite.commesse_attivita` (id 38, senza vista) e il drill-down di dashboard,
+non la commessa. Le tre colonne del Blocco C hanno quindi come sola superficie il
+**drawer/API**, finché una lista non verrà configurata — e configurarla è dato,
+non un cantiere.
+
+⛔ **Capability solo sul DETTAGLIO**: se serviranno azioni di riga governate, la
+sede è il dettaglio, non la lista.
+
+### 5.6 Che cosa NON arriva a BE/FE con questo brief
+
+Niente che riguardi la produzione: **nessun ODL, nessuno stato di copertura,
+nessun ciclo di lavorazione, nessun consuntivo**. Se compaiono in una richiesta,
+non vengono da qui.
+
+---
+
+## 6. I passi
+
+> ⚠️ La numerazione dei file (`YYYYMMDD-NN`) è **globale per data** e il numero
+> libero **scade nel minuto**: si ricontrolla subito prima di salvare, non
+> all'inizio del lavoro.
+
+| # | Passo | Fase |
+| --- | --- | --- |
+| **P-1** ✅ *applicato il 13-09 (§6-bis)* | `config.modi_approvvigionamento`: tabella + seed CSV + riga in `fk_index_policy` per la FK che nasce in P-2. 🔴 *2026-09-12*: **niente seed del lock** — `codice_interno` è implicito (§3.2, riquadro); la coppia ATTIVO nasce da `ci_apply` | `00_schema` + `80_data` |
+| **P-2** ✅ *applicato il 13-09 (§6-bis)* | `catalogo.articoli`: `gestito_a_magazzino` e `lead_time_giorni` in un passo; `modo_approvvigionamento_id` **in due** — 🔴 *2026-09-12*: colonna nullable + FK in `00_schema`, poi in `80_data` **dopo** il seed di P-1: id di `ACQUISTO` risolto per `codice_interno`, backfill, `SET DEFAULT`, `SET NOT NULL` (forma di `20260609-04`, §3.3 riquadro). ✅ default `ACQUISTO` deciso 2026-09-02 | `00_schema` + `80_data` |
+| **P-3** ✅ *applicato il 13-09 (§6-bis)* | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date. ✅ nomi da **D-16** (§2.2), decisa | `00_schema` |
+| **P-4** ✅ *scritto e provato il 13-09 (§6-ter)* | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_risorsa_umana_id` → `anagrafiche.risorse_umane`. ✅ **§4-bis**: `data_apertura` **NOT NULL**, valore iniziale da `data_insert` (deciso 2026-09-02). ✅ *2026-09-12*: bersaglio della FK deciso (**D-A**, §4); + riga in `fk_index_policy`; la coppia ATTIVO nasce da `ci_apply` e si asserisce in P-8, non con DDL. 🔴 *2026-09-13*: `data_apertura` **in tre passi** come `modo_approvvigionamento_id` — il `DEFAULT` da funzione non può stare nell'`ADD COLUMN` (§4-bis, riquadro; §10.2 punto 13) | `00_schema` + `80_data` |
+| **P-5** ✅ *scritto e provato il 13-09 (§6-ter)* | `fn_push_preventivo_a_ordine` porta avanti la data richiesta (+ toglie il nome morto nel commento). 🔴 *2026-09-12*: la legge dalla **quarta vista** di P-6, non con un `JOIN` suo | `20_code` |
+| **P-6** ✅ *scritto e provato il 13-09 (§6-ter)* | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` + 🔴 `vendite.vw_preventivi_righe_smistabili_ordine` (*2026-09-12*, §5.2). ⚠️ `security_invoker` ri-specificata sulle tre di `vendite`, **non** aggiunta a quella di `catalogo`. ✅ *2026-09-14*: `giorni_ritardo` contro `COALESCE(confermata, richiesta)` — deciso da Tid (§5.2, riquadro) | `20_code` |
+| **P-7** ✅ *scritto e provato il 13-09 (§6-ter)* | `ui.lista_colonna`: le righe nuove, append al CSV. 🔴 *2026-09-12*: le tre della lista 26 nascono **`attivo=f`** (§5.3 riquadro); `ordinabile=t` solo se il BE estende la whitelist nello stesso giro. *2026-09-13*: righe 746-749, `ordinabile=f` su tutte; `check_i18n_keys.py` rosso sulla 746 finché il FE non traduce (§5.3) | `80_data` |
+| **P-8** ✅ *chiuso il 14-09: tre pgTAP verdi col runner (Tid)* | pgTAP (§7). 🔴 *2026-09-12*: le righe sono sotto RLS, il trigger «riga spenta» viene da `ci_apply` — vedi il riquadro di §7. *14-09*: tre file, 33 asserzioni, provati in transazione annullata come proprietario; il lancio col runner è di Tid | `db/pgtap` |
+| **BE/FE** ✅ *eseguito il 14-09 (§5.5, riquadro «Esecuzione»)* | Le sette voci di §5.5 + le tredici chiavi di §5.4, su `dev/backend-tid`: righe 747-749 accese nel CSV (il mirror le ricarica al prossimo migrate), lookup `/anagrafiche/risorse-umane/lookup/`, `PATCH /commesse/<id>/`. Note e fatti emersi: i sette punti in coda al riquadro | `backend/` + `frontend/` + `lista_colonna.csv` |
+| **P-9** ✅ *applicata il 14-09, test verdi (§6-quater)* | ⚠️ ~~OPZIONALE, da confermare~~ **CONFERMATA** (§3-bis) — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente`. 🔴 *2026-09-12*: + `fn_crea_famiglia_documento` (oggi la pretende), + BE/FE (§3-bis censimento) | `00_schema` + `20_code` |
+| **P-10** ✅ *emersa dal BE il 14-09, applicata da Tid alle 15:45 (§6-quinquies)* | `fn_crea_revisione_preventivo` porta la data richiesta sulla **rev N+1**: P-5 aveva coperto preventivo→ordine, non rev N→N+1 — la revisione ricopia le righe con un **altro** elenco esplicito di colonne, e la data nasceva `NULL`. + firma e `RETURNS TABLE` ri-ancorati (`20260805-25` li aveva sciolti), `SECURITY INVOKER` esplicito. Presidio in `test-date-consegna-ordine-v1` (11-13), fixture costruita | `20_code` |
+| **P-11** ✅ *decisa da Tid il 14-09 («facciamo A»), scritta e provata (§6-quinquies), APPLICATA alle 16:15* | `fn_crea_revisione_preventivo` copia 1:1 anche `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id` sulla riga — come i componenti della stessa funzione e come `fn_crea_revisione_offerta` (invariante «prezzo fuori policy sempre marcato»). Caveat ereditato dall'offerta (ciclo di vita della pratica su rev superata: BE, `refactor-prezzi` §4.7). ⭐ pgTAP nuovo a fixture costruita con il **presidio sull'elenco completo** delle colonne copiate | `20_code` |
+
+⛔ **L'ordine di fase non è negoziabile**: `00_schema` → `20_code` → `80_data`.
+Una `preCondition` di `20_code` **non** deve verificare il *contenuto* di
+`80_data`, che gira dopo.
+
+⚠️ **Stato finale `runOnChange: false`** su schema e codice — è vietato e
+presidiato in CI (`guardrail_run_on_change.py`); resta lecito solo sul mirror CSV
+di `80_data`. E `validCheckSums` **al plurale**: il singolare è una chiave che
+Liquibase ignora.
+
+⛔ **Negli YAML si cita il NOME di questo brief**
+(`brief-db-modifiche-certe-ciclo-vendita-e-articolo`), **mai il path
+`work-in-progress/`**: il documento un giorno si sposterà, e il riferimento deve
+sopravvivere al trasloco.
+
+## 6-bis. ✅ P-1, P-2, P-3 — scritti, provati e APPLICATI il 2026-09-13
+
+> ✅ **Applicati da Tid il 2026-09-13 alle 01:00** sul DB di sviluppo: i nove
+> changeSet sono `EXECUTED` in `databasechangelog` (`20260913-04` → `-12`, in
+> ordine). Letto a valle: 4 righe in `config.modi_approvvigionamento`, **0**
+> articoli con `modo_approvvigionamento_id` NULL, le cinque colonne data
+> presenti. ⚠️ `trg_articoli_a10_modi_approvvigionamento_require_attivo_ins_upd`
+> e il gemello sul padre **non esistono ancora** (`pg_trigger`): arrivano con
+> `ci_apply`, e finché non gira il pgTAP di P-8 non li può asserire. Da qui in
+> poi i file `-04 → -12` **non si toccano più**: un cambio va in un changeSet
+> nuovo.
+
+| File | Fase | Passo | Cosa |
+| --- | --- | --- | --- |
+| `00_schema/config/20260913-04-create-modi-approvvigionamento` | `00_schema` | P-1 | la tabella, sulla forma di `nature_vendita`; CHECK `codice_interno` non vuoto; **nessun** seed del lock (implicito), **nessun** GRANT (ADP del loop) |
+| `00_schema/catalogo/20260913-05-alter-articoli-add-approvvigionamento` | `00_schema` | P-2 (1/3) | `modo_approvvigionamento_id` **nullable** + FK `fk_articoli_modi_approvvigionamento`; `gestito_a_magazzino` NOT NULL false; `lead_time_giorni` + CHECK `>= 0` |
+| `00_schema/vendite/20260913-06-alter-ordini-righe-add-date-consegna` | `00_schema` | P-3 | le due date su `vendite.ordini_righe` |
+| `00_schema/vendite/20260913-07-alter-preventivi-righe-add-data-consegna` | `00_schema` | P-3 | la richiesta su `vendite.preventivi_righe` |
+| `00_schema/acquisti/20260913-08-alter-acquisti-ordini-righe-add-date-consegna` | `00_schema` | P-3 | le due date su `acquisti.ordini_righe`, attore invertito |
+| `80_data/changelog/20260913-09-seed-modi-approvvigionamento` + `sql/config/modi_approvvigionamento.csv` | `80_data` | P-1 | i quattro modi, mirror `loadUpdateData` |
+| `80_data/changelog/20260913-10-backfill-articoli-modo-approvvigionamento` | `80_data` | P-2 (2/3) | NULL → ACQUISTO, id risolto per `codice_interno`, `DECLARE` con `%TYPE`; **solo DML** |
+| `80_data/changelog/20260913-11-alter-articoli-modo-approvvigionamento-default-notnull` | `80_data` | P-2 (3/3) | `SET DEFAULT` + `SET NOT NULL`, transazione separata dal backfill (eventi trigger in sospeso) |
+| `80_data/changelog/20260913-12-upsert-fk-index-policy-approvvigionamento` + `sql/catalogo/fk_index_policy_approvvigionamento.csv` | `80_data` | P-1/P-2 | il **no** all'indice, scritto; CSV dedicato con loader suo (non si sveglia il mirror di gennaio). La riga di P-4 entrerà nello stesso CSV |
+
+**Come è stato provato**, ed è la forma da ripetere per P-4 → P-9:
+
+1. i cinque cancelli statici della CI (`guardrail_sql_letterali`, `_run_on_change`,
+   `_precondition_seed`, `_ddl_su_trigger_automazione`, `_grant_ruolo_batch`): verdi;
+2. `scripts/liquibase5.sh … --url=offline:postgresql updateSQL` su una **copia**
+   dei nove file senza `preConditions` (non valutabili offline), con la stessa
+   struttura di cartelle perché i CSV sono relativi al changelog: l'SQL **reso da
+   Liquibase**, non riscritto — commenti, `DO` e il blocco `UPDATE … IF not found
+   THEN INSERT` dei due `loadUpdateData` compresi;
+3. i nove SQL concatenati nell'ordine di esecuzione dentro `BEGIN … ROLLBACK`,
+   eseguiti come proprietario sul DB di sviluppo con `ON_ERROR_STOP=1`. ⚠️ **Una
+   riga di prova in più**, dichiarata: `SET CONSTRAINTS ALL IMMEDIATE` fra `-10` e
+   `-11`, che emula il commit che Liquibase fa fra i due changeSet — senza,
+   l'`ALTER TABLE` muore per gli eventi trigger in sospeso, cioè esattamente la
+   ragione per cui sono due file;
+4. asserzioni prima del `ROLLBACK`: 4 modi; **257 articoli** backfillati e 0 senza
+   modo; `attnotnull` e default (`1`, `false`) letti da `pg_attribute`; le cinque
+   date presenti; la riga di policy caricata; e i cinque rifiuti attesi — CHECK sul
+   negativo (`23514`), FK su un modo inesistente (`23503`), NOT NULL (`23502`), CHECK
+   sul `codice_interno` vuoto — più un `INSERT` senza modo che prende `ACQUISTO`,
+   com'è la strada del mirror `articoli.csv`;
+5. `liquibase validate` offline sui **file veri**: *No validation errors found*
+   per tutti e nove;
+6. dopo il `ROLLBACK`: tabella, colonne, date e riga di policy **assenti** sul DB di
+   sviluppo. Nulla è stato applicato.
+
+⚠️ **Che cosa la prova NON copre, dichiarato**: la coppia ATTIVO su
+`articoli`/`modi_approvvigionamento` e il lock su `codice_interno` nascono a
+`ci_apply` — si vedranno al primo `make db-ci-apply` dopo l'apply, e li asserisce
+il pgTAP di P-8. E i `preConditions` sono stati letti, non eseguiti: sul DB di
+sviluppo passano per costruzione (`not columnExists`, `tableExists`).
+
+⚠️ La numerazione `-04 → -12` è stata verificata sul filesystem prima di ogni
+file: `-01 → -03` di oggi sono di un altro cantiere.
+
+## 6-ter. ✅ P-4, P-5, P-6, P-7 — scritti, provati e APPLICATI il 2026-09-13
+
+> Otto changeSet `20260913-13` → `-20` e **due append a CSV** che risvegliano
+> due mirror `runOnChange` già in esercizio. ✅ **Applicati da Tid alle 09:35**:
+> tutti `EXECUTED`, il mirror `-12` `RERAN`, `20260806-15` (liste) rieseguito
+> dal CSV. I file `-13 → -20` sono ora immutabili: un cambio va in un changeSet
+> nuovo. Sotto, com'erano stati provati prima dell'apply.
+
+| File | Fase | Passo | Cosa |
+| --- | --- | --- | --- |
+| `00_schema/vendite/20260913-13-alter-commesse-add-descrizione-data-apertura-responsabile` | `00_schema` | P-4 (1/3) | `descrizione` varchar(255) NULL; `data_apertura` date **NULL e senza default** (§4-bis, riquadro del 13-09); `responsabile_risorsa_umana_id` + FK `fk_commesse_risorse_umane` (`ON UPDATE CASCADE`, come `fk_pratiche_risorsa_umana` e `fk_flussi_risorsa_umana`); tre `COMMENT` |
+| `80_data/changelog/20260913-14-backfill-commesse-data-apertura` | `80_data` | P-4 (2/3) | `data_apertura ← (data_insert AT TIME ZONE SYSTEM_FUSO_ORARIO)::date` dove NULL; **solo DML**; il fuso letto come lo legge `fn_data_operativa` (default nudo), fail-loud sulle tre forme di guasto; su un DB nuovo esce prima di leggerlo |
+| `80_data/changelog/20260913-15-alter-commesse-data-apertura-default-notnull` | `80_data` | P-4 (3/3) | `SET DEFAULT script.fn_data_operativa()` + `SET NOT NULL`, transazione separata dal backfill (eventi trigger in sospeso) |
+| `80_data/sql/catalogo/fk_index_policy_approvvigionamento.csv` (+1 riga) | `80_data` | P-4 | `fk_commesse_risorse_umane`, `consentito = false`, `dll_command` col nome canonico `ix_commesse_responsabile_risorsa_umana_id`; la carica il loader `20260913-12`, che è `runOnChange` |
+| `20_code/vendite/20260913-16-update-vw-preventivi-righe-smistabili-ordine-data-consegna` | `20_code` | P-6 | `+ data_consegna_richiesta_cliente` in coda; `security_invoker=on` ri-specificata. **Prima** della funzione, per numero |
+| `20_code/vendite/20260913-17-update-vw-ordini-lista-data-consegna-min` | `20_code` | P-6 | `+ data_consegna_richiesta_cliente_min` via `LEFT JOIN LATERAL` sulle righe attive; `security_invoker=on` ri-specificata |
+| `20_code/vendite/20260913-18-update-vw-situazione-merce-ordine-date-consegna-ritardo` | `20_code` | P-6 | `+ data_consegna_richiesta_cliente`, `data_consegna_confermata`, `giorni_ritardo`; la formula di `da_spedire` in una `LATERAL` letta da entrambe; `security_invoker=on` ri-specificata |
+| `20_code/catalogo/20260913-19-update-vw-articoli-dettaglio-approvvigionamento` | `20_code` | P-6 | `+ modo_approvvigionamento_id`, `_codice_interno`, `_descrizione` (`LEFT JOIN config.modi_approvvigionamento`), `gestito_a_magazzino`, `lead_time_giorni`; **nessuna** `security_invoker`; primo `COMMENT ON VIEW` della vista |
+| `20_code/vendite/20260913-20-update-fn-push-preventivo-a-ordine-data-consegna` | `20_code` | P-5 | corpo dalla funzione viva (= doc auto-gen, diff verificato): `+ v.data_consegna_richiesta_cliente` nel cursore e nell'`INSERT`; `data_consegna_confermata` resta NULL; il commento del passo 4 nomina `trgfn_ordini_gen_numero`. Firma invariata |
+| `80_data/sql/ui/lista_colonna.csv` (+4 righe, `746 → 749`) | `80_data` | P-7 | §5.3, riquadro del 13-09; le carica il mirror `20260806-15`, che è `runOnChange` |
+
+**Come è stato provato** — la forma di §6-bis, punto per punto:
+
+1. i cinque cancelli statici della CI: verdi. In più: le due `grep` del §6c
+   (nessun `codice_interno AS *_codice`), `gen_seed_lista.py
+   --verifica-ordinamento` su `vendite.ordini` e `catalogo.articoli`: verdi.
+   `check_i18n_keys.py`: **rosso atteso** sulla chiave della 746 (§5.3);
+2. `scripts/liquibase5.sh … --url=offline:postgresql updateSQL` su una copia
+   dei dieci changeSet senza `preConditions`, nell'**ordine reale**: autogen
+   (`-13`, poi `-16 → -20` per numero) → `80_data` alfabetico (`20260806-15`
+   mirror liste, `20260913-12` mirror policy, `-14`, `-15`). 8.942 righe di
+   SQL reso, i due `loadUpdateData` compresi (il mirror delle liste ri-esegue
+   l'upsert su **tutte** le 748 righe: è la prova che nessuna è irriscrivibile);
+3. quell'SQL eseguito intero dentro `BEGIN … ROLLBACK` come proprietario, con
+   `ON_ERROR_STOP=1`, e `SET CONSTRAINTS ALL IMMEDIATE` fra `-14` e `-15`
+   (emula il commit che Liquibase fa fra i due — stessa riga di §6-bis);
+4. asserzioni prima del `ROLLBACK`, tutte verdi: `data_apertura` NOT NULL con
+   default `script.fn_data_operativa()`, **66 commesse** con
+   `data_apertura = data_insert` nel fuso `Europe/Rome`, 0 NULL; FK e NOT NULL
+   rifiutano (`23503`, `23502`); una commessa nuova senza data prende
+   `fn_data_operativa()`; la riga di policy c'è a `false`; le 4 righe di lista
+   con `attivo`/`ordinabile` attesi, 748 righe totali; le quattro viste hanno
+   la colonna nuova in **ultima** posizione, `security_invoker` sulle tre di
+   `vendite` e non su `catalogo`, `da_spedire` ancora `numeric`; su **257**
+   articoli la decodifica del modo coincide con la sorgente (non un
+   `has_column`); ⭐ **casi costruiti, non trovati**: sull'ordine 55 il `min`
+   della testata è la data più bassa fra due righe e sale quando quella riga
+   viene spenta; sulla riga 21 `giorni_ritardo` è NULL senza date, **5** con la
+   sola richiesta a −5, **3** con la promessa a −3 (vince), **0** con la promessa
+   a +2, e sulla riga 60 non impegnata resta NULL con una data a −30; ⭐ **il
+   percorso reale**: `fn_push_preventivo_a_ordine(1271)` ha creato l'ordine
+   52362 con 2 righe, tutte con la data richiesta e nessuna confermata; il nome
+   morto non è più nel corpo vivo. Informativo: 49 shadow in `storico.commesse`
+   (17 commesse hanno `storicizza = false`);
+5. `liquibase validate` offline sui **file veri**, `preConditions` comprese:
+   *No validation errors found*;
+6. dopo il `ROLLBACK`: colonne, riga di policy, righe di lista, colonne delle
+   viste e commento vivo tutti allo stato di prima; l'ordine 52362 non esiste;
+   `databasechangelog` ferma a `-12`. Nulla è stato applicato.
+
+⚠️ **Che cosa la prova NON copre, dichiarato**: come in §6-bis, i due trigger
+ATTIVO su `commesse`/`risorse_umane` nascono a `ci_apply`; le `preConditions`
+sono state validate ma non eseguite; e la prova gira da **proprietario**, quindi
+la RLS delle righe (`20260909-30/-35`) non è esercitata — le tre viste sono
+`security_invoker` ed erano già così, ma il verde con `zeroerp_app` lo dà il
+pgTAP di P-8.
+
+⚠️ Due fatti sull'albero di lavoro, fuori da questo cantiere: `databasechangelog.csv`
+è un file **tracciato** in git (commit `35cadf9bb`, un artefatto di un `updateSQL`
+offline) e oggi risulta **cancellato** nel working tree; e cinque file
+(`ci-validate.yaml`, `ci-local.sh`, `guardrail_pgtap_preambolo.py`,
+`check_db_role_access.sql`, `provision_db_roles.sql`) risultano modificati alle
+01:20–01:24 da un altro lavoro. Nessuno dei due è di questo brief.
+
+## 6-quater. ✅ P-9 — scritta, provata e APPLICATA il 2026-09-14
+
+> Sei changeSet `20260914-07` → `-12` più due pgTAP esistenti estesi.
+> ✅ **Applicati da Tid il 14-09, test verdi col runner** (i due file estesi,
+> 9 e 28 asserzioni). I file sono ora immutabili. Sotto, com'erano stati
+> provati prima dell'apply.
+> ⚠️ Nati come `-02 → -06` e **rinumerati** nello stesso giro: mentre venivano
+> scritti, un altro cantiere ha preso `20260914-02` (dbops) e `-03` (90_end). La
+> numerazione è globale per data e il numero libero scade nel minuto: si
+> ricontrolla **prima di salvare**, non all'inizio del lavoro.
+
+| File | Fase | Cosa |
+| --- | --- | --- |
+| `00_schema/vendite/20260914-07-alter-famiglie-documento-colonna-billing-account-nullable` | `00_schema` | `DROP NOT NULL` + `COMMENT` nuovo: `NULL` = «questa famiglia non ha un billing account». Nessun `DEFAULT` |
+| `20_code/vendite/20260914-08-update-trgfn-famiglie-documento-guard-riferimenti-ba-opzionale` | `20_code` | il controllo su `pg_attribute` del BA solo se `COALESCE(btrim(…), '') <> ''` — la forma già usata per la serie; numero e tabella restano obbligatori |
+| `20_code/anagrafiche/20260914-09-update-fn-ba-ha-storia-emittente-salta-famiglie-senza-ba` | `20_code` | la query che sceglie le famiglie esclude quelle senza BA; il `format()` non cambia |
+| `20_code/anagrafiche/20260914-10-update-fn-get-storia-emittente-ba-salta-famiglie-senza-ba` | `20_code` | idem, sul conteggio per famiglia |
+| `20_code/vendite/20260914-11-update-fn-crea-famiglia-documento-ba-opzionale` | `20_code` | `p_colonna_billing_account` esce dagli obbligatori (sei → cinque), `''` → `NULL`, `DEFAULT NULL` sul sesto parametro; **posizioni e tipi invariati** |
+| `20_code/vendite/20260914-12-update-fn-push-preventivo-a-ordine-firma-ancorata` | `20_code` | 🔴 *aggiunto il 14-09 su rilievo di Tid*: `fn_push_preventivo_a_ordine` torna con la **firma ancorata** (`%TYPE`) di `20260824-02` — `-10` e il mio `-20` l'avevano ricopiata **sciolta** dal corpo vivo. Corpo identico (stesso `md5(prosrc)`), identità byte-identica: **no-op sul DB**, cambia la dichiarazione nella timeline |
+| `db/pgtap/vendite/test-famiglie-documento-guard-riferimenti.sql` | pgTAP | plan 7 → **9**: famiglia attiva senza BA **passa** (8); senza BA il numero resta verificato (9); l'invariante 7 salta il BA solo se dichiarato |
+| `db/pgtap/vendite/test-famiglie-documento-crud-v1.sql` | pgTAP | plan 24 → **28**: la madre accetta senza BA e salva `NULL` (25); `'   '` → `NULL` (26); le due `fn_*_storia_emittente` reggono una famiglia attiva senza BA (27); `NULL → valore` a registri vivi è rifiutato (28, `skip` dichiarato se non ci sono emittenti, come già il test 9 dipende dai registri della DDT) |
+
+**Come è stato provato** (la forma di §6-bis): cinque cancelli statici verdi;
+`updateSQL` offline su una copia senza `preConditions` (453 righe); quell'SQL
+**più il corpo di ciascuno dei due pgTAP** nella stessa transazione annullata,
+come proprietario: **9/9** e **28/28**; ⭐ **mutazione**: gli stessi due file sul DB
+di oggi, senza l'SQL, sono rossi proprio dove devono — il test 8 del guard
+(`23502`) e il CRUD muore nella fixture della 25 (la madre rifiuta con
+`E_VENDITE_VALIDATION`), cioè le due cose che P-9 toglie; `liquibase validate`
+sui file veri: *No validation errors found*; dopo il rollback la colonna è
+ancora `NOT NULL`, la madre ha ancora «i sei obbligatori», zero famiglie di prova.
+`guardrail_pgtap_preambolo`: verde, debito a 129.
+
+> 🔴 **Rilievo di Tid, 2026-09-14: «ti sei dimenticato di usare `%TYPE` in firma
+> e `RETURNS TABLE`».** Vero, ed è la **quinta ricaduta** dello stesso
+> meccanismo (memoria *il `%TYPE` in firma*): il corpo vivo di
+> `pg_get_functiondef` scioglie i `%TYPE` e il `SECURITY INVOKER`, e i miei
+> generatori partivano da lì senza rimettere la firma. Corretto **in loco** sui
+> tre non applicati — `-09`, `-10` (parametro e `RETURNS TABLE` ancorati a
+> `billing_account.id`, `famiglie_documento.codice_interno/descrizione`;
+> `n_documenti` resta `bigint` perché è un conteggio), `-11` (undici parametri,
+> `RETURNS TABLE` e **`SECURITY INVOKER` esplicito** come in `20260901-19`) — e
+> con il changeSet `-12` per `fn_push`, che è già applicato. ⭐ Prova che toglie
+> il dubbio dell'overload: `pg_get_function_identity_arguments`,
+> `pg_get_function_result` e `prosecdef` **byte-identici** prima/dopo in
+> transazione annullata, una sola funzione per nome; per `-12` anche
+> `md5(prosrc)` identico. Le viste e i DDL non hanno firme; `-14` ha già il
+> `DECLARE` ancorato (`config.parameters.default_value%TYPE`).
+
+⚠️ **Che cosa NON copre**: la RLS non entra (nessuna delle tabelle toccate ne
+ha); il lato BE/FE è la voce 7 di §5.5 — ✅ **fatto il 14-09** (riquadro
+«Esecuzione» in §5.5): il BE non rifiuta più prima della madre.
+
+⚠️ **Non un `context: dati_macchina`**: il seed delle famiglie non cambia (le
+cinque hanno tutte il BA), e la famiglia dell'ordine di acquisto la registrerà
+il cantiere acquisti, quando avrà un motore. Qui si apre la porta, non la si
+attraversa.
+
+---
+
+## 6-quinquies. ✅ P-10 e P-11 (entrambe applicate il 14-09) — la riga della rev N+1 è completa
+
+> 🔴 **Segnalazione del BE, 14-09 (sera)**: *«`vendite.fn_crea_revisione_preventivo`
+> copia le righe con elenco esplicito di colonne e non porta
+> `data_consegna_richiesta_cliente` sulla nuova revisione: P-5 ha coperto
+> preventivo→ordine, non rev N→N+1, e nessun pgTAP lo pinna»*. Verificato sul
+> corpo vivo (`pg_get_functiondef` = doc auto-gen, byte a byte): l'`INSERT`
+> delle righe nomina **15 colonne** e la data non c'è. ⭐ È la **stessa forma**
+> del difetto di P-5 — copia colonna per colonna, colonna nuova non nominata —
+> un passaggio più a monte. Il documento ha **due** punti in cui le righe si
+> ricopiano, e il brief ne aveva censito uno.
+
+| File | Fase | Cosa |
+| --- | --- | --- |
+| `20_code/vendite/20260914-13-update-fn-crea-revisione-preventivo-data-consegna` | `20_code` | `+ data_consegna_richiesta_cliente` nell'elenco e nella `SELECT` della copia righe; un blocco `NOTE` nel corpo che dice **che cosa non si copia e perché** (`natura_vendita_id` la deriva e congela il trigger `BEFORE INSERT`, `tx_id` trigger); `COMMENT` aggiornato. 🔴 **Firma e `RETURNS TABLE` ri-ancorati** (`%TYPE` su `preventivi.id/user_update/numero/rev`): `20260515-04` e `20260628-21` le dichiaravano ancorate, `20260805-25` le ha ricopiate sciolte dal corpo vivo — la regressione per eredità di `-12`, un giorno dopo. `SECURITY INVOKER` esplicito (madre a più scritture, `prosecdef` era già `false`). Corpo dalla funzione viva, patch da uno script che **dichiara le sostituzioni e la prima è la firma** (`assert live.startswith(HEADER_SCIOLTO)`) |
+| `db/pgtap/vendite/test-date-consegna-ordine-v1.sql` | pgTAP | plan 10 → **13**: un secondo preventivo **`EMESSO`** (la revisione nasce solo da lì; quello del push è `ACCETTATO`), due righe con/senza data, `fn_crea_revisione_preventivo` sul **percorso reale**: la data sopravvive sulla rev N+1 (11), la riga senza data resta senza (12), la rev N conserva le sue — la revisione **copia, non sposta** (13). ⭐ Qui e non in `test-fn-crea-revisione-preventivo`: quel file pesca la fixture dalla **popolazione** ed è `ERRORE_FIXTURE` in `baseline-rossi-ci.tsv` — un caso aggiunto lì sarebbe **muto in CI**. La fixture costruita misura la stessa cosa su dbdev e in CI |
+| `20_code/vendite/20260914-14-update-fn-crea-revisione-preventivo-carry-approvazione-prezzo` *(P-11)* | `20_code` | `+ stato_approvazione_prezzo, pratica_approvazione_prezzo_id` nell'elenco e nella `SELECT` della copia righe; il blocco `NOTE` porta la ragione (la stessa di `20260601-05` per l'offerta) e il **caveat** sulla pratica; l'elenco delle esclusioni nel corpo diventa `natura_vendita_id`, `tx_id`, `id`/`data_insert`/`data_update`. Corpo dalla funzione **viva dopo il `-13`** (assert nello script: il vivo nomina già la data), firma ri-ancorata come nel `-13`, `COMMENT` in coda. ⚠️ Nato come modifica del `-13` mentre Tid lo stava applicando: il `-13` è stato **ripristinato byte-identico** (stesso SQL provato, stesso id, `validate` pulito) e la decisione è andata in un changeSet suo |
+| `db/pgtap/vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.sql` *(nuovo, P-11)* | pgTAP | **8 asserzioni**, fixture costruita (azienda, cliente, articolo, **due pratiche** via `pratiche.fn_crea_pratica` col tipo `APPROVAZIONE_PREZZO` del catalogo). ⭐ **Test 1 è il presidio che mancava**: legge `pg_attribute` di `preventivi_righe` e l'`INSERT` della copia dal **corpo vivo**, e pretende che ogni colonna sia o nominata o **dichiarata esclusa con la ragione** (tabella `_escluse` nel file) — la prossima colonna di riga fa rosso finché qualcuno decide. Test 2 tiene le dichiarazioni oneste (una colonna esclusa e poi nominata è stantia). Poi il percorso reale: riga `APPROVED` (4) e `PENDING` (5) portano stato e pratica identici sulla rev N+1, la riga senza marca resta senza (6), la rev N conserva le sue (7), e **la marca copiata fa il suo mestiere**: la riga `PENDING` della rev N+1 rifiuta il cambio prezzo con `E_RIGA_PREZZO_PENDENTE` (8, `throws_like` sulla frase). ⚠️ Perimetro dichiarato nel file: **una funzione per nome** — chi estrae la copia in una funzione sua aggiorna il test 1 |
+
+**Come è stato provato** (la forma di §6-bis): cinque cancelli statici verdi +
+`guardrail_pgtap_preambolo` (debito fermo a 129); SQL **estratto** dallo YAML
+più il corpo del pgTAP nella stessa transazione annullata, come proprietario:
+**13/13**; ⭐ **mutazione**: lo stesso file sul DB di oggi, senza l'SQL, è rosso
+**solo al test 11** (`have: NULL, want: 2026-12-03`) — cioè esattamente la
+cosa che P-10 corregge; i due pgTAP esistenti che chiamano la funzione
+(`test-fn-crea-revisione-preventivo` 10/10, `test-vw-dash-competenza-gruppi-riferimento-sorgente-v1`
+6/6) identici con e senza la patch; identità della funzione
+(`pg_get_function_identity_arguments` + `pg_get_function_result` + `prosecdef`)
+**byte-identica** prima/dopo, **una sola** funzione con quel nome; dopo il
+rollback `md5(prosrc)` del vivo invariato. Chiamanti: `preventivi_repository.py`
+(2 argomenti, invariato), nessuna funzione DB la nomina.
+
+**P-11, provata allo stesso modo** (sul vivo = `-13` applicato): sei cancelli
+statici verdi; SQL estratto dal `-14` + corpo del pgTAP nuovo in transazione
+annullata, da proprietario: **8/8**; ⭐ **mutazione**: lo stesso file sul DB di
+oggi, senza il `-14`, è rosso **esattamente** su 1 (`have:
+stato_approvazione_prezzo, pratica_approvazione_prezzo_id`), 4, 5 e 8 — il
+presidio sull'elenco, le due marche, e il guard che senza marca non scatta;
+i tre pgTAP esistenti che chiamano la funzione (10/10, 6/6, 13/13) identici
+con la patch; identità byte-identica, una sola funzione, `md5(prosrc)` del
+vivo invariato dopo il rollback; `liquibase validate` pulito — che conferma
+anche il checksum del `-13` ripristinato. ⚠️ Un difetto **del test** trovato
+alla prima corsa: `btrim` toglie solo spazi, e l'elenco dell'`INSERT` è su
+più righe — il primo nome di ogni riga restava «`\n    preventivo_id`».
+`regexp_replace(c, '\s+', '', 'g')`. *Anche la misura è un programma.*
+
+⭐ **Il censimento che chiude la domanda «ce n'è una terza?»** (letto da
+`pg_proc` il 14-09): le funzioni DB che fanno `INSERT INTO
+vendite.preventivi_righe (…)` con elenco esplicito sono **una** — questa — e
+quelle su `vendite.ordini_righe` **una** — il push (P-5). Le due copie sono
+ora allineate; la terza sede è Python (`create_riga` nei repository), che è
+la voce 1-bis di §5.5. ⭐ La regola che ne esce, e vale per la prossima
+colonna di riga: *una colonna nuova su una tabella di righe si censisce su
+TUTTE le copie esplicite* — `prosrc ~ 'INSERT INTO <schema>.<righe> ('` —
+non solo sul passaggio che il brief aveva in testa.
+
+> 🔴 **EMERSO scrivendo il `-13`, ✅ DECISO da Tid lo stesso giorno («facciamo A») → P-11.**
+> Sulla **riga** di preventivo `stato_approvazione_prezzo` e
+> `pratica_approvazione_prezzo_id` (`20260422-04`) **non si copiavano** nella
+> revisione — stesso elenco esplicito, colonne arrivate dopo la funzione
+> (`20260403-09`); il rewrite del `20260515-04` le aveva nominate per i
+> **componenti** e non per le righe. Intanto `fn_crea_revisione_offerta`
+> (rev2 2026-06-01) le porta **1:1** *«per preservare l'invariante prezzo
+> fuori-policy sempre marcato»*, e i componenti di questa stessa funzione pure.
+> ⇒ Una riga `PENDING` (richiesta L3 in attesa) o `APPROVED` rinasceva sulla
+> rev N+1 **senza marca**, col prezzo fuori-policy copiato tale e quale: la
+> revisione era una porta da cui un prezzo approvato *su un altro documento*
+> usciva non marcato.
+>
+> **A — copia 1:1** (`20260914-14`), con la ragione dell'offerta: i gate L3
+> scattano sull'edit BE, non all'emissione né alla revisione, quindi lo stato
+> è l'unico marcatore persistente di un prezzo fuori soglia autorizzato o in
+> attesa; coerente con «niente doppia approvazione». La riga `PENDING` copiata
+> resta congelata da `trgfn_righe_guard_pending` (provato, test 8).
+> ⚠️ **Il caveat resta, ed è dichiarato al BE, non deciso qui**: la pratica è
+> una FK semplice, dopo la revisione è agganciata a **due** righe (rev N e
+> N+1) e il suo `meta` nomina la riga della rev N — `approva`/`rifiuta` dalla
+> coda (`approvazioni_prezzo_service`) agiscono su **quella**; la riga della
+> rev N+1 resta `PENDING` finché il dominio approvazioni non decide che cosa
+> fa una pratica quando la sua revisione viene superata. È la voce **§4.7 di
+> `refactor-prezzi.md`**, aperta dal 2026-06-01 per le offerte: da oggi vale
+> anche per i preventivi, e la copia 1:1 la rende **visibile** (una riga
+> `PENDING` con una pratica chiusa) invece di nasconderla (una riga pulita).
+>
+> ⭐ **La regola generale, e il presidio che la tiene**: una colonna nuova su una
+> tabella di righe si censisce su **tutte** le copie esplicite
+> (`prosrc ~ 'INSERT INTO <schema>.<righe> ('`). Per questa funzione da oggi
+> non è più disciplina: è il test 1 di `test-fn-crea-revisione-preventivo-riga-completa-v1`.
+
+⚠️ **Debito documentale sanato di passaggio**: il manuale
+`fn_crea_revisione_preventivo.md` citava ancora i tre codici **senza** prefisso
+`E_`, ritirati dal `20260805-25`. Corretti, con la nota.
+
+⚠️ **Che cosa NON copre**: nessuna RLS nuova (le righe la portano già dal
+`20260910`, e il pgTAP gira nei panni dell'operatore costruito); nessun lato
+BE/FE per P-10 — il backend chiama la funzione con 2 argomenti e la riga della
+rev N+1 la legge dal drawer come ogni altra. Il BE ha registrato il fatto come
+nota 9 di §5.5 sul proprio ramo; alla fusione le due note si leggono insieme.
+🔴 **Per P-11 c'è invece una voce BE, ed è vecchia**: il ciclo di vita della
+pratica di approvazione quando la sua revisione viene superata
+(`refactor-prezzi.md` §4.7, aperta dal 2026-06-01) — da oggi riguarda anche i
+preventivi. Non è di questo brief: è dichiarata perché il BE non la scopra in
+collaudo su una riga `PENDING` con la pratica già chiusa.
+
+---
+
+## 7. I presidi
+
+| Test | Che cosa prova |
+| --- | --- |
+| `catalogo/test-articoli-approvvigionamento-v1` | il vocabolario ha i quattro valori; un articolo non può puntare a una riga **spenta**; il default è `ACQUISTO`; `lead_time_giorni` rifiuta il negativo |
+| `vendite/test-date-consegna-ordine-v1` | le date si scrivono e si rileggono sulla riga; ⭐ **la data sopravvive al push** preventivo → ordine — provata sul **percorso reale**, chiamando `fn_push_preventivo_a_ordine`, non confrontando due colonne. ⭐ *dal 14-09 (P-10)*: **e sopravvive alla revisione** N→N+1, chiamando `fn_crea_revisione_preventivo` (test 11-13) — sono **due** passaggi in cui la riga si ricopia, e un presidio su uno solo non dice niente sull'altro |
+| `vendite/test-situazione-merce-ritardo-v1` | `giorni_ritardo` è **NULL** quando `da_spedire` è NULL o zero, ed è valorizzato solo sopra la soglia dell'impegno |
+| `vendite/test-fn-crea-revisione-preventivo-riga-completa-v1` *(P-11, 14-09)* | ⭐ **l'elenco delle colonne copiate dalla revisione è COMPLETO**: ogni colonna di `preventivi_righe` è nominata nella copia o dichiarata esclusa con la ragione (test 1-2, da `pg_attribute` e dal corpo vivo); le marche di approvazione prezzo sopravvivono alla revisione sul **percorso reale** e la riga `PENDING` copiata è congelata dal guard |
+
+⚠️ **Un `has_column` sulle viste non basta**: prova che la colonna esiste, non
+**da dove viene il valore**. Sulle tre viste il test deve confrontare il valore
+con la sorgente, altrimenti passa anche se la colonna arriva dal posto sbagliato.
+
+⚠️ **Preambolo obbligatorio** in ogni file (`BEGIN;`, riga di contesto,
+`SET CONSTRAINTS ALL IMMEDIATE`), presidiato da
+`scripts/guardrail_pgtap_preambolo.py`: senza, il file diventa verde **per
+sottrazione**.
+
+⚠️ E la suite ha **rossi preesistenti**: si confronta con
+`scripts/pgtap-baseline.sh`, non si attribuisce un rosso a questo lavoro senza
+averlo verificato.
+
+> 🔴 **Tre cose cambiate sotto i tre test, dal 2026-09-12:**
+>
+> * **le righe sono sotto RLS** (`20260909-30`/`-35`): `test-date-consegna-ordine-v1`
+>   scrive su `preventivi_righe` e `ordini_righe` come l'applicazione, quindi il
+>   preventivo di fixture deve avere un emittente **nella whitelist del contesto
+>   del test** — la forma è quella già in uso (memoria *fixture preventivi:
+>   `emittente_fiscale_id` + `iva_id`*) e il BA si crea con l'helper **rev 38
+>   senza `RETURNING`** (memoria *BA come operatore non di default*), altrimenti
+>   la riga sparisce nella policy prima ancora di arrivare al push;
+> * **«un articolo non può puntare a una riga spenta» lo fa un trigger di
+>   `ci_apply`**, non un changeSet (§3.2, riquadro): il test lo asserisce
+>   correttamente, ma sa che su un database senza `--ci-apply` è rosso per
+>   assenza. Va scritto nel commento del test, o il primo rosso in CI verrà
+>   inseguito nel posto sbagliato;
+> * il presidio di `security_invoker` sulle viste è ora **globale e sul merito**
+>   (`rls/test-rls-viste-security-invoker.sql`): i tre test qui sopra non ne
+>   scrivono una copia, e il «`has_column` non basta» resta l'unica cosa loro.
+>
+> ✅ **Scritti il 2026-09-14, provati come proprietario in transazione annullata
+> (33/33), lancio col runner a Tid:**
+>
+> | File | Runner | Plan | Che cosa pinna, oltre al brief |
+> | --- | --- | --- | --- |
+> | `catalogo/test-articoli-approvvigionamento-v1.sql` | app | 12 | i quattro modi; il **lock** su `codice_interno`; le tre nullabilità; default `ACQUISTO` letto per `codice_interno`; `gestito=false`/lead NULL alla nascita; CHECK sul negativo e gemello positivo sullo **zero**; FK; il require sul figlio **cercato per funzione e argomenti** (nome hashato); riga spenta rifiutata; modo usato non si spegne; la vista decodifica dalla sorgente su valori non di default |
+> | `vendite/test-date-consegna-ordine-v1.sql` | owner (costruisce l'azienda, criterio 2) | 10 | le cinque colonne con i nomi di D-16; **nessun CHECK** sulle date (pinna la scelta di §2.3); la smistabili espone la data; ⭐ il push reale porta la data, non la inventa sulla riga senza, lascia NULL la confermata; il `min` di testata e il filtro sulle righe attive; confermare **prima** di quanto chiesto passa; rilettura |
+> | `vendite/test-situazione-merce-ritardo-v1.sql` | owner (idem) | 11 | le tre nuove **in coda** (posizioni 19-20-21) con il loro tipo, e `da_spedire` ancora `numeric` in 14ª posizione — ⚠️ *dal 14-09 pomeriggio*: l'**insieme** delle 21 colonne lo pinna il gemello `test-vw-situazione-merce-ordine-v1` (test 3), non due volte (riquadro sotto); NULL/5/3/0 sulla riga impegnata (la **promessa vince**); NULL sulla riga in bozza; ⭐ **spedita per intero con DDT vero**: `da_spedire = 0` e ritardo NULL; due invarianti su tutta la vista |
+>
+> 🔴 **Il pgTAP che GIÀ pinnava il contratto era rosso, e il brief non lo aveva
+> censito** (rilievo di Tid, 2026-09-14, lanciando `test-vw-situazione-merce-ordine-v1`
+> col runner: *«Failed test 3: espone le 18 colonne del contratto — Extra
+> columns: data_consegna_confermata, data_consegna_richiesta_cliente,
+> giorni_ritardo»*). P-6 ha cambiato il contratto della vista e P-8 ha scritto
+> il gemello **nuovo**, ma nessuno dei due passi ha censito il test **esistente**
+> che inchiodava le 18 — è la stessa forma di «cambiare una firma = censire
+> anche i pgTAP», applicata a una vista. Corretto lo stesso giorno, in due
+> file e senza toccare la vista:
+>
+> * `test-vw-situazione-merce-ordine-v1`, test 3 → le **21** colonne. È la sede
+>   del contratto (quali colonne), e resta l'unica;
+> * `test-situazione-merce-ritardo-v1`, test 1 → **non più una copia** del
+>   `columns_are` del gemello, ma posizione e tipo delle tre nuove (19-20-21,
+>   `date`/`date`/`integer`) letti da `pg_attribute`, nello stesso idioma del
+>   suo test 2. ⭐ Ed è la cosa che l'etichetta prometteva e l'asserzione non
+>   provava: `columns_are` confronta **insiemi**, non l'ordine — «nello stesso
+>   ordine + le tre in coda» non era verificato da nessuno. Plan invariato (11).
+>   ⚠️ `attname` è di tipo `name` (collation `C`): nel confronto record di
+>   `results_eq` serve `COLLATE "default"` esplicito, o esce *«non è stato
+>   possibile determinare quale ordinamento usare»* — trovato provando.
+>
+> Provato senza runner: le tre asserzioni di struttura (21 colonne, 19-20-21,
+> `numeric/14`) in `BEGIN … ROLLBACK` come proprietario, 3/3, più la mutazione
+> (posizione attesa 22 → rosso con `have: (giorni_ritardo,integer,21)`).
+> `guardrail_pgtap_preambolo` verde. **Il lancio col runner dei due file è di
+> Tid.**
+>
+> ⚠️ Che cosa questa prova NON copre: la RLS delle righe (`20260909-30/-35`)
+> — i due file di `vendite` girano da owner, che ne è esente; il file di
+> `catalogo` gira come app ma non attraversa tabelle protette. Il verde
+> definitivo lo dà `scripts/testpgtap.sh` sui tre file, poi
+> `scripts/pgtap-baseline.sh catalogo` e `vendite` per le regressioni.
+> ⚠️ `acquisti.ordini_righe` entra solo nella struttura: un ordine d'acquisto
+> non ha ancora un comportamento da esercitare.
+
+### ⛔ Il presidio che manca, e riguarda ciò che consegna QUESTO brief
+
+⭐ **Aggiunto il 2026-09-01.** Le tre analisi della giornata hanno fatto uscire
+**quattro volte** lo stesso difetto: *una cosa esiste, è costruita bene, e non è
+collegata a niente* — il guard tipizzato montato su zero tabelle, due policy RLS
+senza `ENABLE`, `magazzino.causali.ambito_causale_id` vuota in **tutte e dieci** le
+righe seminate, `config.ambiti` con zero FK entranti. **Nessuna produce un rosso.**
+
+🔴 **Questo brief consegna due candidati alla stessa classe**, e i test della
+tabella sopra non li intercettano:
+
+| Deliverable | Perché è un candidato | Il presidio che serve |
+| --- | --- | --- |
+| `config.modi_approvvigionamento` | è un **catalogo nuovo**: se domani nessuna vista, nessuna funzione e nessun consumatore lo legge, è vivo e inerte esattamente come `config.ambiti` | un registro che elenca i cataloghi **senza FK entranti** — e la FK da `catalogo.articoli` c'è, quindi questo passa: il presidio serve a **provarlo**, non a sperarlo |
+| `articoli.gestito_a_magazzino` | `NOT NULL DEFAULT false` ⇒ al rilascio **tutte le righe sono `false`**. La §3.3 lo dice già («la merce va marcata: è un lavoro di dato») ma lo lascia come **nota** | ⛔ una nota non è un presidio: serve un **registro che deve calare** — «articoli con `gestito_a_magazzino = true`», che al rilascio vale zero e deve smettere di valerlo |
+
+⛔ **Attenzione alla POLARITÀ del secondo registro, o nasce con lo stampo
+sbagliato.** Le otto viste `dbops` esistenti — e le tre proposte dall'analisi
+acquisto — devono restare **vuote**: una riga è un difetto. Questa no: «articoli
+con `gestito_a_magazzino = true`» deve **riempirsi**, e lo zero è l'allarme.
+⇒ Non è un registro del debito «che deve calare»: è un **controllo di prontezza**,
+e va scritto come tale. Chi lo implementasse copiando lo stampo degli altri otto
+otterrebbe un presidio verde esattamente nel momento in cui il problema c'è.
+
+⚠️ **Il secondo è il più insidioso**, ed è la ragione per cui questa sezione
+esiste: la colonna sarà presente, popolata, con il default fail-safe **giusto** —
+e `magazzino` la leggerà trovando che nessun articolo movimenta giacenza. Nessun
+errore, nessun test rosso, e un dominio intero che si comporta come se non ci
+fosse merce. È **la stessa forma** di `ambito_causale_id`: seminata, valorizzata a
+vuoto, e nessuno se n'è accorto per mesi.
+
+⇒ Il presidio **generale** della classe (tre viste in `dbops` che devono restare
+vuote — funzioni trigger montate da nessuno, policy su tabelle senza RLS attiva,
+cataloghi orfani) è proposto in
+[analisi-simmetria-ordini-acquisto §9-bis](../work-in-progress/analisi-simmetria-ordini-acquisto.md).
+⚠️ **È un cantiere di `dbops`, non di questo brief**: qui resta l'obbligo del
+registro su `gestito_a_magazzino`, che è nostro e non si può delegare a un cantiere
+che forse non parte.
+
+> ⭐ **Dal 2026-09-10 la sede ESISTE, e cambia la forma del registro
+> (aggiornamento del 2026-09-12).** `dbops.presidi` è il **catalogo delle viste
+> di presidio** — 37 righe al 12-09, non più «otto» — con una `natura`
+> (`ZERO` / `REGISTRO` / `LAVORAZIONE` / `CANCELLO` / `INVENTARIO`), una
+> `cadenza`, e il digest notturno che le legge
+> ([brief-db-un-destinatario-per-i-presidi](brief-db-un-destinatario-per-i-presidi.md)).
+> ⇒ Il registro di prontezza su `gestito_a_magazzino` **non nasce fuori dal
+> catalogo**: è una vista più **una riga in `presidi.csv`**, o il digest non la
+> legge e siamo daccapo — *«esiste e non è collegata a niente»* per la quinta
+> volta.
+>
+> ⭐ **E la POLARITÀ ha una forma dichiarabile, non un'eccezione da inventare.**
+> Il catalogo non conta «righe = allarme» e basta: ha `colonna_stato` +
+> `stato_atteso`, e l'allarme è *«diverso dallo stato atteso»*. ⇒ La vista
+> risponde con **una riga sola** — `stato = 'MARCATI'` se esiste almeno un
+> articolo con `gestito_a_magazzino = true`, altrimenti `'NESSUNO_MARCATO'` — e
+> si iscrive come natura `ZERO`, `colonna_stato = stato`, `stato_atteso =
+> 'MARCATI'`. Lo zero suona, il pieno tace: esattamente il verso che questa
+> sezione chiedeva, con lo stampo che gli altri usano. ⛔ Non una natura nuova
+> per un caso solo.
+>
+> ⚠️ Le tre viste del §9-bis dell'analisi acquisto **non sono ancora nate**
+> (verificato sul catalogo): quando nasceranno, la loro sede è la stessa.
+>
+> 🔴 **Alla chiusura del brief (2026-09-14) questo presidio NON è stato
+> scritto**: non stava in nessun passo di §6, e questa sezione — che lo
+> dichiarava *obbligo nostro* — non l'aveva mai promosso a P-*. È esattamente
+> la forma che denuncia: una cosa scritta bene e collegata a niente.
+> ✅ **Deciso da Tid: va al cantiere `magazzino`**, con la forma fissata qui
+> sopra (vista a una riga, `ZERO`, `stato_atteso = MARCATI`) — residuo 1 del
+> riquadro «CHIUSO» in testa, con la ragione; agganciato in
+> [analisi carico e scarico §8](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md).
+
+---
+
+## 8. Che cosa NON entra, e dove sta
+
+| Voce | Dove vive | Perché non è qui |
+| --- | --- | --- |
+| Stato di **copertura** della riga d'ordine | analisi commessa §8.3 | se ODL e ordine d'acquisto saranno agganciati alla riga è **derivabile**: una colonna sarebbe una seconda verità. Va fatta vista, dopo la §7 |
+| `uom_id` del componente e **sfrido** sulla BoM | analisi commessa §8.4 | dipendono dal fatto che la distinta di produzione sia o no `articoli_componenti`, che è **immutabile** per un altro motivo |
+| **Consuntivo**, ODL, ciclo di lavorazione | analisi commessa §6 e §7 | sono **strutture**, non colonne, e stanno di là dalla decisione |
+| Cliente proprio, budget, data di chiusura prevista sulla commessa | analisi commessa §8.5 ⏸️ | dipendono dalla §7 |
+| `vw_giacenza` (il segno) e le **causali che mancano** | ⭐ *aggiornato 2026-09-02*: hanno una sede loro, [analisi-db-magazzino-carico-e-scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) §4, §3 e §7 | ⚠️ **il fatto è certo, la forma è una decisione**: che vadano toccati non è in dubbio, *come* sì. ✅ *2026-09-02*: la **scelta sul verso è presa** (sta nella quantità), quindi `vw_giacenza` **resta com'è**; di lei resta da scrivere il `COMMENT` che dice perché. 🔴 *2026-09-12*: le causali mancanti sono **quattro**, non una (versamento, reso a fornitore, carico da reso cliente, inventario iniziale — là §3), e con M-2 chiusa ciascuna costa **una riga di seed**: resta `magazzino` perché la primitiva che le legge non esiste ancora, non perché sia indecisa |
+| `uq_mag_movimenti_docref` | analisi magazzino D-4, con la risposta in [carico e scarico **§6**](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) — 🔴 *fino al 2026-09-12 questa cella diceva «§8-quater», sezione traslocata il 02-09: era lo stesso riferimento morto che la revisione incrociata aveva sanato negli altri documenti* | ⭐ la forma ora **c'è** — identità `(sorgente, chiave, verbo, discriminante fisico)`, colonna e non tabella. Resta fuori di qui perché è `magazzino` e perché la D-4 è di Tid, non perché manchi il disegno |
+| `causali.ambito_causale_id` | analisi magazzino D-8 | ⭐ *aggiornato*: gli appunti di revisione lo chiudono («valorizzare», + `NOT NULL` perché l'undicesima causale non rinasca vuota). ⇒ smetterà di essere una decisione, ma resta `magazzino`: andrà in un piano suo, non qui |
+| Chi scrive un movimento di magazzino | analisi magazzino D-1 | la forma del riferimento al documento è la prima decisione aperta. ⚠️ *2026-09-12*: **chi** scrive è deciso (M-2, la primitiva guidata da due cataloghi); resta aperto solo **come dichiara l'origine** |
+| 🔴 **`catalogo.articoli.requires_lotto`** *(voce nuova, 2026-09-12)* | [carico e scarico §7-quater](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md), M-5 — **decisa** il 02-09 | ⚠️ **tocca `catalogo.articoli`, cioè P-2, ed è certa quanto le tre del Blocco B** (boolean `NOT NULL DEFAULT false`, decide l'articolo e non la causale). Non entra in P-2 per una ragione sola, ed è quella scritta nell'analisi: *«va aggiunta insieme alla tabella dei lotti, o la decisione non ha chi la governa»* — una colonna senza il suo lettore è la classe del §7. ⇒ **Seconda occasione dichiarata** in cui `articoli` verrà toccata. ✅ **DECISO (Tid, 2026-09-12, D-B): aspetta i lotti** — non entra in P-2 |
+| **Prezzo di riferimento del fornitore** sull'articolo | analisi acquisto §9, D-8 | ⚠️ **tocca `catalogo.articoli`, cioè P-2.** Le due forme in campo (una colonna sull'articolo *oppure* la tabella `catalogo.articoli_fornitori`) sono una decisione aperta ⇒ chi esegue P-2 sappia che quella tabella **potrebbe essere toccata una seconda volta**, e non consideri P-2 l'ultimo intervento su di lei |
+| **Discriminante di ciclo** sugli stati (`stati_doc_ordini`, `stati_doc_ddt`) | analisi acquisto §7, D-3 | il fatto è certo — le due tabelle sono **condivise con `acquisti`** e non hanno modo di dire a quale ciclo appartiene uno stato. ✅ *2026-09-12*: la **forma è confermata** (Tid, 02-09): **satellite** `config.stati_doc_ordini_ambiti` + gemello DDT, `ambito` come CHECK a due valori. Resta fuori di qui perché è il Lotto 0 del cantiere acquisto — e perché **D-17** lo lega alla vista di M-3, non a questo brief |
+| Ancora doppia degli **indirizzi documento** | analisi acquisto §7-bis, D-6b | tocca un BB usato da **5 domini di vendita**. ✅ *2026-09-12*: **decisa A** (Tid, 02-09) — l'ancora diventa una mappa `tipo_indirizzo → colonna` sul BB. ⚠️ Non è DDL: è backend, e resta del cantiere acquisto |
+| Partita di acquisto, reso a fornitore, **chiusura del ramo credito** | analisi acquisto §8, D-14 | è il cantiere acquisto, e poggia su un motore di stato che non esiste |
+
+### ⭐ Una convenzione che invece entra, e non costa una riga di DDL
+
+L'analisi acquisto ha stabilito una regola che **vale per tutto il progetto** e che
+finora non era scritta da nessuna parte:
+
+> `numero` (+ `serie`, `anno`) è **sempre e solo il numero NOSTRO**, quello che
+> assegna un registro. Il numero della **controparte** ha un nome proprio e non
+> occupa mai quella colonna.
+
+⚠️ **Perché riguarda anche la vendita**, benché il caso sia emerso sugli acquisti:
+il «vostro riferimento» del cliente su un ordine di vendita è lo stesso concetto,
+oggi non ce l'ha nessun documento, e il giorno che servirà **la tentazione sarà di
+metterlo dove c'è posto**. Su `acquisti.ddt` quella tentazione ha già prodotto il
+danno: `numero` **è** il numero del fornitore, e `famiglie_documento.colonna_numero`
+puntata lì lo sovrascriverebbe.
+
+⛔ Qui non si aggiunge nessuna colonna — nessuno l'ha chiesta. Si scrive la regola,
+perché il costo di scriverla adesso è zero e quello di scoprirla dopo è una
+migrazione.
+
+---
+
+### ⚠️ Revisione del 2026-09-01 (sera) — il filtro ha tenuto
+
+Gli appunti di revisione sulle due analisi hanno chiuso o proposto **D-1** (ledger a
+catalogo), **D-4** (l'indice si toglie, la regola passa su una chiave
+dell'operazione), **D-6** (sciolta: il «movimento senza documento» non è un caso
+reale), **D-7** (assorbita) e **D-8**; hanno ristretto **D-2/D-3** e rinviato
+**D-5**.
+
+⭐ **Ripassati i tre blocchi voce per voce: non cambia niente.** Nessuna colonna,
+nessuna nullabilità, nessun default, nessuna vista, nessuna riga di lista.
+
+Non è una coincidenza fortunata, ed è la prova che il §1 valeva la pena: le voci
+di questo brief stanno su `vendite` e `catalogo`, le decisioni stanno su
+`magazzino`. Muovendo le seconde, le prime non si spostano.
+
+⇒ Della revisione è cambiata **solo la §8**, e solo nello *stato* di due voci
+escluse: la loro forma adesso esiste. Restano fuori perché sono di un altro
+dominio, non perché siano indecise.
+
+---
+
+## 9. Riferimenti
+
+* [analisi-db-commessa-e-produzione-predisposizione.md](../work-in-progress/analisi-db-commessa-e-produzione-predisposizione.md)
+  — perché il punto di fermata non è la commessa, e la §8 da cui questo brief è estratto
+* [analisi-db-magazzino-aggancio-documento-e-produzione.md](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md)
+  — le decisioni D-1 → D-9, nessuna delle quali tocca questo brief
+* [analisi-db-magazzino-carico-e-scarico.md](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md)
+  — *(aggiunta il 2026-09-12)* M-1 → M-9, chiuse fra il 02-09 e il 04-09: sono
+  loro a fare di questo brief un **prerequisito** (§1, riquadro) e a chiedere
+  `requires_lotto` (§8)
+* [analisi-simmetria-ordini-acquisto.md](../work-in-progress/analisi-simmetria-ordini-acquisto.md)
+  — terza origine (2026-09-01): il §3-bis viene dal suo §6, la convenzione del §8
+  dal suo §6 «I DUE numeri», il presidio del §7 dal suo §9-bis. ⚠️ Le sue
+  decisioni aperte (D-2, D-6b, D-13) non toccano questo brief; **D-8 sì**, di
+  striscio, perché insiste su `catalogo.articoli`
+* Convenzioni SQL (naming, §6c sul `codice_interno`): `docs/it/linee-guida-sql.md`
+* Standard liste e `<ListaConfigurabile>`: `docs/it/dev/frontend/frontend-standards.md`
+* Il residuo del nome morto in `fn_push_preventivo_a_ordine`:
+  [brief-db-prefisso-sul-registro-e-allineamento-contatori.md](brief-db-prefisso-sul-registro-e-allineamento-contatori.md) §6.3
+  — ✅ ancora lì il 2026-09-12 (riga 141 del corpo): P-5 resta l'occasione
+
+---
+
+## 10. Verifica del 2026-09-12 — che cosa è cambiato sotto il brief
+
+> Il brief è stato riletto **contro il database vivo** (doc auto-gen), contro i
+> repository del backend e contro ciò che è entrato in esercizio fra il 01-09 e
+> il 12-09 (undici giorni, ~120 PR). ⭐ **Il metodo che ha trovato i difetti**: per
+> ogni affermazione operativa, aprire l'oggetto che nomina — non il documento che
+> lo descrive. Sette dei dodici punti erano **già falsi il giorno in cui sono
+> stati scritti**; cinque sono diventati falsi dopo.
+
+### 10.1 I tre blocchi reggono
+
+Nessuna colonna, tipo, nullabilità, default o vista dichiarata nei Blocchi A, B, C
+cambia. Le decisioni di Tid del 02-09 (nomi D-16, default `ACQUISTO`,
+`data_apertura` da `data_insert`) restano. Il filtro della §1 ha tenuto anche
+contro le otto decisioni M-* chiuse dopo: nessuna **modifica** una voce di qui
+— tre la **leggono** (§1, riquadro), ed è ciò che alza la priorità del brief.
+
+### 10.2 I dodici punti, e dove stanno le correzioni
+
+| # | Che cosa diceva il brief | Che cosa è vero | Gravità | Dove |
+| --- | --- | --- | --- | --- |
+| 1 | il lock su `codice_interno` si semina in `automation_lock_columns` | è **implicito**: nessuna riga | seed inutile | §3.2 |
+| 2 | *(taceva)* | la FK articoli→vocabolario genera la coppia ATTIVO a `ci_apply`; il pgTAP «riga spenta» dipende da lei | test rosso in CI senza saperlo | §3.2, §7 |
+| 3 | `NOT NULL DEFAULT ACQUISTO` in un passo, «la sequenza è cerimonia» | la sequenza è imposta dalla **timeline** `00_schema → 80_data`: migrate morto su dev e in CI | 🔴 **migrate fallito** | §3.3, §4-bis, P-2 |
+| 4 | P-9 tocca tre oggetti, «cinque righe» | i lettori sono **sette** più BE e FE; `fn_crea_famiglia_documento` la pretende | P-9 a metà | §3-bis |
+| 5 | la FK del responsabile genera un guard `BEFORE ROW` da verificare | `soggetti_ruoli` non ha `attivo`: **niente** nasce; e il generato sul figlio è AFTER | premessa falsa | §4 |
+| 6 | *(taceva)* | il progetto referenzia le persone interne con `risorsa_umana_id` (tre tabelle di `pratiche`) | **decisione** D-A | §4, §10.3 |
+| 7 | `security_invoker` «reloption di tutte e tre» | `vw_articoli_dettaglio` non ce l'ha, e non deve; il presidio è sul criterio dal 07-09 | doc falsa | §5.2 |
+| 8 | *(taceva)* | il push legge da `vw_preventivi_righe_smistabili_ordine`, proiezione esplicita: **quarta vista** | P-5 senza sorgente | §5.2, P-6 |
+| 9 | «niente da fare per la lista» | vero per ordini (`SELECT v.*`), **falso per articoli** (49 nomi in tupla) e per il pannello situazione merce (22 nomi) | 🔴 **colonna vuota, nessun rosso** | §5.3, §5.5 |
+| 10 | chiavi i18n `catalogo.articoli.*`, `vendite.ordini_righe.*`, `config.modi_approvvigionamento.*` | i vicini sono `catalogo.col_*` e `vendite.ordini.riga_*`; il vocabolario non ha chiavi (mostra `descrizione`) | forma — **decisione** D-C | §5.4 |
+| 11 | il registro di prontezza è «un cantiere di `dbops` che forse non parte» | `dbops.presidi` esiste dal 10-09; la polarità si dichiara con `stato_atteso` | forma del presidio | §7 |
+| 12 | §8: «§8-quater», D-3 e D-6b «da confermare», una causale mancante, D-1 → D-8 | riferimento morto; D-3 e D-6b **chiuse** il 02-09; le causali sono quattro; D-9 esiste; `requires_lotto` decisa (M-5) | stati stantii | §1, §8, §9 |
+| 13 *(13-09)* | `data_apertura` «in un passo solo: default da funzione, che esiste già» | la funzione esiste, il suo **parametro** no: `SYSTEM_FUSO_ORARIO` è un seed di `80_data`, e l'`ADD COLUMN` valuta il `DEFAULT` all'ALTER anche a zero righe (provato) | 🔴 **migrate fallito in CI** | §4-bis, P-4 |
+
+⚠️ **E la RLS sulle righe** (`20260909-30`/`-35`) non è un tredicesimo punto: non
+cambia una riga del piano, cambia come si scrivono le fixture di P-8 (§7,
+riquadro).
+
+### 10.3 Le tre decisioni — ✅ tutte prese da Tid il 2026-09-12
+
+| # | Domanda | Decisione | Dove è applicata |
+| --- | --- | --- | --- |
+| **D-A** | Il responsabile della commessa punta a `anagrafiche.soggetti_ruoli` (com'era scritto) o a `anagrafiche.risorse_umane` (com'è fatto in `pratiche`)? | ✅ **`risorse_umane`** — `responsabile_risorsa_umana_id`. Il block ATTIVO che ne nasce è il quarto della sua specie su quella tabella, dichiarato | §4 (tabella + riquadro), §5.5 voce 4, P-4 |
+| **D-B** | `catalogo.articoli.requires_lotto` (M-5, decisa) entra in P-2 o aspetta la tabella dei lotti? | ✅ **aspetta i lotti**: una colonna senza lettore è la classe del §7 | §8 |
+| **D-C** | Le chiavi i18n seguono i vicini (`catalogo.col_*`, `vendite.ordini.riga_*`) o la regola `<area>.<entità>.*`? | ✅ **i vicini** — elenco definitivo nel riquadro di §5.4 (tredici chiavi, tre in più per il drawer commessa) | §5.4 |
+
+⛔ **P-9 resta OPZIONALE** e non è fra le tre: la domanda è la stessa del 01-09,
+con un censimento più onesto (§3-bis).
+
+⭐ **Con le tre decisioni prese il brief è di nuovo ESEGUIBILE**: il piano è la
+§6 (P-1 → P-8, P-9 se confermata), i presidi la §7, e nessuna voce aspetta
+qualcuno. ✅ *2026-09-14: ESEGUITO per intero, lato DB (P-1 → P-9) e lato BE/FE
+(§5.5). Restano a Tid il `db-migrate` che riaccende le righe 747-749 e le note
+in coda a §5.5 (split di `E_ATTIVO_REQUIRE`, verbo per la data confermata).* ⚠️ L'osservazione su `docs/it/dev/api.md` («le righe non hanno la
+RLS», falso dal 09-09) è **fuori dal brief**: Tid la passa al BE.
+✅ *Chiuso il 14-09 sera: `api.md` era già corretto il 12-09; i residui hanno
+tutti una destinazione (riquadro «CHIUSO» in testa).*
+
+---
+
+## 11. Registro delle revisioni
+
+| Data | Cosa |
+| --- | --- |
+| 2026-09-01 | Prima stesura dalle due analisi commessa e magazzino; a sera la terza origine (analisi acquisto) e la §8 aggiornata dagli appunti di revisione |
+| 2026-09-02 | Decisioni di Tid: nomi D-16 (§2.2), default `ACQUISTO` e `data_apertura` da `data_insert` (§4-bis riscritta), correzione del fatto su `format('%I', NULL)` (§3-bis) |
+| 2026-09-04 | Riferimenti aggiornati alla nascita di [analisi-db-magazzino-carico-e-scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) |
+| 2026-09-12 | 🔴 **Verifica contro il DB vivo e le implementazioni del 01→12-09**: dodici punti corretti in loco con nota datata (§10.2), tre decisioni aperte a Tid (§10.3). I tre blocchi non cambiano. ⭐ Il brief passa da «parallelo a magazzino» a **prerequisito** del prossimo cantiere (§1) |
+| 2026-09-12 | ✅ **Le tre decisioni prese da Tid nella stessa sessione**: D-A `responsabile_risorsa_umana_id → risorse_umane` (§4, P-4, §5.5); D-B `requires_lotto` aspetta i lotti (§8); D-C chiavi i18n dei vicini, elenco definitivo di tredici chiavi (§5.4). Il brief è eseguibile: piano in §6, presidi in §7 |
+| 2026-09-13 | ✅ **P-1, P-2, P-3 scritti e provati** (§6-bis): nove changeSet `20260913-04 → -12` e due CSV; SQL reso da Liquibase offline ed eseguito intero in `BEGIN … ROLLBACK` sul DB di sviluppo, 257 articoli backfillati, cinque rifiuti attesi verificati, `validate` pulito. 🔴 Emerso e dichiarato in §5.5: il BE modifica le righe solo in `DRAFT` — la data confermata dopo la conferma vuole un verbo suo |
+| 2026-09-13 | ✅ **P-1, P-2, P-3 APPLICATI** (Tid, ore 01:00): nove `EXECUTED` in `databasechangelog`, 4 modi, 0 articoli senza modo. La coppia ATTIVO e il lock aspettano `ci_apply`. I file `-04 → -12` sono ora immutabili. Prossimo: P-4 |
+| 2026-09-13 | ✅ **P-4, P-5, P-6, P-7 scritti e provati, poi APPLICATI da Tid alle 09:35** (§6-ter): otto changeSet `20260913-13 → -20` e due append a CSV; SQL reso da Liquibase eseguito intero in `BEGIN … ROLLBACK`, 66 commesse backfillate nel fuso azienda, casi costruiti su `min` e `giorni_ritardo`, push reale con la data, `validate` pulito. 🔴 Tredicesimo punto (§10.2): `data_apertura` in tre passi, non uno. ⚠️ Due scelte da confermare: il riferimento di `giorni_ritardo` = promessa, poi richiesta (§5.2); la chiave i18n della 746 nel commit DB o nella prossima PR FE (§5.3). Prossimo: P-8 |
+| 2026-09-14 | ✅ **Le due scelte del 13-09 prese da Tid**: `giorni_ritardo` = «prima la promessa, altrimenti la richiesta» (§5.2); la chiave i18n della colonna 746 resta al FE, che l'ha già portata su `Tito-dev` (`f3f011edc`, §5.3). Nessuna riga di SQL cambia. Prossimo: P-8 |
+| 2026-09-14 | ✅ **P-8 scritto e provato**: tre pgTAP (`catalogo/test-articoli-approvvigionamento-v1`, `vendite/test-date-consegna-ordine-v1`, `vendite/test-situazione-merce-ritardo-v1`), 33 asserzioni verdi come proprietario in transazione annullata, preambolo verde. 🔴 Il require generato da `ci_apply` su `articoli` ha il nome **hashato** (`…require_attivo__1ad7bd`): il brief e `20260913-05` lo nominavano per esteso (§3.2). Lancio col runner e baseline: Tid |
+| 2026-09-14 | ✅ **P-9 confermata da Tid, scritta e provata** (§6-quater): cinque changeSet `20260914-07 → -11` (colonna nullable, guard, due `fn_*_storia_emittente`, madre) + due pgTAP estesi (9 e 28 asserzioni), prova con mutazione. Lato BE/FE in §5.5 voce 7. Da applicare |
+| 2026-09-14 | 🔴 **Rilievo di Tid: `%TYPE` mancante in firma e `RETURNS TABLE`** (quinta ricaduta del corpo vivo che li scioglie). Corretti in loco `-09/-10/-11` (+ `SECURITY INVOKER` sulla madre) e aggiunto `20260914-12`, no-op sul DB, che ri-ancora la firma di `fn_push_preventivo_a_ordine` degradata da `20260824-10` e dal mio `-20`. Identità byte-identiche, nessun overload |
+| 2026-09-14 | ✅ **P-9 e `-12` APPLICATI, test verdi** (Tid). Lato DB il brief è **completo**: P-1 → P-9 tutti in `databasechangelog`. Restano le sette voci BE/FE di §5.5 e le chiavi i18n di §5.4; il documento resta in `work-in-progress/` finché non sono chiuse |
+| 2026-09-14 | ✅ **Lato BE/FE eseguito** (`dev/backend-tid`, riquadro «Esecuzione» in §5.5): le sette voci e le tredici chiavi i18n. Un lookup nuovo (`/anagrafiche/risorse-umane/lookup/`) e un verbo nuovo (`PATCH /commesse/<id>/`); nessun BB nuovo (il parsing date è `PayloadValidator.optional_date`, già a catalogo). 🔴 Fatto emerso: `E_ATTIVO_REQUIRE` del require sul figlio è TECNICO — il service pre-verifica «persona attiva» per rispondere 400 col campo. Righe 747-749 accese nel CSV: il mirror le ricarica al prossimo migrate (Tid). Il 1-bis resta dichiarato e non deciso |
+| 2026-09-14 | 🔴 **Rilievo di Tid: `test-vw-situazione-merce-ordine-v1` rosso al test 3** («18 colonne», tre extra). P-6 ha allargato il contratto e P-8 ha scritto solo il gemello nuovo: il pgTAP **esistente** non era stato censito. Test 3 → 21 colonne (sede unica del contratto); test 1 del gemello → posizione e tipo delle tre in coda invece di una seconda copia del `columns_are` (che non prova l'ordine). Provate 3/3 + mutazione in transazione annullata, preambolo verde (§7, riquadro). Lancio col runner dei due file: Tid |
+| 2026-09-14 | 🔴 **Revisione critica del lavoro BE/FE, su richiesta di Tid** (§5.5, nota 8): due bug (responsabile attivo mostrato «non più attivo» a lookup non caricato; data del preventivo validata dopo la richiesta L3 e la sua email) e quattro fragilità corrette — catena risorsa→soggetto scritta tre volte al posto della vista modello `vw_risorse_umane_dettaglio`, blocco FK NOT NULL duplicato in `catalogo_service`, form di testata senza `useDrawerFormPreserve`, terza copia del Tag sì/no. ⭐ **Un BB nuovo, `SiNoTag`** (ok Tid): `formato=yesno` di `CellaConfigurabile` lo rende, i tre slot spariscono, righe 327/748 con `yesno` nel seed. Binding provato sul DB vivo col caso costruito. Tutto in working tree, nessun commit |
+| 2026-09-14 | 📚 **Documentazione allineata al brief** (sera): scheda nuova per il CRUD famiglie (`api_famiglie_documento.md`, mancava del tutto) e per il lookup risorse umane (`api_risorse_umane_lookup.md`); whitelist del lookup generico rigenerata dal codice (89, era ferma a 83); riga `Catalogo` nell'inventario di `api.md` (mancava); guide ordini, preventivi, commesse, numerazione e liste aggiornate **e ripulite dalla cronaca datata** (solo «ultimo aggiornamento» in testa, la storia sta nel changelog della mappa); voce del 14-09 nel changelog della mappa concentrica e stato corrente nella mappa. 🔴 Nota 9 in §5.5: la revisione del preventivo non copia la data richiesta |
+| 2026-09-14 | 🔴 **Segnalazione del BE → P-10 scritta e provata** (§6-quinquies): `fn_crea_revisione_preventivo` perdeva `data_consegna_richiesta_cliente` sulla rev N+1 — stessa forma di P-5 (copia colonna per colonna), un passaggio più a monte, senza presidio. ChangeSet `20260914-13` (+ firma e `RETURNS TABLE` ri-ancorati, sciolti dal `20260805-25`; `SECURITY INVOKER` esplicito); `test-date-consegna-ordine-v1` 10 → 13 con fixture costruita (in `test-fn-crea-revisione-preventivo` sarebbe stato muto in CI: `ERRORE_FIXTURE`). Provato: 13/13 con l'SQL estratto, rosso-prima solo al test 11, identità byte-identica, vivo intatto. 🔴 **Emerso, D di Tid**: sulla riga `stato_approvazione_prezzo`/`pratica_approvazione_prezzo_id` non si copiano (i componenti e l'offerta sì). **Da applicare** |
+| 2026-09-14 | ✅ **P-10 applicata da Tid (15:45)** mentre stavo estendendo lo stesso file con la decisione «A»: il `-13` è stato **ripristinato byte-identico** (stesso SQL provato, stesso id; `validate` pulito) e la decisione è andata nel **`20260914-14` (P-11)**: `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id` copiati 1:1 sulla riga, come i componenti e come l'offerta (`20260601-05`), corpo dal vivo post-`-13`, firma ancorata. pgTAP **nuovo** `test-fn-crea-revisione-preventivo-riga-completa-v1` (8, fixture costruita con due pratiche vere): ⭐ test 1 pretende l'**elenco completo** delle colonne copiate o la dichiarazione — la terza colonna persa in cinque mesi non ci sarà. Provato: 8/8 con l'SQL estratto, rosso-prima su 1/4/5/8, regressioni 10/10 · 6/6 · 13/13, vivo intatto. ⚠️ Caveat BE dichiarato (pratica su rev superata, `refactor-prezzi` §4.7). **Da applicare `-14`** |
+| 2026-09-14 | ✅ **P-11 APPLICATA da Tid (16:15, `20260914-14` `EXECUTED`) e BRIEF CHIUSO** (sera): BE/FE mergiato (`22096e6a0`, `eeed40be8`, PR #1586). 🔴 Alla rilettura di chiusura: il presidio di prontezza su `gestito_a_magazzino` (§7) non era in nessun passo e non esiste — ✅ deciso da Tid: **cantiere `magazzino`**, agganciato nell'analisi carico e scarico §8. Sei residui censiti con destinazione (riquadro «CHIUSO»). Trasloco in `work-done/`; link delle quattro analisi e della mappa concentrica riscritti |

@@ -1359,12 +1359,44 @@ qui.
 Presidiato da `scripts/guardrail_run_on_change.py` in CI: un changeSet di schema
 o di codice che lo dichiara fa fallire la build.
 
-**Il meccanismo.** La CI invoca Liquibase **due volte** sullo stesso changelog:
-prima `--contexts="!provision"`, poi `--contexts=ci_apply` per le automazioni. Un
-changeSet `runOnChange: true` ri-esegue anche nella seconda passata, e lì l'ordine
-di timeline non lo protegge più: riscrive il proprio corpo **sopra** le revisioni
-successive, che sono `runOnChange: false` e non ri-eseguono. Su dev l'invocazione
-è una sola, quindi vince l'ultimo della timeline e il difetto è invisibile.
+**Il meccanismo.** Un changeSet `runOnChange: true` ri-esegue al migrate
+**successivo** a un edit, cioè fuori dall'ordine di timeline: riscrive il proprio
+corpo **sopra** le revisioni successive, che sono `runOnChange: false` e non
+ri-eseguono. La CI lo rende visibile perché invoca Liquibase **due volte** sullo
+stesso changelog — prima `--contexts="!provision"`, poi `--contexts=ci_apply` per
+le automazioni — e un changeSet che nella seconda passata risulta «cambiato»
+riparte lì, dopo tutto il resto. Su dev vince l'ultimo della timeline e il difetto
+è invisibile.
+
+> ⚠️ **Perché «risulta cambiato» senza che nessuno l'abbia toccato** (capito il
+> 2026-09-17, letto nel jar): in Liquibase 5.0.4 un `runOnChange` con
+> `validCheckSums: ANY` e un change `dbms: postgresql` viene ri-eseguito **una
+> volta** all'update successivo alla prima esecuzione. Con `ANY` la validazione
+> non calcola il checksum; il filtro che decide se ri-eseguire lo calcola
+> **senza** il Database nello Scope (`ChangeLogIterator` lo mette solo attorno
+> alla `visit`), e senza Database un change `dbms:` viene **escluso** dal
+> checksum. Il checksum salvato alla prima esecuzione non torna: `RERAN`, e da lì
+> resta salvato «il checksum di niente» — su dbdev 175 righe `RERAN` portano
+> l'MD5 della stringa vuota — quindi un edit dell'SQL **non ri-esegue mai più**.
+> È così che il 06-08 le 49 funzioni ripartivano a ogni build, ed è così che il
+> 17-09 `20260831-03` è ripartito in `ci_apply` **dopo** il seed della sesta
+> famiglia (`brief-db-distinta-numerata-sul-registro`, §9).
+
+⛔ **Seconda regola, dove `runOnChange` è lecito: i change non portano `dbms:`.**
+Stesso cancello (`guardrail_run_on_change.py`, dal 2026-09-17): un `runOnChange`
+di `80_data`/`85_pgagent`/`90_end` con un change `dbms:` fa fallire la build. Il
+database di ZeroErp è sempre PostgreSQL: quella riga non decide niente, e su un
+`runOnChange` costa una ri-esecuzione spuria fuori ordine e un checksum cieco.
+Bonificati i 28 che la portavano (`80_data`: 14, `90_end`: 14); il backfill
+`20260415-01` era una tantum e si è **spento** (`runOnChange: false` +
+`validCheckSums: ANY`): ri-eseguito, avrebbe riclassificato 221 articoli.
+
+⚠️ **Corollario per chi scrive un `runOnChange` in `80_data`/`90_end`**: il corpo
+deve reggere una ri-esecuzione **dopo** changeSet più recenti — idempotente, e
+con precondizioni che chiedono ciò che serve **per nome** (`IN (…)`), mai «quante
+righe ci sono oggi»: un `sqlCheck expectedResult: N` su un catalogo è una
+fotografia che la riga dopo smentisce. Un backfill è una tantum, non
+`runOnChange`.
 
 > Il 2026-08-06 questo riportava indietro **49 funzioni** a ogni build — fra cui
 > `dbops.trgfn_tx_id_managed`, le sei `vendite.vw_*_lista`, i cinque
@@ -1402,7 +1434,25 @@ dopo il loader.
 | --- | --- |
 | cambiare un valore | editi il CSV: il mirror riallinea |
 | aggiungere una riga | append al CSV, mai un `INSERT` a parte |
+| **aggiungere una colonna** | colonna in coda al CSV **principale** + `- column:` nell'elenco del mirror, anche se mergiato (`runOnChange` + `ANY`). ⛔ Mai un secondo CSV |
 | cancellare una riga | `loadUpdateData` non cancella → `DELETE` SQL forward-only. **Unica eccezione** |
+
+⛔ **Una tabella, UN CSV** (Tid, 2026-09-18). Un secondo CSV «per sottoinsieme»
+— chiavato sulla chiave naturale, con un `loadUpdateData` suo, «per non toccare
+il mirror mergiato» — è **deprecato**: due CSV sulla stessa riga sono due
+sorgenti di verità che nessun presidio confronta, e divergono in silenzio. La
+giustificazione era falsa: un mirror `runOnChange` + `validCheckSums: ANY` **si
+ritocca** dopo il merge, ed è fatto apposta (`20260830-14`, colonna
+`presidia_data_documento` del 31-08: «è l'unico caso in cui si tocca un
+changeSet già applicato»). Il 18-09 ne sono stati ritirati **sei**:
+`lista_definizione_perimetro_emittente` (`20260902-02`) e i cinque di
+`famiglie_documento` (`formato`, `colonna_serie`, `regole_fiscali`,
+`anno_nel_numero`, la riga `DISTINTA`), tutti rientrati nel CSV principale.
+⚠️ Il laterale porta con sé anche una `preCondition` obbligata («le righe
+esistono già, altrimenti INSERT monco») che il principale non ha bisogno di
+avere. ⭐ E la chiave del mirror principale è la **chiave naturale**, non
+l'`id` di una identity: una riga nata senza id (DISTINTA, 812 su dev) non è
+raggiungibile per id da un CSV che vale ovunque.
 
 ⚠️ Se un SQL storico sovrascrive un CSV e non si può cancellare perché mergiato,
 **spegnerlo non basta**: su un database nuovo applica comunque una volta, e
@@ -1432,8 +1482,10 @@ mirror non è risvegliabile.
 `dblink` che può restare appeso **tenendo un lock sulla tabella**, e a quel punto
 blocca anche il migrate. Se succede, `pg_terminate_backend`.
 
-⭐ Se il file è una mina e non la si vuole disinnescare adesso, la via è un **CSV
-dedicato** con un loader suo: la sede resta un CSV e il file minato non si sveglia.
+⚠️ Se il file è una mina, si **disinnesca** (la verifica qui sopra dice quale
+riga rifiuta, e perché): fino al 18-09 questa riga offriva come via un «CSV
+dedicato con un loader suo», ed è la porta da cui sono entrati i sei laterali
+ritirati quel giorno. Non è più una via.
 
 ---
 
@@ -1826,10 +1878,21 @@ passata) e `v_fn_riservate` (funzioni a cui l'`EXECUTE` è revocato **a PUBLIC e
 all'app**). Il presidio sta nell'unico posto che avrebbe potuto annullarlo, e
 si dichiara come dato — non come un secondo file che rincorre il primo.
 
-⚠️ **Servono comunque due file.** Su dev `ci_apply` non gira da solo: il
-changeSet `90_end` forward che revoca subito ci vuole, e il loop lo rende
-stabile. Uno senza l'altro è o un REVOKE che muore, o una postura che su dev
-arriva solo quando qualcuno digita `db-ci-apply`.
+⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
+diceva «due file», e la terza era scritta solo nell'intestazione del loop
+(riga «🔴») e in `provision_db_roles.sql` stesso:
+
+| Sede | Perché |
+| --- | --- |
+| il changeSet `90_end` **forward** che revoca subito | su dev `ci_apply` non gira da solo: senza, la postura arriva solo quando qualcuno digita `db-ci-apply` |
+| il **loop** `90_end/ci_apply/20260205-41`, negli elenchi in testa | a ogni passata `ci_apply` rifà i `GRANT`: senza l'eccezione dichiarata lì, il REVOKE muore nello stesso build |
+| **`scripts/sql/provision_db_roles.sql`** | 🔴 **è l'ULTIMA parola**: in `ci-validate.yaml` (passo «Privilegi del ruolo applicativo») e in `ci-local.sh` gira **dopo** `--contexts=ci_apply` e fa `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA …` all'app — riapre in silenzio ciò che il loop ha appena chiuso. Su dev non si vede: il provisioning non si rilancia dopo ogni migrate. Le eccezioni stanno nel blocco «POSTURA DICHIARATA» in coda allo script |
+
+Trovato il 2026-09-11 da `test-registri-append-only-postura-v1.sql` — verde su
+dev, rosso sul database ricostruito da zero — che è il presidio che tiene
+allineate le tre sedi. ⭐ Ogni postura nuova (un registro in sola lettura, una
+tabella senza `DELETE`) si porta dietro il **suo** pgTAP di postura con lo stesso
+stampo: è l'unico modo in cui la terza sede non si dimentica.
 
 ⚠️ **Le funzioni hanno `=X`.** Per default PostgreSQL concede `EXECUTE` a
 PUBLIC su ogni funzione nuova, e un `CREATE OR REPLACE` lo conserva. Revocare
@@ -1854,6 +1917,97 @@ Precedente: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`; guida:
 `20260904-*`): il loop li rifà uguali, e un grant idempotente non ha niente da
 perdere. È solo il verso **restrittivo** che il loop non sa rispettare finché
 non è dichiarato.
+
+---
+
+### 11.9 ⛔ Lo schema `django` è dell'applicazione: i suoi privilegi stanno nel provisioning, e lo scratch non li copia
+
+**Il meccanismo.** Le tabelle di `django` (`auth_user`, `django_session`, …) le
+crea `manage.py migrate`, il **secondo** migratore, che gira **dopo** Liquibase.
+Per questo lo schema era escluso da `scripts/sql/provision_db_roles.sql` con la
+dicitura *«gestito da Django»* — e Django gestisce il **DDL**, non i privilegi:
+nessun changeSet, nessun passo di Django e nessuno script concedeva a
+`zeroerp_app` un solo privilegio su `django.auth_user`. Eppure quello schema è
+in **testa** al `search_path` del ruolo applicativo, e **sedici** funzioni
+plpgsql `SECURITY INVOKER` lo attraversano — `anagrafiche.fn_crea_auth_user`,
+`script.fn_crea_utente_tecnico`, `fn_sync_auth_user_is_active`: ogni creazione
+di operatore, risorsa umana, utente tecnico, identità.
+
+Sul database di sviluppo il privilegio c'era su tutti e 23 gli oggetti, dato
+**a mano** (`zeroerp_app=arwd/titodb`). Su un database ricostruito da zero — la
+CI — l'app non poteva nemmeno **leggere** la tabella:
+
+```text
+ERROR:  permission denied for table auth_user
+```
+
+**47 volte** nel log Postgres della corsa 34723456630 (2026-09-12), **23 file**
+morti nel fixture — ogni pgTAP che crea un operatore come app, e ogni fixture
+che cerca un `auth_user` con una `SELECT` — quasi tutti in
+`baseline-rossi-ci.tsv` come `ERRORE_FIXTURE` con la causa mai letta. Il giorno
+in cui due di loro sono stati riscritti e tre nuovi hanno costruito un operatore
+sono usciti come «cinque regressioni». I file marcati `pgtap-runner: owner`
+erano verdi: `zeroerp` possiede le tabelle che ha migrato.
+
+⭐ **E lo scratch locale non lo vedeva, per costruzione.** `scripts/ci-local.sh`
+non ha `manage.py migrate`: **copia** lo schema `django` da dev con
+`pg_dump --schema-only`, che emette **anche le ACL** — 22 istruzioni di
+privilegio, fra cui i GRANT dati a mano. Lo scratch aveva quindi un privilegio
+che nessuno script concede e che la CI non ha: *un metro che copia la risposta
+dalla macchina che sta misurando*. È la stessa forma del `GRANT USAGE` su
+`maintenance` del 2026-09-09, con un aggravante: lì il privilegio a mano
+restava su dev, qui viaggiava.
+
+**Il rimedio, in tre sedi** (2026-09-13):
+
+| Sede | Cosa |
+| --- | --- |
+| `scripts/sql/provision_db_roles.sql` | `django` **entra nella whitelist** `_app_schemas`: `SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle, `USAGE` sulle sequenze, e l'`ALTER DEFAULT PRIVILEGES` per chi migra — che copre le tabelle che una migration Django **futura** creerà. Anche `check_db_role_access.sql` smette di escluderlo |
+| `ci-validate.yaml` | il passo del provisioning si sposta **dopo `manage.py migrate`**: un `GRANT … ON ALL TABLES` è una fotografia, e deve vedere le tabelle di **entrambi** i migratori |
+| `scripts/ci-local.sh` | la copia di `django` diventa `--no-acl` e passa **prima** del provisioning: lo scratch riceve i privilegi dalla stessa sede della CI, non da dev |
+
+⭐ **Il presidio**: `db/pgtap/dbops/test-app-postura-schema-django-v1.sql` —
+postura con `has_*_privilege('zeroerp_app', …)`, il default di chi possiede
+`auth_user` letto da `pg_default_acl`, e il **comportamento**: come app,
+`anagrafiche.fn_crea_auth_user` deve scrivere. ⚠️ Il test del default è rosso su
+una macchina il cui provisioning è girato **prima** che `django` fosse in
+whitelist (dev, 13-09): il rimedio è rilanciare `provision_db_roles.sql`, non
+il test.
+
+⛔ **La regola generale**, ed è la terza volta che si scrive (§11.6, il blocco
+`maintenance` del provisioning, qui): *un privilegio che esiste su una sola
+macchina non è una configurazione, è un ricordo*. Se un pgTAP come app tocca
+un oggetto, il privilegio deve stare in una sede che una **installazione nuova**
+attraversa — il provisioning, o un changeSet — e lo scratch deve **riceverlo da
+lì**, mai copiarlo.
+
+⚠️ **Quarta volta, 2026-09-19 — e stavolta a scoprirlo sono stati i test
+Django, non i pgTAP.** Il backend legge `maintenance.job_run_log` direttamente
+come ruolo applicativo in cinque punti (processi automatici e corse, riepilogo
+giri e liveness, esiti delle corsie di fatturazione), ma il `SELECT` esisteva
+solo su dev, dato a mano: nessun changeSet, e il provisioning lasciava
+`maintenance` fuori whitelist con un commento che affermava il contrario del
+contratto («l'app non ne legge né scrive le tabelle»). Nessuno lo vedeva per
+tre motivi che si sommavano: i pgTAP che leggono il giornale come app stavano
+in `baseline-rossi-ci.tsv` come `ERRORE_FIXTURE` con la causa mai letta
+(`maintenance/test-job-run-registrazione.sql`); i test Django in CI si
+connettevano come **owner**, che possiede la tabella; lo scratch riceve i
+privilegi dal provisioning, che il `SELECT` non lo dava. Il giorno in cui i
+test Django sono passati a `zeroerp_app` (`9c11a485b`, per esercitare la RLS)
+sono morti in **sedici** su `permission denied for table job_run_log`. *I test
+rossi sono il presidio che ha funzionato, non il difetto.*
+
+⭐ **E la sede giusta NON era la whitelist.** `maintenance` resta fuori: la
+whitelist concede SIUD pieno, e il giornale dei job **non si scrive**
+dall'applicazione (la porta è `script.fn_job_run_start/end`, `SECURITY
+DEFINER`; il canale fuori transazione è `zeroerp_log`). Il blocco `maintenance`
+del provisioning concede `USAGE` + il **solo `SELECT`** sul giornale e sulla
+sua vista di presidio; `90_end/20260919-08` porta lo stesso grant sui database
+già provisionati. Presidio:
+`db/pgtap/maintenance/test-app-postura-job-run-log-v1.sql`, che pinna il **no**
+(INSERT/UPDATE/DELETE) quanto il sì. ⚠️ Corollario: un `ERRORE_FIXTURE` in
+baseline con «permesso negato» va **letto**, non registrato — è quasi sempre
+questa regola.
 
 ---
 

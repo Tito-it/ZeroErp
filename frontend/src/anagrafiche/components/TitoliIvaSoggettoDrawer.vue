@@ -76,16 +76,9 @@ const {
   parentId: () => (props.visible ? props.soggettoId : null),
   parentField: 'soggettoId',
   exportFn: (params) => exportSoggettoTitoliIva(props.soggettoId, params),
-  getExportParams: (formato) => {
-    const p = { formato }
-    // L'export segue l'ordinamento a video: il file che scarichi e' la lista
-    // che stai guardando, non un elenco riordinato per conto suo.
-    if (store.filters.order_by) {
-      p.order_by = store.filters.order_by
-      p.order_dir = store.filters.order_dir || 'asc'
-    }
-    return p
-  },
+  // L'export segue la lista a video — ordinamento compreso — dalla sede unica
+  // dello store (`paramsFiltro`), non da un ripiego ricopiato qui.
+  getExportParams: (formato) => ({ formato, ...store.paramsFiltro() }),
   newTooltipKey: 'anagrafiche.titoli_iva.aggiungi_titolo',
   onNew: () => apriTitolo(null),
 })
@@ -200,7 +193,7 @@ const onClose = useDrawerClose(emit)
                plafond non si mostra uno zero, che sembrerebbe «esaurito». -->
           <Tag v-if="data.residuo != null" :value="formatCurrency(data.residuo)"
             :severity="residuoSeverity(data)" />
-          <span v-else class="text-color-secondary">—</span>
+          <span v-else class="app-text-muted">—</span>
         </template>
         <template #cell-stato="{ data }">
           <Tag v-if="!data.attivo" :value="t('anagrafiche.titoli_iva.tag_non_attivo')" severity="secondary" />

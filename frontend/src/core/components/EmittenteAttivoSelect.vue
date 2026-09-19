@@ -71,7 +71,7 @@ function onCambio(nuovoValore) {
     : 0
 
   confirmAction({
-    title: t('core.emittente_attivo.conferma_titolo'),
+    header: t('core.emittente_attivo.conferma_titolo'),
     message: [
       versoGlobale
         ? t('core.emittente_attivo.conferma_globale')

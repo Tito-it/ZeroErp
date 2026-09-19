@@ -25,6 +25,7 @@ import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -82,6 +83,17 @@ function defaultForm() {
     conto_contabile_vendita_id: null, conto_contabile_acquisto_id: null,
     is_composito: false, is_solo_componente: false,
     requires_serial: false,
+    // Lotto 2 di magazzino (brief §4.9, M-5): «per lotti», deciso dall'articolo
+    // come `requires_serial` — ⛔ ma FUORI dal lock BoM (nessun `isFieldLocked`).
+    requires_lotto: false,
+    // Blocco B (brief-db-modifiche-certe-ciclo-vendita-e-articolo): DA DOVE
+    // arriva l'articolo. `modo_approvvigionamento_id` NOT NULL a DB con
+    // DEFAULT ACQUISTO (null = «lascia decidere il default», come la natura);
+    // `gestito_a_magazzino` fail-safe a false; `lead_time_giorni` null = non
+    // si applica (una prestazione), e 0 NON e' «non si applica».
+    modo_approvvigionamento_id: null,
+    gestito_a_magazzino: false,
+    lead_time_giorni: null,
   }
 }
 
@@ -153,6 +165,10 @@ async function loadDetail() {
     is_composito: data.is_composito || false,
     is_solo_componente: data.is_solo_componente || false,
     requires_serial: data.requires_serial || false,
+    requires_lotto: data.requires_lotto || false,
+    modo_approvvigionamento_id: data.modo_approvvigionamento_id,
+    gestito_a_magazzino: data.gestito_a_magazzino || false,
+    lead_time_giorni: data.lead_time_giorni ?? null,
   }
   // Carica riepilogo in parallelo
   await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
@@ -207,6 +223,11 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
+      requires_lotto: f.requires_lotto,
+      // NOT NULL a DB: in EDIT il valore arriva sempre dal detail, mai null.
+      modo_approvvigionamento_id: f.modo_approvvigionamento_id,
+      gestito_a_magazzino: f.gestito_a_magazzino,
+      lead_time_giorni: f.lead_time_giorni,
     }
     const result = await execute(
       () => store.update(props.articoloId, payload),
@@ -232,6 +253,12 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
+      requires_lotto: f.requires_lotto,
+      // NOT NULL a DB con DEFAULT ACQUISTO: si invia solo se scelto esplicitamente.
+      ...(f.modo_approvvigionamento_id != null
+        ? { modo_approvvigionamento_id: f.modo_approvvigionamento_id } : {}),
+      gestito_a_magazzino: f.gestito_a_magazzino,
+      lead_time_giorni: f.lead_time_giorni,
     }
     const result = await execute(
       () => store.create(payload),
@@ -258,7 +285,7 @@ async function refreshAfterStateChange(result) {
 function onConfirmDisattiva() {
   if (!detail.value) return
   confirmAction({
-    title: t('catalogo.disattiva_dialog_titolo'),
+    header: t('catalogo.disattiva_dialog_titolo'),
     message: t('catalogo.disattiva_dialog_messaggio', { codice: detail.value.codice }),
     acceptLabel: t('catalogo.disattiva_articolo'),
     danger: true,
@@ -275,7 +302,7 @@ function onConfirmDisattiva() {
 function onConfirmRiattiva() {
   if (!detail.value) return
   confirmAction({
-    title: t('catalogo.riattiva_dialog_titolo'),
+    header: t('catalogo.riattiva_dialog_titolo'),
     message: t('catalogo.riattiva_dialog_messaggio', { codice: detail.value.codice }),
     acceptLabel: t('catalogo.riattiva_articolo'),
     onAccept: async () => {
@@ -391,7 +418,7 @@ const drawerActions = computed(() => {
           <div class="form-field">
             <label>{{ t('catalogo.field_listino_tipologia') }}</label>
             <LookupSelect v-model="form.listino_tipologia_id" rel="config.listini_tipologie" :placeholder="t('catalogo.select_listino_tipologia')" show-clear />
-            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_spesa') }}</label>
@@ -401,7 +428,7 @@ const drawerActions = computed(() => {
             <label>{{ t('catalogo.field_natura_vendita') }}</label>
             <!-- NOT NULL a DB (default MERCE): niente show-clear -->
             <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')" />
-            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
           </div>
         </div>
 
@@ -416,7 +443,7 @@ const drawerActions = computed(() => {
           </div>
         </div>
 
-        <div class="form-grid-3col">
+        <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_composito') }}</label>
             <ToggleSwitch v-model="form.is_composito"
@@ -427,10 +454,48 @@ const drawerActions = computed(() => {
             <ToggleSwitch v-model="form.is_solo_componente"
               :disabled="isFieldLocked('is_solo_componente')" />
           </div>
+        </div>
+
+        <!-- La GRANA del registro di magazzino, decisa dall'articolo (M-5): per
+             seriale e/o per lotti, «o sempre o mai». `requires_serial` entra
+             nel lock BoM; ⛔ `requires_lotto` NO (Lotto 1 §4.3: il lotto non
+             entra nella distinta) — niente `isFieldLocked`, chi copia il
+             gemello a occhi chiusi eredita un lucchetto che non esiste. -->
+        <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_requires_serial') }}</label>
             <ToggleSwitch v-model="form.requires_serial"
               :disabled="isFieldLocked('requires_serial')" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_requires_lotto') }}</label>
+            <ToggleSwitch v-model="form.requires_lotto" />
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_requires_lotto') }}</small>
+          </div>
+        </div>
+
+        <!-- Blocco B: da dove arriva l'articolo. Il modo e' un vocabolario
+             (`config.modi_approvvigionamento`, come la natura di vendita):
+             NOT NULL a DB, niente show-clear. `gestito_a_magazzino` e' una
+             domanda DIVERSA dalla natura MERCE (una merce puo' essere venduta
+             senza passare da giacenza). Il lead time e' in giorni, >= 0, e
+             vuoto significa «non si applica». -->
+        <div class="form-grid-3col">
+          <div class="form-field">
+            <label>{{ t('catalogo.field_modo_approvvigionamento') }}</label>
+            <LookupSelect v-model="form.modo_approvvigionamento_id" rel="config.modi_approvvigionamento"
+              :placeholder="t('catalogo.select_modo_approvvigionamento')" />
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_modo_approvvigionamento') }}</small>
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_gestito_a_magazzino') }}</label>
+            <ToggleSwitch v-model="form.gestito_a_magazzino" />
+            <small class="app-text-muted mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_lead_time_giorni') }}</label>
+            <InputNumber v-model="form.lead_time_giorni" :min="0" :use-grouping="false"
+              :invalid="campiErrati.includes('lead_time_giorni')" />
           </div>
         </div>
         <!-- Sezione: UoM riepilogo (edit mode) -->

@@ -196,8 +196,21 @@ jobs:
         # difetto non si vede fino a qui. Il 2026-08-06 riportava indietro 49
         # funzioni a ogni build, fra cui dbops.trgfn_tx_id_managed.
         #
+        # ⚠️ PERCHE' riparte nella seconda invocazione, capito il 2026-09-17:
+        # non e' `runOnChange` da solo. In Liquibase 5.0.4 un runOnChange con
+        # `validCheckSums: ANY` e un change `dbms: postgresql` viene ri-eseguito
+        # UNA volta senza che nessuno l'abbia toccato — il filtro che decide se
+        # ri-eseguire calcola il checksum senza Database nello Scope e il change
+        # `dbms:` ne esce — e poi salva «il checksum di niente», cosi' un edit
+        # dell'SQL non ri-esegue mai piu'. Quel giorno e' morto 20260831-03,
+        # ripartito qui sotto DOPO il seed della sesta famiglia. Da allora lo
+        # stesso cancello pretende che i runOnChange di 80_data/85_pgagent/
+        # 90_end NON portino `dbms:` (seconda regola, linee-guida-sql §11.1).
+        #
         # Resta lecito in 80_data (mirror CSV), 85_pgagent, 90_end: la'
-        # ri-eseguire e' il comportamento voluto.
+        # ri-eseguire e' il comportamento voluto — purche' il corpo regga una
+        # ri-esecuzione DOPO changeSet piu' recenti (idempotente, precondizioni
+        # per nome).
         run: python scripts/guardrail_run_on_change.py
 
       - name: Guardrail preambolo pgTAP
@@ -465,21 +478,6 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts=ci_apply
 
-      - name: Privilegi del ruolo applicativo (provision_db_roles)
-        # DOPO Liquibase, e non prima: lo script fa GRANT ... ON ALL TABLES IN
-        # SCHEMA, quindi vuole gli schemi gia' popolati. Il ruolo invece esiste
-        # da prima (passo "DB bootstrap"), perche' i changeSet di GRANT
-        # difensivi lo cercano mentre girano.
-        #
-        # ⚠️ migrator_role=zeroerp e non titodb: in CI l'owner degli oggetti e'
-        # l'utente con cui gira Liquibase, non quello del server di sviluppo.
-        env:
-          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
-        run: |
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
-            -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
-            -f scripts/sql/provision_db_roles.sql
-
       # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
       # -> provisioning come 'postgres' (non Liquibase), DOPO le migrazioni, con lo
       # stesso script admin di dbdev/prod e di ci.yaml (DRY).
@@ -489,9 +487,11 @@ jobs:
       # postura che questo script produce: senza il passo, in questo workflow il
       # ruolo non esisteva e il file era rosso «noto» nella baseline della CI —
       # cioe' la postura del batch non era misurata da nessuna parte fuori da
-      # dbdev. ⚠️ Lo scratch di scripts/ci-local.sh NON e' un metro per quel
-      # file: la' il ruolo riceve apposta il DML su tutto (vedi il commento nello
-      # script). Qui invece riceve il perimetro vero.
+      # dbdev. ⭐ Dal 2026-09-14 lo e' anche sullo scratch di scripts/ci-local.sh:
+      # il ponte «DML su tutto» che serve a superare 20260729-05 durante il
+      # migrate viene ritirato in coda, e lo stesso script di provisioning gira
+      # la' SENZA password (il ruolo esiste nel cluster: i GRANT sono per
+      # database, la password no).
       - name: Provision ruolo batch fatturazione (BYPASSRLS, superuser)
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
@@ -588,6 +588,36 @@ jobs:
           python manage.py migrate token_blacklist --fake
           python manage.py migrate --noinput
 
+      - name: Privilegi del ruolo applicativo (provision_db_roles)
+        # DOPO ENTRAMBI i migratori, e non prima: lo script fa GRANT ... ON ALL
+        # TABLES IN SCHEMA, quindi vuole gli schemi gia' popolati. Il ruolo
+        # invece esiste da prima (passo "DB bootstrap"), perche' i changeSet di
+        # GRANT difensivi lo cercano mentre girano.
+        #
+        # ⭐ «Entrambi» e' la parola che conta, dal 2026-09-13. Fino a quel
+        # giorno questo passo stava subito dopo `ci_apply`, cioe' PRIMA di
+        # «Django migrate»: lo schema `django` — che il provisioning nemmeno
+        # nominava — nasceva dopo, e `zeroerp_app` restava senza un solo
+        # privilegio su `django.auth_user`. Ogni pgTAP che crea un operatore
+        # (fn_crea_auth_user, fn_crea_utente_tecnico: SECURITY INVOKER) moriva
+        # nel fixture con «permission denied for table auth_user» — 47 volte nel
+        # log Postgres della corsa 34723456630 — e stava in baseline come
+        # ERRORE_FIXTURE senza che nessuno ne leggesse la causa. Su dev il GRANT
+        # c'era, dato a mano; lo scratch di ci-local.sh lo COPIAVA con lo schema.
+        # Il posto giusto e' dopo l'ULTIMO migrate, che qui e' quello di Django.
+        #
+        # ⚠️ migrator_role=zeroerp e non titodb: in CI l'owner degli oggetti e'
+        # l'utente con cui gira Liquibase E con cui gira `manage.py migrate`
+        # (DB_USER), non quello del server di sviluppo. L'ALTER DEFAULT
+        # PRIVILEGES per quel ruolo copre anche le tabelle che una migration
+        # Django futura creera'.
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
+            -f scripts/sql/provision_db_roles.sql
+
       - name: Guardrail riferimenti morti (funzioni plpgsql + dati di config)
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
@@ -621,6 +651,22 @@ jobs:
       - name: Django tests
         working-directory: ./backend
         env:
+          # ⭐ I TEST GIRANO COME L'APPLICAZIONE, non come l'owner. L'env del job
+          # dice `DB_USER: zeroerp` perche' e' l'utente di Liquibase e di
+          # `manage.py migrate` — l'OWNER degli oggetti — e l'owner di una
+          # tabella SALTA la RLS finche' non c'e' `FORCE ROW LEVEL SECURITY`
+          # (che il repo rifiuta apposta, vedi 20260829-27). Con quel ruolo un
+          # test end-to-end che prova il 404 no-leak dell'altro emittente
+          # (apps/magazzino/tests/db/test_documento_interno_db) vede TUTTO e
+          # va rosso — «atteso un rifiuto, e' passato», 2026-09-19 — mentre in
+          # sviluppo, dove `.env.systemd` connette `zeroerp_app`, e' verde.
+          # E' la stessa scelta del runner pgTAP (PGTAP_RUNNER=app, default dal
+          # 2026-08-07): la RLS si esercita solo con un ruolo NON owner e
+          # NOBYPASSRLS. Il ruolo e i suoi privilegi arrivano dai passi
+          # «DB bootstrap» e «Privilegi del ruolo applicativo», entrambi prima
+          # di questo. La password e' il letterale del ruolo creato li'.
+          DB_USER: zeroerp_app
+          DB_PASSWORD: secret-app
           DJANGO_REQUEST_LOG_ENABLED: "0"
           # Allineato a manage-test.sh: neutralizza SearchBurstRateThrottle
           # (default 30/min). La LocMemCache non viene resettata tra

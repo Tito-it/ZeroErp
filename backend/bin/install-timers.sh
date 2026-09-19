@@ -39,8 +39,12 @@
 # Fonte di verità UNICA degli unit: i template versionati in
 # backend/deploy/systemd/*.service|*.timer (reviewabili in PR). Questo script NON
 # li genera con heredoc inline: li renderizza sostituendo i placeholder per-host
-# (__APP_DIR__, __APP_USER__, __ONCALENDAR__). Modifiche agli unit → si editano
-# i template; modifiche alla cadenza o a cosa si accende → `sveglie.json`.
+# (__APP_DIR__, __APP_USER__, __ONCALENDAR__) e, dal 2026-09-14, __COMANDO__ —
+# l'argv dopo run-command.sh, che sta in `sveglie.json` (campo `comando`) e non
+# più cablato nell'ExecStart del template: è la stessa riga che «Esegui ora»
+# lancia dall'interfaccia, e una sede sola non può divergere. Modifiche agli
+# unit → si editano i template; modifiche alla cadenza, al comando o a cosa si
+# accende → `sveglie.json`.
 set -euo pipefail
 
 # Modalità: install (default, scrive in /etc/systemd/system e abilita) oppure
@@ -121,8 +125,8 @@ echo "APP_DIR=$APP_DIR  APP_USER=$APP_USER  DEST=$DEST_DIR  render_only=$RENDER_
 SEP=$'\x1f'
 
 # Scopo: ESTRAE da `sveglie.json` una riga per sveglia
-# (unit, forma, oncalendar, abilita, nota). Solo stdlib: gira anche su un host
-# senza venv e sul runner della CI.
+# (unit, forma, comando, oncalendar, abilita, nota). Solo stdlib: gira anche su
+# un host senza venv e sul runner della CI.
 #
 # ⛔ NON VALIDA IL DICHIARATO, ed è una scelta corretta il 2026-09-06 dopo averlo
 #    scritto sbagliato: la prima versione ri-scriveva qui le CINQUE regole di
@@ -149,9 +153,16 @@ for s in righe:
     # Una nota che contenesse il separatore, o un a capo, spezzerebbe la riga e
     # sposterebbe i campi: si normalizza a spazi prima di comporla.
     nota = " ".join(str(s.get("nota") or "").replace(sep, " ").split())
+    # Il comando è una LISTA di token; qui diventa la riga dell'`ExecStart`,
+    # cioè i token separati da spazio. È un join sicuro perché i token non
+    # possono contenere spazi né metacaratteri: lo impone `carica_sveglie`
+    # (`_ARGOMENTO_AMMESSO`), che la CI prova su questo stesso file. Non si
+    # ri-valida qui, per la stessa ragione scritta sopra.
+    comando = " ".join(str(x) for x in (s.get("comando") or []))
     print(sep.join([
         str(s.get("unit") or ""),
         str(s.get("forma") or ""),
+        comando,
         str(s.get("oncalendar") or ""),
         "1" if s.get("abilita") is True else "0",
         nota,
@@ -162,8 +173,12 @@ PY
 # Scopo: renderizza i template di una sveglia (sempre il .service; il .timer solo
 # se è un timer) sostituendo i placeholder per-host, e li scrive in $DEST_DIR.
 render_unit() {
-  local name="$1" forma="$2" oncalendar="$3" kind tpl
+  local name="$1" forma="$2" comando="$3" oncalendar="$4" kind tpl
   local kinds=("service")
+  # ⛔ Un `.service` senza comando è un unit con `ExecStart=… run-command.sh `
+  #    e basta: systemd lo rifiuta, e lo scoprirebbe l'host. Il campo serve
+  #    QUI, alla sostituzione — stesso criterio della cadenza qui sotto.
+  [ -n "$comando" ] || { echo "$name: voce senza 'comando' in $SVEGLIE" >&2; exit 1; }
   # ⛔ RAMO ESAUSTIVO, con l'`else` che si ferma. Non è la whitelist delle forme
   #    riscritta qui: è che questo programma DEVE sapere cosa scrivere, e su una
   #    forma che non conosce l'alternativa sarebbe renderizzare il solo
@@ -188,12 +203,13 @@ render_unit() {
     sed -e "s|__APP_DIR__|${APP_DIR}|g" \
         -e "s|__APP_USER__|${APP_USER}|g" \
         -e "s|__ONCALENDAR__|${oncalendar}|g" \
+        -e "s|__COMANDO__|${comando}|g" \
         "$tpl" > "${DEST_DIR}/${name}.${kind}"
   done
   if [ "$forma" = "timer" ]; then
-    echo "  scritto ${name}.service + ${name}.timer (OnCalendar=${oncalendar})"
+    echo "  scritto ${name}.service + ${name}.timer (OnCalendar=${oncalendar}; comando: ${comando})"
   else
-    echo "  scritto ${name}.service (servizio sempre acceso, nessun timer)"
+    echo "  scritto ${name}.service (servizio sempre acceso, nessun timer; comando: ${comando})"
   fi
 }
 
@@ -209,9 +225,9 @@ SVEGLIE_RIGHE="$(leggi_sveglie)"
 
 DA_ACCENDERE=()
 DA_LASCIARE_SPENTI=()
-while IFS="$SEP" read -r unit forma oncalendar abilita nota; do
+while IFS="$SEP" read -r unit forma comando oncalendar abilita nota; do
   [ -n "$unit" ] || continue
-  render_unit "$unit" "$forma" "$oncalendar"
+  render_unit "$unit" "$forma" "$comando" "$oncalendar"
   # Si abilita il .timer dove c'è, il .service dove il processo è sempre acceso.
   if [ "$forma" = "timer" ]; then target="${unit}.timer"; else target="${unit}.service"; fi
   if [ "$abilita" = "1" ]; then

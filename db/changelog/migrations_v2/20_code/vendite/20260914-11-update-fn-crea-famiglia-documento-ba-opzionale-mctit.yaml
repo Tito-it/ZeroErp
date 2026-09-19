@@ -1,0 +1,343 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 (5 di 5) — la madre delle famiglie smette di pretendere il billing account
+#   vendite.fn_crea_famiglia_documento
+#   Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3-bis
+#
+# -- CHE COSA CAMBIA, e dove ------------------------------------------------------
+#   1. p_colonna_billing_account esce dall'elenco degli obbligatori (erano sei,
+#      sono cinque): fino a oggi la madre rifiutava con E_VENDITE_VALIDATION e
+#      `campo = colonna_billing_account` — cioe' il form avrebbe acceso un
+#      campo che per l'ordine di acquisto non ha senso compilare.
+#   2. La stringa vuota diventa NULL, come gia' per serie e prefisso: un ''
+#      salvato al posto di NULL sarebbe indistinguibile da una colonna che si
+#      chiama cosi'.
+#   3. La firma prende DEFAULT NULL sul sesto parametro. ⚠️ Firma, RETURNS
+#      TABLE e SECURITY INVOKER sono quelli ANCORATI di 20260901-19: il corpo
+#      vivo di pg_get_functiondef li scioglie, e ricopiarli sciolti sarebbe
+#      stata una regressione di stile (memoria: il %TYPE in firma). ⚠️ Le POSIZIONI e i
+#      TIPI non cambiano: famiglie_repository passa gli argomenti per posizione
+#      (_CAMPI_CREATE «nell'ordine della sua firma»), e CREATE OR REPLACE
+#      ammette un default aggiunto. Chi chiama per nome non se ne accorge.
+#
+# -- CHE COSA NON CAMBIA -------------------------------------------------------
+#   La madre continua a NON validare i riferimenti: lo fa il guard
+#   a10_guard_riferimenti (20260914-08), che a sua volta salta il billing
+#   account quando e' vuoto. Le due scritture restano una cosa sola.
+#
+# -- CORPO DALLA FUNZIONE VIVA -----------------------------------------------------
+#   pg_get_functiondef, identica alla doc auto-gen (verificato il 2026-09-14):
+#   rev 20260901-19 (DB-5). Il VARIADIC ARRAY[]::text[] e tutto il resto
+#   restano intatti.
+#
+# -- LATO BE/FE (brief 5.5, voce 7) ----------------------------------------------
+#   famiglie_service._OBBLIGATORI_CREATE perde la voce; views_famiglie.py il
+#   CharField di creazione diventa required=False; il drawer FE toglie
+#   l'asterisco. Finche' non lo fanno, il BE rifiuta prima della madre: nessun
+#   difetto, solo una capacita' del DB non ancora esposta.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260914-11-update-fn-crea-famiglia-documento-ba-opzionale-mctit.yaml
+
+  - changeSet:
+      id: 20260914-11-update-fn-crea-famiglia-documento-ba-opzionale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_crea_famiglia_documento: p_colonna_billing_account opzionale (DEFAULT NULL,
+        '' -> NULL) come p_colonna_serie; gli obbligatori sul valore scendono da sei a cinque.
+        Firma con posizioni e tipi invariati. Brief:
+        brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3-bis (P-9).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_crea_famiglia_documento' AND p.pronargs = 11
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.famiglie_documento'::regclass
+                     AND a.attname = 'colonna_billing_account' AND NOT a.attnotnull
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_crea_famiglia_documento(
+                      p_codice_interno          vendite.famiglie_documento.codice_interno%TYPE,
+                      p_descrizione             vendite.famiglie_documento.descrizione%TYPE,
+                      p_schema_tabella          vendite.famiglie_documento.schema_tabella%TYPE,
+                      p_nome_tabella            vendite.famiglie_documento.nome_tabella%TYPE,
+                      p_colonna_numero          vendite.famiglie_documento.colonna_numero%TYPE,
+                      -- rev 2026-09-14: opzionale come la serie (DEFAULT NULL); posizione e tipo invariati
+                      p_colonna_billing_account vendite.famiglie_documento.colonna_billing_account%TYPE DEFAULT NULL,
+                      p_colonna_serie           vendite.famiglie_documento.colonna_serie%TYPE DEFAULT NULL,
+                      p_prefisso_default        vendite.famiglie_documento.prefisso_default%TYPE DEFAULT NULL,
+                      p_lunghezza_default       vendite.famiglie_documento.lunghezza_default%TYPE DEFAULT 7,
+                      p_attivo                  vendite.famiglie_documento.attivo%TYPE DEFAULT TRUE,
+                      p_meta                    vendite.famiglie_documento.meta%TYPE DEFAULT '{}'::jsonb)
+               RETURNS TABLE (
+                      famiglia_id      vendite.famiglie_documento.id%TYPE,
+                      codice_interno   vendite.famiglie_documento.codice_interno%TYPE,
+                      -- un CONTEGGIO: nessuna colonna lo riflette, resta esplicito
+                      registri_creati  integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_id      vendite.famiglie_documento.id%TYPE;
+                  v_codice  vendite.famiglie_documento.codice_interno%TYPE;
+                  v_creati  integer;
+                  v_campo   text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare una famiglia di documento E provvisionarne i
+                  --   registri su tutti gli emittenti, come UNA cosa sola.
+                  --   Torna (id, codice_interno, registri_creati).
+                  --
+                  -- ⛔ Perche' una madre: sono due scritture. Se la seconda
+                  --   fallisse dopo la prima, resterebbe una famiglia senza
+                  --   registri — un documento promesso che non si numerera'
+                  --   mai, e nessun vincolo lo dice. Una sola SELECT su
+                  --   connessione autocommit e' atomica per costruzione
+                  --   (§5b delle linee guida).
+                  --
+                  -- ⭐ Cosa NON fa: non valida i riferimenti (lo fa il guard
+                  --   a10_guard_riferimenti), non scrive audit ne' tx_id (ci
+                  --   sono i trigger), non ricontrolla la serie (c'e' il guard).
+                  --   Fa le due scritture e le tiene insieme.
+                  -- =========================================================
+
+                  -- ---- I cinque obbligatori -----------------------------
+                  -- ⭐ rev 2026-09-14: colonna_billing_account NON e' piu' fra
+                  --   questi. Come colonna_serie, il vuoto e' una dichiarazione
+                  --   («questa famiglia non ha un billing account»: l'ordine di
+                  --   acquisto), non un campo dimenticato.
+                  -- ⚠️ Il NOT NULL della colonna non basta: una stringa VUOTA
+                  --   lo attraversa, e un codice_interno vuoto sarebbe il
+                  --   bersaglio di una FK — cioe' un riferimento che non si
+                  --   riesce piu' a nominare. Qui si guarda il VALORE.
+                  -- ⭐ `campo` nel contesto: e' il canale con cui il frontend
+                  --   accende l'input giusto. Il messaggio a catalogo resta
+                  --   generico di proposito — la frase utile la compone la
+                  --   maschera, che sa come si chiama quel campo a video.
+                  v_campo := CASE
+                      WHEN COALESCE(btrim(p_codice_interno), '')          = '' THEN 'codice_interno'
+                      WHEN COALESCE(btrim(p_descrizione), '')             = '' THEN 'descrizione'
+                      WHEN COALESCE(btrim(p_schema_tabella), '')          = '' THEN 'schema_tabella'
+                      WHEN COALESCE(btrim(p_nome_tabella), '')            = '' THEN 'nome_tabella'
+                      WHEN COALESCE(btrim(p_colonna_numero), '')          = '' THEN 'colonna_numero'
+                      ELSE NULL
+                  END;
+
+                  IF v_campo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_crea_famiglia_documento',
+                          'E_VENDITE_VALIDATION',
+                          jsonb_build_object('campo', v_campo),
+                          NULL::uuid,
+                          -- ⚠️ `VARIADIC ARRAY[]::text[]` e non la chiamata a
+                          --   cinque argomenti: senza, PostgreSQL non risolve
+                          --   la firma variadica e risponde «la funzione non
+                          --   esiste» — un errore TECNICO al posto di quello di
+                          --   dominio, cioe' il guard che si autoannulla.
+                          --   ⭐ Il messaggio a catalogo non ha segnaposti: qui
+                          --   non c'e' niente da passare, ma va passato lo
+                          --   stesso, vuoto.
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- ---- 1a scrittura: la riga di catalogo -----------------
+                  -- ⚠️ La stringa vuota su `colonna_serie` diventa NULL: il
+                  --   vuoto e' la dichiarazione che questa famiglia una serie
+                  --   non ce l'ha, e un '' salvato al posto di NULL la
+                  --   renderebbe indistinguibile da una serie che si chiama
+                  --   cosi'. Stesso trattamento per il prefisso e, dal
+                  --   2026-09-14, per il billing account.
+                  INSERT INTO vendite.famiglie_documento (
+                      codice_interno, descrizione, schema_tabella, nome_tabella,
+                      colonna_numero, colonna_billing_account, colonna_serie,
+                      prefisso_default, lunghezza_default, attivo, meta)
+                  VALUES (
+                      btrim(p_codice_interno), btrim(p_descrizione),
+                      btrim(p_schema_tabella), btrim(p_nome_tabella),
+                      btrim(p_colonna_numero),
+                      NULLIF(btrim(COALESCE(p_colonna_billing_account, '')), ''),
+                      NULLIF(btrim(COALESCE(p_colonna_serie, '')), ''),
+                      NULLIF(btrim(COALESCE(p_prefisso_default, '')), ''),
+                      COALESCE(p_lunghezza_default, 7),
+                      COALESCE(p_attivo, TRUE),
+                      COALESCE(p_meta, '{}'::jsonb))
+                  RETURNING id, vendite.famiglie_documento.codice_interno
+                       INTO v_id, v_codice;
+
+                  -- ---- 2a scrittura: i registri mancanti -----------------
+                  -- ⚠️ Su una famiglia creata SPENTA il provisioning torna 0
+                  --   per costruzione (il filtro `fd.attivo` sta nella
+                  --   primitiva). Non e' un errore: e' il caso «si semina
+                  --   prima, si accende dopo».
+                  v_creati := vendite.fn_provision_registri_famiglia(v_codice);
+
+                  RETURN QUERY SELECT v_id, v_codice, v_creati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_crea_famiglia_documento(
+                      vendite.famiglie_documento.codice_interno%TYPE,
+                      vendite.famiglie_documento.descrizione%TYPE,
+                      vendite.famiglie_documento.schema_tabella%TYPE,
+                      vendite.famiglie_documento.nome_tabella%TYPE,
+                      vendite.famiglie_documento.colonna_numero%TYPE,
+                      vendite.famiglie_documento.colonna_billing_account%TYPE,
+                      vendite.famiglie_documento.colonna_serie%TYPE,
+                      vendite.famiglie_documento.prefisso_default%TYPE,
+                      vendite.famiglie_documento.lunghezza_default%TYPE,
+                      vendite.famiglie_documento.attivo%TYPE,
+                      vendite.famiglie_documento.meta%TYPE)
+              IS 'MADRE del CRUD delle famiglie di documento: crea la riga di catalogo E le da'' i registri di numerazione su tutti gli emittenti, come una cosa sola. Torna (famiglia_id, codice_interno, registri_creati). ⛔ PERCHE'' UNA MADRE: sono DUE scritture, e fatte in sequenza da fuori un fallimento della seconda lascerebbe una famiglia senza registri — cioe'' una riga di catalogo che promette un documento che non si numerera'' mai, e che nessun vincolo segnala. Una sola SELECT su connessione autocommit e'' atomica per costruzione (§5b delle linee guida). ⭐ COSA NON FA, ed e'' deliberato: non valida i riferimenti (c''e'' il guard a10_guard_riferimenti), non scrive audit ne'' tx_id (ci sono i trigger), non ricontrolla la serie. Rifare qui quei controlli sarebbe il secondo elenco che diverge. ⛔ NON ESISTE una madre per l''update ne'' per il verbo attivo: sono scritture singole, e il backend le fa come gia'' fa sui registri. ⚠️ I CINQUE campi obbligatori (rev 2026-09-14: erano sei) si controllano sul VALORE e non sul NULL: una stringa vuota attraversa il NOT NULL, e un codice_interno vuoto sarebbe il bersaglio di una FK — un riferimento che non si riesce piu'' a nominare. Il `campo` viaggia nel contesto perche'' e'' il canale con cui il frontend accende l''input giusto. ⚠️ Su una famiglia creata SPENTA il provisioning torna 0 per costruzione: e'' il caso «si semina prima, si accende dopo», non un errore. ⚠️ Il conteggio torna al chiamante perche'' ZERO su una famiglia ATTIVA significa che non c''e'' nessun emittente, e quel documento non nascera'' comunque. ⚠️ SECURITY INVOKER: scrive su una tabella senza RLS su cui zeroerp_app ha gia'' INSERT; il provisioning che chiama e'' DEFINER per conto suo. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.7 (DB-5). ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): p_colonna_billing_account e'' OPZIONALE come p_colonna_serie — DEFAULT NULL, stringa vuota normalizzata a NULL — perche'' esiste un documento la cui controparte non e'' un cliente: l''ordine di acquisto. Firma con le stesse posizioni e gli stessi tipi (il backend passa per posizione); il guard dei riferimenti (20260914-08) non cerca piu'' quella colonna quando e'' vuota.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_crea_famiglia_documento(
+                      p_codice_interno          vendite.famiglie_documento.codice_interno%TYPE,
+                      p_descrizione             vendite.famiglie_documento.descrizione%TYPE,
+                      p_schema_tabella          vendite.famiglie_documento.schema_tabella%TYPE,
+                      p_nome_tabella            vendite.famiglie_documento.nome_tabella%TYPE,
+                      p_colonna_numero          vendite.famiglie_documento.colonna_numero%TYPE,
+                      p_colonna_billing_account vendite.famiglie_documento.colonna_billing_account%TYPE,
+                      p_colonna_serie           vendite.famiglie_documento.colonna_serie%TYPE DEFAULT NULL,
+                      p_prefisso_default        vendite.famiglie_documento.prefisso_default%TYPE DEFAULT NULL,
+                      p_lunghezza_default       vendite.famiglie_documento.lunghezza_default%TYPE DEFAULT 7,
+                      p_attivo                  vendite.famiglie_documento.attivo%TYPE DEFAULT TRUE,
+                      p_meta                    vendite.famiglie_documento.meta%TYPE DEFAULT '{}'::jsonb)
+               RETURNS TABLE (
+                      famiglia_id      vendite.famiglie_documento.id%TYPE,
+                      codice_interno   vendite.famiglie_documento.codice_interno%TYPE,
+                      -- un CONTEGGIO: nessuna colonna lo riflette, resta esplicito
+                      registri_creati  integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_id      vendite.famiglie_documento.id%TYPE;
+                  v_codice  vendite.famiglie_documento.codice_interno%TYPE;
+                  v_creati  integer;
+                  v_campo   text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare una famiglia di documento E provvisionarne i
+                  --   registri su tutti gli emittenti, come UNA cosa sola.
+                  --   Torna (id, codice_interno, registri_creati).
+                  --
+                  -- ⛔ Perche' una madre: sono due scritture. Se la seconda
+                  --   fallisse dopo la prima, resterebbe una famiglia senza
+                  --   registri — un documento promesso che non si numerera'
+                  --   mai, e nessun vincolo lo dice. Una sola SELECT su
+                  --   connessione autocommit e' atomica per costruzione
+                  --   (§5b delle linee guida).
+                  --
+                  -- ⭐ Cosa NON fa: non valida i riferimenti (lo fa il guard
+                  --   a10_guard_riferimenti), non scrive audit ne' tx_id (ci
+                  --   sono i trigger), non ricontrolla la serie (c'e' il guard).
+                  --   Fa le due scritture e le tiene insieme.
+                  -- =========================================================
+
+                  -- ---- I sei obbligatori --------------------------------
+                  -- ⚠️ Il NOT NULL della colonna non basta: una stringa VUOTA
+                  --   lo attraversa, e un codice_interno vuoto sarebbe il
+                  --   bersaglio di una FK — cioe' un riferimento che non si
+                  --   riesce piu' a nominare. Qui si guarda il VALORE.
+                  -- ⭐ `campo` nel contesto: e' il canale con cui il frontend
+                  --   accende l'input giusto. Il messaggio a catalogo resta
+                  --   generico di proposito — la frase utile la compone la
+                  --   maschera, che sa come si chiama quel campo a video.
+                  v_campo := CASE
+                      WHEN COALESCE(btrim(p_codice_interno), '')          = '' THEN 'codice_interno'
+                      WHEN COALESCE(btrim(p_descrizione), '')             = '' THEN 'descrizione'
+                      WHEN COALESCE(btrim(p_schema_tabella), '')          = '' THEN 'schema_tabella'
+                      WHEN COALESCE(btrim(p_nome_tabella), '')            = '' THEN 'nome_tabella'
+                      WHEN COALESCE(btrim(p_colonna_numero), '')          = '' THEN 'colonna_numero'
+                      WHEN COALESCE(btrim(p_colonna_billing_account), '') = '' THEN 'colonna_billing_account'
+                      ELSE NULL
+                  END;
+
+                  IF v_campo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_crea_famiglia_documento',
+                          'E_VENDITE_VALIDATION',
+                          jsonb_build_object('campo', v_campo),
+                          NULL::uuid,
+                          -- ⚠️ `VARIADIC ARRAY[]::text[]` e non la chiamata a
+                          --   cinque argomenti: senza, PostgreSQL non risolve
+                          --   la firma variadica e risponde «la funzione non
+                          --   esiste» — un errore TECNICO al posto di quello di
+                          --   dominio, cioe' il guard che si autoannulla.
+                          --   ⭐ Il messaggio a catalogo non ha segnaposti: qui
+                          --   non c'e' niente da passare, ma va passato lo
+                          --   stesso, vuoto.
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- ---- 1a scrittura: la riga di catalogo -----------------
+                  -- ⚠️ La stringa vuota su `colonna_serie` diventa NULL: il
+                  --   vuoto e' la dichiarazione che questa famiglia una serie
+                  --   non ce l'ha, e un '' salvato al posto di NULL la
+                  --   renderebbe indistinguibile da una serie che si chiama
+                  --   cosi'. Stesso trattamento per il prefisso.
+                  INSERT INTO vendite.famiglie_documento (
+                      codice_interno, descrizione, schema_tabella, nome_tabella,
+                      colonna_numero, colonna_billing_account, colonna_serie,
+                      prefisso_default, lunghezza_default, attivo, meta)
+                  VALUES (
+                      btrim(p_codice_interno), btrim(p_descrizione),
+                      btrim(p_schema_tabella), btrim(p_nome_tabella),
+                      btrim(p_colonna_numero), btrim(p_colonna_billing_account),
+                      NULLIF(btrim(COALESCE(p_colonna_serie, '')), ''),
+                      NULLIF(btrim(COALESCE(p_prefisso_default, '')), ''),
+                      COALESCE(p_lunghezza_default, 7),
+                      COALESCE(p_attivo, TRUE),
+                      COALESCE(p_meta, '{}'::jsonb))
+                  RETURNING id, vendite.famiglie_documento.codice_interno
+                       INTO v_id, v_codice;
+
+                  -- ---- 2a scrittura: i registri mancanti -----------------
+                  -- ⚠️ Su una famiglia creata SPENTA il provisioning torna 0
+                  --   per costruzione (il filtro `fd.attivo` sta nella
+                  --   primitiva). Non e' un errore: e' il caso «si semina
+                  --   prima, si accende dopo».
+                  v_creati := vendite.fn_provision_registri_famiglia(v_codice);
+
+                  RETURN QUERY SELECT v_id, v_codice, v_creati;
+              END;
+              $function$;
+              COMMENT ON FUNCTION vendite.fn_crea_famiglia_documento(
+                      vendite.famiglie_documento.codice_interno%TYPE,
+                      vendite.famiglie_documento.descrizione%TYPE,
+                      vendite.famiglie_documento.schema_tabella%TYPE,
+                      vendite.famiglie_documento.nome_tabella%TYPE,
+                      vendite.famiglie_documento.colonna_numero%TYPE,
+                      vendite.famiglie_documento.colonna_billing_account%TYPE,
+                      vendite.famiglie_documento.colonna_serie%TYPE,
+                      vendite.famiglie_documento.prefisso_default%TYPE,
+                      vendite.famiglie_documento.lunghezza_default%TYPE,
+                      vendite.famiglie_documento.attivo%TYPE,
+                      vendite.famiglie_documento.meta%TYPE)
+              IS 'MADRE del CRUD delle famiglie di documento: crea la riga di catalogo E le da'' i registri di numerazione su tutti gli emittenti, come una cosa sola. Torna (famiglia_id, codice_interno, registri_creati). ⛔ PERCHE'' UNA MADRE: sono DUE scritture, e fatte in sequenza da fuori un fallimento della seconda lascerebbe una famiglia senza registri — cioe'' una riga di catalogo che promette un documento che non si numerera'' mai, e che nessun vincolo segnala. Una sola SELECT su connessione autocommit e'' atomica per costruzione (§5b delle linee guida). ⭐ COSA NON FA, ed e'' deliberato: non valida i riferimenti (c''e'' il guard a10_guard_riferimenti), non scrive audit ne'' tx_id (ci sono i trigger), non ricontrolla la serie. Rifare qui quei controlli sarebbe il secondo elenco che diverge. ⛔ NON ESISTE una madre per l''update ne'' per il verbo attivo: sono scritture singole, e il backend le fa come gia'' fa sui registri. ⚠️ I sei campi obbligatori si controllano sul VALORE e non sul NULL: una stringa vuota attraversa il NOT NULL, e un codice_interno vuoto sarebbe il bersaglio di una FK — un riferimento che non si riesce piu'' a nominare. Il `campo` viaggia nel contesto perche'' e'' il canale con cui il frontend accende l''input giusto. ⚠️ Su una famiglia creata SPENTA il provisioning torna 0 per costruzione: e'' il caso «si semina prima, si accende dopo», non un errore. ⚠️ Il conteggio torna al chiamante perche'' ZERO su una famiglia ATTIVA significa che non c''e'' nessun emittente, e quel documento non nascera'' comunque. ⚠️ SECURITY INVOKER: scrive su una tabella senza RLS su cui zeroerp_app ha gia'' INSERT; il provisioning che chiama e'' DEFINER per conto suo. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.7 (DB-5).';

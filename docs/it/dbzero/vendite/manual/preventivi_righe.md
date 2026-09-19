@@ -101,3 +101,33 @@ base e' **derivata** dal trigger:
 necessario per trasformare il preventivo in elementi fatturabili in modo tracciabile,
 coerente e idempotente lungo la pipeline.
 
+### 🔄 rev 2026-09-13 — la data di consegna richiesta dal cliente
+
+Colonna nuova, facoltativa: **`data_consegna_richiesta_cliente`**
+(`20260913-07`). Solo la richiesta, non la conferma: su un preventivo non c'è
+ancora niente da confermare. Al push verso l'ordine la data passa sulla riga
+d'ordine (`fn_push_preventivo_a_ordine`, dal `20260913-20`), attraverso la
+vista [vw_preventivi_righe_smistabili_ordine](/dbzero/vendite/views/vw_preventivi_righe_smistabili_ordine).
+⭐ **E sopravvive anche alla revisione** (dal `20260914-13`): la rev N+1 nasce
+con le righe ricopiate da
+[fn_crea_revisione_preventivo](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo),
+che le copia con un elenco esplicito di colonne — fino a quel giorno la data
+non era nominata e la revisione nasceva con la data a `NULL`, in silenzio
+(segnalazione del BE, 2026-09-14). Sono **due** passaggi in cui la riga si
+ricopia, e vanno tenuti allineati entrambi: il presidio è
+`db/pgtap/vendite/test-date-consegna-ordine-v1.sql` (test 4 per il push, 11
+per la revisione).
+Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezioni 2 e 6-quinquies.
+
+### 🔄 rev 2026-09-14 — le marche di approvazione prezzo sopravvivono alla revisione
+
+`stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` passano 1:1
+sulla riga della rev N+1 (`20260914-14`, decisione di Tid): un prezzo fuori
+policy approvato o in attesa resta **marcato** anche dopo una revisione, e la
+riga `PENDING` copiata resta congelata dal guard. Dal 2026-04-22 a quel giorno
+le due colonne non erano nominate nella copia e la rev N+1 nasceva senza marca.
+⭐ Da quel giorno l'elenco delle colonne copiate è **presidiato**
+(`test-fn-crea-revisione-preventivo-riga-completa-v1`, test 1): una colonna
+nuova su questa tabella fa rosso finché non viene o copiata o dichiarata
+esclusa con la ragione. Dettaglio in
+[fn_crea_revisione_preventivo](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo).

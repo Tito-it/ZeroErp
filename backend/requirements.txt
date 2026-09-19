@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.5.0
+anthropic==1.7.0
     # via -r ../requirements.in
 anyio==4.15.1
     # via
@@ -60,11 +60,11 @@ gunicorn==26.2.0
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2
-httpcore2==2.12.0
+httpcore2==2.13.0
     # via httpx2
-httpx2==2.12.0
+httpx2==2.13.0
     # via anthropic
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx2
@@ -86,9 +86,9 @@ packaging==26.3
     # via -r ../requirements.in
 pillow==12.3.0
     # via weasyprint
-psycopg==3.3.5
+psycopg==3.3.6
     # via -r ../requirements.in
-psycopg-binary==3.3.5
+psycopg-binary==3.3.6
     # via -r ../requirements.in
 pycparser==3.0
     # via cffi
@@ -147,7 +147,7 @@ typing-inspection==0.4.4
     # via pydantic
 uritemplate==4.2.0
     # via drf-spectacular
-weasyprint==69.0
+weasyprint==70.0
     # via -r ../requirements.in
 webencodings==0.6.1
     # via

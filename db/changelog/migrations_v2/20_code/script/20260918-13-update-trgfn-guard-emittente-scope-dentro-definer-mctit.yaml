@@ -1,0 +1,286 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 (2 di 4) — IL GUARD DI SCOPE NON E' PIU' FAIL-OPEN DENTRO UNA DEFINER
+#   script.trgfn_guard_emittente_scope(): il ramo «utente NULL» impara a
+#   riconoscere quando sta dentro una SECURITY DEFINER
+#   Brief: brief-db-magazzino-lotto-2-motore, sezione 6-ter C1 (decisione di
+#   Tid del 2026-09-18: rimedio nel BB, una sede sola)
+#
+# -- IL DIFETTO, PROVATO SUL VIVO -----------------------------------------------------
+#   La rev 04-09 del ramo «utente NULL» dice: passa solo chi
+#   row_security_active(TG_RELID) non filtrerebbe comunque. Ma
+#   row_security_active risponde per il CURRENT_USER, e dentro una SECURITY
+#   DEFINER il current_user e' il PROPRIETARIO della funzione — che qui
+#   possiede anche le tabelle, con RLS ENABLE senza FORCE: la risposta e'
+#   FALSE, sempre, chiunque abbia chiamato. Provato il 2026-09-18 su dbdev,
+#   stessa sessione zeroerp_app SENZA GUC, in transazione annullata: INSERT
+#   diretto su config.email_log -> E_SCOPE_SENZA_UTENTE; la stessa riga via
+#   config.fn_accoda_email_sistema (DEFINER di titodb) -> PASSA. Per la
+#   primitiva di magazzino (DEFINER del proprietario, D-L2-b) sarebbe la porta
+#   aperta a ogni processo senza identita': esattamente cio' che la rev 04-09
+#   aveva chiuso per le scritture dirette.
+#
+# -- IL RIMEDIO: session_user DICE CHI STA DAVVERO SCRIVENDO -------------------------------
+#   Dentro una DEFINER current_user <> session_user (session_user resta il
+#   login role). Quando il guard non trova un utente in sessione e la RLS
+#   «non e' attiva» ma si sta dentro una DEFINER, la risposta di
+#   row_security_active non dice niente su chi scrive: si risolve COMUNQUE
+#   l'emittente della riga e, se la riga HA un padrone, si ferma con
+#   E_SCOPE_SENZA_UTENTE — nessuno puo' dire su quale emittente quella
+#   scrittura sia lecita. Una riga SENZA padrone passa come oggi: e' il caso
+#   di fn_accoda_email_sistema (emittente NULL per costruzione, chiamata dal
+#   reset password senza sessione — email_repository.py, «nessuna sessione,
+#   nessuna GUC»), che resta esattamente com'era.
+#   ⚠️ Nel ramo DEFINER non c'e' lo «skip se la colonna non cambia»: senza
+#   identita' anche un UPDATE che non tocca la colonna e' una scrittura di cui
+#   nessuno risponde (una scrittura diretta senza identita' e' rifiutata a
+#   prescindere: qui si allinea).
+#   ⭐ Non e' una seconda scrittura della regola di esenzione: il criterio
+#   resta row_security_active (chi la RLS non filtra passa: proprietario in
+#   sessione propria, superuser, BYPASSRLS). Si aggiunge SOLO il caso in cui
+#   quella funzione risponde per la persona sbagliata.
+#
+# -- CENSIMENTO DEI CONSUMATORI (P-0, 18-09) -------------------------------------------------
+#   Le DEFINER che scrivono su tabelle col guard sono DUE: fn_accoda_email_sistema
+#   e fn_chiudi_email_sistema, entrambe a emittente NULL -> invariate. Le 24
+#   tabelle col guard montato: invariate per ogni scrittura con identita'.
+#   pgTAP: script/test-guard-emittente-senza-utente.sql prende il caso «via
+#   DEFINER, senza identita', riga con padrone -> rifiuta; senza padrone ->
+#   passa» (P-9). Il pgTAP della porta del ledger (test-porta-ledger-v1)
+#   asserisce lo stesso sulla primitiva.
+#
+# -- DALLA DOC AUTO-GEN ----------------------------------------------------------------------
+#   Corpo copiato dall'oggetto vivo (docs/it/dbzero/script/funzioni/
+#   trgfn_guard_emittente_scope.md, rev 04-09), non da uno YAML. INVOKER senza
+#   pin, come prima: legge NEW e chiama due funzioni qualificate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260918-13-update-trgfn-guard-emittente-scope-dentro-definer-mctit.yaml
+
+  - changeSet:
+      id: 20260918-13-update-trgfn-guard-emittente-scope-dentro-definer
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_guard_emittente_scope: nel ramo «utente NULL», se si sta dentro una
+        SECURITY DEFINER (current_user <> session_user) row_security_active risponde per
+        il proprietario e non dice niente su chi scrive — si risolve comunque l'emittente
+        della riga e, se c'e' un padrone, si ferma con E_SCOPE_SENZA_UTENTE; una riga senza
+        padrone passa come prima. Chiude la porta che la primitiva DEFINER di magazzino
+        avrebbe aperto (provato con fn_accoda_email_sistema). Brief:
+        brief-db-magazzino-lotto-2-motore, sezione 6-ter C1 (P-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_emittente_scope';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_auth_user_id         anagrafiche.identita_digitali.auth_user_id%TYPE;
+                v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+                v_col_value            bigint;
+                v_mode                 text := TG_ARGV[0];
+                v_col_name             text := TG_ARGV[1];
+              BEGIN
+                -- =========================================================
+                -- Difesa in profondita': verifica che l'utente corrente abbia
+                -- scope sull'emittente fiscale della riga.
+                --
+                -- Modalita' (TG_ARGV[0]) — la risoluzione vive tutta in
+                -- script.fn_resolve_emittente_fiscale_id:
+                --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id
+                --   'fattura'        = la colonna contiene fattura_id
+                --   'fiscale'        = la colonna E' gia' emittente_fiscale_id
+                --   'contabile'      = la colonna contiene contabile_id, e il
+                --                      perimetro si deriva dal CONTO DI INCASSO
+                --                      della distinta (D5)
+                --   'listino'        = la colonna contiene listino_id
+                --   'magazzino'      = la colonna contiene magazzino_id (Lotto 2)
+                --
+                -- Se emittente non risolvibile -> skip (nessun padrone).
+                --
+                -- ⭐ Rev 2026-08-22 (lotto 6, S3-4). La risoluzione era QUI, e
+                --   il guard e' SECURITY INVOKER: nel modo 'fattura' leggeva
+                --   vendite.fatture sotto row security, e per un utente fuori
+                --   perimetro quella lettura dava ZERO RIGHE. Emittente NULL ->
+                --   ramo «non risolvibile» -> RETURN NEW. Il guard si spegneva
+                --   esattamente nel caso che esiste per coprire, e il controllo
+                --   di integrita' referenziale — che gira fuori dalla row
+                --   security — non si opponeva: la riga entrava.
+                --   Adesso la risoluzione la fa una SECURITY DEFINER, che legge
+                --   tutto; qui resta solo l'applicazione della decisione.
+                --
+                -- ⛔ Rev 2026-09-04 (fase 6, brief processi automatici). Il
+                --   ramo «utente NULL -> RETURN NEW» diceva «batch job, nessun
+                --   filtro»: era l'ultima porta da cui un processo applicativo
+                --   scriveva senza dire chi fosse, e bastava NON impostare una
+                --   GUC per aprirla. Adesso passa solo chi bypasserebbe
+                --   comunque la RLS.
+                --
+                -- ⛔ Rev 2026-09-18 (magazzino Lotto 2, sezione 6-ter C1).
+                --   row_security_active risponde per il CURRENT_USER, che
+                --   dentro una SECURITY DEFINER e' il proprietario: FALSE
+                --   sempre. Dentro una DEFINER (current_user <> session_user)
+                --   quella risposta non dice niente su chi sta scrivendo: si
+                --   risolve comunque l'emittente e, se la riga ha un padrone,
+                --   ci si ferma. Una riga senza padrone (le email di sistema)
+                --   passa come prima. Provato con fn_accoda_email_sistema.
+                -- =========================================================
+
+                -- 1. Leggi user_id dalla sessione PG
+                v_auth_user_id := NULLIF(
+                  current_setting('app.current_user_id', true), ''
+                )::integer;
+
+                IF v_auth_user_id IS NULL THEN
+                  -- ⭐ UN CRITERIO SOLO, E NON E' NOSTRO.
+                  --   row_security_active() risponde per la tabella in gioco e
+                  --   per QUESTA sessione: false per il proprietario (senza
+                  --   FORCE ROW LEVEL SECURITY), per un superuser e per un
+                  --   ruolo BYPASSRLS. Sono esattamente le sessioni che le
+                  --   policy non filtrano: se la RLS le lascia passare, questo
+                  --   guard non ha titolo per fermarle — e viceversa.
+                  --   ⛔ Non si elenca a mano «proprietario o superuser o
+                  --   bypassrls»: sarebbe una SECONDA scrittura della stessa
+                  --   regola, e due scritture prima o poi dissentono.
+                  IF NOT row_security_active(TG_RELID::regclass) THEN
+                    -- ⚠️ Ma «per QUESTA sessione» vuol dire per il current_user:
+                    --   dentro una SECURITY DEFINER e' il proprietario della
+                    --   funzione, non chi ha chiamato. Fuori da una DEFINER
+                    --   (current_user = session_user) la risposta vale e si passa.
+                    IF current_user = session_user THEN
+                      RETURN NEW;
+                    END IF;
+
+                    -- Dentro una DEFINER, senza identita': si guarda la RIGA.
+                    -- Nessun padrone -> niente da proteggere, passa (email di
+                    -- sistema). Un padrone -> nessuno risponde di questa
+                    -- scrittura: si ferma qui sotto.
+                    v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+                    IF v_col_value IS NULL THEN
+                      RETURN NEW;
+                    END IF;
+                    v_emittente_fiscale_id :=
+                        script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+                    IF v_emittente_fiscale_id IS NULL THEN
+                      RETURN NEW;
+                    END IF;
+                  END IF;
+
+                  -- Sessione applicativa senza identita': si ferma. Non e'
+                  -- «permesso negato a qualcuno» — non c'e' nessuno a cui
+                  -- negarlo: e' un processo configurato senza identita'.
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_SENZA_UTENTE',
+                    jsonb_build_object(
+                      'detail', 'Scrittura senza utente in sessione su tabella con perimetro emittente',
+                      'modo', v_mode,
+                      'colonna', v_col_name,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'db_user', current_user,
+                      'session_user', session_user,
+                      'dentro_definer', current_user <> session_user,
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'operazione', TG_OP
+                    ),
+                    NULL::uuid,
+                    TG_TABLE_SCHEMA::text,
+                    TG_TABLE_NAME::text
+                  );
+                END IF;
+
+                -- 2. Leggi valore colonna da NEW
+                v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+
+                IF v_col_value IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Su UPDATE, skip se la colonna non e' cambiata
+                IF TG_OP = 'UPDATE' AND
+                   v_col_value = (to_jsonb(OLD) ->> v_col_name)::bigint THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3. Risolvi l'emittente FUORI dalla row security.
+                v_emittente_fiscale_id :=
+                    script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+
+                IF v_emittente_fiscale_id IS NULL THEN
+                  -- ⭐ Nessun padrone: dati non ancora collegati, oppure una
+                  --   distinta INTERNA (fondo fattura, compensazione) che non e'
+                  --   il canale di nessuno. Prima questo ramo raccoglieva anche
+                  --   i documenti altrui; adesso no.
+                  RETURN NEW;
+                END IF;
+
+                -- 4. Verifica scope (canonica auth_user_id, bypass SUPER_ADMIN)
+                IF NOT script.fn_check_user_emittente_scope(
+                         v_auth_user_id, v_emittente_fiscale_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_EMITTENTE',
+                    jsonb_build_object(
+                      'detail', 'Utente non autorizzato per emittente fiscale',
+                      'auth_user_id', v_auth_user_id,
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'modo', v_mode,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    format(
+                      'Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+                      v_auth_user_id, v_emittente_fiscale_id,
+                      TG_TABLE_SCHEMA, TG_TABLE_NAME
+                    )
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_guard_emittente_scope() IS
+                  'Guard di scrittura del perimetro emittente (BB, montato BEFORE INSERT OR '
+                  'UPDATE su 24+ tabelle con TG_ARGV = modo, colonna): risolve l''emittente '
+                  'della riga con script.fn_resolve_emittente_fiscale_id (DEFINER: legge fuori '
+                  'dalla row security) e chiede a script.fn_check_user_emittente_scope se '
+                  'l''utente in sessione (app.current_user_id) puo'' scriverci — '
+                  'E_SCOPE_EMITTENTE altrimenti. Nessun padrone: passa. Senza utente in '
+                  'sessione passa solo chi la RLS non filtrerebbe comunque '
+                  '(row_security_active: proprietario, superuser, BYPASSRLS), altrimenti '
+                  'E_SCOPE_SENZA_UTENTE (rev 04-09). ⛔ Rev 2026-09-18 (magazzino Lotto 2, '
+                  'C1): dentro una SECURITY DEFINER row_security_active risponde per il '
+                  'proprietario, non per chi chiama — se current_user <> session_user e la '
+                  'riga HA un padrone, senza identita'' si ferma comunque; senza padrone '
+                  '(email di sistema) passa. Provato con fn_accoda_email_sistema. E'' il '
+                  'perimetro della primitiva DEFINER di magazzino, rimesso da una sede sola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback e' la forma della rev 04-09: si riapplica quel changeSet.
+              SELECT 1;

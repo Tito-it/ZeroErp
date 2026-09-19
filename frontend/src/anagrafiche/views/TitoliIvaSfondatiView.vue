@@ -80,7 +80,7 @@ function onRowClick(data) {
       </PageActionsBar>
     </div>
 
-    <Message severity="info" :closable="false" class="mb-2">
+    <Message severity="info" :closable="false">
       {{ t('anagrafiche.titoli_iva.sfondati_hint') }}
     </Message>
 

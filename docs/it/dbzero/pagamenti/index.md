@@ -18,20 +18,26 @@
 - [fn_annulla_sistemazione](funzioni/fn_annulla_sistemazione.md) — (rev 2026-08-22)
 - [fn_conferma_sistemazione](funzioni/fn_conferma_sistemazione.md) — (rev 2026-08-22)
 - [fn_crea_distinta_correzione](funzioni/fn_crea_distinta_correzione.md)
+- [fn_get_emittente_distinta](funzioni/fn_get_emittente_distinta.md)
 - [fn_get_or_create_vendite_contabile](funzioni/fn_get_or_create_vendite_contabile.md) — Recuperare una testata contabile vendite esistente oppure crearne una nuova, con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.
-- [fn_get_saldo_fattura](funzioni/fn_get_saldo_fattura.md) — (latest review 25-08-2026)   La funzione **`pagamenti.fn_get_saldo_fattura()`** risponde a **tre domande diverse su un documento**, e tenerle separate è il motivo per cui esiste:
-- [fn_get_saldo_fattura_contabili](funzioni/fn_get_saldo_fattura_contabili.md) — (latest review 13-02-2026)   La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il saldo contabile di una fattura calcolato sulle sole righe in stato `is_postabile = true`.
-- [fn_get_saldo_rata](funzioni/fn_get_saldo_rata.md) — (rev 2026-08-22)
+- [fn_get_saldi_rate](funzioni/fn_get_saldi_rate.md) — (rev 2026-09-17)
+- [fn_get_saldo_fattura](funzioni/fn_get_saldo_fattura.md) — (latest review 18-09-2026)   La funzione **`pagamenti.fn_get_saldo_fattura()`** risponde a **tre domande diverse su un documento**, e tenerle separate è il motivo per cui esiste:
+- [fn_get_saldo_fattura_contabili](funzioni/fn_get_saldo_fattura_contabili.md) — (latest review 18-09-2026)   La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il saldo contabile di una fattura calcolato sulle sole righe in stato `is_postabile = true`.
+- [fn_get_saldo_rata](funzioni/fn_get_saldo_rata.md) — (rev 2026-09-17)
 - [fn_posta_contabile](funzioni/fn_posta_contabile.md) — (rev 2026-08-22)
+- [fn_posta_riga_tardiva](funzioni/fn_posta_riga_tardiva.md) — (scritta il 18-09-2026)
 - [trgfn_enti_incasso_guard_conto_incasso](funzioni/trgfn_enti_incasso_guard_conto_incasso.md) — (rev 2026-08-22)
 - [trgfn_enti_incasso_guard_psp](funzioni/trgfn_enti_incasso_guard_psp.md) — Garantire la coerenza applicativa dei record `pagamenti.enti_incasso` quando il canale e` di tipo `PSP`.
 - [trgfn_sistemazioni_guard_dati](funzioni/trgfn_sistemazioni_guard_dati.md) — (rev 2026-08-22)
 - [trgfn_sistemazioni_guard_transizione](funzioni/trgfn_sistemazioni_guard_transizione.md) — (rev 2026-08-22)
+- [trgfn_vendite_contabili_emittente](funzioni/trgfn_vendite_contabili_emittente.md)
+- [trgfn_vendite_contabili_gen_codice](funzioni/trgfn_vendite_contabili_gen_codice.md)
 - [trgfn_vendite_contabili_guard_chiusura](funzioni/trgfn_vendite_contabili_guard_chiusura.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_ente_centro](funzioni/trgfn_vendite_contabili_guard_ente_centro.md) — Validare la coerenza tra `centro_riscossione_id` della testata e `ente_incasso_id` quando presente.
 - [trgfn_vendite_contabili_guard_transizione](funzioni/trgfn_vendite_contabili_guard_transizione.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_validazione](funzioni/trgfn_vendite_contabili_guard_validazione.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_lotti_guard_sistemazione](funzioni/trgfn_vendite_contabili_lotti_guard_sistemazione.md) — (rev 2026-08-22 — sostituisce `trgfn_vendite_contabili_lotti_guard_compensazione`)
+- [trgfn_vendite_contabili_righe_guard_contenuto](funzioni/trgfn_vendite_contabili_righe_guard_contenuto.md) — (scritto il 14-09-2026)
 - [trgfn_vendite_contabili_righe_guard_distinta_finale](funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale.md) — (rev 2026-08-22)
 - [trgfn_vendite_contabili_righe_guard_rata](funzioni/trgfn_vendite_contabili_righe_guard_rata.md) — (rev 2026-08-22)
 - [trgfn_vendite_contabili_righe_guard_stato_dati](funzioni/trgfn_vendite_contabili_righe_guard_stato_dati.md) — (rev 2026-08-21)
@@ -41,4 +47,5 @@
 
 ## 🔍 Views
 - [vw_eccedenze_da_sistemare](views/vw_eccedenze_da_sistemare.md) — (rev 2026-08-22)
-- [vw_rate_fuori_capienza](views/vw_rate_fuori_capienza.md) — (rev 2026-08-22)
+- [vw_rate_fuori_capienza](views/vw_rate_fuori_capienza.md) — (rev 2026-09-18)
+- [vw_saldi_rate](views/vw_saldi_rate.md) — (rev 2026-09-17)

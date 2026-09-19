@@ -3,116 +3,93 @@
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
-> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti)
-> • [magazzino.ambito_causale](/dbzero/magazzino/tabelle/ambito_causale)
+> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — dove il verso viene fatto rispettare
+> • [magazzino.movimenti_attesi](/dbzero/magazzino/tabelle/movimenti_attesi)
+> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — l'altro catalogo che guida la primitiva
+>
+Approfondimento funzioni:
+> • [magazzino.trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso)
+>
+Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.1) · analisi carico e scarico (§4, M-1)
 
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+(rev 2026-09-15 — Lotto 1 del magazzino)
 
-**La causale decide come si comporta un movimento.** Non è un'etichetta descrittiva: è la
-riga di configurazione che stabilisce segno, obblighi e impatto sulla valorizzazione.
+**Il catalogo delle causali di movimento.** La causale dice tre cose di un movimento: il
+**verso** (`segno`: `+1` entrata, `−1` uscita), se è una **rettifica** (`is_rettifica`), se
+ammette lo **stock negativo** (`consente_stock_negativo`). È uno dei due cataloghi che
+guidano la primitiva di scrittura; l'altro è l'articolo (lotto, seriale, gestito a magazzino).
 
-È uno dei due soli oggetti popolati dello schema: **10 righe** da seed.
+Sedici righe, caricate dal seed (`causali.csv`), uguali su ogni installazione:
 
-| Codice | Segno | Valorizzazione |
+| Codice | Verso | Che cosa registra |
 |---|---:|---|
-| `CARICO_ACQ` | +1 | `cmp` |
-| `SCARICO_VEN` | −1 | `cmp` |
-| `TRASF_OUT` / `TRASF_IN` | −1 / +1 | `none` |
-| `RETT_POS` / `RETT_NEG` | +1 / −1 | `cmp` |
-| `ODL_USCITA_MAT` / `ODL_ENTRATA_MAT` | −1 / +1 | `cmp` |
-| `ASSET_INSTALL` / `ASSET_RIENTRO` | −1 / +1 | `cmp` |
+| `CARICO_ACQ` | +1 | carico da bolla del fornitore |
+| `SCARICO_VEN` | −1 | scarico per bolla di vendita |
+| `CARICO_RESO_VEN` | +1 | carico da reso del cliente |
+| `SCARICO_RESO_ACQ` | −1 | scarico per reso al fornitore |
+| `TRASF_OUT` / `TRASF_IN` | −1 / +1 | le due righe di un trasferimento |
+| `RETT_POS` / `RETT_NEG` | +1 / −1 | rettifica di giacenza |
+| `INV_INIZIALE` | +1 | inventario iniziale (il primo carico): non è una rettifica |
+| `ODL_USCITA_MAT` / `ODL_ENTRATA_MAT` | −1 / +1 | materiali per e da un ordine di lavoro |
+| `ODL_VERSAMENTO_PF` | +1 | versamento del prodotto finito da un ordine di lavoro |
+| `ASSET_INSTALL` / `ASSET_RIENTRO` | −1 / +1 | installazione e rientro di un asset |
+| `STORNO_POS` / `STORNO_NEG` | +1 / −1 | lo storno di un movimento (specchio di un'uscita / di un'entrata) |
 
 ---
 
-### Le colonne che governano il comportamento
+### Il verso è un meccanismo, non una dichiarazione
 
-* **`segno`** (`+1` / `−1`) — carico o scarico. ⚠️ È una **dichiarazione, non un
-  meccanismo**: vedi la sezione qui sotto.
-* **`richiede_lotto`, `richiede_seriale`, `richiede_magazzino_dest`** — gli obblighi che il
-  movimento deve soddisfare. ⚠️ Sono **dichiarazioni**: perché mordano serve un guard che le
-  legga. Da verificare prima di attivare il dominio.
-* **`impatto_valorizzazione`** — `cmp` aggiorna il costo medio ponderato, `none` no. ⭐ I
-  trasferimenti sono `none`, ed è corretto: spostare merce fra due magazzini non cambia il
-  valore complessivo, lo sposta.
-* **`abilita_billing`** — il movimento può generare una voce fatturabile.
+Fino al 14-09 questa pagina segnalava che «`segno` non entra in nessun calcolo»: la quantità
+del movimento doveva arrivare già firmata e nulla lo garantiva. Dal 15-09 il guard
+[trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso) rifiuta
+un movimento (e un atteso) la cui quantità non ha il segno della causale. La scelta è stata la
+prima delle due strade allora descritte — **verificare**, non derivare: la quantità resta un
+dato scritto, e chi sbaglia il verso viene fermato.
 
----
-
-### 🔴 `segno` non è applicato da nessuno — e la giacenza dipende da questo
-
-È il punto più importante di questa tabella, e non si vede guardandola: **la colonna `segno`
-non entra in nessun calcolo.**
-
-`magazzino.vw_giacenza` — l'unica fonte della giacenza — la calcola così:
-
-```sql
-SELECT articolo_id, magazzino_id, sum(qta) FROM magazzino.movimenti GROUP BY 1,2;
-```
-
-Un puro `sum(qta)`. Non moltiplica per `causali.segno`, non lo legge affatto.
-
-Perché il conto torni, `movimenti.qta` deve quindi arrivare **già firmata**: negativa sugli
-scarichi, positiva sui carichi. Che l'intenzione sia questa lo conferma il vincolo sulla
-quantità, che è `qta <> 0` e **non** `qta > 0`.
-
-⚠️ **Ma nulla lo garantisce.** Nessun CHECK, nessun trigger, nessuna funzione lega il segno di
-`qta` al `segno` della sua causale. Oggi è scrivibile:
-
-```sql
--- causale CARICO_ACQ (segno +1), quantità negativa: nessun errore
-INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, ...)
-VALUES (..., (SELECT id FROM magazzino.causali WHERE codice='CARICO_ACQ'), -5, ...);
-```
-
-Il movimento risulta registrato come **carico** e fa **calare** la giacenza. Non c'è errore,
-non c'è avviso: c'è un saldo sbagliato, e la causale — l'unica cosa che direbbe qual era
-l'intenzione — non viene consultata da nessuno.
-
-⭐ Da qui il rischio vero: `segno` **sembra** la definizione del comportamento della causale,
-e chi legge questa tabella lo dà per acquisito. È invece documentazione di un'intenzione che
-il database non fa rispettare.
+Lo `0` non esiste più: il CHECK ammette solo `−1` e `+1`, e la colonna non ha default — chi
+crea una causale dice il verso.
 
 ---
 
-### Le due strade per chiuderlo, da scegliere prima di attivare il dominio
+### Lo storno ha causali sue
 
-Sono alternative, non complementari, e producono contratti diversi per chi scrive:
-
-1. **Un CHECK che leghi i due segni.** `qta` resta responsabilità del chiamante, ma un segno
-   incoerente viene rifiutato. ⚠️ Richiede di leggere la causale dalla riga, quindi non è un
-   CHECK di colonna: serve un trigger che si comporti da vincolo, oppure una colonna generata.
-   Chi scrive deve continuare a firmare `qta` correttamente — gli si dice solo quando sbaglia.
-2. **Un trigger che *derivi* `qta`** dal valore assoluto per il `segno` della causale. Il
-   chiamante scrive sempre quantità positive e non può sbagliare il segno. ⚠️ In cambio, un
-   `UPDATE` che cambia la causale deve ricalcolare `qta`, e la colonna smette di essere un
-   dato scritto per diventarne uno derivato — con tutto ciò che comporta per import e
-   correzioni.
-
-⚠️ La prima è più conservativa, la seconda toglie la classe di errore alla radice. La scelta
-va fatta **prima** del primo movimento reale: dopo, cambiare la semantica di `qta`
-significherebbe rileggere ogni riga già scritta per capire con quale convenzione era stata
-registrata.
-
-⭐ Nota di metodo: il difetto gemello di questa tabella —
-`chk_mag_movimenti_da_destinazione_distinti`, che rendeva inseribili solo i trasferimenti — è
-stato corretto il 2026-08-21 (`20260821-10`) perché aveva **una sola forma giusta possibile**.
-Questo no: ha due soluzioni legittime, e per questo resta aperto invece di essere stato deciso
-mentre si scriveva la documentazione.
+Sotto il guard del verso, il movimento contrario non può portare la causale dell'originale
+(`SCARICO_VEN` è −1, lo specchio è +1). Due causali generiche, `STORNO_POS` e `STORNO_NEG`:
+*che cosa* è stornato lo dice il legame `movimenti.storno_di_movimento_id`, non la causale.
 
 ---
 
-### ⭐ `TRASF_OUT` e `TRASF_IN` sono **due** causali
+### Che cosa non c'è più (2026-09-15)
 
-Un trasferimento è modellato come **due movimenti** — uno in uscita e uno in entrata — non
-come un movimento solo con due magazzini. È coerente con il ledger: ogni riga descrive
-l'effetto su *un* magazzino.
+* `impatto_valorizzazione` — la valorizzazione è **una** (media ponderata, ri-somma dei
+  costi scritti), non una regola per causale; i trasferimenti valorizzano.
+* `richiede_lotto`, `richiede_seriale`, `richiede_magazzino_dest` — lotto e seriale li
+  pretende l'**articolo**; la destinazione non è una colonna del movimento.
+* `abilita_billing`, `richiede_odl`, `contabilizza_cdc` — dichiarate, seminate, lette da
+  nessuno.
+* `ambito_causale_id` e la tabella `magazzino.ambito_causale` — un quarto asse chiamato
+  «ambito» che nessuna funzione leggeva. Se un giorno servirà «questa causale accetta solo
+  questa sorgente», la forma è un `sorgente_tipo_id` sulla causale, letto dalla primitiva.
 
-⚠️ La colonna `movimenti.magazzino_id_dest` sembra suggerire il contrario, ed è il punto in
-cui il modello va chiarito prima dell'attivazione: le due rappresentazioni non possono
-convivere senza una regola che dica quale vale.
+`is_installazione_asset` resta: è la sola marca che lega la causale al ciclo di vita
+dell'asset; il suo consumatore nasce con gli eventi asset (un lotto successivo: D-L2-l).
+
+⭐ **Dal 18-09 (Lotto 2)** la primitiva legge la causale per `codice_interno`: `segno` per il verso
+(passo 3), `is_rettifica` per ignorare i blocchi (una rettifica registra un fatto, un blocco è una
+promessa: il fatto vince, il fisico resta), `consente_stock_negativo` per esonerare da tutto. Al
+18-09 nessuna causale del seed consente lo stock negativo: il pgTAP costruisce il caso.
+
+---
+
+### Vocabolario, uguale per tutti
+
+La tabella è **fuori dal perimetro RLS**: le causali sono parte del contratto del software e
+valgono identiche per ogni emittente. `codice_interno` è la chiave su cui il codice confronta
+ed è immutabile; una causale con movimenti non si spegne. Presidio:
+`db/pgtap/magazzino/test-causali-e-sorgenti-seed-v1.sql`.
 
 ---
 

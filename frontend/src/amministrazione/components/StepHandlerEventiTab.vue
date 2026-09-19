@@ -108,7 +108,7 @@ function onSave() {
     <template #form>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_evento') }} *</label>
-        <Select v-model="form.evento" :options="eventoOptions" option-label="label" option-value="value" class="w-full" />
+        <Select v-model="form.evento" :options="eventoOptions" option-label="label" option-value="value" />
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_handler') }} *</label>
@@ -116,11 +116,11 @@ function onSave() {
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
       </div>
       <div class="form-field form-field--num">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_sequenza') }}</label>
-        <InputNumber v-model="form.sequenza" :min="0" show-buttons class="w-full" />
+        <InputNumber v-model="form.sequenza" :min="0" show-buttons />
       </div>
       <div class="form-field form-field--toggle">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_attivo') }}</label>

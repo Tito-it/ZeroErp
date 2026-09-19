@@ -23,7 +23,8 @@
 
 # python -m pip install --upgrade pip
 # python -m pip list --outdated --format=json
-# python -m pip install --upgrade <package_name>
+# python -m pip install --upgrade <package_name>   # ⚠️ vede solo <package_name>: per
+#   rispettare i vincoli dei vicini nominare TUTTO (vedi ancoraggio 2026-09-18)
 # python -m pip check
 # pip list --outdated --format=columns | ForEach-Object { if ($_ -match '^\S+') { pip install --upgrade $matches[0] } } -- aggiorna tutto
 # python -m pip freeze > requirements.txt
@@ -69,7 +70,7 @@ PYTHON_BIN="${PYTHON_BIN:-python}"
 # 1) Aggiorna pip
 ${PYTHON_BIN} -m pip install --upgrade pip
 
-# 2) Elenco pacchetti da aggiornare (evita broken pipe)
+# 2) Elenco pacchetti scaduti — SOLO resoconto: l'aggiornamento e' al punto 2b
 echo "🔎 Cerco pacchetti da aggiornare..."
 export OUTDATED_JSON="$(${PYTHON_BIN} -m pip list --outdated --format=json || true)"
 
@@ -83,21 +84,45 @@ try:
     for p in pkgs:
         name = p.get("name")
         if name:
-            print(name)
+            print(f"{name}  {p.get('version','?')} -> {p.get('latest_version','?')}")
 except Exception:
     sys.exit(0)
 PY
 )"
 
 if [[ -z "${TO_UPDATE}" ]]; then
-  echo "✅ Nessun pacchetto da aggiornare."
+  echo "ℹ️  Nessuna versione nuova sull'indice (riconcilio comunque, vedi sotto)."
 else
-  echo "⟹ Aggiorno:"
-  while IFS= read -r name; do
-    [[ -n "$name" ]] || continue
-    echo "   - $name"
-    ${PYTHON_BIN} -m pip install --upgrade "$name"
+  echo "⟹ Scaduti:"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    echo "   - $line"
   done <<< "${TO_UPDATE}"
+fi
+
+# 2b) UNA risoluzione su tutto l'ambiente, sempre.
+# ⛔ ANCORAGGIO (2026-09-18). Prima qui c'era un ciclo `pip install --upgrade
+#    <nome>` per ogni pacchetto scaduto. Ma il resolver di pip risolve SOLO cio'
+#    che gli si nomina piu' le sue dipendenze: i vincoli dei vicini gia'
+#    installati non li vede (avvisa e prosegue). Cosi' `filelock` e' salito a
+#    4.0.0 mentre `virtualenv` (ultima, 21.7.14) pretende `filelock<4`, e il
+#    `pip check` sotto ha bloccato il freeze. E lo script non si riparava da
+#    solo: 4.0.0 e' l'ultima, quindi `filelock` NON risultava scaduto e il ciclo
+#    non lo toccava piu'.
+#    Il rimedio NON e' un pin `filelock<4`: sarebbe la fotografia di oggi, da
+#    ricordarsi di togliere quando virtualenv allarghera' il vincolo. Si nomina
+#    invece TUTTO l'ambiente in una sola chiamata: il resolver vede ogni vincolo,
+#    sceglie la versione piu' alta compatibile (anche a costo di SCENDERE, qui
+#    3.32.7) e quando il vincolo cadra' salira' da solo. Gira anche senza
+#    scaduti proprio per riconciliare uno stato incoerente come quello.
+#    Restano fuori solo le righe di freeze che non sono `nome==versione`
+#    (editable, VCS): non e' il caso di questa venv.
+mapfile -t INSTALLED < <(${PYTHON_BIN} -m pip freeze | grep -E '^[A-Za-z0-9_.-]+==' | cut -d= -f1 || true)
+if [[ ${#INSTALLED[@]} -eq 0 ]]; then
+  echo "⚠️  pip freeze non ha restituito pacchetti: niente da riconciliare."
+else
+  echo "⟹ Aggiorno: una sola risoluzione su ${#INSTALLED[@]} pacchetti..."
+  ${PYTHON_BIN} -m pip install --upgrade "${INSTALLED[@]}"
 fi
 
 # 3) Verifica dipendenze

@@ -1,0 +1,265 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I SATELLITI DELLA DISTINTA SENZA IL RAMO «SENZA CANALE = DI TUTTI» — L9b
+#   rls_vendite_contabili_righe_perimetro_incasso (righe)
+#   rls_vendite_contabili_lotti_perimetro_incasso (manifesto dei lotti)
+#   Brief: brief-db-distinta-numerata-sul-registro, §3.2 (corretto), §4-bis.9-bis
+#
+# ── 🔴 CORREZIONE AL BRIEF, TROVATA SCRIVENDO IL PIANO ───────────────────
+#   Il brief §3.2 dava righe e lotti «nessuna modifica», citando 20260822-21
+#   e 20260910-18. Le policy VIVE (lette da pg_policy il 2026-09-15) sono
+#   20260822-24 per le righe e 20260910-18 per i lotti, e portano ENTRAMBE un
+#   terzo ramo:
+#       OR EXISTS (SELECT 1 FROM pagamenti.vendite_contabili c
+#                   WHERE c.id = contabile_id AND c.ente_incasso_id IS NULL)
+#   cioe' «la testata senza canale e' di tutti, e il satellite la segue»
+#   (sulle righe con in piu' fattura_id IS NULL).
+#   ⭐ Lezione: chi cambia il perimetro di una testata censisce i satelliti
+#   DALLE POLICY VIVE (pg_policy), non dal changeSet che le ha create — qui
+#   il primo era stato riscritto due giorni dopo.
+#
+# ── PERCHE' SI RISCRIVONO, SE IL RAMO E' MORTO PER COSTRUZIONE ───────────
+#   Dopo -31 l'EXISTS legge la testata sotto la policy nuova, quindi vede
+#   solo cio' che il ramo 1 (via_contabile) gia' copre: non allarga niente.
+#   Ma il suo commento («non c'e' niente in questa riga che dica di chi sia»)
+#   diventa FALSO, e un predicato di sicurezza con un ramo che nessuno puo'
+#   piu' raggiungere e' la forma in cui una regola cambia senza che si veda.
+#   Si riscrivono senza, stesso nome, COMMENT riscritto.
+#   ⚠️ Il ramo 2 delle righe (la fattura, quando c'e') RESTA: e' quello che
+#   fa vedere la riga sul PROPRIO documento finita sulla distinta di un altro,
+#   e che tiene la bilancia (una riga sparita romperebbe la quadratura).
+#
+# ── PERCHE' DOPO -30 (il risolutore) ────────────────────────────────────
+#   Le due policy chiamano fn_scope_ef_whitelist_via_contabile, che passa dal
+#   modo contabile del risolutore. Finche' quello leggeva la catena per
+#   canale, una distinta senza canale risolveva NULL e le sue righe
+#   sparivano anche al suo emittente. -30 < -32 per NN.
+#
+# ── COSA SI VEDE DIVERSAMENTE, ED E' VOLUTO ─────────────────────────────
+#   Le righe (e il manifesto) di una distinta interna di A sono visibili agli
+#   operatori di A anche senza passare dalla fattura — e non piu' a quelli di
+#   B (brief §3.3). Rollback: le due policy vive del 15-09, per esteso.
+#
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql (8, 10, 11),
+#   db/pgtap/rls/test-rls-vendite-contabili-lotti.sql (7, 8),
+#   db/pgtap/pagamenti/test-distinta-numerazione-registro-v1.sql (18)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260915-32-rewrite-rls-satelliti-vendite-contabili-mctit.yaml
+
+  - changeSet:
+      id: 20260915-32-rewrite-rls-satelliti-vendite-contabili
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le policy vive di pagamenti.vendite_contabili_righe (20260822-24) e
+        vendite_contabili_lotti (20260910-18) portavano un terzo ramo «testata senza canale =
+        di tutti»: dopo D3 e' morto per costruzione e il suo commento e' falso. Si
+        riscrivono senza, stesso nome (brief distinta-numerata-sul-registro §4-bis.9-bis).
+        Il ramo della fattura sulle righe resta. Dopo -30 (il risolutore legge la colonna)
+        e -31 (la testata).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_lotti
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_contabile';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── LE RIGHE: due strade, non piu' tre ─────────────────────
+              DROP POLICY IF EXISTS rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE POLICY rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          -- 1. L'EMITTENTE della distinta, letto dalla testata
+                          --    (rev 2026-09-15: la distinta SA di chi e', D3). Copre
+                          --    la riga DA ABBINARE che fattura non ha — anche su una
+                          --    distinta senza canale, che ora e' del suo emittente.
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id
+                          )
+                          -- 2. LA FATTURA, quando c'e': fa vedere la riga sul PROPRIO
+                          --    documento finita sulla distinta di un altro, e tiene
+                          --    la bilancia.
+                          OR (
+                              fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id
+                              )
+                          )
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id
+                          )
+                          OR (
+                              fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id
+                              )
+                          )
+                      )
+                  );
+
+              COMMENT ON POLICY rls_vendite_contabili_righe_perimetro_incasso
+                   ON pagamenti.vendite_contabili_righe IS
+                  'RLS: l''operatore vede e scrive le righe contabili del proprio perimetro, per '
+                  'DUE strade in OR. (1) L''EMITTENTE della distinta, letto dalla testata '
+                  '(rev 2026-09-15, D3 del brief distinta-numerata-sul-registro: la distinta SA '
+                  'di chi e'', e il risolutore legge la sua colonna): copre la riga «da abbinare» '
+                  'che fattura non ha, anche su una distinta senza canale, che ora e'' del suo '
+                  'emittente come il lotto o l''atto da cui nasce. (2) LA FATTURA della riga '
+                  'quando c''e'': fa vedere la riga sul PROPRIO documento finita sulla distinta '
+                  'di un altro — senza, il saldo direbbe che quel denaro non e'' arrivato — e '
+                  'serve alla BILANCIA: una riga che sparisse dalla propria distinta romperebbe '
+                  'la quadratura col totale dichiarato. ⛔ Fino al 2026-09-15 c''era una TERZA '
+                  'strada, «ne'' documento ne'' canale: la testata senza canale e'' di tutti e la '
+                  'riga la segue» (20260822-24): dopo D3 era morta per costruzione e il suo '
+                  'commento diceva il falso, ed e'' stata tolta. ⚠️ La seconda strada legge '
+                  'vendite.fatture SOTTO la row security, e qui e'' giusto: non vedere la '
+                  'fattura E'' gia'' la risposta.';
+
+              -- ── IL MANIFESTO DEI LOTTI: la testata comanda, e ora sa di chi e' ──
+              DROP POLICY IF EXISTS rls_vendite_contabili_lotti_perimetro_incasso
+                  ON pagamenti.vendite_contabili_lotti;
+
+              CREATE POLICY rls_vendite_contabili_lotti_perimetro_incasso
+                  ON pagamenti.vendite_contabili_lotti
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                  );
+
+              COMMENT ON POLICY rls_vendite_contabili_lotti_perimetro_incasso
+                   ON pagamenti.vendite_contabili_lotti IS
+                  'Perimetro di incasso per il manifesto della distinta: quali lotti una distinta raccoglie. ⛔ Ha DUE genitori protetti e NOT NULL (contabile_id, lotto_id) con perimetri DIVERSI, e comanda la DISTINTA — decisione di Tid del 2026-09-10: la riga e'' il manifesto della distinta, il lotto esiste anche senza. ⭐ Rev 2026-09-15 (D3 del brief distinta-numerata-sul-registro): il perimetro e'' l''EMITTENTE della testata, letto dal risolutore sulla sua colonna — una distinta interna e'' del suo emittente, come il lotto da cui nasce. Il secondo ramo «testata senza canale = di tutti» (20260910-18) era morto per costruzione e diceva il falso: tolto. L''invariante resta: il satellite non e'' mai piu'' chiuso della propria testata, perche'' legge lo stesso emittente. Slice 20260910-18..20, rev 20260915-32.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le due policy vive del 2026-09-15 (20260822-24 e 20260910-18), per esteso.
+              DROP POLICY IF EXISTS rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE POLICY rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          OR (fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id))
+                          OR (fattura_id IS NULL
+                              AND EXISTS (SELECT 1 FROM pagamenti.vendite_contabili c
+                                           WHERE c.id = contabile_id
+                                             AND c.ente_incasso_id IS NULL))
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          OR (fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id))
+                          OR (fattura_id IS NULL
+                              AND EXISTS (SELECT 1 FROM pagamenti.vendite_contabili c
+                                           WHERE c.id = contabile_id
+                                             AND c.ente_incasso_id IS NULL))
+                      )
+                  );
+
+              DROP POLICY IF EXISTS rls_vendite_contabili_lotti_perimetro_incasso
+                  ON pagamenti.vendite_contabili_lotti;
+
+              CREATE POLICY rls_vendite_contabili_lotti_perimetro_incasso
+                  ON pagamenti.vendite_contabili_lotti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          OR EXISTS (SELECT 1
+                                       FROM pagamenti.vendite_contabili c
+                                      WHERE c.id = vendite_contabili_lotti.contabile_id
+                                        AND c.ente_incasso_id IS NULL)
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          OR EXISTS (SELECT 1
+                                       FROM pagamenti.vendite_contabili c
+                                      WHERE c.id = vendite_contabili_lotti.contabile_id
+                                        AND c.ente_incasso_id IS NULL)
+                      )
+                  );
