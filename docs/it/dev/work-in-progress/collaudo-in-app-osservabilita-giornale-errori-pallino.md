@@ -126,8 +126,44 @@ Non sono domande: sono cose decise o dichiarate, che il collaudo deve **vedere**
 
 ---
 
+## 5-bis. 🟠 Trovato a video — il presidio parla a chi lo mantiene, non a chi deve agire
+
+**Il fatto (Tid, 2026-09-19, sul pannello Processi automatici).** Con due
+presidi accesi — `dbops.vw_articoli_a_magazzino_prontezza` (`NESSUNO_MARCATO`)
+e `dbops.vw_lotti_fermi_da_guardare` (16 righe) — il testo mostrato sotto ogni
+riga era *«complicato da capire»*. La stessa cosa detta in chat in due righe
+(«nessun articolo è marcato gestito a magazzino: marcane uno dal drawer
+articolo» · «sono 16 lotti di prova con critiche vive da giugno: rilanciali o
+annullali») ha reso l'azione ovvia, e i due presidi si sono spenti in pochi
+minuti.
+
+**Perché succede, sul modello.** Il testo che il pannello mostra è il
+`COMMENT` della vista (`presidi_repository.py`, `obj_description`): un testo
+scritto **per chi mantiene il presidio** — spiega perché esiste, cita i brief,
+dichiara il perimetro e la cadenza. Chi lo legge in-app è **l'operatore**, che
+ha una domanda sola: *cosa vuol dire, e cosa devo fare*. Il pannello risponde
+alla domanda sbagliata perché l'unico dato che ha in mano è stato scritto per
+un altro lettore. La `nota` di `presidi.csv` va nella stessa direzione ma resta
+prosa da sviluppatore, e il commento della vista **deve** restare tecnico: non è
+lui da riscrivere.
+
+**Cosa manca.** Una seconda voce per presidio, **l'azione**: una frase
+imperativa, scritta per l'operatore, che dice cosa fare per spegnere il
+presidio (o, per i presidi che una persona non può spegnere, chi avvisare).
+Forma proposta: colonna `azione_operatore` in `dbops.presidi`, alimentata dal
+CSV come tutto il resto del catalogo; il pannello la mostra **per prima**, con
+la descrizione tecnica sotto, ripiegabile. Lato BE/FE è una colonna in più
+nella proiezione del pannello e nel digest.
+
+⚠️ È una richiesta **DB** (colonna + una riga di CSV per ognuno dei presidi a
+catalogo) più BE/FE a valle: **non c'è ancora un brief**, sta qui come nota
+del collaudo finché Tid non decide di aprirlo.
+
+---
+
 ## 6. Registro
 
 | Data | Cosa |
 | --- | --- |
 | **2026-09-19** | ✏️ Stesura, alla chiusura dell'analisi e del piano (archiviati in `work-done/` lo stesso giorno). Tutto a codice, **niente visto a video**. Prima della stesura: i due rossi CI del commit `9c11a485b` — l'elenco delle liste globali nel pgTAP e il `SELECT` di `zeroerp_app` su `maintenance.job_run_log` che esisteva solo su dev — chiusi lato DB, da committare |
+| **2026-09-19** | Primo giro a video sul pannello Processi automatici (Tid): due presidi accesi erano entrambi **stati del dato** di dev, non difetti — spenti marcando un articolo a magazzino e chiudendo i 16 lotti di prova. Trovato che la descrizione mostrata è scritta per chi mantiene il presidio, non per chi deve agire → **§5-bis**, senza brief per ora |
