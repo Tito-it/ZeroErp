@@ -21,8 +21,8 @@ import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoRuoloLookup from '../../core/components/SoggettoRuoloLookup.vue'
 import IstanzaUtilityLookup from '../../core/components/IstanzaUtilityLookup.vue'
-import { getSoggettoRuoloLookupById, lookupCodici } from '../../core/apiCore'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { getSoggettoRuoloLookupById } from '../../core/apiCore'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
 import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
@@ -184,10 +184,7 @@ watch(() => props.visible, async (val) => {
 // extra): il filtro lista include gli obsoleti, e un id fuori opzioni
 // renderebbe il Select vuoto a video ma il valore verrebbe comunque salvato.
 // Preset non tra le opzioni → si ignora (campo vuoto, scelta all'operatore).
-const tipiLookup = useGlobalLookup(
-  'pratiche.tipi_prestazione::no-obsoleti',
-  () => lookupCodici('pratiche.tipi_prestazione', { page_size: 200, includi_obsoleti: false }),
-)
+const tipiLookup = useLookupCodici('pratiche.tipi_prestazione', { includiObsoleti: false })
 
 async function preselectTipoPreset() {
   const presetId = props.presetTipoPrestazioneId
@@ -205,13 +202,10 @@ async function preselectTipoPreset() {
 // Scopo: default priorita' NORMALE in creazione, risolto per codice_interno
 // dal lookup (mai id hardcodato — feedback_no_hardcoded_ids). Il BE applica
 // comunque lo stesso default se il campo arriva vuoto: qui serve solo a
-// renderlo VISIBILE all'operatore nel form. Cache useGlobalLookup con la
-// STESSA chiave/fetch della LookupSelect del form (rel + page_size 200):
-// la preselezione non aggiunge round-trip.
-const prioritaLookup = useGlobalLookup(
-  'config.priorita_pratiche',
-  () => lookupCodici('config.priorita_pratiche', { page_size: 200 }),
-)
+// renderlo VISIBILE all'operatore nel form. STESSA entry di cache della
+// LookupSelect del form, per costruzione (`useLookupCodici`): la
+// preselezione non aggiunge round-trip.
+const prioritaLookup = useLookupCodici('config.priorita_pratiche')
 
 async function preselectPrioritaDefault() {
   if (form.value.priorita_id != null) return

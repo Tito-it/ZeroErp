@@ -29,7 +29,6 @@ from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
     GIORNALE_GRAVITA,
-    GIORNALE_REGISTRI,
     GIORNALE_SORT_COLUMNS,
     LOTTO_FATTURE_SORT_COLUMNS,
     LOTTO_GRUPPI_SORT_COLUMNS,
@@ -2154,7 +2153,8 @@ _FN_GIORNALE = "vendite.vendite_service.get_giornale_trasversale"
 #    riga non c'e', e `count` dice il numero VISTO.
 # ⚠️ `gravita`/`registro` fuori vocabolario -> 400: e' un contratto dichiarato,
 #    e un valore ignoto che rispondesse «zero righe» sarebbe un errore educato
-#    che nessuno vede.
+#    che nessuno vede. Il vocabolario di `registro` e' `config.registri_giornale`
+#    (tutte le righe, ritirate comprese: le righe vecchie si leggono).
 def get_giornale_trasversale(
     *,
     gravita: list[str] | None = None,
@@ -2179,14 +2179,20 @@ def get_giornale_trasversale(
         function_name=_FN_GIORNALE,
     )
     registri_richiesti = [r.upper() for r in (registri or []) if r] or None
-    ErrorManager.require(
-        registri_richiesti is None or all(r in GIORNALE_REGISTRI for r in registri_richiesti),
-        code="E_VENDITE_VALIDATION",
-        message="Parametro registro non valido.",
-        detail=f"registro={registri_richiesti}, ammessi={sorted(GIORNALE_REGISTRI)}",
-        context={"field": "registro"},
-        function_name=_FN_GIORNALE,
-    )
+    repository = VenditeRepository()
+    # ⭐ Il vocabolario dei registri e' `config.registri_giornale`, letto dal
+    #    catalogo — non una costante: la sede e' una (brief-db-registri-
+    #    giornale-catalogo). Si legge solo quando il filtro c'e'.
+    if registri_richiesti is not None:
+        registri_ammessi = repository.registri_giornale_ammessi()
+        ErrorManager.require(
+            all(r in registri_ammessi for r in registri_richiesti),
+            code="E_VENDITE_VALIDATION",
+            message="Parametro registro non valido.",
+            detail=f"registro={registri_richiesti}, ammessi={sorted(registri_ammessi)}",
+            context={"field": "registro"},
+            function_name=_FN_GIORNALE,
+        )
     ErrorManager.require(
         int(limit) > 0 and int(offset) >= 0,
         code="E_VENDITE_VALIDATION",
@@ -2198,7 +2204,7 @@ def get_giornale_trasversale(
     #    ripiegherebbe sull'ordine per GRAVITA' senza dirlo — una lista
     #    ordinata diversamente da come e' stata chiesta non solleva niente.
     _valida_ordinamento(order_by, order_dir, whitelist=GIORNALE_SORT_COLUMNS, function_name=_FN_GIORNALE)
-    righe, vive, ritirate, _info_vive = VenditeRepository().list_giornale_trasversale(
+    righe, vive, ritirate, _info_vive = repository.list_giornale_trasversale(
         gravita=gravita_richiesta,
         registri=registri_richiesti,
         entity_type=entity_type.upper() if entity_type else None,

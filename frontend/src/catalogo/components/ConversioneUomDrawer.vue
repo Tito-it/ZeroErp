@@ -7,8 +7,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConversioniUomStore } from '../stores/conversioniUom'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { lookupCodici } from '../../core/apiCore'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
@@ -27,11 +26,7 @@ const { t } = useI18n()
 const store = useConversioniUomStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
-const uomLookup = useGlobalLookup(
-  'catalogo.unita_misura',
-  () => lookupCodici('catalogo.unita_misura', { page_size: 200 }),
-  { immediate: true }
-)
+const uomLookup = useLookupCodici('catalogo.unita_misura', { immediate: true })
 
 const props = defineProps({
   visible: Boolean,

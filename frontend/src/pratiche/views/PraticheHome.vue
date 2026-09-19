@@ -17,8 +17,7 @@ import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { lookupCodici } from '../../core/apiCore'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { READONLY_DOMAINS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useAuthStore } from '../../stores/auth'
@@ -45,13 +44,12 @@ const showContinua = computed(() => isOperatore.value)
 const soloConsultazione = computed(() => !showComincia.value && !showContinua.value)
 
 // Tile "Comincia": tipi prestazione attivi non obsoleti (selezione per il
-// nuovo). STESSA chiave cache e fetch della LookupSelect del PraticaDrawer
-// (`rel` + `::no-obsoleti`): tra home e drawer non si paga alcun round-trip
-// aggiuntivo (useGlobalLookup, cache modulo-level condivisa).
-const { items: tipiItems, loading: tipiLoading } = useGlobalLookup(
-  'pratiche.tipi_prestazione::no-obsoleti',
-  () => lookupCodici('pratiche.tipi_prestazione', { page_size: 200, includi_obsoleti: false }),
-  { immediate: true },
+// nuovo). STESSA entry di cache della LookupSelect del PraticaDrawer, per
+// costruzione (`useLookupCodici`, stesso `rel` + stesso insieme): tra home e
+// drawer non si paga alcun round-trip aggiuntivo.
+const { items: tipiItems, loading: tipiLoading } = useLookupCodici(
+  'pratiche.tipi_prestazione',
+  { includiObsoleti: false, immediate: true },
 )
 
 // Icona per categoria: mapping FE (decisione brief §2.5 — l'icona e'

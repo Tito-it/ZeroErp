@@ -119,10 +119,16 @@ GIORNALE_SORT_COLUMNS: dict[str, str] = {
     "quando": "quando",
 }
 
-# I quattro registri che la vista cuce, nel suo vocabolario. ⚠️ Un ramo nuovo
-# della vista (pratiche, documenti) entra qui con la sua UNION ALL: il filtro
-# `registro` del giornale trasversale lo valida contro questo insieme.
-GIORNALE_REGISTRI: frozenset[str] = frozenset({"EVENT_LOG", "LOTTO_LOG", "TASK_RUN", "FATTURA_LOG"})
+# ⛔ I REGISTRI che la vista cuce NON stanno piu' qui (2026-09-19, brief-db-
+#    registri-giornale-catalogo): fino a quel giorno `GIORNALE_REGISTRI` era la
+#    seconda delle tre sedi che non si conoscevano (i letterali dei rami
+#    `UNION ALL`, questa costante, l'array del frontend), e un ramo nuovo
+#    entrava nella vista lasciando le altre due indietro senza nessun errore.
+#    La sede e' `config.registri_giornale` (pgTAP `test-giornale-registri-
+#    catalogo-v1` la lega alla vista nei due versi): il filtro `registro` si
+#    valida con `VenditeRepository.registri_giornale_ammessi()`, il frontend
+#    legge la tendina dal lookup generico. Il quinto registro = un `UNION ALL`
+#    + una riga di CSV, e qui non cambia niente.
 # Le tre gravita' normalizzate della vista. ⚠️ `NULL` non e' una quarta: e' il
 # segnale di «un vincolo si e' allargato e la mappa e' rimasta indietro», e
 # viaggia INSIEME a `ERROR` (pesa come un ERROR, vedi `rango_gravita`).
@@ -5079,6 +5085,21 @@ class VenditeRepository:
             sort_dir=sort_dir,
         )
 
+    # Scopo: i registri che il filtro `registro` del giornale trasversale puo'
+    #        nominare — i `codice_interno` di `config.registri_giornale`, TUTTI,
+    #        ritirati compresi (brief-db-registri-giornale-catalogo §8.4): le
+    #        righe vecchie del diario si leggono anche a registro ritirato, e un
+    #        deep-link scritto ieri non deve diventare un 400 domani.
+    # ⭐ Letto dal catalogo a ogni richiesta che porta il filtro, e non pinnato
+    #    in una costante con un presidio: una costante e' una sede in piu' (con
+    #    un test che la tiene allineata), il catalogo e' LA sede. Costo: una
+    #    `SELECT` da quattro righe, solo quando `registro` e' presente.
+    # ⚠️ Nessun cast a `attivo`: la tabella non ce l'ha (D3 del brief).
+    def registri_giornale_ammessi(self) -> frozenset[str]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT codice_interno FROM config.registri_giornale")
+            return frozenset(row[0] for row in cursor.fetchall())
+
     # Scopo: il GIORNALE TRASVERSALE — «cosa e' andato storto, su tutto,
     #        nell'ultimo periodo»: la Storia di tutte le entita' insieme,
     #        filtrata per gravita' (pezzo G del piano BE/FE dell'osservabilita',
@@ -5099,7 +5120,11 @@ class VenditeRepository:
     #   `gravita`    sottoinsieme di `GIORNALE_GRAVITA`. ⚠️ Con `ERROR` si
     #                INCLUDE il `NULL` — la riga che dichiara un difetto (stessa
     #                regola del pannello lotto e del `rango_gravita`).
-    #   `registri`   sottoinsieme di `GIORNALE_REGISTRI`, `None` = tutti.
+    #   `registri`   `codice_interno` di `config.registri_giornale`, `None` =
+    #                tutti. ⛔ Li valida il SERVICE contro il catalogo
+    #                (`registri_giornale_ammessi`): qui viaggiano nei
+    #                params e basta, e un valore ignoto darebbe zero righe
+    #                — e' la ragione per cui il cancello sta a monte.
     #   `entity_type` codice di `config.tipi_entita`, esatto.
     #   `data_da`/`data_a` su `quando`, `[da, a + 1 giorno)`: il floor lo mette
     #                il frontend (e' consultazione, non coda di lavoro).
@@ -5132,9 +5157,7 @@ class VenditeRepository:
         sort_dir: str = "desc",
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         gravita_valide = [g for g in gravita if g in GIORNALE_GRAVITA]
-        registri_validi = (
-            [r for r in registri if r in GIORNALE_REGISTRI] if registri is not None else None
-        )
+        registri_validi = list(registri) if registri is not None else None
         righe, vive, ritirate, info_vive = self._list_giornale(
             perimetro_sql="""
                 (gravita = ANY(%s::text[]) OR (gravita IS NULL AND 'ERROR' = ANY(%s::text[])))

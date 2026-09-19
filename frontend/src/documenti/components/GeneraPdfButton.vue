@@ -23,8 +23,7 @@ import Button from 'primevue/button'
 import { useDocumentiPerSorgenteStore } from '../stores/documentiPerSorgente'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { lookupCodici } from '../../core/apiCore'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { MANAGE_ICONS } from '../../core/constants'
 import { downloadBlob } from '../../core/utils/download'
 import { listTemplateApplicabili } from '../api/templateDocumentiLookup'
@@ -64,11 +63,7 @@ const notify = useNotify()
 // di GeneraPdfButton condividono la stessa fetch della whitelist
 // `config.sorgenti`. La lookup contiene 1 riga per sorgente, totale
 // poche decine di record.
-const sorgentiLookup = useGlobalLookup(
-  'config.sorgenti',
-  () => lookupCodici('config.sorgenti', { page_size: 200 }),
-  { immediate: true },
-)
+const sorgentiLookup = useLookupCodici('config.sorgenti', { immediate: true })
 
 // Scopo: Risolve `sorgente_tipo_id` dalla lookup `config.sorgenti` a
 //        partire dal `sorgenteCode` (es. 'PREVENTIVO'). Ritorna null
