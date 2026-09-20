@@ -5074,6 +5074,12 @@
       "flusso": "Flusso",
       "definizione_workflow": "Edizione workflow"
     },
+    "registri_giornale": {
+      "event_log": "Eventi di dominio",
+      "lotto_log": "Log del lotto",
+      "task_run": "Giri dei task",
+      "fattura_log": "Log della fattura"
+    },
     "eventi_dominio": {
       "emittibilita_fallita": "Controllo di emittibilità non superato",
       "lotto_riaperto": "Lotto riportato in lavorazione: documenti cancellati",

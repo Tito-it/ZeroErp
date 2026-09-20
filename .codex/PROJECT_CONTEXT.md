@@ -348,22 +348,24 @@ produzione, non c'è niente da aspettare.*
   vista (le tabelle lo hanno o lo raggiungono) + la colonna a catalogo. Il
   collaudo in-app dell'osservabilità (`work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
   scritto il 19-09, **da eseguire**) lo dichiara al §3.15
-- **Il catalogo dei registri del giornale** (DB, brief scritto il
-  2026-09-19: `work-in-progress/brief-db-registri-giornale-catalogo.md`,
-  decisione di Tid dello stesso giorno): i quattro registri che
-  `script.vw_giornale_entita` cuce vivono come letterali nei rami `UNION ALL`,
-  in una costante BE e in un array FE, e nessuna sede porta l'etichetta — la
-  tendina «Registro» mostra `EVENT_LOG` grezzo. Richiesta: `config.registri_giornale`
-  nella forma del lookup generico + pgTAP che lega vista e catalogo nei due
-  versi. ✅ **Lato DB CHIUSO il 19-09** (`20260919-08` tabella, `-09` seed,
-  pgTAP `script/test-giornale-registri-catalogo-v1` 13/13 come app, i due
-  presidi sul catalogo nel pgTAP della vista; **senza `attivo`**, `sorgente`
-  come `text` — risposte D1/D2/D3 nel brief §6): applicato su dbdev, suite
-  senza regressioni, da committare; poi tocca al BE (§5 del brief:
-  `_REL_CONSENTITE`, `GIORNALE_REGISTRI` pinnata o letta dal catalogo,
-  `REGISTRI` FE ritirato, otto chiavi i18n, e le note del §8.4 — fra cui:
-  `etichetta_key` esce dal lookup generico solo via `_LOOKUP_SPECIALIZZATE`).
-  La tendina gemella «Entità» è già sul catalogo (`GET /core/lookup/tipi-entita/`)
+- ✅ **Il catalogo dei registri del giornale — CHIUSO il 2026-09-19** su DB,
+  BE e FE (`work-done/brief-db-registri-giornale-catalogo.md`): le tre sedi
+  che non si conoscevano (letterali della vista, costante BE, array FE) sono
+  **una**, `config.registri_giornale`, legata alla vista dal pgTAP nei due
+  versi; il filtro `registro` del giornale trasversale si valida leggendo il
+  catalogo (`registri_giornale_ammessi`, niente costante), la tendina e la
+  colonna «Registro» portano l'etichetta dal lookup specializzato
+  (`etichetta_key`), e `check_i18n_keys.py` legge la colonna `etichetta_key`
+  dei CSV. **Due cose ereditate**, nel brief §5.1: (a) l'handler delle
+  specializzate scriveva `t.attivo` fisso — ora `has_attivo`, e
+  `test_lookup_specializzate` attraversa **tutte** le rel sul DB provvisto;
+  (b) ✅ regola del 2 applicata (ok Tid): le due tendine del giornale
+  («Entità», «Registro») passano dal BB `useLookupEtichettato` — lookup del
+  catalogo con l'etichetta dichiarata dal DB, `etichetta(codice)` + `opzioni`;
+  e dalla rilettura critica `useLookupCodici` (chiave `<rel>[::no-obsoleti]`
+  + fetch del lookup generico composte in un posto, 7 siti). ⚠️ Restano
+  dichiarati i siti che chiamano `lookupCodici(rel)` senza `page_size`
+  (pagina 50: tendina troncabile in silenzio) — da rivedere uno per uno
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare

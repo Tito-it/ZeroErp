@@ -20,7 +20,7 @@
 //                 :transform="r => r.data.data" value-field="codice" show-code />
 import { computed } from 'vue'
 import { useGlobalLookup } from '../composables/useGlobalLookup'
-import { lookupCodici } from '../apiCore'
+import { LOOKUP_CODICI_PAGE_SIZE, useLookupCodici } from '../composables/useLookupCodici'
 import Select from 'primevue/select'
 
 const props = defineProps({
@@ -47,7 +47,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   filterField: { type: String, default: '' },
   filterValue: { type: [Number, String, Boolean], default: null },
-  pageSize: { type: Number, default: 200 },
+  pageSize: { type: Number, default: LOOKUP_CODICI_PAGE_SIZE },
   // Prepend di una voce "Tutti" (value=null) — per i Select usati come filtro
   // lista (es. stato email log). Etichetta da `allLabel`.
   includeAllOption: { type: Boolean, default: false },
@@ -68,20 +68,19 @@ const emit = defineEmits(['update:modelValue', 'change'])
 // Cache globale per-chiave: tutte le istanze con la stessa chiave condividono
 // la stessa fetch (evita N chiamate duplicate nei form con piu' dropdown).
 // Chiave = `rel` nel modo storico, `lookupKey` (fallback `rel`) col fetcher.
-// In modalita' `rel`, se si escludono gli obsoleti la chiave cache deve
-// differire da quella di default (stesso `rel` con set diverso → niente
-// collisione nella cache globale condivisa).
-const relCacheKey = props.includiObsoleti ? props.rel : `${props.rel}::no-obsoleti`
-const lookupKeyResolved = props.fetcher ? (props.lookupKey || props.rel) : relCacheKey
-const fetchFn = props.fetcher
-  ? props.fetcher
-  : () => lookupCodici(props.rel, {
-      page_size: props.pageSize,
-      ...(props.includiObsoleti ? {} : { includi_obsoleti: false }),
-    })
+// In modalita' `rel` chiave e fetch le compone `useLookupCodici` (con gli
+// obsoleti esclusi la chiave e' un'altra: stesso `rel`, insieme diverso), cosi'
+// una preselezione o una home che leggono lo stesso insieme condividono
+// l'entry per costruzione, non per aver ricopiato la stringa.
 const lookupOptions = { immediate: true }
 if (props.transform) lookupOptions.transform = props.transform
-const lookup = useGlobalLookup(lookupKeyResolved, fetchFn, lookupOptions)
+const lookup = props.fetcher
+  ? useGlobalLookup(props.lookupKey || props.rel, props.fetcher, lookupOptions)
+  : useLookupCodici(props.rel, {
+      includiObsoleti: props.includiObsoleti,
+      pageSize: props.pageSize,
+      ...lookupOptions,
+    })
 
 const filteredItems = computed(() => {
   if (!props.filterField || props.filterValue == null) return lookup.items.value

@@ -9,9 +9,8 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { listConversioniUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
-import { lookupCodici } from '../../core/apiCore'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -35,11 +34,7 @@ const ALWAYS_VALID_FROM = '1900-01-01'
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading, campiErrati } = useApiHandler()
-const uomLookup = useGlobalLookup(
-  'catalogo.unita_misura',
-  () => lookupCodici('catalogo.unita_misura', { page_size: 200 }),
-  { immediate: true }
-)
+const uomLookup = useLookupCodici('catalogo.unita_misura', { immediate: true })
 
 const props = defineProps({
   visible: { type: Boolean, default: false },

@@ -22,6 +22,9 @@
 #   2. test_il_filtro_per_filo_trova_la_riga_costruita
 #   3. test_ogni_filtro_della_whitelist_si_attraversa (+ i quattro indici per
 #      tempo di P-3 esistono; il PIANO non si asserisce: e' del planner)
+#   4. test_i_registri_del_filtro_vengono_dal_catalogo: il vocabolario di
+#      `registro` e' `config.registri_giornale` letto dal DB, ogni registro
+#      del catalogo attraversa il service, uno ignoto e' un rifiuto
 # ------------------------------------------------------------
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ from uuid import uuid4
 
 from django.db import connection, transaction
 
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto, richiedi_ruolo_soggetto_a_rls
 from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.vendite.services.vendite_service import get_giornale_trasversale
@@ -171,3 +175,31 @@ class GiornaleTrasversalePerimetroTests(TestCase):
                 indici = {r[0] for r in cur.fetchall()}
             transaction.set_rollback(True)
         self.assertEqual(len(indici), 4, f"indici per tempo di P-3 (20260919-05) mancanti: {indici}")
+
+    # 4. Il vocabolario del filtro `registro` e' il CATALOGO, letto dal DB
+    #    (brief-db-registri-giornale-catalogo, 2026-09-19): il lettore risponde
+    #    esattamente i `codice_interno` di `config.registri_giornale`, ogni
+    #    registro del catalogo attraversa il service senza errore SQL, e un
+    #    registro che il catalogo non conosce e' un rifiuto (`fields`), non
+    #    «zero righe». ⚠️ Non si pretende un elenco preciso: il giorno del
+    #    quinto registro questo test deve restare verde da solo — e' la
+    #    ragione per cui la costante e' uscita dal backend.
+    def test_i_registri_del_filtro_vengono_dal_catalogo(self) -> None:
+        repo = VenditeRepository()
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                a, _b = self._due_mondi(cur)
+                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [a.auth_user_id])
+                cur.execute("SELECT codice_interno FROM config.registri_giornale")
+                catalogo = {r[0] for r in cur.fetchall()}
+            ammessi = repo.registri_giornale_ammessi()
+            self.assertTrue(ammessi, "config.registri_giornale vuota: il seed 20260919-09 manca")
+            self.assertEqual(ammessi, frozenset(catalogo))
+            for registro in sorted(ammessi):
+                data = get_giornale_trasversale(gravita=["ERROR", "WARN", "INFO"], registri=[registro], limit=1)
+                self.assertIsInstance(data["count"], int)
+            with self.assertRaises(ServiceError) as ctx:
+                get_giornale_trasversale(registri=["NON_A_CATALOGO"], limit=1)
+            transaction.set_rollback(True)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "registro")

@@ -5074,6 +5074,12 @@
       "flusso": "Workflow step",
       "definizione_workflow": "Workflow edition"
     },
+    "registri_giornale": {
+      "event_log": "Domain events",
+      "lotto_log": "Batch log",
+      "task_run": "Task runs",
+      "fattura_log": "Invoice log"
+    },
     "eventi_dominio": {
       "emittibilita_fallita": "Issuability check not passed",
       "lotto_riaperto": "Batch reopened for rework: documents deleted",

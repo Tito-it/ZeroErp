@@ -86,7 +86,7 @@ insieme, filtrata per gravità.
 | **3.3** | Spegni «Solo errori» | Compaiono anche gli **avvisi** (`WARN`). Le `INFO` non arrivano da qui: sono nella Storia dell'entità | — |
 | **3.4** | Leggi **Riferimento** | Il **codice del lotto** o il **numero della fattura** (con la natura); una bozza senza numero mostra il ripiego, non `/` vuoto | Il rilievo 3 del 19-09: `serie/numero` a mano dava `''` e il ripiego non scattava mai |
 | **3.5** | Leggi **Cosa** | L'etichetta dell'evento (dal catalogo `config.eventi_dominio`), non il codice grezzo; se manca la chiave, il codice | — |
-| **3.6** | Tendina **Registro** → `TASK_RUN` | Solo le corse di task. ⚠️ **Quando** è l'**inizio** della corsa (R-6, chiuso a DB il 19-09): non un orario del giorno dopo | Se vedi orari «del futuro», la vista è tornata a `COALESCE(ended_at, …)` |
+| **3.6** | Tendina **Registro** → «Giri dei task» | ⭐ Le voci vengono dal **catalogo** (`config.registri_giornale`, lookup generico) e portano l'**etichetta** (`etichetta_key` del DB), non più `TASK_RUN` grezzo — anche nella colonna «Registro». Solo le corse di task. ⚠️ **Quando** è l'**inizio** della corsa (R-6, chiuso a DB il 19-09): non un orario del giorno dopo | Se vedi orari «del futuro», la vista è tornata a `COALESCE(ended_at, …)` |
 | **3.7** | Tendina **Entità** | Le voci vengono dal **catalogo** (`config.tipi_entita`, lookup dedicato), non da una lista scritta nel FE | — |
 | **3.8** | Kebab riga su un **LOTTO** → «Apri …» | Si apre il lotto (per rotta, `?open=`); la scheda **Storia** è lì dentro — nessun secondo pulsante «Storia» in lista, per scelta | — |
 | **3.9** | Kebab riga su una **FATTURA** → «Apri …» | Si apre la fattura | — |
@@ -120,7 +120,7 @@ Non sono domande: sono cose decise o dichiarate, che il collaudo deve **vedere**
 | | Cosa | Dove sta scritto |
 | --- | --- | --- |
 | **§3.15** | Il Giornale eventi su «Tutti gli emittenti» chiede un emittente. Per farlo multi serve `emittente_soggetto_ruolo_id` nei quattro rami della vista: **richiesta DB non urgente** | piano §10, registro 19-09 (pezzo G, nota ⚠️) |
-| **§3.6-3.7** | La tendina **Registro** è ancora una **seconda sede** nel FE (quattro letterali) finché non esiste `config.registri_giornale`: brief DB [brief-db-registri-giornale-catalogo.md](brief-db-registri-giornale-catalogo.md). Quando arriva, la tendina porta le **etichette** invece di `EVENT_LOG` grezzo | PROJECT_CONTEXT «Aperto» |
+| **§3.6-3.7** | ~~La tendina **Registro** è ancora una **seconda sede** nel FE (quattro letterali) finché non esiste `config.registri_giornale`~~ ✅ **Chiuso il 19-09 sera**: catalogo a DB, BE e FE sul catalogo, etichette a video — [brief-db-registri-giornale-catalogo.md](../work-done/brief-db-registri-giornale-catalogo.md) (`work-done/`). Il §3.6 lo collauda | — |
 | **R-5** | Sul giornale convivono **due generazioni** di righe: le vecchie con transazione vuota, le nuove col giro. A video sono indistinguibili, e resta così | analisi §3-quater |
 | **R-7** | Il **rumore**: un lotto sporco ripete la stessa storia N volte. Il toggle «Solo errori» ne toglie una parte; la de-duplicazione **non è stata fatta**, per scelta: si guarda col pannello davanti | analisi §3-quater |
 

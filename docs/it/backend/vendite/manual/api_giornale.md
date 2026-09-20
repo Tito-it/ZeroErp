@@ -32,7 +32,7 @@ dominio va in `core`» — il prossimo (pratiche) lo sposta.
 | Query param | Tipo | Note |
 | --- | --- | --- |
 | `gravita` | csv di `ERROR` \| `WARN` \| `INFO` | default `ERROR`. ⚠️ Con `ERROR` si **include** la gravità `NULL` — la riga che dichiara un difetto («un vincolo si è allargato e la mappa è rimasta indietro»), come nel pannello lotto. Fuori vocabolario → `400 E_VENDITE_VALIDATION` (`fields: ["gravita"]`) |
-| `registro` | csv di `EVENT_LOG` \| `LOTTO_LOG` \| `TASK_RUN` \| `FATTURA_LOG` | default tutti; fuori vocabolario → `400` |
+| `registro` | csv di `codice_interno` di **`config.registri_giornale`** (al 2026-09-19: `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, `FATTURA_LOG`) | default tutti; fuori **catalogo** → `400`. ⭐ Il vocabolario si **legge dal catalogo** a ogni richiesta che porta il filtro (`VenditeRepository.registri_giornale_ammessi()`, tutte le righe, ritirate comprese): non c'è una costante nel backend — il quinto registro entra con un `UNION ALL` nella vista e una riga di CSV, e qui non cambia niente. La tendina del frontend legge lo stesso catalogo dal lookup generico (`rel=config.registri_giornale`, specializzato con `etichetta_key`). Brief: `work-done/brief-db-registri-giornale-catalogo.md` |
 | `entity_type` | codice di `config.tipi_entita` | esatto; un codice ignoto risponde zero righe |
 | `data_da` / `data_a` | date ISO | su `quando`, `[da, a + 1 giorno)`; malformate → `400`. Il floor standard lo mette il frontend |
 | `filo` | uuid | `tx_id` **oppure** `correlation_id` (R-2: filtrare per filo tiene `EVENT_LOG` + `TASK_RUN` e butta le righe scritte per una persona — il default non filtra per filo). Non uuid → `400` |

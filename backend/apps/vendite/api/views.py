@@ -41,7 +41,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.openapi_params import descrizione_order_by
-from apps.vendite.db.vendite_repository import GIORNALE_GRAVITA, GIORNALE_REGISTRI, GIORNALE_SORT_COLUMNS
+from apps.vendite.db.vendite_repository import GIORNALE_GRAVITA, GIORNALE_SORT_COLUMNS
 from apps.core.api.success_responses import success_response
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
@@ -1436,7 +1436,12 @@ _PARAMS_FILTRI_GIORNALE = [
     ),
     OpenApiParameter(
         name="registro", type=str, location=OpenApiParameter.QUERY, required=False,
-        description=f"Registro (csv) fra {' | '.join(sorted(GIORNALE_REGISTRI))}; default tutti.",
+        description=(
+            "Registro (csv): `codice_interno` di `config.registri_giornale` — il "
+            "catalogo che il lookup generico serve con `rel=config.registri_giornale` "
+            "(EVENT_LOG, LOTTO_LOG, TASK_RUN, FATTURA_LOG al 2026-09-19); default "
+            "tutti. Fuori catalogo -> 400."
+        ),
     ),
     OpenApiParameter(
         name="entity_type", type=str, location=OpenApiParameter.QUERY, required=False,

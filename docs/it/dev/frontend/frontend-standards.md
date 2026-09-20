@@ -3569,6 +3569,8 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | Composable | Scopo | Usato da |
 | --- | --- | --- |
 | `useLookup` | Caricamento lazy/eager di dati lookup con cache | Form con select/dropdown |
+| `useLookupCodici` | Lookup **generico** di un `rel` nella cache condivisa: chiave (`<rel>` / `<rel>::no-obsoleti`) e fetch composte in un posto — mai scritte a mano (2026-09-19) | `LookupSelect`, `PraticaDrawer`, `PraticheHome`, `GeneraPdfButton`, drawer UoM |
+| `useLookupEtichettato` | Lookup del catalogo con l'**etichetta dichiarata dal DB** (`etichetta_key`, resa con `labelOrCode`): `etichetta(codice)` per le colonne + `opzioni` con la voce «tutti» — **non** un `LookupSelect`, che rende `descrizione` (2026-09-19, regola del 2) | `GiornaleListView` (tendine Entità e Registro) |
 | `useServerAutocomplete` | Autocomplete con ricerca server debounce 300ms | ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete |
 
 #### Building block dominio — soggetti e contatti
