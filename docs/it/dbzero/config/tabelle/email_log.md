@@ -39,6 +39,7 @@
 | CHECK | chk_email_log_ambito |  |
 | CHECK | chk_email_log_ambito_emittente |  |
 | CHECK | chk_email_log_stato |  |
+| FOREIGN KEY | fk_config_email_log_auth_user | auth_user_id |
 | FOREIGN KEY | fk_email_log_email_account | email_account_id |
 | FOREIGN KEY | fk_email_log_email_template | email_template_id |
 | FOREIGN KEY | fk_email_log_emittente_fiscale | emittente_fiscale_id |

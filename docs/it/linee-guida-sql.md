@@ -468,11 +468,19 @@ usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.m
 Standardizzare i campi di auditing:
 
 ```sql
-data_insert    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
-user_insert    TEXT      NOT NULL DEFAULT CURRENT_USER
-data_update    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
-user_update    TEXT      NOT NULL DEFAULT CURRENT_USER
+data_insert    TIMESTAMPTZ NOT NULL DEFAULT now()
+user_insert    TEXT        NOT NULL DEFAULT CURRENT_USER
+data_update    TIMESTAMPTZ NOT NULL DEFAULT now()
+user_update    TEXT        NOT NULL DEFAULT CURRENT_USER
 ```
+
+⛔ **`TIMESTAMPTZ`, mai `TIMESTAMP` nudo.** Fino al 2026-09-20 questo blocco
+scriveva `TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE`, che
+non è SQL valido e — letto per la parte che compila — dichiara `timestamp
+without time zone`: l'orario **locale della sessione** che scrive, senza
+memoria del fuso. È esattamente il DDL con cui sono nate le 22 colonne dello
+schema `ui` (`data_insert TIMESTAMP NOT NULL DEFAULT now()`) sanate da
+`20260920-02`. Regola e cancello in §11.10.
 
 ⚠️ **`data_`, non `date_`.** Fino al 2026-07-31 questo blocco scriveva
 `date_insert` (e la riga sotto `date_update`), mentre la seconda colonna era
@@ -2008,6 +2016,51 @@ già provisionati. Presidio:
 (INSERT/UPDATE/DELETE) quanto il sì. ⚠️ Corollario: un `ERRORE_FIXTURE` in
 baseline con «permesso negato» va **letto**, non registrato — è quasi sempre
 questa regola.
+
+---
+
+### 11.10 ⛔ `TIMESTAMP` nudo è senza fuso: si scrive `timestamptz`, sempre
+
+Presidiato da `scripts/guardrail_timestamp_senza_fuso.py` in CI (changeSet con
+data ≥ `20260920`, sola sezione `changes`, istruzioni `DROP` esenti) e, sul
+database vivo, da `db/pgtap/dbops/test-nessun-timestamp-senza-fuso-v1.sql`.
+
+In PostgreSQL `TIMESTAMP` è `timestamp without time zone`: la colonna memorizza
+l'orario **locale della sessione che scrive**, senza il fuso. E in questo
+progetto le sessioni sono **due**: il backend Django connette con `SET TIME
+ZONE 'UTC'` (`USE_TZ = True`, nessun `TIME_ZONE` nel `DATABASES`), psql,
+Liquibase e pgAgent con `TimeZone = Europe/Rome`. Lo stesso `now()` scritto in
+quella colonna da due sessioni vale **due istanti diversi**, e la riga non
+ricorda quale — misurato il 2026-09-20 sulle shadow `storico`, dove la stessa
+riga porta anche un `valid_from` `timestamptz`: le righe di `zeroerp_app` erano
+avanti di +1h d'inverno e +2h d'estate, quelle di `titodb` coincidevano.
+
+> Il 2026-09-20 la valutazione del modello di dominio (voce V-3) ha contato
+> **671** `timestamptz` e **4** senza fuso nel dominio — ma **22** senza fuso e
+> **zero** con nello schema `ui`, **8** shadow di `storico` nate prima del
+> generatore, due funzioni `as_of` con `p_as_of timestamp` e un `RETURNS TABLE`
+> senza fuso. Sanate da `20260920-02` … `-07`; una di esse (`fn_get_iva_override`)
+> era anche **rotta** e senza chiamanti, ed è stata ritirata.
+
+⚠️ **Il difetto nasce nel DDL** — `data_insert TIMESTAMP NOT NULL DEFAULT
+now()` — e per mesi lo suggeriva questo stesso documento (§7, corretto). Un
+`DEFAULT now()` non protegge: `now()` è `timestamptz` e viene **convertito**
+alla scrittura. Vale per tutte e tre le sedi di un tipo: colonna, parametro di
+funzione, colonna di `RETURNS TABLE`; e in un `DECLARE` la forma giusta è
+`%TYPE` sulla colonna, che non può divergere.
+
+⚠️ **Convertire una colonna esistente non è un cast**: `ALTER COLUMN … TYPE
+timestamptz` senza `USING` legge i valori col fuso della sessione **che migra**,
+cioè di chi lancia il comando. Si dichiara l'orologio con cui le righe sono
+state scritte — `USING col AT TIME ZONE 'UTC'` dove scrive solo il backend,
+`'Europe/Rome'` dove scrivono seed e sessioni DB, un `CASE` sul ruolo
+(`user_insert = 'zeroerp_app'`) dove scrivono entrambi — come fanno
+`20260920-02/-03/-04`.
+
+⭐ Se il valore è un **giorno** e non un istante, il tipo è `date`, non un
+`timestamp` «tanto il fuso non conta». Le esclusioni si **dichiarano** in testa
+al changeSet (`# timestamp-senza-fuso: ammesso — <perché>`) e il cancello le
+stampa come debito; non si spiegano solo in prosa.
 
 ---
 

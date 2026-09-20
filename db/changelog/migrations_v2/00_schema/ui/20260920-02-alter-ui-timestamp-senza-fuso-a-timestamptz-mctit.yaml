@@ -1,0 +1,167 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-3 (1 di 6) — schema `ui`: le 22 colonne `timestamp without time zone`
+#   diventano `timestamptz`. Nessuna eccezione, decisione di Tid del 2026-09-20.
+#   Documento: valutazione-modello-di-dominio-db, voce V-3.
+#
+# -- IL FATTO -------------------------------------------------------------------
+#   Nel dominio 671 colonne sono `timestamptz` e 4 no; nello schema `ui` sono
+#   22 senza fuso e ZERO con. Il difetto nasce nel DDL: i changeSet di
+#   00_schema/ui/ scrivono `data_insert TIMESTAMP NOT NULL DEFAULT now()`, e in
+#   PostgreSQL `TIMESTAMP` nudo e' SENZA fuso. Lo stesso now() finisce in due
+#   famiglie di colonne, e la riga scritta in `timestamp` ha gia' perso
+#   l'informazione: e' l'orario LOCALE della sessione che ha inserito.
+#
+# -- ⚠️ LE RIGHE ESISTENTI NON SONO STATE SCRITTE DA UN OROLOGIO SOLO -----------
+#   Il backend (Django, USE_TZ = True, nessun TIME_ZONE nel DATABASES) apre la
+#   connessione con `SET TIME ZONE 'UTC'`: un now() scritto da zeroerp_app in
+#   una colonna senza fuso e' l'orario UTC. Una sessione psql/Liquibase ha
+#   `TimeZone = Europe/Rome` (file di configurazione): lo stesso now() e'
+#   l'orario di Roma. Misurato il 20-09 sulle shadow storico, dove la stessa
+#   riga porta anche un `valid_from` timestamptz: le righe di zeroerp_app sono
+#   avanti di +1h d'inverno e +2h d'estate, quelle di titodb coincidono.
+#
+#   In `ui` l'unico scrittore di ISTANTI e' il backend (repository ui_*,
+#   dashboard_*: ogni scrittura temporale e' un now() in SQL, sessione UTC).
+#   I seed CSV scrivono DATE a mezzanotte (`2026-05-07 00:00:00`, autore
+#   mctit): letti come UTC diventano le 02:00 di Roma dello stesso giorno, e
+#   il giorno e' l'unica cosa che quel valore diceva. Per questo il `USING`
+#   e' `AT TIME ZONE 'UTC'` su tutte e 22, e non il fuso della sessione che
+#   migra — che dipenderebbe da CHI lancia il migrate.
+#
+# -- CHE COSA NON CAMBIA -------------------------------------------------------
+#   NOT NULL, DEFAULT now() e i COMMENT restano (ALTER TYPE li conserva).
+#   Nessuna vista e nessuna funzione dipende da queste colonne (pg_depend,
+#   20-09); nessun indice le copre. Il confronto `preset.data_update >
+#   preset_base_data_update` in fn_resolve_lista_config / _dashboard_config
+#   resta fra due colonne dello STESSO tipo: la copia (preset_base_data_update)
+#   e l'originale (data_update / data_insert del preset) ricevono la stessa
+#   conversione. Il backend e' agnostico: legge e riscrive il valore senza
+#   toccarlo (`Any | None`), psycopg passa da naive ad aware da solo.
+#
+# -- I FRATELLI DELLO STESSO GIRO ----------------------------------------------
+#   -03 storico (8 shadow, per ruolo dello scrittore), -04 config.parameters
+#   e parameter_overrides, -05/-06 le due fn as_of (p_as_of timestamptz),
+#   -07 ritiro di fn_get_iva_override (rotta, zero chiamanti). Presidio vivo:
+#   db/pgtap/dbops/test-nessun-timestamp-senza-fuso-v1.sql; cancello statico
+#   sui changeSet nuovi: scripts/guardrail_timestamp_senza_fuso.py.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260920-02-alter-ui-timestamp-senza-fuso-a-timestamptz-mctit.yaml
+
+  - changeSet:
+      id: 20260920-02-alter-ui-timestamp-senza-fuso-a-timestamptz
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Schema ui: le 22 colonne timestamp without time zone (data_insert, data_update,
+        preset_base_data_update, preset_aggiornato_ignored_at su lista_* / dashboard_* /
+        widget) diventano timestamptz. USING AT TIME ZONE 'UTC': l'unico scrittore di
+        istanti e' il backend, la cui sessione e' UTC; i seed sono date a mezzanotte e
+        restano nello stesso giorno. Nessuna eccezione (Tid, 20-09).
+        Documento: valutazione-modello-di-dominio-db, voce V-3 (1 di 6).
+      preConditions:
+        - onFail: HALT
+        # ⚠️ E' la PREMESSA di questo changeSet, non una fotografia di catalogo:
+        #   le 22 colonne nascono da DDL di 00_schema piu' vecchie, quindi in
+        #   timeline sono senza fuso sia su dev sia sul DB da zero della CI.
+        #   Se il numero non torna, qualcuno ha gia' toccato una colonna a
+        #   mano e il USING sotto la leggerebbe col fuso sbagliato: meglio
+        #   fermarsi.
+        - sqlCheck:
+            expectedResult: "22"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'ui'
+                 AND data_type = 'timestamp without time zone'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ 'UTC' e non il TimeZone della sessione: vedi intestazione.
+              ALTER TABLE ui.lista_definizione
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.lista_colonna
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.lista_colonna_permesso
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.lista_preset
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.lista_preferenza_utente
+                  ALTER COLUMN data_insert                  TYPE timestamptz USING data_insert                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update                  TYPE timestamptz USING data_update                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_base_data_update      TYPE timestamptz USING preset_base_data_update      AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_aggiornato_ignored_at TYPE timestamptz USING preset_aggiornato_ignored_at AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.dashboard_definizione
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.dashboard_preset
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.dashboard_preferenza_utente
+                  ALTER COLUMN data_insert                  TYPE timestamptz USING data_insert                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update                  TYPE timestamptz USING data_update                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_base_data_update      TYPE timestamptz USING preset_base_data_update      AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_aggiornato_ignored_at TYPE timestamptz USING preset_aggiornato_ignored_at AT TIME ZONE 'UTC';
+
+              ALTER TABLE ui.widget
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Torna all'orario UTC senza fuso: e' l'inverso esatto del USING sopra.
+              ALTER TABLE ui.lista_definizione
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';
+              ALTER TABLE ui.lista_colonna
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';
+              ALTER TABLE ui.lista_colonna_permesso
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';
+              ALTER TABLE ui.lista_preset
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';
+              ALTER TABLE ui.lista_preferenza_utente
+                  ALTER COLUMN data_insert                  TYPE timestamp USING data_insert                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update                  TYPE timestamp USING data_update                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_base_data_update      TYPE timestamp USING preset_base_data_update      AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_aggiornato_ignored_at TYPE timestamp USING preset_aggiornato_ignored_at AT TIME ZONE 'UTC';
+              ALTER TABLE ui.dashboard_definizione
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';
+              ALTER TABLE ui.dashboard_preset
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';
+              ALTER TABLE ui.dashboard_preferenza_utente
+                  ALTER COLUMN data_insert                  TYPE timestamp USING data_insert                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update                  TYPE timestamp USING data_update                  AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_base_data_update      TYPE timestamp USING preset_base_data_update      AT TIME ZONE 'UTC',
+                  ALTER COLUMN preset_aggiornato_ignored_at TYPE timestamp USING preset_aggiornato_ignored_at AT TIME ZONE 'UTC';
+              ALTER TABLE ui.widget
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';

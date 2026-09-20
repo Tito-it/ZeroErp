@@ -137,6 +137,16 @@ SELECT lives_ok(
 --   registro dall'altra non si collide mai.
 -- ⚠️ Si guarda per (registro, anno): il pregresso si lega al registro
 --   attraverso l'EMITTENTE, come fa la bonifica.
+-- ⚠️ rev 2026-09-21: il contatore che vale e' il MASSIMO fra il secchio
+--   dell'anno e il secchio CONTINUO (anno = 0). Dal 20260908-10 un registro
+--   con reset_policy = 'NESSUNA' numera in un secchio unico, anno = 0, seminato
+--   dal massimo dei secchi d'anno; il secchio 2026 resta com'era, fermo. Il
+--   test leggeva SOLO il secchio dell'anno e il 20-09 e' diventato rosso al
+--   primo ordine numerato da ORD-72 dopo il cambio di policy (contatore 2026
+--   fermo a 36007, continuo a 36008 = il numero emesso): non era un contatore
+--   indietro, era il test che guardava il secchio sbagliato. Un registro
+--   passato a NESSUNA che non ha ancora numerato non ha il secchio 0, e allora
+--   vale quello dell'anno: per questo e' un massimo su entrambi, non un CASE.
 CREATE TEMP TABLE tmp_all AS
 WITH pregresso AS (
     SELECT 'ORDINE'::character varying AS fam, ef.soggetto_ruolo_id AS sr,
@@ -159,14 +169,15 @@ WITH pregresso AS (
      WHERE r.numero IS NOT NULL GROUP BY 1,2,3
 )
 SELECT p.fam, p.anno, p.max_n, reg.codice AS registro,
-       COALESCE(pr.last_numero, 0) AS contatore
+       COALESCE((SELECT max(pr.last_numero)
+                   FROM vendite.registri_fatturazione_progressivi pr
+                  WHERE pr.registro_id = reg.id
+                    AND pr.anno IN (p.anno, 0)), 0) AS contatore
   FROM pregresso p
   JOIN vendite.registri_fatturazione reg
     ON reg.emittente_soggetto_ruolo_id = p.sr
    AND reg.famiglia_documento = p.fam
    AND reg.utility_id IS NULL
-  LEFT JOIN vendite.registri_fatturazione_progressivi pr
-    ON pr.registro_id = reg.id AND pr.anno = p.anno
  WHERE p.max_n IS NOT NULL AND p.anno IS NOT NULL;
 
 SELECT is(

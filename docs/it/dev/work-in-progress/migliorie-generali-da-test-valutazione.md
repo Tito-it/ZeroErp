@@ -25,6 +25,15 @@
 > `D7`, `D11`, `D12`, `D14`). §3 oggi contiene **solo ciò che è da fare**, e §6 è
 > la check-list delle stesse voci: `[ ]` in cima, `[x]` con il loro dettaglio in
 > §7.
+>
+> ✅ **Numeri rimisurati il 2026-09-20.** I registri che stanno nel repo o nel
+> catalogo del database si **rimisurano**, non si citano: `baseline-rossi-ci.tsv`
+> è a **362** righe (403 al 12-09; **296 attesi** dopo il 21-09, misura sullo
+> scratch da certificare in CI), `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **123**
+> (129, e 131 quando questa valutazione è stata scritta), `rls_perimetro_debito`
+> a **7**, e `vw_codici_errore_da_dichiarare` a **545** — **salito**, non calato.
+> Dove un numero è rimasto quello del giorno in cui è stato preso, la data è
+> accanto.
 ---
 
 ## 0. Come si legge, e perché il metodo conta più del voto
@@ -145,14 +154,14 @@ progetto e vanno considerate un asset, non uno strumento.
 
 ### 2.3 Il codice errore come contratto a tre lati
 
-852 codici a catalogo, 847 messaggi, dieci classi. Il contratto è esplicito:
+897 codici a catalogo, 847 messaggi, dieci classi. Il contratto è esplicito:
 `codice` → backend (status HTTP e `ui_action`), `context->>'campo'` → frontend,
 `VARIADIC valori` → l'operatore. Con il presidio del «terzo lato»
 (`dbops.vw_codici_errore_da_dichiarare`) e il «rubinetto» che impedisce a un
 codice di allargare il proprio significato.
 
-⚠️ Il registro non cala: 508 codici su 852 risultano non dichiarati lato
-applicativo. Vedi §3 D11.
+⚠️ **Il registro non cala: cresce.** 545 codici su 897 risultano non dichiarati
+lato applicativo — erano 508 su 852 l'08-09. Vedi §3 D11.
 
 ⛔ **Sei codici vivi non hanno nessun messaggio.** Tutti `AVVISO`, tutti nominati
 da esattamente una funzione: `W_FONDO_ESEGUITO_NON_RESETTABILE`,
@@ -202,7 +211,7 @@ PostgreSQL 18, Liquibase 5, `daterange`/`tstzrange` nativi su 18 tabelle (con
 > con la data e il rimando al brief. E sono di due tipi: quelle chiuse **per
 > intero** — D1, D2, D3, D4, D5, D10, D13 — e le **parti** chiuse di voci che
 > hanno ancora un lavoro vivo: `D6` (i pin del `search_path`), `D7` (il triage
-> del perimetro), `D11` (due registri calati), `D12` (la quantità), `D14` (la
+> del perimetro), `D11` (registri calati, e uno cresciuto), `D12` (la quantità), `D14` (la
 > vista e i due pgTAP lenti). Quegli ultimi cinque numeri compaiono **in tutti e
 > due i posti**, e non è una ripetizione: in alto c'è il lavoro che resta, in
 > fondo quello fatto.
@@ -325,45 +334,183 @@ Per schema, i file di test: `vendite` 253, `script` 69, `anagrafiche` 66,
 ⚠️ E la copertura dichiarata è più alta di quella reale per due motivi già
 scritti nella guida sui presidi: **110 file** contengono uno `skip()`
 condizionato (su un DB ricostruito da zero si saltano, e un test saltato conta
-verde), e il debito `throws_ok` senza discriminante è a **131** — un
+verde), e il debito `throws_ok` senza discriminante è a **123** (2026-09-20:
+129 l'8-09, 131 quando questa valutazione è stata scritta) — un
 `throws_ok(sql, NULL, NULL)` accetta *qualunque* errore, compreso quello
-sbagliato.
+sbagliato. ⭐ Sei di quei 123 sono usciti il 20-09 con una sonda sola, e uno dei
+sei era **verde per l'errore sbagliato**: §7 D11.
 
 ### 🔴 Il numero che conta davvero: la suite fuori dalla macchina di sviluppo
 
 Su un database **ricostruito da zero** — cioè quello di cui si ha bisogno il
 giorno in cui si prepara un'installazione nuova — la prima misura della CI
 (2026-09-09) ha dato **407 rossi su 601**. Il registro
-`db/pgtap/baseline-rossi-ci.tsv` al 2026-09-12 è a **403 righe** (323
-`ERRORE_FIXTURE`, 80 `ASSERZIONE`), su 634 file di test nel repo:
+`db/pgtap/baseline-rossi-ci.tsv` al **2026-09-20** è a **362 righe** (293
+`ERRORE_FIXTURE`, 69 `ASSERZIONE`), su **671** file di test nel repo:
 
 | Schema        | Rossi |     | Schema        | Rossi   |
 | ------------- | ----- | --- | ------------- | ------- |
-| `vendite`     | 215   |     | `documenti`   | 6       |
-| `script`      | 50    |     | `catalogo`    | 6       |
-| `anagrafiche` | 42    |     | `ui`          | 5       |
-| `pratiche`    | 37    |     | `dbops`       | 3       |
-| `pagamenti`   | 15    |     | `maintenance` | 1       |
-| `config`      | 14    |     |               |         |
-| `rls`         | 9     |     | **Totale**    | **403** |
+| `vendite`     | 212   |     | `documenti`   | 6       |
+| `anagrafiche` | 39    |     | `catalogo`    | 6       |
+| `pratiche`    | 37    |     | `ui`          | 4       |
+| `script`      | 31    |     | `dbops`       | 3       |
+| `pagamenti`   | 11    |     |               |         |
+| `config`      | 13    |     | **Totale**    | **362** |
 
-⛔ **La suite è verde per un terzo fuori dalla macchina di sviluppo.** Non è una
-sorpresa concettuale — la guida sui presidi §4 lo dice da mesi («69 file su 437
-contengono un salto condizionato… su un database vuoto non falliscono: si
-saltano») — ma il numero non era mai stato preso, ed è **sei volte** quella
-stima.
+`rls` e `maintenance` sono **usciti dal registro** — e il calo che li ha portati
+fin qui è lavoro vero, non igiene: la fixture che **costruisce** il mondo invece
+di cercarlo.
 
-⚠️ E il difetto vero non è la percentuale: è che quei 403 file **passano sul DB
+⛔ **Fuori dalla macchina di sviluppo la suite è verde su poco meno di metà dei
+file.** All'8 settembre era «verde per un terzo», e il numero non era mai stato
+preso prima: era **sei volte** la stima della guida sui presidi §4 («69 file su
+437 contengono un salto condizionato… su un database vuoto non falliscono: si
+saltano»).
+
+⚠️ E il difetto vero non è la percentuale: è che quei 362 file **passano sul DB
 di sviluppo**. Cioè la suite oggi verifica in larga parte *lo stato di una
 macchina*, non che le migrazioni sappiano ricostruirla. Sono due proprietà
 diverse, e la seconda è quella che serve al secondo cliente.
 
 ⭐ Dal 2026-09-09 il cancello tiene: un rosso **nuovo** ferma il merge (D1). Ma
-il registro cala solo se qualcuno lo abbassa, e 323 di quei file muoiono nella
+il registro cala solo se qualcuno lo abbassa, e 293 di quei file muoiono nella
 fixture — cioè **non eseguono nessuna asserzione**: sono le aree che *sembrano*
-coperte. La domanda che decide il triage è quanti di quei 323 sono «il test
+coperte. La domanda che decide il triage è quanti di quei 293 sono «il test
 cerca un soggetto nei dati esistenti», un difetto noto e sanabile in blocco, e
 quanti sono altro.
+
+#### Il triage delle cause — 2026-09-20
+
+✅ **Risposta: quasi tutti.** Il log della corsa GitHub del 19-09 era già
+ritirato (410 a un giorno di distanza), quindi i 362 file sono stati rieseguiti
+sullo scratch `zeroerp_ci` (allineato al `20260919-09`, stesso metro della CI)
+come `zeroerp_app`, leggendo la **prima riga `ERROR`** di ciascuno — cioè la
+causa, non l'etichetta:
+
+| Prima riga `ERROR` della fixture                                                       | File    |
+| -------------------------------------------------------------------------------------- | ------- |
+| «Nessun emittente fiscale attivo» (`fn_pgtap_emittente_operatore` o contesto vuoto)    | **130** |
+| «`p_billing_account_id` obbligatorio» — `SELECT … FROM billing_account … LIMIT 1` → NULL | **45**  |
+| «valore nullo nella colonna X» — un lookup su `anagrafiche` torna NULL e l'INSERT lo incassa | **38**  |
+| «Emittente fiscale di default mancante»                                                | 13      |
+| «Scrittura senza un utente in sessione», `p_tipo_doc_fiscale_id`, `ART_TEST_BASE`, RIS_UMANA… | ~60, a spicchi |
+
+E i 69 `ASSERZIONE` sono la stessa cosa in forma morbida: «Esiste almeno un
+cliente con istanza», «Trovato soggetto con partita_iva = …», «Esiste almeno un
+Gestore». È **una** malattia con tre sintomi: la fixture *cerca* l'azienda
+invece di costruirla (guida pgTAP, §«Il mondo si costruisce, non si cerca»).
+
+⭐ **E la radice è una riga sola.** 352 dei 362 file hanno lo stesso preambolo
+`DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;`.
+Su un database vuoto quella funzione non trova nessun operatore e imposta un
+contesto **vuoto** — l'intestazione della sua rev `20260805-27` diceva che
+«fallisce parlando», il corpo non lo ha mai fatto — e tutto il resto muore a
+cascata venti righe più in là. Simulato su **copie** dei 352 file (la riga
+sostituita dal blocco «costruisci azienda+operatore, poi contesto», quello già
+documentato nel COMMENT di `dbops.fn_pgtap_crea_emittente_operatore`):
+
+| Da → a (una sola modifica)                                                     | File   |
+| ------------------------------------------------------------------------------ | ------ |
+| `ERRORE_FIXTURE` → **verde**                                                   | **50** |
+| `ASSERZIONE` → **verde**                                                       | **12** |
+| `ERRORE_FIXTURE` → `ASSERZIONE` (copertura da zero a parziale, rosso leggibile) | 16     |
+| `ERRORE_FIXTURE` fermi su un **residuo dello scratch** (sotto), non sul test   | 53, probabili verdi in CI |
+| restano rossi                                                                  | ~220   |
+
+I verdi sono quasi tutto `pratiche` (29 su 37), `config`, `script`,
+`documenti` e i test di registri/`event_log` di `vendite`.
+
+✅ **Misurato da Tid il 21-09, sullo scratch, con `20260920-01` e il mirror di
+`tipi_ruoli` applicati (00:29): 66 file da rosso a verde** contro il registro
+della CI — dentro la forchetta della simulazione (62 sicuri, fino a ~115), e
+senza altri rossi nuovi dopo il rimedio su `entita_tabella`. ⇒ il registro
+scende **362 → 296 attesi**; il numero vero lo scrive la CI alla prossima
+push su Tito-dev che tocca `db/`, e le righe le toglie
+`pgtap-baseline-ci-rientrati.sh` quel giorno stesso.
+
+🔵 **La modifica è scritta, non applicata:** `20_code/script/20260920-01-update-fn-pgtap-set-contesto-operatore-costruisce-se-vuoto`.
+Sta **nel BB** e non nei 352 file — 352 copie di sei righe sono il building
+block sbagliato: senza argomento, se nessun operatore esiste, la funzione
+costruisce azienda+operatore e apre il contesto su quello. Con argomento, o
+dove un operatore c'è (dbdev), **niente cambia**. SQL estratto provato in
+`BEGIN … ROLLBACK` su `zeroerp_ci`: `plpgsql_check` pulito, ramo vecchio
+identico, ramo nuovo costruisce `PGTR0005` e `fn_pgtap_emittente_operatore()`
+risponde l'emittente costruito. Caveat dichiarato: l'operatore costruito è un
+utente **tecnico**; un test il cui soggetto è l'operatore umano cade in
+asserzione invece che in fixture (meglio, non peggio) e deve costruirsi il caso.
+
+**Il resto è una ricetta fissa, un file alla volta** (la stessa dei 21 del
+12-09 e dei sei del 17-09), e le cause residue dopo la modifica sono ancora
+«cerca invece di costruire», un livello più giù:
+
+* **47** cercano un `billing_account` → `dbops.fn_pgtap_crea_cliente_ba()` nel contesto;
+* **35** incassano un NULL da un lookup (12 sono
+  `registri_fatturazione.emittente_soggetto_ruolo_id` → `script.fn_pgtap_registro_fattura(sr)`);
+* **29** hard-codano `SET LOCAL app.current_user_id = '1'` (l'utente 1 non esiste in CI);
+* **7** vogliono `ART_TEST_BASE`/`ART_TEST_FALLBACK`, che non sono a seed → `dbops.fn_pgtap_crea_articolo()`;
+* **~15** di `anagrafiche` sono legati a dati di **questa** macchina (gestore,
+  CF `TTNMHL…`, PIVA `24551170426`, PDP GAS): si riscrivono, o si dichiarano
+  test di macchina.
+
+✅ **Applicato da Tid il 20-09 alle 23:53 su `zeroerp_ci`**, e la prima corsa
+ha dato **un rosso che la CI non conosceva**: `script/test-fn-get-entita-ruolo-detail`,
+test 9. ⭐ **Non è una regressione della modifica: è un difetto del database da
+zero che la modifica ha reso visibile.** `config.tipi_ruoli.entita_tabella` /
+`entita_colonna_codice` erano valorizzate **solo** da `00_schema/config/20260311-09`
+(quattro `UPDATE … WHERE codice_interno = …`): su un DB ricostruito quella fase
+gira **prima** di `80_data`, la tabella è vuota e gli UPDATE toccano zero righe
+— su dev le righe c'erano da marzo e nessuno l'ha mai visto. In CI
+`fn_get_entita_ruolo_detail` per EF risponde solo `meta`, e
+`fn_search_soggetti_universale` non ha la tabella da cui leggere il codice: su
+un'installazione nuova la ricerca soggetti per codice è rotta. Il test lo
+avrebbe detto dal 12-03, ma fino al 20-09 in CI **saltava** (nessun EF da
+guardare): verde per sottrazione, la forma esatta del corollario della regola
+zero. 🔵 Rimedio scritto il 21-09, sede giusta (AGENTS.md: «i dati di `80_data`
+si cambiano dal CSV»): le due colonne in coda a `tipi_ruoli.csv` + `- column:`
+nel mirror `20250812-02` (`nullValue` → `"NULL"` col token scritto, nessuna
+cella vuota prima). Provato col **render offline** del mirror in
+`BEGIN … ROLLBACK` sullo scratch + corpo del pgTAP: 10/10. La lente su tutto
+`config`/`ui` (colonne piene su dev e tutte NULL su `zeroerp_ci` a parità di
+righe) trova **solo** queste due — il caso è unico, non una famiglia.
+
+⚠️ **Due cose trovate per strada.**
+
+1. **Cinque file chiudono con `COMMIT`, non `ROLLBACK`** —
+   `anagrafiche/create-gestore-conto-soggetto`, `create-gestore-conto-bancario`,
+   `test_vw_conti_bancari_per_ruolo_gestore`, `test_fn_get_conto_bancario_predefinito`
+   (script di setup del gestore pre-template) e `test-soggetti-indirizzi-required`
+   (l'ultimo caso finisce con `commit;` minuscolo). ⚠️ **E in sei file la riga
+   di contesto gira in AUTOCOMMIT** (prima del `BEGIN;`, o file a più
+   transazioni: i quattro sopra, `test-soggetti-indirizzi-required`,
+   `test-soggetti-ruoli-indirizzi-required`): con la rev `20260920-01`, su un
+   DB vuoto il primo di loro in ordine alfabetico **costruisce e committa**
+   `PGTR0001` — un emittente residuo per corsa (visto sullo scratch alle
+   23:54 del 20-09). Non cambia gli esiti (i file dopo lo trovano come su dev)
+   ma è un residuo per costruzione: o la riga scende sotto `BEGIN;` (e nei file
+   a più casi il mondo si costruisce per caso), o quei file si dichiarano
+   setup e escono dalla suite. Il guardrail del preambolo potrebbe pretendere
+   «contesto DOPO `BEGIN;`». Non si nota perché quando la
+   fixture muore il COMMIT è un rollback; ma **nella simulazione la fixture è
+   passata e hanno committato**, lasciando su `zeroerp_ci` quattro emittenti
+   `PGTR0001-4` con utenti tecnici, soggetti, identità e venti registri — ed è
+   quel residuo che ha fermato i 53 della tabella («non autorizzato per
+   emittente 338»). Lo script di pulizia (dry-run verde: 8 soggetti, 4
+   emittenti, 4 utenti, 20 registri, tutto e solo di oggi) è pronto e va
+   lanciato da Tid. `COMMIT` → `ROLLBACK` è meccanico; **se sono test o
+   setup** lo decide Tid. Il guardrail del preambolo non guarda la chiusura.
+2. **Quattro file sono già verdi sullo scratch** senza toccare nulla
+   (`anagrafiche/test-emittenti-fiscali-codice-forma`,
+   `dbops/test-processi-jobname-wrapper`, `vendite/test-af-emit-batch-marchio-v1`,
+   `vendite/test-registri-motore-trasloco-v1`): candidati RIENTRATI, ma li
+   certifica solo la CI — `pgtap-baseline-ci-rientrati.sh` alla prossima push
+   su Tito-dev che tocca `db/`, presa **quel giorno**.
+
+> ⭐ **Incrocio con D11, e cambia l'ordine dei due lavori.** Dei **123**
+> `throws_ok` senza discriminante, **102** stanno in file già a registro qui, e
+> **94** di quei 102 sono `ERRORE_FIXTURE` — file che su un database ricostruito
+> **non eseguono nessuna asserzione**. Sanare il discriminante lì è severità che
+> si vede solo su dbdev: in CI è lavoro invisibile finché la fixture non li fa
+> partire.
 
 ---
 
@@ -438,12 +585,12 @@ al 2026-09-08, salvo dove è scritta un'altra data:
 
 | Registro                                   | Oggi                                                                                       |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `dbops.vw_codici_errore_da_dichiarare`     | **508** su 852 codici                                                                      |
-| `db/pgtap/baseline-rossi-ci.tsv`           | **403** file al 2026-09-12 (323 `ERRORE_FIXTURE`, 80 `ASSERZIONE`) — nato il 09-09 con 407 |
-| `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **131**                                                                                    |
+| `dbops.vw_codici_errore_da_dichiarare`     | **545** su 897 codici                                                                      |
+| `db/pgtap/baseline-rossi-ci.tsv`           | **362** file al 2026-09-20 (293 `ERRORE_FIXTURE`, 69 `ASSERZIONE`) — nato il 09-09 con 407; **296 attesi** dal 21-09 (66 rientrati sullo scratch, D7) |
+| `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **123**                                                                                    |
 | `dbops.vw_fk_con_indice_missing_policy`    | **57**                                                                                     |
 | `db/pgtap/baseline-rossi.tsv`              | **16** file al 2026-09-12 (9 `ERRORE_FIXTURE`, 7 `ASSERZIONE`) — erano 19                  |
-| `dbops.rls_perimetro_debito`               | **10** righe (nato l'11-09 con 33, → D2)                                                   |
+| `dbops.rls_perimetro_debito`               | **7** righe (2026-09-20 — era 10, → D2)                                                    |
 | `backend/scripts/tests/baseline-smoke.tsv` | 2 su 16 script (2026-09-12)                                                                |
 | Header di licenza mancanti                 | 2.042 file (misura 2026-08-26)                                                             |
 | `dbops.vw_indici_ridondanti_prefisso`      | 1                                                                                          |
@@ -457,7 +604,15 @@ trenta righe, nessuno lo leggerà»*. `rls_perimetro_debito` è nato nella forma
 giusta — ogni riga con la sua ragione — ed è calato di due terzi nel cantiere
 che l'ha aperto.
 
-⚠️ Le due baseline pgTAP meritano una riga a parte: **323 + 9 file falliscono
+⚠️ **E uno di questi registri cresce: i codici.** 508 → **545** su 897 (08-09 →
+20-09) mentre `rls_perimetro_debito` scendeva. Il motivo è strutturale e sta
+nella forma: gli altri hanno una **causa** e un **rimedio** (riscrivere la
+fixture, discriminare l'asserzione, armare la RLS), il registro dei codici
+misura il *terzo lato* — le dichiarazioni dell'applicativo — che si allarga a
+ogni dominio nuovo. Non è un presidio che mente: è un presidio **senza un
+verso**, ed è esattamente ciò che D11 chiede di dargli.
+
+⚠️ Le due baseline pgTAP meritano una riga a parte: **293 + 9 file falliscono
 nella fixture**, cioè non eseguono **nessuna** asserzione. La loro copertura
 vale zero, non «parziale» — e sono aree che *sembrano* coperte.
 
@@ -576,21 +731,21 @@ La seconda leva (una lettura invece di due nella capability) resta aperta.
 
 ---
 
-## 5. Scorecard — pesata, non mediata (2026-09-08, aggiornata al 2026-09-12)
+## 5. Scorecard — pesata, non mediata (2026-09-08, aggiornata al 2026-09-20)
 
 Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione.
 
 | Area                                   | Peso    | Voto       | Perché                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | -------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Catena di verifica (CI)**            | 🔴 alto  | **7,5/10** | Dal 2026-09-09 la suite pgTAP è un cancello vero: baseline misurata dalla CI, niente `continue-on-error`, bootstrap che fallisce invece di passare. Resta il registro a 403, che deve calare (D7)                                                                                                                                                                                                                                        |
+| **Catena di verifica (CI)**            | 🔴 alto  | **7,5/10** | Dal 2026-09-09 la suite pgTAP è un cancello vero: baseline misurata dalla CI, niente `continue-on-error`, bootstrap che fallisce invece di passare. Resta il registro a 362 — 296 attesi dal 21-09 — che deve calare (D7)                                                                                                                                                                                                                                        |
 | **Perimetro dei dati (RLS)**           | 🔴 alto  | **8/10**   | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le due policy inerti di `acquisti` (D4 → D8), a registro con la ragione; `shop.ricevute` armata il 12-09. D13 (il `RETURNING` del BA per gli operatori non di default) chiuso il 13-09 |
-| **Copertura test**                     | 🔴 alto  | **4/10**   | 634 file, ma su un DB ricostruito da zero la suite è rossa per due terzi (403 rossi noti al 2026-09-12). Il 38% delle funzioni non è mai nominato (D7)                                                                                                                                                                                                                                                                                   |
+| **Copertura test**                     | 🔴 alto  | **4/10**   | 671 file, ma su un DB ricostruito da zero la suite è rossa su oltre metà (362 rossi noti al 2026-09-20, 296 attesi dal 21-09). Il 38% delle funzioni non è mai nominato (D7)                                                                                                                                                                                                                                                                                          |
 | **Postura di sicurezza degli oggetti** | 🟠 medio | **7,5/10** | I tre invarianti di D5 presidiati per criterio (`search_path` dal 12-09, pin applicati). Non di più per i due rubinetti di D6-bis e per il pezzo nuovo: registro `sec_functions_owner` e sync scrivibili/eseguibili da `zeroerp_app`                                                                                                                                                                                                     |
 | **Simmetria del dominio**              | 🟠 medio | **4/10**   | `acquisti` e `magazzino` modellati e non scritti (D8). La decisione dell'11-09 («prossimo cantiere») dà al debito un verso, ma il voto misura il comportamento, che ancora non c'è: *una decisione non scrive il codice*                                                                                                                                                                                                                 |
 | **Osservabilità dei presidi**          | 🟠 medio | **7/10**   | D10 chiuso l'11-09-2026: le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`). Non 8+ per il debutto col rumore (processi ritirati in `vw_job_run_da_guardare`)                                                                                                                                                                                                                      |
-| **Gestione del debito**                | 🟠 medio | **6/10**   | Registri ben progettati; le liste lunghe restano lunghe, e ne è nata una nuova da 403 (D11)                                                                                                                                                                                                                                                                                                                                              |
+| **Gestione del debito**                | 🟠 medio | **6/10**   | Registri ben progettati; le liste lunghe restano lunghe, e ne è nata una nuova da 362 (D11)                                                                                                                                                                                                                                                                                                                                              |
 | **Pattern trigger e automazioni**      | 🟡 basso | **7,5/10** | Riuso raro (758 trigger da due funzioni), framework `ci_apply` eccellente; la forma per-figlia non scala e la fase è al 66% (D9)                                                                                                                                                                                                                                                                                                         |
-| **Error handling / codici errore**     | 🟡 basso | **8,5/10** | Contratto a tre lati esplicito e presidiato; il registro non cala                                                                                                                                                                                                                                                                                                                                                                        |
+| **Error handling / codici errore**     | 🟡 basso | **8,5/10** | Contratto a tre lati esplicito e presidiato; il registro **sale**                                                                                                                                                                                                                                                                                                                                                                        |
 | **Disciplina Liquibase**               | 🟡 basso | **9/10**   | 3.354 changeSet, cinque cancelli dedicati, tutti nati da un incidente reale                                                                                                                                                                                                                                                                                                                                                              |
 | **Documentazione**                     | 🟡 basso | **8,5/10** | Copertura piena; sottile dove il dominio è sottile                                                                                                                                                                                                                                                                                                                                                                                       |
 | **Naming**                             | 🟡 basso | **8/10**   | 94-99% sui vincoli; 66% sulla fase dei trigger, che è la voce con conseguenze                                                                                                                                                                                                                                                                                                                                                            |
@@ -680,18 +835,31 @@ D6 e il registro dei rossi in CI.
 * [x] **D10** — ✅ chiuso l'11-09-2026: digest su catalogo `dbops.presidi`, due
       timer. Residuo: i processi ritirati in `vw_job_run_da_guardare` (decisione
       del team DB).
-* [~] **D7** — far calare il registro della CI (403, di cui 323 nella fixture)
+* [~] **D7** — far calare il registro della CI (362, di cui 293 nella fixture)
       e portare a zero i 9 file della baseline di sviluppo che falliscono nella
       *fixture*. ✅ 12-09: i **21 del perimetro** riscritti (20 verdi sui due
-      database, uno in CI con il passo di provisioning nuovo), in attesa di
-      apply e della corsa CI.
+      database, uno in CI con il passo di provisioning nuovo); dal 12-09 al
+      20-09 il registro è sceso **403 → 362**.
+      ✅ 20-09: **triage delle cause fatto** (§3 D7): una causa sola in tre
+      forme, e la radice in una riga di preambolo. ✅ 21-09: `20260920-01`
+      applicato (il BB costruisce il mondo se il DB è vuoto) + il rimedio
+      da zero su `tipi_ruoli.entita_tabella` (CSV + mirror): **66 file da
+      rosso a verde** sullo scratch, 362 → **296 attesi** in CI, da
+      certificare con la corsa e `pgtap-baseline-ci-rientrati.sh`. Restano
+      la ricetta per file (BA, registro, utente hard-codato, articolo) e la
+      decisione sui 5 file che COMMITTANO / 6 col contesto in autocommit.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
       `brief-db-ba-riserva-emittente-operatore-d13.md`. ✅ Le tre copie
       Python della regola vecchia sono delegate al check dal 13-09 (team BE,
       brief §6.2). Restano due decisioni di modello in coda (§3.4).
-* [ ] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
+* [~] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
       quanto, entro quando), o dichiararlo congelato con il motivo.
+      ✅ 20-09: la soglia `throws_ok` è scesa **129 → 123** discriminando le sei
+      asserzioni di `catalogo/test-articoli-vincoli-note-uom-overlap.sql` — una
+      delle quali era verde per l'errore sbagliato (§7 D11). ⛔ Restano i due
+      registri grossi, e sono quelli che non hanno un verso: i **293** rossi
+      della CI e i codici da dichiarare, che sono **saliti** (508 → 545).
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno
       (append al CSV dei messaggi, mai un loader nuovo), oppure dichiarare che
       quei codici non raggiungono mai un operatore — e scriverlo nel `note`.
@@ -830,13 +998,52 @@ allarme su un processo obsoleto dal 07-09 — *un presidio che comincia col rumo
 insegna a non guardarlo*, ed è proprio la proprietà che il cantiere comprava.
 Brief `brief-db-un-destinatario-per-i-presidi.md`.
 
-### ✅ D11 — I due registri che sono calati
+### ✅ D11 — I registri che sono calati (e quello che cresce)
 
 Non tutti i registri di §3 stanno fermi: `dbops.rls_perimetro_debito` è sceso da
-**33 a 8 righe** (ogni riga con la sua ragione tecnica, calato nei cantieri D2 e
-D4) e `db/pgtap/baseline-rossi.tsv` da **19 a 16** file sul database di sviluppo.
-⭐ È la forma che la guida prescrive e che qui ha funzionato: registro piccolo,
-ogni voce con il motivo, e un cantiere che lo abbassa mentre passa.
+**33 a 7 righe** (ogni riga con la sua ragione tecnica, calato nei cantieri D2,
+D4 e in quelli passati dopo), `db/pgtap/baseline-rossi.tsv` da **19 a 16** file
+sul database di sviluppo, e `db/pgtap/baseline-rossi-ci.tsv` da **403 a 362**
+(2026-09-20). ⭐ È la forma che la guida prescrive e che qui ha funzionato:
+registro piccolo, ogni voce con il motivo, e un cantiere che lo abbassa mentre
+passa. ⚠️ E ce n'è uno che invece **cresce** — `vw_codici_errore_da_dichiarare`,
+508 → 545 su 897: è il registro **senza un verso** (§3 D11).
+
+#### La soglia `throws_ok`: 129 → 123, e il test che era verde per l'errore sbagliato
+
+Il 2026-09-20 sei asserzioni di
+`db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql` hanno ricevuto il
+loro discriminante — `23505` per i tre casi di unicità (il codice duplicato e i
+due `uq_artuomop_*`), `23514` per il CHECK su
+`note_target_tipo`, `23503` per la FK su `note_id`, `23P01` per l'`exclusion`
+sull'overlap — e la soglia del cancello è scesa a **123**.
+
+⚠️ **Non è stata una passata di cosmetica: una di quelle sei era verde per
+l'errore sbagliato.** Il test 11 dichiarava «codice articolo duplicato:
+bloccato» e in realtà moriva su **`23502`** — un `NULL` su `uom_id`, che è NOT
+NULL — perché l'INSERT ometteva quella colonna *e* il codice «duplicato» era
+`'ART…'` mentre l'articolo creato sopra è `'ARC…'`: non duplicava niente. Il
+vincolo che il test credeva di collaudare non era mai stato raggiunto, e il test
+passava lo stesso.
+
+⭐ **La sonda, ed è tutta qui** — il metodo vale più delle sei righe:
+
+1. su una **copia usa-e-getta** del file, sostituire il secondo argomento con uno
+   SQLSTATE impossibile (`'ZZZZZ'`), senza toccare il repository;
+2. far girare il file: pgTAP non accetta più qualunque errore, e nel messaggio di
+   fallimento stampa `caught: <stato>: <frase>` — cioè il dato che si cercava,
+   per **tutte** le asserzioni, in una corsa sola;
+3. leggerlo: l'asserzione che dichiarava lo stato giusto resta verde dopo il
+   ripristino, quella sbagliata si spiega da sé;
+4. **prima** correggere la causa, **poi** scrivere il discriminante — l'ordine
+   conta: con `'23505'` e l'INSERT ancora incompleto il test sarebbe diventato
+   rosso, e qualcuno avrebbe «aggiustato» il discriminante invece del test.
+
+Costo: una copia temporanea e una corsa, zero modifiche al prodotto.
+⭐ Resa: sei occorrenze in meno su 123, **un falso-verde trovato**, e una lista
+di lavoro che si ripete su ogni file — i 123 sono elencabili in un comando, e
+**21** di loro stanno in file che in CI girano davvero, **102** in file che lì
+muoiono nella fixture (§3 D7).
 
 ### ✅ D12 — La quantità di documentazione — chiusa (era il gap di febbraio)
 

@@ -31,6 +31,7 @@
 | CHECK | chk_event_log_severity |  |
 | FOREIGN KEY | fk_event_log_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_event_log_tipo_entita | entity_type |
+| FOREIGN KEY | fk_vendite_event_log_auth_user | auth_user_id |
 | PRIMARY KEY | pk_event_log | id |
 
 ## 📑 Indici

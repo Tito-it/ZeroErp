@@ -7,7 +7,7 @@
 [script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of
 
 
-La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMP)`** restituisce uno **snapshot JSONB** di un record al momento specificato (`p_as_of`), applicando il modello di storicizzazione unificato di Zero ERP:
+La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMPTZ)`** restituisce uno **snapshot JSONB** di un record al momento specificato (`p_as_of`), applicando il modello di storicizzazione unificato di Zero ERP:
 
 1. **Ricerca in storico**
 
@@ -26,9 +26,6 @@ La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TE
 ### Flusso Logico
 
 ```plpgsql
--- 0) Conversione in timestamptz
-v_converted_as_of := p_as_of::timestamptz;
-
 -- 1) Validazione tabella di storico e tipo FK
 SELECT format_type(a.atttypid,a.atttypmod) INTO v_pk_type
   FROM pg_attribute a ...
@@ -39,7 +36,7 @@ END IF;
 -- 2) Lettura da storico
 BEGIN
   EXECUTE format('SELECT snapshot FROM %I.%I WHERE %I = $1::%s ...', ...)
-    INTO v_snapshot USING p_id, v_converted_as_of;
+    INTO v_snapshot USING p_id, p_as_of;
 EXCEPTION WHEN OTHERS THEN
   PERFORM script.fn_log_and_raise_error(...);
 END;

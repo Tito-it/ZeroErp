@@ -25,6 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_config_auth_totp_device_auth_user | auth_user_id |
 | PRIMARY KEY | auth_totp_device_pkey | id |
 | UNIQUE | uq_auth_totp_device_auth_user | auth_user_id |
 

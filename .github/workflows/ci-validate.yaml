@@ -253,6 +253,26 @@ jobs:
         # parser di PostgreSQL, cioe' il migrate qui sotto.
         run: python scripts/guardrail_sql_letterali.py
 
+      - name: Guardrail timestamp senza fuso nei changeSet nuovi
+        # Cosa presidia: in PostgreSQL `TIMESTAMP` nudo e' `timestamp without
+        # time zone`, cioe' l'orario LOCALE della sessione che scrive — e le
+        # sessioni di questo progetto sono due (backend in UTC, psql/Liquibase
+        # in Europe/Rome). Lo stesso now() vale due istanti diversi, e la riga
+        # non ricorda quale.
+        #
+        # Perche' esiste: il 2026-09-20 (valutazione del modello, V-3) lo
+        # schema `ui` aveva 22 colonne senza fuso e ZERO con, piu' 8 shadow di
+        # storico, 4 colonne di config e due firme di funzione — tutte nate da
+        # `data_insert TIMESTAMP NOT NULL DEFAULT now()`. Sanate da
+        # 20260920-02..-07; questo cancello e' perche' non rinascano.
+        #
+        # Perimetro: i changelog con data >= 20260920 (quelli prima sono
+        # mergiati e non si toccano), SOLO `changes` (la sezione di ripristino
+        # che rimette il tipo vecchio e' legittima), istruzioni DROP esenti.
+        # Statico e senza database; il database vivo lo guarda il pgTAP
+        # dbops/test-nessun-timestamp-senza-fuso-v1 piu' avanti.
+        run: python scripts/guardrail_timestamp_senza_fuso.py
+
       - name: Guardrail preCondition sul contenuto di 80_data
         # ⚠️ POSIZIONE: prima del migrate, e per lo stesso motivo degli altri
         # tre — il difetto che presidia UCCIDE il migrate, e scoprirlo dopo

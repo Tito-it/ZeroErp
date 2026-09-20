@@ -31,6 +31,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_user_override_oggetti_validita |  |
+| FOREIGN KEY | fk_config_user_override_oggetti_auth_user | auth_user_id |
 | PRIMARY KEY | pk_user_override_oggetti | id |
 | UNIQUE | uq_user_override_oggetti_user_app_model | auth_user_id, app_label, model_name |
 

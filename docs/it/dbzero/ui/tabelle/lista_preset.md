@@ -20,9 +20,9 @@
 | ordinamento_default | jsonb | YES |  |
 | filtri_default | jsonb | YES |  |
 | attivo | boolean | NO | true |
-| data_insert | timestamp without time zone | NO | now() |
+| data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying | NO |  |
-| data_update | timestamp without time zone | YES |  |
+| data_update | timestamp with time zone | YES |  |
 | user_update | character varying | YES |  |
 
 ## 🔒 Vincoli

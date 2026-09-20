@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-3 (2 di 6) — le 8 shadow di `storico` nate PRIMA del generatore:
+#   `data_insert` da `timestamp without time zone` a `timestamptz`.
+#   Documento: valutazione-modello-di-dominio-db, voce V-3.
+#
+# -- IL FATTO -------------------------------------------------------------------
+#   Su 117 shadow, 8 portano `data_insert` senza fuso: catasto_unita_immobiliari,
+#   clienti, comune_trasformazioni, comuni, dati_societari, indirizzi_dettaglio,
+#   parameter_overrides, stradario_trasformazioni. Sono le shadow scritte a
+#   mano nella storia vecchia (baseline + migrations): dbops.fn_ensure_storico_table
+#   crea gia' `data_insert timestamptz`, quindi queste 8 sono le sole a
+#   dissentire dalla propria macchina. E per 5 di loro la madre e' timestamptz
+#   (anagrafiche.clienti, dati_societari, indirizzi_dettaglio,
+#   catasto_unita_immobiliari, config.comuni): la STESSA riga perdeva il fuso
+#   passando dalla madre alla sua storia.
+#
+# -- ⚠️ IL USING SCEGLIE L'OROLOGIO PER RIGA, DAL RUOLO CHE HA SCRITTO -----------
+#   `user_insert` qui e' `DEFAULT CURRENT_USER`: il RUOLO di database, non
+#   l'utente applicativo. E il ruolo dice il fuso della sessione:
+#     · zeroerp_app  → backend Django, connessione `SET TIME ZONE 'UTC'`
+#                      (USE_TZ = True senza TIME_ZONE nel DATABASES);
+#     · tutti gli altri (titodb, zeroerp_ci, i ruoli batch, pgAgent) →
+#                      `TimeZone = Europe/Rome` dal file di configurazione.
+#   Misurato il 20-09 sulle righe che portano anche `valid_from` timestamptz
+#   (stesso now(), stessa riga): zeroerp_app +1h d'inverno e +2h d'estate,
+#   titodb zero. Il CASE nel USING e' la trascrizione di questo fatto, e vale
+#   anche sul DB da zero della CI, dove le righe sono solo di seed.
+#
+# -- CHE COSA NON CAMBIA -------------------------------------------------------
+#   DEFAULT now() resta. `valid_from`/`valid_to` erano gia' timestamptz (o
+#   `date` su comuni e indirizzi_dettaglio, che e' un'altra storia). Nessuna
+#   vista, funzione o indice dipende da queste colonne (pg_depend, 20-09).
+#   fn_ensure_storico_table fa `CREATE TABLE IF NOT EXISTS`: non rilegge il
+#   tipo e non litiga con questo ALTER.
+#
+# -- I FRATELLI DELLO STESSO GIRO ----------------------------------------------
+#   -02 ui, -04 config.parameters, -05/-06 fn as_of, -07 ritiro di fn_get_iva_override.
+#   Presidio: db/pgtap/dbops/test-nessun-timestamp-senza-fuso-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20260920-03-alter-storico-shadow-data-insert-a-timestamptz-mctit.yaml
+
+  - changeSet:
+      id: 20260920-03-alter-storico-shadow-data-insert-a-timestamptz
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le 8 shadow storico nate prima di fn_ensure_storico_table portano data_insert
+        senza fuso: diventa timestamptz, allineata alle altre 109 e alle madri. USING per
+        riga dal ruolo scrittore (user_insert = CURRENT_USER): zeroerp_app ha scritto in
+        UTC, ogni altro ruolo in Europe/Rome. Nessuna eccezione (Tid, 20-09).
+        Documento: valutazione-modello-di-dominio-db, voce V-3 (2 di 6).
+      preConditions:
+        - onFail: HALT
+        # ⚠️ Premessa del changeSet: le 8 e solo quelle. Se il numero non
+        #   torna, o e' nata un'altra shadow a mano senza fuso (e va aggiunta
+        #   qui, non dimenticata) o qualcuno ha gia' convertito una delle 8
+        #   con un fuso che questo USING non conosce.
+        - sqlCheck:
+            expectedResult: "8"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'storico'
+                 AND data_type = 'timestamp without time zone'
+                 AND column_name = 'data_insert'
+                 AND table_name IN ('catasto_unita_immobiliari', 'clienti',
+                                    'comune_trasformazioni', 'comuni',
+                                    'dati_societari', 'indirizzi_dettaglio',
+                                    'parameter_overrides', 'stradario_trasformazioni')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ L'orologio si sceglie per RIGA dal ruolo che ha scritto: vedi intestazione.
+              ALTER TABLE storico.catasto_unita_immobiliari
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+
+              ALTER TABLE storico.clienti
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+
+              ALTER TABLE storico.comune_trasformazioni
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+
+              ALTER TABLE storico.comuni
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+
+              ALTER TABLE storico.dati_societari
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+
+              ALTER TABLE storico.indirizzi_dettaglio
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+
+              ALTER TABLE storico.parameter_overrides
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+
+              ALTER TABLE storico.stradario_trasformazioni
+                  ALTER COLUMN data_insert TYPE timestamptz
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Inverso esatto del USING sopra: ogni riga torna al SUO orologio.
+              ALTER TABLE storico.catasto_unita_immobiliari
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+              ALTER TABLE storico.clienti
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+              ALTER TABLE storico.comune_trasformazioni
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+              ALTER TABLE storico.comuni
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+              ALTER TABLE storico.dati_societari
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+              ALTER TABLE storico.indirizzi_dettaglio
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+              ALTER TABLE storico.parameter_overrides
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;
+              ALTER TABLE storico.stradario_trasformazioni
+                  ALTER COLUMN data_insert TYPE timestamp
+                  USING CASE WHEN user_insert = 'zeroerp_app'
+                             THEN data_insert AT TIME ZONE 'UTC'
+                             ELSE data_insert AT TIME ZONE 'Europe/Rome' END;

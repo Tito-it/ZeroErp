@@ -267,6 +267,10 @@ SELECT ok(
 
 -- =========================================================
 -- 7) Verifica fn_get_snapshot_as_of
+--    ⚠️ ts_pre e' now() (timestamptz) e si passa COM'E': dal 20260920-05
+--    p_as_of e' timestamptz. Il vecchio `ts_pre::timestamp` spogliava
+--    l'istante del fuso e la funzione lo rivestiva col TimeZone della
+--    sessione — un giro che tornava solo se i due fusi coincidevano.
 -- =========================================================
 SELECT is(
     (
@@ -275,7 +279,7 @@ SELECT is(
             'stradario',
             (SELECT id::text FROM tmp_stradario_a),
             'stradario_id',
-            (SELECT ts_pre::timestamp FROM tmp_ts_a)
+            (SELECT ts_pre FROM tmp_ts_a)
         ) ->> 'stradario_generale_id'
     ),
     (SELECT stradario_generale_id::text FROM tmp_stradario_a),

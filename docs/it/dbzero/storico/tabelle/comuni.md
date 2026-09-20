@@ -11,7 +11,7 @@
 | id | integer | NO |  |
 | valid_from | date | NO | CURRENT_DATE |
 | valid_to | date | YES |  |
-| data_insert | timestamp without time zone | YES | now() |
+| data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
 | comune_id | integer | YES |  |
 | provincia_id | integer | YES |  |

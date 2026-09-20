@@ -89,21 +89,144 @@ della regola zero della lista lato frontend.
 
 ### V-3 · Il fuso orario: una convenzione nel dominio, un'altra nello schema `ui`
 
-**Fatto.** Nel dominio **671** colonne `timestamp with time zone` contro **4**
-`timestamp without time zone` (`config.parameters` e `config.parameter_overrides`,
-`data_insert`/`data_update`). Fuori dal dominio la convenzione cambia: **tutto lo
-schema `ui`** (`lista_*`, `dashboard_*`, `widget`) e alcune shadow dello `storico`
-usano `timestamp without time zone` — e su entrambe le famiglie il default è
-`now()`.
+> ✅ **CHIUSA il 2026-09-21.** Migrazioni applicate (`20260920-02…-07` su dbdev e
+> sulla replica CI, `20260921-01` sulla replica — su dbdev è un no-op dichiarato),
+> suite pgTAP verde, **nessuna regressione**: i tre rossi della prima corsa
+> sulla replica erano il presidio stesso che trovava la nona shadow (sanata),
+> un test già noto che il `-01` del 20-09 ha reso eseguibile (debito di
+> catalogo `tipi_ruoli.entita_tabella`, fuori da questa voce) e una
+> contaminazione d'ordine non riproducibile. Resta il commit. Il racconto
+> completo, con la soluzione e la coda, è qui sotto.
 
-**Effetto.** Lo stesso `now()` finisce in colonne di due famiglie che **non si
-confrontano senza conversione**, e chi legge due righe da due schemi non lo sa.
-È il difetto che la §Nota di metodo chiama «un'asimmetria che si scopre scrivendo
-una query», cioè nel momento peggiore.
+**Fatto** (riverificato su dbdev il 2026-09-20). Nel dominio **671** colonne
+`timestamp with time zone` contro **4** `timestamp without time zone`
+(`config.parameters` e `config.parameter_overrides`, `data_insert`/`data_update`).
+Fuori dal dominio la convenzione cambia: **tutto lo schema `ui`** (22 colonne su
+`lista_*`, `dashboard_*`, `widget`, **zero** `timestamptz`) e **8 shadow dello
+`storico`** su 117 (`catasto_unita_immobiliari`, `clienti`,
+`comune_trasformazioni`, `comuni`, `dati_societari`, `indirizzi_dettaglio`,
+`parameter_overrides`, `stradario_trasformazioni`) usano `timestamp without time
+zone` — e su tutte le famiglie il default è `now()`. Il difetto nasce nel DDL:
+i changeSet di `00_schema/ui/` scrivono `data_insert TIMESTAMP NOT NULL DEFAULT
+now()`, e in PostgreSQL `TIMESTAMP` nudo è senza fuso. Le 8 shadow sono
+pre-generatore: `dbops.fn_ensure_storico_table` oggi crea `data_insert
+timestamptz`, quindi sono le sole a dissentire dalla propria macchina. Le altre
+due colonne senza fuso (`public.databasechangelog*`) sono di Liquibase e non
+contano.
 
-**Dove va.** O si allinea (`alter column … type timestamptz`, un changeSet), o si
-scrive per **una riga** che `ui` è un'eccezione e perché. **Decisione di Tid**,
-non un cantiere: le due strade costano poco, ma vanno scelte.
+**Effetto.** Per **5 delle 8 shadow** la madre è `timestamptz`
+(`anagrafiche.clienti`, `dati_societari`, `indirizzi_dettaglio`,
+`catasto_unita_immobiliari`, `config.comuni`): la **stessa riga perde il fuso**
+passando dalla madre alla propria storia. Su `ui` e sulle 4 di `config` il
+confronto con il dominio non fallisce — PostgreSQL casta con il `TimeZone` di
+sessione — ma il risultato **dipende dalla sessione che legge**, e il `now()`
+scritto in `timestamp` ha già congelato l'orario locale della sessione che ha
+inserito: l'informazione è persa alla scrittura, non alla lettura. È il difetto
+che la §Nota di metodo chiama «un'asimmetria che si scopre scrivendo una query»,
+cioè nel momento peggiore.
+
+**Dove va.** **Deciso (Tid, 2026-09-20): nessuna eccezione, né in `ui` né in
+`storico`.** Si allinea tutto a `timestamptz`: le 22 di `ui`, le 8 di `storico`
+e — per lo stesso principio — le 4 di `config.parameters`/`parameter_overrides`
+(la shadow `storico.parameter_overrides` segue la madre). Non è un brief: la
+soluzione sta qui sotto, e il guardrail chiude la porta da cui il difetto è
+entrato.
+
+**Soluzione (scritta il 2026-09-20, da applicare).** Sei changeSet, un pgTAP,
+un cancello, due documenti.
+
+* ⚠️ **Il fatto che ha cambiato il `USING`.** Le righe esistenti **non sono
+  state scritte da un orologio solo**: il backend Django connette con `SET TIME
+  ZONE 'UTC'` (`USE_TZ = True`, nessun `TIME_ZONE` nel `DATABASES`), psql e
+  Liquibase con `TimeZone = Europe/Rome`. Misurato sulle shadow `storico`, dove
+  la stessa riga porta anche un `valid_from` `timestamptz`: le righe di
+  `zeroerp_app` erano avanti di **+1h d'inverno e +2h d'estate**, quelle di
+  `titodb` coincidevano. Quindi non un fuso solo per tutte (la prima stesura
+  di questa voce diceva `'Europe/Rome'`), ma **l'orologio di chi ha scritto**,
+  tabella per tabella.
+* `00_schema/ui/20260920-02` — le 22 colonne, `USING … AT TIME ZONE 'UTC'`:
+  l'unico scrittore di istanti è il backend; i seed sono date a mezzanotte e
+  restano nello stesso giorno. `preset_base_data_update` (copia) e
+  `data_update`/`data_insert` del preset (originale) ricevono la stessa
+  conversione, quindi il confronto in `fn_resolve_lista_config` /
+  `_dashboard_config` non cambia.
+* `00_schema/storico/20260920-03` — le 8 shadow, `USING CASE WHEN user_insert =
+  'zeroerp_app' THEN … 'UTC' ELSE … 'Europe/Rome' END`: `user_insert` è
+  `CURRENT_USER`, cioè il ruolo, cioè il fuso della sessione.
+  `fn_ensure_storico_table` fa `CREATE TABLE IF NOT EXISTS` e non litiga.
+* `00_schema/config/20260920-04` — `parameters` (solo seed e psql: `'Europe/Rome'`),
+  `parameter_overrides` (solo backend: `'UTC'`).
+* `20_code/script/20260920-05` e `-06` — `fn_get_snapshot_as_of` e
+  `fn_get_record_id_as_of`: `p_as_of` da `timestamp` a `timestamptz`
+  (confrontano con `valid_from`/`valid_to` `timestamptz` e castavano col fuso
+  della sessione chiamante). `DROP` della firma vecchia + `CREATE`, perché
+  cambia l'identità; zero chiamanti nel DB e nel BE, il solo pgTAP
+  (`config/test-stradario-riclassificazione-unico`, test 7) passa `ts_pre`
+  senza più il cast. Niente `%TYPE` in firma e `DECLARE`, ed è dichiarato nel
+  file: la funzione è generica su tutte le shadow, non c'è **una** colonna di
+  cui i parametri siano il riflesso.
+* `20_code/script/20260920-07` — `fn_get_iva_override` **si ritira, non si
+  ripara**: era entrata nel giro per il `RETURNS TABLE` senza fuso, ma la
+  prova in transazione ritirata ha detto prima un'altra cosa — legge
+  `config.iva.assoggettamento_iva`, che non esiste dal 2025-10-06. È
+  `LANGUAGE sql`, quindi viva nel catalogo e morta alla prima chiamata, e
+  nessun presidio la ricompilava (`plpgsql_check` guarda solo il plpgsql).
+  La decisione era già in `brief-db-be-iva-risolutore-e-regime-cliente`
+  (R-4, 30-08); la sede viva è `config.fn_get_aliquota_iva`. Manual cancellato,
+  i due manual che la linkavano (`iva.md`, `iva_stati.md`) puntano alla viva.
+* **Presidio vivo**: `db/pgtap/dbops/test-nessun-timestamp-senza-fuso-v1.sql`
+  — invariante sul catalogo (`pg_attribute`, non `information_schema`: i pgTAP
+  girano come `zeroerp_app` e la vista standard nasconde le colonne senza
+  grant), estensioni escluse per dipendenza, Liquibase per nome; rosso con i
+  34 nomi prima dell'apply, verde dopo (provato in transazione ritirata).
+* **Cancello statico**: `scripts/guardrail_timestamp_senza_fuso.py` in
+  `ci-validate.yaml` — `TIMESTAMP` nudo (anche `timestamp(n)`, `datetime`
+  nativo, `::timestamp`) nei changeSet con data ≥ `20260920`, sola sezione
+  `changes`, `DROP` esenti, prosa dopo `IS` esclusa; esclusioni dichiarate con
+  `# timestamp-senza-fuso: ammesso — <perché>`. Sulla storia intera trova le
+  stesse 22 colonne di `ui` più undici `::timestamp` su valori `date`
+  (`date_trunc`) fuori perimetro.
+* **Documenti**: `linee-guida-sql.md` §7 (il blocco di audit scriveva
+  `TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE`, SQL non valido
+  che letto per la parte che compila è proprio il difetto) e nuova §11.10.
+* **BE e FE: nulla.** Nessun model Django sulle tabelle toccate; il backend
+  scrive `now()` in SQL e fa passare i valori senza toccarli; nessuna pagina
+  rende quelle date; i test di `apps/ui` mockano il repository.
+
+✅ **Applicato da Tid il 2026-09-20 alle 23:52** (`databasechangelog`, i sette
+`20260920-01…-07` `EXECUTED`), doc auto-gen rigenerata: le pagine di `ui`,
+`storico` e `config` leggono `timestamp with time zone`, le due `as_of` la
+firma nuova, `fn_get_iva_override` non ha più pagina. Prima dell'apply i sei
+changeSet erano stati provati con l'SQL estratto dagli YAML in transazione
+ritirata (preCondition a 22/8/4, catalogo pulito dopo, `plpgsql_check` a zero,
+ACL delle funzioni tornate dai default privileges); dopo, il presidio
+`dbops/test-nessun-timestamp-senza-fuso-v1` è **4/4 verde** sul DB vivo.
+Restano la baseline pgTAP (in particolare `config/test-stradario-riclassificazione-unico`,
+che ora passa `ts_pre` senza cast) e il commit.
+
+⚠️ **Coda del 2026-09-21 — la nona shadow, e la lezione.** Sulla replica CI
+(`zeroerp_ci`, ricostruita da zero) il presidio è uscito rosso con un nome che
+dbdev non aveva mostrato: `storico.parameters.data_insert`, nata `timestamp` da
+`20250729-11` e su dbdev **già** `timestamptz` per un `ALTER` a mano mai finito
+nel changelog. Il censimento «8 shadow» era una fotografia di dbdev; il criterio
+è il presidio sul DB da zero. Chiude `00_schema/storico/20260921-01`: un `DO`
+che legge il tipo vivo da `pg_attribute` e converte **solo se naive** (col
+`CASE` sul ruolo di `-03`) — un `ALTER … USING AT TIME ZONE` nudo su una
+colonna già `timestamptz` l'avrebbe spogliata e rivestita col fuso di chi
+migra, spostando i valori di un'ora. Provato in transazione ritirata su
+entrambe le macchine: converte su `zeroerp_ci`, non fa niente su dbdev, il
+presidio è 4/4 su tutte e due.
+
+✅ **Applicato e verificato (Tid, 2026-09-21 00:10):** `20260921-01`
+`EXECUTED` sulla replica CI (`databasechangelog`); su dbdev la colonna era già
+`timestamptz` e il changeSet è un no-op che lo dichiara con un NOTICE. Suite
+pgTAP rilanciata: **verde, nessuna regressione**. Degli altri due rossi della
+prima corsa, `script/test-fn-get-entita-ruolo-detail` (test 9) non è di questa
+voce — `config.tipi_ruoli.entita_tabella` è valorizzata su dbdev ma **assente
+dal CSV**, quindi vuota sul DB da zero; il test lo mostra solo da quando
+`20260920-01` costruisce un emittente su DB vuoto — e
+`anagrafiche/create-cliente` (ERRORE_FIXTURE) da sola è 8/8: contaminazione
+d'ordine, non un difetto. **Attività V-3 conclusa**; resta il commit.
 
 ### V-4 · Cinque modi per dire «questa riga è viva, e in che stato è»
 
@@ -194,8 +317,79 @@ where c.table_schema = any(array['vendite','acquisti','magazzino','pagamenti',
                      and k.column_name = c.column_name);
 ```
 
-**Dove va.** La lista, con una domanda per riga: *polimorfa (e allora vuole il
-suo guard) o manca la FK?*
+**Rifinito sul DB vivo (2026-09-21, `pg_constraint`, sole tabelle base).** Il
+totale resta **35**, ma la composizione scritta sopra era sbagliata: quei gruppi
+sommavano 83 perché le pagine autogenerate non mostrano le FK, e
+`unita_organizzativa_id`, `pratica_id` (tranne una), `uom_id` e le 24 coppie di
+`transizioni_*` **la FK ce l'hanno**. Le 35 vere, per famiglia:
+
+| Famiglia | Colonne | Che cosa sono |
+| --- | --- | --- |
+| `auth_user_id` → `django.auth_user` | **10** (`config.auth_totp_device`, `email_log`, `email_outbox`, `token_monouso`, `user_emittente_attivo`, `user_emittenti_fiscali`, `user_override_aree/azioni/oggetti`, `vendite.event_log`) + `email_outbox.creato_da_user_id` | il ponte `django`: la FK si può mettere solo in `90_end` sotto `MARK_RAN` (regola del progetto, 18 FK già così); queste undici non l'hanno |
+| polimorfi delle note | **12** (`target_riga_id` 9, `target_id` 3) | dichiarati polimorfi: la risposta è il guard, non la FK |
+| `valuta_id` | 2 (`billing_account`, `emittenti_fiscali`) | da spiegare: non c'è né FK né trigger che la legga |
+| `sorgente_tipo_id` | 2 (`pratiche.reconcile_errori`, `vendite.fatture_stampa_coda`) | da spiegare |
+| `fatture_stampa_coda` | `documento_id`, `template_documento_id` | coda di stampa: il documento è polimorfo per `sorgente_tipo_id`, il template no |
+| `magazzino.eventi_assets` | `stato_da_id`, `stato_a_id` | l'unica coppia di transizione senza FK |
+| `pratiche.reconcile_errori` | `pratica_id`, `flusso_id` | registro di errori: puntatori volutamente sciolti? da dichiarare |
+| `vendite.event_log.entity_id`, `vendite.ordini.documento_origine_id` | 2 | il primo è polimorfo per `entity_type`; il secondo è da spiegare |
+
+⚠️ **Nessuna automazione crea FK.** Nel DB non esiste una funzione che faccia
+`ADD CONSTRAINT … FOREIGN KEY`: `dbops.fn_ensure_storico_table` la tiene
+**commentata** apposta («bloccherebbe la cancellazione delle righe della
+tabella») e crea solo l'indice; `dbops.apply_fk_index_policy()` crea **indici
+sulle FK che esistono già**, opt-in da `dbops.fk_index_policy` — non le FK.
+Una FK mancante resta mancante finché un changeSet non la scrive.
+
+**Dove va.** La tabella qui sopra, con una domanda per riga: *polimorfa (e
+allora vuole il suo guard) o manca la FK?* Le undici verso `django` hanno già la
+forma della risposta (`90_end` + `MARK_RAN`); le altre dieci non polimorfe
+(`valuta_id`, `sorgente_tipo_id`, `template_documento_id`, `stato_da/a_id`,
+`pratica_id`/`flusso_id`, `documento_origine_id`) sono la lista corta da
+decidere.
+
+**Fatto il 2026-09-21 (decisione di Tid: le 11 verso `django` e i 12 polimorfi).**
+
+* **Le 11 verso `django`: FK scritte**, `90_end/20260921-02…-12`, una per
+  colonna, sul pattern delle 18 sorelle (`tableExists django.auth_user` +
+  `MARK_RAN`). La regola di cancellazione è per famiglia, non una sola:
+  **`CASCADE`** sullo stato per-utente (`auth_totp_device`, `token_monouso`,
+  `user_emittente_attivo`, `user_emittenti_fiscali` — il cui guard di DELETE
+  già prevede la cascata —, `user_override_aree/azioni/oggetti`);
+  **`RESTRICT`** su registri e code (`email_log`, `email_outbox` ×2,
+  `vendite.event_log`): un `SET NULL` riscriverebbe un registro append-only,
+  un `CASCADE` ne farebbe sparire le righe, e Django disattiva gli utenti,
+  non li cancella. Zero orfani su dbdev. La policy indici
+  (`80_data/20260921-13`, CSV dedicato come `20260913-12`) dichiara
+  `consentito=false` su dieci — colonna già in testa a un indice o nessuna
+  lettura da lì — e **`true` su `email_log`**, perché `ix_email_log_auth_user_id`
+  esiste già e un `false` glielo farebbe **droppare** (`apply_fk_index_policy`
+  fa `DROP INDEX IF EXISTS` sul nome canonico dei `false`). Presidio:
+  `db/pgtap/config/test-fk-auth-user-ponte-django-v1.sql` — invariante
+  «nessuna `*_user_id` di dominio senza FK verso `auth_user`», le 11 con la
+  loro regola, e la lente; salta con motivo dove il ponte non c'è affatto.
+  ✅ Applicato da Tid alle 00:35 su dbdev e sulla replica; 3/3 verde su dbdev.
+* **I 12 polimorfi delle note: niente da fare, ed è un fatto, non una
+  rinuncia.** `vendite.note`, `acquisti.note`, `magazzino.note` sono tabelle
+  **partizionate per `target_tipo`** e la FK vive **sulla partizione**: ognuna
+  delle 18 partizioni porta `target_id → <documento>` e, dove il documento ha
+  righe, `target_riga_id → <righe>` (tutte `ON DELETE CASCADE`); le sei
+  partizioni di `magazzino` senza righe (`asset`, `evento_asset`,
+  `inventario`, `movimento`, `rettifica`, `trasferimento`) hanno un `CHECK
+  … target_riga_id IS NULL`, e il `CHECK` su `target_tipo` più il routing di
+  partizione rifiutano un tipo fuori elenco. La misura vedeva «senza FK» il
+  padre (che per costruzione non può portarla) e le partizioni senza righe
+  (dove la colonna deve restare `NULL`). Il polimorfismo qui è risolto dalla
+  forma, e meglio di un guard.
+* ⚠️ **Sulla replica CI il presidio è rosso sul test 1, e dice il vero**: le
+  **18 FK storiche** verso `django` (`identita_digitali`, `parameter_overrides`,
+  `documenti_generati`, `ui.*_preferenza_utente`) **non esistono** lì —
+  `MARK_RAN` alla prima costruzione, quando `auth_user` non c'era ancora, e
+  un `MARK_RAN` non torna. Le 11 nuove invece ci sono (applicate a tabella
+  esistente). È il prezzo dichiarato del pattern, misurato: o la replica si
+  ricostruisce nell'ordine giusto, o la riga entra in `baseline-rossi-ci`
+  come debito con questa causa. In GitHub CI il test **salta** (zero FK del
+  ponte, tabella nata dopo).
 
 ### V-8 · La figlia ripete la chiave del padre, e non sempre c'è chi lo controlla
 

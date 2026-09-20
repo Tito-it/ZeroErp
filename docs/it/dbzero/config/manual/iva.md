@@ -11,7 +11,7 @@ Approfondimento tabelle:
 Approfondimenti funzioni:   
 >
 [config.trgfn_iva_ins_upd_check_conti_iva](/dbzero/config/funzioni/trgfn_iva_guard_conti_iva)   
-> [script.fn_get_iva_override](/dbzero/script/funzioni/fn_get_iva_override)    
+> [config.fn_get_aliquota_iva](/dbzero/config/funzioni/fn_get_aliquota_iva)    
 > [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)     
 
 La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo descrizioni, regole di assoggettamento, split payment e mapping necessari per l’invio delle fatture al Sistema di Interscambio (SDI).

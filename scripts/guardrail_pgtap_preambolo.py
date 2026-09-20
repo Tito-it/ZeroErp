@@ -61,7 +61,14 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 # Soglia del debito: numero di `throws_ok` senza discriminante ammessi.
 # ⚠️ Si abbassa quando se ne sana uno. NON si alza mai: se questo numero deve
 #    crescere per far passare la CI, il difetto e' nel test nuovo.
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 129
+# 2026-09-20: 129 -> 123. Sei asserzioni discriminate in
+#   db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql — e una di
+#   quelle era VERDE per l'errore sbagliato (23502 su `uom_id` invece del
+#   duplicato su `uq_articoli_codice`). La sonda che l'ha trovata: sostituire il
+#   discriminante con uno impossibile e leggere dal messaggio di pgTAP lo
+#   SQLSTATE vero. Dettaglio in D11 di
+#   docs/it/dev/work-in-progress/migliorie-generali-da-test-valutazione.md.
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 123
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)
