@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# V-3 (3 di 6) — config.parameters e config.parameter_overrides: le 4 colonne
+#   `timestamp without time zone` del DOMINIO diventano `timestamptz`.
+#   Documento: valutazione-modello-di-dominio-db, voce V-3.
+#
+# -- IL FATTO -------------------------------------------------------------------
+#   Nei dieci schemi di dominio 671 colonne sono timestamptz e QUATTRO no:
+#   data_insert/data_update di queste due tabelle. Erano l'unica eccezione
+#   dentro il dominio, e la decisione di Tid del 20-09 e' «nessuna eccezione»:
+#   se non la si ammette per `ui`, a maggior ragione non qui. E la shadow
+#   storico.parameter_overrides (-03) segue la madre.
+#
+# -- ⚠️ DUE TABELLE, DUE SCRITTORI, DUE OROLOGI --------------------------------
+#   Il valore senza fuso e' l'orario locale della sessione che ha scritto, e
+#   le sessioni sono due: il backend (zeroerp_app, `SET TIME ZONE 'UTC'`) e
+#   tutto il resto (psql, Liquibase, pgAgent: `TimeZone = Europe/Rome`).
+#     · config.parameters: la scrivono SOLO i seed e le sessioni di chi
+#       amministra il DB (user_insert: titodb, mctit, CURRENT_USER); il
+#       backend la legge (parameter_repository) e nessuna funzione la scrive
+#       (pg_proc, 20-09). → 'Europe/Rome'.
+#     · config.parameter_overrides: la scrive il backend
+#       (parameter_repository.py: INSERT/UPDATE), con l'utente applicativo in
+#       user_insert. → 'UTC'.
+#   Scrivere un fuso solo per entrambe sarebbe stato sbagliato per una delle
+#   due: il USING dichiara l'orologio per tabella, dal suo scrittore.
+#
+# -- CHE COSA NON CAMBIA -------------------------------------------------------
+#   NOT NULL e DEFAULT now() restano. Nessuna vista, funzione o indice
+#   dipende dalle quattro colonne (pg_depend, 20-09). Il backend e' agnostico:
+#   scrive now() in SQL e non rilegge le date.
+#
+# -- I FRATELLI DELLO STESSO GIRO ----------------------------------------------
+#   -02 ui, -03 storico, -05/-06 fn as_of, -07 ritiro di fn_get_iva_override.
+#   Presidio: db/pgtap/dbops/test-nessun-timestamp-senza-fuso-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260920-04-alter-config-parameters-timestamp-senza-fuso-a-timestamptz-mctit.yaml
+
+  - changeSet:
+      id: 20260920-04-alter-config-parameters-timestamp-senza-fuso-a-timestamptz
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.parameters e config.parameter_overrides: data_insert/data_update da
+        timestamp without time zone a timestamptz — erano le sole 4 colonne senza fuso
+        del dominio. USING per tabella dal suo scrittore: parameters (seed e psql,
+        Europe/Rome), parameter_overrides (backend, UTC). Nessuna eccezione (Tid, 20-09).
+        Documento: valutazione-modello-di-dominio-db, voce V-3 (3 di 6).
+      preConditions:
+        - onFail: HALT
+        # ⚠️ Premessa del changeSet, non fotografia: le quattro colonne nascono
+        #   nella storia vecchia e in timeline sono senza fuso ovunque.
+        - sqlCheck:
+            expectedResult: "4"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name IN ('parameters', 'parameter_overrides')
+                 AND column_name IN ('data_insert', 'data_update')
+                 AND data_type = 'timestamp without time zone'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Scrittori: seed e sessioni DB → orologio di Roma.
+              ALTER TABLE config.parameters
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'Europe/Rome',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'Europe/Rome';
+
+              -- Scrittore: il backend (sessione UTC) → orologio UTC.
+              ALTER TABLE config.parameter_overrides
+                  ALTER COLUMN data_insert TYPE timestamptz USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamptz USING data_update AT TIME ZONE 'UTC';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Inverso esatto del USING sopra, tabella per tabella.
+              ALTER TABLE config.parameters
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'Europe/Rome',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'Europe/Rome';
+              ALTER TABLE config.parameter_overrides
+                  ALTER COLUMN data_insert TYPE timestamp USING data_insert AT TIME ZONE 'UTC',
+                  ALTER COLUMN data_update TYPE timestamp USING data_update AT TIME ZONE 'UTC';

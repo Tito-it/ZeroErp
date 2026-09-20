@@ -90,7 +90,7 @@ Dovresti vedere righe come:
 
 **Se queste regole ci sono**: la tua tabella e coperta. Vai al Passo 3.
 
-**Se mancano**: consulta la [Guida Framework – Esempi SQL](/guide/automazione-db#6-esempi-sql-di-configurazione) per gli insert SQL di ciascuna regola.
+**Se mancano**: consulta la [Guida Framework – Esempi SQL](/guide/automazione-db#area-tecnica-esempi) per gli insert SQL di ciascuna regola.
 
 ---
 

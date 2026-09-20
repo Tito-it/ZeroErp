@@ -36,8 +36,8 @@ CREATE CONSTRAINT TRIGGER trg_istanze_utilities_z90_require_utility_dichiarata_i
 
 ## Codice errore
 
-| Codice                            | HTTP | Messaggio (CSV)                                                                                                  |
-| --------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------- |
+| Codice                            | HTTP | Messaggio (CSV)                                                                                                            |
+| --------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------- |
 | `E_ISTANZA_UTILITY_SENZA_UTILITY` | 409  | Istanza utility senza utility dichiarata: serve almeno un riferimento (billing_account, dati precontrattuali, cliente). %s |
 
 L'ultimo argomento del raise (`%s`) contiene il context diagnostico (`istanza_utility_id=<id>`).
@@ -65,5 +65,5 @@ Il trigger e' `AFTER INSERT`: si applica solo alle nuove istanze. Le istanze sto
 
 * [`script.fn_check_utility_istanza_coerenza`](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — fn riusabile cross-tabella allineata alle stesse 3 fonti
 * [`vendite.trgfn_preventivi_guard_utility_istanza_coerenza`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_utility_istanza_coerenza) — guard sui preventivi che usa la fn check
-* [Guida: Gestione delle istanze utility — sezione "Strategia C"](/it/guide/gestione-delle-istanze-utility#strategia-c--ogni-istanza-dichiara-la-utility-tramite-un-satellite-2026-05-01)
+* [Guida: Gestione delle istanze utility — sezione "Strategia C"](/it/guide/gestione-delle-istanze-utility#ogni-istanza-dichiara-la-utility-strategia-c)
 * Brief sessione 2026-05-01: `docs/it/dev/work-done/risposta-db-brief-preventivi-rev2.md`

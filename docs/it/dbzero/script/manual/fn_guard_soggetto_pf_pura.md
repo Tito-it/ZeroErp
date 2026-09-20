@@ -5,7 +5,6 @@
 **Tabelle correlate:**
 >
 [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 > [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
 >
 **Funzioni correlate:**
@@ -15,8 +14,7 @@
 >
 **Trigger chiamanti:**
 >
-[anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_auth_user_guard_persona_fisica)
-> [anagrafiche.trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza)
+[anagrafiche.trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza)
 
 ---
 ### 🎯 Scopo Principale
@@ -34,8 +32,8 @@ se la condizione non è soddisfatta. Altrimenti restituisce l'id passato
 
 ### Parametri di input
 
-| Parametro       | Tipo                                 | Descrizione                            |
-| --------------- | ------------------------------------ | -------------------------------------- |
+| Parametro       | Tipo                                  | Descrizione                              |
+| --------------- | ------------------------------------- | ---------------------------------------- |
 | `p_soggetto_id` | `anagrafiche.soggetti.id%TYPE` (uuid) | ID del soggetto da verificare. NOT NULL. |
 
 ---

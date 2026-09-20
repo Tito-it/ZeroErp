@@ -314,3 +314,6 @@ Le attivita' di evoluzione previste sono:
 ---
 
 *Guida tecnica — Integrazione AI in ZeroERP (31 marzo 2026)*
+
+---
+{% include-markdown "signature-core.md" %}

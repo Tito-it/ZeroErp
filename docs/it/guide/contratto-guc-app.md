@@ -1,117 +1,137 @@
-# Contratto GUC `app.*` — PRD per Backend
+# Guida — Contratto GUC `app.*`
 
-> **Destinatari:** backend Django (authentication class, middleware), autori di funzioni DB e policy RLS
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> **Prerequisiti:** [Architettura Multi-Face Auth v2.0](/guide/architettura-multi-face-auth), [Architettura Permessi e Autorizzazioni §6.4](/guide/architettura-permessi-e-autorizzazioni#64-propagazione-identita-al-db-jwt-gu-c)
+> **Destinatari**: backend Django (authentication class, middleware), autori di funzioni DB e policy RLS
 >
-> **Stato:** contratto normativo — 20-04-2026
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [script.fn_current_identita_context](/dbzero/script/funzioni/fn_current_identita_context) — la tripla letta dal DB in un colpo solo, o `NULL` se incompleta
+> * [script.fn_scope_ba_ownership](/dbzero/script/funzioni/fn_scope_ba_ownership) · [script.fn_scope_ef_whitelist](/dbzero/script/funzioni/fn_scope_ef_whitelist) · [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — gli scope che le policy interrogano
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — il trigger audit che firma le righe con questi GUC
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Architettura Permessi e Autorizzazioni §6.4](/guide/architettura-permessi-e-autorizzazioni#64-propagazione-identita-al-db-jwt-guc) — la propagazione dell'identità al DB
+> * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth) — le identità digitali, le vesti e il claim `identita_id`
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — la sync di `auth_user.is_active`
 
 ---
 
 ## 1. Cosa sono i GUC `app.*`
 
-I **GUC** (grand unified configuration) sono parametri di sessione PostgreSQL
-settati via `SET LOCAL` all'interno di una transazione. ZeroErp usa i GUC
-nel namespace `app.*` per propagare l'identita della sessione HTTP fino
-al database, dove policy RLS, trigger e funzioni scope possono leggerli
-e applicare enforcement fail-closed.
+I **GUC** (grand unified configuration) sono parametri di sessione PostgreSQL. Zero ERP usa
+i GUC nel namespace `app.*` per propagare l'identità della sessione HTTP fino al database,
+dove policy RLS, trigger e funzioni di scope li leggono con
+`current_setting('app.xxx', true)` e applicano l'enforcement fail-closed.
 
-Il backend Django scrive i GUC dentro la authentication class (ogni
-request autenticata) — il DB li legge via `current_setting('app.xxx', true)`.
+Il backend Django li scrive nella authentication class, a ogni richiesta autenticata.
 
 **Natura del contratto:**
 
-* I GUC sono **locali alla transazione**: `SET LOCAL` li scopera automaticamente
-  a fine commit/rollback. Nessuna pool pollution.
-* I GUC sono **obbligatori per ogni request autenticata**: senza GUC il DB e' in
-  stato "identita sconosciuta" e la RLS fail-closed.
-* I GUC sono **propagati verso il basso**: il BE li scrive, il DB li legge. Mai
-  il contrario (non esiste "DB che chiede al BE chi e' l'utente").
-* I GUC **non sono storage**: non persistono, non sono audit log, non sono
-  cache. Sono un canale di sessione.
+* I GUC sono **di sessione, non di transazione.** `set_config(nome, valore, false)` — cioè
+  `is_local = false` — li lega alla **connessione**, non al commit. È voluto, e c'è un
+  lettore che dipende da questo: la riga di `dbops.request_log` si scrive **dopo** la
+  risposta, quando la transazione di lavoro ha già chiuso, e prende l'emittente proprio da
+  `app.current_emittente_id`. Con lo scope di transazione sarebbe già sparita.
+* ⛔ **Proprio per questo c'è un reset a inizio richiesta.** Una GUC di sessione vive sulla
+  connessione del pool: senza reset, la richiesta successiva — di un **altro** utente —
+  erediterebbe l'identità (e l'eventuale impersonazione) di quella prima. Chi protegge dal
+  riuso della connessione **non è il commit**: è il middleware, e se il reset fallisce la
+  richiesta viene rifiutata (500, fail-closed).
+* I GUC sono **obbligatori per ogni richiesta autenticata**: senza GUC il DB è in stato
+  «identità sconosciuta» e la RLS fail-closed.
+* I GUC sono **propagati verso il basso**: li scrive il BE, li legge il DB. Mai il contrario
+  — non esiste «il DB che chiede al BE chi è l'utente».
+* I GUC **non sono storage**: non persistono, non sono audit log, non sono cache. Sono un
+  canale di sessione.
+
+> ⚠️ Nel namespace `app.*` **convivono altre GUC che non fanno parte di questo contratto**:
+> le scrive una funzione o un processo per il tempo della propria transazione, come parametri
+> di contesto (`app.cessazione_automatica`, `app.registrazione_tardiva_riga_id`). Non sono
+> identità e non vanno confuse con quelle della tabella qui sotto.
 
 ---
 
-## 2. I 5 GUC
+## 2. I 6 GUC d'identità
 
-Cinque GUC in due gruppi: identita multi-face (tripla obbligatoria) + legacy
-(compatibilita').
+L'elenco canonico è **una tupla nel codice**, non questo documento:
+`JWT_IDENTITY_GUCS` in `backend/apps/core/api/jwt_audit_authentication.py`. Da lì si deriva
+il reset (`JWT_GUC_RESET_SQL`), e lì si aggiunge o si toglie una GUC.
 
-### 2.1 Tripla multi-face auth (obbligatoria post refactor)
+| GUC                        | Tipo valore          | Da dove viene                                                                     | Chi lo legge                                              |
+| -------------------------- | -------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `app.current_identita_id`  | `bigint`             | claim JWT `identita_id`, validato su `identita_digitali`                          | policy RLS, funzioni di scope                             |
+| `app.ruolo_applicativo`    | `text` (valore ENUM) | `identita_digitali.ruolo_applicativo`                                             | policy RLS (il gate sulla veste)                          |
+| `app.soggetto_ruolo_id`    | `bigint`             | `identita_digitali.soggetto_ruolo_id`                                             | policy RLS                                                |
+| `app.current_emittente_id` | `bigint`             | claim dell'emittente attivo (`emittenti_fiscali.id`), rivalidato a ogni richiesta | policy RLS dello **scope emittente**, `dbops.request_log` |
+| `app.current_user_id`      | `integer`            | `auth_user.id`                                                                    | trigger audit                                             |
+| `app.jwt_user`             | `text`               | `auth_user.username`                                                              | trigger audit                                             |
 
-| GUC | Tipo valore | Sorgente | Esempio |
-| --- | --- | --- | --- |
-| `app.current_identita_id` | `bigint` | Claim JWT `identita_id` | `108` |
-| `app.ruolo_applicativo` | `text` (valore ENUM) | `identita_digitali.ruolo_applicativo` | `CLIENTE_PORTALE` |
-| `app.soggetto_ruolo_id` | `bigint` | `identita_digitali.soggetto_ruolo_id` | `55` |
+**La tripla** (`current_identita_id`, `ruolo_applicativo`, `soggetto_ruolo_id`) è
+**tutto-o-niente**: la scrive una sola query, e se la coppia `(auth_user, identità)` non è
+valida le tre colonne escono **vuote insieme**. Non è mai lecito avere
+`current_identita_id` valorizzato e `ruolo_applicativo` vuoto.
 
-**Invariante tutto-o-niente:** i 3 GUC sono popolati insieme oppure nessuno
-di loro e' popolato. Non e' mai lecito avere `current_identita_id` settato
-e `ruolo_applicativo` vuoto.
+⚠️ **L'emittente non fa parte della tripla**, e la differenza conta: può essere **vuoto
+mentre la tripla è piena** — è il caso di chi non ha un emittente attivo selezionato (un
+SUPER_ADMIN globale, o un job che gira senza emittente). La tripla invece o c'è tutta o non
+c'è. Le due condizioni si leggono separatamente.
 
-### 2.2 GUC legacy (invariati, retrocompatibilita')
-
-| GUC | Tipo valore | Sorgente | Uso |
-| --- | --- | --- | --- |
-| `app.current_user_id` | `integer` | `auth_user.id` | Trigger audit `user_insert`/`user_update` |
-| `app.jwt_user` | `text` | `auth_user.username` | Audit log legacy |
-
-Questi due esistono da prima del refactor multi-face. Restano in uso dai
-trigger audit generici; non sono coinvolti nelle policy RLS.
+Gli ultimi due sono **legacy**: nascono prima del refactor multi-face e restano in uso dai
+trigger audit generici. Non entrano nelle policy RLS.
 
 ---
 
 ## 3. Chi popola cosa, quando
 
-**Sorgente unica:** l'authentication class `JwtAuditAuthentication`
-(`backend/apps/core/authentication.py`). Nessun altro codice backend
-deve settare direttamente i GUC. Nessun service, nessun middleware, nessuna
-view.
+**Due attori, e solo due**, entrambi in `apps/core`:
 
-**Sequenza per ogni request autenticata:**
+| Attore                                      | Cosa fa                                               | Dove                                           |
+| ------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------- |
+| `JwtAuditMiddleware`                        | **azzera** tutte le GUC d'identità a inizio richiesta | `apps/core/middleware/jwt_audit_middleware.py` |
+| `JwtAuditAuthentication` → `set_jwt_gucs()` | **scrive** le GUC coi valori reali                    | `apps/core/api/jwt_audit_authentication.py`    |
 
-1. DRF riceve la request con header `Authorization: Bearer <jwt>`
-2. `JwtAuditAuthentication.authenticate()` valida il JWT
-3. Legge claim `identita_id` dal JWT
-4. Interroga `anagrafiche.identita_digitali` per ottenere
-   `(ruolo_applicativo, soggetto_ruolo_id, attivo)`
-5. Se identita non attiva → `AuthenticationFailed('E_IDENTITA_NON_ATTIVA')` (401)
-6. Esegue **un'unica query** che setta tutti i GUC in transazione:
+Nessun service, nessuna view, nessun altro middleware deve settare i GUC d'identità.
 
-```sql
-SELECT
-    set_config('app.current_user_id',      %s, false),
-    set_config('app.current_identita_id',  %s, false),
-    set_config('app.ruolo_applicativo',    %s, false),
-    set_config('app.soggetto_ruolo_id',    %s, false),
-    set_config('app.jwt_user',             %s, false);
-```
+**Sequenza di una richiesta autenticata:**
 
-Parametri positional: `auth_user.id`, `identita.id`, `identita.ruolo_applicativo`,
-`identita.soggetto_ruolo_id`, `auth_user.username`. Il flag `false` del
-`set_config` indica `is_local = false` — ma in pratica Django wrappa in
-transazione atomic, quindi la vita del GUC e' quella della transazione.
+1. Il middleware di reset ripulisce le 6 GUC. Azzera **solo** se la connessione è già aperta
+   (una connessione nuova nasce pulita) e **solo** sui path `/api/`. Se il reset fallisce, la
+   richiesta **non viene servita**: 500 `E_GUC_RESET_FAILED`. È un fail-closed dichiarato —
+   meglio un errore che servire dati con uno scope ereditato.
+2. DRF riceve la request con header `Authorization: Bearer <jwt>`.
+3. `JwtAuditAuthentication.authenticate()` valida il JWT e legge i claim `identita_id`,
+   `ruolo_applicativo` e l'emittente attivo.
+4. `set_jwt_gucs()` esegue **un'unica query** (una CTE) che fa tre cose insieme: valida la
+   coppia `(identita_id, auth_user_id)` su `anagrafiche.identita_digitali` con `attivo = true`,
+   **rivalida ad ogni richiesta** che l'emittente del claim sia ancora attivo, e scrive i 6 GUC
+   con `set_config(..., false)` ([esempio](#area-tecnica-esempi)).
+5. Identità non attiva → `E_IDENTITA_NON_ATTIVA` (401): il client deve rifare login.
 
-> **Nota implementativa:** se la request non e' atomic by default (es. API non
-> write), e' responsabilita' del middleware `ATOMIC_REQUESTS` (o decorator
-> `@transaction.atomic` sulla view) garantire il confinamento transazionale.
-> Altrimenti usare `set_config(..., true)` con `is_local = true` (piu'
-> sicuro ma richiede essere dentro una transazione).
+> ⛔ **Senza `identita_id` esplicito le GUC non vengono toccate affatto.** Non è una
+> dimenticanza: un `auth_user` può avere **più identità attive** (una per veste), quindi
+> risolvere «la prima» sceglierebbe una veste al posto dell'utente — con la GUC sbagliata,
+> in silenzio. Chi non ha l'identità la chiede al client, non la indovina.
 
-**Request anonime.** Se non c'e' JWT valido (endpoint pubblici dello shop,
-registrazione), i GUC **non vengono settati**. Il DB vede valori vuoti,
-`fn_current_identita_context()` restituisce NULL-tuple, le policy RLS
-fail-closed.
+**Request anonime.** Su una richiesta senza JWT valido le GUC d'identità **non vengono
+scritte** dagli step 2-5, e quelle eventualmente rimaste dalla richiesta precedente sono già
+state azzerate al passo 1. Quindi il DB legge valori vuoti: la tripla è `NULL`,
+`fn_current_identita_context()` non restituisce niente e le policy RLS fail-closed. Il valore
+che rende vera questa frase non è il `COMMIT` — è il reset.
 
-**Processi di sistema headless (canale batch).** I management command / cron che
-operano via un ruolo `zeroerp_batch_<job>` (`BYPASSRLS` — vedi
-[provisioning-db-roles](/dev/backend/provisioning-db-roles)) **non settano i GUC
-d'identita'** (`current_identita_id` / `ruolo_applicativo` / `soggetto_ruolo_id`):
-non hanno una veste applicativa e la RLS e' bypassata **a livello di ruolo**, non via
-GUC. Possono settare il solo `app.jwt_user` (es. `BATCH_FATTURAZIONE`) per dare un
-attore riconoscibile ai trigger audit. Questo canale e' riservato ai processi headless:
-**mai** usarlo per servire richieste web (guard fail-open statico+runtime, vedi
-`dev/work-done/brief-db-contesto-sistema-batch-fatturazione-rls.md` §5.6).
+**Processi di sistema headless (canale batch).** I management command e i cron che operano via
+un ruolo `zeroerp_batch_<job>` (`BYPASSRLS` — vedi
+[provisioning-db-roles](/dev/backend/provisioning-db-roles)) **non settano i GUC d'identità**:
+non hanno una veste applicativa, e la RLS è bypassata **a livello di ruolo**, non via GUC.
+Possono settare il solo `app.jwt_user` (es. `BATCH_FATTURAZIONE`) per dare un attore
+riconoscibile ai trigger audit. Questo canale è riservato ai processi headless: **mai** usarlo
+per servire richieste web.
+
+**Canale della coda.** Il worker della coda di lavoro
+(`apps/core/services/coda_lavori/context.py`) usa **lo stesso** `JWT_GUC_RESET_SQL` del
+middleware per entrare e per uscire: scrive l'identità di chi ha chiesto il giro, esegue, e
+azzera nel `finally` — anche quando il giro fallisce o l'identità non è più attiva.
 
 ---
 
@@ -119,49 +139,34 @@ attore riconoscibile ai trigger audit. Questo canale e' riservato ai processi he
 
 ### 4.1 Policy RLS
 
-Ogni policy RLS legge i GUC tramite `current_setting(..., true)`. Il
-secondo parametro `true` evita eccezione se il GUC non e' settato:
-restituisce stringa vuota. Pattern standard:
+Ogni policy RLS legge i GUC con `current_setting(..., true)`. Il secondo parametro `true` è
+quello che rende la lettura **non eccezionale** quando la GUC non è settata: restituisce
+stringa vuota invece di sollevare.
 
-```sql
-CREATE POLICY rls_fatture_ba_ownership ON vendite.fatture
-    FOR SELECT
-    USING (
-        current_setting('app.ruolo_applicativo', true) IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
-        AND script.fn_scope_ba_ownership(
-                NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
-                billing_account_id
-            )
-    );
-```
+Lo schema è sempre lo stesso, e ha due pezzi:
 
-**Pattern di conversione sicura:**
+1. **il gate sulla veste** — `app.ruolo_applicativo` confrontato con i valori ammessi
+   (`IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')`, e simili);
+2. **la chiamata allo scope**, che riceve `NULLIF(current_setting(...), '')::bigint` — la
+   conversione da stringa vuota a `NULL` **prima** del cast, perché è il `NULL` a far
+   scattare il fail-closed dentro la funzione di scope.
 
-```sql
--- Da stringa vuota a NULL, poi cast tipizzato. NULL fa fail-closed.
-NULLIF(current_setting('app.current_identita_id', true), '')::bigint
-```
+Un esempio completo di policy e la riga di conversione sono in
+[Area tecnica](#area-tecnica-esempi).
 
 ### 4.2 Helper `fn_current_identita_context`
 
-Funzione DB `script.fn_current_identita_context()` leggibile da qualunque
-funzione/policy che serve la tripla. Restituisce una tupla `(identita_id,
-ruolo_applicativo, soggetto_ruolo_id)` oppure `NULL-tuple` se **anche uno
-solo** dei 3 GUC non e' popolato o non e' castabile.
-
-**Uso tipico:**
-
-```sql
-SELECT identita_id, ruolo_applicativo, soggetto_ruolo_id
-FROM script.fn_current_identita_context();
--- Se identita_id IS NULL, l'intera tripla e' considerata non popolata
-```
+[`script.fn_current_identita_context()`](/dbzero/script/funzioni/fn_current_identita_context)
+serve a chi ha bisogno di **tutta la tripla** e non di una colonna sola: la restituisce come
+record tipato, oppure `(NULL, NULL, NULL)` se **anche uno solo** dei tre valori manca o non è
+castabile. Chi la consuma non deve quindi ricontrollare i singoli campi: se `identita_id` è
+`NULL`, la tripla non è utilizzabile.
 
 ### 4.3 Trigger audit
 
-I trigger generici `script.trgfn_audit_data_user_generic()` continuano a
-leggere `app.jwt_user` come fanno oggi. Non sono stati modificati dal
-refactor multi-face.
+I trigger generici [`script.trgfn_audit_data_user_generic()`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
+leggono `app.jwt_user` e `app.current_user_id`: è la firma delle righe, non un controllo di
+accesso. Restano fuori dalle policy RLS.
 
 ---
 
@@ -213,181 +218,194 @@ reloggare.
 
 > **Importante:** non si puo' affidarsi a `auth_user.is_active = true` per
 > questo check. `is_active` e' OR sulle identita dell'user (vedi
-> [Multi-Face Auth §9](/guide/architettura-multi-face-auth#9-sync-auth_user-is_active-generalizzata)):
+> [Multi-Face Auth §9](/guide/architettura-multi-face-auth#9-sync-auth_useris_active-generalizzata)):
 > l'user potrebbe essere globalmente attivo ma con la veste specifica
 > disattivata.
 
 ---
 
-## 6. Invariante tutto-o-niente: implementazione difensiva
+## 6. L'invariante tutto-o-niente, e come è difesa
 
-### 6.1 Lato BE
+L'invariante riguarda **la tripla** (§2): o i tre valori ci sono tutti, o non ce n'è nessuno. È
+difesa su **entrambi i lati**, e in nessuno dei due si improvvisa.
 
-```python
-# apps/core/authentication.py (concettuale)
-class JwtAuditAuthentication(AuditJWTAuthentication):
-    def authenticate(self, request):
-        user, token = super().authenticate(request)
-        identita_id = token.get('identita_id')
+* **Lato BE** — le GUC si scrivono in **una sola query**, che valida *e* scrive: se la coppia
+  `(auth_user, identità)` non è attiva, le colonne escono vuote invece di uscire sbagliate. Il
+  DB non può restare in uno stato parziale perché non esiste un momento in cui è stata scritta
+  solo una parte dell'insieme ([esempio](#area-tecnica-esempi)).
+* **Lato DB** — chi ha bisogno della tripla non ricompone tre `current_setting` a mano: chiama
+  [`script.fn_current_identita_context()`](/dbzero/script/funzioni/fn_current_identita_context),
+  che restituisce i tre valori **oppure `(NULL, NULL, NULL)`**. Il `NULL` è la risposta
+  fail-closed, e va letto come «questa sessione non ha un'identità utilizzabile».
 
-        if not identita_id:
-            # Grace window per JWT legacy pre-multi-face
-            identita_id = self._fallback_legacy_identita(user)
-            if not identita_id:
-                raise AuthenticationFailed('E_JWT_SENZA_IDENTITA')
-
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT ruolo_applicativo, soggetto_ruolo_id
-                FROM anagrafiche.identita_digitali
-                WHERE id = %s AND attivo = true
-            """, [identita_id])
-            row = cursor.fetchone()
-            if not row:
-                raise AuthenticationFailed('E_IDENTITA_NON_ATTIVA')
-
-            ruolo_applicativo, sr_id = row
-
-            # SET atomico della tripla + legacy: tutto o niente
-            cursor.execute("""
-                SELECT
-                    set_config('app.current_user_id',     %s, false),
-                    set_config('app.current_identita_id', %s, false),
-                    set_config('app.ruolo_applicativo',   %s, false),
-                    set_config('app.soggetto_ruolo_id',   %s, false),
-                    set_config('app.jwt_user',            %s, false)
-            """, [
-                str(user.id), str(identita_id),
-                ruolo_applicativo, str(sr_id),
-                user.username,
-            ])
-
-        return user, token
-```
-
-**Caratteristiche critiche:**
-
-* Fail-fast su ogni step (401 esplicito, no fallback silenzioso)
-* `SET` atomico in un'unica query: il DB non puo' essere in stato parziale
-* Nessuna cattura di eccezione generica che masca i problemi
-
-### 6.2 Lato DB
-
-```sql
--- Helper fail-closed per funzioni/policy che serve la tripla coerente
-CREATE OR REPLACE FUNCTION script.fn_current_identita_context()
-RETURNS TABLE (
-    identita_id bigint,
-    ruolo_applicativo text,
-    soggetto_ruolo_id bigint
-)
-LANGUAGE sql STABLE AS $$
-    WITH raw AS (
-        SELECT
-            NULLIF(current_setting('app.current_identita_id', true), '')::bigint AS iid,
-            NULLIF(current_setting('app.ruolo_applicativo',   true), '')         AS rap,
-            NULLIF(current_setting('app.soggetto_ruolo_id',   true), '')::bigint AS sri
-    )
-    SELECT
-        CASE WHEN iid IS NULL OR rap IS NULL OR sri IS NULL THEN NULL ELSE iid END,
-        CASE WHEN iid IS NULL OR rap IS NULL OR sri IS NULL THEN NULL ELSE rap END,
-        CASE WHEN iid IS NULL OR rap IS NULL OR sri IS NULL THEN NULL ELSE sri END
-    FROM raw;
-$$;
-```
-
-**Comportamento fail-closed:** se anche uno solo dei 3 e' NULL, la tupla
-restituita e' `(NULL, NULL, NULL)`. Chi la consuma sa che la tripla non
-e' utilizzabile.
+⛔ **Nessuna cattura generica.** Un errore mentre si legge l'identità non deve diventare
+«procedo senza GUC»: o l'identità c'è e si scrive, o la richiesta si ferma.
 
 ---
 
-## 7. Consumatori noti
+## 7. Chi consuma le GUC
 
-### 7.1 Funzioni scope (`script`)
+### 7.1 Funzioni di scope (`script`) — non leggono le GUC
 
-* `fn_scope_ef_whitelist(identita_id, emittente_sr_id)` — legge `current_identita_id` via policy argument, non il GUC direttamente
-* `fn_scope_ba_ownership(identita_id, billing_account_id)` — idem
-* `fn_scope_cliente_ownership(identita_id, cliente_sr_id)` — idem
-* `fn_scope_fornitore_ownership(identita_id, fornitore_sr_id)` — idem
-* `fn_scope_ba_ownership_via_fattura(identita_id, fattura_id)` — idem
+Ricevono il valore **come parametro**: è la policy RLS a leggere il GUC e a passarglielo.
+Attenzione al **primo parametro**, perché le due famiglie non concordano:
 
-Le scope function ricevono `identita_id` come parametro, non leggono GUC. E'
-la **policy RLS** che passa il GUC alla scope function via
-`current_setting(...)::bigint`.
+| Famiglia                           | Firma                                                                                                                                                                                                 | Cosa le si passa                                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| ownership (cliente, fornitore, BA) | `fn_scope_ba_ownership(p_identita_id, …)` · `fn_scope_cliente_ownership(p_identita_id, …)` · `fn_scope_fornitore_ownership(p_identita_id, …)` · `fn_scope_ba_ownership_via_fattura(p_identita_id, …)` | `app.current_identita_id`                                                                                                |
+| whitelist emittente                | `fn_scope_ef_whitelist(p_auth_user_id, p_emittente_fiscale_id)` · `_via_sr(p_auth_user_id, …)` · `_via_fattura(p_auth_user_id, …)`                                                                    | `app.current_user_id`; delegano a [fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) |
 
-### 7.2 Helper resolver (`script`)
+⚠️ **Il primo parametro non è lo stesso nelle due famiglie** — `identità` per l'ownership,
+`auth_user` per la whitelist emittente — e i due numeri si somigliano abbastanza da passare
+inosservati. Scambiarli non solleva: la funzione risponde `false` e la policy **nasconde
+righe**, in silenzio.
 
-* `fn_get_profili_accesso_applicabili(auth_user_id)` — riceve user_id esplicito
-* `fn_is_super_admin(auth_user_id)` — idem
-* `fn_get_uo_id_for_user(auth_user_id)` — idem
+### 7.2 Helper del resolver (`script`) — non leggono le GUC
 
-Questi **non leggono GUC**: ricevono parametri espliciti dal resolver Python.
+`fn_get_profili_accesso_applicabili(auth_user_id)`, `fn_is_super_admin(auth_user_id)`,
+`fn_get_uo_id_for_user(auth_user_id)`: ricevono parametri espliciti dal resolver Python.
 
 ### 7.3 Policy RLS
 
-Ogni CREATE POLICY ha una USING clause che legge i GUC direttamente con il
-pattern `NULLIF(current_setting(..., true), '')::tipo`. Vedi [Multi-Face Auth §6.4](/guide/architettura-multi-face-auth#64-tracciabilita-canale-sui-dati-transazionali)
-per l'elenco delle 7+ policy dormienti/attive.
+Ogni policy legge i GUC con `NULLIF(current_setting(..., true), '')::tipo` e li passa alle
+funzioni di sopra ([esempio](#area-tecnica-esempi)). **Quante siano e dove stiano è stato, non
+contratto**: si interroga `pg_policies`, non si tiene a mano qui. Il disegno d'insieme è in
+[Multi-Face Auth §6.4](/guide/architettura-multi-face-auth#64-tracciabilita-canale-sui-dati-transazionali).
 
 ### 7.4 Trigger audit
 
-* `script.trgfn_audit_data_user_generic()` — legge `app.jwt_user` per popolare `user_insert`/`user_update`
+[`script.trgfn_audit_data_user_generic()`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
+— legge `app.jwt_user` e `app.current_user_id`, e con quelli firma `user_insert` / `user_update`.
 
 ---
 
-## 8. Troubleshooting
+## 8. Diagnosi
 
-### 8.1 "L'utente vede 0 righe in lista fatture, ma dovrebbe vederne N"
+### 8.1 «Vedo zero righe, ma dovrei vederne N»
 
-Sequenza di verifica:
+Cinque cose da guardare, in quest'ordine: il claim `identita_id` nel token che il client sta
+mandando davvero (decodifica del JWT); il valore di `app.current_identita_id` sulla connessione;
+lo stato dell'identità in `anagrafiche.identita_digitali`; la USING clause della policy; e se la
+RLS è **attiva** su quella tabella. Le query sono in [Area tecnica](#area-tecnica-esempi).
 
-1. Verifica JWT del client contiene claim `identita_id` (debugger browser, tab
-   Network, decode JWT)
-2. Verifica `app.current_identita_id` sul DB: apri connessione con lo stesso
-   user Django, `SELECT current_setting('app.current_identita_id', true)` —
-   deve restituire un bigint
-3. Verifica identita attiva: `SELECT * FROM anagrafiche.identita_digitali
-   WHERE id = <identita_id>` — `attivo` deve essere `true`
-4. Verifica policy RLS: `SELECT * FROM pg_policies WHERE tablename = 'fatture'` —
-   policy con USING clause coerente
-5. Verifica che le RLS siano ENABLE: `SELECT relrowsecurity, relforcerowsecurity
-   FROM pg_class WHERE relname = 'fatture'`. Dal giugno 2026 le tabelle dello
-   scope emittente OPERATORI (fatture/scadenze/lotti/ordini/preventivi/contratti/
-   offerte/documenti_generati/pratiche/billing_account) hanno
-   `relrowsecurity = true` (Ondata 1+2; `FORCE` non usato → owner/BYPASSRLS
-   esenti). Se su quelle tabelle è `false`, la RLS **non** è attiva lì (problema
-   di migrazione/auto-guarigione del framework `automazione_overlap`/runner). Le
-   tabelle delle branch **portale/shop** restano invece `false` (dry-run). Vedi
-   `dev/work-done/analisi-attivazione-rls-operatori.md`.
+⚠️ **Il quinto controllo non si salta.** Una tabella con RLS non attiva non filtra niente,
+qualunque cosa dicano le GUC — e «vedo tutto» e «vedo zero» portano a cercare in due posti
+diversi.
 
-### 8.2 "Login riuscito ma prima request autenticata restituisce 401"
+### 8.2 «Login riuscito, ma la prima richiesta autenticata risponde 401»
 
-Il grace JWT legacy non sta funzionando. Verificare:
+Il token non porta il claim `identita_id` (o non porta il `sid`): è `E_JWT_SENZA_IDENTITA`, 401
+per scelta. **Non esiste una finestra di compatibilità** per i token emessi prima del refactor:
+senza `identita_id` le GUC non vengono toccate affatto (§3), quindi il token si rigenera con un
+login nuovo.
 
-* `authenticate()` gestisce token senza claim `identita_id` con fallback
-* L'user ha almeno un'identita attiva da mappare
+### 8.3 «Il trigger audit salva NULL su `user_insert`»
 
-### 8.3 "Trigger audit salva NULL su `user_insert`"
-
-`app.jwt_user` non settato. Verificare che la request sia passata per
-`JwtAuditAuthentication` e non per path anonimo. Gli INSERT da management
-command o da shell Django non hanno request → `app.jwt_user` vuoto → il
-trigger usa default (`CURRENT_USER` PostgreSQL = ruolo DB connesso).
+`app.jwt_user` non è settato: la richiesta non è passata dall'authentication class (path
+anonimo), oppure l'INSERT arriva da un management command o da una shell Django, dove una
+request non esiste. In quel caso il trigger usa il default — `CURRENT_USER` di PostgreSQL, cioè
+il ruolo DB connesso.
 
 ---
 
-## 9. Evoluzioni future
+## 9. Sviluppi aperti
 
-* **GUC `app.tenant_id`** — se ZeroErp diventa multi-tenant, un sesto GUC per
-  discriminare il tenant corrente. Si aggiunge alla tripla senza romperla.
-* **Shortcut `app.is_super_admin`** — oggi il check richiede
-  `fn_is_super_admin(auth_user_id)` query. Per performance si potrebbe
-  propagare un boolean precomputato al login. Non urgente — la fn e' STABLE
-  e inlineable.
-* **Audit `app.request_id`** — gia' presente ma gestito dal middleware
-  `RequestLogMiddleware`, non dall'authentication class. Potrebbe essere
-  unificato sotto un unico contratto GUC.
+* **`app.tenant_id`** — se Zero ERP diventasse multi-tenant servirebbe una GUC per il tenant
+  corrente. Non è una modifica al contratto: si aggiunge alla tupla `JWT_IDENTITY_GUCS`, e il
+  reset si deriva da lì.
+* **Scorciatoia `app.is_super_admin`** — oggi il controllo costa una chiamata a
+  `fn_is_super_admin(auth_user_id)`. Propagare al login un booleano precomputato eviterebbe la
+  chiamata; la funzione però è `STABLE` e inlineable, quindi il guadagno va misurato prima di
+  aggiungere un settimo valore al contratto.
+* **`app.request_id`** — l'identificativo di richiesta oggi lo gestisce `RequestLogMiddleware`,
+  fuori dall'authentication class. Unificarlo sotto lo stesso contratto è una scelta aperta, non
+  una svista.
+
+---
+
+## Area tecnica — esempi
+
+**Scrivere le GUC dell'identità** — una sola query, che valida la coppia `(auth_user, identità)`
+*e* rivalida l'emittente attivo, poi scrive le 6 GUC. `false` = scope di sessione (la vita è
+quella della connessione, non del commit):
+
+```sql
+WITH id_row AS (
+    SELECT id, ruolo_applicativo, soggetto_ruolo_id
+      FROM anagrafiche.identita_digitali
+     WHERE id = %s AND auth_user_id = %s
+       AND attivo = true
+), ef_row AS (
+    SELECT ef.id
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE %s::bigint IS NOT NULL
+       AND ef.id = %s::bigint
+       AND ef.attivo = true
+)
+SELECT
+    set_config('app.jwt_user',             %s, false),
+    set_config('app.current_user_id',      %s, false),
+    set_config('app.current_identita_id',  COALESCE((SELECT id::text               FROM id_row), ''), false),
+    set_config('app.ruolo_applicativo',    COALESCE((SELECT ruolo_applicativo::text FROM id_row), ''), false),
+    set_config('app.soggetto_ruolo_id',    COALESCE((SELECT soggetto_ruolo_id::text FROM id_row), ''), false),
+    set_config('app.current_emittente_id', COALESCE((SELECT id::text               FROM ef_row), ''), false),
+    (SELECT COUNT(*) FROM id_row) AS identita_count;
+```
+
+**Azzera­re tutti i GUC d'identità** — il reset di inizio richiesta. Si **deriva** dalla tupla
+`JWT_IDENTITY_GUCS`, non è una lista da tenere allineata a mano:
+
+```python
+JWT_GUC_RESET_SQL = "SELECT " + ", ".join(
+    f"set_config('{guc}', '', false)" for guc in JWT_IDENTITY_GUCS
+)
+```
+
+**Una policy RLS completa** — il gate sulla veste e la chiamata allo scope, con la conversione
+sicura da stringa vuota a `NULL`:
+
+```sql
+CREATE POLICY rls_preventivi_ef_whitelist ON vendite.preventivi
+    AS PERMISSIVE
+    FOR SELECT
+    USING (
+        current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+        AND script.fn_scope_ef_whitelist(
+            NULLIF(current_setting('app.current_user_id', true), '')::integer,
+            emittente_fiscale_id
+        )
+    );
+```
+
+**Leggere la tripla in una funzione o in una policy** — un solo posto da cui prenderla, e il
+`NULL` significa «sessione senza identità»:
+
+```sql
+SELECT identita_id, ruolo_applicativo, soggetto_ruolo_id
+FROM script.fn_current_identita_context();
+-- identita_id IS NULL → la tripla non è utilizzabile: fail-closed
+```
+
+**Diagnosi: la sessione e la postura RLS di una tabella** — il primo dei cinque controlli del
+§8.1 visto dal DB:
+
+```sql
+-- chi sono, per il database
+SELECT current_setting('app.current_identita_id', true) AS identita_id,
+       current_setting('app.ruolo_applicativo',   true) AS ruolo,
+       current_setting('app.current_emittente_id', true) AS emittente_id;
+
+-- l'identità è ancora attiva?
+SELECT id, ruolo_applicativo, attivo
+FROM anagrafiche.identita_digitali
+WHERE id = NULLIF(current_setting('app.current_identita_id', true), '')::bigint;
+
+-- la RLS è accesa su quella tabella? (e quali policy ha)
+SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = '<tabella>';
+SELECT polname, pg_get_expr(polqual, polrelid) AS using_clause
+FROM pg_policy
+WHERE polrelid = '<schema>.<tabella>'::regclass;
+```
 
 ---
 

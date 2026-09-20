@@ -23,6 +23,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_config_token_monouso_auth_user | auth_user_id |
 | PRIMARY KEY | token_monouso_pkey | id |
 | UNIQUE | uq_token_monouso_token_hash | token_hash |
 

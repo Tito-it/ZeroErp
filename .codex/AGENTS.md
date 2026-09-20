@@ -41,10 +41,10 @@ usato come premessa di una decisione strutturale.
 Non tutto ciò che si legge dal database è una «misura». Il discriminante e' se
 si sta guardando il **progetto** o il suo **contenuto**:
 
-| Cosa si legge | Che natura ha | Decide? |
-| --- | --- | --- |
-| Nullabilita' di una colonna, `CHECK`, chiavi, FK, RLS, GRANT, volatilita' e corpo di una funzione, seed in `80_data`, contratto di un endpoint | **contratto**: e' il progetto, scritto | ✅ si' — e' la sorgente giusta |
-| `count(*)`, «zero righe in quello stato», «N su M hanno il padre valorizzato», distribuzione dei valori | **istantanea**: la fotografia di una macchina | ⛔ no |
+| Cosa si legge                                                                                                                                  | Che natura ha                                 | Decide?                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ----------------------------- |
+| Nullabilita' di una colonna, `CHECK`, chiavi, FK, RLS, GRANT, volatilita' e corpo di una funzione, seed in `80_data`, contratto di un endpoint | **contratto**: e' il progetto, scritto        | ✅ si' — e' la sorgente giusta |
+| `count(*)`, «zero righe in quello stato», «N su M hanno il padre valorizzato», distribuzione dei valori                                        | **istantanea**: la fotografia di una macchina | ⛔ no                          |
 
 Leggere la struttura non e' «misurare»: e' leggere il progetto, e va fatto — anzi
 va fatto sulla **doc auto-gen** e non dagli YAML, che sono quasi sempre stantii.
@@ -159,12 +159,12 @@ motivato, o si sostituisce con un test che i soggetti se li fabbrica.
 
 Ogni app puo' contenere piu' repository e service. La regola di naming e' basata sul **perimetro semantico**:
 
-| Tipo | Nome file | Contenuto |
-| --- | --- | --- |
-| Generico schema | `<schema>_repository.py` | List, query, CRUD su entita' dello schema senza logica specifica (es. `vendite_repository.py`) |
-| Sottodominio specializzato | `<sottodominio>_repository.py` | Operazioni di un processo autonomo con logica propria (es. `pipeline_repository.py`) |
-| Generico schema | `<schema>_service.py` | Facade per operazioni generiche (es. `vendite_service.py`) |
-| Sottodominio specializzato | `<sottodominio>_service.py` | Facade per il sottodominio (es. `pipeline_service.py`) |
+| Tipo                       | Nome file                      | Contenuto                                                                                      |
+| -------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Generico schema            | `<schema>_repository.py`       | List, query, CRUD su entita' dello schema senza logica specifica (es. `vendite_repository.py`) |
+| Sottodominio specializzato | `<sottodominio>_repository.py` | Operazioni di un processo autonomo con logica propria (es. `pipeline_repository.py`)           |
+| Generico schema            | `<schema>_service.py`          | Facade per operazioni generiche (es. `vendite_service.py`)                                     |
+| Sottodominio specializzato | `<sottodominio>_service.py`    | Facade per il sottodominio (es. `pipeline_service.py`)                                         |
 
 **Regola pratica:**
 
@@ -499,6 +499,40 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
   - Note di migrazione (se applicabile)
 - Template di riferimento: `docs/it/backend/_templates/manual-standard.md`
 
+### Guide (`docs/it/guide/`) — come si scrivono e cosa non ci va
+
+Vale per ogni guida: una guida è una pagina di **stato attuale**, non di cronaca.
+
+- **Niente changelog.** Nessun blocco «ultime modifiche» in testa, nessuna catena di
+  «revisione precedente», nessun id di migrazione. Il cambiamento **si integra** nella sezione
+  che descrive quella cosa, oppure diventa una sezione nuova se è un tema a sé. Se qualcosa è
+  stato ritirato e serve saperlo per leggere il resto, lo si dice in **una nota breve, senza
+  date**.
+- **Niente SQL nel corpo narrativo.** Il corpo racconta il modello e le regole; gli esempi
+  operativi stanno in coda, nella sezione `## Area tecnica — esempi`.
+- **Un solo posto per il contratto di un oggetto.** Firma, corpo, colonne e commenti di una
+  tabella/funzione/trigger stanno nella doc auto-generata sotto `/dbzero/...`: dalla guida si
+  **linka**, non si ricopia. Un contratto ricopiato è stantio al primo `runOnChange`.
+- **Header**: `> **Ultimo aggiornamento**: <data in lettere>`, poi `Destinatari`, poi i blocchi
+  `Vedi anche` — `schemi DB` / `funzioni e trigger DB` / `API e service backend` / `guide
+  correlate`. La lista delle tabelle vive nell'header: **non** esiste più una sezione
+  `## Tabelle coinvolte`.
+- **`## Area tecnica — esempi`**, in coda e subito prima dell'include `signature-core.md`:
+  raccoglie i «come si fa» — invocare un comando, leggere uno stato, configurare
+  infrastruttura — ognuno con una riga di scopo. Criterio per decidere dove va un esempio:
+
+  | L'esempio risponde a…                                 | Dove                           |
+  | ----------------------------------------------------- | ------------------------------ |
+  | «che cos'è / qual è la firma / cosa fa quell'oggetto» | link alla scheda `/dbzero/...` |
+  | «come faccio X» (comando, diagnosi, configurazione)   | `## Area tecnica — esempi`     |
+
+  ⛔ Dentro l'area tecnica **non** entrano: copie di contratti già auto-generati, DDL di oggetti
+  che esistono, codice di cose non ancora implementate.
+- Flussi in `text` e diagrammi `mermaid` restano nel corpo: spiegano, non si eseguono.
+- Le sezioni «di sistema» lunghe (impianto, infrastruttura) si tengono snelle, con rimando alla
+  guida che possiede il dettaglio.
+- Checklist operativa e casi non convertibili: `docs/it/dev/standard-guide.md`.
+
 ### Build docs (Zensical) - prerequisiti obbligatori
 
 - Stack docs corrente: `zensical==0.0.57` (con `deepmerge==3.0`) + tooling Python in `requirements.txt`.
@@ -561,11 +595,11 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 `script.fn_log_and_raise_error(area, funzione, codice, context, tx_id, VARIADIC valori)`
 parla a **tre** interlocutori, e confonderli e' il difetto piu' facile da non vedere:
 
-| Cosa | A chi parla |
-| --- | --- |
-| `codice` | il **backend** — status HTTP e `ui_action`. Registrato a catalogo, con la sua classe. Mai `E_GENERICO` |
-| `context ->> 'campo'` | il **frontend** — quale campo accendere. Il nome della colonna, mai il valore |
-| `VARIADIC valori` | **l'operatore** — riempie i `%s`, cioe' **compone la frase che una persona legge** |
+| Cosa                  | A chi parla                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `codice`              | il **backend** — status HTTP e `ui_action`. Registrato a catalogo, con la sua classe. Mai `E_GENERICO` |
+| `context ->> 'campo'` | il **frontend** — quale campo accendere. Il nome della colonna, mai il valore                          |
+| `VARIADIC valori`     | **l'operatore** — riempie i `%s`, cioe' **compone la frase che una persona legge**                     |
 
 
 ### ⭐ Due funzioni per sollevare, e a scegliere non sei tu
@@ -578,10 +612,10 @@ si vede nella riga che stai scrivendo:
 > **Il codice che sollevo lo sto LEGGENDO da un array di motivi, o lo sto
 > SCRIVENDO come letterale?**
 
-| Quello che scrivi | Cosa chiami |
-| --- | --- |
-| `'E_QUALCOSA'` — un letterale | `script.fn_log_and_raise_error` |
-| `v_motivi -> 0 ->> 'codice'` | `script.fn_raise_primo_motivo_se_presente` |
+| Quello che scrivi             | Cosa chiami                                |
+| ----------------------------- | ------------------------------------------ |
+| `'E_QUALCOSA'` — un letterale | `script.fn_log_and_raise_error`            |
+| `v_motivi -> 0 ->> 'codice'`  | `script.fn_raise_primo_motivo_se_presente` |
 
 ⭐ **Sbagliare funzione non compila**: i tipi non legano (`42883` in un verso,
 `22P02` nell'altro). L'unico modo di sbagliare e' **non usarla** — ricopiare la
@@ -619,10 +653,10 @@ sceglie chi solleva.*
 risponde su **chi puo' rimediare**, non sulla condizione. Si guarda **parametro
 per parametro**, non funzione per funzione:
 
-| Il dato lo fornisce… | Codice | Classe |
-| --- | --- | --- |
-| una **persona**, in un form | di dominio, frase che **nomina il dato** | `DATO_ERRATO` (400) |
-| solo un **chiamante rotto** (`id <= 0` dove il `NULL` e' ammesso, enum vuoto) | di dominio, messaggio che **nomina il parametro** | `TECNICO` (500) |
+| Il dato lo fornisce…                                                          | Codice                                            | Classe              |
+| ----------------------------------------------------------------------------- | ------------------------------------------------- | ------------------- |
+| una **persona**, in un form                                                   | di dominio, frase che **nomina il dato**          | `DATO_ERRATO` (400) |
+| solo un **chiamante rotto** (`id <= 0` dove il `NULL` e' ammesso, enum vuoto) | di dominio, messaggio che **nomina il parametro** | `TECNICO` (500)     |
 
 ⛔ **Nella seconda riga NON si riusa `E_PARAMETRO_INVALIDO`**, ed e' la scelta che
 sembra ovvia: quel codice e' un **debito, non una sede**. La D11 di

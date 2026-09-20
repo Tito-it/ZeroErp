@@ -32,6 +32,223 @@
 
 ---
 
+## 19 settembre 2026
+
+> Copre il periodo **15 – 19 settembre**. Cinque giorni, **109 changeSet**
+> datati fra il 15 e il 19 (26 in `pagamenti`, 26 in `magazzino`, 22 in
+> `vendite`, 10 in `script`, 7 in `dbops`), **diciannove documenti chiusi in
+> `work-done`** e **37 merge** (dalla PR #1589 alla #1625). Si scrive per
+> **temi**: sono nove.
+>
+> ⚠️ Il **16 settembre** non ha prodotto né changeSet né commit, e il **20
+> settembre** è volutamente fuori: la revisione delle guide di
+> `docs/it/guide/` era in corso mentre questa voce veniva scritta.
+>
+> ⭐ **Il tema portante è il collaudo in-app che scrive le regole.** Il copione
+> del giro incassi nasce il 14 settembre come lista di cose da spuntare; in
+> questi cinque giorni diventa **tre giri e venti decisioni di dominio**
+> (D16…D20) — e in più di un caso aveva ragione la schermata: il modello
+> c'era, era l'interfaccia a dire il contrario. È la lezione della voce
+> precedente dal verso opposto: *i presidi si provano dal percorso che li
+> attraversa, e le regole si provano dalla schermata che le mostra*.
+
+**Anello 0 — «Esegui ora» entra in esercizio, «Riavvia» aspetta di sapere che
+cosa è un host.** Far partire un processo dall'interfaccia si consegna il **15
+settembre** con **tre celle di CSV e nessun changeSet**: `dbops.processi`
+dichiara `avvio_manuale`, `coda_lavori_tipi` prende `ESEGUI_PROCESSO` attivo,
+`config.azioni_processo` l'azione `processo_avvia`; lato BE `avvio_manuale.py`
+è la **sede unica** del predicato (capability, endpoint e handler lo leggono da
+lì) e il FE monta il tab «Sveglie» nel `ProcessoDrawer` col motivo dell'azione
+spenta. Collaudo in-app lo stesso giorno: due run `origine = COMMAND` sul
+giornale, email `SENT` e ricevute. ⭐ **Il discriminante è che cosa serve
+sapere**: «Esegui ora» non ha bisogno di sapere *su quale macchina* gira — un
+timer è un comando che parla col DB — mentre un `systemctl restart` **sì**, e
+senza un *host* nel modello il pulsante riavvia «un host a caso» alla seconda
+macchina, in silenzio. ⇒ «Riavvia» resta dietro **D1** (forma A: nome
+dichiarato in `env.sh`, `host` obbligatorio nella richiesta, claim del
+drenatore filtrato), **zero righe scritte per scelta**: è fra le «Decisioni
+aperte» della mappa. Vedi
+[brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md),
+[piano-be-fe-avvio-manuale-di-un-processo.md](work-done/piano-be-fe-avvio-manuale-di-un-processo.md),
+[analisi-riavvio-processi-da-interfaccia.md](work-done/analisi-riavvio-processi-da-interfaccia.md).
+
+**Anello 3 (`magazzino`) — Il terreno vuoto, e il giorno dopo il motore.** Il
+**Lotto 1** atterra il 15-09: 26 changeSet che danno al registro `movimenti` la
+**sorgente obbligatoria a catalogo** e il **verso nella quantità**
+(`trgfn_movimenti_guard_verso`), `movimenti_attesi` al posto di `reservations`,
+`valore_giacenza` al posto di `costo_medio`, `lotti` nuova, l'**emittente come
+ancora** su `magazzini`/`assets` — più 23 policy RLS, cinque viste
+`security_invoker` e cinque pgTAP. Merge PR #1593, BE/FE PR #1595, CI verde
+dalle 16:45. ⚠️ **La sera ha insegnato più della scrittura**: sette cose erano
+verdi in sessione **per ragioni sbagliate**, e le ha trovate solo il database
+ricostruito da zero — la lista è in coda a §5, ed è il punto di partenza
+dichiarato del Lotto 2. Il **Lotto 2** («il motore», brief del 17-09 con
+**quattordici decisioni** prese da Tid) è applicato su dbdev il **18-09 alle
+12:23**: la **porta** `magazzino.fn_scrivi_movimento` (`SECURITY DEFINER`:
+unica scrittura del registro, copia del valore, lock in uscita, disponibilità),
+il `REVOKE` all'app su `movimenti`/`valore_giacenza` in **tre sedi**, inventario
+e rettifica postati dalla porta, `vw_disponibilita`, quattro spie in
+`dbops.presidi`, 27 codici `E_MAG_*`, 21 changeSet e dodici pgTAP. ⚠️ Aperto:
+pgTAP come applicazione, CI da zero, commit; `requires_lotto` nel drawer
+articolo e le operazioni BE/FE. Vedi
+[brief-db-magazzino-lotto-1-terreno-vuoto.md](work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
+[brief-db-magazzino-lotto-2-motore.md](work-in-progress/brief-db-magazzino-lotto-2-motore.md).
+
+**Anello 0 — Quando nasce un building block, le copie si ritirano nello stesso
+giro.** L'emittente di default diventa **una funzione sola** in `script`
+(`trgfn_default_emittente_fiscale`, undici changeSet, `20260915-36 → -46`)
+montata su **undici** tabelle: le **quattro copie di `vendite` sono ritirate**,
+tre codici errore ritirati, zero copie in `pg_proc` a database vivo, e il BE
+allinea con `E_EMITTENTE_NON_RISOLTO`. La raccomandazione «il BB ora, le copie
+quando c'è tempo» è stata **respinta**, e con una ragione che vale come regola:
+*non c'è produzione, non c'è niente da aspettare* — un refactor rimandato è un
+debito che nessuno rilegge. ⭐ Nello stesso periodo, due BB estratti alla
+**seconda** occorrenza: `core/db.sql_lateral_primo_motivo` e
+`pagamenti/composables/useAzioniRigaContabile`. Vedi
+[brief-db-emittente-di-default-un-bb-solo.md](work-done/brief-db-emittente-di-default-un-bb-solo.md).
+
+**Anello 3 (`pagamenti`) — Il collaudo in-app scrive venti decisioni di
+dominio.** Tre giri in cinque giorni, e ogni giro ha lasciato il modello
+diverso da com'era. **D16-D18** (14→15-09): la riga manuale **nasce cercando la
+fattura** e compare già `ABBINATA`; «Non riesco ad associarlo» è un gesto
+dichiarato e non un ripiego; **Elimina** in bozza fa tornare la quadratura;
+sotto `VALIDATA` il contenuto è fermo. **D20** (18→19-09): 🔴 **le righe che
+restano indietro hanno un futuro** — una `SOSPESA` o una `SCARTATA` sotto una
+distinta registrata non entrava più in nessun conto e non poteva più
+diventarlo: ora `fn_posta_riga_tardiva` la riprende, la distinta resta `CHIUSA`
+e la quadratura non cambia; e i «Porta a» da `ABBINATA` escono dalla matrice.
+⭐ Due cose da tenere: *un pulsante che finisce in errore è un difetto di
+modello* — «Registra» era acceso in BOZZA mentre il DB rispondeva
+`E_CONTABILE_NON_REGISTRABILE`; e il brief chiude sul **percorso**, l'**esito**
+lo prova il copione, che per questo vive in `work-in-progress/` e non in un
+brief chiuso. I due piani, DB e BE/FE, sono **chiusi e archiviati il 19-09**:
+non resta codice da scrivere. Vedi
+[brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md),
+[brief-db-validata-e-registrazione-tardiva.md](work-done/brief-db-validata-e-registrazione-tardiva.md),
+[brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
+[brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
+[collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
+
+**Anello 3 (`pagamenti`) — La distinta prende il numero dal registro, e impara
+a cercare le rate.** Chiesto da Tid il 15-09: la distinta contabile aveva un
+`codice` da `DEFAULT` di colonna, non un numero. Il **motore non si tocca** —
+cinque famiglie ci passano già — quello che cambia è **la distinta**, che
+diventa `DIS-<sigla>-<anno>-<7 cifre>` e per farlo deve dire **di quale
+emittente è** (D1), con la RLS che passa sulla colonna emittente della riga
+(D3); ✏️ *il primo numero è uscito a video* il 17-09. Il seguito arriva da un
+rilievo del giro in-app dello stesso giorno, e vale come regola: *chi digita un
+incasso non riconosce il documento da un numero nudo, e la domanda vera non è
+«quale fattura?» ma «quale rata?»* — il lookup fattura diventa **ricco**, nasce
+la **lista rate paginata** (primo consumatore dello scadenzario) e la **modalità
+multipla** che accumula N rate e genera N righe al salvataggio. ⚠️ Due cose
+restano, con destinazione scritta: la **scala di `importo`** (P-8: `numeric`
+senza scala, quindi un `CHECK` che **rifiuta** — deciso il 18-09), e il
+**`runOnChange` + `dbms:`**, che in Liquibase 5.0.4 fa ri-eseguire il change
+**una volta** e il checksum non torna: è così che `20260831-03` è morto dopo il
+merge di PR #1598, e i 28 changeSet interessati sono una voce aperta in
+`PROJECT_CONTEXT.md`. Vedi
+[brief-db-distinta-numerata-sul-registro.md](work-done/brief-db-distinta-numerata-sul-registro.md),
+[brief-db-distinta-ricerca-rate.md](work-done/brief-db-distinta-ricerca-rate.md).
+
+**Anello 1 (`ui`) — Il perimetro emittente arriva ai cataloghi globali, e il
+seed laterale si ritira.** Sei liste in più dichiarate `perimetro_emittente =
+false`: con «Tutti gli emittenti» nella combo, *Processi automatici* era
+sbarrata dal cancello di perimetro su un registro che **un emittente non ce
+l'ha**. Sette globali rientrano, `operatori` e `lista_preset` vengono
+certificate `multi_emittente` (colonne 872/873 a catalogo), `list_logs`
+proietta la ragione sociale, e il presidio BE tiene i due versi. ⛔ **La
+decisione di metodo vale più delle righe**: il valore **non** sta in un CSV
+laterale — «il rischio è troppo, si rischia disallineamento con i csv» — ma
+nella **colonna** di `lista_definizione.csv`, come `multi_emittente`; il
+laterale `20260902-02` è **ritirato** insieme al meccanismo, e l'ordine
+**colonna → flag** è scritto nel pgTAP, dove chi accende il flag deve venire a
+dichiararlo. Vedi
+[brief-db-perimetro-emittente-cataloghi-globali.md](work-done/brief-db-perimetro-emittente-cataloghi-globali.md).
+
+**Anello 0 — Osservabilità: l'ultimo miglio, e il pallino in topbar.** I sette
+passi dell'analisi arrivano a codice nello stesso giorno in cui l'analisi si
+chiude: `error_log` consultabile dietro permesso (**E**, «Errori tecnici»), il
+**Giornale eventi** (**G**), la retention (**D**) e il **pallino dei presidi**
+in topbar (**P**). ⭐ Il pezzo che vale più degli altri è il **verdetto «lotto
+fermo»**, che smette di vivere in Python e **nasce a DB**: un presidio scritto
+a mano sarebbe stata la **seconda sede** dello stesso predicato, quindi si
+sposta la sede, non si copia — con la finestra dichiarata finché il BE non
+legge il dato nuovo. Con R-6 (una riga `TASK_RUN` che usciva col giorno del
+task successivo) e i due indici delle letture trasversali. ⚠️ **Due rossi in CI
+la sera del 19-09**, entrambi presidi che hanno funzionato: la lista
+`dbops.error_log` entrata nel CSV globale senza dichiararsi nell'elenco del
+pgTAP, e un `SELECT` su `maintenance.job_run_log` che esisteva **solo su dev** —
+emerso perché i test Django girano ora **come l'applicazione**. Da lì la quarta
+occorrenza di *un privilegio che esiste su una macchina è un ricordo*, chiusa
+con un blocco in `provision_db_roles.sql` e un pgTAP di postura; 🔴 e resta
+aperto, con la sua riga in `PROJECT_CONTEXT.md`, che `zeroerp_log` in CI **non
+ha `USAGE` su `dbops`**: ogni test Django lavora con `tx_id = uuid_nil` (16 114
+righe `permission denied` nella corsa verde), due strade e la decisione a Tid.
+Vedi [analisi-osservabilita-log.md](work-done/analisi-osservabilita-log.md),
+[piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
+[brief-db-osservabilita-lotto-fermo-r6-indici.md](work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md),
+[brief-db-privilegio-app-job-run-log.md](work-done/brief-db-privilegio-app-job-run-log.md).
+
+**Anello 0 — La catena di verifica: D7 chiuso, e due analisi che si chiudono
+invece di rimisurare.** **D7** finisce il 19-09: i 21 file del perimetro non
+*ricercano* più il mondo nella fixture, lo **costruiscono**
+(`dbops.fn_pgtap_crea_emittente_operatore`), e i loro rientrati li toglie
+`scripts/pgtap-baseline-ci-rientrati.sh` leggendo il log della corsa, non una
+mano — 363 → 362 rossi sul database ricostruito da zero. Il pezzo nuovo di
+**D6** ha il suo brief (`sec_functions_owner` e la sync riservati al migratore).
+Sullo stesso asse, due analisi si chiudono **senza aprire cantieri**: i
+**presidi del percorso storto** — C3 e C4 li ha chiusi il lavoro ordinario, C1 e
+C2 hanno un brief di mezza pagina — e la **diagnostica di produzione senza
+accesso al DB**, **archiviata senza costruire**, perché una produzione da
+diagnosticare oggi non esiste. ⭐ Le due lezioni sono la stessa: *i presidi del
+percorso storto non nascono da soli — un'analisi non li sostituisce, li
+sostituisce un brief*; e *un'analisi che aspetta una validazione senza data
+invecchia senza dirlo*. Le sei domande della diagnostica restano come
+**decisione** e non come lavoro, fra le «Decisioni aperte» della mappa. Vedi
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[analisi-presidi-percorso-storto.md](work-done/analisi-presidi-percorso-storto.md),
+[brief-db-registro-owner-e-sync-riservati-al-migratore.md](work-in-progress/brief-db-registro-owner-e-sync-riservati-al-migratore.md),
+[analisi-diagnostica-produzione-senza-accesso-db.md](work-done/analisi-diagnostica-produzione-senza-accesso-db.md).
+
+**Anello 1 (`ui`) — Il frontend: le classi che non esistevano, e il chrome che
+sta in una sede sola.** Tre passate il **17-09**, tutte nate guardando i fogli
+di stile invece del codice: **21 utility PrimeFlex mai installate** (`w-full` in
+245 punti) che non facevano niente; **60 `var()`** che puntavano a nomi di
+PrimeVue 3 o a token `--app-*` mai scritti — e queste **facevano eccome**,
+perché `border: 1px solid var(--surface-border)` con la variabile assente
+annulla l'intera dichiarazione (i pannelli di `pratiche` senza bordi, senza
+hover, senza voce selezionata) e il **body era senza font** senza che si
+vedesse; **26 identificatori orfani**. Da lì nasce il presidio
+`scripts/check_classi_morte.py` (pre-commit: tiene il conto a **zero**) e, il
+giorno dopo, il **chrome del dialog in una sede unica** con la sua guardia
+(`check-dialog-chrome.mjs`). ⛔ *Un difetto che **toglie** un colore non si
+vede*: il testo «sottotono» era testo normale in 135 siti. Nello stesso giro il
+frontend prende liste **responsive senza scrollbar orizzontale**, content tab
+comprimibili, `app-dialog-lista` e la pagina compatta degli store. Vedi
+[frontend/catalogo-building-block-frontend.md](frontend/catalogo-building-block-frontend.md)
+e
+[piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md).
+
+**In breve, senza un tema proprio** — la **revisione delle guide** di
+`docs/it/guide/` parte il 19-09 e prosegue oltre questa voce: header standard,
+il changelog in testa **dissolto nel corpo** invece che cancellato, accenti,
+tabelle rialineate, con le regole in
+[standard-guide.md](standard-guide.md); il censimento dei brief aperti in
+questa tornata — `brief-db-magazzino-lotto-2-bis-be-fe.md` (BE/FE del Lotto 2),
+`brief-db-presidio-stati-mai-scritti.md`,
+`brief-be-presidio-ui-action-e-canale-campi.md` e
+[brief-db-registri-giornale-catalogo.md](work-done/brief-db-registri-giornale-catalogo.md),
+il cui **lato DB è chiuso il 19-09** (`config.registri_giornale`, pgTAP
+13/13) — più il copione
+[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
+scritto e **da eseguire**; `vendite.fatturazione_lotti_log` con **17.223 pagine
+per 1.225 righe** dopo la retention del 18-09 (fatto datato: un `VACUUM` lo
+dirà); lo `.pyc` di `gen_seed_lista` **tracciato in git** e una lista mai
+montata, rimossi; `check_i18n_keys` e i guard del frontend (liste, pinia,
+drawer, icone, keepalive, DataTable) verdi a ogni giro.
+
+---
+
 ## 14 settembre 2026
 
 > Copre il periodo **11 – 14 settembre**. Quattro giorni, **103 changeSet**
@@ -126,10 +343,8 @@ propria corsa in esecuzione — e `last_ok` è sostituito da `in_corso` +
 `ultima_conclusa` nelle tre sedi. Aperto: far partire o riavviare un processo
 **dall'interfaccia** — «Esegui ora» passa dalla coda e non aspetta l'host, il
 brief DB è scritto; «Riavvia» resta dietro la decisione su che cosa sia un host.
-✅ *Aggiornamento del 18-09*: «Esegui ora» è **in esercizio dal 15-09** (DB, BE,
-FE e collaudo in-app: due run `origine = COMMAND` sul giornale), l'analisi è
-archiviata in `work-done/`; «Riavvia» non è avviato e la sua D1 (l'host) sta
-fra le «Decisioni aperte» della mappa.
+✅ *Aggiornamento*: «Esegui ora» è **in esercizio dal 15-09** e l'analisi è
+archiviata — il seguito, con la **D1**, sta nella voce del **19 settembre**.
 Vedi
 [brief-db-quattro-processi-senza-presidio.md](work-done/brief-db-quattro-processi-senza-presidio.md),
 [brief-db-stato-email-console-non-e-inviata.md](work-done/brief-db-stato-email-console-non-e-inviata.md),
@@ -388,77 +603,70 @@ liste** (lotto, titolo IVA, admin `ui`); due **design** che preparano il magazzi
 — la partita merce generalizzata e la situazione merce di un ordine; e la
 migrazione della clausola `ORDER BY` lato backend.
 
-## 30 agosto 2026
+## agosto 2026
 
-> Copre il periodo **11 – 30 agosto**. Venti giorni densi — **460 changeSet**
-> fra `00_schema` e `20_code`, di cui 268 in `vendite` e 57 in `pagamenti` —
-> ma non dispersi: quasi tutto ricade in **nove temi**, ed è per temi che sono
-> scritti qui sotto, non changeSet per changeSet.
+> **Riepilogo del mese** (le voci datate **10** e **30 agosto** sono state
+> compattate qui il 2026-09-20). Il dettaglio non è andato perso: vive nei brief
+> linkati, che sono tutti in `work-done` — e dove un tema non ha un brief, il
+> testo resta com'era. Due link puntano ancora a `work-in-progress/`: il brief
+> madre degli incassi e il suo collaudo vivono lì per scelta (sono il registro
+> delle decisioni e il copione), non per incompiutezza.
 >
-> ⚠️ **Il 31 agosto è volutamente fuori.** Quel giorno era ancora in corso
-> mentre questa voce veniva scritta, e una giornata a metà in un changelog
-> diventa una riga che nessuno sa più se rileggere. Ciò che è atterrato il 31
-> — l'esecuzione del trasloco dei registri, i consumatori BE/FE del
-> risolutore IVA, l'apply del fondo fattura — entra nella voce successiva.
+> Il mese copre **27 luglio → 30 agosto**: venti giorni densi (**460 changeSet**
+> fra `00_schema` e `20_code`, 268 in `vendite` e 57 in `pagamenti`) più le due
+> settimane del cantiere a cavallo di luglio. ⚠️ Il **31 agosto** era volutamente
+> fuori quando queste voci furono scritte: ciò che è atterrato quel giorno — il
+> trasloco dei registri, i consumatori BE/FE del risolutore IVA, l'apply del
+> fondo fattura — sta nella voce del 10 settembre.
 
-**Anello 3 (vendite) — La nota di credito: si chiude il ramo morto degli
-accrediti.** Il reso portava indietro la merce e il motivo, e **nessun valore**:
-il ciclo attivo sapeva far tornare le cose ma non i soldi. Il cantiere (17 → 26
-agosto) apre `vendite.resi_righe_accrediti` e `config.nature_doc_fiscale`,
-chiude DB, BE e FE, e si valida a video con un collaudo spuntato riga per riga.
-Subito dopo si chiude anche la **genealogia**: il grafo dei documenti si fermava
-sul reso — la nota di credito era collegata alla fattura che rettifica ma non
-alla merce che l'aveva causata — e con l'arco mancante arrivano i tre residui
-del lineage (il `root` che dipendeva dagli id, la commessa senza origine, la
-nota di credito che in lista si chiamava «Fattura»). Chiuso il 29, collaudo in
-app compreso. Vedi
+**Anello 3 (vendite) — La nota di credito, e il ramo economico dei resi.** Il
+reso portava indietro merce e motivo e **nessun valore**: `resi_righe_accrediti`
+e `config.nature_doc_fiscale` chiudono il ramo degli accrediti su DB, BE e FE,
+validato a video con un collaudo spuntato riga per riga. Subito dopo cade anche
+l'ultimo arco del **lineage** — la nota di credito era collegata alla fattura
+che rettifica ma non alla merce che l'aveva causata — e con lui i tre residui
+del grafo (il `root` che dipendeva dagli id, la commessa senza origine, la nota
+di credito che in lista si chiamava «Fattura»). Vedi
 [brief-design-note-credito-resi.md](work-done/brief-design-note-credito-resi.md),
 [brief-db-lineage-arco-reso-nota-credito.md](work-done/brief-db-lineage-arco-reso-nota-credito.md),
 [brief-db-lineage-residui-root-e-sorgente-ddt.md](work-done/brief-db-lineage-residui-root-e-sorgente-ddt.md).
 
 **Anello 3 (vendite) — La data del documento smette di essere un effetto
-collaterale.** Origine: una fattura di luglio numerata il 25 agosto che prendeva
-il numero 11 quando esistevano già fatture di agosto. Il tema è uno solo — *chi
-decide la data e la sequenza di un documento fiscale* — e si è aperto in tre
-tempi: la **numerazione** (data e sequenza governate dal registro, non dedotte
-dal giro), il **limite di emissione** perché un documento nasca già conforme
-invece di scoprire in fondo di non essere più trasmissibile, e il **registro
-visibile in lista** perché la data prevista si sappia *prima* di generare. Il 30
-agosto l'analisi sui **due motori di numerazione** — il sistema codici e i
-registri — prende la decisione portante: la commessa passa sui registri, e la
-periodicità dentro `config.sistema_codici` **non si fa più**, perché senza la
-commessa quella colonna non ha più un cliente. Al 30 le decisioni sono prese e
-il piano è scritto; l'esecuzione è del giorno dopo. Vedi
+collaterale.** Una fattura di luglio prendeva il numero 11 perché la sequenza
+era dedotta dal giro: chi decide data e sequenza diventa il **registro**, un
+**limite di emissione** evita che un documento nasca non più trasmissibile, e
+registro e data prevista si vedono in lista *prima* di generare. ⭐ L'analisi sui
+**due motori di numerazione** prende la decisione portante — la commessa passa
+sui registri, e la periodicità dentro `config.sistema_codici` **non si fa più**
+perché senza la commessa quella colonna non ha più un cliente — e l'esecuzione è
+del giorno dopo (voce del 10 settembre). Vedi
 [brief-db-numerazione-data-documento-e-sequenza.md](work-done/brief-db-numerazione-data-documento-e-sequenza.md),
 [brief-db-limite-emissione-e-data-verificata.md](work-done/brief-db-limite-emissione-e-data-verificata.md),
 [analisi-db-numerazione-documenti-e-due-motori.md](work-done/analisi-db-numerazione-documenti-e-due-motori.md).
 
 **Anello 1 + 3 — L'IVA ha un risolutore, e il regime del cliente smette di
-essere scritto e mai letto.** La domanda di partenza era stretta (*«su un omaggio
-o un reverse charge l'IVA non discende più dall'articolo: è giusto che si possa
-modificare?»*); cercandone la risposta è emerso che **l'IVA la decideva
-l'articolo e nessun altro**, e che le colonne del regime fiscale del cliente
-erano compilate dall'operatore e **lette da nessuno**. Il modello che ne esce
-non mette un default sul cliente: l'influenza del soggetto sull'IVA passa
-**sempre da un titolo registrato e documentato**, e i titoli hanno ora una sede
-in `anagrafiche` (`soggetti_titoli_iva` con i suoi ambiti e un registro
-movimenti **append-only**, dove anche l'annullo di una forzatura è un movimento)
-più il vocabolario `config.tipi_titolo_iva`. Al 30 agosto il lato **DB è
-chiuso**; i consumatori applicativi vengono dopo. Vedi
+essere scritto e mai letto.** La domanda di partenza era stretta (*«su un
+omaggio o un reverse charge l'IVA non discende più dall'articolo: è giusto che
+si possa modificare?»*); cercandone la risposta è emerso che **l'IVA la
+decideva l'articolo e nessun altro** e che le colonne del regime fiscale del
+cliente erano compilate dall'operatore e **lette da nessuno**. Il modello non
+mette un default sul cliente — l'influenza del soggetto passa **sempre da un
+titolo registrato e documentato** (`anagrafiche.soggetti_titoli_iva` con ambiti e
+registro movimenti **append-only**, dove anche l'annullo di una forzatura è un
+movimento, più il vocabolario `config.tipi_titolo_iva`). Al 30 agosto il lato
+**DB è chiuso**; i consumatori applicativi arrivano la settimana dopo. Vedi
 [brief-db-be-iva-risolutore-e-regime-cliente.md](work-done/brief-db-be-iva-risolutore-e-regime-cliente.md).
 
-**Anello 3 (`pagamenti`) — Il posting esiste.** Il 10 agosto questo cantiere si
-apriva su una misura sgradevole: *nessuna funzione, in tutto il database,
-scriveva `pagamenti.vendite_movimenti`* — il posting era documentato e non
-implementato, e per costruzione il saldo di una fattura era sempre il totale.
-Adesso il motore c'è: registrazione della contabile, saldo della rata, guard di
-transizione e di capienza, **sistemazione delle eccedenze**, distinta di
-correzione. E il perimetro: `pagamenti.enti_incasso` non aveva row security —
-ogni operatore vedeva i canali di incasso, **IBAN compreso**, di tutti gli
-emittenti.
-⛔ **Ma di questo dominio è stato provato il percorso, mai l'esito**: lo schema
-ha ancora zero righe, nessuno ha aperto una distinta o abbinato un incasso, e il
-collaudo in-app è **aperto**. Vedi
+**Anello 3 (`pagamenti`) — Il posting esiste.** Il cantiere si apriva su una
+misura sgradevole: *nessuna funzione, in tutto il database, scriveva
+`pagamenti.vendite_movimenti`* — e per costruzione il saldo di una fattura era
+sempre il totale. Ora il motore c'è: registrazione della contabile, saldo della
+rata, guard di transizione e di capienza, **sistemazione delle eccedenze**,
+distinta di correzione; e `enti_incasso`, che di row security non ne aveva,
+smette di mostrare l'**IBAN** di ogni emittente a qualunque operatore.
+⛔ **Ma di questo dominio è provato il percorso, mai l'esito**: lo schema ha
+ancora zero righe e il collaudo in-app è **aperto** — è il cantiere che occupa
+la voce del 19 settembre. Vedi
 [brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
 [brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
 [collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
@@ -466,40 +674,38 @@ collaudo in-app è **aperto**. Vedi
 **Anello 3 (vendite) — Il lavoro che non torna indietro.** Le tre porte di reset
 della fatturazione — elimina fattura, riporta il lotto a DRAFT, annulla il lotto
 — cancellavano righe su cui era già stato registrato un accredito, e l'esito non
-era un rifiuto ma una violazione di chiave esterna **a metà lavoro**. Chiuse. Ma
-la parte che si vede è un'altra: il lavoro rimasto indietro ora ha un **verbo**
+era un rifiuto ma una violazione di chiave esterna **a metà lavoro**. Ma la
+parte che si vede è un'altra: il lavoro rimasto indietro ha un **verbo**
 («Riporta da emettere», con la card che si spezza in due per non promettere una
 fattura che non c'è) e **«Rendi definitive» è tornata sulla lista Lotti**, dove
-sta l'elenco del suo oggetto, invece di stare su una card che ne mostrava un
-altro. Entrambi collaudati a video. Vedi
+sta l'elenco del suo oggetto invece di una card che ne mostrava un altro. Vedi
 [brief-db-lavoro-che-non-torna-indietro.md](work-done/brief-db-lavoro-che-non-torna-indietro.md),
 [brief-be-fe-rendi-definitive-sui-lotti.md](work-done/brief-be-fe-rendi-definitive-sui-lotti.md),
 [brief-db-guard-righe-fattura-rettificate.md](work-done/brief-db-guard-righe-fattura-rettificate.md).
 
 **Anello 0 — L'errore porta un bersaglio, e la riga di log dice per chi.** Due
-cantieri gemelli, stessa idea: un messaggio non serve se non si sa *su cosa*.
-Il **Passo 0 dell'osservabilità** rende parlante la riga di `vendite.event_log`
-— perimetro emittente, `tx_id`, identità del giro — e la mette sotto RLS
-**prima** che esista qualunque endpoint di lettura, perché quella tabella è
-append-only per trigger e sui campi della riga *non esiste rimedio a
-posteriori*, mentre policy, indici e viste si aggiungono in qualunque momento.
-Il **bersaglio** fa la stessa cosa sull'errore: oltre a dire cosa è successo,
-dice su quale entità, in una forma che l'interfaccia trasforma in un gesto
-(«vai lì») e chi diagnostica legge come coordinata. Quattro lati chiusi in due
-giorni, DB → roll-out → backend → toast con azioni. Vedi
+cantieri gemelli, stessa idea: un messaggio non serve se non si sa *su cosa*. Il
+**Passo 0 dell'osservabilità** rende parlante la riga di `vendite.event_log` —
+perimetro emittente, `tx_id`, identità del giro — e la mette sotto RLS **prima**
+che esista un endpoint di lettura, perché sui campi di una riga append-only *non
+esiste rimedio a posteriori*, mentre policy, indici e viste si aggiungono in
+qualunque momento. Il **bersaglio** fa lo stesso sull'errore: dice **su quale
+entità**, in una forma che l'interfaccia trasforma in un gesto («vai lì») e chi
+diagnostica legge come coordinata. Quattro lati in due giorni, DB → roll-out →
+backend → toast con azioni. Vedi
 [brief-db-event-log-scope-e-riga-parlante.md](work-done/brief-db-event-log-scope-e-riga-parlante.md),
 [brief-db-bersaglio-errore.md](work-done/brief-db-bersaglio-errore.md).
 
-**Anello 0 — I presidi che non presidiavano.** Tre presidi del progetto cercavano
-i test con un glob a **un livello solo**: le sottocartelle di schema — 16 file —
-erano fuori dalla baseline, fuori dal guardrail del preambolo, fuori dal
-censimento dei `LIMIT 1`. Dodici erano rossi, e nessuno lo sapeva; la baseline
-diceva «nessuna regressione» e non mentiva — *quei file non li aveva guardati*.
-Sanato il ramo cieco, il debito è stato attaccato: **da 86 rossi su 442 file a
-19 su 551**. Nello stesso filone, il catalogo dei messaggi ha smesso di
+**Anello 0 — I presidi che non presidiavano.** Tre presidi del progetto
+cercavano i test con un glob a **un livello solo**: le sottocartelle di schema —
+16 file — erano fuori dalla baseline, fuori dal guardrail del preambolo, fuori
+dal censimento dei `LIMIT 1`. Dodici erano rossi e nessuno lo sapeva; la
+baseline diceva «nessuna regressione» e non mentiva — *quei file non li aveva
+guardati*. Sanato il ramo cieco, il debito è stato attaccato: **da 86 rossi su
+442 file a 19 su 551**. Nello stesso filone il catalogo dei messaggi smette di
 promettere segnaposto che nessun chiamante riempiva (un `%s` che arrivava a
-video letterale) e gli **smoke test** hanno preso una baseline: undici script
-che nessuno lanciava, e per un giorno sei erano rossi senza che si notasse. Vedi
+video letterale) e gli **smoke test** prendono una baseline: undici script che
+nessuno lanciava, e per un giorno sei erano rossi senza che si notasse. Vedi
 [brief-db-pgtap-rami-ciechi.md](work-done/brief-db-pgtap-rami-ciechi.md),
 [brief-db-bonifica-baseline-pgtap-vendite.md](work-done/brief-db-bonifica-baseline-pgtap-vendite.md),
 [brief-db-segnaposti-messaggi-errore.md](work-done/brief-db-segnaposti-messaggi-errore.md).
@@ -507,26 +713,25 @@ che nessuno lanciava, e per un giorno sei erano rossi senza che si notasse. Vedi
 **Anello 1 — Il perimetro emittente, e due invarianti che nessuno presidiava.**
 Il perimetro dell'emittente fiscale aveva due buchi nello stesso presidio —
 l'accesso alle liste e la gerarchia dei billing account — tenuti insieme perché
-uno teneva aperto l'altro. Chiusi, con la colonna emittente sulle cinque liste
-rimaste e nella riga della ricerca universale. Da lì sono uscite due domande di
-dominio che erano rimaste implicite: **un billing account può cambiare
-emittente?** (sì, finché non ha storia — e il motivo per cui non si può arriva
-*sulla riga*, non premendo il pulsante) e **l'emittente della commessa può
-essere NULL?** (no: la commessa lo deriva dalla cascata delle sorgenti, e una
-commessa non aggrega emittenti diversi). Vedi
+uno teneva aperto l'altro; chiusi, con la colonna emittente sulle cinque liste
+rimaste e nella riga della ricerca universale. Da lì escono due domande di
+dominio rimaste implicite: **un billing account può cambiare emittente?** (sì,
+finché non ha storia — e il motivo per cui non si può arriva *sulla riga*, non
+premendo il pulsante) e **l'emittente della commessa può essere NULL?** (no: la
+commessa lo deriva dalla cascata delle sorgenti). Vedi
 [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md),
 [brief-db-billing-account-cambio-emittente.md](work-done/brief-db-billing-account-cambio-emittente.md),
 [brief-db-emittente-commessa-invariante.md](work-done/brief-db-emittente-commessa-invariante.md).
 
-**Anello 1 (`ui`) — Una regola che non sta dove si legge non esiste.** Il 10
-agosto questo changelog registrava un'inversione: 40 file sul building block
-delle liste, registro del presidio 43/43. Rimisurato il **30 agosto**: i file
-sul building block sono saliti a **53**, ma quelli con `DataTable` grezza —
-scesi a 48 il 3 agosto — sono **risaliti a 57**. Il 30 agosto la **«regola zero
-della lista»** è stata spostata in cima ad `AGENTS.md`, dove si legge a inizio
-sessione: stava in `frontend-standards.md`, che si apre quando serve, e che anzi
-spiegava *come* configurare una `DataTable`. ⭐ **È il difetto che vale più del
-numero — non era nel codice, era nella sede della regola.**
+**Anello 1 (`ui`) — Una regola che non sta dove si legge non esiste.** Il piano
+delle liste aveva invertito il rapporto (40 file sul building block, registro
+43/43); rimisurato il **30 agosto**, i file sul building block salgono a **53**,
+ma quelli con `DataTable` grezza — scesi a 48 il 3 agosto — **risalgono a 57**.
+La **«regola zero della lista»** viene allora spostata in cima ad `AGENTS.md`,
+dove si legge a inizio sessione: stava in `frontend-standards.md`, che si apre
+quando serve e che anzi spiegava *come* configurare una `DataTable`. ⭐ **È il
+difetto che vale più del numero — non era nel codice, era nella sede della
+regola.**
 
 ⚠️ **E il numero, guardato bene, non dice quello che sembra.** Classificati i 57:
 **26 sono drawer e dialog** e 15 pannelli o tab annidati — cioè l'**eccezione
@@ -547,99 +752,76 @@ e documentati: modello disegnato, tutte le tabelle a zero righe — e in
 verifica contro il codice vivo: il documento di progettazione della pipeline
 (febbraio) e l'indice attività preventivi.
 
----
-
-## 10 agosto 2026
-
-> Copre il periodo **27 luglio – 10 agosto**. Due settimane dominate da due
-> cantieri trasversali (**la classe dei codici errore** e **i satelliti della
-> fattura**) e da un cambio di regime nei test: da qui in poi il pgTAP gira come
-> l'applicazione.
+ℹ️ **Da qui le voci del 27 luglio – 10 agosto**, due settimane a cavallo del mese
+dominate da due cantieri trasversali (**la classe dei codici errore** e **i
+satelliti della fattura**) e da un cambio di regime nei test: da qui in poi il
+pgTAP gira come l'applicazione.
 
 **Anello 0 + 1 — La classe dei codici errore: il significato dell'errore torna a
-catalogo.** Il cantiere più grande del periodo (05→09 agosto, DB + BE conclusi).
-Prima, il significato di un errore viveva **solo** in un dizionario Python di
-659 voci scritte a mano: il catalogo DB non aveva il campo in cui la
-contraddizione si sarebbe vista. Ora un codice si registra **a catalogo** in
-`config.codici_errore` (**690 voci**) dichiarando **che cosa è** — la sua
-`classe`, dal vocabolario di `config.classi_errore` (**10 valori**) — e status
-HTTP e `ui_action` si **derivano**. Il modulo Python `error_policies_generated.py`
-è **generato** dal catalogo e presidiato in CI (`--check`). Tre conseguenze che
-valgono oltre il cantiere:
-
-- **il codice viaggia in un campo strutturato**, non nel testo: `SQLSTATE
-  P0001` con `CONSTRAINT` valorizzato = errore di dominio, letto in un solo punto
-  (`db_error_fields.py`) invece dei quattro che lo riscrivevano ognuno a modo
-  suo;
-- **i due registri del debito sono a zero**: `dbops.codici_errore_senza_policy`
-  (141 → 0 in tre giorni, 150 decisioni) e `dbops.messaggi_errore_codici_legacy`
-  (57 → 0). Restano entrambi, vuoti: un registro in pari non è un registro
-  inutile, ed è il posto dove atterra il prossimo codice;
-- **l'envelope d'errore porta `fields`**, i nomi dei campi del form da
-  correggere — l'informazione senza la quale `ui_action: highlight_form_fields`
-  non era azionabile.
-
+catalogo.** Il cantiere più grande del mese (05→09 agosto, DB + BE conclusi): il
+significato di un errore viveva **solo** in un dizionario Python di 659 voci
+scritte a mano, e il catalogo DB non aveva il campo in cui la contraddizione si
+sarebbe vista. Ora un codice si registra **a catalogo** in `config.codici_errore`
+(**690 voci**) dichiarando **che cosa è** — la sua `classe`, dal vocabolario di
+`config.classi_errore` (**10 valori**) — e status HTTP e `ui_action` si
+**derivano**; il modulo Python `error_policies_generated.py` è **generato** dal
+catalogo e presidiato in CI (`--check`). Tre conseguenze che valgono oltre il
+cantiere: il codice viaggia in un **campo strutturato** (`SQLSTATE P0001` con
+`CONSTRAINT` valorizzato), letto in un punto solo (`db_error_fields.py`) invece
+dei quattro che lo riscrivevano a modo loro; i due registri del debito sono **a
+zero** (141 → 0 in tre giorni, 150 decisioni; 57 → 0) e restano in piedi apposta
+— *un registro in pari non è un registro inutile*; e l'envelope d'errore porta
+`fields`, senza il quale `ui_action: highlight_form_fields` non è azionabile.
 Vedi [brief-db-be-classe-codici-errore.md](work-done/brief-db-be-classe-codici-errore.md),
 [piano-db-classe-codici-errore.md](work-done/piano-db-classe-codici-errore.md),
 [piano-be-classe-codici-errore.md](work-done/piano-be-classe-codici-errore.md),
 [brief-db-codice-errore-strutturato.md](work-done/brief-db-codice-errore-strutturato.md),
 [brief-db-be-terzo-lato-presidio-codici.md](work-done/brief-db-be-terzo-lato-presidio-codici.md).
 
-**Anello 0 — 🔴 Il pgTAP gira come l'applicazione, ed entra in CI.** Dal 7 agosto
-il runner di default è l'utente applicativo (`PGTAP_RUNNER=app`) e non più
-l'owner: **le policy RLS sono esercitate a ogni corsa**. Un rosso ora può essere
-un **permesso** o una **policy**, non solo una fixture, e una fixture che scrive
-dove l'applicazione non scrive non passa più. I 29 file che hanno davvero bisogno
-dell'owner sono marcati uno per uno **con la ragione scritta**. La suite entra
-anche in **CI** — sempre sulle PR verso `main`, sui push a `Tito-dev` solo se
-toccano `db/` o `scripts/` — con una baseline sua, perché il DB della CI è
-ricostruito da zero e quello di sviluppo ha dati veri: **i rossi sono popolazioni
-diverse**. Tre righe di preambolo diventano obbligatorie e presidiate da un
-cancello (`BEGIN`, contesto, `SET CONSTRAINTS ALL IMMEDIATE`): senza, un file
-diventa **verde per sottrazione**. Debito noto: **86 rossi** su **442 file**.
-Vedi [brief-db-pgtap-runner-rls-baseline.md](work-done/brief-db-pgtap-runner-rls-baseline.md)
+**Anello 0 — 🔴 Il pgTAP gira come l'applicazione, ed entra in CI.** Dal 7
+agosto il runner di default è l'utente applicativo e non più l'owner: **le
+policy RLS sono esercitate a ogni corsa**, e un rosso può essere un **permesso**
+o una **policy**, non solo una fixture. I 29 file che hanno davvero bisogno
+dell'owner sono marcati uno per uno **con la ragione scritta**; la suite entra
+in CI con una baseline sua, perché il DB della CI è ricostruito da zero e i
+rossi sono **popolazioni diverse**; tre righe di preambolo diventano
+obbligatorie e presidiate da un cancello — *senza, un file diventa verde per
+sottrazione*. Debito noto: **86 rossi** su **442 file**. Vedi [brief-db-pgtap-runner-rls-baseline.md](work-done/brief-db-pgtap-runner-rls-baseline.md)
 e la guida [pgtap-come-si-scrive-un-test](../guide/pgtap-come-si-scrive-un-test.md).
 
 **Anello 0 — Presidio dei riferimenti morti (04 agosto).** 34 difetti sanati e
 cancello in CI: un riferimento a un oggetto DB che non esiste più non arriva più
-al merge. ⚠️ Il guardrail gira **dopo** `manage.py migrate` — non spostarlo.
-Vedi [brief-db-bonifica-riferimenti-morti.md](work-done/brief-db-bonifica-riferimenti-morti.md),
+al merge. ⚠️ Il guardrail gira **dopo** `manage.py migrate` — non spostarlo (a
+settembre si prenderà due lezioni, voce del 14 settembre). Vedi [brief-db-bonifica-riferimenti-morti.md](work-done/brief-db-bonifica-riferimenti-morti.md),
 [brief-be-bonifica-riferimenti-morti.md](work-done/brief-be-bonifica-riferimenti-morti.md).
 
 **Anello 3 (vendite) — I satelliti della fattura: il documento si racconta per
-intero.** Cantiere chiuso su tutte le fasi (29 luglio – 3 agosto). La fattura
-acquista ciò che le mancava per essere consultabile e stampabile senza risalire
-altrove:
-
-- **piano rate** (`vendite.fatture_scadenze`): generato nello step EMESSA dopo il
-  ricalcolo IVA, idempotente per costruzione (DELETE + INSERT), con lo **snapshot
-  del termine** in testata perché il documento si spieghi da sé. ⚠️ Non è uno
-  scadenzario: non esiste stato di pagamento della rata;
-- **snapshot di intestazione e indirizzi** congelati sul documento;
-- **drawer di consultazione**: testata decodificata + righe con kit risolti +
-  riepilogo IVA + piano rate **in un round-trip**, orchestrando gli **stessi**
-  lettori che alimentano il PDF — video e stampa raccontano lo stesso documento
-  per costruzione;
-- **note fattura**: sesto dominio del building block note partizionate,
-  ~15 righe di sola configurazione, zero migration;
-- **ritiro del generatore di righe SQL** e fix degli importi di riga a zero.
+intero.** Cantiere chiuso su tutte le fasi (29 luglio – 3 agosto): **piano rate**
+(`vendite.fatture_scadenze`, generato nello step EMESSA dopo il ricalcolo IVA,
+idempotente per costruzione, con lo **snapshot del termine** in testata — ⚠️ non
+è uno scadenzario: non esiste stato di pagamento della rata), **snapshot** di
+intestazione e indirizzi, **drawer di consultazione** in un round-trip che
+orchestra gli **stessi** lettori del PDF (*video e stampa raccontano lo stesso
+documento per costruzione*), le **note fattura** come sesto dominio del building
+block note (~15 righe di configurazione, zero migration), e il ritiro del
+generatore di righe SQL.
 
 Vedi [piano-db-satelliti-fattura.md](work-done/piano-db-satelliti-fattura.md),
 [piano-be-fe-satelliti-fattura.md](work-done/piano-be-fe-satelliti-fattura.md),
 [brief-db-generazione-scadenze-fattura.md](work-done/brief-db-generazione-scadenze-fattura.md),
 [brief-be-fe-drawer-fattura.md](work-done/brief-be-fe-drawer-fattura.md).
 
-**Anello 3 (vendite) — Emissione mirata e ritorno del lotto a DRAFT.** Il giro di
-fatturazione accetta ora un perimetro ristretto ai **gruppi fatturabili** scelti
-(stesso verbo, stessa idempotenza: assente = giro di massa invariato), e il lotto
-può **tornare a DRAFT** (slice 6-A) per rifare un giro andato storto. Vedi
+**Anello 3 (vendite) — Emissione mirata e ritorno del lotto a DRAFT.** Il giro
+accetta un perimetro ristretto ai **gruppi fatturabili** scelti — stesso verbo,
+stessa idempotenza: assente = giro di massa invariato — e il lotto può **tornare
+a DRAFT** per rifare un giro andato storto. Vedi
 [brief-db-emissione-fattura-per-documento-sorgente.md](work-done/brief-db-emissione-fattura-per-documento-sorgente.md),
 [brief-be-fe-emissione-fattura-mirata.md](work-done/brief-be-fe-emissione-fattura-mirata.md),
 [piano-db-ritorno-lotto-a-draft.md](work-done/piano-db-ritorno-lotto-a-draft.md).
 
-**Anello 2 (documenti) — Ristampa fedele: il terzo percorso.** Ri-renderizzare un
-documento **com'era** — versione di template pinnata, anche OBSOLETA, e
-`context_json` congelato — senza persistere nulla. È distinto dallo **scarica
+**Anello 2 (documenti) — Ristampa fedele: il terzo percorso.** Ri-renderizzare
+un documento **com'era** — versione di template pinnata, anche OBSOLETA, e
+`context_json` congelato — senza persistere nulla, distinto dallo **scarica
 originale** (il file su storage) e dal **genera nuovo documento** (modello e dati
 di oggi, che fino ad allora si chiamava impropriamente «ristampa»). La fedeltà è
 dichiarata in header: byte diversi = fedele nel contenuto, non un errore. Vedi
@@ -647,33 +829,32 @@ dichiarata in header: byte diversi = fedele nel contenuto, non un errore. Vedi
 
 **Anello 1 (`ui`) — Le liste: il rapporto si è invertito.** Il numero scomodo del
 piano — 14 liste sullo standard contro 71 con `DataTable` grezza — non c'è più:
-**40 file montano il building block**, il registro del presidio è a **43/43**, e
-il Gruppo A si è chiuso **30/34** il 3 agosto. I **4 file rimasti sono fermi per
+**40 file montano il building block**, il registro del presidio è a **43/43**, il
+Gruppo A si è chiuso **30/34** il 3 agosto, e i **4 file rimasti sono fermi per
 decisione** (cassetti senza endpoint paginato), non per debito.
 
 > 🚨 **Ma il piano non è più tecnico.** `primevue`, `@primeuix/themes` e
 > `primeicons` erano **MIT** e passano tutti e tre alla **licenza PrimeUI**
 > (community/commerciale, con chiave) dalla nuova major. ZeroErp è **GPL v3
 > pubblica**. Non è un rischio di migrazione: è una **decisione di licenza**, e
-> non la prende un piano operativo. Il lavoro tecnico resta valido e utile con
-> qualunque esito.
+> non la prende un piano operativo — dal 20 settembre sta fra le «Decisioni
+> aperte» della mappa, dove nessun cantiere la può scavalcare.
 
 Vedi [piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md)
 §1-bis e [consuntivo-personalizzazioni-liste-def.md](work-done/consuntivo-personalizzazioni-liste-def.md).
 
 **Anello 3 (`pagamenti`) — Si apre il cantiere delle contabili di pagamento
-(9-10 agosto).** Rimisurato il terreno e prese le decisioni portanti. Due
-scoperte cambiano la scala del lavoro: **nessuna funzione, in tutto il database,
-scrive `pagamenti.vendite_movimenti`** — il *posting* è documentato ma non
-implementato, quindi `fn_get_saldo_fattura` restituisce per costruzione sempre
-l'intero totale — e **i cataloghi dello schema erano già seminati** (la macchina
-a stati dell'abbinamento `DA_ABBINARE → ABBINATA → POSTATA` esiste da sempre a
-catalogo). Decisioni: l'abbinamento vive **sulla riga contabile e arriva alla
-rata**; lo stato della rata è **derivato**; il posting è una madre DB per testata
-contabile; **lo storno non esiste come concetto** — è una contabile con importi
-negativi, e la sicurezza sta in un controllo simmetrico `0 ≤ Σ ≤ importo`; il
-perimetro dei soldi non ancora attribuiti si deriva **dal conto di incasso**.
-Vedi [brief-incassi-riconciliazione-rate-promemoria.md](work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
+(9-10 agosto).** Due scoperte cambiano la scala del lavoro: **nessuna funzione,
+in tutto il database, scrive `pagamenti.vendite_movimenti`** — il *posting* è
+documentato e non implementato, quindi `fn_get_saldo_fattura` restituisce per
+costruzione sempre l'intero totale — e **i cataloghi dello schema erano già
+seminati** (la macchina a stati dell'abbinamento `DA_ABBINARE → ABBINATA →
+POSTATA` esiste da sempre a catalogo). Decisioni portanti: l'abbinamento vive
+**sulla riga contabile e arriva alla rata**, lo stato della rata è **derivato**,
+il posting è una madre DB per testata contabile, **lo storno non esiste come
+concetto** — è una contabile con importi negativi, e la sicurezza sta in un
+controllo simmetrico `0 ≤ Σ ≤ importo` — e il perimetro dei soldi non ancora
+attribuiti si deriva **dal conto di incasso**. Vedi [brief-incassi-riconciliazione-rate-promemoria.md](work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
 e, per il meccanismo dei fondi fattura da ripensare,
 [brief-db-fondo-fattura-ricalcolo-e-governo.md](work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md).
 
@@ -895,28 +1076,28 @@ Anello 3 (vendite): contratti passati al modello unificato (drop modalità A/B/C
 
 ## Aggiornamenti ricostruiti dal 26 aprile all'11 giugno 2026
 
-| Data         | Evidenza                                                                                                                                             | Impatto sulla mappa                                                                                    |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 26 aprile    | `dbops.automazione_chiusura_scadenze` chiuso come framework parametrico dopo due consumatori reali (`vendite.listini_versioni`, `vendite.contratti`) | Anello 0 cresce per uso osservato, non per astrazione preventiva.                                      |
-| 27 aprile    | Contratti: Profilo A, immutabilita' post-DRAFT, cessazione data-driven, righe-preview                                                                | Vendite rafforza il sottodominio contratti e consuma il framework di chiusura a scadenza.              |
-| 28 aprile    | Refactor frontend/backend catalogo completato Fasi 1-8, test BE 83/83 e build Vite verdi                                                             | Catalogo resta operativo ma con contratti API/metadata piu' maturi.                                    |
-| 29-30 aprile | Refactor amm-software completato per matrici, operatori, permessi, emittenti e policy admin                                                          | Anello 1 amministrativo consolidato; le matrici diventano riferimento UI per configurazioni complesse. |
-| 1 maggio     | Refactor vendite chiuso DB+BE+FE, modello documentato con 1406 test BE e build Vite verde                                                            | Vendite aggiornata a pattern data-driven per lookup, defaults, capability e azioni.                    |
-| 2 maggio     | Preventivi rev2 landed: `emittente_fiscale_id` persistito, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, 4 codici errore        | Preventivi diventano piu' rigorosi sul contesto emittente/utility.                                     |
-| 3 maggio     | Scenario preventivi 2.1 chiuso end-to-end, UI revisioni e riepilogo IVA                                                                              | Vendite avanzata su flusso preventivo operativo.                                                       |
-| 3-4 maggio   | Motore documentale parametrico: DB Fase A, backend Tranche A-K, frontend Tranche L-M; test UI dedicato avviato                                       | Nuovo componente `documenti` in Anello 2, operativo tecnicamente ma ancora in test UI.                 |
-| 13 maggio    | BoM modello unificato + simmetria listino; componenti BoM (CASO A) estesi a preventivi/ordini/ddt/contratti                                          | I documenti vendite condividono lo stesso modello componenti a 3 livelli (struttura, listino, documento). |
-| 15-21 maggio | Refactor contratti: modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO + overlap parziale) | Il sottodominio contratti diventa simmetrico ai preventivi e pronto a ricevere l'offerta come sorgente. |
-| 24-27 maggio | Offerte commerciali (DB): testata + eccezioni delta-listino + componenti BoM + utility, 6 stati, `fn_push_offerta_a_contratto` idempotente, vista `is_attiva`, azioni data-driven | Nuovo documento pre-contrattuale in Anello 3 (vendite): la proposta di condizioni quadro che genera il contratto. |
-| 28-29 maggio | Offerte commerciali (BE+FE): risoluzione prezzo come contratti, generazione documento offerta con allegati, UI uniformata a contratti                | Offerta operativa end-to-end DB+BE+FE; in consolidamento/test UI.                                       |
-| 29 maggio    | Valuta su documenti vendite (`valuta_id` su offerte/contratti/preventivi, default da resolver gestore); guida offerte commerciali pubblicata          | Coerenza valuta cross-documento; documentazione di dominio allineata allo stato reale.                  |
-| 2 giugno     | Gate prezzi L1/L2/L3 esteso alle offerte (stesso orchestratore dei contratti); vincoli EXCLUDE anti-overlap ripristinati e governati dal framework `dbops.automazione_overlap` | Coerenza pricing cross-documento; Anello 0 consolida l'anti-overlap parametrico.                        |
-| 2-4 giugno   | RLS scope emittente fiscale ATTIVA per operatori: `ENABLE` su 10 tabelle documentali + Ondata 2 scrittura (`FOR ALL` + `WITH CHECK`, migration `20260603-16..25`); reset GUC fail-closed a inizio richiesta lato BE | Multi-Face Auth passa da "infrastruttura predisposta" a RLS operatori attiva; policy portale/shop restano dry-run. |
-| 3-4 giugno   | Ordini di vendita DB+BE+FE: vista lista DEF-8, CRUD, conferma, stampa PDF (modulo stampa generico), conversione preventivo/offerta→ordine, lock cliente; regola del 2 su anagrafiche e core (estrazione BB) | Vendite chiude il documento ordine: il ciclo preventivo/offerta→ordine e' percorribile end-to-end.      |
-| 5 giugno     | Regola del 2 core FE/BE (factory `createCrudStore`, guard-versione, stack geografico); unificazione sconto righe ordini/fatture; riepilogo IVA documenti non fiscali esteso a ordini | Anello 0/1 frontend consolidano building block condivisi; meno duplicazione cross-dominio.              |
-| 8 giugno     | Univocita' offerta→(contratto XOR ordine) con status 409 coerenti; stato ordine EVASO con transizione automatica CONFERMATO→EVASO                     | Il downstream dell'offerta diventa mutuamente esclusivo; il ciclo ordine ha uno stato terminale data-driven. |
-| 9-10 giugno  | Pratica PREVENTIVI: handler `CONFERMA_VENDITA` BE+FE (commit `327140116`); `natura_vendita` su preventivi con split merce→ordine / servizi→commessa; smistamento merce→ordine riga-per-riga; commesse multi-sorgente (1 ROOT + N COLLEGATO); natura di vendita amministrabile da applicazione | Vendite diventa il primo consumatore reale del motore pratiche (Anello 2).                               |
-| 11-12 giugno | Workflow pratiche v2: ripetibilita' flussi, bivi condizionali, lenti contesto, guard chiusura; contesto pratica a 3 livelli (soggetto → ruolo → istanza derivata/filtrata); BB informazioni pratica; azioni di processo pratiche seedate | `pratiche` passa da "predisposta" a **validata con primo consumatore** (vedi Anello 2).                  |
+| Data         | Evidenza                                                                                                                                                                                                                                                                                      | Impatto sulla mappa                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 26 aprile    | `dbops.automazione_chiusura_scadenze` chiuso come framework parametrico dopo due consumatori reali (`vendite.listini_versioni`, `vendite.contratti`)                                                                                                                                          | Anello 0 cresce per uso osservato, non per astrazione preventiva.                                                  |
+| 27 aprile    | Contratti: Profilo A, immutabilita' post-DRAFT, cessazione data-driven, righe-preview                                                                                                                                                                                                         | Vendite rafforza il sottodominio contratti e consuma il framework di chiusura a scadenza.                          |
+| 28 aprile    | Refactor frontend/backend catalogo completato Fasi 1-8, test BE 83/83 e build Vite verdi                                                                                                                                                                                                      | Catalogo resta operativo ma con contratti API/metadata piu' maturi.                                                |
+| 29-30 aprile | Refactor amm-software completato per matrici, operatori, permessi, emittenti e policy admin                                                                                                                                                                                                   | Anello 1 amministrativo consolidato; le matrici diventano riferimento UI per configurazioni complesse.             |
+| 1 maggio     | Refactor vendite chiuso DB+BE+FE, modello documentato con 1406 test BE e build Vite verde                                                                                                                                                                                                     | Vendite aggiornata a pattern data-driven per lookup, defaults, capability e azioni.                                |
+| 2 maggio     | Preventivi rev2 landed: `emittente_fiscale_id` persistito, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, 4 codici errore                                                                                                                                                 | Preventivi diventano piu' rigorosi sul contesto emittente/utility.                                                 |
+| 3 maggio     | Scenario preventivi 2.1 chiuso end-to-end, UI revisioni e riepilogo IVA                                                                                                                                                                                                                       | Vendite avanzata su flusso preventivo operativo.                                                                   |
+| 3-4 maggio   | Motore documentale parametrico: DB Fase A, backend Tranche A-K, frontend Tranche L-M; test UI dedicato avviato                                                                                                                                                                                | Nuovo componente `documenti` in Anello 2, operativo tecnicamente ma ancora in test UI.                             |
+| 13 maggio    | BoM modello unificato + simmetria listino; componenti BoM (CASO A) estesi a preventivi/ordini/ddt/contratti                                                                                                                                                                                   | I documenti vendite condividono lo stesso modello componenti a 3 livelli (struttura, listino, documento).          |
+| 15-21 maggio | Refactor contratti: modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO + overlap parziale)                                                                                                 | Il sottodominio contratti diventa simmetrico ai preventivi e pronto a ricevere l'offerta come sorgente.            |
+| 24-27 maggio | Offerte commerciali (DB): testata + eccezioni delta-listino + componenti BoM + utility, 6 stati, `fn_push_offerta_a_contratto` idempotente, vista `is_attiva`, azioni data-driven                                                                                                             | Nuovo documento pre-contrattuale in Anello 3 (vendite): la proposta di condizioni quadro che genera il contratto.  |
+| 28-29 maggio | Offerte commerciali (BE+FE): risoluzione prezzo come contratti, generazione documento offerta con allegati, UI uniformata a contratti                                                                                                                                                         | Offerta operativa end-to-end DB+BE+FE; in consolidamento/test UI.                                                  |
+| 29 maggio    | Valuta su documenti vendite (`valuta_id` su offerte/contratti/preventivi, default da resolver gestore); guida offerte commerciali pubblicata                                                                                                                                                  | Coerenza valuta cross-documento; documentazione di dominio allineata allo stato reale.                             |
+| 2 giugno     | Gate prezzi L1/L2/L3 esteso alle offerte (stesso orchestratore dei contratti); vincoli EXCLUDE anti-overlap ripristinati e governati dal framework `dbops.automazione_overlap`                                                                                                                | Coerenza pricing cross-documento; Anello 0 consolida l'anti-overlap parametrico.                                   |
+| 2-4 giugno   | RLS scope emittente fiscale ATTIVA per operatori: `ENABLE` su 10 tabelle documentali + Ondata 2 scrittura (`FOR ALL` + `WITH CHECK`, migration `20260603-16..25`); reset GUC fail-closed a inizio richiesta lato BE                                                                           | Multi-Face Auth passa da "infrastruttura predisposta" a RLS operatori attiva; policy portale/shop restano dry-run. |
+| 3-4 giugno   | Ordini di vendita DB+BE+FE: vista lista DEF-8, CRUD, conferma, stampa PDF (modulo stampa generico), conversione preventivo/offerta→ordine, lock cliente; regola del 2 su anagrafiche e core (estrazione BB)                                                                                   | Vendite chiude il documento ordine: il ciclo preventivo/offerta→ordine e' percorribile end-to-end.                 |
+| 5 giugno     | Regola del 2 core FE/BE (factory `createCrudStore`, guard-versione, stack geografico); unificazione sconto righe ordini/fatture; riepilogo IVA documenti non fiscali esteso a ordini                                                                                                          | Anello 0/1 frontend consolidano building block condivisi; meno duplicazione cross-dominio.                         |
+| 8 giugno     | Univocita' offerta→(contratto XOR ordine) con status 409 coerenti; stato ordine EVASO con transizione automatica CONFERMATO→EVASO                                                                                                                                                             | Il downstream dell'offerta diventa mutuamente esclusivo; il ciclo ordine ha uno stato terminale data-driven.       |
+| 9-10 giugno  | Pratica PREVENTIVI: handler `CONFERMA_VENDITA` BE+FE (commit `327140116`); `natura_vendita` su preventivi con split merce→ordine / servizi→commessa; smistamento merce→ordine riga-per-riga; commesse multi-sorgente (1 ROOT + N COLLEGATO); natura di vendita amministrabile da applicazione | Vendite diventa il primo consumatore reale del motore pratiche (Anello 2).                                         |
+| 11-12 giugno | Workflow pratiche v2: ripetibilita' flussi, bivi condizionali, lenti contesto, guard chiusura; contesto pratica a 3 livelli (soggetto → ruolo → istanza derivata/filtrata); BB informazioni pratica; azioni di processo pratiche seedate                                                      | `pratiche` passa da "predisposta" a **validata con primo consumatore** (vedi Anello 2).                            |
 
 ---
 

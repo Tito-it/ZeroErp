@@ -6,6 +6,22 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# ⚠️ 2026-09-21 — `entita_tabella` e `entita_colonna_codice` entrano nel CSV.
+#   Fino a oggi li valorizzava SOLO `00_schema/config/20260311-09` con quattro
+#   UPDATE per `codice_interno`: su un database ricostruito da zero quella fase
+#   gira PRIMA di `80_data`, la tabella e' vuota e gli UPDATE sono su zero
+#   righe — quindi in CI e su un'installazione nuova le cinque colonne restano
+#   NULL, `script.fn_get_entita_ruolo_detail` risponde solo `meta` e
+#   `script.fn_search_soggetti_universale` non ha la tabella da cui leggere il
+#   codice. Trovato il 21-09 da `script/test-fn-get-entita-ruolo-detail` (test
+#   9), che fino al giorno prima SALTAVA perche' in CI non c'era nessun
+#   emittente da guardare (verde per sottrazione). La sede del dato e' il CSV
+#   (AGENTS.md, «I dati di 80_data si cambiano dal CSV»), e il mirror e'
+#   runOnChange + ANY apposta. `nullValue` passa da "" a "NULL" con il token
+#   letterale scritto nelle celle: con "" una cella vuota scrive '' e il guard
+#   `trgfn_tipi_ruoli_guard_entita_ref` lo rifiuterebbe come regclass. Nessuna
+#   cella era vuota prima di questa revisione.
+#   Brief: migliorie-generali-da-test-valutazione.md, D7.
 
 databaseChangeLog:
   - changeSet:
@@ -29,7 +45,7 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            nullValue: "NULL"
             primaryKey: "id"
 
             columns:
@@ -45,6 +61,8 @@ databaseChangeLog:
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
               - column: { name: ricerca_visibile, type: BOOLEAN }
+              - column: { name: entita_tabella, type: STRING }
+              - column: { name: entita_colonna_codice, type: STRING }
 
   - changeSet:
       id: 20250812-90-upsert-tipi_ruoli

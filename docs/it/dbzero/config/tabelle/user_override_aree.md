@@ -29,6 +29,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_user_override_aree_validita |  |
+| FOREIGN KEY | fk_config_user_override_aree_auth_user | auth_user_id |
 | FOREIGN KEY | fk_user_override_aree_area | area_id |
 | PRIMARY KEY | pk_user_override_aree | id |
 | UNIQUE | uq_user_override_aree_user_area | auth_user_id, area_id |

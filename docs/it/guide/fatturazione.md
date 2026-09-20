@@ -1,28 +1,41 @@
-# Guida Tecnica - Fatturazione (processo end-to-end)
+# Guida — Fatturazione (processo end-to-end)
 
-> Destinatari: analisti funzionali, sviluppatori backend e database di Zero ERP
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Vedi anche:
+> **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
-> * [Guida API Commesse](/guide/gestione-commesse)
-> * [vendite.commesse](/dbzero/vendite/tabelle/commesse)
-> * [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)
-> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
-> * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)
-> * [vendite.fatture](/dbzero/vendite/tabelle/fatture)
-> * [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)
-> * [vendite.event_log](/dbzero/vendite/tabelle/event_log)
+> **Vedi anche** — schemi DB:
+>
+> * [vendite.commesse](/dbzero/vendite/tabelle/commesse) · [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa) · [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — il livello commessa
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — il lavoro fatturabile, riga per riga
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) · [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) · [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze) — il documento
+> * [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline) — gli step e i task della pipeline a lotti
+> * [vendite.event_log](/dbzero/vendite/tabelle/event_log) — la timeline unificata degli eventi
+>
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione da commessa
+> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa) — match o creazione della commessa
+> * [vendite.fn_assign_numero_fattura](/dbzero/vendite/funzioni/fn_assign_numero_fattura) — il punto unico in cui si assegna il progressivo
+>
+> **Vedi anche** — API e service backend:
+>
+> * [API fatturazione](/backend/vendite/manual/api_fatturazione) · [API lineage passaggi](/backend/vendite/manual/api_lineage_passaggi)
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Gestione commesse](/guide/gestione-commesse) — il livello a monte, e i presidi dell'emittente
 > * [Messaggi di errore e log](/guide/Messaggi-di-Errore-e-Generazione-Log)
 > * [Termini di pagamento](/guide/termini-di-pagamento) — il piano rate della fattura
 > * [Cruscotti fatturazione](/guide/cruscotti-fatturazione) — le stesse operazioni viste dall'operatore
-> * [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici) — **il motore dei registri**: la numerazione fiscale della fattura non è un meccanismo suo, è quello condiviso con ordini, DDT, resi e commesse
+> * [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici) — **il motore dei registri**: la numerazione fiscale non è un meccanismo della fattura, è quello condiviso con ordini, DDT, resi e commesse
 > * [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga) — **la sede unica** che decide il codice IVA di una riga, e dove il plafond di un titolo si consuma davvero
 
 ---
 
 ## Introduzione
 
-Il processo di fatturazione e` stato ristrutturato.
+Il processo di fatturazione è stato ristrutturato.
 
 Modello attuale:
 
@@ -31,7 +44,7 @@ Modello attuale:
 3. Le righe commessa idonee vengono emesse in `attivita_fatturabili` tramite funzioni dedicate.
 4. La pipeline fatturazione a lotti opera poi su `attivita_fatturabili` per produrre ed emettere le fatture.
 
-In sintesi: la commessa e` il livello di governo operativo prima della fatturazione fiscale.
+In sintesi: la commessa è il livello di governo operativo prima della fatturazione fiscale.
 
 ---
 
@@ -53,15 +66,15 @@ flowchart TD
 
 ### Ruolo dei layer
 
-Il processo e` suddiviso su tre layer con responsabilita` distinte:
+Il processo è suddiviso su tre layer con responsabilità distinte:
 
-| Layer             | Responsabilita`                                                | Esempi                                                                              |
+| Layer             | Responsabile                                                   | Esempi                                                                              |
 | ----------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | **PostgreSQL**    | Stato, regole di dominio, vincoli, log funzionali              | `fn_get_or_create_commessa`, `fn_set_fatturazione_lotto_stato`, trigger append-only |
 | **Python/Django** | Orchestrazione, sequencing, fan-out, gestione errori, API REST | `CommessaPushOrchestrator`, `LottoPipelineRunner`, `PipelineStepExecutor`           |
 | **API REST**      | Esposizione endpoint, validazione input, idempotenza request   | `/api/v1/vendite/pipeline/run/`, `/api/v1/vendite/commesse/push/run/`               |
 
-Principio generale: il database e` l'autorita` su stato e regole; Python orchestra il flusso e gestisce le eccezioni; l'API espone e protegge.
+Principio generale: il database è l'autorità su stato e regole; Python orchestra il flusso e gestisce le eccezioni; l'API espone e protegge.
 
 ### Componenti Python principali
 
@@ -145,7 +158,7 @@ Scopo: costruire/aggiornare le commesse e le relative righe tecniche da emettere
 
 ### Orchestrazione push (Python)
 
-L'ingestione e` gestita da `CommessaPushOrchestrator` che:
+L'ingestione è gestita da `CommessaPushOrchestrator` che:
 
 1. Acquisisce un advisory lock PostgreSQL per evitare run concorrenti.
 2. Esegue in sequenza gli handler registrati (uno per sorgente: preventivi, ordini, consumi, ...).
@@ -155,7 +168,7 @@ L'ingestione e` gestita da `CommessaPushOrchestrator` che:
 Ogni handler (`BaseSourceHandler`) implementa:
 
 * `fetch_pushable_rows()` — recupera righe sorgente da sincronizzare
-* `_expand_rows()` — trasforma una riga sorgente in una o piu` righe commessa
+* `_expand_rows()` — trasforma una riga sorgente in una o più righe commessa
 * `_process_rows()` — risolve/crea commessa, linka sorgente, batch upsert righe
 
 ### Funzioni DB
@@ -171,12 +184,10 @@ Ogni handler (`BaseSourceHandler`) implementa:
 * match/creazione commessa su perimetro BA/utility/policy/emittente/competenza;
 * idempotenza riga su `(commessa_id, segment_key)`;
 * batch upsert: N righe in una singola chiamata DB per performance;
-* validazioni forti su quantita`, prezzo e stato commessa modificabile;
+* validazioni forti su quantità, prezzo e stato commessa modificabile;
 * nessun bypass diretto sorgente -> `attivita_fatturabili`.
 
 ### ⭐ L'emittente della commessa non si passa: si deriva
-
-> Aggiunto il 2026-08-26 — cantiere «l'emittente della commessa è un invariante».
 
 L'emittente della commessa **si ricava dal cliente**, sempre, e da nessun'altra
 parte. Chi spinge un documento non lo dichiara: se lo dichiarasse uguale sarebbe
@@ -275,7 +286,7 @@ Scopo: trasferire le righe `commesse_attivita` idonee in `attivita_fatturabili`.
 
 ### Orchestrazione emissione (Python)
 
-L'emissione non e` un job autonomo: e` un **task pipeline** eseguito come primo
+L'emissione non è un job autonomo: è un **task pipeline** eseguito come primo
 step del lotto (tipicamente DRAFT), gestito da `PipelineStepExecutor`:
 
 1. Il task `pull_attivita_da_commessa_default` viene invocato dal runner.
@@ -287,11 +298,11 @@ step del lotto (tipicamente DRAFT), gestito da `PipelineStepExecutor`:
 
 Componenti Python:
 
-| Componente | File | Ruolo |
-| --- | --- | --- |
-| Task handler | `pipeline_step_executor.py` (`_handle_pull_attivita_da_commessa_task`) | Orchestrazione discovery + emit per lotto |
-| Discovery | `commesse_repository.py` (`list_commesse_emittibili`) | Trova commesse pronte per emissione |
-| Emit wrapper | `commesse_repository.py` (`emit_attivita_fatturabili`) | Wrappa la fn SQL, restituisce `CommessaEmitResult` |
+| Componente   | File                                                                   | Ruolo                                              |
+| ------------ | ---------------------------------------------------------------------- | -------------------------------------------------- |
+| Task handler | `pipeline_step_executor.py` (`_handle_pull_attivita_da_commessa_task`) | Orchestrazione discovery + emit per lotto          |
+| Discovery    | `commesse_repository.py` (`list_commesse_emittibili`)                  | Trova commesse pronte per emissione                |
+| Emit wrapper | `commesse_repository.py` (`emit_attivita_fatturabili`)                 | Wrappa la fn SQL, restituisce `CommessaEmitResult` |
 
 ### Funzioni DB emissione
 
@@ -303,7 +314,7 @@ Componenti Python:
 * sorgente AF forzata a tipo `COMMESSA`;
 * mapping deterministico di `segment_key` su identificativo sorgente AF (`md5 → UUID`);
 * idempotenza su chiave sorgente in AF (`sorgente_tipo_id`, `sorgente_uid`);
-* blocco aggiornamento se la riga AF risulta gia` fatturata;
+* blocco aggiornamento se la riga AF risulta già fatturata;
 * aggiornamento stato righe commessa emesse (`stato_emissione = EMESSA`);
 * supporto `dry_run` e filtro `only_approved` sulla funzione SQL.
 
@@ -315,12 +326,12 @@ Dopo la fase commesse, la fatturazione resta governata dal dominio lotti.
 
 ### Orchestrazione pipeline (Python)
 
-Il flusso e` orchestrato da `LottoPipelineRunner`:
+Il flusso è orchestrato da `LottoPipelineRunner`:
 
 1. Risolve o crea il lotto (`get_or_create_lotto`).
-2. Verifica precondizioni: lotto non gia` in esecuzione, nessuna segnalazione critica attiva.
+2. Verifica precondizioni: lotto non già in esecuzione, nessuna segnalazione critica attiva.
 3. Imposta stato `IN_ESECUZIONE` e emette `PIPELINE_STARTED` su `event_log`.
-4. Esegue un singolo step per run (modalita` operativa: avanzamento incrementale).
+4. Esegue un singolo step per run (modalità operativa: avanzamento incrementale).
 5. Per ogni step: aggiorna stato doc, logga fase, delega a `PipelineStepExecutor`, emette `STEP_COMPLETED`.
 6. Se tutti gli step completano: stato `COMPLETATO`, emette `PIPELINE_COMPLETED`.
 7. In caso di errore: stato `ERRORE`, dual-log (`error_log` tecnico + `event_log` di dominio), emette `PIPELINE_ERROR`.
@@ -421,7 +432,7 @@ erDiagram
 
 ### Step operativi tipici (massivo)
 
-1. DRAFT: selezione/preparazione delle attivita` da fatturare.
+1. DRAFT: selezione/preparazione delle attività da fatturare.
 2. EMESSA: generazione documento e task pre-fiscali.
 3. DEFINITIVA: numerazione documento.
 4. INVIATA: preparazione/invio su canale esterno (es. SDI).
@@ -443,24 +454,22 @@ un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA 
   stessi task** della corsia massiva. Cambia solo il rollback: la corsia immediata non ne ha,
   perché arriva da sola fino alla numerazione e una fattura numerata non si resetta.
 
-> ⚠️ **Correzione (2026-08-02).** Fino a questa data la corsia GIORNALIERO aveva lo step EMESSA
-> **vuoto** (`processi=[]`), e questa guida lo spiegava con «l'IVA è già calcolata alla nascita
-> del documento». **Non era vero**: nessun trigger ricalcola IVA e totali dopo la nascita, quindi
-> quella corsia — se accesa — avrebbe emesso documenti numerati, stampati e inviati allo SDI
-> **senza riepilogo IVA né totali**. Non era una corsia che calcolava meno: era una corsia che
-> emetteva documenti invalidi. Il difetto è rimasto latente solo perché nessun lotto GIORNALIERO
-> era mai stato eseguito. Le due corsie EMESSA sono ora allineate, ed è un **invariante
-> presidiato**: `test-pipeline-processi-invariante-v1.sql` fallisce se una tappa qualsiasi ha
-> corsie con `processi` divergenti, o se una corsia attiva resta vuota.
+> ⚠️ **Le due corsie EMESSA devono restare allineate, ed è un invariante presidiato.** Lo step EMESSA
+> non può essere vuoto su una corsia: nessun trigger ricalcola IVA e totali dopo la nascita del
+> documento, quindi una corsia attiva senza `processi` emetterebbe documenti numerati, stampati e
+> inviati allo SDI **senza riepilogo IVA né totali**. Non sarebbe una corsia che calcola meno: sarebbe
+> una corsia che emette documenti invalidi. Il presidio è
+> `test-pipeline-processi-invariante-v1.sql`: fallisce se una tappa qualsiasi ha corsie con
+> `processi` divergenti, o se una corsia attiva resta vuota.
 
 ### I task dello step DRAFT (entrambe le corsie)
 
-| # | Task | Cosa fa |
-|---|---|---|
-| 1 | `pull_attivita_da_commessa` | porta sulle attività fatturabili il lavoro maturato sulle commesse |
-| 2 | `select_attivita` | seleziona e **blocca** le attività che finiranno nel lotto |
-| 3 | `generate_fatture_righe` | crea testate e righe delle fatture |
-| 4 | `snapshot_indirizzi_lotto` | **congela** sulla fattura ciò che il documento stamperà: gli indirizzi (`vendite.fatture_indirizzi`) e l'**intestazione fiscale** delle due parti (`emittente_snapshot`, `cliente_snapshot`) |
+| #   | Task                        | Cosa fa                                                                                                                                                                                      |
+| --- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `pull_attivita_da_commessa` | porta sulle attività fatturabili il lavoro maturato sulle commesse                                                                                                                           |
+| 2   | `select_attivita`           | seleziona e **blocca** le attività che finiranno nel lotto                                                                                                                                   |
+| 3   | `generate_fatture_righe`    | crea testate e righe delle fatture                                                                                                                                                           |
+| 4   | `snapshot_indirizzi_lotto`  | **congela** sulla fattura ciò che il documento stamperà: gli indirizzi (`vendite.fatture_indirizzi`) e l'**intestazione fiscale** delle due parti (`emittente_snapshot`, `cliente_snapshot`) |
 
 Sul quarto task vale la pena fermarsi, perché è ciò che rende la **ristampa
 conforme**: da lì in avanti la fattura non legge più l'anagrafica: porta la
@@ -483,12 +492,12 @@ ricevono il loro lavoro per intero, la fattura in errore resta marcata e il lott
 
 ### I task dello step EMESSA (entrambe le corsie)
 
-| # | Task | Cosa fa |
-|---|---|---|
-| 1 | `genera_fondi_source_lotto` | genera i source di fondi/minimi |
-| 2 | `applica_fondi_lotto` | applica i fondi alle fatture del lotto |
-| 3 | `ricalcola_iva_lotto` | ricalcola riepiloghi IVA e totali — **produce `totale_a_pagare`** |
-| 4 | `genera_scadenze_lotto` | genera il **piano rate** di ogni fattura (`vendite.fatture_scadenze`), applicando il termine risolto dalla catena documento → commessa → cliente → *unica rata* — vedi [Termini di pagamento](/guide/termini-di-pagamento) |
+| #   | Task                        | Cosa fa                                                                                                                                                                                                                    |
+| --- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `genera_fondi_source_lotto` | genera i source di fondi/minimi                                                                                                                                                                                            |
+| 2   | `applica_fondi_lotto`       | applica i fondi alle fatture del lotto                                                                                                                                                                                     |
+| 3   | `ricalcola_iva_lotto`       | ricalcola riepiloghi IVA e totali — **produce `totale_a_pagare`**                                                                                                                                                          |
+| 4   | `genera_scadenze_lotto`     | genera il **piano rate** di ogni fattura (`vendite.fatture_scadenze`), applicando il termine risolto dalla catena documento → commessa → cliente → *unica rata* — vedi [Termini di pagamento](/guide/termini-di-pagamento) |
 
 ⚠️ **L'ordine 3 → 4 non è negoziabile**: la base di ripartizione delle rate è `totale_a_pagare`,
 che prima del ricalcolo non esiste. Invertirli farebbe sollevare `E_SCADENZE_BASE_NON_PRONTA` su
@@ -515,17 +524,17 @@ i task di rollback al posto di quelli forward. Il `PipelineStepExecutor` chiama
 
 **Quando scatta il rollback:**
 
-Il rollback e` manuale (richiesto dall'operatore o dall'API `reset_lotto`) oppure
+Il rollback è manuale (richiesto dall'operatore o dall'API `reset_lotto`) oppure
 automatico se la pipeline ha `meta.auto_step_rollback = true`. Non scatta mai
 spontaneamente su errore: un errore lascia il lotto in stato `ERRORE` e serve
 un rerun esplicito.
 
 **Il seed di oggi (corsia MASSIVO):**
 
-| Step | `processi` | `rollback` |
-|---|---|---|
-| DRAFT | `pull_attivita_da_commessa`, `select_attivita`, `generate_fatture_righe`, `snapshot_indirizzi_lotto` | `[]` (nessuno) |
-| EMESSA | `genera_fondi_source_lotto`, `applica_fondi_lotto`, `ricalcola_iva_lotto`, `genera_scadenze_lotto` | `reset_lotto_draft` |
+| Step   | `processi`                                                                                           | `rollback`          |
+| ------ | ---------------------------------------------------------------------------------------------------- | ------------------- |
+| DRAFT  | `pull_attivita_da_commessa`, `select_attivita`, `generate_fatture_righe`, `snapshot_indirizzi_lotto` | `[]` (nessuno)      |
+| EMESSA | `genera_fondi_source_lotto`, `applica_fondi_lotto`, `ricalcola_iva_lotto`, `genera_scadenze_lotto`   | `reset_lotto_draft` |
 
 In questo caso, se un lotto MASSIVO in stato EMESSA deve tornare a DRAFT, il sistema
 esegue il task `reset_lotto_draft`, che ripristina i fondi delle fatture sorgente,
@@ -550,11 +559,11 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 > si "riapre e si corregge": si demolisce e si rifà — per riaprirlo c'è la sorella
 > descritta qui sotto.
 >
-> ⚠️ **E il «ripristino» dei fondi non è integrale — né è più un ripristino.**
-> ⭐ **Dal 21-08-2026** `fn_reset_fondi_fattura` **cancella** l'atto di fondo che
-> non è stato eseguito, invece di riaprirlo: un atto mai eseguito è una
-> *proposta*, e il giro successivo ne fa una nuova letta sul residuo di adesso.
-> Restano fuori **quattro** casi — erano due fino al 31-08-2026 — tutti
+> ⚠️ **E il «ripristino» dei fondi non è integrale — né è un ripristino.**
+> `fn_reset_fondi_fattura` **cancella** l'atto di fondo che non è stato eseguito,
+> invece di riaprirlo: un atto mai eseguito è una *proposta*, e il giro successivo
+> ne fa una nuova, letta sul residuo di adesso.
+> Restano fuori **quattro** casi, tutti
 > segnalati nel diario della fattura (`vendite.fatture_log`) e **nessuno
 > bloccante**: il reset riesce comunque, quindi il log va **letto**, non dato per
 > pulito.
@@ -572,12 +581,11 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 > possono divergere: *un fondo che il reset non tocca è lo stesso fondo che una
 > persona non può cancellare, e per la stessa ragione.*
 >
-> ⚠️ I due **non dicono la stessa cosa**, e fino al 21-08-2026 il messaggio del
-> secondo diceva «già postato» — cioè proprio ciò che nel suo caso *non* era
-> successo.
+> ⚠️ **I due messaggi non dicono la stessa cosa**: quello del secondo avvisa «già
+> postato», cioè proprio ciò che nel suo caso *non* è successo.
 >
-> ⭐ **Dal 2026-08-03 esiste la sorella che il nome vecchio prometteva:**
-> `fn_riporta_lotto_a_draft` (verbo «Riporta in lavorazione»). Fa la stessa
+> ⭐ **La sorella che il nome vecchio prometteva** è `fn_riporta_lotto_a_draft`
+> (verbo «Riporta in lavorazione»). Fa la stessa
 > demolizione delle fatture pre-fiscali, ma **non chiude il lotto**: lo riporta a
 > DRAFT con `stato_operativo` APERTO e `riaperto_il` valorizzato, e al giro
 > successivo le fatture si **rigenerano** nello stesso lotto. Vale per MASSIVO
@@ -599,9 +607,9 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 
 * Il rollback pretende il lotto già in **DRAFT**; le **fatture** del lotto possono
   essere DRAFT o EMESSA (pre-fiscali), altrimenti la fn rifiuta.
-  ⚠️ Il vincolo al solo **MASSIVO** è **caduto il 2026-08-02** (D-L pt.2 + D-T):
-  anche un giro GIORNALIERO interrotto deve poter tornare indietro. Se si trova
-  documentazione che lo dà per vivo, è anteriore a quella data.
+  ⚠️ Il vincolo **vale per entrambe le corsie**: anche un giro GIORNALIERO
+  interrotto deve poter tornare indietro. Chi trova documentazione che lo dà per
+  vivo solo sul MASSIVO sta leggendo una versione precedente.
 * Dopo la DEFINITIVA (numerazione fiscale) il rollback globale non è più possibile;
   il sistema usa resume per fattura.
 * Le **fatture non tornano mai a DRAFT**: nella matrice `config.stati_doc_fiscale_transizioni`
@@ -611,11 +619,11 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
   auto-run, proprio perché distruttivo. Serve una richiesta esplicita
   (`POST /lotti/<id>/reset-draft/`).
 * Per una singola fattura esiste l'alternativa che **non** annulla il lotto:
-  `fn_elimina_fattura_da_lotto`. Dal 2026-08-04 il perimetro è **pre-fiscale su
+  `fn_elimina_fattura_da_lotto`. Il perimetro è **pre-fiscale su
   entrambi i fronti**: sia il lotto sia la fattura devono essere in DRAFT o
-  EMESSA, cioè non ancora numerati. Prima si pretendeva il lotto in **bozza**, e
-  quel vincolo era di troppo: il caso che motiva l'azione è proprio la fattura
-  difettosa dentro un lotto **emesso**, dove il pulsante c'era e non funzionava.
+  EMESSA, cioè non ancora numerati. Pretendere il lotto in **bozza** sarebbe di
+  troppo: il caso che motiva l'azione è proprio la fattura difettosa dentro un
+  lotto **emesso**.
   ⚠️ Togliere una fattura vuol dire **cancellarla**, testata compresa, e dopo non
   è più possibile sapere cosa diceva: resta solo la registrazione storica del suo
   passaggio nel lotto. È la stessa cosa che il ritorno in bozza fa su tutte le
@@ -627,33 +635,28 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 1. Lo step effettivo viene risolto con fallback configurativo (`utility + tipo_doc`, `utility`, `tipo_doc`, globale).
 2. Le transizioni tecniche del lotto sono governate da `fn_set_fatturazione_lotto_stato`.
 3. Ogni task-run deve essere tracciato con `tentativo` ed esito (`IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`, `ANNULLATO`).
-4. Le policy runtime task (resume/reset/annullabilita`) sono esterne alla sequenza step e risiedono in `fatturazione_pipeline_task_policy`.
+4. Le policy runtime task (resume/reset/annullabilità) sono esterne alla sequenza step e risiedono in `fatturazione_pipeline_task_policy`.
 5. I task devono lavorare con input centrato sul `lotto_id`, recuperando il resto dal contesto lotto.
 
 ### Naming runtime (Python)
 
-Per evitare ambiguita` tra SQL legacy e runtime applicativo:
+Per evitare ambiguità tra SQL legacy e runtime applicativo:
 
 * nel runtime Python usare naming senza prefissi DB (`run_lotto_pipeline`, `execute_pipeline_step`, `run_commesse_push`);
 
-* la semantica operativa corrente e` governata dai service Django.
+* la semantica operativa corrente è governata dai service Django.
 
 ---
 
 ## La riga di fattura: aggregazione, importo, esposizione
 
-> Sezione aggiunta il **2026-07-28**. Fino a quella data queste regole non erano
-> scritte da nessuna parte, e ricostruirle è costato una sessione intera di
-> indagine sul codice e sui dati. Riferimento:
-> `brief-fix-importi-riga-fattura-zero.md`.
-
 ### Tre livelli, non due
 
-| Livello | Tabella | Cosa contiene |
-|---|---|---|
-| Dettaglio | `vendite.attivita_fatturabili` | il lavoro fatturabile, riga per riga: quantità, prezzo, competenza, sorgente |
-| Sintesi | `vendite.fatture_righe` | **una riga per gruppo**: aggrega 1..n attività |
-| Rappresentazione | `vendite.vw_fattura_righe_esposte` | come il documento va **mostrato**: PDF, XML SDI, portale |
+| Livello          | Tabella                            | Cosa contiene                                                                |
+| ---------------- | ---------------------------------- | ---------------------------------------------------------------------------- |
+| Dettaglio        | `vendite.attivita_fatturabili`     | il lavoro fatturabile, riga per riga: quantità, prezzo, competenza, sorgente |
+| Sintesi          | `vendite.fatture_righe`            | **una riga per gruppo**: aggrega 1..n attività                               |
+| Rappresentazione | `vendite.vw_fattura_righe_esposte` | come il documento va **mostrato**: PDF, XML SDI, portale                     |
 
 Il legame fra i primi due è `attivita_fatturabili.fattura_riga_id`. Non esiste
 una tabella di dettaglio *sotto* la riga di fattura: **il dettaglio sono le
@@ -680,7 +683,7 @@ chiave, quella proprietà cadrebbe.
 di sorgenti diverse non esiste una sorgente singola. La tracciabilità è il
 puntatore delle attività.
 
-#### La rettifica non si aggrega con nient'altro (2026-08-18)
+#### La rettifica non si aggrega con nient'altro
 
 `fattura_riga_rettificata_id` **fa parte della chiave di gruppo**. Ne segue che
 una riga di rettifica sta da sola: due accrediti che rettificano righe di
@@ -710,7 +713,7 @@ prezzo non è quello dell'attività.
 
 Lo calcola il **database**, con un trigger, a ogni scrittura:
 
-```
+```text
 imponibile_riga = arrotonda(qta × prezzo × (1 − sconto/100), decimali, metodo)
 ```
 
@@ -720,9 +723,9 @@ dove decimali e metodo vengono da `vendite.articolo_regole_fatturazione`
 
 **Due arrotondamenti diversi, da non confondere**:
 
-| Cosa | Configurazione | Chi lo applica |
-|---|---|---|
-| Importo di **riga** | `articolo_regole_fatturazione` (per articolo) | trigger sulla riga |
+| Cosa                | Configurazione                                        | Chi lo applica                                                   |
+| ------------------- | ----------------------------------------------------- | ---------------------------------------------------------------- |
+| Importo di **riga** | `articolo_regole_fatturazione` (per articolo)         | trigger sulla riga                                               |
 | **Totale a pagare** | `emittenti_fiscali_utilities` (per emittente-utility) | `fn_ricalcola_totali_fattura`, con saldo riportato fra documenti |
 
 ⚠️ `arrotondamento_quantita_dec` si applica alla quantità della **singola
@@ -733,15 +736,15 @@ perderebbe precisione a monte dell'importo, dove nessuno la cerca.
 
 Un articolo composito **non arriva in fattura come riga unica**: il push lo
 espande e in commessa entrano **solo i componenti**, mai il padre. È il modello
-unificato componenti BoM del 2026-05-13, ed è voluto.
+unificato dei componenti BoM, ed è voluto.
 
 La regola di esposizione è
 **`catalogo.articoli_componenti.esposto_in_fattura`**, per singolo componente.
 Viene congelata sulla riga di fattura alla generazione, insieme all'identità del
 kit e all'articolo padre. La vista `vw_fattura_righe_esposte` produce poi:
 
-- **una riga padre** con il totale del kit;
-- sotto, i soli componenti con il flag a `true`, come righe **descrittive** senza
+* **una riga padre** con il totale del kit;
+* sotto, i soli componenti con il flag a `true`, come righe **descrittive** senza
   importo.
 
 I componenti non esposti non compaiono, ma il loro valore è nel totale del padre:
@@ -782,19 +785,19 @@ lì valgono per qualunque percorso, senza doverli enumerare.
 
 Rifiuta in due casi, entrambi **prima** di consumare il progressivo:
 
-| Codice | Quando |
-|---|---|
-| `E_FATTURA_SENZA_RIGHE` | il documento non ha righe |
+| Codice                                          | Quando                                                |
+| ----------------------------------------------- | ----------------------------------------------------- |
+| `E_FATTURA_SENZA_RIGHE`                         | il documento non ha righe                             |
 | `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | il documento è incoerente — sei condizioni, qui sotto |
 
-A questi si aggiunge, dal 2026-08-21, un terzo rifiuto che **non** vive in
+A questi si aggiunge un terzo rifiuto che **non** vive in
 `fn_assign_numero_fattura` ma un gradino sopra, in
 `fn_numera_fattura_opz_emessa` — e la differenza di sede è voluta: gli altri due
 guardano il documento *in sé*, questo guarda il suo **rapporto con un altro
 documento**.
 
-| Codice | Quando |
-|---|---|
+| Codice                                         | Quando                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
 | `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**) | il documento rettifica righe di una fattura che **non ha ancora un numero** |
 
 Una nota di credito deve citare numero e data del documento corretto nel blocco
@@ -832,7 +835,7 @@ ora esplicito nel task (`sorted()` in `_handle_numera_fatture_task`), non
 ereditato dall'`ORDER BY` del repository. ⛔ Il caso **cross-lotto** invece deve
 fermarsi: è la ragione per cui la guardia esiste.
 
-Le sei condizioni del secondo (guard **D-K**, dal 2026-08-02) non sono un elenco
+Le sei condizioni del secondo (guard **D-K**) non sono un elenco
 di controlli scelti a gusto: verificano una **catena continua**, senza anelli
 scoperti, fra ciò che il documento dichiara e ciò che lo compone.
 
@@ -852,10 +855,10 @@ riepiloghi IVA ──(5)──► totale_doc ──(6)──► totale_a_pagare 
 L'errore arriva con **tutti** i motivi insieme, non uno per volta: un solo
 rilancio dice all'operatore tutto ciò che manca al documento.
 
-> ⚠️ **Perché prima del progressivo — e una motivazione da non ripetere.** Fino
-> al 2026-08-02 questa scelta veniva spiegata con «`nextval` non fa rollback,
-> fallire dopo lascerebbe un buco nella numerazione». **Non è vero in questo
-> modello**: `fn_get_next_progressivo` non usa alcuna sequence — è
+> ⚠️ **Perché prima del progressivo — e una motivazione da non ripetere.** La
+> spiegazione comoda è «`nextval` non fa rollback, fallire dopo lascerebbe un buco
+> nella numerazione». **In questo modello non è vero**:
+> `fn_get_next_progressivo` non usa alcuna sequence — è
 > `pg_advisory_xact_lock` + `UPDATE last_numero` su
 > `registri_fatturazione_progressivi` — quindi è transazionale e il numero fa
 > rollback insieme al documento.
@@ -875,21 +878,16 @@ rilancio dice all'operatore tutto ciò che manca al documento.
 
 ## Il documento che torna indietro: la nota di credito
 
-> Sezione aggiunta il **2026-08-21**, quando la prima nota di credito è
-> esistita sui dati veri. Design-of-record:
-> [brief-design-note-credito-resi.md](../dev/work-done/brief-design-note-credito-resi.md).
-
-Fino al 2026-08 il flusso copriva solo l'andata: sorgente → commessa → fattura →
-SDI. La nota di credito è il **ritorno del valore**, e sta al valore come il
-reso sta alla merce.
+Il flusso dell'andata è sorgente → commessa → fattura → SDI. La nota di credito è
+il **ritorno del valore**, e sta al valore come il reso sta alla merce.
 
 ### Natura e canale sono due assi, non uno
 
 La nota di credito **non è un tipo documento fiscale nuovo**: è una **natura**.
 
-| Asse | Tabella | Dice |
-|---|---|---|
-| Canale | `vendite.tipi_doc_fiscale` | come il documento viaggia (immediata, differita, …) |
+| Asse   | Tabella                     | Dice                                                              |
+| ------ | --------------------------- | ----------------------------------------------------------------- |
+| Canale | `vendite.tipi_doc_fiscale`  | come il documento viaggia (immediata, differita, …)               |
 | Natura | `config.nature_doc_fiscale` | cosa il documento **è**: `FATTURA`, `NOTA_CREDITO`, `NOTA_DEBITO` |
 
 Metterla in `tipi_doc_fiscale` avrebbe moltiplicato le righe (ogni canale × ogni
@@ -904,10 +902,10 @@ fatto. La fattura corretta resta nel suo stato.
 
 ### Il legame è di riga, e l'indice documentale è una proiezione
 
-| Dove | Cosa | Quando esiste |
-|---|---|---|
-| `fatture_righe.riga_rettificata_id` | il **fatto**: questa riga corregge quella | dalla generazione delle righe |
-| `vendite.fatture_rettifiche` | l'**indice** documento↔documento | dopo la numerazione, scritto dal task `popola_fatture_rettifiche` |
+| Dove                                | Cosa                                      | Quando esiste                                                     |
+| ----------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| `fatture_righe.riga_rettificata_id` | il **fatto**: questa riga corregge quella | dalla generazione delle righe                                     |
+| `vendite.fatture_rettifiche`        | l'**indice** documento↔documento          | dopo la numerazione, scritto dal task `popola_fatture_rettifiche` |
 
 Non sono due verità: la seconda è la proiezione della prima, idempotente e mai
 distruttiva. La differenza che conta è **quando** sono disponibili — ed è il
@@ -939,35 +937,27 @@ tipo: senza, etichetterebbero «Fattura» un accredito.
 
 ### Le due strade, complementari
 
-La metà **pre**-numerazione — il ritorno di un lotto a DRAFT — è un'altra
-strada, complementare a questa: la nota di credito copre ciò che è già uscito,
-il ritorno in bozza ciò che non è ancora numerato. ✅ **Anche quella esiste**:
-`fn_riporta_lotto_a_draft`, il verbo «Riporta in lavorazione» descritto in
-§«Rollback di step» di questa guida, chiuso il 2026-08-04
-([brief-be-ritorno-lotto-a-draft](../dev/work-done/brief-be-ritorno-lotto-a-draft.md)).
-⚠️ Fino al 2026-09-12 questa sezione si chiamava «Cosa resta aperto» e
-rimandava alla roadmap, item 1 — che a sua volta lo dava aperto: la guida
-descriveva il verbo trecento righe più su e lo dichiarava mancante qui. La
-storia dell'item sta nella
-[roadmap archiviata](../dev/work-done/fatturazione-roadmap.md), §1.
+La metà **pre**-numerazione — il ritorno di un lotto a DRAFT — è l'altra strada,
+complementare a questa: la nota di credito copre ciò che è già uscito, il ritorno
+in bozza ciò che non è ancora numerato. Il verbo è `fn_riporta_lotto_a_draft`,
+descritto in §«Rollback di step» di questa guida.
 
 ---
 
 ## Dashboard operative
 
-> Questa sezione descrive l'**assetto realmente implementato** (aggiornata
-> 2026-07-22). Guida operativa per l'utente finale:
-> [cruscotti-fatturazione.md](cruscotti-fatturazione.md) — §7 per i verbi.
+> Guida operativa per l'utente finale:
+> [Cruscotti fatturazione](/guide/cruscotti-fatturazione) — §7 per i verbi.
 
 ### Le superfici
 
-| Rotta | Cosa | Read/Write |
-| --- | --- | --- |
-| `/vendite/situazione-aperta` | Serbatoio **pre-commessa** per fase (preventivi, offerte, ordini, contratti) | sola lettura |
-| `/vendite/dashboard-competenza` | **Lente 1** — funnel commessa → fattura per mese di competenza. È il **cockpit**: qui vivono i verbi | lettura + **azioni** |
-| `/vendite/dashboard-backlog` | **Lente 2** — solo il non-verde, per anzianità | sola lettura |
-| `/vendite/lotti` | Registro lotti + drawer diagnostico (fatture, task-run, segnalazioni, stampa/ristampa) | lettura + azioni per-lotto |
-| `/strumenti/code-lavoro` | Code asincrone: lavori generici e outbox stampa | lettura + governo job |
+| Rotta                           | Cosa                                                                                                 | Read/Write                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------- |
+| `/vendite/situazione-aperta`    | Serbatoio **pre-commessa** per fase (preventivi, offerte, ordini, contratti)                         | sola lettura               |
+| `/vendite/dashboard-competenza` | **Lente 1** — funnel commessa → fattura per mese di competenza. È il **cockpit**: qui vivono i verbi | lettura + **azioni**       |
+| `/vendite/dashboard-backlog`    | **Lente 2** — solo il non-verde, per anzianità                                                       | sola lettura               |
+| `/vendite/lotti`                | Registro lotti + drawer diagnostico (fatture, task-run, segnalazioni, stampa/ristampa)               | lettura + azioni per-lotto |
+| `/strumenti/code-lavoro`        | Code asincrone: lavori generici e outbox stampa                                                      | lettura + governo job      |
 
 Il read-side delle tre lenti poggia sulle viste `vendite.vw_dash_*` esposte da
 endpoint GET sottili: nessuna logica di dominio nel frontend.
@@ -977,11 +967,11 @@ endpoint GET sottili: nessuna logica di dominio nel frontend.
 Tre azioni, sulle card del funnel, ciascuna con permesso dedicato. **Non esistono
 implementazioni «da interfaccia»**: chiamano lo stesso core del batch notturno.
 
-| Verbo | Endpoint | Permesso | Semantica |
-| --- | --- | --- | --- |
-| **Approva** | `POST /vendite/fatturazione/approva-competenza/` | `approva_attivita_commessa` | approva le attività `DA_APPROVARE` del mese (all-or-nothing, idempotente) |
-| **Fattura adesso** | `POST /vendite/fatturazione/run/` | `genera_fatture_lotti` | giro on-demand, corsia differita, **cumulativo su competenza ≤ M**, si ferma a `EMESSA` |
-| **Rendi definitive** | `POST /vendite/fatturazione/numera/` | `numera_fatture_lotti` | step `DEFINITIVA` sui lotti `EMESSA` del mese: numera **e** accoda la stampa |
+| Verbo                | Endpoint                                         | Permesso                    | Semantica                                                                               |
+| -------------------- | ------------------------------------------------ | --------------------------- | --------------------------------------------------------------------------------------- |
+| **Approva**          | `POST /vendite/fatturazione/approva-competenza/` | `approva_attivita_commessa` | approva le attività `DA_APPROVARE` del mese (all-or-nothing, idempotente)               |
+| **Fattura adesso**   | `POST /vendite/fatturazione/run/`                | `genera_fatture_lotti`      | giro on-demand, corsia differita, **cumulativo su competenza ≤ M**, si ferma a `EMESSA` |
+| **Rendi definitive** | `POST /vendite/fatturazione/numera/`             | `numera_fatture_lotti`      | step `DEFINITIVA` sui lotti `EMESSA` del mese: numera **e** accoda la stampa            |
 
 Esiste anche la variante per-lotto `POST /vendite/fatturazione/lotti/<id>/numera/`
 (dal drawer lotto) e la ristampa massiva `.../<id>/ristampa/`.
@@ -999,7 +989,7 @@ comando «fattura e numera» eliminerebbe il punto di controllo dove serve.
 
 Corollario sul modello: lo stato della **fattura segue lo stato del lotto**
 (`DRAFT → EMESSA → DEFINITIVA`); il salto `DRAFT → DEFINITIVA` **non esiste** per la
-fattura nella matrice transizioni. Dal 2026-07-22 un constraint trigger DEFERRED
+fattura nella matrice transizioni. Un constraint trigger DEFERRED
 impedisce che lotto e fatture restino disallineati a fine transazione
 (`E_LOTTO_FATTURE_STATO_INCOERENTE`).
 
@@ -1009,11 +999,11 @@ I verbi di perimetro **non eseguono in-request**: accodano un job in
 `dbops.coda_lavori` e rispondono con l'handle. Criterio (invariante I-3):
 **1 documento → sincrono, 2+ → background**. La pagina non resta mai bloccata.
 
-| Processo | Cadenza | Ruolo |
-| --- | --- | --- |
-| `run_fatturazione_batch` | notturno | giro automatico; la corsia **GIORNALIERO** arriva fino alla `DEFINITIVA` |
-| `draina_coda_lavori` | ogni minuto | esegue i job accodati dalla UI, con l'identità dell'operatore (RLS) |
-| `draina_coda_stampa` | ogni minuto | renderizza i PDF **fuori** dalla transazione fiscale (invariante I-4b) |
+| Processo                 | Cadenza     | Ruolo                                                                    |
+| ------------------------ | ----------- | ------------------------------------------------------------------------ |
+| `run_fatturazione_batch` | notturno    | giro automatico; la corsia **GIORNALIERO** arriva fino alla `DEFINITIVA` |
+| `draina_coda_lavori`     | ogni minuto | esegue i job accodati dalla UI, con l'identità dell'operatore (RLS)      |
+| `draina_coda_stampa`     | ogni minuto | renderizza i PDF **fuori** dalla transazione fiscale (invariante I-4b)   |
 
 I verbi della dashboard **non sostituiscono** il batch notturno: lo anticipano, e
 coprono ciò che il batch lascia all'umano — in primo luogo la numerazione della
@@ -1024,10 +1014,10 @@ fatturazione massiva.
 Ogni documento porta un flag che decide su quale delle due corsie viene
 instradato il lavoro che ne deriva:
 
-| Flag | Corsia | `tipo_lotto` | Arriva a |
-| --- | --- | --- | --- |
-| `true` | immediata | `GIORNALIERO` | **`DEFINITIVA`** — numera da sola |
-| `false` *(default)* | differita | `MASSIVO` | **`EMESSA`** — la numerazione resta un atto separato |
+| Flag                | Corsia    | `tipo_lotto`  | Arriva a                                             |
+| ------------------- | --------- | ------------- | ---------------------------------------------------- |
+| `true`              | immediata | `GIORNALIERO` | **`DEFINITIVA`** — numera da sola                    |
+| `false` *(default)* | differita | `MASSIVO`     | **`EMESSA`** — la numerazione resta un atto separato |
 
 **Dove si trova** *(dal 27-07-2026)*: `vendite.preventivi`, `vendite.ordini`,
 `vendite.contratti`, `vendite.ddt`. Prima esisteva **solo sui preventivi**: le
@@ -1064,8 +1054,6 @@ altre sorgenti i due valori sono indipendenti.
 
 ### Fatturare un documento preciso: l'emissione mirata
 
-*(dal 27-07-2026)*
-
 Il giro di fatturazione, schedulato o lanciato a mano, pesca **tutto**
 l'emittibile di un perimetro. Serviva poter dire: «fattura **questo** preventivo,
 adesso, senza trascinare dentro il resto».
@@ -1074,10 +1062,10 @@ adesso, senza trascinare dentro il resto».
 
 Non è la commessa e non è sempre un documento:
 
-- **non la commessa**, perché è multi-sorgente. Un preventivo e un contratto
+* **non la commessa**, perché è multi-sorgente. Un preventivo e un contratto
   dello stesso cliente, stesso mese, stesso perimetro commerciale finiscono
   nella **stessa** commessa: selezionarla non isola niente;
-- **non sempre un documento**, perché le righe della *porta oneri* sono senza
+* **non sempre un documento**, perché le righe della *porta oneri* sono senza
   documento per costruzione.
 
 Un **gruppo fatturabile** è quindi *un documento sorgente* **oppure** *gli oneri
@@ -1097,21 +1085,21 @@ invisibile, recuperabile solo dal giro schedulato.
 
 #### Cosa garantisce
 
-| | |
-|---|---|
-| Si fattura **solo** ciò che si è chiesto | anche se la commessa contiene altro lavoro idoneo |
-| Ciò che non si è chiesto **resta come prima** | stesso stato, ancora fatturabile: nessun effetto collaterale |
-| Si può ripetere | prima il preventivo, domani il contratto: due giri che convivono |
-| Si ferma a **EMESSA** | la numerazione resta l'atto separato «Rendi definitive» |
+|                                               |                                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| Si fattura **solo** ciò che si è chiesto      | anche se la commessa contiene altro lavoro idoneo                |
+| Ciò che non si è chiesto **resta come prima** | stesso stato, ancora fatturabile: nessun effetto collaterale     |
+| Si può ripetere                               | prima il preventivo, domani il contratto: due giri che convivono |
+| Si ferma a **EMESSA**                         | la numerazione resta l'atto separato «Rendi definitive»          |
 
 #### Il rapporto col flag di corsia
 
 Sono due strumenti distinti, e non vanno sovrapposti:
 
-| Serve a | Strumento | Quando |
-|---|---|---|
+| Serve a                                         | Strumento                     | Quando                                                          |
+| ----------------------------------------------- | ----------------------------- | --------------------------------------------------------------- |
 | «questo cliente va **sempre** fatturato subito» | flag `fatturazione_immediata` | **prima** del push, alla creazione o accettazione del documento |
-| «fattura **questo**, adesso» | emissione mirata | in qualsiasi momento, anche a lavoro già in commessa |
+| «fattura **questo**, adesso»                    | emissione mirata              | in qualsiasi momento, anche a lavoro già in commessa            |
 
 Il flag è *instradamento automatico*, deciso a monte e poi immutabile.
 L'emissione mirata è un *atto puntuale dell'operatore*. Il caso «cambio idea
@@ -1133,38 +1121,38 @@ prodotti, non uno solo.
 
 ### Monitoraggio
 
-- **Badge top bar**: conteggio dei processi vivi dell'operatore + liveness dei
+* **Badge top bar**: conteggio dei processi vivi dell'operatore + liveness dei
   worker (rosso = drainer fermi). Apre un drawer di riepilogo.
-- **Strumenti → Code di lavoro**: due schede — coda lavori (scope per **utente**)
+* **Strumenti → Code di lavoro**: due schede — coda lavori (scope per **utente**)
   e coda stampa (scope per **emittente**, via JOIN a `fatture`). Da qui si annulla
   un job `PENDING` o si rimette in coda un job in `ERRORE`/bloccato.
-- **Pannello errori della Lente 1**: errori vivi del mese, col codice lotto
+* **Pannello errori della Lente 1**: errori vivi del mese, col codice lotto
   cliccabile che porta al lotto interessato (stesso aggancio dal drill-down).
-- Livelli di log: vedi §«Gestione errori e osservabilità».
+* Livelli di log: vedi §«Gestione errori e osservabilità».
 
 ---
 
-## Gestione errori e osservabilita`
+## Gestione errori e osservabilità
 
 Obiettivo: garantire diagnosi rapida e riesecuzione sicura senza perdita di coerenza.
 
 ### Tre livelli di log
 
-Il sistema utilizza tre livelli di logging complementari, ciascuno con finalita` distinta:
+Il sistema utilizza tre livelli di logging complementari, ciascuno con finalità distinta:
 
-| Log                | Scopo                                    | Risponde a                            | Tabella                                                      |
-| ------------------ | ---------------------------------------- | ------------------------------------- | ------------------------------------------------------------ |
-| **Error log**      | Eccezioni tecniche con catalogo messaggi | "Cosa e` andato storto?"              | `dbops.error_log`                                            |
-| **Event log**      | Timeline eventi di dominio per entita`   | "Cosa e` successo al lotto/commessa?" | `vendite.event_log`                                          |
-| **Log funzionali** | Dettaglio operativo fase/fattura/push    | "Qual e` l'esito di questa fase?"     | `fatturazione_lotti_log`, `fatture_log`, `commesse_push_log` |
+| Log                | Scopo                                    | Risponde a                           | Tabella                                                      |
+| ------------------ | ---------------------------------------- | ------------------------------------ | ------------------------------------------------------------ |
+| **Error log**      | Eccezioni tecniche con catalogo messaggi | "Cosa non ha funzionato"             | `dbops.error_log`                                            |
+| **Event log**      | Timeline eventi di dominio per entità    | "Cosa è successo al lotto/commessa?" | `vendite.event_log`                                          |
+| **Log funzionali** | Dettaglio operativo fase/fattura/push    | "Come sta andando questa fase?"      | `fatturazione_lotti_log`, `fatture_log`, `commesse_push_log` |
 
 ### vendite.event_log — timeline unificata
 
 Tabella append-only (UPDATE/DELETE bloccati da trigger) che registra tutti gli eventi di dominio:
 
 * **Domini**: `PIPELINE`, `COMMESSE`, `SDI`, `FATTURE`
-* **Entita`**: `LOTTO`, `FATTURA`, `COMMESSA`, `TASK_RUN`
-* **Severita`**: `INFO`, `WARN`, `ERROR`
+* **Entità**: `LOTTO`, `FATTURA`, `COMMESSA`, `TASK_RUN`
+* **Severità**: `INFO`, `WARN`, `ERROR`
 * **Correlazione**: `correlation_id` (UUID) lega eventi dello stesso batch/job
 
 ### Come funziona il correlation_id
@@ -1180,15 +1168,8 @@ in un'unica traccia.
 3. Ogni chiamata a `fn_log_event()` lo riceve e lo persiste in `event_log`.
 4. Se non fornito dal chiamante, il campo resta `NULL` (eventi non correlati).
 
-**Query di debug:**
-
-```sql
--- Timeline completa di un run pipeline
-SELECT event_time, domain, event_code, severity, entity_type, entity_id, payload
-FROM vendite.event_log
-WHERE correlation_id = '<uuid-del-lock-batch>'
-ORDER BY event_time;
-```
+**Query di debug:** la timeline si ricostruisce tutta da `correlation_id`
+([esempio](#area-tecnica-esempi)).
 
 **Stato attuale e limiti:**
 
@@ -1239,16 +1220,16 @@ Regole tecniche:
 1. Creazione/riuso commessa serializzata con advisory lock in `fn_get_or_create_commessa`.
 2. Upsert righe commessa idempotente su `(commessa_id, segment_key)`.
 3. Emissione verso AF idempotente su chiave sorgente (`sorgente_tipo_id`, `sorgente_uid`).
-4. Se una riga AF risulta gia` fatturata, l'update deve essere bloccato.
+4. Se una riga AF risulta già fatturata, l'update deve essere bloccato.
 5. Endpoint di orchestrazione protetti da `Idempotency-Key`.
 
 ---
 
 ## Scheduling e orchestrazione
 
-Il flusso e` pensato per esecuzione schedulata e on-demand.
+Il flusso è pensato per esecuzione schedulata e on-demand.
 
-L'orchestrazione runtime e` applicativa (Python/Django): il database mantiene stato, regole e log di dominio.
+L'orchestrazione runtime è applicativa (Python/Django): il database mantiene stato, regole e log di dominio.
 
 ### Job e classi orchestranti
 
@@ -1275,7 +1256,7 @@ Per ambienti ad alto volume, adottare queste linee guida:
 
 1. Eseguire push/emissione in chunk (`limit/offset` o finestre per ID).
 2. Limitare il perimetro per competenza, BA, utility, emittente.
-3. Monitorare tempi medi per fase e cardinalita` righe processate.
+3. Monitorare tempi medi per fase e cardinalità righe processate.
 4. Verificare periodicamente piani query e indici su tabelle `commesse_*` e `attivita_fatturabili`.
 5. Definire soglie operative per split automatico dei lotti massivi.
 
@@ -1303,7 +1284,20 @@ KPI minimi:
 
 ---
 
-## Query rapide di controllo
+## Area tecnica — esempi
+
+**La timeline di un run pipeline** — un solo `correlation_id` (il `lock_batch_id`) tiene insieme
+start, step, completamento ed errore:
+
+```sql
+SELECT event_time, domain, event_code, severity, entity_type, entity_id, payload
+FROM vendite.event_log
+WHERE correlation_id = '<uuid-del-lock-batch>'
+ORDER BY event_time;
+```
+
+**Le tre domande di controllo prima di un giro** — cosa è emettibile nel mese, cosa è rimasto non
+emesso su una commessa, e com'è fatta la pipeline di una corsia:
 
 ```sql
 -- Commesse emittibili nel mese
@@ -1336,4 +1330,7 @@ Il processo risulta separato in due livelli chiari:
 * livello business-operativo: sorgenti -> commesse -> commesse_attivita;
 * livello fiscale-documentale: attivita_fatturabili -> lotti -> fatture.
 
-Questa separazione migliora controllo, idempotenza e tracciabilita` dei flussi.
+Questa separazione migliora controllo, idempotenza e tracciabilità dei flussi.
+
+---
+{% include-markdown "signature-core.md" %}

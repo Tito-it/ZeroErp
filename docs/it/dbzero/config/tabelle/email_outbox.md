@@ -44,6 +44,8 @@
 | FOREIGN KEY | email_outbox_email_template_id_fkey | email_template_id |
 | FOREIGN KEY | email_outbox_pratica_id_fkey | pratica_id |
 | FOREIGN KEY | email_outbox_unita_organizzativa_id_fkey | unita_organizzativa_id |
+| FOREIGN KEY | fk_config_email_outbox_auth_user | auth_user_id |
+| FOREIGN KEY | fk_config_email_outbox_creato_da_user | creato_da_user_id |
 | FOREIGN KEY | fk_email_outbox_email_log | email_log_id |
 | FOREIGN KEY | fk_email_outbox_emittente_fiscale | emittente_fiscale_id |
 | PRIMARY KEY | email_outbox_pkey | id |

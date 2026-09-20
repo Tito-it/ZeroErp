@@ -457,3 +457,6 @@ pratiche ZeroErp via API bidirezionale.
 | `apps/amm_software/api/email_views.py` | API admin (account, template, log) |
 | `apps/core/api/email_views.py` | API operatore (outbox, allegati, log) |
 | `apps/core/management/commands/send_pending_emails.py` | Command coda email |
+
+---
+{% include-markdown "signature-core.md" %}

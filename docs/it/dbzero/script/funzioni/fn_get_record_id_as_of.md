@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_record_id_as_of`
 
 ```sql
-CREATE FUNCTION fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+CREATE FUNCTION fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
+CREATE OR REPLACE FUNCTION script.fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
  RETURNS text
  LANGUAGE plpgsql
 AS $function$
@@ -26,7 +26,8 @@ BEGIN
 -- p_table: nome della tabella originaria (e storica)
 -- p_id: PK del record originario, passato come TEXT
 -- p_fk_col: nome della colonna FK in storico (es. 'soggetto_id')
--- p_as_of: data/ora di validità desiderata
+-- p_as_of: istante di validita' desiderato (timestamptz, rev 20260920-06:
+--          prima era timestamp castato col fuso di sessione)
 -- Output
 -- v_id: ID TEXT del record valido a p_as_of, cercato solo nello storico
 -- Se non esiste snapshot valido, restituisce NULL
@@ -68,8 +69,8 @@ BEGIN
       v_id_hist, v_hist_schema, v_hist_table, p_fk_col, v_pk_type
     )
     INTO v_id
-    USING p_id, p_as_of::timestamptz;
-    
+    USING p_id, p_as_of;
+
   -- Se non trovato, v_id rimane NULL
   -- Se errore, loggo e rilancio
   EXCEPTION WHEN OTHERS THEN
@@ -87,7 +88,7 @@ BEGIN
         'state',     SQLSTATE
       ),
       NULL::uuid,
-      p_schema, p_table, SQLSTATE  
+      p_schema, p_table, SQLSTATE
     );
   END;
 
@@ -96,9 +97,12 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp without time zone)
-IS 'Restituisce l''ID TEXT di un record valido a p_as_of esclusivamente dallo storico; 
-  se non esiste snapshot valido, restituisce NULL.';
+COMMENT ON FUNCTION script.fn_get_record_id_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
+IS 'Restituisce l''ID TEXT di un record valido a p_as_of esclusivamente dallo storico;
+  se non esiste snapshot valido, restituisce NULL. ⭐ rev 2026-09-20 (20260920-06):
+  p_as_of e'' timestamptz — prima era timestamp castato col TimeZone della sessione
+  chiamante (gemella di fn_get_snapshot_as_of, 20260920-05). Documento
+  valutazione-modello-di-dominio-db, V-3.';
 ```
 
 ---

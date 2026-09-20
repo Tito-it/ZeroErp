@@ -281,17 +281,41 @@ SELECT CASE
     ELSE ok(true, 'Creazione articolo componente skipped: riferimenti mancanti')
 END;
 
+-- 🔴 REV 2026-09-20 — QUESTA ASSERZIONE ERA VERDE PER UN ERRORE CHE NON ERA IL SUO.
+--   Due difetti in una riga sola: il codice «duplicato» era 'ART…' mentre
+--   l'articolo creato sopra e' 'ARC…' — quindi non duplicava niente — e l'INSERT
+--   ometteva `uom_id`, che e' NOT NULL, per cui la riga moriva su 23502
+--   («valore nullo nella colonna uom_id») e `uq_articoli_codice` non veniva mai
+--   raggiunto. Il test passava per una ragione diversa da quella che dichiarava.
+--   Trovato con la sonda del discriminante impossibile ('ZZZZZ'): pgTAP stampa
+--   lo SQLSTATE vero invece di accettare qualunque errore. Vedi D11 di
+--   migliorie-generali-da-test-valutazione.md. Ora l'INSERT e' identico a quello
+--   che riesce (stesse FK, stesso uom_id), salvo il codice: l'unica cosa che
+--   questa riga puo' violare e' l'unique.
 SELECT CASE
     WHEN (SELECT can_run FROM tmp_can_run)
     THEN throws_ok(
         $$
-        INSERT INTO catalogo.articoli (codice, descrizione)
+        INSERT INTO catalogo.articoli (
+            codice,
+            descrizione,
+            uom_id,
+            tipo_voce_id,
+            gruppo_voce_id,
+            spesa_id,
+            iva_id
+        )
         VALUES (
-            (SELECT 'ART' || right(ts, 6) FROM tmp_test_keys),
-            'ARTICOLO DUPLICATO'
+            (SELECT 'ARC' || right(ts, 6) FROM tmp_test_keys),
+            'ARTICOLO DUPLICATO',
+            (SELECT uom_base_id FROM tmp_ids),
+            (SELECT tipo_id FROM tmp_fk_refs),
+            (SELECT gruppo_id FROM tmp_fk_refs),
+            (SELECT spesa_id FROM tmp_fk_refs),
+            (SELECT iva_id FROM tmp_fk_refs)
         );
         $$,
-        NULL,
+        '23505',
         NULL,
         'Codice articolo duplicato: bloccato'
     )
@@ -363,7 +387,7 @@ SELECT CASE
             note_id = (SELECT id FROM tmp_note)
         WHERE id = (SELECT id FROM tmp_art_base);
         $$,
-        NULL,
+        '23514',
         NULL,
         'note_target_tipo non valido per articoli: bloccato'
     )
@@ -379,7 +403,7 @@ SELECT CASE
             note_id = 999999999
         WHERE id = (SELECT id FROM tmp_art_base);
         $$,
-        NULL,
+        '23503',
         NULL,
         'FK note_id inesistente: bloccato'
     )
@@ -438,7 +462,7 @@ SELECT CASE
             true
         );
         $$,
-        NULL,
+        '23505',
         NULL,
         'UOM operativa duplicata (articolo_id, uom_id): bloccata'
     )
@@ -464,7 +488,7 @@ SELECT CASE
             true
         );
         $$,
-        NULL,
+        '23505',
         NULL,
         'Seconda UOM base per articolo: bloccata'
     )
@@ -550,7 +574,7 @@ SELECT CASE
             true
         );
         $$,
-        NULL,
+        '23P01',
         NULL,
         'Overlap articoli_componenti: bloccato'
     )

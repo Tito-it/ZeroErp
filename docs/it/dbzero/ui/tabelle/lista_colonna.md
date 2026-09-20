@@ -28,9 +28,9 @@
 | ricercabile_full | boolean | NO | false |
 | sensibile | boolean | NO | false |
 | attivo | boolean | NO | true |
-| data_insert | timestamp without time zone | NO | now() |
+| data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying | NO |  |
-| data_update | timestamp without time zone | YES |  |
+| data_update | timestamp with time zone | YES |  |
 | user_update | character varying | YES |  |
 | etichetta_i18n_key | character varying | YES |  |
 | priorita | smallint | NO | 50 |

@@ -35,10 +35,10 @@ Funzione `fn_check_*`: puro boolean, no RAISE.
 
 ### Parametri di input
 
-| Parametro                | Tipo                                                    | Descrizione                                |
-| ------------------------ | ------------------------------------------------------- | ------------------------------------------ |
-| `p_auth_user_id`         | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | ID utente Django (o `NULL` per job batch). |
-| `p_emittente_fiscale_id` | `anagrafiche.emittenti_fiscali.id%TYPE`                 | ID emittente fiscale da verificare.        |
+| Parametro                | Tipo                                    | Descrizione                                |
+| ------------------------ | --------------------------------------- | ------------------------------------------ |
+| `p_auth_user_id`         | `integer`                               | ID utente Django (o `NULL` per job batch). |
+| `p_emittente_fiscale_id` | `anagrafiche.emittenti_fiscali.id%TYPE` | ID emittente fiscale da verificare.        |
 
 ---
 
@@ -51,9 +51,10 @@ Ritorna `boolean`.
 ### Regole di risoluzione
 
 1. **`p_auth_user_id` NULL** → `true` (job batch, nessun filtro utente)
-2. **ADMIN** → `true` (accesso completo a tutti gli emittenti)
-3. **Whitelist vuota** (nessuna riga in `user_emittenti_fiscali`) → `true` (nessuna restrizione)
-4. **Whitelist con righe** → `true` solo se l'emittente e presente nella whitelist
+2. **Emittente non attivo** → `false`
+3. **SUPER_ADMIN** → `true` (accesso completo a tutti gli emittenti)
+4. **Whitelist vuota** (nessuna riga in `user_emittenti_fiscali`) → `false`: **fail-closed**, la riga mancante e' un errore di configurazione, non un permesso
+5. **Whitelist con righe** → `true` solo se l'emittente e presente nella whitelist
 
 ---
 

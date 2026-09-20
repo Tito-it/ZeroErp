@@ -14,7 +14,7 @@
 | tipo_evento | character | NO |  |
 | data_evento | date | NO |  |
 | note | text | YES |  |
-| data_insert | timestamp without time zone | YES | now() |
+| data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
 
 ## 🔒 Vincoli

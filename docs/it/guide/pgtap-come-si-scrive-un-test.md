@@ -105,6 +105,14 @@ con il terzo parametro; come `zeroerp_app` si apre il contesto e si chiama
 `fn_pgtap_crea_cliente_ba` **senza** terzo parametro (dalla rev `20260912-38` il
 legame lo lascia al trigger, verso l'emittente di chi agisce).
 
+⭐ **La riga di contesto del template lo fa da sola, se serve.** Da
+`20260920-01`, `script.fn_pgtap_set_contesto_operatore()` senza argomento —
+quando non trova nessun operatore, cioè su un database vuoto — costruisce
+azienda + operatore e apre il contesto su quello. Un file che vuole solo «un
+operatore su un emittente» non ha altro da fare. Il builder si chiama a mano
+quando servono gli **id** del mondo (l'emittente per un registro, il soggetto
+ruolo, **due** aziende) o quando il soggetto del test è l'operatore umano.
+
 ⚠️ Gli helper escono con i vincoli **IMMEDIATE**: un file che li vuole
 differiti fino a un punto suo (`pgtap-differiti`, «fattura + atto») li riapre
 con `SET CONSTRAINTS ALL DEFERRED` subito dopo.
@@ -295,3 +303,6 @@ Per questo l'ordine di efficacia è: **template → cancello → guida**, e ques
 pagina è l'ultimo dei tre. Serve per ciò che non si automatizza: *da chi difende
 questo guard? cosa vorrebbe dire davvero questa asserzione?* Il resto lo devono
 fare il template che copi e il cancello che ti ferma.
+
+---
+{% include-markdown "signature-core.md" %}

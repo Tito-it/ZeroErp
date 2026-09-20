@@ -45,7 +45,7 @@ TokenRefreshView  (SimpleJWT)
 - **Tentativi falliti**: dopo login fallito chiama
   `registra_tentativo_login(successo=False)`. Eccezione: `VesteNonAttivaError`
   (credenziali OK ma veste sbagliata) NON viene contato come tentativo.
-- **Audit login**: dopo login OK, popola le 5 GUC di sessione via
+- **Audit login**: dopo login OK, popola le 6 GUC di sessione via
   `set_jwt_gucs(username, user_id, identita_id, request)` (l'`identita_id`
   e' estratto dal refresh appena emesso tramite `_extract_identita_id_from_refresh`),
   poi chiama `session_audit_service.record_login(user_id, request, jti)`.
@@ -120,14 +120,14 @@ Envelope SimpleJWT standard (`access` + `refresh` + eventuale
 
 ## Dipendenze
 
-| Componente | Ruolo |
-| --- | --- |
-| `dbops.sessioni_utente` | INSERT via `session_audit_service` (login/refresh/logout) |
-| `anagrafiche.identita_digitali` | Source di `identita_id` + `ruolo_applicativo` iniettati nel JWT |
-| `script.fn_check_blocco_login` | Blocco utente per tentativi falliti |
-| `script.fn_registra_tentativo_login` | Incremento/reset contatore tentativi |
-| `MultiVesteTokenSerializer` | Iniezione claim custom + risoluzione veste |
-| `JwtAuditAuthentication` | Validazione claim + popolamento GUC a ogni request |
+| Componente                           | Ruolo                                                           |
+| ------------------------------------ | --------------------------------------------------------------- |
+| `dbops.sessioni_utente`              | INSERT via `session_audit_service` (login/refresh/logout)       |
+| `anagrafiche.identita_digitali`      | Source di `identita_id` + `ruolo_applicativo` iniettati nel JWT |
+| `script.fn_check_blocco_login`       | Blocco utente per tentativi falliti                             |
+| `script.fn_registra_tentativo_login` | Incremento/reset contatore tentativi                            |
+| `MultiVesteTokenSerializer`          | Iniezione claim custom + risoluzione veste                      |
+| `JwtAuditAuthentication`             | Validazione claim + popolamento GUC a ogni request              |
 
 ## Test
 

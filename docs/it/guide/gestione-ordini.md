@@ -672,3 +672,6 @@ database; anche bypassandolo, il database rifiuta comunque le operazioni scorret
 modello sono raccolte negli addendum di sviluppo (`dev/work-done/db-brief-ordini-vendita.md`,
 `brief-ordini-stampa.md`, `db-brief-ordini-lock-cliente.md`, `brief-preventivi-ordini.md`;
 le date di consegna in `brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`).*
+
+---
+{% include-markdown "signature-core.md" %}

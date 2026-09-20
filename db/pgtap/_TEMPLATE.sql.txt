@@ -29,6 +29,11 @@ BEGIN;
 --   della fixture leggono ZERO righe, e il test diventa verde per sottrazione
 --   (le asserzioni finiscono nei rami `skip`, che non verificano niente).
 --
+--   Su un database VUOTO (CI, installazione nuova) questa riga costruisce da
+--   se' azienda + operatore (rev 20260920-01): il mondo si costruisce, non si
+--   cerca. Servono gli ID del mondo, o due aziende? Chiama tu
+--   dbops.fn_pgtap_crea_emittente_operatore() PRIMA e passa l'auth_user_id.
+--
 --   Se il test ha bisogno di una veste DIVERSA da OPERATORE — per esempio
 --   CLIENTE_PORTALE — si fa in due tempi: prima questa riga, perche' la fixture
 --   deve VEDERE per costruire; poi, appena creata l'identita':

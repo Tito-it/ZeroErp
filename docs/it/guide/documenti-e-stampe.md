@@ -305,3 +305,6 @@ documenti/
 ```
 
 I parametri di configurazione dello storage (provider, bucket, limiti di dimensione) sono in `config.parameters` con prefisso `documenti_*`.
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,15 +1,34 @@
-# Guida Tecnica — Audit e Tracciabilità
+# Guida — Audit e Tracciabilità
 
-> **Destinatari:** sviluppatori database, backend, analisti funzionali
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> **Prerequisiti:** [Guida Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+> **Destinatari**: sviluppatori database, backend, analisti funzionali
 >
-> **Stato:** Implementato — Anello 0 (nucleo infrastrutturale)
+> **Vedi anche** — schemi DB:
 >
-> **Riferimenti sorgente:**
-> `db/changelog/migrations_v2/00_schema/dbops/` —
-> `backend/apps/core/db/session_audit_repository.py` —
-> `backend/apps/core/middleware/request_log_middleware.py`
+> * [dbops.sessioni_utente](/dbzero/dbops/tabelle/sessioni_utente) — lo strato 2: il ciclo di vita dei token JWT
+> * [dbops.request_log](/dbzero/dbops/tabelle/request_log) — lo strato 3: le chiamate API
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — il log di sistema delle automazioni DB
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole di retention
+> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids) — il registro delle transazioni
+>
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — i campi `user_insert`/`user_update`
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il `tx_id` su ogni scrittura
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — lo snapshot storico
+> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) / [dbops.fn_cleanup_at_params](/dbzero/dbops/funzioni/fn_cleanup_at_params) — la scadenza scritta all'INSERT
+> * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) / [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup) — il cleanup in batch
+> * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — l'esito delle automazioni
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — il prerequisito
+> * [Storicizzazione tabelle](/guide/storicizzazione-tabelle) — gli snapshot
+> * [Automazione DB](/guide/automazione-db) — il framework che orchestra il cleanup
+> * [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log) — il registro errori
+> * [Messaggi di audit](/guide/messaggi-audit)
+> * [Contratto GUC `app.*`](/guide/contratto-guc-app) — i parametri di sessione
 
 ---
 
@@ -18,7 +37,7 @@
 ZeroERP adotta un modello di tracciabilità a **tre strati sovrapposti**, ognuno con
 uno scopo distinto e un proprio livello di granularità.
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │  Strato 3 — Request log                         │
 │  Chi ha chiamato quale endpoint, quando, esito  │
@@ -67,16 +86,17 @@ disponibile tramite il GUC `app.jwt_user` impostato dal middleware Django
 ad ogni request autenticata.
 
 **`app.jwt_user` non è più solo.** Dopo il refactor multi-face auth i GUC propagati
-a ogni request autenticata sono **cinque** — `app.jwt_user`, `app.current_user_id`,
-`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` — e non
-servono solo all'audit: la **RLS** delle tabelle sensibili risolve lo scope emittente
-proprio a partire da questi valori. Due invarianti conseguenti:
+a ogni request autenticata sono **sei** — `app.jwt_user`, `app.current_user_id`,
+`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`,
+`app.current_emittente_id` — e non servono solo all'audit: la **RLS** delle tabelle
+sensibili risolve lo scope emittente proprio a partire da `app.current_emittente_id`.
+Due invarianti conseguenti:
 
-- `JwtAuditMiddleware.process_request` **azzera i 5 GUC all'inizio di ogni richiesta
+* `JwtAuditMiddleware.process_request` **azzera i 6 GUC all'inizio di ogni richiesta
   `/api/`**, prima che l'auth class li ripopoli, in modo **fail-closed**: se il reset
   fallisce la richiesta non viene servita (500 `E_GUC_RESET_FAILED`). Chiude il leak
   cross-request sulle connessioni persistenti;
-- una connessione del percorso richiesta che gira su un ruolo `BYPASSRLS` viene
+* una connessione del percorso richiesta che gira su un ruolo `BYPASSRLS` viene
   rifiutata (500 `E_DB_ROLE_UNSAFE`): il bypass è ammesso solo ai canali di sistema
   headless (`system_process_context`).
 
@@ -114,7 +134,8 @@ append-only alimentato da trigger dedicati che registra ogni evento semantico
 A differenza dei campi audit standard — che rispondono a "quando è stato
 toccato il record" — il giornale risponde a "cosa è accaduto nel processo".
 
-Per i dettagli si rimanda a `docs/it/dev/gestione-pratiche.md`, sezione 4.
+Il modello completo, con gli eventi e i trigger che lo alimentano, sta in
+[Gestione Pratiche e Workflow](/guide/gestione-pratiche), capitolo *Il giornale di bordo*.
 
 ---
 
@@ -221,7 +242,7 @@ pgAgent periodico rimuove i record oltre la soglia (default 90 giorni).
 
 I tre strati sono attraversabili grazie a due identificatori condivisi:
 
-```
+```text
 request_id (UUID)
   │
   ├── dbops.request_log.request_id       (quale endpoint è stato chiamato)
@@ -245,60 +266,28 @@ Il `username` / `user_insert` collega entrambi all'identità dell'utente.
 Scenario: un record in `pratiche.pratiche` risulta modificato con un valore
 inatteso. Come risalire alla causa.
 
-**Passo 1 — Identificare la modifica nel DB**
+**Passo 1 — Identificare la modifica nel DB.** Si legge il record operativo per
+ricavare `data_update`, `user_update` e `tx_id`: sono i tre appigli per tutto il
+resto.
 
-```sql
--- Trovare quando e da chi è stato modificato il record
-SELECT data_update, user_update, tx_id
-FROM pratiche.pratiche
-WHERE id = :pratica_id;
-```
+**Passo 2 — Recuperare la versione precedente dallo storico.** Lo snapshot è in
+`storico.<tabella>`: le righe più recenti di quell'id dicono com'era il record prima
+della modifica.
 
-**Passo 2 — Recuperare la versione precedente dallo storico**
+**Passo 3 — Risalire alla request HTTP.** La correlazione tra la request HTTP e la
+scrittura DB avviene **per finestra temporale**: il `data_update` del record
+operativo combacia con il `data_insert` del request log per lo stesso utente nello
+stesso istante. Il `tx_id` presente nel `request_log` è quello della propria INSERT
+di log (generato dal trigger [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)), non quello
+della transazione operativa — quindi non è utilizzabile per correlazione diretta.
+In futuro la correlazione diventerà diretta, con il `request_id` propagato come GUC
+PostgreSQL nelle tabelle operative (vedi §8).
 
-```sql
--- Trovare lo snapshot prima della modifica
-SELECT *
-FROM storico.pratiche
-WHERE id = :pratica_id
-ORDER BY data_update DESC
-LIMIT 5;
-```
+**Passo 4 — Verificare la sessione attiva in quel momento.** L'ultima riga di
+`dbops.sessioni_utente` per quell'utente prima della modifica dice con quale sessione
+JWT è stata fatta.
 
-**Passo 3 — Risalire alla request HTTP**
-
-Oggi la correlazione tra la request HTTP e la scrittura DB avviene per
-**finestra temporale**: il `data_update` del record operativo combacia
-con il `data_insert` del request log per lo stesso utente nello stesso
-istante. Il `tx_id` presente nel `request_log` è quello della propria
-INSERT di log (generato dal trigger [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)), non quello
-della transazione operativa — quindi non è utilizzabile per correlazione
-diretta.
-
-```sql
--- Request dell'utente nella finestra temporale della modifica
-SELECT *
-FROM dbops.request_log
-WHERE username = :user_update
-  AND data_insert BETWEEN :data_update - interval '5s'
-                      AND :data_update + interval '5s';
-```
-
-In futuro la correlazione diventerà diretta: il `request_id` verrà
-propagato come GUC PostgreSQL nelle tabelle operative (vedi sezione 8).
-
-**Passo 4 — Verificare la sessione attiva in quel momento**
-
-```sql
--- Sessione JWT attiva al momento della modifica
-SELECT su.*
-FROM dbops.sessioni_utente su
-JOIN auth_user au ON au.id = su.auth_user_id
-WHERE au.username = :user_update
-  AND su.data_insert <= :data_update
-ORDER BY su.data_insert DESC
-LIMIT 1;
-```
+> Le quattro query, pronte da adattare, stanno nell'[Area tecnica](#area-tecnica-esempi).
 
 ---
 
@@ -353,8 +342,7 @@ Le altre tabelle con `cleanup_at` (es. `error_log`, `audit_log`,
 
 #### ⭐ I registri di dominio: la scadenza si scrive alla nascita
 
-Dal 2026-08-22 (`event_log`) e dal 2026-09-18 (Passo D di
-`analisi-osservabilita-log.md`) i **registri** di vendite non aspettano il batch:
+I **registri** di vendite non aspettano il batch:
 `cleanup_at` lo scrive **all'`INSERT`** il trigger generico
 [`dbops.trgfn_cleanup_at_alla_nascita`](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita)
 (`trg_<tabella>_m50_cleanup_at_ins`), leggendo termine **e colonna base** dalla stessa
@@ -364,13 +352,13 @@ Su un registro l'UPDATE notturno riscriverebbe `data_update`/`user_update` di og
 fresca e passerebbe dai trigger di `UPDATE`; alla nascita la riga sa già quando scade. Il
 batch resta per il **pregresso** (righe a `NULL`), una volta.
 
-| Tabella | Retention | Colonna base | Regola |
-| --- | --- | --- | --- |
-| `vendite.event_log` | 750 giorni | `event_time` | id=15 |
-| `vendite.fatturazione_lotti_log` | 750 giorni | `data_ora` | id=16 |
-| `vendite.fatture_log` | 750 giorni | `data_ora` | id=17 |
-| `vendite.fatturazione_lotti_task_runs` | 750 giorni | `started_at` | id=18 |
-| `vendite.commesse_push_log` | 750 giorni | `run_at` | id=19 |
+| Tabella                                | Retention  | Colonna base | Regola |
+| -------------------------------------- | ---------- | ------------ | ------ |
+| `vendite.event_log`                    | 750 giorni | `event_time` | id=15  |
+| `vendite.fatturazione_lotti_log`       | 750 giorni | `data_ora`   | id=16  |
+| `vendite.fatture_log`                  | 750 giorni | `data_ora`   | id=17  |
+| `vendite.fatturazione_lotti_task_runs` | 750 giorni | `started_at` | id=18  |
+| `vendite.commesse_push_log`            | 750 giorni | `run_at`     | id=19  |
 
 750 e non 30: sono i quattro registri che `script.vw_giornale_entita` legge insieme (più
 il registro di giro del push, a cui punta il `correlation_id` di `event_log`) e la storia
@@ -404,36 +392,85 @@ pgAgent come script shell.
 
 ---
 
-## 8. Evoluzione futura
+## 8. Consultazione e sviluppi aperti
 
-### Completato
+**Le API che ci sono.** Due viste di consultazione sono disponibili:
 
-- **Audit trail permessi**: le 7 tabelle che definiscono profili reparto,
-  override utente e ruolo sistema hanno `storicizza = true` e trigger
-  [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed) attivi. Ogni modifica (UPDATE/DELETE) viene
-  fotografata in `storico.<tabella>`.
+* il registro degli **errori** — `GET /api/v1/amm-software/error-log/` (con
+  `export/`), schermata «Errori tecnici»: [api_error_log](/backend/amm-software/manual/api_error_log);
+* il **giornale degli eventi di dominio**, trasversale — `GET /api/v1/vendite/giornale/`:
+  [api_giornale](/backend/vendite/manual/api_giornale).
 
-### Pianificato
+Il `tx_id` è il ponte fra i due.
 
-- **Propagazione `request_id` come GUC**: oggi la correlazione tra
-  request HTTP e scrittura DB avviene per finestra temporale (vedi
-  sezione 5.2, passo 3). In futuro il `request_id` verrà propagato
-  come GUC PostgreSQL (`SET LOCAL app.request_id = ...`) e scritto
-  nelle tabelle operative, rendendo la correlazione diretta.
+**Cosa resta aperto.**
 
-- **API di consultazione**: endpoint `GET /api/v1/core/users/{id}/sessioni/`
-  e `GET /api/v1/core/request-log/` per ADMIN, con filtri per data/path/status.
-  ✅ Il registro degli **errori** ha la sua dal 19-09-2026 —
-  `GET /api/v1/amm-software/error-log/` (+ `export/`), schermata «Errori
-  tecnici», [api_error_log.md](/backend/amm-software/manual/api_error_log) —
-  e il giornale degli eventi di dominio la sua, trasversale,
-  `GET /api/v1/vendite/giornale/` ([api_giornale.md](/backend/vendite/manual/api_giornale)):
-  il `tx_id` è il ponte fra i due. `request-log` e le sessioni restano
-  pianificati.
-
-- **Dashboard anomalie**: vista operativa che segnala pattern inusuali —
-  login da IP multipli, volume request anomalo, token revocati riutilizzati.
+* **Propagazione del `request_id` come GUC**: la correlazione tra request HTTP e
+  scrittura DB passa ancora per la finestra temporale (§5.2, passo 3). Portare il
+  `request_id` nei parametri di sessione PostgreSQL e scriverlo nelle tabelle
+  operative renderebbe la correlazione diretta.
+* **API di `request-log` e sessioni**: `GET /api/v1/core/users/{id}/sessioni/` e
+  `GET /api/v1/core/request-log/` per gli amministratori, con filtri per
+  data/path/status.
+* **Dashboard anomalie**: una vista operativa che segnala pattern inusuali — login da
+  IP multipli, volume di richieste anomalo, token revocati riutilizzati.
 
 ---
 
-*Documento tecnico — Audit e Tracciabilità — ZeroERP (marzo 2026)*
+## Area tecnica — esempi
+
+### Il percorso di indagine, in query
+
+Le quattro query del §5.2, pronte da adattare (i `:parametri` sono quelli del caso
+in esame).
+
+**Identificare la modifica.** Chi e quando ha toccato il record, e con quale
+`tx_id`.
+
+```sql
+SELECT data_update, user_update, tx_id
+FROM pratiche.pratiche
+WHERE id = :pratica_id;
+```
+
+**Recuperare lo snapshot precedente.** Com'era il record prima della modifica.
+
+```sql
+SELECT *
+FROM storico.pratiche
+WHERE id = :pratica_id
+ORDER BY data_update DESC
+LIMIT 5;
+```
+
+**Trovare la request HTTP.** Sulla finestra temporale della modifica, per lo stesso
+utente.
+
+```sql
+SELECT *
+FROM dbops.request_log
+WHERE username = :user_update
+  AND data_insert BETWEEN :data_update - interval '5s'
+                      AND :data_update + interval '5s';
+```
+
+**Trovare la sessione JWT.** L'ultima attiva prima della modifica.
+
+```sql
+SELECT su.*
+FROM dbops.sessioni_utente su
+JOIN auth_user au ON au.id = su.auth_user_id
+WHERE au.username = :user_update
+  AND su.data_insert <= :data_update
+ORDER BY su.data_insert DESC
+LIMIT 1;
+```
+
+### Dove sta il codice
+
+* Schema DB: `db/changelog/migrations_v2/00_schema/dbops/`
+* Repository delle sessioni: `backend/apps/core/db/session_audit_repository.py`
+* Middleware del request log: `backend/apps/core/middleware/request_log_middleware.py`
+
+---
+{% include-markdown "signature-core.md" %}

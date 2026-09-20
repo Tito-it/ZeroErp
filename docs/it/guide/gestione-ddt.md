@@ -1,12 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultima revisione**: 14 luglio 2026 — modello del documento di trasporto
-> (testata trasporto + righe + componenti BoM + indirizzi di consegna), nascita
-> per **evasione** di un ordine (1:N, con residuo per riga) oppure **standalone**
-> manuale, azioni **data-driven** via `fn_available_actions_ddt` con matrice
-> transizioni in `config.transizioni_stati_ddt`, **numero assegnato all'emissione**
-> (non alla nascita), indirizzo di consegna obbligatorio all'emissione, stampa
-> PDF con luogo di consegna, push a commessa per la fatturazione.
+> **Ultimo aggiornamento**: 20 settembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -27,7 +21,7 @@
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
 > * [vendite.trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) — eredità dal contesto (BA/utility/valuta/emittente)
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [vendite.trgfn_ddt_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ddt_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [vendite.trgfn_ddt_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ddt_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
 > * [vendite.fn_ddt_riga_componenti_init](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_init) / [vendite.fn_ddt_riga_componenti_preview](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_preview) — componenti BoM
 >
 > **Vedi anche** — API e service backend:
@@ -60,20 +54,20 @@ che esce, il vettore, l'aspetto dei beni, i colli e il **luogo di consegna**.
 
 Caratteristiche di base:
 
-- è intestato a un **cliente** (billing account, con il relativo soggetto) e ha
+* è intestato a un **cliente** (billing account, con il relativo soggetto) e ha
   un **destinatario** (chi riceve fisicamente la merce), oltre a **mittente** e
   **vettore** opzionali;
-- raccoglie **righe** (articolo, quantità, ed eventualmente prezzo/IVA) e
+* raccoglie **righe** (articolo, quantità, ed eventualmente prezzo/IVA) e
   **componenti BoM** per gli articoli compositi;
-- porta i **dati di trasporto** (causale, aspetto dei beni, modalità di addebito,
+* porta i **dati di trasporto** (causale, aspetto dei beni, modalità di addebito,
   colli, pesi, volume, targa, autista, tracking);
-- porta gli **indirizzi di consegna** (snapshot congelato all'emissione);
-- ha un **ciclo di vita** logistico: bozza → emesso → spedito → consegnato
+* porta gli **indirizzi di consegna** (snapshot congelato all'emissione);
+* ha un **ciclo di vita** logistico: bozza → emesso → spedito → consegnato
   (→ reso), oppure annullato;
-- nasce quasi sempre per **evasione** di un ordine, ma può essere creato
+* nasce quasi sempre per **evasione** di un ordine, ma può essere creato
   **standalone** a mano;
-- all'emissione produce il **PDF di trasporto** con il luogo di consegna;
-- può essere **spinto in commessa** (push) per la fatturazione.
+* all'emissione produce il **PDF di trasporto** con il luogo di consegna;
+* può essere **spinto in commessa** (push) per la fatturazione.
 
 > **Il numero si assegna all'EMISSIONE, non alla nascita.** A differenza
 > dell'ordine (che nasce già numerato), il DDT resta **senza numero in bozza** e
@@ -142,35 +136,35 @@ alla creazione: da lì il sistema deriva destinatario ed emittente.
 
 Contiene il contesto del documento e del trasporto:
 
-- **chi** (`billing_account_id`) — il cliente; **a chi si consegna**
+* **chi** (`billing_account_id`) — il cliente; **a chi si consegna**
   (`destinatario_soggetto_ruolo_id`) — derivato dal cliente se non indicato.
-- **chi emette** (`emittente_fiscale_id`) — l'emittente fiscale (vedi §7).
-- **per cosa** (`utility_id`) e **valuta** (`valuta_id`) — opzionali.
-- **quando** (`data`) — default alla data odierna.
-- **trasporto**: `causale_trasporto_id`, `aspetto_bene_id`,
+* **chi emette** (`emittente_fiscale_id`) — l'emittente fiscale (vedi §7).
+* **per cosa** (`utility_id`) e **valuta** (`valuta_id`) — opzionali.
+* **quando** (`data`) — default alla data odierna.
+* **trasporto**: `causale_trasporto_id`, `aspetto_bene_id`,
   `modalita_addebito_trasporto_id`, `mittente_soggetto_ruolo_id`,
   `vettore_soggetto_ruolo_id`, `num_colli`, `peso_lordo`, `peso_netto`, `volume`,
   `targa`, `autista`, `tracking_code`.
-- **da dove arriva** (`sorgente_tipo_id` + `sorgente_uid`) — valorizzata
+* **da dove arriva** (`sorgente_tipo_id` + `sorgente_uid`) — valorizzata
   dall'evasione (sorgente `ORDINE_VENDITA`); NULL se il DDT è standalone.
-- **identità e stato** (`numero`/`anno` — assegnati a EMESSO —, `uid`,
+* **identità e stato** (`numero`/`anno` — assegnati a EMESSO —, `uid`,
   `stato_doc_ddt_id`).
 
 ### 3.2 Righe `ddt_righe`
 
 Ogni riga è una voce di merce consegnata:
 
-- **articolo** (`articolo_id`) e **descrizione**;
-- **quantità** in doppia unità: **operativa** (`qta_operativa` +
+* **articolo** (`articolo_id`) e **descrizione**;
+* **quantità** in doppia unità: **operativa** (`qta_operativa` +
   `uom_operativa_id`) e **base** (`quantita`, calcolata da `factor_to_base`);
-- **prezzo** (`prezzo_unitario`) e **IVA** (`iva_id`) — **opzionali**: un DDT può
+* **prezzo** (`prezzo_unitario`) e **IVA** (`iva_id`) — **opzionali**: un DDT può
   essere di **solo trasporto** (righe senza prezzo).
 
 > **Prezzo opzionale = DDT di solo trasporto.** Se le righe non hanno prezzo, il
 > DDT documenta solo il movimento della merce e il *Riepilogo IVA* resta vuoto
 > (le righe senza prezzo sono escluse in vista). Con i prezzi valorizzati, il DDT
 > espone anche il riepilogo per aliquota, come gli altri documenti.
-
+>
 > ⛔ **L'`iva_id` della riga non si copia dall'articolo.** Lo decide il
 > **risolutore IVA di riga**, la stessa funzione che serve preventivi, ordini e
 > fatture: guarda l'articolo, poi l'uso della fornitura, poi gli eventuali titoli
@@ -205,14 +199,14 @@ comportamento di preventivi, ordini, offerte e contratti.
 
 Il catalogo `config.stati_doc_ddt` prevede sei stati:
 
-| Stato | Significato | Modificabile? | Terminale? | In uso oggi |
-|---|---|---|---|---|
-| `DRAFT` | Bozza in preparazione | Sì: testata e righe | No | ✅ |
-| `EMESSO` | Documento emesso: numero assegnato, PDF prodotto | No | No | ✅ |
-| `SPEDITO` | Merce partita (vettore/tracking) | No | No | ✅ |
-| `CONSEGNATO` | Merce consegnata al destinatario | No | No | ✅ |
-| `RESO` | Merce resa (totale): flip automatico alla conferma di un reso totale | No | — | ✅ motore **resi** (2026-07-14) |
-| `ANNULLATO` | Bozza/emesso annullato | No | Sì | ✅ |
+| Stato        | Significato                                                          | Modificabile?       | Terminale? | In uso oggi         |
+| ------------ | -------------------------------------------------------------------- | ------------------- | ---------- | ------------------- |
+| `DRAFT`      | Bozza in preparazione                                                | Sì: testata e righe | No         | sì                  |
+| `EMESSO`     | Documento emesso: numero assegnato, PDF prodotto                     | No                  | No         | sì                  |
+| `SPEDITO`    | Merce partita (vettore/tracking)                                     | No                  | No         | sì                  |
+| `CONSEGNATO` | Merce consegnata al destinatario                                     | No                  | No         | sì                  |
+| `RESO`       | Merce resa (totale): flip automatico alla conferma di un reso totale | No                  | —          | sì, motore **resi** |
+| `ANNULLATO`  | Bozza/emesso annullato                                               | No                  | Sì         | sì                  |
 
 ### 4.2 Transizioni ammesse
 
@@ -227,12 +221,12 @@ DRAFT ──(emetti)──▶ EMESSO ──(spedisci)──▶ SPEDITO ──(co
                                                         CONSEGNATO ⇄ RESO
 ```
 
-- **DRAFT → EMESSO** (*emetti*): assegna il numero e genera il PDF; richiede
+* **DRAFT → EMESSO** (*emetti*): assegna il numero e genera il PDF; richiede
   l'**indirizzo di consegna** (guard DB, vedi §9/§10).
-- **EMESSO → SPEDITO** (*spedisci*) e **SPEDITO → CONSEGNATO** (*consegna*):
+* **EMESSO → SPEDITO** (*spedisci*) e **SPEDITO → CONSEGNATO** (*consegna*):
   avanzamento logistico manuale, con conferma.
-- **DRAFT → ANNULLATO** ed **EMESSO → ANNULLATO** (*annulla*): consentiti.
-- **CONSEGNATO → RESO** e **RESO → CONSEGNATO**: **automatiche**, guidate dal
+* **DRAFT → ANNULLATO** ed **EMESSO → ANNULLATO** (*annulla*): consentiti.
+* **CONSEGNATO → RESO** e **RESO → CONSEGNATO**: **automatiche**, guidate dal
   **motore resi** (non pulsanti manuali). Il vecchio "Reso" manuale e la
   transizione `SPEDITO → RESO` sono **disabilitati**. Il DDT entra in `RESO`
   solo per effetto del motore, su reso **totale** (l'annullo del reso lo
@@ -253,20 +247,20 @@ DRAFT ──(emetti)──▶ EMESSO ──(spedisci)──▶ SPEDITO ──(co
 Le azioni eseguibili sono calcolate dal database (`fn_available_actions_ddt`) ed
 esposte come *capability*, così il frontend non replica la logica degli stati.
 
-| Flag | Vero quando |
-|---|---|
-| `can_edit_testata` / `can_edit_righe` | il DDT è in `DRAFT` |
-| `can_push_commessa` (+ `_reason`/`_reason_key`) | ci sono righe eleggibili al push |
-| `non_editable_fields` | l'elenco dei campi bloccati (es. cliente, numero) |
+| Flag                                            | Vero quando                                       |
+| ----------------------------------------------- | ------------------------------------------------- |
+| `can_edit_testata` / `can_edit_righe`           | il DDT è in `DRAFT`                               |
+| `can_push_commessa` (+ `_reason`/`_reason_key`) | ci sono righe eleggibili al push                  |
+| `non_editable_fields`                           | l'elenco dei campi bloccati (es. cliente, numero) |
 
 In sintesi:
 
-- **In `DRAFT`**: si **modificano** testata e righe, si **emette** o si
+* **In `DRAFT`**: si **modificano** testata e righe, si **emette** o si
   **annulla**.
-- **In `EMESSO`/`SPEDITO`/`CONSEGNATO`**: testata e righe **in sola lettura**;
+* **In `EMESSO`/`SPEDITO`/`CONSEGNATO`**: testata e righe **in sola lettura**;
   disponibili l'avanzamento logistico e — se ci sono righe eleggibili — il **push
   a commessa**.
-- **In `RESO`/`ANNULLATO`**: sola lettura.
+* **In `RESO`/`ANNULLATO`**: sola lettura.
 
 ---
 
@@ -312,19 +306,18 @@ dal backend e, in modo autoritativo, dal database.
 
 ### 7.2 Emittente fiscale (legato allo user)
 
-L'emittente del DDT è **legato all'operatore**, come ordini/preventivi/contratti
-(uniformazione 2026-07-13). L'interfaccia lo prefilla dal **profilo
-dell'operatore** (l'admin globale lo sceglie da un elenco) e lo invia col
-documento. La colonna resta **memorizzata** sul DDT (con scope RLS per
+L'emittente del DDT è **legato all'operatore**, come in ordini, preventivi e
+contratti. L'interfaccia lo prefilla dal **profilo dell'operatore** (l'admin
+globale lo sceglie da un elenco) e lo invia col documento. La colonna resta **memorizzata** sul DDT (con scope RLS per
 emittente). Reti di sicurezza a DB:
 
-- se l'operatore non lo indica, lo imposta il trigger di default dell'emittente
-  (`trg_ddt_a10_default_emittente_ins`, che dal 2026-09-15 esegue il meccanismo
-  condiviso `script.trgfn_default_emittente_fiscale`) dal contesto utente; per i
-  DDT da evasione il default **non scatta** e l'emittente è **ereditato
-  dall'ordine** da `trgfn_ddt_normalize`; senza contesto utente non solleva e
-  lascia decidere al `normalize` (dal cliente) o al vincolo;
-- se il DDT ha un cliente, l'emittente deve essere **coerente** con esso:
+* se l'operatore non lo indica, lo imposta il trigger di default dell'emittente
+  (`trg_ddt_a10_default_emittente_ins`, che esegue il meccanismo condiviso
+  `script.trgfn_default_emittente_fiscale`) dal contesto utente; per i DDT da
+  evasione il default **non scatta** e l'emittente è **ereditato dall'ordine** da
+  `trgfn_ddt_normalize`; senza contesto utente non solleva e lascia decidere al
+  `normalize` (dal cliente) o al vincolo;
+* se il DDT ha un cliente, l'emittente deve essere **coerente** con esso:
   `trgfn_ddt_guard_emittente_ba` rifiuta le combinazioni incoerenti.
 
 L'**etichetta** dell'emittente mostrata è sempre la **ragione sociale del
@@ -343,10 +336,10 @@ soggetto** emittente, mai il codice tecnico del record.
 
 Il prezzo delle righe DDT è **opzionale**:
 
-- nell'**evasione** eredita il prezzo "fotografato" sulla riga d'ordine;
-- nello **standalone** l'operatore può digitarlo (o lasciarlo vuoto per un DDT di
+* nell'**evasione** eredita il prezzo "fotografato" sulla riga d'ordine;
+* nello **standalone** l'operatore può digitarlo (o lasciarlo vuoto per un DDT di
   solo trasporto);
-- se assente e l'articolo non è composito, può essere risolto dal listino
+* se assente e l'articolo non è composito, può essere risolto dal listino
   tramite il *PricingService*, come negli altri documenti.
 
 ### 8.2 Totali e Riepilogo IVA
@@ -402,12 +395,12 @@ domini di vendita, ma con una specificità: l'indirizzo di **consegna** (tipo
 
 Come funziona:
 
-- alla creazione, il sistema **auto-assegna** l'indirizzo di consegna di default
+* alla creazione, il sistema **auto-assegna** l'indirizzo di consegna di default
   del cliente (indirizzo di ruolo `CON`, con fallback `FATT`), best-effort;
-- l'operatore può cambiarlo dal pannello indirizzi: sceglierne uno
+* l'operatore può cambiarlo dal pannello indirizzi: sceglierne uno
   dall'anagrafica del cliente ("usa questo") o inserire un **indirizzo libero**
   una-tantum;
-- al momento dell'emissione lo slot viene **congelato** come snapshot: il PDF e
+* al momento dell'emissione lo slot viene **congelato** come snapshot: il PDF e
   il documento riportano l'indirizzo fotografato, indipendente da modifiche
   successive all'anagrafica.
 
@@ -435,28 +428,28 @@ quelle attive, con quantità positiva, non ancora inviate a una commessa
 
 ## 11-bis. Reso della merce
 
-Da un DDT **CONSEGNATO** si può registrare un **reso** — realizzato dal **motore
-resi** (2026-07-14). Il reso è un documento **autonomo** (`vendite.resi`), non un
-semplice cambio di stato del DDT: porta **quantità** (reso parziale: se ne
-rendono 3 di 10) e **intento** per riga.
+Da un DDT **CONSEGNATO** si può registrare un **reso**, realizzato dal **motore
+resi**. Il reso è un documento **autonomo** (`vendite.resi`), non un semplice
+cambio di stato del DDT: porta **quantità** (reso parziale: se ne rendono 3 di
+10) e **intento** per riga.
 
 Come funziona, dal punto di vista del DDT:
 
-- dal drawer del DDT consegnato, il pannello **"Crea reso"** apre un reso legato
+* dal drawer del DDT consegnato, il pannello **"Crea reso"** apre un reso legato
   a quel DDT (righe con quantità ≤ consegnato, guard DB);
-- ogni riga di reso ha un **tipo** (`config.tipi_reso`): **a credito**
+* ogni riga di reso ha un **tipo** (`config.tipi_reso`): **a credito**
   (`RESO_A_CREDITO`) o **per ri-consegna** (`RESO_PER_RICONSEGNA`, flag
   `riapre_residuo`);
-- il reso ha una sua macchina a stati (`DRAFT → CONFERMATO` + `ANNULLATO`,
+* il reso ha una sua macchina a stati (`DRAFT → CONFERMATO` + `ANNULLATO`,
   numero alla conferma): gli **effetti scattano alla CONFERMA**, non in bozza;
-- alla conferma di un reso **totale** (rese tutte le quantità consegnate) il DDT
+* alla conferma di un reso **totale** (rese tutte le quantità consegnate) il DDT
   passa **automaticamente** a `RESO`; su reso parziale il DDT resta `CONSEGNATO`
   (la verità fine sta nelle righe di reso). L'annullo del reso ripristina lo
   stato del DDT;
-- **reso per ri-consegna** → riapre il **residuo** dell'ordine (l'addendo
+* **reso per ri-consegna** → riapre il **residuo** dell'ordine (l'addendo
   `qta_resa_per_riconsegna`, §2.1): l'ordine torna evadibile e si genera un nuovo
   DDT di ri-consegna (`fn_genera_ddt_riconsegna`);
-- **reso a credito** → alimenta la coda "da accreditare" (vista
+* **reso a credito** → alimenta la coda "da accreditare" (vista
   `vw_resi_da_accreditare`) per la futura nota di credito.
 
 > Il modello completo del reso (entità, guard, ri-consegna, note di credito) è
@@ -513,17 +506,17 @@ dettaglio, l'export (CSV/XLSX) e i documenti generati.
 
 Codici sollevati dal dominio DDT (registrati in `error_policies`):
 
-| Codice | Quando |
-|---|---|
-| `E_DDT_NOT_FOUND` | DDT (o riga/componente) inesistente o fuori dal proprio scope emittente |
-| `E_DDT_VALIDAZIONE` | Payload non valido (cliente mancante, campi vuoti, valori non numerici…) |
-| `E_DDT_CLIENTE_IMMUTABILE` | Tentativo di cambiare cliente/destinatario di un DDT già creato |
-| `E_DDT_STATO_TRANSIZIONE` | Operazione non ammessa nello stato (modifica fuori da `DRAFT`, delete di una bozza con righe → va annullata) |
-| `E_DDT_NESSUNA_RIGA` | Push senza righe eleggibili |
-| `E_DDT_EMITTENTE_BA_INCOERENTE` | Emittente non coerente col cliente selezionato |
-| `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` | Cambio di stato non previsto/attivo nella matrice (guard DB) |
-| `E_INDIRIZZO_DOC_OBBLIGATORIO` | Emissione senza l'indirizzo di consegna obbligatorio (guard DB) |
-| `E_DOCUMENTI_*` | Stampa: template/versione non risolti, input invalido o render fallito |
+| Codice                               | Quando                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `E_DDT_NOT_FOUND`                    | DDT (o riga/componente) inesistente o fuori dal proprio scope emittente                                      |
+| `E_DDT_VALIDAZIONE`                  | Payload non valido (cliente mancante, campi vuoti, valori non numerici…)                                     |
+| `E_DDT_CLIENTE_IMMUTABILE`           | Tentativo di cambiare cliente/destinatario di un DDT già creato                                              |
+| `E_DDT_STATO_TRANSIZIONE`            | Operazione non ammessa nello stato (modifica fuori da `DRAFT`, delete di una bozza con righe → va annullata) |
+| `E_DDT_NESSUNA_RIGA`                 | Push senza righe eleggibili                                                                                  |
+| `E_DDT_EMITTENTE_BA_INCOERENTE`      | Emittente non coerente col cliente selezionato                                                               |
+| `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` | Cambio di stato non previsto/attivo nella matrice (guard DB)                                                 |
+| `E_INDIRIZZO_DOC_OBBLIGATORIO`       | Emissione senza l'indirizzo di consegna obbligatorio (guard DB)                                              |
+| `E_DOCUMENTI_*`                      | Stampa: template/versione non risolti, input invalido o render fallito                                       |
 
 ---
 
@@ -566,17 +559,17 @@ per dare messaggi chiari prima del giro al database.
 
 ## 16. Glossario rapido
 
-| Termine | Significato |
-|---|---|
-| **DDT** | Documento di trasporto: accompagna la merce. Stati: `DRAFT` → `EMESSO` → `SPEDITO` → `CONSEGNATO` (→ `RESO`), oppure `ANNULLATO` |
-| **Evasione** | Consegna delle righe di un ordine confermato in uno o più DDT (1:N, per quantità, con residuo) |
-| **Residuo** | Quantità di riga d'ordine non ancora evasa (`quantità − Σ evaso`), append-only |
-| **Emetti** | Assegnazione numero + generazione PDF, in un'unica operazione (richiede l'indirizzo di consegna) |
-| **DDT di solo trasporto** | DDT con righe senza prezzo: documenta il movimento merce, nessun riepilogo IVA |
-| **Indirizzo di consegna (`CON`)** | Ancora del DDT, obbligatoria all'emissione; snapshot congelato sul documento |
-| **Push a commessa** | Invio delle righe eleggibili a una commessa, che avvia la fatturazione (sorgente `DDT_VENDITA`) |
-| **Destinatario** | Chi riceve fisicamente la merce; ancora di provenienza degli indirizzi documento |
-| **Matrice transizioni** | `config.transizioni_stati_ddt`: fonte unica di verità per UI ed enforcement |
+| Termine                           | Significato                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **DDT**                           | Documento di trasporto: accompagna la merce. Stati: `DRAFT` → `EMESSO` → `SPEDITO` → `CONSEGNATO` (→ `RESO`), oppure `ANNULLATO` |
+| **Evasione**                      | Consegna delle righe di un ordine confermato in uno o più DDT (1:N, per quantità, con residuo)                                   |
+| **Residuo**                       | Quantità di riga d'ordine non ancora evasa (`quantità − Σ evaso`), append-only                                                   |
+| **Emetti**                        | Assegnazione numero + generazione PDF, in un'unica operazione (richiede l'indirizzo di consegna)                                 |
+| **DDT di solo trasporto**         | DDT con righe senza prezzo: documenta il movimento merce, nessun riepilogo IVA                                                   |
+| **Indirizzo di consegna (`CON`)** | Ancora del DDT, obbligatoria all'emissione; snapshot congelato sul documento                                                     |
+| **Push a commessa**               | Invio delle righe eleggibili a una commessa, che avvia la fatturazione (sorgente `DDT_VENDITA`)                                  |
+| **Destinatario**                  | Chi riceve fisicamente la merce; ancora di provenienza degli indirizzi documento                                                 |
+| **Matrice transizioni**           | `config.transizioni_stati_ddt`: fonte unica di verità per UI ed enforcement                                                      |
 
 ---
 

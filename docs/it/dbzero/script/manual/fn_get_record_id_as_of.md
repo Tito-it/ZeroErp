@@ -6,7 +6,7 @@
 >
 [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) *(snapshot completo)*
 
-La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMP)`** restituisce il **testo dell’ID** (`TEXT`) del record valido in un dato istante, **cercando esclusivamente nella tabella di storico**. In assenza di uno snapshot valido, restituisce `NULL` senza eseguire alcun fallback sulla tabella operativa.
+La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMPTZ)`** restituisce il **testo dell’ID** (`TEXT`) del record valido in un dato istante, **cercando esclusivamente nella tabella di storico**. In assenza di uno snapshot valido, restituisce `NULL` senza eseguire alcun fallback sulla tabella operativa.
 
 ---
 ### 🎯 Scopo Principale
@@ -30,7 +30,7 @@ La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id T
 | `p_table`  | `TEXT`      | Nome della tabella operativa (e della corrispondente tabella `storico.<p_table>`).           |
 | `p_id`     | `TEXT`      | Valore della chiave primaria del record originario, passato come testo.                      |
 | `p_fk_col` | `TEXT`      | Nome della colonna FK in `storico.<p_table>` che punta a `p_table.id` (es. `'soggetto_id'`). |
-| `p_as_of`  | `TIMESTAMP` | Istante di validità (UTC), determina quale snapshot considerare.                             |
+| `p_as_of`  | `TIMESTAMPTZ` | Istante di validità **con fuso** (dal 20260920-06; prima `TIMESTAMP`, castato col fuso di sessione). |
 
 ---
 
@@ -55,7 +55,7 @@ La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id T
         LIMIT 1',
        'id', v_hist_schema, v_hist_table, p_fk_col, v_pk_type
      ) INTO v_id
-     USING p_id, p_as_of::timestamptz;
+     USING p_id, p_as_of;
    EXCEPTION WHEN OTHERS THEN
      PERFORM script.fn_log_and_raise_error(...);
    END;

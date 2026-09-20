@@ -1,17 +1,33 @@
-# Guida – Generazione di un Cliente
+# Guida — Generazione di un Cliente
 
-> (latest review 22-08-26 — nuovo §3-bis sulle **condizioni di pagamento**: il
-> cliente porta solo i riferimenti a catalogo, i due campi liberi sono stati
-> eliminati il 31-07-2026. Revisione precedente: 01-03-26)
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Destinatari: sviluppatori database, backend e analisti funzionali
+> **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
-> Vedi anche
+> **Vedi anche** — schemi DB:
 >
-> * [Glossario termini utility](/glossario/glossario-utility) — definizioni di PDP, istanza, billing account e altri termini ricorrenti
-> * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
-> * [Guida Gestione Istanze Utility](/guide/gestione-delle-istanze-utility)
-> * [Regole strutturali istanze (Modello 2025)](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la persona o azienda
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — i ruoli del soggetto (es. CLIENTE)
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — il ciclo di servizio su un indirizzo
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'account di fatturazione
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — il record cliente
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — il punto di prelievo (contatore/allaccio)
+> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari) — i dati catastali
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — l'indirizzo civico
+> * [config.utilities](/dbzero/config/tabelle/utilities) — il tipo di servizio (GAS, ENERGIA, …)
+> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente) — gli stati del cliente (AT, CH, AN, …)
+>
+> **Vedi anche** — funzioni DB:
+>
+> * [script.fn_subentro_cliente](/dbzero/script/funzioni/fn_subentro_cliente) — chiude il cliente precedente sul punto di prelievo
+> * [script.fn_disdetta_cliente](/dbzero/script/funzioni/fn_disdetta_cliente) — la cessazione senza subentro
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Glossario termini utility](/glossario/glossario-utility) — PDP, istanza, billing account e gli altri termini ricorrenti
+> * [Soggetti e Ruoli](/guide/soggetti-e-ruoli-anagrafici) — il modello anagrafico su cui poggia il cliente
+> * [Gestione delle Istanze Utility](/guide/gestione-delle-istanze-utility) — il ciclo di vita dell'istanza
+> * [Termini di pagamento](/guide/termini-di-pagamento) — il catalogo delle condizioni di pagamento
 
 ---
 
@@ -40,21 +56,6 @@ In pratica:
 * **Azienda non-utility**: soggetto → istanza (generata in trasparenza, senza PDP ne catasto) → BA → cliente
 
 Gli esempi in questa guida usano spesso il dominio utility perche e il caso piu articolato, ma le regole di base (sequenza di creazione, vincoli, transazionalita) valgono per tutti.
-
----
-
-## Tabelle coinvolte
-
-* [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la persona o azienda
-* [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — i ruoli del soggetto (es. CLIENTE)
-* [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — il ciclo di servizio su un indirizzo
-* [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'account di fatturazione
-* [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — il record cliente vero e proprio
-* [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — il punto di prelievo (contatore/allaccio)
-* [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari) — i dati catastali
-* [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — l'indirizzo civico
-* [config.utilities](/dbzero/config/tabelle/utilities) — il tipo di servizio (GAS, ENERGIA, ecc.)
-* [config.stati_cliente](/dbzero/config/tabelle/stati_cliente) — gli stati del cliente (AT, CH, AN, ecc.)
 
 ---
 
@@ -122,12 +123,12 @@ La creazione di un cliente segue un ordine preciso, imposto dai vincoli del data
 
 Ogni entita dipende dalla precedente tramite chiavi esterne obbligatorie:
 
-| Non si puo creare... | ...senza prima aver creato... | Motivo |
-| --- | --- | --- |
-| Istanza | Soggetto | `soggetto_id NOT NULL` |
-| Billing Account | Istanza | `istanza_utility_id NOT NULL` |
-| Cliente | Istanza + BA | `istanza_utility_id NOT NULL`, `billing_account_id NOT NULL` |
-| Cliente | Ruolo CLIENTE | `soggetto_ruolo_id NOT NULL` |
+| Non si puo creare... | ...senza prima aver creato... | Motivo                                                       |
+| -------------------- | ----------------------------- | ------------------------------------------------------------ |
+| Istanza              | Soggetto                      | `soggetto_id NOT NULL`                                       |
+| Billing Account      | Istanza                       | `istanza_utility_id NOT NULL`                                |
+| Cliente              | Istanza + BA                  | `istanza_utility_id NOT NULL`, `billing_account_id NOT NULL` |
+| Cliente              | Ruolo CLIENTE                 | `soggetto_ruolo_id NOT NULL`                                 |
 
 La FK composita `(billing_account_id, istanza_utility_id)` su `clienti` garantisce inoltre che il billing account appartenga alla stessa istanza del cliente.
 
@@ -172,10 +173,10 @@ Tutto avviene in una transazione atomica: se un passo fallisce, nessuna modifica
 
 Il sistema supporta due modalita di creazione del cliente, governate dal flag `config.utilities.richiede_pdp`:
 
-| `richiede_pdp` | Modalita | Istanza | Indirizzo | Esempio utility |
-| --- | --- | --- | --- | --- |
-| `false` | Manuale (da interfaccia) | Sempre fittizia | Facoltativo | Manifatturiero, servizi |
-| `true` | Solo via pratiche | Reale (con PDP) | Obbligatorio | GAS, Energia, Idrico |
+| `richiede_pdp` | Modalita                 | Istanza         | Indirizzo    | Esempio utility         |
+| -------------- | ------------------------ | --------------- | ------------ | ----------------------- |
+| `false`        | Manuale (da interfaccia) | Sempre fittizia | Facoltativo  | Manifatturiero, servizi |
+| `true`         | Solo via pratiche        | Reale (con PDP) | Obbligatorio | GAS, Energia, Idrico    |
 
 **Creazione manuale** (`richiede_pdp = false`):
 
@@ -237,12 +238,12 @@ Sono riferimenti, non numeri liberi: la condizione vera vive nel catalogo dei
 [termini di pagamento](/guide/termini-di-pagamento), e il cliente si limita a
 sceglierne uno.
 
-> ⚠️ **Fino al 31 luglio 2026 esisteva anche una seconda strada** — due campi
-> liberi sulla scheda cliente (`tipo_gg_scadenza_ft` e `nr_giorni_scadenza`).
-> **Sono stati eliminati**, colonne comprese. Due modi di dire la stessa cosa
-> possono dirla diversa, e non c'era regola che dicesse quale vincesse. Chi ha
-> condizioni particolari usa oggi un termine dedicato a catalogo. Se si trova
-> documentazione o codice che nomina quei due campi, è anteriore alla riforma.
+> ⚠️ **Se si trova codice o documentazione che nomina `tipo_gg_scadenza_ft` e
+> `nr_giorni_scadenza`, è anteriore alla riforma**: erano i due campi liberi che
+> dicevano la stessa cosa del termine, in un altro modo. Quelle colonne non
+> esistono più — due modi di dire la stessa cosa possono dirla diversa, e non
+> c'era regola che dicesse quale vincesse. Chi ha condizioni particolari usa un
+> termine dedicato a catalogo.
 
 Due conseguenze pratiche:
 
@@ -292,8 +293,8 @@ Per gli esempi dettagliati e le casistiche: [Guida Gestione Istanze Utility – 
 
 ## L'emittente del cliente — si sceglie una volta
 
-> ⭐ Sezione aggiunta il 2026-08-26. Il legame cliente → emittente nasce **qui**,
-> automaticamente, e non era scritto da nessuna parte.
+Il legame cliente → emittente nasce **qui**, automaticamente: non c'è nessun passaggio in cui si
+sceglie, ed è il motivo per cui vale la pena saperlo prima di creare il primo cliente.
 
 ### Nasce da solo, e prende l'emittente di chi sta creando
 
@@ -364,20 +365,20 @@ INSERT cliente
 
 ### Dettaglio completo
 
-| Trigger / Funzione | Quando scatta | Cosa fa |
-| --- | --- | --- |
-| `trgfn_istanze_utilities_gen_codice` | INSERT su istanze | Genera il codice automatico dell'istanza |
-| `trgfn_istanze_utilities_normalize` | INSERT/UPDATE su istanze | Normalizza campi e verifica coerenze |
-| `trgfn_billing_account_gen_codice` | INSERT su billing_account | Genera il codice dell'account |
-| `trgfn_billing_account_guard_normalize` | INSERT/UPDATE su billing_account | Guard e normalizzazione BA |
-| `trgfn_clienti_set_periodo` | INSERT/UPDATE su clienti | Calcola `periodo` da date attivazione/chiusura |
-| `trgfn_clienti_set_parent_istanza` | INSERT su clienti | Imposta la catena `parent_istanza_id` |
-| `trgfn_clienti_sync_pdp` | INSERT/UPDATE su clienti | Allinea `pdp_id` dall'istanza |
-| `trgfn_clienti_sync_utility_from_ba` | INSERT/UPDATE su clienti | Allinea `utility_id` dal billing account |
-| `trgfn_clienti_sync_stato_pdp` | INSERT/UPDATE su clienti | Aggiorna stato PDP (AT→ATTIVO, CH→DISPONIBILE) |
-| `dbops.trgfn_tx_id_managed` | INSERT/UPDATE su tutte | Genera `tx_id` per tracciabilita transazionale |
-| `script.trgfn_audit_data_user_generic` | INSERT/UPDATE su tutte | Aggiorna campi audit (`data_update`, `user_update`) |
-| `script.trgfn_storico_generic` | UPDATE/DELETE su tutte | Snapshot storico del record modificato |
+| Trigger / Funzione                      | Quando scatta                    | Cosa fa                                             |
+| --------------------------------------- | -------------------------------- | --------------------------------------------------- |
+| `trgfn_istanze_utilities_gen_codice`    | INSERT su istanze                | Genera il codice automatico dell'istanza            |
+| `trgfn_istanze_utilities_normalize`     | INSERT/UPDATE su istanze         | Normalizza campi e verifica coerenze                |
+| `trgfn_billing_account_gen_codice`      | INSERT su billing_account        | Genera il codice dell'account                       |
+| `trgfn_billing_account_guard_normalize` | INSERT/UPDATE su billing_account | Guard e normalizzazione BA                          |
+| `trgfn_clienti_set_periodo`             | INSERT/UPDATE su clienti         | Calcola `periodo` da date attivazione/chiusura      |
+| `trgfn_clienti_set_parent_istanza`      | INSERT su clienti                | Imposta la catena `parent_istanza_id`               |
+| `trgfn_clienti_sync_pdp`                | INSERT/UPDATE su clienti         | Allinea `pdp_id` dall'istanza                       |
+| `trgfn_clienti_sync_utility_from_ba`    | INSERT/UPDATE su clienti         | Allinea `utility_id` dal billing account            |
+| `trgfn_clienti_sync_stato_pdp`          | INSERT/UPDATE su clienti         | Aggiorna stato PDP (AT→ATTIVO, CH→DISPONIBILE)      |
+| `dbops.trgfn_tx_id_managed`             | INSERT/UPDATE su tutte           | Genera `tx_id` per tracciabilita transazionale      |
+| `script.trgfn_audit_data_user_generic`  | INSERT/UPDATE su tutte           | Aggiorna campi audit (`data_update`, `user_update`) |
+| `script.trgfn_storico_generic`          | UPDATE/DELETE su tutte           | Snapshot storico del record modificato              |
 
 ---
 
@@ -401,11 +402,7 @@ Il **subentro** (o voltura) e il passaggio di titolarita su un PDP: un cliente e
 
 ## Cosa fa `fn_subentro_cliente`
 
-La funzione [`script.fn_subentro_cliente`](/dbzero/script/funzioni/fn_subentro_cliente) si occupa **esclusivamente della chiusura del cliente precedente**.
-
-```sql
-SELECT script.fn_subentro_cliente(p_pdp_id, p_data_attivazione_nuovo);
-```
+La funzione [`script.fn_subentro_cliente`](/dbzero/script/funzioni/fn_subentro_cliente) si occupa **esclusivamente della chiusura del cliente precedente**: una chiamata con il punto di prelievo e la data di attivazione del nuovo ([esempio](#area-tecnica-esempi)).
 
 Effetti:
 
@@ -457,11 +454,7 @@ La **disdetta** e la chiusura del servizio senza che un nuovo intestatario suben
 
 ## Cosa fa `fn_disdetta_cliente`
 
-La funzione [`script.fn_disdetta_cliente`](/dbzero/script/funzioni/fn_disdetta_cliente) incapsula la cessazione:
-
-```sql
-SELECT script.fn_disdetta_cliente(p_cliente_id, p_data_cessazione);
-```
+La funzione [`script.fn_disdetta_cliente`](/dbzero/script/funzioni/fn_disdetta_cliente) incapsula la cessazione ([esempio](#area-tecnica-esempi)).
 
 Effetti:
 
@@ -497,13 +490,13 @@ L'istanza non ha un campo "stato" proprio. La sua "chiusura" e implicita: se il 
 
 ## Differenza tra subentro e disdetta
 
-| | Subentro | Disdetta |
-| --- | --- | --- |
-| Cosa succede | Un cliente esce, un altro entra | Il cliente esce, nessuno entra |
-| PDP dopo | Resta ATTIVO (nuovo cliente) | Torna DISPONIBILE |
-| Funzione DB | `fn_subentro_cliente` (chiude il precedente) + creazione nuovo ciclo | `fn_disdetta_cliente` (solo chiusura) |
-| BA | Nuovo BA per il nuovo intestatario | BA resta attivo per fatture finali |
-| Istanza | Nuova istanza con `parent_istanza_id` | L'istanza resta come record storico |
+|              | Subentro                                                             | Disdetta                              |
+| ------------ | -------------------------------------------------------------------- | ------------------------------------- |
+| Cosa succede | Un cliente esce, un altro entra                                      | Il cliente esce, nessuno entra        |
+| PDP dopo     | Resta ATTIVO (nuovo cliente)                                         | Torna DISPONIBILE                     |
+| Funzione DB  | `fn_subentro_cliente` (chiude il precedente) + creazione nuovo ciclo | `fn_disdetta_cliente` (solo chiusura) |
+| BA           | Nuovo BA per il nuovo intestatario                                   | BA resta attivo per fatture finali    |
+| Istanza      | Nuova istanza con `parent_istanza_id`                                | L'istanza resta come record storico   |
 
 ---
 
@@ -537,6 +530,22 @@ erDiagram
     indirizzi_dettaglio    ||--o{ istanze_utilities         : opzionale_per
     indirizzi_dettaglio    ||--o{ indirizzi                 : normalizzato_da
 ````
+
+## Area tecnica — esempi
+
+**Chiudere il cliente precedente su un punto di prelievo (subentro)** — la funzione non crea il nuovo
+cliente: chiude il vecchio, lasciando il punto libero per il subentrante:
+
+```sql
+SELECT script.fn_subentro_cliente(p_pdp_id, p_data_attivazione_nuovo);
+```
+
+**Cessare il servizio senza subentro (disdetta)** — il punto di prelievo torna disponibile per future
+attivazioni:
+
+```sql
+SELECT script.fn_disdetta_cliente(p_cliente_id, p_data_cessazione);
+```
 
 ---
 

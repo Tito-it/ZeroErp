@@ -1,17 +1,29 @@
-# Guida – Gestione dei Conti Bancari
+# Guida — Gestione dei Conti Bancari
 
-> (latest review 25-03-26)
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Destinatari: sviluppatori database, backend e analisti funzionali
+> **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
-> Questa guida descrive il modello centralizzato per la gestione dei conti bancari (IBAN)
-> e la loro associazione a soggetti e ruoli, con override per ruolo e fallback automatico.
+> **Vedi anche** — schemi DB:
 >
-> Vedi anche
+> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) — il registro unico degli IBAN
+> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari) — il legame soggetto ↔ conto (fallback)
+> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — il legame ruolo ↔ conto (override)
+> * [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo) — le candidate, con la fonte e l'ordinamento di priorità
+> * [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati) — i mandati SEPA, che si agganciano al legame ruolo ↔ conto
 >
-> * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici) — prerequisito: il modello soggetto/ruolo
-> * [Guida Gestione dei Contatti](/guide/gestione-dei-contatti) — modello analogo per i contatti
-> * [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi) — modello analogo per gli indirizzi
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — zero o un conto: quello giusto
+> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — la normalizzazione dell'IBAN e del BIC
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — chi impedisce di spegnere un conto ancora usato
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Soggetti e Ruoli](/guide/soggetti-e-ruoli-anagrafici) — prerequisito: il modello soggetto/ruolo
+> * [Gestione dei Contatti](/guide/gestione-dei-contatti) — modello analogo per i contatti
+> * [Gestione degli Indirizzi](/guide/gestione-degli-indirizzi) — modello analogo per gli indirizzi
+> * [Gestione dei Pagamenti](/guide/gestione-dei-pagamenti) — dove i conti si usano: incassi, SEPA, distinte
 
 ---
 
@@ -34,26 +46,7 @@ Quando un processo (fatturazione, pagamenti, rimborsi) cerca il conto da usare, 
 * La view e la funzione per il recupero del conto
 * I vincoli, i trigger e le regole di dominio
 * L'integrazione con i mandati SEPA
-* Esempi pratici e best practice
-
----
-
-## Tabelle coinvolte
-
-**Anagrafiche (chi/cosa):**
-
-* [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) — registro unico degli IBAN
-* [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari) — legame soggetto ↔ conto (fallback)
-* [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — legame ruolo ↔ conto (override)
-
-**Pagamenti (come/quando):**
-
-* [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati) — mandati SEPA collegati al conto effettivo
-
-**Artefatti di selezione:**
-
-* [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo) — view con fallback ruolo → soggetto
-* [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — funzione helper (restituisce 0 o 1 riga)
+* Gli esempi pronti — registrazione, override, sostituzione pianificata, lettura — in coda, in [Area tecnica](#area-tecnica-esempi)
 
 ---
 
@@ -106,18 +99,18 @@ Il registro non contiene informazioni su chi usa il conto o per quale scopo — 
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Nullable | Descrizione |
-| --- | --- | :---: | --- |
-| `id` | BIGINT, PK | no | Chiave primaria |
-| `iban` | VARCHAR, UNIQUE | no | IBAN normalizzato (uppercase, no spazi) |
-| `bic_swift` | VARCHAR | si | Codice BIC/SWIFT (normalizzato) |
-| `intestatario_predefinito` | VARCHAR | si | Intestatario di default |
-| `paese` | CHAR | si | Codice paese (auto-derivato dai primi 2 char IBAN) |
-| `bank_branch_id` | BIGINT, FK | no | Filiale bancaria di riferimento |
-| `attivo` | BOOLEAN | no | Flag attivo (default: true) |
-| `verificato` | BOOLEAN | no | Flag di verifica (default: false) |
-| `meta` | JSONB | si | Estensione libera |
-| Campi audit | — | — | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`, `storicizza` |
+| Colonna                    | Tipo            | Nullable | Descrizione                                                                       |
+| -------------------------- | --------------- | :------: | --------------------------------------------------------------------------------- |
+| `id`                       | BIGINT, PK      |    no    | Chiave primaria                                                                   |
+| `iban`                     | VARCHAR, UNIQUE |    no    | IBAN normalizzato (uppercase, no spazi)                                           |
+| `bic_swift`                | VARCHAR         |    si    | Codice BIC/SWIFT (normalizzato)                                                   |
+| `intestatario_predefinito` | VARCHAR         |    si    | Intestatario di default                                                           |
+| `paese`                    | CHAR            |    si    | Codice paese (auto-derivato dai primi 2 char IBAN)                                |
+| `bank_branch_id`           | BIGINT, FK      |    no    | Filiale bancaria di riferimento                                                   |
+| `attivo`                   | BOOLEAN         |    no    | Flag attivo (default: true)                                                       |
+| `verificato`               | BOOLEAN         |    no    | Flag di verifica (default: false)                                                 |
+| `meta`                     | JSONB           |    si    | Estensione libera                                                                 |
+| Campi audit                | —               |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`, `storicizza` |
 
 **Vincoli:**
 
@@ -127,10 +120,10 @@ Da un punto di vista tecnico:
 
 **Trigger principali:**
 
-| Trigger | Evento | Cosa fa |
-| --- | --- | --- |
-| `trgfn_conti_bancari_normalize` | BEFORE INSERT/UPDATE | Normalizza IBAN e BIC (uppercase, strip spazi), deriva `paese` |
-| `trgfn_prevent_deactivate_if_children` | BEFORE UPDATE | Impedisce disattivazione se esistono legami soggetto o ruolo attivi |
+| Trigger                                | Evento               | Cosa fa                                                             |
+| -------------------------------------- | -------------------- | ------------------------------------------------------------------- |
+| `trgfn_conti_bancari_normalize`        | BEFORE INSERT/UPDATE | Normalizza IBAN e BIC (uppercase, strip spazi), deriva `paese`      |
+| `trgfn_prevent_deactivate_if_children` | BEFORE UPDATE        | Impedisce disattivazione se esistono legami soggetto o ruolo attivi |
 
 > Documentazione dettagliata: [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)
 
@@ -146,20 +139,20 @@ Questo livello funge da **fallback**: se non esiste un legame specifico a livell
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Nullable | Descrizione |
-| --- | --- | :---: | --- |
-| `id` | BIGINT, PK | no | Chiave primaria |
-| `soggetto_id` | UUID, FK | no | Soggetto proprietario |
-| `conto_bancario_id` | BIGINT, FK | no | Conto associato |
-| `uso` | VARCHAR | no | Tipo d'uso: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO` (default: `GENERICO`) |
-| `predefinito` | BOOLEAN | no | Flag predefinito per l'uso (default: false) |
-| `valido_dal` | DATE | si | Inizio validita |
-| `valido_al` | DATE | si | Fine validita |
-| `intestazione_dichiarata` | VARCHAR | si | Intestazione dichiarata dal soggetto |
-| `verificato` | BOOLEAN | no | Flag di verifica (default: false) |
-| `bloccato` | BOOLEAN | no | Flag di blocco operativo (default: false) |
-| `meta` | JSONB | si | Estensione libera |
-| Campi audit | — | — | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`, `storicizza` |
+| Colonna                   | Tipo       | Nullable | Descrizione                                                                       |
+| ------------------------- | ---------- | :------: | --------------------------------------------------------------------------------- |
+| `id`                      | BIGINT, PK |    no    | Chiave primaria                                                                   |
+| `soggetto_id`             | UUID, FK   |    no    | Soggetto proprietario                                                             |
+| `conto_bancario_id`       | BIGINT, FK |    no    | Conto associato                                                                   |
+| `uso`                     | VARCHAR    |    no    | Tipo d'uso: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO` (default: `GENERICO`)  |
+| `predefinito`             | BOOLEAN    |    no    | Flag predefinito per l'uso (default: false)                                       |
+| `valido_dal`              | DATE       |    si    | Inizio validita                                                                   |
+| `valido_al`               | DATE       |    si    | Fine validita                                                                     |
+| `intestazione_dichiarata` | VARCHAR    |    si    | Intestazione dichiarata dal soggetto                                              |
+| `verificato`              | BOOLEAN    |    no    | Flag di verifica (default: false)                                                 |
+| `bloccato`                | BOOLEAN    |    no    | Flag di blocco operativo (default: false)                                         |
+| `meta`                    | JSONB      |    si    | Estensione libera                                                                 |
+| Campi audit               | —          |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`, `storicizza` |
 
 **Vincoli:**
 
@@ -170,10 +163,10 @@ Da un punto di vista tecnico:
 
 **Trigger principali:**
 
-| Trigger | Evento | Cosa fa |
-| --- | --- | --- |
+| Trigger                              | Evento               | Cosa fa                              |
+| ------------------------------------ | -------------------- | ------------------------------------ |
 | `trgfn_soggetti_conti_bancari_guard` | BEFORE INSERT/UPDATE | Verifica conto attivo, coerenza date |
-| `trgfn_child_requires_active_parent` | AFTER INSERT/UPDATE | Verifica soggetto e conto attivi |
+| `trgfn_child_requires_active_parent` | AFTER INSERT/UPDATE  | Verifica soggetto e conto attivi     |
 
 > Documentazione dettagliata: [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)
 
@@ -187,20 +180,21 @@ La struttura e identica al legame soggetto, ma il riferimento e a `soggetti_ruol
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Nullable | Descrizione |
-| --- | --- | :---: | --- |
-| `id` | BIGINT, PK | no | Chiave primaria |
-| `soggetto_ruolo_id` | BIGINT, FK | no | Ruolo del soggetto |
-| `conto_bancario_id` | BIGINT, FK | no | Conto associato |
-| `uso` | VARCHAR | no | Tipo d'uso (default: `GENERICO`) |
-| `predefinito` | BOOLEAN | no | Flag predefinito per l'uso (default: false) |
-| `valido_dal` | DATE | si | Inizio validita |
-| `valido_al` | DATE | si | Fine validita |
-| `intestazione_dichiarata` | VARCHAR | si | Intestazione dichiarata |
-| `verificato` | BOOLEAN | no | Flag verifica (default: false) |
-| `bloccato` | BOOLEAN | no | Flag blocco (default: false) |
-| `meta` | JSONB | si | Estensione libera |
-| Campi audit | — | — | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`, `storicizza` |
+| Colonna                   | Tipo       | Nullable | Descrizione                                                                                                                             |
+| ------------------------- | ---------- | :------: | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                      | BIGINT, PK |    no    | Chiave primaria                                                                                                                         |
+| `soggetto_ruolo_id`       | BIGINT, FK |    no    | Ruolo del soggetto                                                                                                                      |
+| `conto_bancario_id`       | BIGINT, FK |    no    | Conto associato                                                                                                                         |
+| `istanza_utility_id`      | BIGINT, FK |    si    | Istanza di servizio: `NULL` = legame del ruolo in generale, valorizzato = specifico per quell'istanza (`anagrafiche.istanze_utilities`) |
+| `uso`                     | VARCHAR    |    no    | Tipo d'uso (default: `GENERICO`)                                                                                                        |
+| `predefinito`             | BOOLEAN    |    no    | Flag predefinito per l'uso (default: false)                                                                                             |
+| `valido_dal`              | DATE       |    si    | Inizio validita                                                                                                                         |
+| `valido_al`               | DATE       |    si    | Fine validita                                                                                                                           |
+| `intestazione_dichiarata` | VARCHAR    |    si    | Intestazione dichiarata                                                                                                                 |
+| `verificato`              | BOOLEAN    |    no    | Flag verifica (default: false)                                                                                                          |
+| `bloccato`                | BOOLEAN    |    no    | Flag blocco (default: false)                                                                                                            |
+| `meta`                    | JSONB      |    si    | Estensione libera                                                                                                                       |
+| Campi audit               | —          |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id`, `storicizza`                                                       |
 
 **Vincoli:**
 
@@ -214,10 +208,10 @@ Da un punto di vista tecnico:
 
 **Trigger principali:**
 
-| Trigger | Evento | Cosa fa |
-| --- | --- | --- |
+| Trigger                                    | Evento               | Cosa fa                              |
+| ------------------------------------------ | -------------------- | ------------------------------------ |
 | `trgfn_soggetti_ruoli_conti_bancari_guard` | BEFORE INSERT/UPDATE | Verifica conto attivo, coerenza date |
-| `trgfn_child_requires_active_parent` | AFTER INSERT/UPDATE | Verifica conto attivo |
+| `trgfn_child_requires_active_parent`       | AFTER INSERT/UPDATE  | Verifica conto attivo                |
 
 > Documentazione dettagliata: [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)
 
@@ -233,17 +227,18 @@ La view e **flat**: unisce le candidate di entrambi i livelli e restituisce **tu
 
 La view espone:
 
-| Colonna | Tipo | Descrizione |
-| --- | --- | --- |
-| `soggetto_ruolo_id` | BIGINT | Ruolo di riferimento |
-| `uso` | VARCHAR | Tipo d'uso |
-| `conto_bancario_id` | BIGINT | Conto selezionato |
-| `soggetto_ruolo_conto_id` | BIGINT | ID legame ruolo (se fonte=RUOLO) |
-| `soggetto_conto_id` | BIGINT | ID legame soggetto (se fonte=SOGGETTO) |
-| `fonte` | VARCHAR | `RUOLO` o `SOGGETTO` |
-| `predefinito` | BOOLEAN | Flag predefinito del legame selezionato |
-| `valido_dal` / `valido_al` | DATE | Periodo di validita |
-| `data_update` | TIMESTAMPTZ | Ultimo aggiornamento del legame |
+| Colonna                    | Tipo        | Descrizione                                                                       |
+| -------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `soggetto_ruolo_id`        | BIGINT      | Ruolo di riferimento                                                              |
+| `uso`                      | VARCHAR     | Tipo d'uso                                                                        |
+| `conto_bancario_id`        | BIGINT      | Conto candidato                                                                   |
+| `soggetto_ruolo_conto_id`  | BIGINT      | ID legame ruolo (se fonte=RUOLO)                                                  |
+| `soggetto_conto_id`        | BIGINT      | ID legame soggetto (se fonte=SOGGETTO)                                            |
+| `istanza_utility_id`       | BIGINT      | Istanza del legame: `NULL` per i legami generici e per le righe di fonte SOGGETTO |
+| `fonte`                    | VARCHAR     | `RUOLO` o `SOGGETTO`                                                              |
+| `predefinito`              | BOOLEAN     | Flag predefinito del legame                                                       |
+| `valido_dal` / `valido_al` | DATE        | Periodo di validita                                                               |
+| `data_update`              | TIMESTAMPTZ | Ultimo aggiornamento del legame                                                   |
 
 **Filtri applicati:** `valido_dal <= oggi` (o NULL), `valido_al >= oggi` (o NULL), `bloccato = false`, `conti_bancari.attivo = true`.
 
@@ -255,11 +250,11 @@ La funzione e il punto d'ingresso consigliato quando serve **un singolo conto** 
 
 Da un punto di vista tecnico:
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_soggetto_ruolo_id` | BIGINT | Ruolo del soggetto (obbligatorio) |
-| `p_uso` | VARCHAR | Uso richiesto, normalizzato a UPPER(TRIM()) |
-| `p_istanza_utility_id` | BIGINT | ID istanza (`anagrafiche.istanze_utilities.id`). Opzionale — se NULL parte dal livello ruolo generico |
+| Parametro              | Tipo    | Descrizione                                                                                           |
+| ---------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `p_soggetto_ruolo_id`  | BIGINT  | Ruolo del soggetto (obbligatorio)                                                                     |
+| `p_uso`                | VARCHAR | Uso richiesto, normalizzato a UPPER(TRIM())                                                           |
+| `p_istanza_utility_id` | BIGINT  | ID istanza (`anagrafiche.istanze_utilities.id`). Opzionale — se NULL parte dal livello ruolo generico |
 
 **Restituisce:** un record di tipo `anagrafiche.vw_conti_bancari_per_ruolo` o NULL.
 
@@ -316,7 +311,9 @@ I check constraint verificano la coerenza delle date (`valido_al >= valido_dal`)
 
 ### R4 — Priorita ruolo > soggetto
 
-La view `vw_conti_bancari_per_ruolo` ordina le candidate con priorita 1 per il legame ruolo e priorita 2 per il legame soggetto. A parita di priorita, preferisce il conto predefinito e poi il piu recente.
+La view `vw_conti_bancari_per_ruolo` ordina le candidate su **tre** gradini: legame di ruolo con
+istanza (priorità 1), legame di ruolo generico (2), legame del soggetto (3). A parità di gradino
+preferisce il conto predefinito, poi il più recente.
 
 ### R5 — Conto attivo non disattivabile con legami
 
@@ -336,78 +333,9 @@ Il modello consente piu conti per lo stesso uso, ma in esercizio e raccomandato 
 * **Sostituzione pianificata**: `valido_dal > oggi`
 * **Escluso dall'uso**: `bloccato = true`
 
-La view e la funzione restituiscono sempre una sola riga, quindi la logica operativa funziona correttamente. L'interfaccia utente (UI/API) dovrebbe guidare l'utente a disattivare o chiudere il conto precedente quando ne inserisce uno nuovo per lo stesso uso.
-
----
-
-## Esempi pratici
-
-### Caso 1 — Conto a livello soggetto
-
-Registrazione dell'IBAN e associazione al soggetto per incassi:
-
-```sql
--- 1. Registra l'IBAN (il trigger normalizza)
-INSERT INTO anagrafiche.conti_bancari (iban, bic_swift, bank_branch_id)
-VALUES ('IT60 X054 2811 1010 0000 0123 456', 'BPPIITRRXXX', 1);
-
--- 2. Associa al soggetto per uso INCASSO
-INSERT INTO anagrafiche.soggetti_conti_bancari (
-  soggetto_id, conto_bancario_id, uso, predefinito
-) VALUES (
-  'UUID-SOGGETTO',
-  (SELECT id FROM anagrafiche.conti_bancari WHERE iban = 'IT60X0542811101000000123456'),
-  'INCASSO',
-  TRUE
-);
-```
-
-### Caso 2 — Override per ruolo FORNITORE
-
-Lo stesso soggetto ha un conto diverso per i pagamenti al ruolo FORNITORE:
-
-```sql
-INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari (
-  soggetto_ruolo_id, conto_bancario_id, uso, predefinito
-) VALUES (
-  10,  -- ruolo FORNITORE
-  (SELECT id FROM anagrafiche.conti_bancari WHERE iban = 'IT60X0542811101000000789012'),
-  'PAGAMENTO',
-  TRUE
-);
-```
-
-La view restituira questo conto per `(soggetto_ruolo_id=10, uso='PAGAMENTO')` con `fonte='RUOLO'`.
-
-### Caso 3 — Cambio IBAN pianificato
-
-```sql
--- Nuovo legame con validita futura
-INSERT INTO anagrafiche.soggetti_conti_bancari (
-  soggetto_id, conto_bancario_id, uso, predefinito, valido_dal
-) VALUES (
-  'UUID-SOGGETTO',
-  (SELECT id FROM anagrafiche.conti_bancari WHERE iban = 'IT60X0542811101000000999888'),
-  'INCASSO',
-  TRUE,
-  '2026-04-01'  -- attivo dal 1 aprile
-);
-```
-
-Al cambio data, la view selezionera automaticamente il nuovo conto.
-
-### Caso 4 — Recupero conto per la fatturazione
-
-```sql
--- View: tutti i conti disponibili per un ruolo
-SELECT *
-FROM anagrafiche.vw_conti_bancari_per_ruolo
-WHERE soggetto_ruolo_id = 10 AND uso = 'INCASSO';
-
--- Funzione: il conto predefinito (1 riga o NULL)
-SELECT (f).*
-FROM script.fn_get_conto_bancario_predefinito(10, 'PAGAMENTO') AS f;
-```
+La **funzione** restituisce sempre una sola riga — il conto che vince la cascata — mentre la **view**
+espone tutte le candidate. È la funzione che va interrogata quando serve "il" conto: la view serve a
+vedere il ventaglio (e a capire *perché* ha vinto quello). L'interfaccia utente (UI/API) dovrebbe guidare l'utente a disattivare o chiudere il conto precedente quando ne inserisce uno nuovo per lo stesso uso.
 
 ---
 
@@ -465,6 +393,7 @@ erDiagram
         bigint id PK
         bigint soggetto_ruolo_id FK
         bigint conto_bancario_id FK
+        bigint istanza_utility_id FK
         varchar uso
         boolean predefinito
         date valido_dal
@@ -493,6 +422,7 @@ erDiagram
         bigint id PK
         bigint soggetto_ruolo_id FK
         bigint conto_bancario_id FK
+        bigint istanza_utility_id FK
         varchar uso
     }
 
@@ -500,6 +430,7 @@ erDiagram
         bigint soggetto_ruolo_id
         varchar uso
         bigint conto_bancario_id
+        bigint istanza_utility_id
         varchar fonte
         boolean predefinito
     }
@@ -519,14 +450,69 @@ erDiagram
 
 ---
 
-## Note finali
+## Area tecnica — esempi
 
-Questa guida assume come gia compreso il modello soggetto/ruolo descritto nella [guida soggetti e ruoli](/guide/soggetti-e-ruoli-anagrafici).
+**Registrare un IBAN e legarlo al soggetto** — il registro prima, il legame poi; l'IBAN si scrive
+come lo si legge dal documento, perché a normalizzarlo è il trigger:
 
-Per approfondire:
+```sql
+-- 1. Registra l'IBAN (il trigger lo normalizza: uppercase, senza spazi)
+INSERT INTO anagrafiche.conti_bancari (iban, bic_swift, bank_branch_id)
+VALUES ('IT60 X054 2811 1010 0000 0123 456', 'BPPIITRRXXX', 1);
 
-* [Guida Gestione dei Contatti](/guide/gestione-dei-contatti) — modello analogo con fallback multi-contesto
-* [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi) — modello indirizzi con policy master/fallback
+-- 2. Associa al soggetto per uso INCASSO
+INSERT INTO anagrafiche.soggetti_conti_bancari (
+  soggetto_id, conto_bancario_id, uso, predefinito
+) VALUES (
+  'UUID-SOGGETTO',
+  (SELECT id FROM anagrafiche.conti_bancari WHERE iban = 'IT60X0542811101000000123456'),
+  'INCASSO',
+  TRUE
+);
+```
+
+**L'override per ruolo** — lo stesso soggetto, un conto diverso per i pagamenti al ruolo FORNITORE:
+da questo punto in poi la funzione sceglie questo, non quello del soggetto:
+
+```sql
+INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari (
+  soggetto_ruolo_id, conto_bancario_id, uso, predefinito
+) VALUES (
+  10,  -- ruolo FORNITORE
+  (SELECT id FROM anagrafiche.conti_bancari WHERE iban = 'IT60X0542811101000000789012'),
+  'PAGAMENTO',
+  TRUE
+);
+```
+
+**Una sostituzione pianificata** — il nuovo conto entra in vigore a una data futura senza toccare
+quello in corso: fino a quella data vince il vecchio, da quella data il nuovo.
+
+```sql
+INSERT INTO anagrafiche.soggetti_conti_bancari (
+  soggetto_id, conto_bancario_id, uso, predefinito, valido_dal
+) VALUES (
+  'UUID-SOGGETTO',
+  (SELECT id FROM anagrafiche.conti_bancari WHERE iban = 'IT60X0542811101000000999888'),
+  'INCASSO',
+  TRUE,
+  DATE '2026-04-01'
+);
+```
+
+**Le due letture del modello** — la view per vedere le candidate (e da dove vengono), la funzione
+per avere il conto:
+
+```sql
+-- le candidate per quel ruolo e uso, in ordine di priorità
+SELECT *
+FROM anagrafiche.vw_conti_bancari_per_ruolo
+WHERE soggetto_ruolo_id = 10 AND uso = 'INCASSO';
+
+-- il conto che vince: una riga, o nessuna
+SELECT (f).*
+FROM script.fn_get_conto_bancario_predefinito(10, 'PAGAMENTO') AS f;
+```
 
 ---
 

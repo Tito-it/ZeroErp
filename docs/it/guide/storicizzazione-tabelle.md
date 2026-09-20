@@ -1,23 +1,43 @@
-# Guida – Storicizzazione delle Tabelle
+# Guida — Storicizzazione delle Tabelle
 
-> (latest review 06-09-2026)
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Destinatari: sviluppatori database e backend
+> **Destinatari**: sviluppatori database e backend
 >
-> Questa guida descrive il sistema di storicizzazione (versioning) delle tabelle
-> in Zero ERP: come vengono registrate le modifiche, come si consultano gli
-> snapshot storici e come funziona il provisioning automatico delle tabelle e dei
-> trigger nello schema `storico`.
+> **Vedi anche** — schemi DB:
 >
-> Vedi anche
+> * `storico.<nome_tabella>` — una tabella di storico per ogni tabella operativa storicizzata
+> * [config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza) — il registro delle tabelle con storicizzazione permanente
+> * [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy) — la mappa da cui si ricava l'emittente di una versione
+> * [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare) — il debito della mappa: deve restare vuota
 >
-> * [Guida Automazione DB](/guide/automazione-db) — framework di automazione trigger e policy
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — il trigger generico BEFORE UPDATE/DELETE
+> * [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) — lo snapshot JSONB a una data
+> * [script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of) — l'ID del record storico a una data
+> * [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table) — il provisioning idempotente di una tabella
+> * [dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope) / [dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope) — arma lo scope e converte il pregresso
+> * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) / [dbops.fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) — creazione dei trigger e delle tabelle
+> * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) / [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — sincronizzazione del catalogo e applicazione dei default
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Guida Automazione DB](/guide/automazione-db) — il framework che orchestra provisioning e manutenzione
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — chi ha modificato la riga, e quando
+> * [Guida Transaction ID](/guide/tx_id_implementation_guide) — la correlazione transazionale degli snapshot
+> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — il registro dei lavori a orario
 > * [Linee Guida SQL](/linee-guida-sql) — convenzioni DDL e trigger
-> * [Guida Transaction ID](/guide/tx_id_implementation_guide) — correlazione transazionale
+> * [Provisioning ruoli DB](/dev/backend/provisioning-db-roles) — il passaggio da superuser sulle shadow
 
 ---
 
 ## Introduzione
+
+Questa guida descrive il sistema di storicizzazione (versioning) delle tabelle in Zero
+ERP: come vengono registrate le modifiche, come si consultano gli snapshot storici e
+come funziona il provisioning automatico delle tabelle e dei trigger nello schema
+`storico`.
 
 In un ERP che gestisce anagrafiche, contratti, fatture e documenti fiscali, poter ricostruire lo stato di un record a una data specifica e un requisito fondamentale. La storicizzazione in Zero ERP risponde a questa esigenza con un modello unificato basato su snapshot JSONB.
 
@@ -33,39 +53,6 @@ Il modello e completamente automatizzato: il framework di automazione DB crea si
 * Le funzioni di consultazione snapshot
 * Il provisioning automatico e le procedure di manutenzione
 * La tabella di configurazione `storico_set_storicizza`
-
----
-
-## Tabelle e funzioni coinvolte
-
-**Schema `storico`:**
-
-* `storico.<nome_tabella>` — una tabella di storico per ogni tabella operativa storicizzata
-
-**Configurazione:**
-
-* [config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza) — registro delle tabelle con storicizzazione permanente
-
-**Trigger function:**
-
-* [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — trigger generico BEFORE UPDATE/DELETE
-
-**Funzioni di consultazione:**
-
-* [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) — snapshot JSONB a una data
-* [script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of) — ID record storico a una data
-
-**Automazione:**
-
-* [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) — creazione trigger di storico
-* [dbops.fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) — creazione tabelle di storico
-* [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table) — provisioning idempotente di una tabella
-
-**Manutenzione:**
-
-* [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) — sincronizzazione catalogo
-* [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — il registro dei lavori a orario, e perché uno di questi è rimasto rotto sei mesi
-* [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — applicazione default settimanale
 
 ---
 
@@ -106,18 +93,18 @@ Ogni tabella nello schema `storico` segue una struttura rigida, creata automatic
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Nullable | Default | Descrizione |
-| --- | --- | :---: | --- | --- |
-| `id` | BIGSERIAL, PK | no | auto | PK indipendente dalla tabella operativa |
-| `<entita>_id` | stesso tipo della PK operativa | no | — | Riferimento al record originale (FK logica, senza constraint) |
-| `valid_from` | TIMESTAMPTZ | no | `now()` | Inizio validita dello snapshot |
-| `valid_to` | TIMESTAMPTZ | si | — | Fine validita (NULL = snapshot corrente aperto) |
-| `snapshot` | JSONB | si | — | Stato completo del record al momento dell'evento |
-| `tipo_operazione` | SMALLINT | si | — | 1=snapshot iniziale, 2=UPDATE, 3=DELETE |
-| `change_type` | CHAR(1) | si | `'A'` | Classificazione rapida: A (add), U (update), D (delete) |
-| `user_insert` | TEXT | no | `CURRENT_USER` | Utente che ha generato lo snapshot |
-| `data_insert` | TIMESTAMPTZ | no | `now()` | Timestamp di creazione dello snapshot |
-| `tx_id` | UUID | si | — | Transaction ID (gestito da `trgfn_tx_id_managed`) |
+| Colonna           | Tipo                           | Nullable | Default        | Descrizione                                                   |
+| ----------------- | ------------------------------ | :------: | -------------- | ------------------------------------------------------------- |
+| `id`              | BIGSERIAL, PK                  |    no    | auto           | PK indipendente dalla tabella operativa                       |
+| `<entita>_id`     | stesso tipo della PK operativa |    no    | —              | Riferimento al record originale (FK logica, senza constraint) |
+| `valid_from`      | TIMESTAMPTZ                    |    no    | `now()`        | Inizio validita dello snapshot                                |
+| `valid_to`        | TIMESTAMPTZ                    |    si    | —              | Fine validita (NULL = snapshot corrente aperto)               |
+| `snapshot`        | JSONB                          |    si    | —              | Stato completo del record al momento dell'evento              |
+| `tipo_operazione` | SMALLINT                       |    si    | —              | 1=snapshot iniziale, 2=UPDATE, 3=DELETE                       |
+| `change_type`     | CHAR(1)                        |    si    | `'A'`          | Classificazione rapida: A (add), U (update), D (delete)       |
+| `user_insert`     | TEXT                           |    no    | `CURRENT_USER` | Utente che ha generato lo snapshot                            |
+| `data_insert`     | TIMESTAMPTZ                    |    no    | `now()`        | Timestamp di creazione dello snapshot                         |
+| `tx_id`           | UUID                           |    si    | —              | Transaction ID (gestito da `trgfn_tx_id_managed`)             |
 
 **Indici creati automaticamente:**
 
@@ -128,22 +115,21 @@ Da un punto di vista tecnico:
 
 ---
 
-## Di chi è una versione — lo scope congelato (dall'11-09-2026)
+## Di chi è una versione — lo scope congelato
 
-> ⭐ **La storia di una riga protetta è la stessa informazione della riga.** Se
-> una fattura si può vedere solo da certi operatori, lo stesso vale per ogni sua
-> versione precedente. Oggi non è così: le tabelle di storico non hanno regole di
-> visibilità. Il cantiere che lo risolve è
-> `brief-db-rls-storico-scope-congelato` (§4b: disegno deciso l'11-09-2026).
+> ⭐ **La storia di una riga protetta è la stessa informazione della riga.** Se una
+> fattura si può vedere solo da certi operatori, lo stesso vale per ogni sua versione
+> precedente. Per questo ogni tabella di storico porta con sé l'emittente **congelato**
+> al momento in cui la riga è stata fotografata.
 
 Il disegno, in breve:
 
-* ogni tabella di storico riceverà una colonna **`scope_emittente_fiscale_id`**,
-  scritta dal trigger **nel momento in cui fotografa la riga** e mai più
-  ricalcolata — *un archivio che cambia col presente non è un archivio*;
-* riceverà anche **`origine_schema`**: il nome della tabella di storico è il nome
-  nudo della tabella madre, e `acquisti.ddt` e `vendite.ddt` scrivono nella
-  stessa `storico.ddt` — senza lo schema le due storie si mescolano;
+* ogni tabella di storico ha una colonna **`scope_emittente_fiscale_id`**, scritta dal
+  trigger **nel momento in cui fotografa la riga** e mai più ricalcolata — *un archivio
+  che cambia col presente non è un archivio*;
+* ha anche **`origine_schema`**: il nome della tabella di storico è il nome nudo della
+  tabella madre, e `acquisti.ddt` e `vendite.ddt` scrivono nella stessa `storico.ddt` —
+  senza lo schema le due storie si mescolano;
 * **da dove** si prende l'emittente lo dice una mappa, non il codice:
   [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy) — una
   riga per tabella storicizzata, con cinque modi (colonna in riga, soggetto-ruolo,
@@ -152,67 +138,53 @@ Il disegno, in breve:
 * una sola regola di lettura, per l'operatore, sulla colonna congelata;
 * se il padre di un satellite **non è più vivo** — succede in ogni `DELETE` a
   cascata, dove il padre sparisce prima che il figlio scriva la sua versione
-  finale — l'emittente si legge dall'**ultima versione del padre nello
-  storico**: leggere l'archivio del padre è leggere il passato, non il presente.
+  finale — l'emittente si legge dall'**ultima versione del padre nello storico**:
+  leggere l'archivio del padre è leggere il passato, non il presente.
 
-**Stato: APPLICATO l'11-09-2026** (pgTAP senza regressioni) — mappa e
-risoluzione (passo 2), colonne e regola di lettura generate
-([dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope),
-passo 3), trigger che congela (passo 4), backfill del pregresso
-([dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope),
-passo 5), controlli (passo 6), privilegi (passo 7: l'applicazione non cancella
-mai una versione).
+Le tabelle nuove nascono **già armate** dal generatore: lo scope si dichiara nella mappa
+([dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope)) e il
+provisioning fa il resto. Il pregresso si converte con il backfill
+([dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope)), e
+l'applicazione non cancella mai una versione: è un privilegio, non una convenzione.
 
-Sul database di sviluppo, dopo l'apply: 120 tabelle di storico, **37 armate**
-(RLS con tre policy generate), **65.751 versioni** attribuite dal backfill, zero
-senza origine; le tabelle nuove nascono già armate dal generatore.
-
-⚠️ **Un passaggio da superuser, dove serve.** Sul database di sviluppo 68 tabelle
-di storico su 121 appartenevano a `postgres` (le aveva create il job pgAgent): i
-changeSet non possono alterarle, e il trigger nuovo — che scrive le due colonne —
-si ferma finché una tabella ne è priva. `scripts/sql/provision_storico_scope.sql`
-le ha allineate e ne ha riassegnato la proprietà al migratore (fatto l'11-09);
-serve di nuovo su qualunque database dove il job abbia creato shadow come
-`postgres`. Dettagli in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
+⚠️ **Un passaggio da superuser, dove serve.** Su un database in cui il job pgAgent ha
+creato shadow come `postgres`, quelle tabelle non sono alterabili dai changeSet, e il
+trigger nuovo — che scrive le due colonne — si ferma finché una tabella ne è priva.
+`scripts/sql/provision_storico_scope.sql` le allinea e ne riassegna la proprietà al
+migratore: serve su qualunque database dove il job abbia creato shadow come `postgres`.
+Dettagli in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
 
 Controlli: `db/pgtap/dbops/test-storico-scope-policy-v1.sql` (la mappa) e
 `db/pgtap/storico/test-storico-scope-congelato-v1.sql` (colonne, policy,
 congelamento, collisione fra omonime, cancellazione a cascata, lettura per
 operatore, privilegi, proprietario delle shadow).
 
-### Le tre chiusure del 12-09-2026
+### Cosa sta dentro lo schema `storico`
 
 * **La shadow è di chi possiede la madre.** Il generatore, creata e armata una
-  tabella di storico, la **cede al proprietario della madre**: così anche le
-  shadow che il job pgAgent crea come `postgres` restano del migratore, e la
-  convergenza da Liquibase non le salta più. Il passaggio da superuser del
-  riquadro sopra resta necessario **una volta**, sui database dove il job ha
-  creato shadow prima di questa regola. Dettagli in
+  tabella di storico, la **cede al proprietario della madre**: così anche le shadow
+  che il job pgAgent crea come `postgres` restano del migratore, e la convergenza da
+  Liquibase non le salta. Il passaggio da superuser del riquadro sopra resta
+  necessario **una volta**, sui database dove il job ha creato shadow prima di questa
+  regola. Dettagli in
   [dbops.fn_ensure_storico_table](/dbzero/dbops/manual/fn_ensure_storico_table).
 * **Il debito della mappa si vede anche fuori dalla CI.**
   [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare)
-  porta nel digest settimanale i tre motivi che il controllo asserisce in CI:
-  una madre col trigger senza riga di mappa, una madre in RLS dichiarata
-  `NESSUNO`, una riga di mappa senza più madre. Deve restare vuota.
-* **Nello schema `storico` non tutto è una shadow.** `comune_trasformazioni` e
+  porta nel digest settimanale i tre motivi che il controllo asserisce in CI: una
+  madre col trigger senza riga di mappa, una madre in RLS dichiarata `NESSUNO`, una
+  riga di mappa senza più madre. Deve restare vuota.
+* **Non tutto ciò che sta in `storico` è una shadow.** `comune_trasformazioni` e
   `stradario_trasformazioni` sono i **registri delle fusioni** di comuni e vie
-  (scritti da `fn_admin_merge_*`, letti da `fn_get_vie_discendenti`): non hanno
-  una madre, non hanno il trigger, non entrano nella mappa. Le due shadow
-  davvero orfane — `fatturazione_lotti_attivita` (dominio ritirato) e
-  `risorse_umane_auth_user` (di prima della rinomina della madre) — sono state
-  **cancellate**, insieme al trigger stantio che, rimasto sul nome vecchio,
-  bloccava ogni scrittura sulla madre legacy.
-* **E poi la madre legacy stessa** (decisione Tid, 12-09, pomeriggio):
-  `anagrafiche._legacy_risorse_umane_auth_user` — la tabella ponte di prima
-  del cutover a `identita_digitali` — è stata **eliminata** con la sua shadow
-  (vuota) e le sue registrazioni (mappa dello scope, `audit_sources`,
-  `storico_set_storicizza`). Senza produzione, sei righe di test di una tabella
-  dismessa non rappresentano niente; e non era inerte: due FK `ON DELETE
-  RESTRICT` e la colonna `storicizza` che la faceva ri-armare a ogni
-  `ci_apply`. ⚠️ Il `DROP` sta in `90_end` (`20260912-10`), non in `00_schema`:
-  un changeSet di `90_end` del 29-04 la pretende esistente, e su un database
-  ricostruito da zero `90_end` gira dopo tutto `00_schema`. Presidio:
-  `db/pgtap/anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1.sql`.
+  (scritti da `fn_admin_merge_*`, letti da `fn_get_vie_discendenti`): non hanno una
+  madre, non hanno il trigger e non entrano nella mappa. Una shadow orfana — una
+  tabella di storico la cui madre non esiste più — non è ammessa: va cancellata, e
+  con lei i suoi resti (trigger rimasti sul nome vecchio, righe di mappa,
+  `audit_sources`, `storico_set_storicizza`). Una `storicizza = true` dimenticata su
+  una tabella dismessa la farebbe ri-armare a ogni `ci_apply`.
+* ⚠️ **L'ordine delle migrazioni non è un dettaglio.** Il `DROP` di una tabella legacy
+  sta in `90_end`, non in `00_schema`: un changeSet di `90_end` può pretendere che
+  quella tabella esista ancora, e su un database ricostruito da zero `90_end` gira
+  **dopo** tutto `00_schema`. Anticipare il `DROP` lo farebbe fallire.
 
 ---
 
@@ -259,12 +231,12 @@ Questa tabella nello schema `config` registra le tabelle operative che devono ma
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Nullable | Default | Descrizione |
-| --- | --- | :---: | --- | --- |
-| `table_name` | TEXT, PK | no | — | Nome della tabella operativa (senza schema) |
-| `insert_manuale` | BOOLEAN | no | true | `true` = inserita manualmente, `false` = rilevata automaticamente |
-| `data_insert` | TIMESTAMPTZ | no | `now()` | Timestamp inserimento |
-| `user_insert` | TEXT | no | `CURRENT_USER` | Utente inserimento |
+| Colonna          | Tipo        | Nullable | Default        | Descrizione                                                       |
+| ---------------- | ----------- | :------: | -------------- | ----------------------------------------------------------------- |
+| `table_name`     | TEXT, PK    |    no    | —              | Nome della tabella operativa (senza schema)                       |
+| `insert_manuale` | BOOLEAN     |    no    | true           | `true` = inserita manualmente, `false` = rilevata automaticamente |
+| `data_insert`    | TIMESTAMPTZ |    no    | `now()`        | Timestamp inserimento                                             |
+| `user_insert`    | TEXT        |    no    | `CURRENT_USER` | Utente inserimento                                                |
 
 La procedura `proc_sync_storico_set_storicizza` popola automaticamente questa tabella rilevando dal catalogo PostgreSQL tutte le tabelle con colonna `storicizza` che hanno DEFAULT `true`. I record inseriti automaticamente hanno `insert_manuale = false`.
 
@@ -280,8 +252,8 @@ Da un punto di vista tecnico:
 
 **Parametri (via `TG_ARGV`):**
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
+| Parametro    | Tipo | Descrizione                                                       |
+| ------------ | ---- | ----------------------------------------------------------------- |
 | `TG_ARGV[0]` | TEXT | Nome della colonna FK nella tabella storica (es. `'soggetto_id'`) |
 
 **Flusso di esecuzione completo:**
@@ -346,13 +318,13 @@ Restituisce lo snapshot JSONB di un record a un dato istante temporale. Se non t
 
 Da un punto di vista tecnico:
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_schema` | TEXT | Schema della tabella originaria |
-| `p_table` | TEXT | Nome della tabella (uguale in operativo e storico) |
-| `p_id` | TEXT | PK del record originario (passato come TEXT) |
-| `p_fk_col` | TEXT | Nome della colonna FK in storico (es. `'soggetto_id'`) |
-| `p_as_of` | TIMESTAMP | Data/ora di validita desiderata |
+| Parametro  | Tipo      | Descrizione                                            |
+| ---------- | --------- | ------------------------------------------------------ |
+| `p_schema` | TEXT      | Schema della tabella originaria                        |
+| `p_table`  | TEXT      | Nome della tabella (uguale in operativo e storico)     |
+| `p_id`     | TEXT      | PK del record originario (passato come TEXT)           |
+| `p_fk_col` | TEXT      | Nome della colonna FK in storico (es. `'soggetto_id'`) |
+| `p_as_of`  | TIMESTAMP | Data/ora di validita desiderata                        |
 
 **Restituisce:** `JSONB` — lo snapshot del record, o NULL se non trovato.
 
@@ -363,14 +335,8 @@ Da un punto di vista tecnico:
 3. Se trovato: restituisce lo snapshot
 4. Se non trovato: serializza la riga corrente dalla tabella operativa (`to_jsonb(t)`)
 
-**Esempio:**
-
-```sql
-SELECT script.fn_get_snapshot_as_of(
-  'anagrafiche', 'soggetti', '123', 'soggetto_id', '2025-06-15'::timestamp
-);
--- Restituisce il JSONB del soggetto 123 come era il 15 giugno 2025
-```
+**Esempio:** una riga sola, con lo snapshot risultante. Vedi
+[Area tecnica](#area-tecnica-esempi).
 
 > Documentazione dettagliata: [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of)
 
@@ -382,13 +348,13 @@ Restituisce solo l'ID (come TEXT) del record di storico valido a un dato istante
 
 Da un punto di vista tecnico:
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_schema` | TEXT | Schema della tabella originaria |
-| `p_table` | TEXT | Nome della tabella |
-| `p_id` | TEXT | PK del record originario |
-| `p_fk_col` | TEXT | Nome della colonna FK in storico |
-| `p_as_of` | TIMESTAMP | Data/ora di validita desiderata |
+| Parametro  | Tipo      | Descrizione                      |
+| ---------- | --------- | -------------------------------- |
+| `p_schema` | TEXT      | Schema della tabella originaria  |
+| `p_table`  | TEXT      | Nome della tabella               |
+| `p_id`     | TEXT      | PK del record originario         |
+| `p_fk_col` | TEXT      | Nome della colonna FK in storico |
+| `p_as_of`  | TIMESTAMP | Data/ora di validita desiderata  |
 
 **Restituisce:** `TEXT` — l'ID del record storico, o NULL se nessuno snapshot valido.
 
@@ -406,11 +372,11 @@ Questa funzione scorre tutte le tabelle nell'ambito che hanno una colonna `stori
 
 Da un punto di vista tecnico:
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_exec_mode` | TEXT | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
-| `p_schemas` | TEXT[] | Schemi da processare (NULL = tutti) |
-| `p_dry_run` | BOOLEAN | Simulazione senza DDL |
+| Parametro     | Tipo    | Descrizione                            |
+| ------------- | ------- | -------------------------------------- |
+| `p_exec_mode` | TEXT    | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
+| `p_schemas`   | TEXT[]  | Schemi da processare (NULL = tutti)    |
+| `p_dry_run`   | BOOLEAN | Simulazione senza DDL                  |
 
 **Flusso:**
 
@@ -423,13 +389,13 @@ Da un punto di vista tecnico:
 
 Funzione idempotente che crea la tabella di storico con la struttura standard se non esiste gia.
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_schema_base` | TEXT | Schema della tabella operativa |
-| `p_table_base` | TEXT | Nome della tabella operativa |
-| `p_fk_col` | TEXT | Nome colonna FK nello storico |
-| `p_create_gin_index` | BOOLEAN | Creare indice GIN su snapshot |
-| `p_dry_run` | BOOLEAN | Simulazione |
+| Parametro            | Tipo    | Descrizione                    |
+| -------------------- | ------- | ------------------------------ |
+| `p_schema_base`      | TEXT    | Schema della tabella operativa |
+| `p_table_base`       | TEXT    | Nome della tabella operativa   |
+| `p_fk_col`           | TEXT    | Nome colonna FK nello storico  |
+| `p_create_gin_index` | BOOLEAN | Creare indice GIN su snapshot  |
+| `p_dry_run`          | BOOLEAN | Simulazione                    |
 
 **Azioni:**
 
@@ -438,20 +404,20 @@ Funzione idempotente che crea la tabella di storico con la struttura standard se
 * Crea indice su FK e opzionalmente indice GIN su snapshot
 * Se la tabella esiste gia: return immediato (idempotente)
 * Non crea FOREIGN KEY (scelta deliberata)
-* Dall'11-09-2026: **arma lo scope** (`origine_schema`, `scope_emittente_fiscale_id`,
-  RLS se la mappa dice che la madre è protetta) chiamando `fn_storico_arma_scope`
-* Dal 12-09-2026: **cede la shadow al proprietario della madre**, se chi la crea
-  può farlo; altrimenti `WARN` nell'audit e nessun errore
+* **Arma lo scope** (`origine_schema`, `scope_emittente_fiscale_id`, RLS se la mappa
+  dice che la madre è protetta) chiamando `fn_storico_arma_scope`
+* **Cede la shadow al proprietario della madre**, se chi la crea può farlo;
+  altrimenti `WARN` nell'audit e nessun errore
 
 ### Provisioning trigger: `fn_run_automations_storico`
 
 Crea il trigger `BEFORE UPDATE OR DELETE` su tutte le tabelle operative che hanno una corrispondente tabella in `storico`.
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_exec_mode` | TEXT | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
-| `p_schemas` | TEXT[] | Schemi da processare (NULL = tutti) |
-| `p_dry_run` | BOOLEAN | Simulazione senza DDL |
+| Parametro     | Tipo    | Descrizione                            |
+| ------------- | ------- | -------------------------------------- |
+| `p_exec_mode` | TEXT    | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
+| `p_schemas`   | TEXT[]  | Schemi da processare (NULL = tutti)    |
+| `p_dry_run`   | BOOLEAN | Simulazione senza DDL                  |
 
 **Flusso:**
 
@@ -461,27 +427,21 @@ Crea il trigger `BEFORE UPDATE OR DELETE` su tutte le tabelle operative che hann
 4. Genera il nome trigger dal template (default: `trg_{table}_z90_storico_upd_dlt`)
 5. Verifica esistenza per strategia (`BY_NAME`, `BY_FUNCTION`, `BOTH`)
 6. Se non esiste: crea il trigger
-~~7. Opzionalmente rimuove trigger legacy separati (`drop_legacy_ud=true` in params)~~
-
-⛔ **Il passo 7 non esiste più (rev 2026-09-01).** Il ramo `drop_legacy_ud` è
-stato rimosso dal motore (`20260901-01`), e non perché la migrazione fosse
-finita: **cancellava un nome che non è mai esistito**. Puntava a
-`trg_{table}_upd_storico` / `trg_{table}_dlt_storico`, mentre i trigger legacy
-davvero creati si chiamavano `trg_<tab>_upd_dlt_storico_<tab>` e quelli di oggi
-`trg_<tab>_z90_storico_upd_dlt` — tre forme diverse, e il `DROP TRIGGER IF
-EXISTS` non poteva agganciare le altre due. Il flag era per giunta
-`COALESCE(..., false)`: il ramo non è mai stato eseguito nemmeno per sbaglio.
+⛔ **Il motore non rimuove i trigger legacy.** Quel ramo esisteva e non ha mai
+funzionato: puntava a `trg_{table}_upd_storico` / `trg_{table}_dlt_storico`, mentre i
+trigger legacy davvero creati si chiamavano `trg_<tab>_upd_dlt_storico_<tab>` (e quelli
+di oggi `trg_<tab>_z90_storico_upd_dlt`): tre forme diverse, e un
+`DROP TRIGGER IF EXISTS` non poteva agganciare le altre due. È stato rimosso — se un
+giorno serve togliere un trigger legacy, si fa a mano.
 
 **Naming convention del trigger:** la forma è `trg_<tabella>_z90_storico_upd_dlt`,
 e l'infisso `_z90_` garantisce che il trigger di storico venga eseguito per
 ultimo nell'ordine alfabetico PostgreSQL, dopo tutti i trigger di guard e
 validazione.
 
-> 📌 **Rettifica del 2026-09-01**: questa riga diceva *«il prefisso `trgx_z90_`»*.
-> Nel database non esiste **nessun** trigger che cominci per `trgx_` — i 118
-> trigger di storicizzazione usano tutti la forma qui sopra. ⚠️ E la differenza
-> non è cosmetica: chi cercasse i trigger di storico per prefisso non ne
-> troverebbe **nemmeno uno**.
+> ⚠️ **Non esiste nessun trigger che cominci per `trgx_`**: i trigger di
+> storicizzazione usano tutti la forma qui sopra. Chi li cercasse per quel prefisso
+> non ne troverebbe nemmeno uno.
 
 ---
 
@@ -491,16 +451,14 @@ validazione.
 
 Scansiona il catalogo PostgreSQL per rilevare automaticamente tutte le tabelle con colonna `storicizza` il cui DEFAULT e `true`, e le registra in `config.storico_set_storicizza` con `insert_manuale = false`.
 
-> ⭐ **Dal 06-09-2026 la sincronizzazione fa anche il contrario: POTA.**
-> Prima sapeva solo aggiungere. Quando una tabella veniva ritirata, la sua riga
-> restava — a puntare a niente, per sempre, finché qualcuno non la notava.
+> ⭐ **La sincronizzazione fa anche il contrario: POTA.** Aggiungere non basta:
+> quando una tabella viene ritirata, la sua riga resterebbe lì a puntare a niente,
+> per sempre, finché qualcuno non la nota — e una riga che punta a una tabella
+> inesistente fa fallire il lavoro notturno che la consuma.
 >
-> ⛔ E non era un dettaglio: tre righe rimaste così hanno fatto fallire il lavoro
-> notturno **ogni sabato per sei mesi**, senza che nessuno lo sapesse.
->
-> ⚠️ Si pota **solo** ciò che la scansione ha smesso di produrre. Le righe
-> inserite a mano (`insert_manuale = true`) non si toccano: quelle non sono un
-> risultato della derivazione, sono una decisione di qualcuno.
+> ⚠️ Si pota **solo** ciò che la scansione ha smesso di produrre. Le righe inserite
+> a mano (`insert_manuale = true`) non si toccano: quelle non sono un risultato della
+> derivazione, sono una decisione di qualcuno.
 
 **Job wrapper:** `proc_sync_storico_set_storicizza_job` — esecuzione schedulata con advisory lock e logging via `fn_run_and_log`.
 
@@ -508,15 +466,14 @@ Scansiona il catalogo PostgreSQL per rilevare automaticamente tutte le tabelle c
 
 Itera tutte le tabelle registrate in `config.storico_set_storicizza` e applica `ALTER TABLE ... ALTER COLUMN storicizza SET DEFAULT true`.
 
-> ⭐ **Dal 06-09-2026 una riga guasta non ferma più le altre.**
-> Prima bastava una riga che puntava a una tabella inesistente per interrompere
-> il giro per tutte le altre cento.
+> ⭐ **Una riga guasta non ferma le altre.** Una sola riga che punta a una tabella
+> inesistente non deve interrompere il giro per tutte le altre.
 >
-> ⚠️ E non è la conseguenza della potatura qui sopra: chi produce l'elenco e chi
-> lo consuma sono **due lavori distinti su due orari diversi**. Se l'applicazione
-> gira prima della sincronizzazione — e prima o poi capita — la riga vecchia c'è
-> ancora. Chi consuma un elenco costruito da altri non può morire perché una
-> riga non è ancora stata ripulita.
+> ⚠️ E non è una conseguenza della potatura qui sopra: chi produce l'elenco e chi lo
+> consuma sono **due lavori distinti, su due orari diversi**. Se l'applicazione gira
+> prima della sincronizzazione — e prima o poi capita — la riga vecchia c'è ancora.
+> Chi consuma un elenco costruito da altri non può morire perché una riga non è
+> ancora stata ripulita.
 
 **Scheduling:** ogni sabato alle 07:00 UTC tramite pgAgent job `apply_storicizza_weekly`.
 
@@ -656,23 +613,17 @@ erDiagram
 
 ---
 
-## Note finali
+## Area tecnica — esempi
 
-Questa guida copre il sistema completo di storicizzazione in Zero ERP. Per approfondimenti sulle componenti collegate:
+### Leggere uno snapshot a una data
 
-* [Guida Automazione DB](/guide/automazione-db) — framework generale (STORICO, FK_INDEX, TX_ID, AUDIT)
-* [Guida Transaction ID](/guide/tx_id_implementation_guide) — il tx_id usato per correlare gli snapshot
-* [Guida Messaggi Audit](/guide/messaggi-audit) — audit log complementare alla storicizzazione
-* [Linee Guida SQL](/linee-guida-sql) — convenzioni per DDL, trigger e naming
+Una riga sola: l'oggetto JSONB del soggetto 123 come era il 15 giugno 2025.
 
-Per il dettaglio delle singole funzioni e tabelle:
-
-* [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — trigger function
-* [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) — consultazione snapshot
-* [script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of) — ID storico
-* [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table) — provisioning tabella
-* [config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza) — configurazione reset
+```sql
+SELECT script.fn_get_snapshot_as_of(
+  'anagrafiche', 'soggetti', '123', 'soggetto_id', '2025-06-15'::timestamp
+);
+```
 
 ---
-
 {% include-markdown "signature-core.md" %}

@@ -15,6 +15,13 @@
 > *prima* di una voce lo trova nella storia git di questo file (versioni fino
 > all'11-09). Le voci aperte restano per intero: sono l'unico contenuto ancora
 > «attuale».
+>
+> ✅ **Riordinato il 2026-09-20** — come nel gemello lato DB. Le voci **chiuse**
+> sono uscite da §3 e sono tutte in fondo, in **§9 «Attività svolte»**: quelle
+> chiuse per intero (D4, D6, D8, D11, D13, D14, D15) e le parti chiuse di quelle
+> che hanno ancora un lavoro vivo (D1, D2, D3, D7, D9, D10). Per questi ultimi
+> numeri la voce compare **due volte** — in §3 il lavoro che resta, in §9 quello
+> fatto — e la tabella in testa a §3 dice riga per riga dove sta cosa.
 
 ---
 
@@ -30,7 +37,7 @@ scorecard **pesata** (§5) e dichiara ciò che **non ha potuto misurare** (§7).
 ⚠️ Tutte le misure sono **letture di struttura** — quali file esistono, cosa
 dichiara un `paths:`, quale classe eredita una view, cosa dice uno schema
 OpenAPI — e sono **fatti datati**. Dove compare un conteggio di comportamento
-(§3 D6) è come **controesempio**, mai come motivo.
+(§9 D6) è come **controesempio**, mai come motivo.
 
 **Perimetro**: `backend/` (951 file Python, ~258.000 righe) e `frontend/` (390
 `.vue` + 290 `.js`, ~117.000 righe), più i cancelli di CI e i presidi che li
@@ -45,14 +52,14 @@ Sette righe dei quattro documenti di contesto obbligatorio erano invecchiate,
 cinque su sette **verso il pessimismo** (capacità costruite e non registrate).
 Tutte chiuse il 2026-09-09:
 
-| Voce | Com'è stata chiusa |
-| --- | --- |
-| Stack frontend in tre sedi (`AGENTS.md`, `PROJECT_CONTEXT.md`, `frontend-standards.md`) | **Tolto**, non aggiornato: fonte unica `frontend/package.json`, i documenti rimandano. Sanato anche il residuo fuori tabella (`frontend-standards.md` §Tab-View, riscritto su *quale API* si usa) |
-| `PROJECT_CONTEXT.md` elencava 10 app su 17 | Elenco completo; `ai_assistant` entra in `api.md` §Endpoint attivi **con il difetto D5 scritto accanto** |
-| `api.md`: `ui_action` «non letto», §Test «due livelli» | `ui_action` con il conto per valore; §Test a **tre** livelli, con quali girano in CI |
-| `AGENTS.md`: `unittest.TestCase` e `SimpleTestCase` come alternative | Riscritta l'11-09 con D9-b |
-| `api.md`: `hint` «il frontend non lo legge» | Chiusa **rendendo vero il codice** (D4), non riscrivendo la frase |
-| `api.md`: «la testata ha la RLS, il figlio no» in **cinque** voci dell'inventario (segnalato da Tid il 12-09) | Stantie dal D2 del gemello (`20260909-27` ÷ `20260910-33`; una da **luglio**). Corrette il 2026-09-13: il fatto sta ora in **una** sede (§Enforcement RLS) e le cinque voci ci rimandano |
+| Voce                                                                                                          | Com'è stata chiusa                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stack frontend in tre sedi (`AGENTS.md`, `PROJECT_CONTEXT.md`, `frontend-standards.md`)                       | **Tolto**, non aggiornato: fonte unica `frontend/package.json`, i documenti rimandano. Sanato anche il residuo fuori tabella (`frontend-standards.md` §Tab-View, riscritto su *quale API* si usa) |
+| `PROJECT_CONTEXT.md` elencava 10 app su 17                                                                    | Elenco completo; `ai_assistant` entra in `api.md` §Endpoint attivi **con il difetto D5 scritto accanto**                                                                                          |
+| `api.md`: `ui_action` «non letto», §Test «due livelli»                                                        | `ui_action` con il conto per valore; §Test a **tre** livelli, con quali girano in CI                                                                                                              |
+| `AGENTS.md`: `unittest.TestCase` e `SimpleTestCase` come alternative                                          | Riscritta l'11-09 con D9-b                                                                                                                                                                        |
+| `api.md`: `hint` «il frontend non lo legge»                                                                   | Chiusa **rendendo vero il codice** (D4), non riscrivendo la frase                                                                                                                                 |
+| `api.md`: «la testata ha la RLS, il figlio no» in **cinque** voci dell'inventario (segnalato da Tid il 12-09) | Stantie dal D2 del gemello (`20260909-27` ÷ `20260910-33`; una da **luglio**). Corrette il 2026-09-13: il fatto sta ora in **una** sede (§Enforcement RLS) e le cinque voci ci rimandano          |
 
 ⭐ Le due regole che restano da qui: *un numero scritto in due posti ne ha sempre
 uno stantio, e si toglie invece di aggiornarlo*; *un documento che dice il vero
@@ -96,12 +103,12 @@ checker** (D2-b).
 
 ### 2.3 Il contratto del codice errore, lato backend, è chiuso a chiave
 
-| | |
-| --- | --- |
-| Codici a catalogo (`error_policies_generated.py`) | 852 |
-| di cui ritirati (`CODICI_RITIRATI`) | 89 |
-| **Codici vivi** | **763** |
-| Codici vivi **senza** frase di ripiego | **0** |
+|                                                       |               |
+| ----------------------------------------------------- | ------------- |
+| Codici a catalogo (`error_policies_generated.py`)     | 852           |
+| di cui ritirati (`CODICI_RITIRATI`)                   | 89            |
+| **Codici vivi**                                       | **763**       |
+| Codici vivi **senza** frase di ripiego                | **0**         |
 | Frasi di ripiego **orfane** / con `%s` non riempibile | **0** / **0** |
 
 Presidiato da `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` a ogni corsa.
@@ -142,14 +149,14 @@ righe `it` e **1** `en`: il consumatore esiste e aspetta il catalogo (gemello
 Raccolti in `npm run guards` (`run-s guard:*`): chi ne aggiunge uno lo trova in
 CI senza toccare il workflow.
 
-| Presidio | Cosa tiene |
-| --- | --- |
-| `check-liste-configurabili.mjs` | contratto `@row-click` |
-| `check-pinia-user-scoped-reset.mjs` | reset degli store al logout |
-| `check-drawer-width.mjs` | chiavi `DRAWER_WIDTH` |
-| `check-primeicons-codepoints.mjs` | codepoint cablati + baseline anti-drift |
+| Presidio                                      | Cosa tiene                                                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `check-liste-configurabili.mjs`               | contratto `@row-click`                                                                                                            |
+| `check-pinia-user-scoped-reset.mjs`           | reset degli store al logout                                                                                                       |
+| `check-drawer-width.mjs`                      | chiavi `DRAWER_WIDTH`                                                                                                             |
+| `check-primeicons-codepoints.mjs`             | codepoint cablati + baseline anti-drift                                                                                           |
 | `check-keepalive-onactivated.mjs` (09-10, D8) | una view sotto `<KeepAlive>` ha un `onActivated`, suo o di un composable — criterio derivato dal router e risolto transitivamente |
-| `check-datatable-baseline.mjs` (09-10, D10) | il registro delle `DataTable` grezze **può solo calare** |
+| `check-datatable-baseline.mjs` (09-10, D10)   | il registro delle `DataTable` grezze **può solo calare**                                                                          |
 
 ### 2.8 La convenzione `# Scopo:` è reale
 
@@ -157,40 +164,33 @@ CI senza toccare il workflow.
 
 ---
 
-## 3. I difetti, in ordine di conseguenza — stato al 2026-09-12
+## 3. I difetti **aperti**, in ordine di conseguenza — stato al 2026-09-12
 
-| | Difetto | Stato |
-| --- | --- | --- |
-| D1 | Il frontend non ha nessun cancello | ✅ 09-09 · aperti D1-d-bis, D1-f |
-| D2 | Backend senza analisi statica | ✅ 09-09/10 · aperto D2-b |
-| D3 | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | 🟠 D3-a ✅ 09-09 · aperti D3-b, D3-c |
-| D4 | `hint` trasportato e mai reso a video | ✅ 09-09 |
-| D5 | `area_funzionale = "ai_assistant"` non a catalogo | 🔵 brief scritto 09-11, **attende il DB** |
-| D6 | Il `count` che è un'eco | ✅ 09-10 |
-| D7 | Endpoint senza consumatore | ✅ decisione 09-11 · 🔵 schermata email log aperta |
-| D8 | View sotto `KeepAlive` che caricano solo in `onMounted` | ✅ 09-10 |
-| D9 | Suite larga e poco profonda; smoke non lanciati | 🟡 aperto D9-a · D9-b ✅ 09-11 |
-| D10 | I registri di debito non hanno un verso | ✅ in parte 09-10 · aperto D10-bis |
-| D11 | Quattro app scheletro | ✅ deciso 09-11 |
-| D12 | Portali costruiti a DB, senza porte | 🟡 cantiere dichiarato |
-| D13 | Job notturno rotto da quattro notti | ✅ 09-09 · D13-bis ✅ 09-11 |
-| D14 | «Inviata» detto di una mail mai partita | ✅ 09-11 |
-| D15 | `skip_area_check` è **muto** su 15 view; sei scrivono senza permesso | ✅ 09-12, tutte e 15 |
+> ✅ **Le voci chiuse non stanno qui**: sono in **§9 «Attività svolte»**, con la
+> data e il rimando. La tabella dice riga per riga **che cosa resta in §3** e
+> **che cosa è passato in §9** — e quando una voce ha due facce il suo numero
+> compare in tutti e due i posti: `D1`, `D2`, `D3`, `D7`, `D9`, `D10`.
+> Le voci aperte, in ordine di ritorno, sono elencate anche in §8.
+
+|     | Difetto                                                                | Stato                                                                                           |
+| --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09 — **in §9** · restano **D1-d-bis** (test di componente) e la **decisione di D1-f**      |
+| D2  | Backend senza analisi statica                                          | ✅ 09-09/10 — **in §9** · resta **D2-b** (type checker)                                          |
+| D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a — **in §9** · restano **D3-b**, **D3-c**                                                 |
+| D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
+| D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | 🔵 **aperto**: brief scritto 09-11, **attende il DB**                                            |
+| D6  | Il `count` che è un'eco                                                | ✅ 09-10 — **in §9**                                                                             |
+| D7  | Endpoint senza consumatore                                             | ✅ decisione 09-11 — **in §9** · resta **la schermata**                                          |
+| D8  | View sotto `KeepAlive` che caricano solo in `onMounted`                | ✅ 09-10 — **in §9**                                                                             |
+| D9  | Suite larga e poco profonda; smoke non lanciati                        | ✅ D9-b 09-11 — **in §9** · resta **D9-a**                                                       |
+| D10 | I registri di debito non hanno un verso                                | ✅ la parte con un cricchetto — **in §9** · resta **D10-bis** (la tabella qui sotto è lo stato)  |
+| D11 | Quattro app scheletro                                                  | ✅ deciso 09-11 — **in §9**                                                                      |
+| D12 | Portali costruiti a DB, senza porte                                    | 🟡 **cantiere dichiarato**                                                                       |
+| D13 | Job notturno rotto da quattro notti                                    | ✅ 09-09 · D13-bis ✅ 09-11 — **in §9** · la sola coda (**D13-quater**) è in §8, ed è del team DB |
+| D14 | «Inviata» detto di una mail mai partita                                | ✅ 09-11 — **in §9**                                                                             |
+| D15 | `skip_area_check` è **muto** su 15 view; sei scrivono senza permesso   | ✅ 09-12, tutte e 15 — **in §9**                                                                 |
 
 ### D1 — Il frontend non aveva nessun cancello
-
-✅ **Chiuso il 2026-09-09**: `ci-frontend.yaml` (§2.1), i sette errori `oxlint`
-sanati **prima** di accenderlo, `--fix` tolto dagli script `lint:*`, i guard in
-`npm run guards`, `vitest` con il primo file provato **per mutazione** (quattro
-mutazioni, quattro rossi). Il guard i18n gira dove il frontend cambia, invece
-di svegliarsi solo quando il commit toccava anche il backend.
-
-✅ **D1-e, stesso giorno**: `scripts/check_license.py` era verde in ogni corsa di
-CI **per il motivo sbagliato** (leggeva il solo indice staged, vuoto dopo un
-checkout). Ora distingue la modalità **range** (`PRE_COMMIT_FROM_REF`/`TO_REF`,
-la forma della CI) dall'indice staged; `sys.argv` si usa solo per intersecare,
-così il cricchetto resta sui soli file **aggiunti**. `verbose: true` perché il
-verde dica su quanti file.
 
 **Residui aperti:**
 
@@ -218,14 +218,7 @@ verde dica su quanti file.
   `libharfbuzz-subset0` manca nel `Dockerfile` e sulle macchine di sviluppo,
   e va aggiunto **prima** della 71 (INFRA-2).
 
-### D2 — 258.000 righe di Python senza analisi statica
-
-✅ **Chiuso il 2026-09-09** (`F`+`E9`, 136 rilievi sanati prima di accendere) e
-**allargato il 2026-09-10** (`T20`, `C4`, `A`, `PIE`, `G`, `LOG`): §2.2 e
-`ruff.toml`. L'allargamento ha trovato due difetti veri: `B017` (due
-`assertRaises(Exception)`, ora pretendono tipo **e** codice) e `PIE794`
-(`stato_codice_interno` dichiarato due volte in `OffertaRow`). Rimosso
-`_check_fn_tmp.py` (ok di Tid).
+### D2 — 258.000 righe di Python senza analisi statica — chiusa il 09-10 (§9), resta D2-b
 
 **Aperto — D2-b**: decidere **se** il progetto vuole un type checker. Se sì,
 `python.analysis.typeCheckingMode` nel repo o `mypy --follow-imports=skip` sui
@@ -234,13 +227,7 @@ soli `apps/*/services/`; se no, togliere da `AGENTS.md` la riga sull'`assert`
 ⚠️ È la metà che vedrebbe i difetti di giuntura che una suite mockata (D9) non
 può vedere.
 
-### D3 — Lo schema OpenAPI e il ramo `--deploy`
-
-✅ **D3-a, chiuso il 2026-09-09**: `apps/core/api/openapi_extensions.py`
-(`OpenApiAuthenticationExtension` per `JwtAuditAuthentication`, registrata per
-import in `CoreConfig.ready()`). `components.securitySchemes` presente,
-`security:` su tutte le 815 operazioni, `check --deploy` da 677 a **124**
-problemi, i 607 `W001` a zero.
+### D3 — Lo schema OpenAPI e il ramo `--deploy` — D3-a chiuso il 09-09 (§9), restano D3-b e D3-c
 
 **Aperto — D3-b**: `manage.py check --deploy` **non gira in CI**, e
 drf-spectacular aggancia i propri controlli a quel ramo: la CI lancia `check`
@@ -257,27 +244,6 @@ concordare con chi gestisce nginx); **nessuna CSP**, né in `settings.py` né in
 `v-html` è a zero e `axios` sta in un file solo — cioè perché **non c'è
 superficie** — ma nessun presidio la verifica. O si aggiunge la CSP, o si scrive
 perché no.
-
-### D4 — Il terzo lato del contratto d'errore
-
-✅ **Chiuso il 2026-09-09**. `hint` arriva a video in **un** posto:
-`useApiHandler` lo espone come `soluzione`, il toast lo rende nel `detail`
-sotto il messaggio; chi usa `execute` ce l'ha senza modifiche. La condizione che
-lo rende mostrabile sta nel backend: `_apply_policy` lo toglie sui tre codici di
-`is_technical_code`, dove il canale `HINT` porta il testo di PostgreSQL e non la
-soluzione a catalogo — regola **diversa** da quella del bersaglio, provata nei
-test. Il blob `errore` del 200 del `pipeline_runner` passa ora da
-`to_api_error` invece di leggere `exc.hint`/`exc.targets` diretti (due regole per
-lo stesso nome). Le sei `ui_action` non ramificate sono **dichiarate servite**
-dal default (decisione di Tid): tabella per valore in `api.md`.
-Dettaglio: `api.md` §Envelope, `frontend-standards.md` §La soluzione.
-⚠️ Chi chiama `notify.error(...)` a mano resta fuori: il canale è `execute`.
-
-✅ **Stesso giorno, il building block che otto punti riscrivevano a mano**: otto
-coercizioni `jsonb` manuali portate su `jsonb_out` (non `coerce_jsonb_dict`: su
-`registra_tentativo_login` il ripiego a `{}` sarebbe stato un fail-open), con
-due presidi — `test_coercizione_jsonb_dal_bb` (la forma, registro a zero) e
-`tests/db/test_jsonb_stringa_negli_otto_lettori` (il comportamento).
 
 ### D5 — `area_funzionale = "ai_assistant"`: un cancello che non si può aprire
 
@@ -298,75 +264,22 @@ da cambiare nel codice; appena la riga c'è, scrive il **presidio** che manca �
 un test su DB provvisto che confronta le `area_funzionale` dichiarate dalle view
 con i codici a catalogo, derivando l'elenco dalle view.
 
-### D6 — Il `count` che è un'eco
-
-✅ **Chiuso il 2026-09-10.** Nei lookup con `LIMIT` il `count` era
-`len(results)` — un numero che conferma il troncamento invece di rivelarlo. Il
-rimedio è una **sonda `+1`** nel repository (che è l'unico a conoscere
-`safe_limit`), building block `fetch_con_sonda` in `apps/core/db/_helpers.py`,
-e `troncato` nell'envelope; l'helper unico è diventato due
-(`_collezione_completa` senza `LIMIT`, `_lookup_response` con), perché la forma
-sbagliata e quella giusta erano la stessa riga di codice. `troncato` arriva a
-video da `useAutocompleteRefineHint`, lo stesso che serve gli altri lookup ricchi.
-Presidio sul **DB vero** (`apps/catalogo/tests/db/test_lookup_troncamento.py`),
-provato con tre mutazioni. ⭐ Il consumatore vivo era **l'assistente AI**
-(`CercaArticoliTool`, che avrebbe detto «ho trovato 10 articoli» su 257);
-`fn_lookup_unita_misura` è stata **cancellata** perché nessun endpoint la
-raggiungeva (le UoM passano dal lookup generico).
-⚠️ Residuo, dichiarato: `count: len(...)` sulle collezioni **senza** `LIMIT` è
-numericamente giusto, ma nessun cancello impedisce a un `LIMIT` di comparirci
-sopra un giorno.
-
-### D7 — Endpoint costruiti, documentati, mai raggiunti da una schermata
-
-✅ **Decisione scritta il 2026-09-11** per tutte e tredici le rotte:
-[piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) §1.
-Due famiglie (10 rotte, `/core/email/log/` e l'outbox) sono funzioni finite
-senza porta; **due sono candidate al ritiro** (`job-summary`, `manual-lookup`);
-una è un cantiere dichiarato (N6 dei listini); il resto è servizio legittimo.
-Corretto il docstring di `EmailLogOperatoreListView`, che prometteva un filtro
-che la RLS già applica.
+### D7 — Endpoint costruiti, documentati, mai raggiunti da una schermata — la decisione è del 09-11 (§9), resta la schermata
 
 🔵 **Aperto — la schermata**: il registro mail dell'**operatore** (oggi lo vede
 solo l'amministratore). Piano al §2 dello stesso documento; niente dal team DB
 (la configurazione di lista `config.email_log` è a catalogo, id 31). Restano
 client, store, view e voce di menu.
 
-### D8 — View sotto `KeepAlive` che caricavano solo in `onMounted`
-
-✅ **Chiuso il 2026-09-10.** Le view davvero scoperte erano **tre**
-(`DefinizioneEditorView`, `DefinizioniWorkflowListView`, `RepartiProfiloView`):
-le altre avevano già il rientro da `useListaConfigurabilePage` →
-`useSearchTable`. Ma quella catena si spezzava un passo più in là: **otto
-store** non esponevano `hasSearched`, e senza quel campo il refresh al rientro
-non avveniva mai — ora lo espongono, e `useSearchTable` **avvisa in DEV** quando
-manca. `OperatoriListView` e `ProcessiAutomaticiListView` caricano il dato
-compagno in `onActivated` (con `force`, perché la cache di `useSetupStatus` vive
-nell'istanza che KeepAlive tiene in vita). Presidio: `check-keepalive-onactivated.mjs`
-(§2.7). Regola operativa: il caricamento va nel **solo** `onActivated` — *si
-sostituisce, non si aggiunge* — perché sotto KeepAlive al primo montaggio
-scattano entrambi.
-
-### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia
+### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia — D9-b chiuso l'11-09 (§9), resta D9-a
 
 4.560 test in 33 secondi è una descrizione, non un vanto: 261 file di test su
 309 usano `unittest.mock` (6.578 fra `patch(` e `MagicMock`). È il livello
 giusto per validazione, dedup e not-found, non una copertura d'integrazione.
 
-⭐ **E `smoke-baseline.sh` ha fatto il suo mestiere il 2026-09-12**: ha
-segnalato come regressione `smoke-pratica-doc-sorgente-cross-emittente.py`,
-scritto il 09-07 e superato dal D2 del gemello tre giorni dopo (la RLS su
-`pratiche_sorgenti` rende non osservabile lo «specchio» del §6). Era lo smoke
-a essere indietro, non il DB: riscritto il §6 sulla proprietà più forte (dal
-perimetro estraneo la vista **non risponde**), provato per mutazione.
-
 ⭐ Il livello che attraversa la giuntura esiste e cresce da solo: **22 file** con
 `richiedi_db_provvisto` (rimisurato l'11-09; erano 19 il 09-09), accesi in CI da
 `ZEROERP_TEST_DB_E2E=1`, registrati in `api.md` §Test dal 09-09.
-
-✅ **D9-b, chiuso il 2026-09-11**: `AGENTS.md` §Regole test prescrive
-`SimpleTestCase` e dice perché (solo lei **impedisce** l'accesso al DB); misura
-rifatta quel giorno, 506 classi che non bloccano contro 202 che bloccano.
 
 **Aperto — D9-a**: i sedici smoke di `backend/scripts/tests/` non li lancia
 niente. Sono isolati in transazione con rollback e il registro
@@ -379,31 +292,23 @@ e va corretto lo smoke che esce `0` su «ESITO: FALLITO».
 dichiara un database**, quindi i file di `tests/db/` trovano lo schema Liquibase
 completo. Il primo che dichiarerà `databases = [...]` li romperà tutti.
 
-### D10 — I registri di debito non hanno un verso
+### D10 — I registri di debito non hanno un verso — i cricchetti ci sono (§9), resta D10-bis
 
 Un registro è una buona invenzione **a condizione che scenda**. Stato:
 
-| Registro | Valore | Il suo verso |
-| --- | --- | --- |
-| Errori `oxlint` | **0** | ✅ cancello in CI (`npm run lint`, senza `--fix`), dal 09-09 |
-| Rilievi `ruff` | **0** | ✅ cancello in pre-commit e CI, dal 09-09 |
-| `DataTable` grezza in una view | **45** grezze (+3 standard) | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro |
-| …di cui senza commento di motivazione | **33** | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import) |
-| File tracciati senza header di licenza | 1.169 su 5.787 (09-10) | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta |
-| `baseline-smoke.tsv` | 2 su 16 | ⛔ nessun verso: vive o muore con D9-a |
-| `skip_area_check = True` | 73 view (09-12) | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ⚠️ Resta una lettura, non un conteggio, la legittimità delle sole **letture** cross-dominio |
+| Registro                               | Valore                      | Il suo verso                                                                                                                                                                                                                                                         |
+| -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Errori `oxlint`                        | **0**                       | ✅ cancello in CI (`npm run lint`, senza `--fix`), dal 09-09                                                                                                                                                                                                          |
+| Rilievi `ruff`                         | **0**                       | ✅ cancello in pre-commit e CI, dal 09-09                                                                                                                                                                                                                             |
+| `DataTable` grezza in una view         | **45** grezze (+3 standard) | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro                                                        |
+| …di cui senza commento di motivazione  | **33**                      | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import)                                                                                                                                                                                    |
+| File tracciati senza header di licenza | 1.169 su 5.787 (09-10)      | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
+| `baseline-smoke.tsv`                   | 2 su 16                     | ⛔ nessun verso: vive o muore con D9-a                                                                                                                                                                                                                                |
+| `skip_area_check = True`               | 73 view (09-12)             | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ⚠️ Resta una lettura, non un conteggio, la legittimità delle sole **letture** cross-dominio |
 
 **Aperto — D10-bis**: la baseline degli smoke dipende da D9-a; degli
 `skip_area_check` resta da leggere la sola parte che il presidio non copre, le
 letture cross-dominio (le scritture e i muti sono in D15).
-
-### D11 — Quattro app scheletro
-
-✅ **Deciso il 2026-09-11 (Tid)**: `acquisti` e `magazzino` sono il **prossimo
-cantiere**, scritto in `PROJECT_CONTEXT.md` con la conseguenza operativa — ogni
-decisione presa su `vendite` è presa anche per `acquisti`, e un'asimmetria si
-chiude subito. `storico` resta **senza decisione**; `contabilita` resta fuori
-perimetro (§4). Il gemello DB (§3 D8) è allineato.
 
 ### D12 — La superficie dei portali esiste a database e non ha porte
 
@@ -413,91 +318,6 @@ perimetro (§4). Il gemello DB (§3 D8) è allineato.
 A database ci sono **13 policy RLS** per le vesti non-OPERATORE (8
 `CLIENTE_PORTALE`, 3 `SHOP_CUSTOMER`, 2 `FORNITORE_PORTALE`) che **nessun
 endpoint esercita**: il giorno dello Stage C vanno considerate non collaudate.
-
-### D13 — Un building block esisteva, il punto di chiamata non l'ha cercato
-
-✅ **Chiuso il 2026-09-09**: `chiusura_scadenze_handler.py` faceva `dict(riga[0])`
-su un `jsonb` che psycopg consegna come `str` — `CHIUSURA_SCADENZE` in `ERRORE`
-per quattro notti, con `coerce_jsonb_dict` che esisteva dal 2026-06-11. Ora usa
-il BB; i test fissano la **forma** del valore (`str`, `dict`, JSON malformato),
-provati per mutazione; il giro delle 22:05 dello stesso giorno è passato con
-`tentativi = 0`. ⭐ Il test esistente era verde mentre il job falliva: *un mock
-sbaglia quando la forma che finge non è quella vera.*
-
-✅ **D13-ter**: le otto righe storiche archiviate da Tid (09-09, 21:25 UTC):
-`vw_coda_lavori_da_guardare` a zero, quindi qualunque riga ora significa
-«stanotte è fallito qualcosa».
-
-✅ **D13-bis, chiuso su entrambi i lati l'11-09**: catalogo `dbops.presidi`
-applicato dal team DB (`20260910-35..37`), il backend ha ritirato la riga di
-debito (`_IN_ATTESA_DI_CATALOGO` a zero, e il test di ritiro è diventato rosso in
-CI nominandola — il meccanismo che fa il suo mestiere), i due timer girano
-(`digest-presidi-giornaliero` 07:00, `settimanale` lunedì 07:30). Brief:
-[brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md).
-⚠️ **Aperto, da portare al team DB**: la prima notizia del digest è stata
-rumore — `sync_auth_user_active`, processo **ritirato** il 09-07, con 31
-fallimenti storici in finestra (registrato nel brief §9.5). *Un presidio che
-comincia col rumore insegna a non guardarlo.*
-
-### D14 — «Inviata» detto di una mail mai partita
-
-✅ **Chiuso il 2026-09-11, su entrambi i lati.** Trovato **provando** la
-connessione SMTP, non leggendo: su un host con `DJANGO_DEBUG=False` e l'account
-`SISTEMA` sul placeholder del seed, una mail non partita finiva in
-`config.email_log` con `stato = 'SENT'`. Ora `EmailDispatchService` ha tre
-canali (`SMTP` · `CONSOLE` · `NON_CONFIGURATO`, che scrive `FAILED` col motivo),
-`test_connection` non risponde più OK a un account che non può spedire, il
-`CHECK` ammette il quinto valore **`SIMULATA`** (dice l'esito, non il canale),
-`inviato_at` resta NULL, nessun backfill. Brief:
-[brief-db-stato-email-console-non-e-inviata.md](../work-done/brief-db-stato-email-console-non-e-inviata.md).
-
-### D15 — `skip_area_check` è muto su quindici view (2026-09-12)
-
-> Trovato leggendo l'unica riga «senza verso» di D10 — gli `skip_area_check` —
-> invece di contarla. È un difetto del **modello dei permessi**, e non dà
-> nessun errore.
-
-`ZeroERPPermission.has_permission` consulta `skip_area_check` **solo** nel
-ramo `area_schema_db is None`, cioè solo se la view non dichiara
-`area_funzionale`. Una view che dichiara **entrambi** dice due cose opposte, e
-vince l'area in silenzio. Sono **15 view su 73**:
-
-| Famiglia | Cosa dichiara | Cosa succede |
-| --- | --- | --- |
-| `pagamenti` (4: saldo, rate, sistemazioni, export) | un commento di otto righe motiva lo skip: *«senza questo servirebbe la LETTURA su pagamenti»* | **serve la LETTURA su `pagamenti`**: un operatore di `vendite` senza quell'area prende 403 nel drawer fattura. In dev non si vede perché nessun operatore è stretto |
-| outbox email (10) | `area_funzionale = "config"` + skip, senza commento | gated da `config`. **Per fortuna**: sei di queste scrivono senza `post_permission`, e con lo skip attivo qualunque operatore autenticato potrebbe preparare e **spedire** dall'account aziendale, con allegati, verso qualsiasi indirizzo — nessuna schermata le usa (D7) |
-| `RuoliConfigResolverView` (1) | `"anagrafiche"` + skip | gated da `anagrafiche` |
-
-I test esistenti coprivano «senza area + skip» e «senza area senza skip», mai
-il caso contraddittorio.
-
-✅ **Presidio dal 2026-09-12**: `apps/core/tests/test_skip_area_check_registro.py`,
-quattro test sulle view **instradate nell'URLconf**, lette con `getattr` come
-le legge la catena e filtrate su chi usa `ZeroERPPermission`; provati per
-mutazione (quattro mutazioni, quattro rossi col nome). ⚠️ La prima stesura
-leggeva il corpo delle classi con `ast` ed era **cieca** su un'area o un
-`post` ereditati e sulle view fabbricate da una factory — riscritta la sera
-stessa, e la mutazione «skip su una figlia che eredita tutto dal padre» ora
-fa rosso. Tre registri a cricchetto: le 15 **mute** (debito), le 12 che
-scrivono senza permesso **su sé stesse** (esenzione motivata, verificata una
-per una), le 6 email **in attesa di decisione** — e il quarto test pretende che
-queste ultime restino coperte dall'area finché non hanno un permesso, così
-«chiudere» il debito togliendo l'area fa rosso invece di aprire un relay.
-
-✅ **Deciso e applicato lo stesso giorno (Tid, 2026-09-12), per famiglia:**
-
-| Famiglia | Decisione | Cosa è cambiato |
-| --- | --- | --- |
-| `pagamenti` (4) | **vale lo skip** | tolta `area_funzionale`: un operatore senza nessun livello su `pagamenti` vede saldo, rate e sistemazioni della fattura che ha già davanti — il commento è finalmente vero |
-| outbox email (10) | **vale l'area `config`** | tolto lo skip: comportamento identico, e il codice adesso lo dice (nota in testa a `email_views.py`). Aprirla oltre `config` vuole prima un'azione di processo a catalogo e la schermata di D7 |
-| `RuoliConfigResolverView` (1) | **vale lo skip** | tolta `area_funzionale`: è la configurazione del `SoggettoResolver` (componente **core**, lo usano i drawer di tutti i domini), stessa famiglia dei lookup soggetti |
-
-Provato dal **percorso reale** in `test_permissions_decisione_skip_area.py`:
-le quattro view vere di `pagamenti` passano con livello `BLOCCATO` e la catena
-non risolve nemmeno l'area; l'outbox vuole `LETTURA` per leggere e `TUTTO` per
-spedire. Mutazione: rimessa l'area su `ApiFatturaSaldo`, due rossi col nome.
-Suite completa: 4.652 verdi. Entrambi i registri di debito sono a **zero**
-e restano nel file: una view che dichiara entrambi è rossa il giorno stesso.
 
 ---
 
@@ -527,21 +347,21 @@ e restano nel file: una view che dichiara entrambi è rossa il giorno stesso.
 
 Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione.
 
-| Area | Peso | Voto | Cosa regge il voto |
-| --- | --- | --- | --- |
-| **Catena di verifica — frontend** | 🔴 alto | **7/10** | Cancello in CI dal 09-09 (§2.1). Non sale perché la rete è tre file su ~680 (D1-d-bis) |
-| **Analisi statica — backend** | 🔴 alto | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). Manca il type checker (D2-b) |
-| **Catena di verifica — backend** | 🔴 alto | **8/10** | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9) e il ramo `--deploy` (D3-b) |
-| **Contratto API pubblicato** | 🟠 medio | **7/10** | `securitySchemes` e `security:` su 815 operazioni (D3-a). Restano 66 `W002`, 54 collisioni, `--deploy` fuori CI |
-| **Contratto d'errore — lato backend** | 🟠 medio | **9/10** | 763 codici vivi, zero senza ripiego, zero orfani (§2.3) |
-| **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10** | `fields`, `targets`, `hint` a video (D4). Non è 10: chi chiama `notify.error` a mano resta fuori |
-| **Perimetro e permessi (applicativo)** | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. D5 vivo finché la riga a catalogo non c'è. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
-| **Correttezza dei contratti di lista** | 🟠 medio | **8/10** | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT` |
-| **Simmetria del dominio** | 🟠 medio | **4/10** | `acquisti`/`magazzino` modellati a DB e vuoti su BE e FE. La decisione dell'11-09 dà un verso al debito, non scrive il codice: il voto si muove col comportamento |
-| **Building block — frontend** | 🟡 basso | **8,5/10** | Un solo punto HTTP, `bersagli`, contratto KeepAlive presidiato (D8). Restano le `DataTable` senza motivo |
-| **Multilingua** | 🟡 basso | **9/10** | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6) |
-| **Gestione del debito** | 🟡 basso | **8/10** | Tre registri con cancello o cricchetto (D10). Senza verso: `skip_area_check` e baseline smoke |
-| **Documentazione di contesto** | 🟡 basso | **9/10** | Sette righe su sette chiuse (§1) |
+| Area                                    | Peso    | Voto       | Cosa regge il voto                                                                                                                                                                                                     |
+| --------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1). Non sale perché la rete è tre file su ~680 (D1-d-bis)                                                                                                                                 |
+| **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). Manca il type checker (D2-b)                                                                                                                                                  |
+| **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9) e il ramo `--deploy` (D3-b)                                                                                                |
+| **Contratto API pubblicato**            | 🟠 medio | **7/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). Restano 66 `W002`, 54 collisioni, `--deploy` fuori CI                                                                                                        |
+| **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 763 codici vivi, zero senza ripiego, zero orfani (§2.3)                                                                                                                                                                |
+| **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10**   | `fields`, `targets`, `hint` a video (D4). Non è 10: chi chiama `notify.error` a mano resta fuori                                                                                                                       |
+| **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. D5 vivo finché la riga a catalogo non c'è. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
+| **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT`                                                                                                                   |
+| **Simmetria del dominio**               | 🟠 medio | **4/10**   | `acquisti`/`magazzino` modellati a DB e vuoti su BE e FE. La decisione dell'11-09 dà un verso al debito, non scrive il codice: il voto si muove col comportamento                                                      |
+| **Building block — frontend**           | 🟡 basso | **8,5/10** | Un solo punto HTTP, `bersagli`, contratto KeepAlive presidiato (D8). Restano le `DataTable` senza motivo                                                                                                               |
+| **Multilingua**                         | 🟡 basso | **9/10**   | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6)                                                                                                                                                 |
+| **Gestione del debito**                 | 🟡 basso | **8/10**   | Tre registri con cancello o cricchetto (D10). Senza verso: `skip_area_check` e baseline smoke                                                                                                                          |
+| **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
 
 ### Il giudizio, al 2026-09-12
 
@@ -577,6 +397,10 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 ---
 
 ## 6. Checklist
+
+> `[ ]` = **da fare** — sono le voci di §3. `[x]` = **fatta** — resta qui perché
+> una check-list completa serve a chi la scorre, e il **dettaglio** di ognuna è
+> in §9 «Attività svolte».
 
 ### 🔴 Il frontend
 
@@ -688,11 +512,11 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 
 **Una misura mancata, taciuta, diventa una misura implicita.**
 
-| Cosa | Perché no |
-| --- | --- |
-| Il censimento **completo** degli endpoint senza consumatore | Uno strumento testuale non lo sa fare, per una buona proprietà del codice: le famiglie cross-dominio (`/passaggi/`, `/note/`, `/indirizzi/`, `/documenti/`, `/situazione-merce/`, `/componenti/`) sono chiamate con il **dominio come parametro**. Le tredici di D7 sono il residuo verificato uno per uno: un **limite inferiore** |
-| Quanto della suite sia davvero *coperto* e non solo *nominato* | Non esiste `coverage` nel progetto. Il numero di test è un limite superiore alla copertura, non una misura |
-| Se le `DataTable` senza motivazione siano eccezioni legittime | Richiede di leggere i componenti e decidere caso per caso: è il lavoro di D10, non una misura |
+| Cosa                                                           | Perché no                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Il censimento **completo** degli endpoint senza consumatore    | Uno strumento testuale non lo sa fare, per una buona proprietà del codice: le famiglie cross-dominio (`/passaggi/`, `/note/`, `/indirizzi/`, `/documenti/`, `/situazione-merce/`, `/componenti/`) sono chiamate con il **dominio come parametro**. Le tredici di D7 sono il residuo verificato uno per uno: un **limite inferiore** |
+| Quanto della suite sia davvero *coperto* e non solo *nominato* | Non esiste `coverage` nel progetto. Il numero di test è un limite superiore alla copertura, non una misura                                                                                                                                                                                                                          |
+| Se le `DataTable` senza motivazione siano eccezioni legittime  | Richiede di leggere i componenti e decidere caso per caso: è il lavoro di D10, non una misura                                                                                                                                                                                                                                       |
 
 ---
 
@@ -707,15 +531,15 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 
 ### Le voci aperte, in ordine di ritorno
 
-| # | Cosa | Perché sta qui |
-| --- | --- | --- |
-| 1 | **D5** — la riga `ai_assistant` a catalogo | Zero sforzo lato backend, ma passa dal **team DB**; va fatta **prima** di accendere `AI_ENABLED` |
-| 2 | **D13-quater** — il rumore del digest | Un presidio che comincia col rumore insegna a non guardarlo; una riga al team DB |
-| 3 | **D7 (schermata)** — il registro mail dell'operatore | Cantiere piccolo (client, store, view, menu): la lista è già a catalogo |
-| 4 | **D3-c** — HSTS / SSL_REDIRECT / CSP | Dieci minuti di `settings.py` più una **decisione** sulla CSP; l'effetto lo decide il reverse proxy |
-| 5 | **D2-b** — type checker | Una decisione: sì (e come) o no (e si toglie la riga da `AGENTS.md`) |
-| 6 | **D1-f** — `npm audit` nel job | Registro a **zero** dal 13-09: è il momento in cui un cancello nasce senza arretrato |
-| 7 | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio |
+| #   | Cosa                                                 | Perché sta qui                                                                                      |
+| --- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1   | **D5** — la riga `ai_assistant` a catalogo           | Zero sforzo lato backend, ma passa dal **team DB**; va fatta **prima** di accendere `AI_ENABLED`    |
+| 2   | **D13-quater** — il rumore del digest                | Un presidio che comincia col rumore insegna a non guardarlo; una riga al team DB                    |
+| 3   | **D7 (schermata)** — il registro mail dell'operatore | Cantiere piccolo (client, store, view, menu): la lista è già a catalogo                             |
+| 4   | **D3-c** — HSTS / SSL_REDIRECT / CSP                 | Dieci minuti di `settings.py` più una **decisione** sulla CSP; l'effetto lo decide il reverse proxy |
+| 5   | **D2-b** — type checker                              | Una decisione: sì (e come) o no (e si toglie la riga da `AGENTS.md`)                                |
+| 6   | **D1-f** — `npm audit` nel job                       | Registro a **zero** dal 13-09: è il momento in cui un cancello nasce senza arretrato                |
+| 7   | **D10-bis** — le letture cross-dominio con lo skip   | Lettura, non conteggio                                                                              |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
 
@@ -733,9 +557,170 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 
 ---
 
+## 9. Attività svolte — cosa è stato chiuso, e con che cosa
+
+> Il rovescio di §3: qui sta ciò che era un difetto e non lo è più. I numeri che
+> compaiono in **tutti e due** i posti (`D1`, `D2`, `D3`, `D7`, `D9`, `D10`) non
+> sono ripetizioni — in §3 c'è **il lavoro che resta**, qui **quello fatto**.
+> Il dettaglio vive nei documenti e nei file citati: qui si dice **che cosa è
+> cambiato nel sistema**, non come ci si è arrivati.
+
+### ✅ D1 — Il frontend ha un cancello — 2026-09-09
+
+`ci-frontend.yaml` (§2.1), i sette errori `oxlint` sanati **prima** di
+accenderlo, `--fix` tolto dagli script `lint:*`, i guard in `npm run guards`,
+`vitest` col primo file provato **per mutazione** (quattro mutazioni, quattro
+rossi); e il guard i18n gira dove il frontend cambia, invece di svegliarsi solo
+quando il commit toccava anche il backend.
+
+✅ **D1-e**, stesso giorno: `scripts/check_license.py` era verde in ogni corsa di
+CI **per il motivo sbagliato** (leggeva il solo indice staged, vuoto dopo un
+checkout). Ora distingue la modalità **range** della CI (`PRE_COMMIT_FROM_REF`/
+`TO_REF`) dall'indice, e il cricchetto resta sui soli file **aggiunti**.
+
+✅ **D1-f**: le due vulnerabilità di **build** (`browserslist`,
+`baseline-browser-mapping`) sanate il 13-09 dagli avvisi Dependabot **senza
+override e senza dipendenze nuove** — i range già dichiarati ammettevano le
+versioni corrette, bastava aggiornare i due pacchetti nel lock. E il quarto
+avviso era del **backend**: `weasyprint` 69 → **70** (`<71`), con una fattura
+vera stampata **identica** check per check alla 69. ⚠️ Coda dichiarata:
+`libharfbuzz-subset0` manca nel `Dockerfile` e sulle macchine di sviluppo, e va
+aggiunto **prima** della 71 (INFRA-2).
+
+### ✅ D2 — Analisi statica del backend — 2026-09-09, allargata il 10-09
+
+`F`+`E9` (136 rilievi sanati prima di accendere) e poi `T20`, `C4`, `A`, `PIE`,
+`G`, `LOG` — §2.2 e `ruff.toml`. L'allargamento ha trovato due difetti veri:
+`B017` (due `assertRaises(Exception)`, ora pretendono tipo **e** codice) e
+`PIE794` (`stato_codice_interno` dichiarato due volte in `OffertaRow`). Rimosso
+`_check_fn_tmp.py` (ok di Tid).
+
+### ✅ D3-a — Lo schema OpenAPI si dichiara — 2026-09-09
+
+`apps/core/api/openapi_extensions.py`: `OpenApiAuthenticationExtension` per
+`JwtAuditAuthentication`, registrata per import in `CoreConfig.ready()`.
+`components.securitySchemes` presente, `security:` su tutte le **815
+operazioni**, `check --deploy` da 677 a **124** problemi, i **607 `W001` a zero**.
+
+### ✅ D4 — Il terzo lato del contratto d'errore — 2026-09-09
+
+`hint` arriva a video in **un** posto — `useApiHandler` lo espone come
+`soluzione`, il toast lo rende nel `detail` — e la condizione che lo rende
+mostrabile sta nel backend (`_apply_policy`, che lo toglie sui codici tecnici).
+Le sei `ui_action` non ramificate sono **dichiarate servite** dal default.
+Stesso giorno, il building block che **otto** punti riscrivevano a mano: otto
+coercizioni `jsonb` portate su `jsonb_out` (non `coerce_jsonb_dict`, che su
+`registra_tentativo_login` sarebbe stato un fail-open), con due presidi.
+
+### ✅ D6 — Il `count` che era un'eco — 2026-09-10
+
+Nei lookup con `LIMIT` il `count` era `len(results)`: un numero che **conferma**
+il troncamento invece di rivelarlo. Rimedio: sonda **`+1`** nel repository, BB
+`fetch_con_sonda`, `troncato` nell'envelope e a video; l'helper unico è
+diventato **due**, perché la forma sbagliata e quella giusta erano la stessa
+riga di codice. Presidio sul **DB vero**, provato con tre mutazioni. ⭐ Il
+consumatore vivo era **l'assistente AI** («ho trovato 10 articoli» su 257);
+`fn_lookup_unita_misura` è stata **cancellata** perché nessun endpoint la
+raggiungeva. ⚠️ Residuo dichiarato: sulle collezioni **senza** `LIMIT` il
+`count` è giusto, ma nessun cancello impedisce a un `LIMIT` di comparirci sopra.
+
+### ✅ D7 — Endpoint senza porta: la decisione — 2026-09-11
+
+[piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) §1,
+per tutte e tredici le rotte: due famiglie (10 rotte, `/core/email/log/` e
+l'outbox) sono funzioni finite senza porta, **due sono candidate al ritiro**
+(`job-summary`, `manual-lookup`), una è un cantiere dichiarato (N6 dei listini),
+il resto è servizio legittimo. Corretto il docstring di
+`EmailLogOperatoreListView`, che prometteva un filtro che la RLS già applica.
+
+### ✅ D8 — Le view sotto `KeepAlive` — 2026-09-10
+
+Le view davvero scoperte erano **tre**; la catena però si spezzava un passo più
+in là — **otto store** non esponevano `hasSearched` e il refresh al rientro non
+avveniva mai (ora `useSearchTable` **avvisa in DEV** quando manca). Presidio:
+`check-keepalive-onactivated.mjs` (§2.7). Regola operativa: il caricamento va nel
+**solo** `onActivated` — *si sostituisce, non si aggiunge*.
+
+### ✅ D9-b — `SimpleTestCase` è la regola, e si sa perché — 2026-09-11
+
+`AGENTS.md` §Regole test prescrive l'unica classe che **impedisce** l'accesso al
+DB; misura rifatta quel giorno: **506 classi che non bloccano** contro 202 che
+bloccano. ✅ Nello stesso periodo `smoke-baseline.sh` ha fatto il suo mestiere:
+ha segnalato come regressione uno smoke **rimasto indietro** rispetto al D2 del
+gemello (la RLS su `pratiche_sorgenti` rende non osservabile lo «specchio»),
+riscritto sulla proprietà più forte — dal perimetro estraneo la vista **non
+risponde** — e provato per mutazione.
+
+### ✅ D10 — I registri che hanno un verso
+
+Cinque dei registri di §3 hanno un **cricchetto** dal 09-10: `oxlint` **0** e
+`ruff` **0** con cancello in pre-commit e CI, le `DataTable` grezze (**45** + 3
+standard, di cui **33** senza motivazione) con `check-datatable-baseline.mjs`
+che **elenca i file** ed è rosso **anche se cala** senza riscrivere il registro,
+gli header di licenza che calano davvero (2.042 → **1.169**), e gli
+`skip_area_check` con il presidio di D15. Restano senza verso la baseline degli
+smoke (vive o muore con D9-a) e la lettura cross-dominio (D10-bis).
+
+### ✅ D11 — Quattro app scheletro: la decisione — 2026-09-11
+
+`acquisti` e `magazzino` sono il **prossimo cantiere** — scritto in
+`PROJECT_CONTEXT.md`, col gemello DB allineato — con la conseguenza operativa
+che questa voce cercava: *ogni decisione presa su `vendite` è presa anche per
+`acquisti`*, e un'asimmetria si chiude subito. `storico` resta **senza
+decisione**; `contabilita` resta fuori perimetro (§4).
+
+### ✅ D13 — Il building block che nessuno ha chiamato — 09-09, D13-bis l'11-09
+
+`chiusura_scadenze_handler.py` faceva `dict(riga[0])` su un `jsonb` che psycopg
+consegna come `str`: `CHIUSURA_SCADENZE` in `ERRORE` per **quattro notti**, con
+`coerce_jsonb_dict` che esisteva dal giugno precedente. Ora usa il BB, e i test
+fissano la **forma** del valore (provati per mutazione). ⭐ *Un test era verde
+mentre il job falliva: un mock sbaglia quando la forma che finge non è quella
+vera.* ✅ **D13-ter**: le otto righe storiche archiviate,
+`vw_coda_lavori_da_guardare` a zero. ✅ **D13-bis**: catalogo `dbops.presidi`
+applicato dal team DB, la riga di debito del backend **ritirata** (e il test di
+ritiro è diventato **rosso in CI nominandola** — il meccanismo che fa il suo
+mestiere), i due timer in servizio (07:00 e lunedì 07:30). ⚠️ La coda — il
+rumore del digest su un processo ritirato — è **D13-quater**, in §8, ed è una
+riga al team DB.
+
+### ✅ D14 — «Inviata» detto di una mail mai partita — 2026-09-11
+
+Trovato **provando** la connessione SMTP, non leggendo. Ora `EmailDispatchService`
+ha tre canali (`SMTP` · `CONSOLE` · `NON_CONFIGURATO`, che scrive `FAILED` col
+motivo), `test_connection` non risponde più OK a un account che non può
+spedire, il `CHECK` ammette il quinto valore **`SIMULATA`** (dice l'**esito**,
+non il canale), `inviato_at` resta NULL e non c'è nessun backfill.
+
+### ✅ D15 — `skip_area_check` muto su 15 view — 2026-09-12
+
+Un difetto del **modello dei permessi** che non dà nessun errore: una view che
+dichiara area **e** skip dice due cose opposte, e vinceva l'area in silenzio.
+✅ Presidio il 12-09 (`test_skip_area_check_registro.py`, quattro test sulle view
+**instradate nell'URLconf**, provati per mutazione — e la prima stesura, che
+leggeva il corpo con `ast`, era **cieca** su un'area ereditata) e **decisione per
+famiglia lo stesso giorno**:
+
+| Famiglia                      | Decisione                | Cosa è cambiato                                                                                                                                                                                                                                                           |
+| ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pagamenti` (4)               | **vale lo skip**         | tolta `area_funzionale`: un operatore senza nessun livello su `pagamenti` vede saldo, rate e sistemazioni della fattura che ha già davanti — il commento di otto righe è finalmente vero                                                                                  |
+| outbox email (10)             | **vale l'area `config`** | tolto lo skip: comportamento identico, e il codice adesso lo dice. ⚠️ Era **la parte pericolosa**: sei di quelle view scrivono senza `post_permission`, e con lo skip attivo qualunque operatore autenticato avrebbe potuto preparare e **spedire** dall'account aziendale |
+| `RuoliConfigResolverView` (1) | **vale lo skip**         | tolta `area_funzionale`: è la configurazione del `SoggettoResolver`, componente **core**                                                                                                                                                                                  |
+
+Provato dal **percorso reale** (`test_permissions_decisione_skip_area.py`): le
+quattro view di `pagamenti` passano con livello `BLOCCATO`, l'outbox vuole
+`LETTURA` per leggere e `TUTTO` per spedire. Suite completa **4.652 verdi**; i
+due registri di debito a **zero** e restano nel file — una view che dichiara
+entrambi è rossa il giorno stesso.
+
+---
+
 *Valutazione 2026-09-09 — perimetro backend + frontend; sfoltita il 2026-09-12
 allo stato corrente. Le misure sono letture di struttura sul repo al commit
 `c1f9e571e` (`dev/backend-tid`), sullo schema OpenAPI generato da quel commit,
 sui due workflow di CI e sull'esito di `manage.py check --deploy`; i numeri
-riletti dopo portano la loro data. Lo strato DB è valutato separatamente in
+riletti dopo portano la loro data. **Riordinato il 2026-09-20**: §3 contiene solo
+i difetti aperti, le attività svolte stanno in §9 — con lo stesso numero in
+entrambe le sezioni quando una voce ha due facce. Lo strato DB è valutato
+separatamente in
 [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).*

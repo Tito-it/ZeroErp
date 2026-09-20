@@ -29,6 +29,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_user_override_azioni_validita |  |
+| FOREIGN KEY | fk_config_user_override_azioni_auth_user | auth_user_id |
 | FOREIGN KEY | fk_user_override_azioni_azione | azione_id |
 | PRIMARY KEY | pk_user_override_azioni | id |
 | UNIQUE | uq_user_override_azioni_user_azione | auth_user_id, azione_id |
