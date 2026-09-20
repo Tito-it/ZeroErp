@@ -1,58 +1,35 @@
-# Guida Tecnica – Architettura Permessi e Autorizzazioni
+# Guida — Architettura Permessi e Autorizzazioni
 
-> **Destinatari:** sviluppatori database, backend e analisti funzionali
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> **Prerequisiti:** [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici), [identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
+> **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
-> **Stato:** Architettura in produzione – v3.0 post-cutover multi-face-auth
-
----
-
-> **Multi-Face Auth — stato post-cutover (aprile 2026)**
+> **Vedi anche** — schemi DB:
 >
-> L'architettura e' stata estesa per supportare **portali clienti/fornitori**
-> e **shop online** oltre agli **operatori interni**. Componenti chiave
-> (tutti attivi in produzione dal 19-04-2026, PR-A completata):
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il ponte multi-veste: un account, piu' vesti attive
+> * [config.profili_accesso](/dbzero/config/tabelle/profili_accesso) — i profili di accesso (REPARTO / PORTALE / AD_HOC / SUPER_ADMIN)
+> * [config.profili_accesso_aree](/dbzero/config/tabelle/profili_accesso_aree) / [config.profili_accesso_azioni](/dbzero/config/tabelle/profili_accesso_azioni) — cosa concede un profilo
+> * [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — a chi e' legato un profilo
+> * [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali) / [config.azioni_processo](/dbzero/config/tabelle/azioni_processo) — il catalogo delle aree e delle azioni
+> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree) / [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti) / [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni) — le eccezioni individuali
+> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — il perimetro di emittenti dell'operatore
+> * [config.scope_policy](/dbzero/config/tabelle/scope_policy) / [config.identita_scope_bindings](/dbzero/config/tabelle/identita_scope_bindings) — le policy di scope e i loro legami
 >
-> * **Bridge generalizzato** — la tabella
->   [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
->   collega `soggetti_ruoli` a `auth_user` per 5 ruoli applicativi
->   (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
->   `API_CLIENT`) + stato `DISABILITATO`. La ex tabella bridge
->   `risorse_umane_auth_user` **non esiste piu'** (tabella e vista ritirate il 12-09-2026).
-> * **Profili accesso generalizzati** — `config.profili_accesso` con tipo
->   `REPARTO` / `PORTALE` / `AD_HOC` / `SUPER_ADMIN`, binding via
->   `config.profili_accesso_bindings` verso reparto, identita o ruolo.
-> * **Scope policy** — `config.scope_policy` (EF_WHITELIST,
->   BA_OWNERSHIP, FORNITORE_OWNERSHIP) + `identita_scope_bindings`.
->   Le tre funzioni `script.fn_scope_*` (`ba_ownership`,
->   `fornitore_ownership`, `ef_whitelist`) sono `LANGUAGE sql STABLE`
->   inlineable. `SELF_OWNERSHIP` unificato con `BA_OWNERSHIP` (il
->   ruolo anagrafico CL e' condiviso tra CLIENTE_PORTALE e SHOP_CUSTOMER).
-> * **Row Level Security** — **due velocità (giugno 2026)**: la branch
->   **scope emittente OPERATORI** è **ATTIVA (`ENABLE`)** su
->   fatture/fatture_scadenze/fatturazione_lotti/ordini/preventivi/contratti/
->   offerte_commerciali/documenti_generati/pratiche/billing_account (Ondata
->   1+2, no `FORCE`; vedi `dev/work-done/analisi-attivazione-rls-operatori.md`).
->   Dal **2026-06-03** le `ef_whitelist` sono **`FOR ALL` con `WITH CHECK`**
->   (copertura **scrittura** oltre lettura; `billing_account` ha policy `_ins`
->   gate-only): senza, su tabella `ENABLE`d ogni INSERT/UPDATE operatore andava
->   in deny-all. I batch girano come `postgres` (superuser) → esenti.
->   Le branch **portale/shop** (`BA_OWNERSHIP`, CLIENTE_PORTALE/SHOP_CUSTOMER)
->   restano **dry-run** in attesa delle API portale/shop. GUC
->   `app.current_identita_id`, `app.ruolo_applicativo`,
->   `app.soggetto_ruolo_id` popolati da `JwtAuditAuthentication`.
-> * **SUPER_ADMIN** — profilo dedicato id=9100 (ex `ruolo_sistema=ADMIN`)
->   bindato via `profili_accesso_bindings` AD_HOC a singole identita.
->   Guard anti-lockout (`trgfn_..._guard_ultimo_super_admin`) impedisce
->   di lasciare il sistema senza amministratori raggiungibili.
-> * **Namespace API separati**: `/api/admin/*`, `/api/portale/*`,
->   `/api/shop/*` (Stage C PR-B in sviluppo).
+> **Vedi anche** — funzioni e trigger DB:
 >
-> Dettagli architetturali completi:
+> * [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin) — il check di bypass
+> * [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — i profili applicabili a un utente
+> * [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area) / [script.fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — la catena risolta lato DB
+> * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — la regola di scope emittente, sede unica
+> * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) / [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gli emittenti nel perimetro dell'utente
+> * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
 >
-> * [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo: roadmap storica multi-face auth consolidata
+> **Vedi anche** — guide correlate:
+>
+> * [Guida Soggetti & Ruoli Anagrafici](/guide/soggetti-e-ruoli-anagrafici) — il prerequisito anagrafico
+> * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth) — il modello delle vesti
+> * [Contratto GUC `app.*`](/guide/contratto-guc-app) — i parametri di sessione PostgreSQL
+> * [Risorse Umane e Accessi](/guide/risorse-umane-e-accessi) — il ciclo di vita degli operatori
 
 ---
 
@@ -97,10 +74,10 @@ di un'eccezione rara.
 
 ### 2.2 Tre livelli di accesso per area
 
-| Livello      | Significato                                   |
-| ------------ | --------------------------------------------- |
-| **TUTTO**    | CRUD completo su tutti gli oggetti dell'area  |
-| **LETTURA**  | Solo visualizzazione (`view_*`)               |
+| Livello      | Significato                                    |
+| ------------ | ---------------------------------------------- |
+| **TUTTO**    | CRUD completo su tutti gli oggetti dell'area   |
+| **LETTURA**  | Solo visualizzazione (`view_*`)                |
 | **BLOCCATO** | Nessun accesso, l'area non e' nemmeno visibile |
 
 Questi tre livelli coprono il **90% delle esigenze quotidiane** e rendono
@@ -238,11 +215,6 @@ per quel model usera' la nuova area.
 ### 4.4 Tabella `config.profili_accesso_aree`
 
 > Struttura completa: [profili_accesso_aree](/dbzero/config/tabelle/profili_accesso_aree)
->
-> *(Storico: ha rimpiazzato `config.profili_reparto_aree`, dismessa il
-> 2026-05-04 con il changeSet `20260505-02-drop-profili-reparto`. Il
-> backfill `20260418-42` ha migrato i dati nel modello generalizzato
-> `profili_accesso` + `profili_accesso_bindings`.)*
 
 Cuore dell'ereditarieta': definisce il livello di accesso (`TUTTO`, `LETTURA`,
 `BLOCCATO`) che ogni profilo (REPARTO, PORTALE, AD_HOC) ha su ciascuna
@@ -268,9 +240,6 @@ mostrata in interfaccia o esportata in audit.
 ### 4.5 Tabella `config.profili_accesso_azioni`
 
 > Struttura completa: [profili_accesso_azioni](/dbzero/config/tabelle/profili_accesso_azioni)
->
-> *(Storico: ha rimpiazzato `config.profili_reparto_azioni`, dismessa
-> il 2026-05-04.)*
 
 Azioni di processo abilitate a livello di profilo. Funziona in coppia con
 `profili_accesso_aree`: il livello area controlla il CRUD, questa tabella
@@ -334,22 +303,19 @@ perche' e da chi l'eccezione e' stata concessa.
 
 > Struttura completa: [user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
 
-Ambito operativo: whitelist opzionale degli emittenti fiscali su cui l'utente
-puo' operare. Se l'utente non ha righe in questa tabella, puo' operare su
-**tutti** gli emittenti. Se ha almeno una riga, e' limitato a quelli elencati.
+Ambito operativo: l'assegnazione fra operatore ed emittente fiscale e' **1-a-1**
+(`UNIQUE (auth_user_id)`), e la regola e' **fail-closed**: se l'operatore non ha
+righe **non vede nessun emittente** — la riga mancante e' un errore di
+configurazione, non un permesso. L'unico attore legittimamente multi-emittente e'
+il `SUPER_ADMIN`, che passa da `fn_is_super_admin` e non da questa tabella.
 
-**Esempio di uso:** per limitare un operatore a due specifiche aziende
-fatturanti (es. emittenti con id 1 e 3), si registrano due righe nella
-whitelist con l'auth_user_id dell'operatore. Dal momento in cui compare
-almeno una riga, il sistema presume che l'operatore sia "ristretto":
-qualsiasi tentativo di operare su un emittente non in lista viene
-bloccato a livello di policy e, per difesa in profondita', anche dai
-trigger DB.
+**Esempio di uso:** per abilitare un operatore sull'emittente 3, si registra la
+sua riga con `auth_user_id` ed `emittente_fiscale_id`. Ogni tentativo di operare
+su un emittente diverso viene bloccato: a livello di policy per le letture, e per
+difesa in profondita' dai trigger DB sulle scritture.
 
-Per verificare l'ambito di un operatore, si consulta la whitelist
-incrociata con l'anagrafica emittenti fiscali: se il risultato e'
-vuoto, l'operatore puo' operare su tutti gli emittenti; se contiene
-righe, solo su quelli elencati.
+Chi resta senza assegnazione si conta in `dbops.vw_operatori_senza_emittente`, che
+**deve restare a zero righe**.
 
 ---
 
@@ -381,14 +347,13 @@ Il flusso di una richiesta attraversa, nell'ordine, cinque passaggi:
 
 ## 6. Enforcement Django
 
-> **Nota (20-04-2026):** dopo il refactor multi-face auth, l'enforcement
-> Django non piu' assume "un utente = un operatore interno". Il sistema
-> riconosce cinque vesti applicative (operatore, cliente portale,
-> fornitore portale, cliente shop, api client) e determina la veste
-> corrente dalla **sessione JWT** (claim `identita_id`). La risoluzione
-> dei permessi e' la stessa per tutte le vesti, ma la **sorgente** del
-> profilo di accesso cambia (reparto per operatori, profilo preset per
-> portale/shop). Riferimento: [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth).
+> **L'enforcement non assume "un utente = un operatore interno".** Il sistema
+> riconosce cinque vesti applicative (operatore, cliente portale, fornitore
+> portale, cliente shop, api client) e determina la veste corrente dalla
+> **sessione JWT** (claim `identita_id`). La risoluzione dei permessi e' la stessa
+> per tutte le vesti, ma la **sorgente** del profilo di accesso cambia: reparto per
+> gli operatori, profilo preset per portale e shop.
+> Riferimento: [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth).
 
 ### 6.1 Funzione di risoluzione permessi (cuore del sistema)
 
@@ -481,7 +446,7 @@ occupano solo di:
   `create` richiede `add`, `update` e `partial_update` richiedono
   `change`, `destroy` richiede `delete`. Questo tipo di accesso e' poi
   confrontato con i verbi ammessi dal livello (TUTTO/LETTURA/BLOCCATO).
-* **Superuser Django.** Se l'utente e' superuser Django (`is_superuser =
+* **Superuser Django.** Se l'utente è superuser Django (`is_superuser =
   true`), viene ammesso direttamente senza consultare le tabelle config.
   Comportamento di sicurezza a monte, usato in pratica solo per
   amministrazione tecnica. **Nota:** `is_superuser` e' il flag Django,
@@ -511,8 +476,23 @@ policy):
 **Operatori interni.** `EmittenteFiscaleScopeMixin` applica la scope
 policy `EF_WHITELIST` al queryset: la view dichiara il percorso del campo
 emittente (es. `billing_account__emittente_fiscale`), il mixin legge
-`user_emittenti_fiscali` e filtra. Se la whitelist e' vuota, nessun
-filtro (accesso su tutti gli emittenti). Pattern invariato dall'originale.
+`user_emittenti_fiscali` e filtra. Se l'operatore non ha righe, il filtro non
+lascia passare **niente**: e' fail-closed, e la riga mancante e' un errore di
+configurazione (§4.9).
+
+**Sul lato DB la stessa regola e' una policy RLS.** Per lo scope emittente degli
+operatori le tabelle del perimetro hanno la RLS **attiva** (`ENABLE`, senza `FORCE`:
+il proprietario delle tabelle e i batch restano fuori). Le policy sono **`FOR ALL`
+con `WITH CHECK`**, non solo `FOR SELECT`: con la RLS attiva una scrittura che
+nessuna policy permette viene negata, quindi senza `WITH CHECK` ogni INSERT o UPDATE
+di un operatore sarebbe finito in deny-all. I batch girano come utente `postgres` e
+sono esenti per costruzione. Su `billing_account` la policy di inserimento e'
+**gate-only**: verifica i permessi, senza decidere il contenuto della riga.
+
+**Un nome da non confondere.** `BA_OWNERSHIP` e `SELF_OWNERSHIP` sono la stessa
+policy: il ruolo anagrafico `CL` e' condiviso fra `CLIENTE_PORTALE` e
+`SHOP_CUSTOMER`, quindi tenerle unite evita due definizioni divergenti dello stesso
+concetto.
 
 **Clienti portale.** Applica la scope policy `BA_OWNERSHIP` (il cliente
 vede solo i propri billing account) oppure `CLIENTE_OWNERSHIP` (per dati
@@ -545,15 +525,15 @@ e le policy RLS possano sapere per conto di chi stanno eseguendo
 un'operazione. Il middleware e' la "spia" che rende possibile
 l'enforcement al livello piu' basso dello stack.
 
-**GUC propagati (tripla post multi-face auth):**
+**GUC propagati:**
 
-| GUC | Popolato da | Usato da |
-| --- | --- | --- |
-| `app.current_user_id` | `auth_user.id` del JWT | Trigger audit, retrocompatibilita' |
-| `app.current_identita_id` | Claim JWT `identita_id` | Policy RLS, scope policy |
-| `app.ruolo_applicativo` | `identita_digitali.ruolo_applicativo` della riga | Gate policy RLS, discriminazione portale/shop |
-| `app.soggetto_ruolo_id` | `identita_digitali.soggetto_ruolo_id` della riga | Helper scope (quando serve il SR dell'utente) |
-| `app.jwt_user` | Username Django | Audit log legacy |
+| GUC                       | Popolato da                                      | Usato da                                      |
+| ------------------------- | ------------------------------------------------ | --------------------------------------------- |
+| `app.current_user_id`     | `auth_user.id` del JWT                           | Trigger audit, retrocompatibilita'            |
+| `app.current_identita_id` | Claim JWT `identita_id`                          | Policy RLS, scope policy                      |
+| `app.ruolo_applicativo`   | `identita_digitali.ruolo_applicativo` della riga | Gate policy RLS, discriminazione portale/shop |
+| `app.soggetto_ruolo_id`   | `identita_digitali.soggetto_ruolo_id` della riga | Helper scope (quando serve il SR dell'utente) |
+| `app.jwt_user`            | Username Django                                  | Audit log legacy                              |
 
 **Invariante tutto-o-niente.** I 3 GUC del multi-face
 (`current_identita_id`, `ruolo_applicativo`, `soggetto_ruolo_id`) sono
@@ -571,10 +551,10 @@ se la tripla non e' coerente.
   (3) interroga `identita_digitali` per ricavare `ruolo_applicativo` e
   `soggetto_ruolo_id`, (4) imposta i 4 GUC sulla connessione corrente.
   Gli `SET LOCAL` sono scoperati a fine transazione — no pool pollution.
-* Il JWT legacy (pre multi-face) senza claim `identita_id` e' tollerato
-  per una grace window post-deploy: il middleware lo riconosce e deriva
-  l'identita da `auth_user_id` 1:1 (caso operatore unico). Scade con il
-  refresh del token.
+* Un JWT **senza** claim `identita_id` viene comunque tollerato: il middleware lo
+  riconosce e deriva l'identita' da `auth_user_id`. E' la via di compatibilita' per
+  i token emessi prima dell'introduzione del claim, e si esaurisce col refresh del
+  token.
 * I trigger DB e le policy RLS leggono i GUC per risalire all'utente,
   alla sua veste e al suo SR. Il contratto dei GUC e' centralizzato in
   una scheda dedicata: [Contratto GUC app.*](/guide/contratto-guc-app).
@@ -591,17 +571,24 @@ che il backend non puo' garantire.
 > Struttura completa: [fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
 La funzione `script.fn_check_user_emittente_scope(p_auth_user_id, p_emittente_id)`
-verifica se un utente e' autorizzato a operare su un dato emittente fiscale.
-Segue la logica whitelist: se l'utente non ha righe in `user_emittenti_fiscali`,
-restituisce `TRUE` (nessun vincolo); altrimenti verifica che l'emittente sia
-nella lista.
+verifica se un utente e' autorizzato a operare su un dato emittente fiscale. E' la
+**sede unica** della regola: la delegano sia il write-guard sia le policy RLS in
+lettura, quindi correggerla qui la propaga a entrambi i lati.
 
-**Esempio di uso:** chiamando la funzione con l'identificativo
-dell'utente e quello dell'emittente, si ottiene `TRUE` se l'utente
-puo' operare su quell'emittente (o perche' non ha whitelist configurata
-o perche' l'emittente e' nella sua lista), altrimenti `FALSE`. Questo
-check e' riutilizzabile da viste, report e altre funzioni DB che
-devono filtrare dati in base all'ambito dell'utente corrente.
+I rami, nell'ordine:
+
+1. **`p_auth_user_id` NULL** → `TRUE`: e' il caso dei job batch, che non agiscono
+   per conto di un utente.
+2. **Emittente non attivo** → `FALSE`.
+3. **`SUPER_ADMIN`** → `TRUE`: e' l'unico punto in cui la selezione puo'
+   restringere chi vede tutto.
+4. **Nessuna riga** in `user_emittenti_fiscali` → `FALSE` (fail-closed, §4.9).
+5. **Almeno una riga** → `TRUE` solo se l'emittente e' fra quelle elencate.
+
+**Esempio di uso:** chiamando la funzione con l'identificativo dell'utente e quello
+dell'emittente si ottiene `TRUE` o `FALSE` secondo i rami qui sopra. Il check e'
+riutilizzabile da viste, report e altre funzioni DB che devono filtrare dati in
+base all'ambito dell'utente corrente.
 
 ### 7.2 Trigger guard per ambito emittente
 
@@ -693,8 +680,9 @@ che **eredita** dal reparto sia cio' che il reparto ha modificato
 specificamente per lui.
 
 L'intestazione riporta nome dell'utente, reparto di appartenenza e
-ambito degli emittenti fiscali su cui puo' operare (es. "ACME S.r.l.,
-Beta S.r.l." oppure "tutti" se la whitelist e' vuota).
+l'emittente fiscale su cui puo' operare (es. "ACME S.r.l."). Se non ne ha
+nessuno, l'assenza va mostrata come **configurazione mancante**, non come
+"nessun limite": senza riga l'operatore non vede nessun emittente (§4.9).
 
 La prima sezione e' la matrice **Aree x Livello**, identica per forma
 a quella di reparto, ma con una distinzione visiva tra livello
@@ -786,21 +774,19 @@ erDiagram
     aree_funzionali ||--o{ azioni_processo : "contiene"
 ```
 
-### 9.2 Catena identita' e profilo di accesso (post multi-face auth)
+### 9.2 Catena identita' e profilo di accesso
 
-Post refactor multi-face auth (19-20 aprile 2026), `auth_user` e' collegato
-al resto del modello tramite il bridge **generico** `identita_digitali`:
-un `auth_user` puo' avere N identita attive, una per `ruolo_applicativo`.
-Ogni identita si aggancia a un `soggetti_ruoli` (dipendente, cliente,
-fornitore, shop customer). Il profilo di accesso si ottiene tramite
-`profili_accesso_bindings`, che ammette tre modalita' di aggancio:
-diretta all'identita (AD_HOC), per ruolo applicativo (preset portale/shop),
-per unita' organizzativa (ereditarieta' reparto per operatori).
+`auth_user` e' collegato al resto del modello tramite il bridge **generico**
+`identita_digitali`: un `auth_user` puo' avere N identita attive, una per
+`ruolo_applicativo`. Ogni identita si aggancia a un `soggetti_ruoli` (dipendente,
+cliente, fornitore, shop customer). Il profilo di accesso si ottiene tramite
+`profili_accesso_bindings`, che ammette tre modalita' di aggancio: diretta
+all'identita (AD_HOC), per ruolo applicativo (preset portale/shop), per unita'
+organizzativa (ereditarieta' reparto per operatori).
 
-La tabella legacy `risorse_umane_auth_user` **non esiste piu'** in nessuna
-forma: la tabella e' stata eliminata e la vista che ne aveva preso il nome e'
-stata ritirata il 12-09-2026 (`90_end/20260912-10` e `-26`), dopo che il codice
-Python e' passato a leggere `identita_digitali` (`ruolo_applicativo = 'OPERATORE'`).
+Il bridge non ha alternative: `risorse_umane_auth_user`, la tabella che teneva il
+ponte "solo dipendenti", **non esiste in nessuna forma**. Tutti i lettori passano da
+`identita_digitali` (`ruolo_applicativo = 'OPERATORE'` per gli operatori interni).
 
 ```mermaid
 erDiagram
@@ -949,16 +935,11 @@ erDiagram
     aree_funzionali ||--o{ area_model_overrides : "riassegna"
 ```
 
-> **Nota:** `user_emittenti_fiscali` e' l'assegnazione **1-a-1** fra operatore
-> ed emittente: al massimo una riga per utente (`UNIQUE(auth_user_id)`).
-> ⚠️ **Dal 2026-08-18 e' FAIL-CLOSED**: se l'utente non ha righe non vede
-> **nessun** emittente. La riga mancante e' un errore di configurazione, non un
-> permesso — prima valeva il contrario (vedeva tutti gli emittenti ed era
-> indistinguibile da un super admin), ed e' il difetto che P-2a ha chiuso.
-> L'unico attore legittimamente multi-emittente e' il **SUPER_ADMIN**, che passa
-> da `fn_is_super_admin` e non da questa tabella. Chi e' rimasto senza
-> assegnazione si vede in `dbops.vw_operatori_senza_emittente`, che **deve
-> restare a zero righe**.
+> **Nota:** `user_emittenti_fiscali` e' l'assegnazione **1-a-1** fra operatore ed
+> emittente (al massimo una riga per utente) ed e' **fail-closed** (§4.9): senza
+> righe non si vede nessun emittente, e la riga mancante e' un errore di
+> configurazione. Chi ne e' privo si conta in `dbops.vw_operatori_senza_emittente`,
+> che **deve restare a zero righe**.
 > `area_model_overrides` e' usata raramente, solo quando un model
 > deve appartenere a un'area diversa dal suo schema.
 
@@ -988,7 +969,7 @@ erDiagram
 
 **Scope dati:**
 
-* **Ambito operatore** → `config.user_emittenti_fiscali` + scope policy `EF_WHITELIST` (whitelist opzionale)
+* **Ambito operatore** → `config.user_emittenti_fiscali` + scope policy `EF_WHITELIST`, **fail-closed**: senza righe non si vede nessun emittente
 * **Ambito portale/shop** → `config.scope_policy` + policy `BA_OWNERSHIP` / `CLIENTE_OWNERSHIP` / `FORNITORE_OWNERSHIP` (RLS nativa PostgreSQL, no filtro manuale lato BE)
 
 **Enforcement:**
@@ -1023,86 +1004,61 @@ coerente con la filosofia di Zero ERP.
 
 ## 12. Evoluzioni future
 
-- **Row-Level Security (RLS):** ✅ **scope emittente OPERATORI ATTIVO** (giugno 2026, Ondata 1+2 su fatture/scadenze/lotti/ordini/preventivi/contratti/offerte/documenti_generati/pratiche/billing_account — vedi `dev/work-done/analisi-attivazione-rls-operatori.md`). Resta **dry-run** la branch **portale/shop**, differita a quando le relative API di dominio saranno sviluppate.
-- **Permessi sotto-oggetti (v3):** oggi i model sono flat. La v3 aggiunge gerarchia padre/figlio (es. "TUTTO su cliente, BLOCCATO sugli indirizzi del cliente") con UX ad albero. Evoluzione prevista ma non ancora rilasciata.
-- **Ambito per unita' organizzativa su dati:** limitare la visibilita' dati per reparto.
-- **Workflow permissions:** stati avanzati (es. transizione BOZZA -> EMESSA) come azioni di processo.
-- **Audit trail permessi:** log storico delle modifiche ai profili e override — completato.
-- **Dashboard permessi operatore:** vista riepilogativa "cosa puo' fare questo utente" con risoluzione completa — parzialmente coperta dall'endpoint `permessi-effettivi` (§13.3); UX admin gerarchica in v3.
+- **Row-Level Security (RLS):** attiva per lo **scope emittente degli operatori** su
+  fatture, scadenze, lotti, ordini, preventivi, contratti, offerte, documenti
+  generati, pratiche e billing account. Per **portale e shop** le policy sono
+  scritte ma **non ancora attive**: si accendono insieme alle rispettive API di
+  dominio.
+- **Permessi sotto-oggetti:** i model sono flat. La gerarchia padre/figlio (es.
+  "TUTTO su cliente, BLOCCATO sugli indirizzi del cliente") e' un'evoluzione
+  prevista, con UX ad albero, non ancora disponibile.
+- **Ambito per unita' organizzativa sui dati:** limitare la visibilita' delle righe
+  per reparto.
+- **Workflow permissions:** stati avanzati (es. transizione BOZZA → EMESSA) come
+  azioni di processo.
+- **Audit trail permessi:** log storico delle modifiche ai profili e agli override.
+- **Dashboard permessi operatore:** la vista riepilogativa "cosa puo' fare questo
+  utente" e' coperta dall'endpoint dei permessi effettivi (§13); l'UX admin
+  gerarchica arrivera' con i sotto-oggetti.
 
 ---
 
-## 13. Classificazione utente — evoluzione post multi-face auth
+## 13. Diagnostica: cosa puo' fare questo utente
 
-> **Nota (20-04-2026):** questa sezione documentava un ENUM
-> `config.tipo_utente` (ADMIN / OPERATIVO / DISABILITATO) modellato come
-> colonna sul bridge `risorse_umane_auth_user`. Il refactor multi-face
-> auth **ha superato quell'ENUM**: le tre classificazioni sono ora tre
-> meccanismi distinti, ciascuno al livello architettonico corretto.
+### 13.1 L'endpoint dei permessi effettivi
 
-### 13.1 Mappatura legacy → modello corrente
+`/api/v1/core/users/{id}/permessi-effettivi/` restituisce la risoluzione completa per
+l'utente indicato:
 
-| Classificazione legacy | Come si realizza oggi | Dove vive |
-| --- | --- | --- |
-| `ADMIN` | Binding al profilo **`SUPER_ADMIN`** (id 9100) sull'identita | `config.profili_accesso_bindings (tipo=AD_HOC, profilo_accesso_id=9100)` |
-| `OPERATIVO` | Identita con `ruolo_applicativo = 'OPERATORE'` e risoluzione standard della catena | `anagrafiche.identita_digitali.ruolo_applicativo` + `profili_accesso_bindings` per UO |
-| `DISABILITATO` | Identita con `ruolo_applicativo = 'DISABILITATO'` oppure `attivo = false` | `anagrafiche.identita_digitali.ruolo_applicativo` / `attivo` |
+* `aree` — per ogni area funzionale attiva: `livello`, `azioni_consentite`,
+  `has_profilo_reparto`;
+* `modelli` — per ogni area, i model registrati in `config.area_model_overrides` con
+  il livello oggetto risolto (`fn_resolve_livello_oggetto`: override esplicito o
+  fallback sull'area).
 
-La differenza non e' cosmetica:
+Serve quando un operatore risulta `BLOCCATO` su un model specifico e bisogna
+distinguere la causa: override oggetto, profilo dell'area, o configurazione assente.
 
-* **Meccanismi al livello giusto.** SUPER_ADMIN e' un **profilo**
-  (non un flag): riusa l'infrastruttura `profili_accesso` + bindings, ed
-  e' coerente con il resto del modello permessi. DISABILITATO e' una
-  **veste** applicativa fail-closed, non una colonna trasversale.
-* **Piu' vesti coesistenti.** Un `auth_user` puo' avere
-  contemporaneamente identita `OPERATORE` attiva e `CLIENTE_PORTALE`
-  attiva (es. un dipendente che e' anche cliente B2B della sua azienda).
-  Con l'ENUM vecchio questo scenario era impossibile.
-* **Anti-lockout ultimo SUPER_ADMIN.** Un trigger DB
-  (`trgfn_profili_accesso_bindings_guard_ultimo_super_admin`) impedisce
-  di disattivare/eliminare l'ultimo binding SUPER_ADMIN attivo; errore
-  `E_PROFILO_ULTIMO_SUPER_ADMIN`. Difesa non presente con l'ENUM vecchio.
+### 13.2 L'audit degli override
 
-### 13.2 Catena di risoluzione effettiva
+`/permessi-audit/` traccia la timeline degli override. La storia vive nelle tabelle
+dello schema `storico`, fra cui `storico.user_override_oggetti`.
 
-La catena di risoluzione e' adesso coerente per ogni veste (vedi §6.1):
+### 13.3 Due difese che non si vedono a schermo
 
-1. **Identita non attiva o `ruolo_applicativo = DISABILITATO`** → accesso
-   negato al login, il flag `auth_user.is_active` risulta `false` se non
-   esiste alcun'altra identita utilizzabile (OR).
-2. **Identita con binding SUPER_ADMIN attivo** → bypass totale
-   (`script.fn_is_super_admin(auth_user_id)` restituisce `true`).
-3. **Altrimenti** — applicazione catena standard: override individuali
-   (oggetto/area/azione) → profilo applicabile dalla catena AD_HOC /
-   ruolo_applicativo / reparto → default sicuro `BLOCCATO`.
+Spiegano rifiuti altrimenti incomprensibili, e vale la pena conoscerle prima di
+diagnosticarli:
 
-### 13.3 Diagnostica
-
-L'endpoint diagnostico `/api/v1/core/users/{id}/permessi-effettivi/`
-e' operativo (22-04-2026). Restituisce:
-
-* `aree` — livello effettivo per ogni area funzionale attiva, con
-  `livello`, `azioni_consentite`, `has_profilo_reparto` e
-* `modelli` — per ogni area, lista dei model registrati in
-  `config.area_model_overrides` con il livello oggetto risolto
-  (`fn_resolve_livello_oggetto`: override esplicito o fallback area).
-
-Utile quando un operatore risulta BLOCCATO su un model specifico e
-serve distinguere se e' per override oggetto, profilo area, o assenza
-di configurazione. L'endpoint `/permessi-audit/` traccia la timeline
-degli override (7 tabelle storico, inclusa `storico.user_override_oggetti`).
-
-### 13.4 Riferimenti di riga auto-gen
-
-Per i dettagli operativi sulla tabella e sui trigger coinvolti:
-
-* [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il bridge multi-veste
-* [config.profili_accesso](/dbzero/config/tabelle/profili_accesso) — profili generalizzati
-* [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — tre modalita' di aggancio
-* [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin) — check bypass SUPER_ADMIN
-* [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — helper resolver
-
-Guida tecnica complessiva: [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth).
+* **Anti-lockout sull'ultimo `SUPER_ADMIN`.** Il trigger
+  `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` impedisce di disattivare
+  o eliminare l'ultimo binding `SUPER_ADMIN` attivo — errore
+  `E_PROFILO_ULTIMO_SUPER_ADMIN`. Il sistema non resta senza amministratori
+  raggiungibili.
+* **Piu' vesti, un solo accesso.** Un `auth_user` puo' avere insieme un'identita'
+  `OPERATORE` e una `CLIENTE_PORTALE` attive (es. un dipendente che e' anche cliente
+  B2B della sua azienda). Il login resta possibile finche' **almeno una** veste e'
+  utilizzabile: la veste disattivata viene bloccata dalle policy, senza spegnere
+  l'account.
 
 ---
 

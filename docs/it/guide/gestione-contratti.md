@@ -1,15 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultima revisione**: 8 giugno 2026 — **attivazione = emissione documentale**
-> (DRAFT→ATTIVO solo via endpoint `/emetti/`, che genera il PDF in transazione
-> atomica), **overlap che esclude anche i DRAFT** (`ex_contratti_no_overlap` con
-> `WHERE partecipa_overlap_snapshot`: l'esclusività scatta solo all'attivazione),
-> **mutua esclusività offerta → contratto/ordine** e **trasporto 1:1
-> dell'approvazione prezzo** dall'offerta al contratto.
-> Revisioni precedenti: 21 maggio 2026 (stato ANNULLATO, overlap parziale);
-> 15 maggio 2026 (modello unificato: drop modalità A/B/C, `tipo_eccezione` su
-> `contratti_righe`, snapshot `listino_versione_id` all'attivazione, lock
-> post-attivazione).
+> **Ultimo aggiornamento**: 20 settembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -48,13 +39,13 @@ nel periodo di validità?"*
 
 Caratteristiche di base:
 
-- è intestato a un **billing account** (cliente) e a una **utility** (servizio)
-- definisce il **listino di riferimento** (opzionale) e un'eventuale **variazione
+* è intestato a un **billing account** (cliente) e a una **utility** (servizio)
+* definisce il **listino di riferimento** (opzionale) e un'eventuale **variazione
   globale** (sconto o maggiorazione applicata a tutto il listino)
-- può contenere **eccezioni puntuali** per singoli articoli (prezzi personalizzati,
+* può contenere **eccezioni puntuali** per singoli articoli (prezzi personalizzati,
   esclusioni, articoli fuori listino)
-- ha un **ciclo di vita** con stati da bozza a attivo, fino alla cessazione
-- quando **attivato**, viene usato come primo stadio (STADIO 1) del resolver
+* ha un **ciclo di vita** con stati da bozza a attivo, fino alla cessazione
+* quando **attivato**, viene usato come primo stadio (STADIO 1) del resolver
   pricing per determinare il prezzo applicabile a ogni articolo del BA
 
 Il numero documento è auto-generato (prefisso `CNT`) e non modificabile.
@@ -66,10 +57,10 @@ sceglieva all'apertura del form. Le modalità sono state eliminate: il contratto
 ha ora un **modello unico**, e la sua "forma" è derivata automaticamente dai
 dati compilati:
 
-| Forma derivata | Condizione | Significato commerciale |
-|---|---|---|
-| **Con listino** | `listino_id NOT NULL` | Il cliente ha un listino di partenza (con o senza variazione globale e con o senza eccezioni puntuali) |
-| **Senza listino** | `listino_id NULL` | Tutto negoziato puntualmente — le righe sono l'unica fonte di prezzo |
+| Forma derivata    | Condizione            | Significato commerciale                                                                                |
+| ----------------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Con listino**   | `listino_id NOT NULL` | Il cliente ha un listino di partenza (con o senza variazione globale e con o senza eccezioni puntuali) |
+| **Senza listino** | `listino_id NULL`     | Tutto negoziato puntualmente — le righe sono l'unica fonte di prezzo                                   |
 
 La variazione globale è un campo opzionale della testata. Le eccezioni sulle righe
 sono compatibili con la variazione globale: un contratto con listino può avere
@@ -83,14 +74,14 @@ sia variazione globale che override su singoli articoli — non c'è contraddizi
 
 Contiene il contesto commerciale e i parametri di pricing:
 
-- **chi** (`billing_account_id`, `istanza_utility_id`)
-- **per cosa** (`utility_id`, `ambito`: COMMODITY / COMMERCIO)
-- **quando** (`data`, `valido_dal`, `valido_al`)
-- **listino** (`listino_id` nullable, `listino_versione_id` nullable — fissato all'attivazione)
-- **variazione globale** (`tipo_variazione_globale`, `valore_variazione_globale`) — opzionale;
+* **chi** (`billing_account_id`, `istanza_utility_id`)
+* **per cosa** (`utility_id`, `ambito`: COMMODITY / COMMERCIO)
+* **quando** (`data`, `valido_dal`, `valido_al`)
+* **listino** (`listino_id` nullable, `listino_versione_id` nullable — fissato all'attivazione)
+* **variazione globale** (`tipo_variazione_globale`, `valore_variazione_globale`) — opzionale;
   si applica a tutte le righe listino salvo override puntuale
-- **stato** corrente (`stato_doc_contratto_id`)
-- **categoria cliente** al momento della creazione (`categoria_cliente_id`) — snapshot
+* **stato** corrente (`stato_doc_contratto_id`)
+* **categoria cliente** al momento della creazione (`categoria_cliente_id`) — snapshot
   congelato, non segue variazioni anagrafica
 
 I campi `listino_id`, `listino_versione_id`, `tipo_variazione_globale`,
@@ -104,20 +95,20 @@ ordinare" come in un preventivo, ma un **modificatore** che sovrascrive o
 integra il listino per un articolo specifico. Il campo `tipo_eccezione` (ENUM
 NOT NULL) qualifica esplicitamente il tipo:
 
-| `tipo_eccezione` | Significato | `prezzo_unitario` |
-|---|---|---|
-| `OVERRIDE` | Prezzo personalizzato per articolo **presente nel listino** — la variazione globale non si applica; l'override è il prezzo finale | NOT NULL |
-| `ESCLUSIONE` | Articolo del listino **non disponibile** per questo cliente — il resolver solleva errore se richiesto | NULL |
-| `AGGIUNTA` | Articolo **non presente nel listino**, aggiunto al contratto — valido anche su contratti senza listino | NOT NULL |
+| `tipo_eccezione` | Significato                                                                                                                       | `prezzo_unitario` |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `OVERRIDE`       | Prezzo personalizzato per articolo **presente nel listino** — la variazione globale non si applica; l'override è il prezzo finale | NOT NULL          |
+| `ESCLUSIONE`     | Articolo del listino **non disponibile** per questo cliente — il resolver solleva errore se richiesto                             | NULL              |
+| `AGGIUNTA`       | Articolo **non presente nel listino**, aggiunto al contratto — valido anche su contratti senza listino                            | NOT NULL          |
 
 Constraint DB:
 
-- OVERRIDE e ESCLUSIONE: al massimo una riga per `(contratto, articolo)` (unique parziale)
-- AGGIUNTA: al massimo una riga per `(contratto, articolo)` (unique parziale separato)
-- CHECK: `prezzo_unitario NOT NULL` se OVERRIDE o AGGIUNTA; NULL obbligatorio se ESCLUSIONE
-- Guard: una AGGIUNTA è bloccata se l'articolo è già nel listino fissato al contratto
+* OVERRIDE e ESCLUSIONE: al massimo una riga per `(contratto, articolo)` (unique parziale)
+* AGGIUNTA: al massimo una riga per `(contratto, articolo)` (unique parziale separato)
+* CHECK: `prezzo_unitario NOT NULL` se OVERRIDE o AGGIUNTA; NULL obbligatorio se ESCLUSIONE
+* Guard: una AGGIUNTA è bloccata se l'articolo è già nel listino fissato al contratto
   (si deve usare OVERRIDE)
-- Guard: una ESCLUSIONE è bloccata se l'articolo è un **componente** (figlio) di un
+* Guard: una ESCLUSIONE è bloccata se l'articolo è un **componente** (figlio) di un
   bundle del listino del contratto — l'esclusione va applicata al **padre bundle**,
   non al singolo componente (`E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`)
 
@@ -153,10 +144,10 @@ mano.
 
 I componenti portano:
 
-- riferimento al componente del catalogo + UoM + quantità (= padre × `coeff_qta`)
-- prezzo unitario (modificabile con autorizzazioni)
-- snapshot del coefficiente al momento della creazione
-- origine prezzo (CONTRATTO_OVERRIDE / CONTRATTO_AGGIUNTA / CONTRATTO_LISTINO / CATEGORIA)
+* riferimento al componente del catalogo + UoM + quantità (= padre × `coeff_qta`)
+* prezzo unitario (modificabile con autorizzazioni)
+* snapshot del coefficiente al momento della creazione
+* origine prezzo (CONTRATTO_OVERRIDE / CONTRATTO_AGGIUNTA / CONTRATTO_LISTINO / CATEGORIA)
 
 La struttura BoM (quali componenti, in che quantità relative) è **immutabile per
 contratto**: si possono cambiare i prezzi, non la composizione.
@@ -170,12 +161,12 @@ contratto**: si possono cambiare i prezzi, non la composizione.
 Gli stati sono governati da `config.stati_doc_contratti` e le transizioni ammesse
 da `config.transizioni_stati_contratti`:
 
-| Stato | Significato | Modificabile? |
-|---|---|---|
-| `DRAFT` | Bozza in costruzione | Sì: testata, righe, utility |
-| `ATTIVO` | Contratto in vigore — usato dal resolver pricing | No (lock post-attivazione) |
-| `CESSATO` | Contratto scaduto o terminato | No (terminale) |
-| `ANNULLATO` | Bozza annullata prima dell'attivazione (`is_abortito = true`) | No (terminale) |
+| Stato       | Significato                                                   | Modificabile?               |
+| ----------- | ------------------------------------------------------------- | --------------------------- |
+| `DRAFT`     | Bozza in costruzione                                          | Sì: testata, righe, utility |
+| `ATTIVO`    | Contratto in vigore — usato dal resolver pricing              | No (lock post-attivazione)  |
+| `CESSATO`   | Contratto scaduto o terminato                                 | No (terminale)              |
+| `ANNULLATO` | Bozza annullata prima dell'attivazione (`is_abortito = true`) | No (terminale)              |
 
 La transizione `ATTIVO → CESSATO` può essere **automatica** (job notturno quando
 `valido_al < CURRENT_DATE`) o **manuale** (operatore che chiude anticipatamente).
@@ -221,7 +212,7 @@ interviene BEFORE UPDATE sulla colonna `stato_doc_contratto_id`. In sequenza:
 
 Il resolver prezzi `fn_resolve_prezzo_listino_v2` valuta tre stadi in cascata:
 
-```
+```text
 STADIO 0: promo_articoli (overlay)
 STADIO 1: contratto attivo (OVERRIDE / ESCLUSIONE / AGGIUNTA + listino con versione fissata)
 STADIO 2: matrice categorie_clienti_listini (listino categoria)
@@ -237,10 +228,10 @@ si legge la preview righe, il resolver usa la versione attiva alla data odierna.
 
 Alla transizione DRAFT → ATTIVO il trigger **fissa** `listino_versione_id`:
 
-- da quel momento il contratto legge **sempre quella versione specifica** del
+* da quel momento il contratto legge **sempre quella versione specifica** del
   listino, anche se nel frattempo ne esce una v6, v7, ecc.
-- il cliente ha un prezzo prevedibile per tutta la durata del contratto
-- gli articoli non presenti nella versione fissata (aggiunti in versioni
+* il cliente ha un prezzo prevedibile per tutta la durata del contratto
+* gli articoli non presenti nella versione fissata (aggiunti in versioni
   successive) **non** sono automaticamente disponibili nel contratto
 
 **Conseguenza in DRAFT**: se durante la lavorazione della bozza viene pubblicata
@@ -276,17 +267,16 @@ applica **solo alle righe che non hanno un OVERRIDE puntuale**. Un articolo con
 OVERRIDE riceve esattamente il prezzo negoziato, senza variazione globale.
 
 | `tipo_variazione_globale` | Formula                                                          |
-|---------------------------|------------------------------------------------------------------|
+| ------------------------- | ---------------------------------------------------------------- |
 | `PERCENTUALE`             | `prezzo_listino * (1 + valore / 100)` — valore negativo = sconto |
 
-> Decisione 2026-05-18 (§3-bis-E refactor contratti modalita'): a livello testata
-> è ammessa **solo** la variazione PERCENTUALE. `VALORE_FISSO` globale è vietato
-> perché un delta in euro insensibile alla magnitudine del listino opacizza la
-> natura della variazione e la rende fragile a evoluzioni del catalogo. Resta
-> ammesso `VALORE_FISSO` come **OVERRIDE** su singola riga (semantica esplicita
-> di "prezzo fisso sostitutivo per quell'articolo"). Il lookup FE espone solo
-> PERCENTUALE; il service rifiuta con messaggio parlante eventuali tentativi
-> via curl/API esterna.
+> A livello testata è ammessa **solo** la variazione PERCENTUALE. `VALORE_FISSO`
+> globale è vietato perché un delta in euro insensibile alla magnitudine del
+> listino opacizza la natura della variazione e la rende fragile a evoluzioni del
+> catalogo. Resta ammesso `VALORE_FISSO` come **OVERRIDE** su singola riga
+> (semantica esplicita di "prezzo fisso sostitutivo per quell'articolo"). Il
+> lookup FE espone solo PERCENTUALE; il service rifiuta con messaggio parlante
+> eventuali tentativi via curl/API esterna.
 
 ---
 
@@ -301,8 +291,8 @@ il sistema chiama `fn_contratto_riga_componenti_init`:
    via `fn_contratto_riga_componenti_preview`
 2. l'operatore conferma (o modifica i prezzi suggeriti) e salva
 3. il backend crea in transazione atomica:
-   - una riga padre in `contratti_righe` (OVERRIDE o AGGIUNTA)
-   - N righe figlie in `contratti_righe_componenti` (una per ogni figlio attivo
+   * una riga padre in `contratti_righe` (OVERRIDE o AGGIUNTA)
+   * N righe figlie in `contratti_righe_componenti` (una per ogni figlio attivo
      nella BoM valida alla data del contratto)
 4. il trigger DB ricalcola il prezzo padre come SUM(figli × `coeff_qta_snapshot`)
 
@@ -311,19 +301,19 @@ Se la BoM del padre non ha figli validi, il sistema solleva
 
 ### 5.2 Composito OVERRIDE vs composito AGGIUNTA
 
-- **OVERRIDE composito**: il padre è un articolo del listino con prezzo personalizzato.
+* **OVERRIDE composito**: il padre è un articolo del listino con prezzo personalizzato.
   I figli BoM leggono la BoM del bundle sulla versione listino fissata al contratto.
   Il resolver usa `p_articolo_padre_contesto` per attivare lo STADIO BUNDLE.
-- **AGGIUNTA composita**: il padre è un articolo fuori listino aggiunto al contratto.
+* **AGGIUNTA composita**: il padre è un articolo fuori listino aggiunto al contratto.
   Stessa inizializzazione figli, ma il contesto è autonomo (non dipende dal listino).
 
 ### 5.3 Cosa può modificare l'operatore
 
-- ✅ **prezzi unitari** dei componenti, con controlli di autorizzazione (gate L1/L2/L3)
-- ✅ **IVA** del componente (deve restare coerente col padre)
-- ❌ **non** può aggiungere o rimuovere componenti dalla composizione
-- ❌ **non** può cambiare `coeff_qta` (snapshot immutabile)
-- ❌ **nessuna modifica** dopo l'attivazione (lock post-attivazione)
+* ✅ **prezzi unitari** dei componenti, con controlli di autorizzazione (gate L1/L2/L3)
+* ✅ **IVA** del componente (deve restare coerente col padre)
+* ❌ **non** può aggiungere o rimuovere componenti dalla composizione
+* ❌ **non** può cambiare `coeff_qta` (snapshot immutabile)
+* ❌ **nessuna modifica** dopo l'attivazione (lock post-attivazione)
 
 ---
 
@@ -334,10 +324,10 @@ Se la BoM del padre non ha figli validi, il sistema solleva
 Da ATTIVO in poi, il trigger `trgfn_contratti_lock_post_attivazione` blocca
 qualsiasi UPDATE sui campi:
 
-- `listino_id`
-- `listino_versione_id`
-- `tipo_variazione_globale`
-- `valore_variazione_globale`
+* `listino_id`
+* `listino_versione_id`
+* `tipo_variazione_globale`
+* `valore_variazione_globale`
 
 Ogni tentativo di modifica solleva `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (452).
 
@@ -367,13 +357,13 @@ Lo stesso meccanismo dei preventivi si applica agli override/variazioni del
 contratto. Un operatore che tenta di inserire un prezzo OVERRIDE (o una
 variazione globale) passa per tre gate:
 
-- **L1 — Permesso "variare prezzi"**: se l'utente non ha questo permesso,
+* **L1 — Permesso "variare prezzi"**: se l'utente non ha questo permesso,
   il campo variazione e le azioni di override/esclusione/aggiunta sono
   disabilitati in UI e il BE rifiuta in PATCH.
-- **L2 — Soglia**: il delta rispetto al prezzo suggerito dal resolver non può
+* **L2 — Soglia**: il delta rispetto al prezzo suggerito dal resolver non può
   eccedere le soglie configurate (cascata parametri: user → categoria_cliente →
   group → emittente → default). Oltre il limite, 403 retryable.
-- **L3 — Escalation**: l'operatore può richiedere approvazione al superiore
+* **L3 — Escalation**: l'operatore può richiedere approvazione al superiore
   tramite pratica `APPROVAZIONE_PREZZO`. La riga / variazione resta `PENDING`
   finché approvata o rifiutata. Il contratto non può essere attivato con
   approvazioni pendenti.
@@ -425,7 +415,7 @@ variazione globale) passa per tre gate:
 
 L'attivazione fallisce (oltre alle guard trigger) se:
 
-- il contratto è in overlap temporale con un altro contratto **vincolante**
+* il contratto è in overlap temporale con un altro contratto **vincolante**
   (ATTIVO/CESSATO, cioè **non** DRAFT e **non** ANNULLATO) per la stessa quadrupla
   `(ba, istanza_utility, utility, ambito)` nel periodo `(valido_dal, valido_al)` —
   constraint `ex_contratti_no_overlap` (EXCLUDE USING gist parziale,
@@ -434,9 +424,9 @@ L'attivazione fallisce (oltre alle guard trigger) se:
   vincolo: l'esclusività scatta **solo all'attivazione**, quindi due DRAFT
   sovrapposti — e un DRAFT sovrapposto a un ATTIVO — sono ammessi (abilita la
   preparazione delle bozze di successione)
-- il contratto è "negoziato puro" (senza listino) e non ha **almeno una riga
+* il contratto è "negoziato puro" (senza listino) e non ha **almeno una riga
   AGGIUNTA con prezzo valorizzato**
-- ci sono approvazioni prezzo PENDING non risolte
+* ci sono approvazioni prezzo PENDING non risolte
 
 ---
 
@@ -504,19 +494,19 @@ vecchio quando `valido_dal` del nuovo coincide con la cessazione del vecchio.
 
 Codici sollevati dal dominio contratti (registrati in `config.messaggi_errore`):
 
-| Codice | ID | HTTP | Quando |
-|---|---|---|---|
-| `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 450 | 422 | AGGIUNTA su articolo già presente nel listino fissato — usare OVERRIDE |
-| `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 451 | 422 | Attivazione contratto senza listino e senza almeno una riga AGGIUNTA con prezzo valorizzato |
-| `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 452 | 422 | Tentativo modifica testata o righe su contratto ATTIVO |
-| `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 453 | 422 | Resolver chiede prezzo per articolo con ESCLUSIONE attiva |
-| `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 454 | 422 | Tentativo rimozione listino con OVERRIDE/ESCLUSIONE presenti |
-| `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 455 | 422 | ESCLUSIONE su un articolo che è componente (figlio) di un bundle del listino — escludere il padre bundle |
-| `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` | — | 422 | Selezione/attivazione contratto con listino privo di versione ATTIVA (guard service `_guard_listino_ha_versione_attiva`) |
-| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | — | 422 | Contratto senza listino e nessuna eccezione per l'articolo |
-| `E_OFFERTA_ORDINE_GIA_GENERATO` | 478 | 409 | Push offerta → contratto quando l'offerta ha già generato un **ordine** (mutua esclusività XOR) |
-| `E_OFFERTA_CONTRATTO_GIA_GENERATO` | — | 409 | Push offerta → contratto già generato (idempotenza) |
-| `E_DOC_COMPOSITO_BOM_VUOTA` | — | 400 | Composito senza figli BoM validi alla data del contratto |
+| Codice                                         | ID  | HTTP | Quando                                                                                                                   |
+| ---------------------------------------------- | --- | ---- | ------------------------------------------------------------------------------------------------------------------------ |
+| `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`          | 450 | 422  | AGGIUNTA su articolo già presente nel listino fissato — usare OVERRIDE                                                   |
+| `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`       | 451 | 422  | Attivazione contratto senza listino e senza almeno una riga AGGIUNTA con prezzo valorizzato                              |
+| `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`  | 452 | 422  | Tentativo modifica testata o righe su contratto ATTIVO                                                                   |
+| `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`              | 453 | 422  | Resolver chiede prezzo per articolo con ESCLUSIONE attiva                                                                |
+| `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`  | 454 | 422  | Tentativo rimozione listino con OVERRIDE/ESCLUSIONE presenti                                                             |
+| `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 455 | 422  | ESCLUSIONE su un articolo che è componente (figlio) di un bundle del listino — escludere il padre bundle                 |
+| `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`    | —   | 422  | Selezione/attivazione contratto con listino privo di versione ATTIVA (guard service `_guard_listino_ha_versione_attiva`) |
+| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`      | —   | 422  | Contratto senza listino e nessuna eccezione per l'articolo                                                               |
+| `E_OFFERTA_ORDINE_GIA_GENERATO`                | 478 | 409  | Push offerta → contratto quando l'offerta ha già generato un **ordine** (mutua esclusività XOR)                          |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO`             | —   | 409  | Push offerta → contratto già generato (idempotenza)                                                                      |
+| `E_DOC_COMPOSITO_BOM_VUOTA`                    | —   | 400  | Composito senza figli BoM validi alla data del contratto                                                                 |
 
 > **Nota.** `E_LISTINO_VERSIONE_NON_ATTIVA` (id 448, HTTP 404) **non** è l'errore di
 > attivazione contratto: è un errore di runtime del **resolver di pricing**
@@ -545,10 +535,10 @@ non risenta di modifiche future al catalogo prezzi.
 
 Parallelo con i preventivi:
 
-| Artefatto | Snapshot di | Destinazione |
-|---|---|---|
-| Preventivo | Prezzo riga-per-riga (materializzato in `prezzo_unitario`) | Commessa → fattura una tantum |
-| Contratto | Versione listino (snap di `listino_versione_id`) | Pipeline fatturazione ricorrente |
+| Artefatto  | Snapshot di                                                | Destinazione                     |
+| ---------- | ---------------------------------------------------------- | -------------------------------- |
+| Preventivo | Prezzo riga-per-riga (materializzato in `prezzo_unitario`) | Commessa → fattura una tantum    |
+| Contratto  | Versione listino (snap di `listino_versione_id`)           | Pipeline fatturazione ricorrente |
 
 ### 11.3 Trigger DB come ultima difesa
 
@@ -567,20 +557,20 @@ sono gli stessi in tutti i domini. Vedi [modello componenti BoM](/dev/manual/mod
 
 ## 12. Glossario rapido
 
-| Termine | Significato |
-|---|---|
-| **Contratto** | Relazione commerciale duratura con un BA per una utility. Stato DRAFT → ATTIVO → CESSATO (oppure DRAFT → ANNULLATO) |
-| **ANNULLATO** | Bozza annullata prima dell'attivazione. Stato terminale con `is_abortito = true`. Non partecipa al check di overlap |
-| **Forma derivata** | "Con listino" / "Senza listino" — derivata dai dati, non scelta dall'operatore |
-| **OVERRIDE** | Eccezione di riga: prezzo personalizzato per articolo del listino. Variazione globale non si applica |
-| **ESCLUSIONE** | Eccezione di riga: articolo del listino non disponibile per il cliente |
-| **AGGIUNTA** | Eccezione di riga: articolo fuori listino aggiunto al contratto |
-| **Versione listino fissata** | `listino_versione_id` snapshot all'attivazione. Il contratto legge sempre quella versione |
-| **Drift listino** | In DRAFT, se esce una nuova versione del listino mentre si lavorano le eccezioni, il banner UI avverte |
-| **Lock post-attivazione** | Da ATTIVO in poi, testata e righe sono immutabili — trigger DB enforced |
-| **Negoziato puro** | Contratto senza listino: tutte le righe sono AGGIUNTA, nessun listino di riferimento |
-| **STADIO 1** | Posizione del contratto nella cascata del resolver pricing v5 (dopo promo, prima di categoria) |
-| **L1/L2/L3** | Livelli di autorizzazione pricing: Permesso / Soglia / Workflow approvazione |
+| Termine                      | Significato                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Contratto**                | Relazione commerciale duratura con un BA per una utility. Stato DRAFT → ATTIVO → CESSATO (oppure DRAFT → ANNULLATO) |
+| **ANNULLATO**                | Bozza annullata prima dell'attivazione. Stato terminale con `is_abortito = true`. Non partecipa al check di overlap |
+| **Forma derivata**           | "Con listino" / "Senza listino" — derivata dai dati, non scelta dall'operatore                                      |
+| **OVERRIDE**                 | Eccezione di riga: prezzo personalizzato per articolo del listino. Variazione globale non si applica                |
+| **ESCLUSIONE**               | Eccezione di riga: articolo del listino non disponibile per il cliente                                              |
+| **AGGIUNTA**                 | Eccezione di riga: articolo fuori listino aggiunto al contratto                                                     |
+| **Versione listino fissata** | `listino_versione_id` snapshot all'attivazione. Il contratto legge sempre quella versione                           |
+| **Drift listino**            | In DRAFT, se esce una nuova versione del listino mentre si lavorano le eccezioni, il banner UI avverte              |
+| **Lock post-attivazione**    | Da ATTIVO in poi, testata e righe sono immutabili — trigger DB enforced                                             |
+| **Negoziato puro**           | Contratto senza listino: tutte le righe sono AGGIUNTA, nessun listino di riferimento                                |
+| **STADIO 1**                 | Posizione del contratto nella cascata del resolver pricing v5 (dopo promo, prima di categoria)                      |
+| **L1/L2/L3**                 | Livelli di autorizzazione pricing: Permesso / Soglia / Workflow approvazione                                        |
 
 ---
 
@@ -597,9 +587,9 @@ proposta di transazione puntuale).
 
 Il parallelo nel modello:
 
-| Proposta | Accettazione genera | Tipo di fornitura |
-|---|---|---|
-| **Preventivo** (`PRV-*`) | Commessa → fattura | Transazione puntuale |
+| Proposta                          | Accettazione genera              | Tipo di fornitura             |
+| --------------------------------- | -------------------------------- | ----------------------------- |
+| **Preventivo** (`PRV-*`)          | Commessa → fattura               | Transazione puntuale          |
 | **Offerta commerciale** (`OFC-*`) | Contratto in DRAFT → attivazione | Relazione ricorrente duratura |
 
 Perché i due documenti esistono separati e non si usa il preventivo come proposta di
@@ -626,3 +616,6 @@ contratto DRAFT che ne eredita 1:1 le condizioni. Il dettaglio è nella guida so
 [API Contratti](/backend/vendite/manual/api_contratti). Le decisioni di modello
 del refactor sono recepite nelle sezioni precedenti e nella documentazione backend
 di dominio.*
+
+---
+{% include-markdown "signature-core.md" %}

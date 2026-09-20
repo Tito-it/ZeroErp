@@ -164,5 +164,3 @@
 ## 📘 Altri contenuti manuali
 - [catasto-architettura](manual/catasto-architettura.md)
 - [trgfn_emittenti_fiscali_guard_attivo](manual/trgfn_emittenti_fiscali_guard_attivo.md)
-- [trgfn_risorse_umane_auth_user_guard_persona_fisica](manual/trgfn_risorse_umane_auth_user_guard_persona_fisica.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica()`** impedisce di collegare un account Django (`auth_user`) a una risorsa umana che non corrisponde a una **persona fisica pura**.
-- [trgfn_risorse_umane_auth_user_sync_active](manual/trgfn_risorse_umane_auth_user_sync_active.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_auth_user_sync_active()`** sincronizza lo stato `django.auth_user.is_active` quando cambia il **bridge** `anagrafiche.risorse_umane_auth_user`.

@@ -220,15 +220,15 @@ Vedi [documenti e stampe](/guide/documenti-e-stampe) per i template e il motore.
 Gli stati sono governati da `config.stati_doc_preventivi` e le transizioni
 ammesse da `config.transizioni_stati_preventivi`:
 
-| Stato | Significato | Modificabile? |
-|---|---|---|
-| `DRAFT` | Bozza in costruzione | Sì: testata, righe, indirizzi |
-| `EMESSO` | Inviato al cliente, in attesa di risposta | No (escluso azioni di stato) |
-| `ACCETTATO` | Cliente ha accettato — pronto per lo smistamento downstream | No |
-| `EVASO` | Tutte le righe smistate a ordine/commessa senza residuo | No (terminale operativo positivo) |
-| `RIFIUTATO` | Cliente ha rifiutato — chiusura negativa del numero | No (terminale) |
-| `SCADUTO` | Validità offerta scaduta automaticamente (job notturno) | No (terminale) |
-| `ANNULLATO` | Annullamento manuale | No (terminale, **abortito**) |
+| Stato       | Significato                                                 | Modificabile?                     |
+| ----------- | ----------------------------------------------------------- | --------------------------------- |
+| `DRAFT`     | Bozza in costruzione                                        | Sì: testata, righe, indirizzi     |
+| `EMESSO`    | Inviato al cliente, in attesa di risposta                   | No (escluso azioni di stato)      |
+| `ACCETTATO` | Cliente ha accettato — pronto per lo smistamento downstream | No                                |
+| `EVASO`     | Tutte le righe smistate a ordine/commessa senza residuo     | No (terminale operativo positivo) |
+| `RIFIUTATO` | Cliente ha rifiutato — chiusura negativa del numero         | No (terminale)                    |
+| `SCADUTO`   | Validità offerta scaduta automaticamente (job notturno)     | No (terminale)                    |
+| `ANNULLATO` | Annullamento manuale                                        | No (terminale, **abortito**)      |
 
 Le transizioni manuali permesse:
 
@@ -332,11 +332,11 @@ stesso numero) nel caso "rev0 EMESSO + rev1 ANNULLATO".
 
 Conseguenza pratica nei casi limite:
 
-| Sequenza | rev N attiva? | rev N+1 attiva? |
-|---|---|---|
-| rev 0 EMESSO, rev 1 DRAFT | no (superseded) | sì |
-| rev 0 EMESSO, rev 1 ANNULLATO | **sì** (rev 1 è abortita, non conta) | no |
-| rev 0 EMESSO, rev 1 RIFIUTATO | no (rev 1 conclude il numero negativamente) | sì |
+| Sequenza                      | rev N attiva?                               | rev N+1 attiva? |
+| ----------------------------- | ------------------------------------------- | --------------- |
+| rev 0 EMESSO, rev 1 DRAFT     | no (superseded)                             | sì              |
+| rev 0 EMESSO, rev 1 ANNULLATO | **sì** (rev 1 è abortita, non conta)        | no              |
+| rev 0 EMESSO, rev 1 RIFIUTATO | no (rev 1 conclude il numero negativamente) | sì              |
 
 Il caso "**revisione annullata rifluisce al predecessore**" è quello tipico
 dell'operatore che sbaglia a revisionare: la revisione viene annullata e il
@@ -355,11 +355,11 @@ incluse quelle annullate o superseded. Il filtro lato API è il parametro
 Preventivi e offerte gestiscono le revisioni in **due modi diversi**, per una
 ragione precisa.
 
-| Aspetto | **Preventivi** | **Offerte** |
-|---|---|---|
-| Cosa succede alla versione precedente quando nasce la revisione | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico) |
-| Se abbandono/annullo la revisione appena iniziata | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione |
-| Come nasce il concetto di "versione valida" | da un **calcolo** (`is_attiva`), non da uno stato dedicato | dallo **stato** (SUPERATA/ANNULLATA = non valida) |
+| Aspetto                                                         | **Preventivi**                                                                                        | **Offerte**                                                                                            |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Cosa succede alla versione precedente quando nasce la revisione | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico)                         |
+| Se abbandono/annullo la revisione appena iniziata               | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione |
+| Come nasce il concetto di "versione valida"                     | da un **calcolo** (`is_attiva`), non da uno stato dedicato                                            | dallo **stato** (SUPERATA/ANNULLATA = non valida)                                                      |
 
 Il preventivo **è lo stesso documento** (stesso numero, più revisioni) e il flusso
 previsto è *"comincio una revisione, ci ripenso, la versione emessa di prima resta
@@ -653,38 +653,38 @@ priva di righe e pratiche**; una bozza con righe non si cancella, si annulla.
 
 Codici lanciati dal dominio preventivi (registrati in `error_policies`):
 
-| Codice | HTTP | Quando |
-|---|---|---|
-| `E_PREV_VALIDAZIONE` | 400 | Payload incoerente (modalità, riferimenti) |
-| `E_PREV_NOT_FOUND` | 404 | Preventivo / riga / componente inesistente |
-| `E_PRICING_SCONTO_ECCESSIVO` | 400 | L2: sconto oltre limite, no richiesta approvazione |
-| `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 400 | L2: maggiorazione oltre limite |
-| `E_PRV_REVISIONE_STATO_NON_AMMESSO` | 400 | Crea revisione da stato diverso da EMESSO |
-| `E_PRV_REVISIONE_BOZZA_ESISTENTE` | 400 | Esiste già una DRAFT per quel numero |
-| `E_DOC_COMPOSITO_BOM_VUOTA` | 400 | Composito senza figli BoM validi alla data |
-| `E_DOC_COMPONENTE_OBBLIGATORIO` | 400 | Tentativo disattivare componente obbligatorio |
-| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 400 | Prezzo 0 su obbligatorio |
-| `E_BOM_IVA_DISCORDANTE` | 400 | IVA componente ≠ IVA padre (vincolo BoM) |
-| `E_PREZZO_LISTINO_NON_TROVATO` | 400 | Resolver non trova listino applicabile |
-| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | 400 | Modalità C: articolo non in contratto |
-| `E_PREV_UTILITY_ISTANZA_INCOERENTE` | 400 | Creazione: utility non coerente con l'istanza selezionata |
-| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 400 | Accettazione con righe/componenti in approvazione PENDING (§6.4) |
-| `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` | 400 | Riga con natura ricorrente (destinazione CONTRATTO): usa l'offerta commerciale (§2.2) |
+| Codice                                      | HTTP | Quando                                                                                |
+| ------------------------------------------- | ---- | ------------------------------------------------------------------------------------- |
+| `E_PREV_VALIDAZIONE`                        | 400  | Payload incoerente (modalità, riferimenti)                                            |
+| `E_PREV_NOT_FOUND`                          | 404  | Preventivo / riga / componente inesistente                                            |
+| `E_PRICING_SCONTO_ECCESSIVO`                | 400  | L2: sconto oltre limite, no richiesta approvazione                                    |
+| `E_PRICING_MAGGIORAZIONE_ECCESSIVA`         | 400  | L2: maggiorazione oltre limite                                                        |
+| `E_PRV_REVISIONE_STATO_NON_AMMESSO`         | 400  | Crea revisione da stato diverso da EMESSO                                             |
+| `E_PRV_REVISIONE_BOZZA_ESISTENTE`           | 400  | Esiste già una DRAFT per quel numero                                                  |
+| `E_DOC_COMPOSITO_BOM_VUOTA`                 | 400  | Composito senza figli BoM validi alla data                                            |
+| `E_DOC_COMPONENTE_OBBLIGATORIO`             | 400  | Tentativo disattivare componente obbligatorio                                         |
+| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 400  | Prezzo 0 su obbligatorio                                                              |
+| `E_BOM_IVA_DISCORDANTE`                     | 400  | IVA componente ≠ IVA padre (vincolo BoM)                                              |
+| `E_PREZZO_LISTINO_NON_TROVATO`              | 400  | Resolver non trova listino applicabile                                                |
+| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`   | 400  | Modalità C: articolo non in contratto                                                 |
+| `E_PREV_UTILITY_ISTANZA_INCOERENTE`         | 400  | Creazione: utility non coerente con l'istanza selezionata                             |
+| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`       | 400  | Accettazione con righe/componenti in approvazione PENDING (§6.4)                      |
+| `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`     | 400  | Riga con natura ricorrente (destinazione CONTRATTO): usa l'offerta commerciale (§2.2) |
 
 Codici dello **smistamento / orchestratore `CONFERMA_VENDITA`** (vedi §8 e
 [API Preventivi](/backend/vendite/manual/api_preventivi)):
 
-| Codice | HTTP | Quando |
-|---|---|---|
-| `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | 409 | Smistamento a ordine da un preventivo non ACCETTATO |
-| `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | 422 | Smistamento a ordine senza righe-merce residue (tutte già allocate o nessuna di natura merce) |
-| `E_VENDITA_PREVENTIVO_NON_ACCETTATO` | 400 | `CONFERMA_VENDITA`: il preventivo non è ACCETTATO |
-| `E_VENDITA_PREVENTIVO_GIA_PUSHATO` | 400 | `CONFERMA_VENDITA`: niente da smistare ma ordine/commessa già esistenti |
-| `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA` | 400 | `CONFERMA_VENDITA`: modalità di fatturazione non valida (≠ IMMEDIATA/DIFFERITA) |
-| `E_VENDITA_COMPETENZA_RICHIESTA` | 400 | `CONFERMA_VENDITA`: modalità DIFFERITA senza competenza |
+| Codice                                           | HTTP | Quando                                                                                        |
+| ------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------- |
+| `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`    | 409  | Smistamento a ordine da un preventivo non ACCETTATO                                           |
+| `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE`       | 422  | Smistamento a ordine senza righe-merce residue (tutte già allocate o nessuna di natura merce) |
+| `E_VENDITA_PREVENTIVO_NON_ACCETTATO`             | 400  | `CONFERMA_VENDITA`: il preventivo non è ACCETTATO                                             |
+| `E_VENDITA_PREVENTIVO_GIA_PUSHATO`               | 400  | `CONFERMA_VENDITA`: niente da smistare ma ordine/commessa già esistenti                       |
+| `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA` | 400  | `CONFERMA_VENDITA`: modalità di fatturazione non valida (≠ IMMEDIATA/DIFFERITA)               |
+| `E_VENDITA_COMPETENZA_RICHIESTA`                 | 400  | `CONFERMA_VENDITA`: modalità DIFFERITA senza competenza                                       |
 
 Per il dettaglio dei codici pricing e degli errori L1/L2/L3 vedi
-[gestione listini §11](/guide/gestione-listini) e
+[gestione listini §10](/guide/gestione-listini) e
 [API Pricing](/backend/vendite/manual/api_pricing).
 
 ---
@@ -731,19 +731,19 @@ simmetria del pattern a 3 livelli (struttura, listino, documento).
 
 ## 12. Glossario rapido
 
-| Termine | Significato |
-|---|---|
-| **Preventivo** | Offerta commerciale verso un cliente, ciclo di vita DRAFT → EMESSO → ACCETTATO → EVASO (oppure RIFIUTATO/ANNULLATO/SCADUTO) |
-| **Revisione** | Nuova istanza dello stesso numero preventivo con `rev` incrementato. Si crea da EMESSO |
-| **is_attiva** | Predicato derivato: "non esiste rev superiore non-abortita per lo stesso numero" |
-| **is_abortito** | Metadato di stato: TRUE solo per ANNULLATO. Marca la rev come rinuncia, abilita fallback al predecessore |
-| **Composito** | Articolo con `is_composito=TRUE` che ha una distinta base (BoM). Prezzo padre = SUM figli × coeff |
-| **BoM** | Bill of Materials, distinta base del composito (`articoli_componenti`). Immutabile per design |
-| **L1/L2/L3** | Livelli di autorizzazione pricing: Override Manuale / Limiti soglie / Workflow approvazione |
-| **Push commessa** | Smistamento delle sole righe-servizio una tantum del preventivo ACCETTATO in commessa, per innescare la fatturazione |
-| **Genera ordine** | Smistamento delle righe-merce del preventivo ACCETTATO verso un ordine di vendita (riga-per-riga, 1:N) |
-| **EVASO** | Stato terminale positivo: tutte le righe smistate (ordine + commessa), nessun residuo. Gate bi-ramo |
-| **Snapshot** | Copia congelata di dati al momento di un evento. Non retroagisce ai cambi anagrafica |
+| Termine           | Significato                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Preventivo**    | Offerta commerciale verso un cliente, ciclo di vita DRAFT → EMESSO → ACCETTATO → EVASO (oppure RIFIUTATO/ANNULLATO/SCADUTO) |
+| **Revisione**     | Nuova istanza dello stesso numero preventivo con `rev` incrementato. Si crea da EMESSO                                      |
+| **is_attiva**     | Predicato derivato: "non esiste rev superiore non-abortita per lo stesso numero"                                            |
+| **is_abortito**   | Metadato di stato: TRUE solo per ANNULLATO. Marca la rev come rinuncia, abilita fallback al predecessore                    |
+| **Composito**     | Articolo con `is_composito=TRUE` che ha una distinta base (BoM). Prezzo padre = SUM figli × coeff                           |
+| **BoM**           | Bill of Materials, distinta base del composito (`articoli_componenti`). Immutabile per design                               |
+| **L1/L2/L3**      | Livelli di autorizzazione pricing: Override Manuale / Limiti soglie / Workflow approvazione                                 |
+| **Push commessa** | Smistamento delle sole righe-servizio una tantum del preventivo ACCETTATO in commessa, per innescare la fatturazione        |
+| **Genera ordine** | Smistamento delle righe-merce del preventivo ACCETTATO verso un ordine di vendita (riga-per-riga, 1:N)                      |
+| **EVASO**         | Stato terminale positivo: tutte le righe smistate (ordine + commessa), nessun residuo. Gate bi-ramo                         |
+| **Snapshot**      | Copia congelata di dati al momento di un evento. Non retroagisce ai cambi anagrafica                                        |
 
 ---
 
@@ -751,3 +751,6 @@ simmetria del pattern a 3 livelli (struttura, listino, documento).
 [API Preventivi](/backend/vendite/manual/api_preventivi). Per il modello
 componenti BoM e le decisioni di design vedi
 [modello-componenti-bom](/dev/manual/modello-componenti-bom).*
+
+---
+{% include-markdown "signature-core.md" %}

@@ -215,3 +215,6 @@ Regole:
 
 > Aggiornare questa tabella e le sezioni §2–§3 a ogni nuova opzione di configurazione
 > introdotta.
+
+---
+{% include-markdown "signature-core.md" %}

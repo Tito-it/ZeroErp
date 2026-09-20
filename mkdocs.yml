@@ -184,6 +184,7 @@ nav:
                   - Ricette (dove intervenire): it/dev/ricette-dove-intervenire.md
                   - Trappole (cosa non fare): it/dev/trappole.md
                   - Policy ricerca e paginazione (API/DB): "it/dev/Policy-ricerca-e-paginazione(API-DB).md"
+                  - Standard delle guide (come si scrive): it/dev/standard-guide.md
                   - Frontend:
                             - Standard frontend: it/dev/frontend/frontend-standards.md
                             - Catalogo Building Block FE: it/dev/frontend/catalogo-building-block-frontend.md

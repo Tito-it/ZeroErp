@@ -371,3 +371,6 @@ lavoro di dominio di tornare a girare in incognito.
   [Presidi e registri del debito](/guide/presidi-e-registri-del-debito).
 * **Come si scrivono gli errori e dove finiscono**:
   [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log).
+
+---
+{% include-markdown "signature-core.md" %}

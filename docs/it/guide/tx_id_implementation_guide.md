@@ -1,22 +1,38 @@
-# Guida – Gestione del Transaction ID (`tx_id`)
+# Guida — Gestione del Transaction ID (`tx_id`)
 
-> (latest review 05-03-26)
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> Destinatari: sviluppatori database e backend
+> **Destinatari**: sviluppatori database e backend
 >
-> Questa guida descrive il sistema di identificazione transazionale (`tx_id`) di
-> Zero ERP: come viene generato, propagato, validato e automatizzato su tutte le
-> tabelle del sistema.
+> **Vedi anche** — schemi DB:
 >
-> Vedi anche
+> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids) — il registro master dei `tx_id` generati
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole del provisioning automatico dei trigger
+> * [config.parameters](/dbzero/config/tabelle/parameters) — il parametro `tx_id_bypass_enabled`
 >
-> * [Guida Automazione DB](/guide/automazione-db) — framework di automazione trigger e policy
-> * [Guida Messaggi di Errore e Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — logging errori con tx_id
-> * [Guida Messaggi Audit](/guide/messaggi-audit) — audit trail con tx_id
+> **Vedi anche** — funzioni e trigger DB:
+>
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — la trigger function di gestione automatica
+> * [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id) — generazione e registrazione di un nuovo `tx_id`
+> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) — recupero o creazione del `tx_id` di sessione
+> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) — il provisioning automatico dei trigger
+> * [maintenance.proc_automations_tx_id_job](/dbzero/maintenance/funzioni/proc_automations_tx_id_job) — la procedura schedulata
+>
+> **Vedi anche** — guide correlate:
+>
+> * [Guida Automazione DB](/guide/automazione-db) — il framework di automazione
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — le tre tracce e il loro filo conduttore
+> * [Storicizzazione tabelle](/guide/storicizzazione-tabelle) — gli snapshot correlati dal `tx_id`
+> * [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log) — il logging degli errori con `tx_id`
+> * [Messaggi di audit](/guide/messaggi-audit) — l'audit trail
+> * [Configurazione e gestione parametri](/guide/configurazione-e-gestione-parametri) — il sistema parametri e GUC
 
 ---
 
 ## Introduzione
+
+Questa guida descrive il sistema di identificazione transazionale (`tx_id`) di Zero ERP:
+come viene generato, propagato, validato e automatizzato su tutte le tabelle del sistema.
 
 In un sistema ERP che opera su decine di tabelle, schemi e processi concorrenti, poter correlare tutte le operazioni di una singola transazione e fondamentale per tracciabilita, debugging e audit.
 
@@ -32,27 +48,6 @@ Il sistema non richiede intervento esplicito del backend: il trigger `trgfn_tx_i
 * Il sistema di automazione per il provisioning dei trigger
 * I parametri GUC e di configurazione coinvolti
 * L'integrazione con il backend Django
-
----
-
-## Tabelle coinvolte
-
-**Registro:**
-
-* [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids) — registro master dei tx_id generati
-
-**Configurazione automazione:**
-
-* [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — regole per il provisioning automatico dei trigger
-* [config.parameters](/dbzero/config/tabelle/parameters) — parametro `tx_id_bypass_enabled`
-
-**Funzioni:**
-
-* [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id) — generazione e registrazione di un nuovo tx_id
-* [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) — recupero o creazione del tx_id di sessione
-* [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — trigger function di gestione automatica
-* [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) — provisioning automatico dei trigger
-* [maintenance.proc_automations_tx_id_job](/dbzero/maintenance/funzioni/proc_automations_tx_id_job) — procedura schedulata
 
 ---
 
@@ -87,15 +82,15 @@ La tabella `dbops.transaction_ids` e il registro centrale di tutti i transaction
 
 Da un punto di vista tecnico:
 
-| Colonna | Tipo | Nullable | Default | Descrizione |
-| --- | --- | :---: | --- | --- |
-| `id` | UUID, PK | no | `uuidv7()` | Transaction ID (UUIDv7, ordinabile cronologicamente) |
-| `generating_function` | TEXT | si | — | Nome della funzione che ha richiesto la generazione |
-| `session_info` | JSONB | no | `'{}'` | Dati di contesto (utente, IP, fonte) |
-| `user_insert` | TEXT | no | `CURRENT_USER` | Utente che ha creato il record |
-| `data_insert` | TIMESTAMPTZ | no | `now()` | Timestamp di creazione |
-| `user_update` | TEXT | si | — | Sempre NULL (record immutabile) |
-| `data_update` | TIMESTAMPTZ | si | — | Sempre NULL (record immutabile) |
+| Colonna               | Tipo        | Nullable | Default        | Descrizione                                          |
+| --------------------- | ----------- | :------: | -------------- | ---------------------------------------------------- |
+| `id`                  | UUID, PK    |    no    | `uuidv7()`     | Transaction ID (UUIDv7, ordinabile cronologicamente) |
+| `generating_function` | TEXT        |    si    | —              | Nome della funzione che ha richiesto la generazione  |
+| `session_info`        | JSONB       |    no    | `'{}'`         | Dati di contesto (utente, IP, fonte)                 |
+| `user_insert`         | TEXT        |    no    | `CURRENT_USER` | Utente che ha creato il record                       |
+| `data_insert`         | TIMESTAMPTZ |    no    | `now()`        | Timestamp di creazione                               |
+| `user_update`         | TEXT        |    si    | —              | Sempre NULL (record immutabile)                      |
+| `data_update`         | TIMESTAMPTZ |    si    | —              | Sempre NULL (record immutabile)                      |
 
 **Protezione immutabilita:** trigger `trgfn_prevent_modification_generic` blocca UPDATE e DELETE.
 
@@ -111,10 +106,10 @@ Questa funzione e il punto unico di creazione di un nuovo `tx_id`. Genera un UUI
 
 Da un punto di vista tecnico:
 
-| Parametro | Tipo | Default | Descrizione |
-| --- | --- | --- | --- |
-| `p_generating_function` | TEXT | — | Nome della funzione/processo chiamante |
-| `p_session_info` | JSONB | `'{}'` | Dati di contesto (utente, IP, sessione) |
+| Parametro               | Tipo  | Default | Descrizione                             |
+| ----------------------- | ----- | ------- | --------------------------------------- |
+| `p_generating_function` | TEXT  | —       | Nome della funzione/processo chiamante  |
+| `p_session_info`        | JSONB | `'{}'`  | Dati di contesto (utente, IP, sessione) |
 
 **Restituisce:** `UUID` — il nuovo tx_id generato.
 
@@ -159,10 +154,10 @@ Da un punto di vista tecnico:
 > pubblicando affatto — l'invariante è vero per costruzione e il ramo «id non
 > registrato» diventa irraggiungibile in condizioni normali.
 >
-> Fino al 2026-07-22 i ripieghi generavano un `uuidv7()` **non registrato** e lo
-> pubblicavano con scope di **sessione**: la prima scrittura tracciata falliva e,
-> poiché Liquibase usa una sola connessione, da lì in poi falliva l'intera
-> migrazione. Vedi `brief-db-coerenza-tx-id-non-registrato.md`.
+> ⚠️ **Perché la regola è così stretta.** Un id **non registrato** pubblicato nella
+> GUC fa fallire la prima scrittura tracciata: e poiché Liquibase usa una sola
+> connessione, da lì in avanti fallisce l'intera migrazione. Non è un caso di
+> laboratorio: è il modo in cui una pubblicazione sbagliata diventa un blocco.
 
 **Catena di fallback:**
 
@@ -197,7 +192,7 @@ Da un punto di vista tecnico:
 
 **Flusso di esecuzione completo:**
 
-### Fase 0 — Uscita anticipata quando il tx_id e gia fornito (rev 2026-07-24)
+### Fase 0 — Uscita anticipata quando il tx_id e gia fornito
 
 Prima di ogni altra cosa, il trigger normalizza un eventuale `tx_id` "stringa
 vuota" a `NULL` e poi, **se `NEW.tx_id` risulta gia valorizzato, ritorna
@@ -211,13 +206,13 @@ lavoro non cambierebbe il risultato.
 
 Due conseguenze pratiche:
 
-* Il trigger e installato su ~280 tabelle: ogni scrittura che porta gia il
-  proprio tx_id smette di leggere `config.parameters` e di attraversare i rami
-  che chiamano `script.*`.
+* Il trigger e installato su tutte le tabelle con la colonna `tx_id`: ogni
+  scrittura che porta gia il proprio tx_id smette di leggere `config.parameters` e
+  di attraversare i rami che chiamano `script.*`.
 * Il canale di log (`fn_log_error_only` via `dblink`, che fornisce **sempre** il
-  proprio tx_id) non richiede piu permessi su `config`/`script`: prima quelle
-  chiamate fallivano con «permesso negato per lo schema script» e l'errore non
-  veniva persistito in `dbops.error_log`.
+  proprio tx_id) non richiede permessi su `config`/`script`: senza l'uscita
+  anticipata quelle chiamate fallirebbero con «permesso negato per lo schema
+  script», e l'errore non verrebbe persistito in `dbops.error_log`.
 
 > **Nota sull'ordine.** La normalizzazione deve precedere l'uscita: invertirle
 > lascerebbe passare un tx_id "stringa vuota". Per una colonna `UUID` quel caso
@@ -250,10 +245,10 @@ Legge `current_setting('dbops.tx_id', true)` per ottenere un eventuale tx_id gia
 **Se bypass disattivo:**
 
 * **Se tx_id di sessione presente:** verifica l'esistenza in `dbops.transaction_ids`
-    * Se trovato: lo riusa
-    * Se non trovato: logga WARNING `W_TXID_NOT_REGISTERED` e assegna `uuid_nil()`
+  * Se trovato: lo riusa
+  * Se non trovato: logga WARNING `W_TXID_NOT_REGISTERED` e assegna `uuid_nil()`
 * **Se tx_id di sessione assente:** chiama `fn_get_or_create_session_tx_id()`
-    * Se errore: logga `E_TXID_GENERATION` e assegna `uuid_nil()`
+  * Se errore: logga `E_TXID_GENERATION` e assegna `uuid_nil()`
 
 ### Fase 5 — Assegnazione a `NEW.tx_id`
 
@@ -274,16 +269,16 @@ Il sistema tx_id si appoggia a una combinazione di parametri di sessione (GUC) e
 
 ### GUC di sessione (ambito: connessione corrente)
 
-| GUC | Tipo | Descrizione |
-| --- | --- | --- |
-| `dbops.tx_id` | UUID | Transaction ID corrente. Impostato da `fn_get_or_create_session_tx_id` con **scope locale alla transazione** (`set_config(..., TRUE)`), letto da `trgfn_tx_id_managed`. **Contiene solo id registrati** in `dbops.transaction_ids`: nei ripieghi non viene impostata affatto |
-| `myapp.bypass_tx_id_check` | BOOLEAN | Override di sessione per disabilitare la validazione tx_id (utile in test/migrazioni) |
-| `myapp.dblink_log_connection` | TEXT | Stringa di connessione dblink per la generazione remota del tx_id |
+| GUC                           | Tipo    | Descrizione                                                                                                                                                                                                                                                                  |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dbops.tx_id`                 | UUID    | Transaction ID corrente. Impostato da `fn_get_or_create_session_tx_id` con **scope locale alla transazione** (`set_config(..., TRUE)`), letto da `trgfn_tx_id_managed`. **Contiene solo id registrati** in `dbops.transaction_ids`: nei ripieghi non viene impostata affatto |
+| `myapp.bypass_tx_id_check`    | BOOLEAN | Override di sessione per disabilitare la validazione tx_id (utile in test/migrazioni)                                                                                                                                                                                        |
+| `myapp.dblink_log_connection` | TEXT    | Stringa di connessione dblink per la generazione remota del tx_id                                                                                                                                                                                                            |
 
 ### Parametri applicativi (in `config.parameters`)
 
-| Codice | Tipo | Descrizione |
-| --- | --- | --- |
+| Codice                 | Tipo    | Descrizione                                                                                                                   |
+| ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `tx_id_bypass_enabled` | BOOLEAN | Bypass globale della validazione tx_id. Se `true`, il trigger non genera ne verifica, usa il tx_id di sessione o `uuid_nil()` |
 
 Il bypass ha due livelli: il parametro globale in `config.parameters` e l'override di sessione via GUC `myapp.bypass_tx_id_check`. Basta che uno dei due sia `true` per attivare il bypass.
@@ -298,11 +293,11 @@ Questa funzione automatizza la creazione del trigger `trgfn_tx_id_managed` su tu
 
 Da un punto di vista tecnico:
 
-| Parametro | Tipo | Default | Descrizione |
-| --- | --- | --- | --- |
-| `p_exec_mode` | TEXT | — | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
-| `p_schemas` | TEXT[] | — | Schemi da processare. Se NULL, risolti da `fn_resolve_scope` |
-| `p_dry_run` | BOOLEAN | — | Se true, simula senza creare trigger |
+| Parametro     | Tipo    | Default | Descrizione                                                  |
+| ------------- | ------- | ------- | ------------------------------------------------------------ |
+| `p_exec_mode` | TEXT    | —       | Modalita: `AUTO`, `SCHEDULED`, `FORCE`                       |
+| `p_schemas`   | TEXT[]  | —       | Schemi da processare. Se NULL, risolti da `fn_resolve_scope` |
+| `p_dry_run`   | BOOLEAN | —       | Se true, simula senza creare trigger                         |
 
 **Restituisce:** `void`
 
@@ -329,19 +324,19 @@ Da un punto di vista tecnico:
 
 Le regole di automazione sono configurate nella tabella `dbops.automation_rules_tbl`. Per il sistema tx_id, le regole hanno `rule_type = 'TX_ID'`.
 
-| Colonna | Tipo | Default | Descrizione |
-| --- | --- | --- | --- |
-| `id` | BIGINT, PK | — | Chiave primaria |
-| `enabled` | BOOLEAN | true | Regola attiva |
-| `rule_type` | TEXT | — | Tipo regola (es. `TX_ID`, `AUDIT`, `FK_INDEX`) |
-| `target_schema` | TEXT | `*all` | Schema target (pattern o `*all`) |
-| `target_table` | TEXT | `*all` | Tabella target (pattern ILIKE o `*ALL`) |
-| `exec_mode` | TEXT | `AUTO` | Modalita: `AUTO`, `SCHEDULED`, `FORCE` |
-| `name_template` | TEXT | — | Template nome trigger (default: `trg_{table}_gen_tx_id_ins_upd`) |
-| `existence_strategy` | TEXT | `BY_NAME` | Strategia verifica: `BY_NAME`, `BY_FUNCTION`, `BOTH` |
-| `params` | JSONB | `'{}'` | Parametri aggiuntivi |
-| `priority` | INTEGER | 100 | Ordine di applicazione (minore = prima) |
-| `note` | TEXT | — | Note descrittive |
+| Colonna              | Tipo       | Default   | Descrizione                                                      |
+| -------------------- | ---------- | --------- | ---------------------------------------------------------------- |
+| `id`                 | BIGINT, PK | —         | Chiave primaria                                                  |
+| `enabled`            | BOOLEAN    | true      | Regola attiva                                                    |
+| `rule_type`          | TEXT       | —         | Tipo regola (es. `TX_ID`, `AUDIT`, `FK_INDEX`)                   |
+| `target_schema`      | TEXT       | `*all`    | Schema target (pattern o `*all`)                                 |
+| `target_table`       | TEXT       | `*all`    | Tabella target (pattern ILIKE o `*ALL`)                          |
+| `exec_mode`          | TEXT       | `AUTO`    | Modalita: `AUTO`, `SCHEDULED`, `FORCE`                           |
+| `name_template`      | TEXT       | —         | Template nome trigger (default: `trg_{table}_gen_tx_id_ins_upd`) |
+| `existence_strategy` | TEXT       | `BY_NAME` | Strategia verifica: `BY_NAME`, `BY_FUNCTION`, `BOTH`             |
+| `params`             | JSONB      | `'{}'`    | Parametri aggiuntivi                                             |
+| `priority`           | INTEGER    | 100       | Ordine di applicazione (minore = prima)                          |
+| `note`               | TEXT       | —         | Note descrittive                                                 |
 
 > Documentazione dettagliata: [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
 
@@ -351,14 +346,8 @@ Le regole di automazione sono configurate nella tabella `dbops.automation_rules_
 
 La procedura `maintenance.proc_automations_tx_id_job` incapsula l'esecuzione di `fn_run_automations_tx_id` in un wrapper robusto con advisory lock e logging strutturato tramite `maintenance.fn_run_and_log`.
 
-Da un punto di vista tecnico:
-
-```sql
-CALL maintenance.proc_automations_tx_id_job();
--- Equivale a:
--- SELECT dbops.fn_run_automations_tx_id('SCHEDULED', NULL, false);
--- Con: advisory lock, logging inizio/fine, gestione errori
-```
+Da un punto di vista tecnico: la chiamata diretta, e ciò a cui equivale, stanno
+nell'[Area tecnica](#area-tecnica-esempi).
 
 **Caratteristiche:**
 
@@ -378,11 +367,8 @@ In Zero ERP il trigger `trgfn_tx_id_managed` gestisce automaticamente il `tx_id`
 
 ### Approccio consigliato
 
-Il backend esegue una volta per sessione/richiesta:
-
-```sql
-SELECT dbops.fn_get_or_create_session_tx_id() AS tx_id;
-```
+Il backend esegue una volta per sessione/richiesta la chiamata che sta
+nell'[Area tecnica](#area-tecnica-esempi).
 
 Questo imposta la GUC `dbops.tx_id` per tutte le operazioni successive nella stessa connessione. Il trigger `trgfn_tx_id_managed` trovera il valore gia in sessione e lo riusera senza rigenararlo.
 
@@ -408,7 +394,7 @@ Se il backend non imposta il tx_id, il trigger lo genera automaticamente alla pr
 
 1. **Colonna `tx_id` nullable**: la colonna e dichiarata `UUID` nullable nelle tabelle operative. Il trigger la popola automaticamente; il valore non e mai NULL dopo l'esecuzione del trigger.
 
-2. **Unicita per transazione**: la GUC `dbops.tx_id` è impostata con scope **locale alla transazione** (`set_config(..., TRUE)`), quindi tutte le operazioni della stessa transazione condividono il `tx_id` e ogni nuova transazione ne ottiene uno proprio. È coerente col nome: un identificativo *di transazione* non deve sopravvivere alla transazione. (Fino al 2026-07-22 lo scope era di sessione: un solo `tx_id` per connessione, ed era ciò che rendeva permanente l'effetto di un ripiego andato male.)
+2. **Unicita per transazione**: la GUC `dbops.tx_id` è impostata con scope **locale alla transazione** (`set_config(..., TRUE)`), quindi tutte le operazioni della stessa transazione condividono il `tx_id` e ogni nuova transazione ne ottiene uno proprio. È coerente col nome: un identificativo *di transazione* non deve sopravvivere alla transazione. Lo scope di **sessione** — un solo `tx_id` per connessione — renderebbe invece **permanente** l'effetto di un ripiego andato male, ed è per questo che è stato escluso.
 
 3. **Immutabilita del registro**: i record in `transaction_ids` non possono essere modificati ne cancellati (trigger di protezione).
 
@@ -499,24 +485,27 @@ erDiagram
 
 ---
 
-## Note finali
+## Area tecnica — esempi
 
-Questa guida copre il sistema completo di gestione del transaction ID in Zero ERP. Per approfondimenti sulle componenti collegate:
+### Eseguire il provisioning a mano
 
-* [Guida Automazione DB](/guide/automazione-db) — framework di automazione (FK index, audit, tx_id)
-* [Guida Messaggi di Errore e Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — `fn_log_and_raise_error` con tx_id
-* [Guida Messaggi Audit](/guide/messaggi-audit) — audit trail con correlazione tx_id
-* [Guida Configurazione e Parametri](/guide/configurazione-e-gestione-parametri) — sistema parametri e GUC
+La procedura schedulata chiama il motore dentro un wrapper con advisory lock e
+logging strutturato.
 
-Per il dettaglio delle singole funzioni e tabelle:
+```sql
+CALL maintenance.proc_automations_tx_id_job();
+-- Equivale a:
+-- SELECT dbops.fn_run_automations_tx_id('SCHEDULED', NULL, false);
+-- Con: advisory lock, logging inizio/fine, gestione errori
+```
 
-* [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids) — registro master
-* [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id) — generazione
-* [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) — sessione
-* [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — trigger function
-* [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) — automazione
-* [maintenance.proc_automations_tx_id_job](/dbzero/maintenance/funzioni/proc_automations_tx_id_job) — scheduling
+### Pre-impostare il `tx_id` dal backend
+
+Una riga, una volta per sessione o richiesta, prima di qualunque scrittura.
+
+```sql
+SELECT dbops.fn_get_or_create_session_tx_id() AS tx_id;
+```
 
 ---
-
 {% include-markdown "signature-core.md" %}

@@ -33,7 +33,7 @@
 
 **Guide concettuali:**
 
-> • [Gestione delle istanze utility — sezione "Strategia C"](/it/guide/gestione-delle-istanze-utility#strategia-c--ogni-istanza-dichiara-la-utility-tramite-un-satellite-2026-05-01)  
+> • [Gestione delle istanze utility — sezione "Strategia C"](/it/guide/gestione-delle-istanze-utility#ogni-istanza-dichiara-la-utility-strategia-c)  
 > • [Risorse umane e accessi (multi-face auth, GUC `app.current_user_id`)](/it/guide/risorse-umane-e-accessi)  
 
 ---

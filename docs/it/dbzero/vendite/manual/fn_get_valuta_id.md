@@ -22,17 +22,17 @@ al **gestore** quando non esistono valori specifici su BA/utility.
 
 ### Parametri di input
 
-| Parametro | Tipo | Descrizione |
-| --- | --- | --- |
-| `p_billing_account_id` | `anagrafiche.billing_account.id%TYPE` | Billing account (opzionale). |
-| `p_utility_id` | `config.utilities.id%TYPE` | Utility di riferimento (opzionale). |
+| Parametro                       | Tipo                                                   | Descrizione                           |
+| ------------------------------- | ------------------------------------------------------ | ------------------------------------- |
+| `p_billing_account_id`          | `anagrafiche.billing_account.id%TYPE`                  | Billing account (opzionale).          |
+| `p_emittente_soggetto_ruolo_id` | `anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE` | Emittente di riferimento (opzionale). |
 
 ---
 
 ### Regola applicata
 
-1. Se il BA ha una valuta configurata (se prevista) usa quella.
-2. Altrimenti usa `config.utilities.valuta_id` (se prevista).
+1. Se il BA ha una valuta configurata usa quella.
+2. Altrimenti usa la valuta dell'**emittente** indicato.
 3. In fallback usa la valuta del **gestore** attivo.
 4. Se ancora NULL → errore bloccante.
 

@@ -685,3 +685,6 @@ automatizzarne un'altra**: evita di costruire un presidio che mente.
 * [Automazione DB](automazione-db.md) — il framework che applica le regole strutturali
 * `.codex/AGENTS.md` §Test — l'uso quotidiano della baseline
 * [Gestione dei messaggi di errore e generazione log](Messaggi-di-Errore-e-Generazione-Log.md) — il catalogo, la classe di un codice e il canale del campo, visti dal lato del dominio
+
+---
+{% include-markdown "signature-core.md" %}

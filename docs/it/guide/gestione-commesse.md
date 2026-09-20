@@ -20,7 +20,7 @@
 
 ## Panoramica
 
-Il modello commesse centralizza tutte le attivita` fatturabili prima della
+Il modello commesse centralizza tutte le attività fatturabili prima della
 pipeline di fatturazione. Ogni sorgente (preventivo, ordine, contratto, DDT,
 consumi) transita per la commessa — nessun bypass diretto verso
 `attivita_fatturabili`.
@@ -47,14 +47,14 @@ SORGENTI (preventivi / ordini / consumi / ...)
 
 ### Stati
 
-| ID | Codice | chiude | emittibile | modificabile |
-|----|--------|--------|------------|--------------|
-| 1 | BOZZA | false | false | true |
-| 2 | APERTA | false | false | true |
-| 3 | IN_ESECUZIONE | false | false | true |
-| 4 | PRONTA_FATTURAZIONE | false | true | true |
-| 5 | CHIUSA | true | false | false |
-| 6 | ANNULLATA | true | false | false |
+| ID  | Codice              | chiude | emittibile | modificabile |
+| --- | ------------------- | ------ | ---------- | ------------ |
+| 1   | BOZZA               | false  | false      | true         |
+| 2   | APERTA              | false  | false      | true         |
+| 3   | IN_ESECUZIONE       | false  | false      | true         |
+| 4   | PRONTA_FATTURAZIONE | false  | true       | true         |
+| 5   | CHIUSA              | true   | false      | false        |
+| 6   | ANNULLATA           | true   | false      | false        |
 
 I flag governano le operazioni:
 
@@ -125,10 +125,10 @@ quella riga non c'è. Da qui il `NOT NULL`.
 form: nasce dal push, e l'emittente si ricava dal cliente del documento
 sorgente. Tre pezzi, tutti in `20_code`:
 
-| Oggetto | Cosa fa |
-| --- | --- |
-| [`trgfn_commesse_default_emittente`](/dbzero/vendite/manual/trgfn_commesse_default_emittente) | riempie la colonna quando arriva `NULL` |
-| [`trgfn_commesse_guard_emittente_ba`](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba) | rifiuta un valore diverso da quello derivato |
+| Oggetto                                                                                                     | Cosa fa                                          |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| [`trgfn_commesse_default_emittente`](/dbzero/vendite/manual/trgfn_commesse_default_emittente)               | riempie la colonna quando arriva `NULL`          |
+| [`trgfn_commesse_guard_emittente_ba`](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba)             | rifiuta un valore diverso da quello derivato     |
 | [`trgfn_commesse_sorgenti_guard_emittente`](/dbzero/vendite/manual/trgfn_commesse_sorgenti_guard_emittente) | vieta di collegare sorgenti di emittenti diversi |
 
 ⇒ **Chi crea una commessa non deve sapere niente di emittenti.** Se lo passa e
@@ -163,11 +163,11 @@ resterebbero orfani. Vedi
 `vendite.commesse` porta, oltre al codice, tre colonne che dicono **che cosa è**
 una commessa a chi la legge in una lista o in un drawer:
 
-| Colonna | Che cosa dice | Null | Chi la scrive |
-| --- | --- | :---: | --- |
-| `descrizione` | l'oggetto della commessa, in parole (max 255) | sì | l'operatore, dal drawer |
-| `data_apertura` | quando è stata aperta — per le commesse nuove è **oggi nel fuso dell'azienda** (`script.fn_data_operativa()`), mai l'orologio della sessione | **no** | il default alla nascita; **sola lettura** dall'API |
-| `responsabile_risorsa_umana_id` | chi la governa: una **risorsa umana** (`anagrafiche.risorse_umane`), come in `pratiche` — non un ruolo qualsiasi | sì | l'operatore, dal drawer |
+| Colonna                         | Che cosa dice                                                                                                                                |  Null  | Chi la scrive                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | :----: | -------------------------------------------------- |
+| `descrizione`                   | l'oggetto della commessa, in parole (max 255)                                                                                                |   sì   | l'operatore, dal drawer                            |
+| `data_apertura`                 | quando è stata aperta — per le commesse nuove è **oggi nel fuso dell'azienda** (`script.fn_data_operativa()`), mai l'orologio della sessione | **no** | il default alla nascita; **sola lettura** dall'API |
+| `responsabile_risorsa_umana_id` | chi la governa: una **risorsa umana** (`anagrafiche.risorse_umane`), come in `pratiche` — non un ruolo qualsiasi                             |   sì   | l'operatore, dal drawer                            |
 
 ⚠️ **`data_apertura` non è la competenza**: `competenza_dal`/`competenza_al`
 restano la finestra fiscale del lavoro, e riusarle per «quando è nata» avrebbe
@@ -226,14 +226,14 @@ non un cantiere.
 
 **Parametri principali**:
 
-| Parametro | Obbligatorio | Note |
-|-----------|:------------:|------|
-| `p_billing_account_id` | si | FK anagrafiche.billing_account |
-| `p_utility_id` | si | Deve coincidere con utility del BA |
-| `p_tipo_commessa` | no | Default `AUTO` |
-| `p_policy_fatturazione` | no | Default `DA_DOCUMENTO` |
-| `p_competenza_dal` / `_al` | no | Range competenza testata |
-| `p_force_new` | no | Default `false` — forza nuova commessa |
+| Parametro                  | Obbligatorio | Note                                   |
+| -------------------------- | :----------: | -------------------------------------- |
+| `p_billing_account_id`     |      si      | FK anagrafiche.billing_account         |
+| `p_utility_id`             |      si      | Deve coincidere con utility del BA     |
+| `p_tipo_commessa`          |      no      | Default `AUTO`                         |
+| `p_policy_fatturazione`    |      no      | Default `DA_DOCUMENTO`                 |
+| `p_competenza_dal` / `_al` |      no      | Range competenza testata               |
+| `p_force_new`              |      no      | Default `false` — forza nuova commessa |
 
 ⛔ **Non esiste un parametro per l'emittente.** L'emittente non si passa: **si
 deriva dal billing account**, sempre. Vedi
@@ -262,24 +262,24 @@ SELECT vendite.fn_get_or_create_commessa(
 > [Doc autogenerata](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) |
 > [Doc concettuale](/dbzero/vendite/manual/fn_upsert_commessa_attivita)
 
-**Scopo**: inserisce o aggiorna una riga attivita` nella commessa.
+**Scopo**: inserisce o aggiorna una riga attività nella commessa.
 
 **Parametri principali**:
 
-| Parametro | Obbligatorio | Note |
-|-----------|:------------:|------|
-| `p_commessa_id` | si | |
-| `p_segment_key` | si | Chiave idempotenza (unique con commessa_id) |
-| `p_articolo_id` | si | UUID catalogo.articoli |
-| `p_istanza_utility_id` | si | |
-| `p_uom_id` | si | |
-| `p_quantita` | si | Diversa da 0, negativi ammessi |
-| `p_prezzo_snapshot` | si | Negativi ammessi |
-| `p_competenza_mese` | no | Normalizzato al primo del mese |
-| `p_stato_approvazione` | no | Default `BOZZA` |
-| `p_stato_emissione` | no | Default `NON_EMESSA` |
-| `p_tipo_movimento` | no | `NORMALE` o `RETTIFICA` (salvato in meta) |
-| `p_tipo_consumo` | no | `ACCONTO`, `CONGUAGLIO`, `STORNO` (salvato in meta) |
+| Parametro              | Obbligatorio | Note                                                |
+| ---------------------- | :----------: | --------------------------------------------------- |
+| `p_commessa_id`        |      si      |                                                     |
+| `p_segment_key`        |      si      | Chiave idempotenza (unique con commessa_id)         |
+| `p_articolo_id`        |      si      | UUID catalogo.articoli                              |
+| `p_istanza_utility_id` |      si      |                                                     |
+| `p_uom_id`             |      si      |                                                     |
+| `p_quantita`           |      si      | Diversa da 0, negativi ammessi                      |
+| `p_prezzo_snapshot`    |      si      | Negativi ammessi                                    |
+| `p_competenza_mese`    |      no      | Normalizzato al primo del mese                      |
+| `p_stato_approvazione` |      no      | Default `BOZZA`                                     |
+| `p_stato_emissione`    |      no      | Default `NON_EMESSA`                                |
+| `p_tipo_movimento`     |      no      | `NORMALE` o `RETTIFICA` (salvato in meta)           |
+| `p_tipo_consumo`       |      no      | `ACCONTO`, `CONGUAGLIO`, `STORNO` (salvato in meta) |
 
 **Ritorna**: `commessa_attivita_id`.
 
@@ -312,24 +312,24 @@ SELECT vendite.fn_upsert_commessa_attivita(
 
 **Parametri**:
 
-| Parametro | Obbligatorio | Note |
-|-----------|:------------:|------|
-| `p_commessa_id` | si | Errore se non esiste |
+| Parametro       | Obbligatorio | Note                 |
+| --------------- | :----------: | -------------------- |
+| `p_commessa_id` |      si      | Errore se non esiste |
 
 **Ritorna** (singola riga):
 
-| Campo | Descrizione |
-|-------|-------------|
-| `stato_commessa_id` | FK stati_commessa |
-| `stato_commessa` | Codice testuale (backward compat) |
-| `chiude_commessa` / `emittibile` / `modificabile` | Flag operativi |
-| `policy_fatturazione` / `fatturazione_immediata` / `priorita_operativa` | Config testata |
-| `billing_account_id` / `utility_id` / `emittente_soggetto_ruolo_id` | Perimetro |
-| `total_attivita` | Totale righe |
-| `total_approvate` / `total_non_approvate` | Per stato approvazione |
-| `total_emesse` / `total_non_emesse` | Per stato emissione |
-| `total_prezzo_da_riallineare` | Righe con prezzo da aggiornare |
-| `last_update` | Max tra testata e ultima riga |
+| Campo                                                                   | Descrizione                       |
+| ----------------------------------------------------------------------- | --------------------------------- |
+| `stato_commessa_id`                                                     | FK stati_commessa                 |
+| `stato_commessa`                                                        | Codice testuale (backward compat) |
+| `chiude_commessa` / `emittibile` / `modificabile`                       | Flag operativi                    |
+| `policy_fatturazione` / `fatturazione_immediata` / `priorita_operativa` | Config testata                    |
+| `billing_account_id` / `utility_id` / `emittente_soggetto_ruolo_id`     | Perimetro                         |
+| `total_attivita`                                                        | Totale righe                      |
+| `total_approvate` / `total_non_approvate`                               | Per stato approvazione            |
+| `total_emesse` / `total_non_emesse`                                     | Per stato emissione               |
+| `total_prezzo_da_riallineare`                                           | Righe con prezzo da aggiornare    |
+| `last_update`                                                           | Max tra testata e ultima riga     |
 
 ```sql
 SELECT * FROM vendite.fn_get_commessa_stato(12345);
@@ -351,14 +351,14 @@ una seconda chiamata per tre colonne della stessa riga.
 
 **Parametri**:
 
-| Parametro | Obbligatorio | Note |
-|-----------|:------------:|------|
-| `p_commessa_id` | si | Errore se non esiste |
-| `p_stato_emissione` | no | Es. `NON_EMESSA` |
-| `p_stato_approvazione` | no | Es. `APPROVATA` |
-| `p_competenza_mese` | no | Normalizzato al primo del mese |
-| `p_limit` | no | Default 1000, max 10000 |
-| `p_offset` | no | Default 0 |
+| Parametro              | Obbligatorio | Note                           |
+| ---------------------- | :----------: | ------------------------------ |
+| `p_commessa_id`        |      si      | Errore se non esiste           |
+| `p_stato_emissione`    |      no      | Es. `NON_EMESSA`               |
+| `p_stato_approvazione` |      no      | Es. `APPROVATA`                |
+| `p_competenza_mese`    |      no      | Normalizzato al primo del mese |
+| `p_limit`              |      no      | Default 1000, max 10000        |
+| `p_offset`             |      no      | Default 0                      |
 
 **Ritorna**: elenco righe con JOIN `sorgente_codice` da `config.sorgenti`.
 
@@ -385,15 +385,15 @@ FROM vendite.fn_list_commessa_attivita(
 
 **Parametri**:
 
-| Parametro | Obbligatorio | Note |
-|-----------|:------------:|------|
-| `p_competenza_mese` | no | Normalizzato al primo del mese |
-| `p_billing_account_id` | no | Filtro perimetro |
-| `p_utility_id` | no | Filtro perimetro |
-| `p_emittente_soggetto_ruolo_id` | no | Filtro emittente |
-| `p_limit` | no | Default 1000, max 10000 |
-| `p_gruppi` | no | Emissione mirata: solo le commesse con almeno una riga dei gruppi richiesti |
-| `p_emit_batch_id` | no (⛔ **sì** per il pull) | L'identità del giro (`fatturazione_lotti.lock_batch_id`), la stessa dell'emit. Con essa le righe trattenute **dal lotto stesso** contano come pronte: al rilancio di un pull fallito la commessa viene rivisitata. `NULL` = nessuna auto-esclusione |
+| Parametro                       |       Obbligatorio        | Note                                                                                                                                                                                                                                                |
+| ------------------------------- | :-----------------------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `p_competenza_mese`             |            no             | Normalizzato al primo del mese                                                                                                                                                                                                                      |
+| `p_billing_account_id`          |            no             | Filtro perimetro                                                                                                                                                                                                                                    |
+| `p_utility_id`                  |            no             | Filtro perimetro                                                                                                                                                                                                                                    |
+| `p_emittente_soggetto_ruolo_id` |            no             | Filtro emittente                                                                                                                                                                                                                                    |
+| `p_limit`                       |            no             | Default 1000, max 10000                                                                                                                                                                                                                             |
+| `p_gruppi`                      |            no             | Emissione mirata: solo le commesse con almeno una riga dei gruppi richiesti                                                                                                                                                                         |
+| `p_emit_batch_id`               | no (⛔ **sì** per il pull) | L'identità del giro (`fatturazione_lotti.lock_batch_id`), la stessa dell'emit. Con essa le righe trattenute **dal lotto stesso** contano come pronte: al rilancio di un pull fallito la commessa viene rivisitata. `NULL` = nessuna auto-esclusione |
 
 **Criteri di inclusione**:
 
@@ -425,11 +425,11 @@ FROM vendite.fn_list_commesse_emittibili(
 
 **Parametri**:
 
-| Parametro | Obbligatorio | Note |
-|-----------|:------------:|------|
-| `p_commessa_id` | si | |
-| `p_only_approved` | no | Default `true` — solo righe APPROVATA |
-| `p_dry_run` | no | Default `false` — simula senza scrivere |
+| Parametro         | Obbligatorio | Note                                    |
+| ----------------- | :----------: | --------------------------------------- |
+| `p_commessa_id`   |      si      |                                         |
+| `p_only_approved` |      no      | Default `true` — solo righe APPROVATA   |
+| `p_dry_run`       |      no      | Default `false` — simula senza scrivere |
 
 **Ritorna**: contatori (`total_candidate`, `inserted_rows`, `updated_rows`, `skipped_rows`).
 
@@ -438,7 +438,7 @@ FROM vendite.fn_list_commesse_emittibili(
 * ROOT source obbligatoria sulla commessa
 * Sorgente AF = `COMMESSA` + hash deterministico `segment_key` -> UUID
 * Idempotenza su chiave `(sorgente_tipo_id, sorgente_uid)`
-* Blocco se riga AF gia` fatturata
+* Blocco se riga AF già fatturata
 * Aggiorna `stato_emissione = EMESSA` sulle righe processate
 * Propaga `sorgente_origine_tipo_id` (sorgente business originale)
 
@@ -455,11 +455,11 @@ FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
 
 ### 7. Funzioni di supporto
 
-| Funzione | Scopo |
-|----------|-------|
-| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO` |
+| Funzione                                                                            | Scopo                                                                                 |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente)   | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO`     |
 | [`fn_start_commessa_push_run`](/dbzero/vendite/funzioni/fn_start_commessa_push_run) | **Apre** il giro di push: la riga nasce in testa alla corsa, in stato `IN_ESECUZIONE` |
-| [`fn_close_commessa_push_run`](/dbzero/vendite/funzioni/fn_close_commessa_push_run) | **Chiude** lo stesso giro con il suo esito, il risultato per handler e la durata |
+| [`fn_close_commessa_push_run`](/dbzero/vendite/funzioni/fn_close_commessa_push_run) | **Chiude** lo stesso giro con il suo esito, il risultato per handler e la durata      |
 
 > ⭐ **Il giro di push si apre e si chiude, non si registra a cose fatte.** Con
 > la riga creata all'inizio, quella rimasta a `IN_ESECUZIONE` è la prova che
@@ -634,16 +634,16 @@ all'epoca del push. Queste colonne sono **immutabili dopo emissione fattura**
 e permettono ricostruzione storica del processo pricing senza dipendere da
 modifiche successive a listini/contratti/promo.
 
-| Colonna | Valore |
-|---|---|
-| `prezzo_base_snapshot` | Prezzo riga listino prima di qualunque variazione |
-| `origine_prezzo` | `PROMO` / `CONTRATTO_OVERRIDE` / `CONTRATTO_LISTINO` / `CATEGORIA` / `MANUALE` |
-| `tipo_variazione_applicata` | `PERCENTUALE` / `VALORE_FISSO` / `PREZZO_FISSO` / `NESSUNA` |
-| `valore_variazione_applicata` | Valore firmato (negativo=sconto, positivo=maggiorazione) |
-| `promo_id` | FK promo se origine=PROMO |
-| `contratto_id` | FK contratto se origine CONTRATTO_* |
+| Colonna                         | Valore                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `prezzo_base_snapshot`          | Prezzo riga listino prima di qualunque variazione                              |
+| `origine_prezzo`                | `PROMO` / `CONTRATTO_OVERRIDE` / `CONTRATTO_LISTINO` / `CATEGORIA` / `MANUALE` |
+| `tipo_variazione_applicata`     | `PERCENTUALE` / `VALORE_FISSO` / `PREZZO_FISSO` / `NESSUNA`                    |
+| `valore_variazione_applicata`   | Valore firmato (negativo=sconto, positivo=maggiorazione)                       |
+| `promo_id`                      | FK promo se origine=PROMO                                                      |
+| `contratto_id`                  | FK contratto se origine CONTRATTO_*                                            |
 | `categoria_cliente_id_snapshot` | FK categoria cliente al momento dello snapshot (anche se categoria poi cambia) |
-| `classe_utenza_id_snapshot` | FK classe utenza derivata da contratto/istanza |
+| `classe_utenza_id_snapshot`     | FK classe utenza derivata da contratto/istanza                                 |
 
 Popolazione: `fn_upsert_commessa_attivita` riceve gli 8 campi dal
 chiamante Python (`CommessaAttivitaInput`). Al **push** li valorizza
@@ -695,18 +695,18 @@ Garantisce che lo snapshot resti sempre ancorato alla struttura del momento.
 
 ### Gerarchia prezzo (riassunto)
 
-| Priorita | Fonte | prezzo_bloccato dopo |
-|---|---|---|
-| 1 | Override manuale su documento (N7) | TRUE |
-| 2 | Prezzo da resolver listino (standard o N5) | FALSE |
+| Priorita | Fonte                                      | prezzo_bloccato dopo |
+| -------- | ------------------------------------------ | -------------------- |
+| 1        | Override manuale su documento (N7)         | TRUE                 |
+| 2        | Prezzo da resolver listino (standard o N5) | FALSE                |
 
 ### Casi limite
 
-| Caso | Comportamento |
-|---|---|
+| Caso                                                            | Comportamento                                                                                                           |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Preventivo modificato, commessa non riallineata, fattura emessa | La fattura usa il prezzo dello snapshot originale. Il flag `prezzo_da_riallineare` resta TRUE come segnalazione storica |
-| Versione listino cambiata dopo lo snapshot | N5 detecta il cambio e richiede conferma. Senza conferma, non aggiorna |
-| Riga commessa gia fatturata | N5/N7/N7-sblocco rifiutano con 409. Per correggere serve NDC/NDD (DB-L4) |
+| Versione listino cambiata dopo lo snapshot                      | N5 detecta il cambio e richiede conferma. Senza conferma, non aggiorna                                                  |
+| Riga commessa gia fatturata                                     | N5/N7/N7-sblocco rifiutano con 409. Per correggere serve NDC/NDD (DB-L4)                                                |
 
 ---
 
@@ -720,22 +720,25 @@ Tutte le funzioni usano `script.fn_log_and_raise_error` con:
 
 Errori comuni:
 
-| Errore | Funzione | Causa |
-|--------|----------|-------|
-| commessa_id obbligatorio | Tutte | Parametro NULL o <= 0 |
-| commessa non trovata | get_stato, list_attivita, emit | ID inesistente |
-| commessa non modificabile | upsert_attivita | Stato CHIUSA/ANNULLATA |
-| riga AF gia` fatturata | emit_da_commessa | Tentativo update su riga fatturato=true |
-| ROOT source mancante | emit_da_commessa | Nessun link ROOT in commesse_sorgenti |
-| sorgente COMMESSA non attiva | emit_da_commessa | config.sorgenti COMMESSA disabilitata |
-| responsabile non attivo | `PATCH /commesse/<id>/` | il backend risponde `400` col campo (`E_COMMESSA_VALIDATION`) **prima** del require DB, che rifiuterebbe con `E_ATTIVO_REQUIRE` (classe TECNICO) |
+| Errore                       | Funzione                       | Causa                                                                                                                                            |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| commessa_id obbligatorio     | Tutte                          | Parametro NULL o <= 0                                                                                                                            |
+| commessa non trovata         | get_stato, list_attivita, emit | ID inesistente                                                                                                                                   |
+| commessa non modificabile    | upsert_attivita                | Stato CHIUSA/ANNULLATA                                                                                                                           |
+| riga AF già fatturata        | emit_da_commessa               | Tentativo update su riga fatturato=true                                                                                                          |
+| ROOT source mancante         | emit_da_commessa               | Nessun link ROOT in commesse_sorgenti                                                                                                            |
+| sorgente COMMESSA non attiva | emit_da_commessa               | config.sorgenti COMMESSA disabilitata                                                                                                            |
+| responsabile non attivo      | `PATCH /commesse/<id>/`        | il backend risponde `400` col campo (`E_COMMESSA_VALIDATION`) **prima** del require DB, che rifiuterebbe con `E_ATTIVO_REQUIRE` (classe TECNICO) |
 
 ---
 
 ## Test pgTAP
 
-| File test | Copertura |
-|-----------|-----------|
-| `test-commesse-stati-commessa-v1.sql` | DDL stati_commessa, flag, fn_get_commessa_stato, fn_upsert guard, fn_list_commesse_emittibili (20 test) |
-| `test-fn-list-commessa-attivita-v1.sql` | fn_list_commessa_attivita: filtri, paginazione, guard (14 test) |
+| File test                               | Copertura                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `test-commesse-stati-commessa-v1.sql`   | DDL stati_commessa, flag, fn_get_commessa_stato, fn_upsert guard, fn_list_commesse_emittibili (20 test) |
+| `test-fn-list-commessa-attivita-v1.sql` | fn_list_commessa_attivita: filtri, paginazione, guard (14 test)                                         |
 
+
+---
+{% include-markdown "signature-core.md" %}

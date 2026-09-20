@@ -1,21 +1,13 @@
 # Guida — Il risolutore IVA di riga
 
-> **Cos'è**: la **sede unica** della domanda «quale IVA porta questa riga di
-> documento». Non è una regola della fattura, né dell'ordine, né del DDT: è una
-> funzione sola, che tutti i documenti interrogano e nessuno riscrive.
+> **Ultimo aggiornamento**: 19 settembre 2026
 >
-> **Ultima revisione**: 2 settembre 2026 — risolutore a due stadi
-> (`fn_resolve_iva_riga` + implementazione italiana), titoli documentati del
-> cliente con ambito e plafond, consumatori applicativi su preventivi, ordini e
-> DDT.
->
-> **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
-> backend/frontend, DBA. Le parti tecniche stanno in fondo a ogni capitolo.
+> **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori backend/frontend, DBA.
 >
 > **Vedi anche** — funzioni DB:
 >
-> * [vendite.fn_resolve_iva_riga](/dbzero/vendite/manual/fn_resolve_iva_riga) — **il guscio: si chiama questo**
-> * [vendite.fn_resolve_iva_riga_it](/dbzero/vendite/manual/fn_resolve_iva_riga_it) — la regola italiana
+> * [vendite.fn_resolve_iva_riga](/dbzero/vendite/funzioni/fn_resolve_iva_riga) — **il guscio: si chiama questo**
+> * [vendite.fn_resolve_iva_riga_it](/dbzero/vendite/funzioni/fn_resolve_iva_riga_it) — la regola italiana
 > * [vendite.fn_get_tipo_utenza_fornitura](/dbzero/vendite/funzioni/fn_get_tipo_utenza_fornitura) — l'uso della fornitura, secondo gradino dello stadio A
 > * [anagrafiche.fn_consuma_plafond_titolo_iva](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva) — chi consuma il tetto (il risolutore **non** lo fa)
 >
@@ -40,30 +32,32 @@
 ## 1. Il problema che risolve
 
 Ogni riga di documento porta un codice IVA. Sembra un dato che si copia
-dall'articolo, e per molto tempo è stato fatto proprio così: il form del
-preventivo leggeva `catalogo.articoli.iva_id`, quello dell'ordine anche, quello
-del DDT anche, e la pipeline di fatturazione se lo ricavava per conto suo.
+dall'articolo, e la tentazione è di farlo: il form del preventivo legge
+`catalogo.articoli.iva_id`, quello dell'ordine anche, quello del DDT anche, e la
+pipeline di fatturazione se lo ricava per conto suo.
 
-**Quattro risposte alla stessa domanda**, che coincidevano *per costruzione*:
-guardavano la stessa colonna. Il difetto non era visibile finché nessuna delle
-quattro imparava qualcosa che le altre non sapevano — e il giorno che una l'ha
-imparato, sarebbero divergute su documenti già emessi.
+**Quattro risposte alla stessa domanda**, che coincidono *per costruzione*:
+guardano la stessa colonna. Il difetto non è visibile finché nessuna delle quattro
+impara qualcosa che le altre non sanno — e il giorno che una lo impara, divergono
+su documenti già emessi.
 
-E c'era da imparare parecchio. L'aliquota di una riga non dipende **solo**
+E c'è da imparare parecchio. L'aliquota di una riga non dipende **solo**
 dall'articolo:
 
-| Cosa può cambiarla | Esempio |
-| --- | --- |
-| l'**uso** della merce | il gas per uso industriale non ha l'aliquota del gas per uso domestico |
-| un **titolo** del cliente | un esportatore abituale con dichiarazione d'intento non paga l'IVA su ciò che quella dichiarazione copre |
-| il **limite** di quel titolo | la dichiarazione ha un plafond: finito quello, si torna all'ordinaria |
-| l'**ambito** di quel titolo | un'agevolazione per disabilità copre certi prodotti, non l'intero listino |
+| Cosa può cambiarla           | Esempio                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| l'**uso** della merce        | il gas per uso industriale non ha l'aliquota del gas per uso domestico                                   |
+| un **titolo** del cliente    | un esportatore abituale con dichiarazione d'intento non paga l'IVA su ciò che quella dichiarazione copre |
+| il **limite** di quel titolo | la dichiarazione ha un plafond: finito quello, si torna all'ordinaria                                    |
+| l'**ambito** di quel titolo  | un'agevolazione per disabilità copre certi prodotti, non l'intero listino                                |
 
 ⭐ **Un auto-fill dall'articolo non sa niente di tutto questo.** Su un esportatore
-abituale proponeva l'aliquota piena, e nessuno lo segnalava: non è un errore che
-il sistema può accorgersi di avere.
+abituale propone l'aliquota piena, e nessuno lo segnala: non è un errore che il
+sistema può accorgersi di avere.
 
-Dal 29 agosto 2026 la domanda ha **una sede sola**.
+**La domanda ha una sede sola**: `vendite.fn_resolve_iva_riga`. Non è una regola
+della fattura, né dell'ordine, né del DDT — è una funzione che tutti i documenti
+interrogano e nessuno riscrive.
 
 > ⛔ **La regola che ne discende, e vale per chi scrive codice:** *mai leggere
 > `catalogo.articoli.iva_id` in un service di dominio o in un form.* È il gemello
@@ -103,10 +97,10 @@ meccanismo, non una precisazione. Vedi il capitolo 3.
 
 ## 3. Un titolo non è un flag: è un documento
 
-Fino al 29 agosto 2026 esisteva `anagrafiche.clienti.iva_id`, una colonna che
-prometteva di dire «questo cliente ha un'IVA sua». **È stata tolta e non
-sostituita**: spostarla sul soggetto avrebbe riprodotto lo stesso difetto un piano
-più su — *un valore che vince su tutto perché nessuno gli ha detto dove fermarsi*.
+`anagrafiche.clienti.iva_id` — una colonna che prometteva di dire «questo cliente
+ha un'IVA sua» — **non esiste, e non è sostituita**: spostarla sul soggetto
+riprodurrebbe lo stesso difetto un piano più su — *un valore che vince su tutto
+perché nessuno gli ha detto dove fermarsi*.
 
 Al suo posto c'è il **titolo**: una dichiarazione d'intento, una dichiarazione di
 uso industriale del gas, un'agevolazione per disabilità, la qualifica di
@@ -118,9 +112,9 @@ vale da solo su tutti i documenti finché è valido — nessuno lo digita più.
 
 L'ambito è **dichiarato**, mai dedotto da una colonna vuota:
 
-| valore | significato |
-| --- | --- |
-| `TUTTO` | il titolo copre ogni riga di documento |
+| valore      | significato                                                        |
+| ----------- | ------------------------------------------------------------------ |
+| `TUTTO`     | il titolo copre ogni riga di documento                             |
 | `RISTRETTO` | copre solo ciò che dicono le righe di `soggetti_titoli_iva_ambiti` |
 
 Un titolo ristretto elenca **articoli** oppure **categorie di merce** (gruppo
@@ -179,7 +173,7 @@ L'ordine è parte del contratto: **prima la quota coperta**.
 > ⚠️ La seconda parte può uscire con `origine = 'ASSENTE'`, ed è corretto: il
 > titolo copriva un pezzo, e sul resto nessuno sa dire l'aliquota. Sarà il cancello
 > all'emissione a fermarla.
-
+>
 > ⛔ **Il risolutore NON consuma il plafond.** È in sola lettura: la ripartizione
 > che ritorna è una **proiezione** sul residuo di adesso. Il consumo è un atto
 > contabile e ha una primitiva sua
@@ -190,9 +184,9 @@ L'ordine è parte del contratto: **prima la quota coperta**.
 ### ⭐ Sui documenti la spezzatura non si fa
 
 Su preventivo, ordine e DDT il titolo si applica **a tutta la riga finché c'è
-capienza** (decisione di Tid): il documento porta un'annotazione che avvisa che il
-conteggio effettivo si stabilisce all'emissione della fattura, ed è **lì** che il
-plafond si consuma davvero.
+capienza**: il documento porta un'annotazione che avvisa che il conteggio
+effettivo si stabilisce all'emissione della fattura, ed è **lì** che il plafond si
+consuma davvero.
 
 > ⭐ **Il modo solido di tenere quella regola non è ricordarsela: è non dare al
 > client il parametro con cui romperla.** L'endpoint di anteprima **non accetta un
@@ -205,10 +199,10 @@ plafond si consuma davvero.
 
 Le funzioni sono due, e si chiama sempre e solo la prima:
 
-| Funzione | Che cosa fa |
-| --- | --- |
-| `vendite.fn_resolve_iva_riga` | **il guscio**: guarda il paese delle due parti e passa la domanda all'implementazione di quel paese |
-| `vendite.fn_resolve_iva_riga_it` | la regola **italiana**, e solo quella (i due stadi del capitolo 2) |
+| Funzione                         | Che cosa fa                                                                                         |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `vendite.fn_resolve_iva_riga`    | **il guscio**: guarda il paese delle due parti e passa la domanda all'implementazione di quel paese |
+| `vendite.fn_resolve_iva_riga_it` | la regola **italiana**, e solo quella (i due stadi del capitolo 2)                                  |
 
 > ⛔ **`_it` non si chiama direttamente**: scavalcare il guscio significa scrivere
 > «Italia» dentro il chiamante, che è esattamente ciò che il guscio esiste per
@@ -232,18 +226,18 @@ dell'operazione: su un documento vecchio deve restare quella di allora.
 
 ## 6. Che cosa ritorna: un composito, non un'aliquota
 
-| Campo | Cosa dice |
-| --- | --- |
-| `quota` | la parte di imponibile coperta da questa riga (`NULL` in anteprima) |
-| `iva_id` | il codice IVA da applicare |
-| `aliquota` | la percentuale, già risolta per lo stato dell'emittente |
-| `natura_codice` | la natura dell'operazione (`N1`…`N7`), quando c'è |
-| `is_reverse_charge` | se quella natura è un'inversione contabile |
-| `esigibilita` | `I` immediata, `D` differita, `S` scissione |
-| `split_payment` | se l'imposta la versa il cliente |
-| `riferimento_normativo` | la frase da stampare in fattura |
-| `origine` | **chi ha deciso**: `ARTICOLO`, `TIPO_UTENZA`, `TITOLO`, `ASSENTE` |
-| `titolo_iva_id` | il titolo che ha sostituito l'aliquota, se ce n'è uno |
+| Campo                   | Cosa dice                                                           |
+| ----------------------- | ------------------------------------------------------------------- |
+| `quota`                 | la parte di imponibile coperta da questa riga (`NULL` in anteprima) |
+| `iva_id`                | il codice IVA da applicare                                          |
+| `aliquota`              | la percentuale, già risolta per lo stato dell'emittente             |
+| `natura_codice`         | la natura dell'operazione (`N1`…`N7`), quando c'è                   |
+| `is_reverse_charge`     | se quella natura è un'inversione contabile                          |
+| `esigibilita`           | `I` immediata, `D` differita, `S` scissione                         |
+| `split_payment`         | se l'imposta la versa il cliente                                    |
+| `riferimento_normativo` | la frase da stampare in fattura                                     |
+| `origine`               | **chi ha deciso**: `ARTICOLO`, `TIPO_UTENZA`, `TITOLO`, `ASSENTE`   |
+| `titolo_iva_id`         | il titolo che ha sostituito l'aliquota, se ce n'è uno               |
 
 > ⭐ **Perché un composito e non il solo numero.** Chi costruisce una riga fiscale
 > ha bisogno di tutte queste cose insieme. Se la funzione tornasse l'aliquota, il
@@ -255,14 +249,22 @@ dell'operazione: su un documento vecchio deve restare quella di allora.
 
 Serve a chi guarda una riga e vuole sapere **perché** porta quel codice. A video
 diventa la spiegazione sotto il campo — e non è un lusso: la casella IVA sul
-documento è **chiusa** dal 31 agosto 2026, e un numero che non si può cambiare **e**
-che non viene spiegato sarebbe la forma peggiore.
+documento è **chiusa**, e un numero che non si può cambiare **e** che non viene
+spiegato sarebbe la forma peggiore.
 
 `ASSENTE` non è un errore: in bozza una riga senza IVA è legittima, e sarà il
 cancello all'emissione a fermarla.
 
-⚠️ Il vocabolario di `origine` è **aperto**: un valore nuovo compare a video come
-codice grezzo, non come etichetta mancante.
+⚠️ Il vocabolario di `origine` è **aperto**: le etichette dei valori noti stanno in
+`vendite.iva_origine.*`, e un valore nuovo compare a video come **codice grezzo**,
+non come etichetta mancante.
+
+⭐ **C'è un quinto valore, e non sta nel catalogo del database: `MANUALE`.** Dice
+«l'aliquota è arrivata dal payload, cioè l'ha scelta una persona». Vive solo nel
+`meta` della riga, e non può stare a catalogo perché il risolutore non sa che
+esiste un operatore. Con la casella IVA chiusa sui tre domini **non è più
+raggiungibile** da un documento: la chiave resta però leggibile in `meta`, e vale
+la pena saperlo prima di trovarla.
 
 ### 6.2 Due campi che sono TRASPORTATI, non usati
 
@@ -278,13 +280,13 @@ composito perché chi costruisce la riga vuole un oggetto solo.
 
 ### 6.3 Che cosa si salva sulla riga, e che cosa no
 
-Sulla riga di documento sopravvivono **due** chiavi su dieci: `iva_origine` e
-`iva_titolo_id`.
+Nel `meta` della riga di documento sopravvivono **due** chiavi su dieci:
+`iva_origine` e `iva_titolo_id`.
 
 ⭐ Il criterio: si memorizzano i **fatti che nessuno può ricostruire dopo**.
 Aliquota, natura e riferimento normativo si **derivano** da `iva_id` — copiarli
-creerebbe una frase che invecchia, ed è il motivo per cui `iva_perc` era stata
-tolta dalle righe di fattura.
+creerebbe una frase che invecchia, ed è il motivo per cui `iva_perc` non esiste
+sulle righe di fattura.
 
 ---
 
@@ -303,17 +305,17 @@ tolta dalle righe di fattura.
                                                e qui il plafond si consuma)
 ```
 
-| Livello | Chi | Nota |
-| --- | --- | --- |
-| Database | `fn_resolve_iva_riga` | la sede della regola |
-| Backend | `IvaResolverService` (`risolvi`, `risolvi_anteprima`) | guard di chiamata, traduzione errori, normalizzazione — **nessuna regola fiscale** |
-| API | [`POST /api/v1/vendite/iva/resolve/`](/backend/vendite/manual/api_iva_resolve) | anteprima, sola lettura, nessun `Idempotency-Key` |
-| Frontend | `useIvaRisolta` | la chiamata, l'anti-race e l'etichetta dell'origine stanno **lì**, non nei tre form |
+| Livello  | Chi                                                                            | Nota                                                                                |
+| -------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Database | `fn_resolve_iva_riga`                                                          | la sede della regola                                                                |
+| Backend  | `IvaResolverService` (`risolvi`, `risolvi_anteprima`)                          | guard di chiamata, traduzione errori, normalizzazione — **nessuna regola fiscale**  |
+| API      | [`POST /api/v1/vendite/iva/resolve/`](/backend/vendite/manual/api_iva_resolve) | anteprima, sola lettura, nessun `Idempotency-Key`                                   |
+| Frontend | `useIvaRisolta`                                                                | la chiamata, l'anti-race e l'etichetta dell'origine stanno **lì**, non nei tre form |
 
 > ⚠️ **L'anteprima è best-effort di proposito**: se non risponde, il campo resta
 > com'è e si salva lo stesso. L'autorità è il backend **al salvataggio** — la
 > chiamata del form serve a far *vedere*, non a decidere.
-
+>
 > ⛔ **`risolvi_anteprima` non è `risolvi()[0]`.** Nell'anteprima l'imponibile non
 > si passa affatto. Chiamare col totale e prendere la prima parte darebbe il
 > trattamento della sola quota coperta applicandolo a tutta la riga — il difetto
@@ -337,12 +339,12 @@ tolta dalle righe di fattura.
 Sono due cose diverse, e si confondono facilmente perché portano lo stesso nome
 nella testa di chi legge.
 
-| | Il risolutore | Il Riepilogo IVA |
-| --- | --- | --- |
-| **domanda** | *quale codice IVA porta questa riga* | *quanto fa l'imposta di questo documento* |
-| **granularità** | la singola riga | il documento, raggruppato per aliquota |
-| **dove vive** | `vendite.fn_resolve_iva_riga` | le viste `vw_<doc>_riepilogo_iva_dettaglio` e, sui preventivi, una tabella di snapshot |
-| **quando** | mentre si scrive la riga | ricalcolato a ogni modifica delle righe |
+|                 | Il risolutore                        | Il Riepilogo IVA                                                                       |
+| --------------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| **domanda**     | *quale codice IVA porta questa riga* | *quanto fa l'imposta di questo documento*                                              |
+| **granularità** | la singola riga                      | il documento, raggruppato per aliquota                                                 |
+| **dove vive**   | `vendite.fn_resolve_iva_riga`        | le viste `vw_<doc>_riepilogo_iva_dettaglio` e, sui preventivi, una tabella di snapshot |
+| **quando**      | mentre si scrive la riga             | ricalcolato a ogni modifica delle righe                                                |
 
 ⭐ **E i riepiloghi non sono un meccanismo solo**, per una scelta dichiarata:
 ordini e DDT restano **live** (documenti di lavoro: congelare un intermedio crea
@@ -359,15 +361,15 @@ unica che forzerebbe una comunanza falsa.
 
 ## 10. Errori che il risolutore solleva
 
-| Codice | Quando | Chi può rimediare |
-| --- | --- | --- |
-| `E_IVA_RESOLVE_NON_INVOCABILE` | parametri mancanti o articolo inesistente | è un **chiamante rotto**, non un errore dell'operatore |
-| `E_IVA_TITOLI_AMBIGUI` | due titoli in pari specificità sulla stessa riga | chi ha registrato i titoli |
-| `E_IVA_PAESE_NON_IMPLEMENTATO` | il paese dell'emittente non ha un'implementazione | chi configura l'emittente |
+| Codice                         | Quando                                            | Chi può rimediare                                      |
+| ------------------------------ | ------------------------------------------------- | ------------------------------------------------------ |
+| `E_IVA_RESOLVE_NON_INVOCABILE` | parametri mancanti o articolo inesistente         | è un **chiamante rotto**, non un errore dell'operatore |
+| `E_IVA_TITOLI_AMBIGUI`         | due titoli in pari specificità sulla stessa riga  | chi ha registrato i titoli                             |
+| `E_IVA_PAESE_NON_IMPLEMENTATO` | il paese dell'emittente non ha un'implementazione | chi configura l'emittente                              |
 
 ---
 
-## 11. Dove guardare
+## Area tecnica — esempi
 
 **Quali titoli ha un cliente, e verso quale emittente** (la tabella ha RLS: si
 vede il perimetro dell'operatore connesso):
@@ -408,3 +410,6 @@ SELECT * FROM vendite.fn_resolve_iva_riga(
 > usa: i due numeri si somigliano abbastanza da passare inosservati, e con quello
 > sbagliato il risolutore non trova l'emittente, quindi non trova i suoi titoli, e
 > risponde con l'aliquota ordinaria *senza sollevare*.
+
+---
+{% include-markdown "signature-core.md" %}

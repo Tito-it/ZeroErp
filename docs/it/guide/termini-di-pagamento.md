@@ -196,3 +196,6 @@ stato pagato: il collegamento fra la singola rata e l'incasso che la salda è in
 lavorazione. Fino ad allora le due metà — scadenze e incassi — si leggono
 separatamente, come spiegato in
 [Gestione dei pagamenti](/guide/gestione-dei-pagamenti).
+
+---
+{% include-markdown "signature-core.md" %}

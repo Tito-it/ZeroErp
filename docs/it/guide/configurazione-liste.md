@@ -951,3 +951,6 @@ le offre con autocomplete. Riduce errori di battitura e drift.
   (azienda) + preferenza (utente). Ogni livello sovrascrive il
   precedente; un livello vuoto eredita dal precedente. Niente default
   hardcoded nel codice.
+
+---
+{% include-markdown "signature-core.md" %}

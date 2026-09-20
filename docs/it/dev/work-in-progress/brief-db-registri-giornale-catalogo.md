@@ -48,10 +48,10 @@ questa pratica" arriverà. Un ramo nuovo entra con un `UNION ALL`»). Quel giorn
 il quinto letterale entra nella vista; le altre due sedi **no**, e nessuna
 delle due fallisce:
 
-| Sede | Cosa succede col quinto registro |
-| --- | --- |
+| Sede                                              | Cosa succede col quinto registro                                                                                |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `GIORNALE_REGISTRI` (BE, `vendite_repository.py`) | il filtro `?registro=PRATICHE_GIORNALE` risponde **400** — corretto ma cieco: la riga c'è e non si può chiedere |
-| `REGISTRI` (FE, `GiornaleListView.vue`) | la tendina **non lo mostra**. Nessun errore: le righe passano nel «tutti» e basta |
+| `REGISTRI` (FE, `GiornaleListView.vue`)           | la tendina **non lo mostra**. Nessun errore: le righe passano nel «tutti» e basta                               |
 
 ⚠️ La misura che segue è un **fatto datato**, non il motivo: al 19-09 le tre
 sedi coincidono (quattro valori ovunque). Il motivo è sul modello — un
@@ -72,12 +72,12 @@ maiuscolo, e non per scelta.
 
 ## 2. Perché un catalogo e non le alternative
 
-| Strada | Cosa risolve | Cosa lascia |
-| --- | --- | --- |
-| **A. Catalogo `config.registri_giornale`** + pgTAP di allineamento | una sede, l'etichetta dichiarata dal DB, lookup generico senza codice nuovo, il quinto registro = una riga di CSV | un changeSet e un pgTAP |
-| B. Il backend espone `registri_ammessi` nell'envelope (da `GIORNALE_REGISTRI`) | la copia FE | la copia BE resta seconda sede rispetto alla vista; l'etichetta va inventata nel FE |
-| C. `SELECT DISTINCT registro FROM vw_giornale_entita` | tutto, a parole | una scansione dei quattro registri per popolare una tendina: no |
-| D. Una `fn_giornale_registri()` in `script` accanto alla vista | la sede unica | una funzione da tenere allineata a mano alla vista come la costante — sposta il problema in `script` |
+| Strada                                                                         | Cosa risolve                                                                                                      | Cosa lascia                                                                                          |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **A. Catalogo `config.registri_giornale`** + pgTAP di allineamento             | una sede, l'etichetta dichiarata dal DB, lookup generico senza codice nuovo, il quinto registro = una riga di CSV | un changeSet e un pgTAP                                                                              |
+| B. Il backend espone `registri_ammessi` nell'envelope (da `GIORNALE_REGISTRI`) | la copia FE                                                                                                       | la copia BE resta seconda sede rispetto alla vista; l'etichetta va inventata nel FE                  |
+| C. `SELECT DISTINCT registro FROM vw_giornale_entita`                          | tutto, a parole                                                                                                   | una scansione dei quattro registri per popolare una tendina: no                                      |
+| D. Una `fn_giornale_registri()` in `script` accanto alla vista                 | la sede unica                                                                                                     | una funzione da tenere allineata a mano alla vista come la costante — sposta il problema in `script` |
 
 **A**, perché è la forma che il progetto ha già scelto due volte per lo stesso
 genere di dato (§1.1), e perché il pgTAP del §4.3 è l'unico presidio che
@@ -110,26 +110,26 @@ Nella forma che `dbops.fn_get_lookup_codici` pretende — `id` intero,
 `codice`, `codice_interno`, `descrizione`, `attivo` — più `etichetta_key` e
 `obsoleto_dal` come le due sorelle:
 
-| Colonna | Tipo | Note |
-| --- | --- | --- |
-| `id` | `smallint` IDENTITY, PK | il lookup generico vuole un id intero |
-| `codice` | `text` NOT NULL, UNIQUE | mutabile, per la UI |
-| `codice_interno` | `text` NOT NULL, UNIQUE, **immutabile** (`script.trgfn_lock_columns`) | è il valore che la vista **emette** in `registro` e che il BE valida — la chiave stabile |
-| `descrizione` | `text` NOT NULL | italiano, per il lookup e l'export |
-| `etichetta_key` | `text` NOT NULL | `config.registri_giornale.<codice_interno minuscolo>` — stesso patto di `tipi_entita` |
-| `sorgente` | `regclass` o `text` NOT NULL | la tabella che il ramo legge (`vendite.event_log`, …): documenta il ramo e serve al pgTAP |
-| `attivo` | `boolean` NOT NULL DEFAULT true | come ogni tabella config |
-| `obsoleto_dal` | `date` NULL | ritiro senza cancellare (le righe vecchie del diario restano leggibili) |
-| audit | `data_insert`/`user_insert`/`data_update`/`user_update` | standard |
+| Colonna          | Tipo                                                                  | Note                                                                                      |
+| ---------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `id`             | `smallint` IDENTITY, PK                                               | il lookup generico vuole un id intero                                                     |
+| `codice`         | `text` NOT NULL, UNIQUE                                               | mutabile, per la UI                                                                       |
+| `codice_interno` | `text` NOT NULL, UNIQUE, **immutabile** (`script.trgfn_lock_columns`) | è il valore che la vista **emette** in `registro` e che il BE valida — la chiave stabile  |
+| `descrizione`    | `text` NOT NULL                                                       | italiano, per il lookup e l'export                                                        |
+| `etichetta_key`  | `text` NOT NULL                                                       | `config.registri_giornale.<codice_interno minuscolo>` — stesso patto di `tipi_entita`     |
+| `sorgente`       | `regclass` o `text` NOT NULL                                          | la tabella che il ramo legge (`vendite.event_log`, …): documenta il ramo e serve al pgTAP |
+| `attivo`         | `boolean` NOT NULL DEFAULT true                                       | come ogni tabella config                                                                  |
+| `obsoleto_dal`   | `date` NULL                                                           | ritiro senza cancellare (le righe vecchie del diario restano leggibili)                   |
+| audit            | `data_insert`/`user_insert`/`data_update`/`user_update`               | standard                                                                                  |
 
 ### 4.2 Seed (`80_data/sql/config/registri_giornale.csv`, mirror `loadUpdateData`)
 
-| codice_interno | descrizione | sorgente |
-| --- | --- | --- |
-| `EVENT_LOG` | Eventi di dominio | `vendite.event_log` |
-| `LOTTO_LOG` | Log del lotto di fatturazione | `vendite.fatturazione_lotti_log` |
-| `TASK_RUN` | Corse dei task di pipeline | `vendite.fatturazione_lotti_task_runs` |
-| `FATTURA_LOG` | Log della fattura | `vendite.fatture_log` |
+| codice_interno | descrizione                   | sorgente                               |
+| -------------- | ----------------------------- | -------------------------------------- |
+| `EVENT_LOG`    | Eventi di dominio             | `vendite.event_log`                    |
+| `LOTTO_LOG`    | Log del lotto di fatturazione | `vendite.fatturazione_lotti_log`       |
+| `TASK_RUN`     | Corse dei task di pipeline    | `vendite.fatturazione_lotti_task_runs` |
+| `FATTURA_LOG`  | Log della fattura             | `vendite.fatture_log`                  |
 
 ⚠️ `codice` = `codice_interno` alla nascita, come nelle sorelle. Le
 `etichetta_key` le porta il frontend nei locales nello stesso giro del §5
@@ -233,23 +233,23 @@ nessun `GRANT` nel changeSet. Niente RLS (vocabolario globale, come
 
 ## 7. Registro
 
-| Data | Cosa |
-| --- | --- |
-| 2026-09-19 | Brief scritto. Backend in attesa; la tendina «Registro» del giornale resta sulla costante FE, dichiarata come seconda sede nel commento della view. |
-| 2026-09-19 (ore 18) | ✅ **Lato DB CHIUSO**: migrazione applicata da Tid, automazioni montate (lock + audit), pgTAP 13/13 come app, suite senza regressioni. Resta il commit; poi il §5. |
+| Data                    | Cosa                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-19              | Brief scritto. Backend in attesa; la tendina «Registro» del giornale resta sulla costante FE, dichiarata come seconda sede nel commento della view.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 2026-09-19 (ore 18)     | ✅ **Lato DB CHIUSO**: migrazione applicata da Tid, automazioni montate (lock + audit), pgTAP 13/13 come app, suite senza regressioni. Resta il commit; poi il §5.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-09-19 (pomeriggio) | ✅ **Lato DB scritto** (Tid: «ok procedi»): `00_schema/config/20260919-08` (tabella), `80_data/changelog/20260919-09` + `sql/config/registri_giornale.csv` (seed, con resync della sequence), pgTAP `script/test-giornale-registri-catalogo-v1.sql` (13 test), i due presidi di `test-vw-giornale-entita.sql` che elencavano i quattro nomi (2, 11) **riscritti sul catalogo** — la quarta copia ritirata nello stesso giro —, descrizione della colonna `registro` in `ui/lista_colonna.csv` (887), manuale `config/manual/registri_giornale.md`, rimando nel manuale della vista. Tre risposte al §6 (D1 `text`, D2 regex + CHECK + test-guard, **D3 niente `attivo`**). Provato con l'SQL estratto (`updateSQL` offline) in `BEGIN…ROLLBACK`: 12/13 (il 13 è il lock di `ci_apply`), 13/13 col lock montato, mirror idempotente alla seconda passata, e **cinque mutazioni** che accendono l'asserzione giusta (§8.3). Per strada: il `check_i18n_keys.py` **non** legge `etichetta_key` (§4.2), le sorelle **non** sono «solo SELECT» (§4.4), e un INSERT senza `id` collideva con la PK del seed — da cui il resync nel `-09` e gli id espliciti nei test negativi. |
 
 ## 8. As-built DB (19-09-2026)
 
 ### 8.1 Che cosa c'è
 
-| Pezzo | File |
-| --- | --- |
-| Tabella | `db/changelog/migrations_v2/00_schema/config/20260919-08-create-config-registri-giornale-mctit.yaml` |
-| Seed (mirror `loadUpdateData` + `setval`) | `80_data/changelog/20260919-09-seed-registri-giornale-mctit.yaml`, `80_data/sql/config/registri_giornale.csv` |
-| Presidio vista ⇄ catalogo | `db/pgtap/script/test-giornale-registri-catalogo-v1.sql` (plan 13) |
-| Copie ritirate | `db/pgtap/script/test-vw-giornale-entita.sql` test 2 e 11 (ora leggono `config.registri_giornale`); `ui/lista_colonna.csv` riga 887 (la descrizione non elenca più i quattro nomi) |
-| Doc | `docs/it/dbzero/config/manual/registri_giornale.md` (nuovo), `docs/it/dbzero/script/manual/vw_giornale_entita.md` (colonna `registro` → catalogo) |
+| Pezzo                                     | File                                                                                                                                                                               |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tabella                                   | `db/changelog/migrations_v2/00_schema/config/20260919-08-create-config-registri-giornale-mctit.yaml`                                                                               |
+| Seed (mirror `loadUpdateData` + `setval`) | `80_data/changelog/20260919-09-seed-registri-giornale-mctit.yaml`, `80_data/sql/config/registri_giornale.csv`                                                                      |
+| Presidio vista ⇄ catalogo                 | `db/pgtap/script/test-giornale-registri-catalogo-v1.sql` (plan 13)                                                                                                                 |
+| Copie ritirate                            | `db/pgtap/script/test-vw-giornale-entita.sql` test 2 e 11 (ora leggono `config.registri_giornale`); `ui/lista_colonna.csv` riga 887 (la descrizione non elenca più i quattro nomi) |
+| Doc                                       | `docs/it/dbzero/config/manual/registri_giornale.md` (nuovo), `docs/it/dbzero/script/manual/vw_giornale_entita.md` (colonna `registro` → catalogo)                                  |
 
 Forma della tabella: `id bigint IDENTITY`, `codice_interno text` UNIQUE +
 `CHECK ^[A-Z][A-Z0-9_]*$`, `codice text` UNIQUE non vuoto, `descrizione text
@@ -284,13 +284,13 @@ mano come farebbe `ci_apply` (`trgfn_lock_columns('codice_interno',
 lock lascia passare l'`UPDATE` a valore uguale della seconda passata.
 Mutazioni, ciascuna accende **solo** ciò che deve:
 
-| Mutazione | Rosso |
-| --- | --- |
-| riga a catalogo senza ramo (`PRATICHE_GIORNALE`, `pratiche.giornale`) | 5, 6 |
-| `obsoleto_dal = oggi` su `EVENT_LOG` (ramo con riga ritirata) | 4, 7 |
-| `sorgente` di una tabella esistente ma non letta dalla vista | 6 |
-| `sorgente` inesistente | 6 |
-| `INSERT` senza `id` (prima del resync) | ⛔ `23505` sulla **PK**: gli id fissi del seed non avanzano la sequence. Da qui il `setval` nel `-09` e l'`id` esplicito (999999) nei test 9-12, che altrimenti sarebbero stati verdi per il vincolo sbagliato |
+| Mutazione                                                             | Rosso                                                                                                                                                                                                         |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| riga a catalogo senza ramo (`PRATICHE_GIORNALE`, `pratiche.giornale`) | 5, 6                                                                                                                                                                                                          |
+| `obsoleto_dal = oggi` su `EVENT_LOG` (ramo con riga ritirata)         | 4, 7                                                                                                                                                                                                          |
+| `sorgente` di una tabella esistente ma non letta dalla vista          | 6                                                                                                                                                                                                             |
+| `sorgente` inesistente                                                | 6                                                                                                                                                                                                             |
+| `INSERT` senza `id` (prima del resync)                                | ⛔ `23505` sulla **PK**: gli id fissi del seed non avanzano la sequence. Da qui il `setval` nel `-09` e l'`id` esplicito (999999) nei test 9-12, che altrimenti sarebbero stati verdi per il vincolo sbagliato |
 
 `test-vw-giornale-entita.sql` riprovato nella stessa transazione: 15/15.
 Guardrail statici (runOnChange, precondition-seed, ddl-trigger, grant-batch,

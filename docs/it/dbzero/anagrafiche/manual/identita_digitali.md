@@ -11,7 +11,7 @@ Architettura di riferimento:
 Tabelle correlate:
 >
 [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user) (bridge storico, mantenuto fino al cutover)
+> [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
 > [django.auth_user](/dbzero/django/auth_user)
 
 ---
@@ -65,10 +65,10 @@ caso peggiore. Il guard di coerenza
 [trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/manual/trgfn_identita_digitali_guard_coerenza)
 si biforca:
 
-| `tecnica` | Che cosa pretende |
-| --- | --- |
-| `true` | un soggetto-ruolo di tipo **`PROC_AUTO`** |
-| `false` | un soggetto-ruolo `RIS_UMANA`, **e una persona fisica pura** |
+| `tecnica` | Che cosa pretende                                            |
+| --------- | ------------------------------------------------------------ |
+| `true`    | un soggetto-ruolo di tipo **`PROC_AUTO`**                    |
+| `false`   | un soggetto-ruolo `RIS_UMANA`, **e una persona fisica pura** |
 
 ⇒ Marcare «tecnica» l'identità di una persona **non passa**: sarebbe stato il
 modo di far sparire un utente vero da tutti i conteggi che riguardano le
@@ -121,17 +121,17 @@ e il legame col processo vive in
 
 ### Campi di gestione autenticazione
 
-| Campo | Default | Scopo |
-|-------|---------|-------|
-| `attivo` | `true` | Soft flag. Se `false`, `auth_user.is_active` viene sincronizzato a `false` (gestione tramite `fn_sync_auth_user_is_active`). |
-| `valido_dal` | `CURRENT_DATE` | Inizio validità. |
-| `valido_al` | NULL | Fine validità (NULL = aperto). Scaduto → identità non utilizzabile. |
-| `deve_cambiare_password` | `false` | Se `true`, il middleware Django forza il cambio password al prossimo login. |
-| `invito_inviato_at` | NULL | Timestamp dell'ultimo invito di attivazione inviato (token monouso `INVITO_PORTALE`). |
-| `tentativi_falliti` | `0` | Contatore tentativi login KO consecutivi. Reset a 0 al login riuscito o allo scadere del blocco (§4.6.A.1). |
-| `bloccato_fino_a` | NULL | Timestamp fino al quale l'identità è bloccata per troppi falliti. `fn_check_blocco_login` effettua auto-unlock quando `bloccato_fino_a < now()` (§4.6.A.1). |
-| `totp_obbligatorio` | `false` | Flag MFA: se `true`, il login richiede TOTP. Generalizzato cross-ruolo (§4.6.A.1). |
-| `storicizza` | `true` | Flag opt-out per lo snapshot storico automatico (`trgfn_storico_generic`). |
+| Campo                    | Default        | Scopo                                                                                                                                                       |
+| ------------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attivo`                 | `true`         | Soft flag. Se `false`, `auth_user.is_active` viene sincronizzato a `false` (gestione tramite `fn_sync_auth_user_is_active`).                                |
+| `valido_dal`             | `CURRENT_DATE` | Inizio validità.                                                                                                                                            |
+| `valido_al`              | NULL           | Fine validità (NULL = aperto). Scaduto → identità non utilizzabile.                                                                                         |
+| `deve_cambiare_password` | `false`        | Se `true`, il middleware Django forza il cambio password al prossimo login.                                                                                 |
+| `invito_inviato_at`      | NULL           | Timestamp dell'ultimo invito di attivazione inviato (token monouso `INVITO_PORTALE`).                                                                       |
+| `tentativi_falliti`      | `0`            | Contatore tentativi login KO consecutivi. Reset a 0 al login riuscito o allo scadere del blocco (§4.6.A.1).                                                 |
+| `bloccato_fino_a`        | NULL           | Timestamp fino al quale l'identità è bloccata per troppi falliti. `fn_check_blocco_login` effettua auto-unlock quando `bloccato_fino_a < now()` (§4.6.A.1). |
+| `totp_obbligatorio`      | `false`        | Flag MFA: se `true`, il login richiede TOTP. Generalizzato cross-ruolo (§4.6.A.1).                                                                          |
+| `storicizza`             | `true`         | Flag opt-out per lo snapshot storico automatico (`trgfn_storico_generic`).                                                                                  |
 
 ---
 
@@ -145,28 +145,21 @@ speciale ma un **binding** tra l'identità e un profilo con
 
 * Il check viene fatto da [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin).
 * Il binding è gestito via [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings).
-* Post-cutover §13.3.2 (2026-04-19): la ex tabella bridge
-  `risorse_umane_auth_user` è ora una vista read-only su
-  `identita_digitali`; il binding `SUPER_ADMIN` viene creato/eliminato
-  esplicitamente dai caller (`fn_crea_risorsa_umana`,
-  `amm_software_repository`) su `config.profili_accesso_bindings`.
-* La vista
-  [risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
-  ricostruisce dinamicamente la stringa `ruolo_sistema` dal nuovo modello.
+* Il binding `SUPER_ADMIN` viene creato ed eliminato esplicitamente dai caller
+  (`fn_crea_risorsa_umana`, `amm_software_repository`) su
+  `config.profili_accesso_bindings`.
 
 ---
 
-### Relazione con la vista `risorse_umane_auth_user`
+### Il bridge storico non esiste piu'
 
-**Post-cutover 19-04-2026**: la ex tabella bridge `risorse_umane_auth_user`
-e' stata rinominata `_legacy_risorse_umane_auth_user` e sostituita da una
-vista read-only con `security_invoker = true` costruita su
-`identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`. La sorgente dati
-unica e' `identita_digitali`; la vista serve solo per retrocompatibilita'
-con codice legacy non ancora migrato. **Dal 12-09-2026 la tabella legacy non
-esiste piu'** (`90_end/20260912-10`, decisione Tid): la vista resta, la
-tabella che sostituiva e' stata eliminata con la sua shadow e le sue
-registrazioni.
+`anagrafiche.risorse_umane_auth_user` — la tabella che teneva il ponte fra una
+risorsa umana e un account Django — non esiste in nessuna forma. Era stata
+sostituita da una vista read-only con `security_invoker = true` costruita su
+`identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`, nata solo per la
+retrocompatibilita' del codice non ancora migrato; in seguito e' stata
+eliminata anche quella. Il legame risorsa ⇄ utente passa oggi e solo da
+`identita_digitali`.
 
 ---
 

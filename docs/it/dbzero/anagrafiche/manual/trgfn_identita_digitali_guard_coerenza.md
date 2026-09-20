@@ -34,15 +34,15 @@ fase `a10` (guard fail-fast).
 
 ### Matrice di coerenza
 
-| `ruolo_applicativo` | `tipi_ruoli.codice_interno` atteso | Vincoli aggiuntivi |
-|---------------------|-----------------------------------|--------------------|
-| `OPERATORE`, `tecnica = false` | `RIS_UMANA` | Soggetto persona fisica pura (CF obbligatorio, P.IVA vietata) |
-| `OPERATORE`, `tecnica = true` | ⭐ `PROC_AUTO` | nessuno: un processo non ha codice fiscale |
-| `CLIENTE_PORTALE` | `CL` | — |
-| `SHOP_CUSTOMER` | `CL` | — |
-| `FORNITORE_PORTALE` | `FO` | — |
-| `API_CLIENT` | nessun vincolo di coerenza | (rinviato a Fase 2 del modello multi-face auth) |
-| `DISABILITATO` | nessun vincolo di coerenza | Permette di conservare identità disattivate |
+| `ruolo_applicativo`            | `tipi_ruoli.codice_interno` atteso | Vincoli aggiuntivi                                            |
+| ------------------------------ | ---------------------------------- | ------------------------------------------------------------- |
+| `OPERATORE`, `tecnica = false` | `RIS_UMANA`                        | Soggetto persona fisica pura (CF obbligatorio, P.IVA vietata) |
+| `OPERATORE`, `tecnica = true`  | ⭐ `PROC_AUTO`                      | nessuno: un processo non ha codice fiscale                    |
+| `CLIENTE_PORTALE`              | `CL`                               | —                                                             |
+| `SHOP_CUSTOMER`                | `CL`                               | —                                                             |
+| `FORNITORE_PORTALE`            | `FO`                               | —                                                             |
+| `API_CLIENT`                   | nessun vincolo di coerenza         | (rinviato a Fase 2 del modello multi-face auth)               |
+| `DISABILITATO`                 | nessun vincolo di coerenza         | Permette di conservare identità disattivate                   |
 
 ---
 
@@ -92,22 +92,21 @@ un utente tecnico vero il cui legame col processo viene disattivato.
 
 ### Errori sollevati
 
-| Codice | Quando |
-|--------|--------|
-| `E_SOGGETTI_RUOLI` | Caso limite: `soggetto_ruolo_id` non trovato (la FK dovrebbe impedirlo, ma fail-fast esplicito per chiarezza). |
-| `E_SOGGETTI_RUOLI` (da `fn_guard_soggetto_ruolo`) | `tipo_ruolo` del soggetto_ruolo non coerente con il ruolo applicativo. |
-| `E_AUTH_USER_SOGGETTO_CON_PIVA` / `E_AUTH_USER_SOGGETTO_SENZA_CF` (da `fn_guard_soggetto_pf_pura`) | Violazione PF pura per ruolo `OPERATORE`. |
-| `E_RUOLO_APPLICATIVO_NON_GESTITO` | Valore enum non gestito dal dispatch CASE. |
+| Codice                                                                                             | Quando                                                                                                         |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `E_SOGGETTI_RUOLI`                                                                                 | Caso limite: `soggetto_ruolo_id` non trovato (la FK dovrebbe impedirlo, ma fail-fast esplicito per chiarezza). |
+| `E_SOGGETTI_RUOLI` (da `fn_guard_soggetto_ruolo`)                                                  | `tipo_ruolo` del soggetto_ruolo non coerente con il ruolo applicativo.                                         |
+| `E_AUTH_USER_SOGGETTO_CON_PIVA` / `E_AUTH_USER_SOGGETTO_SENZA_CF` (da `fn_guard_soggetto_pf_pura`) | Violazione PF pura per ruolo `OPERATORE`.                                                                      |
+| `E_RUOLO_APPLICATIVO_NON_GESTITO`                                                                  | Valore enum non gestito dal dispatch CASE.                                                                     |
 
 ---
 
-### Relazione con il bridge storico
+### Da dove viene
 
-Il guard è il gemello generalizzato di
-[`trgfn_risorse_umane_auth_user_guard_persona_fisica`](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_auth_user_guard_persona_fisica)
-ma lavora su `identita_digitali` (tutti i ruoli) invece che
-sul solo bridge operatori. I due condividono la logica PF pura tramite
-`fn_guard_soggetto_pf_pura` evitando duplicazione.
+Nella sua prima forma questo controllo era il gemello specializzato del ponte
+operatori, e vincolava la sola persona fisica. Generalizzato a
+`identita_digitali`, copre oggi tutti i ruoli applicativi e condivide la logica
+di persona fisica pura con `fn_guard_soggetto_pf_pura`, senza duplicarla.
 
 ---
 

@@ -295,3 +295,6 @@ Per questo l'ordine di efficacia è: **template → cancello → guida**, e ques
 pagina è l'ultimo dei tre. Serve per ciò che non si automatizza: *da chi difende
 questo guard? cosa vorrebbe dire davvero questa asserzione?* Il resto lo devono
 fare il template che copi e il cancello che ti ferma.
+
+---
+{% include-markdown "signature-core.md" %}
