@@ -45,6 +45,7 @@ BEGIN
             TG_NAME::text,
             'E_BA_SOGGETTO_INCOERENTE_ISTANZA',
             jsonb_build_object(
+                'campo', 'istanza_utility_id',
                 'billing_account_id',  NEW.id,
                 'codice',              NEW.codice,
                 'istanza_utility_id',  NEW.istanza_utility_id,

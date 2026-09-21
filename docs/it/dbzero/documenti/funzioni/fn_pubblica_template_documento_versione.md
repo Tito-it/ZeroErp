@@ -46,7 +46,7 @@ BEGIN
             'documenti',
             'fn_pubblica_template_documento_versione',
             'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO',
-            jsonb_build_object('versione_id', p_versione_id),
+            jsonb_build_object('campo', 'valido_dal', 'versione_id', p_versione_id),
             NULL::uuid,
             'valido_dal e'' obbligatorio'
         );
@@ -58,6 +58,7 @@ BEGIN
             'fn_pubblica_template_documento_versione',
             'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO',
             jsonb_build_object(
+                'campo', 'valido_al',
                 'versione_id', p_versione_id,
                 'valido_dal',  p_valido_dal,
                 'valido_al',   p_valido_al

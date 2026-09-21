@@ -36,6 +36,7 @@ BEGIN
                 TG_NAME,
                 'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI',
                 jsonb_build_object(
+                    'campo', CASE WHEN NEW.tipo_utenza_id IS NULL THEN 'tipo_utenza_id' ELSE 'classe_utenza_id' END,
                     'contratto_id', NEW.contratto_id,
                     'utility_id', NEW.utility_id,
                     'tipo_utenza_id', NEW.tipo_utenza_id,
@@ -54,6 +55,7 @@ BEGIN
                 TG_NAME,
                 'E_CONTRATTO_CLASSE_TIPO_INCOERENTE',
                 jsonb_build_object(
+                    'campo', 'classe_utenza_id',
                     'contratto_id', NEW.contratto_id,
                     'utility_id', NEW.utility_id,
                     'tipo_utenza_id_atteso', NEW.tipo_utenza_id,
@@ -75,6 +77,7 @@ BEGIN
                 TG_NAME,
                 'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI',
                 jsonb_build_object(
+                    'campo', CASE WHEN NEW.tipo_utenza_id IS NOT NULL THEN 'tipo_utenza_id' ELSE 'classe_utenza_id' END,
                     'contratto_id', NEW.contratto_id,
                     'utility_id', NEW.utility_id,
                     'tipo_utenza_id', NEW.tipo_utenza_id,

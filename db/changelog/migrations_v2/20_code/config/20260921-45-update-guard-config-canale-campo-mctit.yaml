@@ -1,0 +1,742 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-be-presidio-ui-action-e-canale-campi §4 — SANATURA DEL CANALE `campo`
+# nei guard di `config` (la strada A del §4-bis, codice per codice).
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   Questi codici promettono a catalogo `ui_action = highlight_form_fields`
+#   («evidenzia il campo del form»), ma il campo lo accende un ALTRO canale:
+#   la COLUMN che script.fn_log_and_raise_error legge dal context — chiave
+#   `campo`, ripiego `parametro`. Qui il context non la portava: il nome
+#   della colonna c'era, ma come CHIAVE (`'quantita', NEW.quantita`), nel
+#   posto che l'helper non legge (dbops.vw_punti_canale_campo:
+#   CHIAVE_NON_LETTA / NESSUNO). A video: un toast e nessun campo rosso.
+#   La promessa era vuota, e nessun test lo vedeva.
+#
+# ── ⭐ LA CORREZIONE: una coppia in piu', NIENTE ALTRO ─────────────
+#   `'campo', '<colonna>'` come prima coppia del jsonb_build_object della
+#   chiamata che nomina il codice. Firma, guard, messaggio, VARIADIC,
+#   tx_id: intatti. Il nome e' quello dell'INPUT che l'operatore ha davanti
+#   (regola di api.md §Envelope: un id dall'URL o un parametro di firma NON
+#   lo e' — quelli restano senza campo e sono la strada B, l'override esce
+#   dal lato BE).
+#
+# ── I CODICI, E IL CAMPO SCELTO (strada A) ──────────────────────────
+#   E_IVA_CONTO_ACQ_ERR / E_IVA_CONTO_VEN_ERR -> conto_iva_acquisti_id /
+#     conto_iva_vendita_id. ⚠️ Il nome c'era gia', sotto la chiave 'column'
+#     (che l'helper non legge): la chiave si RINOMINA in 'campo', niente
+#     coppia in piu'.
+#   E_NAZIONE_NON_TROVATA -> stato_id (nessuna nazione e nessun default)
+#   E_PROFILO_ACCESSO_BINDING_INCOERENTE (4 chiamate, un campo per ramo):
+#     REPARTO -> unita_organizzativa_id · PORTALE -> ruolo_applicativo ·
+#     AD_HOC e SUPER_ADMIN -> identita_digitale_id. E' il caso «una funzione,
+#     piu' chiamate, campi diversi»: n_con_canale = n_chiamate = 4.
+#   E_STATO_DOC_ESITO_NON_VERDETTO -> esito (l'esito scelto non e' un
+#     verdetto)
+#
+# ── ORIGINE DEL CORPO, E IL CANCELLO SUL CORPO STANTIO ─────────────
+#   Corpo VIVO (pg_get_functiondef, 21-09) per ogni funzione; il diff e' la
+#   sola inserzione (verificato per riga dal generatore). La preCondition
+#   ancora l'md5 di prosrc a quello letto: se qualcun altro tocca la stessa
+#   funzione prima dell'apply, il migrate si FERMA invece di disfargli il
+#   lavoro in silenzio (memoria: due changeSet dello stesso giorno sulla
+#   stessa funzione, 2026-09-09). dbdev e zeroerp_ci portano lo stesso md5
+#   (verificato 21-09), quindi la CI da zero passa.
+#   Il ripristino torna al corpo vivo di prima.
+#
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.1: i codici di
+#   questa lista non sono piu' CHIAVE_NON_LETTA/NESSUNO) + i pgTAP dei guard
+#   (invariati: il context in piu' non cambia nessun throws_ok).
+# Dipendenze: nessuna (la vista -42 li LEGGE, non serve all'apply).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260921-45-update-guard-config-canale-campo-mctit.yaml
+
+  - changeSet:
+      id: 20260921-45-update-guard-config-canale-campo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Canale campo nei guard di config:
+        config.trgfn_iva_guard_conti_iva,
+        config.trgfn_profili_accesso_bindings_guard_coerenza,
+        config.trgfn_stati_doc_guard_esito_verdetto,
+        config.trgfn_toponomastica_normalize — 'campo', '<colonna>' nel
+        context delle chiamate che nominano E_IVA_CONTO_ACQ_ERR,
+        E_IVA_CONTO_VEN_ERR, E_NAZIONE_NON_TROVATA,
+        E_PROFILO_ACCESSO_BINDING_INCOERENTE,
+        E_STATO_DOC_ESITO_NON_VERDETTO. Solo la coppia in piu'; corpo
+        vivo, md5 ancorato in preCondition.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            config: il corpo di una funzione da sanare non e' quello letto il
+            21-09 (md5 diverso): qualcuno l'ha toccata dopo. Rileggere il
+            vivo e rigenerare questo changeSet, non applicarlo.
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config' AND p.proname = 'trgfn_iva_guard_conti_iva'
+                     AND md5(p.prosrc) = '69a57752c6dcd0b6096d07c02e6fe6a4'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config' AND p.proname = 'trgfn_profili_accesso_bindings_guard_coerenza'
+                     AND md5(p.prosrc) = '20ef6fd05ac63ef232b62ad535eb419a'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config' AND p.proname = 'trgfn_stati_doc_guard_esito_verdetto'
+                     AND md5(p.prosrc) = '21877620d0fd4374ddf14652035724f0'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config' AND p.proname = 'trgfn_toponomastica_normalize'
+                     AND md5(p.prosrc) = '38d6b76ae1c06e5bd60e96ecd59de78e'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_iva_guard_conti_iva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_acq CHAR(1);
+                v_tipo_ven CHAR(1);
+              BEGIN
+                -- 
+                -- Constraint trigger per validare i conti IVA in config.iva
+                --    conto_iva_acquisti deve riferirsi a un conto di tipo A
+                --    conto_iva_vendita deve riferirsi a un conto di tipo V
+                -- Usa messaggi centralizzati in config.messaggi_errore
+                -- Schema: config
+                -- 
+
+                -- Validazione conto acquisti
+                IF NEW.conto_iva_acquisti_id IS NOT NULL THEN
+                  SELECT tipo_conto INTO v_tipo_acq
+                    FROM config.conti_contabili
+                   WHERE id = NEW.conto_iva_acquisti_id;
+                  IF v_tipo_acq IS DISTINCT FROM 'A' THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                        'database',
+                        TG_NAME,
+                        'E_IVA_CONTO_ACQ_ERR',
+                        jsonb_build_object('campo','conto_iva_acquisti_id','id',NEW.conto_iva_acquisti_id),
+                        NULL::uuid,
+                        NEW.conto_iva_acquisti_id::text
+                      );
+                  END IF;
+                END IF;
+
+                -- Validazione conto vendita
+                IF NEW.conto_iva_vendita_id IS NOT NULL THEN
+                  SELECT tipo_conto INTO v_tipo_ven
+                    FROM config.conti_contabili
+                   WHERE id = NEW.conto_iva_vendita_id;
+                  IF v_tipo_ven IS DISTINCT FROM 'V' THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_IVA_CONTO_VEN_ERR',
+                      jsonb_build_object('campo','conto_iva_vendita_id','id',NEW.conto_iva_vendita_id),
+                      NULL::uuid,
+                      NEW.conto_iva_vendita_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- %TYPE sulle colonne sorgente (policy ZeroErp).
+                  v_tipo_profilo config.profili_accesso.tipo%TYPE;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Trigger function: guard coerenza tipo_profilo <-> tipo_binding
+                  -- su config.profili_accesso_bindings (fase a10, BEFORE INSERT/UPDATE).
+                  --
+                  -- ⚠️ IL COMMENTO PRECEDENTE QUI DICEVA IL FALSO, e va corretto
+                  --   perche' ha gia' ingannato un test. Diceva: «il CHECK
+                  --   chk_profili_accesso_bindings_xor garantisce che esattamente
+                  --   una tra (uo, identita, ruolo) sia NOT NULL PRIMA che il
+                  --   trigger venga eseguito». In PostgreSQL e' il contrario: i
+                  --   trigger BEFORE ROW girano PRIMA che i vincoli CHECK siano
+                  --   valutati. Quindi con zero colonne valorizzate e' QUESTO
+                  --   guard a intercettare, e il CHECK non viene mai raggiunto.
+                  --   Il guard non puo' dare per acquisito l'xor: se ne accorge da
+                  --   solo, ed e' quello che fa.
+                  --
+                  -- Logica:
+                  --   1. Recupera tipo del profilo referenziato.
+                  --   2. Verifica che la colonna valorizzata corrisponda al tipo:
+                  --      REPARTO      => unita_organizzativa_id
+                  --      PORTALE      => ruolo_applicativo
+                  --      AD_HOC       => identita_digitale_id
+                  --      SUPER_ADMIN  => identita_digitale_id (§4.6.A.3)
+                  --
+                  -- ⚠️ I VALORI VARIADICI DEVONO ESSERE TANTI QUANTI I SEGNAPOSTO.
+                  --   Il messaggio di E_PROFILO_ACCESSO_BINDING_INCOERENTE e'
+                  --   «Profilo %s (tipo %s): …»: servono DUE valori. Passandone uno
+                  --   solo, fn_log_and_raise_error esplodeva in format() e il guard
+                  --   non arrivava mai a dire la ragione.
+                  --   Brief: brief-db-pgtap-runner-rls-baseline §13.
+                  -- ------------------------------------------------------------
+
+                  -- 1) Recupero tipo del profilo header.
+                  SELECT pa.tipo
+                    INTO v_tipo_profilo
+                    FROM config.profili_accesso pa
+                   WHERE pa.id = NEW.profilo_accesso_id;
+
+                  IF NOT FOUND THEN
+                      -- Caso limite: la FK lo impedirebbe, fail-fast esplicito.
+                      -- ⚠️ rev 2026-08-06: qui c'era E_PARAMETRO_INVALIDO, e il commento
+                      --   diceva il perche': «ha UN segnaposto, un valore basta». Il codice
+                      --   era stato scelto per la FORMA della stringa di formato, non per
+                      --   cosa significa — e quella scelta era arrivata fino allo status
+                      --   HTTP (400 «hai sbagliato a compilare» su una riga che non esiste).
+                      --   E_PROFILO_ACCESSO_NON_TROVATO ha anch'esso un solo segnaposto, e
+                      --   in piu' dice la verita'. Brief terzo lato §18.2/§18.5a.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_PROFILO_ACCESSO_NON_TROVATO',
+                          jsonb_build_object(
+                              'table', TG_TABLE_NAME,
+                              'profilo_accesso_id', NEW.profilo_accesso_id,
+                              'nota', 'profilo_accesso_id non trovato in config.profili_accesso'
+                          ),
+                          NULL::uuid,
+                          NEW.profilo_accesso_id::text
+                      );
+                  END IF;
+
+                  -- 2) Dispatch per tipo profilo.
+                  CASE v_tipo_profilo
+                      WHEN 'REPARTO' THEN
+                          IF NEW.unita_organizzativa_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'campo', 'unita_organizzativa_id',
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo REPARTO richiede unita_organizzativa_id'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      WHEN 'PORTALE' THEN
+                          IF NEW.ruolo_applicativo IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'campo', 'ruolo_applicativo',
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo PORTALE richiede ruolo_applicativo'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      WHEN 'AD_HOC' THEN
+                          IF NEW.identita_digitale_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'campo', 'identita_digitale_id',
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo AD_HOC richiede identita_digitale_id'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      WHEN 'SUPER_ADMIN' THEN
+                          -- SUPER_ADMIN e' un privilegio personale: sempre
+                          -- bindato a una singola identita, mai a reparto
+                          -- ne' a ruolo applicativo. Questo garantisce
+                          -- tracciabilita' individuale del bypass permessi.
+                          IF NEW.identita_digitale_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'campo', 'identita_digitale_id',
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo SUPER_ADMIN richiede identita_digitale_id (privilegio personale)'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      ELSE
+                          -- Nuovo valore dell'enum tipo_profilo_accesso senza
+                          -- regola qui: fail-fast esplicito (anti-bypass).
+                          -- E_PROFILO_ACCESSO_TIPO_NON_GESTITO ha UN segnaposto.
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME,
+                              'E_PROFILO_ACCESSO_TIPO_NON_GESTITO',
+                              jsonb_build_object(
+                                  'table', TG_TABLE_NAME,
+                                  'profilo_accesso_id', NEW.profilo_accesso_id,
+                                  'tipo_profilo', v_tipo_profilo,
+                                  'nota', 'Tipo profilo sconosciuto al guard di coerenza bindings'
+                              ),
+                              NULL::uuid,
+                              v_tipo_profilo::text
+                          );
+                  END CASE;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard (fase a10): la proiezione `esito` di una config.stati_doc_*
+              -- deve essere un verdetto (esiti_flussi_pratiche.is_verdetto=true).
+              -- NULL = nessun verdetto: ammesso. Codice inesistente: bloccato qui
+              -- (prima della FK) con lo stesso errore parlante.
+              DECLARE
+                  v_is_verdetto boolean;
+              BEGIN
+                  IF NEW.esito IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT e.is_verdetto
+                    INTO v_is_verdetto
+                    FROM config.esiti_flussi_pratiche e
+                   WHERE e.codice_interno = NEW.esito;
+
+                  IF v_is_verdetto IS DISTINCT FROM true THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config',
+                          'config.trgfn_stati_doc_guard_esito_verdetto',
+                          'E_STATO_DOC_ESITO_NON_VERDETTO',
+                          jsonb_build_object(
+                              'campo', 'esito',
+                              'tabella',        TG_TABLE_NAME,
+                              'codice_interno', NEW.codice_interno,
+                              'esito',          NEW.esito
+                          ),
+                          NULL,
+                          NEW.esito::text,
+                          TG_TABLE_NAME::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: default e validazione obbligatoria di stato_id su
+              --   config.toponomastica. ⚠️ `stato_id` e' la NAZIONE (FK
+              --   config.stati, codice_iso3), non lo stato di una macchina
+              --   a stati: il nome della colonna e' fuorviante ed e' la
+              --   ragione per cui questo errore ha condiviso per mesi il
+              --   codice con il cambio stato di commesse e preventivi.
+              --   rev 2026-08-06: solleva E_NAZIONE_NON_TROVATA. Il
+              --   precedente E_STATO_SCONOSCIUTO diceva due cose e non
+              --   poteva ricevere una policy sola: dandogli il 404 che
+              --   merita il cambio stato, questa form si sarebbe svuotata
+              --   mentre l'operatore digita. Qui la verita' e' 400 — c'e'
+              --   un campo da correggere. Brief terzo lato §11.2.
+              BEGIN
+                -- Default stato_id se mancante
+                IF NEW.stato_id IS NULL THEN
+                  NEW.stato_id := script.fn_get_default_by_param(
+                    'config',
+                    'stati',
+                    'codice_iso3',
+                    'state_code_iso3',
+                    TG_NAME
+                  )::integer;
+                END IF;
+
+                -- Se ancora NULL, errore: ne' il chiamante ne' il default
+                -- per parametro hanno risolto una nazione.
+                IF NEW.stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_NAZIONE_NON_TROVATA',
+                    jsonb_build_object('campo', 'stato_id', 'table','config.toponomastica'),
+                    NULL::uuid,
+                    'stato_id'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_iva_guard_conti_iva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_acq CHAR(1);
+                v_tipo_ven CHAR(1);
+              BEGIN
+                -- 
+                -- Constraint trigger per validare i conti IVA in config.iva
+                --    conto_iva_acquisti deve riferirsi a un conto di tipo A
+                --    conto_iva_vendita deve riferirsi a un conto di tipo V
+                -- Usa messaggi centralizzati in config.messaggi_errore
+                -- Schema: config
+                -- 
+
+                -- Validazione conto acquisti
+                IF NEW.conto_iva_acquisti_id IS NOT NULL THEN
+                  SELECT tipo_conto INTO v_tipo_acq
+                    FROM config.conti_contabili
+                   WHERE id = NEW.conto_iva_acquisti_id;
+                  IF v_tipo_acq IS DISTINCT FROM 'A' THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                        'database',
+                        TG_NAME,
+                        'E_IVA_CONTO_ACQ_ERR',
+                        jsonb_build_object('column','conto_iva_acquisti_id','id',NEW.conto_iva_acquisti_id),
+                        NULL::uuid,
+                        NEW.conto_iva_acquisti_id::text
+                      );
+                  END IF;
+                END IF;
+
+                -- Validazione conto vendita
+                IF NEW.conto_iva_vendita_id IS NOT NULL THEN
+                  SELECT tipo_conto INTO v_tipo_ven
+                    FROM config.conti_contabili
+                   WHERE id = NEW.conto_iva_vendita_id;
+                  IF v_tipo_ven IS DISTINCT FROM 'V' THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_IVA_CONTO_VEN_ERR',
+                      jsonb_build_object('column','conto_iva_vendita_id','id',NEW.conto_iva_vendita_id),
+                      NULL::uuid,
+                      NEW.conto_iva_vendita_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- %TYPE sulle colonne sorgente (policy ZeroErp).
+                  v_tipo_profilo config.profili_accesso.tipo%TYPE;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Trigger function: guard coerenza tipo_profilo <-> tipo_binding
+                  -- su config.profili_accesso_bindings (fase a10, BEFORE INSERT/UPDATE).
+                  --
+                  -- ⚠️ IL COMMENTO PRECEDENTE QUI DICEVA IL FALSO, e va corretto
+                  --   perche' ha gia' ingannato un test. Diceva: «il CHECK
+                  --   chk_profili_accesso_bindings_xor garantisce che esattamente
+                  --   una tra (uo, identita, ruolo) sia NOT NULL PRIMA che il
+                  --   trigger venga eseguito». In PostgreSQL e' il contrario: i
+                  --   trigger BEFORE ROW girano PRIMA che i vincoli CHECK siano
+                  --   valutati. Quindi con zero colonne valorizzate e' QUESTO
+                  --   guard a intercettare, e il CHECK non viene mai raggiunto.
+                  --   Il guard non puo' dare per acquisito l'xor: se ne accorge da
+                  --   solo, ed e' quello che fa.
+                  --
+                  -- Logica:
+                  --   1. Recupera tipo del profilo referenziato.
+                  --   2. Verifica che la colonna valorizzata corrisponda al tipo:
+                  --      REPARTO      => unita_organizzativa_id
+                  --      PORTALE      => ruolo_applicativo
+                  --      AD_HOC       => identita_digitale_id
+                  --      SUPER_ADMIN  => identita_digitale_id (§4.6.A.3)
+                  --
+                  -- ⚠️ I VALORI VARIADICI DEVONO ESSERE TANTI QUANTI I SEGNAPOSTO.
+                  --   Il messaggio di E_PROFILO_ACCESSO_BINDING_INCOERENTE e'
+                  --   «Profilo %s (tipo %s): …»: servono DUE valori. Passandone uno
+                  --   solo, fn_log_and_raise_error esplodeva in format() e il guard
+                  --   non arrivava mai a dire la ragione.
+                  --   Brief: brief-db-pgtap-runner-rls-baseline §13.
+                  -- ------------------------------------------------------------
+
+                  -- 1) Recupero tipo del profilo header.
+                  SELECT pa.tipo
+                    INTO v_tipo_profilo
+                    FROM config.profili_accesso pa
+                   WHERE pa.id = NEW.profilo_accesso_id;
+
+                  IF NOT FOUND THEN
+                      -- Caso limite: la FK lo impedirebbe, fail-fast esplicito.
+                      -- ⚠️ rev 2026-08-06: qui c'era E_PARAMETRO_INVALIDO, e il commento
+                      --   diceva il perche': «ha UN segnaposto, un valore basta». Il codice
+                      --   era stato scelto per la FORMA della stringa di formato, non per
+                      --   cosa significa — e quella scelta era arrivata fino allo status
+                      --   HTTP (400 «hai sbagliato a compilare» su una riga che non esiste).
+                      --   E_PROFILO_ACCESSO_NON_TROVATO ha anch'esso un solo segnaposto, e
+                      --   in piu' dice la verita'. Brief terzo lato §18.2/§18.5a.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_PROFILO_ACCESSO_NON_TROVATO',
+                          jsonb_build_object(
+                              'table', TG_TABLE_NAME,
+                              'profilo_accesso_id', NEW.profilo_accesso_id,
+                              'nota', 'profilo_accesso_id non trovato in config.profili_accesso'
+                          ),
+                          NULL::uuid,
+                          NEW.profilo_accesso_id::text
+                      );
+                  END IF;
+
+                  -- 2) Dispatch per tipo profilo.
+                  CASE v_tipo_profilo
+                      WHEN 'REPARTO' THEN
+                          IF NEW.unita_organizzativa_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo REPARTO richiede unita_organizzativa_id'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      WHEN 'PORTALE' THEN
+                          IF NEW.ruolo_applicativo IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo PORTALE richiede ruolo_applicativo'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      WHEN 'AD_HOC' THEN
+                          IF NEW.identita_digitale_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo AD_HOC richiede identita_digitale_id'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      WHEN 'SUPER_ADMIN' THEN
+                          -- SUPER_ADMIN e' un privilegio personale: sempre
+                          -- bindato a una singola identita, mai a reparto
+                          -- ne' a ruolo applicativo. Questo garantisce
+                          -- tracciabilita' individuale del bypass permessi.
+                          IF NEW.identita_digitale_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo SUPER_ADMIN richiede identita_digitale_id (privilegio personale)'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text,
+                                  v_tipo_profilo::text
+                              );
+                          END IF;
+
+                      ELSE
+                          -- Nuovo valore dell'enum tipo_profilo_accesso senza
+                          -- regola qui: fail-fast esplicito (anti-bypass).
+                          -- E_PROFILO_ACCESSO_TIPO_NON_GESTITO ha UN segnaposto.
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME,
+                              'E_PROFILO_ACCESSO_TIPO_NON_GESTITO',
+                              jsonb_build_object(
+                                  'table', TG_TABLE_NAME,
+                                  'profilo_accesso_id', NEW.profilo_accesso_id,
+                                  'tipo_profilo', v_tipo_profilo,
+                                  'nota', 'Tipo profilo sconosciuto al guard di coerenza bindings'
+                              ),
+                              NULL::uuid,
+                              v_tipo_profilo::text
+                          );
+                  END CASE;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard (fase a10): la proiezione `esito` di una config.stati_doc_*
+              -- deve essere un verdetto (esiti_flussi_pratiche.is_verdetto=true).
+              -- NULL = nessun verdetto: ammesso. Codice inesistente: bloccato qui
+              -- (prima della FK) con lo stesso errore parlante.
+              DECLARE
+                  v_is_verdetto boolean;
+              BEGIN
+                  IF NEW.esito IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT e.is_verdetto
+                    INTO v_is_verdetto
+                    FROM config.esiti_flussi_pratiche e
+                   WHERE e.codice_interno = NEW.esito;
+
+                  IF v_is_verdetto IS DISTINCT FROM true THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config',
+                          'config.trgfn_stati_doc_guard_esito_verdetto',
+                          'E_STATO_DOC_ESITO_NON_VERDETTO',
+                          jsonb_build_object(
+                              'tabella',        TG_TABLE_NAME,
+                              'codice_interno', NEW.codice_interno,
+                              'esito',          NEW.esito
+                          ),
+                          NULL,
+                          NEW.esito::text,
+                          TG_TABLE_NAME::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: default e validazione obbligatoria di stato_id su
+              --   config.toponomastica. ⚠️ `stato_id` e' la NAZIONE (FK
+              --   config.stati, codice_iso3), non lo stato di una macchina
+              --   a stati: il nome della colonna e' fuorviante ed e' la
+              --   ragione per cui questo errore ha condiviso per mesi il
+              --   codice con il cambio stato di commesse e preventivi.
+              --   rev 2026-08-06: solleva E_NAZIONE_NON_TROVATA. Il
+              --   precedente E_STATO_SCONOSCIUTO diceva due cose e non
+              --   poteva ricevere una policy sola: dandogli il 404 che
+              --   merita il cambio stato, questa form si sarebbe svuotata
+              --   mentre l'operatore digita. Qui la verita' e' 400 — c'e'
+              --   un campo da correggere. Brief terzo lato §11.2.
+              BEGIN
+                -- Default stato_id se mancante
+                IF NEW.stato_id IS NULL THEN
+                  NEW.stato_id := script.fn_get_default_by_param(
+                    'config',
+                    'stati',
+                    'codice_iso3',
+                    'state_code_iso3',
+                    TG_NAME
+                  )::integer;
+                END IF;
+
+                -- Se ancora NULL, errore: ne' il chiamante ne' il default
+                -- per parametro hanno risolto una nazione.
+                IF NEW.stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_NAZIONE_NON_TROVATA',
+                    jsonb_build_object('table','config.toponomastica'),
+                    NULL::uuid,
+                    'stato_id'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;

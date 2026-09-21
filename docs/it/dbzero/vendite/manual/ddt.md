@@ -171,7 +171,7 @@ davvero: `vendite.ordini_righe_fulfillment` (vedi la query qui sopra) e
   trasporto, ordine di origine via `sorgente_uid`) per `<ListaConfigurabile>` (`security_invoker=on`).
   Definizione lista/colonne in `ui.lista_definizione` / `ui.lista_colonna` (`codice = vendite.ddt`).
 * **`script.fn_available_actions_ddt`** — capabilities per il drawer (azioni data-driven dalla
-  matrice, `can_edit_*`, `push_commessa` via `fn_list_ddt_da_pushare`).
+  matrice, `can_edit_*`, `push_commessa` letto da `fn_ddt_push_diagnosi`, la fonte unica da cui deriva anche `fn_list_ddt_da_pushare`).
 * **Seed trasporto**: `config.causali_trasporto` e `config.aspetti_beni` (valori standard IT) —
   valorizzabili in testata, base per il PDF accompagnatorio.
 

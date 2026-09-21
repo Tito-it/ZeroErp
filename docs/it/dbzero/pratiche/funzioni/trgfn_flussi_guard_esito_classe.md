@@ -77,6 +77,7 @@ BEGIN
       'pratiche.trgfn_flussi_guard_esito_classe',
       'E_FLUSSI_ESITO_NON_AMMESSO',
       jsonb_build_object(
+        'campo', 'esito',
         'flusso_id',          NEW.id,
         'pratica_id',         NEW.pratica_id,
         'template_flusso_id', NEW.template_flusso_id,
@@ -97,6 +98,7 @@ BEGIN
       'pratiche.trgfn_flussi_guard_esito_classe',
       'E_FLUSSI_ESITO_NON_AMMESSO',
       jsonb_build_object(
+        'campo', 'esito',
         'flusso_id',          NEW.id,
         'pratica_id',         NEW.pratica_id,
         'template_flusso_id', NEW.template_flusso_id,

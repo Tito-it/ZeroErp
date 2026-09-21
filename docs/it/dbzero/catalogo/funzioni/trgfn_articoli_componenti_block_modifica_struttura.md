@@ -101,6 +101,7 @@ BEGIN
                 TG_NAME,
                 'E_BOM_VALIDO_AL_INVALIDO',
                 jsonb_build_object(
+                    'campo', 'valido_al',
                     'valido_al',   NEW.valido_al,
                     'valido_dal',  OLD.valido_dal,
                     'riga_id',     OLD.id

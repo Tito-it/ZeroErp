@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 21 settembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -414,8 +414,12 @@ il billing account: regge anche i DDT verso terzi e i casi con prospect senza BA
 Quando il DDT è emesso e ha righe eleggibili, l'azione **push a commessa** invia
 le righe alle **attività fatturabili** su una commessa (sorgente `DDT_VENDITA`),
 che a sua volta alimenta la pipeline di fatturazione. Le righe eleggibili sono
-quelle attive, con quantità positiva, non ancora inviate a una commessa
-(`fn_list_ddt_da_pushare`).
+quelle attive, con quantità positiva, non ancora inviate a una commessa. Chi lo
+decide è **una** funzione, [`fn_ddt_push_diagnosi`](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi):
+per ogni riga dice il motivo per cui *non* è inviabile (nessun motivo =
+eleggibile). Il lister del push (`fn_list_ddt_da_pushare`) ne deriva, e il
+pulsante del drawer con il suo tooltip leggono la stessa risposta — così ciò che
+il pulsante propone e ciò che il push esegue non possono divergere.
 
 > **XOR con l'ordine.** Una stessa merce si fattura **una volta sola**: se la
 > fatturazione avviene per DDT non avviene anche per l'ordine di origine, e

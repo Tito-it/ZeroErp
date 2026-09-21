@@ -30,6 +30,7 @@ BEGIN
             'vendite.trgfn_listini_guard_tipologia_utility',
             'E_LISTINO_TIPOLOGIA_UTILITY',
             jsonb_build_object(
+                'campo', 'tipologia_id',
                 'listino_id', NEW.id,
                 'utility_id', NEW.utility_id,
                 'tipologia_id', NEW.tipologia_id

@@ -1,0 +1,518 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-be-presidio-ui-action-e-canale-campi §4 — SANATURA DEL CANALE `campo`
+# nei guard di `pratiche` (la strada A del §4-bis, codice per codice).
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   Questi codici promettono a catalogo `ui_action = highlight_form_fields`
+#   («evidenzia il campo del form»), ma il campo lo accende un ALTRO canale:
+#   la COLUMN che script.fn_log_and_raise_error legge dal context — chiave
+#   `campo`, ripiego `parametro`. Qui il context non la portava: il nome
+#   della colonna c'era, ma come CHIAVE (`'quantita', NEW.quantita`), nel
+#   posto che l'helper non legge (dbops.vw_punti_canale_campo:
+#   CHIAVE_NON_LETTA / NESSUNO). A video: un toast e nessun campo rosso.
+#   La promessa era vuota, e nessun test lo vedeva.
+#
+# ── ⭐ LA CORREZIONE: una coppia in piu', NIENTE ALTRO ─────────────
+#   `'campo', '<colonna>'` come prima coppia del jsonb_build_object della
+#   chiamata che nomina il codice. Firma, guard, messaggio, VARIADIC,
+#   tx_id: intatti. Il nome e' quello dell'INPUT che l'operatore ha davanti
+#   (regola di api.md §Envelope: un id dall'URL o un parametro di firma NON
+#   lo e' — quelli restano senza campo e sono la strada B, l'override esce
+#   dal lato BE).
+#
+# ── I CODICI, E IL CAMPO SCELTO (strada A) ──────────────────────────
+#   E_FLUSSI_ESITO_NON_AMMESSO (2 chiamate) -> esito (l'esito dato al flusso
+#     non e' ammesso dalla modalita' del template: ramo o verdetto)
+#   E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO   -> esito_default
+#   E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO -> esito_default
+#   E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO   -> esito_default
+#   E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA      -> direzione
+#     (quattro rami dello stesso guard, il campo e' quello che il ramo
+#     giudica: n_con_canale = n_chiamate = 4)
+#
+# ── ORIGINE DEL CORPO, E IL CANCELLO SUL CORPO STANTIO ─────────────
+#   Corpo VIVO (pg_get_functiondef, 21-09) per ogni funzione; il diff e' la
+#   sola inserzione (verificato per riga dal generatore). La preCondition
+#   ancora l'md5 di prosrc a quello letto: se qualcun altro tocca la stessa
+#   funzione prima dell'apply, il migrate si FERMA invece di disfargli il
+#   lavoro in silenzio (memoria: due changeSet dello stesso giorno sulla
+#   stessa funzione, 2026-09-09). dbdev e zeroerp_ci portano lo stesso md5
+#   (verificato 21-09), quindi la CI da zero passa.
+#   Il ripristino torna al corpo vivo di prima.
+#
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.1: i codici di
+#   questa lista non sono piu' CHIAVE_NON_LETTA/NESSUNO) + i pgTAP dei guard
+#   (invariati: il context in piu' non cambia nessun throws_ok).
+# Dipendenze: nessuna (la vista -42 li LEGGE, non serve all'apply).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260921-47-update-guard-pratiche-canale-campo-mctit.yaml
+
+  - changeSet:
+      id: 20260921-47-update-guard-pratiche-canale-campo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Canale campo nei guard di pratiche:
+        pratiche.trgfn_flussi_guard_esito_classe,
+        pratiche.trgfn_template_flussi_guard_modalita_esito — 'campo',
+        '<colonna>' nel context delle chiamate che nominano
+        E_FLUSSI_ESITO_NON_AMMESSO,
+        E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA,
+        E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO,
+        E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO,
+        E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO. Solo la coppia in
+        piu'; corpo vivo, md5 ancorato in preCondition.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            pratiche: il corpo di una funzione da sanare non e' quello letto il
+            21-09 (md5 diverso): qualcuno l'ha toccata dopo. Rileggere il
+            vivo e rigenerare questo changeSet, non applicarlo.
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pratiche' AND p.proname = 'trgfn_flussi_guard_esito_classe'
+                     AND md5(p.prosrc) = '5a64c2dd5b474fd6583e41f05708c7a1'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pratiche' AND p.proname = 'trgfn_template_flussi_guard_modalita_esito'
+                     AND md5(p.prosrc) = '7d252302ef03b3fd0644fde81235ded8'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_esito_classe()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: al completamento di un flusso la CLASSE dell'esito deve
+              --        corrispondere alla modalita_esito del template:
+              --          DOMINIO     => esito di ramo (is_verdetto = false);
+              --          non-DOMINIO => verdetto      (is_verdetto = true).
+              --        Difesa in profondita' autoritativa: vale per qualunque
+              --        percorso di scrittura (BE di dominio, generico, SQL).
+              -- Regole:
+              --   1. Scoped alla TRANSIZIONE verso COMPLETATO: le righe gia'
+              --      completate (legacy PRA-0000243) restano toccabili.
+              --   2. Esito NULL a COMPLETATO -> competenza del guard 477.
+              --   3. Flusso senza template -> classe verdetto (come il BE, che
+              --      tratta il template assente come MANUALE).
+              DECLARE
+                v_modalita        pratiche.template_flussi.modalita_esito%TYPE;
+                v_template_codice pratiche.template_flussi.codice%TYPE;
+                v_is_verdetto     config.esiti_flussi_pratiche.is_verdetto%TYPE;
+              BEGIN
+                -- (1) Solo la transizione di completamento. L'evento e' UPDATE OF
+                -- stato_id: si esclude lo "stato riscritto identico" (no transizione).
+                IF TG_OP = 'UPDATE' AND OLD.stato_id = NEW.stato_id THEN
+                  RETURN NEW;
+                END IF;
+
+                -- (2) Senza esito non c'e' classe da validare (guard 477 presidia).
+                IF NEW.esito IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.stati_flussi_pratiche sfp
+                   WHERE sfp.id = NEW.stato_id
+                     AND sfp.codice_interno = 'COMPLETATO'
+                ) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- (3) Classe attesa dal template.
+                SELECT tf.modalita_esito, tf.codice
+                  INTO v_modalita, v_template_codice
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = NEW.template_flusso_id;
+                IF NOT FOUND THEN
+                  v_modalita        := 'MANUALE';
+                  v_template_codice := NULL;
+                END IF;
+
+                -- Classe dell'esito (esistenza gia' garantita da fk_flussi_esito;
+                -- guard difensivo comunque).
+                SELECT e.is_verdetto
+                  INTO v_is_verdetto
+                  FROM config.esiti_flussi_pratiche e
+                 WHERE e.codice_interno = NEW.esito;
+                IF NOT FOUND THEN
+                  RETURN NEW;
+                END IF;
+
+                IF v_modalita = 'DOMINIO' AND v_is_verdetto THEN
+                  -- Il caso PRA-0000243: verdetto generico su step a esito
+                  -- calcolato dal dominio -> ramo mai attivato, in silenzio.
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_flussi_guard_esito_classe',
+                    'E_FLUSSI_ESITO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'campo', 'esito',
+                      'flusso_id',          NEW.id,
+                      'pratica_id',         NEW.pratica_id,
+                      'template_flusso_id', NEW.template_flusso_id,
+                      'template_codice',    v_template_codice,
+                      'modalita_esito',     v_modalita,
+                      'esito',              NEW.esito
+                    ),
+                    NEW.tx_id,
+                    NEW.esito,
+                    COALESCE(v_template_codice, NEW.id::text),
+                    'ramo (calcolato dal dominio)'
+                  );
+                ELSIF v_modalita <> 'DOMINIO' AND NOT v_is_verdetto THEN
+                  -- Simmetrico: esito di ramo scritto su uno step normale
+                  -- (prima fermato solo dal guard BE lato operatore).
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_flussi_guard_esito_classe',
+                    'E_FLUSSI_ESITO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'campo', 'esito',
+                      'flusso_id',          NEW.id,
+                      'pratica_id',         NEW.pratica_id,
+                      'template_flusso_id', NEW.template_flusso_id,
+                      'template_codice',    v_template_codice,
+                      'modalita_esito',     v_modalita,
+                      'esito',              NEW.esito
+                    ),
+                    NEW.tx_id,
+                    NEW.esito,
+                    COALESCE(v_template_codice, NEW.id::text),
+                    'verdetto'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invarianti di coerenza della configurazione esito del
+              --        template-step. I CHECK di dominio vivono come constraint;
+              --        qui solo coerenza, con errore parlante (config-time).
+              --        DOMINIO = esito calcolato da un BB di dominio: niente
+              --        default (Inv3); gli automatismi che scrivono un default
+              --        devono scrivere un verdetto (Inv4).
+              BEGIN
+                -- Invariante 1: un automatismo deve sapere quale esito scrivere.
+                -- (Riformulata per DOMINIO: vale solo per AUTOMATICO/CONTESTUALE.)
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'campo', 'esito_default',
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito
+                    ),
+                    NEW.tx_id,
+                    NEW.modalita_esito,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                -- Invariante 2: solo gli step a direzione INTERNA possono
+                -- auto-risolversi senza intervento umano (AUTOMATICO).
+                IF NEW.modalita_esito = 'AUTOMATICO' AND NEW.direzione <> 'INTERNA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+                    jsonb_build_object(
+                      'campo', 'direzione',
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'direzione',          NEW.direzione
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.direzione
+                  );
+                END IF;
+
+                -- Invariante 3: DOMINIO non ammette esito_default (l'esito e'
+                -- calcolato a runtime dal building block di dominio).
+                IF NEW.modalita_esito = 'DOMINIO' AND NEW.esito_default IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
+                    jsonb_build_object(
+                      'campo', 'esito_default',
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.esito_default
+                  );
+                END IF;
+
+                -- Invariante 4: il default di un automatismo deve essere un
+                -- VERDETTO (is_verdetto=true): gli esiti di ramo sono calcolati
+                -- dal dominio, mai applicabili come default.
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NOT NULL
+                   AND EXISTS (
+                     SELECT 1
+                       FROM config.esiti_flussi_pratiche e
+                      WHERE e.codice_interno = NEW.esito_default
+                        AND NOT e.is_verdetto
+                   ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
+                    jsonb_build_object(
+                      'campo', 'esito_default',
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    NEW.esito_default,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_esito_classe()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: al completamento di un flusso la CLASSE dell'esito deve
+              --        corrispondere alla modalita_esito del template:
+              --          DOMINIO     => esito di ramo (is_verdetto = false);
+              --          non-DOMINIO => verdetto      (is_verdetto = true).
+              --        Difesa in profondita' autoritativa: vale per qualunque
+              --        percorso di scrittura (BE di dominio, generico, SQL).
+              -- Regole:
+              --   1. Scoped alla TRANSIZIONE verso COMPLETATO: le righe gia'
+              --      completate (legacy PRA-0000243) restano toccabili.
+              --   2. Esito NULL a COMPLETATO -> competenza del guard 477.
+              --   3. Flusso senza template -> classe verdetto (come il BE, che
+              --      tratta il template assente come MANUALE).
+              DECLARE
+                v_modalita        pratiche.template_flussi.modalita_esito%TYPE;
+                v_template_codice pratiche.template_flussi.codice%TYPE;
+                v_is_verdetto     config.esiti_flussi_pratiche.is_verdetto%TYPE;
+              BEGIN
+                -- (1) Solo la transizione di completamento. L'evento e' UPDATE OF
+                -- stato_id: si esclude lo "stato riscritto identico" (no transizione).
+                IF TG_OP = 'UPDATE' AND OLD.stato_id = NEW.stato_id THEN
+                  RETURN NEW;
+                END IF;
+
+                -- (2) Senza esito non c'e' classe da validare (guard 477 presidia).
+                IF NEW.esito IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.stati_flussi_pratiche sfp
+                   WHERE sfp.id = NEW.stato_id
+                     AND sfp.codice_interno = 'COMPLETATO'
+                ) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- (3) Classe attesa dal template.
+                SELECT tf.modalita_esito, tf.codice
+                  INTO v_modalita, v_template_codice
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = NEW.template_flusso_id;
+                IF NOT FOUND THEN
+                  v_modalita        := 'MANUALE';
+                  v_template_codice := NULL;
+                END IF;
+
+                -- Classe dell'esito (esistenza gia' garantita da fk_flussi_esito;
+                -- guard difensivo comunque).
+                SELECT e.is_verdetto
+                  INTO v_is_verdetto
+                  FROM config.esiti_flussi_pratiche e
+                 WHERE e.codice_interno = NEW.esito;
+                IF NOT FOUND THEN
+                  RETURN NEW;
+                END IF;
+
+                IF v_modalita = 'DOMINIO' AND v_is_verdetto THEN
+                  -- Il caso PRA-0000243: verdetto generico su step a esito
+                  -- calcolato dal dominio -> ramo mai attivato, in silenzio.
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_flussi_guard_esito_classe',
+                    'E_FLUSSI_ESITO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'flusso_id',          NEW.id,
+                      'pratica_id',         NEW.pratica_id,
+                      'template_flusso_id', NEW.template_flusso_id,
+                      'template_codice',    v_template_codice,
+                      'modalita_esito',     v_modalita,
+                      'esito',              NEW.esito
+                    ),
+                    NEW.tx_id,
+                    NEW.esito,
+                    COALESCE(v_template_codice, NEW.id::text),
+                    'ramo (calcolato dal dominio)'
+                  );
+                ELSIF v_modalita <> 'DOMINIO' AND NOT v_is_verdetto THEN
+                  -- Simmetrico: esito di ramo scritto su uno step normale
+                  -- (prima fermato solo dal guard BE lato operatore).
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_flussi_guard_esito_classe',
+                    'E_FLUSSI_ESITO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'flusso_id',          NEW.id,
+                      'pratica_id',         NEW.pratica_id,
+                      'template_flusso_id', NEW.template_flusso_id,
+                      'template_codice',    v_template_codice,
+                      'modalita_esito',     v_modalita,
+                      'esito',              NEW.esito
+                    ),
+                    NEW.tx_id,
+                    NEW.esito,
+                    COALESCE(v_template_codice, NEW.id::text),
+                    'verdetto'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invarianti di coerenza della configurazione esito del
+              --        template-step. I CHECK di dominio vivono come constraint;
+              --        qui solo coerenza, con errore parlante (config-time).
+              --        DOMINIO = esito calcolato da un BB di dominio: niente
+              --        default (Inv3); gli automatismi che scrivono un default
+              --        devono scrivere un verdetto (Inv4).
+              BEGIN
+                -- Invariante 1: un automatismo deve sapere quale esito scrivere.
+                -- (Riformulata per DOMINIO: vale solo per AUTOMATICO/CONTESTUALE.)
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito
+                    ),
+                    NEW.tx_id,
+                    NEW.modalita_esito,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                -- Invariante 2: solo gli step a direzione INTERNA possono
+                -- auto-risolversi senza intervento umano (AUTOMATICO).
+                IF NEW.modalita_esito = 'AUTOMATICO' AND NEW.direzione <> 'INTERNA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'direzione',          NEW.direzione
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.direzione
+                  );
+                END IF;
+
+                -- Invariante 3: DOMINIO non ammette esito_default (l'esito e'
+                -- calcolato a runtime dal building block di dominio).
+                IF NEW.modalita_esito = 'DOMINIO' AND NEW.esito_default IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.esito_default
+                  );
+                END IF;
+
+                -- Invariante 4: il default di un automatismo deve essere un
+                -- VERDETTO (is_verdetto=true): gli esiti di ramo sono calcolati
+                -- dal dominio, mai applicabili come default.
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NOT NULL
+                   AND EXISTS (
+                     SELECT 1
+                       FROM config.esiti_flussi_pratiche e
+                      WHERE e.codice_interno = NEW.esito_default
+                        AND NOT e.is_verdetto
+                   ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'E_TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    NEW.esito_default,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$
+              ;

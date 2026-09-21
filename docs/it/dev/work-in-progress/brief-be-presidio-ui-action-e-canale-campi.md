@@ -14,14 +14,23 @@
 > **Stato:** 🔵 aperto — misurato col criterio pieno (§3-bis) e **sanato lato
 > Python il 2026-09-21** (§3-ter: 13 codici mandano il campo, 16 override
 > tolti, `PayloadValidator` allineato); sette decisioni prese da Tid (§5).
-> Al team DB: la vista del §4, i 37 codici PL/pgSQL da sanare, due ritiri.
-> Il test nasce dopo (decisione 5). La prima
+> ✅ **Lato DB APPLICATO il 21-09 sera, nessuna regressione** (§4-bis): la vista
+> `dbops.vw_punti_canale_campo` (`20260921-42`) sopra una risalita condivisa
+> nuova (`-40`, con il rubinetto rimontato `-41`), la sanatura dei 37 codici
+> PL/pgSQL (30 **A** in `-43…-49`, 7 **B** al BE), i due ritiri nel CSV, il
+> `presidiato_da` di C1; pgTAP `test-punti-canale-campo-v1` 14/14, suite
+> senza regressioni (Tid). ▶ **Al BE, ora**: sette override da togliere (§4-bis.3),
+> `genera_error_policies`, e il test §6 sul contratto **come costruito**
+> (§4-bis.1). Il test nasce dopo (decisione 5). La prima
 > misura (§3, 2026-09-19, criterio grezzo) resta come storia. ✅ La richiesta
 > BE §6 di C1, accodata qui dal team DB, è **chiusa il 21-09**:
 > `apps/core/tests/test_stati_check_scrittori_python.py` (§7).
 >
 > **Da leggere per primo, dopo il §2: §3-bis — la misura vera, e i due difetti
 > di meccanismo che ha trovato senza cercarli.**
+>
+> **Lato DB, da leggere per primo: §4-bis — la vista come costruita (e dove si
+> scosta dal §4), il buco del rubinetto, la tabella A/B dei 37, i sette per il BE.**
 >
 > **Origine:** Tid, 2026-09-19 — *«fai sia C1 che C2, così chiudiamo l'analisi e
 > abbiamo i brief su cui lavorare»*.
@@ -371,6 +380,10 @@ Tid, non prima.
 
 ## 4. Richiesta al team DB — la metà PL/pgSQL
 
+> ✅ **Consegnata e APPLICATA il 21-09 sera: §4-bis.** Questa sezione resta
+> come richiesta; dove la vista costruita si scosta dal contratto chiesto lo
+> dice il §4-bis.1, con la ragione.
+
 Il presidio legge i corpi delle funzioni per sapere se il `context` porta
 `campo`. Due strade, e il BE sceglie quale:
 
@@ -449,6 +462,179 @@ prerequisiti c'erano tutti.
 
 ---
 
+## 4-bis. ✅ Consegnato lato DB — 2026-09-21 sera, APPLICATO
+
+*Scritto dal team DB, provato con l'SQL **estratto** dagli YAML in transazione
+ritirata; ✅ **applicato da Tid il 21-09 sera** (`20260921-40 → -49`, i due
+CSV), **pgTAP senza regressioni**. Dieci changeSet, due CSV, un pgTAP.*
+
+### 4-bis.1 La vista, com'è costruita — e dove si scosta dal contratto chiesto
+
+`dbops.vw_punti_canale_campo` (`20_code/dbops/20260921-42`), una riga per
+**(funzione, codice, via)**. Il test §6 la legge così:
+
+| Colonna | Valori | Nota |
+| --- | --- | --- |
+| `funzione` | `schema.nome`, plpgsql viva | i due helper sono **esclusi** (sono la sede del canale, non suoi punti) |
+| `codice` | ogni letterale `'E_*'` del corpo senza commenti | volutamente largo, come `vw_codici_errore_da_dichiarare`; `NULL` = ramo cieco su un sito `PRIMO_MOTIVO` (oggi zero) |
+| `via` | `DIRETTO` · `PRIMO_MOTIVO` · **`MOTIVO`** · **`NOMINATO`** | i due in grassetto sono in più rispetto al §4: `MOTIVO` è la `fn_check_*` che **emette** il codice (non un sito: la sede del campo per i `PRIMO_MOTIVO`), `NOMINATO` è il letterale in un corpo che non lo solleva con l'helper né lo emette (capability, esiti, `RAISE` diretti; `canale NULL`). ⭐ Servono al verso 1: «nessun sito» e «nominato e mai sollevato» si distinguono — `E_ONERE_CAUSALE_NON_VALIDA` sarebbe stato il secondo |
+| `canale` | `IN_CHIAMATA` · `IN_VARIABILE` · `CHIAVE_NON_LETTA` · `NESSUNO` | come chiesto. `IN_VARIABILE` copre **due** cose e non è mai un «ok» silenzioso: il context in una variabile del corpo (`l_error_ctx :=`, seguita fino all'assegnazione) **e** il codice in variabile (`fn_get_next_progressivo`: la chiave c'è ma non è attribuibile — mai `IN_CHIAMATA`, come chiesto) |
+| `chiave` | `campo` · `parametro` · `NULL` | precedenza a `campo`, come nell'helper; per `PRIMO_MOTIVO` viene anche dal `p_campo` letterale di `fn_raise_primo_motivo_se_presente` o dal `dettaglio` del motivo |
+| `nome_in_chiave` | *(in più)* | la colonna trovata come **chiave** del context (`'quantita', NEW.quantita` → `quantita`): è il nome da spostare in `campo` |
+| `n_chiamate`, `n_con_canale` | *(in più)* | quante chiamate portano quel codice, e quante col canale |
+| `check_funzioni` | *(in più)* | per `PRIMO_MOTIVO`, le check da cui il codice viene |
+
+⚠️ **Lo scostamento che conta, e la ragione.** Il §4 chiedeva un aggregato
+**pessimista** per (funzione, codice). Costruita, la regola del §2.1 è «*almeno
+un* punto di sollevamento valorizza il canale»: quindi `canale` è il
+**migliore fra le chiamate attribuite** a quel codice, e il pessimismo sta dove
+il §4 lo voleva davvero — nell'**attribuzione** (codice in variabile →
+`IN_VARIABILE`, mai `IN_CHIAMATA`), nell'**unione** delle check (`PRIMO_MOTIVO`
+dà il codice a *tutte* le chiamate), nel **motivo** (la chiave c'è solo se
+*tutti* i motivi di quel codice la portano). Il caso «tre chiamate, due col
+campo» (`fn_pubblica_template_documento_versione`: `versione_id` è un
+parametro, `valido_dal`/`valido_al` sono input) esce `IN_CHIAMATA` con
+`n_chiamate = 3`, `n_con_canale = 2`. ⇒ **Il test legge il verso 1 da
+`canale IN ('IN_CHIAMATA','IN_VARIABILE')` su `via IN ('DIRETTO','PRIMO_MOTIVO')`;
+il verso 2 («ogni punto») da `n_con_canale = n_chiamate`.** Un aggregato
+pessimista avrebbe dato `NESSUNO` a quella funzione, e la promessa sarebbe
+stata «vuota» con due input che la mantengono.
+
+`CHIAVE_NON_LETTA` è **stretta a `NEW.`/`OLD.`** («la colonna come chiave»,
+§3-bis.4): un `'sorgente_tipo_id', p_sorgente_tipo_id` di firma è `NESSUNO`,
+che è la risposta giusta — non c'è un input da accendere.
+
+**Misura del 21-09 sera** (dbdev, transazione ritirata, 0,3 s): 1068 righe —
+`DIRETTO` 908 (`IN_CHIAMATA` 189, `IN_VARIABILE` 6, `CHIAVE_NON_LETTA` 204,
+`NESSUNO` 509), `PRIMO_MOTIVO` 75, `MOTIVO` 68, `NOMINATO` 16; zero rami
+ciechi. I **17 «forse»** del §3-bis.2 sono spiegati: 4 (`E_CF_OBBLIGATORIO`,
+`E_PIVA_OBBLIGATORIA`, `E_CF_NON_VALIDO`, `E_PIVA_NON_VALIDA`: `v_error_ctx`/
+`l_error_ctx`) + 2 (`fn_get_next_progressivo`, codice in variabile) escono
+`IN_VARIABILE` con `chiave = campo`; gli 11 `E_MAG_*` escono **`IN_CHIAMATA`**
+perché la chiave sta nel `dettaglio` del motivo di `fn_check_riga_magazzino`,
+e la vista lo segue. `E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO` (§3-bis.2, il
+falso positivo) è una riga `DIRETTO/IN_VARIABILE`. I due da ritirare: zero
+righe, come previsto.
+
+Limiti dichiarati (nel `COMMENT` e nel pgTAP t.14): chiamata = testo fino al
+primo `;`; il 4° argomento dell'helper del primo motivo letto a un livello di
+parentesi; la chiave dentro un **letterale jsonb** (`'{"campo":…}'::jsonb`)
+non si vede; solo plpgsql; i `RAISE` diretti non passano di qui.
+
+### 4-bis.2 ⭐ Il buco trovato costruendola: il rubinetto non è «tutti i siti»
+
+Il §4 diceva *«si legge da `vw_punti_primo_motivo`, non si rifà»*. Costruendo:
+quella vista vede **solo** chi solleva il primo motivo **a mano**
+(`fn_log_and_raise_error(... ->> 'codice'`) — 6 punti — perché è il
+**rubinetto**, e il suo pgTAP pinna «zero in perimetro, ≤ 6 fuori». I **20**
+chiamanti di `fn_raise_primo_motivo_se_presente` (i bonificati) non ci sono
+per costruzione. Il presidio C2 deve vederli tutti e 26.
+
+⇒ Regola del 2: la risalita «funzione → `fn_check_*` nominate → codici» è
+uscita in una **sede sola**, `dbops.vw_funzioni_check_codici`
+(`20260921-40`), con in più `motivo_chiave` (il motivo porta la chiave nel
+`dettaglio`) e `n_motivi`; il rubinetto è **rimontato sopra** (`-41`, marcatore
+dei punti intatto, output identico riga per riga: 16 = 16) e C2 la legge.
+Due correzioni silenziose alla risalita vecchia, dichiarate nello YAML: le
+check si cercano nel sorgente **senza commenti**, e via il **doppione** su
+`fn_riporta_attivita_da_emettere / E_ATTIVITA_IN_LAVORAZIONE`. Provati sopra
+la rimonta: il rubinetto (7/7, canarina compresa) e lo scanner dell'arità
+(7/7).
+
+⚠️ E una trappola pagata scrivendo: la finestra di un motivo **non** è «dal
+codice al `;`» — le check a CTE (`fn_check_attivita_riportabile_da_emettere`)
+costruiscono quattro motivi in **uno** statement, e la prima stesura ne
+vedeva uno. Si spezza sulle occorrenze di `'codice',`.
+
+### 4-bis.3 La sanatura dei 37: la tabella A/B, e i sette per il BE
+
+Stessa regola del §3-ter: **A** = il guard ha in mano il nome di un **input
+della pagina** → `'campo', '<colonna>'` come prima coppia del
+`jsonb_build_object` della chiamata (una coppia in più, niente altro: firma,
+guard, messaggio, `VARIADIC` intatti); **B** = parametro di firma, id
+dall'URL, invariante → la promessa era sbagliata, **l'override esce dal lato
+BE**. Corpi **vivi** (`pg_get_functiondef`), diff verificato riga per riga da
+un generatore, `plpgsql_check` a zero su tutte, preCondition ancorata all'**md5
+del corpo** letto (uguale su dbdev e `zeroerp_ci`): se qualcuno tocca la
+stessa funzione prima dell'apply il migrate si **ferma** invece di disfargli il
+lavoro (memoria del 09-09).
+
+**A — 30 codici, 27 funzioni, sette changeSet per schema** (`-43` anagrafiche,
+`-44` catalogo, `-45` config, `-46` documenti, `-47` pratiche, `-48` script,
+`-49` vendite):
+
+| Codice | Funzione | `campo` |
+| --- | --- | --- |
+| `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE` | `vendite.trgfn_listini_righe_guard_tipologia` | `articolo_id` |
+| `E_BA_SOGGETTO_INCOERENTE_ISTANZA` | `anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza` | `istanza_utility_id` |
+| `E_BOM_VALIDO_AL_INVALIDO` | `catalogo.trgfn_articoli_componenti_block_modifica_struttura` | `valido_al` |
+| `E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO` | `vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile` | `tipo_doc_fiscale_id` |
+| `E_CONTO_BANCARIO` | i due guard `anagrafiche.trgfn_soggetti[_ruoli]_conti_bancari_guard` | `conto_bancario_id` |
+| `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | `vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino` | `articolo_id` |
+| `E_CONTRATTO_CLASSE_TIPO_INCOERENTE` | `vendite.trgfn_contratti_utilities_guard_tipo_classe` | `classe_utenza_id` |
+| `E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI` | idem | `CASE`: il campo **valorizzato** fra `tipo_utenza_id` e `classe_utenza_id` |
+| `E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI` | idem | `CASE`: il campo **mancante** fra i due |
+| `E_DATA_ERRATA` | `anagrafiche.trgfn_sepa_mandati_guard` | `data_attivazione` |
+| `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` | `documenti.fn_pubblica_template_documento_versione` | `valido_dal`, `valido_al` (2 chiamate su 3: `versione_id` è di firma) |
+| `E_FLUSSI_ESITO_NON_AMMESSO` | `pratiche.trgfn_flussi_guard_esito_classe` (2) | `esito` |
+| `E_FORMA_GIURIDICA_PAESE` | `anagrafiche.trgfn_dati_societari_guard_forma_giuridica` | `forma_giuridica_id` |
+| `E_IVA_CONTO_ACQ_ERR`, `E_IVA_CONTO_VEN_ERR` | `config.trgfn_iva_guard_conti_iva` | `conto_iva_acquisti_id` / `conto_iva_vendita_id` — il nome c'era sotto la chiave `'column'`: **rinominata** |
+| `E_LISTINO_TIPOLOGIA_UTILITY` | `vendite.trgfn_listini_guard_tipologia_utility` | `tipologia_id` |
+| `E_NAZIONE_NON_TROVATA` | `config.trgfn_toponomastica_normalize` | `stato_id` |
+| `E_PREV_UTILITY_ISTANZA_INCOERENTE` | `vendite.trgfn_preventivi_guard_utility_istanza_coerenza` | `utility_id` (come il sito Python del §3-ter) |
+| `E_PROFILO_ACCESSO_BINDING_INCOERENTE` | `config.trgfn_profili_accesso_bindings_guard_coerenza` (4) | per ramo: `unita_organizzativa_id` · `ruolo_applicativo` · `identita_digitale_id` ×2 |
+| `E_QTA_MISSING`, `E_QTA_OPERATIVA_NON_INTERA`, `E_QTA_OPER_STEP_INVALIDO` | `script.trgfn_qta_from_operativa` | `qta_operativa` |
+| `E_UOM_MISSING` | idem | `uom_operativa_id` |
+| `E_QTA_NON_POSITIVA` | 5 guard: `ordini_ful` · `resi_accrediti` (2) · `resi_riconsegne` · `resi_righe` · `resi_rinunce` | la colonna di ciascuno: `qta_evasa` · `qta`/`qta_partita` · `qta` · `quantita` · `qta` |
+| `E_RISORSA_UMANA_SOGGETTO_MISMATCH` | `anagrafiche.trgfn_risorse_umane_guard_ruolo` | `soggetto_ruolo_id` |
+| `E_STATO_DOC_ESITO_NON_VERDETTO` | `config.trgfn_stati_doc_guard_esito_verdetto` | `esito` |
+| i quattro `E_TEMPLATE_FLUSSO_*` | `pratiche.trgfn_template_flussi_guard_modalita_esito` | `esito_default` ×3, `direzione` (AUTOMATICO_SOLO_INTERNA) |
+| `E_TIPO_INDIRIZZO_NON_PERMESSO` | `anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` | `tipo_indirizzo_id` — ⚠️ il context era **rotto** (il codice come chiave, un intero come seconda chiave): riscritto con le tre coppie nominate |
+
+Dopo la sanatura (SQL estratto, transazione ritirata): tutti e 30 escono
+`IN_CHIAMATA / campo`; il pgTAP t.1 li **pinna** — se un guard viene riemesso
+da uno YAML più vecchio della sanatura, diventa rosso (provato per mutazione:
+36 righe nominate).
+
+▶ **B — 7 codici: richiesta al BE, l'override esce da `error_ui_overrides.py`**
+(torna al banner di classe; a video oggi non cambia niente, §3-ter):
+
+| Codice | Perché non c'è un input |
+| --- | --- |
+| `E_ARTICOLO_NON_COMPOSITO` | `prodotto_id` è la pagina in cui si sta (URL): il rimedio è marcare l'articolo composito, non un campo della riga |
+| `E_COERENZA_ID` | `attivita_fatturabili`: le righe le scrive la pipeline, non un form |
+| `E_FORNITORE_ID_INVALIDO` | `p_fornitore_id` di firma (`fn_guard_fornitore_attivo`) |
+| `E_NOTE_TARGET_ID` | `target_riga_id`: un legame, non un input (come `E_NOTA_RIGA_INCOERENTE` nel §3-ter) |
+| `E_SOGGETTO_NULL` | parametri di `fn_get_or_create_soggetto_ruolo` |
+| `E_SORG_KEY_MISSING` (3 siti) | invariante della sorgente polimorfa |
+| `E_STATO_SORGENTE_PARAM_INVALIDO` | parametri di `fn_stato_sorgente` |
+
+### 4-bis.4 I due ritiri, e la riga di C1
+
+`codici_errore.csv`: `obsoleto_dal = 2026-09-21` su `E_ATTIVITA_VALIDATION`
+(decisione 2) e `E_ONERE_CAUSALE_NON_VALIDA` (decisione 7), con la ragione
+nella nota; i messaggi restano (`test-porta-oneri-v1` t.19 li conta), le
+policy BE restano. Il mirror è `runOnChange` (`20260614-08`): rigira
+all'apply. ▶ Poi `genera_error_policies` lato BE.
+
+`presidi.csv`: le due viste nuove a catalogo (`INVENTARIO`; il pgTAP del
+catalogo t.2 le pretende), e la riga di `vw_stati_check_da_sanare` porta ora
+`backend/apps/core/tests/test_stati_check_scrittori_python.py` come
+`presidiato_da` (§7: fatto). ⚠️ La riga **`CANCELLO`** di C2 si scrive quando
+il test §6 esiste, come deciso.
+
+### 4-bis.5 Cosa resta, lato DB
+
+* ✅ **apply** fatto da Tid il 21-09 sera: `20260921-40 → -49` e i due CSV
+  applicati, pgTAP **senza regressioni**;
+* 🔵 la riga `CANCELLO` in `presidi.csv` quando il test §6 nasce;
+* ⚠️ la lista **viva** dei `CHIAVE_NON_LETTA`/`NESSUNO` fuori dai 37 (204 +
+  509 righe `DIRETTO`) è del DB, non di questo brief: sono codici con
+  un'altra `ui_action` (verso 2, «solo misurato», decisione 1) o promesse
+  già mantenute altrove; si legge dalla vista quando serve.
+
+---
+
 ## 5. Decisioni per Tid
 
 1. **Il verso 2 si presidia o si dichiara?** Un codice `show_error_banner` che
@@ -464,6 +650,8 @@ prerequisiti c'erano tutti.
    ▶ **Richiesta al team DB**: `obsoleto_dal` sui due codici in
    `codici_errore.csv`; lato BE il marker di ONERE è già uscito, gli override
    restano (un codice ritirato deve continuare a risolvere per il diario).
+   ✅ **DB, 21-09 sera**: `obsoleto_dal = 2026-09-21` su entrambi, **applicato**
+   (§4-bis.4); ▶ ora `genera_error_policies` lato BE.
 3. **Dove vive**: `apps/core/tests/` accanto ai fratelli (decisione 2
    dell'analisi, mai presa). Proposta: lì, con `# Scopo:` che nomina questo
    brief — la «cartella dei presidi del percorso storto» non serve finché
@@ -505,20 +693,25 @@ prerequisiti c'erano tutti.
   rifatta con quello (§3-bis) — fuori dal presidio, come misura datata;
 * 🔵 le **sette decisioni** del §5 (le prime tre dal 19-09, le altre nate
   dalla misura);
-* 🔵 **richiesta al team DB**: `obsoleto_dal` su `E_ATTIVITA_VALIDATION` e
-  `E_ONERE_CAUSALE_NON_VALIDA` (decisioni 2 e 7, prese il 21-09); poi
-  `genera_error_policies`;
+* ✅ **richiesta al team DB**: `obsoleto_dal` su `E_ATTIVITA_VALIDATION` e
+  `E_ONERE_CAUSALE_NON_VALIDA` (decisioni 2 e 7, prese il 21-09) — **applicato**
+  il 21-09 sera (§4-bis.4); 🔵 ora `genera_error_policies` (BE);
 * ✅ sanare `PayloadValidator` (decisione 6): tre metodi, tre test;
 * ✅ **la tabella A/B del §3-ter** applicata (13 A, 16 B): lato Python zero
-  promesse vuote; 🔵 i 37 lato DB nel §4;
-* 🔵 la richiesta della vista al team DB (§4) — dopo la decisione 4;
+  promesse vuote; ✅ i 37 lato DB decisi e **applicati** (§4-bis.3: 30 A nei
+  changeSet `-43…-49`); 🔵 **i 7 B sono del BE**: sette override da togliere;
+* ✅ la vista (§4) — `20260921-40/-41/-42`, **applicata** il 21-09 sera, viva
+  su dbdev; il contratto **come costruito** è il §4-bis.1, e il test §6 lo
+  legge da lì (aggregato «migliore fra le chiamate», `n_con_canale`, le due
+  `via` in più);
 * 🔵 il test in `apps/core/tests/test_ui_action_e_canale_campi.py` (sede
   decisa), **senza** `_DEBITO` (decisione 5: sanare prima) e col solo registro
   delle esenzioni `(codice, verso) → ragione`, nei due versi di ritiro — nasce
   quando la vista del §4 c'è e i 37 del DB sono sanati; il criterio Python
   deve conoscere anche `_CAMPO_PER_CODICE_DB` (§3-ter);
 * 🔵 una riga in `api.md` §Envelope che nomini il presidio, e una in
-  `dbops.presidi` (`CANCELLO`, quando la vista e il test esistono entrambi).
+  `dbops.presidi` (`CANCELLO`, quando la vista e il test esistono entrambi —
+  le righe `INVENTARIO` delle due viste ci sono già, §4-bis.4).
 
 ---
 
@@ -546,6 +739,6 @@ nella vista. Il vincolo «solo» non è pedanteria: senza, `get`/`post` legavano
 tutto e accendevano 4 righe `ESENTE`; e le **docstring** vanno tolte come i
 commenti, perché `commesse_source_handlers` nomina `attivita_consumi` in una
 docstring e diventava «scrittore» di una tabella che non tocca. I limiti sono in
-testa al file. 🔵 Al team DB resta una riga: `presidi.csv`, `presidiato_da` di
+testa al file. ✅ Al team DB restava una riga: `presidi.csv`, `presidiato_da` di
 `vw_stati_check_da_sanare` → il nome del file, al posto di «richiesta §6 del
-brief».
+brief» — **scritta il 21-09 sera** (§4-bis.4), nello stesso giro del CSV.
