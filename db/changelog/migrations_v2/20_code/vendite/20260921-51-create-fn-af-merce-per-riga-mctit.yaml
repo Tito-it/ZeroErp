@@ -1,0 +1,320 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — IL CONTATORE DELLE ATTIVITA' FATTURABILI, PER CHIAVE (giro 4 — D5)
+#   brief-db-partita-merce-per-documento §2-bis.5, §7 «Giro 4», §11;
+#   decisione D5 di Tid del 2026-09-21: «DA FARE, passo a se', dopo D3 e D4».
+#
+# ── IL DIFETTO, SUL MODELLO ────────────────────────────────────────────
+#
+#   vendite.vw_af_merce_per_riga traduce le attivita' fatturabili in
+#   quantita' per riga di documento. E' l'`af` della partita (fn_partite_merce)
+#   e l'`ord` della situazione per riga d'ordine (fn_situazione_merce_ordine):
+#   dopo la chiusura del giro 1 era l'UNICO pezzo del conto ancora letto
+#   INTERO anche con un seme — «il pavimento». E cresce con le FATTURE, non
+#   con i DDT: e' la tabella che nel tempo cresce di piu', e non si svuota
+#   mai. Fatto datato (dbdev, app, 21-09): ~12 dei 24 ms della partita di un
+#   DDT erano questa lettura.
+#
+# ── LA FORMA (D1: un corpo) ────────────────────────────────────────────
+#
+#   Il contatore passa in vendite.fn_af_merce_per_riga(p_segment_keys) e la
+#   vista ne diventa la proiezione senza filtro (20260921-52). Il seme sono
+#   le CHIAVI DI SEGMENTO senza suffisso ('DDT:<uid>:R:<riga>',
+#   'ORD:<uid>:R:<riga>'): chi legge per documento le conosce, perche' la
+#   chiusura ha in mano le righe e i documenti (uid). NULL = tutte (la
+#   vista); array VUOTO = zero righe. Di ogni chiave si prendono la chiave
+#   ESATTA e le chiavi che ne portano un SUFFISSO ('#RET:<n>' rettifica,
+#   '#CMP:<id>' componente di kit, anche combinati): «la base e' cio' che
+#   precede il primo #», che e' la stessa grammatica con cui la vista ricava
+#   riga_id e kit_key.
+#
+# ── ⛔ LA FORMA DEL PREDICATO, ed e' il pezzo che non e' stile ─────────
+#
+#   commesse_attivita e' sotto RLS. Provato il 21-09 sera come zeroerp_app
+#   (tabella temporanea con FORCE ROW LEVEL SECURITY e una policy plpgsql):
+#   sotto una policy salgono nell'indice SOLO le clausole interamente
+#   leakproof — `=`, `= ANY`, e gli operatori del pattern `~>=~` / `~<~` con
+#   il bordo come VARIABILE gia' calcolata. Un `LIKE 'k#CMP:%'` NON sale mai
+#   (textlike non e' leakproof), nemmeno a costante; `k || '$'` scritto DENTRO
+#   la clausola di join la rende leaky (textcat) e la scansione torna intera;
+#   un OR con dentro una funzione leaky spegne i path parametrizzati.
+#   Quindi:
+#     * i due BORDI si calcolano nella CTE `chiavi`, MATERIALIZED — non per
+#       costo: se il planner la inlina, il bordo torna un'espressione e
+#       l'indice non serve piu' nulla;
+#     * il predicato e' un OR di soli operatori leakproof:
+#         segment_key = k  OR  (segment_key ~>=~ k||'#' AND segment_key ~<~ k||'$')
+#       cioe' «la chiave, o la chiave seguita da '#…'» — '$' e' il primo byte
+#       DOPO '#', quindi il range e' ESATTAMENTE il prefisso 'k#'; e diventa
+#       un BitmapOr di Index Cond sopra la policy. ⚠️ Non e' un LIKE: i
+#       metacaratteri `_`/`%` nelle chiavi non sono jolly;
+#     * l'indice e' ix_commesse_attivita_segment_key con varchar_pattern_ops
+#       (90_end/20260921-50): con la collation it_IT un btree ordinario non
+#       conosce `~>=~`.
+#   Il vicino numerico e' coperto dalla forma: ':R:1' non prende ':R:12'
+#   (la cifra '2' e' oltre '$'). Il pgTAP lo costruisce.
+#
+#   Rami in UNION ALL, mai `p IS NULL OR …` (giro 1, §2-bis.2): il ramo
+#   «tutte» con `p_segment_keys IS NULL` e' un One-Time Filter. La CTE che
+#   sceglie le attivita' NON e' MATERIALIZED: e' letta una volta, e inlinata
+#   in modo TUTTI il piano e' quello della vista di prima.
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#
+#   Le 7 colonne, i tipi e i numeri: dalla rev 2026-08-18 (20260818-73) della
+#   vista, ricopiata con la sola sorgente di commesse_attivita sostituita.
+#   ⚠️ RETURNS TABLE perde il typmod di tipo_movimento (varchar(32)): la
+#   vista lo ricasta per nome; il pgTAP lo pinna.
+#
+# ── CHI LA CHIAMA (nello stesso giro) ─────────────────────────────────
+#
+#   fn_partite_merce (20260921-53): le chiavi DDT delle origini O e le chiavi
+#   ORD dei fulfillment della chiusura; fn_situazione_merce_ordine (-54): le
+#   chiavi ORD delle righe in uscita. Entrambe col seme CALCOLATO (sub-select
+#   → Function Scan, plancache della funzione: e' la forma del giro 2) e il
+#   ramo TUTTI con il letterale NULL, inlinato.
+#
+# ── ⛔ pgjdbc ──────────────────────────────────────────────────────────
+#
+#   La funzione `BEGIN ATOMIC` sta DA SOLA nel suo `sql:`; il COMMENT in un
+#   secondo change dello stesso changeSet (giro 1, provato col jar).
+#
+# Presidio: db/pgtap/vendite/test-fn-af-merce-per-riga-chiusura-v1.sql
+#   (casi COSTRUITI: chiave semplice, il vicino numerico, kit #CMP,
+#   rettifica #RET e #RET#CMP, due corsie con lo stesso numero, suffisso
+#   ignoto, array vuoto, pin di forma e dell'opclass, scope).
+# Dipendenze: 20260818-73 (la forma della vista che qui si ricopia).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-51-create-fn-af-merce-per-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260921-51-create-fn-af-merce-per-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 4 (D5): vendite.fn_af_merce_per_riga(p_segment_keys), BEGIN
+        ATOMIC, il contatore delle attivita' fatturabili per riga di documento
+        ristretto alle chiavi di segmento chieste (chiave esatta + suffissi
+        #RET/#CMP, via range a byte `~>=~`/`~<~` con bordi precalcolati: la
+        sola forma che sale sopra la policy RLS — un LIKE non lo fa mai).
+        NULL = tutte. Stesse 7 colonne e stessi numeri della vista
+        (20260818-73), che nel 20260921-52 ne diventa la proiezione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: commesse_attivita }
+            - tableExists: { schemaName: vendite, tableName: attivita_fatturabili }
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_af_merce_per_riga'
+                     AND pronamespace = 'vendite'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_af_merce_per_riga(
+                  -- ⚠️ Array esplicito: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  --    Gli elementi sono chiavi di vendite.commesse_attivita.segment_key
+                  --    SENZA suffisso: 'DDT:<uid>:R:<riga>' / 'ORD:<uid>:R:<riga>'.
+                  p_segment_keys character varying[] DEFAULT NULL)
+              -- Ancorata la colonna PROIETTATA da una tabella (il typmod cade: la
+              -- vista lo ricasta per nome); tipi espliciti, con la ragione, per
+              -- cio' che e' CALCOLATO.
+              RETURNS TABLE(
+                  corsia         character varying,   -- vocabolario calcolato: ORD / DDT (split_part della chiave)
+                  riga_id        bigint,              -- calcolato dalla chiave: riga d'ORDINE o di DDT secondo la corsia
+                  tipo_movimento vendite.attivita_fatturabili.tipo_movimento%TYPE,
+                  quantita       numeric,             -- somma in unita' del PADRE (calcolata)
+                  misurabile     boolean,             -- calcolato (kit: coefficienti presenti e concordi)
+                  da_componenti  boolean,             -- calcolato (almeno un'istanza di kit)
+                  voci           integer)             -- count (calcolato)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+              -- ══════════════════════════════════════════════════════════════════════
+              -- IL CONTATORE DELLE ATTIVITA' FATTURABILI, PER CHIAVE (D14 giro 4 — D5,
+              -- 2026-09-21).
+              --
+              -- Il corpo e' UNO: vendite.vw_af_merce_per_riga e' la proiezione di
+              -- fn_af_merce_per_riga(NULL). Chi legge per documento passa le chiavi di
+              -- segmento della propria chiusura e paga quelle, non la tabella intera.
+              --
+              -- IL SEME: chiavi SENZA suffisso. Di ciascuna entrano la chiave esatta e
+              -- le chiavi che ne portano un suffisso ('#RET:<n>', '#CMP:<id>', anche
+              -- combinati): «la base e' cio' che precede il primo #». NULL = tutte;
+              -- un array VUOTO semina zero righe.
+              --
+              -- ⛔ LA FORMA DEL PREDICATO (provata il 21-09 come app sotto RLS):
+              --   * i BORDI del range stanno in una CTE MATERIALIZED, come colonne:
+              --     scritti dentro la clausola (`k || '$'`) sarebbero textcat — non
+              --     leakproof — e la clausola non salirebbe sopra la policy;
+              --   * `=` OR (`~>=~` bordo AND `~<~` bordo): soli operatori leakproof,
+              --     BitmapOr di Index Cond su ix_commesse_attivita_segment_key
+              --     (varchar_pattern_ops). '$' = chr(35 + 1) e' il primo byte dopo
+              --     '#': il range [k#, k$) e' ESATTAMENTE «comincia per k#».
+              --   * ⛔ MAI un LIKE qui: sotto una policy non diventa Index Cond.
+              -- ══════════════════════════════════════════════════════════════════════
+              WITH chiavi AS MATERIALIZED (
+                  -- Il seme, con i due bordi gia' calcolati (vedi sopra: non e' costo,
+                  -- e' la condizione perche' il join sia indicizzabile sotto RLS).
+                  -- ⚠️ NORMALIZZATO: la base di ogni chiave (cio' che precede il primo
+                  --    '#') e DISTINCT. Una chiave ripetuta, o passata CON un suffisso
+                  --    accanto alla sua base, farebbe entrare due volte le stesse
+                  --    attivita' nel join e RADDOPPIEREBBE la somma — provato il 21-09
+                  --    con le chiavi vive passate tutte insieme (56 righe diverse).
+                  SELECT b.k,
+                         (b.k || '#')::character varying AS k_dies,   -- la prima chiave con suffisso
+                         (b.k || '$')::character varying AS k_hi      -- il primo byte DOPO '#'
+                    FROM (SELECT DISTINCT split_part(u.k, '#', 1)::character varying AS k
+                            FROM unnest(p_segment_keys) AS u(k)
+                           WHERE u.k IS NOT NULL AND u.k <> '') b
+              ), ca_in AS (
+                  -- Le attivita' di commessa: quelle delle chiavi, o tutte.
+                  SELECT ca.id, ca.segment_key, ca.meta, ca.stato_emissione
+                    FROM chiavi s
+                    JOIN vendite.commesse_attivita ca
+                      ON (   ca.segment_key = s.k
+                          OR (ca.segment_key ~>=~ s.k_dies AND ca.segment_key ~<~ s.k_hi))
+                   WHERE p_segment_keys IS NOT NULL
+                  UNION ALL
+                  SELECT ca.id, ca.segment_key, ca.meta, ca.stato_emissione
+                    FROM vendite.commesse_attivita ca
+                   WHERE p_segment_keys IS NULL
+              ),
+              -- ══ DA QUI IN GIU' E' LA VISTA (rev 2026-08-18, 20260818-73), con la sola
+              --    sorgente di commesse_attivita sostituita da ca_in. ══
+              base AS (
+                  -- Attivita' fatturabili agganciate a una riga di documento
+                  -- merce, con la segment_key scomposta nei suoi pezzi.
+                  -- Il filtro corsia ORD/DDT tiene fuori PREV, CONS, MAN.
+                  SELECT af.quantita                                          AS quantita,
+                         af.tipo_movimento                                    AS tipo_movimento,
+                         split_part(ca.segment_key, ':', 1)                   AS corsia,
+                         (substring(ca.segment_key FROM ':R:([0-9]+)'))::bigint AS riga_id,
+                         -- Istanza di kit = tutto cio' che sta a SINISTRA del
+                         -- separatore. Identifica il kit venduto, non l'articolo:
+                         -- lo stesso kit puo' comparire due volte da righe diverse.
+                         split_part(ca.segment_key, '#CMP:', 1)               AS kit_key,
+                         (ca.segment_key LIKE '%#CMP:%')                      AS e_componente,
+                         -- Moltiplicatore scritto al push. Il controllo di forma
+                         -- e' una cintura: un valore non numerico farebbe fallire
+                         -- il cast a lettura, cioe' fermerebbe la FATTURAZIONE
+                         -- (il contatore dosa il push). Meglio «non misurabile».
+                         CASE
+                           WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
+                             THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0)
+                         END                                                  AS coeff_qta
+                    FROM vendite.attivita_fatturabili af
+                    JOIN ca_in ca ON ca.id = af.commessa_attivita_id
+                   WHERE split_part(ca.segment_key, ':', 1) IN ('ORD', 'DDT')
+                     AND ca.segment_key ~ ':R:[0-9]+'
+                     -- ⭐ 2026-08-18: l'attivita' ANNULLATA e' USCITA dalla corsia
+                     --   di fatturazione e non ci rientra, quindi non ha fatturato
+                     --   nulla. Senza questa riga una rettifica emessa, resettata e
+                     --   poi annullata lasciava qui la sua AF e la partita restava
+                     --   pareggiata: la riga di reso non tornava MAI in coda
+                     --   accrediti (brief note-credito §10).
+                     -- ⛔ Solo ANNULLATA, MAI «= EMESSA»: dopo un reset di lotto
+                     --   l'attivita' e' NON_EMESSA e sta ANCORA nella corsia — il
+                     --   vaso e' li' perche' il ri-emit lo riempia. Escluderla
+                     --   farebbe risultare la stessa merce da fatturare due volte.
+                     AND ca.stato_emissione <> 'ANNULLATA'
+              ),
+              kit AS (
+                  -- Una riga per ISTANZA di kit, riportata in unita' del padre.
+                  -- max e non sum: i componenti sono N letture della stessa
+                  -- quantita' di padre. Se non concordano (min <> max) il valore
+                  -- e' ambiguo -> non misurabile, e non si sceglie per comodita'.
+                  SELECT b.corsia,
+                         b.riga_id,
+                         b.tipo_movimento,
+                         b.kit_key,
+                         max(b.quantita / b.coeff_qta)                        AS quantita_padre,
+                         ( bool_and(b.coeff_qta IS NOT NULL)
+                           AND min(b.quantita / b.coeff_qta)
+                             = max(b.quantita / b.coeff_qta) )                AS misurabile
+                    FROM base b
+                   WHERE b.e_componente
+                   GROUP BY b.corsia, b.riga_id, b.tipo_movimento, b.kit_key
+              ),
+              unita_padre AS (
+                  -- Kit normalizzati e righe semplici, ormai nella stessa unita'.
+                  SELECT k.corsia, k.riga_id, k.tipo_movimento,
+                         k.quantita_padre AS quantita, k.misurabile, TRUE AS da_componenti
+                    FROM kit k
+                  UNION ALL
+                  SELECT b.corsia, b.riga_id, b.tipo_movimento,
+                         b.quantita, TRUE, FALSE
+                    FROM base b
+                   WHERE NOT b.e_componente
+              )
+              SELECT u.corsia::character varying                              AS corsia,
+                     u.riga_id                                                AS riga_id,
+                     u.tipo_movimento                                         AS tipo_movimento,
+                     COALESCE(SUM(u.quantita), 0)                             AS quantita,
+                     bool_and(u.misurabile)                                   AS misurabile,
+                     bool_or(u.da_componenti)                                 AS da_componenti,
+                     COUNT(*)::integer                                        AS voci
+                FROM unita_padre u
+               GROUP BY u.corsia, u.riga_id, u.tipo_movimento;
+              END;
+        # ⛔ Il COMMENT sta in un change SUO: pgjdbc esegue un `BEGIN ATOMIC … END;`
+        #    solo se sta da solo nel testo (giro 1, provato col jar di Liquibase).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_af_merce_per_riga(character varying[]) IS
+                'IL CONTATORE DELLE ATTIVITA'' FATTURABILI PER RIGA DI DOCUMENTO, PER CHIAVE '
+                '(D14 giro 4 — D5, 2026-09-21): lo stesso conto di vendite.vw_af_merce_per_riga '
+                '— che ne e'' la proiezione senza filtro, fn_af_merce_per_riga(NULL) — '
+                'ristretto alle CHIAVI DI SEGMENTO chieste. Il seme sono chiavi senza '
+                'suffisso (''DDT:<uid>:R:<riga>'', ''ORD:<uid>:R:<riga>''): di ciascuna entrano '
+                'la chiave esatta e le chiavi con un suffisso (#RET:<n>, #CMP:<id>, anche '
+                'combinati) — la base e'' cio'' che precede il primo #, la stessa grammatica '
+                'con cui il conto ricava riga_id e kit_key. NULL = tutte; un array VUOTO '
+                'semina zero righe. Le chiavi sono NORMALIZZATE (la base prima del primo #, '
+                'DISTINCT): un duplicato, o una chiave passata col suffisso accanto alla sua '
+                'base, non raddoppia la somma. ⛔ LA FORMA DEL PREDICATO NON E'' STILE: commesse_attivita '
+                'e'' sotto RLS e sotto una policy salgono nell''indice solo clausole '
+                'interamente leakproof — `=` e gli operatori del pattern `~>=~`/`~<~` con il '
+                'bordo PRECALCOLATO nella CTE MATERIALIZED `chiavi` (scritto nella clausola, '
+                '`k || ''$''` sarebbe textcat, non leakproof); un LIKE non diventa MAI Index '
+                'Cond sotto una policy (textlike non e'' leakproof), nemmeno a costante '
+                '(provato il 21-09 come app). Il range [k#, k$) e'' esattamente «comincia '
+                'per k#» (''$'' e'' il byte dopo ''#''): il vicino numerico :R:1 non prende :R:12. '
+                'Indice: ix_commesse_attivita_segment_key con varchar_pattern_ops '
+                '(90_end/20260921-50). Rami in UNION ALL, mai `p IS NULL OR`. BEGIN ATOMIC: '
+                'dipendenze in pg_depend, catena RLS leggibile dal presidio security_invoker. '
+                'INVOKER: la RLS resta di chi legge. Stesse 7 colonne e stessi numeri della '
+                'vista (rev 20260818-73); tipo_movimento perde il typmod nel RETURNS e la '
+                'vista lo ricasta. Chiamanti per chiave: fn_partite_merce (chiavi DDT delle '
+                'origini O + chiavi ORD dei fulfillment della chiusura), '
+                'fn_situazione_merce_ordine (chiavi ORD delle righe in uscita). Brief: '
+                'brief-db-partita-merce-per-documento §11.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo finche' 20260921-52 non ha fatto della vista la proiezione
+              --    di questa funzione: dopo, il DROP cascaderebbe sulla vista e su
+              --    vw_contatore_merce, e i lettori (-53, -54) la nominano.
+              DROP FUNCTION IF EXISTS vendite.fn_af_merce_per_riga(character varying[]);

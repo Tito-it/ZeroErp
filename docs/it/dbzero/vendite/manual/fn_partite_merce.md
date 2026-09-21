@@ -3,6 +3,7 @@
 > 👀 **Vedi anche**
 >
 > [vendite.vw_partite_merce](/dbzero/vendite/views/vw_partite_merce) — la stessa cosa, senza filtro
+> [vendite.fn_af_merce_per_riga](/dbzero/vendite/funzioni/fn_af_merce_per_riga) — il contatore, letto per le chiavi della chiusura
 > [vendite.vw_af_merce_per_riga](/dbzero/vendite/views/vw_af_merce_per_riga)
 > [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare)
 > [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi)
@@ -72,8 +73,21 @@ Ne discende la **chiusura**, a due salti:
    «sorelle»), e la ripartizione dell'accredito fra loro è quella vera.
 
 `riga` e `orig` si calcolano su R0 ∪ R1; `sospetto` sui DDT di R0 ∪ R1;
-`af` — il contatore delle attività fatturabili — resta **intero** anche con un
-seme (è il passo D5 del brief: cresce con le fatture, non con i DDT).
+`af` — il contatore delle attività fatturabili — si legge **per chiave di
+segmento** (giro 4, D5): la chiusura conosce le chiavi che le servono — una
+chiave `DDT:<uid>:R:<riga>` per ogni riga di O (la rettifica dell'origine, la
+merce e le rettifiche delle righe in uscita) e una chiave `ORD:<uid>:R:<riga>`
+per ogni riga d'ordine dei fulfillment della chiusura (il serbatoio della
+greedy) — e le passa a
+[`fn_af_merce_per_riga`](/dbzero/vendite/funzioni/fn_af_merce_per_riga), che
+risolve da sola i suffissi `#RET`/`#CMP`. Era l'ultimo pezzo del conto letto
+intero, ed è quello che cresce con le fatture, non con i DDT.
+
+> ⚠️ La chiave `ORD` nasce dall'`uid` dell'ordine, letto sotto RLS: la vista
+> senza seme conta il serbatoio d'ordine di una riga anche senza *vedere*
+> l'ordine (legge solo la commessa). L'equivalenza presuppone che ordine e
+> commessa stiano nello stesso perimetro — il billing account li tiene insieme,
+> perché un BA ha un solo emittente. È dichiarato, non scoperto dopo.
 
 ⭐ **È equivalente alla vista per costruzione**, non per confronto: ogni
 colonna di una riga di R0 dipende solo da righe che la chiusura conserva. Il

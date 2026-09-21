@@ -92,6 +92,7 @@
 ## ⚙️ Funzioni
 - [fn_accoda_stampe_lotto](funzioni/fn_accoda_stampe_lotto.md) — (rev 2026-08-21)
 - [fn_accredita_riga_reso](funzioni/fn_accredita_riga_reso.md) — (rev 2026-09-21 — la coda si legge per documento · rev 2026-08-18)
+- [fn_af_merce_per_riga](funzioni/fn_af_merce_per_riga.md) — È il **contatore delle attività fatturabili per riga di documento** — la stessa domanda di `vw_af_merce_per_riga` (*«di questa riga, quanti pezzi sono entrati nella corsia di fatturazione?»*) — che risponde **solo per le righe che le si chiedono**. La vista ne è la proiezione senza filtro: `fn_af_merce_per_riga(NULL)`. Un corpo solo.
 - [fn_aggiungi_onere_commessa](funzioni/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annulla_accredito_riga_reso](funzioni/fn_annulla_accredito_riga_reso.md) — (rev 2026-08-21 — funzione del 2026-08-18)
 - [fn_annulla_commessa_attivita](funzioni/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
@@ -384,7 +385,7 @@
 - [trgfn_v_resi_protect_num](funzioni/trgfn_v_resi_protect_num.md) — (rev 2026-07-13)
 
 ## 🔍 Views
-- [vw_af_merce_per_riga](views/vw_af_merce_per_riga.md) — (latest review 2026-08-17)
+- [vw_af_merce_per_riga](views/vw_af_merce_per_riga.md) — (latest review 2026-09-21)
 - [vw_commesse_attivita_emittibilita](views/vw_commesse_attivita_emittibilita.md)
 - [vw_contatore_merce](views/vw_contatore_merce.md) — (latest review 2026-08-17)
 - [vw_contratti_lista](views/vw_contratti_lista.md) — (rev 2026-08-21)

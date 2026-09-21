@@ -9,6 +9,10 @@ Approfondimento tabelle:
 > [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)
 > [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
 >
+La funzione di cui questa vista è la proiezione:
+>
+[vendite.fn_af_merce_per_riga](/dbzero/vendite/funzioni/fn_af_merce_per_riga) — lo stesso conto, per le chiavi di segmento che le si chiedono
+>
 Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
@@ -17,7 +21,7 @@ Viste collegate:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 2026-08-17)
+(latest review 2026-09-21)
 
 `vendite.vw_af_merce_per_riga` risponde a **una sola domanda**, e la risponde per tutti:
 
@@ -27,6 +31,14 @@ Nient'altro. Non decide se è giusto, non sottrae niente, non giudica: **traduce
 ci sono le attività fatturabili — le righe che la macchina della fatturazione produce — e
 dall'altra ci sono le righe dei documenti che le persone leggono: righe d'ordine e righe di
 DDT. Questa vista è il ponte fra le due.
+
+> ⭐ **Il conto non sta più qui: sta in
+> [`fn_af_merce_per_riga`](/dbzero/vendite/funzioni/fn_af_merce_per_riga), e questa vista ne è
+> la proiezione senza filtro** — un corpo solo. Chi legge *tutto* (i pgTAP, `vw_contatore_merce`)
+> legge la vista; chi legge per documento — la partita, la situazione per riga d'ordine — chiama la
+> funzione con le chiavi di segmento delle righe che gli servono, e paga quelle, non la storia
+> intera della fatturazione. È il motivo per cui questa vista era diventata «il pavimento» del conto
+> della merce: l'unico pezzo ancora letto intero, e quello che cresce con le fatture.
 
 ⭐ **Esiste perché quella traduzione ha due trappole**, e finché stava dentro il contatore le
 faceva inciampare tutti quelli che la usavano.
@@ -154,11 +166,16 @@ WHERE da_componenti AND NOT misurabile;
   Questa vista è il terzo lettore, e il primo che **se ne accorge** quando manca: invece di
   produrre un numero sbagliato, si dichiara non misurabile.
 * `security_invoker=on`: la vista è letta con i permessi di chi interroga, quindi la RLS di
-  scope resta attiva. ⚠️ Chi la modifica con `CREATE OR REPLACE` **deve ri-specificare la
+  scope resta attiva — attraverso la funzione, che è `INVOKER` e `BEGIN ATOMIC`, quindi visibile
+  al presidio delle viste. ⚠️ Chi la modifica con `CREATE OR REPLACE` **deve ri-specificare la
   reloption**: non è visibile in `pg_get_viewdef` e verrebbe azzerata in silenzio.
+* ⚠️ **Colonne per nome, non `SELECT *`**: il `RETURNS TABLE` della funzione perde il typmod di
+  `tipo_movimento` (`varchar(32)`), e un `CREATE OR REPLACE VIEW … AS SELECT *` lo perderebbe in
+  silenzio, senza poterlo più riprendere. La vista ricasta; il presidio della funzione pinna i tipi.
 * ⚠️ **In sviluppo tutti i coefficienti valgono 1**, quindi la divisione dei kit non è
   esercitata dai dati reali: il test ne costruisce uno apposta con coefficienti 2 / 1 / 0.5.
-* Test: `db/pgtap/vendite/test-vw-af-merce-per-riga-v1.sql`.
+* Test: `db/pgtap/vendite/test-vw-af-merce-per-riga-v1.sql` (il conto) e
+  `test-fn-af-merce-per-riga-chiusura-v1.sql` (la lettura per chiave, i pin di forma).
 
 ---
 
