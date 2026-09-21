@@ -25,7 +25,10 @@ from apps.core.types import (
 # Whitelist relazioni consentite per la lookup generica.
 # Include tutte le tabelle config con struttura id/codice/descrizione.
 # La funzione DB fn_get_lookup_codici valida ulteriormente la struttura delle colonne.
-_REL_CONSENTITE: frozenset[str] = frozenset(
+# ⭐ Pubblica (era `_REL_CONSENTITE` fino al 2026-09-21): e' il perimetro del
+#    pannello config e del metadata delle FK, quindi la leggono tre moduli —
+#    un nome privato importato da fuori mentiva sul suo ruolo.
+REL_CONSENTITE: frozenset[str] = frozenset(
     {
         # --- config ---
         "config.ambiti",
@@ -195,10 +198,10 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 #                        «assegna» e che si ritira con `obsoleto_dal` — sarebbe
 #                        stata un 500 alla prima chiamata, con la rel dichiarata
 #                        ammessa (`feedback_contratto_dichiarato_provalo_intero`).
-# ⛔ Le tabelle del PANNELLO CONFIG sono ESATTAMENTE `_REL_CONSENTITE`: il
+# ⛔ Le tabelle del PANNELLO CONFIG sono ESATTAMENTE `REL_CONSENTITE`: il
 #    pannello lista le righe col lookup generico, quindi una tabella che il
 #    lookup non sa servire non la sa servire nemmeno il pannello. Fino al
-#    2026-09-21 qui c'era un superset `CONFIG_TABLES = _REL_CONSENTITE | {lotti}`,
+#    2026-09-21 qui c'era un superset `CONFIG_TABLES = REL_CONSENTITE | {lotti}`,
 #    nato per `magazzino.lotti` (senza `descrizione`) con la promessa «il pannello
 #    legge information_schema e non ne ha bisogno» — vera per il drawer, falsa
 #    per la LISTA: a video la tabella era vuota con un 400 ingoiato. Due nomi
@@ -413,7 +416,7 @@ class DbopsRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        if rel not in _REL_CONSENTITE:
+        if rel not in REL_CONSENTITE:
             raise ServiceError(
                 code="E_CORE_VALIDATION",
                 message="Relazione non consentita.",
@@ -512,7 +515,7 @@ class DbopsRepository:
     #        per le anagrafiche fisse senza `attivo` (es. config.utilities) vale la sola
     #        esistenza (quelle tabelle non hanno il concetto di attivazione).
     def check_lookup_id_exists(self, *, rel: str, record_id: int) -> bool:
-        if rel not in _REL_CONSENTITE:
+        if rel not in REL_CONSENTITE:
             raise ServiceError(
                 code="E_CORE_VALIDATION",
                 message="Relazione non consentita.",

@@ -16,7 +16,7 @@
 #   1. `has_attivo` assente = True: `t.attivo` in proiezione e nel predicato
 #   2. `has_attivo: False`: `NULL::boolean AS attivo`, nessun predicato su
 #      `attivo`, e `attivo_only=True` (il DEFAULT dell'API) non filtra niente
-#   3. ogni rel specializzata e' anche in `_REL_CONSENTITE` (una specializzata
+#   3. ogni rel specializzata e' anche in `REL_CONSENTITE` (una specializzata
 #      fuori whitelist non si raggiunge: sarebbe una riga di config morta)
 #   4. [DB vero] ogni rel specializzata risponde: la colonna extra c'e', il
 #      contratto generico e' intero, e su `config.registri_giornale`
@@ -30,7 +30,7 @@ from django.test import SimpleTestCase
 
 from apps.core.db.dbops_repository import (
     _LOOKUP_SPECIALIZZATE,
-    _REL_CONSENTITE,
+    REL_CONSENTITE,
     DbopsRepository,
 )
 from apps.core.tests.db_e2e import richiedi_db_provvisto
@@ -77,7 +77,7 @@ class LookupSpecializzateComposizioneTests(SimpleTestCase):
 
     # 3. Una specializzata si raggiunge solo dalla whitelist.
     def test_ogni_specializzata_e_in_whitelist(self) -> None:
-        fuori = sorted(set(_LOOKUP_SPECIALIZZATE) - _REL_CONSENTITE)
+        fuori = sorted(set(_LOOKUP_SPECIALIZZATE) - REL_CONSENTITE)
         self.assertEqual(fuori, [], f"specializzate non raggiungibili: {fuori}")
 
 

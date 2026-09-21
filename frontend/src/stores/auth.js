@@ -250,6 +250,11 @@ export const useAuthStore = defineStore('auth', () => {
       // di fn_get_soggetto_dati_by_ruolo, che espone il ruolo come
       // `soggetto_ruolo_id` (senza prefisso). E' la PK verso soggetti_ruoli.
       soggettoRuoloId: ef.soggetto_ruolo_id ?? null,
+      // Il SOGGETTO dell'emittente (uuid di `anagrafiche.soggetti`), dallo
+      // stesso merge: serve a chi sceglie fra gli indirizzi dell'azienda (il
+      // magazzino sta a un indirizzo del soggetto emittente, Q-2 del piano
+      // anagrafiche-fuori-dal-pannello-config).
+      soggettoId: ef.soggetto_id ?? null,
       codice: ef.emittente_codice ?? null,
       // `ragione_sociale_completa` arriva dal merge con
       // fn_get_soggetto_dati_by_ruolo ed e' sempre presente: il vecchio fallback

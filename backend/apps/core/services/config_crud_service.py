@@ -12,7 +12,7 @@ from typing import Any
 
 from apps.core.db.config_crud_repository import ConfigCrudRepository
 from apps.core.db.config_metadata_repository import ConfigMetadataRepository
-from apps.core.db.dbops_repository import _REL_CONSENTITE
+from apps.core.db.dbops_repository import REL_CONSENTITE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import translate_db_errors
 
@@ -24,7 +24,7 @@ E_CONFIG_DUPLICATO = "E_ANAG_DUPLICATO"
 def _parse_rel(rel: str) -> tuple[str, str]:
     """Valida rel e restituisce (schema, table)."""
     ErrorManager.require(
-        rel in _REL_CONSENTITE,
+        rel in REL_CONSENTITE,
         code=E_CONFIG_VALIDATION,
         message=f"Tabella '{rel}' non consentita.",
     )

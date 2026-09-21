@@ -78,3 +78,6 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 77,77,movimenti_default,Vista standard registro dei movimenti di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
 78,78,error_log_default,Vista standard registro degli errori tecnici,sistema,,,t,25,"[{""col"":""occurred_at"",""dir"":""desc""}]",t,2026-09-19 00:00:00,mctit
 79,79,giornale_default,Vista standard giornale degli eventi,sistema,,,t,25,"[{""col"":""quando"",""dir"":""desc""}]",t,2026-09-19 00:00:00,mctit
+80,80,magazzini_default,Vista standard magazzini,sistema,,,t,25,,t,2026-09-21 00:00:00,mctit
+81,81,ubicazioni_default,Vista standard ubicazioni di un magazzino,sistema,,,t,25,,t,2026-09-21 00:00:00,mctit
+82,82,lotti_default,Vista standard lotti di un articolo,sistema,,,t,25,"[{""col"":""data_arrivo"",""dir"":""desc""}]",t,2026-09-21 00:00:00,mctit

@@ -47,6 +47,13 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   filterField: { type: String, default: '' },
   filterValue: { type: [Number, String, Boolean], default: null },
+  // La voce da NON proporre (per `valueField`): il picker del PADRE di una
+  // gerarchia non offre l'entita' stessa (2026-09-21, ubicazioni). ⛔ Va qui,
+  // a valle della cache, e NON nel `transform`: `useGlobalLookup` registra il
+  // primo transform per chiave e non lo sovrascrive, quindi un filtro «senza
+  // me» dentro il transform resterebbe scritto nella cache condivisa — la
+  // seconda entita' aperta non vedrebbe la prima fra i padri possibili.
+  excludeValue: { type: [Number, String], default: null },
   pageSize: { type: Number, default: LOOKUP_CODICI_PAGE_SIZE },
   // Prepend di una voce "Tutti" (value=null) — per i Select usati come filtro
   // lista (es. stato email log). Etichetta da `allLabel`.
@@ -83,8 +90,12 @@ const lookup = props.fetcher
     })
 
 const filteredItems = computed(() => {
-  if (!props.filterField || props.filterValue == null) return lookup.items.value
-  return lookup.items.value.filter(item => item?.[props.filterField] === props.filterValue)
+  let items = lookup.items.value
+  if (props.excludeValue != null) {
+    items = items.filter(item => item?.[props.valueField] !== props.excludeValue)
+  }
+  if (!props.filterField || props.filterValue == null) return items
+  return items.filter(item => item?.[props.filterField] === props.filterValue)
 })
 
 // Opzioni renderizzate: con includeAllOption prepende la voce "Tutti"

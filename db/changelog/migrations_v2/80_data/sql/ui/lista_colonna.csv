@@ -892,3 +892,38 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 892,79,tx_id,Transazione,UUID di transazione: il ponte verso il registro degli errori tecnici,tx_id,informazione,string,,150,80,left,,,t,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_tx_id,20
 893,79,correlation_id,Correlazione,Il filo di un giro (EVENT_LOG e TASK_RUN); vuoto sugli altri registri per costruzione,correlation_id,informazione,string,,150,90,left,,,t,f,t,f,f,t,2026-09-19 00:00:00,mctit,vendite.giornale.col_correlation_id,10
 894,79,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-09-19 00:00:00,mctit,common.col_azioni,100
+895,80,codice,Codice,Il codice del magazzino: si sceglie alla nascita e non si cambia (lock a DB),codice,identificatore,string,,120,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_codice,100
+896,80,descrizione,Descrizione,,descrizione,informazione,string,,240,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_descrizione,95
+897,80,emittente_codice,Emittente,L'emittente fiscale proprietario: e' il perimetro RLS del dominio,emittente_codice,informazione,string,,110,30,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_emittente_codice,80
+898,80,emittente_ragione_sociale,Emittente fiscale,,emittente_ragione_sociale,informazione,string,,200,40,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_emittente_ragione_sociale,40
+899,80,indirizzo_normalizzato,Indirizzo,L'indirizzo del deposito (un indirizzo del soggetto emittente),indirizzo_normalizzato,informazione,string,,260,50,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_indirizzo_normalizzato,85
+900,80,usa_ubicazioni,Ubicazioni,Il magazzino e' organizzato per ubicazioni: ogni movimento ne nomina una,usa_ubicazioni,informazione,boolean,yesno,100,60,center,Configurazione,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_usa_ubicazioni,75
+901,80,ubicazioni_count,N. ubicazioni,Le ubicazioni attive del magazzino,ubicazioni_count,informazione,numeric,,100,70,right,Configurazione,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_ubicazioni_count,60
+902,80,predefinito,Predefinito,Il magazzino proposto per primo,predefinito,informazione,boolean,yesno,100,80,center,Configurazione,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_predefinito,70
+903,80,attivo,Attivo,,attivo,informazione,boolean,yesno,90,90,center,Stato,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_attivo,90
+904,80,data_insert,Creato il,,data_insert,informazione,datetime,datetime_short,140,100,center,Audit,4,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_data_insert,30
+905,80,user_insert,Creato da,,user_insert,informazione,string,,120,110,left,Audit,4,f,f,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_user_insert,25
+906,80,id,Id,Identificativo tecnico,id,informazione,numeric,,80,120,right,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.magazzini.col_id,10
+907,80,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-21 00:00:00,mctit,common.col_azioni,100
+908,81,codice,Codice,"Il codice dell'ubicazione, univoco nel magazzino",codice,identificatore,string,,120,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_codice,100
+909,81,descrizione,Descrizione,,descrizione,informazione,string,,220,20,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_descrizione,90
+910,81,tipo_codice,Tipo,PICK · STORAGE · STAGING · IN_TRANSIT …,tipo_codice,informazione,string,,110,30,left,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_tipo_codice,85
+911,81,tipo_descrizione,Descrizione tipo,,tipo_descrizione,informazione,string,,180,40,left,Identificazione,1,f,f,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_tipo_descrizione,40
+912,81,parent_codice,Padre,"L'ubicazione che la contiene (area → corsia → scaffale …), dello stesso magazzino",parent_codice,informazione,string,,120,50,left,Gerarchia,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_parent_codice,80
+913,81,area,Area,,area,informazione,string,,90,60,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_area,70
+914,81,corsia,Corsia,,corsia,informazione,string,,90,70,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_corsia,69
+915,81,scaffale,Scaffale,,scaffale,informazione,string,,90,80,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_scaffale,68
+916,81,piano,Piano,,piano,informazione,string,,80,90,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_piano,67
+917,81,posizione,Posizione,,posizione,informazione,string,,90,100,left,Posizione,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_posizione,66
+918,81,attivo,Attiva,,attivo,informazione,boolean,yesno,90,110,center,Stato,4,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_attivo,88
+919,81,data_insert,Creata il,,data_insert,informazione,datetime,datetime_short,140,120,center,Audit,5,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_data_insert,30
+920,81,id,Id,Identificativo tecnico,id,informazione,numeric,,80,130,right,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.ubicazioni.col_id,10
+921,81,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-21 00:00:00,mctit,common.col_azioni,100
+922,82,codice,Lotto,"Il codice della partita, univoco per articolo",codice,identificatore,string,,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_codice,100
+923,82,data_arrivo,Arrivo,La data da cui si conta la rotazione (FIFO),data_arrivo,informazione,date,date_short,110,20,center,Date,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_data_arrivo,95
+924,82,data_scadenza,Scadenza,Vuota = non scade,data_scadenza,informazione,date,date_short,110,30,center,Date,2,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_data_scadenza,90
+925,82,attivo,Attivo,,attivo,informazione,boolean,yesno,90,40,center,Stato,3,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_attivo,85
+926,82,data_insert,Creato il,,data_insert,informazione,datetime,datetime_short,140,50,center,Audit,4,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_data_insert,30
+927,82,user_insert,Creato da,,user_insert,informazione,string,,120,60,left,Audit,4,f,f,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_user_insert,25
+928,82,id,Id,Identificativo tecnico,id,informazione,numeric,,80,70,right,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,mctit,magazzino.lotti.col_id,10
+929,82,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-21 00:00:00,mctit,common.col_azioni,100

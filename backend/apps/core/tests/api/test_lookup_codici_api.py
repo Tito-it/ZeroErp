@@ -81,9 +81,9 @@ class CoreLookupCodiciApiTests(JwtMockedApiTest):
     # natura di vendita su ArticoloDrawer, modello split per natura). Assert
     # diretto sulla costante: mockare il service bypasserebbe la whitelist.
     def test_lookup_rel_nature_vendita_consentita(self):
-        from apps.core.db.dbops_repository import _REL_CONSENTITE
+        from apps.core.db.dbops_repository import REL_CONSENTITE
 
-        self.assertIn("config.nature_vendita", _REL_CONSENTITE)
+        self.assertIn("config.nature_vendita", REL_CONSENTITE)
 
     # Scopo: Verifica il caso `test_lookup_rel_mancante`: rel vuota → 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

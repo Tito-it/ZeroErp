@@ -132,6 +132,13 @@ _ESENZIONI: dict[str, str] = {
     #    esiste come dimensione**: verificato sulla doc auto-gen, tre di queste
     #    tabelle non hanno affatto `emittente_fiscale_id`. Un cancello sarebbe
     #    una domanda senza risposta.
+    # ⭐ I lotti di magazzino (2026-09-21): un lotto e' dell'ARTICOLO
+    #    (`articolo_id + codice`), non di un magazzino ne' di un emittente —
+    #    brief Lotto 1 §4.3, nessuna RLS sulla tabella. La lista si legge per
+    #    articolo (`?articolo_id=` obbligatorio) e il perimetro emittente qui
+    #    non esiste come dimensione. E' `DomainAPIView`, non amministrazione:
+    #    la ragione e' il modello, non la sede.
+    "magazzino.lotti": "figli dell'articolo — nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
     "ui.lista_definizione": "catalogo delle liste — nessun `emittente_fiscale_id` in tabella",
     "ui.lista_colonna": "catalogo delle colonne — nessun `emittente_fiscale_id` in tabella",
     "ui.lista_colonna_permesso": "grant per colonna/profilo — nessun `emittente_fiscale_id` in tabella",

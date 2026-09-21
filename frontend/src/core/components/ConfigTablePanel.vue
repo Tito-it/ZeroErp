@@ -14,7 +14,9 @@ import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
-import { getTablesBySchema, getTableConfig } from '../config-tables'
+import { getTablesBySchema } from '../config-tables'
+import { labelOrCode } from '../utils/i18nLabel'
+import { chiaveEtichettaTabella } from '../utils/campoConfig'
 import { useDrawerState } from '../composables/useDrawerState'
 import GenericConfigDrawer from './GenericConfigDrawer.vue'
 import PageActionsBar from './PageActionsBar.vue'
@@ -24,7 +26,7 @@ import InputText from 'primevue/inputtext'
 import AttivoTag from './AttivoTag.vue'
 import api from '../api'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.CONFIG)
 const drawer = useDrawerState()
 const { execute } = useApiHandler()
@@ -41,14 +43,22 @@ const pageSize = ref(PAGINATION.DEFAULT_ROWS)
 const sortField = ref('descrizione')
 const sortOrder = ref(1)
 
-// Tabelle raggruppate e filtrate
-const tablesBySchema = getTablesBySchema()
+// Tabelle raggruppate, con l'etichetta tradotta (`config_panel.tabelle.<rel>`,
+// ripiego fail-visible sulla rel), e filtrate. Computed e non costante: cambia
+// col locale.
+const tablesBySchema = computed(() => {
+  const grouped = {}
+  for (const [schema, tables] of Object.entries(getTablesBySchema())) {
+    grouped[schema] = tables.map(tbl => ({ ...tbl, label: labelOrCode(t, te, chiaveEtichettaTabella(tbl.rel), tbl.rel) }))
+  }
+  return grouped
+})
 const filteredTables = computed(() => {
   const q = searchTable.value.toLowerCase()
-  if (!q) return tablesBySchema
+  if (!q) return tablesBySchema.value
   const result = {}
-  for (const [schema, tables] of Object.entries(tablesBySchema)) {
-    const filtered = tables.filter(t => t.label.toLowerCase().includes(q) || t.rel.includes(q))
+  for (const [schema, tables] of Object.entries(tablesBySchema.value)) {
+    const filtered = tables.filter(tbl => tbl.label.toLowerCase().includes(q) || tbl.rel.includes(q))
     if (filtered.length > 0) result[schema] = filtered
   }
   return result
@@ -61,11 +71,9 @@ const hasAttivo = computed(() => tableColumns.value.includes('attivo'))
 const hasCodiceInterno = computed(() => tableColumns.value.includes('codice_interno'))
 
 // Label tabella selezionata
-const selectedLabel = computed(() => {
-  if (!selectedRel.value) return ''
-  const cfg = getTableConfig(selectedRel.value)
-  return cfg ? cfg.label : selectedRel.value
-})
+const selectedLabel = computed(() =>
+  selectedRel.value ? labelOrCode(t, te, chiaveEtichettaTabella(selectedRel.value), selectedRel.value) : '',
+)
 const pageActions = computed(() => [
   {
     key: 'new',

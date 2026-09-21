@@ -1004,12 +1004,17 @@ class PayloadValidator:
     #          - valore None      -> None se nullable, altrimenti errore
     #          - stringa          -> strip; vuota+nullable -> None;
     #                                vuota+non nullable -> errore
+    #        `max_len` (2026-09-21, regola del 2): lo stesso tetto di
+    #        `require_string`/`optional_string`, con lo stesso messaggio e lo
+    #        stesso `context` — il PATCH per delta delle anagrafiche di
+    #        magazzino lo riscriveva a mano dopo la chiamata.
     def extract_optional_string(
         self,
         payload: dict[str, Any],
         key: str,
         *,
         nullable: bool = False,
+        max_len: int | None = None,
         message: str | None = None,
         log_to_db: bool | None = None,
         function_name: str | None = None,
@@ -1048,6 +1053,15 @@ class PayloadValidator:
             context={"field": key},
             **em,
         )
+        if max_len is not None:
+            ErrorManager.require(
+                len(cleaned) <= max_len,
+                code=self._code,
+                message=message or f"Campo '{key}' troppo lungo.",
+                detail=f"Lunghezza massima: {max_len} caratteri.",
+                context={key: cleaned, "len": len(cleaned), "field": key},
+                **em,
+            )
         return cleaned
 
     # =================================================================

@@ -1455,6 +1455,11 @@ class AmmSoftwareRepository:
             cursor.execute(
                 """SELECT ef.id, ef.codice,
                           ef.soggetto_ruolo_id,
+                          -- Il SOGGETTO dell'emittente (uuid): chi sceglie fra
+                          -- gli indirizzi dell'azienda lo legge da qui
+                          -- (`useEmittenteFiscaleField.soggettoIdSessione`,
+                          -- il super admin dentro un emittente).
+                          sr.soggetto_id,
                           s.ragione_sociale_completa AS ragione_sociale
                      FROM anagrafiche.emittenti_fiscali ef
                      LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id

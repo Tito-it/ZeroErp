@@ -39,10 +39,18 @@ export const WIDGET = Object.freeze({
 })
 
 export const PREFISSO_CAMPI = 'config_panel.campi'
+export const PREFISSO_TABELLE = 'config_panel.tabelle'
 
 // Scopo: la chiave i18n dell'etichetta di una colonna del pannello.
 export function chiaveEtichettaCampo(col) {
   return `${PREFISSO_CAMPI}.${col.name}`
+}
+
+// Scopo: la chiave i18n dell'etichetta di una TABELLA del registro: la rel
+//        stessa (`schema.tabella`) sotto il prefisso — il punto e' gia' il
+//        separatore di vue-i18n, quindi `config_panel.tabelle.config.ambiti`.
+export function chiaveEtichettaTabella(rel) {
+  return `${PREFISSO_TABELLE}.${rel}`
 }
 
 // Scopo: il widget che rende la colonna, dal metadata BE

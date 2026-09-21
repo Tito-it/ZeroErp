@@ -247,14 +247,14 @@ urlpatterns = [
     # Endpoint admin per CRUD. Per la dropdown generica "scegli categoria"
     # usare il lookup centrale:
     #   GET /api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti
-    # (tabella inserita in apps/core/db/dbops_repository.py:_REL_CONSENTITE).
+    # (tabella inserita in apps/core/db/dbops_repository.py:REL_CONSENTITE).
     # NON creare endpoint /lookup/ dedicato: duplicherebbe la whitelist.
     path("categorie-clienti/", CategorieClientiView.as_view(), name="anagrafiche-categorie-clienti-list"),
     path("categorie-clienti/<int:record_id>/", CategorieClientiDetailView.as_view(), name="anagrafiche-categorie-clienti-detail"),
     # Matrice categoria cliente x listino (sviluppo-listini v5 §4.2 — STADIO 2 resolver).
     # Per la dropdown generica "scegli riga matrice per quadrupla" usare il lookup centrale:
     #   GET /api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti_listini
-    # (tabella inserita in apps/core/db/dbops_repository.py:_REL_CONSENTITE).
+    # (tabella inserita in apps/core/db/dbops_repository.py:REL_CONSENTITE).
     path("categorie-clienti-listini/", CategorieClientiListiniView.as_view(), name="anagrafiche-categorie-clienti-listini-list"),
     path("categorie-clienti-listini/lookup/tipi-variazione/", CategorieClientiListiniTipiVariazioneLookupView.as_view(), name="anagrafiche-categorie-clienti-listini-tipi-variazione"),
     path("categorie-clienti-listini/<int:record_id>/", CategorieClientiListiniDetailView.as_view(), name="anagrafiche-categorie-clienti-listini-detail"),

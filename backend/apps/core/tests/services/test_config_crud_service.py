@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unitari del CRUD generico delle tabelle config (2026-09-21):
-#        la whitelist e' UNA (`_REL_CONSENTITE`), e un IntegrityError arriva
+#        la whitelist e' UNA (`REL_CONSENTITE`), e un IntegrityError arriva
 #        tradotto col vincolo e col campo — mappe lette dal catalogo della
 #        tabella, non scritte a mano. Fino a quel giorno ogni IntegrityError
 #        era «Record gia' esistente». Repository mockati: CI-safe.

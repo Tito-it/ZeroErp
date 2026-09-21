@@ -442,12 +442,12 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
         </div>
-        <div class="riepilogo-section">
-          <div v-if="contattiRiepilogo.length > 0" class="riepilogo-list">
-            <div v-for="c in contattiRiepilogo" :key="c.id" class="riepilogo-item">
+        <div class="app-riepilogo-section">
+          <div v-if="contattiRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="c in contattiRiepilogo" :key="c.id" class="app-riepilogo-item">
               <strong>{{ c.nominativo }}</strong>
-              <span v-if="c.email" class="riepilogo-detail">{{ c.email }}</span>
-              <span v-if="c.telefono" class="riepilogo-detail">{{ c.telefono }}</span>
+              <span v-if="c.email" class="app-riepilogo-detail">{{ c.email }}</span>
+              <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>
             </div>
           </div>
           <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
@@ -536,10 +536,10 @@ async function handleSave() {
           <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
         <div>
-          <div v-if="indirizziRiepilogo.length > 0" class="indirizzi-riepilogo-list">
-            <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="indirizzi-riepilogo-item">
+          <div v-if="indirizziRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="app-riepilogo-item">
               <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
-              <span class="indirizzi-riepilogo-text">{{ ind.indirizzo_display }}</span>
+              <span>{{ ind.indirizzo_display }}</span>
             </div>
           </div>
           <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
@@ -561,12 +561,12 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.conti_bancari.titolo') }}</h4>
         </div>
-        <div class="riepilogo-section">
-          <div v-if="contiBancariRiepilogo.length > 0" class="riepilogo-list">
-            <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="riepilogo-item">
+        <div class="app-riepilogo-section">
+          <div v-if="contiBancariRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="app-riepilogo-item">
               <Tag :value="cb.uso" severity="info" />
-              <span class="riepilogo-detail app-mono">{{ cb.iban }}</span>
-              <span v-if="cb.filiale_nome" class="riepilogo-detail">{{ cb.filiale_nome }}</span>
+              <span class="app-riepilogo-detail app-mono">{{ cb.iban }}</span>
+              <span v-if="cb.filiale_nome" class="app-riepilogo-detail">{{ cb.filiale_nome }}</span>
             </div>
           </div>
           <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
@@ -592,12 +592,12 @@ async function handleSave() {
         <div class="app-drawer-section">
           <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
         </div>
-        <div class="riepilogo-section">
-          <div v-if="titoliIvaRiepilogo.length > 0" class="riepilogo-list">
-            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="riepilogo-item">
+        <div class="app-riepilogo-section">
+          <div v-if="titoliIvaRiepilogo.length > 0" class="app-riepilogo-list">
+            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="app-riepilogo-item">
               <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
-              <span class="riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
-              <span v-if="ti.residuo != null" class="riepilogo-detail">
+              <span class="app-riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
+              <span v-if="ti.residuo != null" class="app-riepilogo-detail">
                 {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
               </span>
             </div>
@@ -680,34 +680,5 @@ async function handleSave() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-.indirizzi-riepilogo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.indirizzi-riepilogo-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-.indirizzi-riepilogo-text {
-  color: var(--p-text-color);
-}
-.riepilogo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.riepilogo-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-.riepilogo-detail {
-  color: var(--p-text-muted-color);
-  font-size: 0.8rem;
 }
 </style>

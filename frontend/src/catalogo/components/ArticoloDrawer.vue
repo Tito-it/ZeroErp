@@ -1,7 +1,11 @@
 <script setup>
 // Scopo: Drawer crea/modifica articolo.
 //        Include combo conti contabili vendita/acquisto e auto-propose IVA da parameters.
-//        In edit: riepilogo UoM/BoM/Note con pulsante "Gestisci" che apre sub-drawer dedicato.
+//        In edit: riepilogo UoM/BoM/Note/Lotti con pulsante "Gestisci" che apre sub-drawer dedicato.
+//        ⭐ I LOTTI di magazzino (2026-09-21): la sezione compare solo se l'articolo
+//        e' `gestito_a_magazzino` (un lotto ha senso su merce che movimenta); con
+//        `requires_lotto` lo DICE. Il drawer vive in `src/magazzino` (Q-1 del piano
+//        anagrafiche-fuori-dal-pannello-config: chi possiede il dato possiede il componente).
 //        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,7 +14,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -23,6 +27,8 @@ import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue
 import ArticoloUomDrawer from './ArticoloUomDrawer.vue'
 import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
+import ArticoloLottiDrawer from '../../magazzino/components/ArticoloLottiDrawer.vue'
+import { listLotti } from '../../magazzino/api/magazzino'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -73,6 +79,9 @@ const bomDrawerVisible = ref(false)
 const bomRiepilogo = ref([])
 const noteDrawerVisible = ref(false)
 const noteRiepilogo = ref([])
+const lottiDrawerVisible = ref(false)
+// Il conteggio dei lotti ATTIVI dell'articolo (`null` = non letto).
+const lottiCount = ref(null)
 
 function defaultForm() {
   return {
@@ -103,6 +112,17 @@ function resetForm() {
   uomRiepilogo.value = []
   bomRiepilogo.value = []
   noteRiepilogo.value = []
+}
+
+// Scopo: Il conteggio dei lotti attivi: una pagina da una riga, il totale lo
+//        dice l'envelope. Solo se l'articolo e' gestito a magazzino.
+async function loadLottiCount() {
+  lottiCount.value = null
+  if (!props.articoloId || !form.value.gestito_a_magazzino) return
+  try {
+    const res = await listLotti({ articolo_id: props.articoloId, attivo: true, limit: 1 })
+    lottiCount.value = res.data?.data?.count ?? 0
+  } catch { lottiCount.value = null }
 }
 
 // Scopo: Carica riepilogo UoM operative.
@@ -171,7 +191,7 @@ async function loadDetail() {
     lead_time_giorni: data.lead_time_giorni ?? null,
   }
   // Carica riepilogo in parallelo
-  await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
+  await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo(), loadLottiCount()])
 }
 
 // Fase 8 (A5): defaults form articolo via endpoint dedicato
@@ -501,18 +521,18 @@ const drawerActions = computed(() => {
         <!-- Sezione: UoM riepilogo (edit mode) -->
         <template v-if="isEdit && detail">
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_uom') }}</h4></div>
-          <div class="riepilogo-section">
-            <div v-if="uomRiepilogo.length > 0" class="riepilogo-list">
-              <div v-for="u in uomRiepilogo" :key="u.id" class="riepilogo-item">
+          <div class="app-riepilogo-section">
+            <div v-if="uomRiepilogo.length > 0" class="app-riepilogo-list">
+              <div v-for="u in uomRiepilogo" :key="u.id" class="app-riepilogo-item">
                 <Tag v-if="u.is_base" :value="t('catalogo.tag_base')" severity="info" />
                 <strong>{{ u.uom_codice }}</strong>
-                <span class="riepilogo-detail">{{ u.uom_descrizione }}</span>
-                <span v-if="u.factor_to_base != null && u.factor_to_base !== 1" class="riepilogo-detail">
+                <span class="app-riepilogo-detail">{{ u.uom_descrizione }}</span>
+                <span v-if="u.factor_to_base != null && u.factor_to_base !== 1" class="app-riepilogo-detail">
                   ({{ t('catalogo.col_fattore') }}: {{ u.factor_to_base }})
                 </span>
               </div>
             </div>
-            <div v-else class="riepilogo-empty">{{ t('catalogo.nessuna_uom') }}</div>
+            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_uom') }}</div>
             <Button v-if="!isReadonly"
               :label="t('catalogo.gestisci_uom')" icon="pi pi-box"
               text size="small" class="app-action-btn app-escape mt-025"
@@ -523,15 +543,15 @@ const drawerActions = computed(() => {
         <!-- Sezione: BoM riepilogo (edit mode, solo se composito) -->
         <template v-if="isEdit && detail && form.is_composito">
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_bom') }}</h4></div>
-          <div class="riepilogo-section">
-            <div v-if="bomRiepilogo.length > 0" class="riepilogo-list">
-              <div v-for="c in bomRiepilogo" :key="c.id" class="riepilogo-item">
+          <div class="app-riepilogo-section">
+            <div v-if="bomRiepilogo.length > 0" class="app-riepilogo-list">
+              <div v-for="c in bomRiepilogo" :key="c.id" class="app-riepilogo-item">
                 <strong>{{ c.componente_codice }}</strong>
-                <span class="riepilogo-detail">{{ c.componente_descrizione }}</span>
-                <span class="riepilogo-detail">(x{{ c.coeff_qta }})</span>
+                <span class="app-riepilogo-detail">{{ c.componente_descrizione }}</span>
+                <span class="app-riepilogo-detail">(x{{ c.coeff_qta }})</span>
               </div>
             </div>
-            <div v-else class="riepilogo-empty">{{ t('catalogo.nessun_componente') }}</div>
+            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessun_componente') }}</div>
             <Button v-if="!isReadonly"
               :label="t('catalogo.gestisci_bom')" icon="pi pi-sitemap"
               text size="small" class="app-action-btn app-escape mt-025"
@@ -539,16 +559,29 @@ const drawerActions = computed(() => {
           </div>
         </template>
 
+        <!-- Sezione: Lotti di magazzino (edit mode, solo se gestito a magazzino) -->
+        <template v-if="isEdit && detail && form.gestito_a_magazzino">
+          <div class="app-drawer-section"><h4>{{ t('magazzino.lotti.titolo', { n: lottiCount ?? '…' }) }}</h4></div>
+          <div class="app-riepilogo-section">
+            <div v-if="!form.requires_lotto" class="app-riepilogo-empty">{{ t('magazzino.lotti.articolo_non_per_lotti') }}</div>
+            <div v-else-if="lottiCount === 0" class="app-riepilogo-empty">{{ t('magazzino.lotti.nessun_lotto') }}</div>
+            <Button v-if="!isReadonly"
+              :label="t('magazzino.lotti.gestisci')" :icon="MANAGE_ICONS.LOTTO_MAGAZZINO"
+              text size="small" class="app-action-btn app-escape mt-025"
+              @click="lottiDrawerVisible = true" />
+          </div>
+        </template>
+
         <!-- Sezione: Note riepilogo (edit mode) -->
         <template v-if="isEdit && detail">
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_note') }}</h4></div>
-          <div class="riepilogo-section">
-            <div v-if="noteRiepilogo.length > 0" class="riepilogo-list">
-              <div v-for="n in noteRiepilogo" :key="n.id" class="riepilogo-item">
-                <span class="riepilogo-detail">{{ ((n.testo_md || n.testo) || '').substring(0, 80) }}{{ ((n.testo_md || n.testo) || '').length > 80 ? '...' : '' }}</span>
+          <div class="app-riepilogo-section">
+            <div v-if="noteRiepilogo.length > 0" class="app-riepilogo-list">
+              <div v-for="n in noteRiepilogo" :key="n.id" class="app-riepilogo-item">
+                <span class="app-riepilogo-detail">{{ ((n.testo_md || n.testo) || '').substring(0, 80) }}{{ ((n.testo_md || n.testo) || '').length > 80 ? '...' : '' }}</span>
               </div>
             </div>
-            <div v-else class="riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
+            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
             <Button v-if="!isReadonly"
               :label="t('catalogo.gestisci_note')" icon="pi pi-file-edit"
               text size="small" class="app-action-btn app-escape mt-025"
@@ -572,6 +605,14 @@ const drawerActions = computed(() => {
     :articolo-id="props.articoloId"
     @saved="loadUomRiepilogo"
   />
+  <!-- Sub-drawer Lotti di magazzino (dominio magazzino, Q-1) -->
+  <ArticoloLottiDrawer
+    :visible="lottiDrawerVisible"
+    @update:visible="v => { lottiDrawerVisible = v; if (!v) loadLottiCount() }"
+    :articolo-id="props.articoloId"
+    :articolo-codice="form.codice"
+    :requires-lotto="form.requires_lotto"
+  />
   <!-- Sub-drawer Distinta Base -->
   <ArticoloBomDrawer
     :visible="bomDrawerVisible"
@@ -588,27 +629,3 @@ const drawerActions = computed(() => {
   />
 </template>
 
-<style scoped>
-.riepilogo-section {
-  margin-top: 0.5rem;
-}
-.riepilogo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.riepilogo-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-.riepilogo-detail {
-  color: var(--p-text-muted-color);
-  font-size: 0.8rem;
-}
-.riepilogo-empty {
-  color: var(--p-text-muted-color);
-  font-size: 0.85rem;
-}
-</style>

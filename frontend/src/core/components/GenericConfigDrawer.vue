@@ -66,11 +66,21 @@ const originalForm = ref({}) // Per calcolare delta in edit mode
 // che filtra le colonne sconosciute, risponde `{}` con successo).
 watch(() => props.rel, () => { columns.value = [] })
 
-// Colonne editabili (esclude id), ciascuna col suo widget e la sua etichetta.
+// Colonne editabili (esclude id), ciascuna col suo widget, la sua etichetta e
+// se e' OBBLIGATORIA per l'operatore: NOT NULL senza default del DB (un
+// `attivo NOT NULL DEFAULT true` non lo e'; un boolean mai, ha sempre un valore).
 const editableColumns = computed(() =>
   columns.value
     .filter(c => !c.is_pk)
-    .map(c => ({ ...c, widget: widgetPerColonna(c), etichetta: labelOrCode(t, te, chiaveEtichettaCampo(c), c.name) })),
+    .map(c => {
+      const widget = widgetPerColonna(c)
+      return {
+        ...c,
+        widget,
+        etichetta: labelOrCode(t, te, chiaveEtichettaCampo(c), c.name),
+        obbligatoria: !c.nullable && !c.has_default && widget !== WIDGET.BOOLEAN,
+      }
+    }),
 )
 
 // Scopo: il valore come lo vuole il form — le date come `Date` (il DatePicker
@@ -202,7 +212,7 @@ async function handleSave() {
       <div class="form-grid">
         <template v-for="col in editableColumns" :key="col.name">
           <div class="form-field">
-            <label>{{ col.etichetta }}{{ !col.nullable && col.widget !== WIDGET.BOOLEAN ? ' *' : '' }}</label>
+            <label>{{ col.etichetta }}{{ col.obbligatoria ? ' *' : '' }}</label>
 
             <!-- FK verso una tabella ammessa al lookup generico. ⚠️ `value-field`
                  dalla FK: non tutte puntano a `id` (`esito` → `codice_interno`). -->

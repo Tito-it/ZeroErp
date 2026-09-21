@@ -114,7 +114,10 @@ function buildRowActions(data) {
       label: data.attivo
         ? t('amministrazione.famiglie_documento.action_disattiva')
         : t('amministrazione.famiglie_documento.action_attiva'),
-      icon: data.attivo ? MANAGE_ICONS.CANCEL : MANAGE_ICONS.RELOAD,
+      // Lo STESSO senso delle anagrafiche di magazzino (spegni/riaccendi): un
+      // glifo per concetto, non uno per pagina (frontend-standards §«Dove vive
+      // il NOME di un'icona»). Fino al 21-09 qui erano `CANCEL`/`RELOAD`.
+      icon: data.attivo ? MANAGE_ICONS.DISATTIVA : MANAGE_ICONS.RIATTIVA,
       disabled: bloccata,
       tooltip: bloccata ? motivoBloccoRiga(t, te, data, 'rimozione_blocco') : undefined,
       // ⛔ `allowWhenInactive` NON è un di più: `RowActionsMenu` disabilita da

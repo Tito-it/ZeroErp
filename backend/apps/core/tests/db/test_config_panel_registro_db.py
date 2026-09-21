@@ -20,14 +20,16 @@
 # ------------------------------------------------------------
 #
 # Indice test:
-#  1. ogni rel del registro FE e' in `_REL_CONSENTITE` (la lista del pannello
+#  1. ogni rel del registro FE e' in `REL_CONSENTITE` (la lista del pannello
 #     passa dal lookup generico: fuori whitelist = 400 a video)
 #  2. ogni rel risponde alla lista (`fn_list_lookup_codici`, i parametri del pannello)
 #  3. ogni colonna del metadata ha l'etichetta in it.json e en.json; `uid` mai
 #  4. ogni `references` e' una relazione esistente; `references_column` e' la
 #     colonna referenziata; `references_lookup` e' vero sse la relazione e' in
-#     `_REL_CONSENTITE` — e in quel caso la colonna e' una che il lookup porta
+#     `REL_CONSENTITE` — e in quel caso la colonna e' una che il lookup porta
 #     (`LOOKUP_COLONNE_VALORE`), altrimenti la `LookupSelect` salverebbe `undefined`
+#  5. ogni rel del registro ha l'etichetta `config_panel.tabelle.<schema>.<tabella>`
+#     in it.json e en.json (dal 21-09 il registro non porta piu' `label`)
 
 from __future__ import annotations
 
@@ -39,7 +41,7 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.core.db.config_metadata_repository import ConfigMetadataRepository
-from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE, _REL_CONSENTITE
+from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE, REL_CONSENTITE
 from apps.core.services.lookup_service import fn_list_lookup_codici
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 
@@ -55,10 +57,21 @@ def _rel_del_registro() -> list[str]:
     return re.findall(r"rel: '([a-z_]+\.[a-z_]+)'", _REGISTRO.read_text(encoding="utf-8"))
 
 
+# Scopo: il blocco `config_panel` di un locale.
+def _config_panel(locale: str) -> dict:
+    dati = json.loads((_LOCALES / f"{locale}.json").read_text(encoding="utf-8"))
+    return dati["config_panel"]
+
+
 # Scopo: le chiavi `config_panel.campi.*` di un locale.
 def _etichette(locale: str) -> set[str]:
-    dati = json.loads((_LOCALES / f"{locale}.json").read_text(encoding="utf-8"))
-    return set(dati["config_panel"]["campi"])
+    return set(_config_panel(locale)["campi"])
+
+
+# Scopo: le rel con etichetta `config_panel.tabelle.<schema>.<tabella>` di un locale.
+def _etichette_tabelle(locale: str) -> set[str]:
+    tabelle = _config_panel(locale).get("tabelle", {})
+    return {f"{schema}.{tab}" for schema, tabs in tabelle.items() for tab in tabs}
 
 
 class ConfigPanelRegistroDbTests(TestCase):
@@ -71,8 +84,8 @@ class ConfigPanelRegistroDbTests(TestCase):
 
     # 1.
     def test_ogni_rel_del_registro_e_ammessa_al_lookup(self) -> None:
-        fuori = sorted(set(self.rels) - _REL_CONSENTITE)
-        self.assertEqual(fuori, [], "rel nel registro FE ma non in _REL_CONSENTITE: la lista del pannello e' un 400")
+        fuori = sorted(set(self.rels) - REL_CONSENTITE)
+        self.assertEqual(fuori, [], "rel nel registro FE ma non in REL_CONSENTITE: la lista del pannello e' un 400")
 
     # 2. Ogni rel in un savepoint: si vogliono TUTTE le rotte in un giro, non
     #    la prima (il 21-09 erano tre — lotti, stati, titoli_cortesia — e una
@@ -139,7 +152,7 @@ class ConfigPanelRegistroDbTests(TestCase):
                         [target, col["references_column"]],
                     )
                     self.assertIsNotNone(cur.fetchone(), f"{rel}.{col['name']} → {target}.{col['references_column']} non esiste")
-                    ammessa = target in _REL_CONSENTITE
+                    ammessa = target in REL_CONSENTITE
                     if ammessa:
                         self.assertIn(
                             col["references_column"], LOOKUP_COLONNE_VALORE,
@@ -147,3 +160,9 @@ class ConfigPanelRegistroDbTests(TestCase):
                             "ma la colonna referenziata non e' nel suo payload — la LookupSelect non puo' montarla",
                         )
                     self.assertEqual(col["references_lookup"], ammessa, f"{rel}.{col['name']}")
+
+    # 5.
+    def test_ogni_rel_ha_l_etichetta_di_tabella_in_entrambi_i_locales(self) -> None:
+        for locale in ("it", "en"):
+            senza = sorted(set(self.rels) - _etichette_tabelle(locale))
+            self.assertEqual(senza, [], f"rel senza `config_panel.tabelle.*` in {locale}.json (a video la rel grezza)")

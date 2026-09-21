@@ -78,3 +78,6 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 77,magazzino.movimenti,Registro dei movimenti di magazzino,magazzino,NULL,t,2026-09-18 00:00:00,mctit,f,t
 78,dbops.error_log,Registro degli errori tecnici,dbops,NULL,t,2026-09-19 00:00:00,mctit,f,f
 79,vendite.giornale,Giornale degli eventi (trasversale),vendite,NULL,t,2026-09-19 00:00:00,mctit,f,t
+80,magazzino.magazzini,Magazzini dell'emittente,magazzino,NULL,t,2026-09-21 00:00:00,mctit,f,t
+81,magazzino.ubicazioni,Ubicazioni di un magazzino,magazzino,NULL,t,2026-09-21 00:00:00,mctit,f,t
+82,magazzino.lotti,Lotti di un articolo,magazzino,NULL,t,2026-09-21 00:00:00,mctit,f,f

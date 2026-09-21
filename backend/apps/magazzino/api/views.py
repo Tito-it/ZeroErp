@@ -22,7 +22,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -31,7 +30,6 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
-from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.payload_validators import (
     parse_list_params,
     qp_bool_optional,
@@ -42,6 +40,14 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
+from apps.magazzino.api._comuni import (
+    AREA,
+    PARAM_FORMATO,
+    RISPOSTA_GENERICA,
+    RISPOSTE_EXPORT,
+    filtri_label,
+    params_lista,
+)
 from apps.magazzino.db.famiglie import FAMIGLIE, FamigliaDocumentoInterno
 from apps.magazzino.db.magazzino_repository import (
     DISPONIBILITA_ARTICOLI_SORT_COLUMNS,
@@ -55,53 +61,15 @@ from apps.magazzino.services import consultazione_service, magazzino_service
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
-AREA = "magazzino"
+# `AREA`, `RISPOSTA_GENERICA`, `params_lista`, `PARAM_FORMATO`, `RISPOSTE_EXPORT`
+# e `filtri_label` vivono in `api/_comuni.py` dal 2026-09-21 (seconda
+# occorrenza: le view delle anagrafiche in `views_anagrafiche.py`).
 
 # 🔴 Il cancello sull'unico gesto irreversibile del dominio. ⏳ R-3: l'azione
 #    va seminata a catalogo e ASSEGNATA a un profilo; finche' non lo e',
 #    `fn_check_azione_processo` risponde `false` per tutti tranne i super
 #    admin — fail-closed, che e' il verso giusto in cui sbagliare.
 PERMESSO_REGISTRA = "registra_magazzino"
-
-_RISPOSTA_GENERICA = inline_serializer(
-    name="MagazzinoRispostaGenerica",
-    fields={
-        "data": serializers.DictField(),
-        "meta": serializers.DictField(required=False),
-    },
-)
-
-
-# Scopo: i parametri di lista offset-based dichiarati una volta.
-def _params_lista(colonne: dict[str, str], nota: str) -> list[OpenApiParameter]:
-    return [
-        OpenApiParameter(
-            name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
-            description=descrizione_order_by(colonne, nota),
-        ),
-        OpenApiParameter(
-            name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
-            description="asc | desc (le colonne data partono DESC).",
-        ),
-        OpenApiParameter(
-            name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
-            description="Righe per pagina (default 25, max 200).",
-        ),
-        OpenApiParameter(
-            name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
-        ),
-    ]
-
-
-_PARAM_FORMATO = OpenApiParameter(
-    name="formato", type=str, location=OpenApiParameter.QUERY, required=True,
-    description="csv | xlsx. ⚠️ `formato`, non `format`: quello e' un parametro magico di DRF.",
-)
-
-_RISPOSTE_EXPORT = {
-    (200, "text/csv"): bytes,
-    (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
-}
 
 
 # Scopo: i filtri della lista delle testate, letti dalla query string.
@@ -115,19 +83,6 @@ def _filtri_documenti(qp) -> dict:
         "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
         "data_a": qp_iso_date_optional(qp.get("data_a"), "data_a"),
         "search": search,
-    }
-
-
-# Scopo: i filtri applicati, per l'intestazione del file (riga `# Filtri
-#        applicati:` del CSV, foglio «Filtri applicati» dell'XLSX).
-# ⚠️ Le date si passano in ISO: il renderer le serializza con `json.dumps`
-#    senza `default=`, e un `date` lo farebbe fallire — cioe' un export con un
-#    filtro di data sarebbe un 500 su un caso che il contratto ammette.
-def _filtri_label(filtri: dict) -> dict:
-    return {
-        k: (v.isoformat() if isinstance(v, date) else v)
-        for k, v in filtri.items()
-        if v is not None
     }
 
 
@@ -163,9 +118,9 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                     name="search", type=str, location=OpenApiParameter.QUERY, required=False,
                     description="Ricerca libera (min 3) su descrizione e magazzino.",
                 ),
-                *_params_lista(DOCUMENTI_SORT_COLUMNS, "Senza: data DESC, id DESC."),
+                *params_lista(DOCUMENTI_SORT_COLUMNS, "Senza: data DESC, id DESC."),
             ],
-            responses={200: _RISPOSTA_GENERICA},
+            responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Restituisce via GET l'elenco paginato delle testate.
         def get(self, request: Request) -> JsonResponse:
@@ -192,7 +147,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                     "meta": serializers.DictField(required=False),
                 },
             ),
-            responses={200: _RISPOSTA_GENERICA},
+            responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Crea via POST la BOZZA. Il magazzino si sceglie qui e basta.
         def post(self, request: Request) -> JsonResponse:
@@ -210,8 +165,8 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{codice}_export",
-            parameters=[_PARAM_FORMATO, *_params_lista(DOCUMENTI_SORT_COLUMNS, "")],
-            responses=_RISPOSTE_EXPORT,
+            parameters=[PARAM_FORMATO, *params_lista(DOCUMENTI_SORT_COLUMNS, "")],
+            responses=RISPOSTE_EXPORT,
         )
         # Scopo: Il file della lista, con gli stessi filtri e ordinamento.
         def get(self, request: Request) -> HttpResponse:
@@ -230,13 +185,13 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
             return build_export_response(
                 request, lista_codice=self.lista_codice,
                 results=dati["results"], total=dati["count"],
-                filtri_applicati=_filtri_label(filtri) or None, fmt=fmt,
+                filtri_applicati=filtri_label(filtri) or None, fmt=fmt,
             )
 
     class _Dettaglio(DomainAPIView):
         area_funzionale = AREA
 
-        @extend_schema(operation_id=f"magazzino_{op}_detail", responses={200: _RISPOSTA_GENERICA})
+        @extend_schema(operation_id=f"magazzino_{op}_detail", responses={200: RISPOSTA_GENERICA})
         # Scopo: Testata + magazzino + conteggio righe (+ riepilogo del piano).
         def get(self, request: Request, doc_id: int) -> JsonResponse:
             return success_response(magazzino_service.get_documento(codice, doc_id))
@@ -251,7 +206,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                     "meta": serializers.DictField(required=False),
                 },
             ),
-            responses={200: _RISPOSTA_GENERICA},
+            responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Aggiorna via PATCH la testata. ⛔ Non lo stato (`stato/`), non
         #        il magazzino (si sceglie alla nascita).
@@ -287,7 +242,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                 name=f"Magazzino{prefisso}Stato",
                 fields={"stato": serializers.CharField(help_text="CONFIRM | CANCEL | DRAFT")},
             ),
-            responses={200: _RISPOSTA_GENERICA},
+            responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Chiede via POST un cambio di stato. ⛔ `POSTED` non si chiede:
         #        lo scrive `registra/`.
@@ -327,8 +282,8 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{op}_righe_list",
-            parameters=_params_lista(righe_sort_columns(f), "Senza: id ASC (l'ordine di digitazione)."),
-            responses={200: _RISPOSTA_GENERICA},
+            parameters=params_lista(righe_sort_columns(f), "Senza: id ASC (l'ordine di digitazione)."),
+            responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Le righe della testata, paginate.
         def get(self, request: Request, doc_id: int) -> JsonResponse:
@@ -356,7 +311,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                     "meta": serializers.DictField(required=False),
                 },
             ),
-            responses={200: _RISPOSTA_GENERICA},
+            responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Aggiunge via POST una riga (solo in `DRAFT`: lo dice il guard).
         def post(self, request: Request, doc_id: int) -> JsonResponse:
@@ -372,8 +327,8 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{op}_righe_export",
-            parameters=[_PARAM_FORMATO, *_params_lista(righe_sort_columns(f), "")],
-            responses=_RISPOSTE_EXPORT,
+            parameters=[PARAM_FORMATO, *params_lista(righe_sort_columns(f), "")],
+            responses=RISPOSTE_EXPORT,
         )
         # Scopo: Il file delle righe di UN documento.
         def get(self, request: Request, doc_id: int) -> HttpResponse:
@@ -409,7 +364,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                     "meta": serializers.DictField(required=False),
                 },
             ),
-            responses={200: _RISPOSTA_GENERICA},
+            responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Aggiorna via PATCH una riga (parziale; `null` azzera un nullable).
         def patch(self, request: Request, doc_id: int, riga_id: int) -> JsonResponse:
@@ -450,8 +405,8 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
             @extend_schema(
                 operation_id=f"magazzino_{op}_piano",
-                parameters=_params_lista(PIANO_SORT_COLUMNS, "Senza: articolo, poi la posizione."),
-                responses={200: _RISPOSTA_GENERICA},
+                parameters=params_lista(PIANO_SORT_COLUMNS, "Senza: articolo, poi la posizione."),
+                responses={200: RISPOSTA_GENERICA},
             )
             # Scopo: Il piano dell'inventario: che cosa il posting scrivera'.
             def get(self, request: Request, doc_id: int) -> JsonResponse:
@@ -470,8 +425,8 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
             @extend_schema(
                 operation_id=f"magazzino_{op}_piano_export",
-                parameters=[_PARAM_FORMATO, *_params_lista(PIANO_SORT_COLUMNS, "")],
-                responses=_RISPOSTE_EXPORT,
+                parameters=[PARAM_FORMATO, *params_lista(PIANO_SORT_COLUMNS, "")],
+                responses=RISPOSTE_EXPORT,
             )
             # Scopo: Il file del piano.
             def get(self, request: Request, doc_id: int) -> HttpResponse:
@@ -586,7 +541,7 @@ class ApiMagazzinoUbicazioniLookup(DomainAPIView):
     area_funzionale = AREA
     is_search_endpoint = True
 
-    @extend_schema(operation_id="magazzino_ubicazioni_lookup", responses={200: _RISPOSTA_GENERICA})
+    @extend_schema(operation_id="magazzino_ubicazioni_lookup", responses={200: RISPOSTA_GENERICA})
     # Scopo: Le ubicazioni attive di un magazzino, per il form di riga.
     def get(self, request: Request, magazzino_id: int) -> JsonResponse:
         return success_response(magazzino_service.lookup_ubicazioni(magazzino_id))
@@ -604,7 +559,7 @@ class ApiLottiLookup(DomainAPIView):
             OpenApiParameter(name="articolo_id", type=str, location=OpenApiParameter.QUERY, required=True),
             OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
-        responses={200: _RISPOSTA_GENERICA},
+        responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: I lotti attivi di un articolo.
     def get(self, request: Request) -> JsonResponse:
@@ -627,7 +582,7 @@ class ApiAssetsLookup(DomainAPIView):
             OpenApiParameter(name="articolo_id", type=str, location=OpenApiParameter.QUERY, required=True),
             OpenApiParameter(name="magazzino_id", type=int, location=OpenApiParameter.QUERY, required=True),
         ],
-        responses={200: _RISPOSTA_GENERICA},
+        responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: I seriali attivi di un articolo, dell'emittente del magazzino.
     def get(self, request: Request) -> JsonResponse:
@@ -684,9 +639,9 @@ class ApiDisponibilita(DomainAPIView):
         parameters=[
             OpenApiParameter(name="magazzino_id", type=int, location=OpenApiParameter.QUERY, required=False),
             *_PARAMS_DISPONIBILITA,
-            *_params_lista(DISPONIBILITA_SORT_COLUMNS, "Senza: articolo, magazzino."),
+            *params_lista(DISPONIBILITA_SORT_COLUMNS, "Senza: articolo, magazzino."),
         ],
-        responses={200: _RISPOSTA_GENERICA},
+        responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: La disponibilita' per (articolo, magazzino), paginata.
     def get(self, request: Request) -> JsonResponse:
@@ -709,8 +664,8 @@ class ApiDisponibilitaExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_disponibilita_export",
-        parameters=[_PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *_params_lista(DISPONIBILITA_SORT_COLUMNS, "")],
-        responses=_RISPOSTE_EXPORT,
+        parameters=[PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *params_lista(DISPONIBILITA_SORT_COLUMNS, "")],
+        responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file della disponibilita'.
     def get(self, request: Request) -> HttpResponse:
@@ -725,7 +680,7 @@ class ApiDisponibilitaExport(DomainAPIView):
         return build_export_response(
             request, lista_codice=self.lista_codice,
             results=dati["results"], total=dati["count"],
-            filtri_applicati=_filtri_label(filtri) or None, fmt=fmt,
+            filtri_applicati=filtri_label(filtri) or None, fmt=fmt,
         )
 
 
@@ -738,8 +693,8 @@ class ApiDisponibilitaArticoli(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_disponibilita_articoli_list",
-        parameters=[*_PARAMS_DISPONIBILITA, *_params_lista(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, "Senza: articolo.")],
-        responses={200: _RISPOSTA_GENERICA},
+        parameters=[*_PARAMS_DISPONIBILITA, *params_lista(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, "Senza: articolo.")],
+        responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: La disponibilita' per articolo, paginata.
     def get(self, request: Request) -> JsonResponse:
@@ -761,8 +716,8 @@ class ApiDisponibilitaArticoliExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_disponibilita_articoli_export",
-        parameters=[_PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *_params_lista(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, "")],
-        responses=_RISPOSTE_EXPORT,
+        parameters=[PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *params_lista(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, "")],
+        responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file della disponibilita' per articolo.
     def get(self, request: Request) -> HttpResponse:
@@ -777,7 +732,7 @@ class ApiDisponibilitaArticoliExport(DomainAPIView):
         return build_export_response(
             request, lista_codice=self.lista_codice,
             results=dati["results"], total=dati["count"],
-            filtri_applicati=_filtri_label(filtri) or None, fmt=fmt,
+            filtri_applicati=filtri_label(filtri) or None, fmt=fmt,
         )
 
 
@@ -792,7 +747,7 @@ class ApiDisponibilitaBlocchi(DomainAPIView):
             OpenApiParameter(name="articolo_id", type=str, location=OpenApiParameter.QUERY, required=True),
             OpenApiParameter(name="magazzino_id", type=int, location=OpenApiParameter.QUERY, required=True),
         ],
-        responses={200: _RISPOSTA_GENERICA},
+        responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: Gli attesi APERTA in uscita su (articolo, magazzino).
     def get(self, request: Request) -> JsonResponse:
@@ -847,8 +802,8 @@ class ApiMovimenti(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_movimenti_list",
-        parameters=[*_PARAMS_MOVIMENTI, *_params_lista(MOVIMENTI_SORT_COLUMNS, "Senza: data_mov DESC, id DESC.")],
-        responses={200: _RISPOSTA_GENERICA},
+        parameters=[*_PARAMS_MOVIMENTI, *params_lista(MOVIMENTI_SORT_COLUMNS, "Senza: data_mov DESC, id DESC.")],
+        responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: Il registro dei movimenti, paginato. Sola lettura per costruzione.
     def get(self, request: Request) -> JsonResponse:
@@ -871,8 +826,8 @@ class ApiMovimentiExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_movimenti_export",
-        parameters=[_PARAM_FORMATO, *_PARAMS_MOVIMENTI, *_params_lista(MOVIMENTI_SORT_COLUMNS, "")],
-        responses=_RISPOSTE_EXPORT,
+        parameters=[PARAM_FORMATO, *_PARAMS_MOVIMENTI, *params_lista(MOVIMENTI_SORT_COLUMNS, "")],
+        responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file del registro, con gli stessi filtri e ordinamento.
     def get(self, request: Request) -> HttpResponse:
@@ -887,5 +842,5 @@ class ApiMovimentiExport(DomainAPIView):
         return build_export_response(
             request, lista_codice=self.lista_codice,
             results=dati["results"], total=dati["count"],
-            filtri_applicati=_filtri_label(filtri) or None, fmt=fmt,
+            filtri_applicati=filtri_label(filtri) or None, fmt=fmt,
         )

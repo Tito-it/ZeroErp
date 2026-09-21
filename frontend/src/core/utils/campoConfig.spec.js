@@ -9,7 +9,7 @@
 //        serviva una tendina, o una casella dove serviva un calendario.
 // ------------------------------------------------------------
 import { describe, it, expect } from 'vitest'
-import { PREFISSO_CAMPI, WIDGET, chiaveEtichettaCampo, widgetPerColonna } from './campoConfig'
+import { PREFISSO_CAMPI, PREFISSO_TABELLE, WIDGET, chiaveEtichettaCampo, chiaveEtichettaTabella, widgetPerColonna } from './campoConfig'
 
 describe('widgetPerColonna', () => {
   it('FK verso una tabella ammessa al lookup: LookupSelect, qualunque sia il tipo', () => {
@@ -37,6 +37,12 @@ describe('widgetPerColonna', () => {
     expect(widgetPerColonna({ name: 'meta', type: 'json', references: null })).toBe(WIDGET.JSON)
     expect(widgetPerColonna({ name: 'codice', type: 'text', references: null })).toBe(WIDGET.TEXT)
     expect(widgetPerColonna({ name: 'data_x', type: 'datetime' })).toBe(WIDGET.TEXT)
+  })
+})
+
+describe('chiaveEtichettaTabella', () => {
+  it('e\' il prefisso piu\' la rel: il punto e\' il separatore di vue-i18n', () => {
+    expect(chiaveEtichettaTabella('config.ambiti')).toBe(`${PREFISSO_TABELLE}.config.ambiti`)
   })
 })
 
