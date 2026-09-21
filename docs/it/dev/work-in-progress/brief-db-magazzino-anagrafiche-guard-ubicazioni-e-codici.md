@@ -78,9 +78,19 @@ su ogni colonna, `sensibile` dove serve), poi **apply del mirror `ui`: Tid**, co
 per le liste 70-77 del Lotto 2. Le colonne per lista stanno nel piano §4-6; le
 righe CSV arrivano nel commit del Pezzo B/C/D.
 
+## R-4 🟡 — `config.titoli_cortesia`: che cosa farne
+
+Solo `id`, `descrizione`, `descrizione_breve` — senza `codice`/`codice_interno`
+ne' `attivo`. `fn_get_lookup_codici` la rifiuta
+(`E_LOOKUP_STRUTTURA_TABELLA_INVALIDA`), quindi il 21-09 e' uscita dalla
+whitelist del lookup e dal registro del pannello config, dove era dichiarata e
+rispondeva 500. **Nessun consumatore** nel BE ne' nel FE. Due strade, decisione
+vostra: le si da' `codice` + `attivo` (e rientra nei vocabolari), oppure e' un
+dato morto e si ritira come gli altri (analisi-software-per-dati-morti).
+
 ## Ai team, per chiudere
 
-- **DB**: R-1 (guard + codice + pgTAP), R-2 (tre righe in `codici_errore.csv`).
+- **DB**: R-1 (guard + codice + pgTAP), R-2 (tre righe in `codici_errore.csv`), R-4 (una decisione).
 - **Tid**: apply del mirror `ui` quando le righe di R-3 sono nel CSV.
-- **BE/FE**: parte dal Pezzo A del piano (non dipende da questo brief); B/C/D
+- **BE/FE**: ✅ Pezzo A fatto il 21-09 (non dipendeva da questo brief); B/C/D
   dopo R-2 e R-3 applicati e verificati sul DB vivo.

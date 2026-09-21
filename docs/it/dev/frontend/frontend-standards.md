@@ -3542,7 +3542,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `StatiDrawer` + `StatiSearchTable` | CRUD stati | IndirizziView |
 | `ToponomasticaDrawer` + `ToponomasticaSearchTable` | CRUD toponomastica | IndirizziView |
 | `CodiciPostaliDrawer` + `CodiciPostaliSearchTable` | CRUD codici postali | IndirizziView |
-| `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico 67 tabelle config | ConfigView |
+| `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico dei 65 vocabolari di `config-tables.js` (metadata-driven: etichette i18n, FK→lookup, date) | ConfigView |
 
 ### Composable (`core/composables/`)
 

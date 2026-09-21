@@ -41,7 +41,7 @@ frontend/src/
 │   │   ├── *Autocomplete.vue       # ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete
 │   │   ├── *Drawer.vue             # Drawer geografici: ComuneDrawer, ProvinceDrawer, RegioniDrawer, StatiDrawer, ToponomasticaDrawer, CodiciPostaliDrawer
 │   │   ├── *SearchTable.vue        # SearchTable geografiche: ComuniSearchTable, ProvinceSearchTable, RegioniSearchTable, StatiSearchTable, ToponomasticaSearchTable, CodiciPostaliSearchTable
-│   │   ├── GenericConfigDrawer.vue # Drawer generico per 67 tabelle config
+│   │   ├── GenericConfigDrawer.vue # Drawer generico per i 65 vocabolari del pannello config
 │   │   ├── ConfigTablePanel.vue    # Pannello config con tab dinamici
 │   │   ├── IndirizziSoggettoDrawer.vue  # Gestione indirizzi soggetto (multi-tipo, replace, auto-clone)
 │   │   ├── ContattiSoggettoDrawer.vue   # Gestione contatti soggetto

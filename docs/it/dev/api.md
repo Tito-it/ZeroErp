@@ -67,7 +67,7 @@ GET /api/v1/core/lookup/codici/?rel=config.qualifiche
 GET /api/v1/core/lookup/codici/?rel=config.stati_pratiche&search=ape
 ```
 
-Un'unica API, parametro `rel` con whitelist (90 tabelle su 9 schemi, 2026-09-19).
+Un'unica API, parametro `rel` con whitelist (87 tabelle su 9 schemi, 2026-09-21 — ⚠️ una rel dichiarata qui deve **rispondere**: `config.stati` e `config.titoli_cortesia`, senza `codice`, erano ammesse ed erano un 500; il presidio `test_config_panel_registro_db` attraversa ogni riga del pannello config).
 Restituisce sempre `id, codice, codice_interno, descrizione, attivo, codice_stabile`
 con paginazione e search. Variante **specializzata** (config `_LOOKUP_SPECIALIZZATE`):
 stessa API e contratto + UNA colonna extra per relazione (es.

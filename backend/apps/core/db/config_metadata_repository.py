@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Repository per metadata tabelle config via information_schema.
-#        Introspezione tecnica — non logica business (non viola DB-first).
-#        I metadata sono cacheable in memoria (non cambiano a runtime).
+# Scopo: Repository per metadata tabelle config via information_schema e
+#        pg_catalog. Introspezione tecnica — non logica business (non viola
+#        DB-first). I metadata sono cacheable in memoria (non cambiano a runtime).
+#        Dal 2026-09-21 legge anche le CHIAVI ESTERNE (per il widget di lookup
+#        del drawer generico) e i VINCOLI (per tradurre un IntegrityError nel
+#        campo da correggere) — il drawer generico resta metadata-driven, ma
+#        legge piu' modello (piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config §3).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -13,10 +17,16 @@ from typing import Any
 
 from django.db import connection
 
-# Colonne di sistema da escludere — audit, transazione, storicizzazione.
+from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE, _REL_CONSENTITE
+
+# Colonne di sistema da escludere — audit, transazione, storicizzazione, e le
+# identita' tecniche che scrive il DB (`uid` con default `uuidv7()`): un campo
+# che l'operatore non deve compilare non si mostra come obbligatorio.
+# ⚠️ Regola, non elenco: una colonna il cui default e' una FUNZIONE e che non
+# e' mai un dato dell'operatore. Oggi `uid` e' la sola.
 _EXCLUDED_COLUMNS = frozenset({
     "data_insert", "user_insert", "data_update", "user_update",
-    "tx_id", "storicizza",
+    "tx_id", "storicizza", "uid",
 })
 
 # Mapping tipo SQL → tipo frontend per il renderer dinamico.
@@ -39,8 +49,49 @@ _TYPE_MAP = {
     "uuid": "text",
 }
 
-# Cache in memoria — {schema.table: [columns]}
+# Cache in memoria — {schema.table: [columns]} e {schema.table: [constraints]}
 _cache: dict[str, list[dict[str, Any]]] = {}
+_cache_vincoli: dict[str, list[dict[str, Any]]] = {}
+
+# Le FK a UNA colonna della tabella: {colonna: ("schema.tabella_target",
+# "colonna_target")}. Da pg_catalog e non da information_schema:
+# `referential_constraints` non porta le colonne, e ricomporle da
+# `key_column_usage` vuole tre JOIN.
+# ⚠️ La colonna TARGET viaggia perche' una FK non punta per forza a `id`: nel
+# registro del pannello `config.stati_doc_*.esito` e
+# `pratiche.template_flussi.esito_default` referenziano
+# `config.esiti_flussi_pratiche(codice_interno)`. Senza, il FE avrebbe montato
+# la `LookupSelect` col suo default `valueField='id'` e salvato un intero dove
+# il DB vuole un codice (trovato in revisione il 2026-09-21).
+_SQL_FK = """
+    SELECT a.attname, cn.nspname || '.' || cl.relname, fa.attname
+      FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace tn ON tn.oid = t.relnamespace
+      JOIN pg_class cl ON cl.oid = c.confrelid
+      JOIN pg_namespace cn ON cn.oid = cl.relnamespace
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+      JOIN pg_attribute fa ON fa.attrelid = c.confrelid AND fa.attnum = c.confkey[1]
+     WHERE c.contype = 'f'
+       AND tn.nspname = %s AND t.relname = %s
+       AND array_length(c.conkey, 1) = 1
+"""
+
+# I vincoli UNIQUE / FK / CHECK della tabella con le loro colonne, per nome.
+_SQL_VINCOLI = """
+    SELECT c.conname, c.contype,
+           ARRAY(SELECT a.attname
+                   FROM unnest(c.conkey) AS k(attnum)
+                   JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+                  ORDER BY a.attnum)
+      FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace tn ON tn.oid = t.relnamespace
+     WHERE c.contype IN ('u', 'f', 'c')
+       AND tn.nspname = %s AND t.relname = %s
+     ORDER BY c.conname
+"""
+_TIPO_VINCOLO = {"u": "unique", "f": "fk", "c": "check"}
 
 
 # Scopo: Normalizza il `column_default` di information_schema nel valore tipizzato
@@ -92,6 +143,8 @@ class ConfigMetadataRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [schema, table])
             rows = cursor.fetchall()
+            cursor.execute(_SQL_FK, [schema, table])
+            fk_per_colonna = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
 
         columns = []
         for row in rows:
@@ -99,6 +152,15 @@ class ConfigMetadataRepository:
             if col_name in _EXCLUDED_COLUMNS:
                 continue
             fe_type = _TYPE_MAP.get(row[1], "text")
+            # ⭐ La FK dice al drawer QUALE tabella e QUALE colonna la colonna
+            # nomina; se quella tabella e' ammessa al lookup generico E la
+            # colonna target e' fra quelle che il lookup restituisce, il campo
+            # diventa una `LookupSelect` (con `valueField` = colonna target),
+            # altrimenti resta un valore a mano — e lo dichiara. Lo sa il BE
+            # (`_REL_CONSENTITE`, `LOOKUP_COLONNE_VALORE`), non il FE: esce
+            # come flag. ⛔ Il flag a `true` con una colonna che il lookup non
+            # porta sarebbe una select che salva `undefined`.
+            references, references_column = fk_per_colonna.get(col_name, (None, None))
             columns.append({
                 "name": col_name,
                 "type": fe_type,
@@ -109,6 +171,11 @@ class ConfigMetadataRepository:
                 # creazione; None se non e' un literal riconoscibile.
                 "default": _parse_column_default(row[3], fe_type),
                 "is_pk": col_name == "id",
+                "references": references,
+                "references_column": references_column,
+                "references_lookup": (
+                    references in _REL_CONSENTITE and references_column in LOOKUP_COLONNE_VALORE
+                ),
             })
 
         _cache[cache_key] = columns
@@ -122,7 +189,27 @@ class ConfigMetadataRepository:
     def get_all_column_names(self, schema: str, table: str) -> list[str]:
         return [c["name"] for c in self.get_table_columns(schema, table)]
 
+    # Scopo: I vincoli UNIQUE / FK / CHECK della tabella, con le colonne che
+    #        coinvolgono: `[{"name", "type", "columns"}]`. Servono al service
+    #        per tradurre un IntegrityError nel CAMPO da correggere (le mappe di
+    #        `translate_db_errors` sono per nome di vincolo, e qui i nomi si
+    #        leggono dal catalogo invece di essere scritti a mano per 90 tabelle).
+    def get_table_constraints(self, schema: str, table: str) -> list[dict[str, Any]]:
+        cache_key = f"{schema}.{table}"
+        if cache_key in _cache_vincoli:
+            return _cache_vincoli[cache_key]
+        with connection.cursor() as cursor:
+            cursor.execute(_SQL_VINCOLI, [schema, table])
+            rows = cursor.fetchall()
+        vincoli = [
+            {"name": r[0], "type": _TIPO_VINCOLO[r[1]], "columns": list(r[2])}
+            for r in rows
+        ]
+        _cache_vincoli[cache_key] = vincoli
+        return vincoli
+
     # Scopo: Invalida la cache (utile in test).
     @staticmethod
     def clear_cache() -> None:
         _cache.clear()
+        _cache_vincoli.clear()
