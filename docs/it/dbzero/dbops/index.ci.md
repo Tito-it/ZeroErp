@@ -132,6 +132,7 @@
 - [vw_fk_con_indice_missing_policy](manual/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md) — (latest review 27-07-26)
 - [vw_function_list](manual/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
+- [vw_funzioni_check_codici](manual/vw_funzioni_check_codici.md) — (latest review 21-09-2026)
 - [vw_indici_ridondanti_prefisso](manual/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_liste_multi_emittente_non_certificate](manual/vw_liste_multi_emittente_non_certificate.md) — (latest review 18-08-26)
 - [vw_lotti_fermi_da_guardare](manual/vw_lotti_fermi_da_guardare.md) — (latest review 19-09-2026)
@@ -148,6 +149,7 @@
 - [vw_processi_programmazione](manual/vw_processi_programmazione.md) — (latest review 07-09-2026)
 - [vw_processi_programmazione_da_guardare](manual/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
 - [vw_processi_roster](manual/vw_processi_roster.md) — (latest review 05-09-2026)
+- [vw_punti_canale_campo](manual/vw_punti_canale_campo.md) — (latest review 21-09-2026)
 - [vw_riferimenti_morti_da_sanare](manual/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](manual/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)

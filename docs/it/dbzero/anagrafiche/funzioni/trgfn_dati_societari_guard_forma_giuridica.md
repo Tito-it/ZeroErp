@@ -16,7 +16,7 @@ DECLARE
   v_soggetto_stato_id anagrafiche.soggetti.stato_id%TYPE;
   v_forma_stato_id    config.forme_giuridiche.stato_id%TYPE;
 BEGIN
-  
+
   -- Recupera paese del soggetto
   SELECT s.stato_id
     INTO v_soggetto_stato_id
@@ -41,17 +41,18 @@ BEGIN
       'trgfn_dati_societari_guard_forma_giuridica',
       'E_FORMA_GIURIDICA_PAESE',
       jsonb_build_object(
+        'campo', 'forma_giuridica_id',
         'tabella', 'anagrafiche.dati_societari',
         'soggetto_id', NEW.soggetto_id::text,
         'forma_giuridica_id', NEW.forma_giuridica_id::text,
         'soggetto_stato_id', v_soggetto_stato_id::text,
         'forma_stato_id', v_forma_stato_id::text
       ),
-      
+
       NEW.tx_id::uuid,
       NEW.forma_giuridica_id::text,
       NEW.soggetto_id::text
-      
+
     );
 
     -- Fallback safety (nel caso fn_log_and_raise_error non faccia RAISE)

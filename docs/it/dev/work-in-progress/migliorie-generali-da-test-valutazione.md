@@ -862,8 +862,34 @@ corretto il brief: i lettori per riga erano **due**, non sei, e
 **Applicato da Tid il 21-09 alle 18:43**, pgTAP verdi (i due nuovi 12/12 come
 app). Misura come app (brief §9.7): situazione per ordine **187 → 20 ms**, per
 DDT 187 → 41, coda accrediti per DDT **115 → 36**, il guard dei tetti a ogni
-riga di ponte **→ 1.3 ms**; le viste intere invariate. Da committare. Restano
-D4 (B2) e D5.
+riga di ponte **→ 1.3 ms**; le viste intere invariate. Committato
+(`559dbf351`, PR #1635). ✏️ **Giro 3 (D4, forma B2) SCRITTO la sera del
+21-09** (brief §10): `20260921-32` — `fn_ddt_push_diagnosi` rigenerata
+`BEGIN ATOMIC` come **fonte unica** dell'eleggibilità, con quattro colonne in
+più (`billing_account_id`, `ordine_riga_id`, `segment`, `quantita_push`) e il
+documento come seme in `UNION ALL` (la rev del giro 1 aveva lasciato un
+`p IS NULL OR` su `vendite.ddt`); `-33` — il lister **deriva** dalla diagnosi
+(`WHERE motivo IS NULL` + filtri di chiamata + proiezione, contratto verso la
+pipeline invariato); `-34` — la capability legge la diagnosi **una** volta
+(flag per costruzione, precedenza `GIA_INVIATO`/`GIA_FATTURATO` dal `segment`,
+poi il motivo). `test-fn-available-actions-ddt-reason-catch-all-v1` riscritto
+a casi costruiti coi builder (8 → 16: l'eleggibile a tre voci, ALLOCATA,
+EMESSA, la precedenza del segmento sul documento annullato, pin di forma).
+Provato sull'SQL estratto: blob della capability **identico per tutti i 51
+DDT** (che esercitano tutte e sette le reason), lister identico per ogni DDT,
+piano generico con `Index Cond` + `One-Time Filter`, venti presidi a esito
+identico, guardrail e cancelli OK. ✅ **Applicato da Tid la sera stessa,
+pgTAP senza regressioni.** Misura come app (brief §10.7): capability del DDT
+**175 → 50 ms**. ⚠️ **Regressione dichiarata**: il lister SENZA documento
+(cockpit, lista push) **214 → 663 ms** — la diagnosi classifica il segmento
+di ogni riga attiva e `fn_get_stato_push_segment` è una scansione di
+`commesse_attivita` sotto policy per riga (7.6 ms × 54; `textlike` non è
+leakproof, la policy va prima). È il pavimento di D5, con un perimetro in più:
+**D8** — l'indice `text_pattern_ops` su `segment_key` (lo stesso di D5, i
+`text_pattern_*` sono leakproof) e/o il classificatore set-based con la
+scalare come proiezione. ⚠️ Decisione nuova **D7**: `ddt_righe.attivo` non ha
+un guard fuori da `DRAFT` — il modello ammette di disattivare una riga già
+instradata. Da committare. Restano D5+D8 (giro 4, ora prioritario), D6, D7.
 
 ---
 
@@ -1036,8 +1062,13 @@ D6 e il registro dei rossi in CI.
       per la partita di un DDT, come app), ✏️ giro 2 (D3: situazione ordine,
       coda accrediti e i due verbi per documento) **applicato** la sera
       stessa (situazione per ordine 187 → 20 ms, coda per DDT 115 → 36, come
-      app); 🔵 D6 (`vw_contatore_merce` senza lettori) da decidere;
-      restano D4 (B2) e D5.
+      app), committato; ✏️ giro 3 (D4, forma B2: la diagnosi fonte unica,
+      il lister che ne deriva, la capability a una lettura) **scritto** la
+      sera stessa e **applicato** (capability 175 → 50 ms come app; ⚠️ il
+      lister senza documento 214 → 663: il classificatore del segmento per
+      riga, D8 — stesso indice di D5); 🔵 D6 (`vw_contatore_merce` senza
+      lettori), D7 (`ddt_righe.attivo` senza guard fuori da DRAFT) e D8 da
+      decidere; resta il giro 4 (D5 + D8a), ora prioritario.
 
 ### 🟡 Struttura
 

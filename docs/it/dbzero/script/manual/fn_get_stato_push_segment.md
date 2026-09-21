@@ -5,6 +5,7 @@
 **Consumatori (push-list, eleggibile ⇔ LIBERA):**
 >
 • [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare)
+> • [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi) — per il DDT lo legge lei (rank 4 e colonna `segment`), e il lister ne deriva
 > • [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare)
 > • [vendite.fn_list_contratti_da_pushare](/dbzero/vendite/funzioni/fn_list_contratti_da_pushare)
 >

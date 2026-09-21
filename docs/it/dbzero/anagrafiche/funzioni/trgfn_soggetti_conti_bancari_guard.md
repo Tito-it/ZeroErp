@@ -34,6 +34,7 @@ BEGIN
                         'trgfn_soggetti_conti_bancari_guard',
                         'E_CONTO_BANCARIO',
                         jsonb_build_object(
+                          'campo', 'conto_bancario_id',
                           'tabella','anagrafiche.conti_bancari',
                           'conto_bancario_id',  NEW.conto_bancario_id::text
                         ) , NULL::uuid, NEW.conto_bancario_id::text

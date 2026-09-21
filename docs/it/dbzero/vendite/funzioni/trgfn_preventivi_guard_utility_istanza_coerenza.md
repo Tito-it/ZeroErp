@@ -32,6 +32,7 @@ BEGIN
       'trgfn_preventivi_guard_utility_istanza_coerenza',
       'E_PREV_UTILITY_ISTANZA_INCOERENTE',
       jsonb_build_object(
+        'campo', 'utility_id',
         'detail', 'utility_id non coerente con istanza_utility_id (no BA/IDP/cliente matching)',
         'istanza_utility_id', NEW.istanza_utility_id,
         'utility_id', NEW.utility_id

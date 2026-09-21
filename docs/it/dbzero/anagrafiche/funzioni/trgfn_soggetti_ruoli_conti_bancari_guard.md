@@ -32,6 +32,7 @@ BEGIN
                         TG_NAME,
                         'E_CONTO_BANCARIO',
                         jsonb_build_object(
+                          'campo', 'conto_bancario_id',
                           'tabella','soggetti_ruoli_conti_bancari',
                           'conto_bancario_id',  NEW.conto_bancario_id::text
                         ) ,

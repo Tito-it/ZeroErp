@@ -20,10 +20,23 @@
 > `fn_resi_da_accreditare`), le due viste come proiezioni, i due verbi dei
 > resi sul seme del DDT. Misura come app in §9.7: situazione per ordine
 > **187 → 20 ms**, coda per DDT **115 → 36**, il guard dei tetti **→ 1.3**.
-> ⏳ Da committare (doc auto-gen da rigenerare).
+> ✅ Committato con la doc auto-gen (`559dbf351`, PR #1635).
 > ⚠️ Il censimento dal catalogo ha corretto il brief: i lettori per riga
 > erano DUE, non sei (§9.1). Una decisione nuova, **D6** (§6): `vw_contatore_merce`
-> non ha più lettori. Richieste BE in §8.4 e §9.4. Poi D4 (B2) e D5.
+> non ha più lettori. Richieste BE in §8.4 e §9.4.
+> ✅ **Giro 3 (D4, forma B2) APPLICATO da Tid il 21-09 sera, pgTAP senza
+> regressioni** — §10, da leggere per primo se si riprende da qui:
+> `20260921-32` (la diagnosi rigenerata `BEGIN ATOMIC`, fonte unica, quattro
+> colonne in più, seme in `UNION ALL`), `-33` (il lister DERIVA dalla
+> diagnosi), `-34` (la capability legge una volta);
+> `test-fn-available-actions-ddt-reason-catch-all-v1` riscritto a casi
+> costruiti coi builder (8 → 16). Doc auto-gen rigenerata. Misura come app in
+> §10.7: capability del DDT **175 → 50 ms**. ⚠️ **E una regressione, sul
+> modello, non sui numeri**: il lister SENZA documento (cockpit, lista push)
+> **214 → 663 ms**, perché la diagnosi classifica il segmento di OGNI riga e
+> il classificatore è una scansione di `commesse_attivita` sotto policy per
+> riga — è il pavimento di D5, che ora ha la priorità e un perimetro in più
+> (§10.7, **D8**). ⏳ Da committare. Decisioni aperte: D6, D7, D8.
 
 ---
 
@@ -424,6 +437,8 @@ Presidi trasversali da toccare, e non è un elenco da rileggere a fine giro:
 | **D3** | Chi passa alla funzione oltre a lister, diagnosi e `list_partite_merce`: `vw_situazione_merce_ordine` (→ funzione per ordine) e le sei funzioni per riga di reso | ✅ **Decisa da Tid il 21-09: non in questo giro, ma è il giro SUBITO DOPO — «prima possibile», non un residuo.** Sono verbi o aggregati letti una volta per gesto, e questo giro vuole restare piccolo per il pgTAP dei casi costruiti; ma restano sette lettori che pagano «tutto». Stessa mossa (una riga per lettore: `fn_partite_merce(ARRAY[ddt_id della riga])` / `(NULL, ARRAY[ordine_id])`), un pgTAP di equivalenza per lettore |
 | **D4** | La seconda leva — capability a una lettura. ~~Forma B1 (`segment` esposto, lister invariato)~~ oppure **B2** (§2-bis.8: il lister deriva dalla diagnosi, una sola implementazione dell'eleggibilità) | ✅ **Decisa da Tid il 21-09: B2, in un giro suo, subito dopo la quarta leva.** Non è «dopo la misura»: è una questione di contratto — oggi lister e diagnosi sono due copie della stessa regola tenute uguali da un pgTAP verde per sottrazione, cioè lo stesso difetto che D1 rifiuta per la vista. B1 lo lascerebbe in piedi. Il giro è separato perché tocca il lister della pipeline |
 | **D6** | `vendite.vw_contatore_merce` **non ha più lettori** (§9.1: dal `20260921-23` il lister legge `fn_partite_merce`; nessuna funzione, vista, repository o CSV di lista la nomina — solo `test-vw-contatore-merce-v1` e `test-porta-oneri-contatore-cieco-v1`). Ritirarla, o dichiarare chi la leggerà | 🔵 **Da decidere.** Sul modello è la quarta vista a valle della partita e ogni colonna nuova nel `RETURNS TABLE` paga anche il suo `DROP`; il COMMENT dice ancora «dosa la fatturazione», che non è più vero. Se si ritira: `DROP VIEW`, i due pgTAP (il secondo prova la porta degli oneri sul contatore — va riscritto sulla partita o ritirato con motivo), il `manual/` (memoria: oggetto ritirato = cancellare il manual), i COMMENT di `vw_situazione_merce_ordine` e `vw_partite_merce` che la nominano |
+| **D7** | `vendite.ddt_righe.attivo` **non ha un guard fuori da `DRAFT`** (letto dal catalogo il 21-09 sera: i soli trigger su `attivo` sono i `block_deact` delle figlie — fulfillment, resi, componenti, note — e una riga standalone già instradata non ne ha). Il modello quindi **ammette** di disattivare una riga che ha un'attività di commessa (`ALLOCATA`/`EMESSA`) su un DDT emesso. È emerso da B2: la capability leggeva la precedenza `GIA_INVIATO`/`GIA_FATTURATO` scandendo `ddt_righe` **senza guardare `attivo`**; ora la legge dalla diagnosi, che guarda le righe attive (lo stesso perimetro della partita e del lister). Nel solo caso «riga instradata poi disattivata» la risposta cambia (da «già inviato» al motivo delle altre righe, o al generico) | 🔵 **Da decidere.** Raccomandazione: un guard `BEFORE UPDATE OF attivo` su `ddt_righe` che rifiuti la disattivazione quando `fn_get_stato_push_segment(segment_key) <> 'LIBERA'` — merce instradata a fatturazione non è una riga che si può far sparire — oppure, più largo, il lock delle righe fuori da `DRAFT` (`can_edit_righe` lo dice già al FE, il DB no). È una regola di dominio, non un ripiego della capability: nessun changeSet in questo giro |
+| **D8** | `script.fn_get_stato_push_segment` è un classificatore **per riga**: `WHERE segment_key = k OR LIKE k‖'#CMP:%' OR LIKE k‖'#RET:%'` su `commesse_attivita`. Sotto RLS è una **scansione intera con la policy valutata per prima** (il piano come app: `Seq Scan … Filter: (ruolo = OPERATORE AND fn_scope_ef_whitelist_via_commessa(…) AND (…))`, 2027 buffer per 112 righe): l'`OR` con due `LIKE` non è indicizzabile sul btree normale, e `textlike` **non è leakproof**, quindi non può salire sopra la policy. Fatto datato (21-09 sera, app): 7.6 ms a chiamata. La diagnosi lo chiama per **ogni riga attiva** — deve, perché `segment` serve alla precedenza della capability anche sulle righe escluse dalle altre rank — e da B2 il lister senza documento eredita quel costo (§10.7) | 🔵 **Da decidere, insieme a D5.** Due strade, non alternative: **(a)** l'indice `text_pattern_ops` su `commesse_attivita.segment_key` — lo stesso di D5 — rende indicizzabili tutti e tre i rami (`texteq` e `text_pattern_*` **sono** leakproof: l'`Index Cond` sale sopra la policy, e il `LIKE` residuo ricontrolla solo le righe che l'indice restituisce); **(b)** una forma **set-based** del classificatore, `fn_stati_push_segmenti(p_keys varchar[])`, una scansione per documento invece di una per riga, con la scalare come **proiezione** (D1: un corpo) — la chiamano i cinque lister e le capability, quindi è un BB e le copie si ritirano nello stesso giro. (a) è un changeSet `00_schema` (un indice, non una FK: fuori dalla policy) e toglie il grosso; (b) è il modello giusto per la lista senza documento. Raccomandazione: (a) subito nel giro 4, (b) valutata dopo la misura |
 | **D5** | Il «pavimento» di `af` (§2-bis.5): leggere `vw_af_merce_per_riga` per chiave di segmento invece che intera — indice `text_pattern_ops` su `commesse_attivita.segment_key` + `LIKE` a prefisso per i `#CMP` | ✅ **Decisa da Tid il 21-09: DA FARE, passo a sé, dopo D3 e D4.** Non «se serve»: sul modello è l'unico pezzo del conto che dopo la chiusura resta proporzionale alla storia — cresce con le **fatture**, che non si svuotano mai — quindi peggiora da solo col tempo. La misura dopo la quarta leva serve a dargli la priorità, non a decidere se farlo |
 
 ## 7. Cosa resta — quattro giri, nell'ordine
@@ -444,16 +459,24 @@ per una riga. Due funzioni con gli stessi due semi di `fn_partite_merce`, le
 due viste come proiezioni, i verbi sul DDT della riga resa; due pgTAP a casi
 costruiti (12 + 12). Una richiesta BE (§9.4).
 
-**Giro 3 — D4, forma B2.** La diagnosi espone `segment` e `differenza`
-(`DROP` + rigenera), il lister deriva dalla diagnosi, la capability legge una
-volta. Contratto del lister invariato verso la pipeline; i suoi pgTAP verdi
-**prima** di toccarlo. Mezza giornata.
+**Giro 3 — D4, forma B2.** ✏️ **Scritto il 21-09 sera (§10).** La diagnosi
+espone `segment`, `billing_account_id`, `ordine_riga_id` e `quantita_push`
+(`DROP` + rigenera, `BEGIN ATOMIC`), il lister deriva dalla diagnosi, la
+capability legge una volta. Contratto del lister invariato verso la pipeline;
+i suoi pgTAP a esito identico sopra l'SQL estratto. ⚠️ `differenza` non è fra
+le colonne: il lister ha bisogno della **dose** (la differenza cappata alla
+quantità della riga), ed esporre la differenza grezza gli avrebbe fatto
+ricopiare il cap — la seconda implementazione che B2 vuole togliere.
 
-**Giro 4 — D5, `af` per chiave.** Indice `text_pattern_ops` su
-`commesse_attivita.segment_key`, `af` letta per le chiavi della chiusura
-(esatte per le righe, a prefisso per i `#CMP`). La misura dopo il giro 1 gli
-dà la priorità, non il permesso. Mezza giornata più la prova con `EXPLAIN`
-come app.
+**Giro 4 — D5 e D8(a), `af` e il classificatore per chiave.** Indice
+`text_pattern_ops` su `commesse_attivita.segment_key` — serve a **entrambi**:
+`af` letta per le chiavi della chiusura (esatte per le righe, a prefisso per i
+`#CMP`) e `fn_get_stato_push_segment` che smette di scandire la tabella sotto
+policy a ogni riga (§10.7). ⚠️ Sotto RLS la prova con `EXPLAIN` come app deve
+mostrare l'`Index Cond` **sopra** la policy: `texteq` e `text_pattern_*` sono
+leakproof, `textlike` no — il `LIKE` resta come recheck sulle righe
+dell'indice. La misura dopo il giro 3 gli dà la priorità: il cockpit è
+tornato a pagare la diagnosi di tutto. Mezza giornata più la prova.
 
 ## 8. Giro 1 — cosa è stato scritto e provato (21-09 sera)
 
@@ -814,11 +837,10 @@ array vuoto = zero righe; entrambi valorizzati = unione. Le viste sono
    stamattina (PR #1633) senza il nome nell'elenco del pgTAP, residuo che quel
    piano assegnava al team DB; scritto la sera stessa;
 2. ✅ la misura come app: §9.7;
-3. ⏳ commit; doc auto-gen da rigenerare (le schede
-   `funzioni/fn_situazione_merce_ordine.md`, `funzioni/fn_resi_da_accreditare.md`
-   e gli indici);
+3. ✅ commit con la doc auto-gen rigenerata — `559dbf351`, PR #1635;
 4. 🔵 D6 (`vw_contatore_merce`), decisione di Tid;
-5. ⏳ giro 3 (D4, B2), poi giro 4 (D5); richieste BE §8.4 e §9.4.
+5. ✏️ giro 3 (D4, B2) **scritto** (§10), ⏳ apply di Tid; poi giro 4 (D5);
+   richieste BE §8.4 e §9.4.
 
 ### 9.7 La misura «dopo» (dbdev, 21-09 dopo l'apply, `zeroerp_app` con contesto operatore, 121 righe d'ordine / 36 partite / 1 riga in coda, media delle chiamate 8–10 di 10 nella stessa sessione, righe valutate intere — colore, non motivo)
 
@@ -841,3 +863,199 @@ ogni riga scandita paga la sua policy, e la chiusura ne scandisce poche. Il
 guard dei tetti, che gira come owner, ci guadagna per un'altra via: il piano
 della coda ristretta sta nella plancache della funzione. Il backend, finché
 resta sulle viste (§9.4), paga ancora la colonna «prima».
+
+## 10. Giro 3 (D4, forma B2) — cosa è stato scritto e provato (21-09 sera)
+
+### 10.1 Il censimento, prima di scrivere
+
+Dal catalogo vivo (`pg_depend`, `pg_proc.prosrc`, `pg_views`), dal backend e
+dai pgTAP:
+
+| Cosa | Esito |
+| --- | --- |
+| dipendenti di `fn_ddt_push_diagnosi` in `pg_depend` | **nessuno** (nessuna vista sopra): il `DROP` non cascada |
+| chi la chiama | solo `script.fn_available_actions_ddt`; il lister la nominava nei commenti |
+| chi chiama il lister | la capability, il BE (`count_righe_pushable`, `_SORGENTE_FN_MAP` della pipeline — contratto a 26 colonne condivise + `riga_id`), e due funzioni **nei soli commenti** |
+| pgTAP che nominano la diagnosi | uno solo (`reason-catch-all-v1`, test 1 e 8); il lister ne ha sette, la capability sei |
+| dominio di `fn_get_stato_push_segment` | esattamente `LIBERA` / `ALLOCATA` / `EMESSA`: `DDT_ROUTED` (rank 4) ⟺ segment ≠ LIBERA |
+| `catalogo.articoli` | **senza RLS**, `ddt_righe.articolo_id` NOT NULL: l'`INNER JOIN` del lister non esclude mai |
+| `anagrafiche.billing_account` | **con RLS**: l'`INNER JOIN` del lister era un predicato non dichiarato («BA visibile») |
+| guard su `ddt_righe.attivo` | solo i `block_deact` delle figlie: **D7** |
+
+### 10.2 I file
+
+| Cosa | File |
+| --- | --- |
+| la diagnosi, `DROP` + `CREATE … BEGIN ATOMIC`, quattro colonne in più | `20_code/vendite/20260921-32-recreate-fn-ddt-push-diagnosi-fonte-unica-b2` (tre change: DROP, funzione da sola, COMMENT) |
+| il lister che deriva dalla diagnosi | `20_code/vendite/20260921-33-update-fn-list-ddt-da-pushare-deriva-dalla-diagnosi` |
+| la capability a una lettura | `20_code/script/20260921-34-update-fn-available-actions-ddt-partita-a-una-lettura` (generato dal dump vivo: solo intestazione e blocco del push cambiano) |
+| il presidio, riscritto | `db/pgtap/script/test-fn-available-actions-ddt-reason-catch-all-v1.sql` (8 → 16, fixture coi builder) |
+| manuali | `fn_ddt_push_diagnosi.md` (riscritto: undici cause, i quattro fatti, chi ne deriva), `fn_list_ddt_da_pushare.md`, `fn_available_actions_ddt.md`, `fn_partite_merce.md` (chiamanti), `fn_get_stato_push_segment.md`, `ddt.md`; guida `gestione-ddt.md` §11 |
+
+### 10.3 La forma, e le tre cose che non erano nel piano
+
+1. **La diagnosi espone quattro colonne, non due.** §2-bis.8 diceva
+   «`segment` e `differenza`». Scrivendo il lister derivato è emerso che ogni
+   fatto che il lister avrebbe ricalcolato è una seconda copia di una regola
+   della diagnosi: il BA (`COALESCE(testata, ordine sorgente)` — e ora letto
+   **attraverso** `billing_account`, così la rank 3 copre anche il BA
+   invisibile sotto RLS, che prima l'`INNER JOIN` del lister escludeva in
+   silenzio), la riga d'ordine sorgente (il «primo fulfillment per id»), la
+   **dose** (`GREATEST(0, LEAST(quantita, differenza))`, che la rank 11 già
+   giudicava). Quindi `billing_account_id`, `ordine_riga_id`, `segment`,
+   `quantita_push`; la differenza grezza non serve a nessuno (la partita per
+   riga la dà già `fn_partite_merce`) e avrebbe fatto ricopiare il cap.
+2. **Il seme del documento nella diagnosi era un `p IS NULL OR`.** La rev del
+   giro 1 aveva lasciato `WHERE (p_ddt_id IS NULL OR d.id = p_ddt_id)` su
+   `vendite.ddt`: in piano generico è una scansione intera della tabella
+   sotto policy — O(documenti), nel posto da cui la quarta leva li aveva
+   tolti. Ora è una CTE `docs` a due rami in `UNION ALL`; provato: `Index
+   Cond: (id = $1)` e `One-Time Filter: ($1 IS NULL)` davanti al ramo «tutti».
+3. **Il perimetro della precedenza `GIA_*` cambia di un caso, dichiarato.** I
+   due `EXISTS` di prima scandivano `ddt_righe` senza guardare `attivo`; la
+   diagnosi guarda le righe **attive** — lo stesso perimetro della partita e
+   del lister. La differenza si raggiunge solo con una riga instradata e poi
+   disattivata su un DDT emesso: il modello lo ammette (D7), e la risposta
+   giusta lì è un guard, non una capability che riporta una riga fantasma.
+   Il filtro `motivo <> 'DDT_ROUTED'` sul `min(rank)` è caduto: una riga
+   ROUTED ha per definizione segment `ALLOCATA` o `EMESSA`, quindi non arriva
+   mai al ramo del motivo.
+
+La capability legge la diagnosi con **una** `SELECT` aggregata:
+`bool_or(motivo IS NULL)`, `bool_or(segment = 'ALLOCATA')`,
+`bool_or(segment = 'EMESSA')`, `(array_agg(motivo ORDER BY motivo_rank) FILTER
+(WHERE motivo IS NOT NULL))[1]`. Il resto del corpo è byte-identico al vivo:
+il changeSet è generato da uno script che sostituisce solo intestazione e
+blocco del push (`gen_34.py` nello scratchpad).
+
+### 10.4 Il presidio riscritto
+
+Il test 1 di prima (`EXCEPT` lister/diagnosi nei due versi sulle righe vive)
+con B2 è la stessa query: al suo posto **casi costruiti** — l'eleggibile letto
+a tre voci (diagnosi: motivo NULL, dose 10, LIBERA, il BA costruito; lister:
+quella riga con 10; capability: `true|-|-`), `ALLOCATA` → `GIA_INVIATO` con il
+lister a zero righe, `EMESSA` → `GIA_FATTURATO`, e la **precedenza del
+segmento sul documento annullato** (`DDT ANNULLATO` + riga `ALLOCATA` →
+`GIA_INVIATO`, l'ordine di prima che B2 deve conservare e che nessun pgTAP
+costruiva). Più la coerenza delle quattro colonne con le rank, il pin di
+**forma** di D4 (il corpo del lister, senza commenti, nomina la diagnosi e non
+`fn_partite_merce` né `fn_get_stato_push_segment`; la capability non nomina il
+lister né il classificatore; la diagnosi è `BEGIN ATOMIC` non `DEFINER`) e lo
+scope come app. La fixture è coi builder (`fn_pgtap_crea_cliente_ba`,
+`fn_pgtap_crea_articolo`, niente `current_user_id = '1'`): il file era in
+`baseline-rossi-ci` come `ERRORE_FIXTURE` — se in CI torna verde, la corsa lo
+stampa RIENTRATO e `pgtap-baseline-ci-rientrati.sh` lo toglie. ⚠️ Le
+attività EMESSA si costruiscono **prima** di quelle ALLOCATA:
+`fn_emit_attivita_fatturabili_da_commessa` emette tutto ciò che trova.
+
+### 10.5 Le prove (owner, `BEGIN … ROLLBACK`, SQL estratto dai tre change)
+
+* **Forma nel catalogo**: diagnosi `prosqlbody` non nullo, non `DEFINER`,
+  `STABLE`, `RETURNS TABLE(… billing_account_id, ordine_riga_id, segment,
+  quantita_push)`; in `pg_depend`: `billing_account, causali_trasporto, ddt,
+  ddt_righe, fn_get_stato_push_segment, fn_partite_merce, ordini,
+  ordini_righe, ordini_righe_fulfillment, stati_doc_ddt`. Lister e capability:
+  `identity_arguments`, `prosecdef`, `provolatile` identici al vivo, `RETURNS`
+  del lister identico (md5); una funzione per nome.
+* **Equivalenza sui dati vivi** (colore, 51 DDT / 54 righe): lister «tutte»
+  4 = 4 e `EXCEPT ALL` a zero nei due versi; lister **per ognuno** dei 51 DDT
+  identico; le quattro colonne vecchie della diagnosi identiche riga per riga;
+  **il blob della capability identico per tutti i 51 DDT** — e la popolazione
+  esercita tutte e sette le reason (`SOLO_TRASPORTO` 20, `FATTURA_DA_ORDINE`
+  14, generico 8, eleggibili 3, `MERCE_IN_VIAGGIO` 3, `GIA_FATTURATO` 2,
+  `GIA_INVIATO` 1). Coerenza delle colonne nuove: 0 incoerenti.
+* **Piano generico** (`PREPARE` + `force_generic_plan` + `enable_seqscan =
+  off` sulla diagnosi con parametro): `Index Cond: (id = $1)` sul seme del
+  documento, `One-Time Filter: ($1 IS NULL)` davanti alla scansione «tutti»,
+  **zero** `Filter: (($1 IS NULL) OR`; dentro, la chiusura di
+  `fn_partite_merce` con i suoi One-Time Filter. La diagnosi si **inlina**
+  (nessun `Function Scan`, `CTE semi` una volta); lister chiamato sei volte
+  con lo stesso id e capability dopo: stessi risultati.
+* **I venti presidi esistenti** sopra lo stesso SQL, ciascuno nella propria
+  transazione, confrontati con la corsa **senza**: esiti identici —
+  `test-fn-list-ddt-da-pushare-contatore-v1` 7/7, `-v1` 12/12, `-v2` 5/5,
+  `-orfano-v1` 5/5, `test-ddt-solo-trasporto-causale-v1` 6/6,
+  `test-fatturazione-immediata-simmetria-sorgenti-v1` 20/20,
+  `test-ddt-read-side-v1` 17/17, `reason-catch-all-v1` **vecchio** 8/8,
+  `test-capability-motivi-e-nessuna-azione-v1` 13/13,
+  `test-available-actions-requires-righe-v1` 15/15, `-pdf-v1` 5/5,
+  `test-capability-annulla-aspetto-e-stato-leggibile-v1` 8/8,
+  `test-fn-check-ddt-emittibile-v1` 10/10, `dbops/test-riferimenti-morti-v1`
+  9/9, `script/test-rubinetto-primo-motivo-v1` 7/7,
+  `test-fn-list-ordini-da-pushare-v3` 10/10,
+  `test-ordini-fatturazione-trigger-eredita-v1` 5/5,
+  `test-fn-genera-ddt-riconsegna-eredita-v1` 17/17,
+  `test-fn-partite-merce-chiusura-v1` 13/14 (il 14 è lo scope, da owner),
+  `rls/test-rls-viste-security-invoker` 7/7.
+* **Il presidio nuovo**: 15/16 da owner; il **16** (scope) è rosso da owner
+  perché l'owner salta la RLS, come il 14 della chiusura. Senza i changeSet il
+  file muore (18 errori): legge colonne che non esistono ancora — è il verso
+  giusto.
+* **I guardrail SQL** della CI sopra lo stesso SQL: `guardrail_riferimenti_morti`
+  OK (plpgsql_check risolve la diagnosi nuova nel lister e nella capability),
+  `guardrail_codice_errore_strutturato` OK. **I sette cancelli statici**: OK.
+  `liquibase updateSQL` offline dei tre (copie senza `preConditions`): rende
+  tutti e tre, `DROP` / `CREATE … BEGIN ATOMIC … END;` / `COMMENT` in tre
+  istruzioni separate.
+* ⚠️ **Non provato col jar di pgjdbc**: il `-32` ha la stessa forma del `-21`
+  (funzione `BEGIN ATOMIC` da sola nel suo `sql:`, `COMMENT` in un change suo;
+  in più il `DROP` in un change suo), provata il 21-09 pomeriggio.
+* ⚠️ **Nessuna misura come app**: `titodb` non è membro di `zeroerp_app` e la
+  DDL vuole l'owner, quindi la prova sotto RLS del corpo nuovo non si fa
+  prima dell'apply. Il «prima» come app è in §8.6 (capability 175 ms, di cui
+  ~50 lister + ~25 diagnosi): la misura «dopo» va presa dopo l'apply e
+  scritta qui con la data.
+
+### 10.6 Cosa resta, nell'ordine
+
+1. ✅ apply dei tre changeSet — **Tid, 21-09 sera**;
+2. ✅ pgTAP di Tid: **nessuna regressione**; doc auto-gen rigenerata
+   (`funzioni/fn_ddt_push_diagnosi.md` mostra il corpo `BEGIN ATOMIC` con le
+   otto colonne, il lister e la capability nuovi);
+3. ✅ la misura come app: §10.7 — e ha portato **D8**;
+4. ⏳ commit;
+5. 🔵 D6 (`vw_contatore_merce`), **D7** (`ddt_righe.attivo` senza guard) e
+   **D8** (il classificatore del segmento per riga), decisioni di Tid;
+6. ⏳ giro 4: D5 **con** D8(a) — l'indice `text_pattern_ops` su
+   `commesse_attivita.segment_key` serve a entrambi; richieste BE §8.4 e
+   §9.4 (nessuna nuova da questo giro: blob della capability e contratto
+   del lister invariati).
+
+### 10.7 La misura «dopo» (dbdev, 21-09 sera dopo l'apply, `zeroerp_app` con contesto operatore, 51 DDT / 54 righe attive / 112 attività di commessa, media delle chiamate 6–10 di 10 nella stessa sessione — colore, non motivo)
+
+| Lettura | Prima (§8.6, stesso giorno) | Dopo |
+| --- | --- | --- |
+| `fn_available_actions_ddt` (il drawer) | 175 ms | **50 ms** |
+| `fn_ddt_push_diagnosi(d)` | 25 | 27 |
+| `fn_list_ddt_da_pushare(p_ddt_id)` | 52 | 31 |
+| `fn_list_ddt_da_pushare()` senza documento (cockpit, lista push) | **214** | **663** ⚠️ |
+| `fn_ddt_push_diagnosi()` tutte | — | 348 |
+| `fn_get_stato_push_segment` × le 54 righe attive | — | 401 (7.6 a chiamata) |
+| `fn_partite_merce(NULL, NULL)` | 88 | 92 |
+
+**La capability paga un terzo.** I ~100 ms «fuori da lister e diagnosi» che
+§8.6 dava come prossimo bersaglio erano in gran parte i due `EXISTS` su
+`fn_get_stato_push_segment` riga per riga: oggi il segmento lo calcola la
+diagnosi una volta.
+
+**La regressione, e da dove viene.** Il lister senza documento è la lista del
+push e del cockpit. Prima di B2 la sua `cand` era un'unica `SELECT` con i
+predicati nel `WHERE`: il planner valutava per ultimo il classificatore (costo
+100) e solo sulle righe sopravvissute a causale, partita e stato — poche.
+Ora la diagnosi calcola `segment` come **colonna di `cand`**, per ogni riga
+attiva di ogni DDT, e deve: la capability legge il segmento anche sulle righe
+escluse da un'altra rank (un DDT annullato con una riga instradata dice «già
+inviato», §10.4 test 11). Cinquantaquattro chiamate a 7.6 ms sono 400 dei 663.
+⛔ Il numero non decide niente; sul **modello** il fatto è che il classificatore
+è O(attività di commessa) **per riga**, sotto una policy che viene valutata
+prima del predicato perché `textlike` non è leakproof — cresce con le attività
+(cioè con le fatture) e con le righe: è la stessa famiglia del pavimento di
+`af` (D5), e la strada è la stessa (D8). Fino a lì il cockpit paga quanto la
+diagnosi di tutto.
+
+⚠️ La regressione è **dichiarata, non accettata**: se il giro 4 tardasse, la
+lista del push pagherebbe 3× a ogni apertura del cockpit. D8(a) non passa
+dalla policy FK (non è una chiave): è un changeSet `00_schema`
+(`CREATE INDEX … (segment_key text_pattern_ops)`, naming `ix_<tabella>_<colonna>_tpo`
+da verificare su `dbops.vw_duplicate_indexes`), da scrivere nel giro 4 — ed è
+lo **stesso** indice di D5.

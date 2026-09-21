@@ -68,6 +68,7 @@ BEGIN
             TG_NAME::text,
             'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO',
             jsonb_build_object(
+                'campo', 'articolo_id',
                 'contratto_id',        NEW.contratto_id,
                 'articolo_id',         NEW.articolo_id,
                 'listino_id',          v_listino_id,

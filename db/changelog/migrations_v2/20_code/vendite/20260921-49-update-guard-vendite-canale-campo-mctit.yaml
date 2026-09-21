@@ -1,0 +1,1703 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-be-presidio-ui-action-e-canale-campi §4 — SANATURA DEL CANALE `campo`
+# nei guard di `vendite` (la strada A del §4-bis, codice per codice).
+#
+# ── ⛔ IL DIFETTO ────────────────────────────────────────────────────
+#   Questi codici promettono a catalogo `ui_action = highlight_form_fields`
+#   («evidenzia il campo del form»), ma il campo lo accende un ALTRO canale:
+#   la COLUMN che script.fn_log_and_raise_error legge dal context — chiave
+#   `campo`, ripiego `parametro`. Qui il context non la portava: il nome
+#   della colonna c'era, ma come CHIAVE (`'quantita', NEW.quantita`), nel
+#   posto che l'helper non legge (dbops.vw_punti_canale_campo:
+#   CHIAVE_NON_LETTA / NESSUNO). A video: un toast e nessun campo rosso.
+#   La promessa era vuota, e nessun test lo vedeva.
+#
+# ── ⭐ LA CORREZIONE: una coppia in piu', NIENTE ALTRO ─────────────
+#   `'campo', '<colonna>'` come prima coppia del jsonb_build_object della
+#   chiamata che nomina il codice. Firma, guard, messaggio, VARIADIC,
+#   tx_id: intatti. Il nome e' quello dell'INPUT che l'operatore ha davanti
+#   (regola di api.md §Envelope: un id dall'URL o un parametro di firma NON
+#   lo e' — quelli restano senza campo e sono la strada B, l'override esce
+#   dal lato BE).
+#
+# ── I CODICI, E IL CAMPO SCELTO (strada A) ──────────────────────────
+#   E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE  -> articolo_id (riga di listino)
+#   E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO -> tipo_doc_fiscale_id (la riga
+#     APPROVATA/NON_EMESSA senza tipo documento)
+#   E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO -> articolo_id (gia' nel listino)
+#   E_CONTRATTO_CLASSE_TIPO_INCOERENTE  -> classe_utenza_id (la classe non e'
+#     del tipo utenza scelto)
+#   E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI -> il campo
+#     VALORIZZATO fra tipo_utenza_id e classe_utenza_id (CASE: e' quello che
+#     l'operatore deve svuotare)
+#   E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI -> il campo MANCANTE fra i
+#     due (CASE: quello da riempire)
+#   E_LISTINO_TIPOLOGIA_UTILITY         -> tipologia_id (non ammessa per l'utility)
+#   E_QTA_NON_POSITIVA (5 guard, la colonna di ciascuno): ordini_ful ->
+#     qta_evasa · resi_accrediti -> qta e qta_partita (due chiamate, due
+#     campi) · resi_riconsegne -> qta · resi_righe -> quantita ·
+#     resi_rinunce -> qta. E' il caso del brief (§3-bis.4): la colonna era
+#     la CHIAVE del context.
+#   E_PREV_UTILITY_ISTANZA_INCOERENTE   -> utility_id (come il sito Python,
+#     sanato dal BE il 21-09)
+#   ⚠️ E_COERENZA_ID (attivita_fatturabili) NON e' qui: le righe le scrive la
+#     pipeline, non un form. Strada B (brief §4-bis).
+#
+# ── ORIGINE DEL CORPO, E IL CANCELLO SUL CORPO STANTIO ─────────────
+#   Corpo VIVO (pg_get_functiondef, 21-09) per ogni funzione; il diff e' la
+#   sola inserzione (verificato per riga dal generatore). La preCondition
+#   ancora l'md5 di prosrc a quello letto: se qualcun altro tocca la stessa
+#   funzione prima dell'apply, il migrate si FERMA invece di disfargli il
+#   lavoro in silenzio (memoria: due changeSet dello stesso giorno sulla
+#   stessa funzione, 2026-09-09). dbdev e zeroerp_ci portano lo stesso md5
+#   (verificato 21-09), quindi la CI da zero passa.
+#   Il ripristino torna al corpo vivo di prima.
+#
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.1: i codici di
+#   questa lista non sono piu' CHIAVE_NON_LETTA/NESSUNO) + i pgTAP dei guard
+#   (invariati: il context in piu' non cambia nessun throws_ok).
+# Dipendenze: nessuna (la vista -42 li LEGGE, non serve all'apply).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-49-update-guard-vendite-canale-campo-mctit.yaml
+
+  - changeSet:
+      id: 20260921-49-update-guard-vendite-canale-campo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Canale campo nei guard di vendite:
+        vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile,
+        vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino,
+        vendite.trgfn_contratti_utilities_guard_tipo_classe,
+        vendite.trgfn_listini_guard_tipologia_utility,
+        vendite.trgfn_listini_righe_guard_tipologia,
+        vendite.trgfn_ordini_ful_guard_consistenza,
+        vendite.trgfn_preventivi_guard_utility_istanza_coerenza,
+        vendite.trgfn_resi_accrediti_guard,
+        vendite.trgfn_resi_riconsegne_guard,
+        vendite.trgfn_resi_righe_guard_quantita,
+        vendite.trgfn_resi_rinunce_guard — 'campo', '<colonna>' nel
+        context delle chiamate che nominano
+        E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE,
+        E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO,
+        E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO,
+        E_CONTRATTO_CLASSE_TIPO_INCOERENTE,
+        E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI,
+        E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI,
+        E_LISTINO_TIPOLOGIA_UTILITY, E_PREV_UTILITY_ISTANZA_INCOERENTE,
+        E_QTA_NON_POSITIVA. Solo la coppia in piu'; corpo vivo, md5
+        ancorato in preCondition.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            vendite: il corpo di una funzione da sanare non e' quello letto il
+            21-09 (md5 diverso): qualcuno l'ha toccata dopo. Rileggere il
+            vivo e rigenerare questo changeSet, non applicarlo.
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_commesse_attivita_guard_tipo_doc_emittibile'
+                     AND md5(p.prosrc) = '21e22251bfc96e62b19e63a8a2eaf1d9'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_contratti_righe_guard_aggiunta_fuori_listino'
+                     AND md5(p.prosrc) = '13ecefe5fb05ad76aeec4370970decf6'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_contratti_utilities_guard_tipo_classe'
+                     AND md5(p.prosrc) = '7c665acb9c6f92d9ac7599a5b7d2751b'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_listini_guard_tipologia_utility'
+                     AND md5(p.prosrc) = '3efcfc9570c72556685bc165799aa3cc'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_listini_righe_guard_tipologia'
+                     AND md5(p.prosrc) = '48854643aec8715e40222d407f46ba87'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_ordini_ful_guard_consistenza'
+                     AND md5(p.prosrc) = 'c897aec8a9d74c94b685da48c0ca3eec'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_preventivi_guard_utility_istanza_coerenza'
+                     AND md5(p.prosrc) = 'cd5807bb5dfb58644a4868001fac9d64'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_accrediti_guard'
+                     AND md5(p.prosrc) = '9e626f59e316aee3b5c8393393ae4443'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_riconsegne_guard'
+                     AND md5(p.prosrc) = '750e8ae77baeb9a79da10f725b9e44d9'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_righe_guard_quantita'
+                     AND md5(p.prosrc) = '1950a6b9c4ddd3776b0f4dd33382a557'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_rinunce_guard'
+                     AND md5(p.prosrc) = '018455833bbe8248e08994f9b9ec8ae2'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invariante di riga. Una riga commesse_attivita in stato
+              --   emittibile (APPROVATA + NON_EMESSA) deve avere tipo_doc_fiscale_id
+              --   valorizzato, altrimenti sarebbe invisibile alla discovery delle
+              --   corsie di fatturazione (fn_list_emittibili_lane) e il fatturato
+              --   andrebbe perso in silenzio. Fail-fast con codice parlante.
+              BEGIN
+                  IF NEW.stato_approvazione = 'APPROVATA'
+                     AND NEW.stato_emissione = 'NON_EMESSA'
+                     AND NEW.tipo_doc_fiscale_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO',
+                          jsonb_build_object(
+                              'campo', 'tipo_doc_fiscale_id',
+                              'commessa_id', NEW.commessa_id,
+                              'attivita_id', NEW.id,
+                              'segment_key', NEW.segment_key
+                          ),
+                          NEW.tx_id,
+                          NEW.commessa_id::text,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca INSERT/UPDATE su contratti_righe con tipo_eccezione='AGGIUNTA'
+              --   se l'articolo è già presente nel listino operativo del contratto.
+              -- Branch 1: listino_id IS NULL -> nessun check, AGGIUNTA sempre valida.
+              -- Branch 2: DRAFT (listino_versione_id IS NULL) -> verifica versione
+              --   operativa a CURRENT_DATE: stato IN ('ATTIVA','CHIUSA') + attivo=TRUE.
+              --   FIX Bug A: BOZZA esclusa, non blocca su articoli non ancora operativi.
+              -- Branch 3: ATTIVO (listino_versione_id IS NOT NULL) -> verifica versione
+              --   fissata all'attivazione (solo listini_righe, senza listini_versioni).
+              -- Errore se articolo trovato: E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO (450).
+              DECLARE
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_in_listino          boolean := false;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = NEW.contratto_id;
+
+                  -- Branch 1: nessun listino -> AGGIUNTA sempre valida
+                  IF v_listino_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_listino_versione_id IS NULL THEN
+                      -- Branch 2: DRAFT -> versione operativa a CURRENT_DATE
+                      -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, non blocca.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_versioni lv
+                            JOIN vendite.listini_righe lr
+                              ON lr.listino_versione_id = lv.id
+                           WHERE lv.listino_id = v_listino_id
+                             AND lv.attivo      = TRUE
+                             AND lv.stato       IN ('ATTIVA', 'CHIUSA')
+                             AND lv.validita   @> CURRENT_DATE
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo      = TRUE
+                      ) INTO v_in_listino;
+                  ELSE
+                      -- Branch 3: ATTIVO -> versione fissata (snapshot)
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe lr
+                           WHERE lr.listino_versione_id = v_listino_versione_id
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo = TRUE
+                      ) INTO v_in_listino;
+                  END IF;
+
+                  IF v_in_listino THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO',
+                          jsonb_build_object(
+                              'campo', 'articolo_id',
+                              'contratto_id',        NEW.contratto_id,
+                              'articolo_id',         NEW.articolo_id,
+                              'listino_id',          v_listino_id,
+                              'listino_versione_id', v_listino_versione_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          NEW.contratto_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_utility_has_tipi    boolean;
+                  v_classe_tipo_utenza  config.classi_utenze.tipo_utenza_id%TYPE;
+              BEGIN
+                  -- Ottimizzazione: un'unica CTE risolve sia il flag "utility con
+                  -- dimensione tipo/classe" (EXISTS in config.tipi_utenze) sia
+                  -- il tipo_utenza della classe dichiarata dal contratto.
+                  -- Se classe_utenza_id e' NULL, v_classe_tipo_utenza resta NULL
+                  -- e verra' segnalato dal guard piu' sotto.
+                  SELECT
+                      EXISTS (SELECT 1 FROM config.tipi_utenze tu
+                               WHERE tu.utility_id = NEW.utility_id),
+                      (SELECT cl.tipo_utenza_id FROM config.classi_utenze cl
+                        WHERE cl.id = NEW.classe_utenza_id)
+                    INTO v_utility_has_tipi, v_classe_tipo_utenza;
+
+                  IF v_utility_has_tipi THEN
+                      -- Utility con dimensione: tipo e classe obbligatori e coerenti.
+                      IF NEW.tipo_utenza_id IS NULL OR NEW.classe_utenza_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME,
+                              'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI',
+                              jsonb_build_object(
+                                  'campo', CASE WHEN NEW.tipo_utenza_id IS NULL THEN 'tipo_utenza_id' ELSE 'classe_utenza_id' END,
+                                  'contratto_id', NEW.contratto_id,
+                                  'utility_id', NEW.utility_id,
+                                  'tipo_utenza_id', NEW.tipo_utenza_id,
+                                  'classe_utenza_id', NEW.classe_utenza_id
+                              ),
+                              NULL::uuid,
+                              NEW.utility_id::text
+                          );
+                      END IF;
+
+                      -- Coerenza: la classe deve appartenere al tipo dichiarato.
+                      IF v_classe_tipo_utenza IS DISTINCT FROM NEW.tipo_utenza_id THEN
+                          -- Valori per %s: classe_utenza_id, classe.tipo_utenza_id, contratto.tipo_utenza_id.
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME,
+                              'E_CONTRATTO_CLASSE_TIPO_INCOERENTE',
+                              jsonb_build_object(
+                                  'campo', 'classe_utenza_id',
+                                  'contratto_id', NEW.contratto_id,
+                                  'utility_id', NEW.utility_id,
+                                  'tipo_utenza_id_atteso', NEW.tipo_utenza_id,
+                                  'tipo_utenza_id_classe', v_classe_tipo_utenza,
+                                  'classe_utenza_id', NEW.classe_utenza_id
+                              ),
+                              NULL::uuid,
+                              NEW.classe_utenza_id::text,
+                              v_classe_tipo_utenza::text,
+                              NEW.tipo_utenza_id::text
+                          );
+                      END IF;
+                  ELSE
+                      -- Utility senza dimensione (es. Base / commercio):
+                      -- entrambi i campi devono essere NULL.
+                      IF NEW.tipo_utenza_id IS NOT NULL OR NEW.classe_utenza_id IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME,
+                              'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI',
+                              jsonb_build_object(
+                                  'campo', CASE WHEN NEW.tipo_utenza_id IS NOT NULL THEN 'tipo_utenza_id' ELSE 'classe_utenza_id' END,
+                                  'contratto_id', NEW.contratto_id,
+                                  'utility_id', NEW.utility_id,
+                                  'tipo_utenza_id', NEW.tipo_utenza_id,
+                                  'classe_utenza_id', NEW.classe_utenza_id
+                              ),
+                              NULL::uuid,
+                              NEW.utility_id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_guard_tipologia_utility()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: verifica che la coppia (utility_id, tipologia_id) sia ammessa
+              --   dalla matrice config.listini_tipologie_utilities con attivo = true.
+              -- Regole:
+              --   - Se la coppia non esiste o non e` attiva → errore E_LISTINO_TIPOLOGIA_UTILITY
+              --   - Scatta solo su INSERT e UPDATE OF utility_id, tipologia_id
+              BEGIN
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.listini_tipologie_utilities ltu
+                       WHERE ltu.utility_id = NEW.utility_id
+                         AND ltu.tipologia_id = NEW.tipologia_id
+                         AND ltu.attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.trgfn_listini_guard_tipologia_utility',
+                          'E_LISTINO_TIPOLOGIA_UTILITY',
+                          jsonb_build_object(
+                              'campo', 'tipologia_id',
+                              'listino_id', NEW.id,
+                              'utility_id', NEW.utility_id,
+                              'tipologia_id', NEW.tipologia_id
+                          ),
+                          NEW.tx_id,
+                          NEW.utility_id::text, NEW.tipologia_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_guard_tipologia()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_articolo_tipologia_id catalogo.articoli.listino_tipologia_id%TYPE;
+                  v_listino_tipologia_id  vendite.listini.tipologia_id%TYPE;
+              BEGIN
+                  -- Recupera in una sola query articolo.tipologia e listino.tipologia
+                  -- risalendo versione -> listino.
+                  SELECT a.listino_tipologia_id, l.tipologia_id
+                    INTO v_articolo_tipologia_id, v_listino_tipologia_id
+                    FROM catalogo.articoli a
+                    JOIN vendite.listini_versioni lv
+                      ON lv.id = NEW.listino_versione_id
+                    JOIN vendite.listini l
+                      ON l.id = lv.listino_id
+                   WHERE a.id = NEW.articolo_id;
+
+                  -- Articolo senza tipologia: non puo' entrare in listino tipizzato.
+                  -- Valori per %s del template: articolo_id, listino_versione_id.
+                  IF v_articolo_tipologia_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME,
+                          'E_ARTICOLO_TIPOLOGIA_MANCANTE',
+                          jsonb_build_object(
+                              'articolo_id', NEW.articolo_id,
+                              'listino_versione_id', NEW.listino_versione_id,
+                              'listino_tipologia_id', v_listino_tipologia_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          NEW.listino_versione_id::text
+                      );
+                  END IF;
+
+                  -- Incompatibilita' tra tipologia articolo e tipologia listino.
+                  -- Valori per %s: articolo_id, articolo.tipologia, listino.tipologia, versione.
+                  IF v_articolo_tipologia_id IS DISTINCT FROM v_listino_tipologia_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME,
+                          'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE',
+                          jsonb_build_object(
+                              'campo', 'articolo_id',
+                              'articolo_id', NEW.articolo_id,
+                              'articolo_tipologia_id', v_articolo_tipologia_id,
+                              'listino_versione_id', NEW.listino_versione_id,
+                              'listino_tipologia_id', v_listino_tipologia_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          v_articolo_tipologia_id::text,
+                          v_listino_tipologia_id::text,
+                          NEW.listino_versione_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+                DECLARE
+                  v_art_ordine  vendite.ordini_righe.articolo_id%TYPE;
+                  v_uom_ordine  vendite.ordini_righe.uom_operativa_id%TYPE;
+                  v_art_ddt     vendite.ddt_righe.articolo_id%TYPE;
+                  v_uom_ddt     vendite.ddt_righe.uom_operativa_id%TYPE;
+                  v_qta_ordine  vendite.ordini_righe.quantita%TYPE;
+                  v_qta_evasa   vendite.ordini_righe_fulfillment.qta_evasa%TYPE;
+                  v_residuo     numeric;
+                BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Guardia di consistenza su INSERT/UPDATE di
+                  --   ordini_righe_fulfillment: verifica articolo, UOM
+                  --   operativa, quantita residua e over-fulfillment.
+                  --   RESO-AWARE (rev 2026-07-13): il residuo include l'addendo
+                  --   ri-consegna (helper unico fn_ordine_riga_qta_riconsegna),
+                  --   coerente con fn_ordine_ha_residuo_evasione.
+                  -- =========================================================
+
+                  -- 0) Guardia quantita > 0
+                  IF NEW.qta_evasa IS NULL OR NEW.qta_evasa <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('campo', 'qta_evasa', 'qta_evasa', NEW.qta_evasa),
+                      NULL::uuid,
+                      NEW.qta_evasa::text
+                    );
+                  END IF;
+
+                  -- 1) Lock concorrente per evitare over-fulfillment:
+                  --    blocco riga ordine
+                  PERFORM 1
+                    FROM vendite.ordini_righe orr
+                  WHERE orr.id = NEW.ordine_riga_id
+                  FOR UPDATE;
+
+                  --    blocco gruppo fulfillment della stessa ordine_riga
+                  --    (serializza modifiche parallele sulle stesse righe)
+                  PERFORM 1
+                    FROM vendite.ordini_righe_fulfillment q
+                  WHERE q.ordine_riga_id = NEW.ordine_riga_id
+                  FOR UPDATE;
+
+                  -- 2) Leggo riga ordine (valori coerenti dopo lock)
+                  SELECT articolo_id, COALESCE(uom_operativa_id, 0), quantita
+                    INTO v_art_ordine, v_uom_ordine, v_qta_ordine
+                    FROM vendite.ordini_righe
+                  WHERE id = NEW.ordine_riga_id;
+
+                  -- 3) Leggo riga ddt
+                  SELECT articolo_id, COALESCE(uom_operativa_id, 0)
+                    INTO v_art_ddt, v_uom_ddt
+                    FROM vendite.ddt_righe
+                  WHERE id = NEW.ddt_riga_id;
+
+                  IF v_art_ordine IS NULL OR v_art_ddt IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_FULFILL_NOT_FOUND',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'ddt_riga_id', NEW.ddt_riga_id),
+                      NULL::uuid,
+                      'ordine_riga', NEW.ordine_riga_id::text,
+                      'ddt_riga', NEW.ddt_riga_id::text
+                    );
+                  END IF;
+
+                  -- 4) Match articolo
+                  IF v_art_ordine <> v_art_ddt THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_ARTICOLO_MISMATCH',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'ddt_riga_id', NEW.ddt_riga_id),
+                      NULL::uuid,
+                      'ordine_riga', NEW.ordine_riga_id::text,
+                      'ddt_riga', NEW.ddt_riga_id::text
+                    );
+                  END IF;
+
+                  -- 5) Match UOM operativa (solo se presenti su entrambe: 0 = non impostata)
+                  IF v_uom_ordine <> 0 AND v_uom_ddt <> 0 AND v_uom_ordine <> v_uom_ddt THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_UOM_MISMATCH',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'ddt_riga_id', NEW.ddt_riga_id,
+                                        'uom_ordine', v_uom_ordine,
+                                        'uom_ddt', v_uom_ddt),
+                      NULL::uuid,
+                      -- rev 2026-08-04 (bonifica F3): v_uom_ordine e v_uom_ddt sono
+                      --   bigint e il parametro e' VARIADIC text[]. Senza ::text la
+                      --   chiamata non si risolve e il mismatch di UoM non viene
+                      --   mai riportato con il suo codice.
+                      'ordine_riga', NEW.ordine_riga_id::text, v_uom_ordine::text,
+                      'ddt_riga', NEW.ddt_riga_id::text, v_uom_ddt::text
+                    );
+                  END IF;
+
+                  -- 6) Residuo = quantita ordine - sum(evasa esistente, esclusa
+                  --    riga corrente in UPDATE) + addendo reso (ri-consegna).
+                  SELECT COALESCE(SUM(q.qta_evasa), 0)
+                    INTO v_qta_evasa
+                    FROM vendite.ordini_righe_fulfillment q
+                  WHERE q.ordine_riga_id = NEW.ordine_riga_id
+                    AND (TG_OP <> 'UPDATE' OR q.id <> NEW.id);
+
+                  v_residuo := v_qta_ordine - v_qta_evasa
+                             + vendite.fn_ordine_riga_qta_riconsegna(NEW.ordine_riga_id);
+
+                  IF NEW.qta_evasa > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_QTA_SUPERA_RESIDUO',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'qta_ordine', v_qta_ordine,
+                                        'evasa_pre', v_qta_evasa,
+                                        'qta_nuova', NEW.qta_evasa,
+                                        'residuo', v_residuo),
+                      NULL::uuid,
+                      'ordine_riga', NEW.ordine_riga_id::text,
+                      'qta_ordine', v_qta_ordine::text,
+                      'evasa_pre', v_qta_evasa::text,
+                      'qta_nuova', NEW.qta_evasa::text,
+                      'residuo', v_residuo::text
+                    );
+                  END IF;
+
+                  RETURN NEW;
+                END;
+                $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Skip se istanza non valorizzata (post NOT NULL e' impossibile,
+                -- ma safety net per il rollout iniziale e per evitare errori
+                -- fuorvianti durante il backfill).
+                IF NEW.istanza_utility_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Delega al pure check generico.
+                IF NOT script.fn_check_utility_istanza_coerenza(
+                       NEW.istanza_utility_id,
+                       NEW.utility_id
+                   ) THEN
+                  -- Ultimo arg = valore per il %s del messaggio CSV
+                  -- (E_PREV_UTILITY_ISTANZA_INCOERENTE: %s = breve contesto).
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_preventivi_guard_utility_istanza_coerenza',
+                    'E_PREV_UTILITY_ISTANZA_INCOERENTE',
+                    jsonb_build_object(
+                      'campo', 'utility_id',
+                      'detail', 'utility_id non coerente con istanza_utility_id (no BA/IDP/cliente matching)',
+                      'istanza_utility_id', NEW.istanza_utility_id,
+                      'utility_id', NEW.utility_id
+                    ),
+                    NULL::uuid,
+                    concat('istanza_utility_id=', NEW.istanza_utility_id::text,
+                           ', utility_id=', NEW.utility_id::text)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_accrediti_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il tetto del DOCUMENTO sul ponte accrediti.
+              --   Sigma qta per riga di FATTURA <= qta della riga.
+              --   E' il limite che parla la lingua del documento: «questa riga
+              --   di fattura ha fatturato 10 pezzi, non se ne possono
+              --   accreditare 11». Prima non esisteva: l'unico limite
+              --   all'accredito era il conto della merce.
+              -- ⚠️ Il tetto della MERCE non sta qui, e non e' una dimenticanza:
+              --   si misura in unita' PADRE, e su un articolo composito tre
+              --   righe di ponte valgono UNA unita' di merce. Sommarle riga per
+              --   riga direbbe «3» dove la merce dice «1» e rifiuterebbe il
+              --   secondo componente. Lo tiene vendite.fn_accredita_riga_reso,
+              --   come uguaglianza (D-NC-6), che e' anche piu' forte.
+              -- Mirror di trgfn_resi_riconsegne_guard e trgfn_resi_rinunce_guard.
+              DECLARE
+                  -- %TYPE anche nel DECLARE (linee-guida-sql §5b): la variabile
+                  -- segue la colonna che la riempie.
+                  v_qta_riga   vendite.fatture_righe.qta%TYPE;
+                  v_gia_riga   vendite.resi_righe_accrediti.qta%TYPE;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('campo', 'qta', 'qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  IF NEW.qta_partita IS NULL OR NEW.qta_partita <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('campo', 'qta_partita', 'qta_partita', NEW.qta_partita),
+                      NEW.tx_id, NEW.qta_partita::text);
+                  END IF;
+
+                  -- 1) Lock: la riga di reso padre e il gruppo di accrediti
+                  --    della stessa riga di fattura. Serializza due resi
+                  --    DIVERSI che accreditano la stessa riga di fattura in
+                  --    momenti diversi — che e' il caso che il tetto del
+                  --    documento esiste per fermare. Nessun advisory lock: il
+                  --    FOR UPDATE basta, come nelle due sorelle.
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_accrediti a
+                    WHERE a.fattura_riga_rettificata_id = NEW.fattura_riga_rettificata_id
+                    FOR UPDATE;
+
+                  -- 2) Il tetto, letto sopra la RLS (vedi nota in testa).
+                  SELECT t.qta_riga_fattura
+                    INTO v_qta_riga
+                    FROM vendite.fn_resi_riga_tetti_accredito(
+                             NEW.resi_riga_id, NEW.fattura_riga_rettificata_id) t;
+
+                  -- 3) TETTO DEL DOCUMENTO. La stessa riga di fattura puo'
+                  --    essere accreditata da RESI DIVERSI in momenti diversi:
+                  --    la somma e' per riga di fattura, non per riga di reso.
+                  --    Esclude la riga corrente in UPDATE.
+                  SELECT COALESCE(SUM(a.qta), 0)
+                    INTO v_gia_riga
+                    FROM vendite.resi_righe_accrediti a
+                   WHERE a.fattura_riga_rettificata_id = NEW.fattura_riga_rettificata_id
+                     AND (TG_OP <> 'UPDATE' OR a.id <> NEW.id);
+
+                  IF v_gia_riga + NEW.qta > v_qta_riga THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA',
+                      jsonb_build_object('resi_riga_id',     NEW.resi_riga_id,
+                                         'fattura_riga_id',  NEW.fattura_riga_rettificata_id,
+                                         'qta_riga_fattura', v_qta_riga,
+                                         'gia_accreditato',  v_gia_riga,
+                                         'qta_nuova',        NEW.qta),
+                      NEW.tx_id,
+                      NEW.fattura_riga_rettificata_id::text, v_qta_riga::text,
+                      v_gia_riga::text, NEW.qta::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_riconsegne_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: consistenza ponte ri-consegna. Tipo ri-consegna
+              --   obbligatorio; Sigma qta <= qta_resa; lock anti-concorrenza.
+              -- rev 2026-07-26: il residuo sottrae ANCHE le rinunce
+              --   (resi_righe_rinunce). Senza, su una riga da 10 con 7 rinunciati
+              --   il guard vedrebbe residuo=10 e lascerebbe ri-spedire 10:
+              --   Sigma ric + Sigma rin = 17 > 10. Le due uscite condividono la
+              --   stessa copertura, quindi lo stesso invariante.
+              DECLARE
+                  v_qta_resa vendite.resi_righe.quantita%TYPE;
+                  v_riapre   config.tipi_reso.riapre_residuo%TYPE;
+                  v_gia_ric  numeric;
+                  v_gia_rin  numeric;
+                  v_residuo  numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('campo', 'qta', 'qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  -- 1) Lock riga reso + gruppo riconsegne + gruppo rinunce
+                  --    (rev 2026-07-26: anche le rinunce, stessa copertura).
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_riconsegne q
+                    WHERE q.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_rinunce r
+                    WHERE r.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+
+                  -- 2) Riga reso: qta_resa + tipo ri-consegna.
+                  SELECT rr.quantita, tr.riapre_residuo
+                    INTO v_qta_resa, v_riapre
+                    FROM vendite.resi_righe rr
+                    JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                   WHERE rr.id = NEW.resi_riga_id;
+
+                  IF v_riapre IS DISTINCT FROM true THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_TIPO_NON_VALIDO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id),
+                      NEW.tx_id, NEW.resi_riga_id::text);
+                  END IF;
+
+                  -- 3) Copertura residua = qta_resa - Sigma ric - Sigma rin
+                  --    (escl. riga corrente in UPDATE sul proprio ponte).
+                  SELECT COALESCE(SUM(q.qta), 0)
+                    INTO v_gia_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = NEW.resi_riga_id
+                     AND (TG_OP <> 'UPDATE' OR q.id <> NEW.id);
+
+                  SELECT COALESCE(SUM(r.qta), 0)
+                    INTO v_gia_rin
+                    FROM vendite.resi_righe_rinunce r
+                   WHERE r.resi_riga_id = NEW.resi_riga_id;
+
+                  v_residuo := v_qta_resa - v_gia_ric - v_gia_rin;
+
+                  IF NEW.qta > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_SUPERA_RESO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id,
+                                         'qta_resa', v_qta_resa,
+                                         'gia_riconsegnato', v_gia_ric,
+                                         'gia_rinunciato', v_gia_rin,
+                                         'qta_nuova', NEW.qta,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.resi_riga_id::text, v_qta_resa::text,
+                      v_gia_ric::text, NEW.qta::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_guard_quantita()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: guardia over-return su resi_righe. Sigma quantita (base)
+              --   dei resi non-ANNULLATI sulla stessa ddt_riga_id <= consegnato
+              --   (ddt_righe.quantita). Lock FOR UPDATE anti-concorrenza.
+              DECLARE
+                  v_consegnato vendite.ddt_righe.quantita%TYPE;
+                  v_gia_reso   numeric;
+                  v_residuo    numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.quantita IS NULL OR NEW.quantita <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_righe_guard_quantita','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('campo', 'quantita', 'quantita', NEW.quantita),
+                      NEW.tx_id, NEW.quantita::text);
+                  END IF;
+
+                  -- 1) Lock riga DDT sorgente + gruppo resi_righe sulla stessa
+                  --    ddt_riga (serializza over-return concorrente).
+                  PERFORM 1 FROM vendite.ddt_righe WHERE id = NEW.ddt_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe q WHERE q.ddt_riga_id = NEW.ddt_riga_id FOR UPDATE;
+
+                  -- 2) Quantita consegnata di quella riga DDT (base).
+                  SELECT quantita INTO v_consegnato
+                    FROM vendite.ddt_righe WHERE id = NEW.ddt_riga_id;
+
+                  -- 3) Somma resa sulla stessa riga DDT dai resi NON-ANNULLATI
+                  --    (esclusa la riga corrente in UPDATE).
+                  SELECT COALESCE(SUM(rr.quantita), 0)
+                    INTO v_gia_reso
+                    FROM vendite.resi_righe rr
+                    JOIN vendite.resi r          ON r.id = rr.reso_id
+                    JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+                   WHERE rr.ddt_riga_id = NEW.ddt_riga_id
+                     AND s.codice_interno <> 'ANNULLATO'
+                     AND (TG_OP <> 'UPDATE' OR rr.id <> NEW.id);
+
+                  v_residuo := v_consegnato - v_gia_reso;
+
+                  IF NEW.quantita > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_righe_guard_quantita','E_RESO_QTA_SUPERA_CONSEGNATO',
+                      jsonb_build_object('ddt_riga_id', NEW.ddt_riga_id,
+                                         'consegnato', v_consegnato,
+                                         'gia_reso', v_gia_reso,
+                                         'qta_nuova', NEW.quantita,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.ddt_riga_id::text, v_consegnato::text,
+                      v_gia_reso::text, NEW.quantita::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_rinunce_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: consistenza ponte RINUNCE. Tipo ri-consegna obbligatorio;
+              --   Sigma riconsegnate + Sigma rinunciate <= qta_resa;
+              --   lock anti-concorrenza. Mirror di trgfn_resi_riconsegne_guard.
+              DECLARE
+                  v_qta_resa vendite.resi_righe.quantita%TYPE;
+                  v_riapre   config.tipi_reso.riapre_residuo%TYPE;
+                  v_gia_ric  numeric;
+                  v_gia_rin  numeric;
+                  v_residuo  numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('campo', 'qta', 'qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  -- 1) Lock riga reso + ENTRAMBI i gruppi (serializza rinuncia e
+                  --    ri-consegna concorrenti: condividono la stessa copertura).
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_riconsegne q
+                    WHERE q.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_rinunce r
+                    WHERE r.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+
+                  -- 2) Riga reso: qta_resa + tipo ri-consegna.
+                  SELECT rr.quantita, tr.riapre_residuo
+                    INTO v_qta_resa, v_riapre
+                    FROM vendite.resi_righe rr
+                    JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                   WHERE rr.id = NEW.resi_riga_id;
+
+                  -- Si rinuncia solo a merce rientrata PER essere ri-consegnata:
+                  -- su una riga A_CREDITO non c'e' nulla da ri-consegnare, quindi
+                  -- nulla a cui rinunciare. Riuso del codice del gemello (533).
+                  IF v_riapre IS DISTINCT FROM true THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_RESO_RICONSEGNA_TIPO_NON_VALIDO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id),
+                      NEW.tx_id, NEW.resi_riga_id::text);
+                  END IF;
+
+                  -- 3) Copertura residua = qta_resa - Sigma ric - Sigma rin
+                  --    (esclusa la riga corrente in UPDATE).
+                  SELECT COALESCE(SUM(q.qta), 0)
+                    INTO v_gia_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = NEW.resi_riga_id;
+
+                  SELECT COALESCE(SUM(r.qta), 0)
+                    INTO v_gia_rin
+                    FROM vendite.resi_righe_rinunce r
+                   WHERE r.resi_riga_id = NEW.resi_riga_id
+                     AND (TG_OP <> 'UPDATE' OR r.id <> NEW.id);
+
+                  v_residuo := v_qta_resa - v_gia_ric - v_gia_rin;
+
+                  IF NEW.qta > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_RESO_RINUNCIA_SUPERA_RESO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id,
+                                         'qta_resa', v_qta_resa,
+                                         'gia_riconsegnato', v_gia_ric,
+                                         'gia_rinunciato', v_gia_rin,
+                                         'qta_nuova', NEW.qta,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.resi_riga_id::text, v_qta_resa::text,
+                      v_gia_ric::text, v_gia_rin::text,
+                      NEW.qta::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invariante di riga. Una riga commesse_attivita in stato
+              --   emittibile (APPROVATA + NON_EMESSA) deve avere tipo_doc_fiscale_id
+              --   valorizzato, altrimenti sarebbe invisibile alla discovery delle
+              --   corsie di fatturazione (fn_list_emittibili_lane) e il fatturato
+              --   andrebbe perso in silenzio. Fail-fast con codice parlante.
+              BEGIN
+                  IF NEW.stato_approvazione = 'APPROVATA'
+                     AND NEW.stato_emissione = 'NON_EMESSA'
+                     AND NEW.tipo_doc_fiscale_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO',
+                          jsonb_build_object(
+                              'commessa_id', NEW.commessa_id,
+                              'attivita_id', NEW.id,
+                              'segment_key', NEW.segment_key
+                          ),
+                          NEW.tx_id,
+                          NEW.commessa_id::text,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca INSERT/UPDATE su contratti_righe con tipo_eccezione='AGGIUNTA'
+              --   se l'articolo è già presente nel listino operativo del contratto.
+              -- Branch 1: listino_id IS NULL -> nessun check, AGGIUNTA sempre valida.
+              -- Branch 2: DRAFT (listino_versione_id IS NULL) -> verifica versione
+              --   operativa a CURRENT_DATE: stato IN ('ATTIVA','CHIUSA') + attivo=TRUE.
+              --   FIX Bug A: BOZZA esclusa, non blocca su articoli non ancora operativi.
+              -- Branch 3: ATTIVO (listino_versione_id IS NOT NULL) -> verifica versione
+              --   fissata all'attivazione (solo listini_righe, senza listini_versioni).
+              -- Errore se articolo trovato: E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO (450).
+              DECLARE
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_in_listino          boolean := false;
+              BEGIN
+                  SELECT c.listino_id, c.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.contratti c
+                   WHERE c.id = NEW.contratto_id;
+
+                  -- Branch 1: nessun listino -> AGGIUNTA sempre valida
+                  IF v_listino_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_listino_versione_id IS NULL THEN
+                      -- Branch 2: DRAFT -> versione operativa a CURRENT_DATE
+                      -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, non blocca.
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_versioni lv
+                            JOIN vendite.listini_righe lr
+                              ON lr.listino_versione_id = lv.id
+                           WHERE lv.listino_id = v_listino_id
+                             AND lv.attivo      = TRUE
+                             AND lv.stato       IN ('ATTIVA', 'CHIUSA')
+                             AND lv.validita   @> CURRENT_DATE
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo      = TRUE
+                      ) INTO v_in_listino;
+                  ELSE
+                      -- Branch 3: ATTIVO -> versione fissata (snapshot)
+                      SELECT EXISTS (
+                          SELECT 1
+                            FROM vendite.listini_righe lr
+                           WHERE lr.listino_versione_id = v_listino_versione_id
+                             AND lr.articolo_id = NEW.articolo_id
+                             AND lr.attivo = TRUE
+                      ) INTO v_in_listino;
+                  END IF;
+
+                  IF v_in_listino THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO',
+                          jsonb_build_object(
+                              'contratto_id',        NEW.contratto_id,
+                              'articolo_id',         NEW.articolo_id,
+                              'listino_id',          v_listino_id,
+                              'listino_versione_id', v_listino_versione_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          NEW.contratto_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_utility_has_tipi    boolean;
+                  v_classe_tipo_utenza  config.classi_utenze.tipo_utenza_id%TYPE;
+              BEGIN
+                  -- Ottimizzazione: un'unica CTE risolve sia il flag "utility con
+                  -- dimensione tipo/classe" (EXISTS in config.tipi_utenze) sia
+                  -- il tipo_utenza della classe dichiarata dal contratto.
+                  -- Se classe_utenza_id e' NULL, v_classe_tipo_utenza resta NULL
+                  -- e verra' segnalato dal guard piu' sotto.
+                  SELECT
+                      EXISTS (SELECT 1 FROM config.tipi_utenze tu
+                               WHERE tu.utility_id = NEW.utility_id),
+                      (SELECT cl.tipo_utenza_id FROM config.classi_utenze cl
+                        WHERE cl.id = NEW.classe_utenza_id)
+                    INTO v_utility_has_tipi, v_classe_tipo_utenza;
+
+                  IF v_utility_has_tipi THEN
+                      -- Utility con dimensione: tipo e classe obbligatori e coerenti.
+                      IF NEW.tipo_utenza_id IS NULL OR NEW.classe_utenza_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME,
+                              'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI',
+                              jsonb_build_object(
+                                  'contratto_id', NEW.contratto_id,
+                                  'utility_id', NEW.utility_id,
+                                  'tipo_utenza_id', NEW.tipo_utenza_id,
+                                  'classe_utenza_id', NEW.classe_utenza_id
+                              ),
+                              NULL::uuid,
+                              NEW.utility_id::text
+                          );
+                      END IF;
+
+                      -- Coerenza: la classe deve appartenere al tipo dichiarato.
+                      IF v_classe_tipo_utenza IS DISTINCT FROM NEW.tipo_utenza_id THEN
+                          -- Valori per %s: classe_utenza_id, classe.tipo_utenza_id, contratto.tipo_utenza_id.
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME,
+                              'E_CONTRATTO_CLASSE_TIPO_INCOERENTE',
+                              jsonb_build_object(
+                                  'contratto_id', NEW.contratto_id,
+                                  'utility_id', NEW.utility_id,
+                                  'tipo_utenza_id_atteso', NEW.tipo_utenza_id,
+                                  'tipo_utenza_id_classe', v_classe_tipo_utenza,
+                                  'classe_utenza_id', NEW.classe_utenza_id
+                              ),
+                              NULL::uuid,
+                              NEW.classe_utenza_id::text,
+                              v_classe_tipo_utenza::text,
+                              NEW.tipo_utenza_id::text
+                          );
+                      END IF;
+                  ELSE
+                      -- Utility senza dimensione (es. Base / commercio):
+                      -- entrambi i campi devono essere NULL.
+                      IF NEW.tipo_utenza_id IS NOT NULL OR NEW.classe_utenza_id IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME,
+                              'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI',
+                              jsonb_build_object(
+                                  'contratto_id', NEW.contratto_id,
+                                  'utility_id', NEW.utility_id,
+                                  'tipo_utenza_id', NEW.tipo_utenza_id,
+                                  'classe_utenza_id', NEW.classe_utenza_id
+                              ),
+                              NULL::uuid,
+                              NEW.utility_id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_guard_tipologia_utility()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: verifica che la coppia (utility_id, tipologia_id) sia ammessa
+              --   dalla matrice config.listini_tipologie_utilities con attivo = true.
+              -- Regole:
+              --   - Se la coppia non esiste o non e` attiva → errore E_LISTINO_TIPOLOGIA_UTILITY
+              --   - Scatta solo su INSERT e UPDATE OF utility_id, tipologia_id
+              BEGIN
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.listini_tipologie_utilities ltu
+                       WHERE ltu.utility_id = NEW.utility_id
+                         AND ltu.tipologia_id = NEW.tipologia_id
+                         AND ltu.attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.trgfn_listini_guard_tipologia_utility',
+                          'E_LISTINO_TIPOLOGIA_UTILITY',
+                          jsonb_build_object(
+                              'listino_id', NEW.id,
+                              'utility_id', NEW.utility_id,
+                              'tipologia_id', NEW.tipologia_id
+                          ),
+                          NEW.tx_id,
+                          NEW.utility_id::text, NEW.tipologia_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_guard_tipologia()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_articolo_tipologia_id catalogo.articoli.listino_tipologia_id%TYPE;
+                  v_listino_tipologia_id  vendite.listini.tipologia_id%TYPE;
+              BEGIN
+                  -- Recupera in una sola query articolo.tipologia e listino.tipologia
+                  -- risalendo versione -> listino.
+                  SELECT a.listino_tipologia_id, l.tipologia_id
+                    INTO v_articolo_tipologia_id, v_listino_tipologia_id
+                    FROM catalogo.articoli a
+                    JOIN vendite.listini_versioni lv
+                      ON lv.id = NEW.listino_versione_id
+                    JOIN vendite.listini l
+                      ON l.id = lv.listino_id
+                   WHERE a.id = NEW.articolo_id;
+
+                  -- Articolo senza tipologia: non puo' entrare in listino tipizzato.
+                  -- Valori per %s del template: articolo_id, listino_versione_id.
+                  IF v_articolo_tipologia_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME,
+                          'E_ARTICOLO_TIPOLOGIA_MANCANTE',
+                          jsonb_build_object(
+                              'articolo_id', NEW.articolo_id,
+                              'listino_versione_id', NEW.listino_versione_id,
+                              'listino_tipologia_id', v_listino_tipologia_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          NEW.listino_versione_id::text
+                      );
+                  END IF;
+
+                  -- Incompatibilita' tra tipologia articolo e tipologia listino.
+                  -- Valori per %s: articolo_id, articolo.tipologia, listino.tipologia, versione.
+                  IF v_articolo_tipologia_id IS DISTINCT FROM v_listino_tipologia_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME,
+                          'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE',
+                          jsonb_build_object(
+                              'articolo_id', NEW.articolo_id,
+                              'articolo_tipologia_id', v_articolo_tipologia_id,
+                              'listino_versione_id', NEW.listino_versione_id,
+                              'listino_tipologia_id', v_listino_tipologia_id
+                          ),
+                          NULL::uuid,
+                          NEW.articolo_id::text,
+                          v_articolo_tipologia_id::text,
+                          v_listino_tipologia_id::text,
+                          NEW.listino_versione_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+                DECLARE
+                  v_art_ordine  vendite.ordini_righe.articolo_id%TYPE;
+                  v_uom_ordine  vendite.ordini_righe.uom_operativa_id%TYPE;
+                  v_art_ddt     vendite.ddt_righe.articolo_id%TYPE;
+                  v_uom_ddt     vendite.ddt_righe.uom_operativa_id%TYPE;
+                  v_qta_ordine  vendite.ordini_righe.quantita%TYPE;
+                  v_qta_evasa   vendite.ordini_righe_fulfillment.qta_evasa%TYPE;
+                  v_residuo     numeric;
+                BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Guardia di consistenza su INSERT/UPDATE di
+                  --   ordini_righe_fulfillment: verifica articolo, UOM
+                  --   operativa, quantita residua e over-fulfillment.
+                  --   RESO-AWARE (rev 2026-07-13): il residuo include l'addendo
+                  --   ri-consegna (helper unico fn_ordine_riga_qta_riconsegna),
+                  --   coerente con fn_ordine_ha_residuo_evasione.
+                  -- =========================================================
+
+                  -- 0) Guardia quantita > 0
+                  IF NEW.qta_evasa IS NULL OR NEW.qta_evasa <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta_evasa', NEW.qta_evasa),
+                      NULL::uuid,
+                      NEW.qta_evasa::text
+                    );
+                  END IF;
+
+                  -- 1) Lock concorrente per evitare over-fulfillment:
+                  --    blocco riga ordine
+                  PERFORM 1
+                    FROM vendite.ordini_righe orr
+                  WHERE orr.id = NEW.ordine_riga_id
+                  FOR UPDATE;
+
+                  --    blocco gruppo fulfillment della stessa ordine_riga
+                  --    (serializza modifiche parallele sulle stesse righe)
+                  PERFORM 1
+                    FROM vendite.ordini_righe_fulfillment q
+                  WHERE q.ordine_riga_id = NEW.ordine_riga_id
+                  FOR UPDATE;
+
+                  -- 2) Leggo riga ordine (valori coerenti dopo lock)
+                  SELECT articolo_id, COALESCE(uom_operativa_id, 0), quantita
+                    INTO v_art_ordine, v_uom_ordine, v_qta_ordine
+                    FROM vendite.ordini_righe
+                  WHERE id = NEW.ordine_riga_id;
+
+                  -- 3) Leggo riga ddt
+                  SELECT articolo_id, COALESCE(uom_operativa_id, 0)
+                    INTO v_art_ddt, v_uom_ddt
+                    FROM vendite.ddt_righe
+                  WHERE id = NEW.ddt_riga_id;
+
+                  IF v_art_ordine IS NULL OR v_art_ddt IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_FULFILL_NOT_FOUND',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'ddt_riga_id', NEW.ddt_riga_id),
+                      NULL::uuid,
+                      'ordine_riga', NEW.ordine_riga_id::text,
+                      'ddt_riga', NEW.ddt_riga_id::text
+                    );
+                  END IF;
+
+                  -- 4) Match articolo
+                  IF v_art_ordine <> v_art_ddt THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_ARTICOLO_MISMATCH',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'ddt_riga_id', NEW.ddt_riga_id),
+                      NULL::uuid,
+                      'ordine_riga', NEW.ordine_riga_id::text,
+                      'ddt_riga', NEW.ddt_riga_id::text
+                    );
+                  END IF;
+
+                  -- 5) Match UOM operativa (solo se presenti su entrambe: 0 = non impostata)
+                  IF v_uom_ordine <> 0 AND v_uom_ddt <> 0 AND v_uom_ordine <> v_uom_ddt THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_UOM_MISMATCH',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'ddt_riga_id', NEW.ddt_riga_id,
+                                        'uom_ordine', v_uom_ordine,
+                                        'uom_ddt', v_uom_ddt),
+                      NULL::uuid,
+                      -- rev 2026-08-04 (bonifica F3): v_uom_ordine e v_uom_ddt sono
+                      --   bigint e il parametro e' VARIADIC text[]. Senza ::text la
+                      --   chiamata non si risolve e il mismatch di UoM non viene
+                      --   mai riportato con il suo codice.
+                      'ordine_riga', NEW.ordine_riga_id::text, v_uom_ordine::text,
+                      'ddt_riga', NEW.ddt_riga_id::text, v_uom_ddt::text
+                    );
+                  END IF;
+
+                  -- 6) Residuo = quantita ordine - sum(evasa esistente, esclusa
+                  --    riga corrente in UPDATE) + addendo reso (ri-consegna).
+                  SELECT COALESCE(SUM(q.qta_evasa), 0)
+                    INTO v_qta_evasa
+                    FROM vendite.ordini_righe_fulfillment q
+                  WHERE q.ordine_riga_id = NEW.ordine_riga_id
+                    AND (TG_OP <> 'UPDATE' OR q.id <> NEW.id);
+
+                  v_residuo := v_qta_ordine - v_qta_evasa
+                             + vendite.fn_ordine_riga_qta_riconsegna(NEW.ordine_riga_id);
+
+                  IF NEW.qta_evasa > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_ordini_ful_guard_consistenza','E_QTA_SUPERA_RESIDUO',
+                      jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                                        'qta_ordine', v_qta_ordine,
+                                        'evasa_pre', v_qta_evasa,
+                                        'qta_nuova', NEW.qta_evasa,
+                                        'residuo', v_residuo),
+                      NULL::uuid,
+                      'ordine_riga', NEW.ordine_riga_id::text,
+                      'qta_ordine', v_qta_ordine::text,
+                      'evasa_pre', v_qta_evasa::text,
+                      'qta_nuova', NEW.qta_evasa::text,
+                      'residuo', v_residuo::text
+                    );
+                  END IF;
+
+                  RETURN NEW;
+                END;
+                $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Skip se istanza non valorizzata (post NOT NULL e' impossibile,
+                -- ma safety net per il rollout iniziale e per evitare errori
+                -- fuorvianti durante il backfill).
+                IF NEW.istanza_utility_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Delega al pure check generico.
+                IF NOT script.fn_check_utility_istanza_coerenza(
+                       NEW.istanza_utility_id,
+                       NEW.utility_id
+                   ) THEN
+                  -- Ultimo arg = valore per il %s del messaggio CSV
+                  -- (E_PREV_UTILITY_ISTANZA_INCOERENTE: %s = breve contesto).
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_preventivi_guard_utility_istanza_coerenza',
+                    'E_PREV_UTILITY_ISTANZA_INCOERENTE',
+                    jsonb_build_object(
+                      'detail', 'utility_id non coerente con istanza_utility_id (no BA/IDP/cliente matching)',
+                      'istanza_utility_id', NEW.istanza_utility_id,
+                      'utility_id', NEW.utility_id
+                    ),
+                    NULL::uuid,
+                    concat('istanza_utility_id=', NEW.istanza_utility_id::text,
+                           ', utility_id=', NEW.utility_id::text)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_accrediti_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il tetto del DOCUMENTO sul ponte accrediti.
+              --   Sigma qta per riga di FATTURA <= qta della riga.
+              --   E' il limite che parla la lingua del documento: «questa riga
+              --   di fattura ha fatturato 10 pezzi, non se ne possono
+              --   accreditare 11». Prima non esisteva: l'unico limite
+              --   all'accredito era il conto della merce.
+              -- ⚠️ Il tetto della MERCE non sta qui, e non e' una dimenticanza:
+              --   si misura in unita' PADRE, e su un articolo composito tre
+              --   righe di ponte valgono UNA unita' di merce. Sommarle riga per
+              --   riga direbbe «3» dove la merce dice «1» e rifiuterebbe il
+              --   secondo componente. Lo tiene vendite.fn_accredita_riga_reso,
+              --   come uguaglianza (D-NC-6), che e' anche piu' forte.
+              -- Mirror di trgfn_resi_riconsegne_guard e trgfn_resi_rinunce_guard.
+              DECLARE
+                  -- %TYPE anche nel DECLARE (linee-guida-sql §5b): la variabile
+                  -- segue la colonna che la riempie.
+                  v_qta_riga   vendite.fatture_righe.qta%TYPE;
+                  v_gia_riga   vendite.resi_righe_accrediti.qta%TYPE;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  IF NEW.qta_partita IS NULL OR NEW.qta_partita <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta_partita', NEW.qta_partita),
+                      NEW.tx_id, NEW.qta_partita::text);
+                  END IF;
+
+                  -- 1) Lock: la riga di reso padre e il gruppo di accrediti
+                  --    della stessa riga di fattura. Serializza due resi
+                  --    DIVERSI che accreditano la stessa riga di fattura in
+                  --    momenti diversi — che e' il caso che il tetto del
+                  --    documento esiste per fermare. Nessun advisory lock: il
+                  --    FOR UPDATE basta, come nelle due sorelle.
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_accrediti a
+                    WHERE a.fattura_riga_rettificata_id = NEW.fattura_riga_rettificata_id
+                    FOR UPDATE;
+
+                  -- 2) Il tetto, letto sopra la RLS (vedi nota in testa).
+                  SELECT t.qta_riga_fattura
+                    INTO v_qta_riga
+                    FROM vendite.fn_resi_riga_tetti_accredito(
+                             NEW.resi_riga_id, NEW.fattura_riga_rettificata_id) t;
+
+                  -- 3) TETTO DEL DOCUMENTO. La stessa riga di fattura puo'
+                  --    essere accreditata da RESI DIVERSI in momenti diversi:
+                  --    la somma e' per riga di fattura, non per riga di reso.
+                  --    Esclude la riga corrente in UPDATE.
+                  SELECT COALESCE(SUM(a.qta), 0)
+                    INTO v_gia_riga
+                    FROM vendite.resi_righe_accrediti a
+                   WHERE a.fattura_riga_rettificata_id = NEW.fattura_riga_rettificata_id
+                     AND (TG_OP <> 'UPDATE' OR a.id <> NEW.id);
+
+                  IF v_gia_riga + NEW.qta > v_qta_riga THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_accrediti_guard','E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA',
+                      jsonb_build_object('resi_riga_id',     NEW.resi_riga_id,
+                                         'fattura_riga_id',  NEW.fattura_riga_rettificata_id,
+                                         'qta_riga_fattura', v_qta_riga,
+                                         'gia_accreditato',  v_gia_riga,
+                                         'qta_nuova',        NEW.qta),
+                      NEW.tx_id,
+                      NEW.fattura_riga_rettificata_id::text, v_qta_riga::text,
+                      v_gia_riga::text, NEW.qta::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_riconsegne_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: consistenza ponte ri-consegna. Tipo ri-consegna
+              --   obbligatorio; Sigma qta <= qta_resa; lock anti-concorrenza.
+              -- rev 2026-07-26: il residuo sottrae ANCHE le rinunce
+              --   (resi_righe_rinunce). Senza, su una riga da 10 con 7 rinunciati
+              --   il guard vedrebbe residuo=10 e lascerebbe ri-spedire 10:
+              --   Sigma ric + Sigma rin = 17 > 10. Le due uscite condividono la
+              --   stessa copertura, quindi lo stesso invariante.
+              DECLARE
+                  v_qta_resa vendite.resi_righe.quantita%TYPE;
+                  v_riapre   config.tipi_reso.riapre_residuo%TYPE;
+                  v_gia_ric  numeric;
+                  v_gia_rin  numeric;
+                  v_residuo  numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  -- 1) Lock riga reso + gruppo riconsegne + gruppo rinunce
+                  --    (rev 2026-07-26: anche le rinunce, stessa copertura).
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_riconsegne q
+                    WHERE q.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_rinunce r
+                    WHERE r.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+
+                  -- 2) Riga reso: qta_resa + tipo ri-consegna.
+                  SELECT rr.quantita, tr.riapre_residuo
+                    INTO v_qta_resa, v_riapre
+                    FROM vendite.resi_righe rr
+                    JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                   WHERE rr.id = NEW.resi_riga_id;
+
+                  IF v_riapre IS DISTINCT FROM true THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_TIPO_NON_VALIDO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id),
+                      NEW.tx_id, NEW.resi_riga_id::text);
+                  END IF;
+
+                  -- 3) Copertura residua = qta_resa - Sigma ric - Sigma rin
+                  --    (escl. riga corrente in UPDATE sul proprio ponte).
+                  SELECT COALESCE(SUM(q.qta), 0)
+                    INTO v_gia_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = NEW.resi_riga_id
+                     AND (TG_OP <> 'UPDATE' OR q.id <> NEW.id);
+
+                  SELECT COALESCE(SUM(r.qta), 0)
+                    INTO v_gia_rin
+                    FROM vendite.resi_righe_rinunce r
+                   WHERE r.resi_riga_id = NEW.resi_riga_id;
+
+                  v_residuo := v_qta_resa - v_gia_ric - v_gia_rin;
+
+                  IF NEW.qta > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_SUPERA_RESO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id,
+                                         'qta_resa', v_qta_resa,
+                                         'gia_riconsegnato', v_gia_ric,
+                                         'gia_rinunciato', v_gia_rin,
+                                         'qta_nuova', NEW.qta,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.resi_riga_id::text, v_qta_resa::text,
+                      v_gia_ric::text, NEW.qta::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_guard_quantita()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: guardia over-return su resi_righe. Sigma quantita (base)
+              --   dei resi non-ANNULLATI sulla stessa ddt_riga_id <= consegnato
+              --   (ddt_righe.quantita). Lock FOR UPDATE anti-concorrenza.
+              DECLARE
+                  v_consegnato vendite.ddt_righe.quantita%TYPE;
+                  v_gia_reso   numeric;
+                  v_residuo    numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.quantita IS NULL OR NEW.quantita <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_righe_guard_quantita','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('quantita', NEW.quantita),
+                      NEW.tx_id, NEW.quantita::text);
+                  END IF;
+
+                  -- 1) Lock riga DDT sorgente + gruppo resi_righe sulla stessa
+                  --    ddt_riga (serializza over-return concorrente).
+                  PERFORM 1 FROM vendite.ddt_righe WHERE id = NEW.ddt_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe q WHERE q.ddt_riga_id = NEW.ddt_riga_id FOR UPDATE;
+
+                  -- 2) Quantita consegnata di quella riga DDT (base).
+                  SELECT quantita INTO v_consegnato
+                    FROM vendite.ddt_righe WHERE id = NEW.ddt_riga_id;
+
+                  -- 3) Somma resa sulla stessa riga DDT dai resi NON-ANNULLATI
+                  --    (esclusa la riga corrente in UPDATE).
+                  SELECT COALESCE(SUM(rr.quantita), 0)
+                    INTO v_gia_reso
+                    FROM vendite.resi_righe rr
+                    JOIN vendite.resi r          ON r.id = rr.reso_id
+                    JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+                   WHERE rr.ddt_riga_id = NEW.ddt_riga_id
+                     AND s.codice_interno <> 'ANNULLATO'
+                     AND (TG_OP <> 'UPDATE' OR rr.id <> NEW.id);
+
+                  v_residuo := v_consegnato - v_gia_reso;
+
+                  IF NEW.quantita > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_righe_guard_quantita','E_RESO_QTA_SUPERA_CONSEGNATO',
+                      jsonb_build_object('ddt_riga_id', NEW.ddt_riga_id,
+                                         'consegnato', v_consegnato,
+                                         'gia_reso', v_gia_reso,
+                                         'qta_nuova', NEW.quantita,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.ddt_riga_id::text, v_consegnato::text,
+                      v_gia_reso::text, NEW.quantita::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_rinunce_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: consistenza ponte RINUNCE. Tipo ri-consegna obbligatorio;
+              --   Sigma riconsegnate + Sigma rinunciate <= qta_resa;
+              --   lock anti-concorrenza. Mirror di trgfn_resi_riconsegne_guard.
+              DECLARE
+                  v_qta_resa vendite.resi_righe.quantita%TYPE;
+                  v_riapre   config.tipi_reso.riapre_residuo%TYPE;
+                  v_gia_ric  numeric;
+                  v_gia_rin  numeric;
+                  v_residuo  numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  -- 1) Lock riga reso + ENTRAMBI i gruppi (serializza rinuncia e
+                  --    ri-consegna concorrenti: condividono la stessa copertura).
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_riconsegne q
+                    WHERE q.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_rinunce r
+                    WHERE r.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+
+                  -- 2) Riga reso: qta_resa + tipo ri-consegna.
+                  SELECT rr.quantita, tr.riapre_residuo
+                    INTO v_qta_resa, v_riapre
+                    FROM vendite.resi_righe rr
+                    JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                   WHERE rr.id = NEW.resi_riga_id;
+
+                  -- Si rinuncia solo a merce rientrata PER essere ri-consegnata:
+                  -- su una riga A_CREDITO non c'e' nulla da ri-consegnare, quindi
+                  -- nulla a cui rinunciare. Riuso del codice del gemello (533).
+                  IF v_riapre IS DISTINCT FROM true THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_RESO_RICONSEGNA_TIPO_NON_VALIDO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id),
+                      NEW.tx_id, NEW.resi_riga_id::text);
+                  END IF;
+
+                  -- 3) Copertura residua = qta_resa - Sigma ric - Sigma rin
+                  --    (esclusa la riga corrente in UPDATE).
+                  SELECT COALESCE(SUM(q.qta), 0)
+                    INTO v_gia_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = NEW.resi_riga_id;
+
+                  SELECT COALESCE(SUM(r.qta), 0)
+                    INTO v_gia_rin
+                    FROM vendite.resi_righe_rinunce r
+                   WHERE r.resi_riga_id = NEW.resi_riga_id
+                     AND (TG_OP <> 'UPDATE' OR r.id <> NEW.id);
+
+                  v_residuo := v_qta_resa - v_gia_ric - v_gia_rin;
+
+                  IF NEW.qta > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_RESO_RINUNCIA_SUPERA_RESO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id,
+                                         'qta_resa', v_qta_resa,
+                                         'gia_riconsegnato', v_gia_ric,
+                                         'gia_rinunciato', v_gia_rin,
+                                         'qta_nuova', NEW.qta,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.resi_riga_id::text, v_qta_resa::text,
+                      v_gia_ric::text, v_gia_rin::text,
+                      NEW.qta::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$
+              ;

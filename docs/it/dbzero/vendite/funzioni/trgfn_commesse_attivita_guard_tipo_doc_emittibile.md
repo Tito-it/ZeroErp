@@ -26,6 +26,7 @@ BEGIN
             TG_NAME::text,
             'E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO',
             jsonb_build_object(
+                'campo', 'tipo_doc_fiscale_id',
                 'commessa_id', NEW.commessa_id,
                 'attivita_id', NEW.id,
                 'segment_key', NEW.segment_key

@@ -43,7 +43,7 @@ BEGIN
       'database',
       TG_NAME,
       'E_NAZIONE_NON_TROVATA',
-      jsonb_build_object('table','config.toponomastica'),
+      jsonb_build_object('campo', 'stato_id', 'table','config.toponomastica'),
       NULL::uuid,
       'stato_id'
     );

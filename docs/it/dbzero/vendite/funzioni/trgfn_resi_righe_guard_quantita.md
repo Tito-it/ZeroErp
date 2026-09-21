@@ -24,7 +24,7 @@ BEGIN
     IF NEW.quantita IS NULL OR NEW.quantita <= 0 THEN
       PERFORM script.fn_log_and_raise_error(
         'database','trgfn_resi_righe_guard_quantita','E_QTA_NON_POSITIVA',
-        jsonb_build_object('quantita', NEW.quantita),
+        jsonb_build_object('campo', 'quantita', 'quantita', NEW.quantita),
         NEW.tx_id, NEW.quantita::text);
     END IF;
 

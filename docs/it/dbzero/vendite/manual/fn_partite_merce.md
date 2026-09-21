@@ -121,8 +121,7 @@ con `PREPARE` e piano generico forzato. E in modo «tutte» le scansioni sono le
 | Lettore | Come |
 |---|---|
 | `vw_partite_merce` | `fn_partite_merce(NULL, NULL)` — tutte |
-| `fn_list_ddt_da_pushare(p_ddt_id)` | `ARRAY[p_ddt_id]`, o `NULL` se il lister è chiamato senza documento (lista push, cockpit) |
-| `fn_ddt_push_diagnosi(p_ddt_id)` | idem |
+| `fn_ddt_push_diagnosi(p_ddt_id)` | `ARRAY[p_ddt_id]`, o `NULL` se chiamata senza documento (lista push, cockpit). È la **fonte unica** dell'eleggibilità al push (giro 3, D4): `fn_list_ddt_da_pushare` ne deriva e la capability la legge una volta — la partita per il push si calcola **qui e basta** |
 | BE `list_partite_merce` (pannello «Situazione merce») | ⏳ richiesta BE nel brief: per DDT `ARRAY[%s]`, per ordine `(NULL, ARRAY[%s])`; oggi legge la vista, che risponde giusto ma paga tutto |
 | `fn_situazione_merce_ordine` (giro 2, D3) | `(NULL, <gli ordini della chiusura>)`: le partite di tutte le righe d'ordine chieste, o toccate dai DDT chiesti |
 | `fn_resi_da_accreditare` (giro 2, D3) | `(<i DDT delle righe di S>, NULL)`: le partite in negativo dei documenti chiesti; per riga la chiamano `fn_accredita_riga_reso` e `fn_resi_riga_tetti_accredito` |

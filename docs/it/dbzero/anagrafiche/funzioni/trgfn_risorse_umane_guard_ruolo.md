@@ -39,6 +39,7 @@ BEGIN
             TG_NAME,
             'E_RISORSA_UMANA_SOGGETTO_MISMATCH',
             jsonb_build_object(
+                'campo', 'soggetto_ruolo_id',
                 'table', TG_TABLE_NAME,
                 'soggetto_id', NEW.soggetto_id,
                 'soggetto_id_ruolo', v_soggetto_id
