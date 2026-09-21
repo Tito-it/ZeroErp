@@ -49,6 +49,8 @@ systemctl enable --now tailscaled
 ufw allow 22/tcp
 ufw default deny incoming && ufw default allow outgoing
 ufw allow 80/tcp && ufw allow 443/tcp
+# ⛔ MAI `ufw allow 8000`: Django si raggiunge SOLO attraverso Nginx
+# (configurazione-django.md, «Sicurezza della superficie pubblica»).
 ufw enable
 ```
 
@@ -96,6 +98,7 @@ install -d -m 0750 /etc/zeroerp
 cat > /etc/zeroerp/zeroerp.env <<EOF
 DJANGO_SECRET_KEY=$(openssl rand -base64 48)
 DJANGO_DEBUG=1
+# Swagger (/api/docs/): segue DEBUG; con DEBUG=0 serve DJANGO_API_DOCS_ENABLED=1 (e il vhost aperto)
 DJANGO_ALLOWED_HOSTS=${HOSTNAME},${TAIL_NAME},localhost,127.0.0.1
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
@@ -195,6 +198,14 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
   -keyout /etc/ssl/private/backend-dev.key \
   -out /etc/ssl/certs/backend-dev.crt \
   -subj "/CN=${TAIL_NAME}"
+# Rate limiting: zone nel contesto http (regole e motivazioni in
+# configurazione-django.md, «Sicurezza della superficie pubblica»)
+cat > /etc/nginx/conf.d/zeroerp-ratelimit.conf <<'EOF'
+limit_req_zone $binary_remote_addr zone=zeroerp_auth:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=zeroerp_api:10m  rate=20r/s;
+limit_req_status 429;
+limit_req_log_level warn;
+EOF
 cat > /etc/nginx/sites-available/zeroerp <<'EOF'
 server {
   listen 443 ssl http2;
@@ -203,7 +214,28 @@ server {
   ssl_certificate_key /etc/ssl/private/backend-dev.key;
   location /static/ { alias /var/www/zeroerp/static/; expires 7d; }
   location /media/  { alias /var/www/zeroerp/media/;  expires off; }
+  # Cintura: admin Django (non installato) e Swagger (spento fuori da DEBUG)
+  # restano chiusi anche se lato Django ricomparissero. Vedi configurazione-django.md.
+  location ~ ^/(admin|api/docs|api/schema)(/|$) { return 404; }
+  # Autenticazione: anonima per natura, bersaglio del brute-force → zona stretta
+  location ~ ^/api/v1/(admin|portale|shop)/token(/|$) {
+    limit_req zone=zeroerp_auth burst=5 nodelay;
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+  location ~ ^/api/v1/auth/(password-reset-request|password-reset-confirm|attivazione)(/|$) {
+    limit_req zone=zeroerp_auth burst=5 nodelay;
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
   location / {
+    limit_req zone=zeroerp_api burst=100 nodelay;
     proxy_pass http://127.0.0.1:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -251,8 +283,12 @@ ufw status verbose
 ## 13) Check rapido
 
 ```bash
-curl -kI https://${TAIL_NAME}/static/admin/css/base.css   # 200 OK
-curl -kI https://${TAIL_NAME}/                          # 200/302
+curl -kI https://${TAIL_NAME}/static/rest_framework/css/bootstrap.min.css   # 200 OK (collectstatic)
+curl -kI https://${TAIL_NAME}/health                    # 200
+curl -kI https://${TAIL_NAME}/admin/login/              # 404: l'admin Django non esiste (un 200 e' un'esposizione)
+curl -kI https://${TAIL_NAME}/                          # 404: nessun redirect
+ss -ltnp | grep :8000                                   # SOLO 127.0.0.1:8000 — Django mai esposto
+ufw status | grep 8000 && echo "⛔ 8000 aperta: chiudila" # nessuna riga attesa
 systemctl status zeroerp-gunicorn | sed -n '1,5p'
 nginx -t
 ```

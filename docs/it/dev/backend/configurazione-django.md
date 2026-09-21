@@ -25,6 +25,47 @@ Client → (HTTP/HTTPS) → Nginx → (HTTP 127.0.0.1:8000) → Gunicorn → Dja
 
 ---
 
+## 🔒 Sicurezza della superficie pubblica — regole, non opzioni
+
+> ⚠️ **Questa macchina non e' produzione, ma le regole qui sotto valgono da
+> subito e vanno in produzione tal quali.** Un'esposizione «tanto e' dev» e'
+> quella che si dimentica al momento del deploy: il presidio si costruisce dove
+> si sviluppa. Rilievo del 2026-09-21: `/admin/` rispondeva **200** a chiunque
+> raggiungesse il proxy, e la root `/` ci redirigeva.
+
+| # | Regola | Dove sta il presidio | Come si verifica |
+| --- | --- | --- | --- |
+| 1 | **Django non e' mai raggiungibile direttamente.** Gunicorn ascolta **solo su loopback** (`127.0.0.1:8000`); la porta 8000 **non si apre mai** in UFW ne' in Proxmox. L'unico ingresso e' Nginx | `bin/start-gunicorn.sh` (`ZEROERP_GUNICORN_BIND`, default loopback), UFW (`80/443` soltanto) | `ss -ltnp \| grep :8000` → **solo** `127.0.0.1:8000`; da un altro host `curl http://<IP>:8000/health` **deve fallire** |
+| 2 | **Nginx fa rate limiting**, piu' stretto sugli endpoint di autenticazione (token, reset password, attivazione): sono anonimi per natura e sono il bersaglio del brute-force | `/etc/nginx/conf.d/zeroerp-ratelimit.conf` + `limit_req` nel vhost (sotto) | 15 `curl` in fila su `/api/v1/admin/token/` → dal 6°/7° in poi **429** |
+| 3 | **L'admin Django non esiste.** `django.contrib.admin` non e' in `INSTALLED_APPS`: zero `ModelAdmin`, il FE non lo usa, l'autenticazione e' JWT. Era una form di login a sessione aperta a chiunque | `settings.py` («Superficie pubblica»), `urls.py`; test `apps/core/tests/api/test_superficie_pubblica.py` | `/admin/login/` → **404**; `/` → **404** |
+| 4 | **Swagger/OpenAPI e' uno strumento di sviluppo**: `/api/docs/` e `/api/schema/` elencano l'intera superficie API senza token. Esistono solo con `API_DOCS_ENABLED` (default = `DEBUG`), altrove **404** | `settings.API_DOCS_ENABLED`, `apps/core/api/api_docs_gate.py`; stesso test | `/api/docs/` → **404** con flag spento |
+| 5 | **Cintura in Nginx** su 3 e 4: cio' che Django gia' non serve resta chiuso anche se un giorno lato Django ricomparisse | `location ~ ^/(admin\|api/docs\|api/schema)(/\|$) { return 404; }` nel vhost | come sopra; con Gunicorn fermo la risposta e' comunque il 404 di Nginx |
+
+Il superuser (`createsuperuser`) serve ancora: e' il primo utente `auth_user` con
+cui si entra **dal frontend**, non da un pannello.
+
+### Rate limiting — file `http {}` (una tantum)
+
+Le zone vanno nel contesto `http`, quindi fuori dal vhost:
+
+```nginx
+# /etc/nginx/conf.d/zeroerp-ratelimit.conf
+# Chiave: IP del client. Dietro NAT aziendale piu' utenti condividono l'IP:
+# per questo la zona "api" e' larga e quella "auth" stretta ma con burst.
+limit_req_zone $binary_remote_addr zone=zeroerp_auth:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=zeroerp_api:10m  rate=20r/s;
+limit_req_status 429;
+limit_req_log_level warn;
+```
+
+Nel vhost (blocco completo piu' sotto): le `location ~` di autenticazione con
+`zone=zeroerp_auth burst=5`, la `location /` con `zone=zeroerp_api burst=100`.
+`nodelay` risponde subito 429 invece di accodare: il FE riceve un errore
+leggibile, non un timeout. Il `429` arriva da Nginx, quindi **senza** l'envelope
+di errore del BE: `useApiHandler` lo tratta come errore HTTP generico.
+
+---
+
 ## 📂 Layout progetto (reale)
 
 ```
@@ -62,6 +103,8 @@ Client → (HTTP/HTTPS) → Nginx → (HTTP 127.0.0.1:8000) → Gunicorn → Dja
 # ~/apps/ZeroErp/backend/env.sh
 export DJANGO_SECRET_KEY="<generare>"
 export DJANGO_DEBUG="1"
+# Swagger/OpenAPI (/api/docs/, /api/schema/): segue DEBUG; "1" per averlo con DEBUG=0
+export DJANGO_API_DOCS_ENABLED="1"
 # Host ammessi: LAN + Tailscale + hostname
 export DJANGO_ALLOWED_HOSTS="backend-dev,localhost,127.0.0.1,192.168.X.8,<ts-backend>"
 # Database (dbdev)
@@ -147,7 +190,29 @@ server {
     location /static/ { alias /var/www/ZeroErp/static/;  expires 7d; }
     location /media/  { alias /var/www/ZeroErp/media/;   expires off; }
 
+    # Cintura: cio' che Django gia' non serve (admin rimosso, Swagger spento
+    # fuori da DEBUG) resta chiuso anche se un giorno lato Django ricomparisse.
+    # Swagger in sviluppo: togliere `api/docs|api/schema` qui E accendere
+    # `DJANGO_API_DOCS_ENABLED=1` nell'env.
+    location ~ ^/(admin|api/docs|api/schema)(/|$) { return 404; }
+
+    # Rate limiting (zone in /etc/nginx/conf.d/zeroerp-ratelimit.conf):
+    # autenticazione stretta, resto largo. Vedi «Sicurezza della superficie pubblica».
+    location ~ ^/api/v1/(admin|portale|shop)/token(/|$) {
+        limit_req zone=zeroerp_auth burst=5 nodelay;
+        include proxy_params;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://127.0.0.1:8000;
+    }
+    location ~ ^/api/v1/auth/(password-reset-request|password-reset-confirm|attivazione)(/|$) {
+        limit_req zone=zeroerp_auth burst=5 nodelay;
+        include proxy_params;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://127.0.0.1:8000;
+    }
+
     location / {
+        limit_req zone=zeroerp_api burst=100 nodelay;
         include proxy_params;
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
@@ -194,6 +259,8 @@ def env(name, default=None, required=False):
 
 DEBUG = env("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
+# Swagger/OpenAPI: strumento di sviluppo, segue DEBUG salvo scelta esplicita
+API_DOCS_ENABLED = env("DJANGO_API_DOCS_ENABLED", "1" if DEBUG else "0") == "1"
 
 LANGUAGE_CODE = "it-it"
 TIME_ZONE = "Europe/Rome"
@@ -257,9 +324,16 @@ curl -I http://192.168.X.8/
 # HTTPS via LAN (ignora cert self-signed con -k)
 curl -I -k https://192.168.X.8/
 # Tailscale
-curl -I -k https://<IP_TAILSCALE>/
-# Admin
-curl -I -k https://192.168.X.8/admin/login/
+curl -I -k https://<IP_TAILSCALE>/health
+# Superficie pubblica (vedi «Sicurezza della superficie pubblica»): 404 attesi, un 200 e' un'esposizione
+curl -I -k https://192.168.X.8/admin/login/     # 404
+curl -I -k https://192.168.X.8/                 # 404 (nessun redirect a /admin/)
+curl -I -k https://192.168.X.8/api/docs/        # 404, salvo DJANGO_API_DOCS_ENABLED=1 + vhost aperto
+# Django non esposto: solo loopback, e da fuori la 8000 non risponde
+ss -ltnp | grep :8000                           # solo 127.0.0.1:8000
+curl -m 3 http://192.168.X.8:8000/health        # deve FALLIRE (timeout/refused)
+# Rate limiting sull'autenticazione: dal 6°/7° tentativo 429
+for i in $(seq 1 15); do curl -sk -o /dev/null -w "%{http_code} " -X POST https://192.168.X.8/api/v1/admin/token/ -H 'Content-Type: application/json' -d '{}'; done; echo
 ```
 
 ---

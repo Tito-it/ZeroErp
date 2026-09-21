@@ -14,10 +14,8 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
-from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
 from apps.core.api.auth_views import (
@@ -28,6 +26,7 @@ from apps.core.api.auth_views import (
     ShopTokenRefreshView,
     ShopTokenView,
 )
+from apps.core.api.api_docs_gate import solo_se_api_docs_abilitate
 from apps.core.api.change_password_view import ChangePasswordView
 from apps.core.api.logout_view import LogoutView
 from apps.core.api.attivazione_view import AttivazioneValidateView, AttivazioneView
@@ -47,15 +46,22 @@ def health_view(_request):
 
 urlpatterns = [
     path("health", health_view, name="health"),
-    path("admin/", admin.site.urls),
+    # Niente `/admin/` e niente redirect della root: l'admin Django non e'
+    # installato (settings, «Superficie pubblica»). La root risponde 404.
+    # Swagger/OpenAPI: `AllowAny` perche' non c'e' un token da esibire, quindi
+    # esistono solo dove `API_DOCS_ENABLED` lo dice (404 altrove).
     path(
         "api/schema/",
-        SpectacularAPIView.as_view(api_version="v1", permission_classes=[AllowAny]),
+        solo_se_api_docs_abilitate(
+            SpectacularAPIView.as_view(api_version="v1", permission_classes=[AllowAny])
+        ),
         name="api-schema",
     ),
     path(
         "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="api-schema", permission_classes=[AllowAny]),
+        solo_se_api_docs_abilitate(
+            SpectacularSwaggerView.as_view(url_name="api-schema", permission_classes=[AllowAny])
+        ),
         name="api-docs",
     ),
     path(
@@ -136,13 +142,10 @@ urlpatterns = [
     path("api/v1/portale/", include("apps.portale.api.urls")),
     path("api/v1/shop/", include("apps.shop.api.urls")),
     path("api/v1/ui/", include("apps.ui.api.urls")),
-    path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]
 
 # Rotte AI assistant — incluse solo se AI_ENABLED=True
 if getattr(settings, "AI_ENABLED", False):
-    # Inserisce prima del RedirectView catch-all (ultimo elemento)
-    urlpatterns.insert(
-        len(urlpatterns) - 1,
+    urlpatterns.append(
         path("api/v1/ai-assistant/", include("apps.ai_assistant.api.urls_v1")),
     )

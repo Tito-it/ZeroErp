@@ -175,6 +175,8 @@ location /media/  { alias /var/www/zeroerp/media/;  expires off; }
 ```dotenv
 DJANGO_SECRET_KEY=⚠️_metti-chiave-lunga-random
 DJANGO_DEBUG=1
+# Swagger (/api/docs/, /api/schema/): segue DEBUG; con DEBUG=0 serve =1
+DJANGO_API_DOCS_ENABLED=1
 DJANGO_ALLOWED_HOSTS=backend-dev,backend-dev.tailXXXX.ts.net,localhost,127.0.0.1
 
 DB_NAME=⚠️_nome_db
@@ -208,6 +210,7 @@ def env(name, default=None, required=False):
 SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
 DEBUG = env("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
+API_DOCS_ENABLED = env("DJANGO_API_DOCS_ENABLED", "1" if DEBUG else "0") == "1"
 
 DATABASES = {
     "default": {

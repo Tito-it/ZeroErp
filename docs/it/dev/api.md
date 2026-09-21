@@ -892,6 +892,13 @@ Endpoint schema:
 * `GET /api/schema/` — specifica OpenAPI 3.0 (JSON/YAML)
 * `GET /api/docs/` — Swagger UI
 
+Entrambe sono anonime (`AllowAny`: non c'e' un token da esibire) e per questo
+esistono **solo** con `API_DOCS_ENABLED` (env `DJANGO_API_DOCS_ENABLED`, default
+= `DEBUG`): altrove rispondono **404**, non 403. Il cancello e' request-time
+(`apps/core/api/api_docs_gate.py`), presidiato da
+`apps/core/tests/api/test_superficie_pubblica.py` insieme all'assenza
+dell'admin Django (`/admin/` → 404, `/` → 404).
+
 ---
 
 ## Routing
