@@ -22,6 +22,10 @@ AS $function$
   --   per riga d'ordine e rifaceva la ridistribuzione greedy che
   --   S5 aveva tolto dal lister: erano due implementazioni della
   --   stessa regola.
+  -- rev 2026-09-21 (D14, quarta leva): la partita si legge da
+  --   vendite.fn_partite_merce col DDT come seme (la chiusura del
+  --   documento); p_ddt_id NULL = tutte. Stessi numeri del lister,
+  --   per costruzione: e' la stessa funzione.
   WITH cand AS (
     -- ⚠️ Gli INNER JOIN del lister diventano LEFT JOIN qui: la
     -- diagnosi deve SPIEGARE l'esclusione, non ripeterla. Ogni
@@ -49,7 +53,9 @@ AS $function$
     JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
     JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id AND dr.attivo IS TRUE
     LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
-    LEFT JOIN vendite.vw_partite_merce pm ON pm.ddt_riga_id = dr.id
+    LEFT JOIN vendite.fn_partite_merce(
+           CASE WHEN p_ddt_id IS NULL THEN NULL::bigint[] ELSE ARRAY[p_ddt_id] END,
+           NULL::bigint[]) pm ON pm.ddt_riga_id = dr.id
     LEFT JOIN LATERAL (
       SELECT o.billing_account_id   AS src_billing_account_id,
              o.fatturazione_trigger AS src_fatturazione_trigger
@@ -116,7 +122,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ddt_push_diagnosi(p_ddt_id bigint)
-IS 'Fonte unica: per riga DDT, IL motivo di esclusione dalla push a commessa (NULL = eleggibile). Riproduce i predicati di vendite.fn_list_ddt_da_pushare in un unico posto (equivalenza righe-NULL == output lister, blindata da pgTAP). motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O ASSENTE — il lister fa un INNER JOIN con fatturabile IS TRUE), 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, 9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability script.fn_available_actions_ddt consuma il min(rank) per il ramo reason e mappa per STRINGA, non per numero: rinumerare non la rompe, e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. rev 2026-08-18 (§23.2 brief-design-partita-merce-generalizzata): RIALLINEATA ALLA PARTITA. Prima leggeva vw_contatore_merce per riga d''ORDINE e rifaceva la ridistribuzione greedy + il caso speciale sui compositi che S5 (20260817-10) aveva tolto dal lister: erano DUE implementazioni della regola che dosa la fatturazione, e questa si dichiarava fonte unica di entrambe. I tre motivi 7/8/9 non ri-derivano niente: si leggono da vw_partite_merce.stato, che E'' gia'' la decomposizione di «differenza IS NULL» (e_riconsegna | NOT conta_fatturazione | NOT misurabile). Il 10 e'' un fallback deliberato: una riga esclusa dal lister non deve MAI uscire con motivo NULL. Brief: brief-db-ddt-reason-push-catch-all §3 (Decisione A) + brief-design-partita-merce-generalizzata §23.2.';
+IS 'rev 2026-09-21 (D14, quarta leva): la partita si legge da vendite.fn_partite_merce con il DDT chiesto come SEME (la chiusura del documento); p_ddt_id NULL = tutte. Stessa sorgente del lister, quindi stessi numeri per costruzione. Fonte unica: per riga DDT, IL motivo di esclusione dalla push a commessa (NULL = eleggibile). Riproduce i predicati di vendite.fn_list_ddt_da_pushare in un unico posto (equivalenza righe-NULL == output lister, blindata da pgTAP). motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O ASSENTE — il lister fa un INNER JOIN con fatturabile IS TRUE), 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, 9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability script.fn_available_actions_ddt consuma il min(rank) per il ramo reason e mappa per STRINGA, non per numero: rinumerare non la rompe, e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. rev 2026-08-18 (§23.2 brief-design-partita-merce-generalizzata): RIALLINEATA ALLA PARTITA. Prima leggeva vw_contatore_merce per riga d''ORDINE e rifaceva la ridistribuzione greedy + il caso speciale sui compositi che S5 (20260817-10) aveva tolto dal lister: erano DUE implementazioni della regola che dosa la fatturazione, e questa si dichiarava fonte unica di entrambe. I tre motivi 7/8/9 non ri-derivano niente: si leggono da vw_partite_merce.stato, che E'' gia'' la decomposizione di «differenza IS NULL» (e_riconsegna | NOT conta_fatturazione | NOT misurabile). Il 10 e'' un fallback deliberato: una riga esclusa dal lister non deve MAI uscire con motivo NULL. Brief: brief-db-ddt-reason-push-catch-all §3 (Decisione A) + brief-design-partita-merce-generalizzata §23.2.';
 ```
 
 ---

@@ -47,6 +47,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_resi_righe_ddt_riga_id | `CREATE INDEX ix_resi_righe_ddt_riga_id ON vendite.resi_righe USING btree (ddt_riga_id)` |
 | pk_resi_righe | `CREATE UNIQUE INDEX pk_resi_righe ON vendite.resi_righe USING btree (id)` |
 | uq_resi_righe_riga_nr | `CREATE UNIQUE INDEX uq_resi_righe_riga_nr ON vendite.resi_righe USING btree (reso_id, riga_nr)` |
 
