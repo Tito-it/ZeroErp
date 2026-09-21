@@ -480,7 +480,7 @@ verifica la riga:
 
 | `canale` | Che cosa dice la riga | Chi la verifica |
 | --- | --- | --- |
-| `APPLICAZIONE` | «questo valore lo scrive un repository Python» | il test del backend: il valore deve comparire in un file che scrive quella tabella; se sparisce, rosso |
+| `APPLICAZIONE` | «questo valore lo scrive un repository Python» | il test del backend (`apps/core/tests/test_stati_check_scrittori_python.py`): il valore deve comparire in un file che scrive quella tabella — o in uno che la scrive **attraverso** il suo repository, il service che passa il valore; se sparisce, rosso. E nel verso opposto: un valore `NON_DICHIARATO` che Python scrive va dichiarato `APPLICAZIONE`, non sanato a database |
 | `ESENTE` | «non lo scrive nessuno, o il criterio non lo vede — e sappiamo perché» | il pgTAP, nel verso di ritiro: se uno scrittore compare a database, la riga va tolta |
 
 ⚠️ `ESENTE` non vuol dire «non scritto»: vuol dire che il **criterio** non lo

@@ -37,6 +37,9 @@ function onPecInput() {
 defineProps({
   // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
   // Arrivano dal padre: questo componente non chiama le API da solo.
+  // Su E_CONTATTO_INCOMPLETO il backend manda i due obbligatori mancanti
+  // (`nominativo`, `tipo_contatto_id`): i loro input li leggono, oltre agli
+  // `errors` della validazione locale — altrimenti il canale arriva e resta muto.
   campiErrati: { type: Array, default: () => [] },
   tipiContatto: { type: Object, required: true },
   unitaOrganizzative: { type: Object, default: null },
@@ -61,7 +64,7 @@ defineProps({
           option-value="id"
           :placeholder="t('anagrafiche.contatto.select_tipo_contatto')"
           :disabled="disabled || tipoDisabled"
-          :invalid="errors.includes('tipo_contatto')"
+          :invalid="errors.includes('tipo_contatto') || campiErrati.includes('tipo_contatto_id')"
         />
         <small v-if="errors.includes('tipo_contatto')" class="app-field-error">
           {{ t('validation.campo_obbligatorio') }}
@@ -85,7 +88,7 @@ defineProps({
     <div class="form-field">
       <label>{{ t('anagrafiche.contatto.nominativo') }} *</label>
       <InputText v-model="form.nominativo" :disabled="disabled"
-        :invalid="errors.includes('nominativo')" />
+        :invalid="errors.includes('nominativo') || campiErrati.includes('nominativo')" />
       <small v-if="errors.includes('nominativo')" class="app-field-error">
         {{ t('validation.campo_obbligatorio') }}
       </small>

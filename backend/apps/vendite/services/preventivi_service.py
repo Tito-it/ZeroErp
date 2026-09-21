@@ -30,6 +30,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
 )
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.services._smistamento_gate_helpers import (
     transiziona_a_evaso_se_smistato,
@@ -70,6 +71,18 @@ _FN = "vendite.preventivi_service"
 # acceso, non un 500 dal DB): nessun CHECK di dominio, per scelta (brief §2.3).
 _CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
 _V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
+
+
+# Scopo: Carica la testata preventivo o solleva E_PREV_NOT_FOUND (BB core
+#        `testata_o_not_found`, stesso nome del helper di ordini e DDT).
+def _get_testata_or_raise(
+    repo: PreventiviRepository, preventivo_id: int, *, op: str,
+) -> dict[str, Any]:
+    return testata_o_not_found(
+        repo.get_preventivo, preventivo_id,
+        code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
+        id_name="preventivo_id", function_name=f"{_FN}.{op}",
+    )
 
 
 # Scopo: La data di consegna richiesta dal payload di riga: `None` se assente,
@@ -207,15 +220,7 @@ def resolve_filtri_export_label(
 #        e spalmate nel detail per consumo diretto dal frontend.
 def get_preventivo(preventivo_id: int) -> dict[str, object]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.get_preventivo",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="get_preventivo")
     indirizzi = repo.list_indirizzi(preventivo_id)
     capabilities = repo.get_capabilities(preventivo_id)
     # Summary leggero: count per stato_approvazione_prezzo + totale, single
@@ -271,9 +276,11 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
     }
 
 
-# Scopo: Lista righe di un preventivo.
+# Scopo: Lista righe di un preventivo. Legge prima la testata: un preventivo
+#        fuori perimetro (o inesistente) e' un 404, non un pannello vuoto.
 def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="list_righe")
     return repo.list_righe(preventivo_id)
 
 
@@ -284,14 +291,7 @@ def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
 #        quelle che lo smistamento copierebbe (stesso predicato del residuo).
 def list_righe_smistabili_ordine(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.list_righe_smistabili_ordine",
-    )
+    _get_testata_or_raise(repo, preventivo_id, op="list_righe_smistabili_ordine")
     return repo.list_righe_smistabili_ordine(preventivo_id)
 
 
@@ -301,8 +301,10 @@ def list_righe_smistabili_ordine(preventivo_id: int) -> list[dict[str, Any]]:
 #        il service legge la vista denormalizzata, nessun ricalcolo Python.
 #        Usato dal FE per il pannello "Riepilogo IVA" del drawer preventivo
 #        e (futuro) come builder per fatture emesse dal preventivo.
+#        Legge prima la testata: fuori perimetro e' un 404.
 def list_riepilogo_iva(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="list_riepilogo_iva")
     return repo.list_riepilogo_iva(preventivo_id)
 
 
@@ -419,6 +421,7 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
         coerente,
         code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
         message="Utility non coerente con l'istanza selezionata.",
+        context={"field": "utility_id"},
         detail=(
             f"istanza_utility_id={istanza_utility_id} non e' dichiarata "
             f"per utility_id={utility_id} (no billing account, dati "
@@ -472,15 +475,7 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
 # in quei casi la "cancellazione" semantica e' cambia_stato → ANNULLATO.
 def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.elimina_preventivo",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_preventivo")
     # Eliminabili solo i preventivi nello stesso stato in cui sono modificabili
     # (BOZZA / DRAFT). Qualsiasi stato successivo (EMESSO/ACCETTATO/...) richiede
     # cambia_stato → ANNULLATO invece dell'hard-delete.
@@ -514,14 +509,7 @@ def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
 # Scopo: Aggiorna testata preventivo con guard su stato modificabile.
 def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.aggiorna_preventivo",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_preventivo")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_MODIFICABILI,
         code="E_PREV_STATO_NON_MODIFICABILE",
@@ -581,15 +569,7 @@ def cambia_stato(
     # update dei 2 campi finche' il preventivo e' fatturabile (vedi
     # _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
     if nuovo_stato == "ACCETTATO":
-        testata = repo.get_preventivo(preventivo_id)
-        ErrorManager.require(
-            testata is not None,
-            code="E_PREV_NOT_FOUND",
-            message="Preventivo non trovato.",
-            detail=f"preventivo_id={preventivo_id}",
-            function_name=f"{_FN}.cambia_stato",
-        )
-        assert testata is not None
+        testata = _get_testata_or_raise(repo, preventivo_id, op="cambia_stato")
         stato_attuale = testata["stato_codice_interno"]
         # Solo EMESSO → ACCETTATO (e ACCETTATO no-op) richiedono i parametri.
         if stato_attuale in ("EMESSO", "ACCETTATO"):
@@ -739,8 +719,10 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 #        `numero`, ordinate per `rev`). Mirror del pattern offerte
 #        `list_revisioni`; differenza chiave: preventivi sono catenate via
 #        `numero` non via `revisione_padre_id`.
+#        Legge prima la testata: fuori perimetro e' un 404.
 def list_revisioni(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="list_revisioni")
     return repo.list_revisioni(preventivo_id)
 
 
@@ -754,15 +736,7 @@ def collega_pratica(
     from apps.pratiche.db.pratiche_repository import PraticheRepository
 
     repo = PreventiviRepository()
-    prev = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        prev is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.collega_pratica",
-    )
-    assert prev is not None
+    prev = _get_testata_or_raise(repo, preventivo_id, op="collega_pratica")
     # Aggancio ROOT per-flusso: flusso_id ancora il documento al flusso d'origine
     # (brief-db-aggancio-documento-flusso). L'indice unico parziale impedisce un
     # secondo ROOT sullo stesso flusso; il trigger guard verifica che il flusso
@@ -857,14 +831,7 @@ def gestisci_riga(
     auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.gestisci_riga",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="gestisci_riga")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
         code="E_PREV_STATO_NON_MODIFICABILE",
@@ -1093,14 +1060,7 @@ def aggiorna_riga(
     auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.aggiorna_riga",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_riga")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
         code="E_PREV_STATO_NON_MODIFICABILE",
@@ -1510,14 +1470,7 @@ def suggerisci_prezzo_riga(
     )
 
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=function_name,
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="suggerisci_prezzo_riga")
     ErrorManager.require(
         testata.get("billing_account_id") is not None,
         code="E_PREV_VALIDAZIONE",
@@ -1582,14 +1535,7 @@ def suggerisci_prezzo_riga(
 # trigger UPDATE attivato).
 def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.elimina_riga",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_riga")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
         code="E_PREV_STATO_NON_MODIFICABILE",
@@ -1640,14 +1586,7 @@ def preview_componenti_riga(
     auth_user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.preview_componenti_riga",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="preview_componenti_riga")
     data_riferimento_str = testata.get("data")
     ErrorManager.require(
         data_riferimento_str is not None,
@@ -1701,20 +1640,9 @@ def list_componenti_riga(
     preventivo_id: int, riga_id: int, *, solo_attivi: bool = True,
 ) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None,
-        code="E_PREV_RIGA_NOT_FOUND",
-        message="Riga preventivo non trovata.",
-        detail=f"riga_id={riga_id}",
-        function_name=f"{_FN}.list_componenti_riga",
-    )
-    assert riga is not None
-    ErrorManager.require(
-        riga.get("preventivo_id") == preventivo_id,
-        code="E_PREV_RIGA_NOT_FOUND",
-        message="Riga preventivo non trovata.",
-        detail=f"riga_id={riga_id} non appartiene a preventivo_id={preventivo_id}",
+    riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=preventivo_id, chiave_padre="preventivo_id",
+        code="E_PREV_RIGA_NOT_FOUND", message="Riga preventivo non trovata.",
         function_name=f"{_FN}.list_componenti_riga",
     )
     return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
@@ -1859,14 +1787,7 @@ def push_a_commessa(
     preventivo_id: int, righe_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.push_a_commessa",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, preventivo_id, op="push_a_commessa")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_FATTURABILI,
         code="E_PREV_STATO_TRANSIZIONE",
@@ -1963,14 +1884,7 @@ def push_a_commessa(
 #        brief-db-smistamento-preventivi.md B). Una sola chiamata FE.
 def smistamento(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.smistamento",
-    )
+    _get_testata_or_raise(repo, preventivo_id, op="smistamento")
     # `aggregato` e' None per preventivo senza righe attive (la vista GROUP BY
     # non produce la riga): si propaga cosi' com'e', senza fabbricare un
     # fallback che duplicherebbe lo schema della vista (drift garantito alla
@@ -2119,18 +2033,11 @@ def genera_pratica(
     descrizione: str | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
+    testata = _get_testata_or_raise(repo, preventivo_id, op="genera_pratica")
     # Guard "a buon mercato" sulla testata gia' letta (esistenza, stato, billing):
     # errori applicativi anticipati e chiari. La fn madre ri-guarda esistenza e
     # billing come difesa-in-profondita' (E_PREV_NOT_FOUND / E_PREV_VALIDAZIONE),
     # ma NON il guard di stato → resta qui.
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.genera_pratica",
-    )
-    assert testata is not None
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_GENERA_PRATICA,
         code="E_PREV_PRATICA_STATO",

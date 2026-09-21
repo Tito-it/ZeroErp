@@ -12,6 +12,7 @@ from apps.core.api.payload_validators import optional_bool, optional_int, option
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import vincolo_violato
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.testata_guard import o_not_found
 from apps.anagrafiche.error_codes import E_ANAG_DUPLICATO, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 
 
@@ -82,10 +83,10 @@ def require_found(entity: dict | None, message: str) -> dict:
 
     Centralizza il pattern get → require not-found → assert (per il type checker)
     → return, identico nei get_* di clienti/fornitori/soggetti/emittenti.
+    Dal 2026-09-21 e' la faccia di dominio del BB core `o_not_found`: il
+    codice e' fisso, la regola sta in un posto solo.
     """
-    ErrorManager.require(entity is not None, code=E_ANAG_NOT_FOUND, message=message)
-    assert entity is not None
-    return entity
+    return o_not_found(entity, code=E_ANAG_NOT_FOUND, message=message)
 
 
 def create_with_dedup(fn: Any, duplicate_message: str) -> dict:

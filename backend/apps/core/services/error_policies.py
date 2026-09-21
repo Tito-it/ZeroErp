@@ -23,7 +23,7 @@
 #        I QUATTRO MODULI, separati per QUANDO CAMBIANO e non per contenuto:
 #          error_policies_generated.py  codice -> classe (658)   a ogni seed DB
 #          error_policies.py (questo)   classe -> status, ui     quasi mai
-#          error_ui_overrides.py        le 176 ui fuori default  scelte di UI
+#          error_ui_overrides.py        le ui fuori default      scelte di UI
 #          error_messages_fallback.py   i messaggi senza %s      finche' esistono
 #
 #        IL CANCELLO CHE GUARDA QUESTO REGISTRO. Sui codici errore devono andare
@@ -101,10 +101,13 @@ HTTP_PER_CLASSE: dict[str, int] = {
 }
 
 # ── classe -> ui_action di default ───────────────────────────────────────────
-# ⚠️ La ui_action NON si deriva dalla classe, e il numero conta: restano 176
-# override su 658. Su `DATO_ERRATO`, la classe piu' numerosa, il default e' un
-# lancio di moneta — 117 contro 117 — perche' il discriminante non e' la classe
-# ma DOVE manca il dato: sul form in corso (campo evidenziato) o sull'entita'
+# ⚠️ La ui_action NON si deriva dalla classe: gli override sono tanti (il
+# numero lo dice `len(UI_ACTION_OVERRIDE)`, non un commento — questo diceva
+# «176» quando erano 182, e «160» quando erano 166). Il 2026-09-21 sedici
+# `highlight_form_fields` senza un input da accendere sono tornati al banner
+# (presidio C2, §3-ter). Su `DATO_ERRATO`, la classe piu' numerosa, il default
+# resta un lancio di moneta perche' il discriminante non e' la classe ma DOVE
+# manca il dato: sul form in corso (campo evidenziato) o sull'entita'
 # collegata (banner). E' un'informazione che la classe non porta.
 # Il default scelto e' il banner: promettere un campo da evidenziare che non
 # esiste e' peggio del contrario.

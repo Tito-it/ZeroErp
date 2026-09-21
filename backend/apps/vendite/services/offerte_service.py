@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
@@ -34,6 +34,7 @@ from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
@@ -379,6 +380,7 @@ class OfferteService:
         offset: int = 0,
         order_by: str = "data_insert",
         order_dir: str = "desc",
+        auth_user_id: int | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE)
         # `search` vuoto/whitespace-only -> trattato come "no filter" (coerente
@@ -403,6 +405,10 @@ class OfferteService:
             "validita_dal_max": validita_dal_max,
             "search": search_norm,
             "solo_ultima_revisione": solo_ultima_revisione,
+            # Scope emittente: `None` = nessuna restrizione (superuser a
+            # livello API); entra nei filtri cosi' righe e conteggio hanno lo
+            # stesso perimetro.
+            "auth_user_id": auth_user_id,
         }
         rows = self._repo.list_offerte(
             **filters,
@@ -449,6 +455,20 @@ class OfferteService:
             out["Storico revisioni"] = "incluso"
         return out
 
+    # Scopo: Carica la testata offerta o solleva E_VENDITE_NOT_FOUND (BB core
+    #        `testata_o_not_found`: qui solo codice e messaggio del dominio).
+    #        `getter` ammette il lettore leggero `get_stato_codice`, dove al
+    #        chiamante basta sapere che l'offerta esiste.
+    def _get_offerta_or_raise(
+        self, offerta_id: int, *, op: str,
+        getter: Callable[[int], Any] | None = None,
+    ) -> Any:
+        return testata_o_not_found(
+            getter or self._repo.get_offerta, offerta_id,
+            code=E_VENDITE_NOT_FOUND, message="Offerta non trovata.",
+            id_name="offerta_id", function_name=f"offerte_service.{op}",
+        )
+
     # Scopo: Dettaglio offerta + eccezioni + utility 1:1 + blob capability
     #        (refactor data-driven 2026-05-26). Lo stato della macchina e
     #        le azioni ammesse arrivano da `script.fn_available_actions_offerta`,
@@ -469,14 +489,7 @@ class OfferteService:
     #        impedire la lettura dell'entita'".
     def get_offerta(self, offerta_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        row = self._repo.get_offerta(offerta_id)
-        ErrorManager.require(
-            row is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
-        assert row is not None
+        row = self._get_offerta_or_raise(offerta_id, op="get_offerta")
         row["eccezioni"] = self._repo.list_eccezioni(offerta_id)
         row["utility"] = self._repo.get_utility(offerta_id)
         try:
@@ -865,12 +878,7 @@ class OfferteService:
         self, offerta_id: int
     ) -> dict[str, Any] | None:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
+        self._get_offerta_or_raise(offerta_id, op="get_contratto_sovrapposto", getter=self._repo.get_stato_codice)
         return self._repo.get_contratto_sovrapposto(offerta_id)
 
     # Scopo: Ritorna la catena di revisioni che condivide il root (rev.1)
@@ -878,12 +886,7 @@ class OfferteService:
     def list_revisioni(self, offerta_id: int) -> list[dict[str, Any]]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         # 404 esplicito se l'offerta non esiste.
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
+        self._get_offerta_or_raise(offerta_id, op="list_revisioni", getter=self._repo.get_stato_codice)
         return self._repo.list_revisioni(offerta_id)
 
     # Scopo: BOZZA -> ANNULLATA (ritiro interno prima dell'emissione).
@@ -908,12 +911,7 @@ class OfferteService:
     def list_eccezioni(self, offerta_id: int) -> list[dict[str, Any]]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         # Verifica esistenza offerta per 404 esplicito.
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
+        self._get_offerta_or_raise(offerta_id, op="list_eccezioni", getter=self._repo.get_stato_codice)
         return self._repo.list_eccezioni(offerta_id)
 
     # Scopo: Crea un'eccezione. Solo in stato BOZZA.
@@ -1196,14 +1194,7 @@ class OfferteService:
         auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        testata = self._repo.get_offerta(offerta_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
-        assert testata is not None
+        testata = self._get_offerta_or_raise(offerta_id, op="preview_componenti_eccezione")
         emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
             offerta_id=offerta_id,
             testata=testata,
@@ -1389,12 +1380,7 @@ class OfferteService:
     # Scopo: Legge il record utility 1:1 di un'offerta (read libero).
     def get_utility(self, offerta_id: int) -> dict[str, Any] | None:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        ErrorManager.require(
-            self._repo.get_stato_codice(offerta_id) is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
+        self._get_offerta_or_raise(offerta_id, op="get_utility", getter=self._repo.get_stato_codice)
         return self._repo.get_utility(offerta_id)
 
     # Scopo: Crea il record utility 1:1. UNIQUE su offerta_id: doppio create
@@ -1468,14 +1454,7 @@ class OfferteService:
     def _assert_stato_corrente(
         self, offerta_id: int, *, expected: set[str] | frozenset[str]
     ) -> str:
-        stato = self._repo.get_stato_codice(offerta_id)
-        ErrorManager.require(
-            stato is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Offerta non trovata.",
-            context={"offerta_id": offerta_id},
-        )
-        assert stato is not None
+        stato = self._get_offerta_or_raise(offerta_id, op="_assert_stato_corrente", getter=self._repo.get_stato_codice)
         ErrorManager.require(
             stato in expected,
             code=E_VENDITE_VALIDATION,
@@ -1549,14 +1528,11 @@ def _load_offerta_context_for_pricing(
 ) -> dict[str, Any]:
     if repo is None:
         repo = OfferteRepository()
-    testata = repo.get_offerta(offerta_id)
-    ErrorManager.require(
-        testata is not None,
-        code=E_VENDITE_NOT_FOUND,
-        message="Offerta non trovata.",
-        function_name=function_name,
+    testata = testata_o_not_found(
+        repo.get_offerta, offerta_id,
+        code=E_VENDITE_NOT_FOUND, message="Offerta non trovata.",
+        id_name="offerta_id", function_name=function_name,
     )
-    assert testata is not None
 
     ba_id_raw = testata.get("billing_account_id")
     ErrorManager.require(

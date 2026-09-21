@@ -27,6 +27,7 @@ from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -262,15 +263,7 @@ def resolve_filtri_export_label(
 # Scopo: Dettaglio testata ordine (righe lette a parte via /righe/).
 def get_ordine(ordine_id: int) -> dict[str, object]:
     repo = OrdiniRepository()
-    testata = repo.get_ordine(ordine_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_ORD_NOT_FOUND",
-        message="Ordine non trovato.",
-        detail=f"ordine_id={ordine_id}",
-        function_name=f"{_FN}.get_ordine",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, ordine_id, op="get_ordine")
     righe = repo.list_righe(ordine_id)
     # Capability data-driven da script.fn_available_actions_ordine (matrice
     # config.transizioni_stati_ordini): available_actions (conferma/annulla/
@@ -286,9 +279,12 @@ def get_ordine(ordine_id: int) -> dict[str, object]:
     }
 
 
-# Scopo: Lista righe di un ordine.
+# Scopo: Lista righe di un ordine. Legge prima la testata: un ordine fuori
+#        perimetro (o inesistente) e' un 404, non un pannello vuoto.
 def list_righe(ordine_id: int) -> list[dict[str, Any]]:
-    return OrdiniRepository().list_righe(ordine_id)
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="list_righe")
+    return repo.list_righe(ordine_id)
 
 
 # Scopo: risolve l'ordine COLLEGATO a una pratica (per gli step a valle del
@@ -346,8 +342,11 @@ def _completa_flusso_ordine_pratica(
 #        vw_ordini_riepilogo_iva_dettaglio (stessa formula dei preventivi): il
 #        service legge, nessun ricalcolo Python. Usato dal FE per il pannello
 #        "Riepilogo IVA" del drawer ordine e dal context builder della stampa.
+#        Legge prima la testata: fuori perimetro e' un 404.
 def list_riepilogo_iva(ordine_id: int) -> list[dict[str, Any]]:
-    return OrdiniRepository().list_riepilogo_iva(ordine_id)
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="list_riepilogo_iva")
+    return repo.list_riepilogo_iva(ordine_id)
 
 
 # ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
@@ -658,15 +657,11 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     from apps.vendite.db.offerte_repository import OfferteRepository
 
     off_repo = OfferteRepository()
-    testata = off_repo.get_offerta(offerta_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_VENDITE_NOT_FOUND",
-        message="Offerta non trovata.",
-        detail=f"offerta_id={offerta_id}",
-        function_name=f"{_FN}.crea_ordine_da_offerta",
+    testata = testata_o_not_found(
+        off_repo.get_offerta, offerta_id,
+        code="E_VENDITE_NOT_FOUND", message="Offerta non trovata.",
+        id_name="offerta_id", function_name=f"{_FN}.crea_ordine_da_offerta",
     )
-    assert testata is not None
     ErrorManager.require(
         testata.get("stato_codice_interno") in _STATI_OFFERTA_CONVERTIBILI,
         code="E_ORD_ORIGINE_NON_CONVERTIBILE",
@@ -977,13 +972,7 @@ def aggiorna_riga(
         message="Righe modificabili solo su ordine in bozza.",
         function_name=f"{_FN}.aggiorna_riga",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["ordine_id"] == ordine_id,
-        code="E_ORD_NOT_FOUND",
-        message="Riga non trovata per questo ordine.",
-        function_name=f"{_FN}.aggiorna_riga",
-    )
+    _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
@@ -1008,13 +997,7 @@ def elimina_riga(ordine_id: int, riga_id: int) -> dict[str, Any]:
         message="Righe eliminabili solo su ordine in bozza.",
         function_name=f"{_FN}.elimina_riga",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["ordine_id"] == ordine_id,
-        code="E_ORD_NOT_FOUND",
-        message="Riga non trovata per questo ordine.",
-        function_name=f"{_FN}.elimina_riga",
-    )
+    _get_riga_or_raise(repo, ordine_id, riga_id, op="elimina_riga")
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
     return {"ordine_id": ordine_id, "riga_id": riga_id, "deleted": deleted}
@@ -1043,11 +1026,15 @@ def preview_componenti_riga(
     )
 
 
-# Scopo: Lista componenti persistiti di una riga.
+# Scopo: Lista componenti persistiti di una riga. Guard di esistenza come
+#        `aggiorna_riga`: la riga deve esistere ED appartenere all'ordine
+#        richiesto (fuori perimetro o id incrociato → E_ORD_NOT_FOUND, 404).
 def list_componenti_riga(
     ordine_id: int, riga_id: int, *, solo_attivi: bool = True,
 ) -> list[dict[str, Any]]:
-    return OrdiniRepository().list_componenti_riga(riga_id, solo_attivi=solo_attivi)
+    repo = OrdiniRepository()
+    _get_riga_or_raise(repo, ordine_id, riga_id, op="list_componenti_riga")
+    return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
 
 
 # Scopo: Aggiorna un componente BoM (solo DRAFT, scope componente→riga→ordine).
@@ -1227,33 +1214,40 @@ _db_errors = make_db_errors_translator(
 )
 
 
+# Scopo: Carica la testata ordine o solleva E_ORD_NOT_FOUND (BB core
+#        `testata_o_not_found`: qui solo codice e messaggio del dominio).
 def _get_testata_or_raise(
     repo: OrdiniRepository, ordine_id: int, *, op: str,
 ) -> dict[str, Any]:
-    testata = repo.get_ordine(ordine_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_ORD_NOT_FOUND",
-        message="Ordine non trovato.",
-        detail=f"ordine_id={ordine_id}",
+    return testata_o_not_found(
+        repo.get_ordine, ordine_id,
+        code="E_ORD_NOT_FOUND", message="Ordine non trovato.",
+        id_name="ordine_id", function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Carica la riga o solleva E_ORD_NOT_FOUND se non esiste o non e' di questo
+#        documento (BB core `riga_del_padre_o_not_found`: qui solo codice e
+#        messaggio del dominio).
+def _get_riga_or_raise(
+    repo: OrdiniRepository, ordine_id: int, riga_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=ordine_id, chiave_padre="ordine_id",
+        code="E_ORD_NOT_FOUND", message="Riga non trovata per questo ordine.",
         function_name=f"{_FN}.{op}",
     )
-    assert testata is not None
-    return testata
 
 
 def _assert_stato(
     repo: OrdiniRepository, ordine_id: int, ammessi: frozenset[str], *, op: str,
 ) -> str:
-    stato = repo.get_stato_codice(ordine_id)
-    ErrorManager.require(
-        stato is not None,
-        code="E_ORD_NOT_FOUND",
-        message="Ordine non trovato.",
-        detail=f"ordine_id={ordine_id}",
-        function_name=f"{_FN}.{op}",
+    # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
+    stato = testata_o_not_found(
+        repo.get_stato_codice, ordine_id,
+        code="E_ORD_NOT_FOUND", message="Ordine non trovato.",
+        id_name="ordine_id", function_name=f"{_FN}.{op}",
     )
-    assert stato is not None
     ErrorManager.require(
         stato in ammessi,
         code="E_ORD_STATO_TRANSIZIONE",

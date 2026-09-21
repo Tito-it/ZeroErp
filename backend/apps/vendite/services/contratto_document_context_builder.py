@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
     formatta_campi,
@@ -76,14 +76,11 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_id, field="sorgente_id")
 
-        testata = self._repo.get_contratto(sorgente_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_NOT_FOUND,
-            message="Contratto non trovato per generazione documento.",
-            detail=f"contratto_id={sorgente_id}",
+        testata = testata_o_not_found(
+            self._repo.get_contratto, sorgente_id,
+            code=E_NOT_FOUND, message="Contratto non trovato per generazione documento.",
+            id_name="contratto_id", function_name="ContrattoDocumentContextBuilder.build",
         )
-        assert testata is not None
 
         righe_contratto = self._repo.list_righe(sorgente_id)
         utility = self._repo.get_utility(sorgente_id)

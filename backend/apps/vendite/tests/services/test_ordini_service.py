@@ -925,3 +925,53 @@ class OrdiniRigaDateConsegnaTests(SimpleTestCase):
         _, kwargs = repo.update_riga.call_args
         self.assertIsNone(kwargs["data_consegna_confermata"])
         self.assertEqual(kwargs["data_consegna_richiesta_cliente"], date(2026, 10, 2))
+
+
+# Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un ordine fuori perimetro RLS — che il
+#        repository vede come `None`, identico a un id inesistente — deve
+#        essere un 404, non un 200 con lista vuota. Prova i tre satelliti e
+#        il caso felice (la testata trovata non cambia la delega).
+#
+# Indice:
+#  1. test_list_righe_ordine_non_trovato_e_404
+#  2. test_list_riepilogo_iva_ordine_non_trovato_e_404
+#  3. test_list_componenti_riga_di_altro_ordine_e_404
+#  4. test_list_righe_con_testata_delega_al_repo
+class OrdiniSatellitiTestataTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_list_righe_ordine_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.list_righe(99)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.list_righe.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_riepilogo_iva_ordine_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.list_riepilogo_iva(99)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.list_riepilogo_iva.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_componenti_riga_di_altro_ordine_e_404(self, repo_cls) -> None:
+        # La riga esiste ma appartiene a un altro ordine: l'id incrociato
+        # nell'URL non deve aprire i componenti di nessuno.
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 31, "ordine_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.list_componenti_riga(7, 31)
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.list_componenti_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_righe_con_testata_delega_al_repo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(ordini_service.list_righe(7), [{"id": 31}])
+        repo.list_righe.assert_called_once_with(7)

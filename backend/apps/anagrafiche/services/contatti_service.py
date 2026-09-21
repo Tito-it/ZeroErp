@@ -103,10 +103,14 @@ def crea_contatto_inline_se_valido(
 ) -> None:
     contatto_status = classify_contatto_payload(contatto_data)
     if contatto_status == "PARTIAL":
+        missing = missing_required_fields(contatto_data)
         raise ServiceError(
             code=E_CONTATTO_INCOMPLETO,
             message="Contatto incompleto: completa o svuota tutti i campi.",
-            context={"missing": missing_required_fields(contatto_data)},
+            context={"missing": missing},
+            # I campi mancanti SONO i campi da accendere: `fields` e' il canale
+            # per piu' di uno (presidio C2, §3-ter).
+            fields=tuple(missing),
         )
     if contatto_status == "VALID":
         assert contatto_data is not None  # type narrowing per il checker

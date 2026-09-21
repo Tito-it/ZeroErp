@@ -84,6 +84,9 @@ Indice test eseguiti:
 73) test_extract_optional_enum_tre_stati         — assente -> MISSING; None nullable -> None; None non nullable -> VALIDATION
 74) test_coerce_enum_scalare                     — la forma per un parametro di firma; None e' obbligatorio
 75) test_extract_optional_string_max_len         — 2026-09-21 (regola del 2): oltre `max_len` -> VALIDATION col campo; MISSING e None (nullable) non lo misurano
+76) test_optional_smallint_porta_il_campo         — 2026-09-21 (presidio C2 §3-bis.4): i tre rifiuti nominano `field`, come le sorelle
+77) test_optional_bool_porta_il_campo             — idem
+78) test_optional_meta_porta_il_campo             — idem, sui due rifiuti (JSON rotto, non oggetto)
 """
 
 from decimal import Decimal
@@ -256,6 +259,19 @@ class TestOptionalSmallint(_Base):
         self.assertIsNone(self.v.optional_smallint({}, "o"))
         self.assertIsNone(self.v.optional_smallint({"o": None}, "o"))
 
+    # Scopo: il canale del campo (presidio C2, brief-be-presidio-ui-action-e-
+    #        canale-campi §3-bis.4). Fino al 2026-09-21 i tre rifiuti scrivevano
+    #        `context={key: value}` — il nome del campo come CHIAVE, che
+    #        `_campi_da_correggere` non legge — e l'envelope usciva senza
+    #        `fields` su un errore che sa esattamente quale input ha sbagliato.
+    #        E' un metodo che estrae dal PAYLOAD, come `require_string`: il
+    #        campo e' un input del form, e va nominato.
+    def test_optional_smallint_porta_il_campo(self):
+        for payload in ({"o": True}, {"o": "x"}, {"o": 40000}):
+            with self.assertRaises(ServiceError) as ctx:
+                self.v.optional_smallint(payload, "o")
+            self.assertEqual(ctx.exception.context.get("field"), "o", payload)
+
 
 class TestOptionalBool(_Base):
     def test_optional_bool_true(self):
@@ -273,6 +289,12 @@ class TestOptionalBool(_Base):
     def test_optional_bool_str(self):
         with self.assertRaisesValidation():
             self.v.optional_bool({"attivo": "true"}, "attivo")
+
+    # Scopo: come `test_optional_smallint_porta_il_campo`, sul booleano.
+    def test_optional_bool_porta_il_campo(self):
+        with self.assertRaises(ServiceError) as ctx:
+            self.v.optional_bool({"attivo": "true"}, "attivo")
+        self.assertEqual(ctx.exception.context.get("field"), "attivo")
 
     def test_optional_bool_int(self):
         with self.assertRaisesValidation():
@@ -443,6 +465,14 @@ class TestOptionalMeta(_Base):
         # array JSON -> valido come JSON ma non e' dict
         with self.assertRaisesValidation():
             self.v.optional_meta({"meta": "[1,2,3]"})
+
+    # Scopo: come `test_optional_smallint_porta_il_campo`, sui due rifiuti del
+    #        blob: il campo e' la chiave del payload (`meta`), non `meta_raw`.
+    def test_optional_meta_porta_il_campo(self):
+        for raw in ("{not json", "[1,2,3]"):
+            with self.assertRaises(ServiceError) as ctx:
+                self.v.optional_meta({"meta": raw})
+            self.assertEqual(ctx.exception.context.get("field"), "meta", raw)
 
 
 class TestInstanceDefaults(TestCase):

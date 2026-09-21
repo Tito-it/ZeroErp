@@ -57,6 +57,12 @@ DdtDbErrorsTests
 22) test_integrity_error_fk_mappato          — E_VENDITE_FK
 23) test_integrity_error_fallback            — E_VENDITE_VALIDATION
 24) test_database_error_trigger_code_estratto — E_STATO_DDT_TRANSIZIONE_NON_VALIDA
+
+DdtSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
+25) test_list_righe_ddt_non_trovato_e_404        — E_DDT_NOT_FOUND, repo righe non chiamato
+26) test_list_riepilogo_iva_ddt_non_trovato_e_404 — idem sul riepilogo IVA
+27) test_list_componenti_riga_di_altro_ddt_e_404 — riga di un altro DDT: id incrociato → 404
+28) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
 """
 
 from contextlib import nullcontext
@@ -693,3 +699,49 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         ddt_service.aggiorna_riga(7, 31, {"prezzo_unitario": ""})
 
         self.assertIsNone(repo.update_riga.call_args.kwargs["prezzo_unitario"])
+
+
+# Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un DDT fuori perimetro RLS — `None` dal
+#        repository, come un id inesistente — e' un 404, non un 200 vuoto.
+#
+# Indice:
+# 25) test_list_righe_ddt_non_trovato_e_404
+# 26) test_list_riepilogo_iva_ddt_non_trovato_e_404
+# 27) test_list_componenti_riga_di_altro_ddt_e_404
+# 28) test_list_righe_con_testata_delega_al_repo
+class DdtSatellitiTestataTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_list_righe_ddt_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.list_righe(99)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.list_righe.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_riepilogo_iva_ddt_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.list_riepilogo_iva(99)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.list_riepilogo_iva.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_componenti_riga_di_altro_ddt_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.list_componenti_riga(7, 31)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.list_componenti_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_righe_con_testata_delega_al_repo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(ddt_service.list_righe(7), [{"id": 31}])
+        repo.list_righe.assert_called_once_with(7)

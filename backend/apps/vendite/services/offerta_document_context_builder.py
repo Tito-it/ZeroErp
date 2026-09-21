@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
     format_misura,
@@ -83,14 +83,11 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_id, field="sorgente_id")
 
-        testata = self._repo.get_offerta(sorgente_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_NOT_FOUND,
-            message="Offerta commerciale non trovata per generazione documento.",
-            detail=f"offerta_id={sorgente_id}",
+        testata = testata_o_not_found(
+            self._repo.get_offerta, sorgente_id,
+            code=E_NOT_FOUND, message="Offerta commerciale non trovata per generazione documento.",
+            id_name="offerta_id", function_name="OffertaDocumentContextBuilder.build",
         )
-        assert testata is not None
 
         eccezioni = self._repo.list_eccezioni(sorgente_id)
         utility = self._repo.get_utility(sorgente_id)

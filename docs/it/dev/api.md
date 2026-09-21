@@ -1108,6 +1108,26 @@ a quel giorno cinque voci dell'inventario qui sopra dicevano «la testata ha la
 RLS, il figlio no»: corrette il 2026-09-12, e il fatto sta scritto **qui** e
 non più in cinque sedi.
 
+⭐ **E l'ordine si scrive con un BB, non a mano** (2026-09-21):
+`testata_o_not_found(getter, id, code=…, message=…, id_name=…, function_name=…)`
+in `apps/core/services/testata_guard.py`. Ogni service di documento lo avvolge
+nel proprio `_get_testata_or_raise(repo, id, *, op)` — nome uguale in ordini,
+DDT, preventivi e resi — e i satelliti (`list_righe`, `list_riepilogo_iva`,
+`list_revisioni`, `list_componenti_riga`) lo chiamano **prima** del repository.
+Per una **riga** nell'URL il gemello e' `riga_del_padre_o_not_found` (via
+`_get_riga_or_raise(repo, <doc>_id, riga_id, *, op)`): esiste **ed** e' di quel
+documento, o 404 — `/ordini/999/righe/24/` non apre la riga 24 di un altro ordine.
+⚠️ Il censimento di quel giorno aveva trovato **dieci** satelliti di `vendite`
+che passavano dritti al repository: sotto RLS rispondevano `200 []` a un padre
+fuori perimetro, indistinguibile da «nessuna riga». Un satellite nuovo che
+non legge la testata è lo stesso difetto, e non dà nessun errore.
+⛔ **Il doppio filtro Python su OGNI endpoint non è la regola** — è esattamente
+il pattern che l'analisi RLS (§2.3) ha dichiarato fragile: la RLS è il
+cancello uniforme, il filtro applicativo sta sulle **liste di testata** (tutte
+quelle di `vendite` e `anagrafiche`, offerte comprese dal 21-09) e l'ordine di
+lettura sui satelliti. `pratiche` resta da allineare: brief
+`work-in-progress/brief-be-pratiche-perimetro-emittente-lato-python.md`.
+
 Vedi `docs/it/dev/work-done/analisi-attivazione-rls-operatori.md`.
 
 ---

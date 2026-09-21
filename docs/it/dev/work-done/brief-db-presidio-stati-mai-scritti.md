@@ -19,11 +19,15 @@
 > la vista ottimizzata (0,6 s) è quella in `pg_class`, i due presidi sono a
 > catalogo; **baseline pgTAP lanciata da Tid, nessuna regressione**
 > (`dbops/test-stati-check-scrittori-v1.sql`, 14 test). Doc auto-gen
-> rigenerata con l'apply. 🔵 **Resta la richiesta BE §6** — il test gemello sulle
-> 26 righe `DICHIARATO_APPLICAZIONE` — in coda alla richiesta C2
-> ([brief-be-presidio-ui-action-e-canale-campi.md](../work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md)):
-> finché non esiste, metà del cancello è una promessa scritta in
-> `presidi.csv` (`presidiato_da`).
+> rigenerata con l'apply. ✅ **E la richiesta BE §6 è chiusa il 21-09
+> pomeriggio**: `backend/apps/core/tests/test_stati_check_scrittori_python.py`
+> verifica le 26 righe `DICHIARATO_APPLICAZIONE` nei due versi — con il
+> **secondo salto** (service → repository), perché il criterio «stesso file»
+> del §6 dava rosso su 8 righe su 26 per l'architettura a tre layer, non per un
+> difetto (dettaglio in
+> [brief-be-presidio-ui-action-e-canale-campi.md §7](../work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md)).
+> 🔵 Al team DB resta una riga: `presidi.csv`, `presidiato_da` di
+> `vw_stati_check_da_sanare` → il nome del file.
 >
 > **Due cose che la scrittura ha smentito del brief** (§3-ter): il perimetro è
 > **32 colonne / 114 valori**, non 18 / 65 (la regex del §3 vedeva una sola
@@ -495,9 +499,16 @@ promessa scritta, e lo si dice qui.
   nessuna regressione);
 * ✅ `dbops/manual/` per registro e viste; guida presidi §3.6; doc auto-gen
   rigenerata con l'apply;
-* 🔵 **richiesta BE §6** (riscritta per il `canale`), in coda alla richiesta C2
-  ([brief-be-presidio-ui-action-e-canale-campi.md](../work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md)):
-  stessa forma, stessi strumenti, un solo giro. È l'unica cosa aperta;
+* ✅ **richiesta BE §6** — chiusa il 21-09:
+  `apps/core/tests/test_stati_check_scrittori_python.py` (3 test, opt-in
+  `ZEROERP_TEST_DB_E2E=1`), verde 26/26 e fatto fallire prima di dichiararlo
+  finito. ⚠️ Con una correzione al criterio del §6: **due salti**, non «lo
+  stesso file» — il letterale sta nel service e la tabella nel repository per
+  regola di `api.md`, e un criterio a un file bocciava la forma corretta. Il
+  legame è un simbolo definito **solo** in file scrittori, commenti e docstring
+  esclusi; i limiti stanno in testa al file. 🔵 `presidi.csv`, `presidiato_da`
+  di `vw_stati_check_da_sanare`: al posto di «richiesta §6 del brief» va il nome
+  del file — una riga del team DB;
 * 🔵 i tre C1 veri del cantiere **documenti** (`documenti_generati.ANNULLATO/
   ARCHIVIATO`, `documenti_generati_eventi.KO`) e la domanda su `sepa_mandati`
   (dati morti) restano dichiarati nel registro con la data: sono lavori con un

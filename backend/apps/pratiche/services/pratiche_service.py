@@ -105,6 +105,23 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
 # anche la forma col prefisso `E_` dei codici in via di rinomina.
 _CODICI_DICHIARATI: frozenset[str] = frozenset(c for c, _ in _KNOWN_DB_ERROR_MARKERS)
 
+# Il CAMPO del form per i codici che il DB solleva senza `COLUMN` — una UNIQUE
+# violata (23505) non nomina la colonna, e `diag.fields` resta vuoto. Stessa
+# forma del terzo elemento di `map_integrity_error`: si dichiara solo quando il
+# nome e' una chiave del payload (presidio C2, brief-be-presidio-ui-action-e-
+# canale-campi §3-ter).
+_CAMPO_PER_CODICE_DB: dict[str, tuple[str, ...]] = {
+    "E_TEMPLATE_CODICE_DUPLICATO": ("codice",),
+}
+
+
+# Scopo: il campo dichiarato per un codice DB, letto nella forma col prefisso
+#        `E_` qualunque sia quella con cui il codice arriva. Stessa tolleranza
+#        di `_raise_known_db_error` sui codici in via di rinomina: senza, il
+#        lotto che aggiunge il prefisso a DB spegnerebbe il campo in silenzio.
+def _campo_per_codice_db(code: str) -> tuple[str, ...] | None:
+    return _CAMPO_PER_CODICE_DB.get("E_" + code.removeprefix("E_"))
+
 # Mapping vincoli DB sospensioni -> codici errore applicativi.
 # L'EXCLUDE ex_sospensioni_no_overlap (framework dbops.automazione_overlap)
 # solleva un native 23P01 IntegrityError: lo mappiamo per nome constraint,
@@ -160,6 +177,7 @@ def _require_esito_valido(esito: str, repo: PraticheRepository | None = None) ->
         voce is not None and voce[0],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito non valido: {esito}",
+        context={"field": "esito"},
     )
 
 
@@ -178,6 +196,7 @@ def require_esito_selezionabile_operatore(
         voce is None or voce[1],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito calcolato dal dominio, non selezionabile manualmente: {esito}",
+        context={"field": "esito"},
     )
 
 
@@ -251,7 +270,7 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
             message=diag.messaggio or msg,
             detail=diag.detail,
             hint=diag.hint,
-            fields=diag.fields,
+            fields=diag.fields or _campo_per_codice_db(structured),
             targets=diag.bersagli or None,
             cause=exc,
             function_name=function_name,
@@ -266,7 +285,7 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
                 message=diag.messaggio or msg,
                 detail=diag.detail,
                 hint=diag.hint,
-                fields=diag.fields,
+                fields=diag.fields or _campo_per_codice_db(code),
                 targets=diag.bersagli or None,
                 cause=exc,
                 function_name=function_name,
@@ -303,12 +322,14 @@ def crea_pratica(
         emittente_fiscale_id > 0,
         code="E_PRATICA_VALIDATION",
         message="emittente_fiscale_id obbligatorio e > 0",
+        context={"field": "emittente_fiscale_id"},
     )
     assert emittente_fiscale_id > 0
     ErrorManager.require(
         tipo_prestazione_id > 0,
         code="E_PRATICA_VALIDATION",
         message="tipo_prestazione_id obbligatorio e > 0",
+        context={"field": "tipo_prestazione_id"},
     )
     assert tipo_prestazione_id > 0
     # Priorita' opzionale: se assente si applica il default NORMALE risolto
@@ -318,6 +339,7 @@ def crea_pratica(
             priorita_id > 0,
             code="E_PRATICA_VALIDATION",
             message="priorita_id deve essere > 0",
+            context={"field": "priorita_id"},
         )
         assert priorita_id > 0
 
@@ -332,12 +354,14 @@ def crea_pratica(
             soggetto_id is not None,
             code="E_PRATICA_VALIDATION",
             message="istanza_utility_id richiede soggetto_id",
+            context={"field": "soggetto_id"},
         )
     if soggetto_ruolo_id is not None:
         ErrorManager.require(
             soggetto_id is not None,
             code="E_PRATICA_VALIDATION",
             message="soggetto_ruolo_id richiede soggetto_id",
+            context={"field": "soggetto_id"},
         )
 
     # Guard pre/post-attivazione: verifica ammissibilita' tipo prestazione
@@ -354,11 +378,13 @@ def crea_pratica(
             raise ServiceError(
                 code="E_PRATICA_VALIDATION",
                 message="Tipo prestazione ammesso solo per clienti attivati (post-attivazione).",
+                context={"field": "tipo_prestazione_id"},
             )
         if not tipo_att["post_attivazione"] and ha_ba:
             raise ServiceError(
                 code="E_PRATICA_VALIDATION",
                 message="Tipo prestazione ammesso solo prima dell'attivazione cliente (pre-attivazione).",
+                context={"field": "tipo_prestazione_id"},
             )
 
     # Risolve stato iniziale APERTA + default priorita' NORMALE se assente.
@@ -426,6 +452,7 @@ def cambia_stato_pratica(pratica_id: int, nuovo_stato: str) -> None:
         bool(nuovo_stato),
         code="E_PRATICA_VALIDATION",
         message="nuovo_stato obbligatorio",
+        context={"field": "nuovo_stato"},
     )
 
     repo = PraticheRepository()
@@ -557,6 +584,7 @@ def crea_flusso(
         template_flusso_id is not None and template_flusso_id > 0,
         code="E_FLUSSO_VALIDATION",
         message="template_flusso_id obbligatorio e > 0: un flusso nasce sempre da un template del percorso.",
+        context={"field": "template_flusso_id"},
     )
     assert template_flusso_id is not None and template_flusso_id > 0
 
@@ -836,6 +864,7 @@ def cambia_stato_flusso(
         bool(nuovo_stato),
         code="E_FLUSSO_VALIDATION",
         message="nuovo_stato obbligatorio",
+        context={"field": "nuovo_stato"},
     )
 
     repo = PraticheRepository()
@@ -1004,10 +1033,12 @@ def crea_nota_pratica(pratica_id: int, tipo_nota_codice: str, contenuto: str) ->
     ErrorManager.require(
         bool(tipo_nota_codice and tipo_nota_codice.strip()),
         code="E_PRATICA_VALIDATION", message="tipo_nota_codice obbligatorio",
+        context={"field": "tipo_nota_codice"},
     )
     ErrorManager.require(
         bool(contenuto and contenuto.strip()),
         code="E_PRATICA_VALIDATION", message="contenuto nota obbligatorio",
+        context={"field": "contenuto"},
     )
     repo = PraticheRepository()
     return repo.create_nota_pratica(pratica_id, tipo_nota_codice.strip(), contenuto.strip())
@@ -1021,6 +1052,7 @@ def aggiorna_nota_pratica(nota_id: int, pratica_id: int, contenuto: str) -> None
     ErrorManager.require(
         bool(contenuto and contenuto.strip()),
         code="E_PRATICA_VALIDATION", message="contenuto nota obbligatorio",
+        context={"field": "contenuto"},
     )
     repo = PraticheRepository()
     updated = repo.update_nota_pratica(nota_id, pratica_id, contenuto.strip())
@@ -1058,10 +1090,12 @@ def crea_allegato_pratica(
     ErrorManager.require(
         bool(tipo_allegato_codice and tipo_allegato_codice.strip()),
         code="E_PRATICA_VALIDATION", message="tipo_allegato_codice obbligatorio",
+        context={"field": "tipo_allegato_codice"},
     )
     ErrorManager.require(
         bool(nome_file and nome_file.strip()),
         code="E_PRATICA_VALIDATION", message="nome_file obbligatorio",
+        context={"field": "nome_file"},
     )
     repo = PraticheRepository()
     return repo.create_allegato_pratica(
@@ -1106,6 +1140,7 @@ def sospendi_pratica(
         bool(motivo and motivo.strip()),
         code="E_PRATICA_VALIDATION",
         message="motivo sospensione obbligatorio",
+        context={"field": "motivo"},
     )
 
     repo = PraticheRepository()
@@ -1281,6 +1316,7 @@ def sospendi_flusso(
         bool(motivo and motivo.strip()),
         code="E_FLUSSO_VALIDATION",
         message="motivo sospensione obbligatorio",
+        context={"field": "motivo"},
     )
 
     repo = PraticheRepository()

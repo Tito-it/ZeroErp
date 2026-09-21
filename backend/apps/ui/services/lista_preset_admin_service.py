@@ -35,6 +35,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -156,14 +157,11 @@ class ListaPresetAdminService:
     # Scopo: Dettaglio singolo preset. 404 (E_UI_PRESET_NON_TROVATO) se
     #        l'id non esiste. Usato da get post-create / post-update.
     def get_preset(self, preset_id: int) -> dict[str, Any]:
-        result = self._repo.get_preset(preset_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_PRESET_NOT_FOUND,
-            message="Preset lista non trovato.",
-            detail=f"preset_id={preset_id}",
+        result = testata_o_not_found(
+            self._repo.get_preset, preset_id,
+            code=E_PRESET_NOT_FOUND, message="Preset lista non trovato.",
+            id_name="preset_id", function_name="lista_preset_admin_service.get_preset",
         )
-        assert result is not None
         return result
 
     # =================================================================

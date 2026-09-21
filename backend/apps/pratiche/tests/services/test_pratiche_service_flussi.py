@@ -38,6 +38,8 @@ Indice test eseguiti:
 27) PraticheServiceFlussiTests.test_workflow_guard_codes_hanno_lo_status_atteso
 28) PraticheServiceFlussiTests.test_codice_strutturato_accettato_in_entrambe_le_forme
 29) PraticheServiceFlussiTests.test_codice_strutturato_fuori_perimetro_non_accettato
+30) PraticheServiceFlussiTests.test_campo_per_codice_db_riempie_fields_quando_il_db_tace
+31) PraticheServiceFlussiTests.test_campo_del_db_vince_sulla_mappa_per_codice
 """
 
 from unittest.mock import MagicMock, patch
@@ -644,6 +646,46 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         exc = make_db_error("Messaggio senza marker noti.", codice="E_ALTRO_DOMINIO")
         with self.assertRaises(DatabaseError):
             pratiche_service._raise_known_db_error(exc, function_name="test_perimetro")
+
+    # Scopo: `_CAMPO_PER_CODICE_DB` (presidio C2 §3-ter): una UNIQUE violata
+    #        (23505) non nomina la colonna, quindi `diag.fields` e' vuoto — il
+    #        campo del form lo dichiara la mappa, per codice, in ENTRAMBE le
+    #        strade (marker testuale e campo strutturato).
+    def test_campo_per_codice_db_riempie_fields_quando_il_db_tace(self):
+        # 1) strada del marker: nessun codice strutturato, il testo porta il
+        #    nome del vincolo UNIQUE.
+        exc = make_db_error(
+            'duplicate key value violates unique constraint '
+            '"uq_template_flussi_definizione_codice"',
+            sqlstate="23505",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service._raise_known_db_error(exc, function_name="test_campo")
+        self.assertEqual(ctx.exception.code, "E_TEMPLATE_CODICE_DUPLICATO")
+        self.assertEqual(ctx.exception.fields, ("codice",))
+        # 2) strada strutturata.
+        exc = make_db_error("Codice duplicato.", codice="E_TEMPLATE_CODICE_DUPLICATO")
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service._raise_known_db_error(exc, function_name="test_campo")
+        self.assertEqual(ctx.exception.fields, ("codice",))
+        # 3) la mappa e' chiavata sulla forma con `E_` e la lettura la
+        #    normalizza: un codice dichiarato senza prefisso (in via di
+        #    rinomina) trova comunque il suo campo.
+        self.assertEqual(
+            pratiche_service._campo_per_codice_db("TEMPLATE_CODICE_DUPLICATO"), ("codice",),
+        )
+        self.assertIsNone(pratiche_service._campo_per_codice_db("E_ALTRO"))
+
+    # Scopo: la mappa e' un RIPIEGO: se il database nomina la colonna
+    #        (`COLUMN` del RAISE), vince quella — la stessa precedenza
+    #        dell'esplicito sul derivato che vale in `ErrorTranslator`.
+    def test_campo_del_db_vince_sulla_mappa_per_codice(self):
+        exc = make_db_error(
+            "Codice duplicato.", codice="E_TEMPLATE_CODICE_DUPLICATO", campo="codice_step",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service._raise_known_db_error(exc, function_name="test_campo")
+        self.assertEqual(ctx.exception.fields, ("codice_step",))
 
     # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
     # jsonb come str: meta del flusso str deve arrivare all'handler come dict
