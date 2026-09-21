@@ -394,10 +394,12 @@ DDT, a ogni apertura del drawer) e, ⏳ con la richiesta BE del brief, il pannel
 «Situazione merce» — chiama la funzione con un seme e paga la **chiusura** del
 documento: le sue righe, le spedizioni sorelle della stessa riga d'ordine, le
 origini di ri-consegna. Non più le partite di tutti. Chi legge **tutto** — il
-cockpit, `vw_contatore_merce`, `vw_resi_da_accreditare`,
-`vw_situazione_merce_ordine`, i verbi dei resi — continua a leggere la vista,
-che costa quanto prima (le scansioni sono le stesse). Il giro D3 del brief
-porta anche loro alla funzione.
+cockpit, `vw_contatore_merce` — continua a leggere la vista, che costa quanto
+prima (le scansioni sono le stesse). ⭐ Dal **giro 2** (D3, 21-09) anche
+`vw_situazione_merce_ordine` e `vw_resi_da_accreditare` sono proiezioni di due
+funzioni con lo stesso seme — [`fn_situazione_merce_ordine`](fn_situazione_merce_ordine.md),
+[`fn_resi_da_accreditare`](fn_resi_da_accreditare.md) — che chiamano questa;
+i verbi dei resi leggono la coda per il DDT della riga resa.
 
 ⚠️ **La vista proietta le colonne per nome, con `consegnato::numeric(18,6)`.**
 Non è pignoleria: un `RETURNS TABLE` perde la scala, e un `SELECT * FROM fn()`

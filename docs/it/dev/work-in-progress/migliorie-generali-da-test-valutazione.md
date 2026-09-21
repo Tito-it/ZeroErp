@@ -847,7 +847,23 @@ OK, sette cancelli statici OK, e il driver pgjdbc provato col jar di Liquibase
 scansioni). Dentro i 24 ms, ~12 sono `af` letta intera — il pavimento di D5,
 che cresce con le fatture — e ~100 ms della capability stanno fuori dalla
 partita (check di emissione, segmenti): il prossimo bersaglio da misurare.
-Restano i giri D3, D4 (B2) e D5, nell'ordine (brief §7). Da committare.
+Committato (`c60f39eaa`, PR #1634). ✏️ **Giro 2 (D3) SCRITTO la sera del
+21-09** (brief §9): `20260921-26 → -31` — `fn_situazione_merce_ordine` e
+`fn_resi_da_accreditare` (`BEGIN ATOMIC`, gli stessi due semi di
+`fn_partite_merce`), `vw_situazione_merce_ordine` e `vw_resi_da_accreditare`
+come loro proiezioni, `fn_accredita_riga_reso` e `fn_resi_riga_tetti_accredito`
+sul seme del DDT della riga resa; due pgTAP a casi costruiti (il DDT di mezzo
+con la situazione intera, le sorelle con capienza parziale, la riga `MULTIPLA`
+nella coda di entrambi gli ordini); diciassette presidi esistenti a esito
+identico sull'SQL estratto, piano generico con `Index Cond` e rami «tutti»
+mai eseguiti, guardrail e cancelli OK. ⚠️ Il censimento dal catalogo ha
+corretto il brief: i lettori per riga erano **due**, non sei, e
+`vw_contatore_merce` **non ha più lettori** (D6, decisione a Tid). ✅
+**Applicato da Tid il 21-09 alle 18:43**, pgTAP verdi (i due nuovi 12/12 come
+app). Misura come app (brief §9.7): situazione per ordine **187 → 20 ms**, per
+DDT 187 → 41, coda accrediti per DDT **115 → 36**, il guard dei tetti a ogni
+riga di ponte **→ 1.3 ms**; le viste intere invariate. Da committare. Restano
+D4 (B2) e D5.
 
 ---
 
@@ -1016,7 +1032,12 @@ D6 e il registro dei rossi in CI.
       e **quarta leva** (la partita per chiusura del documento, quella che
       chiude il titolo) nel brief
       `work-in-progress/brief-db-partita-merce-per-documento.md`, aperto il
-      21-09 — decisioni a Tid.
+      21-09 — ✅ D1–D5 decise, giro 1 **applicato** il 21-09 (120 → 24 ms
+      per la partita di un DDT, come app), ✏️ giro 2 (D3: situazione ordine,
+      coda accrediti e i due verbi per documento) **applicato** la sera
+      stessa (situazione per ordine 187 → 20 ms, coda per DDT 115 → 36, come
+      app); 🔵 D6 (`vw_contatore_merce` senza lettori) da decidere;
+      restano D4 (B2) e D5.
 
 ### 🟡 Struttura
 

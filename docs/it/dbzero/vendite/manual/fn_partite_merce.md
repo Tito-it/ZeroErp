@@ -101,7 +101,9 @@ continuare a vedere `vw_partite_merce` — con un corpo a stringa la vista
 sarebbe uscita dal perimetro in silenzio. ⚠️ Conseguenza: una colonna nuova
 nel `RETURNS TABLE` è un `DROP FUNCTION` a cascata sulle **quattro** viste
 (`vw_partite_merce`, `vw_contatore_merce`, `vw_resi_da_accreditare`,
-`vw_situazione_merce_ordine`).
+`vw_situazione_merce_ordine`) — e dal giro 2 anche sulle due funzioni che la
+chiamano (`fn_situazione_merce_ordine`, `fn_resi_da_accreditare`) e su
+`vw_dash_backlog_documenti`.
 
 **I due modi — per seme e «tutte» — sono rami separati in `UNION ALL`**, mai
 un `p IS NULL OR colonna = ANY(p)`. Quell'`OR`, quando il chiamante è plpgsql
@@ -122,7 +124,9 @@ con `PREPARE` e piano generico forzato. E in modo «tutte» le scansioni sono le
 | `fn_list_ddt_da_pushare(p_ddt_id)` | `ARRAY[p_ddt_id]`, o `NULL` se il lister è chiamato senza documento (lista push, cockpit) |
 | `fn_ddt_push_diagnosi(p_ddt_id)` | idem |
 | BE `list_partite_merce` (pannello «Situazione merce») | ⏳ richiesta BE nel brief: per DDT `ARRAY[%s]`, per ordine `(NULL, ARRAY[%s])`; oggi legge la vista, che risponde giusto ma paga tutto |
-| `vw_situazione_merce_ordine`, `vw_contatore_merce`, i verbi dei resi | ancora la vista: sono il **giro D3** del brief, «prima possibile» |
+| `fn_situazione_merce_ordine` (giro 2, D3) | `(NULL, <gli ordini della chiusura>)`: le partite di tutte le righe d'ordine chieste, o toccate dai DDT chiesti |
+| `fn_resi_da_accreditare` (giro 2, D3) | `(<i DDT delle righe di S>, NULL)`: le partite in negativo dei documenti chiesti; per riga la chiamano `fn_accredita_riga_reso` e `fn_resi_riga_tetti_accredito` |
+| `vw_contatore_merce` | ancora la vista — e dal giro 1 nessuna funzione, vista o repository la legge più (solo due pgTAP): decisione **D6** del brief |
 
 ---
 

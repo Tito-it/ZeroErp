@@ -11,10 +11,19 @@
 >
 > ✅ **Stato 2026-09-21: D1–D5 decise da Tid (§6); giro 1 APPLICATO alle
 > 14:46 (`20260921-21 → -25`, `EXECUTED`), pgTAP di Tid senza regressioni,
-> doc auto-gen rigenerata.** Misura «dopo» come app in §8.6: la partita di UN
-> DDT costa **24 ms** contro i ~120 della vista filtrata; capability 290 →
-> **175 ms**. ⏳ Da committare. Poi i giri D3, D4 (B2) e D5 nell'ordine di §7;
-> una richiesta BE in §8.4 (una riga in `list_partite_merce`).
+> doc auto-gen rigenerata, committato (`c60f39eaa`, PR #1634).** Misura «dopo»
+> come app in §8.6: la partita di UN DDT costa **24 ms** contro i ~120 della
+> vista filtrata; capability 290 → **175 ms**.
+> ✅ **Giro 2 (D3) APPLICATO da Tid il 21-09 alle 18:43** (`20260921-26 → -31`,
+> `EXECUTED`; pgTAP verdi, i due presidi nuovi 12/12 come app) — §9: due
+> funzioni `BEGIN ATOMIC` (`fn_situazione_merce_ordine`,
+> `fn_resi_da_accreditare`), le due viste come proiezioni, i due verbi dei
+> resi sul seme del DDT. Misura come app in §9.7: situazione per ordine
+> **187 → 20 ms**, coda per DDT **115 → 36**, il guard dei tetti **→ 1.3**.
+> ⏳ Da committare (doc auto-gen da rigenerare).
+> ⚠️ Il censimento dal catalogo ha corretto il brief: i lettori per riga
+> erano DUE, non sei (§9.1). Una decisione nuova, **D6** (§6): `vw_contatore_merce`
+> non ha più lettori. Richieste BE in §8.4 e §9.4. Poi D4 (B2) e D5.
 
 ---
 
@@ -141,8 +150,8 @@ non serve, e non si fa.
 | `fn_list_ddt_da_pushare(p_ddt_id)` | `fn_partite_merce(CASE WHEN p_ddt_id IS NULL THEN NULL ELSE ARRAY[p_ddt_id] END)` | il ramo `NULL` (lista push, cockpit) resta intero, com'è giusto |
 | `fn_ddt_push_diagnosi(p_ddt_id)` | idem | |
 | BE `list_partite_merce` | per DDT → `ARRAY[%s]`, per ordine → `(NULL, ARRAY[%s])` | una riga di SQL nel repository, contratto della risposta invariato |
-| `vw_situazione_merce_ordine` | **resta vista** | l'aggregato per riga d'ordine è letto da `list_situazione_merce_ordine` con `WHERE ordine_id`; portarlo a funzione è la stessa mossa un livello sopra — **decisione D3** |
-| le sei funzioni per riga di reso | `fn_partite_merce(ARRAY[ddt_id della riga])` o, dove leggono `vw_contatore_merce`, restano | **decisione D3**: sono verbi (accredito, chiusura riconsegna), il costo lo paga chi preme il bottone, una volta |
+| `vw_situazione_merce_ordine` | ~~resta vista~~ → ✅ giro 2: proiezione di `fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids)` | l'aggregato per riga d'ordine è letto da `list_situazione_merce_ordine` per ordine **e per DDT**; è la stessa mossa un livello sopra — **decisione D3** |
+| ~~le sei funzioni per riga di reso~~ → **due** (`fn_accredita_riga_reso`, `fn_resi_riga_tetti_accredito`), entrambe via `vw_resi_da_accreditare` | ✅ giro 2: `fn_resi_da_accreditare(ARRAY[ddt della riga resa], NULL)` | **decisione D3**. ⚠️ Censimento dal catalogo (§9.1): le altre quattro nominano le viste solo nei commenti, `fn_check_accredito_annullabile` non le tocca |
 
 ### 2.3 La seconda leva — la capability a una lettura
 
@@ -414,6 +423,7 @@ Presidi trasversali da toccare, e non è un elenco da rileggere a fine giro:
 | **D2** | Due semi (`p_ddt_ids`, `p_ordine_ids`) nella stessa funzione, o solo per DDT | ✅ **Decisa da Tid il 21-09: due semi.** `list_partite_merce` legge già per ordine, e la chiusura per ordine è lo stesso algoritmo. Forma dei semi: rami in `UNION ALL`, mai `p IS NULL OR …` (§2-bis.2); filtro d'uscita sulla colonna proiettata (§2-bis.7) |
 | **D3** | Chi passa alla funzione oltre a lister, diagnosi e `list_partite_merce`: `vw_situazione_merce_ordine` (→ funzione per ordine) e le sei funzioni per riga di reso | ✅ **Decisa da Tid il 21-09: non in questo giro, ma è il giro SUBITO DOPO — «prima possibile», non un residuo.** Sono verbi o aggregati letti una volta per gesto, e questo giro vuole restare piccolo per il pgTAP dei casi costruiti; ma restano sette lettori che pagano «tutto». Stessa mossa (una riga per lettore: `fn_partite_merce(ARRAY[ddt_id della riga])` / `(NULL, ARRAY[ordine_id])`), un pgTAP di equivalenza per lettore |
 | **D4** | La seconda leva — capability a una lettura. ~~Forma B1 (`segment` esposto, lister invariato)~~ oppure **B2** (§2-bis.8: il lister deriva dalla diagnosi, una sola implementazione dell'eleggibilità) | ✅ **Decisa da Tid il 21-09: B2, in un giro suo, subito dopo la quarta leva.** Non è «dopo la misura»: è una questione di contratto — oggi lister e diagnosi sono due copie della stessa regola tenute uguali da un pgTAP verde per sottrazione, cioè lo stesso difetto che D1 rifiuta per la vista. B1 lo lascerebbe in piedi. Il giro è separato perché tocca il lister della pipeline |
+| **D6** | `vendite.vw_contatore_merce` **non ha più lettori** (§9.1: dal `20260921-23` il lister legge `fn_partite_merce`; nessuna funzione, vista, repository o CSV di lista la nomina — solo `test-vw-contatore-merce-v1` e `test-porta-oneri-contatore-cieco-v1`). Ritirarla, o dichiarare chi la leggerà | 🔵 **Da decidere.** Sul modello è la quarta vista a valle della partita e ogni colonna nuova nel `RETURNS TABLE` paga anche il suo `DROP`; il COMMENT dice ancora «dosa la fatturazione», che non è più vero. Se si ritira: `DROP VIEW`, i due pgTAP (il secondo prova la porta degli oneri sul contatore — va riscritto sulla partita o ritirato con motivo), il `manual/` (memoria: oggetto ritirato = cancellare il manual), i COMMENT di `vw_situazione_merce_ordine` e `vw_partite_merce` che la nominano |
 | **D5** | Il «pavimento» di `af` (§2-bis.5): leggere `vw_af_merce_per_riga` per chiave di segmento invece che intera — indice `text_pattern_ops` su `commesse_attivita.segment_key` + `LIKE` a prefisso per i `#CMP` | ✅ **Decisa da Tid il 21-09: DA FARE, passo a sé, dopo D3 e D4.** Non «se serve»: sul modello è l'unico pezzo del conto che dopo la chiusura resta proporzionale alla storia — cresce con le **fatture**, che non si svuotano mai — quindi peggiora da solo col tempo. La misura dopo la quarta leva serve a dargli la priorità, non a decidere se farlo |
 
 ## 7. Cosa resta — quattro giri, nell'ordine
@@ -427,10 +437,12 @@ di SQL nel repository BE. Stima: **una giornata e mezza** — la mezza in più �
 il criterio del presidio RLS, che senza questo giro diventerebbe cieco
 proprio sulla vista che lo ha reso necessario.
 
-**Giro 2 — D3, «prima possibile».** I sette lettori restanti alla funzione:
-`vw_situazione_merce_ordine` (seme per ordine) e le sei funzioni per riga di
-reso (seme = il DDT della riga). Una riga per lettore + un pgTAP di
-equivalenza per lettore. Mezza giornata.
+**Giro 2 — D3, «prima possibile».** ✅ **Scritto il 21-09 sera (§9).** ~~I
+sette lettori restanti~~ → sul catalogo erano **tre**: `vw_situazione_merce_ordine`
+(BE per ordine e per DDT) e i due verbi che leggono `vw_resi_da_accreditare`
+per una riga. Due funzioni con gli stessi due semi di `fn_partite_merce`, le
+due viste come proiezioni, i verbi sul DDT della riga resa; due pgTAP a casi
+costruiti (12 + 12). Una richiesta BE (§9.4).
 
 **Giro 3 — D4, forma B2.** La diagnosi espone `segment` e `differenza`
 (`DROP` + rigenera), il lister deriva dalla diagnosi, la capability legge una
@@ -579,9 +591,9 @@ sbagliato, solo il costo di prima.
    volta — cantiere **D7**, non questo brief. Censiti il 21-09: **70 file**
    con quel predicato, 66 rossi in CI;
 3. ✅ la misura come app: §8.6;
-4. ⏳ commit (brief, registro, mappa, manuali, changeSet, pgTAP, CSV, doc
-   auto-gen rigenerata);
-5. ⏳ giro 2 (D3), poi D4 (B2), poi D5.
+4. ✅ commit — `c60f39eaa`, PR #1634 (21-09 sera);
+5. ✅ giro 2 (D3) **applicato** il 21-09 alle 18:43, misurato (§9.7); poi D4
+   (B2), poi D5; D6 da decidere.
 
 ### 8.6 La misura «dopo» (dbdev, 21-09 dopo l'apply, `zeroerp_app` con contesto operatore, 51 DDT / 36 partite, media di 5 letture calde — colore, non motivo)
 
@@ -605,3 +617,227 @@ transizioni): il giro D4 (B2) toglie una delle due letture della partita
 (~25), non quei cento — sono il prossimo bersaglio da misurare, non da
 supporre.
 
+
+## 9. Giro 2 (D3) — cosa è stato scritto e provato (21-09 sera)
+
+### 9.1 Il censimento, prima di scrivere — e cosa ha corretto
+
+Il brief (§1, §2.2, §7) contava **sette** lettori: `vw_situazione_merce_ordine`
+e «le sei funzioni per riga di reso». Letto dal catalogo vivo (`pg_proc.prosrc`
+senza i commenti, `pg_rewrite`/`pg_depend` per le viste, il backend e i CSV
+delle liste), il perimetro è un altro:
+
+| Lettore | Cosa legge davvero | Per |
+| --- | --- | --- |
+| BE `list_situazione_merce_ordine` | `vw_situazione_merce_ordine` | un ordine **o un DDT** (EXISTS sul fulfillment: «le righe d'ordine che quella spedizione ha toccato», rev BE 2026-08-19) |
+| `fn_accredita_riga_reso(p)` | `vw_resi_da_accreditare WHERE resi_riga_id = p` | una riga |
+| `fn_resi_riga_tetti_accredito(p, …)` — `SECURITY DEFINER`, chiamata da `trgfn_resi_accrediti_guard` a **ogni riga scritta sul ponte** | idem | una riga |
+| BE `list_situazione_merce_accrediti`, `ResiRepository.list_da_accreditare` (con `ddt_id`/`ordine_id`) | `vw_resi_da_accreditare` col BB `filtro_coda_per_documento` | un DDT o un ordine |
+| lista configurabile `vendite.resi_da_accreditare` (id 10), `vw_dash_backlog_documenti` | `vw_resi_da_accreditare` | **tutta** — ed è giusto |
+| `vw_contatore_merce` | `vw_partite_merce` | **nessuno la legge più** (→ D6) |
+
+Delle «sei funzioni»: `fn_chiudi_riconsegna_reso`, `fn_genera_ddt_riconsegna`,
+`fn_ordine_riga_qta_riconsegna`, `fn_resi_riga_accreditato_partita` nominano
+le viste **solo nei commenti** (leggono `vw_resi_righe_effettive` o il ponte);
+`script.fn_check_accredito_annullabile` non le nomina affatto;
+`fn_annulla_accredito_riga_reso` idem. I lettori per riga sono **due**, ed
+entrambi passano dalla stessa coda. ⭐ Lezione: un elenco scritto in un brief
+si verifica sul catalogo prima di farci un giro sopra — qui avrebbe prodotto
+quattro changeSet vuoti.
+
+### 9.2 I file
+
+| Cosa | File |
+| --- | --- |
+| l'aggregato per riga d'ordine, `BEGIN ATOMIC` | `20_code/vendite/20260921-26-create-fn-situazione-merce-ordine` |
+| la vista come proiezione per nome (`ordinato::numeric(18,6)`) | `20_code/vendite/20260921-27-update-vw-situazione-merce-ordine-proiezione-fn` |
+| la coda accrediti, `BEGIN ATOMIC` | `20_code/vendite/20260921-28-create-fn-resi-da-accreditare` |
+| la vista come proiezione per nome (cinque `varchar` ricastati) | `20_code/vendite/20260921-29-update-vw-resi-da-accreditare-proiezione-fn` |
+| il verbo «accredita» sul seme del DDT | `20_code/vendite/20260921-30-update-fn-accredita-riga-reso-partita-per-documento` |
+| il guard dei tetti sul seme del DDT (resta `DEFINER`) | `20_code/vendite/20260921-31-update-fn-resi-riga-tetti-accredito-partita-per-documento` |
+| i presidi | `db/pgtap/vendite/test-fn-situazione-merce-ordine-chiusura-v1.sql` (12), `test-fn-resi-da-accreditare-chiusura-v1.sql` (12) |
+| manuali | **`fn_situazione_merce_ordine.md`**, **`fn_resi_da_accreditare.md`** (nuovi); `vw_situazione_merce_ordine.md`, `vw_resi_da_accreditare.md`, `fn_accredita_riga_reso.md`, `fn_resi_riga_tetti_accredito.md`, `fn_partite_merce.md`, `vw_partite_merce.md` (rev) |
+
+Nessuna riga nuova in `fk_index_policy`: le chiavi che i semi attraversano
+sono già servite (`ddt_righe(ddt_id)` e `ordini_righe(ordine_id)` per
+prefisso, `ordini_righe_fulfillment(ddt_riga_id)`, `resi_righe(ddt_riga_id)`
+dal giro 1).
+
+### 9.3 La forma, e le due cose che non erano nel piano
+
+**Gli stessi due semi, nello stesso ordine.** Entrambe le funzioni prendono
+`(p_ddt_ids, p_ordine_ids)` come `fn_partite_merce`; entrambi `NULL` = tutte;
+array vuoto = zero righe; entrambi valorizzati = unione. Le viste sono
+`fn(NULL, NULL)` con le colonne per nome (D1). Rami in `UNION ALL`, mai
+`p IS NULL OR` (§2-bis.2).
+
+1. **Il seme per DDT della situazione ordine non è «la partita di quel DDT»**:
+   è la situazione **intera** delle righe d'ordine che quel DDT ha toccato —
+   l'ordine spedito in tre volte, chiesto dal DDT di mezzo, risponde
+   consegnato 30 e tre partite, non 10 e una. È la semantica che il pannello
+   ha dal 19-08 (`vendite_repository`, «due filtri, una lettura»), e il pgTAP
+   la costruisce (test 5). Le partite si chiedono a `fn_partite_merce`
+   **per ordine** (gli ordini chiesti ∪ gli ordini toccati): l'aggregato di
+   una riga d'ordine è completo per costruzione, perché la partita esce sotto
+   `ordine_id` della riga minima e l'ordine porta tutte le sue righe.
+
+2. **Il seme per ordine della coda accrediti segue il predicato del backend,
+   non quello della partita.** La coda non ha `ordine_id`; il BB
+   `filtro_coda_per_documento` la filtra con un `EXISTS` sul fulfillment
+   della riga di DDT resa. `fn_partite_merce(NULL, ARRAY[o])` invece esce
+   sulla colonna proiettata (`ordine_id` = riga **minima**, §2-bis.7): una
+   riga `MULTIPLA` sta nella coda di **entrambi** gli ordini ma nella partita
+   di uno solo. Due semantiche «per ordine», diverse perché le due letture lo
+   sono; il pgTAP costruisce la riga `MULTIPLA` per distinguerle (test 7:
+   coda per B = 1 riga, partita per B = 0). La funzione quindi semina
+   `fn_partite_merce` **per DDT** (i DDT delle righe di S, un soprainsieme
+   che il `JOIN` con le righe di reso riporta a S) — e le **sorelle** della
+   stessa riga di DDT ci sono tutte, quindi la finestra della greedy per
+   `resi_riga_id` è intera (test 4 e 5: capienza 3, la prima riga prende 3, la
+   seconda 0 — anche dal guard, attraverso la funzione).
+
+3. ⭐ **Il planner non inlina una SRF con un sub-select fra gli argomenti**
+   (`inline_set_returning_function`: `contain_subplans` sugli argomenti →
+   `Function Scan`). Il seme che le due funzioni passano a `fn_partite_merce`
+   è **calcolato** (`array_agg` su una CTE), quindi quel ramo non si inlina.
+   Provato: con l'array letterale la chiamata si inlina (`CTE semi …`), con
+   `(SELECT array_agg…)` è un `Function Scan`; con `LATERAL … ARRAY[v.id]` si
+   inlina ma pianifica di più. La forma scelta: **due rami** sulla lettura
+   della partita — il ramo «tutte» chiama `fn_partite_merce(NULL, NULL)` con
+   due letterali e resta **inlinato** (la vista di prima: 33 scansioni su 33
+   identiche per la situazione; stesse tabelle e stesso numero di accessi per
+   la coda), il ramo ristretto è il `Function Scan` col seme calcolato, mai
+   eseguito quando `tutti`. `COALESCE(array_agg, '{}')` è obbligatorio: un DDT
+   senza fulfillment darebbe `NULL`, e `fn(NULL, NULL)` è «tutte».
+
+4. ⚠️ **Fatto datato sul costo di pianificazione** (dbdev, owner, 21-09 sera —
+   cioè **senza RLS**, quindi colore). `fn_partite_merce(ARRAY[d])` con
+   letterale costa ~10 ms di *planning* e ~1.5 di esecuzione **a ogni
+   istruzione** (una vista o una SRF inlinata si ri-pianificano sempre). Come
+   `Function Scan` il piano sta nella plancache della funzione: le prime
+   cinque chiamate della sessione usano piani *custom* (~9 ms l'una), dalla
+   sesta il **generico** — che è buono proprio perché la forma a One-Time
+   Filter regge senza conoscere i parametri — e la chiamata costa **~1.8 ms**
+   in tutto (provato con dieci chiamate di seguito e con
+   `force_generic_plan`). Quindi, a regime (chiamate 8–10 di 10, media di 3,
+   righe valutate intere): situazione per ordine **15 → 8 ms**, per DDT
+   **13 → 6**, coda per DDT **9 → 5**; il guard dei tetti 1 → 1 (era già in
+   plancache come `DEFINER` SQL, e da owner esegue la coda intera in un
+   millisecondo). La vista intera paga **+2–3 ms di planning** (12 → 14, 9 →
+   12): le scansioni sono le stesse, il piano ha un ramo in più da preparare.
+   ⛔ Nessuno di questi numeri decide niente: il guadagno è sul **modello** —
+   O(chiusura) sotto RLS invece di O(tutti) per riga scandita — ed è quello
+   che il giro 1 ha misurato come app (120 → 24). La misura che conta è quella,
+   dopo l'apply; questa dice solo che la forma non costa niente da owner.
+
+### 9.4 ⏳ Richiesta BE (nessuna urgenza: le viste rispondono giusto)
+
+`backend/apps/vendite/db/vendite_repository.py`:
+
+* `list_situazione_merce_ordine`: `FROM vendite.fn_situazione_merce_ordine(NULL, ARRAY[%s]::bigint[]) s`
+  per ordine, `FROM vendite.fn_situazione_merce_ordine(ARRAY[%s]::bigint[], NULL) s`
+  per DDT, **togliendo** il `WHERE s.ordine_id = %s` e l'`EXISTS` sul
+  fulfillment (la funzione incorpora entrambi). Stesse 21 colonne, stesse
+  righe (pgTAP test 6). Il commento in testa che dice «NON si passa dalla
+  partita» resta vero: la funzione passa da `fn_partite_merce` per ordine,
+  che è la partita per chiusura;
+* `_list_coda_su_partite` per la coda **accrediti**:
+  `FROM vendite.fn_resi_da_accreditare(ARRAY[%s], NULL)` / `(NULL, ARRAY[%s])`
+  senza il predicato del BB. ⚠️ La coda **ri-consegne** (`vw_resi_da_riconsegnare`)
+  non legge la partita: resta sulla vista col BB, quindi `filtro_coda_per_documento`
+  **non si ritira** — serve ancora a lei e a `ResiRepository._list_coda`;
+* `ResiRepository.list_da_accreditare` con `ddt_id`/`ordine_id`: idem, se il
+  builder condiviso lo permette senza un secondo ramo; altrimenti resta sulla
+  vista (paga tutto, come oggi).
+
+### 9.5 Le prove (owner, `BEGIN … ROLLBACK`, SQL estratto dai sei change)
+
+* **Forma**: le due funzioni `BEGIN ATOMIC`, non `DEFINER`, con
+  `fn_partite_merce` fra i `refobjid` in `pg_depend` (più
+  `fn_ordine_riga_qta_riconsegna`, `fn_resi_riga_accreditato_partita`,
+  `fn_resi_riga_residuo_riconsegna`, `fn_check_accredito_annullabile`);
+  le viste con `security_invoker=on`, 21 colonne con `ordinato numeric(18,6)`,
+  27 colonne coi cinque typmod; `pg_get_function_identity_arguments`,
+  `pg_get_function_result` e `prosecdef` dei due verbi identici al vivo.
+* **Equivalenza sui dati vivi** (colore): `EXCEPT ALL` a zero nei due versi fra
+  `fn(NULL,NULL)` e la vista (121 righe; coda 1 riga); per **ognuno** dei 105
+  ordini con righe attive (`fn(NULL, ARRAY[o])` vs `WHERE ordine_id`); per
+  ognuno dei 51 DDT (`fn(ARRAY[d])` vs la vista con l'`EXISTS` del BE); per la
+  coda, per ogni DDT (`ddt_id`) e per ogni ordine (predicato del BB); i tetti
+  identici alla forma di prima per tutte le 21 righe di reso, e 0 su una riga
+  inesistente.
+* **Forma del piano in piano generico** (`PREPARE` + `force_generic_plan` +
+  `enable_seqscan = off`): per ordine, per DDT, coda per DDT e per ordine —
+  `Bitmap Index Scan` su `uq_ddt_vendita_r_riga_nr`/`uq_ordrig_riga_nr`,
+  `Index Only Scan` su `uq_ordini_r_ful_v_pair`, rami «tutti» `never
+  executed` dietro `One-Time Filter: (($1 IS NULL) AND ($2 IS NULL))`, **zero**
+  `Filter: (($1 IS NULL) OR …)`; `af` intera (D5). In modo «tutti» le
+  scansioni della situazione sono **le stesse** della vista (33/33); per la
+  coda stesse tabelle e stesso numero di accessi, con un join che cambia
+  metodo (costo, non forma).
+* **I presidi nuovi**: 11/12 + 11/12 da owner; i due **12** (scope) sono rossi
+  da owner perché l'owner salta la RLS — come il 14 del giro 1 e l'11 di
+  `test-vw-situazione-merce-ordine-v1`. I casi che contano — il DDT di mezzo
+  (5), la riga `MULTIPLA` (9 e 7), le sorelle (4, 5), il verbo (8) — sono
+  verdi **per i numeri attesi**, non solo per l'uguaglianza con la vista.
+* **I diciassette presidi esistenti** sopra lo stesso SQL, ciascuno nella
+  propria transazione con l'SQL estratto in testa, confrontati con la corsa
+  **senza**: esiti identici file per file — `test-vw-situazione-merce-ordine-v1`
+  16/17, `test-situazione-merce-ritardo-v1` 11/11,
+  `test-vw-resi-da-accreditare-contatore-v1` 10/10, `test-fn-accredita-riga-reso-v1`
+  14/14, `test-annulla-accredito-riga-reso-v1` 23/23, `test-accredito-kit-meta-v1`
+  8/8, `test-resi-motore-v1` 27/27, `test-rinuncia-gate-accredito-v1` 10/10,
+  `test-annulla-reso-gate-accredito-v1` 11/11, `test-resi-rinunce-scenario-v1`
+  9/9, `test-vw-dash-backlog-resi-v1` 7/7, `test-vw-contatore-merce-v1` 11/11,
+  `test-porta-oneri-contatore-cieco-v1` 5/5, `test-vw-partite-merce-v1` 11/11,
+  `test-fn-partite-merce-chiusura-v1` 13/14, `-riconsegna-dopo-nc-v1` 8/8,
+  `rls/test-rls-viste-security-invoker` 7/7 — e le cinque viste della partita
+  (`vw_partite_merce`, `vw_contatore_merce`, `vw_resi_da_accreditare`,
+  `vw_situazione_merce_ordine`, `vw_dash_backlog_documenti`) restano dentro
+  `_tocca_rls` con `invoker = true` attraverso le due funzioni annidate.
+* **Il guardrail dei riferimenti morti** sopra lo stesso SQL: OK
+  (`fn_accredita_riga_reso` chiama la funzione nuova e `plpgsql_check` la
+  risolve). **I sette cancelli statici**: tutti OK. `liquibase updateSQL`
+  offline dei sei change (copie senza `preConditions`): rendono tutti.
+* ⚠️ **Non provato col jar di pgjdbc**: la forma dei due `BEGIN ATOMIC` è
+  identica a quella del `-21` (il `COMMENT` in un change suo), provata il
+  21-09 pomeriggio.
+
+### 9.6 Cosa resta, nell'ordine
+
+1. ✅ apply dei sei changeSet — **Tid, 21-09 alle 18:43** (`databasechangelog`,
+   tutti `EXECUTED`, anche sullo scratch `zeroerp_ci`); pgTAP di Tid verdi;
+   i due presidi nuovi **12/12 come app** su dbdev (gli scope si chiudono con
+   la RLS attiva). ⚠️ Il solo rosso della corsa sullo scratch —
+   `ui/test-lista-definizione-perimetro-emittente-v1` test 6 — non era di
+   questo giro: `magazzino.lotti` dichiarata globale dal cantiere BE di
+   stamattina (PR #1633) senza il nome nell'elenco del pgTAP, residuo che quel
+   piano assegnava al team DB; scritto la sera stessa;
+2. ✅ la misura come app: §9.7;
+3. ⏳ commit; doc auto-gen da rigenerare (le schede
+   `funzioni/fn_situazione_merce_ordine.md`, `funzioni/fn_resi_da_accreditare.md`
+   e gli indici);
+4. 🔵 D6 (`vw_contatore_merce`), decisione di Tid;
+5. ⏳ giro 3 (D4, B2), poi giro 4 (D5); richieste BE §8.4 e §9.4.
+
+### 9.7 La misura «dopo» (dbdev, 21-09 dopo l'apply, `zeroerp_app` con contesto operatore, 121 righe d'ordine / 36 partite / 1 riga in coda, media delle chiamate 8–10 di 10 nella stessa sessione, righe valutate intere — colore, non motivo)
+
+Il «prima» per documento è la vista intera: il filtro non entrava (§1), quindi
+la lettura per documento costava quanto la vista.
+
+| Lettura | Prima (= vista intera) | Dopo |
+| --- | --- | --- |
+| `vw_situazione_merce_ordine` intera | 187 ms | **187 ms** — invariata, com'è giusto |
+| situazione per ORDINE (`fn(NULL, ARRAY[o])`) | ~187 | **20 ms** |
+| situazione per DDT (`fn(ARRAY[d], NULL)`) | ~187 | **41 ms** |
+| `vw_resi_da_accreditare` intera | 115 ms | **115 ms** — invariata |
+| coda per DDT | ~115 | **36 ms** |
+| coda per ORDINE | ~115 | **16 ms** |
+| `fn_resi_riga_tetti_accredito` (il guard, a ogni riga di ponte; `DEFINER`, quindi sopra la RLS) | ~9–14 ms da owner (§9.3.4) | **1.3 ms** |
+| controprova giro 1: `vw_partite_merce` intera / partita di UN DDT | 88 / 24 (§8.6) | 96 / 29 |
+
+⭐ Sotto RLS il rapporto è quello del modello, non quello da owner (§9.3.4):
+ogni riga scandita paga la sua policy, e la chiusura ne scandisce poche. Il
+guard dei tetti, che gira come owner, ci guadagna per un'altra via: il piano
+della coda ristretta sta nella plancache della funzione. Il backend, finché
+resta sulle viste (§9.4), paga ancora la colonna «prima».

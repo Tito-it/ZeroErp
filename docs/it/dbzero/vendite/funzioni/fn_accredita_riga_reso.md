@@ -25,6 +25,8 @@ AS $function$
 --   la madre deve restare usabile da un processo autorizzato.
 DECLARE
     v_coda            record;
+    -- D3 (2026-09-21): il DDT della riga resa e' il SEME della coda.
+    v_ddt_id          vendite.ddt.id%TYPE;
     v_grp             record;
     v_cmp             record;
     v_ddt_uid         vendite.ddt.uid%TYPE;
@@ -65,11 +67,25 @@ BEGIN
     -- 2) La riga dev'essere IN CODA. Non e' un filtro di
     --    comodo: e' la coda a dire quanto vale l'accredito
     --    (D-NC-6), e fuori di li' quel numero non esiste.
+    --    ⭐ D3 (2026-09-21, D14 giro 2): la coda si chiede
+    --    PER DOCUMENTO — fn_resi_da_accreditare col seme
+    --    del DDT della riga resa — e non piu' alla vista,
+    --    che e' la coda di TUTTI. Il DDT si legge prima:
+    --    se la riga non c'e' (o chi agisce non la vede,
+    --    RLS) v_ddt_id e' NULL, ARRAY[NULL] semina zero
+    --    righe e si cade nel NOT FOUND qui sotto, come
+    --    prima. ⛔ Non e' un array NULL: quello sarebbe
+    --    «tutta la coda».
     -- --------------------------------------------------
+    SELECT dr.ddt_id INTO v_ddt_id
+      FROM vendite.resi_righe rr
+      JOIN vendite.ddt_righe dr ON dr.id = rr.ddt_riga_id
+     WHERE rr.id = p_resi_riga_id;
+
     SELECT q.resi_riga_id, q.ddt_riga_id, q.ordine_riga_id,
            q.accredito_dovuto, q.etichetta
       INTO v_coda
-      FROM vendite.vw_resi_da_accreditare q
+      FROM vendite.fn_resi_da_accreditare(ARRAY[v_ddt_id], NULL::bigint[]) q
      WHERE q.resi_riga_id = p_resi_riga_id;
 
     IF NOT FOUND OR COALESCE(v_coda.accredito_dovuto, 0) <= 0 THEN
@@ -77,7 +93,7 @@ BEGIN
         -- una cosa diversa da «non c'e' niente da accreditare»,
         -- e chi clicca due volte merita il primo.
         -- ⚠️ Il presidio VERO e' che la riga esce dalla coda AL
-        --    VERBO: vw_resi_da_accreditare sottrae la quota gia'
+        --    VERBO: la coda (fn_resi_da_accreditare) sottrae la quota gia'
         --    accreditata, quindi non serve un flag da mantenere
         --    ne' aspettare il giro di fatturazione.
         IF EXISTS (SELECT 1 FROM vendite.resi_righe_accrediti a
@@ -520,7 +536,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_accredita_riga_reso(p_resi_riga_id bigint)
-IS 'MADRE del verbo «accredita»: dalla coda accrediti genera le righe di RETTIFICA in commessa e le registra sul ponte vendite.resi_righe_accrediti. Una sola unita'' atomica; il DOCUMENTO non nasce qui, nasce nel giro di fatturazione normale — nessuna seconda pipeline, ed e'' il motivo per cui un esito parziale del fan-out non lascia mai mezzo documento fiscale. UN PARAMETRO SOLO: con D-NC-6 (l''accredito e'' sempre pieno) la quantita'' non e'' un input ma vw_resi_da_accreditare.accredito_dovuto, e con D-NC-7 il massivo lo fa il backend con run_fan_out. ⭐ D-NC-1: la rettifica porta SEMPRE il segmento della SPEDIZIONE (DDT:<uid>:R:<riga>#RET:<n>), anche quando a fatturare e'' stata la corsia ORD — sul serbatoio d''ordine la greedy scaricherebbe l''accredito sull''ultima spedizione invece che su quella da cui la merce e'' tornata. Il ripiego «se il DDT non c''e'', prendi il primo» e'' diventato un guard fail-fast (E_ACCREDITO_SENZA_SPEDIZIONE) e non un COALESCE: la condizione e'' impossibile per costruzione, e un ramo morto sembra coperto senza esserlo. ⭐ N-1: il prezzo si COPIA da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino. Sconto e IVA li copia il generatore righe lato backend (BE-4), leggendo la riga rettificata: commesse_attivita non ha una colonna sconto e inventarne una toccherebbe la catena di TUTTE le fatture. D-NC-5: consumo LIFO delle unita'' fatturanti — non e'' una regola di calcolo (il prezzo si copia sempre) ma di CONSUMO. Kit: raggruppamento per kit_key e quantita'' in unita'' PADRE, max(quantita/coeff_qta) come vw_af_merce_per_riga; una rettifica per componente, ciascuna specchio della sua riga di fattura. Chiude con l''uguaglianza di D-NC-6 (E_ACCREDITO_QUOTA_NON_COPERTA): meglio non farlo che farlo a meta'', perche'' un residuo parziale e'' la riga che resta in coda a chiedere per sempre. Il presidio permessi vive sul BE (post_permission), non qui. Modello: vendite.fn_aggiungi_onere_commessa. ⭐ P-7 (2026-08-18, dallo smoke BE): il meta della rettifica EREDITA quello della riga rettificata (`ca.meta || {coeff_qta, accredito_da, resi_riga_id}`) invece di enumerare le chiavi da copiare. Prima ne arrivava UNA sola delle quattro del contratto kit (backend _kit_meta.py: componente_di, esposto_in_fattura, segment_key, coeff_qta): la rettifica di un componente si dichiarava componente — perche'' fn_emit scrive segment_key nel meta dell''attivita'' fatturabile, e quel segmento porta #CMP: — senza dire DI CHI, e il generatore righe la rifiutava con E_ATTIVITA_KIT_SENZA_PADRE. ⚠️ Nella forma peggiore: il verbo riusciva, la riga USCIVA DALLA CODA e il documento non nasceva. Ereditare invece di enumerare evita di mettere quei letterali in un terzo posto, in SQL, dove _kit_meta.py non si puo'' importare. ⛔ E un guard nuovo (E_ACCREDITO_KIT_SENZA_PADRE) rifiuta AL VERBO il kit i cui componenti non portano componente_di: gemello esatto di E_ACCREDITO_KIT_NON_MISURABILE — stesso momento, altro tasto dello stesso contratto — cosi'' il difetto non arriva mai a valle e la riga non esce dalla coda per niente. rev 2026-08-18 (P-7).';
+IS 'MADRE del verbo «accredita»: dalla coda accrediti genera le righe di RETTIFICA in commessa e le registra sul ponte vendite.resi_righe_accrediti. Una sola unita'' atomica; il DOCUMENTO non nasce qui, nasce nel giro di fatturazione normale — nessuna seconda pipeline, ed e'' il motivo per cui un esito parziale del fan-out non lascia mai mezzo documento fiscale. UN PARAMETRO SOLO: con D-NC-6 (l''accredito e'' sempre pieno) la quantita'' non e'' un input ma accredito_dovuto della coda, e con D-NC-7 il massivo lo fa il backend con run_fan_out. ⭐ rev 2026-09-21 (D14 giro 2, D3): la coda si legge PER DOCUMENTO — vendite.fn_resi_da_accreditare(ARRAY[ddt della riga resa], NULL) — e non piu'' da vw_resi_da_accreditare, che e'' la coda di tutti; il numero e'' lo stesso (la vista e'' la proiezione della funzione), il costo e'' quello del DDT. ⭐ D-NC-1: la rettifica porta SEMPRE il segmento della SPEDIZIONE (DDT:<uid>:R:<riga>#RET:<n>), anche quando a fatturare e'' stata la corsia ORD — sul serbatoio d''ordine la greedy scaricherebbe l''accredito sull''ultima spedizione invece che su quella da cui la merce e'' tornata. Il ripiego «se il DDT non c''e'', prendi il primo» e'' diventato un guard fail-fast (E_ACCREDITO_SENZA_SPEDIZIONE) e non un COALESCE: la condizione e'' impossibile per costruzione, e un ramo morto sembra coperto senza esserlo. ⭐ N-1: il prezzo si COPIA da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino. Sconto e IVA li copia il generatore righe lato backend (BE-4), leggendo la riga rettificata. D-NC-5: consumo LIFO delle unita'' fatturanti — non e'' una regola di calcolo (il prezzo si copia sempre) ma di CONSUMO. Kit: raggruppamento per kit_key e quantita'' in unita'' PADRE, max(quantita/coeff_qta) come vw_af_merce_per_riga; una rettifica per componente, ciascuna specchio della sua riga di fattura. Chiude con l''uguaglianza di D-NC-6 (E_ACCREDITO_QUOTA_NON_COPERTA): meglio non farlo che farlo a meta'', perche'' un residuo parziale e'' la riga che resta in coda a chiedere per sempre. Il presidio permessi vive sul BE (post_permission), non qui. ⭐ P-7 (2026-08-18): il meta della rettifica EREDITA quello della riga rettificata (`ca.meta || {coeff_qta, accredito_da, resi_riga_id}`) invece di enumerare le chiavi da copiare; E_ACCREDITO_KIT_SENZA_PADRE rifiuta AL VERBO il kit i cui componenti non portano componente_di, gemello di E_ACCREDITO_KIT_NON_MISURABILE. rev 2026-08-29: il `sorgente => NULL` e'' dichiarato nel corpo (RETTIFICA e'' sourceless per progetto).';
 ```
 
 ---

@@ -1,0 +1,398 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — LA SITUAZIONE MERCE PER ORDINE, PER DOCUMENTO (quarta leva, giro 2 — D3)
+#   brief-db-partita-merce-per-documento §2.2, §7 «Giro 2»; decisione D3 di
+#   Tid del 2026-09-21: «prima possibile, non un residuo».
+#
+# ── IL DIFETTO ─────────────────────────────────────────────────────────
+#
+#   vendite.vw_situazione_merce_ordine e' l'aggregato PARLANTE per riga
+#   d'ordine (livello 1 del pannello situazione merce). Il backend la legge
+#   SEMPRE per documento — `WHERE s.ordine_id = %s`, o per DDT con un EXISTS
+#   sul fulfillment — e la vista, che non ha un parametro, somma le partite di
+#   TUTTI gli ordini (CTE `pm` su vw_partite_merce intera) e scarta. Dal giro 1
+#   la partita ha una funzione con un seme; questa vista era rimasta a leggerla
+#   senza (brief §2.2, riga «resta vista — decisione D3»).
+#
+# ── LA FORMA (D1, la stessa del giro 1: un corpo) ──────────────────────
+#
+#   L'aggregato passa in vendite.fn_situazione_merce_ordine(p_ddt_ids,
+#   p_ordine_ids) — gli stessi due semi e lo stesso ordine di fn_partite_merce
+#   — e la vista ne diventa la proiezione senza filtro (20260921-27). Con un
+#   seme la funzione legge:
+#     * le righe d'ordine dell'USCITA: quelle degli ordini chiesti, piu' quelle
+#       che i DDT chiesti hanno toccato (via fulfillment: la stessa relazione
+#       che il backend usa oggi nel suo EXISTS);
+#     * le partite per riga d'ordine da fn_partite_merce(NULL, <gli ordini
+#       della chiusura>): l'aggregato di una riga d'ordine e' completo per
+#       costruzione, perche' la partita esce sotto `ordine_id` = l'ordine della
+#       riga minima, e chiedere l'ORDINE porta tutte le partite delle sue righe;
+#     * `ful` (l'evaso) sulle sole righe dell'uscita; `ord` — il fatturato
+#       della corsia ORD da vw_af_merce_per_riga — resta INTERO come in
+#       fn_partite_merce (D5 del brief, passo a se').
+#
+#   ⚠️ Il seme per DDT NON e' «la partita di quel DDT»: e' «la situazione
+#   INTERA delle righe d'ordine che quel DDT ha toccato» — l'ordine spedito in
+#   tre volte, chiesto dal DDT di mezzo, deve rispondere consegnato 30, non 10.
+#   E' la semantica che il pannello ha dal 2026-08-19 (vendite_repository
+#   «DUE FILTRI, UNA LETTURA»), e il pgTAP la costruisce.
+#
+#   ⛔ `BEGIN ATOMIC`: le dipendenze — fn_partite_merce compresa — stanno in
+#   pg_depend, e rls/test-rls-viste-security-invoker attraversa funzione →
+#   funzione → tabelle (il criterio ricorre su pg_proc, rev 21-09).
+#
+#   ⛔ Due modi, due rami in UNION ALL (brief §2-bis.2), mai `p IS NULL OR`.
+#   ⭐ E qui c'e' una ragione IN PIU' per i due rami sulla lettura della
+#   partita: il seme degli ordini della chiusura e' CALCOLATO (un sub-select
+#   sulla CTE `ordini_in`), e il planner NON inlina una SRF il cui argomento
+#   contiene un sub-select (inline_set_returning_function: `contain_subplans`
+#   sugli argomenti → Function Scan). Va bene cosi' — dentro la funzione la
+#   forma a One-Time Filter regge anche in piano generico, provato nel giro 1;
+#   ⭐ e a regime e' MEGLIO: il piano della funzione sta nella plancache e dalla
+#   sesta chiamata della sessione e' generico, ~2 ms invece dei ~10 di planning
+#   che una SRF inlinata paga a ogni istruzione (misurato da owner il 21-09)
+#   — ma in modo TUTTI si vuole la vista di prima, inlinata con le STESSE
+#   scansioni: quindi il ramo «tutti» chiama fn_partite_merce(NULL, NULL) con
+#   due letterali (inlinata), e il ramo ristretto la chiama col seme calcolato
+#   (Function Scan, mai eseguito quando `tutti`). Provato con EXPLAIN il 21-09.
+#
+#   ⚠️ `COALESCE(array_agg(...), '{}')` sul seme calcolato NON e' pedanteria:
+#   un DDT senza fulfillment (standalone) darebbe array_agg = NULL, e
+#   fn_partite_merce(NULL, NULL) e' «TUTTE» — l'esatto costo che si voleva
+#   togliere, restituito in silenzio. Vuoto semina zero righe, ed e' giusto:
+#   quel DDT non ha toccato nessuna riga d'ordine.
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#
+#   Le 21 colonne, i tipi e i numeri: dalla rev 2026-09-13 (20260913-18)
+#   della vista, ricopiata con le sole sorgenti sostituite. Fatto datato
+#   (dbdev, owner, 21-09): EXCEPT ALL a zero nei due versi fra fn(NULL,NULL) e
+#   la vista, e fra fn(NULL, ARRAY[o]) e la vista WHERE ordine_id = o per OGNI
+#   ordine con righe attive.
+#
+# Presidio: db/pgtap/vendite/test-fn-situazione-merce-ordine-chiusura-v1.sql
+#   (casi COSTRUITI: ordine su tre DDT chiesto dal DDT di mezzo, riga mai
+#   spedita e ordine in bozza, riga MULTIPLA, DDT standalone, scope).
+# Dipendenze: 20260921-21 (fn_partite_merce), 20260913-18 (la forma della
+#   vista che qui si ricopia).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-26-create-fn-situazione-merce-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260921-26-create-fn-situazione-merce-ordine
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 2 (D3): vendite.fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids),
+        BEGIN ATOMIC, l'aggregato parlante per riga d'ordine ristretto agli ordini
+        chiesti e alle righe d'ordine toccate dai DDT chiesti; le partite da
+        fn_partite_merce(NULL, <ordini della chiusura>). Entrambi NULL = tutte.
+        Rami in UNION ALL. Stesse 21 colonne e stessi numeri della vista
+        (20260913-18), che nel 20260921-27 ne diventa la proiezione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_af_merce_per_riga
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_partite_merce'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_situazione_merce_ordine'
+                     AND pronamespace = 'vendite'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_situazione_merce_ordine(
+                  -- ⚠️ Array espliciti: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  --    Gli elementi sono vendite.ddt.id e vendite.ordini.id (bigint).
+                  --    Stesso ordine dei semi di fn_partite_merce.
+                  p_ddt_ids    bigint[] DEFAULT NULL,
+                  p_ordine_ids bigint[] DEFAULT NULL)
+              -- Ancorate le colonne PROIETTATE da una tabella; tipi espliciti, con la
+              -- ragione, per cio' che e' CALCOLATO (somme, saldi, vocabolari, contatori).
+              RETURNS TABLE(
+                  ordine_riga_id                  vendite.ordini_righe.id%TYPE,
+                  ordine_id                       vendite.ordini_righe.ordine_id%TYPE,
+                  riga_nr                         vendite.ordini_righe.riga_nr%TYPE,
+                  articolo_id                     vendite.ordini_righe.articolo_id%TYPE,
+                  ordinato                        vendite.ordini_righe.quantita%TYPE,   -- la vista lo ricasta a numeric(18,6)
+                  consegnato                      numeric,   -- somma delle partite
+                  reso                            numeric,   -- somma
+                  in_riconsegna                   numeric,   -- somma
+                  tenuti                          numeric,   -- somma
+                  fatturato_merce                 numeric,   -- somma
+                  fatturato_da_ordine             numeric,   -- somma
+                  fatturato                       numeric,   -- somma: merce + da ordine
+                  fatturato_anticipato            numeric,   -- saldo: fatturato ORD non ancora versato
+                  da_spedire                      numeric,   -- residuo con soglia d'impegno, NULL = «non si applica»
+                  partite_merce                   integer,   -- contatore
+                  misurabile                      boolean,   -- AND di tre misurabili (calcolato)
+                  differenza                      numeric,   -- Σ dei saldi, NULL = «non si applica»
+                  stato                           character varying,   -- vocabolario calcolato (sette valori)
+                  data_consegna_richiesta_cliente vendite.ordini_righe.data_consegna_richiesta_cliente%TYPE,
+                  data_consegna_confermata        vendite.ordini_righe.data_consegna_confermata%TYPE,
+                  giorni_ritardo                  integer)   -- indicatore non persistito (calcolato)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+              -- ══════════════════════════════════════════════════════════════════════
+              -- LA SITUAZIONE MERCE PER RIGA D'ORDINE, PER DOCUMENTO (D14, giro 2 — D3,
+              -- 2026-09-21).
+              --
+              -- Il corpo e' UNO: vendite.vw_situazione_merce_ordine e' la proiezione di
+              -- fn_situazione_merce_ordine(NULL, NULL). Chi legge per documento chiama la
+              -- funzione con un seme e paga le righe d'ordine chieste, non tutte.
+              --
+              -- I SEMI, nello stesso ordine di fn_partite_merce. p_ordine_ids = gli
+              -- ordini: tutte le loro righe attive. p_ddt_ids = i DDT: le righe d'ordine
+              -- che hanno TOCCATO (un fulfillment di una loro riga), con la loro
+              -- situazione INTERA — non la sola partita di quel DDT. Entrambi NULL =
+              -- TUTTE le righe attive (la vista). Un array VUOTO semina zero righe.
+              -- Con entrambi valorizzati l'uscita e' l'unione dei due insiemi.
+              --
+              -- LA CHIUSURA. L'aggregato `pm` di una riga d'ordine e' la somma delle
+              -- partite con quel `ordine_riga_id` — che in fn_partite_merce e' la riga
+              -- MINIMA fra quelle evase (una riga MULTIPLA conta sotto una sola). Le
+              -- partite si chiedono a fn_partite_merce PER ORDINE: escono tutte quelle
+              -- con `ordine_id` fra gli ordini della chiusura, cioe' tutte quelle delle
+              -- righe dell'uscita — completo per costruzione. `ful` (l'evaso) si legge
+              -- sulle righe dell'uscita; `ord` (corsia ORD di vw_af_merce_per_riga) resta
+              -- intera, D5 del brief. fn_ordine_riga_qta_riconsegna e' per riga.
+              --
+              -- LA FORMA DEI DUE MODI: rami in UNION ALL, mai `p IS NULL OR …`
+              -- (brief §2-bis.2). `tutti` = (p_ddt_ids IS NULL AND p_ordine_ids IS
+              -- NULL) e' un predicato senza colonne: One-Time Filter, il ramo falso
+              -- non viene eseguito. ⭐ Sulla partita i due rami servono anche per
+              -- un'altra ragione: il seme ristretto e' CALCOLATO (sub-select) e il
+              -- planner non inlina una SRF con un sub-select fra gli argomenti —
+              -- Function Scan, che regge (forma provata in piano generico) ma non e'
+              -- «le stesse scansioni della vista»; il ramo TUTTI chiama la funzione con
+              -- due letterali e resta inlinato, identico alla vista di prima.
+              -- ══════════════════════════════════════════════════════════════════════
+              WITH ordini_in AS MATERIALIZED (
+                  -- Gli ORDINI della chiusura: quelli chiesti, piu' quelli che i DDT
+                  -- chiesti hanno toccato. Vuota in modo TUTTI (nessuno la legge).
+                  SELECT o.ordine_id
+                    FROM unnest(p_ordine_ids) AS o(ordine_id)
+                  UNION
+                  SELECT orr.ordine_id
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
+                    JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                   WHERE dr.ddt_id = ANY (p_ddt_ids)
+              ), righe_toccate AS MATERIALIZED (
+                  -- L'USCITA per DDT: le righe d'ordine che i DDT chiesti hanno toccato —
+                  -- la stessa relazione (fulfillment) del backend.
+                  SELECT DISTINCT f.ordine_riga_id
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
+                   WHERE dr.ddt_id = ANY (p_ddt_ids)
+              ), orr_semi AS MATERIALIZED (
+                  -- Le righe d'ordine dell'USCITA in modo ristretto: quelle degli ordini
+                  -- chiesti (dall'indice su ordine_id) UNION le toccate dai DDT chiesti
+                  -- (JOIN sul set). Due rami e non un OR: un OR fra `= ANY` e un IN su
+                  -- CTE non entra da un indice, e ordini_righe e' sotto policy.
+                  SELECT orr.id, orr.ordine_id, orr.riga_nr, orr.articolo_id, orr.quantita,
+                         orr.data_consegna_richiesta_cliente, orr.data_consegna_confermata
+                    FROM vendite.ordini_righe orr
+                   WHERE orr.attivo IS TRUE
+                     AND orr.ordine_id = ANY (p_ordine_ids)
+                  UNION
+                  SELECT orr.id, orr.ordine_id, orr.riga_nr, orr.articolo_id, orr.quantita,
+                         orr.data_consegna_richiesta_cliente, orr.data_consegna_confermata
+                    FROM vendite.ordini_righe orr
+                    JOIN righe_toccate t ON t.ordine_riga_id = orr.id
+                   WHERE orr.attivo IS TRUE
+              ), orr_in AS MATERIALIZED (
+                  -- Le righe d'ordine che entrano: l'uscita ristretta, oppure tutte le
+                  -- ATTIVE. E' l'uscita stessa: non serve un filtro finale.
+                  SELECT s.id, s.ordine_id, s.riga_nr, s.articolo_id, s.quantita,
+                         s.data_consegna_richiesta_cliente, s.data_consegna_confermata
+                    FROM orr_semi s
+                   WHERE NOT (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+                  UNION ALL
+                  SELECT orr.id, orr.ordine_id, orr.riga_nr, orr.articolo_id, orr.quantita,
+                         orr.data_consegna_richiesta_cliente, orr.data_consegna_confermata
+                    FROM vendite.ordini_righe orr
+                   WHERE orr.attivo IS TRUE
+                     AND (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+              ), pm_src AS (
+                  -- Le partite: tutte (inlinata, la vista di prima) o quelle degli ordini
+                  -- della chiusura (Function Scan col seme calcolato, mai eseguito se tutti).
+                  -- ⚠️ COALESCE a '{}': array_agg su zero ordini e' NULL, e (NULL, NULL)
+                  --    sarebbe «tutte». Vuoto = zero partite, che e' la risposta giusta.
+                  SELECT p.ordine_riga_id, p.consegnato, p.reso, p.in_riconsegna, p.tenuti,
+                         p.fatturato_merce, p.fatturato_da_ordine, p.differenza, p.misurabile,
+                         p.origine, p.e_riconsegna
+                    FROM vendite.fn_partite_merce(NULL::bigint[], NULL::bigint[]) p
+                   WHERE (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+                  UNION ALL
+                  SELECT p.ordine_riga_id, p.consegnato, p.reso, p.in_riconsegna, p.tenuti,
+                         p.fatturato_merce, p.fatturato_da_ordine, p.differenza, p.misurabile,
+                         p.origine, p.e_riconsegna
+                    FROM vendite.fn_partite_merce(
+                             NULL::bigint[],
+                             (SELECT COALESCE(array_agg(oi.ordine_id), '{}'::bigint[]) FROM ordini_in oi)) p
+                   WHERE NOT (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+              ),
+              -- ══ DA QUI IN GIU' E' LA VISTA (rev 2026-09-13, 20260913-18), con le sole
+              --    sorgenti sostituite dai set qui sopra. ══
+              soglia AS (
+                  SELECT s.ordine AS ordine_confermato
+                    FROM config.stati_doc_ordini s
+                   WHERE s.codice_interno::text = 'CONFERMATO'::text
+              ), pm AS (
+                  SELECT p.ordine_riga_id,
+                         count(*)::integer AS partite_merce,
+                         sum(p.consegnato) AS consegnato,
+                         sum(p.reso) AS reso,
+                         sum(p.in_riconsegna) AS in_riconsegna,
+                         sum(p.tenuti) AS tenuti,
+                         sum(p.fatturato_merce) AS fatturato_merce,
+                         sum(p.fatturato_da_ordine) AS fatturato_da_ordine,
+                         sum(p.differenza) AS differenza,
+                         bool_and(p.misurabile) AS misurabile,
+                         bool_or(p.origine::text = 'MULTIPLA'::text) AS ha_origine_multipla,
+                         count(*) FILTER (WHERE p.differenza IS NOT NULL)::integer AS partite_con_conto
+                    FROM pm_src p
+                   WHERE p.ordine_riga_id IS NOT NULL AND NOT p.e_riconsegna
+                   GROUP BY p.ordine_riga_id
+              ), ord AS (
+                  -- Intera anche con un seme: D5 del brief (cresce con le fatture).
+                  SELECT f_1.riga_id AS ordine_riga_id,
+                         f_1.quantita,
+                         f_1.misurabile
+                    FROM vendite.vw_af_merce_per_riga f_1
+                   WHERE f_1.corsia::text = 'ORD'::text AND f_1.tipo_movimento::text = 'NORMALE'::text
+              ), ful AS (
+                  -- L'evaso: sulle righe dell'uscita, o tutto.
+                  SELECT f_1.ordine_riga_id,
+                         sum(f_1.qta_evasa) AS evaso
+                    FROM vendite.ordini_righe_fulfillment f_1
+                    JOIN orr_in x ON x.id = f_1.ordine_riga_id
+                   WHERE NOT (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+                   GROUP BY f_1.ordine_riga_id
+                  UNION ALL
+                  SELECT f_1.ordine_riga_id,
+                         sum(f_1.qta_evasa) AS evaso
+                    FROM vendite.ordini_righe_fulfillment f_1
+                   WHERE (p_ddt_ids IS NULL AND p_ordine_ids IS NULL)
+                   GROUP BY f_1.ordine_riga_id
+              )
+              SELECT orr.id AS ordine_riga_id,
+                     orr.ordine_id,
+                     orr.riga_nr,
+                     orr.articolo_id,
+                     orr.quantita AS ordinato,
+                     COALESCE(pm.consegnato, 0::numeric) AS consegnato,
+                     COALESCE(pm.reso, 0::numeric) AS reso,
+                     COALESCE(pm.in_riconsegna, 0::numeric) AS in_riconsegna,
+                     COALESCE(pm.tenuti, 0::numeric) AS tenuti,
+                     COALESCE(pm.fatturato_merce, 0::numeric) AS fatturato_merce,
+                     COALESCE(pm.fatturato_da_ordine, 0::numeric) AS fatturato_da_ordine,
+                     COALESCE(pm.fatturato_merce, 0::numeric) + COALESCE(pm.fatturato_da_ordine, 0::numeric) AS fatturato,
+                     GREATEST(0::numeric, COALESCE(o.quantita, 0::numeric) - COALESCE(pm.fatturato_da_ordine, 0::numeric)) AS fatturato_anticipato,
+                     ds.da_spedire,
+                     COALESCE(pm.partite_merce, 0) AS partite_merce,
+                     v.misurabile,
+                     CASE
+                         WHEN v.misurabile THEN pm.differenza
+                         ELSE NULL::numeric
+                     END AS differenza,
+                     CASE
+                         WHEN COALESCE(pm.partite_merce, 0) = 0 AND NOT imp.impegnata THEN 'NON_IMPEGNATA'::text
+                         WHEN COALESCE(pm.partite_merce, 0) = 0 THEN 'NON_SPEDITA'::text
+                         WHEN NOT v.misurabile THEN 'NON_MISURABILE'::text
+                         WHEN pm.differenza IS NULL THEN 'NON_FATTURABILE'::text
+                         WHEN pm.differenza > 0::numeric THEN 'DA_FATTURARE'::text
+                         WHEN pm.differenza < 0::numeric THEN 'DA_ACCREDITARE'::text
+                         ELSE 'PAREGGIATA'::text
+                     END::character varying AS stato,
+                     orr.data_consegna_richiesta_cliente,
+                     orr.data_consegna_confermata,
+                     -- giorni_ritardo: «oggi > data di riferimento E resta merce da spedire».
+                     -- NULL quando da_spedire e' NULL o zero o nessuna data e' dichiarata;
+                     -- 0 = c'e' da spedire e non e' tardi. Il residuo e' ds.da_spedire, la
+                     -- STESSA espressione della colonna: una sola verita' sul residuo.
+                     CASE
+                         WHEN ds.da_spedire > 0::numeric
+                              AND COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente) IS NOT NULL
+                         THEN GREATEST(0, CURRENT_DATE - COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente))
+                         ELSE NULL::integer
+                     END AS giorni_ritardo
+                FROM orr_in orr
+                JOIN vendite.ordini o_rls ON o_rls.id = orr.ordine_id
+                JOIN config.stati_doc_ordini sdo ON sdo.id = o_rls.stato_doc_ordine_id
+                CROSS JOIN soglia sg
+                LEFT JOIN pm ON pm.ordine_riga_id = orr.id
+                LEFT JOIN ord o ON o.ordine_riga_id = orr.id
+                LEFT JOIN ful f ON f.ordine_riga_id = orr.id
+                CROSS JOIN LATERAL ( SELECT COALESCE(pm.misurabile, true) AND COALESCE(o.misurabile, true) AND NOT COALESCE(pm.ha_origine_multipla, false) AS misurabile) v
+                CROSS JOIN LATERAL ( SELECT COALESCE(sdo.ordine::integer, '-1'::integer) >= sg.ordine_confermato AND NOT sdo.is_abortito AS impegnata) imp
+                CROSS JOIN LATERAL ( SELECT
+                           CASE
+                               WHEN imp.impegnata THEN GREATEST(0::numeric, orr.quantita - COALESCE(f.evaso, 0::numeric) + vendite.fn_ordine_riga_qta_riconsegna(orr.id))
+                               ELSE NULL::numeric
+                           END AS da_spedire) ds;
+              END;
+        # ⛔ Il COMMENT sta in un change SUO: pgjdbc esegue un `BEGIN ATOMIC … END;`
+        #    solo se sta da solo nel testo (giro 1, provato col jar di Liquibase).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_situazione_merce_ordine(bigint[], bigint[]) IS
+                'LA SITUAZIONE MERCE PER RIGA D''ORDINE, PER DOCUMENTO (D14 giro 2 — D3, '
+                '2026-09-21): lo stesso aggregato parlante di vendite.vw_situazione_merce_ordine '
+                '— che ne e'' la proiezione senza filtro, fn(NULL, NULL) — ristretto alle righe '
+                'd''ordine chieste. Semi, nello stesso ordine di fn_partite_merce: p_ddt_ids (i '
+                'DDT: le righe d''ordine che hanno TOCCATO via fulfillment, con la loro '
+                'situazione INTERA, non la sola partita di quel DDT) e p_ordine_ids (gli '
+                'ordini: tutte le loro righe attive); entrambi NULL = tutte; un array VUOTO '
+                'semina zero righe; entrambi valorizzati = unione. Le partite si chiedono a '
+                'fn_partite_merce(NULL, <ordini della chiusura>): l''aggregato di una riga '
+                'd''ordine e'' completo per costruzione, perche'' la partita esce sotto '
+                '`ordine_id` della riga minima e l''ordine porta tutte le sue righe. `ful` sulle '
+                'righe dell''uscita; `ord` (corsia ORD di vw_af_merce_per_riga) intera, D5 del '
+                'brief. BEGIN ATOMIC: dipendenze in pg_depend, catena RLS leggibile dal presidio '
+                'security_invoker attraverso fn_partite_merce. I due modi sono rami in UNION ALL, '
+                'mai `p IS NULL OR`; sulla partita anche perche'' il seme calcolato (sub-select) '
+                'non si inlina — Function Scan, che regge in piano generico — mentre il ramo '
+                'TUTTI con due letterali resta inlinato, identico alla vista. COALESCE(array_agg, '
+                '''{}''): un DDT senza fulfillment non deve diventare «tutte». INVOKER: la RLS '
+                'resta di chi legge. Chiamanti per documento: BE list_situazione_merce_ordine '
+                '(per ordine ARRAY[%s] nel secondo seme, per DDT nel primo). Brief: '
+                'brief-db-partita-merce-per-documento §7 giro 2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo finche' 20260921-27 non ha fatto della vista la proiezione
+              --    di questa funzione: dopo, il DROP cascaderebbe sulla vista.
+              DROP FUNCTION IF EXISTS vendite.fn_situazione_merce_ordine(bigint[], bigint[]);
