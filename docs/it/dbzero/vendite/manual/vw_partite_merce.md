@@ -215,8 +215,8 @@ WHERE stato = 'DA_ACCREDITARE';
 * ⚠️ **La colonna avvisa solo se qualcuno la mostra.** Finché il frontend non la
   espone, il presidio è a metà.
 * **`origine = MULTIPLA`**: il modello ammette che una riga di spedizione evada due righe
-  d'ordine. Oggi non succede mai. Se succedesse, la partita lo **dichiara** invece di duplicare
-  la merce.
+  d'ordine. La partita lo **dichiara** invece di duplicare la merce, ed esce sotto l'ordine
+  della riga minima — il caso è **costruito** nel pgTAP della chiusura (test 13).
 * **È read-time**: nessun conto memorizzato, nessun campo da tenere allineato. Ne discende che
   vale anche sui documenti vecchi, senza alcuna ricostruzione dello storico.
 * `security_invoker=on`: la vista è letta con i permessi di chi interroga, quindi la RLS di
@@ -226,7 +226,8 @@ WHERE stato = 'DA_ACCREDITARE';
   *diverso* da quello della merce. Chi vedesse la spedizione ma non la sua commessa leggerebbe
   «fatturato zero» — indistinguibile da «non ancora fatturato». È il motivo per cui esiste
   `misurabile`.
-* Test: `db/pgtap/vendite/test-vw-partite-merce-v1.sql`.
+* Test: `db/pgtap/vendite/test-vw-partite-merce-v1.sql`; la chiusura per documento in
+  `test-fn-partite-merce-chiusura-v1.sql`.
 
 ---
 
@@ -337,6 +338,83 @@ chi la legge intera è la capability, cioè il drawer.
 Presidio: `test-vw-partite-merce-v1.sql` test 11, che **costruisce** il caso
 segnalato e quello legittimo — il dato vivo non ne contiene nessuno, e
 un'equivalenza sulle righe di oggi non proverebbe il ramo.
+
+---
+
+### 🔄 rev 2026-09-21 — il contatore delle attività si legge una volta, non quattro (D14, terza leva)
+
+ChangeSet `20260921-20`. Registro: `migliorie-generali-da-test-valutazione.md`
+§3 D14. **Niente cambia nel risultato**: stesse colonne, stesse righe, stessi
+numeri. Cambia quante volte la vista ricalcola `vw_af_merce_per_riga`.
+
+**Il difetto.** La vista leggeva `vw_af_merce_per_riga` in **quattro** punti —
+`acc_origine` (le rettifiche sull'origine), `alloc` (il serbatoio d'ordine),
+`fd` e `fr` (fatturato e rettificato della partita). Quella vista è un
+`GROUP BY` su `attivita_fatturabili ⋈ commesse_attivita`, cioè una scansione
+intera che paga la policy di `commesse_attivita` per ogni riga; e il planner
+non condivide un sottoalbero fra quattro `JOIN`: la ricalcolava quattro volte.
+Fatto datato (dbdev, 2026‑09‑21, 51 DDT / 36 partite, come applicazione): le
+quattro letture pesavano 16+15+20+17 ≈ 68 ms su ~130 della vista intera.
+
+**La forma nuova.** Una CTE `af AS MATERIALIZED` in testa, proiezione **senza
+filtro** della vista; i quattro `JOIN` restano identici nei predicati (corsia,
+riga, tipo movimento) e cambiano solo la sorgente. Così l'equivalenza non ha
+bisogno di argomenti: ogni `JOIN` vede esattamente le righe che vedeva.
+`MATERIALIZED` per la stessa ragione di `sospetto`: senza, il planner la inlina
+in ogni riferimento e torna a quattro scansioni.
+
+**Misurato prima di scrivere** (solo `SELECT`, transazione ritirata, stessa
+sessione): vista intera come applicazione **~90 → ~56 ms**, `EXCEPT ALL` nei
+due versi a zero righe. La capability del DDT legge la vista due volte, quindi
+risparmia il doppio.
+
+⚠️ **Non è la chiusura di D14.** La vista resta senza parametro, e la lettura
+di *un* documento continua a pagare le partite di *tutti*: quella è la quarta
+leva — la partita per chiusura del documento — e ha il suo brief,
+`work-in-progress/brief-db-partita-merce-per-documento.md`.
+
+Presidi: gli stessi di sempre (`test-vw-partite-merce-v1`,
+`test-vw-partite-merce-riconsegna-dopo-nc-v1` — dove `acc_origine` e `migra`
+leggono le rettifiche —, `test-fn-list-ddt-da-pushare-contatore-v1`,
+`test-vw-contatore-merce-v1`). Nessuna riga di test cambia.
+
+---
+
+### 🔄 rev 2026-09-21 — il conto sta nella funzione, la vista ne è la proiezione (D14, quarta leva)
+
+ChangeSet `20260921-21` (la funzione) e `20260921-22` (la vista). Brief:
+`work-in-progress/brief-db-partita-merce-per-documento.md`, decisioni D1 e D2
+di Tid. **Niente cambia nel risultato**: stesse 23 colonne, stessi tipi, stesse
+righe, stessi numeri. Cambia **dove sta il conto** e **chi lo paga**.
+
+**Il conto sta in [`fn_partite_merce(p_ddt_ids, p_ordine_ids)`](fn_partite_merce.md)**,
+e questa vista è `fn_partite_merce(NULL, NULL)`: un corpo solo. Chi legge
+**per documento** — il lister e la diagnosi del push (cioè la capability del
+DDT, a ogni apertura del drawer) e, ⏳ con la richiesta BE del brief, il pannello
+«Situazione merce» — chiama la funzione con un seme e paga la **chiusura** del
+documento: le sue righe, le spedizioni sorelle della stessa riga d'ordine, le
+origini di ri-consegna. Non più le partite di tutti. Chi legge **tutto** — il
+cockpit, `vw_contatore_merce`, `vw_resi_da_accreditare`,
+`vw_situazione_merce_ordine`, i verbi dei resi — continua a leggere la vista,
+che costa quanto prima (le scansioni sono le stesse). Il giro D3 del brief
+porta anche loro alla funzione.
+
+⚠️ **La vista proietta le colonne per nome, con `consegnato::numeric(18,6)`.**
+Non è pignoleria: un `RETURNS TABLE` perde la scala, e un `SELECT * FROM fn()`
+sarebbe passato cambiando il contratto della vista in silenzio — senza
+possibilità di tornare indietro con un `CREATE OR REPLACE`. Il pgTAP della
+chiusura pinna i tipi.
+
+⚠️ **La regola della chiusura vive nel COMMENT e nel manuale della funzione**:
+chi aggiunge qui una finestra o un insieme con una chiave nuova deve allargare
+la chiusura là, o la funzione sbaglia solo quando è chiamata con un seme — e
+questa vista resterebbe giusta senza dirlo.
+
+Presidi: `test-fn-partite-merce-chiusura-v1` (nuovo, 14 test a casi
+costruiti) + `rls/test-rls-viste-security-invoker`, il cui criterio ora
+attraversa le funzioni `BEGIN ATOMIC` (senza, questa vista — che dipende da una
+funzione e non da tabelle — sarebbe uscita dal perimetro del presidio). I
+cinque di sempre non cambiano.
 
 ---
 

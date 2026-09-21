@@ -8,6 +8,7 @@
 > [script.fn_available_actions_ddt](/dbzero/script/funzioni/fn_available_actions_ddt)
 > [script.fn_get_stato_push_segment](/dbzero/script/funzioni/fn_get_stato_push_segment)
 > [vendite.vw_contatore_merce](/dbzero/vendite/views/vw_contatore_merce)
+> [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita, per documento (rev 2026-09-21)
 
 ---
 ### 🎯 Scopo Principale
@@ -113,3 +114,19 @@ fisicamente fondere le due funzioni.
 
 > **Brief**: `brief-db-ddt-reason-push-catch-all.md` §3 (Decisione A).
 > **Changeset**: `20260719-15` (questa funzione), `20260719-16` (capability).
+
+---
+
+### 🔄 rev 2026-09-21 — la partita si legge per documento (D14, quarta leva)
+
+ChangeSet `20260921-24`. La diagnosi leggeva `vw_partite_merce` in `LEFT JOIN`,
+e la vista calcola le partite di **tutti** i DDT anche quando se ne chiede uno.
+Ora legge [`fn_partite_merce`](/dbzero/vendite/funzioni/fn_partite_merce) con il
+DDT chiesto come seme (`ARRAY[p_ddt_id]`; `p_ddt_id NULL` = tutte, com'era): la
+chiusura del documento, non l'universo. Stessi predicati, stessi motivi, stessa
+precedenza; il `LEFT` resta, perché il rank 10 (`DDT_SENZA_PARTITA`) deve poter
+spiegare l'assenza. La sorgente è la **stessa** del lister, quindi i due numeri
+sono uguali per costruzione. Che la capability legga ancora **due** funzioni
+(lister e diagnosi) è la decisione D4 del brief
+`brief-db-partita-merce-per-documento` — forma B2, il lister derivato dalla
+diagnosi — ed è un giro a sé.
