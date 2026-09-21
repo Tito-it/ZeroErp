@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — LA VISTA E' LA PROIEZIONE DELLA FUNZIONE (quarta leva, giro 1)
+#   brief-db-partita-merce-per-documento §2.1, §2-bis.1, §2-bis.6;
+#   decisione D1 di Tid del 2026-09-21: UN corpo.
+#
+# ── COSA CAMBIA ────────────────────────────────────────────────────────
+#
+#   Niente nel risultato: stesse 23 colonne, stessi tipi, stesse righe e
+#   stessi numeri (EXCEPT ALL a zero nei due versi con la definizione
+#   viva, fatto datato del 21-09). Cambia DOVE sta il conto: nella
+#   funzione vendite.fn_partite_merce (20260921-21), di cui questa vista e'
+#   la proiezione senza filtro — fn(NULL, NULL). Due corpi sarebbero due
+#   implementazioni della regola che dosa la fatturazione, l'errore gia'
+#   corretto il 18-08 sulla diagnosi.
+#
+# ── PERCHE' NON `SELECT *` (brief §2-bis.1, provato) ───────────────────
+#
+#   Un RETURNS TABLE perde il typmod: `consegnato numeric(18,6)` della
+#   funzione e' registrato come `numeric`. `CREATE OR REPLACE VIEW … AS
+#   SELECT * FROM fn()` PASSA — PostgreSQL ammette di PERDERE un typmod —
+#   e la vista cambierebbe contratto in silenzio; il ritorno col cast
+#   esplicito viene poi RIFIUTATO («non e' possibile cambiare tipo… da
+#   numeric a numeric(18,6)»). Quindi le colonne per NOME, e
+#   `consegnato::numeric(18,6)`: cosi' il contratto resta quello e il
+#   CREATE OR REPLACE passa senza toccare le tre viste a valle
+#   (vw_contatore_merce, vw_resi_da_accreditare, vw_situazione_merce_ordine).
+#
+# ── PERCHE' security_invoker VA RI-SPECIFICATO ─────────────────────────
+#
+#   La reloption non si vede in pg_get_viewdef e un CREATE OR REPLACE la
+#   azzera: qui significherebbe far girare la funzione come OWNER (bypass
+#   della RLS, regressione V-1). Con il flag, la funzione — INVOKER — gira
+#   come chi legge la vista.
+#
+# ── IL PRESIDIO CHE DIVENTA CIECO, E COME SI RIACCENDE ─────────────────
+#
+#   rls/test-rls-viste-security-invoker trova le viste da presidiare
+#   camminando pg_rewrite → pg_depend fino alle tabelle con RLS, ATTRAVERSO
+#   le viste. Da oggi questa vista dipende da una FUNZIONE, non da tabelle:
+#   la catena si spezza li' e la vista uscirebbe dal perimetro. Il criterio
+#   viene allargato nello stesso giro (vista → funzione BEGIN ATOMIC → sue
+#   dipendenze in pg_depend, con la funzione non SECURITY DEFINER); e' la
+#   ragione per cui il corpo e' BEGIN ATOMIC e non una stringa.
+#
+# Presidio: test-fn-partite-merce-chiusura-v1 (pin di forma: la vista
+#   nomina la funzione e nessuna tabella; col_type_is sulle 23 colonne) +
+#   i cinque pgTAP della partita, invariati.
+# Dipendenze: 20260921-21.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-22-update-vw-partite-merce-proiezione-fn-partite-merce-mctit.yaml
+
+  - changeSet:
+      id: 20260921-22-update-vw-partite-merce-proiezione-fn-partite-merce
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 quarta leva (D1): vendite.vw_partite_merce diventa la proiezione senza
+        filtro di vendite.fn_partite_merce(NULL, NULL) — un corpo solo. Colonne per
+        NOME con consegnato::numeric(18,6) (un SELECT * perderebbe il typmod in
+        silenzio). Stesse 23 colonne, stessi tipi, stessi numeri. security_invoker=on
+        ri-specificato: la funzione INVOKER gira come chi legge.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_partite_merce
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_partite_merce'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_partite_merce
+              WITH (security_invoker=on) AS
+              -- D14 (2026-09-21, quarta leva): la vista e' la PROIEZIONE senza
+              -- filtro di fn_partite_merce. Il conto sta nella funzione: chi
+              -- legge per documento la chiama con un seme. Colonne per nome,
+              -- non `*`: il RETURNS TABLE perde il typmod di `consegnato`.
+              SELECT p.ddt_riga_id,
+                     p.ddt_id,
+                     p.ddt_uid,
+                     p.articolo_id,
+                     p.is_composito,
+                     p.ordine_riga_id,
+                     p.ordine_id,
+                     p.origine,
+                     p.fatturabile,
+                     p.consegnato::numeric(18,6) AS consegnato,
+                     p.reso,
+                     p.in_riconsegna,
+                     p.tenuti,
+                     p.fatturato_merce,
+                     p.fatturato_da_ordine,
+                     p.fatturato,
+                     p.misurabile,
+                     p.differenza,
+                     p.stato,
+                     p.e_riconsegna,
+                     p.sospetto_duplicato_ordine,
+                     p.rettificato,
+                     p.riconsegna_quota_nuova
+                FROM vendite.fn_partite_merce(NULL::bigint[], NULL::bigint[]) p;
+
+              COMMENT ON VIEW vendite.vw_partite_merce IS
+                'La PARTITA DI MERCE: una riga per riga di DDT attiva su documento '
+                'EMESSO in poi, con la riga d''ordine come ORIGINE nullable. '
+                'rev 2026-09-21 (D14, quarta leva): il conto NON sta piu'' qui — sta in '
+                'vendite.fn_partite_merce(p_ddt_ids, p_ordine_ids), e questa vista ne e'' '
+                'la proiezione senza filtro, fn(NULL, NULL): UN corpo solo (D1). Chi '
+                'legge PER DOCUMENTO chiama la funzione con un seme e paga la CHIUSURA '
+                'del documento, non le partite di tutti: fn_list_ddt_da_pushare, '
+                'fn_ddt_push_diagnosi, BE list_partite_merce. Chi legge tutto (cockpit, '
+                'le tre viste a valle, i verbi dei resi fino al giro D3) legge la vista. '
+                'Colonne proiettate per NOME con consegnato::numeric(18,6): un SELECT * '
+                'perderebbe il typmod in silenzio, e il ritorno sarebbe un DROP a '
+                'cascata. La regola della chiusura e la sua trappola (chi aggiunge una '
+                'chiave nuova allarga la chiusura) stanno nel COMMENT della funzione. '
+                'Storia del conto (rev N6, N7, D14 17-09 e 21-09 terza leva) nel manuale '
+                'vw_partite_merce.md. security_invoker=on ri-specificato (la reloption '
+                'non si vede in pg_get_viewdef e un CREATE OR REPLACE la azzera: qui '
+                'significa far girare la funzione come owner, bypass della RLS, '
+                'regressione V-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non si torna indietro da soli: va ri-applicato 20260921-20, che
+              --    porta il corpo del conto dentro la vista.
+              SELECT 1;

@@ -25,6 +25,11 @@ BEGIN
   -- rev 2026-08-17 (partita generalizzata S5): la differenza si legge
   --   da vw_partite_merce, che e' GIA' per riga di DDT. Spariscono la
   --   ridistribuzione greedy e il caso speciale standalone/compositi.
+  -- rev 2026-09-21 (D14, quarta leva): la partita si legge da
+  --   vendite.fn_partite_merce col DDT come seme — la CHIUSURA del
+  --   documento, non le partite di tutti. p_ddt_id NULL (cockpit,
+  --   lista push) = seme NULL = tutte, com'era. Stessi numeri: la
+  --   vista e' la proiezione della stessa funzione.
   IF p_ddt_id IS NOT NULL AND p_ddt_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ddt_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -91,7 +96,13 @@ BEGIN
     -- svista: se non c'e' una partita non c'e' merce uscita, e
     -- non c'e' niente da fatturare. Copre TUTTE le famiglie —
     -- order-backed, standalone, kit — con la stessa regola.
-    JOIN vendite.vw_partite_merce pm ON pm.ddt_riga_id = dr.id
+    -- ⭐ Per DOCUMENTO: il seme e' il DDT chiesto (un letterale
+    -- ARRAY[p_ddt_id]); con p_ddt_id NULL il seme e' NULL = tutte.
+    -- Il CASE e' senza colonne: il planner lo piega (custom) o lo
+    -- solleva a One-Time Filter (generico) — mai una scansione intera.
+    JOIN vendite.fn_partite_merce(
+           CASE WHEN p_ddt_id IS NULL THEN NULL::bigint[] ELSE ARRAY[p_ddt_id] END,
+           NULL::bigint[]) pm ON pm.ddt_riga_id = dr.id
     LEFT JOIN LATERAL (
       SELECT
         o_src.billing_account_id   AS src_billing_account_id,
@@ -213,7 +224,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'Lista righe DDT eligible al push su commessa. rev 2026-08-17 (partita generalizzata S5): la quantita'' da fatturare e'' la DIFFERENZA della partita di merce (vendite.vw_partite_merce), che e'' gia'' per riga di DDT — spariscono la ridistribuzione greedy della differenza d''ordine e il caso speciale che mandava standalone e compositi a dr.quantita GREZZA, cioe'' senza alcun conto. Tutte le famiglie di merce passano ora sotto lo stesso dosatore. ⚠️ Cambio di comportamento dichiarato: una partita NON MISURABILE (kit di cui non si ricostruisce la quantita'' del padre) non viene piu'' spinta — predicato esplicito AND pm.misurabile, non un COALESCE a zero. ⚠️ Nota per la nota di credito: quando una RETTIFICA abbassera'' il fatturato, la differenza tornera'' positiva e solo script.fn_get_stato_push_segment = LIBERA impedira'' la ri-spinta. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (DL-28). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI, cintura XOR != CONFERMATO PRESERVATA. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via fn_get_stato_push_segment. rev 2026-07-27: fatturazione_immediata dalla colonna. Espone termine_pagamento_id e modalita_pagamento_id a NULL (rev 2026-08-03, T.1).';
+IS 'rev 2026-09-21 (D14, quarta leva): la partita si legge da vendite.fn_partite_merce con il DDT chiesto come SEME (ARRAY[p_ddt_id]): la funzione calcola la CHIUSURA del documento, non le partite di tutti — e'' la lettura che paga il drawer a ogni apertura. Con p_ddt_id NULL (lista push, cockpit) il seme e'' NULL = tutte, com''era. Stessi numeri per costruzione: vw_partite_merce e'' la proiezione della stessa funzione. Lista righe DDT eligible al push su commessa. rev 2026-08-17 (partita generalizzata S5): la quantita'' da fatturare e'' la DIFFERENZA della partita di merce (vendite.vw_partite_merce), che e'' gia'' per riga di DDT — spariscono la ridistribuzione greedy della differenza d''ordine e il caso speciale che mandava standalone e compositi a dr.quantita GREZZA, cioe'' senza alcun conto. Tutte le famiglie di merce passano ora sotto lo stesso dosatore. ⚠️ Cambio di comportamento dichiarato: una partita NON MISURABILE (kit di cui non si ricostruisce la quantita'' del padre) non viene piu'' spinta — predicato esplicito AND pm.misurabile, non un COALESCE a zero. ⚠️ Nota per la nota di credito: quando una RETTIFICA abbassera'' il fatturato, la differenza tornera'' positiva e solo script.fn_get_stato_push_segment = LIBERA impedira'' la ri-spinta. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (DL-28). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI, cintura XOR != CONFERMATO PRESERVATA. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via fn_get_stato_push_segment. rev 2026-07-27: fatturazione_immediata dalla colonna. Espone termine_pagamento_id e modalita_pagamento_id a NULL (rev 2026-08-03, T.1).';
 ```
 
 ---

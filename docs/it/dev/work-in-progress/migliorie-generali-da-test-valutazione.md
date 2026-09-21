@@ -781,8 +781,89 @@ sospetti, quindi l'equivalenza sulle righe da sola non proverebbe il ramo),
 `test-fn-available-actions-ddt-reason-catch-all-v1` (8/8);
 `test-vw-situazione-merce-ordine-v1` 16/17 con il solo test 11 rosso, che è
 l'asserzione di **scope** e come owner è rossa anche senza il changeSet. Cancelli
-statici della CI verdi. ⏳ **In attesa di apply e della corsa come app.**
-La seconda leva (una lettura invece di due nella capability) resta aperta.
+statici della CI verdi. ✅ Applicato il 17-09 alle 12:39 (vista 375 → 88 ms
+da app, capability 850 → 230 ms).
+
+✅ **Terza leva scritta il 2026-09-21: `20_code/vendite/20260921-20-update-vw-partite-merce-af-condivisa`.**
+Fatto datato di partenza (dbdev, come app, DDT 131): vista intera ~90–130 ms,
+lister 112, diagnosi 93, capability ~290; la vista filtrata su un DDT costa
+quanto intera (120 ms). L'EXPLAIN dice dove va il tempo: `vw_af_merce_per_riga`
+— un `GROUP BY` su `attivita_fatturabili ⋈ commesse_attivita`, sotto la policy
+di `commesse_attivita` — è ricalcolata **quattro volte** dentro la vista
+(`acc_origine`, `alloc`, `fd`, `fr`: 16+15+20+17 ≈ 68 ms su 130), perché il
+planner non condivide un sottoalbero fra quattro `JOIN`. Sul modello è la stessa
+relazione derivata letta quattro volte: va in una CTE `af AS MATERIALIZED` in
+testa, proiezione senza filtro, con i quattro `JOIN` identici nei predicati —
+così l'equivalenza non ha bisogno di argomenti. Provata come sola `SELECT` in
+transazione ritirata: **~90 → ~56 ms**, `EXCEPT ALL` a zero nei due versi. Poi
+con l'**SQL estratto** dallo YAML (owner, transazione ritirata): `reloptions`
+intatte, `EXCEPT ALL` con la definizione viva a zero, COMMENT con la rev, una
+sola lettura di `vw_af_merce_per_riga` in `pg_get_viewdef`; nella stessa
+transazione **verdi** `test-vw-partite-merce-v1` (11/11),
+`test-vw-partite-merce-riconsegna-dopo-nc-v1` (8/8),
+`test-fn-list-ddt-da-pushare-contatore-v1` (7/7), `test-vw-contatore-merce-v1`
+(11/11), `test-fn-available-actions-ddt-reason-catch-all-v1` (8/8). Cancelli
+statici verdi. Manuale della vista aggiornato. ✅ **Applicato il 21-09 alle
+12:41** (`databasechangelog`, `EXECUTED`); la corsa come app è la misura
+«prima» della quarta leva (brief §5).
+
+⛔ **Le prime tre leve abbassano la costante; il titolo di D14 resta vero.** La
+vista non ha un parametro, e il modello non ha retention: la lettura di *un*
+documento paga le partite di *tutti*, e quel conto cresce con la storia. Sul
+modello però la dipendenza fra partite è **bounded**: le due finestre sono
+partizionate per `ordine_riga_id` (`alloc`) e per `ddt_riga_origine` (`migra`),
+quindi la chiusura di un DDT è a due salti. È la **quarta leva** — la partita
+per chiusura del documento — e insieme alla seconda (una lettura invece di due
+nella capability, che è una scelta di contratto: `push_ok` per costruzione dal
+lister o per pgTAP dalla diagnosi, e la precedenza dei rami
+`GIA_INVIATO`/`GIA_FATTURATO`) sta nel brief aperto il 21-09:
+`work-in-progress/brief-db-partita-merce-per-documento.md`. ⚠️ La rilettura
+del pomeriggio (§2-bis del brief) ha corretto la forma prima di scrivere una
+riga: corpo `BEGIN ATOMIC` (altrimenti riferimenti morti e catena RLS
+invisibili nel catalogo — `test-rls-viste-security-invoker` va allargato di un
+anello), vista con le colonne per nome (un `SELECT *` perde `numeric(18,6)`
+in silenzio), semi in `UNION ALL` e mai `p IS NULL OR …` (provato in piano
+generico: seq scan sotto policy), due FK senza indice sul cammino della
+chiusura, e la seconda leva riformulata come **una sola implementazione**
+dell'eleggibilità (lister derivato dalla diagnosi), non «una lettura invece
+di due». ✅ **D1–D5 decise da Tid il 21-09 sera**, e il **giro 1 è
+SCRITTO** la sera stessa: `20_code/vendite/20260921-21` (`fn_partite_merce`,
+`BEGIN ATOMIC`, semi per DDT e per ordine, chiusura R0/R1/O), `-22` (la vista
+come proiezione per nome, `consegnato::numeric(18,6)`), `-23` e `-24` (lister e
+diagnosi sul seme `ARRAY[p_ddt_id]`), `80_data/20260921-25` (le due FK
+`resi_righe(ddt_riga_id)` e `resi_righe_riconsegne(ddt_riga_id)` a
+`consentito=true`), `test-fn-partite-merce-chiusura-v1` (14 test a casi
+costruiti: ordine su tre DDT, accredito parziale con due ri-spedizioni, riga
+MULTIPLA) e `test-rls-viste-security-invoker` allargato all'anello funzione (5
+→ 7; la controprova: il file di HEAD sopra i changeSet segnala la vista uscita
+dal perimetro). Provato con l'SQL estratto in transazione ritirata: equivalenza
+a zero per ogni DDT e ogni ordine, piano generico con `Index Cond` +
+`One-Time Filter`, sei presidi esistenti verdi, guardrail riferimenti morti
+OK, sette cancelli statici OK, e il driver pgjdbc provato col jar di Liquibase
+(un `BEGIN ATOMIC` va **da solo** nel suo `sql:`). ✅ **Applicato da Tid il
+21-09 alle 14:46, pgTAP senza regressioni.** Misura «dopo» come app (brief
+§8.6): la partita di UN DDT **120 → 24 ms**, lister 112 → 52, diagnosi 93 →
+25, capability del DDT **~290 → 175 ms**; la vista intera resta 88 (stesse
+scansioni). Dentro i 24 ms, ~12 sono `af` letta intera — il pavimento di D5,
+che cresce con le fatture — e ~100 ms della capability stanno fuori dalla
+partita (check di emissione, segmenti): il prossimo bersaglio da misurare.
+Committato (`c60f39eaa`, PR #1634). ✏️ **Giro 2 (D3) SCRITTO la sera del
+21-09** (brief §9): `20260921-26 → -31` — `fn_situazione_merce_ordine` e
+`fn_resi_da_accreditare` (`BEGIN ATOMIC`, gli stessi due semi di
+`fn_partite_merce`), `vw_situazione_merce_ordine` e `vw_resi_da_accreditare`
+come loro proiezioni, `fn_accredita_riga_reso` e `fn_resi_riga_tetti_accredito`
+sul seme del DDT della riga resa; due pgTAP a casi costruiti (il DDT di mezzo
+con la situazione intera, le sorelle con capienza parziale, la riga `MULTIPLA`
+nella coda di entrambi gli ordini); diciassette presidi esistenti a esito
+identico sull'SQL estratto, piano generico con `Index Cond` e rami «tutti»
+mai eseguiti, guardrail e cancelli OK. ⚠️ Il censimento dal catalogo ha
+corretto il brief: i lettori per riga erano **due**, non sei, e
+`vw_contatore_merce` **non ha più lettori** (D6, decisione a Tid). ✅
+**Applicato da Tid il 21-09 alle 18:43**, pgTAP verdi (i due nuovi 12/12 come
+app). Misura come app (brief §9.7): situazione per ordine **187 → 20 ms**, per
+DDT 187 → 41, coda accrediti per DDT **115 → 36**, il guard dei tetti a ogni
+riga di ponte **→ 1.3 ms**; le viste intere invariate. Da committare. Restano
+D4 (B2) e D5.
 
 ---
 
@@ -943,11 +1024,20 @@ D6 e il registro dei rossi in CI.
       375 → 88 ms da app, capability DDT 850 → 230 ms). ✅ I due pgTAP lenti:
       `capability-motivi` >90 s → 36 s (blob una volta per documento),
       `annulla-aspetto` 49 → 11 → **2 s** (un documento per stato, decisione
-      di Tid). ⏳ Resta aperta la seconda leva: la capability del DDT legge la
-      vista **due** volte (lister + diagnosi) — derivare `push_ok` dalla
-      diagnosi la dimezzerebbe, ma è una scelta di contratto e vuole un brief.
-      Terza leva possibile, semantica invariata: `vw_af_merce_per_riga` letta
-      quattro volte dentro la vista (~12 ms l'una), una CTE condivisa.
+      di Tid). ✅ Terza leva **scritta il 21-09** (`20260921-20`,
+      `vw_af_merce_per_riga` letta una volta in una CTE `af` materializzata
+      invece di quattro: vista ~90 → ~56 ms da app, SQL estratto + cinque
+      pgTAP verdi in transazione ritirata), ⏳ **da applicare**. ⏳ Seconda
+      leva (una lettura invece di due nella capability: scelta di contratto)
+      e **quarta leva** (la partita per chiusura del documento, quella che
+      chiude il titolo) nel brief
+      `work-in-progress/brief-db-partita-merce-per-documento.md`, aperto il
+      21-09 — ✅ D1–D5 decise, giro 1 **applicato** il 21-09 (120 → 24 ms
+      per la partita di un DDT, come app), ✏️ giro 2 (D3: situazione ordine,
+      coda accrediti e i due verbi per documento) **applicato** la sera
+      stessa (situazione per ordine 187 → 20 ms, coda per DDT 115 → 36, come
+      app); 🔵 D6 (`vw_contatore_merce` senza lettori) da decidere;
+      restano D4 (B2) e D5.
 
 ### 🟡 Struttura
 
@@ -1149,9 +1239,11 @@ Il difetto di prodotto resta aperto (§3 D14), ma il pezzo che aveva **una
 misura** è chiuso: i due file che `pgtap-baseline.sh` uccideva oltre i 90 s ora
 girano (`capability-motivi` **36 s**, `annulla-aspetto` 49 → **2 s**), e la vista
 è passata a **`AS MATERIALIZED`** con `sospetto` set-based — **375 → 88 ms** da
-applicazione, capability DDT **850 → 230 ms**. Restano le due leve dichiarate in
-§3 (derivare `push_ok` dalla diagnosi, e la CTE condivisa su
-`vw_af_merce_per_riga`).
+applicazione, capability DDT **850 → 230 ms**. Il 21-09 la terza leva —
+`vw_af_merce_per_riga` letta una volta, `20260921-20`, vista ~90 → ~56 ms —
+è scritta e provata, da applicare. Restano la seconda leva (derivare `push_ok`
+dalla diagnosi) e la quarta (la partita per chiusura del documento), nel brief
+`brief-db-partita-merce-per-documento.md`.
 
 ---
 

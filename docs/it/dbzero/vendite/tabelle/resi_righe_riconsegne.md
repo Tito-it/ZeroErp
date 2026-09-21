@@ -33,6 +33,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_resi_righe_riconsegne_ddt_riga_id | `CREATE INDEX ix_resi_righe_riconsegne_ddt_riga_id ON vendite.resi_righe_riconsegne USING btree (ddt_riga_id)` |
 | pk_resi_riconsegne | `CREATE UNIQUE INDEX pk_resi_riconsegne ON vendite.resi_righe_riconsegne USING btree (id)` |
 | uq_resi_riconsegne_pair | `CREATE UNIQUE INDEX uq_resi_riconsegne_pair ON vendite.resi_righe_riconsegne USING btree (resi_riga_id, ddt_riga_id)` |
 

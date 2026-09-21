@@ -90,7 +90,7 @@
 
 ## ⚙️ Funzioni (manuale)
 - [fn_accoda_stampe_lotto](manual/fn_accoda_stampe_lotto.md) — (rev 2026-08-21)
-- [fn_accredita_riga_reso](manual/fn_accredita_riga_reso.md) — (rev 2026-08-18)
+- [fn_accredita_riga_reso](manual/fn_accredita_riga_reso.md) — (rev 2026-09-21 — la coda si legge per documento · rev 2026-08-18)
 - [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annulla_accredito_riga_reso](manual/fn_annulla_accredito_riga_reso.md) — (rev 2026-08-21 — funzione del 2026-08-18)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
@@ -204,6 +204,7 @@
 - [fn_ordine_riga_componenti_init](manual/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](manual/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](manual/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
+- [fn_partite_merce](manual/fn_partite_merce.md) — (latest review 2026-09-21)
 - [fn_popola_fatture_rettifiche](manual/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_ha_residuo_commessa](manual/fn_preventivo_ha_residuo_commessa.md) — `TRUE` se il **push commessa avrebbe effetto** sul preventivo: esistono righe eleggibili (vista predicato unico) **e** la testata e' completa. E' la meta' "servizi" della coppia simmetrica di capability del modello split-per-natura.
@@ -216,9 +217,10 @@
 - [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](manual/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — (latest review 22-08-2026)
+- [fn_resi_da_accreditare](manual/fn_resi_da_accreditare.md) — (latest review 2026-09-21)
 - [fn_resi_riga_accreditato_partita](manual/fn_resi_riga_accreditato_partita.md) — (rev 2026-08-18)
 - [fn_resi_riga_residuo_riconsegna](manual/fn_resi_riga_residuo_riconsegna.md) — (rev 2026-07-26)
-- [fn_resi_riga_tetti_accredito](manual/fn_resi_riga_tetti_accredito.md) — (rev 2026-08-18)
+- [fn_resi_riga_tetti_accredito](manual/fn_resi_riga_tetti_accredito.md) — (rev 2026-09-21 — il tetto si legge per documento · rev 2026-08-18)
 - [fn_resolve_fatturazione_pipeline_step](manual/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
 - [fn_resolve_iva_riga](manual/fn_resolve_iva_riga.md) — (latest review 30-08-2026)
 - [fn_resolve_iva_riga_it](manual/fn_resolve_iva_riga_it.md) — (latest review 30-08-2026)
@@ -248,6 +250,7 @@
 - [fn_set_documento_canale_stato](manual/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
 - [fn_set_fatturazione_lotto_stato](manual/fn_set_fatturazione_lotto_stato.md) — (latest review 27-01-2026)   La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato job** del lotto di fatturazione e allinea lo **stato operativo**.
 - [fn_set_runtime_task_run_esito](manual/fn_set_runtime_task_run_esito.md) — Helper condiviso per applicare l'esito runtime di un task-run nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
+- [fn_situazione_merce_ordine](manual/fn_situazione_merce_ordine.md) — (latest review 2026-09-21)
 - [fn_snapshot_fattura_lotto](manual/fn_snapshot_fattura_lotto.md) — (latest review 02-08-2026)
 - [fn_snapshot_indirizzi_fattura](manual/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
 - [fn_snapshot_intestazione_fattura](manual/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
@@ -416,13 +419,13 @@
 - [vw_preventivi_righe_smistabili_ordine](manual/vw_preventivi_righe_smistabili_ordine.md) — Vista **predicato unico** del ramo ordine: le righe preventivo **eleggibili** allo smistamento merce→ordine. Capability (`fn_preventivo_ha_residuo_ordine`), push (`fn_push_preventivo_a_ordine`) e Pannello Smistamento leggono da qui la stessa verita' (brief-preventivi-ordini.md D8).
 - [vw_preventivi_smistamento](manual/vw_preventivi_smistamento.md) — Aggregata per preventivo della vista righe smistamento: **contatori per ramo** per badge e progress della UI. Sostituisce `vw_preventivi_stato_fatturazione` (rename + rework natura-aware, 2026-06-12).
 - [vw_preventivi_smistamento_righe](manual/vw_preventivi_smistamento_righe.md) — Fonte dati del **Pannello Smistamento** (brief-db-smistamento-preventivi.md, B): una riga per ogni riga **attiva** del preventivo, con natura, destinazione e lo **stato di smistamento autorevole** per la UI. Sostituisce `vw_preventivi_stato_fatturazione_righe` (rename + rework natura-aware, 2026-06-12): i flag booleani `in_commessa`/`emessa_af`/`fatturata` sono stati **rimossi** — `stato_smistamento` e' l'unica verita'.
-- [vw_resi_da_accreditare](manual/vw_resi_da_accreditare.md) — (rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware; rev 2026-07-18 forma cambiata)
+- [vw_resi_da_accreditare](manual/vw_resi_da_accreditare.md) — (rev 2026-09-21 — la vista è la proiezione di `fn_resi_da_accreditare`; rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware; rev 2026-07-18 forma cambiata)
 - [vw_resi_da_riconsegnare](manual/vw_resi_da_riconsegnare.md) — (rev 2026-07-26)
 - [vw_resi_lista](manual/vw_resi_lista.md) — (rev 2026-07-13)
 - [vw_resi_righe_dettaglio](manual/vw_resi_righe_dettaglio.md) — (latest review 25-08-2026)
 - [vw_resi_righe_effettive](manual/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
 - [vw_segnalazioni_con_documento_ignoto](manual/vw_segnalazioni_con_documento_ignoto.md) — (latest review 2026-09-08)
-- [vw_situazione_merce_ordine](manual/vw_situazione_merce_ordine.md) — (rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
+- [vw_situazione_merce_ordine](manual/vw_situazione_merce_ordine.md) — (rev 2026-09-21 — la vista è la proiezione di `fn_situazione_merce_ordine` · rev 2026-09-13 — le date e il ritardo · rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](manual/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_ddt](manual/vw_stato_sorgente_ddt.md) — (latest review 2026-07-18)
 - [vw_stato_sorgente_offerta](manual/vw_stato_sorgente_offerta.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_offerta` è il **resolver del dominio OFFERTA** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni offerta commerciale — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_offerte` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.

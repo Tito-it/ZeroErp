@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — IL TETTO DELL'ACCREDITO SI LEGGE PER DOCUMENTO (giro 2 — D3)
+#   brief-db-partita-merce-per-documento §2.2 (i verbi dei resi), §7 «Giro 2»;
+#   decisione D3 di Tid del 2026-09-21.
+#
+# ── COSA CAMBIA ────────────────────────────────────────────────────────
+#
+#   fn_resi_riga_tetti_accredito e' chiamata da trgfn_resi_accrediti_guard a
+#   OGNI riga scritta sul ponte resi_righe_accrediti (e dalla madre): leggeva
+#   `accredito_dovuto` da vw_resi_da_accreditare — la coda di TUTTI — per una
+#   riga sola. Ora legge fn_resi_da_accreditare col seme del DDT della riga
+#   resa: la coda di quel documento. Il tetto e' lo stesso numero (la vista e'
+#   la proiezione della funzione). Contratto e semantica invariati: 0 e non
+#   NULL sull'assenza, che e' il valore fail-closed.
+#
+#   ⚠️ `COALESCE((SELECT ARRAY[dr.ddt_id] …), '{}')`: su una riga di reso
+#   inesistente il sub-select e' NULL, e fn(NULL, NULL) sarebbe «tutta la
+#   coda» — pagata per rispondere 0. Vuoto semina zero righe: 0 comunque, e
+#   senza scandire nulla.
+#
+# ── SECURITY DEFINER, e cosa NON cambia ────────────────────────────────
+#
+#   Resta DEFINER con search_path fissato: i chiamanti sono un guard e una
+#   madre, e sotto RLS un tetto letto zero smette di dire la verita'. Dentro
+#   una DEFINER la funzione INVOKER a valle (fn_resi_da_accreditare, e sotto
+#   fn_partite_merce) gira come l'owner: SOPRA la RLS, esattamente com'era la
+#   vista con security_invoker letta dall'owner. I corpi BEGIN ATOMIC hanno i
+#   nomi risolti alla creazione: il search_path stretto non li tocca; questo
+#   corpo (stringa) nomina tutto con lo schema.
+#
+# ── ORIGINE DEL CORPO ──────────────────────────────────────────────────
+#
+#   Dall'ultimo YAML (20260818-36, firma e RETURNS TABLE ancorati) confrontato
+#   col vivo (pg_get_functiondef, 21-09: identico a meno dei %TYPE sciolti);
+#   l'unica modifica e' la sorgente del primo tetto.
+#
+# Presidio: test-fn-resi-da-accreditare-chiusura-v1 (il guard attraverso la
+#   funzione: tetto 3 alla prima sorella, 0 alla seconda) + i pgTAP del ponte
+#   (test-fn-accredita-riga-reso-v1, test-annulla-accredito-riga-reso-v1,
+#   test-accredito-kit-meta-v1), invariati.
+# Dipendenze: 20260921-28 (fn_resi_da_accreditare).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-31-update-fn-resi-riga-tetti-accredito-partita-per-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260921-31-update-fn-resi-riga-tetti-accredito-partita-per-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 2 (D3): vendite.fn_resi_riga_tetti_accredito legge accredito_dovuto
+        da fn_resi_da_accreditare(ARRAY[ddt della riga resa], NULL) invece che da
+        vw_resi_da_accreditare intera; COALESCE a '{}' se la riga non c'e'.
+        DEFINER, search_path, contratto e fail-closed a 0 invariati.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_resi_da_accreditare'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_resi_riga_tetti_accredito'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosecdef
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_tetti_accredito(
+                  -- ⚠️ Tipi ANCORATI con %TYPE, firma e RETURNS TABLE comprese
+                  --    (linee-guida-sql §5b).
+                  p_resi_riga_id    vendite.resi_righe.id%TYPE,
+                  p_fattura_riga_id vendite.fatture_righe.id%TYPE
+              )
+               RETURNS TABLE(accredito_dovuto vendite.resi_righe_accrediti.qta_partita%TYPE,
+                             qta_riga_fattura vendite.fatture_righe.qta%TYPE)
+               LANGUAGE sql
+               STABLE
+               SECURITY DEFINER
+               SET search_path = pg_catalog, pg_temp
+              AS $function$
+              -- Scopo: i due tetti dell'accredito, letti SOPRA la RLS.
+              --   - accredito_dovuto: quanti pezzi (in unita' di MERCE, cioe'
+              --     unita' padre) il conto della merce dichiara accreditabili
+              --     per questa riga di reso. Lo consuma la madre, che verifica
+              --     l'uguaglianza di D-NC-6;
+              --   - qta_riga_fattura: quanti pezzi ha fatturato la riga di
+              --     fattura che si sta rettificando. Lo consuma il guard del
+              --     ponte, come tetto del DOCUMENTO.
+              -- ⚠️ SECURITY DEFINER perche' i chiamanti sono un guard e una
+              --   madre: sotto RLS una riga fuori perimetro si legge come «non
+              --   c'e'», e un tetto letto zero smette di dire la verita'. Il
+              --   search_path e' fissato perche' una SECURITY DEFINER senza e'
+              --   dirottabile.
+              -- ⚠️ Zero e non NULL sull'assenza: e' il valore fail-closed. Una
+              --   riga fuori dalla coda ha accredito dovuto 0, e qualunque
+              --   quantita' positiva lo supera.
+              -- ⭐ rev 2026-09-21 (D14 giro 2, D3): la coda si legge PER
+              --   DOCUMENTO — fn_resi_da_accreditare col seme del DDT della
+              --   riga resa — e non piu' dalla vista, che e' la coda di TUTTI
+              --   e qui veniva pagata a ogni riga scritta sul ponte. Dentro
+              --   questa DEFINER la funzione (INVOKER) gira come l'owner: sopra
+              --   la RLS, com'era la vista. COALESCE a '{}' se la riga non
+              --   c'e': un array NULL sarebbe «tutta la coda».
+              SELECT
+                  COALESCE((SELECT sum(q.accredito_dovuto)
+                              FROM vendite.fn_resi_da_accreditare(
+                                       COALESCE((SELECT ARRAY[dr.ddt_id]
+                                                   FROM vendite.resi_righe rr
+                                                   JOIN vendite.ddt_righe dr ON dr.id = rr.ddt_riga_id
+                                                  WHERE rr.id = p_resi_riga_id),
+                                                '{}'::bigint[]),
+                                       NULL::bigint[]) q
+                             WHERE q.resi_riga_id = p_resi_riga_id), 0)::numeric,
+                  COALESCE((SELECT fr.qta
+                              FROM vendite.fatture_righe fr
+                             WHERE fr.id = p_fattura_riga_id), 0)::numeric;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resi_riga_tetti_accredito(bigint, bigint)
+              IS 'I due tetti dell''accredito di una riga di reso, letti SOPRA la RLS: l''accredito dovuto secondo il conto della merce (in unita'' PADRE) e la quantita'' della riga di fattura che si sta rettificando (in unita'' di riga). ⭐ rev 2026-09-21 (D14 giro 2, D3): il primo tetto si legge PER DOCUMENTO da vendite.fn_resi_da_accreditare(ARRAY[ddt della riga resa], NULL) — la coda di quel DDT — e non piu'' da vw_resi_da_accreditare intera, che questo guard pagava a ogni riga scritta sul ponte; stesso numero (la vista e'' la proiezione della funzione). ⚠️ SECURITY DEFINER perche'' i consumatori sono un guard (trgfn_resi_accrediti_guard) e una funzione madre: sotto RLS una riga fuori perimetro si legge come «non c''e''», e un tetto letto zero smette di dire la verita''. Dentro la DEFINER la funzione INVOKER a valle gira come l''owner, sopra la RLS. search_path fissato: una SECURITY DEFINER senza e'' dirottabile (i corpi BEGIN ATOMIC a valle hanno i nomi gia'' risolti). Restituisce 0 sull''assenza, che e'' il valore fail-closed; su una riga inesistente il seme e'' ''{}'' (zero righe, non «tutta la coda»). ⭐ Le due misure sono in UNITA'' DIVERSE e vanno consumate da due presidi diversi: su un articolo composito tre righe di documento valgono UNA unita'' di merce (vw_af_merce_per_riga calcola quantita_padre = max(quantita/coeff_qta), non la somma). brief-design-note-credito-resi D-NC-10. rev 2026-08-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non si torna indietro da soli: va ri-applicato 20260818-36, che
+              --    legge il tetto dalla vista.
+              SELECT 1;

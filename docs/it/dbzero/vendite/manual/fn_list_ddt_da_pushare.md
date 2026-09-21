@@ -8,6 +8,7 @@
 > [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare)
 > [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
 > [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+> [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita, per documento (rev 2026-09-21)
 
 ---
 ### 🎯 Scopo Principale
@@ -146,4 +147,21 @@ Presidio a valle: dopo il push il flag non è più modificabile sul documento
 
 Brief: `brief-db-emissione-fattura-per-documento-sorgente` PARTE B (step B3).
 
+---
+
+### 🔄 rev 2026-09-21 — la partita si legge per documento (D14, quarta leva)
+
+ChangeSet `20260921-23`. Il lister leggeva `vw_partite_merce` in `JOIN`, e la
+vista calcola le partite di **tutti** i DDT anche quando `p_ddt_id` ne chiede
+uno — cioè a ogni apertura del drawer, dalla capability. Ora legge
+[`fn_partite_merce`](/dbzero/vendite/funzioni/fn_partite_merce) con il DDT
+chiesto come seme (`ARRAY[p_ddt_id]`): la **chiusura** del documento. Con
+`p_ddt_id NULL` (la lista del push, il cockpit) il seme è `NULL` = tutte,
+com'era. Stessi predicati, stesso contratto verso la pipeline, stessi numeri: la
+vista è la proiezione della stessa funzione.
+
+⚠️ Il seme è un `CASE` senza colonne: in piano custom si piega a un letterale,
+in piano generico (dalla sesta esecuzione plpgsql) la funzione lo riceve come
+parametro e i suoi rami in `UNION ALL` lo trattano da *One-Time Filter* — mai
+una scansione intera (brief `brief-db-partita-merce-per-documento` §2-bis.2).
 {% include-markdown "signature-core.md" %}

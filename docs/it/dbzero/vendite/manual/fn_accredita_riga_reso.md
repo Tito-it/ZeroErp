@@ -23,7 +23,7 @@ Viste e funzioni:
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-18)
+(rev 2026-09-21 — la coda si legge per documento · rev 2026-08-18)
 
 **Il verbo che mancava.** La coda accrediti esisteva da luglio e non portava da
 nessuna parte:
@@ -181,13 +181,32 @@ click perfettamente coerente col conto.
 Due presidi, e nessuno dei due è un flag da mantenere:
 
 1. l'accredito è registrato **al momento del verbo** in
-   `vendite.resi_righe_accrediti`, e `vw_resi_da_accreditare` sottrae la quota
-   già accreditata → **la riga esce dalla coda subito**;
+   `vendite.resi_righe_accrediti`, e la coda (`fn_resi_da_accreditare`, di cui
+   `vw_resi_da_accreditare` è la proiezione) sottrae la quota già accreditata →
+   **la riga esce dalla coda subito**;
 2. la `UNIQUE (resi_riga_id, fattura_riga_rettificata_id)` del ponte ferma
    comunque il doppione esatto.
 
 L'operatore lo scopre **quando clicca**, non a fine batch su un documento
 fiscale.
+
+---
+
+### 🔄 rev 2026-09-21 — la coda si legge PER DOCUMENTO (D14, giro 2 — D3)
+
+ChangeSet `20260921-30`. Al passo 2 la madre chiedeva la riga a
+`vw_resi_da_accreditare`, cioè alla coda di **tutti** i resi — partite di
+tutti, resi di tutti, una funzione per ogni riga confermata — per accreditarne
+**una**. Ora legge prima il DDT della riga resa e chiama
+[`fn_resi_da_accreditare(ARRAY[ddt], NULL)`](fn_resi_da_accreditare.md): la
+coda di quel documento. Il numero è lo stesso (la vista è la proiezione della
+funzione); contratto, guard, errori, lock e scritture non cambiano.
+
+⚠️ Se la riga non c'è — o chi agisce non la vede, RLS — il DDT letto è `NULL`,
+e `ARRAY[NULL]` semina **zero** righe: si cade nel `NOT FOUND` di prima
+(`E_ACCREDITO_NON_IN_CODA` / `E_ACCREDITO_GIA_ESEGUITO`). Un array `NULL`,
+invece, sarebbe «tutta la coda»: la differenza fra i due è la ragione della
+variabile in più.
 
 ---
 

@@ -18,13 +18,19 @@
 --                           20260707-10 (ripristino), 20260907-04 (l'ultima
 --                           scoperta, trovata proprio da questo criterio)
 --
--- Indice test (plan 5):
+-- Indice test (plan 7):
 --   1) ⭐ il criterio COPRE tutto cio' che i quattro elenchi a mano garantivano
 --   2) ⛔ IL PRESIDIO: nessuna vista che tocca dati in RLS e' priva del flag
 --   3) ⛔ il criterio e' TRANSITIVO: prende una vista che arriva alla tabella
 --      attraverso un'altra vista (caso COSTRUITO)
 --   4) ⚠️ e prende anche il caso diretto a un anello solo (caso COSTRUITO)
 --   5) ⚠️ e NON prende una vista che dati protetti non ne tocca (caso COSTRUITO)
+--   6) ⭐ (rev 2026-09-21) e ATTRAVERSA una FUNZIONE `BEGIN ATOMIC` INVOKER:
+--      una vista che legge una tabella in RLS solo tramite la funzione resta
+--      nel perimetro (caso COSTRUITO — e' la forma di vw_partite_merce)
+--   7) ⛔ (rev 2026-09-21) ma una funzione SECURITY DEFINER in mezzo SPEGNE la
+--      catena come una vista senza flag: la vista sopra e' un trasgressore,
+--      anche col suo flag acceso (caso COSTRUITO)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ IL PROBLEMA, E PERCHE' NON SI VEDE.
@@ -60,6 +66,20 @@
 --   il caso del 20260907-04. Per questo il test 3 non e' un di piu': senza, il
 --   criterio sarebbe cieco proprio dove il difetto e' vissuto piu' a lungo.
 --
+-- ⭐ E LA CATENA PASSA ANCHE PER LE FUNZIONI (rev 2026-09-21, D14 quarta leva).
+--   vendite.vw_partite_merce e' la proiezione di vendite.fn_partite_merce: la
+--   sua regola di riscrittura dipende da una FUNZIONE, non da tabelle. Se il
+--   criterio si fermasse li', la vista USCIREBBE dal perimetro in silenzio (il
+--   test 1 lo avrebbe detto, perche' la nomina; una vista nuova nella stessa
+--   forma no). Si cammina quindi anche pg_proc → pg_depend: e' possibile SOLO
+--   per le funzioni `BEGIN ATOMIC`, che registrano le dipendenze nel catalogo —
+--   una `LANGUAGE sql` a stringa o una plpgsql sono OPACHE, e una vista che
+--   arriva ai dati solo attraverso di loro non e' presidiabile da qui (e' la
+--   ragione per cui una vista-proiezione si scrive su un corpo BEGIN ATOMIC).
+--   ⛔ Una funzione SECURITY DEFINER in mezzo gira come il suo owner: e' un
+--   anello SPENTO, esattamente come una vista senza flag — la catena e' spenta
+--   e la vista sopra e' un trasgressore anche col flag acceso.
+--
 -- ⚠️ COSA QUESTO TEST NON DICE. Che una vista abbia il flag non significa che
 --   la RLS a valle sia scritta bene: dice solo che verra' applicata a chi legge.
 --   Le policy si provano nei file `test-rls-*` accanto a questo.
@@ -72,7 +92,7 @@ BEGIN;
 --   file sarebbe verde per sottrazione.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(5);
+SELECT plan(7);
 
 -- ============================================================
 -- Il criterio, in un posto solo
@@ -81,34 +101,50 @@ SELECT plan(5);
 --   viste. La ricorsione e' il punto: vedi la nota sulla catena, in testa.
 CREATE TEMP VIEW _tocca_rls AS
 WITH RECURSIVE dip AS (
-    -- Da che cosa dipende ogni vista: si legge dalla sua regola di riscrittura.
-    SELECT rw.ev_class AS vista_oid, d.refobjid AS dip_oid
+    -- Da che cosa dipende ogni vista: si legge dalla sua regola di riscrittura
+    -- (tabelle, altre viste, e — rev 2026-09-21 — FUNZIONI).
+    SELECT rw.ev_class AS da_oid, d.refobjid AS dip_oid, false AS spento
       FROM pg_rewrite rw
       JOIN pg_depend d ON d.objid = rw.oid AND d.classid = 'pg_rewrite'::regclass
      -- ⚠️ Una vista dipende anche da se stessa: senza questa riga la
      --   ricorsione non termina.
      WHERE d.refobjid <> rw.ev_class
+    UNION ALL
+    -- Da che cosa dipende ogni funzione `BEGIN ATOMIC`: le sue dipendenze
+    -- stanno in pg_depend (una funzione a stringa non ne ha: e' opaca).
+    -- ⛔ Una SECURITY DEFINER e' un anello SPENTO: si attraversa lo stesso —
+    --   la vista sopra DEVE comparire — ma la catena porta il segno.
+    SELECT p.oid, d.refobjid, p.prosecdef
+      FROM pg_proc p
+      JOIN pg_depend d ON d.objid = p.oid AND d.classid = 'pg_proc'::regclass
+     WHERE p.prosqlbody IS NOT NULL
+       AND d.refclassid IN ('pg_class'::regclass, 'pg_proc'::regclass)
+       AND d.refobjid <> p.oid
 ), catena AS (
-    SELECT v.oid AS vista_oid, d.dip_oid
-      FROM pg_class v JOIN dip d ON d.vista_oid = v.oid
+    SELECT v.oid AS vista_oid, d.dip_oid, d.spento
+      FROM pg_class v JOIN dip d ON d.da_oid = v.oid
      WHERE v.relkind = 'v'
     UNION
-    SELECT c.vista_oid, d.dip_oid
-      FROM catena c JOIN dip d ON d.vista_oid = c.dip_oid
+    SELECT c.vista_oid, d.dip_oid, (c.spento OR d.spento)
+      FROM catena c JOIN dip d ON d.da_oid = c.dip_oid
 )
-SELECT DISTINCT
-       n.nspname::text AS sch,
+SELECT n.nspname::text AS sch,
        v.relname::text AS vista,
-       COALESCE((SELECT o.option_value::boolean
-                   FROM pg_options_to_table(v.reloptions) o
-                  WHERE o.option_name = 'security_invoker'), false) AS invoker
+       -- Accesa SOLO se ha il flag E nessuna funzione DEFINER sul cammino
+       -- verso una tabella protetta: sei anelli accesi e uno spento fanno
+       -- una catena spenta (vedi la nota in testa).
+       (COALESCE((SELECT o.option_value::boolean
+                    FROM pg_options_to_table(v.reloptions) o
+                   WHERE o.option_name = 'security_invoker'), false)
+        AND NOT bool_or(c.spento)) AS invoker
   FROM catena c
   JOIN pg_class v     ON v.oid = c.vista_oid AND v.relkind = 'v'
   JOIN pg_namespace n ON n.oid = v.relnamespace
   JOIN pg_class t     ON t.oid = c.dip_oid
                      AND t.relkind = 'r'
                      AND t.relrowsecurity
- WHERE n.nspname NOT IN ('pg_catalog', 'information_schema');
+ WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+ GROUP BY n.nspname, v.relname, v.reloptions;
 
 -- ============================================================
 -- 1. ⭐ LA MIGRAZIONE NON PERDE NIENTE
@@ -214,6 +250,49 @@ DROP VIEW dbops.pgtap_si_innocua;
 DROP VIEW dbops.pgtap_si_diretta;
 DROP VIEW dbops.pgtap_si_indiretta;
 DROP VIEW dbops.pgtap_si_ponte;
+
+-- ============================================================
+-- 6-7) L'anello FUNZIONE (rev 2026-09-21): la forma di vw_partite_merce.
+-- ⚠️ `BEGIN ATOMIC`, non `AS $$…$$`: solo cosi' la dipendenza dalla tabella
+--   sta nel catalogo e il criterio ha qualcosa da leggere.
+-- ============================================================
+CREATE FUNCTION dbops.pgtap_si_fn_invoker() RETURNS TABLE(id bigint)
+LANGUAGE sql STABLE
+BEGIN ATOMIC
+    SELECT c.id FROM vendite.contratti c;
+END;
+
+CREATE FUNCTION dbops.pgtap_si_fn_definer() RETURNS TABLE(id bigint)
+LANGUAGE sql STABLE SECURITY DEFINER
+BEGIN ATOMIC
+    SELECT c.id FROM vendite.contratti c;
+END;
+
+-- Flag acceso, tabella raggiunta SOLO attraverso la funzione invoker: e' nel
+-- perimetro ed e' in regola.
+CREATE VIEW dbops.pgtap_si_via_fn WITH (security_invoker = on) AS
+    SELECT f.id FROM dbops.pgtap_si_fn_invoker() f;
+
+-- Flag acceso, ma la funzione in mezzo e' DEFINER: catena spenta, trasgressore.
+CREATE VIEW dbops.pgtap_si_via_definer WITH (security_invoker = on) AS
+    SELECT f.id FROM dbops.pgtap_si_fn_definer() f;
+
+SELECT isnt_empty(
+    $$SELECT vista FROM _tocca_rls
+       WHERE sch = 'dbops' AND vista = 'pgtap_si_via_fn' AND invoker$$,
+    '6. il criterio attraversa una funzione BEGIN ATOMIC invoker: la vista resta nel perimetro, in regola'
+);
+
+SELECT isnt_empty(
+    $$SELECT vista FROM _tocca_rls
+       WHERE sch = 'dbops' AND vista = 'pgtap_si_via_definer' AND NOT invoker$$,
+    '7. una funzione SECURITY DEFINER in mezzo spegne la catena: la vista sopra e'' un trasgressore anche col flag'
+);
+
+DROP VIEW dbops.pgtap_si_via_definer;
+DROP VIEW dbops.pgtap_si_via_fn;
+DROP FUNCTION dbops.pgtap_si_fn_definer();
+DROP FUNCTION dbops.pgtap_si_fn_invoker();
 
 SELECT * FROM finish();
 
