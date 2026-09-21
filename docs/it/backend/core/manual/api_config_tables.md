@@ -32,6 +32,20 @@ Le **colonne** della tabella (tipo, nullabilita', default…), lette
 dall'introspezione. E' quello che permette al FE di generare il form senza
 sapere in anticipo che tabella sia.
 
+⭐ **Dal 2026-09-21 il metadata legge anche le chiavi esterne**: ogni colonna
+porta `references` (`<schema>.<tabella>` nominata dalla FK a una colonna, o
+`null`), `references_column` (la colonna referenziata — **non e' sempre `id`**:
+`config.stati_doc_*.esito` punta a `esiti_flussi_pratiche(codice_interno)`, e
+il FE la usa come `valueField` della `LookupSelect`) e `references_lookup`
+(`true` se quella tabella e' in `_REL_CONSENTITE` **e** la colonna referenziata
+e' fra quelle che il lookup restituisce, `LOOKUP_COLONNE_VALORE` =
+`id`/`codice`/`codice_interno`; `false` = resta un valore a mano, e il drawer
+lo dichiara). Chi possiede whitelist e contratto del lookup decide: il FE non
+li conosce.
+⚠️ Escluse, oltre alle colonne di audit e `tx_id`/`storicizza`, le **identita'
+tecniche** che scrive il DB (`uid` con default `uuidv7()`): un campo che
+l'operatore non deve compilare non si mostra come obbligatorio.
+
 ### 3. `GET /api/v1/core/config/tables/{rel}/`
 
 Lista paginata dei record.
@@ -62,9 +76,18 @@ Dettaglio e aggiornamento parziale di un record.
 
 | codice | quando |
 |---|---|
-| `E_CORE_VALIDATION` | `rel` fuori whitelist, oppure payload rifiutato |
+| `E_CORE_VALIDATION` | `rel` fuori whitelist; oppure il DB rifiuta il record per un **CHECK**, una **FK** o un **NOT NULL** — con `fields` che nomina la colonna (dal vincolo, se e' a una colonna; su un NOT NULL dal `column_name` di PostgreSQL) |
 | `E_ANAG_NOT_FOUND` | record inesistente |
-| `E_ANAG_DUPLICATO` | violazione di unicita' tradotta da `IntegrityError` |
+| `E_ANAG_DUPLICATO` | violazione di **unicita'**, con `fields` = la colonna se il vincolo e' a una colonna |
+| il codice del **trigger** (`CODICE_NON_MODIFICABILE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, …) | un `P0001` del DB passa **com'e'**: il codice lo dichiara il DB (`translate_db_errors`) |
+
+⚠️ **Fino al 2026-09-21 OGNI `IntegrityError` era «Record gia' esistente»**: un
+`CHECK` violato, una FK sbagliata, un NOT NULL — tutti «duplicato», senza
+campo. Ora il service passa dal BB `translate_db_errors`, e le mappe per nome
+di vincolo le legge dal **catalogo della tabella** (`pg_constraint`, via
+`ConfigMetadataRepository.get_table_constraints`) invece di scriverle a mano
+per ~90 tabelle. Il campo si dichiara solo sui vincoli a una colonna: un campo
+inventato accende l'input sbagliato.
 
 ⚠️ **I due codici `E_ANAG_*` su endpoint `core` non sono un refuso**: il service
 riusa i codici della famiglia anagrafiche (`config_crud_service.py`). E' un

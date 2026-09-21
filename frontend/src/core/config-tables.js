@@ -1,88 +1,94 @@
 // Registro centralizzato tabelle config gestibili dal pannello.
 // Fonte unica di verita': aggiungere una tabella = aggiungere una riga.
-// La whitelist backend (_REL_CONSENTITE) controlla l'accesso.
-// Il campo `drawer` determina quale drawer aprire (null = generico).
+// La whitelist backend (_REL_CONSENTITE) controlla l'accesso, ED E' ANCHE il
+// perimetro di cio' che il pannello sa listare: la lista passa dal lookup
+// generico, quindi una tabella senza `codice`/`descrizione` qui NON entra.
+// ⛔ Qui stanno i VOCABOLARI (codice, descrizione, attivo, qualche flag), resi
+// dal drawer generico metadata-driven. Un'anagrafica con chiavi esterne «vere»
+// (un magazzino con emittente e indirizzo, un'ubicazione con magazzino e
+// padre, un lotto con articolo) ha endpoint e drawer propri nel suo dominio:
+// il 2026-09-21 `magazzino.magazzini/ubicazioni/lotti` sono uscite da qui per
+// quella ragione (piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config).
+// Il presidio che ogni riga sia servibile per intero (lista, metadata,
+// etichette) e' `apps/core/tests/db/test_config_panel_registro_db.py`.
 
 export const CONFIG_TABLES = [
   // --- config ---
-  { schema: 'config', rel: 'config.ambiti', label: 'Ambiti', drawer: null },
-  { schema: 'config', rel: 'config.aree_funzionali', label: 'Aree Funzionali', drawer: null },
-  { schema: 'config', rel: 'config.aspetti_beni', label: 'Aspetti Beni', drawer: null },
-  { schema: 'config', rel: 'config.assets_ownership', label: 'Assets Ownership', drawer: null },
-  { schema: 'config', rel: 'config.canali_pratiche', label: 'Canali Pratiche', drawer: null },
-  { schema: 'config', rel: 'config.categoria_accisa', label: 'Categoria Accisa', drawer: null },
-  { schema: 'config', rel: 'config.causali_trasporto', label: 'Causali Trasporto', drawer: null },
-  { schema: 'config', rel: 'config.classi_utenze', label: 'Classi Utenze', drawer: null },
-  { schema: 'config', rel: 'config.conti_contabili', label: 'Conti Contabili', drawer: null },
-  { schema: 'config', rel: 'config.forme_giuridiche', label: 'Forme Giuridiche', drawer: null },
-  { schema: 'config', rel: 'config.iva', label: 'IVA', drawer: null },
-  { schema: 'config', rel: 'config.iva_assoggettamenti', label: 'IVA Assoggettamenti', drawer: null },
-  { schema: 'config', rel: 'config.iva_natura', label: 'IVA Natura', drawer: null },
-  { schema: 'config', rel: 'config.lingue', label: 'Lingue', drawer: null },
-  { schema: 'config', rel: 'config.modalita_addebito_trasporto', label: 'Modalita\' Addebito Trasporto', drawer: null },
-  { schema: 'config', rel: 'config.modalita_pagamento', label: 'Modalita\' Pagamento', drawer: null },
-  { schema: 'config', rel: 'config.note_stili', label: 'Note Stili', drawer: null },
-  { schema: 'config', rel: 'config.priorita_pratiche', label: 'Priorita\' Pratiche', drawer: null },
-  { schema: 'config', rel: 'config.qualifiche', label: 'Qualifiche', drawer: null },
-  { schema: 'config', rel: 'config.sistema_codici', label: 'Sistema Codici', drawer: null },
-  { schema: 'config', rel: 'config.sorgenti', label: 'Sorgenti', drawer: null },
-  { schema: 'config', rel: 'config.stati', label: 'Stati', drawer: null },
-  { schema: 'config', rel: 'config.stati_assets', label: 'Stati Assets', drawer: null },
-  { schema: 'config', rel: 'config.stati_cliente', label: 'Stati Cliente', drawer: null },
-  { schema: 'config', rel: 'config.stati_doc_contratti', label: 'Stati Doc. Contratti', drawer: null },
-  { schema: 'config', rel: 'config.stati_doc_ddt', label: 'Stati Doc. DDT', drawer: null },
-  { schema: 'config', rel: 'config.stati_doc_fiscale', label: 'Stati Doc. Fiscale', drawer: null },
-  { schema: 'config', rel: 'config.stati_doc_ordini', label: 'Stati Doc. Ordini', drawer: null },
-  { schema: 'config', rel: 'config.stati_doc_preventivi', label: 'Stati Doc. Preventivi', drawer: null },
-  { schema: 'config', rel: 'config.stati_doc_reso', label: 'Stati Doc. Reso', drawer: null },
-  { schema: 'config', rel: 'config.stati_flussi_pratiche', label: 'Stati Flussi Pratiche', drawer: null },
-  { schema: 'config', rel: 'config.stati_pdp', label: 'Stati PDP', drawer: null },
-  { schema: 'config', rel: 'config.stati_pratiche', label: 'Stati Pratiche', drawer: null },
-  { schema: 'config', rel: 'config.stati_sdi', label: 'Stati SDI', drawer: null },
-  { schema: 'config', rel: 'config.termini_pagamento', label: 'Termini Pagamento', drawer: null },
-  { schema: 'config', rel: 'config.tipi_allegato', label: 'Tipi Allegato', drawer: null },
-  { schema: 'config', rel: 'config.tipi_attivita', label: 'Tipi Attivita\'', drawer: null },
-  { schema: 'config', rel: 'config.tipi_contatti', label: 'Tipi Contatti', drawer: null },
-  { schema: 'config', rel: 'config.tipi_doc_fiscale', label: 'Tipi Doc. Fiscale', drawer: null },
-  { schema: 'config', rel: 'config.tipi_documenti', label: 'Tipi Documenti', drawer: null },
-  { schema: 'config', rel: 'config.tipi_evento_assets', label: 'Tipi Evento Assets', drawer: null },
-  { schema: 'config', rel: 'config.tipi_indirizzi', label: 'Tipi Indirizzi', drawer: null },
-  { schema: 'config', rel: 'config.tipi_nota', label: 'Tipi Nota', drawer: null },
-  { schema: 'config', rel: 'config.tipi_reso', label: 'Tipi Reso', drawer: null },
-  { schema: 'config', rel: 'config.tipi_ruoli', label: 'Tipi Ruoli', drawer: null },
-  { schema: 'config', rel: 'config.tipi_soggetto_dettaglio', label: 'Tipi Soggetto Dettaglio', drawer: null },
-  { schema: 'config', rel: 'config.tipi_ubicazione', label: 'Tipi Ubicazione', drawer: null },
-  { schema: 'config', rel: 'config.tipi_utenze', label: 'Tipi Utenze', drawer: null },
-  { schema: 'config', rel: 'config.titoli_cortesia', label: 'Titoli Cortesia', drawer: null },
-  { schema: 'config', rel: 'config.unita_organizzative', label: 'Unita\' Organizzative', drawer: null },
-  { schema: 'config', rel: 'config.utilities', label: 'Utilities', drawer: null },
-  { schema: 'config', rel: 'config.valute', label: 'Valute', drawer: null },
+  { schema: 'config', rel: 'config.ambiti', label: 'Ambiti' },
+  { schema: 'config', rel: 'config.aree_funzionali', label: 'Aree Funzionali' },
+  { schema: 'config', rel: 'config.aspetti_beni', label: 'Aspetti Beni' },
+  { schema: 'config', rel: 'config.assets_ownership', label: 'Assets Ownership' },
+  { schema: 'config', rel: 'config.canali_pratiche', label: 'Canali Pratiche' },
+  { schema: 'config', rel: 'config.categoria_accisa', label: 'Categoria Accisa' },
+  { schema: 'config', rel: 'config.causali_trasporto', label: 'Causali Trasporto' },
+  { schema: 'config', rel: 'config.classi_utenze', label: 'Classi Utenze' },
+  { schema: 'config', rel: 'config.conti_contabili', label: 'Conti Contabili' },
+  { schema: 'config', rel: 'config.forme_giuridiche', label: 'Forme Giuridiche' },
+  { schema: 'config', rel: 'config.iva', label: 'IVA' },
+  { schema: 'config', rel: 'config.iva_assoggettamenti', label: 'IVA Assoggettamenti' },
+  { schema: 'config', rel: 'config.iva_natura', label: 'IVA Natura' },
+  { schema: 'config', rel: 'config.lingue', label: 'Lingue' },
+  { schema: 'config', rel: 'config.modalita_addebito_trasporto', label: 'Modalita\' Addebito Trasporto' },
+  { schema: 'config', rel: 'config.modalita_pagamento', label: 'Modalita\' Pagamento' },
+  { schema: 'config', rel: 'config.note_stili', label: 'Note Stili' },
+  { schema: 'config', rel: 'config.priorita_pratiche', label: 'Priorita\' Pratiche' },
+  { schema: 'config', rel: 'config.qualifiche', label: 'Qualifiche' },
+  { schema: 'config', rel: 'config.sistema_codici', label: 'Sistema Codici' },
+  { schema: 'config', rel: 'config.sorgenti', label: 'Sorgenti' },
+  // NON `config.stati` (le nazioni): senza `codice`, il lookup generico la
+  // rifiuta; si gestiscono nella pagina geografica (`StatiDrawer`).
+  { schema: 'config', rel: 'config.stati_assets', label: 'Stati Assets' },
+  { schema: 'config', rel: 'config.stati_cliente', label: 'Stati Cliente' },
+  { schema: 'config', rel: 'config.stati_doc_contratti', label: 'Stati Doc. Contratti' },
+  { schema: 'config', rel: 'config.stati_doc_ddt', label: 'Stati Doc. DDT' },
+  { schema: 'config', rel: 'config.stati_doc_fiscale', label: 'Stati Doc. Fiscale' },
+  { schema: 'config', rel: 'config.stati_doc_ordini', label: 'Stati Doc. Ordini' },
+  { schema: 'config', rel: 'config.stati_doc_preventivi', label: 'Stati Doc. Preventivi' },
+  { schema: 'config', rel: 'config.stati_doc_reso', label: 'Stati Doc. Reso' },
+  { schema: 'config', rel: 'config.stati_flussi_pratiche', label: 'Stati Flussi Pratiche' },
+  { schema: 'config', rel: 'config.stati_pdp', label: 'Stati PDP' },
+  { schema: 'config', rel: 'config.stati_pratiche', label: 'Stati Pratiche' },
+  { schema: 'config', rel: 'config.stati_sdi', label: 'Stati SDI' },
+  { schema: 'config', rel: 'config.termini_pagamento', label: 'Termini Pagamento' },
+  { schema: 'config', rel: 'config.tipi_allegato', label: 'Tipi Allegato' },
+  { schema: 'config', rel: 'config.tipi_attivita', label: 'Tipi Attivita\'' },
+  { schema: 'config', rel: 'config.tipi_contatti', label: 'Tipi Contatti' },
+  { schema: 'config', rel: 'config.tipi_doc_fiscale', label: 'Tipi Doc. Fiscale' },
+  { schema: 'config', rel: 'config.tipi_documenti', label: 'Tipi Documenti' },
+  { schema: 'config', rel: 'config.tipi_evento_assets', label: 'Tipi Evento Assets' },
+  { schema: 'config', rel: 'config.tipi_indirizzi', label: 'Tipi Indirizzi' },
+  { schema: 'config', rel: 'config.tipi_nota', label: 'Tipi Nota' },
+  { schema: 'config', rel: 'config.tipi_reso', label: 'Tipi Reso' },
+  { schema: 'config', rel: 'config.tipi_ruoli', label: 'Tipi Ruoli' },
+  { schema: 'config', rel: 'config.tipi_soggetto_dettaglio', label: 'Tipi Soggetto Dettaglio' },
+  { schema: 'config', rel: 'config.tipi_ubicazione', label: 'Tipi Ubicazione' },
+  { schema: 'config', rel: 'config.tipi_utenze', label: 'Tipi Utenze' },
+  // NON `config.titoli_cortesia`: senza `codice` il lookup generico la rifiuta
+  // (500). Nessun consumatore: domanda al DB, non una riga qui.
+  { schema: 'config', rel: 'config.unita_organizzative', label: 'Unita\' Organizzative' },
+  { schema: 'config', rel: 'config.utilities', label: 'Utilities' },
+  { schema: 'config', rel: 'config.valute', label: 'Valute' },
   // --- catalogo ---
-  { schema: 'catalogo', rel: 'catalogo.unita_misura', label: 'Unita\' di Misura', drawer: null },
-  // --- magazzino ---
-  { schema: 'magazzino', rel: 'magazzino.causali', label: 'Causali', drawer: null },
-  // Un lotto e' `articolo_id` (uuid) + `codice` + `data_arrivo`: senza questa
-  // riga un articolo «per lotti» non ha lotti da scegliere (Lotto 2 §3.1).
-  // ⚠️ Solo qui, non nel lookup generico: la tabella non ha `descrizione`.
-  { schema: 'magazzino', rel: 'magazzino.lotti', label: 'Lotti', drawer: null },
-  { schema: 'magazzino', rel: 'magazzino.magazzini', label: 'Magazzini', drawer: null },
-  { schema: 'magazzino', rel: 'magazzino.ubicazioni', label: 'Ubicazioni', drawer: null },
+  { schema: 'catalogo', rel: 'catalogo.unita_misura', label: 'Unita\' di Misura' },
+  // --- magazzino --- (solo il vocabolario: magazzini, ubicazioni e lotti
+  // sono anagrafiche del dominio, con casa propria)
+  { schema: 'magazzino', rel: 'magazzino.causali', label: 'Causali' },
   // --- pagamenti ---
-  { schema: 'pagamenti', rel: 'pagamenti.centri_riscossione', label: 'Centri Riscossione', drawer: null },
-  { schema: 'pagamenti', rel: 'pagamenti.enti_incasso', label: 'Enti Incasso', drawer: null },
-  { schema: 'pagamenti', rel: 'pagamenti.vendite_contabili_righe_stati', label: 'Stati Righe Contabili', drawer: null },
-  { schema: 'pagamenti', rel: 'pagamenti.vendite_contabili_stati', label: 'Stati Contabili', drawer: null },
+  { schema: 'pagamenti', rel: 'pagamenti.centri_riscossione', label: 'Centri Riscossione' },
+  { schema: 'pagamenti', rel: 'pagamenti.enti_incasso', label: 'Enti Incasso' },
+  { schema: 'pagamenti', rel: 'pagamenti.vendite_contabili_righe_stati', label: 'Stati Righe Contabili' },
+  { schema: 'pagamenti', rel: 'pagamenti.vendite_contabili_stati', label: 'Stati Contabili' },
   // --- pratiche ---
-  { schema: 'pratiche', rel: 'pratiche.handler_flussi', label: 'Handler Flussi', drawer: null },
-  { schema: 'pratiche', rel: 'pratiche.template_flussi', label: 'Template Flussi', drawer: null },
-  { schema: 'pratiche', rel: 'pratiche.tipi_prestazione', label: 'Tipi Prestazione', drawer: null },
+  { schema: 'pratiche', rel: 'pratiche.handler_flussi', label: 'Handler Flussi' },
+  { schema: 'pratiche', rel: 'pratiche.template_flussi', label: 'Template Flussi' },
+  { schema: 'pratiche', rel: 'pratiche.tipi_prestazione', label: 'Tipi Prestazione' },
   // --- vendite ---
-  { schema: 'vendite', rel: 'vendite.area_geografica_fatturazione', label: 'Aree Geografiche Fatturazione', drawer: null },
-  { schema: 'vendite', rel: 'vendite.articoli_gruppi', label: 'Gruppi Articoli', drawer: null },
-  { schema: 'vendite', rel: 'vendite.articoli_spesa', label: 'Articoli Spesa', drawer: null },
-  { schema: 'vendite', rel: 'vendite.articoli_tipologie', label: 'Tipologie Articoli', drawer: null },
-  { schema: 'vendite', rel: 'vendite.stati_commessa', label: 'Stati Commessa', drawer: null },
-  { schema: 'vendite', rel: 'vendite.tipi_fondi_fattura', label: 'Tipi Fondi Fattura', drawer: null },
+  { schema: 'vendite', rel: 'vendite.area_geografica_fatturazione', label: 'Aree Geografiche Fatturazione' },
+  { schema: 'vendite', rel: 'vendite.articoli_gruppi', label: 'Gruppi Articoli' },
+  { schema: 'vendite', rel: 'vendite.articoli_spesa', label: 'Articoli Spesa' },
+  { schema: 'vendite', rel: 'vendite.articoli_tipologie', label: 'Tipologie Articoli' },
+  { schema: 'vendite', rel: 'vendite.stati_commessa', label: 'Stati Commessa' },
+  { schema: 'vendite', rel: 'vendite.tipi_fondi_fattura', label: 'Tipi Fondi Fattura' },
 ]
 
 // Schema unici per raggruppamento

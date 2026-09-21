@@ -1,10 +1,18 @@
 <script setup>
-// Scopo: pannello gestione tabelle config.
+// Scopo: pannello gestione tabelle config — i VOCABOLARI del registro
+//        `config-tables.js` (tutti ammessi al lookup generico: la lista qui
+//        sotto passa da li').
 // Sinistra: lista tabelle raggruppate per schema.
 // Destra: DataTable della tabella selezionata con CRUD generico.
+// Note: ⚠️ Un errore della lista o del metadata va A VIDEO (toast di
+//       `useApiHandler`), mai ingoiato: fino al 2026-09-21 un 400 su una tabella
+//       dichiarata nel registro (`magazzino.lotti`, senza `descrizione`) si
+//       vedeva come «lista vuota» — piano-be-fe-magazzino-anagrafiche-fuori-
+//       dal-pannello-config §1.
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
+import { useApiHandler } from '../composables/useApiHandler'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
 import { getTablesBySchema, getTableConfig } from '../config-tables'
 import { useDrawerState } from '../composables/useDrawerState'
@@ -19,6 +27,7 @@ import api from '../api'
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.CONFIG)
 const drawer = useDrawerState()
+const { execute } = useApiHandler()
 
 // Stato
 const selectedRel = ref(null)
@@ -77,10 +86,10 @@ watch(selectedRel, async (rel) => {
   sortOrder.value = 1
   tableColumns.value = []
   if (rel) {
-    try {
-      const meta = await api.get(`/core/config/tables/${rel}/metadata/`)
-      tableColumns.value = meta.data.data.columns.map(c => c.name)
-    } catch { /* colonne vuote = mostra solo codice/descrizione */ }
+    const meta = await execute(() => api.get(`/core/config/tables/${rel}/metadata/`))
+    // Metadata non letto: il toast lo ha detto; la tabella resta con le sole
+    // colonne fisse (codice/descrizione).
+    if (meta) tableColumns.value = meta.columns.map(c => c.name)
   }
   loadRecords()
 })
@@ -107,13 +116,10 @@ async function loadRecords() {
       params.order_dir = sortOrder.value === -1 ? 'desc' : 'asc'
     }
 
-    const res = await api.get(`/core/config/tables/${selectedRel.value}/`, { params })
-    const data = res.data.data
-    items.value = data.results
-    totalRecords.value = data.count
-  } catch {
-    items.value = []
-    totalRecords.value = 0
+    const data = await execute(() => api.get(`/core/config/tables/${selectedRel.value}/`, { params }))
+    // Lista non letta (toast gia' mostrato): vuota, e il totale a zero.
+    items.value = data ? data.results : []
+    totalRecords.value = data ? data.count : 0
   } finally {
     loading.value = false
   }
