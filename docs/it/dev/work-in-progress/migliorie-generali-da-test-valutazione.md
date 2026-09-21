@@ -505,6 +505,81 @@ righe) trova **solo** queste due — il caso è unico, non una famiglia.
    certifica solo la CI — `pgtap-baseline-ci-rientrati.sh` alla prossima push
    su Tito-dev che tocca `db/`, presa **quel giorno**.
 
+#### La corsa del 21-09: 293 rossi, e UNA regressione che era il PRIMO file
+
+✅ **La CI ha certificato** (corsa `35580357971`, push su Tito-dev dopo
+PR #1631): **293 rossi su 674** contro un registro a 362 — i RIENTRATI sono da
+togliere con `pgtap-baseline-ci-rientrati.sh` — e **una regressione**,
+`anagrafiche/create-cliente.sql`, `ERRORE_FIXTURE`: «Indirizzo obbligatorio
+mancante per soggetto … per tipo soggetto dettaglio 1, fallback id 1». Lo
+stesso rosso, identico, sullo scratch `zeroerp_ci` la mattina; e **da solo il
+file è verde** — è il caso «due volte in due giorni» per cui
+`pgtap-baseline.sh` ha imparato quel giorno a conservare il motivo di ogni
+`ERRORE_FIXTURE`, non solo del primo.
+
+⭐ **La causa è la rev `20260920-01` stessa, in un modo che la sua intestazione
+escludeva.** Sul database vuoto la riga di contesto chiama
+`dbops.fn_pgtap_crea_emittente_operatore()`, che come ogni builder apre e
+**richiude** la finestra dei differiti (`SET CONSTRAINTS ALL IMMEDIATE`, per
+tutta la transazione — non si legge né si ripristina). L'intestazione diceva
+«la riga di contesto sta PRIMA di `SET CONSTRAINTS ALL IMMEDIATE`, quindi il
+file esce con i vincoli come li ha sempre avuti»: vero per 503 file, falso per
+chi mette l'IMMEDIATE «dove l'unità di lavoro è completa», cioè in fondo, e fra
+il contesto e quella riga costruisce una saga contando sulla finestra **di
+default**. `create-cliente` inserisce il soggetto, poi contatto, indirizzi,
+ruolo: con i vincoli già IMMEDIATE il guard `DEFERRABLE INITIALLY DEFERRED`
+degli indirizzi scatta all'`INSERT` del soggetto. ⚠️ **E scatta solo sul primo
+file della suite**: il secondo, `create-gestore-conto-bancario`, chiama il
+contesto in **autocommit** (fuori dal `BEGIN;`) e **committa** `PGTR0001` — da lì
+ogni file trova un operatore e percorre il ramo vecchio. Il debito dei «6 col
+contesto in autocommit» (punto 1 sopra) **mascherava** questo: il giorno in cui
+si chiude, ogni file con quella forma cade. Censiti (script sui 649 file con la
+riga di contesto): sono **due** — `create-cliente` e
+`test-soggetti-split-payment-cliente-pa` («Il soggetto non ha contatti validi»,
+provato sullo scratch forzando il ramo che costruisce).
+
+⛔ **Rimedio scritto — e uno ritirato.** Tre strade:
+
+* *ripristinare il modo iniziale* dopo il builder: non si legge, e ricostruirlo
+  dal catalogo disarmerebbe i 503 file che mettono l'IMMEDIATE **prima** del
+  contesto — sul DB da zero i loro differiti non scatterebbero mai;
+* *uscire IMMEDIATE in tutti i rami*, per omogeneità: scritto, provato in
+  `BEGIN…ROLLBACK` sullo scratch (plpgsql_check pulito, i due file corretti
+  8/8 e 5/5 su entrambi i rami, gli originali rossi anche su dev) e
+  **ritirato**: un setter di contesto che chiude i vincoli pendenti li chiude
+  *nei panni del nuovo attore*, cioè sotto un'altra RLS — la trappola che
+  `rls/test-rls-listini-ef-whitelist-write` documenta — e due file
+  (`script/test-fn-scope-ef-whitelist` e quello) aprono `DEFERRED` e poi
+  cambiano attore col contesto: sarebbero morti in fixture;
+* ✅ **dichiarare il contratto che c'è già e togliere ai file la presunzione**:
+  la riga di contesto, *quando costruisce*, esce IMMEDIATE come ogni helper;
+  con argomento, o dove un operatore esiste, non tocca i vincoli. È asimmetrico
+  per costruzione, quindi la regola per i file è una: **dopo la riga di
+  contesto non si conta sulla finestra differita di default** — chi la vuole
+  la riapre con `SET CONSTRAINTS ALL DEFERRED` subito dopo.
+
+Nello stesso giro: i due file riaprono la finestra e lo dicono in testa;
+`20_code/script/20260921-18` (**solo `COMMENT`**, corpo invariato) scrive il
+contratto sull'oggetto; template `_TEMPLATE.sql.txt` §3, guida §«`SET
+CONSTRAINTS` non va sempre in testa» e §«Il mondo si costruisce», manual della
+funzione. Provato come `zeroerp_app` sullo scratch: i due file **8/8 e 5/5**
+sia con operatore presente (runner) sia col ramo che costruisce forzato;
+`COMMENT` in `BEGIN…ROLLBACK` ok; guardrail preambolo/runOnChange/preCondition
+verdi. Nessuna riga di baseline da toccare: il file non era in nessun
+registro, e torna verde.
+
+🔵 **Da decidere (Tid)** — un cancello che renda la regola leggibile da uno
+script: `guardrail_pgtap_preambolo.py` potrebbe pretendere che, se il primo
+`SET CONSTRAINTS ALL IMMEDIATE` sta **dopo** una scrittura che segue la riga di
+contesto, fra le due ci sia un `SET CONSTRAINTS ALL DEFERRED` dichiarato. Il
+censimento del 21-09 dà 9 candidati e 7 falsi positivi (quattro col contesto in
+autocommit, tre senza differiti in mezzo): con quel tasso il cancello va
+disegnato con cura, o resta una lente. ⚠️ Residuo del lavoro di prova sullo
+scratch: le corse forzate sui quattro file col contesto in autocommit hanno
+**committato** dodici `PGTR0002…0013` (emittente + utente tecnico + soggetti)
+alle 11:23 — stessa natura del residuo `PGTR0001` del punto 1, stesso script di
+pulizia, da lanciare da Tid.
+
 > ⭐ **Incrocio con D11, e cambia l'ordine dei due lavori.** Dei **123**
 > `throws_ok` senza discriminante, **102** stanno in file già a registro qui, e
 > **94** di quei 102 sono `ERRORE_FIXTURE` — file che su un database ricostruito

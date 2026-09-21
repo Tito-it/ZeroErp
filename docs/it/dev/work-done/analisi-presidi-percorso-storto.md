@@ -7,7 +7,7 @@
 >
 > | | Esito | Dove continua |
 > | --- | --- | --- |
-> | **C1** stato previsto e mai scritto | 🔵 **brief aperto** | [brief-db-presidio-stati-mai-scritti.md](../work-in-progress/brief-db-presidio-stati-mai-scritti.md) — registro + vista che classifica + pgTAP + riga `CANCELLO` in `dbops.presidi`; la metà Python al BE |
+> | **C1** stato previsto e mai scritto | ✅ **chiuso lato DB il 21-09** | [brief-db-presidio-stati-mai-scritti.md](brief-db-presidio-stati-mai-scritti.md) — registro `dbops.stati_check_dichiarazioni` (40 righe, col `canale`), `vw_stati_check_scrittori` + `vw_stati_check_da_sanare` (`CANCELLO`, a zero), pgTAP a 14 test; il perimetro vero è 32 colonne, non 18. 🔵 Resta la metà Python (§6 del brief), in coda a C2 |
 > | **C2** promessa all'interfaccia | 🔵 **brief aperto** | [brief-be-presidio-ui-action-e-canale-campi.md](../work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md) — coerenza `highlight_form_fields` ↔ canale `fields`, con la decisione di Tid del 09-09 come premessa |
 > | **C3** liste che non sanno dire perché | ✅ chiuso da solo | 20 liste su 77 col motivo (§3-quater); non serve un cancello |
 > | **C4** registri scritti e mai letti | ✅ chiuso | `event_log` ha i suoi lettori (§3-bis) |

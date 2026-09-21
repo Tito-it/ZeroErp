@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La riga di contesto del preambolo pgTAP, QUANDO COSTRUISCE IL MONDO, esce
+#   con i vincoli differiti IMMEDIATE — e lo dichiara nel proprio COMMENT.
+#   Solo COMMENT: il corpo della funzione non cambia.
+#   Brief: migliorie-generali-da-test-valutazione.md, D7.
+#
+# IL DIFETTO CHE DICHIARA. La rev 20260920-01 ha dato alla riga di contesto un
+#   secondo ramo: su un database senza operatori (la CI, un'installazione
+#   nuova) chiama `dbops.fn_pgtap_crea_emittente_operatore()`. Quel builder,
+#   come tutti i builder pgTAP, apre una finestra `SET CONSTRAINTS ALL
+#   DEFERRED` per la sua saga e la RICHIUDE con `SET CONSTRAINTS ALL
+#   IMMEDIATE` — contratto scritto nel suo COMMENT e nella guida («gli helper
+#   escono con i vincoli IMMEDIATE»). `SET CONSTRAINTS` vale per TUTTA la
+#   transazione, e PostgreSQL non offre modo di leggere il modo corrente ne'
+#   di ripristinarlo dopo un builder riuscito. La riga di contesto ha quindi
+#   ereditato quel contratto SENZA dichiararlo, e SOLO nel ramo che si percorre
+#   su un database vuoto. L'intestazione della rev 20260920-01 lo dava per
+#   innocuo («la riga di contesto del template sta PRIMA di SET CONSTRAINTS
+#   ALL IMMEDIATE»), e non lo e' per i file che, come la guida ammette,
+#   mettono l'IMMEDIATE «dove l'unita' di lavoro e' completa»: fra il contesto
+#   e quella riga costruiscono una saga contando sulla finestra differita DI
+#   DEFAULT — che su dev c'e', e sul database da zero non c'e' piu'.
+#
+# ⚠️ FATTO DATATO. Corsa CI 35580357971 del 2026-09-21 (push su Tito-dev,
+#   PR #1631) e la stessa suite sullo scratch `zeroerp_ci`: UNA regressione,
+#   `anagrafiche/create-cliente.sql`, «Indirizzo obbligatorio mancante per
+#   soggetto … RES» — il guard DEFERRABLE INITIALLY DEFERRED
+#   `trg_soggetti_def_guard_indirizzi_required` scatta all'INSERT del soggetto,
+#   prima che la fixture scriva gli indirizzi. Da solo il file e' verde, e lo
+#   era «due volte in due giorni»: e' il PRIMO file della suite in ordine
+#   alfabetico, l'unico che percorre il ramo nuovo su un DB vuoto. Il secondo
+#   (`create-gestore-conto-bancario`) chiama la riga di contesto in AUTOCOMMIT,
+#   fuori dal `BEGIN;`: costruisce e COMMITTA `PGTR0001`, e da li' in poi ogni
+#   file trova un operatore e percorre il ramo vecchio — il difetto era
+#   mascherato da un altro debito (i file col contesto in autocommit, D7).
+#   Un secondo file ha la stessa forma e cadrebbe allo stesso modo il giorno
+#   in cui quel debito si chiude: `anagrafiche/test-soggetti-split-payment-cliente-pa`
+#   («Il soggetto non ha contatti validi», provato sullo scratch forzando il
+#   ramo). La misura trova i due file; il motivo sta nel contratto.
+#
+# ⭐ PERCHE' IL RIMEDIO NON E' NEL CORPO. Tre strade valutate il 21-09:
+#   - «ripristinare il modo iniziale» dopo il builder: IMPOSSIBILE da leggere,
+#     e ricostruirlo dal catalogo (`ALL DEFERRED` + gli INITIALLY IMMEDIATE per
+#     nome) disarmerebbe i 503 file che mettono `SET CONSTRAINTS ALL IMMEDIATE`
+#     PRIMA della riga di contesto: sul DB da zero i loro differiti non
+#     scatterebbero mai — verde per sottrazione;
+#   - «uscire IMMEDIATE in tutti i rami», per omogeneita': scritto, provato in
+#     BEGIN/ROLLBACK e RITIRATO. Un setter di GUC che verifica i vincoli
+#     pendenti li chiude NEI PANNI DEL NUOVO ATTORE: e' la trappola RLS che
+#     `rls/test-rls-listini-ef-whitelist-write` documenta («i vincoli
+#     differiti si chiudono nei panni di chi ha scritto»), e due file
+#     (`script/test-fn-scope-ef-whitelist` e quello) aprono una finestra
+#     DEFERRED e poi cambiano attore col contesto: sarebbero morti in fixture;
+#   - DICHIARARE il contratto che c'e' gia' e togliere ai file la presunzione:
+#     senza argomento, se costruisce, esce IMMEDIATE come ogni helper; con
+#     argomento, o dove un operatore esiste, non tocca i vincoli. Un file che
+#     vuole la finestra differita fino a un punto suo la RIAPRE con
+#     `SET CONSTRAINTS ALL DEFERRED` subito dopo la riga di contesto — regola
+#     gia' scritta nella guida per gli helper, che da oggi copre anche questa
+#     riga (template, guida, manual e i due file, nello stesso giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260921-18-update-fn-pgtap-set-contesto-operatore-esce-immediate-mctit.yaml
+
+  - changeSet:
+      id: 20260921-18-update-fn-pgtap-set-contesto-operatore-esce-immediate
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_pgtap_set_contesto_operatore(): solo COMMENT. Dichiara che,
+        senza argomento e su un database senza operatori (dove costruisce
+        azienda+operatore), la funzione esce con i vincoli differiti
+        IMMEDIATE come ogni helper pgTAP; con argomento, o dove un operatore
+        esiste, non tocca i vincoli. Un file che vuole la finestra differita
+        dopo la riga di contesto la riapre con SET CONSTRAINTS ALL DEFERRED.
+        Corpo invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_pgtap_set_contesto_operatore'
+                 AND pg_get_function_identity_arguments(p.oid) = 'p_auth_user_id integer'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_pgtap_set_contesto_operatore(p_auth_user_id integer)
+              IS 'Imposta nella sessione le GUC che le policy RLS leggono (app.ruolo_applicativo, app.current_user_id), scegliendo da se'' un operatore con almeno un emittente fiscale in whitelist — o quello passato come argomento. Dal 2026-09-20, se nessun operatore esiste (database ricostruito dai changelog: CI, installazione nuova) costruisce azienda+operatore con dbops.fn_pgtap_crea_emittente_operatore() e apre il contesto su quello, invece di lasciare le GUC vuote e far morire il file a valle; con argomento o dove un operatore c''e'' il comportamento e'' invariato. ⛔ VINCOLI DIFFERITI (dichiarato il 2026-09-21): QUANDO COSTRUISCE, esce con i vincoli IMMEDIATE come ogni helper pgTAP — il builder richiude la finestra della propria saga e il modo di una transazione non si puo'' ne'' leggere ne'' ripristinare; con argomento, o dove un operatore esiste, non li tocca. Un file che dopo questa riga costruisce una saga contando sulla finestra differita di DEFAULT e'' verde su dev e rosso sul database da zero (anagrafiche/create-cliente, CI 2026-09-21): chi vuole la finestra la riapre con SET CONSTRAINTS ALL DEFERRED subito dopo. Serve ai test pgTAP per girare come l''applicazione invece che come owner: con FORCE ROW LEVEL SECURITY disattivo l''owner salta la RLS, quindi una suite lanciata da lui non esercita nessuna policy. Ritorna l''auth_user_id usato. Brief: brief-db-pgtap-runner-rls-baseline §8; migliorie-generali-da-test-valutazione D7.';

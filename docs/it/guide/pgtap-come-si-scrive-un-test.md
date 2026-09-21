@@ -45,6 +45,16 @@ quella dopo, in testa fa scattare il vincolo a metà strada. Si sposta dopo
 l'ultima coppia — e comunque **prima** di ogni cleanup, o scatta su righe già
 cancellate.
 
+⛔ **E se la sposti, la finestra la dichiari**: subito dopo la riga di contesto,
+`SET CONSTRAINTS ALL DEFERRED;`. La finestra differita «di default» non è una
+promessa di nessuno: su un database vuoto la riga di contesto **costruisce** il
+mondo ed esce con i vincoli IMMEDIATE, come ogni helper (sotto, §«Il mondo si
+costruisce»). Un file che fra il contesto e il proprio `SET CONSTRAINTS ALL
+IMMEDIATE` costruisce una saga contando sul default è **verde su dev e rosso in
+CI** — e lo è solo quando è il primo della corsa, che è il modo peggiore di
+esserlo: `anagrafiche/create-cliente` il 2026-09-21, «due volte in due giorni»
+senza riprodursi da solo.
+
 ### Se una di queste non ci può stare
 
 Si **dichiara**, non si spiega e basta:
@@ -116,6 +126,20 @@ ruolo, **due** aziende) o quando il soggetto del test è l'operatore umano.
 ⚠️ Gli helper escono con i vincoli **IMMEDIATE**: un file che li vuole
 differiti fino a un punto suo (`pgtap-differiti`, «fattura + atto») li riapre
 con `SET CONSTRAINTS ALL DEFERRED` subito dopo.
+
+⛔ **E la riga di contesto, quando costruisce, è un helper.** Senza argomento su
+un database vuoto chiama il builder, e ne eredita il contratto: esce IMMEDIATE.
+Con argomento, o dove un operatore esiste (dbdev), **non tocca i vincoli** — e
+non può fare altrimenti: il modo di una transazione non si legge né si
+ripristina, e un setter di contesto che chiudesse i vincoli pendenti li
+chiuderebbe *nei panni del nuovo attore* (la trappola RLS di
+`rls/test-rls-listini-ef-whitelist-write`). Quindi il contratto è asimmetrico
+per costruzione, e la regola per i file è una sola: **dopo la riga di contesto
+non si conta sulla finestra differita di default** — se la si vuole, si
+dichiara con `SET CONSTRAINTS ALL DEFERRED`. È ciò che il primo file della suite
+(`anagrafiche/create-cliente`) non faceva: verde su dev, rosso in CI il
+2026-09-21, e da solo mai — il secondo file committa un operatore in autocommit
+e da lì in poi nessuno percorre più il ramo che costruisce.
 
 ⚠️ E i **rami `skip` spariscono**: con il mondo costruito la precondizione c'è
 sempre, e un `CASE WHEN EXISTS(...) THEN ok(...) ELSE skip(...)` diventa un
