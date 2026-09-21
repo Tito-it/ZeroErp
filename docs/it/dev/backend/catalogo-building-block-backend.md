@@ -756,7 +756,7 @@ Il dominio degli incassi ha una pagina sola ([api_pagamenti.md](../../backend/pa
 
 ## Magazzino — Le anagrafiche e i pezzi condivisi del dominio (`apps/magazzino/`)
 
-Il documento interno e la consultazione hanno il loro service (`magazzino_service`, `consultazione_service`); qui stanno i pezzi nati il 2026-09-21 col [piano anagrafiche-fuori-dal-pannello-config](../work-in-progress/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md) e riusabili dentro il dominio. Pagina API: [api_anagrafiche_magazzino.md](../../backend/magazzino/manual/api_anagrafiche_magazzino.md).
+Il documento interno e la consultazione hanno il loro service (`magazzino_service`, `consultazione_service`); qui stanno i pezzi nati il 2026-09-21 col [piano anagrafiche-fuori-dal-pannello-config](../work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md) e riusabili dentro il dominio. Pagina API: [api_anagrafiche_magazzino.md](../../backend/magazzino/manual/api_anagrafiche_magazzino.md).
 
 | Building Block | File | Descrizione |
 | --- | --- | --- |

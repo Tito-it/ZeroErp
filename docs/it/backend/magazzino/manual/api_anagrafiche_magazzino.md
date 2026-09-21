@@ -4,7 +4,7 @@
 
 Le tre **anagrafiche** dello schema `magazzino` con endpoint propri, fuori dal
 pannello di configurazione generico (decisione **B** di Tid, 2026-09-20 —
-[piano](../../../dev/work-in-progress/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)):
+[piano](../../../dev/work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)):
 un magazzino ha un emittente e un indirizzo, un'ubicazione ha un magazzino, un
 tipo e un padre, un lotto ha un articolo e due date. Non sono vocabolari, e il
 drawer generico non sa renderli.
