@@ -6,8 +6,9 @@ Approfondimento tabelle:
 > • [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — di chi è l'ubicazione
 > • [config.tipi_ubicazione](/dbzero/config/tabelle/tipi_ubicazione)
 > • [magazzino.vw_giacenza_ubicazione](/dbzero/magazzino/views/vw_giacenza_ubicazione) — che cosa c'è in ogni posizione
+> • [magazzino.trgfn_ubicazioni_guard_parent](/dbzero/magazzino/funzioni/trgfn_ubicazioni_guard_parent) — il padre nello stesso magazzino, niente cicli
 >
-Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.10)
+Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.10); brief `brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici` (R-1)
 
 ---
 ### 🎯 Scopo Principale
@@ -21,8 +22,20 @@ viene da `config.tipi_ubicazione` (`PICK`, `STORAGE`, `STAGING`, `BUFFER`, `IN_T
 contengono scaffali.
 
 `tipo_id` è obbligatorio, `parent_id` no (le ubicazioni di primo livello non hanno padre).
-⚠️ Nulla impedisce oggi un ciclo nella gerarchia: da tenere presente scrivendo query
-ricorsive.
+
+### La gerarchia vive dentro un magazzino
+
+Il padre di un'ubicazione è **dello stesso magazzino**, e la catena dei padri non torna mai
+su sé stessa: lo fa rispettare
+[trgfn_ubicazioni_guard_parent](/dbzero/magazzino/funzioni/trgfn_ubicazioni_guard_parent)
+(`E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO`, `E_MAG_UBICAZIONE_PADRE_CICLICO`, entrambi sul
+campo `parent_id`). Le query ricorsive possono contare sull'assenza di cicli. Il picker del
+drawer propone solo le ubicazioni del magazzino: rispecchia la regola, non la sostituisce.
+
+**`magazzino_id` non si cambia** dopo la creazione (lock delle colonne,
+`E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`): un'ubicazione è una posizione *dentro* un
+magazzino, e le figlie e i movimenti registrati la nominano insieme a lui. Per spostarla si
+disattiva e se ne crea una nel magazzino giusto.
 
 ### Una posizione per movimento
 
