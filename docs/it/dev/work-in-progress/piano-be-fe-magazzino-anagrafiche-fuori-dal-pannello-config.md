@@ -8,8 +8,10 @@
 > sono decise da Tid il 2026-09-21**, tutte sulla raccomandazione: si parte dal
 > Pezzo A. Prerequisiti DB nel brief
 > [brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md](brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md).
-> **Stato (2026-09-21 pomeriggio)**: ✅ A, B, C, D scritti e verdi (BE + FE, §11);
-> ⏳ apply del mirror `ui` (liste 80-82) e collaudo in-app.
+> **Stato (2026-09-21 sera)**: ✅ A, B, C, D scritti, **riletti** (tre bug
+> muti corretti + tre estrazioni per regola del 2, §11) e verdi (BE + FE);
+> ⏳ apply del mirror `ui` (liste 80-82), `kill -HUP` su gunicorn, collaudo
+> in-app, commit.
 >
 > Contesto: cantiere `acquisti + magazzino`, Lotto 2 «il motore»
 > ([piano-be-fe-magazzino-lotto-2-motore.md](piano-be-fe-magazzino-lotto-2-motore.md)).
@@ -115,15 +117,15 @@ serve a una colonna sola.
 | --- | --- |
 | Voce «Magazzini» in `navigation.js` (`NAV_ICONS.MAGAZZINO` o icona dedicata) + rotta `/magazzino/magazzini` | prima voce L2 del dominio: le anagrafiche precedono i documenti |
 | `MagazziniListView` + `MagazziniSearchTable` su `<ListaConfigurabile codice="magazzino.magazzini">` | `useListaConfigurabilePage` + `createCrudStore` (qui la lista **possiede** l'entità); filtri: ricerca, `FiltroToggle` «mostra non attivi»; export; kebab: «Ubicazioni» (apre il drawer autonomo, `MANAGE_ICONS`), «Disattiva/Riattiva» |
-| `MagazzinoDrawer` (`DRAWER_WIDTH.STANDARD`) | `codice` (lucchetto in edit: `isFieldLocked`, lo dice il trigger), `descrizione`, **emittente** con `EmittenteFiscaleField` (sola lettura, dal contesto in create / dal record in edit), **indirizzo**: card con `indirizzo_normalizzato` + pulsante «Scegli» che apre `IndirizziSoggettoDrawer selectable` sul soggetto dell'emittente (`emittenti_fiscali.soggetto_ruolo_id → soggetti_ruoli.soggetto_id`), accettando solo righe con `indirizzo_dettaglio_id` (un `indirizzo_libero` non è un dettaglio: si vede, non si sceglie, col motivo) — Q-2; `usa_ubicazioni`, `predefinito`, `attivo` (solo edit). In edit: sezione riepilogo «Ubicazioni (N)» + «Gestisci ubicazioni» (stampo `ArticoloDrawer` §UoM). `useDrawerContentReady`, `useInjectReadonly`, `FormFooter` |
-| Producer cross-tab | lo store emette `TAB_ENTITIES.MAGAZZINO` (da aggiungere all'enum): le liste che mostrano un magazzino si rinfrescano da sole |
+| `MagazzinoDrawer` (`DRAWER_WIDTH.STANDARD`) | `codice` (lucchetto in edit: `isFieldLocked`, lo dice il trigger), `descrizione`, **emittente** con `EmittenteFiscaleField` (sola lettura, dal contesto in create / dal record in edit), **indirizzo**: `InputText` in sola lettura con `indirizzo_normalizzato` + pulsante «Scegli» accanto (`app-input-with-action`, niente CSS scoped) che apre `IndirizziSoggettoDrawer selectable` sul soggetto dell'emittente (`emittente_soggetto_id` del record in edit; `soggettoIdSessione` di `useEmittenteFiscaleField` in create — ⚠️ per il super admin arriva dal lookup admin, che dal 21-09 proietta `soggetto_id`), accettando solo righe con `indirizzo_dettaglio_id` (un `indirizzo_libero` non è un dettaglio: si vede, non si sceglie, col motivo) — Q-2; `usa_ubicazioni`, `predefinito`, `attivo` (solo edit). In edit: sezione riepilogo «Ubicazioni (N)» + «Gestisci ubicazioni» (`app-riepilogo-*` di `main.css`, lo stampo di `ArticoloDrawer` §UoM). `useDrawerContentReady`, `useInjectReadonly`, `FormFooter`, `useDrawerDetailLoad` (un 404 no-leak chiude il drawer col toast) |
+| Producer cross-tab | lo store (`createCrudStore`) emette `TAB_ENTITIES.MAGAZZINO` e in `afterWrite` invalida il lookup `magazzino.magazzini` nelle due chiavi del `rel`: le liste e i picker che mostrano un magazzino si rinfrescano da soli. Le azioni «Disattiva/Riattiva» del kebab sono il BB `useAzioniAttivo` |
 
 ## 5. Pezzo C — Ubicazioni *(figlie del magazzino)*
 
 | Cosa | Note |
 | --- | --- |
 | BE: `GET/POST /magazzino/magazzini/<id>/ubicazioni/` · `GET/PATCH .../ubicazioni/<uid>/` · `export/` | padre nel path; il perimetro è la **testata** (magazzino fuori scope ⇒ 404 prima di leggere le figlie); lista offset-based; display: `tipo_descrizione`, `parent_codice`. Payload: `codice` obbligatorio, `tipo_id` (lookup `config.tipi_ubicazione`), `parent_id` (una ubicazione **dello stesso magazzino**: il picker lo filtra — e il DB? Q-3), `area/corsia/scaffale/piano/posizione`, `descrizione`, `attivo` |
-| FE: `MagazzinoUbicazioniDrawer` (autonomo, prop `magazzinoId`) | `useDrawerTabLista` + `<DrawerTabLista>` su `magazzino.ubicazioni` (⛔ non una `DataTable` in un drawer) + form sotto (`RigheMasterDetailTable`-like: `formMode` null/new/edit). Raggiungibile dal kebab della lista magazzini **e** da «Gestisci ubicazioni» nel drawer. Se `usa_ubicazioni = false` il drawer si apre lo stesso con l'avviso «questo magazzino non usa le ubicazioni» (il dato lo governa il flag, non l'assenza di righe) |
+| FE: `MagazzinoUbicazioniDrawer` (autonomo, prop `magazzinoId`) | `useDrawerTabLista` + `<DrawerTabLista>` su `magazzino.ubicazioni` (⛔ non una `DataTable` in un drawer) + `UbicazioneDrawer` autonomo aperto dalla riga e da «Nuova» (⚠️ scostamento da «form sotto la lista», dichiarato nel registro: è la forma dei due precedenti `TitoliIvaSoggettoDrawer`/`EmittenteFiscaleRegistriDrawer`). Il picker del padre è `LookupSelect` col fetcher del magazzino (chiave `chiaveLookupUbicazioni(id)`, invalidata dallo store a ogni scrittura) e `exclude-value` sull'ubicazione stessa — ⛔ non nel `transform`: la cache di `useGlobalLookup` tiene il primo transform per chiave. Azioni di riga: `useAzioniAttivo`. Raggiungibile dal kebab della lista magazzini **e** da «Gestisci ubicazioni» nel drawer. Se `usa_ubicazioni = false` il drawer si apre lo stesso con l'avviso «questo magazzino non usa le ubicazioni» (il dato lo governa il flag, non l'assenza di righe) |
 | Lookup esistente | `lookup_ubicazioni(magazzino_id)` del documento interno resta |
 
 ## 6. Pezzo D — Lotti *(figli dell'articolo)*
@@ -131,7 +133,7 @@ serve a una colonna sola.
 | Cosa | Note |
 | --- | --- |
 | BE: `GET/POST /magazzino/lotti/?articolo_id=` · `GET/PATCH /magazzino/lotti/<id>/` · `export/` | `articolo_id` **obbligatorio** in lista (un elenco di tutti i lotti di tutti gli articoli non è una domanda di nessuno; il cancello empty-state dello store lo dice). Niente RLS (`lotti` è dell'articolo: brief Lotto 1 §4.3). Payload: `codice`, `data_arrivo` obbligatori, `data_scadenza` ≥ `data_arrivo` (lo dice `chk_mag_lotti_scadenza_dopo_arrivo`: il BE traduce, non ricontrolla), `attivo`. Errori: `uq_mag_lotti_articolo_codice` → duplicato su `codice`; `E_ATTIVO_REQUIRE` dell'articolo non attivo (TECNICO: il drawer non si apre su un articolo disattivo — lo legge dal dettaglio, prima). Il lookup `lotti/lookup/` resta (attivi, per il form di riga) |
-| FE: `ArticoloLottiDrawer` (autonomo, prop `articoloId`) | stesso scheletro di C. Montato in `ArticoloDrawer` (sezione «Lotti (N)» + «Gestisci lotti», visibile quando `gestito_a_magazzino` — un lotto ha senso solo su merce che movimenta; con `requires_lotto` la sezione lo **dice**) e in `ArticoliView` (kebab). Dove vive il file: Q-1 |
+| FE: `ArticoloLottiDrawer` (autonomo, prop `articoloId`) | stesso scheletro di C (`DrawerTabLista` + `LottoDrawer` autonomo, `useAzioniAttivo`, `useDrawerDetailLoad`). Montato in `ArticoloDrawer` (sezione «Lotti (N)» + «Gestisci lotti», visibile quando `gestito_a_magazzino` — un lotto ha senso solo su merce che movimenta; con `requires_lotto` la sezione lo **dice**) e in `ArticoliView` (kebab). Dove vive il file: Q-1 |
 
 ## 7. Richieste al DB e prerequisiti
 
@@ -172,29 +174,34 @@ Nessun DDL nuovo per i pezzi A–D: tabelle, trigger e vincoli ci sono già. Res
 | 2 | ✅ **Pezzo A** (21-09: pannello sanato, i tre fuori dal registro FE e BE; trovate e tolte anche `config.stati` e `config.titoli_cortesia`) | BE/FE | 1 |
 | 3 | ✅ P-2 e P-3 **applicati dal DB il 21-09** (brief §5); ✅ P-1: le righe di seed delle tre liste (80-82: `lista_definizione`, 35 `lista_colonna`, 3 preset, `preset_colonna`) sono nei CSV dal 21-09 — ⏳ **apply del mirror `ui`: Tid**; ⏳ il nome `magazzino.lotti` nell'elenco del pgTAP delle liste globali: **team DB** | BE/FE genera → **team DB / Tid applica** | 1 |
 | 4 | ✅ **Pezzo B + C + D BE** (21-09): `views_anagrafiche.py`, `anagrafiche_magazzino_{service,repository}.py`, 15 rotte; test service (8, mock), API (8), **DB provvisto** (6: guard e codici veri, 404 dell'altro emittente, ogni ordinamento) | BE | 1 |
-| 5 | ✅ **Pezzo B + C + D FE** (21-09): `MagazziniListView` + `MagazziniSearchTable` + `MagazzinoDrawer` + `MagazzinoUbicazioniDrawer` + `UbicazioneDrawer` + `ArticoloLottiDrawer` + `LottoDrawer`, tre store, voce L2 «Magazzini», montaggio in `ArticoloDrawer`/`ArticoliView`. ⚠️ **Non provato a video**: le liste 80-82 non sono ancora a DB (passo 3) — finche' il mirror `ui` non e' applicato le tre `<ListaConfigurabile>` rispondono `E_UI_LISTA_NON_TROVATA` | FE | 3 applicato, 4 |
-| 6 | Smoke a mano + **collaudo in-app** (dopo il passo 3); ✅ doc: catalogo BB (FE e BE), `api.md` §Endpoint attivi, `api_anagrafiche_magazzino.md`; ⏳ §0-bis e §11 del piano Lotto 2 (riga scritta), `apps.md` di magazzino (e' ancora il template `${app}`: fuori da questo piano) | BE/FE | 5 |
+| 5 | ✅ **Pezzo B + C + D FE** (21-09): `MagazziniListView` + `MagazziniSearchTable` + `MagazzinoDrawer` + `MagazzinoUbicazioniDrawer` + `UbicazioneDrawer` + `ArticoloLottiDrawer` + `LottoDrawer`, tre store, voce L2 «Magazzini», montaggio in `ArticoloDrawer`/`ArticoliView`; ✅ **riletto** la sera stessa (§11: tre bug muti, tre BB per regola del 2). ⚠️ **Non provato a video**: le liste 80-82 non sono ancora a DB (passo 3) — finche' il mirror `ui` non e' applicato le tre `<ListaConfigurabile>` rispondono `E_UI_LISTA_NON_TROVATA` | FE | 3 applicato, 4 |
+| 6 | ⏳ `kill -HUP` su gunicorn, smoke a mano + **collaudo in-app** (dopo il passo 3); ✅ doc: catalogo BB (FE e BE, aggiornati anche per `useAzioniAttivo`, `app-riepilogo-*`, `exclude-value`, `max_len`), `api.md` §Endpoint attivi, `api_anagrafiche_magazzino.md`, `api_amm_software.md` §4.4 (`soggetto_id`); ⏳ §0-bis e §11 del piano Lotto 2 (riga scritta), `apps.md` di magazzino (e' ancora il template `${app}`: fuori da questo piano) | BE/FE | 5 |
 
 ## 10. Presidi
 
-- BE: unit su service (validazione, 404, delta PATCH), API (envelope, whitelist
-  ordinamento → `test_ogni_ordinamento_dichiarato_produce_sql_valido` come per le
-  righe del documento interno), **DB provvisto** (`richiedi_db_provvisto`): il
-  magazzino di un altro emittente è 404 e non è in lista; un lotto su articolo
-  disattivo è rifiutato dal DB e tradotto; `CODICE_NON_MODIFICABILE` arriva come
-  codice, non come «duplicato».
+- ✅ BE: unit su service (8: validazione, 404, delta PATCH), API (8: envelope,
+  rotte non intercettate, filtri tradotti, export sul dataset), **DB provvisto**
+  (6, `richiedi_db_provvisto`): il magazzino di un altro emittente è 404 e non
+  è in lista; padre di altro magazzino e scadenza prima dell'arrivo rifiutati
+  dal DB e tradotti col campo; `CODICE_NON_MODIFICABILE` arriva come codice,
+  non come «duplicato»; ogni colonna di whitelist produce SQL che parte.
+  `test_payload_helpers` 75 per il `max_len` di `extract_optional_string`.
 - Pannello config: test sul DB provvisto che **ogni colonna** delle tabelle del
   registro FE ha la sua chiave `config_panel.campi.*` in `it.json` **e** `en.json`
   (legge i locales dal repo, come `etichette.spec.js` fa per i vocabolari) — è
   l'unico modo di presidiare chiavi costruite dinamicamente; e un test che ogni
   `references` emesso dal metadata sia una rel esistente.
-- FE: `vitest` sulla risoluzione del widget del generico (FK in whitelist →
+- ✅ FE: `vitest` sulla risoluzione del widget del generico (FK in whitelist →
   `LookupSelect`, FK fuori → numero dichiarato, `date` → `DatePicker`,
   etichetta fail-visible); `check_i18n_keys` a 0; `npm run guards`; il conteggio
   delle `DataTable` grezze **non sale** (`grep -rl "from 'primevue/datatable'"`).
-- Presidio esistente da far passare: `test_export_lista_codice_pari` (le tre
+  ⚠️ **Senza presidio automatico**, dichiarati: il picker del padre che non
+  avvelena la cache (§5) e la chiusura del drawer sul 404 — si vedono solo al
+  collaudo in-app, che è il passo 6.
+- ✅ Presidio esistente fatto passare: `test_export_lista_codice_pari` (le tre
   coppie nuove), `test_perimetro_emittente_copertura` (le view di lista con
-  `lista_codice` letterale, come le quattro del documento interno).
+  `lista_codice` letterale, come le quattro del documento interno; i lotti in
+  `_ESENZIONI`).
 
 ## 11. Registro
 
