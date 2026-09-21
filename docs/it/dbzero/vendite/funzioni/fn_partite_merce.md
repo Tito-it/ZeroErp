@@ -101,13 +101,35 @@ BEGIN ATOMIC
           SELECT DISTINCT dr.ddt_id
             FROM dr_in dr
            WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+         ), chiavi_af AS MATERIALIZED (
+          SELECT (((('DDT:'::text || (d.uid)::text) || ':R:'::text) || (dr.id)::text))::character varying AS k
+            FROM ((origini o_1
+              JOIN vendite.ddt_righe dr ON ((dr.id = o_1.ddt_riga_id)))
+              JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+           WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+         UNION
+          SELECT (((('ORD:'::text || (od.uid)::text) || ':R:'::text) || (orr_1.id)::text))::character varying AS "varchar"
+            FROM ((fulfillment_in f
+              JOIN vendite.ordini_righe orr_1 ON ((orr_1.id = f.ordine_riga_id)))
+              JOIN vendite.ordini od ON ((od.id = orr_1.ordine_id)))
+           WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
          ), af AS MATERIALIZED (
           SELECT a.corsia,
              a.riga_id,
              a.tipo_movimento,
              a.quantita,
              a.misurabile
-            FROM vendite.vw_af_merce_per_riga a
+            FROM vendite.fn_af_merce_per_riga(( SELECT COALESCE(array_agg(c.k), '{}'::character varying[]) AS "coalesce"
+                    FROM chiavi_af c)) a(corsia, riga_id, tipo_movimento, quantita, misurabile, da_componenti, voci)
+           WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+         UNION ALL
+          SELECT a.corsia,
+             a.riga_id,
+             a.tipo_movimento,
+             a.quantita,
+             a.misurabile
+            FROM vendite.fn_af_merce_per_riga(NULL::character varying[]) a(corsia, riga_id, tipo_movimento, quantita, misurabile, da_componenti, voci)
+           WHERE ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL))
          ), soglia AS (
           SELECT s.ordine AS ordine_emesso
             FROM config.stati_doc_ddt s
@@ -282,7 +304,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_partite_merce(p_ddt_ids bigint[], p_ordine_ids bigint[])
-IS 'LA PARTITA DI MERCE PER DOCUMENTO (D14, quarta leva, 2026-09-21): lo stesso conto di vendite.vw_partite_merce — che ne e'' la proiezione senza filtro, fn_partite_merce(NULL, NULL) — ristretto alla CHIUSURA dei documenti chiesti. Semi: p_ddt_ids (i DDT) e p_ordine_ids (gli ordini: le righe che li evadono); entrambi NULL = tutte le partite; un array VUOTO semina zero righe. Con entrambi valorizzati l''uscita e'' l''unione: ddt_id nei DDT chiesti OR ordine_id negli ordini chiesti — e `ordine_id` e'' la colonna PROIETTATA (min(ordine_riga_id) di `orig`), quindi una riga MULTIPLA esce sotto l''ordine della riga minima, come la legge il backend. La chiusura: R0 = righe dei semi; R1 = righe che condividono con una di R0 la riga d''ordine di `orig` (la partizione della greedy `alloc` e'' completa); O = R0 ∪ R1 ∪ le origini di ri-consegna (la finestra di `migra` e'' intera). Equivalente alla vista per costruzione: ogni colonna dipende solo da cio'' che la chiusura conserva. ⛔ Chi aggiunge una finestra o un insieme con una chiave nuova (articolo, cliente, commessa) DEVE allargare la chiusura, o la funzione sbaglia SOLO con un seme e la vista resta giusta: il presidio e'' test-fn-partite-merce-chiusura-v1, a casi costruiti. `af` (vw_af_merce_per_riga) resta intera anche con un seme: e'' il pezzo che cresce con le fatture, D5 del brief. BEGIN ATOMIC: le dipendenze sono in pg_depend (rinomina a monte rifiutata; catena RLS leggibile dal presidio security_invoker). I due modi sono rami in UNION ALL, mai `p IS NULL OR col = ANY(p)`: in piano generico quell''OR e'' una scansione intera sotto policy. INVOKER: la RLS resta di chi legge. Chiamanti per documento: fn_list_ddt_da_pushare, fn_ddt_push_diagnosi, BE list_partite_merce. Brief: brief-db-partita-merce-per-documento.';
+IS 'LA PARTITA DI MERCE PER DOCUMENTO (D14, quarta leva, 2026-09-21): lo stesso conto di vendite.vw_partite_merce — che ne e'' la proiezione senza filtro, fn_partite_merce(NULL, NULL) — ristretto alla CHIUSURA dei documenti chiesti. Semi: p_ddt_ids (i DDT) e p_ordine_ids (gli ordini: le righe che li evadono); entrambi NULL = tutte le partite; un array VUOTO semina zero righe. Con entrambi valorizzati l''uscita e'' l''unione: ddt_id nei DDT chiesti OR ordine_id negli ordini chiesti — e `ordine_id` e'' la colonna PROIETTATA (min(ordine_riga_id) di `orig`), quindi una riga MULTIPLA esce sotto l''ordine della riga minima, come la legge il backend. La chiusura: R0 = righe dei semi; R1 = righe che condividono con una di R0 la riga d''ordine di `orig` (la partizione della greedy `alloc` e'' completa); O = R0 ∪ R1 ∪ le origini di ri-consegna (la finestra di `migra` e'' intera). Equivalente alla vista per costruzione: ogni colonna dipende solo da cio'' che la chiusura conserva. ⛔ Chi aggiunge una finestra o un insieme con una chiave nuova (articolo, cliente, commessa) DEVE allargare la chiusura, o la funzione sbaglia SOLO con un seme e la vista resta giusta: il presidio e'' test-fn-partite-merce-chiusura-v1, a casi costruiti. `af` (fn_af_merce_per_riga) e'' letta PER CHIAVE dal giro 4 (D5, 2026-09-21): le chiavi DDT delle origini O e le chiavi ORD dei fulfillment della chiusura, chiave BASE (i suffissi #RET/#CMP li risolve la funzione); la chiave ORD nasce dall''uid dell''ordine, letto sotto RLS — ordine e commessa devono stare nello stesso perimetro, e il BA li tiene insieme. BEGIN ATOMIC: le dipendenze sono in pg_depend (rinomina a monte rifiutata; catena RLS leggibile dal presidio security_invoker). I due modi sono rami in UNION ALL, mai `p IS NULL OR col = ANY(p)`: in piano generico quell''OR e'' una scansione intera sotto policy. INVOKER: la RLS resta di chi legge. Chiamanti per documento: fn_list_ddt_da_pushare, fn_ddt_push_diagnosi, BE list_partite_merce. Brief: brief-db-partita-merce-per-documento.';
 ```
 
 ---

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — LA VISTA DEL CONTATORE COME PROIEZIONE DELLA FUNZIONE (giro 4 — D5)
+#   brief-db-partita-merce-per-documento §11. Segue 20260921-51.
+#
+#   vendite.vw_af_merce_per_riga diventa `SELECT … FROM fn_af_merce_per_riga(NULL)`:
+#   un corpo solo (D1). Chi legge tutto (vw_contatore_merce, i pgTAP) legge la
+#   vista; chi legge per chiave chiama la funzione.
+#
+# ── ⛔ COLONNE PER NOME, NON `*` ───────────────────────────────────────
+#
+#   RETURNS TABLE perde il typmod: tipo_movimento e' varchar(32) nella vista
+#   (dalla colonna di attivita_fatturabili) e `varchar` nella funzione. Un
+#   `SELECT *` farebbe PASSARE il CREATE OR REPLACE perdendo il typmod in
+#   silenzio, e il ritorno sarebbe rifiutato (giro 1, §2-bis.1). Si ricasta.
+#
+# ── CATENA RLS ─────────────────────────────────────────────────────────
+#
+#   security_invoker=on ri-specificato. La catena del presidio
+#   rls/test-rls-viste-security-invoker passa dalla vista alla funzione
+#   (BEGIN ATOMIC, non DEFINER: anello allargato nel giro 1) e da questa a
+#   commesse_attivita, che ha la policy: la vista resta fra le garantite.
+#
+# Dipendenze: 20260921-51. Chi dipende dalla vista: vw_contatore_merce (D6,
+#   senza lettori) e, fino a questo giro, fn_partite_merce e
+#   fn_situazione_merce_ordine — che con -53 e -54 passano alla funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260921-52-update-vw-af-merce-per-riga-proiezione-fn-mctit.yaml
+
+  - changeSet:
+      id: 20260921-52-update-vw-af-merce-per-riga-proiezione-fn
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 4 (D5): vendite.vw_af_merce_per_riga diventa la proiezione senza
+        filtro di fn_af_merce_per_riga(NULL) — un corpo solo. Colonne per nome
+        con tipo_movimento ricastato a varchar(32) (il RETURNS TABLE perde il
+        typmod); security_invoker=on ri-specificato. Stesse 7 colonne, stessi
+        numeri.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_af_merce_per_riga
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_af_merce_per_riga'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_af_merce_per_riga
+              WITH (security_invoker=on) AS
+              -- D14 (2026-09-21, giro 4 — D5): la vista e' la PROIEZIONE senza filtro
+              -- di fn_af_merce_per_riga. Il conto sta nella funzione: chi legge per
+              -- documento — la partita, la situazione per riga d'ordine — la chiama
+              -- con le chiavi di segmento. Colonne per nome, non `*`: il RETURNS
+              -- TABLE perde il typmod di tipo_movimento.
+              SELECT f.corsia,
+                     f.riga_id,
+                     f.tipo_movimento::character varying(32) AS tipo_movimento,
+                     f.quantita,
+                     f.misurabile,
+                     f.da_componenti,
+                     f.voci
+                FROM vendite.fn_af_merce_per_riga(NULL::character varying[]) f;
+
+              COMMENT ON VIEW vendite.vw_af_merce_per_riga
+              IS 'Base del contatore merce (brief-design-partita-merce-generalizzata S1): traduce le attivita'' fatturabili in quantita'' PER RIGA DI DOCUMENTO SORGENTE. ⭐ rev 2026-09-21 (D14 giro 4 — D5): il conto NON sta piu'' qui — sta in vendite.fn_af_merce_per_riga(p_segment_keys), e questa vista ne e'' la proiezione senza filtro, fn(NULL): UN corpo solo (D1). Chi legge per documento chiama la funzione con le chiavi di segmento della propria chiusura (fn_partite_merce, fn_situazione_merce_ordine) e paga quelle righe, non la tabella intera — che cresce con le FATTURE. Colonne per nome con tipo_movimento ricastato a varchar(32): un SELECT * perderebbe il typmod in silenzio. Grana (corsia, riga_id, tipo_movimento). corsia ORD/DDT da split_part(segment_key), riga_id da substring(... ):R:([0-9]+)) — ⚠️ i due id vengono da sequenze diverse, la corsia e'' obbligatoria per interpretarli. I kit (segmenti #CMP) sono normalizzati in unita'' del PADRE: quantita_padre = max(quantita / meta->>''coeff_qta'') per istanza di kit, con pretesa di coerenza min=max — se i componenti non concordano, o il coefficiente manca o non e'' numerico, misurabile=false e il valore NON va usato come zero. tipo_movimento e'' ESPOSTO e NON filtrato: il filtro NORMALE resta nei consumatori. ⭐ COSA MISURA: non «quanto e'' stato fatturato» ma quanto e'' entrato nella CORSIA di fatturazione — e'' la misura che dosa il push e impedisce di spingere due volte. Non guarda quindi ne'' fatturato ne'' fattura_riga_id, e NON filtra NON_EMESSA: dopo un reset di lotto l''attivita'' e'' NON_EMESSA ma sta ANCORA nella corsia, e la sua riga di attivita_fatturabili e'' il vaso che il ri-emit riempie di nuovo (l''emit e'' un UPSERT su (sorgente_tipo_id, sorgente_uid), non un INSERT — ed e'' per questo che reset + ri-emit non produce due righe che si sommano). ⛔ FILTRA pero'' ANNULLATA, dal 2026-08-18: un''attivita'' annullata dalla corsia e'' USCITA e non ci rientra. Senza quel filtro una rettifica emessa, resettata e poi annullata lasciava qui la propria attivita_fatturabili, la partita restava pareggiata e la riga di reso non tornava MAI in coda accrediti — la merce resa diventava non accreditabile da nessuno (brief note-credito §10). ⚠️ Il filtro sta nel conto e non nell''annullo perche'' questo e'' l''unico oggetto che somma attivita_fatturabili.quantita: correggerlo corregge il conto ovunque, e vale per OGNI percorso che porta una riga ad ANNULLATA — compreso fn_annulla_commessa_attivita, che guarisce senza essere toccata. ⛔ E non si rispecchia lo stato dentro attivita_fatturabili: quel mirror lo aggiorna solo l''emit, quindi una colonna di stato li'' sarebbe stale per costruzione. security_invoker=on ri-specificato (RLS su commesse_attivita attraverso la funzione, non DEFINER). rev 2026-08-18; rev 2026-09-21.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non si torna indietro da soli: va ri-applicato 20260818-73, che
+              --    porta il corpo del contatore dentro la vista.
+              SELECT 1;

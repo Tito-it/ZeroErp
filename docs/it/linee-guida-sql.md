@@ -988,6 +988,41 @@ Preferire:
 
 ---
 
+### 8.5-bis ⛔ Sotto una policy RLS entra nell'indice solo una clausola leakproof
+
+Vale per **ogni** tabella con `ROW LEVEL SECURITY`, cioè per quasi tutto
+`vendite` e `anagrafiche`. Il planner mette in un `Index Cond` solo le clausole
+di cui si fida — quelle i cui operatori e funzioni sono dichiarati `leakproof`
+in `pg_proc` — perché una clausola valutata **prima** della policy potrebbe far
+trapelare, da un errore o da un tempo, righe che l'operatore non deve vedere.
+Tutto il resto viene valutato **dopo** la policy, come `Filter`: la lettura è la
+tabella intera, con la policy pagata riga per riga.
+
+| Clausola | Sotto una policy |
+| --- | --- |
+| `col = x`, `col = ANY(arr)`, `col < x` (operatori del btree) | ✅ `Index Cond` |
+| `col ~>=~ lo AND col ~<~ hi` (operatori del pattern, a byte) | ✅ `Index Cond` — con `lo`/`hi` **variabili già calcolate** |
+| `col LIKE 'k%'` — anche a costante | ⛔ mai (`textlike` non è leakproof); senza policy il planner lo riscrive nel range e usa l'indice, quindi **la prova da owner mente** |
+| `col ~<~ (k \|\| '$')` con `k` colonna di un'altra tabella | ⛔ la concatenazione è leaky: la clausola non sale |
+| `OR` con dentro una funzione leaky | ⛔ spegne i percorsi indicizzati parametrizzati per intero |
+| `f(col) = x` su un indice di espressione con `f` leaky (`split_part`, `lower`…) | ⛔ |
+
+⭐ Il prefisso, quindi, si scrive **come lo scriverebbe il planner** —
+`col ~>=~ 'k#' AND col ~<~ 'k$'` (`$` è il byte dopo `#`) — con i bordi in una
+CTE `MATERIALIZED` (o sul parametro della funzione), e l'indice in
+`text_pattern_ops` / `varchar_pattern_ops` (§8.3, la collation `it_IT` non
+conosce `~>=~`). Precedente e prova come app: `vendite.fn_af_merce_per_riga` e
+`script.fn_get_stato_push_segment` (2026-09-21, D14 giro 4).
+
+⚠️ La prova va fatta **come applicazione** (`zeroerp_app`), non da owner — e si
+può fare senza applicare nulla: una `TEMP TABLE` con `FORCE ROW LEVEL SECURITY`
+e una policy che chiama una funzione plpgsql riproduce esattamente il criterio
+del planner. ⚠️ Con `force_generic_plan` la forma set-based può preferire la
+scansione (stima di 100 chiavi da `unnest($1)` × 0,5 % per range): nella forma
+reale la plancache tiene i piani custom finché il generico costa di più.
+
+---
+
 ### 8.6 Gestione Indici Ridondanti
 
 Un indice di troppo non costa solo spazio: costa una scrittura in più a ogni `INSERT`, `UPDATE` e `DELETE` sulla tabella, e lavoro di manutenzione che non ripaga mai. Va tolto.

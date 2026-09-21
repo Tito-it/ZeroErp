@@ -91,6 +91,7 @@
 ## ⚙️ Funzioni (manuale)
 - [fn_accoda_stampe_lotto](manual/fn_accoda_stampe_lotto.md) — (rev 2026-08-21)
 - [fn_accredita_riga_reso](manual/fn_accredita_riga_reso.md) — (rev 2026-09-21 — la coda si legge per documento · rev 2026-08-18)
+- [fn_af_merce_per_riga](manual/fn_af_merce_per_riga.md) — È il **contatore delle attività fatturabili per riga di documento** — la stessa domanda di `vw_af_merce_per_riga` (*«di questa riga, quanti pezzi sono entrati nella corsia di fatturazione?»*) — che risponde **solo per le righe che le si chiedono**. La vista ne è la proiezione senza filtro: `fn_af_merce_per_riga(NULL)`. Un corpo solo.
 - [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-23)
 - [fn_annulla_accredito_riga_reso](manual/fn_annulla_accredito_riga_reso.md) — (rev 2026-08-21 — funzione del 2026-08-18)
 - [fn_annulla_commessa_attivita](manual/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
@@ -372,7 +373,7 @@
 - [trgfn_v_resi_protect_num](manual/trgfn_v_resi_protect_num.md) — (rev 2026-07-13)
 
 ## 🔍 Views (manuale)
-- [vw_af_merce_per_riga](manual/vw_af_merce_per_riga.md) — (latest review 2026-08-17)
+- [vw_af_merce_per_riga](manual/vw_af_merce_per_riga.md) — (latest review 2026-09-21)
 - [vw_contatore_merce](manual/vw_contatore_merce.md) — (latest review 2026-08-17)
 - [vw_contratti_lista](manual/vw_contratti_lista.md) — (rev 2026-08-21)
 - [vw_dash_aperto_documenti](manual/vw_dash_aperto_documenti.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Vista dettaglio della **Situazione aperta v2 — serbatoio pre-commessa**: lo **stock dei documenti aperti e non conclusi** delle 4 aree documento (PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale**. Risponde a: *"quali documenti aperti, se conclusi, andrebbero in commessa/fatturazione ma non ci sono ancora arrivati, e in che fase sono?"*. Il concetto **"transitato"** è **eliminato** (DL-14): in una vista senza asse temporale totalizzava *dalla notte dei tempi* documenti già passati avanti, informazione non azionabile.

@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — IL CLASSIFICATORE DEL PUSH LEGGE DALL'INDICE, SOTTO RLS (giro 4 — D8)
+#   brief-db-partita-merce-per-documento §10.7, §6 D8, §11.
+#
+# ── IL DIFETTO, SUL MODELLO ────────────────────────────────────────────
+#
+#   script.fn_get_stato_push_segment(k) classifica UNA riga di documento
+#   (LIBERA / ALLOCATA / EMESSA) leggendo vendite.commesse_attivita con
+#     segment_key = k OR LIKE k||'#CMP:%' OR LIKE k||'#RET:%'.
+#   La tabella e' sotto RLS. Sotto una policy quel predicato e' una
+#   SCANSIONE INTERA con la policy valutata per prima, riga per riga: l'OR
+#   con i due LIKE non e' indicizzabile — e non lo sarebbe NEMMENO con
+#   l'indice giusto, perche' textlike non e' leakproof e la clausola non puo'
+#   salire sopra la barriera (provato il 21-09 sera come zeroerp_app su una
+#   tabella con FORCE ROW LEVEL SECURITY: `LIKE 'k#CMP:%'` a COSTANTE resta
+#   un Filter; senza policy il planner lo riscrive nel range e usa l'indice).
+#   La diagnosi del DDT la chiama per OGNI riga attiva — deve, il segmento
+#   serve alla precedenza della capability — e dal giro 3 il lister senza
+#   documento (cockpit, lista push) eredita quel costo: O(attivita' di
+#   commessa) PER RIGA, cresce con le fatture e con le righe. Fatto datato
+#   (dbdev, app, 21-09 sera): 7.6 ms a chiamata, 2027 buffer per 112 righe;
+#   54 chiamate = 400 dei 663 ms del lister senza documento.
+#
+# ── LA FORMA: IL RANGE SCRITTO A MANO, CON GLI OPERATORI DEL PATTERN ──
+#
+#   E' la riscrittura che il planner farebbe da solo se potesse — e sotto
+#   una policy non puo':
+#     segment_key = k
+#     OR (segment_key ~>=~ k || '#CMP:' AND segment_key ~<~ k || '#CMP;')
+#     OR (segment_key ~>=~ k || '#RET:' AND segment_key ~<~ k || '#RET;')
+#   `~>=~`/`~<~` confrontano i BYTE e sono leakproof; ';' e' il byte dopo
+#   ':', quindi [k#CMP:, k#CMP;) e' ESATTAMENTE «comincia per k#CMP:». Il
+#   bordo `k || '#CMP:'` e' calcolato sul PARAMETRO (non su una colonna):
+#   textcat con un parametro e' leakproof per il criterio del planner, che
+#   guarda solo le Var passate a funzioni leaky. Con l'indice di
+#   90_end/20260921-50 (varchar_pattern_ops) e' un BitmapOr di tre Index
+#   Cond sopra la policy — provato come app in piano generico e custom.
+#   ⚠️ Semantica IDENTICA al LIKE per le chiavi che il classificatore riceve
+#   (uuid, cifre, ':'): il range e' un prefisso a byte, il LIKE un prefisso
+#   a caratteri con `_`/`%` jolly — nessuna chiave li contiene.
+#
+#   ⛔ Un LIKE qui dentro NON deve tornare: il pgTAP pinna la FORMA
+#   (il corpo non contiene `LIKE` ne' `~~`).
+#
+# ── BEGIN ATOMIC ───────────────────────────────────────────────────────
+#
+#   Dipendenze in pg_depend (una rinomina di commesse_attivita viene
+#   rifiutata; il presidio dei riferimenti morti compila solo il plpgsql).
+#   Non e' inlinata (aggregato + FROM): gira per riga dalla plancache della
+#   funzione, e la forma regge in piano generico. Il COMMENT in un change
+#   SUO (pgjdbc, giro 1).
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#
+#   Firma, RETURNS text, STABLE, INVOKER, i tre valori e la loro regola
+#   (count = 0 → LIBERA; tutte EMESSA → EMESSA; altrimenti ALLOCATA,
+#   ANNULLATA inclusa). Corpo dal 20260818-42, unico scrittore vivo.
+#
+# ── D8(b), dichiarata e non fatta ──────────────────────────────────────
+#
+#   Una forma SET-BASED (una scansione per documento invece di una per riga,
+#   con la scalare come proiezione) resta la strada per la lista senza
+#   documento; si misura dopo l'apply di questo (brief §6 D8).
+#
+# Presidio: db/pgtap/script/test-fn-get-stato-push-segment-v1.sql (casi
+#   costruiti: LIBERA/ALLOCATA/EMESSA, #CMP, #RET, #RET#CMP, il vicino
+#   numerico :R:1 vs :R:12, suffisso ignoto → LIBERA come prima, forma).
+# Dipendenze: 20260818-42; 90_end/20260921-50 (l'indice; senza, la forma
+#   e' comunque corretta — solo non indicizzata).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260921-55-update-fn-get-stato-push-segment-range-leakproof-mctit.yaml
+
+  - changeSet:
+      id: 20260921-55-update-fn-get-stato-push-segment-range-leakproof
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 4 (D8): script.fn_get_stato_push_segment riscritta BEGIN ATOMIC
+        con il predicato a RANGE sugli operatori del pattern (`~>=~`/`~<~`,
+        leakproof) al posto dei due LIKE: sotto la policy RLS di
+        commesse_attivita un LIKE non diventa mai Index Cond, il range si' — con
+        l'indice varchar_pattern_ops di 20260921-50. Stessa firma, stessi tre
+        valori, stessa regola.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_get_stato_push_segment'
+                     AND pronamespace = 'script'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stato_push_segment(
+                  p_segment_key vendite.commesse_attivita.segment_key%TYPE)
+              RETURNS text   -- vocabolario calcolato: LIBERA / ALLOCATA / EMESSA
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+              -- Scopo: classificare lo stato-push della segment_key di una riga
+              --   documento rispetto a vendite.commesse_attivita, vedendo anche
+              --   le attivita' dei componenti BoM (suffisso '#CMP:<id>') e le
+              --   RETTIFICHE (suffisso '#RET:<n>', dal 2026-08-18):
+              --     LIBERA   = nessuna attivita' (riga mai instradata)
+              --     ALLOCATA = attivita' presenti, non tutte EMESSE (in attesa
+              --                di fatturazione; ANNULLATA conta come allocata)
+              --     EMESSA   = attivita' presenti e tutte fatturate
+              --   Single source del predicato "gia' inviato": consumata dalle
+              --   fn_list_*_da_pushare (eleggibile <=> LIBERA), dalla diagnosi
+              --   del DDT (colonna `segment`) e dai rami reason delle capability.
+              -- rev 2026-08-18 (brief nota di credito, N11): il suffisso
+              --   '#RET:%' copre sia la rettifica semplice sia quella per
+              --   componente, perche' '#CMP:' viene DOPO '#RET:<n>'.
+              --   ⚠️ Su una partita fatturata dalla corsia ORD il segmento DDT
+              --   non ha attivita' NORMALE e resterebbe LIBERA anche a nota di
+              --   credito emessa: a impedire la ri-spinta ci sarebbe SOLO la
+              --   cintura XOR sullo stato dell'ordine. Due cinture sono una;
+              --   una e' zero.
+              -- rev 2026-09-21 (D14 giro 4, D8): il predicato e' un RANGE sugli
+              --   operatori del pattern, non piu' due LIKE. commesse_attivita e'
+              --   sotto RLS e sotto una policy un LIKE non diventa MAI Index Cond
+              --   (textlike non e' leakproof); `~>=~`/`~<~` si' — sono a byte e
+              --   leakproof — con l'indice varchar_pattern_ops sulla colonna.
+              --   [k#CMP:, k#CMP;) e' esattamente «comincia per k#CMP:» (';' e'
+              --   il byte dopo ':'). ⛔ Niente LIKE qui: e' pinnato dal pgTAP.
+              SELECT CASE
+                       WHEN count(*) = 0 THEN 'LIBERA'
+                       WHEN bool_and(ca.stato_emissione = 'EMESSA') THEN 'EMESSA'
+                       ELSE 'ALLOCATA'
+                     END
+                FROM vendite.commesse_attivita ca
+               WHERE ca.segment_key = p_segment_key
+                  OR (    ca.segment_key ~>=~ (p_segment_key || '#CMP:')
+                      AND ca.segment_key ~<~  (p_segment_key || '#CMP;'))
+                  OR (    ca.segment_key ~>=~ (p_segment_key || '#RET:')
+                      AND ca.segment_key ~<~  (p_segment_key || '#RET;'));
+              END;
+        # ⛔ Il COMMENT sta in un change SUO: pgjdbc esegue un `BEGIN ATOMIC … END;`
+        #    solo se sta da solo nel testo (giro 1, provato col jar di Liquibase).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_stato_push_segment(character varying)
+              IS 'Classifica lo stato-push di una segment_key rispetto a vendite.commesse_attivita: LIBERA (mai instradata) / ALLOCATA (attivita'' presenti, non tutte emesse) / EMESSA (tutte fatturate). Fonte UNICA del predicato «gia'' inviato», consumata dalle fn_list_*_da_pushare (eleggibile <=> LIBERA), dalla diagnosi del DDT (colonna `segment`, da cui il lister deriva) e dai rami reason delle capability. Vede i suffissi dei componenti BoM (#CMP:) e, dal 2026-08-18, quelli delle RETTIFICHE (#RET:<n>, con o senza #CMP a seguire). ⚠️ Il suffisso di rettifica non e'' cosmesi: su una partita fatturata dalla corsia ORD il segmento DDT non ha attivita'' NORMALE e resterebbe LIBERA anche a nota di credito emessa — a impedire la ri-spinta ci sarebbe SOLO la cintura XOR sullo stato dell''ordine, e due cinture sono una mentre una e'' zero. brief-design-note-credito-resi N11. ⭐ rev 2026-09-21 (D14 giro 4, D8): il predicato e'' un RANGE sugli operatori del pattern (`~>=~`/`~<~`, a byte, leakproof) al posto dei due LIKE: commesse_attivita e'' sotto RLS e sotto una policy un LIKE non diventa mai Index Cond (textlike non e'' leakproof) — la lettura era una scansione intera con la policy valutata riga per riga, per OGNI riga della diagnosi. Con l''indice varchar_pattern_ops (90_end/20260921-50) e'' un BitmapOr di tre Index Cond sopra la policy. Semantica identica per le chiavi che riceve (nessun jolly `_`/`%`). BEGIN ATOMIC: dipendenze in pg_depend. ⛔ Niente LIKE nel corpo: pinnato da script/test-fn-get-stato-push-segment-v1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non si torna indietro da soli: va ri-applicato 20260818-42
+              --    (la forma con i due LIKE, corpo a stringa).
+              SELECT 1;

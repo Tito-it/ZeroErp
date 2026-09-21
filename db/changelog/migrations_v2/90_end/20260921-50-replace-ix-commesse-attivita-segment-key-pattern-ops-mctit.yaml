@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — GIRO 4 (D5 + D8): l'indice della chiave di segmento, con l'opclass
+#   dei PATTERN. brief-db-partita-merce-per-documento §7 «Giro 4», §11.
+#
+# ── IL DIFETTO, SUL MODELLO ────────────────────────────────────────────
+#
+#   vendite.commesse_attivita.segment_key e' una chiave COMPOSTA in una
+#   stringa: 'DDT:<uid>:R:<riga>' (o 'ORD:…'), piu' i suffissi '#RET:<n>'
+#   (rettifica) e '#CMP:<id>' (componente di kit). Chi vuole «tutte le
+#   attivita' di una riga di documento» cerca la chiave ESATTA e le chiavi
+#   che ne portano un suffisso: un filtro a PREFISSO. Lo fanno il
+#   classificatore script.fn_get_stato_push_segment (per OGNI riga attiva di
+#   ogni DDT, dalla diagnosi) e — dal giro 4 — vendite.fn_af_merce_per_riga,
+#   il contatore letto per le chiavi della chiusura.
+#
+#   L'indice che c'era, ix_commesse_attivita_segment_key (90_end/20260703-58),
+#   e' un btree con la collation del database (it_IT.UTF-8): serve `=` e
+#   NON serve nessun prefisso — con quella collation PostgreSQL non sa
+#   trasformare un range di prefisso in una scansione dell'indice. Quindi
+#   ogni lettura «per riga» era una scansione INTERA della tabella, sotto la
+#   policy RLS valutata riga per riga (fatto datato 21-09 sera, come app:
+#   7.6 ms a chiamata su 112 righe, 2027 buffer).
+#
+# ── LA FORMA: SOSTITUIRE, NON AGGIUNGERE ──────────────────────────────
+#
+#   varchar_pattern_ops confronta i BYTE (lo stesso opclass che Django mette
+#   sulle sue colonne varchar, e la forma varchar del text_pattern_ops gia'
+#   usato su dbops.error_log.function_name): serve `=` E i range a prefisso
+#   (`~>=~` / `~<~`). L'ordinario serviva SOLO `=` e l'ordinamento in
+#   collation, che su una chiave tecnica nessuno chiede. Un secondo indice
+#   sulla stessa colonna sarebbe un doppione in scrittura su una tabella che
+#   si scrive a ogni push e a ogni emit: si SOSTITUISCE, stesso nome
+#   (linee-guida-sql §8: ix_<tabella>_<colonna>), opclass diverso — e il
+#   COMMENT lo dichiara.
+#
+# ── ⛔ PERCHE' STA IN 90_end E NON IN 00_schema ─────────────────────────
+#
+#   Il DROP deve venire DOPO 90_end/20260703-58, che crea l'indice ordinario
+#   con IF NOT EXISTS. Su un database da zero un DROP in 00_schema girerebbe
+#   PRIMA (00_schema e 20_code precedono i 90_end), non troverebbe niente, e
+#   poi il -58 ricreerebbe l'ordinario accanto a questo: due indici in CI, uno
+#   su dev. Qui, in ordine alfabetico dopo il -58, la sequenza e' la stessa
+#   su ogni database: ordinario → sostituito.
+#
+# ── ⚠️ L'INDICE DA SOLO NON BASTA, ED E' LA CORREZIONE DI D8(a) ─────────
+#
+#   Provato il 21-09 sera come zeroerp_app (tabella temporanea, FORCE ROW
+#   LEVEL SECURITY, policy con una funzione plpgsql, cioe' non leakproof):
+#   sotto una policy RLS un `LIKE 'k#CMP:%'` NON diventa MAI Index Cond —
+#   nemmeno con la costante — perche' textlike non e' leakproof e la clausola
+#   non puo' salire sopra la barriera; senza policy il planner la riscrive
+#   nel range e usa l'indice. Salgono `=`, `= ANY` e il range scritto A MANO
+#   con gli operatori del pattern (`~>=~` / `~<~`, leakproof), col bordo
+#   PRECALCOLATO. Quindi il giro cambia anche la FORMA dei predicati
+#   (20260921-51 e -55): questo indice e' la meta' che sta sulla tabella.
+#
+# Presidio: db/pgtap/vendite/test-fn-af-merce-per-riga-chiusura-v1.sql
+#   (pin dell'opclass da pg_index.indclass) e
+#   db/pgtap/script/test-fn-get-stato-push-segment-v1.sql (forma senza LIKE).
+# Non e' un indice FK: fuori da dbops.fk_index_policy.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260921-50-replace-ix-commesse-attivita-segment-key-pattern-ops-mctit.yaml
+
+  - changeSet:
+      id: 20260921-50-replace-ix-commesse-attivita-segment-key-pattern-ops
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D14 giro 4 (D5 + D8): ix_commesse_attivita_segment_key ricreato con
+        varchar_pattern_ops (byte, non collation it_IT): serve `=` e i range a
+        prefisso `~>=~`/`~<~` con cui fn_af_merce_per_riga e
+        fn_get_stato_push_segment leggono la chiave esatta e i suffissi
+        #RET/#CMP, sopra la policy RLS. Sostituisce l'ordinario (stesso nome),
+        che serviva solo `=`. In 90_end perche' deve seguire 20260703-58.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: commesse_attivita }
+            - columnExists: { schemaName: vendite, tableName: commesse_attivita, columnName: segment_key }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Stesso nome, opclass diverso: l'ordinario (collation it_IT) serviva
+              -- solo `=`; questo serve `=` e i range a prefisso. IF EXISTS: su un
+              -- database da zero il -58 lo ha appena creato, su dev c'e' da luglio.
+              DROP INDEX IF EXISTS vendite.ix_commesse_attivita_segment_key;
+
+              CREATE INDEX IF NOT EXISTS ix_commesse_attivita_segment_key
+                  ON vendite.commesse_attivita (segment_key varchar_pattern_ops);
+
+              COMMENT ON INDEX vendite.ix_commesse_attivita_segment_key IS
+                  'La chiave di segmento, con l''opclass dei PATTERN (varchar_pattern_ops: confronto a BYTE, non la collation it_IT del database). Serve `=` e i range a prefisso `~>=~ k || ''#'' AND ~<~ k || ''$''` con cui si leggono la chiave esatta e le chiavi coi suffissi #RET:<n> / #CMP:<id> della stessa riga di documento (vendite.fn_af_merce_per_riga per le chiavi della chiusura, script.fn_get_stato_push_segment per ogni riga). ⛔ Un LIKE ''k#CMP:%'' NON lo usa sotto una policy RLS (textlike non e'' leakproof: provato il 2026-09-21): il range va scritto con gli operatori del pattern, col bordo precalcolato. Sostituisce l''indice ordinario di 20260703-58 (stesso nome): un secondo indice sulla stessa colonna sarebbe un doppione in scrittura. D14 giro 4 (D5 + D8), brief-db-partita-merce-per-documento §11.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_commesse_attivita_segment_key;
+              CREATE INDEX IF NOT EXISTS ix_commesse_attivita_segment_key
+                  ON vendite.commesse_attivita (segment_key);
