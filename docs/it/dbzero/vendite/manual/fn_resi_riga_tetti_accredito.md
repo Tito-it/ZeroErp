@@ -13,7 +13,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-18)
+(rev 2026-09-21 — il tetto si legge per documento · rev 2026-08-18)
 
 I **due tetti** di un accredito, letti **sopra la RLS**:
 
@@ -51,6 +51,26 @@ risolvere i nomi altrove. È il pattern già usato da `script.fn_job_run_start`.
 ⭐ **Non è un buco di sicurezza.** La funzione restituisce **due numeri** e nulla
 di riservato: quanto vale un accredito dovuto e quanti pezzi ha fatturato una
 riga. Chi può chiamarla sta già scrivendo su quella riga di reso.
+
+---
+
+### 🔄 rev 2026-09-21 — il tetto si legge PER DOCUMENTO (D14, giro 2 — D3)
+
+ChangeSet `20260921-31`. `accredito_dovuto` veniva da `vw_resi_da_accreditare`
+— la coda di **tutti** i resi — e questa funzione la pagava **a ogni riga
+scritta sul ponte** (è chiamata da `trgfn_resi_accrediti_guard`) e dalla madre.
+Ora legge [`fn_resi_da_accreditare`](fn_resi_da_accreditare.md) col seme del
+DDT della riga resa: la coda di quel documento, stesso numero.
+
+Resta `SECURITY DEFINER` con il `search_path` fissato, e la ragione non cambia:
+dentro la `DEFINER` la funzione a valle — `INVOKER` — gira come l'owner, cioè
+**sopra la RLS**, esattamente com'era la vista letta da qui. I corpi
+`BEGIN ATOMIC` hanno i nomi risolti alla creazione, quindi il `search_path`
+stretto non li tocca.
+
+⚠️ Su una riga di reso inesistente il seme è `'{}'` (`COALESCE`), non `NULL`:
+zero righe e tetto 0 **senza** scandire la coda di tutti. Un array `NULL`
+sarebbe «tutta la coda», pagata per rispondere 0.
 
 ---
 
