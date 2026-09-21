@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: le `ui_action` che NON seguono il default della loro classe.
-#        Il default copre 482 codici su 658; qui stanno i 176 che se ne
-#        discostano, ognuno con la ragione per cui lo fa.
+#        Qui stanno quelle che se ne discostano (il numero lo dice `len`, non
+#        questo commento), ognuna con la ragione per cui lo fa.
 # Note: ⚠️ Questo file e' SCRITTO A MANO e non va generato. Le voci non sono
 #        dati, sono decisioni con una motivazione: un CSV non porta un paragrafo,
 #        e i paragrafi qui sotto sono il ragionamento del cantiere del terzo lato
@@ -24,6 +24,26 @@
 
 
 # codice -> ui_action, quando diversa dal default della classe.
+#
+# ⛔ SEDICI OVERRIDE `highlight_form_fields` TOLTI IL 2026-09-21 (presidio C2,
+#    brief-be-presidio-ui-action-e-canale-campi §3-ter, decisione di Tid):
+#      E_CORE_VALIDATION, E_SEARCH_VALIDATION, E_IDEMPOTENCY_KEY_REQUIRED,
+#      E_INVALID_ID, E_PIPELINE_VALIDATION, E_FATTURAZIONE_GIRO_PAYLOAD,
+#      E_FATTURAZIONE_NUMERA_PAYLOAD, E_GENERATE_FATTURE_RIGHE_VALIDATION,
+#      E_GROUP_ATTIVITA_VALIDATION, E_RESET_LOTTO_VALIDATION,
+#      E_RESET_LOTTO_FATTURA_VALIDATION, E_NOTA_RIGA_INCOERENTE,
+#      E_FLUSSO_ID_OBBLIGATORIO, E_FLUSSO_ID_INVALIDO, E_PRATICA_ID_OBBLIGATORIO,
+#      E_PRATICA_ID_INVALIDO (sedici, con questi quattro: query string di GET).
+#    Tornano al banner di classe (DATO_ERRATO). La promessa era SBAGLIATA, non
+#    il canale: letti tutti i loro siti, nessuno ha un input del form da
+#    accendere — parametri di query string e di paginazione, un header
+#    (`Idempotency-Key`), `<x>_id deve essere > 0` su parametri di firma
+#    (47 siti), stati non configurati, payload di un lavoro in coda letto dal
+#    drenatore, legami fra id. `highlight_form_fields` promette un input
+#    NELLA PAGINA in cui l'operatore si trova (api.md §Envelope): un nome che
+#    non e' il nome di un input non va promesso. A video oggi non cambia
+#    niente (nessun consumatore ramifica su questo valore); cambia il
+#    contratto, ed e' la finestra in cui riguardare le righe costa zero.
 UI_ACTION_OVERRIDE: dict[str, str] = {
     # ══════════════════════════════════════════════════════════════════
     # Codici DB fuori convenzione `E_*` — registro del debito
@@ -181,7 +201,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CORE_PROFILE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
-    "E_CORE_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DATABASE_RETRYABLE": "show_retry_dialog",  # classe CONFLITTO_STATO
     "E_DATA_AL_MINORE_DAL": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DATA_APERTURA": "highlight_form_fields",  # classe DATO_ERRATO
@@ -258,12 +277,8 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     #    un DDT.
     "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: giri di fatturazione (handler coda lavori) ------------
-    "E_FATTURAZIONE_GIRO_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_FATTURAZIONE_NUMERA_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO
     # <- FLUSSI_ESITO_NON_AMMESSO  (vivo)
     "E_FLUSSI_ESITO_NON_AMMESSO": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_FLUSSO_ID_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_FLUSSO_ID_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FLUSSO_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FORMA_GIURIDICA_PAESE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FORNITORE_ID_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
@@ -299,20 +314,16 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # indicate non danno nessun record. Banner e non empty-state: e' una
     # scrittura che fallisce, non una pagina da svuotare.
     "E_FULFILL_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
-    "E_GENERATE_FATTURE_RIGHE_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     # anagrafiche.trgfn_gestori_guard: il lookup su soggetti_ruoli non
     # da' nessuna riga (`v_soggetto_id IS NULL`).
     "E_GESTORE_SOGGETTO_RUOLO_MANCANTE": "show_error_banner",  # classe NON_TROVATO
-    "E_GROUP_ATTIVITA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IDEMPOTENCY_IN_PROGRESS": "show_retry_dialog",  # classe CONFLITTO_STATO
-    "E_IDEMPOTENCY_KEY_REQUIRED": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IDENTITA_NON_ATTIVA": "redirect_login",  # classe NON_AUTENTICATO
     "E_ID_FISCALI_DIVERSI": "highlight_form_fields",  # classe DATO_ERRATO
     # Indirizzi documento (BB _indirizzi_documento_helpers, 5 domini):
     # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
     # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
-    "E_INVALID_ID": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_ACQ_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_VEN_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_JWT_SENZA_IDENTITA": "redirect_login",  # classe NON_AUTENTICATO
@@ -330,7 +341,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_NAZIONE_NON_TROVATA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_NOTA_CHECK_VIOLATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_NOTA_FK": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_NOTA_RIGA_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
     # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
     # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
     # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
@@ -380,13 +390,10 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_PARAMETRO_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PARENT_SELF": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PIPELINE_SCOPE_INCOMPLETE": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_PIPELINE_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     # <- PIVA_NON_VALIDA  (vivo)
     "E_PIVA_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PIVA_OBBLIGATORIA": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_PRATICA_ID_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: parametri di collegamento pratica/flusso --------------
-    "E_PRATICA_ID_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PRATICA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PREVENTIVO_RIGA_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
     "E_PREV_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
@@ -456,8 +463,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_QTA_NON_POSITIVA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_QTA_OPERATIVA_NON_INTERA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_QTA_OPER_STEP_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_RESET_LOTTO_FATTURA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_RESET_LOTTO_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     # ⚠️ SESTA DI SEI GUARDIE IDENTICHE, e fino al 2026-08-08 era l'unica senza
     # override — segnalato dal team DB collaudando il campo da correggere.
     # `emittente_fiscale_id` e' un campo del form in tutti e sei i documenti
@@ -512,7 +517,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_SEARCH_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_SESSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     # §8.4.3/§8.4.4/§8.4.5: endpoint shop rispondono 501 finche' PR-C
     # non porta il MVP. Codice dedicato (non E_TASK_NOT_IMPLEMENTED

@@ -1,7 +1,7 @@
 # Brief DB — anagrafiche di magazzino: il guard sul padre dell'ubicazione, tre codici, tre liste
 
 > **Destinatario:** team DB (`dev/db-tid`). **Chi scrive:** BE/FE, 2026-09-21.
-> **Origine:** [piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)
+> **Origine:** [piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](../work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)
 > §7 — magazzini, ubicazioni e lotti escono dal pannello config e hanno
 > endpoint e drawer propri (decisione **B** di Tid, 2026-09-20). Nessun DDL di
 > tabella: tutto ciò che serve c'è già. Restano una regola del modello che oggi
@@ -150,6 +150,7 @@ Poi, quando arrivano le righe di R-3: apply del mirror `ui` e il nome di
 | --- | --- |
 | 2026-09-21 | Brief scritto dal BE/FE (R-1, R-2, R-3). |
 | 2026-09-21 (notte) | ✅ **Lato DB scritto**: D1 (lock su `magazzino_id` al posto del ramo `UPDATE OF magazzino_id`) e D2 (anti-ciclo, codice separato) decise da Tid sulla raccomandazione; `20260921-14` + 6 codici + 6 frasi + 1 lock + pgTAP (13) + due manuali. Provato con l'SQL estratto in transazione ritirata, 12/13 come owner (il 13° è il caso RLS, verde solo come app). Da applicare (§5). |
+| 2026-09-21 (sera) | ✅ **Lato BE/FE chiuso**: il piano d'origine è archiviato ([work-done](../work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)); R-2 (i tre codici) consumati dal service delle anagrafiche, R-1 rispecchiato dal picker del padre, R-3 (liste 80-82) **applicate** da Tid col mirror `ui` e collaudate in-app (magazzino + ubicazione). ⏳ Resta al DB il nome `magazzino.lotti` nell'elenco del pgTAP delle liste globali |
 | 2026-09-21 (mattina dopo) | ✅ **APPLICATO** da Tid (`20260921-14` EXECUTED 10:42, CSV via mirror). Primo giro del pgTAP come app: 11 ok, 1 skip, **test 4 rosso per un refuso di stile** — il guard scriveva `e'` nella frase «non e' visibile…» mentre le frasi del catalogo (e il test) usano `è`. La sostanza era verde: sotto RLS il padre dell'altra azienda non si vede (l'id al posto del codice nella frase) e il rifiuto è fail-closed. Corretto nello YAML (non pushato) e riallineato il dev con l'SQL estratto + `md5sum = NULL` sulla riga di `databasechangelog`, checksum ricalcolato dal migrate successivo. Ora: **12/13 + skip del 10**. ⏳ Il trigger di lock su `magazzino_id` **non è ancora generato** su dev (job `automations_lock_columns` delle 21:00, o `CALL maintenance.proc_automations_lock_columns_job()`): quando c'è, il 10 diventa un'asserzione vera (13/13). Restano commit e R-3. |
 
 ## Ai team, per chiudere

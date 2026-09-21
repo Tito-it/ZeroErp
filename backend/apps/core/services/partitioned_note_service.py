@@ -70,7 +70,10 @@ PARAM_DEFAULT_LINGUA = "NOTE_DEFAULT_LINGUA"
 # Cross-partizione: i nomi `chk_note_*` sono ereditati dalla parent table,
 # i nomi `chk_prevnote_*`/`chk_contnote_*` sono locali alla singola partizione.
 # Vedi vendite/manual/note_preventivo.md e note_contratto.md.
-_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+# ⭐ Il terzo elemento e' il CAMPO del form (chiave del payload): arriva al
+#    client in `error.fields`. Le tre voci di coerenza e il tipo target restano a
+#    due — non hanno UN campo (presidio C2, brief-be-presidio-ui-action-e-canale-campi §3-ter).
+_CHECK_CONSTRAINTS: dict[str, tuple] = {
     "chk_note_target_tipo": (
         "E_NOTA_CHECK_VIOLATION",
         "Tipo target nota non ammesso.",
@@ -78,18 +81,22 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "chk_note_anchor_tipo": (
         "E_NOTA_CHECK_VIOLATION",
         "anchor_tipo non ammesso (consentiti: DOCUMENTO, RIGA).",
+        "anchor_tipo",
     ),
     "chk_note_posizione": (
         "E_NOTA_CHECK_VIOLATION",
         "posizione non ammessa (consentiti: HEADER, SEZIONE, FOOTER, BEFORE, AFTER).",
+        "posizione",
     ),
     "chk_note_seq_pos": (
         "E_NOTA_CHECK_VIOLATION",
         "Il valore seq deve essere positivo.",
+        "seq",
     ),
     "chk_note_testo_non_vuoto": (
         "E_NOTA_CHECK_VIOLATION",
         "Il testo della nota non puo' essere vuoto.",
+        "testo",
     ),
     "chk_prevnote_anchor": (
         "E_NOTA_CHECK_VIOLATION",
@@ -98,6 +105,7 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "chk_prevnote_testo_non_vuoto": (
         "E_NOTA_CHECK_VIOLATION",
         "Il testo della nota non puo' essere vuoto.",
+        "testo",
     ),
     "chk_contnote_anchor": (
         "E_NOTA_CHECK_VIOLATION",
@@ -106,19 +114,22 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "chk_contnote_testo_non_vuoto": (
         "E_NOTA_CHECK_VIOLATION",
         "Il testo della nota non puo' essere vuoto.",
+        "testo",
     ),
 }
 
 # FK comuni: lo stile e la lingua + le FK locali a ogni partizione
 # (fk_prevnote_testata/riga, fk_contnote_testata/riga, ecc.).
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_vendite_note_id_stile": (
         "E_NOTA_FK",
         "Stile nota non valido.",
+        "id_stile",
     ),
     "fk_vendite_note_id_lingua": (
         "E_NOTA_FK",
         "Lingua nota non valida.",
+        "id_lingua",
     ),
     "fk_prevnote_testata": (
         "E_NOTA_PARENT_NOT_FOUND",

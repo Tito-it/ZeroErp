@@ -79,6 +79,10 @@ Indice test eseguiti:
 48) test_preview_componenti_riga_utility_mancante — utility NULL → 422 (no fallback 0)
 49) test_preview_componenti_riga_emittente_non_risolvibile — admin globale + no emittente → 422
 50) test_preview_componenti_riga_usa_emittente_preventivo — precedenza emittente preventivo
+51) test_list_righe_preventivo_non_trovato_e_404 — «leggi prima la testata» (2026-09-21): E_PREV_NOT_FOUND
+52) test_list_riepilogo_iva_preventivo_non_trovato_e_404 — idem sul riepilogo IVA
+53) test_list_revisioni_preventivo_non_trovato_e_404 — idem sulle revisioni
+54) test_list_righe_con_testata_delega_al_repo — caso felice: delega invariata
 
 TestNormalizeComponentiOverrides:
 - test_none_ritorna_none, test_dict_vuoto_ritorna_none
@@ -99,6 +103,8 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services._componenti_service_helpers import (
@@ -2850,3 +2856,56 @@ class TestPreventiviRigaDataConsegna(unittest.TestCase):
         self.assertNotIn(
             "data_consegna_richiesta_cliente", self.mock_repo.update_riga.call_args.kwargs,
         )
+
+
+# Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un preventivo fuori perimetro RLS — `None`
+#        dal repository, come un id inesistente — e' un 404, non un 200 vuoto.
+#
+# Indice:
+# 51) test_list_righe_preventivo_non_trovato_e_404
+# 52) test_list_riepilogo_iva_preventivo_non_trovato_e_404
+# 53) test_list_revisioni_preventivo_non_trovato_e_404
+# 54) test_list_righe_con_testata_delega_al_repo
+class PreventiviSatellitiTestataTests(SimpleTestCase):
+    def setUp(self):
+        self.repo_patcher = patch(
+            "apps.vendite.services.preventivi_service.PreventiviRepository"
+        )
+        self.mock_repo = self.repo_patcher.start().return_value
+        self.addCleanup(self.repo_patcher.stop)
+
+    def test_list_righe_preventivo_non_trovato_e_404(self):
+        from apps.vendite.services.preventivi_service import list_righe
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            list_righe(99)
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.list_righe.assert_not_called()
+
+    def test_list_riepilogo_iva_preventivo_non_trovato_e_404(self):
+        from apps.vendite.services.preventivi_service import list_riepilogo_iva
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            list_riepilogo_iva(99)
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.list_riepilogo_iva.assert_not_called()
+
+    def test_list_revisioni_preventivo_non_trovato_e_404(self):
+        from apps.vendite.services.preventivi_service import list_revisioni
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            list_revisioni(99)
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.list_revisioni.assert_not_called()
+
+    def test_list_righe_con_testata_delega_al_repo(self):
+        from apps.vendite.services.preventivi_service import list_righe
+
+        self.mock_repo.get_preventivo.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        self.mock_repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(list_righe(7), [{"id": 31}])
+        self.mock_repo.list_righe.assert_called_once_with(7)

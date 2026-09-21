@@ -1552,7 +1552,9 @@ class CommessaPortaOneriServiceTests(TestCase):
         attesi = [
             "E_ONERE_ARTICOLO_MANCANTE",
             "E_ONERE_IMPORTO_NON_VALIDO",
-            "E_ONERE_CAUSALE_NON_VALIDA",
+            # `E_ONERE_CAUSALE_NON_VALIDA` non e' piu' fra gli attesi (2026-09-21):
+            # nessuna funzione viva lo solleva, il marker e' uscito con la
+            # richiesta di ritiro (presidio C2 §3-bis.2).
             "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO",
             # Guard race progressivo (DB 557): deve sopravvivere alla traduzione
             # col PROPRIO codice → policy 409, non cadere su E_COMMESSA_VALIDATION

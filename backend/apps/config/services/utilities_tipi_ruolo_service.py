@@ -19,6 +19,7 @@ from apps.config.db.utilities_tipi_ruolo_repository import (
     UtilitiesTipiRuoloRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -40,14 +41,17 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+# Il terzo elemento e' il campo del form (presidio C2, §3-ter).
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_utilities_tipi_ruolo_utility": (
         E_CONFIG_MATRICE_FK,
         "Utility inesistente.",
+        "utility_id",
     ),
     "fk_utilities_tipi_ruolo_tipo_ruolo": (
         E_CONFIG_MATRICE_FK,
         "Tipo ruolo inesistente.",
+        "tipo_ruolo_id",
     ),
 }
 
@@ -103,14 +107,11 @@ class UtilitiesTipiRuoloService:
     # Scopo: Dettaglio singola riga matrice; solleva not found se assente.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_matrice(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_CONFIG_MATRICE_NOT_FOUND,
-            message="Riga matrice utilities/ruoli non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_matrice, record_id,
+            code=E_CONFIG_MATRICE_NOT_FOUND, message="Riga matrice utilities/ruoli non trovata.",
+            id_name="record_id", function_name="utilities_tipi_ruolo_service.get_matrice",
         )
-        assert result is not None
         return result
 
     # =================================================================

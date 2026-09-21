@@ -194,6 +194,16 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 > **`search` vuoto**: stringa vuota o whitespace-only trattato come "no filter"
 > (non solleva 422). Il minimo 3 char si applica solo a `search` non-vuota.
 
+> **Scope emittente** (dal 2026-09-21): lista **ed export** applicano il filtro
+> applicativo `v.emittente_fiscale_id = ANY(<whitelist>)` risolto da
+> `get_scope_user_id(request)` → `add_emittente_scope_condition` (convenzione
+> `pk`), lo stesso calco di preventivi e contratti; `None` = nessuna
+> restrizione, whitelist vuota = **fail-closed**. Si **somma** alla RLS della
+> vista (`security_invoker=on`), non la sostituisce (api.md §«Scope emittente»).
+> Fino a quel giorno la lista offerte era l'unica di testata del dominio senza
+> — il «B1» dell'analisi RLS. Presidio:
+> `apps/vendite/tests/db/test_offerte_scope_emittente.py`.
+
 ### Export lista offerte `GET /api/v1/vendite/offerte/export/`
 
 Genera un file **CSV** o **Excel** con le offerte filtrate (stessi parametri

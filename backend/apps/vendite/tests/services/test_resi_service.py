@@ -105,6 +105,10 @@ ResiAnnulloAccreditoTests (B2-bis / D-NC-11)
 48) test_annullo_codice_dominio_dalla_madre      — E_ACCREDITO_ANNULLO_NON_AMMESSO
 49) test_annullo_no_atomic_extra                 — atomicita' nella fn madre
 50) test_annullo_motivo_non_stringa_rifiutato    — nessun tipo strano al driver
+
+ResiSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
+51) test_list_righe_reso_non_trovato_e_404       — E_RESO_NOT_FOUND, repo righe non chiamato
+52) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
 """
 
 from contextlib import nullcontext
@@ -1067,3 +1071,29 @@ class ResiDbErrorsTests(SimpleTestCase):
                     "alla quantita' consegnata residua",
                 )
         self.assertEqual(cm.exception.code, "E_RESO_QTA_SUPERA_CONSEGNATO")
+
+
+# Scopo: Le righe «leggono prima la testata» (2026-09-21, allineamento a
+#        api.md §Scope emittente): un reso fuori perimetro RLS — `None` dal
+#        repository, come un id inesistente — e' un 404, non un 200 vuoto.
+#
+# Indice:
+# 51) test_list_righe_reso_non_trovato_e_404
+# 52) test_list_righe_con_testata_delega_al_repo
+class ResiSatellitiTestataTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_list_righe_reso_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_reso.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.list_righe(99)
+        self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
+        repo.list_righe.assert_not_called()
+
+    @patch(_REPO)
+    def test_list_righe_con_testata_delega_al_repo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_reso.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.list_righe.return_value = [{"id": 31}]
+        self.assertEqual(resi_service.list_righe(7), [{"id": 31}])
+        repo.list_righe.assert_called_once_with(7)

@@ -33,6 +33,7 @@ from django.utils.timezone import now
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.pratiche.db.pratiche_repository import (
     PRATICHE_ORDER_COLS,
@@ -338,14 +339,11 @@ def crea_richiesta_approvazione(
     auth_user_id: int | None,
 ) -> int:
     repo = PreventiviRepository()
-    testata = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        function_name=f"{_FN}.crea_richiesta_approvazione",
+    testata = testata_o_not_found(
+        repo.get_preventivo, preventivo_id,
+        code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
+        id_name="preventivo_id", function_name=f"{_FN}.crea_richiesta_approvazione",
     )
-    assert testata is not None
 
     contesto = repo.resolve_contesto_pratica(preventivo_id)
     ErrorManager.require(
@@ -391,14 +389,11 @@ def crea_richiesta_approvazione_contratto(
 ) -> int:
     from apps.vendite.db.contratti_repository import ContrattiRepository
     repo = ContrattiRepository()
-    testata = repo.get_contratto(contratto_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_VENDITE_NOT_FOUND",
-        message="Contratto non trovato.",
-        function_name=f"{_FN}.crea_richiesta_approvazione_contratto",
+    testata = testata_o_not_found(
+        repo.get_contratto, contratto_id,
+        code="E_VENDITE_NOT_FOUND", message="Contratto non trovato.",
+        id_name="contratto_id", function_name=f"{_FN}.crea_richiesta_approvazione_contratto",
     )
-    assert testata is not None
 
     contesto = repo.resolve_contesto_pratica(contratto_id)
     ErrorManager.require(
@@ -448,14 +443,11 @@ def crea_richiesta_approvazione_offerta(
 ) -> int:
     from apps.vendite.db.offerte_repository import OfferteRepository
     repo = OfferteRepository()
-    testata = repo.get_offerta(offerta_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_VENDITE_NOT_FOUND",
-        message="Offerta non trovata.",
-        function_name=f"{_FN}.crea_richiesta_approvazione_offerta",
+    testata = testata_o_not_found(
+        repo.get_offerta, offerta_id,
+        code="E_VENDITE_NOT_FOUND", message="Offerta non trovata.",
+        id_name="offerta_id", function_name=f"{_FN}.crea_richiesta_approvazione_offerta",
     )
-    assert testata is not None
 
     contesto = repo.resolve_contesto_pratica(offerta_id)
     ErrorManager.require(

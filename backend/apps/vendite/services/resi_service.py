@@ -39,6 +39,7 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
 )
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.resi_repository import ResiRepository
 
@@ -91,6 +92,31 @@ _SORGENTE_DDT = "DDT_VENDITA"
 # transazione e produce righe di rettifica. Stesso criterio (e stesso valore)
 # di `MAX_GRUPPI_EMISSIONE_MIRATA` per l'emissione mirata.
 MAX_ACCREDITI_MASSIVI = 200
+
+
+# Scopo: Carica la testata reso o solleva E_RESO_NOT_FOUND (BB core
+#        `testata_o_not_found`, stesso nome del helper di ordini e DDT).
+def _get_testata_or_raise(
+    repo: ResiRepository, reso_id: int, *, op: str,
+) -> dict[str, Any]:
+    return testata_o_not_found(
+        repo.get_reso, reso_id,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        id_name="reso_id", function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Carica la riga o solleva E_RESO_NOT_FOUND se non esiste o non e' di questo
+#        documento (BB core `riga_del_padre_o_not_found`: qui solo codice e
+#        messaggio del dominio).
+def _get_riga_or_raise(
+    repo: ResiRepository, reso_id: int, riga_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=reso_id, chiave_padre="reso_id",
+        code="E_RESO_NOT_FOUND", message="Riga non trovata per questo reso.",
+        function_name=f"{_FN}.{op}",
+    )
 
 # Whitelist campi testata accettati in create/update (null_vs_empty -> None).
 # Il resto (BA/destinatario/utility/valuta/emittente) e' EREDITATO dal DDT
@@ -174,15 +200,7 @@ def resolve_filtri_export_label(
 #        /righe/). Mirror get_ddt.
 def get_reso(reso_id: int) -> dict[str, object]:
     repo = ResiRepository()
-    testata = repo.get_reso(reso_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_RESO_NOT_FOUND",
-        message="Reso non trovato.",
-        detail=f"reso_id={reso_id}",
-        function_name=f"{_FN}.get_reso",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, reso_id, op="get_reso")
     # Capability da script.fn_available_actions_reso (matrice
     # config.transizioni_stati_reso): available_actions (conferma/annulla),
     # can_change_state, can_edit_testata/righe, non_editable_fields,
@@ -195,9 +213,13 @@ def get_reso(reso_id: int) -> dict[str, object]:
     }
 
 
-# Scopo: Lista righe di un reso (con copertura ri-consegna derivata).
+# Scopo: Lista righe di un reso (con copertura ri-consegna derivata). Legge
+#        prima la testata: un reso fuori perimetro (o inesistente) e' un 404,
+#        non un pannello vuoto.
 def list_righe(reso_id: int) -> list[dict[str, Any]]:
-    return ResiRepository().list_righe(reso_id)
+    repo = ResiRepository()
+    _get_testata_or_raise(repo, reso_id, op="list_righe")
+    return repo.list_righe(reso_id)
 
 
 # Scopo: Righe del DDT sorgente con gia'-reso/residuo rendibile (pannello FE
@@ -205,15 +227,11 @@ def list_righe(reso_id: int) -> list[dict[str, Any]]:
 #        resta il trigger DB a20 (E_RESO_QTA_SUPERA_CONSEGNATO).
 def list_righe_ddt_per_reso(ddt_id: int) -> list[dict[str, Any]]:
     repo = ResiRepository()
-    ddt = repo.get_ddt_sorgente(ddt_id)
-    ErrorManager.require(
-        ddt is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.list_righe_ddt_per_reso",
+    testata_o_not_found(
+        repo.get_ddt_sorgente, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.list_righe_ddt_per_reso",
     )
-    assert ddt is not None
     return repo.list_righe_ddt_per_reso(ddt_id)
 
 
@@ -401,15 +419,11 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_reso",
     )
 
-    ddt = repo.get_ddt_sorgente(ddt_id)
-    ErrorManager.require(
-        ddt is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT sorgente non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.crea_reso",
+    ddt = testata_o_not_found(
+        repo.get_ddt_sorgente, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT sorgente non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.crea_reso",
     )
-    assert ddt is not None
     # Guard gemello del trigger DB `trgfn_resi_guard_ddt_consegnato`: STESSO
     # codice del trigger (E_RESO_DDT_NON_CONSEGNATO, 409) cosi' il FE vede un
     # solo errore per questo caso a prescindere dal percorso (service o
@@ -738,14 +752,7 @@ def annulla_accredito_riga_reso(
     # (la madre non conosce il reso), e' la coerenza del PERCORSO — senza,
     # `/resi/999/righe/24/annulla-accredito/` annullerebbe l'accredito della
     # riga 24 di un altro reso. Stesso guard di `aggiorna_riga`.
-    riga = repo.get_riga(int(riga_id))
-    ErrorManager.require(
-        riga is not None and riga["reso_id"] == int(reso_id),
-        code="E_RESO_NOT_FOUND",
-        message="Riga non trovata per questo reso.",
-        detail=f"reso_id={reso_id} riga_id={riga_id}",
-        function_name=f"{_FN}.annulla_accredito_riga_reso",
-    )
+    _get_riga_or_raise(repo, int(reso_id), int(riga_id), op="annulla_accredito_riga_reso")
     # Stringa vuota / soli spazi -> NULL: normalizzazione dell'input, non un
     # guard. Il rifiuto lo fa la madre (E_ACCREDITO_MOTIVO_OBBLIGATORIO), che
     # e' anche l'unica a sapere perche' il motivo serve — l'annullo cancella le
@@ -777,15 +784,11 @@ def gestisci_riga(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # Lettura LEGGERA (stato + id DDT origine): la testata piena della vista
     # lista (decodifiche destinatario/BA/emittente) qui non serve — il reso
     # non ha pricing/componenti che la richiedano (diverso dal gemello DDT).
-    reso = repo.get_stato_e_ddt_origine(reso_id)
-    ErrorManager.require(
-        reso is not None,
-        code="E_RESO_NOT_FOUND",
-        message="Reso non trovato.",
-        detail=f"reso_id={reso_id}",
-        function_name=f"{_FN}.gestisci_riga",
+    reso = testata_o_not_found(
+        repo.get_stato_e_ddt_origine, reso_id,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        id_name="reso_id", function_name=f"{_FN}.gestisci_riga",
     )
-    assert reso is not None
     ErrorManager.require(
         reso["stato_codice_interno"] in _STATI_MODIFICABILI,
         code="E_RESO_STATO_TRANSIZIONE",
@@ -817,14 +820,7 @@ def aggiorna_riga(
         repo, reso_id, _STATI_MODIFICABILI, op="aggiorna_riga",
         message="Righe modificabili solo su reso in bozza.",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["reso_id"] == reso_id,
-        code="E_RESO_NOT_FOUND",
-        message="Riga non trovata per questo reso.",
-        function_name=f"{_FN}.aggiorna_riga",
-    )
-    assert riga is not None
+    _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
@@ -845,14 +841,7 @@ def elimina_riga(reso_id: int, riga_id: int) -> dict[str, Any]:
         repo, reso_id, _STATI_MODIFICABILI, op="elimina_riga",
         message="Righe eliminabili solo su reso in bozza.",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["reso_id"] == reso_id,
-        code="E_RESO_NOT_FOUND",
-        message="Riga non trovata per questo reso.",
-        function_name=f"{_FN}.elimina_riga",
-    )
-    assert riga is not None
+    _get_riga_or_raise(repo, reso_id, riga_id, op="elimina_riga")
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
     return {"reso_id": reso_id, "riga_id": riga_id, "deleted": deleted}
@@ -1119,15 +1108,12 @@ def _assert_stato(
     repo: ResiRepository, reso_id: int, ammessi: frozenset[str], *, op: str,
     message: str | None = None,
 ) -> str:
-    stato = repo.get_stato_codice(reso_id)
-    ErrorManager.require(
-        stato is not None,
-        code="E_RESO_NOT_FOUND",
-        message="Reso non trovato.",
-        detail=f"reso_id={reso_id}",
-        function_name=f"{_FN}.{op}",
+    # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
+    stato = testata_o_not_found(
+        repo.get_stato_codice, reso_id,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        id_name="reso_id", function_name=f"{_FN}.{op}",
     )
-    assert stato is not None
     ErrorManager.require(
         stato in ammessi,
         code="E_RESO_STATO_TRANSIZIONE",

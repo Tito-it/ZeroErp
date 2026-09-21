@@ -202,7 +202,7 @@ class AmmSoftwareService:
             try:
                 uuid_mod.UUID(soggetto_id)
             except (ValueError, AttributeError):
-                ErrorManager.require(False, code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.")
+                ErrorManager.require(False, code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.", context={"field": "soggetto_id"})
 
         # Guard qualifica_id numerico
         try:
@@ -211,10 +211,10 @@ class AmmSoftwareService:
             qualifica_id = None
 
         # Validazione comune (entrambi i flussi)
-        ErrorManager.require(bool(username), code=E_AMM_VALIDAZIONE, message="Username obbligatorio.")
-        ErrorManager.require(bool(email), code=E_AMM_VALIDAZIONE, message="Email obbligatoria.")
-        ErrorManager.require(bool(password), code=E_AMM_VALIDAZIONE, message="Password obbligatoria.")
-        ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.")
+        ErrorManager.require(bool(username), code=E_AMM_VALIDAZIONE, message="Username obbligatorio.", context={"field": "username"})
+        ErrorManager.require(bool(email), code=E_AMM_VALIDAZIONE, message="Email obbligatoria.", context={"field": "email"})
+        ErrorManager.require(bool(password), code=E_AMM_VALIDAZIONE, message="Password obbligatoria.", context={"field": "password"})
+        ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.", context={"field": "qualifica_id"})
 
         # Validazione flusso A: dati persona obbligatori solo se soggetto nuovo
         cognome = (payload.get("cognome") or "").strip()
@@ -222,9 +222,9 @@ class AmmSoftwareService:
         codice_fiscale = (payload.get("codice_fiscale") or "").strip()
 
         if not soggetto_id:
-            ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.")
-            ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.")
-            ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.")
+            ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.", context={"field": "cognome"})
+            ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.", context={"field": "nome"})
+            ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.", context={"field": "codice_fiscale"})
 
         # Contract Fase 7: il caller passa `is_super_admin` (default False).
         # Il caller non puo' creare DISABILITATI via questo endpoint: la

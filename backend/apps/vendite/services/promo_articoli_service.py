@@ -21,6 +21,7 @@ from typing import Any
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -197,14 +198,11 @@ class PromoArticoliService:
     #        (Fase 1.B3 refactor frontend vendite).
     def get_promo(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_promo(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Promo non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_promo, record_id,
+            code=E_VENDITE_NOT_FOUND, message="Promo non trovata.",
+            id_name="record_id", function_name="promo_articoli_service.get_promo",
         )
-        assert result is not None
         capabilities = self._repo.get_capabilities(record_id)
         result.update(capabilities)
         return result

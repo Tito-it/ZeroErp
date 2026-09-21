@@ -42,6 +42,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -170,14 +171,11 @@ class ListaColonnaAdminService:
     # Scopo: Dettaglio colonna per id. 404 se inesistente.
     def get_colonna(self, colonna_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(colonna_id, field="colonna_id")
-        result = self._repo.get_colonna_admin(colonna_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_COLONNA_NOT_FOUND,
-            message="Colonna lista non trovata.",
-            detail=f"colonna_id={colonna_id}",
+        result = testata_o_not_found(
+            self._repo.get_colonna_admin, colonna_id,
+            code=E_COLONNA_NOT_FOUND, message="Colonna lista non trovata.",
+            id_name="colonna_id", function_name="lista_colonna_admin_service.get_colonna",
         )
-        assert result is not None
         return result
 
     # =================================================================

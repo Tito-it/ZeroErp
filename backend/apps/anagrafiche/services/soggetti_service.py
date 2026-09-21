@@ -548,10 +548,14 @@ class SoggettiService:
     def _require_contatto_valid(self, contatto: dict[str, Any]) -> None:
         status = classify_contatto_payload(contatto)
         if status != "VALID":
+            missing = missing_required_fields(contatto)
             raise ServiceError(
                 code=E_CONTATTO_INCOMPLETO,
                 message="Contatto obbligatorio: nominativo e tipo contatto richiesti.",
-                context={"missing": missing_required_fields(contatto)},
+                context={"missing": missing},
+                # Stesso canale di `crea_contatto_inline_se_valido`: i campi
+                # mancanti sono quelli da accendere (presidio C2, §3-ter).
+                fields=tuple(missing),
             )
 
     # Scopo: Crea soggetto PF via building block DB.

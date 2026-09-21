@@ -36,6 +36,7 @@ from apps.anagrafiche.db.categorie_clienti_listini_repository import (
     CategorieClientiListiniRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.non_editable_fields_helper import (
     compute_non_editable_fields,
 )
@@ -141,26 +142,34 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+# ⭐ Il terzo elemento e' il CAMPO del form (chiave del payload, `_CREATE_KEYS`):
+#    arriva al client in `error.fields` e accende il picker della FK violata
+#    (presidio C2, brief-be-presidio-ui-action-e-canale-campi §3-ter).
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_categ_cli_listini_categoria": (
         E_ANAG_FK,
         "Categoria cliente inesistente.",
+        "categoria_cliente_id",
     ),
     "fk_categ_cli_listini_utility": (
         E_ANAG_FK,
         "Utility inesistente.",
+        "utility_id",
     ),
     "fk_categ_cli_listini_emittente": (
         E_ANAG_FK,
         "Emittente (soggetto_ruolo) inesistente.",
+        "emittente_soggetto_ruolo_id",
     ),
     "fk_categ_cli_listini_classe_utenza": (
         E_ANAG_FK,
         "Classe utenza inesistente.",
+        "classe_utenza_id",
     ),
     "fk_categ_cli_listini_listino": (
         E_ANAG_FK,
         "Listino inesistente.",
+        "listino_id",
     ),
 }
 
@@ -212,14 +221,11 @@ class CategorieClientiListiniService:
     #        usa la lista per disabilitare i Select dimensionali in edit.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
-        result = self._repo.get_matrice(record_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_ANAG_NOT_FOUND,
-            message="Riga matrice categoria/listino non trovata.",
-            context={"record_id": record_id},
+        result = testata_o_not_found(
+            self._repo.get_matrice, record_id,
+            code=E_ANAG_NOT_FOUND, message="Riga matrice categoria/listino non trovata.",
+            id_name="record_id", function_name="categorie_clienti_listini_service.get_matrice",
         )
-        assert result is not None
         result["non_editable_fields"] = self.get_non_editable_fields()
         return result
 

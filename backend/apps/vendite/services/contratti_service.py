@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
@@ -43,6 +43,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
     auto_assegna_indirizzo_default,
@@ -700,14 +701,7 @@ class ContrattiService:
     #        diretto dal frontend (Fase 1.B2 refactor frontend vendite).
     def get_contratto(self, contratto_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        testata = self._repo.get_contratto(contratto_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
-            context={"contratto_id": contratto_id},
-        )
-        assert testata is not None
+        testata = self._get_contratto_or_raise(contratto_id, op="get_contratto")
         testata["utility"] = self._repo.get_utility(contratto_id)
         righe = self._repo.list_righe(contratto_id)
         testata["righe"] = righe
@@ -802,14 +796,7 @@ class ContrattiService:
         # Leggiamo la testata esistente PRIMA di validare la coppia variazione
         # globale: serve al validator per sapere il listino_id corrente quando
         # il payload patch non lo include (es. patch solo su variazione globale).
-        existing = self._repo.get_contratto(contratto_id)
-        ErrorManager.require(
-            existing is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
-            context={"contratto_id": contratto_id},
-        )
-        assert existing is not None
+        existing = self._get_contratto_or_raise(contratto_id, op="update_contratto")
 
         # Guard whitelist PATCH per stato. In ATTIVO ammessi solo
         # `valido_al` (programma cessazione) e `meta` (note interne); in
@@ -1011,13 +998,8 @@ class ContrattiService:
             context={"codice_interno": codice_interno},
         )
         assert target_stato_id is not None
-        stato_corrente = self._repo.get_stato_codice(contratto_id)
-        ErrorManager.require(
-            stato_corrente is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
-            context={"contratto_id": contratto_id},
-        )
+        # Esistenza col lettore leggero: qui serve solo che il contratto ci sia.
+        self._get_contratto_or_raise(contratto_id, op="cambia_stato", getter=self._repo.get_stato_codice)
 
         # Pre-validazione data-driven per CESSATO (regola fail-safe):
         # - valido_al obbligatorio
@@ -1036,13 +1018,7 @@ class ContrattiService:
                 ),
                 context={"contratto_id": contratto_id},
             )
-            existing = self._repo.get_contratto(contratto_id)
-            ErrorManager.require(
-                existing is not None,
-                code=E_VENDITE_NOT_FOUND,
-                message="Contratto non trovato.",
-                context={"contratto_id": contratto_id},
-            )
+            existing = self._get_contratto_or_raise(contratto_id, op="cambia_stato")
             assert existing is not None and valido_al is not None
             existing_valido_dal = existing.get("valido_dal")
             if isinstance(existing_valido_dal, date):
@@ -1182,14 +1158,7 @@ class ContrattiService:
     #        renderizzare il banner contesto senza ulteriori chiamate.
     def list_righe_preview(self, contratto_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        contratto = self._repo.get_contratto(contratto_id)
-        ErrorManager.require(
-            contratto is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
-            context={"contratto_id": contratto_id},
-        )
-        assert contratto is not None
+        contratto = self._get_contratto_or_raise(contratto_id, op="list_righe_preview")
 
         # Forma derivata (non persistita) post refactor modalita 2026-05-15:
         #   "con_listino"  : contratto ha un listino_id (variazione globale +
@@ -1233,20 +1202,27 @@ class ContrattiService:
     # Guard sotto-entita' (righe + utility): solo DRAFT
     # =================================================================
 
+    # Scopo: Carica la testata contratto o solleva E_VENDITE_NOT_FOUND (BB core
+    #        `testata_o_not_found`: qui solo codice e messaggio del dominio).
+    #        `getter` ammette il lettore leggero `get_stato_codice`, dove al
+    #        chiamante basta lo stato.
+    def _get_contratto_or_raise(
+        self, contratto_id: int, *, op: str,
+        getter: Callable[[int], Any] | None = None,
+    ) -> Any:
+        return testata_o_not_found(
+            getter or self._repo.get_contratto, contratto_id,
+            code=E_VENDITE_NOT_FOUND, message="Contratto non trovato.",
+            id_name="contratto_id", function_name=f"contratti_service.{op}",
+        )
+
     # Scopo: Verifica che il contratto sia in stato DRAFT prima di accettare
     #        operazioni CRUD su righe/utility. In stati post-DRAFT le sotto
     #        entita' sono congelate per audit (Profilo A): per modifiche serve
     #        creare un nuovo contratto. Solleva E_CONTRATTO_NON_MODIFICABILE
     #        con stato corrente nel context.
     def _assert_contratto_draft(self, contratto_id: int, *, op_label: str) -> None:
-        contratto = self._repo.get_contratto(contratto_id)
-        ErrorManager.require(
-            contratto is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
-            context={"contratto_id": contratto_id},
-        )
-        assert contratto is not None
+        contratto = self._get_contratto_or_raise(contratto_id, op="_assert_contratto_draft")
         stato = str(contratto.get("stato_codice_interno") or "")
         if stato != "DRAFT":
             ErrorManager.raise_error(
@@ -1262,14 +1238,11 @@ class ContrattiService:
 
     # Scopo: Risale al contratto dalla riga e applica il guard DRAFT.
     def _assert_contratto_draft_from_riga(self, riga_id: int, *, op_label: str) -> None:
-        riga = self._repo.get_riga(riga_id)
-        ErrorManager.require(
-            riga is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Riga contratto non trovata.",
-            context={"riga_id": riga_id},
+        riga = testata_o_not_found(
+            self._repo.get_riga, riga_id,
+            code=E_VENDITE_NOT_FOUND, message="Riga contratto non trovata.",
+            id_name="riga_id", function_name="contratti_service._assert_contratto_draft_from_riga",
         )
-        assert riga is not None
         self._assert_contratto_draft(int(riga["contratto_id"]), op_label=op_label)
 
     # =================================================================
@@ -1571,14 +1544,11 @@ class ContrattiService:
         existing_riga: dict[str, Any] | None = None
         tipo_existing: str | None = None
         if "prezzo_unitario" in data:
-            existing_riga = self._repo.get_riga(riga_id)
-            ErrorManager.require(
-                existing_riga is not None,
-                code=E_VENDITE_NOT_FOUND,
-                message="Riga contratto non trovata.",
-                context={"riga_id": riga_id},
+            existing_riga = testata_o_not_found(
+                self._repo.get_riga, riga_id,
+                code=E_VENDITE_NOT_FOUND, message="Riga contratto non trovata.",
+                id_name="riga_id", function_name="contratti_service.update_riga",
             )
-            assert existing_riga is not None
             tipo_existing = existing_riga.get("tipo_eccezione")
             nuovo_prezzo = data["prezzo_unitario"]
             if tipo_existing == "ESCLUSIONE":
@@ -1799,22 +1769,9 @@ class ContrattiService:
     ) -> list[dict[str, Any]]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._v.guard_positive_int(riga_id, field="riga_id")
-        riga = self._repo.get_riga(riga_id)
-        ErrorManager.require(
-            riga is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Riga contratto non trovata.",
-            detail=f"riga_id={riga_id}",
-            function_name="contratti_service.list_componenti_riga",
-        )
-        assert riga is not None
-        ErrorManager.require(
-            int(riga.get("contratto_id") or 0) == contratto_id,
-            code=E_VENDITE_NOT_FOUND,
-            message="Riga contratto non trovata.",
-            detail=(
-                f"riga_id={riga_id} non appartiene a contratto_id={contratto_id}"
-            ),
+        riga_del_padre_o_not_found(
+            self._repo.get_riga, riga_id, padre_id=contratto_id, chiave_padre="contratto_id",
+            code=E_VENDITE_NOT_FOUND, message="Riga contratto non trovata.",
             function_name="contratti_service.list_componenti_riga",
         )
         return self._repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
@@ -1884,14 +1841,7 @@ class ContrattiService:
     #        testata (controllo anticipato lato service).
     def create_utility(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        testata = self._repo.get_contratto(contratto_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
-            context={"contratto_id": contratto_id},
-        )
-        assert testata is not None
+        testata = self._get_contratto_or_raise(contratto_id, op="create_utility")
         # Guard Profilo A: utility 1:1 modificabile solo in DRAFT.
         stato_corrente = str(testata.get("stato_codice_interno") or "")
         if stato_corrente != "DRAFT":
@@ -2625,14 +2575,11 @@ def _load_contratto_context_for_pricing(
 ) -> dict[str, Any]:
     if repo is None:
         repo = ContrattiRepository()
-    testata = repo.get_contratto(contratto_id)
-    ErrorManager.require(
-        testata is not None,
-        code=E_VENDITE_NOT_FOUND,
-        message="Contratto non trovato.",
-        function_name=function_name,
+    testata = testata_o_not_found(
+        repo.get_contratto, contratto_id,
+        code=E_VENDITE_NOT_FOUND, message="Contratto non trovato.",
+        id_name="contratto_id", function_name=function_name,
     )
-    assert testata is not None
 
     ba_id_raw = testata.get("billing_account_id")
     ErrorManager.require(

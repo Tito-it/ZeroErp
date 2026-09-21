@@ -32,6 +32,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -169,14 +170,11 @@ class ListaDefinizioneAdminService:
     #        404 se id inesistente. Usato post-create/post-update e dal
     #        master-detail per popolare il drawer.
     def get_definizione(self, lista_id: int) -> dict[str, Any]:
-        result = self._repo.get_definizione_admin(lista_id)
-        ErrorManager.require(
-            result is not None,
-            code=E_DEFINIZIONE_NOT_FOUND,
-            message="Definizione lista non trovata.",
-            detail=f"lista_id={lista_id}",
+        result = testata_o_not_found(
+            self._repo.get_definizione_admin, lista_id,
+            code=E_DEFINIZIONE_NOT_FOUND, message="Definizione lista non trovata.",
+            id_name="lista_id", function_name="lista_definizione_admin_service.get_definizione",
         )
-        assert result is not None
         return result
 
     # =================================================================

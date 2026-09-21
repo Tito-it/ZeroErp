@@ -435,7 +435,7 @@ class PayloadValidator:
             ErrorManager.raise_error(
                 code=self._code,
                 message=f"Campo '{key}' deve essere un intero.",
-                context={key: value},
+                context={key: value, "field": key},
                 **em,
             )
         normalized: int
@@ -448,7 +448,7 @@ class PayloadValidator:
             ErrorManager.raise_error(
                 code=self._code,
                 message=f"Campo '{key}' deve essere un intero.",
-                context={key: value},
+                context={key: value, "field": key},
                 **em,
             )
             raise AssertionError("unreachable")  # pragma: no cover
@@ -457,7 +457,7 @@ class PayloadValidator:
             code=self._code,
             message=f"Campo '{key}' fuori range.",
             detail=f"Deve essere tra {min_val} e {max_val}.",
-            context={key: normalized},
+            context={key: normalized, "field": key},
             **em,
         )
         return normalized
@@ -485,7 +485,7 @@ class PayloadValidator:
         ErrorManager.raise_error(
             code=self._code,
             message=f"Campo '{key}' deve essere booleano.",
-            context={key: value},
+            context={key: value, "field": key},
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
         raise AssertionError("unreachable")  # pragma: no cover
@@ -1097,7 +1097,7 @@ class PayloadValidator:
                 ErrorManager.raise_error(
                     code=self._code,
                     message=f"Il campo '{key}' contiene JSON non valido.",
-                    context={f"{key}_raw": raw},
+                    context={f"{key}_raw": raw, "field": key},
                     cause=exc,
                     **em,
                 )
@@ -1107,7 +1107,7 @@ class PayloadValidator:
         ErrorManager.raise_error(
             code=self._code,
             message=f"Il campo '{key}' deve essere un oggetto JSON.",
-            context={f"{key}_type": type(raw).__name__},
+            context={f"{key}_type": type(raw).__name__, "field": key},
             **em,
         )
         raise AssertionError("unreachable")  # pragma: no cover
@@ -1272,9 +1272,9 @@ def translate_db_errors(
     context: dict[str, Any],
     fallback_code: str,
     fallback_message: str,
-    unique_constraints: dict[str, tuple[str, str]] | None = None,
-    fk_constraints: dict[str, tuple[str, str]] | None = None,
-    check_constraints: dict[str, tuple[str, str]] | None = None,
+    unique_constraints: dict[str, tuple] | None = None,
+    fk_constraints: dict[str, tuple] | None = None,
+    check_constraints: dict[str, tuple] | None = None,
 ) -> Iterator[None]:
     try:
         yield
@@ -1337,9 +1337,9 @@ def make_db_errors_translator(
     fn_prefix: str,
     fallback_code: str,
     fallback_message: str,
-    unique_constraints: dict[str, tuple[str, str]] | None = None,
-    fk_constraints: dict[str, tuple[str, str]] | None = None,
-    check_constraints: dict[str, tuple[str, str]] | None = None,
+    unique_constraints: dict[str, tuple] | None = None,
+    fk_constraints: dict[str, tuple] | None = None,
+    check_constraints: dict[str, tuple] | None = None,
 ) -> Any:
     @contextmanager
     # Scopo: Traduttore errori DB del dominio per l'operazione `op`.

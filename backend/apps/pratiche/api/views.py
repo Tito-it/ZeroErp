@@ -475,6 +475,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
                     "esito" in payload and payload["esito"],
                     code="E_FLUSSO_VALIDATION",
                     message="esito obbligatorio per completamento flusso",
+                    context={"field": "esito"},
                 )
                 # L'esito arriva dall'operatore: gli esiti di ramo (calcolati
                 # dal dominio, es. bivio SMISTAMENTO, is_verdetto=false) non

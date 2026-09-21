@@ -760,7 +760,10 @@ def approva_attivita_competenza(
 _ONERE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("E_ONERE_IMPORTO_NON_VALIDO", ("E_ONERE_IMPORTO_NON_VALIDO",)),
     ("E_ONERE_ARTICOLO_MANCANTE", ("E_ONERE_ARTICOLO_MANCANTE",)),
-    ("E_ONERE_CAUSALE_NON_VALIDA", ("E_ONERE_CAUSALE_NON_VALIDA",)),
+    # ⛔ `E_ONERE_CAUSALE_NON_VALIDA` NON e' piu' qui (2026-09-21): nessuna funzione
+    #    viva lo solleva (pg_proc a zero occorrenze) e un marker per un codice
+    #    che nessuno manda e' una promessa vuota. Ritiro a catalogo chiesto al
+    #    team DB (brief-be-presidio-ui-action-e-canale-campi §3-bis.2, dec. 7).
     ("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO", (_ERR_TIPO_DOC_MANCANTE,)),
     # Guard race progressivo segment_key (DB 557, brief-db-race-segment-key-
     # onere): senza questo marker il codice cadrebbe sul fallback

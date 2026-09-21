@@ -565,11 +565,13 @@ def _validate_input(message: str) -> None:
         bool(message and message.strip()),
         code="E_AI_QUERY_EMPTY",
         message="Il messaggio non puo' essere vuoto.",
+        context={"field": "message"},
     )
     ErrorManager.require(
         len(message) <= 2000,
         code="E_AI_QUERY_TOO_LONG",
         message="Il messaggio supera la lunghezza massima di 2000 caratteri.",
+        context={"field": "message", "len": len(message)},
     )
 
 

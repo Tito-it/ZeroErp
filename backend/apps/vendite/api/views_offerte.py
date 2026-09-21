@@ -269,6 +269,7 @@ class ApiOfferteList(DomainAPIView):
             offset=p["offset"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],
+            auth_user_id=get_scope_user_id(request),
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
@@ -354,6 +355,8 @@ class ApiOfferteExportView(DomainAPIView):
             offset=0,
             order_by=p["order_by"],
             order_dir=p["order_dir"],
+            # Stesso perimetro della lista: l'export e' la porta piu' larga.
+            auth_user_id=get_scope_user_id(request),
         )
         filtri_applicati = svc.resolve_filtri_export_label(
             search=p["search"],

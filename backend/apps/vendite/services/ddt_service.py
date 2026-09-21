@@ -35,6 +35,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import make_db_errors_translator
+from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -192,15 +193,7 @@ def resolve_filtri_export_label(
 # Scopo: Dettaglio testata DDT + capability (righe lette a parte via /righe/).
 def get_ddt(ddt_id: int) -> dict[str, object]:
     repo = DdtRepository()
-    testata = repo.get_ddt(ddt_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.get_ddt",
-    )
-    assert testata is not None
+    testata = _get_testata_or_raise(repo, ddt_id, op="get_ddt")
     # Capability data-driven da script.fn_available_actions_ddt (matrice
     # config.transizioni_stati_ddt): available_actions, can_change_state,
     # can_edit_testata/righe, can_push_commessa(+reason), non_editable_fields,
@@ -215,9 +208,12 @@ def get_ddt(ddt_id: int) -> dict[str, object]:
     }
 
 
-# Scopo: Lista righe di un DDT.
+# Scopo: Lista righe di un DDT. Legge prima la testata: un DDT fuori
+#        perimetro (o inesistente) e' un 404, non un pannello vuoto.
 def list_righe(ddt_id: int) -> list[dict[str, Any]]:
-    return DdtRepository().list_righe(ddt_id)
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="list_righe")
+    return repo.list_righe(ddt_id)
 
 
 # ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
@@ -261,8 +257,11 @@ def delete_indirizzo(ddt_id: int, indirizzo_id: int) -> dict[str, Any]:
 #        righe con prezzo NULL escluse in vista): il service legge, nessun
 #        ricalcolo Python. Usato dal FE per il pannello "Riepilogo IVA" del
 #        drawer DDT e (futuro) dal context builder della stampa.
+#        Legge prima la testata: fuori perimetro e' un 404.
 def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
-    return DdtRepository().list_riepilogo_iva(ddt_id)
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="list_riepilogo_iva")
+    return repo.list_riepilogo_iva(ddt_id)
 
 
 # ══════════════════════════════════════════════════════════
@@ -288,6 +287,7 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             "Cliente (billing_account_id) obbligatorio: risolve l'emittente "
             "fiscale del DDT."
         ),
+        context={"field": "billing_account_id"},
         function_name=f"{_FN}.crea_ddt",
     )
     assert billing_account_id is not None
@@ -300,6 +300,7 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
         code="E_DDT_VALIDAZIONE",
         message="Destinatario non risolvibile dal billing_account: indicare "
                 "destinatario_soggetto_ruolo_id esplicito.",
+        context={"field": "destinatario_soggetto_ruolo_id"},
         function_name=f"{_FN}.crea_ddt",
     )
     assert destinatario_id is not None
@@ -381,6 +382,7 @@ def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
                 code="E_DDT_VALIDAZIONE",
                 message="billing_account_id non valido.",
                 detail=f"billing_account_id={payload['billing_account_id']!r}",
+                context={"field": "billing_account_id"},
                 function_name=f"{_FN}.aggiorna_ddt",
             )
         attuale_ba = testata.get("billing_account_id")
@@ -446,19 +448,17 @@ def cambia_stato(ddt_id: int, stato_codice: str) -> dict[str, Any]:
     repo = DdtRepository()
     # Guard esistenza leggero: serve solo lo stato corrente, non la testata
     # completa (vista + JOIN); la validazione della coppia e' del trigger DB.
-    stato_prec = repo.get_stato_codice(ddt_id)
-    ErrorManager.require(
-        stato_prec is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.cambia_stato",
+    stato_prec = testata_o_not_found(
+        repo.get_stato_codice, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.cambia_stato",
     )
     target = (stato_codice or "").strip()
     ErrorManager.require(
         bool(target),
         code="E_DDT_VALIDAZIONE",
         message="stato_codice obbligatorio per il cambio stato.",
+        context={"field": "stato_codice"},
         function_name=f"{_FN}.cambia_stato",
     )
     stato_id = repo.get_stato_id_by_codice(target)
@@ -531,6 +531,7 @@ def gestisci_riga(
         articolo_id is not None and str(articolo_id).strip() != "",
         code="E_DDT_VALIDAZIONE",
         message="articolo_id obbligatorio.",
+        context={"field": "articolo_id"},
         function_name=f"{_FN}.gestisci_riga",
     )
     assert articolo_id is not None
@@ -647,14 +648,7 @@ def aggiorna_riga(
         message="Righe modificabili solo su DDT in bozza.",
         function_name=f"{_FN}.aggiorna_riga",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["ddt_id"] == ddt_id,
-        code="E_DDT_NOT_FOUND",
-        message="Riga non trovata per questo DDT.",
-        function_name=f"{_FN}.aggiorna_riga",
-    )
-    assert riga is not None
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
     ErrorManager.require(
         len(data) > 0,
@@ -692,14 +686,7 @@ def elimina_riga(ddt_id: int, riga_id: int) -> dict[str, Any]:
         message="Righe eliminabili solo su DDT in bozza.",
         function_name=f"{_FN}.elimina_riga",
     )
-    riga = repo.get_riga(riga_id)
-    ErrorManager.require(
-        riga is not None and riga["ddt_id"] == ddt_id,
-        code="E_DDT_NOT_FOUND",
-        message="Riga non trovata per questo DDT.",
-        function_name=f"{_FN}.elimina_riga",
-    )
-    assert riga is not None
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="elimina_riga")
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
     return {"ddt_id": ddt_id, "riga_id": riga_id, "deleted": deleted}
@@ -730,11 +717,15 @@ def preview_componenti_riga(
     )
 
 
-# Scopo: Lista componenti persistiti di una riga.
+# Scopo: Lista componenti persistiti di una riga. Guard di esistenza: la riga
+#        deve esistere ED appartenere al DDT richiesto (fuori perimetro o id
+#        incrociato → E_DDT_NOT_FOUND, 404).
 def list_componenti_riga(
     ddt_id: int, riga_id: int, *, solo_attivi: bool = True,
 ) -> list[dict[str, Any]]:
-    return DdtRepository().list_componenti_riga(riga_id, solo_attivi=solo_attivi)
+    repo = DdtRepository()
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="list_componenti_riga")
+    return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
 
 
 # Scopo: Aggiorna un componente BoM (solo DRAFT, scope componente->riga->ddt).
@@ -831,12 +822,10 @@ def push_a_commessa(ddt_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = DdtRepository()
     # Existence-check leggero (lo stato basta): il NOT_FOUND resta distinto
     # dal caso "esiste ma senza righe eleggibili" (E_DDT_NESSUNA_RIGA).
-    ErrorManager.require(
-        repo.get_stato_codice(ddt_id) is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.push_a_commessa",
+    testata_o_not_found(
+        repo.get_stato_codice, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.push_a_commessa",
     )
     righe_count = repo.count_righe_pushable(ddt_id)
     ErrorManager.require(
@@ -887,20 +876,29 @@ _db_errors = make_db_errors_translator(
 )
 
 
-# Scopo: Carica la testata DDT o solleva E_DDT_NOT_FOUND (guard condiviso).
+# Scopo: Carica la testata DDT o solleva E_DDT_NOT_FOUND (BB core
+#        `testata_o_not_found`: qui solo codice e messaggio del dominio).
 def _get_testata_or_raise(
     repo: DdtRepository, ddt_id: int, *, op: str,
 ) -> dict[str, Any]:
-    testata = repo.get_ddt(ddt_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT non trovato.",
-        detail=f"ddt_id={ddt_id}",
+    return testata_o_not_found(
+        repo.get_ddt, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Carica la riga o solleva E_DDT_NOT_FOUND se non esiste o non e' di questo
+#        documento (BB core `riga_del_padre_o_not_found`: qui solo codice e
+#        messaggio del dominio).
+def _get_riga_or_raise(
+    repo: DdtRepository, ddt_id: int, riga_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=ddt_id, chiave_padre="ddt_id",
+        code="E_DDT_NOT_FOUND", message="Riga non trovata per questo DDT.",
         function_name=f"{_FN}.{op}",
     )
-    assert testata is not None
-    return testata
 
 
 # Scopo: Guard di stato leggero (solo codice_interno): E_DDT_NOT_FOUND se il
@@ -908,15 +906,12 @@ def _get_testata_or_raise(
 def _assert_stato(
     repo: DdtRepository, ddt_id: int, ammessi: frozenset[str], *, op: str,
 ) -> str:
-    stato = repo.get_stato_codice(ddt_id)
-    ErrorManager.require(
-        stato is not None,
-        code="E_DDT_NOT_FOUND",
-        message="DDT non trovato.",
-        detail=f"ddt_id={ddt_id}",
-        function_name=f"{_FN}.{op}",
+    # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
+    stato = testata_o_not_found(
+        repo.get_stato_codice, ddt_id,
+        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
+        id_name="ddt_id", function_name=f"{_FN}.{op}",
     )
-    assert stato is not None
     ErrorManager.require(
         stato in ammessi,
         code="E_DDT_STATO_TRANSIZIONE",
@@ -1037,6 +1032,7 @@ def _resolve_prezzo_riga(
         uom_id is not None,
         code="E_DDT_VALIDAZIONE",
         message="uom_operativa_id obbligatorio per risolvere il prezzo.",
+        context={"field": "uom_operativa_id"},
         function_name=fn,
     )
     emittente_sr_id = _resolve_emittente_sr_id(repo, testata)

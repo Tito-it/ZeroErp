@@ -28,6 +28,7 @@ from django.db import connection
 
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
@@ -368,12 +369,25 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None,
         search: str | None,
         solo_ultima_revisione: bool = True,
+        auth_user_id: int | None = None,
     ) -> tuple[str, list[Any]]:
         # Filtri sulla vista canonica `vw_offerte_commerciali_lista` (alias `v`).
         # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
         # ulteriore nel filter builder.
         wheres: list[str] = []
         params: list[Any] = []
+        # Scope emittente (defense-in-depth applicativa, stesso calco di
+        # preventivi e contratti — era l'unica lista di testata del dominio
+        # senza, il B1 dell'analisi RLS; allineata il 2026-09-21). La vista e'
+        # `security_invoker=on`: la RLS filtra gia', questo si somma (api.md
+        # §"Scope emittente"). `v.emittente_fiscale_id` e' la PK reale →
+        # convenzione `pk` (memoria feedback_emittente_pk_vs_soggetto_ruolo).
+        add_emittente_scope_condition(
+            wheres, params,
+            auth_user_id=auth_user_id,
+            column="v.emittente_fiscale_id",
+            convention="pk",
+        )
         if billing_account_id is not None:
             wheres.append("v.billing_account_id = %s")
             params.append(billing_account_id)
@@ -429,6 +443,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         order_dir: str = "DESC",
         limit: int = 25,
         offset: int = 0,
+        auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         order_col = _ORDER_COLS_OFFERTE.get(order_by, _ORDER_COLS_OFFERTE["data_insert"])
         order_dir_safe = "ASC" if str(order_dir).upper() == "ASC" else "DESC"
@@ -441,6 +456,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             validita_dal_max=validita_dal_max,
             search=search,
             solo_ultima_revisione=solo_ultima_revisione,
+            auth_user_id=auth_user_id,
         )
         # ⭐ Nessuna decodifica qui: `frontiera_tipo_codice_interno` e
         #    `frontiera_natura_doc_codice_interno` arrivano dalla vista
@@ -469,6 +485,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None = None,
         search: str | None = None,
         solo_ultima_revisione: bool = True,
+        auth_user_id: int | None = None,
     ) -> int:
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
@@ -479,6 +496,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             validita_dal_max=validita_dal_max,
             search=search,
             solo_ultima_revisione=solo_ultima_revisione,
+            auth_user_id=auth_user_id,
         )
         sql = f"""
             SELECT COUNT(*)
