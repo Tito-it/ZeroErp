@@ -68,7 +68,11 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.registri_giornale",
         "config.sistema_codici",
         "config.sorgenti",
-        "config.stati",
+        # ⛔ NON `config.stati` (le nazioni): senza `codice`/`codice_interno`,
+        #    `fn_get_lookup_codici` la rifiuta con E_LOOKUP_STRUTTURA_TABELLA_INVALIDA
+        #    — era qui dichiarata ammessa ed era un 500 a ogni chiamata (trovato
+        #    dal presidio `test_config_panel_registro_db` il 2026-09-21). Ha il
+        #    lookup dedicato `GET /anagrafiche/stati/lookup/` e `StatiDrawer`.
         "config.stati_assets",
         "config.stati_cliente",
         "config.stati_fornitore",
@@ -94,7 +98,11 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.tipi_nota",
         "config.tipi_reso",
         "config.tipi_ruoli",
-        "config.titoli_cortesia",
+        # ⛔ NON `config.titoli_cortesia`: solo `descrizione` + `descrizione_breve`,
+        #    senza `codice` ne' `attivo` — il lookup la rifiuta (stesso 500 di
+        #    `config.stati`, stesso presidio, 2026-09-21). Nessun consumatore
+        #    nel BE ne' nel FE: che cosa farne e' una domanda al DB (piano
+        #    anagrafiche-fuori-dal-pannello-config §7).
         "config.tipi_soggetto_dettaglio",
         "config.tipi_ubicazione",
         "config.tipi_utenze",
@@ -148,6 +156,15 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
 )
 
 
+# Le colonne del payload del lookup generico che possono fare da VALORE di una
+# `<LookupSelect>` (`valueField`), cioe' le colonne che una FK puo' referenziare
+# e che `fn_get_lookup_codici` restituisce per ogni riga. `descrizione`,
+# `attivo` e `codice_stabile` viaggiano anch'esse ma non sono chiavi di
+# nessuna FK. Lo legge il metadata del pannello config per decidere se una FK
+# e' montabile come lookup (`references_lookup`).
+LOOKUP_COLONNE_VALORE: frozenset[str] = frozenset({"id", "codice", "codice_interno"})
+
+
 # Cap massimo righe sorgente per la CTE lookup. Il dataset atteso è molto più piccolo
 # (tabelle config con poche decine/centinaia di record); il cap è una guardia di sicurezza.
 LOOKUP_MAX_SOURCE_ROWS = 10_000
@@ -178,23 +195,16 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 #                        «assegna» e che si ritira con `obsoleto_dal` — sarebbe
 #                        stata un 500 alla prima chiamata, con la rel dichiarata
 #                        ammessa (`feedback_contratto_dichiarato_provalo_intero`).
-# ⭐ Le tabelle che il PANNELLO CONFIG gestisce (CRUD metadata-driven): la
-#    whitelist della lookup PIU' quelle che il lookup generico non puo'
-#    servire. Fino al 2026-09-18 le due whitelist erano lo stesso insieme, e
-#    la prima tabella senza `descrizione` — `magazzino.lotti` (Lotto 2 del
-#    magazzino: un lotto e' `articolo_id` + `codice` + `data_arrivo`) — le ha
-#    separate: `dbops.fn_get_lookup_codici` PRETENDE la colonna `descrizione`
-#    e rifiuterebbe la rel, quindi metterla in `_REL_CONSENTITE` dichiarerebbe
-#    ammesso un valore che a runtime esplode (`feedback_contratto_dichiarato_
-#    provalo_intero`). Il pannello legge `information_schema` e non ne ha
-#    bisogno. ⛔ Una rel qui e non in `_REL_CONSENTITE` NON si monta con
-#    `<LookupSelect rel=…>`: per i lotti c'e' il lookup dedicato
-#    `GET /magazzino/lotti/lookup/?articolo_id=`.
-CONFIG_TABLES: frozenset[str] = _REL_CONSENTITE | frozenset(
-    {
-        "magazzino.lotti",
-    }
-)
+# ⛔ Le tabelle del PANNELLO CONFIG sono ESATTAMENTE `_REL_CONSENTITE`: il
+#    pannello lista le righe col lookup generico, quindi una tabella che il
+#    lookup non sa servire non la sa servire nemmeno il pannello. Fino al
+#    2026-09-21 qui c'era un superset `CONFIG_TABLES = _REL_CONSENTITE | {lotti}`,
+#    nato per `magazzino.lotti` (senza `descrizione`) con la promessa «il pannello
+#    legge information_schema e non ne ha bisogno» — vera per il drawer, falsa
+#    per la LISTA: a video la tabella era vuota con un 400 ingoiato. Due nomi
+#    per lo stesso insieme sono la forma in cui divergono: ne resta uno.
+#    Le anagrafiche di magazzino (magazzini, ubicazioni, lotti) hanno endpoint e
+#    drawer propri: piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.
 
 _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
     "catalogo.unita_misura": {

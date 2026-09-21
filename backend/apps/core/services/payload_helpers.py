@@ -1216,11 +1216,18 @@ def map_integrity_error(
     # Fallback euristico per coppia UNIQUE/FK generica: solo se la mappa
     # non ha un match esatto e il codice fallback vale la pena distinguere,
     # il chiamante passa la mappa. Qui cadiamo sul fallback puro.
+    # ⭐ Ma il CAMPO, quando PostgreSQL lo dice da solo, viaggia (2026-09-21):
+    # su una violazione NOT NULL (23502) `column_name` e' la colonna che
+    # manca, e nessuna mappa per nome di vincolo puo' nominarla — un NOT NULL
+    # non ha un vincolo con un nome. Stessa lettura unica di `translate_db_errors`
+    # (`diagnostica_db`): prima il fallback arrivava senza `fields`, e il form
+    # restava spento sull'unico caso in cui il DB sa gia' quale campo accendere.
     ErrorManager.raise_error(
         code=fallback_code,
         message=fallback_message,
         detail=str(exc),
         context=ctx,
+        fields=diagnostica_db(exc).fields,
         cause=exc,
     )
 

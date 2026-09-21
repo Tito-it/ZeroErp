@@ -174,7 +174,7 @@ Include tutte le tabelle con struttura `id / codice / descrizione` distribuite s
 La funzione DB `fn_get_lookup_codici` valida ulteriormente la struttura reale delle colonne
 e solleva errore se mancante.
 
-Totale: **89 tabelle** (elenco generato dal codice, 2026-09-14).
+Totale: **87 tabelle** (elenco generato dal codice, 2026-09-14; 2026-09-21: **via `config.stati` e `config.titoli_cortesia`** — senza `codice`/`codice_interno`, `fn_get_lookup_codici` le rifiutava con `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA`: erano dichiarate ammesse ed erano un 500, trovato dal presidio `apps/core/tests/db/test_config_panel_registro_db.py`; le nazioni hanno `GET /anagrafiche/stati/lookup/`).
 
 ⭐ L'ultima entrata è `config.modi_approvvigionamento` (Blocco B di
 `brief-db-modifiche-certe-ciclo-vendita-e-articolo`): il modo di approvvigionamento
@@ -198,7 +198,7 @@ anagrafiche.categorie_clienti
 catalogo.unita_misura  catalogo.uom_tipi
 ```
 
-### config (62)
+### config (61)
 
 ```text
 config.ambiti                       config.stati_doc_contratti
@@ -227,11 +227,11 @@ config.note_stili                   config.tipi_ruoli
 config.priorita_pratiche            config.tipi_soggetto_dettaglio
 config.profili_accesso              config.tipi_titolo_iva
 config.qualifiche                   config.tipi_ubicazione
-config.sistema_codici               config.tipi_utenze
-config.sorgenti                     config.titoli_cortesia
-config.stati                        config.unita_organizzative
-config.stati_assets                 config.utilities
-config.stati_cliente                config.valute
+config.registri_giornale            config.tipi_utenze
+config.sistema_codici               config.unita_organizzative
+config.sorgenti                     config.utilities
+config.stati_assets                 config.valute
+config.stati_cliente
 ```
 
 ### documenti (4)

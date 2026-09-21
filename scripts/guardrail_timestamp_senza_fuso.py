@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
 # SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
 # Guardrail CI — `timestamp` SENZA fuso nei changeSet Liquibase nuovi
 #
 # COSA PRESIDIA, in una riga:

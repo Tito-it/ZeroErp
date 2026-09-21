@@ -1,20 +1,35 @@
 <script setup>
-// Scopo: drawer CRUD generico per tabelle config.
-// Renderizza i campi dinamicamente dai metadata backend (information_schema).
-// Gestisce: text, number, boolean, json. Esclude id e colonne audit.
+// Scopo: drawer CRUD generico per tabelle config (i VOCABOLARI: codice,
+//        descrizione, attivo, qualche flag). Renderizza i campi dinamicamente
+//        dai metadata backend (information_schema + pg_catalog): text, number,
+//        boolean, json, date, e le FK come `LookupSelect` quando la tabella
+//        nominata e' ammessa al lookup generico — altrimenti numero, dichiarato.
+//        Esclude id e colonne di sistema (audit, tx_id, uid).
+// Note: ⭐ Metadata-driven, nessuna riga per tabella: il widget lo decide
+//       `widgetPerColonna` (core/utils/campoConfig.js) dal MODELLO, l'etichetta
+//       e' `config_panel.campi.<colonna>` con ripiego fail-visible sul nome.
+//       Fino al 2026-09-21 l'etichetta ERA il nome della colonna, le FK erano
+//       id grezzi e le date caselle di testo (piano-be-fe-magazzino-anagrafiche-
+//       fuori-dal-pannello-config §1). ⛔ Le entita' con FK «vere» (anagrafiche)
+//       non stanno qui: hanno il loro drawer (`EntityFormDrawer` o dedicato).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
-import { DRAWER_WIDTH } from '../constants'
+import { DATE_FORMAT, DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
+import { labelOrCode } from '../utils/i18nLabel'
+import { WIDGET, chiaveEtichettaCampo, widgetPerColonna } from '../utils/campoConfig'
+import { parseIsoDate, toDateStringOrNull } from '../utils/date'
 import FormFooter from './FormFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
+import LookupSelect from './LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Textarea from 'primevue/textarea'
+import DatePicker from 'primevue/datepicker'
 import api from '../api'
 import { useDrawerContentReady } from '../composables/useDrawerContentReady'
 
@@ -35,16 +50,54 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved'])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const isReadonly = useInjectReadonly()
-const { execute, loading } = useApiHandler()
+// `campiErrati`: il BE nomina la colonna da correggere (vincolo a una colonna,
+// NOT NULL, trigger) e qui si accende l'input — e' l'unico consumatore del
+// campo che il service spedisce, senza questo binding il canale finiva nel toast.
+const { execute, loading, campiErrati } = useApiHandler()
 
 const columns = ref([])
 const form = ref({})
 const originalForm = ref({}) // Per calcolare delta in edit mode
 
-// Colonne editabili (esclude id)
-const editableColumns = computed(() => columns.value.filter(c => !c.is_pk))
+// ⛔ Il drawer e' UNO per il pannello e cambia tabella con `rel`: il metadata
+// va azzerato, o la seconda tabella si apre col form della prima (e il BE,
+// che filtra le colonne sconosciute, risponde `{}` con successo).
+watch(() => props.rel, () => { columns.value = [] })
+
+// Colonne editabili (esclude id), ciascuna col suo widget e la sua etichetta.
+const editableColumns = computed(() =>
+  columns.value
+    .filter(c => !c.is_pk)
+    .map(c => ({ ...c, widget: widgetPerColonna(c), etichetta: labelOrCode(t, te, chiaveEtichettaCampo(c), c.name) })),
+)
+
+// Scopo: il valore come lo vuole il form — le date come `Date` (il DatePicker
+//        non legge una stringa ISO), il json come testo, il resto com'e'.
+function versoForm(col, val) {
+  if (col.widget === WIDGET.JSON) return JSON.stringify(val, null, 2)
+  if (col.widget === WIDGET.DATE) return parseIsoDate(val)
+  return val
+}
+
+// Scopo: il valore come lo vuole il payload — le date in `YYYY-MM-DD`
+//        (`toDateStringOrNull`: una data invalida diventa `null`, non «Invalid Date»).
+function versoPayload(col, val) {
+  if (col.widget === WIDGET.JSON && typeof val === 'string') {
+    try { return JSON.parse(val) } catch { return {} }
+  }
+  if (col.widget === WIDGET.DATE) return toDateStringOrNull(val)
+  return val
+}
+
+// Scopo: confronto per il delta del PATCH (json e date si confrontano
+//        normalizzati, non per identita' di oggetto).
+function uguali(col, a, b) {
+  if (col.widget === WIDGET.JSON) return JSON.stringify(versoPayload(col, a)) === JSON.stringify(versoPayload(col, b))
+  if (col.widget === WIDGET.DATE) return toDateStringOrNull(a) === toDateStringOrNull(b)
+  return a === b
+}
 
 // Carica metadata + dati al primo open
 watch(() => props.visible, async (val) => {
@@ -68,10 +121,10 @@ watch(() => props.visible, async (val) => {
   const newForm = {}
   for (const col of editableColumns.value) {
     if (col.default !== null && col.default !== undefined) {
-      newForm[col.name] = col.default
-    } else if (col.type === 'boolean') newForm[col.name] = true
-    else if (col.type === 'number') newForm[col.name] = null
-    else newForm[col.name] = ''
+      newForm[col.name] = versoForm(col, col.default)
+    } else if (col.widget === WIDGET.BOOLEAN) newForm[col.name] = true
+    else if (col.widget === WIDGET.TEXT) newForm[col.name] = ''
+    else newForm[col.name] = null
   }
 
   // Se edit, carica dati esistenti
@@ -80,11 +133,7 @@ watch(() => props.visible, async (val) => {
       const res = await api.get(`/core/config/tables/${props.rel}/${props.recordId}/`)
       const data = res.data.data
       for (const col of editableColumns.value) {
-        if (data[col.name] !== undefined) {
-          newForm[col.name] = col.type === 'json'
-            ? JSON.stringify(data[col.name], null, 2)
-            : data[col.name]
-        }
+        if (data[col.name] !== undefined) newForm[col.name] = versoForm(col, data[col.name])
       }
     } catch {
       emit('update:visible', false)
@@ -108,24 +157,17 @@ async function handleSave() {
   const isCreate = props.mode === 'create'
 
   for (const col of editableColumns.value) {
-    let val = form.value[col.name]
-    if (col.type === 'json' && typeof val === 'string') {
-      try { val = JSON.parse(val) } catch { val = {} }
-    }
+    const val = versoPayload(col, form.value[col.name])
 
     if (isCreate) {
-      // Create: manda tutti i campi con valore
-      if (val !== undefined && val !== '') payload[col.name] = val
-      else if (col.type === 'boolean') payload[col.name] = val
-    } else {
-      // Edit: manda SOLO i campi modificati (delta)
-      const orig = originalForm.value[col.name]
-      if (col.type === 'json') {
-        // Confronta come stringa JSON
-        if (JSON.stringify(val) !== JSON.stringify(orig)) payload[col.name] = val
-      } else if (val !== orig) {
-        payload[col.name] = val
-      }
+      // Create: manda i campi con un valore; un campo vuoto NON viaggia, cosi'
+      // vale il default del DB (un `null` esplicito lo scavalcherebbe). Il
+      // boolean viaggia sempre: `false` e' un valore.
+      if (col.widget === WIDGET.BOOLEAN || (val !== undefined && val !== null && val !== '')) payload[col.name] = val
+    } else if (!uguali(col, form.value[col.name], originalForm.value[col.name])) {
+      // Edit: manda SOLO i campi modificati (delta) — un trigger di lock su una
+      // colonna non toccata non deve scattare.
+      payload[col.name] = val
     }
   }
 
@@ -159,34 +201,43 @@ async function handleSave() {
     <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <template v-for="col in editableColumns" :key="col.name">
-          <!-- Text -->
-          <div v-if="col.type === 'text'" class="form-field">
-            <label>{{ col.name }} {{ !col.nullable ? '*' : '' }}</label>
-            <InputText v-model="form[col.name]" />
-          </div>
+          <div class="form-field">
+            <label>{{ col.etichetta }}{{ !col.nullable && col.widget !== WIDGET.BOOLEAN ? ' *' : '' }}</label>
 
-          <!-- Number -->
-          <div v-else-if="col.type === 'number'" class="form-field">
-            <label>{{ col.name }} {{ !col.nullable ? '*' : '' }}</label>
-            <InputNumber v-model="form[col.name]" :use-grouping="false" />
-          </div>
+            <!-- FK verso una tabella ammessa al lookup generico. ⚠️ `value-field`
+                 dalla FK: non tutte puntano a `id` (`esito` → `codice_interno`). -->
+            <LookupSelect
+              v-if="col.widget === WIDGET.LOOKUP"
+              v-model="form[col.name]"
+              :rel="col.references"
+              :value-field="col.references_column"
+              :invalid="campiErrati.includes(col.name)"
+              show-clear
+            />
 
-          <!-- Boolean -->
-          <div v-else-if="col.type === 'boolean'" class="form-field">
-            <label>{{ col.name }}</label>
-            <ToggleSwitch v-model="form[col.name]" />
-          </div>
+            <!-- FK verso una tabella che il lookup non serve: valore a mano,
+                 dichiarato — numero o testo secondo la colonna -->
+            <template v-else-if="col.widget === WIDGET.FK_ID">
+              <InputNumber v-if="col.type === 'number'" v-model="form[col.name]" :use-grouping="false" :invalid="campiErrati.includes(col.name)" />
+              <InputText v-else v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
+              <small class="app-text-muted">{{ t('config_panel.hint_fk_id', { tabella: col.references, colonna: col.references_column }) }}</small>
+            </template>
 
-          <!-- JSON -->
-          <div v-else-if="col.type === 'json'" class="form-field">
-            <label>{{ col.name }}</label>
-            <Textarea v-model="form[col.name]" rows="4" auto-resize />
-          </div>
+            <DatePicker
+              v-else-if="col.widget === WIDGET.DATE"
+              v-model="form[col.name]"
+              :date-format="DATE_FORMAT"
+              :invalid="campiErrati.includes(col.name)"
+              show-icon
+            />
 
-          <!-- Date / other → text fallback -->
-          <div v-else class="form-field">
-            <label>{{ col.name }}</label>
-            <InputText v-model="form[col.name]" />
+            <InputNumber v-else-if="col.widget === WIDGET.NUMBER" v-model="form[col.name]" :use-grouping="false" :invalid="campiErrati.includes(col.name)" />
+
+            <ToggleSwitch v-else-if="col.widget === WIDGET.BOOLEAN" v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
+
+            <Textarea v-else-if="col.widget === WIDGET.JSON" v-model="form[col.name]" rows="4" auto-resize :invalid="campiErrati.includes(col.name)" />
+
+            <InputText v-else v-model="form[col.name]" :invalid="campiErrati.includes(col.name)" />
           </div>
         </template>
       </div>
