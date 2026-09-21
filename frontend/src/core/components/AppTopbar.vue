@@ -270,6 +270,23 @@ onMounted(async () => {
       />
       <i v-else class="pi pi-building"></i>
       <EmittenteAttivoSelect />
+
+      <!-- Operatore: badge SUPER_ADMIN o iniziali, subito dopo l'emittente.
+           ⭐ Decisione di Tid, 2026-09-21: la topbar si legge a tre blocchi —
+           sinistra = CHI (emittente + operatore che lo sta usando, la coppia
+           «sistema + utente» in testa allo schermo AS/400), centro = DOVE
+           (l'area), destra = COSA (contesto, data, strumenti, uscita). Fino a
+           quel giorno il badge stava a destra tra il chip contesto e la data,
+           cioe' tra cose che non descrivono l'identita'. -->
+      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
+        <template #default>
+          <i class="pi pi-shield admin-chip-icon" />
+          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
+        </template>
+      </Chip>
+      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
+        {{ userInitials }}
+      </span>
     </div>
 
     <div class="topbar-center">
@@ -293,17 +310,6 @@ onMounted(async () => {
           <span class="context-chip-label">{{ context.contextLabel }}</span>
         </template>
       </Chip>
-
-      <!-- Badge SUPER_ADMIN o iniziali utente -->
-      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
-        <template #default>
-          <i class="pi pi-shield admin-chip-icon" />
-          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
-        </template>
-      </Chip>
-      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
-        {{ userInitials }}
-      </span>
 
       <span class="topbar-date">{{ formattedDate }}</span>
 
@@ -409,9 +415,15 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* Tre colonne: ali UGUALI e titolo al centro per costruzione. ⛔ `1fr` nudo
+   non basta: un item di grid ha `min-width: auto`, quindi a schermo stretto
+   l'ala destra (chip, data, pulsanti) si allargava oltre il suo 1fr, la
+   sinistra cedeva e il titolo scivolava fino ad appiccicarsi all'emittente.
+   Con `minmax(0, 1fr)` ogni ala tronca il PROPRIO contenuto invece di rubare
+   spazio all'altra (Tid, 2026-09-21). */
 .app-topbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   height: var(--app-topbar-height);
   min-height: var(--app-topbar-height);
@@ -434,6 +446,18 @@ onMounted(async () => {
   color: var(--app-icon-color);
 }
 
+/* La combo emittente e' del figlio (scoped): qui si impone solo che si
+   stringa con l'ala invece di tenere i suoi 16rem e spingere fuori il resto.
+   Il badge operatore invece non cede mai: e' gia' al minimo. */
+.topbar-left :deep(.topbar-emittente-select) {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.topbar-left .admin-chip,
+.topbar-left .user-initials-badge {
+  flex: none;
+}
+
 .topbar-hamburger {
   color: var(--app-topbar-breadcrumb-color);
 }
@@ -448,18 +472,23 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
 }
 
 .topbar-area-title {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
   font-size: var(--app-font-size-base);
   font-weight: 500;
   color: var(--app-topbar-breadcrumb-active-color);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .topbar-area-icon {
+  flex: none;
   font-size: 0.95em;
   opacity: 0.85;
 }
@@ -535,7 +564,7 @@ onMounted(async () => {
   padding: 0.15rem 0.5rem;
 }
 
-.admin-chip-icon {
+.topbar-left .admin-chip-icon {
   font-size: 0.8rem;
   color: var(--p-orange-500);
 }

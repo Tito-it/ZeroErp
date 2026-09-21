@@ -56,7 +56,7 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure")
 #    "backend-dev",                       # hostname locale
 #    "localhost", "127.0.0.1",
 #    "backend-dev.tailXXXX.ts.net",       # MagicDNS Tailscale (nome lungo)
-#    "dbdev.tailXXXX.ts.net",             # se un giorno esponi admin anche dal nodo DB
+#    "dbdev.tailXXXX.ts.net",             # se un giorno servi il BE anche dal nodo DB
 #]
 
 DEBUG = env("DJANGO_DEBUG", "1") == "1"
@@ -64,6 +64,25 @@ ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0
 API_EXCEPTION_MIDDLEWARE_ENABLED = env("DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED", "1") == "1"
 API_RETRY_AFTER_SECONDS = int(env("DJANGO_API_RETRY_AFTER_SECONDS", "3"))
 API_EXPOSE_TECHNICAL_DETAILS = env("DJANGO_API_EXPOSE_TECHNICAL_DETAILS", "0") == "1"
+
+# --- Superficie pubblica: SICUREZZA, non preferenze ---
+# Regole complete, motivazioni e verifiche in
+# docs/it/dev/backend/configurazione-django.md, «Sicurezza della superficie
+# pubblica»: Django solo dietro Nginx (loopback + rate limiting), niente admin,
+# Swagger spento fuori da DEBUG. Valgono anche in sviluppo: il presidio si
+# costruisce dove si sviluppa, non al deploy.
+#
+# `/api/docs/` e `/api/schema/` (Swagger/OpenAPI) elencano l'intera superficie
+# API a chi NON ha un token: strumento di sviluppo, non un servizio. Seguono
+# DEBUG salvo scelta esplicita; su una macchina raggiungibile da fuori restano
+# spenti (404, non 403: la rotta non esiste). Il gate e' request-time
+# (`apps.core.api.api_docs_gate`), cosi' il test lo prova con `override_settings`.
+#
+# L'admin Django (`django.contrib.admin`, `/admin/`) NON c'e' per scelta: zero
+# `ModelAdmin` nel progetto, il FE non lo usa, l'autenticazione e' JWT. Era una
+# form di login a sessione aperta a chiunque raggiungesse il proxy, e la root
+# `/` ci redirigeva. Presidio: `apps/core/tests/api/test_superficie_pubblica.py`.
+API_DOCS_ENABLED = env("DJANGO_API_DOCS_ENABLED", "1" if DEBUG else "0") == "1"
 API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
 API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
 REQUEST_LOG_ENABLED = env("DJANGO_REQUEST_LOG_ENABLED", "1") == "1"
@@ -105,7 +124,7 @@ AI_CONTEXT_FILE = env("AI_CONTEXT_FILE", "docs/it/ai/ai-context.md")
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
+    # niente 'django.contrib.admin': vedi «Superficie pubblica» sopra
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -378,8 +397,8 @@ PRESIDI_DIGEST_DESTINATARIO = env("ZEROERP_PRESIDI_DIGEST_DESTINATARIO", "")
 # e' li' che vive la "console mode" (host vuoto/placeholder, oppure DEBUG), non
 # in questo backend. Per l'invio reale si configura `config.email_account`.
 #
-# Questo mailer e' la RETE per la posta che spedisce DJANGO — reset password
-# dell'admin, `mail_admins()` di un handler di logging: senza, il default e' lo
+# Questo mailer e' la RETE per la posta che spedisce DJANGO — le form di
+# `django.contrib.auth`, `mail_admins()` di un handler di logging: senza, il default e' lo
 # SMTP backend, cioe' un tentativo di consegna vera verso localhost:25 da un
 # ambiente che non se l'aspetta. La console la rende visibile e innocua.
 #

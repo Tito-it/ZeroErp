@@ -11,7 +11,7 @@ Indice test eseguiti:
 
 from unittest.mock import Mock, patch
 
-from django.test import Client
+from django.test import Client, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
@@ -60,15 +60,18 @@ class CoreDiagnosticsApiTests(JwtMockedApiTest):
         self.assertEqual(body["error"]["code"], "E_NOT_AUTHENTICATED")
 
     # Scopo: Verifica il caso `test_openapi_schema_endpoint`.
+    @override_settings(API_DOCS_ENABLED=True)
     def test_openapi_schema_endpoint(self):
-        # Smoke test: lo schema OpenAPI deve essere esposto.
+        # Smoke test: con il flag acceso lo schema OpenAPI deve essere esposto
+        # (il flag e' provato in `test_superficie_pubblica`).
         response = self.client.get("/api/schema/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("application/vnd.oai.openapi", response["Content-Type"])
 
     # Scopo: Verifica il caso `test_openapi_swagger_ui_endpoint`.
+    @override_settings(API_DOCS_ENABLED=True)
     def test_openapi_swagger_ui_endpoint(self):
-        # Smoke test: la UI Swagger deve essere raggiungibile.
+        # Smoke test: con il flag acceso la UI Swagger deve essere raggiungibile.
         response = self.client.get("/api/docs/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/html", response["Content-Type"])
