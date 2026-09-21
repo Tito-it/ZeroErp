@@ -986,6 +986,27 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
         ).list_movimenti(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
     ),
+    # ── Le tre anagrafiche di magazzino (2026-09-21, piano anagrafiche-fuori-
+    #    dal-pannello-config). I lotti si leggono per articolo: un uuid finto
+    #    esercita la query (zero righe, proiezione intera).
+    "magazzino.magazzini": Esercizio(
+        dove="magazzino/db/anagrafiche_magazzino_repository.py::list_magazzini",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.anagrafiche_magazzino_repository", "AnagraficheMagazzinoRepository"
+        ).list_magazzini(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.ubicazioni": Esercizio(
+        dove="magazzino/db/anagrafiche_magazzino_repository.py::list_ubicazioni",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.anagrafiche_magazzino_repository", "AnagraficheMagazzinoRepository"
+        ).list_ubicazioni(magazzino_id=_ID_FINTO, limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
+    "magazzino.lotti": Esercizio(
+        dove="magazzino/db/anagrafiche_magazzino_repository.py::list_lotti",
+        chiama=lambda ob, od: _r(
+            "apps.magazzino.db.anagrafiche_magazzino_repository", "AnagraficheMagazzinoRepository"
+        ).list_lotti(articolo_id="00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od, None)),
+    ),
 }
 
 

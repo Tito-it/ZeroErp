@@ -187,6 +187,46 @@ a {
   font-weight: 600;
 }
 
+/* ===== Riepilogo di una sotto-entita' nel drawer padre =====
+ * Sotto un `app-drawer-section` («UoM (3)», «Contatti», «Ubicazioni (N)»):
+ * la lista compatta delle prime righe, il dettaglio sottotono accanto al
+ * nome, la frase «nessuno» e il pulsante «Gestisci» che apre il drawer
+ * autonomo. Regola del 2 (2026-09-21, ok Tid): era `<style scoped>` in
+ * ArticoloDrawer, SoggettoDrawer e MagazzinoDrawer, e le copie erano GIA'
+ * divergenti — in SoggettoDrawer `.riepilogo-section` non aveva nessuna
+ * regola e la lista degli indirizzi aveva un gap suo.
+ * Uso:
+ *   <div class="app-drawer-section"><h4>…</h4></div>
+ *   <div class="app-riepilogo-section">
+ *     <div v-if="righe.length" class="app-riepilogo-list">
+ *       <div class="app-riepilogo-item"><strong>…</strong><span class="app-riepilogo-detail">…</span></div>
+ *     </div>
+ *     <div v-else class="app-riepilogo-empty">…</div>
+ *     <Button class="app-action-btn app-escape mt-025" … />
+ *   </div> */
+.app-riepilogo-section {
+  margin-top: 0.5rem;
+}
+.app-riepilogo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.app-riepilogo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.app-riepilogo-detail {
+  color: var(--app-text-muted);
+  font-size: 0.8rem;
+}
+.app-riepilogo-empty {
+  color: var(--app-text-muted);
+  font-size: 0.85rem;
+}
+
 /* ===== Header informativo drawer (DrawerEntityHeader) =====
  * Riga flex con info entita' a sinistra (numero, badge contesto, data) e
  * Tag stato a destra. Mirror dei pattern duplicati su contratto/preventivo

@@ -12,7 +12,7 @@ Utilizza la funzione DB `dbops.fn_get_lookup_codici` come sorgente dati generica
 con un filtro ILIKE e paginazione esterna. La funzione DB resta generica; il filtro testo e la
 paginazione finale vivono nel layer Python/SQL del repository.
 
-La relazione interrogabile è controllata da una whitelist Python (`_REL_CONSENTITE` in
+La relazione interrogabile è controllata da una whitelist Python (`REL_CONSENTITE` in
 `apps/core/db/dbops_repository.py`). Per aggiungere una nuova tabella config basta inserirla
 nella whitelist, senza modificare il DB.
 
@@ -44,7 +44,7 @@ Query string:
 Prima di invocare il repository DB, il service layer (`apps/core/services/lookup_service.py`)
 valida i seguenti parametri con `ErrorManager.require`:
 
-- **`rel`**: deve essere presente nella whitelist `_REL_CONSENTITE` (frozenset nel repository).
+- **`rel`**: deve essere presente nella whitelist `REL_CONSENTITE` (frozenset nel repository).
 - **`order_col`**: deve appartenere al set `{"codice", "descrizione"}`.
 - **`order_dir`**: deve appartenere al set `{"asc", "desc"}`.
 - **`page`**: deve essere >= 1.
@@ -153,7 +153,7 @@ letti da form di aree diverse. Lo scope resta quello del repository — vedi
 
 ## Regole
 
-- `rel` deve essere nella whitelist `_REL_CONSENTITE` (errore `E_CORE_VALIDATION` se assente).
+- `rel` deve essere nella whitelist `REL_CONSENTITE` (errore `E_CORE_VALIDATION` se assente).
 - `search` vuoto o assente equivale a nessun filtro testo.
 - `attivo_only=true` applica `WHERE attivo IS TRUE` tramite la funzione DB (solo se la tabella
   ha colonna `attivo boolean`).
@@ -277,7 +277,7 @@ vendite.articoli_spesa                vendite.stati_commessa
 vendite.articoli_tipologie            vendite.tipi_fondi_fattura
 ```
 
-Per aggiungere una nuova relazione: inserire la stringa `schema.tabella` in `_REL_CONSENTITE`
+Per aggiungere una nuova relazione: inserire la stringa `schema.tabella` in `REL_CONSENTITE`
 in `backend/apps/core/db/dbops_repository.py`.
 ## Dipendenze DB
 

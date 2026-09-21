@@ -159,8 +159,12 @@ Poi, quando arrivano le righe di R-3: apply del mirror `ui` e il nome di
   le righe di R-3 arrivano.
 - **Tid**: apply (§5, cinque passi); apply del mirror `ui` quando le righe di R-3
   sono nel CSV.
-- **BE/FE**: parte dal Pezzo A del piano (non dipende da questo brief); B/C/D
-  dopo R-2 e R-3 applicati e verificati sul DB vivo. ⚠️ Per il traduttore dei
+- **BE/FE**: ✅ Pezzo A, poi ✅ B/C/D il 21-09 pomeriggio (R-1/R-2 verificati
+  sul DB vivo dal test `tests/db/test_anagrafiche_magazzino_db.py`: i tre
+  codici del guard arrivano col campo `parent_id`). ✅ R-3: le righe delle tre
+  liste (80-82) sono nei CSV di `ui` — **apply del mirror: Tid**; il nome
+  `magazzino.lotti` (`perimetro_emittente = f`) nell'elenco del pgTAP delle
+  liste globali: **team DB**. ⚠️ Per il traduttore dei
   DB-errors delle ubicazioni: **tre** codici, non uno — i due del guard (campo
   `parent_id`) e quello del lock su `magazzino_id` (che il PATCH non dovrebbe
   nemmeno mandare: la colonna non è nel form).

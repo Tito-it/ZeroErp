@@ -608,6 +608,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "indicato. Toglierlo, oppure attivare «per lotti» nella scheda "
         "dell'articolo prima di registrare."
     ),
+    "E_MAG_LOTTO_NON_TROVATO": (
+        "Lotto non trovato: non esiste. Verificare l'identificativo del lotto."
+    ),
     "E_MAG_LOTTO_OBBLIGATORIO": (
         "L'articolo si movimenta per lotti: indicare il lotto sulla riga "
         "(crearlo prima, se e' nuovo)."
@@ -617,6 +620,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "si decide prima del primo carico e non si cambia piu'. Se serve un "
         "magazzino organizzato diversamente, crearne uno nuovo e trasferirci "
         "la merce."
+    ),
+    "E_MAG_MAGAZZINO_NON_TROVATO": (
+        "Magazzino non trovato: non esiste, oppure non e' accessibile con i "
+        "permessi di chi sta operando. Verificare l'identificativo del "
+        "magazzino e l'emittente selezionato."
     ),
     "E_MAG_MAGAZZINO_NON_VALIDO": (
         "Magazzino inesistente o non attivo: le operazioni lo leggono dalla "
@@ -663,14 +671,34 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "non e' piu' attiva: scegliere un'ubicazione attiva di quel "
         "magazzino."
     ),
+    "E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE": (
+        "Il magazzino di un'ubicazione non si cambia: l'ubicazione nasce "
+        "dentro il suo magazzino. Disattivarla e crearne una nel magazzino "
+        "giusto."
+    ),
     "E_MAG_UBICAZIONE_NON_AMMESSA": (
         "Il magazzino non usa le ubicazioni: l'ubicazione sulla riga non va "
         "indicata. Toglierla; l'uso delle ubicazioni si decide nella scheda "
         "del magazzino prima del primo movimento."
     ),
+    "E_MAG_UBICAZIONE_NON_TROVATA": (
+        "Ubicazione non trovata: non esiste, non e' del magazzino indicato, "
+        "oppure il magazzino non e' accessibile con i permessi di chi sta "
+        "operando. Verificare ubicazione, magazzino ed emittente selezionato."
+    ),
     "E_MAG_UBICAZIONE_OBBLIGATORIA": (
         "Il magazzino usa le ubicazioni: indicare sulla riga in quale "
         "ubicazione (un'ubicazione attiva di quel magazzino)."
+    ),
+    "E_MAG_UBICAZIONE_PADRE_CICLICO": (
+        "L'ubicazione non puo' avere quel padre: sarebbe un ciclo nella "
+        "gerarchia (il padre e' l'ubicazione stessa o una sua discendente). "
+        "Scegliere un padre che non stia sotto questa, o lasciarlo vuoto."
+    ),
+    "E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO": (
+        "L'ubicazione padre non appartiene a questo magazzino, oppure non e' "
+        "visibile con i permessi di chi sta operando: scegliere un padre "
+        "dello stesso magazzino, o lasciarlo vuoto."
     ),
     # ⭐ `E_MESSAGGIO_NON_DEFINITO` — RINOMINATO dal team DB il 2026-08-07 (era
     # `MESSAGGIO_NON_DEFINITO`, senza prefisso). E' l'ULTIMA riga del registro dei

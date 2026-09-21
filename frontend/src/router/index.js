@@ -455,6 +455,15 @@ const router = createRouter({
         //    implementazione con due configurazioni, `FAMIGLIE` di
         //    `magazzino/vocabolari.js`). Le due porte restano deep-linkabili e
         //    distinguibili nel tab, come le due code degli incassi.
+        // L'anagrafica dei magazzini (2026-09-21, piano anagrafiche-fuori-dal-
+        // pannello-config): prima voce del dominio, le anagrafiche precedono
+        // i documenti (Q-4).
+        {
+          path: 'magazzino/magazzini',
+          name: 'magazzino-magazzini',
+          component: () => import('../magazzino/views/MagazziniListView.vue'),
+          meta: { domain: 'magazzino', menuKey: 'magazzini' }
+        },
         {
           path: 'magazzino/inventari',
           name: 'magazzino-inventari',

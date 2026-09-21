@@ -981,12 +981,26 @@ curl -H "Authorization: Bearer <token>" \
 ### 4.4 GET /api/v1/amm-software/lookup/emittenti-fiscali/
 
 Lista degli emittenti fiscali attivi per la configurazione scope utente.
+Ogni riga porta le **due** chiavi dell'emittente (`id` = PK di
+`emittenti_fiscali`, `soggetto_ruolo_id` = il ruolo) e, dal 2026-09-21, il
+**`soggetto_id`** (uuid di `anagrafiche.soggetti`): e' quello che il super
+admin dentro un emittente usa per scegliere fra gli indirizzi dell'azienda
+(`useEmittenteFiscaleField.soggettoIdSessione` → drawer del magazzino).
+⚠️ Fino a quel giorno il FE lo leggeva da una colonna che la query non
+proiettava: il pulsante «Scegli indirizzo» restava spento per l'admin, senza
+nessun errore.
 
 ```json
 {
   "data": {
     "results": [
-      { "id": 10, "codice": "EMT001", "descrizione": "Azienda SRL" }
+      {
+        "id": 10,
+        "codice": "EMT001",
+        "soggetto_ruolo_id": 77,
+        "soggetto_id": "0190a1b2-0000-7000-8000-000000000001",
+        "ragione_sociale": "Azienda SRL"
+      }
     ]
   }
 }

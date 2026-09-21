@@ -217,3 +217,69 @@ class MovimentoRow(TypedDict):
     storno_di_movimento_id: int | None
     data_insert: datetime
     user_insert: str
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Le anagrafiche (piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config)
+# ══════════════════════════════════════════════════════════════════
+
+class MagazzinoRow(TypedDict):
+    id: int
+    uid: str
+    codice: str
+    descrizione: str
+    emittente_fiscale_id: int
+    # Display field via LEFT JOIN: `None` se la RLS non lascia leggere la
+    # decodifica — la riga resta, la colonna e' vuota.
+    emittente_codice: str | None
+    emittente_ragione_sociale: str | None
+    emittente_soggetto_id: str | None
+    indirizzo_dettaglio_id: int
+    indirizzo_normalizzato: str | None
+    usa_ubicazioni: bool
+    predefinito: bool
+    attivo: bool
+    # Le ubicazioni ATTIVE del magazzino (badge «Ubicazioni (N)» del drawer).
+    ubicazioni_count: int
+    meta: dict[str, Any]
+    data_insert: datetime
+    user_insert: str
+    data_update: datetime
+    user_update: str | None
+
+
+class UbicazioneRow(TypedDict):
+    id: int
+    magazzino_id: int
+    codice: str
+    descrizione: str | None
+    tipo_id: int
+    tipo_codice: str | None
+    tipo_descrizione: str | None
+    parent_id: int | None
+    parent_codice: str | None
+    area: str | None
+    corsia: str | None
+    scaffale: str | None
+    piano: str | None
+    posizione: str | None
+    attivo: bool
+    meta: dict[str, Any]
+    data_insert: datetime
+    user_insert: str
+    data_update: datetime
+    user_update: str | None
+
+
+class LottoRow(TypedDict):
+    id: int
+    articolo_id: str
+    codice: str
+    data_arrivo: date
+    data_scadenza: date | None
+    attivo: bool
+    meta: dict[str, Any]
+    data_insert: datetime
+    user_insert: str
+    data_update: datetime
+    user_update: str | None

@@ -489,6 +489,15 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _da_costante("apps.magazzino.db.magazzino_repository", "DISPONIBILITA_ARTICOLI_SORT_COLUMNS")),
     ("magazzino.movimenti",
      _da_costante("apps.magazzino.db.magazzino_repository", "MOVIMENTI_SORT_COLUMNS")),
+    # Le tre anagrafiche di magazzino (2026-09-21, piano-be-fe-magazzino-
+    # anagrafiche-fuori-dal-pannello-config §4-6): fuori dal pannello config,
+    # con endpoint e liste proprie.
+    ("magazzino.magazzini",
+     _da_costante("apps.magazzino.db.anagrafiche_magazzino_repository", "MAGAZZINI_SORT_COLUMNS")),
+    ("magazzino.ubicazioni",
+     _da_costante("apps.magazzino.db.anagrafiche_magazzino_repository", "UBICAZIONI_SORT_COLUMNS")),
+    ("magazzino.lotti",
+     _da_costante("apps.magazzino.db.anagrafiche_magazzino_repository", "LOTTI_SORT_COLUMNS")),
     ("pagamenti.rate_fuori_capienza",
      _da_costante("apps.pagamenti.db.pagamenti_repository", "RATE_FUORI_CAPIENZA_SORT_COLUMNS")),
     ("pagamenti.rate",

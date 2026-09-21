@@ -234,7 +234,7 @@ class ExportApiTests(_Base):
     #        senza `default=`: una `date` la farebbe esplodere. Si passa in ISO,
     #        e i filtri vuoti non compaiono.
     def test_i_filtri_del_file_sono_serializzabili(self):
-        etichette = views._filtri_label({
+        etichette = views.filtri_label({
             "data_da": date(2026, 9, 1), "magazzino_id": 3, "search": None, "stato": "DRAFT",
         })
         self.assertEqual(etichette, {"data_da": "2026-09-01", "magazzino_id": 3, "stato": "DRAFT"})

@@ -8,7 +8,7 @@ per ognuna. E' il lato server del pannello di configurazione generico: il FE
 costruisce lista, form e colonne **dai metadati**, non da un layout cablato.
 
 ⚠️ **Il perimetro e' la whitelist, non lo schema.** `rel` (`<schema>.<tabella>`)
-deve stare in `_REL_CONSENTITE`: e' la stessa whitelist del lookup generico. Una
+deve stare in `REL_CONSENTITE`: e' la stessa whitelist del lookup generico. Una
 tabella non elencata non e' raggiungibile — nessun accesso «per nome» a tabelle
 arbitrarie, che e' il rischio ovvio di un CRUD generico.
 
@@ -37,11 +37,14 @@ porta `references` (`<schema>.<tabella>` nominata dalla FK a una colonna, o
 `null`), `references_column` (la colonna referenziata — **non e' sempre `id`**:
 `config.stati_doc_*.esito` punta a `esiti_flussi_pratiche(codice_interno)`, e
 il FE la usa come `valueField` della `LookupSelect`) e `references_lookup`
-(`true` se quella tabella e' in `_REL_CONSENTITE` **e** la colonna referenziata
+(`true` se quella tabella e' in `REL_CONSENTITE` **e** la colonna referenziata
 e' fra quelle che il lookup restituisce, `LOOKUP_COLONNE_VALORE` =
 `id`/`codice`/`codice_interno`; `false` = resta un valore a mano, e il drawer
 lo dichiara). Chi possiede whitelist e contratto del lookup decide: il FE non
-li conosce.
+li conosce. Ogni colonna porta anche `has_default` (c'era gia') (il DB la riempie da solo,
+anche quando `default` e' `null` perche' non e' un literal — `now()`,
+`nextval`): il FE marca obbligatoria una colonna solo se NOT NULL **senza**
+default.
 ⚠️ Escluse, oltre alle colonne di audit e `tx_id`/`storicizza`, le **identita'
 tecniche** che scrive il DB (`uid` con default `uuidv7()`): un campo che
 l'operatore non deve compilare non si mostra come obbligatorio.

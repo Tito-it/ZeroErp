@@ -89,6 +89,6 @@ class DbopsRepositoryTests(TestCase):
 
     # Scopo: Il lookup usato dal drawer template documento resta whitelisted.
     def test_documenti_tipi_output_in_whitelist(self):
-        from apps.core.db.dbops_repository import _REL_CONSENTITE
+        from apps.core.db.dbops_repository import REL_CONSENTITE
 
-        self.assertIn("documenti.tipi_documento_output", _REL_CONSENTITE)
+        self.assertIn("documenti.tipi_documento_output", REL_CONSENTITE)

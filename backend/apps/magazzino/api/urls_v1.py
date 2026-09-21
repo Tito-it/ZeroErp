@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Routing API v1 del dominio magazzino — tutto sotto /api/v1/magazzino/.
+# Scopo: Routing API v1 del dominio magazzino — tutto sotto /api/v1/magazzino/:
+#        il documento interno, le anagrafiche (magazzini, ubicazioni, lotti), i
+#        lookup di riga, la consultazione.
 # Note: ⚠️ L'ORDINE conta. Le rotte piu' specifiche stanno PRIMA del pattern
 #       generico `<int:doc_id>/`, che altrimenti le intercetta.
 #
@@ -13,6 +15,17 @@
 
 from django.urls import path
 
+from apps.magazzino.api.views_anagrafiche import (
+    ApiLottiExport,
+    ApiLottiList,
+    ApiLottoDetail,
+    ApiMagazziniExport,
+    ApiMagazziniList,
+    ApiMagazzinoDetail,
+    ApiUbicazioneDetail,
+    ApiUbicazioniExport,
+    ApiUbicazioniList,
+)
 from apps.magazzino.api.views import (
     VISTE_INVENTARI,
     VISTE_RETTIFICHE,
@@ -62,13 +75,36 @@ urlpatterns = [
     *_rotte_documento_interno("rettifiche", VISTE_RETTIFICHE),
     # --- L'anteprima dei motivi di una riga (la stessa check del piano) ---
     path("righe/motivi/", ApiRigheMotivi.as_view(), name="magazzino-righe-motivi"),
-    # --- I tre lookup di riga ---
+    # --- Le anagrafiche: magazzini, ubicazioni (figlie), lotti (dell'articolo) ---
+    # ⚠️ `export/` e `lookup/` PRIMA dei pattern `<int:…>/` che li intercetterebbero.
+    path("magazzini/", ApiMagazziniList.as_view(), name="magazzino-magazzini-list"),
+    path("magazzini/export/", ApiMagazziniExport.as_view(), name="magazzino-magazzini-export"),
+    path(
+        "magazzini/<int:magazzino_id>/ubicazioni/",
+        ApiUbicazioniList.as_view(),
+        name="magazzino-ubicazioni-list",
+    ),
+    path(
+        "magazzini/<int:magazzino_id>/ubicazioni/export/",
+        ApiUbicazioniExport.as_view(),
+        name="magazzino-ubicazioni-export",
+    ),
     path(
         "magazzini/<int:magazzino_id>/ubicazioni/lookup/",
         ApiMagazzinoUbicazioniLookup.as_view(),
         name="magazzino-ubicazioni-lookup",
     ),
+    path(
+        "magazzini/<int:magazzino_id>/ubicazioni/<int:ubicazione_id>/",
+        ApiUbicazioneDetail.as_view(),
+        name="magazzino-ubicazioni-detail",
+    ),
+    path("magazzini/<int:magazzino_id>/", ApiMagazzinoDetail.as_view(), name="magazzino-magazzini-detail"),
+    path("lotti/", ApiLottiList.as_view(), name="magazzino-lotti-list"),
+    path("lotti/export/", ApiLottiExport.as_view(), name="magazzino-lotti-export"),
     path("lotti/lookup/", ApiLottiLookup.as_view(), name="magazzino-lotti-lookup"),
+    path("lotti/<int:lotto_id>/", ApiLottoDetail.as_view(), name="magazzino-lotti-detail"),
+    # --- Il lookup dei seriali ---
     path("assets/lookup/", ApiAssetsLookup.as_view(), name="magazzino-assets-lookup"),
     # --- Consultazione: la disponibilita' e il registro ---
     path("disponibilita/", ApiDisponibilita.as_view(), name="magazzino-disponibilita-list"),

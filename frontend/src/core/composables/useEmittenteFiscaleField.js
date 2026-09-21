@@ -106,11 +106,23 @@ export function useEmittenteFiscaleField() {
     return (emittentiOptions.value || []).find((o) => o.id === id) ?? null
   })
 
+  // Scopo: il SOGGETTO dell'emittente su cui la sessione scrive — per
+  //        l'operatore dal profilo (`emittenteCorrente.soggettoId`), per il
+  //        super admin dall'opzione della sessione (il lookup admin porta
+  //        `soggetto_id` per riga). `null` = non risolto (ancora): chi ne ha
+  //        bisogno aspetta `loadOptions()`, come per l'etichetta.
+  const soggettoIdSessione = computed(
+    () => currentEmittente.value?.soggettoId
+      ?? opzioneSessione.value?.soggetto_id
+      ?? null,
+  )
+
   return {
     isAdminMode,
     currentEmittente,
     defaultEmittenteId,
     opzioneSessione,
+    soggettoIdSessione,
     emittentiOptions,
     emittentiLoading,
     emittentiError,

@@ -55,6 +55,10 @@ export const NAV_ICONS = Object.freeze({
   // L'inventario e' il CONTEGGIO a scaffale (la lista spuntata); la rettifica
   // e' una correzione in piu' o in meno (le due frecce); la disponibilita' e'
   // «quanto c'e'» (l'indicatore); il registro dei movimenti e' il libro.
+  // L'anagrafica dei magazzini (2026-09-21): il DEPOSITO come luogo — e' la
+  // sola voce del dominio con l'icona del dominio, perche' e' la cosa che il
+  // dominio nomina.
+  MAGAZZINI: 'pi pi-warehouse',
   INVENTARI: 'pi pi-list-check',
   RETTIFICHE: 'pi pi-sort-alt',
   DISPONIBILITA: 'pi pi-gauge',
@@ -253,6 +257,8 @@ export const DOMAIN_MENUS = {
   //    che ne risulta, e il registro dei movimenti e' la storia di tutto —
   //    come per gli incassi, che seguono il percorso del denaro.
   'magazzino': [
+    // Q-4 (Tid, 2026-09-21): voce propria, prima del blocco documenti.
+    { key: 'magazzini', icon: NAV_ICONS.MAGAZZINI, to: '/magazzino/magazzini' },
     { key: 'inventari', icon: NAV_ICONS.INVENTARI, to: '/magazzino/inventari' },
     { key: 'rettifiche', icon: NAV_ICONS.RETTIFICHE, to: '/magazzino/rettifiche' },
     { key: 'disponibilita', icon: NAV_ICONS.DISPONIBILITA, to: '/magazzino/disponibilita' },

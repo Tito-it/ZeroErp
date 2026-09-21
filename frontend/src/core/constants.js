@@ -485,6 +485,20 @@ export const MANAGE_ICONS = {
   //    d'uscita diverse e un solo simbolo, e su una riga che li ha entrambi
   //    comparivano due icone identiche affiancate.
   LOTTO: 'pi pi-server',
+  // Le anagrafiche di MAGAZZINO (2026-09-21, piano anagrafiche-fuori-dal-
+  // pannello-config): le ubicazioni sono la MAPPA del deposito (scaffali,
+  // corsie), il lotto di magazzino e' la PARTITA di merce di un articolo —
+  // ⚠️ non il `LOTTO` qui sopra, che e' il giro di fatturazione: due cose,
+  // due glifi, o una riga con entrambi li confonderebbe.
+  UBICAZIONI: 'pi pi-th-large',
+  LOTTO_MAGAZZINO: 'pi pi-tags',
+  // Spegnere/riaccendere un'anagrafica (`attivo`): due gesti, due glifi, e
+  // il secondo non e' la spunta di `CONFIRM` — riattivare non e' confermare.
+  // ⭐ E' un CONCETTO (lo stesso senso in magazzini, ubicazioni, lotti e
+  // famiglie di documento): chi spegne/riaccende una riga passa da qui, non
+  // da `CANCEL`/`RELOAD`, che dicono «annulla» e «ricarica».
+  DISATTIVA: 'pi pi-ban',
+  RIATTIVA: 'pi pi-replay',
   KEBAB: 'pi pi-ellipsis-v',
   // Documenti PDF (lista/anteprima/scarica). Centralizzata 2026-05-30:
   // usata da GeneraPdfButton + EntityPdfButton (BB documenti) e dai
@@ -606,6 +620,10 @@ export const TAB_ENTITIES = {
   // i verbi degli store `documentiInterni`, consumer = le due liste.
   INVENTARIO: 'inventario',
   LISTINO: 'listino',
+  // L'anagrafica dei magazzini (2026-09-21): producer = i verbi dello store
+  // `magazzini` E quelli delle ubicazioni (cambiano `ubicazioni_count` del
+  // padre); consumer = la lista magazzini.
+  MAGAZZINO: 'magazzino',
   OFFERTA_COMMERCIALE: 'offerta_commerciale',
   OPERATORE: 'operatore',
   ORDINE: 'ordine',

@@ -17,7 +17,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE, _REL_CONSENTITE
+from apps.core.db.dbops_repository import LOOKUP_COLONNE_VALORE, REL_CONSENTITE
 
 # Colonne di sistema da escludere — audit, transazione, storicizzazione, e le
 # identita' tecniche che scrive il DB (`uid` con default `uuidv7()`): un campo
@@ -157,7 +157,7 @@ class ConfigMetadataRepository:
             # colonna target e' fra quelle che il lookup restituisce, il campo
             # diventa una `LookupSelect` (con `valueField` = colonna target),
             # altrimenti resta un valore a mano — e lo dichiara. Lo sa il BE
-            # (`_REL_CONSENTITE`, `LOOKUP_COLONNE_VALORE`), non il FE: esce
+            # (`REL_CONSENTITE`, `LOOKUP_COLONNE_VALORE`), non il FE: esce
             # come flag. ⛔ Il flag a `true` con una colonna che il lookup non
             # porta sarebbe una select che salva `undefined`.
             references, references_column = fk_per_colonna.get(col_name, (None, None))
@@ -166,6 +166,11 @@ class ConfigMetadataRepository:
                 "type": fe_type,
                 "db_type": row[1],
                 "nullable": row[2] == "YES",
+                # ⭐ Distinto da `default`: quello e' None anche quando il default
+                # ESISTE ma non e' un literal (`now()`, `nextval(...)`). Qui si
+                # dice se il DB riempie la colonna da solo — e allora un NOT NULL
+                # non e' un campo obbligatorio per l'operatore (niente `*`, dal
+                # 2026-09-21 il drawer lo legge).
                 "has_default": row[3] is not None,
                 # Default DB normalizzato (literal) per inizializzare il form di
                 # creazione; None se non e' un literal riconoscibile.
@@ -174,7 +179,7 @@ class ConfigMetadataRepository:
                 "references": references,
                 "references_column": references_column,
                 "references_lookup": (
-                    references in _REL_CONSENTITE and references_column in LOOKUP_COLONNE_VALORE
+                    references in REL_CONSENTITE and references_column in LOOKUP_COLONNE_VALORE
                 ),
             })
 

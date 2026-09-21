@@ -38,7 +38,6 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
-    fetch_paged_with_total,
     fetchone_scalar,
     jsonb_out,
     rows_to_list,
@@ -47,8 +46,7 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.services.error_manager import ErrorManager
-from apps.core.services.system_context import connection_role_bypasses_rls
+from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata
 from apps.magazzino.db.famiglie import INVENTARI, RETTIFICHE, FamigliaDocumentoInterno
 from apps.magazzino.types import (
     BloccoRow,
@@ -64,10 +62,8 @@ from apps.magazzino.types import (
 
 _FN = "magazzino.magazzino_repository"
 
-# Il guard di parametro del dominio, gia' a catalogo (TECNICO): e' il codice
-# dei soli guard strutturali di questo modulo, che un operatore non puo'
-# causare compilando qualcosa.
-_E_CHIAMATA = "E_MAG_CHIAMATA_NON_VALIDA"
+# Il guard di parametro del dominio (`E_MAG_CHIAMATA_NON_VALIDA`, TECNICO)
+# vive in `db/_helpers.py` dal 2026-09-21, col guard che lo solleva.
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -364,55 +360,9 @@ class MagazzinoRepository:
     """Accesso dati dello schema `magazzino`."""
 
     # ══════════════════════════════════════════════════════════════
-    #  Guard strutturale + lista paginata
+    #  Guard strutturale + lista paginata: `db/_helpers.py` (condivisi con
+    #  `anagrafiche_magazzino_repository` dal 2026-09-21)
     # ══════════════════════════════════════════════════════════════
-
-    # Scopo: Impedisce che una lettura di perimetro giri su un ruolo BYPASSRLS.
-    # Contesto: le policy di `magazzino` sono il cancello di queste liste (piu'
-    #        lo scope applicativo che si somma). Su un ruolo che le scavalca la
-    #        lista non fallirebbe: mostrerebbe la merce di TUTTI gli emittenti.
-    @staticmethod
-    def _guard_canale_sistema(metodo: str) -> None:
-        ErrorManager.require(
-            not connection_role_bypasses_rls(),
-            code=_E_CHIAMATA,
-            message="Operazione non disponibile dal canale di sistema.",
-            detail=(
-                "Le tabelle di magazzino sono protette da RLS: lette da un "
-                "ruolo BYPASSRLS perderebbero il perimetro emittente. Usare "
-                "la connessione dell'utente della richiesta."
-            ),
-            function_name=f"{_FN}.{metodo}",
-        )
-
-    # Scopo: Esegue una lista paginata: pagina + totale in UNA valutazione
-    #        (`COUNT(*) OVER ()`), e il conteggio di ripiego sulla pagina stantia.
-    # ⚠️ `order_clause` si compone dalle WHITELIST e MAI da input utente: qui
-    #    dentro finisce in una stringa SQL.
-    @staticmethod
-    def _lista_paginata(
-        *,
-        select_sql: str,
-        params: list[Any],
-        order_clause: str,
-        limit: int,
-        offset: int,
-    ) -> tuple[list[dict[str, Any]], int]:
-        data_sql = f"""
-            SELECT *, COUNT(*) OVER () AS total_count FROM (
-                {select_sql}
-            ) q
-            ORDER BY {order_clause}
-            LIMIT %s OFFSET %s
-        """
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
-        return fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
-            offset=offset,
-        )
 
     # Scopo: Decodifica i jsonb della riga (il driver li consegna come `str`).
     @staticmethod
@@ -462,7 +412,7 @@ class MagazzinoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DocumentoInternoRow], int]:
-        self._guard_canale_sistema("list_documenti")
+        guard_canale_sistema(f"{_FN}.list_documenti")
         conditions: list[str] = []
         params: list[Any] = []
         add_emittente_scope_condition(
@@ -498,7 +448,7 @@ class MagazzinoRepository:
             default_desc=True,
             colonne_desc=DOCUMENTI_SORT_COLONNE_DATA,
         )
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_documento_select(f)} {where}",
             params=params,
             order_clause=ordinamento,
@@ -552,7 +502,7 @@ class MagazzinoRepository:
     ) -> tuple[list[PianoRigaRow], int]:
         colonna = PIANO_SORT_COLUMNS.get(order_by or "", "articolo_codice")
         direzione = sql_order_direction(order_dir)
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=_PIANO_SELECT,
             params=[int(inventario_id)],
             order_clause=(
@@ -675,7 +625,7 @@ class MagazzinoRepository:
             default="id",
             tiebreak="id",
         )
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_righe_select(f)} WHERE r.{f.fk_riga} = %s",
             params=[int(doc_id)],
             order_clause=ordinamento,
@@ -857,7 +807,7 @@ class MagazzinoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DisponibilitaRow], int]:
-        self._guard_canale_sistema("list_disponibilita")
+        guard_canale_sistema(f"{_FN}.list_disponibilita")
         conditions: list[str] = []
         params: list[Any] = []
         add_emittente_scope_condition(
@@ -881,7 +831,7 @@ class MagazzinoRepository:
         colonna = DISPONIBILITA_SORT_COLUMNS.get(order_by or "", "articolo_codice")
         direzione = sql_order_direction(order_dir)
         spareggio = sql_tiebreak_direction(direzione)
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_DISPONIBILITA_SELECT} {where}",
             params=params,
             order_clause=f"{colonna} {direzione}, articolo_id {spareggio}, magazzino_id {spareggio}",
@@ -908,7 +858,7 @@ class MagazzinoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DisponibilitaArticoloRow], int]:
-        self._guard_canale_sistema("list_disponibilita_articoli")
+        guard_canale_sistema(f"{_FN}.list_disponibilita_articoli")
         conditions: list[str] = []
         params: list[Any] = []
         if articolo_id is not None:
@@ -928,7 +878,7 @@ class MagazzinoRepository:
             default="articolo_codice",
             tiebreak="articolo_id",
         )
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_DISPONIBILITA_ARTICOLI_SELECT} {where}",
             params=params,
             order_clause=ordinamento,
@@ -966,7 +916,7 @@ class MagazzinoRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[MovimentoRow], int]:
-        self._guard_canale_sistema("list_movimenti")
+        guard_canale_sistema(f"{_FN}.list_movimenti")
         conditions: list[str] = []
         params: list[Any] = []
         add_emittente_scope_condition(
@@ -1009,7 +959,7 @@ class MagazzinoRepository:
             default_desc=True,
             colonne_desc=MOVIMENTI_SORT_COLONNE_DATA,
         )
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_MOVIMENTI_SELECT} {where}",
             params=params,
             order_clause=ordinamento,

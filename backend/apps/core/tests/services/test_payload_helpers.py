@@ -83,6 +83,7 @@ Indice test eseguiti:
 72) test_optional_enum                           — assente o None -> None; presente -> stesso rigore
 73) test_extract_optional_enum_tre_stati         — assente -> MISSING; None nullable -> None; None non nullable -> VALIDATION
 74) test_coerce_enum_scalare                     — la forma per un parametro di firma; None e' obbligatorio
+75) test_extract_optional_string_max_len         — 2026-09-21 (regola del 2): oltre `max_len` -> VALIDATION col campo; MISSING e None (nullable) non lo misurano
 """
 
 from decimal import Decimal
@@ -169,6 +170,18 @@ class TestRequireString(_Base):
     def test_require_string_non_str(self):
         with self.assertRaisesValidation():
             self.v.require_string({"codice": 123}, "codice", max_len=10)
+
+
+class TestExtractOptionalString(_Base):
+    # 75. Il tetto e' quello di `require_string`, sullo stesso campo: prima il
+    #     PATCH per delta lo riscriveva a mano dopo la chiamata.
+    def test_extract_optional_string_max_len(self):
+        self.assertIs(self.v.extract_optional_string({}, "descrizione", nullable=True, max_len=5), MISSING)
+        self.assertIsNone(self.v.extract_optional_string({"descrizione": None}, "descrizione", nullable=True, max_len=5))
+        self.assertEqual(self.v.extract_optional_string({"descrizione": " abc "}, "descrizione", max_len=5), "abc")
+        with self.assertRaisesValidation() as ctx:
+            self.v.extract_optional_string({"descrizione": "abcdef"}, "descrizione", nullable=True, max_len=5)
+        self.assertEqual(ctx.exception.context.get("field"), "descrizione")
 
 
 class TestRequirePositiveInt(_Base):
