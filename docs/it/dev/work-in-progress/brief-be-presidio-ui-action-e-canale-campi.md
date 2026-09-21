@@ -172,8 +172,12 @@ Il presidio legge i corpi delle funzioni per sapere se il `context` porta
   rubinetto già esistente.
 
 Se il BE sceglie la seconda, il team DB la scrive nello stesso giro del
-presidio C1 ([brief-db-presidio-stati-mai-scritti.md](brief-db-presidio-stati-mai-scritti.md)):
-stessa famiglia di viste, stesso pgTAP trasversale.
+presidio C1 ([brief-db-presidio-stati-mai-scritti.md](../work-done/brief-db-presidio-stati-mai-scritti.md),
+**chiuso lato DB il 21-09**): stessa famiglia di viste, stesso pgTAP trasversale.
+⚠️ E in coda a questo brief sta la **richiesta BE §6 di C1**: il test gemello
+sulle 26 righe `DICHIARATO_APPLICAZIONE` di `dbops.vw_stati_check_scrittori`
+(il letterale in un `.py` non di test che nomina la tabella o uno scrittore),
+nei due versi. Stessa forma, stessi strumenti, un solo giro.
 
 ---
 

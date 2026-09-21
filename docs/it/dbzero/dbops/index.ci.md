@@ -33,6 +33,7 @@
 - [rls_perimetro_debito](manual/rls_perimetro_debito.md) — (latest review 09-09-2026)
 - [sec_functions_owner](manual/sec_functions_owner.md) — * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato. * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`. * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati. * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
 - [sessioni_utente](manual/sessioni_utente.md) — (latest review 05-03-2026)
+- [stati_check_dichiarazioni](manual/stati_check_dichiarazioni.md) — (latest review 21-09-2026)
 - [storico_scope_policy](manual/storico_scope_policy.md) — (latest review 11-09-2026)
 - [transaction_ids](manual/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
 
@@ -152,5 +153,7 @@
 - [vw_rls_perimetro_scoperto](manual/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)
 - [vw_run_senza_attore](manual/vw_run_senza_attore.md) — (latest review 04-09-2026)
 - [vw_sorgenti_orfane](manual/vw_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [vw_stati_check_da_sanare](manual/vw_stati_check_da_sanare.md) — (latest review 21-09-2026)
+- [vw_stati_check_scrittori](manual/vw_stati_check_scrittori.md) — (latest review 21-09-2026)
 - [vw_storico_scope_da_dichiarare](manual/vw_storico_scope_da_dichiarare.md) — (latest review 12-09-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

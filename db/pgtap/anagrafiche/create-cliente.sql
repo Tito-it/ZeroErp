@@ -54,6 +54,21 @@ BEGIN;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⚠️ 3. VINCOLI DIFFERITI — ⭐ QUI LA FINESTRA SI DICHIARA, NON SI PRESUME.
+--   La fixture e' una SAGA: soggetto, poi contatto, poi indirizzi, poi ruolo,
+--   poi l'indirizzo del ruolo — in istruzioni separate. I guard di
+--   anagrafiche.soggetti e soggetti_ruoli sono constraint trigger DEFERRABLE
+--   INITIALLY DEFERRED, e il SET CONSTRAINTS ALL IMMEDIATE di questo file sta
+--   in fondo, «dove l'unita' di lavoro e' completa».
+--   ⛔ Ma la riga di contesto qui sopra ESCE CON I VINCOLI IMMEDIATE (rev
+--   20260921-18, come ogni helper pgTAP): fino al 21-09 lo faceva solo sul
+--   database da zero, dove costruisce il mondo, e questo file — il PRIMO della
+--   suite, l'unico a percorrere quel ramo — moriva in CI all'INSERT del
+--   soggetto su «Indirizzo obbligatorio mancante … RES», verde su dev e da
+--   solo. Contare sulla finestra di DEFAULT e' contare su cio' che nessuno ha
+--   promesso: la si riapre, e il file dice da se' cosa vuole.
+SET CONSTRAINTS ALL DEFERRED;
+
 SELECT plan(8);
 
 -- =========================================================
@@ -167,7 +182,8 @@ SELECT 1, s.id, 'Referente pgTAP create-cliente',
 --   RES + DOMFISC + FATT — ma FATT ha fallback su DOMFISC, quindi due bastano.
 --   Il guard e' un constraint trigger DEFERRABLE
 --   (trgfn_soggetti_guard_indirizzi_required): non scatta all'INSERT, scatta
---   al SET CONSTRAINTS in fondo al file. Un soggetto senza i suoi indirizzi
+--   al SET CONSTRAINTS in fondo al file — grazie alla finestra DEFERRED aperta
+--   in testa, non per default. Un soggetto senza i suoi indirizzi
 --   obbligatori non e' un soggetto valido, quindi la fixture li deve creare.
 --   Forma libera completa: chk_indirizzi_free_requirements vuole
 --   indirizzo_libero + stato_id + (locality, postal_box, administrative_area).

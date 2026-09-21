@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidio-stati-mai-scritti §2.4 / §3-bis.4 — il REGISTRO del presidio
+# C1: «uno stato previsto dal modello e mai scritto».
+#
+# ── ⭐ LA DOMANDA A CUI IL PRESIDIO RISPONDE ─────────────────────────
+#   *«Esiste un valore ammesso dal CHECK di una colonna di stato che nessuno
+#   scrive mai?»* Un CHECK di appartenenza e' una promessa del modello: ogni
+#   valore ammesso e' uno stato che il sistema sa raggiungere. Se nessuno lo
+#   scrive, il sistema e' MUTO proprio sul caso che quel valore doveva
+#   raccontare — che di regola e' il fallimento (ERRORE in
+#   fatturazione_lotti_esiti e' stato nel CHECK per mesi senza che nessuno lo
+#   scrivesse, e le corse chiudevano in COMPLETATO con un documento rifiutato).
+#
+# ── ⛔ PERCHE' IL REGISTRO PORTA UN `canale`, E NON E' UN ELENCO DI ESENZIONI ──
+#   Il database vede tre scrittori: il DEFAULT di colonna, una funzione che
+#   scrive la tabella col letterale nel corpo, e chi chiama quella funzione
+#   passandole il letterale. NON vede il quarto, che e' la meta' del progetto:
+#   un repository Python che scrive `UPDATE dbops.coda_lavori SET stato =
+#   'FATTO'`. Quei valori sono NON_DICHIARATO per il database, legittimamente.
+#   Se finissero qui come «esenti», nessun verso di ritiro potrebbe mai
+#   toglierli — il database non sapra' mai se il Python ha smesso di scriverli.
+#   ⇒ Il `canale` dice CHI verifica la riga:
+#     · APPLICAZIONE — «lo scrive un repository Python»: la verifica il test
+#       del backend (richiesta §6 del brief), che pretende il letterale in un
+#       .py non di test che nomini la tabella o uno dei suoi scrittori;
+#     · ESENTE — «esente dal criterio, per la ragione scritta»: la verifica il
+#       pgTAP nel verso DEBITO_ESTINTO, quando uno scrittore compare a DB.
+#   ⚠️ ESENTE non vuol dire «non scritto»: vuol dire che il CRITERIO non lo
+#   vede. Il caso che l'ha insegnato e' fatturazione_lotti_log.stato_operativo
+#   = APERTO: lo scrive fn_log_pipeline_fase COPIANDOLO dalla colonna madre
+#   (SELECT l.stato_operativo INTO v_… ; INSERT … v_…), e nessun letterale
+#   compare da nessuna parte. Il brief proponeva di stringere il CHECK: avrebbe
+#   rotto il log a ogni fase di un lotto aperto (1193 righe APERTO il 21-09).
+#
+# ── ⚠️ LA CHIAVE E' IL VALORE, NON LA COLONNA ───────────────────────
+#   Dichiarare «questa colonna la scrive l'applicazione» costerebbe meta' delle
+#   righe e nasconderebbe esattamente il caso per cui il presidio esiste: un
+#   valore solo, in una colonna per il resto scritta bene, che nessuno scrive.
+#
+# ── ⚠️ DUE COSE CHE IL REGISTRO NON DICE ────────────────────────────
+#   Non prova niente sul database: prova che qualcuno ha guardato quella riga e
+#   ha scritto perche' la lascia li'. E una riga ESENTE non e' assolta: e' un
+#   lavoro con un nome e una data. Il registro DEVE calare.
+#
+# Seed di CATALOGO: le righe nominano tabelle e valori del software, nessuna
+# FK verso anagrafiche.* ⇒ vale identico ovunque, niente context dati_macchina.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260921-15-create-stati-check-dichiarazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260921-15-create-stati-check-dichiarazioni
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.stati_check_dichiarazioni: il registro del presidio C1
+        (valori ammessi da un CHECK di stato che il criterio testuale non vede
+        scritti), una riga per (tabella, colonna, valore) con il canale che
+        dice chi la verifica — APPLICAZIONE (test backend) o ESENTE (pgTAP,
+        verso DEBITO_ESTINTO) — e la ragione. Alimenta
+        dbops.vw_stati_check_scrittori (20260921-16).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                { schemaName: dbops, tableName: stati_check_dichiarazioni }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   I valori di una colonna di stato (CHECK di appartenenza)
+              --   che il criterio di dbops.vw_stati_check_scrittori non
+              --   trova scritti da nessuna funzione ne' dal default, e che
+              --   restano cosi' per una DICHIARAZIONE: o li scrive
+              --   l'applicazione (canale APPLICAZIONE, verificato dal test
+              --   del backend), o sono esenti per la ragione scritta
+              --   (canale ESENTE, verificato dal pgTAP nel verso di ritiro).
+              --   Una riga zittisce il presidio su QUEL valore soltanto.
+              --
+              -- ⚠️ Limite dichiarato: il registro non prova niente sul
+              --   database. Prova che qualcuno ha guardato quella riga e ha
+              --   scritto perche' la lascia li'.
+              --
+              -- Chiave naturale (tabella, colonna, valore); l'id e' IDENTITY
+              -- e il mirror CSV fa l'upsert sulla chiave naturale, cosi'
+              -- nessuno assegna numeri a mano.
+              -- =========================================================
+              CREATE TABLE dbops.stati_check_dichiarazioni (
+                  id                 int  GENERATED ALWAYS AS IDENTITY
+                                       CONSTRAINT pk_stati_check_dichiarazioni PRIMARY KEY,
+                  schema_tabella     text NOT NULL,
+                  nome_tabella       text NOT NULL,
+                  colonna            text NOT NULL,
+                  valore             text NOT NULL,
+                  canale             text NOT NULL,
+                  ragione            text NOT NULL,
+                  data_registrazione date NOT NULL DEFAULT CURRENT_DATE,
+                  data_insert        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert        text NOT NULL DEFAULT CURRENT_USER,
+                  data_update        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update        text NOT NULL DEFAULT CURRENT_USER,
+                  tx_id              uuid NULL,
+                  -- ⚠️ Il VALORE entra nella chiave: e' il singolo valore che
+                  --   nessuno scrive a chiedere una decisione, non la colonna.
+                  CONSTRAINT uq_stati_check_dichiarazioni_valore
+                      UNIQUE (schema_tabella, nome_tabella, colonna, valore),
+                  -- ⭐ Questo CHECK e' il CONTRATTO dei canali, ed e' la
+                  --   sorgente da cui il pgTAP legge quali esiti la vista deve
+                  --   saper produrre: un canale nuovo senza il suo ramo nella
+                  --   vista fa rosso li'. Un elenco nel test sarebbe la
+                  --   fotografia di oggi.
+                  CONSTRAINT chk_stati_check_dichiarazioni_canale
+                      CHECK (canale IN ('APPLICAZIONE', 'ESENTE')),
+                  -- ⚠️ Il CHECK misura la LUNGHEZZA, non la qualita': ferma
+                  --   'TODO' e 'vedi brief', non una frase vuota di sessanta
+                  --   caratteri. La ragione la legge una persona, in review.
+                  CONSTRAINT chk_stati_check_dichiarazioni_ragione
+                      CHECK (length(btrim(ragione)) >= 40),
+                  CONSTRAINT chk_stati_check_dichiarazioni_identificatori
+                      CHECK (schema_tabella ~ '^[a-z][a-z0-9_]*$'
+                         AND nome_tabella   ~ '^[a-z][a-z0-9_]*$'
+                         AND colonna        ~ '^[a-z][a-z0-9_]*$'
+                         AND btrim(valore) <> '')
+              );
+
+              COMMENT ON TABLE dbops.stati_check_dichiarazioni IS
+                  'Registro del presidio C1 (uno stato previsto dal modello e mai scritto): i valori ammessi dal CHECK di una colonna di stato che il criterio di dbops.vw_stati_check_scrittori non trova scritti da nessuna funzione ne'' dal default, e che restano cosi'' per una DICHIARAZIONE. Il canale dice CHI verifica la riga: APPLICAZIONE = lo scrive un repository Python, lo verifica il test del backend; ESENTE = esente dal criterio per la ragione scritta, lo verifica il pgTAP nel verso DEBITO_ESTINTO. ⚠️ ESENTE non vuol dire «non scritto»: vuol dire che il criterio testuale non lo vede (es. una copia colonna→colonna). E'' un registro e DEVE calare: una riga rientrata va tolta. Brief: brief-db-presidio-stati-mai-scritti §2.4 e §3-bis.4.';
+              COMMENT ON COLUMN dbops.stati_check_dichiarazioni.canale IS
+                  'Chi verifica la dichiarazione. APPLICAZIONE = il valore lo scrive un repository Python (anche passandolo come parametro a una funzione): il test del backend pretende il letterale in un .py non di test che nomini la tabella o uno dei suoi scrittori, e fa rosso se sparisce. ESENTE = il criterio non lo vede per la ragione scritta (cantiere aperto, tabella senza scrittori, copia da un''altra colonna): il pgTAP fa rosso se uno scrittore compare a DB (DEBITO_ESTINTO). ⭐ Il CHECK e'' la sorgente da cui il pgTAP legge i canali ammessi.';
+              COMMENT ON COLUMN dbops.stati_check_dichiarazioni.ragione IS
+                  'La ragione TECNICA: per APPLICAZIONE quale modulo scrive il valore; per ESENTE che cosa manca perche'' il valore venga scritto, o perche'' il criterio non lo vede, e dove vive quel lavoro. ⛔ Non un''etichetta e non un rimando nudo: chi legge il presidio deve capire da qui se ha davanti un allarme o un cantiere aperto.';
+              COMMENT ON COLUMN dbops.stati_check_dichiarazioni.data_registrazione IS
+                  'Quando la riga e'' stata dichiarata. E'' l''orologio del registro: una riga ESENTE ferma da mesi e'' un''informazione, non una riga in piu''.';
+              COMMENT ON COLUMN dbops.stati_check_dichiarazioni.valore IS
+                  'Il singolo valore del CHECK, cosi'' com''e'' scritto nel vincolo (maiuscole comprese: dbops.idempotency_keys usa minuscole).';
+
+              CREATE TRIGGER trg_stati_check_dichiarazioni_audit_data_user_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.stati_check_dichiarazioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+
+              CREATE TRIGGER trg_stati_check_dichiarazioni_gen_tx_id_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.stati_check_dichiarazioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.stati_check_dichiarazioni;
