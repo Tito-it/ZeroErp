@@ -40,6 +40,7 @@
 - [trgfn_magazzini_normalize](manual/trgfn_magazzini_normalize.md) — (rev 2026-08-21)
 - [trgfn_movimenti_guard_verso](manual/trgfn_movimenti_guard_verso.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [trgfn_trasferimenti_guard_stesso_emittente](manual/trgfn_trasferimenti_guard_stesso_emittente.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [trgfn_ubicazioni_guard_parent](manual/trgfn_ubicazioni_guard_parent.md) — (rev 2026-09-21 — anagrafiche di magazzino fuori dal pannello config)
 
 ## 🔍 Views (manuale)
 - [vw_costo_medio](manual/vw_costo_medio.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
