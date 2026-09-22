@@ -751,7 +751,7 @@ ragione nel test. ⚠️ Vale anche il verso opposto: `highlight_form_fields`
 promette un input **nella pagina in cui l'operatore si trova** — un id
 dall'URL, una query string, un header, un parametro di firma **non** lo sono,
 e lì la promessa è sbagliata, non il canale: l'override esce. Brief:
-`work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md`.
+`work-done/brief-be-presidio-ui-action-e-canale-campi.md`.
 
 ⭐ **`targets` — dal 2026-08-24.** È l'**altra metà** di `fields`, e la
 differenza vale la riga: `fields` dice quale campo correggere **dentro la

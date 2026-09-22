@@ -59,7 +59,7 @@ percorso compare comunque — è il verso dell'errore scelto apposta, perché un
 collegamento in più costa una riga da guardare, uno in meno costa un caso non
 visto.
 
-Origine: `docs/it/dev/work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md`
+Origine: `docs/it/dev/work-done/brief-be-presidio-ui-action-e-canale-campi.md`
 (§4-bis.2).
 
 ---

@@ -137,7 +137,7 @@ SELECT codice, funzione, canale, nome_in_chiave, n_chiamate, n_con_canale
  ORDER BY codice, funzione;
 ```
 
-Origine: `docs/it/dev/work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md`
+Origine: `docs/it/dev/work-done/brief-be-presidio-ui-action-e-canale-campi.md`
 (§4, §4-bis e §4-ter). Test: `db/pgtap/dbops/test-punti-canale-campo-v1.sql`.
 
 ---

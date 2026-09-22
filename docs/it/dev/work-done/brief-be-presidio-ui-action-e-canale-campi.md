@@ -4,21 +4,25 @@
 > PL/pgSQL del canale (**§4**).
 >
 > **Tipo:** brief di cantiere. Nasce dal candidato **C2** di
-> [analisi-presidi-percorso-storto.md](../work-done/analisi-presidi-percorso-storto.md)
+> [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md)
 > (chiusa il 2026-09-19) e dalla **decisione di Tid del 2026-09-09** in
 > [api.md §«Cosa cambia davvero lo status»](../api.md), che quel candidato
 > aveva perso per dieci giorni.
 >
 > **Da leggere per primo: §2 — che cosa è il presidio, e che cosa NON è.**
 >
-> **Stato (2026-09-22 sera):** 🟢 **lato DB CHIUSO, applicato** — resta la
-> sola conferma lato BE. ✅ `20260922-11/-12/-13` (i 9 A del §4-ter.2) e il
-> mirror di `presidi.csv` (la riga di `vw_punti_canale_campo` è ora
-> `CANCELLO`) applicati da Tid il 22-09; **pgTAP verdi, nessuna regressione**.
-> La vista dà `IN_CHIAMATA / campo` su tutti e dieci i siti sanati.
-> ▶ **Ultimo passo, lato BE:** rilanciare il verso 1 di
-> `apps/core/tests/test_ui_action_e_canale_campi.py`, che era rosso su quei 9
-> **di proposito** — a zero rossi il brief si chiude.
+> **Stato (2026-09-22 sera):** ✅ **CHIUSO — il cancello è verde da entrambi i
+> lati.** ✅ Lato DB: `20260922-11/-12/-13` (i 9 A del §4-ter.2) e il mirror di
+> `presidi.csv` (la riga di `vw_punti_canale_campo` è ora `CANCELLO`) applicati
+> da Tid il 22-09; **pgTAP verdi, nessuna regressione**. La vista dà
+> `IN_CHIAMATA / campo` su tutti e dieci i siti sanati. ✅ Lato BE, 22-09: il
+> verso 1 di `apps/core/tests/test_ui_action_e_canale_campi.py` — rosso su quei
+> 9 **di proposito**, senza `_DEBITO` e senza esenzioni di comodo — è passato da
+> **9 rossi a 0** senza toccare una riga di Python: i 4 test del file verdi
+> (3 ok + lo skip parlante del verso 2, 54 codici misurati), e la suite BE
+> intera **5197 test OK** con `ZEROERP_TEST_DB_E2E=1`, nessuna regressione.
+> ⭐ Il rosso si è spento per la **sanatura**, non per il presidio: è la prova
+> che il cancello misurava la cosa giusta.
 >
 > **Com'è andata, in ordine.** Misurato col criterio pieno (§3-bis) e sanato
 > lato Python il 21-09 (§3-ter: 13 codici mandano il campo, 16 override tolti,
@@ -464,7 +468,7 @@ firma o un'invariante (`E_SOGGETTO_NULL`, `E_SORG_KEY_MISSING`, `E_COERENZA_ID`)
 la promessa è sbagliata e l'override esce dal lato BE — basta dirlo.
 
 Stessa famiglia di viste di C1
-([brief-db-presidio-stati-mai-scritti.md](../work-done/brief-db-presidio-stati-mai-scritti.md),
+([brief-db-presidio-stati-mai-scritti.md](brief-db-presidio-stati-mai-scritti.md),
 **chiuso lato DB il 21-09**), stesso pgTAP trasversale con i casi **costruiti**
 (context in variabile, colonna come chiave, codice in variabile, primo
 motivo). ⚠️ La riga di `presidi.csv` (natura `CANCELLO`, `presidiato_da` = il
@@ -629,7 +633,7 @@ da uno YAML più vecchio della sanatura, diventa rosso (provato per mutazione:
 (decisione 2) e `E_ONERE_CAUSALE_NON_VALIDA` (decisione 7), con la ragione
 nella nota; i messaggi restano (`test-porta-oneri-v1` t.19 li conta), le
 policy BE restano. Il mirror è `runOnChange` (`20260614-08`): rigira
-all'apply. ▶ Poi `genera_error_policies` lato BE.
+all'apply. ✅ `genera_error_policies` rigenerato lato BE il 21-09.
 
 `presidi.csv`: le due viste nuove a catalogo (`INVENTARIO`; il pgTAP del
 catalogo t.2 le pretende), e la riga di `vw_stati_check_da_sanare` porta ora
@@ -715,7 +719,8 @@ ragione in testa al dizionario. ✅ **I 9 A applicati il 22-09**
 (§4-quater): il test era **rosso sul verso 1 su 9 codici** ed era giusto così
 — non è nato con un `_DEBITO` (decisione 5) e non si sono iscritte righe a
 `_ESENZIONI` per farlo tacere (l'esenzione è per una promessa vuota tenuta
-**apposta**, con la ragione). ▶ Ora va rilanciato: atteso zero.
+**apposta**, con la ragione). ✅ Rilanciato il 22-09 dopo l'apply: **zero
+rossi**, e nessuna riga di Python toccata per ottenerlo.
 
 ### 4-ter.3 Il verso 2, misurato dal test
 
@@ -807,8 +812,13 @@ secondo giro). I manuali degli otto guard non cambiano, come per i 30 A del
   `test-fn-crea-risorsa-umana`, `test-fn-guard-soggetto-pf-pura`,
   `test-porta-oneri-v1` — `throws_ok` sul codice e `regprocedure` a firma
   invariata, come previsto);
-* ▶ lato BE, unico passo rimasto: `apps/core/tests/test_ui_action_e_canale_campi.py`
-  verso 1 da 9 rossi a 0 — e il brief si chiude.
+* ✅ lato BE, l'ultimo passo, fatto il 22-09:
+  `apps/core/tests/test_ui_action_e_canale_campi.py` rilanciato con
+  `ZEROERP_TEST_DB_E2E=1` — verso 1 **da 9 rossi a 0**, verso di ritiro verde
+  (nessuna esenzione è diventata inutile), sanity verde, verso 2 skip parlante
+  su 54 codici. Nessuna riga di Python toccata: il rosso si è spento perché i
+  nove siti PL/pgSQL ora mandano il campo. Suite BE intera: **5197 test OK**,
+  nessuna regressione — **il brief si chiude qui**.
 
 ⚠️ **Un rosso trovato nello stesso giro, e non è di questo brief.** Sullo
 scratch `zeroerp_ci` il 22-09 era rosso `dbops/test-processi-coda-automatica`
@@ -821,7 +831,7 @@ scrive soggetto e contatto prima del proprio `SET CONSTRAINTS`. Terzo file con
 quella forma; il censimento del 21-09 lo mancava perché la scrittura sta
 **dentro** `script.fn_crea_utente_tecnico`, non in un `INSERT` del file.
 Sanato nella stessa forma degli altri due; storia e conseguenze in
-[migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md) §D7.
+[migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md) §D7.
 
 ---
 
@@ -841,7 +851,8 @@ Sanato nella stessa forma degli altri due; storia e conseguenze in
    `codici_errore.csv`; lato BE il marker di ONERE è già uscito, gli override
    restano (un codice ritirato deve continuare a risolvere per il diario).
    ✅ **DB, 21-09 sera**: `obsoleto_dal = 2026-09-21` su entrambi, **applicato**
-   (§4-bis.4); ▶ ora `genera_error_policies` lato BE.
+   (§4-bis.4); ✅ `genera_error_policies` rigenerato lato BE il 21-09 —
+   i due codici stanno fra gli **obsoleti** e risolvono ancora per il diario.
 3. **Dove vive**: `apps/core/tests/` accanto ai fratelli (decisione 2
    dell'analisi, mai presa). Proposta: lì, con `# Scopo:` che nomina questo
    brief — la «cartella dei presidi del percorso storto» non serve finché
@@ -881,15 +892,18 @@ Sanato nella stessa forma degli altri due; storia e conseguenze in
 
 * ✅ il criterio pieno (§2.3, corretto il 21-09), BB compresi, e la misura
   rifatta con quello (§3-bis) — fuori dal presidio, come misura datata;
-* 🔵 le **sette decisioni** del §5 (le prime tre dal 19-09, le altre nate
-  dalla misura);
+* ✅ le **sette decisioni** del §5 (le prime tre dal 19-09, le altre nate
+  dalla misura) — tutte prese da Tid il 21-09;
 * ✅ **richiesta al team DB**: `obsoleto_dal` su `E_ATTIVITA_VALIDATION` e
   `E_ONERE_CAUSALE_NON_VALIDA` (decisioni 2 e 7, prese il 21-09) — **applicato**
-  il 21-09 sera (§4-bis.4); 🔵 ora `genera_error_policies` (BE);
+  il 21-09 sera (§4-bis.4); ✅ `genera_error_policies` rigenerato lo stesso
+  giorno — i due codici sono nell'insieme degli **obsoleti** di
+  `error_policies_generated.py` e continuano a risolvere per il diario, come
+  deciso;
 * ✅ sanare `PayloadValidator` (decisione 6): tre metodi, tre test;
 * ✅ **la tabella A/B del §3-ter** applicata (13 A, 16 B): lato Python zero
   promesse vuote; ✅ i 37 lato DB decisi e **applicati** (§4-bis.3: 30 A nei
-  changeSet `-43…-49`); 🔵 **i 7 B sono del BE**: sette override da togliere;
+  changeSet `-43…-49`); ✅ **i 7 B del BE** tolti il 21-09 (riga sotto);
 * ✅ la vista (§4) — `20260921-40/-41/-42`, **applicata** il 21-09 sera, viva
   su dbdev; il contratto **come costruito** è il §4-bis.1, e il test §6 lo
   legge da lì (aggregato «migliore fra le chiamate», `n_con_canale`, le due
@@ -903,8 +917,8 @@ Sanato nella stessa forma degli altri due; storia e conseguenze in
   Python conosce `_CAMPO_PER_CODICE_DB`, i `*_MARKERS`, `fallback_code` e il
   salto sull'helper locale (§4-ter.1), tutti provati su casi costruiti;
 * ✅ i 3 B del §4-ter tolti (ok di Tid); ✅ **i 9 A del §4-ter applicati** il
-  22-09 (`20260922-11/-12/-13`, §4-quater, pgTAP verdi) — ▶ resta da
-  rilanciare il verso 1, atteso zero rossi;
+  22-09 (`20260922-11/-12/-13`, §4-quater, pgTAP verdi) — ✅ verso 1
+  rilanciato il 22-09: **zero rossi**, come atteso;
 * ✅ la riga in `api.md` §Envelope che nomina il presidio; ✅ la riga
   `CANCELLO` in `dbops.presidi` (§4-quater.3), **viva dal 22-09**.
 
