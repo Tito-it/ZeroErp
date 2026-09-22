@@ -11,20 +11,31 @@
 >
 > **Da leggere per primo: §2 — che cosa è il presidio, e che cosa NON è.**
 >
-> **Stato:** 🔵 aperto — misurato col criterio pieno (§3-bis) e **sanato lato
-> Python il 2026-09-21** (§3-ter: 13 codici mandano il campo, 16 override
-> tolti, `PayloadValidator` allineato); sette decisioni prese da Tid (§5).
-> ✅ **Lato DB APPLICATO il 21-09 sera, nessuna regressione** (§4-bis): la vista
-> `dbops.vw_punti_canale_campo` (`20260921-42`) sopra una risalita condivisa
-> nuova (`-40`, con il rubinetto rimontato `-41`), la sanatura dei 37 codici
-> PL/pgSQL (30 **A** in `-43…-49`, 7 **B** al BE), i due ritiri nel CSV, il
-> `presidiato_da` di C1; pgTAP `test-punti-canale-campo-v1` 14/14, suite
-> senza regressioni (Tid). ▶ **Al BE, ora**: sette override da togliere (§4-bis.3),
-> `genera_error_policies`, e il test §6 sul contratto **come costruito**
-> (§4-bis.1). Il test nasce dopo (decisione 5). La prima
-> misura (§3, 2026-09-19, criterio grezzo) resta come storia. ✅ La richiesta
-> BE §6 di C1, accodata qui dal team DB, è **chiusa il 21-09**:
-> `apps/core/tests/test_stati_check_scrittori_python.py` (§7).
+> **Stato (2026-09-21 sera):** 🔵 aperto — **lato BE tutto fatto, resta il
+> team DB.** ▶ **Al team DB, in una riga:** i **9 A del §4-ter.2** (`'campo'`
+> nel context di nove funzioni — ⚠️ per `E_PARENT_SELF` il campo è
+> `parent_account_id`, non `codice`), poi la riga `CANCELLO` in `presidi.csv`
+> per `vw_punti_canale_campo` con `presidiato_da` = il test. Fino ad allora
+> il verso 1 di `apps/core/tests/test_ui_action_e_canale_campi.py` è rosso su
+> quei 9, di proposito (niente `_DEBITO`, niente esenzioni di comodo).
+>
+> **Com'è andata, in ordine.** Misurato col criterio pieno (§3-bis) e sanato
+> lato Python il 21-09 (§3-ter: 13 codici mandano il campo, 16 override tolti,
+> `PayloadValidator` allineato); sette decisioni di Tid (§5). ✅ Lato DB
+> applicato il 21-09 sera (§4-bis): la vista `dbops.vw_punti_canale_campo`
+> (`20260921-42`) sopra una risalita condivisa nuova (`-40`, rubinetto
+> rimontato `-41`), i 37 codici PL/pgSQL sanati (30 **A** in `-43…-49`, 7
+> **B** al BE), i due ritiri nel CSV, il `presidiato_da` di C1; pgTAP
+> `test-punti-canale-campo-v1` 14/14, suite senza regressioni. ✅ BE, 21-09
+> sera: i 7 B tolti, `genera_error_policies` rigenerato (entrano solo i due
+> ritiri), il test scritto sul contratto **come costruito** (§4-bis.1) e la
+> riga in `api.md` §Envelope. 🔴 Acceso, il test ha trovato **12 promesse
+> vuote fuori dai 37** (§4-ter: il bucket «forse» della prima misura, che la
+> vista ha sciolto) più un caso del criterio, sanato nel test; tabella A/B con
+> ok di Tid: ✅ 3 B tolti dal BE, ▶ 9 A al team DB. La prima misura (§3,
+> 2026-09-19, criterio grezzo) resta come storia. ✅ La richiesta BE §6 di C1,
+> accodata qui dal team DB, è chiusa il 21-09
+> (`apps/core/tests/test_stati_check_scrittori_python.py`, §7).
 >
 > **Da leggere per primo, dopo il §2: §3-bis — la misura vera, e i due difetti
 > di meccanismo che ha trovato senza cercarli.**
@@ -632,6 +643,84 @@ il test §6 esiste, come deciso.
   509 righe `DIRETTO`) è del DB, non di questo brief: sono codici con
   un'altra `ui_action` (verso 2, «solo misurato», decisione 1) o promesse
   già mantenute altrove; si legge dalla vista quando serve.
+  ⚠️ **Smentito dal test la sera stessa (§4-ter)**: 12 di quelle righe sono
+  codici `highlight_form_fields` senza nessun sito che mantenga la promessa.
+
+---
+
+## 4-ter. 🔴 Il test acceso: 12 promesse vuote fuori dai 37 — 2026-09-21 sera
+
+*Scritto dal BE. Il test §6 esiste (`apps/core/tests/test_ui_action_e_canale_campi.py`,
+il criterio è in testa al file) e, letto sul DB con la vista applicata,
+**il verso 1 è rosso su 12 codici**. Non sono nei 37 del §4 perché la misura
+del §3-bis li aveva messi nel bucket «forse» (17): il criterio grezzo vedeva
+`'campo'`/`'parametro'` in **un'altra chiamata dello stesso corpo** e non
+sapeva attribuirla. La vista attribuisce, e sono `NESSUNO` o
+`CHIAVE_NON_LETTA`. Il team DB aveva spiegato i 17 «forse» del mattino
+(§4-bis.1): erano altri 17 — l'insieme è cambiato con la sanatura Python, e
+la lista dei 37 era «per partire», non la misura.*
+
+⭐ **Il presidio ha fatto il suo mestiere il primo giorno**: la lista compilata
+a mano era corta di 12, e nessuno l'avrebbe visto.
+
+### 4-ter.1 Un caso era del CRITERIO, ed è stato sanato nel test
+
+`E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO`: il sito Python (`commesse_service`
+1611) chiama `_parse_motivo(payload, code="E_RIGA_…")`, e l'helper solleva
+`require(code=code, context={"field": "motivo"})` — la promessa **è
+mantenuta**, ma con `code=<parametro>` il criterio della prima stesura non la
+vedeva. È la forma Python del `PRIMO_MOTIVO` della vista: il codice lo sceglie
+il chiamante, il campo lo mette chi solleva. ✅ Il criterio ora fa **un salto
+sull'helper locale** (stesso modulo, per nome; senza `code=` vale il default
+del parametro), provato su un caso costruito — e la chiamata all'helper non
+conta anche come sito «raise» senza campo, o nel verso 2 il codice diventava
+«non sempre col campo».
+
+### 4-ter.2 La tabella A/B dei 12 — ✅ ok di Tid il 21-09 sera
+
+Stessa regola del §3-ter e del §4-bis.3. Letti i corpi (`pg_get_functiondef`),
+i messaggi a catalogo e, per i **campi**, le chiavi del payload nel Python che
+chiama la funzione: un nome che non è una chiave di payload non è un input.
+
+**A — 9 codici, al team DB** (`'campo', '<colonna>'` come prima coppia del
+`jsonb_build_object` della chiamata, come nei changeSet `-43…-49`):
+
+| Codice | Funzione | `campo` | Perché è un input |
+| --- | --- | --- | --- |
+| `E_ADMIN_UO_NON_TROVATA` | `anagrafiche.fn_crea_risorsa_umana_v2` | `unita_organizzativa_id` | chiave del payload RU (`amm_software_service` 244/286, `soggetti_service` 250); l'override stesso dice «scegline un'altra» |
+| `E_AUTH_USER_SOGGETTO_CON_PIVA` | `script.fn_guard_soggetto_pf_pura` (da `trgfn_identita_digitali_guard_coerenza`) | `soggetto_id` | il soggetto scelto nel form dell'identità digitale (`amm_software_service` 194, che già manda `field: soggetto_id` sul suo guard) |
+| `E_DATA_AL_MINORE_DAL` | `anagrafiche.trgfn_soggetti_conti_bancari_guard`, `…_soggetti_ruoli_conti_bancari_guard` | `valido_al` | `NEW.valido_al` sta nel context come **chiave** (`CHIAVE_NON_LETTA`). ⚠️ `vendite.fn_get_or_create_commessa` resta **senza**: la chiamano i source handler della pipeline, non un form |
+| `E_DATA_CESSAZIONE_INVALIDA` | `script.fn_disdetta_cliente` | `data_cessazione` | la soluzione a catalogo dice «indicare una data cessazione valida». ⚠️ Nessun chiamante oggi, né Python né PL/pgSQL — ✅ **Tid, 21-09: la funzione si tiene, servirà** (zero chiamanti non è un ritiro, regola zero); il campo è quello del dialog di disdetta quando nascerà |
+| `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO` | `anagrafiche.trgfn_billing_account_guard_normalize` | `valido_al` | «modificare la data finale» (soluzione); `valido_dal` è la chiave non letta, ma il campo da correggere è la fine |
+| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | `script.trgfn_componenti_check_prezzo_obbligatorio` | `prezzo_unitario` | `NEW.prezzo_unitario` sulla riga componente. ⚠️ Le due `*_componenti_init` restano **senza**: iterano la BoM del catalogo, non un input della pagina (la soluzione manda a catalogo > articoli > BoM) |
+| `E_ONERE_ARTICOLO_MANCANTE` | `vendite.fn_aggiungi_onere_commessa` | `articolo_onere_id` | chiave del payload della porta oneri (`commesse_service` 810-833) |
+| `E_ONERE_IMPORTO_NON_VALIDO` | idem | `importo` | chiave del payload (`commesse_service` 781, `coerce_decimal(field="importo")`) |
+| `E_PARENT_SELF` | `anagrafiche.trgfn_billing_account_guard_normalize` | `parent_account_id` | ⚠️ la vista dice `CHIAVE_NON_LETTA` su `codice`, ma l'input sbagliato è il **parent** (`clienti_service`): il nome in mano non era quello giusto |
+
+**B — 3 codici, al BE** (l'override esce, torna al banner di classe):
+
+| Codice | Perché non c'è un input |
+| --- | --- |
+| `E_PIPELINE_SCOPE_INCOMPLETE` | a DB, fatture del lotto senza utility/tipo doc/valuta (`'campi', jsonb_build_array(…)` è una lista di colonne **delle fatture**, non della pagina); in Python, `lock_batch_id` assente — «difetto di programma», dice il commento. Il rimedio sta altrove |
+| `E_SORG_FORMATO` | chiave della sorgente polimorfa nel formato sbagliato (`id::text` / uuid): convenzione del **chiamante**, stessa famiglia di `E_SORG_KEY_MISSING` (B del §4-bis.3) |
+| `E_SORG_NORM_NON_RISOLTA` | uuid non traducibile in id sul target: idem |
+
+**Conto**: 9 A (DB) + 3 B (BE) + 1 criterio (fatto) = 13 rossi → 0.
+✅ **I 3 B applicati** (ok di Tid): tre righe fuori da `error_ui_overrides.py`,
+ragione in testa al dizionario. ▶ **Restano i 9 A, al team DB**: fino alla
+sanatura il test è **rosso sul verso 1 su 9 codici**, ed è giusto così: non
+nasce con un `_DEBITO` (decisione 5) e non si iscrivono righe a
+`_ESENZIONI` per farlo tacere — l'esenzione è per una promessa vuota tenuta
+**apposta**, con la ragione.
+
+### 4-ter.3 Il verso 2, misurato dal test
+
+**54** codici con un'altra `ui_action` i cui siti mandano tutti il campo
+(erano 52 nel §3-bis.3; 1 confermato in `_ESENZIONI`, `E_EMITTENTE_NON_RISOLTO`).
+Il test li riporta come **skip parlante** con l'elenco (decisione 1: solo
+misurato, non blocca, non è un verde). La riga di esenzione a verso 2 ha il
+suo verso di ritiro: se `E_EMITTENTE_NON_RISOLTO` smette di mandare il campo
+da ogni sito, o torna `highlight`, la riga è rossa.
 
 ---
 
@@ -704,14 +793,18 @@ il test §6 esiste, come deciso.
   su dbdev; il contratto **come costruito** è il §4-bis.1, e il test §6 lo
   legge da lì (aggregato «migliore fra le chiamate», `n_con_canale`, le due
   `via` in più);
-* 🔵 il test in `apps/core/tests/test_ui_action_e_canale_campi.py` (sede
-  decisa), **senza** `_DEBITO` (decisione 5: sanare prima) e col solo registro
-  delle esenzioni `(codice, verso) → ragione`, nei due versi di ritiro — nasce
-  quando la vista del §4 c'è e i 37 del DB sono sanati; il criterio Python
-  deve conoscere anche `_CAMPO_PER_CODICE_DB` (§3-ter);
-* 🔵 una riga in `api.md` §Envelope che nomini il presidio, e una in
-  `dbops.presidi` (`CANCELLO`, quando la vista e il test esistono entrambi —
-  le righe `INVENTARIO` delle due viste ci sono già, §4-bis.4).
+* ✅ i **7 B** del §4-bis.3 tolti da `error_ui_overrides.py` (ragione in
+  testa al dizionario) e `genera_error_policies` rigenerato: entrano i soli
+  due ritiri, DB e git allineati;
+* ✅ il test in `apps/core/tests/test_ui_action_e_canale_campi.py` (sede
+  decisa), **senza** `_DEBITO` (decisione 5) e col solo registro delle
+  esenzioni `(codice, verso) → ragione` nei due versi di ritiro; il criterio
+  Python conosce `_CAMPO_PER_CODICE_DB`, i `*_MARKERS`, `fallback_code` e il
+  salto sull'helper locale (§4-ter.1), tutti provati su casi costruiti;
+* ✅ i 3 B del §4-ter tolti (ok di Tid); 🔴 **i 9 A del §4-ter al team DB**
+  — fino alla sanatura il verso 1 è rosso su 9 codici;
+* ✅ la riga in `api.md` §Envelope che nomina il presidio; 🔵 la riga
+  `CANCELLO` in `dbops.presidi` (team DB) quando il verso 1 è verde.
 
 ---
 

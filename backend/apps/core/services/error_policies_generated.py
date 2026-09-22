@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 903, di cui 92 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 903, di cui 94 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -134,6 +134,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ATTIVITA_PIPELINE": "DATO_ERRATO",
     # script.fn_check_attivita_riportabile_da_emettere: il verbo «Riporta da emettere» e' stato invocato con un elenco di attivita' assente o vuoto. Nasce il 2026-08-26 col verbo stesso. · TECNICO e non DATO_ERRATO: nessuna persona sceglie quel valore. L'interfaccia abilita il pulsante solo con almeno una riga selezionata, quindi un elenco vuoto e' un chiamante rotto, e chi ha fatto la richiesta non puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⛔ E il guard esiste perche' l'insieme vuoto NON deve poter uscire come «zero righe riportate»: sarebbe indistinguibile da un'operazione riuscita che non ha trovato niente da fare — cioe' la stessa forma di silenzio che questo cantiere sta chiudendo. · ⚠️ Su un TECNICO la chiave `campo` non esce dal contesto: su un 500 non c'e' nessun campo da accendere. Il VALORE nella frase e' il nome della funzione che ha ricevuto l'elenco, ed e' deliberato: il lettore qui e' uno sviluppatore.
     "E_ATTIVITA_RIPORTO_SELEZIONE_VUOTA": "TECNICO",
+    # Ritirato il 2026-09-21 (decisione 2 di Tid, brief-be-presidio-ui-action-e-canale-campi §5). Era vivo a catalogo con un override ui_action = highlight_form_fields e NESSUN mittente: nessuna funzione plpgsql lo nomina (dbops.vw_punti_canale_campo: zero righe) e nessun sito Python lo solleva. Una promessa all'interfaccia senza nessuno che la mantenga: il presidio C2 lo avrebbe iscritto a registro dal primo giorno. Non ha un sostituto (il caso non esiste). Lato BE l'override resta: un codice ritirato deve continuare a risolvere per il diario. Non si cancella per la FK di dbops.error_log.
+    # ⚠️ RITIRATO il 2026-09-21
     "E_ATTIVITA_VALIDATION": "DATO_ERRATO",
     # TERZO LATO — lotto 4, la coda: `catalogo` · `config` · `dbops` · `shop` · (2026-08-06) Brief §16. Sono i 14 codici da trigger rimasti dopo i · tre lotti per dominio: nessuno arriva a piu' di due funzioni, e non · c'e' un dominio che li tenga insieme — li tiene insieme il fatto di · essere gli ultimi. Con questi il percorso di una richiesta e' coperto. · Sollevato da dbops.fn_run_automations_attivo dentro · `EXCEPTION WHEN others`: fallisce la GENERAZIONE della regola di · automazione, cioe' il framework che arma i trigger. Non e' un · errore di chi compila, e non passa nemmeno da una richiesta web.
     "E_ATTIVO_BLOCK": "TECNICO",
@@ -791,6 +793,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA": "CONFLITTO_STATO",
     "E_OFFERTA_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_ONERE_ARTICOLO_MANCANTE": "DATO_ERRATO",
+    # Ritirato il 2026-09-21 (decisione 7 di Tid, brief-be-presidio-ui-action-e-canale-campi §5). Vivo a catalogo con un override highlight_form_fields, ma nessuna funzione plpgsql lo nomina piu' (dbops.vw_punti_canale_campo: zero righe): la porta oneri (vendite.fn_aggiungi_onere_commessa) non solleva questo codice per la causale. Il solo Python era il marker di traduzione in commesse_service._ONERE_DB_ERROR_MARKERS, tolto dal BE il 21-09 insieme al test che lo attendeva. Il messaggio a catalogo resta (test-porta-oneri-v1 t.19 lo conta). Non si cancella per la FK di dbops.error_log.
+    # ⚠️ RITIRATO il 2026-09-21
     "E_ONERE_CAUSALE_NON_VALIDA": "DATO_ERRATO",
     "E_ONERE_IMPORTO_NON_VALIDO": "DATO_ERRATO",
     # Race sul progressivo segment_key degli oneri (guard DB 557, · brief-db-race-segment-key-onere §5): NON e' un input da correggere · ma un conflitto di concorrenza ritentabile → 409 come la famiglia · immutabilita', non 400. Nota: perche' questo codice ARRIVI qui e non · cada sul fallback E_COMMESSA_VALIDATION, deve essere anche nei · `_ONERE_DB_ERROR_MARKERS` del service (catena di traduzione).
@@ -1469,6 +1473,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA",
         "E_AI_CONFIRMATION_REQUIRED",
         "E_ASSOGGETTAMENTO_NO_MOD",
+        "E_ATTIVITA_VALIDATION",
         "E_ATTIVO_CASCADE",
         "E_BOM_PRODOTTO_MISMATCH",
         "E_BOM_RIGA_NOT_FOUND",
@@ -1491,6 +1496,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_FONTE_QUANTITA_NON_VALIDA",
         "E_INVALID_SNAPSHOT",
         "E_NUMERAZIONE_IMMUTABILE",
+        "E_ONERE_CAUSALE_NON_VALIDA",
         "E_ORD_ANNULLA_IN_COMMESSA",
         "E_ORDINE_EMITTENTE_NON_RISOLTO",
         "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID",
