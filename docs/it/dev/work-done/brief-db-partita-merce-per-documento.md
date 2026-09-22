@@ -1,5 +1,42 @@
 # Brief DB — La partita di merce per documento (D14, quarta leva) e la capability a una lettura (seconda leva)
 
+> # ✅ CHIUSO il 2026-09-22
+>
+> **Decisione di Tid, 22-09 sera**: *«direi che può bastare, lascerei così e
+> chiuderei il brief»*. Otto giri tentati, **sette applicati e in servizio**,
+> l'ottavo ritirato lo stesso giorno (§16).
+>
+> **Cosa è stato consegnato — le forme, che sono ciò che regge** (§15):
+> la partita si legge **per documento** (`fn_partite_merce`, chiusura a due
+> salti, la vista come sua proiezione); l'eleggibilità al push ha **una sola
+> implementazione** (`fn_ddt_push_diagnosi` fonte unica, il lister ne deriva,
+> la capability la legge una volta); il classificatore dei segmenti, `af` e i
+> **billing account** si leggono **per chiave**; la partita dentro la diagnosi
+> si calcola **una volta**; `vw_contatore_merce`, rimasta senza lettori, è
+> **ritirata**; e le righe di un documento si toccano **solo in bozza**
+> (building block montato su DDT, ordini e contratti, due copie ritirate).
+>
+> **ChangeSet**: `20260917-01`, `20260921-20 → -34`, `-50 → -55`,
+> `20260922-01 → -10`, `-14 → -16` — tutti `EXECUTED` su dbdev, pgTAP come app
+> senza regressioni. Commit: `c60f39eaa`, `559dbf351`, `acaaab569`,
+> `e05e3b1e5`, `b40d9de24`, `660bbac59` (+ BE `57482c830`, `77fecbe50`);
+> gli ultimi tre changeSet restano **da committare**.
+>
+> **⛔ Cosa NON è stato fatto, e non è sospeso** — due decisioni non prese
+> (§15.1: la catena del sospetto, D8(b); raccomandato lasciarle) e i residui
+> di §15.2, ciascuno con la sua sede. 🔴 Uno vale oltre questo cantiere: in
+> `vendite` **82 tabelle su 87 non sono mai state analizzate**, quindi ogni
+> misura di piano su questo database è rumore finché le statistiche non ci
+> sono (§16.6) — sede `dbops`/`maintenance`.
+>
+> **⭐ La lezione da portare via** (§16.8): in questo cantiere hanno retto le
+> **forme** — `loops=1` contro `loops=N`, `Index Cond` contro `Join Filter` —
+> e l'**equivalenza delle righe provata per seme. Non** hanno retto i
+> millisecondi confrontati fra momenti diversi, né il banco di prova (il corpo
+> eseguito come query) come predittore del piano dentro la funzione: ha
+> nascosto un difetto vero, ne ha inventato uno e ne ha promesso un terzo che
+> non si è visto.
+
 > **Da leggere per primo: §2 — la chiusura di un documento, sul modello — e
 > poi §2-bis, la rilettura che corregge quattro cose di §2.1 e §3.**
 > Origine: [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md)
@@ -94,7 +131,46 @@
 > una volta (§13.7). ✅ **pgTAP come app lanciati da Tid il 22-09: verdi,
 > nessuna regressione.** ⏳ Commit e PR. Decisioni aperte: D8(b) (dopo §13.7
 > il classificatore non compare fra i nodi pesanti: resta sul modello, non
-> sulla misura); il giro 7 candidato è §13.7 (i BA visibili letti una volta).
+> sulla misura). ✅ Committato (`660bbac59`); il BE ha fatto la sua parte
+> (`77fecbe50`).
+> ✏️ **Giro 7 SCRITTO il 22-09** — §14, da leggere per primo se si riprende
+> da qui: `20260922-14`, i **billing account letti per chiave** (`righe` e
+> `src` fuori da `cand`, `ba_vis AS MATERIALIZED` seminata dalle chiavi in
+> gioco). ⛔ Il `Seq Scan … loops=54` non era l'artefatto di una tabella
+> piccola: nemmeno forzando l'indice diventa un `Index Cond` (§14.1).
+> Provate tre forme come app (§14.2): com'era 161 ms, l'insieme dei BA
+> visibili 98, **seminata 96** — e la ragione della terza non è il
+> millisecondo ma che le altre due fanno pagare l'anagrafica intera alla
+> capability di UN DDT. ⚠️ Il presidio di quel ramo era **verde a vuoto**
+> (nessuna riga viva è `DDT_SENZA_BA`): test 17 nuovo, costruito, rosso per
+> mutazione mentre il 14 resta verde (§14.4). Righe identiche al vivo su
+> tutti e 51 i DDT; 23 pgTAP con/senza a esiti identici. ✅ **APPLICATO da
+> Tid il 22-09 alle 15:57 (`EXECUTED`), pgTAP come app senza regressioni,
+> doc auto-gen rigenerata.** Misura in §14.7: la diagnosi «tutte» **132 →
+> 63 ms**, il cockpit **148 → 73**, il nodo dei BA da 13 398 buffer a **30**.
+> ⏳ Commit e PR.
+>
+> ✏️ **Giro 8 SCRITTO il 22-09** — §16, da leggere per primo se si riprende
+> da qui. ⛔ **E corregge §14.7**: il colpevole che avevo indicato (la CTE
+> `riga`) era un artefatto del banco di prova — dentro la funzione quel
+> punto è un `Index Scan` e costa ~5 ms su 46. Il profilo per CTE *dentro la
+> funzione* dice che il pezzo grosso è la catena del **sospetto** (17,6 ms
+> su 46, e restituisce **zero righe**): calcola la sola colonna
+> `sospetto_duplicato_ordine`, che è un avviso per una **persona** e che
+> nessuna macchina legge. `20260922-15` la semina da `riga` — le righe che
+> escono — e toglie `ddt_in`, rimasta senza lettori. ⛔ Tenendo il recinto
+> `MATERIALIZED`: toglierlo lascia potare la catena a chi non guarda la
+> colonna ma la fa **ri-eseguire per riga** a chi la guarda (§16.2, si vede
+> solo nei `loops`). Equivalenza provata su **tutti** i semi — globale, 51
+> DDT, ogni ordine, array vuoto — dopo che il confronto per seme ha trovato
+> un **errore mio** (§16.4). ⛔ **APPLICATO da Tid il 22-09 alle 16:47 — e la
+> misura come app dice che è una REGRESSIONE**: la diagnosi «tutte» 63 → 90
+> ms, il cockpit 73 → 84, la vista intera 47 → 78 (§16.6), perché
+> referenziare `riga` da altre due CTE ha cambiato il piano di `riga` stessa.
+> ⇒ **Ritirato con `20260922-16`**, che riporta la funzione alla forma del
+> `20260921-53` (§16.7). ⏳ Apply del ritiro, poi commit. ⭐ La lezione, che
+> vale più del giro: **il corpo eseguito come query non predice il piano
+> dentro la funzione** — ha ingannato tre volte in tre versi diversi (§16.8).
 
 ---
 
@@ -529,6 +605,14 @@ ricopiare il cap — la seconda implementazione che B2 vuole togliere.
 **Giro 5 — D7, il building block «righe solo in bozza».** ✏️ **Scritto il
 22-09 (§12).** Sei changeSet (`20260922-01 → -06`), due codici, un pgTAP nuovo,
 due riscritti, cinque fixture riordinate.
+
+**Giro 8 — §16, la catena del sospetto per le righe che escono.** ✏️
+**Scritto il 22-09.** Un changeSet (`20260922-15`), e la correzione di un
+bersaglio che avevo indicato leggendo il piano sbagliato.
+
+**Giro 7 — §13.7, i billing account per chiave.** ✏️ **Scritto il 22-09
+(§14).** Un changeSet (`20260922-14`) e un pgTAP allargato di un caso
+costruito, che sul ramo toccato era verde a vuoto.
 
 **Giro 6 — §11.8 e D6, la partita calcolata una volta e il contatore
 ritirato.** ✏️ **Scritto il 22-09 (§13).** Quattro changeSet
@@ -1621,10 +1705,9 @@ scritto dentro la CTE) va provata come app. Va **dopo** la misura §13.7.
    nessuna regressione** (i tre scope tornano verdi; `test-vw-contatore-merce-v1`
    non c'è più);
 2. ✅ **la misura come app** — §13.7 (22-09 alle 11:05);
-3. ⏳ commit e PR (26 file: 4 changeSet, 8 pgTAP + 2 baseline, 12 doc, brief,
-   migliorie, mappa);
-4. 🔵 il prossimo passo da una riga, dalla misura: i BA visibili letti **una
-   volta** nella diagnosi (§13.7); poi il collo di §13.2 dentro
+3. ✅ commit — `660bbac59` (BE: `77fecbe50`);
+4. ✅ il passo che la misura ha messo davanti — i BA letti per chiave — è il
+   **giro 7** (§14), scritto il 22-09; poi il collo di §13.2 dentro
    `fn_partite_merce`; **D8(b)** resta sul modello — nel piano «dopo» il
    classificatore non compare fra i nodi pesanti;
 5. 🔵 residui dichiarati: `fn_accredita_riga_reso` con tre `LIKE` (§11.6.6);
@@ -1665,3 +1748,432 @@ fatto sul modello, e vale a 31 BA come a 3 000.
 
 ✅ pgTAP come app lanciati da Tid il 22-09 dopo l'apply: **verdi, nessuna
 regressione**. Quelli toccati dal giro, da owner sull'SQL estratto, in §13.4.
+
+## 14. Giro 7 (§13.7) — cosa è stato scritto e provato (22-09)
+
+Il passo che la misura del giro 6 ha messo davanti: **anche i billing account
+si leggono per chiave**. Un changeSet, `20260922-14`.
+
+### 14.1 Il difetto, sul modello
+
+La rank 3 (`DDT_SENZA_BA`) chiede una cosa per riga: *«il billing account di
+questa riga esiste ed è visibile a chi legge?»*. Il corpo lo chiedeva con
+`LEFT JOIN anagrafiche.billing_account ba ON ba.id = COALESCE(d.billing_account_id,
+src.src_billing_account_id)`, e la `COALESCE` nasce da un `LATERAL` dello
+stesso livello: il planner non la usa come chiave e mette la tabella come
+**lato interno di un nested loop** con `Join Filter`. Sotto RLS ogni giro
+rivaluta `fn_scope_ef_whitelist_via_efba` su **ogni** billing account: il
+conto è O(righe × billing account), e cresce con l'anagrafica dei clienti —
+che non si svuota mai.
+
+⛔ **E non è l'artefatto di una tabella piccola**, che era la prima ipotesi:
+forzando l'indice (`enable_seqscan = off`) il piano resta `Index Scan …
+(actual rows=38, loops=54)` — l'indice **scandito per intero** ogni volta,
+perché la condizione resta un `Join Filter` e non diventa mai `Index Cond`.
+132 ms contro 161: la forma non cambia.
+
+### 14.2 Le tre forme, provate come app (22-09, dbdev, 51 DDT / 54 righe attive)
+
+Il corpo è `LANGUAGE sql`: si esegue **come query** col parametro sostituito,
+come `zeroerp_app` con il contesto operatore, in transazione ritirata.
+
+| Forma | tutte | un DDT | il nodo dei BA |
+| --- | --- | --- | --- |
+| **A** — com'era (join alla tabella) | 161 ms | 32,0 ms | `Seq Scan … loops=54`, 15 289 buffer |
+| **B** — l'insieme dei BA visibili, senza seme | 98 ms | 28,6 ms | `Seq Scan … loops=1`, 41 righe, 549 buffer |
+| **C** — seminata dalle chiavi in gioco ✅ | **96 ms** | **25,8 ms** | `Index Cond` sulla PK, **3 righe**, 33 buffer |
+
+⛔ **La ragione di C non è la colonna dei millisecondi** (96 contro 98): è che
+B fa pagare l'anagrafica **intera** anche alla capability di **un** DDT — cioè
+il difetto che D14 esiste per togliere. C paga le chiavi in gioco, come tutto
+il resto del brief. ⛔ E `MATERIALIZED` non è decorativo: la stessa CTE senza,
+letta una volta, viene inlinata e il piano torna a scandire per riga (172 ms).
+
+**Equivalenza**: `EXCEPT ALL` nei due versi contro la funzione viva — 0 su 54
+per «tutte», 0 per il DDT 131, e **0 su ognuno dei 51 DDT** uno per uno.
+
+### 14.3 La forma scritta
+
+`righe` e `src` escono da `cand` — stessa query, stesso `ORDER BY ful.id LIMIT
+1` — perché le chiavi dei BA siano calcolabili **prima**; poi `ba_vis AS
+MATERIALIZED` con `b.id = ANY (SELECT DISTINCT COALESCE(…))`, e `cand` legge le
+tre CTE. Firma, `RETURNS TABLE`, rank, etichette, perimetro, seme in `UNION
+ALL`, `pm` del giro 6, `BEGIN ATOMIC`, `INVOKER`: invariati (md5 del `RETURNS`
+identico, le dieci dipendenze di `pg_depend` identiche).
+
+⭐ **La semantica della rank 3 non cambia**, ed è il punto delicato: `ba_vis`
+legge la tabella come **INVOKER**, quindi un BA che esiste ma che la policy non
+mostra non entra nella CTE e la riga esce `ba_id NULL` = `DDT_SENZA_BA`,
+esattamente come col join. Provato costruendo i quattro casi su un insieme di
+chiavi — BA visibile / BA esistente ma **invisibile** (il 161 di dbdev, di
+un'altra azienda) / id inesistente / `NULL` — identici nelle due forme.
+
+### 14.4 ⚠️ Il presidio che era verde a vuoto, e il caso che NON si costruisce
+
+Il test 14 del catch-all asserisce «`motivo = 'DDT_SENZA_BA'` ⇒
+`billing_account_id IS NULL`» su tutte le righe vive. **Su dbdev nessuna riga
+è `DDT_SENZA_BA`** (54 su 54 hanno un BA visibile): quella clausola è vera
+perché non ha soggetti — verde per sottrazione, proprio sul ramo che questo
+giro riscrive.
+
+⇒ **Test 17 nuovo, costruito**: un DDT senza ordine dietro e con
+`billing_account_id NULL` (la colonna è nullable, e una riga senza fulfillment
+non ha un ordine da cui ereditarlo) → rank 3, motivo `DDT_SENZA_BA`, BA `NULL`,
+capability spenta con `DDT_NON_PUSHABILE`. **Provato per mutazione**: portando
+la rank 3 a `false` nell'SQL estratto, il **17 diventa rosso e il 14 resta
+verde** — che è la misura di quanto il 14 valeva su quel ramo.
+
+⛔ **L'altra metà della rank 3 — «il BA esiste ma chi legge non lo vede» — non
+si costruisce da un documento, e non è una lacuna del test: è una proprietà del
+modello.** `trgfn_<doc>_guard_emittente_ba` vieta a un documento di portare il
+billing account di un'altra azienda, quindi «DDT visibile con BA invisibile»
+non è uno stato raggiungibile. Resta una **cintura fail-closed**, e come tale è
+provata: sull'insieme di chiavi (§14.3) e dal test 15, che pinna che la
+diagnosi non è `SECURITY DEFINER`.
+
+### 14.5 Le prove (owner, `BEGIN … ROLLBACK`, SQL estratto con `yaml.safe_load`)
+
+* **preCondition**: atteso = trovato per entrambe (la seconda pretende che la
+  rev del giro 6 sia entrata: `pm AS MATERIALIZED` nel corpo vivo).
+* **Forma nel catalogo**: `prosqlbody` non nullo, non `DEFINER`, `STABLE`,
+  md5 del `RETURNS` **identico al vivo**, `pg_depend` con le stesse dieci
+  dipendenze, corpo con `ba_vis AS MATERIALIZED` **e** `pm AS MATERIALIZED`.
+* **Righe**: identiche al vivo per «tutte», per il DDT 131 e **per ognuno dei
+  51 DDT**, nei due versi (`EXCEPT ALL` = 0).
+* **23 pgTAP** con e senza, ciascuno nella propria transazione: esiti
+  **identici** — la catena della diagnosi (`reason-catch-all` 16/17 col test
+  nuovo, i quattro lister, `ddt-solo-trasporto-causale`, `ddt-read-side`,
+  `fatturazione-immediata-simmetria`, le quattro capability,
+  `fn-check-ddt-emittibile`), i tre presidi trasversali
+  (`riferimenti-morti` 9/9, `rubinetto-primo-motivo` 7/7,
+  `rls-viste-security-invoker` 7/7) e la famiglia della partita. I rossi sono
+  **gli scope** da owner (RLS saltata), gli stessi con e senza.
+* **I guardrail**: `guardrail_riferimenti_morti` e
+  `guardrail_codice_errore_strutturato` sopra l'SQL estratto, OK; i sette
+  statici e il preambolo pgTAP, OK.
+* `liquibase updateSQL` offline (copia senza `preConditions`): rende i due
+  change, `CREATE OR REPLACE … BEGIN ATOMIC … END;` e `COMMENT`.
+* ⚠️ **Non provato col jar di pgjdbc**: stessa forma del `-07` e del `-32`
+  (funzione `BEGIN ATOMIC` da sola nel suo `sql:`, COMMENT in un change suo).
+
+### 14.6 Cosa resta, nell'ordine
+
+1. ✅ apply del changeSet — **Tid, 22-09 alle 15:57** (`EXECUTED`); ✅ pgTAP
+   come app: **nessuna regressione**; ✅ doc auto-gen rigenerata;
+2. ✅ **la misura come app** — §14.7 (22-09 alle 16:12);
+3. ⏳ commit e PR (changeSet, il pgTAP allargato, brief, migliorie, mappa);
+4. 🔵 il prossimo, che la misura indica con chiarezza: la CTE `riga` dentro
+   `fn_partite_merce` (§14.7 — il 71% di ciò che resta); **D8(b)** resta sul
+   modello.
+
+### 14.7 La misura «dopo» (dbdev, 22-09 alle 16:12 dopo l'apply di Tid delle 15:57, `zeroerp_app` con contesto operatore, 51 DDT / 54 righe attive, media di 5 dopo 2 di riscaldo — colore, non motivo)
+
+| Lettura | §11.7 (giro 4) | §13.7 (giro 6) | Dopo (giro 7) |
+| --- | --- | --- | --- |
+| `fn_ddt_push_diagnosi()` tutte | 346 | 132 | **63** |
+| `fn_list_ddt_da_pushare()` senza documento (cockpit, lista push) | 227 | 148 | **73** |
+| `fn_available_actions_ddt(131)` (il drawer) | 39–58 | 42 | **39** |
+| `fn_ddt_push_diagnosi(131)` / `fn_list_ddt_da_pushare(p_ddt_id => 131)` | 33 / 38 | 31 / 41 | 28 / 38 |
+| `fn_partite_merce(ARRAY[131])` | 28–30 | 27 | 27 — invariata, com'è giusto |
+| `vw_partite_merce` intera | 90 | 49 | 47 |
+
+Il nodo dei billing account è `CTE ba_vis → Nested Loop (actual rows=3,
+loops=1)`, **30 buffer** contro i 13 398 di §13.7: la policy gira sulle tre
+chiavi in gioco. La lista senza documento è sotto la metà del giro 6 e **un
+terzo** di dove D8(a) l'aveva lasciata.
+
+⭐ **E il piano dice che ciò che resta è la partita**: dei 17 142 buffer della
+diagnosi, **12 190 — il 71% — sono la CTE `pm`**.
+
+⛔ **Qui però questa sezione diceva una cosa sbagliata, e la correzione è del
+giro 8** (§16.1). Leggendo i *buffer* avevo indicato come colpevole la CTE
+`riga`, «`dr_in ⋈ ddt` in nested loop, la policy rivalutata 54 volte». Quel
+piano era della **query ad hoc**, dove il planner sceglie un `Seq Scan` su
+`vendite.ddt`; **dentro la funzione** lo stesso punto è un `Index Scan using
+pk_ddtv (Index Cond: id = dr_2.ddt_id)` e `riga` costa ~5 ms su 46. Il profilo
+per CTE *dentro la funzione*, che è la misura giusta, dice altro — §16.1.
+⚠️ La lezione è la stessa che §14.1 aveva già insegnato al contrario: **il
+banco di prova non è il posto in cui la funzione gira**, e prima di dare un
+colpevole va riletto il piano vero.
+
+## 15. Il bilancio, e cosa NON è stato fatto (chiusura, 22-09 sera)
+
+**I sette giri sono chiusi e applicati** (l'ottavo, tentato, è stato ritirato —
+§16). Le due leve che davano il titolo a
+D14 — *la capability di UN DDT paga le partite di TUTTI* — sono consegnate: la
+partita si legge per documento, l'eleggibilità ha una sola implementazione, il
+classificatore e `af` si leggono per chiave, il contatore senza lettori è
+ritirato, e le tre letture che la diagnosi faceva «per riga» (partita, billing
+account) si fanno una volta e per seme.
+
+| Lettura, come app | 17-09 (prima di D14) | 22-09 sera |
+| --- | --- | --- |
+| capability di un DDT (il drawer) | 290 | **39** |
+| lista push senza documento (cockpit) | 214 | 73–94 |
+| diagnosi di tutti i documenti | 348 | 63–104 |
+| partita di un DDT | 120 | **27** |
+
+⚠️ **Le forcelle non sono un refuso**: sono lo stesso corpo misurato a un'ora
+di distanza. Su questo database **82 tabelle su 87 in `vendite` non sono mai
+state analizzate**, quindi il planner lavora su stime di default e il piano si
+ribalta da solo (§16.6). ⇒ **Ciò che questo cantiere ha consegnato sono le
+FORME** — la partita letta per documento e calcolata una volta, l'eleggibilità
+in una sola implementazione, il classificatore, `af` e i billing account letti
+per chiave — e quelle non ballano. I numeri restano **colore**, come il brief
+dichiara da §8.6.
+
+⛔ **Il brief si chiude qui** (decisione di Tid, 22-09 sera: *«direi che può
+bastare, lascerei così»*). Ciò che resta non è lavoro sospeso: sono due
+decisioni **non prese** e alcuni residui, ciascuno con la sua sede.
+
+### 15.1 Le due decisioni NON prese — e perché è legittimo non prenderle
+
+Sono due **sì/no**. Nessuna blocca niente: il cantiere è in servizio senza.
+
+**A) La catena del sospetto: la si lascia com'è, o si riprova?**
+`sospetto_duplicato_ordine` è un avviso per una **persona** (il pannello
+situazione merce), e nessuna macchina lo legge — censito dal catalogo. La
+catena che lo calcola costa **17,6 ms dei 46** della partita e restituisce
+zero righe: la pagano anche la capability, il lister e la diagnosi, che quella
+colonna non la guardano. **Il difetto sul modello è accertato.**
+⛔ Il giro 8 ha provato la cura ovvia (seminarla dalle righe che escono) ed è
+andata peggio (§16.6): ritirata. ⇒ La decisione è **se ritentare**, e con
+quale delle due strade:
+
+| Strada | Cosa comporta | Rischio |
+| --- | --- | --- |
+| **Lasciar stare** ✅ raccomandata | zero lavoro; la partita resta a 46 ms | nessuno: è il costo di oggi |
+| Togliere la colonna dalla partita e calcolarla nel lettore che la mostra | cambia un **contratto pubblico**: 23 → 22 colonne, la vista, il repository BE, il FE, due pgTAP | un cantiere BE/FE, non un changeSet |
+| Riprovare una forma diversa dentro la funzione | un changeSet + un apply per misurarla, perché **il banco non predice il piano** (§16.8) | ogni tentativo costa un apply di Tid |
+
+**B) D8(b), il classificatore in forma «a insiemi»** (§6). Resta giusta sul
+modello — un conto per un insieme si chiede una volta — e **nessuna misura la
+reclama**: dopo il giro 4 costa 0,1 ms a chiamata e non compare più fra i nodi
+pesanti. ⇒ La decisione è **se aprirla adesso o lasciarla dormire**;
+raccomandata la seconda, e si riapre da sé se un cantiere tocca quella
+funzione.
+
+⚠️ **Il resto non è una decisione aperta**: ciò che la partita costa ancora —
+`af` 11 ms, `migra` 11, i quattro semi 11 — **è il conto che deve fare**. Non
+c'è una forma sbagliata lì sotto.
+
+### 15.2 Residui dichiarati, con destinazione
+
+* `fn_accredita_riga_reso` legge `commesse_attivita` con **tre `LIKE`** sul
+  segmento (§11.6.6): stessa malattia del giro 4, a frequenza minore (un verbo,
+  una volta per gesto). Stessa cura, un changeSet suo, 45 pgTAP da rilanciare.
+* I **preventivi** come quarto adottante del BB «righe solo in bozza» (§12.1):
+  prima va censita l'approvazione prezzo, che scrive `stato_approvazione_prezzo`
+  sulle righe — se lo fa fuori bozza, il guard bloccherebbe un flusso legittimo.
+* Al **BE**: il commento in `vendite_repository.py` ~4759 che nomina la vista
+  ritirata (§13.5); le due schede dei contratti che nominano il lock ritirato
+  e il commento in `ddt_service.py` (§12.4); la decisione sui pre-check
+  `_STATI_RIGHE_MODIFICABILI`, che sono ora una copia BE di una regola che il
+  DB fa rispettare (§12.4, «da decidere, non da fare»).
+* 🔴 **Nessuno analizza le tabelle, e non è un dettaglio di questo cantiere**
+  (§16.6): in `vendite` **82 tabelle su 87** non hanno mai avuto un `ANALYZE`
+  — né manuale né automatico. Con la soglia di default (50 righe + 10%) le
+  tabelle piccole non ci arrivano mai da sole, e nello scheduler non c'è
+  nessun job. Effetto: ogni piano su questo database è costruito su stime di
+  default e si ribalta da solo — lo stesso corpo ha misurato 63 e 104 ms a
+  un'ora di distanza. ⚠️ Non è un problema di prestazioni di dbdev: è che
+  **qualunque misura di piano, in qualunque cantiere, è rumore finché le
+  statistiche non ci sono**. → sede: cantiere `dbops`/`maintenance`, non di
+  dominio. ⭐ Prerequisito dichiarato per chiunque riapra questa famiglia.
+
+### 15.3 La lezione, che vale oltre questo cantiere
+
+**Due** giri hanno trovato lo stesso difetto in due punti della stessa catena:
+la partita ri-eseguita per riga (§11.8) e i billing account riletti per riga
+(§14.1). ⛔ La «terza occorrenza» che questa sezione annunciava — la CTE `riga`
+— **non esisteva**: era un artefatto del banco di prova (§16.1). È come questa
+famiglia è cresciuta — ogni lettura nuova aggiunta come un `JOIN` in più al
+livello esterno — ma due volte, non tre.
+
+⭐ La regola che ne discende, e che va applicata **scrivendo**, non misurando:
+*ciò che è un insieme si legge una volta, e si semina con le chiavi in gioco*.
+⛔ E il corollario che il giro 7 ha pagato: «una volta sola» **non basta** —
+leggere l'insieme intero è una volta sola e fa pagare la storia a chi chiede un
+documento. Le due forme si somigliano e non sono la stessa cosa.
+
+⚠️ **Come si prova, e come NON si prova.** Da owner il planner sceglie l'hash e
+un difetto vero non si vede: serve `zeroerp_app` col contesto operatore. Ma il
+corpo eseguito **come query** non predice il piano **dentro la funzione**: in
+questo cantiere ha nascosto un difetto, ne ha inventato un altro e ha promesso
+un guadagno che era una perdita (§16.8). ⇒ Il banco serve a provare che le
+**righe** non cambiano — e lì è indispensabile, il confronto per seme ha
+trovato un errore che il confronto globale dichiarava equivalente (§16.4). Il
+**piano** si misura dopo l'apply, sulla funzione.
+
+## 16. Giro 8 — la catena del sospetto, e una correzione al §14.7 (22-09)
+
+### 16.1 ⛔ Il bersaglio del §14.7 era un artefatto del banco di prova
+
+§14.7 indicava come prossimo passo la CTE `riga` dentro `fn_partite_merce`,
+«`dr_in ⋈ ddt` in nested loop, la policy rivalutata 54 volte». **Non è così**,
+e la differenza è dove si guarda il piano:
+
+| dove | l'accesso a `vendite.ddt` dentro `riga` |
+| --- | --- |
+| corpo eseguito come **query** (il mio banco) | `Seq Scan … (rows=27, loops=54)`, 10 356 buffer, 46 ms |
+| **dentro la funzione** (come gira davvero) | `Index Scan using pk_ddtv`, `Index Cond: id = dr_2.ddt_id`, 54 ricerche, **0,03 ms a giro** |
+
+`riga` costa **~5 ms** dei 46 della partita, non il 71%. Avevo letto i
+**buffer** della query ad hoc invece del **profilo per CTE dentro la
+funzione** — ed è la stessa lezione di §14.1 al contrario: là il banco
+nascondeva un difetto vero (come owner il planner sceglie l'hash), qui ne
+inventava uno che dentro la funzione non c'è. ⭐ La misura giusta è
+`EXPLAIN (ANALYZE, TIMING ON)` su `SELECT * FROM fn_ddt_push_diagnosi()`,
+leggendo il tempo del nodo di testa di ogni CTE.
+
+**Il profilo vero** (22-09, come app, `fn_ddt_push_diagnosi()` = 65 ms, di cui
+`pm` 46):
+
+| CTE dentro la partita | tempo del nodo | righe |
+| --- | --- | --- |
+| `sospetto` (+ `articoli_ordinati_per_ddt` 12,0) | **17,6 ms** | **0** |
+| `af` (+ `base` 11,2) | 11,3 | 34 |
+| `migra` (+ `ponte_riga` 3,0) | 11,3 | 3 |
+| `riga` (al netto dei figli) | ~5 | 36 |
+| i quattro semi (`dr_in`, `riconsegne_in`, `fulfillment_in`, `resi_in`) | ~11 | 104 |
+
+### 16.2 Il difetto, sul modello — e le tre forme provate
+
+`sospetto_duplicato_ordine` è un **avviso per una persona**: *«questa riga è
+stata aggiunta a mano su un DDT che evade un ordine dove quell'articolo c'è
+già»*. Non entra in nessun conto — nessuna rank, nessuna dose, nessun saldo. Il
+censimento dal catalogo vivo lo conferma: `fn_ddt_push_diagnosi`,
+`fn_list_ddt_da_pushare`, `fn_situazione_merce_ordine` e
+`fn_resi_da_accreditare` la nominano **solo nell'elenco delle colonne** della
+SRF; la leggono il pannello situazione merce (BE `list_partite_merce` → FE) e
+due pgTAP.
+
+Eppure la catena che la calcola leggeva **tutte le righe attive dei DDT in
+gioco**, e nel modo «tutte» scandiva `vendite.ddt_righe` per intero — mentre la
+colonna esce per le sole righe di `riga`.
+
+Tre forme, provate come app sul corpo eseguito come query (22-09):
+
+| Forma | chi **non** legge la colonna (3 col.) | chi la legge (23 col.) | la catena |
+| --- | --- | --- | --- |
+| **A** — com'era | 86,4 ms | 80,4 ms | `loops=1` |
+| **B** — senza `MATERIALIZED` | 77,6 (**potata** dal planner) | 81,4 | ⚠️ `Anti Join … loops=36` |
+| **C** — seminata da `riga`, recinto tenuto ✅ | **72,2** | **75,8** | `loops=1` |
+
+⛔ **B è la trappola, ed è la forma che sembrava ovvia**: togliere il recinto
+lascia al planner potare tutta la catena per chi non guarda la colonna — nove
+millisecondi gratis — ma per chi la guarda la fa **ri-eseguire per riga**. È il
+difetto di questo cantiere spostato di un posto, e su dbdev non si vede nei
+tempi (80,4 contro 81,4): si vede **solo nei `loops`**.
+
+⭐ C tiene il recinto **e** semina: una volta sola, e su meno righe. È più
+veloce di entrambe su **tutti e due** i percorsi.
+
+### 16.3 La forma scritta — `20260922-15`
+
+* `articoli_ordinati_per_ddt` parte da `SELECT DISTINCT ddt_id FROM riga`, in
+  **entrambi** i modi: i due rami `p IS NULL` non servono più, perché `riga` è
+  già ristretta dal seme;
+* `sospetto` parte da `riga` invece che da `vendite.ddt_righe`;
+* `ddt_in` era usata **solo** da `articoli_ordinati_per_ddt`: è codice morto e
+  viene tolta (le CTE `MATERIALIZED` passano da 13 a 12);
+* firma, `RETURNS TABLE` (md5 identico), 23 colonne, semi in `UNION ALL`, le
+  altre CTE, `BEGIN ATOMIC`, `INVOKER`, `pg_depend`: invariati.
+
+### 16.4 Le prove (owner, `BEGIN … ROLLBACK`, SQL estratto con `yaml.safe_load`)
+
+* ⚠️ **Un errore mio, trovato dal confronto per seme**: la prima stesura del
+  corpo era stata costruita dalla variante «tutte», con i parametri già
+  sostituiti da `NULL` — quindi i rami seminati erano morti. Il globale dava
+  `diff = 0` e **per DDT 1 800 righe diverse**. Riscritto da un template
+  verificato identico al vivo prima di toccarlo. ⭐ *Un confronto solo sul
+  modo «tutte» avrebbe dichiarato equivalente una funzione che aveva perso i
+  semi.*
+* **Equivalenza** contro la funzione viva, `EXCEPT ALL` nei due versi:
+  globale **0**, per **ognuno dei 51 DDT** col seme (quindi con la chiusura)
+  **0**, per **ognuno degli ordini** **0**, array vuoto `0|0`.
+* **Forma nel catalogo**: `prosqlbody` non nullo, non `DEFINER`, `STABLE`,
+  md5 del `RETURNS` identico, `ddt_in` sparita, 12 `MATERIALIZED` (erano 13),
+  le dodici dipendenze di `pg_depend` **identiche**.
+* **23 pgTAP** con e senza: esiti **identici** — la famiglia della partita, i
+  due della situazione, i due dei resi, la catena della diagnosi e i tre
+  presidi trasversali. I rossi sono gli scope da owner, gli stessi con e senza.
+* **Mutazione**: portando il `NOT EXISTS` del sospetto a `EXISTS`, il **test
+  11** di `test-fn-partite-merce-chiusura-v1` — che la riga a mano se la
+  costruisce — diventa **rosso**. Il presidio di questa colonna c'è ed è vivo.
+* **I guardrail**: i due SQL della CI sopra l'SQL estratto, OK; i sette statici
+  e il preambolo pgTAP, OK. `liquibase updateSQL` offline: rende i due change.
+* ⚠️ **Non provato col jar di pgjdbc**: stessa forma dei `-07`/`-14`.
+
+### 16.5 Cosa resta, nell'ordine
+
+1. ✅ apply — **Tid, 22-09 alle 16:47**; pgTAP come app verdi;
+2. ⛔ **la misura come app (§16.6) dice che è una regressione**: 63 → 90 ms
+   sulla diagnosi «tutte», 47 → 78 sulla vista intera;
+3. ⏳ **apply del ritiro `20260922-16`** — Tid; poi una misura di conferma
+   (attesi i numeri del §14.7: diagnosi 63, cockpit 73, vista 47);
+4. ⏳ commit e PR dei giri 7 e 8 (il 8 entra come tentativo + ritiro: la
+   storia serve, §16.8);
+5. 🔵 le due decisioni aperte sono in §15.1, e sono due sì/no.
+
+### 16.6 ⛔ La misura «dopo», e perché NON dimostra quello che sembrava
+
+Dopo l'apply del `-15` (22-09 alle 17:10, stesso metro di §14.7):
+
+| Lettura | §14.7 (giro 7, ore 16:12) | col giro 8 (17:10) | **dopo il RITIRO (17:23)** |
+| --- | --- | --- | --- |
+| `fn_ddt_push_diagnosi()` tutte | 63 | 90 | **95–104** |
+| `fn_list_ddt_da_pushare()` (cockpit) | 73 | 84 | **94** |
+| `vw_partite_merce` intera | 47 | 78 | **87** |
+| per documento (capability / diagnosi / partita) | 39 / 28 / 27 | 36 / 25 / 23 | 39 / 27 / 26 |
+
+⛔ **La terza colonna è lo stesso corpo della prima** — il `-16` ripristina il
+`20260921-53`, righe identiche, `ddt_in` tornata — e misura **il 60% in più**.
+Il piano lo dice: anche ora `riga` accede a `vendite.ddt` con `Seq Scan …
+loops=54`, cioè **la forma che avevo attribuito al giro 8**.
+
+⇒ **La regressione non è dimostrata.** Fra le 16:12 e le 17:10 il piano è
+cambiato sulla macchina, non nel codice: il confronto 63 → 90 metteva a
+confronto due momenti, non due forme. Il giro 8 non è né provato peggiore né
+provato migliore — anzi, con lo stesso piano storto misurava **meno** del corpo
+ripristinato (90 contro 95–104).
+
+**Perché il piano balla, ed è il fatto che conta**: in `vendite` **82 tabelle
+su 87 non sono MAI state analizzate** — `ddt`, `ddt_righe`, `ordini`,
+`ordini_righe`, `ordini_righe_fulfillment`, `resi_righe` comprese:
+`last_analyze` e `last_autoanalyze` sono `NULL`. Con la soglia di default (50
+righe + 10%) una tabella da 51 righe non ci arriva mai da sola, e nello
+scheduler non esiste nessun job di `ANALYZE`. **Ogni piano misurato in questo
+brief è stato costruito su stime di default**, e un piano così si ribalta da
+solo.
+
+### 16.7 Il giro 8 resta ritirato — `20260922-16`, applicato alle 17:19
+
+Non perché sia provato peggiore (non lo è, §16.6), ma perché il corpo
+ripristinato è **la forma in servizio dal 21-09**, con le righe identiche
+(`EXCEPT ALL` a zero, globale e per ognuno dei 51 DDT) e un giorno di pgTAP
+verdi alle spalle. ⇒ Fermarsi lì è la scelta con meno rischio, e ⛔ **riaprire
+la questione senza prima dare statistiche alle tabelle sarebbe misurare di
+nuovo il rumore.**
+
+⭐ La ragione sul modello che aveva mosso il giro 8 resta vera e **dichiarata**:
+`sospetto_duplicato_ordine` è un avviso per una persona, nessuna macchina lo
+legge, e la catena che lo calcola è il pezzo più caro della partita (17,6 ms su
+46, e restituisce zero righe). È la decisione **A** di §15.1.
+
+### 16.8 ⛔ La lezione: cosa le misure di questo brief hanno potuto dire, e cosa no
+
+| Ha retto | Non ha retto |
+| --- | --- |
+| le **forme**: `loops=1` contro `loops=N`, `Index Cond` contro `Join Filter`, una CTE calcolata una volta contro ri-eseguita per riga | i **millisecondi confrontati fra momenti diversi**: lo stesso corpo ha dato 63 e 104 a un'ora di distanza |
+| l'**equivalenza delle righe**, e il confronto **per seme**, che ha trovato un errore che il confronto globale dichiarava equivalente (§16.4) | il **banco di prova** (corpo eseguito come query) come predittore del piano dentro la funzione: ha nascosto un difetto vero (§14.1), ne ha inventato uno (§14.7) e ne ha promesso un terzo che non si è visto (§16.2) |
+
+⇒ I giri 6 e 7 restano validi **per la forma**, che è verificabile e non balla:
+la partita si calcola una volta (`CTE pm … loops=1`), i billing account si
+leggono per chiave (`Index Cond`, tre righe invece di 42). I numeri accanto
+sono **colore, come questo brief dichiara da §8.6** — e qui hanno provato di
+esserlo sul serio.
+
+⚠️ **Ne discende un prerequisito, per chiunque riapra questa famiglia**: prima
+si danno statistiche alle tabelle, poi si misura. Altrimenti si ottimizza
+contro un piano che cambia da solo. → residuo in §15.2.

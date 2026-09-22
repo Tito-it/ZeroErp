@@ -5,7 +5,7 @@
 > [vendite.vw_resi_da_accreditare](/dbzero/vendite/views/vw_resi_da_accreditare) — la stessa cosa, senza filtro
 > [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita da cui parte
 > [vendite.fn_accredita_riga_reso](/dbzero/vendite/funzioni/fn_accredita_riga_reso) · [vendite.fn_resi_riga_tetti_accredito](/dbzero/vendite/funzioni/fn_resi_riga_tetti_accredito) — i due verbi che la leggono per riga
-> Brief: `docs/it/dev/work-in-progress/brief-db-partita-merce-per-documento.md` (giro 2, D3)
+> Brief: `docs/it/dev/work-done/brief-db-partita-merce-per-documento.md` (giro 2, D3)
 
 ---
 ### 🎯 Scopo Principale

@@ -6,7 +6,7 @@
 > [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita da cui somma
 > [vendite.fn_af_merce_per_riga](/dbzero/vendite/funzioni/fn_af_merce_per_riga) — il fatturato d'ordine, letto per le chiavi delle righe in uscita
 > [vendite.vw_af_merce_per_riga](/dbzero/vendite/views/vw_af_merce_per_riga)
-> Brief: `docs/it/dev/work-in-progress/brief-db-partita-merce-per-documento.md` (giro 2, D3)
+> Brief: `docs/it/dev/work-done/brief-db-partita-merce-per-documento.md` (giro 2, D3)
 
 ---
 ### 🎯 Scopo Principale

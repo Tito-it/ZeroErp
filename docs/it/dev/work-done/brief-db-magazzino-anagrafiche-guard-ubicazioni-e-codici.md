@@ -1,20 +1,19 @@
 # Brief DB — anagrafiche di magazzino: il guard sul padre dell'ubicazione, tre codici, tre liste
 
 > **Destinatario:** team DB (`dev/db-tid`). **Chi scrive:** BE/FE, 2026-09-21.
-> **Origine:** [piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](../work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)
+> **Origine:** [piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)
 > §7 — magazzini, ubicazioni e lotti escono dal pannello config e hanno
 > endpoint e drawer propri (decisione **B** di Tid, 2026-09-20). Nessun DDL di
 > tabella: tutto ciò che serve c'è già. Restano una regola del modello che oggi
 > nessuno fa rispettare (R-1, **decisa da Tid il 2026-09-21: «ora»**), tre codici
 > per i 404 delle tre anagrafiche (R-2) e tre liste a catalogo (R-3, dato non
 > DDL: le righe le genera BE/FE, l'apply del mirror `ui` è di Tid).
-> **Stato:** ✅ **lato DB APPLICATO il 2026-09-21** (§5): R-1 con le due decisioni
-> di Tid del §4-bis (lock su `magazzino_id`, anti-ciclo), R-2 sei codici con le
-> frasi; pgTAP verde come app (12/13 + lo skip del 10, che si accende quando il
-> job genera il lock — vedi §6). **Resta**: il commit; il trigger di lock su dev
-> (job delle 21:00 o `CALL`); R-3 (righe del BE non ancora arrivate: apply del
-> mirror `ui` + il nome di `magazzino.lotti` nel pgTAP delle liste globali).
-> R-2 è pronto per i tre dettagli del BE.
+> **Stato:** ✅ **CHIUSO il 2026-09-22** su tutti e tre i lati. R-1 con le due
+> decisioni di Tid del §4-bis (lock su `magazzino_id`, anti-ciclo), R-2 sei
+> codici con le frasi, R-3 le tre liste a catalogo: applicato, committato
+> (`415813d57`) e collaudato — pgTAP **13/13** come app, con il test 10 diventato
+> un'asserzione vera quando l'automazione ha generato il lock. Verifica di
+> chiusura nel §7.
 
 ---
 
@@ -135,14 +134,14 @@ app (`PGTAP_RUNNER` default) la lettura dà NULL e la frase è quella «non è
 visibile». Due mutazioni accendono solo il test giusto: senza la risalita degli
 antenati cade il 6, senza il check `parent_id = id` cade il 5.
 
-**Passi di Tid**, in ordine (✅ 1 e 3 fatti il 21-09 mattina): (1) `make db-migrate`; (2) il lock su dev:
-`CALL maintenance.proc_automations_lock_columns_job()` (o attendere le 21:00);
-(3) `scripts/testpgtap.sh magazzino/test-ubicazioni-guard-parent-v1.sql` come
-app (atteso 13/13, il 10 non più skip) e la baseline di `magazzino` +
-`dbops/test-riferimenti-morti-v1`; (4) rigenerare la doc auto-gen
-(`funzioni/trgfn_ubicazioni_guard_parent.md` include il manuale); (5) commit.
-Poi, quando arrivano le righe di R-3: apply del mirror `ui` e il nome di
-`magazzino.lotti` nell'elenco del pgTAP delle liste globali.
+**Passi di Tid** — ✅ **tutti eseguiti** (1, 3 e 4 il 21-09; 2 e 5 entro il
+22-09): (1) `make db-migrate`; (2) il lock su dev
+(`CALL maintenance.proc_automations_lock_columns_job()`); (3)
+`scripts/testpgtap.sh magazzino/test-ubicazioni-guard-parent-v1.sql` come app e
+la baseline di `magazzino` + `dbops/test-riferimenti-morti-v1`; (4) rigenerare
+la doc auto-gen (`funzioni/trgfn_ubicazioni_guard_parent.md` include il
+manuale); (5) commit. Le righe di R-3 sono arrivate lo stesso 21-09: mirror `ui`
+applicato e `magazzino.lotti` scritto nell'elenco del pgTAP delle liste globali.
 
 ## 6. Registro
 
@@ -150,22 +149,42 @@ Poi, quando arrivano le righe di R-3: apply del mirror `ui` e il nome di
 | --- | --- |
 | 2026-09-21 | Brief scritto dal BE/FE (R-1, R-2, R-3). |
 | 2026-09-21 (notte) | ✅ **Lato DB scritto**: D1 (lock su `magazzino_id` al posto del ramo `UPDATE OF magazzino_id`) e D2 (anti-ciclo, codice separato) decise da Tid sulla raccomandazione; `20260921-14` + 6 codici + 6 frasi + 1 lock + pgTAP (13) + due manuali. Provato con l'SQL estratto in transazione ritirata, 12/13 come owner (il 13° è il caso RLS, verde solo come app). Da applicare (§5). |
-| 2026-09-21 (sera) | ✅ **Lato BE/FE chiuso**: il piano d'origine è archiviato ([work-done](../work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)); R-2 (i tre codici) consumati dal service delle anagrafiche, R-1 rispecchiato dal picker del padre, R-3 (liste 80-82) **applicate** da Tid col mirror `ui` e collaudate in-app (magazzino + ubicazione). ⏳ Resta al DB il nome `magazzino.lotti` nell'elenco del pgTAP delle liste globali |
+| 2026-09-21 (sera) | ✅ **Lato BE/FE chiuso**: il piano d'origine è archiviato ([work-done](piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)); R-2 (i tre codici) consumati dal service delle anagrafiche, R-1 rispecchiato dal picker del padre, R-3 (liste 80-82) **applicate** da Tid col mirror `ui` e collaudate in-app (magazzino + ubicazione). ⏳ Resta al DB il nome `magazzino.lotti` nell'elenco del pgTAP delle liste globali |
 | 2026-09-21 (mattina dopo) | ✅ **APPLICATO** da Tid (`20260921-14` EXECUTED 10:42, CSV via mirror). Primo giro del pgTAP come app: 11 ok, 1 skip, **test 4 rosso per un refuso di stile** — il guard scriveva `e'` nella frase «non e' visibile…» mentre le frasi del catalogo (e il test) usano `è`. La sostanza era verde: sotto RLS il padre dell'altra azienda non si vede (l'id al posto del codice nella frase) e il rifiuto è fail-closed. Corretto nello YAML (non pushato) e riallineato il dev con l'SQL estratto + `md5sum = NULL` sulla riga di `databasechangelog`, checksum ricalcolato dal migrate successivo. Ora: **12/13 + skip del 10**. ⏳ Il trigger di lock su `magazzino_id` **non è ancora generato** su dev (job `automations_lock_columns` delle 21:00, o `CALL maintenance.proc_automations_lock_columns_job()`): quando c'è, il 10 diventa un'asserzione vera (13/13). Restano commit e R-3. |
+| 2026-09-22 | ✅ **CHIUSO.** Commit `415813d57` (YAML, i tre CSV, il pgTAP, i due manuali); il lock su `magazzino_id` è generato, quindi il test 10 non fa più `skip()`: **13/13** come app. R-3 completato anche dal lato DB — `magazzino.lotti` è nell'elenco del test 6 di `ui/test-lista-definizione-perimetro-emittente-v1.sql`. Verifica sul modello vivo nel §7. |
+
+## 7. Verifica di chiusura (2026-09-22)
+
+Letta sul DB vivo e su git, non sulla memoria del brief — ogni riga è il
+**contratto**, non una fotografia di righe:
+
+| Cosa | Come si è verificata |
+| --- | --- |
+| Il guard c'è ed è al suo posto | `trg_ubicazioni_a10_parent_guard_ins_upd` su `magazzino.ubicazioni`, dopo `trg_ubicazioni_a10_lock_columns_upd` nell'ordine alfabetico previsto dal §4-bis |
+| Il lock è generato | `BEFORE UPDATE OF magazzino_id … trgfn_lock_columns('magazzino_id', 'E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE')` — cercato per **funzione e argomenti**, non per nome |
+| Il changeSet è entrato | `20260921-14…` `EXECUTED`, `databasechangelog` |
+| I sei codici sono a catalogo | sei righe in `config.codici_errore` |
+| Le tre liste | `ui.lista_definizione` 80-82, `perimetro_emittente` = `t`/`t`/**`f`**, coerente con l'elenco del pgTAP delle liste globali |
+| Il refuso di stile del 21-09 è rientrato | il corpo **vivo** dice `'non è visibile con i permessi di chi sta operando'`, identico allo YAML committato: dev e git non divergono |
+
+⚠️ **Il refuso valeva più di una lettera, ed è la lezione da portarsi via**: la
+frase del guard e quella del catalogo devono combaciare **carattere per
+carattere**, perché il pgTAP le confronta con `throws_like`. Un `e'` al posto di
+`è` non è un difetto di stile — è un test rosso su una sostanza verde, e costa
+un giro per capire che il rifiuto funzionava benissimo.
 
 ## Ai team, per chiudere
 
 - **DB**: ✅ R-1 (guard + due codici + lock + pgTAP), ✅ R-2 (sei righe fra codici e
-  frasi). Resta: il nome di `magazzino.lotti` nel pgTAP delle liste globali quando
-  le righe di R-3 arrivano.
-- **Tid**: apply (§5, cinque passi); apply del mirror `ui` quando le righe di R-3
-  sono nel CSV.
+  frasi), ✅ R-3 per la parte di sua competenza (il nome di `magazzino.lotti`
+  nell'elenco del pgTAP delle liste globali). **Niente di aperto.**
+- **Tid**: ✅ apply (§5, cinque passi) e apply del mirror `ui`.
 - **BE/FE**: ✅ Pezzo A, poi ✅ B/C/D il 21-09 pomeriggio (R-1/R-2 verificati
   sul DB vivo dal test `tests/db/test_anagrafiche_magazzino_db.py`: i tre
   codici del guard arrivano col campo `parent_id`). ✅ R-3: le righe delle tre
-  liste (80-82) sono nei CSV di `ui` — **apply del mirror: Tid**; il nome
-  `magazzino.lotti` (`perimetro_emittente = f`) nell'elenco del pgTAP delle
-  liste globali: **team DB**. ⚠️ Per il traduttore dei
+  liste (80-82) sono nei CSV di `ui`, il mirror è applicato e il nome
+  `magazzino.lotti` (`perimetro_emittente = f`) è nell'elenco del pgTAP delle
+  liste globali. ⚠️ Per il traduttore dei
   DB-errors delle ubicazioni: **tre** codici, non uno — i due del guard (campo
   `parent_id`) e quello del lock su `magazzino_id` (che il PATCH non dovrebbe
   nemmeno mandare: la colonna non è nel form).

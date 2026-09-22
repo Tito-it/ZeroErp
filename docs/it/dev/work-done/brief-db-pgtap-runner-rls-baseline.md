@@ -1464,6 +1464,54 @@ dentro, con la ragione e con il debito dichiarato:
 `scripts/pgtap-baseline.sh script config`: **18 rossi su 84, nessuna
 regressione**.
 
+#### ✅ Uno dei tre è stato sanato — `test-fn-guard-soggetto-pf-pura` (2026-09-22)
+
+La correzione promessa qui sopra è stata eseguita sul primo dei tre: la fixture
+crea ora i due indirizzi che il tipo dettaglio `PR` pretende (`RES` e
+`DOMFISC`; il terzo obbligatorio, `FATT`, è coperto dal proprio fallback su
+`DOMFISC`), il dettaglio si **fabbrica** con
+`dbops.fn_pgtap_crea_indirizzo_dettaglio` — `indirizzi_dettaglio` è dato di
+macchina e su un DB da zero ha zero righe — e i contatti li scrive già
+`fn_crea_soggetto_pf` dalla `p_email`. Il marcatore `pgtap-differiti: escluso`
+è tolto.
+
+⭐ **E la riga non è tornata in testa: è diventata il test 8, in coda.** Lì è il
+punto in cui l'unità di lavoro è completa (il test 6 modifica ancora il
+soggetto), e `SET CONSTRAINTS ALL IMMEDIATE` dentro un `lives_ok` è
+esattamente ciò che farebbe il `COMMIT`. ⛔ È un'**asserzione** e non una riga
+di servizio, ed è la scelta che conta: se la fixture tornasse incompleta, una
+riga nuda farebbe morire il file *in fixture* — copertura **zero** ed etichetta
+`ERRORE_FIXTURE`, cioè il modo in cui un buco si nasconde. Così invece il file
+dice «not ok 8» e nomina la cosa. Provato con due mutazioni (tolto il solo
+`DOMFISC`; tolto l'intero blocco): accendono **solo** l'8, gli altri sette
+restano verdi. 8/8 come app e come owner.
+
+⚠️ **Perché è saltato fuori ora, ed è la parte che vale.** Il 2026-09-22 il
+file è uscito `ERRORE_FIXTURE` sullo scratch `zeroerp_ci`: là non c'erano
+operatori, quindi la riga di contesto ha imboccato il ramo che **costruisce il
+mondo**, e quel builder esce `SET CONSTRAINTS ALL IMMEDIATE` — il contratto che
+`20260921-18` dichiara. Chiusa la finestra differita, il guard ha rifiutato il
+soggetto senza indirizzo. Poi una corsa successiva ha **committato**
+l'operatore `PGTR0001` sullo scratch, il ramo di costruzione non si è più
+percorso e il file è tornato verde da sé: *il difetto è stato mascherato da un
+residuo, non riparato*. ⛔ È la terza occorrenza della famiglia censita in
+`20260921-18`, che ne nominava due (`anagrafiche/create-cliente`, corretto, e
+`anagrafiche/test-soggetti-split-payment-cliente-pa`, ancora aperto).
+
+🔵 **Restano gli altri due di questo §20**, e non hanno lo stesso rimedio:
+`test-fn-is-super-admin` cade su un'altra frase («Padre non attivo: figlio
+attivo non consentito»), e `test-fn-scope-ef-whitelist` è uno dei due file che
+`20260921-18` segnala come **non sanabili così** — apre una finestra `DEFERRED`
+e poi cambia attore con la riga di contesto, quindi chiudere i vincoli lo
+farebbe morire in fixture «nei panni di chi ha scritto». Vanno guardati uno per
+uno.
+⚠️ Da tenere accanto, perché è la **stessa famiglia** di questo file anche se
+sta in un altro schema: `anagrafiche/test-soggetti-split-payment-cliente-pa`,
+che `20260921-18` dichiara destinato a cadere il giorno in cui si chiude il
+debito D7 (i file che chiamano la riga di contesto in autocommit, e che oggi
+mascherano tutto committando l'operatore).
+I file che dichiarano `pgtap-differiti: escluso` passano da 17 a **16**.
+
 ### 20.4 Il metodo per i 254 che restano
 
 Il tasso non è più zero: su 54 file, **3 hanno reagito** (5,5%), e tutti e tre

@@ -7,7 +7,7 @@
 > [vendite.vw_af_merce_per_riga](/dbzero/vendite/views/vw_af_merce_per_riga)
 > [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare)
 > [vendite.fn_ddt_push_diagnosi](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi)
-> Brief: `docs/it/dev/work-in-progress/brief-db-partita-merce-per-documento.md`
+> Brief: `docs/it/dev/work-done/brief-db-partita-merce-per-documento.md`
 
 ---
 ### 🎯 Scopo Principale
