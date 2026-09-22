@@ -25,9 +25,9 @@
 > **secondo salto** (service → repository), perché il criterio «stesso file»
 > del §6 dava rosso su 8 righe su 26 per l'architettura a tre layer, non per un
 > difetto (dettaglio in
-> [brief-be-presidio-ui-action-e-canale-campi.md §7](../work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md)).
-> 🔵 Al team DB resta una riga: `presidi.csv`, `presidiato_da` di
-> `vw_stati_check_da_sanare` → il nome del file.
+> [brief-be-presidio-ui-action-e-canale-campi.md §7](brief-be-presidio-ui-action-e-canale-campi.md)).
+> ✅ L'ultima riga al team DB — `presidi.csv`, `presidiato_da` di
+> `vw_stati_check_da_sanare` → il nome del file — è scritta il 21-09 sera.
 >
 > **Due cose che la scrittura ha smentito del brief** (§3-ter): il perimetro è
 > **32 colonne / 114 valori**, non 18 / 65 (la regex del §3 vedeva una sola

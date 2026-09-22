@@ -11,7 +11,7 @@
 #        comportamento viaggiano su due binari e possono divergere in silenzio:
 #        un override `highlight_form_fields` con nessun sito che manda il nome
 #        del campo e' un toast senza campo rosso, e nessun test lo vede. Brief:
-#        `docs/it/dev/work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md`
+#        `docs/it/dev/work-done/brief-be-presidio-ui-action-e-canale-campi.md`
 #        (§2 la regola, §4-bis.1 il contratto della vista come costruito).
 #
 #        DUE META', UNA SEDE PER CIASCUNA (guida presidi §6.3). I siti PL/pgSQL
