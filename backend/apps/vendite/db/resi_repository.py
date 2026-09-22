@@ -31,7 +31,7 @@ from apps.core.db._helpers import (
     sql_order_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
+from apps.vendite.db._coda_documento_filtro import lettura_coda_per_documento
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 # Scopo: Whitelist colonne ORDER BY per la lista resi (SQL injection safe). Le
@@ -469,6 +469,13 @@ class ResiRepository:
         if etichetta is not None:
             extra_conditions.append("v.etichetta = %s")
             extra_params.append(etichetta)
+        # ⭐ Col documento la coda si legge dalla FUNZIONE (dal 2026-09-21, giro
+        #    2 del brief partita): `fn_resi_da_accreditare` ha la chiusura
+        #    dentro e per ordine segue lo stesso `EXISTS` sul fulfillment del
+        #    predicato — stesse righe del pannello (`_list_coda_su_partite`).
+        #    Senza documento resta la vista, che e' `fn(NULL, NULL)`: «tutte».
+        #    ⚠️ Che questa coda abbia la funzione NON lo sa questo wrapper: lo
+        #    dice `FUNZIONE_PER_CODA`, e `_list_coda` applica la forma.
         return self._list_coda(
             "vendite.vw_resi_da_accreditare",
             billing_account_id=billing_account_id,
@@ -526,6 +533,13 @@ class ResiRepository:
     # Scopo: Lettura condivisa delle due code (stesse colonne di filtro:
     #        billing_account_id, data, emittente_fiscale_id). Il nome vista
     #        arriva SOLO dai due wrapper (statico, no input utente).
+    # ⭐ Col documento (dal 2026-09-21) la forma di lettura la decide il BB
+    #        `lettura_coda_per_documento` sulla mappa `FUNZIONE_PER_CODA`: la
+    #        funzione con la chiusura dentro nel `FROM` (accrediti), oppure la
+    #        vista col predicato nel `WHERE` (ri-consegne). `vista` resta la
+    #        chiave di `_CODA_META` (ordinamento e ricerca sono gli stessi: la
+    #        funzione ha le colonne della vista per costruzione). Senza
+    #        documento e' la vista, senza condizione.
     def _list_coda(
         self,
         vista: str,
@@ -550,6 +564,9 @@ class ResiRepository:
         # EXPORT_MAX_ROWS+1 per intercettare l'overflow SENZA troncare in
         # silenzio (il guard di build_export_response usa la COUNT reale).
         meta = _CODA_META[vista]
+        # Il service garantisce «al piu' uno» dei due id (`_valida_filtro_documento`,
+        # rifiuto parlante); con entrambi il BB solleva, per programmazione.
+        lettura = lettura_coda_per_documento(vista, ddt_id=ddt_id, ordine_id=ordine_id)
         order_column = meta["order_cols"].get(order_by) or "v.data"
         direction = sql_order_direction(order_dir, default_desc=True)
         # ⚠️ Qui il tiebreak NON si allinea alla direzione (regola 2026-08-03,
@@ -571,18 +588,17 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        # Restrizione al documento: filtro COMUNE alle due code, quindi vive qui
-        # accanto a billing_account_id e alle date — non negli `extra_conditions`
-        # dei wrapper, che sono per le colonne di UNA vista sola (l'etichetta).
-        # ⭐ Il predicato e' il BB condiviso col pannello situazione merce: le due
-        # schermate rispondono alla stessa domanda e devono contare le stesse
-        # righe.
-        condizione_doc, params_doc = filtro_coda_per_documento(
-            ddt_id=ddt_id, ordine_id=ordine_id
-        )
-        if condizione_doc is not None:
-            conditions.append(condizione_doc)
-            params.extend(params_doc)
+        # Restrizione al documento nel WHERE — solo per la coda che la chiusura
+        # NON ce l'ha nella sorgente (oggi le ri-consegne): filtro COMUNE alle
+        # code, quindi vive qui accanto a billing_account_id e alle date — non
+        # negli `extra_conditions` dei wrapper, che sono per le colonne di UNA
+        # vista sola (l'etichetta).
+        # ⭐ Forma e predicato sono il BB condiviso col pannello situazione merce:
+        # le due schermate rispondono alla stessa domanda e devono contare le
+        # stesse righe.
+        if lettura.condizione is not None:
+            conditions.append(lettura.condizione)
+            params.extend(lettura.params_condizione)
         if extra_conditions:
             # Condizioni vista-specifiche costruite dal wrapper chiamante
             # (es. etichetta della coda accrediti): il builder resta neutro
@@ -613,18 +629,20 @@ class ResiRepository:
         # raggiunti). Tie-breaker stabile (reso_id, resi_riga_id) appeso
         # all'order utente per paginazione deterministica anche su colonne
         # non univoche.
+        # ⚠️ I parametri della sorgente vengono PRIMA di quelli del WHERE: e'
+        # l'ordine dei `%s` nel testo, e vale per il conteggio di ripiego.
         data_sql = f"""
             SELECT v.*, COUNT(*) OVER () AS total_count
-            FROM {vista} v
+            FROM {lettura.sorgente} v
             {where}
             ORDER BY {order_column} {direction}, v.reso_id DESC, v.resi_riga_id ASC
             LIMIT %s OFFSET %s
         """  # noqa: S608
         return fetch_paged_with_total(
             data_sql,
-            [*params, safe_limit, safe_offset],
-            fallback_count_sql=f"SELECT COUNT(*) FROM {vista} v {where}",  # noqa: S608
-            fallback_params=params,
+            [*lettura.params_sorgente, *params, safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) FROM {lettura.sorgente} v {where}",  # noqa: S608
+            fallback_params=[*lettura.params_sorgente, *params],
             offset=safe_offset,
         )
 

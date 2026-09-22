@@ -600,7 +600,18 @@ sostituite. Uscita: `tutti OR ddt_id = ANY(p_ddt_ids) OR ordine_id = ANY(p_ordin
   `WHERE ddt=131` 3.2, fn(ARRAY[131]) 2.4. La misura che conta è come app,
   dopo l'apply.
 
-### 8.4 ⏳ Richiesta BE (una riga, nessuna urgenza: oggi la vista risponde giusto)
+### 8.4 ✅ Richiesta BE — fatta il 21-09 sera
+
+> ✅ `list_partite_merce` legge `fn_partite_merce` col solo array del documento
+> riempito, senza `WHERE`; la scelta dell'array è il BB
+> `sorgente_per_documento` (regola del 2: la stessa scelta stava per essere
+> scritta in quattro punti — `_coda_documento_filtro.py`, accanto al predicato
+> gemello). Un test per punto + la traversata degli otto rami sul DB vero
+> (`tests/db/test_lettura_per_documento_dalle_funzioni.py`), provati per
+> mutazione (array invertito → rosso, parametri del COUNT invertiti → rosso).
+> `apps.vendite` 2093 test verdi. Il commento «la vista più costosa del sistema»
+> riscritto. *La richiesta, com'era:*
+
 
 `backend/apps/vendite/db/vendite_repository.py`, `list_partite_merce`: al
 posto di `FROM vendite.vw_partite_merce p … WHERE p.ddt_id = %s` /
@@ -792,7 +803,23 @@ array vuoto = zero righe; entrambi valorizzati = unione. Le viste sono
    che il giro 1 ha misurato come app (120 → 24). La misura che conta è quella,
    dopo l'apply; questa dice solo che la forma non costa niente da owner.
 
-### 9.4 ⏳ Richiesta BE (nessuna urgenza: le viste rispondono giusto)
+### 9.4 ✅ Richiesta BE — fatta il 21-09 sera
+
+> ✅ `list_situazione_merce_ordine` senza `WHERE`/`EXISTS` (li fa la funzione);
+> `_list_coda_su_partite` prende `funzione=` per la coda accrediti e resta sul
+> predicato per le ri-consegne; `ResiRepository._list_coda` prende una
+> `sorgente` opzionale al posto della vista nel `FROM` — anche nel `COUNT` di
+> ripiego, coi parametri della sorgente **prima** dei filtri (è il punto che
+> sbaglia senza errore, e ha il suo test) — e `list_da_accreditare` la passa
+> quando c'è un documento; senza documento resta sulla vista (`fn(NULL, NULL)`).
+> `filtro_coda_per_documento` **non si ritira**: serve alle ri-consegne, come
+> previsto. ✅ **22-09 (regola del 2, ok Tid)**: la scelta «quale coda legge la
+> funzione e quale la vista» stava in **due** repository col nome della
+> funzione ricopiato — ora è `FUNZIONE_PER_CODA` + `lettura_coda_per_documento`
+> nello stesso modulo, e `_list_coda`/`_list_coda_su_partite` ricevono la sola
+> vista-coda. Quando le ri-consegne avranno la loro funzione: una riga.
+> *La richiesta, com'era:*
+
 
 `backend/apps/vendite/db/vendite_repository.py`:
 

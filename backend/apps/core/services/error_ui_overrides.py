@@ -44,6 +44,28 @@
 #    non e' il nome di un input non va promesso. A video oggi non cambia
 #    niente (nessun consumatore ramifica su questo valore); cambia il
 #    contratto, ed e' la finestra in cui riguardare le righe costa zero.
+# ⛔ E ALTRI SETTE, la sera dello stesso giorno, dal lato DB (§4-bis.3): i
+#    codici a soli siti PL/pgSQL letti uno per uno dal team DB con la stessa
+#    regola A/B — dove il guard ha in mano la colonna di un input il DB ha
+#    aggiunto `'campo'` al context (30 codici, changeSet 20260921-43…49);
+#    dove il nome e' un parametro di firma, un id dall'URL o un'invariante la
+#    promessa era sbagliata e l'override esce da qui:
+#      E_ARTICOLO_NON_COMPOSITO (`prodotto_id` e' la pagina in cui si sta),
+#      E_COERENZA_ID (righe scritte dalla pipeline, non da un form),
+#      E_FORNITORE_ID_INVALIDO (`p_fornitore_id` di firma),
+#      E_NOTE_TARGET_ID (`target_riga_id`: un legame, non un input),
+#      E_SOGGETTO_NULL (parametri di `fn_get_or_create_soggetto_ruolo`),
+#      E_SORG_KEY_MISSING (invariante della sorgente polimorfa),
+#      E_STATO_SORGENTE_PARAM_INVALIDO (parametri di `fn_stato_sorgente`).
+#    Tornano al banner di classe (DATO_ERRATO). Da qui in poi il presidio e'
+#    `apps/core/tests/test_ui_action_e_canale_campi.py`: un override
+#    `highlight_form_fields` senza un sito che mandi il campo e' rosso.
+# ⛔ E TRE, trovati dal presidio appena acceso (§4-ter, ok di Tid 21-09):
+#      E_PIPELINE_SCOPE_INCOMPLETE (fatture del lotto senza utility/tipo
+#        doc/valuta, o `lock_batch_id` assente: il rimedio non sta su questa
+#        pagina),
+#      E_SORG_FORMATO, E_SORG_NORM_NON_RISOLTA (chiave della sorgente
+#        polimorfa: convenzione del chiamante, come E_SORG_KEY_MISSING).
 UI_ACTION_OVERRIDE: dict[str, str] = {
     # ══════════════════════════════════════════════════════════════════
     # Codici DB fuori convenzione `E_*` — registro del debito
@@ -95,7 +117,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_AMM_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_ANAG_FK": "highlight_form_fields",  # classe DATO_ERRATO
     "E_ANAG_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_ARTICOLO_NON_COMPOSITO": "highlight_form_fields",  # classe DATO_ERRATO
     # ══════════════════════════════════════════════════════════════════
     # TERZO LATO — lotto 5A: i 26 raggiunti dal backend (2026-08-07)
     #   Brief §25. Sono codici con `da_trigger = false`, che NON vuol dire
@@ -149,7 +170,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # codice_ruolo)`) e non risolve nessuna riga di `config.tipi_ruoli`:
     # e' un riferimento che non esiste, non una configurazione mancante.
     "E_COD_INT_RUOLO": "show_error_banner",  # classe NON_TROVATO
-    "E_COERENZA_ID": "highlight_form_fields",  # classe DATO_ERRATO
     "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
     # ⚠️ Stessa funzione (`fn_cambia_stato_commessa`) di
     # `E_STATO_WORKFLOW_NON_TROVATO`, che sta gia' a 404: era la prova in
@@ -281,7 +301,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_FLUSSI_ESITO_NON_AMMESSO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FLUSSO_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FORMA_GIURIDICA_PAESE": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_FORNITORE_ID_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FORNITORE_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
     # Fase 2 refactor anagrafiche (landed 2026-04-27). Trigger DB:
     # anagrafiche.trgfn_fornitori_guard_normalize (raise se
@@ -345,7 +364,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
     # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
     "E_NOTA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_NOTE_TARGET_ID": "highlight_form_fields",  # classe DATO_ERRATO
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
     #   `E_PARAMETRO_INVALIDO` lo nominano 113 funzioni e per 111 il 400 e'
@@ -389,7 +407,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # --- Validazione parametri (400) ---
     "E_PARAMETRO_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PARENT_SELF": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_PIPELINE_SCOPE_INCOMPLETE": "highlight_form_fields",  # classe DATO_ERRATO
     # <- PIVA_NON_VALIDA  (vivo)
     "E_PIVA_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PIVA_OBBLIGATORIA": "highlight_form_fields",  # classe DATO_ERRATO
@@ -523,17 +540,12 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # che e' del dominio pipeline fatturazione).
     "E_SHOP_NON_DISPONIBILE": "show_info_banner",  # classe NON_DISPONIBILE
     "E_SOGGETTO_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
-    "E_SOGGETTO_NULL": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_SORG_FORMATO": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_SORG_KEY_MISSING": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_SORG_NORM_NON_RISOLTA": "highlight_form_fields",  # classe DATO_ERRATO
     # Guard sorgente polimorfa: la riga referenziata non esiste nella
     # tabella target.
     "E_SORG_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     # Copre due condizioni (esito non verdetto / codice inesistente), ma
     # entrambe si correggono nello stesso campo della configurazione.
     "E_STATO_DOC_ESITO_NON_VERDETTO": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_STATO_SORGENTE_PARAM_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
     #   Quel codice ne conteneva due, e per questo era rimasto senza policy:
     #   con 404 la form indirizzi si sarebbe svuotata mentre l'operatore
     #   digita, con 400 il cambio stato avrebbe mentito. Spezzato dal team DB

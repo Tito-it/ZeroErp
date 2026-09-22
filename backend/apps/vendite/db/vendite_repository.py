@@ -38,7 +38,10 @@ from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
-from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
+from apps.vendite.db._coda_documento_filtro import (
+    lettura_coda_per_documento,
+    sorgente_per_documento,
+)
 from apps.vendite.db._data_documento_sql import (
     SQL_DATA_DOCUMENTO_CORRENTE,
     costruisci_perimetro_lotti_numerabili,
@@ -4760,36 +4763,27 @@ class VenditeRepository:
     #        QUELLA spedizione ha toccato. Il secondo serve al pannello
     #        uniformato — dal DDT si vede sia lo stato della riga d'ordine sia
     #        quello della spedizione (rilievo in-app di Tid del 2026-08-19).
-    # ⚠️ Il legame DDT->riga d'ordine si legge da `ordini_righe_fulfillment`,
-    #        che e' la STESSA fonte da cui `vw_partite_merce` deriva la propria
-    #        `origine` (CTE `orig`). NON si passa dalla partita: sarebbe la
-    #        vista piu' costosa del sistema ri-valutata per rispondere a un
-    #        filtro — lo stesso errore gia' corretto su `_list_coda_su_partite`.
+    # ⭐ DAL 2026-09-21 LA CHIUSURA STA NELLA FUNZIONE (giro 2 di
+    #        brief-db-partita-merce-per-documento, D3): si legge
+    #        `fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids)` col solo
+    #        array del documento riempito, e il `WHERE` sul documento non c'e'
+    #        piu' — per DDT la funzione incorpora l'`EXISTS` sul fulfillment che
+    #        prima stava qui (stessa semantica: la situazione INTERA delle righe
+    #        d'ordine che quel DDT ha toccato, pgTAP test 5-6). Il legame
+    #        DDT->riga d'ordine resta `ordini_righe_fulfillment`, la stessa
+    #        fonte dell'`origine` della partita. «NON si passa dalla partita»
+    #        resta vero nel senso che conta: la funzione la chiede per ORDINE
+    #        (la chiusura), non ri-valuta la vista intera per un filtro.
+    #        La scelta dell'array e' il BB `sorgente_per_documento`.
     def list_situazione_merce_ordine(
         self,
         *,
         ordine_id: int | None = None,
         ddt_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        if (ordine_id is None) == (ddt_id is None):
-            raise ValueError(
-                "list_situazione_merce_ordine: passare ESATTAMENTE uno fra "
-                "ordine_id e ddt_id"
-            )
-        if ordine_id is not None:
-            condizione, param = "s.ordine_id = %s", int(ordine_id)
-        else:
-            assert ddt_id is not None
-            condizione, param = (
-                """EXISTS (
-                     SELECT 1
-                       FROM vendite.ordini_righe_fulfillment f
-                       JOIN vendite.ddt_righe dr_f ON dr_f.id = f.ddt_riga_id
-                      WHERE f.ordine_riga_id = s.ordine_riga_id
-                        AND dr_f.ddt_id = %s
-                   )""",
-                int(ddt_id),
-            )
+        sorgente, params = sorgente_per_documento(
+            "vendite.fn_situazione_merce_ordine", ddt_id=ddt_id, ordine_id=ordine_id
+        )
         sql = f"""
             SELECT
                 s.ordine_riga_id,
@@ -4825,39 +4819,41 @@ class VenditeRepository:
                 s.data_consegna_richiesta_cliente,
                 s.data_consegna_confermata,
                 s.giorni_ritardo
-              FROM vendite.vw_situazione_merce_ordine s
+              FROM {sorgente} s
               JOIN vendite.ordini_righe orr      ON orr.id = s.ordine_riga_id
               LEFT JOIN catalogo.articoli a      ON a.id   = s.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id  = orr.uom_operativa_id
-             WHERE {condizione}
              ORDER BY s.ordine_id, s.riga_nr, s.ordine_riga_id
-        """
+        """  # noqa: S608 — `sorgente` e' il BB, con i parametri a parte
         with connection.cursor() as cursor:
-            cursor.execute(sql, [param])
+            cursor.execute(sql, params)
             return rows_to_list(cursor)
 
     # Scopo: Le PARTITE DI MERCE (livello 2 del pannello), da
-    #        `vw_partite_merce`. Grana = riga di DDT. Due filtri, una lettura
+    #        `fn_partite_merce`. Grana = riga di DDT. Due filtri, una lettura
     #        (richiesta BE-1): per DDT = «la situazione di QUESTA spedizione»,
     #        per ordine = tutte le spedizioni di quell'ordine.
-    # ⚠️ Esattamente uno dei due parametri va valorizzato: il chiamante e' il
-    #        service, e un filtro assente restituirebbe TUTTE le partite del
-    #        database — errore di programmazione, non input utente.
+    # ⭐ DAL 2026-09-21 LA CHIUSURA STA NELLA FUNZIONE (giro 1 di
+    #        brief-db-partita-merce-per-documento): la vista `vw_partite_merce`
+    #        e' la sola proiezione `fn(NULL, NULL)` — «tutte» — e qui si legge la
+    #        funzione col solo array del documento riempito, senza `WHERE` sul
+    #        documento: la funzione filtra gia' l'uscita sulla stessa colonna
+    #        proiettata (`ddt_id`, o `ordine_id` = riga minima). Per documento
+    #        non e' piu' «la vista piu' costosa del sistema»: la chiusura e'
+    #        O(righe del documento) sotto RLS, non O(tutte).
+    # ⚠️ Esattamente uno dei due parametri va valorizzato (guard nel BB
+    #        `sorgente_per_documento`): il chiamante e' il service, e un filtro
+    #        assente restituirebbe TUTTE le partite del database — errore di
+    #        programmazione, non input utente.
     def list_partite_merce(
         self,
         *,
         ddt_id: int | None = None,
         ordine_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        if (ddt_id is None) == (ordine_id is None):
-            raise ValueError(
-                "list_partite_merce: passare ESATTAMENTE uno fra ddt_id e ordine_id"
-            )
-        if ddt_id is not None:
-            condizione, param = "p.ddt_id = %s", int(ddt_id)
-        else:
-            assert ordine_id is not None
-            condizione, param = "p.ordine_id = %s", int(ordine_id)
+        sorgente, params = sorgente_per_documento(
+            "vendite.fn_partite_merce", ddt_id=ddt_id, ordine_id=ordine_id
+        )
         sql = f"""
             SELECT
                 p.ddt_riga_id,
@@ -4888,17 +4884,16 @@ class VenditeRepository:
                 p.stato,
                 p.e_riconsegna,
                 p.sospetto_duplicato_ordine
-              FROM vendite.vw_partite_merce p
+              FROM {sorgente} p
               JOIN vendite.ddt d                 ON d.id   = p.ddt_id
               JOIN vendite.ddt_righe dr          ON dr.id  = p.ddt_riga_id
               LEFT JOIN vendite.ordini o         ON o.id   = p.ordine_id
               LEFT JOIN catalogo.articoli a      ON a.id   = p.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id  = dr.uom_operativa_id
-             WHERE {condizione}
              ORDER BY d.data, p.ddt_id, dr.riga_nr, p.ddt_riga_id
-        """
+        """  # noqa: S608 — `sorgente` e' il BB, con i parametri a parte
         with connection.cursor() as cursor:
-            cursor.execute(sql, [param])
+            cursor.execute(sql, params)
             return rows_to_list(cursor)
 
     # Scopo: Le due code di lavoro del documento (D-4: un round-trip solo, cosi'
@@ -4917,6 +4912,18 @@ class VenditeRepository:
     #        - lato ordine il legame e' il FULFILLMENT della riga di DDT resa,
     #          che e' la STESSA fonte da cui la partita deriva la sua origine
     #          (CTE `orig`): un criterio solo, non un terzo criterio.
+    # ⭐ DUE FORME, UNA PER CODA, E A SCEGLIERE NON E' QUESTO REPOSITORY (dal
+    #        2026-09-21, giro 2 del brief partita; sede unica dal 22-09, regola
+    #        del 2, ok Tid): la coda ACCREDITI ha la chiusura dentro
+    #        `fn_resi_da_accreditare` e si legge dal `FROM` senza predicato —
+    #        la funzione segue per ordine lo stesso `EXISTS` sul fulfillment
+    #        (§9.3.2: stesse righe, pgTAP test 7); la coda RI-CONSEGNE non
+    #        legge la partita, resta sulla vista e sul predicato. Quale coda ha
+    #        quale forma lo dice `FUNZIONE_PER_CODA` in `_coda_documento_filtro`,
+    #        e il BB `lettura_coda_per_documento` la applica — lo stesso che usa
+    #        `ResiRepository._list_coda`: le due schermate contano le STESSE
+    #        righe perche' leggono con la stessa forma, non perche' due wrapper
+    #        sono stati tenuti allineati a mano.
     def _list_coda_su_partite(
         self,
         vista: str,
@@ -4925,32 +4932,30 @@ class VenditeRepository:
         ddt_id: int | None,
         ordine_id: int | None,
     ) -> list[dict[str, Any]]:
-        # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto
-        # (letterali statici, nessun input utente).
-        #
-        # ⭐ Il predicato vive nel BB `_coda_documento_filtro` (estratto il
-        # 2026-08-18, regola del 2, ok Tid): lo consuma anche `ResiRepository`
-        # per filtrare le code di lavoro sul documento da cui si arriva (FE-2).
-        # Le due schermate devono contare le STESSE righe.
-        condizione, params = filtro_coda_per_documento(
-            ddt_id=ddt_id, ordine_id=ordine_id
+        # `vista` e `colonne` arrivano SOLO dai due wrapper qui sotto (letterali
+        # statici, nessun input utente).
+        # Guard di programmazione: i wrapper passano sempre uno dei due id.
+        # Senza documento questa lettura non ha significato — non e' «tutte le
+        # code», e' un chiamante rotto (il BB, senza documento, risponderebbe
+        # la vista intera: qui quella risposta non e' una domanda).
+        assert ddt_id is not None or ordine_id is not None, (
+            "_list_coda_su_partite: serve un documento (ddt_id o ordine_id)"
         )
-        # Guard di programmazione: i due wrapper passano sempre esattamente uno
-        # dei due id. Senza documento questa lettura non ha significato — non e'
-        # «tutte le code», e` un chiamante rotto.
-        assert condizione is not None
+        lettura = lettura_coda_per_documento(vista, ddt_id=ddt_id, ordine_id=ordine_id)
+        where = f"WHERE {lettura.condizione}" if lettura.condizione is not None else ""
         sql = f"""
             SELECT {colonne}
-              FROM {vista} v
-             WHERE {condizione}
+              FROM {lettura.sorgente} v
+             {where}
              ORDER BY v.reso_id, v.resi_riga_id
-        """
+        """  # noqa: S608 — sorgente/predicato dal BB, parametri a parte
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
+            cursor.execute(sql, [*lettura.params_sorgente, *lettura.params_condizione])
             return rows_to_list(cursor)
 
     # Scopo: Coda «da accreditare» del documento. `etichetta` DOVUTA|FACOLTATIVA
-    #        arriva dalla vista: il pannello mostra la STESSA parola della coda.
+    #        arriva dalla coda (la funzione con la chiusura, per `FUNZIONE_PER_CODA`):
+    #        il pannello mostra la STESSA parola della coda di lavoro.
     def list_situazione_merce_accrediti(
         self, *, ddt_id: int | None = None, ordine_id: int | None = None
     ) -> list[dict[str, Any]]:

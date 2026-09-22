@@ -118,7 +118,11 @@ Le regole di consistenza sono:
 - Preferenza persistita in localStorage
 - Configurazione centralizzata in `core/navigation.js` — una sola fonte di verita'
 - Logo e nome applicazione in cima, logout e comprimi in fondo
-- Mobile (< 768px): overlay drawer invece di sidebar fissa
+- Mobile (< 768px): overlay drawer invece di sidebar fissa, **sempre espanso**
+  (icone + etichette, `--app-sidebar-mobile-width`)
+- Tablet (768–1023px): rail inline compresso a forza; il pulsante «espandi» in
+  fondo apre lo **stesso drawer** espanso. Motivo: sul touch non c'e' hover,
+  quindi niente tooltip — il menu coi nomi deve esistere come superficie
 
 ### Preferiti utente
 

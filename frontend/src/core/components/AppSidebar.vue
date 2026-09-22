@@ -1,7 +1,10 @@
 <script setup>
 // Scopo: sidebar morfica — mostra SidebarHome o SidebarDomain in base al dominio attivo.
 // Gestisce header, toggle collapse e transizione tra stati.
-// Prop mobile: forza layout collassato (solo icone) senza toggle, usato nel drawer overlay.
+// Prop drawer: istanza dentro il drawer overlay (mobile + tablet) — SEMPRE
+// espansa, con le etichette, e senza il toggle in fondo. ⛔ Fino al
+// 2026-09-21 era «mobile» e forzava il collasso a sole icone: sul touch non
+// c'e' hover, quindi niente tooltip, e l'operatore doveva ricordare le icone.
 import { computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUiStore } from '../../stores/ui'
@@ -11,17 +14,19 @@ import SidebarDomain from './SidebarDomain.vue'
 import LogoBrand from './LogoBrand.vue'
 
 const props = defineProps({
-  mobile: { type: Boolean, default: false }
+  drawer: { type: Boolean, default: false }
 })
 
 const { t } = useI18n()
 const ui = useUiStore()
 const nav = useNavigationStore()
 
-const emit = defineEmits(['navigate'])
+// `expand`: su tablet il rail e' compresso a forza (lo store ignora la
+// preferenza) e «espandi» significa «apri il drawer coi nomi» — lo decide il
+// layout, che il drawer lo possiede.
+const emit = defineEmits(['navigate', 'expand'])
 
-// In mobile il layout e' sempre collassato (solo icone)
-const isCollapsed = computed(() => props.mobile || ui.effectiveSidebarCollapsed)
+const isCollapsed = computed(() => !props.drawer && ui.effectiveSidebarCollapsed)
 
 // Fornisce lo stato collapsed ai figli (SidebarItem, SidebarDomain)
 // cosi' rispettano il mobile senza leggere direttamente lo store ui
@@ -29,6 +34,11 @@ provide('sidebarCollapsed', isCollapsed)
 
 function onChildNavigate() {
   emit('navigate')
+}
+
+function onToggle() {
+  if (ui.isTablet) emit('expand')
+  else ui.toggleSidebar()
 }
 </script>
 
@@ -55,11 +65,11 @@ function onChildNavigate() {
       </Transition>
     </nav>
 
-    <!-- Footer: toggle collapse (solo inline, non in mobile drawer) -->
-    <div v-if="!mobile" class="sidebar-footer">
+    <!-- Footer: toggle collapse (solo inline, non nel drawer) -->
+    <div v-if="!drawer" class="sidebar-footer">
       <!-- A sidebar compressa il gesto e' «espandi»: il tooltip dice cosa fa il
            click, non lo stato attuale (rilievo in-app di Tid, 2026-09-18). -->
-      <div class="sidebar-toggle" @click="ui.toggleSidebar()"
+      <div class="sidebar-toggle" @click="onToggle"
         v-tooltip.right="isCollapsed ? t('nav.expand') : null"
       >
         <i :class="isCollapsed ? 'pi pi-angle-double-right' : 'pi pi-angle-double-left'"></i>

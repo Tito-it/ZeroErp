@@ -737,6 +737,22 @@ diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
 client di evidenziare cose che sullo schermo non esistono. E il **valore** non
 esce mai: è il dato che l'operatore ha appena scritto.
 
+⭐ **La promessa e il canale sono presidiati insieme (dal 2026-09-21).**
+`ui_action = highlight_form_fields` è una promessa, `fields` è ciò che la
+mantiene, e i due viaggiano su binari diversi: un override che promette il
+campo con nessun punto di sollevamento che lo manda è un toast senza input
+rosso, e non fallisce niente. `apps/core/tests/test_ui_action_e_canale_campi.py`
+(presidio C2, opt-in `ZEROERP_TEST_DB_E2E=1`) incrocia il catalogo BE con i
+siti Python (AST) e con `dbops.vw_punti_canale_campo` per i siti PL/pgSQL:
+ogni codice `highlight_form_fields` deve avere **almeno un** sito che
+valorizza il canale (`context={"field": …}`/`fields=` in Python, `'campo'` o
+`'parametro'` nel context di `fn_log_and_raise_error`), salvo esenzione con la
+ragione nel test. ⚠️ Vale anche il verso opposto: `highlight_form_fields`
+promette un input **nella pagina in cui l'operatore si trova** — un id
+dall'URL, una query string, un header, un parametro di firma **non** lo sono,
+e lì la promessa è sbagliata, non il canale: l'override esce. Brief:
+`work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md`.
+
 ⭐ **`targets` — dal 2026-08-24.** È l'**altra metà** di `fields`, e la
 differenza vale la riga: `fields` dice quale campo correggere **dentro la
 pagina in cui l'operatore già si trova**; `targets` dice a quale **altra cosa**
