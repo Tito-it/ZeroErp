@@ -113,9 +113,10 @@ presidio che pretende `security_invoker` su ogni vista che tocca dati riservati
 (`rls/test-rls-viste-security-invoker`) può **attraversare** la funzione e
 continuare a vedere `vw_partite_merce` — con un corpo a stringa la vista
 sarebbe uscita dal perimetro in silenzio. ⚠️ Conseguenza: una colonna nuova
-nel `RETURNS TABLE` è un `DROP FUNCTION` a cascata sulle **quattro** viste
-(`vw_partite_merce`, `vw_contatore_merce`, `vw_resi_da_accreditare`,
-`vw_situazione_merce_ordine`) — e dal giro 2 anche sulle due funzioni che la
+nel `RETURNS TABLE` è un `DROP FUNCTION` a cascata sulle **tre** viste
+(`vw_partite_merce`, `vw_resi_da_accreditare`, `vw_situazione_merce_ordine`;
+erano quattro fino al 22-09-2026, quando `vw_contatore_merce` è stata ritirata —
+D6) — e dal giro 2 anche sulle due funzioni che la
 chiamano (`fn_situazione_merce_ordine`, `fn_resi_da_accreditare`) e su
 `vw_dash_backlog_documenti`.
 
@@ -139,7 +140,7 @@ con `PREPARE` e piano generico forzato. E in modo «tutte» le scansioni sono le
 | BE `list_partite_merce` (pannello «Situazione merce») | ⏳ richiesta BE nel brief: per DDT `ARRAY[%s]`, per ordine `(NULL, ARRAY[%s])`; oggi legge la vista, che risponde giusto ma paga tutto |
 | `fn_situazione_merce_ordine` (giro 2, D3) | `(NULL, <gli ordini della chiusura>)`: le partite di tutte le righe d'ordine chieste, o toccate dai DDT chiesti |
 | `fn_resi_da_accreditare` (giro 2, D3) | `(<i DDT delle righe di S>, NULL)`: le partite in negativo dei documenti chiesti; per riga la chiamano `fn_accredita_riga_reso` e `fn_resi_riga_tetti_accredito` |
-| `vw_contatore_merce` | ancora la vista — e dal giro 1 nessuna funzione, vista o repository la legge più (solo due pgTAP): decisione **D6** del brief |
+| ~~`vw_contatore_merce`~~ | **ritirata il 22-09-2026** (`20260922-08`, decisione D6): dal giro 1 nessuna funzione, vista o repository la leggeva più. La lettura per riga d'ordine è `vw_situazione_merce_ordine` |
 
 ---
 

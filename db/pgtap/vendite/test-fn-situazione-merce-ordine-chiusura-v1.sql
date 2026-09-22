@@ -5,7 +5,7 @@
 --       d'ordine PER DOCUMENTO (D14 giro 2 — D3;
 --       brief-db-partita-merce-per-documento §2.2, §7; changeSet 20260921-26, -27).
 --
--- Indice test (plan 12):
+-- Indice test (plan 13):
 --   1) la funzione esiste, e' BEGIN ATOMIC, NON e' SECURITY DEFINER e dipende
 --      da fn_partite_merce nel catalogo (la catena RLS passa di li')
 --   2) ⭐ pin di D1: la vista e' la PROIEZIONE della funzione — nomina
@@ -32,6 +32,11 @@
 --  11) niente da seminare: id inesistente e array VUOTO danno zero righe — vuoto
 --      NON e' «tutte» (NULL, NULL lo e')
 --  12) scope: chi non vede l'ordine non vede la situazione — zero righe
+--  13) ⭐ `fatturato_anticipato`: spedito 4 di 10, fatturato 10 sull'ORDINE —
+--      allocato sulla merce 4 (la capienza e' il consegnato), anticipato 6,
+--      differenza 0 e PAREGGIATA (non «da accreditare»), da_spedire 6.
+--      Ereditato il 22-09 da test-vw-contatore-merce-v1 (ritirato con la
+--      vista, D6): era il solo presidio del VALORE di questa colonna
 --
 -- Scopo:
 --  - la funzione e' equivalente alla vista per costruzione; questo file
@@ -49,7 +54,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- 1-3) Struttura: funzione, pin di D1, pin dei tipi
@@ -389,6 +394,27 @@ SELECT is(
              = (SELECT count(*) FROM vendite.vw_situazione_merce_ordine))::text,
   '0|0|0|true',
   '11) id inesistente e array VUOTO: zero righe — vuoto non e'' «tutte»; (NULL, NULL) lo e''');
+
+-- ============================================================
+-- CASO 5 — il fatturato che non ha ancora una merce. Ordine da 10, spedito 4,
+--          fatturato 10 sull'ORDINE (trigger CONFERMATO, la configurazione del
+--          cliente standard). L'allocazione sulla merce ha per capienza il
+--          CONSEGNATO: 4 alla partita, 6 restano `fatturato_anticipato`. Il
+--          saldo NON li vede — differenza 0, PAREGGIATA — perche' un -6 senza
+--          reso non e' un accredito dovuto: e' merce da spedire (da_spedire 6).
+--          ⚠️ Il contatore ritirato (vw_contatore_merce) qui diceva -6: era la
+--          «parita'» del vecchio conto, e la ragione per cui il pannello
+--          leggeva la situazione e non lui.
+-- ============================================================
+CREATE TEMP TABLE tmp_o5 AS SELECT * FROM pg_temp.sm_mk_ordine(10, (SELECT stato_ord_conf_id FROM tmp_refs_sm));
+CREATE TEMP TABLE tmp_d5 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o5), (SELECT ordine_riga_id FROM tmp_o5), 4, DATE '2026-08-16');
+SELECT pg_temp.sm_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o5)::text)::varchar, 10);
+
+SELECT results_eq(
+  $q$SELECT s.consegnato, s.fatturato_da_ordine, s.fatturato_anticipato, s.differenza, s.stato::text, s.da_spedire
+       FROM vendite.fn_situazione_merce_ordine(NULL, ARRAY[(SELECT ordine_id FROM tmp_o5)]) s$q$,
+  $q$VALUES (4::numeric, 4::numeric, 6::numeric, 0::numeric, 'PAREGGIATA', 6::numeric)$q$,
+  '13) spedito 4 di 10 e fatturato 10 sull''ordine: allocato 4, fatturato_anticipato 6, differenza 0 PAREGGIATA, 6 da spedire');
 
 -- ============================================================
 -- 12) Scope: chi non vede l'ordine non vede la situazione.

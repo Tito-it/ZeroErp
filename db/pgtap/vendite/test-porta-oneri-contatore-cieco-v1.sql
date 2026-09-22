@@ -1,28 +1,34 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: porta oneri — il CONTATORE è cieco alle righe MAN (della porta).
+-- Test: porta oneri — il CONTO DELLA MERCE è cieco alle righe MAN (della porta).
 -- Brief: brief-db-immutabilita-quantita-e-porta-oneri §5 (step 9) +
---        brief-db-fatturazione-ddt-resi §3a (vw_contatore_merce, 20260717-11).
+--        brief-db-partita-merce-per-documento §13 (rev 2026-09-22).
 --
--- Il contatore misura i "fatturati" della merce come Σ attivita_fatturabili.quantita
--- sulla sorgente `af_seg`, filtrata da TRE cinture:
---   1) af.tipo_movimento = 'NORMALE'
---   2) segmento ∈ ('ORD','DDT')
---   3) segment_key ~ ':R:[0-9]+'
--- Una riga onere della porta (fn_aggiungi_onere_commessa) è tipo_movimento='ONERE',
--- segment 'MAN:<commessa>:<n>', senza ':R:' → esclusa da TUTTE e tre. Questo test
--- crea l'onere per la via reale (madre → emit) e prova che non entra nel contatore.
+-- Il conto delle attivita' fatturabili per riga di documento e'
+-- vendite.fn_af_merce_per_riga (D14 giro 4; la vista vw_af_merce_per_riga ne e'
+-- la proiezione): e' la sorgente `af` della PARTITA di merce, e la sua CTE
+-- `base` tiene solo le AF con segmento ∈ ('ORD','DDT') e segment_key ~
+-- ':R:[0-9]+'; il filtro tipo_movimento = 'NORMALE' lo mette la partita
+-- (fn_partite_merce), che legge quel conto per chiave.
+-- Una riga onere della porta (fn_aggiungi_onere_commessa) e' tipo_movimento='ONERE',
+-- segment 'MAN:<commessa>:<n>', senza ':R:' → fuori da TUTTE le cinture. Questo
+-- test crea l'onere per la via reale (madre → emit) e prova che il conto,
+-- chiesto proprio con la SUA chiave, non lo vede.
 --
--- Complementare a test-vw-contatore-merce-v1 (che prova l'esclusione ONERE su un
--- segmento ORD): qui l'onere è quello VERO della porta (MAN:, sourceless).
+-- ⚠️ rev 2026-09-22 (D6): fino a oggi il test 5 replicava a mano il predicato
+--    di vw_contatore_merce — una COPIA, che restava verde anche se il conto
+--    vero fosse cambiato. vw_contatore_merce e' ritirata (20260922-08); il
+--    test 5 chiama il conto vivo. Il gemello sull'esclusione ONERE su un
+--    segmento ORD e' il caso 5 di test-fn-partite-merce-chiusura-v1.
 -- ------------------------------------------------------------
 -- Indice test (1..5):
 --   1  onere emesso → AF esiste
 --   2  cintura #1: AF tipo_movimento='ONERE' (≠ NORMALE)
 --   3  cintura #2: segment 'MAN:' (∉ ORD/DDT)
 --   4  cintura #3: segment senza ':R:'
---   5  l'onere è INVISIBILE alla sorgente fatturati del contatore (0 righe af_seg)
+--   5  l'onere e' INVISIBILE al conto vivo: fn_af_merce_per_riga(ARRAY[la sua
+--      chiave]) = 0 righe (MAN non e' una corsia del conto, e non c'e' ':R:')
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -120,18 +126,15 @@ SELECT ok(
   (SELECT segment_key !~ ':R:[0-9]+' FROM tmp_af),
   '4) cintura #3: segment senza :R:');
 
--- 5) L'onere NON entra nella sorgente `af_seg` del contatore: replica esatta del
---    predicato di vw_contatore_merce per la sola AF dell'onere → deve dare 0.
+-- 5) L'onere NON entra nel conto vivo. Si chiede a fn_af_merce_per_riga la
+--    chiave ESATTA dell'onere (la funzione normalizza sulla base prima del
+--    primo #, quindi «la sua chiave» e' proprio lei): zero righe. Non e' una
+--    copia del predicato — e' il conto che la partita legge.
 SELECT is(
   (SELECT count(*)::int
-     FROM vendite.attivita_fatturabili af
-     JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
-    WHERE af.id = (SELECT af_id FROM tmp_af)
-      AND af.tipo_movimento = 'NORMALE'
-      AND split_part(ca.segment_key, ':', 1) IN ('ORD','DDT')
-      AND ca.segment_key ~ ':R:[0-9]+'),
+     FROM vendite.fn_af_merce_per_riga(ARRAY[(SELECT segment_key FROM tmp_af)]) f),
   0,
-  '5) l''onere è invisibile alla sorgente fatturati del contatore (0 righe af_seg)');
+  '5) l''onere della porta e'' invisibile al conto vivo: fn_af_merce_per_riga(ARRAY[chiave MAN]) = 0 righe');
 
 SELECT * FROM finish();
 ROLLBACK;

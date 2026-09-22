@@ -374,7 +374,6 @@ db/pgtap/vendite/test-trgfn-preventivi-default-emittente-e-guard-coerenza.sql	AS
 db/pgtap/vendite/test-trigger-af-commessa-aware-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-af-merce-per-riga-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-vw-contatore-merce-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-aperto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-backlog-resi-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-vw-dash-backlog-v1.sql	ERRORE_FIXTURE

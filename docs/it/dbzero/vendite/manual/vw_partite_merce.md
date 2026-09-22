@@ -12,7 +12,6 @@ Approfondimento tabelle:
 Viste collegate:
 >
 [vw_af_merce_per_riga](vw_af_merce_per_riga.md)
-> [vw_contatore_merce](vw_contatore_merce.md)
 > [vw_resi_righe_effettive](vw_resi_righe_effettive.md)
 > [vw_resi_da_accreditare](vw_resi_da_accreditare.md)
 > Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md`
@@ -239,8 +238,8 @@ WHERE stato = 'DA_ACCREDITARE';
 Brief: `brief-design-note-credito-resi` (slice **N6** e **N7**).
 
 **Due colonne nuove**, entrambe in coda perché un `CREATE OR REPLACE VIEW` non
-ne inserisce in mezzo — e da questa vista dipendono `vw_contatore_merce`,
-`vw_resi_da_accreditare` e `vw_situazione_merce_ordine`.
+ne inserisce in mezzo — e da questa vista dipendevano `vw_contatore_merce`
+(ritirata il 22-09-2026), `vw_resi_da_accreditare` e `vw_situazione_merce_ordine`.
 
 | Colonna | Cosa dice |
 |---|---|
@@ -394,7 +393,7 @@ DDT, a ogni apertura del drawer) e, ⏳ con la richiesta BE del brief, il pannel
 «Situazione merce» — chiama la funzione con un seme e paga la **chiusura** del
 documento: le sue righe, le spedizioni sorelle della stessa riga d'ordine, le
 origini di ri-consegna. Non più le partite di tutti. Chi legge **tutto** — il
-cockpit, `vw_contatore_merce` — continua a leggere la vista, che costa quanto
+cockpit — continua a leggere la vista, che costa quanto
 prima (le scansioni sono le stesse). ⭐ Dal **giro 2** (D3, 21-09) anche
 `vw_situazione_merce_ordine` e `vw_resi_da_accreditare` sono proiezioni di due
 funzioni con lo stesso seme — [`fn_situazione_merce_ordine`](fn_situazione_merce_ordine.md),
