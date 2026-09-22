@@ -65,7 +65,17 @@ Le righe DDT sono utilizzate in molteplici processi del ciclo vendite:
 
 ### Trigger e automazioni
 
-* `trg_a10_dlt_block_ddt` → impedisce la cancellazione di righe DDT se collegate a processi successivi (fatture, storici, fulfillment).
+* `trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` → **le righe si
+  aggiungono, modificano e tolgono solo finché il DDT è in DRAFT**
+  (`E_RIGA_DOC_NON_BOZZA`). È il building block
+  [`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
+  in fascia `_a05_` perché il suo rifiuto deve parlare prima di quelli sui
+  legami. Nasce il 2026-09-22: fino a quel giorno una riga di DDT emesso — anche
+  già instradata alla fatturazione — si poteva disattivare o cambiare senza che
+  niente lo fermasse.
+* `trg_ddt_righe_a10_block_ddt_dlt` → traduce in una frase il rifiuto di togliere
+  una riga con legami a valle (fulfillment, resi, riconsegne); a rifiutare sono le
+  FK ([`trgfn_dlt_block_ordrig_ddtrig`](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig)).
 
 * `trg_a10_ins_upd_ddt_righe_qta_from_operativa`
 

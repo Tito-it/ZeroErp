@@ -16,7 +16,7 @@
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) — resolver pricing bundle-aware, STADIO 1
 > * [vendite.trgfn_contratti_freeze_listino_versione](/dbzero/vendite/manual/trgfn_contratti_freeze_listino_versione) — snapshot versione listino a DRAFT→ATTIVO
 > * [vendite.trgfn_contratti_lock_post_attivazione](/dbzero/vendite/manual/trgfn_contratti_lock_post_attivazione) — blocco testata post-attivazione
-> * [vendite.trgfn_contratti_righe_lock_post_attivazione](/dbzero/vendite/manual/trgfn_contratti_righe_lock_post_attivazione) — blocco righe post-attivazione
+> * [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/manual/trgfn_doc_righe_lock_fuori_bozza) — righe solo in bozza (building block condiviso con DDT e ordini)
 > * [vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino](/dbzero/vendite/manual/trgfn_contratti_righe_guard_aggiunta_fuori_listino) — guard AGGIUNTA già in listino
 > * [vendite.fn_contratto_riga_componenti_init](/dbzero/vendite/manual/fn_contratto_riga_componenti_init) — popola componenti BoM su riga padre composito
 > * [vendite.fn_contratto_riga_componenti_preview](/dbzero/vendite/manual/fn_contratto_riga_componenti_preview) — suggerimento prezzi pre-save
@@ -333,9 +333,13 @@ Ogni tentativo di modifica solleva `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`
 
 ### 6.2 Righe bloccate
 
-Il trigger `trgfn_contratti_righe_lock_post_attivazione` blocca qualsiasi
-INSERT, UPDATE o DELETE su `contratti_righe` se il contratto associato è in stato
-ATTIVO. Lo stesso errore 452 viene sollevato.
+Le righe di un contratto si aggiungono, modificano e tolgono **solo finché il
+contratto è in bozza**. Fuori dalla bozza — ATTIVO, ma anche CESSATO e
+ANNULLATO — qualsiasi INSERT, UPDATE o DELETE su `contratti_righe` è rifiutato
+con `E_RIGA_DOC_NON_BOZZA`. La regola non è dei contratti: è il meccanismo
+condiviso «le righe di un documento si toccano solo in bozza»
+([`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/manual/trgfn_doc_righe_lock_fuori_bozza)),
+lo stesso di DDT e ordini.
 
 **Conseguenza operativa**: se il cliente rinegozia le condizioni, non si "modifica"
 il contratto — si **cessa** quello esistente e si crea un nuovo contratto con le

@@ -10,7 +10,7 @@
 >
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 > [vendite.trgfn_contratti_freeze_listino_versione](/dbzero/vendite/funzioni/trgfn_contratti_freeze_listino_versione) — freeze versione all'attivazione
-> [vendite.trgfn_contratti_righe_lock_post_attivazione](/dbzero/vendite/funzioni/trgfn_contratti_righe_lock_post_attivazione) — lock simmetrico sulle righe
+> [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza) — le righe: il building block «solo in bozza», che dal 2026-09-22 ha riassorbito il lock dedicato delle righe di contratto
 
 La trigger function **`vendite.trgfn_contratti_lock_post_attivazione()`** impedisce la modifica dei campi pricing della testata contratto una volta che il contratto è in stato ATTIVO.
 

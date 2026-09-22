@@ -889,7 +889,43 @@ leakproof, la policy va prima). È il pavimento di D5, con un perimetro in più:
 `text_pattern_*` sono leakproof) e/o il classificatore set-based con la
 scalare come proiezione. ⚠️ Decisione nuova **D7**: `ddt_righe.attivo` non ha
 un guard fuori da `DRAFT` — il modello ammette di disattivare una riga già
-instradata. Da committare. Restano D5+D8 (giro 4, ora prioritario), D6, D7.
+instradata. Committato (`acaaab569`). ✏️ **Giro 4 (D5 + D8) SCRITTO la notte
+del 21-09** (brief §11): `90_end/20260921-50` — l'indice su `segment_key`
+ricreato in `varchar_pattern_ops` al posto dell'ordinario (in `90_end` perché
+deve seguire il `-58` di luglio che lo creava); `-51` — `fn_af_merce_per_riga`,
+il contatore delle attività fatturabili **per chiave di segmento**
+(`BEGIN ATOMIC`, chiavi normalizzate, NULL = tutte); `-52` — la vista come
+proiezione per nome; `-53`/`-54` — partita e situazione leggono `af`/`ord`
+per le chiavi della chiusura; `-55` — il classificatore riscritto nella forma
+a **range** (`~>=~`/`~<~`). ⛔ **Una correzione al paragrafo qui sopra,
+provata come app** su una `TEMP TABLE` con `FORCE ROW LEVEL SECURITY`: l'indice
+da solo non avrebbe curato nulla, perché sotto una policy un `LIKE` **non
+diventa mai** `Index Cond` — nemmeno a costante: la clausola non è leakproof e
+viene scartata prima che il planner ne derivi il range. Salgono solo `=`,
+`= ANY` e il range scritto **a mano** con gli operatori del pattern, coi bordi
+precalcolati (in una CTE `MATERIALIZED`, o sul parametro); un `OR` con dentro
+una funzione leaky spegne i path parametrizzati. Regola scritta in
+linee-guida-sql §8.5-bis. Provato sull'SQL estratto: corpi non stantii (md5
+dal `-21`/`-26`/`-42` identici al vivo), equivalenza a zero per le cinque
+viste, il classificatore su 287 chiavi, ogni DDT e ogni ordine; piani con
+`BitmapOr` di `Index Cond`; 39 presidi esistenti a esito identico; due pgTAP
+nuovi (13 + 12, coi builder); cancelli, guardrail SQL e `updateSQL` offline
+OK. ⚠️ `force_generic_plan` è pessimista sulla forma set-based (stima 100
+chiavi × 0,5 %): nella forma reale la plancache tiene i custom (10 chiamate
+a ~0,35 ms contro 17 in generico, sulla tabella temporanea da 20k). ✅
+**Applicato da Tid il 21-09 alle 23:24, pgTAP verdi, doc auto-gen
+rigenerata.** Misura come app (brief §11.7): il classificatore su tutte le 54
+righe **401 → 6 ms** (2027 → 6 buffer: `BitmapOr` di `Index Cond` sopra la
+policy, letto dal piano come app), il cockpit **663 → 227**, situazione per
+ordine 20 → 4, `af` per le chiavi di un DDT 0,8 ms. ⚠️ **Ma la partita di un
+DDT non scende (24 → 28) e la diagnosi senza documento resta a ~350–460**:
+il piano come app (brief §11.8) mostra che il `SELECT` finale della partita
+inlinata viene ri-eseguito **per riga** in un nested loop (`loops=54`, 449 ms
+su 461) — CTE senza statistiche, join filter senza hash. Il passo da una riga
+è la partita in una CTE `MATERIALIZED` dentro la diagnosi (fuori dalla
+diagnosi il planner sceglie l'hash da solo: 127 → 98 ms in prova); viene
+**prima** di D8(b), decisione a Tid. Da committare. Restano D6, D7, D8(b) e
+il residuo dei tre `LIKE` di `fn_accredita_riga_reso`.
 
 ---
 
@@ -1053,7 +1089,7 @@ D6 e il registro dei rossi in CI.
       di Tid). ✅ Terza leva **scritta il 21-09** (`20260921-20`,
       `vw_af_merce_per_riga` letta una volta in una CTE `af` materializzata
       invece di quattro: vista ~90 → ~56 ms da app, SQL estratto + cinque
-      pgTAP verdi in transazione ritirata), ⏳ **da applicare**. ⏳ Seconda
+      pgTAP verdi in transazione ritirata), ✅ **applicata** il 21-09 alle 12:41. ⏳ Seconda
       leva (una lettura invece di due nella capability: scelta di contratto)
       e **quarta leva** (la partita per chiusura del documento, quella che
       chiude il titolo) nel brief
@@ -1066,9 +1102,26 @@ D6 e il registro dei rossi in CI.
       il lister che ne deriva, la capability a una lettura) **scritto** la
       sera stessa e **applicato** (capability 175 → 50 ms come app; ⚠️ il
       lister senza documento 214 → 663: il classificatore del segmento per
-      riga, D8 — stesso indice di D5); 🔵 D6 (`vw_contatore_merce` senza
-      lettori), D7 (`ddt_righe.attivo` senza guard fuori da DRAFT) e D8 da
-      decidere; resta il giro 4 (D5 + D8a), ora prioritario.
+      riga, D8 — stesso indice di D5), committato; ✏️ **giro 4 (D5 + D8a)
+      SCRITTO** la notte del 21-09 (`90_end/20260921-50` l'indice in
+      `varchar_pattern_ops`; `-51…-55`: `fn_af_merce_per_riga` per chiave,
+      la vista come proiezione, partita e situazione sulle chiavi della
+      chiusura, il classificatore a range leakproof — perché sotto una
+      policy un `LIKE` non usa MAI l'indice, provato come app), ✅
+      **applicato** alle 23:24 (classificatore 401 → 6 ms su 54 righe, cockpit
+      663 → 227 come app; ⚠️ la partita di un DDT e la diagnosi «tutte» NON
+      scendono: la partita inlinata è ri-eseguita per riga nella diagnosi,
+      brief §11.8 — una CTE `MATERIALIZED` è il passo prima di D8(b)),
+      **committato** (`e05e3b1e5`, PR verso `Tito-dev` da aprire); ✏️ **giro
+      5 (D7) SCRITTO il 22-09** (brief §12): Tid ha scelto «B come BB
+      generico» — `vendite.trgfn_doc_righe_lock_fuori_bozza`, «le righe di un
+      documento si toccano solo in bozza», fascia `_a05_`, su `ddt_righe`,
+      `ordini_righe` (solo DELETE) e `contratti_righe`, con le due copie a DB
+      ritirate (lock dedicato dei contratti droppato, ramo 1 del traduttore
+      dei legami tolto); `20260922-01 → -06`, 75 pgTAP con/senza a esiti
+      identici, cinque fixture riordinate; ⏳ apply di Tid. 🔵 D6
+      (`vw_contatore_merce` senza lettori), D8(b) e la CTE della diagnosi da
+      decidere.
 
 ### 🟡 Struttura
 

@@ -158,7 +158,7 @@ SELECT * FROM ins;
 
 -- 🔴 ATTIVAZIONE SPOSTATA IN CODA, 2026-08-18.
 --   Il contratto nasceva gia' ATTIVO e le righe si inserivano dopo: da quando
---   esiste `trg_contratti_righe_a10_lock_post_attivazione` (Step 2.3) quella
+--   esiste `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza` (Step 2.3) quella
 --   sequenza e' vietata — il pricing di un contratto attivo e' immutabile.
 --   L'ordine giusto e' quello che segue anche l'applicazione: si compone in
 --   DRAFT, poi si attiva. Lo stato finale del fixture non cambia (ATTIVO, che

@@ -28,6 +28,7 @@ Definire **convenzioni univoche** per:
 Usiamo suffissi alfabetici per imporre l’**ordine di esecuzione** (i trigger sono eseguiti in ordine lessicografico):
 
 * **`_a10_`** → **trigger di verifica/blocco** (validazioni, guard-rails). Se falliscono, chiamano la nostra funzione di errore/log e **impediscono** l’operazione.
+* **`_a05_`** → **il rifiuto che deve parlare per primo**. Fra più guard `BEFORE ROW` sulla stessa tabella a parlare è quello col nome alfabeticamente minore, e la frase che l'operatore legge è quella. Quando un guard dice *«questa cosa non si tocca»* (immutabilità: documento fuori bozza, forma di un codice) deve venire **prima** dei guard che giudicano il valore nuovo o i legami (*«c'è un fulfillment»*, *«ci sono figli»*): altrimenti l'operatore riceve un rimedio che non è il rimedio. Precedenti: `trg_emittenti_fiscali_a05_guard_codice_forma_*`, `trg_*_a05_doc_righe_lock_fuori_bozza_*` (il building block «le righe di un documento si toccano solo in bozza», 2026-09-22). ⚠️ Non è una fascia «più importante»: è una precedenza fra rifiuti, da usare solo quando l'ordine è dominio.
 * **`_z90_`** → **trigger finali** (effetti collaterali “terminali”), es. duplicazione su schema storico, audit finali.
 
 Se servono step intermedi (facoltativo in futuro): riserviamo `_mXX_` (es. `_m50_`).
@@ -47,7 +48,7 @@ Se servono step intermedi (facoltativo in futuro): riserviamo `_mXX_` (es. `_m50
 trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 ```
 
-* **fase**: `a10` o `z90`
+* **fase**: `a10` o `z90` (`a05` solo per un rifiuto che deve precedere gli altri guard, vedi sopra)
 * **descrizione_breve**: snake_case, verbo + oggetto, es. `only_allowed_tipi`
 * **eventi**: `_ins`, `_upd`, `_dlt`, o combinati
 

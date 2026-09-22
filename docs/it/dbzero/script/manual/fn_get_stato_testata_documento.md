@@ -2,7 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> [vendite.trgfn_dlt_block_ordrig_ddtrig](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig) — l'unico consumatore, e il motivo per cui esiste
+> [vendite.trgfn_dlt_block_ordrig_ddtrig](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig) — il motivo per cui esiste (l'etichetta per i legami a valle)
+> [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza) — il building block delle righe, dal 2026-09-22 il consumatore principale (tre documenti)
+> [vendite.contratti](/dbzero/vendite/tabelle/contratti) — terzo tipo, `CONTRATTO` (rev 2026-09-22)
 > [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — il guard gemello, sulla testata
 > [vendite.ddt](/dbzero/vendite/tabelle/ddt)
 > [vendite.ordini](/dbzero/vendite/tabelle/ordini)
@@ -14,8 +16,10 @@
 **Rispondere a una domanda sola: la testata di questo documento esiste ancora, e
 in che stato è?**
 
-Serve a un guard di cancellazione, che su quella risposta decide. Non scrive, non
-solleva sul caso normale, e legge due colonne.
+Serve ai guard di documento — quello di cancellazione delle righe, e dal 22
+settembre il building block «le righe si toccano solo in bozza» — che su
+quella risposta decidono. Non scrive, non solleva sul caso normale, e legge due
+colonne.
 
 ```sql
 -- il caso normale
@@ -44,24 +48,22 @@ riga di stato: se la testata c'è, `stato` non è mai vuoto. Il chiamante può
 quindi leggere «zero righe» come **«la testata non c'è più»** senza dover
 distinguere un `NULL` da un vuoto.
 
-Tipi di documento ammessi: `DDT` e `ORDINE`. Qualunque altro valore non è un dato
-sbagliato, è un **chiamante rotto**: `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`.
+Tipi di documento ammessi: `DDT`, `ORDINE` e — dal 2026-09-22, per le righe di
+contratto — `CONTRATTO` (`vendite.contratti` → `config.stati_doc_contratti`,
+etichetta «Contratto <numero>»). Qualunque altro valore non è un dato sbagliato,
+è un **chiamante rotto**: `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`.
 
 ---
 
-### ⛔ Perché `SECURITY DEFINER`: la RLS sta sul padre e non sul figlio
+### ⛔ Perché `SECURITY DEFINER`: «non c'è» e «non lo vedo» non devono coincidere
 
-Misurato sul catalogo il 2026-08-26:
-
-| Tabella | Row Level Security |
-| --- | --- |
-| `vendite.ddt`, `vendite.ordini` | **attiva** |
-| `vendite.ddt_righe`, `vendite.ordini_righe` | **assente** |
-
-Un chiamante fuori perimetro raggiunge quindi la **riga** senza vedere la sua
-**testata**. Con una lettura *invoker* la ricerca tornerebbe zero righe, e il
-guard che la consuma leggerebbe «la testata non c'è più» — cioè **lascerebbe
-passare la cancellazione proprio a chi sta fuori perimetro**.
+Quando è nata (2026-08-26) le testate avevano la RLS e le righe no: un chiamante
+fuori perimetro raggiungeva la **riga** senza vedere la sua **testata**. Dal
+22-09 anche le righe hanno le policy (`ddt_righe`, `ordini_righe`,
+`contratti_righe`, letto dal catalogo), ma il perno non cambia: un guard di riga
+che leggesse la testata sotto policy, in qualunque caso in cui la riga è
+raggiungibile e la testata no, tornerebbe zero righe e leggerebbe «la testata
+non c'è più» — cioè **lascerebbe passare proprio chi sta fuori perimetro**.
 
 > Un guard che non distingue *«non c'è»* da *«non lo vedo»* non è più severo per
 > chi sta fuori: è più permissivo.

@@ -4,6 +4,7 @@
 >
 > [vendite.vw_situazione_merce_ordine](/dbzero/vendite/views/vw_situazione_merce_ordine) — la stessa cosa, senza filtro
 > [vendite.fn_partite_merce](/dbzero/vendite/funzioni/fn_partite_merce) — la partita da cui somma
+> [vendite.fn_af_merce_per_riga](/dbzero/vendite/funzioni/fn_af_merce_per_riga) — il fatturato d'ordine, letto per le chiavi delle righe in uscita
 > [vendite.vw_af_merce_per_riga](/dbzero/vendite/views/vw_af_merce_per_riga)
 > Brief: `docs/it/dev/work-in-progress/brief-db-partita-merce-per-documento.md` (giro 2, D3)
 
@@ -62,7 +63,7 @@ costruzione, non per confronto.
 | le righe d'ordine dell'uscita (`orr_in`) | quelle degli ordini chiesti, più le toccate dai DDT chiesti — dagli indici, due rami distinti e non un `OR` |
 | le partite (`pm`) | `fn_partite_merce(NULL, <gli ordini della chiusura>)` |
 | l'evaso (`ful`) | i fulfillment delle sole righe dell'uscita |
-| il fatturato «sull'ordine» (`ord`) | `vw_af_merce_per_riga` **intera**, come in `fn_partite_merce`: è il passo D5 del brief |
+| il fatturato «sull'ordine» (`ord`) | [`fn_af_merce_per_riga`](/dbzero/vendite/funzioni/fn_af_merce_per_riga) con **una chiave `ORD:<uid>:R:<riga>` per riga in uscita** (giro 4, D5): prima leggeva la vista intera, il pezzo che cresce con le fatture |
 | il residuo ri-consegnabile | `fn_ordine_riga_qta_riconsegna`, per riga |
 
 ---

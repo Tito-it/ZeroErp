@@ -85,7 +85,7 @@ SELECT lives_ok(
 --   Il test 3 falliva con E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE, e non
 --   perche' la proprieta' che verifica sia venuta meno: perche' il SETUP
 --   attivava il contratto prima di inserire la riga, e
---   `trg_contratti_righe_a10_lock_post_attivazione` (Step 2.3) vieta
+--   `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza` (Step 2.3) vieta
 --   INSERT/UPDATE/DELETE su `contratti_righe` quando il padre e' ATTIVO.
 --
 --   ⚠️ Quell'attivazione era un residuo: serviva al guard «modalita' C

@@ -204,7 +204,7 @@ SELECT is(
 -- 3) STADIO 1 CONTRATTO_OVERRIDE: contratto con riga prezzo_unitario = 42
 -- 🔴 SI COMPONE IN DRAFT E POI SI ATTIVA, corretto il 2026-08-18.
 --   Il contratto nasceva gia' ATTIVO e la riga si inseriva dopo: da quando
---   esiste `trg_contratti_righe_a10_lock_post_attivazione` quella sequenza e'
+--   esiste `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza` quella sequenza e'
 --   vietata (il pricing di un contratto attivo e' immutabile). Lo stato finale
 --   non cambia — serve ATTIVO perche' il resolver lo consideri — cambia il
 --   momento in cui ci si arriva, che e' anche l'ordine che segue l'applicazione.
@@ -269,7 +269,7 @@ SELECT 'PGTAP_V5_PROMO', 'Promo test', t.articolo_id, t.uom_id,
 
 -- 🔴 IL CONTRATTO NON SI CANCELLA PIU': SCADE. Corretto il 2026-08-18.
 --   Qui si cancellavano righe e contratto per non far vincere lo STADIO 1. Non
---   e' piu' possibile: `trg_contratti_righe_a10_lock_post_attivazione` blocca
+--   e' piu' possibile: `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza` blocca
 --   anche il DELETE su un contratto ATTIVO, ed e' giusto — un contratto attivo
 --   non si smonta, si chiude.
 --   ⚠️ Cosi' il fixture dice anche una cosa piu' vera: il contratto vale FINO A
