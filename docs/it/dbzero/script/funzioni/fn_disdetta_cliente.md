@@ -148,6 +148,7 @@ BEGIN
             'script.fn_disdetta_cliente',
             'E_DATA_CESSAZIONE_INVALIDA',
             jsonb_build_object(
+                'campo', 'data_cessazione',
                 'p_cliente_id', p_cliente_id,
                 'p_data_cessazione', p_data_cessazione,
                 'data_attivazione', v_data_attivazione

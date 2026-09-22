@@ -11,13 +11,14 @@
 >
 > **Da leggere per primo: §2 — che cosa è il presidio, e che cosa NON è.**
 >
-> **Stato (2026-09-21 sera):** 🔵 aperto — **lato BE tutto fatto, resta il
-> team DB.** ▶ **Al team DB, in una riga:** i **9 A del §4-ter.2** (`'campo'`
-> nel context di nove funzioni — ⚠️ per `E_PARENT_SELF` il campo è
-> `parent_account_id`, non `codice`), poi la riga `CANCELLO` in `presidi.csv`
-> per `vw_punti_canale_campo` con `presidiato_da` = il test. Fino ad allora
-> il verso 1 di `apps/core/tests/test_ui_action_e_canale_campi.py` è rosso su
-> quei 9, di proposito (niente `_DEBITO`, niente esenzioni di comodo).
+> **Stato (2026-09-22 sera):** 🟢 **lato DB CHIUSO, applicato** — resta la
+> sola conferma lato BE. ✅ `20260922-11/-12/-13` (i 9 A del §4-ter.2) e il
+> mirror di `presidi.csv` (la riga di `vw_punti_canale_campo` è ora
+> `CANCELLO`) applicati da Tid il 22-09; **pgTAP verdi, nessuna regressione**.
+> La vista dà `IN_CHIAMATA / campo` su tutti e dieci i siti sanati.
+> ▶ **Ultimo passo, lato BE:** rilanciare il verso 1 di
+> `apps/core/tests/test_ui_action_e_canale_campi.py`, che era rosso su quei 9
+> **di proposito** — a zero rossi il brief si chiude.
 >
 > **Com'è andata, in ordine.** Misurato col criterio pieno (§3-bis) e sanato
 > lato Python il 21-09 (§3-ter: 13 codici mandano il campo, 16 override tolti,
@@ -32,8 +33,10 @@
 > riga in `api.md` §Envelope. 🔴 Acceso, il test ha trovato **12 promesse
 > vuote fuori dai 37** (§4-ter: il bucket «forse» della prima misura, che la
 > vista ha sciolto) più un caso del criterio, sanato nel test; tabella A/B con
-> ok di Tid: ✅ 3 B tolti dal BE, ▶ 9 A al team DB. La prima misura (§3,
-> 2026-09-19, criterio grezzo) resta come storia. ✅ La richiesta BE §6 di C1,
+> ok di Tid: ✅ 3 B tolti dal BE, ✅ 9 A **applicati** il 22-09 (§4-quater:
+> tre changeSet, il pgTAP che li pinna, la riga `CANCELLO` — pgTAP verdi,
+> nessuna regressione). La prima misura (§3, 2026-09-19, criterio grezzo)
+> resta come storia. ✅ La richiesta BE §6 di C1,
 > accodata qui dal team DB, è chiusa il 21-09
 > (`apps/core/tests/test_stati_check_scrittori_python.py`, §7).
 >
@@ -638,7 +641,7 @@ il test §6 esiste, come deciso.
 
 * ✅ **apply** fatto da Tid il 21-09 sera: `20260921-40 → -49` e i due CSV
   applicati, pgTAP **senza regressioni**;
-* 🔵 la riga `CANCELLO` in `presidi.csv` quando il test §6 nasce;
+* ✅ la riga `CANCELLO` in `presidi.csv` — scritta il 22-09 (§4-quater.3);
 * ⚠️ la lista **viva** dei `CHIAVE_NON_LETTA`/`NESSUNO` fuori dai 37 (204 +
   509 righe `DIRETTO`) è del DB, non di questo brief: sono codici con
   un'altra `ui_action` (verso 2, «solo misurato», decisione 1) o promesse
@@ -683,7 +686,8 @@ i messaggi a catalogo e, per i **campi**, le chiavi del payload nel Python che
 chiama la funzione: un nome che non è una chiave di payload non è un input.
 
 **A — 9 codici, al team DB** (`'campo', '<colonna>'` come prima coppia del
-`jsonb_build_object` della chiamata, come nei changeSet `-43…-49`):
+`jsonb_build_object` della chiamata, come nei changeSet `-43…-49`) — ✅
+**applicati il 22-09, §4-quater** (`20260922-11/-12/-13`):
 
 | Codice | Funzione | `campo` | Perché è un input |
 | --- | --- | --- | --- |
@@ -707,11 +711,11 @@ chiama la funzione: un nome che non è una chiave di payload non è un input.
 
 **Conto**: 9 A (DB) + 3 B (BE) + 1 criterio (fatto) = 13 rossi → 0.
 ✅ **I 3 B applicati** (ok di Tid): tre righe fuori da `error_ui_overrides.py`,
-ragione in testa al dizionario. ▶ **Restano i 9 A, al team DB**: fino alla
-sanatura il test è **rosso sul verso 1 su 9 codici**, ed è giusto così: non
-nasce con un `_DEBITO` (decisione 5) e non si iscrivono righe a
-`_ESENZIONI` per farlo tacere — l'esenzione è per una promessa vuota tenuta
-**apposta**, con la ragione.
+ragione in testa al dizionario. ✅ **I 9 A applicati il 22-09**
+(§4-quater): il test era **rosso sul verso 1 su 9 codici** ed era giusto così
+— non è nato con un `_DEBITO` (decisione 5) e non si sono iscritte righe a
+`_ESENZIONI` per farlo tacere (l'esenzione è per una promessa vuota tenuta
+**apposta**, con la ragione). ▶ Ora va rilanciato: atteso zero.
 
 ### 4-ter.3 Il verso 2, misurato dal test
 
@@ -721,6 +725,103 @@ Il test li riporta come **skip parlante** con l'elenco (decisione 1: solo
 misurato, non blocca, non è un verde). La riga di esenzione a verso 2 ha il
 suo verso di ritiro: se `E_EMITTENTE_NON_RISOLTO` smette di mandare il campo
 da ogni sito, o torna `highlight`, la riga è rossa.
+
+---
+
+## 4-quater. ✅ Consegnato lato DB — 2026-09-22, i 9 A: APPLICATO
+
+*Scritto dal team DB. Provato con l'SQL **estratto** dagli YAML in transazione
+ritirata: preCondition 8/8, firme byte-identiche al vivo (0 differenze su
+`pg_get_function_identity_arguments || pg_get_function_result`, una funzione
+per nome), `plpgsql_check` a zero, rollback che ripristina l'md5 vivo; poi il
+pgTAP concatenato nella stessa transazione. ✅ **Applicato da Tid il 22-09**
+(`databasechangelog`: `-11/-12/-13` EXECUTED, il mirror `20260910-35` RERAN),
+**pgTAP verdi senza regressioni**.*
+
+### 4-quater.1 Tre changeSet, otto funzioni, dieci siti
+
+Stessa forma dei `-43…-49`: corpo vivo (`pg_get_functiondef`, 22-09),
+generatore a **sostituzioni dichiarate** (una occorrenza ciascuna, `assert`
+sull'md5 del vivo), preCondition `HALT` sull'md5 di `prosrc`, rollback = il
+vivo verbatim.
+
+| ChangeSet | Funzione | Codice → `campo` |
+| --- | --- | --- |
+| `20260922-11` anagrafiche | `fn_crea_risorsa_umana_v2` | `E_ADMIN_UO_NON_TROVATA` → `unita_organizzativa_id` |
+| | `trgfn_billing_account_guard_normalize` | `E_PARENT_SELF` → `parent_account_id` (la coppia si **aggiunge**, `codice` resta nel context); `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO` → `valido_al` |
+| | `trgfn_soggetti_conti_bancari_guard`, `trgfn_soggetti_ruoli_conti_bancari_guard` | `E_DATA_AL_MINORE_DAL` → `valido_al` |
+| `20260922-12` script | `fn_disdetta_cliente` | `E_DATA_CESSAZIONE_INVALIDA` → `data_cessazione` |
+| | `fn_guard_soggetto_pf_pura` | `E_AUTH_USER_SOGGETTO_CON_PIVA` → `soggetto_id` |
+| | `trgfn_componenti_check_prezzo_obbligatorio` | `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` → `prezzo_unitario` |
+| `20260922-13` vendite | `fn_aggiungi_onere_commessa` | `E_ONERE_ARTICOLO_MANCANTE` → `articolo_onere_id`; `E_ONERE_IMPORTO_NON_VALIDO` → `importo` |
+
+I siti **B dello stesso codice** restano `NESSUNO` come deciso:
+`vendite.fn_get_or_create_commessa` (`E_DATA_AL_MINORE_DAL`) e le due
+`*_componenti_init` (`E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO`). ✅ Dopo
+l'apply la vista dà `IN_CHIAMATA / campo` su **10 siti su 10**
+(`n_con_canale = n_chiamate = 1` su ciascuno), letto sul vivo il 22-09.
+
+⚠️ **`%TYPE`, nello stesso giro** (regola di casa: un `CREATE OR REPLACE` ancora
+firma / `RETURNS` / `DECLARE`, e il corpo vivo li scioglie). Due firme erano
+**già** ancorate e il vivo le aveva perse — `fn_crea_risorsa_umana_v2`
+(`20260429-12`) e `fn_guard_soggetto_pf_pura` (`20260418-20`): ripristinate
+identiche, `p_auth_user_id integer` esplicito perché `django.*` non si ancora.
+Due erano a tipi nudi e si ancorano ora: `fn_disdetta_cliente`
+(`clienti.id`, `clienti.data_chiusura`) e `fn_aggiungi_onere_commessa` (firma,
+`RETURNS`, e il `DECLARE`: `data_attivita`, `competenza_mese`, `segment_key`,
+`id`; espliciti con la ragione `p_motivo` → jsonb, `v_progressivo` contatore,
+`v_is_new` esito di una `RETURNS TABLE`). Nei due guard dei conti bancari
+`v_attivo` → `conti_bancari.attivo`. `regtype` verificato in sola lettura
+prima; identità delle firme byte-identica dopo: **nessun overload**, il
+`regprocedure` di `test-porta-oneri-v1` t.20-22 resta valido.
+
+### 4-quater.2 Il pgTAP: la lista pinnata cresce dei 9
+
+`db/pgtap/dbops/test-punti-canale-campo-v1.sql` t.1: dieci righe in più nel
+`VALUES` (le 8 funzioni con i loro codici). Provato nei due versi nella stessa
+transazione ritirata: **senza** i changeSet t.1 è rosso esattamente sui 10 siti
+nuovi (`NESSUNO`/`CHIAVE_NON_LETTA`); **con** i changeSet 14/14. Il commento
+di t.1 dice perché i tre siti B non sono nella lista (il verso 1 chiede
+«almeno un» sito).
+
+### 4-quater.3 La riga `CANCELLO`
+
+`presidi.csv`: la riga di `dbops.vw_punti_canale_campo` passa da `INVENTARIO`
+a **`CANCELLO`** (`uq_presidi_vista`: una riga per vista, quindi cambia
+natura — non ne nasce una seconda), `presidiato_da` = il test Django + il
+pgTAP, nota riscritta. ⭐ Il precedente è esatto: `vw_codici_errore_da_dichiarare`
+è una misura «volutamente larga» che elenca anche i sani ed è `CANCELLO` con
+`presidiato_da` = il suo test BE. Provato in transazione: `chk_presidi_cancello_ha_presidio`
+passa, `test-catalogo-presidi-v1` 11/11. Il mirror è `runOnChange`
+(`20260910-35`): ✅ ri-eseguito all'apply del 22-09, la riga viva è `CANCELLO`.
+
+Doc: `dbops/manual/vw_punti_canale_campo.md` (la sezione «Chi la legge» e il
+secondo giro). I manuali degli otto guard non cambiano, come per i 30 A del
+21-09: la chiave di context si documenta nella vista e qui.
+
+### 4-quater.4 Cosa resta
+
+* ✅ **apply** di `20260922-11/-12/-13` + mirror `presidi.csv` — Tid, 22-09;
+* ✅ **pgTAP verdi, nessuna regressione** (Tid, 22-09): il file del presidio e
+  il catalogo, più i pgTAP dei guard toccati (`test-fn-crea-operatore`,
+  `test-fn-crea-risorsa-umana`, `test-fn-guard-soggetto-pf-pura`,
+  `test-porta-oneri-v1` — `throws_ok` sul codice e `regprocedure` a firma
+  invariata, come previsto);
+* ▶ lato BE, unico passo rimasto: `apps/core/tests/test_ui_action_e_canale_campi.py`
+  verso 1 da 9 rossi a 0 — e il brief si chiude.
+
+⚠️ **Un rosso trovato nello stesso giro, e non è di questo brief.** Sullo
+scratch `zeroerp_ci` il 22-09 era rosso `dbops/test-processi-coda-automatica`
+(`ASSERZIONE` sul t.5): **non** una regressione della sanatura — il percorso
+incrocia una sola delle otto funzioni (`fn_guard_soggetto_pf_pura`, via
+`trgfn_identita_digitali_guard_coerenza`) e lì è cambiata la sola coppia
+`'campo'`. È il meccanismo di `20260921-18`: sul DB da zero la riga di
+contesto **costruisce** il mondo e esce con i vincoli `IMMEDIATE`, e quel file
+scrive soggetto e contatto prima del proprio `SET CONSTRAINTS`. Terzo file con
+quella forma; il censimento del 21-09 lo mancava perché la scrittura sta
+**dentro** `script.fn_crea_utente_tecnico`, non in un `INSERT` del file.
+Sanato nella stessa forma degli altri due; storia e conseguenze in
+[migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md) §D7.
 
 ---
 
@@ -801,10 +902,11 @@ da ogni sito, o torna `highlight`, la riga è rossa.
   esenzioni `(codice, verso) → ragione` nei due versi di ritiro; il criterio
   Python conosce `_CAMPO_PER_CODICE_DB`, i `*_MARKERS`, `fallback_code` e il
   salto sull'helper locale (§4-ter.1), tutti provati su casi costruiti;
-* ✅ i 3 B del §4-ter tolti (ok di Tid); 🔴 **i 9 A del §4-ter al team DB**
-  — fino alla sanatura il verso 1 è rosso su 9 codici;
-* ✅ la riga in `api.md` §Envelope che nomina il presidio; 🔵 la riga
-  `CANCELLO` in `dbops.presidi` (team DB) quando il verso 1 è verde.
+* ✅ i 3 B del §4-ter tolti (ok di Tid); ✅ **i 9 A del §4-ter applicati** il
+  22-09 (`20260922-11/-12/-13`, §4-quater, pgTAP verdi) — ▶ resta da
+  rilanciare il verso 1, atteso zero rossi;
+* ✅ la riga in `api.md` §Envelope che nomina il presidio; ✅ la riga
+  `CANCELLO` in `dbops.presidi` (§4-quater.3), **viva dal 22-09**.
 
 ---
 

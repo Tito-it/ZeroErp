@@ -13,13 +13,15 @@ CREATE OR REPLACE FUNCTION vendite.fn_aggiungi_onere_commessa(p_commessa_id bigi
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_data            date;
-  v_comp_mese       date;
+  v_data            vendite.commesse_attivita.data_attivita%TYPE;
+  v_comp_mese       vendite.commesse_attivita.competenza_mese%TYPE;
   v_uom_id          catalogo.articoli.uom_id%TYPE;
   v_causale_id      catalogo.articoli.causale_onere_id%TYPE;
+  -- v_progressivo e' un contatore (MAX+1 sulla chiave), non il riflesso di una colonna.
   v_progressivo     integer;
-  v_segment_key     varchar;
-  v_attivita_id     bigint;
+  v_segment_key     vendite.commesse_attivita.segment_key%TYPE;
+  v_attivita_id     vendite.commesse_attivita.id%TYPE;
+  -- v_is_new e' l'esito di fn_upsert_commessa_attivita (RETURNS TABLE), non una colonna.
   v_is_new          boolean;
 BEGIN
   -- Scopo: madre DB della "porta oneri". Crea una riga
@@ -60,7 +62,7 @@ BEGIN
   IF p_importo IS NULL OR p_importo <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_aggiungi_onere_commessa','E_ONERE_IMPORTO_NON_VALIDO',
-      jsonb_build_object('importo',p_importo),
+      jsonb_build_object('campo','importo','importo',p_importo),
       NULL::uuid, COALESCE(p_importo::text,'NULL'));
   END IF;
 
@@ -77,7 +79,7 @@ BEGIN
   IF NOT FOUND THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_aggiungi_onere_commessa','E_ONERE_ARTICOLO_MANCANTE',
-      jsonb_build_object('articolo_onere_id',p_articolo_onere_id),
+      jsonb_build_object('campo','articolo_onere_id','articolo_onere_id',p_articolo_onere_id),
       NULL::uuid, COALESCE(p_articolo_onere_id::text,'NULL'));
   END IF;
 

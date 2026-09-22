@@ -21,7 +21,7 @@ AS $function$
 --     tabella: sono valido_al / valido_dal, le stesse gia' usate
 --     nell'IF che governa il ramo.
 DECLARE
-  v_attivo boolean;
+  v_attivo anagrafiche.conti_bancari.attivo%TYPE;
 BEGIN
   -- Evita legami a conti_bancari disattivati
   SELECT attivo INTO v_attivo
@@ -51,6 +51,7 @@ BEGIN
                         'trgfn_soggetti_conti_bancari_guard',
                         'E_DATA_AL_MINORE_DAL',
                         jsonb_build_object(
+                          'campo', 'valido_al',
                           'tabella','anagrafiche.soggetti_conti_bancari',
                           'valido_al',  NEW.valido_al::text,
                           'valido_dal',  NEW.valido_dal::text

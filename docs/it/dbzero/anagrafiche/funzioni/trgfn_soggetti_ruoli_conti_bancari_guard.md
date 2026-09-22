@@ -19,7 +19,7 @@ AS $function$
 --     senza, plpgsql la risolve come colonna e non la trova).
 --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
 DECLARE
-  v_attivo boolean;
+  v_attivo anagrafiche.conti_bancari.attivo%TYPE;
 BEGIN
   -- Evita legami a conti disattivati
   SELECT attivo INTO v_attivo
@@ -50,6 +50,7 @@ BEGIN
                         TG_NAME,
                         'E_DATA_AL_MINORE_DAL',
                         jsonb_build_object(
+                          'campo', 'valido_al',
                           'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
                           'valido_al',  NEW.valido_al::text,
                           'valido_dal',  NEW.valido_dal::text

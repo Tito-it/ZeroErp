@@ -84,6 +84,7 @@ BEGIN
             'fn_guard_soggetto_pf_pura',
             'E_AUTH_USER_SOGGETTO_CON_PIVA',
             jsonb_build_object(
+                'campo', 'soggetto_id',
                 'soggetto_id', p_soggetto_id,
                 'nota', 'Solo persone fisiche pure (senza P.IVA) possono essere collegate ad auth_user come OPERATORE'
             ),
