@@ -8,11 +8,14 @@
 - [fn_available_actions_commessa](funzioni/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](funzioni/fn_available_actions_contratto.md)
 - [fn_available_actions_ddt](funzioni/fn_available_actions_ddt.md) — (rev 2026-07-09)
+- [fn_available_actions_documento_interno](funzioni/fn_available_actions_documento_interno.md) — (scritta il 22-09-2026)
+- [fn_available_actions_inventario](funzioni/fn_available_actions_inventario.md) — (scritta il 22-09-2026)
 - [fn_available_actions_lotto](funzioni/fn_available_actions_lotto.md) — (latest review 04-08-2026) Espone le **capability del lotto di fatturazione** per il detail API: quali azioni di governo sono disponibili sul lotto, quali sono **abilitate** e — quando non lo sono — **perché**. Ottava della famiglia `fn_available_actions_*` (ordine, DDT, reso, offerta, preventivo, contratto, commessa): stesso contratto, stessi consumatori frontend.
 - [fn_available_actions_offerta](funzioni/fn_available_actions_offerta.md)
 - [fn_available_actions_ordine](funzioni/fn_available_actions_ordine.md)
 - [fn_available_actions_preventivo](funzioni/fn_available_actions_preventivo.md)
 - [fn_available_actions_reso](funzioni/fn_available_actions_reso.md) — (rev 2026-07-13)
+- [fn_available_actions_rettifica](funzioni/fn_available_actions_rettifica.md) — (scritta il 22-09-2026)
 - [fn_capability_promo_articolo](funzioni/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
@@ -30,6 +33,7 @@
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_disponibilita_uscita](funzioni/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
+- [fn_check_documento_interno_registrabile](funzioni/fn_check_documento_interno_registrabile.md) — (scritta il 22-09-2026)
 - [fn_check_famiglia_documento_disattivabile](funzioni/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](funzioni/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.

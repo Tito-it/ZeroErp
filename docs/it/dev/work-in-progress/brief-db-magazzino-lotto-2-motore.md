@@ -27,9 +27,19 @@
 > il primo giro del runner aveva reso rossi (`dbops/test-riferimenti-morti-v1`,
 > `script/test-rubinetto-primo-motivo-v1` — §7, §11). Le quattordici decisioni
 > D-L2-a → D-L2-n sono di Tid (17-09); le sedici criticità C1–C16 di P-0 sono
-> tutte chiuse (§6-ter). ⏳ **Restano** (§12.5): B-7 `--update`, la prova del
-> lock a due sessioni, `ci-local.sh --fresh --ci-apply`, il commit; 🔵 a BE/FE
-> §4.9 e §4.10. Poi `work-done/`.
+> tutte chiuse (§6-ter).
+>
+> ✅ **E dal 2026-09-22 il lotto è CONSEGNATO INTERO** (§12.5): B-7 `--update`
+> fatto e committato, commit `787ab05ba` mergiato in `Tito-dev` (PR #1605), le
+> due richieste a BE/FE di §4.9 e §4.10 consegnate, la **CI da zero verde con
+> la suite pgTAP** (corsa `35451924195`, 19-09, che contiene questo commit) e
+> la **prova del lock a due sessioni eseguita**: B ha atteso 8,1 s il rilascio
+> di A e poi ha riletto la disponibilità sul saldo committato (§12.5.4).
+> ⏳ Resta **un solo ramo dichiarato non provato** — «…oppure passa sul saldo
+> aggiornato», che vorrebbe una prima sessione che **committa** un movimento su
+> dbdev — e `ci-local.sh --fresh --ci-apply`, che la corsa vera di CI ha reso
+> ridondante. 🔵 **Decisione di Tid, 22-09: il brief resta in `work-in-progress/`** —
+> il lotto è consegnato, l'archiviazione si farà quando lo dirà lui.
 >
 > **Perimetro:** il **codice che scrive** su `magazzino.movimenti` e su
 > `valore_giacenza` — la primitiva e le due operazioni **senza documento
@@ -1202,7 +1212,8 @@ sottrazione.
 asserisce **strutturalmente** (`test-porta-ledger-v1` t.15: `pg_advisory_xact_lock`
 a due argomenti col namespace `magazzino.fn_scrivi_movimento`, pattern
 `vendite/test-ordini-lock-cliente.sql`) e si prova a mano a due sessioni
-`psql` — l'esito nel §12.5 (resta a Tid: la funzione è su dbdev dalle 12:23).
+`psql` — ✅ **fatta il 2026-09-22, esito in §12.5.4**: B ha atteso 8,1 s il
+rilascio di A e ha riletto la disponibilità **dopo** il lock.
 
 ---
 
@@ -1308,6 +1319,7 @@ non si lancia; l'autogen (`changelog-autogen.yaml`) non si rigenera a mano.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-09-22 | ✅ **Chiusi i quattro residui di §12.5, e il lotto è consegnato intero.** (1) **La prova del lock a due sessioni** è stata eseguita come app sul mondo committato di dbdev (magazzino `1109`, articolo `art-comp-001`, contesti operatore 5 e 6), con la sorgente tipizzata costruita **dentro ciascuna transazione** e tutte e due ritirate: `pg_locks` mostra la **stessa coppia di chiavi** con A `granted = t` e B `granted = f`, B ha impiegato **8 129 ms** (attesa, non rifiuto immediato) e al rilascio ha riletto sul saldo **committato** (`disponibili 0`) — la disponibilità si legge **dopo** il lock, e il ledger è rimasto vuoto. ⚠️ Il ramo «passa sul saldo aggiornato» resta **dichiarato non provato**: vorrebbe una scrittura permanente su dbdev. (2) **B-7 `--update`** era già fatto e committato (dieci codici nuovi + `E_CONFIG_MANCANTE` a 52). (3) **Commit** `787ab05ba`, mergiato con la PR #1605. (4) **La CI da zero è verde**: la corsa `35451924195` (19-09) contiene questo commit e ha fatto migrate da zero + `ci_apply` + provisioning + Django + **suite pgTAP**, con zero righe di magazzino in `baseline-rossi-ci.tsv` ⇒ `ci-local.sh --fresh --ci-apply` è ridondante. ⚠️ Due fatti datati **fuori dal lotto**: dal 21-09 sera la CI **non parte** (billing GitHub), e l'ultima corsa reale della suite aveva **una** regressione — `ui/test-lista-definizione-perimetro-emittente-v1`, già sanata il 22-09 (`559dbf351`). ⚠️ Il presidio di prontezza su dbdev è passato da `NESSUNO_MARCATO` a `MARCATI \| 3`: l'uso in-app ha marcato tre articoli. 🔵 **Decisione di Tid lo stesso giorno: il brief resta in `work-in-progress/`** — consegnato, non ancora archiviato |
 | 2026-09-18 (pomeriggio, chiusura DB) | ✅ **`20260918-27` applicato da Tid e i due presidi trasversali rilanciati: verdi.** Con questo il lato DB del lotto è **chiuso**: 22 changeSet `EXECUTED`, quindici pgTAP del lotto verdi come app, i due trasversali verdi, B-7 verde sul catalogo vivo. Aggiornati la testa del brief (§Stato), §6 P-8/P-9, §7, §12.1, §12.2, §12.5. ⏳ A Tid restano B-7 `--update`, il lock a due sessioni, `ci-local.sh --fresh --ci-apply`, il commit; a BE/FE §4.9 e §4.10. Chiusura del brief in `work-done/` quando anche la CI da zero è verde |
 | 2026-09-18 (pomeriggio, dopo l'apply) | 🔴 **Due regressioni dal runner come app, entrambe su presidi TRASVERSALI e non sui dodici pgTAP del lotto.** (1) `dbops/test-riferimenti-morti-v1` test 2: `fn_sorgenti_orfane` → `55000 record "v_s" non ancora assegnato` + `XX000 cached plan` sul `RETURN QUERY`, classe `REALE` — un `record` riempito da `FOR … IN EXECUTE` ha tupla indeterminata per `plpgsql_check` (lo dice il suo stesso hint alla riga 18). Rimedio sul modello, non nel registro: **`20260918-27`**, il ciclo interno su tre scalari `%TYPE` di `config.sorgenti`; comportamento e firma invariati, provato con l'SQL estratto in `ROLLBACK` (6/6 + 9/9), cinque guardrail statici verdi. (2) `script/test-rubinetto-primo-motivo-v1` test 5: 20 contro 17. Tre menzioni nuove, ma **due** chiamate (`fn_scrivi_movimento`, `fn_posta_inventario`: siti nati sull'helper) e **una** in un commento (`fn_check_disponibilita_uscita`, che nomina il consumatore): il predicato contava il TESTO. Riscritto sulla **chiamata** (commenti tolti, nome + `(`, la forma di `vw_punti_primo_motivo`) e portato a **19** con la nota datata; 7/7 in transazione ritirata. Registrati in §4.7, §5 (due trappole), §6 P-8/P-9, §7 (riga nuova: i due presidi trasversali si rilanciano in ogni cantiere che aggiunge funzioni). ⏳ Apply del `-27`, rilancio dei due file e baseline: Tid |
 | 2026-09-18 (giornata) | ✅ **Sviluppato P-1 → P-10**, dopo le quattro decisioni di Tid (C1 «nel BB guard, A′», C3 «solo in DRAFT», C6 «la vista, a `qta > 0`», C8 «check condivisa»): **21 changeSet** `20260918-06 … -26` (`-01…-05` sono di `pagamenti`), tre sedi in place (loop `20260205-41`, `provision_db_roles.sql`, i tre CSV: 27 codici, 27 messaggi, 4 presidi), **dodici pgTAP nuovi** (127 asserzioni) e tre ri-collocati, venti pagine `manual/` nuove e diciassette aggiornate, il dominio e la mappa. Quattro criticità in più trovate scrivendo (C13 `CONFIRM → DRAFT`, C14 `UNIQUE` di posizione sulle righe d'inventario, C15 le spie in `dbops` per il test 2 del catalogo dei presidi, C16 il perimetro degli orfani pretende il guard tipizzato montato: 112 falsi orfani da `vendite` senza). Ogni passo provato con l'SQL **estratto** in transazione annullata su dev e `zeroerp_ci`, i pgTAP in un harness come owner (nove asserzioni sole vogliono l'app). ✅ **Applicato da Tid su dbdev alle 12:23** (21 `EXECUTED` in `databasechangelog`, postura t/f/f/f sul ledger, 27 messaggi, 4 presidi; B-7 verde sul catalogo vivo). Consegna in §12 |
@@ -1409,7 +1421,7 @@ build.
   `magazzino.riga.blocco.*` (11) in `it.json`/`en.json` — `check_i18n_keys.py`
   (controllo 4) le cerca nella doc auto-gen delle due check.
 
-### 12.5 Che cosa resta a Tid — in ordine
+### 12.5 Che cosa resta a Tid — in ordine (✅ **tutto chiuso il 2026-09-22**, tranne il ramo dichiarato al punto 4)
 
 1. ✅ **Apply su dbdev** — fatto alle 12:23 del 18-09 (letto da
    `databasechangelog`: 21 `EXECUTED`, il loop `20260205-41` e il mirror dei
@@ -1420,8 +1432,15 @@ build.
    guard-senza-utente 2, 4, 5). ⚠️ `test-articoli-a-magazzino-prontezza-v1`
    costruisce lo stato in transazione (`UPDATE` degli articoli): non dipende
    da come è dbdev.
-3. **B-7**: `scripts/codici-errore-baseline.sh` è già **verde** sul catalogo
-   vivo (149 presidiati, nessun accumulo — misurato il 18-09 dopo l'apply).
+3. ✅ **B-7 — fatto.** `db/baseline-codici-errore-famiglie.tsv` porta i **dieci**
+   codici nuovi leggibili (`E_MAG_CHIAMATA_NON_VALIDA PARAMETRO 18`,
+   `E_MAG_LOTTO_OBBLIGATORIO`/`_SERIALE_`/`_UBICAZIONE_ OBBLIGATORI* PARAMETRO 1`,
+   `E_MAG_STORNO_INCOERENTE NOT_FOUND 3`, `_GEMELLA_NON_TROVATA 1`,
+   `_MAGAZZINO_NON_VALIDO 1`, `_DOCUMENTO_NON_TROVATO 2`,
+   `_DOCUMENTO_TRANSIZIONE_NON_AMMESSA VALORE_ATTESO 3`,
+   `_DOCUMENTO_NON_ELIMINABILE 1`) e `E_CONFIG_MANCANTE` a **NOT_FOUND 52**,
+   com'era previsto qui sotto; il file è dentro il commit `787ab05ba`.
+   Il testo originale della consegna, per memoria:
    Con `--update` entrano in baseline i **dieci** codici nuovi che la misura
    legge (`E_MAG_CHIAMATA_NON_VALIDA` PARAMETRO 18 punti, i tre `*_OBBLIGATORI*`
    PARAMETRO, `STORNO`/`GEMELLA`/`MAGAZZINO_NON_VALIDO`/`DOCUMENTO_NON_TROVATO`
@@ -1430,21 +1449,71 @@ build.
    accumulo); gli altri sedici sono `IGNOTO` e restano fuori per costruzione.
    Senza l'update un secondo motivo su uno dei dieci domani conterebbe come
    «nasce generico» e non come «accumula» — stessa luce rossa, frase diversa.
-4. **La prova a due sessioni del lock** (§7): due `psql` come app con il
-   contesto operatore, stessa coppia `(magazzino, articolo)`, la seconda
-   uscita aspetta la prima e poi rifiuta o passa sul saldo **aggiornato**.
-   Scrivere qui l'esito.
-5. **`ci-local.sh --fresh --ci-apply`**: la CI da zero (le fasi in ordine,
-   il loop in `ci_apply`, `provision_db_roles.sql` dopo: la postura deve
-   reggere a fine corsa — è C2). ⚠️ Su `zeroerp_ci` i changeSet sono stati
-   solo **compilati** in transazione annullata, non applicati.
-6. **Commit** (non autonomo): i 22 YAML (`-06…-27`), i tre file in place, i tre CSV, i
-   15 pgTAP, la doc, questo brief. Le modifiche a `requirements.txt` e
-   `scripts/update-venv.sh` nel working tree **non sono di questo lotto**.
-7. ⚠️ **Su dbdev il presidio di prontezza è a 1** (`NESSUNO_MARCATO`): è lo
-   stato voluto dal rilascio di `gestito_a_magazzino` (tutti `false`) e resta
-   così finché un articolo non viene marcato — comparirà nel digest
-   settimanale finché qualcuno non lo fa. Non è un rosso del lotto.
-8. 🔵 BE/FE: §12.4, in un brief loro.
+4. ✅ **La prova a due sessioni del lock — FATTA il 2026-09-22** (§7). Due
+   `psql` come `zeroerp_app` con contesto operatore (`auth_user` 5 e 6, tutti
+   e due con scope sull'emittente `32`), sul mondo **già committato** di dbdev
+   — magazzino `1109` «TEST» (`usa_ubicazioni = t`, ubicazione `413`),
+   articolo `art-comp-001` (`gestito_a_magazzino`, né lotto né seriale).
+   ⭐ La sorgente tipizzata ogni sessione se la costruisce **nella propria
+   transazione** (un inventario `DRAFT` + una riga), quindi non serve niente
+   di condiviso e **tutte e due le transazioni si ritirano**.
+
+   | Momento | Sessione A | Sessione B (parte 4 s dopo) |
+   | --- | --- | --- |
+   | `t0` | entrata `INV_INIZIALE +10` a 1,50 € — **nessun lock** (segno `+1`) | — |
+   | `t0 + 0,03 s` | uscita `RETT_NEG −1` ⇒ `pg_advisory_xact_lock` **preso** (1 riga in `pg_locks` per il suo backend), poi tiene 12 s | — |
+   | `t0 + 4 s` | tiene | chiama la primitiva sulla **stessa coppia** e si ferma |
+   | `t0 + 7 s` | `granted = t` | `granted = f` — **stessa coppia di chiavi**: `classid 3059323405` (= `hashtext('magazzino.fn_scrivi_movimento')` letto senza segno) e `objid 1764687745` (= `hashtext('1109:019e2234-…')`), cioè il perimetro `(magazzino, articolo)` di t.16 |
+   | `t0 + 12 s` | `ROLLBACK`: il lock cade con la transazione | riparte e **rilegge**: `E_MAG_GIACENZA_INSUFFICIENTE` — *«Giacenza insufficiente per l'articolo art-comp-001 nel magazzino TEST: disponibili 0, richiesti 1»* |
+
+   **Durata della chiamata di B: 8 129 ms** — cioè esattamente l'attesa, non
+   un rifiuto immediato. ⭐ E il verdetto è il pezzo che conta: B rifiuta su
+   **zero**, il saldo committato, non sui dieci che A vedeva nella propria
+   transazione ⇒ la disponibilità si legge **dopo** che il lock è stato
+   concesso, com'è scritto al passo 11 (§4.2).
+   ⚠️ **Il ramo «…oppure passa sul saldo aggiornato» NON è provato**, ed è
+   dichiarato: vorrebbe una prima sessione che **committa** un movimento su
+   dbdev, cioè una scrittura permanente sul database di sviluppo. Resta a Tid
+   decidere se pagarla; la metà che riguarda il **lock** è provata, e il
+   ledger è rimasto vuoto (`movimenti` e `valore_giacenza` a zero a fine
+   prova: le uniche righe di `inventari`/`inventari_righe` su dbdev sono le
+   due scritte da `tid` alle 10:44 del 22-09, dall'applicazione).
+5. ✅ **La CI da zero è verde, e non è la replica locale: è la CI vera.**
+   Corsa **`35451924195`** (19-09 15:28, push su `Tito-dev`, commit
+   `08542e6c2` che **contiene** `787ab05ba`): `Liquibase update (standard, no
+   provision)` → `Liquibase admin (provision - post)` → `Liquibase CI apply` →
+   `Django tests` → **`Suite pgTAP`**, tutti `success`. Nessun file di
+   `magazzino` fra i rossi e **nessuna riga** di magazzino in
+   `db/pgtap/baseline-rossi-ci.tsv` ⇒ la postura regge a fine corsa con
+   `provision_db_roles.sql` per ultimo (era C2), e i quindici pgTAP del lotto
+   passano su un database **ricostruito**. `ci-local.sh --fresh --ci-apply`
+   resta non eseguito e ora è ridondante.
+   ⚠️ **Fatto datato 22-09, e non riguarda questo lotto**: da
+   `35659881035` (21-09 21:55) in poi le corse **non partono affatto**
+   («The job was not started because recent account payments have failed»),
+   quindi da quel momento la CI non è un metro disponibile. L'ultima corsa
+   reale della suite — `35622075327` (21-09 15:54) — ha **una** regressione, e
+   non è di magazzino: `ui/test-lista-definizione-perimetro-emittente-v1`
+   (l'elenco delle liste globali), già sanata nel repo il 22-09 con
+   `559dbf351` — CSV e elenco del test coincidono oggi a **nove** nomi,
+   `magazzino.lotti` compreso.
+6. ✅ **Commit — fatto**: `787ab05ba` (18-09 12:45), mergiato in `Tito-dev`
+   con la **PR #1605** (`abec81197`, 12:46). Dentro: i 22 YAML (`-06…-27`), i
+   tre file in place, i tre CSV, i 15 pgTAP, la doc, la baseline B-7 e questo
+   brief.
+7. ⚠️ **Il presidio di prontezza NON è più acceso.** Il 18-09 la vista diceva
+   `NESSUNO_MARCATO` perché nessun articolo era marcato; al **22-09** dice
+   `MARCATI | 3` — tre articoli sono stati marcati dall'uso in-app, e insieme
+   a loro su dbdev ci sono ora un magazzino (`TEST`, con un'ubicazione) e un
+   inventario in bozza. ⭐ È il presidio che fa il suo mestiere: era una spia
+   sul **rilascio**, e si spegne quando il magazzino comincia a essere usato.
+8. ✅ **BE/FE — consegnate** (§12.4), verificato il 22-09 sul repo:
+   `requires_lotto` è in `catalogo_repository.py` (colonne e `SELECT`),
+   `catalogo_service.py`, il serializer di `catalogo/api/views.py` e, lato FE,
+   in `ArticoliView.vue` / `ArticoloDrawer.vue`; i codici `E_MAG_*` sono in
+   `error_policies_generated.py` con i ripieghi in
+   `error_messages_fallback.py`; le **13** `reason_key` ci sono in `it.json` e
+   `en.json` (`magazzino.disponibilita.blocco.*` 2,
+   `magazzino.riga.blocco.*` 11).
 9. Al Lotto 3: lo scarico da DDT, lo storno come verbo, il trasferimento, la
    liberazione dei blocchi (§9).

@@ -101,6 +101,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 
 | Serve | Helper |
 | --- | --- |
+| **il mondo di un test di dominio**: azienda + operatore + contesto aperto + un cliente fatturabile legato a quell'azienda | `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
 | l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
 | un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
@@ -122,6 +123,16 @@ azienda + operatore e apre il contesto su quello. Un file che vuole solo «un
 operatore su un emittente» non ha altro da fare. Il builder si chiama a mano
 quando servono gli **id** del mondo (l'emittente per un registro, il soggetto
 ruolo, **due** aziende) o quando il soggetto del test è l'operatore umano.
+
+⭐ **E la composizione ha un helper suo** (rev `20260922-17`): quando a un file
+servono *insieme* l'azienda, il contesto e un cliente fatturabile — il caso di
+gran lunga più frequente — `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` li
+costruisce nell'ordine giusto e ne torna tutte le chiavi in una riga. Senza
+contesto costruisce e lo apre; **con un contesto già aperto riusa l'azienda di
+chi agisce**, e non è un risparmio: un'azienda nuova lascerebbe il cliente legato
+a quella vecchia, invisibile sotto RLS. ⛔ Non comprende registro, articolo né i
+cataloghi di `80_data`: entra ciò che ha una **trappola d'ordine**, non ciò che
+serve spesso.
 
 ⚠️ Gli helper escono con i vincoli **IMMEDIATE**: un file che li vuole
 differiti fino a un punto suo (`pgtap-differiti`, «fattura + atto») li riapre

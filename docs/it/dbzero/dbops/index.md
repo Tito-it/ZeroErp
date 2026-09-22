@@ -86,6 +86,7 @@
 - [fn_pgtap_crea_emittente_operatore](funzioni/fn_pgtap_crea_emittente_operatore.md)
 - [fn_pgtap_crea_indirizzo_dettaglio](funzioni/fn_pgtap_crea_indirizzo_dettaglio.md)
 - [fn_pgtap_crea_magazzino](funzioni/fn_pgtap_crea_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_pgtap_crea_mondo_cliente](funzioni/fn_pgtap_crea_mondo_cliente.md) — (rev 2026-09-22 — D7, il giro del building block)
 - [fn_pgtap_crea_roster_processo](funzioni/fn_pgtap_crea_roster_processo.md)
 - [fn_pgtap_crea_soggetto_pg](funzioni/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](funzioni/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)

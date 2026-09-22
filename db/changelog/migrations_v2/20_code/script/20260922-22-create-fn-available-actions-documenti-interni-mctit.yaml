@@ -1,0 +1,299 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-1 — LE DUE CAPABILITY DEI DOCUMENTI INTERNI: il drawer prende i pulsanti dal DB
+#   script.fn_available_actions_documento_interno(p_famiglia, p_documento_id)  <- il corpo
+#   script.fn_available_actions_inventario(p_inventario_id)                    <- involucro
+#   script.fn_available_actions_rettifica(p_rettifica_id)                      <- involucro
+#   Brief: brief-db-magazzino-lotto-2-bis-be-fe, R-1 punto 2
+#
+# -- UN CORPO E DUE INVOLUCRI (il brief lasciava la scelta al DB) ---------------------------------
+#   La regola e' la stessa per le due famiglie (D-L2-h: una matrice, un guard,
+#   una check). Due corpi gemelli sarebbero due posti dove cambiarla, cioe'
+#   esattamente il difetto che R-1 viene a chiudere. Gli involucri esistono
+#   perche' il backend chiama per ENTITA' (fn_available_actions_<entita>, come
+#   per gli altri otto domini) e perche' un giorno una delle due potrebbe
+#   avere una chiave in piu': allora si sdoppia l'involucro, non la regola.
+#
+# -- POSTED NON E' UN PULSANTE (D-L2-h) ----------------------------------------------------------
+#   La matrice ammette CONFIRM -> POSTED, ma quella porta la apre solo
+#   l'operazione firmandosi con la GUC transazionale: un bottone «porta a
+#   POSTED» prenderebbe E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE. Quindi
+#   POSTED esce dalle available_actions ed entra come terna `can_registra`
+#   (famiglia 1 di api.md §Capability, stampo can_push_commessa) — il verbo
+#   irreversibile, che il BE espone su .../registra/ con l'azione di processo
+#   registra_magazzino (R-3).
+#
+# -- LA TERNA VIENE DALLA CHECK, NON DA UN PREDICATO SCRITTO QUI ---------------------------------
+#   `enabled` = nessun motivo; `reason` / `reason_key` = quelli del PRIMO
+#   motivo di script.fn_check_documento_interno_registrabile, che e' la stessa
+#   funzione che la madre chiama per rifiutare. Il pulsante e il rifiuto non
+#   possono divergere perche' leggono la stessa riga di codice
+#   (linee-guida-sql §12.1, §12.2 punto 1).
+#
+# -- FUORI PERIMETRO: NULL, NON UNA CAPABILITY VUOTA ---------------------------------------------
+#   INVOKER, sotto RLS: se la testata non si legge la funzione torna NULL, e il
+#   404 lo da' il BE sulla testata (stampo delle otto capability). ⭐ E' anche
+#   il motivo per cui la testata si guarda PRIMA di chiamare la check: la check
+#   su un documento non visibile SOLLEVA, e una capability non solleva mai.
+#
+# -- LE CHIAVI i18n CHE QUESTA FUNZIONE EMETTE (debito verso il FE, §12.3) ------------------------
+#   label_key:     magazzino.documenti_interni.azione.{conferma, annulla, riapri}
+#   reason_key:    magazzino.documenti_interni.registra_reason.{non_confermato,
+#                  gia_registrato, annullato, senza_righe, righe_non_postabili}
+#                  (le emette la check; `gia_registrato` e `annullato` sono due in
+#                  piu' rispetto a R-1 — vedi il changeSet -20: su un documento
+#                  POSTED «non e' confermato» sarebbe una frase falsa)
+#   stato_info_key: magazzino.documenti_interni.stato_info.{posted, cancel}
+#   Sono dichiarate in R-1 e vanno nei locales NELLO STESSO GIRO: senza,
+#   scripts/check_i18n_keys.py (controllo 4) fallisce e il tooltip e' vuoto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260922-22-create-fn-available-actions-documenti-interni-mctit.yaml
+
+  - changeSet:
+      id: 20260922-22-create-fn-available-actions-documenti-interni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_available_actions_documento_interno + gli involucri _inventario e _rettifica:
+        la capability dei documenti interni di magazzino (azioni dalla matrice condivisa col
+        guard, terna can_registra dalla check condivisa con le madri, can_edit_*/can_delete su
+        DRAFT, stato_info_key). Brief: brief-db-magazzino-lotto-2-bis-be-fe, R-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'magazzino' AND p.proname = 'fn_documento_interno_transizioni';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_documento_interno_registrabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la capability di un documento interno di magazzino — inventario
+              --   o rettifica — per il detail API: quali azioni proporre, quali
+              --   spegnere e perche', che cosa si puo' ancora modificare.
+              -- ⭐ Non decide niente da sola, ed e' il punto: le azioni vengono dalla
+              --   matrice che il guard fa rispettare
+              --   (magazzino.fn_documento_interno_transizioni) e la terna di
+              --   «registra» dal primo motivo della check che le madri del posting
+              --   chiamano (script.fn_check_documento_interno_registrabile). Una
+              --   regola, una sede, due lettori: il pulsante non puo' promettere cio'
+              --   che il database rifiutera' (linee-guida-sql §12.1).
+              -- ⚠️ POSTED e' nella matrice ma NON e' un'azione richiedibile: quella
+              --   porta la apre solo l'operazione con la sua GUC transazionale. Esce
+              --   dalle available_actions e rientra come can_registra.
+              -- Ritorna: il blob della capability, oppure NULL se il documento non si
+              --   legge (fuori perimetro RLS o inesistente: il 404 lo da' il BE sulla
+              --   testata, convenzione no-leak).
+              -- Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.
+              DECLARE
+                  v_stato          text;
+                  v_destinazioni   text[];
+                  v_actions        jsonb;
+                  v_can_change     boolean := false;
+                  v_motivi         jsonb;
+                  v_primo          jsonb;
+                  v_registra_ok    boolean;
+                  v_stato_info_key text;
+              BEGIN
+                  -- ⛔ Guard di PARAMETRO: chiamante rotto, non dato di una persona.
+                  IF p_famiglia IS NULL
+                     OR p_famiglia NOT IN ('INVENTARIO', 'RETTIFICA')
+                     OR p_documento_id IS NULL OR p_documento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_available_actions_documento_interno',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'famiglia INVENTARIO o RETTIFICA, documento maggiore di zero',
+                                             'p_famiglia', p_famiglia,
+                                             'p_documento_id', p_documento_id),
+                          NULL::uuid,
+                          'script.fn_available_actions_documento_interno',
+                          'p_famiglia (INVENTARIO | RETTIFICA), p_documento_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- La testata, sotto RLS. Si guarda PRIMA della check, che su un
+                  -- documento non visibile solleverebbe: una capability non solleva.
+                  IF p_famiglia = 'INVENTARIO' THEN
+                      SELECT i.stato_mag_inventario INTO v_stato
+                        FROM magazzino.inventari i WHERE i.id = p_documento_id;
+                  ELSE
+                      SELECT t.stato_mag_rettifiche INTO v_stato
+                        FROM magazzino.rettifiche t WHERE t.id = p_documento_id;
+                  END IF;
+
+                  IF v_stato IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Le destinazioni ammesse: la stessa matrice del guard.
+                  v_destinazioni := magazzino.fn_documento_interno_transizioni(v_stato);
+
+                  -- Una voce per destinazione RICHIEDIBILE. L'elenco (chiave, etichetta,
+                  -- icona, severita') e' il vestito dell'azione e sta qui; QUALI
+                  -- compaiano lo decide la matrice, non questa tabella di valori.
+                  SELECT COALESCE(jsonb_agg(
+                             jsonb_build_object(
+                                 'key',              a.key,
+                                 'target_state',     a.target_state,
+                                 'label_key',        a.label_key,
+                                 'icon',             a.icon,
+                                 'severity',         a.severity,
+                                 'requires_confirm', a.requires_confirm,
+                                 -- Nessuna delle tre ha precondizioni oltre allo stato:
+                                 -- il guard le ammette tutte da qui, quindi sono accese e
+                                 -- senza motivo. Il giorno in cui una ne avesse una, il
+                                 -- motivo arriva da una check, come per «registra».
+                                 'enabled',          true,
+                                 'reason',           NULL,
+                                 'reason_key',       NULL,
+                                 'manuale',          true)
+                             ORDER BY a.ordine), '[]'::jsonb)
+                    INTO v_actions
+                    FROM (VALUES
+                            ('CONFIRM', 'conferma', 'magazzino.documenti_interni.azione.conferma',
+                             'pi pi-check', 'success', false, 1),
+                            ('DRAFT',    'riapri',   'magazzino.documenti_interni.azione.riapri',
+                             'pi pi-undo',  'secondary', false, 2),
+                            -- ⚠️ Solo l'annullamento chiede conferma: e' l'uscita che non
+                            --    si torna indietro (CANCEL e' terminale).
+                            ('CANCEL',   'annulla',  'magazzino.documenti_interni.azione.annulla',
+                             'pi pi-times', 'danger', true, 3)
+                         ) AS a(target_state, key, label_key, icon, severity, requires_confirm, ordine)
+                   WHERE a.target_state = ANY (v_destinazioni);
+
+                  -- can_change_state conta ANCHE le azioni disabilitate (§12.2 punto 2):
+                  -- la barra deve comparire proprio per mostrare il pulsante grigio col
+                  -- suo motivo. Qui coincide con «ce n'e' almeno una».
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  -- La terna di «registra», dal primo motivo della check condivisa.
+                  v_motivi      := script.fn_check_documento_interno_registrabile(p_famiglia, p_documento_id);
+                  v_primo       := v_motivi -> 0;
+                  v_registra_ok := v_primo IS NULL;
+
+                  -- La nota dello stato chiuso: dice che cosa e' successo e qual e' la
+                  -- strada, invece di lasciare un drawer senza pulsanti e senza parole
+                  -- (brief vie d'uscita R3). NULL dove ci sono ancora azioni.
+                  v_stato_info_key := CASE v_stato
+                                          WHEN 'POSTED' THEN 'magazzino.documenti_interni.stato_info.posted'
+                                          WHEN 'CANCEL' THEN 'magazzino.documenti_interni.stato_info.cancel'
+                                      END;
+
+                  RETURN jsonb_build_object(
+                      'stato_codice',               v_stato,
+                      'available_actions',          v_actions,
+                      'can_change_state',           v_can_change,
+                      -- Lo STESSO predicato del guard delle righe e del DELETE (C3):
+                      -- si modifica e si cancella finche' e' una bozza.
+                      'can_edit_testata',           (v_stato = 'DRAFT'),
+                      'can_edit_righe',             (v_stato = 'DRAFT'),
+                      'can_delete',                 (v_stato = 'DRAFT'),
+                      'can_registra',               v_registra_ok,
+                      'can_registra_reason',        v_primo ->> 'reason',
+                      'can_registra_reason_key',    v_primo ->> 'reason_key',
+                      'stato_info_key',             v_stato_info_key);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_documento_interno(text, bigint) IS
+                  'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | '
+                  'RETTIFICA) per il detail API. Chiavi: stato_codice, available_actions[] '
+                  '(key conferma/riapri/annulla, target_state, label_key, icon, severity, '
+                  'requires_confirm, enabled, reason, reason_key, manuale), can_change_state, '
+                  'can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso '
+                  'predicato dei guard), can_registra + _reason + _reason_key, stato_info_key. '
+                  '⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice '
+                  'magazzino.fn_documento_interno_transizioni (quella che il guard fa '
+                  'rispettare) e la terna di registra dal primo motivo di '
+                  'script.fn_check_documento_interno_registrabile (quella che le madri del '
+                  'posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella '
+                  'matrice ma non e'' un''azione richiedibile (la porta la apre solo '
+                  'l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. '
+                  'INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il '
+                  'BE sulla testata. Chiavi i18n emesse: '
+                  'magazzino.documenti_interni.azione.{conferma,riapri,annulla}, '
+                  '....registra_reason.{non_confermato,gia_registrato,annullato,'
+                  'senza_righe,righe_non_postabili}, '
+                  '....stato_info.{posted,cancel}. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_inventario(
+                  p_inventario_id magazzino.inventari.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la capability di un inventario per il detail API. Involucro:
+              --   la regola sta in script.fn_available_actions_documento_interno, una
+              --   sola per le due famiglie (D-L2-h). Esiste perche' il backend chiama
+              --   per ENTITA', come negli altri otto domini.
+              BEGIN
+                  RETURN script.fn_available_actions_documento_interno('INVENTARIO', p_inventario_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_inventario(bigint) IS
+                  'Capability di un inventario di magazzino per il detail API: involucro di '
+                  'script.fn_available_actions_documento_interno(''INVENTARIO'', id), dove sta '
+                  'la regola — una sola per le due famiglie di documenti interni (D-L2-h). '
+                  'NULL se l''inventario non si legge. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_rettifica(
+                  p_rettifica_id magazzino.rettifiche.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la capability di una rettifica per il detail API. Involucro:
+              --   vedi fn_available_actions_inventario.
+              BEGIN
+                  RETURN script.fn_available_actions_documento_interno('RETTIFICA', p_rettifica_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_rettifica(bigint) IS
+                  'Capability di una rettifica di magazzino per il detail API: involucro di '
+                  'script.fn_available_actions_documento_interno(''RETTIFICA'', id), dove sta '
+                  'la regola — una sola per le due famiglie di documenti interni (D-L2-h). '
+                  'NULL se la rettifica non si legge. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_available_actions_documento_interno(text, bigint) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION script.fn_available_actions_inventario(bigint) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION script.fn_available_actions_rettifica(bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_available_actions_inventario(bigint);
+              DROP FUNCTION IF EXISTS script.fn_available_actions_rettifica(bigint);
+              DROP FUNCTION IF EXISTS script.fn_available_actions_documento_interno(text, bigint);

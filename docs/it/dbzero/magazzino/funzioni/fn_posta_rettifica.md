@@ -15,12 +15,17 @@ AS $function$
 -- Scopo: registrare una rettifica CONFIRM — per ogni riga posta qta_delta
 --   (dato) con RETT_POS/RETT_NEG dal segno attraverso la primitiva; poi la
 --   testata a POSTED. Una transazione. Ritorna il movimento per riga.
+-- Rev 2026-09-22 (Lotto 2-bis, R-1): le condizioni di registrabilita' le
+--   dice script.fn_check_documento_interno_registrabile, la stessa della
+--   capability. ⭐ Per la rettifica questo ANTICIPA il rifiuto di una riga
+--   non postabile (prima lo dava la primitiva a meta' ciclo, stesso codice):
+--   e' la simmetria con l'inventario, non una regola nuova.
 DECLARE
     v_magazzino_id magazzino.rettifiche.magazzino_id%TYPE;
     v_data         magazzino.rettifiche.data%TYPE;
     v_stato        magazzino.rettifiche.stato_mag_rettifiche%TYPE;
-    v_n_righe      bigint;
     v_sorgente_id  config.sorgenti.id%TYPE;
+    v_motivi       jsonb;
     v_riga         magazzino.rettifiche_righe%ROWTYPE;
 BEGIN
     IF p_rettifica_id IS NULL OR p_rettifica_id <= 0 THEN
@@ -41,21 +46,12 @@ BEGIN
             jsonb_build_object('rettifica_id', p_rettifica_id),
             NULL::uuid, p_rettifica_id::text);
     END IF;
-    IF v_stato <> 'CONFIRM' THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
-            'E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA',
-            jsonb_build_object('detail', 'il posting parte da CONFIRM',
-                               'rettifica_id', p_rettifica_id, 'stato', v_stato),
-            NULL::uuid, v_stato, 'POSTED');
-    END IF;
 
-    SELECT count(*) INTO v_n_righe FROM magazzino.rettifiche_righe r WHERE r.rettifica_id = p_rettifica_id;
-    IF v_n_righe = 0 THEN
-        PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
-            'E_MAG_DOCUMENTO_SENZA_RIGHE',
-            jsonb_build_object('rettifica_id', p_rettifica_id),
-            NULL::uuid, p_rettifica_id::text);
-    END IF;
+    -- Si puo' registrare? La check condivisa con la capability.
+    v_motivi := script.fn_check_documento_interno_registrabile('RETTIFICA', p_rettifica_id);
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'magazzino', 'magazzino.fn_posta_rettifica', v_motivi, NULL, NULL::uuid,
+        jsonb_build_object('rettifica_id', p_rettifica_id));
 
     SELECT s.id INTO v_sorgente_id FROM config.sorgenti s WHERE s.codice_interno = 'RETTIFICA_RIGA' AND s.attivo;
     IF NOT FOUND THEN

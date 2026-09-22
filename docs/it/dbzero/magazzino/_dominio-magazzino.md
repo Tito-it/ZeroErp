@@ -56,7 +56,9 @@ che genera N movimenti la chiama N volte nella stessa transazione.
   ne è la sorgente. La correzione a mano è una rettifica. Inventari e rettifiche hanno il
   ciclo `DRAFT → CONFIRM → POSTED` (o `CANCEL`) fatto rispettare da un guard, `POSTED` lo
   scrive solo l'operazione (`fn_posta_inventario`, `fn_posta_rettifica`), le righe si
-  congelano con la testata, si cancella solo una bozza.
+  congelano con la testata, si cancella solo una bozza. Il **magazzino** della testata non
+  si cambia in nessuno stato (lock di colonna, dal 22-09): è l'identità del documento, non
+  un suo attributo — la `data` invece resta modificabile, per decisione.
 * **Registro e derivati** — `movimenti`, `movimenti_attesi`, `valore_giacenza` e le cinque
   viste, tutte `security_invoker`.
 * **Note** — `magazzino.note`, partizionata per famiglia, con il perimetro sul padre e su
@@ -84,6 +86,14 @@ progetto: [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-securit
 * le colonne «impegnata», «in arrivo» della disponibilità: arrivano con i satelliti che le
   sanno riempire (acquisti);
 * `requires_lotto` nel **drawer** dell'articolo (BE/FE, richiesta del Lotto 2 §4.9).
+
+✅ **Non manca più, dal 22-09-2026**: la **capability** dei documenti interni
+(`script.fn_available_actions_inventario` / `_rettifica`), con la matrice degli
+stati uscita dal guard in una sede che guard e pulsanti condividono
+(`magazzino.fn_documento_interno_transizioni`) e la terna «Registra» dalla check
+che le due madri del posting sollevano
+(`script.fn_check_documento_interno_registrabile`). Era R-1 del Lotto 2-bis, e
+senza il drawer non aveva da dove prendere i propri pulsanti.
 
 ---
 

@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-1 (1 di 4) — LA MATRICE ESCE DAL GUARD, IN UNA SEDE CHE DUE LETTORI CONDIVIDONO
+#   magazzino.fn_documento_interno_transizioni(p_stato_da) RETURNS text[]
+#   Brief: brief-db-magazzino-lotto-2-bis-be-fe, R-1 punto 1
+#
+# -- PERCHE' ADESSO -----------------------------------------------------------------------------
+#   Il Lotto 2 ha messo la matrice degli stati dentro il guard
+#   (magazzino.trgfn_documento_interno_guard_transizione, un CASE nel corpo) e
+#   lo aveva scritto in chiaro: «se un giorno servira', la matrice esce dal
+#   guard: cambia dove sta, non chi la fa rispettare». Il giorno e' il primo
+#   drawer: il frontend monta le azioni di stato SOLO da available_actions
+#   (frontend-standards §Azioni Drawer) e il backend TRASPORTA, non deduce
+#   (api.md §Capability). Senza una funzione le uscite sarebbero due, e sono
+#   entrambe una SECONDA SEDE della stessa regola: un dict in Python o un v-if
+#   in Vue. linee-guida-sql §12.2 punto 1: «il predicato e' lo STESSO del guard
+#   che rifiuterebbe. La capability specchia la regola, non ne scrive una
+#   seconda».
+#
+# -- UNA FUNZIONE, NON UNA TABELLA DI SEED (D-L2-h) ---------------------------------------------
+#   Gli stati dei documenti interni non hanno attributi — nessuna etichetta,
+#   nessun ordine, nessun flag: solo un nome e le destinazioni ammesse. Una
+#   tabella di catalogo porterebbe una riga per transizione, un mirror CSV e un
+#   pgTAP che ne conta le righe, per rendere configurabile cio' che il CHECK di
+#   tabella tiene fermo. Una funzione IMMUTABLE e' la sede piu' piccola che due
+#   lettori possono condividere.
+#
+# -- IMMUTABLE, E PLPGSQL E NON SQL -------------------------------------------------------------
+#   IMMUTABLE perche' non legge niente: la matrice e' una costante del modello.
+#   plpgsql e non `LANGUAGE sql` per stare dentro il presidio dei riferimenti
+#   morti, che compila SOLO il plpgsql (memoria: una funzione sql resta viva nel
+#   catalogo e morta alla prima chiamata, e nessuno se ne accorge).
+#
+# -- IL VOCABOLARIO E' text ---------------------------------------------------------------------
+#   Come nel guard, che e' parametrico su due tabelle (inventari.stato_mag_inventario,
+#   rettifiche.stato_mag_rettifiche): gli stati sono un vocabolario, non una colonna.
+#   Uno stato che non esiste torna {} — chi chiama non deve distinguerlo da uno
+#   terminale: il cancello sui VALORI e' il CHECK di tabella (chk_mag_inventari_stato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20260922-18-create-fn-documento-interno-transizioni-mctit.yaml
+
+  - changeSet:
+      id: 20260922-18-create-fn-documento-interno-transizioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.fn_documento_interno_transizioni(p_stato_da): le destinazioni ammesse da uno
+        stato dei documenti interni (DRAFT -> CONFIRM, CANCEL; CONFIRM -> POSTED, CANCEL, DRAFT;
+        POSTED e CANCEL terminali). IMMUTABLE, la sede unica che il guard fa rispettare e la
+        capability disegna. Brief: brief-db-magazzino-lotto-2-bis-be-fe, R-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: inventari
+            - tableExists:
+                schemaName: magazzino
+                tableName: rettifiche
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_documento_interno_transizioni(
+                  p_stato_da text
+              )
+              RETURNS text[]
+              LANGUAGE plpgsql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la matrice degli stati dei documenti interni di magazzino
+              --   (inventari e rettifiche: la stessa per le due famiglie, D-L2-h) —
+              --   quali destinazioni sono ammesse a partire da uno stato.
+              -- Consumatori, e sono il motivo per cui esiste:
+              --   magazzino.trgfn_documento_interno_guard_transizione, che la fa
+              --   rispettare, e script.fn_available_actions_inventario / _rettifica,
+              --   che ne disegnano i pulsanti. Una regola, una sede: se divergessero,
+              --   l'operatore vedrebbe un bottone su un'azione che verra' rifiutata
+              --   (linee-guida-sql §12.1, «la terza via»).
+              -- Ritorna: le destinazioni ammesse; {} su uno stato terminale (POSTED,
+              --   CANCEL) e su uno stato che non esiste — chi chiama non deve
+              --   distinguere i due casi, perche' il cancello sui valori e' il CHECK
+              --   di tabella, non questa funzione.
+              -- ⚠️ POSTED e' nella matrice ed e' una transizione ammessa, ma NON e'
+              --   un'azione che si possa chiedere: la porta la apre solo l'operazione
+              --   (fn_posta_inventario / fn_posta_rettifica) firmandosi con la GUC
+              --   transazionale. Chi disegna i pulsanti lo esclude e propone
+              --   «registra» — vedi la capability.
+              -- Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1;
+              --   brief-db-magazzino-lotto-2-motore sezione 3 (D-L2-h).
+              BEGIN
+                  RETURN CASE p_stato_da
+                             WHEN 'DRAFT'   THEN ARRAY['CONFIRM', 'CANCEL']
+                             WHEN 'CONFIRM' THEN ARRAY['POSTED', 'CANCEL', 'DRAFT']
+                             ELSE '{}'::text[]     -- POSTED, CANCEL: terminali
+                         END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_documento_interno_transizioni(text) IS
+                  'La matrice degli stati dei documenti interni di magazzino (inventari e '
+                  'rettifiche, la stessa per le due famiglie — D-L2-h): le destinazioni ammesse '
+                  'da uno stato. DRAFT -> {CONFIRM, CANCEL}; CONFIRM -> {POSTED, CANCEL, DRAFT} '
+                  '(riapri, C13); POSTED e CANCEL -> {} (terminali). Uno stato sconosciuto torna '
+                  '{}: il cancello sui valori e'' il CHECK di tabella. IMMUTABLE: non legge '
+                  'niente, la matrice e'' una costante del modello. ⭐ Esiste per avere UNA sede '
+                  'con due lettori: magazzino.trgfn_documento_interno_guard_transizione la fa '
+                  'rispettare, script.fn_available_actions_inventario / _rettifica disegnano i '
+                  'pulsanti (linee-guida-sql §12.2 punto 1). ⚠️ POSTED e'' ammesso ma non '
+                  'richiedibile: la porta la apre solo l''operazione con la GUC transazionale, '
+                  'quindi la capability lo esclude dalle azioni e propone «registra». Brief: '
+                  'brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+
+              GRANT EXECUTE ON FUNCTION magazzino.fn_documento_interno_transizioni(text) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS magazzino.fn_documento_interno_transizioni(text);

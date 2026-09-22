@@ -17,6 +17,19 @@ Guide: [Linee guida SQL — 5b la funzione madre](/linee-guida-sql) · brief `br
 
 (rev 2026-09-18 — Lotto 2 del magazzino)
 
+⭐ **Rev 2026-09-22 (R-1 del Lotto 2-bis): le condizioni per registrare non sono
+più scritte qui.** Le dice
+[script.fn_check_documento_interno_registrabile](/dbzero/script/funzioni/fn_check_documento_interno_registrabile)
+— stato `CONFIRM`, almeno una riga, nessuna riga che la primitiva rifiuterebbe —
+e questa funzione ne solleva il **primo motivo**. È la stessa funzione da cui la
+capability del drawer accende o spegne il pulsante «Registra»: il rifiuto e il
+tooltip non possono divergere, perché sono la stessa riga di codice
+(linee-guida-sql §12.5.2). Codici, valori e frasi restano quelli di prima. Il
+`SELECT … FOR UPDATE` sulla testata resta **primo**: è il lock che serializza due
+registrazioni dello stesso documento, e la check — che è `STABLE` — non può
+prenderlo.
+
+
 **Registra un inventario confermato.** Legge il [piano](/dbzero/magazzino/funzioni/fn_inventario_piano),
 scrive su ogni riga la quantità che il registro diceva (`qta_sistema`: la fotografia contro cui
 il conteggio è stato posto, e resta), posta con la primitiva ogni riga con differenza, porta la

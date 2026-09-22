@@ -33,6 +33,23 @@ dichiara per quel tipo; senza tipo, nessuna chiave. Il guard tipizzato
 (`script.trgfn_guard_sorgente_polimorfa_tipizzata`) verifica che il record esista. Qui la
 sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è uno.
 
+### Il magazzino si sceglie alla nascita
+
+**`magazzino_id` non si cambia** dopo la creazione, in nessuno stato (lock delle colonne,
+`E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`, dal 22-09): il magazzino di un conteggio è
+**identità**, non un attributo. Le righe nominano le ubicazioni *di quel* magazzino e
+[fn_inventario_piano](/dbzero/magazzino/funzioni/fn_inventario_piano) confronta il contato
+con la giacenza *di quel* magazzino; spostando la testata le righe resterebbero a puntare a
+posizioni che nel magazzino nuovo non esistono, e il database se ne accorgerebbe solo al
+posting, con un errore che racconta un'altra storia
+(`E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO`). Se il magazzino è sbagliato il conteggio si
+annulla e se ne apre uno dove la merce sta davvero.
+
+⚠️ La **`data`** invece resta modificabile, ed è una decisione esplicita (Q-2 del piano
+BE/FE, confermata il 22-09): il database non congela la testata oltre il magazzino. Il
+trigger del lock non lo scrive un changeSet — lo **genera l'automazione** dalla riga in
+[dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns).
+
 ### Chi può vedere e scrivere
 
 Un operatore vede e scrive gli inventari dei magazzini del **proprio emittente**
