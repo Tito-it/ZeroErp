@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 / D6 — fn_ordine_riga_qta_riconsegna NON NOMINA PIU' IL CONTATORE
+#   RITIRATO (giro 6 di brief-db-partita-merce-per-documento §13; quarto
+#   changeSet: -07 diagnosi, -08 DROP di vw_contatore_merce, -09 il COMMENT
+#   della situazione, -10 questo).
+#
+#   La funzione non LEGGE vw_contatore_merce: la nomina in un commento del
+#   corpo e nel COMMENT ON, come ragione per cui la sottrazione delle
+#   rinunce sta qui e non in vw_resi_righe_effettive. La ragione resta vera
+#   con il nome giusto — quella vista alimenta la PARTITA di merce
+#   (fn_partite_merce, che somma i resi senza filtro tipo) — e va scritta
+#   con quello: un riferimento a un oggetto ritirato e' una prova FALSA per
+#   chi indaga (memoria del cantiere sistema_codici, 2026-08-31).
+#
+#   Solo commenti: firma, corpo eseguibile, volatilita' e chiamanti
+#   (fn_ordine_ha_residuo_evasione, trgfn_ordini_ful_guard_consistenza)
+#   sono identici. CREATE OR REPLACE dalla definizione VIVA.
+#
+# Base: pg_get_functiondef il 22-09 (identica alla scheda auto-gen del
+#   20260726-05), con le sole righe di commento sostituite — generato per
+#   sostituzione, non ricopiato.
+# Presidi: test-resi-rinunce-scenario-v1, test-fn-ordine-riga-qta-riconsegna*
+#   (se presenti) e i guard del fulfillment: esito identico atteso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-10-update-fn-ordine-riga-qta-riconsegna-commento-partita-mctit.yaml
+
+  - changeSet:
+      id: 20260922-10-update-fn-ordine-riga-qta-riconsegna-commento-partita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 / D6: vendite.fn_ordine_riga_qta_riconsegna — solo i commenti (corpo e
+        COMMENT ON) nominano la partita (fn_partite_merce) al posto di
+        vw_contatore_merce, ritirata dal 20260922-08. Corpo eseguibile identico.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_ordine_riga_qta_riconsegna'
+                     AND pronamespace = 'vendite'::regnamespace
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname = 'vw_contatore_merce'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id bigint)
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: addendo reso del residuo per una riga ordine. Sigma
+              --   quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive:
+              --   CONFERMATE + attive) di tipo riapre_residuo=true collegate a quella
+              --   riga ordine. Single source per fn_ordine_ha_residuo_evasione e per
+              --   il guard fulfillment (coerenza formula residuo).
+              -- rev 2026-07-17 (step 2): legge l'helper unico invece di ripetere
+              --   la catena JOIN + filtro CONFERMATO; il filtro-tipo (riapre_residuo)
+              --   resta qui, "sopra" la vista (brief §3b).
+              -- rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo §4.2):
+              --   sottrae la quota RINUNCIATA (resi_righe_rinunce). Una quota
+              --   dichiarata definitiva non tornera' al cliente, quindi non e' piu'
+              --   merce "da evadere": togliendola dall'addendo il residuo si chiude
+              --   e l'ordine passa a EVASO.
+              --   La sottrazione sta QUI e NON in vw_resi_righe_effettive: quella
+              --   vista alimenta anche la PARTITA di merce (vendite.fn_partite_merce,
+              --   che somma i resi senza filtro tipo), e toccarla farebbe uscire la
+              --   riga dalla coda accrediti, cioe' l'accredito dovuto sparirebbe.
+              --   Vedi §4.2 del brief. rev 2026-09-22 (D14 giro 6, D6): qui si
+              --   nominava vw_contatore_merce, ritirata dal 20260922-08 — solo il
+              --   commento cambia, il corpo e' identico.
+              --   Si sottraggono SOLO le rinunce, non le ri-consegne: quelle sono
+              --   gia' contate come `evaso` dal fulfillment.
+              DECLARE
+                  v_qta numeric;
+              BEGIN
+                  IF p_ordine_riga_id IS NULL OR p_ordine_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_ordine_riga_qta_riconsegna','E_VALIDAZIONE',
+                          jsonb_build_object('p_ordine_riga_id', p_ordine_riga_id),
+                          NULL::uuid, 'p_ordine_riga_id deve essere > 0');
+                  END IF;
+
+                  SELECT COALESCE(SUM(GREATEST(0::numeric, e.quantita - COALESCE(rin.tot, 0))), 0)
+                    INTO v_qta
+                    FROM vendite.vw_resi_righe_effettive e
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(r.qta) AS tot
+                          FROM vendite.resi_righe_rinunce r
+                         WHERE r.resi_riga_id = e.resi_riga_id
+                    ) rin ON TRUE
+                   WHERE e.ordine_riga_id = p_ordine_riga_id
+                     AND e.riapre_residuo IS TRUE;
+
+                  RETURN v_qta;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_ordine_riga_qta_riconsegna(bigint)
+              IS 'Addendo reso del residuo per riga ordine: Sigma quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive) di tipo riapre_residuo, AL NETTO della quota rinunciata (vendite.resi_righe_rinunce). Single source per fn_ordine_ha_residuo_evasione e trgfn_ordini_ful_guard_consistenza (coerenza formula). rev 2026-07-13. rev 2026-07-17 (step 2): legge l helper unico; ora filtra anche resi_righe.attivo (canonico CONFERMATI+attivi). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.2): sottrae le RINUNCE, cosi'' una quota dichiarata definitiva smette di pesare sul residuo e l''ordine passa a EVASO. La sottrazione sta QUI e NON in vw_resi_righe_effettive, che alimenta anche la partita di merce (vendite.fn_partite_merce; fino al 2026-09-22 vw_contatore_merce, ritirata dal 20260922-08): toccarla farebbe sparire l''accredito dalla coda. Si sottraggono solo le rinunce, non le ri-consegne (quelle sono gia'' contate come evaso dal fulfillment).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Corpo eseguibile identico: il ritorno indietro e' il 20260726-05
+              -- (stessi commenti di prima).
+              SELECT 1;

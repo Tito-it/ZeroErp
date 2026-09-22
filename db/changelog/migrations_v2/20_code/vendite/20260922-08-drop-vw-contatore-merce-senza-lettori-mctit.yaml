@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 / D6 — vendite.vw_contatore_merce SI RITIRA: NON HA PIU' LETTORI
+#   (decisione D6 di Tid del 2026-09-22; giro 6 di
+#   brief-db-partita-merce-per-documento §6, §13). Secondo changeSet del
+#   giro: -07 la diagnosi, -08 questo ritiro, -09/-10 i due COMMENT vivi che
+#   ancora la nominavano.
+#
+# ── COS'ERA, E PERCHE' NON SERVE PIU' ──────────────────────────────────
+#
+#   Nata il 2026-07-17 (20260717-11) come «il contatore»: per riga d'ordine,
+#   tenuti − fatturati, la sola cifra che dosava il push dei DDT alla
+#   fatturazione. Dal 2026-08-17 (20260817-08) non calcolava piu': era la
+#   lettura per riga d'ordine di vw_partite_merce, «il contatore grezzo che
+#   dosa le macchine». Dal giro 1 di D14 (20260921-23, 2026-09-21) l'unica
+#   macchina che la leggeva — fn_list_ddt_da_pushare — legge fn_partite_merce
+#   col DDT come seme; l'aggregato per riga d'ordine che serve a una persona
+#   e' vw_situazione_merce_ordine / fn_situazione_merce_ordine (D3).
+#
+# ── IL CENSIMENTO DEI LETTORI (dal catalogo VIVO, 22-09) ───────────────
+#
+#   pg_depend (viste, funzioni BEGIN ATOMIC): NESSUNO oltre ai propri
+#   interni. pg_proc.prosrc che la LEGGE: NESSUNO (fn_ordine_riga_qta_
+#   riconsegna la nomina in un commento, corretto dal -10). Repository BE:
+#   un commento in vendite_repository.py, nessuna query. CSV di lista,
+#   presidi: nessuna riga. pgTAP: test-vw-contatore-merce-v1 (ritirato con
+#   la vista; i due scenari che solo lui asseriva — l'ONERE che non entra nel
+#   fatturato e `fatturato_anticipato` — migrano sui presidi della partita e
+#   della situazione) e test-porta-oneri-contatore-cieco-v1 (riscritto sul
+#   conto vivo, fn_af_merce_per_riga, invece che su una COPIA del predicato).
+#   COMMENT vivi che la nominano: vw_situazione_merce_ordine (-09) e
+#   fn_ordine_riga_qta_riconsegna (-10).
+#
+# ── PERCHE' RITIRARLA E NON LASCIARLA ──────────────────────────────────
+#
+#   E' la quarta vista a valle della partita: ogni colonna nuova nel
+#   RETURNS TABLE di fn_partite_merce pagava anche il suo DROP + rigenera, e
+#   il suo COMMENT diceva ancora «dosa la fatturazione», che non era piu'
+#   vero — un COMMENT superato e' una prova FALSA per chi indaga. Sul modello
+#   il conto per riga d'ordine ha UNA sede parlante (la situazione); questa
+#   era la seconda, grezza, senza nessuno che la leggesse.
+#
+#   ⛔ DROP senza CASCADE, di proposito: se un dipendente e' comparso dopo il
+#   censimento, il changeSet muore invece di portarselo via in silenzio. La
+#   preCondition lo dice prima.
+#
+# Base: definizione VIVA (pg_get_viewdef il 22-09, identica alla scheda
+#   auto-gen del 20260817-12) — ricopiata nel rollback.
+# Dipendenze: 20260817-12 (l'ultima forma), 20260921-23 (il lister che ha
+#   smesso di leggerla).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-08-drop-vw-contatore-merce-senza-lettori-mctit.yaml
+
+  - changeSet:
+      id: 20260922-08-drop-vw-contatore-merce-senza-lettori
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 / D6: ritira vendite.vw_contatore_merce, senza lettori dal giro 1 di D14
+        (il lister legge fn_partite_merce; la lettura per riga d'ordine e'
+        vw_situazione_merce_ordine). DROP senza CASCADE, con il censimento dei
+        dipendenti come preCondition.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname = 'vw_contatore_merce'
+            # Nessun oggetto dipende dalla vista oltre ai suoi interni
+            # (il tipo riga e la regola _RETURN): ne' viste sopra, ne'
+            # funzioni BEGIN ATOMIC.
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_depend d
+                   WHERE d.refobjid = 'vendite.vw_contatore_merce'::regclass
+                     AND d.deptype <> 'i'
+                     AND NOT (d.classid = 'pg_rewrite'::regclass
+                              AND EXISTS (SELECT 1 FROM pg_rewrite r
+                                           WHERE r.oid = d.objid
+                                             AND r.ev_class = 'vendite.vw_contatore_merce'::regclass))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_contatore_merce;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il ritorno indietro ricrea la vista NELLA FORMA CHE AVEVA
+              --   (20260817-12), non in una forma «giusta».
+              CREATE OR REPLACE VIEW vendite.vw_contatore_merce
+              WITH (security_invoker=on) AS
+              WITH pm AS (
+                       SELECT p.ordine_riga_id,
+                          sum(p.consegnato) AS consegnato,
+                          sum(p.reso) AS reso,
+                          sum(p.in_riconsegna) AS in_riconsegna,
+                          sum(p.tenuti) AS tenuti,
+                          sum(p.fatturato_merce) AS fatturato_su_merce,
+                          sum(p.fatturato_da_ordine) AS allocato,
+                          (count(*))::integer AS partite_merce,
+                          bool_and(p.misurabile) AS misurabile
+                         FROM vendite.vw_partite_merce p
+                        WHERE ((p.ordine_riga_id IS NOT NULL) AND (NOT p.e_riconsegna))
+                        GROUP BY p.ordine_riga_id
+                      ), ord AS (
+                       SELECT f.riga_id AS ordine_riga_id,
+                          f.quantita,
+                          f.misurabile
+                         FROM vendite.vw_af_merce_per_riga f
+                        WHERE (((f.corsia)::text = 'ORD'::text) AND ((f.tipo_movimento)::text = 'NORMALE'::text))
+                      )
+               SELECT orr.id AS ordine_riga_id,
+                  orr.ordine_id,
+                  orr.articolo_id,
+                  pm.tenuti,
+                  (COALESCE(pm.fatturato_su_merce, (0)::numeric) + COALESCE(o.quantita, (0)::numeric)) AS fatturati,
+                  (pm.tenuti - (COALESCE(pm.fatturato_su_merce, (0)::numeric) + COALESCE(o.quantita, (0)::numeric))) AS differenza,
+                  pm.consegnato,
+                  pm.reso,
+                  pm.in_riconsegna,
+                  COALESCE(pm.fatturato_su_merce, (0)::numeric) AS fatturato_su_merce,
+                  COALESCE(o.quantita, (0)::numeric) AS fatturato_su_ordine,
+                  GREATEST((0)::numeric, (COALESCE(o.quantita, (0)::numeric) - COALESCE(pm.allocato, (0)::numeric))) AS fatturato_anticipato,
+                  pm.partite_merce,
+                  (pm.misurabile AND COALESCE(o.misurabile, true)) AS misurabile
+                 FROM ((pm
+                   JOIN vendite.ordini_righe orr ON ((orr.id = pm.ordine_riga_id)))
+                   LEFT JOIN ord o ON ((o.ordine_riga_id = pm.ordine_riga_id)));
+              COMMENT ON VIEW vendite.vw_contatore_merce IS
+                'Il contatore, come AGGREGATO per riga d''ordine delle partite di merce (brief-design-partita-merce-generalizzata S3, rev 2026-08-17). Ripristinata dal rollback del 20260922-08: al 2026-09-22 non aveva lettori.';

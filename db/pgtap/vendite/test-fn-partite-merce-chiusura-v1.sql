@@ -5,7 +5,7 @@
 --       (D14 quarta leva; brief-db-partita-merce-per-documento §2, §2-bis, §3;
 --        changeSet 20260921-21..-24).
 --
--- Indice test (plan 14):
+-- Indice test (plan 15):
 --   1) la funzione esiste, e' BEGIN ATOMIC (dipendenze nel catalogo) e NON e'
 --      SECURITY DEFINER (la RLS resta di chi legge)
 --   2) ⭐ pin di D1: la vista e' la PROIEZIONE della funzione — nomina
@@ -31,6 +31,11 @@
 --      minima — il filtro d'uscita e' sulla colonna proiettata (§2-bis.7)
 --  14) scope: chi non vede il documento non vede la partita — zero righe, non
 --      conti a zero
+--  15) ⭐ un ONERE sul segmento ORD della stessa riga NON entra nel fatturato
+--      della partita (tipo_movimento = 'NORMALE'): fatturata via DDT per 10,
+--      fatturato_da_ordine 0 e non 5, differenza 0 e non -5 — ereditato il
+--      22-09 da test-vw-contatore-merce-v1 (ritirato con la vista, D6): era il
+--      solo presidio di questa cintura
 --
 -- Scopo:
 --  - la chiusura e' «equivalente per costruzione» alla vista; questo file la
@@ -53,7 +58,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ⛔ Niente `SET LOCAL app.current_user_id = '1'` dopo la riga di contesto:
 --    l'operatore lo sceglie (o lo COSTRUISCE, su un database vuoto)
@@ -221,12 +226,18 @@ BEGIN
   RETURN v_ddt;
 END $$ LANGUAGE plpgsql;
 
--- Un'attivita' fatturabile NORMALE sul segmento dato (corsia ORD o DDT).
-CREATE OR REPLACE FUNCTION pg_temp.ch_mk_af(p_segment varchar, p_qta numeric)
+-- Un'attivita' fatturabile sul segmento dato (corsia ORD o DDT): NORMALE, o
+-- ONERE (caso 5) — la causale e' obbligatoria se e solo se tipo_movimento =
+-- 'ONERE' (chk_commesse_attivita_causale_onere); si legge dal catalogo seed.
+CREATE OR REPLACE FUNCTION pg_temp.ch_mk_af(p_segment varchar, p_qta numeric,
+                                            p_tipo_mov varchar DEFAULT 'NORMALE')
 RETURNS void AS $$
-DECLARE r RECORD;
+DECLARE r RECORD; v_causale_id bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs_ch;
+  IF p_tipo_mov = 'ONERE' THEN
+    SELECT c.id INTO v_causale_id FROM config.causali_onere c WHERE c.attivo ORDER BY c.id LIMIT 1;
+  END IF;
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com_ch),
     p_segment_key => p_segment, p_articolo_id => r.articolo_id,
@@ -240,7 +251,7 @@ BEGIN
     p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
     p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id, p_valuta_id => r.valuta_id,
     p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
-    p_tipo_movimento => 'NORMALE');
+    p_tipo_movimento => p_tipo_mov, p_causale_onere_id => v_causale_id);
   PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_ch), true, false);
 END $$ LANGUAGE plpgsql;
 
@@ -458,6 +469,31 @@ SELECT results_eq(
                 AND v.ordine_id = (SELECT ordine_id FROM tmp_ob))$q$,
   $q$VALUES (0, 'MULTIPLA', 0)$q$,
   '13) riga MULTIPLA: esce solo sotto l''ordine della riga minima, per la funzione come per la vista');
+
+-- ============================================================
+-- CASO 5 — l'ONERE non e' merce. Ordine da 10 spedito 10, fatturato via DDT
+--          per 10 (NORMALE, corsia DDT) + un ONERE da 5 sul segmento ORD della
+--          stessa riga d'ordine (un segmento e' UNA attivita': l'onere ha la
+--          sua chiave). La partita legge il conto delle AF per chiave
+--          (fn_af_merce_per_riga, che NON filtra il tipo — e' la porta della
+--          nota di credito) e tiene solo tipo_movimento = 'NORMALE': senza la
+--          cintura l'onere entrerebbe come fatturato d'ordine 5, fatturato 15
+--          e differenza -5, cioe' «da accreditare» su una merce fatturata
+--          giusta. Ereditato dal presidio del contatore ritirato
+--          (test-vw-contatore-merce-v1, test 5).
+-- ============================================================
+CREATE TEMP TABLE tmp_o5 AS SELECT * FROM pg_temp.ch_mk_ordine(10);
+CREATE TEMP TABLE tmp_d5 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o5), (SELECT ordine_riga_id FROM tmp_o5), 10, DATE '2026-08-16');
+SELECT pg_temp.ch_mk_af(('DDT:' || (SELECT ddt_uid FROM tmp_d5)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_d5)::text)::varchar, 10);
+SELECT pg_temp.ch_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o5)::text)::varchar, 5, 'ONERE');
+
+SELECT results_eq(
+  $q$SELECT p.fatturato_merce, p.fatturato_da_ordine, p.fatturato, p.differenza,
+            (SELECT count(*)::int FROM vendite.fn_af_merce_per_riga(ARRAY[('ORD:' || o.ordine_uid::text || ':R:' || o.ordine_riga_id::text)::varchar]) f
+              WHERE f.tipo_movimento = 'ONERE' AND f.quantita = 5)
+       FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d5)]) p, tmp_o5 o$q$,
+  $q$VALUES (10::numeric, 0::numeric, 10::numeric, 0::numeric, 1)$q$,
+  '15) l''ONERE sul segmento ORD e'' nel conto delle AF (1 riga ONERE da 5) ma NON nel fatturato della partita: merce 10, da ordine 0, differenza 0');
 
 -- ============================================================
 -- 14) Scope: chi non vede il documento non vede la partita.

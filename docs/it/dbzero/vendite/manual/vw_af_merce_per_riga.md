@@ -16,7 +16,7 @@ La funzione di cui questa vista è la proiezione:
 Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
-> [vw_contatore_merce](vw_contatore_merce.md)
+> [vw_situazione_merce_ordine](vw_situazione_merce_ordine.md)
 > Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md` §9, slice S1
 
 ---
@@ -34,7 +34,7 @@ DDT. Questa vista è il ponte fra le due.
 
 > ⭐ **Il conto non sta più qui: sta in
 > [`fn_af_merce_per_riga`](/dbzero/vendite/funzioni/fn_af_merce_per_riga), e questa vista ne è
-> la proiezione senza filtro** — un corpo solo. Chi legge *tutto* (i pgTAP, `vw_contatore_merce`)
+> la proiezione senza filtro** — un corpo solo. Chi legge *tutto* (i pgTAP)
 > legge la vista; chi legge per documento — la partita, la situazione per riga d'ordine — chiama la
 > funzione con le chiavi di segmento delle righe che gli servono, e paga quelle, non la storia
 > intera della fatturazione. È il motivo per cui questa vista era diventata «il pavimento» del conto

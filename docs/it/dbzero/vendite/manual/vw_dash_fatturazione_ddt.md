@@ -106,8 +106,8 @@ ORDER BY data_riferimento;
 ### Note operative
 
 * **La quantità non è qui**: questa vista misura il *valore fermo* di un documento. Quanti
-  pezzi siano davvero da fatturare lo dice [vw_contatore_merce](vw_contatore_merce.md), ed è
-  quello che il lister proietta.
+  pezzi siano davvero da fatturare lo dice la partita di merce
+  ([vw_partite_merce](vw_partite_merce.md)), ed è quello che il lister proietta.
 * `security_invoker=on` — la famiglia dash è sotto scope emittente. ⚠️ Ri-specificarla a ogni
   `CREATE OR REPLACE`: non è visibile in `pg_get_viewdef` e verrebbe azzerata in silenzio.
 * Test: `db/pgtap/vendite/test-vw-dash-fatturazione-ddt-v1.sql`.

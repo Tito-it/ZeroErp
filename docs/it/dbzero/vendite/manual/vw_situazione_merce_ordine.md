@@ -10,7 +10,6 @@ Approfondimento tabelle:
 Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
-> [vw_contatore_merce](vw_contatore_merce.md)
 > [vw_af_merce_per_riga](vw_af_merce_per_riga.md)
 > Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md` §20.4
 
@@ -28,10 +27,18 @@ raccoglie.
 
 ---
 
-### Perché non basta il contatore
+### Perché non bastava il contatore — e perché ora è questa l'unica lettura
 
-Esiste già un aggregato per riga d'ordine, [vw_contatore_merce](vw_contatore_merce.md).
-Non serve a questo scopo, per tre motivi:
+Fino al 22 settembre 2026 esisteva un secondo aggregato per riga d'ordine,
+`vw_contatore_merce`: il **contatore grezzo** — `tenuti − fatturati`, mai vuoto —
+che dosava il push dei DDT alla fatturazione. **È stato ritirato** (decisione D6
+del brief D14): dal giro 1 della partita per documento il lister dosa dalla
+partita stessa ([`fn_partite_merce`](/dbzero/vendite/funzioni/fn_partite_merce),
+col DDT come seme), nessuna macchina lo leggeva più, e ogni colonna nuova della
+partita gli costava un `DROP` a cascata. Questa vista è quindi **l'unica
+lettura per riga d'ordine**, per una persona come per una macchina. I tre
+motivi per cui il contatore non serviva a *questo* scopo restano scritti,
+perché dicono cosa questa vista deve continuare a fare:
 
 | | |
 |---|---|
@@ -39,8 +46,10 @@ Non serve a questo scopo, per tre motivi:
 | **Appiattisce i «non si applica»** | il suo saldo non è mai vuoto — apposta, perché alimenta la fatturazione — quindi su un conto visione direbbe «N da fatturare» |
 | **Non traduce il saldo** | non ha la colonna che dice *cosa fare*: sarebbe il consumatore a doverla rifare, e due traduzioni divergono |
 
-⛔ **E il contatore non si tocca**: alimenta il calcolo delle quantità che
-finiscono in fattura. Questa vista gli sta **accanto**.
+⭐ Le quantità che finiscono in fattura le dosa la **partita**
+([`vw_partite_merce`](vw_partite_merce.md), grana = riga di DDT), letta dal
+lister per documento: questa vista **non** è sul percorso della fatturazione,
+e può restare parlante senza rischiare di cambiare un numero in fattura.
 
 ---
 
@@ -55,7 +64,7 @@ Sembra un dettaglio contabile e cambia quello che l'operatore legge:
 ```text
 ordine 10 · spediti 4 · fatturati 10 alla conferma
 
-il contatore ......  saldo −6      →  si legge «6 da accreditare»   ✗
+il contatore (ritirato)  saldo −6  →  si leggeva «6 da accreditare»  ✗
 questa vista .....  saldo  0      →  «tutto in pari»
                     fatturato in anticipo 6 · da spedire 6
 ```
