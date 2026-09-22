@@ -1089,7 +1089,7 @@ D6 e il registro dei rossi in CI.
       di Tid). ✅ Terza leva **scritta il 21-09** (`20260921-20`,
       `vw_af_merce_per_riga` letta una volta in una CTE `af` materializzata
       invece di quattro: vista ~90 → ~56 ms da app, SQL estratto + cinque
-      pgTAP verdi in transazione ritirata), ⏳ **da applicare**. ⏳ Seconda
+      pgTAP verdi in transazione ritirata), ✅ **applicata** il 21-09 alle 12:41. ⏳ Seconda
       leva (una lettura invece di due nella capability: scelta di contratto)
       e **quarta leva** (la partita per chiusura del documento, quella che
       chiude il titolo) nel brief
@@ -1111,10 +1111,17 @@ D6 e il registro dei rossi in CI.
       **applicato** alle 23:24 (classificatore 401 → 6 ms su 54 righe, cockpit
       663 → 227 come app; ⚠️ la partita di un DDT e la diagnosi «tutte» NON
       scendono: la partita inlinata è ri-eseguita per riga nella diagnosi,
-      brief §11.8 — una CTE `MATERIALIZED` è il passo prima di D8(b)), da
-      committare; 🔵 D6 (`vw_contatore_merce` senza lettori), D7
-      (`ddt_righe.attivo` senza guard fuori da DRAFT), D8(b) e la CTE della
-      diagnosi da decidere.
+      brief §11.8 — una CTE `MATERIALIZED` è il passo prima di D8(b)),
+      **committato** (`e05e3b1e5`, PR verso `Tito-dev` da aprire); ✏️ **giro
+      5 (D7) SCRITTO il 22-09** (brief §12): Tid ha scelto «B come BB
+      generico» — `vendite.trgfn_doc_righe_lock_fuori_bozza`, «le righe di un
+      documento si toccano solo in bozza», fascia `_a05_`, su `ddt_righe`,
+      `ordini_righe` (solo DELETE) e `contratti_righe`, con le due copie a DB
+      ritirate (lock dedicato dei contratti droppato, ramo 1 del traduttore
+      dei legami tolto); `20260922-01 → -06`, 75 pgTAP con/senza a esiti
+      identici, cinque fixture riordinate; ⏳ apply di Tid. 🔵 D6
+      (`vw_contatore_merce` senza lettori), D8(b) e la CTE della diagnosi da
+      decidere.
 
 ### 🟡 Struttura
 

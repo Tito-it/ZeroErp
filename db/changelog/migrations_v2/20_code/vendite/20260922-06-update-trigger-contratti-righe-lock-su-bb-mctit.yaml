@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TERZO ADOTTANTE, E LA COPIA CHE SI RITIRA — vendite.contratti_righe
+#
+# ── IL FATTO ────────────────────────────────────────────────────────
+#   vendite.trgfn_contratti_righe_lock_post_attivazione (20260515-14)
+#   era la regola «le righe si toccano solo in bozza» scritta per i soli
+#   contratti, nella forma «bloccate quando il padre e' ATTIVO». Con il
+#   BB vendite.trgfn_doc_righe_lock_fuori_bozza (20260922-02) e' una
+#   copia, e si ritira: trigger e funzione droppati, il trigger nuovo in
+#   fascia _a05_ sul BB con ('CONTRATTO', 'contratto_id').
+#
+# ── ⚠️ UN CASO CAMBIA, ED E' DICHIARATO: CESSATO e ANNULLATO ────────
+#   La copia bloccava SOLO lo stato ATTIVO: su un contratto CESSATO o
+#   ANNULLATO le righe erano modificabili a DB — mentre il backend
+#   (contratti_service, «Guard sotto-entita': solo DRAFT») le nega da
+#   sempre. Il BB legge la regola nel suo verso giusto — solo in DRAFT
+#   — quindi da oggi anche CESSATO e ANNULLATO sono chiusi. E' il DB che
+#   si allinea alla regola gia' dichiarata, non una regola nuova.
+#   Censimento (22-09): nessuna funzione viva scrive contratti_righe
+#   fuori dalla bozza (fn_push_offerta_a_contratto crea il contratto in
+#   DRAFT prima delle righe; fn_contratto_riga_componenti_init scrive le
+#   componenti, che sono figlie).
+#
+# ── IL CODICE ───────────────────────────────────────────────────────
+#   Le righe sollevano ora E_RIGA_DOC_NON_BOZZA (con etichetta, stato e
+#   verbo). E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452) RESTA: lo
+#   solleva il lock simmetrico sulla TESTATA
+#   (trgfn_contratti_lock_post_attivazione), che non e' una copia — le
+#   quattro colonne di pricing di un contratto attivo sono un'altra
+#   regola. Il suo testo a catalogo smette di nominare il trigger di riga.
+#
+# ── I PRESIDI ───────────────────────────────────────────────────────
+#   test-contratti-step23-v1: il test 3 pinnava il NOME del trigger
+#   ritirato, e i 10-12 il rifiuto (P0001) — aggiornati nello stesso
+#   giro. Gli altri tre file di contratti lo nominano solo nei commenti.
+#
+# Brief: brief-db-partita-merce-per-documento (D7, giro 5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-06-update-trigger-contratti-righe-lock-su-bb-mctit.yaml
+
+  - changeSet:
+      id: 20260922-06-update-trigger-contratti-righe-lock-su-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe: trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt
+        e vendite.trgfn_contratti_righe_lock_post_attivazione si ritirano (copia della
+        regola «righe solo in bozza»); al loro posto
+        trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt sul BB
+        vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id').
+        Da oggi chiusi anche CESSATO e ANNULLATO (il BE li negava gia').
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_contratti_righe_lock_post_attivazione';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.contratti_righe'::regclass
+                     AND tgname = 'trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                BEFORE INSERT OR UPDATE OR DELETE ON vendite.contratti_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id');
+
+              DROP FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La copia non si ricrea qui: il ripristino di questo passo e' il ripristino
+              -- dell'intero giro (dal changeSet che la creo', 20260515-14). Si smonta solo il BB.
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt ON vendite.contratti_righe;

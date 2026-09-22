@@ -4,7 +4,8 @@
 --
 -- Test: le righe di DDT e ordine si tolgono FINCHE' il documento e' in
 --   bozza — e il documento stesso si elimina alle stesse condizioni.
---   changeSet 20260826-20 / -21 / -22.
+--   changeSet 20260826-20 / -21 / -22; dal 2026-09-22 la regola di stato sulle
+--   righe vive nel BB vendite.trgfn_doc_righe_lock_fuori_bozza (20260922-02…-05).
 -- ------------------------------------------------------------
 -- COSA PRESIDIA, e perche' non esisteva
 --   Fino al 2026-08-26 vendite.trgfn_dlt_block_ordrig_ddtrig era un
@@ -29,15 +30,25 @@
 --   ragione per andarlo a cercare fra i dati esistenti: un file che
 --   sceglie passa a vuoto su un DB ricostruito da zero, cioe' in CI.
 --
--- ⭐ IL DOCUMENTO FUORI BOZZA NASCE FUORI BOZZA, e non ci arriva per
---   transizione. Tutti i gate di emissione (causale, indirizzi,
---   approvazione, transizione) sono BEFORE **UPDATE**: nascere in EMESSO
---   li salta tutti, senza disabilitare niente. Ed e' corretto per questo
---   file — il soggetto e' il guard di CANCELLAZIONE, non il gate di
---   emissione. Provato il 2026-08-26: passando per la transizione la
---   fixture moriva su tre precondizioni diverse in fila (causale, prezzo
---   risolvibile, indirizzo CON), e ogni volta il test dichiarava «il
---   guard non ha bloccato» mentre il documento era rimasto in bozza.
+-- ⭐ IL DOCUMENTO FUORI BOZZA SI FABBRICA NEL VERSO VERO (rev 2026-09-22).
+--   Fino al 21-09 il DDT «fuori bozza» NASCEVA emesso e riceveva la riga
+--   dopo: tutti i gate di emissione sono BEFORE UPDATE e nascere in EMESSO
+--   li saltava. Dal 20260922-03 quella scorciatoia e' esattamente cio' che
+--   il building block vendite.trgfn_doc_righe_lock_fuori_bozza chiude: una
+--   riga non entra in un documento fuori bozza. Il DDT emesso si costruisce
+--   quindi da un ordine (fn_genera_ddt_da_ordine: DRAFT con la riga), poi
+--   causale, indirizzo CON e la transizione — la ricetta di
+--   test-fn-partite-merce-chiusura-v1. ⚠️ E il DELETE della sua riga (test
+--   5) e' rifiutato dal BB in fascia _a05_, PRIMA che il traduttore dei
+--   legami veda il fulfillment: e' il verdetto giusto («il documento e'
+--   chiuso» va detto per primo), ed e' per questo che il ramo 1 e' uscito da
+--   trgfn_dlt_block_ordrig_ddtrig (20260922-05).
+--
+-- ⚠️ LE FIXTURE SI COSTRUISCONO COI BUILDER (rev 2026-09-22): fino a quel
+--   giorno il file pescava billing account, soggetto e articolo dai dati
+--   esistenti — su un database da zero anagrafiche.* e' vuoto, e il file
+--   era in baseline-rossi-ci come ERRORE_FIXTURE. Cliente e articolo li
+--   fabbricano dbops.fn_pgtap_crea_cliente_ba / fn_pgtap_crea_articolo.
 --
 -- ⭐ IL PERIMETRO E' NELLE CHIAVI ESTERNE, non in questo trigger: il
 --   test 9 lo presidia. Se un domani qualcuno degradasse
@@ -46,11 +57,11 @@
 --   sparirebbe in silenzio.
 --
 -- Indice test (1..10)
---   1) Le due trigger function esistono
---   2) I quattro codici nuovi sono a catalogo con la loro classe
+--   1) Le quattro funzioni (coppia di guard, BB delle righe, lettore) esistono
+--   2) I quattro codici sono a catalogo con la loro classe (E_RIGA_DOC_NON_BOZZA dal 22-09)
 --   3) 🔴 DDT in bozza: la riga SI TOGLIE            <-- il ramo che mancava
 --   4) 🔴 DDT in bozza: la testata si elimina (cascade sulle righe)
---   5) DDT fuori bozza: la riga NON si toglie, e il motivo lo dice
+--   5) DDT fuori bozza: la riga NON si toglie, e il motivo lo dice (E_RIGA_DOC_NON_BOZZA, dal BB)
 --   6) DDT fuori bozza: la testata NON si elimina
 --   7) 🔴 Ordine in bozza: la riga SI TOGLIE
 --   8) Ordine fuori bozza: la riga NON si toglie
@@ -66,8 +77,8 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. ⚠️ E qui NON e' una formalita':
--- vendite.ddt e vendite.ordini hanno RLS e le loro righe no — e' esattamente
--- l'asimmetria per cui script.fn_get_stato_testata_documento e' SECURITY
+-- testate e righe hanno RLS (dal 22-09 anche le righe, letto dal catalogo), ed
+-- e' il motivo per cui script.fn_get_stato_testata_documento e' SECURITY
 -- DEFINER. Senza contesto, il file non eserciterebbe quel pezzo.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
@@ -83,20 +94,22 @@ SELECT is(
     WHERE (n.nspname, p.proname) IN (
             ('vendite','trgfn_dlt_block_ordrig_ddtrig'),
             ('vendite','trgfn_doc_guard_delete_solo_bozza'),
+            ('vendite','trgfn_doc_righe_lock_fuori_bozza'),
             ('script','fn_get_stato_testata_documento'))),
-  3,
-  '1) Le tre funzioni della coppia di guard esistono');
+  4,
+  '1) Le quattro funzioni (coppia di guard, BB delle righe, lettore) esistono');
 
 -- Un codice sollevato ma non a catalogo produce «MESSAGGIO NON DEFINITO»
 -- all'operatore: il presidio sta qui perche' e' un silenzio, non un errore.
 SELECT is(
   (SELECT count(*)::int FROM config.codici_errore c
-    WHERE c.codice IN ('E_DELETE_RIGA_DOC_NON_BOZZA','E_DELETE_DOC_NON_BOZZA',
+    WHERE c.codice IN ('E_RIGA_DOC_NON_BOZZA','E_DELETE_DOC_NON_BOZZA',
                        'E_DELETE_RIGA_DOC_REFERENZIATA','E_DOC_TIPO_NON_GESTITO')
+      AND c.obsoleto_dal IS NULL
       AND c.classe = CASE WHEN c.codice = 'E_DOC_TIPO_NON_GESTITO'
                           THEN 'TECNICO' ELSE 'CONFLITTO_STATO' END),
   4,
-  '2) I quattro codici nuovi sono a catalogo, ognuno con la classe giusta');
+  '2) I quattro codici sono a catalogo e vivi, ognuno con la classe giusta');
 
 -- ============================================================
 -- Fixture — COSTRUITE
@@ -104,120 +117,129 @@ SELECT is(
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);
 
+-- Il mondo si COSTRUISCE: cliente e articolo dai builder, il catalogo per
+-- codice_interno. ⚠️ Ordine obbligato: prima il contesto (in testa), poi il
+-- cliente — il legame BA -> emittente lo scrive il trigger z90 verso
+-- l'emittente di chi agisce.
+CREATE TEMP TABLE tmp_cli_dr AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgtap_delete_righe_bozza');
+
+CREATE TEMP TABLE tmp_refs_dr AS
+SELECT
+  c.billing_account_id,
+  c.utility_id,
+  c.soggetto_ruolo_id,
+  script.fn_pgtap_emittente_operatore()                                                              AS emittente_fiscale_id,
+  -- ⚠️ NON composito (un kit farebbe nascere figlie in CASCADE) e NON gestito a magazzino.
+  dbops.fn_pgtap_crea_articolo('PGT-DR-ART', false)                                                  AS articolo_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                            AS valuta_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                        AS iva_id,
+  (SELECT s.id FROM config.stati_doc_ddt s    WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ddt_draft_id,
+  (SELECT s.id FROM config.stati_doc_ddt s    WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ddt_emesso_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
+  (SELECT t.id FROM config.causali_trasporto t WHERE t.codice='VENDITA' ORDER BY t.id LIMIT 1)                        AS causale_vendita_id,
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
+FROM tmp_cli_dr c;
+
 DO $fix$
 DECLARE
-  v_ef      anagrafiche.emittenti_fiscali.id%TYPE;
-  v_ba      anagrafiche.billing_account.id%TYPE;
-  v_ut      anagrafiche.billing_account.utility_id%TYPE;
-  v_sr      anagrafiche.soggetti_ruoli.id%TYPE;
-  v_val     config.valute.id%TYPE;
-  v_art     catalogo.articoli.id%TYPE;
-  v_ddraft  config.stati_doc_ddt.id%TYPE;
-  v_demesso config.stati_doc_ddt.id%TYPE;
-  v_odraft  config.stati_doc_ordini.id%TYPE;
-  v_oconf   config.stati_doc_ordini.id%TYPE;
-  v_id      bigint;
+  r       RECORD;
+  v_id    bigint;
+  v_ord   bigint;
+  v_orr   bigint;
 BEGIN
-  -- ⚠️ L'EMITTENTE LO DETTA L'OPERATORE, non il billing account:
-  --   script.trgfn_guard_emittente_scope rifiuta un documento il cui emittente
-  --   non sia nella whitelist di chi scrive.
-  v_ef := script.fn_pgtap_emittente_operatore();
-
-  SELECT ba.id, ba.utility_id INTO v_ba, v_ut
-    FROM anagrafiche.billing_account ba
-   WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-   ORDER BY ba.id LIMIT 1;
-
-  SELECT id INTO v_sr  FROM anagrafiche.soggetti_ruoli ORDER BY id LIMIT 1;
-  SELECT id INTO v_val FROM config.valute ORDER BY id LIMIT 1;
-
-  -- ⚠️ Articolo NON composito: un kit farebbe nascere righe componenti, cioe'
-  --   figlie in CASCADE, e il caso in esame e' la riga NUDA.
-  SELECT a.id INTO v_art FROM catalogo.articoli a
-   WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, false) IS FALSE
-   ORDER BY a.id LIMIT 1;
-
-  SELECT id INTO v_ddraft  FROM config.stati_doc_ddt    WHERE codice_interno='DRAFT'      AND attivo LIMIT 1;
-  SELECT id INTO v_demesso FROM config.stati_doc_ddt    WHERE codice_interno='EMESSO'     AND attivo LIMIT 1;
-  SELECT id INTO v_odraft  FROM config.stati_doc_ordini WHERE codice_interno='DRAFT'      AND attivo LIMIT 1;
-  SELECT id INTO v_oconf   FROM config.stati_doc_ordini WHERE codice_interno='CONFERMATO' AND attivo LIMIT 1;
-
-  IF v_ef IS NULL OR v_ba IS NULL OR v_art IS NULL THEN
-    -- ⚠️ Il motivo si DICE: uno skip inspiegato somiglia troppo a un verde.
-    RAISE WARNING 'fixture delete-righe non costruibile: emittente/BA/articolo mancanti';
-    RETURN;
-  END IF;
+  SELECT * INTO r FROM tmp_refs_dr;
 
   -- ── DDT in bozza (test 3 e 4) ───────────────────────────────────
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
                            billing_account_id, utility_id, valuta_id,
                            emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, v_ddraft, v_sr, v_ba, v_ut, v_val, v_ef, false,
+  VALUES (CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
+          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ddt_bozza', v_id);
 
   INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
                                  qta_operativa, quantita, storicizza, meta)
-  VALUES (v_id, 1, v_art, 'riga togliibile', 1.000000, 1.000000, false,
+  VALUES (v_id, 1, r.articolo_id, 'riga togliibile', 1.000000, 1.000000, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ddt_bozza_riga', v_id);
 
   -- Secondo DDT in bozza, per provare il cascade sulla testata senza
-  -- consumare quello dei test 3.
+  -- consumare quello del test 3.
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
                            billing_account_id, utility_id, valuta_id,
                            emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, v_ddraft, v_sr, v_ba, v_ut, v_val, v_ef, false,
+  VALUES (CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
+          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ddt_bozza2', v_id);
   INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
                                  qta_operativa, quantita, storicizza, meta)
-  VALUES (v_id, 1, v_art, 'riga che muore col padre', 1.000000, 1.000000, false,
+  VALUES (v_id, 1, r.articolo_id, 'riga che muore col padre', 1.000000, 1.000000, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'));
 
-  -- ── DDT che NASCE fuori bozza (test 5 e 6) ──────────────────────
-  INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
-                           billing_account_id, utility_id, valuta_id,
-                           emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, v_demesso, v_sr, v_ba, v_ut, v_val, v_ef, false,
+  -- ── DDT EMESSO nel verso vero (test 5 e 6): ordine confermato,
+  --    fn_genera_ddt_da_ordine (DRAFT con la riga), causale, indirizzo,
+  --    transizione ──────────────────────────────────────────────────
+  INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
+                              billing_account_id, utility_id, valuta_id,
+                              emittente_fiscale_id, storicizza, meta)
+  VALUES (DATE '2026-08-05', r.stato_ord_conf_id, r.soggetto_ruolo_id, r.billing_account_id,
+          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
+  RETURNING id INTO v_ord;
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+                                    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (v_ord, 1, r.articolo_id, 'riga ordine evasa', 2, 2, 10, r.iva_id, true, false,
+          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
+  RETURNING id INTO v_orr;
+
+  v_id := vendite.fn_genera_ddt_da_ordine(
+      v_ord,
+      jsonb_build_array(jsonb_build_object('ordine_riga_id', v_orr, 'qta_da_evadere', 2)),
+      DATE '2026-08-10');
+  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+  VALUES (v_id, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
+  UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id  WHERE id = v_id;
+  UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id WHERE id = v_id;
   INSERT INTO tmp_fix VALUES ('ddt_emesso', v_id);
-  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
-                                 qta_operativa, quantita, storicizza, meta)
-  VALUES (v_id, 1, v_art, 'riga intoccabile', 1.000000, 1.000000, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
+  SELECT dr.id INTO v_id FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_id ORDER BY dr.id LIMIT 1;
   INSERT INTO tmp_fix VALUES ('ddt_emesso_riga', v_id);
 
   -- ── Ordine in bozza e ordine confermato (test 7 e 8) ────────────
   INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
                               billing_account_id, utility_id, valuta_id,
                               emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, v_odraft, v_sr, v_ba, v_ut, v_val, v_ef, false,
+  VALUES (CURRENT_DATE, r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
+          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ord_bozza', v_id);
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
                                     qta_operativa, quantita, prezzo_unitario, storicizza, meta)
-  VALUES (v_id, 1, v_art, 'riga ordine togliibile', 1.000000, 1.000000, 10.000000, false,
+  VALUES (v_id, 1, r.articolo_id, 'riga ordine togliibile', 1.000000, 1.000000, 10.000000, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ord_bozza_riga', v_id);
 
+  -- ⚠️ La riga entra su un ordine gia' confermato: il BB sugli ordini e'
+  --   montato sul solo DELETE (porta aperta di proposito, 20260922-04).
   INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
                               billing_account_id, utility_id, valuta_id,
                               emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, v_oconf, v_sr, v_ba, v_ut, v_val, v_ef, false,
+  VALUES (CURRENT_DATE, r.stato_ord_conf_id, r.soggetto_ruolo_id, r.billing_account_id,
+          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ord_conf', v_id);
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
                                     qta_operativa, quantita, prezzo_unitario, storicizza, meta)
-  VALUES (v_id, 1, v_art, 'riga ordine intoccabile', 1.000000, 1.000000, 10.000000, false,
+  VALUES (v_id, 1, r.articolo_id, 'riga ordine intoccabile', 1.000000, 1.000000, 10.000000, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ord_conf_riga', v_id);
@@ -294,7 +316,7 @@ SELECT CASE
     (SELECT sqlstate = 'P0001' AND messaggio LIKE '%non e'' piu'' in bozza%'
                               AND messaggio LIKE '%le sue righe%'
        FROM tmp_esito WHERE caso='5_ddt_emesso_riga'),
-    '5) DDT fuori bozza: la riga NON si toglie, ed e E_DELETE_RIGA_DOC_NON_BOZZA a dirlo')
+    '5) DDT fuori bozza: la riga NON si toglie, ed e E_RIGA_DOC_NON_BOZZA (il BB, fascia _a05_) a dirlo')
 END;
 
 SELECT CASE

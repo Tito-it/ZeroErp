@@ -1,0 +1,249 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI UN DOCUMENTO SI TOCCANO SOLO IN BOZZA — il building block
+# vendite.trgfn_doc_righe_lock_fuori_bozza
+#
+# ── IL FATTO (D7 del brief, letto dal catalogo il 21-09) ────────────
+#   vendite.ddt_righe.attivo non aveva NESSUN guard fuori da DRAFT: i
+#   soli trigger su attivo erano i block_deact delle figlie (fulfillment,
+#   resi, componenti, note), e una riga standalone gia' instradata alla
+#   fatturazione non ne ha. Il modello ammetteva quindi di far sparire
+#   — con attivo = false, ma anche cambiando quantita' o articolo — una
+#   riga di merce che un'attivita' di commessa dice ALLOCATA o EMESSA.
+#   Il legame riga -> attivita' e' una chiave di testo (segment_key), non
+#   una FK: il framework ATTIVO non puo' vederlo.
+#
+# ── LA REGOLA, ED E' GIA' QUELLA DEL PROGETTO ───────────────────────
+#   «Le righe di un documento si aggiungono, modificano e tolgono solo
+#   finche' il documento e' in bozza; dopo, le correzioni passano da
+#   documenti di rettifica (reso, ri-consegna, nota)». Era scritta in
+#   tre posti e fatta rispettare a DB in nessuno per DDT:
+#     - script.fn_available_actions_ddt: can_edit_righe = (stato = DRAFT);
+#     - backend ddt_service: _STATI_RIGHE_MODIFICABILI = {DRAFT}
+#       (identica per ordini, preventivi; resi con BOZZA);
+#     - guida: «un documento emesso e' immutabile».
+#   Una capability senza il suo guard e' l'inversione che api.md vieta
+#   (il motivo lo produce la STESSA funzione che il DB usa per rifiutare).
+#
+# ── ⭐ PERCHE' UN BB E NON UN GUARD PER IL DDT (Tid, 21-09 notte) ────
+#   A DB la regola aveva gia' DUE copie, e questo giro le ritira:
+#     1. vendite.trgfn_contratti_righe_lock_post_attivazione (20260515-14)
+#        — righe di contratto bloccate quando il padre e' ATTIVO
+#        (⚠️ e aperte in CESSATO/ANNULLATO, dove il BE le nega);
+#     2. il ramo 1 di vendite.trgfn_dlt_block_ordrig_ddtrig (20260826-21)
+#        — DELETE di riga DDT/ordine fuori bozza.
+#   Regola del 2: le copie si ritirano nello stesso giro (20260922-05, -06).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, tre argomenti:
+#     TG_ARGV[0] tipo documento per script.fn_get_stato_testata_documento
+#                (DDT | ORDINE | CONTRATTO: il lettore decide cosa esiste);
+#     TG_ARGV[1] colonna della riga che porta l'id della testata
+#                (ddt_id, ordine_id, contratto_id), letta con to_jsonb —
+#                niente SQL dinamico per riga;
+#     TG_ARGV[2] (opz.) codice_interno dello stato «bozza», default DRAFT
+#                (i resi lo chiamano BOZZA).
+#   Lo stato si legge dal lettore SECURITY DEFINER: le testate E le righe
+#   hanno RLS (catalogo, 22-09), e un guard invoker non distinguerebbe
+#   «non c'e'» da «non la vedo» (memoria: un trigger guard legge sotto
+#   RLS). Testata assente = cascade partito dalla testata (sul DELETE) o
+#   FK che parlera' (INSERT/UPDATE): si passa, come nel gemello del 26-08.
+#   Su UPDATE si guardano ENTRAMBE le testate se la riga cambia padre.
+#
+# ── ⚠️ FASCIA _a05_, e non e' stile ─────────────────────────────────
+#   I BEFORE ROW girano in ordine alfabetico. Con _a10_ il nome verrebbe
+#   DOPO trg_ddt_righe_a10_block_ddt_dlt e trg_*_block_deact_upd, e
+#   l'operatore leggerebbe «c'e' un fulfillment» / «ci sono figli» prima
+#   di «il documento e' emesso» — cioe' un rimedio che non e' il rimedio
+#   (e' lo stesso ordine che trgfn_dlt_block_ordrig_ddtrig dichiarava nel
+#   proprio corpo). PRIMA l'immutabilita', POI la validita' del valore
+#   nuovo: precedente trg_emittenti_fiscali_a05_guard_codice_forma.
+#
+# ── CODICI ──────────────────────────────────────────────────────────
+#   E_RIGA_DOC_NON_BOZZA (CONFLITTO_STATO): «<etichetta> non e' piu' in
+#   bozza (stato X): le sue righe si possono <aggiungere|modificare|
+#   togliere> solo finche' e' in bozza». Generalizza
+#   E_DELETE_RIGA_DOC_NON_BOZZA, che si ritira (obsoleto_dal).
+#   E_DOC_RIGHE_LOCK_MONTAGGIO (TECNICO): argomenti mancanti o colonna
+#   FK assente sulla riga — errore di chi monta, non di chi scrive.
+#
+# Brief: brief-db-partita-merce-per-documento (D7, giro 5, §12).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-02-create-trgfn-doc-righe-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20260922-02-create-trgfn-doc-righe-lock-fuori-bozza
+      author: mctit
+      # ⛔ runOnChange VIETATO in 20_code (scripts/guardrail_run_on_change.py).
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.trgfn_doc_righe_lock_fuori_bozza: building block «le righe di un
+        documento si aggiungono, modificano e tolgono solo in bozza». Legge lo stato
+        dal lettore DEFINER script.fn_get_stato_testata_documento; TG_ARGV = tipo
+        documento, colonna FK della riga, [codice stato bozza]. Adottanti nello stesso
+        giro: ddt_righe (-03), ordini_righe solo DELETE (-04), contratti_righe (-06).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_stato_testata_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- TG_ARGV[0]: tipo documento per script.fn_get_stato_testata_documento
+                v_documento    text;
+                -- TG_ARGV[1]: colonna della riga che porta l'id della testata
+                v_fk_col       text;
+                -- TG_ARGV[2] (opz.): codice_interno dello stato «bozza», default DRAFT
+                v_stato_bozza  text;
+
+                v_riga         jsonb;          -- la riga che sta cambiando (NEW, o OLD sul DELETE)
+                v_testate      bigint[];       -- le testate coinvolte: una, due se la riga cambia padre
+                v_testata_id   bigint;
+                v_stato        text;
+                v_etichetta    text;
+                v_verbo        text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Le righe di un documento si aggiungono, modificano e
+                --   tolgono SOLO finche' il documento e' in bozza. Fuori dalla
+                --   bozza il contenuto non e' piu' una proposta ma un fatto
+                --   (una spedizione, una merce instradata a fatturazione, un
+                --   pricing attivo): le correzioni passano da documenti di
+                --   rettifica, non da una riga che cambia.
+                --
+                -- Building block, montato per documento con tre argomenti:
+                --   [0] tipo documento (DDT | ORDINE | CONTRATTO — decide il
+                --       lettore script.fn_get_stato_testata_documento);
+                --   [1] colonna FK della riga verso la testata;
+                --   [2] (opz.) codice dello stato bozza, default 'DRAFT'.
+                --
+                -- ⛔ Lo stato si legge da un lettore SECURITY DEFINER: testate e
+                --    righe hanno RLS, e un guard invoker non distinguerebbe
+                --    «la testata non c'e'» da «non la vedo».
+                -- ⚠️ Testata assente = cascade partito dalla testata (DELETE),
+                --    o FK che parlera' (INSERT/UPDATE): il guard PASSA. La
+                --    regola di stato sulla testata l'ha gia' applicata il guard
+                --    di testata (trgfn_doc_guard_delete_solo_bozza), e ddt_id /
+                --    ordine_id / contratto_id sono NOT NULL con FK: una riga
+                --    orfana non esiste, quindi «assente» non puo' voler dire
+                --    altro.
+                -- ⭐ Fascia _a05_: il rifiuto di stato deve parlare PRIMA dei
+                --    guard _a10_ sui legami (fulfillment, figli), o l'operatore
+                --    legge un rimedio che non e' il rimedio.
+                -- =========================================================
+
+                -- ── Argomenti: errore di MONTAGGIO, non di dato ───────────
+                IF COALESCE(array_length(TG_ARGV, 1), 0) < 2
+                   OR NULLIF(TG_ARGV[0], '') IS NULL
+                   OR NULLIF(TG_ARGV[1], '') IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'tg_argv', TG_ARGV),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'attesi: tipo documento, colonna FK della riga [, codice stato bozza]');
+                END IF;
+
+                v_documento   := TG_ARGV[0];
+                v_fk_col      := TG_ARGV[1];
+                v_stato_bozza := COALESCE(NULLIF(TG_ARGV[2], ''), 'DRAFT');
+
+                -- ── La riga, letta una volta (niente SQL dinamico per riga) ─
+                v_riga := CASE WHEN TG_OP = 'DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;
+
+                IF NOT (v_riga ? v_fk_col) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'fk_col',  v_fk_col),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    format('la colonna %s non esiste sulla riga', v_fk_col));
+                END IF;
+
+                -- ── Le testate da guardare ────────────────────────────────
+                -- Su UPDATE anche quella di provenienza: spostare una riga da
+                -- un documento emesso a una bozza e' comunque una modifica del
+                -- documento emesso.
+                v_testate := ARRAY[(v_riga ->> v_fk_col)::bigint];
+                IF TG_OP = 'UPDATE'
+                   AND (to_jsonb(OLD) ->> v_fk_col) IS DISTINCT FROM (v_riga ->> v_fk_col) THEN
+                  v_testate := ARRAY[(to_jsonb(OLD) ->> v_fk_col)::bigint] || v_testate;
+                END IF;
+
+                v_verbo := CASE TG_OP
+                             WHEN 'INSERT' THEN 'aggiungere'
+                             WHEN 'UPDATE' THEN 'modificare'
+                             ELSE               'togliere'
+                           END;
+
+                FOREACH v_testata_id IN ARRAY v_testate LOOP
+                  v_stato := NULL;
+                  v_etichetta := NULL;
+
+                  SELECT t.stato, t.etichetta
+                    INTO v_stato, v_etichetta
+                    FROM script.fn_get_stato_testata_documento(v_documento, v_testata_id) AS t;
+
+                  -- Assente: cascade dalla testata, o FK che parlera'. Si passa.
+                  CONTINUE WHEN v_stato IS NULL;
+
+                  IF v_stato <> v_stato_bozza THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', TG_NAME::text, 'E_RIGA_DOC_NON_BOZZA',
+                      jsonb_build_object('table',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                         'id',         v_riga ->> 'id',
+                                         'documento',  v_documento,
+                                         'testata_id', v_testata_id,
+                                         'stato',      v_stato,
+                                         'operazione', TG_OP),
+                      (v_riga ->> 'tx_id')::uuid,
+                      v_etichetta,
+                      v_stato,
+                      v_verbo);
+                  END IF;
+                END LOOP;
+
+                RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+              IS 'Building block (2026-09-22): le righe di un documento si aggiungono, modificano e tolgono SOLO finche'' il documento e'' in bozza. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, TG_ARGV = [0] tipo documento per script.fn_get_stato_testata_documento (DDT | ORDINE | CONTRATTO), [1] colonna FK della riga verso la testata, [2] (opz.) codice_interno dello stato bozza, default DRAFT. Rifiuta con E_RIGA_DOC_NON_BOZZA (CONFLITTO_STATO; valori: etichetta, stato, verbo). ⛔ Lo stato si legge dal lettore SECURITY DEFINER perche'' testate e righe hanno RLS: un guard invoker non distinguerebbe «non c''e''» da «non la vedo». Testata assente = cascade dalla testata o FK che parlera'': passa. Su UPDATE guarda anche la testata di provenienza se la riga cambia padre. ⭐ Fascia _a05_: il rifiuto di stato parla PRIMA dei guard _a10_ sui legami (fulfillment, figli), o l''operatore legge un rimedio che non e'' il rimedio. Nasce da D7 di brief-db-partita-merce-per-documento (una riga di DDT gia'' instradata a fatturazione poteva essere disattivata) e ritira nello stesso giro le due copie che la regola aveva a DB: vendite.trgfn_contratti_righe_lock_post_attivazione (droppata) e il ramo 1 di vendite.trgfn_dlt_block_ordrig_ddtrig. Adottanti: vendite.ddt_righe (tre porte), vendite.ordini_righe (solo DELETE: INSERT/UPDATE restano aperti di proposito, data_consegna_confermata cambia dopo la conferma), vendite.contratti_righe (tre porte). Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO (TECNICO).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_doc_righe_lock_fuori_bozza();

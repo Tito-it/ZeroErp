@@ -1,0 +1,174 @@
+## 📘 Documentazione Concettuale – Trigger function `vendite.trgfn_doc_righe_lock_fuori_bozza`
+
+> 👀 **Vedi anche**
+>
+> [script.fn_get_stato_testata_documento](/dbzero/script/funzioni/fn_get_stato_testata_documento) — il lettore `SECURITY DEFINER` da cui prende lo stato
+> [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — la stessa regola, sulla testata
+> [vendite.trgfn_dlt_block_ordrig_ddtrig](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig) — il traduttore dei legami a valle, che parla dopo
+> [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe) · [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe) · [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe) — gli adottanti
+> [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — lo stampo dei building block parametrizzati
+
+---
+
+### 🎯 Scopo Principale
+
+**Le righe di un documento si aggiungono, modificano e tolgono solo finché il
+documento è in bozza.**
+
+Fuori dalla bozza il contenuto di un documento non è più una proposta ma un
+fatto: una merce spedita, una riga già instradata alla fatturazione, un
+pricing in vigore. Le correzioni passano da documenti di rettifica — reso,
+ri-consegna, nota — non da una riga che cambia.
+
+È un **building block**: una sola funzione, montata su ogni tabella di righe
+con tre argomenti.
+
+| `TG_ARGV` | Cosa | Esempio |
+| --- | --- | --- |
+| `[0]` | tipo di documento, per il lettore di stato (`DDT`, `ORDINE`, `CONTRATTO`) | `'DDT'` |
+| `[1]` | colonna della riga che porta l'id della testata | `'ddt_id'` |
+| `[2]` (opz.) | `codice_interno` dello stato «bozza», default `DRAFT` | `'BOZZA'` per i resi |
+
+```sql
+CREATE TRIGGER trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+  BEFORE INSERT OR UPDATE OR DELETE ON vendite.ddt_righe
+  FOR EACH ROW
+  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id');
+```
+
+---
+
+### ⭐ Da dove nasce: una riga di merce che poteva sparire
+
+Letto dal catalogo il 21 settembre: `vendite.ddt_righe.attivo` non aveva nessun
+guard fuori da `DRAFT`. I soli trigger su `attivo` erano i `block_deact` delle
+figlie (fulfillment, resi, componenti, note), e una riga standalone già
+instradata alla fatturazione non ne ha — il legame fra la riga e l'attività di
+commessa è una **chiave di testo** (`segment_key`), non una FK, e il framework
+ATTIVO non può vederlo. Il modello ammetteva quindi di disattivare, o cambiare,
+una riga di DDT emesso che un'attività dice `ALLOCATA` o `EMESSA`: merce in
+fattura che nessun documento mostra più.
+
+La regola c'era, e in tre posti: la capability
+(`fn_available_actions_ddt`: `can_edit_righe = (stato = DRAFT)`), il backend
+(`_STATI_RIGHE_MODIFICABILI = {DRAFT}`, identico per ordini e preventivi) e la
+guida. A DB no. Una capability senza il suo guard è l'inversione che le linee
+guida API vietano: *il motivo lo produce la stessa funzione che il database usa
+per rifiutare*.
+
+> Decisione di Tid, 21 settembre 2026 (D7 del brief sulla partita di merce):
+> **non un guard su `attivo`, ma la regola del documento — e come building
+> block**, perché a DB la regola aveva già due copie parziali.
+
+---
+
+### ⭐ Le due copie che ha ritirato
+
+* **`vendite.trgfn_contratti_righe_lock_post_attivazione`** (nata con
+  `20260515-14`, droppata con `20260922-06`): la stessa regola scritta per i
+  soli contratti, nella forma «righe bloccate quando il padre è `ATTIVO`». ⚠️
+  Lasciava aperti `CESSATO` e `ANNULLATO`, dove il backend le negava da sempre:
+  il BB legge la regola nel verso giusto — solo in `DRAFT` — e da oggi quei due
+  stati sono chiusi anche a DB. Il codice `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`
+  resta al lock **della testata** (`trgfn_contratti_lock_post_attivazione`),
+  che non è una copia: le quattro colonne di pricing sono un'altra regola.
+* **il ramo 1 di `vendite.trgfn_dlt_block_ordrig_ddtrig`** (dal `20260826-21`,
+  tolto con `20260922-05`): «documento non più in bozza → rifiuto», scritto per
+  la sola porta del `DELETE` di DDT e ordini. Con il BB in fascia `_a05_` quel
+  ramo non sarebbe mai stato raggiunto: una seconda implementazione mai
+  provata è la prima a divergere. Il traduttore dei legami a valle resta, e
+  parla **dopo**.
+
+---
+
+### Gli adottanti, e una porta lasciata aperta di proposito
+
+| Tabella | Trigger | Porte |
+| --- | --- | --- |
+| `vendite.ddt_righe` | `trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` | INSERT, UPDATE, DELETE |
+| `vendite.ordini_righe` | `trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt` | **solo DELETE** |
+| `vendite.contratti_righe` | `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` | INSERT, UPDATE, DELETE |
+
+⚠️ **Sugli ordini `INSERT` e `UPDATE` restano aperti, ed è una decisione**
+(Tid, 14 settembre, voce «la promessa di consegna dopo la conferma» in
+`PROJECT_CONTEXT`): `data_consegna_confermata` si decide alla conferma e può
+cambiare dopo, e il verbo che la governa non esiste ancora. Montare le tre
+porte chiuderebbe quella colonna prima del verbo. Il pgTAP del BB pinna
+questa apertura (test 14), così un allargamento futuro sarà deliberato: è un
+`CREATE OR REPLACE TRIGGER`, non un guard nuovo.
+
+I **preventivi** sono il candidato successivo (`_STATI_RIGHE_MODIFICABILI =
+{DRAFT}` anche lì), ma non in questo giro: il flusso di approvazione prezzo
+scrive `stato_approvazione_prezzo` sulle righe, e va censito prima di chiudere
+la porta.
+
+---
+
+### ⚠️ Fascia `_a05_`, e non è stile
+
+I `BEFORE ROW` girano in ordine alfabetico. Con `_a10_` il nome verrebbe
+**dopo** `trg_ddt_righe_a10_block_ddt_dlt` e i `trg_*_block_deact_upd`, e
+l'operatore leggerebbe *«c'è un fulfillment»* o *«ci sono figli»* prima di
+*«il documento è emesso»* — un rimedio che non è il rimedio: toglierebbe il
+fulfillment per sbattere un attimo dopo contro il muro vero.
+
+**Prima l'immutabilità, poi la validità del valore nuovo.** Precedente:
+`trg_emittenti_fiscali_a05_guard_codice_forma`.
+
+---
+
+### ⛔ Lo stato si legge da un lettore `SECURITY DEFINER`
+
+Testate **e** righe hanno RLS (letto dal catalogo il 22 settembre: `ddt`,
+`ddt_righe`, `ordini`, `ordini_righe`, `contratti`, `contratti_righe`). Un
+guard invoker che leggesse la testata sotto policy non distinguerebbe *«la
+testata non c'è»* da *«la testata non la vedo»*, e diventerebbe fail-open
+proprio per chi sta fuori perimetro. Per questo lo stato arriva da
+[`script.fn_get_stato_testata_documento`](/dbzero/script/funzioni/fn_get_stato_testata_documento),
+che risponde sempre, e il verdetto è sul **valore**.
+
+**Testata assente ⇒ il guard passa.** Sul `DELETE` è un cascade partito dalla
+testata, e la regola di stato l'ha già applicata
+`trgfn_doc_guard_delete_solo_bozza`; su `INSERT`/`UPDATE` parlerà la FK. Le
+colonne `ddt_id`, `ordine_id`, `contratto_id` sono `NOT NULL` con FK: una riga
+orfana non esiste, quindi «assente» non può voler dire altro.
+
+Su `UPDATE`, se la riga cambia padre, si guardano **entrambe** le testate:
+spostare una riga da un documento emesso a una bozza è comunque una modifica
+del documento emesso.
+
+---
+
+### Codici errore
+
+| Codice | Classe | Quando | Valori |
+| --- | --- | --- | --- |
+| `E_RIGA_DOC_NON_BOZZA` | `CONFLITTO_STATO` | il documento non è più in bozza | etichetta del documento, stato, verbo (`aggiungere` / `modificare` / `togliere`) |
+| `E_DOC_RIGHE_LOCK_MONTAGGIO` | `TECNICO` | argomenti mancanti, o colonna FK che la riga non ha | trigger, tabella, nota |
+| `E_DOC_TIPO_NON_GESTITO` | `TECNICO` | tipo di documento sconosciuto al lettore (lo solleva il lettore) | il tipo ricevuto |
+
+* La frase è **una per tre porte**, ed è il verbo a dire quale: *«DDT 0023456
+  non è più in bozza (stato CONSEGNATO): le sue righe si possono modificare
+  solo finché è in bozza»*. Generalizza `E_DELETE_RIGA_DOC_NON_BOZZA`, ritirato
+  lo stesso giorno (`obsoleto_dal`, messaggio conservato per il diario).
+* Nessuna chiave `campo` nel contesto: su un `CONFLITTO_STATO` non c'è nessun
+  campo da accendere — è la situazione a non consentire l'operazione.
+
+---
+
+### Note operative
+
+* **Le fixture pgTAP costruiscono il documento nel verso vero**: bozza, righe,
+  poi la transizione. Un documento «che nasce fuori bozza» non può più ricevere
+  righe — era una scorciatoia che saltava tutti i gate di emissione, ed è
+  esattamente ciò che il BB chiude. Cinque file sono stati riscritti così il
+  22 settembre; la ricetta è in `test-fn-partite-merce-chiusura-v1`
+  (`fn_genera_ddt_da_ordine`, causale, indirizzo CON, transizioni contigue).
+* Il rimedio, quando rifiuta, **non è insistere**: si agisce sul documento
+  intero con il verbo che il suo stato ammette, o con un documento di rettifica.
+* Presidio: `db/pgtap/vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1.sql`
+  (21 casi costruiti, fra cui la riga `ALLOCATA` disattivata — il caso da cui
+  tutto è partito — e la precedenza sul fulfillment).
+
+> 📎 changeSet `20260922-01 … -06`. Brief:
+> `brief-db-partita-merce-per-documento` (D7, giro 5).
