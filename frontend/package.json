@@ -12,6 +12,7 @@
     "lint:eslint": "eslint . --cache",
     "guards": "run-s guard:*",
     "guard:liste": "node scripts/check-liste-configurabili.mjs",
+    "guard:filtri": "node scripts/check-filtri-lista.mjs",
     "guard:pinia": "node scripts/check-pinia-user-scoped-reset.mjs",
     "guard:drawer": "node scripts/check-drawer-width.mjs",
     "guard:icone": "node scripts/check-primeicons-codepoints.mjs",

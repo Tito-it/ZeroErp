@@ -104,6 +104,38 @@
   --app-focus-ring: var(--p-focus-ring-color);            /* l'anello di fuoco */
   --app-space-sm: 0.5rem;                                 /* la spaziatura piccola (gap, padding) */
 
+  /* ===== Larghezze dei FILTRI di lista (BB `FiltriLista`) =====
+   * ⭐ L'UNITA' e' la larghezza minima di un filtro leggibile, ed e' la stessa
+   * cosa per una data e per una combo: il drawer dal basso dispone i filtri su
+   * una griglia di queste unita', quindi due date (o due combo) stanno
+   * affiancate appena ce ne stanno due.
+   * ⭐ Perche' 8rem, e non e' un numero pescato: sono ~13 caratteri al font
+   * della toolbar, cioe' `31/12/2026` intero piu' l'icona del calendario. Per
+   * una combo e' il punto in cui il VALORE SCELTO resta riconoscibile
+   * («Energia el…» si legge, «Ene…» no).
+   * ⭐ E il minimo NON riguarda la scelta, solo la lettura di cio' che e' gia'
+   * scelto: PrimeVue impone al pannello `min-width` = larghezza del trigger
+   * (`alignOverlay`), e le opzioni hanno `white-space: nowrap`, quindi il
+   * pannello CRESCE col contenuto — un trigger stretto non taglia le
+   * descrizioni, e il valore selezionato degrada in ellissi
+   * (`.p-select-label` ce l'ha nel tema).
+   * ⛔ Chi ha bisogno di piu' spazio NON e' la combo: e' l'interruttore
+   * (`FiltroToggle`), la cui etichetta sta FUORI dal controllo e non sa
+   * andare in ellissi. Nella griglia occupa due unita'. */
+  --app-filtro-unita: 8rem;
+  /* Il pavimento di una COMBO leggibile: sotto questa larghezza il valore
+   * scelto e' solo un'ellissi, quindi nel drawer una combo prende la riga
+   * intera invece di affiancarsi (la soglia `@container` in main.css e' due
+   * volte questo piu' il gap). ⚠️ Coincide con `--app-filter-w-md` di
+   * proposito: e' la stessa grandezza detta per due usi — la taglia in linea e
+   * il pavimento nella griglia. */
+  --app-filtro-min-combo: 13rem;
+  /* Le tre taglie del filtro nella toolbar in linea (desktop), al posto delle
+   * larghezze scritte nei tag. Multipli dell'unita', non numeri nuovi. */
+  --app-filter-w-sm: 10rem;   /* date, stati, codici brevi */
+  --app-filter-w-md: 13rem;   /* combo con descrizioni */
+  --app-filter-w-lg: 16rem;   /* ricerca, lookup ricchi */
+
   /* ===== Semantica esiti ===== */
   /* Verde "fatto/successo" per icone di completamento (es. check dei passi
    * conclusi nel percorso pratica). Centralizzato: mai green hardcoded. */

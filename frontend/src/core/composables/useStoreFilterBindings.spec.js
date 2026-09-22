@@ -77,6 +77,118 @@ describe('bindDate — la data ISO ↔ Date locale', () => {
   })
 })
 
+describe('bindPeriodo — UN filtro con due estremi', () => {
+  it('scrive l\'estremo toccato, come due bindDate separati', () => {
+    const { store, chiamate, bindPeriodo } = fabbrica({ data_da: '2026-06-01', data_a: null })
+    const periodo = bindPeriodo()
+    expect(periodo.da.value).toBeInstanceOf(Date)
+    periodo.setA(new Date(2026, 8, 30))
+    expect(store.filters.data_a).toBe('2026-09-30')
+    expect(store.filters.data_da).toBe('2026-06-01')
+    expect(chiamate.n).toBe(1)
+  })
+
+  it('⛔ `da` oltre `a`: il periodo si APRE dall\'altra parte, e la fetch e\' UNA', () => {
+    const { store, chiamate, bindPeriodo } = fabbrica({ data_da: '2026-01-01', data_a: '2026-01-31' })
+    const periodo = bindPeriodo()
+    // Sposto la finestra in avanti: il vecchio `a` non descrive piu' niente.
+    periodo.setDa(new Date(2026, 1, 1))
+    expect(store.filters.data_da).toBe('2026-02-01')
+    expect(store.filters.data_a).toBeNull()
+    expect(periodo.a.value).toBeNull()
+    // ⛔ UNA sola fetch: due vorrebbero dire che la prima e' partita con
+    //    l'intervallo ancora invertito — una lista vuota che lampeggia.
+    expect(chiamate.n).toBe(1)
+  })
+
+  it('⛔ simmetrico: `a` prima di `da` apre l\'inizio', () => {
+    const { store, bindPeriodo } = fabbrica({ data_da: '2026-01-01', data_a: '2026-01-31' })
+    const periodo = bindPeriodo()
+    periodo.setA(new Date(2025, 11, 15))
+    expect(store.filters.data_a).toBe('2025-12-15')
+    expect(store.filters.data_da).toBeNull()
+    expect(periodo.da.value).toBeNull()
+  })
+
+  it('due estremi UGUALI sono un periodo di un giorno, non un errore', () => {
+    const { store, bindPeriodo } = fabbrica({ data_da: '2026-01-01', data_a: '2026-01-31' })
+    const periodo = bindPeriodo()
+    periodo.setDa(new Date(2026, 0, 31))
+    expect(store.filters.data_da).toBe('2026-01-31')
+    expect(store.filters.data_a).toBe('2026-01-31')
+  })
+
+  it('con un estremo vuoto non c\'e\' niente da correggere', () => {
+    const { store, bindPeriodo } = fabbrica({ data_da: null, data_a: '2026-01-31' })
+    const periodo = bindPeriodo()
+    periodo.setDa(new Date(2026, 0, 1))
+    expect(store.filters.data_da).toBe('2026-01-01')
+    expect(store.filters.data_a).toBe('2026-01-31')
+  })
+
+  it('⚠️ la correzione porta l\'altro estremo a NULL, mai al suo `clearTo`', () => {
+    const floor = () => new Date(2026, 5, 1)
+    const { store, bindPeriodo } = fabbrica({ data_da: '2026-06-01', data_a: '2026-06-30' })
+    // Il floor sta su `da`, come nei contratti.
+    const periodo = bindPeriodo('data_da', 'data_a', { clearToDa: floor })
+    periodo.setA(new Date(2026, 0, 15))
+    // Se la correzione usasse il `clearTo`, `data_da` tornerebbe al 2026-06-01
+    // — cioe' di nuovo DOPO `data_a`, e il guard non avrebbe concluso niente.
+    expect(store.filters.data_a).toBe('2026-01-15')
+    expect(store.filters.data_da).toBeNull()
+  })
+
+  it('`clearTo` resta vivo per il gesto dell\'operatore che SVUOTA', () => {
+    const floor = () => new Date(2026, 5, 1)
+    const { store, bindPeriodo } = fabbrica({ data_da: '2026-08-01', data_a: null })
+    const periodo = bindPeriodo('data_da', 'data_a', { clearToDa: floor })
+    periodo.setDa(null)
+    expect(store.filters.data_da).toBe('2026-06-01')
+  })
+
+  it('⛔ svuotare `da` col floor NON puo\' lasciare un intervallo invertito', () => {
+    // Il caso che il guard non vedeva: `setDa(null)` emette `null`, e `null` non
+    // inverte niente — ma il valore che finisce nel filtro e' il FLOOR, che qui
+    // cade DOPO `data_a`. L'invariante va controllata sul valore RISOLTO.
+    const floor = () => new Date(2026, 6, 1) // 2026-07-01
+    const { store, chiamate, bindPeriodo } = fabbrica({ data_da: '2026-08-01', data_a: '2026-01-15' })
+    const periodo = bindPeriodo('data_da', 'data_a', { clearToDa: floor })
+    periodo.setDa(null)
+    expect(store.filters.data_da).toBe('2026-07-01')
+    expect(store.filters.data_a).toBeNull()
+    expect(periodo.a.value).toBeNull()
+    expect(chiamate.n).toBe(1)
+  })
+
+  it('⛔ simmetrico: svuotare `a` col floor non lascia `a` prima di `da`', () => {
+    const floor = () => new Date(2026, 0, 1) // 2026-01-01
+    const { store, chiamate, bindPeriodo } = fabbrica({ data_da: '2026-08-01', data_a: '2026-09-01' })
+    const periodo = bindPeriodo('data_da', 'data_a', { clearToA: floor })
+    periodo.setA(null)
+    expect(store.filters.data_a).toBe('2026-01-01')
+    expect(store.filters.data_da).toBeNull()
+    expect(periodo.da.value).toBeNull()
+    expect(chiamate.n).toBe(1)
+  })
+
+  it('il floor che NON inverte lascia l\'altro estremo dov\'era', () => {
+    const floor = () => new Date(2026, 0, 1)
+    const { store, bindPeriodo } = fabbrica({ data_da: '2026-03-01', data_a: '2026-06-30' })
+    const periodo = bindPeriodo('data_da', 'data_a', { clearToDa: floor })
+    periodo.setDa(null)
+    expect(store.filters.data_da).toBe('2026-01-01')
+    expect(store.filters.data_a).toBe('2026-06-30')
+  })
+
+  it('le chiavi non sono cablate: una lista puo\' chiamarle a modo suo', () => {
+    const { store, bindPeriodo } = fabbrica({ validita_dal_min: null, validita_dal_max: '2026-03-31' })
+    const periodo = bindPeriodo('validita_dal_min', 'validita_dal_max')
+    periodo.setDa(new Date(2026, 6, 1))
+    expect(store.filters.validita_dal_min).toBe('2026-07-01')
+    expect(store.filters.validita_dal_max).toBeNull()
+  })
+})
+
 describe('bindToggle — il booleano del widget contro i DUE valori dello store', () => {
   it('coi default scrive `true` acceso e `null` spento: mai un `false` sul filo', () => {
     const { store, chiamate, bindToggle } = fabbrica({ solo_negativa: null })

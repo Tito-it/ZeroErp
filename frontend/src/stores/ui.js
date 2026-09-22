@@ -25,6 +25,35 @@ export const useUiStore = defineStore('ui', () => {
   const isMobile = computed(() => layoutMode.value === 'mobile')
   const isDesktop = computed(() => layoutMode.value === 'desktop')
 
+  // ⭐ MODALITA' COMPATTA — la soglia in UNA sede (decisione D1 di Tid,
+  //    2026-09-22): sotto il tablet **oppure** su un dispositivo senza hover.
+  //    La leggono le superfici che cambiano FORMA, non solo dimensione: i
+  //    filtri della lista (`FiltriLista`, drawer dal basso) e, per contratto,
+  //    chiunque debba concordare con loro.
+  // ⛔ La larghezza da sola non basta, ed e' il difetto che questa computed
+  //    esiste per non avere: un iPad Pro in orizzontale e' largo 1366px e non
+  //    ha hover, quindi `isDesktop` dice «desktop» mentre `RowActionsMenu` e
+  //    `PageActionsBar` — che leggono `@media (hover: none), (max-width: 1024px)`
+  //    in main.css — si sono gia' compressi. Appendere i filtri alla sola
+  //    larghezza avrebbe prodotto una schermata mezza compatta e mezza no.
+  // ⚠️ `matchMedia` e non un `ontouchstart`: la domanda non e' «c'e' un dito»
+  //    ma «esiste l'hover», cioe' se un tooltip puo' essere l'unica etichetta
+  //    di un pulsante. Un portatile con schermo touch ha entrambi, e per noi
+  //    e' un desktop.
+  const senzaHover = ref(false)
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    const mqHover = window.matchMedia('(hover: none)')
+    senzaHover.value = mqHover.matches
+    const onHoverChange = (e) => { senzaHover.value = e.matches }
+    mqHover.addEventListener('change', onHoverChange)
+    if (import.meta.hot) {
+      import.meta.hot.dispose(() => mqHover.removeEventListener('change', onHoverChange))
+    }
+  }
+  const isCompatto = computed(
+    () => windowWidth.value < BREAKPOINTS.TABLET || senzaHover.value,
+  )
+
   // La sidebar inline si mostra solo su desktop e tablet (su mobile e' overlay/drawer)
   const sidebarInline = computed(() => layoutMode.value !== 'mobile')
 
@@ -178,6 +207,7 @@ export const useUiStore = defineStore('ui', () => {
     isTablet,
     isMobile,
     isDesktop,
+    isCompatto,
     sidebarInline,
     sidebarCollapsed,
     effectiveSidebarCollapsed,

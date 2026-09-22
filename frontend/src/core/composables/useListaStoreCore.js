@@ -142,6 +142,40 @@ export function useListaStoreCore({
 
   const filters = ref(filtriDiPartenza())
 
+  // ⭐ CHI SONO I FILTRI DI QUESTA LISTA, e quali valori hanno per nascita. Le
+  //    due cose esistevano gia' qui dentro e non uscivano: le legge il segno
+  //    dei filtri attivi di `FiltriLista` (`segnoFiltri`, D4 di Tid
+  //    2026-09-22), che senza di esse dovrebbe indovinarle — e indovinare
+  //    vuol dire contare `limit`/`offset`/l'ordinamento come se fossero
+  //    filtri, oppure tenere nel frontend un secondo elenco che diverge al
+  //    primo filtro aggiunto.
+  // ⛔ `search` NON c'e', ed e' una decisione (D2): la ricerca non e' un
+  //    filtro — e' il gesto principale della lista, e gli altri la
+  //    restringono. Resta sempre a video anche in modalita' compatta.
+  // ⚠️ Una COPIA congelata, non `filterDefaults`: l'oggetto e' un letterale
+  //    del chiamante, e un consumatore che vi scrivesse dentro cambierebbe i
+  //    default di uno store vivo — cioe' il metro insieme alla cosa misurata.
+  const chiaviFiltro = Object.freeze(Object.keys(filterDefaults))
+  const filtriDefault = Object.freeze({ ...filterDefaults })
+
+  // Scopo: «Pulisci filtri» — riporta i SOLI filtri di dominio al loro
+  //        default, torna a pagina 1 e rilegge la lista.
+  // ⛔ NON e' `reset()`, e la differenza non e' cosmetica: quello azzera anche
+  //    `parentId`, cioe' su una lista dentro un drawer (dodici, al 22-09-2026)
+  //    scollegherebbe la lista dal padre — a video resterebbe vuota, senza
+  //    errori, e la causa non somiglierebbe al gesto.
+  // ⚠️ La ricerca NON si tocca (D2): «pulisci filtri» non e' «annulla la
+  //    ricerca». Chi vuole svuotare la casella la svuota.
+  // ⚠️ I compagni `<chiave>_obj` di `bindLookup` non si azzerano qui: il watch
+  //    del binder li butta quando l'id diventa `null`, e al rimonto
+  //    `ricordato()` li rifiuta perche' l'id non corrisponde piu'. Toccarli
+  //    sarebbe una seconda sede della stessa pulizia.
+  function azzeraFiltri() {
+    for (const k of chiaviFiltro) filters.value[k] = filtriDefault[k]
+    filters.value.offset = 0
+    return fetchList()
+  }
+
   // Scopo: i parametri che decidono QUALI righe — ricerca, filtri di dominio,
   //        ordinamento — senza la paginazione. E' la sede unica per la fetch
   //        della lista E per il suo export: un export che si ricostruisce i
@@ -235,6 +269,9 @@ export function useListaStoreCore({
     erroreCaricamento,
     fetchList, svuota, reset,
     paramsFiltro,
+    // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
+    // nascita, e come si riportano li'.
+    chiaviFiltro, filtriDefault, azzeraFiltri,
   }
   // ⭐ Il padre si espone COL SUO NOME (`soggettoId`, `fatturaId`), non come
   //    `parentId`: e' il nome che il caller scrive in `parentField` di

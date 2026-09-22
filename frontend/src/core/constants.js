@@ -508,6 +508,15 @@ export const MANAGE_ICONS = {
   // di `<ListaConfigurabile>`. Centralizzata 2026-05-11 dopo audit DEF-8
   // soggetti (era hardcoded in ClientiSearchTable + SoggettiSearchTable).
   PERSONALIZZA: 'pi pi-cog',
+  // I FILTRI di una lista: apre il drawer dal basso in modalita' compatta
+  // (`FiltriLista`, D1/D4 di Tid 2026-09-22). ⛔ Non `pi-search`: quella e' la
+  // RICERCA, che nella stessa barra sta accanto e resta sempre a video —
+  // due gesti diversi non possono portare lo stesso segno.
+  FILTRI: 'pi pi-filter',
+  // Togliere i filtri, non «annullare»: `CANCEL` (pi-times) dice «chiudi» e
+  // sta gia' sul footer di ogni form. Il glifo barrato dice che cosa smette
+  // di valere.
+  FILTRI_PULISCI: 'pi pi-filter-slash',
   // Toggle collassa/espandi (accordion, expansion row, tree).
   // Standard PrimeVue/Material: chevron-down sta nello stato collassato
   // (invita ad aprire), chevron-up nello stato espanso (invita a chiudere).

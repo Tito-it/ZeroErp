@@ -1,5 +1,9 @@
 {
   "common": {
+    "filtri": "Filters",
+    "filtri_attivi": "Active filters: {n}",
+    "filtri_default_attivi": "Default filters active",
+    "pulisci_filtri": "Clear filters",
     "azione_reason": {
       "senza_righe": "The document has no rows: add at least one to proceed.",
       "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section."
