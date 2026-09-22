@@ -32,6 +32,7 @@ from typing import Any, NamedTuple
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import make_db_errors_translator
@@ -79,7 +80,6 @@ _FN = "vendite.ddt_service"
 _STATO_BOZZA = "DRAFT"
 _STATO_EMESSO = "EMESSO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
-_STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
 # `destinatario_soggetto_ruolo_id` opzionale nel payload: derivato dal
@@ -504,11 +504,8 @@ def gestisci_riga(
 ) -> dict[str, Any]:
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="gestisci_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_DDT_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su DDT in bozza.",
-        detail=f"stato={testata['stato_codice_interno']}",
+    richiedi_righe_in_bozza(
+        testata, documento="DDT", documento_id=ddt_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -642,10 +639,8 @@ def aggiorna_riga(
 ) -> dict[str, Any]:
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="aggiorna_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_DDT_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su DDT in bozza.",
+    richiedi_righe_in_bozza(
+        testata, documento="DDT", documento_id=ddt_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
@@ -663,11 +658,16 @@ def aggiorna_riga(
 
 # Scopo: Elimina riga DDT (HARD DELETE, solo DRAFT). I componenti BoM hanno
 #        ON DELETE CASCADE.
-#        Il trigger DB `trgfn_dlt_block_ordrig_ddtrig` ha TRE esiti, e li
-#        prova nell'ordine: documento non piu' in bozza ->
-#        E_DELETE_RIGA_DOC_NON_BOZZA; riga legata a un fulfillment ->
-#        E_DELETE_BLOCKED_FUL; riga usata in un reso o in una riconsegna ->
-#        E_DELETE_RIGA_DOC_REFERENZIATA; altrimenti la cancellazione RIESCE.
+#        A DB gli esiti sono TRE, provati nell'ordine da DUE trigger: il
+#        building block `trgfn_doc_righe_lock_fuori_bozza` (primo fra i BEFORE
+#        ROW di `ddt_righe`, dal 2026-09-22 — D7 del brief partita) rifiuta
+#        se il documento non e' piu' in bozza -> E_RIGA_DOC_NON_BOZZA (fino a
+#        quel giorno era il ramo 1 di `trgfn_dlt_block_ordrig_ddtrig`, codice
+#        E_DELETE_RIGA_DOC_NON_BOZZA, ritirato); poi
+#        `trgfn_dlt_block_ordrig_ddtrig`, ridotto ai soli legami: riga legata
+#        a un fulfillment -> E_DELETE_BLOCKED_FUL; riga usata in un reso o in
+#        una riconsegna -> E_DELETE_RIGA_DOC_REFERENZIATA; altrimenti la
+#        cancellazione RIESCE.
 #        ⚠️ Il terzo esito non esisteva fino al 2026-08-26: la funzione
 #        sollevava su OGNI ramo e il `RETURN OLD` era irraggiungibile, quindi
 #        questo verbo NON ha mai potuto riuscire. Il commento che stava qui
@@ -680,10 +680,8 @@ def aggiorna_riga(
 def elimina_riga(ddt_id: int, riga_id: int) -> dict[str, Any]:
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="elimina_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_DDT_STATO_TRANSIZIONE",
-        message="Righe eliminabili solo su DDT in bozza.",
+    richiedi_righe_in_bozza(
+        testata, documento="DDT", documento_id=ddt_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="elimina_riga")
@@ -742,10 +740,8 @@ def update_componente(
         function_name=f"{_FN}.update_componente",
     )
     assert scope is not None
-    ErrorManager.require(
-        scope["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_DDT_STATO_TRANSIZIONE",
-        message="Componenti modificabili solo su DDT in bozza.",
+    richiedi_righe_in_bozza(
+        scope, documento="DDT", documento_id=ddt_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
     # NB: `esposto_in_fattura` NON e' aggiornabile qui — e' un flag della BoM di
@@ -772,10 +768,8 @@ def delete_componente(
         function_name=f"{_FN}.delete_componente",
     )
     assert scope is not None
-    ErrorManager.require(
-        scope["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_DDT_STATO_TRANSIZIONE",
-        message="Componenti eliminabili solo su DDT in bozza.",
+    richiedi_righe_in_bozza(
+        scope, documento="DDT", documento_id=ddt_id, verbo="togliere",
         function_name=f"{_FN}.delete_componente",
     )
     with _db_errors("delete_componente"):

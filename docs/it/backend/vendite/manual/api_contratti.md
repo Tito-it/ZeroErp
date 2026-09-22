@@ -56,8 +56,11 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
     `listino_versione_id` al passaggio DRAFT→ATTIVO
   - `trgfn_contratti_lock_post_attivazione_upd` — testata immutabile
     (listino, versione, variazione globale) dopo l'attivazione
-  - `trgfn_contratti_righe_lock_post_attivazione_*` — eccezioni immutabili
-    dopo l'attivazione del contratto padre
+  - `trgfn_doc_righe_lock_fuori_bozza` (building block, dal 2026-09-22, al
+    posto di `trgfn_contratti_righe_lock_post_attivazione`) — eccezioni
+    immutabili dopo l'attivazione del contratto padre: la stessa regola «le
+    righe si toccano solo in bozza» dei DDT e degli ordini, un trigger per
+    documento, codice `E_RIGA_DOC_NON_BOZZA` (409)
   - `trgfn_contratti_righe_guard_aggiunta_fuori_listino` — blocca AGGIUNTA
     su articolo gia' presente nel listino
   - `trgfn_contratti_utilities_guard_tipo_classe`
@@ -368,8 +371,9 @@ Vincoli:
 - **Unicita' eccezione**: max 1 eccezione `OVERRIDE`/`ESCLUSIONE` per coppia
   `(contratto_id, articolo_id)`. Stessa univocita' per AGGIUNTA.
 - **Post-attivazione**: tutte le eccezioni sono immutabili (INSERT/UPDATE/DELETE
-  bloccati dal trigger `trgfn_contratti_righe_lock_post_attivazione*`) →
-  `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (409).
+  bloccati dal building block `trgfn_doc_righe_lock_fuori_bozza`, dal
+  2026-09-22) → `E_RIGA_DOC_NON_BOZZA` (409).
+  `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` resta alla **testata**.
 
 `PATCH /api/v1/vendite/contratti/<id>/righe/<riga_id>/` aggiorna i campi
 mutabili; `articolo_id` e `tipo_eccezione` immutabili. Cambio di
@@ -609,7 +613,9 @@ struttura immutabili (`componente_id`, `articolo_componente_id`,
 
 Anti-tampering URL: `riga_id` URL deve matchare riga reale del
 componente; mismatch → `E_VENDITE_NOT_FOUND`. Solo contratto in stato
-DRAFT modificabile (altrimenti `E_CONTRATTO_NON_MODIFICABILE`).
+DRAFT modificabile (altrimenti `E_RIGA_DOC_NON_BOZZA`, 409: dal 2026-09-22
+il pre-check BE — BB `richiedi_righe_in_bozza` — usa lo stesso codice del
+trigger su `contratti_righe`).
 
 #### Delete componente `DELETE /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/<cid>/`
 
@@ -906,13 +912,14 @@ alle righe di contratto via `target_riga_id`.
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` o `uq_contrighe_one_eccezione_per_articolo` o `uq_contrighe_one_aggiunta_per_articolo` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/listino_versione/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
 | `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Pre-check service `fn_contratto_sovrapposto` su `emetti()` (messaggio che nomina l'incumbent) **oppure** backstop EXCLUDE gist `ex_contratti_no_overlap`. Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9) | — |
-| `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service (operazioni righe/componenti su contratto post-DRAFT) | — |
+| `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service — **testata e utility** su contratto post-DRAFT (PATCH testata fuori whitelist, create/update utility, indirizzi). ⚠️ Fino al 2026-09-22 copriva anche righe e componenti: lì ora vale `E_RIGA_DOC_NON_BOZZA`, il codice del DB sulle stesse righe (prima lo stesso rifiuto usciva con due nomi) | — |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
 | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `trgfn_contratti_righe_guard_aggiunta_fuori_listino` |
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `trgfn_contratti_righe_guard_esclusione_figlio_bundle` |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
-| `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO, oppure INSERT/UPDATE/DELETE eccezione su contratto ATTIVO | `trgfn_contratti_lock_post_attivazione` + `trgfn_contratti_righe_lock_post_attivazione` |
+| `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO (la sola **testata**, dal 2026-09-22) | `trgfn_contratti_lock_post_attivazione` |
+| `E_RIGA_DOC_NON_BOZZA` | 409 | DB P0001 (building block, 2026-09-22 — D7 di brief-db-partita-merce-per-documento) — INSERT/UPDATE/DELETE di un'eccezione su contratto non più in bozza; stesso codice sulle righe di DDT e (DELETE) di ordine. Lo solleva **anche il pre-check BE** (BB `richiedi_righe_in_bozza`) su righe e componenti, con la frase a catalogo (etichetta «Contratto <numero>», stato, verbo) | `trgfn_doc_righe_lock_fuori_bozza` + service |
 | `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 422 | Service (refactor §3-bis-F) — PATCH testata che porta `listino_id` da NOT NULL a NULL con eccezioni OVERRIDE/ESCLUSIONE attive | — |
 | `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403 (retryable=True) | Service (refactor §3-bis-E) — gate L2 sulla variazione globale del contratto al PATCH testata. Cascata user → categoria → group → emittente. VALORE_FISSO non applicabile (skip) | — |
 | `E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |

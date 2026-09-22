@@ -40,6 +40,9 @@ Indice test eseguiti:
 28) repository_create_contratto_usa_cast_jsonb_per_meta (regressione review)
 29) get_contratto_righe_count_usa_preview_per_modalita_ab
 30) get_contratto_righe_count_usa_righe_persistite_per_modalita_c
+31) create/update/delete_riga_rifiutata_su_contratto_attivo — E_RIGA_DOC_NON_BOZZA (il codice del DB sulle stesse righe, BB richiedi_righe_in_bozza; frase a catalogo, verbo)
+32) create/update_utility_rifiutata_su_contratto_attivo — E_CONTRATTO_NON_MODIFICABILE (la utility non e' una riga)
+33) update_componente_contratto_attivo — E_RIGA_DOC_NON_BOZZA, etichetta dal `numero` dello scope
 """
 
 from datetime import date, timedelta
@@ -723,7 +726,9 @@ class ContrattiServiceTests(TestCase):
             ContrattiService().update_contratto(1, {"valido_al": "2026-12-31"})
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
 
-    # Scopo: contratto ATTIVO -> create_riga rifiutato.
+    # Scopo: contratto ATTIVO -> create_riga rifiutato col codice del DB
+    #        (E_RIGA_DOC_NON_BOZZA: lo stesso di trgfn_doc_righe_lock_fuori_bozza
+    #        su contratti_righe), frase a catalogo con l'etichetta dal numero.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_riga_rifiutata_su_contratto_attivo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
@@ -741,7 +746,13 @@ class ContrattiServiceTests(TestCase):
                 "prezzo_unitario": "10",
                 "qta_operativa": "1",
             })
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertEqual(
+            ctx.exception.message,
+            "Contratto CNT0000001 non e' piu' in bozza (stato ATTIVO): le sue "
+            "righe si possono aggiungere solo finche' e' in bozza.",
+        )
+        self.assertEqual(ctx.exception.context["operazione"], "INSERT")
 
     # Scopo: contratto ATTIVO -> update_riga rifiutato (risale dal contratto
     #        della riga via get_riga).
@@ -758,7 +769,8 @@ class ContrattiServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().update_riga(99, {"prezzo_unitario": "20"})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertIn(" modificare ", ctx.exception.message)
 
     # Scopo: contratto ATTIVO -> delete_riga rifiutato.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -774,7 +786,26 @@ class ContrattiServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().delete_riga(99)
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertIn(" togliere ", ctx.exception.message)
+
+    # Scopo: contratto ATTIVO -> create_utility rifiutato: la utility NON e' una
+    #        riga, resta E_CONTRATTO_NON_MODIFICABILE (lo stesso guard di
+    #        update_utility — fino al 22-09 era una copia inline).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_utility_rifiutata_su_contratto_attivo(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "stato_codice_interno": "ATTIVO",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().create_utility(1, {"istanza_utility_id": 20, "utility_id": 3})
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        repo.create_utility.assert_not_called()
 
     # Scopo: contratto ATTIVO -> update_utility rifiutato.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -1992,6 +2023,31 @@ class ContrattiServiceComponentiTests(TestCase):
         result = ContrattiService().list_componenti_riga(1, 5, solo_attivi=False)
         self.assertEqual(result, [{"id": 100}])
         repo.list_componenti_riga.assert_called_once_with(5, solo_attivi=False)
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_contratto_attivo(self, repo_cls):
+        """Contratto ATTIVO -> E_RIGA_DOC_NON_BOZZA; l'etichetta prende
+        `numero` dallo scope del JOIN (senza, «Contratto #1» su un contratto
+        attivo, che il numero ce l'ha sempre)."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice_interno": "ATTIVO",
+            "numero": "CNT0000001",
+        }
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_componente_riga(
+                1, 5, 100, {"prezzo_unitario": "10"},
+            )
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertTrue(ctx.exception.message.startswith("Contratto CNT0000001 non e' piu' in bozza (stato ATTIVO)"))
+        repo.update_componente.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_componente_anti_tampering_riga(self, repo_cls):

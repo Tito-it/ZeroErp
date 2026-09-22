@@ -792,7 +792,7 @@ class TestPreventiviService(unittest.TestCase):
         self.assertIn("descrizione", campi)          # il test ha davvero morso
         self.assertNotIn("iva_id", campi)
 
-    # Scopo: Verifica guard riga su stato EMESSO.
+    # Scopo: Verifica guard riga su stato EMESSO: il codice e' quello del DB, E_RIGA_DOC_NON_BOZZA.
     def test_gestisci_riga_stato_non_modificabile(self):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
@@ -801,7 +801,7 @@ class TestPreventiviService(unittest.TestCase):
         }
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"articolo_id": "uuid-art-1"})
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
 
     # Scopo: padre composito con payload senza prezzo_unitario → BE usa
     # placeholder 0 (sara' sovrascritto dal trigger DB _z90_ricalcola_padre
@@ -1348,7 +1348,7 @@ class TestPreventiviService(unittest.TestCase):
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
 
-    # Scopo: guard stato preventivo non modificabile.
+    # Scopo: guard stato preventivo non modificabile sui componenti (E_RIGA_DOC_NON_BOZZA, come le righe).
     def test_update_componente_stato_non_modificabile(self):
         from apps.vendite.services.preventivi_service import update_componente
 
@@ -1360,7 +1360,7 @@ class TestPreventiviService(unittest.TestCase):
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
 
     # Scopo: soft delete componente in BOZZA.
     def test_delete_componente_ok(self):

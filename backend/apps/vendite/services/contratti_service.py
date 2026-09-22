@@ -43,6 +43,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
@@ -1217,11 +1218,17 @@ class ContrattiService:
         )
 
     # Scopo: Verifica che il contratto sia in stato DRAFT prima di accettare
-    #        operazioni CRUD su righe/utility. In stati post-DRAFT le sotto
-    #        entita' sono congelate per audit (Profilo A): per modifiche serve
-    #        creare un nuovo contratto. Solleva E_CONTRATTO_NON_MODIFICABILE
-    #        con stato corrente nel context.
-    def _assert_contratto_draft(self, contratto_id: int, *, op_label: str) -> None:
+    #        operazioni sulla UTILITY (1:1 con la testata). In stati post-DRAFT
+    #        le sotto entita' sono congelate per audit (Profilo A): per
+    #        modifiche serve creare un nuovo contratto. Solleva
+    #        E_CONTRATTO_NON_MODIFICABILE con stato corrente nel context;
+    #        ritorna la testata letta, per chi ne ha bisogno dopo.
+    #        ⛔ Per le RIGHE (e i loro componenti) NON si usa questo: la regola
+    #        «le righe si toccano solo in bozza» ha il codice del DB,
+    #        `E_RIGA_DOC_NON_BOZZA` — vedi `_richiedi_righe_in_bozza`. Fino al
+    #        2026-09-22 lo stesso rifiuto usciva con due nomi: questo dal
+    #        pre-check Python e quello dal trigger sulle stesse righe.
+    def _assert_contratto_draft(self, contratto_id: int, *, op_label: str) -> dict[str, Any]:
         contratto = self._get_contratto_or_raise(contratto_id, op="_assert_contratto_draft")
         stato = str(contratto.get("stato_codice_interno") or "")
         if stato != "DRAFT":
@@ -1235,15 +1242,35 @@ class ContrattiService:
                 ),
                 context={"contratto_id": contratto_id, "stato_codice": stato, "op": op_label},
             )
+        return contratto
 
-    # Scopo: Risale al contratto dalla riga e applica il guard DRAFT.
-    def _assert_contratto_draft_from_riga(self, riga_id: int, *, op_label: str) -> None:
+    # Scopo: «Le righe si toccano solo in bozza» sul contratto, col codice e la
+    #        frase del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (montato su
+    #        `contratti_righe`): `E_RIGA_DOC_NON_BOZZA`, etichetta
+    #        «Contratto <numero>». Pre-check prima di scrivere, come in
+    #        ddt/ordini/preventivi (BB `richiedi_righe_in_bozza`).
+    def _richiedi_righe_in_bozza(
+        self, contratto_id: int, *, verbo: Verbo, function_name: str,
+    ) -> None:
+        contratto = self._get_contratto_or_raise(contratto_id, op=function_name)
+        richiedi_righe_in_bozza(
+            contratto, documento="Contratto", documento_id=contratto_id, verbo=verbo,
+            function_name=f"contratti_service.{function_name}",
+        )
+
+    # Scopo: Risale al contratto dalla riga e applica il guard delle righe in
+    #        bozza (riga inesistente -> E_VENDITE_NOT_FOUND).
+    def _richiedi_righe_in_bozza_da_riga(
+        self, riga_id: int, *, verbo: Verbo, function_name: str,
+    ) -> None:
         riga = testata_o_not_found(
             self._repo.get_riga, riga_id,
             code=E_VENDITE_NOT_FOUND, message="Riga contratto non trovata.",
-            id_name="riga_id", function_name="contratti_service._assert_contratto_draft_from_riga",
+            id_name="riga_id", function_name=f"contratti_service.{function_name}",
         )
-        self._assert_contratto_draft(int(riga["contratto_id"]), op_label=op_label)
+        self._richiedi_righe_in_bozza(
+            int(riga["contratto_id"]), verbo=verbo, function_name=function_name,
+        )
 
     # =================================================================
     # Righe contratto
@@ -1259,7 +1286,7 @@ class ContrattiService:
         *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        self._assert_contratto_draft(contratto_id, op_label="Aggiunta riga contratto")
+        self._richiedi_righe_in_bozza(contratto_id, verbo="aggiungere", function_name="create_riga")
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_RIGA_CREATE,
@@ -1516,7 +1543,7 @@ class ContrattiService:
         *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(riga_id, field="riga_id")
-        self._assert_contratto_draft_from_riga(riga_id, op_label="Modifica riga contratto")
+        self._richiedi_righe_in_bozza_da_riga(riga_id, verbo="modificare", function_name="update_riga")
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_RIGA_UPDATE,
@@ -1630,7 +1657,7 @@ class ContrattiService:
     #        collegate bloccano la cancellazione via trigger DB.
     def delete_riga(self, riga_id: int) -> None:
         self._v.guard_positive_int(riga_id, field="riga_id")
-        self._assert_contratto_draft_from_riga(riga_id, op_label="Eliminazione riga contratto")
+        self._richiedi_righe_in_bozza_da_riga(riga_id, verbo="togliere", function_name="delete_riga")
         with self._map_db_errors(
             {"riga_id": riga_id},
             fallback_message="Impossibile eliminare la riga (dipendenze).",
@@ -1656,14 +1683,16 @@ class ContrattiService:
     # guard + scope check (riga_id URL + contratto_id) + stato contratto
     # modificabile in UN'unica query JOIN componente→riga→contratto (Fix #2
     # refactor-componenti.md). Solleva `E_VENDITE_NOT_FOUND` su componente
-    # inesistente o fuori scope, `E_CONTRATTO_NON_MODIFICABILE` se contratto
-    # post-DRAFT.
+    # inesistente o fuori scope, `E_RIGA_DOC_NON_BOZZA` (BB
+    # `richiedi_righe_in_bozza`, col `verbo` del chiamante) se il contratto
+    # non e' in bozza.
     def _load_componente_for_modification(
         self,
         *,
         contratto_id: int,
         riga_id: int,
         componente_id: int,
+        verbo: Verbo,
         function_name: str,
     ) -> None:
         scope = self._repo.load_componente_with_scope(componente_id)
@@ -1702,24 +1731,12 @@ class ContrattiService:
         )
 
         # Guard stato modificabile: contratti_righe_componenti seguono la
-        # stessa policy delle righe padre (solo DRAFT modificabile). Lo
-        # stato e' gia' nella tupla del JOIN — nessun round-trip extra.
-        stato = str(scope.get("stato_codice_interno") or "")
-        if stato != "DRAFT":
-            ErrorManager.raise_error(
-                code="E_CONTRATTO_NON_MODIFICABILE",
-                message="Operazione non consentita nello stato corrente.",
-                detail=(
-                    "Modifica componente riga contratto ammessa solo su "
-                    f"contratti in stato DRAFT. Stato corrente: {stato}. "
-                    "Per modifiche su contratti post-DRAFT creare un nuovo contratto."
-                ),
-                context={
-                    "contratto_id": contratto_id,
-                    "stato_codice": stato,
-                    "op": "Modifica componente riga contratto",
-                },
-            )
+        # stessa policy delle righe padre (solo in bozza). Lo stato e il
+        # numero sono gia' nella tupla del JOIN — nessun round-trip extra.
+        richiedi_righe_in_bozza(
+            scope, documento="Contratto", documento_id=contratto_id, verbo=verbo,
+            function_name=function_name,
+        )
 
     # Scopo: Preview componenti BoM per drawer riga contratto (ComponentiDialog
     # FE). Read-only: il FE invoca PRIMA del save di una riga composita per
@@ -1789,7 +1806,7 @@ class ContrattiService:
         self._v.guard_positive_int(componente_id, field="componente_id")
         self._load_componente_for_modification(
             contratto_id=contratto_id, riga_id=riga_id,
-            componente_id=componente_id,
+            componente_id=componente_id, verbo="modificare",
             function_name="contratti_service.update_componente_riga",
         )
         with self._map_db_errors(
@@ -1818,7 +1835,7 @@ class ContrattiService:
         self._v.guard_positive_int(componente_id, field="componente_id")
         self._load_componente_for_modification(
             contratto_id=contratto_id, riga_id=riga_id,
-            componente_id=componente_id,
+            componente_id=componente_id, verbo="togliere",
             function_name="contratti_service.delete_componente_riga",
         )
         with self._map_db_errors(
@@ -1841,19 +1858,9 @@ class ContrattiService:
     #        testata (controllo anticipato lato service).
     def create_utility(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        testata = self._get_contratto_or_raise(contratto_id, op="create_utility")
-        # Guard Profilo A: utility 1:1 modificabile solo in DRAFT.
-        stato_corrente = str(testata.get("stato_codice_interno") or "")
-        if stato_corrente != "DRAFT":
-            ErrorManager.raise_error(
-                code="E_CONTRATTO_NON_MODIFICABILE",
-                message="Operazione non consentita nello stato corrente.",
-                detail=(
-                    f"Aggiunta utility ammessa solo su contratti in stato DRAFT. "
-                    f"Stato corrente: {stato_corrente}."
-                ),
-                context={"contratto_id": contratto_id, "stato_codice": stato_corrente},
-            )
+        # Guard Profilo A: utility 1:1 modificabile solo in DRAFT (stesso
+        # guard di `update_utility`: fino al 22-09 era una copia inline).
+        testata = self._assert_contratto_draft(contratto_id, op_label="Aggiunta utility contratto")
 
         self._validate_utility_payload_shape(payload, for_create=True)
         data = self._build_utility_data(

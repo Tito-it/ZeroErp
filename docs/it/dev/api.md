@@ -1144,6 +1144,18 @@ documento, o 404 — `/ordini/999/righe/24/` non apre la riga 24 di un altro ord
 che passavano dritti al repository: sotto RLS rispondevano `200 []` a un padre
 fuori perimetro, indistinguibile da «nessuna riga». Un satellite nuovo che
 non legge la testata è lo stesso difetto, e non dà nessun errore.
+⭐ **E un pre-check Python di una regola che il DB fa rispettare usa il codice del DB**
+(2026-09-22, decisione B di Tid): «le righe si toccano solo in bozza» è
+`E_RIGA_DOC_NON_BOZZA` sia dal trigger `trgfn_doc_righe_lock_fuori_bozza` sia dai
+pre-check di ordini/DDT/preventivi/contratti/resi (BB `richiedi_righe_in_bozza`,
+frase a catalogo composta coi tre valori). Prima erano **cinque** codici
+(`E_DDT_STATO_TRANSIZIONE`, `E_ORD_STATO_TRANSIZIONE`,
+`E_PREV_STATO_NON_MODIFICABILE`, `E_CONTRATTO_NON_MODIFICABILE`,
+`E_RESO_STATO_TRANSIZIONE` — che restano alla **testata**), cioè lo stesso
+rifiuto con due nomi a seconda di chi lo diceva. Il pre-check è lecito — un 409 prima di
+scrivere, e l'unico cancello dove il DB non arriva ancora — ma la regola è **una**
+e ha un nome a catalogo: chiunque la sollevi la chiama così.
+
 ⛔ **Il doppio filtro Python su OGNI endpoint non è la regola** — è esattamente
 il pattern che l'analisi RLS (§2.3) ha dichiarato fragile: la RLS è il
 cancello uniforme, il filtro applicativo sta sulle **liste di testata** (tutte
