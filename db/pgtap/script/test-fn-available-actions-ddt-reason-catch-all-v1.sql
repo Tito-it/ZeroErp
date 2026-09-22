@@ -36,8 +36,15 @@
 --      fn_partite_merce ne' fn_get_stato_push_segment (nessun predicato suo);
 --      la capability NON nomina il lister ne' il classificatore (una lettura);
 --      la diagnosi e' BEGIN ATOMIC e non SECURITY DEFINER
+--  17) ⭐ DDT_SENZA_BA COSTRUITO: un DDT senza ordine dietro e senza billing
+--      account (la colonna e' NULLABLE) -> rank 3, motivo DDT_SENZA_BA,
+--      billing_account_id NULL, capability spenta. Fino al 2026-09-22 il
+--      ramo non era esercitato da nessuna riga viva (54 su 54 hanno un BA
+--      visibile): la clausola SENZA_BA del test 14 era vera A VUOTO, e il
+--      giro 7 riscrive proprio la lettura dei BA
 --  16) scope: chi non vede il DDT ha zero righe di diagnosi e capability NULL
---      (⚠️ rosso da owner, che salta la RLS: gira come app)
+--      (⚠️ rosso da owner, che salta la RLS: gira come app; ULTIMO, cambia
+--      il contesto)
 --
 -- Scopo:
 --  - fino al 2026-09-21 il test 1 confrontava lister e diagnosi (EXCEPT nei
@@ -69,7 +76,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(17);
 
 -- ⛔ Niente `SET LOCAL app.current_user_id = '1'` dopo la riga di contesto:
 --    l'operatore lo sceglie (o lo COSTRUISCE, su un database vuoto)
@@ -371,6 +378,60 @@ SELECT ok(
   (SELECT p.prosqlbody IS NOT NULL AND NOT p.prosecdef
      FROM pg_proc p WHERE p.oid = 'vendite.fn_ddt_push_diagnosi'::regproc),
   '15) forma D4: il lister deriva dalla diagnosi senza predicati suoi; la capability legge solo la diagnosi; la diagnosi e'' BEGIN ATOMIC e non DEFINER');
+
+-- ============================================================
+-- 17) ⭐ Il ramo della rank 3, COSTRUITO.
+--     `vendite.ddt.billing_account_id` e' NULLABLE e una riga senza
+--     fulfillment non ha un ordine da cui ereditarlo: COALESCE(NULL, NULL)
+--     = NULL, ed e' la rank 3. Le rank che vengono prima non scattano —
+--     il documento non e' abortito ne' RESO (1) e la causale e' VENDITA,
+--     fatturabile (2).
+--     ⚠️ Perche' COSTRUITO e non letto: su dbdev nessuna delle 54 righe
+--     attive cade in DDT_SENZA_BA, quindi la clausola `motivo =
+--     'DDT_SENZA_BA' AND billing_account_id IS NOT NULL` del test 14 e'
+--     vera perche' non ha soggetti, non perche' la regola tenga.
+--     ⛔ L'altra meta' della rank 3 — «il BA esiste ma chi legge non lo
+--     vede» — NON si costruisce da un documento, ed e' una proprieta' del
+--     modello, non una lacuna del test: `trgfn_<doc>_guard_emittente_ba`
+--     vieta a un documento di portare il BA di un'altra azienda, quindi
+--     un DDT visibile con un BA invisibile non e' uno stato raggiungibile.
+--     Resta una cintura fail-closed: la diagnosi legge i billing account
+--     come INVOKER (test 15 pinna che non e' DEFINER), quindi un BA fuori
+--     scope non entra e la riga esce SENZA_BA.
+-- ============================================================
+CREATE TEMP TABLE tmp_noba AS
+WITH ins AS (
+  INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data,
+      billing_account_id, valuta_id, causale_trasporto_id, emittente_fiscale_id,
+      storicizza, meta)
+  SELECT r.soggetto_ruolo_id,
+         (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='DRAFT' LIMIT 1),
+         DATE '2026-09-01', NULL, r.valuta_id, r.causale_vendita_id, r.emittente_fiscale_id,
+         false, jsonb_build_object('test_scope','pgtap_reason_catchall')
+    FROM tmp_refs r
+  RETURNING id)
+SELECT id AS ddt_id FROM ins;
+
+INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT n.ddt_id, 1, r.articolo_id, 'Riga senza BA', 5, 5, 20, r.iva_id, true, false,
+       jsonb_build_object('test_scope','pgtap_reason_catchall')
+  FROM tmp_noba n, tmp_refs r;
+
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT n.ddt_id, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb
+  FROM tmp_noba n, tmp_refs r
+ON CONFLICT DO NOTHING;
+
+UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs)
+ WHERE id = (SELECT ddt_id FROM tmp_noba);
+
+SELECT results_eq(
+  $q$SELECT g.motivo_rank, g.motivo, g.billing_account_id, pg_temp.rca_push(n.ddt_id)
+       FROM tmp_noba n, vendite.fn_ddt_push_diagnosi(n.ddt_id) g$q$,
+  $q$VALUES (3, 'DDT_SENZA_BA', NULL::bigint,
+             'false|DDT_NON_PUSHABILE|vendite.ddt.push_commessa_reason.non_pushabile')$q$,
+  '17) DDT senza ordine e senza billing account: rank 3 DDT_SENZA_BA, BA NULL, capability spenta');
 
 -- ============================================================
 -- 16) Scope: chi non vede il documento non vede niente.

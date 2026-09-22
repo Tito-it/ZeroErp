@@ -7,7 +7,7 @@
 > [vendite.fn_situazione_merce_ordine](/dbzero/vendite/funzioni/fn_situazione_merce_ordine) — la chiama con le chiavi delle righe in uscita
 > [script.fn_get_stato_push_segment](/dbzero/script/funzioni/fn_get_stato_push_segment) — lo stesso range, per una chiave sola
 > [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la tabella e l'indice `ix_commesse_attivita_segment_key`
-> Brief: `docs/it/dev/work-in-progress/brief-db-partita-merce-per-documento.md` §11 (giro 4, D5)
+> Brief: `docs/it/dev/work-done/brief-db-partita-merce-per-documento.md` §11 (giro 4, D5)
 
 ---
 ### 🎯 Scopo Principale

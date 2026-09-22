@@ -834,7 +834,7 @@ per chiusura del documento — e insieme alla seconda (una lettura invece di due
 nella capability, che è una scelta di contratto: `push_ok` per costruzione dal
 lister o per pgTAP dalla diagnosi, e la precedenza dei rami
 `GIA_INVIATO`/`GIA_FATTURATO`) sta nel brief aperto il 21-09:
-`work-in-progress/brief-db-partita-merce-per-documento.md`. ⚠️ La rilettura
+`work-done/brief-db-partita-merce-per-documento.md`. ⚠️ La rilettura
 del pomeriggio (§2-bis del brief) ha corretto la forma prima di scrivere una
 riga: corpo `BEGIN ATOMIC` (altrimenti riferimenti morti e catena RLS
 invisibili nel catalogo — `test-rls-viste-security-invoker` va allargato di un
@@ -1110,7 +1110,7 @@ D6 e il registro dei rossi in CI.
       leva (una lettura invece di due nella capability: scelta di contratto)
       e **quarta leva** (la partita per chiusura del documento, quella che
       chiude il titolo) nel brief
-      `work-in-progress/brief-db-partita-merce-per-documento.md`, aperto il
+      `work-done/brief-db-partita-merce-per-documento.md`, aperto il
       21-09 — ✅ D1–D5 decise, giro 1 **applicato** il 21-09 (120 → 24 ms
       per la partita di un DDT, come app), ✏️ giro 2 (D3: situazione ordine,
       coda accrediti e i due verbi per documento) **applicato** la sera
@@ -1152,8 +1152,49 @@ D6 e il registro dei rossi in CI.
       «tutte» **346 → 132 ms**, lister senza documento **227 → 148**; il
       piano indica il passo dopo — la policy di `billing_account` rivalutata
       per BA per riga nella diagnosi (44% dei buffer): i BA visibili si
-      leggono una volta. ✅ pgTAP come app verdi (Tid, 22-09). ⏳ Commit. 🔵 D8(b) resta sul
-      modello: il classificatore non è più fra i nodi pesanti.
+      leggono una volta. ✅ pgTAP come app verdi (Tid, 22-09), committato
+      (`660bbac59`; BE `77fecbe50`). ✏️ **giro 7 SCRITTO il 22-09**
+      (brief §14): `20260922-14`, i billing account letti **per chiave**
+      (`ba_vis` seminata) — ⛔ non era l'artefatto di una tabella piccola
+      (nemmeno forzando l'indice diventa un `Index Cond`), e la forma
+      «tutti i BA visibili» è stata **scartata** perché farebbe pagare
+      l'anagrafica intera alla capability di un DDT; come app 161 → 96 ms
+      su tutte, 32 → 25,8 su un documento. ⚠️ Il presidio di quel ramo era
+      verde a vuoto (nessuna riga viva è `DDT_SENZA_BA`): test costruito
+      nuovo, rosso per mutazione. ✅ **APPLICATO il 22-09 alle 15:57, pgTAP
+      come app senza regressioni**; misura §14.7: diagnosi «tutte» **132 →
+      63 ms**, cockpit **148 → 73**, nodo dei BA da 13 398 buffer a 30. ⏳
+      Commit. **Bilancio dei sette giri** (§15): capability di un DDT
+      290 → 39 ms, cockpit 214 → 73, diagnosi di tutti 348 → 63, partita di
+      un DDT 120 → 27. 🔵 Restano, dichiarate: la CTE `riga` dentro
+      `fn_partite_merce` (il 71% di ciò che costa ora — terza occorrenza
+      della stessa forma) e **D8(b)**, che resta sul modello perché nessuna
+      misura la reclama. ✏️ **giro 8 SCRITTO il 22-09** (brief §16):
+      `20260922-15` — la catena del **sospetto** (`sospetto_duplicato_ordine`,
+      un avviso per una persona che nessuna macchina legge) si semina dalle
+      righe che ESCONO invece di leggere tutte le righe attive dei DDT in
+      gioco; `ddt_in` tolta. ⛔ Col recinto `MATERIALIZED` tenuto: toglierlo
+      fa potare la catena a chi non legge la colonna ma la fa ri-eseguire
+      PER RIGA a chi la legge. ⛔ E corregge il bersaglio indicato in §14.7,
+      che era un artefatto del banco di prova (dentro la funzione quel punto
+      è un `Index Scan`, ~5 ms su 46). ⛔ **APPLICATO il 22-09 alle 16:47 e
+      RITIRATO lo stesso giorno** (`20260922-16`): la misura come app dice
+      63 → 90 ms sulla diagnosi «tutte» e 47 → 78 sulla vista intera —
+      referenziare `riga` da altre due CTE le ha cambiato il piano (§16.6).
+      ⭐ La lezione vale più del giro: **il corpo eseguito come query non
+      predice il piano dentro la funzione** — in questo cantiere ha nascosto
+      un difetto vero, ne ha inventato uno e ha promesso un guadagno che era
+      una perdita — ⛔ **ma nemmeno la regressione era dimostrata**: dopo il
+      ritiro (`20260922-16`, applicato alle 17:19) lo **stesso corpo** che
+      alle 16:12 misurava 63 ms ne misura 95-104, con lo stesso piano storto.
+      In `vendite` **82 tabelle su 87 non sono mai state analizzate**: ogni
+      piano è costruito su stime di default e si ribalta da solo (§16.6).
+      ⭐ Ciò che regge sono le **forme** (`loops=1`, `Index Cond`), non i
+      millisecondi confrontati fra momenti diversi. ✅ **D14 CHIUSA il 22-09**
+      e il brief è archiviato in `work-done/`: due decisioni non prese
+      (§15.1), residui con destinazione (§15.2), fra cui 🔴 le statistiche
+      assenti → cantiere `dbops`/`maintenance`. ⏳ Restano da committare gli
+      ultimi tre changeSet.
 
 ### 🟡 Struttura
 

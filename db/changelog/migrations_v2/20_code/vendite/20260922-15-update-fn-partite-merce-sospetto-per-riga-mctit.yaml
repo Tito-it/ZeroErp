@@ -1,0 +1,423 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 — LA CATENA DEL SOSPETTO SI SEMINA DALLE RIGHE CHE ESCONO
+#   (giro 8 di brief-db-partita-merce-per-documento §16). Un changeSet.
+#
+# ── IL DIFETTO, SUL MODELLO ────────────────────────────────────────────
+#
+#   `sospetto_duplicato_ordine` e' un AVVISO PER UNA PERSONA: «questa riga
+#   e' stata aggiunta a mano su un DDT che evade un ordine dove quel
+#   articolo c'e' gia'». Non entra in nessun conto — nessuna rank, nessuna
+#   dose, nessun saldo — e infatti la leggono solo il pannello situazione
+#   merce (BE list_partite_merce -> FE) e due pgTAP: fn_ddt_push_diagnosi,
+#   fn_list_ddt_da_pushare, fn_situazione_merce_ordine e
+#   fn_resi_da_accreditare la nominano soltanto nell'elenco delle colonne
+#   della SRF (censito dal catalogo vivo il 22-09).
+#
+#   La catena che la calcola — `ddt_in` -> `articoli_ordinati_per_ddt` ->
+#   `sospetto` — leggeva pero' TUTTE le righe attive dei DDT in gioco, e nel
+#   modo «tutte» scandiva `vendite.ddt_righe` per intero. La colonna esce
+#   invece per le sole righe di `riga`: il resto e' lavoro che nessuno
+#   guarda. Misurato come app il 22-09 (fatto datato, non motivo): la catena
+#   costava 17,6 ms dei 46 della partita, e restituiva ZERO righe.
+#
+# ── LA FORMA ───────────────────────────────────────────────────────────
+#
+#   Le due CTE si seminano da `riga`, cioe' dalle righe che ESCONO:
+#     - `articoli_ordinati_per_ddt` parte da `SELECT DISTINCT ddt_id FROM
+#       riga` (in ENTRAMBI i modi: i due rami `p IS NULL` non servono piu',
+#       perche' `riga` e' gia' ristretta dal seme);
+#     - `sospetto` parte da `riga` invece che da `vendite.ddt_righe`;
+#     - `ddt_in` era usata solo da `articoli_ordinati_per_ddt`: e' codice
+#       morto e viene tolta.
+#
+#   ⛔ E LE DUE CTE RESTANO `MATERIALIZED`, che e' la parte da non invertire.
+#   Provate come app tutte e tre le forme (brief §16.2): TOGLIENDO il
+#   recinto il planner pota la catena per chi non legge la colonna — la
+#   diagnosi, il lister — e guadagna 9 ms, ma la RI-ESEGUE PER RIGA per chi
+#   la legge, il pannello (`Nested Loop Anti Join … loops=36`): e' il
+#   difetto di questo cantiere spostato di un posto. Il recinto TENUTO piu'
+#   il seme da `riga` serve a entrambi — una volta sola, e su meno righe — ed
+#   e' piu' veloce di tutte e due le alternative su tutti e due i percorsi.
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#
+#   Firma, RETURNS TABLE (md5 identico), le 23 colonne e i loro valori, i
+#   due semi in UNION ALL, le altre CTE, BEGIN ATOMIC, INVOKER.
+#   Equivalenza provata sull'SQL estratto contro la funzione viva: globale,
+#   per OGNUNO dei 51 DDT col seme (quindi con la chiusura), per OGNUNO
+#   degli ordini, e sull'array vuoto — `EXCEPT ALL` a zero nei due versi.
+#
+# Base: definizione VIVA (pg_get_functiondef il 22-09, rev 20260921-53),
+#   ricostruita da un template che e' stato verificato identico al vivo
+#   prima di applicarvi le modifiche.
+# Presidi: test-fn-partite-merce-chiusura-v1 (15, il test 11 costruisce
+#   proprio la riga a mano col sospetto acceso), test-vw-partite-merce-v1
+#   (11, idem al test 11), e i venti del giro 3 sopra la diagnosi.
+# Dipendenze: 20260921-53 (la rev che qui si ricopia).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-15-update-fn-partite-merce-sospetto-per-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260922-15-update-fn-partite-merce-sospetto-per-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 giro 8 (§16): in vendite.fn_partite_merce la catena che calcola la sola
+        colonna sospetto_duplicato_ordine si semina da `riga` (le righe che escono)
+        invece di leggere tutte le righe attive dei DDT in gioco; `ddt_in` era usata
+        solo li' ed e' tolta. Le due CTE restano MATERIALIZED: senza il recinto la
+        catena viene ri-eseguita per riga per chi legge la colonna. Stessa firma,
+        stesso RETURNS, stesse 23 colonne.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_partite_merce'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+            # La rev del giro 4 e' entrata: `af` si legge per chiave.
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                   WHERE p.oid = 'vendite.fn_partite_merce'::regproc
+                     AND pg_get_functiondef(p.oid) ~ 'fn_af_merce_per_riga'
+      changes:
+        # 1/2 — la funzione, DA SOLA nel suo change (BEGIN ATOMIC + pgjdbc).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_partite_merce(p_ddt_ids bigint[] DEFAULT NULL::bigint[], p_ordine_ids bigint[] DEFAULT NULL::bigint[])
+               RETURNS TABLE(ddt_riga_id bigint, ddt_id bigint, ddt_uid uuid, articolo_id uuid, is_composito boolean, ordine_riga_id bigint, ordine_id bigint, origine character varying, fatturabile boolean, consegnato numeric, reso numeric, in_riconsegna numeric, tenuti numeric, fatturato_merce numeric, fatturato_da_ordine numeric, fatturato numeric, misurabile boolean, differenza numeric, stato character varying, e_riconsegna boolean, sospetto_duplicato_ordine boolean, rettificato numeric, riconsegna_quota_nuova numeric)
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               WITH semi AS MATERIALIZED (
+                        SELECT dr.id AS ddt_riga_id
+                          FROM vendite.ddt_righe dr
+                         WHERE (dr.ddt_id = ANY (fn_partite_merce.p_ddt_ids))
+                       UNION
+                        SELECT f.ddt_riga_id
+                          FROM (vendite.ordini_righe_fulfillment f
+                            JOIN vendite.ordini_righe orr_1 ON ((orr_1.id = f.ordine_riga_id)))
+                         WHERE (orr_1.ordine_id = ANY (fn_partite_merce.p_ordine_ids))
+                       ), r1 AS MATERIALIZED (
+                        SELECT f2.ddt_riga_id
+                          FROM vendite.ordini_righe_fulfillment f2
+                         WHERE (f2.ordine_riga_id IN ( SELECT min(f.ordine_riga_id) AS min
+                                  FROM vendite.ordini_righe_fulfillment f
+                                 WHERE (f.ddt_riga_id IN ( SELECT s.ddt_riga_id
+                                          FROM semi s))
+                                 GROUP BY f.ddt_riga_id))
+                       ), chiusura AS MATERIALIZED (
+                        SELECT s.ddt_riga_id
+                          FROM semi s
+                       UNION
+                        SELECT r_1.ddt_riga_id
+                          FROM r1 r_1
+                       ), origini AS MATERIALIZED (
+                        SELECT c.ddt_riga_id
+                          FROM chiusura c
+                       UNION
+                        SELECT rr.ddt_riga_id
+                          FROM (vendite.resi_righe_riconsegne rc
+                            JOIN vendite.resi_righe rr ON ((rr.id = rc.resi_riga_id)))
+                         WHERE (rc.ddt_riga_id IN ( SELECT c.ddt_riga_id
+                                  FROM chiusura c))
+                       ), dr_in AS MATERIALIZED (
+                        SELECT dr.id,
+                           dr.ddt_id,
+                           dr.articolo_id,
+                           dr.quantita
+                          FROM (vendite.ddt_righe dr
+                            JOIN chiusura c ON ((c.ddt_riga_id = dr.id)))
+                         WHERE ((dr.attivo IS TRUE) AND (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL))))
+                       UNION ALL
+                        SELECT dr.id,
+                           dr.ddt_id,
+                           dr.articolo_id,
+                           dr.quantita
+                          FROM vendite.ddt_righe dr
+                         WHERE ((dr.attivo IS TRUE) AND ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+                       ), riconsegne_in AS MATERIALIZED (
+                        SELECT rr.ddt_riga_id AS ddt_riga_origine,
+                           rc.ddt_riga_id AS ddt_riga_nuova,
+                           rc.qta
+                          FROM ((vendite.resi_righe_riconsegne rc
+                            JOIN vendite.resi_righe rr ON ((rr.id = rc.resi_riga_id)))
+                            JOIN origini o_1 ON ((o_1.ddt_riga_id = rr.ddt_riga_id)))
+                         WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+                       UNION ALL
+                        SELECT rr.ddt_riga_id,
+                           rc.ddt_riga_id,
+                           rc.qta
+                          FROM (vendite.resi_righe_riconsegne rc
+                            JOIN vendite.resi_righe rr ON ((rr.id = rc.resi_riga_id)))
+                         WHERE ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL))
+                       ), fulfillment_in AS MATERIALIZED (
+                        SELECT f.ddt_riga_id,
+                           f.ordine_riga_id
+                          FROM (vendite.ordini_righe_fulfillment f
+                            JOIN chiusura c ON ((c.ddt_riga_id = f.ddt_riga_id)))
+                         WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+                       UNION ALL
+                        SELECT f.ddt_riga_id,
+                           f.ordine_riga_id
+                          FROM vendite.ordini_righe_fulfillment f
+                         WHERE ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL))
+                       ), resi_in AS MATERIALIZED (
+                        SELECT e.ddt_riga_id,
+                           e.quantita
+                          FROM (vendite.vw_resi_righe_effettive e
+                            JOIN chiusura c ON ((c.ddt_riga_id = e.ddt_riga_id)))
+                         WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+                       UNION ALL
+                        SELECT e.ddt_riga_id,
+                           e.quantita
+                          FROM vendite.vw_resi_righe_effettive e
+                         WHERE ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL))
+                       ), chiavi_af AS MATERIALIZED (
+                        SELECT (((('DDT:'::text || (d.uid)::text) || ':R:'::text) || (dr.id)::text))::character varying AS k
+                          FROM ((origini o_1
+                            JOIN vendite.ddt_righe dr ON ((dr.id = o_1.ddt_riga_id)))
+                            JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+                         WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+                       UNION
+                        SELECT (((('ORD:'::text || (od.uid)::text) || ':R:'::text) || (orr_1.id)::text))::character varying AS "varchar"
+                          FROM ((fulfillment_in f
+                            JOIN vendite.ordini_righe orr_1 ON ((orr_1.id = f.ordine_riga_id)))
+                            JOIN vendite.ordini od ON ((od.id = orr_1.ordine_id)))
+                         WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+                       ), af AS MATERIALIZED (
+                        SELECT a.corsia,
+                           a.riga_id,
+                           a.tipo_movimento,
+                           a.quantita,
+                           a.misurabile
+                          FROM vendite.fn_af_merce_per_riga(( SELECT COALESCE(array_agg(c.k), '{}'::character varying[]) AS "coalesce"
+                                  FROM chiavi_af c)) a(corsia, riga_id, tipo_movimento, quantita, misurabile, da_componenti, voci)
+                         WHERE (NOT ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)))
+                       UNION ALL
+                        SELECT a.corsia,
+                           a.riga_id,
+                           a.tipo_movimento,
+                           a.quantita,
+                           a.misurabile
+                          FROM vendite.fn_af_merce_per_riga(NULL::character varying[]) a(corsia, riga_id, tipo_movimento, quantita, misurabile, da_componenti, voci)
+                         WHERE ((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL))
+                       ), soglia AS (
+                        SELECT s.ordine AS ordine_emesso
+                          FROM config.stati_doc_ddt s
+                         WHERE ((s.codice_interno)::text = 'EMESSO'::text)
+                       ), ponte_riga AS (
+                        SELECT ri.ddt_riga_origine,
+                           ri.ddt_riga_nuova,
+                           d_new.data AS ddt_nuovo_data,
+                           (sdd_n.ordine >= sg.ordine_emesso) AS emesso,
+                           sum(ri.qta) AS qta
+                          FROM ((((riconsegne_in ri
+                            JOIN vendite.ddt_righe dr_new ON ((dr_new.id = ri.ddt_riga_nuova)))
+                            JOIN vendite.ddt d_new ON ((d_new.id = dr_new.ddt_id)))
+                            JOIN config.stati_doc_ddt sdd_n ON ((sdd_n.id = d_new.stato_doc_ddt_id)))
+                            CROSS JOIN soglia sg)
+                         GROUP BY ri.ddt_riga_origine, ri.ddt_riga_nuova, d_new.data, (sdd_n.ordine >= sg.ordine_emesso)
+                       ), ponte AS (
+                        SELECT p.ddt_riga_origine,
+                           COALESCE(sum(p.qta) FILTER (WHERE p.emesso), (0)::numeric) AS riconsegnato,
+                           COALESCE(sum(p.qta) FILTER (WHERE (NOT p.emesso)), (0)::numeric) AS in_riconsegna
+                          FROM ponte_riga p
+                         GROUP BY p.ddt_riga_origine
+                       ), acc_origine AS (
+                        SELECT DISTINCT p.ddt_riga_origine,
+                           GREATEST((0)::numeric, (- COALESCE(ret.quantita, (0)::numeric))) AS accreditato
+                          FROM (ponte_riga p
+                            LEFT JOIN af ret ON ((((ret.corsia)::text = 'DDT'::text) AND (ret.riga_id = p.ddt_riga_origine) AND ((ret.tipo_movimento)::text = 'RETTIFICA'::text))))
+                       ), migra AS (
+                        SELECT p.ddt_riga_nuova,
+                           p.ddt_riga_origine,
+                           GREATEST((0)::numeric, LEAST(p.qta, (a.accreditato - COALESCE(sum(p.qta) OVER (PARTITION BY p.ddt_riga_origine ORDER BY p.ddt_nuovo_data, p.ddt_riga_nuova ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), (0)::numeric)))) AS quota
+                          FROM (ponte_riga p
+                            JOIN acc_origine a ON ((a.ddt_riga_origine = p.ddt_riga_origine)))
+                         WHERE p.emesso
+                       ), migra_origine AS (
+                        SELECT m.ddt_riga_origine,
+                           sum(m.quota) AS quota_migrata
+                          FROM migra m
+                         GROUP BY m.ddt_riga_origine
+                       ), migra_nuova AS (
+                        SELECT m.ddt_riga_nuova,
+                           sum(m.quota) AS quota_nuova
+                          FROM migra m
+                         GROUP BY m.ddt_riga_nuova
+                       ), riga AS (
+                        SELECT dr.id AS ddt_riga_id,
+                           dr.ddt_id,
+                           d.uid AS ddt_uid,
+                           d.data AS ddt_data,
+                           dr.articolo_id,
+                           COALESCE(art.is_composito, false) AS is_composito,
+                           (EXISTS ( SELECT 1
+                                  FROM vendite.resi_righe_riconsegne rc
+                                 WHERE (rc.ddt_riga_id = dr.id))) AS e_riconsegna,
+                           COALESCE(mn.quota_nuova, (0)::numeric) AS quota_nuova,
+                           (((
+                               CASE
+                                   WHEN (EXISTS ( SELECT 1
+                                      FROM vendite.resi_righe_riconsegne rc
+                                     WHERE (rc.ddt_riga_id = dr.id))) THEN COALESCE(mn.quota_nuova, (0)::numeric)
+                                   ELSE dr.quantita
+                               END + COALESCE(pt.riconsegnato, (0)::numeric)) - COALESCE(mo.quota_migrata, (0)::numeric)))::numeric(18,6) AS consegnato,
+                           COALESCE(pt.in_riconsegna, (0)::numeric) AS in_riconsegna,
+                           COALESCE(caus.fatturabile, false) AS fatturabile
+                          FROM ((((((((dr_in dr
+                            JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+                            JOIN config.stati_doc_ddt sdd ON ((sdd.id = d.stato_doc_ddt_id)))
+                            JOIN catalogo.articoli art ON ((art.id = dr.articolo_id)))
+                            LEFT JOIN config.causali_trasporto caus ON ((caus.id = d.causale_trasporto_id)))
+                            LEFT JOIN ponte pt ON ((pt.ddt_riga_origine = dr.id)))
+                            LEFT JOIN migra_origine mo ON ((mo.ddt_riga_origine = dr.id)))
+                            LEFT JOIN migra_nuova mn ON ((mn.ddt_riga_nuova = dr.id)))
+                            CROSS JOIN soglia sg)
+                         WHERE ((NOT sdd.is_abortito) AND (sdd.ordine >= sg.ordine_emesso))
+                       ), orig AS (
+                        SELECT f.ddt_riga_id,
+                           count(DISTINCT f.ordine_riga_id) AS n_origini,
+                           min(f.ordine_riga_id) AS ordine_riga_id
+                          FROM fulfillment_in f
+                         GROUP BY f.ddt_riga_id
+                       ), articoli_ordinati_per_ddt AS MATERIALIZED (
+                        -- Gli articoli ORDINATI, per ogni DDT che ha righe in uscita.
+                        -- ⭐ rev 2026-09-22 (giro 8): il seme sono i DDT di `riga`, cioe' i
+                        -- documenti che hanno davvero righe in uscita — in ENTRAMBI i modi,
+                        -- quindi i due rami `p IS NULL` non servono piu'. Prima il ramo
+                        -- «tutte» scandiva vendite.ddt_righe per intero: una CTE che serve a
+                        -- UNA colonna non deve leggere piu' righe di quelle che riempie.
+                        -- ⛔ MATERIALIZED resta: vedi il commento di `sospetto`.
+                        SELECT DISTINCT r0.ddt_id, orr_ord.articolo_id
+                          FROM (SELECT DISTINCT rr.ddt_id FROM riga rr) r0
+                          JOIN vendite.ddt_righe dr2               ON dr2.ddt_id = r0.ddt_id AND dr2.attivo IS TRUE
+                          JOIN vendite.ordini_righe_fulfillment f2 ON f2.ddt_riga_id = dr2.id
+                          JOIN vendite.ordini_righe orr_ful        ON orr_ful.id = f2.ordine_riga_id
+                          JOIN vendite.ordini_righe orr_ord        ON orr_ord.ordine_id = orr_ful.ordine_id
+                                                                  AND orr_ord.attivo IS TRUE
+                      ), sospetto AS MATERIALIZED (
+                        -- La riga AGGIUNTA A MANO su un DDT che evade un ordine in cui quel
+                        -- articolo c'e' gia': un sospetto di doppia consegna, per una
+                        -- PERSONA. Non entra in nessun conto — riempie solo la colonna
+                        -- sospetto_duplicato_ordine, che legge il pannello situazione merce.
+                        -- ⭐ rev 2026-09-22 (giro 8): si semina da `riga`, le righe che
+                        -- ESCONO, invece di rileggere vendite.ddt_righe. La colonna e'
+                        -- proiettata con un LEFT JOIN su `riga`: calcolarla per righe che non
+                        -- escono e' lavoro che nessuno guarda.
+                        -- ⛔ MATERIALIZED non e' cosmetica, ed e' provato come app (22-09):
+                        -- TOLTO il recinto il planner pota la catena per chi non legge la
+                        -- colonna (diagnosi, lister) ma la RI-ESEGUE PER RIGA per chi la
+                        -- legge (il pannello: `Anti Join … loops=36`). Recinto TENUTO piu'
+                        -- seme da `riga` serve a entrambi: una volta sola, su meno righe.
+                        SELECT r1s.ddt_riga_id
+                          FROM riga r1s
+                          JOIN articoli_ordinati_per_ddt k
+                            ON k.ddt_id = r1s.ddt_id AND k.articolo_id = r1s.articolo_id
+                         WHERE NOT EXISTS (SELECT 1 FROM vendite.ordini_righe_fulfillment f
+                                            WHERE f.ddt_riga_id = r1s.ddt_riga_id)
+                      ), res AS (
+                        SELECT e.ddt_riga_id,
+                           sum(e.quantita) AS reso
+                          FROM resi_in e
+                         GROUP BY e.ddt_riga_id
+                       ), alloc AS (
+                        SELECT r_1.ddt_riga_id,
+                           GREATEST((0)::numeric, LEAST(r_1.consegnato, (COALESCE(fo.quantita, (0)::numeric) - COALESCE(sum(r_1.consegnato) OVER (PARTITION BY o_1.ordine_riga_id ORDER BY r_1.ddt_data, r_1.ddt_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), (0)::numeric)))) AS fatturato_da_ordine,
+                           COALESCE(fo.misurabile, true) AS ord_misurabile
+                          FROM ((riga r_1
+                            JOIN orig o_1 ON ((o_1.ddt_riga_id = r_1.ddt_riga_id)))
+                            LEFT JOIN af fo ON ((((fo.corsia)::text = 'ORD'::text) AND (fo.riga_id = o_1.ordine_riga_id) AND ((fo.tipo_movimento)::text = 'NORMALE'::text))))
+                         WHERE (NOT r_1.e_riconsegna)
+                       )
+                SELECT r.ddt_riga_id,
+                   r.ddt_id,
+                   r.ddt_uid,
+                   r.articolo_id,
+                   r.is_composito,
+                   o.ordine_riga_id,
+                   orr.ordine_id,
+                   (
+                       CASE
+                           WHEN (o.ddt_riga_id IS NULL) THEN 'NESSUNA'::text
+                           WHEN (o.n_origini > 1) THEN 'MULTIPLA'::text
+                           ELSE 'ORDINE'::text
+                       END)::character varying AS origine,
+                   r.fatturabile,
+                   r.consegnato,
+                   COALESCE(res.reso, (0)::numeric) AS reso,
+                   r.in_riconsegna,
+                   v.tenuti,
+                   COALESCE(fd.quantita, (0)::numeric) AS fatturato_merce,
+                   COALESCE(al.fatturato_da_ordine, (0)::numeric) AS fatturato_da_ordine,
+                   v.fatturato,
+                   v.misurabile,
+                       CASE
+                           WHEN (w.conta_fatturazione AND v.misurabile AND ((NOT r.e_riconsegna) OR (r.quota_nuova > (0)::numeric))) THEN w.saldo
+                           ELSE NULL::numeric
+                       END AS differenza,
+                   (
+                       CASE
+                           WHEN (r.e_riconsegna AND (r.quota_nuova <= (0)::numeric)) THEN 'RICONSEGNA'::text
+                           WHEN (NOT w.conta_fatturazione) THEN 'NON_FATTURABILE'::text
+                           WHEN (NOT v.misurabile) THEN 'NON_MISURABILE'::text
+                           WHEN (w.saldo > (0)::numeric) THEN 'DA_FATTURARE'::text
+                           WHEN (w.saldo < (0)::numeric) THEN 'DA_ACCREDITARE'::text
+                           ELSE 'PAREGGIATA'::text
+                       END)::character varying AS stato,
+                   r.e_riconsegna,
+                   (sos.ddt_riga_id IS NOT NULL) AS sospetto_duplicato_ordine,
+                   COALESCE(fr.quantita, (0)::numeric) AS rettificato,
+                   r.quota_nuova AS riconsegna_quota_nuova
+                  FROM (((((((((riga r
+                    LEFT JOIN orig o ON ((o.ddt_riga_id = r.ddt_riga_id)))
+                    LEFT JOIN vendite.ordini_righe orr ON ((orr.id = o.ordine_riga_id)))
+                    LEFT JOIN res ON ((res.ddt_riga_id = r.ddt_riga_id)))
+                    LEFT JOIN sospetto sos ON ((sos.ddt_riga_id = r.ddt_riga_id)))
+                    LEFT JOIN alloc al ON ((al.ddt_riga_id = r.ddt_riga_id)))
+                    LEFT JOIN af fd ON ((((fd.corsia)::text = 'DDT'::text) AND (fd.riga_id = r.ddt_riga_id) AND ((fd.tipo_movimento)::text = 'NORMALE'::text))))
+                    LEFT JOIN af fr ON ((((fr.corsia)::text = 'DDT'::text) AND (fr.riga_id = r.ddt_riga_id) AND ((fr.tipo_movimento)::text = 'RETTIFICA'::text))))
+                    CROSS JOIN LATERAL ( SELECT (r.consegnato - COALESCE(res.reso, (0)::numeric)) AS tenuti,
+                           ((COALESCE(fd.quantita, (0)::numeric) + COALESCE(al.fatturato_da_ordine, (0)::numeric)) + COALESCE(fr.quantita, (0)::numeric)) AS fatturato,
+                           (COALESCE(fd.misurabile, true) AND COALESCE(al.ord_misurabile, true) AND COALESCE(fr.misurabile, true)) AS misurabile) v)
+                    CROSS JOIN LATERAL ( SELECT (r.fatturabile OR (v.fatturato > (0)::numeric)) AS conta_fatturazione,
+                           (v.tenuti - v.fatturato) AS saldo) w)
+                 WHERE (((fn_partite_merce.p_ddt_ids IS NULL) AND (fn_partite_merce.p_ordine_ids IS NULL)) OR (r.ddt_id = ANY (fn_partite_merce.p_ddt_ids)) OR (orr.ordine_id = ANY (fn_partite_merce.p_ordine_ids)));
+              END;
+        # 2/2 — il COMMENT in un change SUO (pgjdbc dopo l'END non spezza).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_partite_merce(bigint[], bigint[]) IS
+                'LA PARTITA DI MERCE PER DOCUMENTO (D14, quarta leva, 2026-09-21): lo stesso conto di vendite.vw_partite_merce — che ne e'' la proiezione senza filtro, fn_partite_merce(NULL, NULL) — ristretto alla CHIUSURA dei documenti chiesti. Semi: p_ddt_ids (i DDT) e p_ordine_ids (gli ordini: le righe che li evadono); entrambi NULL = tutte le partite; un array VUOTO semina zero righe. Con entrambi valorizzati l''uscita e'' l''unione: ddt_id nei DDT chiesti OR ordine_id negli ordini chiesti — e `ordine_id` e'' la colonna PROIETTATA (min(ordine_riga_id) di `orig`), quindi una riga MULTIPLA esce sotto l''ordine della riga minima, come la legge il backend. La chiusura: R0 = righe dei semi; R1 = righe che condividono con una di R0 la riga d''ordine di `orig` (la partizione della greedy `alloc` e'' completa); O = R0 ∪ R1 ∪ le origini di ri-consegna (la finestra di `migra` e'' intera). Equivalente alla vista per costruzione: ogni colonna dipende solo da cio'' che la chiusura conserva. ⛔ Chi aggiunge una finestra o un insieme con una chiave nuova (articolo, cliente, commessa) DEVE allargare la chiusura, o la funzione sbaglia SOLO con un seme e la vista resta giusta: il presidio e'' test-fn-partite-merce-chiusura-v1, a casi costruiti. `af` (fn_af_merce_per_riga) e'' letta PER CHIAVE dal giro 4 (D5, 2026-09-21): le chiavi DDT delle origini O e le chiavi ORD dei fulfillment della chiusura, chiave BASE (i suffissi #RET/#CMP li risolve la funzione); la chiave ORD nasce dall''uid dell''ordine, letto sotto RLS — ordine e commessa devono stare nello stesso perimetro, e il BA li tiene insieme. BEGIN ATOMIC: le dipendenze sono in pg_depend (rinomina a monte rifiutata; catena RLS leggibile dal presidio security_invoker). I due modi sono rami in UNION ALL, mai `p IS NULL OR col = ANY(p)`: in piano generico quell''OR e'' una scansione intera sotto policy. INVOKER: la RLS resta di chi legge. Chiamanti per documento: fn_list_ddt_da_pushare, fn_ddt_push_diagnosi, BE list_partite_merce. Brief: brief-db-partita-merce-per-documento. ⭐ rev 2026-09-22 (D14 giro 8, §16): la catena del SOSPETTO — `articoli_ordinati_per_ddt` + `sospetto`, che calcola la sola colonna sospetto_duplicato_ordine — si semina da `riga`, cioe'' dalle righe che ESCONO, invece di leggere tutte le righe attive dei DDT in gioco; `ddt_in` era usata solo li'' ed e'' stata tolta. ⛔ Le due CTE restano MATERIALIZED, e non e'' cosmetica: senza il recinto il planner le pota per chi non legge quella colonna (la diagnosi, il lister) ma le RI-ESEGUE PER RIGA per chi la legge (il pannello, loops=36 provato come app il 22-09). Il recinto tenuto + il seme da `riga` e'''' la forma che serve a entrambi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Stessa firma e stesso RETURNS: si torna alla rev 20260921-53
+              --    ri-applicandone il change della funzione.
+              SELECT 1;

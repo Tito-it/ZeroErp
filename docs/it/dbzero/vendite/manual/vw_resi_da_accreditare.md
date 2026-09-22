@@ -202,7 +202,7 @@ residuo.
 ### 🔄 rev 2026-09-21 — la coda sta nella funzione, la vista ne è la proiezione (D14, giro 2 — D3)
 
 ChangeSet `20260921-28` (la funzione), `-29` (la vista), `-30` e `-31` (i due
-verbi). Brief: `work-in-progress/brief-db-partita-merce-per-documento.md`,
+verbi). Brief: `work-done/brief-db-partita-merce-per-documento.md`,
 decisione D3 di Tid. **Niente cambia nel risultato**: stesse 27 colonne, stessi
 tipi, stesse righe, stessi numeri. Cambia **dove sta la coda** e **chi la paga**.
 
