@@ -10,7 +10,7 @@ Approfondimenti viste:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 21-09-2026)
+(latest review 22-09-2026)
 
 Risponde a una domanda sola:
 
@@ -34,6 +34,13 @@ leggerlo. Se manca, sullo schermo esce un avviso generico e nessun campo
 rosso — e non fallisce nulla: nessun test, nessuna pagina bianca, nessun
 allarme. Il 21 settembre 2026 erano **37 codici** in questa condizione, e in
 molti il nome del campo *c'era*, scritto nel posto sbagliato.
+
+⭐ E la sera stessa, acceso il controllo del programma sopra questa vista, ne
+sono usciti **altri 9** che la lista compilata a mano non aveva: erano finiti
+nel bucket «forse» della prima misura, perché il nome del campo compariva in
+*un'altra* chiamata della stessa funzione e nessuno sapeva attribuirla. La
+vista attribuisce, e li ha visti il primo giorno. Sono stati sanati il 22
+settembre.
 
 ---
 
@@ -97,6 +104,27 @@ I limiti sono scritti nel commento della vista e provati dal test.
 
 ---
 
+### Chi la legge (a catalogo: `CANCELLO`)
+
+Questa vista **non è un allarme da sola**: elenca anche i punti sani, di
+proposito, come `vw_codici_errore_da_dichiarare`. Il cancello è il test del
+backend (`apps/core/tests/test_ui_action_e_canale_campi.py`), che incrocia il
+catalogo dei codici con questa vista per i siti del database e con il sorgente
+Python per gli altri, in due versi:
+
+| Verso | Che cosa chiede | Esito |
+| --- | --- | --- |
+| 1 — la promessa vuota | ogni codice che promette «evidenzia il campo» ha **almeno un** punto che manda il nome | **rosso**, blocca |
+| 2 — la promessa che non decide | un codice che manda *sempre* il nome ma promette altro | solo **misurato** e riportato, non blocca |
+
+Le eccezioni volute stanno nel test, con la ragione, e hanno il verso di
+ritiro: una riga di eccezione per un codice che ora rispetta la regola è rossa.
+Il pgTAP `db/pgtap/dbops/test-punti-canale-campo-v1.sql` presidia invece la
+**forma** (che la vista classifichi come dichiara) e che le sanature fatte non
+vengano disfatte da un corpo riemesso da un file più vecchio.
+
+---
+
 ### Esempio d'uso
 
 I codici con la promessa e senza il campo, con il nome che *ci sarebbe*:
@@ -110,7 +138,7 @@ SELECT codice, funzione, canale, nome_in_chiave, n_chiamate, n_con_canale
 ```
 
 Origine: `docs/it/dev/work-in-progress/brief-be-presidio-ui-action-e-canale-campi.md`
-(§4 e §4-bis). Test: `db/pgtap/dbops/test-punti-canale-campo-v1.sql`.
+(§4, §4-bis e §4-ter). Test: `db/pgtap/dbops/test-punti-canale-campo-v1.sql`.
 
 ---
 

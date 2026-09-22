@@ -71,7 +71,7 @@ BEGIN
             PERFORM script.fn_log_and_raise_error(
                 'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
                 'E_ADMIN_UO_NON_TROVATA',
-                jsonb_build_object('unita_organizzativa_id', p_unita_organizzativa_id),
+                jsonb_build_object('campo', 'unita_organizzativa_id', 'unita_organizzativa_id', p_unita_organizzativa_id),
                 NULL::uuid,
                 'Unita'' organizzativa non trovata o non attiva.'
             );

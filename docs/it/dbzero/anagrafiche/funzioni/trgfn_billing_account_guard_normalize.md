@@ -34,7 +34,7 @@ BEGIN
   IF NEW.parent_account_id IS NOT NULL AND NEW.parent_account_id = NEW.id THEN
     PERFORM script.fn_log_and_raise_error(
       'database', TG_NAME, 'E_PARENT_SELF',
-      jsonb_build_object('codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
+      jsonb_build_object('campo', 'parent_account_id', 'codice', NEW.codice, 'parent_account_id', NEW.parent_account_id),
       NULL::uuid, NEW.parent_account_id::text
     );
   END IF;
@@ -149,7 +149,7 @@ BEGIN
     ELSIF NEW.valido_al < NEW.valido_dal THEN
       PERFORM script.fn_log_and_raise_error(
         'database', TG_NAME, 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO',
-        jsonb_build_object('valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
+        jsonb_build_object('campo', 'valido_al', 'valido_dal', NEW.valido_dal, 'valido_al', NEW.valido_al),
         NULL::uuid, NEW.valido_al::text, NEW.valido_dal::text
       );
     END IF;

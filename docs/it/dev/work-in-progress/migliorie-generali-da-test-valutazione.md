@@ -538,6 +538,23 @@ riga di contesto): sono **due** — `create-cliente` e
 `test-soggetti-split-payment-cliente-pa` («Il soggetto non ha contatti validi»,
 provato sullo scratch forzando il ramo che costruisce).
 
+⚠️ **Erano tre** (2026-09-22, scratch `zeroerp_ci`: `dbops/test-processi-coda-automatica`,
+`ASSERZIONE` sul t.5 «la fabbrica serve», rosso che la CI non conosceva).
+Il censimento del 21-09 non lo vedeva perché lì la scrittura del soggetto
+**non è un `INSERT` nel file**: sta dentro `script.fn_crea_utente_tecnico`,
+chiamata da un `DO` della fixture — soggetto in un'istruzione, contatto in
+quella dopo, guard differito in mezzo. Un criterio testuale sul file conta le
+scritture che vede, e una scrittura che passa per una funzione è invisibile
+(stessa classe del «valore che passa per tre funzioni» di C1). Provato in
+transazione ritirata su dev nei due modi: con i vincoli IMMEDIATE la fabbrica
+è rifiutata, con la finestra riaperta è servita. ✅ Sanato nella stessa forma
+degli altri due (`SET CONSTRAINTS ALL DEFERRED` subito dopo la riga di
+contesto, dichiarato in testa); nessuna riga di baseline da toccare, il file
+torna verde. ⇒ Per il cancello «da decidere» qui sotto: un criterio che guardi
+solo gli `INSERT` del file manca proprio questo caso; deve contare anche le
+chiamate a funzioni che scrivono (`fn_crea_*`, `fn_pgtap_crea_*`), o dichiarare
+di non vederle.
+
 ⛔ **Rimedio scritto — e uno ritirato.** Tre strade:
 
 * *ripristinare il modo iniziale* dopo il builder: non si legge, e ricostruirlo

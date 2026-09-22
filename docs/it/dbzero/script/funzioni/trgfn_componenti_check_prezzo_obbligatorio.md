@@ -32,6 +32,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO',
             jsonb_build_object(
+                'campo',                  'prezzo_unitario',
                 'articolo_componente_id', NEW.articolo_componente_id,
                 'componente_id',          NEW.componente_id,
                 'prezzo_unitario',        NEW.prezzo_unitario

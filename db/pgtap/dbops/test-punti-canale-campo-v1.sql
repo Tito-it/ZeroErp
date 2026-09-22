@@ -15,13 +15,14 @@
 -- `ui_action` promessa e il canale che la realizza.
 --
 -- ChangeSet di riferimento: 20260921-40 (risalita condivisa), 20260921-42
---                           (la misura), 20260921-43..49 (la sanatura)
--- Brief: brief-be-presidio-ui-action-e-canale-campi §2, §3-bis.4, §4, §4-bis
+--                           (la misura), 20260921-43..49 (la sanatura, 30 A),
+--                           20260922-11..13 (i 9 A del §4-ter.2)
+-- Brief: brief-be-presidio-ui-action-e-canale-campi §2, §3-bis.4, §4, §4-bis, §4-ter
 --
 -- Indice test (plan 14):
---   1) ⛔ LA SANATURA NON SI DISFA: i 27 guard sanati il 21-09 portano ancora
---      il canale (IN_CHIAMATA, chiave campo) per i loro codici — un corpo
---      riemesso da uno YAML stantio qui diventa rosso
+--   1) ⛔ LA SANATURA NON SI DISFA: i 27 guard sanati il 21-09 e le 8 funzioni
+--      del 22-09 portano ancora il canale (IN_CHIAMATA, chiave campo) per i
+--      loro codici — un corpo riemesso da uno YAML stantio qui diventa rosso
 --   2) ⛔ nessun ramo cieco: ogni sito PRIMO_MOTIVO si lega ad almeno un codice
 --   3) ⭐ 'campo' nella chiamata -> IN_CHIAMATA / campo (COSTRUITO)
 --   4) ⭐ 'parametro' nella chiamata -> IN_CHIAMATA / parametro, e 'campo'
@@ -82,11 +83,17 @@ SELECT plan(14);
 -- ============================================================
 -- 1. ⛔ LA SANATURA NON SI DISFA
 -- ============================================================
--- ⛔ I ventisette guard sanati il 2026-09-21 (changeSet -43..-49), con i loro
---   codici. Restano scritti qui APPOSTA: e' la prova che nessuno ha riemesso
---   uno di questi corpi da uno YAML piu' vecchio della sanatura — il modo in
---   cui una correzione sparisce senza che nessun altro test lo veda
---   (memoria: fn_escludi_documento_da_giro, 2026-09-09).
+-- ⛔ I ventisette guard sanati il 2026-09-21 (changeSet -43..-49) e le otto
+--   funzioni del 2026-09-22 (i 9 A del §4-ter.2, changeSet 20260922-11..13:
+--   il test BE li aveva trovati ROSSI la sera stessa, fuori dai 37), con i
+--   loro codici. Restano scritti qui APPOSTA: e' la prova che nessuno ha
+--   riemesso uno di questi corpi da uno YAML piu' vecchio della sanatura —
+--   il modo in cui una correzione sparisce senza che nessun altro test lo
+--   veda (memoria: fn_escludi_documento_da_giro, 2026-09-09).
+-- ⚠️ Solo il SITO sanato: E_DATA_AL_MINORE_DAL in vendite.fn_get_or_create_commessa
+--   e E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO nelle due *_componenti_init
+--   restano NESSUNO di proposito (nessun input della pagina, §4-ter.2) e non
+--   sono qui: il verso 1 chiede «almeno un» sito.
 SELECT is(
     (SELECT string_agg(a.funzione || ' / ' || a.codice || ' = ' || coalesce(v.canale, '?') || '/' || coalesce(v.chiave, '-'),
                        ', ' ORDER BY a.funzione, a.codice)
@@ -126,13 +133,24 @@ SELECT is(
             ('vendite.trgfn_resi_riconsegne_guard',                               'E_QTA_NON_POSITIVA'),
             ('vendite.trgfn_resi_righe_guard_quantita',                           'E_QTA_NON_POSITIVA'),
             ('vendite.trgfn_resi_rinunce_guard',                                  'E_QTA_NON_POSITIVA'),
-            ('vendite.trgfn_preventivi_guard_utility_istanza_coerenza',           'E_PREV_UTILITY_ISTANZA_INCOERENTE')
+            ('vendite.trgfn_preventivi_guard_utility_istanza_coerenza',           'E_PREV_UTILITY_ISTANZA_INCOERENTE'),
+            -- i 9 A del §4-ter.2 (22-09, changeSet 20260922-11..13)
+            ('anagrafiche.fn_crea_risorsa_umana_v2',                              'E_ADMIN_UO_NON_TROVATA'),
+            ('anagrafiche.trgfn_billing_account_guard_normalize',                 'E_PARENT_SELF'),
+            ('anagrafiche.trgfn_billing_account_guard_normalize',                 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO'),
+            ('anagrafiche.trgfn_soggetti_conti_bancari_guard',                    'E_DATA_AL_MINORE_DAL'),
+            ('anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard',              'E_DATA_AL_MINORE_DAL'),
+            ('script.fn_disdetta_cliente',                                        'E_DATA_CESSAZIONE_INVALIDA'),
+            ('script.fn_guard_soggetto_pf_pura',                                  'E_AUTH_USER_SOGGETTO_CON_PIVA'),
+            ('script.trgfn_componenti_check_prezzo_obbligatorio',                 'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO'),
+            ('vendite.fn_aggiungi_onere_commessa',                                'E_ONERE_ARTICOLO_MANCANTE'),
+            ('vendite.fn_aggiungi_onere_commessa',                                'E_ONERE_IMPORTO_NON_VALIDO')
        ) a(funzione, codice)
        LEFT JOIN dbops.vw_punti_canale_campo v
               ON v.funzione = a.funzione AND v.codice = a.codice AND v.via = 'DIRETTO'
       WHERE v.canale IS DISTINCT FROM 'IN_CHIAMATA' OR v.chiave IS DISTINCT FROM 'campo'),
     NULL,
-    '1. i ventisette guard sanati il 21-09 portano ancora il canale campo per i loro codici: nessun corpo riemesso da uno YAML stantio'
+    '1. i 27 guard sanati il 21-09 e le 8 funzioni del 22-09 portano ancora il canale campo per i loro codici: nessun corpo riemesso da uno YAML stantio'
 );
 
 -- ============================================================
