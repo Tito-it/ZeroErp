@@ -42,7 +42,17 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 ### Trigger & funzioni collegate
 
-* **Delete‑block**: `trg_a10_dlt_block` → vieta hard delete (policy).
+* **Righe solo in bozza — sul DELETE**: `trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt`
+  → su un ordine fuori da DRAFT nessuna riga si toglie (`E_RIGA_DOC_NON_BOZZA`;
+  building block [`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
+  2026-09-22). ⚠️ INSERT e UPDATE restano **aperti di proposito**:
+  `data_consegna_confermata` si decide alla conferma e può cambiare dopo, e il
+  verbo che la governa non esiste ancora (`PROJECT_CONTEXT`, «la promessa di
+  consegna»). Quando ci sarà, la porta si allarga con un `CREATE OR REPLACE
+  TRIGGER`.
+* **Delete‑block**: `trg_ordini_righe_a10_block_dlt` → traduce in una frase il
+  rifiuto di togliere una riga con legami a valle (fulfillment, resi); a rifiutare
+  sono le FK ([`trgfn_dlt_block_ordrig_ddtrig`](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig)).
 * **Quantità da operativa**: `trg_a10_ins_upd_ordini_righe_qta_from_operativa` → invoca `script.trgfn_qta_from_operativa('true','false')` per calcolare `quantita` e aggiornare `factor_to_base` a ogni INSERT/UPDATE.
 * **Sync stato ordine**: gestito a livello testata dal trigger su fulfillment (vedi doc dedicata), senza usare terminologia “ortogonale”.
 

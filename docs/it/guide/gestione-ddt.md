@@ -119,7 +119,9 @@ completamente evaso, la sua proiezione di stato lo riflette
 (`PARZIALMENTE_EVASO` / `EVASO`).
 
 > Una riga d'ordine che ha già un DDT collegato **non è più eliminabile**
-> (guard DB `trgfn_dlt_block_ordrig_ddtrig`): la merce risulta in consegna.
+> (guard DB `trgfn_dlt_block_ordrig_ddtrig`): la merce risulta in consegna. E
+> su un ordine fuori bozza nessuna riga si toglie comunque
+> (`trgfn_doc_righe_lock_fuori_bozza`, il meccanismo condiviso).
 
 ### 2.2 Standalone (creazione manuale)
 
@@ -261,6 +263,15 @@ In sintesi:
   disponibili l'avanzamento logistico e — se ci sono righe eleggibili — il **push
   a commessa**.
 * **In `RESO`/`ANNULLATO`**: sola lettura.
+
+> ⭐ **Le righe in sola lettura non sono solo un fatto di interfaccia.** Fuori
+> dalla bozza il database rifiuta qualsiasi aggiunta, modifica o rimozione di
+> riga (`E_RIGA_DOC_NON_BOZZA`): è il meccanismo condiviso «le righe di un
+> documento si toccano solo in bozza»
+> ([`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/manual/trgfn_doc_righe_lock_fuori_bozza)),
+> lo stesso di ordini e contratti. Una riga già instradata alla fatturazione non
+> può quindi essere disattivata o cambiata: le correzioni passano da reso,
+> ri-consegna o nota.
 
 ---
 

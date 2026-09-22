@@ -178,8 +178,12 @@ END $$ LANGUAGE plpgsql;
 
 -- Un DDT CONSEGNATO che evade p_qta della riga d'ordine, alla data p_data.
 -- La data e' la chiave della greedy `alloc` (oldest-first): va scelta.
+-- `p_riga_manuale` (rev 2026-09-22): la riga aggiunta A MANO (caso 3) entra
+-- PRIMA delle transizioni — il BB trgfn_doc_righe_lock_fuori_bozza non
+-- ammette righe in un DDT fuori bozza.
 CREATE OR REPLACE FUNCTION pg_temp.ch_mk_ddt(p_ordine_id bigint, p_ordine_riga_id bigint,
-                                             p_qta numeric, p_data date)
+                                             p_qta numeric, p_data date,
+                                             p_riga_manuale numeric DEFAULT NULL)
 RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
 DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_ddtr bigint;
 BEGIN
@@ -191,6 +195,12 @@ BEGIN
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
   UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id      WHERE id = v_ddt;
+  IF p_riga_manuale IS NOT NULL THEN
+    INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
+        qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+    VALUES (v_ddt, 900, r.articolo_id, 'Riga aggiunta a mano', p_riga_manuale, p_riga_manuale, 20, r.iva_id,
+            true, false, jsonb_build_object('test_scope','pgtap_chiusura'));
+  END IF;
   UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id     WHERE id = v_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_spedito_id    WHERE id = v_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_consegnato_id WHERE id = v_ddt;
@@ -396,19 +406,21 @@ SELECT ok(
   '10) l''origine da sola: consegnato 10 + 5 ri-consegnati - 1 migrato = 14, identica alla vista');
 
 -- ============================================================
--- CASO 3 — la riga A MANO sul DDT di mezzo, stesso articolo dell'ordine:
+-- CASO 3 — la riga A MANO su un DDT misto, stesso articolo dell'ordine:
 --          sospetto acceso e origine NESSUNA anche per la chiusura.
+--          rev 2026-09-22: DDT SUO (ordine da 10 + riga a mano da 4, entrata
+--          in bozza dentro ch_mk_ddt): fino al 21-09 la riga si aggiungeva
+--          al DDT di mezzo gia' consegnato, che il BB delle righe non
+--          ammette piu' — e aggiungerla prima avrebbe cambiato i conti dei
+--          test 4-10.
 -- ============================================================
-INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT (SELECT ddt_id FROM tmp_d2), 900, r.articolo_id, 'Riga aggiunta a mano', 4, 4, 20, r.iva_id,
-       true, false, jsonb_build_object('test_scope','pgtap_chiusura')
-  FROM tmp_refs_ch r;
+CREATE TEMP TABLE tmp_o3 AS SELECT * FROM pg_temp.ch_mk_ordine(10);
+CREATE TEMP TABLE tmp_d3m AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o3), (SELECT ordine_riga_id FROM tmp_o3), 10, DATE '2026-08-14', 4);
 
 SELECT is(
   (SELECT p.origine || '|' || p.sospetto_duplicato_ordine::text
-     FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d2)]) p
-    WHERE p.ddt_riga_id <> (SELECT ddt_riga_id FROM tmp_d2)),
+     FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d3m)]) p
+    WHERE p.ddt_riga_id <> (SELECT ddt_riga_id FROM tmp_d3m)),
   'NESSUNA|true',
   '11) la riga a mano con l''articolo gia'' nell''ordine: origine NESSUNA e sospetto acceso, anche per chiusura');
 

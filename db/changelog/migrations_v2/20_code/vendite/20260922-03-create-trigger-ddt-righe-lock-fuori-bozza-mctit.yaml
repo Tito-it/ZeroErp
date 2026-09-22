@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRIMO ADOTTANTE — vendite.ddt_righe, tre porte
+#
+#   E' il documento per cui il BB nasce (D7): una riga di DDT emesso,
+#   gia' instradata a fatturazione, poteva essere disattivata o
+#   modificata senza che niente lo fermasse. Da qui INSERT, UPDATE e
+#   DELETE su ddt_righe passano solo se il DDT e' in DRAFT.
+#
+#   Il DELETE fuori bozza era gia' rifiutato dal ramo 1 di
+#   trgfn_dlt_block_ordrig_ddtrig (trg_ddt_righe_a10_block_ddt_dlt):
+#   quel ramo si ritira in 20260922-05, e questo trigger — in fascia
+#   _a05_, quindi PRIMA — ne prende il posto con lo stesso verdetto.
+#
+#   ⚠️ Censimento prima di chiudere la porta (22-09): nessuna funzione
+#   viva scrive ddt_righe fuori dalla bozza (fn_genera_ddt_da_ordine e
+#   fn_genera_ddt_riconsegna creano il DDT in DRAFT prima delle righe);
+#   il backend (ddt_repository) e' dietro _STATI_RIGHE_MODIFICABILI =
+#   {DRAFT}. Le fixture pgTAP che «nascono fuori bozza» e poi inseriscono
+#   righe sono l'unica cosa che questa porta ferma, ed e' voluto: e' la
+#   scorciatoia che il DB smette di ammettere.
+#
+# Brief: brief-db-partita-merce-per-documento (D7, giro 5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-03-create-trigger-ddt-righe-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20260922-03-create-trigger-ddt-righe-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt_righe: trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+        sul BB vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id'). Le righe
+        di un DDT si toccano solo in DRAFT.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza';
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.ddt_righe'::regclass
+                     AND tgname = 'trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                BEFORE INSERT OR UPDATE OR DELETE ON vendite.ddt_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt ON vendite.ddt_righe;

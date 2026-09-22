@@ -109,15 +109,9 @@ SELECT orr.ordine_id, orr.id AS ordine_riga_id,
        vendite.fn_genera_ddt_da_ordine(orr.ordine_id) AS ddt_id
 FROM orr;
 
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_doc), (SELECT tipo_ind_con_id FROM tmp_refs),
-       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_doc);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_doc);
-UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
-
 -- La riga che evade l'ordine (ha un fulfillment) e quella aggiunta a mano.
+-- ⚠️ La riga a mano entra PRIMA delle transizioni (rev 2026-09-22): il BB
+--   trgfn_doc_righe_lock_fuori_bozza non ammette righe in un DDT fuori bozza.
 -- ⚠️ In due passi e non in uno: un `INSERT ... RETURNING` non sta dentro una
 -- sottoquery scalare, va incapsulato in una CTE che modifica i dati.
 CREATE TEMP TABLE tmp_righe AS
@@ -134,6 +128,15 @@ WITH m AS (
   FROM tmp_refs r RETURNING id
 )
 UPDATE tmp_righe SET riga_manuale = (SELECT id FROM m);
+
+-- Poi il DDT si consegna, nel verso vero.
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_doc), (SELECT tipo_ind_con_id FROM tmp_refs),
+       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_doc);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_doc);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_doc);
 
 -- La testata di reso su cui si tenteranno gli inserimenti.
 CREATE TEMP TABLE tmp_reso AS

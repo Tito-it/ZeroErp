@@ -215,10 +215,15 @@ Trigger modalità C rimossi:
   blocca UPDATE di `listino_id`, `listino_versione_id`, `tipo_variazione_globale`,
   `valore_variazione_globale` su contratti ATTIVI.
   Errore: `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (452).
-* **Righe** — trigger `trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt`
-  (→ [`trgfn_contratti_righe_lock_post_attivazione`](/dbzero/vendite/funzioni/trgfn_contratti_righe_lock_post_attivazione)):
-  blocca qualsiasi INSERT/UPDATE/DELETE su `contratti_righe` quando il contratto padre è ATTIVO.
-  Errore: `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (452).
+* **Righe** — trigger `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt`
+  (→ [`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
+  il building block «le righe di un documento si toccano solo in bozza»):
+  blocca qualsiasi INSERT/UPDATE/DELETE su `contratti_righe` quando il contratto
+  padre **non è in DRAFT** — quindi in ATTIVO, e da questa revisione anche in
+  CESSATO e ANNULLATO, dove il backend le negava già.
+  Errore: `E_RIGA_DOC_NON_BOZZA`. La copia dedicata
+  (`trgfn_contratti_righe_lock_post_attivazione`, che bloccava il solo ATTIVO)
+  è stata ritirata il 2026-09-22 e riassorbita nel building block.
 
 ---
 

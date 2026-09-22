@@ -161,12 +161,16 @@ impedisce di usare `tipo_eccezione='AGGIUNTA'` per articoli **già presenti nel 
 
 Se l'articolo è già nel listino → `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` (id 450). L'operatore deve usare `OVERRIDE` invece di `AGGIUNTA`.
 
-#### Lock post-attivazione (Step 2.3)
+#### Righe solo in bozza (era «lock post-attivazione», Step 2.3)
 
-Una volta che il contratto diventa ATTIVO, il trigger
-`trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt`
-blocca **qualsiasi** INSERT/UPDATE/DELETE su `contratti_righe` →
-`E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (id 452).
+Le righe si aggiungono, modificano e tolgono solo finché il contratto è in
+DRAFT: il trigger `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt`
+— il building block
+[`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
+lo stesso di `ddt_righe` e `ordini_righe` — blocca **qualsiasi**
+INSERT/UPDATE/DELETE in ATTIVO, CESSATO e ANNULLATO → `E_RIGA_DOC_NON_BOZZA`.
+La copia dedicata ai contratti (che bloccava il solo ATTIVO) è stata ritirata il
+2026-09-22; il codice 452 resta al lock della testata.
 
 ---
 

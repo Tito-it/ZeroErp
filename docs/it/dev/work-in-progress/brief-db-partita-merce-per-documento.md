@@ -53,8 +53,21 @@
 > 39**. ⚠️ E un fatto nuovo dal piano (§11.8): la diagnosi senza documento
 > resta a ~350–460 ms perché il `SELECT` finale della partita inlinata viene
 > **ri-eseguito per ogni riga** (nested loop, `loops=54`) — non è più il
-> classificatore, è la forma del join. ⏳ Da committare. Decisioni aperte:
-> D6, D7, D8(b) (§11.8 gli dà una strada da una riga).
+> classificatore, è la forma del join. ✅ Committato (`e05e3b1e5`, 21-09 alle
+> 23:37; ⏳ PR verso `Tito-dev` da aprire). Decisioni aperte:
+> D6, D8(b) (§11.8 gli dà una strada da una riga).
+> ✏️ **Giro 5 (D7, «B come BB generico» — Tid, 21-09 notte) SCRITTO il 22-09**
+> — §12, da leggere per primo se si riprende da qui: il building block
+> `vendite.trgfn_doc_righe_lock_fuori_bozza` («le righe di un documento si
+> toccano solo in bozza», fascia `_a05_`, stato dal lettore DEFINER
+> `fn_get_stato_testata_documento` esteso a `CONTRATTO`), montato su
+> `ddt_righe` (tre porte), `ordini_righe` (solo DELETE, di proposito) e
+> `contratti_righe`; le **due copie** a DB ritirate nello stesso giro (il lock
+> dedicato dei contratti droppato, il ramo 1 di `trgfn_dlt_block_ordrig_ddtrig`
+> tolto); due codici nuovi, uno ritirato; un pgTAP nuovo (21), due riscritti,
+> cinque fixture riordinate («il documento nasce fuori bozza» non è più
+> ammesso). Provato sull'SQL estratto: 75 pgTAP con/senza a esiti identici
+> tranne i tre che pinnano lo stato nuovo. `20260922-01 → -06`, ⏳ apply di Tid.
 
 ---
 
@@ -455,7 +468,7 @@ Presidi trasversali da toccare, e non è un elenco da rileggere a fine giro:
 | **D3** | Chi passa alla funzione oltre a lister, diagnosi e `list_partite_merce`: `vw_situazione_merce_ordine` (→ funzione per ordine) e le sei funzioni per riga di reso | ✅ **Decisa da Tid il 21-09: non in questo giro, ma è il giro SUBITO DOPO — «prima possibile», non un residuo.** Sono verbi o aggregati letti una volta per gesto, e questo giro vuole restare piccolo per il pgTAP dei casi costruiti; ma restano sette lettori che pagano «tutto». Stessa mossa (una riga per lettore: `fn_partite_merce(ARRAY[ddt_id della riga])` / `(NULL, ARRAY[ordine_id])`), un pgTAP di equivalenza per lettore |
 | **D4** | La seconda leva — capability a una lettura. ~~Forma B1 (`segment` esposto, lister invariato)~~ oppure **B2** (§2-bis.8: il lister deriva dalla diagnosi, una sola implementazione dell'eleggibilità) | ✅ **Decisa da Tid il 21-09: B2, in un giro suo, subito dopo la quarta leva.** Non è «dopo la misura»: è una questione di contratto — oggi lister e diagnosi sono due copie della stessa regola tenute uguali da un pgTAP verde per sottrazione, cioè lo stesso difetto che D1 rifiuta per la vista. B1 lo lascerebbe in piedi. Il giro è separato perché tocca il lister della pipeline |
 | **D6** | `vendite.vw_contatore_merce` **non ha più lettori** (§9.1: dal `20260921-23` il lister legge `fn_partite_merce`; nessuna funzione, vista, repository o CSV di lista la nomina — solo `test-vw-contatore-merce-v1` e `test-porta-oneri-contatore-cieco-v1`). Ritirarla, o dichiarare chi la leggerà | 🔵 **Da decidere.** Sul modello è la quarta vista a valle della partita e ogni colonna nuova nel `RETURNS TABLE` paga anche il suo `DROP`; il COMMENT dice ancora «dosa la fatturazione», che non è più vero. Se si ritira: `DROP VIEW`, i due pgTAP (il secondo prova la porta degli oneri sul contatore — va riscritto sulla partita o ritirato con motivo), il `manual/` (memoria: oggetto ritirato = cancellare il manual), i COMMENT di `vw_situazione_merce_ordine` e `vw_partite_merce` che la nominano |
-| **D7** | `vendite.ddt_righe.attivo` **non ha un guard fuori da `DRAFT`** (letto dal catalogo il 21-09 sera: i soli trigger su `attivo` sono i `block_deact` delle figlie — fulfillment, resi, componenti, note — e una riga standalone già instradata non ne ha). Il modello quindi **ammette** di disattivare una riga che ha un'attività di commessa (`ALLOCATA`/`EMESSA`) su un DDT emesso. È emerso da B2: la capability leggeva la precedenza `GIA_INVIATO`/`GIA_FATTURATO` scandendo `ddt_righe` **senza guardare `attivo`**; ora la legge dalla diagnosi, che guarda le righe attive (lo stesso perimetro della partita e del lister). Nel solo caso «riga instradata poi disattivata» la risposta cambia (da «già inviato» al motivo delle altre righe, o al generico) | 🔵 **Da decidere.** Raccomandazione: un guard `BEFORE UPDATE OF attivo` su `ddt_righe` che rifiuti la disattivazione quando `fn_get_stato_push_segment(segment_key) <> 'LIBERA'` — merce instradata a fatturazione non è una riga che si può far sparire — oppure, più largo, il lock delle righe fuori da `DRAFT` (`can_edit_righe` lo dice già al FE, il DB no). È una regola di dominio, non un ripiego della capability: nessun changeSet in questo giro |
+| **D7** | `vendite.ddt_righe.attivo` **non ha un guard fuori da `DRAFT`** (letto dal catalogo il 21-09 sera: i soli trigger su `attivo` sono i `block_deact` delle figlie — fulfillment, resi, componenti, note — e una riga standalone già instradata non ne ha). Il modello quindi **ammette** di disattivare una riga che ha un'attività di commessa (`ALLOCATA`/`EMESSA`) su un DDT emesso. È emerso da B2: la capability leggeva la precedenza `GIA_INVIATO`/`GIA_FATTURATO` scandendo `ddt_righe` **senza guardare `attivo`**; ora la legge dalla diagnosi, che guarda le righe attive (lo stesso perimetro della partita e del lister). Nel solo caso «riga instradata poi disattivata» la risposta cambia (da «già inviato» al motivo delle altre righe, o al generico) | ✅ **Decisa da Tid il 21-09 notte: la strada larga, «B come BB generico».** Non un guard su `attivo` (una colonna, una conseguenza) ma la regola del documento — *le righe si toccano solo in bozza* — che il progetto aveva già in tre posti (capability `can_edit_righe`, `_STATI_RIGHE_MODIFICABILI` del BE, guida) e a DB in **due copie parziali** (il lock delle righe di contratto, solo `ATTIVO`; il ramo 1 di `trgfn_dlt_block_ordrig_ddtrig`, solo DELETE). Sul modello B ⇒ A: nessuna transizione riporta in `DRAFT`, e l'instradamento avviene solo su `CONSEGNATO`. ✏️ Scritto il 22-09 come building block, §12 |
 | **D8** | `script.fn_get_stato_push_segment` è un classificatore **per riga**: `WHERE segment_key = k OR LIKE k‖'#CMP:%' OR LIKE k‖'#RET:%'` su `commesse_attivita`. Sotto RLS è una **scansione intera con la policy valutata per prima** (il piano come app: `Seq Scan … Filter: (ruolo = OPERATORE AND fn_scope_ef_whitelist_via_commessa(…) AND (…))`, 2027 buffer per 112 righe): l'`OR` con due `LIKE` non è indicizzabile sul btree normale, e `textlike` **non è leakproof**, quindi non può salire sopra la policy. Fatto datato (21-09 sera, app): 7.6 ms a chiamata. La diagnosi lo chiama per **ogni riga attiva** — deve, perché `segment` serve alla precedenza della capability anche sulle righe escluse dalle altre rank — e da B2 il lister senza documento eredita quel costo (§10.7) | ✏️ **(a) fatta nel giro 4 (§11), con una correzione**: l'indice da solo NON avrebbe reso indicizzabili i rami `LIKE` — sotto una policy un `LIKE` non diventa mai `Index Cond`, nemmeno a costante, perché la clausola intera non è leakproof e il planner non arriva a riscriverla nel range (provato come app, §11.2). La strada (a) è quindi **indice + predicato riscritto** come range sugli operatori del pattern (`~>=~`/`~<~`, leakproof): `20260921-50` + `-55`, `BitmapOr` di tre `Index Cond` sopra la policy. 🔵 **(b)** resta da decidere sulla misura dopo l'apply (§11.7): la forma set-based, `fn_stati_push_segmenti(p_keys)` con la scalare come proiezione, è il modello per la lista senza documento — e ora ha il suo stampo in `fn_af_merce_per_riga` |
 | **D5** | Il «pavimento» di `af` (§2-bis.5): leggere `vw_af_merce_per_riga` per chiave di segmento invece che intera — indice `text_pattern_ops` su `commesse_attivita.segment_key` + `LIKE` a prefisso per i `#CMP` | ✅ **Decisa da Tid il 21-09: DA FARE, passo a sé, dopo D3 e D4.** Non «se serve»: sul modello è l'unico pezzo del conto che dopo la chiusura resta proporzionale alla storia — cresce con le **fatture**, che non si svuotano mai — quindi peggiora da solo col tempo. La misura dopo la quarta leva serve a dargli la priorità, non a decidere se farlo |
 
@@ -485,6 +498,10 @@ i suoi pgTAP a esito identico sopra l'SQL estratto. ⚠️ `differenza` non è f
 le colonne: il lister ha bisogno della **dose** (la differenza cappata alla
 quantità della riga), ed esporre la differenza grezza gli avrebbe fatto
 ricopiare il cap — la seconda implementazione che B2 vuole togliere.
+
+**Giro 5 — D7, il building block «righe solo in bozza».** ✏️ **Scritto il
+22-09 (§12).** Sei changeSet (`20260922-01 → -06`), due codici, un pgTAP nuovo,
+due riscritti, cinque fixture riordinate.
 
 **Giro 4 — D5 e D8(a), `af` e il classificatore per chiave.** ✏️ **Scritto
 il 21-09 notte (§11).** Indice `varchar_pattern_ops` su
@@ -861,8 +878,8 @@ array vuoto = zero righe; entrambi valorizzati = unione. Le viste sono
 2. ✅ la misura come app: §9.7;
 3. ✅ commit con la doc auto-gen rigenerata — `559dbf351`, PR #1635;
 4. 🔵 D6 (`vw_contatore_merce`), decisione di Tid;
-5. ✏️ giro 3 (D4, B2) **scritto** (§10), ⏳ apply di Tid; poi giro 4 (D5);
-   richieste BE §8.4 e §9.4.
+5. ✅ giro 3 (D4, B2) applicato e committato (§10); ✅ giro 4 (D5 + D8a)
+   applicato e committato (§11); richieste BE §8.4 e §9.4.
 
 ### 9.7 La misura «dopo» (dbdev, 21-09 dopo l'apply, `zeroerp_app` con contesto operatore, 121 righe d'ordine / 36 partite / 1 riga in coda, media delle chiamate 8–10 di 10 nella stessa sessione, righe valutate intere — colore, non motivo)
 
@@ -1035,10 +1052,10 @@ attività EMESSA si costruiscono **prima** di quelle ALLOCATA:
    (`funzioni/fn_ddt_push_diagnosi.md` mostra il corpo `BEGIN ATOMIC` con le
    otto colonne, il lister e la capability nuovi);
 3. ✅ la misura come app: §10.7 — e ha portato **D8**;
-4. ⏳ commit;
+4. ✅ commit — `acaaab569`;
 5. 🔵 D6 (`vw_contatore_merce`), **D7** (`ddt_righe.attivo` senza guard) e
    **D8** (il classificatore del segmento per riga), decisioni di Tid;
-6. ✏️ giro 4: D5 **con** D8(a) — **scritto** (§11), ⏳ apply di Tid;
+6. ✅ giro 4: D5 **con** D8(a) — applicato e committato (§11);
    richieste BE §8.4 e §9.4 (nessuna nuova da questo giro: blob della
    capability e contratto del lister invariati).
 
@@ -1228,7 +1245,8 @@ Nessuna nuova: contratti di viste e funzioni invariati. Restano §8.4 e §9.4.
    classificatore è un `BitmapOr` di tre `Index Cond` **sopra** la policy
    (che resta un `Filter` dopo), `fn_af_merce_per_riga` con le chiavi vere di
    un DDT idem; 6 buffer per chiamata contro i 2027 del §10.7;
-4. ✅ doc auto-gen rigenerata (Tid); ⏳ commit;
+4. ✅ doc auto-gen rigenerata (Tid); ✅ commit — `e05e3b1e5` (21-09 alle
+   23:37); ⏳ PR verso `Tito-dev`;
 5. 🔵 **D8(b)** — la misura dice altro (§11.8): il classificatore non è più
    il costo della lista senza documento; lo è la partita inlinata
    ri-eseguita per riga nella diagnosi. Prima della forma set-based del
@@ -1291,3 +1309,58 @@ documento da ~460 a ~100 ms, il lister sotto. Non è D8(b) — è prima — e no
 è scritto: **decisione a Tid** (un changeSet su `fn_ddt_push_diagnosi`, i
 venti presidi del giro 3 da rilanciare). ⛔ Nessuno di questi numeri decide:
 la forma «nested loop su CTE senza statistiche» è il fatto sul modello.
+
+## 12. Giro 5 (D7, «B come BB generico») — cosa è stato scritto e provato (22-09)
+
+### 12.1 Il censimento, prima di scrivere — e cosa ha cambiato il perimetro
+
+Dal catalogo vivo, dai backend e dai pgTAP (22-09):
+
+| Cosa | Esito |
+| --- | --- |
+| la regola «righe solo in bozza» a DB | **due copie parziali**: `vendite.trgfn_contratti_righe_lock_post_attivazione` (`20260515-14`, blocca solo `ATTIVO` — e lascia aperti `CESSATO`/`ANNULLATO`, dove il BE le nega) e il **ramo 1** di `vendite.trgfn_dlt_block_ordrig_ddtrig` (`20260826-21`, solo DELETE su DDT/ordini) |
+| il lettore dello stato di una testata | esiste già: `script.fn_get_stato_testata_documento` (DEFINER, `DDT`\|`ORDINE`, nato il 26-08 per il ramo 1) — si allarga a `CONTRATTO`, niente SQL dinamico nel BB |
+| RLS sulle righe | ⚠️ il COMMENT del 26-08 diceva «`ddt_righe`/`ordini_righe` NO»: oggi **sì** (una policy su `ddt_righe`, tre su `ordini_righe`, una su `contratti_righe`). Il perno del DEFINER non cambia |
+| chi scrive `ddt_righe`/`contratti_righe` fuori dalla bozza | **nessuna funzione viva** (`fn_genera_ddt_da_ordine`, `fn_genera_ddt_riconsegna`, `fn_push_offerta_a_contratto` creano il documento in `DRAFT` prima delle righe; `fn_contratto_riga_componenti_init` scrive le componenti); i writer BE sono tutti dietro `_STATI_RIGHE_MODIFICABILI` / «Guard sotto-entità: solo DRAFT» |
+| ordini | il DB **non** blocca INSERT/UPDATE di proposito (`PROJECT_CONTEXT`, «la promessa di consegna dopo la conferma»: `data_consegna_confermata` cambia dopo la conferma, senza ancora un verbo suo) → il BB si monta sul **solo DELETE**, dove il ramo 1 c'era già |
+| preventivi | candidato successivo (`_STATI_RIGHE_MODIFICABILI = {DRAFT}` anche lì), **non in questo giro**: l'approvazione prezzo scrive `stato_approvazione_prezzo` sulle righe e va censita prima |
+| ordine dei guard | con `_a10_` il nome verrebbe dopo `trg_ddt_righe_a10_block_ddt_dlt` e i `_block_deact_upd`: l'operatore leggerebbe «c'è un fulfillment» prima di «il documento è emesso». Fascia **`_a05_`** (precedente `trg_emittenti_fiscali_a05_guard_codice_forma`), regola scritta in linee-guida-trigger |
+| pgTAP che scrivono le tre tabelle di righe | 19 su `ddt_righe`, 14 su `contratti_righe`, 1 DELETE su `ordini_righe`; **cinque** inserivano righe in un DDT già consegnato/spedito («nasce fuori bozza», o riga a mano dopo la consegna) |
+
+### 12.2 I file
+
+| Cosa | File |
+| --- | --- |
+| il lettore impara `CONTRATTO` | `20_code/script/20260922-01-update-fn-get-stato-testata-documento-contratto` |
+| il building block | `20_code/vendite/20260922-02-create-trgfn-doc-righe-lock-fuori-bozza` — `TG_ARGV`: tipo documento, colonna FK della riga, [codice stato bozza, default `DRAFT`]; `to_jsonb` sulla riga, niente SQL dinamico; testata assente = passa (cascade / FK); su UPDATE guarda anche la testata di provenienza |
+| DDT, tre porte | `20_code/vendite/20260922-03-create-trigger-ddt-righe-lock-fuori-bozza` (`trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt`) |
+| ordini, solo DELETE | `20_code/vendite/20260922-04-create-trigger-ordini-righe-lock-fuori-bozza-dlt` |
+| il ramo 1 esce dal traduttore | `20_code/vendite/20260922-05-update-trgfn-dlt-block-ordrig-ddtrig-solo-legami` (restano 2a/2b/3; l'ordine dei messaggi lo garantisce ora la fascia) |
+| contratti: la copia si ritira | `20_code/vendite/20260922-06-update-trigger-contratti-righe-lock-su-bb` (DROP trigger + DROP FUNCTION + trigger `_a05_` sul BB) |
+| catalogo | `messaggi_errore.csv`: `E_RIGA_DOC_NON_BOZZA` (1111, «%s non e' piu' in bozza (stato %s): le sue righe si possono %s solo finche' e' in bozza» — il verbo dice la porta), `E_DOC_RIGHE_LOCK_MONTAGGIO` (1112, TECNICO); la `causa` di 452 non nomina più il trigger di riga; `E_DOC_TIPO_NON_GESTITO` generalizzato. `codici_errore.csv`: i due nuovi, `E_DELETE_RIGA_DOC_NON_BOZZA` **ritirato** (`obsoleto_dal 2026-09-22`, messaggio conservato) |
+| il presidio nuovo | `db/pgtap/vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1.sql` (21: forma e fascia, catalogo, le tre porte per documento, **il caso di D7** — riga `ALLOCATA` e `attivo = false`, test 8 —, la precedenza sul fulfillment, il cascade, la porta aperta degli ordini pinnata, `CESSATO` chiuso, i due errori di montaggio, `TG_ARGV[2]`) |
+| presidi riscritti | `test-delete-righe-documento-bozza-v1` (fixture coi builder, DDT emesso nel verso vero; era in `baseline-rossi-ci`), `test-contratti-step23-v1` (test 3: nome nuovo; 10: codice nuovo) |
+| fixture riordinate («la riga a mano entra in bozza») | `test-fn-list-ddt-da-pushare-v1` (quattro DDT nascono `DRAFT` e si spediscono con `pg_temp.spedisci`; due righe hanno preso `iva_id`/prezzo perché i gate di emissione li pretendono), `test-fn-partite-merce-chiusura-v1` (caso 3 su un DDT **suo**: aggiungere la riga a d2 prima delle transizioni avrebbe cambiato i conti dei test 4-10), `test-vw-partite-merce-v1` e `test-vw-resi-da-accreditare-contatore-v1` (`mk_partita(…, p_riga_manuale)`), `test-resi-righe-guard-origine-coerente-v1` (la riga a mano prima delle transizioni) |
+| manuali | **`trgfn_doc_righe_lock_fuori_bozza.md`** (nuovo, con dentro il ritiro delle due copie); `trgfn_contratti_righe_lock_post_attivazione.md` **cancellato**; `trgfn_dlt_block_ordrig_ddtrig.md`, `trgfn_doc_guard_delete_solo_bozza.md`, `fn_get_stato_testata_documento.md`, `trgfn_contratti_lock_post_attivazione.md`, `contratti.md`, `contratti_righe.md`, `ddt_righe.md`, `ordini_righe.md` (rev); guide `gestione-ddt.md` §4, `gestione-contratti.md` §6.2; `linee-guida-trigger.md` (la fascia `_a05_`) |
+
+### 12.3 Le prove (owner, `BEGIN … ROLLBACK`, SQL estratto dai sei change + le righe di catalogo)
+
+* **Forma nel catalogo**: BB plpgsql non `DEFINER`; `fn_get_stato_testata_documento` firma e `prosecdef` invariati; i tre trigger in `_a05_` con gli argomenti attesi; `trg_ddt_righe_a05_…` **primo** fra gli undici `BEFORE ROW` di `ddt_righe`; funzione e trigger dei contratti assenti; nessuna funzione viva nomina `E_DELETE_RIGA_DOC_NON_BOZZA`. `plpgsql_check` sul BB: zero righe (i due avvisi su `dlt_block` — `OLD.ordine_id` compilato contro `ddt_righe` — e sul lettore — `STABLE` con `PERFORM` — sono **preesistenti**, identici sul vivo).
+* **Il presidio nuovo**: 21/21; senza i changeSet muore (31 fra rossi ed errori) — il verso giusto.
+* **Il censimento**: **75 pgTAP** (i 34 che scrivono le tre tabelle, i satelliti RLS, le capability, i lister, il rubinetto, i riferimenti morti, `test-rls-viste-security-invoker`), ciascuno nella propria transazione con l'SQL estratto in testa e **senza**: esiti identici file per file, tranne i tre che pinnano lo stato nuovo (`doc-righe-lock` 0→21, `delete-righe` 8→10, `step23` 12→13). I cinque riordinati: `fn-list-ddt-da-pushare-v1` 12/12, `partite-merce-chiusura` 13/14 (il 14 è lo scope da owner, come sempre), `vw-partite-merce` 11/11, `resi-da-accreditare-contatore` 10/10, `origine-coerente` 6/6 — gli stessi numeri di prima.
+* **I sette cancelli statici**: OK. **I due guardrail SQL** sopra l'SQL estratto: `codice_errore_strutturato` OK («nessun codice ritirato ancora sollevato, 95 ritirati»), `riferimenti_morti` OK.
+* `liquibase updateSQL` offline dei sei (copie senza `preConditions`): rendono tutti.
+* ⚠️ Nessun `BEGIN ATOMIC` in questo giro (plpgsql, forma standard): il jar di pgjdbc non serve. Nessuna misura: non è un giro di costo.
+
+### 12.4 ⏳ Richieste BE (nessuna urgenza a DB: il guard vale da solo)
+
+* `manage.py genera_error_policies` (+ fallback dei messaggi) per `E_RIGA_DOC_NON_BOZZA` (CONFLITTO_STATO → 409) e `E_DOC_RIGHE_LOCK_MONTAGGIO` (TECNICO); `E_DELETE_RIGA_DOC_NON_BOZZA` è ritirato: i commenti in `ddt_service.py` (righe ~666-670) che lo nominano come esito del traduttore vanno aggiornati (il primo esito è ora del BB, con il codice nuovo).
+* `docs/it/backend/vendite/manual/modello-contratti.md` e `api_contratti.md` nominano `trgfn_contratti_righe_lock_post_attivazione`: il lock delle righe è il BB, codice `E_RIGA_DOC_NON_BOZZA` (452 resta alla testata).
+* ❓ **Da decidere, non da fare**: i pre-check `_STATI_RIGHE_MODIFICABILI` di `ddt_service`/`contratti_service`/`ordini_service` sono ora una copia BE di una regola che il DB fa rispettare. Restano legittimi come risposta 409 «prima di scrivere» (stesso codice? oggi sollevano un loro `E_*`): allinearne il codice a `E_RIGA_DOC_NON_BOZZA` renderebbe il messaggio uno solo, ma è una scelta di contratto API.
+
+### 12.5 Cosa resta, nell'ordine
+
+1. ⏳ apply dei sei changeSet — Tid; poi pgTAP (i tre file che pinnano lo stato nuovo tornano verdi solo dopo l'apply; `test-delete-righe-documento-bozza-v1` e `test-fn-list-ddt-da-pushare-v1`, oggi in `baseline-rossi-ci`, dovrebbero **rientrare** alla prossima corsa CI: fixture coi builder), doc auto-gen;
+2. ⏳ commit e PR (insieme al giro 4, `e05e3b1e5`, ancora senza PR);
+3. 🔵 D6 (`vw_contatore_merce`), D8(b) e il passo di §11.8 (la partita in CTE `MATERIALIZED` nella diagnosi): decisioni di Tid;
+4. 🔵 residui dichiarati: `fn_accredita_riga_reso` con tre `LIKE` (§11.6.6); i **preventivi** come quarto adottante del BB (censire l'approvazione prezzo prima); richieste BE §8.4, §9.4, §12.4.

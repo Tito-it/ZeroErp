@@ -69,7 +69,7 @@ Con `IS DISTINCT FROM` il guard rifiuta lo stesso, e il messaggio lo dice
 
 ---
 
-### ℹ️ Perché non è una funzione generica
+### ℹ️ Perché non è una funzione generica — e perché quella delle righe sì
 
 Il progetto ha l'idioma delle trigger function parametrizzate
 (`dbops.trgfn_child_requires_active_parent`), e qui **non paga**: le due testate
@@ -77,8 +77,17 @@ hanno tabelle di stato diverse (`config.stati_doc_ddt`, `config.stati_doc_ordini
 e colonne diverse (`stato_doc_ddt_id`, `stato_doc_ordine_id`). Una versione
 generica richiederebbe SQL dinamico su **due** assi per coprire **due** casi.
 
-Si tiene invece la forma del guard gemello, che già dispaccia su
-`TG_TABLE_NAME`: due funzioni della stessa famiglia che si leggono allo stesso
+⭐ Sulle **righe** invece la generica esiste dal 2026-09-22
+([`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza)),
+e non contraddice questa scelta: lì la conoscenza del documento non sta nel
+trigger ma nel lettore
+[`fn_get_stato_testata_documento`](/dbzero/script/funzioni/fn_get_stato_testata_documento),
+che dispaccia sul tipo — il trigger legge la colonna FK con `to_jsonb` e non
+compone SQL. Con tre tabelle di righe e tre documenti, e due copie parziali
+della stessa regola già a DB, il building block era la forma giusta.
+
+Qui si tiene la forma del guard gemello, che già dispaccia su
+`TG_TABLE_NAME`: funzioni della stessa famiglia che si leggono allo stesso
 modo.
 
 ---
@@ -107,8 +116,9 @@ modo.
   storicizzazione lavori.
 * **Nessuna lettura sotto RLS**: lo stato sta su `OLD`, cioè sulla riga che il
   chiamante sta già cancellando, e il vocabolario `config.stati_doc_*` non ha
-  regole di visibilità per riga. È la differenza con il guard gemello, che invece
-  deve leggere una **tabella diversa** e per questo passa da una
+  regole di visibilità per riga. È la differenza con i guard di riga (il
+  traduttore dei legami e il BB «solo in bozza»), che devono leggere una
+  **tabella diversa** e per questo passano da una
   [`SECURITY DEFINER`](/dbzero/script/funzioni/fn_get_stato_testata_documento).
 * Il rimedio, quando rifiuta, **non è insistere**: si annulla il documento. Se è
   appena stato emesso per sbaglio e il suo stato lo consente, si riporta in bozza

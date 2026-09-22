@@ -6,28 +6,40 @@
 > [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
 > [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment) — dove vive la protezione vera
 > [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — il guard gemello, sulla testata
-> [script.fn_get_stato_testata_documento](/dbzero/script/funzioni/fn_get_stato_testata_documento) — il lettore che rende possibile il ramo 1
+> [script.fn_get_stato_testata_documento](/dbzero/script/funzioni/fn_get_stato_testata_documento) — il lettore da cui prende l'etichetta
+> [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza) — il building block che parla PRIMA: le righe si toccano solo in bozza
 
 ---
 
 ### 🎯 Scopo Principale
 
-**Decide se una riga di documento — di un DDT o di un ordine — si può togliere.**
+**Traduce in una frase il rifiuto di togliere una riga di documento — di un DDT
+o di un ordine — che ha legami a valle.**
 
-Trigger `BEFORE DELETE` sulle due tabelle. Ha **tre** esiti, non uno, e il terzo
-è che la riga si cancella.
+Trigger `BEFORE DELETE` sulle due tabelle. Ha **tre** esiti, e il terzo è che la
+riga si cancella.
 
 | # | Condizione | Esito |
 | --- | --- | --- |
-| 1 | il documento **non è più in bozza** | rifiuto — `E_DELETE_RIGA_DOC_NON_BOZZA` |
 | 2a | sulla riga c'è un **legame di evasione** | rifiuto — `E_DELETE_BLOCKED_FUL` |
 | 2b | la riga è citata da un **reso** o da una **riconsegna** | rifiuto — `E_DELETE_RIGA_DOC_REFERENZIATA` |
 | 3 | nessuna delle precedenti | ✅ **la riga si toglie** |
 
-⚠️ **L'ordine dei rami è dominio, non stile.** «Il documento è chiuso» è
-l'identità della situazione e va detto per primo: dire «esiste un legame di
+⭐ **Rev 2026-09-22 — il ramo 1 non sta più qui.** Fino a quel giorno il primo
+esito era *«il documento non è più in bozza → `E_DELETE_RIGA_DOC_NON_BOZZA`»*.
+Quella regola — le righe si toccano solo in bozza — è ora il building block
+[`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
+montato in fascia `_a05_` su `ddt_righe` (tre porte) e `ordini_righe`
+(`DELETE`): parla **prima** di questo trigger, quindi qui una riga arriva solo
+se il documento è in bozza, oppure per un cascade partito dalla testata.
+Tenere il ramo anche qui sarebbe stata una seconda implementazione mai
+raggiunta — cioè mai provata, cioè la prima a divergere.
+
+⚠️ **L'ordine dei messaggi resta dominio, non stile.** «Il documento è chiuso»
+è l'identità della situazione e va detto per primo: dire «esiste un legame di
 evasione» su un DDT già consegnato manderebbe a togliere quel legame, che non è
-il rimedio.
+il rimedio. Prima lo garantiva l'ordine dei rami in questo corpo; ora lo
+garantisce la **fascia** del BB (`_a05_` < `_a10_`).
 
 ---
 
@@ -108,8 +120,9 @@ risulta già cancellata**; in un `DELETE` diretto sulla riga invece si vede
 L'assenza della testata è quindi il segnale **«questo è un cascade»**, e in quel
 caso la regola di stato l'ha già applicata
 [`trgfn_doc_guard_delete_solo_bozza`](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza)
-sulla testata. Qui non si ricontrolla e si prosegue ai legami a valle, che
-valgono comunque.
+sulla testata (e il BB delle righe, per lo stesso segnale, passa). Qui si
+prosegue ai legami a valle, che valgono comunque, con l'etichetta che ripiega
+sul tipo di documento.
 
 ℹ️ Non è un buco: `ddt_id` e `ordine_id` sono `NOT NULL` con chiave esterna,
 quindi una riga orfana non esiste e «assente» non può voler dire altro.
@@ -119,13 +132,14 @@ diventa **aggirabile**.
 
 ---
 
-### ⚠️ Perché lo stato si legge con una `SECURITY DEFINER`
+### ⚠️ Perché l'etichetta si legge con una `SECURITY DEFINER`
 
-`vendite.ddt` e `vendite.ordini` hanno la RLS attiva; `vendite.ddt_righe` e
-`vendite.ordini_righe` **no**. Un chiamante fuori perimetro raggiunge quindi la
-riga senza vedere la sua testata: una lettura *invoker* tornerebbe zero righe,
-questo guard leggerebbe «testata assente» e lascerebbe passare — **fail-open
-proprio per chi sta fuori**.
+Testate **e** righe hanno la RLS attiva (nel 2026-08 le righe non l'avevano; letto
+dal catalogo il 22-09). Un chiamante fuori perimetro potrebbe raggiungere la riga
+senza vedere la sua testata: una lettura *invoker* tornerebbe zero righe, e
+«testata assente» verrebbe scambiato per un cascade — **fail-open proprio per chi
+sta fuori**. È lo stesso motivo per cui il BB delle righe legge lo stato dallo
+stesso lettore.
 
 Per questo la lettura passa da
 [`script.fn_get_stato_testata_documento`](/dbzero/script/funzioni/fn_get_stato_testata_documento),
@@ -143,7 +157,7 @@ com'era prima che il guard esistesse.
 
 | Codice | Classe | Quando |
 | --- | --- | --- |
-| `E_DELETE_RIGA_DOC_NON_BOZZA` | `CONFLITTO_STATO` | il documento è uscito dalla bozza |
+| ~~`E_DELETE_RIGA_DOC_NON_BOZZA`~~ | — | ritirato il 2026-09-22: il caso lo dice `E_RIGA_DOC_NON_BOZZA` dal BB, prima di arrivare qui |
 | `E_DELETE_BLOCKED_FUL` | `CONFLITTO_STATO` | la riga è già stata evasa o consegnata |
 | `E_DELETE_RIGA_DOC_REFERENZIATA` | `CONFLITTO_STATO` | la riga è citata da un reso o da una riconsegna |
 | `E_DELETE_NOT_ALLOWED` | `NON_PERMESSO` | ⚠️ **solo** il ramo «tabella non prevista»: errore di montaggio del trigger |
@@ -164,7 +178,8 @@ asserisce sul testo: il sollevatore è **uno solo**, questa funzione.
 ### Note operative
 
 * **Fascia `_a10_`** (guard) su entrambe le tabelle:
-  `trg_ddt_righe_a10_block_ddt_dlt` e `trg_ordini_righe_a10_block_dlt`.
+  `trg_ddt_righe_a10_block_ddt_dlt` e `trg_ordini_righe_a10_block_dlt` — e
+  **dopo** il BB in `_a05_` (`trg_*_a05_doc_righe_lock_fuori_bozza_*`).
 * La funzione dispaccia su `TG_TABLE_NAME` e i due rami leggono testate diverse:
   **provarne uno solo lascia l'altro scoperto**, ed è esattamente com'è andata
   finora.
@@ -174,4 +189,5 @@ asserisce sul testo: il sollevatore è **uno solo**, questa funzione.
 
 > 📎 changeSet `20260826-21`, insieme a `20260826-20` e `20260826-22`. Decisioni
 > di Tid del 2026-08-26: la regola «solo bozza» scende nel DB, e i verbi di
-> cancellazione devono funzionare.
+> cancellazione devono funzionare. Rev `20260922-05`: il ramo 1 passa al BB
+> delle righe (brief `brief-db-partita-merce-per-documento`, D7).

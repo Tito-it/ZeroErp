@@ -26,11 +26,17 @@ BEGIN
   --   - una riga    -> stato = codice_interno, etichetta = frase
   --     per l'operatore.
   --
-  -- ⚠️ Lo stato e' NOT NULL su entrambe le testate e la FK verso
+  -- ⚠️ Lo stato e' NOT NULL su tutte le testate e la FK verso
   --    config.stati_doc_* garantisce la riga di stato: se la
   --    testata c'e', `stato` non e' mai NULL. Il chiamante puo'
   --    quindi usare l'assenza di riga come segnale, e non deve
   --    distinguere un NULL da un vuoto.
+  --
+  -- Chi lo chiama (2026-09-22):
+  --   - vendite.trgfn_doc_righe_lock_fuori_bozza (il guard
+  --     generico: righe di documento solo in bozza);
+  --   - vendite.trgfn_dlt_block_ordrig_ddtrig (l'etichetta per i
+  --     messaggi sui legami a valle).
   -- =========================================================
   IF p_testata_id IS NULL OR p_testata_id <= 0 THEN
     RETURN;   -- nessuna riga: il chiamante lo legge come «assente»
@@ -52,6 +58,15 @@ BEGIN
       JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
      WHERE o.id = p_testata_id;
 
+  ELSIF p_documento = 'CONTRATTO' THEN
+    -- rev 2026-09-22: terzo adottante del guard generico delle righe.
+    RETURN QUERY
+    SELECT s.codice_interno::text,
+           concat('Contratto ', COALESCE(c.numero, '#' || c.id::text))
+      FROM vendite.contratti c
+      JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
+     WHERE c.id = p_testata_id;
+
   ELSE
     -- Errore di CHIAMANTE, non di dato: nessuna persona sceglie
     -- questo valore. Classe TECNICO, messaggio che nomina il
@@ -71,7 +86,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_stato_testata_documento(p_documento text, p_testata_id bigint)
-IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata DDT/ordine. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: misurato sul catalogo, vendite.ddt e vendite.ordini hanno RLS attiva e vendite.ddt_righe / vendite.ordini_righe NO — un chiamante fuori perimetro raggiunge la riga e non vede la testata, e un guard che leggesse sotto RLS diventerebbe fail-open proprio per lui. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su entrambe le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipo documento ammesso: DDT | ORDINE; qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO).';
+IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata di documento. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: le testate hanno RLS — e dal 22-09 anche le righe (ddt_righe, ordini_righe, contratti_righe: letto dal catalogo) — e un guard che leggesse sotto RLS diventerebbe fail-open proprio per chi sta fuori perimetro. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su tutte le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipi ammessi: DDT | ORDINE | CONTRATTO (rev 2026-09-22, per vendite.trgfn_doc_righe_lock_fuori_bozza); qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO). Chiamanti: vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_dlt_block_ordrig_ddtrig.';
 ```
 
 ---

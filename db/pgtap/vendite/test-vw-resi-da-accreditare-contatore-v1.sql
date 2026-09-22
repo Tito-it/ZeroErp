@@ -88,10 +88,13 @@ SELECT
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
 
-CREATE OR REPLACE FUNCTION pg_temp.mk_partita()
+-- `p_riga_manuale` (rev 2026-09-22): la riga aggiunta A MANO entra PRIMA delle
+-- transizioni — il BB trgfn_doc_righe_lock_fuori_bozza non ammette righe in un
+-- DDT fuori bozza — e il suo id esce in `riga_manuale_id`.
+CREATE OR REPLACE FUNCTION pg_temp.mk_partita(p_riga_manuale numeric DEFAULT NULL)
 RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint,
-              ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_ord_uid uuid; v_orr bigint; v_ddt bigint; v_ddt_uid uuid; v_ddtr bigint;
+              ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint, riga_manuale_id bigint) AS $$
+DECLARE r RECORD; v_ord bigint; v_ord_uid uuid; v_orr bigint; v_ddt bigint; v_ddt_uid uuid; v_ddtr bigint; v_man bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
@@ -112,12 +115,15 @@ BEGIN
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
   UPDATE vendite.ddt SET causale_trasporto_id=r.causale_vendita_id  WHERE id=v_ddt;
+  IF p_riga_manuale IS NOT NULL THEN
+    v_man := pg_temp.mk_riga_manuale(v_ddt, p_riga_manuale);
+  END IF;
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id     WHERE id=v_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id    WHERE id=v_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id WHERE id=v_ddt;
   SELECT d.uid INTO v_ddt_uid FROM vendite.ddt d WHERE d.id=v_ddt;
-  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt LIMIT 1;
-  RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr;
+  SELECT dr.id INTO v_ddtr FROM vendite.ddt_righe dr WHERE dr.ddt_id=v_ddt ORDER BY dr.id LIMIT 1;
+  RETURN QUERY SELECT v_ord, v_ord_uid, v_orr, v_ddt, v_ddt_uid, v_ddtr, v_man;
 END $$ LANGUAGE plpgsql;
 
 -- Helper (test 10): una riga d'ordine da 10 evasa da DUE spedizioni, 4 e 6.
@@ -246,7 +252,7 @@ END $$ LANGUAGE plpgsql;
 --   P3  reso 3 riconsegna, fattura 10-> tenuti 7, fatt 10 -> accredito 3, FACOLTATIVA
 --   P4  resi 2+2 a credito, fattura 7-> tenuti 6, fatt 7  -> accredito 1: greedy
 -- ============================================================
-CREATE TEMP TABLE tmp_p1 AS SELECT * FROM pg_temp.mk_partita();
+CREATE TEMP TABLE tmp_p1 AS SELECT * FROM pg_temp.mk_partita(6);   -- con la riga a mano di P5
 CREATE TEMP TABLE tmp_p1_riga AS
 SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p1), (SELECT ddt_uid FROM tmp_p1), 3,
                        (SELECT tipo_credito_id FROM tmp_refs)) AS resi_riga_id;
@@ -275,7 +281,7 @@ SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p4), (SELECT ddt_uid FROM tm
 --   quel reso si registrava e NON produceva alcun accredito, perche' la coda
 --   si agganciava a ordine_riga_id — che qui e' NULL.
 CREATE TEMP TABLE tmp_p5_riga_ddt AS
-SELECT pg_temp.mk_riga_manuale((SELECT ddt_id FROM tmp_p1), 6) AS ddt_riga_id;
+SELECT riga_manuale_id AS ddt_riga_id FROM tmp_p1;   -- entrata in bozza, dentro mk_partita (rev 22-09)
 CREATE TEMP TABLE tmp_p5_riga AS
 SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p5_riga_ddt), (SELECT ddt_uid FROM tmp_p1), 2,
                        (SELECT tipo_credito_id FROM tmp_refs)) AS resi_riga_id;
