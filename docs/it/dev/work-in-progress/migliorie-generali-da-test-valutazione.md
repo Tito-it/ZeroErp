@@ -1112,16 +1112,31 @@ D6 e il registro dei rossi in CI.
       663 → 227 come app; ⚠️ la partita di un DDT e la diagnosi «tutte» NON
       scendono: la partita inlinata è ri-eseguita per riga nella diagnosi,
       brief §11.8 — una CTE `MATERIALIZED` è il passo prima di D8(b)),
-      **committato** (`e05e3b1e5`, PR verso `Tito-dev` da aprire); ✏️ **giro
+      **committato** (`e05e3b1e5`, PR #1639); ✏️ **giro
       5 (D7) SCRITTO il 22-09** (brief §12): Tid ha scelto «B come BB
       generico» — `vendite.trgfn_doc_righe_lock_fuori_bozza`, «le righe di un
       documento si toccano solo in bozza», fascia `_a05_`, su `ddt_righe`,
       `ordini_righe` (solo DELETE) e `contratti_righe`, con le due copie a DB
       ritirate (lock dedicato dei contratti droppato, ramo 1 del traduttore
       dei legami tolto); `20260922-01 → -06`, 75 pgTAP con/senza a esiti
-      identici, cinque fixture riordinate; ⏳ apply di Tid. 🔵 D6
-      (`vw_contatore_merce` senza lettori), D8(b) e la CTE della diagnosi da
-      decidere.
+      identici, cinque fixture riordinate; ✅ **APPLICATO il 22-09 alle 08:39,
+      pgTAP senza regressioni, committato** (`b40d9de24`, PR #1640; BE
+      allineato con `57482c830`, PR #1641). ✏️ **giro 6 SCRITTO il 22-09**
+      (brief §13; decisioni di Tid del mattino): la partita dentro la
+      diagnosi in una CTE `MATERIALIZED` (`20260922-07`) e **D6 chiusa** —
+      `vw_contatore_merce` ritirata (`-08`, DROP senza CASCADE, censimento
+      come preCondition), i due COMMENT che la nominavano corretti
+      (`-09`/`-10`); un pgTAP ritirato coi due scenari orfani migrati sulla
+      partita e sulla situazione. 38 pgTAP con/senza a esiti identici;
+      prova di forma come app: tutte 205 → 162 ms, un DDT 47 → 31, e il
+      prossimo collo è dentro `fn_partite_merce` (CTE `riga`, `dr_in` ×
+      `ddt` in nested loop sotto policy). ✅ **APPLICATO il 22-09 alle
+      11:01**, doc auto-gen rigenerata; misura come app (§13.7): diagnosi
+      «tutte» **346 → 132 ms**, lister senza documento **227 → 148**; il
+      piano indica il passo dopo — la policy di `billing_account` rivalutata
+      per BA per riga nella diagnosi (44% dei buffer): i BA visibili si
+      leggono una volta. ✅ pgTAP come app verdi (Tid, 22-09). ⏳ Commit. 🔵 D8(b) resta sul
+      modello: il classificatore non è più fra i nodi pesanti.
 
 ### 🟡 Struttura
 

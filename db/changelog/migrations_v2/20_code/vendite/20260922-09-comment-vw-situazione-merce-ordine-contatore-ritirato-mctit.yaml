@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D14 / D6 — IL COMMENT DI vw_situazione_merce_ordine NON NOMINA PIU' IL
+#   CONTATORE RITIRATO (giro 6 di brief-db-partita-merce-per-documento
+#   §13; terzo changeSet: -07 diagnosi, -08 DROP di vw_contatore_merce,
+#   -09 questo, -10 fn_ordine_riga_qta_riconsegna).
+#
+#   Il COMMENT vivo diceva «NON sostituisce vw_contatore_merce, che resta
+#   il contatore grezzo: questa gli sta accanto». Dal -08 quella vista non
+#   esiste: un COMMENT che rimanda a un oggetto ritirato e' una prova FALSA
+#   per chi indaga, non rumore (memoria del cantiere sistema_codici,
+#   2026-08-31). Solo il COMMENT: la vista, la funzione e il loro contratto
+#   non cambiano — un CREATE OR REPLACE VIEW qui azzererebbe la reloption
+#   security_invoker, e non c'e' ragione di rischiarlo per una frase.
+#
+# Base: COMMENT VIVO (obj_description il 22-09, identico al 20260921-27),
+#   con la sola frase sostituita — generato per sostituzione, non ricopiato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260922-09-comment-vw-situazione-merce-ordine-contatore-ritirato-mctit.yaml
+
+  - changeSet:
+      id: 20260922-09-comment-vw-situazione-merce-ordine-contatore-ritirato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D14 / D6: il COMMENT di vendite.vw_situazione_merce_ordine dichiara il ritiro
+        di vw_contatore_merce (20260922-08) invece di rimandarci. Solo COMMENT.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_situazione_merce_ordine
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname = 'vw_contatore_merce'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_situazione_merce_ordine
+              IS 'Aggregato PARLANTE per riga d''ordine, per il pannello situazione merce richiesta BE/FE del 2026-08-17; ragioni di disegno nelle intestazioni dei changeSet 20260817-15 e 20260818-06 e in dbzero/vendite/manual/vw_situazione_merce_ordine.md. ⭐ rev 2026-09-21 (D14, giro 2 — D3): l''aggregato NON sta piu'' qui — sta in vendite.fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids), e questa vista ne e'' la proiezione senza filtro, fn(NULL, NULL): UN corpo solo (D1). Chi legge PER DOCUMENTO chiama la funzione con un seme e paga le righe d''ordine chieste, non tutte: BE list_situazione_merce_ordine (per ordine e per DDT). Colonne proiettate per NOME con ordinato::numeric(18,6): un SELECT * perderebbe il typmod in silenzio. Una riga per riga d''ordine ATTIVA, comprese quelle mai spedite. ⭐ rev 2026-09-22 (D14 giro 6 — D6): vw_contatore_merce, il contatore GREZZO per riga d''ordine che stava accanto a questa, e'' RITIRATA (20260922-08): dal giro 1 di D14 nessuna macchina la leggeva (il lister dosa dalla partita, fn_partite_merce col DDT come seme) e questa e'' l''UNICA lettura per riga d''ordine — per una persona come per una macchina. `differenza` = Σ dei saldi delle PARTITE, con propagazione dei NULL (nessuna partita, o nessuna con un conto che si applica -> NULL, MAI zero: e'' la differenza fra «non si applica» e «non c''e'' nulla da fare»). Il fatturato in anticipo resta FUORI dal saldo, in `fatturato_anticipato`: ne discende che una riga fatturata alla conferma e spedita a meta'' esce PAREGGIATA e non «da accreditare». ⚠️ `da_spedire` viene dalla formula del residuo GIA'' esistente (ordinato − Σ qta_evasa + fn_ordine_riga_qta_riconsegna), NON da ordinato − consegnato: le due divergono, perche'' il consegnato delle partite include le ri-consegne. Le righe di RI-CONSEGNA sono escluse (conterebbero due volte). origine MULTIPLA -> misurabile false: si dichiara, non si ripartisce. rev 2026-08-18 (20260818-06) — LA SOGLIA DELL''IMPEGNO: impegnata := stato dell''ordine >= soglia(CONFERMATO, per codice_interno) AND NOT is_abortito. Sotto soglia `da_spedire` e'' NULL e non un numero e `stato` e'' NON_IMPEGNATA; la riga NON sparisce (il pannello e'' per ordine). ⚠️ Le PARTITE hanno la precedenza: dove c''e'' merce uscita vince il verso del saldo anche su ordine annullato. `stato` ha SETTE valori: NON_IMPEGNATA | NON_SPEDITA | NON_MISURABILE | NON_FATTURABILE | DA_FATTURARE | DA_ACCREDITARE | PAREGGIATA — i consumatori NON devono ri-tradurre il segno. rev 2026-09-13 (P-6): + data_consegna_richiesta_cliente, data_consegna_confermata e giorni_ritardo, in coda; il ritardo e'' «oggi > data di riferimento (la promessa, o la richiesta del cliente) E resta merce da spedire», NULL quando da_spedire e'' NULL o zero o nessuna data e'' dichiarata, 0 = non in ritardo. security_invoker=on ri-specificato (la reloption non si vede in pg_get_viewdef e un CREATE OR REPLACE la azzera: qui significa far girare la funzione come owner, bypass della RLS).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il COMMENT precedente e' nel 20260921-27 (ri-applicarne la
+              -- sola istruzione COMMENT ON VIEW).
+              SELECT 1;

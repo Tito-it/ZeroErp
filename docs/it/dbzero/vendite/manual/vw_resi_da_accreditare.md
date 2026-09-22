@@ -7,7 +7,7 @@
 > [vendite.vw_resi_da_riconsegnare](/dbzero/vendite/views/vw_resi_da_riconsegnare) (gemella)
 >
 > Fonti del conto:
-> [vw_contatore_merce](vw_contatore_merce.md) ·
+> [vw_partite_merce](vw_partite_merce.md) ·
 > [vw_resi_righe_effettive](vw_resi_righe_effettive.md)
 >
 > Consumatore: [vw_dash_backlog_documenti](vw_dash_backlog_documenti.md)
@@ -55,8 +55,9 @@ una slice successiva; qui la coda dice *cosa è successo* («fatturata per 10, t
 
 ### Regole chiave
 
-**Popolazione = il conto, non il tipo.** Entra chi ha `vw_contatore_merce.differenza < 0`,
-cioè `fatturati > tenuti`:
+**Popolazione = il conto, non il tipo.** Entra chi ha la partita
+([`vw_partite_merce`](vw_partite_merce.md)) con `differenza < 0`, cioè
+`fatturati > tenuti`:
 
 ```text
 accredito_dovuto = fatturati − tenuti      (esposto in colonna)
@@ -97,8 +98,8 @@ altrimenti                                                    ->  DOVUTA
 È l'ultimo pezzo che rende **visibile** la chiusura: chi lavora la coda «dovute» prima non
 vedeva mai quelle righe.
 
-⚠️ **L'IMPORTO NON CAMBIA.** `accredito_dovuto` viene dal contatore
-([`vw_contatore_merce`](/dbzero/vendite/views/vw_contatore_merce)), che le rinunce **non
+⚠️ **L'IMPORTO NON CAMBIA.** `accredito_dovuto` viene dal conto della partita
+([`vw_partite_merce`](/dbzero/vendite/views/vw_partite_merce)), che le rinunce **non
 toccano** per scelta di progetto. Una rinuncia cambia l'etichetta, non il numero: se dopo
 una chiusura l'importo cambiasse — o la riga uscisse dalla coda — sarebbe il sintomo che la
 sottrazione delle rinunce è finita nella vista sbagliata.

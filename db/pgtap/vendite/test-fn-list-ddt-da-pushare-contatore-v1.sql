@@ -1,10 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: fn_list_ddt_da_pushare proietta la DIFFERENZA del contatore
---       (vw_contatore_merce), non piu' dr.quantita grezza — step 3,
---       brief-db-fatturazione-ddt-resi §3a/§9-3. Chiude la doppia fatturazione.
--- (changeset 20260717-12)
+-- Test: fn_list_ddt_da_pushare proietta la DIFFERENZA del conto della merce,
+--       non piu' dr.quantita grezza — step 3, brief-db-fatturazione-ddt-resi
+--       §3a/§9-3. Chiude la doppia fatturazione.
+-- (changeset 20260717-12; dal 20260921-23 la differenza viene da
+--  fn_partite_merce col DDT come seme, attraverso fn_ddt_push_diagnosi —
+--  vw_contatore_merce, che la dava fino ad allora, e' ritirata dal 20260922-08)
 -- ------------------------------------------------------------
 -- Indice test (1..5):
 --   1) A: order 10, consegnato, nessun reso -> lister proietta 10 (nessuna riduzione)

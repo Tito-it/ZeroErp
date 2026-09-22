@@ -27,9 +27,12 @@ AS $function$
 --   merce "da evadere": togliendola dall'addendo il residuo si chiude
 --   e l'ordine passa a EVASO.
 --   La sottrazione sta QUI e NON in vw_resi_righe_effettive: quella
---   vista alimenta anche vw_contatore_merce (che somma senza filtro
---   tipo), e toccarla farebbe uscire la riga dalla coda accrediti,
---   cioe' l'accredito dovuto sparirebbe. Vedi §4.2 del brief.
+--   vista alimenta anche la PARTITA di merce (vendite.fn_partite_merce,
+--   che somma i resi senza filtro tipo), e toccarla farebbe uscire la
+--   riga dalla coda accrediti, cioe' l'accredito dovuto sparirebbe.
+--   Vedi §4.2 del brief. rev 2026-09-22 (D14 giro 6, D6): qui si
+--   nominava vw_contatore_merce, ritirata dal 20260922-08 — solo il
+--   commento cambia, il corpo e' identico.
 --   Si sottraggono SOLO le rinunce, non le ri-consegne: quelle sono
 --   gia' contate come `evaso` dal fulfillment.
 DECLARE
@@ -58,7 +61,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id bigint)
-IS 'Addendo reso del residuo per riga ordine: Sigma quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive) di tipo riapre_residuo, AL NETTO della quota rinunciata (vendite.resi_righe_rinunce). Single source per fn_ordine_ha_residuo_evasione e trgfn_ordini_ful_guard_consistenza (coerenza formula). rev 2026-07-13. rev 2026-07-17 (step 2): legge l helper unico; ora filtra anche resi_righe.attivo (canonico CONFERMATI+attivi). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.2): sottrae le RINUNCE, cosi'' una quota dichiarata definitiva smette di pesare sul residuo e l''ordine passa a EVASO. La sottrazione sta QUI e NON in vw_resi_righe_effettive, che alimenta anche vw_contatore_merce: toccarla farebbe sparire l''accredito dalla coda. Si sottraggono solo le rinunce, non le ri-consegne (quelle sono gia'' contate come evaso dal fulfillment).';
+IS 'Addendo reso del residuo per riga ordine: Sigma quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive) di tipo riapre_residuo, AL NETTO della quota rinunciata (vendite.resi_righe_rinunce). Single source per fn_ordine_ha_residuo_evasione e trgfn_ordini_ful_guard_consistenza (coerenza formula). rev 2026-07-13. rev 2026-07-17 (step 2): legge l helper unico; ora filtra anche resi_righe.attivo (canonico CONFERMATI+attivi). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.2): sottrae le RINUNCE, cosi'' una quota dichiarata definitiva smette di pesare sul residuo e l''ordine passa a EVASO. La sottrazione sta QUI e NON in vw_resi_righe_effettive, che alimenta anche la partita di merce (vendite.fn_partite_merce; fino al 2026-09-22 vw_contatore_merce, ritirata dal 20260922-08): toccarla farebbe sparire l''accredito dalla coda. Si sottraggono solo le rinunce, non le ri-consegne (quelle sono gia'' contate come evaso dal fulfillment).';
 ```
 
 ---

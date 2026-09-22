@@ -29,6 +29,15 @@ BEGIN ATOMIC
              d.billing_account_id
             FROM vendite.ddt d
            WHERE (fn_ddt_push_diagnosi.p_ddt_id IS NULL)
+         ), pm AS MATERIALIZED (
+          SELECT p.ddt_riga_id,
+             p.differenza,
+             p.stato
+            FROM vendite.fn_partite_merce(
+                 CASE
+                     WHEN (fn_ddt_push_diagnosi.p_ddt_id IS NULL) THEN NULL::bigint[]
+                     ELSE ARRAY[fn_ddt_push_diagnosi.p_ddt_id]
+                 END, NULL::bigint[]) p(ddt_riga_id, ddt_id, ddt_uid, articolo_id, is_composito, ordine_riga_id, ordine_id, origine, fatturabile, consegnato, reso, in_riconsegna, tenuti, fatturato_merce, fatturato_da_ordine, fatturato, misurabile, differenza, stato, e_riconsegna, sospetto_duplicato_ordine, rettificato, riconsegna_quota_nuova)
          ), cand AS (
           SELECT d.id AS d_id,
              dr.id AS dr_id,
@@ -48,11 +57,7 @@ BEGIN ATOMIC
               JOIN config.stati_doc_ddt sdd ON ((sdd.id = d.stato_doc_ddt_id)))
               JOIN vendite.ddt_righe dr ON (((dr.ddt_id = d.id) AND (dr.attivo IS TRUE))))
               LEFT JOIN config.causali_trasporto caus ON ((caus.id = d.causale_trasporto_id)))
-              LEFT JOIN vendite.fn_partite_merce(
-                 CASE
-                     WHEN (fn_ddt_push_diagnosi.p_ddt_id IS NULL) THEN NULL::bigint[]
-                     ELSE ARRAY[fn_ddt_push_diagnosi.p_ddt_id]
-                 END, NULL::bigint[]) pm(ddt_riga_id, ddt_id, ddt_uid, articolo_id, is_composito, ordine_riga_id, ordine_id, origine, fatturabile, consegnato, reso, in_riconsegna, tenuti, fatturato_merce, fatturato_da_ordine, fatturato, misurabile, differenza, stato, e_riconsegna, sospetto_duplicato_ordine, rettificato, riconsegna_quota_nuova) ON ((pm.ddt_riga_id = dr.id)))
+              LEFT JOIN pm ON ((pm.ddt_riga_id = dr.id)))
               LEFT JOIN LATERAL ( SELECT o.billing_account_id AS src_billing_account_id,
                      o.fatturazione_trigger AS src_fatturazione_trigger,
                      orr.id AS src_ordine_riga_id
@@ -115,7 +120,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_ddt_push_diagnosi(p_ddt_id bigint)
-IS 'FONTE UNICA dell''eleggibilita'' al push a commessa (rev 2026-09-21, D14 seconda leva, forma B2): per ogni riga ATTIVA di DDT, IL motivo di esclusione (NULL = eleggibile) e i fatti per chi agisce — billing_account_id (testata o ordine sorgente, letto attraverso anagrafiche.billing_account: NULL anche se invisibile a chi legge), ordine_riga_id (la riga d''ordine sorgente: primo fulfillment per id), segment (LIBERA/ALLOCATA/EMESSA da script.fn_get_stato_push_segment), quantita_push (la dose: GREATEST(0, LEAST(quantita, differenza della partita))). p_ddt_id NULL = tutte le righe. vendite.fn_list_ddt_da_pushare DERIVA da qui (FROM fn_ddt_push_diagnosi WHERE motivo IS NULL + filtri di chiamata e proiezione) e script.fn_available_actions_ddt la legge UNA volta: flag = esiste motivo NULL; poi ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi min(rank). ⛔ Un predicato di eleggibilita'' nuovo si aggiunge QUI come rank: nel lister non c''e'' piu'' un posto dove metterlo. motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O assente), 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, 9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability mappa per STRINGA, non per numero, e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. BEGIN ATOMIC: le dipendenze (fn_partite_merce, fn_get_stato_push_segment, tabelle) sono in pg_depend. Il documento chiesto e'' un seme a due rami in UNION ALL, mai `p IS NULL OR`. La partita si legge da vendite.fn_partite_merce col DDT come seme (D14 quarta leva, 2026-09-21); i motivi 7/8/9 si leggono da `stato` (rev 2026-08-18, §23.2 brief-design-partita-merce-generalizzata). Brief: brief-db-partita-merce-per-documento §10; brief-db-ddt-reason-push-catch-all §3 (Decisione A).';
+IS 'FONTE UNICA dell''eleggibilita'' al push a commessa (rev 2026-09-21, D14 seconda leva, forma B2): per ogni riga ATTIVA di DDT, IL motivo di esclusione (NULL = eleggibile) e i fatti per chi agisce — billing_account_id (testata o ordine sorgente, letto attraverso anagrafiche.billing_account: NULL anche se invisibile a chi legge), ordine_riga_id (la riga d''ordine sorgente: primo fulfillment per id), segment (LIBERA/ALLOCATA/EMESSA da script.fn_get_stato_push_segment), quantita_push (la dose: GREATEST(0, LEAST(quantita, differenza della partita))). p_ddt_id NULL = tutte le righe. vendite.fn_list_ddt_da_pushare DERIVA da qui (FROM fn_ddt_push_diagnosi WHERE motivo IS NULL + filtri di chiamata e proiezione) e script.fn_available_actions_ddt la legge UNA volta: flag = esiste motivo NULL; poi ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi min(rank). ⛔ Un predicato di eleggibilita'' nuovo si aggiunge QUI come rank: nel lister non c''e'' piu'' un posto dove metterlo. motivo_rank = precedenza: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO (causale non fatturabile O assente), 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 RICONSEGNA, 8 NON_FATTURABILE, 9 NON_MISURABILE, 10 SENZA_PARTITA, 11 CONTATORE. La capability mappa per STRINGA, non per numero, e il suo CASE ha un ELSE che fa cadere i motivi nuovi nel generico. BEGIN ATOMIC: le dipendenze (fn_partite_merce, fn_get_stato_push_segment, tabelle) sono in pg_depend. Il documento chiesto e'' un seme a due rami in UNION ALL, mai `p IS NULL OR`. La partita si legge da vendite.fn_partite_merce col DDT come seme (D14 quarta leva, 2026-09-21) — ⭐ rev 2026-09-22 (giro 6, §11.8): in una CTE MATERIALIZED, calcolata UNA volta e agganciata alle righe con un hash join; inlinata nel LEFT JOIN, come app era il lato interno di un nested loop ri-eseguito per ogni riga della diagnosi. I motivi 7/8/9 si leggono da `stato` (rev 2026-08-18, §23.2 brief-design-partita-merce-generalizzata). Brief: brief-db-partita-merce-per-documento §10, §13; brief-db-ddt-reason-push-catch-all §3 (Decisione A).';
 ```
 
 ---

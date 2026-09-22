@@ -34,8 +34,9 @@ Dal 2026-07-26 l'addendo scende della quota dichiarata **definitiva**
 ### ⚠️ Perché la sottrazione sta QUI e non nella vista
 
 `vw_resi_righe_effettive` avrebbe potuto esporre la quota già netta, ma **ha sei
-consumatori** — fra cui [`vw_contatore_merce`](/dbzero/vendite/views/vw_contatore_merce),
-che la somma **senza filtro sul tipo**:
+consumatori** — fra cui la partita di merce
+([`fn_partite_merce`](/dbzero/vendite/funzioni/fn_partite_merce)), che la somma
+**senza filtro sul tipo**:
 
 ```text
 tenuti = evaso − reso        differenza = tenuti − fatturati
