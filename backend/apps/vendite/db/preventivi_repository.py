@@ -784,8 +784,8 @@ class PreventiviRepository(
     # del service `_load_componente_for_modification` (Fix #2 perf,
     # refactor-componenti.md §13). Ritorna `None` se il componente non
     # esiste; altrimenti dict con `{componente_id, riga_preventivo_id,
-    # preventivo_id, stato_codice_interno}` strettamente necessari ai
-    # check del service.
+    # preventivo_id, stato_codice_interno, numero}` strettamente necessari ai
+    # check del service (`numero` per l'etichetta di `richiedi_righe_in_bozza`).
     def load_componente_with_scope(
         self, componente_id: int,
     ) -> dict[str, Any] | None:
@@ -793,7 +793,11 @@ class PreventiviRepository(
             SELECT c.id          AS componente_id,
                    c.riga_preventivo_id,
                    r.preventivo_id,
-                   sdp.codice_interno AS stato_codice_interno
+                   sdp.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («Preventivo 2026/00012»,
+                   -- o «Preventivo #131» se NULL): senza, il guard delle righe
+                   -- in bozza ripiega sull'id anche su un preventivo emesso.
+                   p.numero
               FROM vendite.preventivi_righe_componenti c
               JOIN vendite.preventivi_righe r ON r.id = c.riga_preventivo_id
               JOIN vendite.preventivi p       ON p.id = r.preventivo_id
@@ -862,7 +866,7 @@ class PreventiviRepository(
 
     # Scopo: Elimina una riga preventivo (HARD DELETE).
     # Pattern simmetrico a `contratti_repository.delete_riga`: l'eliminazione
-    # avviene solo in DRAFT (guard nel service `_STATI_RIGHE_MODIFICABILI`),
+    # avviene solo in DRAFT (guard nel service: BB `richiedi_righe_in_bozza`),
     # in cui la riga e' una bozza non ancora pushed in commessa. La FK
     # `preventivi_righe_componenti.riga_preventivo_id` ha ON DELETE CASCADE
     # (migration 20260511-06): il DB pulisce automaticamente i componenti

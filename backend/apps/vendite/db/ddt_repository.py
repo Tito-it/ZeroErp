@@ -413,7 +413,11 @@ class DdtRepository(
             SELECT c.id          AS componente_id,
                    c.riga_ddt_id,
                    r.ddt_id,
-                   sd.codice_interno AS stato_codice_interno
+                   sd.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («DDT 2026/00012», o
+                   -- «DDT #131» se NULL): senza, il guard delle righe in
+                   -- bozza ripiega sull'id anche su un DDT emesso.
+                   d.numero
               FROM vendite.ddt_righe_componenti c
               JOIN vendite.ddt_righe r ON r.id = c.riga_ddt_id
               JOIN vendite.ddt d       ON d.id = r.ddt_id

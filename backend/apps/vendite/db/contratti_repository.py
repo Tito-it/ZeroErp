@@ -1052,7 +1052,11 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             SELECT c.id          AS componente_id,
                    c.riga_contratto_id,
                    r.contratto_id,
-                   sd.codice_interno AS stato_codice_interno
+                   sd.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («Contratto 2026/00012»,
+                   -- o «Contratto #131» se NULL): senza, il guard delle righe
+                   -- in bozza ripiega sull'id anche su un contratto attivo.
+                   co.numero
               FROM vendite.contratti_righe_componenti c
               JOIN vendite.contratti_righe r ON r.id = c.riga_contratto_id
               JOIN vendite.contratti co      ON co.id = r.contratto_id

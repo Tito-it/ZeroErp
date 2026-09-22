@@ -138,7 +138,11 @@ Riferimento: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`.
 
 ## Codici errore principali
 
-`E_DDT_NOT_FOUND` (404), `E_DDT_VALIDAZIONE` (400), `E_DDT_STATO_TRANSIZIONE`,
+`E_DDT_NOT_FOUND` (404), `E_DDT_VALIDAZIONE` (400), `E_DDT_STATO_TRANSIZIONE`
+(409, la testata), `E_RIGA_DOC_NON_BOZZA` (409: righe e componenti solo in
+bozza — dal 2026-09-22 lo stesso codice del BB a DB
+`trgfn_doc_righe_lock_fuori_bozza`, che il pre-check BE `richiedi_righe_in_bozza`
+solleva con la frase a catalogo),
 `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` (matrice), `E_QTA_SUPERA_RESIDUO`
 (evasione), `E_INDIRIZZO_DOC_OBBLIGATORIO` (emissione senza CON),
 `E_TIPO_INDIRIZZO` (whitelist), `E_INDIRIZZO_SNAPSHOT_NOT_FOUND` (404).

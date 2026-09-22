@@ -22,6 +22,7 @@ from django.db import DatabaseError, transaction
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services._pricing_gate_helpers import (
@@ -59,7 +60,6 @@ from apps.core.api.payload_validators import paginated_envelope
 # ── Costanti di validazione ──
 
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
-_STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
@@ -832,11 +832,8 @@ def gestisci_riga(
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="gestisci_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Righe non modificabili nello stato corrente.",
-        detail=f"stato={testata['stato_codice_interno']}",
+    richiedi_righe_in_bozza(
+        testata, documento="Preventivo", documento_id=preventivo_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -1061,10 +1058,8 @@ def aggiorna_riga(
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Righe non modificabili nello stato corrente.",
+    richiedi_righe_in_bozza(
+        testata, documento="Preventivo", documento_id=preventivo_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
 
@@ -1536,10 +1531,8 @@ def suggerisci_prezzo_riga(
 def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Righe non eliminabili nello stato corrente.",
+    richiedi_righe_in_bozza(
+        testata, documento="Preventivo", documento_id=preventivo_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
 
@@ -1653,8 +1646,8 @@ def list_componenti_riga(
 #        preventivo modificabile in UN'unica query JOIN
 #        componente→riga→preventivo (Fix #2 perf, refactor-componenti.md).
 #        Solleva `E_PREV_COMPONENTE_NOT_FOUND` su componente inesistente
-#        o fuori scope, `E_PREV_STATO_NON_MODIFICABILE` se preventivo non
-#        in `_STATI_RIGHE_MODIFICABILI`.
+#        o fuori scope, `E_RIGA_DOC_NON_BOZZA` (BB `richiedi_righe_in_bozza`,
+#        col `verbo` del chiamante) se il preventivo non e' in bozza.
 #        Defense-in-depth: scope check sia su `riga_id` (anti-tampering
 #        URL) sia su `preventivo_id` via JOIN runtime.
 def _load_componente_for_modification(
@@ -1663,6 +1656,7 @@ def _load_componente_for_modification(
     preventivo_id: int,
     riga_id: int,
     componente_id: int,
+    verbo: Verbo,
     function_name: str,
 ) -> None:
     scope = repo.load_componente_with_scope(componente_id)
@@ -1703,12 +1697,8 @@ def _load_componente_for_modification(
 
     # Guard stato modificabile: il JOIN porta gia' lo stato — niente
     # round-trip extra a `get_preventivo`.
-    stato = str(scope.get("stato_codice_interno") or "")
-    ErrorManager.require(
-        stato in _STATI_RIGHE_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Componenti non modificabili nello stato corrente.",
-        detail=f"stato={stato}",
+    richiedi_righe_in_bozza(
+        scope, documento="Preventivo", documento_id=preventivo_id, verbo=verbo,
         function_name=function_name,
     )
 
@@ -1734,7 +1724,7 @@ def update_componente(
     _load_componente_for_modification(
         repo,
         preventivo_id=preventivo_id, riga_id=riga_id, componente_id=componente_id,
-        function_name=f"{_FN}.update_componente",
+        verbo="modificare", function_name=f"{_FN}.update_componente",
     )
 
     # Solo campi della whitelist repo finiscono nell'UPDATE (defense-in-depth).
@@ -1761,7 +1751,7 @@ def delete_componente(
     _load_componente_for_modification(
         repo,
         preventivo_id=preventivo_id, riga_id=riga_id, componente_id=componente_id,
-        function_name=f"{_FN}.delete_componente",
+        verbo="togliere", function_name=f"{_FN}.delete_componente",
     )
     deleted = repo.delete_componente(componente_id)
     # idempotenza: se gia' soft-deleted ritorna False — non e' errore qui.

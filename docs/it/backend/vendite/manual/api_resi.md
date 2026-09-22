@@ -184,7 +184,12 @@ credito» promette un documento che poi non si trova.
 `E_RESO_NOT_FOUND` (404), `E_RESO_DDT_NON_CONSEGNATO` (create su DDT non
 consegnato), `E_RESO_QTA_SUPERA_CONSEGNATO` (over-return), `E_RESO_ANNULLO_CON_RICONSEGNE`,
 `E_RESO_VALIDAZIONE` (400: payload del verbo, filtri coda, etichetta fuori
-whitelist), `E_UI_EXPORT_FORMAT_INVALID` (400), `E_UI_EXPORT_LIMIT_EXCEEDED` (422).
+whitelist), `E_RESO_STATO_TRANSIZIONE` (409: la **testata** fuori bozza),
+`E_RIGA_DOC_NON_BOZZA` (409: righe aggiunte/modificate/tolte fuori bozza — dal
+2026-09-22 il pre-check BE `richiedi_righe_in_bozza` usa il codice del BB a DB
+`trgfn_doc_righe_lock_fuori_bozza`, che su `resi_righe` **non è ancora
+montato**: il lettore `fn_get_stato_testata_documento` non conosce `RESO`),
+`E_UI_EXPORT_FORMAT_INVALID` (400), `E_UI_EXPORT_LIMIT_EXCEEDED` (422).
 
 **Accredito** — sollevati dalle madri DB e tradotti dal service; nel massivo
 arrivano **per riga** dentro `falliti`, non come envelope di errore:

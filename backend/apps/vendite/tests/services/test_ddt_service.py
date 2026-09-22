@@ -19,8 +19,9 @@ DdtServiceGuardsTests
  1) test_get_ddt_not_found                 — E_DDT_NOT_FOUND se testata None
  2) test_cambia_stato_ddt_not_found        — E_DDT_NOT_FOUND se stato None (guard leggero)
  3) test_aggiorna_ddt_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
- 4) test_gestisci_riga_stato_non_draft     — E_DDT_STATO_TRANSIZIONE se != DRAFT
- 5) test_elimina_riga_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
+ 4) test_gestisci_riga_stato_non_draft     — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, frase a catalogo)
+ 5) test_elimina_riga_stato_non_draft      — E_RIGA_DOC_NON_BOZZA se != DRAFT
+ 5b) test_update_componente_stato_non_draft — E_RIGA_DOC_NON_BOZZA; l'etichetta prende `numero` dallo scope del componente
 
 DdtCreaTests
  6) test_crea_ddt_deriva_destinatario_da_ba — deriva destinatario dal BA + DRAFT
@@ -84,7 +85,9 @@ _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
 
 class DdtServiceGuardsTests(SimpleTestCase):
-    """Guard di stato (E_DDT_STATO_TRANSIZIONE) e not-found (E_DDT_NOT_FOUND)."""
+    """Guard di stato (E_DDT_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
+    sulle righe — lo stesso codice del BB a DB, decisione B del 2026-09-22) e
+    not-found (E_DDT_NOT_FOUND)."""
 
     @patch(_REPO)
     def test_get_ddt_not_found(self, repo_cls) -> None:
@@ -115,10 +118,16 @@ class DdtServiceGuardsTests(SimpleTestCase):
     @patch(_REPO)
     def test_gestisci_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ddt.return_value = {"stato_codice_interno": "EMESSO"}
+        repo.get_ddt.return_value = {"numero": "2026/00007", "stato_codice_interno": "EMESSO"}
         with self.assertRaises(ServiceError) as cm:
             ddt_service.gestisci_riga(7, {"articolo_id": "ART1"})
-        self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        # La frase e' quella del catalogo, coi tre valori: etichetta, stato, verbo.
+        self.assertEqual(
+            cm.exception.message,
+            "DDT 2026/00007 non e' piu' in bozza (stato EMESSO): le sue righe si "
+            "possono aggiungere solo finche' e' in bozza.",
+        )
         repo.create_riga.assert_not_called()
 
     @patch(_REPO)
@@ -127,8 +136,29 @@ class DdtServiceGuardsTests(SimpleTestCase):
         repo.get_ddt.return_value = {"stato_codice_interno": "SPEDITO"}
         with self.assertRaises(ServiceError) as cm:
             ddt_service.elimina_riga(7, 3)
-        self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        # Senza `numero` (bozza mai numerata, o lettura che non lo porta)
+        # l'etichetta ripiega su `#id`, come `fn_get_stato_testata_documento`.
+        self.assertTrue(cm.exception.message.startswith("DDT #7 non e' piu' in bozza (stato SPEDITO)"))
+        self.assertIn("togliere", cm.exception.message)
         repo.delete_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_update_componente_stato_non_draft(self, repo_cls) -> None:
+        # Sui componenti la testata e' lo scope del JOIN, non `get_ddt`: deve
+        # portare `numero`, o l'etichetta ripiega su `#id` proprio su un DDT
+        # emesso, che il numero ce l'ha sempre — e nessun errore lo direbbe.
+        repo = repo_cls.return_value
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 50, "riga_ddt_id": 3, "ddt_id": 7,
+            "stato_codice_interno": "EMESSO", "numero": "2026/00007",
+        }
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.update_componente(7, 3, 50, {"prezzo_unitario": "1"})
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertTrue(cm.exception.message.startswith("DDT 2026/00007 non e' piu' in bozza (stato EMESSO)"))
+        self.assertEqual(cm.exception.context["operazione"], "UPDATE")
+        repo.update_componente.assert_not_called()
 
 
 class DdtCreaTests(SimpleTestCase):

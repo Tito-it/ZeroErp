@@ -1379,7 +1379,35 @@ Dal catalogo vivo, dai backend e dai pgTAP (22-09):
 * `liquibase updateSQL` offline dei sei (copie senza `preConditions`): rendono tutti.
 * ⚠️ Nessun `BEGIN ATOMIC` in questo giro (plpgsql, forma standard): il jar di pgjdbc non serve. Nessuna misura: non è un giro di costo.
 
-### 12.4 ⏳ Richieste BE (nessuna urgenza a DB: il guard vale da solo)
+### 12.4 ✅ Richieste BE — fatte il 22-09 (le prime due; la terza resta a Tid)
+
+> ✅ `genera_error_policies` rigenerato dopo il merge di PR #1640 (entrano
+> `E_RIGA_DOC_NON_BOZZA` CONFLITTO_STATO e `E_DOC_RIGHE_LOCK_MONTAGGIO`
+> TECNICO, esce `E_DELETE_RIGA_DOC_NON_BOZZA` fra i ritirati — il `--check`
+> era rosso dal merge), ripieghi senza `%s` per i due codici nuovi (quello del
+> ritirato resta: il diario deve risolverlo), commento di `ddt_service.elimina_riga`
+> riscritto sui **due** trigger nell'ordine vero, `api_contratti.md` e
+> `modello-contratti.md` sul BB. Nessun sito Python nominava il codice
+> ritirato (il rifiuto arriva col `CONSTRAINT` strutturato e trova la policy
+> nuova da solo). `apps.core` + `apps.vendite`: verdi; cancello del terzo
+> lato verde. ✅ **Il terzo punto, deciso da Tid il 22-09 (strada B)**: i 14
+> pre-check di `ddt`/`ordini`/`preventivi` (righe e componenti) **restano** e
+> sollevano `E_RIGA_DOC_NON_BOZZA` con la frase a catalogo — un BB solo,
+> `apps/vendite/services/_righe_bozza_guard.py`; i tre codici di prima
+> restano alle transizioni di testata. Restano l'unico cancello dove il DB non
+> arriva per decisione (ordini INSERT/UPDATE, preventivi, componenti): quando
+> il DB coprirà anche quelli, toglierli sarà neutro per l'API. ⭐ *Rilettura
+> critica dello stesso pomeriggio (ok Tid)*: sul BB tre difetti senza errore
+> (etichetta `#id` sui componenti perché lo scope non portava `numero`;
+> `context.operazione` col verbo e non con `TG_OP`; frase del catalogo
+> ricopiata senza presidio — ora `FRASE_CATALOGO` + test e2e sul DB vero), e
+> **sei fratelli fuori dal conto dei 14**: `contratti_service` (righe e
+> componenti — sulle stesse `contratti_righe` il DB diceva già
+> `E_RIGA_DOC_NON_BOZZA` e il Python `E_CONTRATTO_NON_MODIFICABILE`, che
+> resta a testata e utility) e `resi_service` (tre siti; su `resi_righe` il
+> BB a DB non c'è: `fn_get_stato_testata_documento` non conosce `RESO`, ed è
+> il **quarto adottante candidato** insieme ai preventivi). *La richiesta,
+> com'era:*
 
 * `manage.py genera_error_policies` (+ fallback dei messaggi) per `E_RIGA_DOC_NON_BOZZA` (CONFLITTO_STATO → 409) e `E_DOC_RIGHE_LOCK_MONTAGGIO` (TECNICO); `E_DELETE_RIGA_DOC_NON_BOZZA` è ritirato: i commenti in `ddt_service.py` (righe ~666-670) che lo nominano come esito del traduttore vanno aggiornati (il primo esito è ora del BB, con il codice nuovo).
 * `docs/it/backend/vendite/manual/modello-contratti.md` e `api_contratti.md` nominano `trgfn_contratti_righe_lock_post_attivazione`: il lock delle righe è il BB, codice `E_RIGA_DOC_NON_BOZZA` (452 resta alla testata).

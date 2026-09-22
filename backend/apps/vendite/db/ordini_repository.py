@@ -410,7 +410,11 @@ class OrdiniRepository(
             SELECT c.id          AS componente_id,
                    c.riga_ordine_id,
                    r.ordine_id,
-                   sd.codice_interno AS stato_codice_interno
+                   sd.codice_interno AS stato_codice_interno,
+                   -- L'etichetta del rifiuto di stato («Ordine 2026/00012», o
+                   -- «Ordine #131» se NULL): senza, il guard delle righe in
+                   -- bozza ripiega sull'id anche su un ordine confermato.
+                   o.numero
               FROM vendite.ordini_righe_componenti c
               JOIN vendite.ordini_righe r ON r.id = c.riga_ordine_id
               JOIN vendite.ordini o       ON o.id = r.ordine_id

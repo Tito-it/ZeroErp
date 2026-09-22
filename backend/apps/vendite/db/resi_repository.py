@@ -265,12 +265,14 @@ class ResiRepository:
     def get_capabilities(self, reso_id: int) -> dict[str, Any]:
         return call_jsonb_fn("script.fn_available_actions_reso", reso_id)
 
-    # Scopo: Lettura LEGGERA per i guard delle righe: stato corrente + id del
-    #        DDT di origine (via uid sorgente), senza materializzare la vista
-    #        lista con le decodifiche. None se il reso non esiste.
+    # Scopo: Lettura LEGGERA per i guard delle righe: stato corrente, numero
+    #        (l'etichetta del rifiuto «Reso 2026/00012», o «Reso #131» se NULL)
+    #        e id del DDT di origine (via uid sorgente), senza materializzare
+    #        la vista lista con le decodifiche. None se il reso non esiste.
     def get_stato_e_ddt_origine(self, reso_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT sdr.codice_interno AS stato_codice_interno,
+                   r.numero,
                    d.id               AS ddt_origine_id
               FROM vendite.resi r
               JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id

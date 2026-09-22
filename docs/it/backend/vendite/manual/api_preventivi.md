@@ -374,7 +374,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - **Componenti BoM CASO composito**: dopo `create_riga`, se l'articolo e' `is_composito=TRUE`, il service invoca `fn_preventivo_riga_componenti_init` che popola `preventivi_righe_componenti` per tutti i figli BoM validi alla data. Errori bloccanti: `E_DOC_COMPOSITO_BOM_VUOTA` (422) se la BoM e' vuota/scaduta alla data del documento; `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422) se un override mette prezzo 0 su un obbligatorio; `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422) se il resolver fallisce per un componente senza override. Tutta la transazione e' atomica (init + UPDATE attivazioni avvengono in `@transaction.atomic`).
   - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE/LISTINO_BUNDLE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`. Se workflow L3: anche `richiesta_approvazione_pending=true` + `violazione_l2` (tipo, variazione_abs_pct, limite_pct).
   - Ricalcolo totali automatico dopo insert (trigger DB). Per padri compositi il prezzo unitario padre viene **immediatamente sovrascritto** dal trigger `_z90_ricalcola_padre` come SUM(figli × coeff_qta_snapshot).
-- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_DOC_COMPOSITO_BOM_VUOTA` (422), `E_DOC_COMPONENTE_OBBLIGATORIO` (422), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422), `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422)
+- Errori: `E_PREV_VALIDAZIONE` (400), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_DOC_COMPOSITO_BOM_VUOTA` (422), `E_DOC_COMPONENTE_OBBLIGATORIO` (422), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422), `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422)
 
 ---
 
@@ -443,7 +443,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre come SUM(figli × coeff_qta) post-update
   - **Guard prezzo zero**: `prezzo_unitario=0` su componente obbligatorio rejected dal trigger `script.trgfn_componenti_check_prezzo_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
 - Area: `vendite` livello SCRITTURA + azione `prezzo_override_manuale` per modifica `prezzo_unitario`
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
 
 ---
 
@@ -457,7 +457,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   - **Guard componente obbligatorio**: tentativo di disattivare un componente `obbligatorio=TRUE` rejected dal trigger `script.trgfn_componenti_guard_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
   - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre post-delete
 - Output `200`: `{ "data": { "status": "deleted", "componente_id": 1, "deleted": true } }`
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
 
 ---
 
@@ -470,7 +470,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - **L1+L2+L3 su PATCH**: se il payload tocca `prezzo_unitario`, scattano gli stessi check dell'insert (autorizzazione + audit meta + L2 limite + L3 workflow opzionale via flag `richiesta_approvazione=true`). L'articolo/UoM della riga esistente sono usati come contesto resolver
 - **Trigger DB guard riga PENDING**: se la riga ha `stato_approvazione_prezzo='PENDING'`, il trigger `trg_preventivi_righe_a10_guard_pending_upd` (Sprint E) blocca modifica di campi struttura (prezzo, qta, articolo, sconto, ecc.) con `E_RIGA_PREZZO_PENDENTE` (409). Solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id` e `meta` sono ammessi. Per modificare prezzo: prima chiudere il workflow (approva/rifiuta) o annullare la pratica.
 - **Guard componenti via PATCH riga**: payload con `componenti_overrides` o `componenti_attivazioni` viene rifiutato con `E_PREV_VALIDAZIONE` (422). La PATCH riga e' solo testata; per modificare i componenti BoM usare gli endpoint dedicati §8e (PATCH componente) / §8f (DELETE componente).
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409), `E_PREV_VALIDAZIONE` (422 — payload con campi componenti)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409), `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403), `E_PRICING_SCONTO_ECCESSIVO` (403), `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409), `E_PREV_VALIDAZIONE` (422 — payload con campi componenti)
 
 ---
 
@@ -479,7 +479,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - Metodo: `DELETE`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/`
 - Regole: soft delete (attivo=false), ammesso solo in stato BOZZA, ricalcolo totali
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409)
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_RIGA_DOC_NON_BOZZA` (409)
 
 ---
 

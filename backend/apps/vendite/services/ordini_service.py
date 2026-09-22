@@ -25,6 +25,7 @@ from django.db import DatabaseError, transaction
 
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
 from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
@@ -91,7 +92,6 @@ _FN = "vendite.ordini_service"
 _STATO_BOZZA = "DRAFT"
 _STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
-_STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
 # decoupling fatturazione/spedizione). Per trigger CONFERMATO l'eleggibilita'
 # sopravvive all'evasione in DDT (PARZIALMENTE_EVASO/EVASO): la FONTE UNICA e'
@@ -149,10 +149,11 @@ _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
 #    data malformata e' un 400 col campo acceso, non un 500 dal DB.
 # ⚠️ `data_consegna_confermata` e' «quando ci si impegna», cioe' si decide alla
 #    conferma e puo' cambiare dopo; ma le righe si scrivono solo in DRAFT
-#    (`_STATI_RIGHE_MODIFICABILI`). Il DB non mette nessun guard di stato su
-#    questa colonna, di proposito: il limite alla bozza e' solo di qui, ed e'
-#    dichiarato nel brief (§5.5, 1-bis) come fatto da decidere — non da questo
-#    cantiere.
+#    (BB `richiedi_righe_in_bozza`, codice `E_RIGA_DOC_NON_BOZZA`). Il DB non
+#    mette nessun guard di stato su INSERT/UPDATE di `ordini_righe`, di
+#    proposito (il BB a DB e' montato sul solo DELETE): il limite alla bozza
+#    e' solo di qui, ed e' dichiarato nel brief (§5.5, 1-bis) come fatto da
+#    decidere — non da questo cantiere.
 _DATE_RIGA: tuple[str, ...] = (
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 )
@@ -861,11 +862,8 @@ def gestisci_riga(
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="gestisci_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su ordine in bozza.",
-        detail=f"stato={testata['stato_codice_interno']}",
+    richiedi_righe_in_bozza(
+        testata, documento="Ordine", documento_id=ordine_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -966,10 +964,8 @@ def aggiorna_riga(
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="aggiorna_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        testata, documento="Ordine", documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
@@ -991,10 +987,8 @@ def aggiorna_riga(
 def elimina_riga(ordine_id: int, riga_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="elimina_riga")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Righe eliminabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        testata, documento="Ordine", documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="elimina_riga")
@@ -1051,10 +1045,8 @@ def update_componente(
         function_name=f"{_FN}.update_componente",
     )
     assert scope is not None
-    ErrorManager.require(
-        scope["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Componenti modificabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        scope, documento="Ordine", documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
     # NB: `esposto_in_fattura` NON e' aggiornabile qui — e' un flag della BoM di
@@ -1081,10 +1073,8 @@ def delete_componente(
         function_name=f"{_FN}.delete_componente",
     )
     assert scope is not None
-    ErrorManager.require(
-        scope["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message="Componenti eliminabili solo su ordine in bozza.",
+    richiedi_righe_in_bozza(
+        scope, documento="Ordine", documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.delete_componente",
     )
     with _db_errors("delete_componente"):

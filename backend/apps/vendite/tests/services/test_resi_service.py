@@ -19,8 +19,8 @@ Indice test eseguiti (classe :: metodo):
 ResiServiceGuardsTests
  1) test_get_reso_not_found              — E_RESO_NOT_FOUND se testata None
  2) test_aggiorna_reso_stato_non_draft   — E_RESO_STATO_TRANSIZIONE se != DRAFT
- 3) test_gestisci_riga_stato_non_draft   — E_RESO_STATO_TRANSIZIONE se != DRAFT
- 4) test_elimina_riga_stato_non_draft    — E_RESO_STATO_TRANSIZIONE se != DRAFT
+ 3) test_gestisci_riga_stato_non_draft   — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, BB richiedi_righe_in_bozza)
+ 4) test_elimina_riga_stato_non_draft    — E_RIGA_DOC_NON_BOZZA se != DRAFT
 
 ResiCreaTests
  5) test_crea_reso_ok                    — sorgente per codice + uid DDT + DRAFT
@@ -148,7 +148,9 @@ _SNAPSHOT_RIGA = {
 
 
 class ResiServiceGuardsTests(SimpleTestCase):
-    """Guard di stato (E_RESO_STATO_TRANSIZIONE) e not-found (E_RESO_NOT_FOUND)."""
+    """Guard di stato (E_RESO_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
+    sulle righe — il codice del BB a DB, anche se su resi_righe non e' ancora
+    montato) e not-found (E_RESO_NOT_FOUND)."""
 
     @patch(_REPO)
     def test_get_reso_not_found(self, repo_cls) -> None:
@@ -170,20 +172,29 @@ class ResiServiceGuardsTests(SimpleTestCase):
     def test_gestisci_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_e_ddt_origine.return_value = {
-            **_RESO_DRAFT, "stato_codice_interno": "CONFERMATO",
+            **_RESO_DRAFT, "stato_codice_interno": "CONFERMATO", "numero": "2026/00005",
         }
         with self.assertRaises(ServiceError) as cm:
             resi_service.gestisci_riga(7, {"ddt_riga_id": 11})
-        self.assertEqual(cm.exception.code, "E_RESO_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        self.assertEqual(
+            cm.exception.message,
+            "Reso 2026/00005 non e' piu' in bozza (stato CONFERMATO): le sue righe "
+            "si possono aggiungere solo finche' e' in bozza.",
+        )
         repo.create_riga.assert_not_called()
 
     @patch(_REPO)
     def test_elimina_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "ANNULLATO"
+        repo.get_stato_e_ddt_origine.return_value = {
+            **_RESO_DRAFT, "stato_codice_interno": "ANNULLATO",
+        }
         with self.assertRaises(ServiceError) as cm:
             resi_service.elimina_riga(7, 3)
-        self.assertEqual(cm.exception.code, "E_RESO_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+        # Senza `numero` l'etichetta ripiega su `#id`.
+        self.assertTrue(cm.exception.message.startswith("Reso #7 non e' piu' in bozza (stato ANNULLATO)"))
         repo.delete_riga.assert_not_called()
 
 
@@ -397,7 +408,7 @@ class ResiRigheTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_riga_ok(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
         repo.get_riga.return_value = {"id": 3, "reso_id": 7}
         out = resi_service.aggiorna_riga(
             7, 3, {"qta_operativa": "2", "articolo_id": "hack"},
@@ -411,7 +422,7 @@ class ResiRigheTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_riga_estranea(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
         repo.get_riga.return_value = {"id": 3, "reso_id": 999}
         with self.assertRaises(ServiceError) as cm:
             resi_service.aggiorna_riga(7, 3, {"qta_operativa": "2"})

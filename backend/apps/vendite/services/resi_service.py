@@ -33,6 +33,7 @@ from typing import Any
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import (
@@ -76,8 +77,13 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # ── Costanti di dominio ──
 _FN = "vendite.resi_service"
 _STATO_BOZZA = "DRAFT"
-# Un solo set: testata E righe sono editabili solo in bozza (se in futuro le
-# regole divergono, si sdoppia allora — non prima).
+# La TESTATA e' editabile solo in bozza (E_RESO_STATO_TRANSIZIONE). Le RIGHE
+# seguono la stessa regola ma col codice del DB, `E_RIGA_DOC_NON_BOZZA` (BB
+# `richiedi_righe_in_bozza`, come ddt/ordini/preventivi/contratti): fino al
+# 2026-09-22 un set solo serviva entrambe, e lo stesso rifiuto usciva con un
+# nome diverso per il reso. A DB il BB `trgfn_doc_righe_lock_fuori_bozza`
+# non e' ancora montato su `resi_righe` (il lettore non conosce RESO): il
+# pre-check e' l'unico cancello, e quando il DB arrivera' avra' lo stesso codice.
 _STATI_MODIFICABILI: frozenset[str] = frozenset({_STATO_BOZZA})
 # Stato richiesto al DDT sorgente per aprire un reso (non si rende cio' che
 # non e' stato consegnato — brief DB §3).
@@ -784,18 +790,7 @@ def gestisci_riga(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # Lettura LEGGERA (stato + id DDT origine): la testata piena della vista
     # lista (decodifiche destinatario/BA/emittente) qui non serve — il reso
     # non ha pricing/componenti che la richiedano (diverso dal gemello DDT).
-    reso = testata_o_not_found(
-        repo.get_stato_e_ddt_origine, reso_id,
-        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
-        id_name="reso_id", function_name=f"{_FN}.gestisci_riga",
-    )
-    ErrorManager.require(
-        reso["stato_codice_interno"] in _STATI_MODIFICABILI,
-        code="E_RESO_STATO_TRANSIZIONE",
-        message="Righe modificabili solo su reso in bozza.",
-        detail=f"stato={reso['stato_codice_interno']}",
-        function_name=f"{_FN}.gestisci_riga",
-    )
+    reso = _richiedi_righe_in_bozza(repo, reso_id, verbo="aggiungere", op="gestisci_riga")
     ddt_id = reso.get("ddt_origine_id")
     ErrorManager.require(
         ddt_id is not None,
@@ -816,10 +811,7 @@ def aggiorna_riga(
     reso_id: int, riga_id: int, payload: dict[str, Any],
 ) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato(
-        repo, reso_id, _STATI_MODIFICABILI, op="aggiorna_riga",
-        message="Righe modificabili solo su reso in bozza.",
-    )
+    _richiedi_righe_in_bozza(repo, reso_id, verbo="modificare", op="aggiorna_riga")
     _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_RIGA}
     ErrorManager.require(
@@ -837,10 +829,7 @@ def aggiorna_riga(
 #        esiste solo post-conferma: nessun collegamento da verificare qui.
 def elimina_riga(reso_id: int, riga_id: int) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato(
-        repo, reso_id, _STATI_MODIFICABILI, op="elimina_riga",
-        message="Righe eliminabili solo su reso in bozza.",
-    )
+    _richiedi_righe_in_bozza(repo, reso_id, verbo="togliere", op="elimina_riga")
     _get_riga_or_raise(repo, reso_id, riga_id, op="elimina_riga")
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
@@ -1100,6 +1089,26 @@ _db_errors = make_db_errors_translator(
     unique_constraints=_UNIQUE_CONSTRAINTS,
     fk_constraints=_FK_CONSTRAINTS,
 )
+
+
+# Scopo: «Le righe si toccano solo in bozza» sul reso, col codice del DB
+#        (`E_RIGA_DOC_NON_BOZZA`, BB `richiedi_righe_in_bozza`): legge la
+#        testata col lettore leggero (stato, numero, DDT di origine) — reso
+#        inesistente -> E_RESO_NOT_FOUND — e la restituisce al chiamante, che
+#        di quella lettura puo' aver bisogno (il DDT di origine in `gestisci_riga`).
+def _richiedi_righe_in_bozza(
+    repo: ResiRepository, reso_id: int, *, verbo: Verbo, op: str,
+) -> dict[str, Any]:
+    reso = testata_o_not_found(
+        repo.get_stato_e_ddt_origine, reso_id,
+        code="E_RESO_NOT_FOUND", message="Reso non trovato.",
+        id_name="reso_id", function_name=f"{_FN}.{op}",
+    )
+    richiedi_righe_in_bozza(
+        reso, documento="Reso", documento_id=reso_id, verbo=verbo,
+        function_name=f"{_FN}.{op}",
+    )
+    return reso
 
 
 # Scopo: Guard di stato leggero (solo codice_interno): E_RESO_NOT_FOUND se il

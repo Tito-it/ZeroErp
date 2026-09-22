@@ -413,7 +413,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
 | `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
 | `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
-| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato (modifica fuori DRAFT; delete bozza con righe → annullare) |
+| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato sulla **testata** (modifica fuori DRAFT; delete bozza con righe → annullare) |
+| `E_RIGA_DOC_NON_BOZZA` | 409 | righe e componenti si aggiungono/modificano/tolgono solo in bozza — dal 2026-09-22 è il codice del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (sugli ordini montato sul solo DELETE) e il pre-check BE lo usa uguale (`richiedi_righe_in_bozza`), con la frase a catalogo |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |
 | `E_ORD_OFFERTA_GIA_CONVERTITA` | 409 | conversione offerta→ordine già avvenuta (univocità 1:1): guard BE fail-fast + rete UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (via `map_integrity_error`) |
 | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | varia | trigger guard: transizione di stato non presente/attiva in `config.transizioni_stati_ordini` (es. `cambia-stato` verso uno stato non ammesso) |

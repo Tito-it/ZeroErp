@@ -167,7 +167,7 @@ Il contratto ATTIVO e' **blindato** per garantire stabilita' contrattuale:
 | `listino_versione_id` | ❌ trigger lock |
 | `tipo_variazione_globale` | ❌ trigger lock |
 | `valore_variazione_globale` | ❌ trigger lock |
-| Eccezioni in `contratti_righe` (INSERT/UPDATE/DELETE) | ❌ trigger `trgfn_contratti_righe_lock_post_attivazione` |
+| Eccezioni in `contratti_righe` (INSERT/UPDATE/DELETE) | ❌ building block `trgfn_doc_righe_lock_fuori_bozza` (dal 2026-09-22, lo stesso di DDT e ordini), `E_RIGA_DOC_NON_BOZZA` |
 | `categoria_cliente_id_snapshot` | ❌ rifiutato dal service (DRAFT-only) |
 | `valido_al` | ✅ ammesso (cessazione programmata) |
 | `meta` | ✅ ammesso (note interne) |
