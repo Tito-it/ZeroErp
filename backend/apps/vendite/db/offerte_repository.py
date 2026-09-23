@@ -28,6 +28,7 @@ from django.db import connection
 
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.core.db._helpers import (
+    RicercaFull,
     add_ricerca_full_condition,
     call_jsonb_fn,
     row_to_dict,
@@ -113,10 +114,14 @@ def _build_update(
 
 
 # Whitelist ORDER BY per la lista offerte (SQL injection safe).
-# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.offerte`
-# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
-_RICERCA_COLS_OFFERTE: tuple[str, ...] = (
-    "codice", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+# Colonne che la ricerca libera SA cercare nella lista `vendite.offerte`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_OFFERTE = RicercaFull(
+    "vendite.offerte",
+    (
+        "codice", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
 )
 
 _ORDER_COLS_OFFERTE: dict[str, str] = {
@@ -417,7 +422,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         if validita_dal_max:
             wheres.append("v.validita_dal <= %s")
             params.append(validita_dal_max)
-        add_ricerca_full_condition(wheres, params, search, colonne=_RICERCA_COLS_OFFERTE)
+        add_ricerca_full_condition(wheres, params, search, _RICERCA_OFFERTE)
         # Filtro ultima revisione (mirror preventivi): di default mostra solo la
         # revisione non rimpiazzata per lineage. Quando false, storico completo.
         #

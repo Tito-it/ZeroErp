@@ -9,10 +9,26 @@
 > 2026-09-23 **non è nel repository**: la richiesta vale per come è stata
 > incollata, ed è riassunta in §1.
 >
-> 🔵 **Stato 2026-09-23: SCRITTO, non applicato.** Cinque changeSet
-> (`20260923-11…-15`), due righe di CSV (note del codice d'errore), un pgTAP
-> nuovo, cinque pagine `manual/`. Provato in transazione ritirata sullo
-> scratch `zeroerp_ci` (§5). ⏳ Apply e corsa dei pgTAP: Tid.
+> ✅ **Stato 2026-09-23: CHIUSO — applicato, mergiato e consumato dal BE.**
+> - **DB**: cinque changeSet (`20260923-11…-15`), due righe di CSV (note del
+>   codice d'errore), un pgTAP nuovo, cinque pagine `manual/`. Applicati e
+>   provati da Tid (commit `55341db80`, PR #1656). Nella stessa giornata, su
+>   richiesta del BE, `ricercabile_full = t` su `ddt_origine_numero` di
+>   `vendite.resi` (seed `lista_colonna.csv` id 156, PR #1658).
+> - **Verificato dal BE sul DB di sviluppo**: `ui.fn_lista_colonne_ricerca_full`
+>   restituisce le colonne attese (preventivi, resi, clienti), una lista
+>   inesistente solleva `E_UI_LISTA_NON_TROVATA`.
+> - **Consumatore**: il BB `add_ricerca_full_condition` + `RicercaFull`
+>   (`backend/apps/core/db/_helpers.py`), che legge questa funzione a ogni
+>   ricerca e cerca sull'intersezione con le colonne dichiarate dal repository.
+>   Le dieci liste di vendite ci passano; presidi `test_ricerca_full_seed` e
+>   `tests/db/test_ricerca_full_db`. Le altre 32 liste:
+>   [brief-be-ricerca-full-liste-residue](../work-in-progress/brief-be-ricerca-full-liste-residue.md).
+> - §6, ultimo punto: il commento di `ui_repository.list_colonne_by_codice` ora
+>   dice che quella non è la sede delle colonne di ricerca.
+>
+> ⚠️ Nota storica: quando questo brief è stato scritto, il brief BE citato qui
+> sotto non era ancora nel repository; oggi c'è, al link sopra.
 
 ---
 

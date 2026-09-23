@@ -20,6 +20,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
@@ -39,10 +40,14 @@ from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixi
 #        ('vendite.ordini') che il FE invia come sortField della DataTable.
 #        Nomi canonici del soggetto (lezione DEF-8). `serie`/`anno` non
 #        ordinabili (fuori dalla whitelist): la chiave logica e' `numero`.
-# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.ordini`
-# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
-_RICERCA_COLS_ORDINI: tuple[str, ...] = (
-    "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+# Colonne che la ricerca libera SA cercare nella lista `vendite.ordini`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_ORDINI = RicercaFull(
+    "vendite.ordini",
+    (
+        "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
 )
 
 _ORDER_COLS_ORDINI: dict[str, str] = {
@@ -165,7 +170,7 @@ class OrdiniRepository(
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
-        add_ricerca_full_condition(conditions, params, search, colonne=_RICERCA_COLS_ORDINI)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_ORDINI)
 
         # Scope emittente (defense-in-depth applicativa). La vista
         # `vw_ordini_lista` e' `security_invoker=on`: la RLS della tabella base

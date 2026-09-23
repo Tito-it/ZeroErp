@@ -16,6 +16,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
     add_ricerca_full_condition,
     sql_order_clause,
     call_jsonb_fn,
@@ -43,10 +44,14 @@ from apps.vendite.types import (
 #        (`<ListaConfigurabile>` usa `:field="col.campo_sorgente"`). Nomi
 #        canonici del soggetto (no alias `ba_*` su cliente/id.fiscale, lezione
 #        DEF-8). `rev` volutamente ASSENTE: non ordinabile (decisione §7.3).
-# Colonne della ricerca libera: le `ricercabile_full = t` della lista `vendite.preventivi`
-# nel catalogo. Le confronta col seed `apps/core/tests/test_ricerca_full_seed`.
-_RICERCA_COLS_PREVENTIVI: tuple[str, ...] = (
-    "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+# Colonne che la ricerca libera SA cercare nella lista `vendite.preventivi`. Quali cerca
+# davvero lo decide il catalogo a ogni ricerca (`add_ricerca_full_condition`);
+# `test_ricerca_full_seed` verifica che coprano le `ricercabile_full` del seed.
+_RICERCA_PREVENTIVI = RicercaFull(
+    "vendite.preventivi",
+    (
+        "numero", "ragione_sociale_completa", "ba_codice", "id_fiscale_univoco_cf_piva",
+    ),
 )
 
 _ORDER_COLS_PREVENTIVI: dict[str, str] = {
@@ -204,7 +209,7 @@ class PreventiviRepository(
             conditions.append("v.data <= %s")
             params.append(data_al)
         add_ricerca_full_condition(
-            conditions, params, search, colonne=_RICERCA_COLS_PREVENTIVI,
+            conditions, params, search, _RICERCA_PREVENTIVI,
         )
         # Filtro revisione attiva: di default mostra solo l'ultima revisione
         # "viva" per numero: `is_superata IS FALSE` — "non esiste una revisione
