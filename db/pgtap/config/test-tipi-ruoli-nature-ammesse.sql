@@ -158,7 +158,7 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 10) Validita' rovesciata bloccata — dal TIPO range, non da un CHECK
+-- 10) Validita' rovesciata bloccata — dal guard comune delle date
 --     🔴 SQLSTATE aggiornato il 2026-08-18: 23514 -> 22000.
 --     Dalla migrazione a `daterange` nativo (2026-04-12, 18 tabelle) la
 --     validita' non e' piu' due colonne con un CHECK sopra: e' un RANGE, e un
@@ -166,15 +166,22 @@ SELECT throws_ok(
 --     qualunque CHECK possa guardarlo.
 --     ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso.
 --     (Stessa correzione in test-permessi-user-overrides, tre asserzioni.)
+--     ⭐ 2026-09-23 (brief-db-guard-date-validita): a rifiutare e' ora il
+--     GUARD COMUNE delle date (script.trgfn_guard_date_validita, montato
+--     dall'automazione DATE_VALIDITA). E' un BEFORE ROW, e i BEFORE girano
+--     prima del calcolo della colonna generata: l'operatore legge
+--     E_DATA_AL_MINORE_DAL invece della frase tecnica del daterange. Il
+--     daterange resta sotto, come il CHECK: sono l'ultima difesa.
 -- =========================================================
-SELECT throws_ok(
+SELECT throws_like(
     $$
       INSERT INTO config.tipi_ruoli_nature_ammesse
         (id, tipo_ruolo_id, tipo_soggetto_id, valido_dal, valido_al)
       VALUES ((SELECT MAX(id) + 1001 FROM config.tipi_ruoli_nature_ammesse),
               3, 'ENC', '2026-06-01', '2026-01-01');
     $$,
-    '22000'
+    '%è inferiore alla data dal%',
+    'Validita'' rovesciata (INSERT): parla il guard comune delle date, E_DATA_AL_MINORE_DAL'
 );
 
 -- =========================================================

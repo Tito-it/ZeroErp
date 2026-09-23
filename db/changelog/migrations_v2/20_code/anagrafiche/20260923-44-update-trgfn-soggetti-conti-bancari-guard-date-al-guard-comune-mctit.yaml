@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_soggetti_conti_bancari_guard: il controllo sull'ordine
+#   delle date si ritira — lo dice il guard comune delle date. Resta il
+#   controllo sul conto attivo.
+#
+# ── ⭐ PERCHE' ────────────────────────────────────────────────────────
+#   La regola del periodo (valido_al non precede valido_dal) ha da questo giro
+#   UNA sede: script.trgfn_guard_date_validita (20260923-40), montata
+#   dall'automazione DATE_VALIDITA (20260923-41) su ogni tabella che porta la
+#   coppia di date — questa compresa. Regola del 2 (AGENTS.md): un building
+#   block accanto alle copie che sostituisce e' una terza versione della
+#   stessa regola. La copia si ritira nello STESSO giro.
+#   ⚠️ Nessuna finestra scoperta: il guard generato e' `trg_<tabella>_a10_…`,
+#   che in ordine alfabetico precede il trigger di questa funzione — con le
+#   date invertite parlava gia' lui per primo.
+#
+# Corpo dalla doc auto-gen (= vivo su dbdev e su zeroerp_ci, stesso md5 del
+# prosrc il 2026-09-23) meno il blocco delle date.
+# Brief: brief-db-guard-date-validita.md §6
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260923-44-update-trgfn-soggetti-conti-bancari-guard-date-al-guard-comune-mctit.yaml
+
+  - changeSet:
+      id: 20260923-44-update-trgfn-soggetti-conti-bancari-guard-date-al-guard-comune
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_soggetti_conti_bancari_guard: tolto il controllo
+        sull'ordine delle date (ora in script.trgfn_guard_date_validita, automazione
+        DATE_VALIDITA); resta il controllo sul conto attivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard su anagrafiche.soggetti_conti_bancari: conto attivo.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F4+F5):
+              --   - anagrafiche.fn_log_and_raise_error non esiste: e' script.
+              --   - SQLERRM fuori da un blocco EXCEPTION non e' risolvibile.
+              --   - NEW.data_al / NEW.data_dal non sono colonne di questa
+              --     tabella: sono valido_al / valido_dal, le stesse gia' usate
+              --     nell'IF che governa il ramo.
+              DECLARE
+                v_attivo anagrafiche.conti_bancari.attivo%TYPE;
+              BEGIN
+                -- Evita legami a conti_bancari disattivati
+                SELECT attivo INTO v_attivo
+                  FROM anagrafiche.conti_bancari
+                 WHERE id = NEW.conto_bancario_id;
+                IF v_attivo IS NOT TRUE THEN
+
+                  PERFORM script.fn_log_and_raise_error(
+                                      'database',
+                                      'trgfn_soggetti_conti_bancari_guard',
+                                      'E_CONTO_BANCARIO',
+                                      jsonb_build_object(
+                                        'campo', 'conto_bancario_id',
+                                        'tabella','anagrafiche.conti_bancari',
+                                        'conto_bancario_id',  NEW.conto_bancario_id::text
+                                      ) , NULL::uuid, NEW.conto_bancario_id::text
+                                    );
+
+                END IF;
+
+                -- rev 20260923-44: la coerenza delle date non e' piu' qui. Ha una sede
+                --   sola, script.trgfn_guard_date_validita, montata dall'automazione
+                --   DATE_VALIDITA su ogni tabella con valido_dal/valido_al — questa compresa.
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
+              IS 'Guard-rail su anagrafiche.soggetti_conti_bancari: blocca uso di conti_bancari non attivi. Rev 20260923-44: la coerenza delle date (valido_al non precede valido_dal) non e'' piu'' qui, ha una sede sola: script.trgfn_guard_date_validita (automazione DATE_VALIDITA).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' nella doc auto-gen alla revisione prima di
+              -- questa (20260922-11). Non si riscrive un corpo stantio.
+              SELECT 1;

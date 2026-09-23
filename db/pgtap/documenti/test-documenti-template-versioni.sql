@@ -9,7 +9,7 @@
 -- ------------------------------------------------------------
 -- Indice test (1..9):
 --  1) Setup: emittente fiscale disponibile, template di base creato
---  2) Validita' calcolata automaticamente da script.trgfn_set_validita
+--  2) Validita' calcolata automaticamente (colonna generata)
 --  3) Anti-overlap: due PUBBLICATA attive con range sovrapposti bloccate
 --  4) Anti-overlap: range disgiunto ammesso
 --  5) Guard A1: UPDATE html_template su PUBBLICATA bloccato
@@ -89,7 +89,7 @@ SELECT is(
     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
       AND versione = 1),
   daterange(DATE '2026-01-01', DATE '2026-06-30', '[]'),
-  'Validita auto-calcolata correttamente da script.trgfn_set_validita'
+  'Validita auto-calcolata correttamente (colonna generata)'
 );
 
 -- ============================================================

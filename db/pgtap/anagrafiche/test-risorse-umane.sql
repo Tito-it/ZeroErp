@@ -147,42 +147,21 @@ SELECT ok(
 -- =========================================================
 -- 5) Vincolo date: valido_al >= valido_dal
 -- =========================================================
--- ⛔ CHI RIFIUTA NON E' IL CHECK (misurato il 2026-09-23, la prima volta che
---   il fixture e' arrivato fin qui su un database da zero). La colonna
---   `validita` e' GENERATED STORED su daterange(valido_dal, valido_al), e
---   PostgreSQL la calcola PRIMA dei CHECK: con valido_al < valido_dal il
---   daterange stesso solleva 22000 («il limite inferiore dell'intervallo
---   dev'essere minore o uguale…»), e chk_risorse_umane_date non viene mai
---   raggiunto. Il test pretendeva 23514 e sarebbe stato rosso per sempre.
--- ⭐ Si asserisce la REGOLA — la data incoerente e' respinta, da uno dei due
---   presidi che la scrivono — e il diag() registra chi parla oggi. Regge anche
---   il giorno in cui si decide cosa fare del CHECK irraggiungibile (brief
---   giro 2, §11): pinnare il 22000 sarebbe pinnare il sintomo.
--- ⚠️ Il catch e' stretto ai due codici: qualunque altro errore (un permesso,
---   un guard che crasha) lascia il campo vuoto e l'asserzione fallisce.
-CREATE TEMP TABLE tmp_rifiuto_date (sqlstate text);
-
-DO $$
-DECLARE
-    v_state text;
-BEGIN
-    BEGIN
-        UPDATE anagrafiche.risorse_umane
-           SET valido_al = valido_dal - INTERVAL '1 day'
-         WHERE id = (SELECT id FROM tmp_risorsa_umana_test);
-    EXCEPTION
-        WHEN check_violation OR data_exception THEN
-            GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE;
-    END;
-    INSERT INTO tmp_rifiuto_date VALUES (v_state);
-END
-$$;
-
-SELECT diag('Vincolo date: a rifiutare oggi e'' SQLSTATE '
-            || COALESCE((SELECT sqlstate FROM tmp_rifiuto_date), 'nessuno'));
-
-SELECT ok(
-    (SELECT sqlstate IN ('23514', '22000') FROM tmp_rifiuto_date),
+-- ⭐ CHI RIFIUTA E' IL GUARD COMUNE DELLE DATE (2026-09-23,
+--   brief-db-guard-date-validita). Lo stesso giorno questo test aveva scoperto che
+--   chk_risorse_umane_date non parlava mai: la colonna `validita` e' GENERATED
+--   STORED su daterange(valido_dal, valido_al), PostgreSQL la calcola prima dei
+--   CHECK, e con le date invertite rifiutava il daterange con una frase tecnica
+--   (22000). Ora parla script.trgfn_guard_date_validita, montato dall'automazione
+--   DATE_VALIDITA: e' un BEFORE ROW e arriva prima della colonna generata.
+--   Il CHECK e il daterange restano sotto, come ultima difesa.
+SELECT throws_like(
+    $$
+    UPDATE anagrafiche.risorse_umane
+       SET valido_al = valido_dal - INTERVAL '1 day'
+     WHERE id = (SELECT id FROM tmp_risorsa_umana_test);
+    $$,
+    '%è inferiore alla data dal%',
     'Vincolo date: valido_al non puo'' essere precedente a valido_dal'
 );
 

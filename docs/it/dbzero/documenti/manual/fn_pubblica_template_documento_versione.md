@@ -74,14 +74,14 @@ Restituisce una riga con `versione_id`, `template_documento_id` e `versioni_obso
      `trgfn_template_documenti_versioni_protect_pubblicata` (guard A1), quindi non viene bloccato.
    - **Step 2** `SET valido_al = p_valido_dal - 1` → ora `OLD.stato = 'OBSOLETA'`, il trigger
      guard A1 non scatta (controlla `OLD.stato = 'PUBBLICATA'`).
-   I trigger `set_validita` ricalcolano `validita` ad ogni UPDATE.
+   `validita` si ricalcola da sola ad ogni UPDATE: e' una colonna generata.
 8. **Pubblicazione versione target**: `SET stato = 'PUBBLICATA', valido_dal = p_valido_dal, valido_al = p_valido_al`.
    La condizione `AND stato = 'BOZZA'` nell'UPDATE è una difesa ulteriore contro race concorrenti.
 9. **`IF NOT FOUND`** dopo la pubblicazione: safety net per scenari eccezionali di bypass lock.
 10. **`RETURN NEXT`** con `versione_id`, `template_documento_id`, `versioni_obsolete`.
 
-I trigger di sistema (`audit_data_user_generic`, `tx_id_managed`, `set_validita`, `storico_generic`)
-gestiscono autonomamente audit, tx_id, canonicalize daterange e storicizzazione.
+I trigger di sistema (`audit_data_user_generic`, `tx_id_managed`, `storico_generic`) e la colonna
+generata `validita` gestiscono autonomamente audit, tx_id, daterange e storicizzazione.
 La funzione non duplica nessuna di queste responsabilità.
 
 ---

@@ -137,9 +137,11 @@ SELECT is(
             -- i 9 A del §4-ter.2 (22-09, changeSet 20260922-11..13)
             ('anagrafiche.fn_crea_risorsa_umana_v2',                              'E_ADMIN_UO_NON_TROVATA'),
             ('anagrafiche.trgfn_billing_account_guard_normalize',                 'E_PARENT_SELF'),
-            ('anagrafiche.trgfn_billing_account_guard_normalize',                 'E_DATA_FINE_NON_MAGGIORE_DI_INIZIO'),
-            ('anagrafiche.trgfn_soggetti_conti_bancari_guard',                    'E_DATA_AL_MINORE_DAL'),
-            ('anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard',              'E_DATA_AL_MINORE_DAL'),
+            -- ⭐ 2026-09-23: i tre controlli sulle date di validita' che stavano
+            --   qui (billing_account e i due legami ai conti bancari) sono stati
+            --   ritirati (20260923-43..-45): la regola ha UNA sede, il guard
+            --   comune. Il canale si pretende ora su di lui.
+            ('script.trgfn_guard_date_validita',                                  'E_DATA_AL_MINORE_DAL'),
             ('script.fn_disdetta_cliente',                                        'E_DATA_CESSAZIONE_INVALIDA'),
             ('script.fn_guard_soggetto_pf_pura',                                  'E_AUTH_USER_SOGGETTO_CON_PIVA'),
             ('script.trgfn_componenti_check_prezzo_obbligatorio',                 'E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO'),

@@ -74,8 +74,8 @@ notturno `chiusura_scadenze_daily`) **soddisfa per costruzione** la
 condizione `valido_al < CURRENT_DATE` del guard. La query del
 framework ha lo stesso WHERE: il job passa il guard senza bypass.
 
-Semantica `valido_al`: ultimo giorno **incluso** (convenzione
-`script.trgfn_set_validita`). Implica che:
+Semantica `valido_al`: ultimo giorno **incluso** (convenzione della
+colonna generata `validita`, linee-guida-sql §7b). Implica che:
 
 * `valido_al = oggi` → chiusura manuale **vietata**; il job
   dell'indomani chiudera' automaticamente.

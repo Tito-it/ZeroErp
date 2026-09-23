@@ -172,6 +172,7 @@ Sono regole per casi specifici. Non tutte le tabelle le richiedono.
 | **DELETE_BLOCK**             | Blocca la DELETE su tabelle sensibili (bypass via GUC)        | Tabelle di configurazione critica (es. ruoli)          |
 | **CLEANUP**                  | Calcola `cleanup_at` e purge dei record scaduti               | Tabelle con dati temporanei (log, sessioni)            |
 | **GUARD utility/tipo_ruolo** | Verifica coerenza tra utility e tipo ruolo del soggetto       | Tabelle con colonne `utility_id` + `soggetto_ruolo_id` |
+| **DATE_VALIDITA**            | Impedisce che `valido_al` preceda `valido_dal`, con un errore che l'operatore capisce | Ogni tabella con `valido_dal` + `valido_al`: basta la presenza delle due colonne |
 
 ---
 
@@ -375,6 +376,40 @@ Per tabelle che espongono sia una colonna utility (`utility_id`) sia una colonna
 * Trigger function: `script.trgfn_guard_utility_tipo_ruolo_by_cols()`
 
 **Comportamento:** se la matrice non è configurata per la utility in questione, il trigger adotta un comportamento fail-open (non blocca).
+
+### 4.7 DATE_VALIDITA (la regola del periodo)
+
+Dove una riga ha un periodo — `valido_dal` e `valido_al` — il periodo non si
+capovolge: la data di fine non precede quella di inizio. Questa automazione
+monta su **ogni** tabella che porta le due colonne un guard che lo verifica e,
+se non è così, risponde con `E_DATA_AL_MINORE_DAL` e accende il campo
+`valido_al`.
+
+**Perché serve un guard, se ci sono già i vincoli.** Sulle tabelle con la
+colonna `validita` generata, PostgreSQL calcola quella colonna *prima* dei
+`CHECK`, e con le date invertite a rifiutare era il calcolo dell'intervallo, con
+una frase tecnica. Il guard è un `BEFORE ROW`, e i `BEFORE` girano prima del
+calcolo: parla lui. I `CHECK` sulle date restano come ultima difesa.
+
+**Come funziona:**
+
+* la regola è della **coppia di colonne**, non della tabella: non c'è niente da
+  configurare per tabella, la sola presenza di `valido_dal` e `valido_al` basta —
+  come `codice_interno` per il lock (§4.1);
+* si giudica solo quando le due date ci sono entrambe: un periodo aperto
+  (`valido_al` vuoto) non ha niente da verificare;
+* lo schema `storico` è escluso: le tabelle ombra ricordano, non si giudicano;
+* il guard gira a **ogni migrate** (una rete in `90_end`, che si ferma se una
+  tabella con le due colonne ne resta senza) e nel giro notturno del lock.
+
+**Componenti:**
+
+* Regola: `DATE_VALIDITA` in `dbops.automation_rules_tbl`
+* Runner: `dbops.fn_run_automations_date_validita()` (parte `DATE_VALIDITA` dell'orchestratore)
+* Trigger function: `script.trgfn_guard_date_validita()`
+
+⚠️ Il nome del trigger, su una tabella dal nome lungo, supera i 63 caratteri e
+PostgreSQL lo tronca: il trigger si riconosce dalla funzione, non dal nome.
 
 ---
 

@@ -194,8 +194,7 @@ esplicita per evitare perdite di audit storico.
 
 ### Campo `validita` (daterange)
 
-La colonna `validita` e' generata automaticamente dal trigger
-`trg_categorie_clienti_listini_a20_set_validita_ins_upd` a partire da
+La colonna `validita` e' una colonna **generata** dal database a partire da
 `valido_dal`/`valido_al`. Non e' scrivibile via API ne' esposta in output:
 il contratto espone `valido_dal`/`valido_al` che sono semanticamente
 equivalenti per gli amministratori.
@@ -204,7 +203,8 @@ equivalenti per gli amministratori.
 
 * Tabella: `anagrafiche.categorie_clienti_listini` (creata da
   `20260414-07-create-categorie-clienti-listini-mctit.yaml`).
-* Funzione trigger: `script.trgfn_set_validita()` (condivisa cross-schema).
+* Ordine delle date: guard comune `script.trgfn_guard_date_validita`
+  (automazione `DATE_VALIDITA`), che risponde `E_DATA_AL_MINORE_DAL`.
 * Extension: `btree_gist` (baseline).
 * FK verso: `anagrafiche.categorie_clienti`, `config.utilities`,
   `anagrafiche.soggetti_ruoli`, `config.classi_utenze`, `vendite.listini`.

@@ -10,12 +10,12 @@
 --   1) CHECK: tipo_variazione = 'PERCENTUALE' ammesso
 --   2) CHECK: tipo_variazione = 'PREZZO_FISSO' vietato nella matrice
 --   3) CHECK: tipo NOT NULL con valore NULL -> fallisce (coerenza)
---   4) daterange: valido_al < valido_dal -> costruttore daterange fallisce (22000)
+--   4) valido_al < valido_dal -> guard comune delle date (E_DATA_AL_MINORE_DAL)
 --   5) EXCLUDE: due righe attive stessa quadrupla + classe specifica si sovrappongono -> fallisce
 --   6) EXCLUDE: due righe attive stessa quadrupla con classe NULL si sovrappongono -> fallisce
 --   7) EXCLUDE: fallback NULL e classe specifica NON si considerano overlap (quadruple diverse)
 --   8) EXCLUDE: righe attivo=false non partecipano al vincolo
---   9) Trigger set_validita: validita' daterange viene popolato
+--   9) Colonna generata validita: il daterange viene popolato
 --  10) Variazione assente: tipo NULL + valore NULL ammesso
 -- ------------------------------------------------------------
 
@@ -128,9 +128,11 @@ SELECT throws_ok(
     'tipo_variazione senza valore_variazione viola chk_categ_cli_listini_variazione_coerente'
 );
 
--- 4) date invertite: il costruttore daterange nel trigger set_validita rifiuta
--- con SQLSTATE 22000 prima che qualsiasi CHECK di coerenza venga valutato.
-SELECT throws_ok(
+-- 4) date invertite: parla il guard comune delle date (2026-09-23,
+-- brief-db-guard-date-validita). Prima rifiutava il costruttore del daterange
+-- della colonna generata, 22000, con una frase tecnica: il guard e' un BEFORE
+-- ROW e arriva prima del calcolo della colonna.
+SELECT throws_like(
     $$INSERT INTO anagrafiche.categorie_clienti_listini(
           categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
           classe_utenza_id, listino_id,
@@ -141,9 +143,8 @@ SELECT throws_ok(
              '2040-06-01', '2040-01-01'
         FROM tmp_ctx_cat c, tmp_ctx_utility u, tmp_ctx_emittente e,
              tmp_ctx_classe cu, tmp_ctx_listino l$$,
-    '22000',
-    NULL,
-    'valido_al < valido_dal: daterange(valido_dal, valido_al) fallisce con 22000'
+    '%è inferiore alla data dal%',
+    'valido_al < valido_dal: parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- 5) EXCLUDE: due righe attive stessa quadrupla con classe specifica si sovrappongono
@@ -219,7 +220,7 @@ SELECT lives_ok(
     'Riga con attivo=false non entra nell''EXCLUDE no-overlap'
 );
 
--- 9) Trigger set_validita popola daterange.
+-- 9) La colonna generata validita popola il daterange.
 -- Nota: il costruttore daterange('[]') normalizza automaticamente a '[)' con +1 giorno sul superiore.
 SELECT is(
     (SELECT validita::text FROM anagrafiche.categorie_clienti_listini
@@ -227,7 +228,7 @@ SELECT is(
         AND tipo_variazione = 'PERCENTUALE' AND valore_variazione = -10
       LIMIT 1),
     '[2030-01-01,2031-01-01)',
-    'Trigger set_validita sincronizza validita (daterange normalizzato [), +1gg su valido_al)'
+    'La colonna generata validita e'' sincronizzata (daterange normalizzato [), +1gg su valido_al)'
 );
 
 -- 10) variazione assente (tipo NULL + valore NULL) ammessa

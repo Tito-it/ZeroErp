@@ -41,31 +41,15 @@ BEGIN
                       );
   END IF;
 
-  -- Coerenza date
-  IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL
-    AND NEW.valido_al < NEW.valido_dal THEN
-
-        PERFORM script.fn_log_and_raise_error(
-                        'database',
-                        TG_NAME,
-                        'E_DATA_AL_MINORE_DAL',
-                        jsonb_build_object(
-                          'campo', 'valido_al',
-                          'tabella','anagrafiche.soggetti_ruoli_conti_bancari',
-                          'valido_al',  NEW.valido_al::text,
-                          'valido_dal',  NEW.valido_dal::text
-                        ) ,
-                        NEW.tx_id::uuid,
-                        NEW.valido_al::text, NEW.valido_dal::text
-                      );
-  END IF;
+  -- rev 20260923-45: la coerenza delle date non e' piu' qui. Ha una sede
+  --   sola, script.trgfn_guard_date_validita, montata dall'automazione
+  --   DATE_VALIDITA su ogni tabella con valido_dal/valido_al — questa compresa.
   RETURN NEW;
 END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
-IS 'Guard-rail: impedisce uso di conti non attivi, 
-controlla coerenza date e cura audit base.';
+IS 'Guard-rail: impedisce uso di conti non attivi. Rev 20260923-45: la coerenza delle date (valido_al non precede valido_dal) non e'' piu'' qui, ha una sede sola: script.trgfn_guard_date_validita (automazione DATE_VALIDITA).';
 ```
 
 ---

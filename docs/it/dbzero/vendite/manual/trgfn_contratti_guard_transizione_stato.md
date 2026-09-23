@@ -90,8 +90,8 @@ condizione `valido_al < CURRENT_DATE` del guard (la query del
 framework ha lo stesso WHERE). Quindi il job passa il guard senza
 bypass, in modo del tutto naturale.
 
-Semantica `valido_al`: ultimo giorno **incluso** (convenzione
-`script.trgfn_set_validita`). Implica che:
+Semantica `valido_al`: ultimo giorno **incluso** (convenzione della
+colonna generata `validita`, linee-guida-sql §7b). Implica che:
 
 * `valido_al = oggi` → cessazione manuale **vietata** (la condizione
   `< CURRENT_DATE` non e' soddisfatta); il job notturno dell'indomani

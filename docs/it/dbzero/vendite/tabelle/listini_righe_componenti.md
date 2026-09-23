@@ -48,25 +48,27 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_listini_righe_componenti_a10_articoli_componenti_req_1f9d45 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli_componenti', 'attivo', 'articolo_componente_id', 'id')` |
 | trg_listini_righe_componenti_a10_articoli_componenti_req_1f9d45 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli_componenti', 'attivo', 'articolo_componente_id', 'id')` |
+| trg_listini_righe_componenti_a10_articoli_componenti_req_1f9d45 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli_componenti', 'attivo', 'articolo_componente_id', 'id')` |
 | trg_listini_righe_componenti_a10_articoli_require_attivo_7576e7 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_figlio_id', 'id')` |
 | trg_listini_righe_componenti_a10_articoli_require_attivo_7576e7 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_figlio_id', 'id')` |
 | trg_listini_righe_componenti_a10_articoli_require_attivo_dcaf93 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_padre_id', 'id')` |
 | trg_listini_righe_componenti_a10_articoli_require_attivo_dcaf93 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_padre_id', 'id')` |
-| trg_listini_righe_componenti_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
+| trg_listini_righe_componenti_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_listini_righe_componenti_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_listini_righe_componenti_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
-| trg_listini_righe_componenti_a10_listini_versioni_requir_65ed90 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
+| trg_listini_righe_componenti_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_listini_righe_componenti_a10_listini_versioni_requir_65ed90 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
+| trg_listini_righe_componenti_a10_listini_versioni_requir_65ed90 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_listrighe_comp_a10_guard_coerenza_bom_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()` |
 | trg_listrighe_comp_a10_guard_coerenza_bom_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()` |
+| trg_listrighe_comp_a10_guard_immutabilita_v5_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()` |
 | trg_listrighe_comp_a10_guard_immutabilita_v5_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()` |
 | trg_listrighe_comp_a10_guard_immutabilita_v5_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()` |
-| trg_listrighe_comp_a10_guard_immutabilita_v5_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()` |
-| trg_listrighe_comp_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listrighe_comp_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_listrighe_comp_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listrighe_comp_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listrighe_comp_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listrighe_comp_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

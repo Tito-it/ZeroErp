@@ -52,8 +52,13 @@ BEGIN;
 --   MASCHERATO da un residuo, non riparato. E' la terza occorrenza della
 --   famiglia censita in `20260921-18` (le altre due: `anagrafiche/create-cliente`,
 --   corretto, e `anagrafiche/test-soggetti-split-payment-cliente-pa`).
---   ⇒ La fixture ora e' completa e la riga e' al suo posto: il file non
---   dipende piu' da CHI chiude la finestra differita.
+--   ⇒ La fixture ora e' completa e la riga e' al suo posto.
+--   ⛔ CORREZIONE del 2026-09-23: la frase che seguiva («il file non dipende
+--   piu' da CHI chiude la finestra differita») era falsa. Completare la
+--   fixture sposta il giudizio in fondo, ma i vincoli li aveva gia' chiusi la
+--   riga di contesto: sullo scratch ricostruito, senza residui, il file e'
+--   morto di nuovo all'INSERT del soggetto. Da qui la riapertura dichiarata
+--   subito dopo la riga di contesto.
 --   Brief: brief-db-pgtap-runner-rls-baseline §20, §22.4.
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
@@ -61,6 +66,20 @@ BEGIN;
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+-- ⚠️ VINCOLI DIFFERITI — ⭐ LA FINESTRA SI RIAPRE, NON SI PRESUME.
+--   Il soggetto nasce, POI riceve indirizzo e contatti, e il test 8 chiude la
+--   finestra «dove l'unita' di lavoro e' completa» (testata del file).
+--   ⛔ Ma la riga di contesto qui sopra, quando COSTRUISCE il mondo (database
+--   senza operatori: lo scratch `zeroerp_ci`, la CI), ESCE CON I VINCOLI
+--   IMMEDIATE (rev 20260921-18, come ogni helper pgTAP). Fino al 2026-09-23 lo
+--   mascherava un residuo: `create-gestore-conto-*` committavano l'operatore
+--   `PGTR0001` e da li' la riga non costruiva piu'. Tolto quel COMMIT (brief
+--   fixture-che-costruiscono giro 2), lo scratch appena ricostruito ha dato
+--   ERRORE_FIXTURE: «Indirizzo obbligatorio mancante per soggetto …»
+--   all'INSERT del soggetto — il test 8 non arrivava mai.
+--   La finestra la riapre il file, e dice da se' cosa vuole.
+SET CONSTRAINTS ALL DEFERRED;
 
 SELECT plan(8);
 

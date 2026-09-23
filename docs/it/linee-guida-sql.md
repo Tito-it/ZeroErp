@@ -534,6 +534,14 @@ validita   daterange GENERATED ALWAYS AS (
   ```
 
   **Motivazione**: `daterange(d, NULL, '[]')` produce `upper_inf=true` (testo: `[d,)`), mentre la STORED con COALESCE produce `upper_inf=false, upper='infinity'::date` (testo: `[d,infinity]`). L'operatore `@>` confronta le rappresentazioni interne: `[d,infinity] @> [d,)` restituisce **false** anche se semanticamente equivalenti. Applicare COALESCE garantisce rappresentazioni identiche e `@>` corretto.
+* ⭐ **La regola del periodo (`valido_al` non precede `valido_dal`) ha una sede
+  sola, e non si scrive a mano.** La monta l'automazione `DATE_VALIDITA` su ogni
+  tabella che porta le due colonne, per la sola presenza delle colonne:
+  [automazione DB §4.7](/guide/automazione-db). Serve perché la colonna generata
+  si calcola **prima** dei `CHECK`: senza il guard, le date invertite le
+  rifiuterebbe il costruttore del `daterange` con una frase tecnica (`22000`), e
+  il `CHECK` sulle date non parlerebbe mai. ⛔ Un guard di tabella che ricontrolli
+  l'ordine delle due date è una **copia**: si toglie.
 * Per tabelle con colonne sorgente diverse (es. `data_inizio`/`data_fine`): colonna STORED con espressione adattata
 * Per `TIMESTAMPTZ` usare `tstzrange` con bounds `[)` e colonna STORED adattata
 
@@ -681,7 +689,7 @@ Quando una tabella ha **sia** una colonna `stato` (ciclo vita gestionale: es. `B
 4. **Sync stato -> data**: il framework parametrico **`dbops.fn_apply_chiusura_scadenze()`** + job pgAgent unico **`chiusura_scadenze_daily`** (00:05) esegue l'UPDATE massivo `stato = terminale` per le righe scadute (`valido_al < CURRENT_DATE`) su tutte le tabelle configurate. L'UPDATE attraversa il guard trigger e lo soddisfa per costruzione. Vedi sotto "Framework dbops.automazione_chiusura_scadenze".
 5. **Niente trigger di sync `valido_al` -> `stato`** e nessuna colonna generata: lo stato **non e'** derivato in tempo reale dalla data (es. l'utente puo' programmare `valido_al` futuro e lo stato resta ATTIVA finche' il job non scatta). La sincronizzazione e' asincrona e "cosmetica".
 6. **INSERT**: non vincolare l'INSERT con la matrice transizioni (per permettere seed/import con stati diretti). Il guard scatta solo su UPDATE OF stato.
-7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione `script.trgfn_set_validita`, bounds <code>[]</code> canonicalizzati a <code>[)</code>). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
+7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione della colonna generata `validita`, §7b: bounds <code>[]</code> canonicalizzati a <code>[)</code>). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
 
 #### Framework `dbops.automazione_chiusura_scadenze` (post 26-04-2026)
 

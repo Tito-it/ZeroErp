@@ -65,7 +65,7 @@ validita` temporale e prezzi sono demandati rispettivamente a `listini_versioni`
 | `tipologia_id` | FK a `config.listini_tipologie`. NOT NULL. Classifica la natura delle voci (consumo, quota fissa, imposta, onere, prodotto, servizio) |
 | `emittente_soggetto_ruolo_id` | FK a `anagrafiche.soggetti_ruoli`. NOT NULL (dal 14-04-2026, pricing v5). Emittente fiscale del listino: un listino vale per un solo emittente. Non e' input del resolver (viene derivato dalla sessione operatore), ma dimensione interna della tupla univoca (utility, tipologia, emittente) |
 | `attivo` | Abilita il listino per associazione e risoluzione prezzi |
-| `validita` | `daterange` NOT NULL calcolato dal trigger `script.trgfn_set_validita()` da `valido_dal`/`valido_al`. Query: `validita @> data` |
+| `validita` | `daterange` NOT NULL, colonna generata da `valido_dal`/`valido_al` (linee-guida-sql §7b). Query: `validita @> data` |
 
 ---
 

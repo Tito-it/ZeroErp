@@ -79,8 +79,7 @@ nuova.
 
 ### Campo `validita` (daterange)
 
-Generato dal trigger `trg_promo_articoli_a20_set_validita_ins_upd` da
-`valido_dal`/`valido_al`. Non scrivibile via API; il contratto espone
+Colonna **generata** dal database da `valido_dal`/`valido_al`. Non scrivibile via API; il contratto espone
 `valido_dal`/`valido_al`.
 
 ## Endpoint
@@ -114,7 +113,8 @@ disabilita i campi proattivamente, il trigger DB e' la difesa finale.
 
 * Tabella: `vendite.promo_articoli` (migrazione `20260414-13`)
 * FK verso: `catalogo.articoli`, `catalogo.unita_misura`
-* Trigger: `script.trgfn_set_validita()` (condivisa)
+* Ordine delle date: guard comune `script.trgfn_guard_date_validita`
+  (automazione `DATE_VALIDITA`), che risponde `E_DATA_AL_MINORE_DAL`
 * Extension: `btree_gist`
 
 Validazione payload e traduzione vincoli DB delegate al building block

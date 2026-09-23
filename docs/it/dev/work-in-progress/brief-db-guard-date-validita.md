@@ -7,8 +7,18 @@
 > controllo per le date come hai suggerito»* — il guard di dominio sì;
 > sull'automazione *«potremo pensarci … pensiamoci»*.
 >
-> ⏸️ **Stato 2026-09-23: in riflessione.** Piano scritto, **nessun changeSet**.
-> La forma di §3.2 (automazione) è la proposta, non una decisione: §8.
+> ✅ **Stato 2026-09-23 sera: CHIUSO lato DB — applicato, pgTAP verdi** (Tid:
+> «migrazione applicata e test verdi»). Piano confermato da Tid con le
+> raccomandazioni del §8. Dieci pezzi, §10: nove changeSet (`20260923-40…-48`),
+> tre righe di CSV in `80_data`, un pgTAP nuovo e sei aggiornati. Prove in §11.
+> ⏳ Resta solo la richiesta al BE (§12): rigenerare le policy per `E_DATE_VALIDITA`.
+>
+> ✅ **Applicato il 23-09 sera** su dbdev (16:43) e sullo scratch `zeroerp_ci`
+> (17:06, ricostruito); corsa dei pgTAP verde (Tid). ⚠️ I nove rossi «che la CI non conosce» della corsa
+> sullo scratch **non vengono da questo giro** (il guard non solleva nessuna
+> delle loro frasi, nessuno dei file è stato toccato qui): sono la finestra
+> differita chiusa dalla riga di contesto sul mondo vuoto, e stanno nel
+> [brief del giro 2](brief-db-fixture-che-costruiscono-giro-2.md), §11 in coda.
 
 ---
 
@@ -68,7 +78,8 @@ si chiamano sempre `valido_dal` e `valido_al`.
 
 * `IF NEW.valido_dal IS NOT NULL AND NEW.valido_al IS NOT NULL AND NEW.valido_al < NEW.valido_dal`
   → `script.fn_log_and_raise_error` con **`E_DATA_AL_MINORE_DAL`** (già
-  registrato, classe `DATO_ERRATO`, già usato dalle tre copie);
+  registrato, classe `DATO_ERRATO`, già usato da due delle tre copie — la
+  terza usava `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO`, §6);
 * contesto: `'campo', 'valido_al'` (il frontend accende quel campo) e la
   tabella da `TG_TABLE_SCHEMA`/`TG_TABLE_NAME`; nella frase le **due date**,
   mai nomi di colonna (linee-guida-sql §5, i tre canali);
@@ -140,35 +151,67 @@ in CI (linee-guida-sql §11.5, e le schede in memoria):
 
 Regola del 2 (`AGENTS.md`): un building block accanto alle copie che
 sostituisce è una terza versione della stessa regola. Tre funzioni fanno oggi
-il controllo **inline** con `E_DATA_AL_MINORE_DAL`:
+il controllo **inline** (due con `E_DATA_AL_MINORE_DAL`, una con
+`E_DATA_FINE_NON_MAGGIORE_DI_INIZIO`, sotto):
 
 | Funzione | Che cosa si toglie | Che cosa resta |
 | --- | --- | --- |
-| `anagrafiche.trgfn_billing_account_guard_normalize` | il ramo `ELSIF NEW.valido_al < NEW.valido_dal` | il ramo «`valido_al` senza `valido_dal`» |
+| `anagrafiche.trgfn_billing_account_guard_normalize` | il ramo `ELSIF NEW.valido_al < NEW.valido_dal` (con `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO`) | il ramo «`valido_al` senza `valido_dal`» |
 | `anagrafiche.trgfn_soggetti_conti_bancari_guard` | il blocco «coerenza validità» | il resto del guard |
 | `anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard` | il blocco «coerenza date» | il resto del guard |
 
 ⚠️ Corpi **dalla doc auto-gen**, confrontati con il `prosrc` vivo prima di
-scrivere: la doc di `trgfn_billing_account_guard_normalize` il 2026-09-23 **non
-conteneva** il ramo, il corpo vivo sì — la doc è indietro, e ripartire da lei
-farebbe regredire la funzione. Qui si parte dal vivo e si segna il debito.
+scrivere: coincidono tutti e tre (stesso md5, dbdev e `zeroerp_ci`).
+⛔ **Correzione di una riga scritta in questo brief la mattina**: diceva che la doc
+di `trgfn_billing_account_guard_normalize` era indietro. Non lo era: avevo cercato
+`E_DATA_AL_MINORE_DAL`, e quella copia usa **un altro codice**,
+`E_DATA_FINE_NON_MAGGIORE_DI_INIZIO` — la cui frase («minore **uguale**»)
+prometteva una regola più stretta di quella applicata (solo `<`). Dopo il ritiro
+nessuna funzione lo solleva più: è marcato `obsoleto_dal = 2026-09-23` nel CSV.
 
-⚠️ **L'ordine dei due rifiuti su `billing_account`**: il guard generato è
-`trg_billing_account_a10_date_validita_ins_upd`, quello esistente
-`trg_billing_account_ins_upd_guard_normalize`. Fra `BEFORE ROW` vince l'ordine
-alfabetico: va verificato che, con date invertite, a parlare sia quello nuovo
-(e che non cambi niente per gli altri rifiuti del guard esistente).
+✅ **L'ordine dei rifiuti**: i guard generati si chiamano `trg_<tabella>_a10_…`,
+e in ordine alfabetico precedono i trigger delle tre funzioni
+(`trg_billing_account_ins_upd_guard_normalize`, `trg_soggetti_conti_bancari_ins_upd_guard`…):
+con le date invertite parla il guard comune. Sulle 25 tabelle **nessun** trigger
+`BEFORE` riscrive le date (letto su `pg_trigger`/`prosrc`), quindi giudicare in
+`a10` giudica i valori finali.
 
 ---
 
 ## 7. Debiti trovati per strada
 
-* `linee-guida-sql.md` §7c punto 7 cita `script.trgfn_set_validita`, che **non
-  esiste** (`pg_proc`, 2026-09-23). La convenzione che descrive (ultimo giorno
-  incluso, `[]` canonicalizzato a `[)`) è vera, ma la sede che nomina no.
-* Il messaggio di `E_DATA_AL_MINORE_DAL` ha un doppio spazio («inferiore  alla»)
-  e nessuna `causa`/`soluzione`: con 25 tabelle che lo useranno, conviene
-  completarlo dal CSV del catalogo (non con un `UPDATE`, linee-guida-sql §11.2).
+* ✅ `linee-guida-sql.md` §7c punto 7 citava `script.trgfn_set_validita`, che
+  **non esiste**: ora cita la colonna generata `validita`.
+* ✅ **`script.trgfn_set_validita` ritirata anche dalla documentazione** (Tid,
+  23-09: «va ritirata la documentazione manual»). La funzione non esiste dal
+  `20260514-33` e nessuna pagina le era dedicata; la citavano come viva **undici
+  pagine `manual/`** — 9 in `dbzero` (`categorie_clienti_listini`, `listini`,
+  `promo_articoli`, `trgfn_promo_articoli_guard_data_driven`,
+  `trgfn_listini_versioni_guard_transizione_stato`,
+  `trgfn_contratti_guard_transizione_stato`, `template_documenti_versioni`,
+  `fn_pubblica_template_documento_versione`, `trgfn_template_asset_protect_file`)
+  e 2 in `backend` (`api_categorie_clienti_listini`, `api_promo_articoli`) —
+  con due tabelle che elencavano trigger `…_a20_set_validita_ins_upd` inesistenti.
+  Ora dicono che `validita` è una colonna generata e che l'ordine delle date lo
+  verifica il guard comune. Corrette anche etichette e commenti di cinque pgTAP
+  (esiti identici prima e dopo). ⚠️ Restano, **di proposito**: i changelog
+  storici (non si toccano), i brief in `work-done/` (sono storia), la riga
+  «istantanea aprile 2026» di `PROJECT_CONTEXT`, e un commento in
+  `test-articoli-componenti-immutabilita` che dice cosa c'era «all'epoca».
+  ✅ **Corretto anche nel codice** (Tid, 23-09): il corpo di
+  `vendite.trgfn_promo_articoli_guard_data_driven` diceva «`valido_al >=
+  valido_dal` è garantito da `chk_promo_articoli_date` e dal trigger
+  `set_validita`» — **nessuno dei due esiste** (su `promo_articoli` l'unico
+  `CHECK` è `chk_promo_articoli_tipo_variazione`). `20260923-48` riscrive solo
+  quel commento: provato da owner su `zeroerp_ci`, codice identico (confronto
+  senza commenti né spazi), `COMMENT ON` identico, `plpgsql_check` pulito,
+  `test-promo-articoli-guard-data-driven-v1` 18/18. ✅ **Applicato il 23-09.**
+* ✅ Il messaggio di `E_DATA_AL_MINORE_DAL` aveva un doppio spazio e nessuna
+  `causa`/`soluzione`: corretto dal CSV.
+* 🔵 `guide/automazione-db.md` §5.4 dice che `fn_name_from_template` «gestisce
+  automaticamente abbreviazioni e hash» dei nomi lunghi: lo fa **solo** con il
+  segnaposto `{fkhash6_if_long}`. Senza, PostgreSQL tronca il nome — due guard di
+  questa automazione ne sono l'esempio. Non corretto qui: tocca tutte le regole.
 
 ---
 
@@ -176,28 +219,88 @@ alfabetico: va verificato che, con date invertite, a parlare sia quello nuovo
 
 | # | Decisione | Raccomandata |
 | - | --------- | ------------ |
-| 1 | Automazione per presenza della coppia, o elenco esplicito delle 25 | ⏸️ **da pensare** (Tid, 23-09). Proposta: **automazione** — una tabella nuova con un periodo nascerebbe presidiata senza che nessuno se ne ricordi, come il lock di `codice_interno` |
-| 2 | Codice: riusare `E_DATA_AL_MINORE_DAL` o conirne uno | **riusare**: è registrato, è `DATO_ERRATO`, lo usano già le tre copie, e la frase è quella giusta |
-| 3 | Fase del trigger: `a10` o `a05` | **`a10`**: giudica il valore nuovo; `a05` è per i rifiuti che devono precedere gli altri (immutabilità), e qui non è il caso |
-| 4 | Il giro notturno: job pgAgent suo o parte di un job esistente | **parte del job del lock** (`automations_lock_columns`): stessa natura (guard da struttura), un job in meno da sorvegliare |
-| 5 | Completare `causa`/`soluzione` di `E_DATA_AL_MINORE_DAL` in questo giro | sì, dal CSV |
+| 1 | Automazione per presenza della coppia, o elenco esplicito delle 25 | ✅ **decisa il 23-09: automazione** |
+| 2 | Codice: riusare `E_DATA_AL_MINORE_DAL` o conirne uno | ✅ **deciso: riusare**: è registrato, è `DATO_ERRATO`, lo usano già le tre copie, e la frase è quella giusta |
+| 3 | Fase del trigger: `a10` o `a05` | ✅ **deciso: `a10`**: giudica il valore nuovo; `a05` è per i rifiuti che devono precedere gli altri (immutabilità), e qui non è il caso |
+| 4 | Il giro notturno: job pgAgent suo o parte di un job esistente | ✅ **deciso: parte del job del lock** (`automations_lock_columns`): stessa natura (guard da struttura), un job in meno da sorvegliare |
+| 5 | Completare `causa`/`soluzione` di `E_DATA_AL_MINORE_DAL` in questo giro | ✅ **deciso: sì, dal CSV** |
 
 ---
 
 ## 9. Ordine di lavoro
 
-1. censimento dei pgTAP che asseriscono `23514`/`22000` sulle date (§4.4);
-2. `20_code`: la funzione trigger, il modulo `fn_run_automations_date_validita`,
-   il dispatcher;
-3. `20_code`: le tre copie ritirate (corpo dal vivo, §6);
-4. `80_data`: la regola in `automation_rules_tbl.csv` (+ il messaggio, se §8.5);
-5. `90_end`: il provisioning immediato; `85_pgagent`: il giro notturno;
-6. pgTAP: il presidio dinamico, quello di comportamento, e `test-risorse-umane` t.6;
-7. prova con l'SQL estratto in transazione ritirata, da owner su `zeroerp_ci`
-   (che è un database costruito da zero), con i presìdi trasversali
-   (riferimenti morti, rubinetto);
-8. doc: `linee-guida-sql` §7b/§7c (la regola e la sua sede), il catalogo BB lato
-   DB, la guida sui messaggi se cambia il catalogo.
+✅ Seguito tutto, il 2026-09-23 sera. Consuntivo in §10–§11.
+
+---
+
+## 10. Cosa è stato scritto
+
+| Pezzo | File | Note |
+| --- | --- | --- |
+| la funzione trigger | `20_code/script/20260923-40-create-trgfn-guard-date-validita` | `E_DATA_AL_MINORE_DAL`, `campo` = `valido_al`, giudica solo con le due date |
+| il modulo | `20_code/dbops/20260923-41-create-fn-run-automations-date-validita` | ricalca `fn_run_automations_lock_columns`; esclude `storico`; errore `E_DATE_VALIDITA` (nuovo, `TECNICO`) |
+| l'orchestratore | `20_code/dbops/20260923-42-update-fn-run-automations-parte-date-validita` | parte `DATE_VALIDITA`, anche nel default e sotto `TABLE_RULES`; nessun chiamante usa il default |
+| le tre copie ritirate | `20_code/anagrafiche/20260923-43…-45` | §6 |
+| il giro notturno | `20_code/maintenance/20260923-46-update-proc-automations-lock-columns-job-date-validita` | una riga in più nel job del lock (§8.4) |
+| la rete a ogni migrate | `90_end/20260923-47-converge-guard-date-validita` | sotto |
+| la regola | `80_data/sql/dbops/automation_rules_tbl.csv` riga 20 | |
+| i codici | `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_DATE_VALIDITA` nuovo (id 1118); `E_DATA_AL_MINORE_DAL` completato; `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO` dismesso |
+| il pgTAP | `db/pgtap/script/test-trgfn-guard-date-validita-v1.sql` | 12 asserzioni, §4 |
+| i pgTAP aggiornati | `config/test-tipi-ruoli-nature-ammesse`, `config/test-permessi-user-overrides` (×3), `anagrafiche/test-categorie-clienti-listini-v1`, `vendite/test-promo-articoli-v1`, `anagrafiche/test-risorse-umane`, `dbops/test-punti-canale-campo-v1` | i primi cinque si aspettavano `22000`; l'ultimo elencava per nome le tre copie ritirate |
+| doc | `linee-guida-sql` §7b/§7c, `guide/automazione-db` §2 e §4.7 | |
+
+⭐ **Una scelta presa scrivendo, e va detta: la rete di `90_end` è `runAlways`**,
+non un changeSet che gira una volta come il `20260923-03` del lock. Il master
+include `80_data`, `85_pgagent` e `90_end` **dopo** tutto l'autogen, a ogni
+invocazione: un `runAlways` lì vede sempre tutte le tabelle, anche quelle di un
+changeSet con data successiva, e rende vera «coppia di colonne ⇒ guard» a ogni
+migrate invece che alle 21:10. Precedente: `apply_fk_index_policy` (§9 delle
+linee guida). A regime non fa DDL. E **si ferma** se, finito il giro, una tabella
+con le due colonne ne è ancora senza (regola disabilitata, tolta dal CSV…): un
+guard che manca in silenzio è il difetto da cui nasce questo lavoro.
+⚠️ Non dipende da oggetti di `ci_apply` (legge solo le colonne), quindi la
+trappola «`runAlways` in `90_end` gira prima di `90_end/ci_apply`» non lo riguarda.
+
+---
+
+## 11. Le prove — 2026-09-23 sera
+
+Tutte con l'**SQL estratto** dagli YAML (`yaml.safe_load`), da **owner**, in
+transazione ritirata su `zeroerp_ci` (costruito da zero). ⚠️ Le righe dei CSV
+sono state **rispecchiate a mano** con `INSERT`/`UPDATE` dentro la transazione:
+il loader è il `loadUpdateData` `runOnChange` esistente, e lo prova l'apply.
+
+| Prova | Esito |
+| --- | --- |
+| i sette changeSet di `20_code` + la rete di `90_end` | ✅ si applicano; la rete non trova tabelle scoperte |
+| guard montati | **25**, uno per tabella; un secondo giro del modulo non ne aggiunge (idempotente anche sui **2** nomi troncati a 63 caratteri) |
+| `test-trgfn-guard-date-validita-v1` | ✅ **12/12** |
+| controprova: tolto il guard da `vendite.listini_versioni` | ✅ il t.1 diventa rosso e **nomina la tabella** |
+| **prima/dopo** sui **74** pgTAP che nominano `valido_al` (stesso metro, owner) | **68 identici**, **6 diversi e tutti migliorati** — sono i file aggiornati, rossi prima perché si aspettavano già il comportamento nuovo, verdi dopo |
+| `test-categorie-clienti-listini-v1` t.4 | su `zeroerp_ci` non misurabile (il file ha rossi di fixture suoi, lotto 2: pesca la categoria `SILVER` e un listino); **su dbdev**, owner, transazione ritirata: rosso prima, ✅ verde dopo |
+| prima/dopo su **27 presìdi** trasversali (riferimenti morti, rubinetto, catalogo errori, automazioni, trigger) | **27 identici** |
+| codici dismessi (`test-codici-errore-obsoleto-dal`, catalogo messaggi completo) | ✅ identici prima e dopo |
+| cancelli statici (runOnChange, letterali, preCondition su 80_data, DDL su trigger di automazione, GRANT batch, timestamp, preambolo pgTAP, classi, i18n) | ✅ tutti; debito `throws_ok` invariato a 119 |
+
+⛔ **Cosa queste prove NON dicono**: il verso RLS dei pgTAP (girano da owner;
+il guard non legge tabelle, quindi non ha una faccia RLS sua, ma i file che lo
+attraversano sì) e il giro notturno (la procedura è provata compilando, non
+eseguendo il job). Li dice la corsa dopo l'apply.
+
+✅ **La corsa dopo l'apply (Tid, 23-09 sera): verde.** I nove rossi «che la CI
+non conosce» usciti sullo scratch nella prima corsa non erano di questo giro
+(vedi la nota in testata): sanati nel brief del giro 2, e verdi anche loro.
+
+---
+
+## 12. Richiesta al backend
+
+`E_DATE_VALIDITA` è un codice nuovo, classe `TECNICO`: va rigenerato in
+`backend/apps/core/services/error_policies_generated.py` (e nei ripieghi, se il
+generatore li produce). Nessun operatore lo vede: lo solleva l'automazione
+quando non riesce a montare un trigger. `E_DATA_AL_MINORE_DAL` il BE lo conosce
+già (`highlight_form_fields`). `E_DATA_FINE_NON_MAGGIORE_DI_INIZIO` resta nelle
+due mappe del BE, ma dal 23-09 il database non lo solleva più.
 
 ---
 {% include-markdown "signature-core.md" %}

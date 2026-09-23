@@ -151,6 +151,12 @@ SELECT is(
 --   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
 --   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
 --   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
+--   ⭐ 2026-09-23 (brief-db-guard-date-validita): a rifiutare e' ora il
+--   GUARD COMUNE delle date (script.trgfn_guard_date_validita, montato
+--   dall'automazione DATE_VALIDITA). E' un BEFORE ROW, e i BEFORE girano
+--   prima del calcolo della colonna generata: l'operatore legge
+--   E_DATA_AL_MINORE_DAL invece della frase tecnica del daterange. Il
+--   daterange resta sotto, come il CHECK: sono l'ultima difesa.
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_aree
@@ -165,7 +171,7 @@ SELECT throws_ok(
 );
 
 -- CHECK valido_dal <= valido_al (usa area_acquisti_id per evitare UQ)
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $$INSERT INTO config.user_override_aree
               (auth_user_id, area_id, livello, valido_dal, valido_al)
@@ -174,9 +180,8 @@ SELECT throws_ok(
         (SELECT user_id FROM tmp_refs_uo),
         (SELECT area_acquisti_id FROM tmp_refs_uo)
     ),
-    '22000',
-    NULL,
-    'user_override_aree: validita rovesciata rifiutata dal TIPO range (22000)'
+    '%è inferiore alla data dal%',
+    'user_override_aree: validita rovesciata, parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- ============================================================
@@ -210,6 +215,8 @@ SELECT ok(
 --   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
 --   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
 --   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
+--   ⭐ 2026-09-23: ora a parlare e' il guard comune delle date (vedi la nota
+--   sulla prima delle tre asserzioni).
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_oggetti
@@ -223,7 +230,7 @@ SELECT throws_ok(
 );
 
 -- CHECK valido_dal <= valido_al (usa model_name diverso per evitare UQ)
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $$INSERT INTO config.user_override_oggetti
               (auth_user_id, app_label, model_name, livello, valido_dal, valido_al)
@@ -232,9 +239,8 @@ SELECT throws_ok(
                   '2026-03-01'::date, '2026-02-01'::date)$$,
         (SELECT user_id FROM tmp_refs_uo)
     ),
-    '22000',
-    NULL,
-    'user_override_oggetti: validita rovesciata rifiutata dal TIPO range (22000)'
+    '%è inferiore alla data dal%',
+    'user_override_oggetti: validita rovesciata, parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- ============================================================
@@ -273,6 +279,8 @@ SELECT is(
 --   ⭐ La garanzia non si e' indebolita, si e' spostata piu' in basso: dal
 --   vincolo di tabella al tipo della colonna. L'etichetta ora dice questo,
 --   perche' «CHECK» mandava a cercare un vincolo che non c'e' piu'.
+--   ⭐ 2026-09-23: ora a parlare e' il guard comune delle date (vedi la nota
+--   sulla prima delle tre asserzioni).
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_override_azioni
@@ -287,7 +295,7 @@ SELECT throws_ok(
 );
 
 -- CHECK valido_dal <= valido_al (usa azione_id_2 per evitare UQ)
-SELECT throws_ok(
+SELECT throws_like(
     format(
         $$INSERT INTO config.user_override_azioni
               (auth_user_id, azione_id, abilitata, valido_dal, valido_al)
@@ -296,9 +304,8 @@ SELECT throws_ok(
         (SELECT user_id FROM tmp_refs_uo),
         (SELECT azione_id_2 FROM tmp_refs_uo)
     ),
-    '22000',
-    NULL,
-    'user_override_azioni: validita rovesciata rifiutata dal TIPO range (22000)'
+    '%è inferiore alla data dal%',
+    'user_override_azioni: validita rovesciata, parla il guard comune delle date (E_DATA_AL_MINORE_DAL)'
 );
 
 -- ============================================================

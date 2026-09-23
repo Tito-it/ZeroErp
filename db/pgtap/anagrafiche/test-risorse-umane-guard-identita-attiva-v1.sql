@@ -48,6 +48,20 @@ BEGIN;
 --   la madre fn_crea_operatore_v2 scrive dove scrive l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⚠️ VINCOLI DIFFERITI — ⭐ LA FINESTRA SI RIAPRE, NON SI PRESUME.
+--   La madre fn_crea_operatore_v2 non nasce completa in un'istruzione (punto 3
+--   qui sotto): vuole i guard di `soggetti` DIFFERITI.
+--   ⛔ Ma la riga di contesto qui sopra, quando COSTRUISCE il mondo (database
+--   senza operatori: lo scratch `zeroerp_ci`, la CI), ESCE CON I VINCOLI
+--   IMMEDIATE (rev 20260921-18, come ogni helper pgTAP). Fino al 2026-09-23 lo
+--   mascherava un residuo: `create-gestore-conto-*` committavano l'operatore
+--   `PGTR0001` e da li' la riga non costruiva piu'. Tolto quel COMMIT (brief
+--   fixture-che-costruiscono giro 2), lo scratch appena ricostruito ha dato
+--   ERRORE_FIXTURE: «Indirizzo obbligatorio mancante per soggetto …»
+--   all'INSERT del soggetto.
+--   La finestra la riapre il file, e dice da se' cosa vuole.
+SET CONSTRAINTS ALL DEFERRED;
+
 -- ⚠️ 3. VINCOLI DIFFERITI: QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`,
 --   esenzione dichiarata in testa (`pgtap-differiti: escluso`) con la ragione:
 --   la madre fn_crea_operatore_v2 non puo' nascere completa in una istruzione.
