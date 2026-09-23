@@ -42,25 +42,33 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(10);
 
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- ⛔ L'UTENTE DI SESSIONE NON SI FISSA A MANO (2026-09-23). Queste due righe
+--   sovrascrivevano il contesto appena aperto con l'utente 1, che su un
+--   database ricostruito non esiste e non ha nessun emittente: la fixture
+--   scriveva come nessuno. La veste e l'utente li mette gia' la riga di
+--   contesto, che sceglie un operatore VERO (e lo costruisce se non c'e').
 
 -- ============================================================
 -- Riferimenti (stessa forma di test-ddt-solo-trasporto-causale-v1)
 -- ============================================================
+-- ⛔ IL CLIENTE SI COSTRUISCE (2026-09-23). La riga di contesto costruisce
+--   azienda e operatore, non un cliente: su un database ricostruito
+--   `anagrafiche.billing_account` resta a ZERO e il riferimento pescato usciva
+--   NULL. Il BB costruisce il cliente legato all'azienda di chi agisce.
+CREATE TEMP TABLE tmp_mondo_bb AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('check ddt emittibile');
+
 CREATE TEMP TABLE tmp_chk_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
+  (SELECT billing_account_id FROM tmp_mondo_bb)                                              AS billing_account_id,
   (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5).
+  script.fn_pgtap_emittente_operatore()  AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='DRAFT'  LIMIT 1) AS stato_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' LIMIT 1) AS stato_emesso_id,
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)      AS causale_vendita_id,

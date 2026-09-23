@@ -51,8 +51,8 @@ SELECT
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5).
+  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id;
 

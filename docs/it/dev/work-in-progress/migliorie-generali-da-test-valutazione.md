@@ -999,8 +999,13 @@ D6 e il registro dei rossi in CI.
       PR #1649). ⏳ Il registro però è **ancora a 361 file**: le righe rientrate
       le toglie `pgtap-baseline-ci-rientrati.sh` leggendo il log della corsa CI
       — e il log scade, quindi va lanciato il giorno stesso della push. Il
-      lotto 2 (`anagrafiche` 39 + `script` 31) è dove cadono anche i 4 file che
-      COMMITTANO e i 6 col contesto in autocommit.
+      ✏️ **Lotto 2 in corso dal 23-09** (`anagrafiche` 39 + `script` 31): il
+      debito dei `COMMIT`/autocommit è **chiuso** — nella suite non committa più
+      nessun file — ed era più grosso di quanto si vedesse: la `PGTR0001` che
+      quei file committavano teneva verdi **altri sei file** del lotto.
+      Builder nuovo `fn_pgtap_crea_gestore` (`20260923-06`, applicato). 12 file
+      su 70 verdi sul mondo vuoto; restano il cliente da costruire, `pdp_id`,
+      `RIS_UMANA`, i registri e l'utente di sessione fissato a `'1'`.
       🔵 Rinviata da Tid la decisione sui 4 file che COMMITTANO / 6 col contesto
       in autocommit: prima la forma.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`

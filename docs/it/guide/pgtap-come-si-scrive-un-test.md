@@ -104,6 +104,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | **il mondo di un test di dominio**: azienda + operatore + contesto aperto + un cliente fatturabile legato a quell'azienda | `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` |
 | **una fattura** del mondo (registro coerente, coppia emittente/utility configurata, stato scelto alla nascita) | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>]])` |
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
+| il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
 | l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
 | un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
@@ -170,6 +171,24 @@ e da lì in poi nessuno percorre più il ramo che costruisce.
 ⚠️ E i **rami `skip` spariscono**: con il mondo costruito la precondizione c'è
 sempre, e un `CASE WHEN EXISTS(...) THEN ok(...) ELSE skip(...)` diventa un
 `ok(...)`. Un test che *può* saltare, su un database vuoto salta.
+
+### ⚠️ «Libera» vuol dire «libera ADESSO»
+
+`dbops.fn_pgtap_piva_libera()` e `dbops.fn_pgtap_cf_libero()` rispondono **la prima
+non ancora usata in questo istante**. Non sono generatori: finché nessuno scrive
+quel soggetto, la chiamata successiva risponde **lo stesso numero** — anche in
+un'altra istruzione (misurato il 2026-09-23).
+
+⇒ Due conseguenze, e sono state due rossi veri:
+
+1. chiederne **due in una volta** per due soggetti diversi dà due volte lo stesso
+   valore, e il secondo INSERT muore su `uq_soggetto_idstato_id_fiscale_univoco`;
+2. precalcolarla **prima** di costruire il mondo è peggio: la riga di contesto,
+   quando costruisce azienda e operatore, prende proprio quella — e il soggetto del
+   test collide con il soggetto dell'azienda.
+
+⭐ La regola è una: **la si chiede quando serve, dopo che il mondo esiste**, e una
+per volta. In un file a più casi, ogni caso chiede la sua.
 
 ### `LIMIT 1` senza `ORDER BY` non verifica, scommette
 
