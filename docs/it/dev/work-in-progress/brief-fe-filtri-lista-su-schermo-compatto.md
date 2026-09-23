@@ -10,13 +10,18 @@
 > **Da leggere per primo: §1 — la regola. Il §4 è il perimetro misurato, cioè
 > il costo: non è la ragione di niente.**
 >
-> **Stato (2026-09-23):** 🟢 **consegnati L1, L2, L3, L4, L5**, il building
-> block del periodo (A5) e le decisioni D7/D8/D9. **I tre registri del cancello
-> sono a ZERO**: nessuna view scrive più i filtri a mano, nessuna coppia di date
-> è scritta a mano, nessuna larghezza di filtro sta in un tag. Resta **L6**, il
-> collaudo su dispositivi veri, che è di Tid. Inventario, numeri e registro dei
-> collaudi in **§9**; ciò che l'adozione ha *trovato* — e che il §4 non poteva
-> sapere — in **§10**.
+> **Stato (2026-09-23, fine giornata): 🟢 TUTTO CONSEGNATO E MERGIATO TRANNE IL
+> COLLAUDO.** L1, L2, L3, L4, L5, il building block del periodo (A5), le
+> decisioni D7/D8/D9, i nove difetti della rilettura critica (§11), il primo
+> collaudo in-app (§11.9) e la sua riverifica (§11.10). **I tre registri del
+> cancello sono a ZERO**: nessuna view scrive più i filtri a mano, nessuna
+> coppia di date è scritta a mano, nessuna larghezza di filtro sta in un tag.
+> ⇒ **Resta solo L6**, il collaudo su dispositivi veri, che è di Tid. Delle
+> decisioni aperte, A3 è stata presa (**sì**) e A2 respinta (**no**) il 23-09;
+> resta la sola A4 (§8). Tre commit mergiati — `06b6a8742`, `d0ca2d850`,
+> `1d49b0aa2` (PR #1651) — più A3, ancora da committare.
+> Inventario, numeri datati e registro dei collaudi in **§9**; ciò che
+> l'adozione ha *trovato* — e che il §4 non poteva sapere — in **§10**.
 >
 > 🔴 **E una RILETTURA CRITICA del 2026-09-23 (§11) ha trovato nove difetti che
 > il cantiere aveva introdotto o lasciato aperti**, il più grosso dei quali è
@@ -78,7 +83,7 @@ deve dire che è filtrata*.
 | **D1** | Soglia della modalità compatta | **`< 1024px`**, **e** ogni dispositivo **touch senza hover** a qualunque larghezza |
 | **D2** | La casella di ricerca | **Resta fuori dal drawer**, sempre visibile accanto all'icona filtro |
 | **D3** | Applicazione dei filtri | **Immediata** a ogni cambio, come oggi. Nessun pulsante «Applica» |
-| **D4** | Il segno dei filtri attivi | **Tre stati**: niente / **pallino** (solo default) / **numero** (almeno uno diverso dal default) |
+| **D4** | Il segno dei filtri attivi | **Tre stati**: niente / solo default / almeno uno diverso dal default. ⚠️ **La RESA è cambiata il 23-09** dopo il primo collaudo in-app: non più *pallino / numero* ma **numero grigio / numero blu** — la regola del conteggio è intatta, §11.9 |
 | **D5** | «Pulisci filtri» nel drawer | **Sì**, in fondo, e **scompare quando non c'è niente da pulire** |
 | **D6** | Le larghezze scritte dentro i tag | **Si tolgono**: diventano classi di utility. Non un override `!important` nel drawer |
 | **D7** | Quanti filtri per riga nel drawer | **Al massimo due, sempre.** Il periodo (`data_da`/`data_a`) è una coppia inscindibile; una combo prende la riga intera finché due non ci stanno leggibili (2026-09-22, terzo giro di collaudo) |
@@ -434,29 +439,51 @@ verdi nello **stesso** commit (non nel successivo — l'hook gira sul solo
 | # | Cosa | Chi decide |
 | --- | --- | --- |
 | ~~**A1**~~ | ✅ **CHIUSA il 2026-09-23** attraversando le settanta liste. La taglia si decide dal **ruolo del filtro**, non dal numero che c'era prima: `lg` = ricerca e lookup ricchi (articolo, billing account, comune); `md` = combo con descrizioni che vengono da un **catalogo** (`LookupSelect` su un `rel`, `UtilityPerRuoloSelect`); `sm` = date, stati e liste di opzioni **scritte in pagina** (`attivo`, `sì/no`), che portano etichette corte. ⭐ Il criterio è riproducibile e sta negli standard: *da dove vengono le opzioni* dice quanto sono lunghe le etichette, il numero di ieri non diceva niente | ✅ decisa |
-| **A2** | Se il segno dei filtri attivi debba comparire **anche su desktop** accanto alla toolbar (oggi il BB lo calcola comunque: sarebbe una riga di template). L'argomento del §1.2 regge anche lì | Tid |
-| **A3** | Se «Pulisci filtri» debba comparire anche nella toolbar desktop, o restare un gesto del solo drawer | Tid |
+| ~~**A2**~~ | ⛔ **CHIUSA il 2026-09-23: NON si fa.** Il segno su desktop non si aggiunge, e la ragione è la stessa che ha chiuso A3 al contrario: là i filtri **si vedono tutti**, quindi non manca l'informazione — mancava il **verbo**, ed è arrivato. ⚠️ E ci sarebbe un danno: quasi ogni lista nasce con un `data_da` al floor, quindi il numero sarebbe **permanente** su quasi tutte — *un segno sempre acceso smette di essere un segno* (§2.3), e dopo due giorni non lo guarderebbe più nessuno, nemmeno nei casi per cui è nato. ⭐ Il BB il conteggio lo calcola comunque: se un giorno servisse è una riga di template, e la si scriverà con un motivo | ⛔ decisa: no |
+| ~~**A3**~~ | ✅ **CHIUSA il 2026-09-23: sì.** «Pulisci filtri» compare anche nella toolbar desktop, **icona sola col tooltip** come ogni altro comando di quella riga (`ReloadButton`); l'etichetta per esteso resta nel drawer. ⭐ Il criterio che l'ha decisa, e che vale anche per A2: su desktop i filtri **si vedono tutti**, quindi ciò che manca non è l'informazione — è il **verbo**. Riportarli al default a mano costa un gesto per filtro, e su una lista con sei filtri l'operatore non ricorda nemmeno quali ha toccato. ⚠️ Stessa condizione del ramo compatto (`puoPulire` + `$slots.default`), non una seconda regola | ✅ decisa |
 | **A4** | Se il valore selezionato di una combo stretta debba portare il testo intero nel `title` (come `.app-lista-cella` per le celle di lista). PrimeVue non lo fa; `LookupSelect` è nostro e potrebbe. ⚠️ Su touch non c'è hover: servirebbe solo al desktop | Tid |
 
 ---
 
-## 9. Stato dei lavori — 2026-09-23
+## 9. Stato dei lavori — 2026-09-23 (aggiornato a fine giornata)
 
-> **In una riga:** il cantiere è **finito tranne il collaudo**. I due building
-> block esistono e sono montati su **tutte e settanta** le liste, il periodo ha
-> l'invariante `da ≤ a` ovunque, il contratto dei filtri ha una sede sola, il
-> cancello ha sei controlli e i suoi tre registri sono a **zero**. Resta L6, che
-> è l'unica cosa che nessun presidio sa fare: guardare un telefono.
+> **In una riga:** il cantiere è **finito e mergiato tranne il collaudo**. I due
+> building block esistono e sono montati su **tutte e settanta** le liste, il
+> periodo ha l'invariante `da ≤ a` ovunque, il contratto dei filtri ha una sede
+> sola, il cancello ha sette controlli e i suoi tre registri sono a **zero**.
+> Resta **L6**, che è l'unica cosa che nessun presidio sa fare: guardare un
+> telefono. Delle decisioni aperte ne restano **una** (A4): A3 è stata presa e
+> A2 respinta il 23-09 (§8).
 
 | Lotto | Stato |
 | --- | --- |
 | **L1** building block e fondamenta | ✅ consegnato (22-09) |
-| **L4** cancello + registro | ✅ consegnato (22-09), portato a **6 controlli** il 23-09 |
+| **L4** cancello + registro | ✅ consegnato (22-09), portato a **7 controlli** il 23-09 (§11.6) |
 | **A5** BB del periodo | ✅ consegnato (ok Tid in giornata) |
 | **D7** due filtri per riga · **D8** intervallo non invertito · **D9** il conteggio | ✅ decise e implementate |
 | **L2** adozione · **L3** larghezze | ✅ **consegnati il 23-09 — 70 view su 70**, tre registri a zero |
 | **L5** riga nel catalogo BB e negli standard | ✅ consegnato (23-09) |
-| **L6** collaudo su dispositivi veri | 🔵 da fare — è di Tid |
+| §11 **rilettura critica** — nove difetti | ✅ tutti chiusi il 23-09 |
+| §11.9 **primo collaudo in-app** — segno a colori, valori neutri | ✅ chiuso il 23-09 |
+| §11.10 **riverifica** — quattro neutri mancanti, «Pulisci» che spariva | ✅ chiusa il 23-09 |
+| **regola del 2** — la terna `Tutti / Attivo / Non attivo` | ✅ estratta il 23-09 (ok Tid), cinque sedi → una |
+| **`rate.solo_numerate`** — filtro senza gesto | ✅ chiuso il 23-09 (ok Tid): **non era un filtro, era un perimetro** → sceso nel backend |
+| **L6** collaudo su dispositivi veri | 🔵 **l'unica cosa aperta** — è di Tid |
+
+> **Dove sta il lavoro**: tre commit sul ramo `dev/backend-tid`, tutti mergiati —
+> `06b6a8742` (L1+L4, 22-09), `d0ca2d850` (L2+L3+L5, adozione, §10 e §11) e
+> `1d49b0aa2` (§11.9, §11.10, regola del 2, perimetro delle rate), quest'ultimo
+> in PR #1651.
+>
+> ⚠️ **I numeri della suite sono datati, e vanno letti così** (regola di casa: un
+> numero misurato invecchia in silenzio). **Al commit `1d49b0aa2`**: `eslint` +
+> `oxlint` puliti, **17 `[ok]`** su `npm run guards`, **251 test su 26 file**,
+> `vite build` verde, `check_i18n_keys.py` e `check_classi_morte.py` puliti.
+> Da quel commit in poi il numero globale si muove con gli **altri** cantieri:
+> ciò che resta vero di questo sono i suoi presidi, che sono cinque —
+> `segnoFiltri` (12), `clonaFiltri` (8), `useContrattoFiltriLista` (12),
+> `useContrattoFiltriLocali` (15) e `useStoreFilterBindings` (25, che porta il
+> periodo) — più `npm run guard:filtri`, che tiene i tre registri a zero.
 
 ### 9.1 Che cosa esiste adesso
 
@@ -467,6 +494,7 @@ verdi nello **stesso** commit (non nel successivo — l'hook gira sul solo
 | `core/components/FiltriLista.vue` | il BB dei filtri: due slot (`#sempre` per la ricerca, default per i filtri), icona col segno, `Drawer position="bottom"`, «Pulisci filtri», `console.error` fail-visible se lo store non dichiara le chiavi |
 | `core/components/FiltroPeriodo.vue` | il BB del periodo: i due estremi resi insieme, **una** cella nella griglia |
 | `core/utils/segnoFiltri.js` | il segno in una **funzione pura**: `segnoFiltri(filtri, chiavi, defaults) → {stato, conteggio}` |
+| `core/components/FiltriLista.spec.js` | **(23-09, ok Tid) 12 test** — il primo test di componente di questo cantiere, reso possibile da `@vue/test-utils` + `jsdom` entrati lo stesso giorno. Prova ciò che si vede **solo montando**: l'imbuto che non nasce con la sola ricerca, i tre stati del segno, il valore neutro che spegne il conteggio, «Pulisci filtri» che c'è anche senza segno, il fail-visible sullo store senza chiavi, la ricerca che resta fuori dal drawer. Provata contro **quattro mutazioni**, una per difetto vero. ⛔ Non vede il CSS: il badge sul glifo e l'altezza del drawer restano a L6 |
 | `core/utils/segnoFiltri.spec.js` | **8 test**, uno per ramo più i limiti (`false`/`0` sono filtri veri, la stringa vuota no, un default svuotato a mano, un filtro ad array) |
 | `scripts/check-filtri-lista.mjs` + `filtri-lista.baseline.json` | il cancello e il suo registro (§9.2) |
 | `core/composables/useContrattoFiltriLista.js` | **(23-09)** il contratto che una lista offre ai suoi filtri — `chiaviFiltro`, `filtriDefault` congelati, `azzeraFiltri()` — estratto da `useListaStoreCore`, **che lo consuma**. È ciò che ha permesso ai quattordici store scritti a mano di adottarlo in tre righe senza cedere il proprio `buildParams` (§10.2) |
@@ -643,25 +671,69 @@ attraversano per view**, non uno dopo l'altro sul repo: convertire il wrapper
 lasciando il numero nel tag produce uno stato intermedio in cui il drawer esiste
 e i filtri dentro sono stretti.
 
-### 9.5 Quel che resta — **L6, e basta**
+### 9.5 Quel che resta — **L6, e tre decisioni**
 
-* **L6** collaudo su smartphone e tablet veri, compresi i casi annidati. È di
-  Tid, e resta l'unica cosa che nessun presidio di questo cantiere sa fare:
-  ✅ i sei controlli del cancello, ✅ `eslint`/`oxlint`, ✅ i **220** test su 24
-  file e ✅ il `vite build` sono tutti verdi, e **nessuno di loro guarda un
-  telefono**. Il registro dei collaudi del §9.3 dice perché: dodici rilievi su
-  quattro giri, tutti **muti**.
+* 🔵 **L6** collaudo su smartphone e tablet veri, compresi i casi annidati. È di
+  Tid, e resta **l'unica cosa aperta del cantiere**, perché è l'unica che
+  nessun presidio sa fare: ✅ i sette controlli del cancello, ✅ `eslint`/
+  `oxlint`, ✅ le spec e ✅ il `vite build` sono tutti verdi, e **nessuno di loro
+  guarda un telefono**. Il registro del §9.3 dice perché: dodici rilievi su
+  quattro giri, tutti **muti** — e il §11.9 ne ha aggiunti due, trovati da Tid
+  al primo giro vero a video.
+  ⭐ **Cosa guardare per primo**, perché è dove i difetti si sono nascosti finora:
+  il **segno** (numero grigio all'apertura, blu al primo cambio, assente quando
+  non resta niente che restringa), il **«Pulisci filtri»** dopo aver spostato un
+  interruttore che *allarga* (§11.10), i **tab-lista dentro un drawer** — tredici
+  liste, le più difficili da vedere — e il **drawer che sale**, che è l'unica
+  cosa animata.
 * ✅ **Il buco di D8 è chiuso**: l'invariante «`da > a` non può esistere» vive in
-  `bindPeriodo`, e da oggi non c'è più nessuna lista che scrive la coppia a mano
-  — l'ultima era la toolbar delle code di lavoro (§10.4).
+  `bindPeriodo`, e non c'è più nessuna lista che scrive la coppia a mano —
+  l'ultima era la toolbar delle code di lavoro (§10.4).
+* ✅ **Due delle tre decisioni sono chiuse il 23-09** (§8): **A3 sì** — «Pulisci
+  filtri» è anche nella toolbar desktop, icona sola col tooltip — e **A2 no**,
+  il segno su desktop non si aggiunge. ⭐ Le due si sono decise insieme e con lo
+  stesso criterio: *su desktop i filtri si vedono tutti, quindi non manca
+  l'informazione — mancava il verbo*.
+* 🟡 **Resta aperta la sola A4** (il testo intero nel `title` di una combo
+  stretta): serve solo al desktop, dove c'è l'hover, ed è una domanda che il
+  collaudo chiude meglio di un ragionamento.
 
-⚠️ **Il componente non ha una sua spec, e non è una dimenticanza**: il progetto
-non ha `@vue/test-utils` né `jsdom` (`vite.config.js` lo dichiara: *«environment
-resta quello di node»*), quindi oggi **nessun** componente è montabile in test.
-Aggiungerli è una **dipendenza nuova** e vuole l'ok di Tid. Finché non c'è, dei
-BB sono provate le parti pure — `segnoFiltri` (8), `bindPeriodo` (8), `useContrattoFiltriLista` (10),
-`useContrattoFiltriLocali` (13) e `clonaFiltri` (8): **47 test** — e il resto risponde al collaudo
-in-app, dichiarato e non sottinteso.
+✅ **Il componente ORA È MONTABILE, e la decisione è presa** (Tid, 2026-09-23):
+`@vue/test-utils` + `jsdom` sono entrati nel progetto — non per questo cantiere
+ma **per tre insieme**, perché rate (17-09), filtri di lista (23-09) e barra del
+drawer di magazzino (23-09) avevano lasciato scoperto lo stesso difetto. I
+filtri ne hanno pagati due in un giorno solo, e sono citati nella motivazione.
+⇒ L'impalcatura è `frontend/test/montaggio.js` (fuori da `src/`, così non finisce
+in nessun bundle), il DOM si accende **per file** con `// @vitest-environment
+jsdom`, e il primo componente provato è `DrawerActionsBar` (12 test).
+✅ **E la spec di `FiltriLista` è stata scritta lo stesso giorno** (ok Tid):
+`FiltriLista.spec.js`, **12 test**, che coprono i difetti strutturali che finora
+aveva trovato solo l'occhio. ⭐ **Provata contro quattro mutazioni**, una per
+difetto vero — togliendo il guard `$slots.default` dal badge (§10.4), rimettendo
+«Pulisci» appeso al segno (§11.10), togliendo i valori neutri al conteggio
+(§11.9) e spegnendo la ricerca del listener nel vnode (§11): **ogni mutazione
+manda rosso un test, e uno solo**.
+⚠️ Il montaggio ha chiesto **una riga** all'impalcatura condivisa: `monta()` non
+inoltrava gli `slots`, che in `@vue/test-utils` stanno nella radice delle opzioni
+e non dentro `global` — scritti nel posto sbagliato vengono ignorati **in
+silenzio**, e il test proverebbe il contenitore senza il suo contenuto. Per un BB
+che decide *cosa rendere guardando `$slots`* non è un dettaglio.
+
+> ⭐ **Resta però vero l'ordine delle leve, e va tenuto**: *la spec si scrive
+> prima sul building block GENERICO, poi sul componente*. Se un difetto si vede
+> solo montando, la prima domanda è se la parte che **decide** possa uscire in
+> una funzione pura — costa zero dipendenze e copre tutti i consumatori insieme.
+> Questo cantiere è il precedente: cinque presidi puri (`segnoFiltri`,
+> `clonaFiltri`, i due contratti dei filtri, `useStoreFilterBindings`) e un
+> componente rimasto sottile.
+> ⛔ **E c'è un confine che nemmeno il montaggio supera**: jsdom **non calcola il
+> CSS**. Un badge che copre un glifo, un drawer che si apre alto 10rem, una media
+> query sotto i 1024px — cioè *metà* dei dodici rilievi del §9.3 — lì non si
+> vedono. Quella metà la presidia **solo L6**. Finché non c'è, dei
+BB sono provate le parti pure — `segnoFiltri` (12), `clonaFiltri` (8),
+`useContrattoFiltriLista` (12), `useContrattoFiltriLocali` (15) e
+`useStoreFilterBindings` (25, che porta `bindPeriodo`) — e il resto risponde al
+collaudo in-app, dichiarato e non sottinteso.
 🔴 **E il 23-09 quel confine ha presentato il conto**: i due difetti trovati
 convertendo — l'imbuto su una lista con la sola ricerca, e lo `<slot>` senza
 `v-if` che è un default slot anche quando il caller non passa niente — sono
