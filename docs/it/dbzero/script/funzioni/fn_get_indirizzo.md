@@ -44,6 +44,13 @@ BEGIN
         v_current_codice := p_tipo_codice;
         v_visited_tipo_ids := '{}'::integer[];
         LOOP
+            -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+            -- tipo_indirizzo il CODICE (display, mutabile), il parametro e' il
+            -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+            SELECT ti.id INTO v_current_tipo_id
+            FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+            IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+
             RETURN QUERY
             SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
                 f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
@@ -56,16 +63,13 @@ BEGIN
                 f.codice_postale_id, f.cap_codice,
                 f.locality, f.administrative_area, f.sublocality, f.postal_box
             FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_istanza_utility_id) f
-            WHERE f.tipo_indirizzo = v_current_codice
+            WHERE f.tipo_indirizzo_id = v_current_tipo_id
               AND f.istanza_utility_id = p_istanza_utility_id;
 
             GET DIAGNOSTICS v_rows_found = ROW_COUNT;
             IF v_rows_found > 0 THEN RETURN; END IF;
 
             -- Cerca fallback per tipo indirizzo
-            SELECT ti.id INTO v_current_tipo_id
-            FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
-            IF v_current_tipo_id IS NULL THEN EXIT; END IF;
             IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
             v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
 
@@ -89,6 +93,11 @@ BEGIN
     v_current_codice := p_tipo_codice;
     v_visited_tipo_ids := '{}'::integer[];
     LOOP
+        -- Il tipo si confronta per ID (rev 20260923-49), come in FASE 1.
+        SELECT ti.id INTO v_current_tipo_id
+        FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+        IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+
         RETURN QUERY
         SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
             f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
@@ -101,16 +110,13 @@ BEGIN
             f.codice_postale_id, f.cap_codice,
             f.locality, f.administrative_area, f.sublocality, f.postal_box
         FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id) f
-        WHERE f.tipo_indirizzo = v_current_codice
+        WHERE f.tipo_indirizzo_id = v_current_tipo_id
           AND f.istanza_utility_id IS NULL;
 
         GET DIAGNOSTICS v_rows_found = ROW_COUNT;
         IF v_rows_found > 0 THEN RETURN; END IF;
 
         -- Cerca fallback per tipo indirizzo
-        SELECT ti.id INTO v_current_tipo_id
-        FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
-        IF v_current_tipo_id IS NULL THEN EXIT; END IF;
         IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
         v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
 

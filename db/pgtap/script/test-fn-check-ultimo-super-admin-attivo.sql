@@ -7,11 +7,22 @@
 --   can_demote_super_admin del drawer Operatore (P1 2026-04-29).
 --
 -- Strategia:
---   Ambiente con SUPER_ADMIN preesistenti (seed 80_data tid).
---   Helper pg_temp.mk_admin() crea un binding SA su un'identita
---   OPERATORE "vergine" (mai avuta un binding) per produrre
---   scenari multi-SA controllati. Lo stato finale viene rolled
---   back dal BEGIN/ROLLBACK implicito a fine file.
+--   I super admin del test si COSTRUISCONO con
+--   dbops.fn_pgtap_crea_operatore_umano(..., p_super_admin := true):
+--   due per lo scenario multi-SA, poi si disattivano tutti gli altri
+--   binding SA tranne uno per lo scenario single-SA. Lo stato finale
+--   viene rolled back dal ROLLBACK a fine file.
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il file PESCAVA: «SUPER_ADMIN preesistenti (seed)» e un'identita'
+--   OPERATORE «vergine» a cui dare un binding a mano. Su un database
+--   ricostruito (la CI) i super admin sono zero: il SA ad-hoc restava
+--   l'UNICO e il caso 2 («multi-SA -> false») rispondeva true. Il seed
+--   non porta super admin: sono dato di macchina. Ora ne nascono due dal
+--   percorso di produzione, e il binding lo scrive la madre.
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA:
+--   fn_check_ultimo_super_admin_attivo non sta mai nella stessa
+--   istruzione della chiamata al builder.
 --
 -- Indice test (1..5):
 --   1. NULL/zero -> false (guard parametro non valido)
@@ -43,44 +54,9 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(5);
 
 -- =========================================================
--- Helper: crea un binding SUPER_ADMIN ad-hoc su un'identita
--- OPERATORE "vergine" (mai avuta un binding). Filtro su
--- NOT EXISTS qualsiasi binding per rispettare uq_profili_accesso_bindings_identita
--- (partial unique WHERE identita_digitale_id IS NOT NULL).
--- =========================================================
-CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT au_id integer, OUT bind_id bigint)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    SELECT id.id, id.auth_user_id INTO id_id, au_id
-      FROM anagrafiche.identita_digitali id
-     WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-       AND id.attivo = true
-       AND NOT EXISTS (
-           SELECT 1
-             FROM config.profili_accesso_bindings pab
-            WHERE pab.identita_digitale_id = id.id
-       )
-     ORDER BY id.id
-     LIMIT 1;
-
-    IF id_id IS NULL THEN
-        RAISE EXCEPTION 'Setup impossibile: nessuna identita OPERATORE vergine disponibile';
-    END IF;
-
-    INSERT INTO config.profili_accesso_bindings
-        (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (
-        (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        id_id,
-        true
-    )
-    RETURNING id INTO bind_id;
-END
-$$;
-
--- =========================================================
 -- Helper: disattiva tutti i binding SA attivi tranne quello passato.
+--   Il profilo SA si riconosce dal TIPO, non dal codice: e' la chiave
+--   stabile di fn_is_super_admin e dei guard anti-lockout.
 -- =========================================================
 CREATE OR REPLACE FUNCTION pg_temp.disable_other_sa(p_keep_bind_id bigint)
 RETURNS int
@@ -95,7 +71,7 @@ BEGIN
           FROM config.profili_accesso_bindings pab
           JOIN config.profili_accesso          pa
             ON pa.id = pab.profilo_accesso_id
-         WHERE pa.codice = 'SUPER_ADMIN'
+         WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
            AND pab.attivo = true
            AND pab.id <> p_keep_bind_id
     LOOP
@@ -118,15 +94,32 @@ SELECT is(
 );
 
 -- =========================================================
--- 2) Multi super-admin: aggiungo 1 SA ad-hoc, ne risultano >=2.
---    Su nessuno dei due deve risultare "ultimo".
+-- 2) Multi super-admin: se ne costruiscono DUE, quindi ce ne sono
+--    >=2 comunque stia il database. Su nessuno dei due deve
+--    risultare "ultimo".
 -- =========================================================
-CREATE TEMP TABLE _t_c2 AS SELECT * FROM pg_temp.mk_admin();
+CREATE TEMP TABLE _t_sa1 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('ultimo SA 1', p_super_admin := true);
+
+CREATE TEMP TABLE _t_sa2 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('ultimo SA 2', p_super_admin := true);
+
+-- Il binding SA del primo: e' quello che il caso 3 lascia attivo.
+CREATE TEMP TABLE _t_c2 AS
+SELECT t.identita_id AS id_id, t.auth_user_id AS au_id, pab.id AS bind_id
+  FROM _t_sa1 t
+  JOIN config.profili_accesso_bindings pab
+    ON pab.identita_digitale_id = t.identita_id
+   AND pab.attivo
+  JOIN config.profili_accesso pa
+    ON pa.id = pab.profilo_accesso_id
+   AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso;
 
 SELECT is(
-    script.fn_check_ultimo_super_admin_attivo((SELECT au_id FROM _t_c2)),
+    script.fn_check_ultimo_super_admin_attivo((SELECT au_id FROM _t_c2))
+    OR script.fn_check_ultimo_super_admin_attivo((SELECT auth_user_id FROM _t_sa2)),
     false,
-    '2. Multi super-admin (>=2 SA): non e'' l''ultimo -> false'
+    '2. Multi super-admin (>=2 SA): nessuno dei due e'' l''ultimo -> false'
 );
 
 -- =========================================================
@@ -143,25 +136,14 @@ SELECT is(
 
 -- =========================================================
 -- 4) Stesso scenario "single SA": un altro auth_user (non SA)
---    deve ricevere comunque false. Uso un auth_user OPERATORE
---    non-SA esistente.
+--    deve ricevere comunque false. L'operatore non-SA si costruisce.
 -- =========================================================
+CREATE TEMP TABLE _t_non_sa AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('ultimo SA non SA');
+
 SELECT is(
     script.fn_check_ultimo_super_admin_attivo(
-        (SELECT id.auth_user_id
-           FROM anagrafiche.identita_digitali id
-          WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-            AND id.attivo = true
-            AND id.auth_user_id <> (SELECT au_id FROM _t_c2)
-            AND NOT EXISTS (
-                SELECT 1
-                  FROM config.profili_accesso_bindings pab
-                  JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-                 WHERE pab.identita_digitale_id = id.id
-                   AND pab.attivo = true
-                   AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-            )
-          LIMIT 1)
+        (SELECT auth_user_id FROM _t_non_sa)
     ),
     false,
     '4. Auth user non-SA in scenario single SA -> false'

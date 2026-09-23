@@ -11,14 +11,14 @@
 --   §13.3 RAU e' vista non updatable + ruolo_sistema CASE calcolato.
 --   Sostituzioni:
 --     UPDATE rau SET ruolo_sistema='OPERATIVO' (forzatura iniziale)
---       -> setup pesca identita OPERATORE attiva non-SA (filtro
---          NOT EXISTS, pattern §4.bis): stato gia' "OPERATIVO".
+--       -> setup COSTRUISCE un operatore non-SA (rev 2026-09-23,
+--          sotto): stato gia' "OPERATIVO".
 --     UPDATE rau SET ruolo_sistema='ADMIN' (cicli temporanei)
 --       -> INSERT binding SUPER_ADMIN (helper pg_temp.set_admin).
 --     UPDATE rau SET ruolo_sistema='OPERATIVO' (ripristino post-ADMIN)
---       -> DELETE del binding (helper pg_temp.unset_admin). Filtro
---          vergine garantisce che il nuovo SA non sia l'unico ->
---          guard 384 anti-lockout non scatta.
+--       -> DELETE del binding (helper pg_temp.unset_admin). Un SA
+--          di presidio COSTRUITO al setup garantisce che il SA del
+--          test non sia mai l'unico -> guard anti-lockout non scatta.
 --     UPDATE rau SET ruolo_sistema='DISABILITATO' (test 29)
 --       -> UPDATE id.ruolo_applicativo='DISABILITATO'
 --          (helper pg_temp.set_disabilitato).
@@ -95,6 +95,27 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(34);
 
+-- ============================================================================
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il setup PESCAVA «la prima identita' OPERATORE attiva non-SA» e il primo
+--   emittente attivo, e contava su un super admin preesistente. Su un database
+--   ricostruito (la CI) tre difetti in fila:
+--   1. l'unica identita' OPERATORE e' quella del CONTESTO (costruita dalla
+--      riga di contesto): il test ne cancellava whitelist e override e ne
+--      cambiava i binding — il soggetto del test era chi agisce;
+--   2. nessun altro super admin: tolto il binding SA del test,
+--      unset_admin moriva sul guard anti-lockout («rimarrebbe zero
+--      SUPER_ADMIN attivi»), al test 4;
+--   3. il profilo SA per id cablato: vero solo perche' il seed porta l'id
+--      esplicito (lo stesso difetto corretto nella madre da 20260923-10).
+--   Ora: l'operatore del test si COSTRUISCE (fn_pgtap_crea_operatore_umano,
+--   nasce senza azienda: niente whitelist, niente override), un super admin
+--   di PRESIDIO si costruisce accanto, il profilo SA si risolve dal TIPO, e
+--   l'emittente e' quello di chi agisce (script.fn_pgtap_emittente_operatore:
+--   l'emittente non si pesca, si deriva).
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+-- ============================================================================
+
 -- ============================================================
 -- Helper pg_temp per il refactor multi-face:
 --   set_admin / unset_admin    -> INSERT/DELETE binding SUPER_ADMIN
@@ -103,9 +124,14 @@ SELECT plan(34);
 CREATE OR REPLACE FUNCTION pg_temp.set_admin(p_identita_id bigint)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
+    -- Il profilo SA si risolve dal TIPO (chiave stabile, come in
+    -- fn_is_super_admin), non dall'id del seed.
     INSERT INTO config.profili_accesso_bindings
         (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (9100, p_identita_id, true)
+    SELECT pa.id, p_identita_id, true
+      FROM config.profili_accesso pa
+     WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+       AND pa.attivo
     ON CONFLICT DO NOTHING;
 END
 $$;
@@ -113,9 +139,11 @@ $$;
 CREATE OR REPLACE FUNCTION pg_temp.unset_admin(p_identita_id bigint)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
-    DELETE FROM config.profili_accesso_bindings
-     WHERE identita_digitale_id = p_identita_id
-       AND profilo_accesso_id = 9100;
+    DELETE FROM config.profili_accesso_bindings pab
+     USING config.profili_accesso pa
+     WHERE pa.id = pab.profilo_accesso_id
+       AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+       AND pab.identita_digitale_id = p_identita_id;
 END
 $$;
 
@@ -138,9 +166,19 @@ END
 $$;
 
 -- ============================================================
--- 0. Setup: identita OPERATORE attiva non-SA (filtro vergine)
---    + area_funzionali + azioni_processo + emittente reale.
+-- 0. Setup: operatore non-SA COSTRUITO + SA di presidio costruito
+--    + area_funzionali + azioni_processo + emittente di chi agisce.
 -- ============================================================
+
+-- L'operatore del test: nasce senza azienda, senza binding SA, senza
+-- override ne' whitelist — lo stato «OPERATIVO» di default.
+CREATE TEMP TABLE tmp_op AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('permessi risoluzione');
+
+-- Il SA di presidio: c'e' solo perche' unset_admin non tolga l'ULTIMO
+-- super admin (guard anti-lockout). Non entra in nessuna asserzione.
+CREATE TEMP TABLE tmp_sa_presidio AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('permessi presidio SA', p_super_admin := true);
 
 CREATE TEMP TABLE tmp_ctx AS
 SELECT
@@ -163,53 +201,41 @@ CROSS JOIN (
     WHERE attivo = true ORDER BY id LIMIT 1
 ) ap
 CROSS JOIN (
-    SELECT id, soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-    WHERE attivo = true ORDER BY id LIMIT 1
+    -- L'emittente di chi agisce: visibile sotto RLS per costruzione.
+    SELECT ef0.id, ef0.soggetto_ruolo_id
+      FROM anagrafiche.emittenti_fiscali ef0
+     WHERE ef0.id = script.fn_pgtap_emittente_operatore()
 ) ef
-WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-  AND id.attivo = true
-  AND NOT EXISTS (
-      SELECT 1
-        FROM config.profili_accesso_bindings pab
-        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-       WHERE pab.identita_digitale_id = id.id
-         AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-  )
-  -- Esclude utenti con profili (AD_HOC/PORTALE/REPARTO) che concedono
-  -- accesso a 'vendite': fn_resolve_livello_area step 4 li promuoverebbe
-  -- oltre BLOCCATO, rompendo i test 3/6/7 che aspettano il default.
-  AND NOT EXISTS (
-      SELECT 1
-        FROM script.fn_get_profili_accesso_applicabili(id.auth_user_id) h
-        JOIN config.profili_accesso_aree paa ON paa.profilo_accesso_id = h.profilo_accesso_id
-        JOIN config.aree_funzionali af2 ON af2.id = paa.area_id
-       WHERE af2.schema_db = 'vendite'
-  )
-ORDER BY id.id
-LIMIT 1;
+JOIN tmp_op op
+  ON op.identita_id = id.id;
 
--- Rimuovi eventuali override/whitelist preesistenti per utente test
-DELETE FROM config.user_override_aree
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
-
-DELETE FROM config.user_override_oggetti
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
-
-DELETE FROM config.user_override_azioni
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
-
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+-- Pre-condizione dei test 3/6/7 (default BLOCCATO): l'operatore costruito
+-- non ha profili che concedono 'vendite' (fn_resolve_livello_area step 4
+-- lo promuoverebbe). Era un filtro della pesca; ora e' un controllo di
+-- setup che, se cade, dice perche' cadono i test dopo.
+DO $pre$
+BEGIN
+    IF (SELECT count(*) FROM tmp_ctx) <> 1 THEN
+        RAISE EXCEPTION 'Setup: tmp_ctx ha % righe, attesa 1', (SELECT count(*) FROM tmp_ctx);
+    END IF;
+    IF EXISTS (
+        SELECT 1
+          FROM script.fn_get_profili_accesso_applicabili((SELECT user_id FROM tmp_ctx)) h
+          JOIN config.profili_accesso_aree paa ON paa.profilo_accesso_id = h.profilo_accesso_id
+          JOIN config.aree_funzionali af2 ON af2.id = paa.area_id
+         WHERE af2.schema_db = 'vendite'
+    ) THEN
+        RAISE EXCEPTION 'Setup: l''operatore costruito ha un profilo che concede vendite';
+    END IF;
+END
+$pre$;
 
 -- ============================================================
 -- A. fn_is_super_admin (sostituisce fn_get_ruolo_sistema droppata
 --    in Fase 7 cleanup 2026-04-29)
 -- ============================================================
 
--- 1) Utente OPERATORE non-SA (filtro vergine al setup) → false
+-- 1) Utente OPERATORE non-SA (costruito al setup) → false
 SELECT is(
     script.fn_is_super_admin(
         (SELECT user_id FROM tmp_ctx)

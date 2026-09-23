@@ -13,12 +13,12 @@
 --   - Binding inattivo -> esclusi
 --   - Profilo inattivo -> esclusi
 --
--- Pattern: uso CLIENTE_PORTALE (come in test-fn-is-super-admin) per evitare
--- il guard PF pura. Il helper tratta tutti i ruoli applicativi in modo
--- uniforme, quindi il test non perde generalita'.
+-- Pattern: identita CLIENTE_PORTALE su un ruolo CL costruito: e' il caso
+-- del binding PORTALE seminato (CLIENTE_PORTALE_STANDARD, per ruolo
+-- applicativo), che il test verifica al caso 3.
 --
 -- Indice test (1..5):
---    1. Setup: BA cliente + auth_user + identita CLIENTE_PORTALE attiva
+--    1. Setup: ruolo CL costruito + auth_user + identita CLIENTE_PORTALE attiva
 --    2. Nessun binding -> nessuna riga
 --    3. Binding PORTALE standard (seed 9001) -> 1 riga priorita 2
 --    4. Binding AD_HOC aggiunto -> blocked da UNIQUE identita, testiamo
@@ -29,6 +29,20 @@
 --
 -- BEGIN; + rollback implicito a fine file.
 -- ------------------------------------------------------------
+
+-- ============================================================================
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il soggetto_ruolo dell'identita' si PESCAVA dal primo billing_account:
+--   su un database ricostruito (la CI) non ce n'e' nessuno, l'identita' non
+--   nasceva e i casi 3-5 morivano a cascata (il binding AD_HOC su
+--   identita_digitale_id NULL lo respinge il guard di coerenza). Ora il
+--   ruolo CL si costruisce (fn_pgtap_crea_soggetto_pg +
+--   fn_pgtap_crea_soggetto_ruolo): all'identita' di portale serve il ruolo,
+--   non un billing account.
+--   E il profilo PORTALE atteso al caso 3 non e' piu' l'id cablato 9001: e'
+--   il profilo del binding PORTALE seminato per il ruolo applicativo
+--   CLIENTE_PORTALE (80_data), letto da config.profili_accesso_bindings.
+-- ============================================================================
 
 BEGIN;
 
@@ -50,14 +64,16 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(5);
 
 -- =========================================================
--- 1) Setup: BA cliente + auth_user + identita CLIENTE_PORTALE
+-- 1) Setup: ruolo CL costruito + auth_user + identita CLIENTE_PORTALE
+--    Dopo la riga di contesto; cio' che i builder scrivono si legge in
+--    un'istruzione SEPARATA.
 -- =========================================================
+CREATE TEMP TABLE _t_sog AS
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente portale pgTAP') AS soggetto_id;
+
 CREATE TEMP TABLE _t_sr AS
-SELECT ba.soggetto_ruolo_id AS sr_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.soggetto_ruolo_id IS NOT NULL
- ORDER BY ba.id
- LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(t.soggetto_id, 'CL') AS sr_id
+  FROM _t_sog t;
 
 -- NOTA PostgreSQL: una CTE con istruzione modificante (INSERT/UPDATE/DELETE
 -- RETURNING) deve apparire al livello superiore della query. Quindi non
@@ -110,18 +126,30 @@ SELECT ok(
 -- =========================================================
 -- 3) Con binding seed PORTALE (CLIENTE_PORTALE_STANDARD) -> priorita 2
 -- =========================================================
--- Il seed §4.3.7 ha creato:
---   profili_accesso.id=9001 (CLIENTE_PORTALE_STANDARD, tipo=PORTALE)
---   binding (profilo_id=9001, ruolo_applicativo=CLIENTE_PORTALE)
+-- Il seed §4.3.7 ha creato il profilo CLIENTE_PORTALE_STANDARD (tipo
+-- PORTALE) e il suo binding per ruolo_applicativo = CLIENTE_PORTALE.
 -- Quindi per un'identita CLIENTE_PORTALE il helper deve ritornare almeno
 -- questo binding con priorita=2.
+-- ⚠️ Il profilo si risolve dal binding (tipo + ruolo applicativo), non
+--   dall'id: 9001 e' vero solo perche' il seed porta l'id esplicito.
+CREATE TEMP TABLE _t_portale AS
+SELECT pab.profilo_accesso_id AS profilo_id
+  FROM config.profili_accesso_bindings pab
+  JOIN config.profili_accesso pa
+    ON pa.id = pab.profilo_accesso_id
+ WHERE pa.tipo = 'PORTALE'::config.tipo_profilo_accesso
+   AND pab.ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo
+   AND pab.attivo
+   AND pa.attivo;
+
 SELECT ok(
-    EXISTS (
+    (SELECT count(*) FROM _t_portale) = 1
+    AND EXISTS (
         SELECT 1
           FROM script.fn_get_profili_accesso_applicabili(
               (SELECT auth_user_id FROM _t_au)
           )
-         WHERE profilo_accesso_id = 9001
+         WHERE profilo_accesso_id = (SELECT profilo_id FROM _t_portale)
            AND priorita = 2
     ),
     '3. Con seed PORTALE CLIENTE_PORTALE_STANDARD -> riga priorita 2 presente'

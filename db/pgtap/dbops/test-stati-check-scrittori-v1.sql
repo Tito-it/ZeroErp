@@ -51,6 +51,9 @@
 --      non entrano, senza nessun ramo di esclusione (COSTRUITO)
 --  14) ⭐ la lista di lavoro e' esattamente la misura filtrata sui due esiti
 --      (COSTRUITO: le sette righe di prova, ne' una in piu' ne' una in meno)
+--  15) ⛔ una FIXTURE pgTAP (prefisso fn_pgtap_) che scrive il valore — per
+--      via diretta e per via indiretta — non lo rende SCRITTO: il presidio
+--      misura il sistema, non chi lo collauda (COSTRUITO, rev 20260923-51)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ IL PROBLEMA, E PERCHE' NON SI VEDE.
@@ -97,7 +100,7 @@ BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- ⭐ LA MISURA SI PRENDE UNA VOLTA, NON QUATTORDICI
@@ -243,14 +246,14 @@ CREATE TABLE dbops.pgtap_stati_fuori (
 );
 
 -- 6. Nomina DUE in un WHERE e non scrive la tabella: la trappola 1.
-CREATE FUNCTION dbops.fn_pgtap_stati_conta()
+CREATE FUNCTION dbops.fn_prova_stati_conta()
 RETURNS bigint LANGUAGE sql AS $f$
     SELECT count(*) FROM dbops.pgtap_stati_prova WHERE stato = 'DUE';
 $f$;
 
 -- 8. Lo scrittore POSIZIONALE: la colonna nell'elenco, il valore nel VALUES,
 --    nessun `SET stato = p_stato` da riconoscere.
-CREATE FUNCTION dbops.fn_pgtap_stati_scrivi(p_id int, p_stato text)
+CREATE FUNCTION dbops.fn_prova_stati_scrivi(p_id int, p_stato text)
 RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
     INSERT INTO dbops.pgtap_stati_prova (id, stato)
@@ -259,29 +262,46 @@ END
 $f$;
 
 -- 8. Il chiamante che passa TRE dentro la chiamata: il secondo salto.
-CREATE FUNCTION dbops.fn_pgtap_stati_chiama()
+CREATE FUNCTION dbops.fn_prova_stati_chiama()
 RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
-    PERFORM dbops.fn_pgtap_stati_scrivi(1, 'TRE');
+    PERFORM dbops.fn_prova_stati_scrivi(1, 'TRE');
 END
 $f$;
 
 -- 9. Il terzo salto: QUATTRO passa per DUE funzioni intermedie.
-CREATE FUNCTION dbops.fn_pgtap_stati_chiama_param(p_stato text)
+CREATE FUNCTION dbops.fn_prova_stati_chiama_param(p_stato text)
 RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
-    PERFORM dbops.fn_pgtap_stati_scrivi(2, p_stato);
+    PERFORM dbops.fn_prova_stati_scrivi(2, p_stato);
 END
 $f$;
-CREATE FUNCTION dbops.fn_pgtap_stati_terzo()
+CREATE FUNCTION dbops.fn_prova_stati_terzo()
 RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
-    PERFORM dbops.fn_pgtap_stati_chiama_param('QUATTRO');
+    PERFORM dbops.fn_prova_stati_chiama_param('QUATTRO');
+END
+$f$;
+
+-- ⚠️ rev 2026-09-23 (20260923-51): le funzioni di prova si chiamano
+--   fn_prova_stati_*, non piu' fn_pgtap_stati_*. Il prefisso fn_pgtap_ e'
+--   quello degli helper di FIXTURE, che la vista da quella rev non conta: con
+--   il nome vecchio i casi 6..11 sarebbero spariti dalla misura.
+
+-- 15. Una FIXTURE che scrive NOVE, nei due modi che la vista riconosce:
+--     diretto (UPDATE … SET stato = 'NOVE') e indiretto (passa il letterale
+--     allo scrittore posizionale). Il nome ha apposta il prefisso degli
+--     helper di fixture: NOVE deve restare NON_DICHIARATO (test 5, 7, 14, 15).
+CREATE FUNCTION dbops.fn_pgtap_crea_stati_nove()
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    UPDATE dbops.pgtap_stati_prova SET stato = 'NOVE' WHERE id = 1;
+    PERFORM dbops.fn_prova_stati_scrivi(3, 'NOVE');
 END
 $f$;
 
 -- 11. Lo scrittore diretto di SETTE, che rende ESTINTA la dichiarazione.
-CREATE FUNCTION dbops.fn_pgtap_stati_sette()
+CREATE FUNCTION dbops.fn_prova_stati_sette()
 RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
     UPDATE dbops.pgtap_stati_prova SET stato = 'SETTE' WHERE id = 1;
@@ -371,7 +391,7 @@ SELECT is(
     (SELECT w.esito || ' / fn=' || w.scrittori_fn || ' / ind=' || w.scrittori_indiretti || ' / ' || w.scrittori_nomi
        FROM _misura_1 w
       WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'TRE'),
-    'SCRITTO / fn=0 / ind=1 / dbops.fn_pgtap_stati_chiama',
+    'SCRITTO / fn=0 / ind=1 / dbops.fn_prova_stati_chiama',
     '8. scrittore POSIZIONALE (INSERT … VALUES (…, p_stato, …)) piu'' un chiamante che passa il letterale: SCRITTO per il secondo salto, e il nome e'' quello del chiamante'
 );
 
@@ -423,14 +443,23 @@ SELECT is(
     '14. la lista di lavoro e'' esattamente la misura filtrata sui due esiti: le sette righe di prova, ne'' una in piu'' ne'' una in meno'
 );
 
+SELECT is(
+    (SELECT w.esito || ' / fn=' || w.scrittori_fn || ' / ind=' || w.scrittori_indiretti
+       FROM _misura_1 w
+      WHERE w.schema_tabella = 'dbops' AND w.nome_tabella = 'pgtap_stati_prova' AND w.valore = 'NOVE'),
+    'NON_DICHIARATO / fn=0 / ind=0',
+    '15. una FIXTURE pgTAP (fn_pgtap_*) che scrive il valore, diretta o indiretta, non lo rende SCRITTO: il presidio misura il sistema, non chi lo collauda'
+);
+
 DELETE FROM dbops.stati_check_dichiarazioni
  WHERE schema_tabella = 'dbops' AND nome_tabella = 'pgtap_stati_prova';
-DROP FUNCTION dbops.fn_pgtap_stati_sette();
-DROP FUNCTION dbops.fn_pgtap_stati_terzo();
-DROP FUNCTION dbops.fn_pgtap_stati_chiama_param(text);
-DROP FUNCTION dbops.fn_pgtap_stati_chiama();
-DROP FUNCTION dbops.fn_pgtap_stati_scrivi(int, text);
-DROP FUNCTION dbops.fn_pgtap_stati_conta();
+DROP FUNCTION dbops.fn_pgtap_crea_stati_nove();
+DROP FUNCTION dbops.fn_prova_stati_sette();
+DROP FUNCTION dbops.fn_prova_stati_terzo();
+DROP FUNCTION dbops.fn_prova_stati_chiama_param(text);
+DROP FUNCTION dbops.fn_prova_stati_chiama();
+DROP FUNCTION dbops.fn_prova_stati_scrivi(int, text);
+DROP FUNCTION dbops.fn_prova_stati_conta();
 DROP TABLE dbops.pgtap_stati_fuori;
 DROP TABLE dbops.pgtap_stati_prova_vc;
 DROP TABLE dbops.pgtap_stati_prova;

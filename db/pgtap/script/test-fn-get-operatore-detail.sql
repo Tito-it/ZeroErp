@@ -11,10 +11,22 @@
 --   (gia' coperta in produzione) -> qui si verificano solo le capability.
 --
 -- Strategia:
---   Riusa il pattern mk_admin/disable_other_sa di
---   test-fn-check-ultimo-super-admin-attivo.sql (ogni file pgTAP ha
---   il proprio pg_temp namespace). Stato accumulato tra i casi
---   (no SAVEPOINT) e rolled-back a fine file.
+--   I super admin si COSTRUISCONO con
+--   dbops.fn_pgtap_crea_operatore_umano(..., p_super_admin := true);
+--   pg_temp.disable_other_sa riduce a un solo SA per i casi 2 e 3.
+--   Stato accumulato tra i casi (no SAVEPOINT) e rolled-back a fine
+--   file.
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il file dava un binding SA a mano a un'identita' OPERATORE
+--   «vergine» pescata (pg_temp.mk_admin, copia di quello di
+--   test-fn-check-ultimo-super-admin-attivo), e contava sui SA
+--   preesistenti per il caso multi-SA. Su un database ricostruito
+--   (la CI) i SA sono zero e l'operatore del mondo un binding ce l'ha:
+--   il caso 1 rispondeva false e il setup del caso 4 moriva («nessuna
+--   identita OPERATORE vergine»). Ora i SA nascono dal percorso di
+--   produzione, e i casi non dipendono da chi c'era prima.
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
 --
 -- Indice test (1..4):
 --   1. Multi super-admin -> can_disable=true sull'auth_user SA target
@@ -47,41 +59,8 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(4);
 
 -- =========================================================
--- Helper: aggiunge un binding SA su un'identita OPERATORE vergine
--- =========================================================
-CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT au_id integer, OUT bind_id bigint)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    SELECT id.id, id.auth_user_id INTO id_id, au_id
-      FROM anagrafiche.identita_digitali id
-     WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-       AND id.attivo = true
-       AND NOT EXISTS (
-           SELECT 1
-             FROM config.profili_accesso_bindings pab
-            WHERE pab.identita_digitale_id = id.id
-       )
-     ORDER BY id.id
-     LIMIT 1;
-
-    IF id_id IS NULL THEN
-        RAISE EXCEPTION 'Setup impossibile: nessuna identita OPERATORE vergine disponibile';
-    END IF;
-
-    INSERT INTO config.profili_accesso_bindings
-        (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (
-        (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        id_id,
-        true
-    )
-    RETURNING id INTO bind_id;
-END
-$$;
-
--- =========================================================
--- Helper: disattiva tutti i binding SA attivi tranne quello passato
+-- Helper: disattiva tutti i binding SA attivi tranne quello passato.
+--   Il profilo SA si riconosce dal TIPO, non dal codice.
 -- =========================================================
 CREATE OR REPLACE FUNCTION pg_temp.disable_other_sa(p_keep_bind_id bigint)
 RETURNS int
@@ -96,7 +75,7 @@ BEGIN
           FROM config.profili_accesso_bindings pab
           JOIN config.profili_accesso          pa
             ON pa.id = pab.profilo_accesso_id
-         WHERE pa.codice = 'SUPER_ADMIN'
+         WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
            AND pab.attivo = true
            AND pab.id <> p_keep_bind_id
     LOOP
@@ -110,10 +89,25 @@ END
 $$;
 
 -- =========================================================
--- 1) Multi super-admin: aggiungo 1 SA ad-hoc -> >=2 SA in totale.
---    can_disable=true sul nuovo SA.
+-- 1) Multi super-admin: se ne costruiscono DUE -> >=2 SA comunque
+--    stia il database. can_disable=true sul primo.
 -- =========================================================
-CREATE TEMP TABLE _t_c1 AS SELECT * FROM pg_temp.mk_admin();
+CREATE TEMP TABLE _t_sa1 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('detail SA 1', p_super_admin := true);
+
+CREATE TEMP TABLE _t_sa2 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('detail SA 2', p_super_admin := true);
+
+-- Il binding SA del primo: e' quello che il caso 2 lascia attivo.
+CREATE TEMP TABLE _t_c1 AS
+SELECT t.identita_id AS id_id, t.auth_user_id AS au_id, pab.id AS bind_id
+  FROM _t_sa1 t
+  JOIN config.profili_accesso_bindings pab
+    ON pab.identita_digitale_id = t.identita_id
+   AND pab.attivo
+  JOIN config.profili_accesso pa
+    ON pa.id = pab.profilo_accesso_id
+   AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso;
 
 SELECT is(
     (SELECT can_disable
@@ -153,11 +147,13 @@ SELECT is(
 --    che altrimenti sarebbe invitabile. can_invite=false e
 --    invite_reason cita 'login'.
 --
---    Strategia: aggiungo un altro SA ad-hoc (cosi' non e' "ultimo"
+--    Strategia: costruisco un altro SA (cosi' non e' "ultimo"
 --    ed evito interazioni con lo scenario 2/3). Su quell'auth_user
 --    setto last_login=now() -> non invitabile.
 -- =========================================================
-CREATE TEMP TABLE _t_c4 AS SELECT * FROM pg_temp.mk_admin();
+CREATE TEMP TABLE _t_c4 AS
+SELECT auth_user_id AS au_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('detail SA invito', p_super_admin := true);
 
 -- Forzo email valorizzata + last_login != NULL: cosi' fn_check_operatore_invitabile
 -- supera tutti i guard precedenti e fallisce specificatamente sul last_login.

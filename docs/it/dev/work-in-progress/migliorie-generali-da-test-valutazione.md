@@ -44,6 +44,13 @@
 > a **7**, e `vw_codici_errore_da_dichiarare` a **545** — **salito**, non calato.
 > Dove un numero è rimasto quello del giorno in cui è stato preso, la data è
 > accanto.
+>
+> ✅ **Aggiornato il 2026-09-23 sera — chiuso il giro 2 di D7.** Suite a **687**
+> file; `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **119**; `baseline-rossi-ci.tsv`
+> ancora a **361**, mentre la baseline sullo scratch `zeroerp_ci` (Tid, 24-09) dà **229 rossi
+> su 687**: 132 righe sono rientrate e aspettano di uscire dal registro con la
+> corsa CI. Restano **18 rossi** nel lotto 2, da
+> guardare uno per uno. Dettaglio in §3 D7 («Conteggi al 2026-09-23 sera»).
 ---
 
 ## 0. Come si legge, e perché il metodo conta più del voto
@@ -381,6 +388,30 @@ lei il suo pgTAP:
 fin qui è lavoro vero, non igiene: la fixture che **costruisce** il mondo invece
 di cercarlo.
 
+> ⭐ **Conteggi al 2026-09-23 sera — chiuso il giro 2 di D7** (fatto datato:
+> misura sullo scratch `zeroerp_ci` ricostruito da zero, confermata dalle corse
+> di Tid, **non ancora certificata dalla CI**).
+>
+> | | File | Verdi da zero | Rossi |
+> | --- | --- | --- | --- |
+> | suite pgTAP nel repo | **687** (671 al 20-09) | — | — |
+> | registro `baseline-rossi-ci.tsv` | — | — | **361** (fermo: cala solo con la corsa CI) |
+> | lotto 1 — `config` `pagamenti` `documenti` `catalogo` `ui` `dbops` | 43 | **37** | **3** dichiarati (+3 da riconciliare: 16+21+3 = 40) |
+> | lotto 2 — `anagrafiche` `script` | 70 | **51** + 1 verde da owner | **18** |
+>
+> ⇒ Dei 113 file dei due lotti, **92 sono verdi** sul database da zero (89 se i
+> tre non riconciliati sono rossi).
+>
+> ✅ **La misura vera, 2026-09-24 (Tid, baseline sullo scratch `zeroerp_ci`, ricostruito da zero): 229
+> rossi su 687**, contro i **361** noti in baseline. La stima del 23-09 sera
+> («circa 270», contando solo i due lotti) era prudente: sono rientrati **132**
+> file, non ~90 — il resto viene da fuori dai due lotti (builder e correzioni del
+> giro 2 usati anche altrove). Il registro scende a 229 solo con la corsa CI e
+> `pgtap-baseline-ci-rientrati.sh` lanciato **il giorno stesso**. **I 18 rossi del lotto 2**
+> sono elencati per nome in
+> [brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md)
+> §11, «Stato di chiusura» (⚠️ per nome sono 19: scarto di uno da riconciliare).
+
 ⛔ **Fuori dalla macchina di sviluppo la suite è verde su poco meno di metà dei
 file.** All'8 settembre era «verde per un terzo», e il numero non era mai stato
 preso prima: era **sei volte** la stima della guida sui presidi §4 («69 file su
@@ -618,7 +649,7 @@ disegnato con cura, o resta una lente.
 caduti sullo scratch appena il giro 2 ha tolto il residuo `PGTR0001`, e sono
 stati sanati (verdi): un cancello deve contare anche quella forma. Censimento e
 dodici candidati in
-[brief-db-fixture-che-costruiscono-giro-2.md](brief-db-fixture-che-costruiscono-giro-2.md) §11. ⚠️ Residuo del lavoro di prova sullo
+[brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md) §11. ⚠️ Residuo del lavoro di prova sullo
 scratch: le corse forzate sui quattro file col contesto in autocommit hanno
 **committato** dodici `PGTR0002…0013` (emittente + utente tecnico + soggetti)
 alle 11:23 — stessa natura del residuo `PGTR0001` del punto 1, stesso script di
@@ -632,7 +663,7 @@ pulizia, da lanciare da Tid.
 > partire.
 
 ⭐ **Dal 22-09 il pezzo che resta ha un brief suo**,
-[brief-db-fixture-che-costruiscono-giro-2.md](brief-db-fixture-che-costruiscono-giro-2.md),
+[brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md),
 con il censimento della **forma** invece che delle cause: dei 361 file a
 registro, **205** costruiscono una tabella di riferimenti **pescando** (150
 pescano il billing account, 170 lo pescano da qualche parte nel file) e **tre**
@@ -866,7 +897,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | -------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Catena di verifica (CI)**            | 🔴 alto  | **7,5/10** | Dal 2026-09-09 la suite pgTAP è un cancello vero: baseline misurata dalla CI, niente `continue-on-error`, bootstrap che fallisce invece di passare. Resta il registro a 362 — 296 attesi dal 21-09 — che deve calare (D7)                                                                                                                                                                                                                                        |
 | **Perimetro dei dati (RLS)**           | 🔴 alto  | **8/10**   | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le due policy inerti di `acquisti` (D4 → D8), a registro con la ragione; `shop.ricevute` armata il 12-09. D13 (il `RETURNING` del BA per gli operatori non di default) chiuso il 13-09 |
-| **Copertura test**                     | 🔴 alto  | **4/10**   | 671 file, ma su un DB ricostruito da zero la suite è rossa su oltre metà (362 rossi noti al 2026-09-20, 296 attesi dal 21-09). Il 38% delle funzioni non è mai nominato (D7)                                                                                                                                                                                                                                                                                          |
+| **Copertura test**                     | 🔴 alto  | **4/10**   | 687 file (23-09), ma su un DB ricostruito da zero la suite è rossa su **229 file su 687** (baseline su `zeroerp_ci` del 24-09; il registro è ancora a 361 finché la corsa CI non certifica i rientrati). Il 38% delle funzioni non è mai nominato (D7)                                                                                                                                                                                                                                                                                          |
 | **Postura di sicurezza degli oggetti** | 🟠 medio | **7,5/10** | I tre invarianti di D5 presidiati per criterio (`search_path` dal 12-09, pin applicati). Non di più per i due rubinetti di D6-bis e per il pezzo nuovo: registro `sec_functions_owner` e sync scrivibili/eseguibili da `zeroerp_app`                                                                                                                                                                                                     |
 | **Simmetria del dominio**              | 🟠 medio | **4/10**   | `acquisti` e `magazzino` modellati e non scritti (D8). La decisione dell'11-09 («prossimo cantiere») dà al debito un verso, ma il voto misura il comportamento, che ancora non c'è: *una decisione non scrive il codice*                                                                                                                                                                                                                 |
 | **Osservabilità dei presidi**          | 🟠 medio | **7/10**   | D10 chiuso l'11-09-2026: le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`). Non 8+ per il debutto col rumore (processi ritirati in `vw_job_run_da_guardare`)                                                                                                                                                                                                                      |
@@ -978,7 +1009,7 @@ D6 e il registro dei rossi in CI.
       misurato **293 rossi su 674**, ma i RIENTRATI non sono stati tolti —
       `pgtap-baseline-ci-rientrati.sh` legge il log della corsa e va lanciato
       **quel giorno**, perché il log scade. ⭐ 22-09: il pezzo che resta ha un
-      brief suo — `work-in-progress/brief-db-fixture-che-costruiscono-giro-2.md`
+      brief suo — `work-done/brief-db-fixture-che-costruiscono-giro-2.md` (chiuso il 23-09)
       — e parte dal **BB di composizione** (`fn_pgtap_crea_mondo_cliente`), non
       dalla ricetta per file: 205 file su 361 compongono il mondo a mano, e la
       regola d'ordine fra mondo, legame del BA e contesto non sta in nessun
@@ -1013,8 +1044,22 @@ D6 e il registro dei rossi in CI.
       Builder nuovo `fn_pgtap_crea_gestore` (`20260923-06`, applicato). 12 file
       su 70 verdi sul mondo vuoto; restano il cliente da costruire, `pdp_id`,
       `RIS_UMANA`, i registri e l'utente di sessione fissato a `'1'`.
-      🔵 Rinviata da Tid la decisione sui 4 file che COMMITTANO / 6 col contesto
-      in autocommit: prima la forma.
+      ✅ **Giro 2 CHIUSO il 23-09** (brief in `work-done/`): lotto 2 da 12 a
+      **51 verdi su 70** (+1 verde da owner), **18 rossi** rimasti da guardare
+      uno per uno (elenco nel brief, §11 «Stato di chiusura»). Builder nuovi,
+      tutti applicati senza regressioni: `fn_pgtap_crea_operatore_umano`
+      (`-08`), `fn_pgtap_crea_pdp` (`-09`), `fn_pgtap_crea_listino` (`-50`,
+      copia del lotto 1 ritirata). Difetti del **prodotto** trovati costruendo
+      invece di pescare: profilo SUPER_ADMIN per id cablato in
+      `fn_crea_risorsa_umana_v2` (`-10`); `fn_get_indirizzo` e
+      `fn_get_indirizzo_by_soggetto` confrontavano il codice col codice_interno,
+      e il dettaglio di ricerca non trovava mai l'indirizzo di ripiego (`-49`);
+      il presidio C1 contava le fixture come scrittori (`-51`); i CSV di
+      `tipi_utenze`/`classi_utenze` non li caricava nessuno (`-52`/`-53`).
+      Tre verdi **finti** smascherati (skip soft che scriveva il valore atteso)
+      e sei test che asserivano per la ragione sbagliata. ⏳ Resta: la corsa CI
+      che certifica i rientrati (baseline su `zeroerp_ci` del 24-09: **229 rossi su 687**, contro
+      361 in baseline) e i 18 rossi.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
       `brief-db-ba-riserva-emittente-operatore-d13.md`. ✅ Le tre copie

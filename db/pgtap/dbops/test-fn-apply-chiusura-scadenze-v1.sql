@@ -86,26 +86,18 @@ BEGIN
 END
 $pgtap$;
 
+-- Listino con versione ATTIVA scaduta (da chiudere dal framework).
+-- ⭐ rev 2026-09-23 (20260923-50): le due INSERT scritte qui erano la prima
+--   copia della ricetta; alla seconda (script/test-fn-available-actions-
+--   offerta-v1) e' nato dbops.fn_pgtap_crea_listino, e questa copia si
+--   ritira nello stesso giro (regola del 2). La tipologia non e' piu' «la
+--   prima per id» ma la prima AMMESSA per l'utility.
 CREATE TEMP TABLE tmp_listino AS
-WITH ins AS (
-    INSERT INTO vendite.listini (
-        codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id
-    )
-    SELECT 'PGTAP_FW_LV_' || substr(md5(clock_timestamp()::text), 1, 10),
-           'Listino pgtap framework chiusura',
+SELECT listino_id, listino_versione_id
+  FROM dbops.fn_pgtap_crea_listino(
            (SELECT utility_id FROM tmp_ctx_ba),
-           (SELECT id FROM config.listini_tipologie ORDER BY id LIMIT 1),
-           (SELECT emittente_soggetto_ruolo_id FROM tmp_mondo)
-    RETURNING id
-)
-SELECT id AS listino_id FROM ins;
-
--- Versione ATTIVA scaduta (da chiudere dal framework).
-INSERT INTO vendite.listini_versioni (
-    listino_id, codice_versione, valido_dal, valido_al, stato
-)
-SELECT listino_id, 'FW_TEST', DATE '2022-01-01', DATE '2022-12-31', 'ATTIVA'
-  FROM tmp_listino;
+           'framework chiusura',
+           DATE '2022-01-01', DATE '2022-12-31');
 
 CREATE TEMP TABLE tmp_ctx_stati AS
 SELECT
@@ -142,8 +134,7 @@ DO $$ BEGIN PERFORM dbops.fn_apply_chiusura_scadenze(); END $$;
 
 SELECT is(
     (SELECT stato FROM vendite.listini_versioni
-      WHERE listino_id = (SELECT listino_id FROM tmp_listino)
-        AND codice_versione = 'FW_TEST'),
+      WHERE id = (SELECT listino_versione_id FROM tmp_listino)),
     'CHIUSA'::varchar,
     'Framework VARCHAR: versione listino scaduta passa a CHIUSA'
 );

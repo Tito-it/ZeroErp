@@ -5,7 +5,7 @@
 -- Test: anagrafiche.fn_get_evento_stato_corrente_cliente(p_cliente_id).
 -- Migration: 20260428-01-create-fn-get-evento-stato-corrente-cliente.
 --
--- Strategia: prendi un cliente esistente, fai UPDATE delle date
+-- Strategia: costruisci un cliente, fai UPDATE delle date
 -- (data_sospensione/data_riattivazione) per ogni scenario. Tutto in
 -- BEGIN/ROLLBACK quindi nessun side-effect persistente. Eventuali trigger
 -- BEFORE UPDATE su clienti non interferiscono con sosp/riatt.
@@ -43,13 +43,40 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(8);
 
 -- =========================================================
--- Setup: prendi un cliente esistente.
+-- Setup: costruisci un cliente.
+--
+-- rev 2026-09-23 (brief-db-fixture-che-costruiscono-giro-2, lotto 2).
+--   Il cliente si PESCAVA («il primo di anagrafiche.clienti»): su un
+--   database ricostruito (la CI) la tabella e' vuota, tmp_ctx_cliente
+--   restava senza righe e la funzione moriva su p_cliente_id NULL con zero
+--   asserzioni. Ora la catena soggetto -> CL -> istanza -> BA viene da
+--   dbops.fn_pgtap_crea_cliente_ba, e la riga di anagrafiche.clienti la
+--   scrive il test (il builder si ferma al BA), nello stato PR come
+--   anagrafiche/create-cliente. L'utility e' una che NON richiede il PDP
+--   (config.utilities.richiede_pdp): il soggetto del test sono le date di
+--   sospensione, e un cliente su un'utility a PDP ne pretenderebbe uno.
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
 -- =========================================================
+CREATE TEMP TABLE tmp_cli_ba AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'evento stato corrente',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT u.richiede_pdp
+      ORDER BY u.id LIMIT 1));
+
 CREATE TEMP TABLE tmp_ctx_cliente AS
-SELECT id AS cliente_id
-  FROM anagrafiche.clienti
- ORDER BY id
- LIMIT 1;
+WITH ins AS (
+    INSERT INTO anagrafiche.clienti (
+        soggetto_ruolo_id, istanza_utility_id, stato_cliente_id,
+        billing_account_id, utility_id
+    )
+    SELECT c.soggetto_ruolo_id, c.istanza_utility_id,
+           (SELECT sc.id FROM config.stati_cliente sc WHERE sc.codice_interno = 'PR'),
+           c.billing_account_id, c.utility_id
+      FROM tmp_cli_ba c
+    RETURNING id
+)
+SELECT id AS cliente_id FROM ins;
 
 -- ============================================================
 -- 1) sosp NULL, riatt NULL -> (NULL, NULL)
