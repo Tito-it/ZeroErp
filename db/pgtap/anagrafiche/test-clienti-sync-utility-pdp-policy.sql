@@ -11,8 +11,8 @@
 --  T03) Esiste almeno una utility non GAS/ENERGIA/IDRICO con richiede_pdp=false
 --  T04) Esiste stato cliente AT
 --  T05) Esiste IVA codice 22
---  T06) Esiste soggetto di test
---  T07) Esiste PDP GAS con indirizzo valorizzato
+--  T06) Costruito il soggetto di test
+--  T07) Costruito un PDP GAS con indirizzo valorizzato
 --  T08) Create 4 istanze di test
 --  T09) Inserimento cliente GAS con PDP valorizzato (OK)
 --  T10) Sync utility cliente <- billing account (caso GAS)
@@ -129,36 +129,35 @@ SELECT is(
     'T05 Esiste aliquota IVA codice=22'
 );
 
+-- ⛔ 2026-09-23: soggetto e PDP erano dati di QUESTA macchina — il soggetto
+--   per una partita IVA di dbdev, il PDP «il primo GAS con un indirizzo». Su
+--   un database ricostruito dai changelog non ci sono, e la fixture moriva su
+--   «Non e' stato fornito un valore per pdp_id». Ora si COSTRUISCONO: un
+--   soggetto persona giuridica col suo ruolo CL (indirizzi di ruolo compresi)
+--   e un PDP GAS nuovo, su un indirizzo suo.
 CREATE TEMP TABLE tmp_soggetto_test AS
-SELECT id
-FROM anagrafiche.soggetti
-WHERE partita_iva = '24551170426'
-LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente PDP policy') AS id;
 
 SELECT is(
-    (SELECT count(*)::int FROM tmp_soggetto_test),
+    (SELECT count(*)::int FROM tmp_soggetto_test WHERE id IS NOT NULL),
     1,
-    'T06 Trovato soggetto di test'
+    'T06 Costruito il soggetto di test'
 );
 
 CREATE TEMP TABLE tmp_sr_test AS
-SELECT script.fn_get_or_create_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s.id, 'CL') AS soggetto_ruolo_id
 FROM tmp_soggetto_test s;
 
 CREATE TEMP TABLE tmp_pdp_gas AS
-SELECT p.id,
+SELECT p.pdp_id AS id,
        p.indirizzo_dettaglio_id,
-       p.utility_id AS utility_id
-FROM anagrafiche.pdp p
-JOIN tmp_utility_gas ug
-  ON ug.id = p.utility_id
-WHERE p.indirizzo_dettaglio_id IS NOT NULL
-LIMIT 1;
+       p.utility_id
+FROM dbops.fn_pgtap_crea_pdp('GAS') p;
 
 SELECT is(
-    (SELECT count(*)::int FROM tmp_pdp_gas),
+    (SELECT count(*)::int FROM tmp_pdp_gas WHERE indirizzo_dettaglio_id IS NOT NULL),
     1,
-    'T07 Trovato PDP GAS con indirizzo valorizzato'
+    'T07 Costruito un PDP GAS con indirizzo valorizzato'
 );
 
 -- Categoria cliente: `billing_account.categoria_cliente_id` e' diventata

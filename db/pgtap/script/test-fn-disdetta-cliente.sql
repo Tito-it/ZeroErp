@@ -18,8 +18,9 @@
 --   T11) DB-09: BA valido_al IS NULL dopo disdetta (policy: BA resta attivo)
 --   T12) DB-06: fn_disdetta_cliente su cliente gia chiuso -> errore
 --
--- Nota: usa soggetto/PDP esistenti dal DB e istanze fittizia=false
---       per testare il ciclo completo incluso PDP.
+-- Nota: soggetto e PDP si COSTRUISCONO (rev 2026-09-23; prima erano pescati
+--       dal DB), e le istanze sono fittizia=false per testare il ciclo
+--       completo incluso PDP.
 -- ------------------------------------------------------------
 
 -- =========================================================
@@ -102,26 +103,25 @@ SELECT
      --   (changeSet 20260829-22): l'aliquota la decide la merce, non il cliente.
      WHERE sp.codice_interno = 'ATT') AS stato_pdp_att_id;
 
+-- ⛔ 2026-09-23: PDP e soggetto erano PESCATI — «il primo PDP GAS attivo con
+--   un indirizzo», «il soggetto del primo billing account senza padre». Su un
+--   database ricostruito dai changelog non c'e' nessuno dei due, e la fixture
+--   moriva su «Non e' stato fornito un valore per pdp_id». Ora si
+--   COSTRUISCONO: un PDP GAS nuovo su un indirizzo suo, e un soggetto persona
+--   giuridica col suo ruolo CL completo degli indirizzi di ruolo.
 CREATE TEMP TABLE tmp_dis_pdp AS
-SELECT p.id AS pdp_id,
+SELECT p.pdp_id,
        p.indirizzo_dettaglio_id,
        p.utility_id
-FROM anagrafiche.pdp p
-JOIN config.utilities u ON u.id = p.utility_id
-WHERE u.codice_interno = 'GAS'
-  AND p.indirizzo_dettaglio_id IS NOT NULL
-  AND p.attivo IS TRUE
-LIMIT 1;
+FROM dbops.fn_pgtap_crea_pdp('GAS') p;
+
+CREATE TEMP TABLE tmp_dis_soggetto_pg AS
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente disdetta') AS soggetto_id;
 
 CREATE TEMP TABLE tmp_dis_soggetto AS
-SELECT iu_ref.soggetto_id,
-       ba_ref.soggetto_ruolo_id
-FROM anagrafiche.billing_account ba_ref
-JOIN anagrafiche.istanze_utilities iu_ref ON iu_ref.id = ba_ref.istanza_utility_id
-WHERE ba_ref.parent_account_id IS NULL
-  AND ba_ref.utility_id IS NOT NULL
-ORDER BY ba_ref.id
-LIMIT 1;
+SELECT s.soggetto_id,
+       dbops.fn_pgtap_crea_soggetto_ruolo(s.soggetto_id, 'CL') AS soggetto_ruolo_id
+FROM tmp_dis_soggetto_pg s;
 
 SELECT ok(
     (SELECT stato_at_id IS NOT NULL

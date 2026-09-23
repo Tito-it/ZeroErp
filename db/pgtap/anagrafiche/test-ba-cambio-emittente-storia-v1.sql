@@ -13,7 +13,7 @@
 --   script.fn_check_ba_cambio_emittente() rev C2-17     (20260831-19)
 --
 -- Elenco test (plan 14):
---  1) Precondizioni: riferimenti anagrafici presenti
+--  1) Precondizioni: mondo costruito + secondo emittente distinto
 --  2) BA appena nato: nessuna storia -> nessuna riga
 --  3) BA appena nato: il cambio di emittente PASSA        [la finestra di correzione]
 --  4) Dopo una commessa: la storia conta 1 documento SOTTO LA FAMIGLIA COMMESSA
@@ -46,31 +46,6 @@
 -- Piano: brief-db-billing-account-cambio-emittente, M5 (§6.5)
 -- ------------------------------------------------------------
 
--- =========================================================
--- Cleanup iniziale (idempotente, FUORI dalla transazione)
--- =========================================================
-DO $$
-BEGIN
-    DELETE FROM vendite.commesse c
-     WHERE c.codice LIKE 'TST-BA-STORIA-%';
-
-    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
-     WHERE efba.billing_account_id IN (
-         SELECT ba.id FROM anagrafiche.billing_account ba
-          WHERE ba.istanza_utility_id IN (
-              SELECT iu.id FROM anagrafiche.istanze_utilities iu
-               WHERE iu.codice LIKE 'TST-BA-STORIA-%'));
-
-    DELETE FROM anagrafiche.billing_account ba
-     WHERE ba.istanza_utility_id IN (
-         SELECT iu.id FROM anagrafiche.istanze_utilities iu
-          WHERE iu.codice LIKE 'TST-BA-STORIA-%');
-
-    DELETE FROM anagrafiche.istanze_utilities iu
-     WHERE iu.codice LIKE 'TST-BA-STORIA-%';
-END;
-$$;
-
 BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -80,82 +55,39 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(14);
 
 -- =========================================================
--- 0) Riferimenti anagrafici, presi da un billing account esistente
+-- 0) Il mondo si COSTRUISCE: un cliente nuovo, quindi un BA senza storia
 -- =========================================================
--- ⚠️ ORDER BY esplicito: un LIMIT 1 senza non verifica, scommette.
+-- ⛔ 2026-09-23: il file PESCAVA soggetto, ruolo e utility da «un billing
+--   account esistente». Su un database ricostruito dai changelog i billing
+--   account sono zero, e la fixture moriva sul NOT NULL di
+--   `istanze_utilities.soggetto_id` — copertura zero, non parziale.
+-- ⭐ Il cliente del mondo e' gia' il caso del test: un BA appena nato, legato
+--   dal trigger z90 all'emittente di chi agisce. Il contesto e' aperto dalla
+--   riga sopra, quindi il BB riusa l'azienda dell'operatore (ramo B).
+CREATE TEMP TABLE tmp_mondo_ba_storia AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('BA storia');
+
+-- ⭐ L'«altro» emittente e' un emittente VERO, costruito: prima era «un
+--   soggetto_ruolo qualunque diverso da quello dell'operatore», cioe' un
+--   numero che il guard riceveva come emittente senza esserlo.
 CREATE TEMP TABLE tmp_refs_ba_storia AS
-SELECT
-    iu_ref.soggetto_id,
-    ba_ref.soggetto_ruolo_id,
-    ba_ref.utility_id,
-    (SELECT cc.id FROM anagrafiche.categorie_clienti cc
-      WHERE cc.codice_interno = 'STANDARD')          AS categoria_cliente_id,
-    script.fn_pgtap_emittente_sr_operatore()         AS emittente_sr_ok,
-    (SELECT sr.id
-       FROM anagrafiche.soggetti_ruoli sr
-      WHERE sr.id <> script.fn_pgtap_emittente_sr_operatore()
-      ORDER BY sr.id
-      LIMIT 1)                                       AS emittente_sr_altro
-  FROM anagrafiche.billing_account ba_ref
-  JOIN anagrafiche.istanze_utilities iu_ref ON iu_ref.id = ba_ref.istanza_utility_id
- WHERE ba_ref.utility_id IS NOT NULL
- ORDER BY ba_ref.id
- LIMIT 1;
+SELECT m.utility_id,
+       m.emittente_soggetto_ruolo_id                 AS emittente_sr_ok,
+       (SELECT e.soggetto_ruolo_id
+          FROM dbops.fn_pgtap_crea_emittente() e)    AS emittente_sr_altro
+  FROM tmp_mondo_ba_storia m;
 
 SELECT ok(
-    (SELECT soggetto_id IS NOT NULL
-        AND soggetto_ruolo_id IS NOT NULL
-        AND utility_id IS NOT NULL
-        AND categoria_cliente_id IS NOT NULL
+    (SELECT utility_id IS NOT NULL
         AND emittente_sr_ok IS NOT NULL
         AND emittente_sr_altro IS NOT NULL
+        AND emittente_sr_altro <> emittente_sr_ok
      FROM tmp_refs_ba_storia),
-    'Precondizioni: riferimenti anagrafici presenti'
+    'Precondizioni: il mondo costruito e un secondo emittente distinto'
 );
 
--- =========================================================
--- 1) Fixture: un billing account NUOVO, quindi senza storia
--- =========================================================
-CREATE TEMP TABLE tmp_ids_ba_storia (billing_account_id bigint);
-
-DO $$
-DECLARE
-    v_istanza_id bigint;
-    v_ba_id      bigint;
-    r            record;
-BEGIN
-    SELECT * INTO r FROM tmp_refs_ba_storia;
-
-    -- ⭐ FINESTRA DIFFERITA: un'istanza utility e' una SAGA — un constraint
-    --   trigger DEFERRABLE pretende almeno un satellite al COMMIT, e il
-    --   preambolo obbligatorio (SET CONSTRAINTS ALL IMMEDIATE) lo farebbe
-    --   scattare sul PRIMO insert, prima che il billing account possa
-    --   esistere. Si apre la finestra, si costruisce, si richiude.
-    SET CONSTRAINTS ALL DEFERRED;
-
-    INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
-    VALUES (r.soggetto_id, true, 'TST-BA-STORIA-IU-01')
-    RETURNING id INTO v_istanza_id;
-
-    -- ⭐ Il mapping verso l'emittente NON si scrive a mano: lo crea
-    --   anagrafiche.trgfn_billing_account_link_ef, che aggancia il BA
-    --   all'emittente dell'OPERATORE corrente. E' esattamente il percorso
-    --   reale — un billing account non passa mai da uno stato «senza
-    --   emittente» — ed e' anche il motivo per cui la finestra di
-    --   correzione del 3) ha senso.
-    INSERT INTO anagrafiche.billing_account (
-        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
-        categoria_cliente_id
-    ) VALUES (
-        v_istanza_id, r.soggetto_ruolo_id, r.utility_id, CURRENT_DATE,
-        r.categoria_cliente_id
-    ) RETURNING id INTO v_ba_id;
-
-    SET CONSTRAINTS ALL IMMEDIATE;
-
-    INSERT INTO tmp_ids_ba_storia VALUES (v_ba_id);
-END;
-$$;
+CREATE TEMP TABLE tmp_ids_ba_storia AS
+SELECT m.billing_account_id FROM tmp_mondo_ba_storia m;
 
 -- =========================================================
 -- 2) BA appena nato: nessuna storia

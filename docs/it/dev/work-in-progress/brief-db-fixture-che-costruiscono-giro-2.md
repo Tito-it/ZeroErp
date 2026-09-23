@@ -21,6 +21,18 @@
 > Builder nuovo `fn_pgtap_crea_gestore` (`20260923-06`), **applicato, nessuna
 > regressione**. 12 file su 70 verdi sul mondo vuoto.
 >
+> ✏️ **Ripresa del 23-09 pomeriggio (§11, in coda)**: lotto 2 da 16 a **22
+> verdi** sul mondo vuoto, più **11 verdi in attesa** di tre changeSet nuovi
+> **da applicare** — `20260923-07` (il codice libero del cliente si leggeva
+> sotto RLS), `-08` (`fn_pgtap_crea_operatore_umano`, il super admin senza
+> azienda), `-09` (`fn_pgtap_crea_pdp`). Famiglie chiuse: cliente, `RIS_UMANA`,
+> `pdp_id`, registri, utente `'1'`. Restano 36 file, elencati per forma in
+> fondo al §11. Corretto anche il profilo super admin legato per id cablato
+> `9100` (`-10`, da applicare). Il `CHECK` sulle date che oggi non parla (§11 —
+> non è inutile, il difetto è la frase che legge l'operatore) ha ora un brief
+> suo, in riflessione:
+> [brief-db-guard-date-validita.md](brief-db-guard-date-validita.md).
+>
 > ⏳ **Quello che manca non è lavoro, è una corsa**: il registro
 > `baseline-rossi-ci.tsv` è ancora a 361 file. Le righe rientrate le toglie
 > `scripts/pgtap-baseline-ci-rientrati.sh` leggendo il **log della corsa CI**,
@@ -521,3 +533,229 @@ Le famiglie che restano: il **cliente da costruire** (`istanze_utilities` e
 `billing_account` a zero, 5 + n file), `pdp_id` (3), `RIS_UMANA` (2), i registri di
 fatturazione (2), l'utente di sessione fissato a `'1'` (3 nel lotto), e una coda
 di casi singoli.
+
+### ✏️ Ripresa del 2026-09-23 pomeriggio — la famiglia del cliente
+
+**Rimisura di partenza** (stesso banco, `zeroerp_ci` come `zeroerp_app`, identità
+residua spenta): **16 verdi** — i quattro in attesa del `-06` sono passati —, 34
+in fixture, 20 in asserzione.
+
+**I cinque file che morivano su `istanze_utilities.soggetto_id` NULL**, cioè che
+pescavano soggetto, ruolo e utility «da un billing account esistente»:
+
+| File | Com'è adesso | zeroerp_ci | dbdev |
+| ---- | ------------ | ---------- | ----- |
+| `test-ba-cambio-emittente-storia-v1` | il BA del mondo **è** il caso (un BA appena nato); l'«altro emittente» è un emittente **costruito** (`fn_pgtap_crea_emittente`), non «un soggetto_ruolo qualunque» | ✅ 14/14 | ✅ |
+| `test-ba-storia-solo-numerati-v1` | idem, e l'articolo si costruisce non gestito (il caso è la numerazione del DDT, non il suo movimento) | ✅ 7/7 | ✅ |
+| `test-billing-account-guard-parent` | soggetto del mondo + articolo costruito | ✅ 7/7 | ✅ |
+| `test-billing-account-guard-cf-confrontabile-v1` | due clienti costruiti, e il **BA fuori perimetro del t.5 si costruisce** (cliente di un'altra azienda, costruito agendo per un attimo come il suo operatore): il ramo `skip` è sparito | ⏳ `20260923-07` | ⏳ |
+| `test-guard-albero-ba-omogeneo-v1` | mondo + secondo emittente costruito + **super admin umano senza azienda**; anche qui il ramo `skip` del t.5 è sparito | ⏳ `20260923-08` | ⏳ |
+
+I cleanup fuori transazione dei primi due file sono stati tolti: cancellavano
+righe con codici che il file non scrive più, e nessuna riga del file sopravvive
+al `ROLLBACK`.
+
+#### ⛔ Due difetti trovati per strada, due changeSet (da applicare)
+
+1. **`20260923-07` — il codice «libero» di `fn_pgtap_crea_cliente_ba` si leggeva
+   sotto la RLS.** Il prossimo `PGTAPBAnnnnn` era `max(codice)+1` su
+   `billing_account`, che è in RLS: il massimo era quello dei BA **di chi
+   agisce**. Il cliente di una seconda azienda nella stessa transazione ripartiva
+   da `PGTAPBA00001` e moriva su `uq_istanze_utilities_codice`. Misurato come
+   `zeroerp_app`: sotto il secondo operatore la lettura vecchia risponde `NULL`,
+   la nuova (su `istanze_utilities`, fuori RLS, stesso codice del BA) risponde
+   `PGTAPBA00001` già usato. È la trappola di «libera vuol dire libera ADESSO»
+   un gradino sotto: *libero vuol dire libero per TUTTI, e sotto RLS «tutti» è
+   chi agisce*.
+2. **`20260923-08` — `dbops.fn_pgtap_crea_operatore_umano(p_etichetta,
+   p_super_admin)`**, builder nuovo. Un super admin **ha** un'azienda se lo si
+   costruisce come utente tecnico (`fn_pgtap_crea_emittente_operatore`), e non
+   è un dettaglio: `script.fn_get_ba_emittente_sr_id` fa ricadere un BA senza
+   legame sull'emittente di **chi agisce** prima che sul gestore globale, quindi
+   il t.10 dell'albero si spaccava un passo prima della sua scena. Il super admin
+   di dbdev infatti non ha righe in `user_emittenti_fiscali` (multi-emittente per
+   modello), e togliergliela dopo non si può: il guard la ammette solo dentro la
+   disattivazione dell'utente. ⇒ Il builder chiama la **madre di produzione**
+   `anagrafiche.fn_crea_operatore_v2` dentro la finestra differita (il guard
+   degli indirizzi del soggetto PF è `DEFERRABLE` e gli indirizzi arrivano
+   all'ultimo passo), con CF e username liberi. Nasce **senza azienda**; per
+   legarlo c'è già il verbo `script.fn_change_user_emittenti_scope`.
+   Regola del 2: tre consumatori nel lotto (l'albero, `test-fn-get-soggetto-dati-and-user-profile`
+   che vuole un operatore con risorsa umana, `test-fn-get-user-profile-guc-aware`
+   che usava l'utente 1).
+
+**Le prove dei due changeSet.** SQL estratto dallo YAML, in transazione
+ritirata su `zeroerp_ci` **da owner** (`db/internal.ci.env`): `plpgsql_check`
+pulito su entrambi; `-08` costruisce super admin (✅ `fn_is_super_admin`, zero
+righe in `user_emittenti_fiscali`) e operatore semplice. ⚠️ Da owner la RLS non
+c'è, quindi il verso RLS si è misurato così: per `-07` l'espressione nuova
+eseguita come `zeroerp_app` sotto il secondo operatore; per `-08` una copia della
+funzione in `pg_temp` (sostituzione **meccanica** del nome di schema sull'SQL
+estratto) e il file dell'albero girato come `zeroerp_app` — **12/12 su
+`zeroerp_ci` e 12/12 su dbdev**. La prova vera resta la corsa dopo l'apply.
+
+⚠️ **Una misura falsa, e va scritta**: la prima verifica di `-08` dava il super
+admin **non** super admin. Era la prova: `fn_is_super_admin` è `STABLE` e,
+chiamata nella **stessa istruzione** del builder, legge la snapshot di prima.
+In un'istruzione separata risponde `true`.
+
+#### L'operatore umano e la famiglia `RIS_UMANA`
+
+| File | Com'era | Com'è | zeroerp_ci | dbdev |
+| ---- | ------- | ----- | ---------- | ----- |
+| `script/test-fn-get-soggetto-dati-and-user-profile` | «il primo operatore con risorsa umana attiva», e il t.12 pescava «un soggetto senza dati societari» | operatore umano costruito; il t.12 usa la **sua** persona fisica, che dati societari non ne ha per costruzione | ⏳ `-08` (26/26 via `pg_temp`) | ⏳ (26/26) |
+| `script/test-fn-get-user-profile-guc-aware` | l'**utente 1** («tid») e «un SR-CL libero» con due rami `skip` | operatore umano + due clienti costruiti; i due `skip` spariti; il t.4 ha preso il suo discriminante (`throws_ok(sql, NULL, NULL)` → frase) | ⏳ `-08` (4/4) | ⏳ (4/4) |
+| `anagrafiche/test-notify-cambio-reparto` | il soggetto del **gestore** (persona giuridica, dato di macchina) con un ruolo `RIS_UMANA` dato a mano | la risorsa umana dell'operatore costruito, **col suo ponte verso l'utente** — che è ciò che il NOTIFY porta | ⏳ `-08` (10/10) | ⏳ (10/10) |
+| `anagrafiche/test-risorse-umane` | il CF e la partita IVA di **questa macchina** | una persona fisica costruita dalle madri di produzione (`fn_crea_soggetto_pf` + `fn_crea_indirizzo_soggetto`, nella finestra differita) **senza** risorsa umana — inserirla è il caso del test; prima occorrenza, quindi sul posto e non in un builder | ✅ 8/8 | ✅ 8/8 |
+
+⚠️ **Una trappola che ha morso due volte in un'ora**, ed è scritta nel `COMMENT`
+del builder: ciò che il builder scrive si legge in un'**istruzione separata**.
+Un `JOIN` su `risorse_umane` nella stessa istruzione della chiamata faceva
+nascere la temp table **vuota** (snapshot di prima), come la
+`fn_is_super_admin` `STABLE` della prova.
+
+⛔ **Un `CHECK` che oggi non può parlare, su dodici tabelle** (trovato da
+`test-risorse-umane` t.6, la prima volta che il fixture arrivava fin lì da zero:
+su dbdev il file moriva prima, perché il soggetto «di macchina» la risorsa umana
+ce l'ha già). Il `CHECK` sulle date (`valido_al IS NULL OR valido_al >=
+valido_dal`, in alcune tabelle con anche `valido_dal IS NULL`) e la colonna
+`validita`, `GENERATED STORED` su `daterange(COALESCE(valido_dal,'-infinity'),
+COALESCE(valido_al,'infinity'), '[]')`, stanno insieme su **12 tabelle**
+(lettura di struttura: stesse due definizioni su tutte e dodici). PostgreSQL
+calcola la colonna generata **prima** dei `CHECK`, e il `daterange` con il limite
+inferiore oltre il superiore **solleva** (`22000`, «il limite inferiore
+dell'intervallo dev'essere minore o uguale…»). ⇒ In **ogni** caso in cui il
+`CHECK` fallirebbe — entrambe le date presenti e invertite — rifiuta prima il
+`daterange`; negli altri il `CHECK` passa. Oggi il `CHECK` non scatta mai.
+
+⚠️ **Questo non lo rende inutile** — nel primo resoconto l'avevo chiamato così,
+ed era sbagliato. È la regola **dichiarata**, leggibile nel catalogo e nella doc,
+e la sola difesa che resta se un giorno l'espressione di `validita` cambia o la
+colonna sparisce: allora torna a parlare lui. Toglierlo toglierebbe la regola
+scritta e lascerebbe quella implicita in un effetto collaterale del tipo.
+Il difetto vero è un altro: **cosa legge l'operatore** — la frase tecnica del
+`daterange`, non un errore di dominio. 🔵 Da decidere, non in questo cantiere:
+un guard `BEFORE ROW` sulle date (i `BEFORE` girano **prima** del calcolo delle
+colonne generate, linee-guida-sql §7b) con un codice di dominio registrato,
+tenendo il `CHECK` come ultima difesa. Il test ora asserisce la **regola**
+(respinta da uno dei due presìdi) e il `diag` registra chi parla, così regge
+anche il giorno in cui quel guard esisterà.
+
+#### La famiglia `pdp_id` — terzo builder, `20260923-09` `fn_pgtap_crea_pdp`
+
+`anagrafiche.pdp` è dato di macchina. Cinque file volevano un PDP: tre lo
+pescavano e morivano su «Non è stato fornito un valore per pdp_id»
+(`fn_subentro_cliente`), uno sulle precondizioni, e il quinto
+(`test-istanza-cliente-chain`) se lo **costruiva già a mano**, su uno stradario
+cablato (`stradario_id = 4`). Regola del 2: builder, e la copia di `chain` si
+ritira nello stesso giro.
+
+⚠️ **La trappola che il builder porta dentro**: un PDP ha due unicità,
+`uq_pdp_codice` e `uq_pdp_addr_utility` (un indirizzo, un PDP per utility). E
+`dbops.fn_pgtap_crea_indirizzo_dettaglio` è **idempotente sull'etichetta**, che
+entra **troncata a 10 caratteri** in `interno`: due PDP chiesti con etichette che
+iniziano uguali finirebbero sullo stesso indirizzo. ⇒ Il builder sceglie **un**
+numero libero e da lui deriva sia il codice (`PGTAPPDPnnnnnn`) sia l'etichetta
+corta dell'indirizzo (`PDPnnnnnn`, sta intera nei 10). Provato da owner: tre
+chiamate, tre codici e tre indirizzi distinti; guard su utility inesistente.
+
+| File | zeroerp_ci | dbdev |
+| ---- | ---------- | ----- |
+| `anagrafiche/test-clienti-sync-utility-pdp-policy` (+ soggetto costruito al posto della partita IVA di macchina) | ⏳ `-09` (14/14 via `pg_temp`) | ⏳ (14/14) |
+| `anagrafiche/test-simula-subentro` (PDP `GAS-PDP-0002` e due partite IVA di macchina) | ⏳ (26/26) | ⏳ (26/26) |
+| `script/test-fn-disdetta-cliente` (PDP e soggetto pescati) | ⏳ (12/12) | ⏳ (12/12) |
+| `anagrafiche/test-create-istanza-from-pdp` (PDP pescato + soggetto `TST-PR-001` di macchina) | ⏳ (9/9) | ⏳ (9/9) |
+| `anagrafiche/test-istanza-cliente-chain` (copia a mano ritirata + due partite IVA di macchina) | ⏳ (26/26) | ⏳ (26/26) |
+
+⚠️ `chain` contava anche sulla finestra differita **di default** dopo la riga di
+contesto (il suo commento lo diceva: «non è qui, è più sotto»): con i builder
+che escono `IMMEDIATE` l'istanza base moriva sul guard dei satelliti. La finestra
+ora si riapre **dichiarandola**, come vuole la guida.
+
+#### I registri di fatturazione e l'utente fissato a `'1'`
+
+| File | Com'era | Com'è | zeroerp_ci | dbdev |
+| ---- | ------- | ----- | ---------- | ----- |
+| `anagrafiche/test-soggetti-titoli-iva` | fattura scritta a mano su mattoni pescati (registro con emittente `NULL` da zero); titolare del titolo = «il primo soggetto attivo», cioè da zero **l'azienda stessa** | titolare = il cliente del mondo, e la fattura la costruisce `fn_pgtap_crea_fattura` **sul suo BA** (terzo parametro): titolo e fattura parlano dello stesso cliente | ✅ 23/23 | ✅ 23/23 |
+| `anagrafiche/test-soggetti-titoli-iva-due-emittenti` (runner owner, dichiarato) | i due emittenti nascevano promuovendo a EF «i primi due soggetti attivi»; fattura come sopra | due emittenti da `fn_pgtap_crea_emittente`, titolare costruito, fattura dal builder | ✅ 5/5 da owner | ✅ 5/5 da owner |
+| `anagrafiche/test-stiva-movimenti-annullo-v1` | `SET LOCAL app.current_user_id = '1'` **sovrascriveva** il contesto appena aperto (su dbdev è il super admin, cioè il perimetro che vede tutto; in CI non esiste); titolari = «i primi due soggetti»; il t.3 «costruito, non cercato» pescava «la prima fattura» | sovrascrittura tolta; due clienti costruiti; fattura costruita sul BA del titolare del titolo 2. Il t.11 (la prova del `SECURITY DEFINER`) gira davvero, non nel ramo `skip` | ✅ 12/12 | ✅ 12/12 |
+
+⚠️ **Due trappole del banco, entrambe di snapshot o di planner**: un
+`generate_series(1,2)` con `LATERAL dbops.fn_pgtap_crea_emittente()` dà **lo
+stesso** emittente due volte — un `LATERAL` che non dipende dalla riga il
+planner lo esegue una volta sola. Due emittenti = due istruzioni.
+
+### ⏳ Stato del lotto 2 al 2026-09-23 sera (mondo vuoto, 70 file)
+
+| | Mattina | Sera |
+| --- | --- | --- |
+| verdi | 16 | **22** |
+| verdi in attesa dell'apply di `-07`/`-08`/`-09` (provati con la copia in `pg_temp`) | — | **11** |
+| verde da owner, com'è dichiarato (il banco lo misura come app, a torto) | — | 1 |
+| ancora rossi | 54 | **36** |
+
+**Da applicare** (nessuno dipende dagli altri): `20260923-07` (codice libero
+del cliente fuori RLS), `-08` (`fn_pgtap_crea_operatore_umano`), `-09`
+(`fn_pgtap_crea_pdp`), `-10` (`fn_crea_risorsa_umana_v2`: profilo SUPER_ADMIN
+per `tipo`, non per id cablato). SQL estratto provato da owner su `zeroerp_ci`:
+`plpgsql_check` pulito sui tre; con i tre in transazione i presìdi trasversali
+`dbops/test-riferimenti-morti-v1` **9/9** e `script/test-rubinetto-primo-motivo-v1`
+**7/7**. Cancelli statici tutti verdi; la soglia di
+`SOGLIA_THROWS_SENZA_DISCRIMINANTE` scende **120 → 119** (il t.4 di
+`guc-aware`).
+
+**I 36 che restano**, per forma (fotografia del banco, da rileggere dopo
+l'apply):
+
+* **gestore** (`create-gestore-indirizzo-res`, `-res-domfisc`,
+  `create-soggetto-gestori`, `test_indirizzi_unique_res`): «il primo gestore» →
+  `fn_pgtap_crea_gestore`, già in servizio;
+* **cliente con istanza / BA** (`test-conti-bancari-istanza-cascata`,
+  `test-indirizzi-istanza-cascata`, `test-istanze-dati-precontrattuali`,
+  `test-trgfn-billing-account-guard-soggetto-coerenza-istanza-v1`,
+  `test-fn-get-evento-stato-corrente-cliente-v1`,
+  `test-guard-sorgente-polimorfa-testuale-v1`, i tre `available-actions`
+  offerta/preventivo): la ricetta di oggi;
+* **super admin e operatori «vergini»** (`test-fn-is-super-admin`,
+  `test-permessi-funzioni-risoluzione`, `test-fn-check-ultimo-super-admin-attivo`,
+  `test-fn-get-operatore-detail`, `test-fn-get-profili-accesso-applicabili`,
+  `test-billing-account-auto-link-ef`): `fn_pgtap_crea_operatore_umano` e
+  `fn_pgtap_crea_emittente_operatore`;
+* **pool di utenti e ruoli CL liberi** (`test-fn-sync-auth-user-is-active-or`,
+  `test-identita-digitali-unique-multi-veste`, `test-sync-auth-user-is-active-multi-role`);
+* **contatti/indirizzi obbligatori** (`test-fn-crea-utente-tecnico`,
+  `test-identita-tecnica`, `test-identita-digitali-guard-coerenza`) e **dati di
+  macchina** (`test-contatti-soggetto-cliente`, CF `TTNMHL…`);
+* **casi singoli**: `test-catasto-unita-immobiliare` (colonna
+  `istanza_utility_id` che non esiste più: il test è rimasto indietro rispetto al
+  refactor del catasto), `test-indirizzi-fallback` (tipo di ritorno di una vista
+  cambiato), `test-conto-incasso-un-solo-soggetto` (filiale →
+  `fn_pgtap_crea_filiale_bancaria`), `test-categorie-clienti-listini-v1`,
+  `test-seed-stati-doc-ordini-evaso-v1`, `test-capability-annulla-…`,
+  `test-fn-raise-primo-motivo-se-presente-v1` t.15, `test-search-soggetti-universale`,
+  `test-vw-giornale-entita`, `test-fn-available-actions-pdf-v1`,
+  `test-fn-available-actions-ordine-v2`.
+
+✅ **Corretto con `20260923-10`** (Tid, 23-09: «va corretta con codice
+giusto»): `anagrafiche.fn_crea_risorsa_umana_v2` legava il super admin al
+profilo con l'**id cablato `9100`** — vero solo perché il seed porta l'id
+esplicito, ed era l'unico caso in `pg_proc` (cercato sul `prosrc`).
+`config.profili_accesso` non ha `codice_interno` e `codice` non ha lock ⇒ §6d
+punto 1: la chiave stabile è l'enum `tipo = 'SUPER_ADMIN'`, la stessa di
+`fn_is_super_admin` e dei guard anti-lockout. Il modello però **non** vieta due
+profili di quel tipo, e scegliere il primo per id sarebbe un'ambiguità: la madre
+pretende **esattamente un** profilo attivo e altrimenti solleva
+`E_CONFIG_MANCANTE`, nel blocco dei guard, prima di ogni scrittura. Corpo dalla
+doc auto-gen (stesso md5 del `prosrc` su dbdev e su `zeroerp_ci`), firma con
+`%TYPE` che risolve agli stessi tipi (verificato: nessun overload). Provato con
+l'SQL estratto, da owner su `zeroerp_ci`: `plpgsql_check` pulito; super admin
+costruito → legato al profilo risolto; con un secondo profilo SA attivo →
+`E_CONFIG_MANCANTE (trovati 2)`; operatore semplice → nessun binding. Con
+`-07…-10` in transazione: riferimenti morti 9/9, rubinetto 7/7, e i sei pgTAP che
+toccano la funzione verdi (`test-fn-crea-operatore` 12/12,
+`test-fn-crea-risorsa-umana` 9/9, `test-risorse-umane-guard-identita-attiva-v1`
+8/8, `test-risorse-umane` 8/8, `test-fn-get-soggetto-dati-and-user-profile`
+26/26, `dbops/test-punti-canale-campo-v1` 14/14). `config.profili_accesso` non è
+in RLS e `zeroerp_app` ha `SELECT`: il percorso applicativo vede lo stesso
+profilo. 🔵 Se «un solo profilo SUPER_ADMIN» è una regola del modello, la sua
+sede è un indice unico parziale su `tipo`: decisione a parte.

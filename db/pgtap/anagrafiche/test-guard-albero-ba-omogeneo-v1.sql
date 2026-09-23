@@ -58,19 +58,26 @@ SELECT plan(12);
 -- ============================================================
 -- Fixture
 -- ============================================================
+-- ⛔ 2026-09-23: il file PESCAVA tre cose che su un database ricostruito dai
+--   changelog non ci sono — un secondo emittente attivo, un super admin, un
+--   soggetto «da un billing account esistente» — e moriva sul NOT NULL di
+--   `istanze_utilities.soggetto_id`. Ora le tre cose si COSTRUISCONO.
+--
+-- Il cliente: quello del mondo, legato all'azienda di chi agisce (contesto
+-- aperto sopra: il BB riusa la sua azienda). Le quattro istanze qui sotto
+-- sono sue.
+CREATE TEMP TABLE _t_mondo ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('P1 albero');
+
 -- L'emittente dell'operatore di contesto (quello su cui i BA nascono) e un
--- SECONDO emittente attivo, diverso: senza il secondo non c'e' albero misto da
--- costruire, e il file lo dichiara nella precondizione invece di fingere.
+-- SECONDO emittente, costruito: senza il secondo non c'e' albero misto.
+-- ⭐ Nato DOPO il primo, non e' mai il gestore globale (la riga di default la
+--   scrive il bootstrap sul PRIMO emittente dell'installazione): il ramo
+--   `skip` del test 5, che copriva proprio quel caso, e' sparito.
 CREATE TEMP TABLE _t_ef ON COMMIT DROP AS
-SELECT (script.fn_get_emittenti_scope_sr_ids(
-          NULLIF(current_setting('app.current_user_id', true), '')::integer))[1] AS ef_mio,
-       (SELECT ef.soggetto_ruolo_id
-          FROM anagrafiche.emittenti_fiscali ef
-         WHERE ef.attivo
-           AND ef.soggetto_ruolo_id <> (script.fn_get_emittenti_scope_sr_ids(
-                 NULLIF(current_setting('app.current_user_id', true), '')::integer))[1]
-         ORDER BY ef.soggetto_ruolo_id
-         LIMIT 1) AS ef_altro;
+SELECT m.emittente_soggetto_ruolo_id AS ef_mio,
+       (SELECT e.soggetto_ruolo_id FROM dbops.fn_pgtap_crea_emittente() e) AS ef_altro
+  FROM _t_mondo m;
 
 -- ⭐ Il SUPER ADMIN. Le asserzioni 2-7 girano nel SUO contesto, e non e' una
 --   comodita': dopo aver spostato un BA sull'altro emittente, l'operatore non
@@ -80,27 +87,30 @@ SELECT (script.fn_get_emittenti_scope_sr_ids(
 --   - ogni UPDATE successivo su quel BA tocca ZERO righe, in silenzio.
 --   E' esattamente §11.1: l'albero misto e' costruibile SOLO da chi vede
 --   entrambi i rami. Provarlo da operatore misura un'altra cosa.
+-- ⛔ Si costruisce (2026-09-23), e SENZA azienda: un super admin e'
+--   multi-emittente per modello (quello di dbdev non ha righe in
+--   config.user_emittenti_fiscali). Non e' un dettaglio, e lo ha detto il
+--   t.10: un BA senza mapping non ricade subito sul gestore globale —
+--   script.fn_get_ba_emittente_sr_id prima chiede l'emittente di CHI AGISCE, e
+--   solo dopo il default. Un super admin costruito come utente tecnico (con la
+--   sua azienda) spostava il ripiego, e l'albero si spaccava un passo prima
+--   della scena del movimento 4. E l'azienda non gli si toglie dopo: il guard
+--   di user_emittenti_fiscali lo ammette solo disattivando l'utente.
 CREATE TEMP TABLE _t_sa ON COMMIT DROP AS
-SELECT (SELECT idg.auth_user_id
-          FROM anagrafiche.identita_digitali idg
-         WHERE idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-           AND idg.attivo
-           AND script.fn_is_super_admin(idg.auth_user_id)
-         ORDER BY idg.auth_user_id
-         LIMIT 1) AS auth_user_id;
+SELECT ou.auth_user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('P1 albero', p_super_admin := true) ou;
 
--- Un soggetto raggiungibile, con i riferimenti per creare BA.
 CREATE TEMP TABLE _t_ref ON COMMIT DROP AS
-SELECT s.id                    AS soggetto_id,
-       ba.soggetto_ruolo_id    AS soggetto_ruolo_id,
-       ba.utility_id           AS utility_id,
-       ba.categoria_cliente_id AS categoria_cliente_id
-  FROM anagrafiche.billing_account ba
-  JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
-  JOIN anagrafiche.soggetti s          ON s.id  = iu.soggetto_id
- WHERE ba.utility_id IS NOT NULL
- ORDER BY ba.id
- LIMIT 1;
+SELECT m.cliente_soggetto_id       AS soggetto_id,
+       m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+       m.utility_id,
+       (SELECT ba.categoria_cliente_id FROM anagrafiche.billing_account ba
+         WHERE ba.id = m.billing_account_id) AS categoria_cliente_id
+  FROM _t_mondo m;
+
+-- ⚠️ I builder escono IMMEDIATE, e le quattro istanze qui sotto sono una saga
+--   (ognuna pretende il suo BA): la finestra differita si riapre DICHIARANDOLA.
+SET CONSTRAINTS ALL DEFERRED;
 
 -- Quattro coppie istanza+BA sullo stesso soggetto, tutte senza parent.
 CREATE TEMP TABLE _t_ba (etichetta text, ba_id bigint) ON COMMIT DROP;
@@ -131,8 +141,10 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT ok(
     (SELECT ef_mio IS NOT NULL AND ef_altro IS NOT NULL AND ef_mio <> ef_altro FROM _t_ef)
     AND (SELECT count(*) FROM _t_ba) = 4
-    AND (SELECT auth_user_id FROM _t_sa) IS NOT NULL,
-    '0. PRECONDIZIONI: due emittenti distinti + quattro BA + un super admin'
+    AND script.fn_is_super_admin((SELECT auth_user_id FROM _t_sa))
+    AND NOT EXISTS (SELECT 1 FROM config.user_emittenti_fiscali uef
+                     WHERE uef.auth_user_id = (SELECT auth_user_id FROM _t_sa)),
+    '0. PRECONDIZIONI: due emittenti distinti + quattro BA + un super admin senza azienda assegnata'
 );
 
 -- ============================================================
@@ -212,17 +224,11 @@ UPDATE anagrafiche.billing_account
    SET parent_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre')
  WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio');
 
-SELECT CASE WHEN (SELECT ef_altro FROM _t_ef) IS DISTINCT FROM
-                 (SELECT emittente_soggetto_ruolo_id
-                    FROM anagrafiche.emittenti_fiscali_billing_account
-                   WHERE is_default)
-  THEN throws_like($$
-        DELETE FROM anagrafiche.emittenti_fiscali_billing_account
-         WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio')
-    $$, '%emittenti fiscali diversi%',
-        '5. * MOVIMENTO 3: cancellare il mapping fa ricadere sul gestore globale -> rifiutato')
-  ELSE skip('5. il gestore globale coincide con l''emittente dell''albero: il ripiego non cambia nulla', 1)
-END;
+SELECT throws_like($$
+    DELETE FROM anagrafiche.emittenti_fiscali_billing_account
+     WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio')
+$$, '%emittenti fiscali diversi%',
+    '5. * MOVIMENTO 3: cancellare il mapping fa ricadere sul gestore globale -> rifiutato');
 
 -- 6) Due alberi SEPARATI, stesso soggetto, emittenti diversi: LEGITTIMO (§3.1).
 --    E' la regola sbagliata che assomiglia a quella giusta: cio' che si vieta

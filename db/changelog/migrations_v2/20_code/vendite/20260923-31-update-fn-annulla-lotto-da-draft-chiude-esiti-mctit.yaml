@@ -1,0 +1,317 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ L'ANNULLO CHIUDE ANCHE GLI ESITI: un lotto annullato e' VUOTO.
+#   Brief: brief-db-annullamento-chiude-la-vita §9.4 (decisione di Tid, 2026-09-23:
+#   «il lotto si dovrebbe annullare solo se vuoto, in quanto tutte le attivita'
+#   o vengono risolte o riportate allo stato precedente»; gli esiti sono
+#   ATTIVITA', non storia).
+#
+# ── 🔴 IL BUCO ────────────────────────────────────────────────────
+#   L'annullo cancellava le fatture (fn_cleanup_fatture_by_ids), riportava
+#   indietro le attivita' e chiudeva i task run — e lasciava gli ESITI com'erano.
+#   Un lotto annullato con documenti in ERRORE restava fermo per la sede unica
+#   (vw_lotti_segnalazioni_summary), e se era COMPLETATO accendeva
+#   vw_lotti_chiusi_con_gruppi_in_errore: sette lotti al 22-09.
+#
+# ── ⭐ TUTTI GLI ESITI, NON SOLO QUELLI IN ERRORE ──────────────────
+#   L'annullo cancella TUTTE le fatture del giro. fn_escludi_documento_da_giro
+#   dice gia' perche' un esito COMPLETED rimasto non va: «direbbe e' andato bene
+#   su un documento che non ha piu' nessuna fattura». PENDING e RUNNING: il giro
+#   non esiste piu'. ⇒ Ogni esito non ancora ESCLUSO passa a ESCLUSO.
+#
+# ── ⭐ ESCLUSO, NON UNO STATO NUOVO ────────────────────────────────
+#   ESCLUSO dice gia' «questo documento e' uscito dal giro: chi, quando,
+#   perche'», con il motivo obbligatorio per CHECK
+#   (chk_fatturazione_lotti_esiti_uscita_parlante). L'annullo e' l'uscita di
+#   tutti i documenti in un colpo solo, con un motivo solo.
+#   uscita_quando e uscita_da NON si scrivono: li deriva
+#   trgfn_fatturazione_lotti_esiti_uscita dalla GUC. Scriverli sarebbe una
+#   seconda sede della stessa regola.
+#   errore_codice / errore_messaggio restano: sono il perche' del fallimento, e
+#   il CHECK errore_parlante vincola solo le righe in ERRORE.
+#
+# ── ⚠️ NON SI CHIAMA fn_escludi_documento_da_giro IN UN CICLO ────────
+#   Quella e' il verbo per UN documento: la sua check ammette solo esiti in
+#   ERRORE, cancella le fatture di quel documento e rimette in PENDING i
+#   trascinati perche' il giro riparta. Qui le fatture sono gia' cancellate e
+#   nessun giro riparte. Il pezzo comune (ESCLUSO + motivo, timbro dal trigger)
+#   sta gia' in un posto solo: il CHECK e il trigger.
+#
+# ── ⚠️ LA SORELLA NON LO FA, ED E' GIUSTO ─────────────────────────
+#   L'intestazione invoca la simmetria con fn_riporta_lotto_a_draft. Qui le due
+#   divergono apposta: la sorella tiene il lotto VIVO (torna in DRAFT e rifara'
+#   il giro, che riscrive gli esiti: «un tentativo successivo sovrascrive»), e
+#   finche' e' in gioco il lotto trattiene i suoi documenti
+#   (vw_documenti_trattenuti_da_lotto). L'annullo chiude il lotto per sempre:
+#   non c'e' un giro dopo che riscriva niente.
+#
+# ── IL GIORNALE ───────────────────────────────────────────────────
+#   Una riga `I` (fn_log_pipeline_fase, fase ANNULLO_LOTTO) con il numero di
+#   documenti usciti: e' quello che fn_escludi_documento_da_giro fa per il
+#   singolo documento dal 09-09, e per la stessa ragione — un fatto voluto che
+#   il giornale non registra e' cio' che un giornale non deve fare. Solo se
+#   qualcosa e' uscito: «zero documenti usciti» e' rumore.
+#
+# ── ⛔ LA FIRMA NON CAMBIA ─────────────────────────────────────────
+#   RETURNS TABLE a cinque colonne, lette dal backend PER POSIZIONE
+#   (pipeline_repository.annulla_lotto_da_draft). Una sesta vorrebbe dire DROP e
+#   una ricaduta BE; il conteggio va nel giornale.
+#   p_lotto_id passa da `bigint` a `vendite.fatturazione_lotti.id%TYPE`
+#   (linee-guida-sql §5b): stesso tipo risolto, CREATE OR REPLACE lecito.
+#   SECURITY INVOKER reso esplicito: era gia' il default.
+#
+# ⭐ Il corpo e' quello della doc auto-gen (oggetto vivo), modificato in tre
+#   punti: la SELECT del lock_batch_id legge anche il codice; il blocco degli
+#   esiti dopo i task run; la riga di giornale dopo l'UPDATE del lotto.
+#
+# Verifica: db/pgtap/vendite/test-annullamento-chiude-la-vita-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260923-31-update-fn-annulla-lotto-da-draft-chiude-esiti-mctit.yaml
+
+  - changeSet:
+      id: 20260923-31-update-fn-annulla-lotto-da-draft-chiude-esiti
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fn_annulla_lotto_da_draft chiude anche gli esiti del lotto: ogni
+        riga di vendite.fatturazione_lotti_esiti non ancora ESCLUSO passa a ESCLUSO
+        con uscita_motivo «Annullo del lotto <codice>» (timbro dal trigger), e una
+        riga I nel giornale dice quanti documenti sono usciti. Un lotto annullato
+        e' vuoto. Firma invariata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_annulla_lotto_da_draft'
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_esiti
+                columnName: uscita_motivo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer, annullati_task_run integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: rollback tecnico di un lotto in DRAFT — cancella le
+              --        fatture PRE-FISCALI (DRAFT/EMESSA), ripristina le
+              --        attivita' e CHIUDE il lotto portandolo ad ANNULLATA.
+              -- Perimetro (D-L pt.2 + D-T): vale per MASSIVO **e** GIORNALIERO.
+              --        Il vincolo al solo MASSIVO e' caduto quando D-T ha reso
+              --        lecita la transizione DRAFT->ANNULLATA per entrambi.
+              -- rev 2026-09-23 (brief-db-annullamento-chiude-la-vita §9.4):
+              --        l'annullo CHIUDE anche gli ESITI — un lotto annullato e'
+              --        VUOTO. Ogni esito non ancora ESCLUSO passa a ESCLUSO con
+              --        il motivo dell'annullo; il timbro lo mette il trigger.
+              --        ⚠️ Qui la sorella fn_riporta_lotto_a_draft NON va
+              --        imitata, ed e' voluto: lei tiene il lotto vivo e il giro
+              --        dopo riscrive gli esiti; l'annullo non ha un giro dopo.
+              -- rev 2026-09-04 (brief-residuo-fatturabili-e-bandiere-esito-parziale,
+              --        D4): l'annullo CHIUDE anche i task run del lotto, con
+              --        l'esito ANNULLATO. Prima non li nominava affatto, e un
+              --        lotto annullato continuava a comparire fra gli «errori
+              --        vivi» del cruscotto: la CTE task_err di
+              --        vw_dash_competenza_errori prende i run in ERRORE ancora
+              --        attivi e NON guarda lo stato del lotto.
+              --        ⭐ SIMMETRIA con la sorella fn_riporta_lotto_a_draft, che
+              --        fa gia' esattamente questo — stessa primitiva
+              --        (fn_cancel_lotto_task_run), stesso esito, stesso contatore
+              --        di ritorno. Due sorelle non possono comportarsi
+              --        diversamente sulla stessa cosa.
+              --        ⛔ E NON con `attivo = false`, che sembra la strada ovvia:
+              --        la SELECT di fn_resolve_lotto_task_execution_mode non
+              --        filtra su `attivo`, quindi non basterebbe — e' la sorella
+              --        stessa a dirlo nel proprio corpo. Inoltre `attivo` risponde
+              --        gia' a «questo e' il tentativo valido»: caricarlo anche di
+              --        «il lotto non e' piu' in lavorazione» sono due domande su
+              --        un flag solo, e il giorno che dissentono non c'e' scritto
+              --        da nessuna parte quale vince.
+              --        ⚠️ La vista non si tocca: i run cadono da soli, PER ESITO.
+              -- rev 2026-08-04: le precondizioni NON si scrivono piu' qui.
+              --        Arrivano da script.fn_check_lotto_annullabile, la stessa
+              --        che alimenta enabled/reasons di
+              --        script.fn_available_actions_lotto. Il pulsante e la
+              --        funzione non possono piu' divergere.
+              DECLARE
+                  v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_lotto_codice         vendite.fatturazione_lotti.codice%TYPE;
+                  v_annullata_id         config.stati_doc_fiscale.id%TYPE;
+                  v_uscita_motivo        vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE;
+                  v_motivi               jsonb;
+                  v_fatture_ids          BIGINT[];
+                  v_updated_lotti        INTEGER := 0;
+                  v_updated_attivita     INTEGER := 0;
+                  v_deleted_fatture      INTEGER := 0;
+                  v_deleted_righe        INTEGER := 0;
+                  v_annullati_task_run   INTEGER := 0;
+                  v_esiti_chiusi         INTEGER := 0;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- PRECONDIZIONI — sede unica. Il check verifica anche
+                  -- l'esistenza del lotto (E_LOTTO_NON_TROVATO) e solleva
+                  -- il codice del PRIMO motivo; il context porta l'elenco
+                  -- completo, cosi' il BE puo' mostrarli tutti.
+                  v_motivi := script.fn_check_lotto_annullabile(p_lotto_id);
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_annulla_lotto_da_draft',
+                          v_motivi -> 0 ->> 'codice',
+                          jsonb_build_object('lotto_id', p_lotto_id, 'motivi', v_motivi),
+                          NULL::uuid,
+                          v_motivi -> 0 ->> 'dettaglio');
+                  END IF;
+
+                  -- rev 2026-09-23: anche il codice, per il motivo d'uscita degli esiti.
+                  SELECT fl.lock_batch_id, fl.codice
+                    INTO v_lock_batch_id, v_lotto_codice
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
+                  IF v_annullata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'ANNULLATA'), NULL::uuid, 'stato ANNULLATA non configurato');
+                  END IF;
+
+                  SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
+                    FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = p_lotto_id;
+                  IF v_fatture_ids IS NULL THEN v_fatture_ids := ARRAY[]::BIGINT[]; END IF;
+
+                  -- ⚠️ Qui il lock_batch_id SI passa, ed e' corretto: il reset
+                  -- globale deve liberare anche le attivita' agganciate al lotto
+                  -- che non sono mai diventate riga. E' il per-fattura che deve
+                  -- passare NULL (C-22).
+                  SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                    FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
+
+                  -- 🔴 D4 — la bandiera si abbassa QUI, e per ESITO.
+                  -- Stessa forma della sorella fn_riporta_lotto_a_draft: si
+                  -- chiudono le corse di TUTTI gli step, non solo di quello
+                  -- fallito. La pulizia qui sopra ha cancellato tutto cio' che
+                  -- quelle corse avevano prodotto — nessuna deve piu' avere voce
+                  -- sul cruscotto, e nemmeno sul giro successivo.
+                  -- ⚠️ `task_stato IS DISTINCT FROM 'ANNULLATO'` tiene fuori le
+                  --    corse gia' chiuse cosi': la funzione resta idempotente, e
+                  --    il contatore dice quante ne ha chiuse DAVVERO questa
+                  --    chiamata, non quante ce n'erano.
+                  WITH da_annullare AS (
+                    SELECT r.id
+                      FROM vendite.fatturazione_lotti_task_runs r
+                     WHERE r.lotto_id = p_lotto_id
+                       AND r.attivo IS TRUE
+                       AND r.task_stato IS DISTINCT FROM 'ANNULLATO'
+                  ), annullati AS (
+                    SELECT vendite.fn_cancel_lotto_task_run(
+                             d.id,
+                             jsonb_build_object('motivo', 'annullo_lotto', 'lotto_id', p_lotto_id)
+                           )
+                      FROM da_annullare d
+                  )
+                  SELECT count(*)::INTEGER INTO v_annullati_task_run FROM annullati;
+
+                  -- ⭐ rev 2026-09-23 — GLI ESITI ESCONO TUTTI. Un lotto annullato
+                  --   e' vuoto: la pulizia qui sopra ha cancellato ogni fattura del
+                  --   giro, quindi nessun esito puo' piu' dire com'e' andato un
+                  --   documento in QUESTO lotto — nemmeno COMPLETED, che direbbe
+                  --   «e' andato bene» su un documento senza fattura.
+                  -- ⭐ ESCLUSO, lo stato che dice gia' «uscito dal giro», con il
+                  --   motivo obbligatorio per CHECK. uscita_quando/uscita_da li
+                  --   scrive trgfn_fatturazione_lotti_esiti_uscita: non qui.
+                  -- ⚠️ `<> 'ESCLUSO'`: chi era gia' uscito tiene il SUO motivo e il
+                  --    suo timbro (e il trigger non li toccherebbe comunque), e la
+                  --    funzione resta idempotente.
+                  v_uscita_motivo := format('Annullo del lotto %s', v_lotto_codice);
+
+                  UPDATE vendite.fatturazione_lotti_esiti e
+                     SET stato_esecuzione = 'ESCLUSO',
+                         uscita_motivo    = v_uscita_motivo
+                   WHERE e.lotto_id = p_lotto_id
+                     AND e.stato_esecuzione <> 'ESCLUSO';
+                  GET DIAGNOSTICS v_esiti_chiusi = ROW_COUNT;
+
+                  -- ⛔ `stato_lotto` NON SI TOCCA (rev 2026-09-07). Fino a oggi questa riga
+                  --   ci scriveva 'COMPLETATO', e sono TRE regole infrante in una:
+                  --     1. la macchina a stati la vieta — fn_set_fatturazione_lotto_stato
+                  --        rifiuta ERRORE -> COMPLETATO («da ERRORE solo IN_ESECUZIONE») —
+                  --        e questo UPDATE diretto le passava dietro, quindi il guardiano
+                  --        non vedeva nemmeno la transizione;
+                  --     2. la sorella fn_riporta_lotto_a_draft dichiara nel proprio corpo
+                  --        «stato_lotto NON si tocca — ha una macchina a stati cablata», e
+                  --        l'intestazione qui sopra invoca la SIMMETRIA con lei come
+                  --        principio: «due sorelle non possono comportarsi diversamente
+                  --        sulla stessa cosa»;
+                  --     3. e' la stessa cosa che l'intestazione rifiuta due paragrafi sopra
+                  --        per `attivo`: DUE DOMANDE SU UN FLAG SOLO. `stato_lotto` risponde
+                  --        a «com'e' andata l'elaborazione»; che il lotto non sia piu' in
+                  --        lavorazione lo dicono gia' `stato_operativo` e
+                  --        `stato_doc_fiscale_id`, che questa riga scrive.
+                  -- ⭐ E non serviva a niente: il problema degli «errori vivi» lo risolve la
+                  --   chiusura dei task run PER ESITO (rev 2026-09-04), e
+                  --   vw_dash_competenza_errori `stato_lotto` lo PROIETTA soltanto, non ci
+                  --   filtra. Verificato: nessun cancello pretende COMPLETATO su un annullato.
+                  -- ⚠️ E falsificava in ENTRAMBI i casi, non solo sul lotto fallito: uno
+                  --   annullato mentre era IN_ESECUZIONE veniva marcato COMPLETATO, cioe'
+                  --   «la corsa e' finita bene» di un giro interrotto. Effetto misurato il
+                  --   2026-09-07: LTF-0009900, annullato dopo un fallimento,
+                  --   risultava COMPLETATO con una segnalazione critica viva, e accendeva
+                  --   vw_lotti_chiusi_con_gruppi_in_errore — un presidio che dichiara di
+                  --   dover poter restare vuoto.
+                  -- Brief: brief-db-esito-gruppo-lotto §22-§24.
+                  UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+                  GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                  -- ⭐ rev 2026-09-23 — L'USCITA SI RACCONTA NEL GIORNALE, come fa
+                  --   fn_escludi_documento_da_giro per il singolo documento. Dopo
+                  --   l'UPDATE: la riga porta lo stato del lotto chiuso. `I`: e' un
+                  --   fatto, non un allarme. Il motivo nel MESSAGGIO, non solo in
+                  --   meta: chi legge il giornale legge il messaggio.
+                  IF v_esiti_chiusi > 0 THEN
+                      PERFORM vendite.fn_log_pipeline_fase(
+                          p_lotto_id,
+                          v_annullata_id,
+                          'ANNULLO_LOTTO',
+                          'I'::char,
+                          format('%s: %s documenti usciti dal giro', v_uscita_motivo, v_esiti_chiusi),
+                          jsonb_build_object('esiti_chiusi',  v_esiti_chiusi,
+                                             'uscita_motivo', v_uscita_motivo));
+                  END IF;
+
+                  RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe, v_annullati_task_run;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_lotto_da_draft(bigint)
+              IS 'Annullo di un lotto in DRAFT (MASSIVO e GIORNALIERO): precondizioni da script.fn_check_lotto_annullabile, cancella le fatture pre-fiscali e ripristina le attivita'' (fn_cleanup_fatture_by_ids), chiude i task run con esito ANNULLATO, porta il lotto a CHIUSO/ANNULLATA senza toccare stato_lotto (rev 2026-09-07). ⭐ rev 2026-09-23: chiude anche gli ESITI — ogni riga di vendite.fatturazione_lotti_esiti non ancora ESCLUSO passa a ESCLUSO con uscita_motivo «Annullo del lotto <codice>» (timbro dal trigger) — e scrive una riga I nel giornale (fase ANNULLO_LOTTO) col numero di documenti usciti. Un lotto annullato e'' VUOTO: nessun controllo deve escluderlo. ⚠️ La sorella fn_riporta_lotto_a_draft non chiude gli esiti, ed e'' voluto: il lotto resta vivo e il giro dopo li riscrive. Firma invariata (il backend legge le cinque colonne per posizione). Brief: brief-db-annullamento-chiude-la-vita §9.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Tornare indietro vuol dire lasciare di nuovo gli esiti di un lotto
+              --   annullato come se il giro fosse vivo. Manovra di emergenza: il
+              --   corpo va ripreso dalla doc auto-gen alla revisione precedente
+              --   (20260907-08) e riapplicato a mano.
+              SELECT 1;

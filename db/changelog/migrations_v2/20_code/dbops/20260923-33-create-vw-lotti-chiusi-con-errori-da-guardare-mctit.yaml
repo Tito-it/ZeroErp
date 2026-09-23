@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL CONTROLLO «LOTTO CHIUSO CON DOCUMENTI IN ERRORE» ENTRA A CATALOGO.
+#   Brief: brief-db-annullamento-chiude-la-vita §2.1, §8.3, §9.6.
+#
+# ── 🔴 PERCHE' ────────────────────────────────────────────────────
+#   vendite.vw_lotti_chiusi_con_gruppi_in_errore si chiama PRESIDIO nel proprio
+#   COMMENT e non aveva una riga in dbops.presidi: fuori dal digest, dal
+#   pallino e da ogni conteggio. Il 2026-09-12 ha preso LTF-0010972 — il caso
+#   esatto per cui era nata — e non l'ha sentito nessuno per dieci giorni.
+#
+# ── ⭐ PERCHE' UN LETTORE IN dbops, E NON LA VISTA DI vendite A CATALOGO ──
+#   test-catalogo-presidi-v1, test 2 (verso 1): ogni vista di OGNI schema che
+#   compare nella colonna `vista` deve avere la sua riga. Iscrivere una vista di
+#   vendite porterebbe lo schema intero nel perimetro — decine di viste da
+#   dichiarare, un cantiere a se'. E' la stessa ragione per cui il gemello
+#   dbops.vw_lotti_fermi_da_guardare e' un lettore della sede di vendite.
+#   ⇒ Qui nessuna regola e' ricalcolata: la contraddizione la definisce la vista
+#   di vendite, e questa la LEGGE aggiungendo cio' che serve a chi la apre dal
+#   digest (stato fiscale, emittente).
+#   ⚠️ Nome diverso dalla sorgente apposta: due viste omonime in due schemi si
+#   distinguerebbero solo per search_path.
+#
+# ── NATURA: ZERO ─────────────────────────────────────────────────
+#   Deve restare VUOTA: dal 20260923-31 un lotto annullato non ha piu' esiti in
+#   ERRORE, e il pregresso e' allineato (80_data 20260923-34). Dal 20260923-30
+#   COMPLETATO non si scrive su un lotto fermo; resta aperta la porta
+#   dell'esito (ERRORE scritto su un lotto gia' COMPLETATO), ed e' quella che
+#   questo presidio sorveglia.
+#   ⚠️ Nessuna soglia di tempo (a differenza del gemello): non e' un lotto che
+#   qualcuno sta lavorando, e' un giro gia' concluso che dice il falso.
+#
+# ── PERIMETRO: DEFINER ───────────────────────────────────────────
+#   vendite.fatturazione_lotti ha la RLS e le viste sono security_invoker: da
+#   una sessione senza GUC la vista risponde zero PER CECITA'. Il digest conta
+#   da proprietario con dbops.fn_conta_presidio; una persona legge col proprio
+#   perimetro. Stessa forma del gemello.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260923-33-create-vw-lotti-chiusi-con-errori-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20260923-33-create-vw-lotti-chiusi-con-errori-da-guardare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_lotti_chiusi_con_errori_da_guardare: lettore a catalogo di
+        vendite.vw_lotti_chiusi_con_gruppi_in_errore (un lotto COMPLETATO con
+        documenti in ERRORE), piu' stato fiscale ed emittente. DEVE restare vuota.
+        In dbops perche' una vista di vendite a catalogo porterebbe l'intero schema
+        nel perimetro del test 2 di test-catalogo-presidi-v1. Perimetro DEFINER.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_lotti_chiusi_con_gruppi_in_errore
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_lotti_fase
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_lotti_chiusi_con_errori_da_guardare
+              WITH (security_invoker = true) AS
+              SELECT c.lotto_id,
+                     c.lotto_codice,
+                     c.competenza_mese,
+                     c.stato_lotto,
+                     f.stato_codice_interno,
+                     c.emittente_soggetto_ruolo_id,
+                     ef.codice AS emittente_codice,
+                     c.gruppi_in_errore,
+                     c.primo_errore,
+                     c.ultimo_errore,
+                     c.codici_errore
+                FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore c
+                -- LEFT: lo stato fiscale e l'emittente sono contorno per chi legge;
+                -- una riga della sorgente non deve mai sparire per colpa loro.
+                LEFT JOIN vendite.vw_lotti_fase f
+                       ON f.lotto_id = c.lotto_id
+                LEFT JOIN anagrafiche.emittenti_fiscali ef
+                       ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id;
+
+              COMMENT ON VIEW dbops.vw_lotti_chiusi_con_errori_da_guardare IS
+                  'PRESIDIO: i lotti chiusi COMPLETATO che contengono documenti in ERRORE. '
+                  'DEVE restare VUOTA. ⭐ E'' un LETTORE: la contraddizione la definisce '
+                  'vendite.vw_lotti_chiusi_con_gruppi_in_errore, qui si aggiungono solo lo stato '
+                  'fiscale (vw_lotti_fase) e l''emittente, per chi arriva dal digest. ⭐ Le due '
+                  'porte: COMPLETATO su un lotto fermo lo rifiuta il database '
+                  '(trg_fatturazione_lotti_a10_guard_completato_upd, 2026-09-23); resta aperta '
+                  'quella dell''ESITO — un documento marcato ERRORE su un lotto gia'' COMPLETATO — '
+                  'ed e'' cio'' che questa riga sorveglia. Un lotto ANNULLATO non compare perche'' '
+                  'l''annullo gli chiude gli esiti (fn_annulla_lotto_da_draft, rev 2026-09-23), non '
+                  'perche'' qualcuno lo filtri. ⚠️ In dbops e non in vendite: iscrivere a catalogo '
+                  'una vista di vendite porterebbe l''intero schema nel perimetro di '
+                  'test-catalogo-presidi-v1 (test 2). ⛔ Perimetro DEFINER a catalogo: le tabelle '
+                  'sotto hanno la RLS e le viste sono security_invoker — da una sessione senza GUC '
+                  'risponde zero PER CECITA'', il digest conta da proprietario con '
+                  'fn_conta_presidio, una persona legge col proprio perimetro. Brief: '
+                  'brief-db-annullamento-chiude-la-vita §9.6.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_lotti_chiusi_con_errori_da_guardare TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_lotti_chiusi_con_errori_da_guardare;

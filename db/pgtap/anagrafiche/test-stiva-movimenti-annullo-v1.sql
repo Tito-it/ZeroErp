@@ -53,8 +53,13 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(12);
 
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- ⛔ 2026-09-23: qui c'erano `SET LOCAL app.ruolo_applicativo = 'OPERATORE'` e
+--   `SET LOCAL app.current_user_id = '1'`, che SOVRASCRIVEVANO il contesto
+--   appena aperto dalla riga sopra. L'utente 1 su dbdev e' il super admin —
+--   il perimetro che vede tutto, cioe' il contrario di cio' che un test RLS
+--   vuole — e su un database ricostruito dai changelog non esiste: la fixture
+--   moriva su «la nuova riga viola la regola di sicurezza». Veste e utente li
+--   mette gia' la riga di contesto.
 
 -- ============================================================
 -- 0) Oggetti presenti
@@ -82,6 +87,14 @@ SELECT ok(
 --   ⭐ Due titoli e non uno: il n. 5 verifica proprio il collegamento
 --   incrociato, e con un titolo solo non sarebbe costruibile.
 -- ============================================================
+-- I due clienti titolari, in due istruzioni: il BA del secondo serve anche
+-- alla fattura del n. 3.
+CREATE TEMP TABLE tmp_cli AS
+SELECT 1 AS n, c.* FROM dbops.fn_pgtap_crea_cliente_ba('annullo titolo 1') c;
+
+INSERT INTO tmp_cli
+SELECT 2, c.* FROM dbops.fn_pgtap_crea_cliente_ba('annullo titolo 2') c;
+
 CREATE TEMP TABLE tmp_ref AS
 SELECT
   script.fn_pgtap_emittente_operatore()                                      AS emittente_fiscale_id,
@@ -90,8 +103,11 @@ SELECT
   --   emittente e soggetto con validita' sovrapposte — giustamente. E il caso
   --   peggiore del n. 5 e' proprio questo: un annullo che decurta il plafond
   --   di UN ALTRO CLIENTE.
-  (SELECT s.id FROM anagrafiche.soggetti s ORDER BY s.id LIMIT 1)          AS soggetto_1_id,
-  (SELECT s.id FROM anagrafiche.soggetti s ORDER BY s.id OFFSET 1 LIMIT 1) AS soggetto_2_id,
+  --   ⛔ 2026-09-23: erano «i primi due soggetti» del database, che su uno
+  --   ricostruito sono l'azienda del contesto e poco altro. Si costruiscono:
+  --   due clienti dell'azienda di chi agisce (tmp_cli, sopra).
+  (SELECT c.soggetto_id FROM tmp_cli c WHERE c.n = 1)                       AS soggetto_1_id,
+  (SELECT c.soggetto_id FROM tmp_cli c WHERE c.n = 2)                       AS soggetto_2_id,
   (SELECT tt.id FROM config.tipi_titolo_iva tt WHERE tt.attivo IS TRUE ORDER BY tt.id LIMIT 1) AS tipo_titolo_iva_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id;
 
@@ -163,8 +179,14 @@ SELECT throws_ok(
 --    ⚠️ Costruito, non cercato: serve una riga con fattura_id valorizzato, che
 --    il CHECK pretende su ogni tipo diverso da FORZATURA.
 -- ============================================================
+-- ⛔ 2026-09-23: «costruito, non cercato» valeva per il movimento ma non per
+--   la fattura, che era «la prima» del database: da zero non ce n'e' nessuna.
+--   Si costruisce, sul BA del cliente del titolo 2 — la fattura e' sua.
 CREATE TEMP TABLE tmp_fatt AS
-SELECT f.id FROM vendite.fatture f ORDER BY f.id LIMIT 1;
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+           'annullo titolo', 'DRAFT',
+           (SELECT c.billing_account_id FROM tmp_cli c WHERE c.n = 2)) f;
 
 CREATE TEMP TABLE tmp_mov_fatt AS
 WITH ins AS (
