@@ -207,8 +207,10 @@ class RigheApiTests(_Base):
     @patch(f"{_SVC}.list_righe")
     def test_righe_lista_e_riga_crud(self, mock_list, mock_crea, mock_upd, mock_del, _auth):
         mock_list.return_value = {"count": 0, "results": []}
-        self.client.get("/api/v1/magazzino/inventari/7/righe/?limit=5&order_by=articolo_codice&order_dir=asc")
-        mock_list.assert_called_once_with("inventari", 7, order_by="articolo_codice", order_dir="asc", limit=5, offset=0)
+        self.client.get("/api/v1/magazzino/inventari/7/righe/?limit=5&order_by=articolo_codice&order_dir=asc&search=vite")
+        mock_list.assert_called_once_with(
+            "inventari", 7, search="vite", order_by="articolo_codice", order_dir="asc", limit=5, offset=0,
+        )
         mock_crea.return_value = {"id": 11}
         payload = {"articolo_id": "a", "qta_contata": "10"}
         self.client.post("/api/v1/magazzino/inventari/7/righe/", data=payload, **_JSON, **_KEY)

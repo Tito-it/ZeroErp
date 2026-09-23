@@ -62,7 +62,7 @@ class UiListaApiTests(JwtMockedApiTest):
         return_value=(_UserStub(), None),
     )
     @patch(
-        "apps.ui.api.views.UiService.get_lista_config",
+        "apps.ui.api.views.UiService.get_lista_config_per_video",
         return_value={
             "colonne": [{"codice": "ragione_sociale", "ordine": 1}],
             "ordinamento": [],

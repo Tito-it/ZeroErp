@@ -59,6 +59,7 @@ from apps.magazzino.db.anagrafiche_magazzino_repository import (
 from apps.magazzino.services import anagrafiche_magazzino_service as svc
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.api.openapi_params import param_ricerca_full
 
 # I codici delle liste a catalogo, in costanti di modulo: li leggono la lista,
 # l'export e il presidio di copertura del perimetro (che risolve un `Name`
@@ -69,16 +70,8 @@ _LISTA_MAGAZZINI = "magazzino.magazzini"
 _LISTA_UBICAZIONI = "magazzino.ubicazioni"
 _LISTA_LOTTI = "magazzino.lotti"
 
-_PARAM_SEARCH = OpenApiParameter(
-    name="search", type=str, location=OpenApiParameter.QUERY, required=False,
-    description="Ricerca libera (min 3) su codice e descrizione.",
-)
-# I lotti non hanno una descrizione: la ricerca e' sul solo codice, e lo
-# schema lo dice (una frase copiata direbbe un campo che non c'e').
-_PARAM_SEARCH_CODICE = OpenApiParameter(
-    name="search", type=str, location=OpenApiParameter.QUERY, required=False,
-    description="Ricerca libera (min 3) sul codice.",
-)
+# Sotto soglia la view risponde 400 (`require_min_search_length`).
+_PARAM_SEARCH = param_ricerca_full(rifiuta_sotto_soglia=True)
 _PARAM_ATTIVO = OpenApiParameter(
     name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False,
     description="Assente = tutte, spente comprese; `true` = solo attive.",
@@ -280,7 +273,7 @@ class ApiLottiList(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_lotti_list",
-        parameters=[_PARAM_ARTICOLO, _PARAM_SEARCH_CODICE, _PARAM_ATTIVO, *params_lista(LOTTI_SORT_COLUMNS, "Senza: data_arrivo DESC.")],
+        parameters=[_PARAM_ARTICOLO, _PARAM_SEARCH, _PARAM_ATTIVO, *params_lista(LOTTI_SORT_COLUMNS, "Senza: data_arrivo DESC.")],
         responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: I lotti dell'articolo, paginati.
@@ -306,7 +299,7 @@ class ApiLottiExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_lotti_export",
-        parameters=[PARAM_FORMATO, _PARAM_ARTICOLO, _PARAM_SEARCH_CODICE, _PARAM_ATTIVO, *params_lista(LOTTI_SORT_COLUMNS, "")],
+        parameters=[PARAM_FORMATO, _PARAM_ARTICOLO, _PARAM_SEARCH, _PARAM_ATTIVO, *params_lista(LOTTI_SORT_COLUMNS, "")],
         responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file dei lotti dell'articolo.

@@ -79,7 +79,7 @@ class ApiListaConfigView(DomainAPIView):
     #    questo parametro direbbe «scegli un emittente» proprio dentro il
     #    drawer dell'emittente che l'operatore ha gia' aperto.
     def get(self, request: Request, codice: str) -> JsonResponse:
-        config = UiService().get_lista_config(
+        config = UiService().get_lista_config_per_video(
             request.user,
             codice,
             emittente_esplicito=perimetro_emittente.emittente_esplicito_da_query(

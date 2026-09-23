@@ -13,7 +13,13 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_clause
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
 
 
 # Whitelist colonne ammesse per ORDER BY.
@@ -31,18 +37,23 @@ _ORDER_COLS: dict[str, str] = {
 }
 
 # Colonne SELECT comuni a list e get.
+# ⛔ `*_codice` e' il `codice` (mutabile, dell'operatore), MAI il
+#    `codice_interno`: fino al 2026-09-23 era `COALESCE(x.codice_interno,
+#    x.codice)`, cioe' un codice interno sotto un nome che dice il contrario
+#    (linee-guida-sql §6c) — e la ricerca, che cerca su cio' che si mostra,
+#    sarebbe finita sul `codice_interno`, che non si usa per cercare (Tid).
 _SELECT_COLS = """
     trti.id,
     trti.tipo_ruolo_id,
-    COALESCE(tr.codice_interno, tr.codice) AS tipo_ruolo_codice,
+    tr.codice                              AS tipo_ruolo_codice,
     tr.descrizione                         AS tipo_ruolo_descrizione,
     trti.tipo_indirizzo_id,
-    COALESCE(ti.codice_interno, ti.codice) AS tipo_indirizzo_codice,
+    ti.codice                              AS tipo_indirizzo_codice,
     ti.descrizione                         AS tipo_indirizzo_descrizione,
     trti.obbligatorio,
     trti.fallback_tipo_indirizzo_id,
-    COALESCE(ti_fb.codice_interno, ti_fb.codice) AS fallback_codice,
-    ti_fb.descrizione                             AS fallback_descrizione,
+    ti_fb.codice                           AS fallback_codice,
+    ti_fb.descrizione                      AS fallback_descrizione,
     trti.attivo,
     trti.valido_dal,
     trti.valido_al,
@@ -51,6 +62,15 @@ _SELECT_COLS = """
     trti.user_insert,
     trti.user_update
 """
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+# ⭐ Le stesse espressioni che la `SELECT` proietta con quei nomi.
+_RICERCA = RicercaFull("config.tipi_ruolo_tipi_indirizzo", {
+    "tipo_ruolo_codice": "tr.codice",
+    "tipo_ruolo_descrizione": "tr.descrizione",
+    "tipo_indirizzo_codice": "ti.codice",
+    "tipo_indirizzo_descrizione": "ti.descrizione",
+})
 
 # FROM + JOIN comuni a list e get.
 _FROM_JOINS = """
@@ -102,13 +122,8 @@ class TipiRuoloTipiIndirizzoRepository:
         if tipo_indirizzo_id is not None:
             conditions.append("trti.tipo_indirizzo_id = %s")
             params.append(tipo_indirizzo_id)
-        if search:
-            conditions.append(
-                "(tr.codice ILIKE %s OR tr.descrizione ILIKE %s "
-                "OR ti.codice ILIKE %s OR ti.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like, like, like])
+        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -215,7 +230,7 @@ class TipiRuoloTipiIndirizzoRepository:
             cursor.execute(
                 """
                 SELECT trti.tipo_indirizzo_id,
-                       COALESCE(ti.codice_interno, ti.codice) AS codice,
+                       ti.codice AS codice,
                        ti.descrizione,
                        trti.fallback_tipo_indirizzo_id
                   FROM config.tipi_ruolo_tipi_indirizzo trti

@@ -34,6 +34,7 @@ Indice test eseguiti:
 10) DocumentoInternoDbTests.test_la_capability_segue_la_matrice_del_guard — R-1, 2026-09-23
 11) DocumentoInternoDbTests.test_registra_spento_col_motivo_nei_tre_casi — R-1, 2026-09-23
 12) DocumentoInternoDbTests.test_il_duplicato_di_posizione_ha_il_suo_codice — R-2, 2026-09-23
+13) DocumentoInternoDbTests.test_la_ricerca_trova_ogni_colonna_accesa — 2026-09-23
 """
 from __future__ import annotations
 
@@ -43,7 +44,11 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto, richiedi_ruolo_soggetto_a_rls
+from apps.core.tests.db_e2e import (
+    richiedi_db_provvisto,
+    richiedi_ruolo_soggetto_a_rls,
+    verifica_ricerca_colonna_per_colonna,
+)
 from apps.magazzino.db.magazzino_repository import (
     DOCUMENTI_SORT_COLUMNS,
     MOVIMENTI_SORT_COLUMNS,
@@ -524,5 +529,80 @@ class DocumentoInternoDbTests(unittest.TestCase):
             )
             self.assertEqual(
                 magazzino_service.get_documento("rettifiche", r["id"])["righe_count"], 2,
+            )
+        self._nel_mondo(_prova)
+
+    # 13. La ricerca libera delle testate e della disponibilita' (BB
+    #     `add_ricerca_full_condition`): per ogni colonna che il CATALOGO
+    #     accende, il valore di una riga costruita la trova
+    #     (`verifica_ricerca_colonna_per_colonna`). Testate, righe, piano,
+    #     registro e disponibilita' — otto liste — non hanno
+    #     `vista_sql`: questo e' il loro esercizio sul DB vero
+    #     (`test_ricerca_full_db` lo nomina).
+    def test_la_ricerca_trova_ogni_colonna_accesa(self):
+        def _prova(cur, m):
+            inv = self._inventario_confermato(m)
+            magazzino_service.registra_documento("inventari", inv["id"])
+            cur.execute("UPDATE magazzino.inventari SET descrizione = 'Conta ricdescinv' WHERE id = %s", [inv["id"]])
+            rett = magazzino_service.crea_documento("rettifiche", {"magazzino_id": m.mag_u})
+            cur.execute("SELECT id, codice, descrizione FROM magazzino.magazzini WHERE id IN (%s, %s)", [m.mag_a, m.mag_u])
+            mag = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+            cur.execute("SELECT codice, descrizione FROM catalogo.articoli WHERE id = %s::uuid", [m.art])
+            art_codice, art_descrizione = cur.fetchone()
+
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.inventari", inv["id"],
+                {"magazzino_codice": mag[m.mag_a][0], "magazzino_descrizione": mag[m.mag_a][1],
+                 "descrizione": "ricdescinv"},
+                lambda t: magazzino_service.list_documenti(
+                    "inventari", auth_user_id=m.uid, search=t, limit=100)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.rettifiche", rett["id"],
+                {"magazzino_codice": mag[m.mag_u][0], "magazzino_descrizione": mag[m.mag_u][1]},
+                lambda t: magazzino_service.list_documenti(
+                    "rettifiche", auth_user_id=m.uid, search=t, limit=100)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.disponibilita", f"{m.art}|{m.mag_a}",
+                {"articolo_codice": art_codice, "articolo_descrizione": art_descrizione,
+                 "magazzino_codice": mag[m.mag_a][0]},
+                lambda t: consultazione_service.list_disponibilita(
+                    auth_user_id=m.uid, search=t, limit=100)["results"],
+                chiave="chiave_riga",
+            )
+            articolo = {"articolo_codice": art_codice, "articolo_descrizione": art_descrizione}
+            riga_inv = magazzino_service.list_righe("inventari", inv["id"], limit=10)["results"][0]
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.inventario_righe", riga_inv["id"], articolo,
+                lambda t: magazzino_service.list_righe("inventari", inv["id"], search=t, limit=100)["results"],
+            )
+            riga_rett = magazzino_service.crea_riga(
+                "rettifiche", rett["id"], {"articolo_id": m.art, "qta_delta": -1, "motivo": "Caduta ricmotivo"},
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.rettifica_righe", riga_rett["id"], {**articolo, "motivo": "ricmotivo"},
+                lambda t: magazzino_service.list_righe("rettifiche", rett["id"], search=t, limit=100)["results"],
+            )
+            # Il piano si legge anche in bozza: un secondo inventario, non registrato.
+            bozza = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            magazzino_service.crea_riga("inventari", bozza["id"], {"articolo_id": m.art, "qta_contata": 3})
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.inventario_piano", f"{m.art}|||", articolo,
+                lambda t: magazzino_service.list_piano("inventari", bozza["id"], search=t, limit=100)["results"],
+                chiave="chiave_riga",
+            )
+            movimento = consultazione_service.list_movimenti(
+                auth_user_id=m.uid, inventario_id=inv["id"], limit=10)["results"][0]
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.movimenti", movimento["id"], articolo,
+                lambda t: consultazione_service.list_movimenti(
+                    auth_user_id=m.uid, inventario_id=inv["id"], search=t, limit=100)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.disponibilita_articoli", m.art,
+                {"articolo_codice": art_codice, "articolo_descrizione": art_descrizione},
+                lambda t: consultazione_service.list_disponibilita_articoli(search=t, limit=100)["results"],
+                chiave="chiave_riga",
             )
         self._nel_mondo(_prova)

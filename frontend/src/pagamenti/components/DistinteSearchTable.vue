@@ -12,9 +12,10 @@
 //    si digitano le righe, si abbinano alle rate e infine si REGISTRA, che e'
 //    l'unico gesto irreversibile del cantiere.
 //
-// ⚠️ Niente campo di ricerca: l'endpoint non ha ricerca testuale a contratto.
-//    Montarlo darebbe un input che digita e non filtra — l'operatore vedrebbe
-//    la lista intera credendo di aver cercato.
+// ⚠️ Niente campo di ricerca, per ora: l'endpoint cerca dal 2026-09-23
+//    (brief-be-ricerca-full-liste-residue §5.3), ma la casella arriva col
+//    pezzo condiviso che la mostra solo se la configurazione dice
+//    `ricerca_full` (passo 6) — insieme all'inoltro della `search` nello store.
 // ⚠️ Niente export: il backend non espone `/export/` per questo dominio, e dal
 //    2026-07-31 il BB il pulsante non lo mette se non gli passi `exportFn`. Un
 //    pulsante che apre un dialogo inerte e' peggio della sua assenza.

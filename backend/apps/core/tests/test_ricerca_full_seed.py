@@ -59,7 +59,7 @@ from apps.core.tests.test_liste_configurabili_seed import (
     _seed,
 )
 
-_LETTURA = "apps.core.db._helpers._colonne_ricerca_accese"
+_LETTURA = "apps.core.db._helpers.colonne_ricerca_accese"
 
 
 # Scopo: la dichiarazione di una lista, letta dal simbolo che il repository
@@ -67,6 +67,14 @@ _LETTURA = "apps.core.db._helpers._colonne_ricerca_accese"
 def _da_costante(modulo: str, costante: str):
     def risolvi() -> RicercaFull:
         return getattr(importlib.import_module(modulo), costante)
+
+    return risolvi
+
+
+# Scopo: una dichiarazione tenuta in una mappa del modulo (per famiglia).
+def _da_voce(modulo: str, costante: str, chiave: str):
+    def risolvi() -> RicercaFull:
+        return getattr(importlib.import_module(modulo), costante)[chiave]
 
     return risolvi
 
@@ -82,6 +90,8 @@ def _da_coda_resi(vista: str):
 
 
 _V = "apps.vendite.db."
+_M = "apps.magazzino.db."
+_P = "apps.pagamenti.db.pagamenti_repository"
 
 # Registro delle liste la cui ricerca libera passa dal BB:
 # `codice lista` -> risolutore della `RicercaFull` passata ad `add_ricerca_full_condition`.
@@ -97,6 +107,35 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("vendite.resi_da_accreditare", _da_coda_resi("vendite.vw_resi_da_accreditare")),
     ("vendite.resi_da_riconsegnare", _da_coda_resi("vendite.vw_resi_da_riconsegnare")),
     ("vendite.famiglie_documento", _da_costante(_V + "famiglie_repository", "_RICERCA")),
+    ("magazzino.magazzini", _da_costante(_M + "anagrafiche_magazzino_repository", "_RICERCA_MAGAZZINI")),
+    ("magazzino.ubicazioni", _da_costante(_M + "anagrafiche_magazzino_repository", "_RICERCA_UBICAZIONI")),
+    ("magazzino.lotti", _da_costante(_M + "anagrafiche_magazzino_repository", "_RICERCA_LOTTI")),
+    ("anagrafiche.categorie_clienti", _da_costante("apps.anagrafiche.db.categorie_clienti_repository", "_RICERCA")),
+    ("anagrafiche.indirizzi", _da_costante("apps.anagrafiche.db.indirizzi_repository", "_RICERCA")),
+    ("vendite.registri_numerazione", _da_costante(_V + "registri_repository", "_RICERCA")),
+    ("amm.processi", _da_costante("apps.core.db.processi_repository", "_RICERCA_PROCESSI")),
+    ("catalogo.uom_tipi", _da_costante("apps.catalogo.db.catalogo_repository", "_RICERCA_UOM_TIPI")),
+    ("catalogo.unita_misura", _da_costante("apps.catalogo.db.catalogo_repository", "_RICERCA_UNITA_MISURA")),
+    ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_RICERCA_FORNITORI")),
+    ("magazzino.inventari", _da_voce(_M + "magazzino_repository", "_RICERCA_DOCUMENTI", "magazzino.inventari")),
+    ("magazzino.rettifiche", _da_voce(_M + "magazzino_repository", "_RICERCA_DOCUMENTI", "magazzino.rettifiche")),
+    ("magazzino.disponibilita", _da_costante(_M + "magazzino_repository", "_RICERCA_DISPONIBILITA")),
+    ("magazzino.disponibilita_articoli", _da_costante(_M + "magazzino_repository", "_RICERCA_DISPONIBILITA_ARTICOLI")),
+    ("magazzino.inventario_righe", _da_voce(_M + "magazzino_repository", "_RICERCA_RIGHE", "magazzino.inventario_righe")),
+    ("magazzino.rettifica_righe", _da_voce(_M + "magazzino_repository", "_RICERCA_RIGHE", "magazzino.rettifica_righe")),
+    ("magazzino.inventario_piano", _da_costante(_M + "magazzino_repository", "_RICERCA_PIANO")),
+    ("magazzino.movimenti", _da_costante(_M + "magazzino_repository", "_RICERCA_MOVIMENTI")),
+    ("pagamenti.distinte", _da_costante(_P, "_RICERCA_DISTINTE")),
+    ("pagamenti.righe", _da_costante(_P, "_RICERCA_RIGHE_CODA")),
+    ("pagamenti.distinta_righe", _da_costante(_P, "_RICERCA_RIGHE_DISTINTA")),
+    ("pagamenti.rate_fuori_capienza", _da_costante(_P, "_RICERCA_RATE_FUORI_CAPIENZA")),
+    ("pagamenti.eccedenze", _da_costante(_P, "_RICERCA_ECCEDENZE")),
+    ("catalogo.conversioni_uom", _da_costante("apps.catalogo.db.catalogo_repository", "_RICERCA_CONVERSIONI")),
+    ("config.tipi_ruolo_tipi_indirizzo", _da_costante("apps.config.db.tipi_ruolo_tipi_indirizzo_repository", "_RICERCA")),
+    ("config.utilities_tipi_ruolo", _da_costante("apps.config.db.utilities_tipi_ruolo_repository", "_RICERCA")),
+    ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "_RICERCA_PRATICHE")),
+    ("anagrafiche.emittenti_fiscali", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_RICERCA_EMITTENTI")),
+    ("anagrafiche.emittente_billing_account", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_RICERCA_EMITTENTE_BA")),
 )
 
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a
@@ -104,38 +143,9 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
 # CALARE (test 4). Il piano per svuotarlo:
 # docs/it/dev/work-in-progress/brief-be-ricerca-full-liste-residue.md
 _DEBITO_RICERCA_A_MANO: frozenset[str] = frozenset({
-    "amm.processi",
-    "anagrafiche.categorie_clienti",
     "anagrafiche.clienti",
-    "anagrafiche.emittente_billing_account",
-    "anagrafiche.emittenti_fiscali",
-    "anagrafiche.fornitori",
-    "anagrafiche.indirizzi",
     "anagrafiche.soggetti",
-    "catalogo.conversioni_uom",
-    "catalogo.unita_misura",
-    "catalogo.uom_tipi",
-    "config.tipi_ruolo_tipi_indirizzo",
-    "config.utilities_tipi_ruolo",
-    "magazzino.disponibilita",
-    "magazzino.disponibilita_articoli",
-    "magazzino.inventari",
-    "magazzino.inventario_piano",
-    "magazzino.inventario_righe",
-    "magazzino.lotti",
-    "magazzino.magazzini",
-    "magazzino.movimenti",
-    "magazzino.rettifica_righe",
-    "magazzino.rettifiche",
-    "magazzino.ubicazioni",
-    "pagamenti.distinta_righe",
-    "pagamenti.distinte",
-    "pagamenti.eccedenze",
     "pagamenti.rate",
-    "pagamenti.rate_fuori_capienza",
-    "pagamenti.righe",
-    "pratiche.pratiche",
-    "vendite.registri_numerazione",
 })
 
 

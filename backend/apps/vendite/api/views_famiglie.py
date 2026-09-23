@@ -39,6 +39,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.famiglie_service import FamiglieDocumentoService
+from apps.core.api.openapi_params import param_ricerca_full
 
 # Il codice della lista a catalogo. ⚠️ Vive in una costante perche' lo leggono
 # in tre: la lista, l'export e — indirettamente — il presidio di copertura.
@@ -62,10 +63,7 @@ _PARAMETRI_FILTRO = [
         required=False,
         description="Derivato da `colonna_serie IS NOT NULL`, non una colonna.",
     ),
-    OpenApiParameter(
-        name="search", type=str, location=OpenApiParameter.QUERY, required=False,
-        description="Ricerca su codice interno, descrizione, prefisso di default.",
-    ),
+    param_ricerca_full(min_caratteri=1),
     OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY,
                      required=False,
                      description="Whitelist; fuori whitelist → ordine di default."),

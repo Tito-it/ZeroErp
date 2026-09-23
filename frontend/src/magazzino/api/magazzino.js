@@ -41,8 +41,9 @@ function base(famiglia) {
 // ══════════════════════════════════════════════════════════════
 
 // Elenco paginato delle testate. Filtri: `magazzino_id`, `stato`, `data_da`/
-// `data_a` (il floor standard lo applica lo store), `search` (min 3, su
-// descrizione e magazzino). Senza ordinamento: `data DESC, id DESC`.
+// `data_a` (il floor standard lo applica lo store), `search` (min 3, sotto:
+// 400; le colonne le accende il catalogo della lista). Senza ordinamento:
+// `data DESC, id DESC`.
 export function listDocumenti(famiglia, params = {}) {
   return api.get(`${base(famiglia)}/`, { params })
 }
@@ -108,6 +109,8 @@ export function registraDocumento(famiglia, docId) {
 // ══════════════════════════════════════════════════════════════
 
 // Le righe di UNA testata, paginate (lista `magazzino.<famiglia>_righe`).
+// Filtro `search` (colonne dal catalogo; sotto 3 caratteri non filtra — la
+// casella arriva al passo 6 del brief-be-ricerca-full-liste-residue).
 // Senza ordinamento: `id ASC`, l'ordine di digitazione.
 export function listRighe(famiglia, docId, params = {}) {
   return api.get(`${base(famiglia)}/${docId}/righe/`, { params })
@@ -190,7 +193,8 @@ export function lookupAssets(articoloId, magazzinoId) {
 // La disponibilita' per (articolo, magazzino) — `vw_disponibilita`, lista
 // `magazzino.disponibilita`. Filtri: `magazzino_id`, `articolo_id`,
 // `solo_negativa` (disponibile < 0: le promesse non piu' mantenibili, D-L2-d),
-// `solo_con_giacenza`, `search` (min 3, su codice e descrizione articolo).
+// `solo_con_giacenza`, `search` (min 3, sotto: 400; le colonne le accende il
+// catalogo della lista).
 // ⚠️ La vista e' `security_invoker`: si legge con la connessione dell'utente.
 export function listDisponibilita(params = {}) {
   return api.get(`${BASE}/disponibilita/`, { params })
@@ -222,8 +226,9 @@ export function listBlocchi(articoloId, magazzinoId) {
 // costruzione. Filtri: `magazzino_id`, `articolo_id`, `causale_id`, `data_da`/
 // `data_a` (su `data_mov`), `sorgente_tipo` (`config.sorgenti.codice_interno`),
 // e i due deep-link dal documento POSTED: `inventario_id` / `rettifica_id`
-// (i movimenti nati dalle righe di QUEL documento). Senza ordinamento:
-// `data_mov DESC, id DESC`.
+// (i movimenti nati dalle righe di QUEL documento), `search` (colonne dal
+// catalogo; sotto 3 caratteri non filtra — la casella arriva al passo 6 del
+// brief-be-ricerca-full-liste-residue). Senza ordinamento: `data_mov DESC, id DESC`.
 export function listMovimenti(params = {}) {
   return api.get(`${BASE}/movimenti/`, { params })
 }
@@ -241,7 +246,7 @@ export function exportMovimenti(params = {}) {
 // ══════════════════════════════════════════════════════════════
 
 // I magazzini del perimetro — lista `magazzino.magazzini`. Filtri: `search`
-// (min 3, codice/descrizione), `attivo` (assente = tutti). Senza ordinamento:
+// (min 3, sotto: 400; colonne dal catalogo), `attivo` (assente = tutti). Senza ordinamento:
 // `codice`.
 export function listMagazzini(params = {}) {
   return api.get(`${BASE}/magazzini/`, { params })
@@ -271,7 +276,8 @@ export function aggiornaMagazzino(magazzinoId, payload) {
 }
 
 // Le ubicazioni di UN magazzino — lista `magazzino.ubicazioni`. Filtri:
-// `search`, `attivo`, `parent_id`. Senza ordinamento: `codice`.
+// `search` (min 3, sotto: 400; colonne dal catalogo), `attivo`, `parent_id`.
+// Senza ordinamento: `codice`.
 export function listUbicazioni(magazzinoId, params = {}) {
   return api.get(`${BASE}/magazzini/${magazzinoId}/ubicazioni/`, { params })
 }
@@ -298,7 +304,8 @@ export function aggiornaUbicazione(magazzinoId, ubicazioneId, payload) {
 
 // I lotti di UN articolo — lista `magazzino.lotti`. `articolo_id` OBBLIGATORIO
 // (uuid): un elenco di tutti i lotti di tutti gli articoli non e' una domanda
-// di nessuno. Filtri: `search` (sul codice), `attivo`. Senza ordinamento:
+// di nessuno. Filtri: `search` (min 3, sotto: 400; colonne dal catalogo),
+// `attivo`. Senza ordinamento:
 // `data_arrivo DESC`.
 export function listLotti(params = {}) {
   return api.get(`${BASE}/lotti/`, { params })

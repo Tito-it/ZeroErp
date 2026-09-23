@@ -14,7 +14,13 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import sql_order_clause, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -43,6 +49,10 @@ _SELECT_COLS = """
     cc.data_update,
     cc.user_update
 """
+
+
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA = RicercaFull("anagrafiche.categorie_clienti", ("codice", "descrizione"))
 
 
 class CategorieClientiRepository:
@@ -83,12 +93,8 @@ class CategorieClientiRepository:
         if partecipa_promo is not None:
             conditions.append("cc.partecipa_promo = %s")
             params.append(partecipa_promo)
-        if search:
-            conditions.append(
-                "(cc.codice ILIKE %s OR cc.descrizione ILIKE %s)"
-            )
-            like = f"%{search.strip()}%"
-            params.extend([like, like])
+        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="cc", min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.ai_assistant.tools.base import AITool
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
 
 
 class CercaOperatoriTool(AITool):
@@ -30,7 +31,7 @@ class CercaOperatoriTool(AITool):
                 "properties": {
                     "search": {
                         "type": "string",
-                        "description": "Ricerca libera su username, email, cognome, nome o ragione sociale",
+                        "description": f"Ricerca libera su username, email, cognome, nome o ragione sociale (min {RICERCA_MIN_CARATTERI} caratteri).",
                     },
                     "is_super_admin": {
                         "type": "boolean",
@@ -69,7 +70,7 @@ class CercaOperatoriTool(AITool):
         solo_attivi = params.get("solo_attivi", True)
 
         items, total = svc.list_operatori(
-            search=params.get("search"),
+            search=self.termine_ricerca(params),
             is_super_admin=params.get("is_super_admin"),
             is_active=True if solo_attivi else None,
             limit=self.safe_page_size(params),

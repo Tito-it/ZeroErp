@@ -16,7 +16,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import jsonb_out, rows_to_list
+from apps.core.db._helpers import colonne_ricerca_accese, jsonb_out, rows_to_list
 
 
 # Espressione SQL pura per leggere la GUC `app.ruolo_applicativo` con
@@ -177,6 +177,14 @@ class UiRepository:
         #    service scrive dentro il risultato (`richiede_scelta_emittente`),
         #    quindi valeva la pena verificarlo prima di toglierla.
         return jsonb_out(row[0])
+
+    # Scopo: la lista ha, per l'utente CORRENTE, almeno una colonna in cui la
+    #        ricerca libera cerca? Legge la stessa sede del BB di ricerca
+    #        (`colonne_ricerca_accese`, cioe' `ui.fn_lista_colonne_ricerca_full`,
+    #        gia' filtrata dai permessi di colonna): la casella a video e la
+    #        ricerca non possono dire cose diverse.
+    def ha_ricerca_full(self, lista_codice: str) -> bool:
+        return bool(colonne_ricerca_accese(lista_codice))
 
     # Scopo: Restituisce la `lista_definizione.id` data il codice. None se
     #        inesistente o non attivo. Usato dai service per distinguere

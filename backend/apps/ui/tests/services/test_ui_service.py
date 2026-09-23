@@ -81,6 +81,16 @@ class UiServiceGetListaConfigTests(SimpleTestCase):
             auth_user_id=42,
             emittente_fiscale_id=11,
         )
+        # ⚠️ La configurazione «nuda» (export, modale) non paga la lettura
+        #    della ricerca: `ricerca_full` e' solo della schermata.
+        self.assertNotIn("ricerca_full", config)
+        repo.ha_ricerca_full.assert_not_called()
+        # La schermata: la casella dalla stessa lettura del BB di ricerca.
+        repo.ha_ricerca_full.return_value = False
+        self.assertFalse(
+            svc.get_lista_config_per_video(_make_user(), "anagrafiche.clienti")["ricerca_full"]
+        )
+        repo.ha_ricerca_full.assert_called_once_with("anagrafiche.clienti")
 
     @patch(
         "apps.core.services.perimetro_emittente.PermissionResolver.get_emittenti_pk_ids",

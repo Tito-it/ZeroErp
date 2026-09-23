@@ -13,7 +13,13 @@ from uuid import UUID
 
 from django.db import connection
 
-from apps.core.db._helpers import fetch_con_sonda, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_con_sonda,
+    row_to_dict,
+    rows_to_list,
+)
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
@@ -180,7 +186,23 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
 )
 
 
+# Cosa si PUO' cercare nelle liste di catalogo; cosa si cerca lo dice il
+# catalogo (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
+# Tabelle di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
+_RICERCA_UOM_TIPI = RicercaFull("catalogo.uom_tipi", ("codice", "codice_interno", "descrizione"))
+_RICERCA_UNITA_MISURA = RicercaFull("catalogo.unita_misura", ("codice", "descrizione"))
+_RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", {
+    "uom_from_codice": "uf.codice",
+    "uom_from_descrizione": "uf.descrizione",
+    "uom_to_codice": "ut.codice",
+    "uom_to_descrizione": "ut.descrizione",
+})
+
+
 # Scopo: Aggiunge una condizione di ricerca ILIKE su due colonne testuali.
+# ⚠️ Resta per articoli e lookup articoli: `catalogo.articoli` non accende
+#    colonne `ricercabile_full` a catalogo, e col BB la sua ricerca non
+#    troverebbe niente (brief-be-ricerca-full-liste-residue §7-bis).
 def _append_ilike_search(
     *,
     conditions: list[str],
@@ -548,12 +570,7 @@ class CatalogoRepository:
         if attivo is not None:
             conditions.append("ut.attivo = %s")
             params.append(attivo)
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
-        if search_pattern:
-            conditions.append(
-                "(ut.codice ILIKE %s OR ut.codice_interno ILIKE %s OR ut.descrizione ILIKE %s)"
-            )
-            params.extend([search_pattern, search_pattern, search_pattern])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_UOM_TIPI, alias="ut", min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -652,13 +669,7 @@ class CatalogoRepository:
         if attivo is not None:
             conditions.append("u.attivo = %s")
             params.append(attivo)
-        _append_ilike_search(
-            conditions=conditions,
-            params=params,
-            left_column="u.codice",
-            right_column="u.descrizione",
-            search=search,
-        )
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_UNITA_MISURA, alias="u", min_caratteri=1)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -763,10 +774,7 @@ class CatalogoRepository:
         if uom_id is not None:
             conditions.append("(c.uom_from_id = %s OR c.uom_to_id = %s)")
             params.extend([uom_id, uom_id])
-        if search and search.strip():
-            conditions.append("(uf.codice ILIKE %s OR uf.descrizione ILIKE %s OR ut.codice ILIKE %s OR ut.descrizione ILIKE %s)")
-            p = f"%{search.strip()}%"
-            params.extend([p, p, p, p])
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI, min_caratteri=1)
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         with connection.cursor() as cursor:

@@ -12,6 +12,8 @@ from __future__ import annotations
 import abc
 from typing import Any
 
+from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+
 
 class AITool(abc.ABC):
     """Definizione di uno strumento AI per il function calling.
@@ -119,6 +121,36 @@ class AITool(abc.ABC):
                 f"Per meno risultati chiedine 1, non 0.",
             )
         return min(valore, max_size)
+
+    # Scopo: Il termine di ricerca libera che l'LLM ha chiesto, pronto per il
+    #        service della lista: `None` se assente o vuoto, altrimenti il
+    #        termine senza spazi ai bordi.
+    # 🔴 SOTTO LA SOGLIA E' UN ERRORE, non un filtro ignorato (Tid,
+    #    2026-09-24). Le liste che cercano col BB `add_ricerca_full_condition`
+    #    IGNORANO un termine corto: a video va bene, perche' la casella
+    #    manda il termine a ogni tasto e l'operatore vede la lista intera. Un
+    #    modello invece riceverebbe TUTTE le righe credendole filtrate, e le
+    #    riporterebbe all'utente come risultato della ricerca. Il messaggio
+    #    nomina il dato e la soglia: un errore azionabile il modello lo
+    #    corregge al giro dopo (stesso criterio di `safe_page_size`).
+    # ⭐ La soglia e' quella del BB (`RICERCA_MIN_CARATTERI`), non un 3 scritto
+    #    qui: il giorno che cambia, strumenti e liste cambiano insieme.
+    @staticmethod
+    def termine_ricerca(params: dict[str, Any]) -> str | None:
+        grezzo = params.get("search")
+        if grezzo is None:
+            return None
+        if not isinstance(grezzo, str):
+            raise ValueError(f"search deve essere un testo: ricevuto {grezzo!r}.")
+        termine = grezzo.strip()
+        if not termine:
+            return None
+        if len(termine) < RICERCA_MIN_CARATTERI:
+            raise ValueError(
+                f"search deve avere almeno {RICERCA_MIN_CARATTERI} caratteri: "
+                f"ricevuto {termine!r}. Allunga il termine o togli il filtro.",
+            )
+        return termine
 
     # Scopo: Semplifica una lista di risultati estraendo solo i campi specificati.
     #        field_map: {nome_output: nome_input} o {nome: nome} se uguale.

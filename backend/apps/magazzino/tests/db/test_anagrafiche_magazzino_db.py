@@ -24,6 +24,7 @@ Indice test eseguiti:
 4) AnagraficheMagazzinoDbTests.test_lotti_dell_articolo_e_la_scadenza
 5) AnagraficheMagazzinoDbTests.test_un_altro_emittente_non_vede_il_magazzino_ne_le_ubicazioni
 6) AnagraficheMagazzinoDbTests.test_ogni_ordinamento_della_whitelist_esegue
+7) AnagraficheMagazzinoDbTests.test_la_ricerca_trova_ogni_colonna_accesa
 """
 from __future__ import annotations
 
@@ -33,7 +34,11 @@ from datetime import date, timedelta
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto, richiedi_ruolo_soggetto_a_rls
+from apps.core.tests.db_e2e import (
+    richiedi_db_provvisto,
+    richiedi_ruolo_soggetto_a_rls,
+    verifica_ricerca_colonna_per_colonna,
+)
 from apps.magazzino.db.anagrafiche_magazzino_repository import (
     LOTTI_SORT_COLUMNS,
     MAGAZZINI_SORT_COLUMNS,
@@ -249,4 +254,32 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
                 for verso in ("asc", "desc"):
                     with self.subTest(lista="lotti", col=col, verso=verso):
                         svc.list_lotti(articolo_id=m.art_l, order_by=col, order_dir=verso, limit=5)
+        self._nel_mondo(_prova)
+
+    # 7. La ricerca libera (BB `add_ricerca_full_condition`): per ogni colonna
+    #    che il CATALOGO accende si cerca un valore che sta SOLO in quella
+    #    colonna, e la riga deve uscire (`verifica_ricerca_colonna_per_colonna`).
+    #    Le tre liste non hanno `vista_sql`: questo e' il loro esercizio sul DB
+    #    vero (`test_ricerca_full_db` lo nomina).
+    def test_la_ricerca_trova_ogni_colonna_accesa(self):
+        def _prova(cur, m):
+            oggi = date.today().isoformat()
+            svc.aggiorna_magazzino(m.mag_a, {"descrizione": "Deposito ricdescmag"})
+            ubi = svc.crea_ubicazione(m.mag_u, {"codice": "RICCODUBI", "descrizione": "Scaffale ricdescubi", "tipo_id": m.tipo_ubi})
+            lotto = svc.crea_lotto({"articolo_id": m.art_l, "codice": "RICCODLOT", "data_arrivo": oggi})
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.magazzini", m.mag_a,
+                {"codice": "BE-ANA-A", "descrizione": "ricdescmag"},
+                lambda t: svc.list_magazzini(auth_user_id=m.uid, search=t, limit=10)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.ubicazioni", ubi["id"],
+                {"codice": "riccodubi", "descrizione": "ricdescubi"},
+                lambda t: svc.list_ubicazioni(m.mag_u, search=t, limit=10)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "magazzino.lotti", lotto["id"],
+                {"codice": "riccodlot"},
+                lambda t: svc.list_lotti(articolo_id=m.art_l, search=t, limit=10)["results"],
+            )
         self._nel_mondo(_prova)

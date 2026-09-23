@@ -39,6 +39,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 )
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
+from apps.core.api.openapi_params import param_ricerca_full
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -219,8 +220,7 @@ class ApiOfferteList(DomainAPIView):
     @extend_schema(
         operation_id="vendite_offerte_list",
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False,
-                             description="Ricerca su codice e ragione sociale BA (>=3 char)."),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False,
                              description="BOZZA | EMESSA | ACCETTATA | RIFIUTATA | ANNULLATA | SUPERATA"),
@@ -309,7 +309,7 @@ class ApiOfferteExportView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="stato_codice_interno", type=str, required=False),
             OpenApiParameter(name="utility_id", type=int, required=False),

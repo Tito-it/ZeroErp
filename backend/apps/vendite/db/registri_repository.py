@@ -34,6 +34,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     sql_order_clause,
     sql_lateral_primo_motivo,
     extract_paginated,
@@ -212,6 +214,9 @@ _FROM = """
               LEFT JOIN config.utilities u            ON u.id     = r.utility_id
 """
 
+# Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
+_RICERCA = RicercaFull("vendite.registri_numerazione", ("codice", "descrizione", "prefisso"))
+
 # Colonne jsonb da decodificare: fuori dall'ORM psycopg 3 consegna i jsonb come
 # `str`, e un oggetto servito come stringa arriva al client come testo — che nel
 # template non fallisce, si limita a non avere le sue chiavi. E' proprio il
@@ -260,32 +265,30 @@ class RegistriRepository:
             default=_ORDER_COLS[_ORDER_DEFAULT],
             tiebreak="r.id",
         )
-        pattern = f"%{search.strip()}%" if search and search.strip() else None
-        sql = f"""
-            SELECT {_PROIEZIONE},
-                   COUNT(*) OVER () AS total_count
-            {_FROM}
-            {_LATERAL_BLOCCHI}
-             WHERE (%s::bigint[] IS NULL OR r.emittente_soggetto_ruolo_id = ANY(%s))
-               AND (%s::bigint IS NULL OR r.emittente_soggetto_ruolo_id = %s)
-               AND (%s::text IS NULL OR r.famiglia_documento = %s)
-               AND (%s::boolean IS NULL OR r.attivo = %s)
-               AND (%s::text IS NULL OR (
-                       r.codice ILIKE %s
-                    OR r.descrizione ILIKE %s
-                    OR r.prefisso ILIKE %s
-                   ))
-             ORDER BY {ordinamento}
-             LIMIT %s OFFSET %s
-        """  # noqa: S608
+        conditions: list[str] = [
+            "(%s::bigint[] IS NULL OR r.emittente_soggetto_ruolo_id = ANY(%s))",
+            "(%s::bigint IS NULL OR r.emittente_soggetto_ruolo_id = %s)",
+            "(%s::text IS NULL OR r.famiglia_documento = %s)",
+            "(%s::boolean IS NULL OR r.attivo = %s)",
+        ]
         params: list[Any] = [
             emittenti_sr_ids, emittenti_sr_ids,
             emittente_soggetto_ruolo_id, emittente_soggetto_ruolo_id,
             famiglia_documento, famiglia_documento,
             attivo, attivo,
-            pattern, pattern, pattern, pattern,
-            limit, offset,
         ]
+        # Tabella di configurazione: la ricerca parte da un carattere (Tid, 2026-09-23).
+        add_ricerca_full_condition(conditions, params, search, _RICERCA, alias="r", min_caratteri=1)
+        sql = f"""
+            SELECT {_PROIEZIONE},
+                   COUNT(*) OVER () AS total_count
+            {_FROM}
+            {_LATERAL_BLOCCHI}
+             WHERE {" AND ".join(conditions)}
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608
+        params.extend([limit, offset])
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             righe, totale = extract_paginated(cursor)

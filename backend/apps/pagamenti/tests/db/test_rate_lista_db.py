@@ -30,6 +30,7 @@ Indice test eseguiti:
 5) RateListaDbTests.test_la_ricerca_libera_trova_il_cliente_non_il_numero
 5-bis) RateListaDbTests.test_la_bozza_esce_dal_perimetro_in_entrambi_i_rami
 6) RigheDaRateDbTests.test_parziale_poi_il_secondo_tempo_per_riga
+7) RicercaListeDbTests.test_la_ricerca_trova_ogni_colonna_accesa
 """
 from __future__ import annotations
 
@@ -39,9 +40,9 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colonna_per_colonna
 from apps.pagamenti.db.pagamenti_repository import RATE_SORT_COLUMNS, PagamentiRepository
-from apps.pagamenti.services import pagamenti_service, saldi_service
+from apps.pagamenti.services import pagamenti_service, saldi_service, sistemazioni_service
 
 # Il mondo: azienda con operatore (PRIMA del contesto), poi il contesto, poi
 # un cliente fatturabile e due fatture numerate nella stessa serie — 101 e
@@ -429,3 +430,133 @@ class RigheDaRateDbTests(_MondoRateDbTests):
         self.assertEqual((righe[0][1], righe[0][2]), (Decimal("300.00"), False))
         self.assertEqual((righe[1][1], righe[1][2], righe[1][3]),
                          (Decimal("50.00"), True, "pagato due volte"))
+
+
+# Il pagamento OLTRE il dovuto, sulla 101: 900 su una rata da 400, forzato col
+# motivo e registrato. La rata esce dalla banda (fuori capienza, SOVRA_INCASSATA)
+# e la fattura resta in credito (eccedenza). Piu' una riga SOSPESA in una
+# distinta in bozza, per la coda.
+_FIXTURE_RICERCA: tuple[str, ...] = (
+    """
+    CREATE TEMP TABLE _dist_extra AS
+    SELECT pagamenti.fn_get_or_create_vendite_contabile(
+        p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
+        p_data_contabile        => current_date,
+        p_data_registrazione    => current_date,
+        p_codice_stato_interno  => 'BOZZA',
+        p_meta                  => '{"test_scope": "be_ricerca_rate"}'::jsonb,
+        p_origine               => 'MANUALE'
+      ) AS contabile_id
+    """,
+    """
+    INSERT INTO pagamenti.vendite_contabili_righe
+        (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
+         billing_account_id, scadenza_id, stato_id, forzata, motivo_forzatura, meta)
+    SELECT d.contabile_id, 'BE_RICERCA_OLTRE', current_date, 900.00,
+           r.fattura_id, x.billing_account_id, r.scadenza_id, x.stato_abbinata_id,
+           TRUE, 'pagato doppio', '{"test_scope": "be_ricerca_rate"}'::jsonb
+      FROM _dist_extra d, _refs x, _rate r
+     WHERE r.n = 1
+    """,
+    """
+    UPDATE pagamenti.vendite_contabili c
+       SET stato_id = (SELECT stato_validata_id FROM _refs)
+     WHERE c.id = (SELECT contabile_id FROM _dist_extra)
+    """,
+    """
+    SELECT * FROM pagamenti.fn_posta_contabile((SELECT contabile_id FROM _dist_extra))
+    """,
+    """
+    CREATE TEMP TABLE _dist_coda AS
+    SELECT pagamenti.fn_get_or_create_vendite_contabile(
+        p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
+        p_data_contabile        => current_date,
+        p_data_registrazione    => current_date,
+        p_codice_stato_interno  => 'BOZZA',
+        p_meta                  => '{"test_scope": "be_ricerca_coda"}'::jsonb,
+        p_origine               => 'MANUALE'
+      ) AS contabile_id
+    """,
+    """
+    CREATE TEMP TABLE _riga_coda AS
+    WITH ins AS (
+        INSERT INTO pagamenti.vendite_contabili_righe
+            (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
+             billing_account_id, scadenza_id, stato_id, motivo_sospeso, meta)
+        SELECT d.contabile_id, 'BE_RICERCA_CODA', current_date, 10.00,
+               r.fattura_id, x.billing_account_id, r.scadenza_id,
+               (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
+                 WHERE s.codice_interno = 'SOSPESA' ORDER BY s.id LIMIT 1),
+               'da verificare', '{"test_scope": "be_ricerca_coda"}'::jsonb
+          FROM _dist_coda d, _refs x, _rate r
+         WHERE r.n = 1
+        RETURNING id
+    )
+    SELECT id AS riga_id FROM ins
+    """,
+)
+
+
+class RicercaListeDbTests(_MondoRateDbTests):
+    """La ricerca libera delle cinque liste di pagamenti (brief-be-ricerca-full-
+    liste-residue §5.3): per ogni colonna che il CATALOGO accende, il valore di
+    una riga costruita la trova (`verifica_ricerca_colonna_per_colonna`). Le
+    liste non hanno `vista_sql`: questo e' il loro esercizio sul DB vero
+    (`test_ricerca_full_db` lo nomina)."""
+
+    def test_la_ricerca_trova_ogni_colonna_accesa(self):
+        def _prova(cur, rate, ba_id):
+            for passo in _FIXTURE_RICERCA:
+                cur.execute(passo)
+            cur.execute("SELECT contabile_id FROM _dist")
+            dist = int(cur.fetchone()[0])
+            cur.execute("SELECT codice FROM pagamenti.vendite_contabili WHERE id = %s", [dist])
+            dist_codice = cur.fetchone()[0]
+            cur.execute("SELECT id FROM pagamenti.vendite_contabili_righe WHERE contabile_id = %s", [dist])
+            riga_1010 = int(cur.fetchone()[0])
+            cur.execute("SELECT riga_id FROM _riga_coda")
+            riga_coda = int(cur.fetchone()[0])
+            cur.execute(
+                "SELECT c.codice FROM pagamenti.vendite_contabili c WHERE c.id = (SELECT contabile_id FROM _dist_coda)"
+            )
+            coda_codice = cur.fetchone()[0]
+            cur.execute(
+                "SELECT ba.codice, s.ragione_sociale_completa "
+                "  FROM anagrafiche.billing_account ba "
+                "  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id "
+                "  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id WHERE ba.id = %s",
+                [ba_id],
+            )
+            ba_codice, cliente = cur.fetchone()
+            cur.execute("SELECT fattura_id FROM _rate WHERE n = 1")
+            fattura_101 = int(cur.fetchone()[0])
+
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.distinte", dist, {"codice": dist_codice},
+                lambda t: pagamenti_service.list_distinte(search=t, page_size=200)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.distinta_righe", riga_1010,
+                {"riferimento_ente": "BE_LISTA_RATE_1010", "billing_account_descrizione": cliente,
+                 "fattura_numero_documento": "1010 - A", "billing_account_codice": ba_codice},
+                lambda t: pagamenti_service.list_righe(dist, search=t, limit=200)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.righe", riga_coda,
+                {"riferimento_ente": "BE_RICERCA_CODA", "billing_account_descrizione": cliente,
+                 "fattura_numero": "101", "contabile_codice": coda_codice},
+                lambda t: pagamenti_service.list_coda_righe(search=t, page_size=200)["results"],
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.rate_fuori_capienza", rate[1],
+                {"fattura_numero": "101", "numero_documento": "101 - A"},
+                lambda t: pagamenti_service.list_rate_fuori_capienza(search=t, page_size=200)["results"],
+                chiave="scadenza_id",
+            )
+            verifica_ricerca_colonna_per_colonna(
+                self, cur, "pagamenti.eccedenze", fattura_101,
+                {"cliente_ragione_sociale": cliente, "fattura_numero": "101"},
+                lambda t: sistemazioni_service.list_eccedenze(search=t, page_size=200)["results"],
+                chiave="fattura_id",
+            )
+        self._nel_mondo(_prova)

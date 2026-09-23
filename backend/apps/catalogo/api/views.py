@@ -66,6 +66,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
+from apps.core.api.openapi_params import param_ricerca_full
 
 
 # Scopo: Definisce in un solo punto i campi write articolo per schema API.
@@ -694,7 +695,7 @@ class ApiUomTipiList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -708,8 +709,9 @@ class ApiUomTipiList(DomainAPIView):
     )
     # Scopo: Restituisce lista paginata tipologie UoM.
     def get(self, request: Request) -> JsonResponse:
+        # Tabella di configurazione: la ricerca parte da un carattere, niente 400
+        # sotto soglia (Tid, 2026-09-23 — brief-be-ricerca-full-liste-residue §6).
         p = parse_list_params(request.query_params, default_order="descrizione")
-        require_min_search_length(p["search"], field_name="search")
         results, total = fn_list_uom_tipi(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
@@ -783,7 +785,7 @@ class ApiUnitaMisuraList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -797,8 +799,9 @@ class ApiUnitaMisuraList(DomainAPIView):
     )
     # Scopo: Restituisce lista paginata unita' di misura.
     def get(self, request: Request) -> JsonResponse:
+        # Tabella di configurazione: la ricerca parte da un carattere (`KG`, `PZ`),
+        # niente 400 sotto soglia (Tid, 2026-09-23 — brief §6).
         p = parse_list_params(request.query_params, default_order="codice")
-        require_min_search_length(p["search"], field_name="search")
         results, total = fn_list_unita_misura(
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
@@ -892,7 +895,7 @@ class ApiConversioniList(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False),
+            param_ricerca_full(min_caratteri=1),
             OpenApiParameter(name="attivo", type=bool, required=False, description="Filtro attivo (null=tutti)"),
             OpenApiParameter(name="uom_id", type=int, required=False, description="Filtra conversioni per UoM (from o to)"),
             OpenApiParameter(name="limit", type=int, required=False),

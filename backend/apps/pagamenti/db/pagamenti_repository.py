@@ -27,6 +27,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
     conta_con_perimetro,
     fetch_paged_with_total,
     sql_lateral_primo_motivo,
@@ -86,6 +88,35 @@ _TOTALI_LATERAL = """
            AND r.attivo IS TRUE
     ) tot ON TRUE
 """
+
+# Cosa si PUO' cercare in ogni lista; cosa si cerca lo dice il catalogo
+# (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §5.3). Le
+# espressioni sono quelle che la `SELECT` proietta con quel nome: si cerca su
+# cio' che si mostra. ⚠️ Le liste su vista (`v.*`) usano l'alias `v` del BB.
+_RICERCA_DISTINTE = RicercaFull("pagamenti.distinte", {"codice": "c.codice"})
+# ⭐ Le due liste di righe (coda e distinta) proiettano la STESSA `_RIGA_COLONNE`
+#    sullo stesso `_RIGA_FROM`: sanno cercare le stesse colonne, e quali
+#    cercano lo decide il catalogo di ciascuna. Due mappe scritte a mano
+#    avrebbero due copie della stessa espressione, libere di separarsi.
+_RICERCA_RIGA: dict[str, str] = {
+    "riferimento_ente": "r.riferimento_ente",
+    "billing_account_descrizione": "srd.ragione_sociale_completa",
+    "billing_account_codice": "ba.codice",
+    "fattura_numero": "f.numero",
+    "fattura_numero_documento": "vendite.fn_numero_documento_fattura(f.numero, f.serie)",
+}
+_RICERCA_RIGHE_CODA = RicercaFull("pagamenti.righe", {
+    **_RICERCA_RIGA,
+    "contabile_codice": "c.codice",
+})
+_RICERCA_RIGHE_DISTINTA = RicercaFull("pagamenti.distinta_righe", _RICERCA_RIGA)
+_RICERCA_RATE_FUORI_CAPIENZA = RicercaFull(
+    "pagamenti.rate_fuori_capienza", ("fattura_numero", "numero_documento"),
+)
+_RICERCA_ECCEDENZE = RicercaFull("pagamenti.eccedenze", {
+    "cliente_ragione_sociale": "srd.ragione_sociale_completa",
+    "fattura_numero": "v.fattura_numero",
+})
 
 _DISTINTA_SELECT = """
     SELECT
@@ -854,6 +885,7 @@ class PagamentiRepository:
         ente_incasso_id: int | None = None,
         data_da: date | None = None,
         data_a: date | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -881,6 +913,7 @@ class PagamentiRepository:
         if data_a is not None:
             conditions.append("c.data_contabile <= %s")
             params.append(data_a)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DISTINTE)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         # ⚠️ La direzione la compone l'helper condiviso, e porta con se' la
@@ -1107,6 +1140,7 @@ class PagamentiRepository:
         contabile_id: int,
         *,
         escludi_stato_codice: str | None = None,
+        search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -1121,14 +1155,18 @@ class PagamentiRepository:
             default_desc=True,
             colonne_desc=DISTINTA_RIGHE_SORT_COLONNE_DATA,
         )
-        select_sql = _RIGHE_DISTINTA_ATTIVE_SQL
+        # `_RIGHE_DISTINTA_ATTIVE_SQL` finisce col suo `WHERE`: le condizioni
+        # in piu' vi si attaccano in `AND`.
+        conditions: list[str] = []
         params: list[Any] = [int(contabile_id)]
         if escludi_stato_codice is not None:
             # ⚠️ `IS DISTINCT FROM` e non `<>`: `rs` e' in LEFT JOIN, e una riga
             #    con uno stato che non risolve a catalogo (NULL) deve restare
             #    a video, non sparire come se fosse scartata.
-            select_sql = f"{select_sql} AND rs.codice_interno IS DISTINCT FROM %s"
+            conditions.append("rs.codice_interno IS DISTINCT FROM %s")
             params.append(escludi_stato_codice)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE_DISTINTA)
+        select_sql = " AND ".join([_RIGHE_DISTINTA_ATTIVE_SQL, *conditions])
         rows, total = self._lista_paginata(
             select_sql=select_sql,
             params=params,
@@ -1701,6 +1739,7 @@ class PagamentiRepository:
         billing_account_id: int | None = None,
         data_da: date | None = None,
         data_a: date | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -1719,6 +1758,7 @@ class PagamentiRepository:
         if data_a is not None:
             conditions.append("c.data_contabile <= %s")
             params.append(data_a)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE_CODA)
 
         ordinamento = sql_order_clause(
             order_by, order_dir,
@@ -1749,6 +1789,7 @@ class PagamentiRepository:
         *,
         motivo: str | None = None,
         billing_account_id: int | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -1764,6 +1805,7 @@ class PagamentiRepository:
         if billing_account_id is not None:
             conditions.append("v.billing_account_id = %s")
             params.append(billing_account_id)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_RATE_FUORI_CAPIENZA)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         ordinamento = sql_order_clause(
@@ -1992,6 +2034,7 @@ class PagamentiRepository:
         *,
         chi_e_in_credito: str | None = None,
         billing_account_id: int | None = None,
+        search: str | None = None,
         order_by: str,
         order_dir: str,
         limit: int,
@@ -2007,6 +2050,7 @@ class PagamentiRepository:
         if billing_account_id is not None:
             conditions.append("v.billing_account_id = %s")
             params.append(billing_account_id)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_ECCEDENZE)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         sort_col = ECCEDENZE_SORT_COLUMNS.get(order_by, "eccedenza_cliente")
