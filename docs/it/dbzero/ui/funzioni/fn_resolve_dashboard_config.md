@@ -17,6 +17,8 @@ AS $function$
 -- Cascata preset -> merge widget nuovi -> filtro permessi via resolver.
 -- Ritorna JSONB pronto per il frontend. Zero interpretazione di
 -- deep_link/contatore_key/soglia (campi opachi restituiti freschi).
+-- 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block
+-- condiviso con il risolutore delle liste e con la ricerca libera.
 DECLARE
   v_dashboard_id     ui.dashboard_definizione.id%TYPE;
   v_config_widget    JSONB;    -- widget della configurazione candidata
@@ -28,9 +30,9 @@ DECLARE
   v_area_map         JSONB    := '{}'::JSONB;   -- { schema_db: 'LIVELLO' }
   v_azioni_map       JSONB    := '{}'::JSONB;   -- { permission_codename: bool }
 
-  -- Veste corrente dalla GUC (raw TEXT per cast blindato sotto)
-  v_ruolo_guc_raw    TEXT     := NULLIF(current_setting('app.ruolo_applicativo', true), '');
-  v_ruolo_guc        config.ruolo_applicativo;
+  -- Veste corrente dalla GUC. NULL = tutte le vesti, anche per un valore
+  -- fuori dominio: la regola sta nel building block (2026-09-23).
+  v_ruolo_guc        config.ruolo_applicativo := ui.fn_veste_corrente();
 
   -- Snapshot preset di base dalla preferenza utente (DEF-2)
   v_pref_preset_base_id    ui.dashboard_preferenza_utente.preset_base_id%TYPE;
@@ -39,15 +41,6 @@ DECLARE
   v_preset_data_update     ui.dashboard_preset.data_update%TYPE;
   v_preset_aggiornato      BOOLEAN := FALSE;
 BEGIN
-  -- Cast GUC -> ENUM blindato: valore fuori dominio -> NULL = tutte le vesti.
-  IF v_ruolo_guc_raw IS NOT NULL THEN
-    BEGIN
-      v_ruolo_guc := v_ruolo_guc_raw::config.ruolo_applicativo;
-    EXCEPTION WHEN invalid_text_representation THEN
-      v_ruolo_guc := NULL;
-    END;
-  END IF;
-
   -- -------------------------------------------------------
   -- 0. Recupera dashboard_id dal codice
   -- -------------------------------------------------------
@@ -318,7 +311,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata preset (GUC-aware, deterministica per priorita), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, widget_nuovi, preset_aggiornato }. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3).';
+IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata preset (GUC-aware, deterministica per priorita), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, widget_nuovi, preset_aggiornato }. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3). 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block condiviso con fn_resolve_lista_config e fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi.';
 ```
 
 ---

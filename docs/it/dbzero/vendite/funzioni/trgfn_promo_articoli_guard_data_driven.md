@@ -29,8 +29,11 @@ DECLARE
     v_old_al  date;
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        -- valido_al >= valido_dal e' garantito da
-        -- chk_promo_articoli_date e dal trigger set_validita.
+        -- valido_al >= valido_dal lo verifica il guard comune delle
+        -- date, script.trgfn_guard_date_validita (automazione
+        -- DATE_VALIDITA), e sotto di lui la colonna generata `validita`.
+        -- rev 20260923-48: qui si citavano chk_promo_articoli_date e il
+        -- trigger set_validita, che non esistono (piu').
         IF NEW.valido_dal <= v_today THEN
             PERFORM script.fn_log_and_raise_error(
                 'database',
