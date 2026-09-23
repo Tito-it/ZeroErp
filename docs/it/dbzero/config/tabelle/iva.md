@@ -58,7 +58,7 @@
 | trg_iva_a10_iva_assoggettamenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva_assoggettamenti', 'attivo', 'assoggettamento_id', 'id')` |
 | trg_iva_a10_iva_stati_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'iva_stati', 'iva_id', 'id', 'attivo')` |
 | trg_iva_a10_listini_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe_componenti', 'iva_id', 'id', 'attivo')` |
-| trg_iva_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE', 'aliquota_iva', 'E_IVA_TRATTAMENTO_IMMUTABILE', 'natura_iva_id', 'E_IVA_TRATTAMENTO_IMMUTABILE')` |
+| trg_iva_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE', 'aliquota_iva', 'E_IVA_TRATTAMENTO_IMMUTABILE', 'assoggettamento_id', 'E_IVA_TRATTAMENTO_IMMUTABILE', 'natura_iva_id', 'E_IVA_TRATTAMENTO_IMMUTABILE')` |
 | trg_iva_a10_offerte_commerciali_eccezioni_componenti_blo_8c83e5 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni_componenti', 'iva_id', 'id', 'attivo')` |
 | trg_iva_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'iva_id', 'id', 'attivo')` |
 | trg_iva_a10_ordini_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe_componenti', 'iva_id', 'id', 'attivo')` |
@@ -69,8 +69,8 @@
 | trg_iva_a10_tipi_utenze_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'tipi_utenze', 'iva_id', 'id', 'attivo')` |
 | trg_iva_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_iva_guard_conti_iva_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_guard_conti_iva()` |
 | trg_iva_guard_conti_iva_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_guard_conti_iva()` |
+| trg_iva_guard_conti_iva_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_guard_conti_iva()` |
 | trg_iva_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_id')` |
 | trg_iva_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_id')` |
 

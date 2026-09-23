@@ -6,15 +6,25 @@
 > — «`CODICE_NON_MODIFICABILE` è `obsoleto_dal 2026-08-05` e il registro dei
 > lock lo nomina ancora» — e la risposta di Tid: *«andrebbe corretto»*.
 >
-> **Stato:** ✅ **APPLICATO il 2026-09-23 alle 08:10** (`20260923-02` `EXECUTED`).
-> Letto sul catalogo vivo: **88** trigger di lock, **zero** con un codice non
-> vivo, `catalogo.articoli` con **un** trigger su `codice` **e** `uom_id`.
-> ⚠️ **L'apply ha fatto emergere una ricaduta**, ed è una cosa buona: un pgTAP
-> pinnava il nome di uno dei due trigger consolidati (§5-bis). Sanato.
-> ⏳ A Tid: rilanciare il pgTAP di `catalogo` e il commit.
-> 🔴 **Rosso su zeroerp_ci (23-09, dopo l'apply su dev)** e sanato nel registro,
-> §5-ter: due lock IVA scritti a mano, che dev aveva perso e il DB ricostruito da
-> zero no. Nuovo `90_end/20260923-03` ⏳ da applicare su dev.
+> **Stato:** ✅ **CHIUSO SUL LATO DB — applicato, verde e committato il
+> 2026-09-23.** I tre changeSet (`20260923-01`, `-02`, `-03`) sono `EXECUTED`
+> **sia su dbdev sia su `zeroerp_ci`**, cioè anche sul database ricostruito da
+> zero; pgTAP rilanciati da Tid, **nessuna regressione**; commit `7d67d6d9d`.
+>
+> Letto sul catalogo vivo (non dedotto dai file): **zero** trigger di lock con un
+> codice non vivo — su dev e su CI —, **zero** righe malate nelle **43** del
+> registro, e il guardrail dei codici esce **0** dicendo *«nessun codice ritirato
+> ancora sollevato né nei corpi né negli argomenti dei 2102 trigger»*. Su dev i
+> lock di `catalogo.articoli` (`codice` + `uom_id`), `config.iva_stati` e i due
+> di magazzino sono armati.
+>
+> ⚠️ **Due ricadute, entrambe trovate dai controlli e non da una lettura**: un
+> pgTAP che pinnava il nome di un trigger consolidato (§5-bis) e il rosso su
+> `zeroerp_ci` per due lock IVA scritti a mano (§5-ter). Sanate tutte e due nel
+> registro, mai allentando il controllo.
+>
+> 🔵 **Resta aperto**: la metà BE (§4) e **una domanda sul modello** — dbdev ha
+> perso dei trigger di lock che il DB da zero ha, §7.
 >
 > **In una riga.** Un codice ritirato quarantanove giorni fa è ancora sollevato
 > da **69 trigger su 68 tabelle in 8 schemi**, e il presidio che esiste apposta
@@ -333,28 +343,56 @@ quindi il 02 non li tocca.
 (`20260818-28`, EXECUTED) **manca su dbdev**. È il terzo lock sparito da dev
 senza un changeSet: qualcosa, fuori da Liquibase, toglie trigger di lock.
 
-## 7. Che cosa resta
+## 7. Che cosa resta — ✅ il lato DB è chiuso
 
-1. ✅ **migrate**: `20260923-02` `EXECUTED` alle 08:10 del 23-09, dopo il carico
-   del registro. Sul catalogo vivo: 88 trigger di lock, **zero** con un codice
-   non vivo;
-2. ⏳ **guardrail**: rilanciarlo — dopo la bonifica deve uscire **0** (prima
-   usciva 3, nominando i 69 uno per uno);
-3. ⏳ **pgTAP**: rilanciare `catalogo/test-articoli-seed-uom-base-lock` (8
-   asserzioni) — è quello sanato in §5-bis;
-4. ⏳ **commit** (non autonomo): il CSV, il changeSet, il guardrail dei codici,
-   `scripts/guardrail_pgtap_preambolo.py` (soglia 120), il pgTAP di `catalogo`,
-   le tre pagine `manual/` (`dbops/automation_lock_columns`,
-   `dbops/vw_non_editable_fields`, `catalogo/articoli`), il commento del pgTAP
-   `config/test-codici-errore-obsoleto-dal` e questo brief;
-5. 🔵 **al BE**: i due test e i quattro commenti di §4;
-6. ⏳ **§5-ter**: migrate su dev, che carica le tre righe e applica il
-   `20260923-03`, poi di nuovo la corsa su zeroerp_ci. Nel commit entrano anche il
-   nuovo YAML e le pagine `manual/` `config/iva`, `config/iva_stati` e
-   `dbops/automation_lock_columns`;
-7. 🔍 **trigger di lock spariti da dbdev** senza un changeSet: `iva`, `iva_stati`
-   e `fatture.natura_doc_id`. Va capito chi li toglie. Candidata una
-   convergenza generale «trigger vivo = registro», che oggi il runner non fa.
+### Fatto e verificato il 2026-09-23
+
+| | |
+| --- | --- |
+| **migrate su dev** | `20260923-01`, `-02`, `-03` `EXECUTED`; mirror del registro `RERAN` alle 09:33 |
+| **migrate da ZERO** | gli stessi tre `EXECUTED` anche su **`zeroerp_ci`** — ed è la prova che conta, perché è lì che il difetto di §5-ter si era visto |
+| **guardrail dei codici** | esce **0** su dev (prima usciva **3**, nominando i 69 trigger uno per uno) |
+| **pgTAP** | rilanciati da Tid: **nessuna regressione**, compreso `catalogo/test-articoli-seed-uom-base-lock` sanato in §5-bis |
+| **commit** | `7d67d6d9d` — CSV, i due changeSet nuovi, il guardrail dei codici, `guardrail_pgtap_preambolo.py` (soglia 120), il pgTAP di `catalogo`, le pagine `manual/` e i brief |
+
+**Il verdetto, letto sul catalogo vivo e non dedotto dai file:** zero trigger di
+lock con un codice non vivo (dev **e** CI), zero righe malate nelle 43 del
+registro, `catalogo.articoli` con un solo trigger su `codice` e `uom_id`,
+`config.iva_stati` lockata, i due lock di magazzino armati.
+
+### 🔵 Resta al BE
+
+I due test e i quattro commenti di **§4**. ⚠️ Il test e2e
+`apps/magazzino/tests/db/test_anagrafiche_magazzino_db.py:142` è **rosso da
+adesso**: è la finestra dichiarata, e quel test pinna un codice ritirato.
+
+### 🔍 Resta una domanda sul MODELLO, non un residuo di questo giro
+
+**dbdev ha perso dei trigger di lock che il database da zero ha.** Misurato il
+23-09 confrontando i due cataloghi: dev **89** trigger di lock, `zeroerp_ci`
+**90**, e la differenza è una sola tabella —
+
+```
+vendite.fatture → trg_fatture_a10_lock_natura_doc_upd (natura_doc_id, E_COLONNA_NON_MODIFICABILE)
+```
+
+⭐ **Sta su CI e non su dev**, come era per `config.iva` e `config.iva_stati` in
+§5-ter. ⚠️ E questo terzo caso **non c'entra con i codici ritirati**:
+`E_COLONNA_NON_MODIFICABILE` è vivo, quindi la bonifica non l'ha mai toccato —
+il trigger è sparito da dev prima, per altra via. Sono **tre** tabelle con la
+stessa storia: un lock scritto a mano in `20_code`, presente su un DB
+ricostruito e assente su dev.
+
+⇒ Due cose distinte, e vanno tenute distinte:
+
+1. **Chi toglie quei trigger da dbdev, e quando.** Finché non si sa, *dev non è
+   un metro*: un presidio verde lì può essere verde perché la cosa che doveva
+   presidiare non c'è. È la stessa lezione di §5-ter, dove è stata la corsa da
+   zero a dire la verità;
+2. **Una convergenza generale «trigger vivo = registro»**, che oggi il runner
+   non fa (è create-if-missing) e che i due changeSet di questo giro hanno fatto
+   a mano su perimetri fissi. ⛔ Non si allarga di straforo il `20260923-03`:
+   è un cantiere `dbops` suo, e va deciso.
 
 ---
 

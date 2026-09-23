@@ -63,18 +63,22 @@ SELECT is(
 --   filtra da se') e avere il billing account, perche' e' quello che finisce
 --   sulla riga contabile.
 -- ============================================================
+-- ⛔ LA FATTURA SI COSTRUISCE (2026-09-23). Pescare «la prima fattura con un
+--   billing account» e' lo stesso criterio, ma su un database ricostruito
+--   `vendite.fatture` e' a ZERO: entrambe le colonne uscivano NULL e il file
+--   moriva su «p_fattura_id obbligatorio, maggiore di zero» — un errore che
+--   non nomina ne' la fixture ne' la fattura che manca.
+-- ⚠️ E le due sotto-select erano DUE estrazioni indipendenti sulla stessa
+--   riga: con `ORDER BY` reggeva, ma il BB toglie anche quella scommessa.
+-- ⭐ Il resto — centro di riscossione, stati — resta PESCATO: sono seed di
+--   `80_data`, ci sono anche da zero.
+CREATE TEMP TABLE tmp_vcso_fatt AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('vendite contabili stato obbligatorio');
+
 CREATE TEMP TABLE tmp_vcso_ref AS
 SELECT
-  (SELECT f.id
-     FROM vendite.fatture f
-    WHERE f.billing_account_id IS NOT NULL
-    ORDER BY f.id
-    LIMIT 1)                                              AS fattura_id,
-  (SELECT f.billing_account_id
-     FROM vendite.fatture f
-    WHERE f.billing_account_id IS NOT NULL
-    ORDER BY f.id
-    LIMIT 1)                                              AS billing_account_id,
+  (SELECT fattura_id         FROM tmp_vcso_fatt)          AS fattura_id,
+  (SELECT billing_account_id FROM tmp_vcso_fatt)          AS billing_account_id,
   (SELECT c.id FROM pagamenti.centri_riscossione c
     WHERE c.codice_interno = 'BANCA')                     AS centro_id,
   (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s

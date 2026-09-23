@@ -42,7 +42,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_tipi_documento_output_a10_documenti_generati_block_d_ed83c0 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'documenti_generati', 'tipo_documento_output_id', 'id', 'attivo')` |
-| trg_tipi_documento_output_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_tipi_documento_output_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_tipi_documento_output_a10_template_documenti_block_d_a974b1 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'template_documenti', 'tipo_documento_output_id', 'id', 'attivo')` |
 | trg_tipi_documento_output_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_documento_output_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

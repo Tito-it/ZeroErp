@@ -200,6 +200,50 @@ apps/<dominio>/
     services/         # Test logica service
 ```
 
+* App per **dominio** (`vendite`, `anagrafiche`), non per dettaglio tecnico; se uno
+  schema DB coincide con un dominio stabile, la cartella dell'app si allinea allo
+  schema. Project config in `backend/zeroerp_backend/`.
+* Modelli ORM solo dove servono, altrimenti `managed = False`.
+
+### Nomi di repository e service
+
+Un'app può avere più repository e service. Il nome segue il **perimetro semantico**:
+
+| Tipo                       | Nome file                      | Contenuto                                                                                       |
+| -------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Generico schema            | `<schema>_repository.py`       | List, query, CRUD su entità dello schema senza logica specifica (es. `vendite_repository.py`)   |
+| Sottodominio specializzato | `<sottodominio>_repository.py` | Operazioni di un processo autonomo con logica propria (es. `pipeline_repository.py`)            |
+| Generico schema            | `<schema>_service.py`          | Facade per operazioni generiche (es. `vendite_service.py`)                                      |
+| Sottodominio specializzato | `<sottodominio>_service.py`    | Facade per il sottodominio (es. `pipeline_service.py`)                                          |
+
+* `<schema>` per ciò che non appartiene a un sottodominio: elenchi, ricerche,
+  lettura dello stato di un'entità.
+* Un file `<sottodominio>_*` **solo** quando il sottodominio ha logica orchestrata
+  autonoma (runner, executor, tracing, saga), non per singoli metodi.
+* Non si frammenta per entità: tre metodi su `fatture` e due su `lotti` stanno in
+  `vendite_repository.py`.
+
+### Convenzioni del codice Python
+
+* **Header di licenza** sui file nuovi: `templates/python-header.txt`, più un
+  breve commento iniziale sullo scopo del file. Lo presidia `scripts/check_license.py`
+  (pre-commit), che guarda i file **aggiunti**: il pregresso senza header è un
+  debito che cala per decisione, non per attrito.
+* Commento `# Scopo: ...` in italiano prima di ogni `def`/`async def`; più
+  dettagliato (obiettivo, perimetro, risultato atteso) per chi orchestra
+  pipeline, transazioni, dispatch di task o integrazioni esterne. Commenti brevi
+  nei blocchi non banali.
+* Dopo un `ErrorManager.require(... is not None ...)`, l'`assert`
+  corrispondente per il type checker.
+* Dopo `row = cursor.fetchone()`, un guard (`if not row`) o
+  `assert row is not None` prima di usare `row[...]`.
+* Nomi di metodo espliciti e di dominio (`run_pipeline`), mai generici (`run`).
+* Errori: helper centralizzato `apps/core/services/error_manager.py`; il mapping
+  `codice → HTTP status → ui_action` sta in `apps/core/services/error_policies.py`.
+* Niente `try/except Exception` generici nelle view di dominio: `ServiceError`
+  nei service e fallback al middleware `apps/core/middleware/api_exception_middleware.py`
+  (solo `/api/*`, disattivabile con `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`).
+
 ---
 
 ## Base classes per view
@@ -1920,22 +1964,82 @@ l'unico che vede il pezzo in mezzo: i pgTAP coprono il lato DB, i test unitari c
 `diag` finto coprono il lato Python, e **nessuno dei due vede la giuntura**.
 
 ⛔ **Il terzo livello non lo esegue niente**, ed è il difetto che quel livello si
-porta dietro dal giorno in cui è nato: vedi `.codex/AGENTS.md` §«Gli smoke:
-nessuno li lancia». Il registro `baseline-smoke.tsv` ha due righe — cioè è nella
-condizione migliore per accendere un cancello, non nella peggiore.
+porta dietro dal giorno in cui è nato: vedi §«Gli smoke» qui sotto. Il registro
+`baseline-smoke.tsv` ha due righe — cioè è nella condizione migliore per
+accendere un cancello, non nella peggiore.
 
-⚠️ **`unittest.TestCase` e `SimpleTestCase` non sono equivalenti**: solo
-`SimpleTestCase` **impedisce** al codice sotto test di parlare col database
-(`DatabaseOperationForbidden`). `unittest.TestCase` glielo *permette*
-soltanto — quindi un mock dimenticato lì non fallisce: parla col DB di sviluppo.
+#### Convenzioni dei file di test
 
-✅ **E dal 2026-09-11 lo dice anche `.codex/AGENTS.md`**, che è il documento
-dove si va a cercarlo scrivendo un test. Fino a quel giorno §Regole test le
-offriva come **alternative equivalenti**, e questa riga lo segnalava — ⭐ *un
-documento che dice il vero su un difetto non si aggiorna, si rende falso
-chiudendolo*. Lì sta anche la misura datata (2026-09-11: **506** classi che non
-bloccano il database contro **202** che lo bloccano) e il caso in cui
-`unittest.TestCase` resta legittimo — un test che non tocca Django affatto.
+* Struttura per app: `apps/<schema>/tests/` con almeno `api/` e `services/`.
+* In testa a ogni file, un breve indice dei test (nome test/caso); negli smoke
+  bash (`backend/scripts/tests/smoke-test-*.sh`) un blocco `# Indice test (0..N):`
+  dopo l'header.
+* Esecuzione: `./manage-test.sh apps.core.tests.api -v 2`. Smoke di docs/schema:
+  `apps/core/tests/api/test_diagnostics_api.py`.
+
+#### Test Django in CI: senza dipendere da un DB reale
+
+* ⛔ **`unittest.TestCase` e `SimpleTestCase` non sono equivalenti**: solo
+  `SimpleTestCase` **impedisce** al codice sotto test di parlare col database
+  (`DatabaseOperationForbidden`). `unittest.TestCase` glielo *permette*
+  soltanto — quindi un mock dimenticato lì non fallisce: parla col DB di
+  sviluppo, e il test resta verde raccontando una cosa che in CI non succede.
+  Per i test unitari con mock si usa `SimpleTestCase`; `unittest.TestCase`
+  resta legittimo solo dove il test non tocca Django affatto (una funzione
+  pura). Il pregresso che usa l'altra forma è un debito, non un modello.
+* ⚠️ **Nessun test dichiara un database** (`django.test.TestCase`,
+  `TransactionTestCase`, `databases = [...]`), quindi il runner stampa
+  «Skipping setup of unused database(s)» e la connessione resta quella
+  **configurata**, un DB con lo schema Liquibase completo. Ci si appoggiano i
+  test del secondo livello (`test_db_error_fields.py`, il guardrail dei codici).
+  **Il primo test che dichiarerà un database farà creare al runner un DB vuoto
+  per TUTTA la suite**, e quei test falliranno in una PR che non c'entra: non è
+  un divieto, ma vanno adeguati nello stesso commit.
+* **Ogni accesso al DB si mocka** (cursor, advisory lock, query dirette):
+
+  ```python
+  def setUp(self):
+      patcher = patch.object(MyClass, "_metodo_che_usa_db", return_value=valore)
+      self._mock = patcher.start()
+      self.addCleanup(patcher.stop)
+  ```
+
+* Ogni `APIView` su `/api/v1/` ha `@extend_schema` su ogni metodo HTTP pubblico
+  (warning di drf-spectacular in CI).
+* **Prova locale come la CI**:
+
+  ```bash
+  DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp_app DB_PASSWORD=secret-app \
+  DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" DJANGO_DEBUG=0 \
+  .venv/bin/python manage.py test -v 2
+  ```
+
+  ⚠️ `DB_USER=zeroerp_app`, non `zeroerp`: l'owner salta la RLS, e un test
+  no-leak sul DB vero con lui va rosso. Presidio: `richiedi_ruolo_soggetto_a_rls`
+  in `apps/core/tests/db_e2e.py`.
+
+#### Gli smoke
+
+`backend/scripts/tests/smoke-*.py` parlano col database di sviluppo, ognuno in
+`transaction.atomic()` + `set_rollback(True)`: si possono lanciare senza lasciare
+niente. ⛔ Non li raccoglie il runner Django e non li esegue la CI, quindi
+vanno lanciati a mano:
+
+```bash
+scripts/smoke-baseline.sh                   # tutti, ~4 min
+scripts/smoke-baseline.sh fattura-scadenze  # solo quelli col nome dato
+scripts/smoke-baseline.sh --update          # rigenera il registro dei noti
+```
+
+Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** →
+`exit 1`, noto rientrato → segnalato. Registro:
+`backend/scripts/tests/baseline-smoke.tsv`, un debito che deve calare.
+
+* ⛔ **Il codice di uscita di uno smoke non dice la verità**: uno stampa «ESITO:
+  FALLITO» ed esce 0. Lo script classifica dall'**output**.
+* ⚠️ **Gli esiti sono tre**: oltre a verde e rosso c'è `SENZA_MATERIA` (una
+  precondizione assente, dichiarata con `raise SystemExit`). La copertura di quel
+  giro vale zero, non «parziale».
 
 ---
 

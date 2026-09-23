@@ -213,20 +213,27 @@ SELECT is(
 -- arriva comunque su un conto di accredito dell'emittente.
 -- ⚠️ Il conto dev'essere di uso INCASSO: un guard lo impone, perche' l'unicita'
 --    che regge il perimetro vive solo sulle righe INCASSO.
+-- ⛔ LA FILIALE SI COSTRUISCE (2026-09-23): `anagrafiche.bank_branches` e'
+--   dato di MACCHINA, e su un database ricostruito e' vuota — `bank_branch_id`
+--   usciva NULL e il conto moriva sul suo NOT NULL.
+-- ⚠️ E il titolare del conto e' l'emittente di CHI AGISCE, non «il primo
+--   emittente attivo»: sono la stessa riga finche' l'installazione ha
+--   un'azienda sola, e su un database ricostruito lo sono per caso.
+CREATE TEMP TABLE tmp_banca_eip AS
+SELECT * FROM dbops.fn_pgtap_crea_filiale_bancaria('enti incasso psp');
+
 CREATE TEMP TABLE tmp_conto_eip AS
 WITH conto AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
   SELECT 'IT00PGTAPENTIPSPCONTO0000001',
-         (SELECT b.id FROM anagrafiche.bank_branches b
-           WHERE b.attivo IS TRUE ORDER BY b.id LIMIT 1),
+         (SELECT bank_branch_id FROM tmp_banca_eip),
          true, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
   RETURNING id
 ), legame AS (
   INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari
       (soggetto_ruolo_id, conto_bancario_id, uso, predefinito, storicizza, meta)
-  SELECT (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-           WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1),
+  SELECT script.fn_pgtap_emittente_sr_operatore(),
          conto.id, 'INCASSO', false, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
     FROM conto

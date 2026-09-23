@@ -38,12 +38,20 @@ SELECT plan(7);
 --   significativo — la fattura dev'essere VISIBILE (la RLS filtra da sé) e
 --   avere il billing account — è scelta UNA volta.
 -- ============================================================
+-- ⛔ LA FATTURA SI COSTRUISCE (2026-09-23). Su un database ricostruito
+--   `vendite.fatture` e' a zero: `fattura_id` e `ba_id` uscivano NULL e il
+--   caso 4 — «una riga ABBINATA CON fattura e cliente entra» — sbatteva contro
+--   il guard che pretende proprio quei due dati. Cioe' il test rosso diceva il
+--   vero sul prodotto e il falso su se stesso: non stava misurando il ramo
+--   permissivo, stava misurando l'assenza di una fattura.
+-- ⚠️ Centro e stati restano pescati: sono seed di `80_data`.
+CREATE TEMP TABLE tmp_rcgd_fatt AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('righe contabili guard dati');
+
 CREATE TEMP TABLE tmp_rcgd AS
 SELECT
-  (SELECT f.id FROM vendite.fatture f
-    WHERE f.billing_account_id IS NOT NULL ORDER BY f.id LIMIT 1)               AS fattura_id,
-  (SELECT f.billing_account_id FROM vendite.fatture f
-    WHERE f.billing_account_id IS NOT NULL ORDER BY f.id LIMIT 1)               AS ba_id,
+  (SELECT fattura_id         FROM tmp_rcgd_fatt)                               AS fattura_id,
+  (SELECT billing_account_id FROM tmp_rcgd_fatt)                               AS ba_id,
   (SELECT c.id FROM pagamenti.centri_riscossione c
     WHERE c.codice_interno = 'BANCA')                                          AS centro_id,
   (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s

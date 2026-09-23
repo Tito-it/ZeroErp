@@ -47,12 +47,20 @@ SELECT plan(7);
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_ente_conto_incasso'::text AS test_scope;
 
+-- ⛔ LA FILIALE SI COSTRUISCE (2026-09-23). `anagrafiche.bank_branches` e'
+--   dato di MACCHINA, non seed di `80_data`: su un database ricostruito e'
+--   vuota, `bank_branch_id` usciva NULL e il conto moriva sul suo NOT NULL.
+-- ⚠️ Anche il soggetto-ruolo «qualunque» si costruisce: su un database
+--   ricostruito il primo per id e' quello dell'azienda del contesto, cioe'
+--   proprio il soggetto su cui il test NON vuole agganciare il conto — il caso
+--   negativo sarebbe diventato il caso positivo, in silenzio.
+CREATE TEMP TABLE tmp_banca AS
+SELECT * FROM dbops.fn_pgtap_crea_filiale_bancaria('enti incasso conto');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT b.id FROM anagrafiche.bank_branches b
-    WHERE b.attivo IS TRUE ORDER BY b.id LIMIT 1)   AS bank_branch_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                         AS soggetto_ruolo_id_qualunque,
+  (SELECT bank_branch_id FROM tmp_banca)            AS bank_branch_id,
+  (SELECT banca_soggetto_ruolo_id FROM tmp_banca)   AS soggetto_ruolo_id_qualunque,
   -- ⭐ Dal 2026-08-28 `enti_incasso` ha la RLS: un canale lo puo' creare solo
   --    chi ne e' padrone. Quindi il conto NON si aggancia a un soggetto-ruolo
   --    qualunque, ma a quello dell'EMITTENTE dell'operatore che gira il test —
