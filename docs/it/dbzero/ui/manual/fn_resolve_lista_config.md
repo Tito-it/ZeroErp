@@ -54,7 +54,7 @@ In tutti gli altri casi (no preferenza, `preset_base_id IS NULL`, snapshot allin
 
 **3. Merge colonne nuove** — colonne presenti nel catalogo ma assenti dalla configurazione candidata vengono aggiunte in coda con `visibile=FALSE` e `ordine = ordine_default + 10000`. Il contatore `colonne_nuove` nel risultato indica quante colonne sono state aggiunte.
 
-**4. Permessi effettivi** — per ogni colonna, risolve il `livello_accesso` effettivo tramite `DISTINCT ON (codice)` ordinato per `(priorita ASC, restrittivita ASC)`. Costruisce un JSONB `{codice: livello}` usato nel passo 5.
+**4. Permessi effettivi** — il livello di ogni colonna (`TUTTO`, `LETTURA`, `BLOCCATO`) non si calcola qui: lo dà [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello), letto nel passo 5. È lo stesso calcolo che usa la ricerca libera ([`ui.fn_lista_colonne_ricerca_full`](/dbzero/ui/funzioni/fn_lista_colonne_ricerca_full)): una sede sola, così la ricerca non trova righe per una colonna che la lista non mostra.
 
 **5. Normalizzazione e filtro** — per ogni colonna:
   - `identificatore` e `azione` → `visibile = TRUE` forzato
@@ -92,7 +92,9 @@ JSONB con le chiavi:
 - `ui.lista_preset` + `ui.lista_preset_colonna` — configurazioni predefinite
 - `ui.lista_preferenza_utente` — preferenza personale
 - `ui.lista_colonna_permesso` — permessi a livello colonna
-- `script.fn_get_profili_accesso_applicabili` — risoluzione profili (chiamata 2 volte: passo 1 per array IDs, passo 4 per priorità)
+- `script.fn_get_profili_accesso_applicabili` — risoluzione profili (passo 1 e preset di ruolo)
+- [`ui.fn_veste_corrente`](/dbzero/ui/funzioni/fn_veste_corrente) — la veste dalla GUC `app.ruolo_applicativo`
+- [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello effettivo di ogni colonna (passo 5)
 
 ## Esempio
 

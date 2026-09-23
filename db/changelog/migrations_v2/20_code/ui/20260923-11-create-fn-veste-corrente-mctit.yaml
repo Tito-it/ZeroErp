@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VESTE CORRENTE, LETTA IN UN POSTO SOLO
+#   ui.fn_veste_corrente()
+#   Piano: brief-db-ricerca-full-colonne-permessi, sezione 3.1
+#
+# -- PERCHE' NASCE ----------------------------------------------
+#   Il cast «GUC app.ruolo_applicativo -> config.ruolo_applicativo, blindato»
+#   era scritto due volte, identico, in testa a ui.fn_resolve_lista_config e a
+#   ui.fn_resolve_dashboard_config. La lettura della ricerca libera
+#   (20260923-15) ne sarebbe stata la terza copia: regola del 2, si estrae, e
+#   le due copie si ritirano in questo stesso giro (20260923-13, -14).
+#
+# -- IL SIGNIFICATO, CHE E' LA PARTE CHE CONTA ------------------
+#   NULL vuol dire «tutte le vesti dell'utente», ed e' la risposta sia alla GUC
+#   assente o vuota sia a un valore fuori dal dominio dell'enum. Mai eccezione:
+#   la configurazione di una schermata non deve cadere per una variabile di
+#   sessione scritta male. E' la semantica che i due risolutori avevano gia'.
+#
+# ATTENZIONE: NON e' la regola di tutto il database. Le funzioni di permesso
+#   di `script` (fn_resolve_livello_area, fn_is_super_admin) sono fail-CLOSED
+#   sulla veste: fuori dal dominio rispondono BLOCCATO o false. Questa sta in
+#   `ui` perche' la sua semantica e' quella della presentazione, e chi la
+#   usasse per un cancello d'accesso aprirebbe dove l'altra chiude.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260923-11-create-fn-veste-corrente-mctit.yaml
+
+  - changeSet:
+      id: 20260923-11-create-fn-veste-corrente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Building block ui.fn_veste_corrente(): la veste corrente dalla GUC app.ruolo_applicativo, con
+        NULL = tutte le vesti sia per GUC assente o vuota sia per valore fuori dominio. Il cast blindato
+        era copiato in fn_resolve_lista_config e fn_resolve_dashboard_config; la lettura della ricerca
+        libera ne sarebbe stata la terza copia. Piano: brief-db-ricerca-full-colonne-permessi, sezione 3.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_veste_corrente()
+               RETURNS config.ruolo_applicativo
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la veste corrente della sessione, per la configurazione delle
+              -- schermate (liste, dashboard, ricerca libera).
+              --
+              -- NULL = tutte le vesti dell'utente. Lo e' per GUC assente, vuota o con
+              -- un valore fuori dal dominio di config.ruolo_applicativo (bug del
+              -- middleware, variabile d'ambiente sbagliata): mai eccezione.
+              --
+              -- ⚠️ Semantica di PRESENTAZIONE, non di permesso: le funzioni di
+              --   `script` che decidono un accesso sono fail-closed sulla veste.
+              DECLARE
+                v_raw TEXT := NULLIF(current_setting('app.ruolo_applicativo', true), '');
+              BEGIN
+                IF v_raw IS NULL THEN
+                  RETURN NULL;
+                END IF;
+
+                RETURN v_raw::config.ruolo_applicativo;
+              EXCEPTION WHEN invalid_text_representation THEN
+                RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_veste_corrente()
+              IS 'Veste corrente della sessione per la configurazione delle schermate: legge la GUC app.ruolo_applicativo e la converte in config.ruolo_applicativo. NULL = tutte le vesti dell''utente, sia per GUC assente o vuota sia per un valore fuori dominio: mai eccezione. Estratta il 2026-09-23 dalle due copie identiche in fn_resolve_lista_config e fn_resolve_dashboard_config (regola del 2), terzo consumatore fn_lista_colonne_ricerca_full. ⚠️ Semantica di presentazione, non di permesso: le funzioni di script che decidono un accesso sono fail-closed sulla veste. Brief: brief-db-ricerca-full-colonne-permessi.';
