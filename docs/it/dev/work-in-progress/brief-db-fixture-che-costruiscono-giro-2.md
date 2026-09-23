@@ -7,13 +7,20 @@
 > (giro 1, chiuso il 12-09) e della rev `20260920-01`, che ha insegnato alla riga
 > di contesto a **costruire** il mondo quando non lo trova.
 >
-> ✏️ **Stato 2026-09-23: il lotto 1 è CHIUSO, da applicare.**
-> Tre changeSet scritti e provati — `20260922-17` (`fn_pgtap_crea_mondo_cliente`,
-> **applicato** il 22-09), `20260923-01` (il builder degli articoli sceglie la
-> UoM), `20260923-04` (`fn_pgtap_crea_fattura`) e `20260923-05`
-> (`fn_pgtap_crea_filiale_bancaria`) — più tre presidi nuovi e **21 file
-> riscritti**. Dettaglio in §10.
-> 🔵 A Tid: l'apply dei tre changeSet, poi la corsa CI che certifica i rientrati.
+> ✅ **Stato 2026-09-23: il lotto 1 è CHIUSO e APPLICATO.** Tutti e quattro i
+> changeSet sono in servizio su dbdev e su `zeroerp_ci` — `20260922-17`
+> (`fn_pgtap_crea_mondo_cliente`, 22-09), `20260923-01` (il builder degli
+> articoli sceglie la UoM), `20260923-04` (`fn_pgtap_crea_fattura`) e
+> `20260923-05` (`fn_pgtap_crea_filiale_bancaria`) — con **21 file riscritti**,
+> tre presidi nuovi e **nessuna regressione** (Tid, 23-09). Committato in
+> `9304f209c`, PR #1649. Dettaglio in §10.
+>
+> ⏳ **Quello che manca non è lavoro, è una corsa**: il registro
+> `baseline-rossi-ci.tsv` è ancora a 361 file. Le righe rientrate le toglie
+> `scripts/pgtap-baseline-ci-rientrati.sh` leggendo il **log della corsa CI**,
+> e il log scade: va lanciato il giorno stesso della push su `Tito-dev` che
+> tocca `db/`. Finché non succede, il registro racconta un debito che in buona
+> parte non c'è più.
 >
 > ⛔ **Fuori perimetro**: i 4 file che chiudono in `COMMIT` e i 6 che chiamano la
 > riga di contesto in autocommit. Decisione rinviata da Tid il 22-09 — *prima la
@@ -281,10 +288,13 @@ chiamante scrive sempre non può stare dietro a quello raro.
 
 ## 9. Cosa resta
 
-* **l'apply di `20260922-17`** (Tid), e subito dopo la misura che qui manca: la
-  stessa chiamata come `zeroerp_app`, sui due rami;
-* poi il **lotto 1** di §5: 43 file su sei schemi, la ricetta di §5 applicata
-  file per file, e la corsa CI che li certifica **quel giorno**;
+* ✅ **Lotto 1 chiuso e applicato** il 23-09 (§10). ⏳ Resta la **corsa CI** che
+  certifica i rientrati e abbassa il registro: `pgtap-baseline-ci-rientrati.sh`
+  legge il log della corsa, e il log scade — va lanciato il giorno stesso;
+* 🔵 **il lotto 2**: `anagrafiche` 39 + `script` 31 file. È dove sta il mondo,
+  quindi è anche dove le fixture sbagliate rompono a cascata altrove; e lì
+  cadono i 4 file che **committano** e i 6 col contesto in autocommit, cioè la
+  decisione rinviata il 22-09 (§7 #5). Prima di cominciare va ripresa;
 * i 28 file che fissano `app.current_user_id = '1'`: non li tocca il BB, è una
   ricetta a sé (l'utente di sessione è quello del mondo costruito);
 * i 7 file legati a dati di **questa macchina**: o si riscrivono, o si dichiarano
@@ -371,26 +381,37 @@ verdi sul database da zero.
 | `test-enti-incasso-conto-incasso` | filiale pescata, e un soggetto-ruolo «qualunque» che da zero era **proprio quello dell'azienda del contesto**: il caso negativo diventava positivo in silenzio | filiale costruita, e il ruolo è quello della banca (7/7) |
 | `test-enti-incasso-psp` | filiale pescata, titolare = «il primo emittente attivo» | filiale costruita, titolare = l'emittente di chi agisce (12/12) |
 
-⛔ **E i due database si migrano SEPARATAMENTE** (misurato il 23-09): con
-`20260923-04/-05` applicati su dbdev e lo scratch fermo al `-03` delle 09:36,
-i nove file più il presidio della fattura sono rossi **solo su `zeroerp_ci`**,
-con «la funzione `dbops.fn_pgtap_crea_fattura(unknown)` non esiste». Non è un
-difetto delle fixture: è il database indietro. ⚠️ E ha una conseguenza sul
-registro: una baseline lanciata sullo scratch **prima** del suo migrate
-scriverebbe quei dieci in `baseline-rossi-ci.tsv` come debito nuovo — debito che
-non è. Oggi nel registro non ci sono, ed è giusto così.
+⭐ **La lezione del giro, e costa un giro di rosso a chi non la sa**: i due
+database si migrano **separatamente**. Il 23-09, con `20260923-04/-05`
+applicati su dbdev e lo scratch fermo al `-03` delle 09:36, i nove file più il
+presidio della fattura erano rossi **solo su `zeroerp_ci`**, con «la funzione
+`dbops.fn_pgtap_crea_fattura(unknown)` non esiste» — non un difetto delle
+fixture, il database indietro. ⚠️ E la conseguenza vera è sul registro: una
+baseline lanciata sullo scratch **prima** del suo migrate avrebbe scritto quei
+dieci in `baseline-rossi-ci.tsv` come debito nuovo, debito che non è. ✅ Chiusa
+col migrate dello scratch (Tid, 23-09): nessuno dei dieci è mai entrato nel
+registro.
 
-⚠️ **Questi nove girano solo dopo l'apply.** Le prove sono in transazione
-ritirata su `zeroerp_ci` con l'SQL estratto dei tre changeSet in testa, **da
-owner**: su dbdev lo schema `dbops` è di `titodb` e la funzione, dentro una
-transazione, non esiste per nessun'altra sessione. Il verso dev si misura dopo.
+✅ **Le prove, e in che ordine sono arrivate.** Prima dell'apply: SQL estratto
+dei changeSet in testa a ogni file, in transazione ritirata su `zeroerp_ci`,
+**da owner** — su dbdev lo schema `dbops` è di `titodb`, e una funzione dentro
+una transazione non esiste per nessun'altra sessione. Dopo l'apply su dbdev:
+i nove più i due presidi come `zeroerp_app`, **112 asserzioni verdi, zero
+rosse**. Dopo il migrate dello scratch: nessuna regressione (Tid).
 
-### ⏳ Cosa resta del lotto 1
-* `ui/test-lista-competenza-gruppi-colonna-emittente-v1`: **eccezione
-  dichiarata**. Il suo t.7 è il guard «il t.6 non è verde per sottrazione», e su
-  un database senza documenti dice il vero: il file non ha materia da
-  giudicare. Rientra quando il lotto `vendite` gli costruisce un documento.
-* I due `parameter-fk-surrogate-*`: aspettano il changeSet del punto 2.
+### ⏳ Cosa NON è entrato nel lotto 1, e perché
+
+Tre file restano rossi sul database da zero, e nessuno dei tre per una fixture
+che cerca invece di costruire. Sono dichiarati, non dimenticati:
+
+* `ui/test-lista-competenza-gruppi-colonna-emittente-v1`: il suo t.7 è il guard
+  «il t.6 non è verde per sottrazione», e su un database senza documenti **dice
+  il vero** — il file non ha materia da giudicare. Rientra quando il lotto
+  `vendite` gli costruisce un documento;
+* i due `parameter-fk-surrogate-*`: aspettano il changeSet di `storico.parameters`
+  (§10, punto 2). È un difetto del prodotto sul database da zero, non del test;
+* `config/test-fn-email-sistema` è rosso **anche su dbdev** (5 asserzioni): va
+  guardato per quello che è, e non è questo cantiere.
 
 ### ⭐ Un changeSet nato dal lotto
 
