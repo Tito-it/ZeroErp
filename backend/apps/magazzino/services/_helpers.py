@@ -29,11 +29,16 @@ from apps.core.services.payload_helpers import PayloadValidator
 
 _FN = "magazzino.helpers"
 
-# Il codice di validazione del payload. ⚠️ Quello GENERICO (`DATO_ERRATO`,
-# `highlight_form_fields`): il dominio non ha ancora il suo — e' un seed del
-# team DB (`E_MAGAZZINO_VALIDATION`, come `E_PAGAMENTI_VALIDATION`), chiesto
-# nel brief 2-bis. Cambiarlo e' una riga qui.
-E_VALIDAZIONE = "E_VALIDATION_INPUT"
+# Il codice di validazione del payload del dominio (`DATO_ERRATO`,
+# `highlight_form_fields`), gemello di `E_PAGAMENTI_VALIDATION`. ⭐ A catalogo
+# dal 2026-09-23 (R-6 del brief 2-bis): fino a quel giorno il magazzino usava
+# il generico `E_VALIDATION_INPUT`, e nel registro degli errori i suoi rifiuti
+# non si distinguevano da quelli di ogni altro dominio.
+# ⚠️ La frase a catalogo e' SENZA segnaposto, come quella dei diciotto
+# fratelli `*_VALIDATION`: a riempire un `%s` e' `fn_log_and_raise_error`, e un
+# codice che solleva solo il BACKEND da li' non ci passa mai. Quale campo non
+# va lo dice il `ServiceError` (`context.field`), non la frase.
+E_VALIDAZIONE = "E_MAGAZZINO_VALIDATION"
 
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 

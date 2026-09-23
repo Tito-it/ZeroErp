@@ -544,6 +544,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "in questo (non puo' uscirne). Verificare dove si trova nel registro "
         "dei movimenti e registrare prima il movimento mancante."
     ),
+    "E_MAGAZZINO_VALIDATION": "Richiesta di magazzino non valida.",
     "E_MAG_CHIAMATA_NON_VALIDA": (
         "Chiamata non valida a una funzione di magazzino: un valore che "
         "nessuna interfaccia produce. Non c'e' niente da correggere a video: "
@@ -554,6 +555,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "registro (uno storno va al costo dell'originale, l'entrata di un "
         "trasferimento al costo dell'uscita gemella, ogni uscita alla media "
         "corrente). Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE": (
+        "Il magazzino di un inventario o di una rettifica non si cambia: il "
+        "documento nasce dentro il suo magazzino. Se il magazzino e' "
+        "sbagliato, annullare il documento e aprirne uno nuovo in quello "
+        "giusto."
     ),
     "E_MAG_DOCUMENTO_NON_ELIMINABILE": (
         "Il documento non si puo' eliminare: solo una bozza si elimina. Per "
@@ -569,6 +576,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Il documento non si porta a registrato con un aggiornamento diretto "
         "dello stato: ci passa solo l'operazione di registrazione, che scrive "
         "i movimenti. Segnalare al supporto citando il request_id."
+    ),
+    "E_MAG_DOCUMENTO_RIGA_NON_TROVATA": (
+        "La riga non fa parte di questo documento: non esiste, oppure e' di "
+        "un altro documento. Riaprire il documento per vedere le righe che "
+        "ci sono adesso."
     ),
     "E_MAG_DOCUMENTO_RIGHE_CONGELATE": (
         "Le righe del documento non si modificano piu': si scrivono solo in "
@@ -598,6 +610,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "che il registro da' come presente per l'articolo (o per il lotto o "
         "il seriale indicati). Ridurre la quantita', scegliere un altro lotto "
         "o magazzino, oppure registrare prima il carico mancante."
+    ),
+    "E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA": (
+        "L'articolo e' gia' contato in questa posizione dell'inventario: due "
+        "letture della stessa posizione non sono due fatti. Modificare la riga "
+        "che c'e' gia'; se la merce e' davvero diversa, e' la posizione a "
+        "essere diversa (ubicazione, lotto o seriale)."
     ),
     "E_MAG_LOTTO_DI_ALTRO_ARTICOLO": (
         "Il lotto indicato non e' dell'articolo della riga, oppure non e' "

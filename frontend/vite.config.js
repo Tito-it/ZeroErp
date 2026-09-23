@@ -26,11 +26,19 @@ export default defineConfig({
 
   // ⭐ Il PRIMO test del frontend (2026-09-09). Fino a quel giorno non esisteva
   //    nessuno strumento di test: zero file, nessuno script, nessun pacchetto.
-  //    ⚠️ `environment` resta quello di node, non jsdom: qui si provano
-  //    composable e JS puro, che un DOM non lo toccano. Il giorno in cui servira'
-  //    montare un componente si aggiungeranno `@vue/test-utils` + `jsdom` —
-  //    allora, non prima: una dipendenza messa «per dopo» resta in
-  //    `package.json` senza un solo test che la usi.
+  //    ⚠️ `environment` resta quello di NODE, ed e' il default giusto: la gran
+  //    parte dei test prova composable e JS puro, che un DOM non lo toccano, e
+  //    in node partono piu' in fretta.
+  // ⭐ **Dal 2026-09-23 si montano anche i componenti** (`@vue/test-utils` +
+  //    `jsdom`, ok di Tid): quel giorno e' arrivato dopo che TRE cantieri in
+  //    una settimana — rate, filtri di lista, barra del drawer di magazzino —
+  //    hanno lasciato scoperto lo stesso difetto, e i filtri ne hanno pagati
+  //    due in un giorno soli (brief-fe-filtri-lista §9).
+  //    ⛔ Il DOM NON si accende qui per tutti: chi ne ha bisogno lo dichiara
+  //    in testa al proprio file con `// @vitest-environment jsdom`. Accenderlo
+  //    globalmente rallenterebbe i test puri — che sono la maggioranza — per
+  //    servire i pochi che montano, e nasconderebbe QUALI file toccano il DOM.
+  //    Il presidio e' la riga stessa: si legge in cima al file che la usa.
   test: {
     include: ['src/**/*.{test,spec}.js'],
     reporters: ['default'],

@@ -31,6 +31,9 @@ Indice test eseguiti:
 7) DocumentoInternoDbTests.test_i_lookup_di_riga_filtrano_per_padre
 8) DocumentoInternoDbTests.test_ogni_ordinamento_della_whitelist_esegue
 9) DocumentoInternoDbTests.test_il_conteggio_della_lista_non_e_un_eco
+10) DocumentoInternoDbTests.test_la_capability_segue_la_matrice_del_guard — R-1, 2026-09-23
+11) DocumentoInternoDbTests.test_registra_spento_col_motivo_nei_tre_casi — R-1, 2026-09-23
+12) DocumentoInternoDbTests.test_il_duplicato_di_posizione_ha_il_suo_codice — R-2, 2026-09-23
 """
 from __future__ import annotations
 
@@ -256,10 +259,10 @@ class DocumentoInternoDbTests(unittest.TestCase):
             e = self._rifiuto(lambda: magazzino_service.crea_riga(
                 "rettifiche", rt["id"], {"articolo_id": m.art, "qta_delta": 0},
             ))
-            self.assertEqual(e.code, "E_VALIDATION_INPUT")
+            self.assertEqual(e.code, "E_MAGAZZINO_VALIDATION")
             self.assertEqual(e.context.get("field"), "qta_delta")
             e = self._rifiuto(lambda: magazzino_service.list_piano("rettifiche", rt["id"], limit=10))
-            self.assertEqual(e.code, "E_VALIDATION_INPUT")
+            self.assertEqual(e.code, "E_MAGAZZINO_VALIDATION")
             magazzino_service.cambia_stato_documento("rettifiche", rt["id"], {"stato": "CONFIRM"})
             esito = magazzino_service.registra_documento("rettifiche", rt["id"])
             self.assertEqual(esito["n_movimenti"], 1)
@@ -272,7 +275,7 @@ class DocumentoInternoDbTests(unittest.TestCase):
             self.assertEqual(disp[0]["disponibile"], Decimal("5"))
             # `descrizione` non esiste sulla rettifica: il PATCH la rifiuta.
             e = self._rifiuto(lambda: magazzino_service.aggiorna_documento("rettifiche", rt["id"], {"descrizione": "x"}))
-            self.assertEqual(e.code, "E_VALIDATION_INPUT")
+            self.assertEqual(e.code, "E_MAGAZZINO_VALIDATION")
         self._nel_mondo(_prova)
 
     # Scopo: (g) — `POSTED` non si elimina, non si modifica (righe) e non torna
@@ -294,7 +297,7 @@ class DocumentoInternoDbTests(unittest.TestCase):
                 (lambda: magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "DRAFT"}), "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA"),
                 # ⛔ `POSTED` non e' richiedibile: il vocabolario lo ferma PRIMA
                 #    del guard, che risponderebbe un TECNICO.
-                (lambda: magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"}), "E_VALIDATION_INPUT"),
+                (lambda: magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"}), "E_MAGAZZINO_VALIDATION"),
             ):
                 self.assertEqual(self._rifiuto(fn).code, atteso)
             # Q-2: la testata resta libera anche su POSTED — nessun guard nel BE.
@@ -324,7 +327,7 @@ class DocumentoInternoDbTests(unittest.TestCase):
                              "E_MAG_DOCUMENTO_NON_TROVATO")
             self.assertEqual(magazzino_service.list_documenti("inventari", auth_user_id=uid2, limit=10)["count"], 0)
             e = self._rifiuto(lambda: magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a}))
-            self.assertEqual((e.code, e.context.get("field")), ("E_VALIDATION_INPUT", "magazzino_id"))
+            self.assertEqual((e.code, e.context.get("field")), ("E_MAGAZZINO_VALIDATION", "magazzino_id"))
             self.assertEqual(consultazione_service.list_movimenti(auth_user_id=uid2, limit=10, magazzino_id=m.mag_a)["count"], 0)
         self._nel_mondo(_prova)
 
@@ -372,4 +375,154 @@ class DocumentoInternoDbTests(unittest.TestCase):
             self.assertEqual(magazzino_service.list_documenti("inventari", auth_user_id=m.uid, limit=10, magazzino_id=m.mag_u)["count"], 1)
             self.assertEqual(magazzino_service.list_documenti("inventari", auth_user_id=m.uid, limit=10, search="uno")["count"], 1)
             self.assertEqual(magazzino_service.list_documenti("inventari", auth_user_id=m.uid, limit=10, search="MAG-U")["count"], 1)
+        self._nel_mondo(_prova)
+
+    # ══════════════════════════════════════════════════════════════
+    #  R-1 / R-2 — la capability e il duplicato (2026-09-23)
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: le azioni proposte sono ESATTAMENTE quelle che il guard ammette,
+    #        perche' vengono dalla stessa matrice. Si prova COSTRUENDO le
+    #        transizioni, non leggendo i dati di oggi: per ogni stato si
+    #        confronta cio' che la capability propone con cio' che il guard
+    #        accetta davvero (AGENTS.md §corollario sui test).
+    # ⛔ `POSTED` non e' mai fra le azioni: quella porta la apre solo
+    #    `registra/`, e fra le proposte sarebbe un 500 promesso a un pulsante.
+    def test_la_capability_segue_la_matrice_del_guard(self):
+        def _prova(cur, m):
+            d = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            doc_id = d["id"]
+
+            # DRAFT: si conferma o si annulla; si scrive tutto.
+            caps = magazzino_service.get_documento("inventari", doc_id)["capabilities"]
+            # ⭐ I NOMI del blob, per intero: sono il contratto che il drawer
+            #    legge campo per campo (`capabilities.can_registra_reason_key`
+            #    e compagni). Un campo rinominato a DB non farebbe fallire
+            #    niente — il pulsante resterebbe spento per sempre, e a video
+            #    sembrerebbe una regola (api.md §Capability: «un campo
+            #    dichiarato e mai letto sembra presidiato e non presidia»).
+            self.assertEqual(set(caps), {
+                "stato_codice", "available_actions", "can_change_state",
+                "can_edit_testata", "can_edit_righe", "can_delete",
+                "can_registra", "can_registra_reason", "can_registra_reason_key",
+                "stato_info_key",
+            })
+            self.assertEqual(set(caps["available_actions"][0]), {
+                "key", "target_state", "label_key", "icon", "severity",
+                "requires_confirm", "enabled", "reason", "reason_key", "manuale",
+            })
+            self.assertEqual(caps["stato_codice"], "DRAFT")
+            self.assertEqual({a["target_state"] for a in caps["available_actions"]}, {"CONFIRM", "CANCEL"})
+            self.assertEqual({a["key"] for a in caps["available_actions"]}, {"conferma", "annulla"})
+            self.assertTrue(caps["can_edit_testata"] and caps["can_edit_righe"] and caps["can_delete"])
+            self.assertIsNone(caps["stato_info_key"])
+            # ⚠️ L'annullamento e' l'unica che chiede conferma: e' terminale.
+            per_key = {a["key"]: a for a in caps["available_actions"]}
+            self.assertTrue(per_key["annulla"]["requires_confirm"])
+            self.assertFalse(per_key["conferma"]["requires_confirm"])
+
+            # CONFIRM: si registra, si riapre, si annulla. Niente scrittura.
+            magazzino_service.crea_riga(
+                "inventari", doc_id, {"articolo_id": m.art, "qta_contata": "10", "costo_unitario": 7},
+            )
+            magazzino_service.cambia_stato_documento("inventari", doc_id, {"stato": "CONFIRM"})
+            caps = magazzino_service.get_documento("inventari", doc_id)["capabilities"]
+            self.assertEqual({a["target_state"] for a in caps["available_actions"]}, {"DRAFT", "CANCEL"})
+            self.assertFalse(caps["can_edit_righe"] or caps["can_delete"])
+            self.assertTrue(caps["can_registra"])
+            self.assertIsNone(caps["can_registra_reason"])
+
+            # POSTED: nessuna azione, e la nota che dice qual e' la strada.
+            magazzino_service.registra_documento("inventari", doc_id)
+            caps = magazzino_service.get_documento("inventari", doc_id)["capabilities"]
+            self.assertEqual(caps["available_actions"], [])
+            self.assertFalse(caps["can_change_state"])
+            self.assertFalse(caps["can_registra"])
+            self.assertEqual(caps["stato_info_key"], "magazzino.documenti_interni.stato_info.posted")
+
+            # E cio' che la capability NON propone, il guard lo rifiuta: le due
+            # facce della stessa matrice.
+            e = self._rifiuto(lambda: magazzino_service.cambia_stato_documento(
+                "inventari", doc_id, {"stato": "DRAFT"},
+            ))
+            self.assertEqual(e.code, "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA")
+
+            # CANCEL: terminale, con la sua nota.
+            altro = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            magazzino_service.cambia_stato_documento("inventari", altro["id"], {"stato": "CANCEL"})
+            caps = magazzino_service.get_documento("inventari", altro["id"])["capabilities"]
+            self.assertEqual(caps["available_actions"], [])
+            self.assertEqual(caps["stato_info_key"], "magazzino.documenti_interni.stato_info.cancel")
+        self._nel_mondo(_prova)
+
+    # Scopo: «Registra» e' spento col motivo GIUSTO nei tre casi con cui le
+    #        madri del posting rifiutano, e nell'ordine di precedenza
+    #        dichiarato (stato > righe > postabilita'). ⭐ E' la prova che il
+    #        pulsante non promette cio' che il database rifiutera': la sede e'
+    #        una sola (`fn_check_documento_interno_registrabile`).
+    def test_registra_spento_col_motivo_nei_tre_casi(self):
+        def _prova(cur, m):
+            # (1) non confermato — in DRAFT non si registra.
+            d = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            caps = magazzino_service.get_documento("inventari", d["id"])["capabilities"]
+            self.assertFalse(caps["can_registra"])
+            self.assertEqual(caps["can_registra_reason"], "DOCUMENTO_NON_CONFERMATO")
+            self.assertEqual(
+                caps["can_registra_reason_key"],
+                "magazzino.documenti_interni.registra_reason.non_confermato",
+            )
+
+            # (2) senza righe — confermato ma vuoto.
+            magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "CONFIRM"})
+            caps = magazzino_service.get_documento("inventari", d["id"])["capabilities"]
+            self.assertEqual(caps["can_registra_reason"], "DOCUMENTO_SENZA_RIGHE")
+            self.assertEqual(
+                caps["can_registra_reason_key"],
+                "magazzino.documenti_interni.registra_reason.senza_righe",
+            )
+            # ⭐ E il motivo e' lo STESSO codice con cui la madre rifiuta.
+            e = self._rifiuto(lambda: magazzino_service.registra_documento("inventari", d["id"]))
+            self.assertEqual(e.code, "E_MAG_DOCUMENTO_SENZA_RIGHE")
+
+            # (3) righe non postabili — l'articolo non e' gestito a magazzino.
+            d2 = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            magazzino_service.crea_riga("inventari", d2["id"], {"articolo_id": m.art_ng, "qta_contata": 3})
+            magazzino_service.cambia_stato_documento("inventari", d2["id"], {"stato": "CONFIRM"})
+            caps = magazzino_service.get_documento("inventari", d2["id"])["capabilities"]
+            self.assertFalse(caps["can_registra"])
+            self.assertEqual(caps["can_registra_reason"], "RIGHE_NON_POSTABILI")
+            self.assertEqual(
+                caps["can_registra_reason_key"],
+                "magazzino.documenti_interni.registra_reason.righe_non_postabili",
+            )
+            e = self._rifiuto(lambda: magazzino_service.registra_documento("inventari", d2["id"]))
+            self.assertEqual(e.code, "E_MAG_ARTICOLO_NON_GESTITO")
+        self._nel_mondo(_prova)
+
+    # Scopo: R-2 — due letture della stessa posizione sono la stessa riga
+    #        scritta due volte: il `23505` di `uq_mag_inventari_righe_posizione`
+    #        esce come CODICE registrato, col campo da accendere.
+    # ⛔ La rettifica NON lo prende: due delta sulla stessa posizione sono due
+    #    correzioni (C14), e a DB il vincolo non c'e'.
+    def test_il_duplicato_di_posizione_ha_il_suo_codice(self):
+        def _prova(cur, m):
+            d = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            magazzino_service.crea_riga("inventari", d["id"], {"articolo_id": m.art, "qta_contata": 4})
+            e = self._rifiuto(lambda: magazzino_service.crea_riga(
+                "inventari", d["id"], {"articolo_id": m.art, "qta_contata": 6},
+            ))
+            self.assertEqual(e.code, "E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA")
+            self.assertEqual(e.context.get("field"), "articolo_id")
+
+            # La rettifica ammette due righe sulla stessa posizione.
+            r = magazzino_service.crea_documento("rettifiche", {"magazzino_id": m.mag_a})
+            magazzino_service.crea_riga(
+                "rettifiche", r["id"], {"articolo_id": m.art, "qta_delta": 2, "motivo": "ROTTURA"},
+            )
+            magazzino_service.crea_riga(
+                "rettifiche", r["id"], {"articolo_id": m.art, "qta_delta": -1, "motivo": "ROTTURA"},
+            )
+            self.assertEqual(
+                magazzino_service.get_documento("rettifiche", r["id"])["righe_count"], 2,
+            )
         self._nel_mondo(_prova)

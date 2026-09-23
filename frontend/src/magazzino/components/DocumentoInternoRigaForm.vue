@@ -258,8 +258,14 @@ function acceso(campo) {
   <div class="form-grid">
     <div class="form-field">
       <label>{{ t('magazzino.documenti_interni.riga.campo_articolo') }} *</label>
+      <!-- R-5: il picker propone SOLO gli articoli gestiti a magazzino — un
+           articolo non gestito non e' registrabile, e proporlo e' mandare
+           l'operatore a costruire una riga che il piano bocciera'. ⚠️ Il
+           riquadro qui sotto resta: una riga scritta PRIMA del filtro, o da
+           un client qualunque, va comunque spiegata a chi la rilegge. -->
       <ArticoloLookup
         v-model="form.articolo"
+        :filtri="{ gestitiAMagazzino: 'solo' }"
         :placeholder="t('magazzino.documenti_interni.riga.campo_articolo_placeholder')"
         :invalid="acceso('articolo_id')"
       />

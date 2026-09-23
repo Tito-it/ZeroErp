@@ -88,9 +88,12 @@ suo, perché una modifica al CSS non ha bisogno di Postgres e Liquibase): `npm c
 `npm run fix`, che di proposito non si chiama `lint:*`) · `npm run guards` · test
 `vitest` · `npm run build` · `scripts/check_i18n_keys.py`. Durata ~47 s. Node
 risolto da `engines.node` di `package.json`, nessun numero ricopiato nel
-workflow. Al 2026-09-12 i file `.spec.js` sono **tre** (`useApiHandler`,
+workflow. Al 2026-09-12 i file `.spec.js` erano **tre** (`useApiHandler`,
 `useNotify`, `ramoBannerLotto`): il valore è il contratto dell'envelope che
-fissano, non la superficie coperta — vedi D1-d-bis.
+fissano, non la superficie coperta. ⭐ Dal **2026-09-23** provano anche i
+**componenti** (D1-d-bis chiusa): il DOM si accende per file
+(`// @vitest-environment jsdom`), non globalmente, così i test puri — che
+restano la maggioranza — non pagano l'ambiente di chi monta.
 
 ### 2.2 Analisi statica del backend — `ruff`, dal 2026-09-09
 
@@ -174,7 +177,7 @@ CI senza toccare il workflow.
 
 |     | Difetto                                                                | Stato                                                                                           |
 | --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09 — **in §9** · restano **D1-d-bis** (test di componente) e la **decisione di D1-f**      |
+| D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09 — **in §9** · ✅ **D1-d-bis chiusa il 23-09** (primi test di componente) · resta la **decisione di D1-f** |
 | D2  | Backend senza analisi statica                                          | ✅ 09-09/10 — **in §9** · resta **D2-b** (type checker)                                          |
 | D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a — **in §9** · restano **D3-b**, **D3-c**                                                 |
 | D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
@@ -194,9 +197,15 @@ CI senza toccare il workflow.
 
 **Residui aperti:**
 
-* **D1-d-bis** — il primo test di **componente** (`ListaConfigurabile`, 63 file
-  la usano). Vuole `@vue/test-utils` + `jsdom`, da aggiungere **quel giorno**;
-  e vuole che qualcuno decida *cosa* deve asserire.
+* ~~**D1-d-bis** — il primo test di **componente**~~ ✅ **CHIUSA il 2026-09-23.**
+  `@vue/test-utils` + `jsdom` aggiunti con l'ok di Tid (0 vulnerabilita'), e
+  due componenti provati: `DrawerActionsBar` (12 test, 19 drawer lo montano) e
+  `ListaConfigurabile` (8 test, 63 file). ⭐ **Il «cosa deve asserire» e' stato
+  deciso cosi': i CONTRATTI fra caller e BB** — cio' che un file qualunque
+  promette senza saperlo — non la resa grafica, non la configurazione (e'
+  dato), non cio' che e' di PrimeVue. Impalcatura comune in `frontend/test/montaggio.js`,
+  DOM acceso **per file** (`// @vitest-environment jsdom`), non globalmente.
+  Entrambi gli spec provati **per mutazione**.
 * **D1-f** — ✅ le due vulnerabilità (`browserslist` alta,
   `baseline-browser-mapping` moderata, entrambe di sola **build**) sanate il
   2026-09-13 su segnalazione di Tid dagli avvisi Dependabot: **nessun
@@ -409,8 +418,9 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D1-c** — ✅ 2026-09-09: guard raccolti in `npm run guards`.
 * [x] **D1-d (metà)** — ✅ 2026-09-09: `vitest`, primo file provato per mutazione.
 * [x] **D1-e** — ✅ 2026-09-09: `check_license.py` in modalità range per la CI.
-* [ ] **D1-d-bis** — il primo test di **componente** su `ListaConfigurabile`
-      (`@vue/test-utils` + `jsdom`, da aggiungere quel giorno).
+* [x] **D1-d-bis** — ✅ 2026-09-23: `@vue/test-utils` + `jsdom` aggiunti, primi
+      due componenti provati (`DrawerActionsBar` 12, `ListaConfigurabile` 8),
+      impalcatura in `frontend/test/montaggio.js`.
 * [~] **D1-f** — ✅ 2026-09-13: le due vulnerabilità FE sanate nel lock
       (`npm audit` a zero) e `weasyprint` a 70.0 nel backend. Aperta la
       decisione se `npm audit --audit-level=high` entra nel job — ora

@@ -65,8 +65,12 @@ export function creaDocumento(famiglia, payload) {
 
 // Dettaglio: testata + magazzino (`magazzino_codice`, `_descrizione`,
 // `magazzino_usa_ubicazioni`) + `righe_count` + `stato_info_key` e, per
-// l'inventario, `piano_riepilogo`. ⏳ R-1: `capabilities` arrivera' da
-// `fn_available_actions_*`; finche' non c'e', la chiave MANCA — non si finge.
+// l'inventario, `piano_riepilogo`. ⭐ E le `capabilities` (R-1, dal
+// 2026-09-23): `available_actions[]` (le transizioni che il guard ammette),
+// `can_registra` + `_reason` + `_reason_key`, `can_edit_testata`/`_righe`,
+// `can_delete`, `stato_info_key`. Il blob viene da
+// `script.fn_available_actions_<famiglia>` e il backend lo trasporta intatto:
+// il drawer ci disegna la barra senza sapere le regole che ci stanno dietro.
 export function getDocumento(famiglia, docId) {
   return api.get(`${base(famiglia)}/${docId}/`)
 }

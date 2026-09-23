@@ -65,10 +65,14 @@ from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 # e `filtri_label` vivono in `api/_comuni.py` dal 2026-09-21 (seconda
 # occorrenza: le view delle anagrafiche in `views_anagrafiche.py`).
 
-# 🔴 Il cancello sull'unico gesto irreversibile del dominio. ⏳ R-3: l'azione
-#    va seminata a catalogo e ASSEGNATA a un profilo; finche' non lo e',
-#    `fn_check_azione_processo` risponde `false` per tutti tranne i super
-#    admin — fail-closed, che e' il verso giusto in cui sbagliare.
+# 🔴 Il cancello sull'unico gesto irreversibile del dominio. ⭐ A catalogo dal
+#    2026-09-23 (R-3 del brief 2-bis): `config.azioni_processo`, area 6,
+#    `pericolosa = t`. ⚠️ Una riga a catalogo non e' un permesso: finche'
+#    l'azione non e' ASSEGNATA a un profilo, `fn_check_azione_processo`
+#    risponde `false` per tutti tranne i super admin — fail-closed, che e' il
+#    verso giusto in cui sbagliare.
+# ⭐ Una sola azione per la famiglia (inventari e rettifiche): il verbo e'
+#    lo stesso e la matrice e' la stessa.
 PERMESSO_REGISTRA = "registra_magazzino"
 
 
@@ -192,7 +196,11 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
         area_funzionale = AREA
 
         @extend_schema(operation_id=f"magazzino_{op}_detail", responses={200: RISPOSTA_GENERICA})
-        # Scopo: Testata + magazzino + conteggio righe (+ riepilogo del piano).
+        # Scopo: Testata + magazzino + conteggio righe + `capabilities` (+ il
+        #        riepilogo del piano, solo inventario).
+        # ⭐ Il blob della capability (R-1) e' cio' che il drawer legge per
+        #    disegnare la barra: azioni di stato, terna di «registra», che cosa
+        #    si puo' ancora modificare, la nota dello stato chiuso.
         def get(self, request: Request, doc_id: int) -> JsonResponse:
             return success_response(magazzino_service.get_documento(codice, doc_id))
 

@@ -4764,9 +4764,31 @@
       "righe_congelate": "Lines can only be edited in draft: bring the document back to draft to change them.",
       "righe_non_lette": "Could not load the document lines.",
       "movimenti": "Movements",
+      "conferma_transizione": "Proceed with «{azione}» on this document?",
+      "stato_cambiato": "Document status updated.",
+      "azione": {
+        "conferma": "Confirm",
+        "riapri": "Reopen",
+        "annulla": "Cancel"
+      },
       "registra_reason": {
+        "non_confermato": "The document is not confirmed yet: confirm it to post.",
+        "gia_registrato": "The document is already posted: the movements are on the ledger.",
+        "annullato": "The document is cancelled: it cannot be posted.",
         "senza_righe": "The document has no lines: there is nothing to post.",
         "righe_non_postabili": "One or more lines would not pass posting: fix them in the lines list."
+      },
+      "registra": {
+        "azione": "Post",
+        "titolo": "Post to the warehouse",
+        "conferma": "Post",
+        "irreversibile": "Posting writes the movements on the ledger and cannot be undone.",
+        "riepilogo_piano": "{con_delta} with a difference · {non_contate} not counted, left as they are.",
+        "fatto": "Posted: {n} movements on the ledger."
+      },
+      "stato_info": {
+        "posted": "Posted: the movements are on the ledger. To correct them, open an adjustment.",
+        "cancel": "Cancelled: the document is closed and cannot be reopened. Open a new one if needed."
       },
       "riga": {
         "nuova": "New line",

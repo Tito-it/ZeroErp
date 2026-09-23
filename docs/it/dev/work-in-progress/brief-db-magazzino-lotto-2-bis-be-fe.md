@@ -34,8 +34,19 @@
 > `90_end/20260923-02`, il changeSet di un cantiere nato da una riga di questo
 > brief — [brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md).
 > ✅ **pgTAP rilanciati da Tid, nessuna regressione; commit fatto** (`7d67d6d9d`).
-> ⇒ **Sul DB non resta niente di questo brief.** Ciò che lo tiene aperto è
-> **solo la metà BE/FE** di R-1, R-2, R-3, R-5, R-6 e R-7, elencata in coda.
+> ⇒ **Sul DB non resta niente di questo brief.**
+>
+> # ✅ CHIUSO il 2026-09-23 — anche la metà BE/FE
+>
+> **Consegnato**: il drawer monta la barra dalla capability (le tre transizioni
+> e «Registra», spento col motivo), il `23505` del duplicato di posizione esce
+> come codice registrato col campo da accendere, il gate `registra_magazzino` è
+> dichiarato sui due `registra/`, il codice di validazione del dominio ha preso
+> il posto del generico, la riga di un altro documento ha un 404 suo, e il
+> picker di riga propone i soli articoli gestiti a magazzino. Dettaglio e
+> presidi in coda, §«A BE/FE, quando il DB è applicato».
+> ⏳ **Resta il collaudo a video** (passo 7 del piano), che è di Tid: il
+> frontend non è stato provato in-app.
 > ✅ Le cinque domande del piano (Q-1 … Q-5) erano decise da Tid il 2026-09-18:
 > lato BE/FE non restava niente in sospeso. Bloccavano parti **diverse** del
 > piano: R-1 il drawer (Pezzo 3), R-2 le righe (Pezzo 2), R-3 il gate di
@@ -547,33 +558,56 @@ con l'errore, il `E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO` che si prenderebbe al
 posting senza il lucchetto, e la nota che la `data` invece resta modificabile) e
 `_dominio-magazzino.md`, nel capoverso dei documenti interni.
 
-### 🔵 A BE/FE, quando il DB è applicato
+### ✅ A BE/FE — fatto il 2026-09-23
 
-* le **otto chiavi i18n** qui sopra (`it.json` / `en.json`) — ⚠️ **tutte e otto**,
-  non le due che `check_i18n_keys.py` nomina nel suo rosso: le altre sei sono un
-  punto cieco del guard, §«Il guard delle chiavi è ROSSO, e ne nomina due su otto»;
-* `genera_error_policies` + ripiego per `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA`
-  (R-2), e `map_integrity_error` che traduce il `23505` di
-  `uq_mag_inventari_righe_posizione` in quel codice;
-* `post_permission = registra_magazzino` sui due `.../registra/` (R-3): il
-  cancello è fail-closed finché un profilo non porta l'azione;
-* il drawer legge `available_actions` e la terna `can_registra` — nessun `v-if`
-  sullo stato, nessun `dict` in Python: è esattamente ciò che R-1 chiedeva di
-  non dover scrivere.
+Tutto consegnato nello stesso giro. Che cosa è entrato, e dove:
 
-**Dal secondo giro (R-5, R-6, R-7):**
+| | Che cosa | Dove |
+| --- | --- | --- |
+| **R-1** | il dettaglio porta `capabilities` e `stato_info_key` dal blob, **trasportati intatti**; il drawer monta le tre transizioni con `mapAvailableActionsToDrawerActions` e «Registra» dalla terna `can_registra*` | `famiglie.py` (`fn_capability`, l'involucro della famiglia), `magazzino_repository.get_capabilities`, `magazzino_service.get_documento`, `DocumentoInternoDrawer.vue` |
+| **R-2** | `_UNIQUE_CONSTRAINTS` traduce il `23505` di `uq_mag_inventari_righe_posizione` nel codice registrato, `field = articolo_id` | `magazzino_service.py` |
+| **R-3** | `post_permission = registra_magazzino` (era già dichiarato, fail-closed); il FE nasconde il pulsante a chi non ha l'azione (`AZIONE_REGISTRA_MAGAZZINO`) | `api/views.py`, `vocabolari.js` |
+| **R-5** | `gestito_a_magazzino: bool \| None` sul repository, sul service e sull'endpoint di lookup; il picker di riga passa `gestitiAMagazzino: 'solo'` col meccanismo tri-stato che `ArticoloLookup` aveva già | `catalogo_repository.py`, `catalogo_service.py`, `catalogo/api/views.py`, `ArticoloLookup.vue`, `DocumentoInternoRigaForm.vue` |
+| **R-6** | `E_VALIDAZIONE` passa a `E_MAGAZZINO_VALIDATION` — una riga, più i test e lo smoke che pinnavano il generico | `services/_helpers.py` |
+| **R-7** | `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` sul 404 della riga; la frase la porta il catalogo, qui resta l'etichetta tecnica del log (stampo dei tre 404 del 21-09) | `magazzino_service.py` |
+| codici | `genera_error_policies` rigenerato (**quattro** voci nuove, zero classi mosse) e i **quattro ripieghi** senza segnaposto, in ordine di catalogo | `error_policies_generated.py`, `error_messages_fallback.py` |
+| i18n | le **dieci** chiavi emesse dal DB (`azione.*`, `registra_reason.*` ×5, `stato_info.*`) più quelle del verbo («Registra», conferma, esito) e della conferma di transizione, it/en | `locales/{it,en}.json` |
 
-* **R-5** — in `catalogo_repository.lookup_articoli` un parametro facoltativo
-  `gestito_a_magazzino: bool | None` con la sua condizione
-  (`a.gestito_a_magazzino = %s`, la colonna è già nella vista e già selezionata),
-  esposto sull'endpoint di lookup; il FE lo passa **solo** dal picker di riga di
-  inventario e rettifica. ⛔ Non è un filtro di default: altrove la tendina
-  continua a proporre tutto;
-* **R-6** — `magazzino_service.E_VALIDAZIONE` passa da `E_VALIDATION_INPUT` a
-  **`E_MAGAZZINO_VALIDATION`** (a catalogo con la sua frase), più
-  `genera_error_policies` e il ripiego;
-* **R-7** — dove oggi il BE risponde `E_MAG_DOCUMENTO_NON_TROVATO` con la frase
-  «Riga non trovata nel documento» sugli endpoint `.../righe/<rid>/`, il codice
-  diventa **`E_MAG_DOCUMENTO_RIGA_NON_TROVATA`** e la frase **si cancella**: la
-  porta il catalogo. La risposta a chi guarda resta un 404 identico.
+⭐ **Le chiavi erano dieci, non otto**: la check emette anche `gia_registrato` e
+`annullato` — i due tooltip che lo stesso codice di transizione prende secondo
+lo stato. Il brief ne dichiarava otto perché contava tre `reason_key`.
+⚠️ E `check_i18n_keys.py` ne nominava **due**: le altre otto sono il punto
+cieco già dichiarato più sopra. Ora il guard è verde perché ci sono tutte, non
+perché le abbia viste.
 
+**Presidi** — verdi il 2026-09-23:
+
+* BE: `apps.magazzino.tests` + `apps.catalogo.tests` + `apps.core.tests`, e la
+  suite intera (**5202** test). Tre prove nuove **sul DB vero**
+  (`tests/db/test_documento_interno_db.py`): la capability segue la matrice del
+  guard costruendo le sei transizioni, «Registra» è spento col motivo giusto
+  nei **tre** casi con cui le madri rifiutano, il duplicato di posizione esce
+  col suo codice — e la rettifica **non** lo prende. Più il pinning dei **nomi**
+  del blob: un campo rinominato a DB non spegnerebbe niente a video, lascerebbe
+  un pulsante grigio che sembra una regola.
+* FE: `vitest` 251, `npm run lint`, `npm run guards` (incluso `guard:filtri`,
+  registri invariati), `check_i18n_keys` pulito, `vite build`.
+* Smoke `smoke-magazzino-inventario-primo-carico.py`: **12/12**, rollback.
+
+🔴 **Un limite dichiarato, non un rinvio**: la barra del drawer **non ha un
+presidio automatico lato FE**. Nel progetto nessuno spec monta un componente —
+`@vue/test-utils` non è fra le dipendenze, e non se ne aggiungono senza il via
+libera di Tid. Ciò che regge è il presidio del **contratto** (i nomi del blob,
+pinnati lato BE) e il collaudo a video. ⇒ La forma di guasto che resta scoperta
+è quella che api.md §Capability descrive: *un campo letto col nome sbagliato non
+fa fallire niente*.
+
+⚠️ **Una ricaduta trovata strada facendo, e non è di questo brief**: il test BE
+`test_il_codice_del_magazzino_e_lockato_e_il_duplicato_dice_il_campo` era rosso
+prima di toccare qualunque cosa. Il changeSet `90_end/20260923-02` (cantiere
+[codici ritirati negli argomenti dei trigger](brief-db-codici-ritirati-negli-argomenti-dei-trigger.md))
+ha rigenerato i lock coi codici vivi, e `CODICE_NON_MODIFICABILE` — obsoleto dal
+2026-08-05 — è diventato `E_CODICE_NON_MODIFICABILE`: il test pinnava il vecchio.
+Allineato qui perché senza, la suite del dominio resta rossa. ⭐ Vale la pena
+notarlo come forma: **un codice ritirato a DB lascia indietro i test del backend
+che lo nominano**, e nessun cancello li lega.

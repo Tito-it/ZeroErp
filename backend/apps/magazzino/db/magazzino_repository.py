@@ -38,6 +38,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    call_jsonb_fn,
     fetchone_scalar,
     jsonb_out,
     rows_to_list,
@@ -466,6 +467,21 @@ class MagazzinoRepository:
             cursor.execute(sql, [int(doc_id)])
             rows = rows_to_list(cursor)
         return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
+
+    # Scopo: La capability del documento per il dettaglio API: quali azioni di
+    #        stato proporre, se «Registra» e' acceso e — se no — il primo
+    #        motivo, che cosa e' ancora modificabile, la nota dello stato
+    #        chiuso. Wrapper sull'involucro della famiglia
+    #        (`script.fn_available_actions_inventario` / `_rettifica`).
+    # ⛔ Blob OPACO: il backend TRASPORTA, non deduce (api.md §Capability). Le
+    #    azioni vengono dalla matrice che il guard fa rispettare e la terna di
+    #    «registra» dal primo motivo della check che le madri del posting
+    #    chiamano: ricalcolarle qui sarebbe la seconda sede di due regole.
+    # ⚠️ `{}` se la funzione torna NULL (documento fuori perimetro RLS o
+    #    inesistente): il 404 no-leak lo da' il service sulla TESTATA, letta
+    #    prima — una capability non solleva.
+    def get_capabilities(self, f: FamigliaDocumentoInterno, doc_id: int) -> dict[str, Any]:
+        return call_jsonb_fn(f.fn_capability, int(doc_id))
 
     # Scopo: Il riepilogo del piano di un inventario: quanti esiti di ogni
     #        specie, in una lettura sola (`count(*) FILTER`).

@@ -33,6 +33,11 @@ const { t } = useI18n()
 const FILTRI_TRI_STATO = Object.freeze({
   soloComponenti: 'is_solo_componente',
   compositi:      'is_composito',
+  // R-5 (brief magazzino 2-bis, 2026-09-23): lo passa il picker di riga di
+  // inventari e rettifiche — un articolo non gestito a magazzino si salva,
+  // ma il piano lo marca NON_POSTABILE e la registrazione rifiuta tutto.
+  // ⛔ Assente = nessun filtro: altrove la tendina continua a proporre tutto.
+  gestitiAMagazzino: 'gestito_a_magazzino',
 })
 const FILTRO_VALORI_VALIDI = Object.freeze(['qualsiasi', 'escludi', 'solo'])
 

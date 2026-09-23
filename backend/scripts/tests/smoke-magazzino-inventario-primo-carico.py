@@ -149,7 +149,7 @@ with transaction.atomic():
           rifiuto(lambda: ms.elimina_documento("inventari", d["id"])) == "E_MAG_DOCUMENTO_NON_ELIMINABILE"
           and rifiuto(lambda: ms.aggiorna_riga("inventari", d["id"], riga["id"], {"qta_contata": 1})) == "E_MAG_DOCUMENTO_RIGHE_CONGELATE"
           and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "DRAFT"})) == "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA"
-          and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"})) == "E_VALIDATION_INPUT")
+          and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"})) == "E_MAGAZZINO_VALIDATION")
     # 11
     with connection.cursor() as cur:
         cur.execute("CREATE TEMP TABLE _mondo2 AS SELECT x.* FROM dbops.fn_pgtap_crea_emittente_operatore('B2') x")

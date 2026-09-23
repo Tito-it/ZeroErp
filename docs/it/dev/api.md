@@ -670,6 +670,49 @@ LEGGA.** Un campo dichiarato e mai letto sembra presidiato e non presidia niente
 nel 2026 il motivo di un pulsante spento non era **mai** stato reso a video,
 perché il frontend leggeva un nome di campo diverso da quello emesso — e niente
 falliva.
+⭐ Dal 2026-09-23 c'è anche un cancello, e legge il contratto dalla sorgente
+giusta: `npm run guard:capability` (`frontend/scripts/check-capability-contratto.mjs`)
+confronta ogni campo letto da un blob `capabilities.*` con le chiavi che le
+`script.fn_available_actions_*` emettono, prese dalla **doc auto-generata**.
+⚠️ Vede la forma annidata; la piatta non è distinguibile staticamente da un
+campo qualunque del dettaglio — è una delle ragioni della decisione qui sotto.
+
+### ⛔ Il blob sta SOTTO `capabilities`, non fuso nel dettaglio
+
+> **Decisione di Tid, 2026-09-23.** Una capability di documento viaggia in una
+> chiave sua — `detail.capabilities.can_x` — e **non** si fonde nel dettaglio.
+
+**Perché, sul modello.** Il dettaglio dice **com'è fatto** il documento; la
+capability dice **che cosa ci si può fare adesso**. Sono due cose con due
+autori: la prima la scrivono le colonne, la seconda una funzione che legge lo
+stato e i guard. Fonderle in un dizionario solo perde quell'origine, e con essa
+la possibilità di dire chi ha scritto cosa.
+
+Tre conseguenze, ed è da queste che si riconosce il difetto:
+
+* ⛔ **il merge nasconde le collisioni**: il giorno in cui una testata avrà una
+  colonna che si chiama come un campo del blob, uno dei due vince **in
+  silenzio** — nessun errore, nessun lint, un valore diverso da quello che
+  qualcuno credeva di leggere;
+* ⛔ **il piatto invita a scriverci dentro**, e succede già: un service
+  *arricchisce* il blob in Python prima di fonderlo, sovrascrivendo campi che
+  il database aveva deciso. A quel punto «il backend trasporta, non deduce» è
+  già infranto, e non l'ha deciso nessuno: l'ha reso facile la forma;
+* ⛔ **il piatto non è presidiabile**: `detail.can_x` è indistinguibile da un
+  campo del dettaglio, quindi nessuna analisi statica può dire se quel nome è
+  un campo che il database emette davvero o un refuso.
+
+⚠️ **Non è una preferenza di stile ed è nata da un'asimmetria vera**: al
+2026-09-23 convivevano le due forme — commesse e magazzino annidate, DDT,
+resi, ordini, contratti e promo articoli piatte — e **nessun documento diceva
+quale fosse quella giusta**. È la ragione per cui questa sezione esiste: una
+regola che non sta scritta non è una regola, e la divergenza non era colpa di
+chi l'ha scritta in un modo o nell'altro.
+
+✅ **Il frontend legge da un posto solo**: `useEntityCapabilities` è il BB che
+unifica la lettura, e i drawer non guardano mai il blob a mano.
+🔵 **Il pregresso si converte per refactor**, non tutto insieme:
+[brief-be-fe-capability-annidata.md](work-in-progress/brief-be-fe-capability-annidata.md).
 
 ---
 

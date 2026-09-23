@@ -8,16 +8,15 @@
 //        testata, righe (lista standard + form sotto), e — per l'inventario —
 //        il piano.
 //
-// ⏳ SENZA LA BARRA DELLE AZIONI DI STATO (R-1 del brief 2-bis, passo 7 del
-//    piano). Le transizioni («Conferma», «Riapri», «Annulla») e «Registra» si
-//    montano da `capabilities.available_actions` con
-//    `mapAvailableActionsToDrawerActions` — che il backend NON emette finche'
-//    `fn_available_actions_*` non esiste a DB. ⛔ Niente `v-if` su `stato`
-//    scritto a mano al loro posto: sarebbe la matrice del guard riscritta una
-//    seconda volta (frontend-standards §Azioni Drawer). Quando R-1 arriva, le
-//    azioni entrano qui, in `drawerActions`, e basta. La barra oggi porta le
-//    sole azioni che non dipendono dalla matrice: «Piano» e l'export delle
-//    righe, piu' la nota di stato (`stato_info_key`, che oggi e' `null`).
+// ⭐ LA BARRA E' DATA, NON CODICE (R-1, dal 2026-09-23). Le transizioni
+//    («Conferma», «Riapri», «Annulla») escono da `capabilities.available_
+//    actions` via `mapAvailableActionsToDrawerActions`, e «Registra» dalla
+//    terna `can_registra` / `_reason` / `_reason_key`. ⛔ Nessun `v-if` su
+//    `stato` al loro posto: sarebbe la matrice del guard riscritta una
+//    seconda volta (frontend-standards §Azioni Drawer). ⚠️ Anche il
+//    pulsante SPENTO si monta, col motivo nel tooltip: «permesso ⇒ nascondi,
+//    stato ⇒ disabilita col motivo» (api.md §Capability). La nota dello stato
+//    chiuso arriva dallo stesso blob (`stato_info_key`).
 //
 // ⭐ IL READONLY LO CALCOLA QUESTO DRAWER e lo propaga (`provide(READONLY_KEY)`):
 //    permessi d'area (dal provider della vista) + stato del documento — le
@@ -49,22 +48,25 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useNotify } from '../../core/composables/useNotify'
 import { READONLY_KEY, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import { documentoInternoSeverity } from '../../core/utils/severity'
 import { exportRighe } from '../api/magazzino'
 import { useEtichetteMagazzino } from '../etichette'
 import { useDocumentiInterniStore } from '../stores/documentiInterni'
 import { useDocumentoRigheStore } from '../stores/documentoRighe'
-import { FAMIGLIE, STATO_DOCUMENTO } from '../vocabolari'
+import { AZIONE_REGISTRA_MAGAZZINO, FAMIGLIE, STATO_DOCUMENTO } from '../vocabolari'
 import DocumentoInternoRigaForm from './DocumentoInternoRigaForm.vue'
 import InventarioPianoDialog from './InventarioPianoDialog.vue'
 
@@ -77,7 +79,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:visible'])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const f = FAMIGLIE[props.famiglia]
 const store = useDocumentiInterniStore(f.codice)
 const storeRighe = useDocumentoRigheStore(f.codice)
@@ -86,6 +88,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const { execute, loading: salvando, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
+const notify = useNotify()
 const { statoDocumento } = useEtichetteMagazzino()
 const parentReadonly = useInjectReadonly()
 // ⚠️ Guard anti-race: aprire due documenti in rapida successione farebbe
@@ -145,12 +148,119 @@ async function onSalvaTestata() {
 }
 
 // ── la barra ──────────────────────────────────────────────────────
-// ⏳ R-1: qui entreranno `mapAvailableActionsToDrawerActions(capabilities.
-//    available_actions)` (kind `state`) e «Registra» (kind `primary`, terna
-//    `can_registra*`). Oggi le sole azioni che non dipendono dalla matrice.
+// Il blob della capability: `{}` finche' il dettaglio non c'e', cosi' i
+// computed qui sotto non guardano mai dentro un `null`.
+const capabilities = computed(() => detail.value?.capabilities ?? {})
+
+// Le transizioni di stato, dalla matrice che il guard fa rispettare. ⛔ Il
+// `readonly` che si passa al mapper e' quello PURO (permessi + contesto), non
+// `isReadonly`: quest'ultimo include il lock di stato, e un documento
+// confermato ha il form bloccato ma deve comunque mostrare «Riapri».
+const stateActions = computed(() => mapAvailableActionsToDrawerActions({
+  availableActions: capabilities.value.available_actions ?? [],
+  t,
+  te,
+  readonly: readonlyPermessi.value,
+  onAction: (action) => onCambiaStato(action),
+}))
+
+// Scopo: chiede la transizione. `requires_confirm` lo dice il DATO (oggi solo
+//        l'annullamento, che e' terminale), non un `if` sul codice dello stato.
+function onCambiaStato(action) {
+  const esegui = async () => {
+    const esito = await execute(
+      () => store.cambiaStato(props.documentoId, action.target_state),
+      { successMessage: t('magazzino.documenti_interni.stato_cambiato') },
+    )
+    if (esito === null) return
+    ricarica()
+    // ⭐ Q-5 (D-L2-n): dopo un CONFIRM riuscito il piano si apre DA SOLO,
+    //    sempre — e' la fotografia contro cui si registrera', con le
+    //    `NON_CONTATA` evidenziate, e la si vede una volta. Non e' un `v-if`
+    //    sullo stato del documento: e' la reazione a QUESTA transizione, che
+    //    l'operatore ha appena chiesto.
+    if (f.haPiano && action.target_state === STATO_DOCUMENTO.CONFIRM) pianoVisible.value = true
+  }
+  if (!action.requires_confirm) { esegui(); return }
+  confirmAction({
+    header: t(action.label_key),
+    // ⚠️ L'etichetta entra CITATA, non coniugata: «Vuoi annulla…» non e'
+    //    italiano, e un verbo all'infinito per ogni azione sarebbe un secondo
+    //    vocabolario accanto alle `label_key` del blob.
+    message: t('magazzino.documenti_interni.conferma_transizione', {
+      azione: t(action.label_key),
+    }),
+    // ⚠️ `danger` da solo porterebbe la coppia «Elimina» + cestino: qui il
+    //    gesto e' un annullamento, non una cancellazione, e label e icona
+    //    vengono dal DATO della capability.
+    acceptLabel: t(action.label_key),
+    acceptIcon: action.icon,
+    danger: action.severity === 'danger',
+    onAccept: esegui,
+  })
+}
+
+// Scopo: il verbo irreversibile. ⭐ Lo stato del pulsante NON si calcola qui:
+//        `can_registra` e il suo motivo vengono dalla stessa check che le due
+//        `fn_posta_*` chiamano per rifiutare — il pulsante non puo' promettere
+//        cio' che il database rifiutera'.
+function onRegistra() {
+  const riepilogo = detail.value?.piano_riepilogo
+  const righe = [t('magazzino.documenti_interni.registra.irreversibile')]
+  if (f.haPiano && riepilogo) {
+    righe.push(t('magazzino.documenti_interni.registra.riepilogo_piano', {
+      con_delta: riepilogo.n_con_delta ?? 0,
+      non_contate: riepilogo.n_non_contate ?? 0,
+    }))
+  }
+  confirmAction({
+    header: t('magazzino.documenti_interni.registra.titolo'),
+    // Spazio, non '\n': il messaggio del ConfirmDialog non e' `pre-line`, e
+    //    le frasi finiscono gia' col punto.
+    message: righe.join(' '),
+    acceptLabel: t('magazzino.documenti_interni.registra.conferma'),
+    acceptIcon: NAV_ICONS.MOVIMENTI,
+    danger: true,
+    onAccept: async () => {
+      const esito = await execute(() => store.registra(props.documentoId))
+      if (esito !== null) {
+        notify.success(t('magazzino.documenti_interni.registra.fatto', { n: esito.n_movimenti ?? 0 }))
+        ricarica()
+      }
+    },
+  })
+}
+
 const drawerActions = computed(() => {
   if (!detail.value) return []
-  const azioni = []
+  const azioni = [...stateActions.value]
+  // ⚠️ «Registra» c'e' ANCHE spento, col motivo nel tooltip: e' lo stato, e
+  //    puo' cambiare. Sparisce solo senza permessi d'area (`hideWhenReadonly`)
+  //    o senza l'azione di processo (`action`, che il BE presidia davvero).
+  // ⭐ In BOZZA c'e', spento col motivo `non_confermato` (brief 2-bis: «Registra
+  //    spento su una bozza»): dice all'operatore qual e' il passo che manca.
+  // ⛔ Sparisce sul documento CHIUSO (POSTED, CANCEL): li' non c'e' piu' niente
+  //    da registrare, e un pulsante grigio in fondo a un documento chiuso e'
+  //    rumore — la nota di stato dice gia' la strada. «Chiuso» lo dice la
+  //    MATRICE (`can_change_state`: nessuna transizione da qui), non un
+  //    confronto su `stato_codice` scritto a mano.
+  if (capabilities.value.can_change_state) {
+    const motivo = capabilities.value.can_registra_reason_key
+    azioni.push({
+      key: 'registra',
+      kind: 'primary',
+      label: t('magazzino.documenti_interni.registra.azione'),
+      icon: NAV_ICONS.MOVIMENTI,
+      severity: 'warn',
+      hideWhenReadonly: true,
+      action: AZIONE_REGISTRA_MAGAZZINO,
+      disabled: !capabilities.value.can_registra,
+      tooltip: capabilities.value.can_registra
+        ? undefined
+        : labelOrCode(t, te, motivo, capabilities.value.can_registra_reason || ''),
+      command: onRegistra,
+    })
+  }
   if (f.haPiano) {
     azioni.push({
       key: 'piano',

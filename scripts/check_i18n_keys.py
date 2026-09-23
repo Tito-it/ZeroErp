@@ -187,10 +187,16 @@ def spoglia_commenti(testo):
 
 
 def walk_src():
-    """File sorgente FE, esclusi i locales stessi."""
+    """File sorgente FE, esclusi i locales stessi e i test."""
     for dirpath, dirnames, filenames in os.walk(SRC):
         dirnames[:] = [d for d in dirnames if d not in ("locales", "node_modules")]
         for f in filenames:
+            # ⚠️ Gli spec non vanno nel bundle, e le loro chiavi sono FIXTURE:
+            #    un test del ripiego fail-visible cita apposta una chiave che
+            #    non esiste (`useDrawerActions.spec.js`). Leggerli qui farebbe
+            #    del guard un cancello rosso su un comportamento voluto.
+            if f.endswith((".spec.js", ".test.js")):
+                continue
             if f.endswith((".vue", ".js")):
                 yield os.path.join(dirpath, f)
 

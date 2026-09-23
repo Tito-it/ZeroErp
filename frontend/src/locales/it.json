@@ -4764,9 +4764,31 @@
       "righe_congelate": "Le righe si scrivono solo in bozza: riporta il documento in bozza per modificarle.",
       "righe_non_lette": "Non sono riuscito a leggere le righe del documento.",
       "movimenti": "Movimenti",
+      "conferma_transizione": "Procedere con «{azione}» su questo documento?",
+      "stato_cambiato": "Stato del documento aggiornato.",
+      "azione": {
+        "conferma": "Conferma",
+        "riapri": "Riapri",
+        "annulla": "Annulla"
+      },
       "registra_reason": {
+        "non_confermato": "Il documento non è ancora confermato: confermalo per poterlo registrare.",
+        "gia_registrato": "Il documento è già registrato: i movimenti sono sul registro.",
+        "annullato": "Il documento è annullato: non si registra più.",
         "senza_righe": "Il documento non ha righe: non c'è niente da registrare.",
         "righe_non_postabili": "Una o più righe non passerebbero la registrazione: correggile nell'elenco delle righe."
+      },
+      "registra": {
+        "azione": "Registra",
+        "titolo": "Registra sul magazzino",
+        "conferma": "Registra",
+        "irreversibile": "La registrazione scrive i movimenti sul registro e non si torna indietro.",
+        "riepilogo_piano": "{con_delta} con differenza · {non_contate} non contate, che restano come sono.",
+        "fatto": "Registrato: {n} movimenti sul registro."
+      },
+      "stato_info": {
+        "posted": "Registrato: i movimenti sono sul registro. Per correggere, apri una rettifica.",
+        "cancel": "Annullato: il documento è chiuso e non si riapre. Se serve, aprine uno nuovo."
       },
       "riga": {
         "nuova": "Nuova riga",

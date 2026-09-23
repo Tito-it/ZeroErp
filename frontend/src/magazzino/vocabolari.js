@@ -151,3 +151,11 @@ export const LOOKUP_REL_MAGAZZINI = 'magazzino.magazzini'
 export function chiaveLookupUbicazioni(magazzinoId) {
   return `magazzino.ubicazioni.${magazzinoId}`
 }
+
+// L'azione di processo che autorizza il VERBO IRREVERSIBILE (R-3 del brief
+// 2-bis, a catalogo dal 2026-09-23): una sola per la famiglia, perche' il
+// verbo e' lo stesso su inventari e rettifiche.
+// ⚠️ Qui serve solo a NASCONDERE il pulsante a chi non ce l'ha: il cancello
+//    vero e' il backend (`post_permission` su `.../registra/`), e resta
+//    fail-closed finche' un profilo non porta l'azione.
+export const AZIONE_REGISTRA_MAGAZZINO = 'registra_magazzino'
