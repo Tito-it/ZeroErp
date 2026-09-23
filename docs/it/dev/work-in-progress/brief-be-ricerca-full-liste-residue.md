@@ -155,9 +155,9 @@ domande di §7 restano, ma diventano «si accende a catalogo o no?».
 `vendite.preventivi`, `offerte`, `ordini`, `ddt`, `fatture`, `contratti`,
 `resi`, `resi_da_accreditare`, `resi_da_riconsegnare`, `famiglie_documento`.
 Passano alla firma nuova (`lista_codice` + costante): è una riga per sito.
-⚠️ `vendite.resi` oggi cerca anche `ddt_origine_numero`, che il catalogo **non**
-accende: col BB nuovo **smetterebbe di cercarlo**. Prima di convertirla va
-deciso se accenderlo a catalogo (§7).
+✅ `vendite.resi` cerca anche `ddt_origine_numero`: la ricerca per DDT di origine
+è voluta (Tid, 2026-09-23) e il seed `lista_colonna.csv` la accende
+(`ricercabile_full = t`, id 156). Col BB nuovo resta cercata (§7).
 
 ### 5.1 Colonne semplici — forma a tupla (12)
 
@@ -263,7 +263,7 @@ no?** Ogni «sì» è una riga del seed `lista_colonna.csv` per il team DB.
 | `anagrafiche.emittenti_fiscali` | `codice_fiscale` | — | come clienti |
 | `pagamenti.rate` | `id_fiscale_univoco_cf_piva` | `numero_documento` | ⛔ **contraddizione di progetto**: il commento in `list_rate_paginata` dice «`search` cerca il CLIENTE, mai il numero» (brief D19-c §8), il seed accende il numero. Uno dei due è sbagliato |
 | `magazzino.disponibilita` | — | `magazzino_codice` | colonna mancante nel codice: entra nella mappa |
-| `vendite.resi` | `ddt_origine_numero` | — | ricerca per DDT di origine voluta? Se sì, va accesa **prima** di convertire resi (§5.0) |
+| `vendite.resi` | `ddt_origine_numero` | — | ✅ voluta (Tid, 2026-09-23): accesa nel seed `lista_colonna.csv` (id 156) |
 
 ## 8. Helper locali da ritirare nello stesso giro
 
@@ -279,7 +279,7 @@ no?** Ogni «sì» è una riga del seed `lista_colonna.csv` per il team DB.
 0. **Team DB** — la lettura di §2.2, coi pgTAP. Il BE attende.
 1. **BB e presidio** — firma nuova (§3), test 1-4 (§4). Dichiarata e
    confermata da Tid prima di scrivere (regola del 2).
-2. **Le dieci di vendite** (§5.0), dopo la decisione su `ddt_origine_numero`.
+2. **Le dieci di vendite** (§5.0) — `ddt_origine_numero` acceso a catalogo il 23-09.
 3. **Le 12 a tupla** (§5.1), per app, ritirando i loro helper (§8).
 4. **Le 11 a mappa** (§5.2).
 5. **Le 9 senza ricerca** (§5.3), dopo aver guardato il frontend.
