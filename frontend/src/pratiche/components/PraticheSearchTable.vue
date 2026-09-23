@@ -56,15 +56,17 @@ const {
 //    ⛔ Fino al 2026-09-23 il `watch` c'era a mano per il SOLO tipo prestazione:
 //    gli altri tre erano `ref` che spingevano nello store e basta, quindi
 //    restavano a mostrare il filtro di prima. Nessun errore, da nessuna parte.
-// `off: false` e non il `null` di default sull'interruttore: lo store lo
-// dichiara `false` e il BE legge «falso» e «assente» come la stessa cosa.
+// ⚠️ L'interruttore usa il `null` di default di `bindToggle`: spento, il filtro
+//    non va sul filo affatto. Fino al 2026-09-23 scriveva `false` — che il BE
+//    legge come «assente» — e il segno lo contava come un filtro acceso su una
+//    lista che non stava restringendo.
 const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(store, applyFilters)
 // value-field="codice": il BE filtra per codice_interno (param `stato`); per
 // gli stati pratiche codice e codice_interno coincidono (seed).
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
 const { value: prioritaFilter, onChange: onPrioritaChange } = bindSelect('priorita_id')
 const { value: tipoPrestazioneFilter, onChange: onTipoPrestazioneChange } = bindSelect('tipo_prestazione_id')
-const { value: soloInterneFilter, onChange: onSoloInterneChange } = bindToggle('solo_interne', { off: false })
+const { value: soloInterneFilter, onChange: onSoloInterneChange } = bindToggle('solo_interne')
 
 // Il periodo e' UN filtro con due estremi: un binding, un componente.
 // ⭐ Prima del 2026-09-23 erano due ref scritte a mano, e `data_a` NON leggeva

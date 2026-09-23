@@ -12,7 +12,7 @@
 //        Da quel momento il widget che ci scrive dentro (`push`, `splice`)
 //        muta anche il default: il metro si sposta insieme alla cosa misurata,
 //        `segnoFiltri` legge «sempre al default» per sempre e mostra il
-//        pallino su una lista che l'operatore ha ristretto a mano.
+//        il numero in GRIGIO su una lista che l'operatore ha ristretto a mano.
 //        ⚠️ Nessun errore, da nessuna parte.
 //
 //       ⭐ IL CASO E' DICHIARATO AMMESSO DAL CONTRATTO, ed e' per questo che si

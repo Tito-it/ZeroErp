@@ -70,10 +70,15 @@ export const usePraticheStore = defineStore('pratiche', () => {
       risorsa_umana_id: null,
       // Lente di contesto canonica (D1, workflow v2): solo pratiche interne
       // (senza soggetto). Esclusiva con le lenti ruolo/istanza (usate dalle
-      // viste embedded, non dalla dashboard). ⚠️ Viaggia anche a `false`: il
-      // BE lo legge con `qp_bool_optional(...) or False`, quindi «falso» e
-      // «assente» sono la stessa cosa.
-      solo_interne: false,
+      // viste embedded, non dalla dashboard).
+      // ⛔ `null` E NON `false` (2026-09-23): il BE lo legge con
+      //    `qp_bool_optional(...) or False`, quindi «falso» e «assente» sono
+      //    davvero la stessa cosa — ma un `false` VIAGGIA, e il segno dei filtri
+      //    attivi lo contava come un filtro acceso mentre non restringeva
+      //    niente. E' la forma che `bindToggle` dichiara di default (`off:
+      //    null`) proprio per questo: *un `false` sul filo e' un parametro che
+      //    il backend legge senza che filtri niente*.
+      solo_interne: null,
       data_da: defaultDataDa,
       data_a: null,
     },

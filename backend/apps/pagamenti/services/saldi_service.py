@@ -239,7 +239,14 @@ def list_rate(
         anno=anno,
         search=search,
         solo_aperte=bool(solo_aperte),
-        solo_numerate=bool(solo_numerate),
+        # ⭐ `None` (parametro ASSENTE) significa «applica la regola», non
+        #    «falso»: `solo_numerate` e' un perimetro di dominio — la rata di una
+        #    bozza non e' un credito — e un perimetro che si accende solo quando
+        #    il client se lo ricorda non e' un perimetro. ⛔ Qui NON si usa
+        #    `bool(...)`, che mapperebbe l'assenza su `False` come per
+        #    `solo_aperte`: quello e' un filtro vero, questo no. Chi vuole anche
+        #    le bozze passa `False` esplicito.
+        solo_numerate=True if solo_numerate is None else bool(solo_numerate),
         data_scadenza_da=data_scadenza_da,
         data_scadenza_a=data_scadenza_a,
         natura_doc_codice=natura_doc_codice.upper() if natura_doc_codice else None,

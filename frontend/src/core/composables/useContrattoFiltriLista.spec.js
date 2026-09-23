@@ -12,19 +12,19 @@
 //       di quanto deve.
 // ------------------------------------------------------------
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { useContrattoFiltriLista } from './useContrattoFiltriLista'
 
-function fabbrica(filterDefaults, extra = {}) {
+function fabbrica(filterDefaults, extra = {}, filtriNeutri = {}) {
   const filters = ref({ ...filterDefaults, ...extra })
   const chiamate = { n: 0 }
   const fetchList = () => { chiamate.n += 1; return 'letta' }
   return {
     filters,
     chiamate,
-    ...useContrattoFiltriLista({ filters, filterDefaults, fetchList }),
+    ...useContrattoFiltriLista({ filters, filterDefaults, filtriNeutri, fetchList }),
   }
 }
 
@@ -73,6 +73,31 @@ describe('il contratto dichiarato', () => {
     const { filters, filtriDefault } = fabbrica({ stato: 'APERTA' })
     filters.value.stato = 'CHIUSA'
     expect(filtriDefault.stato).toBe('APERTA')
+  })
+
+  // ⛔ I NEUTRI SONO UN METRO COME I DEFAULT, quindi si staccano e si congelano
+  //    allo stesso modo: con un neutro ad array lo spread lascerebbe lo STESSO
+  //    array del letterale, e la prima `push` di un widget sposterebbe il metro.
+  it('un neutro ad ARRAY e- staccato dal letterale e congelato', () => {
+    const NEUTRI = { stati: [] }
+    const { filtriNeutri } = fabbrica({ stati: ['APERTA'] }, {}, NEUTRI)
+    expect(filtriNeutri.stati).not.toBe(NEUTRI.stati)
+    expect(Object.isFrozen(filtriNeutri)).toBe(true)
+    expect(() => { filtriNeutri.stati.push('CHIUSA') }).toThrow()
+  })
+
+  // ⛔ IL REFUSO CHE NON FALLISCE: un neutro dichiarato su una chiave che non e'
+  //    un filtro non fa niente — il segno continua a contare quello vero, e
+  //    nessuno lo dice. E' la forma del difetto gia' visto nel drawer BoM (una
+  //    chiave nei valori e non nelle chiavi), qui presa dal lato del contratto.
+  it('un neutro su una chiave che NON e- un filtro si fa sentire', () => {
+    const spia = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { filtriNeutri } = fabbrica({ ambito: 'miei' }, {}, { ambitto: 'tutti' })
+    expect(spia).toHaveBeenCalledTimes(1)
+    expect(String(spia.mock.calls[0][0])).toContain('ambitto')
+    // Il contratto resta valido: il neutro sbagliato non inventa un filtro.
+    expect(filtriNeutri.ambito).toBeUndefined()
+    spia.mockRestore()
   })
 })
 

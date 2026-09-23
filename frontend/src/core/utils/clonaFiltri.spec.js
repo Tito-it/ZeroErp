@@ -6,7 +6,7 @@
 //        copia profonda e congelamento profondo — perche' un default condiviso
 //        per riferimento sposta il metro insieme alla cosa misurata.
 // Note: i casi sono quelli che, sbagliati, NON danno errore: il segno mostrerebbe
-//       il pallino su una lista ristretta a mano, e nessuno se ne accorgerebbe.
+//       il numero grigio su una lista ristretta a mano, e nessuno se ne accorgerebbe.
 // ------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest'

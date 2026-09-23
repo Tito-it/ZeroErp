@@ -70,6 +70,13 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
       //    stessa cosa, e «falso» esplicito e' cio' che serve al toggle.
       solo_ultima_revisione: true,
     },
+    // ⛔ IL VALORE CHE NON RESTRINGE, dichiarato (2026-09-23). «Mostra storico»
+    //    acceso scrive `false`, che deve viaggiare sul filo — il BE e'
+    //    `qp_bool(..., default=True)` — ma la lista in quello stato e' la piu'
+    //    LARGA possibile: senza questa riga il segno dei filtri attivi contava 1
+    //    proprio quando l'operatore aveva tolto la restrizione, cioe' il numero
+    //    saliva allargando. Il perche' per intero sta su `segnoFiltri`.
+    filtriNeutri: { solo_ultima_revisione: false },
     gateKeys: [
       'stato_codice_interno', 'billing_account_id', 'utility_id', 'listino_id',
       'data_a', 'data_da',

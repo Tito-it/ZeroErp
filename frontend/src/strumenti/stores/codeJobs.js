@@ -122,14 +122,28 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
 
     // Il contratto che `FiltriLista` legge: chi sono i filtri, com'erano alla
     // nascita, e come si riportano li' («Pulisci filtri»).
-    const { chiaviFiltro, filtriDefault, azzeraFiltri } = useContrattoFiltriLista({
-      filters, filterDefaults: FILTRI_DEFAULT, fetchList,
+    // ⛔ IL VERSO DI `ambito` E' ROVESCIATO rispetto al filo, ed e' il motivo per
+    //    cui il valore neutro qui si DICHIARA (2026-09-23): `buildCodaParams`
+    //    manda il parametro SOLO quando vale «tutti» — quindi sul filo il
+    //    silenzio e' «miei» — mentre nel dominio e' «miei» a restringere e
+    //    «tutti» a non restringere niente. Senza questa riga il segno contava un
+    //    filtro attivo proprio sull'ambito piu' largo.
+    // ⭐ E `archiviate` e' la stessa cosa nell'altro verso, che il primo giro
+    //    aveva mancato: `false` NASCONDE le righe archiviate (restringe, conta a
+    //    ragione), `true` le include — cioe' l'elenco piu' largo che questa coda
+    //    sappia mostrare. Un interruttore «mostra anche X» ha SEMPRE un valore
+    //    neutro: e' quello acceso.
+    const { chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri } = useContrattoFiltriLista({
+      filters,
+      filterDefaults: FILTRI_DEFAULT,
+      filtriNeutri: { ambito: 'tutti', archiviate: true },
+      fetchList,
     })
 
     return {
       items, totalRecords, loading, hasSearched, filters, fetchList,
       archiviateCount,
-      chiaviFiltro, filtriDefault, azzeraFiltri,
+      chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri,
     }
   }, {
     userScoped: true,

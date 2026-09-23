@@ -44,8 +44,14 @@ import { clonaFiltri, clonaValore, congelaProfondo } from '../utils/clonaFiltri'
 //       `search`/`limit`/`offset`/`order_*`: la ricerca non e' un filtro (D2) e
 //       la paginazione non restringe niente — contarle accenderebbe il segno su
 //       una lista intera.
+//   - filtriNeutri: i VALORI CHE NON RESTRINGONO, quando non sono `null`
+//       (`{ solo_ultima_revisione: false }`, `{ ambito: 'tutti' }`). ⛔ Senza,
+//       il segno conta un filtro che sta ALLARGANDO la lista: il perche' per
+//       intero sta su `segnoFiltri`.
 //   - fetchList: la rilettura della lista dopo «Pulisci filtri».
-export function useContrattoFiltriLista({ filters, filterDefaults = {}, fetchList }) {
+export function useContrattoFiltriLista({
+  filters, filterDefaults = {}, filtriNeutri: neutri = {}, fetchList,
+}) {
   // ⚠️ Una COPIA congelata, non `filterDefaults`: l'oggetto e' un letterale del
   //    chiamante, e un consumatore che vi scrivesse dentro cambierebbe i default
   //    di uno store vivo — cioe' il metro insieme alla cosa misurata.
@@ -54,6 +60,25 @@ export function useContrattoFiltriLista({ filters, filterDefaults = {}, fetchLis
   //    `push`. Il perche' sta una volta sola, su `clonaFiltri`.
   const chiaviFiltro = Object.freeze(Object.keys(filterDefaults))
   const filtriDefault = congelaProfondo(clonaFiltri(filterDefaults))
+  const filtriNeutri = congelaProfondo(clonaFiltri(neutri))
+
+  // ⛔ FAIL-VISIBLE, stesso stampo del guard di `FiltriLista` e del gemello
+  //    `useContrattoFiltriLocali`: un neutro dichiarato su una chiave che NON e'
+  //    un filtro e' un no-op silenzioso — il refuso non fallisce, semplicemente
+  //    il segno continua a contare il filtro che si voleva zittire. E' la forma
+  //    del difetto gia' visto nel drawer BoM, dove una chiave stava nei valori
+  //    e non nell'elenco delle chiavi.
+  // ⚠️ Qui il controllo e' possibile perche' le due sedi sono separate; nel
+  //    gemello locale non serve, perche' li' `neutro` sta sulla riga del filtro
+  //    e una chiave sbagliata non esiste.
+  const neutriSconosciuti = Object.keys(filtriNeutri).filter((k) => !chiaviFiltro.includes(k))
+  if (neutriSconosciuti.length) {
+    console.error(
+      `[useContrattoFiltriLista] \`filtriNeutri\` dichiara ${neutriSconosciuti.join(', ')}, `
+      + 'che non sono filtri di questa lista (non stanno in `filterDefaults`): '
+      + 'la riga non fa niente e il segno continua a contare il filtro vero.',
+    )
+  }
 
   // Scopo: «Pulisci filtri» — riporta i SOLI filtri di dominio al loro default,
   //        torna a pagina 1 e rilegge la lista.
@@ -81,5 +106,5 @@ export function useContrattoFiltriLista({ filters, filterDefaults = {}, fetchLis
     return fetchList()
   }
 
-  return { chiaviFiltro, filtriDefault, azzeraFiltri }
+  return { chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri }
 }

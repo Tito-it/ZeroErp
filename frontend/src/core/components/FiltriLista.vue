@@ -162,7 +162,15 @@ watch(storeSenzaChiavi, (rotto) => {
 const segnoRisolto = computed(() => {
   if (props.segno) return props.segno
   if (storeSenzaChiavi.value || !props.store) return { stato: SEGNO_VUOTO, conteggio: 0 }
-  return segnoFiltri(props.store.filters, props.store.chiaviFiltro, props.store.filtriDefault)
+  return segnoFiltri(
+    props.store.filters,
+    props.store.chiaviFiltro,
+    props.store.filtriDefault,
+    // ⚠️ I valori che non restringono, quando non sono `null`: li dichiara lo
+    //    store (`filtriNeutri`). Senza, il numero sale quando la lista si
+    //    ALLARGA — v. `segnoFiltri`.
+    props.store.filtriNeutri,
+  )
 })
 
 const haSegno = computed(() => segnoRisolto.value.stato !== SEGNO_VUOTO)
@@ -173,14 +181,22 @@ const modificato = computed(() => segnoRisolto.value.stato === SEGNO_MODIFICATO)
 // tooltip non c'e', ma resta l'etichetta accessibile del pulsante.
 const tooltipFiltri = computed(() => {
   if (modificato.value) return t('common.filtri_attivi', { n: segnoRisolto.value.conteggio })
-  if (soloDefault.value) return t('common.filtri_default_attivi')
+  if (soloDefault.value) return t('common.filtri_default_attivi', { n: segnoRisolto.value.conteggio })
   return t('common.filtri')
 })
 
 // «Pulisci filtri» c'e' solo se ha qualcosa da pulire e qualcuno che lo sappia
 // fare: un pulsante che non fa nulla e' peggio della sua assenza.
+// ⛔ E «qualcosa da pulire» NON E' «c'e' un segno» (2026-09-23): le due domande
+//    divergono da quando esistono i valori neutri. Un filtro portato al valore
+//    che NON restringe — «mostra non attive» sulle conversioni, «tutte le
+//    versioni» nel drawer BoM — o un default svuotato a mano lasciano la lista
+//    intera, quindi nessun segno, ma i filtri NON sono al loro default: li'
+//    «Pulisci» e' l'unico gesto che riporta indietro, e col solo `haSegno`
+//    spariva proprio in quello stato. ⚠️ Nessun errore, e invisibile da
+//    desktop: il pulsante vive nel drawer compatto.
 const puoPulire = computed(
-  () => haSegno.value
+  () => (haSegno.value || segnoRisolto.value.modificato === true)
     && (typeof props.store?.azzeraFiltri === 'function'
       || !!istanza?.vnode.props?.onPulisci),
 )
@@ -216,21 +232,33 @@ function pulisci() {
          `translate(50%, -50%)` + outline di contrasto), non un `position:
          absolute` scritto a mano qui: e' la stessa ragione per cui le
          larghezze dei filtri non stanno nei tag. -->
-    <!-- ⛔ NIENTE `size="small"`, e toglierlo E' LA CORREZIONE del pallino che
-         copriva l'icona (Tid, in-app). Quel `size` serviva a rimpicciolire il
-         NUMERO — cosa che le misure in `main.css` fanno gia' da sole — ma il
-         badge lo applica anche allo stato PALLINO, e li' fa danno: nel tema
-         `.p-badge-dot` (0.5rem) e `.p-badge-sm` (1.25rem) hanno la STESSA
-         specificita' e `sm` e' dichiarata DOPO, quindi vince lei su `min-width`
-         e `height`. Il pallino diventava un cerchio da 1.25rem con 2px di
-         outline appuntato nell'angolo del pulsante: a 2.5rem di pulsante e
-         1rem di glifo, ci finisce sopra.
-         ⭐ La correzione non e' un override piu' forte: e' non chiedere una
-         taglia che uno dei due stati non sa onorare. Il segno ha due forme e
-         una sola di esse ha una dimensione da dire. -->
+    <!-- ⛔ IL NUMERO C'E' SEMPRE, E LA DIFFERENZA LA FA IL COLORE (rilievo in-app
+         di Tid, 2026-09-23). Fino a quel giorno lo stato «tutti al default» era
+         un PALLINO senza numero, e il numero compariva solo al primo filtro
+         cambiato: a video si leggeva «0 → 2» toccando UNA cosa sola, perche' il
+         filtro gia' attivo (`attivo = SI` su articoli) valeva zero un istante e
+         uno quello dopo. ⚠️ Il conteggio non e' mai cambiato — era 1 anche col
+         pallino — ma la forma lo NASCONDEVA, e un segno che nasconde cio' che
+         conta fa sembrare sbagliato un conto giusto.
+         ⭐ La regola di D4 resta intera: si contano sempre i filtri, default
+         compresi. Cambia solo COME si distingue «ristretta come nasce» da
+         «ristretta da te» — prima due FORME (pallino / numero), adesso due
+         COLORI a parita' di forma (`secondary` grigio / `info` blu). ⚠️ Cosi'
+         l'obiezione del §2.3 — «un segno sempre acceso smette di essere un
+         segno» — continua a valere: a essere sempre acceso e' il numero, non
+         l'allarme.
+         ⛔ NIENTE `size="small"`: quel `size` serviva a rimpicciolire il numero
+         — cosa che le misure in `main.css` fanno gia' da sole — ed era la causa
+         del «pallino vuoto che copre l'icona» visto il 22-09. Il pallino non si
+         rende piu', ma la trappola resta scritta perche' la lezione vale per
+         ogni variante chiesta al tema: nel tema `.p-badge-dot` e `.p-badge-sm`
+         hanno la stessa specificita' e vince l'ULTIMA dichiarata, che non
+         decido io.
+         ⭐ La posizione del segno la decide `OverlayBadge` (tema PrimeVue), non
+         un `position: absolute` scritto a mano. -->
     <OverlayBadge
       v-if="$slots.default"
-      :value="modificato ? segnoRisolto.conteggio : null"
+      :value="segnoRisolto.conteggio"
       :severity="modificato ? 'info' : 'secondary'"
       class="app-filtri-segno"
       :class="{ 'app-filtri-senza-segno': !haSegno }"

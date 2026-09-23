@@ -2,7 +2,7 @@
   "common": {
     "filtri": "Filtri",
     "filtri_attivi": "Filtri attivi: {n}",
-    "filtri_default_attivi": "Filtri predefiniti attivi",
+    "filtri_default_attivi": "Filtri predefiniti attivi: {n}",
     "pulisci_filtri": "Pulisci filtri",
     "azione_reason": {
       "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere.",
@@ -1154,7 +1154,7 @@
     },
     "stato_all": "Tutti",
     "stato_attivo": "Attivo",
-    "stato_inattivo": "Inattivo",
+    "stato_inattivo": "Non attivo",
     "reparto_all": "Tutti i reparti",
     "nuovo_operatore": "Nuovo operatore",
     "modifica_operatore": "Modifica operatore",
@@ -1849,6 +1849,7 @@
     "col_uom_a": "UoM A",
     "tag_base": "Base",
     "conv_search_placeholder": "Cerca conversione (codice UoM)...",
+    "conv_mostra_non_attive": "Mostra non attive",
     "nuova_conversione": "Nuova Conversione",
     "conversione_uom": "Conversione UdM",
     "conv_creata": "Conversione creata",
@@ -4763,6 +4764,10 @@
       "righe_congelate": "Le righe si scrivono solo in bozza: riporta il documento in bozza per modificarle.",
       "righe_non_lette": "Non sono riuscito a leggere le righe del documento.",
       "movimenti": "Movimenti",
+      "registra_reason": {
+        "senza_righe": "Il documento non ha righe: non c'è niente da registrare.",
+        "righe_non_postabili": "Una o più righe non passerebbero la registrazione: correggile nell'elenco delle righe."
+      },
       "riga": {
         "nuova": "Nuova riga",
         "modifica": "Modifica riga",

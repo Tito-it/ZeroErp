@@ -322,7 +322,15 @@ produzione, non c'è niente da aspettare.*
   presentazione, e il buco (la rata di una bozza è abbinabile per vie diverse
   dal picker) è **dichiarato**, non dimenticato: si chiude nel cantiere SDI
   con la regola intera «definitiva e inviata», in una sede, letta da lista e
-  guard
+  guard. ⚠️ **Aggiornamento 2026-09-23 (Tid), che NON cambia la decisione**:
+  `solo_numerate` era scritto nel **frontend** (nei `filterDefaults` del picker)
+  e da quel giorno il suo default vive nel **backend**
+  (`saldi_service.list_rate` / `list_rate_paginata`, `= True`; l'assenza del
+  parametro significa «applica la regola»). ⭐ Resta **presentazione, non
+  cancello** — il guard della riga non chiede ancora lo stato del documento e il
+  buco dichiarato è intatto: cambia solo che la regola non dipende più dal client
+  che si ricorda di mandarla. Regola generale in
+  [api.md §«Un PERIMETRO non è un filtro»](../docs/it/dev/api.md)
 - **«Riavvia» un servizio dall'interfaccia** (DB + deploy + BE, **decisione
   D1 di Tid**; ereditata il 2026-09-18 dalla chiusura di
   `work-done/analisi-riavvio-processi-da-interfaccia.md`): «Esegui ora» è in

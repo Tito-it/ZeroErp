@@ -67,9 +67,9 @@ async function fetchData() {
 //        `rif` e default sulla stessa riga.
 // ⭐ L'emittente puo' nascere VALORIZZATO (quando ce n'e' uno solo lo sceglie la
 //    pagina, a lettura avvenuta): li' il default dichiarato resta `null`, quindi
-//    si vede il NUMERO e non il pallino. E' la regola D9 — si contano sempre i
-//    filtri, default compresi — e il numero resta vero: quell'emittente sta
-//    filtrando.
+//    il numero si vede in BLU e non in grigio. E' la regola D9 — si contano
+//    sempre i filtri, default compresi — e il numero resta vero: quell'emittente
+//    sta filtrando.
 const {
   segno: segnoFiltriPagina,
   azzeraFiltri: pulisciFiltri,

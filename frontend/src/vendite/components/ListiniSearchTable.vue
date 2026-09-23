@@ -46,6 +46,7 @@ import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
 import ChiudiVersioneDialog from './ChiudiVersioneDialog.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { buildAttivoOptions } from '../../core/utils/options'
 
 const emit = defineEmits([
   'new',
@@ -98,11 +99,12 @@ const tipologiaLookup = useGlobalLookup(
   { immediate: true }
 )
 
-const attivoOptions = [
-  { value: null, label: t('amministrazione.stato_all') },
-  { value: true, label: t('amministrazione.stato_attivo') },
-  { value: false, label: t('amministrazione.stato_inattivo') }
-]
+// ⭐ Dal BB (regola del 2, ok Tid 2026-09-23): la terna era scritta a mano qui
+//    con le chiavi di `amministrazione`, cioe' un componente di `vendite` che
+//    leggeva il vocabolario di un altro dominio. ⛔ E la tendina diceva
+//    «Inattivo» mentre la colonna qui sotto, resa da `AttivoTag`, diceva «Non
+//    attivo»: due parole per lo stesso stato nella stessa schermata.
+const attivoOptions = buildAttivoOptions(t)
 
 // Stato espansione righe (usato come v-model:expandedRows di PrimeVue).
 // Ogni volta che la lista listini viene ricaricata, espandiamo tutte le righe

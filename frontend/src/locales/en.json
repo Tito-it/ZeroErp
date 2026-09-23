@@ -2,7 +2,7 @@
   "common": {
     "filtri": "Filters",
     "filtri_attivi": "Active filters: {n}",
-    "filtri_default_attivi": "Default filters active",
+    "filtri_default_attivi": "Default filters active: {n}",
     "pulisci_filtri": "Clear filters",
     "azione_reason": {
       "senza_righe": "The document has no rows: add at least one to proceed.",
@@ -1849,6 +1849,7 @@
     "col_uom_a": "UoM To",
     "tag_base": "Base",
     "conv_search_placeholder": "Search conversion (UoM code)...",
+    "conv_mostra_non_attive": "Show inactive",
     "nuova_conversione": "New Conversion",
     "conversione_uom": "UoM Conversion",
     "conv_creata": "Conversion created",
@@ -4763,6 +4764,10 @@
       "righe_congelate": "Lines can only be edited in draft: bring the document back to draft to change them.",
       "righe_non_lette": "Could not load the document lines.",
       "movimenti": "Movements",
+      "registra_reason": {
+        "senza_righe": "The document has no lines: there is nothing to post.",
+        "righe_non_postabili": "One or more lines would not pass posting: fix them in the lines list."
+      },
       "riga": {
         "nuova": "New line",
         "modifica": "Edit line",

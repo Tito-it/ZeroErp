@@ -28,7 +28,7 @@ Indice test eseguiti:
 3) RateListaDbTests.test_solo_aperte_toglie_la_rata_esaurita
 4) RateListaDbTests.test_ogni_ordinamento_della_whitelist_esegue
 5) RateListaDbTests.test_la_ricerca_libera_trova_il_cliente_non_il_numero
-5-bis) RateListaDbTests.test_solo_numerate_toglie_la_bozza_in_entrambi_i_rami
+5-bis) RateListaDbTests.test_la_bozza_esce_dal_perimetro_in_entrambi_i_rami
 6) RigheDaRateDbTests.test_parziale_poi_il_secondo_tempo_per_riga
 """
 from __future__ import annotations
@@ -270,12 +270,18 @@ class RateListaDbTests(_MondoRateDbTests):
         self.assertEqual(per_numero, 0)
 
 
-    # Scopo: ⛔ `solo_numerate` toglie la rata della BOZZA (rilievo di Tid,
-    #        18/09) — e la toglie in ENTRAMBI i rami, perche' il predicato sta
-    #        nella funzione dell'alias: senza `solo_aperte` restano le due
-    #        numerate; con `solo_aperte` resta la sola 101 (la 1010 e' saldata
-    #        e la bozza non e' numerata). Senza il filtro la bozza c'e': la
-    #        vista la porta apposta (P-2, «una rata su una bozza compare»).
+    # Scopo: ⛔ La rata della BOZZA resta fuori DA SOLA (rilievo di Tid, 18/09;
+    #        perimetro dal 23/09) — e resta fuori in ENTRAMBI i rami, perche' il
+    #        predicato sta nella funzione dell'alias: senza `solo_aperte`
+    #        restano le due numerate; con `solo_aperte` resta la sola 101 (la
+    #        1010 e' saldata e la bozza non e' numerata).
+    # ⭐ IL CASO CHE CONTA E' IL PRIMO, e dal 23/09 dice il contrario di prima:
+    #        chiamando SENZA dire niente la bozza NON c'e'. E' la decisione di
+    #        Tid — `solo_numerate` e' un perimetro di dominio, non un filtro che
+    #        il client deve ricordarsi di mandare. Per vederla si chiede
+    #        `solo_numerate=False`, e allora c'e': la vista la porta apposta
+    #        (P-2, «una rata su una bozza compare»), quindi il perimetro e' una
+    #        scelta del backend e non un'assenza di dati.
     # ⚠️ La bozza si COSTRUISCE qui e non nella fixture condivisa: gli altri
     #    test contano DUE rate per il cliente, e una terza nella fixture li
     #    farebbe raccontare un'altra storia.
@@ -318,18 +324,25 @@ class RateListaDbTests(_MondoRateDbTests):
                 )
                 return esito["count"], {int(r["scadenza_id"]) for r in esito["results"]}
 
-            return bozza, _ids(), _ids(solo_numerate=True), _ids(solo_aperte=True, solo_numerate=True)
+            return (
+                bozza,
+                _ids(solo_numerate=False),
+                _ids(),
+                _ids(solo_aperte=True),
+            )
 
-        bozza, senza, numerate, numerate_aperte = self._nel_mondo(_prova)
-        # Senza il filtro la bozza c'e', ed e' senza numero.
-        self.assertEqual(senza[0], 3)
-        self.assertIn(bozza, senza[1])
-        # Col filtro restano le due numerate (ramo senza `solo_aperte`)...
-        self.assertEqual(numerate[0], 2)
-        self.assertNotIn(bozza, numerate[1])
-        # ...e nel ramo del perimetro resta la sola 101.
-        self.assertEqual(numerate_aperte[0], 1)
-        self.assertNotIn(bozza, numerate_aperte[1])
+        bozza, con_bozze, perimetro, perimetro_aperte = self._nel_mondo(_prova)
+        # Chiedendo ESPLICITAMENTE anche le bozze, la bozza c'e' (ed e' senza
+        # numero): il perimetro e' una scelta, non un dato che manca.
+        self.assertEqual(con_bozze[0], 3)
+        self.assertIn(bozza, con_bozze[1])
+        # Senza dire niente vale la regola: restano le due numerate.
+        self.assertEqual(perimetro[0], 2)
+        self.assertNotIn(bozza, perimetro[1])
+        # ...e nel ramo di `solo_aperte` resta la sola 101, senza che il
+        # perimetro vada ripetuto: il predicato e' nella funzione dell'alias.
+        self.assertEqual(perimetro_aperte[0], 1)
+        self.assertNotIn(bozza, perimetro_aperte[1])
 
 
 class RigheDaRateDbTests(_MondoRateDbTests):

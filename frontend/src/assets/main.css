@@ -191,9 +191,11 @@ a {
   color: var(--p-primary-color);
 }
 
-/* Segno dei filtri attivi (pallino o numero): la POSIZIONE la mette
- * `OverlayBadge` di PrimeVue — `translate(50%, -50%)` piu' l'outline di
- * contrasto, nel tema. Qui resta solo lo stato «nessun segno».
+/* Segno dei filtri attivi (un NUMERO, grigio o blu — dal 2026-09-23 il pallino
+ * non si rende piu'): la POSIZIONE la mette `OverlayBadge` di PrimeVue —
+ * `translate(50%, -50%)` piu' l'outline di contrasto, nel tema. Qui resta solo
+ * lo stato «nessun segno», che col numero sempre presente e' l'unico modo di
+ * non mostrare uno zero.
  * ⛔ La prima stesura posizionava il badge a mano (`position: absolute` +
  *    translate) E lo infilava nel default slot del `Button`: quello slot
  *    SOSTITUISCE il rendering interno del pulsante, quindi l'icona del filtro
@@ -228,25 +230,23 @@ a {
  * ⚠️ Le dimensioni del NUMERO sono derivate dall'icona (1rem = la meta' del
  *    pulsante da 2rem), non scelte a occhio: il badge del tema e' pensato per
  *    una topbar e su un pulsante-icona di toolbar copre il glifo.
- * ⛔ IL PALLINO NON PASSA DA QUI (`:not(.p-badge-dot)`) e deve restare quello
- *    del tema: `--p-badge-dot-size`, 0.5rem.
- *    🔴 E per un giro NON lo era, ed e' il difetto che Tid ha visto in-app —
- *    «se tolgo i filtri rimane un pallino vuoto che copre l'icona». La causa
- *    non stava in questo foglio ma in un `size="small"` sul componente: nel
- *    tema `.p-badge-dot` (0.5rem) e `.p-badge-sm` (1.25rem) hanno la STESSA
- *    specificita' e `sm` e' dichiarata DOPO, quindi vinceva lei su `min-width`
- *    e `height`. Il pallino diventava un cerchio da 1.25rem con 2px di outline
- *    nell'angolo del pulsante, cioe' sopra il glifo.
- *    ⭐ La lezione e' la stessa delle tre qui accanto, vista dall'altra parte:
- *    a parita' di specificita' vince l'ULTIMA dichiarata — e dentro il tema
- *    non decido io quale sia. Un `:not()` che protegge il pallino dalle MIE
- *    misure non lo protegge da quelle che il tema si applica da solo: li' si
- *    smette di CHIEDERE la taglia, non si aggiunge un override. */
+ * ⛔ QUI NON C'E' PIU' UN `:not(.p-badge-dot)`, e la ragione e' che il pallino
+ *    NON SI RENDE PIU' (2026-09-23): `FiltriLista` passa sempre un numero a
+ *    `:value`, quindi `Badge` non entra mai nello stato «dot». Una regola che
+ *    protegge uno stato che non esiste piu' non e' innocua: e' la prossima che
+ *    qualcuno legge come descrizione di cio' che succede.
+ *    🔴 La lezione che quel `:not()` aveva pagato resta, e vale per ogni
+ *    variante chiesta al tema: il difetto visto in-app da Tid il 2026-09-22 —
+ *    «se tolgo i filtri rimane un pallino vuoto che copre l'icona» — non stava
+ *    in questo foglio ma in un `size="small"` sul componente. Nel tema
+ *    `.p-badge-dot` (0.5rem) e `.p-badge-sm` (1.25rem) hanno la STESSA
+ *    specificita' e `sm` e' dichiarata DOPO, quindi vinceva lei.
+ *    ⭐ A parita' vince l'ULTIMA dichiarata, e dentro il tema non decido io
+ *    quale sia: un `:not()` che protegge un elemento dalle MIE misure non lo
+ *    protegge da quelle che il tema si applica da solo. Li' si smette di
+ *    CHIEDERE la variante, non si aggiunge un override piu' forte. */
 .p-overlaybadge.app-filtri-segno .p-badge {
   transform: none;
-}
-
-.p-overlaybadge.app-filtri-segno .p-badge:not(.p-badge-dot) {
   min-width: 1rem;
   height: 1rem;
   padding: 0 0.2rem;

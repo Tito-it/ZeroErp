@@ -26,11 +26,14 @@
 //    guarda deve poter vedere che quel documento e' a posto.
 // ⛔ I documenti NON NUMERATI invece non si vedono (Tid, rilievo in-app
 //    2026-09-18): una bozza non e' ancora un documento fiscale, e la sua rata
-//    non e' un credito su cui registrare un incasso. Il filtro e' del backend
-//    (`solo_numerate`, `numero IS NOT NULL`) e parte acceso dallo store: qui
-//    non c'e' niente da scrivere. ⏳ La regola di Tid e' piu' stretta — «solo
-//    le definitive, inviate a SDI» — e arrivera' come predicato di dominio, in
-//    una sede sola a DB (piano D19 §8), non come un secondo booleano.
+//    non e' un credito su cui registrare un incasso. ⭐ E dal 2026-09-23 qui non
+//    c'e' niente da scrivere DAVVERO: la regola e' un perimetro del BACKEND
+//    (`list_rate`, `solo_numerate` default `True`), non un filtro che il picker
+//    manda. Prima stava nei `filterDefaults` dello store, e da li' contava come
+//    filtro attivo nel segno dell'imbuto — un «1» su un filtro che a video non
+//    esiste. ⏳ La regola di Tid e' piu' stretta — «solo le definitive, inviate
+//    a SDI» — e arrivera' come predicato di dominio, in una sede sola a DB
+//    (piano D19 §8), non come un secondo booleano.
 // ⭐ IL DIALOG E' ALTO DIECI RIGHE, DA SUBITO: la lista nasce a dieci righe
 //    per pagina (`limit` dello store) e il blocco lista ha un'altezza DEFINITA
 //    (`app-dialog-lista`, main.css) — cosi' la pagina vuota e la pagina piena
